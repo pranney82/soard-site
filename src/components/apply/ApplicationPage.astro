@@ -1395,10 +1395,10 @@ const breadcrumbs = [
     .af-pair--photos .af-upload-status { font-size: 13.5px; line-height: 1.4; text-align: center; color: var(--c-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .af-pair--photos .af-upload[data-state="done"] .af-upload-status { color: var(--c-dark); }
     /* A file's name is cut short on one line; a note about a problem is read whole */
-    .af-pair--photos .af-upload:not([data-state="done"]) .af-upload-status { white-space: normal; overflow: visible; text-overflow: clip; }
+    .af-pair--photos .af-upload:not([data-state="done"]) .af-upload-status, .af-pair--photos .af-upload-status[data-problem] { white-space: normal; overflow: visible; text-overflow: clip; }
     /* So small a box (a window zoomed to 200%, a phone on its side) that one line holds only "Added…": two */
     @media (max-height: 420px) and (max-width: 760px) {
-      .af-pair--photos .af-upload[data-state="done"] .af-upload-status { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
+      .af-pair--photos .af-upload[data-state="done"] .af-upload-status:not([data-problem]) { white-space: normal; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; }
     }
     .af-pair--photos .af-upload-actions { display: grid; gap: 4px; justify-items: stretch; }
     .af-pair--photos .af-btn--upload { width: 100%; padding-inline: 12px; }

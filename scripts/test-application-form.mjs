@@ -620,6 +620,11 @@ try {
   await next();
   ok(!(await page.$eval('[data-field="parentAddress"] .af-error', (e) => e.textContent)), "Continue doesn't ask for the parent's address that was removed");
   ok(await visible('[data-stop]') && /must own their home/.test(await page.$eval('[data-stop]', (e) => e.textContent)), 'renters get the "must own the home" screen');
+  // A reload there (Safari reloads a tab left a while): that screen again, its way back and Back as before
+  await page.reload({ waitUntil: 'networkidle0' });
+  await sleep(900);
+  ok(await visible('[data-stop]') && /must own their home/.test(await page.$eval('[data-stop]', (e) => e.textContent)), 'a reload on it shows it again');
+  ok(await page.evaluate(() => history.state?.afAt?.stop === true), 'its place in the browser history is still the stop');
   await page.click('[data-stop-back]');
   await sleep(450); // its way back is the browser's Back: a moment, and the question is on screen again
   await pick('ownership', 'Yes, at least one person living in the home is the owner.');
@@ -1128,6 +1133,17 @@ try {
   await x.click('[data-hub-go]');
   await sleep(500);
   ok((await stepTitle(x)) === AREA && await x.evaluate(() => document.documentElement.classList.contains('af-focus')), 'Continue where you left off goes straight back in');
+  // Edit on the overview, a step before where they were: its last screen's Continue goes back there
+  await x.click('[data-exit]');
+  await sleep(500);
+  await x.click('[data-hub-list] [data-goto="welcome"]');
+  await sleep(600);
+  const nextWords = () => x.$eval('[data-next-label]', (e) => e.textContent);
+  for (let i = 0; i < 6 && !/where I was/.test(await nextWords()); i++) { await x.click('[data-next]'); await sleep(600); }
+  ok(/Back to where I was/.test(await nextWords()) && (await stepTitle(x)) === 'Before You Begin', `Edit on the overview: that step's last screen offers the way back ("${await nextWords()}")`);
+  await x.click('[data-next]');
+  await sleep(600);
+  ok((await stepTitle(x)) === AREA, 'and takes them back to where they were');
   await xCtx.close();
 
   console.log('Live preview for the form editor (page rules too)');

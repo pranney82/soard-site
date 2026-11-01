@@ -297,6 +297,15 @@ if (DIST) {
     const focus = await p.evaluate(() => ({ on: document.documentElement.classList.contains('adv-focus'), header: !!document.querySelector('#site-header')?.getClientRects().length, segs: document.querySelectorAll('.adv-seg').length, tab: document.title }));
     ok(focus.on && !focus.header && focus.segs === 6, 'Start: the application has the screen to itself, a segment per step');
     ok(/^Step 1 of 6: About you · /.test(focus.tab), `the tab says the step (${focus.tab})`);
+    // A name typed, then Save and exit before any Continue: the overview says it's saved and offers to carry on
+    await p.type('#adv-fullName', 'Taylor');
+    await sleep(700);
+    await p.click('#adv-exit');
+    await sleep(500);
+    ok(/saved on this device/.test(await text(p, '#adv-hub-title')) && /Continue where you left off/.test(await text(p, '#adv-go')), `a name typed, then Save and exit at once: saved, and Continue (${await text(p, '#adv-hub-title')} / ${await text(p, '#adv-go')})`);
+    await p.click('#adv-go');
+    await sleep(400);
+    await p.$eval('#adv-fullName', (e) => { e.value = ''; e.dispatchEvent(new Event('input', { bubbles: true })); });
     const a1 = await axeScan(p, '#application');
     ok(!a1.length, `axe: the first step has no WCAG 2.1 AA problems${a1.length ? ` (${axeText(a1)})` : ''}`);
     await next();

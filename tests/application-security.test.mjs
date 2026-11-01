@@ -93,6 +93,7 @@ test('a photo is checked by its own bytes, and stored as what it really is', asy
   const fake = await upload(html, 'image/jpeg', 'kid.jpg');
   assert.equal(fake.status, 400);
   assert.match(fake.body.error, /Please choose a photo/);
+  assert.equal(fake.body.code, 'not-photo', 'the page says it its own way, with no Try again (the same file can never go)');
   const png = Uint8Array.from([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
   assert.equal((await upload(png, 'image/jpeg', 'kid.jpg')).status, 400, 'a PNG labeled JPEG is turned away');
   const real = await upload(TEST_JPEG, 'image/jpeg', 'kid.jpg');

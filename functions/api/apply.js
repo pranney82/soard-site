@@ -392,12 +392,12 @@ async function handlePhoto(context) {
   const file = form.get('file');
   if (!file || typeof file === 'string') return fail('No photo attached');
   const notPhoto = es ? 'Elija una foto (JPEG, PNG, WebP o HEIC).' : 'Please choose a photo (JPEG, PNG, WebP or HEIC).';
-  if (!PHOTO_TYPES.has((file.type || '').toLowerCase())) return fail(notPhoto);
+  if (!PHOTO_TYPES.has((file.type || '').toLowerCase())) return fail(notPhoto, 400, { code: 'not-photo' });
   if (file.size > MAX_PHOTO_BYTES) return fail(es ? 'Esa foto es demasiado grande. Elija una de menos de 25 MB.' : 'That photo is too large. Please choose one under 25 MB.');
   // The file's own first bytes must say it's a photo of that kind (a renamed file is turned away)
   const bytes = new Uint8Array(await file.arrayBuffer());
   const checked = checkImage(bytes, file.type);
-  if (!checked.ok || checked.kind === 'gif') return fail(notPhoto);
+  if (!checked.ok || checked.kind === 'gif') return fail(notPhoto, 400, { code: 'not-photo' }); // the page says it its own way, with no Try again
   const type = checked.type;
   const key = photoKey(draft.id, fieldId);
   await files.put(key, bytes, { httpMetadata: { contentType: type } });

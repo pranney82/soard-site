@@ -227,6 +227,7 @@ function init(root, cfg, mode) {
   let moving = false;        // a screen change is under way (Continue pressed twice counts once)
   let furthestId = null;     // the furthest page reached
   let fromReview = false;    // came from the review page: 'answer' (one, then straight back) or 'step' (a whole step, walked through)
+  let detour = null;         // gone back to an earlier step from the overview or the steps: { page, piece } of where they were
   let token = null;
   let rev = null;            // the draft's save this page last had (another device's save since is brought in, not saved over)
   let synced = null;         // the answers as of that save (what's changed here since goes with the next one)
@@ -627,7 +628,7 @@ function init(root, cfg, mode) {
   /** The entry they're on says the screen they're on now (an in-page Back, a fix that moved them) */
   function replaceLoc() {
     if (!histOk() || !depth) return;
-    const at = whereNow();
+    const at = { ...whereNow(), ...(stopShown ? { stop: true } : {}) }; // over a "can't help" screen it's still the stop's
     try { history.replaceState({ ...(history.state || {}), afFocus: 1, afDepth: depth, afAt: at }, ''); trail[depth] = at; } catch { /* history unavailable */ }
   }
   function armTrap() { if (!depth) pushLoc(); }
@@ -931,11 +932,12 @@ function init(root, cfg, mode) {
     const at = ids.indexOf(currentId);
     const lastScreen = review || !screenAhead();
     ui.back.hidden = at <= 0 && screenNo === 0;
-    const label = review ? (busyShown ? 'submitting' : 'submit') : fromReview === 'answer' || (fromReview && lastScreen) ? 'toReview' : ids[at + 1] === 'review' && lastScreen ? 'reviewBtn' : 'next';
+    const label = review ? (busyShown ? 'submitting' : 'submit') : fromReview === 'answer' || (fromReview && lastScreen) ? 'toReview'
+      : detourHere(lastScreen) ? 'toWhereWas' : ids[at + 1] === 'review' && lastScreen ? 'reviewBtn' : 'next';
     // Only when the words change: Safari drops a press on Continue whose words are replaced between the
     // finger going down and coming up (leaving a box on the way to it repaints this)
     setText(ui.nextLabel, T(label));
-    if (ui.nextShort) setText(ui.nextShort, T({ reviewBtn: 'reviewBtnShort', toReview: 'toReviewShort', submit: 'submitShort' }[label] || label));
+    if (ui.nextShort) setText(ui.nextShort, T({ reviewBtn: 'reviewBtnShort', toReview: 'toReviewShort', submit: 'submitShort', toWhereWas: 'toWhereWasShort' }[label] || label));
     ui.next.classList.toggle('af-btn--submit', review);
     let blockedBy = null;
     if (review) {
@@ -1546,6 +1548,7 @@ function init(root, cfg, mode) {
       if (!(await start())) return;
       if (toCard) await show(currentId, { dir: 1, piece: card, step: 1 });
       else if (fromReview === 'answer' || (fromReview && last)) await show('review', { dir: 1 });
+      else if (detourHere(last)) { const d = detour; detour = null; await show(d.page, { dir: 1, piece: d.piece && pageEl(d.page)?.contains(d.piece) ? d.piece : null, screen: 'open' }); }
       else if (!last) await show(currentId, { dir: 1, screen: screenNo + 1, step: 1 });
       else {
         const ids = stepIds(a);
@@ -1587,9 +1590,17 @@ function init(root, cfg, mode) {
     return true;
   }
   /** Jump to a page already reached (the steps list, Edit, Answer it, Change) */
+  /** On the last screen of a step they went back to (Edit on the overview, a step in the list): Continue goes back to where they were */
+  const detourHere = (lastScreen) => !!detour && lastScreen && !fromReview && currentId !== 'review' && order(currentId) < order(detour.page);
+  /** Going back to an earlier step: where they were, kept for its Continue (the furthest of a few such trips) */
+  function takeDetour(id) {
+    if (!currentId || currentId === 'review' || order(id) >= order(currentId)) { if (order(id) >= order(detour?.page)) detour = null; return; }
+    if (!detour || order(currentId) >= order(detour.page)) detour = { page: currentId, piece: resumePiece || packs[currentId]?.[screenNo]?.[0] || null };
+  }
   function jump(id, { focusField = null, whole = true } = {}) {
     if ((!reached(id) && !previewing) || doneShown) return; // sent: the steps are closed
     if (id === currentId && !focusField) { ui.steps.open = false; return; } // the step they're on: the list closes
+    if (currentId !== 'review') takeDetour(id);
     const dir = Math.sign(order(id) - order(currentId));
     if (dir > 0) {
       const stop = stopFor(form, readAnswers());
@@ -1712,12 +1723,39 @@ function init(root, cfg, mode) {
   }
 
   // ── Notices ──────────────────────────────────────────────────────
-  function notice(m, kind = 'info') {
-    lastNotice = m ? { m, kind } : null;
+  function notice(m, kind = 'info', act = null) {
+    lastNotice = m ? { m, kind, act, at: Date.now() } : null;
     paintNotice();
+  }
+  /**
+   * A note at the top that stopped being true goes: "Not saved yet" once it's saved, "A few answers need
+   * attention" once none do, "add your photos and video again" once they're added, "…is being added as your
+   * video" once it's in (or didn't make it)
+   */
+  function retireNotices({ videoDone = false } = {}) {
+    const m = Array.isArray(lastNotice?.m) ? lastNotice.m[0] : lastNotice?.m;
+    if (['exitNotSaved', 'exitNotSavedServer'].includes(m) && lastSave === 'saved') notice(focused ? null : 'exitSaved', 'success');
+    else if (m === 'attention' && currentId === 'review' && !Object.keys(formErrors(form, readAnswers(), files, null, lang)).length) notice(null);
+    else if (m === 'renewedFiles' && !fields.some(f => isUpload(f) && uploadUi[f.id]?.msg === 'fileAgain')) notice('renewed', 'info');
+    else if (['recKept', 'recKeptLang'].includes(m) && videoDone) {
+      // Read first: it says why the camera stopped (an upload that's over at once mustn't take the words away with it)
+      const was = lastNotice;
+      setTimeout(() => { if (lastNotice === was) notice(null); }, Math.max(0, 6000 - (Date.now() - was.at)));
+    }
   }
   function paintNotice() {
     ui.notice.textContent = lastNotice ? say(lastNotice.m) : '';
+    // A note with something to do about it ("Open that one instead"): its button after its words
+    if (lastNotice?.act) {
+      const words = document.createElement('span');
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'af-btn af-btn--link af-notice-act';
+      b.dataset.noticeAct = lastNotice.act;
+      b.textContent = T(lastNotice.act);
+      words.append(say(lastNotice.m), ' ', b);
+      ui.notice.replaceChildren(words);
+    }
     ui.notice.dataset.kind = lastNotice?.kind || 'info';
     // A saved application that couldn't open: said once on the page, at the top (the hero's note)
     ui.notice.hidden = !lastNotice || (!focused && !root.hidden && ['resumeFailed', 'linkExpired'].includes(lastNotice.m));
@@ -1746,6 +1784,7 @@ function init(root, cfg, mode) {
     if (trouble(key) && !trouble(lastSave)) announce(T(key));
     else if (key === 'saved' && trouble(lastSave)) announce(T('saved'));
     lastSave = key;
+    if (key === 'saved') retireNotices();
     paintSaveState();
     if (!focused) paintHub(); // the overview's "Your application is saved" waits for it to be
   }
@@ -2059,6 +2098,7 @@ function init(root, cfg, mode) {
     const a = readAnswers();
     const errors = formErrors(form, a, files, null, lang);
     const missing = Object.keys(errors).length;
+    if (!missing && lastNotice?.m === 'attention') notice(null); // fixed since
     ui.reviewSummary.dataset.kind = missing ? 'missing' : 'ready';
     ui.reviewSummary.textContent = missing ? (missing === 1 ? T('reviewMissingOne') : T('reviewMissing', { n: missing })) : T('reviewReady');
     // An email they gave that's likely a typo (they're written to there): asked about, with the fix a tap away
@@ -2191,8 +2231,11 @@ function init(root, cfg, mode) {
       await dropRemoved(); // sent without what they removed
       if (!(await start())) return; // expired, and a new one couldn't start just now (it says why)
       // Sent only as it is here: a save that didn't go would send the answers from before it
+      const was = token;
       const saved = await save();
       if (doneShown) return; // it turned out to be sent already (another device)
+      // It had expired: the answers went into a new one (or will on Submit), and its note says what's next
+      if (token !== was) { readNotice(); return; }
       if (!saved) { navNote(lastSave === 'offline' ? 'offlineSubmit' : 'submitUnsaved'); return; }
       const r = await api({ action: 'submit', token });
       if (r.ok) { finished(); return; }
@@ -2275,7 +2318,10 @@ function init(root, cfg, mode) {
     box.dataset.state = s.state;
     let msg = s.msg;
     if (Array.isArray(msg) && msg[1] && 'name' in msg[1] && !msg[1].name) msg = [msg[0], { ...msg[1], name: T(video ? 'yourVideo' : 'yourPhoto') }];
-    box.querySelector('.af-upload-status').textContent = msg ? say(msg) : T(video ? 'noVideo' : 'noPhoto');
+    const status = box.querySelector('.af-upload-status');
+    status.textContent = msg ? say(msg) : T(video ? 'noVideo' : 'noPhoto');
+    // A problem is read whole, even over a photo already added (a file's name is what's cut short)
+    status.toggleAttribute('data-problem', !!msg && ((typeof msg === 'object' && !Array.isArray(msg)) || ['notImage', 'notVideo', 'empty', 'camBlocked'].includes(msg)));
     const done = s.state === 'done';
     const failed = s.state === 'failed';
     box.querySelector('[data-act="remove"]').hidden = !done;
@@ -2306,6 +2352,7 @@ function init(root, cfg, mode) {
       save().then((ok) => { if (!focused && lastNotice?.m === 'exitUploading') notice(failed ? 'exitUploadFailed' : ok ? 'exitSaved' : lastSave === 'offline' ? 'exitNotSaved' : 'exitNotSavedServer', ok && !failed ? 'success' : 'error'); });
     }
     if (currentId === 'review') buildReview();
+    if (!uploads.size || lastNotice?.m === 'renewedFiles') retireNotices();
     // A note that said the photo or video was missing goes once it's in
     for (const id of [...shown]) if (byId[id] && isUpload(byId[id]) && !errorFor(id)) setFieldError(id, null);
   }
@@ -2352,7 +2399,7 @@ function init(root, cfg, mode) {
     const status = e?.originalResponse?.getStatus?.() || 0;
     const dropped = !navigator.onLine || e?.network || e instanceof TypeError || (!!e?.originalRequest && !status);
     const msg = e?.said && e.message ? String(e.message).trim() : T(dropped ? 'uploadOffline' : video ? 'videoFailed' : 'uploadFailed');
-    return { raw: /try again|intent|please|por favor|elija|choose|vuelva/i.test(msg) ? msg : T('tryAgain', { msg: msg.replace(/[.!]\s*$/, '') }) };
+    return { raw: /try again|again|intent|de nuevo|please|por favor|pruebe|elija|choose|vuelva|another|otro/i.test(msg) ? msg : T('tryAgain', { msg: msg.replace(/[.!]\s*$/, '') }) };
   };
 
   async function uploadPhoto(f, file) {
@@ -2380,20 +2427,23 @@ function init(root, cfg, mode) {
       body.append('token', token);
       body.append('lang', lang); // its problems said in their language
       body.append('field', f.id);
-      const name = (file.name || 'photo').replace(/\.[^.]+$/, '') + (main ? '.jpg' : '');
-      body.append('file', main || file, main ? name : file.name);
+      const name = file.name || 'photo.jpg'; // the name they chose (a PNG made a JPEG here is still "space.png" to them)
+      body.append('file', main || file, name);
       if (thumb) body.append('thumb', thumb, 'thumb.jpg');
       setUpload(f.id, { msg: ['uploading', { pct: 0 }], thumb: thumb || main ? URL.createObjectURL(thumb || main) : null });
       const r = await postWithProgress(body, (p) => {
         const pct = Math.min(99, Math.round(p * 100));
         setUpload(f.id, { pct, msg: ['uploading', { pct }] });
       });
+      // Not a photo after all (a file renamed .jpg the browser couldn't read): said as the page says it, and another
+      // file asked for (the same one again can't go)
+      if (r.code === 'not-photo') throw Object.assign(said(T('notImage')), { unusable: true });
       if (!r.ok) throw said(uploadGone(r, body.get('token')) || r.error || T('uploadFailed'));
       files[f.id] = { key: true, name };
       delete retryFiles[f.id];
       setUpload(f.id, { state: 'done', msg: ['added', { name }], pct: null });
     } catch (e) {
-      retryFiles[f.id] = file;
+      if (e?.unusable) delete retryFiles[f.id]; else retryFiles[f.id] = file;
       setUpload(f.id, files[f.id] ? { ...before, msg: failText(e), pct: null } : { state: 'failed', msg: failText(e), pct: null });
     } finally {
       uploads.delete(f.id);
@@ -2496,7 +2546,7 @@ function init(root, cfg, mode) {
       let uploaded = false;
       for (let i = 0; i < 20 && !uploaded; i++) {
         const done = await api({ action: 'video-done', token, lang });
-        if (done.code === 'video-error') throw said(done.error);
+        if (done.code === 'video-error') throw Object.assign(said(done.error), { unusable: true }); // Stream can't read it: another file, not the same again
         uploaded = !!done.uploaded;
         if (!uploaded) await wait(1500);
       }
@@ -2506,11 +2556,12 @@ function init(root, cfg, mode) {
       setUpload(f.id, { state: 'done', msg: ['videoDone', { name: file.name }], pct: null });
     } catch (e) {
       delete files[f.id];
-      retryFiles[f.id] = file;
+      if (e?.unusable) delete retryFiles[f.id]; else retryFiles[f.id] = file;
       setUpload(f.id, { state: 'failed', msg: failText(e, true), pct: null });
     } finally {
       uploads.delete(f.id);
       uploadsChanged();
+      retireNotices({ videoDone: true });
     }
   }
 
@@ -3881,6 +3932,18 @@ function init(root, cfg, mode) {
   // The application sent from here (a parent unsure it went through isn't sent into a second one), and a
   // saved one that couldn't be opened just now (its link's words at the top, where they land)
   const sentStore = local(keyed('soard-application-sent'));
+  // The application this device had going when a link opened another one (a brother's or sister's)
+  const otherStore = local(keyed('soard-application-other'));
+  ui.notice.addEventListener('click', (e) => {
+    if (!e.target.closest('[data-notice-act="openOther"]')) return;
+    const was = otherStore.get();
+    if (!isToken(was?.token)) { notice(null); return; }
+    // This one came from its link (it opens again from there): the device goes back to the one it had
+    store.set({ token: was.token, year: was.year || year });
+    otherStore.clear();
+    try { sessionStorage.removeItem(SCREEN_KEY); } catch { /* storage off */ }
+    location.replace(location.pathname);
+  }, { signal });
   let resumePending = null; // a saved application not reached yet: Start tries it again (not a blank one)
   let linkGone = false;     // the link they came by has expired
   let wantIn = false;       // they pressed Continue while it was being tried: in, once it opens
@@ -4127,9 +4190,15 @@ function init(root, cfg, mode) {
     // A link to another application than the one this device had going (a brother's or sister's): said, so the
     // one they were on isn't thought lost
     const other = !!fromLink && isToken(saved?.token) && saved.token !== fromLink;
-    notice(remindersOff ? 'remindersOff' : keptBack ? 'keptHere' : other ? 'otherApplication' : 'welcomeBack', other && !remindersOff && !keptBack ? 'info' : 'success');
+    if (other) otherStore.set({ token: saved.token, year: saved.year || year }); // a way back to it from here (it may have no link of its own)
+    const otherSaid = other && !remindersOff && !keptBack;
+    notice(remindersOff ? 'remindersOff' : keptBack ? 'keptHere' : otherSaid ? 'otherApplication' : 'welcomeBack', otherSaid ? 'info' : 'success', otherSaid ? 'openOther' : null);
     if (keptBack) save();
+    // A reload on a "can't help" screen: that screen again while the answer that led to it stands (its place in
+    // the browser's history is the stop's, so Back from it is the question's, as before the reload)
+    const stopAgain = !fromLink && history.state?.afFocus && history.state.afAt?.stop ? stopFor(form, readAnswers()) : null;
     if (fromLink || session.get() || wantIn) begin();
+    if (stopAgain && focused && stopAgain.page === currentId) showStop(stopAgain);
     wantIn = false;
   }
 
@@ -4190,7 +4259,9 @@ function init(root, cfg, mode) {
   ui.hubGo?.addEventListener('click', () => { if (resumePending && !token) tryResumeNow(); else begin(ui.hubGo.dataset.go || null); });
   ui.hubList?.addEventListener('click', (e) => {
     const go = e.target.closest('[data-goto]');
-    if (go && !go.disabled) begin(go.dataset.goto);
+    if (!go || go.disabled) return;
+    if (!doneShown) takeDetour(go.dataset.goto);
+    begin(go.dataset.goto);
   });
   ui.exit?.addEventListener('click', () => exitFocus());
   // Escape closes "All steps" (and a press anywhere else does)

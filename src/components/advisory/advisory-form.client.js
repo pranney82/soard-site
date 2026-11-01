@@ -347,10 +347,13 @@ export function initAdvisoryForm() {
     paintHub(a);
     if (focusHeading) ui.title.focus({ preventScroll: true });
   }
+  /** Anything answered at all */
+  const anyAnswer = (a) => Object.values(a || {}).some(v => v === true || (typeof v === 'string' && !!v.trim())
+    || (Array.isArray(v) && v.some(x => String(x ?? '').trim())) || (!!v && typeof v === 'object' && !Array.isArray(v) && Object.values(v).some(x => String(x ?? '').trim())));
   /** The overview: every step with its minutes, done ones with their answers, the way in */
   function paintHub(a = collect()) {
     if (focused) return;
-    const started = restored || furthest > 0;
+    const started = restored || furthest > 0 || anyAnswer(a); // a name typed and Save and exit at once is started too
     const doneCount = ADVISORY_STEPS.filter((_, i) => stepDone(i, a)).length;
     // Sent from this device before (a reload, a visit back): said, so it isn't sent a second time unsure
     const was = sent ? { at: Date.now() } : !started ? sentStore.get() : null;
@@ -757,7 +760,7 @@ export function initAdvisoryForm() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) saveNow(); });
   // A browser that blocks saving keeps nothing: leaving with answers asks first
   window.addEventListener('beforeunload', (e) => {
-    if (canKeep || sent || !Object.values(collect()).some(v => String(Array.isArray(v) ? v.join('') : typeof v === 'object' && v ? Object.values(v).join('') : v ?? '').trim())) return;
+    if (canKeep || sent || !anyAnswer(collect())) return;
     e.preventDefault();
     e.returnValue = '';
   });
