@@ -1623,7 +1623,13 @@ try {
     await sleep(200);
     await page.evaluate(() => [...document.querySelectorAll('.pt-access__jtonly li')].find((li) => li.querySelector('a')?.textContent === 'Sub Plumbing')?.querySelectorAll('.btn')[1]?.click());
     await sleep(200);
-    const jtWide = await page.evaluate(() => [...document.querySelectorAll('.pt-access__jtonly, .pt-access__jtonly *')].filter((el) => el.getBoundingClientRect().right > 390 || el.getBoundingClientRect().left < 0).map((el) => el.className || el.tagName).slice(0, 4));
+    // A partner name as long as the real list's longest, which once widened the row past the dialog (cut off, not scrolled)
+    await page.evaluate(() => document.querySelector('#pt-jt-co-acctsub001')?.add(new Option('Accessibility Professionals of North Georgia and the Southeast', 'long-name')));
+    await sleep(100);
+    const jtWide = await page.evaluate(() => {
+      const edge = Math.min(390, document.querySelector('.pt-access__jtonly').getBoundingClientRect().right);
+      return [...document.querySelectorAll('.pt-access__jtonly, .pt-access__jtonly *')].filter((el) => el.getBoundingClientRect().right > edge + 0.5 || el.getBoundingClientRect().left < 0).map((el) => el.className || el.tagName).slice(0, 4);
+    });
     ok(!jtWide.length && !!(await page.$('#pt-jt-co-acctsub001')), `phone: JobTread’s other vendors and the partner list fit${jtWide.length ? ` (${jtWide.join(', ')})` : ''}`);
     await page.evaluate(() => document.querySelector('#pt-jt-co-acctsub001')?.closest('li')?.scrollIntoView({ block: 'center' }));
     await shot(page, 'phone-access-jtonly', { grow: false });

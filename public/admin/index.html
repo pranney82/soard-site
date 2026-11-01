@@ -4288,8 +4288,15 @@
     .pt-access__group { margin: 1rem 0 0; font-size: var(--fs-sm); font-weight: 600; }
     .pt-access__group small { margin-left: 0.2rem; font-size: var(--fs-xs); font-weight: 400; }
     .modal .pt-access__group-hint { margin: 0.1rem 0 0; font-size: var(--fs-xs); color: var(--color-text-secondary); }
-    .pt-access__jtonly .pt-loose__other { flex-wrap: wrap; }
-    @media (max-width: 768px) { .pt-access__acts { margin-left: 0; width: 100%; } }
+    /* The longest partner name in "Which partner?" never widens the row */
+    .pt-access__jtonly ul { grid-template-columns: minmax(0, 1fr); }
+    .pt-access__jtonly .pt-access__acts { min-width: 0; }
+    .pt-access__jtonly .pt-loose__other { flex-wrap: wrap; min-width: 0; }
+    @media (max-width: 768px) {
+      .pt-access__acts { margin-left: 0; width: 100%; }
+      .pt-access__jtonly .pt-loose__other { display: flex; width: 100%; }
+      .pt-access__jtonly .pt-loose__select { flex: 1 1 100%; min-width: 0; }
+    }
     .kd-logowait { margin-bottom: 0.85rem; padding: 0.7rem 0.85rem; border: 1px solid #EBCB4D; border-radius: 12px; background: var(--tone-warn-surface); }
     .kd-logowait__lead { margin: 0 0 0.45rem; font-size: var(--fs-sm); color: var(--tone-warn-fg); }
     .kd-logowait ul { display: grid; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
