@@ -59,6 +59,7 @@ export const UI = {
     sentBodyHtml: 'We sent a link to <strong data-later-email></strong>. It works for 60 days after your last change. Please keep it private, since anyone with it can see your answers.',
     keepGoing: 'Keep going now', close: 'Close',
     welcomeBack: 'Welcome back! Your answers are saved, so you can pick up right where you left off.',
+    otherApplication: 'This link opened a different application from the one you had going on this device. That one is still saved under its own link.',
     noStorage: "Your answers save as you go, but this browser blocks keeping your place on this device. Before you leave, use “Save and finish later” to get a link by email.",
     keptHere: "Welcome back! The changes you made here last time hadn't saved yet, so this device kept them for you.",
     remindersOff: "You won't get any more reminder emails. Your answers are still saved here.",
@@ -75,7 +76,7 @@ export const UI = {
     retryUpload: 'Try again', choosePhotoOther: 'Choose a different photo',
     noPhoto: 'No photo yet', choosePhoto: 'Choose a photo', replacePhoto: 'Replace photo', remove: 'Remove', gettingReady: 'Getting your photo ready…',
     uploading: 'Uploading… {pct}%', added: 'Added: {name}', tryAgain: '{msg}. Please try again.', uploadFailed: 'Upload failed', videoFailed: "Your video didn't upload", uploadOffline: "The upload stopped when the connection dropped. Press Try again once you're back online.", notImage: "That file isn't a photo we can use. Please choose a JPEG, PNG or HEIC photo.",
-    dropPhoto: 'Drop the photo here', dropVideo: 'Drop the video here', orDrag: 'or drag one here',
+    dropPhoto: 'Drop the photo here', dropVideo: 'Drop the video here', orDrag: 'or drag one here', orDragVideo: 'or drag one here', undo: 'Undo', uploadRetrying: 'The connection dropped. Trying again ({pct}% sent)…', photoRemoved: 'Photo removed.', videoRemoved: 'Video removed.',
     noVideo: 'No video yet', chooseVideo: 'Choose or record a video', chooseVideoDesk: 'Choose a video file', chooseOther: 'Choose a different video', starting: 'Starting upload…',
     uploadingPct: 'Uploading your video… {pct}%', finishing: 'Finishing up…', videoDone: 'Video uploaded: {name}', videoGone: 'Your video did not finish uploading. Please choose it again.',
     notVideo: "That file isn't a video. Please choose a video file.", uploadStartFail: 'We could not start the upload',
@@ -175,6 +176,7 @@ export const UI = {
     sentBodyHtml: 'Enviamos un enlace a <strong data-later-email></strong>. Funciona durante 60 días después de su último cambio. Manténgalo privado, ya que cualquier persona que lo tenga puede ver sus respuestas.',
     keepGoing: 'Seguir ahora', close: 'Cerrar',
     welcomeBack: '¡Bienvenido de nuevo! Sus respuestas están guardadas, así que puede continuar justo donde se quedó.',
+    otherApplication: 'Este enlace abrió una solicitud distinta de la que tenía en este dispositivo. Aquella sigue guardada con su propio enlace.',
     noStorage: 'Sus respuestas se guardan a medida que avanza, pero este navegador no permite recordar su lugar en este dispositivo. Antes de salir, use “Guardar y terminar después” para recibir un enlace por correo electrónico.',
     keptHere: '¡Bienvenido de nuevo! Los cambios que hizo aquí la última vez aún no se habían guardado, así que este dispositivo los conservó.',
     remindersOff: 'Ya no recibirá más correos de recordatorio. Sus respuestas siguen guardadas aquí.',
@@ -191,7 +193,7 @@ export const UI = {
     retryUpload: 'Intentar de nuevo', choosePhotoOther: 'Elegir otra foto',
     noPhoto: 'Todavía no hay foto', choosePhoto: 'Elegir una foto', replacePhoto: 'Cambiar foto', remove: 'Quitar', gettingReady: 'Preparando su foto…',
     uploading: 'Subiendo… {pct}%', added: 'Agregada: {name}', tryAgain: '{msg}. Intente de nuevo.', uploadFailed: 'No se pudo subir', videoFailed: 'Su video no se subió', uploadOffline: 'La carga se detuvo cuando se perdió la conexión. Presione Intentar de nuevo cuando vuelva a tener conexión.', notImage: 'Ese archivo no es una foto que podamos usar. Elija una foto JPEG, PNG o HEIC.',
-    dropPhoto: 'Suelte la foto aquí', dropVideo: 'Suelte el video aquí', orDrag: 'o arrástrela aquí',
+    dropPhoto: 'Suelte la foto aquí', dropVideo: 'Suelte el video aquí', orDrag: 'o arrástrela aquí', orDragVideo: 'o arrástrelo aquí', undo: 'Deshacer', uploadRetrying: 'Se cortó la conexión. Intentando de nuevo ({pct}% enviado)…', photoRemoved: 'Se quitó la foto.', videoRemoved: 'Se quitó el video.',
     noVideo: 'Todavía no hay video', chooseVideo: 'Elegir o grabar un video', chooseVideoDesk: 'Elegir un archivo de video', chooseOther: 'Elegir otro video', starting: 'Comenzando a subir…',
     uploadingPct: 'Subiendo su video… {pct}%', finishing: 'Terminando…', videoDone: 'Video subido: {name}', videoGone: 'Su video no terminó de subirse. Elíjalo de nuevo.',
     notVideo: 'Ese archivo no es un video. Elija un archivo de video.', uploadStartFail: 'No pudimos comenzar a subir el archivo',
@@ -416,10 +418,11 @@ export function renderField(f, lang = 'en', area = null, kind = 'family') {
     // The parts' names sit inside their boxes and rise to the top edge once there's an answer
     // (placeholder=" " is what lets the styles tell an empty box from a filled one)
     const part = (name, input) => `<label class="af-sub af-float">${input}<span class="af-float-label">${name}</span></label>`;
+    const req = f.required ? ' aria-required="true"' : ''; // each box of a name or address it can't go without
     if (f.type === 'name') {
       body += `<div class="af-row af-row--2">
-${part(T('first'), `<input type="text" id="${id}-first" data-part="first" maxlength="80" autocomplete="${ownName ? 'given-name' : 'off'}" autocapitalize="words" enterkeyhint="next" placeholder=" ">`)}
-${part(T('last'), `<input type="text" id="${id}-last" data-part="last" maxlength="80" autocomplete="${ownName ? 'family-name' : 'off'}" autocapitalize="words" enterkeyhint="next" placeholder=" ">`)}
+${part(T('first'), `<input type="text" id="${id}-first" data-part="first"${req} maxlength="80" autocomplete="${ownName ? 'given-name' : 'off'}" autocapitalize="words" enterkeyhint="next" placeholder=" ">`)}
+${part(T('last'), `<input type="text" id="${id}-last" data-part="last"${req} maxlength="80" autocomplete="${ownName ? 'family-name' : 'off'}" autocapitalize="words" enterkeyhint="next" placeholder=" ">`)}
 </div>`;
     }
     if (f.type === 'address') {
@@ -429,14 +432,14 @@ ${part(T('last'), `<input type="text" id="${id}-last" data-part="last" maxlength
       // and its parts typed in for an address the search doesn't know. The suggestion list sits beside
       // the label, not in it: a click on a suggestion mustn't count as a click on the label
       body += `<div class="af-address" data-mode="line">
-<div class="af-suggest-wrap af-address-line">${part(T('addressLine'), `<input type="text" id="${id}-search" data-search maxlength="200" autocomplete="${ac('street-address')}" autocapitalize="words" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${list}" enterkeyhint="next" placeholder=" ">`)}
+<div class="af-suggest-wrap af-address-line">${part(T('addressLine'), `<input type="text" id="${id}-search" data-search${req} maxlength="200" autocomplete="${ac('street-address')}" autocapitalize="words" spellcheck="false" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="${list}" enterkeyhint="next" placeholder=" ">`)}
 <ul class="af-suggest" id="${list}" role="listbox" aria-label="${esc(T('suggestions'))}" hidden></ul></div>
-<div class="af-address-street">${part(T('street'), `<input type="text" id="${id}-line1" data-part="line1" maxlength="160" autocomplete="${ac('address-line1')}" enterkeyhint="next" placeholder=" ">`)}</div>
+<div class="af-address-street">${part(T('street'), `<input type="text" id="${id}-line1" data-part="line1"${req} maxlength="160" autocomplete="${ac('address-line1')}" enterkeyhint="next" placeholder=" ">`)}</div>
 ${part(`${T('apt')} <span class="af-optional">${T('optional')}</span>`, `<input type="text" id="${id}-line2" data-part="line2" maxlength="80" autocomplete="${ac('address-line2')}" enterkeyhint="next" placeholder=" ">`)}
 <div class="af-row af-row--3 af-address-rest">
-${part(T('city'), `<input type="text" id="${id}-city" data-part="city" maxlength="80" autocomplete="${ac('address-level2')}" enterkeyhint="next" placeholder=" ">`)}
-<label class="af-sub af-float af-float--select"><select id="${id}-state" data-part="state" autocomplete="${ac('address-level1')}"><option value="">${T('choose')}</option>${US_STATES.map(s => `<option value="${s}"${homeAddress && s === 'GA' ? ' selected' : ''}>${s}</option>`).join('')}</select><span class="af-float-label">${T('state')}</span></label>
-${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="numeric" maxlength="10" autocomplete="${ac('postal-code')}" enterkeyhint="next" placeholder=" ">`)}
+${part(T('city'), `<input type="text" id="${id}-city" data-part="city"${req} maxlength="80" autocomplete="${ac('address-level2')}" enterkeyhint="next" placeholder=" ">`)}
+<label class="af-sub af-float af-float--select"><select id="${id}-state" data-part="state"${req} autocomplete="${ac('address-level1')}"><option value="">${T('choose')}</option>${US_STATES.map(s => `<option value="${s}"${homeAddress && s === 'GA' ? ' selected' : ''}>${s}</option>`).join('')}</select><span class="af-float-label">${T('state')}</span></label>
+${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip"${req} inputmode="numeric" maxlength="10" autocomplete="${ac('postal-code')}" enterkeyhint="next" placeholder=" ">`)}
 </div>
 <p class="af-error" id="${errId}"></p>
 <p class="af-address-switch"><button type="button" class="af-btn af-btn--link" data-addr-mode="parts">${esc(T('addressManual'))}</button><button type="button" class="af-btn af-btn--link" data-addr-mode="line">${esc(T('addressSearch'))}</button></p>
@@ -444,7 +447,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
     }
     inner = `<fieldset ${described}><legend class="af-label">${esc(f.label)}${optional}</legend>${help}${body}</fieldset>`;
   } else {
-    const desc = described;
+    const desc = `${described}${f.required ? ' aria-required="true"' : ''}`;
     let control = '';
     switch (f.type) {
       case 'text': control = `<input type="text" id="${id}" maxlength="${f.rules?.maxLength || TEXT_MAX}"${TEXT_HINTS[f.id] || ''} enterkeyhint="next" ${desc}>`; break;
@@ -461,7 +464,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
 <input type="file" id="${id}" accept="image/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview" aria-hidden="true">${RING}</div>
 <div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noPhoto')}</p>
-<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('choosePhoto')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button></div></div>
+<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('choosePhoto')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button><button type="button" class="af-btn af-btn--link" data-act="undo" hidden>${T('undo')}</button></div></div>
 <div class="af-drop-veil" aria-hidden="true"><span>${T('dropPhoto')}</span></div></div>`;
         break;
       case 'video':
@@ -469,7 +472,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
 <input type="file" id="${id}" accept="video/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview af-upload-preview--video" aria-hidden="true">${RING}<span class="af-pct"></span></div>
 <div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noVideo')}</p>
-<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button></div>
+<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDragVideo')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button><button type="button" class="af-btn af-btn--link" data-act="undo" hidden>${T('undo')}</button></div>
 <p class="af-hint">${T('videoHint')}</p></div>
 <div class="af-drop-veil" aria-hidden="true"><span>${T('dropVideo')}</span></div></div>
 <div class="af-recorder" hidden>

@@ -1503,6 +1503,8 @@ const breadcrumbs = [
   .af-review-item { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
   .af-review-item > :is(dt, dd) { grid-column: 1; }
   .af-review-item > .af-review-act { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  /* Sending: the review's buttons, the steps and Back wait (dimmed once the wait is long enough to see, as Submit's wheel is) */
+  .af-app[data-sending] :is([data-review] button, [data-rail-list] button, [data-back]) { opacity: 0.45; transition: opacity .2s var(--af-ease) .3s; }
   .af-review-sum { font-size: 14px; line-height: 1.4; color: var(--c-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .af-review-section[data-missing] .af-review-sum { color: var(--af-attn-ink); font-weight: 600; }
   .af-review-chev { width: 16px; height: 16px; fill: none; stroke: var(--c-text-muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .25s var(--af-ease); }

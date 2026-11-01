@@ -433,6 +433,8 @@ const logo = 'brand-logo-light-bg-display';
   .adv-review-chev { width: 16px; height: 16px; fill: none; stroke: var(--c-text-muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .25s var(--adv-ease); }
   .adv-review-section[data-open] .adv-review-chev { transform: rotate(180deg); }
   .adv-review-edit { min-height: 44px; padding: 6px 10px; }
+  /* Sending: its Edit buttons wait (dimmed once the wait is long enough to see) */
+  .adv-review[inert] .adv-review-edit { opacity: 0.45; transition: opacity .2s ease .3s; }
   .adv-review-body { padding: 0 22px 10px 64px; }
   .adv-review-section[data-open] .adv-review-body { animation: advIn .22s var(--adv-ease) both; }
   .adv-review dl { margin: 0; }

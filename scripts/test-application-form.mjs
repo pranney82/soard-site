@@ -94,6 +94,7 @@ const consoleErrors = [];
 const LOCAL = !/sunshineonaranneyday\.com/.test(SITE);
 let videoBytes = 0;
 let failSaves = 0; // a status every save gets while set (a save that doesn't go through)
+let holdSubmit = 0; // ms a submit takes to reach the server while set (a slow connection)
 
 /** A tab with the console watched and Stream + the address lookup faked */
 async function newTab({ context = browser, phone = true, reduced = true, bypassCsp = false } = {}) {
@@ -129,6 +130,7 @@ async function newTab({ context = browser, phone = true, reduced = true, bypassC
     if (url.startsWith(`${SITE}/api/apply`) && req.method() === 'POST' && (req.headers()['content-type'] || '').includes('json')) {
       const body = JSON.parse(req.postData() || '{}');
       if (failSaves && body.action === 'save') return req.respond({ status: failSaves, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Something went wrong' }) });
+      if (holdSubmit && body.action === 'submit') { setTimeout(() => req.continue(), holdSubmit); return; }
       if (body.action === 'video-url') {
         videoBytes = body.size;
         return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, uploadUrl: 'https://upload.videodelivery.net/tus/fake-upload' }) });
@@ -408,6 +410,13 @@ try {
   await sleep(250);
   ok(await visible('[data-form]') && (await stepTitle()) === AREA, '"Change the address" goes back');
   ok(await page.evaluate(() => document.activeElement?.id === 'af-address-line1'), 'with the cursor in the street');
+  // The stop had its own place in the browser's history: Back from here is the step before, not this screen again
+  await sleep(400); // a press as the screen changes doesn't count (a double tap)
+  await page.click('[data-back]');
+  await sleep(450);
+  ok((await stepTitle()) === 'Before You Begin', `and Back from there is the step before (${await stepTitle()})`);
+  await next();
+  ok((await stepTitle()) === AREA && await visible('#af-address-line1') && await page.$eval('#af-address-city', (e) => e.value) === 'Macon', 'Continue: the address again, as it was');
 
   console.log('Service area: an address the Census can’t find');
   await clear('#af-address-line1');
@@ -436,6 +445,17 @@ try {
     return n.height > 0 && n.top >= top - 1 && n.bottom <= nav + 1;
   });
   ok(noteSeen, 'with its note, the note is in view (between the bar and Back / Continue)');
+  // Not near at all, by their own answer: the stop. Its way back is that answer, and Back from there the screen before it
+  await pick('boundary', 'No, it is not within the boundary nor is it close.');
+  await next();
+  ok(await visible('[data-stop]') && /I need to change my answer/.test(await page.$eval('[data-stop-back]', (e) => e.textContent)), 'not near, by their own answer: the stop screen, its way back their answer');
+  await page.click('[data-stop-back]');
+  await sleep(450);
+  ok(await visible('[data-form]') && await seenHere('[data-area-ask]') && await page.evaluate(() => !!document.activeElement?.closest('[data-field="boundary"]')), '"I need to change my answer": the question, the keys on it');
+  await sleep(400);
+  await page.click('[data-back]');
+  await sleep(450);
+  ok(await stepTitle() === AREA && !(await seenHere('[data-area-ask]')), 'and Back from there is the screen before it (not the question again, nor on to the map)');
   for (let i = 0; i < 3 && !(await visible('#af-address-line1')); i++) { await page.click('[data-back]'); await sleep(450); }
   ok(await visible('#af-address-line1'), 'Back: the address again, as they were entering it');
 
@@ -461,6 +481,17 @@ try {
     return { top: el.getBoundingClientRect().top, header: bar ? bar.getBoundingClientRect().bottom : 0, focused: !!el.contains(document.activeElement) };
   });
   ok(firstProblem.focused && firstProblem.top >= firstProblem.header - 2, `Continue scrolls to the problem below the bar and focuses it (${Math.round(firstProblem.top)}px vs bar ${Math.round(firstProblem.header)}px)`);
+  // A street without its number (the map can't place a street alone), no city and the short ZIP: all said at once
+  await type('#af-address-line1', 'Main St');
+  await clear('#af-address-city');
+  await next();
+  const allAtOnce = await errorText('address');
+  ok(/City/.test(allAtOnce) && /5-digit ZIP/.test(allAtOnce) && /house or building number/.test(allAtOnce), `a missing city, a short ZIP and a street without its number: said at once (${allAtOnce})`);
+  const marked = await page.$$eval('[data-field="address"] [data-part][aria-invalid="true"]', (els) => els.map((e) => e.dataset.part).sort().join());
+  ok(marked === 'city,line1,zip', `and those boxes marked (${marked})`);
+  ok(await page.$eval('#af-address-line1', (e) => (e.getAttribute('aria-describedby') || '').split(' ').includes(e.closest('[data-field]').querySelector('.af-error').id) && e.getAttribute('aria-required') === 'true'), 'a screen reader in the street box hears the note (and that it is needed)');
+  await type('#af-address-city', 'Duluth');
+  await type('#af-address-line1', '3167 Main St');
   await type('#af-address-zip', '30096');
   await waitArea('inside');
   await byHand('line');
@@ -567,6 +598,15 @@ try {
   await sleep(150);
   ok(await visible('#af-parent2Email') && await page.evaluate(() => document.activeElement?.id === 'af-parent2Name-first'), 'the button opens it, with the cursor in the first name');
   await page.type('#af-parent2Name-first', 'Sam');
+  await type('#af-parent2Email', 'sam@example.com');
+  await next();
+  ok(/first and last name/.test(await errorText('parent2Name')), `a second parent with an email and half a name: their name is asked for (${await errorText('parent2Name')})`);
+  await type('#af-parent2Name-last', 'Stone');
+  await next();
+  ok(!(await visible('#af-parent2Email')), 'named, Continue goes on');
+  await page.click('[data-back]');
+  await sleep(450);
+  ok(await visible('#af-parent2Email') && await page.$eval('#af-parent2Name-last', (e) => e.value) === 'Stone', 'and Back comes to the second parent again (it stayed put, then skipped it)');
   await tap('[data-more="parent2"] [data-more-close]');
   await sleep(400); // Remove can slide back to the screen with its button: a press that soon after a change doesn't count
   ok(!(await visible('#af-parent2Email')) && await page.$eval('#af-parent2Name-first', (e) => e.value) === '', 'Remove clears it and tucks it away again');
@@ -581,6 +621,7 @@ try {
   ok(!(await page.$eval('[data-field="parentAddress"] .af-error', (e) => e.textContent)), "Continue doesn't ask for the parent's address that was removed");
   ok(await visible('[data-stop]') && /must own their home/.test(await page.$eval('[data-stop]', (e) => e.textContent)), 'renters get the "must own the home" screen');
   await page.click('[data-stop-back]');
+  await sleep(450); // its way back is the browser's Back: a moment, and the question is on screen again
   await pick('ownership', 'Yes, at least one person living in the home is the owner.');
   await next();
   ok((await stepTitle()) === 'Diagnosis', 'Diagnosis');
@@ -662,6 +703,21 @@ try {
   await page.waitForFunction(() => document.querySelector('[data-field="photoChild"] .af-upload')?.dataset.state === 'done', { timeout: 60000 });
   await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
   ok(await page.$eval('[data-field="photoChild"] .af-upload-preview', (e) => e.hasAttribute('data-thumb') && /url\(/.test(e.style.backgroundImage)), 'a thumbnail shows when it is done');
+  // Remove can be undone for a moment; past it, the server lets the photo go
+  const status = (id) => page.$eval(`[data-field="${id}"] .af-upload-status`, (e) => e.textContent);
+  const tok = await page.evaluate(() => JSON.parse(localStorage.getItem('soard-application-draft') || '{}').token);
+  const draftFiles = () => d1(`SELECT files FROM application_drafts WHERE id = '${tok}'`) || '';
+  await tap('[data-field="photoChild"] [data-act="remove"]');
+  ok(/Photo removed/.test(await status('photoChild')) && await visible('[data-field="photoChild"] [data-act="undo"]') && await page.evaluate(() => document.activeElement?.dataset.act === 'undo'), 'Remove: "Photo removed." with Undo, the keys on it');
+  await tap('[data-field="photoChild"] [data-act="undo"]');
+  ok(await page.$eval('[data-field="photoChild"] .af-upload', (e) => e.dataset.state) === 'done' && !(await visible('[data-field="photoChild"] [data-act="undo"]')), 'Undo: the photo is back');
+  if (PAGES_DIR) ok(/photoChild/.test(draftFiles()), 'and the server kept it');
+  await tap('[data-field="photoChild"] [data-act="remove"]');
+  await sleep(8800);
+  ok(!(await visible('[data-field="photoChild"] [data-act="undo"]')) && /No photo yet/.test(await status('photoChild')), `a moment on, Undo goes (${await status('photoChild')})`);
+  if (PAGES_DIR) ok(!/photoChild/.test(draftFiles()), 'and the server lets the photo go');
+  await (await page.$('#af-photoChild')).uploadFile(PHOTO);
+  await page.waitForFunction(() => document.querySelector('[data-field="photoChild"] .af-upload')?.dataset.state === 'done', { timeout: 20000 });
   const dropped = await dropPhoto('photoFamily');
   ok(dropped.veil && !dropped.after, 'dragging a photo over the box shows the drop veil (and it goes on drop)');
   await page.waitForFunction(() => document.querySelector('[data-field="photoFamily"] .af-upload')?.dataset.state === 'done', { timeout: 20000 });
@@ -858,7 +914,16 @@ try {
   ok(!(await visible('[data-done]')) && /didn't save/.test(await page.$eval('[data-nav-note]', (e) => (e.hidden ? '' : e.textContent))), "a save that doesn't go through holds Submit back, and says why");
   failSaves = 0;
   await sleep(400);
+  // A slow connection: while it sends, the review stays as it is (a change made then would never be sent)
+  holdSubmit = 3000;
   await next();
+  await sleep(700);
+  const sending = await page.evaluate(() => ({ review: document.querySelector('[data-review]').inert, back: document.querySelector('[data-back]').inert, rail: document.querySelector('[data-rail-list]')?.inert }));
+  await page.$eval('[data-review] button', (b) => b.scrollIntoView({ block: 'center', behavior: 'instant' })).catch(() => {});
+  await page.click('[data-review] button').catch(() => {});
+  await sleep(200);
+  ok(sending.review && sending.back && sending.rail && await visible('[data-review]'), `while it sends, Change, Back and the steps wait (${JSON.stringify(sending)})`);
+  holdSubmit = 0;
   await page.waitForSelector('[data-done]:not([hidden])', { timeout: 15000 });
   ok(/jordan\+apply@example.com/.test(await page.$eval('[data-done-email]', (e) => e.textContent)), 'thank-you names the email that gets the copy');
   ok(await page.$eval('[data-done] a[href="/kids/"]', (a) => /Meet some of the kids/.test(a.textContent)), 'and links to the kids');

@@ -123,6 +123,23 @@ test('a complete application has no errors; formats are checked', () => {
   assert.match(formErrors(form, fullAnswers(), { video: { uid: 'v', uploaded: true } }).photoChild, /add a photo/);
 });
 
+test('the home has its house number, and a parent added is a parent named', () => {
+  const files = { ...Object.fromEntries(PHOTOS.map(f => [f, { key: 'k' }])), video: { uid: 'v', uploaded: true } };
+  const home = { line1: 'Holcomb Woods Pkwy', line2: '', city: 'Roswell', state: 'GA', zip: '30076' };
+  // A street without its number can't be placed on the map: said, in their language (it was a silent loop)
+  assert.equal(formErrors(form, fullAnswers({ address: home }), files).address, 'Please add the house or building number to the street address.');
+  assert.match(formErrors(form, fullAnswers({ address: home }), files, null, 'es').address, /número de la casa/);
+  assert.equal(formErrors(form, fullAnswers({ address: { ...home, line1: '1000 Holcomb Woods Pkwy' } }), files).address, undefined);
+  // Only the home's: a parent's own address is theirs to give as it is
+  assert.equal(formErrors(form, fullAnswers({ parentAddress: { ...home } }), files).parentAddress, undefined);
+  // A second parent with an email and no name: their name is asked for
+  const noSecond = { parent2Name: null, parent2Relation: '', parent2Email: '', parent2Phone: '' };
+  assert.equal(formErrors(form, fullAnswers({ ...noSecond, parent2Email: 'pat@example.com' }), files).parent2Name, 'Please enter a first and last name.');
+  assert.equal(formErrors(form, fullAnswers({ ...noSecond, parent2Name: { first: 'Pat', last: '' }, parent2Phone: '(404) 555-0123' }), files).parent2Name, 'Please enter a first and last name.');
+  assert.equal(formErrors(form, fullAnswers(), files).parent2Name, undefined, 'named: nothing asked');
+  assert.equal(formErrors(form, fullAnswers(noSecond), files).parent2Name, undefined, 'no second parent: nothing asked');
+});
+
 test('cleanAnswers keeps only known questions and caps their length', () => {
   const out = cleanAnswers(form, { childName: { first: ' Avery ', last: 'Stone', extra: 'x' }, interests: 'x'.repeat(10000), hacker: 'drop me', makeoverTypes: ['Ramp', 'Pool'] });
   assert.deepEqual(out.childName, { first: 'Avery', last: 'Stone' });

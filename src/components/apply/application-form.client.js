@@ -32,7 +32,7 @@
 import * as tus from 'tus-js-client';
 import {
   DEFAULT_DEFINITION, LANGS, AREA_VALUES, resolveForm, allFields, indexById, isVisible, pageVisible,
-  stopFor, fieldError, formErrors, answerSections, isInput, isUpload, dateText,
+  stopFor, fieldError, namedError, formErrors, answerSections, isInput, isUpload, dateText,
 } from '../../../functions/api/_application-form.js';
 import { addressKey, checkableAddress } from '../../../functions/api/_geo.js';
 import { renderPages, t as word, imageHtml, mapWords, esc } from './application-render.js';
@@ -539,6 +539,7 @@ function init(root, cfg, mode) {
   }
   function exitFocus({ fromPop = false } = {}) {
     if (!focused) return;
+    dropRemoved(); // Save and exit keeps it as it is
     const saving = token && !doneShown && !previewing ? save() : null; // sent: nothing more to save
     resumePiece = currentId !== 'review' && anchor && pageEl(currentId)?.contains(anchor) ? anchor : null; // "Continue where you left off": this screen
     closeRecorder({ keep: true });
@@ -1617,15 +1618,26 @@ function init(root, cfg, mode) {
     const box = f.type === 'address' ? addrBox(fieldEl(id)) : null;
     if (box?.dataset.mode === 'line' && !['line1', 'city', 'state', 'zip'].every(k => String(a[id]?.[k] || '').trim())
       && (f.required || box.querySelector('[data-search]').value.trim())) return T('addressPick');
-    // Entered by hand with a part missing: which one (the generic words made them hunt for it)
+    // Entered by hand: which part is missing (the generic words made them hunt for it), and what's wrong with
+    // the ones filled in (a ZIP short a digit, a street without its number), all said at once, not one per Continue
     if (box?.dataset.mode === 'parts') {
-      const missing = ['line1', 'city', 'state', 'zip'].filter(k => !String(a[id]?.[k] || '').trim());
-      if (missing.length && (f.required || missing.length < 4)) {
+      const v = a[id] || {};
+      const missing = ['line1', 'city', 'state', 'zip'].filter(k => !String(v[k] || '').trim());
+      if (missing.length === 4 && !f.required) return null;
+      const said = [];
+      if (missing.length) {
         const names = missing.map(k => T(k === 'line1' ? 'street' : k));
-        return T('addressMissing', { parts: names.length < 2 ? names[0] : `${names.slice(0, -1).join(', ')} ${T('and')} ${names[names.length - 1]}` });
+        said.push(T('addressMissing', { parts: names.length < 2 ? names[0] : `${names.slice(0, -1).join(', ')} ${T('and')} ${names[names.length - 1]}` }));
       }
+      // The missing parts stood in for, so only the filled ones are checked: the ZIP first, then the street
+      const filled = { line1: v.line1 || '1 Main St', line2: v.line2 || '', city: v.city || 'City', state: v.state || 'GA', zip: v.zip || '30000' };
+      const first = fieldError(f, filled, lang);
+      if (first) said.push(first);
+      const street = first && first === fieldError(f, { ...filled, line1: '1 Main St', line2: '' }, lang) ? fieldError(f, { ...filled, zip: '30000' }, lang) : null;
+      if (street) said.push(street);
+      return said.join(' ') || null;
     }
-    return fieldError(f, isUpload(f) ? files[id] : a[id], lang);
+    return fieldError(f, isUpload(f) ? files[id] : a[id], lang) || namedError(f, a, lang);
   }
   function setFieldError(id, msg) {
     const el = fieldEl(id);
@@ -1644,10 +1656,18 @@ function init(root, cfg, mode) {
       if (part === 'line2') return false;
       if (!v) return true;
       if (part === 'zip') return !/^\d{5}(-\d{4})?$/.test(v);
-      return part === 'line1' && /\b(?:p\.?\s*o\.?\s*box|post\s+office\s+box)\b/i.test(v);
+      return part === 'line1' && (/\b(?:p\.?\s*o\.?\s*box|post\s+office\s+box)\b/i.test(v) || (id === 'address' && !/\d/.test(v)));
     };
+    const errId = p?.id;
     el.querySelectorAll('input:not([type=file]), textarea, select').forEach(i => {
-      if (msg && wrong(i)) i.setAttribute('aria-invalid', 'true'); else i.removeAttribute('aria-invalid');
+      const bad = !!msg && wrong(i);
+      if (bad) i.setAttribute('aria-invalid', 'true'); else i.removeAttribute('aria-invalid');
+      // A name's or address's own boxes read the note too (a screen reader landing on "First name" hears it,
+      // not only one going in at the group's legend)
+      if (!errId || !(i.dataset.part || i.hasAttribute('data-search'))) return;
+      const ids = (i.getAttribute('aria-describedby') || '').split(/\s+/).filter(x => x && x !== errId);
+      if (bad) ids.push(errId);
+      if (ids.length) i.setAttribute('aria-describedby', ids.join(' ')); else i.removeAttribute('aria-describedby');
     });
   }
   function showPageErrors(errors) {
@@ -1854,6 +1874,7 @@ function init(root, cfg, mode) {
    */
   async function expired(was = token) {
     if (!was || was !== token) return; // about one already replaced
+    forgetRemoved();
     store.clear();
     token = null;
     saveState(null); // nothing left to save to ("Saving…" forever otherwise)
@@ -1970,6 +1991,11 @@ function init(root, cfg, mode) {
   }
   /** The "outside" stop from the address check: the map shows where the home is, and the way back is the address */
   const stopFromArea = () => stopShown?.key === 'outside' && byId[stopShown.field]?.type === 'area';
+  /** The question to change: the address when the check placed it (its answer came from there), else the one they answered */
+  const stopField = () => {
+    const id = stopFromArea() && areaPlaced() && homeAddressId() ? homeAddressId() : stopShown?.field;
+    return id && fieldEl(id) ? id : null;
+  };
   function paintStop() {
     const s = form.stops?.[stopShown.key] || {};
     ui.stopTitle.textContent = s.title || '';
@@ -1986,11 +2012,14 @@ function init(root, cfg, mode) {
     back.textContent = T(back.dataset.afT);
   }
   ui.stop.querySelector('[data-stop-back]').addEventListener('click', () => {
-    const field = stopFromArea() && homeAddressId() ? homeAddressId() : stopShown?.field;
+    // The stop has its own entry in the browser's history: going back is leaving it, as the browser's Back
+    // does (so their next Back is the screen before, not this one again or the one they went on to)
+    if (histOk() && trail[depth]?.stop) { history.back(); return; }
+    const field = stopField();
     stopShown = null;
     ui.stop.hidden = true;
     ui.form.hidden = false;
-    show(currentId, { focusField: field && fieldEl(field) ? field : null, at: field && fieldEl(field) ? field : null }).then(replaceLoc);
+    show(currentId, { focusField: field, at: field }).then(replaceLoc);
   });
 
   // ── Review ───────────────────────────────────────────────────────
@@ -2147,6 +2176,10 @@ function init(root, cfg, mode) {
   function paintSubmitting() {
     if (ui.exit) ui.exit.disabled = submitting;
     ui.saveLaters.forEach(b => { b.disabled = submitting; });
+    // While it sends, the review stays as sent: its Change buttons, the steps and the language wait (a change
+    // made now would never be sent, and the thank-you would cover it)
+    for (const el of [ui.reviewList, ui.railList, ui.steps, ui.back, ...ui.langSwitches]) if (el) el.inert = submitting;
+    root.toggleAttribute('data-sending', submitting);
   }
   async function submit() {
     if (previewing) { navNote('previewSent'); return; }
@@ -2155,6 +2188,7 @@ function init(root, cfg, mode) {
     submitting = true;
     paintSubmitting();
     try {
+      await dropRemoved(); // sent without what they removed
       if (!(await start())) return; // expired, and a new one couldn't start just now (it says why)
       // Sent only as it is here: a save that didn't go would send the answers from before it
       const saved = await save();
@@ -2189,6 +2223,7 @@ function init(root, cfg, mode) {
 
   // ── The thank-you ────────────────────────────────────────────────
   function finished(already = false, { elsewhere = false } = {}) {
+    forgetRemoved();
     store.clear();
     pending.clear();
     if (!testRun && !previewing && (!already || sentStore.get()?.year !== year)) sentStore.set({ year, at: already ? null : Date.now() });
@@ -2244,6 +2279,8 @@ function init(root, cfg, mode) {
     const done = s.state === 'done';
     const failed = s.state === 'failed';
     box.querySelector('[data-act="remove"]').hidden = !done;
+    const undo = box.querySelector('[data-act="undo"]');
+    if (undo) undo.hidden = !removing[id] || s.state !== 'empty';
     // Didn't go: the same file again, or another
     const retry = box.querySelector('[data-act="retry"]');
     if (retry) { retry.hidden = !failed || !retryFiles[id]; retry.textContent = T('retryUpload'); }
@@ -2432,6 +2469,13 @@ function init(root, cfg, mode) {
               retryDelays: [0, 2000, 5000, 10000, 20000, 40000, 60000],
               metadata: { filename: file.name, filetype: file.type },
               storeFingerprintForResuming: false,
+              // Its own rule for trying a piece again (tus's), and the box says so while it waits, not a still 0%
+              onShouldRetry(err) {
+                const status = err?.originalResponse?.getStatus?.() || 0;
+                const again = (!(status >= 400 && status < 500) || status === 409 || status === 423) && navigator.onLine !== false;
+                if (again) setUpload(f.id, { msg: ['uploadRetrying', { pct: uploadUi[f.id]?.pct || 0 }] });
+                return again;
+              },
               onError: reject,
               onProgress(sent, total) {
                 const pct = Math.floor((sent / total) * 100);
@@ -2470,16 +2514,61 @@ function init(root, cfg, mode) {
     }
   }
 
-  async function removeFile(f) {
+  // Remove can be undone for a moment (a video can take minutes to upload again): the server lets go of the
+  // file once that's past, or straight away when another file is chosen, it's sent or saved, or the page goes
+  const removing = {}; // field id → { timer, was }
+  const UNDO_MS = 8000;
+  function removeFile(f) {
+    clearTimeout(removing[f.id]?.timer);
+    removing[f.id] = { was: { file: files[f.id], ui: { ...uploadUi[f.id] } }, timer: setTimeout(() => dropRemoved(f.id), UNDO_MS) };
     delete files[f.id];
-    uploadUi[f.id] = { state: 'empty' };
+    uploadUi[f.id] = { state: 'empty', msg: f.type === 'video' ? 'videoRemoved' : 'photoRemoved' };
     paintUpload(f.id);
     uploadsChanged();
-    fieldEl(f.id)?.querySelector('[data-act="choose"]')?.focus({ preventScroll: true }); // Remove itself is gone: the keys stay in the box
-    if (token && !previewing) await api({ action: 'remove-file', token, field: f.id }).catch(() => {});
+    fieldEl(f.id)?.querySelector('[data-act="undo"]')?.focus({ preventScroll: true }); // Remove itself is gone: the keys go to Undo
+  }
+  function undoRemove(f) {
+    const r = removing[f.id];
+    if (!r) return;
+    clearTimeout(r.timer);
+    delete removing[f.id];
+    files[f.id] = r.was.file;
+    uploadUi[f.id] = r.was.ui;
+    paintUpload(f.id);
+    uploadsChanged();
+    fieldEl(f.id)?.querySelector('[data-act="remove"]')?.focus({ preventScroll: true });
+  }
+  /** Removed files the server lets go of now (all of them, or one); `leaving`: the page is going, so it's sent as it goes */
+  function dropRemoved(id = null, { leaving = false } = {}) {
+    const going = [];
+    for (const k of id ? [id] : Object.keys(removing)) {
+      const r = removing[k];
+      if (!r) continue;
+      clearTimeout(r.timer);
+      delete removing[k];
+      if (!leaving && uploadUi[k]?.state === 'empty') {
+        // "Video removed." and its Undo go together (the keys to the box's own button if they were on Undo)
+        const undo = fieldEl(k)?.querySelector('[data-act="undo"]');
+        const had = undo && document.activeElement === undo;
+        uploadUi[k] = { state: 'empty' };
+        paintUpload(k);
+        if (had) fieldEl(k)?.querySelector('[data-act="choose"]')?.focus({ preventScroll: true });
+      }
+      if (!token || previewing) continue;
+      const body = { action: 'remove-file', token, field: k };
+      if (leaving) { try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); } catch { /* the page is going either way */ } }
+      else going.push(api(body).catch(() => {}));
+    }
+    return Promise.all(going);
+  }
+  /** Removed and not undone, of an application that's gone (expired, sent): nothing left to let go of */
+  function forgetRemoved() {
+    for (const k of Object.keys(removing)) { clearTimeout(removing[k].timer); delete removing[k]; }
   }
   function takeFile(f, file) {
     if (uploads.has(f.id)) return;
+    // The one just removed goes from the server first, so the new one is what stays
+    if (removing[f.id]) { dropRemoved(f.id).then(() => takeFile(f, file)); return; }
     if (f.type === 'video') uploadVideo(f, file); else uploadPhoto(f, file);
   }
 
@@ -3491,6 +3580,7 @@ function init(root, cfg, mode) {
     const first = box.querySelector('[data-field]')?.dataset.field;
     const to = first ? screenOf(currentId, first) : screenNo;
     if (to !== screenNo) { show(currentId, { dir: 1, screen: to, focusField: first }).then(() => { pushLoc(); save(); }); return; }
+    replaceLoc(); // this screen holds other questions now: its entry says which (Back from the next one comes here)
     paintScreen();
     paintHeader();
   }
@@ -3510,6 +3600,7 @@ function init(root, cfg, mode) {
     const to = fresh.findIndex(sc => has(sc, box));
     const btn = box.querySelector('[data-more-open]');
     if (to >= 0 && to !== screenNo) { show(currentId, { dir: -1, screen: to, focus: false }).then(() => { btn.focus({ preventScroll: true }); replaceLoc(); }); return; }
+    replaceLoc();
     paintScreen();
     paintHeader();
     btn.focus({ preventScroll: true });
@@ -3680,6 +3771,7 @@ function init(root, cfg, mode) {
       // The link opens what's saved: not sent until this page's answers are
       if (!(await save())) { if (dlg.open) status.textContent = T(navigator.onLine ? 'laterUnsaved' : 'sendOffline'); return; }
       if (doneShown) return; // sent already, from another device (the thank-you says so)
+      await dropRemoved(); // the link opens it as it is
       const r = await api({ action: 'email-link', token, email, lang });
       if (!r.ok) { status.textContent = r.error || T('sendFail'); return; }
       laterEmail = email;
@@ -4032,7 +4124,10 @@ function init(root, cfg, mode) {
     show(at, { focus: false, scroll: false, screen: 'open' });
     remember();
     showApp(true); // the hero's button says "Continue"
-    notice(remindersOff ? 'remindersOff' : keptBack ? 'keptHere' : 'welcomeBack', 'success');
+    // A link to another application than the one this device had going (a brother's or sister's): said, so the
+    // one they were on isn't thought lost
+    const other = !!fromLink && isToken(saved?.token) && saved.token !== fromLink;
+    notice(remindersOff ? 'remindersOff' : keptBack ? 'keptHere' : other ? 'otherApplication' : 'welcomeBack', other && !remindersOff && !keptBack ? 'info' : 'success');
     if (keptBack) save();
     if (fromLink || session.get() || wantIn) begin();
     wantIn = false;
@@ -4149,6 +4244,8 @@ function init(root, cfg, mode) {
     }
     const to = st?.afFocus ? (st.afDepth || 1) : 0;
     const dir = to > depth ? 1 : -1;
+    // Sending: they stay on the review till it's sent (or isn't), the browser's history lined up with it
+    if (submitting) { swallow = true; history.go(-dir); return true; }
     // A sheet or dialog open: Back closes it, and they stay on the screen it was over
     const sheet = [ui.dialog, ui.detail].find(d => d?.open);
     if (sheet) { sheet.close(); swallow = true; history.go(-dir); return true; }
@@ -4157,13 +4254,18 @@ function init(root, cfg, mode) {
     if (!to || doneShown) { exitFocus({ fromPop: true }); return true; } // back to the page itself
     if (stopShown) {
       // Back from a stop: the question that led to it, with the keys there (as its own "Go back" does)
-      const field = stopFromArea() && homeAddressId() ? homeAddressId() : stopShown.field;
+      const field = stopField();
       stopShown = null;
       ui.stop.hidden = true;
       ui.form.hidden = false;
+      if (field && dir < 0 && pageEl(currentId)?.contains(fieldEl(field))) {
+        const shown = show(currentId, { dir, focusField: field, at: field, scroll: false });
+        // The entry says the screen with that question (an address, when the stop came from its map's screen)
+        if (st.afAt?.field !== field) shown.then(replaceLoc);
+        return true;
+      }
       if (!st.afAt || sameAt(st.afAt, whereNow())) {
-        const fe = field && fieldEl(field) ? field : null;
-        show(currentId, { dir, focusField: fe, at: fe, scroll: false });
+        show(currentId, { dir, scroll: false });
         return true;
       }
     }
@@ -4253,6 +4355,7 @@ function init(root, cfg, mode) {
       switch (act.dataset.act) {
         case 'choose': el.querySelector('input[type=file]').click(); break;
         case 'remove': removeFile(f); break;
+        case 'undo': undoRemove(f); break;
         case 'retry':
           el.querySelector('[data-act="choose"]')?.focus({ preventScroll: true }); // "Try again" steps aside while it goes
           if (retryFiles[f.id]) takeFile(f, retryFiles[f.id]);
@@ -4435,6 +4538,7 @@ function init(root, cfg, mode) {
   // Leaving (a reload, a closed tab, a phone locking or switching apps): what's not saved yet goes with a
   // keepalive request, which the browser finishes after the page is gone (Safari drops an ordinary one)
   function saveOnLeave() {
+    dropRemoved(null, { leaving: true });
     if (token && !previewing && (unsaved() || ['unsaved', 'saving'].includes(lastSave))) keepPending();
     if (!token || previewing || !['unsaved', 'saving'].includes(lastSave)) return;
     clearTimeout(dirtyTimer);

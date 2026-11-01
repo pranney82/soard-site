@@ -1176,7 +1176,7 @@ export const ERROR_TEXT = {
     email: 'Please enter a valid email address, like name@example.com.', phone: 'Please enter a 10-digit phone number.', phoneArea: 'Please add the area code, like (404) 555-0123.',
     url: 'Please enter a web address, like example.org.',
     date: 'Please enter a valid date.', year: 'Please check the year.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
-    address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.', poBox: 'Please enter a street address, not a PO box.',
+    address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.', poBox: 'Please enter a street address, not a PO box.', houseNumber: 'Please add the house or building number to the street address.',
     oneOf: 'Please choose one of the answers.', listed: 'Please choose from the answers listed.', upTo: (n) => `Please choose up to ${n}.`,
     number: 'Please enter a number.', range: 'Please enter one number. Your best guess is fine.', whole: 'Please enter a whole number.', min: (n) => `Please enter ${n} or more.`, max: (n) => `Please enter ${n} or less.`,
     minLength: (n) => `Please write at least ${n} characters.`, maxLength: (n) => `Please keep this to ${n} characters or fewer.`,
@@ -1189,7 +1189,7 @@ export const ERROR_TEXT = {
     email: 'Escriba un correo electrónico válido, como nombre@ejemplo.com.', phone: 'Escriba un número de teléfono de 10 dígitos.', phoneArea: 'Agregue el código de área, como (404) 555-0123.',
     url: 'Escriba una dirección web, como ejemplo.org.',
     date: 'Escriba una fecha válida.', year: 'Revise el año.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
-    address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.', poBox: 'Escriba una dirección con calle, no un apartado postal.',
+    address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.', poBox: 'Escriba una dirección con calle, no un apartado postal.', houseNumber: 'Agregue el número de la casa o del edificio a la dirección.',
     oneOf: 'Elija una de las respuestas.', listed: 'Elija entre las respuestas de la lista.', upTo: (n) => `Elija hasta ${n}.`,
     number: 'Escriba un número.', range: 'Escriba un solo número. Un cálculo aproximado está bien.', whole: 'Escriba un número entero.', min: (n) => `Escriba ${n} o más.`, max: (n) => `Escriba ${n} o menos.`,
     minLength: (n) => `Escriba al menos ${n} caracteres.`, maxLength: (n) => `Use ${n} caracteres o menos.`,
@@ -1251,8 +1251,9 @@ export function fieldError(field, value, lang = 'en') {
       const missing = ['line1', 'city', 'state', 'zip'].filter(k => !String(value[k] || '').trim());
       if (missing.length && (field.required || missing.length < 4)) return E.address;
       if (value.zip && !/^\d{5}(-\d{4})?$/.test(String(value.zip).trim())) return E.zip;
-      // The home (the address the service area is checked on) is a place, not a mailbox
+      // The home (the address the service area is checked on) is a place, not a mailbox, with its number
       if (field.id === 'address' && /\b(?:p\.?\s*o\.?\s*box|post\s+office\s+box)\b/i.test(`${value.line1 || ''} ${value.line2 || ''}`)) return E.poBox;
+      if (field.id === 'address' && String(value.line1 || '').trim() && !/\d/.test(value.line1)) return E.houseNumber;
       return null;
     }
     case 'radio': case 'select': case 'ack': case 'area':
@@ -1305,13 +1306,29 @@ export function cleanAnswers(form, answers) {
  * Problems on the given pages ({ fieldId: message }), counting only fields
  * these answers show. `pages` defaults to the whole form.
  */
+/**
+ * A person added to an application (a second parent, a second contact) is named: an email or a phone
+ * on its own is nobody staff can call by name. Their name, once anything else about them is given.
+ */
+export const NAMED_WITH = {
+  parent2Name: ['parent2Email', 'parent2Phone', 'parent2Relation'],
+  contact2Name: ['contact2Title', 'contact2Email', 'contact2Phone'],
+};
+export function namedError(field, answers, lang = 'en') {
+  const with_ = NAMED_WITH[field.id];
+  if (!with_ || field.type !== 'name') return null;
+  const v = answers?.[field.id] || {};
+  if (String(v.first || '').trim() && String(v.last || '').trim()) return null;
+  return with_.some(id => !isBlank(answers?.[id])) ? (ERROR_TEXT[lang] || ERROR_TEXT.en).name : null;
+}
+
 export function formErrors(form, answers, files = {}, pages = null, lang = 'en') {
   const byId = indexById(form);
   const errors = {};
   for (const f of allFields(form)) {
     if (pages && !pages.includes(f.page)) continue;
     if (!(isInput(f) || isUpload(f)) || !isVisible(f, answers, byId)) continue;
-    const err = fieldError(f, isUpload(f) ? files?.[f.id] : answers?.[f.id], lang);
+    const err = fieldError(f, isUpload(f) ? files?.[f.id] : answers?.[f.id], lang) || namedError(f, answers, lang);
     if (err) errors[f.id] = err;
   }
   return errors;

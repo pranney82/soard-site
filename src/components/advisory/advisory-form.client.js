@@ -591,6 +591,8 @@ export function initAdvisoryForm() {
     }
     const to = st?.advFocus ? (st.advDepth || 1) : 0;
     const dir = to > depth ? 1 : -1;
+    // Sending: they stay on the review till it's sent (or isn't), the browser's history lined up with it
+    if (sending && !sent) { swallow = true; history.go(-dir); return true; }
     depth = to;
     if (st?.advAt) trail[to] = st.advAt;
     if (!to || sent) { exitFocus({ fromPop: true }); return true; } // back to the page itself
@@ -1034,7 +1036,8 @@ export function initAdvisoryForm() {
       // The check passes on its own in a moment (Send looks busy meanwhile); said, and in view, only when it wants a tap
       sending = true; // a second press meanwhile counts once
       ui.next.setAttribute('aria-busy', 'true');
-      try { if (!turnstileWants) await Promise.race([new Promise((r) => turnstileWaiting.push(r)), new Promise((r) => setTimeout(r, 6000))]); } finally { sending = false; ui.next.removeAttribute('aria-busy'); }
+      ui.review.inert = true; // what's sent is what's here now
+      try { if (!turnstileWants) await Promise.race([new Promise((r) => turnstileWaiting.push(r)), new Promise((r) => setTimeout(r, 6000))]); } finally { sending = false; ui.next.removeAttribute('aria-busy'); ui.review.inert = false; }
       if (!turnstileToken) {
         ui.sendError.textContent = 'Please confirm you’re not a robot, just above.';
         ui.sendError.hidden = false;
@@ -1045,6 +1048,7 @@ export function initAdvisoryForm() {
     sending = true;
     ui.next.setAttribute('aria-disabled', 'true'); // not disabled: the keys and a screen reader stay on it while it sends
     ui.back.disabled = true;
+    ui.review.inert = true; // its Edit buttons wait: a change made now wouldn't be sent, and the thank-you would cover it
     ui.exit.disabled = true; // the way out waits while it sends ("Look it over and send it" while it was going was wrong)
     ui.next.textContent = 'Sending…';
     try {
@@ -1075,6 +1079,7 @@ export function initAdvisoryForm() {
     } finally {
       sending = false;
       ui.exit.disabled = false;
+      ui.review.inert = false;
     }
   }
 
