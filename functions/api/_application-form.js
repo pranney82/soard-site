@@ -1146,12 +1146,18 @@ export function isEmailAddress(s) {
 
 /** US numbers to E.164 (+1XXXXXXXXXX); international numbers kept when they start with + */
 export function toE164(s) {
-  const digits = String(s || '').replace(/[^\d+]/g, '');
+  // (a work line's extension is fine: the number is what's before it)
+  const digits = String(s || '').replace(/\s*(?:x|ext\.?|extension)\s*\d{1,6}\s*$/i, '').replace(/[^\d+]/g, '');
+  // A US number is one that can be dialed: its area code and exchange don't start with 0 or 1 ("(000) 000-0000" isn't)
+  const us = (d) => (/^[2-9]\d{2}[2-9]\d{6}$/.test(d) ? `+1${d}` : null);
+  if (digits.startsWith('+1') && digits.length === 12) return us(digits.slice(2));
   if (digits.startsWith('+')) return /^\+\d{8,15}$/.test(digits) ? digits : null;
-  if (/^1\d{10}$/.test(digits)) return `+${digits}`;
-  if (/^\d{10}$/.test(digits)) return `+1${digits}`;
+  if (/^1\d{10}$/.test(digits)) return us(digits.slice(1));
+  if (/^\d{10}$/.test(digits)) return us(digits);
   return null;
 }
+/** A web address as people type one ("soard.org", "www.example.org/about", with or without https://) */
+export const isWebAddress = (s) => /^(?:https?:\/\/)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}(?::\d{2,5})?(?:[/?#]\S*)?$/i.test(String(s || '').trim());
 
 /** Whole years between a YYYY-MM-DD birthday and now */
 export function ageOn(birthdate, now = Date.now()) {
@@ -1170,6 +1176,7 @@ export const ERROR_TEXT = {
     ack: 'Please check the box to continue.', choose: 'Please choose an answer.', signature: 'Please type your full name.', answer: 'Please answer this question.',
     area: 'Please enter the home address so we can check it, or choose an answer.',
     email: 'Please enter a valid email address, like name@example.com.', phone: 'Please enter a 10-digit phone number.',
+    url: 'Please enter a web address, like example.org.',
     date: 'Please enter a valid date.', year: 'Please check the year.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
     address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.', poBox: 'Please enter a street address, not a PO box.',
     oneOf: 'Please choose one of the answers.', listed: 'Please choose from the answers listed.', upTo: (n) => `Please choose up to ${n}.`,
@@ -1182,6 +1189,7 @@ export const ERROR_TEXT = {
     ack: 'Marque la casilla para continuar.', choose: 'Elija una respuesta.', signature: 'Escriba su nombre completo.', answer: 'Responda esta pregunta.',
     area: 'Escriba la dirección de la casa para que podamos revisarla, o elija una respuesta.',
     email: 'Escriba un correo electrónico válido, como nombre@ejemplo.com.', phone: 'Escriba un número de teléfono de 10 dígitos.',
+    url: 'Escriba una dirección web, como ejemplo.org.',
     date: 'Escriba una fecha válida.', year: 'Revise el año.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
     address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.', poBox: 'Escriba una dirección con calle, no un apartado postal.',
     oneOf: 'Elija una de las respuestas.', listed: 'Elija entre las respuestas de la lista.', upTo: (n) => `Elija hasta ${n}.`,
@@ -1257,6 +1265,7 @@ export function fieldError(field, value, lang = 'en') {
       return null;
     }
     case 'text': case 'textarea': case 'signature': {
+      if (field.type === 'text' && field.id === 'website' && !isWebAddress(value)) return E.url; // an organization's website
       const len = String(value).trim().length;
       if (r.minLength != null && len < r.minLength) return E.minLength(r.minLength);
       if (r.maxLength != null && len > r.maxLength) return E.maxLength(r.maxLength);

@@ -53,6 +53,7 @@ async function openForm(phone) {
   page.errors = [];
   page.on('pageerror', (e) => page.errors.push(e.message));
   await page.setRequestInterception(true);
+  let saved = { answers: {}, page: null }; // what the page saved, for its resume after a reload (as the server keeps it)
   page.on('request', (req) => {
     const url = req.url();
     const json = (o) => req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -65,6 +66,8 @@ async function openForm(phone) {
     if (url.startsWith(`${SITE}/api/apply`) && req.method() === 'POST') {
       const body = JSON.parse(req.postData() || '{}');
       if (body.action === 'start') return json({ ok: true, token: 'f'.repeat(32) });
+      if (body.action === 'save') { saved = { answers: body.answers || {}, page: body.page || null }; return json({ ok: true }); }
+      if (body.action === 'resume') return json({ ok: true, lang: 'en', answers: saved.answers, page: saved.page, files: {} });
       if (body.action === 'area') return json({ ok: true, area: /^3167 main st$/i.test(String(body.address?.line1 || '').trim()) && String(body.address?.zip || '').startsWith('30096') ? INSIDE : NOWHERE });
       return json({ ok: true });
     }
@@ -270,10 +273,11 @@ for (const phone of [true, false]) {
     let v = await invariants(page, `${name}, start`);
     for (let n = 0; n < STEPS; n++) {
       const key = pick(Object.keys(ACTIONS));
+      const failed = failures.length;
       const did = await ACTIONS[key](page, v).catch((e) => `${key} failed: ${e.message.split('\n')[0]}`);
       if (did === 'skip') { n--; continue; }
       path.push(did);
-      const failed = failures.length;
+      if (failures.length > failed) { console.log(`    (${name}, after ${path.join(' → ')})`); break; } // a step's own check: its path is the repro
       v = await invariants(page, `${name}, after ${path.join(' → ')}`);
       if (failures.length > failed) break; // one walk, one first failure: its path is the repro
     }

@@ -36,6 +36,7 @@ export const UI = {
     reviewBtnShort: 'Review', toReviewShort: 'Review', submitShort: 'Submit',
     saveLater: 'Save and finish later', saving: 'Saving…', saved: 'All changes saved', savedShort: 'All changes saved', unsaved: 'Unsaved changes', paused: 'Saving paused for a moment',
     notSaved: 'Not saved yet. We will try again.', offline: 'Offline. Your answers will save when you reconnect.',
+    notSavedShort: 'Not saved yet: retrying', offlineShort: 'Offline: will save later', pausedShort: 'Saving paused a moment',
     reviewTitle: 'Review and submit', reviewIntro: 'Please look over your answers. Use Edit to change anything, then submit.',
     reviewMissing: '{n} required answers still need you', reviewMissingOne: '1 required answer still needs you', reviewReady: 'Everything is here. You can submit.',
     submitNeeds: 'Submit opens once every required answer is in.',
@@ -50,6 +51,9 @@ export const UI = {
     doneAgain: 'This application has already been submitted. Thank you!', doneLink: "Meet some of the kids we've served",
     stopBack: 'I need to change my answer', stopApply: 'Back to the Apply page',
     laterTitle: 'Save and finish later', laterIntro: "Your answers are already saved. We'll email you a link to pick up where you left off, on this device or any other.",
+    laterIntroUnsaved: "We'll save your answers and email you a link to pick up where you left off, on this device or any other.",
+    sendOffline: "You seem to be offline, so the link can't go yet. Your answers are kept on this page; send it again once you're connected.",
+    fromElsewhere: 'We filled in the answers you saved on another device.',
     email: 'Email address', laterSend: 'Email me the link', sending: 'Sending…', sentTitle: 'Check your email', sendFail: 'We could not send the email. Please try again.',
     sentBodyHtml: 'We sent a link to <strong data-later-email></strong>. It works for 60 days after your last change. Please keep it private, since anyone with it can see your answers.',
     keepGoing: 'Keep going now', close: 'Close',
@@ -65,6 +69,7 @@ export const UI = {
     preview: 'Preview of your unpublished form changes. Nothing you enter here is saved or sent.', previewSent: 'This is a preview, so nothing was sent.', previewNoSave: 'Saving is off in a preview.',
     previewLive: 'Live preview. Changes in the form editor show here as you make them. Nothing entered here is saved or sent.',
     previewFile: 'Preview: {name} (not uploaded)',
+    retryUpload: 'Try again', choosePhotoOther: 'Choose a different photo',
     noPhoto: 'No photo yet', choosePhoto: 'Choose a photo', replacePhoto: 'Replace photo', remove: 'Remove', gettingReady: 'Getting your photo ready…',
     uploading: 'Uploading… {pct}%', added: 'Added: {name}', tryAgain: '{msg}. Please try again.', uploadFailed: 'Upload failed', notImage: "That file isn't a photo we can use. Please choose a JPEG, PNG or HEIC photo.",
     dropPhoto: 'Drop the photo here', dropVideo: 'Drop the video here', orDrag: 'or drag one here',
@@ -118,6 +123,9 @@ export const UI = {
     // The hero above the form
     heroEyebrow: 'For Families · {year} Application', heroTitleHtml: 'Tell us about your <em>child</em>.',
     heroLeadHtml: "This is where your family's story starts. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.",
+    heroAnother: 'Apply for another child', sentNote: 'We received your application on {date}. Thank you!', sentNoteToday: 'We received your application. Thank you!',
+    hubTitleSent: 'We have your application', hubLeadSent: "It arrived on {date}, and we'll be in touch by email. Applying for another child too? Start a new application.",
+    hubLeadSentToday: "It arrived, and we'll be in touch by email. Applying for another child too? Start a new application.", hubAnother: 'Start a new application',
     heroStart: 'Start the application', heroContinue: 'Continue my application', heroNotify: 'Get notified when we open', heroFaq: 'Questions? Read the FAQ',
     heroStatHtml: 'children served<br/>since 2012', heroPhotoAlt: 'A child enjoying their new room',
     // While closed: "tell me when applications open"
@@ -139,6 +147,7 @@ export const UI = {
     reviewBtnShort: 'Revisar', toReviewShort: 'Revisar', submitShort: 'Enviar',
     saveLater: 'Guardar y terminar después', saving: 'Guardando…', saved: 'Todos los cambios están guardados', savedShort: 'Cambios guardados', unsaved: 'Cambios sin guardar', paused: 'El guardado está en pausa por un momento',
     notSaved: 'Todavía no se guardó. Lo intentaremos de nuevo.', offline: 'Sin conexión. Sus respuestas se guardarán cuando se vuelva a conectar.',
+    notSavedShort: 'Sin guardar: reintentando', offlineShort: 'Sin conexión: se guardará', pausedShort: 'Guardado en pausa',
     reviewTitle: 'Revisar y enviar', reviewIntro: 'Revise sus respuestas. Use Editar para cambiar algo y después envíe la solicitud.',
     reviewMissing: 'Faltan {n} respuestas obligatorias', reviewMissingOne: 'Falta 1 respuesta obligatoria', reviewReady: 'Todo está completo. Ya puede enviarla.',
     submitNeeds: 'Podrá enviar la solicitud cuando estén todas las respuestas obligatorias.',
@@ -153,6 +162,9 @@ export const UI = {
     doneAgain: 'Esta solicitud ya fue enviada. ¡Gracias!', doneLink: 'Conozca a algunos de los niños que hemos ayudado',
     stopBack: 'Necesito cambiar mi respuesta', stopApply: 'Volver a la página de solicitud',
     laterTitle: 'Guardar y terminar después', laterIntro: 'Sus respuestas ya están guardadas. Le enviaremos un enlace por correo para continuar donde se quedó, en este dispositivo o en cualquier otro.',
+    laterIntroUnsaved: 'Guardaremos sus respuestas y le enviaremos un enlace por correo para continuar donde se quedó, en este dispositivo o en cualquier otro.',
+    sendOffline: 'Parece que no tiene conexión, así que el enlace todavía no puede enviarse. Sus respuestas siguen en esta página; envíelo de nuevo cuando tenga conexión.',
+    fromElsewhere: 'Completamos las respuestas que guardó en otro dispositivo.',
     email: 'Correo electrónico', laterSend: 'Enviarme el enlace', sending: 'Enviando…', sentTitle: 'Revise su correo', sendFail: 'No pudimos enviar el correo. Intente de nuevo.',
     sentBodyHtml: 'Enviamos un enlace a <strong data-later-email></strong>. Funciona durante 60 días después de su último cambio. Manténgalo privado, ya que cualquier persona que lo tenga puede ver sus respuestas.',
     keepGoing: 'Seguir ahora', close: 'Cerrar',
@@ -168,6 +180,7 @@ export const UI = {
     preview: 'Vista previa de los cambios sin publicar. Nada de lo que escriba aquí se guarda ni se envía.', previewSent: 'Es una vista previa, así que no se envió nada.', previewNoSave: 'Guardar está desactivado en la vista previa.',
     previewLive: 'Vista previa en vivo. Los cambios del editor aparecen aquí al instante. Nada de lo que escriba aquí se guarda ni se envía.',
     previewFile: 'Vista previa: {name} (no se subió)',
+    retryUpload: 'Intentar de nuevo', choosePhotoOther: 'Elegir otra foto',
     noPhoto: 'Todavía no hay foto', choosePhoto: 'Elegir una foto', replacePhoto: 'Cambiar foto', remove: 'Quitar', gettingReady: 'Preparando su foto…',
     uploading: 'Subiendo… {pct}%', added: 'Agregada: {name}', tryAgain: '{msg}. Intente de nuevo.', uploadFailed: 'No se pudo subir', notImage: 'Ese archivo no es una foto que podamos usar. Elija una foto JPEG, PNG o HEIC.',
     dropPhoto: 'Suelte la foto aquí', dropVideo: 'Suelte el video aquí', orDrag: 'o arrástrela aquí',
@@ -213,6 +226,9 @@ export const UI = {
     addressMissing: 'Falta completar: {parts}.', and: 'y',
     heroEyebrow: 'Para familias · Solicitud {year}', heroTitleHtml: 'Cuéntenos sobre <em>su hijo o hija</em>.',
     heroLeadHtml: 'Aquí comienza la historia de su familia. La solicitud toma unos 15 minutos y <strong>se guarda mientras avanza</strong>, así que puede detenerse y volver cuando quiera.',
+    heroAnother: 'Solicitar para otro niño', sentNote: 'Recibimos su solicitud el {date}. ¡Gracias!', sentNoteToday: 'Recibimos su solicitud. ¡Gracias!',
+    hubTitleSent: 'Tenemos su solicitud', hubLeadSent: 'Llegó el {date}, y nos comunicaremos con usted por correo. ¿También solicita para otro niño? Comience una nueva solicitud.',
+    hubLeadSentToday: 'Llegó bien, y nos comunicaremos con usted por correo. ¿También solicita para otro niño? Comience una nueva solicitud.', hubAnother: 'Comenzar una nueva solicitud',
     heroStart: 'Comenzar la solicitud', heroContinue: 'Continuar mi solicitud', heroNotify: 'Avísenme cuando abran', heroFaq: '¿Preguntas? Lea las respuestas',
     heroStatHtml: 'niños atendidos<br/>desde 2012', heroPhotoAlt: 'Un niño disfrutando de su nuevo cuarto',
     closedTitle: 'El período de solicitudes de {year} está cerrado por ahora.',
@@ -242,6 +258,9 @@ export const UI_ORG = {
   heroLeadHtml: 'Apply for a community project for the children you serve. The application takes about 15 minutes and <strong>saves as you go</strong>, so you can stop and come back anytime.',
   heroStatHtml: 'children reached<br/>through partnerships', heroPhotoAlt: 'A space at a partner organization that SOARD transformed',
   heroNotify: 'Get in touch with us',
+  heroAnother: 'Start another application',
+  hubLeadSent: "It arrived on {date}, and we'll be in touch by email. Applying for another project too? Start a new application.",
+  hubLeadSentToday: "It arrived, and we'll be in touch by email. Applying for another project too? Start a new application.",
   appTitle: '{year} Community Project Application',
   closedTitle: 'Community project applications are closed right now.',
   closedLead: "Email us about your organization, and we'll let you know when applications open again.",
@@ -432,7 +451,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
 <input type="file" id="${id}" accept="image/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview" aria-hidden="true">${RING}</div>
 <div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noPhoto')}</p>
-<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('choosePhoto')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button></div></div>
+<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('choosePhoto')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button></div></div>
 <div class="af-drop-veil" aria-hidden="true"><span>${T('dropPhoto')}</span></div></div>`;
         break;
       case 'video':
@@ -440,7 +459,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
 <input type="file" id="${id}" accept="video/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview af-upload-preview--video" aria-hidden="true">${RING}<span class="af-pct"></span></div>
 <div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noVideo')}</p>
-<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button></div>
+<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button></div>
 <p class="af-hint">${T('videoHint')}</p></div>
 <div class="af-drop-veil" aria-hidden="true"><span>${T('dropVideo')}</span></div></div>
 <div class="af-recorder" hidden>

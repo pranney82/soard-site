@@ -175,6 +175,8 @@ export async function ensureSchema(DB) {
     // Which application it is: a family's, or an organization's for a community project (Oct 28 2026)
     "ALTER TABLE application_drafts ADD COLUMN kind TEXT DEFAULT 'family'",
     "ALTER TABLE applications ADD COLUMN kind TEXT DEFAULT 'family'",
+    // Which save the draft's answers are (a tab left open can't save over another device's answers, Nov 1 2026)
+    'ALTER TABLE application_drafts ADD COLUMN rev INTEGER DEFAULT 0',
   ]) {
     try { await DB.prepare(sql).run(); } catch { /* already there */ }
   }
@@ -467,13 +469,27 @@ export async function draftsToday(DB, ipHash, now = Date.now()) {
   return Number(row?.n || 0);
 }
 
-export async function saveDraft(DB, draft, { answers, page, lang }, now = Date.now()) {
+/**
+ * Saves a page's answers. `rev` is the save the page last had (from resume or its own last save) and
+ * `changed` the answers it changed since: when the draft was saved from somewhere else in between (the
+ * emailed link on another device, a tab left open), what's saved there stays, with what changed here
+ * on top, and `theirs` tells the page which answers came from there. A page that doesn't say (an
+ * older one) saves everything, as before.
+ */
+export async function saveDraft(DB, draft, { answers, page, lang, rev = null, changed = null }, now = Date.now(), tries = 0) {
   const form = await formFor(DB, { kind: draft.kind, year: draft.year });
-  const clean = cleanAnswers(form, answers || {});
+  const was = Number(draft.rev) || 0;
+  const stale = Number.isInteger(rev) && rev !== was && Array.isArray(changed);
+  const sent = cleanAnswers(form, answers || {});
+  const clean = stale
+    ? { ...cleanAnswers(form, draft.answers || {}), ...Object.fromEntries(changed.filter(id => typeof id === 'string' && id in sent).map(id => [id, sent[id]])) }
+    : sent;
   // The service-area answer is the check's when the address was placed on the map (not the browser's word for it)
   const af = areaFieldOf(form);
   const placed = af ? placedArea(draft.area, clean.address, form.serviceArea) : null;
   if (placed) clean[af.id] = AREA_VALUES[placed.band];
+  // (the area's answer follows the address, which the page checks again itself)
+  const theirs = stale ? Object.fromEntries(Object.keys(clean).filter(id => id !== af?.id && !changed.includes(id) && JSON.stringify(clean[id]) !== JSON.stringify(sent[id])).map(id => [id, clean[id]])) : null;
   // A test run's emails only ever go to the staff member running it
   const email = draft.test_by || clean[rolesFor(draft.kind).email] || draft.email || null;
   const pageId = form.pages.some(p => p.id === page) ? page : draft.page;
@@ -483,9 +499,14 @@ export async function saveDraft(DB, draft, { answers, page, lang }, now = Date.n
   const maxPageId = at >= (Number(draft.max_page) || 0) ? pageId : (draft.max_page_id || pageId);
   const stop = stopFor(form, clean);
   const language = lang === 'es' || lang === 'en' ? lang : (draft.lang || 'en');
-  await DB.prepare('UPDATE application_drafts SET answers = ?, page = ?, email = ?, lang = ?, max_page = ?, max_page_id = ?, stop_key = ?, updated_at = ? WHERE id = ?')
-    .bind(JSON.stringify(clean), pageId || null, email, language, maxPage, maxPageId || null, stop?.key || null, iso(now), draft.id).run();
-  return { answers: clean, page: pageId };
+  const r = await DB.prepare('UPDATE application_drafts SET answers = ?, page = ?, email = ?, lang = ?, max_page = ?, max_page_id = ?, stop_key = ?, updated_at = ?, rev = ? WHERE id = ? AND COALESCE(rev, 0) = ?')
+    .bind(JSON.stringify(clean), pageId || null, email, language, maxPage, maxPageId || null, stop?.key || null, iso(now), was + 1, draft.id, was).run();
+  // Saved from somewhere else this very moment: done again on top of that save
+  if (!r?.meta?.changes && tries < 3) {
+    const fresh = await getDraft(DB, draft.id);
+    if (fresh && !fresh.submitted_id) return saveDraft(DB, fresh, { answers, page, lang, rev, changed }, now, tries + 1);
+  }
+  return { answers: clean, page: pageId, rev: was + 1, theirs, maxPage: maxPageId || null };
 }
 
 // ─── The service-area check ─────────────────────────────────────────

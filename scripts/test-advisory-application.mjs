@@ -336,8 +336,25 @@ if (DIST) {
     await sleep(300);
     ok(await p.evaluate(() => document.documentElement.classList.contains('adv-focus')) && (await text(p, '#adv-title')) === 'Your interest' && await p.$eval('#adv-why', (el) => el.value) === 'To help.', 'a reload comes back to the same step, answers kept');
     await onTo('What you’d bring');
+    // A long answer: its count once it's near what the box holds
+    await reach('#adv-strengths');
+    const max = await p.$eval('#adv-strengths', (el) => { el.value = 'x'.repeat(el.maxLength - 100); el.dispatchEvent(new Event('input', { bubbles: true })); return el.maxLength; });
+    const count = await p.$eval('[data-field="strengths"] .adv-count', (e) => (e.hidden ? '' : e.textContent));
+    ok(count === `${(max - 100).toLocaleString('en-US')} of ${max.toLocaleString('en-US')} characters`, `a long answer shows its count near what the box holds ("${count}")`);
     await type('strengths', 'Law.'); await type('fundraising', 'A table at the gala.'); await choose('introductions', 'Yes'); await choose('networks', 'No'); await choose('conflict', 'No');
+    const part = await text(p, '#adv-part');
+    const [at, of] = (part.match(/\d+/g) || []).map(Number);
+    ok(!part || at === of, `with No on conflicts, its screen is the step's last part (no part for the follow-up nobody asked for: "${part}")`);
     await onTo('Commitment');
+    // A double click on Back counts once; a reload then stays where they went back to
+    await p.click('#adv-back', { count: 2 });
+    await sleep(700);
+    ok((await text(p, '#adv-title')) === 'What you’d bring', 'a double click on Back goes back one screen');
+    await p.reload({ waitUntil: 'networkidle0' });
+    await sleep(300);
+    ok((await text(p, '#adv-title')) === 'What you’d bring', 'a reload after going back stays there');
+    await next();
+    ok((await text(p, '#adv-title')) === 'Commitment', 'and Continue goes on');
     await choose('hostEvent', 'Yes'); await choose('meetings', 'Yes'); await choose('ambassador', 'Yes');
     await onTo('Reference and signature');
     await type('refName', 'Pat Kim'); await type('refRelationship', 'Colleague'); await type('refEmail', 'pat@example.org');
@@ -365,6 +382,7 @@ if (DIST) {
     await p.click('#adv-next');
     await p.waitForSelector('#adv-done:not([hidden])', { timeout: 8000 }).catch(() => null);
     ok(/Thank you, Taylor\./.test(await text(p, '#adv-done h2')), 'sent: thanks by name');
+    ok(await p.$$eval('.adv-seg', (els) => els.every((li) => li.dataset.state === 'done')), 'every step’s segment is full, the review’s too');
     const a5 = await axeScan(p, '#application');
     ok(!a5.length, `axe: the thank-you has no problems${a5.length ? ` (${axeText(a5)})` : ''}`);
     ok(await p.evaluate(() => localStorage.getItem('soard-advisory-application')) === null, 'the device forgets the answers');

@@ -592,6 +592,31 @@ try {
   ok(steps.slice(0, 5).every((s) => !s.disabled), 'how far they got comes back too');
   await page.$eval('[data-steps]', (d) => { d.open = false; });
 
+  console.log('Every screen before is checked on Continue');
+  // A screen passed without its own Continue (the browser's Forward, an opened group taking them on to a
+  // screen of its own): Continue checks it, and goes back to it
+  let backs = 0;
+  while (!(await visible('#af-parentEmail')) && backs < 6) { await page.goBack(); await sleep(500); backs++; }
+  ok(await visible('#af-parentEmail'), "the browser's Back reaches the parent's email");
+  await page.reload({ waitUntil: 'networkidle0' });
+  await sleep(600);
+  ok(await visible('#af-parentEmail'), 'a reload there stays there (not the furthest screen)');
+  await clear('#af-parentEmail');
+  // (to the step's last screen, answered: its own problems would come first)
+  for (let i = 0; i < backs - 1; i++) { await page.goForward(); await sleep(500); }
+  ok(backs > 1 && (await stepTitle()) === "Parents' Information" && await visible('[data-field="ownership"]') && !(await visible('#af-parentEmail')), "Forward goes on past it, to the step's last screen");
+  await next();
+  ok((await stepTitle()) === "Parents' Information" && /answer this question/i.test(await errorText('parentEmail')), 'Continue goes back to the email left empty, and says so');
+  await type('#af-parentEmail', 'jordan+apply@example.com');
+  for (let i = 0; i < 6 && (await stepTitle()) !== 'Diagnosis'; i++) await next();
+  ok((await stepTitle()) === 'Diagnosis', 'fixed, Continue carries on');
+  // A double click on Back counts once, as one on Continue does
+  await page.click('[data-back]', { count: 2 });
+  await sleep(700);
+  ok((await stepTitle()) === "Parents' Information" && await visible('[data-field="ownership"]'), 'a double click on Back goes back one screen');
+  await next();
+  ok((await stepTitle()) === 'Diagnosis', 'and Continue comes back');
+
   console.log('Diagnosis');
   await type('#af-diagnosisImpact', 'Bathing takes two adults.');
   await pick('verbal', 'Yes');
@@ -830,6 +855,21 @@ try {
   await page.$eval('[data-done]', (el) => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
   await shot('13-done-desktop');
   await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  // Back on the page later: this device says it went (a parent unsure isn't led into a second one)
+  await page.evaluate(() => sessionStorage.clear());
+  await page.reload({ waitUntil: 'networkidle0' });
+  await sleep(500);
+  const sentNote = await page.$eval('[data-hero-note]', (e) => (e.hidden ? '' : e.textContent));
+  ok(/We received your application on/.test(sentNote) && /Apply for another child/.test(await page.$eval('[data-hero-cta]', (e) => e.textContent)), `a reload after sending says it arrived, and the button is for another child ("${sentNote}")`);
+  ok(/We have your application/.test(await page.$eval('[data-hub-title]', (e) => e.textContent)) && /Start a new application/.test(await page.$eval('[data-hub-go]', (e) => e.textContent)), 'and so does the overview');
+  await page.evaluate(() => localStorage.removeItem('soard-application-sent'));
+
+  console.log('A link that no longer works');
+  await page.goto(`${SITE}/apply/form/?resume=${'0'.repeat(31)}1`, { waitUntil: 'networkidle0' });
+  await sleep(400);
+  const gone = await page.$eval('[data-hero-note]', (e) => ({ text: e.hidden ? '' : e.textContent, bottom: e.getBoundingClientRect().bottom, h: innerHeight }));
+  ok(/expired or is not valid/.test(gone.text) && gone.bottom <= gone.h, `it says so at the top of the page, where they land (${Math.round(gone.bottom)}/${gone.h})`);
+  ok(/Start the application/.test(await page.$eval('[data-hero-cta]', (e) => e.textContent)), 'and Start begins a new one');
 
   console.log('Reminder opt-out link');
   const started = await page.evaluate(async () => (await (await fetch('/api/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'start', year: document.querySelector('[data-application]').dataset.year }) })).json()).token);
@@ -1104,6 +1144,9 @@ try {
   // Straight to the video page: the draft's furthest page lets the steps list jump there
   await desk.evaluate((tk) => localStorage.setItem('soard-application-draft', JSON.stringify({ token: tk, year: '2027', furthest: 'video' })), deskToken);
   await desk.evaluate(async (tk) => { await fetch('/api/apply', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save', token: tk, answers: { ackParameters: "Yes, I have read and understand SOARD's makeover parameters.", ackSeason: 'Yes, I have read and understand the above statement.' }, page: 'video' }) }); }, deskToken);
+  // As a new visit (a reload keeps this tab's own screen: its history entry and its note of it are
+  // forgotten first, out of the box it was typing in, since leaving the page keeps that box's screen too)
+  await desk.evaluate(() => { document.activeElement?.blur(); sessionStorage.removeItem('soard-application-screen'); history.replaceState(null, ''); });
   await desk.reload({ waitUntil: 'networkidle0' });
   await sleep(400);
   ok((await stepTitle(desk)) === 'Video', 'resumes on the video page');

@@ -239,7 +239,7 @@ export async function onRequestPost(context) {
       area = placedArea(draft.area, draft.answers?.address, form.serviceArea)
         || (draft.area.reason === 'no-match' && draft.area.key === addressKey(draft.answers?.address) ? draft.area : null);
     }
-    return json({ ok: true, kind: kindOf(draft.kind), year: draft.year, lang: draft.lang || 'en', answers: draft.answers, files: publicFiles(draft.files), page: draft.page || null, maxPage: draft.max_page_id || null, submitted: !!draft.submitted_id, remindersOff: body.reminders === 'off' || !!draft.reminders_off, area: publicArea(area), test: draft.test_by ? { by: draft.test_by } : null });
+    return json({ ok: true, kind: kindOf(draft.kind), year: draft.year, lang: draft.lang || 'en', answers: draft.answers, rev: Number(draft.rev) || 0, files: publicFiles(draft.files), page: draft.page || null, maxPage: draft.max_page_id || null, submitted: !!draft.submitted_id, remindersOff: body.reminders === 'off' || !!draft.reminders_off, area: publicArea(area), test: draft.test_by ? { by: draft.test_by } : null });
   }
   // A photo they added, its small preview: the page shows it again after a reload or from the emailed link
   if (action === 'thumb') {
@@ -262,9 +262,12 @@ export async function onRequestPost(context) {
   switch (action) {
     case 'save': {
       if (!body.answers || typeof body.answers !== 'object') return fail('answers required');
-      const out = await saveDraft(env.DB, draft, { answers: body.answers, page: body.page, lang: body.lang });
-      return json({ ok: true, page: out.page });
+      const out = await saveDraft(env.DB, draft, { answers: body.answers, page: body.page, lang: body.lang, rev: body.rev, changed: body.changed });
+      // Saved from somewhere else in between: the answers (and photos) from there, for the page to show
+      return json({ ok: true, page: out.page, rev: out.rev, ...(out.theirs ? { theirs: out.theirs, files: publicFiles(draft.files), maxPage: out.maxPage } : {}) });
     }
+    // A tab coming back into view: has the draft been saved from somewhere else since?
+    case 'peek': return json({ ok: true, rev: Number(draft.rev) || 0, files: publicFiles(draft.files) });
     case 'area': return handleArea(context, draft, body);
     case 'email-link': return handleEmailLink(context, draft, body);
     case 'video-url': return handleVideoUrl(context, draft, body);

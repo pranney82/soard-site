@@ -131,6 +131,38 @@ test('cleanAnswers keeps only known questions and caps their length', () => {
   assert.equal(out.hacker, undefined);
   assert.deepEqual(out.makeoverTypes, ['Ramp']);
   assert.equal(toE164('(404) 555-0100'), '+14045550100');
+  // A US number that can't be dialed isn't one; a number from abroad (with its +) still is
+  assert.equal(toE164('(000) 000-0000'), null);
+  assert.equal(toE164('123-456-7890'), null);
+  assert.equal(toE164('+1 000 555 0100'), null);
+  assert.equal(toE164('1-404-555-0100'), '+14045550100');
+  assert.equal(toE164('+44 20 7946 0958'), '+442079460958');
+  assert.equal(toE164('404.555.0123 ext 5'), '+14045550123');
+  assert.equal(toE164('(404) 555-0123 x12'), '+14045550123');
+});
+
+test('a tab left open saves what changed there, on top of what was saved from another device since', async () => {
+  const id = await createDraft(env.DB, { year: YEAR, ipHash: 'ip', verified: true });
+  const phone = fullAnswers({ interests: '', diagnosis: '' });
+  let out = await saveDraft(env.DB, await getDraft(env.DB, id), { answers: phone, page: 'parents', rev: 0, changed: Object.keys(phone) });
+  assert.equal(out.rev, 1);
+  assert.equal(out.theirs, null);
+  // The emailed link on a laptop: two more answers
+  const laptop = { ...phone, interests: 'Dinosaurs and space', diagnosis: 'Cerebral palsy' };
+  out = await saveDraft(env.DB, await getDraft(env.DB, id), { answers: laptop, page: 'child', rev: 1, changed: ['interests', 'diagnosis'] });
+  assert.equal(out.rev, 2);
+  // Back on the phone (still at save 1): its one change, and the laptop's answers stay
+  out = await saveDraft(env.DB, await getDraft(env.DB, id), { answers: { ...phone, parentPhone: '(770) 555-0142' }, page: 'parents', rev: 1, changed: ['parentPhone'] });
+  const d = await getDraft(env.DB, id);
+  assert.equal(d.answers.interests, 'Dinosaurs and space');
+  assert.equal(d.answers.diagnosis, 'Cerebral palsy');
+  assert.equal(d.answers.parentPhone, '(770) 555-0142');
+  assert.deepEqual(out.theirs, { interests: 'Dinosaurs and space', diagnosis: 'Cerebral palsy' });
+  assert.equal(out.rev, 3);
+  assert.equal(d.max_page_id, 'child'); // how far it got (on the laptop)
+  // A page that doesn't say which save it follows (an older one) saves everything, as before
+  await saveDraft(env.DB, d, { answers: phone, page: 'parents' });
+  assert.equal((await getDraft(env.DB, id)).answers.interests, '');
 });
 
 // ── JobTread mapping ────────────────────────────────────────────────

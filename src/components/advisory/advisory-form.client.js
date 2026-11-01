@@ -310,14 +310,18 @@ export function initAdvisoryForm() {
     const a = collect();
     pages.forEach((p, i) => { p.hidden = i !== step; });
     ui.stepText.textContent = `Step ${step + 1} of ${total + 1}`;
-    const n = screensIn(step);
-    ui.part.textContent = n > 1 ? `Part ${screenNo + 1} of ${n}` : '';
+    // A screen with nothing on it (a follow-up their answer didn't call for) isn't one of its parts
+    const real = (packs[step] || [null]).map((_, k) => k).filter((k) => !emptyScreen(step, k));
+    const n = Math.max(1, real.length);
+    const at = Math.max(0, real.indexOf(screenNo));
+    ui.part.textContent = n > 1 ? `Part ${at + 1} of ${n}` : '';
     if (ui.title.textContent !== titles[step]) ui.title.textContent = titles[step];
     ui.segs.forEach((li, i) => {
       const now = i === step;
-      const done = !now && (stepDone(i, a) || (i === REVIEW && sent));
+      // Sent: every step full, the review's too
+      const done = sent || (!now && stepDone(i, a));
       li.dataset.state = done ? 'done' : now ? 'now' : '';
-      li.firstChild.style.transform = `scaleX(${(done ? 1 : now ? (screenNo + 1) / (n + 1) : 0).toFixed(3)})`;
+      li.firstChild.style.transform = `scaleX(${(done ? 1 : now ? (at + 1) / (n + 1) : 0).toFixed(3)})`;
     });
     ui.back.hidden = step === 0 && screenNo === 0;
     const last = !screenAhead();
@@ -397,7 +401,8 @@ export function initAdvisoryForm() {
     if (!dir || !focused) { update(); return Promise.resolve(); }
     if (reducedMotion() || !document.startViewTransition || document.visibilityState === 'hidden') {
       update();
-      if (!reducedMotion()) ui.stage.animate?.([{ opacity: 0, transform: `translateX(${dir * 16}px)` }, { opacity: 1, transform: 'none' }], { duration: 200, easing: 'cubic-bezier(.05,.7,.1,1)' });
+      // (from partly there: the old screen is already gone, so from nothing there'd be a frame of blank page)
+      if (!reducedMotion()) ui.stage.animate?.([{ opacity: 0.4, transform: `translateX(${dir * 16}px)` }, { opacity: 1, transform: 'none' }], { duration: 200, easing: 'cubic-bezier(.05,.7,.1,1)' });
       return Promise.resolve();
     }
     html.classList.add('adv-vt');
@@ -534,11 +539,12 @@ export function initAdvisoryForm() {
   }, { signal: keys.signal });
   /** A screen back; false at the very start */
   function back() {
-    if (moving || performance.now() < calmUntil) return true;
+    if (moving || sending || performance.now() < calmUntil) return true;
     const before = step < total ? screenBefore() : -1;
     // With an entry behind this one, Back is the browser's Back: the screen they came from, and its Forward
     // comes back here. Without one (the first entry), the screen before, which this entry then is
-    if (depth > 1) { history.back(); return true; }
+    // (the browser's Back lands a moment later: a double click counts once, as it does on Continue)
+    if (depth > 1) { calmUntil = performance.now() + 350; history.back(); return true; }
     if (before < 0 && step === 0) return false;
     (before >= 0 ? go(step, { dir: -1, screen: before }) : go(step - 1, { dir: -1, screen: 'last' })).then(() => { replaceLoc(); save(); });
     return true;
@@ -565,7 +571,7 @@ export function initAdvisoryForm() {
     if (st?.advAt) trail[to] = st.advAt;
     if (!to || sent) { exitFocus({ fromPop: true }); return true; } // back to the page itself
     const at = st.advAt;
-    if (at && !sameAt(at, whereNow())) go(at.step, { dir, screen: at.screen });
+    if (at && !sameAt(at, whereNow())) go(at.step, { dir, screen: at.screen }).then(save); // a reload comes back here
     else if (!at && dir < 0) back(); // an entry from before they said where they were: a screen back
     return true;
   };
@@ -707,9 +713,37 @@ export function initAdvisoryForm() {
     }
   }
 
+  // A long answer: its count once it's near what the box holds, and a paste cut short says so (it was silent)
+  let pasteCut = null;
+  for (const ta of form.querySelectorAll('textarea[maxlength]')) {
+    const p = document.createElement('p');
+    p.className = 'adv-count';
+    p.setAttribute('aria-live', 'polite');
+    p.hidden = true;
+    ta.after(p);
+  }
+  function paintCount(ta) {
+    const p = ta.parentElement?.querySelector('.adv-count');
+    const max = ta.maxLength;
+    if (!p || !(max > 0)) return;
+    const n = ta.value.length;
+    const cut = pasteCut === ta && n >= max;
+    if (!cut && pasteCut === ta) pasteCut = null;
+    const near = n >= max * 0.9;
+    p.textContent = cut ? `Only the first ${max.toLocaleString('en-US')} characters fit here, so the end of what you pasted was left out.`
+      : near ? `${n.toLocaleString('en-US')} of ${max.toLocaleString('en-US')} characters` : '';
+    p.dataset.kind = cut ? 'cut' : '';
+    p.hidden = !cut && !near;
+  }
+  form.addEventListener('paste', (e) => {
+    const ta = e.target;
+    if (ta?.tagName !== 'TEXTAREA' || !(ta.maxLength > 0)) return;
+    const text = e.clipboardData?.getData('text') || '';
+    pasteCut = ta.value.length - (ta.selectionEnd - ta.selectionStart) + text.length > ta.maxLength ? ta : null;
+  });
   form.addEventListener('input', (e) => {
     const id = e.target.closest('[data-field]')?.dataset.field;
-    if (e.target.tagName === 'TEXTAREA') capBoxes(pages[step]);
+    if (e.target.tagName === 'TEXTAREA') { paintCount(e.target); capBoxes(pages[step]); }
     if (e.target === sugInput && e.isTrusted) { clearTimeout(sug.timer); sug.timer = setTimeout(suggest, 250); }
     follow();
     if (id) recheck(id);
@@ -922,6 +956,7 @@ export function initAdvisoryForm() {
     sending = true;
     ui.next.disabled = true;
     ui.back.disabled = true;
+    ui.exit.disabled = true; // the way out waits while it sends ("Look it over and send it" while it was going was wrong)
     ui.next.textContent = 'Sending…';
     try {
       // No connection: said in words, not the browser's ("Failed to fetch", "Load failed")
@@ -962,6 +997,7 @@ export function initAdvisoryForm() {
       if (!form.hidden && !document.activeElement?.closest?.('.adv-page:not([hidden])')) ui.next.focus({ preventScroll: true }); // Send again, where they were (the note is read out)
     } finally {
       sending = false;
+      ui.exit.disabled = false;
     }
   }
 
@@ -1029,6 +1065,9 @@ export function initAdvisoryForm() {
   for (const b of document.querySelectorAll('#adv-go, [data-adv-cta]')) b.removeAttribute('aria-busy');
   const early = window.__advWant;
   window.__advWant = false;
+  // A reload on one of its own history entries: that screen, even when they'd gone back from further on
+  const entry = history.state?.advFocus ? history.state.advAt : null;
+  if (restored && session.get() && entry && entry.step <= furthest) { step = entry.step; resumeAt = { step, screen: Math.max(0, Number(entry.screen) || 0) }; }
   if (restored && session.get()) begin(step);
   else if (early) begin();
 }

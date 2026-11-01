@@ -12,7 +12,7 @@ import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld, ORG } from './lib/fake-applicant-world.mjs';
 import {
   ORG_DEFAULT_DEFINITION, ORG_LOCKED_FIELDS, DEFAULT_DEFINITION, validateDefinition, normalizeDefinition, resolveForm, renderMessage,
-  kindOf, rolesFor, formErrors, applicationForm,
+  kindOf, rolesFor, formErrors, applicationForm, fieldError, isWebAddress,
 } from '../functions/api/_application-form.js';
 import {
   getLiveForm, getDraftForm, saveDraftForm, putDraftLive, listFormVersions, restoreFormVersion, saveFormRules, getFormRules, formFor, clearFormCache,
@@ -79,6 +79,14 @@ test('the organization form is its own: valid as built, its own questions the si
   assert.match(renderMessage(form.messages.approved, { parent: 'Jordan Lee', child: 'Sunnyside Academy' }), /application for \*Sunnyside Academy\* has been approved/);
   assert.doesNotMatch(Object.values(form.messages).join(' '), /your child|your family/i);
   assert.equal(rolesFor('organization').email, 'contactEmail');
+});
+
+test('an organization’s website is a web address, typed however people type one', () => {
+  const site = { id: 'website', type: 'text', label: 'Website' };
+  for (const ok of ['soard.org', 'www.soard.org', 'https://www.soard.org/about-us', 'kids.example.co.uk/x?y=1']) assert.equal(fieldError(site, ok), null, ok);
+  for (const bad of ['not a site', 'javascript:alert(1)', 'example', 'http://localhost']) assert.match(fieldError(site, bad), /web address/, bad);
+  assert.equal(fieldError({ ...site, id: 'contactTitle' }, 'not a site'), null); // only the website is one
+  assert.equal(isWebAddress(''), false);
 });
 
 test('each form has its own versions; organizations share the family form’s service area and keep their own staff list', async () => {
