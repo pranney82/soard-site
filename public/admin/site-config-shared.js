@@ -5,9 +5,10 @@
  * saving only what changed, and the checks. ./site-config.js draws it;
  * tests/site-config.test.mjs checks it. No DOM, no imports.
  *
- * Six documents (D1 site_config rows, read and saved through /api/read-content
+ * Seven documents (D1 site_config rows, read and saved through /api/read-content
  * and /api/save-content as src/content/site/<key>.json): settings, faq,
- * our-story, media, financial-snapshot, financials. `settings.application` is
+ * our-story, media, financial-snapshot, financials, book (the anniversary
+ * book, public/admin/book-editor.js). `settings.application` is
  * Admin → Applications → Settings and never written from here.
  *
  * Saving is a three-way merge: the fields changed since the editor loaded
@@ -16,7 +17,7 @@
  * changed to something different is a conflict, and nothing is written.
  */
 
-export const DOC_KEYS = ['settings', 'faq', 'our-story', 'media', 'financial-snapshot', 'financials'];
+export const DOC_KEYS = ['settings', 'faq', 'our-story', 'media', 'financial-snapshot', 'financials', 'book'];
 export const docPath = (key) => `src/content/site/${key}.json`;
 export const CF_HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
 
@@ -238,6 +239,8 @@ export const PAGES = [
   { key: 'financials', title: 'Financials', url: '/about/financials/', group: 'pages', docs: ['settings', 'financial-snapshot', 'financials'], blurb: 'The numbers, 990s, audits, reports',
     fields: { settings: ['financialsPhotos'], 'financial-snapshot': [''], financials: [''] } },
   { key: 'faq', title: 'FAQ', url: '/faq/', group: 'pages', docs: ['faq'], blurb: 'Questions on FAQ, Donate and About', fields: { faq: [''] } },
+  // url: the live page's address, once the book is on the site (public/admin/book-editor.js sets it)
+  { key: 'book', title: 'Anniversary book', url: null, group: 'pages', docs: ['book'], blurb: 'The flip book and its PDF', fields: { book: [''] } },
   { key: 'advisory', title: 'Advisory Board', url: '/advisory-board/', group: 'pages', docs: ['settings'], blurb: 'Hero photo', fields: { settings: ['advisoryBoardPhotos'] } },
   { key: 'store', title: 'Sunny & Ranney', url: '/sunny-and-ranney/', group: 'pages', docs: ['settings'], blurb: 'Room cards', fields: { settings: ['sunnyAndRanneyRooms'] } },
   { key: 'media', title: 'Media Kit', url: '/branding/', group: 'pages', docs: ['media'], blurb: 'Press bio, mission, photos', fields: { media: [''] } },

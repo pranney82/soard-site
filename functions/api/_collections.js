@@ -29,9 +29,10 @@ export const SITE_PREFIX = 'src/content/site/';
  *   golf, gala                                                       Events
  *   board-committees                                                 People
  *   partner-logo-dismissed                                           Partners
+ *   book                                                             Site Config (the anniversary book)
  * scripts/d1-helpers.js uses the same list.
  */
-export const SITE_DOC_KEYS = Object.freeze(['settings', 'faq', 'our-story', 'media', 'financial-snapshot', 'financials', 'golf', 'gala', 'board-committees', 'partner-logo-dismissed']);
+export const SITE_DOC_KEYS = Object.freeze(['settings', 'faq', 'our-story', 'media', 'financial-snapshot', 'financials', 'golf', 'gala', 'board-committees', 'partner-logo-dismissed', 'book']);
 export function isSiteDocKey(key) {
   return isSafeName(key) && SITE_DOC_KEYS.includes(key);
 }

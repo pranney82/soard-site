@@ -157,6 +157,58 @@ function pill(text: string, bg = YELLOW, fg = DARK) {
 // ═══════════════════════════════════════════════════
 // TEMPLATE: PERSON (Leadership profile): the page's split hero as a card
 // ═══════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════
+// TEMPLATE: THE ANNIVERSARY BOOK — the closed book beside its title
+// ═══════════════════════════════════════════════════
+// Cream, like the page's hero: the eyebrow, title and line on the left, the
+// cover whole on the right as a book (page edges at its fore-edge, the
+// yellow block behind it). Flat colors only.
+function bookTemplate(title: string, coverB64: string | null, aspect: number, eyebrow?: string, subtitle?: string) {
+  const INK = '#373A36';
+  const SOFT = '#5A5B61';
+  const coverH = 500;
+  const coverW = Math.round(Math.min(560, coverH * aspect));
+  const h = Math.round(coverW / aspect);
+  const edges = [1, 2, 3, 4, 5, 6].map((i) => `${i}px ${i}px 0 ${i % 2 ? '#E7E1D3' : '#FBF8F0'}`).join(', ');
+  return {
+    type: 'div',
+    props: {
+      style: { width: '100%', height: '100%', display: 'flex', position: 'relative' as const, overflow: 'hidden' as const, background: '#FEFCF5' },
+      children: [
+        { type: 'div', props: { style: { position: 'absolute' as const, top: 0, left: 0, right: 0, height: '6px', background: YELLOW, display: 'flex' } } },
+        {
+          type: 'div',
+          props: {
+            style: { display: 'flex', flexDirection: 'column' as const, justifyContent: 'center' as const, width: coverB64 ? `${1200 - coverW - 170}px` : '1000px', height: '100%', padding: '0 0 0 72px' },
+            children: [
+              ...(eyebrow ? [{
+                type: 'div',
+                props: {
+                  style: { display: 'flex', alignItems: 'center', gap: '14px', fontSize: '17px', fontFamily: 'Outfit', fontWeight: 700, color: SOFT, letterSpacing: '0.15em', textTransform: 'uppercase' as const, marginBottom: '22px' },
+                  children: [{ type: 'div', props: { style: { width: '32px', height: '3px', background: INK, display: 'flex' } } }, truncate(eyebrow, 30)],
+                },
+              }] : []),
+              { type: 'div', props: { style: { fontSize: title.length > 26 ? '54px' : '64px', fontFamily: 'Libre Baskerville', fontWeight: 700, color: INK, lineHeight: 1.08, letterSpacing: '-0.02em' }, children: truncate(title, 48) } },
+              ...(subtitle ? [{ type: 'div', props: { style: { fontSize: '22px', fontFamily: 'Outfit', fontWeight: 400, color: SOFT, marginTop: '22px', lineHeight: 1.45 }, children: subtitle.length > 120 ? `${subtitle.slice(0, 118).replace(/\s+\S*$/, '')}…` : subtitle } }] : []),
+              { type: 'div', props: { style: { fontSize: '17px', fontFamily: 'Outfit', fontWeight: 400, color: SOFT, marginTop: '40px' }, children: 'sunshineonaranneyday.com' } },
+            ],
+          },
+        },
+        ...(coverB64 ? [
+          { type: 'div', props: { style: { position: 'absolute' as const, right: '44px', top: `${Math.round(315 - h / 2 + h * 0.45)}px`, width: `${Math.round(coverW * 0.7)}px`, height: `${Math.round(h * 0.62)}px`, background: YELLOW, borderRadius: '24px', display: 'flex' } } },
+          {
+            type: 'img',
+            props: {
+              src: coverB64, width: coverW, height: h,
+              style: { position: 'absolute' as const, right: '84px', top: `${Math.round(315 - h / 2)}px`, width: `${coverW}px`, height: `${h}px`, objectFit: 'cover' as const, borderRadius: '3px 8px 8px 3px', boxShadow: `${edges}, 0 28px 60px rgba(0,0,0,0.2)` },
+            },
+          },
+        ] : []),
+      ],
+    },
+  };
+}
+
 function personTemplate(name: string, photoB64: string | null, eyebrow?: string, role?: string, organization?: string) {
   const INK = '#373A36';
   const SOFT = '#5A5B61';
@@ -1286,7 +1338,7 @@ function golfTemplate(logoB64: string | null, date?: string, location?: string) 
 // ═══════════════════════════════════════════════════
 // PUBLIC API
 // ═══════════════════════════════════════════════════
-export type OgTemplate = 'default' | 'kid' | 'article' | 'golf' | 'community' | 'event' | 'person';
+export type OgTemplate = 'default' | 'kid' | 'article' | 'golf' | 'community' | 'event' | 'person' | 'book';
 
 export interface OgOptions {
   template: OgTemplate;
@@ -1311,6 +1363,8 @@ export interface OgOptions {
   // Person (Leadership profile)
   eyebrow?: string;
   organization?: string;
+  // Book (the anniversary book): its cover's width over its height
+  coverAspect?: number;
 }
 
 export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
@@ -1360,6 +1414,12 @@ export async function generateOgImage(opts: OgOptions): Promise<Buffer> {
         photoB64 = await fetchImageBase64(imgUrl);
       }
       element = eventTemplate(opts.title, photoB64, opts.category, opts.eventDate, opts.eventLocation);
+      break;
+    }
+    case 'book': {
+      // heroImage: the cover's image ID, shown whole (never cropped)
+      const coverB64 = opts.heroImage ? await fetchImageBase64(`${CF_DIRECT}/${opts.heroImage}/w=800,q=85`) : null;
+      element = bookTemplate(opts.title, coverB64, opts.coverAspect || 0.75, opts.eyebrow, opts.subtitle);
       break;
     }
     case 'person': {

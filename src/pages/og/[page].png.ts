@@ -3,6 +3,7 @@ import { generateOgImage } from '../../utils/og';
 import { getSiteStats } from '../../utils/stats';
 import siteSettings from '../../content/site/settings.json';
 import ourStory from '../../content/site/our-story.json';
+import { getBook } from '../../utils/book';
 
 /**
  * Static page OG image definitions.
@@ -35,6 +36,7 @@ const getPages = async () => {
   const eventsHero = s.sectionPhotos?.missionMain || 'kids/emery/photo-17';
   // Sunny & Ranney: storefront photo (sunny-and-ranney.astro line 18)
   const sunnyStore = 'about/sunny-ranney-storefront';
+  const book = getBook();
   return [
   { slug: 'home', title: 'Dreams Built Here', subtitle: 'Creating life-changing home makeovers for children with special needs — at no cost to families.', heroImage: homeHero },
   { slug: 'donate', title: 'Help Build a Brighter Home', subtitle: 'Every dollar builds accessible bathrooms, dream bedrooms, and therapy rooms for children with special needs.', heroImage: donateHero },
@@ -62,6 +64,8 @@ const getPages = async () => {
   { slug: 'events', title: 'Events', subtitle: 'Fundraisers, tournaments, and community gatherings supporting children with special needs.', heroImage: eventsHero },
   { slug: 'golf', title: 'Sunshine on a Ranney Fairway', subtitle: 'Annual charity golf tournament funding dream room makeovers.', heroImage: 'golf-logo-dark', template: 'golf' as const, golfDate: 'Monday, May 18th, 2026', golfLocation: 'Indian Hills Country Club · Marietta, GA' },
   { slug: 'sunny-and-ranney', title: 'Sunny & Ranney', subtitle: 'Meet the mascots of Sunshine on a Ranney Day.', heroImage: sunnyStore },
+  // The anniversary book, at its own address, once it's on the site: its cover
+  ...(book?.live ? [{ slug: book.slug, title: book.titleText, subtitle: book.description, heroImage: book.pages[0].id, template: 'book' as const, eyebrow: book.eyebrow, coverAspect: book.pages[0].w / book.pages[0].h }] : []),
   ];
 };
 
@@ -74,7 +78,7 @@ export const getStaticPaths: GetStaticPaths = async () => {
 };
 
 export const GET: APIRoute = async ({ props }) => {
-  const { page } = props as { page: { slug: string; title: string; subtitle?: string; heroImage?: string; template?: string; golfDate?: string; golfLocation?: string } };
+  const { page } = props as { page: { slug: string; title: string; subtitle?: string; heroImage?: string; template?: string; golfDate?: string; golfLocation?: string; eyebrow?: string; coverAspect?: number } };
 
   const png = await generateOgImage({
     template: (page.template || 'default') as any,
@@ -83,6 +87,8 @@ export const GET: APIRoute = async ({ props }) => {
     heroImage: page.heroImage,
     golfDate: page.golfDate,
     golfLocation: page.golfLocation,
+    eyebrow: page.eyebrow,
+    coverAspect: page.coverAspect,
   });
 
   return new Response(png, {

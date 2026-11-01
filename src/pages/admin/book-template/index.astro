@@ -1,0 +1,69 @@
+---
+/**
+ * The anniversary book's reader with no book in it yet, for the admin's
+ * Preview (public/admin/book-editor.js). The admin frames this page and
+ * posts the book as it is on screen, saved or not; the reader is the site's
+ * own (FlipBook.astro), so what's previewed is what goes live. Behind
+ * Cloudflare Access with the rest of /admin/.
+ */
+import '../../../styles/global.css';
+import FlipBook from '../../../components/book/FlipBook.astro';
+
+const empty = { titleText: 'Preview', pages: [], chapters: [] };
+---
+
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="robots" content="noindex, nofollow" />
+  <title>Book preview</title>
+  <style is:inline>
+    @font-face { font-family: 'Libre Baskerville'; font-style: normal; font-weight: 400; font-display: swap; src: url('/fonts/libre-baskerville-latin-400-normal.woff2') format('woff2'); }
+    @font-face { font-family: 'Outfit'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('/fonts/outfit-latin-variable.woff2') format('woff2'); }
+  </style>
+</head>
+<body class="bt">
+  <p class="bt-wait">Getting the book…</p>
+  <template id="bt-reader"><FlipBook book={empty} /></template>
+
+  <script>
+    import { mountFlipbook } from '../../../components/book/flipbook.js';
+
+    let reader: ReturnType<typeof mountFlipbook> | null = null;
+    let root: HTMLElement | null = null;
+    // A new copy of the book from the admin: the reader starts again on the page it was showing
+    window.addEventListener('message', (e) => {
+      if (e.origin !== location.origin || e.source !== window.parent || e.data?.type !== 'soard-book') return;
+      const book = e.data.book;
+      const at = reader?.page ?? null;
+      reader?.destroy();
+      root?.remove();
+      reader = null;
+      root = null;
+      document.querySelector('.bt-wait')?.toggleAttribute('hidden', !!book?.pages?.length);
+      if (!book?.pages?.length) return;
+      const tpl = document.getElementById('bt-reader') as HTMLTemplateElement;
+      root = (tpl.content.firstElementChild as HTMLElement).cloneNode(true) as HTMLElement;
+      root.dataset.preview = '1';
+      const first = book.pages[0];
+      root.style.setProperty('--fb-aspect', String(first.w / first.h));
+      root.querySelector('.fb-top-title')!.textContent = book.title || '';
+      document.body.append(root);
+      reader = mountFlipbook(root, book, { preview: true, startPage: at ?? undefined });
+    });
+    window.parent.postMessage({ type: 'soard-book-ready' }, location.origin);
+  </script>
+
+  <style is:global>
+    /* Scrolling over the preview scrolls the admin (the site's body rule would hold it here) */
+    html, body.bt { height: 100%; margin: 0; overflow: hidden; background: var(--c-dark-deep); overscroll-behavior: auto; }
+    body.bt { display: block; min-height: 0; }
+    .bt-wait { position: fixed; inset: 0; display: grid; place-items: center; margin: 0; color: rgba(255, 255, 255, 0.6); font: 500 15px var(--font-body); }
+    .bt-wait[hidden] { display: none; }
+    .bt > .fb { height: 100%; }
+    .bt > .fb .fb-stage { flex: 1; height: auto; min-height: 0; max-height: none; }
+  </style>
+</body>
+</html>

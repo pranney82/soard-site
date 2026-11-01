@@ -17,7 +17,8 @@
 const CACHE_CONTROL = 'public, max-age=31536000, immutable';
 
 // Only allow these R2 prefixes to be served publicly
-const ALLOWED_PREFIXES = ['financials/'];
+// financials/: Site Config → Financials; books/: the anniversary book (functions/api/book-admin.js)
+const ALLOWED_PREFIXES = ['financials/', 'books/'];
 
 // Raster pictures keep their type when downloaded; anything else is plain bytes
 const PICTURE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif', 'image/heic', 'image/heif']);

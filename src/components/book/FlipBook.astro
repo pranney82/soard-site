@@ -1,0 +1,1000 @@
+---
+/**
+ * The flip book reader: a dark reading room with the book in it, the
+ * scrubber and the bar under it, and the panel of chapters, pages and
+ * search. ./flipbook.js brings it to life; without script the cover shows
+ * and the PDF still downloads.
+ *
+ * The page's text is in the markup too (visually hidden): screen readers
+ * read it, search engines index it, and the search box looks through it.
+ * Props: book (src/utils/book.ts), heading (the stage's accessible name).
+ */
+import { pageSrc } from './book-layout.js';
+import { bookSize } from '../../utils/book';
+
+interface Props {
+  book: any;
+  heading?: string;
+}
+const { book, heading } = Astro.props;
+const pages: any[] = book?.pages || [];
+const n = pages.length;
+const cover = pages[0];
+const aspect = cover?.w && cover?.h ? cover.w / cover.h : 0.75;
+const title = book?.titleText || 'The book';
+const chapters = (book?.chapters || []).filter((c: any) => c && c.title && Number.isInteger(c.page) && c.page >= 0 && c.page < n);
+const pdf = book?.pdf?.url ? book.pdf : null;
+const size = pdf ? bookSize(pdf.bytes) : '';
+// What the page's script gets: no text (it reads that from the markup below)
+const client = {
+  title,
+  version: book?.version || '',
+  pages: pages.map((p: any) => ({ id: p.id, ...(p.src ? { src: p.src } : {}), w: p.w, h: p.h, ...(Array.isArray(p.links) && p.links.length ? { links: p.links } : {}) })),
+  chapters: chapters.map((c: any) => ({ title: c.title, page: c.page })),
+  pdf: pdf ? { url: pdf.url, name: pdf.name, bytes: pdf.bytes } : null,
+  textUrl: book?.textUrl || null,
+};
+const paragraphs = (t: string) => String(t || '').split(/\n{2,}/).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
+---
+
+<div class="fb" data-flipbook style={`--fb-aspect:${aspect}`}>
+  <script type="application/json" data-flipbook-data set:html={JSON.stringify(client).replace(/</g, '\\u003c')} />
+  {n > 0 && <a class="fb-skip" href="#fb-text">Skip to the book’s text</a>}
+
+  <div class="fb-top">
+    <p class="fb-top-title">{title}</p>
+    <button type="button" class="fb-btn" data-fb="close" aria-label="Close full screen" data-tip="Close">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+    </button>
+  </div>
+
+  <div class="fb-stage" tabindex="0" role="region" aria-roledescription="book" aria-label={heading || `${title}. Turn the pages with the arrow keys.`}>
+    <div class="fb-book">
+      <div class="fb-page fb-page--left" hidden></div>
+      <div class="fb-page fb-page--right">
+        {cover && (
+          <img
+            src={pageSrc(cover, 800)}
+            srcset={[480, 640, 800, 1000, 1200, 1600].map((w) => `${pageSrc(cover, w)} ${Math.min(w, cover.w || w)}w`).join(', ')}
+            sizes="(max-width: 700px) 92vw, 46vh"
+            alt="Page 1"
+            width={cover.w}
+            height={cover.h}
+            crossorigin="anonymous"
+            fetchpriority="high"
+            decoding="async"
+            class="is-in"
+            draggable="false"
+          />
+        )}
+      </div>
+    </div>
+    <canvas class="fb-curl" aria-hidden="true"></canvas>
+    <div class="fb-over">
+      <div class="fb-gutter" hidden></div>
+      <div class="fb-marks" aria-hidden="true"></div>
+      <div class="fb-links"></div>
+    </div>
+    <div class="fb-resume" role="group" aria-label="Pick up where you left off" hidden>
+      <span>Pick up where you left off?</span>
+      <button type="button" class="fb-resume-go" data-fb="resume"></button>
+      <button type="button" class="fb-resume-x" data-fb="resume-no" aria-label="No thanks">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+      </button>
+    </div>
+    <button type="button" class="fb-arrow fb-arrow--prev" aria-label="Previous page" disabled>
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+    </button>
+    <button type="button" class="fb-arrow fb-arrow--next" aria-label="Next page">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+    </button>
+  </div>
+
+  <div class="fb-controls">
+    <div class="fb-scrub">
+      <div class="fb-track" aria-hidden="true">
+        <span class="fb-range-fill"></span>
+        <span class="fb-ticks"></span>
+      </div>
+      <input class="fb-range" type="range" min="0" max={Math.max(0, Math.ceil(n / 2))} value="0" step="1" aria-label="Page" />
+      <div class="fb-bubble" hidden>
+        <span class="fb-bubble-pages"></span>
+        <span class="fb-bubble-label"></span>
+        <span class="fb-bubble-chapter"></span>
+      </div>
+    </div>
+
+    <div class="fb-bar">
+      <div class="fb-bar-start">
+        <button type="button" class="fb-btn fb-btn--text" data-fb="panel" aria-haspopup="dialog">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4" width="7" height="7" rx="1.5" /><rect x="13.5" y="4" width="7" height="7" rx="1.5" /><rect x="3.5" y="13" width="7" height="7" rx="1.5" /><rect x="13.5" y="13" width="7" height="7" rx="1.5" /></svg>
+          <span data-fb="panel-name">{chapters.length ? 'Contents' : 'Pages'}</span>
+        </button>
+      </div>
+      <div class="fb-bar-mid">
+        <button type="button" class="fb-btn" data-fb="prev" aria-label="Previous page" data-tip="Previous" disabled>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7" /></svg>
+        </button>
+        <button type="button" class="fb-label" data-fb="label" aria-label={`Page 1 of ${n}. Go to a page`}>
+          <span data-fb="pages">1</span><span class="fb-of"> of <span data-fb="of">{n}</span></span>
+        </button>
+        <form class="fb-goto" data-fb="goto" novalidate hidden>
+          <input class="fb-goto-input" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" aria-label={`Go to page (1 to ${n})`} maxlength="4" />
+          <span class="fb-of">of {n}</span>
+        </form>
+        <button type="button" class="fb-btn" data-fb="next" aria-label="Next page" data-tip="Next">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5l7 7-7 7" /></svg>
+        </button>
+      </div>
+      <div class="fb-bar-end">
+        <span class="fb-zoom fb-t3">
+          <button type="button" class="fb-btn" data-fb="zoom-out" aria-label="Zoom out" data-tip="Zoom out" disabled>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M8 11h6M16 16l4.5 4.5" /></svg>
+          </button>
+          <button type="button" class="fb-btn" data-fb="zoom-in" aria-label="Zoom in" data-tip="Zoom in">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M8 11h6M11 8v6M16 16l4.5 4.5" /></svg>
+          </button>
+        </span>
+        <button type="button" class="fb-btn fb-t3" data-fb="play" aria-label="Play: turn the pages by themselves" aria-pressed="false" data-tip="Play">
+          <svg class="fb-ico-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" /></svg>
+          <svg class="fb-ico-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M8.5 5.5v13M15.5 5.5v13" /></svg>
+        </button>
+        <span class="fb-menu-wrap fb-t1">
+          <button type="button" class="fb-btn" data-fb="share" aria-label="Share this page" aria-haspopup="menu" aria-expanded="false" data-tip="Share this page">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8M6 12H5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 5 21h14a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 19 12h-1" /></svg>
+          </button>
+          <span class="fb-menu" role="menu" aria-label="Share this page" hidden>
+            <button type="button" role="menuitem" data-share="copy"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" /><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" /></svg>Copy the link</button>
+            <button type="button" role="menuitem" data-share="email"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="m4 7 8 6 8-6" /></svg>Email</button>
+            <button type="button" role="menuitem" data-share="facebook"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 8.5h2.5V5H14a3.5 3.5 0 0 0-3.5 3.5V11H8v3.5h2.5V21H14v-6.5h2.5L17 11h-3V8.5Z" /></svg>Facebook</button>
+            <button type="button" role="menuitem" data-share="x"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.5 4h4l11 16h-4z" /><path d="M19.5 4l-6.6 7.5M4.5 20l6.6-7.5" /></svg>X</button>
+            <button type="button" role="menuitem" data-share="linkedin"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="3" /><path d="M8 10.5V16M8 7.5v.01M11.5 16v-5.5M11.5 13a2.5 2.5 0 0 1 5 0v3" /></svg>LinkedIn</button>
+          </span>
+        </span>
+        <span class="fb-menu-wrap fb-t3">
+          <button type="button" class="fb-btn" data-fb="print" aria-label="Print" aria-haspopup="menu" aria-expanded="false" data-tip="Print">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3.5h10V9M7 17.5H5a1.5 1.5 0 0 1-1.5-1.5v-5.5A1.5 1.5 0 0 1 5 9h14a1.5 1.5 0 0 1 1.5 1.5V16a1.5 1.5 0 0 1-1.5 1.5h-2" /><path d="M7 14h10v6.5H7z" /></svg>
+          </button>
+          <span class="fb-menu" role="menu" aria-label="Print" hidden>
+            <button type="button" role="menuitem" data-print="pages">These pages</button>
+            <a role="menuitem" data-print="book" href={pdf?.url} target="_blank" rel="noopener" hidden={!pdf}>The whole book (PDF)</a>
+          </span>
+        </span>
+        <button type="button" class="fb-btn fb-t3" data-fb="sound" aria-label="Page-turn sound" aria-pressed="false" data-tip="Sound on">
+          <svg class="fb-ico-mute" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path d="m16 9.5 5 5M21 9.5l-5 5" /></svg>
+          <svg class="fb-ico-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11" /></svg>
+        </button>
+        <a class="fb-btn fb-t2" data-fb="download" href={pdf?.url} download={pdf?.name} hidden={!pdf} aria-label={`Download the PDF${size ? ` (${size})` : ''}`} data-tip={`Download PDF${size ? ` · ${size}` : ''}`}>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5V15M7.5 10.5 12 15l4.5-4.5M4 19.5h16" /></svg>
+        </a>
+        <span class="fb-menu-wrap fb-more">
+          <button type="button" class="fb-btn" data-fb="more" aria-label="More" aria-haspopup="menu" aria-expanded="false" data-tip="More">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5.5 12h.01M12 12h.01M18.5 12h.01" stroke-width="3" /></svg>
+          </button>
+          <span class="fb-menu" role="menu" aria-label="More" hidden>
+            <button type="button" role="menuitem" class="fb-t1" data-more="share"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8M6 12H5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 5 21h14a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 19 12h-1" /></svg>Share this page</button>
+            <button type="button" role="menuitem" class="fb-t3" data-more="play"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z" /></svg>Play</button>
+            <button type="button" role="menuitem" class="fb-t3" data-print="pages"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 9V3.5h10V9M7 17.5H5a1.5 1.5 0 0 1-1.5-1.5v-5.5A1.5 1.5 0 0 1 5 9h14a1.5 1.5 0 0 1 1.5 1.5V16a1.5 1.5 0 0 1-1.5 1.5h-2" /><path d="M7 14h10v6.5H7z" /></svg>Print these pages</button>
+            <button type="button" role="menuitemcheckbox" class="fb-t3" data-more="sound" aria-checked="false"><svg class="fb-ico-mute" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path d="m16 9.5 5 5M21 9.5l-5 5" /></svg><svg class="fb-ico-sound" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" /><path d="M15.5 9a4.5 4.5 0 0 1 0 6M18 6.5a8 8 0 0 1 0 11" /></svg>Page-turn sound</button>
+            <a role="menuitem" class="fb-t2" href={pdf?.url} download={pdf?.name} hidden={!pdf}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5V15M7.5 10.5 12 15l4.5-4.5M4 19.5h16" /></svg>Download the PDF{size && <span class="fb-menu-note">{size}</span>}</a>
+            <button type="button" role="menuitem" class="fb-t2" data-more="full"><svg class="fb-ico-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg><svg class="fb-ico-shut" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></svg><span>Full screen</span></button>
+          </span>
+        </span>
+        <button type="button" class="fb-btn fb-t2" data-fb="full" aria-label="Full screen" data-tip="Full screen">
+          <svg class="fb-ico-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" /></svg>
+          <svg class="fb-ico-shut" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5" /></svg>
+        </button>
+      </div>
+    </div>
+    <p class="fb-toast" role="status" hidden></p>
+  </div>
+
+  <dialog class="fb-panel" aria-label={chapters.length ? 'Contents' : 'All pages'}>
+    <div class="fb-panel-head">
+      <label class="fb-search-wrap">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" /><path d="M16 16l4.5 4.5" /></svg>
+        <input class="fb-search" type="search" placeholder="Search the book" aria-label="Search the book" enterkeyhint="search" autocomplete="off" spellcheck="false" />
+      </label>
+      <button type="button" class="fb-btn fb-panel-close" data-fb="panel-close" aria-label="Close">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>
+      </button>
+    </div>
+    <div class="fb-tabs" role="tablist" aria-label="Show">
+      <button type="button" role="tab" id="fb-tab-chapters" aria-controls="fb-panel-body" data-tab="chapters" aria-selected="false" hidden={!chapters.length}>Chapters</button>
+      <button type="button" role="tab" id="fb-tab-pages" aria-controls="fb-panel-body" data-tab="pages" aria-selected="false">All pages</button>
+      <button type="button" role="tab" id="fb-tab-text" aria-controls="fb-panel-body" data-tab="text" aria-selected="false">Text</button>
+    </div>
+    <div class="fb-panel-body" id="fb-panel-body" role="tabpanel"></div>
+    <div class="fb-panel-foot">
+      <button type="button" class="fb-foot-link" data-fb="share-foot">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3.5M7.5 8 12 3.5 16.5 8M6 12H5a1.5 1.5 0 0 0-1.5 1.5v6A1.5 1.5 0 0 0 5 21h14a1.5 1.5 0 0 0 1.5-1.5v-6A1.5 1.5 0 0 0 19 12h-1" /></svg>
+        Share this page
+      </button>
+      <a class="fb-foot-link" data-fb="download" href={pdf?.url} download={pdf?.name} hidden={!pdf}>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5V15M7.5 10.5 12 15l4.5-4.5M4 19.5h16" /></svg>
+        Download the PDF<span class="fb-foot-size">{size}</span>
+      </a>
+    </div>
+  </dialog>
+
+  <p class="fb-live sr-only" aria-live="polite"></p>
+
+  <section class="fb-text sr-only" id="fb-text" tabindex="-1" aria-label={`${title}, as text`}>
+    {pages.map((p: any, i: number) => (
+      <article data-fb-text={i} aria-label={`Page ${i + 1}`}>
+        {paragraphs(p.text).map((para) => <p>{para}</p>)}
+      </article>
+    ))}
+  </section>
+</div>
+
+<script>
+  import { mountFlipbook } from './flipbook.js';
+
+  /* One reader per visit: made on astro:page-load, taken down before the
+     next page swaps in (the site navigates without full reloads) */
+  let readers: { destroy(): void }[] = [];
+  document.addEventListener('astro:page-load', () => {
+    for (const root of document.querySelectorAll<HTMLElement>('[data-flipbook]:not([data-preview])')) {
+      if (root.dataset.mounted) continue;
+      root.dataset.mounted = '1';
+      let book = null;
+      try { book = JSON.parse(root.querySelector('[data-flipbook-data]')?.textContent || 'null'); } catch { book = null; }
+      if (book) readers.push(mountFlipbook(root, book));
+    }
+  });
+  document.addEventListener('astro:before-swap', () => {
+    for (const r of readers) r.destroy();
+    readers = [];
+  });
+</script>
+
+<style is:global>
+  /* ══════ The reading room ══════ */
+  .fb {
+    --fb-bg: var(--c-dark-deep);
+    --fb-ink: rgba(255, 255, 255, 0.86);
+    --fb-ink-soft: rgba(255, 255, 255, 0.58);
+    --fb-line: rgba(255, 255, 255, 0.12);
+    --fb-hover: rgba(255, 255, 255, 0.08);
+    --fb-paper: #FFFEFB;
+    position: relative;
+    background: var(--fb-bg);
+    color: var(--fb-ink);
+    display: flex;
+    flex-direction: column;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+  /* The site's two-tone ring is drawn for light pages; in here each control draws its own */
+  .fb :focus-visible { box-shadow: none; }
+  .fb svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; }
+
+  .fb-stage {
+    position: relative;
+    height: clamp(240px, calc(100svh - 210px), 980px);
+    overflow: hidden;
+    touch-action: pan-y;
+    overscroll-behavior-x: contain;
+    outline: none;
+    contain: layout paint;
+  }
+  .fb-stage:focus-visible, .fb-range:focus-visible, .fb-range:focus { outline: none; box-shadow: none; }
+  .fb-stage:focus-visible:not([data-pointer]) { box-shadow: inset 0 0 0 2px var(--c-yellow); }
+
+  .fb-book, .fb-over {
+    position: absolute;
+    inset: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  .fb-book.is-animating, .fb-over.is-animating { transition: transform 320ms cubic-bezier(0.2, 0.7, 0.3, 1); }
+  .fb-book { z-index: 1; }
+  .fb-curl { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+  .fb-over { z-index: 3; pointer-events: none; }
+
+  /* Before the script measures: the cover, centred, as tall as there's room for */
+  .fb-page {
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: var(--fb-paper);
+    overflow: hidden;
+    cursor: pointer;
+    box-shadow: 0 26px 48px -20px rgba(0, 0, 0, 0.65), 0 3px 10px rgba(0, 0, 0, 0.28);
+  }
+  .fb-page[hidden] { display: none; }
+  .fb:not(.is-ready) .fb-page--right {
+    top: 30px;
+    left: 50%;
+    height: calc(100% - 60px);
+    aspect-ratio: var(--fb-aspect);
+    max-width: calc(100% - 24px);
+    transform: translateX(-50%);
+  }
+  .fb-page img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: fill;
+    opacity: 0;
+    transition: opacity 220ms ease;
+    pointer-events: none;
+    -webkit-user-drag: none;
+  }
+  .fb-page img.is-in { opacity: 1; }
+  .fb-book.is-fading .fb-page img { animation: fbFade 200ms ease both; }
+  @keyframes fbFade { from { opacity: 0.35; } to { opacity: 1; } }
+
+  /* The spine: the paper dips into the gutter */
+  .fb-gutter {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 0;
+    box-shadow: 0 0 18px 6px rgba(0, 0, 0, 0.12), 0 0 4px 1px rgba(0, 0, 0, 0.1);
+    pointer-events: none;
+    transition: opacity 200ms ease;
+  }
+  .fb-gutter[hidden] { display: block; opacity: 0; }
+
+  .fb-links, .fb-marks { position: absolute; inset: 0; }
+  .fb-link {
+    position: absolute;
+    pointer-events: auto;
+    border-radius: 3px;
+    cursor: pointer;
+  }
+  @media (hover: hover) { .fb-link:hover { background: rgba(255, 218, 36, 0.18); box-shadow: 0 0 0 1px rgba(255, 218, 36, 0.6); } }
+  .fb-link:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 2px; }
+  .fb-mark {
+    position: absolute;
+    background: rgba(255, 218, 36, 0.5);
+    mix-blend-mode: multiply;
+    border-radius: 2px;
+    animation: fbMark 900ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+  @keyframes fbMark { 0% { opacity: 0; transform: scale(1.3); } 40% { opacity: 1; transform: scale(1); } }
+
+  .fb-stage.is-corner .fb-page, .fb.is-turning .fb-page { cursor: grab; }
+  .fb.is-turning .fb-stage:active .fb-page { cursor: grabbing; }
+  .fb.is-zoomed .fb-stage { touch-action: none; }
+  .fb.is-zoomed .fb-page { cursor: grab; }
+  .fb.is-zoomed.is-panning .fb-page { cursor: grabbing; }
+  .fb.is-zoomed .fb-gutter { opacity: 0.6; }
+
+  /* Arrows beside the book */
+  .fb-arrow {
+    position: absolute;
+    top: 50%;
+    z-index: 4;
+    width: 52px;
+    height: 52px;
+    margin-top: -26px;
+    display: grid;
+    place-items: center;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--fb-ink);
+    cursor: pointer;
+    transition: background-color 160ms ease, opacity 200ms ease, transform 160ms ease;
+  }
+  .fb-arrow svg { width: 24px; height: 24px; }
+  .fb-arrow--prev { left: 20px; }
+  .fb-arrow--next { right: 20px; }
+  @media (hover: hover) { .fb-arrow:hover:not(:disabled) { background: rgba(255, 255, 255, 0.14); } }
+  .fb-arrow:active:not(:disabled) { transform: scale(0.94); }
+  .fb-arrow:disabled { opacity: 0; pointer-events: none; }
+  .fb-arrow:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
+  .fb.is-zoomed .fb-arrow { opacity: 0.35; }
+
+  /* Hidden until a keyboard reaches it, then a pill at the reader's top left */
+  .fb-skip:not(:focus) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .fb-skip:focus {
+    position: absolute;
+    left: 16px;
+    top: 16px;
+    z-index: 7;
+    padding: 8px 14px;
+    border-radius: 999px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none;
+    outline: 2px solid var(--c-dark-deep);
+    outline-offset: 2px;
+  }
+
+  /* ══════ Scrubber ══════ */
+  .fb-controls { position: relative; padding: 0 clamp(16px, 4vw, 40px) 14px; }
+  .fb-scrub { position: relative; z-index: 5; height: 24px; max-width: 1100px; margin: 2px auto 0; }
+  .fb-track {
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: 50%;
+    height: 3px;
+    margin-top: -1.5px;
+    border-radius: 3px;
+    background: var(--fb-line);
+    overflow: visible;
+  }
+  .fb-range-fill {
+    position: absolute;
+    inset: 0;
+    border-radius: 3px;
+    background: var(--c-yellow);
+    transform: scaleX(0);
+    transform-origin: 0 50%;
+    transition: transform 400ms cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  .fb-ticks { position: absolute; inset: 0; }
+  .fb-tick {
+    position: absolute;
+    top: -3px;
+    width: 2px;
+    height: 9px;
+    margin-left: -1px;
+    border-radius: 1px;
+    background: rgba(255, 255, 255, 0.4);
+  }
+  /* A 44px finger target centred on the line (the site's own minimum for inputs), the handle in its middle */
+  .fb-range {
+    position: absolute;
+    left: 0;
+    top: 50%;
+    width: 100%;
+    height: 44px;
+    min-height: 44px;
+    margin: -22px 0 0;
+    padding: 0;
+    background: transparent;
+    -webkit-appearance: none;
+    appearance: none;
+    cursor: pointer;
+    touch-action: none;
+  }
+  .fb-range::-webkit-slider-runnable-track { height: 44px; background: transparent; border: 0; }
+  .fb-range::-moz-range-track { height: 44px; background: transparent; border: 0; }
+  .fb-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    margin-top: 14px;
+    border-radius: 50%;
+    background: var(--c-yellow);
+    border: 3px solid var(--fb-bg);
+    box-shadow: 0 0 0 1px rgba(255, 218, 36, 0.6);
+    transition: transform 150ms ease;
+  }
+  .fb-range::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--c-yellow);
+    border: 3px solid var(--fb-bg);
+    box-shadow: 0 0 0 1px rgba(255, 218, 36, 0.6);
+  }
+  .fb-range:hover::-webkit-slider-thumb, .fb-range:active::-webkit-slider-thumb { transform: scale(1.25); }
+  .fb-range:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--c-yellow); }
+  .fb-range:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--c-yellow); }
+
+  .fb-bubble {
+    position: absolute;
+    left: 0;
+    bottom: 30px;
+    z-index: 6;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 8px 7px;
+    border-radius: 12px;
+    background: #2B2D35;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    pointer-events: none;
+    white-space: nowrap;
+    animation: fbPop 140ms ease-out both;
+  }
+  .fb-bubble[hidden] { display: none; }
+  .fb-bubble-pages { display: flex; gap: 0; }
+  .fb-bubble-pages img { display: block; height: 96px; width: auto; background: var(--fb-paper); }
+  .fb-bubble-label { font-size: 12px; font-weight: 600; color: #fff; font-variant-numeric: tabular-nums; }
+  .fb-bubble-chapter { font-size: 11px; color: var(--fb-ink-soft); max-width: 200px; overflow: hidden; text-overflow: ellipsis; margin-top: -4px; }
+  @keyframes fbPop { from { opacity: 0; transform: translateY(4px); } }
+
+  /* ══════ The bar ══════ */
+  .fb-bar {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 12px;
+    max-width: 1100px;
+    margin: 4px auto 0;
+  }
+  .fb-bar-start { justify-self: start; }
+  .fb-bar-mid { display: flex; align-items: center; gap: 4px; }
+  .fb-bar-end { justify-self: end; display: flex; align-items: center; gap: 2px; }
+  .fb-zoom { display: flex; gap: 2px; margin-right: 6px; padding-right: 8px; border-right: 1px solid var(--fb-line); }
+
+  .fb-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-width: 44px;
+    height: 44px;
+    padding: 0 10px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: var(--fb-ink);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    transition: background-color 150ms ease, color 150ms ease, opacity 150ms ease;
+  }
+  .fb-btn--text { padding: 0 14px 0 12px; }
+  @media (hover: hover) { .fb-btn:hover:not(:disabled) { background: var(--fb-hover); color: #fff; } }
+  .fb-btn:active:not(:disabled) { background: rgba(255, 255, 255, 0.12); }
+  .fb-btn:disabled { opacity: 0.3; cursor: default; }
+  .fb-btn[hidden], .fb-panel-foot[hidden] { display: none; }
+  .fb-btn:focus-visible, .fb-label:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 1px; }
+  .fb-ico-shut, .fb-ico-pause, .fb-ico-sound { display: none; }
+  .fb.is-playing .fb-ico-play, .fb.is-sound .fb-ico-mute { display: none; }
+  .fb.is-playing .fb-ico-pause, .fb.is-sound .fb-ico-sound { display: block; }
+  .fb.is-playing [data-fb='play'] { color: var(--c-yellow); }
+
+  /* The page number you can type into */
+  .fb-goto { display: flex; align-items: center; justify-content: center; gap: 6px; height: 44px; font-size: 15px; font-variant-numeric: tabular-nums; overflow: hidden; }
+  .fb-goto[hidden] { display: none; }
+  .fb-goto-input {
+    width: 2.6em;
+    min-width: 0;
+    height: 34px;
+    border: 0;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font: inherit;
+    font-weight: 600;
+    text-align: center;
+    box-shadow: inset 0 0 0 2px var(--c-yellow);
+    outline: none;
+  }
+  .fb-goto .fb-goto-input:focus, .fb-goto .fb-goto-input:focus-visible { box-shadow: inset 0 0 0 2px var(--c-yellow); outline: none; }
+
+  /* Menus that open up from the bar */
+  .fb-menu-wrap { position: relative; display: inline-flex; }
+  .fb-menu {
+    position: absolute;
+    right: 0;
+    bottom: calc(100% + 10px);
+    z-index: 9;
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+    padding: 6px;
+    border-radius: 14px;
+    background: #2B2D35;
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+    animation: fbPop 140ms ease-out both;
+  }
+  .fb-menu[hidden] { display: none; }
+  .fb-menu [role^='menuitem'] {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 42px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 9px;
+    background: transparent;
+    color: #fff;
+    font: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    text-align: left;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .fb-menu [role^='menuitem'][hidden] { display: none; }
+  .fb-menu [role^='menuitem'] svg { width: 18px; height: 18px; color: var(--fb-ink-soft); }
+  .fb-menu [role='menuitemcheckbox'][aria-checked='true'] svg { color: var(--c-yellow); }
+  .fb-menu [role^='menuitem']:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: -2px; }
+  @media (hover: hover) { .fb-menu [role^='menuitem']:hover { background: rgba(255, 255, 255, 0.08); } }
+  .fb-menu-note { margin-left: auto; padding-left: 16px; font-weight: 500; font-size: 13px; color: var(--fb-ink-soft); }
+
+  /* What the bar can't fit goes in More: Play, Print, Sound and zoom first (pinch, ⌘ scroll and the + − keys still zoom),
+     then on phones Download and Full screen (a phone's page is as wide as it gets), then Share on the narrowest */
+  .fb-more, .fb-menu .fb-t1, .fb-menu .fb-t2, .fb-menu .fb-t3 { display: none; }
+  @media (max-width: 1080px) {
+    .fb-bar-end > .fb-t3 { display: none; }
+    .fb-more { display: inline-flex; }
+    .fb-menu .fb-t3 { display: flex; }
+  }
+  @media (max-width: 760px) {
+    .fb-bar-end > .fb-t2 { display: none; }
+    .fb-menu .fb-t2 { display: flex; }
+  }
+  @media (max-width: 359px) {
+    .fb-bar-end > .fb-t1 { display: none; }
+    .fb-menu .fb-t1 { display: flex; }
+  }
+
+  /* Pick up where you left off */
+  .fb-resume {
+    position: absolute;
+    left: 50%;
+    bottom: 14px;
+    z-index: 6;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 6px 6px 16px;
+    border-radius: 999px;
+    background: #F4F3EE;
+    color: var(--c-dark-deep);
+    font-size: 14px;
+    font-weight: 500;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+    transform: translateX(-50%);
+    animation: fbToast 260ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    white-space: nowrap;
+  }
+  .fb-resume[hidden] { display: none; }
+  .fb-resume-go {
+    height: 34px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .fb-resume-x { display: grid; place-items: center; width: 34px; height: 34px; border: 0; border-radius: 50%; background: transparent; color: var(--c-dark); cursor: pointer; }
+  .fb-resume-x svg { width: 16px; height: 16px; }
+  .fb-resume button:focus-visible { outline: 2px solid var(--c-dark-deep); outline-offset: 2px; }
+
+  /* The text of the pages showing, to read as text */
+  .fb-read { padding: 6px 12px 20px; color: var(--fb-ink); font-size: 17px; line-height: 1.7; -webkit-user-select: text; user-select: text; }
+  .fb-read h3 { margin: 18px 0 8px; font: 700 12px var(--font-body); letter-spacing: 0.12em; text-transform: uppercase; color: var(--fb-ink-soft); }
+  .fb-read h3:first-child { margin-top: 4px; }
+  .fb-read p { margin: 0 0 14px; }
+  .fb-read .fb-read-none { color: var(--fb-ink-soft); font-style: italic; }
+
+  /* Printing these pages: only them, a page each */
+  .fb-print { display: none; }
+  @media print {
+    html.fb-printing body > *:not(.fb-print) { display: none !important; }
+    html.fb-printing .fb-print { display: block; }
+    .fb-print img { display: block; width: 100%; height: auto; page-break-after: always; break-after: page; }
+    .fb-print img:last-child { page-break-after: auto; break-after: auto; }
+  }
+  .fb.is-full .fb-ico-open { display: none; }
+  .fb.is-full .fb-ico-shut { display: block; }
+
+  /* Tooltips: a word for each icon, for the mouse */
+  @media (hover: hover) {
+    .fb-btn[data-tip]::after {
+      content: attr(data-tip);
+      position: absolute;
+      bottom: calc(100% + 8px);
+      left: 50%;
+      padding: 5px 9px;
+      border-radius: 7px;
+      background: #F4F3EE;
+      color: var(--c-dark-deep);
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transform: translate(-50%, 4px);
+      transition: opacity 120ms ease, transform 120ms ease;
+      z-index: 10;
+    }
+    .fb-btn[data-tip]:hover:not(:disabled)::after { opacity: 1; transform: translate(-50%, 0); transition-delay: 350ms; }
+    /* The last button's word stays inside the bar; a button's word gives way to its open menu */
+    .fb-bar-end > .fb-btn:last-child::after, .fb-more > .fb-btn::after { left: auto; right: 0; transform: translate(0, 4px); }
+    .fb-bar-end > .fb-btn:last-child:hover::after, .fb-more > .fb-btn:hover::after { transform: translate(0, 0); }
+    .fb-btn[aria-expanded='true']::after { display: none; }
+  }
+
+  .fb-label {
+    min-width: 108px;
+    height: 44px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: #fff;
+    font: inherit;
+    font-size: 15px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    cursor: pointer;
+    transition: background-color 150ms ease;
+  }
+  @media (hover: hover) { .fb-label:hover { background: var(--fb-hover); } }
+  .fb-of { color: var(--fb-ink-soft); font-weight: 500; }
+
+  .fb-toast {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 12px);
+    z-index: 8;
+    max-width: calc(100% - 32px);
+    padding: 10px 16px;
+    border-radius: 999px;
+    background: #F4F3EE;
+    color: var(--c-dark-deep);
+    font-size: 14px;
+    font-weight: 600;
+    transform: translateX(-50%);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+    animation: fbToast 220ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fb-toast[hidden] { display: none; }
+  .fb-toast.is-out { opacity: 0; transition: opacity 200ms ease; }
+  @keyframes fbToast { from { opacity: 0; transform: translate(-50%, 8px); } }
+
+  /* ══════ Full screen ══════ */
+  .fb-top { display: none; }
+  .fb.is-full {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    --fb-bg: #16171C;
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    animation: fbIn 240ms cubic-bezier(0.2, 0.7, 0.3, 1) both;
+  }
+  .fb.is-full .fb-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 8px 12px 0 clamp(16px, 4vw, 40px);
+  }
+  .fb-top-title {
+    margin: 0;
+    font-family: var(--font-display);
+    font-size: 15px;
+    color: var(--fb-ink-soft);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .fb.is-full .fb-stage { flex: 1; height: auto; min-height: 0; touch-action: none; }
+  html.fb-locked, html.fb-locked body { overflow: hidden; }
+  @keyframes fbIn { from { opacity: 0; } }
+
+  /* ══════ The panel: chapters, every page, search ══════ */
+  .fb-panel {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: min(440px, 100vw);
+    max-width: 100vw;
+    height: 100%;
+    max-height: 100%;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: #202128;
+    color: var(--fb-ink);
+    display: none;
+    flex-direction: column;
+    box-shadow: 24px 0 60px rgba(0, 0, 0, 0.4);
+    font-family: var(--font-body);
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .fb-panel[open] { display: flex; animation: fbSlide 260ms cubic-bezier(0.2, 0.7, 0.3, 1) both; }
+  .fb-panel.is-out { animation: fbSlideOut 180ms ease-in both; }
+  .fb-panel::backdrop { background: rgba(12, 12, 16, 0.55); animation: fbIn 200ms ease both; }
+  .fb-panel.is-out::backdrop { opacity: 0; transition: opacity 180ms ease; }
+  @keyframes fbSlide { from { transform: translateX(-24px); opacity: 0; } }
+  @keyframes fbSlideOut { to { transform: translateX(-24px); opacity: 0; } }
+
+  .fb-panel-head { display: flex; align-items: center; gap: 8px; padding: 16px 12px 10px 16px; }
+  .fb-search-wrap {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    height: 46px;
+    padding: 0 14px;
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.07);
+    color: var(--fb-ink-soft);
+    cursor: text;
+    transition: background-color 150ms ease, box-shadow 150ms ease;
+  }
+  .fb-search-wrap:focus-within { background: rgba(255, 255, 255, 0.1); box-shadow: 0 0 0 2px var(--c-yellow); }
+  .fb-search {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    border: 0;
+    background: transparent;
+    color: #fff;
+    font: inherit;
+    font-size: 16px;
+    outline: none;
+  }
+  .fb .fb-search:focus, .fb .fb-search:focus-visible { outline: none; box-shadow: none; }
+  .fb-search::placeholder { color: var(--fb-ink-soft); }
+  .fb-search::-webkit-search-cancel-button { filter: invert(1); opacity: 0.6; }
+
+  .fb-tabs { display: flex; gap: 4px; padding: 0 16px 10px; border-bottom: 1px solid var(--fb-line); }
+  .fb-tabs [role='tab'] {
+    height: 36px;
+    padding: 0 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--fb-ink-soft);
+    font: inherit;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .fb-tabs [role='tab'][hidden] { display: none; }
+  @media (hover: hover) { .fb-tabs [role='tab']:hover { color: #fff; } }
+  .fb-tabs [role='tab'][aria-selected='true'] { background: rgba(255, 255, 255, 0.1); color: #fff; }
+  .fb-tabs [role='tab']:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 1px; }
+
+  .fb-panel-body { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 12px 10px 24px; scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.2) transparent; }
+  .fb-panel-body img { display: block; background: var(--fb-paper); border-radius: 2px; }
+
+  .fb-chapters, .fb-results { list-style: none; margin: 0; padding: 0; }
+  .fb-chapter, .fb-result {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    padding: 8px;
+    border: 0;
+    border-radius: 12px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background-color 140ms ease;
+  }
+  @media (hover: hover) { .fb-chapter:hover, .fb-result:hover { background: var(--fb-hover); } }
+  .fb-chapter:focus-visible, .fb-result:focus-visible, .fb-cell:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: -2px; }
+  .fb-chapter img { width: 48px; flex-shrink: 0; box-shadow: 0 2px 8px rgba(0,0,0,0.35); }
+  .fb-chapter-text, .fb-result-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .fb-chapter-title { font-family: var(--font-display); font-size: 16px; line-height: 1.3; color: #fff; }
+  .fb-chapter-page, .fb-result-page { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; color: var(--fb-ink-soft); font-variant-numeric: tabular-nums; }
+  .fb-chapter.is-current { background: rgba(255, 218, 36, 0.1); }
+  .fb-chapter.is-current .fb-chapter-page { color: var(--c-yellow); }
+
+  .fb-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 12px; padding: 4px 6px; }
+  .fb-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 6px 6px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--fb-ink-soft);
+    font: inherit;
+    cursor: pointer;
+    transition: background-color 140ms ease;
+  }
+  @media (hover: hover) { .fb-cell:hover { background: var(--fb-hover); color: #fff; } }
+  .fb-cell-pages { display: flex; justify-content: center; width: 100%; box-shadow: 0 3px 10px rgba(0,0,0,0.35); }
+  .fb-cell-pages img { width: 50%; height: auto; border-radius: 0; }
+  .fb-cell.is-single .fb-cell-pages { width: 50%; }
+  .fb-cell.is-single .fb-cell-pages img { width: 100%; }
+  .fb-cell-label { font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .fb-cell.is-current { color: var(--c-yellow); }
+  .fb-cell.is-current .fb-cell-pages { box-shadow: 0 0 0 2px var(--c-yellow), 0 3px 10px rgba(0,0,0,0.35); }
+  .fb:not(.is-two) .fb-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+  .fb-results-head { margin: 4px 8px 10px; font-size: 13px; color: var(--fb-ink-soft); }
+  .fb-result { align-items: flex-start; }
+  .fb-result img { width: 40px; flex-shrink: 0; margin-top: 2px; }
+  .fb-result-snippet { font-size: 14px; line-height: 1.5; color: var(--fb-ink); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .fb-result-snippet mark { background: rgba(255, 218, 36, 0.32); color: #fff; border-radius: 2px; padding: 0 1px; }
+
+  .fb-panel-foot { display: grid; gap: 2px; padding: 10px 16px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--fb-line); }
+  .fb-foot-link {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    height: 44px;
+    padding: 0 6px;
+    border: 0;
+    border-radius: 10px;
+    background: transparent;
+    font: inherit;
+    cursor: pointer;
+    color: #fff;
+    font-weight: 600;
+    font-size: 15px;
+    text-decoration: none;
+  }
+  @media (hover: hover) { .fb-foot-link:hover { background: var(--fb-hover); } }
+  .fb-foot-link:focus-visible { outline: 2px solid var(--c-yellow); }
+  .fb-foot-link[hidden] { display: none; }
+  .fb-foot-size { margin-left: auto; font-weight: 500; font-size: 13px; color: var(--fb-ink-soft); }
+
+  /* ══════ Phones and small tablets ══════ */
+  @media (max-width: 760px) {
+    .fb-btn--text span { display: none; }
+    .fb-btn--text { padding: 0 10px; }
+    .fb-label { min-width: 84px; font-size: 14px; }
+  }
+  @media (max-width: 700px) {
+    .fb-arrow { display: none; }
+    /* As wide as the phone, and never so tall that the controls drop under the screen (the site's header is above) */
+    .fb-stage {
+      --fb-room: calc(100svh - var(--header-height, 0px) - 114px);
+      height: calc((100vw - 24px) / var(--fb-aspect) + 24px);
+      max-height: var(--fb-room);
+      min-height: min(320px, var(--fb-room));
+    }
+    .fb.is-full .fb-stage { max-height: none; }
+    .fb-controls { padding: 0 8px 8px; }
+    .fb-bar { gap: 4px; }
+    .fb-panel {
+      inset: auto 0 0 0;
+      width: 100vw;
+      height: min(88svh, 720px);
+      border-radius: 20px 20px 0 0;
+      box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.45);
+    }
+    .fb-panel[open] { animation-name: fbSlideUp; }
+    .fb-panel.is-out { animation-name: fbSlideDown; }
+    .fb-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+  /* The smallest phones: the page number stays centered with Share and Full screen beside it */
+  @media (max-width: 383px) {
+    .fb-bar { gap: 0; }
+    .fb-label { min-width: 68px; padding: 0 6px; }
+    .fb-goto .fb-of { display: none; }
+  }
+  @keyframes fbSlideUp { from { transform: translateY(32px); opacity: 0; } }
+  @keyframes fbSlideDown { to { transform: translateY(32px); opacity: 0; } }
+  /* Wherever the bar leaves out Download, the panel's foot has it */
+  @media (min-width: 761px) { .fb-panel-foot { display: none; } }
+
+  /* A phone on its side, a short window: the book shrinks so its controls stay on screen (full screen gives it all).
+     A page that lets its header scroll away on short screens says how much room is left with --fb-short-chrome */
+  @media (max-height: 520px) {
+    .fb-stage { height: max(150px, calc(100svh - var(--fb-short-chrome, 196px))); max-height: none; min-height: 0; }
+    .fb-controls { padding-bottom: 6px; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .fb-page img, .fb-range-fill, .fb-gutter, .fb-arrow { transition: none; }
+    .fb-book.is-fading .fb-page img, .fb-mark, .fb-bubble, .fb.is-full, .fb-panel[open], .fb-panel.is-out, .fb-toast { animation: none; }
+  }
+</style>

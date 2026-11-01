@@ -26,6 +26,7 @@
 import { h, htm, render, Component, useState, useEffect, useRef, useMemo, Sortable, DOMPurify } from './vendor.js';
 import * as S from './site-config-shared.js';
 import { floatRef } from './float.js';
+import { BookPage, BOOK_CSS, bookAddressProblem } from './book-editor.js';
 
 const html = htm.bind(h);
 const CF = `/cdn-cgi/imagedelivery/${S.CF_HASH}`;
@@ -221,6 +222,8 @@ const LABELS = {
   name: 'Organization name', shortName: 'Short name', tagline: 'Tagline', ein: 'EIN', phone: 'Phone', email: 'Email', address: 'Address', social: 'Social links', trustBadges: 'Trust badges',
   sunnyAndRanneyRooms: 'Room cards', milestones: 'Timeline', founders: 'How it began', turningPoint: 'The turning point', mascot: 'Gracie', store: 'The store', today: 'Where we are today', finale: 'Closing',
   documents: 'Tax returns, audits and other files', annualReports: 'Annual reports', categories: 'FAQ categories', items: 'Questions',
+  show: 'On the site', slug: 'Address', eyebrow: 'Small line above the title', insetPage: 'Page beside the cover', chapters: 'Chapters',
+  pages: 'The book’s pages', pdf: 'The PDF', version: 'The PDF', textUrl: 'The PDF', uploadedAt: 'The PDF', spreadsCut: 'The PDF',
 };
 function labelOf(path) {
   const p = String(path).replace(/^photoTimestamps\./, '');
@@ -1722,15 +1725,22 @@ const PROBLEMS = {
   org: (d) => { const st = d.settings || {}; return [!String(st.name || '').trim() && 'the organization name', S.einProblem(st.ein) && 'the EIN', S.phoneProblem(st.phone) && 'the phone number', S.emailProblem(st.email) && 'the email', S.zipProblem(st.address?.zip) && 'the ZIP code'].filter(Boolean); },
   social: (d) => (SOCIALS.some(([k]) => S.urlProblem(d.settings?.social?.[k])) ? ['a social link'] : []),
   badges: (d) => (Array.isArray(d.settings?.trustBadges) && d.settings.trustBadges.some(b => !String(b.name || '').trim() || S.urlProblem(b.url)) ? ['a badge’s name or link'] : []),
+  book: (d) => [bookAddressProblem(d.book?.slug) && 'the address', (d.book?.chapters || []).some(ch => !String(ch?.title || '').trim()) && 'the chapter with no title'].filter(Boolean),
 };
 
-const VIEWS = { home: HomePage, kids: KidsPage, how: HowPage, apply: ApplyPage, donate: DonatePage, ways: WaysPage, partners: PartnersPage, community: CommunityPage, resources: ResourcesPage, about: AboutPage, financials: FinancialsPage, faq: FaqPage, advisory: AdvisoryPage, store: StorePage, media: MediaPage, org: OrgPage, social: SocialPage, badges: BadgesPage, newsletter: NewsletterPage };
+// The anniversary book's editor (./book-editor.js) is drawn with this page's own parts
+function BookView({ c }) {
+  return html`<${BookPage} c=${c} ui=${{ Card, TextField, AreaField, InlineRich, Segmented, Icon, Dialog }} />`;
+}
+
+const VIEWS = { book: BookView, home: HomePage, kids: KidsPage, how: HowPage, apply: ApplyPage, donate: DonatePage, ways: WaysPage, partners: PartnersPage, community: CommunityPage, resources: ResourcesPage, about: AboutPage, financials: FinancialsPage, faq: FaqPage, advisory: AdvisoryPage, store: StorePage, media: MediaPage, org: OrgPage, social: SocialPage, badges: BadgesPage, newsletter: NewsletterPage };
 const KEYWORDS = {
   home: 'hero headline button eyebrow paragraph up next now building featured story kid strip showcase mission rooms bathroom bedroom therapy',
   kids: 'summary line title', how: 'project drawings plans reveal video', apply: 'applications open closed photos journey quote testimonial questions faq meet family',
   donate: 'hero story family questions', ways: 'photos legacy break', partners: 'quote testimonial hero', community: 'hero accent', resources: 'guides articles why',
   about: 'our story founders tripp turning point gracie mascot store timeline milestones today closing', financials: '990 tax return audit annual report numbers revenue expenses programs net assets volunteers employees',
   faq: 'questions answers categories donate star', advisory: 'hero', store: 'sunny ranney rooms cards', media: 'press branding bio boilerplate mission photos download',
+  book: 'anniversary 15 fifteen years flip flipbook pdf pages chapters bookmarks download',
   org: 'name ein phone email address street city zip contact', social: 'facebook instagram youtube tiktok', badges: 'charity navigator candid guidestar rating seal footer', newsletter: 'kit signups subscribers',
 };
 
@@ -1832,7 +1842,7 @@ export function SiteConfigArea({ addToast = () => {}, setGlobalDirty = null, onP
 function Rail({ current, changed, onPick }) {
   const [q, setQ] = useState('');
   const words = q.trim().toLowerCase();
-  const match = (p) => !words || `${p.title} ${p.blurb} ${KEYWORDS[p.key] || ''} ${p.url}`.toLowerCase().includes(words);
+  const match = (p) => !words || `${p.title} ${p.blurb} ${KEYWORDS[p.key] || ''} ${p.url || ''}`.toLowerCase().includes(words);
   const group = (g, title) => {
     const list = S.PAGES.filter(p => p.group === g && match(p));
     if (!list.length) return null;
@@ -1843,7 +1853,7 @@ function Rail({ current, changed, onPick }) {
           <li><a href=${`#site/${p.key}`} class=${current === p.key ? 'is-on' : ''} aria-current=${current === p.key ? 'page' : null}
             onClick=${(e) => { e.preventDefault(); onPick(p.key); }}>
             <span class="sc-rail-title">${p.title}${changed.some(x => x.key === p.key) && html`<span class="sc-dirty" title="Unsaved changes" aria-label="Unsaved changes"></span>`}</span>
-            <span class="sc-rail-sub">${p.group === 'pages' && p.url !== '/' ? `${p.url} · ` : ''}${p.blurb}</span>
+            <span class="sc-rail-sub">${p.group === 'pages' && p.url && p.url !== '/' ? `${p.url} · ` : ''}${p.blurb}</span>
           </a></li>`)}
       </ul>`;
   };
@@ -2314,5 +2324,5 @@ function injectStyles() {
   styled = true;
   let s = document.getElementById('sc-style');
   if (!s) { s = document.createElement('style'); s.id = 'sc-style'; document.head.append(s); }
-  s.textContent = CSS;
+  s.textContent = CSS + BOOK_CSS;
 }

@@ -1,0 +1,407 @@
+---
+/**
+ * The anniversary book: a flip book of the PDF, and the PDF to download.
+ * Built only once Admin → Site Config → Anniversary book has pages and is
+ * switched on, at the address set there (src/utils/book.ts).
+ *
+ * The hero is the site's editorial split (apply.astro), with the closed book
+ * where the photo goes: click it, or "Open the book", and the page scrolls
+ * to the reader and the cover turns open.
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import FlipBook from '../components/book/FlipBook.astro';
+import { getBook, bookSize } from '../utils/book';
+import { pageSrc } from '../components/book/book-layout.js';
+
+export function getStaticPaths() {
+  const book = getBook();
+  return book?.live ? [{ params: { book: book.slug } }] : [];
+}
+
+const book = getBook()!;
+const n = book.pages.length;
+const cover = book.pages[0];
+const inset = book.pages[book.insetPage];
+const aspect = cover.w / cover.h;
+const size = book.pdf ? bookSize(book.pdf.bytes) : '';
+const site = Astro.site?.origin || 'https://sunshineonaranneyday.com';
+const url = `${site}/${book.slug}/`;
+const coverUrl = pageSrc(cover, 1200);
+
+const breadcrumbs = [
+  { name: 'Home', url: `${site}/` },
+  { name: book.titleText, url },
+];
+const bookSchema = {
+  '@type': 'Book',
+  '@id': `${url}#book`,
+  name: book.titleText,
+  description: book.description,
+  url,
+  image: coverUrl,
+  numberOfPages: n,
+  bookFormat: 'https://schema.org/EBook',
+  inLanguage: 'en-US',
+  isAccessibleForFree: true,
+  author: { '@id': `${site}/#organization` },
+  publisher: { '@id': `${site}/#organization` },
+  ...(book.pdf ? { encoding: { '@type': 'MediaObject', contentUrl: `${site}${book.pdf.url}`, encodingFormat: 'application/pdf', ...(size ? { contentSize: size } : {}) } } : {}),
+};
+---
+
+<BaseLayout
+  title={book.titleText}
+  description={book.description}
+  breadcrumbs={breadcrumbs}
+  jsonLd={bookSchema}
+>
+  <!-- ══════ HERO: the editorial split, the closed book for its photo ══════ -->
+  <section class="hero">
+    <div class="hero-inner">
+      <div class="hero-text">
+        <p class="hero-eyebrow">{book.eyebrow}</p>
+        <h1 set:html={book.titleHtml} />
+        <p class="hero-lead">{book.description}</p>
+        <div class="hero-ctas">
+          <a href="#read" class="btn btn-primary btn-lg" data-open-book>Open the book &rarr;</a>
+          {book.pdf && (
+            <a href={book.pdf.url} download={book.pdf.name} class="btn btn-outline-dark bk-download">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5V15M7.5 10.5 12 15l4.5-4.5M4 19.5h16" /></svg>
+              Download the PDF{size && <span class="bk-size">{size}</span>}
+            </a>
+          )}
+        </div>
+      </div>
+      <div class="hero-frame">
+        <div class="hero-accent" aria-hidden="true"></div>
+        <div class={`bk-book${aspect > 1.05 ? ' is-wide' : ''}`} style={`--a:${aspect}`}>
+        <a href="#read" class="bk-cover" data-open-book aria-label={`Open ${book.titleText}`}>
+          <img
+            src={pageSrc(cover, 640)}
+            srcset={[400, 640, 800, 1000].map((w) => `${pageSrc(cover, w)} ${Math.min(w, cover.w)}w`).join(', ')}
+            sizes="(max-width: 960px) 80vw, 38vw"
+            alt={`The cover of ${book.titleText}`}
+            width={cover.w}
+            height={cover.h}
+            crossorigin="anonymous"
+            decoding="async"
+          />
+        </a>
+        {inset && (
+          <div class="bk-inset" style={`aspect-ratio:${inset.w / inset.h}`} aria-hidden="true">
+            <img src={pageSrc(inset, 360)} alt="" width={inset.w} height={inset.h} loading="lazy" decoding="async" crossorigin="anonymous" />
+          </div>
+        )}
+        </div>
+      </div>
+    </div>
+    <div class="hero-stat">
+      <span class="hero-stat-num">{n}</span>
+      <span class="hero-stat-label">pages to read here<br />or download</span>
+    </div>
+  </section>
+
+  <!-- ══════ THE READER ══════ -->
+  <section class="bk-read" id="read" aria-label="The book">
+    <FlipBook book={book} heading={`${book.titleText}, the book. Turn the pages with the arrow keys.`} />
+  </section>
+
+  <!-- ══════ AFTER THE LAST PAGE ══════ -->
+  <section class="bk-next">
+    <div class="bk-next-inner">
+      <h2>Help write the <em>next chapter</em>.</h2>
+      <p>Every room in these pages cost its family nothing. Gifts like yours paid for them.</p>
+      <div class="bk-next-ctas">
+        <a href="/donate/" class="btn btn-primary">Donate &rarr;</a>
+        <a href="/kids/" class="btn btn-outline-dark">Meet the kids</a>
+      </div>
+    </div>
+  </section>
+</BaseLayout>
+
+<script>
+  /* "Open the book" and the cover: scroll to the reader, then turn the cover
+     open once it's in view (if it's still closed). Someone back for more sees
+     "Pick up at page N" instead, and the book opens there. */
+  document.addEventListener('astro:page-load', () => {
+    const read = document.getElementById('read');
+    if (!read) return;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const cta = document.querySelector<HTMLAnchorElement>('.btn[data-open-book]');
+    const label = cta?.textContent || '';
+    const offer = (page: number | null) => {
+      if (!cta) return;
+      if (page == null || !Number.isInteger(page)) { cta.textContent = label; delete cta.dataset.page; return; }
+      cta.textContent = `Pick up at page ${page + 1} \u2192`;
+      cta.dataset.page = String(page);
+    };
+    const fb = read.querySelector<HTMLElement>('[data-flipbook]');
+    if (fb?.dataset.resume) offer(Number(fb.dataset.resume));
+    fb?.addEventListener('flipbook:resume', (e) => offer((e as CustomEvent).detail?.page ?? null));
+    for (const a of document.querySelectorAll<HTMLAnchorElement>('[data-open-book]')) {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        read.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+        const stage = read.querySelector<HTMLElement>('.fb-stage');
+        // A mouse click shows no focus ring on the book; Enter from the keyboard does
+        if (stage) { if (e.detail) stage.dataset.pointer = '1'; else delete stage.dataset.pointer; }
+        let done = false;
+        const open = () => {
+          if (done) return;
+          done = true;
+          stage?.focus({ preventScroll: true });
+          const page = a.dataset.page != null ? Number(a.dataset.page) : null;
+          fb?.dispatchEvent(new CustomEvent('flipbook:open', { detail: { page } }));
+        };
+        if (reduced) open();
+        else {
+          window.addEventListener('scrollend', open, { once: true });
+          setTimeout(open, 900);
+        }
+      });
+    }
+  });
+</script>
+
+<style>
+  /* ══════ HERO (the apply page's editorial split) ══════ */
+  .hero {
+    background: var(--c-cream);
+    padding: clamp(80px, 10vw, 140px) 0 clamp(64px, 8vw, 100px);
+    position: relative;
+    contain: layout style;
+    min-height: clamp(480px, 70vh, 720px);
+    overflow: hidden;
+  }
+  .hero-inner {
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 0 var(--space-xl);
+    display: grid;
+    grid-template-columns: 1.15fr 0.85fr;
+    gap: clamp(40px, 5vw, 80px);
+    align-items: center;
+  }
+  .hero-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--c-text-muted);
+    margin-bottom: 20px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both;
+  }
+  .hero-eyebrow::before {
+    content: '';
+    width: 28px;
+    height: 2px;
+    background: currentColor;
+    flex-shrink: 0;
+  }
+  .hero-text h1 {
+    font-size: clamp(2.5rem, 6vw, 4.5rem);
+    letter-spacing: -0.035em;
+    line-height: 1.04;
+    color: var(--c-text);
+    margin-bottom: 28px;
+    animation: heroSlide 0.8s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-text h1 :global(em) {
+    font-style: italic;
+    box-shadow: inset 0 -0.42em 0 var(--c-yellow-soft);
+    padding: 0 0.05em;
+  }
+  .hero-lead {
+    font-size: clamp(16px, 1.6vw, 18px);
+    color: var(--c-text-muted);
+    line-height: 1.7;
+    margin-bottom: 40px;
+    max-width: 480px;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.15s both;
+  }
+  .hero-ctas {
+    display: flex;
+    gap: 14px;
+    flex-wrap: wrap;
+    opacity: 0;
+    animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
+  }
+  .btn-lg { font-size: 17px; padding: 18px 44px; }
+  .bk-download { display: inline-flex; align-items: center; gap: 10px; }
+  .bk-download svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .bk-size { font-weight: 500; opacity: 0.78; font-size: 0.9em; }
+
+  .hero-frame {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    perspective: 1600px;
+    animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  .hero-accent {
+    position: absolute;
+    bottom: -16px;
+    right: -16px;
+    width: 65%;
+    height: 50%;
+    background: var(--c-yellow);
+    border-radius: 24px;
+    z-index: 0;
+    opacity: 0;
+    animation: heroAccentIn 1s cubic-bezier(0.16, 1, 0.3, 1) 0.7s both;
+  }
+
+  /* The closed book: the cover, a crease along the spine, page edges at the fore-edge */
+  .bk-book {
+    position: relative;
+    z-index: 1;
+    --cover-h: min(68vh, 620px);
+    width: min(100%, calc(var(--cover-h) * var(--a)));
+  }
+  .bk-cover {
+    position: relative;
+    z-index: 1;
+    display: block;
+    width: 100%;
+    aspect-ratio: var(--a);
+    border-radius: 3px 8px 8px 3px;
+    background: #FFFEFB;
+    transform-origin: 0 50%;
+    transition: transform 600ms cubic-bezier(0.2, 0.7, 0.3, 1), box-shadow 600ms cubic-bezier(0.2, 0.7, 0.3, 1);
+    box-shadow:
+      1px 1px 0 #E7E1D3, 2px 2px 0 #FBF8F0, 3px 3px 0 #E7E1D3, 4px 4px 0 #FBF8F0, 5px 5px 0 #E2DCCB,
+      0 32px 80px rgba(0, 0, 0, 0.16),
+      0 8px 24px rgba(0, 0, 0, 0.08);
+  }
+  .bk-cover img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+  .bk-cover::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 9px;
+    width: 2px;
+    background: rgba(0, 0, 0, 0.1);
+    box-shadow: 2px 0 0 rgba(255, 255, 255, 0.22);
+    z-index: 1;
+    pointer-events: none;
+  }
+  .bk-cover:hover {
+    transform: rotateY(-12deg) translateX(-4px);
+    box-shadow:
+      1px 1px 0 #E7E1D3, 2px 2px 0 #FBF8F0, 3px 3px 0 #E7E1D3, 4px 4px 0 #FBF8F0, 5px 5px 0 #E2DCCB,
+      6px 6px 0 #FBF8F0, 7px 7px 0 #E2DCCB,
+      0 40px 90px rgba(0, 0, 0, 0.2),
+      0 10px 28px rgba(0, 0, 0, 0.1);
+  }
+  .bk-cover:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 6px; }
+  /* A glimpse inside, tucked against the cover's edge so it hides as little of the cover as it can */
+  .bk-inset {
+    position: absolute;
+    bottom: 7%;
+    left: -19%;
+    width: 26%;
+    z-index: 2;
+    border: 4px solid var(--c-cream);
+    border-radius: 6px;
+    overflow: hidden;
+    background: #FFFEFB;
+    transform: rotate(-3deg);
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.06),
+      0 12px 36px rgba(0, 0, 0, 0.12);
+    pointer-events: none;
+  }
+  .bk-inset img { display: block; width: 100%; height: 100%; object-fit: cover; }
+  /* A landscape cover is wide and short: a smaller page, further out */
+  .bk-book.is-wide .bk-inset { width: 18%; left: -14%; bottom: 10%; }
+
+  .hero-stat {
+    position: absolute;
+    bottom: clamp(24px, 4vw, 48px);
+    right: clamp(24px, 6vw, 80px);
+    background: var(--c-dark);
+    color: #fff;
+    padding: 16px 24px;
+    border-radius: var(--border-radius-lg);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    box-shadow:
+      0 4px 6px rgba(0, 0, 0, 0.08),
+      0 16px 48px rgba(0, 0, 0, 0.15);
+    z-index: 3;
+  }
+  .hero-stat-num {
+    font-family: var(--font-display);
+    font-size: clamp(28px, 3vw, 40px);
+    font-weight: 700;
+    color: var(--c-yellow);
+    line-height: 1;
+  }
+  .hero-stat-label {
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.35;
+    color: rgba(255, 255, 255, 0.6);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  /* ══════ THE READER ══════ */
+  .bk-read {
+    background: var(--c-dark-deep);
+    padding-top: clamp(8px, 2vw, 20px);
+  }
+  /* A phone on its side: the site's header scrolls away here, so the book has the screen's height less its controls */
+  @media (max-height: 520px) {
+    .bk-read { padding-top: 0; --fb-short-chrome: 92px; }
+    :global(html .site-header.site-header) { position: relative; }
+    :global(html:root) { scroll-padding-top: 0; }
+  }
+
+  /* ══════ AFTER THE LAST PAGE ══════ */
+  .bk-next { background: var(--c-cream); padding: clamp(64px, 9vw, 112px) 0; }
+  .bk-next-inner { max-width: 720px; margin: 0 auto; padding: 0 var(--space-xl); text-align: center; }
+  .bk-next h2 { font-size: clamp(2rem, 4vw, 3rem); letter-spacing: -0.02em; line-height: 1.1; margin-bottom: 16px; }
+  .bk-next h2 em { font-style: italic; color: #8A7200; }
+  .bk-next p { color: var(--c-text-muted); font-size: 18px; line-height: 1.7; max-width: 520px; margin: 0 auto 32px; }
+  .bk-next-ctas { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+
+  /* ══════ RESPONSIVE ══════ */
+  /* Two columns with little between them (an iPad on its side): the page sits higher, on the photo's edge,
+     clear of the words and buttons beside it (and of the cover's title) */
+  @media (min-width: 961px) and (max-width: 1180px) {
+    .bk-inset { left: -6%; width: 18%; bottom: 44%; }
+    .bk-book.is-wide .bk-inset { left: -7%; width: 14%; bottom: 40%; }
+  }
+  @media (max-width: 960px) {
+    .hero-inner { grid-template-columns: 1fr; gap: 48px; text-align: center; }
+    .hero-eyebrow { justify-content: center; }
+    .hero-lead { margin-inline: auto; }
+    .hero-ctas { justify-content: center; }
+    .hero-frame { max-width: 420px; margin: 0 auto; }
+    .bk-book { --cover-h: min(56vh, 520px); }
+    .hero-stat { position: relative; bottom: auto; right: auto; margin: 8px auto 0; width: fit-content; }
+  }
+  @media (max-width: 768px) {
+    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
+    .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
+    .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
+    .bk-inset { display: none; }
+    .bk-book { --cover-h: min(52vh, 440px); }
+  }
+  @media (hover: none) { .bk-cover:hover { transform: none; } }
+  @media (prefers-reduced-motion: reduce) {
+    .hero-eyebrow, .hero-lead, .hero-ctas, .hero-frame { opacity: 1; transform: none; animation: none; }
+    .hero-text h1 { animation: none; }
+    .hero-accent { opacity: 0.35; animation: none; }
+    .bk-cover { transition: none; }
+    .bk-cover:hover { transform: none; }
+  }
+</style>

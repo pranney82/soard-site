@@ -44,7 +44,9 @@ export async function onRequestGet(context) {
       );
     }
 
-    const images = (result.result?.images || []).map(img => ({
+    // The anniversary book's page pictures (book/<version>/p001…) are the book's,
+    // not photos to pick for a page: the library leaves them out
+    const images = (result.result?.images || []).filter(img => !String(img.id || '').startsWith('book/')).map(img => ({
       id: img.id,
       uploaded: img.uploaded,
       filename: img.filename || null,
