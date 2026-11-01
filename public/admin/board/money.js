@@ -256,7 +256,9 @@ export function moneyTiles({ cash, budget, n, due = false }) {
   if (cash?.months != null) out.push({ k: 'months', label: 'Months of cash', value: monthsText(cash.months), sub: cash.perMonth ? `At ${compact(cash.perMonth)} a month, the last 12 months’ cash out` : 'At the last 12 months’ cash out' });
   const yr = budget?.year || '';
   // While a budget sheet is read: its two figures' places, so the tiles never move when they arrive
-  if (budget === undefined && due) for (const [k, word] of [['rev', 'revenue'], ['exp', 'expenses']]) out.push({ k, label: `${(n?.books?.year || todayEastern().slice(0, 4))} ${word}`, value: '…', pct: 0, sub: '\u00a0' });
+  // (QuickBooks' figures at once when it's connected, as Home has them; the budget's share follows)
+  const books = typeof n?.books?.revenue === 'number' ? n.books : null;
+  if (budget === undefined && (due || books)) for (const [k, word, v] of [['rev', 'revenue', books?.revenue], ['exp', 'expenses', books ? spentOf(books) : null]]) out.push({ k, label: `${(books?.year || todayEastern().slice(0, 4))} ${word}`, value: typeof v === 'number' ? money(v) : '…', pct: 0, sub: '\u00a0' });
   for (const [k, x, word] of [['rev', budget?.revenue, 'revenue'], ['exp', budget?.expenses, 'expenses']]) {
     if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: [x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}`, paceText(x)].filter(Boolean).join(' · ') : growthText(x) || `The year so far${asOfWords(budget.asOf)}`, x.inKind ? `not counting ${compact(x.inKind)} in kind` : ''].filter(Boolean).join(' · ') });
   }

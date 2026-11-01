@@ -95,7 +95,8 @@ export function initialsOf(name) {
   const words = w.length ? w : all;
   return ((words[0]?.[0] || '') + (words.length > 1 ? words.at(-1)[0] : '')).toUpperCase() || '?';
 }
-const HONORIFICS = new Set(['dr', 'mr', 'mrs', 'ms', 'miss', 'jr', 'sr', 'ii', 'iii', 'iv', 'md', 'phd', 'esq']);
+// Titles before a name and the letters after one: never part of whose name it is
+const HONORIFICS = new Set(['dr', 'mr', 'mrs', 'ms', 'mx', 'miss', 'rev', 'prof', 'hon', 'sir', 'jr', 'sr', 'ii', 'iii', 'iv', 'v', 'md', 'phd', 'esq', 'cpa', 'mba', 'jd', 'dds', 'rn', 'cfp', 'pe']);
 const nameWords = (s) => String(s ?? '').normalize('NFKD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/['’]/g, '').split(/[^a-z]+/).filter((w) => w && !HONORIFICS.has(w));
 /**
  * A typed signature that's the member's own name → the name to keep, or '' for anyone else's. Their name as People
@@ -110,14 +111,16 @@ const wordCase = (w) => (w === w.toLowerCase() || w === w.toUpperCase() || (/\p{
   ? w.toLowerCase().replace(/(^|[.'’-])(\p{L})/gu, (_, a, c) => a + c.toUpperCase()) : w);
 export function signsAs(typed, name) {
   if (/\d/.test(String(typed ?? ''))) return '';
-  const t = nameWords(typed);
-  const n = nameWords(name);
-  if (!n.length || t.length < Math.min(2, n.length)) return '';
+  // What comes after a comma is letters after the name (", CPA", ", J.D."): the name is before it
+  const t = nameWords(String(typed ?? '').split(',')[0]);
+  const n = nameWords(String(name ?? '').split(',')[0]);
+  if (!n.length || t.length < Math.min(2, n.length) || new Set(t).size < t.length) return '';
   const same = t.join(' ') === n.join(' ');
   if (!same) {
-    const lastParts = nameWords(String(name).trim().split(/\s+/).at(-1));
+    // Their last name: People's last word that's a name (not "III"), or a part of a double one
+    const lastParts = nameWords(String(name).split(',')[0].trim().split(/\s+/).filter((w) => nameWords(w).length).at(-1));
     const [first, f] = [t[0], n[0]];
-    const firstOk = first === f || (first.length === 1 && first === f[0]) || (Math.min(first.length, f.length) >= 3 && (f.startsWith(first) || first.startsWith(f))) || n.slice(1, -1).includes(first);
+    const firstOk = first === f || (first.length === 1 && first === f[0]) || (Math.min(first.length, f.length) >= 2 && (f.startsWith(first) || first.startsWith(f))) || n.slice(1, -1).includes(first);
     if (t.length < 2 || !lastParts.includes(t.at(-1)) || !firstOk || !t.slice(1, -1).every((w) => w.length === 1 || n.includes(w))) return '';
   }
   const people = String(name).replace(/\s+/g, ' ').trim();

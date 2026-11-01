@@ -249,9 +249,13 @@ a.bp-row:hover { background: var(--warm); }
 .bp-oneline a { color: var(--info); text-underline-offset: 3px; }
 /* When, where and the video call: each fact whole on its line, the lines apart, so a tap finds the one meant (Maps
    or the call) even when the place's name needs a second line */
-.bp-oneline--facts { display: flex; flex-wrap: wrap; align-items: baseline; row-gap: 0.45rem; }
-.bp-oneline--facts > * { white-space: nowrap; }
-.bp-oneline--facts a { white-space: normal; display: inline-block; padding-block: 0.2rem; margin-block: -0.2rem; }
+/* The dot before each fact sits in the space after the one before; a fact that starts a line has its dot cut off at
+   the left edge, so no line starts with a dot or ends with one */
+.bp-oneline--facts { display: block; clip-path: inset(-0.6rem -0.6rem -0.6rem 0); }
+.bp-facts { display: flex; flex-wrap: wrap; align-items: baseline; row-gap: 0.45rem; margin-left: -1.15rem; }
+.bp-fact { position: relative; margin-left: 1.15rem; white-space: nowrap; }
+.bp-fact::before { content: '·'; position: absolute; left: -0.75rem; color: var(--quiet); }
+.bp-fact a { white-space: normal; display: inline-block; padding-block: 0.2rem; margin-block: -0.2rem; outline-offset: -1px; }
 .bp-oneline__dot { margin: 0 0.45rem; color: var(--quiet); }
 /* The next meeting and the last, side by side, their bottoms level */
 .bp-meets { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 1.25rem; margin: 1.25rem 0; }
@@ -860,6 +864,9 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-up { color: var(--ok); font-weight: 650; }
 .bp-down { color: var(--warn); font-weight: 650; }
 /* One set of columns for every account (subgrid), so each bar is measured on the same track */
+/* Being read from the balance sheet: about the room the card will take, so the page below barely moves */
+.bp-cash[aria-busy="true"] { min-height: 320px; }
+@media (max-width: 640px) { .bp-cash[aria-busy="true"] { min-height: 400px; } }
 .bp-accounts { list-style: none; margin: 1.25rem 0 0; padding: 1.1rem 0 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: minmax(7rem, 15rem) minmax(0, 1fr) auto; gap: 0.55rem 0.85rem; }
 .bp-accounts li { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; align-items: center; font-size: 0.95rem; }
 .bp-accounts__name { color: var(--ink-2); }
@@ -1488,6 +1495,8 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 /* The money: three figures */
 .bs-figs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: clamp(0.75rem, 1.6vw, 1.5rem); }
 .bs-figs li { container-type: inline-size; min-width: 0; display: grid; align-content: start; gap: 0.5vh; padding: clamp(1.1rem, 3vh, 2.2rem) clamp(1.1rem, 2vw, 2rem); border-radius: 24px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
+/* The line under a figure keeps two lines' room, so a budget read a moment later moves nothing */
+.bs-money .bs-figs__sub { min-height: 2.7em; }
 .bs-figs li:first-child { background: var(--yellow); color: #1C1D1A; border-color: transparent; }
 .bs-figs__label { font-size: clamp(0.8rem, 1.8vh, 1.1rem); font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; color: var(--bs-faint); }
 .bs-figs li:first-child .bs-figs__label, .bs-figs li:first-child .bs-figs__sub { color: rgba(28, 29, 26, 0.72); }
@@ -1684,18 +1693,21 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
   .bp-finder__title { white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 }
 @media (max-width: 420px) {
-  .bp-oneline--facts { flex-direction: column; align-items: flex-start; row-gap: 0.55rem; }
-  .bp-oneline--facts .bp-oneline__dot { display: none; }
+  .bp-facts { flex-direction: column; align-items: flex-start; row-gap: 0.55rem; }
+  .bp-fact::before { display: none; }
 }
 /* A finger, not a mouse: every control at least 44px to tap, the small links in text given the same reach */
 @media (pointer: coarse) {
   .bp-nextup .bp-choice, .bp-pill, .bp-toast__act, .bp-finder__all { min-height: 44px; }
   .bp-cardhead__go { min-height: 44px; }
-  .bp-link, .bp-oneline--facts a, .bp-aghero__facts a, .bp-livenow__go, .bp-aghero__links a { display: inline-block; padding-block: 0.65rem; margin-block: -0.65rem; }
+  .bp-link, .bp-aghero__facts a, .bp-aghero__links a { display: inline-block; padding-block: 0.65rem; margin-block: -0.65rem; }
   .bp-aghero__links { row-gap: 0.75rem; }
-  /* The meeting's facts one to a line: their tap areas apart, never on top of each other */
-  .bp-oneline--facts a { padding-block: 0.6rem; margin-block: -0.6rem; }
-  .bp-oneline--facts { row-gap: 1.25rem; }
+  /* The meeting's facts: their tap areas apart, never on top of each other */
+  .bp-fact a { padding-block: 0.6rem; margin-block: -0.6rem; }
+  .bp-facts { row-gap: 1.25rem; }
+  /* Toggles, small buttons, the footer's links */
+  .bp-impact__seg button, .bp-more-btn, .bp-btn--sm { min-height: 44px; }
+  .bp-foot a { display: inline-block; padding-block: 0.75rem; margin-block: -0.75rem; }
 }
 
 /* Print it all: only the pages it built, each document from a new sheet */

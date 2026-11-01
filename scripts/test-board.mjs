@@ -1072,7 +1072,7 @@ try {
     ok(JSON.stringify(key) === JSON.stringify(['Donations$700K37%', 'Store sales$415K22%', 'Gala$400K21%', 'In kind$220K12%', 'Grants$90K5%', 'Everything else$51K3%']), `Home at ${width}: donations, store sales, gala, in kind and grants, each with its amount and share; the small ones as Everything else (${JSON.stringify(key)})`);
     ok(await overflow(money) <= 0, `Home at ${width}: the categories fit`);
     const spent = await money.evaluate(() => [...document.querySelectorAll('.bp-fig')].find((f) => /expenses/i.test(f.querySelector('.bp-fig__label')?.textContent || ''))?.textContent || '');
-    ok(/\$980K/.test(spent) && /Not counting \$220K in kind$/.test(spent), `Home at ${width}: the expenses as the budget counts them, without the in kind, saying so (${spent})`);
+    ok(/\$980K/.test(spent) && /Not counting \$220K in kind$/.test(spent.replace(/\u00a0/g, ' ')), `Home at ${width}: the expenses as the budget counts them, without the in kind, saying so (${spent})`);
     if (width === 1440) {
       await money.hover('.bp-mix__seg:nth-child(2)');
       ok(await money.waitForFunction(() => /^Store sales\$415,000 · 22%\d{4}, same days: \$830,000 · ▼ 50%$/.test(document.querySelector('.bp-mix__tip')?.textContent || ''), { timeout: 2000 }).then(() => true, () => false), 'Home: over a part, its exact amount beside last year’s same days');

@@ -1048,6 +1048,7 @@ body.fv-open .toast-pinned { display: none; } /* the update notice waits until t
 }
 .fv-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
+@media (pointer: coarse) { .fv-btn { width: 44px; height: 44px; } }
 @media (max-width: 768px) {
   .fv-bar { gap: .4rem; padding-left: .85rem; padding-right: .35rem; }
   .fv-bar .fv-count, .fv-side, .fv-strip { display: none; }

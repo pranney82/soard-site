@@ -1036,21 +1036,27 @@ function flowWord(blocks, urls) {
 const BORDER = { thin: `1px solid ${INK}`, thick: `2px solid ${INK}`, double: `3px double ${INK}` };
 /**
  * A number in a column too narrow for it, the way Excel shows it: General rounds away decimals until it fits, and
- * one that still doesn't (or a set format, "$#,##0.00") fills the cell with #. Never a number cut off mid-digit
+ * one that still doesn't (or a set format, "$#,##0.00") fills the cell with #. Never a number cut off mid-digit.
+ * Measured while the sheet is laid out (its own font, its even-width digits), and kept on the sheet's cells, so every
+ * page drawn from it says the same
  */
-let measure = null;
-function fitNumber(cell, width) {
-  if (typeof document === 'undefined') return cell.text;
-  measure ||= document.createElement('canvas').getContext('2d');
-  measure.font = `${cell.bold ? 700 : 400} 12.5px ${FONT}`;
-  const fits = (t) => measure.measureText(t).width <= width;
-  if (fits(cell.text)) return cell.text;
-  if (cell.general && Number.isFinite(cell.num)) {
-    for (let d = Math.min(9, (String(cell.text).split('.')[1] || '').length - 1); d >= 0; d--) { const t = general(Number(cell.num.toFixed(d))); if (fits(t)) return t; }
+function fitNumbers(table, s) {
+  for (const td of table.querySelectorAll('td[data-num]')) {
+    const over = () => td.scrollWidth > td.clientWidth + 0.5;
+    if (!over()) continue;
+    const v = Number(td.dataset.num);
+    let done = false;
+    if (td.dataset.general && Number.isFinite(v)) {
+      for (let d = Math.min(9, (String(td.textContent).split('.')[1] || '').length - 1); d >= 0 && !done; d--) { td.textContent = general(Number(v.toFixed(d))); done = !over(); }
+    }
+    if (!done) {
+      td.textContent = '#';
+      while (!over() && td.textContent.length < 40) td.textContent += '#';
+      if (over()) td.textContent = td.textContent.slice(0, -1) || '#';
+    }
+    const cell = s.rows[Number(td.dataset.ri)]?.cells.find((x) => x.c === Number(td.dataset.ci));
+    if (cell) cell.text = td.textContent;
   }
-  let hashes = '#';
-  while (fits(`${hashes}#`) && hashes.length < 40) hashes += '#';
-  return hashes;
 }
 
 /** Some of a sheet's rows (their indexes, in order) as a table, its columns at the sheet's own widths */
@@ -1078,7 +1084,8 @@ function sheetTable(s, list) {
         if (down > 1) td.rowSpan = down;
         for (let i = 0; i < down; i++) for (let j = 0; j < span; j++) if (i || j) taken.add(`${at + i}:${c + j}`);
         const pad = 6 + (cell.indent || 0) * 12;
-        td.textContent = cell.num != null ? fitNumber(cell, s.cols.slice(c, c + span).reduce((a, b) => a + b, 0) - pad - 6) : cell.text;
+        td.textContent = cell.text;
+        if (cell.num != null) { td.dataset.num = String(cell.num); td.dataset.ri = String(list[at]); td.dataset.ci = String(c); if (cell.general) td.dataset.general = '1'; }
         if (cell.align !== 'left') td.style.textAlign = cell.align;
         if (cell.align === 'right') { td.style.paddingRight = `${pad}px`; td.classList.add('is-right'); } else if (cell.indent) td.style.paddingLeft = `${pad}px`;
         if (cell.bold) td.style.fontWeight = '700';
@@ -1116,6 +1123,7 @@ function flowSheets(sheets) {
       if (caption) { const cap = el('p', 'bdoc-caption', caption); host.append(cap); capH = heightOf(cap) + 10; cap.remove(); }
       const t = sheetTable(s, s.rows.map((_, i) => i));
       host.append(t);
+      fitNumbers(t, s);
       hs = [...t.rows].map((tr) => tr.getBoundingClientRect().height);
     } finally {
       host.done();

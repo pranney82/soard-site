@@ -461,8 +461,15 @@ test('a signature is the member’s own name: any case or spacing, a middle name
   ok('pat o’brien', 'Pat O’Brien', 'Pat O’Brien');
   ok('Robert Smith', 'James Robert Smith', 'Robert Smith');
   ok('cher', 'Cher', 'Cher');
+  // Titles, letters after the name, a suffix in People's name, a two-letter first name's long form (QA, Oct 31)
+  ok('Rev. Sam Rivers', 'Sam Rivers', 'Sam Rivers');
+  ok('Sam Rivers, CPA', 'Sam Rivers', 'Sam Rivers');
+  ok('bart montgomery-fitzgerald', 'Bartholomew Montgomery-Fitzgerald III', 'Bart Montgomery-Fitzgerald');
+  ok('Bart Fitzgerald', 'Bartholomew Montgomery-Fitzgerald III', 'Bart Fitzgerald');
+  ok('Joseph Li', 'Jo Li', 'Joseph Li');
+  ok('alan green', 'Al Green', 'Alan Green');
   // Another first name before their last name, a number, or a first and middle name isn't their signature (QA, Oct 31)
-  for (const [typed, name] of [['Mickey Mouse', 'Sam Rivers'], ['Mickey Rivers', 'Sam Rivers'], ['Tom Rivers', 'Sam Rivers'], ['x Rivers', 'Sam Rivers'], ['Rivers Rivers', 'Sam Rivers'], ['Sam Rivers 2', 'Sam Rivers'], ['Sam Mickey Rivers', 'Sam Rivers'], ['Joe Ann', 'Mary Ann Smith'], ['Mary Ann', 'Mary Ann Smith'], ['Sam Rivres', 'Sam Rivers'], ['Sam', 'Sam Rivers'], ['Rivers Sam', 'Sam Rivers'], ['', 'Sam Rivers']]) ok(typed, name, '');
+  for (const [typed, name] of [['Mickey Mouse', 'Sam Rivers'], ['Mickey Rivers', 'Sam Rivers'], ['Tom Rivers', 'Sam Rivers'], ['x Rivers', 'Sam Rivers'], ['Rivers Rivers', 'Sam Rivers'], ['Sam Rivers 2', 'Sam Rivers'], ['Sam Mickey Rivers', 'Sam Rivers'], ['Joe Ann', 'Mary Ann Smith'], ['Mary Ann', 'Mary Ann Smith'], ['Sam Rivres', 'Sam Rivers'], ['Sam', 'Sam Rivers'], ['Rivers Sam', 'Sam Rivers'], ['Sam Rivers Sam Rivers', 'Sam Rivers'], ['', 'Sam Rivers']]) ok(typed, name, '');
 });
 
 test('one-tap answers: each board member who hasn’t answered gets their own links; opening one only asks, pressing it answers', async () => {

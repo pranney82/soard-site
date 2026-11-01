@@ -62,6 +62,7 @@ function useLiveView(id, fast) {
     let t = 0;
     let missed = 0;
     let over = false;
+    let gone = false;
     const tick = async () => {
       clearTimeout(t);
       let ok = false;
@@ -70,14 +71,15 @@ function useLiveView(id, fast) {
         const j = await r.json().catch(() => null);
         if (stop) return;
         // Any refusal (no such meeting, not shared, a link mistyped) says so, never "Opening…" for good
-        if (j?.ok && Array.isArray(j.sections)) { setV(j); setFail(''); ok = true; over = !!j.live?.endedAt || (!j.live?.startedAt && isDate(j.date) && j.date < todayEastern()); } else if (r.status < 500 && (r.status >= 400 || j?.ok === false)) { setFail(r.status === 403 && j?.error ? j.error : 'That meeting isn’t on the board page'); ok = true; }
+        gone = false;
+        if (j?.ok && Array.isArray(j.sections)) { setV(j); setFail(''); ok = true; over = !!j.live?.endedAt || (!j.live?.startedAt && isDate(j.date) && j.date < todayEastern()); } else if (r.status < 500 && (r.status >= 400 || j?.ok === false)) { setFail(r.status === 403 && j?.error ? j.error : 'That meeting isn’t on the board page'); ok = true; gone = true; }
       } catch { /* the next look tries again */ }
       if (stop) return;
       missed = ok ? 0 : missed + 1;
       setTrouble(missed >= 3);
       // A meeting that's over changes no more: a look every half minute (in case the chair opens it again)
       // (no answer: tried again at once twice, then less often)
-      t = setTimeout(tick, over ? 30000 : missed ? (missed < 3 ? 1500 : Math.min(10000, 1500 * 2 ** (missed - 2))) : fast.current ? 4000 : 1500);
+      t = setTimeout(tick, over || gone ? 30000 : missed ? (missed < 3 ? 1500 : Math.min(10000, 1500 * 2 ** (missed - 2))) : fast.current ? 4000 : 1500);
     };
     tick();
     const back = () => { if (document.visibilityState === 'visible' && navigator.onLine !== false) tick(); };
@@ -371,7 +373,7 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
       const fill = cardAt === si ? 0.04 : its.length ? (its.filter((it) => items.indexOf(it) < n).length + (on ? 0.5 : 0)) / its.length : ended || cardAt > si || items.some((it) => it.si > si && items.indexOf(it) <= n) ? 1 : 0;
       return html`<li key=${s.id} class=${on ? 'is-on' : fill >= 1 ? 'is-done' : ''} style=${`--w:${Math.max(1, its.length)};--fill:${Math.min(1, fill)}`}>
         <span class="bs-rail__bar" aria-hidden="true"><i></i></span>
-        <span class="bs-rail__label"><b>${String(si + 1).padStart(2, '0')}</b>${s.title || 'Agenda'}${on && timer ? html`<i class=${`bs-rail__time ${timer.over ? 'is-over' : ''}`}>${clockText(timer.left)}${timer.over ? ' over' : ' left'}</i>` : null}</span>
+        <span class="bs-rail__label" title=${s.title || 'Agenda'}><b>${String(si + 1).padStart(2, '0')}</b>${s.title || 'Agenda'}${on && timer ? html`<i class=${`bs-rail__time ${timer.over ? 'is-over' : ''}`}>${clockText(timer.left)}${timer.over ? ' over' : ' left'}</i>` : null}</span>
       </li>`;
     })}</ol>
     <p class="bs-rail__next">${nextWords}</p>
@@ -484,7 +486,7 @@ export function Screen({ id, data, d, onBack = null }) {
   const place = [m?.location, m?.address].filter(Boolean).join(', ');
 
   const top = html`<header class="bs-top">
-    <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
+    <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong title=${meetingName(meeting)}>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
     ${(stop.kind === 'item' || stop.kind === 'doc') && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${floor.map((p) => p.name).join(' & ')}</strong> has the floor</span></span>` : null}
     <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
   </header>`;
