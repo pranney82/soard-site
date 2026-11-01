@@ -332,9 +332,9 @@ export function BookPage({ c, ui }) {
         <div class="bk-onoff">
           <${Segmented} label="On the site" value=${d.show ? 'on' : 'off'} onChange=${(v) => set('show')(v === 'on')} options=${[['off', 'Hidden'], ['on', 'On the site']]} />
           <span class="sc-hint">${d.show
-            ? html`Goes live at <strong>sunshineonaranneyday.com/${slug}/</strong> when you save and publish. Nothing links to it until you add a link somewhere.`
+            ? html`Goes live on <strong>Our Story</strong>, after the milestones, and at its own address, <strong>sunshineonaranneyday.com/${slug}/</strong>, when you save and publish.`
             : 'Hidden until you switch it on, save and publish.'}
-            ${liveHere ? html` <a class="sc-link" href=${`/${slug}/`} target="_blank" rel="noopener">Open the live page</a>` : ''}</span>
+            ${liveHere ? html` <a class="sc-link" href="/about/#book" target="_blank" rel="noopener">See it on Our Story</a> · <a class="sc-link" href=${`/${slug}/`} target="_blank" rel="noopener">Its own page</a>` : ''}</span>
         </div>
         <${Address} value=${d.slug} onChange=${set('slug')} ui=${ui} liveSlug=${live?.live ? live.slug : null} onChecked=${() => c.update('book', (e) => ({ ...e }))} />
         <${TextField} label="Small line above the title" value=${d.eyebrow} onChange=${set('eyebrow')} max=${40} placeholder=${DEFAULTS.eyebrow} hint=${d.eyebrow ? null : `Blank shows “${DEFAULTS.eyebrow}”.`} />
@@ -498,7 +498,7 @@ function Address({ value, onChange, ui, liveSlug: live, onChecked }) {
       </div>
       <div class="sc-under">${problem
         ? html`<span class="sc-bad" role="alert">${problem}</span>`
-        : html`<span class="sc-hint">${liveSlug && liveSlug !== v ? html`<${Icon} name="warn" size=${12} /> Once published, /${liveSlug}/ stops working.` : 'Where the page lives. Share it, or link to it from any page.'}</span>`}</div>
+        : html`<span class="sc-hint">${liveSlug && liveSlug !== v ? html`<${Icon} name="warn" size=${12} /> Once published, /${liveSlug}/ stops working.` : 'The book’s own page, and the link its Share button hands out. It’s on Our Story too.'}</span>`}</div>
     </div>`;
 }
 
@@ -688,6 +688,10 @@ function Readers({ d, ui, live }) {
   const shares = Object.entries(data?.shares || {}).sort((a, b) => b[1] - a[1]);
   const SHARE_NAMES = { copy: 'Copied link', email: 'Email', facebook: 'Facebook', x: 'X', linkedin: 'LinkedIn', native: 'Phone share' };
   const DEVICE_NAMES = { phone: 'Phones', tablet: 'Tablets', computer: 'Computers' };
+  // Where it was read: Our Story, or its own page (by the address it has now, or had)
+  const places = Object.entries(data?.places || {}).sort((a, b) => b[1] - a[1]);
+  const placeTotal = places.reduce((x, [, v]) => x + v, 0);
+  const placeName = (p) => (p === '/about/' ? 'Our Story' : p === `/${d.slug}/` ? 'Its own page' : p);
   const mostRead = pages.map((_, p) => p).filter((p) => views[p] >= 2).sort((a, b) => avgMs(b) - avgMs(a)).slice(0, 4);
   const empty = data && !t.visits;
 
@@ -735,6 +739,7 @@ function Readers({ d, ui, live }) {
             </details>`}
 
           <div class="bk-lists">
+            ${placeTotal > 0 && html`<div><h4 class="sc-h4">Read on</h4><ul>${places.map(([k, v]) => html`<li key=${k}><span title=${k}>${placeName(k)}</span><strong>${share(v, placeTotal)}</strong></li>`)}</ul></div>`}
             ${deviceTotal > 0 && html`<div><h4 class="sc-h4">On</h4><ul>${devices.map(([k, v]) => html`<li key=${k}><span>${DEVICE_NAMES[k] || k}</span><strong>${share(v, deviceTotal)}</strong></li>`)}</ul></div>`}
             ${(data.from || []).length > 0 && html`<div><h4 class="sc-h4">Came from</h4><ul>${data.from.map((x) => html`<li key=${x.key}><span>${x.key}</span><strong>${x.n}</strong></li>`)}</ul></div>`}
             ${(data.links || []).length > 0 && html`<div><h4 class="sc-h4">Links followed</h4><ul>${data.links.map((x) => html`<li key=${x.key}><span>${x.key}</span><strong>${x.n}</strong></li>`)}</ul></div>`}

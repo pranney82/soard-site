@@ -21,7 +21,8 @@
  *
  * mountFlipbook(root, book, { preview, startPage }) → { destroy, go, page }
  *   root: the .fb element; book: { title, pages: [{ id, w, h, links? }],
- *   chapters: [{ title, page }], pdf: { url, name, bytes }, textUrl }.
+ *   chapters: [{ title, page }], pdf: { url, name, bytes }, textUrl,
+ *   url (the book's own page, e.g. /15-years/) }.
  *   preview (the admin's): the address bar is left alone and there's no
  *   Share. startPage: open there (0-based) instead of the cover or ?page=.
  */
@@ -1221,9 +1222,9 @@ export function mountFlipbook(root, book, options = {}) {
   }
 
   // ─── Share, print, play, sound, go to a page, pick up where you left off ─
-  /** This page's own address: the book, opened where it's open now */
+  /** The book's own page (this page, when it has none), opened where it's open now */
   function pageUrl() {
-    const u = new URL(location.href);
+    const u = new URL(book.url || location.pathname, location.href);
     u.search = '';
     u.hash = '';
     const p = firstPage();
@@ -1407,8 +1408,8 @@ export function mountFlipbook(root, book, options = {}) {
     go(spreadOfPage(v - 1, twoUp, n));
   }
 
-  // Pick up where you left off (this browser remembers the page, nothing else)
-  const lastKey = `fb-last:${location.pathname}`;
+  // Pick up where you left off (this browser remembers the page, nothing else), on its own page or Our Story alike
+  const lastKey = `fb-last:${book.url || location.pathname}`;
   const resumeEl = $('.fb-resume');
   let resuming = false;
   function offerResume() {
@@ -1501,7 +1502,8 @@ export function mountFlipbook(root, book, options = {}) {
     dwellStop();
     if (tallied) {
       const body = { v: book.version };
-      if (!sess('fb-visit')) { body.visit = 1; body.device = deviceKind(); if (document.referrer) body.from = document.referrer; sess('fb-visit', '1'); }
+      // A visit says where the book was read: its own page or Our Story
+      if (!sess('fb-visit')) { body.visit = 1; body.device = deviceKind(); body.place = location.pathname; if (document.referrer) body.from = document.referrer; sess('fb-visit', '1'); }
       for (const k of ['views', 'ms', 'share', 'links']) if (Object.keys(tally[k]).length) body[k] = tally[k];
       for (const k of ['time', 'download', 'print', 'search', 'play', 'full']) if (tally[k]) body[k] = tally[k];
       if (tally.reach) body.reach = tally.reach;

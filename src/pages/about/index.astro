@@ -15,6 +15,8 @@ import { getFAQSchema } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
 import page from '../../content/site/our-story.json';
 import faqData from '../../content/site/faq.json';
+import FlipBook from '../../components/book/FlipBook.astro';
+import { getBook, bookSize } from '../../utils/book';
 
 import { CF_BASE as CF, cfUrl, cfSrcset } from '../../utils/cf-image';
 
@@ -30,6 +32,10 @@ const storePhotoId = page.images.store;
 const graciePhotoId = page.images.gracie;
 const trippPhotoId = page.images.tripp;
 const milestones = page.milestones;
+/* The anniversary book (Admin → Site Config → Anniversary book), after the milestones once it's on the site */
+const book = getBook();
+const bookOn = !!book?.live;
+const bookPdfSize = bookOn && book?.pdf ? bookSize(book.pdf.bytes) : '';
 
 /* ── Breadcrumbs (BaseLayout emits WebPage + BreadcrumbList schema) ── */
 const aboutDesc = `From one family's dream to ${stats.totalRooms}+ rooms transformed. See how Sunshine on a Ranney Day builds free bedrooms, bathrooms, and therapy spaces for kids with special needs in Atlanta.`;
@@ -201,6 +207,28 @@ const jsonLd = getFAQSchema(aboutFaqs);
       </div>
     </div>
   </section>
+
+  <!-- ══════ THE ANNIVERSARY BOOK: the whole story, to read here ══════ -->
+  {bookOn && book && (
+    <section class="book-section" id="book" aria-labelledby="book-heading">
+      <div class="book-header" data-reveal>
+        <div class="book-header-text">
+          <div class="section-label">{book.eyebrow}</div>
+          <h2 id="book-heading" set:html={book.titleHtml} />
+          <p>{book.description}</p>
+        </div>
+        {book.pdf && (
+          <a href={book.pdf.url} download={book.pdf.name} class="btn btn-outline-dark book-download">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5V15M7.5 10.5 12 15l4.5-4.5M4 19.5h16" /></svg>
+            Download the PDF{bookPdfSize && <span class="book-size">{bookPdfSize}</span>}
+          </a>
+        )}
+      </div>
+      <div class="book-room">
+        <FlipBook book={book} embedded heading={`${book.titleText}, the book. Turn the pages with the arrow keys.`} />
+      </div>
+    </section>
+  )}
 
   <!-- ══════ IMPACT RIBBON ══════ -->
   <section class="ribbon" aria-label="Impact numbers">
@@ -1023,6 +1051,55 @@ const jsonLd = getFAQSchema(aboutFaqs);
     .tl-cap-icon { width: 40px; height: 40px; }
 
     .tl-cap-icon svg { width: 18px; height: 18px; }
+  }
+
+  /* ══════════════════════════════════════════
+     THE ANNIVERSARY BOOK — the whole story, to read here
+     ══════════════════════════════════════════ */
+  .book-section {
+    background: var(--c-cream);
+    padding-block: var(--space-5xl);
+  }
+  /* The words on the left, Download on the right at their foot */
+  .book-header {
+    max-width: var(--max-width);
+    margin: 0 auto var(--space-2xl);
+    padding-inline: var(--space-lg);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: var(--space-lg) var(--space-3xl);
+  }
+  .book-header h2 {
+    font-size: clamp(1.75rem, 4vw, 2.75rem);
+    line-height: 1.1;
+    margin: 0;
+  }
+  .book-header-text p {
+    font-size: 1.1rem;
+    line-height: 1.7;
+    color: var(--c-text-muted);
+    margin: var(--space-md) 0 0;
+    max-width: 560px;
+  }
+  .book-download { display: inline-flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .book-download svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .book-size { font-weight: 500; opacity: 0.78; font-size: 0.9em; }
+  .book-room {
+    max-width: var(--max-width);
+    margin-inline: auto;
+    padding-inline: var(--space-lg);
+  }
+  @media (max-width: 860px) {
+    .book-header { flex-direction: column; align-items: flex-start; }
+  }
+  @media (max-width: 768px) {
+    .book-section { padding-block: var(--space-3xl); }
+  }
+  /* A phone: the book edge to edge, meeting the numbers below */
+  @media (max-width: 700px) {
+    .book-section { padding-bottom: 0; }
+    .book-room { padding-inline: 0; }
   }
 
   /* ══════════════════════════════════════════

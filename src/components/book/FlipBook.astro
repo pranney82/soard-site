@@ -7,7 +7,11 @@
  *
  * The page's text is in the markup too (visually hidden): screen readers
  * read it, search engines index it, and the search box looks through it.
- * Props: book (src/utils/book.ts), heading (the stage's accessible name).
+ * Props: book (src/utils/book.ts), heading (the stage's accessible name),
+ * embedded (the book inside another page, Our Story: it starts, and its
+ * pictures load, only as it nears the screen; its text is the Text tab's
+ * alone, not read out in that page's flow; shares and "pick up where you
+ * left off" go by the book's own address).
  */
 import { pageSrc } from './book-layout.js';
 import { bookSize } from '../../utils/book';
@@ -15,8 +19,9 @@ import { bookSize } from '../../utils/book';
 interface Props {
   book: any;
   heading?: string;
+  embedded?: boolean;
 }
-const { book, heading } = Astro.props;
+const { book, heading, embedded = false } = Astro.props;
 const pages: any[] = book?.pages || [];
 const n = pages.length;
 const cover = pages[0];
@@ -29,6 +34,8 @@ const size = pdf ? bookSize(pdf.bytes) : '';
 const client = {
   title,
   version: book?.version || '',
+  // The book's own page: what Share hands out, wherever the book is read
+  ...(book?.slug ? { url: `/${book.slug}/` } : {}),
   pages: pages.map((p: any) => ({ id: p.id, ...(p.src ? { src: p.src } : {}), w: p.w, h: p.h, ...(Array.isArray(p.links) && p.links.length ? { links: p.links } : {}) })),
   chapters: chapters.map((c: any) => ({ title: c.title, page: c.page })),
   pdf: pdf ? { url: pdf.url, name: pdf.name, bytes: pdf.bytes } : null,
@@ -37,9 +44,9 @@ const client = {
 const paragraphs = (t: string) => String(t || '').split(/\n{2,}/).map((s) => s.replace(/\s+/g, ' ').trim()).filter(Boolean);
 ---
 
-<div class="fb" data-flipbook style={`--fb-aspect:${aspect}`}>
+<div class={`fb${embedded ? ' fb--embedded' : ''}`} data-flipbook data-lazy={embedded ? '' : undefined} style={`--fb-aspect:${aspect}`}>
   <script type="application/json" data-flipbook-data set:html={JSON.stringify(client).replace(/</g, '\\u003c')} />
-  {n > 0 && <a class="fb-skip" href="#fb-text">Skip to the book’s text</a>}
+  {n > 0 && !embedded && <a class="fb-skip" href="#fb-text">Skip to the book’s text</a>}
 
   <div class="fb-top">
     <p class="fb-top-title">{title}</p>
@@ -61,7 +68,8 @@ const paragraphs = (t: string) => String(t || '').split(/\n{2,}/).map((s) => s.r
             width={cover.w}
             height={cover.h}
             crossorigin="anonymous"
-            fetchpriority="high"
+            fetchpriority={embedded ? undefined : 'high'}
+            loading={embedded ? 'lazy' : undefined}
             decoding="async"
             class="is-in"
             draggable="false"
@@ -219,7 +227,7 @@ const paragraphs = (t: string) => String(t || '').split(/\n{2,}/).map((s) => s.r
 
   <p class="fb-live sr-only" aria-live="polite"></p>
 
-  <section class="fb-text sr-only" id="fb-text" tabindex="-1" aria-label={`${title}, as text`}>
+  <section class="fb-text sr-only" id={embedded ? undefined : 'fb-text'} tabindex="-1" aria-label={`${title}, as text`} hidden={embedded}>
     {pages.map((p: any, i: number) => (
       <article data-fb-text={i} aria-label={`Page ${i + 1}`}>
         {paragraphs(p.text).map((para) => <p>{para}</p>)}
@@ -229,21 +237,40 @@ const paragraphs = (t: string) => String(t || '').split(/\n{2,}/).map((s) => s.r
 </div>
 
 <script>
-  import { mountFlipbook } from './flipbook.js';
-
   /* One reader per visit: made on astro:page-load, taken down before the
-     next page swaps in (the site navigates without full reloads) */
+     next page swaps in (the site navigates without full reloads). A book
+     inside another page (data-lazy) starts a screen's height before it
+     comes into view, or at once when the address asks for one of its pages;
+     the reader's code itself loads only then. */
   let readers: { destroy(): void }[] = [];
+  let waiting: IntersectionObserver[] = [];
+  let code: Promise<typeof import('./flipbook.js')> | null = null;
+  const start = async (root: HTMLElement) => {
+    let book = null;
+    try { book = JSON.parse(root.querySelector('[data-flipbook-data]')?.textContent || 'null'); } catch { book = null; }
+    if (!book) return;
+    const { mountFlipbook } = await (code ||= import('./flipbook.js'));
+    // Gone to another page while the code came
+    if (root.isConnected) readers.push(mountFlipbook(root, book));
+  };
   document.addEventListener('astro:page-load', () => {
     for (const root of document.querySelectorAll<HTMLElement>('[data-flipbook]:not([data-preview])')) {
       if (root.dataset.mounted) continue;
       root.dataset.mounted = '1';
-      let book = null;
-      try { book = JSON.parse(root.querySelector('[data-flipbook-data]')?.textContent || 'null'); } catch { book = null; }
-      if (book) readers.push(mountFlipbook(root, book));
+      if (root.dataset.lazy == null || /[?&]page=/.test(location.search) || !('IntersectionObserver' in window)) { start(root); continue; }
+      const io = new IntersectionObserver((entries) => {
+        if (!entries.some((e) => e.isIntersecting)) return;
+        io.disconnect();
+        waiting = waiting.filter((w) => w !== io);
+        start(root);
+      }, { rootMargin: '100% 0px' });
+      io.observe(root);
+      waiting.push(io);
     }
   });
   document.addEventListener('astro:before-swap', () => {
+    for (const w of waiting) w.disconnect();
+    waiting = [];
     for (const r of readers) r.destroy();
     readers = [];
   });
@@ -788,6 +815,15 @@ const paragraphs = (t: string) => String(t || '').split(/\n{2,}/).map((s) => s.r
   .fb.is-full .fb-stage { flex: 1; height: auto; min-height: 0; touch-action: none; }
   html.fb-locked, html.fb-locked body { overflow: hidden; }
   @keyframes fbIn { from { opacity: 0; } }
+
+  /* ══════ Inside another page (Our Story): a room set into the page ══════ */
+  /* Rounded, the stage too (a zoomed page reaches its corners); edge to edge on a phone, and square in full screen */
+  .fb--embedded { border-radius: var(--border-radius-lg); box-shadow: var(--shadow-xl); }
+  .fb--embedded .fb-stage { border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0; }
+  .fb--embedded.is-full, .fb--embedded.is-full .fb-stage { border-radius: 0; box-shadow: none; }
+  @media (max-width: 700px) {
+    .fb--embedded, .fb--embedded .fb-stage { border-radius: 0; box-shadow: none; }
+  }
 
   /* ══════ The panel: chapters, every page, search ══════ */
   .fb-panel {

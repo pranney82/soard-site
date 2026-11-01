@@ -17,6 +17,7 @@
  *   share [copy | email | facebook | x | linkedin | native]
  *   link [address]   a link in the book followed
  *   device [phone | tablet | computer], from [referring site]
+ *   place [the page it was read on: /about/ (Our Story) or the book's own, /15-years/]
  */
 
 const VERSION = /^[a-z0-9]{4,20}$/;
@@ -47,6 +48,11 @@ export function linkKey(url) {
     if (!/^https?:$/.test(u.protocol)) return null;
     return `${u.hostname.replace(/^www\./, '')}${u.pathname}`.replace(/\/$/, '').slice(0, 160).toLowerCase();
   } catch { return null; }
+}
+/** The page a visit read the book on (a site path like /about/), or null for junk */
+export function placeKey(path) {
+  const s = String(path || '').toLowerCase();
+  return /^\/(?:[a-z0-9-]{1,60}\/)?$/.test(s) ? s : null;
 }
 /** A referring site's name, or null for none, this site, or junk */
 export function fromKey(ref, self = 'sunshineonaranneyday.com') {
@@ -84,6 +90,8 @@ export function statsRows(body) {
   if (DEVICES.has(body.device)) rows.push(['device', body.device, 1]);
   const from = body.visit ? fromKey(body.from) : null;
   if (from) rows.push(['from', from, 1]);
+  const place = body.visit ? placeKey(body.place) : null;
+  if (place) rows.push(['place', place, 1]);
   return rows;
 }
 
@@ -144,6 +152,7 @@ export async function readStats(DB, { days = 30, version = null, today = new Dat
     days: Object.values(days_).sort((a, b) => a.day.localeCompare(b.day)),
     pages: { views: by('view', true), ms: by('ms', true), reach: by('reach', true) },
     devices: by('device'),
+    places: by('place'),
     shares: by('share'),
     links: top(by('link')),
     from: top(by('from')),

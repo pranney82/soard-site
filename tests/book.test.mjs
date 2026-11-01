@@ -350,14 +350,21 @@ test('book stats: a beacon is checked and capped; anything else adds nothing', (
   assert.equal(statsRows({ v: 'abcd1234', reach: [5, 2] }).length, 0, 'reach only goes forward');
   assert.equal(linkKey('mailto:Info@Example.org'), 'mailto:info@example.org');
   assert.equal(fromKey('https://sunshineonaranneyday.com/kids/'), null);
+  // Where it was read: a page of this site, once a visit
+  assert.deepEqual(statsRows({ v: 'abcd1234', visit: 1, place: '/about/' }).filter(([m]) => m === 'place'), [['place', '/about/', 1]]);
+  assert.deepEqual(statsRows({ v: 'abcd1234', visit: 1, place: '/15-years/' }).filter(([m]) => m === 'place'), [['place', '/15-years/', 1]]);
+  for (const junk of ['https://evil.example/', '/a/b/c/', '/about', '/<x>/', '/' + 'a'.repeat(61) + '/', 42]) {
+    assert.equal(statsRows({ v: 'abcd1234', visit: 1, place: junk }).some(([m]) => m === 'place'), false, String(junk));
+  }
+  assert.equal(statsRows({ v: 'abcd1234', views: { 0: 1 }, place: '/about/' }).some(([m]) => m === 'place'), false, 'only with the visit');
 });
 
 test('book stats: counted, summed and read back; how far people read is exact', async () => {
   const DB = await createD1();
   const v = 'abcd1234';
   // Three visitors: one stops on the cover, one reads to page 6, one to the end (page 11)
-  await recordStats(DB, v, statsRows({ v, visit: 1, device: 'computer', views: { 0: 1 }, reach: [-1, 0], time: 4000 }), '2026-11-01');
-  await recordStats(DB, v, statsRows({ v, visit: 1, device: 'phone', reader: 1, views: { 0: 1, 1: 1, 2: 1 }, reach: [-1, 2], ms: { 1: 5000, 2: 5000 }, time: 9000 }), '2026-11-01');
+  await recordStats(DB, v, statsRows({ v, visit: 1, device: 'computer', place: '/about/', views: { 0: 1 }, reach: [-1, 0], time: 4000 }), '2026-11-01');
+  await recordStats(DB, v, statsRows({ v, visit: 1, device: 'phone', place: '/15-years/', reader: 1, views: { 0: 1, 1: 1, 2: 1 }, reach: [-1, 2], ms: { 1: 5000, 2: 5000 }, time: 9000 }), '2026-11-01');
   await recordStats(DB, v, statsRows({ v, views: { 5: 1, 6: 1 }, reach: [2, 6], time: 3000 }), '2026-11-01');
   await recordStats(DB, v, statsRows({ v, visit: 1, device: 'phone', reader: 1, end: 1, reach: [-1, 11], download: 1, share: { copy: 1 } }), '2026-11-02');
   // Another upload's pages stay apart
@@ -368,6 +375,7 @@ test('book stats: counted, summed and read back; how far people read is exact', 
   assert.deepEqual(s.pages.ms, { 1: 5000, 2: 5000 });
   assert.deepEqual(s.days, [{ day: '2026-11-01', visits: 2, readers: 1 }, { day: '2026-11-02', visits: 2, readers: 1 }]);
   assert.deepEqual(s.devices, { computer: 1, phone: 2 });
+  assert.deepEqual(s.places, { '/about/': 1, '/15-years/': 1 });
   // A window of days leaves the older ones out
   const recent = await readStats(DB, { days: 1, version: v, today: new Date('2026-11-02T12:00:00Z') });
   assert.equal(recent.totals.visits, 2);

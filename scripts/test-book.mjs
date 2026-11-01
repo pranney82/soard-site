@@ -15,7 +15,9 @@
  * 3. Builds the site with what was saved (BOOK_FIXTURE) and reads it like a
  *    visitor: the hero, the cover, keys, a dragged corner, rapid clicks, the
  *    contents page's links, search and its marks, zoom, full screen, the
- *    address (?page=), a phone's tap, swipe and pinch, reduced motion, and no WebGL.
+ *    address (?page=), a phone's tap, swipe and pinch, reduced motion, and no WebGL;
+ *    and the book inside Our Story: after the milestones, waiting until it's
+ *    near, sharing its own page, picking up where either left off.
  * Screenshots land in test-results/book/. Exits non-zero on any failure or
  * page error.
  *
@@ -682,6 +684,141 @@ await section('Counting is honest; shared links and returns land on the book', a
   ok(await c.evaluate(() => document.activeElement?.classList.contains('fb-stage')), 'with the keys on the book');
   ok(c.errors.length === 0, `no page errors ${c.errors.join(' | ')}`);
   await c.close();
+});
+
+await section('Our Story: the book in the page, after the milestones', async () => {
+  const STORY = `${SITE}/about/`;
+  const html = readFileSync(join(DIST_B, 'about/index.html'), 'utf8');
+  const [tl, bk, rb] = ['class="timeline-section', 'id="book"', 'class="ribbon'].map((s) => html.indexOf(s));
+  ok(tl > 0 && bk > tl && rb > bk, `the book sits after the milestones, before the numbers (${tl} < ${bk} < ${rb})`);
+  ok(!readFileSync(join(DIST_A, 'about/index.html'), 'utf8').includes('id="book"'), 'and isn’t there until the book is on the site');
+  const sec = html.slice(bk, rb);
+  ok(/loading="lazy"/.test(sec) && !/fetchpriority="high"/.test(sec) && !sec.includes('Skip to the book') && /<section[^>]*class="fb-text[^"]*"[^>]*hidden/.test(sec),
+    'its cover loads lazily, and its text is the Text tab’s, not read out in the page');
+  const toBook = async (q) => { await q.evaluate(() => document.getElementById('book').scrollIntoView({ block: 'start' })); await sleep(1800); };
+  const flushOut = async (q) => { await q.evaluate(() => window.dispatchEvent(new Event('pagehide'))); await sleep(600); };
+
+  // Someone who reads Our Story but never gets to the book: nothing of it loads, nothing is counted
+  // (after the last section's closing beacon has landed)
+  await sleep(1000);
+  let before = await readStatsNow();
+  // A fresh profile: the pages before this one left the reader's code in this browser's memory
+  const fresh = await browser.createBrowserContext();
+  await fresh.overridePermissions(SITE, ['clipboard-read', 'clipboard-write']);
+  const a = await newPage({ width: 1440, height: 900 }, fresh);
+  const asked = [];
+  a.on('request', (r) => { if (/imagedelivery\/[^/]+\/book\//.test(r.url()) || r.url().includes('/books/')) asked.push(r.url()); });
+  // The reader's own code, as the page records it (an import() isn't seen by this harness's request interception)
+  const readerCode = () => a.evaluate(() => performance.getEntriesByType('resource').map((e) => e.name.split('/_astro/')[1]).filter((n) => /^flipbook\.[\w-]+\.js$/.test(n || '')));
+  await a.goto(STORY, { waitUntil: 'networkidle0' });
+  const codeAtTop = await readerCode();
+  ok(asked.length === 0 && codeAtTop.length === 0 && !(await a.$eval('#book .fb', (e) => e.classList.contains('is-ready'))),
+    `at the top of Our Story the book waits: no pictures, not even the reader’s code (${[...asked, ...codeAtTop].join(', ') || 'nothing asked'})`);
+  await flushOut(a);
+  let after = await readStatsNow();
+  ok(after.totals.visits === before.totals.visits, 'and Our Story alone isn’t a visit to the book');
+
+  // Scrolled to it: the reader starts, turns, and is counted as read on Our Story
+  await toBook(a);
+  const lateCode = await readerCode();
+  ok(await a.$eval('#book .fb', (e) => e.classList.contains('is-ready') && !e.classList.contains('is-flat')) && lateCode.length === 1,
+    `scrolled near, the reader’s code comes only now (${lateCode.join(', ')}) and it starts, with the WebGL curl`);
+  ok(/Fifteen|15 Years/.test(await text(a, '#book-heading')) && (await a.$eval('#book .book-download', (e) => e.getAttribute('href'))).startsWith('/files/books/'), 'the book’s title above it, and its PDF to download');
+  const room = await a.$eval('#book .fb', (e) => { const b = e.getBoundingClientRect(); return { w: b.width, x: b.x, radius: getComputedStyle(e).borderTopLeftRadius }; });
+  ok(room.w > 1000 && room.x > 0 && room.radius === '16px', `a rounded room set into the page (${Math.round(room.w)}px wide at ${Math.round(room.x)}, corners ${room.radius})`);
+  await a.screenshot({ path: join(OUT, 'story-1-book.png') });
+  // Its foot, meeting the numbers below
+  await a.evaluate(() => document.getElementById('book').scrollIntoView({ block: 'end' }));
+  await sleep(300);
+  await a.screenshot({ path: join(OUT, 'story-3-foot.png') });
+  await a.evaluate(() => document.getElementById('book').scrollIntoView({ block: 'start' }));
+  await sleep(600);
+  await a.keyboard.press('ArrowRight');
+  await sleep(1300);
+  await a.keyboard.press('ArrowRight');
+  await sleep(1300);
+  ok((await label(a)).startsWith('4') && await a.evaluate(() => location.pathname === '/about/' && /page=4/.test(location.search)), `the arrow keys turn it, and the address keeps Our Story (${await label(a)}, ${await a.evaluate(() => location.pathname + location.search)})`);
+  await a.click('[data-fb="share"]');
+  await a.click('[data-share="copy"]');
+  await sleep(300);
+  const shared = (await a.evaluate(() => navigator.clipboard.readText().catch(() => ''))) || (await text(a, '.fb-toast'));
+  ok(/\/15-years\/\?page=4$/.test(shared), `Share hands out the book’s own page, with its cover for a preview (${shared})`);
+  const y0 = await a.evaluate(() => scrollY);
+  await a.click('[data-fb="full"]');
+  await sleep(500);
+  ok(await a.$eval('#book .fb', (e) => e.classList.contains('is-full') && getComputedStyle(e).borderTopLeftRadius === '0px'), 'full screen is square, edge to edge');
+  await a.keyboard.press('Escape');
+  await sleep(800);
+  ok(Math.abs((await a.evaluate(() => scrollY)) - y0) < 4, 'and leaving it lands back on Our Story where it was');
+  ok(a.errors.length === 0, `no page errors ${a.errors.join(' | ')}`);
+  await flushOut(a);
+  await a.close();
+  await fresh.close();
+  after = await readStatsNow();
+  ok(after.totals.visits === before.totals.visits + 1 && (after.places['/about/'] || 0) === (before.places['/about/'] || 0) + 1, `counted once, as read on Our Story (${JSON.stringify(after.places)})`);
+
+  // Picked up on its own page where Our Story left off, and back again
+  const b = await newPage({ width: 1440, height: 900 });
+  await b.evaluateOnNewDocument((v) => { if (!sessionStorage.getItem('seeded')) { sessionStorage.setItem('seeded', '1'); localStorage.setItem('fb-last:/15-years/', JSON.stringify({ v, page: 5, t: Date.now() })); } }, (await stored()).version);
+  await b.goto(STORY, { waitUntil: 'networkidle0' });
+  await toBook(b);
+  ok(!(await b.$eval('#book .fb-resume', (e) => e.hidden)) && (await text(b, '#book .fb-resume-go')) === 'Page 6', `Our Story offers the page the book was left on, wherever it was read (${await text(b, '#book .fb-resume-go')})`);
+  await b.close();
+  // A tablet on its side: the header's words beside Download, and the room
+  const t = await newPage({ width: 1024, height: 768, mobile: true });
+  await t.goto(STORY, { waitUntil: 'networkidle0' });
+  await toBook(t);
+  const hd = await t.evaluate(() => {
+    const r = (s) => { const b = document.querySelector(s).getBoundingClientRect(); return { left: b.left, right: b.right }; };
+    return { text: r('#book .book-header-text'), dl: r('#book .book-download'), fb: r('#book .fb') };
+  });
+  ok(hd.dl.left >= hd.text.right - 1 && hd.dl.right <= hd.fb.right + 1, `1024 wide: Download sits beside the words, inside the room’s edge (${Math.round(hd.dl.left)}–${Math.round(hd.dl.right)}, room to ${Math.round(hd.fb.right)})`);
+  await t.screenshot({ path: join(OUT, 'story-4-tablet.png') });
+  await t.close();
+  // A link to one of its pages on Our Story opens there, on screen
+  const c = await newPage({ width: 1280, height: 800 });
+  await c.goto(`${STORY}?page=9`, { waitUntil: 'networkidle0' });
+  await sleep(1500);
+  const st = await c.$eval('#book .fb-stage', (e) => Math.round(e.getBoundingClientRect().top));
+  ok(st > 0 && st < 200 && (await label(c)).includes('9'), `/about/?page=9 opens the book at page 9, on screen (${await label(c)}, stage at ${st}px)`);
+  await c.close();
+
+  // A phone: edge to edge, one page, a tap turns; on its side the book and its controls fit under the header
+  const d = await newPage({ width: 390, height: 844, mobile: true });
+  await d.goto(STORY, { waitUntil: 'networkidle0' });
+  await toBook(d);
+  const ph = await d.$eval('#book .fb', (e) => { const b = e.getBoundingClientRect(); return { x: b.x, w: b.width, radius: getComputedStyle(e).borderTopLeftRadius, two: e.classList.contains('is-two') }; });
+  ok(ph.x === 0 && ph.w === 390 && ph.radius === '0px' && !ph.two, `a phone has the book edge to edge, a page at a time (${ph.x}, ${ph.w}px, ${ph.radius})`);
+  const r = await d.$eval('#book .fb-page--right', (e) => { const x = e.getBoundingClientRect(); return { x: x.x, y: x.y, w: x.width, h: x.height }; });
+  await d.touchscreen.tap(r.x + r.w * 0.8, r.y + r.h / 2);
+  await sleep(1400);
+  ok((await label(d)).startsWith('2'), `a tap turns it (${await label(d)})`);
+  await d.screenshot({ path: join(OUT, 'story-2-phone.png') });
+  for (const [w, h] of [[844, 390], [667, 375]]) {
+    await d.setViewport({ width: w, height: h, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+    await sleep(900);
+    const f = await d.evaluate(() => {
+      const hd = document.querySelector('.site-header');
+      const pos = getComputedStyle(hd).position;
+      const header = pos === 'sticky' || pos === 'fixed' ? hd.getBoundingClientRect().height : 0;
+      const s = document.querySelector('#book .fb-stage').getBoundingClientRect();
+      return { header, need: document.querySelector('#book .fb-controls').getBoundingClientRect().bottom - s.top, stage: s.height };
+    });
+    ok(f.need <= h - f.header + 1 && f.stage >= 140, `${w}×${h}: the book and its controls fit under the header (${Math.round(f.need)}px of ${h - Math.round(f.header)})`);
+  }
+  ok(d.errors.length === 0, `no page errors ${d.errors.join(' | ')}`);
+  await d.close();
+
+  // The admin says where it is, and where it was read
+  const ad = await newPage();
+  await answerAsks(ad);
+  await ad.goto(`${SITE}/admin/index.html#site/book`, { waitUntil: 'networkidle2' });
+  await ad.waitForSelector('.bk-kpis', { timeout: 20000 });
+  ok(/Our Story/.test(await text(ad, '.bk-onoff')), `"On the site" says it goes on Our Story (${(await text(ad, '.bk-onoff')).replace(/\s+/g, ' ').slice(0, 120)})`);
+  const readOn = await ad.$$eval('.bk-lists > div', (els) => els.map((e) => e.innerText.replace(/\s+/g, ' ')).find((t) => /^Read on/i.test(t)) || '');
+  ok(/Our Story\s*\d+%/.test(readOn) && /Its own page\s*\d+%/.test(readOn), `Readers says where it was read (${readOn})`);
+  ok(ad.errors.length === 0, `no admin errors ${ad.errors.join(' | ')}`);
+  await ad.close();
 });
 
 await section('Short screens and a phone turned on its side', async () => {
