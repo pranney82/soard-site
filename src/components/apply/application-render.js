@@ -10,6 +10,12 @@
  * server cleaned when they were saved (sanitizeHtml).
  */
 import { TEXT_MAX, TEXTAREA_MAX, DATE_MIN } from '../../../functions/api/_application-form.js';
+// Short answers a browser can fill in, or a phone can bring the right keys for (an organization's own)
+const TEXT_HINTS = {
+  orgName: ' autocomplete="organization" autocapitalize="words"',
+  contactTitle: ' autocomplete="organization-title" autocapitalize="words"',
+  website: ' inputmode="url" autocomplete="url" autocapitalize="none" spellcheck="false"',
+};
 import { areaMapHtml } from './area-map.js';
 
 const CF_BASE = 'https://sunshineonaranneyday.com/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ';
@@ -51,7 +57,7 @@ export const UI = {
     remindersOff: "You won't get any more reminder emails. Your answers are still saved here.",
     expired: 'This saved application has expired. Please start a new one; we are sorry for the trouble.',
     linkExpired: 'That link has expired or is not valid. Please start a new application.',
-    resumeFailed: "We couldn't open your saved application just now. It's still saved: please reload the page in a moment.",
+    resumeFailed: "We couldn't open your saved application just now. It's still saved, and it will open here as soon as we can reach it.",
     startFail: 'We could not start your application. Please try again.', turnstile: 'Please complete the quick check above the Continue button.',
     waitUploads: 'Please wait for your uploads to finish, then submit.', attention: 'A few answers need attention before you submit.',
     offlineSubmit: 'You seem to be offline. Your answers are saved; please try again when you are connected.',
@@ -103,6 +109,7 @@ export const UI = {
     // A choice's whole description, when a phone has room for only part of it
     tileMore: 'More', tileMoreAbout: 'More about {name}', detailChoose: 'Choose this', detailRemove: 'Remove this choice', detailChosen: 'Chosen',
     detailFull: 'You’ve chosen {n}. Remove one to choose this.',
+    countNear: '{n} of {max} characters', countCut: 'Only the first {max} characters fit here, so the end of what you pasted was left out.',
     first: 'First name', last: 'Last name', street: 'Street address', apt: 'Apartment, suite, etc.', city: 'City', state: 'State', zip: 'ZIP code', signature: 'Type your full name',
     // The address: one line that finds it (Google's suggestions), or its parts typed in
     addressLine: 'Address', addressManual: 'Enter the address yourself', addressSearch: 'Search for the address instead',
@@ -153,7 +160,7 @@ export const UI = {
     remindersOff: 'Ya no recibirá más correos de recordatorio. Sus respuestas siguen guardadas aquí.',
     expired: 'Esta solicitud guardada venció. Comience una nueva; lamentamos la molestia.',
     linkExpired: 'Ese enlace venció o no es válido. Comience una nueva solicitud.',
-    resumeFailed: 'No pudimos abrir su solicitud guardada en este momento. Sigue guardada: vuelva a cargar la página en un momento.',
+    resumeFailed: 'No pudimos abrir su solicitud guardada en este momento. Sigue guardada, y se abrirá aquí en cuanto podamos conectarnos.',
     startFail: 'No pudimos comenzar su solicitud. Intente de nuevo.', turnstile: 'Complete la verificación rápida arriba del botón Continuar.',
     waitUploads: 'Espere a que terminen de subir sus archivos y después envíe la solicitud.', attention: 'Algunas respuestas necesitan atención antes de enviar.',
     offlineSubmit: 'Parece que no tiene conexión. Sus respuestas están guardadas; intente de nuevo cuando tenga conexión.',
@@ -199,6 +206,7 @@ export const UI = {
     language: 'Idioma', loading: 'Cargando la solicitud…', optional: '(opcional)', chooseOne: 'Elija una opción', choose: 'Elegir', upTo: 'Elija hasta {n}.',
     tileMore: 'Más', tileMoreAbout: 'Más sobre {name}', detailChoose: 'Elegir esta', detailRemove: 'Quitar esta opción', detailChosen: 'Elegida',
     detailFull: 'Ya eligió {n}. Quite una para elegir esta.',
+    countNear: '{n} de {max} caracteres', countCut: 'Aquí caben solo los primeros {max} caracteres, así que el final de lo que pegó quedó fuera.',
     first: 'Nombre', last: 'Apellido', street: 'Calle y número', apt: 'Apartamento, unidad, etc.', city: 'Ciudad', state: 'Estado', zip: 'Código postal', signature: 'Escriba su nombre completo',
     addressLine: 'Dirección', addressManual: 'Escribir la dirección a mano', addressSearch: 'Buscar la dirección',
     addressPick: 'Escriba la dirección y elíjala de la lista, o escríbala a mano.', addressNotListed: '¿No aparece? Escríbala a mano',
@@ -410,13 +418,13 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip" inputmode="n
     const desc = described;
     let control = '';
     switch (f.type) {
-      case 'text': control = `<input type="text" id="${id}" maxlength="${f.rules?.maxLength || TEXT_MAX}" enterkeyhint="next" ${desc}>`; break;
+      case 'text': control = `<input type="text" id="${id}" maxlength="${f.rules?.maxLength || TEXT_MAX}"${TEXT_HINTS[f.id] || ''} enterkeyhint="next" ${desc}>`; break;
       case 'number': control = `<input type="text" inputmode="${f.rules?.integer ? 'numeric' : 'decimal'}" id="${id}" maxlength="20" enterkeyhint="next" ${desc}>`; break; // whole numbers: no decimal point on the keypad
       // A likely typo in the address ("gmial.com") gets a one-tap fix under it (the script fills this in)
       case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' || f.id === 'contactEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" enterkeyhint="next" ${desc}><p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>`; break;
       case 'phone': control = `<input type="tel" id="${id}" maxlength="24" autocomplete="${f.id === 'parentPhone' || f.id === 'contactPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" enterkeyhint="next" ${desc}>`; break;
       case 'date': control = `<input type="date" id="${id}" max="${new Date().toISOString().slice(0, 10)}" min="${DATE_MIN}" ${desc}>`; break;
-      case 'textarea': control = `<textarea id="${id}" rows="${Number(f.rows) || 5}" maxlength="${f.rules?.maxLength || TEXTAREA_MAX}" ${desc}></textarea>`; break;
+      case 'textarea': control = `<textarea id="${id}" rows="${Number(f.rows) || 5}" maxlength="${f.rules?.maxLength || TEXTAREA_MAX}" ${desc}></textarea><p class="af-count" data-count aria-live="polite" hidden></p>`; break;
       case 'signature': control = `<input type="text" id="${id}" class="af-signature" maxlength="120" autocomplete="name" placeholder="${esc(T('signature'))}" enterkeyhint="done" ${desc}>`; break;
       case 'select': control = `<select id="${id}" ${desc}><option value="">${T('chooseOne')}</option>${f.options.map(v => `<option value="${esc(v)}">${esc(f.optionLabels?.[v] ?? v)}</option>`).join('')}</select>`; break;
       case 'photo':

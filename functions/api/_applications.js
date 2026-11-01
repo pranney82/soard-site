@@ -1316,7 +1316,7 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
         $: {
           accountId, address: addressText(a.address), name: a.address?.line1 || null, parseAddress: true,
           ...(s.contacts?.[0]?.id ? { contactId: s.contacts[0].id } : {}),
-          customFieldValues: { ...mappedFields(form, a, 'location'), ...(a.county ? { [JT_FIELDS.county]: a.county } : {}) },
+          customFieldValues: { ...mappedFields(form, a, 'location'), ...(a.county && !/^other\b/i.test(a.county) ? { [JT_FIELDS.county]: a.county } : {}) }, // "Other": not a JobTread choice (the Census county is in the email)
         },
         createdLocation: { id: {} },
       },

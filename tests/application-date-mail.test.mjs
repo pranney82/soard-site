@@ -45,3 +45,12 @@ test('an email ending no address has ("gmail.con") is turned away, with the fix 
   for (const v of ['mom@gmail.com', 'mom@school.co', 'mom@example.org', 'mom@mail.com']) assert.equal(fieldError(f, v, 'en'), null, v);
   assert.equal(mailFix('mom@gmail.con'), 'mom@gmail.com');
 });
+
+test('a number answered as a range ("200-300") asks for one number, a guess; "1e3" is not a count', () => {
+  const f = { id: 'children', type: 'number', required: true, rules: { integer: true } };
+  for (const v of ['200-300', '200 to 300', '200 – 300', '50 or 60']) assert.equal(fieldError(f, v, 'en'), 'Please enter one number. Your best guess is fine.', v);
+  assert.equal(fieldError(f, '200-300', 'es'), 'Escriba un solo número. Un cálculo aproximado está bien.');
+  assert.equal(fieldError(f, '1e3', 'en'), 'Please enter a number.');
+  assert.equal(fieldError(f, '12.5', 'en'), 'Please enter a whole number.');
+  for (const v of ['250', '1,200', ' 40 ']) assert.equal(fieldError(f, v, 'en'), null, v);
+});

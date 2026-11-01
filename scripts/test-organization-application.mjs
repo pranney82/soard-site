@@ -225,7 +225,7 @@ try {
   await sleep(600);
   await pick('spaceTypes', 'Sensory room');
   await pick('spaceTypes', 'Classroom or learning space');
-  const left = await page.$$eval('[data-field="spaceTypes"] input', (els) => els.filter((i) => i.disabled).length);
+  const left = await page.$$eval('[data-field="spaceTypes"] input', (els) => els.filter((i) => i.getAttribute('aria-disabled') === 'true' && !i.disabled).length); // greyed, still reached by Tab
   ok(left > 0, 'choose up to two: the rest wait');
   await type('#af-spaceToday', 'An empty classroom with harsh lights and worn carpet.');
   await type('#af-spaceDream', 'A calm place to regulate, so students can get back to learning.');

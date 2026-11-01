@@ -342,7 +342,7 @@ export function initAdvisoryForm() {
     const doneCount = ADVISORY_STEPS.filter((_, i) => stepDone(i, a)).length;
     ui.hubTitle.textContent = started ? 'Your application is saved on this device' : 'Six steps, about 20 minutes';
     ui.hubLead.textContent = started
-      ? (doneCount === total ? 'Every step is done. Look it over and send it.' : `${doneCount} of ${total} steps done. Pick up where you left off.`)
+      ? (doneCount === total ? 'Every step is done. Look it over and send it.' : `${doneCount} of ${total + 1} steps done. Pick up where you left off.`)
       : 'Have a reference in mind. Your answers save on this device as you go.';
     ui.goLabel.textContent = !started ? 'Start the application' : doneCount === total ? 'Review and send' : 'Continue where you left off';
     const cta = document.querySelector('[data-adv-cta]'); // the hero's button says the same

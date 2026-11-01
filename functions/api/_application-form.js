@@ -1173,7 +1173,7 @@ export const ERROR_TEXT = {
     date: 'Please enter a valid date.', year: 'Please check the year.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
     address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.', poBox: 'Please enter a street address, not a PO box.',
     oneOf: 'Please choose one of the answers.', listed: 'Please choose from the answers listed.', upTo: (n) => `Please choose up to ${n}.`,
-    number: 'Please enter a number.', whole: 'Please enter a whole number.', min: (n) => `Please enter ${n} or more.`, max: (n) => `Please enter ${n} or less.`,
+    number: 'Please enter a number.', range: 'Please enter one number. Your best guess is fine.', whole: 'Please enter a whole number.', min: (n) => `Please enter ${n} or more.`, max: (n) => `Please enter ${n} or less.`,
     minLength: (n) => `Please write at least ${n} characters.`, maxLength: (n) => `Please keep this to ${n} characters or fewer.`,
     minAge: (n) => `The child must be at least ${n} years old.`, maxAge: (n) => `The child must be ${n} years old or younger.`,
   },
@@ -1185,7 +1185,7 @@ export const ERROR_TEXT = {
     date: 'Escriba una fecha válida.', year: 'Revise el año.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
     address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.', poBox: 'Escriba una dirección con calle, no un apartado postal.',
     oneOf: 'Elija una de las respuestas.', listed: 'Elija entre las respuestas de la lista.', upTo: (n) => `Elija hasta ${n}.`,
-    number: 'Escriba un número.', whole: 'Escriba un número entero.', min: (n) => `Escriba ${n} o más.`, max: (n) => `Escriba ${n} o menos.`,
+    number: 'Escriba un número.', range: 'Escriba un solo número. Un cálculo aproximado está bien.', whole: 'Escriba un número entero.', min: (n) => `Escriba ${n} o más.`, max: (n) => `Escriba ${n} o menos.`,
     minLength: (n) => `Escriba al menos ${n} caracteres.`, maxLength: (n) => `Use ${n} caracteres o menos.`,
     minAge: (n) => `El niño o la niña debe tener al menos ${n} años.`, maxAge: (n) => `El niño o la niña debe tener ${n} años o menos.`,
   },
@@ -1217,7 +1217,9 @@ export function fieldError(field, value, lang = 'en') {
     case 'email': return isEmailAddress(value) ? null : E.email;
     case 'phone': return toE164(value) ? null : E.phone;
     case 'number': {
-      const n = Number(String(value).replace(/,/g, '').trim());
+      const t = String(value).replace(/,/g, '').trim();
+      if (/^\d[\d.]*\s*(?:-|–|to|or|a|o)\s*\d/i.test(t)) return E.range; // "200-300": one number, a guess
+      const n = /^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(t) ? Number(t) : NaN; // digits only ("1e3" isn't how anyone writes a count)
       if (!Number.isFinite(n)) return E.number;
       if (r.integer && !Number.isInteger(n)) return E.whole;
       if (r.min != null && n < r.min) return E.min(r.min);

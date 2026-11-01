@@ -631,7 +631,8 @@ const breadcrumbs = [
   }
   .af-field textarea { resize: vertical; min-height: 140px; line-height: 1.6; }
   .af-field input:focus, .af-field textarea:focus, .af-field select:focus, .af-dialog input:focus { outline: none; }
-  .af-field input:focus-visible, .af-field textarea:focus-visible, .af-field select:focus-visible, .af-dialog input:focus-visible {
+  /* A date box too on any focus: Safari never calls the focus in its month, day and year parts visible */
+  .af-field input:focus-visible, .af-field input[type=date]:focus, .af-field textarea:focus-visible, .af-field select:focus-visible, .af-dialog input:focus-visible {
     border-color: var(--c-dark); box-shadow: 0 0 0 4px var(--c-yellow-soft);
   }
   .af-signature { font-family: var(--font-display); font-style: italic; font-size: 21px !important; }
@@ -695,8 +696,8 @@ const breadcrumbs = [
   .af-choice input:checked + .af-choice-box { border-color: var(--c-dark); background: var(--c-yellow); animation: afPick .3s cubic-bezier(.34,1.56,.64,1); }
   .af-choice input:checked + .af-choice-box .af-check-draw path { stroke-dashoffset: 0; opacity: 1; transition: stroke-dashoffset .3s var(--af-ease) .05s, opacity 0s; }
   .af-choice:has(input:focus-visible) { outline: 3px solid var(--c-dark); outline-offset: 2px; }
-  .af-choice:has(input:disabled) { opacity: 0.45; cursor: not-allowed; }
-  .af-choice:has(input:disabled):active { transform: none; }
+  .af-choice:has(input:is(:disabled, [aria-disabled="true"])) { opacity: 0.45; cursor: not-allowed; }
+  .af-choice:has(input:is(:disabled, [aria-disabled="true"])):active { transform: none; }
   .af-choice-text { display: grid; gap: 4px; padding-top: 1px; }
   .af-choice-title { font-weight: 700; }
   .af-choice-desc { font-size: 14px; line-height: 1.5; color: var(--c-text-muted); }
@@ -710,6 +711,9 @@ const breadcrumbs = [
   /* Each column's own gap, the same as the choices': an inherited one isn't recalculated straight away in
      Chrome when the choices' changes, so the fit measured the old one */
   .af-tile-col { display: grid; gap: 10px; align-content: start; }
+  /* A computer's screen a little short for every word: the tiles closer (the script sets data-snug) */
+  html.af-focus :is(.af-choices--tiles[data-snug], .af-choices--tiles[data-snug] .af-tile-col) { gap: 6px; }
+  html.af-focus .af-choices--tiles[data-snug] .af-choice { padding-block: 10px; }
   /* Problem notes showing: the questions a little closer, so the notes fit without anything moving */
   html.af-focus .af-page[data-snug] { gap: 12px; }
   html.af-focus .af-page[data-snug] .af-error { padding-block: 7px; }
@@ -758,6 +762,9 @@ const breadcrumbs = [
 
   /* "Did you mean …@gmail.com?" under an email address */
   .af-mailfix { margin: 0; font-size: 14.5px; line-height: 2.1; color: var(--c-dark); animation: afFadeIn .22s var(--af-ease) both; }
+  /* A long answer near the most it holds: the count under it; a paste cut short, said like a problem note (gold, never red) */
+  .af-count { margin: 6px 0 0; font-size: 13.5px; line-height: 1.4; color: var(--c-text-muted); text-align: right; font-variant-numeric: tabular-nums; }
+  .af-count[data-kind="cut"] { text-align: left; padding: 8px 12px; border-radius: 10px; background: var(--af-attn-bg); color: var(--af-attn-ink); font-weight: 600; }
   .af-mailfix button { display: inline; margin: 0 1px 0 4px; font: inherit; line-height: 1.4; font-weight: 700; color: var(--c-dark); background: var(--af-picked); border: 1.5px solid var(--c-yellow); border-radius: 999px; min-height: 36px; padding: 4px 12px; cursor: pointer; overflow-wrap: anywhere; text-align: left; transition: background-color .18s var(--af-ease), transform .14s var(--af-ease); }
   .af-mailfix button:hover { background: var(--c-yellow-soft); }
   .af-mailfix button:active { transform: scale(.97); }
@@ -865,19 +872,20 @@ const breadcrumbs = [
     border-radius: 999px; border: 0; cursor: pointer; text-decoration: none; -webkit-tap-highlight-color: transparent;
     transition: background-color .12s var(--af-ease), box-shadow .12s var(--af-ease), transform .12s var(--af-ease), border-color .12s var(--af-ease), opacity .12s var(--af-ease);
   }
-  .af-btn:active:not(:disabled) { transform: scale(.97); }
+  .af-btn:active:not(:disabled, [aria-disabled="true"]) { transform: scale(.97); }
   .af-btn-icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex-shrink: 0; transition: transform .12s var(--af-ease); }
   @media (hover: hover) {
     .af-btn--next:is(:hover, [data-held]) .af-btn-icon--next { transform: translateX(2px); }
     .af-btn--back:is(:hover, [data-held]) .af-btn-icon { transform: translateX(-2px); }
   }
   .af-btn--primary { background: var(--c-yellow); color: var(--c-dark); }
-  .af-btn--primary:is(:hover, [data-held]):not(:disabled) { box-shadow: 0 10px 26px -6px var(--c-yellow-glow), 0 0 0 1px rgba(55,58,54,.06); background: #FFD60A; }
-  .af-btn--primary:disabled { opacity: 0.5; cursor: not-allowed; }
+  .af-btn--primary:is(:hover, [data-held]):not(:disabled, [aria-disabled="true"]) { box-shadow: 0 10px 26px -6px var(--c-yellow-glow), 0 0 0 1px rgba(55,58,54,.06); background: #FFD60A; }
+  .af-btn--primary:is(:disabled, [aria-disabled="true"]) { opacity: 0.5; cursor: not-allowed; }
+  .af-btn[aria-busy="true"] { cursor: progress; }
   .af-btn--primary[aria-busy="true"] { cursor: progress; opacity: .75; }
   [data-hero-cta][aria-busy="true"] { cursor: progress; opacity: .85; }
   .af-btn--submit { background: var(--c-dark); color: #fff; }
-  .af-btn--submit:is(:hover, [data-held]):not(:disabled) { background: #2C2F2B; box-shadow: 0 10px 26px -8px rgba(30,31,37,.35); }
+  .af-btn--submit:is(:hover, [data-held]):not(:disabled, [aria-disabled="true"]) { background: #2C2F2B; box-shadow: 0 10px 26px -8px rgba(30,31,37,.35); }
   .af-btn--submit .af-btn-icon--next { display: none; }
   .af-btn--ghost { background: transparent; color: var(--c-dark); border: 1.5px solid var(--af-line); }
   .af-btn--ghost:is(:hover, [data-held]) { border-color: var(--c-dark); }
@@ -1273,16 +1281,21 @@ const breadcrumbs = [
     html.af-focus .af-rail > nav { flex: 1 1 auto; min-height: 0; overflow: auto; overscroll-behavior: contain; margin: -4px -8px; padding: 4px 8px; }
     html.af-focus .af-rail-foot { flex: none; }
     html.af-focus .af-steps { display: none; }
+    /* Sent: the steps have done their job, and the thank-you has the screen (no step to go to, nothing to save) */
+    html.af-focus .af-app.is-done { grid-template-columns: minmax(0, 1fr); grid-template-areas: "top" "main"; }
+    html.af-focus .af-app.is-done .af-rail { display: none; }
     /* With All steps in the rail, "Step 2 of 10" needs only its own line */
     html.af-focus .af-head-top { min-height: 0; }
   }
   /* A laptop's short screen (1280×720): every step in view. html.af-focus first, so these win over the
      rail's own rules further down */
   @media (min-width: 1080px) and (max-height: 820px) {
-    html.af-focus .af-rail { gap: 14px; padding-top: 24px; }
-    html.af-focus .af-rail .af-step { padding-top: 6px; padding-bottom: 6px; min-height: 42px; }
-    html.af-focus .af-rail .af-step:is([data-state="locked"], [data-state="open"]) .af-step-sub { display: none; }
-    html.af-focus .af-rail .af-step:is([data-state="locked"], [data-state="open"]) .af-step-body { padding-top: 4px; }
+    html.af-focus .af-rail { gap: 10px; padding-top: 16px; padding-bottom: 16px; }
+    html.af-focus .af-rail-foot { padding-top: 12px; }
+    html.af-focus .af-rail .af-step { padding-top: 6px; padding-bottom: 6px; min-height: 44px; } /* a touch size still (an iPad held sideways has the panel) */
+    /* A done step's answers in a line wait for a taller screen (its check says it's done); the one they're on keeps its part */
+    html.af-focus .af-rail .af-step:not([data-state="now"]) .af-step-sub { display: none; }
+    html.af-focus .af-rail .af-step:not([data-state="now"]) .af-step-body { padding-top: 4px; }
     html.af-focus .af-rail-list li:not(:last-child)::before, html.af-focus .af-rail-list li:not(:last-child)::after { top: 36px; bottom: -6px; }
     html.af-focus .af-rail-help { display: none; }
   }
@@ -1310,7 +1323,7 @@ const breadcrumbs = [
   .af-step-sub:empty { display: none; }
   .af-step[aria-current="step"] .af-step-sub { color: var(--c-dark); }
   .af-rail-foot { display: grid; gap: 10px; justify-items: start; margin-top: auto; padding-top: 18px; border-top: 1px solid #E6E1D3; }
-  .af-rail-left { margin: 0; font-size: 14.5px; font-weight: 600; color: var(--c-dark); display: flex; align-items: center; gap: 8px; }
+  .af-rail-left { margin: 0; font-size: 14.5px; font-weight: 600; color: var(--c-dark); display: flex; align-items: center; gap: 8px; justify-self: stretch; } /* the rail's width (Safari wrapped a shrink-to-fit one) */
   .af-rail-left::before { content: ''; flex: 0 0 16px; height: 16px; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23373A36' stroke-width='1.6' stroke-linecap='round'%3E%3Ccircle cx='8' cy='8' r='6.4'/%3E%3Cpath d='M8 4.6V8l2.2 1.4'/%3E%3C/svg%3E"); }
   .af-rail-left:empty { display: none; }
   .af-rail-help { margin: 4px 0 0; font-size: 13.5px; line-height: 1.55; color: var(--c-text-muted); display: grid; gap: 2px; }
@@ -1392,6 +1405,9 @@ const breadcrumbs = [
     .af-place { grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: 16px 24px; }
     .af-place > .af-field--address { grid-column: 1; grid-row: 1; }
     .af-place .af-map { grid-column: 2; grid-row: 1 / span 4; }
+    /* Nothing asked about the home: the map spans only the address and the card (over rows left empty,
+       Chrome sized them as if the map were nearly twice its height, and the map was shrunk to fit) */
+    .af-place .af-area:not([data-area="unknown"], [data-area="error"]) .af-map { grid-row: 1 / span 2; }
     .af-place :is(.af-area-result, .af-area-ask, .af-field--area > .af-error) { grid-column: 1; }
   }
   .af-map-frame { width: min(100%, calc(var(--af-map-h, 100vh) * var(--r, 1.4))); margin-inline: auto; }
@@ -1415,6 +1431,7 @@ const breadcrumbs = [
     html.af-focus .af-place[data-split] { --af-map-h: clamp(240px, calc(100dvh - 400px), 50vh); }
     /* Asked about the home (the check couldn't place it): the card beside the map, the question under both with its answers in a row */
     html.af-focus .af-place[data-split] .af-area:is([data-area="unknown"], [data-area="error"]) .af-map { grid-row: 1; }
+    html.af-focus .af-place[data-split] .af-area:not([data-area="unknown"], [data-area="error"]) .af-map { grid-row: 1; } /* the card's row (see above) */
     html.af-focus .af-place[data-split] .af-area-ask { grid-column: 1 / -1; }
     html.af-focus .af-place[data-split] .af-area-ask .af-choices { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
   }
@@ -1491,9 +1508,10 @@ const breadcrumbs = [
   .af-vt::view-transition-old(af-head) { animation: none; opacity: 0; }
   .af-vt.af-vt-back::view-transition-old(af-stage) { animation-name: afOutBack; }
   .af-vt.af-vt-back::view-transition-new(af-stage) { animation-name: afInBack; }
-  @keyframes afOutNext { to { opacity: 0; transform: translateX(-12px); } }
+  /* Gone (60% in, ~54ms) before the new one shows at 60ms: the two never overlap, word over word */
+  @keyframes afOutNext { 60%, to { opacity: 0; } to { transform: translateX(-12px); } }
   @keyframes afInNext { from { opacity: 0; transform: translateX(16px); } }
-  @keyframes afOutBack { to { opacity: 0; transform: translateX(12px); } }
+  @keyframes afOutBack { 60%, to { opacity: 0; } to { transform: translateX(12px); } }
   @keyframes afInBack { from { opacity: 0; transform: translateX(-16px); } }
   @keyframes afShow { to { opacity: 1; } }
 
@@ -1556,7 +1574,7 @@ const breadcrumbs = [
   }
 
   /* A short computer screen (1280×720): a little less space around the step, tiles and cards a touch closer */
-  @media (min-width: 1080px) and (max-height: 760px) {
+  @media (min-width: 1080px) and (max-height: 800px) {
     html.af-focus .af-stage { padding-top: 18px; }
     html.af-focus .af-head { margin-bottom: 14px; }
     html.af-focus .af-step-title { font-size: 24px; }

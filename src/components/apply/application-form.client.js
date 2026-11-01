@@ -369,7 +369,8 @@ function init(root, cfg, mode) {
       if (f.type !== 'checkbox' || !f.max) continue;
       const el = fieldEl(f.id);
       const picked = el?.querySelectorAll('input:checked').length || 0;
-      el?.querySelectorAll('input').forEach(i => { i.disabled = !i.checked && picked >= f.max; });
+      // As many as it takes: the rest greyed, still reached by Tab and a screen reader (a press says why)
+      el?.querySelectorAll('input').forEach(i => { if (!i.checked && picked >= f.max) i.setAttribute('aria-disabled', 'true'); else i.removeAttribute('aria-disabled'); });
       if (picked < f.max && Array.isArray(lastNav?.m) && lastNav.m[0] === 'detailFull') navNote(null); // one taken off: the note's done
     }
     paintHeader();
@@ -571,7 +572,11 @@ function init(root, cfg, mode) {
   // A screen is known by its first question (words to read before it can be parted from it by a repack)
   const screenQuestion = (pid = currentId, n = screenNo) => {
     const ids = [...screenFieldIds(pid, n)];
-    return ids.find(id => byId[id] && (isInput(byId[id]) || isUpload(byId[id]))) || ids[0] || null;
+    const asks = (id) => byId[id] && (isInput(byId[id]) || isUpload(byId[id]));
+    // One that shows (not a follow-up nobody asked for, or one tucked behind "Add another…"): those can
+    // sit on another screen in the other language
+    const shows = (id) => { const h = fieldEl(id)?.closest('[hidden]'); return !h || h === pageEl(pid); };
+    return ids.find(id => asks(id) && shows(id)) || ids.find(asks) || ids[0] || null;
   };
   // Where a screen is: its question; the service-area check's card or map alone on a screen, which of them
   const screenAt = (pid = currentId, n = screenNo) => {
@@ -904,7 +909,9 @@ function init(root, cfg, mode) {
       if (blockedBy) navNote(blockedBy, true);
       else if (lastNav?.reason) navNote(null);
     } else if (lastNav?.reason) navNote(null);
-    ui.next.disabled = busyShown || !!blockedBy;
+    // Working: it looks off but stays a button (a disabled one drops the keyboard's focus to the page)
+    ui.next.disabled = !!blockedBy;
+    if (busyShown) ui.next.setAttribute('aria-disabled', 'true'); else ui.next.removeAttribute('aria-disabled');
     ui.next.setAttribute('aria-busy', String(busyShown));
     if (ui.turnstile) ui.turnstile.hidden = !(turnstileSiteKey && !token && !previewing && at === 0 && screenNo === 0);
     fitNavLater();
@@ -958,7 +965,13 @@ function init(root, cfg, mode) {
     if (!stacked) return [k];
     return asksAboutHome(k) && ask ? [res, ask, map] : [res, map];
   };
-  const pieces = (pid) => [...(pageEl(pid)?.children || [])].flatMap(k => (k.matches('.af-place[data-split]') ? [...k.children].flatMap(areaPieces) : stackedPair(k) ? [...k.children] : [k]));
+  // A group opened ("Add another parent or guardian"): its questions are pieces like any others (Remove goes with the last)
+  const groupPieces = (k) => {
+    const body = k.querySelector(':scope > .af-more-body');
+    return body && !body.hidden ? [...body.children].flatMap(c => (stackedPair(c) ? [...c.children] : [c])) : [k];
+  };
+  const pieces = (pid) => [...(pageEl(pid)?.children || [])].flatMap(k => (k.matches('.af-place[data-split]') ? [...k.children].flatMap(areaPieces)
+    : stackedPair(k) ? [...k.children] : k.matches('.af-more') ? groupPieces(k) : [k]));
   // A piece's questions (the check's question stands for the service-area answer it belongs to)
   const idsOf = (el) => (el.matches('[data-field]') ? [el.dataset.field] : el.matches('[data-area-ask]') ? [el.closest('[data-field]').dataset.field]
     : [...el.querySelectorAll('[data-field]')].map(x => x.dataset.field));
@@ -1104,7 +1117,7 @@ function init(root, cfg, mode) {
       const prev = blocks[blocks.length - 1];
       // The map stays with the question about it; with what the check found while the two fit
       const mapFollows = k.matches('[data-area-map]') && prev && (prev.kids.some(x => x.matches('[data-area-ask]')) || prev.h + sp[i] + h[i] - mapGives[i] <= fit);
-      const follows = prev && (!h[i] || (f?.showIf && prev.ids.has(f.showIf.field) && together) || mapFollows);
+      const follows = prev && (!h[i] || (f?.showIf && prev.ids.has(f.showIf.field) && together) || mapFollows || k.matches('.af-more-remove'));
       if (prev && (follows || prev.carry)) {
         prev.kids.push(k);
         if (h[i]) prev.h += sp[i] + h[i];
@@ -1226,8 +1239,9 @@ function init(root, cfg, mode) {
     for (const s of pageEl(currentId)?.querySelectorAll('.af-choices--tiles') || []) {
       if (!focused || !onScreen(s)) continue;
       settle();
-      if (getComputedStyle(s).getPropertyValue('--af-narrow').trim() !== '1') continue;
       if (!overflows()) continue;
+      // Two to a row (a computer): every word still shows, the tiles just a little closer
+      if (getComputedStyle(s).getPropertyValue('--af-narrow').trim() !== '1') { s.setAttribute('data-snug', ''); continue; }
       const tiles = [...s.querySelectorAll('.af-tile')].map((tile) => {
         const d = tile.querySelector('.af-choice-desc');
         return { tile, lines: d ? Math.round(d.getBoundingClientRect().height / (parseFloat(getComputedStyle(d).lineHeight) || 21)) : 0 };
@@ -1405,25 +1419,31 @@ function init(root, cfg, mode) {
     navNote(null);
     if (currentId === 'review') { submit(); return; }
     takeExactMatch();
+    // Waiting (a check, a photo on its way) while they go Back or jump: this Continue is over
+    const from = `${currentId}:${screenNo}`;
+    const moved = () => `${currentId}:${screenNo}` !== from || !focused || ui.form.hidden;
     // An address check still on its way decides this page's answer: wait for it (briefly),
     // unless the address itself needs fixing first (then there's nothing to wait for)
     const home = homeAddressId() && byId[homeAddressId()];
     if (areaWaiting() && !(home && fieldError(home, homeAddressNow(), lang))) {
       setBusy(true);
       try { await Promise.race([flushArea(), wait(9000)]); } finally { setBusy(false); }
+      if (moved()) return;
     }
     // A suggestion picked a moment ago, its parts still coming: wait for them rather than say to pick one
     if (placing) {
       setBusy(true);
       try { await Promise.race([placing, wait(8000)]); } finally { setBusy(false); }
       if (areaWaiting()) { setBusy(true); try { await Promise.race([flushArea(), wait(9000)]); } finally { setBusy(false); } }
+      if (moved()) return;
     }
     // A photo or video on this screen still on its way: Continue waits for it (the button shows it's
     // working) rather than saying it's missing
     const sending = () => [...screenFieldIds()].some(id => uploads.has(id));
     if (sending()) {
       setBusy(true);
-      try { for (let t = 0; t < 600 && sending(); t++) await wait(200); } finally { setBusy(false); }
+      try { for (let t = 0; t < 600 && sending() && !moved(); t++) await wait(200); } finally { setBusy(false); }
+      if (moved()) return;
       if (sending()) { navNote('waitUploads', true); return; }
     }
     const a = readAnswers();
@@ -1472,7 +1492,7 @@ function init(root, cfg, mode) {
   }
   /** Jump to a page already reached (the steps list, Edit, Answer it, Change) */
   function jump(id, { focusField = null, whole = true } = {}) {
-    if (!reached(id) && !previewing) return;
+    if ((!reached(id) && !previewing) || doneShown) return; // sent: the steps are closed
     if (id === currentId && !focusField) { ui.steps.open = false; return; } // the step they're on: the list closes
     const dir = Math.sign(order(id) - order(currentId));
     if (dir > 0) {
@@ -2519,11 +2539,13 @@ function init(root, cfg, mode) {
     const f = (byId.county && (choiceTypes.includes(byId.county.type) || byId.county.type === 'text') ? byId.county : null)
       || fields.find(x => choiceTypes.includes(x.type) && x.options?.some(o => o.toLowerCase() === name));
     if (!f) return;
-    const value = f.type === 'text' ? String(county).trim() : f.options.find(o => o.toLowerCase() === name);
+    // Not one of the choices: "Other" when the question has it (its note still names the county)
+    const other = f.type === 'text' ? null : f.options.find(o => /^other\b/i.test(o));
+    const value = f.type === 'text' ? String(county).trim() : f.options.find(o => o.toLowerCase() === name) || other;
     if (!value) { unfillCounty(); return; } // not a county we serve: the question is the family's (one we filled from the last address goes)
     writeField(f, value);
     liveCheck(fieldEl(f.id));
-    countyNote = { field: f.id, value, label: f.optionLabels?.[value] || value, address: addressEl.dataset.field };
+    countyNote = { field: f.id, value, label: value === other ? String(county).trim() : f.optionLabels?.[value] || value, address: addressEl.dataset.field };
     showCountyNote();
   }
   function showCountyNote() {
@@ -2555,12 +2577,14 @@ function init(root, cfg, mode) {
     if (!areaNow || !AREA_VALUES[areaNow.band]) return null;
     return areaNow.key === addressKey(homeAddressNow()) ? { ...areaNow, answer: AREA_VALUES[areaNow.band] } : null;
   }
+  // A PO box as the home isn't checked (it's turned away as the home, and a check would only cost a lookup)
+  const checkable = (a) => checkableAddress(a) && !(homeAddressId() === 'address' && /\b(?:p\.?\s*o\.?\s*box|post\s+office\s+box)\b/i.test(`${a?.line1 || ''} ${a?.line2 || ''}`));
   /** A check is due or on its way for the address on screen */
   function areaWaiting() {
     const af = areaField();
     if (!af || pageOf(af.id) !== currentId) return false;
     const addr = homeAddressNow();
-    return checkableAddress(addr) && areaNow?.key !== addressKey(addr);
+    return checkable(addr) && areaNow?.key !== addressKey(addr);
   }
   async function flushArea() {
     const addr = homeAddressNow();
@@ -2575,7 +2599,7 @@ function init(root, cfg, mode) {
     const addr = homeAddressNow();
     const key = addressKey(addr);
     clearTimeout(area.timer);
-    if (!checkableAddress(addr)) {
+    if (!checkable(addr)) {
       area.want = null;
       if (areaNow) { areaNow = null; paintArea(); }
       return;
@@ -3072,6 +3096,43 @@ function init(root, cfg, mode) {
     refresh();
     markDirty();
   }
+  /**
+   * A group they opened ("Add another parent or guardian") too tall for the screen it's on: the screen's
+   * questions from there on are worked out again (the screens before stay as they were), and they go to
+   * the screen with the group's first box when it moved on
+   */
+  function makeRoom(box) {
+    if (!focused || !packs[currentId] || currentId === 'review' || !overflows()) return;
+    const fresh = pack(currentId, packs[currentId].slice(0, screenNo));
+    if (!fresh) return;
+    packs[currentId] = fresh;
+    fresh.size = packSize;
+    const first = box.querySelector('[data-field]')?.dataset.field;
+    const to = first ? screenOf(currentId, first) : screenNo;
+    if (to !== screenNo) { show(currentId, { dir: 1, screen: to, focusField: first }).then(() => { pushLoc(); save(); }); return; }
+    paintScreen();
+    paintHeader();
+  }
+  /** Removed again: its button goes back on the screen it was on (with the question before it, where they fit) */
+  function closeRoom(box) {
+    if (!focused || !packs[currentId] || currentId === 'review') return;
+    const list = packs[currentId];
+    const has = (sc, el) => !!el && sc.some(k => k === el || k.contains(el) || el.contains(k));
+    let from = list.findIndex(sc => has(sc, box));
+    const before = list.findIndex(sc => has(sc, box.previousElementSibling));
+    if (before >= 0 && before < from) from = before;
+    if (from < 0) return;
+    const fresh = pack(currentId, list.slice(0, from));
+    if (!fresh) return;
+    packs[currentId] = fresh;
+    fresh.size = packSize;
+    const to = fresh.findIndex(sc => has(sc, box));
+    const btn = box.querySelector('[data-more-open]');
+    if (to >= 0 && to !== screenNo) { show(currentId, { dir: -1, screen: to, focus: false }).then(() => { btn.focus({ preventScroll: true }); replaceLoc(); }); return; }
+    paintScreen();
+    paintHeader();
+    btn.focus({ preventScroll: true });
+  }
   /** After a redraw: a group with an answer in it stays open */
   function openAnsweredTucked() {
     ui.pages.querySelectorAll('[data-more]').forEach(box => {
@@ -3089,6 +3150,30 @@ function init(root, cfg, mode) {
     ta.style.height = `${Math.min(ta.scrollHeight + 3, Math.round(innerHeight * 0.6))}px`;
   }
   const growPage = (id) => pageEl(id)?.querySelectorAll('textarea').forEach(grow);
+  /**
+   * A long answer near the most its box holds: how many characters, under it. A paste that didn't all fit
+   * says so (the box keeps the first part on its own, and the end would go without anyone knowing)
+   */
+  let pasteCut = null;
+  function paintCount(ta) {
+    const p = ta.parentElement?.querySelector('[data-count]');
+    const max = ta.maxLength;
+    if (!p || !(max > 0)) return;
+    const n = ta.value.length;
+    const cut = pasteCut === ta && n >= max;
+    if (!cut && pasteCut === ta) pasteCut = null;
+    const near = n >= max * 0.9;
+    const fmt = (x) => x.toLocaleString(lang === 'es' ? 'es-US' : 'en-US');
+    p.textContent = cut ? T('countCut', { max: fmt(max) }) : near ? T('countNear', { n: fmt(n), max: fmt(max) }) : '';
+    p.dataset.kind = cut ? 'cut' : '';
+    p.hidden = !cut && !near;
+  }
+  ui.form.addEventListener('paste', (e) => {
+    const ta = e.target;
+    if (ta?.tagName !== 'TEXTAREA' || !(ta.maxLength > 0)) return;
+    const text = e.clipboardData?.getData('text') || '';
+    pasteCut = ta.value.length - (ta.selectionEnd - ta.selectionStart) + text.length > ta.maxLength ? ta : null;
+  });
   /** …until the screen is full: a longer answer then scrolls inside its box, and the screen never does */
   function capBoxes(page) {
     const boxes = [...(page?.querySelectorAll('textarea') || [])];
@@ -3154,6 +3239,7 @@ function init(root, cfg, mode) {
   const dlg = ui.dialog;
   let laterOpener = null;
   const openLater = (e) => {
+    if (doneShown) return; // sent: nothing to finish later
     if (previewing) { notice('previewNoSave', 'info'); return; }
     laterOpener = e?.currentTarget instanceof HTMLElement ? e.currentTarget : document.activeElement; // Safari doesn't focus a tapped button
     const email = testRun?.by || readAnswers()[emailId];
@@ -3216,9 +3302,10 @@ function init(root, cfg, mode) {
   const detail = ui.detail;
   let detailFor = null; // the box of the choice it's about
   let detailOpener = null; // the More that opened it: focus goes back there (or to the choice, once chosen)
+  const isFull = (input) => input.getAttribute('aria-disabled') === 'true';
   function paintDetail() {
     const on = detailFor.checked;
-    const full = !on && detailFor.disabled; // two chosen already
+    const full = !on && isFull(detailFor); // two chosen already
     const pick = detail.querySelector('[data-detail-pick]');
     detail.querySelector('[data-detail-tag]').hidden = !on;
     pick.textContent = T(on ? 'detailRemove' : 'detailChoose');
@@ -3243,7 +3330,7 @@ function init(root, cfg, mode) {
     detail.querySelector('[data-detail-title]').focus(); // its name read first (and no ring on Close)
   });
   detail?.querySelector('[data-detail-pick]').addEventListener('click', () => {
-    if (!detailFor || (detailFor.disabled && !detailFor.checked)) return;
+    if (!detailFor || (isFull(detailFor) && !detailFor.checked)) return;
     const box = detailFor;
     detailOpener = null;
     detail.close();
@@ -3255,10 +3342,17 @@ function init(root, cfg, mode) {
   detail?.addEventListener('click', (e) => { if (tappedOutside(detail, e)) detail.close(); });
 
   // ── Language ─────────────────────────────────────────────────────
+  let langAt = null; // the question a language switch kept their place by, and the screen it landed them on
   function setLang(l, { remember: keep = true, persist = true } = {}) {
     if (l === lang || !(form.languages || []).includes(l)) return;
-    // Its place kept by the screen's first question (not words to read before it, which a repack can part from it)
-    const anchor = currentId !== 'review' ? screenQuestion() : null;
+    // Its place kept by the screen's first question (not words to read before it, which a repack can part from it).
+    // Switched back without moving: the question they were on before, so English, Spanish, English lands where it began
+    const before = langAt && langAt.page === currentId && langAt.screen === screenNo && langAt.lang === lang && screenFieldIds().has(langAt.field) ? langAt.field : null;
+    // Else the question they're in, else the first on the screen still to answer (where they are), else its first
+    const here = currentId !== 'review' && !before ? [...screenFieldIds()].filter(id => byId[id] && (isInput(byId[id]) || isUpload(byId[id])) && onScreen(fieldEl(id))) : [];
+    const typing = document.activeElement?.closest?.('[data-field]')?.dataset.field;
+    const a = here.length ? readAnswers() : null;
+    const anchor = currentId !== 'review' ? before || here.find(id => id === typing) || here.find(id => unanswered(byId[id], a)) || screenQuestion() : null;
     const area = !anchor && currentId !== 'review' ? screenAt() : null; // the check's card or its map, alone on the screen
     lang = l;
     if (keep) langPref.set(l);
@@ -3266,7 +3360,8 @@ function init(root, cfg, mode) {
     applyWords();
     ui.form.querySelectorAll('input[type=email]').forEach(i => { if (i.value) paintMailFix(i); }); // "Did you mean …" in the new language
     if (ui.live) ui.live.textContent = ''; // nothing said in the last language is read out after
-    show(currentId, { focus: false, scroll: false, ...(area?.area ? { piece: atPiece({ page: currentId, ...area }) } : { at: anchor && fieldEl(anchor) ? anchor : null }) });
+    show(currentId, { focus: false, scroll: false, ...(area?.area ? { piece: atPiece({ page: currentId, ...area }) } : { at: anchor && fieldEl(anchor) ? anchor : null }) })
+      .then(() => { langAt = anchor ? { page: currentId, screen: screenNo, lang, field: anchor } : null; });
     if (!reducedMotion()) [ui.form, ui.stop, ui.done].forEach(el => !el.hidden && el.animate?.([{ opacity: 0.4 }, { opacity: 1 }], { duration: 220, easing: EASE }));
     if (persist) save();
   }
@@ -3402,19 +3497,28 @@ function init(root, cfg, mode) {
     for (const p of form.pages) if (p.fields.some(f => (isInput(f) || isUpload(f)) && !unanswered(f, a || {}))) last = p.id;
     return last;
   }
-  async function resume() {
+  let resumeTimer = 0;
+  let resumeAgain = null; // not reached: tried again a little later, and as soon as the connection's back
+  window.addEventListener('online', () => { if (resumeAgain) { clearTimeout(resumeTimer); resumeAgain(); } }, { signal });
+  async function resume(link = null, tries = 0) {
     const params = new URLSearchParams(location.search);
-    const fromLink = params.get('resume');
-    const remindersOff = params.get('reminders') === 'off';
+    const fromLink = link?.token || params.get('resume');
+    const remindersOff = link ? link.remindersOff : params.get('reminders') === 'off';
     if (fromLink) history.replaceState(history.state, '', location.pathname); // keep the token out of screenshots and shares
     const saved = store.get();
     const candidate = fromLink || saved?.token;
     if (!isToken(candidate)) { if (fromLink) notice('linkExpired', 'error'); return; }
+    resumeAgain = null;
     const r = await api({ action: 'resume', token: candidate, ...(remindersOff ? { reminders: 'off' } : {}) }).catch(() => null);
+    if (token) return; // they started a new one while it was trying
     if (!r?.ok) {
-      // Gone (or never was): forgotten on this device. Not reached (offline, busy, a hiccup): kept, to open next time
-      if (r && (r.code === 'no-draft' || r.status === 404)) { if (fromLink) notice('linkExpired', 'error'); store.clear(); }
-      else notice('resumeFailed', 'error');
+      // Gone (or never was): forgotten on this device. Not reached (offline, busy, a hiccup): kept on this
+      // device (the link's too, with the link gone from the address bar), and opened as soon as it can be
+      if (r && (r.code === 'no-draft' || r.status === 404)) { if (fromLink) notice('linkExpired', 'error'); store.clear(); return; }
+      if (fromLink && saved?.token !== fromLink) store.set({ token: fromLink, year });
+      notice('resumeFailed', 'error');
+      resumeAgain = () => { resumeAgain = null; if (!token) resume(fromLink ? { token: fromLink, remindersOff } : null, tries + 1).catch(() => {}); };
+      resumeTimer = setTimeout(() => resumeAgain?.(), Math.min(30000, 3000 * 2 ** tries));
       return;
     }
     token = candidate;
@@ -3452,7 +3556,7 @@ function init(root, cfg, mode) {
         .catch(() => {});
     }
     // An address without the check's answer for it (it changed just before they left): checked again
-    if (homeAddressId() && !areaPlaced() && checkableAddress(homeAddressNow())) scheduleArea(true);
+    if (homeAddressId() && !areaPlaced() && checkable(homeAddressNow())) scheduleArea(true);
     // How far they got: the draft's record, this device's, the page they were on, what they filled in
     const mine = saved?.token === candidate ? saved.furthest : null;
     const known = [r.maxPage, r.maxPageId, r.max_page_id, mine, r.page, lastAnsweredPage(answers)].filter(id => order(id) >= 0);
@@ -3624,8 +3728,8 @@ function init(root, cfg, mode) {
   ui.form.addEventListener('click', (e) => {
     const more = e.target.closest('[data-more-open], [data-more-close]');
     if (more) {
-      if (more.matches('[data-more-open]')) openTucked(more.closest('[data-more]').querySelector('[data-field]'), { focus: true });
-      else closeTucked(more.closest('[data-more]'));
+      if (more.matches('[data-more-open]')) { openTucked(more.closest('[data-more]').querySelector('[data-field]'), { focus: true }); makeRoom(more.closest('[data-more]')); }
+      else { closeTucked(more.closest('[data-more]')); closeRoom(more.closest('[data-more]')); }
       return;
     }
     const fixMail = e.target.closest('[data-mailfix-use]');
@@ -3638,9 +3742,9 @@ function init(root, cfg, mode) {
       return;
     }
     // A choice greyed out because they've picked as many as it takes: they're told why, by the buttons
-    const full = e.target.closest('.af-choice:has(input:disabled)');
+    const full = e.target.closest('.af-choice:has(input[aria-disabled="true"])');
     const fullField = full && byId[full.closest('[data-field]')?.dataset.field];
-    if (fullField?.max && !e.target.closest('[data-tile-more]')) { navNote(['detailFull', { n: fullField.max }]); announce(T('detailFull', { n: fullField.max })); return; }
+    if (fullField?.max && !e.target.closest('[data-tile-more]')) { e.preventDefault(); navNote(['detailFull', { n: fullField.max }]); announce(T('detailFull', { n: fullField.max })); return; }
     // An empty photo or video box opens the picker wherever it's pressed, not just on its button
     const box = e.target.closest('.af-upload[data-state="empty"]');
     if (box && !e.target.closest('button, a, input')) { box.querySelector('[data-act="choose"]')?.click(); return; }
@@ -3699,7 +3803,7 @@ function init(root, cfg, mode) {
       if (shaped !== tgt.value) tgt.value = shaped;
     }
     if (tgt.type === 'email' && e.isTrusted) { const p = el?.querySelector('[data-mailfix]'); if (p && !p.hidden) p.hidden = true; }
-    if (tgt.tagName === 'TEXTAREA') { grow(tgt); capBoxes(pageEl(currentId)); }
+    if (tgt.tagName === 'TEXTAREA') { grow(tgt); capBoxes(pageEl(currentId)); paintCount(tgt); }
     if (tgt.matches('[data-search]') && el) addressTyped(el, tgt);
     liveCheck(el);
     if (el && el.dataset.field === homeAddressId()) scheduleArea();

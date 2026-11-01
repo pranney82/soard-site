@@ -440,9 +440,9 @@ const logo = 'brand-logo-light-bg-display';
   .adv-vt::view-transition-new(adv-stage) { animation: advInNext 200ms cubic-bezier(.05,.7,.1,1) 60ms both; }
   .adv-vt.adv-vt-back::view-transition-old(adv-stage) { animation-name: advOutBack; }
   .adv-vt.adv-vt-back::view-transition-new(adv-stage) { animation-name: advInBack; }
-  @keyframes advOutNext { to { opacity: 0; transform: translateX(-12px); } }
+  @keyframes advOutNext { 60%, to { opacity: 0; } to { transform: translateX(-12px); } } /* gone before the new one shows: no words over words */
   @keyframes advInNext { from { opacity: 0; transform: translateX(16px); } }
-  @keyframes advOutBack { to { opacity: 0; transform: translateX(12px); } }
+  @keyframes advOutBack { 60%, to { opacity: 0; } to { transform: translateX(12px); } }
   @keyframes advInBack { from { opacity: 0; transform: translateX(-16px); } }
   @keyframes advIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
   @keyframes advPick { from { transform: scale(.8); } to { transform: scale(1); } }

@@ -560,6 +560,7 @@ try {
   ok(await visible('#af-parent2Email') && await page.evaluate(() => document.activeElement?.id === 'af-parent2Name-first'), 'the button opens it, with the cursor in the first name');
   await page.type('#af-parent2Name-first', 'Sam');
   await tap('[data-more="parent2"] [data-more-close]');
+  await sleep(400); // Remove can slide back to the screen with its button: a press that soon after a change doesn't count
   ok(!(await visible('#af-parent2Email')) && await page.$eval('#af-parent2Name-first', (e) => e.value) === '', 'Remove clears it and tucks it away again');
   // Scrolled down, the bar across the top stays (and Continue at the bottom)
   await reach('[data-field="ownership"]');
@@ -706,8 +707,12 @@ try {
   await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
   await sleep(600);
   await pick('makeoverTypes', 'Dream Bedroom');
-  const disabled = await page.$$eval('[data-field="makeoverTypes"] input', (els) => els.filter((e) => e.disabled).map((e) => e.value));
-  ok(disabled.length === 2 && disabled.includes('Ramp'), 'two picked: the other two are disabled');
+  const disabled = await page.$$eval('[data-field="makeoverTypes"] input', (els) => els.filter((e) => e.getAttribute('aria-disabled') === 'true' && !e.disabled).map((e) => e.value));
+  ok(disabled.length === 2 && disabled.includes('Ramp'), 'two picked: the other two are greyed, still reached by Tab');
+  await page.$eval('[data-field="makeoverTypes"] input[value="Ramp"]', (i) => i.focus());
+  await page.keyboard.press('Space');
+  await sleep(150);
+  ok(!(await page.$eval('[data-field="makeoverTypes"] input[value="Ramp"]', (i) => i.checked)) && /chosen 2/.test(await page.$eval('[data-nav-note]', (n) => n.textContent)), 'Space on a greyed one leaves it unchosen and says why');
   ok(await page.$eval('[data-field="makeoverTypes"] input:checked + .af-choice-box .af-check-draw path', (p) => getComputedStyle(p).strokeDashoffset) === '0px'
     || await page.$eval('[data-field="makeoverTypes"] input:checked + .af-choice-box .af-check-draw path', (p) => parseFloat(getComputedStyle(p).strokeDashoffset) === 0), 'a picked choice draws its check');
   await shot('08-makeover-phone');
