@@ -1175,7 +1175,7 @@ export const ERROR_TEXT = {
     video: 'Please upload your video.', videoBusy: 'Your video is still uploading. Please wait for it to finish.', photo: 'Please add a photo.',
     ack: 'Please check the box to continue.', choose: 'Please choose an answer.', signature: 'Please type your full name.', answer: 'Please answer this question.',
     area: 'Please enter the home address so we can check it, or choose an answer.',
-    email: 'Please enter a valid email address, like name@example.com.', phone: 'Please enter a 10-digit phone number.',
+    email: 'Please enter a valid email address, like name@example.com.', phone: 'Please enter a 10-digit phone number.', phoneArea: 'Please add the area code, like (404) 555-0123.',
     url: 'Please enter a web address, like example.org.',
     date: 'Please enter a valid date.', year: 'Please check the year.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
     address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.', poBox: 'Please enter a street address, not a PO box.',
@@ -1188,7 +1188,7 @@ export const ERROR_TEXT = {
     video: 'Suba su video.', videoBusy: 'Su video todavía se está subiendo. Espere a que termine.', photo: 'Agregue una foto.',
     ack: 'Marque la casilla para continuar.', choose: 'Elija una respuesta.', signature: 'Escriba su nombre completo.', answer: 'Responda esta pregunta.',
     area: 'Escriba la dirección de la casa para que podamos revisarla, o elija una respuesta.',
-    email: 'Escriba un correo electrónico válido, como nombre@ejemplo.com.', phone: 'Escriba un número de teléfono de 10 dígitos.',
+    email: 'Escriba un correo electrónico válido, como nombre@ejemplo.com.', phone: 'Escriba un número de teléfono de 10 dígitos.', phoneArea: 'Agregue el código de área, como (404) 555-0123.',
     url: 'Escriba una dirección web, como ejemplo.org.',
     date: 'Escriba una fecha válida.', year: 'Revise el año.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
     address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.', poBox: 'Escriba una dirección con calle, no un apartado postal.',
@@ -1223,7 +1223,7 @@ export function fieldError(field, value, lang = 'en') {
   const r = field.rules || {};
   switch (field.type) {
     case 'email': return isEmailAddress(value) ? null : E.email;
-    case 'phone': return toE164(value) ? null : E.phone;
+    case 'phone': return toE164(value) ? null : String(value).replace(/\D/g, '').length === 7 ? E.phoneArea : E.phone; // "555-1234": the area code
     case 'number': {
       const t = String(value).replace(/,/g, '').trim();
       if (/^\d[\d.]*\s*(?:-|–|to|or|a|o)\s*\d/i.test(t)) return E.range; // "200-300": one number, a guess

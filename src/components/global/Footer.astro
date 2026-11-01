@@ -164,8 +164,9 @@ const trustBadges = getTrustBadges(site);
         {trustBadges.map(b => {
           const img = badgeImage(b, 64);
           const Tag = b.url ? 'a' : 'div';
+          // A text badge's name starts with the words it shows (a voice command saying them finds it)
           const linkProps = b.url
-            ? { href: b.url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': `View our ${b.name} profile: ${badgeTitle(b)}` }
+            ? { href: b.url, target: '_blank', rel: 'noopener noreferrer', 'aria-label': img.src ? `View our ${b.name} profile: ${badgeTitle(b)}` : `${[b.name, b.detail].filter(Boolean).join(', ')}: view our profile` }
             : {};
           return img.src ? (
             <Tag class="trust-badge" {...linkProps}>
@@ -186,7 +187,7 @@ const trustBadges = getTrustBadges(site);
           <span class="trust-badge-label">Tax-Deductible</span>
           <span class="trust-badge-value">All donations</span>
         </div>
-        <a href="/files/financials/ga-contractor-license.pdf" target="_blank" rel="noopener noreferrer" class="trust-badge trust-badge--text" aria-label="View Georgia Contractor License">
+        <a href="/files/financials/ga-contractor-license.pdf" target="_blank" rel="noopener noreferrer" class="trust-badge trust-badge--text" aria-label="Licensed Contractor, all projects permitted: view our Georgia contractor license">
           <span class="trust-badge-label">Licensed Contractor</span>
           <span class="trust-badge-value">All projects permitted</span>
         </a>

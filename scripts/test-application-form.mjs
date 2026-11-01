@@ -93,6 +93,7 @@ const consoleErrors = [];
 // Locally, 'self' isn't sunshineonaranneyday.com, so every page's absolute image URLs trip the CSP; not a real error
 const LOCAL = !/sunshineonaranneyday\.com/.test(SITE);
 let videoBytes = 0;
+let failSaves = 0; // a status every save gets while set (a save that doesn't go through)
 
 /** A tab with the console watched and Stream + the address lookup faked */
 async function newTab({ context = browser, phone = true, reduced = true, bypassCsp = false } = {}) {
@@ -127,6 +128,7 @@ async function newTab({ context = browser, phone = true, reduced = true, bypassC
     }
     if (url.startsWith(`${SITE}/api/apply`) && req.method() === 'POST' && (req.headers()['content-type'] || '').includes('json')) {
       const body = JSON.parse(req.postData() || '{}');
+      if (failSaves && body.action === 'save') return req.respond({ status: failSaves, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Something went wrong' }) });
       if (body.action === 'video-url') {
         videoBytes = body.size;
         return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, uploadUrl: 'https://upload.videodelivery.net/tus/fake-upload' }) });
@@ -552,6 +554,15 @@ try {
   await type('#af-parentEmail', 'jordan+apply@example.com');
   await type('#af-parentPhone', '(404) 555-0123');
   await type('#af-parentRelation', 'Mother');
+  // The parent's address typed, then removed: gone whole (its line too), so Continue doesn't ask for it
+  await reach('[data-more="parentAddress"]');
+  await tap('[data-more="parentAddress"] [data-more-open]');
+  await sleep(150);
+  await page.type('#af-parentAddress-search', '45 Oak Manor Dr');
+  await sleep(500);
+  await tap('[data-more="parentAddress"] [data-more-close]');
+  await sleep(400);
+  ok(await page.$eval('#af-parentAddress-search', (e) => e.value) === '' && !(await visible('#af-parentAddress-search')), "Remove takes the parent's address line with it");
   // A second parent waits behind a button until wanted
   await reach('[data-more="parent2"]');
   ok(!(await visible('#af-parent2Email')) && await visible('[data-more="parent2"] [data-more-open]'), 'the second parent is tucked behind "Add another parent or guardian"');
@@ -570,6 +581,7 @@ try {
   ok(bars.top === 0 && bars.next <= bars.h, `scrolled down, the bar stays at the top and Continue at the bottom (${bars.top}, ${Math.round(bars.next)}/${bars.h})`);
   await pick('ownership', 'No, the property is rented.');
   await next();
+  ok(!(await page.$eval('[data-field="parentAddress"] .af-error', (e) => e.textContent)), "Continue doesn't ask for the parent's address that was removed");
   ok(await visible('[data-stop]') && /must own their home/.test(await page.$eval('[data-stop]', (e) => e.textContent)), 'renters get the "must own the home" screen');
   await page.click('[data-stop-back]');
   await pick('ownership', 'Yes, at least one person living in the home is the owner.');
@@ -842,6 +854,13 @@ try {
   ok(/Everything is here/.test(await page.$eval('[data-review-summary]', (e) => e.textContent)) && !(await page.$eval('[data-next]', (b) => b.disabled)), 'and Submit is ready again');
 
   console.log('Submit');
+  // Its save not going through: Submit doesn't send the answers from before it, and says so
+  failSaves = 500;
+  await next();
+  await sleep(800);
+  ok(!(await visible('[data-done]')) && /didn't save/.test(await page.$eval('[data-nav-note]', (e) => (e.hidden ? '' : e.textContent))), "a save that doesn't go through holds Submit back, and says why");
+  failSaves = 0;
+  await sleep(400);
   await next();
   await page.waitForSelector('[data-done]:not([hidden])', { timeout: 15000 });
   ok(/jordan\+apply@example.com/.test(await page.$eval('[data-done-email]', (e) => e.textContent)), 'thank-you names the email that gets the copy');
@@ -855,6 +874,14 @@ try {
   await page.$eval('[data-done]', (el) => el.scrollIntoView({ block: 'center', behavior: 'instant' }));
   await shot('13-done-desktop');
   await page.setViewport({ width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  // Closed: the page says it went, and its button starts another child's, afresh
+  await tap('[data-exit]');
+  await sleep(500);
+  ok(/We received your application/.test(await page.$eval('[data-hero-note]', (e) => (e.hidden ? '' : e.textContent))) && /Apply for another child/.test(await page.$eval('[data-hero-cta]', (e) => e.textContent)), 'closed after sending, the page says it went and offers another child');
+  await Promise.all([page.waitForNavigation({ waitUntil: 'networkidle0' }), page.click('[data-hero-cta]')]);
+  await sleep(700);
+  const fresh = await page.evaluate(() => ({ focus: document.documentElement.classList.contains('af-focus'), done: !document.querySelector('[data-done]').hidden, child: document.querySelector('#af-childName-first')?.value }));
+  ok(fresh.focus && !fresh.done && !fresh.child, `"Apply for another child" opens a new application, nothing of the last one in it (${JSON.stringify(fresh)})`);
   // Back on the page later: this device says it went (a parent unsure isn't led into a second one)
   await page.evaluate(() => sessionStorage.clear());
   await page.reload({ waitUntil: 'networkidle0' });

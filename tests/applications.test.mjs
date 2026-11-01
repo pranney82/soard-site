@@ -464,6 +464,32 @@ test('Turnstile is enforced once both keys are set', async () => {
   assert.equal((await call({ action: 'start', year: YEAR, turnstileToken: 'good' })).status, 200);
 });
 
+test('a draft that expired with its page open starts a new one without the quick check, once', async () => {
+  await openApplications(true);
+  env.TURNSTILE_SITE_KEY = 'site';
+  env.TURNSTILE_SECRET_KEY = 'secret';
+  w.world.turnstile = false; // a used check (the page's one went with the first start)
+  const old = await readyDraft();
+  const later = Date.now() + (DRAFT_TTL_DAYS + 1) * 24 * 3600 * 1000;
+  assert.equal(await expireDrafts(env, { now: later, fetchImpl: w.fetchImpl }), 1);
+  assert.equal((await call({ action: 'save', token: old.id, answers: { interests: 'x' }, page: 'child' })).body.code, 'no-draft');
+  const renewed = await call({ action: 'start', year: YEAR, renew: old.id });
+  assert.equal(renewed.status, 200, 'the expired draft stands in for the check');
+  assert.notEqual(renewed.body.token, old.id);
+  assert.equal((await call({ action: 'start', year: YEAR, renew: old.id })).body.code, 'turnstile', 'only once');
+  const live = await readyDraft();
+  assert.equal((await call({ action: 'start', year: YEAR, renew: live.id })).body.code, 'turnstile', 'a draft that has not expired is no pass');
+  assert.equal((await call({ action: 'start', year: YEAR, renew: 'f'.repeat(32) })).body.code, 'turnstile', 'nor one that never was');
+});
+
+test('a number without its area code is asked for it', () => {
+  const at = (v) => formErrors(form, fullAnswers({ parentPhone: v }), {}, ['parents'], 'en').parentPhone;
+  assert.match(at('555-1234'), /area code/);
+  assert.match(at('12'), /10-digit/);
+  assert.equal(at('(404) 555-0123'), undefined);
+  assert.match(formErrors(form, fullAnswers({ parentPhone: '555-1234' }), {}, ['parents'], 'es').parentPhone, /código de área/);
+});
+
 test('the whole flow over HTTP: start, save, photo, video, resume, submit', async () => {
   await openApplications(true);
   const { body: { token } } = await call({ action: 'start', year: YEAR });

@@ -16,6 +16,7 @@ import { ADVISORY_STEPS, ADVISORY_FIELDS, checkAnswers, isShown } from '../../..
 import { mailFix } from '../apply/mail-fix.js';
 
 const STORE = 'soard-advisory-application';
+const SENT = 'soard-advisory-sent'; // when this device sent one (a reload says so, not "Start the application")
 const FOCUS = 'soard-advisory-focus';
 const API = '/api/advisory-apply';
 const CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3L12.5 5" /></svg>';
@@ -29,6 +30,11 @@ function read() {
 function write(v) {
   try { if (v) localStorage.setItem(STORE, JSON.stringify(v)); else localStorage.removeItem(STORE); } catch { /* private mode: no saving */ }
 }
+const sentStore = {
+  // Said for half a year (someone back years on to apply again starts afresh)
+  get() { try { const x = JSON.parse(localStorage.getItem(SENT) || 'null'); return Number(x?.at) > Date.now() - 183 * 864e5 ? x : null; } catch { return null; } },
+  set(at) { try { localStorage.setItem(SENT, JSON.stringify({ at })); } catch { /* private mode */ } },
+};
 const session = {
   get() { try { return sessionStorage.getItem(FOCUS) === '1'; } catch { return false; } },
   set(on) { try { if (on) sessionStorage.setItem(FOCUS, '1'); else sessionStorage.removeItem(FOCUS); } catch { /* private mode */ } },
@@ -344,13 +350,18 @@ export function initAdvisoryForm() {
     if (focused) return;
     const started = restored || furthest > 0;
     const doneCount = ADVISORY_STEPS.filter((_, i) => stepDone(i, a)).length;
-    ui.hubTitle.textContent = started ? 'Your application is saved on this device' : 'Six steps, about 20 minutes';
-    ui.hubLead.textContent = started
-      ? (doneCount === total ? 'Every step is done. Look it over and send it.' : `${doneCount} of ${total + 1} steps done. Pick up where you left off.`)
-      : 'Have a reference in mind. Your answers save on this device as you go.';
-    ui.goLabel.textContent = !started ? 'Start the application' : doneCount === total ? 'Review and send' : 'Continue where you left off';
+    // Sent from this device before (a reload, a visit back): said, so it isn't sent a second time unsure
+    const was = sent ? { at: Date.now() } : !started ? sentStore.get() : null;
+    const on = was ? new Date(was.at).toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : '';
+    ui.hubTitle.textContent = was ? 'We received your application' : started ? 'Your application is saved on this device' : 'Six steps, about 20 minutes';
+    ui.hubLead.textContent = was ? `It arrived on ${on}, and we’ll be in touch by email.`
+      : started ? (doneCount === total ? 'Every step is done. Look it over and send it.' : `${doneCount} of ${total + 1} steps done. Pick up where you left off.`)
+        : 'Have a reference in mind. Your answers save on this device as you go.';
+    ui.goLabel.textContent = was ? 'Start a new application' : !started ? 'Start the application' : doneCount === total ? 'Review and send' : 'Continue where you left off';
     const cta = document.querySelector('[data-adv-cta]'); // the hero's button says the same
     if (cta && cta.textContent !== ui.goLabel.textContent) cta.textContent = ui.goLabel.textContent;
+    const note = document.querySelector('[data-adv-hero-note]');
+    if (note) { note.hidden = !was; note.textContent = was ? `We received your application on ${on}. Thank you!` : ''; }
     ui.startOver.hidden = !started;
     ui.hubRows.forEach((b, i) => {
       const done = stepDone(i, a);
@@ -620,7 +631,11 @@ export function initAdvisoryForm() {
         change.dataset.answer = f.id;
         change.textContent = all[f.id] ? 'Answer it' : 'Change';
         change.setAttribute('aria-label', `${change.textContent}: ${f.label}`);
-        row.append(dt, dd, change);
+        // A definition list holds terms and definitions only: Change sits in one of its own
+        const act = document.createElement('dd');
+        act.className = 'adv-review-act';
+        act.append(change);
+        row.append(dt, dd, act);
         dl.append(row);
       }
       setOpen(sec, missing || reviewAll || opened.has(String(i)));
@@ -673,13 +688,51 @@ export function initAdvisoryForm() {
   // ── Saving on this device ──
   let saveTimer = null;
   let sent = false;
+  let synced = {}; // the answers as this tab last saved or had them (another tab's since are brought in, not saved over)
+  /**
+   * Saved on this device. Another tab of it may have saved since: what that one saved stays, with what
+   * changed here since on top, and its answers come in here (a tab's save never wipes another's)
+   */
   function saveNow() {
     clearTimeout(saveTimer);
     saveTimer = null;
     if (sent) return;
-    write({ answers: collect(), step: Math.min(step, REVIEW), screen: screenNo, furthest, startedAt, savedAt: Date.now() });
+    const now = collect();
+    const there = read();
+    const answers = { ...(there?.answers || {}) };
+    for (const [id, v] of Object.entries(now)) if (!there?.answers || !same(v, synced[id])) answers[id] = v;
+    furthest = Math.max(furthest, Math.min(REVIEW, Number(there?.furthest) || 0));
+    write({ answers, step: Math.min(step, REVIEW), screen: screenNo, furthest, startedAt: Math.min(startedAt, Number(there?.startedAt) || startedAt), savedAt: Date.now() });
+    takeTheirs(answers, now);
     ui.saved.textContent = 'Saved on this device';
   }
+  const same = (x, y) => JSON.stringify(x ?? '') === JSON.stringify(y ?? '');
+  /** Answers another tab saved, shown here where this one hasn't changed them since */
+  function takeTheirs(answers, now = collect()) {
+    let took = false;
+    for (const f of ADVISORY_FIELDS) {
+      const v = answers[f.id];
+      if (v === undefined || same(v, now[f.id]) || !same(now[f.id], synced[f.id])) continue;
+      fill({ [f.id]: v });
+      took = true;
+    }
+    synced = { ...collect() };
+    if (!took) return;
+    follow();
+    for (const ta of form.querySelectorAll('textarea')) paintCount(ta);
+    if (step === REVIEW) buildReview();
+    paint();
+  }
+  // Another tab saved (or sent it): brought in here at once
+  window.addEventListener('storage', (e) => {
+    if (sent || e.storageArea !== localStorage) return;
+    if (e.key === SENT && e.newValue) { sentElsewhere(); return; }
+    if (e.key !== STORE || !e.newValue) return;
+    const there = read();
+    if (!there?.answers) return;
+    furthest = Math.max(furthest, Math.min(REVIEW, Number(there.furthest) || 0));
+    takeTheirs(there.answers);
+  });
   function save() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 400);
@@ -919,8 +972,14 @@ export function initAdvisoryForm() {
   });
 
   ui.back.addEventListener('click', () => { back(); });
-  ui.go.addEventListener('click', () => begin());
-  document.querySelector('[data-adv-cta]')?.addEventListener('click', (e) => { e.preventDefault(); begin(); });
+  ui.go.addEventListener('click', () => (sent ? again() : begin()));
+  document.querySelector('[data-adv-cta]')?.addEventListener('click', (e) => { e.preventDefault(); if (sent) again(); else begin(); });
+  /** Sent, and "Start a new application": the page afresh (nothing of the one sent kept), straight into it */
+  const AGAIN = 'soard-advisory-again';
+  function again() {
+    try { sessionStorage.setItem(AGAIN, '1'); } catch { /* storage off: the page's own Start, after */ }
+    location.reload();
+  }
   ui.hubRows.forEach((b) => b.addEventListener('click', () => { if (!b.disabled) begin(Number(b.dataset.goto)); }));
   ui.exit.addEventListener('click', () => exitFocus());
 
@@ -952,9 +1011,20 @@ export function initAdvisoryForm() {
       showProblems(all.problems);
       return;
     }
-    if (turnstileKey && !turnstileToken) { ui.sendError.textContent = 'Please confirm you’re not a robot, just above.'; ui.sendError.hidden = false; return; }
+    if (turnstileKey && !turnstileToken) {
+      // The check passes on its own in a moment (Send looks busy meanwhile); said, and in view, only when it wants a tap
+      sending = true; // a second press meanwhile counts once
+      ui.next.setAttribute('aria-busy', 'true');
+      try { await Promise.race([new Promise((r) => turnstileWaiting.push(r)), new Promise((r) => setTimeout(r, 6000))]); } finally { sending = false; ui.next.removeAttribute('aria-busy'); }
+      if (!turnstileToken) {
+        ui.sendError.textContent = 'Please confirm you’re not a robot, just above.';
+        ui.sendError.hidden = false;
+        requestAnimationFrame(() => ui.turnstile.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }));
+        return;
+      }
+    }
     sending = true;
-    ui.next.disabled = true;
+    ui.next.setAttribute('aria-disabled', 'true'); // not disabled: the keys and a screen reader stay on it while it sends
     ui.back.disabled = true;
     ui.exit.disabled = true; // the way out waits while it sends ("Look it over and send it" while it was going was wrong)
     ui.next.textContent = 'Sending…';
@@ -975,23 +1045,11 @@ export function initAdvisoryForm() {
         if (d.code === 'turnstile') resetTurnstile();
         throw new Error(d.error || 'That didn’t send. Please try again in a moment.');
       }
-      sent = true;
-      clearTimeout(saveTimer);
-      write(null);
-      ui.saved.textContent = '';
-      session.set(false);
-      form.hidden = true;
-      $('adv-done-name').textContent = d.first ? `, ${d.first}` : '';
-      ui.exit.querySelector('span').textContent = 'Close';
-      ui.done.hidden = false;
-      ui.hub.hidden = true;
-      paint();
-      window.scrollTo({ top: 0, behavior: 'auto' });
-      ui.done.focus({ preventScroll: true });
+      markSent({ first: d.first });
     } catch (err) {
       ui.sendError.textContent = err.message || 'That didn’t send. Your answers are still here; please try again.';
       ui.sendError.hidden = false;
-      ui.next.disabled = false;
+      ui.next.removeAttribute('aria-disabled');
       ui.back.disabled = false;
       paint();
       if (!form.hidden && !document.activeElement?.closest?.('.adv-page:not([hidden])')) ui.next.focus({ preventScroll: true }); // Send again, where they were (the note is read out)
@@ -1001,15 +1059,38 @@ export function initAdvisoryForm() {
     }
   }
 
+  /** Sent: the thank-you. `elsewhere`: from another tab of this device (this one's answers since weren't in it) */
+  function markSent({ first = '', elsewhere = false } = {}) {
+    sent = true;
+    clearTimeout(saveTimer);
+    if (!elsewhere) { write(null); sentStore.set(Date.now()); }
+    ui.saved.textContent = '';
+    session.set(false);
+    form.hidden = true;
+    $('adv-done-name').textContent = first ? `, ${first}` : '';
+    $('adv-done-elsewhere').hidden = !elsewhere;
+    ui.exit.querySelector('span').textContent = 'Close';
+    ui.done.hidden = false;
+    ui.hub.hidden = true;
+    paint();
+    if (focused || !elsewhere) window.scrollTo({ top: 0, behavior: 'auto' });
+    ui.done.focus({ preventScroll: true });
+  }
+  function sentElsewhere() {
+    if (sent || sending) return;
+    markSent({ elsewhere: true });
+  }
+
   // ── Turnstile (once the site has it set up) ──
   let turnstileLoading = false;
+  const turnstileWaiting = [];
   function loadTurnstile() {
     if (turnstileLoading || !turnstileKey) return;
     turnstileLoading = true;
     window.onAdvisoryTurnstile = () => {
       window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
         sitekey: turnstileKey,
-        callback: (t) => { turnstileToken = t; if (/robot/.test(ui.sendError.textContent)) ui.sendError.hidden = true; },
+        callback: (t) => { turnstileToken = t; turnstileWaiting.splice(0).forEach((r) => r()); if (/robot/.test(ui.sendError.textContent)) ui.sendError.hidden = true; },
         'expired-callback': () => { turnstileToken = null; },
       });
     };
@@ -1032,6 +1113,7 @@ export function initAdvisoryForm() {
     resumeAt = { step, screen: Math.max(0, Number(stored.screen) || 0) };
     restored = true;
   }
+  synced = collect();
   let startOverArmed = 0;
   ui.startOver.addEventListener('click', () => {
     // Deleting every answer takes a second tap (it sits by "Continue where you left off": one slip shouldn't do it)
@@ -1045,6 +1127,7 @@ export function initAdvisoryForm() {
     ui.startOver.textContent = 'Start over';
     write(null);
     form.reset();
+    synced = collect();
     step = 0;
     furthest = 0;
     screenNo = 0;
@@ -1068,6 +1151,8 @@ export function initAdvisoryForm() {
   // A reload on one of its own history entries: that screen, even when they'd gone back from further on
   const entry = history.state?.advFocus ? history.state.advAt : null;
   if (restored && session.get() && entry && entry.step <= furthest) { step = entry.step; resumeAt = { step, screen: Math.max(0, Number(entry.screen) || 0) }; }
+  let fresh = false;
+  try { fresh = sessionStorage.getItem(AGAIN) === '1'; sessionStorage.removeItem(AGAIN); } catch { /* storage off */ }
   if (restored && session.get()) begin(step);
-  else if (early) begin();
+  else if (early || (fresh && !restored)) begin();
 }

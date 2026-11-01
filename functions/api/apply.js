@@ -4,7 +4,7 @@
  * GET  ?config                     → { open, year, turnstileSiteKey, form }
  *      ?config&preview=draft        → the same with the unsaved draft form (signed-in staff only)
  * POST JSON { action, ... }:
- *   start      { year, turnstileToken?, website }   → { token }  new draft
+ *   start      { year, turnstileToken?, website, renew? } → { token }  new draft (renew: the expired draft its page had, instead of the quick check)
  *   resume     { token }                            → the draft's answers, files, page, last area check
  *   area       { token, address }                   → where the home sits against the service area
  *                                                     (Census; signed-in staff may leave out the token
@@ -35,7 +35,7 @@ import { isAuthenticated, verifyJwt } from './_middleware.js';
 import { isStaffEmail } from './_board-roles.js';
 import { staffStanding } from './_staff-access.js';
 import {
-  ensureSchema, getDraft, createDraft, saveDraft, setDraftFile, draftsToday, hashIp, cleanYear,
+  ensureSchema, getDraft, createDraft, renewExpired, saveDraft, setDraftFile, draftsToday, hashIp, cleanYear,
   applicationSettings, publicFiles, photoKey, createVideoUpload, getVideo, deleteVideo, videoUploaded,
   submitDraft, processApplication, enforceApplicationCap, stopReminders, testRunStatus, DRAFT_TTL_DAYS, MAX_PHOTO_BYTES, MAX_THUMB_BYTES, MAX_VIDEO_BYTES,
   areaCheck, placedArea, areaFieldOf, applicantFiles,
@@ -271,7 +271,7 @@ export async function onRequestPost(context) {
     case 'area': return handleArea(context, draft, body);
     case 'email-link': return handleEmailLink(context, draft, body);
     case 'video-url': return handleVideoUrl(context, draft, body);
-    case 'video-done': return handleVideoDone(context, draft);
+    case 'video-done': return handleVideoDone(context, draft, body);
     case 'remove-file': return handleRemoveFile(context, draft, body);
     case 'submit': {
       const out = await submitDraft(env, draft);
@@ -308,7 +308,8 @@ async function handleStart(context, body) {
   if (!admin && await draftsToday(env.DB, ipHash) >= MAX_DRAFTS_PER_IP_DAY) return fail(es ? 'Hoy se comenzaron demasiadas solicitudes desde esta conexión. Intente de nuevo mañana.' : 'Too many new applications from this connection today. Please try again tomorrow.', 429, { code: 'limit' });
   let verified = !turnstileOn(env);
   if (!verified) {
-    verified = admin || await verifyTurnstile(env, body.turnstileToken, ip);
+    // Its page still open after the one it had expired: a new one without the check again (it passed it then)
+    verified = admin || (!!body.renew && await renewExpired(env.DB, body.renew)) || await verifyTurnstile(env, body.turnstileToken, ip);
     if (!verified) return fail(es ? 'Complete la verificación rápida arriba del botón Siguiente.' : 'Please complete the quick check above the Next button.', 403, { code: 'turnstile' });
   }
   const token = await createDraft(env.DB, { year: cleanYear(body.year || settings.year), ipHash, verified, lang: es ? 'es' : 'en', kind });
@@ -381,19 +382,22 @@ async function handlePhoto(context) {
   try { form = await request.formData(); } catch { return fail('Could not read the upload'); }
   const draft = await getDraft(env.DB, form.get('token'));
   if (!draft) return fail('This application link has expired or is not valid.', 404, { code: 'no-draft' });
-  if (draft.submitted_id) return fail('This application has already been submitted.', 409, { code: 'submitted' });
-  if (!draft.verified) return fail('Please start the application again.', 403);
+  // What's wrong, in the language they're answering in (the page says which)
+  const es = (form.get('lang') || draft.lang) === 'es';
+  if (draft.submitted_id) return fail(es ? 'Esta solicitud ya se envió.' : 'This application has already been submitted.', 409, { code: 'submitted' });
+  if (!draft.verified) return fail(es ? 'Comience la solicitud de nuevo.' : 'Please start the application again.', 403);
   const fieldId = String(form.get('field') || '');
   const field = allFields(await formFor(env.DB, { kind: draft.kind, year: draft.year })).find(f => f.id === fieldId && f.type === 'photo');
   if (!field) return fail('Unknown photo');
   const file = form.get('file');
   if (!file || typeof file === 'string') return fail('No photo attached');
-  if (!PHOTO_TYPES.has((file.type || '').toLowerCase())) return fail('Please choose a photo (JPEG, PNG, WebP or HEIC).');
-  if (file.size > MAX_PHOTO_BYTES) return fail('That photo is too large. Please choose one under 25 MB.');
+  const notPhoto = es ? 'Elija una foto (JPEG, PNG, WebP o HEIC).' : 'Please choose a photo (JPEG, PNG, WebP or HEIC).';
+  if (!PHOTO_TYPES.has((file.type || '').toLowerCase())) return fail(notPhoto);
+  if (file.size > MAX_PHOTO_BYTES) return fail(es ? 'Esa foto es demasiado grande. Elija una de menos de 25 MB.' : 'That photo is too large. Please choose one under 25 MB.');
   // The file's own first bytes must say it's a photo of that kind (a renamed file is turned away)
   const bytes = new Uint8Array(await file.arrayBuffer());
   const checked = checkImage(bytes, file.type);
-  if (!checked.ok || checked.kind === 'gif') return fail('Please choose a photo (JPEG, PNG, WebP or HEIC).');
+  if (!checked.ok || checked.kind === 'gif') return fail(notPhoto);
   const type = checked.type;
   const key = photoKey(draft.id, fieldId);
   await files.put(key, bytes, { httpMetadata: { contentType: type } });
@@ -413,18 +417,19 @@ async function handlePhoto(context) {
 
 async function handleVideoUrl(context, draft, body) {
   const { env, request } = context;
-  if (!draft.verified) return fail('Please start the application again.', 403);
+  const es = (body.lang || draft.lang) === 'es';
+  if (!draft.verified) return fail(es ? 'Comience la solicitud de nuevo.' : 'Please start the application again.', 403);
   const size = Number(body.size);
   if (!Number.isFinite(size) || size <= 0) return fail('Video size required');
-  if (size > MAX_VIDEO_BYTES) return fail('That video is too large. Please choose one under 4 GB, or record a shorter clip.');
-  if ((draft.video_creates || 0) >= MAX_VIDEO_CREATES) return fail('Too many upload attempts for this application. Please email us and we will help.', 429);
+  if (size > MAX_VIDEO_BYTES) return fail(es ? 'Ese video es demasiado grande. Elija uno de menos de 4 GB o grabe uno más corto.' : 'That video is too large. Please choose one under 4 GB, or record a shorter clip.');
+  if ((draft.video_creates || 0) >= MAX_VIDEO_CREATES) return fail(es ? 'Demasiados intentos de subir un video para esta solicitud. Escríbanos por correo y le ayudaremos.' : 'Too many upload attempts for this application. Please email us and we will help.', 429);
   let upload;
   try {
     upload = await createVideoUpload(env, { draftId: draft.id, size, origin: request.headers.get('origin') });
   } catch (e) {
     // The family gets plain words; what went wrong (a Stream setting, its reply) goes to the logs
     console.error('video-url', e?.message || e);
-    return fail('We couldn’t start the video upload just now. Please try again in a few minutes.', 500);
+    return fail(es ? 'No pudimos comenzar a subir el video en este momento. Intente de nuevo en unos minutos.' : 'We couldn’t start the video upload just now. Please try again in a few minutes.', 500);
   }
   const previous = draft.files?.video?.uid;
   await env.DB.prepare('UPDATE application_drafts SET video_creates = COALESCE(video_creates, 0) + 1 WHERE id = ?').bind(draft.id).run();
@@ -433,13 +438,14 @@ async function handleVideoUrl(context, draft, body) {
   return json({ ok: true, uploadUrl: upload.uploadUrl });
 }
 
-async function handleVideoDone(context, draft) {
+async function handleVideoDone(context, draft, body = {}) {
   const { env } = context;
+  const es = (body.lang || draft.lang) === 'es';
   const v = draft.files?.video;
   if (!v?.uid) return fail('No video upload in progress');
   let video;
-  try { video = await getVideo(env, v.uid); } catch (e) { console.error('video-check', e?.message || e); return fail('We couldn’t check the video just now. Please try again in a few minutes.', 500); }
-  if (video?.status?.state === 'error') return fail('The video could not be processed. Please try a different video file.', 422, { code: 'video-error' });
+  try { video = await getVideo(env, v.uid); } catch (e) { console.error('video-check', e?.message || e); return fail(es ? 'No pudimos revisar el video en este momento. Intente de nuevo en unos minutos.' : 'We couldn’t check the video just now. Please try again in a few minutes.', 500); }
+  if (video?.status?.state === 'error') return fail(es ? 'No pudimos procesar el video. Pruebe con otro archivo de video.' : 'The video could not be processed. Please try a different video file.', 422, { code: 'video-error' });
   const uploaded = videoUploaded(video);
   if (uploaded && !v.uploaded) await setDraftFile(env.DB, draft.id, 'video', { ...v, uploaded: true, duration: video.duration > 0 ? video.duration : null });
   return json({ ok: true, uploaded });

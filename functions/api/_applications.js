@@ -177,6 +177,8 @@ export async function ensureSchema(DB) {
     "ALTER TABLE applications ADD COLUMN kind TEXT DEFAULT 'family'",
     // Which save the draft's answers are (a tab left open can't save over another device's answers, Nov 1 2026)
     'ALTER TABLE application_drafts ADD COLUMN rev INTEGER DEFAULT 0',
+    // An expired draft whose page, still open, started a new one with its answers (once; Nov 1 2026)
+    'ALTER TABLE application_drafts ADD COLUMN renewed_at TEXT',
   ]) {
     try { await DB.prepare(sql).run(); } catch { /* already there */ }
   }
@@ -460,6 +462,18 @@ export async function createDraft(DB, { year, ipHash, verified = false, lang = '
   await DB.prepare(`INSERT INTO application_drafts (id, year, answers, files, ip_hash, verified, lang, email, test_by, kind, created_at, updated_at) VALUES (?, ?, '{}', '{}', ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(id, year, by ? 'admin' : (ipHash || null), by || verified ? 1 : 0, lang === 'es' && k === 'family' ? 'es' : 'en', by, by, k, iso(now), iso(now)).run();
   return id;
+}
+
+/**
+ * A draft that expired while its page was still open (weeks on): that page may start a new one with its
+ * answers without the quick check again (it passed it for this one), once. True when it may
+ */
+export async function renewExpired(DB, id, now = Date.now()) {
+  if (!isDraftId(id)) return false;
+  await ensureSchema(DB);
+  const r = await DB.prepare('UPDATE application_drafts SET renewed_at = ? WHERE id = ? AND cleared_at IS NOT NULL AND submitted_id IS NULL AND renewed_at IS NULL')
+    .bind(iso(now), id).run();
+  return !!r?.meta?.changes;
 }
 
 export async function draftsToday(DB, ipHash, now = Date.now()) {

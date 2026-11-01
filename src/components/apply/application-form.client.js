@@ -301,7 +301,7 @@ function init(root, cfg, mode) {
     if (form && merge) answers = { ...answers, ...readAnswers() };
     // An address being searched for keeps what's typed in its line, one entered by hand its parts (neither is an answer yet)
     const addrWas = form ? [...ui.pages.querySelectorAll('[data-field] .af-address')].map(b => ({ id: b.closest('[data-field]').dataset.field, mode: b.dataset.mode, line: b.querySelector('[data-search]').value })) : [];
-    closeRecorder();
+    closeRecorder({ keep: true }); // a language switch mid-recording keeps it
     closeSuggest();
     form = resolve(lang);
     lang = form.lang || 'en';
@@ -532,7 +532,7 @@ function init(root, cfg, mode) {
     if (!focused) return;
     const saving = token && !doneShown && !previewing ? save() : null; // sent: nothing more to save
     resumePiece = currentId !== 'review' && anchor && pageEl(currentId)?.contains(anchor) ? anchor : null; // "Continue where you left off": this screen
-    closeRecorder();
+    closeRecorder({ keep: true });
     closeSuggest();
     if (ui.dialog.open) ui.dialog.close();
     focused = false;
@@ -546,9 +546,15 @@ function init(root, cfg, mode) {
     if (saving) {
       // "Saved" only once it is: offline, they're told the answers are still on this page
       notice('exitSaving');
-      saving.then((ok) => { if (!focused && lastNotice?.m === 'exitSaving') notice(ok ? 'exitSaved' : 'exitNotSaved', ok ? 'success' : 'error'); });
+      saving.then((ok) => {
+        if (focused || lastNotice?.m !== 'exitSaving') return;
+        // A photo or video still on its way isn't saved yet: they keep the page open till it is (said when it is)
+        if (ok && uploads.size) notice('exitUploading', 'info');
+        else notice(ok ? 'exitSaved' : 'exitNotSaved', ok ? 'success' : 'error');
+      });
     }
     paintHeader();
+    if (doneShown) showApp(!root.hidden); // the hero says it's sent, and offers another child's
     requestAnimationFrame(() => {
       const app = document.getElementById('application');
       const top = Math.max(0, (app?.getBoundingClientRect().top || 0) + window.scrollY - headerOffset());
@@ -875,7 +881,8 @@ function init(root, cfg, mode) {
         b.type = 'button';
         b.className = 'af-hub-row';
         b.dataset.goto = id;
-        b.innerHTML = '<span class="af-step-mark" aria-hidden="true"></span><span class="af-hub-name"><strong></strong><span class="af-hub-sub"></span></span><span class="af-hub-meta"></span>';
+        // Spaces between the words' boxes (the layout takes no notice): read as words, never "Begin1 min"
+        b.innerHTML = '<span class="af-step-mark" aria-hidden="true"></span> <span class="af-hub-name"><strong></strong> <span class="af-hub-sub"></span></span> <span class="af-hub-meta"></span>';
         li.append(b);
         return li;
       }));
@@ -889,12 +896,17 @@ function init(root, cfg, mode) {
       b.disabled = !open && !previewing;
       const [mark, name, meta] = b.children;
       const markHtml = done ? CHECK_SVG : String(i + 1);
-      if (mark.dataset.v !== markHtml) { mark.dataset.v = markHtml; if (done) mark.innerHTML = CHECK_SVG; else mark.textContent = String(i + 1); }
+      // Its number is drawn by the styles: a picture of which step it is (its name says so in words), not a
+      // word of its label ("1 Before You Begin" isn't what it's called)
+      if (mark.dataset.v !== markHtml) { mark.dataset.v = markHtml; if (done) { mark.innerHTML = CHECK_SVG; delete mark.dataset.n; } else { mark.textContent = ''; mark.dataset.n = String(i + 1); } }
       name.firstChild.textContent = titleOf(id);
       name.lastChild.textContent = done ? summaryOf(id, a) : now ? T('stepNow') : '';
       const metaHtml = done ? `${PENCIL_SVG}<span>${esc(T('edit'))}</span>` : id === 'review' ? '' : esc(T('minutes', { n: minutesOf(id) }));
       if (meta.dataset.v !== metaHtml) { meta.dataset.v = metaHtml; meta.innerHTML = metaHtml; }
-      b.setAttribute('aria-label', [`${T('step', { n: i + 1, total: ids.length })}: ${titleOf(id)}`, done ? T('stepDone') : now ? T('stepNow') : open ? '' : T('stepLocked'), name.lastChild.textContent].filter(Boolean).join('. '));
+      // Its name holds what it shows, in that order (the minutes, Edit too), so a voice command naming what's
+      // seen finds it; done or locked after
+      const said = [`${T('step', { n: i + 1, total: ids.length })}: ${titleOf(id)}`, name.lastChild.textContent, meta.textContent, done ? T('stepDone') : now || open ? '' : T('stepLocked')];
+      b.setAttribute('aria-label', said.filter((x, k) => x && said.indexOf(x) === k).join('. '));
     });
   }
 
@@ -921,7 +933,7 @@ function init(root, cfg, mode) {
     ui.next.disabled = !!blockedBy;
     if (busyShown) ui.next.setAttribute('aria-disabled', 'true'); else ui.next.removeAttribute('aria-disabled');
     ui.next.setAttribute('aria-busy', String(busyShown));
-    if (ui.turnstile) ui.turnstile.hidden = !(turnstileSiteKey && !token && !previewing && at === 0 && screenNo === 0);
+    if (ui.turnstile) ui.turnstile.hidden = !(turnstileSiteKey && !token && !previewing && ((at === 0 && screenNo === 0) || checkAsked));
     fitNavLater();
     fitTopTitle();
   }
@@ -1042,6 +1054,13 @@ function init(root, cfg, mode) {
    */
   function answeredLook(el, pid) {
     const undo = [];
+    // Problem notes come and go: the screens are planned without them (a language switch while they show
+    // doesn't turn "Part 1 of 2" into "Part 1 of 3"), and they close the questions up when they show
+    for (const p of el.querySelectorAll('.af-error')) {
+      const was = p.textContent;
+      if (was) { p.textContent = ''; undo.push(() => { p.textContent = was; }); }
+    }
+    if (el.hasAttribute('data-snug')) { el.removeAttribute('data-snug'); undo.push(() => el.setAttribute('data-snug', '')); }
     for (const k of el.querySelectorAll('[data-field][hidden]')) {
       const lead = byId[k.dataset.field]?.showIf?.field;
       if (lead && pageOf(lead) === pid) { k.hidden = false; undo.push(() => { k.hidden = true; }); }
@@ -1382,6 +1401,8 @@ function init(root, cfg, mode) {
           try { if (where.field && focused) sessionStorage.setItem(SCREEN_KEY, JSON.stringify({ page: id, ...where })); } catch { /* storage off */ }
         }
       }
+      // The camera's screen left (Back, the steps, the browser's Back): it stops there, not out of sight
+      if (recorder && !(fieldEl(recorder.id) && onScreen(fieldEl(recorder.id)))) closeRecorder({ keep: true });
       if (pageEl(id)?.querySelector('.af-map-frame')) requestAnimationFrame(() => declutter(pageEl(id)));
       if (pageChanged || dir) {
         ui.steps.open = false;
@@ -1426,10 +1447,18 @@ function init(root, cfg, mode) {
     if (busy || moving || performance.now() < calmUntil) return;
     navNote(null);
     if (currentId === 'review') { submit(); return; }
-    takeExactMatch();
     // Waiting (a check, a photo on its way) while they go Back or jump: this Continue is over
     const from = `${currentId}:${screenNo}`;
     const moved = () => `${currentId}:${screenNo}` !== from || !focused || ui.form.hidden;
+    // An address pasted (or filled in) a moment ago, its suggestions still coming: wait for them, so the
+    // one that matches it is taken (not "choose it from the list")
+    const due = sug.due || sug.going ? suggestDue() : null;
+    if (due) {
+      setBusy(true);
+      try { await Promise.race([due, wait(5000)]); } finally { setBusy(false); }
+      if (moved()) return;
+    }
+    takeExactMatch();
     // An address check still on its way decides this page's answer: wait for it (briefly),
     // unless the address itself needs fixing first (then there's nothing to wait for)
     const home = homeAddressId() && byId[homeAddressId()];
@@ -1479,10 +1508,15 @@ function init(root, cfg, mode) {
     // The address decides the service-area answer, so its screen stops too (a phone has the map on the next)
     const decides = stop && byId[stop.field]?.type === 'area' && here.has(homeAddressId());
     if (stop && stop.page === currentId && (here.has(stop.field) || decides || last)) { showStop(stop); pushLoc({ stop: true }); return; }
+    // The home's address changed from the review to one outside the area (or one the check couldn't place):
+    // what that means, on its own screen, before the review
+    const card = fromReview === 'answer' && here.has(homeAddressId()) && areaField() ? fieldEl(areaField().id)?.querySelector('[data-area-result]') : null;
+    const toCard = !!card && !onScreen(card) && areaPlaced()?.band !== 'inside';
     setBusy(true);
     try {
       if (!(await start())) return;
-      if (fromReview === 'answer' || (fromReview && last)) await show('review', { dir: 1 });
+      if (toCard) await show(currentId, { dir: 1, piece: card, step: 1 });
+      else if (fromReview === 'answer' || (fromReview && last)) await show('review', { dir: 1 });
       else if (!last) await show(currentId, { dir: 1, screen: screenNo + 1, step: 1 });
       else {
         const ids = stepIds(a);
@@ -1666,27 +1700,45 @@ function init(root, cfg, mode) {
   }
 
   // ── Server calls ─────────────────────────────────────────────────
-  async function start() {
+  async function start({ renew = null } = {}) {
     if (previewing || token) return true; // a preview walks the pages and saves nothing
     if (testRun?.signIn) { navNote({ raw: TEST.signInNote }); return false; }
-    if (turnstileSiteKey && !turnstileToken && !testRun) { navNote('turnstile'); return false; }
+    if (turnstileSiteKey && !turnstileToken && !testRun && !renew) {
+      // The check passes on its own in a moment (Continue looks busy meanwhile); said only when it wants a tap
+      await Promise.race([new Promise(r => turnstileWaiting.push(r)), wait(6000)]);
+      if (token) return true;
+      if (!turnstileToken) { askCheck(); return false; }
+    }
     let r;
-    try { r = await api({ action: 'start', kind, year, lang, turnstileToken, website: ui.honeypot?.value || '', ...(testRun ? { test: true } : {}) }); } catch { r = { ok: false }; }
+    try { r = await api({ action: 'start', kind, year, lang, turnstileToken, website: ui.honeypot?.value || '', ...(renew ? { renew } : {}), ...(testRun ? { test: true } : {}) }); } catch { r = { ok: false }; }
+    if (token) return true; // started meanwhile (a second press)
     if (r.code === 'staff-only') { testRun = { signIn: true }; paintTestBar(); }
     if (!r.ok) {
+      if (renew) return false; // said by expired()
       // The quick check's own words here (the server's are English and name a different button)
-      navNote(r.code === 'turnstile' ? 'turnstile' : r.error ? { raw: r.error } : 'startFail');
-      if (r.code === 'turnstile') resetTurnstile();
+      if (r.code === 'turnstile') { resetTurnstile(); askCheck(); } else navNote(r.error ? { raw: r.error } : 'startFail');
       return false;
     }
     token = r.token;
     rev = 0;
     synced = {};
     linkGone = false;
-    if (['linkExpired', 'resumeFailed'].includes(lastNotice?.m)) notice(null); // about the one before this
+    checkAsked = false;
+    turnstileToken = null; // used: a new application (another child) has the check again
+    if (['linkExpired', 'resumeFailed', 'expired'].includes(lastNotice?.m)) notice(null); // about the one before this
     remember();
     paintNav();
     return true;
+  }
+  /** The quick check wants a tap: it shows on the screen they're on, in view (not under Continue) */
+  let checkAsked = false;
+  const turnstileWaiting = [];
+  function askCheck() {
+    checkAsked = true;
+    navNote('turnstile');
+    paintNav();
+    if (!ui.turnstile || ui.turnstile.hidden) return;
+    requestAnimationFrame(() => ui.turnstile.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }));
   }
 
   function save() {
@@ -1709,8 +1761,9 @@ function init(root, cfg, mode) {
           retries = 0;
           return true;
         }
-        if (r.code === 'no-draft') { expired(); return false; }
-        if (r.code === 'submitted') { saveState(null); return true; } // sent from another tab: nothing to keep
+        if (r.code === 'no-draft') { await expired(body.token); return false; }
+        // Sent from another device or tab: this one says so (what's typed here since can't be added)
+        if (r.code === 'submitted') { if (body.token === token && !doneShown) finished(true, { elsewhere: true }); return true; }
         saveState(r.status === 429 ? 'paused' : 'notSaved');
         retrySave();
         return false;
@@ -1737,12 +1790,30 @@ function init(root, cfg, mode) {
     clearTimeout(dirtyTimer);
     dirtyTimer = setTimeout(save, 4000);
   }
-  function expired() {
+  /**
+   * The saved application expired with this page still open (weeks on): a new one with the answers here,
+   * at once (it passed the quick check for the old one). Its photos and video went with it: added again
+   */
+  async function expired(was = token) {
+    if (!was || was !== token) return; // about one already replaced
     store.clear();
     token = null;
     saveState(null); // nothing left to save to ("Saving…" forever otherwise)
+    let lost = 0;
+    for (const f of fields) {
+      if (!isUpload(f) || !files[f.id]) continue;
+      delete files[f.id];
+      uploadUi[f.id] = { state: 'empty', msg: 'fileAgain' };
+      paintUpload(f.id);
+      lost++;
+    }
+    if (lost) uploadsChanged();
+    // Once a page (a new one that's "gone" at once isn't started again and again)
+    if (!renewed && await start({ renew: was })) { renewed = true; notice(lost ? 'renewedFiles' : 'renewed', 'info'); save(); return; }
+    resetTurnstile(); // Continue starts a new one, with the quick check again
     notice('expired', 'error');
   }
+  let renewed = false;
   const sameAnswer = (x, y) => JSON.stringify(x ?? '') === JSON.stringify(y ?? '');
   /**
    * Answers saved from somewhere else since this page last had them (the emailed link on another device,
@@ -1813,8 +1884,8 @@ function init(root, cfg, mode) {
     peeking = true;
     try {
       const r = await api({ action: 'peek', token }).catch(() => null);
-      if (r?.code === 'submitted') { finished(true); return; }
-      if (r?.code === 'no-draft') { expired(); return; }
+      if (r?.code === 'submitted') { finished(true, { elsewhere: lastSave === 'unsaved' || unsaved() }); return; }
+      if (r?.code === 'no-draft') { await expired(); return; }
       if (!r?.ok) return;
       if (r.rev !== rev) await save();
       else if (takeFiles(r.files || {})) notice('fromElsewhere', 'success');
@@ -1966,7 +2037,8 @@ function init(root, cfg, mode) {
           change.setAttribute('aria-label', `${T('change')}: ${f.label || ''}`);
         } else continue;
         row.append(dt, dd);
-        if (change) row.append(change);
+        // A definition list holds terms and definitions only: Change sits in one of its own
+        if (change) { const act = document.createElement('dd'); act.className = 'af-review-act'; act.append(change); row.append(act); }
         rows.push(row);
       }
       if (!rows.length) continue;
@@ -2025,10 +2097,15 @@ function init(root, cfg, mode) {
     submitting = true;
     paintSubmitting();
     try {
-      await save();
+      if (!(await start())) return; // expired, and a new one couldn't start just now (it says why)
+      // Sent only as it is here: a save that didn't go would send the answers from before it
+      const saved = await save();
+      if (doneShown) return; // it turned out to be sent already (another device)
+      if (!saved) { navNote(lastSave === 'offline' ? 'offlineSubmit' : 'submitUnsaved'); return; }
       const r = await api({ action: 'submit', token });
       if (r.ok) { finished(); return; }
-      if (r.code === 'no-draft') { expired(); return; }
+      if (r.code === 'no-draft') { await expired(); return; } // its note says what happened (a new one: Submit again)
+      if (r.code === 'submitted') { finished(true); return; }
       if (r.error === 'stopped' && r.stop) { showStop({ key: r.stop, page: stopFor(form, readAnswers())?.page }); return; }
       if (r.errors && Object.keys(r.errors).length) {
         const ids = Object.keys(r.errors);
@@ -2053,17 +2130,22 @@ function init(root, cfg, mode) {
   }
 
   // ── The thank-you ────────────────────────────────────────────────
-  function finished(already = false) {
+  function finished(already = false, { elsewhere = false } = {}) {
     store.clear();
     if (!testRun && !previewing && (!already || sentStore.get()?.year !== year)) sentStore.set({ year, at: already ? null : Date.now() });
     closeRecorder();
-    doneShown = { already, email: testRun?.by || readAnswers()[emailId] || answers[emailId] || '' };
+    clearTimeout(dirtyTimer);
+    clearTimeout(retryTimer);
+    if (ui.dialog?.open) ui.dialog.close();
+    doneShown = { already, elsewhere, email: testRun?.by || readAnswers()[emailId] || answers[emailId] || '' };
+    saveState(null);
     notice(null);
     ui.form.hidden = true;
     ui.stop.hidden = true;
     ui.done.hidden = false;
     root.classList.add('is-done'); // the steps beside the form have done their job
     paintDone();
+    paintHeroNote(); // the page above says it went too (a link opened for one already sent)
     paintSegs(stepIds(), new Set());
     paintTitle();
     if (testRun?.by) startTrace();
@@ -2080,7 +2162,7 @@ function init(root, cfg, mode) {
     const out = ui.exit?.querySelector('[data-af-t]');
     if (out) { out.dataset.afT = 'close'; out.textContent = T('close'); }
     const line = ui.done.querySelector('[data-done-email]');
-    line.textContent = doneShown.already ? T('doneAgain') : doneShown.email ? T('doneEmail', { email: doneShown.email }) : '';
+    line.textContent = doneShown.elsewhere ? T('doneElsewhere') : doneShown.already ? T('doneAgain') : doneShown.email ? T('doneEmail', { email: doneShown.email }) : '';
   }
 
   // ── Uploads: the box's look ──────────────────────────────────────
@@ -2122,6 +2204,11 @@ function init(root, cfg, mode) {
   }
   function uploadsChanged() {
     paintNav();
+    // Save and exit with a photo or video still going: once it's in (or didn't make it), said where they are
+    if (!focused && !uploads.size && lastNotice?.m === 'exitUploading') {
+      const failed = Object.values(uploadUi).some(u => u?.state === 'failed');
+      save().then((ok) => { if (!focused && lastNotice?.m === 'exitUploading') notice(failed ? 'exitUploadFailed' : ok ? 'exitSaved' : 'exitNotSaved', ok && !failed ? 'success' : 'error'); });
+    }
     if (currentId === 'review') buildReview();
     // A note that said the photo or video was missing goes once it's in
     for (const id of [...shown]) if (byId[id] && isUpload(byId[id]) && !errorFor(id)) setFieldError(id, null);
@@ -2154,10 +2241,16 @@ function init(root, cfg, mode) {
   }
   const isPhotoFile = (file) => /^image\//.test(file.type || '') || /\.(jpe?g|png|webp|heic|heif)$/i.test(file.name || '');
   const isVideoFile = (file) => /^video\//.test(file.type || '') || /\.(mp4|mov|m4v|webm|avi|3gp|mkv)$/i.test(file.name || '');
+  /** An upload turned away because the application expired or was sent: as a save's would be (its words, or null) */
+  function uploadGone(r, was) {
+    if (r?.code === 'no-draft') { expired(was); return T('fileAgain'); }
+    if (r?.code === 'submitted') { if (was === token && !doneShown) finished(true, { elsewhere: true }); return T('doneElsewhere'); }
+    return null;
+  }
   // What went wrong, and what to do: "Please try again" added only when the words don't already say what to do
   const failText = (e) => {
     const msg = String(e?.message || T('uploadFailed')).trim();
-    return { raw: /try again|intente|please|por favor|elija|choose/i.test(msg) ? msg : T('tryAgain', { msg: msg.replace(/[.!]\s*$/, '') }) };
+    return { raw: /try again|intente|please|por favor|elija|choose|vuelva/i.test(msg) ? msg : T('tryAgain', { msg: msg.replace(/[.!]\s*$/, '') }) };
   };
 
   async function uploadPhoto(f, file) {
@@ -2183,6 +2276,7 @@ function init(root, cfg, mode) {
       const body = new FormData();
       body.append('action', 'photo');
       body.append('token', token);
+      body.append('lang', lang); // its problems said in their language
       body.append('field', f.id);
       const name = (file.name || 'photo').replace(/\.[^.]+$/, '') + (main ? '.jpg' : '');
       body.append('file', main || file, main ? name : file.name);
@@ -2192,7 +2286,7 @@ function init(root, cfg, mode) {
         const pct = Math.min(99, Math.round(p * 100));
         setUpload(f.id, { pct, msg: ['uploading', { pct }] });
       });
-      if (!r.ok) throw new Error(r.error || T('uploadFailed'));
+      if (!r.ok) throw new Error(uploadGone(r, body.get('token')) || r.error || T('uploadFailed'));
       files[f.id] = { key: true, name };
       delete retryFiles[f.id];
       setUpload(f.id, { state: 'done', msg: ['added', { name }], pct: null });
@@ -2261,8 +2355,9 @@ function init(root, cfg, mode) {
     uploadsChanged();
     videoThumb(file).then(thumb => { if (thumb && files[f.id]?.name === file.name) setUpload(f.id, { thumb }); });
     try {
-      const r = await api({ action: 'video-url', token, size: file.size, name: file.name });
-      if (!r.ok) throw new Error(r.error || T('uploadStartFail'));
+      const was = token;
+      const r = await api({ action: 'video-url', token, size: file.size, name: file.name, lang });
+      if (!r.ok) throw new Error(uploadGone(r, was) || r.error || T('uploadStartFail'));
       await new Promise((resolve, reject) => {
         const upload = new tus.Upload(file, {
           uploadUrl: r.uploadUrl,
@@ -2282,7 +2377,7 @@ function init(root, cfg, mode) {
       setUpload(f.id, { pct: 100, msg: 'finishing' });
       let uploaded = false;
       for (let i = 0; i < 20 && !uploaded; i++) {
-        const done = await api({ action: 'video-done', token });
+        const done = await api({ action: 'video-done', token, lang });
         if (done.code === 'video-error') throw new Error(done.error);
         uploaded = !!done.uploaded;
         if (!uploaded) await wait(1500);
@@ -2366,7 +2461,9 @@ function init(root, cfg, mode) {
       const rec = new MediaRecorder(recorder.stream, type ? { mimeType: type } : undefined);
       recorder.rec = rec;
       recorder.type = (rec.mimeType || type || 'video/webm').split(';')[0];
-      rec.ondataavailable = (e) => { if (e.data?.size) recorder?.chunks.push(e.data); };
+      // Its own recording's pieces (the last ones come once it's stopped, after the camera's put away)
+      const own = recorder;
+      rec.ondataavailable = (e) => { if (e.data?.size) own.chunks.push(e.data); };
       rec.start(1000);
       recorder.started = Date.now();
       box.dataset.rec = 'on';
@@ -2384,22 +2481,31 @@ function init(root, cfg, mode) {
     const mine = recorder;
     toggle.disabled = true;
     clearInterval(mine.timer);
-    mine.rec.onstop = () => {
-      const ext = mine.type.includes('mp4') ? 'mp4' : 'webm';
-      const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
-      const file = new File(mine.chunks, `recording-${stamp}.${ext}`, { type: mine.type });
-      closeRecorder();
-      const f = byId[mine.id];
-      if (f) uploadVideo(f, file);
-    };
+    mine.rec.onstop = () => { closeRecorder(); useRecording(mine); };
     mine.rec.stop();
   }
-  function closeRecorder() {
+  /** What was recorded, as the video: the same upload path as a chosen file */
+  function useRecording(r) {
+    const ext = r.type.includes('mp4') ? 'mp4' : 'webm';
+    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+    const file = new File(r.chunks, `recording-${stamp}.${ext}`, { type: r.type });
+    const f = byId[r.id];
+    if (f && file.size) uploadVideo(f, file);
+  }
+  /**
+   * The camera off. `keep`: leaving its screen (or switching language, Save and exit) mid-recording
+   * stops it there and keeps what was recorded as the video (as Stop does), and says so; never a camera
+   * left running out of sight, nor a recording lost
+   */
+  function closeRecorder({ keep = false } = {}) {
     if (!recorder) return;
     const r = recorder;
     recorder = null;
     clearInterval(r.timer);
-    try { if (r.rec && r.rec.state !== 'inactive') { r.rec.onstop = null; r.rec.stop(); } } catch { /* already stopped */ }
+    const going = r.rec && r.rec.state !== 'inactive';
+    const kept = keep && going && Date.now() - r.started >= 1000;
+    try { if (going) { r.rec.onstop = kept ? () => useRecording(r) : null; r.rec.stop(); } } catch { /* already stopped */ }
+    if (kept) notice(['recKept', { time: recTime(Date.now() - r.started) }], 'info');
     r.stream?.getTracks().forEach(t => t.stop());
     const box = fieldEl(r.id)?.querySelector('.af-recorder');
     if (box) {
@@ -2512,15 +2618,31 @@ function init(root, cfg, mode) {
   }
 
   // ── Address suggestions (a combobox on the address line) ──────────
-  const sug = { timer: 0, ctrl: null, items: [], active: -1, input: null, list: null, el: null, closing: 0 };
+  const sug = { timer: 0, due: null, going: null, ctrl: null, items: [], active: -1, input: null, list: null, el: null, closing: 0 };
   const homeAddressId = () => (byId.address?.type === 'address' ? 'address' : fields.find(f => f.type === 'address')?.id);
   function suggestFor(el, input) {
     clearTimeout(sug.timer);
+    sug.due = null;
     const q = input.value.trim();
     if (q.length < 4 || !/\d/.test(q)) { closeSuggest(); return; }
-    sug.timer = setTimeout(() => fetchSuggest(el, input, q), 250);
+    sug.due = { el, input, q };
+    sug.timer = setTimeout(() => { sug.due = null; fetchSuggest(el, input, q); }, 250);
   }
-  async function fetchSuggest(el, input, q) {
+  /** Suggestions for what's in the line still on their way (asked now if they were waiting to be): done when they're in */
+  function suggestDue() {
+    if (sug.due) {
+      clearTimeout(sug.timer);
+      const { el, input, q } = sug.due;
+      sug.due = null;
+      return fetchSuggest(el, input, q);
+    }
+    return sug.going;
+  }
+  function fetchSuggest(el, input, q) {
+    const p = sug.going = findSuggest(el, input, q).finally(() => { if (sug.going === p) sug.going = null; });
+    return p;
+  }
+  async function findSuggest(el, input, q) {
     sug.ctrl?.abort();
     const ctrl = new AbortController();
     sug.ctrl = ctrl;
@@ -2532,8 +2654,15 @@ function init(root, cfg, mode) {
       items = Array.isArray(data.results) ? data.results : Array.isArray(data.items) ? data.items : [];
       google = data.source === 'google';
     } catch { return; } // offline or the lookup is down: they keep typing as normal
-    if (ctrl.signal.aborted || input.value.trim() !== q || document.activeElement !== input) return;
+    if (ctrl.signal.aborted || input.value.trim() !== q) return;
     sug.last = { input, q, items: items.filter(i => i?.line1).slice(0, 5), google };
+    // Continue pressed meanwhile (a whole address pasted, then straight on): no list, but known, so it can take it
+    if (document.activeElement !== input) {
+      if (sug.list && sug.input !== input) return; // another address's list is open: left as it is
+      closeSuggest();
+      Object.assign(sug, { items: sug.last.items, el, input });
+      return;
+    }
     openSuggest(el, input, sug.last.items, google);
   }
   function openSuggest(el, input, items, google = false) {
@@ -3236,6 +3365,15 @@ function init(root, cfg, mode) {
       const parts = fieldEl(id).querySelectorAll('[data-part]');
       if (parts.length) parts.forEach(i => { i.value = ''; });
       else writeField(f, '');
+      // An address: its line too (typed, or the one picked), so it's gone, not just its parts
+      const ab = addrBox(fieldEl(id));
+      if (ab) {
+        if (sug.el === fieldEl(id)) closeSuggest();
+        ab.querySelector('[data-search]').value = '';
+        delete ab.dataset.picked;
+        delete ab.dataset.splitApt;
+        ab.dataset.mode = 'line';
+      }
       setFieldError(id, null);
       touched.delete(id);
       answers[id] = readField(f);
@@ -3358,6 +3496,7 @@ function init(root, cfg, mode) {
   function phoneShape(v, whole) {
     if (/^\s*\+/.test(v) && !/^\s*\+1/.test(v)) return v; // another country's number: as typed
     if (/[a-z]/i.test(v)) return v; // an extension being typed ("ext 5"): as typed
+    if (/^\s*\d{3}[-.\s]\d{1,4}\s*$/.test(v)) return v; // a number without its area code ("555-1234"): as typed, not "(555) 123-4"
     let d = v.replace(/\D/g, '');
     if (d.length === 11 && d[0] === '1') d = d.slice(1);
     if (d.length > 10) return v;
@@ -3441,8 +3580,15 @@ function init(root, cfg, mode) {
     status.textContent = T('sending');
     try {
       if (!navigator.onLine) { status.textContent = T('sendOffline'); return; }
-      if (!(await start())) { status.textContent = say(lastNav?.m) || T('startFail'); return; }
-      await save();
+      if (!(await start())) {
+        // The quick check wants a tap: it's on the page, under this (shown once this closes)
+        if (checkAsked) { dlg.close(); return; }
+        status.textContent = say(lastNav?.m) || T('startFail');
+        return;
+      }
+      // The link opens what's saved: not sent until this page's answers are
+      if (!(await save())) { if (dlg.open) status.textContent = T(navigator.onLine ? 'laterUnsaved' : 'sendOffline'); return; }
+      if (doneShown) return; // sent already, from another device (the thank-you says so)
       const r = await api({ action: 'email-link', token, email, lang });
       if (!r.ok) { status.textContent = r.error || T('sendFail'); return; }
       laterEmail = email;
@@ -3557,12 +3703,13 @@ function init(root, cfg, mode) {
   let wantIn = false;       // they pressed Continue while it was being tried: in, once it opens
   const sentHere = () => { const x = !token && !testRun && !previewing ? sentStore.get() : null; return x?.year === year ? x : null; };
   const sentDate = (at) => new Date(at).toLocaleDateString(lang === 'es' ? 'es-US' : 'en-US', { month: 'long', day: 'numeric' });
-  const heroCtaWord = () => (token || resumePending ? 'heroContinue' : sentHere() ? 'heroAnother' : 'heroStart');
+  const heroCtaWord = () => (doneShown && !previewing ? 'heroAnother' : token || resumePending ? 'heroContinue' : sentHere() ? 'heroAnother' : 'heroStart');
   function paintHeroNote() {
     const el = document.querySelector('[data-hero-note]');
     if (!el) return;
-    const sent = sentHere();
-    const m = token || focused ? null
+    // Sent from this page just now (or its link was for one already sent): said here too, once they close it
+    const sent = doneShown && !previewing && !testRun ? sentStore.get() || {} : sentHere();
+    const m = (token && !doneShown) || focused ? null
       : resumePending ? { m: 'resumeFailed', kind: 'error' }
         : linkGone ? { m: 'linkExpired', kind: 'error' }
           : sent ? { m: sent.at ? ['sentNote', { date: sentDate(sent.at) }] : 'sentNoteToday', kind: 'success' } : null;
@@ -3669,7 +3816,7 @@ function init(root, cfg, mode) {
     window.onSoardTurnstile = () => {
       window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
         sitekey: turnstileSiteKey,
-        callback: (t) => { turnstileToken = t; if (lastNav?.m === 'turnstile') navNote(null); },
+        callback: (t) => { turnstileToken = t; turnstileWaiting.splice(0).forEach(r => r()); if (lastNav?.m === 'turnstile') navNote(null); },
         'expired-callback': () => { turnstileToken = null; },
       });
     };
@@ -3827,9 +3974,16 @@ function init(root, cfg, mode) {
   heroCta?.addEventListener('click', (e) => {
     if (root.hidden || testRun?.signIn) return; // closed: it goes to the "tell me when we open" box
     e.preventDefault();
+    if (doneShown && token && !previewing) { another(); return; }
     if (resumePending && !token) { tryResumeNow(); return; }
     begin();
   }, { signal });
+  /** Sent, and "Apply for another child": the page afresh (nothing of the one sent kept), straight into the new one */
+  const ANOTHER_KEY = keyed('soard-application-another');
+  function another() {
+    try { sessionStorage.setItem(ANOTHER_KEY, '1'); } catch { /* storage off: the page's own Start, after */ }
+    location.reload();
+  }
   ui.hubGo?.addEventListener('click', () => { if (resumePending && !token) tryResumeNow(); else begin(ui.hubGo.dataset.go || null); });
   ui.hubList?.addEventListener('click', (e) => {
     const go = e.target.closest('[data-goto]');
@@ -3885,7 +4039,25 @@ function init(root, cfg, mode) {
     depth = to;
     if (st?.afAt) trail[to] = st.afAt;
     if (!to || doneShown) { exitFocus({ fromPop: true }); return true; } // back to the page itself
-    if (stopShown) { stopShown = null; ui.stop.hidden = true; ui.form.hidden = false; }
+    if (stopShown) {
+      // Back from a stop: the question that led to it, with the keys there (as its own "Go back" does)
+      const field = stopFromArea() && homeAddressId() ? homeAddressId() : stopShown.field;
+      stopShown = null;
+      ui.stop.hidden = true;
+      ui.form.hidden = false;
+      if (!st.afAt || sameAt(st.afAt, whereNow())) {
+        const fe = field && fieldEl(field) ? field : null;
+        show(currentId, { dir, focusField: fe, at: fe, scroll: false });
+        return true;
+      }
+    }
+    // Forward onto a stop: it again, while the answer that led to it stands
+    const stop = st.afAt?.stop ? stopFor(form, readAnswers()) : null;
+    if (stop && stop.page === st.afAt.page) {
+      if (!sameAt(st.afAt, whereNow())) goTo(st.afAt, dir);
+      showStop(stop);
+      return true;
+    }
     if (st.afAt) goTo(st.afAt, dir);
     else if (dir < 0) back(); // an entry from before they said where they were: a screen back
     return true;
@@ -4201,6 +4373,9 @@ function init(root, cfg, mode) {
     const want = window.__afWant;
     window.__afWant = null;
     for (const b of document.querySelectorAll('[data-hero-cta][aria-busy], [data-hub-go][aria-busy]')) b.removeAttribute('aria-busy');
+    let again = false;
+    try { again = sessionStorage.getItem(ANOTHER_KEY) === '1'; sessionStorage.removeItem(ANOTHER_KEY); } catch { /* storage off */ }
+    if (again && !token && !root.hidden) { begin(); return; } // "Apply for another child", after the reload
     if (want) (want === 'hub' ? ui.hubGo : document.querySelector('[data-hero-cta]'))?.click();
   }
 }

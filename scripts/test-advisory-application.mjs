@@ -335,6 +335,19 @@ if (DIST) {
     await p.reload({ waitUntil: 'networkidle0' });
     await sleep(300);
     ok(await p.evaluate(() => document.documentElement.classList.contains('adv-focus')) && (await text(p, '#adv-title')) === 'Your interest' && await p.$eval('#adv-why', (el) => el.value) === 'To help.', 'a reload comes back to the same step, answers kept');
+    // Two tabs of it: what one saves comes into the other, and neither's save wipes the other's answers
+    const p2 = await open(width, '/advisory-board/apply/');
+    await p2.click('#adv-go');
+    await sleep(500);
+    const say = (pg, id, v) => pg.evaluate((i, val) => { const el = document.getElementById(i); el.value = val; el.dispatchEvent(new Event('input', { bubbles: true })); }, id, v);
+    await say(p2, 'adv-connection', 'Neighbors, and friends.');
+    await sleep(900);
+    ok(await p.$eval('#adv-connection', (el) => el.value) === 'Neighbors, and friends.', 'an answer saved in another tab comes into this one');
+    await say(p, 'adv-why', 'To help families.');
+    await sleep(900);
+    const both = await p2.evaluate(() => JSON.parse(localStorage.getItem('soard-advisory-application')).answers);
+    ok(both.why === 'To help families.' && both.connection === 'Neighbors, and friends.' && await p2.$eval('#adv-why', (el) => el.value) === 'To help families.', "and this tab's save keeps the other's answer (and shows there)");
+    await p2.close();
     await onTo('What you’d bring');
     // A long answer: its count once it's near what the box holds
     await reach('#adv-strengths');
@@ -388,6 +401,13 @@ if (DIST) {
     ok(await p.evaluate(() => localStorage.getItem('soard-advisory-application')) === null, 'the device forgets the answers');
     ok((await listAdvisoryApplications(DB)).some((a) => a.email === `taylor${width}@example.org`), 'stored, for the admin');
     await p.screenshot({ path: join(OUT, `apply-done-${width}.png`) });
+    // Back on the page later: this device says it went (not a fresh "Start the application")
+    await p.evaluate(() => sessionStorage.clear());
+    await p.reload({ waitUntil: 'networkidle0' });
+    await sleep(300);
+    const back = { note: await text(p, '[data-adv-hero-note]'), hub: await text(p, '#adv-hub-title'), go: await text(p, '[data-adv-cta]') };
+    ok(/^We received your application on /.test(back.note) && back.hub === 'We received your application' && back.go === 'Start a new application', `a reload after sending says it arrived (${JSON.stringify(back)})`);
+    await p.evaluate(() => localStorage.removeItem('soard-advisory-sent'));
     await p.close();
   }
   const copies = sent.emails.filter((e) => e.subject === 'We have your Advisory Board application' && /Taylor/.test(e.html));

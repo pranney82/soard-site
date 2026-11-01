@@ -1360,6 +1360,7 @@ const breadcrumbs = [
   .af-hub-row:disabled { cursor: default; }
   .af-hub-row[data-state="now"] { border-color: var(--c-dark); box-shadow: inset 0 0 0 .5px var(--c-dark); }
   .af-hub-row .af-step-mark { width: 32px; height: 32px; flex-basis: 32px; }
+  .af-hub-row .af-step-mark[data-n]::before { content: attr(data-n); }
   .af-hub-row[data-state="done"] .af-step-mark { background: var(--c-dark); border-color: var(--c-dark); color: var(--c-yellow); }
   .af-hub-row[data-state="now"] .af-step-mark { background: var(--c-yellow); border-color: var(--c-dark); color: var(--c-dark); }
   .af-hub-name { display: grid; gap: 2px; min-width: 0; }
@@ -1497,7 +1498,7 @@ const breadcrumbs = [
   .af-review-toggle .af-step-mark { font-size: 15px; }
   .af-review-item { grid-template-columns: minmax(0, 1fr) auto; column-gap: 12px; }
   .af-review-item > :is(dt, dd) { grid-column: 1; }
-  .af-review-item > .af-review-change { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
+  .af-review-item > .af-review-act { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
   .af-review-sum { font-size: 14px; line-height: 1.4; color: var(--c-text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .af-review-section[data-missing] .af-review-sum { color: var(--af-attn-ink); font-weight: 600; }
   .af-review-chev { width: 16px; height: 16px; fill: none; stroke: var(--c-text-muted); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; transition: transform .25s var(--af-ease); }
