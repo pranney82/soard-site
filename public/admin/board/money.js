@@ -339,3 +339,48 @@ export function RevenueMix({ books, table = false }) {
     : html`<ul class="bp-mix__key">${parts.map((x, i) => html`<li key=${x.key} class=${i === on ? 'is-on' : ''} onMouseEnter=${() => setOn(i)}><i class=${`bp-tone--${x.tone}`} aria-hidden="true"></i>${x.name}<strong>${compact(x.amount)}</strong><span>${shareOf(x.amount, total)}</span></li>`)}</ul>`}
   </div>`;
 }
+
+// ─── The store: QuickBooks' accounts named for it (functions/api/_quickbooks.js storeOf) ───
+// Home, a meeting's money item and Financials (./portal.js), the screen (./screen.js) and Print it all (./print.js).
+// Its staff, rent and utilities are in SOARD's shared accounts, so its profit is said to be before them wherever it shows
+/**
+ * The store's year so far beside last year's same days → { year, lastYear, lines: [{ k, name, amount, last, accounts }] }
+ * (its sales, its cost of goods, the profit between), or null before the store has a figure in QuickBooks (or from a
+ * read an older deploy kept, or a past meeting's numbers locked before)
+ */
+export function storeOf(books) {
+  const s = books?.store;
+  if (!s || !(s.sales || s.cost)) return null;
+  const ly = typeof books.lastYear?.store?.sales === 'number' ? books.lastYear.store : null;
+  return { year: books.year, lastYear: ly ? books.lastYear.year : '', lines: [
+    { k: 'sales', name: 'Sales', amount: s.sales, last: ly ? ly.sales : null, accounts: s.salesAccounts || [] },
+    { k: 'cost', name: 'Cost of goods', amount: s.cost, last: ly ? ly.cost : null, accounts: s.costAccounts || [] },
+    { k: 'profit', name: 'Profit before staff and rent', amount: s.profit, last: ly ? ly.profit : null, accounts: [] },
+  ] };
+}
+/** A store line against last year's same days: a share for its sales and cost, dollars for the profit (which can cross zero) */
+export const storeChange = (x) => (x.last == null ? '' : x.amount === x.last ? 'Even' : x.k === 'profit' ? `${x.amount > x.last ? '▲' : '▼'} ${compact(Math.abs(x.amount - x.last))}` : changeOf(x.amount, x.last));
+
+/** The store's three figures in a row (Home, a meeting's money item), each with how it stands against last year by now */
+export function StoreFigures({ books }) {
+  const st = storeOf(books);
+  if (!st) return null;
+  return html`<ul class="bp-store">${st.lines.map((x) => html`<li key=${x.k} class=${`bp-store__${x.k}`}>
+    <span class="bp-store__name">${x.name}</span><strong class="bp-store__value">${compact(x.amount)}</strong>${storeChange(x) ? html`<span class="bp-store__ly">${storeChange(x)} on ${st.lastYear} by now</span>` : null}
+  </li>`)}</ul>`;
+}
+
+/** Financials: the store's lines beside last year's same days, each with the QuickBooks accounts in it */
+export function StoreTable({ books }) {
+  const st = storeOf(books);
+  if (!st) return null;
+  const signed = (n) => `${n < 0 ? '−' : ''}${money(Math.abs(n))}`;
+  return html`<table class="bp-table bp-cmp bp-storetable">
+    <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${st.year} so far</th>${st.lastYear ? html`<th scope="col" class="num">${st.lastYear}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
+    <tbody>${st.lines.map((x) => html`<tr key=${x.k} class=${x.k === 'profit' ? 'bp-row--net' : ''}>
+      <th scope="row">${x.name}${x.accounts.length ? html`<small>${x.accounts.join(', ')}</small>` : null}</th>
+      <td class="num">${signed(x.amount)}</td>
+      ${st.lastYear ? html`<td class="num bp-cmp__ly" data-label=${`${st.lastYear}, same days`}>${x.last == null ? '–' : signed(x.last)}</td><td class="num bp-cmp__chg">${storeChange(x) || '–'}</td>` : null}
+    </tr>`)}</tbody>
+  </table>`;
+}

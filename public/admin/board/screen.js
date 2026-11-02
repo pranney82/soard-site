@@ -30,7 +30,7 @@ import { useCover } from '../board-present.js';
 import { Report } from '../board-report.js';
 import { mdWords } from '../board-md.js';
 import { Kanban, kanbanLine, sized } from './kanban.js';
-import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue } from './money.js';
+import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, compact, storeOf, storeChange } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -327,6 +327,19 @@ function MinutesMotion({ item, v }) {
     ${mo?.tally ? html`<p class=${`bs-motion__result is-${mo.result}`}>${said} ${mo.tally.for}–${mo.tally.against}${mo.tally.abstain ? `, ${mo.tally.abstain} abstaining` : ''}</p>`
       : mo?.by ? html`<p class="bs-quiet">Moved by ${mo.by}${mo.second ? `, seconded by ${mo.second}` : ''}</p>` : null}
   </div>`;
+}
+
+/**
+ * The store (./money.js storeOf): its sales on yellow, its cost of goods and the profit before staff and rent, each
+ * against last year by now (the meeting's own numbers for one already held)
+ */
+function StoreSlide({ n, data, date }) {
+  const upTo = date && date < todayEastern() ? date : '';
+  const st = storeOf(upTo ? n?.books : data.numbers.books);
+  if (!st) return null;
+  return html`<div class="bs-money"><ul class="bs-figs" style="--n:3">${st.lines.map((x) => html`<li key=${x.k}>
+    <span class="bs-figs__label">${x.name}</span><span class="bs-figs__value">${compact(x.amount)}</span><span class="bs-figs__sub">${storeChange(x) ? `${storeChange(x)} on ${st.lastYear} by now` : `${st.year} so far`}</span>
+  </li>`)}</ul></div>`;
 }
 
 /** An item's live facts on the screen, or null when it has none */

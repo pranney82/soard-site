@@ -22,6 +22,22 @@ async function api(body) {
   return r.json().catch(() => ({ ok: false, error: `The server answered ${r.status}` }));
 }
 
+// What else the books keep, as the daily read found it (./_quickbooks.js setupOf): the budgets with their months, and
+// the locations and classes by name, so the board's budget and the store's own costs are built on what's really there.
+// Names and months only, never an amount
+const monthYear = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' }) : '');
+function Setup({ s }) {
+  if (!s) return null;
+  const list = Array.isArray(s.budgets) ? s.budgets.filter((b) => b.active) : null;
+  const budgets = s.budgets?.error ? `QuickBooks didn’t give its budgets (${s.budgets.error}).`
+    : !list?.length ? 'No budget in QuickBooks.'
+    : `${list.length === 1 ? 'Budget' : 'Budgets'} in QuickBooks: ${list.map((b) => [b.name, b.from && b.to ? `${monthYear(b.from)} to ${monthYear(b.to)}` : '', b.by ? b.by.toLowerCase() : '', `${b.accounts} account${b.accounts === 1 ? '' : 's'}${b.splits.length ? ` by ${b.splits.join(' and ')}` : ''}`].filter(Boolean).join(', ')).join('; ')}.`;
+  const kept = (on, word, names) => (!on ? `${word} are off.` : Array.isArray(names) ? `${word}: ${names.join(', ') || 'none yet'}.` : `${word} are on.`);
+  // QuickBooks' own word for a location (Location, Department, Division, Business, Property, Territory…), made plural
+  const plural = (w) => (/[^aeiou]y$/i.test(w) ? `${w.slice(0, -1)}ies` : /(s|x|ch|sh)$/i.test(w) ? `${w}es` : `${w}s`);
+  return html`<p class="form-hint" style="margin:0 0 0.5rem">${budgets} ${kept(s.tracking?.locations, plural(s.tracking?.locationWord || 'Location'), s.locations)} ${kept(s.tracking?.classes, 'Classes', s.classes)}</p>`;
+}
+
 // How the trip to Intuit's page went
 const BACK = {
   connected: ['QuickBooks is connected. The board page has its cash and the year so far now.', 'info'],
@@ -85,7 +101,7 @@ export function QuickBooks({ addToast = () => {} }) {
         : !c ? row('next', 'QuickBooks', 'Not connected. Intuit’s page opens: sign in to QuickBooks as an admin and pick Sunshine on a Ranney Day. SOARD never sees the password.', connectBtn('Connect QuickBooks'))
         : row(c.error ? 'next' : 'done', c.company,
           c.error ? html`${c.trouble}${c.readAt ? ` The board page shows the year so far from ${ago(c.readAt)}.` : ''}${c.intuitTid ? html`<br /><span class="form-hint">Intuit’s reference, if their support asks: <span class="bd-code">${c.intuitTid}</span></span>` : null}` : c.readAt ? `${through}, read ${ago(c.readAt)}.` : 'Not read yet. It reads within the hour.',
-          html`${c.qboYearStarts ? html`<p class="form-hint" style="margin:0 0 0.5rem">QuickBooks’ settings say SOARD’s fiscal year starts in ${c.qboYearStarts}, so its own “this year” reports start there. The board page counts from January 1. To match, in QuickBooks open <strong>Settings → Account and settings → Advanced → Accounting</strong> and set <strong>First month of fiscal year</strong> to January.</p>` : null}
+          html`<${Setup} s=${c.setup} />${c.qboYearStarts ? html`<p class="form-hint" style="margin:0 0 0.5rem">QuickBooks’ settings say SOARD’s fiscal year starts in ${c.qboYearStarts}, so its own “this year” reports start there. The board page counts from January 1. To match, in QuickBooks open <strong>Settings → Account and settings → Advanced → Accounting</strong> and set <strong>First month of fiscal year</strong> to January.</p>` : null}
             ${c.needsConnect ? connectBtn('Connect QuickBooks again') : null}
             <button class="btn btn-ghost btn-sm btn-row-danger" disabled=${waiting} onClick=${disconnect}>${busy === 'disconnect' ? 'Disconnecting…' : 'Disconnect'}</button>`)}
     </ul>

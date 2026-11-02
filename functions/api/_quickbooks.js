@@ -480,12 +480,16 @@ export function bankByMonth(report, also = { ids: new Set(), names: new Set() })
   return ends.map((end, i) => (end && vals[i] ? { month: end.slice(0, 7), end, total: round2(num(vals[i].value) + plus(i)) } : null)).filter(Boolean);
 }
 
+// The store's own accounts: named for it (SOARD's "Store Income", "Store COGS") or for one of its shops (Sunny & Ranney,
+// S&R, Partly Sunny: "Partly Sunny - Vendor Compensation" is the sales tax Georgia lets a shop keep)
+const STORE = /\bstore\b|retail|\bshop\b|merchandise|sunny\s*(&|and)\s*ranney|\bs\s*&\s*r\b|partly\s*sunny/i;
 // The board's revenue categories, read from the income accounts' names (SOARD's own: Individual/Corporate Revenue,
 // Grant Revenue, Store Income, Gala Income, In-Kind Contribution, Rent Income): the first that matches. In kind comes
-// before Donations, so "In-Kind Contribution" is never a cash gift. Any other account is a category of its own
+// before Donations, so "In-Kind Contribution" is never a cash gift; the store's sales are its accounts (./storeOf),
+// so the two always agree. Any other account is a category of its own
 const REVENUE_KINDS = [
   ['inkind', 'In kind', /in[\s-]?kind|donated (goods|services)/i],
-  ['store', 'Store sales', /\bstore\b|retail|\bshop\b|merchandise/i],
+  ['store', 'Store sales', STORE],
   ['grants', 'Grants', /\bgrants?\b/i],
   ['gala', 'Gala', /\bgala\b/i],
   ['donations', 'Donations', /individual|corporate|donation|contribution|\bgifts?\b|giving/i],
@@ -530,6 +534,53 @@ export function nonCashOf(report) {
 }
 
 /**
+ * The store on a Profit and Loss, from the accounts named for it: { sales (its Income and Other Income), cost (its Cost
+ * of Goods Sold and expenses), profit, salesAccounts, costAccounts }, in kind left out of both; null when no account is
+ * the store's. Its staff, rent and utilities are in SOARD's shared accounts, so the profit is before them
+ */
+export function storeOf(report) {
+  const tree = treeOf(report?.Rows?.Row);
+  const leaves = (isSection) => tree.filter((n) => n.kind === 'section' && isSection(n)).flatMap(leavesOf).filter((leaf) => STORE.test(accountName(leaf.label)) && !NON_CASH.test(accountName(leaf.label)));
+  const sales = leaves((n) => ['Income', 'OtherIncome'].includes(n.group) || /^total (other )?(income|revenue)$/i.test(n.totalLabel));
+  const costs = leaves((n) => SPENDING.includes(n.group));
+  // (an account only named for it, at zero, isn't a store)
+  if (![...sales, ...costs].some((leaf) => leaf.amount)) return null;
+  const sum = (list) => round2(list.reduce((t, leaf) => t + leaf.amount, 0));
+  const names = (list) => list.filter((leaf) => leaf.amount).map((leaf) => accountName(leaf.label));
+  return { sales: sum(sales), cost: sum(costs), profit: round2(sum(sales) - sum(costs)), salesAccounts: names(sales), costAccounts: names(costs) };
+}
+
+/**
+ * What else the books keep that the board page could build on, never an amount: each budget in QuickBooks ({ name,
+ * type, by (QuickBooks' "Monthly", "Quarterly", "Yearly"), from, to, active, accounts (how many have a figure), splits
+ * (whether its figures are also by class, location or customer) }), and whether entries carry a location or a class,
+ * with their names. A part QuickBooks won't answer is { error } and the rest stands. SOARD's budget against the actuals
+ * needs to know which budget covers which months (QuickBooks' own year may not be SOARD's January to December), and the
+ * store's own staff and rent need a location or class to be told apart
+ */
+export async function setupOf(get, prefs = {}) {
+  const ai = prefs.AccountingInfoPrefs || {};
+  const tracking = { locations: ai.TrackDepartments === true, locationWord: cleanText(ai.DepartmentTerminology, 40), classes: ai.ClassTrackingPerTxn === true || ai.ClassTrackingPerTxnLine === true };
+  const ask = async (entity, pick) => {
+    try {
+      return pick((await get('/query', { query: `select * from ${entity} MAXRESULTS 1000` })).QueryResponse?.[entity] || []);
+    } catch (err) {
+      return { error: err.code || (err.status ? `HTTP_${err.status}` : 'UNREACHABLE') };
+    }
+  };
+  const named = (list) => list.filter((x) => x.Active !== false).map((x) => cleanText(x.FullyQualifiedName || x.Name, 80)).filter(Boolean);
+  const budgets = await ask('Budget', (list) => list.map((b) => {
+    const d = b.BudgetDetail || [];
+    return {
+      name: cleanText(b.Name, 80), type: cleanText(b.BudgetType, 40), by: cleanText(b.BudgetEntryType, 40), from: isDay(b.StartDate) ? b.StartDate : '', to: isDay(b.EndDate) ? b.EndDate : '', active: b.Active !== false,
+      accounts: new Set(d.map((x) => x.AccountRef?.value).filter(Boolean)).size,
+      splits: [['class', 'ClassRef'], ['location', 'DepartmentRef'], ['customer', 'CustomerRef']].filter(([, k]) => d.some((x) => x[k]?.value)).map(([w]) => w),
+    };
+  }));
+  return { tracking, budgets, locations: tracking.locations ? await ask('Department', named) : null, classes: tracking.classes ? await ask('Class', named) : null };
+}
+
+/**
  * A Profit and Loss by class → spending by purpose, without the in kind: { list: [{ name, amount }], total }, only when
  * the books keep it (two or more classes carrying at least half the spending); else null
  */
@@ -552,7 +603,7 @@ export function functionsOf(report) {
 
 const DAILY_RETRY_MS = 60 * 60 * 1000;
 // What the daily read keeps: one up whenever it keeps something new, so a deploy's figures show that day, not the next
-const DAILY_SHAPE = 4;
+const DAILY_SHAPE = 5;
 /**
  * The year in context, now (about ten reports): kept in books_daily with its day. Trouble is logged and kept, and the
  * last good read stays; the hourly read is the one that tells Slack
@@ -610,12 +661,14 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     const statements = { asOf: close.asOf, closed: close.closed, priorAsOf, position: statementRows(posNow, posThen), activity: statementRows(actNow, actThen) };
     // Spending by purpose, when the books keep it by class
     const functions = functionsOf(await pl(`${year}-01-01`, today, { summarize_column_by: 'Classes' }));
+    // What else the books keep (budgets, locations, classes), for Settings
+    const setup = await setupOf(get, prefs);
     const data = {
       shape: DAILY_SHAPE,
       day: today,
-      lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net, nonCash: nonCashOf(lastFullReport) }, sources: sourcesOf(lastSameReport), nonCash: nonCashOf(lastSameReport) },
+      lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net, nonCash: nonCashOf(lastFullReport) }, sources: sourcesOf(lastSameReport), nonCash: nonCashOf(lastSameReport), store: storeOf(lastSameReport) },
       trailing: { from: tFrom, through: tThrough, spent: trail.spent, cashOut: cashOut ? cashOut.out : null, payments: cashOut ? cashOut.payments : 0 },
-      months, statements, functions,
+      months, statements, functions, setup,
     };
     await env.DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at, error) VALUES (?, ?, ?, ?, ?, NULL)').bind(ID, JSON.stringify(data), today, at, at).run();
     return { ok: true, data };
@@ -641,7 +694,7 @@ export async function readBooks(env, { fetchImpl = fetch, now = Date.now() } = {
     // it's kept only to show in Settings, never followed
     const span = yearSoFar(todayEastern(now), SOARD_YEAR_STARTS);
     const pl = await read(env, row, '/reports/ProfitAndLoss', { start_date: span.from, end_date: span.through }, { fetchImpl, now });
-    const ytd = { ...span, ...readProfitAndLoss(pl), sources: sourcesOf(pl), nonCash: nonCashOf(pl) };
+    const ytd = { ...span, ...readProfitAndLoss(pl), sources: sourcesOf(pl), nonCash: nonCashOf(pl), store: storeOf(pl) };
     // The cash on the books: the Bank accounts, the CD (an Other Current Asset) and the Credit Card accounts, each asked
     // for by type (the whole chart of accounts can run past one answer's rows, and the cards came after the cut)
     const ofType = async (type) => (await read(env, row, '/query', { query: `select * from Account where AccountType = '${type}' MAXRESULTS 1000` }, { fetchImpl, now })).QueryResponse?.Account || [];
@@ -697,9 +750,9 @@ export async function maybeReadBooks(env, { fetchImpl = fetch, now = Date.now() 
 /**
  * The year so far as last read → { company, year, from, through, revenue, expenses, net, basis, at, stale,
  * cash: { total, accounts, owed, at } | null, sources, nonCash (the expenses' in-kind and depreciation, null from an older
- * read), monthsOfCash, qboYearStarts, and from the daily read: lastYear (with its own nonCash),
- * trailing, months (cash at each month's end), statements, functions, contextAt } or null with QuickBooks not
- * connected (or not read yet)
+ * read), store (./storeOf; null from an older read), monthsOfCash, qboYearStarts, and from the daily read: lastYear
+ * (with its own nonCash and store), trailing, months (cash at each month's end), statements, functions, contextAt } or
+ * null with QuickBooks not connected (or not read yet)
  */
 export async function booksNow(DB, { now = Date.now() } = {}) {
   if (!DB) return null;
@@ -717,7 +770,7 @@ export async function booksNow(DB, { now = Date.now() } = {}) {
   const perMonth = d?.trailing?.cashOut > 0 ? d.trailing.cashOut / 12 : 0;
   return {
     company: row.company, year: y.year, from: y.from, through: y.through, revenue: y.revenue, expenses: y.spent, net: y.net, basis: y.basis, at: row.read_at, stale: now - Date.parse(row.read_at) > STALE_MS, cash,
-    sources: y.sources || [], nonCash: typeof y.nonCash === 'number' ? y.nonCash : null, monthsOfCash: cash && perMonth ? Math.round((cash.total / perMonth) * 10) / 10 : null, perMonth: perMonth ? round2(perMonth) : null,
+    sources: y.sources || [], nonCash: typeof y.nonCash === 'number' ? y.nonCash : null, store: y.store || null, monthsOfCash: cash && perMonth ? Math.round((cash.total / perMonth) * 10) / 10 : null, perMonth: perMonth ? round2(perMonth) : null,
     qboYearStarts: row.fiscal_start && row.fiscal_start !== SOARD_YEAR_STARTS ? MONTHS[row.fiscal_start - 1].replace(/^./, (c) => c.toUpperCase()) : null,
     lastYear: d?.lastYear || null, trailing: d?.trailing || null, months: d?.months || [], statements: d?.statements || null, functions: d?.functions || null, contextAt: daily?.read_at || null,
   };
@@ -733,6 +786,9 @@ export async function booksStatus(env) {
   if (!r) return base;
   let through = null;
   try { through = JSON.parse(r.ytd || 'null')?.through || null; } catch { through = null; }
+  // What else the books keep, as the daily read last found it (names and months, no amounts)
+  let setup = null;
+  try { setup = JSON.parse((await env.DB.prepare("SELECT json_extract(data, '$.setup') AS setup FROM books_daily WHERE id = ?").bind(ID).first())?.setup || 'null'); } catch { setup = null; }
   return {
     ...base,
     connected: {
@@ -742,6 +798,7 @@ export async function booksStatus(env) {
       qboYearStarts: r.fiscal_start && r.fiscal_start !== SOARD_YEAR_STARTS ? MONTHS[r.fiscal_start - 1].replace(/^./, (c) => c.toUpperCase()) : null,
       // Intuit's reference for the failed call, for its support
       intuitTid: String(r.error_detail || '').match(/intuit_tid ([\w-]+)/)?.[1] || null,
+      setup,
     },
   };
 }

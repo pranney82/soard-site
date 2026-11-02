@@ -17,7 +17,7 @@ import { openDoc } from './docs.js';
 import {
   meetingName, longDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, itemFiles, looseFiles, fileTitle, isDate, clock, sectionPlan, MORE,
 } from '../board-shared.js';
-import { moneyFor, moneyTiles, mixOf, shareOf, changeOf } from './money.js';
+import { moneyFor, moneyTiles, mixOf, shareOf, changeOf, storeOf, storeChange } from './money.js';
 import { reportDom } from '../board-report.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
@@ -150,13 +150,36 @@ function datesBox(rows) {
   return ul;
 }
 
+/** The store on paper (./money.js storeOf): its sales, its cost of goods and the profit before staff and rent, beside last year's same days */
+function storeBox(books) {
+  const st = storeOf(books);
+  if (!st) return null;
+  const box = el('div', 'bpp-store');
+  box.append(el('p', 'bpp-mix__h', `The store, ${st.year} so far`));
+  const t = el('table', 'bpp-stmt');
+  const head = el('tr');
+  head.append(el('th', ''), el('th', 'num', `${st.year} so far`));
+  if (st.lastYear) head.append(el('th', 'num', `${st.lastYear}, same days`), el('th', 'num', 'Change'));
+  const thead = el('thead'); thead.append(head);
+  const tbody = el('tbody');
+  for (const x of st.lines) {
+    const tr = el('tr', x.k === 'profit' ? 'bpp-stmt__sum' : '');
+    tr.append(el('th', '', x.name), el('td', 'num', signed(x.amount)));
+    if (st.lastYear) tr.append(el('td', 'num', x.last == null ? '–' : signed(x.last)), el('td', 'num', storeChange(x) || '–'));
+    tbody.append(tr);
+  }
+  t.append(thead, tbody);
+  box.append(t);
+  return box;
+}
+
 /** An item's live facts on paper, drawn for what they are */
 function liveBox(kind, n, m, money) {
   if (!n || !kind || kind === 'minutes') return null;
   if (kind === 'projects') return makeoversBox(n);
   if (kind === 'cash') {
-    // The figures, where the revenue came from, then the statements the packet holds (QuickBooks', as of the books' close)
-    const parts = [moneyBox(n, money), revenueBox(n?.books), statementsBox(n?.books?.statements)].filter(Boolean);
+    // The figures, where the revenue came from, the store, then the statements the packet holds (QuickBooks', as of the books' close)
+    const parts = [moneyBox(n, money), revenueBox(n?.books), storeBox(n?.books), statementsBox(n?.books?.statements)].filter(Boolean);
     if (parts.length < 2) return parts[0] || null;
     const box = el('div', 'bpp-money');
     box.append(...parts);

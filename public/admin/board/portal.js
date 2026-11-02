@@ -37,7 +37,7 @@ import { Report, ReportEditor, readTime } from '../board-report.js';
 import { mdPlain, mdWords } from '../board-md.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
-import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix, spentOf, budgetDue } from './money.js';
+import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -1075,6 +1075,7 @@ function HomePage({ ctx }) {
     <section class="bp-sum bp-rise" style=${rise(1)} aria-label="SOARD at a glance">
       <${Figures} data=${data} />
       ${mixOf(data.numbers.books) ? html`<section class="bp-sum__mix" aria-labelledby="mix-h"><h2 class="bp-fig__label" id="mix-h">Where ${data.numbers.books.year}’s revenue came from</h2><${RevenueMix} books=${data.numbers.books} /></section>` : null}
+      ${storeOf(data.numbers.books) ? html`<section class="bp-sum__store" aria-labelledby="store-h"><h2 class="bp-fig__label" id="store-h">The store, ${data.numbers.books.year} so far</h2><${StoreFigures} books=${data.numbers.books} /></section>` : null}
       <${Impact} n=${data.numbers} />
     </section>
     <div class="bp-meets">
@@ -2068,7 +2069,7 @@ function CashBlock({ n, data, m }) {
   const books = upTo ? n?.books : data.numbers.books;
   return html`${tiles.length ? html`<ul class="bp-agfigs">${tiles.map((t) => html`<li class="bp-agfig" key=${t.k}>
     <span class="bp-fig__label">${t.label}</span><span class="bp-agfig__value">${t.value}</span>${t.sub ? html`<span class=${`bp-fig__sub ${t.tone ? `is-${t.tone}` : ''}`}>${nbw(t.sub)}</span>` : null}
-  </li>`)}</ul>` : null}${mixOf(books) ? html`<div class="bp-agmix"><p class="bp-fig__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null}${st ? html`<details class="bp-more bp-stmts-fold"><summary>The statements, as of ${fullDate(st.asOf)}</summary><${Statements} s=${st} books=${upTo ? n?.books : data.numbers.books} idp=${`m${m.id}`} /></details>` : null}`;
+  </li>`)}</ul>` : null}${mixOf(books) ? html`<div class="bp-agmix"><p class="bp-fig__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null}${storeOf(books) ? html`<div class="bp-agmix bp-agstore"><p class="bp-fig__label">The store, ${books.year} so far</p><${StoreFigures} books=${books} /></div>` : null}${st ? html`<details class="bp-more bp-stmts-fold"><summary>The statements, as of ${fullDate(st.asOf)}</summary><${Statements} s=${st} books=${upTo ? n?.books : data.numbers.books} idp=${`m${m.id}`} /></details>` : null}`;
 }
 
 /** The reveals ahead, by date, each with the kid's photo when their page has one */
@@ -2445,6 +2446,7 @@ function BooksYear({ b }) {
     ${ly?.full?.revenue > 0 ? html`<p class="bp-note">${nbw(`By this day last year, ${Math.round((ly.revenue / ly.full.revenue) * 100)}% of ${ly.year}’s revenue (${compact(ly.full.revenue)}) had come in${lySpent?.[1] > 0 ? `, and ${Math.round((lySpent[0] / lySpent[1]) * 100)}% of its spending had gone out` : ''}.`)}</p>` : null}
     <div class="bp-meters">
       ${mixOf(b) ? html`<div class="bp-meter"><div class="bp-meter__head"><span>Where the money came from</span></div><${RevenueMix} books=${b} table=${true} /></div>` : null}
+      ${storeOf(b) ? html`<div class="bp-meter" id="store" tabindex="-1"><div class="bp-meter__head"><span>The store</span></div><${StoreTable} books=${b} /><p class="bp-note">${nbw('The store’s staff, rent and utilities are in SOARD’s shared costs in QuickBooks, so its profit is before them.')}</p></div>` : null}
       ${b.functions ? html`<${PartsBar} label="Where it went, by purpose" parts=${b.functions.list} total=${b.functions.total} />` : null}
     </div>
   </section>`;
@@ -2908,6 +2910,8 @@ function searchIndex(data, d) {
   // The smaller accounts inside "Everything else", each by its own name and amount
   const named = new Set((mix?.parts || []).filter((x) => x.key !== 'rest').map((x) => x.key));
   if (mix) for (const src of (data.numbers.books?.sources || []).filter((x) => !named.has(x.key) && x.amount > 0)) out.push({ group: 'Money', title: src.name, sub: `${money(src.amount)} of ${mix.year}’s revenue so far, in Everything else`, hay: norm([src.name, ...(src.accounts || []), 'revenue'].join(' ')), href: '#/financials', focus: 'mix-rest', icon: 'financials' });
+  const store = storeOf(data.numbers.books);
+  if (store) out.push({ group: 'Money', title: 'The store', sub: `${money(store.lines[0].amount)} in sales, ${money(store.lines[2].amount)} profit before staff and rent, ${store.year} so far`, hay: norm(['store shop sales profit cost of goods', ...store.lines.flatMap((x) => x.accounts)].join(' ')), href: '#/financials', focus: 'store', icon: 'financials' });
   for (const g of data.gifts?.list || []) out.push({ group: 'Money', title: `${money(g.cents / 100)} from ${giftWho(g)}`, sub: [giftAbout(g), giftDay(g.at)].filter(Boolean).join(' · '), hay: norm([giftWho(g), g.name, g.company, g.campaign, 'gift'].join(' ')), href: '#/financials/gifts', focus: `gift-${g.id}`, icon: 'financials' });
   // The makeovers under way, each to its page
   for (const b of [...(data.numbers.projects?.waiting || []), ...(data.numbers.projects?.building || [])].filter((x) => x.name)) {

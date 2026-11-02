@@ -188,13 +188,17 @@ beforeEach(async () => {
       if (world.unauthorizedOnce) { world.unauthorizedOnce = false; return Response.json({ fault: { error: [{ message: 'message=AuthenticationFailed', code: '3200' }], type: 'AUTHENTICATION' } }, { status: 401 }); }
       if (url.pathname === `/v3/company/${REALM}/companyinfo/${REALM}`) return Response.json({ CompanyInfo: { CompanyName: 'Sunshine on a Ranney Day', FiscalYearStartMonth: world.fiscal } });
       if (url.pathname === `/v3/company/${REALM}/query`) {
+        // The budgets, locations and classes, each asked for on its own (or refused, as QuickBooks can)
+        const entity = url.searchParams.get('query').match(/^select \* from (Budget|Department|Class) MAXRESULTS 1000$/)?.[1];
+        if (entity && world.refuse?.includes(entity)) return Response.json({ Fault: { Error: [{ Message: 'Unsupported Operation', code: '500' }], type: 'ValidationFault' } }, { status: 400 });
+        if (entity) return Response.json({ QueryResponse: { [entity]: world[entity] || [] } });
         // Each type asked for on its own; QuickBooks answers only that type
         const type = url.searchParams.get('query').match(/^select \* from Account where AccountType = '([\w ]+)' MAXRESULTS 1000$/)?.[1];
         assert.ok(type, url.searchParams.get('query'));
         const list = world.accounts.filter((a) => a.AccountType === type);
         return Response.json({ QueryResponse: { Account: list, startPosition: 1, maxResults: list.length } });
       }
-      if (url.pathname === `/v3/company/${REALM}/preferences`) return Response.json({ Preferences: { AccountingInfoPrefs: { BookCloseDate: world.bookClose } } });
+      if (url.pathname === `/v3/company/${REALM}/preferences`) return Response.json({ Preferences: { AccountingInfoPrefs: { BookCloseDate: world.bookClose, ...world.prefs } } });
       if (url.pathname === `/v3/company/${REALM}/reports/GeneralLedger`) {
         world.ledgerAsk = Object.fromEntries(url.searchParams);
         return world.ledgerReply ? world.ledgerReply() : Response.json(ledger());
@@ -347,6 +351,8 @@ test('once a day, the year in context: last year by now and in all, the last 12 
     // Its money by category too (this report's sections carry no accounts, so each is one line), and no in kind spent
     sources: [{ key: 'account:income', name: 'Income', amount: 649876.54, accounts: ['Income'] }, { key: 'other', name: 'Other income', amount: 7900.8, accounts: ['Other Income'] }],
     nonCash: 0,
+    // No account of this report's is the store's, so no store (never a store at zero)
+    store: null,
   });
   // The last 12 full months (Oct 1 2025 to Sep 30 2026): what left the bank accounts, from their ledger. Payroll, a
   // vendor and the Ramp card's payment are cash out; the moves to the Long Reserve and the CD aren't
@@ -673,6 +679,74 @@ test('where the money came from: the income accounts by category, the way SOARD�
   assert.equal(revenueKind('Donated goods and services').key, 'inkind');
   assert.equal(revenueKind('Other Contribution').key, 'donations');
   assert.deepEqual(revenueKind('Other Income'), { key: 'other', name: 'Other income' });
+});
+
+test('what else the books keep, for Settings: each budget’s months and how it’s kept, locations and classes by name, never an amount', async () => {
+  // SOARD's budget the way QuickBooks' query answers it (made-up amounts): a P&L budget by month, its fiscal year
+  // starting in August, two accounts; locations off, classes on
+  const line = (account, date, amount) => ({ AccountRef: { value: account, name: `Account ${account}` }, BudgetDate: date, Amount: amount });
+  world.Budget = [{ Id: '1', Name: 'Budget_FY26_P&L', StartDate: '2025-08-01', EndDate: '2026-07-31', BudgetType: 'ProfitAndLoss', BudgetEntryType: 'Monthly', Active: true,
+    BudgetDetail: [line('80', '2025-08-01', 50000), line('80', '2025-09-01', 50000), line('81', '2025-08-01', 58333.33)] }];
+  world.Class = [{ Name: 'Makeovers', Active: true }, { Name: 'Fundraising', Active: true }, { Name: 'Old', Active: false }];
+  world.prefs = { ClassTrackingPerTxnLine: true, TrackDepartments: false };
+  await connect();
+  const s = (await booksStatus(env)).connected.setup;
+  assert.deepEqual(s, {
+    tracking: { locations: false, locationWord: '', classes: true },
+    budgets: [{ name: 'Budget_FY26_P&L', type: 'ProfitAndLoss', by: 'Monthly', from: '2025-08-01', to: '2026-07-31', active: true, accounts: 2, splits: [] }],
+    locations: null, classes: ['Makeovers', 'Fundraising'],
+  });
+  assert.ok(!/50000|58333/.test(JSON.stringify(await booksStatus(env))), 'never an amount');
+  // A part QuickBooks refuses is said so, and the day's read (and the rest of what it keeps) stands
+  world.Budget = null;
+  world.refuse = ['Budget'];
+  world.prefs = { TrackDepartments: true, DepartmentTerminology: 'Location' };
+  world.Department = [{ Name: 'Store', FullyQualifiedName: 'Store', Active: true }];
+  await maybeReadBooks(env, { now: T0 + 25 * HOUR });
+  const t = (await booksStatus(env)).connected.setup;
+  assert.equal(t.budgets.error, 'QBO_500', 'with QuickBooks’ own code');
+  assert.deepEqual([t.tracking, t.locations, t.classes], [{ locations: true, locationWord: 'Location', classes: false }, ['Store'], null]);
+  assert.ok((await booksNow(env.DB, { now: T0 + 25 * HOUR })).statements, 'the statements still read');
+});
+
+test('the store: the accounts named for it (sales, cost of goods, the sales tax a shop keeps), in kind left out, profit before the shared staff and rent', async () => {
+  const { storeOf } = await import('../functions/api/_quickbooks.js');
+  const acct = (label, value) => ({ type: 'Data', ColData: [{ value: label }, { value }] });
+  const group = (label, rows, total, group = undefined) => ({ type: 'Section', ...(group ? { group } : {}), Header: { ColData: [{ value: label }, { value: '' }] }, Rows: { Row: rows }, Summary: { ColData: [{ value: `Total ${label}` }, { value: total }] } });
+  // SOARD's chart of accounts (made-up amounts): Store Income under Fundraising Income, Store COGS beside the gala's
+  // and the in-kind costs, the shops' vendor compensation under Other Income, staff and rent shared
+  const report = { Rows: { Row: [
+    group('Income', [
+      group('4200 Fundraising Income', [acct('4210 Store Income', '459452.59'), acct('4220 Gala Income', '414888.65')], '874341.24'),
+      group('4300 Other Contribution', [acct('4320 In-Kind Contribution', '242778.95')], '242778.95'),
+    ], '1117120.19', 'Income'),
+    group('Cost of Goods Sold', [acct('5010 Makeover COGS', '289494.01'), acct('5210 Store COGS', '271420.14'), acct('5220 Gala Expense', '55973.42'), acct('5320 In-Kind Contribution Expense', '242778.95'), acct('S&R In-Kind Donations Expense', '1000.00')], '860666.52', 'COGS'),
+    group('Expenses', [group('6010 Payroll Expense', [acct('6011 Salary Expense', '475793.34')], '475793.34'), acct('6021 Rent Expense', '115966.58')], '591759.92', 'Expenses'),
+    group('Other Income', [acct('7010 Interest Income', '44.20'), acct('Partly Sunny - Vendor Compensation', '874.05'), acct('Sunny&Ranney - Vendor Compensation', '0.00')], '918.25', 'OtherIncome'),
+  ] } };
+  assert.deepEqual(storeOf(report), {
+    sales: 460326.64, cost: 271420.14, profit: 188906.5,
+    salesAccounts: ['Store Income', 'Partly Sunny - Vendor Compensation'], costAccounts: ['Store COGS'],
+  });
+  // The revenue's "Store sales" are the same accounts, so Home's two store figures always agree
+  const { sourcesOf } = await import('../functions/api/_quickbooks.js');
+  assert.equal(sourcesOf(report).find((c) => c.key === 'store').amount, 460326.64);
+  assert.deepEqual(sourcesOf(report).find((c) => c.key === 'store').accounts, ['Store Income', 'Partly Sunny - Vendor Compensation']);
+  // Books without a store account have no store, rather than a store at zero; nor do books whose only one is at zero
+  assert.equal(storeOf({ Rows: { Row: [group('Income', [acct('Grant Revenue', '100.00')], '100.00', 'Income')] } }), null);
+  assert.equal(storeOf({ Rows: { Row: [group('Other Income', [acct('Sunny&Ranney - Vendor Compensation', '0.00')], '0.00', 'OtherIncome')] } }), null);
+  // On the board page: a store with costs before its first sale still shows (in the new year's first days), and a line
+  // that hasn't moved says so
+  const { storeOf: shown, storeChange } = await import('../public/admin/board/money.js');
+  const early = shown({ year: '2027', store: { sales: 0, cost: 500, profit: -500, salesAccounts: [], costAccounts: ['Store COGS'] } });
+  assert.deepEqual(early.lines.map((x) => [x.k, x.amount]), [['sales', 0], ['cost', 500], ['profit', -500]]);
+  assert.equal(shown({ year: '2027', store: { sales: 0, cost: 0, profit: 0 } }), null);
+  assert.equal(storeChange({ k: 'sales', amount: 100, last: 100 }), 'Even');
+  assert.equal(storeChange({ k: 'profit', amount: 50, last: 80 }), '▼ $30');
+  assert.equal(storeOf(null), null);
+  // A word that only looks like the store's ("Restoration", "Workshop fees" are SOARD's own words for other things) isn't
+  const near = storeOf({ Rows: { Row: [group('Expenses', [acct('Restoration Supplies', '50.00'), acct('Workshop fees', '20.00'), acct('Utilities & Repairs', '10.00')], '80.00', 'Expenses')] } });
+  assert.equal(near, null);
 });
 
 test('spending that never left the bank: the in-kind expense the books keep beside the in-kind gift, and depreciation', async () => {

@@ -1264,9 +1264,10 @@ try {
     cat('donations', 'Donations', 700000, ['Individual/Corporate Revenue']), cat('store', 'Store sales', 415000, ['Store Income', 'Store Discounts']), cat('gala', 'Gala', 400000, ['Gala Income']),
     cat('inkind', 'In kind', 220000, ['In-Kind Contribution']), cat('grants', 'Grants', 90000, ['Grant Revenue']), cat('account:golf classic', 'Golf Classic', 30000, ['Golf Classic Income']),
     cat('account:rent', 'Rent', 16000, ['Rent Income']), cat('account:interest', 'Interest', 5000, ['Interest Income']), cat('account:makeover', 'Makeover', 45, ['Makeover Revenue']),
-  ] };
+  ], store: { sales: 415000, cost: 250000, profit: 165000, salesAccounts: ['Store Income', 'Store Discounts'], costAccounts: ['Store COGS'] } };
   const lastBooks = { year: String(yr - 1), through: `${yr - 1}${day(0).slice(4)}`, revenue: 1500000, expenses: 1100000, net: 400000, nonCash: 70000, full: { revenue: 2000000, expenses: 1500000, net: 500000, nonCash: 100000 },
-    sources: [cat('donations', 'Donations', 400000), cat('store', 'Store sales', 830000), cat('gala', 'Gala', 200000), cat('inkind', 'In kind', 70000)] };
+    sources: [cat('donations', 'Donations', 400000), cat('store', 'Store sales', 830000), cat('gala', 'Gala', 200000), cat('inkind', 'In kind', 70000)],
+    store: { sales: 830000, cost: 380000, profit: 450000, salesAccounts: ['Store Income'], costAccounts: ['Store COGS'] } };
   await DB.exec('CREATE TABLE IF NOT EXISTS books_link (id TEXT PRIMARY KEY, realm_id TEXT NOT NULL, company TEXT, fiscal_start INTEGER, access_token TEXT, access_expires TEXT, refresh_token TEXT NOT NULL, refresh_expires TEXT, ytd TEXT, read_at TEXT, tried_at TEXT, error TEXT, error_at TEXT, error_detail TEXT, told TEXT, linked_at TEXT, linked_by TEXT)');
   await DB.exec('CREATE TABLE IF NOT EXISTS books_daily (id TEXT PRIMARY KEY, data TEXT, day TEXT, read_at TEXT, tried_at TEXT, error TEXT)');
   const readAt = new Date().toISOString();
@@ -1284,6 +1285,11 @@ try {
     // Five categories by name; Golf Classic at 1.6% folds in with rent, interest and the rest
     ok(JSON.stringify(key) === JSON.stringify(['Donations$700K37%', 'Store sales$415K22%', 'Gala$400K21%', 'In kind$220K12%', 'Grants$90K5%', 'Everything else$51K3%']), `Home at ${width}: donations, store sales, gala, in kind and grants, each with its amount and share; the small ones as Everything else (${JSON.stringify(key)})`);
     ok(await overflow(money) <= 0, `Home at ${width}: the categories fit`);
+    // The store (_quickbooks.js storeOf: the accounts named for it): its sales, cost of goods and the profit between,
+    // each against last year by now; the profit says it's before the staff and rent the books keep with SOARD's
+    const store = await money.$$eval('.bp-sum__store .bp-store li', (l) => l.map((x) => [...x.children].map((c) => c.textContent).join(' | ')));
+    ok(JSON.stringify(store) === JSON.stringify([`Sales | $415K | ▼ 50% on ${yr - 1} by now`, `Cost of goods | $250K | ▼ 34% on ${yr - 1} by now`, `Profit before staff and rent | $165K | ▼ $285K on ${yr - 1} by now`]), `Home at ${width}: the store's sales, cost of goods and profit, each against last year by now (${JSON.stringify(store)})`);
+    await shot(money, `27a-store-home-${width}`);
     const spent = await money.evaluate(() => [...document.querySelectorAll('.bp-fig')].find((f) => /expenses/i.test(f.querySelector('.bp-fig__label')?.textContent || ''))?.textContent || '');
     ok(/\$980K/.test(spent) && /Not counting \$220K in kind$/.test(spent.replace(/\u00a0/g, ' ')), `Home at ${width}: the expenses as the budget counts them, without the in kind, saying so (${spent})`);
     if (width === 1440) {
@@ -1291,6 +1297,8 @@ try {
       ok(await money.waitForFunction(() => /^Store sales\$415,000 · 22%\d{4}, same days: \$830,000 · ▼ 50%$/.test(document.querySelector('.bp-mix__tip')?.textContent || ''), { timeout: 2000 }).then(() => true, () => false), 'Home: over a part, its exact amount beside last year’s same days');
       await money.goto(`${SITE}/admin/board/#/financials`, { waitUntil: 'networkidle0' });
       ok(await money.waitForSelector('.bp-mixtable', { timeout: 6000 }).then(() => true, () => false), 'Financials: the categories as a table');
+      const storeRows = await money.$$eval('.bp-storetable tbody tr', (r) => r.map((x) => x.textContent));
+      ok(JSON.stringify(storeRows) === JSON.stringify(['SalesStore Income, Store Discounts$415,000$830,000▼ 50%', 'Cost of goodsStore COGS$250,000$380,000▼ 34%', 'Profit before staff and rent$165,000$450,000▼ $285K']) && /staff, rent and utilities are in SOARD’s shared costs/.test(await money.$eval('#store', (x) => x.textContent)), `Financials: the store beside last year, each line with its accounts, and why the profit is before staff and rent (${JSON.stringify(storeRows)})`);
       // The statements one at a time: the year's activities first, the financial position a tap away
       const firstStmt = await money.evaluate(() => [...document.querySelectorAll('#st-h ~ * .bp-stmt__title, .bp-latest .bp-stmt__title')].map((t) => t.textContent));
       await clickText(money, '.bp-stmts button', /^Financial position$/);
@@ -1302,6 +1310,7 @@ try {
       ok(rows.length === 6 && rows[1] === 'Store salesStore Income, Store Discounts$415,00022%$830,000▼ 50%' && /^Everything elseGolf Classic, Rent, Interest, Makeover\$51,0453%\$0/.test(rows[5]) && rows[4] === 'GrantsGrant Revenue$90,0005%$0–', `Financials: each category with its accounts, beside last year’s same days (${JSON.stringify(rows)})`);
       await money.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
       ok(await money.waitForSelector('.bp-agitem .bp-agmix', { timeout: 6000 }).then(() => true, () => false), 'the meeting: its money item says where the revenue came from');
+      ok(/^Sales\$415K/.test(await money.$eval('.bp-agitem .bp-agstore .bp-store li', (x) => x.textContent).catch(() => '')), 'the meeting: its money item has the store');
       await shot(money, '27-revenue-by-category-meeting');
       // On paper too: Print it all's money has the bar and every category beside last year. The meeting's numbers
       // locked on its day, before QuickBooks; locked again (Board → the meeting → Lock today's numbers), they carry it
@@ -1313,6 +1322,8 @@ try {
       ok(await money.waitForFunction(() => window.__printing, { timeout: 15000 }).then(() => true, () => false), 'Print it all, with QuickBooks connected');
       const paper = await money.evaluate(() => ({ segs: document.querySelectorAll('.bpp-mix__bar span').length, rows: [...document.querySelectorAll('.bpp-mix tbody tr')].map((r) => r.textContent) }));
       ok(paper.segs === 6 && paper.rows.length === 6 && paper.rows[1] === 'Store sales$415,00022%$830,000▼ 50%', `Print it all: where the revenue came from, beside last year (${JSON.stringify(paper.rows.slice(0, 2))})`);
+      const storePaper = await money.evaluate(() => [...document.querySelectorAll('.bpp-store tbody tr')].map((r) => r.textContent));
+      ok(JSON.stringify(storePaper) === JSON.stringify(['Sales$415,000$830,000▼ 50%', 'Cost of goods$250,000$380,000▼ 34%', 'Profit before staff and rent$165,000$450,000▼ $285K']), `Print it all: the store beside last year (${JSON.stringify(storePaper)})`);
       await money.evaluate(() => dispatchEvent(new Event('afterprint')));
     }
     if (width === 390) {
