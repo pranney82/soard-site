@@ -625,7 +625,7 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       };
     }
     // The report asks and the chair's review, from Peter's Gmail (_board-asks.js): the sample meeting's Financial item
-    case 'board-ask': case 'board-ask-reminder': case 'board-ask-late': case 'board-ask-thanks': case 'board-ask-question': case 'board-chair-review': {
+    case 'board-ask': case 'board-ask-list': case 'board-ask-reminder': case 'board-ask-late': case 'board-ask-thanks': case 'board-ask-question': case 'board-chair-review': {
       const m = sampleBoardMeeting();
       const it = m.sections[2].items[1];
       const person = { name: 'Sam Ortiz' };
@@ -634,6 +634,10 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       const ask = asks.askEmail({ m, it, person, due, from, books: { statements: { asOf: '2026-10-31' } } });
       const gmail = (mail, extra) => ({ ...email({ subject: `Re: ${ask.subject}`, ...mail }), from: 'Peter’s Gmail', send: null, ...extra });
       if (id === 'board-ask') return gmail(ask, { to: 'Each board member presenting an item, one email per item; Holly copied', note: 'A reply is all it takes: it goes on the agenda word for word, with its files. Here, the money’s presenter, whose link opens their review of the statements.' });
+      if (id === 'board-ask-list') {
+        const items = m.sections[2].items.filter((x) => x.title && !x.live).slice(0, 3);
+        return gmail(asks.listEmail({ m, items, person: { name: 'Jordan Lee' }, due, from }), { to: 'Someone with three or more reports still to write, Holly copied', note: 'Each link opens that item’s report on the board page.' });
+      }
       if (id === 'board-ask-reminder') return gmail(asks.reminderEmail({ m, it, person, due, from, now: due - 2 * 24 * 60 * 60 * 1000 }), { to: 'The presenter, Holly copied' });
       if (id === 'board-ask-late') return gmail(asks.lateEmail({ m, it, person, due, from, chair: { name: 'Alex Rivera' }, now: due }), { to: 'The presenter, the chair and Holly copied' });
       if (id === 'board-ask-thanks') return gmail(asks.thanksEmail({ m, it, person, from }), { to: 'The presenter alone' });
