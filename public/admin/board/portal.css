@@ -1709,11 +1709,16 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 
 /* A part's card: its number large, its time, what's in it and who presents */
 .bs-chapter { width: min(100%, 1500px); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: clamp(1.5rem, 5vw, 5rem); align-items: center; }
-.bs-chapter__n { font-family: var(--display); font-weight: 700; font-size: clamp(7rem, 30vh, 18rem); line-height: 0.82; letter-spacing: -0.05em; color: var(--yellow); font-variant-numeric: tabular-nums; }
-.bs-chapter__title { font-size: clamp(2.4rem, 8vh, 5.6rem); }
-.bs-chapter__items { list-style: none; margin: clamp(1.25rem, 4vh, 2.5rem) 0 0; padding: 0; display: grid; gap: clamp(0.4rem, 1.4vh, 0.9rem); }
-.bs-chapter__items li { display: flex; align-items: center; gap: clamp(0.75rem, 1.4vw, 1.25rem); min-width: 0; font-size: clamp(1.05rem, 2.6vh, 1.6rem); }
+.bs-chapter__n { font-family: var(--display); font-weight: 700; font-size: calc(clamp(7rem, 30vh, 18rem) * var(--fit, 1)); line-height: 0.82; letter-spacing: -0.05em; color: var(--yellow); font-variant-numeric: tabular-nums; }
+.bs-chapter__title { font-size: calc(clamp(2.4rem, 8vh, 5.6rem) * var(--fit, 1)); }
+/* One person presents every item: said once, under the title */
+.bs-chapter__by { display: flex; align-items: center; gap: 0.75rem; margin: calc(clamp(0.75rem, 2.2vh, 1.4rem) * var(--fit, 1)) 0 0; color: var(--bs-soft); font-size: clamp(1.05rem, 2.6vh, 1.6rem); font-weight: 600; }
+.bs-chapter__by .bs-face + .bs-face { margin-left: -0.9rem; }
+.bs-chapter__items { list-style: none; margin: calc(clamp(1.25rem, 4vh, 2.5rem) * var(--fit, 1)) 0 0; padding: 0; display: grid; gap: calc(clamp(0.4rem, 1.4vh, 0.9rem) * var(--fit, 1)); }
+.bs-chapter__items li { display: flex; align-items: center; gap: clamp(0.75rem, 1.4vw, 1.25rem); min-width: 0; font-size: calc(clamp(1.05rem, 2.6vh, 1.6rem) * (0.5 + var(--fit, 1) / 2)); }
 .bs-chapter__label { flex: none; min-width: 2.8em; padding: 0.15em 0.5em; border-radius: 999px; background: var(--bs-panel); border: 1px solid var(--bs-line); color: var(--bs-soft); font-size: 0.7em; font-weight: 750; text-align: center; font-variant-numeric: tabular-nums; }
+/* 4.10 and on: every label as wide, so the titles stay in line */
+.bs-chapter.is-wide .bs-chapter__label { min-width: 3.5em; }
 .bs-chapter__t { font-weight: 650; min-width: 0; }
 .bs-chapter__who { display: flex; align-items: center; gap: 0.6rem; margin-left: auto; color: var(--bs-soft); font-size: 0.8em; white-space: nowrap; }
 .bs-chapter__who .bs-face + .bs-face { margin-left: -0.9rem; }

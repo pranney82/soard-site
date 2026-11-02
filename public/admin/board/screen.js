@@ -385,6 +385,46 @@ function PartList({ sec, items, current, people }) {
   })}</ol>`;
 }
 
+/** A part's card: its number, its time, its title and its items. When one person (or the same pair) presents every item,
+ *  they're said once under the title, not on each row. A part too long for the screen is set smaller, the big number
+ *  and the title first, until it all fits above the rail; a phone scrolls it instead */
+function Chapter({ n, sec, t, items, people }) {
+  const ref = useRef(null);
+  const rows = sec?.items || [];
+  const whos = rows.map((it) => presentersOf(it, people));
+  const keyOf = (ws) => ws.map((p) => p.slug || p.name).join('|');
+  const one = rows.length > 1 && whos[0].length && whos.every((ws) => keyOf(ws) === keyOf(whos[0])) ? whos[0] : null;
+  const labels = rows.map((it) => items.find((x) => x.id === it.id)?.label || '');
+  useEffect(() => {
+    const el = ref.current;
+    const stage = el?.closest('.bs-stage');
+    if (!el || !stage) return undefined;
+    const fit = () => {
+      el.style.setProperty('--fit', '1');
+      const cs = getComputedStyle(stage);
+      if (cs.overflowY === 'auto') return;
+      const room = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+      let f = 1;
+      while (f > 0.6 && el.offsetHeight > room) { f = Math.round((f - 0.05) * 100) / 100; el.style.setProperty('--fit', String(f)); }
+    };
+    fit();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fit()) : null;
+    ro?.observe(stage);
+    document.fonts?.ready.then(fit);
+    return () => ro?.disconnect();
+  }, [JSON.stringify([sec?.title, rows.map((it) => it.title), whos.map(keyOf)])]);
+  return html`<div class=${`bs-chapter ${labels.some((l) => l.length > 3) ? 'is-wide' : ''}`} ref=${ref}>
+    <span class="bs-chapter__n" aria-hidden="true">${String(n).padStart(2, '0')}</span>
+    <div class="bs-chapter__body">
+      <p class="bs-eyebrow">${t ? [t.start ? `${clock(t.start)} to ${clock(t.end)}` : '', `${t.minutes} minutes`].filter(Boolean).join(' · ') : 'Agenda'}</p>
+      <h1 class="bs-display bs-chapter__title">${sec?.title || 'Agenda'}</h1>
+      ${one ? html`<p class="bs-chapter__by">${one.map((p) => html`<${Face} p=${p} size=${44} key=${p.slug || p.name} />`)}<span>${namesText(one.map((p) => p.name))}</span></p>` : null}
+      ${rows.length ? html`<ol class="bs-chapter__items">${rows.map((it, i) => html`<li key=${it.id}><span class="bs-chapter__label">${labels[i]}</span><span class="bs-chapter__t">${it.title}</span>${!one && whos[i].length ? html`<span class="bs-chapter__who">${whos[i].map((p) => html`<${Face} p=${p} size=${36} key=${p.slug || p.name} />`)}<span>${whos[i].map((p) => p.name).join(' & ')}</span></span>` : null}</li>`)}</ol>`
+        : html`<p class="bs-chapter__open">Open to the floor</p>`}
+    </div>
+  </div>`;
+}
+
 /** The motion to approve the last meeting's minutes: the meeting's own (the chair's words) else the usual one */
 function MinutesMotion({ item, v }) {
   const prev = (v.prior || []).find((x) => x.id === item.about) || null;
@@ -699,20 +739,10 @@ export function Screen({ id, data, d, onBack = null }) {
   } else if (stop.kind === 'since') {
     stage = html`<${SinceSlide} v=${v} n=${data.numbers} meeting=${meeting} />`;
   } else if (stop.kind === 'section') {
-    const sec = meeting.sections[cardSi];
-    const t = plan.get(sec?.id);
-    stage = html`<div class="bs-chapter">
-      <span class="bs-chapter__n" aria-hidden="true">${String(cardSi + 1).padStart(2, '0')}</span>
-      <div class="bs-chapter__body">
-        <p class="bs-eyebrow">${t ? [t.start ? `${clock(t.start)} to ${clock(t.end)}` : '', `${t.minutes} minutes`].filter(Boolean).join(' · ') : 'Agenda'}</p>
-        <h1 class="bs-display bs-chapter__title">${sec?.title || 'Agenda'}</h1>
-        ${sec?.items.length ? html`<ol class="bs-chapter__items">${sec.items.map((it) => { const ws = presentersOf(it, people); const lab = items.find((x) => x.id === it.id)?.label; return html`<li key=${it.id}><span class="bs-chapter__label">${lab}</span><span class="bs-chapter__t">${it.title}</span>${ws.length ? html`<span class="bs-chapter__who">${ws.map((p) => html`<${Face} p=${p} size=${36} key=${p.slug || p.name} />`)}<span>${ws.map((p) => p.name).join(' & ')}</span></span>` : null}</li>`; })}</ol>`
-          : html`<p class="bs-chapter__open">Open to the floor</p>`}
-      </div>
-    </div>`;
+    stage = html`<${Chapter} n=${cardSi + 1} sec=${meeting.sections[cardSi]} t=${plan.get(meeting.sections[cardSi]?.id)} items=${items} people=${people} />`;
   } else if (stop.kind === 'books') {
     // QuickBooks' own: the year against last year, or a statement beside a year before
-    stage = html`<${BooksSlide} books=${books} kind=${stop.fileId.slice(6)} />`;
+    stage = html`<${BooksSlide} books=${books} kind=${stop.fileId.slice(6)} notes=${data.lineNotes?.[id]?.[item?.id]} />`;
   } else if (stop.kind === 'live') {
     // One of the item's other live lists, as the item's own would show
     const k = stop.fileId.slice(5);

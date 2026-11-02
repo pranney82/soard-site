@@ -1169,6 +1169,29 @@ try {
   await shot(scr, '25-screen-end');
   ok(!(await meetingNow(jane, meetingId)).live.startedAt, 'presenting never puts anything on the meeting: nothing started, nothing saved');
   await scr.close();
+  // A long part, one person presenting all of it (the Nov 5 automation update had 11): its card names them once and
+  // fits above the rail on a 720p screen; a part with different presenters keeps them on each row
+  {
+    const long = await saveMeeting(DB, cleanMeeting({ date: day(9), start: '08:00', end: '10:00', shared: false, sections: [
+      { title: 'Committee reports', items: [{ title: 'Governance', presenter: 'Alex Rivera', who: ['alex-rivera'] }, { title: 'Financial', presenter: 'Sam Ortiz', who: ['sam-ortiz'] }] },
+      { title: 'Automation and technology update', minutes: 25, items: Array.from({ length: 11 }, (_, i) => ({ title: `Something that runs itself, number ${i + 1}`, presenter: 'Jane', who: ['jane-doe'] })) },
+    ] }), { by: FOUNDER });
+    const card = await tab(FOUNDER, 1280);
+    await card.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
+    const cardOf = async (si) => {
+      await card.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`section:${long.sections[si].id}`)}#/meetings/${long.id}/screen`, { waitUntil: 'networkidle0' });
+      await card.waitForSelector('.bs-chapter', { timeout: 8000 }).catch(() => {});
+      await sleep(500);
+      return card.evaluate(() => { const st = document.querySelector('.bs-stage').getBoundingClientRect(); const c = document.querySelector('.bs-chapter'); const r = c.getBoundingClientRect(); const labs = [...c.querySelectorAll('.bs-chapter__t')].map((t) => Math.round(t.getBoundingClientRect().left)); return { rows: c.querySelectorAll('.bs-chapter__items li').length, inside: r.top >= st.top - 1 && r.bottom <= st.bottom + 1, by: c.querySelector('.bs-chapter__by')?.textContent || '', perRow: c.querySelectorAll('.bs-chapter__who').length, lined: new Set(labs).size === 1 }; });
+    };
+    const one = await cardOf(1);
+    ok(one.rows === 11 && one.inside && /Jane Doe/.test(one.by) && one.perRow === 0 && one.lined, `a part of 11 items by one presenter: the card names them once, its titles in line, all of it above the rail (${JSON.stringify(one)})`);
+    await shot(card, '25b-screen-long-part');
+    const mixed = await cardOf(0);
+    ok(mixed.rows === 2 && mixed.inside && !mixed.by && mixed.perRow === 2, `a part with different presenters keeps each one on its row (${JSON.stringify(mixed)})`);
+    await card.close();
+    await DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(long.id).run();
+  }
 
   // ─── Print it all (board/print.js), on the board page ───
   console.log('Print it all');
