@@ -186,9 +186,12 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   try { existing = await gcal(token, 'GET', `${cal}/${encodeURIComponent(eventId)}`, null, fetchImpl); } catch (err) { if (err.status !== 404 && err.status !== 410) throw err; }
   // Google Meet is every board meeting's call (Peter, Nov 2 2026): a Teams or Zoom call on the organizer's event comes
   // off it first, without emailing anyone, so Meet replaces it instead of sitting beside it (Google's docs don't say a
-  // Meet request alone swaps one out). Their notes lose its joining details below
+  // Meet request alone swaps one out). Their notes lose its joining details below. Should Google refuse to take it off,
+  // the invite still goes out with Meet asked for, as it did before, rather than not at all
   if (existing && !existing.hangoutLink && existing.conferenceData && existing.status !== 'cancelled') {
-    existing = await gcal(token, 'PATCH', `${cal}/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=none`, { conferenceData: null }, fetchImpl);
+    try {
+      existing = await gcal(token, 'PATCH', `${cal}/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=none`, { conferenceData: null }, fetchImpl);
+    } catch (err) { if (err.status !== 400 && err.status !== 403) throw err; }
   }
   const ours = !theirs; // Board's own invite: Board sets its day and time too
   const have = new Set((existing?.attendees || []).map((a) => normEmail(a.email)));

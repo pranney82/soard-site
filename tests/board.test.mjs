@@ -1365,6 +1365,15 @@ test('Holly’s invite with a Teams call: Google Meet replaces it, the Teams blo
   await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
   assert.ok(!calWrites(g).some((c) => c.body && 'conferenceData' in c.body && c.body.conferenceData === null));
   assert.equal(g.events[FOUNDER].find((e) => e.id === 'hol4').description, notes);
+  // Google refusing to take a call off never stops the invite: Meet is still asked for
+  g.events[FOUNDER].find((e) => e.id === 'hol4').hangoutLink = undefined;
+  g.events[FOUNDER].find((e) => e.id === 'hol4').conferenceData = { conferenceSolution: { key: { type: 'addOn' } } };
+  const google = answer;
+  answer = (url, init) => (init.method === 'PATCH' && init.body === JSON.stringify({ conferenceData: null }) ? Response.json({ error: { message: 'Invalid conference data.' } }, { status: 400 }) : google(url, init));
+  g.calls = [];
+  const again = await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
+  assert.equal(again.status, 200, JSON.stringify(again.body));
+  assert.ok(g.calls.some((c) => c.method === 'PATCH' && c.body?.conferenceData?.createRequest), 'Meet is still asked for');
   // HTML notes (as Google keeps them once edited in Calendar) lose the block the same way; a bare Zoom link line goes too
   assert.equal(withoutCall(`<b>Dinner</b><br>${rule}<br><b>Microsoft Teams</b> Need help?<br>Join: <a href="https://teams.microsoft.com/l/x">x</a><br>${rule}`), '<b>Dinner</b><br>');
   assert.equal(withoutCall('Dinner\nhttps://us02web.zoom.us/j/123\nSee you'), 'Dinner\n\nSee you');
