@@ -770,9 +770,36 @@ export async function clearPracticeRun(DB, { now = Date.now() } = {}) {
   return cleared;
 }
 
+/**
+ * Once: Peter tried the report page on his own Nov 5 item and his test words were kept as its report (Peter, Nov 2:
+ * "delete it"). Only while the report is still exactly those words: it's emptied (patchMeeting, so an open editor
+ * merges), and his ask is waiting again, so its reminder and deadline still come
+ */
+export const TEST_REPORT = { meetingId: 'm_zh9e3qae', itemId: 'i_f2szcx5x', words: 'asdfsafdadf asf', slug: 'peter-ranney' };
+export async function clearTestReport(DB, { now = Date.now() } = {}) {
+  const once = await readState(DB, 'asks-once');
+  if (once.testReport) return false;
+  const m = await getMeeting(DB, TEST_REPORT.meetingId);
+  const it = m?.sections.flatMap((s) => s.items).find((x) => x.id === TEST_REPORT.itemId);
+  let cleared = false;
+  if (String(it?.report || '').trim() === TEST_REPORT.words) {
+    await patchMeeting(DB, TEST_REPORT.meetingId, (cur) => ({
+      ...cur,
+      sections: cur.sections.map((s) => ({ ...s, items: s.items.map((x) => (x.id === TEST_REPORT.itemId && String(x.report || '').trim() === TEST_REPORT.words ? { ...x, report: '', reportBy: '', reportAt: '' } : x)) })),
+    }), { by: 'peter@soardcharity.com' });
+    await ensureAsks(DB);
+    await DB.prepare("UPDATE board_asks SET status = 'asked', in_at = '', updated_at = ? WHERE kind = 'report' AND meeting_id = ? AND item_id = ? AND slug = ? AND status = 'in'")
+      .bind(nowIso(now), TEST_REPORT.meetingId, TEST_REPORT.itemId, TEST_REPORT.slug).run();
+    cleared = true;
+  }
+  await writeState(DB, 'asks-once', { ...(await readState(DB, 'asks-once')), testReport: { at: nowIso(now), cleared } });
+  return cleared;
+}
+
 export async function maybeRunAsks(env, { fetchImpl = fetch, now = Date.now(), force = false } = {}) {
   if (!env?.DB) return null;
   await clearPracticeRun(env.DB, { now }).catch((e) => console.error('[board-asks] practice run', e.message));
+  await clearTestReport(env.DB, { now }).catch((e) => console.error('[board-asks] test report', e.message));
   if (!env.GOOGLE_CALENDAR_KEY) return null;
   try {
     const state = await readState(env.DB, KEY);

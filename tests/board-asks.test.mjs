@@ -14,7 +14,7 @@ import { clearTokenCache } from '../functions/api/_google-calendar.js';
 import {
   easternAt, dueFor, remindAt, chairAt, dueWords, htmlToMd, cutTextQuote, isAutoReply, replyFiles, mimeOf, senderOf, cutSignature, judgeByRules,
   runAsks, maybeRunAsks, saveLineNote, portalExtras, sendersFor, askEmail, chairEmail, postReport, GMAIL_SEND_SCOPE,
-  chairApprove, chairNote, askPresenter, judgeChair, asTest, replyWords, clearPracticeRun, PRACTICE_RUN,
+  chairApprove, chairNote, askPresenter, judgeChair, asTest, replyWords, clearPracticeRun, PRACTICE_RUN, clearTestReport, TEST_REPORT,
 } from '../functions/api/_board-asks.js';
 
 const PEOPLE = [
@@ -938,4 +938,27 @@ test('reports already written don’t count toward a list: one left is a plain a
   assert.equal((await run()).asked, 1);
   assert.equal(hdr(gmail.sent.at(-1), 'Subject'), 'Q4 2026 Board Meeting: your Store update report, due Wed, Nov 4 at noon');
   assert.equal((await env.DB.prepare("SELECT COUNT(*) AS n FROM board_asks WHERE kind = 'list'").first()).n, 0);
+});
+
+test('once: Peter’s test words on his Nov 5 report are emptied and his ask waits again; any real report is left alone', async () => {
+  const { saveMeeting: save } = await import('../functions/api/_board.js');
+  await save(env.DB, { id: TEST_REPORT.meetingId, date: '2026-11-05', sections: [{ id: 's_1', title: 'Committee reports', items: [{ id: TEST_REPORT.itemId, title: 'Projects updates and reveals', presenter: 'Max', report: TEST_REPORT.words }] }] }, { by: 'jane@soardcharity.com' });
+  await env.DB.exec(`CREATE TABLE IF NOT EXISTS board_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)`);
+  const { ensureAsks } = await import('../functions/api/_board-asks.js');
+  await ensureAsks(env.DB);
+  await env.DB.prepare("INSERT INTO board_asks (id, kind, meeting_id, item_id, slug, status, in_at, msg_ids, files) VALUES ('a1', 'report', ?, ?, ?, 'in', 'x', '[]', '[]')").bind(TEST_REPORT.meetingId, TEST_REPORT.itemId, TEST_REPORT.slug).run();
+  assert.equal(await clearTestReport(env.DB), true);
+  const it = (await getMeeting(env.DB, TEST_REPORT.meetingId)).sections[0].items[0];
+  assert.deepEqual([it.report, it.reportBy], ['', '']);
+  assert.equal((await env.DB.prepare("SELECT status FROM board_asks WHERE id = 'a1'").first()).status, 'asked');
+  // Never again, whatever is written later
+  await postReport(env.DB, { meetingId: TEST_REPORT.meetingId, itemId: TEST_REPORT.itemId, words: TEST_REPORT.words, name: 'Max Doe' });
+  assert.equal(await clearTestReport(env.DB), false);
+});
+
+test('the test-words clear leaves a real report alone', async () => {
+  const { saveMeeting: save } = await import('../functions/api/_board.js');
+  await save(env.DB, { id: TEST_REPORT.meetingId, date: '2026-11-05', sections: [{ id: 's_1', title: 'x', items: [{ id: TEST_REPORT.itemId, title: 'Projects', presenter: 'Max', report: 'Three reveals this month.' }] }] }, { by: 'jane@soardcharity.com' });
+  assert.equal(await clearTestReport(env.DB), false);
+  assert.equal((await getMeeting(env.DB, TEST_REPORT.meetingId)).sections[0].items[0].report, 'Three reveals this month.');
 });
