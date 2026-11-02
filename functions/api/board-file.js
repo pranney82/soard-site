@@ -12,6 +12,7 @@
 import { fileFor, boardFiles } from './_board.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { fileHeaders } from '../files/[[path]].js';
+import { noteFileOpen } from './_board-activity.js';
 
 const notFound = () => new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'private, no-store' } });
 
@@ -27,5 +28,11 @@ export async function onRequestGet(context) {
   const headers = fileHeaders(row.name || row.r2_key, row.type || obj.httpMetadata?.contentType);
   headers.set('Cache-Control', 'private, no-store');
   if (obj.size) headers.set('Content-Length', String(obj.size));
+  // A meeting's or document's file a member opened in a tab of its own: opened, for Board → Members (_board-activity.js)
+  const member = context.data?.boardMember;
+  if (member && ['meeting', 'doc'].includes(row.owner_type)) {
+    const noted = noteFileOpen(env, member, request, row.id);
+    if (context.waitUntil) context.waitUntil(noted); else await noted;
+  }
   return new Response(obj.body, { headers });
 }

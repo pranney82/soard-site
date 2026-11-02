@@ -29,6 +29,8 @@
  * POST ?minutes=<meetingId> (multipart "file")       the secretary's typed minutes template, read into the meeting
  *                                                    (_board-minutes.js secretarySends); the secretary's seat or an admin.
  *                                                    Another meeting's minutes → 409 { error, other }; &anyway=1 sends them all the same
+ * POST { action: 'activity', events, touch, now }  what a member looked at and for how long (../../public/admin/board/activity.js)
+ * A member's sign-ins, looks and answers are kept for Board → Members (_board-activity.js); an admin's never are.
  * An admin looking can't answer, sign, check in or vote for anyone: they have no board seat. In a practice meeting
  * (theirs alone, simulated members) they check in and vote as themselves.
  */
@@ -36,6 +38,7 @@
 import { portalData, setActionDone, signDoc, signWithCopy, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, saveMotion, attachToItem, detachFromItem, listMeetings } from './_board.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
+import { noteGet, noteLook, noteAnswer, noteEvents, answerOf } from './_board-activity.js';
 import { portalExtras, saveLineNote, chairApprove, chairNote, askPresenter } from './_board-asks.js';
 
 const fail = (error, status = 400) => Response.json({ ok: false, error }, { status });
@@ -47,20 +50,29 @@ async function who(context) {
   if (await isBoardAdmin(context.env.DB, context.data?.userEmail)) return { member: null, admin: true, adminEmail: context.data?.userEmail || '' };
   return null;
 }
+// After the answer when the platform allows (waitUntil), else before it (tests)
+const later = async (context, p) => { if (context.waitUntil) context.waitUntil(p); else await p; };
 const fromError = (err) => (err.status && err.status < 500 ? fail(err.message, err.status) : Response.json({ ok: false, error: err.message }, { status: 500 }));
 
 export async function onRequestGet(context) {
   try {
     const w = await who(context);
     if (!w) return fail('The board page is for SOARD’s board members', 403);
+    if (w.member) await later(context, noteGet(context.env, w.member, context.request));
     const q = new URL(context.request.url).searchParams;
-    if (q.has('live')) return Response.json({ ok: true, ...(await liveView(context.env, q.get('live'), w)) }, { headers: { 'Cache-Control': 'private, no-store' } });
+    if (q.has('live')) {
+      const view = await liveView(context.env, q.get('live'), w);
+      // Following it counts only while it's being held
+      if (w.member && view?.live?.startedAt && !view.live.endedAt) await later(context, noteLook(context.env, w.member, context.request, 'live', q.get('live')));
+      return Response.json({ ok: true, ...view }, { headers: { 'Cache-Control': 'private, no-store' } });
+    }
     // ?ics=<meeting>: that meeting as a calendar file (for someone not on its invite); one whose agenda isn't
     // posted yet comes without it
     const id = q.get('ics');
     if (id) {
       const ics = await boardIcs(context.env.DB, id);
       if (!ics) return fail('That meeting isn’t on the board page', 404);
+      if (w.member) await later(context, noteLook(context.env, w.member, context.request, 'calendar', id));
       return new Response(ics, { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="soard-board-meeting.ics"', 'Cache-Control': 'private, no-store' } });
     }
     // Beside it: the notes on the money's lines, a member's own report asks (when each is due), and a meeting ahead
@@ -72,7 +84,49 @@ export async function onRequestGet(context) {
   }
 }
 
+/**
+ * A member's answers are kept once they worked (a JSON body is read from a copy; a file upload, from its query
+ * only), and the tracker's report goes straight in
+ */
 export async function onRequestPost(context) {
+  const member = context.data?.boardMember || null;
+  const json = /application\/json/i.test(context.request.headers.get('Content-Type') || '');
+  // A tracker's report is a few kilobytes: a body far bigger is never read here (the action it is reads it, as before),
+  // whatever its Content-Length says
+  const small = Number(context.request.headers.get('Content-Length') || 0) <= 256_000;
+  const copy = json && small ? context.request.clone() : null;
+  let body = null;
+  if (copy?.body) {
+    const reader = copy.body.getReader();
+    const parts = [];
+    let size = 0;
+    for (;;) {
+      const { done, value } = await reader.read().catch(() => ({ done: true }));
+      if (done) break;
+      size += value.byteLength;
+      if (size > 256_000) { reader.cancel().catch(() => {}); parts.length = 0; break; }
+      parts.push(value);
+    }
+    if (parts.length) { try { body = JSON.parse(new TextDecoder().decode(await new Blob(parts).arrayBuffer())); } catch { body = null; } }
+  }
+  // An admin looking at the page isn't recorded: their tracker's reports are let go, and it stops sending
+  if (body?.action === 'activity') {
+    try {
+      return Response.json({ ok: true, ...(member ? await noteEvents(context.env, member, context.request, body) : { kept: 0, stop: true }) });
+    } catch (err) {
+      return fromError(err);
+    }
+  }
+  const res = await post(context);
+  if (member && res.status === 200) {
+    // An answer that kept nothing isn't something they did: an agenda someone else had approved first, a test
+    const said = (res.headers.get('Content-Type') || '').includes('json') ? await res.clone().json().catch(() => null) : null;
+    if (!said?.already && !said?.test) await later(context, noteAnswer(context.env, member, context.request, answerOf(body, new URL(context.request.url).searchParams)));
+  }
+  return res;
+}
+
+async function post(context) {
   const { env, request } = context;
   try {
     const w = await who(context);

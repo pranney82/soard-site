@@ -24,6 +24,7 @@ import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE
 import { MeetingEditor, agendaSource } from './board-meeting.js';
 import { ReportEditor, Report } from './board-report.js';
 import { pdfLines, docxLines, wordsFromLines } from './board-words.js';
+import { BoardActivity } from './board-activity.js';
 import {
   DOC_KINDS, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
   attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority, agendaItems, isLive, heldEarly,
@@ -825,7 +826,8 @@ function MembersTab({ ctx }) {
   const { data, addToast } = ctx;
   const [working, setWorking] = useState('');
   const next = nextMeeting(data.meetings);
-  const signDocs = data.docs.filter((d) => d.sign && d.shared && d.file);
+  // The papers each member signs this year: written in Board, or a file the board can open (as the sign-in email counts them)
+  const signDocs = data.docs.filter((d) => d.sign && d.shared && (d.body || (d.file && !d.file.staffOnly)));
   const ready = data.access.configured && data.access.ok && data.access.attached;
   const welcome = async (body, label) => {
     setWorking(label);
@@ -835,10 +837,6 @@ function MembersTab({ ctx }) {
     if (!j.ok) addToast(j.sent ? `Emailed ${j.sent}; ${plural(j.failed, 'email')} didn’t go (${j.error})` : `Nobody got it, so sending again is safe. ${j.error}`, 'error');
     else addToast(body.test ? `Sent to ${j.to?.[0] || 'you'}` : `Emailed ${plural(j.sent, 'board member')}`, 'info');
     ctx.load();
-  };
-  const answer = (p) => {
-    const a = next?.attendance.find((x) => x.slug === p.slug);
-    return next ? answerOf(a?.rsvp, repliesOf(next)[p.slug]) : '';
   };
   return html`
     <${AccessCard} ctx=${ctx} />
@@ -856,22 +854,7 @@ function MembersTab({ ctx }) {
         </div>
       </div>
     </div>
-    <div class="card" style="padding:0">
-      <div class="sec-head"><h3>The board <span class="count">${data.members.length}</span></h3><span class="sec-head__hint">From People → Board</span></div>
-      <table class="bd-table">
-        <thead><tr><th>Member</th><th>Signs in with</th><th>Last on the board page</th>${next ? html`<th>${meetingName(next)}</th>` : null}${signDocs.length ? html`<th>Signed this year</th>` : null}</tr></thead>
-        <tbody>${data.members.map((p) => {
-          const signed = signDocs.filter((d) => d.signed[p.slug]).length;
-          return html`<tr key=${p.slug}>
-            <td><strong>${p.name}</strong>${p.title && p.title !== 'Board Member' ? html`<div class="bd-row__meta">${p.title}</div>` : null}</td>
-            <td data-label="Signs in with">${p.email ? p.email : html`<span class="tag tag--warn">No email on file</span>`}</td>
-            <td data-label="Last on the board page">${p.lastSeen ? ago(p.lastSeen) : html`<span class="bd-inline"><span class="bd-muted">Not yet</span>${ready && p.email ? html`<button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => welcome({ slugs: [p.slug] }, p.slug)}>${working === p.slug ? 'Sending…' : 'Send the sign-in email'}</button>` : null}</span>`}</td>
-            ${next ? html`<td data-label=${meetingName(next)}>${answer(p) || html`<span class="bd-muted">No answer</span>`}</td>` : null}
-            ${signDocs.length ? html`<td data-label="Signed this year"><span class=${`tag ${signed === signDocs.length ? 'tag--success' : ''}`}>${signed} of ${signDocs.length}</span></td>` : null}
-          </tr>`;
-        })}</tbody>
-      </table>
-    </div>`;
+    <${BoardActivity} data=${data} next=${next} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug] }, slug)} />`;
 }
 
 // ─── Settings ───────────────────────────────────────────────────────

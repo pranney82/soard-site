@@ -7,6 +7,9 @@
  * GET                       → { settings, meetings, docs, members, staff, access, numbers, mercury, email }
  * GET ?me=1                 → { admin } for any staff sign-in (the menu shows Board only to admins)
  * GET ?numbers=1            → the live numbers (cash, makeovers, reveals, events) right now
+ * GET ?activity=<slug>      → { signIns, events } one board member's sign-ins and what they did on the board page
+ *                             (_board-activity.js)
+ * GET ?activity=             → { activity, activityBegan } everyone's summary (Members asks when it opens)
  * GET ?live=<id>            → { checkins, votes } for the chair's screen while a meeting is held (_board.js chairLive)
  * POST { action, ... } (JSON):
  *   new-meeting { date }                      a meeting from the template, saved, not shared
@@ -54,6 +57,7 @@ import { sendInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites
 import { maybeReadBoardDrive, driveStatus, placeSigned, DEFAULT_DRIVE_FOLDER } from './_board-drive.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { readMinutesInto } from './_board-minutes.js';
+import { activityOverview, memberActivity } from './_board-activity.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
 
@@ -81,6 +85,16 @@ export async function onRequestGet(context) {
     const { me, refused } = await gate(context);
     if (refused) return refused;
     if (q.has('numbers')) return Response.json({ ok: true, numbers: await liveNumbers(env) });
+    // One board member's sign-ins and what they did on the board page (Members → their row)
+    if (q.has('activity') && !q.get('activity')) {
+      const activity = await activityOverview(env.DB);
+      return Response.json({ ok: true, activity, activityBegan: activity.began || null }, { headers: { 'Cache-Control': 'no-store' } });
+    }
+    if (q.has('activity')) {
+      const slug = String(q.get('activity') || '');
+      if (!(await memberStatus(env.DB)).some((p) => p.slug === slug)) return Response.json({ ok: false, error: 'That isn’t a board member now' }, { status: 404 });
+      return Response.json({ ok: true, ...(await memberActivity(env.DB, slug)) }, { headers: { 'Cache-Control': 'no-store' } });
+    }
     if (q.has('live')) return Response.json({ ok: true, ...(await chairLive(env, q.get('live'))) }, { headers: { 'Cache-Control': 'no-store' } });
     // A look at the calendars when the last one is over 10 minutes old (at most 6 seconds; the rest finishes after)
     const looking = maybeSyncBoardCalendar(env, { minAgeMs: 10 * 60 * 1000 });

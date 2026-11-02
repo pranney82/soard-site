@@ -71,6 +71,13 @@ export async function rename(env, { collection, from, to } = {}, userEmail = 'un
   if (await DB.prepare(`SELECT slug FROM ${table} WHERE slug = ?`).bind(to).first()) {
     return { status: 409, body: { success: false, error: `Someone already has the address “${to}”. Pick another.` } };
   }
+  // A former board member's board records are kept under their address (signatures, sign-ins): never someone else's
+  if (table === 'team') {
+    for (const t of ['board_signatures', 'board_signins', 'board_activity']) {
+      const had = await DB.prepare(`SELECT slug FROM ${t} WHERE slug = ? LIMIT 1`).bind(to).first().catch(() => null);
+      if (had) return { status: 409, body: { success: false, error: `“${to}” was a board member’s address, and their board records are kept under it. Pick another.` } };
+    }
+  }
   const before = JSON.parse(row.data);
   const data = { ...before, slug: to };
 
@@ -111,6 +118,13 @@ export async function rename(env, { collection, from, to } = {}, userEmail = 'un
   try { await DB.prepare('UPDATE reveal_board_emails SET slug = ? WHERE slug = ?').bind(to, from).run(); } catch {}
   try { await moveVersions(DB, 'team', from, to); } catch {}
   try { await moveRequests(DB, from, to); } catch {}
+  // A board member's board records follow them too: their sign-ins and what they did on the board page (Board →
+  // Members), their last visit, signatures, check-ins, votes and asks
+  if (table === 'team') {
+    for (const t of ['board_signins', 'board_activity', 'board_activity_reports', 'board_seen', 'board_signatures', 'board_checkins', 'board_votes', 'board_asks']) {
+      try { await DB.prepare(`UPDATE OR IGNORE ${t} SET slug = ? WHERE slug = ?`).bind(to, from).run(); } catch {}
+    }
+  }
   if (oldImageId) {
     try { await fetchImpl(`${API(env)}/${oldImageId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` } }); } catch {}
   }
