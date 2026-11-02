@@ -98,3 +98,52 @@ export function Kanban({ projects, reveals = [], variant = 'home', links = varia
     })}
   </div>`;
 }
+
+/**
+ * The makeovers on the meeting's screen: the stages as one track left to right toward the reveal, each with how many
+ * and its families under it, photo first and as big as the screen allows. Every card fits without scrolling: the
+ * more families, the more rows (one, two or three), and a stage with none is a sliver of the track, not a column
+ */
+export function Pipeline({ projects, reveals = [] }) {
+  if (!projects) return html`<p class="bs-quiet">The makeovers from JobTread aren’t available right now.</p>`;
+  const cols = columnsOf(projects).map((c) => {
+    const named = c.list.filter((b) => b.name);
+    const families = c.list.filter((b) => !b.name && b.kind !== 'community').length;
+    const orgs = c.list.filter((b) => !b.name && b.kind === 'community').length;
+    return { ...c, named, families, orgs, cards: named.length + (families ? 1 : 0) + (orgs ? 1 : 0) };
+  });
+  const total = cols.reduce((n, c) => n + c.cards, 0);
+  const rows = total <= 6 ? 1 : total <= 14 ? 2 : 3;
+  const across = (c) => Math.max(1, Math.ceil(c.cards / rows));
+  const template = cols.map((c) => (c.cards ? `minmax(0, ${across(c)}fr)` : 'minmax(8.5rem, 0.45fr)')).join(' ');
+  const revealOf = (b) => (b.slug ? reveals.find((r) => r.slug === b.slug) : null);
+  const when = (b) => {
+    if (b.kind === 'community') return html`<span class="bs-pipe__when is-quiet">Community project</span>`;
+    const r = revealOf(b);
+    if (r?.confirmed && r.date) return html`<span class="bs-pipe__when is-set">Reveal ${shortDate(r.date).replace(/, \d{4}$/, '')}${r.time ? ` · ${kept(clock(r.time).replace(':00', ''))}` : ''}</span>`;
+    if (r?.window?.label) return html`<span class="bs-pipe__when">Reveal ${r.window.label}</span>`;
+    return b.status === AWAITING ? null : html`<span class="bs-pipe__when is-quiet">Reveal date to come</span>`;
+  };
+  // The reveal on the photo's corner, the name under it (two lines kept for every name, so a row's photos match)
+  const card = (b) => html`<li class="bs-pipe__card" key=${b.slug || b.name}>
+    <span class="bs-pipe__photo">${b.photo
+      ? html`<img src=${sized(b.photo, 'w=640,h=760,fit=cover,gravity=face')} alt="" decoding="async" />`
+      : html`<span class="bs-pipe__initials" style=${`--hue:${hueOf(b.name)}`} aria-hidden="true">${initialsOf(b.name)}</span>`}${when(b)}</span>
+    <span class="bs-pipe__name">${b.name}</span>
+  </li>`;
+  const quiet = (words, sub) => html`<li class="bs-pipe__card is-quiet"><span class="bs-pipe__name">${kept(words)}</span><span class="bs-pipe__when is-quiet">${sub}</span></li>`;
+  const units = cols.reduce((t, c) => t + (c.cards ? across(c) : 0.45), 0);
+  return html`<div class="bs-pipe" data-rows=${rows} style=${`--tmpl:${template};--rows:${rows};--units:${units}`}>
+    <ol class="bs-pipe__track" aria-label="The makeovers by stage">${cols.map((c, i) => html`<li class=${`${c.cards ? '' : 'is-empty'} ${i === cols.length - 1 ? 'is-last' : ''}`} key=${c.stage}>
+      <span class="bs-pipe__n">${c.list.length}</span><span class="bs-pipe__stage">${c.label}</span>${i === cols.length - 1 ? html`<span class="bs-pipe__end">Reveal</span>` : null}
+    </li>`)}</ol>
+    <div class="bs-pipe__cols">${cols.map((c) => html`<div class=${`bs-pipe__col ${c.cards ? '' : 'is-empty'}`} key=${c.stage}>
+      <p class="bs-pipe__colhead"><span>${c.label}</span><span class="bs-pipe__n">${c.list.length}</span></p>
+      <ul style=${`--across:${across(c)}`}>
+        ${c.named.map(card)}
+        ${c.families ? quiet(c.named.length ? `+${c.families} more ${c.families === 1 ? 'family' : 'families'}` : plural(c.families, 'family', 'families'), 'Named once their page is up') : null}
+        ${c.orgs ? quiet(plural(c.orgs, 'community project'), 'Not on Community yet') : null}
+      </ul>
+    </div>`)}</div>
+  </div>`;
+}

@@ -1226,9 +1226,13 @@ try {
   ok(await scr.waitForSelector('.bs-item', { timeout: 3000 }).then(() => true, () => false) && await scr.evaluate(() => /Financial/.test(document.querySelector('.bs-item__title')?.textContent || '') && /Sam Ortiz/.test(document.querySelector('.bs-who')?.textContent || '')), '← back to the item, who presents it');
   ok(await scr.waitForFunction(() => [...document.querySelectorAll('.bs-shelf > li')].some((li) => /Balance sheet financials/.test(li.textContent) && !!li.querySelector('.bs-shelf__cover > *')), { timeout: 6000 }).then(() => true, () => false), 'its documents coming up, each by its first page');
   await shot(scr, '22-screen-item');
-  // The makeovers item on the screen: the kanban, every card in view
-  while (hops < 60 && !(await scr.$('.bk--screen'))) { await scr.keyboard.press('ArrowRight'); await sleep(200); hops += 1; }
-  ok(await scr.waitForSelector('.bk--screen .bk-col', { timeout: 4000 }).then(() => true, () => false) && await scr.evaluate(() => { const b = document.querySelector('.bk--screen').getBoundingClientRect(); return b.bottom <= innerHeight && b.right <= innerWidth && /Maya/.test(document.querySelector('.bk--screen').textContent); }), 'the makeovers item: the kanban, every card in view');
+  // The makeovers item on the screen: the stages as one track toward the reveal, every family's card in view
+  while (hops < 60 && !(await scr.$('.bs-pipe'))) { await scr.keyboard.press('ArrowRight'); await sleep(200); hops += 1; }
+  ok(await scr.waitForSelector('.bs-pipe .bs-pipe__card', { timeout: 4000 }).then(() => true, () => false) && await scr.evaluate(() => {
+    const cards = [...document.querySelectorAll('.bs-pipe__card')].map((c) => c.getBoundingClientRect());
+    const stages = [...document.querySelectorAll('.bs-pipe__track > li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim());
+    return cards.length && cards.every((r) => r.bottom <= innerHeight && r.right <= innerWidth) && /Maya/.test(document.querySelector('.bs-pipe').textContent) && stages[0].startsWith('1') && /Build/.test(stages.at(-1)) && /Reveal/.test(stages.at(-1));
+  }), 'the makeovers item: the stages with their counts toward the reveal, every card in view');
   await shot(scr, '22b-screen-makeovers');
   // B blanks the room's screen; a key brings it back. A reload comes back to the same slide
   await scr.keyboard.press('b');

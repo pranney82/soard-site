@@ -30,7 +30,7 @@ import { useCover, usePages } from '../board-present.js';
 import { Report } from '../board-report.js';
 import { BooksSlide, BOOKS_TITLES } from './books.js';
 import { mdWords } from '../board-md.js';
-import { Kanban, kanbanLine, sized } from './kanban.js';
+import { Pipeline, sized } from './kanban.js';
 import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, readChangeAs, keepChangeAs } from './money.js';
 
 const html = htm.bind(h);
@@ -325,18 +325,47 @@ function CashSlide({ n, data, date, as = 'pct' }) {
   return html`<div class="bs-money"><ul class="bs-figs" style=${`--n:${tiles.length}`}>${tiles.map((t) => html`<li key=${t.k}><span class="bs-figs__label">${t.label}</span><span class="bs-figs__value">${t.value}</span>${t.pct != null ? html`<span class="bs-figs__bar" role="img" aria-label=${`${t.pct}% of the budget`}><i style=${`--p:${Math.min(100, t.pct)}%`}></i></span>` : null}${t.sub ? html`<span class="bs-figs__sub">${t.sub}</span>` : null}</li>`)}</ul>${mix}</div>`;
 }
 /** Reveals ahead: each kid's photo and the day */
+/**
+ * The reveals coming up, along a line in the order they come: each set day (its date and time) and each part of a
+ * month not set yet over the families due then, photo first. Fits the screen however many there are (the first ten)
+ */
 function RevealsSlide({ n }) {
-  const list = [...(n?.reveals || [])].sort((a, b) => String(a.confirmed && a.date ? a.date : windowStart(a.window) || '9').localeCompare(String(b.confirmed && b.date ? b.date : windowStart(b.window) || '9'))).slice(0, 6);
+  const set = (r) => !!(r.confirmed && r.date);
+  const list = [...(n?.reveals || [])].map((r) => ({ ...r, at: set(r) ? r.date : windowStart(r.window) || '9999' })).sort((a, b) => a.at.localeCompare(b.at)).slice(0, 10);
   if (!list.length) return html`<p class="bs-quiet">No reveals on the calendar yet.</p>`;
   const photoOf = (r) => [...(n.projects?.building || []), ...(n.projects?.waiting || [])].find((b) => b.slug && b.slug === r.slug)?.photo || '';
-  return html`<ul class="bs-reveals" style=${`--n:${Math.min(3, list.length)}`}>${list.map((r) => {
-    const photo = photoOf(r);
-    return html`<li key=${r.slug || r.name}>
-      <span class="bs-reveals__photo">${photo ? html`<img src=${sized(photo, 'w=720,h=480,fit=cover,gravity=face')} alt="" />` : html`<${Face} p=${{ name: r.name }} size=${96} />`}</span>
-      <span class="bs-reveals__text"><strong>${r.name}</strong><span>${r.confirmed && r.date ? `${dayWords(r.date)}${r.time ? `, ${clock(r.time)}` : ''}` : `${r.window?.label || 'Date to come'}, not set yet`}</span></span>
-      <${Tile} d=${r.confirmed && r.date ? r.date : windowStart(r.window)} word=${r.confirmed && r.date ? '' : r.window?.part || ''} />
-    </li>`;
-  })}</ul>`;
+  // A set day is its own stop on the line; the families not set yet share their part of the month
+  const stops = [];
+  for (const r of list) {
+    const key = set(r) ? `d:${r.date}` : `w:${r.window?.month || ''}:${r.window?.part || ''}:${r.window?.label || ''}`;
+    let g = stops.find((x) => x.key === key);
+    if (!g) stops.push(g = { key, set: set(r), first: r, list: [] });
+    g.list.push(r);
+  }
+  const rows = list.length <= 6 ? 1 : 2;
+  const across = (g) => Math.max(1, Math.ceil(g.list.length / rows));
+  const month = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const weekday = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
+  const head = (g) => {
+    const r = g.first;
+    if (g.set) return html`<strong>${month(r.date)}</strong><span>${[weekday(r.date), g.list.every((x) => x.time === r.time) && r.time ? clock(r.time) : ''].filter(Boolean).join(', ')}</span>`;
+    // "Mid November", or on a stop one photo wide "Mid Nov"
+    const label = r.window?.label || 'Date to come';
+    const short = /^\d{4}-\d{2}$/.test(String(r.window?.month || '')) && r.window?.part ? `${r.window.part} ${new Date(`${r.window.month}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })}` : label;
+    const words = across(g) > 1 ? label : short;
+    return html`<strong>${words.charAt(0).toUpperCase()}${words.slice(1)}</strong><span>Date to be set</span>`;
+  };
+  const units = stops.reduce((t, g) => t + across(g), 0);
+  return html`<div class="bs-when" data-rows=${rows} data-busy=${units > 4 ? (units > 6 ? 'more' : 'yes') : null} style=${`--tmpl:${stops.map((g) => `minmax(0, ${across(g)}fr)`).join(' ')};--rows:${rows};--units:${units}`}>
+    <ol class="bs-when__line">${stops.map((g) => html`<li class=${g.set ? 'is-set' : ''} key=${g.key}>${head(g)}</li>`)}</ol>
+    <div class="bs-when__kids">${stops.map((g) => html`<div class=${`bs-when__stop ${g.set ? 'is-set' : ''}`} key=${g.key}><p class="bs-when__stophead">${head(g)}</p><ul style=${`--across:${across(g)}`}>${g.list.map((r) => {
+      const photo = photoOf(r);
+      return html`<li key=${r.slug || r.name}>
+        <span class="bs-when__photo">${photo ? html`<img src=${sized(photo, 'w=640,h=760,fit=cover,gravity=face')} alt="" decoding="async" />` : html`<span class="bs-when__initials" aria-hidden="true">${initialsOf(r.name)}</span>`}</span>
+        <span class="bs-when__name">${r.name}</span>${g.set && r.time && !g.list.every((x) => x.time === r.time) ? html`<span class="bs-when__time">${clock(r.time)}</span>` : null}
+      </li>`;
+    })}</ul></div>`)}</div>
+  </div>`;
 }
 const DATE_STATES = { done: 'Held', today: 'Today', next: 'Next' };
 function DatesSlide({ rows, note = '' }) {
@@ -459,7 +488,7 @@ function MinutesMotion({ item, v }) {
 /** An item's live facts on the screen, or null when it has none */
 function liveSlide(kind, n, id, data, date, as = 'pct') {
   if (!n || !kind || kind === 'minutes') return null;
-  if (kind === 'projects') return n.projects ? html`<${Kanban} projects=${n.projects} reveals=${n.reveals || []} variant="screen" />` : null;
+  if (kind === 'projects') return n.projects ? html`<${Pipeline} projects=${n.projects} reveals=${n.reveals || []} />` : null;
   if (kind === 'cash') return html`<${CashSlide} n=${n} data=${data} date=${date} as=${as} />`;
   if (kind === 'reveals') return html`<${RevealsSlide} n=${n} />`;
   if (kind === 'events') {
@@ -805,15 +834,15 @@ export function Screen({ id, data, d, onBack = null }) {
     // One of the item's other live lists, as the item's own would show
     const k = stop.fileId.slice(5);
     const facts = liveSlide(k, numbers, id, data, meeting.date, chg);
-    stage = html`<div class=${`bs-item ${k === 'projects' ? 'bs-item--board' : 'bs-item--facts'}`}>
-      <div class="bs-item__bar"><div><p class="bs-eyebrow">${item.title || section || 'Agenda'}</p><h1 class="bs-display bs-item__title">${LIVE_TITLES[k]}</h1></div>${k === 'projects' && numbers?.projects ? html`<div class="bs-item__aside"><p class="bs-quiet">${kanbanLine(numbers.projects)}</p></div>` : null}</div>
+    stage = html`<div class=${`bs-item ${k === 'projects' || k === 'reveals' ? 'bs-item--board' : 'bs-item--facts'}`}>
+      <div class="bs-item__bar"><div><p class="bs-eyebrow">${item.title || section || 'Agenda'}</p><h1 class="bs-display bs-item__title">${LIVE_TITLES[k]}</h1></div></div>
       <div class="bs-item__facts">${facts || html`<p class="bs-quiet">Nothing to show here yet</p>`}</div>
     </div>`;
   } else if (stop.kind === 'item') {
     const faces = stop.n >= 0 ? facesOf(item) : '';
     const facts = faces ? null : liveSlide(item.live, numbers, id, data, meeting.date, chg);
     const head = html`<p class="bs-eyebrow">${[section && section !== item.title ? section : '', !section && stop.n < 0 ? 'After the agenda' : ''].filter(Boolean).join('') || 'Agenda'}</p>
-      <h1 class="bs-display bs-item__title">${item.title}</h1>
+      <h1 class="bs-display bs-item__title">${item.title || LIVE_TITLES[item.live] || 'Agenda'}</h1>
       ${item.confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}`;
     const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts || faces || item.report ? 52 : 72} /><span><strong>${p.name}</strong>${roleOf(p) ? html`<small>${roleOf(p)}</small>` : null}</span></li>`)}</ul>` : null;
     // Under the money's tiles there's room for a row: each document small, its title beside it
@@ -823,9 +852,10 @@ export function Screen({ id, data, d, onBack = null }) {
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${faces === 'roll' ? html`<${RollCount} v=${v} started=${started} />` : whoList}</div></div>
         <div class="bs-item__facts"><${FacesGrid} kind=${faces} v=${v} people=${people} started=${started} year=${Number(String(meeting.date).slice(0, 4))} /></div>
       </div>`;
-    } else if (facts && item.live === 'projects') {
+    } else if (facts && (item.live === 'projects' || (item.live === 'reveals' && !item.report && !item.notes && !coming))) {
+      // The makeovers and the reveals: the item's name and who presents it along the top, the rest of the screen theirs
       stage = html`<div class="bs-item bs-item--board">
-        <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${whoList}<p class="bs-quiet">${kanbanLine(numbers.projects)}</p></div></div>
+        <div class="bs-item__bar"><div>${head}</div>${whoList ? html`<div class="bs-item__aside">${whoList}</div>` : null}</div>
         <div class="bs-item__facts">${facts}</div>
       </div>`;
     } else if (facts) {
