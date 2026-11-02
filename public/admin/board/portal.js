@@ -1035,10 +1035,19 @@ function Gifts({ g, since }) {
 function GiftsYear({ g, since }) {
   // A gift found by search past the newest 12 opens them all, so it's there to land on
   const [all, setAll] = useKept('gifts-all', !!focusNext?.startsWith('gift-') && g.list.findIndex((x) => `gift-${x.id}` === focusNext) >= 12);
-  // Home's "All 14 this year" opens Financials here (a gift found by search lands on that gift instead)
+  // Home's "All 14 this year" opens Financials here (a gift found by search lands on that gift instead), and stays here
+  // until they scroll, tap or type: the page change's own scroll to the top, and what's drawn above it later (the
+  // budget, the charts), never move it off
   useEffect(() => {
     if (!/^#\/financials\/gifts\b/.test(location.hash) || focusNext || typeof kept().y === 'number') return;
-    requestAnimationFrame(() => document.getElementById('gifts')?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' }));
+    untilTheyMove(2500, () => {
+      const el = document.getElementById('gifts');
+      if (!el) return true;
+      const pad = (parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0) + (parseFloat(getComputedStyle(el).scrollMarginTop) || 0);
+      const to = Math.min(Math.round(scrollY + el.getBoundingClientRect().top - pad), document.documentElement.scrollHeight - innerHeight);
+      if (Math.abs(scrollY - to) > 2) scrollTo(0, to);
+      return true;
+    });
   }, []);
   const shown = all ? g.list : g.list.slice(0, 12);
   return html`<section class="bp-card bp-gifts bp-gifts--year" aria-labelledby="gifts-y-h" id="gifts">
