@@ -542,5 +542,8 @@ const logo = 'brand-logo-light-bg-display';
 <script is:inline>if(!window.__advEarly){window.__advEarly=1;document.addEventListener('click',function(e){var b=e.target.closest&&e.target.closest('#adv-go,[data-adv-cta]');var r=document.querySelector('[data-adv]');if(!b||!r||r.dataset.ready==='go')return;e.preventDefault();window.__advWant=true;b.setAttribute('aria-busy','true')},true)}</script>
 <script>
   import { initAdvisoryForm } from '../../components/advisory/advisory-form.client.js';
+  // Every time this page is shown: its first load, and each time the site's router brings it (a link, the browser's
+  // Back), when a module script doesn't run again
   initAdvisoryForm();
+  document.addEventListener('astro:page-load', initAdvisoryForm);
 </script>

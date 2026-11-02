@@ -550,6 +550,7 @@ function init(root, cfg, mode) {
     closeSuggest();
     if (ui.dialog.open) ui.dialog.close();
     focused = false;
+    paintHeroNote(); // the page above says what's so now (an old link's note goes once a new application is under way)
     root.classList.remove('is-focus');
     document.documentElement.classList.remove('af-focus', 'af-vt', 'af-vt-back', 'af-vt-same');
     session.set(false);
@@ -1438,7 +1439,7 @@ function init(root, cfg, mode) {
           anchor = packs[id]?.[screenNo]?.find(k => k.getClientRects().length) || null;
           // This tab remembers it too: a reload comes back to this screen, not to the next one with an answer missing
           const where = screenAt(id, screenNo);
-          try { if (where.field && focused) sessionStorage.setItem(SCREEN_KEY, JSON.stringify({ page: id, ...where })); } catch { /* storage off */ }
+          try { if (where.field && focused) sessionStorage.setItem(keyed(SCREEN_KEY), JSON.stringify({ page: id, ...where })); } catch { /* storage off */ }
         }
       }
       // The camera's screen left (Back, the steps, the browser's Back): it stops there, not out of sight
@@ -1594,9 +1595,15 @@ function init(root, cfg, mode) {
     if (at < 0) return null;
     const errors = formErrors(form, a, files, ids.slice(0, at + 1).filter(id => id !== 'review'), lang);
     for (const id of Object.keys(errors)) if (byId[id]?.type === 'address') errors[id] = errorFor(id) || errors[id];
-    // On this page, only the screens before this one (this one's were just checked)
+    // On this page, only the screens before this one (this one's were just checked). A question drawn in pieces (the
+    // service area's card, map and question) is still to come while any of its pieces is
     const later = new Set();
-    if (currentId !== 'review') for (let n = screenNo; n < screensIn(currentId); n++) screenFieldIds(currentId, n).forEach(id => later.add(id));
+    if (currentId !== 'review') {
+      for (let n = screenNo; n < screensIn(currentId); n++) {
+        screenFieldIds(currentId, n).forEach(id => later.add(id));
+        for (const k of packs[currentId]?.[n] || []) { const own = k.closest?.('[data-field]'); if (own) later.add(own.dataset.field); }
+      }
+    }
     // A photo still on its way, the check still placing the home: not missing
     const first = fields.find(f => errors[f.id] && !later.has(f.id) && !uploads.has(f.id) && !(f.type === 'area' && areaWaiting()));
     return first ? { page: first.page, id: first.id, errors } : null;
@@ -2498,6 +2505,7 @@ function init(root, cfg, mode) {
 
   async function uploadPhoto(f, file) {
     if (!isPhotoFile(file)) { setUpload(f.id, { msg: 'notImage' }); return; }
+    if (!file.size) { setUpload(f.id, { msg: 'empty' }); return; } // a cloud file not on the device yet: said as the video says it
     if (previewing) {
       files[f.id] = { key: true, name: file.name };
       const thumb = await toJpeg(file, THUMB_MAX, 0.72).catch(() => null);
@@ -4064,7 +4072,7 @@ function init(root, cfg, mode) {
     // This one came from its link (it opens again from there): the device goes back to the one it had
     store.set({ token: was.token, year: was.year || year });
     otherStore.clear();
-    try { sessionStorage.removeItem(SCREEN_KEY); } catch { /* storage off */ }
+    try { sessionStorage.removeItem(keyed(SCREEN_KEY)); } catch { /* storage off */ }
     location.replace(location.pathname);
   }, { signal });
   let resumePending = null; // a saved application not reached yet: Start tries it again (not a blank one)
@@ -4307,7 +4315,7 @@ function init(root, cfg, mode) {
     // entry they reloaded on first, even when they'd gone back from further on (its Back then goes a screen back)
     let was = null;
     if (!fromLink) {
-      try { was = JSON.parse(sessionStorage.getItem(SCREEN_KEY) || 'null'); } catch { /* storage off */ }
+      try { was = JSON.parse(sessionStorage.getItem(keyed(SCREEN_KEY)) || 'null'); } catch { /* storage off */ }
       const entry = history.state?.afFocus ? history.state.afAt : null;
       if (entry?.page && entry.page !== was?.page) was = entry;
     }
@@ -4487,7 +4495,7 @@ function init(root, cfg, mode) {
   window.addEventListener('pagehide', () => {
     const f = document.activeElement?.closest?.('[data-field]');
     if (!focused || !f || !onScreen(f) || !pageEl(currentId)?.contains(f)) return;
-    try { sessionStorage.setItem(SCREEN_KEY, JSON.stringify({ page: currentId, field: f.dataset.field })); } catch { /* storage off */ }
+    try { sessionStorage.setItem(keyed(SCREEN_KEY), JSON.stringify({ page: currentId, field: f.dataset.field })); } catch { /* storage off */ }
   }, { signal });
   document.addEventListener('pointerdown', rearm, { capture: true, signal });
   document.addEventListener('keydown', rearm, { capture: true, signal });

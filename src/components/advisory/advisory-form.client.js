@@ -43,10 +43,18 @@ const session = {
 };
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+// The page's own listeners (window, document) for the page it's on: let go when the site's router swaps the page,
+// so a page come back to (Back, a link) starts afresh with its own
+let life = null;
 export function initAdvisoryForm() {
   const form = document.getElementById('adv-form');
   const root = document.querySelector('[data-adv]');
-  if (!form || !root) return;
+  if (!form || !root || root.dataset.advInit) return; // this page's, once (its first load, or each time the router brings it)
+  root.dataset.advInit = '1';
+  life?.abort();
+  life = new AbortController();
+  const signal = life.signal;
+  document.addEventListener('astro:before-swap', () => life?.abort(), { once: true });
   const $ = (id) => document.getElementById(id);
   const pages = [...form.querySelectorAll('.adv-page')]; // the five steps, then the review
   const total = ADVISORY_STEPS.length;
@@ -88,6 +96,7 @@ export function initAdvisoryForm() {
   let turnstileToken = null;
   let sending = false;
   let restored = false;
+  let typedHere = false; // something typed or picked on this visit (not the browser filling boxes from its history)
 
   $('adv-today').textContent = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
 
@@ -364,7 +373,8 @@ export function initAdvisoryForm() {
   /** The overview: every step with its minutes, done ones with their answers, the way in */
   function paintHub(a = collect()) {
     if (focused) return;
-    const started = restored || furthest > 0 || anyAnswer(a); // a name typed and Save and exit at once is started too
+    // A name typed and Save and exit at once is started too; boxes the browser filled from its history aren't
+    const started = restored || furthest > 0 || (typedHere && anyAnswer(a));
     const doneCount = ADVISORY_STEPS.filter((_, i) => stepDone(i, a)).length;
     // Sent from this device before (a reload, a visit back): said, so it isn't sent a second time unsure
     const was = sent ? { at: Date.now() } : !started ? sentStore.get() : null;
@@ -617,8 +627,8 @@ export function initAdvisoryForm() {
   };
   document.addEventListener('astro:before-swap', () => { window.__advPop = null; document.documentElement.classList.remove('adv-focus', 'adv-vt', 'adv-vt-back', 'adv-vt-same'); }, { once: true });
   const rearm = () => { if (focused && !depth) armTrap(); };
-  document.addEventListener('pointerdown', rearm, { capture: true });
-  document.addEventListener('keydown', rearm, { capture: true });
+  document.addEventListener('pointerdown', rearm, { capture: true, signal });
+  document.addEventListener('keydown', rearm, { capture: true, signal });
 
   // ── Review: a row per step with its answers in a line, opened to every answer ──
   let reviewAll = false;
@@ -762,20 +772,20 @@ export function initAdvisoryForm() {
     if (!there?.answers) return;
     furthest = Math.max(furthest, Math.min(REVIEW, Number(there.furthest) || 0));
     takeTheirs(there.answers);
-  });
+  }, { signal });
   function save() {
     clearTimeout(saveTimer);
     saveTimer = setTimeout(saveNow, 400);
   }
   // Leaving mid-sentence (a closed tab, a phone locking) keeps the last keystrokes too
-  window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); });
-  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) saveNow(); });
+  window.addEventListener('pagehide', () => { if (saveTimer) saveNow(); }, { signal });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) saveNow(); }, { signal });
   // A browser that blocks saving keeps nothing: leaving with answers asks first
   window.addEventListener('beforeunload', (e) => {
     if (canKeep || sent || !anyAnswer(collect())) return;
     e.preventDefault();
     e.returnValue = '';
-  });
+  }, { signal });
 
   /** A box for words grows as they write until the screen is full; a longer answer then scrolls inside it, never the screen */
   function capBoxes(page) {
@@ -974,8 +984,8 @@ export function initAdvisoryForm() {
     sugList.addEventListener('mousedown', (e) => e.preventDefault()); // the cursor stays in the box for the click
     sugList.addEventListener('click', (e) => { const li = e.target.closest('[role="option"]'); if (li) pickSuggestion(Number(li.dataset.i)); });
     sugInput.addEventListener('blur', () => { clearTimeout(sug.closing); sug.closing = setTimeout(() => { if (document.activeElement !== sugInput) closeSuggest(); }, 180); });
-    window.visualViewport?.addEventListener('resize', placeSuggest);
-    window.addEventListener('resize', placeSuggest);
+    window.visualViewport?.addEventListener('resize', placeSuggest, { signal });
+    window.addEventListener('resize', placeSuggest, { signal });
   }
 
   // A real change of window size (a phone turned, a window resized; not a phone's address bar sliding):
@@ -996,7 +1006,7 @@ export function initAdvisoryForm() {
       paintScreen();
       paint();
     }, 180);
-  }, { passive: true });
+  }, { passive: true, signal });
 
   // Enter (the keyboard's "next") goes to the next box on the screen; on the last one it's Continue
   form.addEventListener('keydown', (e) => {
@@ -1005,7 +1015,7 @@ export function initAdvisoryForm() {
       .filter((x, k, all) => x.type !== 'radio' || all.findIndex((y) => y.type === 'radio' && y.name === x.name) === k);
     const after = boxes[boxes.indexOf(e.target) + 1];
     if (after) { e.preventDefault(); after.focus(); }
-  });
+  }, { signal });
 
   ui.back.addEventListener('click', () => { back(); });
   ui.go.addEventListener('click', () => (sent ? again() : begin()));
@@ -1153,6 +1163,18 @@ export function initAdvisoryForm() {
   fetch(API, { cache: 'no-store' }).then((r) => r.json()).then((d) => { turnstileKey = d?.turnstileSiteKey || null; paint(); }).catch(() => {});
 
   // ── Picking up where they left off ──
+  // The answers are this device's saved ones, never what the browser put back in the boxes from its history (after
+  // sending, or a tab Safari reloaded): the boxes start empty, then the saved answers go in. The browser can put
+  // them back once the page has loaded, too: emptied again then, when nothing's saved and nothing's been typed
+  form.reset();
+  form.addEventListener('input', () => { typedHere = true; }, { signal });
+  form.addEventListener('change', () => { typedHere = true; }, { signal });
+  window.addEventListener('load', () => {
+    if (typedHere || focused || read()?.answers) return;
+    form.reset();
+    synced = collect();
+    paint();
+  }, { once: true, signal });
   if (stored?.answers && Object.values(stored.answers).some((v) => v && v !== '')) {
     fill(stored.answers);
     step = Math.min(Math.max(0, Number(stored.step) || 0), REVIEW);

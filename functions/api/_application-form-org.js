@@ -160,7 +160,7 @@ export const ORG_DEFAULT_DEFINITION = {
         },
         { id: 'website', type: 'text', label: 'Website' },
         { id: 'mission', type: 'textarea', required: true, label: 'Tell us about your organization: your mission and the work you do.' },
-        { id: 'childrenServed', type: 'number', required: true, label: 'About how many children with special needs do you serve each year?', rules: { min: 0, integer: true } },
+        { id: 'childrenServed', type: 'number', required: true, label: 'About how many children with special needs do you serve each year?', rules: { min: 1, integer: true } },
         { id: 'agesServed', type: 'text', required: true, label: 'What ages are the children you serve?' },
         { id: 'needsServed', type: 'textarea', required: true, label: 'Tell us about the children you serve: their diagnoses and needs.' },
         { id: 'previouslyApplied', type: 'radio', required: true, options: YES_NO, label: 'Has your organization worked with or applied to Sunshine on a Ranney Day before?' },
