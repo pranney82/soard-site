@@ -893,7 +893,8 @@ function SinceSlide({ v, n, meeting }) {
   const tiles = shown.length + (more ? 1 : 0);
   const rows = tiles > 3 ? 2 : 1;
   const cap = events.length && open.length ? 3 : 4;
-  const list = (all) => all.slice(0, cap);
+  // A list longer than that gives its last row to "and N more", so the column is never taller for having more
+  const list = (all) => all.slice(0, all.length > cap ? cap - 1 : cap);
   const ref = useFit([JSON.stringify([reveals.map((r) => r.name), events.map((e) => e.title), open.map((a) => a.text)])], { min: 0.84 });
   const day = (d) => shortDate(d).replace(/, \d{4}$/, '');
   const left = (all, shownN, word) => (all.length > shownN ? html`<p class="bs-since__left">and ${all.length - shownN} more ${word}</p>` : null);

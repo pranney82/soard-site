@@ -1927,6 +1927,10 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-since__reveals li { --txt: calc(var(--bs-u) * 7.6 * var(--fit, 1)); --row: calc((100cqh - (var(--rows) - 1) * var(--g)) / var(--rows)); flex: none; width: min(calc((var(--row) - var(--txt)) * 0.8 + var(--bs-u)), calc((100cqw - (var(--cols) - 1) * var(--g)) / var(--cols))); min-width: 0; padding: calc(var(--bs-u) * 0.5) calc(var(--bs-u) * 0.5) calc(var(--bs-u) * 0.8); border-radius: calc(var(--bs-u) * 1.8); background: var(--bs-panel); border: 1px solid var(--bs-line); }
 .bs-since__photo { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; border-radius: calc(var(--bs-u) * 1.3); background: var(--bs-panel-2); }
 .bs-since__photo img { width: 100%; height: 100%; object-fit: cover; }
+/* A reveal with no photo yet: its initial on a tile the photo's shape (as the makeovers show one), never a circle wider
+   than its card */
+.bs-since__photo:has(> .bs-face--initials) { container-type: inline-size; }
+.bs-since__photo > .bs-face--initials { width: 100%; height: 100%; border-radius: 0; box-shadow: none; font-size: 42cqi; }
 .bs-since__reveals li strong { display: block; margin: 0.45em 0.3em 0; font-family: var(--display); font-size: calc(var(--bs-body) * var(--fit, 1)); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-since__reveals li > span:last-child { display: block; margin: 0.1em 0.4em 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.5 * var(--fit, 1)); white-space: nowrap; }
 .bs-since__more .bs-since__photo { background: transparent; border: 1px dashed rgba(246, 244, 236, 0.22); }
