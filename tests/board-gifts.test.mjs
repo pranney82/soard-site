@@ -5,7 +5,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { giftOf, campaignOf, kidNames, readGifts, maybeReadGifts, giftsNow, giftsStatus, yearStartS } from '../functions/api/_board-gifts.js';
+import { giftOf, giftsOf, campaignOf, kidNames, readGifts, maybeReadGifts, giftsNow, giftsStatus, yearStartS } from '../functions/api/_board-gifts.js';
 
 const NOW = Date.parse('2026-10-30T16:00:00Z'); // noon Eastern
 const S = (ms) => Math.floor(ms / 1000);
@@ -91,10 +91,48 @@ test('a campaign named for a child reads “Makeovers”; the kids come from eve
   assert.equal(campaignOf('  ', kids), '');
 });
 
+test('a gift Zeffy took in several charges is one gift: $4,000 + $4,000 + $2,000 minutes apart is $10,000', () => {
+  const MIN = 60e3;
+  const at = NOW - 5 * DAY;
+  // Zeffy takes $5,000 at most in one charge: the giver pays three times in four minutes
+  const split = [payment({ id: 'pay_0a', created: S(at), amount: 400000 }), payment({ id: 'pay_0b', created: S(at + 2 * MIN), amount: 400000 }), payment({ id: 'pay_0c', created: S(at + 4 * MIN), amount: 200000 })];
+  const [g, ...rest] = giftsOf(split);
+  assert.deepEqual({ ...g }, { id: 'pay_0a', at: S(at + 4 * MIN), cents: 1000000, name: 'Jane Doe', company: '', anonymous: false, campaign: 'Evening of Sunshine', every: '', inKind: false, parts: 3 });
+  assert.equal(rest.length, 0);
+  // The same payments read twice (Zeffy's pages overlap) are counted once
+  assert.equal(giftsOf([...split, ...split])[0].cents, 1000000);
+  // A last charge under $1,000 is part of the gift, and charges under $1,000 that add up to it make one
+  assert.equal(giftsOf([payment({ amount: 500000 }), payment({ id: 'pay_0d', amount: 50000 })])[0].cents, 550000);
+  assert.deepEqual(giftsOf([payment({ amount: 60000 }), payment({ id: 'pay_0d', amount: 60000 })]).map((x) => x.cents), [120000]);
+  assert.deepEqual(giftsOf([payment({ amount: 60000 })]), []);
+  // Each charge within an hour of the one before; a payment more than an hour on is a gift of its own
+  assert.deepEqual(giftsOf([payment({ id: 'pay_01', created: S(at), amount: 300000 }), payment({ id: 'pay_02', created: S(at + 50 * MIN), amount: 300000 }), payment({ id: 'pay_03', created: S(at + 100 * MIN), amount: 300000 }), payment({ id: 'pay_04', created: S(at + 200 * MIN), amount: 300000 })]).map((x) => [x.id, x.cents, x.parts]), [['pay_04', 300000, undefined], ['pay_01', 900000, 3]]);
+});
+
+test('only one giver’s one-time payments to one campaign are put together; anonymous once is anonymous', () => {
+  const two = (o) => giftsOf([payment({ id: 'pay_0a', amount: 300000 }), payment({ id: 'pay_0b', amount: 300000, ...o })]).length;
+  assert.equal(two({ description: 'Golf Classic' }), 2, 'another campaign');
+  assert.equal(two({ buyer: { email: 'sam@example.com', first_name: 'Sam', last_name: 'Doe' } }), 2, 'another giver');
+  assert.equal(two({ buyer: { email: 'jdoe@example.org', first_name: ' jane ', last_name: 'DOE' } }), 1, 'the same name, however it was typed, whatever the email');
+  assert.equal(two({ recurring: { interval: 'month' } }), 2, 'monthly gifts each month');
+  assert.equal(two({ payment_method: { type: 'in_kind' } }), 2, 'in kind beside money');
+  // No name: the company, else the email tells them apart; none of them, and each stands alone
+  const unnamed = (o) => ({ buyer: { is_corporate: false, ...o } });
+  assert.equal(giftsOf([payment({ id: 'pay_0a', ...unnamed({ company_name: 'Sample Builders' }) }), payment({ id: 'pay_0b', ...unnamed({ company_name: 'Sample Builders' }) })]).length, 1);
+  assert.equal(giftsOf([payment({ id: 'pay_0a', ...unnamed({ email: 'a@example.com' }) }), payment({ id: 'pay_0b', ...unnamed({ email: 'a@example.com' }) })]).length, 1);
+  assert.equal(giftsOf([payment({ id: 'pay_0a', ...unnamed({ email: 'a@example.com' }) }), payment({ id: 'pay_0b', ...unnamed({ email: 'b@example.com' }) })]).length, 2);
+  assert.equal(giftsOf([payment({ id: 'pay_0a', buyer: {} }), payment({ id: 'pay_0b', buyer: {} })]).length, 2);
+  // A company's gift keeps its name; one charge marked anonymous makes the whole gift anonymous
+  const co = { buyer: { email: 'lee@example.com', first_name: 'Lee', last_name: 'Sample', is_corporate: true, company_name: 'Sample Builders' } };
+  assert.deepEqual(giftsOf([payment({ id: 'pay_0a', ...co }), payment({ id: 'pay_0b', ...co })]).map((g) => [g.company, g.name, g.cents]), [['Sample Builders', 'Lee Sample', 500000]]);
+  const hidden = giftsOf([payment({ id: 'pay_0a', ...co }), payment({ id: 'pay_0b', ...co, buyer_questions: [{ question: 'Give anonymously?', answer: true }] })]);
+  assert.deepEqual(hidden.map((g) => [g.company, g.name, g.anonymous, g.cents]), [['', '', true, 500000]]);
+});
+
 test('the year is read from January 1 in Eastern time, every page, newest first', async () => {
   assert.equal(new Date(yearStartS(2026) * 1000).toISOString(), '2026-01-01T05:00:00.000Z');
   pages = [
-    [payment({ id: 'pay_old', created: S(NOW - 30 * DAY), amount: 100000 }), payment({ id: 'pay_small', amount: 5000 })],
+    [payment({ id: 'pay_old', created: S(NOW - 30 * DAY), amount: 100000 }), payment({ id: 'pay_small', created: S(NOW - 2 * DAY), amount: 5000 })],
     [payment({ id: 'pay_new', created: S(NOW - DAY), amount: 2500000 }), payment({ id: 'pay_old', created: S(NOW - 30 * DAY), amount: 100000 })],
   ];
   const r = await readGifts(env, { fetchImpl: zeffy, now: NOW });

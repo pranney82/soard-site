@@ -1,9 +1,10 @@
 /**
  * Major gifts on the board page, from Zeffy
  * ===========================================================================
- * Every successful Zeffy payment of $1,000 or more this year, newest first:
- * the line Slack's "Major gift" alert draws (./_zeffy.js MAJOR_GIFT_CENTS), so
- * a major gift means one thing everywhere. A row is the amount (less anything
+ * Every gift of $1,000 or more this year from Zeffy, newest first: the line
+ * Slack's "Major gift" alert draws (./_zeffy.js MAJOR_GIFT_CENTS), so a major
+ * gift means one thing everywhere. A gift Zeffy took in several charges (it
+ * takes $5,000 at most in one) is one gift (giftsOf). A row is the amount (less anything
  * refunded), who gave (a company and the person who gave for it), the
  * campaign, the day, and whether it's monthly or in kind. Never an email,
  * address or phone.
@@ -22,6 +23,8 @@ import { todayEastern } from './_reveals.js';
 
 const READ_EVERY_MS = 15 * 60 * 1000;
 const STALE_MS = 24 * 60 * 60 * 1000;
+// One gift split into charges for Zeffy's limit comes in minutes apart (the widest SOARD has had: 21 minutes)
+const SPLIT_GAP_S = 60 * 60;
 // 100 payments a page: SOARD's busiest years stay well under this
 const MAX_PAGES = 40;
 const KEY = 'gifts';
@@ -58,10 +61,16 @@ export function campaignOf(title, kids = []) {
 
 /** One Zeffy payment as a board row, or null when it isn't a major gift (the Slack alert's screen, then $1,000 after refunds) */
 export function giftOf(p, kids = []) {
+  const g = rowOf(p, kids);
+  return g && g.cents >= MAJOR_GIFT_CENTS ? g : null;
+}
+
+/** One Zeffy payment as a board row whatever its size, or null when it doesn't count (the Slack alert's screen, nothing kept after refunds) */
+function rowOf(p, kids = []) {
   if (screenPayment(p) || p?.metadata?.soardSelfTest === true) return null;
   const refunded = (p.refunds || []).filter((r) => r?.status === 'succeeded').reduce((t, r) => t + (Number(r.amount) || 0), 0);
   const cents = Number(p.amount) - refunded;
-  if (!(cents >= MAJOR_GIFT_CENTS)) return null;
+  if (!(cents > 0)) return null;
   const hidden = anonymous(p);
   const b = p.buyer || {};
   const company = hidden || !b.is_corporate ? '' : clean(b.company_name);
@@ -80,6 +89,51 @@ export function giftOf(p, kids = []) {
   };
 }
 
+/**
+ * The major gifts in a run of Zeffy payments, newest first. Zeffy takes $5,000 at most in one charge, so a $10,000
+ * gift comes in as $4,000 + $4,000 + $2,000 a few minutes apart: a giver's one-time payments to one campaign, each
+ * within an hour of the one before, are one gift, and the $1,000 line is drawn on what they add up to. The giver is
+ * known by their name (as the board shows it, any case), else their company, else their email (never kept); a monthly
+ * gift, or a payment with none of them, stands alone. The gift keeps its first payment's id and its last one's time
+ * (when it was all in), and `parts` says how many it took
+ */
+export function giftsOf(payments, kids = []) {
+  const byId = new Map();
+  for (const p of payments || []) {
+    const g = rowOf(p, kids);
+    if (!g) continue;
+    const b = p.buyer || {};
+    const who = (clean(`${clean(b.first_name)} ${clean(b.last_name)}`) || clean(b.company_name) || clean(b.email)).toLowerCase();
+    byId.set(g.id, { g, key: who && !g.every ? [who, g.campaign, g.inKind].join('\n') : `id\n${g.id}` });
+  }
+  const givers = new Map();
+  for (const { g, key } of byId.values()) givers.set(key, [...(givers.get(key) || []), g]);
+  const list = [];
+  const add = (parts) => {
+    const hidden = parts.some((x) => x.anonymous);
+    const gift = {
+      ...parts[0],
+      at: parts.at(-1).at,
+      cents: parts.reduce((t, x) => t + x.cents, 0),
+      name: hidden ? '' : parts.find((x) => x.name)?.name || '',
+      company: hidden ? '' : parts.find((x) => x.company)?.company || '',
+      anonymous: hidden,
+    };
+    if (parts.length > 1) gift.parts = parts.length;
+    if (gift.cents >= MAJOR_GIFT_CENTS) list.push(gift);
+  };
+  for (const rows of givers.values()) {
+    rows.sort((a, b) => a.at - b.at || a.id.localeCompare(b.id));
+    let run = [];
+    for (const g of rows) {
+      if (run.length && g.at - run.at(-1).at > SPLIT_GAP_S) { add(run); run = []; }
+      run.push(g);
+    }
+    add(run);
+  }
+  return list.sort((a, b) => b.at - a.at);
+}
+
 /** The year's major gifts from Zeffy, newest first */
 export async function readGifts(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const year = Number(todayEastern(now).slice(0, 4));
@@ -87,9 +141,7 @@ export async function readGifts(env, { fetchImpl = fetch, now = Date.now() } = {
     listPayments(env, { from: yearStartS(year), to: Math.floor(now / 1000), pages: MAX_PAGES }, fetchImpl),
     kidNames(env.DB),
   ]);
-  const byId = new Map();
-  for (const p of payments) { const g = giftOf(p, kids); if (g) byId.set(g.id, g); }
-  return { year, list: [...byId.values()].sort((a, b) => b.at - a.at) };
+  return { year, list: giftsOf(payments, kids) };
 }
 
 /** On the board heartbeat: every 15 minutes while Zeffy's key is set. Never throws */
