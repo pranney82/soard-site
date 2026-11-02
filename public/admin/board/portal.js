@@ -709,9 +709,11 @@ function Account({ data, d }) {
   }, [open]);
   const name = data.me.name || who?.name || 'Admin';
   const email = data.me.email || who?.email || '';
+  // A board member by their People card; an admin looking, by their staff one
+  const card = d.me || d.bySlug.get(data.me.as) || null;
   return html`<div class="bp-me" ref=${ref}>
     <button type="button" class="bp-me__btn" aria-expanded=${open} aria-haspopup="true" aria-label=${`${firstName(name)}, your account`} onClick=${() => setOpen(!open)}>
-      ${d.me ? html`<${Avatar} p=${d.me} size=${36} />` : html`<span class="bp-avatar bp-avatar--initials" style="--s:36px;--hue:42" data-i=${initialsOf(name)} aria-hidden="true"></span>`}
+      ${card ? html`<${Avatar} p=${card} size=${36} />` : html`<span class="bp-avatar bp-avatar--initials" style="--s:36px;--hue:42" data-i=${initialsOf(name)} aria-hidden="true"></span>`}
       <span class="bp-me__name">${firstName(name)}</span>
     </button>
     <div class=${`bp-menu ${open ? 'is-open' : ''}`} role="menu" hidden=${!open}>

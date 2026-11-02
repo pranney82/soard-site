@@ -70,7 +70,7 @@ const STAFF = 'pat@soardcharity.com';
 const MEMBER = 'alex.board@example.com';
 const OTHER = 'sam.board@example.org';
 const PEOPLE = {
-  'jane-doe': { name: 'Jane Doe', group: 'team', title: 'Co-Founder/President', order: 1 },
+  'jane-doe': { name: 'Jane Doe', group: 'team', title: 'Co-Founder/President', order: 1, photo: 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ/team/jane-doe/1/public' },
   'pat-lee': { name: 'Pat Lee', group: 'team', title: 'Program Director', order: 2 },
   'alex-rivera': { name: 'Alex Rivera', group: 'board', title: 'Board Chair', organization: 'Rivera Builders', committees: ['Governance'], order: 1 },
   'sam-ortiz': { name: 'Sam Ortiz', group: 'board', title: 'Board Treasurer', organization: 'Ortiz & Co', committees: ['Finance'], order: 2 },
@@ -1065,7 +1065,17 @@ try {
   ok((await meetingNow(jane, meetingId)).actions.some((a) => a.text === 'Send the venue contract' && a.done), 'and that Alex ticked off the action item');
   await jane.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Signed by Alex Rivera/), 'and who signed the policy');
+  // Their People headshot on their account button, as a board member's is (the picture served here, not by Cloudflare;
+  // the CSP set aside, since headshots are same-origin on sunshineonaranneyday.com but not on localhost)
+  const servePhoto = (req) => (/\/cdn-cgi\/imagedelivery\//.test(req.url()) ? req.respond({ status: 200, contentType: 'image/png', body: PNG }) : req.continue());
+  await jane.setBypassCSP(true);
+  await jane.setRequestInterception(true);
+  jane.on('request', servePhoto);
   await jane.goto(`${SITE}/admin/board/`, { waitUntil: 'networkidle0' });
+  ok(await jane.waitForFunction(() => { const i = document.querySelector('.bp-me__btn img.bp-avatar'); return !!i && /\/team\/jane-doe\//.test(i.src) && i.complete && i.naturalWidth > 0; }, { timeout: 8000 }).then(() => true, () => false), 'the founder’s account button shows their headshot from People');
+  jane.off('request', servePhoto);
+  await jane.setRequestInterception(false);
+  await jane.setBypassCSP(false);
   ok(await jane.waitForSelector('#makeovers .bk-col', { timeout: 8000 }).then(() => true, () => false) && /From JobTread/.test(await text(jane)) && !/the way board members do/.test(await text(jane)), 'the founder sees the board page as the board does, with no banner saying so');
   ok(await jane.evaluate(() => !document.querySelector('.bp-choice') && !document.querySelector('.bp-sign')), 'with nothing to answer or sign for anyone');
   await jane.click('.bp-me__btn');
