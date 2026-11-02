@@ -144,19 +144,21 @@ export async function ensureAsks(DB) {
     DB.prepare(`CREATE TABLE IF NOT EXISTS board_ask_questions (id TEXT PRIMARY KEY, meeting_id TEXT NOT NULL, item_id TEXT NOT NULL, ask_id TEXT, by_slug TEXT, by_name TEXT,
       text TEXT NOT NULL, at TEXT, answered_at TEXT, to_names TEXT)`),
   ]);
+  // The meeting's day each ask was made for (a date moved afterwards moves its due); a column the first table lacked
+  await DB.prepare('ALTER TABLE board_asks ADD COLUMN meeting_date TEXT').run().catch(() => {});
   ready.add(DB);
 }
 
 const askOf = (r) => r && ({
   id: r.id, kind: r.kind, meetingId: r.meeting_id, itemId: r.item_id, slug: r.slug, name: r.name || '', email: r.email || '', title: r.title || '',
   subject: r.subject || '', due: r.due || '', status: r.status, askedAt: r.asked_at || '', remindedAt: r.reminded_at || '', lateAt: r.late_at || '',
-  inAt: r.in_at || '', thread: r.thread || '', msgIds: parse(r.msg_ids, []), files: parse(r.files, []), error: r.error || '',
+  inAt: r.in_at || '', thread: r.thread || '', msgIds: parse(r.msg_ids, []), files: parse(r.files, []), error: r.error || '', meetingDate: r.meeting_date || '',
 });
 async function asksFor(DB, meetingId) {
   return ((await DB.prepare('SELECT * FROM board_asks WHERE meeting_id = ? ORDER BY asked_at').bind(meetingId).all()).results || []).map(askOf);
 }
 async function setAsk(DB, id, patch) {
-  const cols = { status: 'status', remindedAt: 'reminded_at', lateAt: 'late_at', inAt: 'in_at', thread: 'thread', due: 'due', askedAt: 'asked_at', error: 'error', subject: 'subject' };
+  const cols = { status: 'status', remindedAt: 'reminded_at', lateAt: 'late_at', inAt: 'in_at', thread: 'thread', due: 'due', askedAt: 'asked_at', error: 'error', subject: 'subject', meetingDate: 'meeting_date' };
   const sets = [];
   const vals = [];
   for (const [k, v] of Object.entries(patch)) {
@@ -198,6 +200,13 @@ function body(paras) {
     : `<p style="${P}">${p.lead ? `${esc(p.lead)}<br>` : ''}<a href="${esc(p.url)}" style="color:#1A5FB4;">${esc(p.label || p.url)}</a></p>`)).join('')}</div>`;
   return { text, html };
 }
+/**
+ * How an email names an item's report. A board-only item's title never goes in an email (board-shared.js: board-only
+ * items are "never emailed"); its presenter knows which it is, and the board page says
+ */
+export const yourReport = (it) => (it.confidential ? 'your report on the board-only item you present' : `your ${it.title} report`);
+const YourReport = (it) => yourReport(it).replace(/^y/, 'Y');
+const itemTitle = (it) => (it.confidential ? 'A board-only item (on the board page)' : it.title || 'Untitled item');
 const reportUrl = (m, itemId) => `${SITE}${BOARD_PAGE}#/meetings/${m.id}/report/${itemId}`;
 const isMoney = (it) => showsOf(it).includes('cash');
 
@@ -207,10 +216,10 @@ export function askEmail({ m, it, person, due, from, books = null }) {
   const asOf = books?.statements?.asOf;
   const money = isMoney(it);
   return {
-    subject: `${name}: your ${it.title} report, due ${dueWords(due, { short: true })}`,
+    subject: `${name}: ${yourReport(it)}, due ${dueWords(due, { short: true })}`,
     ...body([
       `Hi ${firstName(person.name)},`,
-      `The ${name} is ${longDay(m.date)}. Please send your ${it.title} report by ${dueWords(due)}.`,
+      `The ${name} is ${longDay(m.date)}. Please send ${yourReport(it)} by ${dueWords(due)}.`,
       'Just reply to this email with your update. What you write goes on the agenda as your report, and anything you attach goes with it. If there’s nothing new this time, reply and say so.',
       money
         ? { lead: `Your page on the board site has this year’s statements beside last year’s${books?.budget ? ' and the budget' : ''}${asOf ? `, as of ${longDay(asOf).replace(/^\w+, /, '')}` : ''}, with a place to note any line for the board:`, url: reportUrl(m, it.id), label: 'Open your financial review' }
@@ -226,7 +235,17 @@ export function reminderEmail({ m, it, person, due, from, now = Date.now() }) {
   const soon = todayEastern(due) === todayEastern(now) ? `today at ${at}` : todayEastern(due) === addDays(todayEastern(now), 1) ? `tomorrow at ${at}` : dueWords(due);
   return body([
     `Hi ${firstName(person.name)},`,
-    `A reminder that your ${it.title} report for ${weekdayOf(m.date)}’s board meeting is due ${soon}. Reply here with your update, or write it on the board page:`,
+    `A reminder that ${yourReport(it)} for ${weekdayOf(m.date)}’s board meeting is due ${soon}. Reply here with your update, or write it on the board page:`,
+    { url: reportUrl(m, it.id), label: 'Write your report' },
+    `Thanks,\n${firstName(from.name) || 'SOARD'}`,
+  ]);
+}
+
+/** The meeting moved: when their report is due now */
+export function movedEmail({ m, it, person, due, from }) {
+  return body([
+    `Hi ${firstName(person.name)},`,
+    `The ${meetingName(m)} is now ${longDay(m.date)}, so ${yourReport(it)} is due ${dueWords(due)}. Reply here with your update, or write it on the board page:`,
     { url: reportUrl(m, it.id), label: 'Write your report' },
     `Thanks,\n${firstName(from.name) || 'SOARD'}`,
   ]);
@@ -236,7 +255,7 @@ export function reminderEmail({ m, it, person, due, from, now = Date.now() }) {
 export function lateEmail({ m, it, person, due, from, chair = null, now = Date.now() }) {
   return body([
     `Hi ${firstName(person.name)},`,
-    `Your ${it.title} report for ${weekdayOf(m.date)}’s board meeting was due ${todayEastern(due) === todayEastern(now) ? `today at ${dueWords(due).split(' at ')[1]}` : dueWords(due)} and hasn’t come in. Please reply here with your update as soon as you can.${chair ? ` I’ve copied ${firstName(chair.name)} so the agenda’s status is clear.` : ''}`,
+    `${YourReport(it)} for ${weekdayOf(m.date)}’s board meeting was due ${todayEastern(due) === todayEastern(now) ? `today at ${dueWords(due).split(' at ')[1]}` : dueWords(due)} and hasn’t come in. Please reply here with your update as soon as you can.${chair ? ` I’ve copied ${firstName(chair.name)} so the agenda’s status is clear.` : ''}`,
     `Thanks,\n${firstName(from.name) || 'SOARD'}`,
   ]);
 }
@@ -245,8 +264,8 @@ export function lateEmail({ m, it, person, due, from, chair = null, now = Date.n
 export function thanksEmail({ m, it, person, from, answer = false }) {
   return body([
     answer
-      ? `Thanks, ${firstName(person.name)}. Your answer is on the agenda under your ${it.title} report for ${weekdayOf(m.date)}’s meeting:`
-      : `Thanks, ${firstName(person.name)}. Your ${it.title} report is on the agenda for ${weekdayOf(m.date)}’s meeting. You can read it or change it on the board page until then:`,
+      ? `Thanks, ${firstName(person.name)}. Your answer is on the agenda under ${yourReport(it)} for ${weekdayOf(m.date)}’s meeting:`
+      : `Thanks, ${firstName(person.name)}. ${YourReport(it)} is on the agenda for ${weekdayOf(m.date)}’s meeting. You can read it or change it on the board page until then:`,
     { url: reportUrl(m, it.id), label: 'Your report' },
     `${firstName(from.name) || 'SOARD'}`,
   ]);
@@ -255,7 +274,8 @@ export function thanksEmail({ m, it, person, from, answer = false }) {
 /** One item's report as the chair's review says it: in, late, due, or nothing (no one was asked) */
 function reportState(it, asks) {
   if (String(it.report || '').trim()) return 'report in';
-  const mine = asks.filter((a) => a.itemId === it.id && a.kind === 'report' && !['dropped', 'question'].includes(a.status));
+  // Only asks that went out (never one that failed, or that may not have)
+  const mine = asks.filter((a) => a.itemId === it.id && a.kind === 'report' && ['asked', 'late', 'in'].includes(a.status));
   if (!mine.length) return '';
   const due = Math.min(...mine.map((a) => Date.parse(a.due)));
   return mine.some((a) => a.status === 'late') || due <= Date.now() ? `report late (was due ${dueWords(due, { short: true })})` : `report due ${dueWords(due, { short: true })}`;
@@ -272,19 +292,19 @@ const replyReaches = (cc = []) => (cc.length ? `me and ${cc.map((c) => firstName
 export function chairEmail({ m, chair, from, asks = [], people = [], cc = [] }) {
   const name = meetingName(m);
   const plan = sectionPlan(m);
-  const asked = [...new Set(asks.filter((a) => a.kind === 'report' && !['dropped', 'question'].includes(a.status)).map((a) => a.itemId))];
+  const asked = [...new Set(asks.filter((a) => a.kind === 'report' && ['asked', 'late', 'in'].includes(a.status)).map((a) => a.itemId))];
   const items = m.sections.flatMap((s) => s.items).filter((it) => asked.includes(it.id));
   const inCount = items.filter((it) => String(it.report || '').trim()).length;
   const late = items.filter((it) => /late/.test(reportState(it, asks)));
   const when = [longDay(m.date), timeRange(m.start, m.end)].filter(Boolean).join(', ');
-  const status = items.length ? `Reports: ${inCount} of ${items.length} in.${late.length ? ` Late: ${late.map((it) => `${presentersOf(it, people).map((p) => p.name).join(' & ')} (${it.title})`).join('; ')}.` : ''}` : '';
+  const status = items.length ? `Reports: ${inCount} of ${items.length} in.${late.length ? ` Late: ${late.map((it) => `${presentersOf(it, people).map((p) => p.name).join(' & ')} (${itemTitle(it)})`).join('; ')}.` : ''}` : '';
   const clock = (t) => { if (!t) return ''; const [h, mi] = t.split(':').map(Number); return `${h % 12 || 12}:${String(mi).padStart(2, '0')}`; };
   const parts = m.sections.filter((s) => s.items.some(isFilled) || s.title).map((s) => {
     const p = plan.get(s.id);
     const head = `${p?.start ? `${clock(p.start)}  ` : ''}${s.title || 'Untitled part'}${p?.minutes ? ` (${p.minutes} min)` : ''}`;
     const lines = s.items.filter(isFilled).map((it) => {
       const who = presentersOf(it, people).map((x) => x.name).join(' & ');
-      return [it.title || 'Untitled item', who, reportState(it, asks)].filter(Boolean).join(' · ');
+      return [itemTitle(it), who, reportState(it, asks)].filter(Boolean).join(' · ');
     });
     return { head, lines };
   });
@@ -407,21 +427,28 @@ const entities = (s) => String(s).replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, c) =>
 
 // Where each mail program starts the email it quotes (or its signature, Gmail's own)
 const HTML_QUOTE = [
-  /<div[^>]*class="[^"]*gmail_quote/i, /<blockquote[^>]*class="[^"]*gmail_quote/i, /<div[^>]*class="[^"]*gmail_signature/i, /<div[^>]*class="[^"]*gmail_extra/i,
+  /<div[^>]*class="[^"]*gmail_quote/i, /<div[^>]*class="[^"]*gmail_attr/i, /<div[^>]*class="[^"]*gmail_signature/i, /<div[^>]*class="[^"]*gmail_extra/i,
   /<blockquote[^>]*type="cite"/i, /<div[^>]*id="divRplyFwdMsg"/i, /<div[^>]*id="appendonsend"/i, /<div[^>]*id="mail-editor-reference-message-container"/i,
   /<hr[^>]*id="stopSpelling"/i, /<div[^>]*class="[^"]*yahoo_quoted/i, /<div[^>]*class="[^"]*moz-cite-prefix/i,
   /<div[^>]*style="[^"]*border:\s*none;\s*border-top:\s*solid\s*#E1E1E1/i, /<div[^>]*style="[^"]*border-top:\s*solid\s*#B5C4DF/i,
 ];
 const TEXT_QUOTE = [
-  /^[ \t]*On\b[^\n]{0,250}(?:\n[^\n]{0,250})?\bwrote:[ \t]*$/m,
+  /^[ \t]*On\b[^\n]{0,200}\d[^\n]{0,200}(?:\n[^\n]{0,200})?\bwrote:[ \t]*$/m,
   /^[ \t]*-{2,}\s*Original Message\s*-{2,}/mi,
   /^[ \t]*-{2,}\s*Forwarded message\s*-{2,}/mi,
   /^[ \t]*_{20,}[ \t]*\n[ \t]*From:/m,
   /^[ \t]*From:[^\n]+\n[ \t]*(?:Sent|Date):[^\n]+/mi,
-  /^>[^\n]*(?:\n>[^\n]*)*\s*$/m,
+  /(?:^|\n)>[^\n]*(?:\n(?:>[^\n]*|[ \t]*))*$/,
 ];
 // The lines a phone or mail program adds under every email
 const TRAILERS = /^\s*(sent from my (iphone|ipad|android|samsung|galaxy|mobile)[^\n]*|sent from (outlook|yahoo mail|mail for windows)[^\n]*|get outlook for (ios|android)[^\n]*|sent via [^\n]*)\s*$/gim;
+
+/** The phone's or mail program's lines at the very end ("Sent from my iPhone"), and a signature's lone "--" left by the cut */
+function trailersOff(text) {
+  const lines = String(text).replace(/\s+$/, '').split('\n');
+  while (lines.length && (/^\s*$/.test(lines.at(-1)) || /^\s*-{2,3}\s*$/.test(lines.at(-1)) || new RegExp(TRAILERS.source, 'i').test(lines.at(-1)))) lines.pop();
+  return lines.join('\n').trim();
+}
 
 /** An email's own words as text, the email it quotes left out */
 export function cutTextQuote(text) {
@@ -429,12 +456,12 @@ export function cutTextQuote(text) {
   const at = TEXT_QUOTE.map((re) => s.search(re)).filter((i) => i >= 0);
   const cut = at.length ? s.slice(0, Math.min(...at)) : s;
   // The signature delimiter "-- " (a line of its own)
-  return cut.replace(/\n-- ?\n[\s\S]*$/, '\n').replace(TRAILERS, '').trim();
+  return trailersOff(cut.replace(/\n-- \n[\s\S]*$/, '\n'));
 }
 
 /** An HTML email as Markdown: paragraphs, points (and numbered), headings (### only), bold, italic, links */
 export function htmlToMd(html) {
-  let s = String(html || '').replace(/<(style|script|head|title)[\s\S]*?<\/\1>/gi, '').replace(/<!--[\s\S]*?-->/g, '');
+  let s = String(html || '').replace(/<(style|script|head|title)[\s\S]*?<\/\1>/gi, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<!\[(?:if|endif)[^\]]*\]>/gi, '');
   const at = HTML_QUOTE.map((re) => s.search(re)).filter((i) => i >= 0);
   if (at.length) s = s.slice(0, Math.min(...at));
   let out = '';
@@ -451,6 +478,7 @@ export function htmlToMd(html) {
     const close = m[1] === '/';
     const tag = m[2].toLowerCase();
     if (tag === 'br') { out = out.replace(/[ \t]+$/, ''); out += lists.length ? ' ' : '\n'; continue; }
+    if (tag === 'p' && lists.length) continue;
     if (['p', 'table', 'blockquote', 'pre', 'hr'].includes(tag)) { block(2); continue; }
     if (['div', 'tr', 'section', 'article', 'header', 'footer', 'center', 'dl', 'dt', 'dd'].includes(tag)) { if (!lists.length) block(1); continue; }
     if (/^h[1-6]$/.test(tag)) { block(2); if (!close) out += '### '; continue; }
@@ -486,7 +514,13 @@ export function htmlToMd(html) {
     .replace(new RegExp(`${open}|${shut}`, 'g'), md);
   return marks(marks(out, '\u0001', '\u0002', '**'), '\u0003', '\u0004', '*')
     .split('\n').map((l) => l.replace(/[ \t]+$/, '')).join('\n')
-    .replace(TRAILERS, '').replace(/\n{3,}/g, '\n\n').trim();
+    .replace(/\n{3,}/g, '\n\n').trim();
+}
+
+/** Markdown from HTML, cut where a quoted email starts that its HTML didn't mark ("-----Original message-----", "From: … Sent:") */
+function cutQuotedMd(md) {
+  const at = [/^[\\\s]*-{2,}\s*Original Message\s*-{2,}/mi, /^[ \t]*\**From:\**[^\n]+\n+[ \t]*\**(?:Sent|Date):/mi, TEXT_QUOTE[0]].map((re) => md.search(re)).filter((i) => i >= 0);
+  return trailersOff(at.length ? md.slice(0, Math.min(...at)) : md);
 }
 
 /** The quoted email's attribution Apple Mail and others leave just above where the quote was cut ("On …, Peter wrote:") */
@@ -498,7 +532,7 @@ export function replyWords(payload) {
   const decode = (p) => { const cs = /charset="?([\w-]+)/i.exec(header(p.headers, 'Content-Type'))?.[1] || 'utf-8'; try { return new TextDecoder(cs).decode(bytesOf(p.body.data)); } catch { return new TextDecoder().decode(bytesOf(p.body.data)); } };
   const html = parts.find((p) => p.mimeType === 'text/html');
   const plain = parts.find((p) => p.mimeType === 'text/plain');
-  const md = html ? dropAttribution(htmlToMd(decode(html))) : plain ? dropAttribution(cutTextQuote(decode(plain))) : '';
+  const md = html ? dropAttribution(cutQuotedMd(htmlToMd(decode(html)))) : plain ? dropAttribution(cutTextQuote(decode(plain))) : '';
   // Through the board's own Markdown and back, so it's what the editor would have kept
   try { return docToMd(mdToDoc(md)).trim(); } catch { return md; }
 }
@@ -525,8 +559,9 @@ export function replyFiles(payload) {
     if (/\.(ics|vcf|p7s|p7m|asc|sig)$/.test(name) || name === 'winmail.dat' || /pkcs7|calendar|vcard/.test(type)) return false;
     if (size > MAX_FILE) return false;
     const inline = /^inline/i.test(header(p.headers, 'Content-Disposition')) || !!header(p.headers, 'Content-ID');
-    if (type.startsWith('image/')) return !inline ? size >= 20 * 1024 : size >= 150 * 1024;
-    return /pdf|word|excel|sheet|powerpoint|presentation|officedocument|msword/.test(type) || /\.(pdf|docx?|xlsx?|pptx?|csv)$/.test(name);
+    if (/^image\/(jpe?g|png|gif|webp|avif|hei[cf])$/.test(type) || /\.(jpe?g|png|gif|webp|avif|hei[cf])$/.test(name)) return !inline ? size >= 20 * 1024 : size >= 150 * 1024;
+    // What Board keeps (_board.js fileTypeOf): PDF, Word, Excel and PowerPoint
+    return /\.(pdf|docx?|xlsx?|pptx)$/.test(name);
   }).map((p) => ({ part: p.partId, name: p.filename, type: p.mimeType || '', size: p.body.size || 0, attachmentId: p.body.attachmentId || '', data: p.body.data || '' }));
 }
 
@@ -597,7 +632,7 @@ export async function postReport(DB, { meetingId, itemId, words, name, heading =
       items: s.items.map((x) => {
         if (x.id !== itemId) return x;
         const had = String(x.report || '').trim();
-        if (had && had.includes(words.slice(0, 400).trim())) return x;
+        if (had && had.includes(words.trim())) return x;
         const under = heading ? `### ${heading}` : x.reportBy && x.reportBy !== name ? `### From ${name}` : `### Added ${shortDay(todayEastern(now))}`;
         const report = (had ? `${had}\n\n${under}\n\n${words}` : words).slice(0, LIMITS.report);
         return { ...x, report, reportBy: x.reportBy || name, reportAt: nowIso(now) };
@@ -610,9 +645,11 @@ export async function postReport(DB, { meetingId, itemId, words, name, heading =
 
 /** The next meeting ahead (its day not passed), held for real, or null */
 export function nextUp(meetings, today) {
-  return meetings.filter((m) => isDate(m.date) && m.date >= today && !m.notBoard && !m.practice && !m?.live?.endedAt)
+  return meetings.filter((m) => isDate(m.date) && m.date >= today && !m.notBoard && !m.practice && !heldOn(m))
     .sort((a, b) => a.date.localeCompare(b.date))[0] || null;
 }
+/** Held: started and ended live on or after its own day. Ended before it, it was a practice run (Oct 29 2026, on Nov 5's) */
+export const heldOn = (m) => !!m?.live?.endedAt && todayEastern(Date.parse(m.live.endedAt)) >= m.date;
 
 /** Who should be asked for which item: [{ it, person }], board members with an email, items without a report */
 export function wanted(m, people) {
@@ -622,13 +659,24 @@ export function wanted(m, people) {
     .flatMap((it) => presentersOf(it, everyone).filter((p) => p.slug && board.has(p.slug)).map((p) => ({ it, person: people.board.find((b) => b.slug === p.slug) })));
 }
 
+/** This run's turn: board_state's row changed only if no other run changed it since it was read → true when it's ours */
+async function takeTurn(DB, state, now) {
+  const before = JSON.stringify(state);
+  const after = JSON.stringify({ ...state, at: nowIso(now) });
+  const had = await DB.prepare('SELECT data FROM board_state WHERE key = ?').bind(KEY).first();
+  const r = had
+    ? await DB.prepare('UPDATE board_state SET data = ?, updated_at = ? WHERE key = ? AND data = ?').bind(after, nowIso(now), KEY, had.data === before ? before : '\u0000').run()
+    : await DB.prepare('INSERT OR IGNORE INTO board_state (key, data, updated_at) VALUES (?, ?, ?)').bind(KEY, after, nowIso(now)).run();
+  return (r?.meta?.changes ?? r?.changes ?? 0) > 0;
+}
+
 export async function maybeRunAsks(env, { fetchImpl = fetch, now = Date.now(), force = false } = {}) {
   if (!env?.DB || !env.GOOGLE_CALENDAR_KEY) return null;
   try {
     const state = await readState(env.DB, KEY);
     if (state.off) return null;
     if (!force && state.at && now - Date.parse(state.at) < EVERY_MS) return null;
-    await writeState(env.DB, KEY, { ...state, at: nowIso(now) });
+    if (!(await takeTurn(env.DB, state, now))) return null;
     const done = await runAsks(env, { fetchImpl, now });
     await writeState(env.DB, KEY, { ...(await readState(env.DB, KEY)), at: nowIso(now), ok: nowIso(now), error: '', did: done });
     return done;
@@ -678,63 +726,82 @@ export async function runAsks(env, { fetchImpl = fetch, now = Date.now() } = {})
   const fresh = (await getMeeting(env.DB, m.id)) || m;
   const asks = await asksFor(env.DB, m.id);
   const want = wanted(fresh, people);
-  // Asks whose item or presenter is gone stop; a report written on the board page counts as in
-  for (const a of asks.filter((x) => x.kind === 'report' && ['asked', 'late'].includes(x.status))) {
+  // Asks whose item or presenter is gone stop (and start again if they come back); a report written on the board page counts as in
+  for (const a of asks.filter((x) => x.kind === 'report' && ['asked', 'late', 'dropped'].includes(x.status))) {
     const it = fresh.sections.flatMap((s) => s.items).find((x) => x.id === a.itemId);
+    const still = !!it && want.some((w) => w.it.id === a.itemId && w.person.slug === a.slug);
     if (it && String(it.report || '').trim()) await setAsk(env.DB, a.id, { status: 'in', inAt: nowIso(now) });
-    else if (!it || !want.some((w) => w.it.id === a.itemId && w.person.slug === a.slug)) await setAsk(env.DB, a.id, { status: 'dropped' });
+    else if (!still && a.status !== 'dropped') await setAsk(env.DB, a.id, { status: 'dropped' });
+    else if (still && a.status === 'dropped') await setAsk(env.DB, a.id, { status: 'asked' });
   }
-  // An email a run claimed but never recorded as sent (the run stopped between the two): tried again
-  await env.DB.prepare("DELETE FROM board_asks WHERE status = 'sending' AND updated_at < ?").bind(nowIso(now - 15 * 60 * 1000)).run();
+  // An email a run claimed but never recorded as sent (it stopped between the two): it may have gone, so never again by itself
+  await env.DB.prepare("UPDATE board_asks SET status = 'unknown', error = 'The run stopped while sending it' WHERE status = 'sending' AND updated_at < ?").bind(nowIso(now - 15 * 60 * 1000)).run();
   if (!sendingHours(now)) return did;
   ctx.sendToken = await accessToken(env, senders.from.email, { fetchImpl, now, scope: GMAIL_SEND_SCOPE });
   const books = await booksNow(env.DB, { now }).catch(() => null);
-  // The asks (two days ahead at the latest)
+  const errors = [];
+  // The asks (two days ahead at the latest). Each on its own: one that fails never stops the rest
   if (days >= 2) {
     for (const { it, person } of want) {
       if (String(it.report || '').trim() || asks.some((a) => a.kind === 'report' && a.itemId === it.id && a.slug === person.slug)) continue;
-      if (await sendAsk(ctx, fresh, it, person, books)) did.asked++;
+      try { if (await sendAsk(ctx, fresh, it, person, books)) did.asked++; } catch (e) { errors.push(e.message); }
     }
   }
   const current = (await asksFor(env.DB, m.id)).filter((a) => a.kind === 'report');
   const chair = chairOf(people);
   for (const a of current) {
+    // Only an ask that's out and waiting: never one that's in, dropped, failed or a question's own conversation
+    if (!['asked', 'late'].includes(a.status) || !a.due || !a.thread) continue;
     const it = fresh.sections.flatMap((s) => s.items).find((x) => x.id === a.itemId);
-    if (!it || String(it.report || '').trim() || !a.thread) continue;
-    const due = Date.parse(a.due);
+    if (!it || String(it.report || '').trim()) continue;
     const person = people.board.find((p) => p.slug === a.slug) || { name: a.name, email: a.email };
-    // The reminder
-    const at = remindAt(Date.parse(a.askedAt), due);
-    if (a.status === 'asked' && !a.remindedAt && at && now >= at && now < due) {
-      await replyInThread(ctx, a, { to: [person], cc: ctx.senders.cc, ...reminderEmail({ m: fresh, it, person, due, from: senders.from, now }) });
-      await setAsk(env.DB, a.id, { remindedAt: nowIso(now) });
-      did.reminded++;
-    }
-    // Past due (not on the meeting's day: they'll be in the room)
-    if (a.status === 'asked' && now >= due && today < fresh.date) {
-      const copy = [...(chair && chair.slug !== a.slug ? [chair] : []), ...ctx.senders.cc];
-      await replyInThread(ctx, a, { to: [person], cc: copy, ...lateEmail({ m: fresh, it, person, due, from: senders.from, chair: chair && chair.slug !== a.slug ? chair : null, now }) });
-      await setAsk(env.DB, a.id, { status: 'late', lateAt: nowIso(now) });
-      did.late++;
+    try {
+      // The meeting moved: its due moves with it (never sooner than a day off), and the presenter is told
+      if (a.meetingDate && a.meetingDate !== fresh.date) {
+        const moved = Math.max(dueFor(fresh.date, Date.parse(a.askedAt)), dueFor(fresh.date, now));
+        await setAsk(env.DB, a.id, { meetingDate: fresh.date, due: nowIso(moved), status: 'asked', remindedAt: '', lateAt: '' });
+        await replyInThread(ctx, a, { to: [person], cc: ctx.senders.cc, ...movedEmail({ m: fresh, it, person, due: moved, from: senders.from }) });
+        continue;
+      }
+      const due = Date.parse(a.due);
+      // The reminder, claimed before it goes (a second run never sends it again)
+      const at = remindAt(Date.parse(a.askedAt), due);
+      if (a.status === 'asked' && !a.remindedAt && at && now >= at && now < due && await claimed(env.DB, a.id, 'reminded_at', now)) {
+        await replyInThread(ctx, a, { to: [person], cc: ctx.senders.cc, ...reminderEmail({ m: fresh, it, person, due, from: senders.from, now }) });
+        did.reminded++;
+      }
+      // Past due (not on the meeting's day: they'll be in the room), claimed the same way
+      if (a.status === 'asked' && now >= due && today < fresh.date && await claimed(env.DB, a.id, 'late_at', now, { status: 'late' })) {
+        const copy = [...(chair && chair.slug !== a.slug ? [chair] : []), ...ctx.senders.cc];
+        await replyInThread(ctx, a, { to: [person], cc: copy, ...lateEmail({ m: fresh, it, person, due, from: senders.from, chair: chair && chair.slug !== a.slug ? chair : null, now }) });
+        did.late++;
+      }
+    } catch (e) {
+      errors.push(e.message);
+      await setAsk(env.DB, a.id, { error: String(e.message).slice(0, 300) }).catch(() => {});
     }
   }
   // The chair's review, once (not on the meeting's day)
   if (chair && today < fresh.date && !asks.some((a) => a.kind === 'chair')) {
-    const dues = current.filter((a) => !['dropped', 'question'].includes(a.status) && a.due).map((a) => Date.parse(a.due));
+    const dues = current.filter((a) => ['asked', 'late', 'in'].includes(a.status) && a.due).map((a) => Date.parse(a.due));
     if (now >= chairAt(fresh.date, dues)) {
       const all = await asksFor(env.DB, m.id);
       const mail = chairEmail({ m: (await getMeeting(env.DB, m.id)) || fresh, chair, from: senders.from, asks: all, people: [...people.board, ...people.staff], cc: ctx.senders.cc });
-      if (await claim(env.DB, { kind: 'chair', meetingId: m.id, itemId: '', person: chair, title: '', now })) {
-        const sent = await send(ctx, { to: [chair], cc: ctx.senders.cc, ...mail }).catch(async (e) => {
-          await env.DB.prepare("DELETE FROM board_asks WHERE kind = 'chair' AND meeting_id = ? AND status = 'sending'").bind(m.id).run();
-          throw e;
-        });
-        await env.DB.prepare('UPDATE board_asks SET status = ?, thread = ?, msg_ids = ?, subject = ?, updated_at = ? WHERE kind = ? AND meeting_id = ?')
-          .bind('sent', sent.threadId, JSON.stringify([sent.messageId].filter(Boolean)), mail.subject, nowIso(now), 'chair', m.id).run();
-        did.chair++;
+      if (await claim(env.DB, { kind: 'chair', meetingId: m.id, itemId: '', person: chair, title: '', date: fresh.date, now })) {
+        try {
+          const sent = await send(ctx, { to: [chair], cc: ctx.senders.cc, ...mail });
+          await env.DB.prepare("UPDATE board_asks SET status = 'sent', thread = ?, msg_ids = ?, subject = ?, updated_at = ? WHERE kind = 'chair' AND meeting_id = ? AND status = 'sending'")
+            .bind(sent.threadId, JSON.stringify([sent.messageId].filter(Boolean)), mail.subject, nowIso(now), m.id).run();
+          did.chair++;
+        } catch (e) {
+          errors.push(e.message);
+          await env.DB.prepare("UPDATE board_asks SET status = ?, error = ?, updated_at = ? WHERE kind = 'chair' AND meeting_id = ? AND status = 'sending'")
+            .bind(gmailRefused(e) ? 'failed' : 'unknown', String(e.message).slice(0, 300), nowIso(now), m.id).run();
+        }
       }
     }
   }
+  if (errors.length) did.errors = errors;
   return did;
 }
 
@@ -772,29 +839,42 @@ export async function sendTests(ctx, m, books) {
   return mails.length;
 }
 
+/** A reminder or past-due note claimed before it goes: true only for the run whose UPDATE set it (`also`: more columns) */
+async function claimed(DB, id, col, now, also = {}) {
+  const extra = Object.entries(also).map(([k]) => `, ${k} = ?`).join('');
+  const r = await DB.prepare(`UPDATE board_asks SET ${col} = ?${extra}, updated_at = ? WHERE id = ? AND (${col} IS NULL OR ${col} = '')`)
+    .bind(nowIso(now), ...Object.values(also), nowIso(now), id).run();
+  return (r?.meta?.changes ?? r?.changes ?? 0) > 0;
+}
+
 /** A row for an email about to go, so a second run never sends it again → true when this run has it */
-async function claim(DB, { kind, meetingId, itemId, person, title, due = '', now }) {
-  const r = await DB.prepare(`INSERT OR IGNORE INTO board_asks (id, kind, meeting_id, item_id, slug, name, email, title, due, status, asked_at, msg_ids, files, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sending', ?, '[]', '[]', ?)`).bind(uid('ask_'), kind, meetingId, itemId, person.slug, person.name, person.email, title, due, nowIso(now), nowIso(now)).run();
+async function claim(DB, { kind, meetingId, itemId, person, title, due = '', date = '', now }) {
+  const r = await DB.prepare(`INSERT OR IGNORE INTO board_asks (id, kind, meeting_id, item_id, slug, name, email, title, due, status, asked_at, msg_ids, files, updated_at, meeting_date)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sending', ?, '[]', '[]', ?, ?)`).bind(uid('ask_'), kind, meetingId, itemId, person.slug, person.name, person.email, title, due, nowIso(now), nowIso(now), date).run();
   return (r?.meta?.changes ?? r?.changes ?? 0) > 0;
 }
 
 async function sendAsk(ctx, m, it, person, books) {
   const { env, now } = ctx;
   const due = dueFor(m.date, now);
-  if (!(await claim(env.DB, { kind: 'report', meetingId: m.id, itemId: it.id, person, title: it.title, due: nowIso(due), now }))) return false;
+  if (!(await claim(env.DB, { kind: 'report', meetingId: m.id, itemId: it.id, person, title: it.title, due: nowIso(due), date: m.date, now }))) return false;
   const mail = askEmail({ m, it, person, due, from: ctx.senders.from, books });
+  const where = 'WHERE kind = ? AND meeting_id = ? AND item_id = ? AND slug = ?';
+  let sent;
   try {
-    const sent = await send(ctx, { to: [person], cc: ctx.senders.cc, ...mail });
-    await env.DB.prepare('UPDATE board_asks SET status = ?, thread = ?, msg_ids = ?, subject = ?, updated_at = ? WHERE kind = ? AND meeting_id = ? AND item_id = ? AND slug = ?')
-      .bind('asked', sent.threadId, JSON.stringify([sent.messageId].filter(Boolean)), mail.subject, nowIso(now), 'report', m.id, it.id, person.slug).run();
-    return true;
+    sent = await send(ctx, { to: [person], cc: ctx.senders.cc, ...mail });
   } catch (e) {
-    // Never sent: the row goes, so the next run tries again
-    await env.DB.prepare("DELETE FROM board_asks WHERE kind = 'report' AND meeting_id = ? AND item_id = ? AND slug = ? AND status = 'sending'").bind(m.id, it.id, person.slug).run();
-    throw e;
+    // Gmail refused it (4xx: it didn't go) or the answer never came (it may have): kept, said in Automations, never sent again by itself
+    await env.DB.prepare(`UPDATE board_asks SET status = ?, error = ?, updated_at = ? ${where}`).bind(gmailRefused(e) ? 'failed' : 'unknown', String(e.message).slice(0, 300), nowIso(now), 'report', m.id, it.id, person.slug).run();
+    console.error('[board-asks] ask', person.slug, e.message);
+    return false;
   }
+  await env.DB.prepare(`UPDATE board_asks SET status = ?, thread = ?, msg_ids = ?, subject = ?, updated_at = ? ${where}`)
+    .bind('asked', sent.threadId, JSON.stringify([sent.messageId].filter(Boolean)), mail.subject, nowIso(now), 'report', m.id, it.id, person.slug).run();
+  return true;
 }
+/** Gmail said no (a 4xx): the email didn't go */
+const gmailRefused = (e) => /Gmail answered 4\d\d/.test(String(e?.message || ''));
 
 /** An email in an ask's conversation, after its newest message, as a reply to it */
 async function replyInThread(ctx, a, mail) {
@@ -809,7 +889,8 @@ const mark = (DB, id, a, sender, outcome, detail = '') => DB.prepare('INSERT OR 
   .bind(id, a.id, nowIso(), sender, outcome, String(detail).slice(0, 300)).run();
 
 /** The replies in an ask's conversation, and any that left it (a new subject) but still name one of its emails */
-async function readReplies(ctx, m, a) {
+async function readReplies(ctx, m, ask) {
+  let a = ask;
   const { env, fetchImpl } = ctx;
   const out = { replies: 0, reports: 0 };
   const thread = await gmailCall(ctx.readToken, `/threads/${a.thread}?format=full`, { fetchImpl });
@@ -825,9 +906,10 @@ async function readReplies(ctx, m, a) {
       if (a.msgIds.some((id) => id && refs.includes(id))) msgs.push(await gmailCall(ctx.readToken, `/messages/${ref.id}?format=full`, { fetchImpl }));
     }
   }
-  const seen = new Set(((await env.DB.prepare('SELECT gmail_id FROM board_ask_mail WHERE ask_id = ?').bind(a.id).all()).results || []).map((r) => r.gmail_id));
   for (const msg of msgs) {
-    if (!msg?.id || seen.has(msg.id) || (msg.labelIds || []).some((l) => l === 'SENT' || l === 'DRAFT')) continue;
+    if (!msg?.id || (msg.labelIds || []).some((l) => l === 'SENT' || l === 'DRAFT')) continue;
+    if (await env.DB.prepare('SELECT 1 AS x FROM board_ask_mail WHERE gmail_id = ?').bind(msg.id).first()) continue;
+    a = askOf(await env.DB.prepare('SELECT * FROM board_asks WHERE id = ?').bind(a.id).first()) || a;
     if (Number(msg.internalDate || 0) < Date.parse(a.askedAt)) continue;
     const h = msg.payload?.headers || [];
     const who = senderOf(header(h, 'From'));
@@ -874,6 +956,8 @@ async function takeReply(ctx, m, a, msg) {
   }
   // A reply that's only a file: the report says what came, so it reads as in. An answer goes under the question it answers
   const text = words || (added.length ? `Attached: ${added.join(', ')}` : '');
+  // Only files, and none could be kept: not in, not thanked (it waits in the inbox for a person)
+  if (!text) return { outcome: 'files-failed', detail: files.map((f) => f.name).join(', ') };
   const heading = q ? `Answer to ${q.by_name}’s question` : '';
   if (text) await postReport(env.DB, { meetingId: m.id, itemId: it.id, words: q ? `> ${mdPlain(q.text).replace(/\n+/g, ' ')}\n\n${text}` : text, name: a.name, heading, now });
   if (q) await env.DB.prepare('UPDATE board_ask_questions SET answered_at = ? WHERE id = ?').bind(nowIso(now), q.id).run();
@@ -925,7 +1009,7 @@ export function questionEmail({ m, it, person, asker, question, from }) {
   const own = normEmail(asker.email) === normEmail(from.email);
   return body([
     `Hi ${firstName(person.name)},`,
-    `${own ? 'I have' : `${firstName(asker.name)} has`} a question about your ${it.title} report for ${weekdayOf(m.date)}’s meeting:`,
+    `${own ? 'I have' : `${firstName(asker.name)} has`} a question about ${yourReport(it)} for ${weekdayOf(m.date)}’s meeting:`,
     `“${question}”`,
     'Reply here with your answer. It goes on the agenda under your report, so the board sees it too.',
     `Thanks,\n${firstName(from.name) || 'SOARD'}`,
@@ -943,6 +1027,14 @@ export async function askPresenter(env, { meetingId, itemId, question }, w, { fe
   const everyone = [...ctx.people.board, ...ctx.people.staff];
   const to = presentersOf(it, everyone).map((p) => ctx.people.board.find((b) => b.slug === p.slug && b.email)).filter(Boolean);
   if (!to.length) throw err('No board member with an email presents this item, so there’s no one to send it to', 409);
+  // Test mode: the emails as they'd go, to the asker alone; nothing kept, so nothing waits for an answer once it's On
+  if (ctx.test) {
+    for (const person of to) {
+      const copy = [...(asker.email && asker.email !== ctx.senders.from.email ? [asker] : []), ...ctx.senders.cc];
+      await send(ctx, { to: [person], cc: copy, subject: `${meetingName(m)}: a question about ${yourReport(it)}`, ...questionEmail({ m, it, person, asker, question: text, from: ctx.senders.from }) });
+    }
+    return { questions: await questionsFor(env.DB, m.id), test: true };
+  }
   const id = uid('q_');
   await env.DB.prepare('INSERT INTO board_ask_questions (id, meeting_id, item_id, by_slug, by_name, text, at, to_names) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(id, m.id, it.id, asker.slug, asker.name, text, nowIso(now), to.map((p) => p.name).join(' & ')).run();
@@ -951,13 +1043,14 @@ export async function askPresenter(env, { meetingId, itemId, question }, w, { fe
     for (const person of to) {
       const mail = questionEmail({ m, it, person, asker, question: text, from: ctx.senders.from });
       const copy = [...(asker.email && asker.email !== ctx.senders.from.email ? [asker] : []), ...ctx.senders.cc].filter((c, i, all) => c.email !== person.email && all.findIndex((x) => x.email === c.email) === i);
-      const a = asks.find((x) => x.kind === 'report' && x.itemId === it.id && x.slug === person.slug && x.thread);
+      const a = asks.find((x) => ['report', 'question'].includes(x.kind) && x.itemId === it.id && x.slug === person.slug && x.thread && !['failed', 'unknown'].includes(x.status));
       if (a) { await replyInThread(ctx, a, { to: [person], cc: copy, ...mail }); continue; }
       // No ask out to them (their report came another way): a conversation of its own, read the way an ask's is
-      const subject = `${meetingName(m)}: a question about your ${it.title} report`;
+      const subject = `${meetingName(m)}: a question about ${yourReport(it)}`;
       const sent = await send(ctx, { to: [person], cc: copy, subject, ...mail });
+      // Its own kind: never counted as a report asked for, and never in the way of the ask itself
       await env.DB.prepare(`INSERT OR REPLACE INTO board_asks (id, kind, meeting_id, item_id, slug, name, email, title, subject, due, status, asked_at, thread, msg_ids, files, updated_at)
-        VALUES (?, 'report', ?, ?, ?, ?, ?, ?, ?, '', 'question', ?, ?, ?, '[]', ?)`)
+        VALUES (?, 'question', ?, ?, ?, ?, ?, ?, ?, '', 'question', ?, ?, ?, '[]', ?)`)
         .bind(uid('ask_'), m.id, it.id, person.slug, person.name, person.email, it.title, subject, nowIso(now), sent.threadId, JSON.stringify([sent.messageId].filter(Boolean)), nowIso(now)).run();
     }
   } catch (e) {
@@ -970,6 +1063,16 @@ export async function askPresenter(env, { meetingId, itemId, question }, w, { fe
 /** The chair approves the agenda: kept, and said in the review's conversation so the founders see it → { approvedAt, approvedBy } */
 export async function chairApprove(env, { meetingId }, w, { fetchImpl = fetch, now = Date.now() } = {}) {
   const { m, asker } = await chairGate(env, meetingId, w);
+  // Test or off: the note as it'd go (test), nothing kept, so the real review still goes once it's On
+  if (asksMode(await readSettings(env.DB)) !== 'on') {
+    try {
+      const ctx = await mailer(env, { fetchImpl, now });
+      await send(ctx, { to: [asker.email ? asker : ctx.senders.from], cc: ctx.senders.cc, subject: `Re: Agenda for your review: ${meetingName(m)}, ${shortDay(m.date)}`, ...body([`Thanks, ${firstName(asker.name)}. The agenda for the ${meetingName(m)} on ${longDay(m.date)} is approved.`, `${firstName(ctx.senders.from.name) || 'SOARD'}`]) });
+    } catch (e) {
+      if (e.status !== 409) console.error('[board-asks] approved (test)', e.message);
+    }
+    return { approvedAt: nowIso(now), approvedBy: asker.name, test: true };
+  }
   const row = askOf(await env.DB.prepare("SELECT * FROM board_asks WHERE kind = 'chair' AND meeting_id = ?").bind(m.id).first());
   if (row?.status === 'approved') return { approvedAt: row.inAt, approvedBy: row.name };
   if (row) await env.DB.prepare("UPDATE board_asks SET status = 'approved', in_at = ?, name = ?, updated_at = ? WHERE id = ?").bind(nowIso(now), asker.name, nowIso(now), row.id).run();
@@ -1040,9 +1143,9 @@ async function readChairReplies(ctx, m, a) {
   const { env, fetchImpl } = ctx;
   const out = { replies: 0, reports: 0 };
   const thread = await gmailCall(ctx.readToken, `/threads/${a.thread}?format=full`, { fetchImpl });
-  const seen = new Set(((await env.DB.prepare('SELECT gmail_id FROM board_ask_mail WHERE ask_id = ?').bind(a.id).all()).results || []).map((r) => r.gmail_id));
   for (const msg of thread?.messages || []) {
-    if (!msg?.id || seen.has(msg.id) || (msg.labelIds || []).some((l) => l === 'SENT' || l === 'DRAFT')) continue;
+    if (!msg?.id || (msg.labelIds || []).some((l) => l === 'SENT' || l === 'DRAFT')) continue;
+    if (await env.DB.prepare('SELECT 1 AS x FROM board_ask_mail WHERE gmail_id = ?').bind(msg.id).first()) continue;
     const h = msg.payload?.headers || [];
     const who = senderOf(header(h, 'From'));
     if (isStaffEmail(who.email)) { await mark(env.DB, msg.id, a, who.email, 'staff'); continue; }
@@ -1131,7 +1234,9 @@ export async function portalExtras(env, { member = null, admin = false, meetings
     await ensureAsks(env.DB);
     const everyone = people ? [...people.board, ...people.staff] : await roster(env.DB).then((r) => [...r.board, ...r.staff]);
     const ahead = meetings.filter((m) => isDate(m.date) && m.date >= today && !m.notBoard);
-    const presenting = member ? ahead.filter((m) => !m.shared).map((m) => {
+    const { template } = await getSettings(env.DB);
+    // Before it's shared: only the two weeks the asks go out in, and only an agenda that isn't a draft
+    const presenting = member ? ahead.filter((m) => !m.shared && daysUntil(today, m.date) <= ASK_DAYS && !agendaIsDraft(m, template)).map((m) => {
       const mine = (it) => presentersOf(it, everyone).some((p) => p.slug === member.slug);
       const sections = m.sections.map((s) => ({ ...s, items: s.items.filter(mine) })).filter((s) => s.items.length);
       if (!sections.length) return null;
@@ -1181,8 +1286,10 @@ export async function asksStatus(DB) {
 /** Automations' live status: counts, times and on/off only (no names or addresses) */
 export async function asksFacts(DB) {
   const s = await asksStatus(DB);
-  const reports = s.asks.filter((a) => a.kind === 'report' && !['dropped', 'sending', 'question'].includes(a.status));
+  const reports = s.asks.filter((a) => a.kind === 'report' && ['asked', 'late', 'in'].includes(a.status));
   const chair = s.asks.find((a) => a.kind === 'chair');
+  // An email Gmail refused, or one that may not have gone: never sent again by itself, so someone should look
+  const failed = s.asks.filter((a) => ['failed', 'unknown'].includes(a.status)).length;
   return {
     at: s.at, ok: s.ok, error: s.error, errorAt: s.errorAt, off: s.off,
     meeting: s.meeting ? { name: s.meeting.name, date: s.meeting.date } : null,
@@ -1190,5 +1297,6 @@ export async function asksFacts(DB) {
     in: reports.filter((a) => a.status === 'in').length,
     late: reports.filter((a) => a.status === 'late' || (a.status === 'asked' && Date.parse(a.due) <= Date.now())).length,
     chair: chair ? chair.status : '',
+    failed,
   };
 }

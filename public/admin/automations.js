@@ -851,6 +851,7 @@ const MAP = { t: 'SOARD', children: [
             if (a.error) return ATTN(/unauthorized_client/.test(a.error) ? 'Google hasn’t allowed the site to send as Peter: gmail.send on the domain-wide delegation.' : `The last run failed: ${a.error}`, a.errorAt || a.at);
             if (!a.at) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
             if (stale(a.at, HOUR)) return ATTN(`Hasn’t run since ${stamp(a.at)}. Check the Heartbeat entry.`, a.at);
+            if (a.failed) return ATTN(`${plural(a.failed, 'email')} to presenters or the chair didn’t go (or may not have). They aren’t sent again by themselves: check Board, then ask by hand.`, a.at);
             if (!a.meeting || !a.asked) return ON(a.meeting ? `Nothing asked for yet for the ${a.meeting.name}.` : 'No meeting ahead.', a.at);
             return ON(`${a.meeting.name}: ${a.in} of ${plural(a.asked, 'report')} in${a.late ? `, ${a.late} late` : ''}${a.chair === 'approved' ? '. The chair approved the agenda.' : a.chair ? '. The chair has the agenda to review.' : '.'}`, a.at);
           } },

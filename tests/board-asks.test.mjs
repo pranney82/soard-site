@@ -14,7 +14,7 @@ import { clearTokenCache } from '../functions/api/_google-calendar.js';
 import {
   easternAt, dueFor, remindAt, chairAt, dueWords, htmlToMd, cutTextQuote, isAutoReply, replyFiles, mimeOf, senderOf, cutSignature, judgeByRules,
   runAsks, maybeRunAsks, saveLineNote, portalExtras, sendersFor, askEmail, chairEmail, postReport, GMAIL_SEND_SCOPE,
-  chairApprove, chairNote, askPresenter, judgeChair, asTest,
+  chairApprove, chairNote, askPresenter, judgeChair, asTest, replyWords,
 } from '../functions/api/_board-asks.js';
 
 const PEOPLE = [
@@ -75,8 +75,11 @@ function fakeGmail() {
     const path = url.pathname.replace('/gmail/v1/users/me', '');
     if (path === '/messages/send' && init.method === 'POST') {
       const { raw, threadId } = JSON.parse(init.body);
-      const id = `out${++g.n}`;
       const m = parseRaw(raw);
+      // A send Gmail refuses (an address it won't take) or never answers well (a 500)
+      const refused = g.refuse?.(m);
+      if (refused) return Response.json({ error: { message: `refused (${refused})` } }, { status: refused });
+      const id = `out${++g.n}`;
       const msg = g.add({ id, threadId: threadId || `t${id}`, labelIds: ['SENT'], internalDate: String(g.now()), payload: { headers: [...m.headers, { name: 'Message-ID', value: `<${id}@mail.gmail.com>` }] }, text: m.text, html: m.html });
       g.sent.push(msg);
       return Response.json({ id, threadId: msg.threadId });
@@ -564,4 +567,163 @@ test('a question on a report no ask went out for: its own conversation, never co
   assert.equal((await run()).reports, 1);
   assert.match((await getMeeting(env.DB, 'm_nov5')).sections[1].items.find((x) => x.id === 'i_fin').report, /### Answer to Alex Rivera’s question\n\n> And the CD\?\n\nThe CD renews in March\.$/);
   assert.equal((await env.DB.prepare("SELECT status FROM board_asks WHERE item_id = 'i_fin'").first()).status, 'question');
+});
+
+// ─── What the review found, each proved and now fixed ───────────────
+
+const rows = () => env.DB.prepare('SELECT kind, item_id, slug, status, due, error FROM board_asks ORDER BY kind, item_id').all().then((r) => r.results);
+
+test('a question before any ask (or on an item never asked for) never stops a run, and the ask still goes with its due', async () => {
+  await meeting();
+  clock = Date.parse('2026-11-03T02:00:00Z'); // 9 PM Monday: no emails out yet
+  await askPresenter(env, { meetingId: 'm_nov5', itemId: 'i_gov', question: 'Is the bylaw change ready?' }, { member: ALEX }, opts());
+  clock = NOV3_9AM;
+  const did = await run();
+  assert.equal(did.asked, 2);
+  assert.equal(did.errors, undefined);
+  assert.ok((await rows()).some((r) => r.kind === 'report' && r.item_id === 'i_gov' && r.status === 'asked' && r.due));
+  clock = easternAt('2026-11-04', '08:00');
+  assert.equal((await run()).reminded, 2);
+});
+
+test('test mode: trying Approve and a question leaves nothing behind; once On, the asks and the chair’s review all go', async () => {
+  await setMode('test');
+  await meeting();
+  const admin = { admin: true, adminEmail: 'max@soardcharity.com' };
+  const ok = await chairApprove(env, { meetingId: 'm_nov5' }, admin, opts());
+  assert.equal(ok.test, true);
+  await askPresenter(env, { meetingId: 'm_nov5', itemId: 'i_fin', question: 'Trying the button' }, admin, opts());
+  assert.ok(gmail.sent.every((m) => hdr(m, 'To') === 'Max Doe <max@soardcharity.com>'));
+  assert.deepEqual(await rows(), []);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM board_ask_questions').first()).n, 0);
+  await setMode('on');
+  assert.equal((await run()).asked, 2);
+  clock = easternAt('2026-11-04', '12:06');
+  assert.equal((await run()).chair, 1);
+});
+
+test('one address Gmail refuses: the others are still asked, it’s kept as failed and never retried; an unclear failure isn’t resent', async () => {
+  await meeting();
+  const to = (m) => m.headers.find((h) => h.name === 'To')?.value || '';
+  gmail.refuse = (m) => (/kim\.board/.test(to(m)) ? 400 : /sam\.board/.test(to(m)) ? 500 : 0);
+  const did = await run();
+  assert.equal(did.asked, 0);
+  const r = (await rows()).filter((x) => x.kind === 'report');
+  assert.deepEqual(r.map((x) => [x.slug, x.status]).sort(), [['kim-park', 'failed'], ['sam-ortiz', 'unknown']]);
+  assert.match(r.find((x) => x.slug === 'kim-park').error, /refused \(400\)/);
+  gmail.refuse = null;
+  // Only the chair's review went (no ask out to wait for); the next run sends neither ask again
+  const after = gmail.sent.length;
+  clock += 10 * 60 * 1000;
+  await run();
+  assert.equal(gmail.sent.length, after, 'neither is sent again by itself');
+  // The chair's review still goes, and it never counts an ask that didn't go out as due
+  const review = gmail.sent.find((m) => /Agenda for your review/.test(hdr(m, 'Subject')));
+  assert.ok(review);
+  assert.doesNotMatch(review.text, /Reports:|report due/);
+});
+
+test('the meeting moves: each presenter hears the new due, and the old one never says "was due"', async () => {
+  await meeting();
+  await run();
+  await meeting({ date: '2026-11-12' });
+  clock = NOV3_9AM + 60 * 60 * 1000;
+  await run();
+  const moved = gmail.sent.filter((m) => /is now Thursday, November 12/.test(m.text));
+  assert.equal(moved.length, 2);
+  assert.match(moved[0].text, /is due Thursday, November 5 at 5 PM\./);
+  clock = easternAt('2026-11-04', '12:01');
+  assert.equal((await run()).late, 0);
+  clock = easternAt('2026-11-05', '17:01');
+  assert.equal((await run()).late, 2);
+});
+
+test('a presenter dropped for a moment is asked again when they’re back, and their reply goes on', async () => {
+  await meeting();
+  await run();
+  const kimAsk = gmail.sent.find((m) => hdr(m, 'To').startsWith('Kim'));
+  await meeting({ sections: [{ id: 's_rep', title: 'Committee reports', items: [{ id: 'i_gov', title: 'Governance', presenter: 'K' }, { id: 'i_fin', title: 'Financial', presenter: 'Sam', live: 'cash' }] }] });
+  await run();
+  assert.equal((await rows()).find((x) => x.slug === 'kim-park').status, 'dropped');
+  await meeting();
+  await run();
+  assert.equal((await rows()).find((x) => x.slug === 'kim-park').status, 'asked');
+  env.AI = { run: async () => ({ response: { kind: 'report', signature: '' } }) };
+  gmail.reply(kimAsk.threadId, { from: 'Kim Park <kim.board@example.net>', text: 'No changes to the bylaws this quarter.' });
+  clock += 10 * 60 * 1000;
+  assert.equal((await run()).reports, 1);
+});
+
+test('a practice run that ended before the meeting’s day doesn’t make it held: On still asks for it', async () => {
+  await meeting({ live: { startedAt: '2026-10-30T01:04:42Z', endedAt: '2026-10-30T01:41:02Z' } });
+  assert.equal((await run()).asked, 2);
+});
+
+test('a board-only item’s title never goes in an email', async () => {
+  await meeting({ sections: [{ id: 's_rep', title: 'Committee reports', items: [{ id: 'i_sec', title: 'Executive session: staff pay', presenter: 'Kim', confidential: true }, { id: 'i_fin', title: 'Financial', presenter: 'Sam', live: 'cash' }] }] });
+  await run();
+  const kim = gmail.sent.find((m) => hdr(m, 'To').startsWith('Kim'));
+  assert.equal(hdr(kim, 'Subject'), 'Q4 2026 Board Meeting: your report on the board-only item you present, due Wed, Nov 4 at noon');
+  assert.doesNotMatch(kim.text + kim.html, /Executive session|staff pay/);
+  clock = easternAt('2026-11-04', '12:06');
+  await run();
+  const review = gmail.sent.find((m) => /Agenda for your review/.test(hdr(m, 'Subject')));
+  assert.match(review.text, /A board-only item \(on the board page\) · Kim Park/);
+  assert.ok(gmail.sent.every((m) => !/Executive session|staff pay/.test(m.text + m.html + hdr(m, 'Subject'))));
+});
+
+test('a reply that’s only a file Board can’t keep isn’t marked in or thanked; one PDF sent twice in a run goes on once', async () => {
+  await meeting();
+  await run();
+  const ask = gmail.sent.find((m) => hdr(m, 'To').startsWith('Sam'));
+  env.AI = { run: async () => ({ response: { kind: 'report', signature: '' } }) };
+  gmail.reply(ask.threadId, { from: 'Sam Ortiz <sam.board@example.org>', text: '', files: [{ name: 'numbers.csv', type: 'text/csv', bytes: Buffer.from('a,b\n1,2\n') }] });
+  const before = gmail.sent.length;
+  clock += 10 * 60 * 1000;
+  await run();
+  assert.equal(gmail.sent.length, before, 'no thanks');
+  assert.equal((await rows()).find((x) => x.slug === 'sam-ortiz').status, 'asked');
+  const pdf = { name: 'Q4.pdf', type: 'application/pdf', bytes: Buffer.from('%PDF-1.4\n% made up\n') };
+  gmail.reply(ask.threadId, { from: 'Sam Ortiz <sam.board@example.org>', text: 'Here are the numbers.', files: [pdf] });
+  gmail.reply(ask.threadId, { from: 'Sam Ortiz <sam.board@example.org>', text: 'Again, with the PDF.', files: [pdf] });
+  clock += 10 * 60 * 1000;
+  await run();
+  const m = await getMeeting(env.DB, 'm_nov5');
+  assert.equal(m.files.filter((f) => f.name === 'Q4.pdf').length, 1);
+});
+
+test('a corrected copy that starts the same goes on under the first, never dropped', async () => {
+  await meeting();
+  await run();
+  const ask = gmail.sent.find((m) => hdr(m, 'To').startsWith('Sam'));
+  env.AI = { run: async () => ({ response: { kind: 'report', signature: '' } }) };
+  const long = `Revenue is ahead of plan. ${'Detail. '.repeat(60)}`;
+  gmail.reply(ask.threadId, { from: 'Sam Ortiz <sam.board@example.org>', text: `${long}Cash is $560K.` });
+  clock += 10 * 60 * 1000;
+  await run();
+  gmail.reply(ask.threadId, { from: 'Sam Ortiz <sam.board@example.org>', text: `${long}Cash is $570K (corrected).` });
+  clock += 10 * 60 * 1000;
+  await run();
+  assert.match((await getMeeting(env.DB, 'm_nov5')).sections[1].items.find((x) => x.id === 'i_fin').report, /\$570K \(corrected\)/);
+});
+
+test('two heartbeats at the same moment: one run, not two (no email twice)', async () => {
+  await setMode('test');
+  await meeting();
+  await Promise.all([maybeRunAsks(env, { fetchImpl: gmail.fetch, now: clock }), maybeRunAsks(env, { fetchImpl: gmail.fetch, now: clock })]);
+  assert.equal(gmail.sent.length, 8);
+});
+
+test('replies as mail programs really send them: Outlook bullets, a quote they made, Samsung’s quote, and text that only looks like a quote', () => {
+  const outlook = '<p class=MsoListParagraph><![if !supportLists]><span>·<span>&nbsp;&nbsp; </span></span><![endif]>Revenue up 12%<o:p></o:p></p>';
+  assert.doesNotMatch(htmlToMd(outlook), /supportLists|endif/);
+  const ownQuote = '<div>As the bylaws say:</div><blockquote class="gmail_quote" style="margin:0 0 0 .8ex">The treasurer reports quarterly.</blockquote><div>So this is my report.</div><div class="gmail_quote"><div class="gmail_attr">On Tue, Nov 3, 2026 at 9:00 AM Max Doe wrote:</div><blockquote class="gmail_quote">Hi</blockquote></div>';
+  assert.match(htmlToMd(ownQuote), /The treasurer reports quarterly\.[\s\S]*So this is my report\./);
+  assert.doesNotMatch(htmlToMd(ownQuote), /^Hi$/m);
+  const samsung = { mimeType: 'multipart/alternative', parts: [{ partId: '0', mimeType: 'text/html', headers: [{ name: 'Content-Type', value: 'text/html; charset=UTF-8' }], body: { data: Buffer.from('<div>Store is steady.</div><div><br></div><div>-------- Original message --------</div><div>From: Max Doe &lt;max@soardcharity.com&gt;</div><div>Date: 11/3/26 9:00 AM</div><div>Hi Sam, please send</div>').toString('base64url') } }] };
+  assert.equal(replyWords(samsung), 'Store is steady.');
+  assert.equal(cutTextQuote('Renewals:\n>50% renewed\nThe rest in December.'), 'Renewals:\n>50% renewed\nThe rest in December.');
+  assert.equal(cutTextQuote('Plan:\n--\nthen the gala.\nSent via the portal, as agreed.\nMore.'), 'Plan:\n--\nthen the gala.\nSent via the portal, as agreed.\nMore.');
+  assert.equal(cutTextQuote('On the budget, we’re fine.\nSam wrote: the plan holds.'), 'On the budget, we’re fine.\nSam wrote: the plan holds.');
+  assert.equal(htmlToMd('<ul><li><p>one</p></li><li><p>two</p></li></ul>'), '- one\n- two');
 });
