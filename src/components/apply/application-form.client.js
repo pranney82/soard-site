@@ -248,6 +248,7 @@ function init(root, cfg, mode) {
   let uspsNow = null;        // the Postal Service's word on the home address (with a Google key): { key, status }
   const uspsOn = !!cfg.usps;
   let areaNow = null;        // the last service-area check of the home address: { key, band, answer, lat, lng, miles, county, matched, reason }
+  let askedFor = null;       // the address (its key) the family's own answer to "is the home inside the area?" is about
 
   const T = (k, v = {}) => word(lang, k, { year, ...v }, kind);
   /** A message spec: 'key', ['key', vars] or { raw: 'text' } → words in the current language */
@@ -533,6 +534,7 @@ function init(root, cfg, mode) {
     resumePiece = null;
     show(go, piece ? { piece, scroll: true } : { screen: 'open', scroll: true }).then(() => {
       if (depth) replaceLoc(); else pushLoc();
+      if (stopShown && !ui.stop.hidden) ui.stopTitle.focus({ preventScroll: true }); // back onto a "can't help" screen: its words
       // Measured again once the application has the screen (Safari can measure the first frame's words a
       // line long), before the count is read: "Part 1 of 5" then "Part 2 of 4" never happens
       requestAnimationFrame(() => requestAnimationFrame(() => replan(true)));
@@ -563,6 +565,7 @@ function init(root, cfg, mode) {
         // A photo or video still on its way isn't saved yet: they keep the page open till it is (said when it is)
         if (ok && uploads.size) notice('exitUploading', 'info');
         else notice(ok ? 'exitSaved' : lastSave === 'offline' ? 'exitNotSaved' : 'exitNotSavedServer', ok ? 'success' : 'error');
+        paintHub(); // its heading says the same as the note (an earlier save landing first said "saved" too soon)
       });
     }
     paintHeader();
@@ -656,7 +659,8 @@ function init(root, cfg, mode) {
   }
   const titleOf = (id) => (id === 'review' ? T('reviewTitle') : form.pages.find(p => p.id === id)?.title || '');
   /** Pages with a required answer still missing or wrong */
-  const needsSet = (a = readAnswers()) => new Set(Object.keys(formErrors(form, a, files, null, lang)).map(pageOf));
+  // The steps that need them: an answer missing or wrong, or one that stops the application (a rented home)
+  const needsSet = (a = readAnswers()) => new Set([...Object.keys(formErrors(form, a, files, null, lang)).map(pageOf), stopFor(form, a)?.page].filter(Boolean));
   /** Done: reached, passed, and nothing on it needs them */
   const stepDone = (id, needs) => id !== 'review' && reached(id) && order(id) < order(furthestId) && !needs.has(id);
   const screensIn = (id) => (id === 'review' ? 1 : packs[id]?.length || 1);
@@ -869,17 +873,21 @@ function init(root, cfg, mode) {
     const a = readAnswers();
     const steps = ids.filter(id => id !== 'review');
     const started = !!token || (previewing && order(furthestId) > 0 && !live);
-    const doneCount = steps.filter(id => stepDone(id, needs)).length;
+    // An answer that stops the application (a rented home): its step isn't done, and the overview says why it waits
+    const stopAt = started ? stopFor(form, a)?.page || null : null;
+    const isDone = (id) => stepDone(id, needs); // (a stop's step is among `needs`)
+    const doneCount = steps.filter(isDone).length;
     const ready = started && !needs.size && order(furthestId) >= order('review');
     const mins = minutesLeft(ids, a);
     const sent = !started && !resumePending ? sentHere() : null;
     const pending = !started && !!resumePending; // saved, not reached just now: said here too, by its Continue
-    ui.hubTitle.textContent = T(sent ? 'hubTitleSent' : pending ? 'hubTitleBack' : !started ? 'hubTitle' : ['offline', 'notSaved', 'paused'].includes(lastSave) ? 'hubTitleUnsaved' : ['saving', 'unsaved'].includes(lastSave) ? 'hubTitleSaving' : 'hubTitleBack');
+    ui.hubTitle.textContent = T(sent ? 'hubTitleSent' : pending ? 'hubTitleBack' : !started ? 'hubTitle' : ['offline', 'notSaved', 'paused'].includes(lastSave) ? 'hubTitleUnsaved' : ['saving', 'unsaved'].includes(lastSave) || lastNotice?.m === 'exitSaving' ? 'hubTitleSaving' : 'hubTitleBack');
     ui.hubLead.textContent = sent ? (sent.at ? T('hubLeadSent', { date: sentDate(sent.at) }) : T('hubLeadSentToday'))
       : pending ? T('resumeFailed')
         : !started ? T('hubLead', { n: ids.length })
-          : ready ? T('hubLeadReady')
-            : T(mins <= 1 ? 'hubLeadBackOne' : 'hubLeadBack', { done: doneCount, n: ids.length, m: mins }); // the same count as "Step 4 of 10"
+          : stopAt ? T('hubLeadStopped', { step: titleOf(stopAt) })
+            : ready ? T('hubLeadReady')
+              : T(mins <= 1 ? 'hubLeadBackOne' : 'hubLeadBack', { done: doneCount, n: ids.length, m: mins }); // the same count as "Step 4 of 10"
     ui.hubGoLabel.textContent = T(sent ? 'hubAnother' : pending ? 'hubContinue' : !started ? 'hubStart' : ready || currentId === 'review' ? 'hubReview' : 'hubContinue');
     ui.hubGo.dataset.go = ready ? 'review' : ''; // "Review and submit" goes there (not to the page they left)
     if (ui.hubLater) ui.hubLater.hidden = !started || previewing;
@@ -907,7 +915,7 @@ function init(root, cfg, mode) {
       const b = list.children[i].firstChild;
       const now = started && id === currentId;
       const open = started ? reached(id) : i === 0;
-      const done = started && stepDone(id, needs);
+      const done = started && isDone(id);
       b.dataset.state = done ? 'done' : now ? 'now' : open ? 'open' : 'locked';
       b.disabled = !open && !previewing;
       const [mark, name, meta] = b.children;
@@ -1043,10 +1051,10 @@ function init(root, cfg, mode) {
     return now.length === was.length && now.every((k, i) => k === was[i] && k.isConnected);
   }
   function room(el) {
-    // Down to where the step starts: the bar across the top, and the test-run bar over the step. Not a notice
-    // ("Welcome back"): it's there for a moment, and the step's screens stay what they are without it
-    const note = ui.notice && !ui.notice.hidden && ui.notice.offsetParent ? ui.notice.getBoundingClientRect().height + (parseFloat(getComputedStyle(ui.notice).marginTop) || 0) : 0;
-    const top = Math.max(ui.top?.offsetHeight || 0, ui.stage.getBoundingClientRect().top + window.scrollY - note);
+    // Down to where the step starts: the bar across the top, the test-run bar over the step, and a note at the
+    // top while it shows ("Welcome back"): the screen fits with it (nothing under Back / Continue meanwhile),
+    // and is worked out again without it once it's gone (see forgetNotePacks)
+    const top = Math.max(ui.top?.offsetHeight || 0, ui.stage.getBoundingClientRect().top + window.scrollY);
     const nav = ui.form.querySelector('[data-nav]')?.offsetHeight || 0;
     const head = el.getBoundingClientRect().top - ui.stage.getBoundingClientRect().top; // the stage's padding and the step's header
     const saveRow = ui.stage.querySelector('.af-save-row');
@@ -1116,6 +1124,7 @@ function init(root, cfg, mode) {
     if (el.offsetParent === null) return null;
     packSize = `${innerWidth}x${innerHeight}`;
     packAsked[pid] = [...el.querySelectorAll('.af-field--area')].some(asksAboutHome);
+    if (!ui.notice.hidden && ui.notice.offsetParent) packedWithNote.add(pid);
     const fit = room(el);
     const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
     const undo = answeredLook(el, pid);
@@ -1398,6 +1407,7 @@ function init(root, cfg, mode) {
         buildReview();
       } else {
         let onto = -1;
+        if (pageChanged) forgetNotePacks(id);
         if (!packs[id] || (pageChanged && !stillFits(id))) {
           ui.stepTitle.textContent = titleOf(id); // measured with this step's own name above it
           packs[id] = pack(id);
@@ -1437,6 +1447,9 @@ function init(root, cfg, mode) {
         if (!lastNav?.reason) navNote(null);
         if (lastNotice?.kind === 'success') notice(null); // "Welcome back" has done its job once they move on
       }
+      // A screen that can't fit with a note at the top (one question that can't be split, like the makeover tiles):
+      // the note goes sooner, so nothing waits under Back / Continue for long
+      if (lastNotice?.kind === 'success' && focused && overflows()) { clearTimeout(noticeTimer); noticeTimer = setTimeout(passNotice, 3000); }
       paintHeader();
       if (testRun) {
         paintTestBar();
@@ -1490,6 +1503,7 @@ function init(root, cfg, mode) {
       if (moved()) return;
     }
     takeExactMatch();
+    if (due) reopenSuggest();
     // An address check still on its way decides this page's answer: wait for it (briefly),
     // unless the address itself needs fixing first (then there's nothing to wait for)
     const home = homeAddressId() && byId[homeAddressId()];
@@ -1726,6 +1740,31 @@ function init(root, cfg, mode) {
   function notice(m, kind = 'info', act = null) {
     lastNotice = m ? { m, kind, act, at: Date.now() } : null;
     paintNotice();
+    clearTimeout(noticeTimer);
+    if (m && kind === 'success') noticeTimer = setTimeout(passNotice, 8000);
+  }
+  // A note that's good news ("Welcome back") is there for a moment on the application's screens: read, it goes
+  // (it stays on the overview, which has room for it)
+  let noticeTimer = 0;
+  // Pages whose screens were fitted with a note at the top: fitted again without it, once it's gone (never the
+  // screen they're on, under them: the next time a page is shown)
+  const packedWithNote = new Set();
+  function forgetNotePacks(showing = null) {
+    if (!packedWithNote.size || !ui.notice.hidden) return;
+    for (const id of [...packedWithNote]) {
+      if (id === currentId && id !== showing) continue;
+      delete packs[id];
+      packedWithNote.delete(id);
+    }
+  }
+  function passNotice() {
+    const was = lastNotice;
+    if (was?.kind !== 'success') return;
+    if (!focused || ui.notice.hidden) { noticeTimer = setTimeout(passNotice, 8000); return; }
+    const done = () => { if (lastNotice === was) notice(null); };
+    if (reducedMotion() || !ui.notice.animate) { done(); return; }
+    const h = ui.notice.offsetHeight;
+    ui.notice.animate([{ height: `${h}px`, opacity: 1 }, { height: '0px', opacity: 0, paddingTop: '0px', paddingBottom: '0px', marginBottom: '0px', borderWidth: '0px' }], { duration: 240, easing: 'cubic-bezier(.2,.8,.2,1)' }).finished.then(done, done);
   }
   /**
    * A note at the top that stopped being true goes: "Not saved yet" once it's saved, "A few answers need
@@ -1781,6 +1820,7 @@ function init(root, cfg, mode) {
     // Heard only when it matters: saving stopped (offline, the server), and saved again after that; not
     // "Saving…" and "All changes saved" after every pause in typing
     const trouble = (k) => ['offline', 'notSaved', 'paused'].includes(k);
+    if (trouble(key) && lastNotice?.m === 'welcomeBack') notice(null); // "Your answers are saved" isn't so just now
     if (trouble(key) && !trouble(lastSave)) announce(T(key));
     else if (key === 'saved' && trouble(lastSave)) announce(T('saved'));
     lastSave = key;
@@ -1804,7 +1844,7 @@ function init(root, cfg, mode) {
     if (testRun?.signIn) { navNote({ raw: TEST.signInNote }); return false; }
     if (turnstileSiteKey && !turnstileToken && !testRun && !renew) {
       // The check passes on its own in a moment (Continue looks busy meanwhile); said only when it wants a tap
-      if (!turnstileWants) await Promise.race([new Promise(r => turnstileWaiting.push(r)), wait(6000)]);
+      if (!turnstileWants && !turnstileFailed) await Promise.race([new Promise(r => turnstileWaiting.push(r)), wait(6000)]);
       if (token) return true;
       if (!turnstileToken) { askCheck(); return false; }
     }
@@ -1833,10 +1873,11 @@ function init(root, cfg, mode) {
   /** The quick check wants a tap: it shows on the screen they're on, in view (not under Continue) */
   let checkAsked = false;
   let turnstileWants = false;
+  let turnstileFailed = false;
   const turnstileWaiting = [];
   function askCheck() {
     checkAsked = true;
-    navNote('turnstile');
+    navNote(turnstileFailed ? 'turnstileFailed' : 'turnstile');
     paintNav();
     if (!ui.turnstile || ui.turnstile.hidden) return;
     requestAnimationFrame(() => ui.turnstile.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }));
@@ -2015,6 +2056,7 @@ function init(root, cfg, mode) {
   // ── Stop screens ─────────────────────────────────────────────────
   function showStop(stop) {
     stopShown = stop;
+    if (lastNotice?.kind === 'success') notice(null); // "Welcome back" isn't what this screen is about
     paintStop();
     ui.form.hidden = true;
     ui.stop.hidden = false;
@@ -2040,7 +2082,11 @@ function init(root, cfg, mode) {
     ui.stopTitle.textContent = s.title || '';
     ui.stopBody.innerHTML = s.body || '';
     const placed = stopFromArea() ? areaPlaced() : null;
+    // The service area's own map (as staff draw it), with the home on it when the check placed it: never the
+    // older picture, whether the stop came from the check, their own answer, or the server's look at Submit
+    const areaStop = stopShown.key === 'outside' && !!areaField();
     if (placed) ui.stopMap.innerHTML = `<div class="af-map af-map--stop">${areaMapHtml(form.serviceArea, { ...placed }, mapWords(lang, true, kind))}</div>`;
+    else if (areaStop) ui.stopMap.innerHTML = `<div class="af-map af-map--stop">${areaMapHtml(form.serviceArea, null, mapWords(lang, false, kind))}</div>`;
     // An older stop screen with a picture: its words come from the image question showing the same picture
     else if (s.image) ui.stopMap.innerHTML = imageHtml(s.image, fields.find(f => f.type === 'image' && f.image === s.image)?.alt || '');
     else ui.stopMap.innerHTML = '';
@@ -2329,7 +2375,8 @@ function init(root, cfg, mode) {
     if (undo) undo.hidden = !removing[id] || s.state !== 'empty';
     // Didn't go: the same file again, or another
     const retry = box.querySelector('[data-act="retry"]');
-    if (retry) { retry.hidden = !failed || !retryFiles[id]; retry.textContent = T('retryUpload'); }
+    // Didn't go, the first time or over one already added (its words say "Try again": it's there)
+    if (retry) { retry.hidden = !(failed || status.hasAttribute('data-problem')) || !retryFiles[id]; retry.textContent = T('retryUpload'); }
     box.querySelector('[data-act="choose"]').textContent = done
       ? T(video ? 'chooseOther' : 'replacePhoto')
       : failed && retryFiles[id] ? T(video ? 'chooseOther' : 'choosePhotoOther')
@@ -3034,6 +3081,16 @@ function init(root, cfg, mode) {
   }
   let placing = null; // a picked suggestion's parts still on their way
   /** A whole address typed (or pasted) that the list offers back exactly, alone: Continue takes it, no tap on the list needed */
+  /**
+   * Suggestions that came while Continue waited (the keys were on Continue, so they opened for no one), and none
+   * the address exactly: the list they'll be told to choose from is open under the line
+   */
+  function reopenSuggest() {
+    const box = sug.el && addrBox(sug.el);
+    const input = box?.querySelector('[data-search]');
+    if (!input || box.dataset.mode !== 'line' || box.dataset.picked === input.value || sug.last?.input !== input || sug.last.q !== input.value.trim()) return;
+    openSuggest(sug.el, input, sug.last.items, sug.last.google);
+  }
   function takeExactMatch() {
     const el = sug.el;
     const box = el && addrBox(el);
@@ -3241,6 +3298,9 @@ function init(root, cfg, mode) {
     }
     const ask = box.querySelector('[data-area-ask]');
     const asking = st === 'unknown' || st === 'error';
+    // Asked about an address they haven't answered for: no answer ticked (one from an address before, or the
+    // check's answer for it put back after a reload or a language switch, isn't theirs for this one)
+    if (asking && askedFor !== addressKey(homeAddressNow())) ask.querySelectorAll('input:checked').forEach(i => { i.checked = false; });
     if (ask.hidden === asking) {
       ask.hidden = !asking;
       if (asking) enter(ask, 0, -6);
@@ -3778,6 +3838,8 @@ function init(root, cfg, mode) {
     dlg.querySelector('[data-later-form]').hidden = false;
     dlg.querySelector('[data-later-sent]').hidden = true;
     dlg.showModal();
+    // On a computer the keys go to the email (not the ×, where Enter would close it); a phone's keyboard waits for a tap
+    if (finePointer()) input.focus();
   };
   ui.saveLaters.forEach(b => b.addEventListener('click', openLater));
   // Closed (Escape, Close, done): the focus goes back to what opened it, not to the page
@@ -3804,7 +3866,7 @@ function init(root, cfg, mode) {
     const status = dlg.querySelector('[data-later-status]');
     const email = laterInput.value.trim();
     // Empty or not an email: said here in the form's own words (not the browser's bubble)
-    const wrong = fieldError({ id: 'laterEmail', type: 'email', required: true }, email, lang);
+    const wrong = email ? fieldError({ id: 'laterEmail', type: 'email', required: true }, email, lang) : T('laterEmailEmpty');
     laterInput.toggleAttribute('aria-invalid', !!wrong);
     status.textContent = wrong || '';
     if (wrong) { laterInput.focus(); return; }
@@ -4062,7 +4124,9 @@ function init(root, cfg, mode) {
     window.onSoardTurnstile = () => {
       window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
         sitekey: turnstileSiteKey,
-        callback: (t) => { turnstileToken = t; turnstileWaiting.splice(0).forEach(r => r()); if (lastNav?.m === 'turnstile') navNote(null); },
+        callback: (t) => { turnstileToken = t; turnstileFailed = false; turnstileWaiting.splice(0).forEach(r => r()); if (['turnstile', 'turnstileFailed'].includes(lastNav?.m)) navNote(null); },
+        // It couldn't pass at all (it tries again by itself): said so, with a way forward, not "complete the check"
+        'error-callback': () => { turnstileFailed = true; turnstileWaiting.splice(0).forEach(r => r()); if (checkAsked) navNote('turnstileFailed'); },
         'expired-callback': () => { turnstileToken = null; },
         // It wants a tap (it won't pass on its own): asked for now, not after the wait
         'before-interactive-callback': () => { turnstileWants = true; turnstileWaiting.splice(0).forEach(r => r()); },
@@ -4136,6 +4200,8 @@ function init(root, cfg, mode) {
     answers = { ...(r.answers || {}) };
     // The last address check, for the address they left (the server placed it against today's area)
     areaNow = r.area ? { ...r.area, key: addressKey(answers[homeAddressId() || 'address']) } : null;
+    // Their answer to the area question is theirs only when the check couldn't place the address (else it was the check's)
+    askedFor = areaField() && answers[areaField().id] && !(areaNow && AREA_VALUES[areaNow.band]) ? addressKey(answers[homeAddressId() || 'address']) : null;
     for (const [id, pf] of Object.entries(r.files || {})) {
       if (id === 'video') {
         if (pf.uploaded) { files.video = { uid: true, uploaded: true, name: pf.name }; uploadUi.video = { state: 'done', msg: ['videoDone', { name: pf.name }] }; }
@@ -4496,6 +4562,7 @@ function init(root, cfg, mode) {
       return;
     }
     if (tgt.closest('.af-hp')) return;
+    if (tgt.closest('[data-area-ask]')) askedFor = addressKey(homeAddressNow()); // their answer, for this address
     const el = tgt.closest('[data-field]');
     if (tgt.type === 'tel') { const shaped = phoneShape(tgt.value, true); if (shaped !== tgt.value) tgt.value = shaped; }
     if (tgt.matches('[data-part="line2"]')) { const b = addrBox(el); if (b) delete b.dataset.splitApt; } // an apartment they entered is theirs

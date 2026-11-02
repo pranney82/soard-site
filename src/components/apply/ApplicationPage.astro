@@ -1378,6 +1378,8 @@ const breadcrumbs = [
 
   /* ── Two short questions to a row; photos side by side ── */
   .af-pair { display: grid; gap: 28px 20px; grid-template-columns: minmax(0, 1fr); align-items: end; }
+  /* A note under one of the two: both boxes stay level (lined up from the top, the note below its own) */
+  .af-pair:has(.af-field--error) { align-items: start; }
   @container (min-width: 520px) { .af-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
   /* Two photos: side by side as tiles where there's room; on a phone, one under the other, each a
      compact row (picture, what's there, its button), so long questions keep their width */

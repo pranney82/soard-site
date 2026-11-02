@@ -1040,9 +1040,11 @@ export function initAdvisoryForm() {
       sending = true; // a second press meanwhile counts once
       ui.next.setAttribute('aria-busy', 'true');
       ui.review.inert = true; // what's sent is what's here now
-      try { if (!turnstileWants) await Promise.race([new Promise((r) => turnstileWaiting.push(r)), new Promise((r) => setTimeout(r, 6000))]); } finally { sending = false; ui.next.removeAttribute('aria-busy'); ui.review.inert = false; }
+      try { if (!turnstileWants && !turnstileFailed) await Promise.race([new Promise((r) => turnstileWaiting.push(r)), new Promise((r) => setTimeout(r, 6000))]); } finally { sending = false; ui.next.removeAttribute('aria-busy'); ui.review.inert = false; }
       if (!turnstileToken) {
-        ui.sendError.textContent = 'Please confirm you’re not a robot, just above.';
+        ui.sendError.textContent = turnstileFailed
+          ? 'The quick check couldn’t confirm this browser. It tries again on its own; if it keeps failing, reload the page (your answers stay), or email info@soardcharity.com and we’ll help.'
+          : 'Please confirm you’re not a robot, just above.';
         ui.sendError.hidden = false;
         requestAnimationFrame(() => ui.turnstile.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }));
         return;
@@ -1112,13 +1114,16 @@ export function initAdvisoryForm() {
   let turnstileLoading = false;
   const turnstileWaiting = [];
   let turnstileWants = false;
+  let turnstileFailed = false;
   function loadTurnstile() {
     if (turnstileLoading || !turnstileKey) return;
     turnstileLoading = true;
     window.onAdvisoryTurnstile = () => {
       window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
         sitekey: turnstileKey,
-        callback: (t) => { turnstileToken = t; turnstileWaiting.splice(0).forEach((r) => r()); if (/robot/.test(ui.sendError.textContent)) ui.sendError.hidden = true; },
+        callback: (t) => { turnstileToken = t; turnstileFailed = false; turnstileWaiting.splice(0).forEach((r) => r()); if (/robot|quick check/.test(ui.sendError.textContent)) ui.sendError.hidden = true; },
+        // It couldn't pass at all (it tries again by itself): said so, with a way forward
+        'error-callback': () => { turnstileFailed = true; turnstileWaiting.splice(0).forEach((r) => r()); },
         'expired-callback': () => { turnstileToken = null; },
         // It wants a tap (it won't pass on its own): asked for now, not after the wait
         'before-interactive-callback': () => { turnstileWants = true; turnstileWaiting.splice(0).forEach((r) => r()); },

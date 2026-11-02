@@ -95,6 +95,7 @@ const LOCAL = !/sunshineonaranneyday\.com/.test(SITE);
 let videoBytes = 0;
 let failSaves = 0; // a status every save gets while set (a save that doesn't go through)
 let holdSubmit = 0; // ms a submit takes to reach the server while set (a slow connection)
+let failPhotos = false; // every photo upload gets a 500 while set
 
 /** A tab with the console watched and Stream + the address lookup faked */
 async function newTab({ context = browser, phone = true, reduced = true, bypassCsp = false } = {}) {
@@ -126,6 +127,9 @@ async function newTab({ context = browser, phone = true, reduced = true, bypassC
       const q = decodeURIComponent(url.split('address=')[1] || '').toLowerCase();
       const results = SUGGESTIONS.filter((s) => s.line1.toLowerCase().startsWith(q.slice(0, 8)));
       return req.respond({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, results }) });
+    }
+    if (failPhotos && url.startsWith(`${SITE}/api/apply`) && req.method() === 'POST' && (req.headers()['content-type'] || '').includes('multipart')) {
+      return req.respond({ status: 500, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Upload failed' }) });
     }
     if (url.startsWith(`${SITE}/api/apply`) && req.method() === 'POST' && (req.headers()['content-type'] || '').includes('json')) {
       const body = JSON.parse(req.postData() || '{}');
@@ -723,6 +727,15 @@ try {
   if (PAGES_DIR) ok(!/photoChild/.test(draftFiles()), 'and the server lets the photo go');
   await (await page.$('#af-photoChild')).uploadFile(PHOTO);
   await page.waitForFunction(() => document.querySelector('[data-field="photoChild"] .af-upload')?.dataset.state === 'done', { timeout: 20000 });
+  // Another photo over it that doesn't go: its words say "Try again", and the button is there
+  failPhotos = true;
+  await (await page.$('#af-photoChild')).uploadFile(PHOTO);
+  await page.waitForFunction(() => /try again/i.test(document.querySelector('[data-field="photoChild"] .af-upload-status')?.textContent || ''), { timeout: 20000 }).catch(() => {});
+  ok(await visible('[data-field="photoChild"] [data-act="retry"]') && await page.$eval('[data-field="photoChild"] .af-upload', (e) => e.dataset.state) === 'done', `a replacement that didn't go: Try again is there, the photo before kept (${await status('photoChild')})`);
+  failPhotos = false;
+  await tap('[data-field="photoChild"] [data-act="retry"]');
+  await page.waitForFunction(() => /Added/.test(document.querySelector('[data-field="photoChild"] .af-upload-status')?.textContent || ''), { timeout: 20000 }).catch(() => {});
+  ok(!(await visible('[data-field="photoChild"] [data-act="retry"]')) && /Added/.test(await status('photoChild')), 'and Try again sends it');
   const dropped = await dropPhoto('photoFamily');
   ok(dropped.veil && !dropped.after, 'dragging a photo over the box shows the drop veil (and it goes on drop)');
   await page.waitForFunction(() => document.querySelector('[data-field="photoFamily"] .af-upload')?.dataset.state === 'done', { timeout: 20000 });
@@ -1144,6 +1157,24 @@ try {
   await x.click('[data-next]');
   await sleep(600);
   ok((await stepTitle(x)) === AREA, 'and takes them back to where they were');
+  // An address the check placed inside, a reload, then one it can't place: the area question is asked afresh (the
+  // check's answer for the address before isn't the family's for this one, and must never stand for it)
+  await x.focus('#af-address-search');
+  await x.type('#af-address-search', '3167 Main');
+  await x.waitForSelector('#af-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
+  await x.click('#af-address-suggest-0');
+  await x.waitForFunction(() => document.querySelector('[data-area]')?.dataset.area === 'inside', { timeout: 15000 }).catch(() => {});
+  await sleep(4800); // saved, the check's answer with it
+  await x.reload({ waitUntil: 'networkidle0' });
+  await sleep(900);
+  await x.click('[data-field="address"] [data-addr-mode="parts"]');
+  await sleep(250);
+  await type('#af-address-line1', '1 Nowhere Lane', x);
+  await type('#af-address-city', 'Faketown', x);
+  await type('#af-address-zip', '30999', x);
+  await x.waitForFunction(() => document.querySelector('[data-area]')?.dataset.area === 'unknown', { timeout: 15000 }).catch(() => {});
+  const afresh = await x.evaluate(() => ({ area: document.querySelector('[data-area]')?.dataset.area, ask: !document.querySelector('[data-area-ask]').hidden, ticked: [...document.querySelectorAll('[data-area-ask] input')].filter((i) => i.checked).map((i) => i.value) }));
+  ok(afresh.area === 'unknown' && afresh.ask && !afresh.ticked.length, `after a reload, an address the check can't place is asked about afresh, nothing ticked (${JSON.stringify(afresh)})`);
   await xCtx.close();
 
   console.log('Live preview for the form editor (page rules too)');

@@ -376,6 +376,8 @@ const logo = 'brand-logo-light-bg-display';
   .adv-error::before { content: ''; flex: 0 0 18px; height: 18px; margin-top: 1px; background: no-repeat center / contain url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238A7200' stroke-width='1.9' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='8.2'/%3E%3Cpath d='M10 5.8v5.2M10 14v.1'/%3E%3C/svg%3E"); }
   /* Two short questions to a row where there's room */
   .adv-pair { display: grid; grid-template-columns: minmax(0, 1fr); gap: 24px 20px; align-items: end; }
+  /* A note under one of the two: both boxes stay level (lined up from the top, the note below its own) */
+  .adv-pair:has([aria-invalid="true"]) { align-items: start; }
   @container (min-width: 520px) { .adv-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
 
   /* The home address: suggestions as it's typed (Georgia's; Google's carry its credit), under the box or over it, never off the screen */
