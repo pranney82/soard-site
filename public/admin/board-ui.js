@@ -891,12 +891,23 @@ export const STYLES = `
   }
   @media (prefers-reduced-motion: reduce) { .agx-item, .agx-run__part { transition: none; } }
 
-  /* Where the meeting stands: the line under its name (board-meeting.js pathOf), done, next, or to come */
+  /* Where the meeting stands: the line under its name (board-meeting.js pathOf), done, next, or to come. It stays at
+     the top as the page scrolls (under the top bar on a tablet or phone), on a band of the page's own color; whatever
+     sticks or is scrolled to below it clears its height (--bm-path-h, set by board-meeting.js, which also brings what
+     the keyboard focuses out from under it) */
+  :root:has(.bd > .bm-path) { --bm-stick: 0px; }
+  @media (max-width: 1024px) { :root:has(.bd > .bm-path) { --bm-stick: var(--top-h, 0px); } }
+  .bm-path { position: sticky; top: var(--bm-stick); z-index: 12; min-width: 0; margin: -0.75rem -0.5rem -0.5rem; padding: 0.5rem; background: var(--color-bg); container-type: inline-size; container-type: inline-size scroll-state; }
+  .bm-path ol { transition: box-shadow 0.2s; }
+  @container scroll-state(stuck: top) { .bm-path ol { box-shadow: 0 10px 24px -14px rgba(26,27,31,0.4); } }
+  .bd:has(> .bm-path) :is(#bm-work, #bm-ready, #bm-minutes, #bm-after, #bm-where) { scroll-margin-top: calc(var(--bm-stick) + var(--bm-path-h, 5rem) + 0.75rem); }
+  @media (min-width: 1281px) { .bd:has(> .bm-path) .agx-stage { top: calc(var(--bm-stick) + var(--bm-path-h, 5rem) + 0.5rem); max-height: calc(100vh - var(--bm-stick) - var(--bm-path-h, 5rem) - 1.5rem); } }
   .bm-path ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); overflow: hidden; }
   .bm-path__step { position: relative; min-width: 0; border-left: 1px solid var(--color-border); }
   .bm-path__step:first-child { border-left: none; }
   .bm-path__btn { display: flex; align-items: flex-start; gap: 0.6rem; width: 100%; height: 100%; padding: 0.7rem 0.8rem; border: none; background: none; font: inherit; text-align: left; color: var(--color-text); cursor: pointer; }
-  .bm-path__btn:hover { background: var(--color-bg-hover); }
+  button.bm-path__btn:hover { background: var(--color-bg-hover); }
+  span.bm-path__btn { cursor: default; }
   .bm-path__btn:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-text); }
   .bm-path__dot { flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; border-radius: 50%; border: 2px solid var(--color-border-strong); background: var(--color-bg-card); }
   .bm-path__dot svg { width: 13px; height: 13px; }
@@ -907,10 +918,24 @@ export const STYLES = `
   .bm-path__t { font-size: var(--fs-sm); font-weight: 650; line-height: 1.3; }
   .bm-path__s { font-size: var(--fs-xs); color: var(--color-text-secondary); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .bm-path__step.is-todo .bm-path__t { color: var(--color-text-secondary); }
-  @media (max-width: 1100px) { .bm-path ol { grid-template-columns: repeat(3, minmax(0, 1fr)); } .bm-path__step:nth-child(4) { border-left: none; } .bm-path__step:nth-child(n+4) { border-top: 1px solid var(--color-border); } }
-  @media (max-width: 600px) { .bm-path ol { grid-template-columns: repeat(2, minmax(0, 1fr)); } .bm-path__step:nth-child(4) { border-left: 1px solid var(--color-border); } .bm-path__step:nth-child(odd) { border-left: none; } .bm-path__step:nth-child(n+3) { border-top: 1px solid var(--color-border); } }
+  /* Too narrow for all six names on one line each (a phone, a tablet, a narrow window, or a laptop's larger touch
+     text beside the menu): still one row, since it stays at the top, scrolling sideways to the rest */
+  @container (max-width: 63.5rem) {
+    .bm-path ol { display: flex; overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none; }
+    .bm-path ol::-webkit-scrollbar { display: none; }
+    .bm-path__step { flex: 1 0 10.5rem; }
+    .bm-path__t { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    @media (hover: hover) { .bm-path ol { scroll-padding-inline: 2.25rem; } }
+  }
+  .bm-path__more { position: absolute; top: 0.5rem; bottom: 0.5rem; z-index: 1; display: none; place-items: center; width: 2.25rem; padding: 0 0 2px; border: 1px solid var(--color-border); background: var(--color-bg-card); font: inherit; font-size: 22px; line-height: 1; color: var(--color-text); cursor: pointer; }
+  .bm-path__more.is-back { left: 0.5rem; border-radius: var(--radius-md) 0 0 var(--radius-md); }
+  .bm-path__more.is-on { right: 0.5rem; border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+  .bm-path__more:hover { background: var(--color-bg-hover); }
+  @media (hover: hover) { .bm-path__more { display: grid; } }
+  /* A short window (a phone on its side): the names only, so the line takes less of it */
+  @media (max-height: 500px) { .bm-path__s { display: none; } }
   /* A card the line or a slide sent you to, lit a moment */
-  .bm-row__main.is-found > .card:first-child, .bm-row.is-found .card, .bm-work.is-found > .agx, .agx-item.is-found { animation: bm-found 1.4s var(--ease-out); }
+  .bm-row__main.is-found > .card:first-child, .bm-row__side.is-found > .card:first-child, .bm-row.is-found .card, .bm-work.is-found > .agx, .agx-item.is-found { animation: bm-found 1.4s var(--ease-out); }
   @keyframes bm-found { 0%, 35% { box-shadow: 0 0 0 3px var(--color-primary); } 100% { box-shadow: 0 0 0 3px transparent; } }
 
   /* The page: the agenda beside its presentation, then the rows of cards */
@@ -956,8 +981,9 @@ export const STYLES = `
   .agx-slide.is-doc .agx-slide__t, .agx-slide.is-live .agx-slide__t, .agx-slide.is-books .agx-slide__t { padding-left: 1.2rem; font-weight: 400; color: var(--color-text-secondary); }
   .agx-slide.is-doc.is-on .agx-slide__t, .agx-slide.is-live.is-on .agx-slide__t, .agx-slide.is-books.is-on .agx-slide__t { color: var(--color-text); }
   .agx-item__n.is-blank { visibility: hidden; }
-  /* Too narrow for both side by side: the presentation over the agenda, the slide on the left and its list beside it */
-  @media (max-width: 1100px) {
+  /* Too narrow for both side by side (up to 1280px, beside the menu the agenda's names went a word to a line, and a touch
+     screen's larger text broke them mid-word): the presentation over the agenda, the slide on the left, its list beside it */
+  @media (max-width: 1280px) {
     .bm-work { grid-template-columns: minmax(0, 1fr); }
     .agx-stage { position: static; max-height: none; order: -1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-areas: 'bar bar' 'frame list' 'nav list'; column-gap: 1rem; align-items: start; }
     .agx-stage:not(.is-screen) { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'bar' 'frame'; }
@@ -1325,8 +1351,9 @@ export const STYLES = `
   .bm-when.is-held { background: var(--seg-bg); color: var(--color-text-secondary); }
   @media (max-width: 600px) {
     .bm-facts { display: grid; justify-items: start; margin-left: 0; clip-path: none; } .bm-facts > * { margin-left: 0; } .bm-facts > *::before { content: none; }
-    /* the phone's header keeps one row: Saved is said to a screen reader, not shown (Saving… and an error are) */
-    .bm-saved.is-quiet { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    /* the phone's header keeps one row: Saved and Saving are said to a screen reader, not shown (an error is). Shown,
+       Saving took a row of its own as you typed and gave it back on the save, so the page jumped twice an edit */
+    .bm-saved:not(.is-error) { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .bm-top__bar .bd-actions { margin-left: auto; }
   }
   @media (max-width: 760px) { .bm-stage { align-items: flex-start; } .bm-stage__s { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; } }

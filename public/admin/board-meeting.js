@@ -205,14 +205,83 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   const place = [m.location, m.address].filter(Boolean).join(', ');
   const fromCal = !!m.calendar && !m.calendar.gone;
   const path = pathOf(m, data, phase);
+  // The status line stays at the top as the page scrolls. Its height goes on the page (--bm-path-h) for whatever sticks
+  // or is scrolled to below it. Too narrow for every step (one row that scrolls sideways), the next one is brought into
+  // view, and again when the window turns; with a mouse, ‹ and › at its ends go to the steps out of sight
+  const pathRef = useRef(null);
+  const [edge, setEdge] = useState({ l: false, r: false });
+  const edges = () => {
+    const ol = pathRef.current?.querySelector('ol');
+    if (!ol) return;
+    const l = ol.scrollLeft > 2;
+    const r = ol.scrollLeft + ol.clientWidth < ol.scrollWidth - 2;
+    setEdge((e) => (e.l === l && e.r === r ? e : { l, r }));
+  };
+  const slide = (d) => {
+    const ol = pathRef.current?.querySelector('ol');
+    ol?.scrollBy({ left: d * ol.clientWidth * 0.7, behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+  };
+  const nextStep = path.find((s) => s.state === 'next')?.id || '';
+  const showNext = () => {
+    const ol = pathRef.current?.querySelector('ol');
+    const li = ol?.querySelector('.is-next');
+    if (!li || ol.scrollWidth <= ol.clientWidth) return;
+    const o = ol.getBoundingClientRect();
+    const r = li.getBoundingClientRect();
+    ol.scrollLeft += r.left - o.left - (o.width - r.width) / 2;
+  };
+  useEffect(() => {
+    const nav = pathRef.current;
+    if (!nav) return undefined;
+    const root = document.documentElement;
+    let wide = 0;
+    const ro = new ResizeObserver(() => {
+      root.style.setProperty('--bm-path-h', `${nav.offsetHeight}px`);
+      if (nav.offsetWidth !== wide) { wide = nav.offsetWidth; showNext(); }
+      edges();
+    });
+    ro.observe(nav);
+    // What the keyboard or the page focuses comes out from under the line, all of it (the browser's own scroll stops at
+    // the window's top). A step on the line is always in view, yet the browser scrolls the page for it anyway: the page
+    // goes back to where it was before it draws, and the step slides into the line's view, clear of ‹ and ›. Never a
+    // click, so nothing moves under the pointer
+    let pointer = 0;
+    let tabY = 0;
+    let tabAt = 0;
+    const down = () => { pointer = performance.now(); };
+    const key = (e) => { if (e.key === 'Tab') { tabY = scrollY; tabAt = performance.now(); } };
+    const onFocus = (e) => {
+      const el = e.target;
+      if (performance.now() - pointer < 600) return;
+      if (nav.contains(el)) {
+        const y = performance.now() - tabAt < 300 ? tabY : scrollY;
+        requestAnimationFrame(() => {
+          el.closest('li')?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+          scrollTo({ top: y, behavior: 'instant' });
+        });
+        return;
+      }
+      if (!el.closest?.('.bd') || el.closest('[popover], dialog')) return;
+      requestAnimationFrame(() => clearOfLine(el));
+    };
+    addEventListener('pointerdown', down, true);
+    addEventListener('keydown', key, true);
+    addEventListener('focusin', onFocus);
+    return () => { ro.disconnect(); root.style.removeProperty('--bm-path-h'); removeEventListener('pointerdown', down, true); removeEventListener('keydown', key, true); removeEventListener('focusin', onFocus); };
+  }, [practice]);
+  useEffect(showNext, [nextStep]);
   // The status line's steps go to the card that does them
+  // (a second step a moment later lights its card the whole time, not cut short by the first one's timer)
+  const lit = useRef({});
   const toCard = (id) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
+    clearTimeout(lit.current.t);
+    lit.current.el?.classList.remove('is-found');
     el.classList.remove('is-found');
     requestAnimationFrame(() => el.classList.add('is-found'));
-    setTimeout(() => el.classList.remove('is-found'), 1600);
+    lit.current = { el, t: setTimeout(() => el.classList.remove('is-found'), 1600) };
   };
   const work = html`<div class="bm-work" id="bm-work">
     <${AgendaEditor} ...${p} />
@@ -245,20 +314,22 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
           <button type="button" class="bm-link" id="bm-where-toggle" aria-expanded=${editWhere} aria-controls="bm-where" onClick=${() => setEditWhere(!editWhere)}>${fromCal ? 'When and where' : 'Change when and where'}</button>
         </p>
       </div>
-      ${practice ? null : html`<nav class="bm-path" aria-label="Where this meeting stands">
-        <ol>${path.map((s) => html`<li key=${s.id} class=${`bm-path__step is-${s.state}`} aria-current=${s.state === 'next' ? 'step' : null}>
-          <button type="button" class="bm-path__btn" onClick=${() => toCard(s.card)}>
-            <span class="bm-path__dot" aria-hidden="true">${s.state === 'done' ? CHECK : null}</span>
-            <span class="bm-path__words"><span class="bm-path__t">${s.title}</span><span class="bm-path__s">${s.sub}</span></span>
-          </button>
-        </li>`)}</ol>
-      </nav>`}
     </div>
+    ${practice ? null : html`<nav class="bm-path" aria-label="Where this meeting stands" ref=${pathRef}>
+      <ol onScroll=${edges}>${path.map((s) => html`<li key=${s.id} class=${`bm-path__step is-${s.state}`} aria-current=${s.state === 'next' ? 'step' : null}>
+        <${s.card ? 'button' : 'span'} type=${s.card ? 'button' : null} class="bm-path__btn" onClick=${s.card ? () => toCard(s.card) : null}>
+          <span class="bm-path__dot" aria-hidden="true">${s.state === 'done' ? CHECK : null}</span>
+          <span class="bm-path__words"><span class="bm-path__t">${s.title}</span><span class="bm-path__s">${s.sub}</span></span>
+        </${s.card ? 'button' : 'span'}>
+      </li>`)}</ol>
+      ${edge.l ? html`<button type="button" class="bm-path__more is-back" tabindex="-1" aria-label="The steps before these" onClick=${() => slide(-1)}>‹</button>` : null}
+      ${edge.r ? html`<button type="button" class="bm-path__more is-on" tabindex="-1" aria-label="The steps after these" onClick=${() => slide(1)}>›</button>` : null}
+    </nav>`}
     ${editWhere ? html`<${WhenWhere} ...${p} />` : null}
     ${phase === 'held' ? html`
       <div class="bm-row">
         <div class="bm-row__main" id="bm-minutes"><${MinutesDrop} ...${p} /><${MinutesDoc} ...${p} /></div>
-        <div class="bm-row__side"><${WrapUp} ...${p} />${m.minutesFrom ? null : html`<${MinutesTemplate} ...${p} />`}</div>
+        <div class="bm-row__side" id="bm-after"><${WrapUp} ...${p} />${m.minutesFrom ? null : html`<${MinutesTemplate} ...${p} />`}</div>
       </div>
       ${work}
       <${FilesCard} ...${p} title="Every file" sub="All of this meeting’s files. A staff-only file never reaches the board page." />`
@@ -280,7 +351,9 @@ const nowEastern = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'America/N
 
 /**
  * Where a meeting stands, step by step, for the line under its name: the agenda, the invite, the board page, the
- * email, the day, the minutes. Each step is done, the next one, or still to come; `card` is where it's done
+ * email, the day, the minutes. Each step is done, the next one, or still to come; `card` is where it's done (none once
+ * the meeting is held and its card is gone: the invite and the email were before; the board page is After the meeting's,
+ * beside the minutes)
  */
 function pathOf(m, data, phase) {
   const items = agendaItems(m);
@@ -288,11 +361,12 @@ function pathOf(m, data, phase) {
   const reportsIn = asked.filter((x) => m.sections[x.si].items[x.ii].report).length;
   const inv = m.invite;
   const held = phase === 'held';
+  const ready = held ? '' : 'bm-ready';
   const steps = [
     { id: 'agenda', card: 'bm-work', title: 'Agenda', done: items.length > 0 && reportsIn === asked.length, sub: !items.length ? 'Nothing on it yet' : asked.length ? `${plural(items.length, 'item')} · ${reportsIn} of ${asked.length} reports in` : plural(items.length, 'item') },
-    { id: 'invite', card: 'bm-ready', title: 'Invite', done: !!inv, sub: inv ? `On ${firstOf(inv.organizer)}’s calendar` : m.calendar?.eventId ? 'On the calendar, board not on it yet' : 'Not sent' },
-    { id: 'shared', card: 'bm-ready', title: 'Board page', done: !!m.shared, sub: m.shared ? 'The board can see it' : 'Only you can see it' },
-    { id: 'emailed', card: 'bm-ready', title: 'Board emailed', done: !!m.packetSentAt, sub: m.packetSentAt ? `${plural(m.packetSentTo || 0, 'member')}, ${shortDate(m.packetSentAt.slice(0, 10))}` : 'Not yet' },
+    { id: 'invite', card: ready, title: 'Invite', done: !!inv, sub: inv ? `On ${firstOf(inv.organizer)}’s calendar` : m.calendar?.eventId ? 'On the calendar, board not on it yet' : 'Not sent' },
+    { id: 'shared', card: held ? 'bm-after' : 'bm-ready', title: 'Board page', done: !!m.shared, sub: m.shared ? 'The board can see it' : 'Only you can see it' },
+    { id: 'emailed', card: ready, title: 'Board emailed', done: !!m.packetSentAt, sub: m.packetSentAt ? `${plural(m.packetSentTo || 0, 'member')}, ${shortDate(m.packetSentAt.slice(0, 10))}` : 'Not yet' },
     { id: 'day', card: 'bm-work', title: phase === 'today' ? 'Today' : held ? 'Held' : 'The meeting', done: held, sub: [m.date ? shortDate(m.date) : 'No date yet', m.start ? clock(m.start) : ''].filter(Boolean).join(' · ') },
     { id: 'minutes', card: phase === 'ahead' ? 'bm-work' : 'bm-minutes', title: 'Minutes', done: m.minutes === 'approved', sub: m.minutes === 'approved' ? `Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}` : m.minutesFrom ? 'Read in, to approve next time' : held ? 'Drop them in' : 'After the meeting' },
   ];
@@ -379,10 +453,18 @@ const grow = (el) => { if (!el || FITS) return; el.style.height = 'auto'; el.sty
 
 /** A change that moves things (an item or a part dragged, moved up or down), as a view transition: each slides to its place */
 function withMotion(fn) {
-  if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) { fn(); return; }
+  if (!document.startViewTransition || matchMedia('(prefers-reduced-motion: reduce)').matches) { fn(); return Promise.resolve(); }
   const t = document.startViewTransition(async () => { fn(); await new Promise((r) => setTimeout(r, 0)); });
   t.ready.catch(() => {});
   setTimeout(() => t.skipTransition?.(), 1200);
+  return t.finished.catch(() => {});
+}
+/** Out from under the meeting's status line, which stays at the top: what moved there or took the focus there */
+function clearOfLine(el) {
+  const line = document.querySelector('.bm-path');
+  if (!el || !line) return;
+  const under = line.getBoundingClientRect().bottom + 12 - el.getBoundingClientRect().top;
+  if (under > 0) scrollBy({ top: -under, behavior: 'instant' });
 }
 const LIVE_SHORT = { projects: 'Makeovers board', cash: 'The money', reveals: 'Reveals', events: 'Events', meetings: 'Board meetings' };
 const DRAG_ITEM = 'text/x-board-item';
@@ -432,7 +514,9 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
       const li = document.querySelector(`[data-item="${e.detail?.id}"]`);
       if (!li) return;
       const r = li.getBoundingClientRect();
-      if (r.top < 80 || r.bottom > innerHeight - 24) li.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+      // Out of view: above the meeting's status line (it stays at the top) or below the window
+      const clear = Math.max(80, (document.querySelector('.bm-path')?.getBoundingClientRect().bottom || 0) + 16);
+      if (r.top < clear || r.bottom > innerHeight - 24) li.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
       li.classList.remove('is-found');
       requestAnimationFrame(() => li.classList.add('is-found'));
       setTimeout(() => li.classList.remove('is-found'), 1400);
@@ -442,6 +526,8 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
   }, []);
   // After the editor closes (Done, Delete): the focus on what's there now, never lost to the page
   const refocus = (id, sel) => setTimeout(() => document.querySelector(`[data-item="${id}"]`)?.querySelector(sel)?.focus(), 60);
+  // Moved up or down: where it went, out from under the status line once the move has played
+  const keepClear = (done, sel) => done?.then(() => setTimeout(() => clearOfLine(document.querySelector(sel)), 30));
   // Without field-sizing, each part's and item's name is sized to its words by hand, again when the window changes
   useEffect(() => {
     if (FITS) return undefined;
@@ -555,8 +641,8 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
       !(it.staffNote || it.showStaff) && { icon: 'private', label: 'Private note', hint: `Only ${others}`, run: () => setItem(si, ii, { showStaff: true }) },
       { divider: true },
       { pair: [
-        { icon: 'up', label: 'Move up', disabled: first, title: 'Move up (Alt ↑ in its name does it too)', run: () => { (ii > 0 ? withMotion(() => setSection(si, { items: move(s.items, ii, -1) })) : moveItem(it.id, m.sections[si - 1].id, '')); refocus(it.id, '.bd-menu > summary'); } },
-        { icon: 'down', label: 'Move down', disabled: last, title: 'Move down (Alt ↓ in its name does it too)', run: () => { (ii < s.items.length - 1 ? withMotion(() => setSection(si, { items: move(s.items, ii, 1) })) : moveItem(it.id, m.sections[si + 1].id, m.sections[si + 1].items[0]?.id || '')); refocus(it.id, '.bd-menu > summary'); } },
+        { icon: 'up', label: 'Move up', disabled: first, title: 'Move up (Alt ↑ in its name does it too)', run: () => { keepClear(ii > 0 ? withMotion(() => setSection(si, { items: move(s.items, ii, -1) })) : moveItem(it.id, m.sections[si - 1].id, ''), `[data-item="${it.id}"]`); refocus(it.id, '.bd-menu > summary'); } },
+        { icon: 'down', label: 'Move down', disabled: last, title: 'Move down (Alt ↓ in its name does it too)', run: () => { keepClear(ii < s.items.length - 1 ? withMotion(() => setSection(si, { items: move(s.items, ii, 1) })) : moveItem(it.id, m.sections[si + 1].id, m.sections[si + 1].items[0]?.id || ''), `[data-item="${it.id}"]`); refocus(it.id, '.bd-menu > summary'); } },
       ] },
       { divider: true },
       (it.notes || it.showNotes) && { icon: 'remove', label: 'Remove the background', run: () => clear('the background', it.notes, { notes: '', showNotes: false }) },
@@ -579,10 +665,12 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
     if (!e.altKey || (e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) return;
     e.preventDefault();
     const up = e.key === 'ArrowUp';
-    if (up && ii > 0) withMotion(() => setSection(si, { items: move(s.items, ii, -1) }));
-    else if (!up && ii < s.items.length - 1) withMotion(() => setSection(si, { items: move(s.items, ii, 1) }));
-    else if (up && si > 0) moveItem(it.id, m.sections[si - 1].id, '');
-    else if (!up && si < m.sections.length - 1) moveItem(it.id, m.sections[si + 1].id, m.sections[si + 1].items[0]?.id || '');
+    let done = null;
+    if (up && ii > 0) done = withMotion(() => setSection(si, { items: move(s.items, ii, -1) }));
+    else if (!up && ii < s.items.length - 1) done = withMotion(() => setSection(si, { items: move(s.items, ii, 1) }));
+    else if (up && si > 0) done = moveItem(it.id, m.sections[si - 1].id, '');
+    else if (!up && si < m.sections.length - 1) done = moveItem(it.id, m.sections[si + 1].id, m.sections[si + 1].items[0]?.id || '');
+    keepClear(done, `[data-item="${it.id}"]`);
     // Back into its name once it has moved (the move runs inside a view transition)
     setTimeout(() => document.querySelector(`[data-item="${it.id}"] .agx-item__title`)?.focus(), 120);
   };
@@ -627,8 +715,8 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
           </label>
           <${Menu} label=${`More for the part ${s.title || si + 1}`} items=${[
             { pair: [
-              { icon: 'up', label: 'Move up', disabled: si === 0, run: () => withMotion(() => set((x) => ({ sections: move(x.sections, si, -1) }))) },
-              { icon: 'down', label: 'Move down', disabled: si === m.sections.length - 1, run: () => withMotion(() => set((x) => ({ sections: move(x.sections, si, 1) }))) },
+              { icon: 'up', label: 'Move up', disabled: si === 0, run: () => keepClear(withMotion(() => set((x) => ({ sections: move(x.sections, si, -1) }))), `#agx-${s.id}`) },
+              { icon: 'down', label: 'Move down', disabled: si === m.sections.length - 1, run: () => keepClear(withMotion(() => set((x) => ({ sections: move(x.sections, si, 1) }))), `#agx-${s.id}`) },
             ] },
             { divider: true },
             { icon: 'trash', label: 'Delete the part', danger: true, run: async () => { if (!s.items.some((it) => it.notes || it.report) || await ask({ title: `Delete “${s.title || 'this part'}”?`, text: 'Its items and their notes go with it. Their documents stay with the meeting.', yes: 'Delete', danger: true })) withMotion(() => set((x) => ({ sections: x.sections.filter((_, i) => i !== si) }))); } },
@@ -694,12 +782,12 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
             ${over === it.id ? html`<p class="agx-dropnote" aria-hidden="true">Drop to put it with ${it.title || 'this item'}</p>` : null}
           </li>`;
           })}
-          <li class=${`agx-end ${hint?.id === `end:${s.id}` ? 'drop-before' : ''}`} ...${partEnd(s)}><button type="button" class="ag-add agx-add" onClick=${() => withMotion(() => setSection(si, { items: [...s.items, blankItem()] }))}>+ Add an item</button></li>
+          <li class=${`agx-end ${hint?.id === `end:${s.id}` ? 'drop-before' : ''}`} ...${partEnd(s)}><button type="button" class="ag-add agx-add" onClick=${() => { const it = blankItem(); withMotion(() => setSection(si, { items: [...s.items, it] })); setTimeout(() => document.querySelector(`[data-item="${it.id}"] .agx-item__title`)?.focus(), 140); }}>+ Add an item</button></li>
         </ul>
       </li>`;
       })}
     </ol>
-    <button type="button" class="ag-add ag-add--sec agx-addsec" onClick=${() => withMotion(() => set((x) => ({ sections: [...x.sections, { id: uid('s_'), title: '', minutes: 0, items: [blankItem()] }] })))}>+ Add a part</button>
+    <button type="button" class="ag-add ag-add--sec agx-addsec" onClick=${() => { const id = uid('s_'); withMotion(() => set((x) => ({ sections: [...x.sections, { id, title: '', minutes: 0, items: [blankItem()] }] }))); setTimeout(() => document.querySelector(`#agx-${id} .agx-sec__title`)?.focus(), 140); }}>+ Add a part</button>
     </div>
   </div>`;
 }

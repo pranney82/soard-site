@@ -728,6 +728,22 @@ try {
   ok(await jane.evaluate(() => !document.querySelector('.bm-stages, .bm-run, .bm-order, .bd-line--vote, [role="tablist"]')), 'one page: no Before / During / After, no run of show to drive, no votes to take');
   const line = await jane.$$eval('.bm-path__step', (l) => l.map((x) => `${x.querySelector('.bm-path__t').textContent}:${x.className.match(/is-(\w+)/)[1]}`));
   ok(line.length === 6 && line.filter((x) => /:next$/.test(x)).length <= 1, `the line under its name says where it stands (${line.join(' | ')})`);
+  // The line stays at the top as the page scrolls, Tab along it never moves the page, and a step's card lands below it
+  {
+    await jane.evaluate(() => scrollTo(0, Math.round((document.scrollingElement.scrollHeight - innerHeight) / 2)));
+    await sleep(200);
+    const y0 = await jane.evaluate(() => scrollY);
+    await jane.evaluate(() => document.querySelector('button.bm-path__btn').focus());
+    await jane.keyboard.press('Tab');
+    await sleep(150);
+    const stuck = await jane.evaluate(() => ({ top: Math.round(document.querySelector('.bm-path').getBoundingClientRect().top), y: scrollY }));
+    ok(stuck.top === 0 && stuck.y === y0, `the line under its name stays at the top as the page scrolls, and the keyboard along it leaves the page where it is (${JSON.stringify(stuck)}, from ${y0})`);
+    await jane.evaluate(() => [...document.querySelectorAll('.bm-path__btn')].find((b) => /Board emailed/.test(b.textContent)).click());
+    await sleep(1200);
+    const land = await jane.evaluate(() => ({ card: Math.round(document.getElementById('bm-ready').getBoundingClientRect().top), line: Math.round(document.querySelector('.bm-path').getBoundingClientRect().bottom), end: scrollY >= document.scrollingElement.scrollHeight - innerHeight - 2 }));
+    ok(land.card >= land.line && (land.card <= land.line + 40 || land.end), `a step on the line goes to its card, just below the line or as far as the page goes (${JSON.stringify(land)})`);
+    await jane.evaluate(() => scrollTo(0, 0));
+  }
   await shot(jane, '04-one-page');
 
   // Documents, Members, Settings
