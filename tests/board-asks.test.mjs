@@ -791,3 +791,20 @@ test('minutes read in over the agenda keep each item’s motion, and an item the
   assert.equal(items.find((x) => x.title === 'Financial').motion, 'Move to approve the 2027 budget.');
   assert.equal(items.find((x) => x.title === 'Governance')?.motion, 'Move to adopt the bylaw change.');
 });
+
+test('the minutes template’s motions read exactly as the secretary filled them in; one left blank is no decision, even when the model says it passed', async () => {
+  const { templateMotionsIn, readMinutes } = await import('../functions/api/_board-minutes.js');
+  const people = [{ name: 'Paul Nielsen' }, { name: 'Travis Couick' }];
+  const doc = (line) => `Committee reports\nFinancial\nMotion: Move to approve the 2027 budget as presented.\n${line}\n`;
+  const passed = templateMotionsIn(doc('Moved by: Paul Nielsen      Seconded by: Travis Couick      For: 9   Against: 0   Abstain: 1   Passed'), people);
+  assert.deepEqual(passed.motions, [{ text: 'Approve the 2027 budget as presented', by: 'Paul Nielsen', second: 'Travis Couick', result: 'passed', tally: { for: 9, against: 0, abstain: 1 } }]);
+  assert.equal(templateMotionsIn(doc('Moved by: Paul   Seconded by: Travis   For: 3   Against: 6   Abstain: 0   Passed / Failed'), people).motions[0].result, 'failed', 'both words left: the counts decide');
+  const blank = templateMotionsIn(doc('Moved by:            Seconded by:            For:      Against:      Abstain:      Passed / Failed'), people);
+  assert.deepEqual([blank.motions, blank.open], [[], ['Approve the 2027 budget as presented']]);
+  // The printed form's own words
+  assert.equal(templateMotionsIn('The board votes on Move to adopt the bylaw change.\nMoved by Paul Nielsen Seconded by Travis Couick Passed', people).motions[0].text, 'Adopt the bylaw change');
+  // Workers AI reading it as passed changes nothing: the secretary didn't record it
+  const env = { AI: { run: async () => ({ response: { motions: [{ text: 'Approve the 2027 budget as presented', by: '', second: '', result: 'passed' }, { text: 'Thank the gala volunteers', by: 'Paul Nielsen', second: '', result: 'passed' }], actions: [], attendance: [] } }) } };
+  const read = await readMinutes(env, { text: doc('Moved by:            Seconded by:            For:      Against:      Abstain:      Passed / Failed'), people, meeting: { date: '2026-11-05', sections: [] } });
+  assert.deepEqual(read.motions.map((x) => x.text), ['Thank the gala volunteers']);
+});

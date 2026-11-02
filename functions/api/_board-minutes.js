@@ -140,6 +140,40 @@ export function motionsIn(text, people = []) {
   return dedupe(out, (x) => x.text);
 }
 
+/**
+ * The minutes template's own motions (board-minutes-template.js): an item's "Motion: …" (or the printed form's "The board
+ * votes on …"), then its line "Moved by: … Seconded by: … For: … Against: … Abstain: … Passed / Failed" as the secretary
+ * filled it in. A result counts only when one of Passed and Failed is left, else from the counts; one never filled in
+ * isn't a decision, so it's left out (`open`: so a reading by the model can't make it one either).
+ * → { motions: [{ text, by, second, result, tally }], open: [texts] }
+ */
+export function templateMotionsIn(text, people = []) {
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim());
+  const motions = [];
+  const open = [];
+  lines.forEach((line, i) => {
+    const m = line.match(/^(?:motion|the board votes on)\s*:?\s+(.{6,})$/i);
+    if (!m) return;
+    const text = cleanMotion(m[1].replace(/^(?:i\s+)?(?:move|motion)\s+(?:to\s+|that\s+)?/i, ''));
+    if (!text) return;
+    const rec = lines.slice(i + 1, i + 4).find((l) => /\bmoved\s+by\b/i.test(l));
+    if (!rec) { open.push(text); return; }
+    const field = (name, next) => (rec.match(new RegExp(`${name}\\s*:?\\s*(.*?)\\s*(?=${next}|$)`, 'i'))?.[1] || '').replace(/[_\s]+$/, '').replace(/^[_\s]+/, '');
+    const by = field('moved\\s+by', 'seconded\\s+by|for\\s*:|against\\s*:|abstain|passed|failed');
+    const second = field('seconded\\s+by', 'for\\s*:|against\\s*:|abstain|passed|failed');
+    const num = (name) => { const v = rec.match(new RegExp(`\\b${name}\\s*:?\\s*(\\d{1,3})\\b`, 'i')); return v ? Number(v[1]) : null; };
+    const tally = { for: num('for'), against: num('against'), abstain: num('abstain') };
+    const passed = /\bpassed\b/i.test(rec);
+    const failed = /\bfailed\b/i.test(rec);
+    const counted = tally.for !== null && tally.against !== null;
+    const result = passed !== failed ? (passed ? 'passed' : 'failed') : counted ? (tally.for > tally.against ? 'passed' : 'failed') : '';
+    if (!result) { open.push(text); return; }
+    const name = (t) => (t && !NOT_A_NAME.test(t) ? nameOf(one(t, 120), people) : '');
+    motions.push({ text, by: name(by), second: name(second), result, ...(counted ? { tally: { for: tally.for, against: tally.against, abstain: tally.abstain || 0 } } : {}) });
+  });
+  return { motions, open };
+}
+
 /** The last meeting's minutes approved: a passed motion to approve minutes, or "approved" under the minutes part of the outline */
 export function approvalIn(sections = [], motions = []) {
   if (motions.some((x) => x.result === 'passed' && /\bminutes\b/i.test(x.text) && /\bapprov/i.test(x.text))) return true;
@@ -266,7 +300,10 @@ export async function readMinutes(env, { name = '', bytes = null, text = null, m
   // read for what they are, never put on the agenda as parts; a part the agenda itself has keeps its place
   const logs = parsed.sections.filter((s) => LOG_PART.test(s.title) && !(meeting?.sections || []).some((x) => likeness(x.title, s.title) >= 0.5));
   let sections = parsed.sections.filter((s) => !logs.includes(s));
-  let motions = motionsIn(words, people);
+  // The template's own motions as the secretary recorded them first (exact), then any the minutes say the usual ways
+  const fromTemplate = templateMotionsIn(words, people);
+  const isTemplate = (t) => [...fromTemplate.motions.map((x) => x.text), ...fromTemplate.open].some((x) => likeness(x, t) >= 0.6);
+  let motions = dedupe([...fromTemplate.motions, ...motionsIn(words, people).filter((x) => !isTemplate(x.text))], (x) => x.text);
   let actions = actionsIn(logs.filter((s) => ACTION_PART.test(s.title)), people, meeting?.date);
   let approvedPrev = false;
   let by = 'rules';
@@ -279,7 +316,8 @@ export async function readMinutes(env, { name = '', bytes = null, text = null, m
     const said = (Array.isArray(ai.motions) ? ai.motions : []).map((x) => ({
       text: cleanMotion(x?.text), by: x?.by ? nameOf(x.by, people) : '', second: x?.second ? nameOf(x.second, people) : '', result: RESULTS.includes(x?.result) ? x.result : 'passed',
     })).filter((x) => x.text);
-    if (said.length) motions = dedupe(said, (x) => x.text);
+    // The model's, beside the template's: never one the template has (recorded, or left open: not a decision)
+    if (said.length) motions = dedupe([...fromTemplate.motions, ...said.filter((x) => !isTemplate(x.text))], (x) => x.text);
     const theirs = dedupe((Array.isArray(ai.actions) ? ai.actions : []).map((x) => {
       const p = x?.owner ? matchPerson(x.owner, people) : null;
       return { text: one(x?.text, 1000), owner: p?.slug || '', ownerName: p?.name || one(x?.owner, 120), due: isDate(String(x?.due || '')) ? x.due : '' };
