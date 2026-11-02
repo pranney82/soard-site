@@ -12,12 +12,15 @@
  * POST { action: 'sign', docId, name }               "I've read it", this year, with their own name typed
  * POST { action: 'checkin', meetingId, how }         present | remote, on the meeting's day
  * POST { action: 'vote', meetingId, motionId, vote } for | against | abstain, while the chair has it open
+ * POST ?minutes=<meetingId> (multipart "file")       the secretary's typed minutes template, read into the meeting
+ *                                                    (_board-minutes.js secretarySends); the secretary's seat or an admin
  * An admin looking can't answer, sign, check in or vote for anyone: they have no board seat. In a practice meeting
  * (theirs alone, simulated members) they check in and vote as themselves.
  */
 
 import { portalData, setRsvp, setActionDone, signDoc, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote } from './_board.js';
 import { isBoardAdmin } from './_board-roles.js';
+import { secretarySends } from './_board-minutes.js';
 
 const fail = (error, status = 400) => Response.json({ ok: false, error }, { status });
 
@@ -55,6 +58,13 @@ export async function onRequestPost(context) {
   try {
     const w = await who(context);
     if (!w) return fail('The board page is for SOARD’s board members', 403);
+    // The secretary's typed minutes (the minutes template), as the form's "file": secretarySends checks the seat
+    const sends = new URL(request.url).searchParams.get('minutes');
+    if (sends !== null) {
+      let file = null;
+      try { file = (await request.formData()).get('file'); } catch { return fail('Send the minutes as a file'); }
+      return Response.json({ ok: true, ...(await secretarySends(env, sends, file, w)) });
+    }
     let body = {};
     try { body = await request.json(); } catch { return fail('Expected JSON'); }
     // A meeting as it's held: a member for themselves; an admin only in their practice meeting (liveMeeting decides)

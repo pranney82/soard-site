@@ -893,9 +893,12 @@ function headerTime(text) {
  * level can come out as "1."), the indent decides instead: the first numbered
  * line under a section sets where items sit, anything further in is a point,
  * and "-", "*", "•" bullets count as points too.
+ * The minutes template's roll (./board-minutes-template.js) reads the same way, "video" after a name there
+ * meaning on a call and "excused" after one not there, with its "Guests: …" line. `paragraphs` (a Word file):
+ * every line is a paragraph of its own, so one under an item is a note on it, never its title running on.
  * → { date, start, end, location, attendance, sections, unmatched: [lines] }
  */
-export function parseAgendaText(text, people = []) {
+export function parseAgendaText(text, people = [], { paragraphs = false } = {}) {
   const raw = String(text || '').replace(/\r\n?/g, '\n').split('\n').map((l) => l.replace(/\u00a0/g, ' ').replace(/\t/g, '    '));
   // (a printed page's footer can run onto the end of a line: "OPEN FORUM | Page")
   const lines = raw.map((l) => l.trim().replace(/\s*\|\s*P\s*a\s*g\s*e(\s*\d+)?$/i, ''));
@@ -916,8 +919,12 @@ export function parseAgendaText(text, people = []) {
     const hit = named.find((x) => plainName(segment).startsWith(x.key));
     if (!hit) { if (segment) out.unmatched.push(segment); return; }
     if (out.attendance.some((a) => a.slug === hit.p.slug)) return;
-    out.attendance.push({ slug: hit.p.slug, name: hit.p.name, org: hit.p.org || '', kind: hit.p.kind || 'board', status: here ? 'present' : 'absent' });
+    // What's written after the name: "x Pat Sample video" was on a call, "Pat Sample excused" was excused
+    const after = plainName(segment).slice(hit.key.length);
+    const status = here ? (/\b(video|phone|remote|remotely|zoom|teams|virtual|virtually|online)\b/.test(after) ? 'remote' : 'present') : /\bexcused\b/.test(after) ? 'excused' : 'absent';
+    out.attendance.push({ slug: hit.p.slug, name: hit.p.name, org: hit.p.org || '', kind: hit.p.kind || 'board', status });
   };
+  const guests = [];
 
   let section = null;
   let item = null;
@@ -959,6 +966,17 @@ export function parseAgendaText(text, people = []) {
     }
     if (inHeader) {
       if (/^(MEETING|LOCATION|DATE|TIME|ATTENDEE)\b/i.test(line) || /^\d{1,2}:\d{2}\s*[ap]/i.test(line)) continue;
+      // "Guests: Pat Visitor (Example Co), Lee Sample": there, and not on the board or staff
+      const g = line.match(/^guests?\s*[:–-]\s*(.*)$/i);
+      if (g) {
+        for (const raw of g[1].split(/\s*[,;]\s*|\s+and\s+/i)) {
+          const name = raw.replace(/\([^)]*\)/g, ' ').replace(/\s+/g, ' ').trim();
+          if (!name || !/[a-z]/i.test(name) || name.length > 80 || /^(none|no one|nobody|n\/?a)$/i.test(name)) continue;
+          if (named.some((x) => plainName(name) === x.key) || guests.some((x) => x.name.toLowerCase() === name.toLowerCase())) continue;
+          guests.push({ name, org: '', kind: 'guest', status: 'present' });
+        }
+        continue;
+      }
       // The attendee table: "x Jane Example Example Design Group x Pat Sample" (two columns, x = there)
       const parts = (` ${line}`).split(/\s+x\s+/i);
       if (parts[0].trim()) attend(parts[0].trim(), false);
@@ -988,6 +1006,8 @@ export function parseAgendaText(text, people = []) {
       continue;
     }
     if (!mark) {
+      // A paragraph under an item (Word): a note on it
+      if (paragraphs && item) { note(1, line); continue; }
       // A line that carries on from the one before it
       if (item?.notes) item.notes += ` ${line}`;
       else if (item) item.title = `${item.title} ${line}`.trim();
@@ -1018,8 +1038,10 @@ export function parseAgendaText(text, people = []) {
   const unfoot = (s) => s.replace(/\s*\|\s*P\s*a\s*g\s*e(\s*\d+)?\s*$/i, '').trim();
   out.sections = out.sections.map((s) => ({ ...s, title: unfoot(s.title), items: s.items.map((it) => ({ ...it, title: unfoot(it.title), notes: unfoot(it.notes) })).filter((it) => it.title || it.notes) }))
     .filter((s) => s.title || s.items.length);
-  // Nobody marked there (an agenda printed before the meeting): who came isn't recorded, not "everyone was away"
-  if (out.attendance.length && out.attendance.every((a) => a.status === 'absent')) out.attendance = [];
+  // Nobody marked there (an agenda printed before the meeting, a template left blank): who came isn't recorded,
+  // not "everyone was away"; the guests go with the roll
+  if (!out.attendance.some((a) => a.status === 'present' || a.status === 'remote')) out.attendance = [];
+  else out.attendance.push(...guests);
   return out;
 }
 

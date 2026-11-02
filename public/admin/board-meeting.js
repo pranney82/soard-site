@@ -8,7 +8,9 @@
  * after, fill in who was there, the notes, the motions and the action items.
  *   Before   the agenda, ready as it is and changeable in place, and the
  *            packet (each file goes with its item by itself); beside them the
- *            invite, the board page and the email, and who's coming
+ *            invite, the board page and the email, who's coming, and the
+ *            minutes template (./board-minutes-template.js: printed, or a
+ *            Word file typed into and dropped in After), there During too
  *   During   presenting it: Start, the screen (Next, Previous, ← →, a
  *            clicker), any item or document straight onto it, a vote the
  *            board takes on the board page, End. Check-ins on the board page
@@ -37,6 +39,7 @@ import {
   sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles,
 } from './board-shared.js';
 import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
+import { printMinutesTemplate, downloadMinutesDocx } from './board-minutes-template.js';
 
 // What a person edits (the server keeps files, the packet's numbers and sent records, and done ticks)
 const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
@@ -246,13 +249,13 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
     <div class="bm-layout" role="tabpanel">
       ${step === 'before' ? html`
         <div class="bm-main"><${AgendaEditor} ...${p} /><${FilesCard} ...${p} goes title="The packet" sub="Drop the financial statements, the budget, a report: each goes with its agenda item by itself, so it’s under that item on the board page and on the screen when the meeting gets to it. PDFs, pictures, Word, Excel or PowerPoint, up to 50 MB." /></div>
-        <aside class="bm-aside"><${GettingReady} ...${p} /><${Coming} ...${p} /></aside>`
+        <aside class="bm-aside"><${GettingReady} ...${p} /><${Coming} ...${p} /><${MinutesTemplate} ...${p} /></aside>`
       : step === 'during' ? html`
         <div class="bm-main"><${RunBar} ...${p} /><${RunOrder} ...${p} /><${Motions} ...${p} /></div>
-        <aside class="bm-aside"><${Quorum} ...${p} /></aside>`
+        <aside class="bm-aside"><${Quorum} ...${p} /><${MinutesTemplate} ...${p} /></aside>`
       : html`
         <div class="bm-main"><${MinutesDrop} ...${p} /><${MinutesDoc} ...${p} /><${FilesCard} ...${p} title="Every file" sub="All of this meeting’s files. A staff-only file never reaches the board page." /></div>
-        <aside class="bm-aside"><${WrapUp} ...${p} /></aside>`}
+        <aside class="bm-aside"><${WrapUp} ...${p} />${m.minutesFrom ? null : html`<${MinutesTemplate} ...${p} />`}</aside>`}
     </div>`;
 }
 
@@ -1121,6 +1124,28 @@ function MinutesDrop({ m, set, ctx, act, keepSaved }) {
     </span>
     ${busy ? html`<span class="spinner" aria-hidden="true"></span>` : html`<span class="btn btn-ghost btn-sm" aria-hidden="true">${m.minutesFrom ? 'Another copy' : 'Choose the file'}</span>`}
   </label>`;
+}
+
+/** The minutes template (./board-minutes-template.js): this agenda to take the minutes on, on paper or typed into Word */
+function MinutesTemplate({ m, ctx }) {
+  const { data, addToast } = ctx;
+  const [printing, setPrinting] = useState(false);
+  const opts = { meetings: data.meetings, quorum: data.settings.quorum };
+  const print = async () => {
+    setPrinting(true);
+    try { await printMinutesTemplate(m, opts); } catch (err) { addToast(`Couldn’t print it: ${err.message}`, 'error'); }
+    setPrinting(false);
+  };
+  const word = () => { try { downloadMinutesDocx(m, opts); } catch (err) { addToast(`Couldn’t make the Word file: ${err.message}`, 'error'); } };
+  // The board's secretary has it on the board page too, and sends the typed minutes from there
+  const secretary = m.practice ? null : data.members.find((p) => p.seat === 'secretary' && p.email);
+  return html`<div class="card">
+    <div class="bd-card-head"><h3>Minutes template</h3><p>This agenda with room under each item, the roll, the motions and the action items. Type into the Word file and drop it in after the meeting: every note lands on its item.${secretary ? ` ${secretary.name} (Board Secretary) has it on the board page too, and can send the typed minutes from there.` : ''}</p></div>
+    <div class="bd-actions">
+      <button type="button" class="btn btn-ghost btn-sm" disabled=${printing} onClick=${print}>${printing ? 'Printing…' : 'Print'}</button>
+      <button type="button" class="btn btn-ghost btn-sm" onClick=${word}>Word file</button>
+    </div>
+  </div>`;
 }
 
 function WrapUp({ m, set, ctx, act, save, keepSaved }) {

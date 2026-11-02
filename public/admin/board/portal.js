@@ -1625,6 +1625,72 @@ function PrintAll({ m, ctx }) {
     </div>` : null}`;
 }
 
+/** "11 of 13 board members there, notes under 9 items, 2 decisions and 3 action items" */
+function minutesWords(r) {
+  const parts = [
+    r?.attendance?.of ? `${r.attendance.here} of ${r.attendance.of} board members there` : '',
+    r?.notes ? `notes under ${r.notes} ${r.notes === 1 ? 'item' : 'items'}` : '',
+    r?.motions ? `${r.motions} ${r.motions === 1 ? 'decision' : 'decisions'}` : '',
+    r?.actions ? `${r.actions} ${r.actions === 1 ? 'action item' : 'action items'}` : '',
+  ].filter(Boolean);
+  return parts.length > 1 ? `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)}` : parts[0] || '';
+}
+
+/**
+ * The secretary taking the minutes (../board-minutes-template.js): this agenda on paper, or as a Word file to type
+ * into at the meeting; from the meeting's day, the typed file sent back here goes straight into the meeting (who was
+ * there, the notes under each item, the decisions, the action items) for the founders to share
+ */
+function TakeMinutes({ m, ctx }) {
+  const { data, say, load } = ctx;
+  const [busy, setBusy] = useState('');
+  const opts = { meetings: data.meetings, quorum: data.quorum };
+  const canSend = m.date <= data.today;
+  const sent = m.minutesFrom?.name ? m.minutesFrom : null;
+  const print = async () => {
+    setBusy('print');
+    try { const { printMinutesTemplate } = await import('../board-minutes-template.js'); await printMinutesTemplate(m, opts); } catch { say('The form didn’t come together. Try again.', 'warn'); }
+    setBusy('');
+  };
+  const word = async () => {
+    try { const { downloadMinutesDocx } = await import('../board-minutes-template.js'); downloadMinutesDocx(m, opts); } catch { say('The Word file didn’t come together. Try again.', 'warn'); }
+  };
+  const send = async (file) => {
+    if (!file) return;
+    setBusy('send');
+    const form = new FormData();
+    form.append('file', file);
+    let j;
+    try {
+      const r = await fetch(`${API}?minutes=${encodeURIComponent(m.id)}`, { method: 'POST', body: form });
+      j = await r.json().catch(() => ({ ok: false, error: /cloudflareaccess/i.test(r.url || '') ? 'Your sign-in expired. Reload the page to sign in again.' : `Something went wrong (${r.status})` }));
+    } catch {
+      j = { ok: false, error: 'No connection. Check your internet and try again.' };
+    }
+    setBusy('');
+    if (!j.ok) { say(j.error || 'The minutes didn’t go through. Try again.', 'warn'); return; }
+    await load();
+    const got = minutesWords(j.read);
+    say(`Thank you. Board has the minutes${got ? `: ${got}` : ''}.`);
+  };
+  return html`<div class="bp-minutes" role="group" aria-labelledby=${`tm-${m.id}`}>
+    <p class="bp-minutes__q" id=${`tm-${m.id}`}>You take the minutes</p>
+    <p class="bp-minutes__said">${sent ? `Board has them${sent.at ? ` as of ${shortDate(sent.at.slice(0, 10)).replace(/, \d{4}$/, '')}` : ''}. A newer copy replaces what they say.`
+      : canSend ? 'Send the Word file you typed them into, and they go into the meeting for the founders to share.'
+      : 'Print the form, or type into the Word file at the meeting. Send it here afterwards.'}</p>
+    ${canSend ? html`<div class="bp-minutes__do">
+      <label class=${`bp-btn ${sent ? 'bp-btn--quiet' : 'bp-btn--primary'} bp-minutes__send ${busy === 'send' ? 'is-busy' : ''}`}>
+        <${Icon} name="documents" size=${18} />${busy === 'send' ? 'Sending…' : sent ? 'Send a newer copy' : 'Send the minutes'}
+        <input type="file" class="sr-only" accept=".docx,.pdf" disabled=${!!busy} onChange=${(e) => { send(e.target.files[0]); e.target.value = ''; }} />
+      </label>
+    </div>` : null}
+    <div class="bp-minutes__get">
+      <button type="button" class="bp-mini" onClick=${word}>Word file</button>
+      <button type="button" class="bp-mini" onClick=${print} disabled=${busy === 'print'}><${Icon} name="print" size=${16} />${busy === 'print' ? 'Printing…' : 'Print the form'}</button>
+    </div>
+  </div>`;
+}
+
 // ─── A meeting's agenda ─────────────────────────────────────────────
 // The agenda as a run of show: the meeting's facts and your answer up top, its parts down the page as chapters
 // (a big number, the name, what's in it), each item with who presents it, the background, the documents as their
@@ -1850,6 +1916,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
       </div>
       <aside class="bp-aghero__side">
         ${upcoming && data.me.slug ? html`<div class="bp-aghero__card"><${Rsvp} m=${m} ctx=${ctx} /></div>` : null}
+        ${hasAgenda && !m.practice && m.minutes !== 'approved' && (d.me?.seat === 'secretary' || data.me.admin) ? html`<div class="bp-aghero__card bp-aghero__card--minutes bp-noprint"><${TakeMinutes} m=${m} ctx=${ctx} /></div>` : null}
         ${!upcoming && c.boardHere ? html`<div class="bp-aghero__card bp-who" id="who">
           <p class="bp-aghero__big"><strong>${c.boardHere}</strong> of ${c.board} board members</p>
           <p class="bp-who__q">${quorum === true ? html`<span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />A quorum</span>` : quorum === false ? html`<span class="bp-chip bp-chip--warn">Short of a quorum (${need})</span>` : null}${c.remote ? html`<span class="bp-muted">${c.remote} by video</span>` : null}</p>

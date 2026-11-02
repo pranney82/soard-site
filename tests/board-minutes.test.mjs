@@ -438,3 +438,160 @@ test('minutes the heartbeat read without the model are read again later for thei
   assert.ok(done.motions.some((x) => x.text === 'Approve the 2027 budget') && done.actions.some((x) => x.text === 'Send the venue contract'), 'its motions and action items come in');
   assert.equal(await maybeFinishMinutes(env, { now: now + 3 * 60 * 1000 }), null, 'and it isn’t read again');
 });
+
+// ─── The minutes template (public/admin/board-minutes-template.js) ─────────────
+
+/** An agenda to make the template from: an empty row left in a part, the last minutes up for approval, a live list with no title, a part with nothing in it yet */
+const forTemplate = () => cleanMeeting({
+  id: 'm_tmpl0001', date: '2026-11-05', start: '08:00', end: '10:00', location: 'Example Hall', address: '1 Example St, Exampleton, GA',
+  attendance: PEOPLE.map((p) => ({ slug: p.slug, name: p.name, org: p.org, kind: p.kind })),
+  sections: [
+    { id: 's_one', title: 'Call to order', items: [{ id: 'i_roll', title: 'Roll call', presenter: 'Alex Rivera' }, { id: 'i_blank', title: '' }] },
+    { id: 's_two', title: 'Approve meeting minutes', items: [{ id: 'i_min', title: 'Minutes of the Q3 2026 Board Meeting (Aug 6, 2026)', live: 'minutes' }] },
+    { id: 's_three', title: 'Committee reports', items: [{ id: 'i_fin', title: 'Financial', presenter: 'Sam', live: 'cash' }, { id: 'i_proj', title: 'Project updates', presenter: 'Kim', live: 'projects' }, { id: 'i_rev', title: '', live: 'reveals' }, { id: 'i_store', title: 'Store update', presenter: 'Jane' }] },
+    { id: 's_four', title: 'New business', items: [] },
+  ],
+});
+
+/**
+ * The Word template typed into the way a person does it in Word: `roll` { name: ['x' or '', 'video' / 'excused'] },
+ * `notes` typed into the empty bullets in order, `paragraph` { 'Item title': text } typed after an item with the
+ * bullet turned off, `lists` { 'PART IN CAPITALS': [lines] } typed into a part's empty numbered line, `guests`
+ */
+async function typeInto(bytes, { roll = {}, notes = [], paragraph = {}, lists = {}, guests = '' }) {
+  const { unzip } = await import('../public/admin/board-shared.js');
+  const { zip } = await import('../public/admin/board-minutes-template.js');
+  const names = ['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/_rels/document.xml.rels', 'word/styles.xml', 'word/numbering.xml', 'docProps/core.xml'];
+  const parts = await unzip(bytes, names);
+  const text = (b) => new TextDecoder().decode(b);
+  const run = (s) => `<w:r><w:t xml:space="preserve">${s}</w:t></w:r>`;
+  let doc = text(parts['word/document.xml']);
+  for (const [name, marks] of Object.entries(roll)) {
+    doc = doc.replace(new RegExp(`<w:tr>(?:(?!</w:tr>)[\\s\\S])*?>${name}<(?:(?!</w:tr>)[\\s\\S])*?</w:tr>`), (row) => {
+      let i = 0;
+      return row.replace(/(<w:pStyle w:val="Cell"\/>(?:<w:jc w:val="center"\/>)?<\/w:pPr>)(<\/w:p>)/g, (all, a, b) => { const v = marks[i++]; return v ? `${a}${run(v)}${b}` : all; });
+    });
+  }
+  if (guests) doc = doc.replace('Guests: </w:t></w:r>', `Guests: </w:t></w:r>${run(guests)}`);
+  let k = 0;
+  doc = doc.replace(/(<w:p><w:pPr><w:pStyle w:val="Note"\/><w:numPr><w:ilvl w:val="2"\/><w:numId w:val="1"\/><\/w:numPr><\/w:pPr>)(<\/w:p>)/g, (all, a, b) => { const v = notes[k++]; return v ? `${a}${run(v)}${b}` : all; });
+  for (const [title, words] of Object.entries(paragraph)) doc = doc.replace(new RegExp(`(>${title}</w:t></w:r>[\\s\\S]*?</w:p>)`), `$1<w:p>${run(words)}</w:p>`);
+  const item = '<w:p><w:pPr><w:pStyle w:val="Item"/><w:numPr><w:ilvl w:val="1"/><w:numId w:val="1"/></w:numPr></w:pPr></w:p>';
+  for (const [part, lines] of Object.entries(lists)) doc = doc.replace(`>${part}</w:t></w:r></w:p>${item}`, `>${part}</w:t></w:r></w:p>${lines.map((l) => item.replace('</w:pPr></w:p>', `</w:pPr>${run(l)}</w:p>`)).join('')}`);
+  return zip(names.map((n) => [n, n === 'word/document.xml' ? doc : text(parts[n])]));
+}
+
+test('the minutes template is the agenda the way Board reads minutes: the roll, each part in capitals, each item with who presents', async () => {
+  const { minutesDocx, minutesFileName, minutesOutline } = await import('../public/admin/board-minutes-template.js');
+  const { docxText } = await import('../public/admin/board-shared.js');
+  const m = forTemplate();
+  const next = { id: 'm_next0001', date: '2027-02-11', start: '08:00', sections: [], attendance: [] };
+  assert.equal(minutesFileName(m), 'Q4 2026 Board Meeting minutes (2026-11-05).docx', '“minutes” and the date in the name, for the email and Drive readers');
+  const o = minutesOutline(m, { meetings: [m, next] });
+  assert.deepEqual([o.board, o.quorum, o.next?.name], [5, 3, 'Q1 2027 Board Meeting']);
+  const lines = (await docxText(minutesDocx(m, { meetings: [m, next] }))).split('\n');
+  for (const want of ['Max Sample', 'Alex Rivera', 'Jane Doe', 'Guests:', '1. CALL TO ORDER', '   1. Roll call (Alex Rivera)', '2. APPROVE MEETING MINUTES',
+    '   1. Minutes of the Q3 2026 Board Meeting (Aug 6, 2026)', '   1. Financial (Sam)', '   3. Upcoming reveals', '4. NEW BUSINESS', '5. MOTIONS', '6. ACTION ITEMS']) {
+    assert.ok(lines.includes(want), `has “${want}”`);
+  }
+  assert.ok(!lines.some((l) => /^\s+2\. $|^\s+2\.\s*$/.test(l)) && lines.indexOf('2. APPROVE MEETING MINUTES') === lines.indexOf('   1. Roll call (Alex Rivera)') + 1, 'the row left empty isn’t on it');
+  assert.ok(lines.some((l) => l.startsWith('Next meeting: Q1 2027 Board Meeting')));
+});
+
+test('the template left blank and dropped in changes nothing: nobody marked absent, no notes, no motions', async () => {
+  const { minutesDocx } = await import('../public/admin/board-minutes-template.js');
+  const m = forTemplate();
+  const read = await readMinutes({}, { name: 'Q4 minutes.docx', bytes: minutesDocx(m), meeting: m, people: PEOPLE });
+  assert.deepEqual([read.attendance, read.motions, read.actions, read.approvedPrev], [[], [], [], false]);
+  const next = applyMinutes(m, read, { fileName: 'Q4 minutes.docx', now: Date.parse(AT) });
+  assert.deepEqual(next.sections.map((s) => [s.id, s.items.map((it) => [it.id, it.notes])]), m.sections.map((s) => [s.id, s.items.map((it) => [it.id, it.notes])]));
+  assert.ok(next.attendance.every((p) => !p.status));
+});
+
+test('the template typed into and dropped in: the roll with video, excused and guests, each note on its own item, the motions and action items, no new parts', async () => {
+  const { minutesDocx } = await import('../public/admin/board-minutes-template.js');
+  const m = forTemplate();
+  const bytes = await typeInto(minutesDocx(m), {
+    roll: { 'Alex Rivera': ['x'], 'Sam Ortiz': ['x', 'on video'], 'Kim Park': ['', 'excused'], 'Jane Doe': ['x'] },
+    guests: 'Pat Visitor (Example Co), none',
+    notes: ['Alex called the meeting to order at 8:04 AM.', 'Motion to approve the Q3 minutes by Sam Ortiz, seconded by Kim Park. Motion passed.', 'Reserves grew this quarter.'],
+    paragraph: { 'Store update': 'Holiday hours start in November.' },
+    lists: {
+      'NEW BUSINESS': ['Spring gala venue'],
+      MOTIONS: ['Motion to adopt the 2027 budget by Alex Rivera, seconded by Lee Example. Motion passed.'],
+      'ACTION ITEMS': ['Sam will send the bank letters to the board by Nov 20', 'Lee: bylaws draft by Jan 15'],
+    },
+  });
+  const read = await readMinutes({}, { name: 'Q4 minutes.docx', bytes, meeting: m, people: PEOPLE });
+  assert.deepEqual(read.attendance.map((p) => `${p.name}:${p.status}`), ['Alex Rivera:present', 'Sam Ortiz:remote', 'Kim Park:excused', 'Lee Example:absent', 'Max Sample:absent', 'Jane Doe:present', 'Pat Visitor:present']);
+  assert.deepEqual(read.motions.map((x) => [x.text, x.by, x.second, x.result]), [['Approve the Q3 minutes', 'Sam Ortiz', 'Kim Park', 'passed'], ['Adopt the 2027 budget', 'Alex Rivera', 'Lee Example', 'passed']]);
+  assert.deepEqual(read.actions.map((x) => [x.owner, x.due]), [['sam-ortiz', '2026-11-20'], ['lee-example', '2027-01-15']], 'whose, and January after a November meeting is next year’s');
+  assert.equal(read.approvedPrev, true, 'the motion on the minutes item passed');
+  const next = applyMinutes(m, read, { fileName: 'Q4 minutes.docx', now: Date.parse(AT) });
+  assert.deepEqual(next.sections.map((s) => [s.id, s.items.map((it) => it.id.startsWith('i_') && it.id.length < 9 ? it.id : it.title)]), [
+    ['s_one', ['i_roll', 'i_blank']], ['s_two', ['i_min']], ['s_three', ['i_fin', 'i_proj', 'i_rev', 'i_store']], ['s_four', ['Spring gala venue']],
+  ], 'the agenda as it was, “Upcoming reveals” matched to the untitled list, the new business topic under New business, no Motions or Action items part');
+  const item = (id) => next.sections.flatMap((s) => s.items).find((it) => it.id === id);
+  assert.equal(item('i_roll').notes, '- Alex called the meeting to order at 8:04 AM.');
+  assert.match(item('i_min').notes, /Motion to approve the Q3 minutes/);
+  assert.equal(item('i_fin').notes, '- Reserves grew this quarter.');
+  assert.equal(item('i_store').notes, '- Holiday hours start in November.', 'a plain paragraph under an item is a note on it, never part of its title');
+  assert.equal(item('i_store').title, 'Store update');
+  assert.deepEqual([item('i_fin').live, item('i_fin').presenter], ['cash', 'Sam']);
+  assert.deepEqual(next.actions.map((x) => x.ownerName), ['Sam Ortiz', 'Lee Example']);
+});
+
+test('an agenda with its own “Action items” part keeps it as a part (only the template’s own are left off the agenda)', async () => {
+  const m = cleanMeeting({ id: 'm_own00001', date: '2026-11-05', sections: [{ id: 's_act', title: 'Action items', items: [{ id: 'i_rev1', title: 'Review last quarter’s items' }] }] });
+  const read = await readMinutes({}, { text: '1. ACTION ITEMS\n1. Review last quarter’s items\na. All done but one', meeting: m, people: PEOPLE });
+  assert.deepEqual(read.sections.map((s) => s.title), ['Action items']);
+});
+
+test('the board’s secretary sends the typed minutes template from the board page: read into the meeting at once; nobody else can, nor before the day', async () => {
+  const portal = await import('../functions/api/board-portal.js');
+  const { minutesDocx } = await import('../public/admin/board-minutes-template.js');
+  await env.DB.prepare('INSERT INTO team (slug, name, "group", data) VALUES (?, ?, ?, ?)').bind('lee-example', 'Lee Example', 'board', JSON.stringify({ name: 'Lee Example', group: 'board', title: 'Board Secretary' })).run();
+  for (const [slug, email] of [['lee-example', 'lee.board@example.com'], ['kim-park', 'kim.board@example.com']]) await env.DB.prepare('INSERT INTO reveal_board_emails (slug, email) VALUES (?, ?)').bind(slug, email).run();
+  const people = [{ slug: 'alex-rivera', name: 'Alex Rivera', kind: 'board' }, { slug: 'sam-ortiz', name: 'Sam Ortiz', kind: 'board' }, { slug: 'kim-park', name: 'Kim Park', kind: 'board' }, { slug: 'lee-example', name: 'Lee Example', kind: 'board' }];
+  const meeting = (extra) => saveMeeting(env.DB, cleanMeeting({
+    date: '2026-08-06', title: 'Q3 Board Meeting', shared: true, agendaFrom: { kind: 'typed', name: '', at: AT }, attendance: people,
+    sections: [{ title: 'Committee reports', items: [{ title: 'Financial', live: 'cash', staffNote: 'PRIVATE: ask counsel' }] }], ...extra,
+  }), { by: FOUNDER });
+  const m = await meeting({});
+  // Lee types into the template: everyone there but Kim, a note under Financial
+  let doc = new TextDecoder().decode((await (await import('../public/admin/board-shared.js')).unzip(minutesDocx(m), ['word/document.xml']))['word/document.xml']);
+  for (const name of ['Alex Rivera', 'Sam Ortiz', 'Lee Example']) doc = doc.replace(new RegExp(`(<w:tr>(?:(?!</w:tr>)[\\s\\S])*?<w:jc w:val="center"/></w:pPr>)(</w:p>(?:(?!</w:tr>)[\\s\\S])*?>${name}<)`), '$1<w:r><w:t>x</w:t></w:r>$2');
+  doc = doc.replace(/(<w:pStyle w:val="Note"\/>(?:(?!<\/w:p>)[\s\S])*?<\/w:pPr>)(<\/w:p>)/, '$1<w:r><w:t>Reserves grew this quarter.</w:t></w:r>$2');
+  const { unzip } = await import('../public/admin/board-shared.js');
+  const { zip } = await import('../public/admin/board-minutes-template.js');
+  const all = ['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/_rels/document.xml.rels', 'word/styles.xml', 'word/numbering.xml', 'docProps/core.xml'];
+  const parts = await unzip(minutesDocx(m), all);
+  const typed = zip(all.map((n) => [n, n === 'word/document.xml' ? doc : new TextDecoder().decode(parts[n])]));
+  const send = async (email, id, file) => {
+    const form = new FormData();
+    if (file) form.append('file', file);
+    const request = new Request(`https://sunshineonaranneyday.com/api/board-portal?minutes=${id}`, { method: 'POST', headers: { 'CF-Access-JWT-Assertion': await signIn(email), Origin: 'https://sunshineonaranneyday.com' }, body: form });
+    const ctx = { request, env, data: {}, waitUntil: () => {} };
+    ctx.next = async () => portal.onRequestPost(ctx);
+    const res = await onRequest(ctx);
+    return { status: res.status, body: await res.json() };
+  };
+  const word = (name = 'Q3 minutes.docx') => new File([typed], name, { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+  // Not the secretary: refused, nothing kept
+  assert.equal((await send('kim.board@example.com', m.id, word())).status, 403);
+  assert.equal((await getMeeting(env.DB, m.id)).files.length, 0);
+  // The secretary
+  const r = await send('lee.board@example.com', m.id, word());
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual(r.body.read, { attendance: { here: 3, of: 4 }, notes: 1, motions: 0, actions: 0, ai: false });
+  assert.ok(!('meeting' in r.body) && !JSON.stringify(r.body).includes('PRIVATE'), 'a board member gets back what was read, never Board’s own copy of the meeting');
+  const after = await getMeeting(env.DB, m.id);
+  assert.equal(after.sections[0].items[0].notes, '- Reserves grew this quarter.');
+  assert.deepEqual(after.attendance.map((p) => `${p.slug}:${p.status}`), ['alex-rivera:present', 'sam-ortiz:present', 'kim-park:absent', 'lee-example:present']);
+  assert.deepEqual([after.files.length, after.files[0].kind, after.files[0].name, after.minutesFrom.name], [1, 'minutes', 'Q3 minutes.docx', 'Q3 minutes.docx']);
+  // Not before the meeting's day, not a meeting the board can't see, not something that isn't minutes
+  assert.equal((await send('lee.board@example.com', (await meeting({ date: '2099-02-11' })).id, word())).status, 400);
+  assert.equal((await send('lee.board@example.com', (await meeting({ shared: false })).id, word())).status, 404);
+  assert.equal((await send('lee.board@example.com', m.id, new File([new Uint8Array([1, 2, 3])], 'photo.jpg', { type: 'image/jpeg' }))).status, 400);
+  assert.equal((await send('lee.board@example.com', m.id, null)).status, 400);
+});

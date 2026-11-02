@@ -48,10 +48,11 @@ import * as bankAdmin from '../functions/api/bank-admin.js';
 import * as booksAdmin from '../functions/api/books-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
-import { provideBoardFinance, maybeLockNumbers, takeSnapshot } from '../functions/api/_board.js';
+import { provideBoardFinance, maybeLockNumbers, takeSnapshot, saveMeeting, getMeeting } from '../functions/api/_board.js';
 import { maybeReadGifts } from '../functions/api/_board-gifts.js';
 import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-invite.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
+import { docxText, unzip, cleanMeeting } from '../public/admin/board-shared.js';
 import { generateKeyPairSync } from 'node:crypto';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 
@@ -502,6 +503,32 @@ try {
   ok(await waitText(jane, /Emailed 2 board members/), 'Email the board reaches the two members with emails');
   ok(mail.slice(1).map((m) => m.to[0]).sort().join() === [MEMBER, OTHER].sort().join() && mail.slice(1).every((m) => !m.attachments), 'each board member got their own, with nothing attached');
   await shot(jane, '03-before');
+
+  // The minutes template (./board-minutes-template.js): this agenda to take the minutes on, printed or typed into Word
+  const tmplButtons = await jane.evaluate(() => { const c = [...document.querySelectorAll('.bm-aside .card')].find((x) => x.querySelector('h3')?.textContent === 'Minutes template'); return c ? [...c.querySelectorAll('button')].map((b) => b.textContent.trim()) : null; });
+  ok(JSON.stringify(tmplButtons) === '["Print","Word file"]', `Before has the minutes template, to print or as a Word file (${JSON.stringify(tmplButtons)})`);
+  await jane.evaluate(() => { window.__printing = false; window.print = () => { window.__printing = true; }; });
+  await clickText(jane, '.bm-aside .card button', /^Print$/);
+  ok(await jane.waitForFunction(() => window.__printing, { timeout: 5000 }).then(() => true, () => false), 'Print opens the print window');
+  const paper = await jane.evaluate(() => document.querySelector('.mt-print')?.textContent || '');
+  ok(/Who was there/.test(paper) && /Alex Rivera/.test(paper) && /Financial/.test(paper) && /Motion to approve these minutes/.test(paper) && /Action items/.test(paper) && !/ask counsel/i.test(paper), 'on paper: the roll, each item, the vote on the last minutes, the action items, never a private note');
+  await jane.pdf({ path: join(OUT, '03b-minutes-template.pdf'), format: 'letter', printBackground: true });
+  await jane.evaluate(() => dispatchEvent(new Event('afterprint')));
+  ok(await jane.waitForFunction(() => !document.querySelector('.mt-print') && !document.documentElement.classList.contains('mt-printing'), { timeout: 5000 }).then(() => true, () => false), 'and the paper version is taken away after');
+  // The Word file, as the browser saves it
+  const template = await jane.evaluate(async () => {
+    const make = URL.createObjectURL;
+    const click = HTMLAnchorElement.prototype.click;
+    let blob = null;
+    let name = '';
+    URL.createObjectURL = (b) => { blob = b; return make.call(URL, b); };
+    HTMLAnchorElement.prototype.click = function () { name = this.download; };
+    try { [...document.querySelectorAll('.bm-aside .card button')].find((b) => b.textContent.trim() === 'Word file').click(); } finally { URL.createObjectURL = make; HTMLAnchorElement.prototype.click = click; }
+    return blob ? { name, type: blob.type, bytes: [...new Uint8Array(await blob.arrayBuffer())] } : null;
+  });
+  const templateText = template ? await docxText(new Uint8Array(template.bytes)) : '';
+  ok(/ minutes \(\d{4}-\d{2}-\d{2}\)\.docx$/.test(template?.name || '') && /wordprocessingml/.test(template?.type || ''), `Word file saves as “${template?.name}”`);
+  ok(/^1\. CALL TO ORDER$/m.test(templateText) && /^ {3}\d\. Financial \(Sam Ortiz\)$/m.test(templateText) && /^\d\. ACTION ITEMS$/m.test(templateText) && /^Alex Rivera$/m.test(templateText), 'it’s the agenda as Board reads minutes: parts in capitals, items with who presents, the roll');
 
   // The numbers lock themselves on the meeting's day (the heartbeat), so the minutes keep what the board saw
   ok((await maybeLockNumbers(env, { now: Date.parse(`${day(14)}T15:00:00Z`) })).includes(meetingId) && !!(await meetingNow(jane, meetingId)).snapshot, 'on the meeting’s day its numbers lock by themselves');
@@ -1161,6 +1188,106 @@ try {
     await money.close();
   }
   await DB.exec("DELETE FROM books_link; DELETE FROM books_daily");
+
+  // ─── The minutes template, typed into and dropped in after the meeting ───
+  console.log('The minutes template, back in');
+  /** The Word template typed into: an "x" before everyone but `away`, "video" for `video`, a note under the first item; saved compressed, as Word saves */
+  const typeTemplate = async (bytes, { away = '', video = '', note = '' }) => {
+    const names = ['[Content_Types].xml', '_rels/.rels', 'word/document.xml', 'word/_rels/document.xml.rels', 'word/styles.xml', 'word/numbering.xml', 'docProps/core.xml'];
+    const parts = await unzip(new Uint8Array(bytes), names);
+    const dec = (b) => new TextDecoder().decode(b);
+    const run = (x) => `<w:r><w:t xml:space="preserve">${x}</w:t></w:r>`;
+    let doc = dec(parts['word/document.xml']);
+    for (const r of [...doc.matchAll(/<w:tr>(?:(?!<\/w:tr>)[\s\S])*?<\/w:tr>/g)].map((x) => x[0]).slice(1)) {
+      const name = r.match(/<w:t xml:space="preserve">([^<]+)<\/w:t>/)?.[1] || '';
+      if (name === away) continue;
+      let k = 0;
+      doc = doc.replace(r, r.replace(/(<w:pStyle w:val="Cell"\/>(?:<w:jc w:val="center"\/>)?<\/w:pPr>)(<\/w:p>)/g, (all, a, b) => { const v = ['x', name === video ? 'video' : ''][k++]; return v ? `${a}${run(v)}${b}` : all; }));
+    }
+    if (note) doc = doc.replace(/(<w:p><w:pPr><w:pStyle w:val="Note"\/>(?:(?!<\/w:p>)[\s\S])*?<\/w:pPr>)(<\/w:p>)/, `$1${run(note)}$2`);
+    return zip(Object.fromEntries(names.map((n) => [n, n === 'word/document.xml' ? doc : dec(parts[n])])));
+  };
+  if (template) {
+    const before = await meetingNow(jane, meetingId);
+    const boardNames = before.attendance.filter((p) => p.kind === 'board').map((p) => p.name);
+    const away = boardNames.at(-1);
+    const typed = join(OUT, template.name);
+    writeFileSync(typed, await typeTemplate(template.bytes, { away, video: boardNames[1], note: 'Called to order at 8:03 AM.' }));
+    const back = await tab(FOUNDER);
+    await back.goto(`${SITE}/admin/#board/meeting/${meetingId}/after`, { waitUntil: 'networkidle0' });
+    ok(await waitText(back, /Drop the minutes here/) && await back.evaluate(() => [...document.querySelectorAll('.bm-aside .card h3')].some((h) => h.textContent === 'Minutes template')), 'After, until the minutes are in: the template is still there to type into');
+    await (await back.$('.bm-minutes-drop input[type="file"]')).uploadFile(typed);
+    ok(await waitText(back, /Read from the minutes: [^\n]*board members there/), 'the typed template drops straight in');
+    const after = await meetingNow(back, meetingId);
+    const board = after.attendance.filter((p) => p.kind === 'board');
+    ok(board.find((p) => p.name === away)?.status === 'absent' && board.filter((p) => p.name !== away).every((p) => p.status === 'present' || p.status === 'remote') && after.attendance.some((p) => p.name === boardNames[1] && p.status === 'remote'), `the roll as marked: ${board.map((p) => `${p.name} ${p.status}`).join(', ')}`);
+    ok(after.sections[0].items[0].notes === '- Called to order at 8:03 AM.', 'the note is on the first item');
+    ok(JSON.stringify(after.sections.map((s) => [s.id, s.items.map((it) => it.id)])) === JSON.stringify(before.sections.map((s) => [s.id, s.items.map((it) => it.id)])), 'the agenda as it was: no Motions or Action items part added, no item doubled');
+    ok(!(await back.evaluate(() => [...document.querySelectorAll('.bm-aside .card h3')].some((h) => h.textContent === 'Minutes template'))), 'once the minutes are in, the template steps aside');
+    await back.close();
+  }
+
+  // ─── The board's secretary, on the board page: the template, and the typed minutes sent back ───
+  console.log('The secretary, on the board page');
+  const SECRETARY = 'kim.board@example.com';
+  await DB.prepare('UPDATE team SET data = ? WHERE slug = ?').bind(JSON.stringify({ ...PEOPLE['kim-park'], title: 'Board Secretary' }), 'kim-park').run();
+  await DB.prepare('INSERT INTO reveal_board_emails (slug, email) VALUES (?, ?)').bind('kim-park', SECRETARY).run();
+  await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}/before`, { waitUntil: 'networkidle0' });
+  await jane.reload({ waitUntil: 'networkidle0' });
+  ok(await waitText(jane, /Kim Park \(Board Secretary\) has it on the board page too/), 'the founders’ minutes template says the secretary has it on the board page');
+  const sec = await tab(SECRETARY);
+  await sec.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
+  const card = (page) => page.evaluate(() => { const c = document.querySelector('.bp-minutes'); return c ? { text: c.innerText, send: !!c.querySelector('input[type="file"]'), buttons: [...c.querySelectorAll('button')].map((b) => b.textContent.trim()) } : null; });
+  const ahead = await card(sec);
+  ok(/You take the minutes/.test(ahead?.text || '') && JSON.stringify(ahead.buttons) === '["Word file","Print the form"]' && !ahead.send, `the secretary’s meeting page: the Word file and the form to print, nothing to send before the day (${JSON.stringify(ahead)})`);
+  await shot(sec, '27-secretary-minutes');
+  await sec.evaluate(() => { window.__printing = false; window.print = () => { window.__printing = true; }; });
+  await clickText(sec, '.bp-minutes button', /Print the form/);
+  ok(await sec.waitForFunction(() => window.__printing && /Who was there/.test(document.querySelector('.mt-print')?.textContent || ''), { timeout: 5000 }).then(() => true, () => false), 'Print the form opens the print window with the minutes form');
+  await sec.pdf({ path: join(OUT, '27b-secretary-form.pdf'), format: 'letter', printBackground: true });
+  await sec.evaluate(() => dispatchEvent(new Event('afterprint')));
+  ok(await sec.waitForFunction(() => !document.querySelector('.mt-print'), { timeout: 5000 }).then(() => true, () => false), 'and the form is taken away after');
+  ok(!(await sec.evaluate(() => /PRIVATE/.test(document.body.innerText))), 'the board page never shows a private note');
+  // Another board member doesn't see it
+  const chair = await tab(MEMBER);
+  await chair.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
+  ok(await waitText(chair, /Board meeting/) && !(await chair.$('.bp-minutes')), 'other board members don’t see it');
+  await chair.close();
+  // The meeting day: a meeting today, its typed minutes sent from the board page
+  const today = await saveMeeting(DB, cleanMeeting({
+    date: day(0), start: '08:00', end: '10:00', title: 'Secretary’s meeting', shared: true, agendaFrom: { kind: 'typed', name: '', at: new Date().toISOString() },
+    attendance: ['alex-rivera', 'sam-ortiz', 'kim-park'].map((slug) => ({ slug, name: PEOPLE[slug].name, kind: 'board' })),
+    sections: [{ title: 'Call to order', items: [{ title: 'Roll call' }] }, { title: 'Committee reports', items: [{ title: 'Financial', live: 'cash', staffNote: 'PRIVATE: ask counsel' }] }],
+  }), { by: FOUNDER });
+  await sec.goto(`${SITE}/admin/board/#/meetings/${today.id}`, { waitUntil: 'networkidle0' });
+  await sec.reload({ waitUntil: 'networkidle0' });
+  ok((await card(sec))?.send && /Send the minutes/.test((await card(sec))?.text || ''), 'on the day: Send the minutes');
+  const secWord = await sec.evaluate(async () => {
+    const make = URL.createObjectURL;
+    const click = HTMLAnchorElement.prototype.click;
+    let blob = null;
+    let name = '';
+    URL.createObjectURL = (b) => { blob = b; return make.call(URL, b); };
+    HTMLAnchorElement.prototype.click = function () { name = this.download; };
+    try {
+      [...document.querySelectorAll('.bp-minutes button')].find((b) => b.textContent.trim() === 'Word file').click();
+      for (let i = 0; i < 40 && !blob; i++) await new Promise((r) => setTimeout(r, 50));
+    } finally { URL.createObjectURL = make; HTMLAnchorElement.prototype.click = click; }
+    return blob ? { name, bytes: [...new Uint8Array(await blob.arrayBuffer())] } : null;
+  });
+  ok(/^Secretary’s meeting minutes \(\d{4}-\d{2}-\d{2}\)\.docx$/.test(secWord?.name || ''), `the secretary’s Word file: “${secWord?.name}”`);
+  if (secWord) {
+    const typedBySec = join(OUT, secWord.name);
+    writeFileSync(typedBySec, await typeTemplate(secWord.bytes, { away: 'Sam Ortiz', note: 'Called to order at 8:01 AM.' }));
+    await (await sec.$('.bp-minutes input[type="file"]')).uploadFile(typedBySec);
+    ok(await waitText(sec, /Board has the minutes: 2 of 3 board members there, notes under 1 item/), 'sent: the board page says what Board read');
+    const held = await getMeeting(DB, today.id);
+    ok(held.sections[0].items[0].notes === '- Called to order at 8:01 AM.' && held.attendance.map((p) => `${p.slug}:${p.status}`).join() === 'alex-rivera:present,sam-ortiz:absent,kim-park:present' && held.files.some((f) => f.kind === 'minutes' && f.name === secWord.name), 'the meeting has the secretary’s minutes: the note, the roll, the file');
+    ok(/Board has them as of /.test((await card(sec))?.text || '') && /Send a newer copy/.test((await card(sec))?.text || ''), 'and the card says Board has them, with a way to send a newer copy');
+    ok(/Called to order at 8:01 AM/.test(await text(sec)) && !/PRIVATE/.test(await text(sec)), 'the note shows on the board page; the private note never does');
+    await shot(sec, '27c-secretary-sent');
+  }
+  await sec.close();
 
   ok(!consoleErrors.length, `no console errors${consoleErrors.length ? `: ${consoleErrors.slice(0, 5).join(' | ')}` : ''}`);
 } catch (err) {

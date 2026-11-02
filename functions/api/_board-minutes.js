@@ -11,7 +11,9 @@
  *     (parseAgendaText), else Workers AI's reading of what each part said
  *   - the motions (who moved and seconded, passed, failed or tabled) and the
  *     action items (whose, by when): Workers AI, else the usual wording
- *     ("Motion to approve … by Alex, seconded by Sam. Motion passed.")
+ *     ("Motion to approve … by Alex, seconded by Sam. Motion passed.") and the
+ *     minutes template's Action items, one to a line (actionsIn). The
+ *     template's Motions and Action items parts never become agenda parts
  *   - whether the board approved the last meeting's minutes
  * readMinutes reads; applyMinutes (pure) puts what was read onto a meeting:
  * the minutes are the record of who was there, the agenda keeps its items and
@@ -22,10 +24,10 @@
  * Without Workers AI (or when it fails) the rules alone read them; never throws.
  */
 
-import { fileText, attendanceIn } from './_board-mail.js';
-import { getMeeting, patchMeeting, listMeetings, roster, boardFiles, updateFile, approveMinutes } from './_board.js';
+import { fileText, attendanceIn, dateIn } from './_board-mail.js';
+import { getMeeting, patchMeeting, listMeetings, roster, boardFiles, updateFile, approveMinutes, putFile, MAX_FILE, ID } from './_board.js';
 import { readState, writeState } from './_board-roles.js';
-import { parseAgendaText, agendaIsDraft, meetingName, shortDate, isDate, uid } from '../../public/admin/board-shared.js';
+import { parseAgendaText, agendaIsDraft, meetingName, shortDate, isDate, uid, LIVE_TITLES, todayEastern } from '../../public/admin/board-shared.js';
 
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 // How long the model may take. Read by hand (the person is waiting, Cloudflare allows 100 seconds): up to 70 seconds
@@ -255,14 +257,17 @@ function sectionsFrom(topics) {
  * (Board's own readers, on the heartbeat): one try of the model, sooner given up on.
  * → { attendance, sections, motions, actions, approvedPrev, said: { by: 'ai' | 'rules', chars, date, start, end, location } }
  */
-export async function readMinutes(env, { name = '', bytes = null, text = null, meeting = null, people = [], prev = null, quick = false } = {}) {
+export async function readMinutes(env, { name = '', bytes = null, text = null, meeting = null, people = [], prev = null, quick = false, paragraphs = /\.docx$/i.test(name) } = {}) {
   const words = text != null ? String(text) : bytes ? await fileText(env, { name, bytes }) : '';
   if (!words.trim()) return { attendance: [], sections: [], motions: [], actions: [], approvedPrev: false, said: { by: 'rules', chars: 0, date: '', start: '', end: '', location: '' } };
-  const parsed = parseAgendaText(words, people);
+  const parsed = parseAgendaText(words, people, { paragraphs });
   let attendance = parsed.attendance.length ? parsed.attendance : attendanceIn(words, people);
-  let sections = parsed.sections;
+  // The motions and action items listed as parts of their own (the minutes template's, or minutes kept that way) are
+  // read for what they are, never put on the agenda as parts; a part the agenda itself has keeps its place
+  const logs = parsed.sections.filter((s) => LOG_PART.test(s.title) && !(meeting?.sections || []).some((x) => likeness(x.title, s.title) >= 0.5));
+  let sections = parsed.sections.filter((s) => !logs.includes(s));
   let motions = motionsIn(words, people);
-  let actions = [];
+  let actions = actionsIn(logs.filter((s) => ACTION_PART.test(s.title)), people, meeting?.date);
   let approvedPrev = false;
   let by = 'rules';
   // The outline read by the rules is kept as it is; the model fills in the outline only when the rules found none
@@ -275,16 +280,50 @@ export async function readMinutes(env, { name = '', bytes = null, text = null, m
       text: cleanMotion(x?.text), by: x?.by ? nameOf(x.by, people) : '', second: x?.second ? nameOf(x.second, people) : '', result: RESULTS.includes(x?.result) ? x.result : 'passed',
     })).filter((x) => x.text);
     if (said.length) motions = dedupe(said, (x) => x.text);
-    actions = dedupe((Array.isArray(ai.actions) ? ai.actions : []).map((x) => {
+    const theirs = dedupe((Array.isArray(ai.actions) ? ai.actions : []).map((x) => {
       const p = x?.owner ? matchPerson(x.owner, people) : null;
       return { text: one(x?.text, 1000), owner: p?.slug || '', ownerName: p?.name || one(x?.owner, 120), due: isDate(String(x?.due || '')) ? x.due : '' };
     }).filter((x) => x.text), (x) => x.text);
+    if (theirs.length) actions = theirs;
     if (topics) sections = sectionsFrom(ai.topics);
     approvedPrev = ai.approvedPrev === true;
   }
   approvedPrev = approvedPrev || approvalIn(sections, motions);
   return { attendance, sections, motions, actions, approvedPrev, said: { by, chars: words.length, date: parsed.date || '', start: parsed.start || '', end: parsed.end || '', location: parsed.location || '' } };
 }
+// Parts that list the motions or the action items (or say when it ended) rather than an agenda's business
+const LOG_PART = /^(motions?|decisions?|votes?|action items?|follow[- ]?ups?|to[- ]?dos?|adjourn\w*)\b/i;
+const ACTION_PART = /^(action items?|follow[- ]?ups?|to[- ]?dos?)\b/i;
+
+/**
+ * The action items a part lists, one to a line ("Pat will send the bylaws to the board by Nov 15"): whose (the
+ * person it names first, by full name or a first name only one person has) and by when (a date in it, the year
+ * after the meeting's when the month has passed by then and no year is written)
+ */
+export function actionsIn(parts, people = [], meetingDate = '') {
+  const out = [];
+  for (const s of parts) {
+    for (const it of s.items) {
+      const text = one(it.title, 1000);
+      if (!text) continue;
+      const words = ` ${plain(text)} `;
+      let who = null;
+      for (const p of people) {
+        const full = plain(p.name);
+        const first = full.split(' ')[0];
+        let at = words.indexOf(` ${full} `);
+        if (at < 0 && first && people.filter((q) => plain(q.name).split(' ')[0] === first).length === 1) at = words.indexOf(` ${first} `);
+        if (at >= 0 && (!who || at < who.at)) who = { p, at };
+      }
+      const year = isDate(meetingDate) ? Number(meetingDate.slice(0, 4)) : undefined;
+      let due = dateIn(text, year);
+      if (due && isDate(meetingDate) && due < meetingDate && !/\b20\d{2}\b/.test(text)) due = `${Number(due.slice(0, 4)) + 1}${due.slice(4)}`;
+      out.push({ text, owner: who?.p.slug || '', ownerName: who?.p.name || '', due: isDate(due) ? due : '' });
+    }
+  }
+  return dedupe(out, (x) => x.text);
+}
+
 /** Whether a reading found anything to put on a meeting */
 export const readSomething = (read) => !!read && (read.attendance.length > 0 || read.sections.some((s) => s.items.length) || read.motions.length > 0 || read.actions.length > 0);
 
@@ -322,7 +361,9 @@ export function shapeFrom(cur, read, { whole = false, minSections = 1 } = {}) {
 
 /** Which agenda item each minutes item is: [[agenda {si, ii}, minutes {si, ii}]] by their titles, then their places */
 function pairItems(agenda, minutes) {
-  const A = agenda.flatMap((s, si) => s.items.map((it, ii) => ({ si, ii, it, sec: s })));
+  // A live list with no title of its own goes by what it shows ("Upcoming reveals"), as the board page and the minutes template name it
+  const titleOf = (it) => it.title || LIVE_TITLES[it.live] || '';
+  const A = agenda.flatMap((s, si) => s.items.map((it, ii) => ({ si, ii, it, sec: s, title: titleOf(it) })));
   const M = minutes.flatMap((s, si) => s.items.map((it, ii) => ({ si, ii, it, sec: s })));
   // The parts of the two that are the same (by their headings)
   const secPair = new Map();
@@ -334,7 +375,7 @@ function pairItems(agenda, minutes) {
   const scored = [];
   for (const a of A) {
     for (const m of M) {
-      let score = likeness(a.it.title, m.it.title);
+      let score = likeness(a.title, m.it.title);
       if (a.it.live === 'minutes' && minutesy(m)) score = Math.max(score, 0.9);
       if (score < 0.5) continue;
       if (secPair.get(m.si) === a.si) score += 0.25;
@@ -353,7 +394,7 @@ function pairItems(agenda, minutes) {
   }
   // In the same place in the same part, when one of the titles says nothing of its own ("Update", "Discussion"):
   // two different titles in the same place are two different things (a deck must never move to another item)
-  const generic = (x) => wordsOf(x.it.title).size === 0;
+  const generic = (x) => wordsOf(x.title ?? x.it.title).size === 0;
   for (const m of M) {
     if (usedM.has(key(m)) || !secPair.has(m.si)) continue;
     const a = A.find((x) => x.si === secPair.get(m.si) && x.ii === m.ii);
@@ -364,9 +405,12 @@ function pairItems(agenda, minutes) {
   return { pairs, A, M, secPair, usedA, usedM, key };
 }
 
-/** The agenda's own (what the minutes never say): who presents, its documents, live numbers, board-only, private notes */
-const carried = (it) => ({ id: it.id, docs: it.docs || [], who: it.who || [], live: it.live || '', about: it.about || '', confidential: !!it.confidential, staffNote: it.staffNote || '' });
-const carriesSomething = (it) => (it.docs || []).length > 0 || !!it.staffNote;
+/**
+ * The agenda's own (what the minutes never say): who presents, its documents, live numbers, board-only, private
+ * notes, and a committee's written report (who wrote it, when)
+ */
+const carried = (it) => ({ id: it.id, docs: it.docs || [], who: it.who || [], live: it.live || '', about: it.about || '', confidential: !!it.confidential, staffNote: it.staffNote || '', report: it.report || '', reportBy: it.reportBy || '', reportAt: it.reportAt || '' });
+const carriesSomething = (it) => (it.docs || []).length > 0 || !!it.staffNote || !!it.report;
 
 function mergeSections(cur, read, shape) {
   const { pairs, A, M, secPair, usedA, usedM, key } = pairItems(cur.sections || [], read.sections);
@@ -549,4 +593,27 @@ export async function readMinutesInto(env, id, fileId, { by = '', now = Date.now
       motions: read.motions.length, actions: read.actions.length, ai: read.said.by === 'ai',
     },
   };
+}
+
+/**
+ * The minutes the board's secretary sends from the board page (POST /api/board-portal?minutes=<id>): the copy of the
+ * minutes template they typed into, kept as the meeting's minutes and read into it at once, as the founders' drop
+ * in Board does. Only the secretary's seat (or one of Board's admins), only a meeting the board can see, on its day
+ * or after. A board member gets back what was read, never the meeting as Board keeps it (private notes, staff-only
+ * files). → { read: { attendance, notes, motions, actions, ai }, approvedPrev: boolean }
+ */
+export async function secretarySends(env, id, file, w, { now = Date.now() } = {}) {
+  const no = (message, status) => Object.assign(new Error(message), { status });
+  if (!w?.admin && w?.member?.seat !== 'secretary') throw no('Only the board’s secretary sends the minutes from here', 403);
+  if (!ID.test(String(id || ''))) throw no('Which meeting?', 400);
+  const m = await getMeeting(env.DB, id);
+  if (!m || m.practice || m.notBoard || !(m.shared || w.admin)) throw no('That meeting isn’t on the board page', 404);
+  if (!isDate(m.date) || m.date > todayEastern(now)) throw no('The minutes come in on the day of the meeting or after', 400);
+  if (!file || typeof file.arrayBuffer !== 'function' || !/\.(docx|pdf)$/i.test(String(file.name || ''))) throw no('Send the minutes as the Word file (or a PDF)', 400);
+  if (!file.size) throw no('That file is empty', 400);
+  if (file.size > MAX_FILE) throw no('That file is over 50 MB', 413);
+  const by = w.member?.email || w.adminEmail || '';
+  const f = await putFile(env, { ownerType: 'meeting', ownerId: id, file, kind: 'minutes', by });
+  const r = await readMinutesInto(env, id, f.id, { by, now });
+  return { read: r.read, approvedPrev: !!r.approvedPrev };
 }

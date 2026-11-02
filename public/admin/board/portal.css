@@ -1816,3 +1816,14 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 @media (max-width: 520px) { .bp-cashchart li:nth-child(even):not(.is-now) .bp-years__x { visibility: hidden; } }
 .bp-stmts-fold > .bp-stmts { margin-top: 0.75rem; }
 @media print { .bp-stmt__scroll { overflow: visible; } .bp-stmt__table { min-width: 0; } }
+
+/* The secretary taking the minutes (TakeMinutes): under the answer to "Will you be there?", the same voice */
+.bp-aghero__card + .bp-aghero__card--minutes { margin-top: 1.25rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+.bp-minutes__q { margin: 0; font-weight: 650; font-size: 1.02rem; }
+.bp-minutes__said { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.92rem; line-height: 1.5; }
+.bp-minutes__do { margin-top: 0.85rem; }
+.bp-minutes__send { position: relative; width: 100%; }
+.bp-minutes__get { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
+.bp-minutes__send:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
+.bp-minutes__send.is-busy { opacity: 0.7; pointer-events: none; }
+@media (max-width: 960px) { .bp-aghero__card + .bp-aghero__card--minutes { margin-top: 0; } }
