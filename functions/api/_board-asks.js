@@ -670,8 +670,32 @@ async function takeTurn(DB, state, now) {
   return (r?.meta?.changes ?? r?.changes ?? 0) > 0;
 }
 
+/**
+ * Once: Peter's Oct 29 2026 practice run on the real Nov 5 meeting left it ended live, so Board and the board page took
+ * it as held early (Peter, Nov 2: "nov 5 meeting has not been held yet", then "clear it"). Only that exact run, only
+ * while it's still there, through patchMeeting (a newer updatedAt, so an open editor merges); kept as done in board_state
+ */
+export const PRACTICE_RUN = { meetingId: 'm_zh9e3qae', endedAt: '2026-10-30T01:41:02.651Z' };
+const EMPTY_LIVE = { startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, part: 0, screen: '', sectionId: '', vote: null, sectionAt: '', floor: '' };
+export async function clearPracticeRun(DB, { now = Date.now() } = {}) {
+  const once = await readState(DB, 'asks-once');
+  if (once.practiceRun) return false;
+  let cleared = false;
+  // The stored row, as it is (reading the meeting may already leave a run-through out)
+  const row = await DB.prepare("SELECT json_extract(data, '$.live.endedAt') AS ended FROM board_meetings WHERE id = ?").bind(PRACTICE_RUN.meetingId).first().catch(() => null);
+  if (row?.ended === PRACTICE_RUN.endedAt) {
+    // Never a real run started since: only the practice run's end, or nothing left of it
+    await patchMeeting(DB, PRACTICE_RUN.meetingId, (cur) => (!cur.live?.startedAt || cur.live.endedAt === PRACTICE_RUN.endedAt ? { ...cur, live: { ...EMPTY_LIVE } } : cur), { by: 'peter@soardcharity.com' });
+    cleared = true;
+  }
+  await writeState(DB, 'asks-once', { ...once, practiceRun: { at: nowIso(now), cleared } });
+  return cleared;
+}
+
 export async function maybeRunAsks(env, { fetchImpl = fetch, now = Date.now(), force = false } = {}) {
-  if (!env?.DB || !env.GOOGLE_CALENDAR_KEY) return null;
+  if (!env?.DB) return null;
+  await clearPracticeRun(env.DB, { now }).catch((e) => console.error('[board-asks] practice run', e.message));
+  if (!env.GOOGLE_CALENDAR_KEY) return null;
   try {
     const state = await readState(env.DB, KEY);
     if (state.off) return null;

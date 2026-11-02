@@ -14,7 +14,7 @@ import { clearTokenCache } from '../functions/api/_google-calendar.js';
 import {
   easternAt, dueFor, remindAt, chairAt, dueWords, htmlToMd, cutTextQuote, isAutoReply, replyFiles, mimeOf, senderOf, cutSignature, judgeByRules,
   runAsks, maybeRunAsks, saveLineNote, portalExtras, sendersFor, askEmail, chairEmail, postReport, GMAIL_SEND_SCOPE,
-  chairApprove, chairNote, askPresenter, judgeChair, asTest, replyWords,
+  chairApprove, chairNote, askPresenter, judgeChair, asTest, replyWords, clearPracticeRun, PRACTICE_RUN,
 } from '../functions/api/_board-asks.js';
 
 const PEOPLE = [
@@ -726,4 +726,27 @@ test('replies as mail programs really send them: Outlook bullets, a quote they m
   assert.equal(cutTextQuote('Plan:\n--\nthen the gala.\nSent via the portal, as agreed.\nMore.'), 'Plan:\n--\nthen the gala.\nSent via the portal, as agreed.\nMore.');
   assert.equal(cutTextQuote('On the budget, we’re fine.\nSam wrote: the plan holds.'), 'On the budget, we’re fine.\nSam wrote: the plan holds.');
   assert.equal(htmlToMd('<ul><li><p>one</p></li><li><p>two</p></li></ul>'), '- one\n- two');
+});
+
+test('once: the Oct 29 practice run on the real Nov 5 meeting is cleared, only that run, and never again', async () => {
+  // The stored row as production has it: the run-through's live state in the meeting's own JSON
+  const store = (startedAt, endedAt) => env.DB.prepare("UPDATE board_meetings SET data = json_set(data, '$.live.startedAt', ?, '$.live.endedAt', ?) WHERE id = ?").bind(startedAt, endedAt, PRACTICE_RUN.meetingId).run();
+  const stored = async () => JSON.parse((await env.DB.prepare('SELECT data FROM board_meetings WHERE id = ?').bind(PRACTICE_RUN.meetingId).first()).data).live;
+  await saveMeeting(env.DB, { id: PRACTICE_RUN.meetingId, date: '2026-11-05', sections: [] }, { by: 'jane@soardcharity.com' });
+  await store('2026-10-30T01:04:42.357Z', PRACTICE_RUN.endedAt);
+  const before = await getMeeting(env.DB, PRACTICE_RUN.meetingId);
+  assert.equal(await clearPracticeRun(env.DB), true);
+  const live = await stored();
+  assert.deepEqual([live.startedAt, live.endedAt], ['', '']);
+  assert.notEqual((await getMeeting(env.DB, PRACTICE_RUN.meetingId)).updatedAt, before.updatedAt, 'a newer version, so an open editor merges');
+  // Never again
+  await store('2026-10-30T01:04:42.357Z', PRACTICE_RUN.endedAt);
+  assert.equal(await clearPracticeRun(env.DB), false);
+});
+
+test('the practice-run clear leaves any other end alone', async () => {
+  await saveMeeting(env.DB, { id: PRACTICE_RUN.meetingId, date: '2026-11-05', sections: [] }, { by: 'jane@soardcharity.com' });
+  await env.DB.prepare("UPDATE board_meetings SET data = json_set(data, '$.live.startedAt', ?, '$.live.endedAt', ?) WHERE id = ?").bind('2026-11-05T13:00:00Z', '2026-11-05T15:00:00Z', PRACTICE_RUN.meetingId).run();
+  assert.equal(await clearPracticeRun(env.DB), false);
+  assert.equal(JSON.parse((await env.DB.prepare('SELECT data FROM board_meetings WHERE id = ?').bind(PRACTICE_RUN.meetingId).first()).data).live.endedAt, '2026-11-05T15:00:00Z');
 });
