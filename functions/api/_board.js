@@ -459,6 +459,23 @@ export async function saveReport(env, id, itemId, text, { member = null, admin =
 }
 
 /**
+ * What an item's presenter asks the board to vote on (item.motion), written ahead on the board page: the presenter or
+ * Board's admins, until the meeting's minutes are approved (presenterGate). Empty takes it off. → { itemId, motion }
+ */
+export async function saveMotion(env, id, itemId, text, { member = null, admin = false, adminEmail = '' } = {}) {
+  await ensureSchema(env.DB);
+  if (typeof text !== 'string') throw err('What should the board vote on?', 400);
+  const { it } = await presenterGate(env, id, itemId, { member, admin });
+  const motion = text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/\s*\n\s*/g, ' ').trim().slice(0, LIMITS.motion);
+  if (motion === (it.motion || '')) return { itemId, motion };
+  const saved = await patchMeeting(env.DB, id, (cur) => {
+    if (!cur.sections.some((s) => s.items.some((x) => x.id === itemId))) throw err('That item isn’t on the agenda any more', 404);
+    return { ...cur, sections: cur.sections.map((s) => ({ ...s, items: s.items.map((x) => (x.id === itemId ? { ...x, motion } : x)) })) };
+  }, { by: member?.name || adminEmail });
+  return { itemId, motion: saved.sections.flatMap((s) => s.items).find((x) => x.id === itemId)?.motion || '' };
+}
+
+/**
  * The board already has it on their calendars: Board's own invite went out, or
  * the organizer's event invites three or more of the board
  */

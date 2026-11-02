@@ -750,3 +750,44 @@ test('the practice-run clear leaves any other end alone', async () => {
   assert.equal(await clearPracticeRun(env.DB), false);
   assert.equal(JSON.parse((await env.DB.prepare('SELECT data FROM board_meetings WHERE id = ?').bind(PRACTICE_RUN.meetingId).first()).data).live.endedAt, '2026-11-05T15:00:00Z');
 });
+
+// ─── Motions and "nothing to report" (the report page, Nov 2) ───────
+
+test('a motion is kept with its item, written by who presents it, and the chair’s review says what the board votes on', async () => {
+  const { saveMotion } = await import('../functions/api/_board.js');
+  await meeting();
+  const r = await saveMotion(env, 'm_nov5', 'i_fin', 'Move to approve the\n2027 budget as presented.', { member: SAM });
+  assert.equal(r.motion, 'Move to approve the 2027 budget as presented.');
+  await assert.rejects(saveMotion(env, 'm_nov5', 'i_fin', 'Mine', { member: { slug: 'kim-park', name: 'Kim Park', email: 'kim.board@example.net' } }), (e) => e.status === 403);
+  assert.equal((await getMeeting(env.DB, 'm_nov5')).sections[1].items.find((x) => x.id === 'i_fin').motion, 'Move to approve the 2027 budget as presented.');
+  await postReport(env.DB, { meetingId: 'm_nov5', itemId: 'i_gov', words: 'Nothing new to report this time.', name: 'Kim Park' });
+  const m = await getMeeting(env.DB, 'm_nov5');
+  const review = chairEmail({ m, chair: { name: 'Alex Rivera' }, from: { name: 'Max Doe' }, asks: [{ kind: 'report', itemId: 'i_gov', status: 'in', due: '' }], people: [{ slug: 'sam-ortiz', name: 'Sam Ortiz' }, { slug: 'kim-park', name: 'Kim Park' }] });
+  assert.match(review.text, /Financial · Sam Ortiz\n {6}The board votes on: Move to approve the 2027 budget as presented\./);
+  assert.match(review.text, /Governance · Kim Park · nothing new this time/);
+  assert.match(review.html, /<em>The board votes on: Move to approve the 2027 budget as presented\.<\/em>/);
+});
+
+test('dropping the minutes in keeps a motion, and an agenda with only a motion is never a draft', async () => {
+  const { agendaIsDraft, cleanMeeting, isFilled, isNothingNew, NOTHING_NEW } = await import('../public/admin/board-shared.js');
+  const m = cleanMeeting({ sections: [{ title: 'Committee reports', items: [{ title: 'Financial', motion: 'Move to approve the budget.' }] }], agendaFrom: { kind: 'last-meeting' } });
+  assert.equal(m.sections[0].items[0].motion, 'Move to approve the budget.');
+  assert.equal(agendaIsDraft(m), false);
+  assert.equal(isFilled({ motion: 'x' }), true);
+  assert.equal(isNothingNew(` ${NOTHING_NEW}\n`), true);
+  assert.equal(isNothingNew('Nothing new to report this time. But one thing:'), false);
+});
+
+test('minutes read in over the agenda keep each item’s motion, and an item the minutes skip stays when it has one', async () => {
+  const { applyMinutes } = await import('../functions/api/_board-minutes.js');
+  const { cleanMeeting } = await import('../public/admin/board-shared.js');
+  const cur = cleanMeeting({ id: 'm_x1', date: '2026-11-05', sections: [{ id: 's_1', title: 'Committee reports', items: [
+    { id: 'i_fin', title: 'Financial', motion: 'Move to approve the 2027 budget.' },
+    { id: 'i_gov', title: 'Governance', motion: 'Move to adopt the bylaw change.' },
+  ] }] });
+  const read = { attendance: [], motions: [], actions: [], approvedPrev: false, said: { by: 'rules' }, sections: [{ title: 'Committee reports', items: [{ id: 'i_new', title: 'Financial', notes: '- Cash is steady' }] }] };
+  const next = applyMinutes(cur, read, { fileName: 'minutes.docx' });
+  const items = next.sections.flatMap((s) => s.items);
+  assert.equal(items.find((x) => x.title === 'Financial').motion, 'Move to approve the 2027 budget.');
+  assert.equal(items.find((x) => x.title === 'Governance')?.motion, 'Move to adopt the bylaw change.');
+});

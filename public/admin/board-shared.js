@@ -217,7 +217,7 @@ export const LIVE = [
 ];
 /** What a live list with no title of its own is called for the board: what it shows, never its part's name */
 export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings', minutes: 'The last meeting’s minutes' };
-export const LIMITS = { title: 200, text: 300, notes: 20000, report: 120000, items: 80, sections: 20, people: 80, rows: 100 };
+export const LIMITS = { title: 200, text: 300, notes: 20000, report: 120000, motion: 1000, items: 80, sections: 20, people: 80, rows: 100 };
 
 /** The agenda a new meeting starts from, until Settings saves another one */
 export const DEFAULT_TEMPLATE = [
@@ -315,6 +315,9 @@ function cleanItem(raw) {
     report: str(raw?.report, LIMITS.report),
     reportBy: one(raw?.reportBy, 120),
     reportAt: /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(raw?.reportAt || '')) ? raw.reportAt : '',
+    // What its presenter asks the board to vote on ("Move to approve the 2027 budget as presented."), written ahead:
+    // on the agenda, the screen and the minutes template, where the secretary records who moved it and how it went
+    motion: str(raw?.motion, LIMITS.motion),
     confidential: bool(raw?.confidential),
     live,
     also,
@@ -460,7 +463,7 @@ export const isLive = (m) => !!m?.live?.startedAt && !m.live.endedAt;
  * An agenda item with something in it. A row added and left empty isn't on the agenda: the board never sees it, it
  * takes no time and no number, and the chair never stops on it (the editor keeps it, to fill in or delete)
  */
-export const isFilled = (it) => !!(it && (it.title || it.presenter || it.who?.length || it.notes || it.report || it.live || it.also?.length || it.about || it.docs?.length || it.confidential));
+export const isFilled = (it) => !!(it && (it.title || it.presenter || it.who?.length || it.notes || it.report || it.motion || it.live || it.also?.length || it.about || it.docs?.length || it.confidential));
 /**
  * The agenda's items in order, numbered the way the board page and the chair's screen show them (an empty row has
  * none): [{ id, title, label: '3.2', section, si, ii }], `ii` where the item sits in its part
@@ -506,6 +509,13 @@ export function sectionPlan(m) {
 }
 /** The part of the agenda an item is in (its id), or '' */
 export const sectionOf = (m, itemId) => (m?.sections || []).find((sec) => sec.items.some((it) => it.id === itemId))?.id || '';
+/**
+ * A presenter's "nothing to report" (the report page's button, or Board's): kept as the report itself, so everything
+ * that asks whether a report is in already counts it; shown quietly wherever reports show
+ */
+export const NOTHING_NEW = 'Nothing new to report this time.';
+export const isNothingNew = (report) => String(report || '').trim() === NOTHING_NEW;
+
 /** A part's timer: { left: seconds (negative once it's over), over: boolean, of: seconds } from when it began, or null */
 export function sectionClock(plan, sectionId, sectionAt, now = Date.now()) {
   const p = plan?.get(sectionId);
@@ -545,7 +555,7 @@ const isOutline = (sections, template = DEFAULT_TEMPLATE) => sections.length ===
  * writes in it or uses it). A meeting from before agendaFrom counts by its look. One with a report written in it is
  * never a draft again: drafting it anew would lose the report.
  */
-export const agendaIsDraft = (m, template = DEFAULT_TEMPLATE) => !m?.sections?.some((s) => s.items.some((it) => it.report))
+export const agendaIsDraft = (m, template = DEFAULT_TEMPLATE) => !m?.sections?.some((s) => s.items.some((it) => it.report || it.motion))
   && (!m?.sections?.some((s) => s.items.length)
     || ['template', 'last-meeting'].includes(m?.agendaFrom?.kind)
     || (!m?.agendaFrom && (isOutline(m.sections, template) || isOutline(m.sections))));

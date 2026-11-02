@@ -18,6 +18,8 @@
  *                                                    on any. base: the reportAt they started from (409 + current)
  * POST ?attach=<meetingId>&item=<itemId> (multipart "file")  a document with an item they present (an admin's, any)
  * POST { action: 'detach', meetingId, itemId, fileId }  one they put there taken off again (an admin: any)
+ * POST { action: 'motion', meetingId, itemId, text }   what an item's presenter asks the board to vote on (an admin's, any);
+ *                                                    empty takes it off
  * POST { action: 'line-note', meetingId, itemId, key, line, text }  a note on one line of the money's statements by who
  *                                                    presents the item (an admin's, any); empty text takes it off (_board-asks.js)
  * POST { action: 'chair-approve', meetingId }        the chair approves the agenda ahead (or an admin)
@@ -31,7 +33,7 @@
  * (theirs alone, simulated members) they check in and vote as themselves.
  */
 
-import { portalData, setActionDone, signDoc, signWithCopy, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, attachToItem, detachFromItem, listMeetings } from './_board.js';
+import { portalData, setActionDone, signDoc, signWithCopy, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, saveMotion, attachToItem, detachFromItem, listMeetings } from './_board.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
 import { portalExtras, saveLineNote, chairApprove, chairNote, askPresenter } from './_board-asks.js';
@@ -117,6 +119,8 @@ export async function onRequestPost(context) {
       const note = { meetingId: String(body.meetingId || ''), itemId: String(body.itemId || ''), key: String(body.key || ''), line: String(body.line || ''), text: String(body.text ?? '') };
       return Response.json({ ok: true, ...(await saveLineNote(env, note, w)) });
     }
+    // A motion for the board to vote on: who presents the item, or an admin (saveMotion checks, as for a report)
+    if (body.action === 'motion') return Response.json({ ok: true, ...(await saveMotion(env, String(body.meetingId || ''), String(body.itemId || ''), body.text, w)) });
     // A report: who presents the item writes it (saveReport checks), and an admin can on any
     if (body.action === 'report') {
       try {
