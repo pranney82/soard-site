@@ -77,7 +77,7 @@ export const UI = {
     retryUpload: 'Try again', choosePhotoOther: 'Choose a different photo',
     noPhoto: 'No photo yet', choosePhoto: 'Choose a photo', replacePhoto: 'Replace photo', remove: 'Remove', gettingReady: 'Getting your photo ready…',
     uploading: 'Uploading… {pct}%', added: 'Added: {name}', tryAgain: '{msg}. Please try again.', uploadFailed: 'Upload failed', videoFailed: "Your video didn't upload", uploadOffline: "The upload stopped when the connection dropped. Press Try again once you're back online.", notImage: "That file isn't a photo we can use. Please choose a JPEG, PNG or HEIC photo.",
-    dropPhoto: 'Drop the photo here', dropVideo: 'Drop the video here', orDrag: 'or drag one here', orDragVideo: 'or drag one here', undo: 'Undo', uploadRetrying: 'The connection dropped. Trying again ({pct}% sent)…', photoRemoved: 'Photo removed.', videoRemoved: 'Video removed.',
+    dropPhoto: 'Drop the photo here', dropVideo: 'Drop the video here', orDrag: 'or drag one here', orDragVideo: 'or drag one here', undo: 'Undo', uploadWait: 'Please wait for this upload to finish.', uploadRetrying: 'The connection dropped. Trying again ({pct}% sent)…', photoRemoved: 'Photo removed.', videoRemoved: 'Video removed.',
     noVideo: 'No video yet', chooseVideo: 'Choose or record a video', chooseVideoDesk: 'Choose a video file', chooseOther: 'Choose a different video', starting: 'Starting upload…',
     uploadingPct: 'Uploading your video… {pct}%', finishing: 'Finishing up…', videoDone: 'Video uploaded: {name}', videoGone: 'Your video did not finish uploading. Please choose it again.',
     notVideo: "That file isn't a video. Please choose a video file.", uploadStartFail: 'We could not start the upload',
@@ -196,7 +196,7 @@ export const UI = {
     retryUpload: 'Intentar de nuevo', choosePhotoOther: 'Elegir otra foto',
     noPhoto: 'Todavía no hay foto', choosePhoto: 'Elegir una foto', replacePhoto: 'Cambiar foto', remove: 'Quitar', gettingReady: 'Preparando su foto…',
     uploading: 'Subiendo… {pct}%', added: 'Agregada: {name}', tryAgain: '{msg}. Intente de nuevo.', uploadFailed: 'No se pudo subir', videoFailed: 'Su video no se subió', uploadOffline: 'La carga se detuvo cuando se perdió la conexión. Presione Intentar de nuevo cuando vuelva a tener conexión.', notImage: 'Ese archivo no es una foto que podamos usar. Elija una foto JPEG, PNG o HEIC.',
-    dropPhoto: 'Suelte la foto aquí', dropVideo: 'Suelte el video aquí', orDrag: 'o arrástrela aquí', orDragVideo: 'o arrástrelo aquí', undo: 'Deshacer', uploadRetrying: 'Se cortó la conexión. Intentando de nuevo ({pct}% enviado)…', photoRemoved: 'Se quitó la foto.', videoRemoved: 'Se quitó el video.',
+    dropPhoto: 'Suelte la foto aquí', dropVideo: 'Suelte el video aquí', orDrag: 'o arrástrela aquí', orDragVideo: 'o arrástrelo aquí', undo: 'Deshacer', uploadWait: 'Espere a que termine esta carga.', uploadRetrying: 'Se cortó la conexión. Intentando de nuevo ({pct}% enviado)…', photoRemoved: 'Se quitó la foto.', videoRemoved: 'Se quitó el video.',
     noVideo: 'Todavía no hay video', chooseVideo: 'Elegir o grabar un video', chooseVideoDesk: 'Elegir un archivo de video', chooseOther: 'Elegir otro video', starting: 'Comenzando a subir…',
     uploadingPct: 'Subiendo su video… {pct}%', finishing: 'Terminando…', videoDone: 'Video subido: {name}', videoGone: 'Su video no terminó de subirse. Elíjalo de nuevo.',
     notVideo: 'Ese archivo no es un video. Elija un archivo de video.', uploadStartFail: 'No pudimos comenzar a subir el archivo',
@@ -268,6 +268,10 @@ export const UI_ORG = {
   doneStep2: 'A conversation with our team', doneStep2Text: 'Organizations that move forward hear from us to talk through the project.',
   doneStep3: 'A visit to see the space', doneStep3Text: 'We come see the space together and talk about what the children need.',
   doneLink: 'See the community projects we have built',
+  stopApply: 'Back to community projects',
+  // A space's suite, building or room (its box says so), not an apartment
+  uspsUnit: "If there's a suite, building or room number, add it to the address.", addApt: 'Add the suite, building or room',
+  uspsUnitGiven: "The Postal Service couldn't confirm that suite, building or room. Please check it.",
   addContact2: 'Add another contact at your organization', apt: 'Suite, building or room',
   heroFaq: 'See our community projects',
   heroEyebrow: 'For Schools, Clinics & Nonprofits · {year}', heroTitleHtml: 'Tell us about your <em>organization</em>.',
@@ -468,7 +472,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip"${req} inputm
 <input type="file" id="${id}" accept="image/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview" aria-hidden="true">${RING}</div>
 <div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noPhoto')}</p>
-<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('choosePhoto')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button><button type="button" class="af-btn af-btn--link" data-act="undo" hidden>${T('undo')}</button></div></div>
+<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" aria-describedby="${id}-label ${errId}" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose" aria-describedby="${id}-label ${errId}">${T('choosePhoto')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" aria-describedby="${id}-label ${errId}" hidden>${T('remove')}</button><button type="button" class="af-btn af-btn--link" data-act="undo" aria-describedby="${id}-label ${errId}" hidden>${T('undo')}</button></div></div>
 <div class="af-drop-veil" aria-hidden="true"><span>${T('dropPhoto')}</span></div></div>`;
         break;
       case 'video':
@@ -476,7 +480,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip"${req} inputm
 <input type="file" id="${id}" accept="video/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview af-upload-preview--video" aria-hidden="true">${RING}<span class="af-pct"></span></div>
 <div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noVideo')}</p>
-<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDragVideo')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" hidden>${T('remove')}</button><button type="button" class="af-btn af-btn--link" data-act="undo" hidden>${T('undo')}</button></div>
+<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" aria-describedby="${id}-label ${errId}" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose" aria-describedby="${id}-label ${errId}">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" aria-describedby="${id}-label ${errId}" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDragVideo')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" aria-describedby="${id}-label ${errId}" hidden>${T('remove')}</button><button type="button" class="af-btn af-btn--link" data-act="undo" aria-describedby="${id}-label ${errId}" hidden>${T('undo')}</button></div>
 <p class="af-hint">${T('videoHint')}</p></div>
 <div class="af-drop-veil" aria-hidden="true"><span>${T('dropVideo')}</span></div></div>
 <div class="af-recorder" hidden>
@@ -487,7 +491,8 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip"${req} inputm
         break;
       default: control = '';
     }
-    inner = `<label class="af-label" for="${id}">${esc(f.label)}${optional}</label>${help}${control}`;
+    // (its own id: a photo's or video's buttons are described by it, "Choose a photo" alone says not which)
+    inner = `<label class="af-label" id="${id}-label" for="${id}">${esc(f.label)}${optional}</label>${help}${control}`;
   }
   return `<div class="af-field af-field--${f.type}" data-field="${esc(f.id)}" data-type="${f.type}"${f.required ? ' data-required="1"' : ''}${f.showIf ? ' hidden' : ''}>${inner}${f.type === 'address' ? '' : `<p class="af-error" id="${errId}"></p>`}</div>`;
 }

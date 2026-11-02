@@ -1113,6 +1113,14 @@ export function initAdvisoryForm() {
       ui.back.disabled = false;
       paint();
       if (!form.hidden && !document.activeElement?.closest?.('.adv-page:not([hidden])')) ui.next.focus({ preventScroll: true }); // Send again, where they were (the note is read out)
+      // Sent back to an answer: its own note in view above Back / Continue (this note made the bar taller)
+      requestAnimationFrame(() => {
+        const note = pages[step]?.querySelector('.adv-field.is-invalid .adv-error:not([hidden])');
+        const bar = ui.next.closest('.adv-nav');
+        if (!note || !bar || !note.getClientRects().length) return;
+        const over = note.getBoundingClientRect().bottom - bar.getBoundingClientRect().top + 12;
+        if (over > 0) window.scrollBy({ top: over, behavior: 'auto' });
+      });
     } finally {
       sending = false;
       ui.exit.disabled = false;

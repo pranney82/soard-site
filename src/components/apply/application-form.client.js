@@ -253,7 +253,10 @@ function init(root, cfg, mode) {
 
   const T = (k, v = {}) => word(lang, k, { year, ...v }, kind);
   /** A message spec: 'key', ['key', vars] or { raw: 'text' } → words in the current language */
-  const say = (m) => (!m ? '' : typeof m === 'string' ? T(m) : Array.isArray(m) ? T(m[0], m[1]) : String(m.raw || ''));
+  // A message: a word's key, [key, values], { raw } words as they came (the server's), or { again: key } (our own
+  // words with "Please try again" after them): all but the server's said in the language of the moment
+  const sayAgain = (k) => { const msg = T(k); return /try again|again|intent|de nuevo|please|por favor|pruebe|elija|choose|vuelva|another|otro/i.test(msg) ? msg : T('tryAgain', { msg: msg.replace(/[.!]\s*$/, '') }); };
+  const say = (m) => (!m ? '' : typeof m === 'string' ? T(m) : Array.isArray(m) ? T(m[0], m[1]) : m.again ? sayAgain(m.again) : String(m.raw || ''));
   const fieldEl = (id) => ui.pages.querySelector(`[data-field="${CSS.escape(id)}"]`);
   const pageEl = (id) => (id === 'review' ? ui.review : pageEls[id]);
   const order = (id) => (id === 'review' ? form.pages.length : form.pages.findIndex(p => p.id === id));
@@ -1550,7 +1553,7 @@ function init(root, cfg, mode) {
     // An address line searched but not chosen from, the check's question about the home: their own words
     for (const id of here) {
       const type = byId[id]?.type;
-      if (type === 'address' || (type === 'area' && errors[id])) { const m = errorFor(id); if (m) errors[id] = m; }
+      if (type === 'address' || type === 'date' || (type === 'area' && errors[id])) { const m = errorFor(id); if (m) errors[id] = m; }
     }
     if (Object.keys(errors).length) { showPageErrors(errors); return; }
     // And every screen before this one: a screen passed without its own Continue (an opened group took
@@ -1701,6 +1704,8 @@ function init(root, cfg, mode) {
       if (street) said.push(street);
       return said.join(' ') || null;
     }
+    // A date half typed, or one that isn't (February 30): the box has words in it, so not "Please answer this question"
+    if (f.type === 'date' && fieldEl(id)?.querySelector('input[type=date]')?.validity?.badInput) return fieldError(f, 'not a date', lang);
     return fieldError(f, isUpload(f) ? files[id] : a[id], lang) || namedError(f, a, lang);
   }
   function setFieldError(id, msg) {
@@ -1980,7 +1985,10 @@ function init(root, cfg, mode) {
     clearTimeout(retryTimer);
     retryTimer = setTimeout(() => { if (unsaved() && token && !doneShown) save(); }, Math.min(60000, 5000 * 2 ** retries++));
   }
-  window.addEventListener('online', () => { if (unsaved() && token && !doneShown) save(); }, { signal });
+  window.addEventListener('online', () => {
+    if (lastNav?.m === 'offlineSubmit') navNote(null); // "you seem to be offline" isn't so now (Submit goes again)
+    if (unsaved() && token && !doneShown) save();
+  }, { signal });
   function markDirty() {
     if (!token || previewing) return;
     saveState('unsaved');
@@ -2434,7 +2442,9 @@ function init(root, cfg, mode) {
     const retry = box.querySelector('[data-act="retry"]');
     // Didn't go, the first time or over one already added (its words say "Try again": it's there)
     if (retry) { retry.hidden = !(failed || status.hasAttribute('data-problem')) || !retryFiles[id]; retry.textContent = T('retryUpload'); }
-    box.querySelector('[data-act="choose"]').textContent = done
+    const choose = box.querySelector('[data-act="choose"]');
+    if (s.state === 'busy') choose.setAttribute('aria-disabled', 'true'); else choose.removeAttribute('aria-disabled');
+    choose.textContent = done
       ? T(video ? 'chooseOther' : 'replacePhoto')
       : failed && retryFiles[id] ? T(video ? 'chooseOther' : 'choosePhotoOther')
         : T(video ? (canRecord() ? 'chooseVideoDesk' : 'chooseVideo') : 'choosePhoto');
@@ -2500,9 +2510,11 @@ function init(root, cfg, mode) {
   const said = (msg) => Object.assign(new Error(msg), { said: true });
   // What went wrong, and what to do: "Please try again" added only when the words don't already say what to do
   const failText = (e, video = false) => {
+    if (e?.key) return { again: e.key }; // a message of ours, kept as its key: a language switch says it in the new one
     const status = e?.originalResponse?.getStatus?.() || 0;
     const dropped = !navigator.onLine || e?.network || e instanceof TypeError || (!!e?.originalRequest && !status);
-    const msg = e?.said && e.message ? String(e.message).trim() : T(dropped ? 'uploadOffline' : video ? 'videoFailed' : 'uploadFailed');
+    if (!(e?.said && e.message)) return { again: dropped ? 'uploadOffline' : video ? 'videoFailed' : 'uploadFailed' };
+    const msg = String(e.message).trim();
     return { raw: /try again|again|intent|de nuevo|please|por favor|pruebe|elija|choose|vuelva|another|otro/i.test(msg) ? msg : T('tryAgain', { msg: msg.replace(/[.!]\s*$/, '') }) };
   };
 
@@ -2542,7 +2554,7 @@ function init(root, cfg, mode) {
       });
       // Not a photo after all (a file renamed .jpg the browser couldn't read): said as the page says it, and another
       // file asked for (the same one again can't go)
-      if (r.code === 'not-photo') throw Object.assign(said(T('notImage')), { unusable: true });
+      if (r.code === 'not-photo') throw Object.assign(said(T('notImage')), { unusable: true, key: 'notImage' });
       if (!r.ok) throw said(uploadGone(r, body.get('token')) || r.error || T('uploadFailed'));
       files[f.id] = { key: true, name };
       delete retryFiles[f.id];
@@ -2592,6 +2604,7 @@ function init(root, cfg, mode) {
     });
   }
 
+  const goingOn = {}; // field id → { sig, url, token }: a video upload cut off, to carry on with (Try again)
   async function uploadVideo(f, file) {
     if (!isVideoFile(file)) { setUpload(f.id, { msg: 'notVideo' }); return; }
     if (!file.size) { setUpload(f.id, { msg: 'empty' }); return; }
@@ -2614,14 +2627,21 @@ function init(root, cfg, mode) {
     uploadsChanged();
     videoThumb(file).then(thumb => { if (thumb && files[f.id]?.name === file.name) setUpload(f.id, { thumb }); });
     try {
+      const sig = `${file.name}|${file.size}|${file.lastModified}`;
       for (let fresh = 0; ; fresh++) {
         const was = token;
-        const r = await api({ action: 'video-url', token, size: file.size, name: file.name, lang });
-        if (!r.ok) throw said(uploadGone(r, was) || r.error || T('uploadStartFail'));
+        // Try again on the same file after the connection dropped: on from where it stopped (the same upload, not 0%)
+        let url = !fresh && goingOn[f.id]?.sig === sig && goingOn[f.id].token === token ? goingOn[f.id].url : null;
+        if (!url) {
+          const r = await api({ action: 'video-url', token, size: file.size, name: file.name, lang });
+          if (!r.ok) throw said(uploadGone(r, was) || r.error || T('uploadStartFail'));
+          url = r.uploadUrl;
+          goingOn[f.id] = { sig, url, token };
+        }
         try {
           await new Promise((resolve, reject) => {
             const upload = new tus.Upload(file, {
-              uploadUrl: r.uploadUrl,
+              uploadUrl: url,
               chunkSize: CHUNK,
               retryDelays: [0, 2000, 5000, 10000, 20000, 40000, 60000],
               metadata: { filename: file.name, filetype: file.type },
@@ -2645,7 +2665,7 @@ function init(root, cfg, mode) {
           break;
         } catch (e) {
           // Its upload link ran out or was let go (Stream keeps one for a while): a new one, once, from the start
-          if (!fresh && [404, 410].includes(e?.originalResponse?.getStatus?.())) { setUpload(f.id, { pct: 0, msg: 'starting' }); continue; }
+          if (!fresh && [404, 410].includes(e?.originalResponse?.getStatus?.())) { delete goingOn[f.id]; setUpload(f.id, { pct: 0, msg: 'starting' }); continue; }
           throw e;
         }
       }
@@ -2657,12 +2677,13 @@ function init(root, cfg, mode) {
         uploaded = !!done.uploaded;
         if (!uploaded) await wait(1500);
       }
-      if (!uploaded) throw said(T('videoGone'));
+      if (!uploaded) throw Object.assign(said(T('videoGone')), { key: 'videoGone' });
       files[f.id] = { uid: true, uploaded: true, name: file.name };
       delete retryFiles[f.id];
+      delete goingOn[f.id];
       setUpload(f.id, { state: 'done', msg: ['videoDone', { name: file.name }], pct: null });
     } catch (e) {
-      if (e?.unusable) delete retryFiles[f.id]; else retryFiles[f.id] = file;
+      if (e?.unusable) { delete retryFiles[f.id]; delete goingOn[f.id]; } else retryFiles[f.id] = file;
       if (before && before.token === token) { files[f.id] = before.file; setUpload(f.id, { ...before.ui, msg: failText(e, true), pct: null }); } // (not an application that expired meanwhile)
       else { delete files[f.id]; setUpload(f.id, { state: 'failed', msg: failText(e, true), pct: null }); }
     } finally {
@@ -3963,13 +3984,23 @@ function init(root, cfg, mode) {
     const status = dlg.querySelector('[data-later-status]');
     if (laterInput.hasAttribute('aria-invalid')) { laterInput.removeAttribute('aria-invalid'); if (status) status.textContent = ''; }
   }, { signal });
-  laterInput.addEventListener('blur', () => { const v = laterInput.value.trim(); if (v && mailFix(v)) paintMailFix(laterInput); }, { signal }); // (Send still asks once: pressing it is what blurs the box)
+  // (Send still asks once: pressing it is what blurs the box.) A hint already showing for these words isn't drawn
+  // again: its button would be swapped under a finger pressing it, and the press lost
+  laterInput.addEventListener('blur', () => {
+    const v = laterInput.value.trim();
+    const p = dlg.querySelector('[data-mailfix]');
+    if (v && mailFix(v) && (p?.hidden || p?.querySelector('[data-mailfix-use]')?.dataset.mailfixUse !== mailFix(v))) paintMailFix(laterInput);
+  }, { signal });
   laterInput.addEventListener('input', () => { const p = dlg.querySelector('[data-mailfix]'); if (p && !p.hidden) p.hidden = true; });
   dlg.addEventListener('click', (e) => {
     const use = e.target.closest('[data-mailfix-use]');
     if (!use) return;
     laterInput.value = use.dataset.mailfixUse;
     paintMailFix(laterInput);
+    // Fixed: the note about the old words goes with them
+    laterInput.removeAttribute('aria-invalid');
+    const status = dlg.querySelector('[data-later-status]');
+    if (status) status.textContent = '';
     laterInput.focus();
   });
   dlg.querySelector('[data-later-form]').addEventListener('submit', async (e) => {
@@ -3979,12 +4010,13 @@ function init(root, cfg, mode) {
     if (btn.getAttribute('aria-busy') === 'true') return;
     const status = dlg.querySelector('[data-later-status]');
     const email = laterInput.value.trim();
+    // A likely typo first ("Did you mean …@gmail.com?", a tap to fix), whether the words are an email or not
+    if (email && mailFix(email) && laterAsked !== email) { laterAsked = email; paintMailFix(laterInput); status.textContent = ''; laterInput.removeAttribute('aria-invalid'); return; }
     // Empty or not an email: said here in the form's own words (not the browser's bubble)
     const wrong = email ? fieldError({ id: 'laterEmail', type: 'email', required: true }, email, lang) : T('laterEmailEmpty');
     laterInput.toggleAttribute('aria-invalid', !!wrong);
     status.textContent = wrong || '';
     if (wrong) { laterInput.focus(); return; }
-    if (mailFix(email) && laterAsked !== email) { laterAsked = email; paintMailFix(laterInput); return; }
     btn.setAttribute('aria-busy', 'true');
     status.textContent = T('sending');
     try {
@@ -4619,7 +4651,12 @@ function init(root, cfg, mode) {
       const f = byId[el?.dataset.field];
       if (!f) return;
       switch (act.dataset.act) {
-        case 'choose': el.querySelector('input[type=file]').click(); break;
+        case 'choose':
+          // On its way already: said (a keyboard reaches the button the dimming keeps a finger from), not a picker
+          // whose choice would be dropped
+          if (uploads.has(f.id)) { announce(T('uploadWait')); break; }
+          el.querySelector('input[type=file]').click();
+          break;
         case 'remove': removeFile(f); break;
         case 'undo': undoRemove(f); break;
         case 'retry':

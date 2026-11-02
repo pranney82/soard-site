@@ -133,7 +133,7 @@ export function fieldProblem(field, value) {
   if (field.type === 'tel') {
     // Ten digits (a 1 before them, or a + number from abroad, is fine; so is a work line's extension), as the family application asks
     const d = String(value).replace(/\s*(?:x|ext\.?|extension)\s*\d{1,6}\s*$/i, '').replace(/[^\d+]/g, '');
-    if (!/^(?:\+\d{8,15}|1?\d{10})$/.test(d)) return 'Please enter a 10-digit phone number.';
+    if (!/^(?:\+\d{8,15}|1?\d{10})$/.test(d)) return d.replace(/\D/g, '').length === 7 ? 'Please add the area code, like (404) 555-0123.' : 'Please enter a 10-digit phone number.'; // "555-1234", as the family form says it
   }
   if (field.type === 'url' && !/^https?:\/\/[^\s.]+\.[^\s]+$/i.test(value)) return 'That doesn’t look like a web address.';
   if (field.type === 'choice' && !field.options.includes(value)) return 'Please choose one.';
