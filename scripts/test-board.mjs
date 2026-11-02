@@ -561,7 +561,7 @@ try {
   ok(slides[0] === 'cover:The cover' && slides.some((x) => /^section:/.test(x)) && slides.some((x) => /^doc:Balance sheet financials/.test(x)), `every slide, in order (${slides.length}: ${slides.slice(0, 4).join(' | ')} …)`);
   const docAt = slides.findIndex((x) => /^doc:Balance sheet financials/.test(x));
   await jane.evaluate((i) => document.querySelectorAll('.agx-slide')[i].click(), docAt);
-  ok(await sc.waitForFunction(() => document.querySelector('.bs-page__sheet canvas')?.width > 0 || !!document.querySelector('.bs--doc'), { timeout: 10000 }).then(() => true, () => false) && (await stageCount()).startsWith(`${docAt + 1} of`), `a slide picked in the list goes up: the statement’s page (${await stageCount()})`);
+  ok(await sc.waitForFunction(() => document.querySelector('.bs-page__sheet canvas')?.width > 0 || !!document.querySelector('.bs--doc'), { timeout: 10000 }).then(() => true, () => false) && await jane.waitForFunction((n) => (document.querySelector('.agx-stage__count')?.textContent || '').replace(/\s+/g, ' ').trim().startsWith(`${n} of`), { timeout: 10000 }, docAt + 1).then(() => true, () => false), `a slide picked in the list goes up: the statement’s page (${await stageCount()})`);
   await jane.evaluate(() => document.querySelectorAll('.agx-stage__step')[1].click());
   ok(await jane.waitForFunction((n) => document.querySelector('.agx-stage__count')?.textContent.trim().startsWith(`${n} of`), { timeout: 5000 }, docAt + 2).then(() => true, () => false), '› steps to the next slide');
   // Play from here: the presentation in its own window, on this slide
@@ -1185,6 +1185,7 @@ try {
     ok(s === 'ahead' ? firsts.join() === 'bm-path,bm-work' : firsts[0] === 'bm-path' && /bm-row/.test(firsts[1] || ''), `a phone: the ${s} meeting opens on what's to do first (${firsts.join(' then ')})`);
     ok(await phone.evaluate(() => !document.querySelector('.agx-stage') || getComputedStyle(document.querySelector('.agx-stage')).display === 'none'), `a phone: the presentation panel steps aside (${s})`);
     if (s === 'held') {
+      ok(await phone.evaluate(() => document.querySelector('.bm-present')?.textContent.trim()) === 'See the presentation', 'a meeting held: its slides to see again, never "Present"');
       ok(await phone.evaluate(() => { const c = document.querySelector('.bm-minutes'); return !!c && getComputedStyle(c).display !== 'flex' && c.scrollWidth <= c.clientWidth + 1; }), 'a phone: the minutes as the board will read them, top to bottom (never the screen tile’s row)');
     }
     if (s === 'ahead') {

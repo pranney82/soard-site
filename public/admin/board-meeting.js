@@ -224,7 +224,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
             ${st.s === 'saving' ? 'Saving…' : st.s === 'unsaved' ? 'Saving in a moment' : st.s === 'error' ? html`<span title=${st.why}>Not saved</span> <button class="btn btn-ghost btn-sm" onClick=${async () => { await save(); requestAnimationFrame(() => document.querySelector('.bm-saved')?.focus()); }}>Try again</button>` : `Saved ${st.at ? savedAt(st.at) : ''}`}
           </span>
           <button type="button" class=${`btn btn-sm bm-present ${phase === 'today' ? 'btn-primary' : 'btn-ghost'}`} onClick=${present}
-            title="The agenda and its documents as slides, in their own window: → and ← or a clicker move them. Share it on Google Meet or put it on the TV">${phase === 'ahead' ? 'Preview the presentation' : 'Present'}</button>
+            title="The agenda and its documents as slides, in their own window: → and ← or a clicker move them. Share it on Google Meet or put it on the TV">${phase === 'ahead' ? 'Preview the presentation' : phase === 'today' ? 'Present' : 'See the presentation'}</button>
           <${Menu} label="More for this meeting" items=${[
             { icon: 'open', label: 'Open it on the board page', run: () => window.open(`${PAGE}${m.shared ? '' : '?as-board'}#/meetings/${m.id}`, '_blank', 'noopener') },
             !practice && { divider: true },
