@@ -8,7 +8,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 import { createD1 } from './lib/d1-shim.mjs';
 import { reorder } from '../functions/api/reorder-content.js';
@@ -29,7 +29,8 @@ const project = (over = {}) => ({
   photos: [1, 2, 3].map((n) => ({ url: img(`community/joy/${n}`), alt: n === 1 ? 'The lodge' : `Photo ${n}` })),
   partnerLogos: [{ url: img('partners/acme/logo'), name: 'Acme' }], metaDescription: '', ...over,
 });
-const REAL = readdirSync('src/content/community').filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(`src/content/community/${f}`, 'utf8')));
+// The projects as they sync from D1 (not in git): a fresh checkout has none, and the checks on them run where they've synced
+const REAL = existsSync('src/content/community') ? readdirSync('src/content/community').filter((f) => f.endsWith('.json')).map((f) => JSON.parse(readFileSync(`src/content/community/${f}`, 'utf8'))) : [];
 
 // ── The number counted toward "children reached" ──
 test('children reached: the stat marked in the admin, none when all are unmarked, else the first', () => {
@@ -82,7 +83,7 @@ test('editing an older record: one image field becomes a photo, the page’s alt
   // The card used imageId where it disagreed with heroImage; the editor keeps the page's photo
   const split = CS.forEditing(project({ heroImage: img('community/joy/2'), imageId: 'community/joy/1', imageAlt: '' }));
   assert.equal(split.heroImage, img('community/joy/2'));
-  assert.deepEqual(CS.describeChanges(REAL[0], CS.projectRecord(CS.forEditing(REAL[0]))), [], 'opening and saving a project changes nothing on its pages');
+  if (REAL[0]) assert.deepEqual(CS.describeChanges(REAL[0], CS.projectRecord(CS.forEditing(REAL[0]))), [], 'opening and saving a project changes nothing on its pages');
   for (const p of REAL) assert.deepEqual(CS.describeChanges(p, CS.projectRecord(CS.forEditing(p))), [], p.slug);
 });
 
