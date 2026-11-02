@@ -1012,7 +1012,8 @@ export function Screen({ id, data, d, onBack = null }) {
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${faces === 'roll' ? html`<${RollCount} v=${v} started=${started} />` : whoList}</div></div>
         <div class="bs-item__facts"><${FacesGrid} kind=${faces} v=${v} people=${people} started=${started} year=${Number(String(meeting.date).slice(0, 4))} /></div>
       </div>`;
-    } else if (facts && (item.live === 'projects' || (item.live === 'reveals' && !item.report && !item.notes && !coming))) {
+    // A report with a slide of its own next (deckOf's 'report' stop) isn't this slide's: the reveals keep the whole screen
+    } else if (facts && (item.live === 'projects' || (item.live === 'reveals' && (!item.report || deck[at + 1]?.kind === 'report') && !item.notes && !coming))) {
       // The makeovers and the reveals: the item's name and who presents it along the top, the rest of the screen theirs
       stage = html`<div class="bs-item bs-item--board">
         <div class="bs-item__bar"><div>${head}</div>${whoList ? html`<div class="bs-item__aside">${whoList}</div>` : null}</div>
