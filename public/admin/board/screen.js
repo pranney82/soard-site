@@ -21,7 +21,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
-import { openDoc, layoutOf, areaOf, areasOf, partsOf, docKind } from './docs.js';
+import { openDoc, layoutOf, areaOf, areasOf, headingsArea, partsOf, docKind } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, liveOfStop, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
@@ -126,10 +126,12 @@ async function drawFitted(f, page, box, { ahead = false, part = 0 } = {}) {
   el.className = 'bs-sheet';
   let close = false;
   if (area) {
-    const all = [area, ...(await areasOf(f, doc, i))];
+    // A table's second part carries its column headings over its first line
+    const head = headingsArea(lay, part);
+    const all = [{ ...area, extra: head ? head.h + head.gap : 0 }, ...(await areasOf(f, doc, i))];
     const x0 = Math.min(...all.map((a) => a.x));
     const x1 = Math.max(...all.map((a) => a.x + a.w));
-    const hi = Math.max(...all.map((a) => a.h));
+    const hi = Math.max(...all.map((a) => a.h + (a.extra || 0)));
     const W = Math.floor(Math.min(fit * 3, box.w / (x1 - x0 + 2 * MARGIN), box.h / (hi * tall + 2 * MARGIN)));
     // Close up when it's bigger, and always for a file shown in parts (on a phone each part would else be the whole
     // page again)
@@ -148,6 +150,18 @@ async function drawFitted(f, page, box, { ahead = false, part = 0 } = {}) {
       el.style.width = `${Math.round((x1 - x0) * W) + 2 * m}px`;
       el.style.height = `${Math.round(hi * H) + 2 * m}px`;
       el.style.padding = `${m}px`;
+      if (head) {
+        const top = await doc.draw(i, { width: W });
+        top.style.marginLeft = `${-Math.round(x0 * W)}px`;
+        top.style.marginTop = `${-Math.round(head.y * H)}px`;
+        const heads = document.createElement('div');
+        heads.className = 'bs-crop bs-crop--head';
+        heads.style.width = crop.style.width;
+        heads.style.height = `${Math.round(head.h * H)}px`;
+        heads.append(top);
+        crop.style.marginTop = `${Math.round(head.gap * H)}px`;
+        el.append(heads);
+      }
       el.append(crop);
     }
   }
@@ -182,7 +196,7 @@ function DocPage({ f, page, part = 0, box, onPages }) {
       const same = old && old.style.width === el.style.width && old.style.height === el.style.height;
       if (same && from && el.firstElementChild?.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
         const on = page > from.page || (page === from.page && part > from.part);
-        el.firstElementChild.animate([{ opacity: 0, transform: `translateY(${on ? 14 : -14}px)` }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' });
+        for (const c of el.children) c.animate([{ opacity: 0, transform: `translateY(${on ? 14 : -14}px)` }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' });
       }
       setState('');
       // Every page's parts, once a file (they were worked out for its sheet): a screen on its own then counts the
@@ -775,7 +789,7 @@ export function Screen({ id, data, d, onBack = null }) {
       <p class="bs-quiet">${vote.counts.voted} of ${vote.counts.of} here ${vote.counts.voted === 1 ? 'has' : 'have'} voted, on the board page</p>
     </aside>` : null}
     <div class="bs-foot">${stop.kind === 'doc' ? html`
-      <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}${docWords ? html`<span class="bs-foot__sep">·</span>${docWords}` : null}</span>
+      <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}<span class="bs-foot__item">${item?.title}</span>${docWords ? html`<span class="bs-foot__sep">·</span>${docWords}` : null}</span>
       ${shownPages.length > 1 && shownPages.length <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${shownPages.map((i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
       : stop.kind === 'books' || stop.kind === 'live' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? BOOKS_TITLES[stop.fileId.slice(6)] : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
       : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span><kbd>F</kbd> full screen</span>`
@@ -798,9 +812,11 @@ function Shelf({ docs, pages, row = false }) {
 }
 /** One of them: its first page, and its pages counted as it opens (the screen hasn't drawn it yet) */
 function ShelfDoc({ d, width, pages }) {
-  const ref = useCover(d.file, width);
   const [count, setCount] = useState(0);
-  useEffect(() => { let live = true; openDoc(d.file).then((doc) => { if (live) setCount(doc.count); }).catch(() => {}); return () => { live = false; }; }, [d.file.id]);
+  const [size, setSize] = useState(null);
+  useEffect(() => { let live = true; openDoc(d.file).then((doc) => { if (live) { setCount(doc.count); setSize(doc.size(0)); } }).catch(() => {}); return () => { live = false; }; }, [d.file.id]);
+  // Its first page as it is, inside a letter page's slot: a slide or a photo sits in the middle, a tall page fits
+  const ref = useCover(size ? d.file : null, size ? Math.round(Math.min(width, (width * 1.294 * size.w) / size.h)) : width);
   const n = pages || count;
   return html`<li>
     <span class="bs-shelf__cover" ref=${ref} aria-hidden="true"></span>

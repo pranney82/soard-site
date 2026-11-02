@@ -713,8 +713,13 @@ function slideShapes(tree, out) {
     }
     let paragraphs = [];
     if (tag === 'p:graphicFrame') {
-      // A table, its rows as lines of text
-      paragraphs = all(el, 'a:tr').map((tr) => ({ level: 0, bullet: '', runs: [{ text: all(tr, 'a:tc').map((tc) => all(tc, 'a:t').map((t) => unxml(inner(t))).join(' ')).filter(Boolean).join('   '), bold: false, italic: false }] }));
+      // A table: its cells by row (and, for anything reading the deck's words, each row as a line of text)
+      const rows = all(el, 'a:tr').map((tr) => all(tr, 'a:tc').map((tc) => all(tc, 'a:t').map((t) => unxml(inner(t))).join(' ').trim()));
+      if (!rows.some((r) => r.some(Boolean))) continue;
+      const sz = Number(attr(find(el, 'a:rPr'), 'sz') || 0) / 100;
+      paragraphs = rows.map((r) => ({ level: 0, bullet: '', runs: [{ text: r.filter(Boolean).join('   '), bold: false, italic: false }] }));
+      out.push({ ...(box || {}), kind: 'table', rows, size: sz || 0, paragraphs, title: false, anchor: 't', ph: '' });
+      continue;
     } else {
       const tx = find(el, 'p:txBody');
       if (!tx) continue;
@@ -803,6 +808,10 @@ ${S} .bdoc-shape { position: absolute; display: flex; flex-direction: column; ov
 ${S} .bdoc-shape.is-ctr { justify-content: center; } ${S} .bdoc-shape.is-b { justify-content: flex-end; }
 ${S} .bdoc-shape .bdoc-p { padding: 0 0 0.3em; line-height: 1.18; }
 ${S} .bdoc-pic { position: absolute; display: block; object-fit: fill; }
+${S} .bdoc-stbl { width: 100%; border-collapse: collapse; line-height: 1.25; }
+${S} .bdoc-stbl th, ${S} .bdoc-stbl td { padding: 0.3em 0.5em; text-align: left; vertical-align: top; border-bottom: 1px solid #D3D0C7; }
+${S} .bdoc-stbl th { font-weight: 700; border-bottom-color: #1A1B1F; }
+${S} .bdoc-stbl .is-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 ${S} .bdoc-page--card { display: grid; place-content: center; text-align: center; padding: 96px; }
 ${S} .bdoc-card__icon { display: block; width: 64px; height: 80px; margin: 0 auto 22px; border: 2px solid ${INK}; border-radius: 6px; position: relative; }
 ${S} .bdoc-card__icon::after { content: ''; position: absolute; left: 14px; right: 14px; top: 22px; height: 2px; background: ${INK}; box-shadow: 0 10px 0 ${INK}, 0 20px 0 ${INK}, 0 30px 0 ${RULE}; }
@@ -1190,6 +1199,22 @@ function flowSlides(deck, urls) {
       }
       const d = el('div', `bdoc-shape${sh.anchor === 'ctr' ? ' is-ctr' : sh.anchor === 'b' ? ' is-b' : ''}`);
       Object.assign(d.style, { left: `${at.x * k}px`, top: `${at.y * k}px`, width: `${at.w * k}px`, height: `${at.h * k}px` });
+      if (sh.kind === 'table') {
+        // Its columns lined up: words to the left, figures to the right, the first row as the heading
+        const t = el('table', 'bdoc-stbl');
+        t.style.fontSize = `${((sh.size || 14) * 96 / 72) * k}px`;
+        const cols = Math.max(...sh.rows.map((r) => r.length));
+        const figure = (c) => sh.rows.slice(1).every((r) => !r[c] || /^[-+(]?[$€£]?[\d.,]+%?\)?$/.test(r[c].replace(/\s/g, '')));
+        const right = Array.from({ length: cols }, (_, c) => c > 0 && figure(c));
+        sh.rows.forEach((r, ri) => {
+          const tr = el('tr', ri === 0 ? 'is-head' : '');
+          for (let c = 0; c < cols; c++) { const td = el(ri === 0 ? 'th' : 'td', right[c] ? 'is-num' : '', r[c] || ''); tr.append(td); }
+          t.append(tr);
+        });
+        d.append(t);
+        page.append(d);
+        continue;
+      }
       for (const p of sh.paragraphs) {
         const pt = p.runs.find((r) => r.size)?.size || (sh.title ? 36 : sh.paragraphs.length > 1 || p.bullet ? BODY_PT[Math.min(4, p.level)] : 18);
         const node = paraNode({ type: 'p', style: '', align: p.align || (centered ? 'center' : 'left'), list: p.bullet ? { marker: p.bullet === '#' ? `${sh.paragraphs.filter((x) => x.bullet === '#').indexOf(p) + 1}.` : p.bullet, level: p.level } : null, runs: p.runs.map((r) => ({ ...r, bold: r.bold || sh.title })) });
@@ -1435,10 +1460,19 @@ export function inkOf(frame) {
     g.drawImage(canvas, 0, 0, w, h);
     const d = g.getImageData(0, 0, w, h).data;
     const rows = [];
+    // Each row's runs of ink too (`xs`), apart by more than a word space: a table's columns
+    const apart = Math.max(2, Math.round(w * 0.03));
     for (let y = 0; y < h; y++) {
       let x0 = -1; let x1 = -1;
-      for (let x = 0; x < w; x++) { const i = (y * w + x) * 4; if (d[i] < 230 || d[i + 1] < 230 || d[i + 2] < 230) { if (x0 < 0) x0 = x; x1 = x; } }
-      if (x0 >= 0) rows.push({ y0: y / h, y1: (y + 1) / h, x0: x0 / w, x1: (x1 + 1) / w });
+      const xs = [];
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (d[i] < 230 || d[i + 1] < 230 || d[i + 2] < 230) {
+          if (x0 < 0) { x0 = x; xs.push([x, x]); } else if (x - x1 > apart) xs.push([x, x]); else xs.at(-1)[1] = x;
+          x1 = x;
+        }
+      }
+      if (x0 >= 0) rows.push({ y0: y / h, y1: (y + 1) / h, x0: x0 / w, x1: (x1 + 1) / w, xs: xs.map(([a, b]) => [a / w, (b + 1) / w]) });
     }
     return rows;
   }
@@ -1516,7 +1550,49 @@ export function splitOf(blocks, size) {
   if (across >= 1.1 && (lines < 16 || span < 0.5)) return whole;
   if (!best && !near) return whole;
   const { gap } = best || near;
-  return { part, ink, cut: (gap[0] + gap[1]) / 2, gap, n: 2 };
+  const head = headingsOf(rows, ink);
+  return { part, ink, cut: (gap[0] + gap[1]) / 2, gap, n: 2, head: head && head[1] < gap[0] ? head : null };
+}
+/**
+ * A table's column headings at its top (a statement's "Oct 2026   Jan–Oct   Budget   %"): the lines just above its
+ * first line that starts at the left, set to the right in two columns or more (a rule under them counts) → [y0, y1]
+ * in 0..1, or null (a report's centered title, a letter's date: one run of words, not columns)
+ */
+function headingsOf(rows, ink) {
+  const wid = ink.x1 - ink.x0;
+  // A rule (one thin stroke across most of the width) is a line of its own, never part of the words beside it
+  const isRule = (b) => b.y1 - b.y0 < 0.006 && (b.xs || [0]).length === 1 && b.x1 - b.x0 > wid * 0.6;
+  const lines = [];
+  for (const b of rows) {
+    const cur = lines.at(-1);
+    const xs = b.xs || [[b.x0, b.x1]];
+    const rule = isRule(b);
+    if (cur && !rule && !cur.rule && b.y0 - cur.y1 <= 0.002) { cur.y1 = Math.max(cur.y1, b.y1); cur.x0 = Math.min(cur.x0, b.x0); cur.x1 = Math.max(cur.x1, b.x1); cur.xs.push(...xs); } else if (cur?.rule && rule && b.y0 - cur.y1 <= 0.002) cur.y1 = Math.max(cur.y1, b.y1); else lines.push({ y0: b.y0, y1: b.y1, x0: b.x0, x1: b.x1, xs: [...xs], rule });
+  }
+  const cols = (l) => { let n = 0; let end = -1; for (const [a, b] of [...l.xs].sort((p, q) => p[0] - q[0])) { if (a - end > 0.03) n += 1; end = Math.max(end, b); } return n; };
+  const first = lines.findIndex((l) => !l.rule && l.x0 <= ink.x0 + 0.02);
+  if (first < 1) return null;
+  const band = [];
+  for (let j = first - 1; j >= 0 && band.length < 4; j--) {
+    const l = lines[j];
+    if (!l.rule && (l.x0 <= ink.x0 + wid * 0.2 || l.x1 < ink.x1 - 0.03 || (cols(l) < 2 && l.y1 - l.y0 > 0.005))) break;
+    band.unshift(l);
+  }
+  while (band[0]?.rule) band.shift();
+  if (!band.some((l) => cols(l) >= 2)) return null;
+  const top = lines.indexOf(band[0]);
+  if (band.at(-1).y1 - band[0].y0 >= 0.06 || band[0].y0 >= ink.y0 + (ink.y1 - ink.y0) * 0.25) return null;
+  // A hair past their ink, never into the line above them or the first line under them
+  const y0 = Math.max(band[0].y0 - 0.006, top > 0 ? (lines[top - 1].y1 + band[0].y0) / 2 : 0);
+  const y1 = Math.min(band.at(-1).y1 + 0.006, (band.at(-1).y1 + lines[first].y0) / 2);
+  return [y0, y1];
+}
+// The headings carried onto a page's second part, and the space between them and its first line (in 0..1 of the page)
+const HEAD_GAP = 0.014;
+/** Where the headings a page's part `k` carries are ({ y, h, gap }), or null: only a second part has them */
+export function headingsArea(lay, k = 0) {
+  if (!k || lay?.n !== 2 || !lay.head) return null;
+  return { y: lay.head[0], h: lay.head[1] - lay.head[0], gap: HEAD_GAP };
 }
 /**
  * What the screen shows of a page for its part `k` (0 the top, 1 the bottom; all of it when it's one stop), close
@@ -1547,7 +1623,7 @@ export function halfOf(lay, k = 0) {
 const layouts = new Map();
 // Kept on this device too (a file never changes under its id), so a meeting opened again knows its halves at once
 // and its stops don't change count as they're worked out. The version goes up when how a page is read changes
-const keptKey = (f, i) => `bdoc-lay4:${f.id}:${f.size || 0}:${i}`;
+const keptKey = (f, i) => `bdoc-lay6:${f.id}:${f.size || 0}:${i}`;
 const countKey = (f) => `bdoc-count:${f.id}:${f.size || 0}`;
 const kept = (f, i) => { try { const x = JSON.parse(localStorage.getItem(keptKey(f, i)) || 'null'); return x && typeof x.n === 'number' ? x : null; } catch { return null; } };
 // The last version's, read another way, go (once a page load)
@@ -1555,7 +1631,7 @@ let swept = false;
 function sweepKept() {
   if (swept) return;
   swept = true;
-  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay[23]:/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
+  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay[2-5]:/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
 }
 const PROBE = 400;
 /**
@@ -1617,8 +1693,9 @@ export function layoutOf(f, doc, i) {
 }
 /**
  * Every part of a file the screen shows on pages the size of page i (areaOf: each page's content, or its two
- * halves, each with its page's `n`), so the screen draws them all at one zoom on one sheet: the words stay one size
- * and in one place from stop to stop. A very long file (over 80 pages) only page i’s
+ * halves, each with its page's `n` and the height of the headings it carries, `extra`), so the screen draws them all
+ * at one zoom on one sheet: the words stay one size and in one place from stop to stop. A very long file (over 80
+ * pages) only page i’s
  */
 export async function areasOf(f, doc, i) {
   const size = doc.size(i);
@@ -1628,7 +1705,7 @@ export async function areasOf(f, doc, i) {
     const s = doc.size(j);
     if (Math.abs(s.w - size.w) > 1 || Math.abs(s.h - size.h) > 1) continue;
     const lay = await layoutOf(f, doc, j);
-    for (let k = 0; k < lay.n; k++) { const a = areaOf(lay, k); if (a) out.push({ ...a, n: lay.n }); }
+    for (let k = 0; k < lay.n; k++) { const a = areaOf(lay, k); const hd = headingsArea(lay, k); if (a) out.push({ ...a, n: lay.n, extra: hd ? hd.h + hd.gap : 0 }); }
   }
   return out;
 }

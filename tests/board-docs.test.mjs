@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { formatValue, readSheets, readWord, readSlides, wordImages, slideImages, docKind, splitOf, halfOf, areaOf } from '../public/admin/board/docs.js';
+import { formatValue, readSheets, readWord, readSlides, wordImages, slideImages, docKind, splitOf, halfOf, areaOf, headingsArea } from '../public/admin/board/docs.js';
 
 /** A real ZIP of { name: text | bytes } */
 function zip(files) {
@@ -301,6 +301,41 @@ test('a picture, a page set solid and a slide are never cut; a landscape table o
   const t = splitOf(table, land);
   assert.equal(t.n, 2);
   assert.ok(!table.some((r) => r.y0 < t.cut && r.y1 > t.cut));
+});
+
+test('a slide’s table keeps its rows and columns', async () => {
+  const ns = 'xmlns:a="a" xmlns:p="p" xmlns:r="r"';
+  const tc = (t) => `<a:tc><a:txBody><a:p><a:r><a:rPr sz="1400"/><a:t>${t}</a:t></a:r></a:p></a:txBody></a:tc>`;
+  const tbl = `<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id="4" name="t"/></p:nvGraphicFramePr><p:xfrm><a:off x="952500" y="1905000"/><a:ext cx="9525000" cy="2857500"/></p:xfrm><a:graphic><a:graphicData><a:tbl><a:tr>${tc('Item') + tc('2025') + tc('2026')}</a:tr><a:tr>${tc('Tickets') + tc('120,000') + tc('138,000')}</a:tr><a:tr>${tc('Sponsors') + tc('') + tc('$45,500')}</a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>`;
+  const d = await readSlides(zip({
+    'ppt/presentation.xml': `<p:presentation ${ns}><p:sldIdLst><p:sldId id="256" r:id="rId2"/></p:sldIdLst><p:sldSz cx="12192000" cy="6858000"/></p:presentation>`,
+    'ppt/_rels/presentation.xml.rels': `<Relationships><Relationship Id="rId2" Type="${REL}/slide" Target="slides/slide1.xml"/></Relationships>`,
+    'ppt/slides/slide1.xml': `<p:sld ${ns}><p:cSld><p:spTree>${tbl}</p:spTree></p:cSld></p:sld>`,
+  }));
+  const t = d.slides[0].shapes.find((x) => x.kind === 'table');
+  assert.deepEqual(t.rows, [['Item', '2025', '2026'], ['Tickets', '120,000', '138,000'], ['Sponsors', '', '$45,500']]);
+  assert.equal(t.size, 14);
+  assert.deepEqual([t.x, t.y, t.w, t.h], [100, 200, 1000, 300]);
+});
+
+test('a table’s second part carries its column headings; a report’s title or a letter’s date never', () => {
+  const size = { w: 816, h: 1056 };
+  const line = (y, xs) => ({ y0: y, y1: y + 0.011, x0: xs[0][0], x1: xs.at(-1)[1], xs });
+  // A statement: its name centered, the columns' headings at the right, a rule under them, then 34 rows
+  const rows = [line(0.06, [[0.38, 0.62]]), line(0.08, [[0.4, 0.6]]), line(0.12, [[0.55, 0.62], [0.7, 0.77], [0.85, 0.9]]), { y0: 0.135, y1: 0.137, x0: 0.53, x1: 0.9, xs: [[0.53, 0.9]] }];
+  for (let i = 0; i < 34; i++) rows.push(line(0.15 + i * 0.022, [[0.1, 0.3], [0.55, 0.62], [0.7, 0.77], [0.85, 0.9]]));
+  const lay = splitOf(rows, size);
+  assert.equal(lay.n, 2);
+  assert.ok(lay.head && lay.head[0] < 0.12 && lay.head[0] > 0.091 && lay.head[1] > 0.137 && lay.head[1] < 0.15, `the headings and their rule, never into the title over them or the first row under them (${lay.head})`);
+  assert.equal(headingsArea(lay, 0), null, 'the first part has them already');
+  const hd = headingsArea(lay, 1);
+  assert.ok(hd.y === lay.head[0] && hd.y + hd.h === lay.head[1] && hd.gap > 0);
+  // A report: a centered title, then lines from the left margin
+  const report = [line(0.07, [[0.4, 0.6]]), ...Array.from({ length: 36 }, (_, i) => line(0.11 + i * 0.022, [[0.1, 0.9]]))];
+  assert.equal(splitOf(report, size).head, null);
+  // A letter: the date at the right (one run of words), then the letter
+  const letter = [line(0.07, [[0.7, 0.9]]), ...Array.from({ length: 36 }, (_, i) => line(0.11 + i * 0.022, [[0.1, 0.9]]))];
+  assert.equal(splitOf(letter, size).head, null);
 });
 
 test('a page of one short line and a page number keeps the line (it was read as nothing)', () => {
