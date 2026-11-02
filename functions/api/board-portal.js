@@ -13,7 +13,8 @@
  * POST { action: 'checkin', meetingId, how }         present | remote, on the meeting's day
  * POST { action: 'vote', meetingId, motionId, vote } for | against | abstain, while the chair has it open
  * POST ?minutes=<meetingId> (multipart "file")       the secretary's typed minutes template, read into the meeting
- *                                                    (_board-minutes.js secretarySends); the secretary's seat or an admin
+ *                                                    (_board-minutes.js secretarySends); the secretary's seat or an admin.
+ *                                                    Another meeting's minutes → 409 { error, other }; &anyway=1 sends them all the same
  * An admin looking can't answer, sign, check in or vote for anyone: they have no board seat. In a practice meeting
  * (theirs alone, simulated members) they check in and vote as themselves.
  */
@@ -63,7 +64,13 @@ export async function onRequestPost(context) {
     if (sends !== null) {
       let file = null;
       try { file = (await request.formData()).get('file'); } catch { return fail('Send the minutes as a file'); }
-      return Response.json({ ok: true, ...(await secretarySends(env, sends, file, w)) });
+      try {
+        return Response.json({ ok: true, ...(await secretarySends(env, sends, file, w, { anyway: new URL(request.url).searchParams.get('anyway') === '1' })) });
+      } catch (err) {
+        // Another meeting's minutes: nothing kept; sent again with &anyway=1 they go in all the same
+        if (err.status === 409 && err.other) return Response.json({ ok: false, error: err.message, other: err.other }, { status: 409 });
+        throw err;
+      }
     }
     let body = {};
     try { body = await request.json(); } catch { return fail('Expected JSON'); }

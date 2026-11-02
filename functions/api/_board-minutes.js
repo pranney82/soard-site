@@ -289,7 +289,43 @@ export async function readMinutes(env, { name = '', bytes = null, text = null, m
     approvedPrev = ai.approvedPrev === true;
   }
   approvedPrev = approvedPrev || approvalIn(sections, motions);
-  return { attendance, sections, motions, actions, approvedPrev, said: { by, chars: words.length, date: parsed.date || '', start: parsed.start || '', end: parsed.end || '', location: parsed.location || '' } };
+  const other = meeting ? otherMeetingIn(meeting, { text: words, name, date: parsed.date }) : null;
+  return { attendance, sections, motions, actions, approvedPrev, said: { by, chars: words.length, date: parsed.date || '', start: parsed.start || '', end: parsed.end || '', location: parsed.location || '', other } };
+}
+
+const DAY_MS = 86400000;
+const QUARTER = /\bQ([1-4])(?:\s*[-–]?\s*(20\d{2}))?\b/i;
+/** The lines above the minutes' first part ("1. CALL TO ORDER"): their own heading, never the agenda under it */
+function headingOf(text) {
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n');
+  const first = lines.findIndex((l) => { const t = l.trim().match(/^\d{1,2}\.\s*(.+)$/); return !!t && t[1] === t[1].toUpperCase() && /[A-Z]{3}/.test(t[1]); });
+  return lines.slice(0, first < 0 ? 12 : first).join('\n');
+}
+/**
+ * Minutes that say they're another meeting's: the date in their heading (or file name) more than ten days from the
+ * meeting's, or another quarter in their title (or file name), as when the Q3 minutes are dropped on the Q4 meeting.
+ * The agenda inside them ("Minutes of the Q3 2026 Board Meeting" up for approval) never counts.
+ * `date`: what parseAgendaText found in the heading. → { date, name } (either may be '') | null
+ */
+export function otherMeetingIn(m, { text = '', name = '', date = '' } = {}) {
+  if (!m || !isDate(m.date)) return null;
+  const head = headingOf(text);
+  const year = Number(m.date.slice(0, 4));
+  const dateLine = (head.match(/^[^\S\n]*(?:meeting\s+)?date\b[^\n]*/im) || [''])[0];
+  const said = [date, dateIn(dateLine, year), dateIn(String(name).replace(/\.[a-z0-9]{2,5}$/i, ''), year)].find(isDate) || '';
+  const far = said && Math.abs(Date.parse(`${said}T12:00:00Z`) - Date.parse(`${m.date}T12:00:00Z`)) > 10 * DAY_MS;
+  const ours = meetingName(m).match(QUARTER);
+  const theirs = String(name).match(QUARTER) || head.split('\n').slice(0, 3).join(' ').match(QUARTER);
+  const otherQuarter = !!ours && !!theirs && (theirs[1] !== ours[1] || (!!theirs[2] && !!ours[2] && theirs[2] !== ours[2]));
+  if (!far && !otherQuarter) return null;
+  // A quarter written without its year ("Q3 minutes") is the year of the date they give, else the meeting's
+  return { date: far ? said : '', name: otherQuarter ? `Q${theirs[1]} ${theirs[2] || (said ? said.slice(0, 4) : year)} Board Meeting` : '' };
+}
+/** "These look like the minutes of the Q3 2026 Board Meeting (Aug 6, 2026), not this meeting’s (Nov 5, 2026)" */
+export function otherMeetingWords(m, other) {
+  const which = [other.name, other.date ? shortDate(other.date) : ''].filter(Boolean);
+  const them = which.length === 2 ? `${which[0]} (${which[1]})` : which[0] || 'another meeting';
+  return `These look like the minutes of ${/^Q/.test(them) ? 'the ' : ''}${them}, not this meeting’s (${meetingName(m)}, ${shortDate(m.date)}).`;
 }
 // Parts that list the motions or the action items (or say when it ended) rather than an agenda's business
 const LOG_PART = /^(motions?|decisions?|votes?|action items?|follow[- ]?ups?|to[- ]?dos?|adjourn\w*)\b/i;
@@ -547,7 +583,7 @@ export async function maybeFinishMinutes(env, { now = Date.now() } = {}) {
  * the file filed as the minutes, and the last meeting's minutes marked approved when these say the board approved
  * them. → { meeting, approvedPrev: id | null, read: { attendance: { here, of }, notes, motions, actions, ai } }
  */
-export async function readMinutesInto(env, id, fileId, { by = '', now = Date.now(), dry = false } = {}) {
+export async function readMinutesInto(env, id, fileId, { by = '', now = Date.now(), dry = false, anyway = false } = {}) {
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
   const f = m.files.find((x) => x.id === fileId);
@@ -562,6 +598,8 @@ export async function readMinutesInto(env, id, fileId, { by = '', now = Date.now
   if (!readSomething(read)) {
     throw Object.assign(new Error(read.said.chars ? 'Board couldn’t find minutes in that file: no attendance, agenda items, motions or action items. Is it the minutes?' : 'Board couldn’t read that file. Minutes can be a PDF (not a scan) or a Word file.'), { status: 422 });
   }
+  // Another meeting's minutes, by their own heading or file name: nothing is put on this one unless told to
+  if (read.said.other && !anyway && !dry) throw Object.assign(new Error(otherMeetingWords(m, read.said.other)), { status: 409, other: read.said.other, fileId });
   // A look only (`dry`): what the minutes would put on the meeting, nothing saved
   if (dry) {
     const would = applyMinutes(m, read, { fileName: f.name, now });
@@ -602,7 +640,7 @@ export async function readMinutesInto(env, id, fileId, { by = '', now = Date.now
  * or after. A board member gets back what was read, never the meeting as Board keeps it (private notes, staff-only
  * files). → { read: { attendance, notes, motions, actions, ai }, approvedPrev: boolean }
  */
-export async function secretarySends(env, id, file, w, { now = Date.now() } = {}) {
+export async function secretarySends(env, id, file, w, { now = Date.now(), anyway = false } = {}) {
   const no = (message, status) => Object.assign(new Error(message), { status });
   if (!w?.admin && w?.member?.seat !== 'secretary') throw no('Only the board’s secretary sends the minutes from here', 403);
   if (!ID.test(String(id || ''))) throw no('Which meeting?', 400);
@@ -612,8 +650,14 @@ export async function secretarySends(env, id, file, w, { now = Date.now() } = {}
   if (!file || typeof file.arrayBuffer !== 'function' || !/\.(docx|pdf)$/i.test(String(file.name || ''))) throw no('Send the minutes as the Word file (or a PDF)', 400);
   if (!file.size) throw no('That file is empty', 400);
   if (file.size > MAX_FILE) throw no('That file is over 50 MB', 413);
+  // Another meeting's minutes (the wrong file picked): nothing is kept unless they say send it anyway
+  if (!anyway) {
+    const text = await fileText(env, { name: file.name, bytes: new Uint8Array(await file.arrayBuffer()) });
+    const other = otherMeetingIn(m, { text, name: file.name, date: parseAgendaText(text).date });
+    if (other) throw Object.assign(new Error(otherMeetingWords(m, other)), { status: 409, other });
+  }
   const by = w.member?.email || w.adminEmail || '';
   const f = await putFile(env, { ownerType: 'meeting', ownerId: id, file, kind: 'minutes', by });
-  const r = await readMinutesInto(env, id, f.id, { by, now });
+  const r = await readMinutesInto(env, id, f.id, { by, now, anyway: true });
   return { read: r.read, approvedPrev: !!r.approvedPrev };
 }

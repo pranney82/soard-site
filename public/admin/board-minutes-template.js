@@ -20,15 +20,17 @@
  * nothing typed into an agenda can turn into markup.
  */
 
-import { meetingName, longDate, timeRange, agendaItems, sectionPlan, clock, quorumFor, nextMeeting, isDate, isFilled, LIVE_TITLES } from './board-shared.js';
+import { meetingName, longDate, timeRange, agendaItems, sectionPlan, clock, quorumFor, nextMeeting, isDate, isFilled, presentersOf, namesText } from './board-shared.js';
 
 /**
  * What the template holds, for both ways of having it: the meeting, the roll (board, then staff), the quorum, each
  * part with its planned time and its items, and the next meeting. `meetings`: Board's meetings (for the next one);
- * `quorum`: Settings' number, when the bylaws set one.
+ * `quorum`: Settings' number, when the bylaws set one; `people` [{ slug, name }]: who presents an item picked from
+ * People (its `who`), by name.
  */
-export function minutesOutline(m, { meetings = [], quorum = 0 } = {}) {
-  const labels = new Map(agendaItems(m).map((x) => [x.id, x.label]));
+export function minutesOutline(m, { meetings = [], quorum = 0, people = [] } = {}) {
+  // Each item numbered and named the way the board page and the screen do (a live list with no title by what it shows)
+  const listed = new Map(agendaItems(m).map((x) => [x.id, x]));
   const plan = sectionPlan(m);
   const roll = [...m.attendance.filter((p) => p.kind === 'board'), ...m.attendance.filter((p) => p.kind === 'staff')].map((p) => ({ name: p.name, kind: p.kind }));
   const next = nextMeeting((meetings || []).filter((x) => x.id !== m.id && !x.practice && !x.notBoard && isDate(x.date) && x.date > (m.date || '')), m.date || undefined);
@@ -46,9 +48,9 @@ export function minutesOutline(m, { meetings = [], quorum = 0 } = {}) {
         title: s.title || 'Agenda',
         time: t ? [t.start ? clock(t.start) : '', t.minutes ? `${t.minutes} min` : ''].filter(Boolean).join(' · ') : '',
         items: s.items.filter(isFilled).map((it) => ({
-          label: labels.get(it.id) || '',
-          title: it.title || LIVE_TITLES[it.live] || 'Item',
-          presenter: it.presenter || '',
+          label: listed.get(it.id)?.label || '',
+          title: listed.get(it.id)?.title || it.title || 'Item',
+          presenter: namesText(presentersOf(it, people).map((p) => p.name)),
           minutes: it.live === 'minutes',
         })),
       };

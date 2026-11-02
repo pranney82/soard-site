@@ -1285,6 +1285,14 @@ try {
   if (secWord) {
     const typedBySec = join(OUT, secWord.name);
     writeFileSync(typedBySec, await typeTemplate(secWord.bytes, { away: 'Sam Ortiz', note: 'Called to order at 8:01 AM.' }));
+    // The wrong file picked (another meeting's typed template): it says so, keeps nothing, and can still send it
+    if (template) {
+      const wrong = join(OUT, `wrong-${template.name}`);
+      writeFileSync(wrong, await typeTemplate(template.bytes, { note: 'From the other meeting.' }));
+      await (await sec.$('.bp-minutes input[type="file"]')).uploadFile(wrong);
+      ok(await waitText(sec, /These look like the minutes of [^\n]*not this meeting’s/) && await sec.evaluate(() => /Send it anyway/.test(document.querySelector('.bp-toast')?.textContent || '')), 'another meeting’s minutes: the board page says so, with Send it anyway');
+      ok((await getMeeting(DB, today.id)).files.length === 0, 'and nothing was kept');
+    }
     await (await sec.$('.bp-minutes input[type="file"]')).uploadFile(typedBySec);
     ok(await waitText(sec, /Board has the minutes: 2 of 3 board members there, notes under 1 item/), 'sent: the board page says what Board read');
     const held = await getMeeting(DB, today.id);

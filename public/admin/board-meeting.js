@@ -10,7 +10,7 @@
  *            packet (each file goes with its item by itself); beside them the
  *            invite, the board page and the email, who's coming, and the
  *            minutes template (./board-minutes-template.js: printed, or a
- *            Word file typed into and dropped in After), there During too
+ *            Word file typed into and dropped in After)
  *   During   presenting it: Start, the screen (Next, Previous, ← →, a
  *            clicker), any item or document straight onto it, a vote the
  *            board takes on the board page, End. Check-ins on the board page
@@ -252,7 +252,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
         <aside class="bm-aside"><${GettingReady} ...${p} /><${Coming} ...${p} /><${MinutesTemplate} ...${p} /></aside>`
       : step === 'during' ? html`
         <div class="bm-main"><${RunBar} ...${p} /><${RunOrder} ...${p} /><${Motions} ...${p} /></div>
-        <aside class="bm-aside"><${Quorum} ...${p} /><${MinutesTemplate} ...${p} /></aside>`
+        <aside class="bm-aside"><${Quorum} ...${p} /></aside>`
       : html`
         <div class="bm-main"><${MinutesDrop} ...${p} /><${MinutesDoc} ...${p} /><${FilesCard} ...${p} title="Every file" sub="All of this meeting’s files. A staff-only file never reaches the board page." /></div>
         <aside class="bm-aside"><${WrapUp} ...${p} />${m.minutesFrom ? null : html`<${MinutesTemplate} ...${p} />`}</aside>`}
@@ -1130,7 +1130,7 @@ function MinutesDrop({ m, set, ctx, act, keepSaved }) {
 function MinutesTemplate({ m, ctx }) {
   const { data, addToast } = ctx;
   const [printing, setPrinting] = useState(false);
-  const opts = { meetings: data.meetings, quorum: data.settings.quorum };
+  const opts = { meetings: data.meetings, quorum: data.settings.quorum, people: pickable(data.people) };
   const print = async () => {
     setPrinting(true);
     try { await printMinutesTemplate(m, opts); } catch (err) { addToast(`Couldn’t print it: ${err.message}`, 'error'); }

@@ -489,9 +489,11 @@ test('the minutes template is the agenda the way Board reads minutes: the roll, 
   assert.equal(minutesFileName(m), 'Q4 2026 Board Meeting minutes (2026-11-05).docx', '“minutes” and the date in the name, for the email and Drive readers');
   const o = minutesOutline(m, { meetings: [m, next] });
   assert.deepEqual([o.board, o.quorum, o.next?.name], [5, 3, 'Q1 2027 Board Meeting']);
-  const lines = (await docxText(minutesDocx(m, { meetings: [m, next] }))).split('\n');
+  // Who presents picked from People (`who`), with no names typed: by name all the same
+  m.sections[2].items[1] = { ...m.sections[2].items[1], presenter: '', who: ['kim-park', 'jane-doe'] };
+  const lines = (await docxText(minutesDocx(m, { meetings: [m, next], people: PEOPLE }))).split('\n');
   for (const want of ['Max Sample', 'Alex Rivera', 'Jane Doe', 'Guests:', '1. CALL TO ORDER', '   1. Roll call (Alex Rivera)', '2. APPROVE MEETING MINUTES',
-    '   1. Minutes of the Q3 2026 Board Meeting (Aug 6, 2026)', '   1. Financial (Sam)', '   3. Upcoming reveals', '4. NEW BUSINESS', '5. MOTIONS', '6. ACTION ITEMS']) {
+    '   1. Minutes of the Q3 2026 Board Meeting (Aug 6, 2026)', '   1. Financial (Sam Ortiz)', '   2. Project updates (Kim Park & Jane Doe)', '   3. Upcoming reveals', '4. NEW BUSINESS', '5. MOTIONS', '6. ACTION ITEMS']) {
     assert.ok(lines.includes(want), `has “${want}”`);
   }
   assert.ok(!lines.some((l) => /^\s+2\. $|^\s+2\.\s*$/.test(l)) && lines.indexOf('2. APPROVE MEETING MINUTES') === lines.indexOf('   1. Roll call (Alex Rivera)') + 1, 'the row left empty isn’t on it');
@@ -594,4 +596,49 @@ test('the board’s secretary sends the typed minutes template from the board pa
   assert.equal((await send('lee.board@example.com', (await meeting({ shared: false })).id, word())).status, 404);
   assert.equal((await send('lee.board@example.com', m.id, new File([new Uint8Array([1, 2, 3])], 'photo.jpg', { type: 'image/jpeg' }))).status, 400);
   assert.equal((await send('lee.board@example.com', m.id, null)).status, 400);
+});
+
+test('another meeting’s minutes, by their own heading or file name, go on a meeting only when someone says so', async () => {
+  const { otherMeetingIn } = await import('../functions/api/_board-minutes.js');
+  const q4 = { date: '2026-11-05', title: '' };
+  assert.deepEqual(otherMeetingIn(q4, { name: 'Q3 2026 Board Meeting minutes.docx' }), { date: '', name: 'Q3 2026 Board Meeting' });
+  assert.deepEqual(otherMeetingIn(q4, { name: 'Q3 minutes.pdf', date: '2026-08-06' }), { date: '2026-08-06', name: 'Q3 2026 Board Meeting' });
+  assert.equal(otherMeetingIn(q4, { name: 'Q4 2026 Board Meeting minutes (2026-11-05).docx' }), null, 'the template’s own name');
+  assert.equal(otherMeetingIn(q4, { text: 'Q4 2026 Board Meeting minutes\nDate  Thursday, November 5, 2026\n1. CALL TO ORDER\n   1. Minutes of the Q3 2026 Board Meeting (Aug 6, 2026)' }), null, 'the last minutes up for approval never count');
+  assert.equal(otherMeetingIn(q4, { name: 'Board minutes.docx', text: 'Board minutes\nDate: November 12, 2026\n1. CALL TO ORDER' }), null, 'a meeting moved by a week is still this one');
+  // The founders' drop: 409 saying whose, nothing on the meeting; then read in when they say so
+  const m = await saveMeeting(env.DB, cleanMeeting({ date: '2026-11-05', agendaFrom: { kind: 'typed', name: '', at: AT }, sections: [{ title: 'Committee reports', items: [{ title: 'Financial', live: 'cash' }] }], attendance: [{ slug: 'alex-rivera', name: 'Alex Rivera', kind: 'board' }, { slug: 'sam-ortiz', name: 'Sam Ortiz', kind: 'board' }] }), { by: FOUNDER });
+  const file = await putFile(env, { ownerType: 'meeting', ownerId: m.id, file: pdf('Q3 minutes.pdf'), kind: 'minutes', by: FOUNDER });
+  texts['Q3 minutes.pdf'] = SOARD_MINUTES;
+  const r = await adminPost({ action: 'read-minutes', id: m.id, fileId: file.id });
+  assert.equal(r.status, 409);
+  assert.deepEqual([r.body.other, r.body.fileId], [{ date: '2026-08-06', name: 'Q3 2026 Board Meeting' }, file.id]);
+  assert.match(r.body.error, /^These look like the minutes of the Q3 2026 Board Meeting \(Aug 6, 2026\), not this meeting’s \(Q4 2026 Board Meeting, Nov 5, 2026\)\.$/);
+  assert.ok(!(await getMeeting(env.DB, m.id)).minutesFrom, 'nothing put on the meeting');
+  const anyway = await adminPost({ action: 'read-minutes', id: m.id, fileId: file.id, anyway: true });
+  assert.equal(anyway.status, 200);
+  assert.equal((await getMeeting(env.DB, m.id)).minutesFrom.name, 'Q3 minutes.pdf');
+});
+
+test('the secretary sending another meeting’s minutes: nothing kept, and “send it anyway” sends them', async () => {
+  const portal = await import('../functions/api/board-portal.js');
+  await env.DB.prepare('INSERT INTO team (slug, name, "group", data) VALUES (?, ?, ?, ?)').bind('lee-example', 'Lee Example', 'board', JSON.stringify({ name: 'Lee Example', group: 'board', title: 'Board Secretary' })).run();
+  await env.DB.prepare('INSERT INTO reveal_board_emails (slug, email) VALUES (?, ?)').bind('lee-example', 'lee.board@example.com').run();
+  const m = await saveMeeting(env.DB, cleanMeeting({ date: '2026-11-02', shared: true, agendaFrom: { kind: 'typed', name: '', at: AT }, sections: [{ title: 'Committee reports', items: [{ title: 'Financial' }] }], attendance: [{ slug: 'alex-rivera', name: 'Alex Rivera', kind: 'board' }] }), { by: FOUNDER });
+  texts['Minutes 2026-08-06.pdf'] = SOARD_MINUTES;
+  const send = async (anyway) => {
+    const form = new FormData();
+    form.append('file', pdf('Minutes 2026-08-06.pdf'));
+    const request = new Request(`https://sunshineonaranneyday.com/api/board-portal?minutes=${m.id}${anyway ? '&anyway=1' : ''}`, { method: 'POST', headers: { 'CF-Access-JWT-Assertion': await signIn('lee.board@example.com'), Origin: 'https://sunshineonaranneyday.com' }, body: form });
+    const ctx = { request, env, data: {}, waitUntil: () => {} };
+    ctx.next = async () => portal.onRequestPost(ctx);
+    const res = await onRequest(ctx);
+    return { status: res.status, body: await res.json() };
+  };
+  const r = await send(false);
+  assert.equal(r.status, 409, JSON.stringify(r.body));
+  assert.equal(r.body.other.date, '2026-08-06');
+  assert.equal((await getMeeting(env.DB, m.id)).files.length, 0, 'nothing kept');
+  assert.equal((await send(true)).status, 200);
+  assert.deepEqual((await getMeeting(env.DB, m.id)).files.map((f) => f.name), ['Minutes 2026-08-06.pdf']);
 });

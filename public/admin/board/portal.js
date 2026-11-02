@@ -1647,7 +1647,7 @@ function TakeMinutes({ m, ctx }) {
   // The secretary sees it as theirs; a founder sees whose it is
   const mine = d.me?.seat === 'secretary';
   const secretary = mine ? null : data.people.board.find((p) => p.seat === 'secretary');
-  const opts = { meetings: data.meetings, quorum: data.quorum };
+  const opts = { meetings: data.meetings, quorum: data.quorum, people: d.people };
   const canSend = m.date <= data.today;
   const sent = m.minutesFrom?.name ? m.minutesFrom : null;
   const print = async () => {
@@ -1658,19 +1658,21 @@ function TakeMinutes({ m, ctx }) {
   const word = async () => {
     try { const { downloadMinutesDocx } = await import('../board-minutes-template.js'); downloadMinutesDocx(m, opts); } catch { say('The Word file didn’t come together. Try again.', 'warn'); }
   };
-  const send = async (file) => {
+  const send = async (file, anyway = false) => {
     if (!file) return;
     setBusy('send');
     const form = new FormData();
     form.append('file', file);
     let j;
     try {
-      const r = await fetch(`${API}?minutes=${encodeURIComponent(m.id)}`, { method: 'POST', body: form });
+      const r = await fetch(`${API}?minutes=${encodeURIComponent(m.id)}${anyway ? '&anyway=1' : ''}`, { method: 'POST', body: form });
       j = await r.json().catch(() => ({ ok: false, error: /cloudflareaccess/i.test(r.url || '') ? 'Your sign-in expired. Reload the page to sign in again.' : `Something went wrong (${r.status})` }));
     } catch {
       j = { ok: false, error: 'No connection. Check your internet and try again.' };
     }
     setBusy('');
+    // Another meeting's minutes (the wrong file picked): nothing kept; they can still send it
+    if (!j.ok && j.other) { say(j.error, 'warn', { label: 'Send it anyway', run: () => send(file, true) }); return; }
     if (!j.ok) { say(j.error || 'The minutes didn’t go through. Try again.', 'warn'); return; }
     await load();
     const got = minutesWords(j.read);

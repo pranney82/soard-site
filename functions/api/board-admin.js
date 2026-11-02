@@ -24,6 +24,8 @@
  *   practice-reset { id }                     start the practice over (a new one; its check-ins and votes go)
  *   read-minutes { id, fileId }               that file read as the meeting's minutes and put on it (_board-minutes.js):
  *                                             → { meeting, approvedPrev, read: { attendance: { here, of }, notes, motions, actions, ai } }
+ *                                             another meeting's minutes (their heading or file name) → 409 { error, other:
+ *                                             { date, name }, fileId }, nothing put on it; anyway: true reads them in all the same
  *                                             dry: true reads it without saving → { dry, read, would }
  * POST multipart (?upload=1): file, ownerType (meeting|doc), ownerId, kind, staffOnly → the stored file
  *
@@ -206,7 +208,14 @@ export async function onRequestPost(context) {
         // The minutes, uploaded after the meeting: who was there, the notes under each item, the motions and the
         // action items read in by themselves (./_board-minutes.js), the last meeting's minutes approved when they say so
         needId();
-        const r = await readMinutesInto(env, id, String(body.fileId || ''), { by: me, dry: body.dry === true });
+        let r;
+        try {
+          r = await readMinutesInto(env, id, String(body.fileId || ''), { by: me, dry: body.dry === true, anyway: body.anyway === true });
+        } catch (err) {
+          // Another meeting's minutes, by their heading or file name: say whose, and read them in only when asked again with anyway
+          if (err.status === 409 && err.other) return fail(err.message, 409, { other: err.other, fileId: err.fileId });
+          throw err;
+        }
         if (!r.dry) await audit(env, me, 'updated', `Board minutes read in: ${meetingName(r.meeting)}`);
         return Response.json({ ok: true, ...r });
       }
