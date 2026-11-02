@@ -344,6 +344,16 @@ async function itemMenu(page, item, choice) {
   return found && clickText(page, '.bd-menu[open] .bd-menu__item', choice);
 }
 const step = (page, name) => clickText(page, '.bm-stage', new RegExp(`^\\d?${name}`));
+/** The open pop-up is in the top layer, inside the window, and nothing covers it from its top to its bottom */
+const onTop = (page) => page.evaluate(() => {
+  const p = document.querySelector('.bd-pop__panel');
+  if (!p) return 'none open';
+  const r = p.getBoundingClientRect();
+  if (!p.matches(':popover-open')) return 'not in the top layer';
+  if (r.top < 0 || r.bottom > innerHeight + 1 || r.left < 0 || r.right > innerWidth + 1) return `outside the window ${JSON.stringify(r)}`;
+  const miss = [0.06, 0.3, 0.5, 0.7, 0.94].filter((f) => !p.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height * f)));
+  return miss.length ? `covered at ${miss.join(', ')}` : true;
+});
 
 try {
   // ─── A founder: the Board area ───
@@ -415,10 +425,18 @@ try {
   const finRow = () => jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((li) => li.querySelector('input[aria-label="Item"]')?.value === 'Financial')?.textContent || '');
   ok(/Balance sheet financials/.test(await finRow()), 'it shows under that item on the agenda');
   ok(await jane.evaluate(() => /Financial/.test([...document.querySelectorAll('.bf-file')].find((li) => /Balance sheet financials/.test(li.textContent))?.querySelector('.bd-goes')?.textContent || '')), 'the file says which item it goes with');
+  // The packet's "Goes with": its list of the agenda over everything, never cut off by the card
+  await jane.evaluate(() => [...document.querySelectorAll('.bf-file')].find((li) => /Balance sheet financials/.test(li.textContent))?.querySelector('.bd-goes .bd-pop__btn')?.click());
+  await jane.waitForSelector('.bd-pop__panel .bd-picker__find', { timeout: 3000 }).catch(() => {});
+  { const top = await onTop(jane); ok(top === true, `the packet’s Goes with list draws over everything, all of it in view (${top})`); }
+  await shot(jane, 'packet-goes-with');
+  await jane.keyboard.press('Escape');
   // Who presents: People, with their faces, searched by name
   await jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((li) => li.querySelector('input[aria-label="Item"]')?.value === 'Financial').querySelector('.bd-who .bd-pop__btn').click());
   ok(await jane.waitForSelector('.bd-pop__panel .bd-picker__find', { timeout: 3000 }).then(() => true, () => false), 'Who presents opens a list of the board and staff');
   ok(await jane.evaluate(() => document.activeElement?.classList.contains('bd-picker__find')), 'ready to type a name at once');
+  { const top = await onTop(jane); ok(top === true, `the list draws over the agenda rows under it (${top})`); }
+  await shot(jane, 'who-presents');
   ok(await jane.evaluate(() => [...document.querySelectorAll('.bd-picker__group')].map((g) => g.textContent).join() === 'Board,Staff' && [...document.querySelectorAll('.bd-picker__opt')].some((o) => /Sam Ortiz/.test(o.textContent) && /Board Treasurer/.test(o.textContent))), 'board first, then staff, each with their seat');
   await jane.keyboard.type('sam');
   await jane.keyboard.press('Enter');
@@ -1034,6 +1052,21 @@ try {
     await phone.reload({ waitUntil: 'networkidle0' });
     await waitText(phone, /All meetings/);
     ok(await overflow(phone) <= 0, `the meeting editor’s ${s} step fits a phone`);
+    if (s === 'before') {
+      // A phone: Who presents and the packet's Goes with, each over everything and in view
+      for (const sel of ['.agx-item .bd-who .bd-pop__btn', '.bf-file .bd-goes .bd-pop__btn']) {
+        await phone.evaluate((x) => { const b = document.querySelector(x); b?.scrollIntoView({ block: 'center' }); }, sel);
+        await sleep(300);
+        await phone.evaluate((x) => document.querySelector(x)?.click(), sel);
+        await phone.waitForSelector('.bd-pop__panel .bd-picker__find', { timeout: 3000 }).catch(() => {});
+        await sleep(200);
+        const top = await onTop(phone);
+        ok(top === true, `a phone: ${sel.includes('who') ? 'Who presents' : 'the packet’s Goes with'} over everything, in view (${top})`);
+        await shot(phone, sel.includes('who') ? 'who-presents-390' : 'packet-goes-with-390');
+        await phone.keyboard.press('Escape');
+        await sleep(200);
+      }
+    }
     await shot(phone, `13-editor-${s}-390`);
   }
   await phone.goto(`${SITE}/admin/#board/members`, { waitUntil: 'networkidle0' });

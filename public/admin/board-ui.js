@@ -5,9 +5,9 @@
  * these add only what the board screens need.
  */
 
-import { h, htm, useState, useEffect, useRef } from './vendor.js';
-import { float } from './float.js';
-import { LIVE, liveLines, shortDate, todayEastern, isDate, noteBlocks, callName, fileTitle, docTitle } from './board-shared.js';
+import { h, htm, useState, useEffect, useRef, useMemo } from './vendor.js';
+import { float, floatRef } from './float.js';
+import { LIVE, liveLines, shortDate, todayEastern, isDate, noteBlocks, callName, fileTitle, docTitle, namesText } from './board-shared.js';
 
 export const html = htm.bind(h);
 export const API = '/api/board-admin';
@@ -182,6 +182,10 @@ function Pop({ button, label, cls = '', startOpen = false, onClosed = () => {}, 
   const [open, setOpen] = useState(startOpen);
   const ref = useRef(null);
   const close = (focus = true) => { setOpen(false); onClosed(); if (focus) ref.current?.querySelector('.bd-pop__btn')?.focus(); };
+  const closeNow = useRef(close);
+  closeNow.current = close;
+  // Drawn over everything, the agenda rows under it included (./float.js); it closes once its button scrolls out of sight
+  const panelRef = useMemo(() => floatRef({ anchor: () => ref.current, align: 'end', gap: 6, onHide: () => closeNow.current(false) }), []);
   useEffect(() => {
     if (!open) return undefined;
     const away = (e) => { if (!ref.current?.contains(e.target)) close(false); };
@@ -193,7 +197,7 @@ function Pop({ button, label, cls = '', startOpen = false, onClosed = () => {}, 
   }, [open]);
   return html`<div class=${`bd-pop ${cls} ${open ? 'is-open' : ''}`} ref=${ref}>
     <button type="button" class="bd-pop__btn" aria-haspopup="dialog" aria-expanded=${open} aria-label=${label} onClick=${() => (open ? close() : setOpen(true))}>${button}</button>
-    ${open ? html`<div class="bd-pop__panel" role="dialog" aria-label=${label}>${[].concat(children).find((c) => typeof c === 'function')?.(close)}</div>` : null}
+    ${open ? html`<div class="bd-pop__panel" role="dialog" aria-label=${label} ref=${panelRef}>${[].concat(children).find((c) => typeof c === 'function')?.(close)}</div>` : null}
   </div>`;
 }
 
@@ -216,10 +220,14 @@ const matches = (q, ...texts) => { const words = String(q || '').toLowerCase().s
  */
 export function PersonPicker({ people, value, onChange, label = 'Who presents', empty = 'Who presents', max = 3, startOpen = false, onClosed }) {
   const chosen = new Set(value.map((p) => p.slug).filter(Boolean));
-  const shown = value.length ? html`<span class="bd-who__faces">${value.map((p) => html`<${Face} p=${p} size=${22} key=${p.slug || p.name} />`)}</span><span class="bd-who__names">${value.map((p) => p.name).join(' & ')}</span>`
+  // Two or three: first names, so they fit ("Traci & Holly")
+  const names = value.length > 1 ? namesText(value.map((p) => p.name.split(/\s+/)[0])) : value[0]?.name || '';
+  const shown = value.length ? html`<span class="bd-who__faces">${value.map((p) => html`<${Face} p=${p} size=${22} key=${p.slug || p.name} />`)}</span><span class="bd-who__names">${names}</span>`
     : html`<span class="bd-who__empty">+ ${empty}</span>`;
-  // Its name starts with what it shows ("Sam Ortiz presents Financial"), so a voice command saying what's there finds it
-  const named = value.length ? `${value.map((p) => p.name).join(' & ')}: ${label.replace(/^Who presents/, 'presents')}` : label;
+  // Its name starts with what it shows ("Traci & Holly present Events (Traci Messier and Holly Ranney)"), so a voice
+  // command saying what's there finds it, and the full names follow
+  const what = label.replace(/^Who presents\s*/, '');
+  const named = value.length ? `${names} ${value.length > 1 ? 'present' : 'presents'} ${what}${value.length > 1 ? ` (${value.map((p) => p.name).join(' and ')})` : ''}` : label;
   return html`<${Pop} cls=${`bd-who ${value.length ? 'has-who' : ''}`} label=${named} button=${shown} startOpen=${startOpen} onClosed=${onClosed}>
     ${(close) => html`<${PeopleList} people=${people} value=${value} chosen=${chosen} max=${max} onChange=${onChange} close=${close} />`}
   </${Pop}>`;
@@ -240,13 +248,24 @@ function PeopleList({ people, value, chosen, max, onChange, close }) {
   const typed = q.trim().replace(/\s+/g, ' ');
   const guest = typed && !people.some((p) => p.name.toLowerCase() === typed.toLowerCase()) && !value.some((p) => p.name.toLowerCase() === typed.toLowerCase());
   const options = [...list.map((p) => ({ p })), ...(guest ? [{ guest: typed }] : [])];
+  // Up to `max`: one more is refused, and the list says so (never someone else dropped to make room)
+  const [full, setFull] = useState(false);
   const toggle = (p) => {
     const on = chosen.has(p.slug);
-    const next = on ? value.filter((x) => x.slug !== p.slug) : [...value, p].slice(-max);
-    onChange(next);
+    if (!on && value.length >= max) { setFull(true); return; }
+    setFull(false);
+    onChange(on ? value.filter((x) => x.slug !== p.slug) : [...value, p]);
     setQ('');
   };
-  const take = (i) => { const o = options[i]; if (!o) return; if (o.guest) { onChange([...value, { name: o.guest }].slice(-max)); setQ(''); } else toggle(o.p); };
+  const take = (i) => {
+    const o = options[i];
+    if (!o) return;
+    if (!o.guest) { toggle(o.p); return; }
+    if (value.length >= max) { setFull(true); return; }
+    setFull(false);
+    onChange([...value, { name: o.guest }]);
+    setQ('');
+  };
   const [active, setActive, onKeyDown] = useListKeys(options.length, take);
   let group = '';
   return html`<div class="bd-picker">
@@ -267,7 +286,7 @@ function PeopleList({ people, value, chosen, max, onChange, close }) {
       })}
       ${options.length ? null : html`<li class="bd-picker__none">Nobody by that name</li>`}
     </ul>
-    <div class="bd-picker__foot"><span class="bd-muted">${value.length ? `${value.length} of up to ${max}` : `Up to ${max}`}</span>
+    <div class="bd-picker__foot"><span class=${`bd-muted ${full ? 'is-full' : ''}`} role=${full ? 'alert' : null}>${full ? `Up to ${max}: take someone off first` : value.length ? `${value.length} of up to ${max}` : `Up to ${max}`}</span>
       <span class="bd-actions">${value.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onChange([])}>Clear</button>` : null}<button type="button" class="btn btn-primary btn-sm" onClick=${() => close()}>Done</button></span></div>
   </div>`;
 }
@@ -746,14 +765,17 @@ export const STYLES = `
   .bd-pop__btn { display: inline-flex; align-items: center; gap: 0.45rem; min-width: 0; max-width: 100%; height: 32px; padding: 0 0.55rem; border: 1px solid transparent; border-radius: 999px; background: none; font: inherit; font-size: var(--fs-sm); color: var(--color-text-secondary); cursor: pointer; }
   .bd-pop__btn:hover, .bd-pop.is-open .bd-pop__btn { background: var(--seg-bg); color: var(--color-text); }
   .bd-pop__btn:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
-  .bd-pop__panel { position: absolute; z-index: 40; top: calc(100% + 6px); right: 0; width: min(23rem, calc(100vw - 2rem)); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); box-shadow: 0 18px 44px -12px rgba(26,27,31,0.28); animation: bd-pop-in 0.16s cubic-bezier(0.22,1,0.36,1) both; }
+  .bd-pop__panel { position: absolute; top: calc(100% + 6px); right: 0; width: min(23rem, calc(100vw - 2rem)); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); box-shadow: 0 18px 44px -12px rgba(26,27,31,0.28); animation: bd-pop-in 0.16s cubic-bezier(0.22,1,0.36,1) both; }
   @keyframes bd-pop-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } }
   .bd-who { flex: 0 1 auto; max-width: 17rem; }
   .bd-who__faces { display: inline-flex; flex: none; }
   .bd-who__faces .bd-face + .bd-face { margin-left: -6px; }
   .bd-who__names { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); font-weight: 550; }
   .bd-who__empty { white-space: nowrap; color: var(--color-text-muted); font-weight: 600; }
-  @media (hover: hover) { .ag-item__row .bd-who:not(.has-who):not(.is-open) { opacity: 0; transition: opacity 0.12s; } .ag-item__row:hover .bd-who, .ag-item__row:focus-within .bd-who { opacity: 1; } }
+  /* Nobody picked yet: there to see on every item, quietly */
+  .bd-who:not(.has-who) .bd-pop__btn { border: 1px dashed var(--color-border-strong); color: var(--color-text-secondary); }
+  .bd-who:not(.has-who) .bd-pop__btn:hover, .bd-who.is-open:not(.has-who) .bd-pop__btn { border-style: solid; color: var(--color-text); }
+  .bd-who:not(.has-who) .bd-who__empty { color: inherit; }
   .bd-picker { display: grid; }
   .bd-picker__find { margin: 0.6rem 0.6rem 0.35rem; height: 38px; padding: 0 0.7rem; border: 1px solid var(--color-border-strong); border-radius: 8px; font: inherit; font-size: var(--fs-sm); background: var(--color-bg-card); color: var(--color-text); }
   .bd-picker__find:focus { outline: none; border-color: var(--color-text); box-shadow: 0 0 0 3px rgba(26,27,31,0.08); }
@@ -775,6 +797,7 @@ export const STYLES = `
   .bd-picker__num { flex: none; min-width: 2.2rem; font-variant-numeric: tabular-nums; font-size: var(--fs-xs); font-weight: 700; color: var(--color-text-muted); }
   .bd-picker__opt.is-none .bd-picker__name { color: var(--color-text-secondary); font-weight: 500; }
   .bd-picker__none { padding: 0.75rem 0.5rem; font-size: var(--fs-sm); color: var(--color-text-secondary); }
+  .bd-picker__foot .is-full { color: var(--tone-warn-fg); font-weight: 650; }
   .bd-picker__foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.6rem; border-top: 1px solid var(--color-border); }
   .bd-goes .bd-pop__btn { border-color: var(--color-border); max-width: 16rem; }
   .bd-goes__now { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-text); }
