@@ -799,7 +799,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
  * saved from there, and never the board's: they see nothing of a meeting until it's shared
  */
 const STAGE_AS = [['screen', 'Presentation'], ['page', 'Board page'], ['phone', 'Phone']];
-const SLIDE_KIND = { cover: 'Cover', since: 'Since we met', section: 'Part', item: 'Item', doc: 'Page', live: 'Live', books: 'QuickBooks', end: 'Close' };
+const SLIDE_KIND = { cover: 'Cover', since: 'Since we met', section: 'Part', item: 'Item', report: 'Report', doc: 'Page', live: 'Live', books: 'QuickBooks', end: 'Close' };
 function AgendaStage({ m, focusId, meetings }) {
   const [as, setAs] = useState(() => { try { const k = localStorage.getItem('bd-stage-as'); return STAGE_AS.some(([x]) => x === k) ? k : 'screen'; } catch { return 'screen'; } });
   const pick = (k) => { setAs(k); try { localStorage.setItem('bd-stage-as', k); } catch { /* private browsing */ } };
@@ -1256,6 +1256,8 @@ function stopWords(stop, m, items, pages, files, parts = {}) {
   if (stop.kind === 'item') return { label: it.label, title: it.title, sub: [it.section !== it.title ? it.section : '', it.presenter].filter(Boolean).join(' · ') };
   if (stop.kind === 'books') return { label: it.label, title: BOOKS_TITLES[stop.fileId.slice(6)], sub: `${it.title} · from QuickBooks` };
   if (stop.kind === 'live') return { label: it.label, title: LIVE_TITLES[stop.fileId.slice(5)], sub: it.title };
+  // The report on an item that shows live facts, its own slide after them
+  if (stop.kind === 'report') return { label: it.label, title: `Report · ${it.title}`, sub: it.presenter || '' };
   const f = files.find((x) => x.id === stop.fileId);
   const n = pages[stop.fileId];
   return { label: it.label, title: f ? docTitle(f.name) : 'A document', sub: `${it.title} · page ${stop.page + 1}${n ? ` of ${n}` : ''}${parts[stop.fileId]?.[stop.page] === 2 ? `, ${stop.part ? 'bottom' : 'top'} half` : ''}` };

@@ -2206,34 +2206,11 @@ html:has(body .bs) { scrollbar-gutter: auto; }
   .bp-rp.is-write .bp-rp__preview { display: none; }
 }
 .bp-rp__preview { margin: 0 0 2rem; }
-.bp-rp__pv-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin: 0 0 0.75rem; }
-.bp-rp__pv-bar .bp-mini-h { margin: 0; }
-.bp-rp__card { padding: 0.25rem 1.1rem 0.4rem 0.85rem; border-radius: var(--r-lg); background: var(--card); border: 1px solid rgba(45, 47, 44, 0.08); box-shadow: var(--shadow-1); }
-.bp-rp__card .bp-agitem { border-top: none; }
-/* Nothing in it wider than the column: the money's statements scroll inside their own box */
-.bp-rp__card .bp-agitem__body, .bp-rp__card .bp-aglive, .bp-rp__card .bp-agstmts, .bp-rp__card .bp-stmts, .bp-rp__card .bp-stmt, .bp-rp__card .bp-stmt__scroll { min-width: 0; max-width: 100%; }
-.bp-rp__card .bp-stmts { grid-template-columns: minmax(0, 1fr); }
-.bp-rp__card .bp-stmt__table { min-width: 0; }
-/* A narrow column: the statements stacked the way a phone shows them (the window is wide, so its own rules don't apply) */
-@container rpcard (max-width: 560px) {
-  .bp-stmt__table, .bp-stmt__table tbody { display: block; min-width: 0; }
-  .bp-stmt__table thead { display: none; }
-  .bp-stmt__table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 0.1rem 1rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
-  .bp-stmt__table tr.bp-stmt__h { padding: 0.85rem 0 0.1rem; border-bottom: none; }
-  .bp-stmt__table th, .bp-stmt__table td { padding-top: 0 !important; padding-bottom: 0 !important; border: none !important; }
-  .bp-stmt__table th[scope="row"] { padding-left: calc(var(--d, 0) * 0.75rem); }
-  .bp-table td.bp-stmt__prior { grid-column: 1; padding-left: calc(var(--d, 0) * 0.75rem); text-align: left; color: var(--muted); font-size: 0.8rem; font-weight: 400; }
-  .bp-table td.bp-stmt__prior::before { content: attr(data-label) ": "; }
-  .bp-table td.bp-stmt__chg[data-label]::before { content: attr(data-label) ": "; }
-  .bp-table td.bp-stmt__chg { grid-column: 2; font-size: 0.8rem; font-weight: 400; }
-  .bp-stmt__sum { border-top: 2px solid var(--line-2); }
-}
-/* The item in its own width, not the window's: the money's four figures two by two in a narrow column */
-.bp-rp__card { container: rpcard / inline-size; }
-@container rpcard (max-width: 699px) { .bp-agfigs:has(> li:nth-child(4):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@container rpcard (max-width: 360px) { .bp-agfigs:has(> li:nth-child(4):last-child) { grid-template-columns: 1fr; } }
+.bp-rp__pv-h { margin: 0 0 0.75rem; }
 .bp-rp__screen { position: relative; overflow: hidden; border-radius: 14px; background: #1C1D1A; box-shadow: var(--shadow-2); }
 .bp-rp__screen iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; pointer-events: none; }
+.bp-rp__where { margin: 0.6rem 0 0; color: var(--ink-2); font-size: 0.88rem; font-weight: 600; }
+.bp-rp__where + .bp-rp__fit { margin-top: 0.2rem; }
 .bp-rp__fit { min-height: 1.4em; margin: 0.6rem 0 0; color: var(--muted); font-size: 0.88rem; }
 .bp-rp__fit.is-cut { color: var(--warn); font-weight: 600; }
 .bp-rp__last { margin: 0 0 1rem; padding: 0.9rem 1.1rem 1rem; border-radius: var(--r); background: var(--warm); }

@@ -390,6 +390,9 @@ function ReportFit({ text, cols = 1 }) {
   </div>`;
 }
 
+/** A report on its own slide (a 'report' stop): as large as it fits, in two columns when it's long */
+const ReportBody = ({ report }) => html`<${ReportFit} text=${report} cols=${mdWords(report) > 110 ? 2 : 1} />`;
+
 function Points({ text }) {
   const blocks = noteBlocks(text);
   if (!blocks.length) return null;
@@ -693,6 +696,7 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
     : next.kind === 'section' ? html`<span>Next <b>${String(meeting.sections.findIndex((x) => x.id === next.sectionId) + 1).padStart(2, '0')}</b> ${meeting.sections.find((x) => x.id === next.sectionId)?.title || ''}</span>`
     : next.kind === 'books' ? html`<span>Next: ${BOOKS_TITLES[next.fileId.slice(6)]}</span>`
     : next.kind === 'live' ? html`<span>Next: ${LIVE_TITLES[next.fileId.slice(5)]}</span>`
+    : next.kind === 'report' ? html`<span>Next: Report</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId && next.page === stop.page ? html`<span>Next: the rest of the page</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId ? html`<span>Next: ${docKind(files.find((f) => f.id === next.fileId) || {}) === 'slides' ? 'slide' : 'page'} ${next.page + 1}</span>`
     : next.kind === 'doc' ? html`<span>Next: ${docTitle(files.find((f) => f.id === next.fileId)?.name || 'the document')}</span>`
@@ -770,6 +774,8 @@ export function Screen({ id, data, d, onBack = null }) {
       const x = e.data || {};
       if (x.type === 'board-preview-stop') { const s = deckRef.current.find((y) => y.key === x.key); if (s) setHere({ key: s.key, itemId: s.itemId || '' }); }
       if (x.type === 'board-preview-step') go(atRef.current + (x.dir < 0 ? -1 : 1));
+      // The report page's preview: the stop its words are on (an item that shows live facts has its report after them)
+      if (x.type === 'board-preview-at' && x.itemId) setHere({ key: String(x.key || ''), itemId: String(x.itemId) });
     };
     addEventListener('bp-preview-focus', to);
     addEventListener('message', msg);
@@ -907,7 +913,7 @@ export function Screen({ id, data, d, onBack = null }) {
   const stop = deck[at] || deck[0];
   // Each item's number as the agenda has it (a meeting ahead its presenter writes on carries it: this copy is only their items)
   const items = agendaItems(meeting).map((x) => { const it = meeting.sections[x.si]?.items[x.ii]; return typeof it?.n === 'string' && it.n ? { ...x, label: it.n } : x; });
-  const onItem = ['item', 'doc', 'live', 'books'].includes(stop.kind);
+  const onItem = ['item', 'doc', 'live', 'books', 'report'].includes(stop.kind);
   const item = onItem ? (stop.n >= 0 ? meeting.sections[items[stop.n].si].items[items[stop.n].ii] : { ...MORE, notes: '', docs: [] }) : null;
   // A slide with the money's changes on it: QuickBooks' own, or the money item's card or list (% | $ shows there)
   const moneyHere = stop.kind === 'books' || (stop.kind === 'live' && stop.fileId === 'live:cash') || (stop.kind === 'item' && item?.live === 'cash');
@@ -980,6 +986,15 @@ export function Screen({ id, data, d, onBack = null }) {
       <div class="bs-item__bar"><div><p class="bs-eyebrow">${item.title || section || 'Agenda'}</p><h1 class="bs-display bs-item__title">${LIVE_TITLES[k]}</h1></div></div>
       <div class="bs-item__facts">${facts || html`<p class="bs-quiet">Nothing to show here yet</p>`}</div>
     </div>`;
+  } else if (stop.kind === 'report') {
+    // The report on an item that shows live facts (./board-shared.js deckOf): the part, the item and who presents it
+    // along the top, the report filling the rest, the motion under it
+    stage = html`<div class="bs-item bs-item--report">
+      <div class="bs-item__bar"><div><p class="bs-eyebrow">${section && section !== item.title ? section : 'Agenda'}</p><h1 class="bs-display bs-item__title">${item.title}</h1></div>
+        ${who.length ? html`<div class="bs-item__aside"><ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${52} /><span><strong>${p.name}</strong>${roleOf(p) ? html`<small>${roleOf(p)}</small>` : null}</span></li>`)}</ul></div>` : null}</div>
+      <${ReportBody} report=${item.report} />
+      ${item.motion ? html`<div class="bs-item__body"><${ItemMotion} text=${item.motion} /></div>` : null}
+    </div>`;
   } else if (stop.kind === 'item') {
     const faces = stop.n >= 0 ? facesOf(item) : '';
     const facts = faces ? null : liveSlide(item.live, numbers, id, data, meeting.date, chg);
@@ -991,7 +1006,7 @@ export function Screen({ id, data, d, onBack = null }) {
       ${item.confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}`;
     const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts || faces || item.report ? 52 : 72} /><span><strong>${p.name}</strong>${roleOf(p) ? html`<small>${roleOf(p)}</small>` : null}</span></li>`)}</ul>` : null;
     // Under the money's tiles there's room for a row: each document small, its title beside it
-    const coming = docs.length ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document, next' : 'Its documents, next'}</p><${Shelf} docs=${docs} pages=${pages} row=${!!facts && !faces} max=${item.notes && (item.live === 'minutes' || item.report) ? 2 : item.notes || item.live === 'minutes' ? 3 : 6} /></div>` : null;
+    const coming = docs.length ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document' : 'Its documents'}${deck[at + 1]?.kind === 'report' ? ', after the report' : ', next'}</p><${Shelf} docs=${docs} pages=${pages} row=${!!facts && !faces} max=${item.notes && (item.live === 'minutes' || item.report) ? 2 : item.notes || item.live === 'minutes' ? 3 : 6} /></div>` : null;
     if (faces) {
       stage = html`<div class="bs-item bs-item--board bs-item--faces">
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${faces === 'roll' ? html`<${RollCount} v=${v} started=${started} />` : whoList}</div></div>
@@ -1007,7 +1022,7 @@ export function Screen({ id, data, d, onBack = null }) {
       stage = html`<div class=${`bs-item bs-item--facts ${item.report ? 'has-report' : ''}`}>
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${whoList}</div></div>
         <div class="bs-item__facts">${facts}</div>
-        ${item.notes || item.report || item.motion || coming ? html`<div class="bs-item__body">${item.notes ? html`<${Points} text=${item.notes} />` : null}${item.report ? html`<${ReportFit} text=${item.report} />` : null}<${ItemMotion} text=${item.motion} />${coming}</div>` : null}
+        ${item.notes || item.report || item.motion || coming ? html`<div class="bs-item__body">${item.notes ? html`<${Points} text=${item.notes} />` : null}${item.report && deck[at + 1]?.kind !== 'report' ? html`<${ReportFit} text=${item.report} />` : null}${deck[at + 1]?.kind === 'report' ? null : html`<${ItemMotion} text=${item.motion} />`}${coming}</div>` : null}
       </div>`;
     } else if (item.report) {
       // A report: the item and who presents it along the top, the report filling the rest
@@ -1057,7 +1072,7 @@ export function Screen({ id, data, d, onBack = null }) {
     <div class="bs-foot">${stop.kind === 'doc' ? html`
       <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}<span class="bs-foot__item">${item?.title}</span>${docWords ? html`<span class="bs-foot__sep">·</span>${docWords}` : null}</span>
       ${shownPages.length > 1 && shownPages.length <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${shownPages.map((i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
-      : stop.kind === 'books' || stop.kind === 'live' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? BOOKS_TITLES[stop.fileId.slice(6)] : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
+      : stop.kind === 'books' || stop.kind === 'live' || stop.kind === 'report' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? BOOKS_TITLES[stop.fileId.slice(6)] : stop.kind === 'report' ? 'Report' : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
       : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span><kbd>C</kbd> the money’s changes in % or $<span class="bs-foot__sep">·</span><kbd>F</kbd> full screen</span>`
       : !started && !told && !MIRROR && !OWN ? html`<span class="bs-foot__what">The screen follows the meeting once the chair starts it.</span>` : null}
     </div>

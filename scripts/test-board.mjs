@@ -1320,7 +1320,11 @@ try {
   await scr.keyboard.press('PageUp');
   ok(await scr.waitForFunction(() => /Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'Page Up: back to page 1');
   await scr.keyboard.press('ArrowLeft');
-  ok(await scr.waitForSelector('.bs-item', { timeout: 3000 }).then(() => true, () => false) && await scr.evaluate(() => /Financial/.test(document.querySelector('.bs-item__title')?.textContent || '') && /Sam Ortiz/.test(document.querySelector('.bs-who')?.textContent || '')), '← back to the item, who presents it');
+  // The money fills its own slide, so the treasurer's report is a slide of its own after it (./board-shared.js deckOf)
+  const back = await scr.waitForSelector('.bs.bs--report', { timeout: 3000 }).then(() => scr.evaluate(() => ({ title: document.querySelector('.bs-item__title')?.textContent || '', who: document.querySelector('.bs-who')?.textContent || '', report: !!document.querySelector('.bs-stage .bs-report'), foot: document.querySelector('.bs-foot__what')?.textContent || '' })), () => null);
+  ok(back && /Financial/.test(back.title) && /Sam Ortiz/.test(back.who) && back.report && /Financial\s*·\s*Report/.test(back.foot), `← the treasurer’s report, a slide of its own after the money (${JSON.stringify(back)})`);
+  await scr.keyboard.press('ArrowLeft');
+  ok(await scr.waitForSelector('.bs--item .bs-item', { timeout: 3000 }).then(() => true, () => false) && await scr.evaluate(() => /Financial/.test(document.querySelector('.bs-item__title')?.textContent || '') && /Sam Ortiz/.test(document.querySelector('.bs-who')?.textContent || '') && !document.querySelector('.bs-stage .bs-report')), '← back to the item, who presents it (its report on the next slide, not here too)');
   ok(await scr.waitForFunction(() => [...document.querySelectorAll('.bs-shelf > li')].some((li) => /Balance sheet financials/.test(li.textContent) && !!li.querySelector('.bs-shelf__cover > *')), { timeout: 6000 }).then(() => true, () => false), 'its documents coming up, each by its first page');
   await shot(scr, '22-screen-item');
   // The makeovers item on the screen: the stages as one track toward the reveal, every family's card in view

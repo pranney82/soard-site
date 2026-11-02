@@ -1665,6 +1665,7 @@ function ScreenFrame({ m, it, report, motion, by }) {
   const [w, setW] = useState(0);
   const [fit, setFit] = useState(null);
   const [motionCut, setMotionCut] = useState(false);
+  const [deck, setDeck] = useState(null); // the screen's stops and where it is: { stops, at }
   const now = useRef(null);
   now.current = { report, motion, reportBy: by };
   const src = `${location.pathname}?preview&report#/meetings/${encodeURIComponent(m.id)}/screen`;
@@ -1684,8 +1685,10 @@ function ScreenFrame({ m, it, report, motion, by }) {
     const on = (e) => {
       if (e.origin !== location.origin || e.source !== frame.current?.contentWindow) return;
       const x = e.data || {};
-      if (x.type === 'board-preview-ready') { ready.current = true; send(); post({ type: 'board-preview-focus', itemId: it.id }); }
+      // Ready: the words, then the slide they're on (an item that shows live facts has its report on the next one)
+      if (x.type === 'board-preview-ready') { ready.current = true; send(); post({ type: 'board-preview-at', key: `${it.id}:report`, itemId: it.id }); }
       if (x.type === 'board-preview-fit') setFit(x);
+      if (x.type === 'board-preview-deck' && x.id === m.id && Array.isArray(x.stops)) setDeck({ stops: x.stops, at: x.at || 0 });
       if (x.type === 'board-preview-motion') setMotionCut(!!x.cut);
     };
     addEventListener('message', on);
@@ -1695,44 +1698,41 @@ function ScreenFrame({ m, it, report, motion, by }) {
   useEffect(() => { if (!ready.current) return undefined; const t = setTimeout(send, 300); return () => clearTimeout(t); }, [report, motion, by]);
   const scale = w ? w / 1280 : 0;
   const words = String(report || '').trim() && !isNothingNew(report);
+  // Where the slide sits: after the live facts its report follows, or what comes next on its item
+  const here = deck?.stops?.[deck.at];
+  const nx = deck?.stops?.[deck.at + 1];
+  const where = here?.itemId !== it.id ? ''
+    : here.kind === 'report' ? `After ${AFTER_LIVE[showsOf(it)[0]] || 'its live slide'}`
+    : here.kind === 'item' && showsOf(it).length ? 'Your report gets a slide of its own, after this one.'
+    : nx?.itemId === it.id && nx.kind === 'doc' ? 'Then its documents' : '';
   const fitLine = [
-    words && fit ? (fit.cut ? `The screen shows about the first ${fit.shown} words. The whole report is on the board page.` : 'Fits on one slide.') : '',
+    words && fit && !(here?.kind === 'item' && showsOf(it).length) ? (fit.cut ? `The screen shows about the first ${fit.shown} words. The whole report is on the board page.` : 'Fits on one slide.') : '',
     String(motion || '').trim() && motionCut ? 'The screen cuts the motion short; a shorter one fits.' : '',
   ].filter(Boolean).join(' ');
   return html`<div class="bp-rp__screen" ref=${holder} style=${scale ? `height:${Math.round(720 * scale)}px` : null}>
       ${scale ? html`<iframe ref=${frame} src=${src} title="The screen, as the room will see it" tabindex="-1" aria-hidden="true" inert=${true} style=${`width:1280px;height:720px;transform:scale(${scale})`}></iframe>` : null}
     </div>
+    ${where ? html`<p class="bp-rp__where">${where}</p>` : null}
     <p class=${`bp-rp__fit ${(fit?.cut && words) || motionCut ? 'is-cut' : ''}`}>${fitLine}</p>`;
 }
+/** What an item's live slide is, after "After" */
+const AFTER_LIVE = { projects: 'the makeovers board', cash: 'the money', reveals: 'the reveals ahead', events: 'the events ahead', meetings: 'the board meetings ahead' };
 
-/** Beside the report as it's written: the item on the board page, or the screen, as the board will see them */
-const PREVIEW_AS = [['page', 'Board page'], ['screen', 'Screen']];
-function ReportPreview({ m, it, ctx, draft }) {
-  const { data } = ctx;
-  const [as, setAs] = useState(() => { try { return localStorage.getItem('bp-rp-preview') === 'screen' ? 'screen' : 'page'; } catch { return 'page'; } });
-  const pick = (k) => { setAs(k); try { localStorage.setItem('bp-rp-preview', k); } catch { /* private browsing */ } };
-  const s = m.sections.find((x) => x.items.some((y) => y.id === it.id)) || m.sections[0];
-  const label = labelOf(m, it);
-  const upcoming = m.date >= data.today;
-  const numbers = m.snapshot || (upcoming ? data.numbers : null);
-  const moneyFirst = m.sections.flatMap((x) => x.items).find((y) => showsOf(y).includes('cash'))?.id || '';
+/** Beside the report as it's written: its slide, as the meeting's screen will show it */
+function ReportPreview({ m, it, draft }) {
   return html`<div class="bp-rp__pv">
-    <div class="bp-rp__pv-bar">
-      <h2 class="bp-mini-h" id="rp-pv-h">How the board sees it</h2>
-      <div class="bp-impact__seg" role="group" aria-label="Show it on">${PREVIEW_AS.map(([k, l]) => html`<button type="button" key=${k} aria-pressed=${as === k} onClick=${() => pick(k)}>${l}</button>`)}</div>
-    </div>
-    ${as === 'screen' ? html`<${ScreenFrame} m=${m} it=${it} report=${draft.report} motion=${draft.motion} by=${draft.reportBy} />`
-      : html`<div class="bp-rp__card"><ol class="bp-agitems"><${AgendaItem} m=${m} s=${s} it=${draft} ctx=${ctx} label=${label} numbers=${numbers} upcoming=${upcoming} moneyFirst=${moneyFirst} preview=${true} /></ol></div>`}
+    <h2 class="bp-mini-h bp-rp__pv-h" id="rp-pv-h">In the meeting</h2>
+    <${ScreenFrame} m=${m} it=${it} report=${draft.report} motion=${draft.motion} by=${draft.reportBy} />
   </div>`;
 }
 
 /**
  * Writing a report, on a page of its own: the item it's on, who presents it and where the report stands (due, late, in),
- * the editor (./board-report.js), what the item asks the board to vote on, and beside it all, the item as the board
- * will see it as it's typed (on the board page, or on the screen). It saves a moment after they stop typing, and when
+ * the editor (./board-report.js), what the item asks the board to vote on, and beside it all, its slide as the
+ * meeting's screen will show it, as it's typed. It saves a moment after they stop typing, and when
  * they leave; a newer one someone else saved meanwhile is never written over: they see it and choose. An empty report
  * offers last time's to start from, or an outline; "Nothing to report this time" is one tap (asking first when there
- * are words, which come back with "Write a report instead"). On a phone, Write and Preview are a switch. Done goes back
+ * are words, which come back with "Write a report instead"). On a phone, Write and In the meeting are a switch. Done goes back
  * to the item on the meeting.
  */
 function ReportPage({ id, itemId, ctx }) {
@@ -1764,7 +1764,7 @@ function ReportPage({ id, itemId, ctx }) {
   stuckRef.current = stuck;
   const failing = useRef(false); // the last save didn't go through
   const [motion, setMotion] = useState(it?.motion || ''); // what it asks the board to vote on, as it's typed (the preview's)
-  const [view, setView] = useState('write'); // a phone's switch: write | preview
+  const [view, setView] = useState('write'); // a phone's switch: write | preview (in the meeting)
   const [asking, setAsking] = useState(false); // "Swap your report for Nothing new…?" open
   // The words a "Nothing to report" took the place of, back with "Write a report instead" (kept on this device)
   const beforeKey = `${draftKey}:before`;
@@ -1932,8 +1932,8 @@ function ReportPage({ id, itemId, ctx }) {
   };
   const startFrom = () => { putIn(last.it.report, { inserted: true }); toEditor(); };
   const myName = d.me?.name || (data.me.as ? d.bySlug.get(data.me.as)?.name : '') || '';
-  // The item as the board will see it, with what's typed (saved or not)
-  const draft = { ...it, report: text, motion, reportBy: myName || it.reportBy, reportAt: new Date().toISOString() };
+  // Its slide with what's typed (saved or not), said by who's writing it now
+  const draft = { report: text, motion, reportBy: myName || it.reportBy };
   const standing = reportStanding(m, it, data);
   const copy = async () => {
     try { await navigator.clipboard.writeText(latest.current); ctx.say('Your words are copied'); } catch { ctx.say('Select the words and copy them', 'warn'); }
@@ -1992,8 +1992,8 @@ function ReportPage({ id, itemId, ctx }) {
       </div>`
     : html`<div class="bp-rp__cols">
     <div class="bp-rp__write">
-      <div class="bp-impact__seg bp-rp__switch" role="group" aria-label="Write or see it as the board will">
-        ${[['write', 'Write'], ['preview', 'Preview']].map(([k, l]) => html`<button type="button" key=${k} aria-pressed=${view === k} onClick=${() => setView(k)}>${l}</button>`)}
+      <div class="bp-impact__seg bp-rp__switch" role="group" aria-label="Write, or see it as the meeting will">
+        ${[['write', 'Write'], ['preview', 'In the meeting']].map(([k, l]) => html`<button type="button" key=${k} aria-pressed=${view === k} onClick=${() => setView(k)}>${l}</button>`)}
       </div>
       ${clash ? html`<div class="bp-rp__clash" role="alert">
         <p><strong>${clash.reportBy || 'Someone'} changed this report${clash.reportAt ? ` at ${new Date(clash.reportAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}</strong> while you were writing. Which one should the board read?</p>
@@ -2041,7 +2041,7 @@ function ReportPage({ id, itemId, ctx }) {
         <a class=${`bp-btn bp-btn--primary ${leaving ? 'is-busy' : ''}`} href=${back} aria-disabled=${leaving ? 'true' : null} onClick=${leave}>${leaving ? 'Saving…' : 'Done'}</a>
       </div>
     </div>
-    <aside class="bp-rp__preview" aria-labelledby="rp-pv-h"><${ReportPreview} m=${m} it=${it} ctx=${ctx} draft=${draft} /></aside>
+    <aside class="bp-rp__preview" aria-labelledby="rp-pv-h"><${ReportPreview} m=${m} it=${it} draft=${draft} /></aside>
   </div>`}
   </div>`;
 }
