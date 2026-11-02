@@ -146,13 +146,15 @@ export async function ensureAsks(DB) {
   ]);
   // The meeting's day each ask was made for (a date moved afterwards moves its due); a column the first table lacked
   await DB.prepare('ALTER TABLE board_asks ADD COLUMN meeting_date TEXT').run().catch(() => {});
+  // A list's items (kind 'list': one email for someone presenting three or more)
+  await DB.prepare('ALTER TABLE board_asks ADD COLUMN items TEXT').run().catch(() => {});
   ready.add(DB);
 }
 
 const askOf = (r) => r && ({
   id: r.id, kind: r.kind, meetingId: r.meeting_id, itemId: r.item_id, slug: r.slug, name: r.name || '', email: r.email || '', title: r.title || '',
   subject: r.subject || '', due: r.due || '', status: r.status, askedAt: r.asked_at || '', remindedAt: r.reminded_at || '', lateAt: r.late_at || '',
-  inAt: r.in_at || '', thread: r.thread || '', msgIds: parse(r.msg_ids, []), files: parse(r.files, []), error: r.error || '', meetingDate: r.meeting_date || '',
+  inAt: r.in_at || '', thread: r.thread || '', msgIds: parse(r.msg_ids, []), files: parse(r.files, []), error: r.error || '', meetingDate: r.meeting_date || '', items: parse(r.items, []),
 });
 async function asksFor(DB, meetingId) {
   return ((await DB.prepare('SELECT * FROM board_asks WHERE meeting_id = ? ORDER BY asked_at').bind(meetingId).all()).results || []).map(askOf);
@@ -162,11 +164,17 @@ async function setAsk(DB, id, patch) {
   const sets = [];
   const vals = [];
   for (const [k, v] of Object.entries(patch)) {
-    if (k === 'msgIds' || k === 'files') { sets.push(`${k === 'msgIds' ? 'msg_ids' : 'files'} = ?`); vals.push(JSON.stringify(v)); } else if (cols[k]) { sets.push(`${cols[k]} = ?`); vals.push(v); }
+    if (k === 'msgIds' || k === 'files' || k === 'items') { sets.push(`${{ msgIds: 'msg_ids', files: 'files', items: 'items' }[k]} = ?`); vals.push(JSON.stringify(v)); } else if (cols[k]) { sets.push(`${cols[k]} = ?`); vals.push(v); }
   }
   sets.push('updated_at = ?');
   vals.push(nowIso());
   await DB.prepare(`UPDATE board_asks SET ${sets.join(', ')} WHERE id = ?`).bind(...vals, id).run();
+}
+
+/** An ask per item: a list stands for each of its items (with that item's own state: in once it has a report) */
+function perItem(asks, meetings) {
+  const itemOf = (a, id) => meetings.find((m) => m.id === a.meetingId)?.sections.flatMap((s) => s.items).find((x) => x.id === id);
+  return asks.flatMap((a) => (a.kind !== 'list' ? [a] : (a.items || []).map((id) => ({ ...a, kind: 'report', itemId: id, title: itemOf(a, id)?.title || '', status: String(itemOf(a, id)?.report || '').trim() ? 'in' : a.status }))));
 }
 
 // ─── Who sends, who's copied ────────────────────────────────────────
@@ -229,6 +237,45 @@ export function askEmail({ m, it, person, due, from, books = null }) {
   };
 }
 
+/** A list's items as both parts: each item's name and the link to write its report */
+function listBody(m, items, paras, closing) {
+  const named = (it) => itemTitle(it);
+  const text = [...paras.slice(0, -1), items.map((it) => `- ${named(it)}: ${reportUrl(m, it.id)}`).join('\n'), paras.at(-1), closing].filter(Boolean).join('\n\n');
+  const html = `<div>${paras.slice(0, -1).map((p) => `<p style="${P}">${esc(p).replace(/\n/g, '<br>')}</p>`).join('')}`
+    + `<ul style="margin:0 0 14px;padding-left:22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#2D2E33;">${items.map((it) => `<li><a href="${esc(reportUrl(m, it.id))}" style="color:#1A5FB4;">${esc(named(it))}</a></li>`).join('')}</ul>`
+    + `<p style="${P}">${esc(paras.at(-1))}</p><p style="${P}">${esc(closing).replace(/\n/g, '<br>')}</p></div>`;
+  return { text, html };
+}
+
+/** The ask for someone presenting three or more: one email, each item with its own link, one due */
+export function listEmail({ m, items, person, due, from }) {
+  const name = meetingName(m);
+  return {
+    subject: `${name}: your ${items.length} reports, due ${dueWords(due, { short: true })}`,
+    ...listBody(m, items, [
+      `Hi ${firstName(person.name)},`,
+      `The ${name} is ${longDay(m.date)}. Please write your ${items.length} reports by ${dueWords(due)}:`,
+      'Each link opens that item’s report on the board page. If there’s nothing new on one, its page has Nothing to report this time.',
+    ], `Thanks,\n${firstName(from.name) || 'SOARD'}`),
+  };
+}
+export function listReminderEmail({ m, items, person, due, from, now = Date.now() }) {
+  const at = dueWords(due).split(' at ')[1];
+  const soon = todayEastern(due) === todayEastern(now) ? `today at ${at}` : todayEastern(due) === addDays(todayEastern(now), 1) ? `tomorrow at ${at}` : dueWords(due);
+  return listBody(m, items, [
+    `Hi ${firstName(person.name)},`,
+    `A reminder that ${items.length === 1 ? 'one of your reports' : `${items.length} of your reports`} for ${weekdayOf(m.date)}’s board meeting ${items.length === 1 ? 'is' : 'are'} due ${soon}:`,
+    'Each link opens that item’s report on the board page.',
+  ], `Thanks,\n${firstName(from.name) || 'SOARD'}`);
+}
+export function listLateEmail({ m, items, person, due, from, chair = null, now = Date.now() }) {
+  return listBody(m, items, [
+    `Hi ${firstName(person.name)},`,
+    `${items.length === 1 ? 'One of your reports' : `${items.length} of your reports`} for ${weekdayOf(m.date)}’s board meeting ${items.length === 1 ? 'was' : 'were'} due ${todayEastern(due) === todayEastern(now) ? `today at ${dueWords(due).split(' at ')[1]}` : dueWords(due)} and ${items.length === 1 ? 'hasn’t' : 'haven’t'} come in:`,
+    `Please write ${items.length === 1 ? 'it' : 'them'} on the board page as soon as you can.${chair ? ` I’ve copied ${firstName(chair.name)} so the agenda’s status is clear.` : ''}`,
+  ], `Thanks,\n${firstName(from.name) || 'SOARD'}`);
+}
+
 /** The reminder, in the ask's conversation */
 export function reminderEmail({ m, it, person, due, from, now = Date.now() }) {
   const at = dueWords(due).split(' at ')[1];
@@ -276,7 +323,7 @@ function reportState(it, asks) {
   if (isNothingNew(it.report)) return 'nothing new this time';
   if (String(it.report || '').trim()) return 'report in';
   // Only asks that went out (never one that failed, or that may not have)
-  const mine = asks.filter((a) => a.itemId === it.id && a.kind === 'report' && ['asked', 'late', 'in'].includes(a.status));
+  const mine = asks.filter((a) => (a.kind === 'report' ? a.itemId === it.id : a.kind === 'list' && (a.items || []).includes(it.id)) && ['asked', 'late', 'in'].includes(a.status));
   if (!mine.length) return '';
   const due = Math.min(...mine.map((a) => Date.parse(a.due)));
   return mine.some((a) => a.status === 'late') || due <= Date.now() ? `report late (was due ${dueWords(due, { short: true })})` : `report due ${dueWords(due, { short: true })}`;
@@ -293,7 +340,7 @@ const replyReaches = (cc = []) => (cc.length ? `me and ${cc.map((c) => firstName
 export function chairEmail({ m, chair, from, asks = [], people = [], cc = [] }) {
   const name = meetingName(m);
   const plan = sectionPlan(m);
-  const asked = [...new Set(asks.filter((a) => a.kind === 'report' && ['asked', 'late', 'in'].includes(a.status)).map((a) => a.itemId))];
+  const asked = [...new Set(asks.filter((a) => ['asked', 'late', 'in'].includes(a.status)).flatMap((a) => (a.kind === 'report' ? [a.itemId] : a.kind === 'list' ? a.items || [] : [])))];
   const items = m.sections.flatMap((s) => s.items).filter((it) => asked.includes(it.id));
   const inCount = items.filter((it) => String(it.report || '').trim()).length;
   const late = items.filter((it) => /late/.test(reportState(it, asks)));
@@ -365,6 +412,7 @@ export function mimeOf({ from, to, cc = [], subject, text, html, inReplyTo = '',
     ...(cc.length ? [`Cc: ${cc.map(addr).join(', ')}`] : []),
     `Subject: ${word(subject)}`,
     'MIME-Version: 1.0',
+    'X-SOARD-Board: report-asks',
     ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${[references, inReplyTo].filter(Boolean).join(' ')}`] : []),
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     '',
@@ -411,6 +459,7 @@ export function asTest(mail, from) {
 }
 
 async function send(ctx, mail) {
+  mail = { ...mail, cc: (mail.cc || []).filter((c) => !mail.to.some((t) => normEmail(t.email) === normEmail(c.email))) };
   if (ctx.test) mail = asTest(mail, ctx.senders.from);
   const raw = mimeOf({ from: ctx.senders.from, ...mail });
   const sent = await gmailCall(ctx.sendToken, '/messages/send', { method: 'POST', body: { raw, ...(mail.threadId ? { threadId: mail.threadId } : {}) }, fetchImpl: ctx.fetchImpl });
@@ -656,9 +705,32 @@ export const heldOn = (m) => !!m?.live?.endedAt && todayEastern(Date.parse(m.liv
 /** Who should be asked for which item: [{ it, person }], board members with an email, items without a report */
 export function wanted(m, people) {
   const everyone = [...people.board, ...people.staff];
-  const board = new Set(people.board.filter((p) => p.email).map((p) => p.slug));
+  const reach = new Map(everyone.filter((p) => p.slug && p.email).map((p) => [p.slug, p]));
   return m.sections.flatMap((s) => s.items).filter((it) => reportsOn(it))
-    .flatMap((it) => presentersOf(it, everyone).filter((p) => p.slug && board.has(p.slug)).map((p) => ({ it, person: people.board.find((b) => b.slug === p.slug) })));
+    .flatMap((it) => presentersOf(it, everyone).filter((p) => p.slug && reach.has(p.slug)).map((p) => ({ it, person: reach.get(p.slug) })));
+}
+
+/** Three or more items: one email listing them (their asks are one "list"), so nobody gets a dozen */
+export const LIST_FROM = 3;
+
+/**
+ * Staff on People → Team with the address they sign in with: SOARD's Google account of the same name (staff_state's
+ * directory, as the staff sign-in keeps it), else first@ for a founder (how the founders sign in) → people, staff filled
+ */
+export async function withStaffEmails(DB, people) {
+  let accounts = [];
+  try { accounts = JSON.parse((await DB.prepare("SELECT data FROM staff_state WHERE key = 'directory'").first())?.data || '{}')?.accounts || []; } catch { accounts = []; }
+  const norm = (n) => String(n || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z ]/g, '').replace(/\s+/g, ' ').trim();
+  const active = accounts.filter((a) => a.active && isStaffEmail(a.email));
+  const founders = new Set((await peopleRows(DB)).filter((p) => p.role === 'founder').map((p) => p.slug));
+  const staff = people.staff.map((p) => {
+    if (p.email) return p;
+    const named = active.filter((a) => norm(a.name) === norm(p.name));
+    const first = `${norm(p.name).split(' ')[0]}@soardcharity.com`;
+    const email = named.length === 1 ? normEmail(named[0].email) : founders.has(p.slug) && (!active.length || active.some((a) => normEmail(a.email) === first)) ? first : null;
+    return { ...p, email };
+  });
+  return { ...people, staff };
 }
 
 /** This run's turn: board_state's row changed only if no other run changed it since it was read → true when it's ours */
@@ -719,7 +791,8 @@ export const asksMode = (settings) => (['on', 'off'].includes(settings?.asks) ? 
 export async function runAsks(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   await ensureAsks(env.DB);
   const today = todayEastern(now);
-  const [meetings, settings, people, senders] = await Promise.all([listMeetings(env.DB), getSettings(env.DB), roster(env.DB, { withEmails: true }), sendersFor(env.DB)]);
+  const [meetings, settings, rosterNow, senders] = await Promise.all([listMeetings(env.DB), getSettings(env.DB), roster(env.DB, { withEmails: true }), sendersFor(env.DB)]);
+  const people = await withStaffEmails(env.DB, rosterNow);
   const did = { asked: 0, reminded: 0, late: 0, chair: 0, replies: 0, reports: 0 };
   const mode = asksMode(await readSettings(env.DB));
   if (!senders || mode === 'off') return did;
@@ -738,7 +811,7 @@ export async function runAsks(env, { fetchImpl = fetch, now = Date.now() } = {})
   }
   // Replies first, on every meeting ahead with asks out
   for (const m of meetings.filter((x) => isDate(x.date) && x.date >= today)) {
-    const asks = (await asksFor(env.DB, m.id)).filter((a) => a.thread && a.status !== 'dropped' && a.status !== 'sending');
+    const asks = (await asksFor(env.DB, m.id)).filter((a) => a.thread && a.kind !== 'list' && a.status !== 'dropped' && a.status !== 'sending');
     for (const a of asks) {
       const r = await (a.kind === 'chair' ? readChairReplies(ctx, m, a) : readReplies(ctx, m, a)).catch((e) => { console.error('[board-asks] replies', e.message); return { replies: 0, reports: 0 }; });
       did.replies += r.replies;
@@ -752,6 +825,20 @@ export async function runAsks(env, { fetchImpl = fetch, now = Date.now() } = {})
   const fresh = (await getMeeting(env.DB, m.id)) || m;
   const asks = await asksFor(env.DB, m.id);
   const want = wanted(fresh, people);
+  // Someone with three or more reports still to write: one email listing them (a 'list'), never one each. Once a list,
+  // always (that meeting); reports already written don't count, so one left is a plain ask
+  const count = new Map();
+  for (const w of want) if (!String(w.it.report || '').trim()) count.set(w.person.slug, (count.get(w.person.slug) || 0) + 1);
+  const listed = new Set([...count].filter(([, n]) => n >= LIST_FROM).map(([slug]) => slug));
+  for (const a of asks.filter((x) => x.kind === 'list')) listed.add(a.slug);
+  // A list follows the agenda: in once each of its items has a report; its items as they are now
+  for (const a of asks.filter((x) => x.kind === 'list' && ['asked', 'late', 'dropped'].includes(x.status))) {
+    const mine = want.filter((w) => w.person.slug === a.slug).map((w) => w.it);
+    const ids = mine.map((it) => it.id);
+    if (!mine.length) { if (a.status !== 'dropped') await setAsk(env.DB, a.id, { status: 'dropped' }); continue; }
+    if (mine.every((it) => String(it.report || '').trim())) await setAsk(env.DB, a.id, { status: 'in', inAt: nowIso(now), items: ids });
+    else if (JSON.stringify(ids) !== JSON.stringify(a.items) || a.status === 'dropped') await setAsk(env.DB, a.id, { items: ids, ...(a.status === 'dropped' ? { status: 'asked' } : {}) });
+  }
   // Asks whose item or presenter is gone stop (and start again if they come back); a report written on the board page counts as in
   for (const a of asks.filter((x) => x.kind === 'report' && ['asked', 'late', 'dropped'].includes(x.status))) {
     const it = fresh.sections.flatMap((s) => s.items).find((x) => x.id === a.itemId);
@@ -769,8 +856,16 @@ export async function runAsks(env, { fetchImpl = fetch, now = Date.now() } = {})
   // The asks (two days ahead at the latest). Each on its own: one that fails never stops the rest
   if (days >= 2) {
     for (const { it, person } of want) {
+      if (listed.has(person.slug)) continue;
       if (String(it.report || '').trim() || asks.some((a) => a.kind === 'report' && a.itemId === it.id && a.slug === person.slug)) continue;
       try { if (await sendAsk(ctx, fresh, it, person, books)) did.asked++; } catch (e) { errors.push(e.message); }
+    }
+    for (const slug of listed) {
+      if (asks.some((a) => a.kind === 'list' && a.slug === slug)) continue;
+      const mine = want.filter((w) => w.person.slug === slug);
+      const items = mine.map((w) => w.it).filter((it) => !String(it.report || '').trim());
+      if (!items.length) continue;
+      try { if (await sendList(ctx, fresh, mine[0].person, items)) did.asked++; } catch (e) { errors.push(e.message); }
     }
   }
   const current = (await asksFor(env.DB, m.id)).filter((a) => a.kind === 'report');
@@ -807,9 +902,39 @@ export async function runAsks(env, { fetchImpl = fetch, now = Date.now() } = {})
       await setAsk(env.DB, a.id, { error: String(e.message).slice(0, 300) }).catch(() => {});
     }
   }
+  const lists = (await asksFor(env.DB, m.id)).filter((a) => a.kind === 'list');
+  const everyone = [...people.board, ...people.staff];
+  for (const a of lists) {
+    if (!['asked', 'late'].includes(a.status) || !a.due || !a.thread) continue;
+    const items = a.items.map((id) => fresh.sections.flatMap((s) => s.items).find((x) => x.id === id)).filter((it) => it && !String(it.report || '').trim());
+    if (!items.length) continue;
+    const person = everyone.find((p) => p.slug === a.slug) || { name: a.name, email: a.email };
+    try {
+      if (a.meetingDate && a.meetingDate !== fresh.date) {
+        const moved = Math.max(dueFor(fresh.date, Date.parse(a.askedAt)), dueFor(fresh.date, now));
+        await setAsk(env.DB, a.id, { meetingDate: fresh.date, due: nowIso(moved), status: 'asked', remindedAt: '', lateAt: '' });
+        await replyInThread(ctx, a, { to: [person], cc: ctx.senders.cc, ...listBody(fresh, items, [`Hi ${firstName(person.name)},`, `The ${meetingName(fresh)} is now ${longDay(fresh.date)}, so your reports are due ${dueWords(moved)}:`, 'Each link opens that item’s report on the board page.'], `Thanks,\n${firstName(senders.from.name) || 'SOARD'}`) });
+        continue;
+      }
+      const due = Date.parse(a.due);
+      const at = remindAt(Date.parse(a.askedAt), due);
+      if (a.status === 'asked' && !a.remindedAt && at && now >= at && now < due && await claimed(env.DB, a.id, 'reminded_at', now)) {
+        await replyInThread(ctx, a, { to: [person], cc: ctx.senders.cc, ...listReminderEmail({ m: fresh, items, person, due, from: senders.from, now }) });
+        did.reminded++;
+      }
+      if (a.status === 'asked' && now >= due && today < fresh.date && await claimed(env.DB, a.id, 'late_at', now, { status: 'late' })) {
+        const copy = [...(chair && chair.slug !== a.slug ? [chair] : []), ...ctx.senders.cc];
+        await replyInThread(ctx, a, { to: [person], cc: copy, ...listLateEmail({ m: fresh, items, person, due, from: senders.from, chair: chair && chair.slug !== a.slug ? chair : null, now }) });
+        did.late++;
+      }
+    } catch (e) {
+      errors.push(e.message);
+      await setAsk(env.DB, a.id, { error: String(e.message).slice(0, 300) }).catch(() => {});
+    }
+  }
   // The chair's review, once (not on the meeting's day)
   if (chair && today < fresh.date && !asks.some((a) => a.kind === 'chair')) {
-    const dues = current.filter((a) => ['asked', 'late', 'in'].includes(a.status) && a.due).map((a) => Date.parse(a.due));
+    const dues = [...current, ...lists].filter((a) => ['asked', 'late', 'in'].includes(a.status) && a.due).map((a) => Date.parse(a.due));
     if (now >= chairAt(fresh.date, dues)) {
       const all = await asksFor(env.DB, m.id);
       const mail = chairEmail({ m: (await getMeeting(env.DB, m.id)) || fresh, chair, from: senders.from, asks: all, people: [...people.board, ...people.staff], cc: ctx.senders.cc });
@@ -839,8 +964,12 @@ export async function sendTests(ctx, m, books) {
   const { senders, people, now } = ctx;
   const want = wanted(m, people);
   if (!want.length) return 0;
-  const money = want.find((w) => isMoney(w.it)) || want[0];
-  const other = want.find((w) => w.it.id !== money.it.id);
+  const count = new Map();
+  for (const w of want) if (!String(w.it.report || '').trim()) count.set(w.person.slug, (count.get(w.person.slug) || 0) + 1);
+  const listedSlug = [...count].find(([, n]) => n >= LIST_FROM)?.[0] || '';
+  const single = want.filter((w) => w.person.slug !== listedSlug);
+  const money = single.find((w) => isMoney(w.it)) || single[0] || want[0];
+  const other = single.find((w) => w.it.id !== money.it.id && w.person.slug !== money.person.slug);
   const due = dueFor(m.date, now);
   const chair = chairOf(people);
   const from = senders.from;
@@ -851,6 +980,10 @@ export async function sendTests(ctx, m, books) {
   const re = `Re: ${first.subject}`;
   mails.push(first);
   if (other) mails.push(ask(other));
+  if (listedSlug) {
+    const mine = want.filter((w) => w.person.slug === listedSlug);
+    mails.push({ to: [mine[0].person], cc, ...listEmail({ m, items: mine.map((w) => w.it), person: mine[0].person, due, from }) });
+  }
   mails.push({ to: [money.person], cc, subject: re, ...reminderEmail({ m, it: money.it, person: money.person, due, from, now: remindAt(now, due) || now }) });
   mails.push({ to: [money.person], cc: [...(chair && chair.slug !== money.person.slug ? [chair] : []), ...cc], subject: re, ...lateEmail({ m, it: money.it, person: money.person, due, from, chair: chair && chair.slug !== money.person.slug ? chair : null, now: due }) });
   mails.push({ to: [money.person], subject: re, ...thanksEmail({ m, it: money.it, person: money.person, from }) });
@@ -899,6 +1032,26 @@ async function sendAsk(ctx, m, it, person, books) {
     .bind('asked', sent.threadId, JSON.stringify([sent.messageId].filter(Boolean)), mail.subject, nowIso(now), 'report', m.id, it.id, person.slug).run();
   return true;
 }
+/** A list's email: one for someone presenting three or more, kept with its items (as sendAsk keeps one) */
+async function sendList(ctx, m, person, items) {
+  const { env, now } = ctx;
+  const due = dueFor(m.date, now);
+  if (!(await claim(env.DB, { kind: 'list', meetingId: m.id, itemId: '', person, title: `${items.length} reports`, due: nowIso(due), date: m.date, now }))) return false;
+  const mail = listEmail({ m, items, person, due, from: ctx.senders.from });
+  const where = "WHERE kind = 'list' AND meeting_id = ? AND item_id = '' AND slug = ?";
+  let sent;
+  try {
+    sent = await send(ctx, { to: [person], cc: ctx.senders.cc, ...mail });
+  } catch (e) {
+    await env.DB.prepare(`UPDATE board_asks SET status = ?, error = ?, items = ?, updated_at = ? ${where}`).bind(gmailRefused(e) ? 'failed' : 'unknown', String(e.message).slice(0, 300), JSON.stringify(items.map((it) => it.id)), nowIso(now), m.id, person.slug).run();
+    console.error('[board-asks] list', person.slug, e.message);
+    return false;
+  }
+  await env.DB.prepare(`UPDATE board_asks SET status = 'asked', thread = ?, msg_ids = ?, subject = ?, items = ?, updated_at = ? ${where}`)
+    .bind(sent.threadId, JSON.stringify([sent.messageId].filter(Boolean)), mail.subject, JSON.stringify(items.map((it) => it.id)), nowIso(now), m.id, person.slug).run();
+  return true;
+}
+
 /** Gmail said no (a 4xx): the email didn't go */
 const gmailRefused = (e) => /Gmail answered 4\d\d/.test(String(e?.message || ''));
 
@@ -915,6 +1068,9 @@ const mark = (DB, id, a, sender, outcome, detail = '') => DB.prepare('INSERT OR 
   .bind(id, a.id, nowIso(), sender, outcome, String(detail).slice(0, 300)).run();
 
 /** The replies in an ask's conversation, and any that left it (a new subject) but still name one of its emails */
+/** An email this site sent (its own mark): never a person's reply */
+const ours = (headers) => !!header(headers, 'X-SOARD-Board');
+
 async function readReplies(ctx, m, ask) {
   let a = ask;
   const { env, fetchImpl } = ctx;
@@ -932,14 +1088,18 @@ async function readReplies(ctx, m, ask) {
       if (a.msgIds.some((id) => id && refs.includes(id))) msgs.push(await gmailCall(ctx.readToken, `/messages/${ref.id}?format=full`, { fetchImpl }));
     }
   }
+  const asker = normEmail(ctx.senders.from.email);
   for (const msg of msgs) {
-    if (!msg?.id || (msg.labelIds || []).some((l) => l === 'SENT' || l === 'DRAFT')) continue;
+    if (!msg?.id || (msg.labelIds || []).includes('DRAFT') || ours(msg.payload?.headers)) continue;
+    // In the asker's mailbox their own replies are Sent: one counts only on an ask to the asker themselves
+    if ((msg.labelIds || []).includes('SENT') && normEmail(a.email) !== asker) continue;
     if (await env.DB.prepare('SELECT 1 AS x FROM board_ask_mail WHERE gmail_id = ?').bind(msg.id).first()) continue;
     a = askOf(await env.DB.prepare('SELECT * FROM board_asks WHERE id = ?').bind(a.id).first()) || a;
     if (Number(msg.internalDate || 0) < Date.parse(a.askedAt)) continue;
     const h = msg.payload?.headers || [];
     const who = senderOf(header(h, 'From'));
-    if (isStaffEmail(who.email)) { await mark(env.DB, msg.id, a, who.email, 'staff'); continue; }
+    // Staff copied in (Holly answering, the asker) are never the report; the presenter's own reply is, staff or not
+    if (isStaffEmail(who.email) && who.email !== normEmail(a.email)) { await mark(env.DB, msg.id, a, who.email, 'staff'); continue; }
     out.replies++;
     if (isAutoReply(h)) { await mark(env.DB, msg.id, a, who.email, 'auto'); continue; }
     if (who.email !== normEmail(a.email) && !sameName(who.name, a.name)) { await mark(env.DB, msg.id, a, who.email, 'stranger', who.name); continue; }
@@ -1008,8 +1168,9 @@ async function takeReply(ctx, m, a, msg) {
 
 /** Sending from outside a run (the board page's buttons): who sends and the two Gmail tokens, made when first needed */
 async function mailer(env, { fetchImpl = fetch, now = Date.now() } = {}) {
-  const [senders, people, settings] = await Promise.all([sendersFor(env.DB), roster(env.DB, { withEmails: true }), readSettings(env.DB)]);
+  const [senders, rosterNow, settings] = await Promise.all([sendersFor(env.DB), roster(env.DB, { withEmails: true }), readSettings(env.DB)]);
   if (!senders) throw err('No one is set up to send the board’s email', 503);
+  const people = await withStaffEmails(env.DB, rosterNow);
   const mode = asksMode(settings);
   if (mode === 'off') throw err('Emails to presenters are off in Board → Settings', 409);
   const ctx = { env, fetchImpl, now, senders, people, today: todayEastern(now), test: mode === 'test' };
@@ -1051,8 +1212,8 @@ export async function askPresenter(env, { meetingId, itemId, question }, w, { fe
   if (!it) throw err('That item isn’t on the agenda any more', 404);
   const ctx = await mailer(env, { fetchImpl, now });
   const everyone = [...ctx.people.board, ...ctx.people.staff];
-  const to = presentersOf(it, everyone).map((p) => ctx.people.board.find((b) => b.slug === p.slug && b.email)).filter(Boolean);
-  if (!to.length) throw err('No board member with an email presents this item, so there’s no one to send it to', 409);
+  const to = presentersOf(it, everyone).map((p) => everyone.find((b) => b.slug === p.slug && b.email)).filter(Boolean);
+  if (!to.length) throw err('No one presenting this item has an email, so there’s no one to send it to', 409);
   // Test mode: the emails as they'd go, to the asker alone; nothing kept, so nothing waits for an answer once it's On
   if (ctx.test) {
     for (const person of to) {
@@ -1180,7 +1341,7 @@ async function readChairReplies(ctx, m, a) {
   const out = { replies: 0, reports: 0 };
   const thread = await gmailCall(ctx.readToken, `/threads/${a.thread}?format=full`, { fetchImpl });
   for (const msg of thread?.messages || []) {
-    if (!msg?.id || (msg.labelIds || []).some((l) => l === 'SENT' || l === 'DRAFT')) continue;
+    if (!msg?.id || (msg.labelIds || []).some((l) => l === 'SENT' || l === 'DRAFT') || ours(msg.payload?.headers)) continue;
     if (await env.DB.prepare('SELECT 1 AS x FROM board_ask_mail WHERE gmail_id = ?').bind(msg.id).first()) continue;
     const h = msg.payload?.headers || [];
     const who = senderOf(header(h, 'From'));
@@ -1212,7 +1373,7 @@ async function reviewFor(env, { meetings, today }) {
     approvedBy: chair?.status === 'approved' ? chair.name : '',
     notes,
     questions,
-    reports: asks.filter((a) => a.kind === 'report' && !['dropped', 'sending', 'question'].includes(a.status))
+    reports: perItem(asks, [m]).filter((a) => a.kind === 'report' && !['dropped', 'sending', 'question', 'failed', 'unknown'].includes(a.status))
       .map((a) => ({ itemId: a.itemId, slug: a.slug, name: a.name, due: a.due, status: a.status === 'asked' && a.due && Date.parse(a.due) <= Date.now() ? 'late' : a.status })),
   };
 }
@@ -1291,8 +1452,8 @@ export async function portalExtras(env, { member = null, admin = false, meetings
       const kept = Object.fromEntries(Object.entries(notes[m.id] || {}).filter(([itemId]) => own.has(itemId)));
       if (Object.keys(kept).length) notes[m.id] = kept; else delete notes[m.id];
     }
-    const rows = ((await env.DB.prepare("SELECT * FROM board_asks WHERE kind = 'report' AND status NOT IN ('dropped', 'sending', 'question')").all()).results || []).map(askOf)
-      .filter((a) => ahead.some((m) => m.id === a.meetingId) && (admin || a.slug === member?.slug));
+    const rows = perItem(((await env.DB.prepare("SELECT * FROM board_asks WHERE kind IN ('report', 'list') AND status NOT IN ('dropped', 'sending', 'question', 'failed', 'unknown')").all()).results || []).map(askOf)
+      .filter((a) => ahead.some((m) => m.id === a.meetingId) && (admin || a.slug === member?.slug)), ahead);
     // The chair's review page: the chair (by seat) and Board's admins
     const on = asksMode(await readSettings(env.DB)) === 'on';
     const review = admin || (member?.seat === 'chair' && on) ? await reviewFor(env, { meetings, today }) : null;
@@ -1325,7 +1486,7 @@ export async function asksStatus(DB) {
 /** Automations' live status: counts, times and on/off only (no names or addresses) */
 export async function asksFacts(DB) {
   const s = await asksStatus(DB);
-  const reports = s.asks.filter((a) => a.kind === 'report' && ['asked', 'late', 'in'].includes(a.status));
+  const reports = perItem(s.asks, s.meeting ? [await getMeeting(DB, s.meeting.id)].filter(Boolean) : []).filter((a) => a.kind === 'report' && ['asked', 'late', 'in'].includes(a.status));
   const chair = s.asks.find((a) => a.kind === 'chair');
   // An email Gmail refused, or one that may not have gone: never sent again by itself, so someone should look
   const failed = s.asks.filter((a) => ['failed', 'unknown'].includes(a.status)).length;

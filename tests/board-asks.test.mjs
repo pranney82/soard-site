@@ -115,7 +115,7 @@ async function meeting(extra = {}) {
       { id: 's_rep', title: 'Committee reports', items: [
         { id: 'i_gov', title: 'Governance', presenter: 'Kim' },
         { id: 'i_fin', title: 'Financial', presenter: 'Sam', live: 'cash' },
-        { id: 'i_ed', title: 'Executive update', presenter: 'Max' },
+        { id: 'i_ed', title: 'Executive update', presenter: '' },
       ] },
     ],
     ...extra,
@@ -859,4 +859,74 @@ test('a presenter’s items in a meeting not shared yet keep their numbers on th
   const { listMeetings } = await import('../functions/api/_board.js');
   const x = await portalExtras(env, { member: SAM, meetings: await listMeetings(env.DB), today: '2026-11-03' });
   assert.deepEqual(x.presenting[0].sections.flatMap((s) => s.items.map((it) => [it.title, it.n])), [['Financial', '2.2']]);
+});
+
+// ─── Staff are asked too (Peter, Nov 2: "yes holly and peter should get report asks too") ───
+
+test('a staff presenter is asked like the board: the asker’s own ask, and his own reply (from Sent) goes on the agenda', async () => {
+  await meeting({ sections: [{ id: 's_rep', title: 'Committee reports', items: [
+    { id: 'i_fin', title: 'Financial', presenter: 'Sam', live: 'cash' },
+    { id: 'i_proj', title: 'Projects updates', presenter: 'Max' },
+  ] }] });
+  assert.equal((await run()).asked, 2);
+  const max = gmail.sent.find((m) => hdr(m, 'To').startsWith('Max'));
+  assert.equal(hdr(max, 'From'), 'Max Doe <max@soardcharity.com>');
+  assert.equal(hdr(max, 'Cc'), 'Jane Doe <jane@soardcharity.com>');
+  assert.match(hdr(max, 'Subject'), /your Projects updates report, due/);
+  // His reply is in his own Sent (he's the asker); the site's own emails never count
+  env.AI = { run: async () => ({ response: { kind: 'report', signature: '' } }) };
+  const reply = gmail.reply(max.threadId, { from: 'Max Doe <max@soardcharity.com>', text: 'Three reveals this month, two in December.' });
+  reply.labelIds = ['SENT'];
+  clock += 10 * 60 * 1000;
+  assert.equal((await run()).reports, 1);
+  assert.equal((await getMeeting(env.DB, 'm_nov5')).sections[0].items.find((x) => x.id === 'i_proj').report, 'Three reveals this month, two in December.');
+  assert.equal((await env.DB.prepare("SELECT status FROM board_asks WHERE item_id = 'i_proj'").first()).status, 'in');
+});
+
+test('three or more items: one email listing them, each with its link; its reminder and past due list only what’s left; nobody copied on their own', async () => {
+  await meeting({ sections: [{ id: 's_rep', title: 'Committee reports', items: [
+    { id: 'i_fin', title: 'Financial', presenter: 'Sam', live: 'cash' },
+    { id: 'i_a', title: 'Store update', presenter: 'Jane' },
+    { id: 'i_b', title: 'Events', presenter: 'Jane' },
+    { id: 'i_c', title: 'Gala', presenter: 'Jane' },
+  ] }] });
+  const did = await run();
+  assert.equal(did.asked, 2);
+  const list = gmail.sent.find((m) => hdr(m, 'To').startsWith('Jane'));
+  assert.equal(hdr(list, 'Subject'), 'Q4 2026 Board Meeting: your 3 reports, due Wed, Nov 4 at noon');
+  assert.equal(hdr(list, 'Cc'), '', 'Jane is the one copied on asks: never on her own');
+  assert.match(list.text, /- Store update: https:\/\/sunshineonaranneyday\.com\/admin\/board\/#\/meetings\/m_nov5\/report\/i_a\n- Events: .*\/report\/i_b\n- Gala: .*\/report\/i_c/);
+  // Two written on the board page; the reminder lists the one left
+  await postReport(env.DB, { meetingId: 'm_nov5', itemId: 'i_a', words: 'Steady.', name: 'Jane Doe' });
+  await postReport(env.DB, { meetingId: 'm_nov5', itemId: 'i_b', words: 'Two coming up.', name: 'Jane Doe' });
+  clock = easternAt('2026-11-04', '08:00');
+  await run();
+  const reminder = gmail.sent.filter((m) => hdr(m, 'To').startsWith('Jane')).at(-1);
+  assert.match(reminder.text, /one of your reports for Thursday’s board meeting is due today at noon:\n\n- Gala:/);
+  assert.doesNotMatch(reminder.text, /Store update|Events:/);
+  clock = easternAt('2026-11-04', '12:01');
+  await run();
+  const late = gmail.sent.filter((m) => hdr(m, 'To').startsWith('Jane')).at(-1);
+  assert.match(late.text, /One of your reports .* was due today at noon and hasn’t come in:\n\n- Gala:/);
+  assert.equal(hdr(late, 'Cc'), 'Alex Rivera <alex.board@example.com>');
+  // The board page shows each of the list's items with its own state; the chair's review counts them
+  const { listMeetings } = await import('../functions/api/_board.js');
+  const x = await portalExtras(env, { admin: true, meetings: await listMeetings(env.DB), today: '2026-11-04' });
+  assert.deepEqual(x.myAsks.filter((a) => ['i_a', 'i_b', 'i_c'].includes(a.itemId)).map((a) => [a.itemId, a.status]).sort(), [['i_a', 'in'], ['i_b', 'in'], ['i_c', 'late']]);
+  // Its last one in: the list is in
+  await postReport(env.DB, { meetingId: 'm_nov5', itemId: 'i_c', words: 'Sold out.', name: 'Jane Doe' });
+  clock += 10 * 60 * 1000;
+  await run();
+  assert.equal((await env.DB.prepare("SELECT status FROM board_asks WHERE kind = 'list'").first()).status, 'in');
+});
+
+test('reports already written don’t count toward a list: one left is a plain ask, never "your 1 reports"', async () => {
+  await meeting({ sections: [{ id: 's_rep', title: 'Committee reports', items: [
+    { id: 'i_a', title: 'Store update', presenter: 'Jane' },
+    { id: 'i_b', title: 'Events', presenter: 'Jane', report: 'Done.' },
+    { id: 'i_c', title: 'Gala', presenter: 'Jane', report: 'Done.' },
+  ] }] });
+  assert.equal((await run()).asked, 1);
+  assert.equal(hdr(gmail.sent.at(-1), 'Subject'), 'Q4 2026 Board Meeting: your Store update report, due Wed, Nov 4 at noon');
+  assert.equal((await env.DB.prepare("SELECT COUNT(*) AS n FROM board_asks WHERE kind = 'list'").first()).n, 0);
 });
