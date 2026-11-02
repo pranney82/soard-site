@@ -1171,7 +1171,9 @@ function OnCalendar({ m, data }) {
 function Rsvp({ m, ctx, quiet = false }) {
   const { data, setData, say } = ctx;
   const [busy, setBusy] = useState('');
-  if (m.date < data.today || !data.me.slug) return null;
+  // An admin seeing it as the board will: the question as a member gets it, and pressing it changes nothing
+  const look = !data.me.slug && (AS_BOARD || PREVIEW);
+  if (m.date < data.today || (!data.me.slug && !look)) return null;
   const team = theTeam(data);
   const chosen = RSVP.find((r) => r.id === m.myRsvp);
   const onInvite = !chosen && m.myInvite && m.myInvite !== 'invited' ? answerOf('', m.myInvite) : '';
@@ -1180,6 +1182,7 @@ function Rsvp({ m, ctx, quiet = false }) {
   const current = busy || m.myRsvp || fromInvite?.id || '';
   const at = RSVP.findIndex((r) => r.id === current);
   const answer = async (id) => {
+    if (look) { say('In the preview, nobody’s answer changes. Board members answer here.'); return; }
     if (!data.me.slug || id === m.myRsvp) return;
     setBusy(id);
     const j = await call({ action: 'rsvp', meetingId: m.id, answer: id });
@@ -1453,7 +1456,9 @@ function previewFocus(itemId) {
   const go = () => {
     const el = document.getElementById(`i-${itemId}`);
     if (!el) { if (Date.now() < until) setTimeout(go, 150); return; }
-    el.scrollIntoView({ block: 'start', behavior: reduceMotion() ? 'auto' : 'smooth' });
+    // Its own page scrolls, never Board's around the frame (scrollIntoView would move both)
+    const top = el.getBoundingClientRect().top + scrollY - (parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 16);
+    document.scrollingElement.scrollTo({ top: Math.max(0, top), behavior: reduceMotion() ? 'auto' : 'smooth' });
     el.classList.remove('is-found');
     void el.offsetWidth;
     el.classList.add('is-found');
@@ -2299,14 +2304,14 @@ function MeetingDetail({ m, ctx, waiting = false }) {
         </ul>
         <div class="bp-aghero__actions bp-noprint">
           ${video && m.date === data.today ? html`<a class="bp-btn bp-btn--primary" href=${video} target="_blank" rel="noopener"><${Icon} name="video" />${joinLabel(video)}</a>` : null}
-          ${data.me.admin && upcoming && hasAgenda ? html`<a class="bp-btn bp-btn--primary" href=${`/admin/#board/meeting/${encodeURIComponent(m.id)}/during`} target="_blank" rel="noopener" title="Run it from Board: the screen, item by item"><${Icon} name="present" />Present</a>` : null}
+          ${data.me.admin && !AS_BOARD && !PREVIEW && upcoming && hasAgenda ? html`<a class="bp-btn bp-btn--primary" href=${`/admin/board/?present#/meetings/${encodeURIComponent(m.id)}/screen`} target=${`soard-screen-${m.id}`} rel="noopener" title="The presentation in its own window: → and ← or a clicker move it"><${Icon} name="present" />Present</a>` : null}
           ${printable ? html`<${PrintAll} m=${m} ctx=${ctx} />` : null}
           ${upcoming && (!m.pending || m.onCalendar) ? html`<${OnCalendar} m=${m} data=${data} />` : null}
         </div>
       </div>
       <aside class="bp-aghero__side">
-        ${upcoming && data.me.slug ? html`<div class="bp-aghero__card"><${Rsvp} m=${m} ctx=${ctx} /></div>` : null}
-        ${hasAgenda && !m.practice && m.minutes !== 'approved' && (d.me?.seat === 'secretary' || data.me.admin) ? html`<div class="bp-aghero__card bp-aghero__card--minutes bp-noprint"><${TakeMinutes} m=${m} ctx=${ctx} /></div>` : null}
+        ${upcoming && (data.me.slug || AS_BOARD || PREVIEW) ? html`<div class="bp-aghero__card"><${Rsvp} m=${m} ctx=${ctx} /></div>` : null}
+        ${hasAgenda && !m.practice && m.minutes !== 'approved' && (d.me?.seat === 'secretary' || (data.me.admin && !AS_BOARD && !PREVIEW)) ? html`<div class="bp-aghero__card bp-aghero__card--minutes bp-noprint"><${TakeMinutes} m=${m} ctx=${ctx} /></div>` : null}
         ${!upcoming && c.boardHere ? html`<div class="bp-aghero__card bp-who" id="who">
           <p class="bp-aghero__big"><strong>${c.boardHere}</strong> of ${c.board} board members</p>
           <p class="bp-who__q">${quorum === true ? html`<span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />A quorum</span>` : quorum === false ? html`<span class="bp-chip bp-chip--warn">Short of a quorum (${need})</span>` : null}${c.remote ? html`<span class="bp-muted">${c.remote} by video</span>` : null}</p>

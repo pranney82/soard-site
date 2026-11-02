@@ -24,7 +24,7 @@ import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
 import { openDoc, layoutOf, areaOf, areasOf } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
-  sectionPlan, sectionClock, clockText, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
+  sectionPlan, sectionClock, clockText, liveOfStop, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
 } from '../board-shared.js';
 import { useCover } from '../board-present.js';
 import { Report } from '../board-report.js';
@@ -41,6 +41,13 @@ const CHANNEL = 'soard-board-screen';
 const MIRROR = new URLSearchParams(location.search).has('mirror');
 // Board's preview beside the agenda editor (?preview): it follows the item being worked on, never the chair
 const PREVIEW = new URLSearchParams(location.search).has('preview');
+// Presenting, from Board or the meeting's page (?present): this window moves itself (→ ← and the space bar, a clicker's
+// Page Down and Page Up, Home, End), from the cover or the slide it's opened on (&at=), whatever the meeting's saved
+// state. On the meeting's day each part's timer runs from when the part comes up. B (or .) blanks the screen
+const PRESENT = new URLSearchParams(location.search).has('present');
+const AT = new URLSearchParams(location.search).get('at') || '';
+// Moved here, never by a chair: the presenting window, and Board's preview beside the agenda (where the editor sends it)
+const OWN = PRESENT || PREVIEW;
 const LOGO = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=256';
 
 const hueOf = (s) => [42, 28, 96, 152, 200, 18][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
@@ -336,7 +343,8 @@ function RollCount({ v, started }) {
   const roll = v.roll || [];
   const n = roll.filter((p) => p.how).length;
   const q = v.here?.quorum || 0;
-  if (!started) return html`<div class="bs-roll"><span class="bs-roll__n">${roll.length}<small> on the board</small></span><span class="bs-quiet">Each one checks in with a tap on the board page</span></div>`;
+  // Presented (it moves itself): the faces and the count; the minutes say who was there
+  if (!started || OWN) return html`<div class="bs-roll"><span class="bs-roll__n">${roll.length}<small> on the board</small></span>${OWN ? null : html`<span class="bs-quiet">Each one checks in with a tap on the board page</span>`}</div>`;
   return html`<div class="bs-roll">
     <span class="bs-roll__n">${n}<small> of ${roll.length} here</small></span>
     ${q ? html`<span class=${`bs-roll__q ${v.here.met ? 'is-met' : ''}`}>${v.here.met ? `Quorum met · ${q} needed` : `Quorum is ${q} · ${q - Math.min(q, v.here.board)} more needed`}</span>` : null}
@@ -460,32 +468,58 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
   </footer>`;
 }
 
-/** The screen: the stop the chair is on, in the window it's given */
+/** Where a presenting window was, kept for the session so a reload comes back to the same slide */
+const keptAt = (id) => { try { return sessionStorage.getItem(`bs-at:${id}`) || ''; } catch { return ''; } };
+const PREV = html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M12.5 4.5L7 10l5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
+const NEXT = html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="true"><path d="M7.5 4.5L13 10l-5.5 5.5" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
+
+/** The screen: the stop the chair is on, or (presenting, Board's preview) the one it has moved itself to */
 export function Screen({ id, data, d, onBack = null }) {
   const fast = useRef(false);
   const [v0, fail, trouble] = useLiveView(id, fast);
-  // Board's preview never shows the meeting as it's held (or was: an ended practice): nothing started, no vote; it goes
-  // only where the item being worked on is
-  const v = PREVIEW && v0 ? { ...v0, vote: null, live: { ...v0.live, startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, part: 0, screen: '', sectionId: '', sectionAt: '', vote: null, floor: '' } } : v0;
+  // Presenting and Board's preview never show the meeting as it was held (an ended practice) or a vote: nothing
+  // started, nothing ended; they go only where they're moved
+  const v = OWN && v0 ? { ...v0, vote: null, live: { ...v0.live, startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, part: 0, screen: '', sectionId: '', sectionAt: '', vote: null, floor: '' } } : v0;
   const [told, setTold] = useState(null); // { live, rehearsal, at } from the chair's computer
+  // Moving itself: the stop it's on (its key), and its item (that item's card, if the key is gone from a changed deck)
+  const [here, setHere] = useState(() => ({ key: PRESENT ? AT || keptAt(id) : '', itemId: '' }));
+  const [blank, setBlank] = useState(false);
   const [pages, setPages] = useState({});
   const [halves, setHalves] = useState({}); // { fileId: [halves of each page] }: the chair's, and the pages drawn here
   const [awake, setAwake] = useState(true);
   const [, setTick] = useState(0);
   const ch = useRef(null);
+  const deckRef = useRef([]);
+  const atRef = useRef(0);
+  // Presenting on the day: when each part first came up, for its timer (going back to a part keeps its clock)
+  const partsAt = useRef(new Map());
   const [stageRef, box] = useBox();
+  const go = (i) => {
+    const deck = deckRef.current;
+    if (!deck.length) return;
+    const s = deck[Math.max(0, Math.min(deck.length - 1, i))];
+    setBlank(false);
+    setHere({ key: s.key, itemId: s.itemId || '' });
+  };
 
-  // Board's preview: to the item being worked on
+  // Board's preview: to the item being worked on, a slide picked beside it, or a step either way
   useEffect(() => {
     if (!PREVIEW) return undefined;
-    const to = (e) => { fast.current = true; setTold({ live: { itemId: e.detail, fileId: '', page: 0 }, rehearsal: false, preview: true, at: Date.now() }); };
+    const to = (e) => setHere({ key: '', itemId: e.detail });
+    const msg = (e) => {
+      if (e.origin !== location.origin || e.source !== window.parent) return;
+      const x = e.data || {};
+      if (x.type === 'board-preview-stop') { const s = deckRef.current.find((y) => y.key === x.key); if (s) setHere({ key: s.key, itemId: s.itemId || '' }); }
+      if (x.type === 'board-preview-step') go(atRef.current + (x.dir < 0 ? -1 : 1));
+    };
     addEventListener('bp-preview-focus', to);
-    return () => removeEventListener('bp-preview-focus', to);
+    addEventListener('message', msg);
+    return () => { removeEventListener('bp-preview-focus', to); removeEventListener('message', msg); };
   }, []);
 
-  // The chair's computer, when it's this one
+  // The chair's computer, when it's this one (never while it moves itself)
   useEffect(() => {
-    if (PREVIEW || !('BroadcastChannel' in window)) return undefined;
+    if (OWN || !('BroadcastChannel' in window)) return undefined;
     const c = new BroadcastChannel(CHANNEL);
     ch.current = c;
     c.onmessage = (e) => {
@@ -503,14 +537,19 @@ export function Screen({ id, data, d, onBack = null }) {
     return () => { bye(); removeEventListener('pagehide', bye); c.close(); ch.current = null; };
   }, [id]);
 
-  // Keys here go back to the chair; F fills the screen
+  // Keys: presenting, they move this screen; otherwise they go back to the chair. F fills the screen
   useEffect(() => {
     if (MIRROR || PREVIEW) return undefined;
     const keys = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fullScreen(); return; }
-      const dir = ['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'j'].includes(e.key) ? (e.key === ' ' && e.shiftKey ? -1 : 1) : ['ArrowLeft', 'ArrowUp', 'PageUp', 'k'].includes(e.key) ? -1 : 0;
-      if (dir) { e.preventDefault(); ch.current?.postMessage({ type: 'key', id, dir }); }
+      if (PRESENT && (e.key === 'b' || e.key === 'B' || e.key === '.')) { e.preventDefault(); setBlank((x) => !x); return; }
+      if (PRESENT && (e.key === 'Home' || e.key === 'End')) { e.preventDefault(); go(e.key === 'Home' ? 0 : deckRef.current.length - 1); return; }
+      const dir = ['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'j'].includes(e.key) ? (e.key === ' ' && e.shiftKey ? -1 : 1) : ['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'k'].includes(e.key) ? -1 : 0;
+      if (!dir || (!PRESENT && e.key === 'Enter') || (!PRESENT && e.key === 'Backspace')) return;
+      if (e.repeat && PRESENT && e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; // a held clicker button: one step
+      e.preventDefault();
+      if (PRESENT) go(atRef.current + dir); else ch.current?.postMessage({ type: 'key', id, dir });
     };
     addEventListener('keydown', keys);
     return () => removeEventListener('keydown', keys);
@@ -526,10 +565,11 @@ export function Screen({ id, data, d, onBack = null }) {
     return () => { clearTimeout(t); clearInterval(clockTick); removeEventListener('pointermove', move); };
   }, []);
 
-  useEffect(() => { if (!MIRROR) document.title = v ? `${v.title} · On the screen` : 'SOARD Board · On the screen'; }, [v?.title]);
+  useEffect(() => { if (!MIRROR) document.title = v ? `${v.title} · ${PRESENT ? 'Presenting' : 'On the screen'}` : 'SOARD Board · On the screen'; }, [v?.title]);
 
-  // (A meeting not shared yet, previewed by an admin, isn't in the board page's list: its name comes with the view)
-  const m = data.meetings.find((x) => x.id === id) || (PREVIEW ? data.previews?.find((x) => x.id === id) : null) || null;
+  // (A meeting not shared yet, previewed or presented by an admin, isn't in the board page's list: its name comes with the view)
+  const m = data.meetings.find((x) => x.id === id) || (OWN ? data.previews?.find((x) => x.id === id) : null) || null;
+  const unshared = OWN && !data.meetings.some((x) => x.id === id);
   const meeting = useMemo(() => (v ? { ...(m || {}), id, title: m?.title || v.title || '', date: v.date, start: m?.start || v.start || '', end: m?.end || v.end || '', sections: PREVIEW && m ? m.sections : v.sections, files: PREVIEW && m ? m.files : v.files || [] } : null), [v, m]);
   const plan = useMemo(() => (meeting ? sectionPlan(meeting) : new Map()), [meeting]);
   // QuickBooks' slides after the money, as the chair's deck has them (the meeting's locked numbers, else today's)
@@ -543,6 +583,23 @@ export function Screen({ id, data, d, onBack = null }) {
     });
     setHalves((x) => (x[fileId]?.[page] === n ? x : { ...x, [fileId]: Object.assign([...(x[fileId] || [])], { [page]: n }) }));
   };
+  // Moving itself: the stop with its key; else its item's card; else the cover
+  const ownAt = useMemo(() => {
+    if (!OWN || !deck.length) return 0;
+    const k = here.key ? deck.findIndex((s) => s.key === here.key) : -1;
+    if (k >= 0) return k;
+    const i = here.itemId ? deck.findIndex((s) => s.itemId === here.itemId) : -1;
+    return i >= 0 ? i : 0;
+  }, [deck, here]);
+  deckRef.current = deck;
+  if (OWN) atRef.current = ownAt;
+  // Board's preview is told the deck and where it is, for its list of slides and its "4 of 31"
+  useEffect(() => {
+    if (!PREVIEW || !deck.length) return;
+    window.parent?.postMessage({ type: 'board-preview-deck', id, at: ownAt, pages, halves, stops: deck.map(({ key, kind, itemId, fileId, page, part, n, sectionId }) => ({ key, kind, itemId, fileId, page, part: part || 0, n, sectionId })) }, location.origin);
+  }, [deck, ownAt, pages, halves]);
+  // Presenting: the slide kept for a reload
+  useEffect(() => { if (PRESENT && deck[ownAt]) { try { sessionStorage.setItem(`bs-at:${id}`, deck[ownAt].key); } catch { /* private browsing */ } } }, [ownAt, deck]);
 
   // The next meeting, on the calendar with no agenda yet: there's nothing to show until there is
   const waitingAgenda = data.nextPending?.id === id;
@@ -552,11 +609,12 @@ export function Screen({ id, data, d, onBack = null }) {
   if (!v || !meeting) return html`<div class="bs bs--center bs--opening" role="status"><img src=${LOGO} alt="" width="96" height="96" /><p class="bs-quiet">${trouble ? 'The board page isn’t answering. Still trying…' : 'Opening the screen…'}</p>${trouble && !MIRROR ? html`<p><a class="bs-back bs-back--text" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }}>Back to the meeting</a></p>` : null}</div>`;
 
   // The chair's own word is the newest while they're moving this screen (the saved state catches up a moment later)
-  const fresh = told && (told.rehearsal || told.preview || Date.now() - told.at < 60_000);
-  const live = fresh ? told.live : v.live;
-  const started = !!v.live.startedAt || (fresh && !!told.live.startedAt);
-  const ended = live.screen === 'end' || (!fresh && !!v.live.endedAt);
-  const at = ended ? deck.length - 1 : stopIndex(deck, live);
+  const fresh = !OWN && told && (told.rehearsal || Date.now() - told.at < 60_000);
+  const live = OWN ? { ...liveOfStop(deck[ownAt]), sectionAt: '', floor: '' } : fresh ? told.live : v.live;
+  // Presenting on the meeting's day counts as the meeting held: each part's timer runs
+  const started = OWN ? PRESENT && meeting.date === todayEastern() : !!v.live.startedAt || (fresh && !!told.live.startedAt);
+  const ended = OWN ? deck[ownAt]?.kind === 'end' : live.screen === 'end' || (!fresh && !!v.live.endedAt);
+  const at = OWN ? ownAt : ended ? deck.length - 1 : stopIndex(deck, live);
   const stop = deck[at] || deck[0];
   const items = agendaItems(meeting);
   const onItem = ['item', 'doc', 'live', 'books'].includes(stop.kind);
@@ -570,7 +628,8 @@ export function Screen({ id, data, d, onBack = null }) {
   const given = live.floor ? people.find((p) => p.slug === live.floor) || null : null;
   const floor = given ? [given] : who;
   const secId = stop.sectionId || (stop.n >= 0 ? meeting.sections[items[stop.n].si]?.id : '');
-  const timer = started && !ended && secId ? sectionClock(plan, secId, live.sectionAt) : null;
+  if (OWN && started && secId && !partsAt.current.has(secId)) partsAt.current.set(secId, new Date().toISOString());
+  const timer = started && !ended && secId ? sectionClock(plan, secId, OWN ? partsAt.current.get(secId) : live.sectionAt) : null;
   // The item's documents the deck comes to next (never one it leaves out: staff only, a statement QuickBooks draws)
   const docs = item ? (stop.n >= 0 ? itemDocs(meeting, item, v.prior || []).filter((d) => deck.some((s) => s.fileId === d.file.id)) : docsOf(meeting.files.filter((f) => deck.some((s) => s.fileId === f.id && s.n === -1)))) : [];
   const file = stop.fileId ? [...meeting.files, ...(v.prior || []).flatMap((x) => x.files)].find((f) => f.id === stop.fileId) : null;
@@ -581,9 +640,9 @@ export function Screen({ id, data, d, onBack = null }) {
   const place = [m?.location, m?.address].filter(Boolean).join(', ');
 
   const top = html`<header class="bs-top">
-    <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong title=${meetingName(meeting)}>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
+    <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong title=${meetingName(meeting)}>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', !OWN && started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
     ${onItem && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${namesText(floor.map((p) => p.name))}</strong> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span>` : null}
-    <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
+    <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${PRESENT && unshared ? html`<span class="bs-chip" title="Board members can’t see this meeting yet. Share it in Board when it’s ready.">Not on the board page yet</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${PRESENT ? html`<span class="bs-steps" role="group" aria-label="Move the slides"><button type="button" class="bs-step" disabled=${at <= 0} onClick=${() => go(at - 1)} aria-label="Back a slide (←)" title="Back a slide (←)">${PREV}</button><span class="bs-step__n">${at + 1} of ${deck.length}</span><button type="button" class="bs-step" disabled=${at >= deck.length - 1} onClick=${() => go(at + 1)} aria-label="Next slide (→)" title="Next slide (→)">${NEXT}</button></span>` : null}${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
   </header>`;
 
   let stage;
@@ -636,7 +695,7 @@ export function Screen({ id, data, d, onBack = null }) {
     const k = stop.fileId.slice(5);
     const facts = liveSlide(k, numbers, id, data, meeting.date);
     stage = html`<div class=${`bs-item ${k === 'projects' ? 'bs-item--board' : 'bs-item--facts'}`}>
-      <div class="bs-item__bar"><div><p class="bs-eyebrow">${item.title}</p><h1 class="bs-display bs-item__title">${LIVE_TITLES[k]}</h1></div>${k === 'projects' && numbers?.projects ? html`<div class="bs-item__aside"><p class="bs-quiet">${kanbanLine(numbers.projects)}</p></div>` : null}</div>
+      <div class="bs-item__bar"><div><p class="bs-eyebrow">${item.title || section || 'Agenda'}</p><h1 class="bs-display bs-item__title">${LIVE_TITLES[k]}</h1></div>${k === 'projects' && numbers?.projects ? html`<div class="bs-item__aside"><p class="bs-quiet">${kanbanLine(numbers.projects)}</p></div>` : null}</div>
       <div class="bs-item__facts">${facts || html`<p class="bs-quiet">Nothing to show here yet</p>`}</div>
     </div>`;
   } else if (stop.kind === 'item') {
@@ -707,9 +766,11 @@ export function Screen({ id, data, d, onBack = null }) {
       <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${docWords}</span>
       ${shownPages.length > 1 && shownPages.length <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${shownPages.map((i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
       : stop.kind === 'books' || stop.kind === 'live' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? BOOKS_TITLES[stop.fileId.slice(6)] : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
-      : !started && !told && !MIRROR ? html`<span class="bs-foot__what">The screen follows the meeting once the chair starts it.</span>` : null}
+      : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span><kbd>F</kbd> full screen</span>`
+      : !started && !told && !MIRROR && !OWN ? html`<span class="bs-foot__what">The screen follows the meeting once the chair starts it.</span>` : null}
     </div>
     <${Rail} meeting=${meeting} items=${items} at=${at} deck=${deck} ended=${ended} prior=${v.prior || []} timer=${timer} />
+    ${blank ? html`<button type="button" class="bs-blank" onClick=${() => setBlank(false)} aria-label="The screen is blank. Press B or click to bring it back."></button>` : null}
   </div>`;
 }
 

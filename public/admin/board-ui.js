@@ -140,23 +140,186 @@ export function Notes({ text }) {
   return out;
 }
 
-/** A small "⋯" menu of actions; closes when one is chosen or on a click elsewhere */
-/** ⋯ and its list (`text`: a word on the button instead, where the ⋯ alone wouldn't say what it's for) */
-export function Menu({ label, items, text = '' }) {
-  const close = (el) => el.closest('details')?.removeAttribute('open');
-  return html`<details class="bd-menu" onToggle=${(e) => {
+// Line icons for menu actions, drawn in the text's color (24 × 24, one stroked path each)
+const MENU_ICONS = {
+  person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20.5c.8-3.6 3.9-5.5 7.5-5.5s6.7 1.9 7.5 5.5',
+  doc: 'M14 3H7.5A2.5 2.5 0 0 0 5 5.5v13A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V8zM14 3v5h5M12 11.5v6M9 14.5h6',
+  report: 'M4 20h4.5L19.3 9.2a2.1 2.1 0 0 0 0-3l-1.5-1.5a2.1 2.1 0 0 0-3 0L4 15.5zM13.5 6.5l4 4',
+  live: 'M3 12h4l3-7 4 14 3-7h4',
+  lock: 'M7.5 11V8a4.5 4.5 0 0 1 9 0v3M6.5 11h11a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 5 19.5v-7A1.5 1.5 0 0 1 6.5 11z',
+  private: 'M3 3l18 18M10.6 5.1A9.6 9.6 0 0 1 12 5c5.5 0 9.5 7 9.5 7a17 17 0 0 1-3 3.8M6.4 6.4C3.9 8.2 2.5 12 2.5 12s4 7 9.5 7a9.4 9.4 0 0 0 4.6-1.2M9.9 9.9a3 3 0 0 0 4.2 4.2',
+  up: 'M12 19V5M6 11l6-6 6 6',
+  down: 'M12 5v14M6 13l6 6 6-6',
+  remove: 'M6.5 6.5l11 11M17.5 6.5l-11 11',
+  trash: 'M4 7h16M9.5 7V4.5h5V7M6.5 7l.9 12.2A2 2 0 0 0 9.4 21h5.2a2 2 0 0 0 2-1.8L17.5 7M10 11v6M14 11v6',
+  rename: 'M4 20h4.5L19.3 9.2a2.1 2.1 0 0 0 0-3l-1.5-1.5a2.1 2.1 0 0 0-3 0L4 15.5zM13.5 6.5l4 4',
+  open: 'M14 4h6v6M20 4l-9 9M18 14v4.5a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 4 18.5v-11A1.5 1.5 0 0 1 5.5 6H10',
+};
+const menuIcon = (name) => (MENU_ICONS[name] ? html`<svg class="bd-menu__ico" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d=${MENU_ICONS[name]} fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg>` : null);
+
+/**
+ * The rows a menu draws: falsy items left out, a divider only between two groups, a heading only over something, a
+ * pair missing one side drawn alone
+ */
+export function menuRows(items) {
+  const rows = [];
+  const dropHeading = () => { if (rows.at(-1)?.heading) rows.pop(); };
+  for (const it of items || []) {
+    if (!it) continue;
+    if (it.divider) { dropHeading(); if (rows.length && !rows.at(-1).divider) rows.push(it); continue; }
+    if (it.heading) { dropHeading(); rows.push(it); continue; }
+    if (it.pair) { const two = it.pair.filter(Boolean); if (two.length > 1) rows.push({ pair: two }); else if (two.length) rows.push(two[0]); continue; }
+    rows.push(it);
+  }
+  while (rows.at(-1)?.divider || rows.at(-1)?.heading) rows.pop();
+  return rows;
+}
+
+/**
+ * A "⋯" menu of actions, drawn over everything (./float.js). `items`, in order: { label, run, icon (a MENU_ICONS
+ * name), hint (a few words on the right), checked (true/false: an on/off choice with a switch), chosen (true/false:
+ * one of a few, the chosen one ticked), danger, disabled, title, keys (aria-keyshortcuts) }, { divider: true } between
+ * groups, { heading } over a group, and { pair: [a, b] } for two actions side by side (Move up | Move down). `text`
+ * shows that word on the button instead of ⋯.
+ * Keys: Enter, Space or ↓ opens it on its first action (↑ on its last); ↑ ↓ Home End move, ← → within a pair, a letter
+ * jumps to the action it starts, Escape closes it back on its button, Tab closes it and moves on.
+ */
+let menuSeq = 0;
+/**
+ * The second click of a double-click on an action (and its press and release): swallowed where the first one landed,
+ * so it never reaches whatever was under the menu it just closed
+ */
+function swallowNextClick(x, y) {
+  const near = (ev) => Math.abs(ev.clientX - x) < 12 && Math.abs(ev.clientY - y) < 12;
+  const stop = (ev) => { if (near(ev)) { ev.preventDefault(); ev.stopPropagation(); } };
+  const kinds = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick'];
+  kinds.forEach((k) => document.addEventListener(k, stop, true));
+  setTimeout(() => kinds.forEach((k) => document.removeEventListener(k, stop, true)), 500);
+}
+
+export function Menu({ label, items, text }) {
+  const rows = menuRows(items);
+  const ref = useRef(null);
+  const id = useMemo(() => `bd-menu-${++menuSeq}`, []);
+  const how = useRef('pointer'); // how it's being opened: 'pointer', 'key' (onto the first action) or 'last'
+  const typed = useRef({ text: '', at: 0 });
+  const listOf = (d) => d?.querySelector('.bd-menu__list');
+  const buttonOf = (d) => d?.querySelector('summary');
+  // Every action, the unavailable ones too (the keys reach them, and a screen reader says they're unavailable)
+  const actions = (d) => [...(listOf(d)?.querySelectorAll('.bd-menu__item') || [])];
+  const shut = (d, focus) => { if (!d?.open) return; d.removeAttribute('open'); if (focus) buttonOf(d)?.focus({ preventScroll: true }); };
+  const unhook = (d) => { d?.unfloat?.(); d?.unaway?.(); if (d) { d.unfloat = null; d.unaway = null; } };
+  // Gone while open (its item deleted from the menu itself): nothing left listening
+  useEffect(() => () => unhook(ref.current), []);
+  const onToggle = (e) => {
     const d = e.currentTarget;
-    d.unfloat?.();
-    d.unfloat = null;
-    if (!d.open) return;
-    // Drawn over everything, toasts and sticky bars included (./float.js)
-    d.unfloat = float(d.querySelector('.bd-menu__list'), { anchor: d.querySelector('summary'), align: 'end', onHide: () => d.removeAttribute('open') });
-    const away = (ev) => { if (!d.contains(ev.target)) { d.removeAttribute('open'); document.removeEventListener('pointerdown', away, true); } };
+    unhook(d);
+    if (!d.open) {
+      // Closed any way but a press somewhere else (its button pressed again, its button scrolled away): the focus that
+      // was in the list goes back on the button, never to the page
+      const a = document.activeElement;
+      if (d.closedBy !== 'away' && (!a || a === document.body || listOf(d)?.contains(a))) buttonOf(d)?.focus({ preventScroll: true });
+      d.closedBy = '';
+      return;
+    }
+    d.closedBy = '';
+    // Drawn over everything, toasts and sticky bars included
+    d.unfloat = float(listOf(d), { anchor: buttonOf(d), align: 'end', onHide: () => d.removeAttribute('open') });
+    const away = (ev) => { if (!d.contains(ev.target)) { d.closedBy = 'away'; d.removeAttribute('open'); } };
     document.addEventListener('pointerdown', away, true);
-  }}>
-    <summary class=${text ? 'btn btn-ghost btn-sm bd-menu__text' : 'bd-icon-btn'} aria-label=${label} title=${label}>${text || '⋯'}</summary>
-    <div class="bd-menu__list" role="menu">
-      ${items.filter(Boolean).map((it) => html`<button type="button" role="menuitem" class=${`bd-menu__item ${it.danger ? 'is-danger' : ''}`} disabled=${it.disabled} onClick=${(e) => { close(e.currentTarget); it.run(); }}>${it.label}</button>`)}
+    d.unaway = () => document.removeEventListener('pointerdown', away, true);
+    // From the keyboard onto an action; from a click onto the list itself, so keys work at once with nothing lit
+    const els = actions(d).filter((b) => b.getAttribute('aria-disabled') !== 'true');
+    ((how.current === 'last' ? els.at(-1) : how.current === 'key' ? els[0] : null) || listOf(d))?.focus({ preventScroll: true });
+    how.current = 'pointer';
+  };
+  const onKeyDown = (e) => {
+    const d = e.currentTarget;
+    const onButton = e.target === buttonOf(d);
+    // A held Enter or Space acts once: never opens the menu and then runs its first action
+    if (e.repeat && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); return; }
+    if (!d.open) {
+      if (!onButton) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); how.current = e.key === 'ArrowUp' ? 'last' : 'key'; d.setAttribute('open', ''); }
+      else if (e.key === 'Enter' || e.key === ' ') how.current = 'key';
+      return;
+    }
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); shut(d, true); return; }
+    if (e.key === 'Tab') { d.closedBy = 'away'; shut(d, false); return; }
+    if (onButton && (e.key === 'Enter' || e.key === ' ')) return; // the button closes it, as it opened it
+    const els = actions(d);
+    if (!els.length) return;
+    const at = els.indexOf(document.activeElement);
+    const t = typed.current;
+    const typing = e.timeStamp - t.at < 700 && t.text;
+    // Keys the menu uses stop here, so the page's own shortcuts (the screen's ← →) don't act on them too
+    const go = (i) => { e.preventDefault(); e.stopPropagation(); els[(i + els.length) % els.length].focus(); };
+    const inPair = at >= 0 && els[at].parentElement?.classList.contains('bd-menu__pair');
+    if (e.key === 'ArrowDown') go(at + 1);
+    else if (e.key === 'ArrowUp') go(at < 0 ? -1 : at - 1);
+    else if (e.key === 'Home' || e.key === 'PageUp') go(0);
+    else if (e.key === 'End' || e.key === 'PageDown') go(-1);
+    else if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      e.preventDefault();
+      e.stopPropagation();
+      const side = inPair && (e.key === 'ArrowRight' ? els[at].nextElementSibling : els[at].previousElementSibling);
+      if (side) side.focus();
+    } else if (e.key.length === 1 && (e.key !== ' ' || typing) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      // The first letters of an action jump to it ("move d", its space too); the same letter again steps through the
+      // actions it starts
+      e.preventDefault();
+      e.stopPropagation();
+      t.text = (typing ? t.text : '') + e.key.toLowerCase();
+      t.at = e.timeStamp;
+      const after = [...els.slice(at + 1), ...els.slice(0, at + 1)];
+      const here = at < 0 ? after : [...els.slice(at), ...els.slice(0, at)];
+      const name = (b) => (b.querySelector('.bd-menu__label')?.textContent || '').trim().toLowerCase();
+      let next = (t.text.length > 1 ? here : after).find((b) => name(b).startsWith(t.text))
+        || (new Set(t.text).size === 1 && after.find((b) => name(b).startsWith(t.text[0])));
+      // Letters that start nothing together: the last one on its own
+      if (!next && t.text.length > 1 && e.key !== ' ') { t.text = e.key.toLowerCase(); next = after.find((b) => name(b).startsWith(t.text)); }
+      next?.focus();
+    }
+  };
+  // Focus goes back on ⋯ before the action runs, so one that opens a field or a question takes it from there
+  const choose = (e, it) => {
+    if (it.disabled) return;
+    if (e.detail > 0) swallowNextClick(e.clientX, e.clientY);
+    shut(e.currentTarget.closest('details'), true);
+    it.run();
+  };
+  // Each row keyed by its place, so a re-drawn menu never hands one action's button (and its focus) to another. The
+  // lit row is the focused one: the mouse moves the focus as it goes, and leaving a row takes it off (nothing lit,
+  // nothing for Enter to run)
+  const item = (it, key) => {
+    const onOff = typeof it.checked === 'boolean';
+    const oneOf = typeof it.chosen === 'boolean';
+    return html`<button type="button" key=${key} role=${onOff ? 'menuitemcheckbox' : oneOf ? 'menuitemradio' : 'menuitem'} aria-checked=${onOff ? String(it.checked) : oneOf ? String(it.chosen) : null} tabindex="-1"
+      class=${`bd-menu__item ${it.danger ? 'is-danger' : ''} ${it.checked ? 'is-on' : ''} ${it.chosen ? 'is-chosen' : ''} ${it.disabled ? 'is-disabled' : ''}`} aria-disabled=${it.disabled ? 'true' : null} title=${it.title || null} aria-keyshortcuts=${it.keys || null}
+      onPointerMove=${(e) => { if (e.pointerType === 'mouse' && document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true }); }}
+      onPointerLeave=${(e) => { if (e.pointerType === 'mouse' && document.activeElement === e.currentTarget) listOf(e.currentTarget.closest('details'))?.focus({ preventScroll: true }); }}
+      onClick=${(e) => choose(e, it)}>
+      ${menuIcon(it.icon)}<span class="bd-menu__label">${it.label}</span>${it.hint ? html`<small class="bd-menu__hint">${it.hint}</small>` : null}${onOff ? html`<span class="bd-menu__switch" aria-hidden="true"></span>` : null}${oneOf ? html`<span class="bd-menu__tick" aria-hidden="true">${it.chosen ? CHECK : null}</span>` : null}
+    </button>`;
+  };
+  const row = (r, key) => (r.pair ? html`<div class="bd-menu__pair" role="group" key=${key}>${r.pair.map((x, j) => item(x, `p${j}`))}</div>` : item(r, key));
+  // A heading and the rows under it (to the next divider or heading) are one group named by it
+  const blocks = [];
+  rows.forEach((r, i) => {
+    if (r.heading) blocks.push({ heading: r.heading, i, rows: [] });
+    else if (r.divider) blocks.push({ divider: true, i });
+    else if (blocks.at(-1)?.heading && !blocks.at(-1).closed) blocks.at(-1).rows.push([r, i]);
+    else blocks.push({ row: r, i });
+    if (r.divider && blocks.at(-2)?.heading) blocks.at(-2).closed = true;
+  });
+  return html`<details class="bd-menu" ref=${ref} onToggle=${onToggle} onKeyDown=${onKeyDown}>
+    ${text
+      ? html`<summary class="btn btn-ghost btn-sm bd-menu__text" aria-haspopup="menu" title=${label}>${text}</summary>`
+      : html`<summary class="bd-icon-btn" aria-haspopup="menu" aria-label=${label} title=${label}>⋯</summary>`}
+    <div class="bd-menu__list" role="menu" aria-label=${label} tabindex="-1">
+      ${blocks.map((b) => (b.divider ? html`<div class="bd-menu__sep" role="separator" key=${`r${b.i}`}></div>`
+        : b.heading ? html`<div role="group" aria-labelledby=${`${id}-${b.i}`} key=${`r${b.i}`}><div class="bd-menu__head" id=${`${id}-${b.i}`} role="presentation">${b.heading}</div>${b.rows.map(([r, i]) => row(r, `r${i}`))}</div>`
+        : row(b.row, `r${b.i}`)))}
     </div>
   </details>`;
 }
@@ -235,11 +398,12 @@ export function PersonPicker({ people, value, onChange, label = 'Who presents', 
 }
 /**
  * A list's search box, ready to type in the moment it opens: focused as it's put on the page (autofocus does nothing
- * for a box added after the page loads, and an effect comes a frame late, after a fast first key)
+ * for a box added after the page loads, and an effect comes a frame late, after a fast first key). Not on a phone or a
+ * tablet: its keyboard would come up over the list being picked from
  */
 function useFocusFirst() {
   const done = useRef(false);
-  const ref = useRef((el) => { if (el && !done.current) { done.current = true; el.focus(); } });
+  const ref = useRef((el) => { if (el && !done.current) { done.current = true; if (!matchMedia('(hover: none) and (pointer: coarse)').matches) el.focus(); } });
   return ref.current;
 }
 function PeopleList({ people, value, chosen, max, onChange, close }) {
@@ -402,7 +566,9 @@ export const STYLES = `
   .bd-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.92em; background: var(--seg-bg); padding: 0.05rem 0.35rem; border-radius: 5px; overflow-wrap: anywhere; }
   .bd-icon-btn { border: none; background: none; width: 34px; height: 34px; border-radius: 8px; color: var(--color-text-muted); cursor: pointer; display: inline-grid; place-items: center; font-size: 17px; line-height: 1; list-style: none; }
   .bd-icon-btn::-webkit-details-marker { display: none; }
-  .bd-icon-btn:hover:not(:disabled) { background: var(--seg-bg); color: var(--color-text); }
+  @media (hover: hover) { .bd-icon-btn:hover:not(:disabled) { background: var(--seg-bg); color: var(--color-text); } }
+  .bd-menu[open] > .bd-icon-btn { background: var(--seg-bg); color: var(--color-text); }
+  @media (pointer: coarse) { .bd-icon-btn { width: 44px; height: 44px; } }
   .bd-icon-btn:disabled { opacity: 0.35; cursor: default; }
   .bd-drop { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; padding: 0.9rem 1rem; border: 1px dashed var(--color-border-strong); border-radius: var(--radius-md); }
   .bd-drop.is-over { background: var(--tone-info-surface); border-color: var(--tone-info-line-strong); }
@@ -410,15 +576,44 @@ export const STYLES = `
   .bd-live ul { margin: 0.25rem 0 0 1.1rem; padding: 0; }
   .bd-live__label { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.04em; color: var(--tone-info-fg); }
 
-  /* ⋯ menus */
+  /* ⋯ menus: actions in groups, an icon on each, a switch on the on/off ones */
   .bd-menu { position: relative; display: inline-block; }
-  .bd-menu > summary { list-style: none; }
-  .bd-menu__list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; min-width: 14rem; padding: 0.3rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); box-shadow: 0 10px 30px rgba(26,27,31,0.14); }
+  .bd-menu > summary { list-style: none; -webkit-user-select: none; user-select: none; }
+  .bd-menu > summary::-webkit-details-marker { display: none; }
+  .bd-menu__list { position: absolute; right: 0; top: calc(100% + 4px); z-index: 30; box-sizing: border-box; -webkit-user-select: none; user-select: none; overflow-x: hidden; width: max-content; min-width: 15.5rem; max-width: min(22rem, calc(100vw - 16px)); max-height: min(34rem, calc(100vh - 16px)); overflow-y: auto; overscroll-behavior: contain; padding: 0.3rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); color: var(--color-text); box-shadow: var(--shadow-lg); outline: none; transform-origin: top right; }
+  .bd-menu .bd-menu__list:focus-visible { box-shadow: var(--shadow-lg); }
+  .bd-menu__list[data-side="top"] { transform-origin: bottom right; }
+  .bd-menu[open] .bd-menu__list { animation: bd-menu-in 0.14s var(--ease-out); }
+  @keyframes bd-menu-in { from { opacity: 0; transform: translateY(-3px) scale(0.97); } }
+  .bd-menu__list[data-side="top"] { animation-name: bd-menu-up; }
+  @keyframes bd-menu-up { from { opacity: 0; transform: translateY(3px) scale(0.97); } }
   .bd-menu:not([open]) .bd-menu__list { display: none; }
-  .bd-menu__item { display: block; width: 100%; text-align: left; padding: 0.5rem 0.65rem; border: none; border-radius: 6px; background: none; font: inherit; font-size: var(--fs-sm); color: var(--color-text); cursor: pointer; }
-  .bd-menu__item:hover:not(:disabled) { background: var(--seg-bg); }
-  .bd-menu__item:disabled { opacity: 0.4; cursor: default; }
-  .bd-menu__item.is-danger { color: var(--tone-danger-fg); }
+  .bd-menu__item { display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 2.25rem; padding: 0.4rem 0.6rem; border: none; border-radius: var(--radius-sm); background: none; font: inherit; font-size: var(--fs-sm); font-weight: 500; line-height: 1.3; color: var(--color-text); text-align: left; cursor: pointer; }
+  /* The lit row is the focused one (the mouse moves the focus as it goes), so there's only ever one */
+  .bd-menu__item:focus { outline: none; box-shadow: none; background: var(--seg-bg); }
+  /* From the keyboard, a ring inside the row as well (the admin's own ring would spill over its neighbours) */
+  .bd-menu .bd-menu__list .bd-menu__item:focus-visible { box-shadow: inset 0 0 0 2px var(--color-text); }
+  .bd-menu__item.is-disabled { opacity: 0.4; cursor: default; }
+  .bd-menu__item.is-disabled:focus:not(:focus-visible) { background: none; }
+  .bd-menu__ico { flex: none; color: var(--color-text-muted); }
+  .bd-menu__item:focus .bd-menu__ico { color: var(--color-text); }
+  .bd-menu__label { flex: 1 1 auto; min-width: 6.5em; }
+  /* A hint gives way first: it wraps under itself, never over the action's name */
+  .bd-menu__hint { flex: 0 1 auto; min-width: 0; margin-left: 0.75rem; font-size: var(--fs-xs); font-weight: 400; line-height: 1.25; text-align: right; color: var(--color-text-muted); }
+  .bd-menu__switch { position: relative; flex: none; width: 28px; height: 16px; margin-left: 0.5rem; border-radius: 8px; background: var(--switch-off); transition: background 0.18s; }
+  .bd-menu__switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(26,27,31,0.25); transition: transform 0.18s var(--ease-out); }
+  .bd-menu__item.is-on .bd-menu__switch { background: var(--switch-on); }
+  .bd-menu__item.is-on .bd-menu__switch::after { transform: translateX(12px); }
+  .bd-menu__item.is-danger, .bd-menu__item.is-danger .bd-menu__ico { color: var(--tone-danger-fg); }
+  .bd-menu__item.is-danger:focus { background: var(--tone-danger-bg); }
+  .bd-menu__tick { flex: none; display: grid; place-items: center; width: 16px; height: 16px; margin-left: 0.5rem; color: var(--color-text); }
+  .bd-menu__item.is-chosen { font-weight: 600; }
+  .bd-menu__sep { height: 1px; margin: 0.3rem 0.45rem; background: var(--color-border); }
+  .bd-menu__head { padding: 0.45rem 0.6rem 0.2rem; font-size: var(--fs-2xs); font-weight: 600; letter-spacing: 0.02em; color: var(--color-text-muted); }
+  .bd-menu__pair { display: grid; grid-template-columns: repeat(2, minmax(max-content, 1fr)); gap: 0.15rem; }
+  .bd-menu__pair .bd-menu__item { white-space: nowrap; }
+  @media (pointer: coarse) { .bd-menu__item { min-height: 2.75rem; } }
+  @media (prefers-reduced-motion: reduce) { .bd-menu[open] .bd-menu__list { animation: none; } .bd-menu__switch, .bd-menu__switch::after { transition: none; } }
 
   /* Meetings: the next one, its agenda, past meetings */
   .bh-date { flex: none; width: 64px; display: grid; justify-items: center; align-content: center; padding: 0.45rem 0 0.5rem; border-radius: var(--radius-md); background: var(--color-text); color: #fff; line-height: 1; }
@@ -584,7 +779,9 @@ export const STYLES = `
   .agx-run__part:hover span, .agx-run__part:focus-visible span { color: #1F201C; }
   .agx-runmeta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 0.25rem 1rem; margin: 0 0 1.1rem; font-size: var(--fs-xs); color: var(--color-text-secondary); font-variant-numeric: tabular-nums; }
   .agx-runmeta .is-over { color: var(--tone-warn-fg); font-weight: 700; }
-  .agx-secs { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.1rem; }
+  .agx-secs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 1.1rem; }
+  /* One part's wide content wraps in it, never widening every part past the card */
+  .agx-sec, .agx-item { min-width: 0; }
   .agx-sec { position: relative; padding: 0.85rem 0.85rem 0.6rem; border-radius: 16px; background: #FAF9F6; border: 1px solid var(--color-border); scroll-margin: calc(var(--top-h, 0px) + 6rem); transition: box-shadow 0.25s, opacity 0.25s; }
   .agx-sec__head { gap: 0.45rem; }
   .agx-sec__n { flex: none; min-width: 2.2rem; font-size: 1.55rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--color-text); }
@@ -644,29 +841,88 @@ export const STYLES = `
   }
   @media (prefers-reduced-motion: reduce) { .agx-item, .agx-run__part { transition: none; } }
 
-  /* The agenda beside its live preview (board-meeting.js AgendaPreview): the board page, a phone or the screen, as it's written */
-  .bm-layout:has(.agx.is-previewing) { grid-template-columns: minmax(0, 1fr); }
-  .bm-layout:has(.agx.is-previewing) > .bm-aside { display: none; }
-  .agx.is-previewing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); column-gap: 1.4rem; align-items: start; }
-  .agx.is-previewing > .agx-head, .agx.is-previewing > .agx-run, .agx.is-previewing > .agx-runmeta { grid-column: 1 / -1; }
-  .agx.is-previewing > .agx-edit { grid-column: 1; min-width: 0; }
-  .agx.is-previewing > .agx-preview { grid-column: 2; grid-row: 4; position: sticky; top: calc(var(--top-h, 0px) + 1rem); min-width: 0; }
-  .agx-preview__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.6rem; }
-  .agx-preview__note { font-size: var(--fs-xs); color: var(--color-text-secondary); }
-  .agx-preview .bd-seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--seg-bg, rgba(0,0,0,0.05)); }
-  .agx-preview .bd-seg button { height: 30px; padding: 0 0.85rem; border: none; border-radius: 999px; background: none; font: inherit; font-size: var(--fs-xs); font-weight: 650; color: var(--color-text-secondary); cursor: pointer; }
-  .agx-preview .bd-seg button.is-on { background: var(--color-bg-card); color: var(--color-text); box-shadow: 0 1px 3px rgba(26,27,31,0.14); }
-  .agx-preview .bd-seg button:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
-  .agx-preview__frame { position: relative; overflow: hidden; border: 1px solid var(--color-border); border-radius: 12px; background: #FEFCF5; }
-  .agx-preview__frame iframe { display: block; border: 0; transform-origin: 0 0; background: #FEFCF5; }
-  .agx-preview__frame.is-phone { display: flex; justify-content: center; padding: 13px 0; background: var(--color-bg-subtle, #F3F2EE); }
-  .agx-preview__frame.is-phone iframe { transform-origin: 50% 0; border-radius: 26px; box-shadow: 0 0 0 7px #1F201C, 0 18px 40px -16px rgba(0,0,0,0.45); }
-  .agx-preview__frame.is-screen { background: #1C1D1A; border-color: #1C1D1A; }
+  /* Where the meeting stands: the line under its name (board-meeting.js pathOf), done, next, or to come */
+  .bm-path ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); overflow: hidden; }
+  .bm-path__step { position: relative; min-width: 0; border-left: 1px solid var(--color-border); }
+  .bm-path__step:first-child { border-left: none; }
+  .bm-path__btn { display: flex; align-items: flex-start; gap: 0.6rem; width: 100%; height: 100%; padding: 0.7rem 0.8rem; border: none; background: none; font: inherit; text-align: left; color: var(--color-text); cursor: pointer; }
+  .bm-path__btn:hover { background: var(--color-bg-hover); }
+  .bm-path__btn:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-text); }
+  .bm-path__dot { flex: none; display: grid; place-items: center; width: 22px; height: 22px; margin-top: 1px; border-radius: 50%; border: 2px solid var(--color-border-strong); background: var(--color-bg-card); }
+  .bm-path__dot svg { width: 13px; height: 13px; }
+  .bm-path__step.is-done .bm-path__dot { border-color: var(--tone-success-fg); background: var(--tone-success-fg); color: #fff; }
+  .bm-path__step.is-next .bm-path__dot { border-color: var(--color-text); background: var(--color-primary); }
+  .bm-path__step.is-next { box-shadow: inset 0 -3px 0 var(--color-text); background: var(--color-bg-subtle, #F7F7F5); }
+  .bm-path__words { display: grid; min-width: 0; }
+  .bm-path__t { font-size: var(--fs-sm); font-weight: 650; line-height: 1.3; }
+  .bm-path__s { font-size: var(--fs-xs); color: var(--color-text-secondary); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+  .bm-path__step.is-todo .bm-path__t { color: var(--color-text-secondary); }
+  @media (max-width: 1100px) { .bm-path ol { grid-template-columns: repeat(3, minmax(0, 1fr)); } .bm-path__step:nth-child(4) { border-left: none; } .bm-path__step:nth-child(n+4) { border-top: 1px solid var(--color-border); } }
+  @media (max-width: 600px) { .bm-path ol { grid-template-columns: repeat(2, minmax(0, 1fr)); } .bm-path__step:nth-child(4) { border-left: 1px solid var(--color-border); } .bm-path__step:nth-child(odd) { border-left: none; } .bm-path__step:nth-child(n+3) { border-top: 1px solid var(--color-border); } }
+  /* A card the line or a slide sent you to, lit a moment */
+  .bm-row__main.is-found > .card:first-child, .bm-row.is-found .card, .bm-work.is-found > .agx, .agx-item.is-found { animation: bm-found 1.4s var(--ease-out); }
+  @keyframes bm-found { 0%, 35% { box-shadow: 0 0 0 3px var(--color-primary); } 100% { box-shadow: 0 0 0 3px transparent; } }
+
+  /* The page: the agenda beside its presentation, then the rows of cards */
+  .bm-work { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.08fr); gap: 1rem; align-items: start; margin-top: 1rem; }
+  .bm-work > .agx { margin: 0; min-width: 0; }
+  .bm-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(19rem, 23rem); gap: 1rem; align-items: start; margin-top: 1rem; }
+  .bm-row__main, .bm-row__side { display: grid; gap: 1rem; min-width: 0; align-content: start; }
+  .bm-row .card { margin: 0; }
+  .bm-row + .card, .bm-work + .card { margin-top: 1rem; }
+  @media (max-width: 1180px) { .bm-row { grid-template-columns: minmax(0, 1fr); } }
+
+  /* The presentation beside the agenda (board-meeting.js AgendaStage): the slide, its steps, every slide in order */
+  .agx-stage { position: sticky; top: calc(var(--top-h, 0px) + 1rem); display: flex; flex-direction: column; gap: 0.6rem; min-width: 0; max-height: calc(100vh - var(--top-h, 0px) - 2rem); padding: 0.85rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); }
+  .agx-stage__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; }
+  .agx-stage__note { font-size: var(--fs-xs); color: var(--color-text-secondary); }
+  .agx-stage .bd-seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--seg-bg, rgba(0,0,0,0.05)); }
+  .agx-stage .bd-seg button { height: 30px; padding: 0 0.85rem; border: none; border-radius: 999px; background: none; font: inherit; font-size: var(--fs-xs); font-weight: 650; color: var(--color-text-secondary); cursor: pointer; }
+  .agx-stage .bd-seg button.is-on { background: var(--color-bg-card); color: var(--color-text); box-shadow: 0 1px 3px rgba(26,27,31,0.14); }
+  .agx-stage .bd-seg button:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+  .agx-stage__frame { position: relative; flex: none; overflow: hidden; border: 1px solid var(--color-border); border-radius: 10px; background: #FEFCF5; }
+  .agx-stage__frame iframe { display: block; border: 0; transform-origin: 0 0; background: #FEFCF5; }
+  .agx-stage__frame.is-phone { display: flex; justify-content: center; padding: 13px 0; background: var(--color-bg-subtle, #F3F2EE); }
+  .agx-stage__frame.is-phone iframe { transform-origin: 50% 0; border-radius: 26px; box-shadow: 0 0 0 7px #1F201C, 0 18px 40px -16px rgba(0,0,0,0.45); }
+  .agx-stage__frame.is-screen { background: #1C1D1A; border-color: #1C1D1A; }
+  .agx-stage__nav { display: flex; align-items: center; gap: 0.35rem; min-width: 0; }
+  .agx-stage__step { font-size: 22px; line-height: 1; }
+  .agx-stage__count { flex: none; min-width: 4.6em; text-align: center; font-size: var(--fs-sm); font-variant-numeric: tabular-nums; color: var(--color-text-secondary); }
+  .agx-stage__count b { color: var(--color-text); }
+  .agx-stage__now { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 0.45rem; margin-left: 0.4rem; font-size: var(--fs-sm); font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agx-stage__now > span { overflow: hidden; text-overflow: ellipsis; }
+  .agx-stage__now b, .agx-slide__t b { flex: none; display: inline-grid; place-items: center; min-width: 2rem; height: 1.35rem; padding: 0 0.35rem; border-radius: 999px; background: var(--seg-bg); font-size: var(--fs-2xs); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .agx-stage__play { flex: none; margin-left: auto; }
+  .agx-slides { flex: 1 1 auto; min-height: 7rem; margin: 0; padding: 0.2rem; list-style: none; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; border-top: 1px solid var(--color-border); }
+  .agx-slide { display: flex; align-items: center; gap: 0.6rem; width: 100%; min-height: 2.1rem; padding: 0.3rem 0.5rem; border: none; border-radius: 8px; background: none; font: inherit; font-size: var(--fs-sm); color: var(--color-text); text-align: left; cursor: pointer; }
+  .agx-slide:hover { background: var(--color-bg-hover); }
+  .agx-slide:focus-visible { outline: none; box-shadow: inset 0 0 0 2px var(--color-text); }
+  .agx-slide.is-on { background: var(--seg-bg); font-weight: 650; }
+  .agx-slide__n { flex: none; width: 1.8rem; text-align: right; font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--color-text-muted); }
+  .agx-slide__t { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 0.45rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .agx-slide__t small { color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
+  .agx-slide__k { flex: none; font-size: var(--fs-2xs); font-weight: 600; letter-spacing: 0.02em; color: var(--color-text-muted); }
+  .agx-slide.is-section { font-weight: 650; }
+  .agx-slide.is-doc .agx-slide__t, .agx-slide.is-live .agx-slide__t, .agx-slide.is-books .agx-slide__t { padding-left: 1.2rem; font-weight: 400; color: var(--color-text-secondary); }
+  .agx-slide.is-doc.is-on .agx-slide__t, .agx-slide.is-live.is-on .agx-slide__t, .agx-slide.is-books.is-on .agx-slide__t { color: var(--color-text); }
+  .agx-item__n.is-blank { visibility: hidden; }
+  /* Too narrow for both side by side: the presentation over the agenda, the slide on the left and its list beside it */
   @media (max-width: 1100px) {
-    .agx.is-previewing { grid-template-columns: minmax(0, 1fr); }
-    .agx.is-previewing > .agx-preview { grid-column: 1; grid-row: 4; position: static; margin-bottom: 1rem; }
-    .agx.is-previewing > .agx-edit { grid-row: 5; }
+    .bm-work { grid-template-columns: minmax(0, 1fr); }
+    .agx-stage { position: static; max-height: none; order: -1; display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); grid-template-areas: 'bar bar' 'frame list' 'nav list'; column-gap: 1rem; align-items: start; }
+    .agx-stage:not(.is-screen) { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'bar' 'frame'; }
+    .agx-stage__bar { grid-area: bar; }
+    .agx-stage__frame { grid-area: frame; }
+    .agx-stage__nav { grid-area: nav; flex-wrap: wrap; }
+    .agx-slides { grid-area: list; align-self: stretch; max-height: 22rem; border-top: none; border-left: 1px solid var(--color-border); }
   }
+  @media (max-width: 760px) {
+    .agx-stage, .agx-stage:not(.is-screen) { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'bar' 'frame' 'nav' 'list'; }
+    .agx-slides { max-height: 14rem; border-left: none; border-top: 1px solid var(--color-border); }
+    .agx-stage__now { display: none; }
+  }
+  /* A phone: the agenda alone (Preview the presentation, at the top, shows the slides themselves) */
+  @media (max-width: 600px) { .agx-stage { display: none; } }
 
   /* Getting ready: which presenters' reports are in */
   .bm-reports { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--color-border); }

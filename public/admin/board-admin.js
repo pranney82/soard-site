@@ -127,8 +127,6 @@ const minutesTag = (m) => (m.minutes === 'approved' ? html`<span class="tag tag-
   : m.files.some((f) => f.kind === 'minutes') || m.sections.some((s) => s.items.some((it) => it.notes)) ? html`<span class="tag tag--warn">Draft minutes</span>`
   : html`<span class="tag">No minutes yet</span>`);
 const sharedTag = (m) => (m.shared ? html`<span class="tag tag--success">On the board page</span>` : html`<span class="tag">Not shared</span>`);
-/** The stage a meeting opens on */
-const stageOf = (m) => { const t = todayEastern(); return !m.date || m.date > t ? 'before' : m.date === t ? 'during' : 'after'; };
 const MONTHS = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
 function DateBlock({ date, small = false }) {
   if (!isDate(date)) return html`<div class=${`bh-date ${small ? 'bh-date--sm' : ''}`}><span class="bh-date__d">?</span></div>`;
@@ -227,20 +225,19 @@ function NextCard({ m, ctx }) {
   const yes = answers.filter((a) => a === 'Coming' || a === 'By video').length;
   const no = answers.filter((a) => a === 'Can’t come').length;
   const quiet = answers.filter((a) => !a).length;
-  const stage = today ? 'during' : 'before';
   return html`<div class="card bh-next">
     <div class="bh-next__top">
       <${DateBlock} date=${m.date} />
       <div class="bh-next__main">
         <p class="bh-eyebrow">Next meeting · ${whenWords(days)}</p>
-        <h3 class="bh-next__title"><a href=${hashFor({ meetingId: m.id, step: stage })}>${meetingName(m)}</a></h3>
+        <h3 class="bh-next__title"><a href=${hashFor({ meetingId: m.id })}>${meetingName(m)}</a></h3>
         <p class="bh-facts">
           <span>${[longDate(m.date), timeRange(m.start, m.end)].filter(Boolean).join(' · ')}</span>
           <span>${place || 'Place not set yet'}</span>
           ${m.video ? html`<span>${callName(m.video)}</span>` : null}
         </p>
       </div>
-      <button class="btn btn-primary" onClick=${() => go({ meetingId: m.id, step: stage })}>${today ? 'Open for the meeting' : 'Open the meeting'}</button>
+      <button class="btn btn-primary" onClick=${() => go({ meetingId: m.id })}>${today ? 'Open for the meeting' : 'Open the meeting'}</button>
     </div>
     ${today ? html`<p class="bh-nextline"><strong>Today.</strong> Open it to present the agenda and its documents on the screen.</p>` : html`
       <ol class="bh-prep" aria-label="Getting ready">${prep.map((x) => html`<li class=${x.done ? 'is-done' : x === up ? 'is-next' : ''}><span class="bh-prep__mark" aria-hidden="true">${x.done ? CHECK : null}</span>${x.label}</li>`)}</ol>
@@ -255,7 +252,7 @@ function AgendaPreview({ m, ctx }) {
   return html`<div class="card">
     <div class="bd-card-head--row">
       <div class="bd-card-head" style="margin:0"><h3>Agenda for ${shortDate(m.date)} <span class=${`tag ${src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
-      <button class="btn btn-ghost btn-sm" onClick=${() => ctx.go({ meetingId: m.id, step: 'before' })}>Change the agenda</button>
+      <button class="btn btn-ghost btn-sm" onClick=${() => ctx.go({ meetingId: m.id })}>Change the agenda</button>
     </div>
     <ol class="bh-agenda">${m.sections.map((s, si) => {
       // The items as the board reads them: an empty row left out, a live list called what it shows
@@ -271,10 +268,10 @@ function AgendaPreview({ m, ctx }) {
 function MeetingRow({ m, go }) {
   const c = attendanceCounts(m);
   const past = m.date && m.date < todayEastern();
-  return html`<li class="bh-row" key=${m.id} onClick=${(e) => { if (!e.target.closest('a,button')) go({ meetingId: m.id, step: stageOf(m) }); }}>
+  return html`<li class="bh-row" key=${m.id} onClick=${(e) => { if (!e.target.closest('a,button')) go({ meetingId: m.id }); }}>
     <${DateBlock} date=${m.date} small />
     <div class="bh-row__main">
-      <a class="bd-row__title" href=${hashFor({ meetingId: m.id, step: stageOf(m) })}>${meetingName(m)}</a>
+      <a class="bd-row__title" href=${hashFor({ meetingId: m.id })}>${meetingName(m)}</a>
       <div class="bd-row__meta">${[longDate(m.date), m.location, c.boardHere ? `${c.boardHere} of ${c.board} board members there` : '', m.files.length ? plural(m.files.length, 'file') : ''].filter(Boolean).join(' · ')}</div>
     </div>
     <div class="bd-tags">${past ? minutesTag(m) : null}${sharedTag(m)}${m.calendar?.gone ? html`<span class="tag tag--warn">Off the calendar</span>` : null}${m.notBoard && !m.shared ? html`<span class="tag tag--warn" title="Its calendar event isn’t a board meeting (a coffee, a reminder or another organization’s board), so it came off the board page. Share it to put it back.">Not a board meeting</span>` : null}</div>
@@ -322,7 +319,6 @@ function MeetingsTab({ ctx }) {
     <${GoogleSetup} data=${data} />
     ${next ? html`<${NextCard} m=${next} ctx=${ctx} /><${AgendaPreview} m=${next} ctx=${ctx} />`
       : html`<div class="card empty"><p class="empty__title">No meeting coming up</p><p class="empty__text">A board meeting on your or Holly’s calendar shows up here by itself. Or add it: its agenda is drafted from the last one, with open action items carried over.</p><div class="empty__actions">${adder}</div></div>`}
-    <p class="bd-quiet"><a class="link" href="#board/practice">Practice running a meeting</a> <span>· only ${youAnd(data.settings.admins, data.me)} see it, with simulated board members</span></p>
     ${ahead.length ? html`<div class="card" style="padding:0">
       <div class="sec-head"><h3>Also coming up <span class="count">${ahead.length}</span></h3></div>
       <ul class="bd-row-list">${ahead.map((m) => html`<${MeetingRow} m=${m} go=${go} />`)}</ul>

@@ -1835,6 +1835,21 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .bs-full:hover { background: var(--bs-panel-2); }
 .bs-full:focus-visible { opacity: 1; pointer-events: auto; outline: 2px solid var(--yellow); outline-offset: 2px; }
 .bs.is-awake .bs-full { opacity: 1; pointer-events: auto; }
+/* Presenting: back and next beside the slide count, there while the mouse moves (the keys and a clicker always work) */
+.bs-steps { display: inline-flex; align-items: center; gap: 0.35rem; flex: none; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.bs.is-awake .bs-steps, .bs-steps:focus-within { opacity: 1; pointer-events: auto; }
+.bs-step { display: inline-grid; place-items: center; width: 2.4rem; height: 2.4rem; padding: 0; border-radius: 50%; border: 1px solid var(--bs-line); background: var(--bs-panel); color: var(--bs-ink); cursor: pointer; }
+.bs-step:hover:not(:disabled) { background: var(--bs-panel-2); }
+.bs-step:disabled { opacity: 0.35; cursor: default; }
+.bs-step:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
+.bs-step__n { min-width: 4.5em; text-align: center; color: var(--bs-soft); font-variant-numeric: tabular-nums; font-size: clamp(0.8rem, 1.7vh, 1rem); }
+.bs-foot__keys { opacity: 0; transition: opacity 0.2s; }
+.bs.is-awake .bs-foot__keys { opacity: 1; }
+.bs-foot__keys kbd { display: inline-block; min-width: 1.5em; padding: 0 0.35em; border: 1px solid var(--bs-line); border-radius: 5px; font: inherit; font-size: 0.85em; text-align: center; color: var(--bs-ink); }
+/* B: the screen goes black (the room looks at the speaker); a key or a click brings it back */
+.bs-blank { position: fixed; inset: 0; z-index: 50; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: #000; cursor: none; }
+.bs-blank:focus-visible { outline: none; }
+@media (prefers-reduced-motion: reduce) { .bs-steps, .bs-foot__keys { transition: none; } }
 .bs.is-mirror { cursor: default; }
 @keyframes bs-in { from { opacity: 0; transform: translateY(14px); } }
 @keyframes bs-fade { from { opacity: 0; } }

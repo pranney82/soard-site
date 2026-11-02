@@ -62,6 +62,8 @@ export function float(el, { anchor, align = 'stretch', width, gap = 4, sheet, on
   // By default the box its CSS placed it against (top: 100% of what?)
   const own = el.offsetParent || el.parentElement;
   const anchorEl = () => (typeof anchor === 'function' ? anchor() : anchor) || own;
+  // Its CSS height limit, not the one the last open left on it (a pop-up kept in the page, opened again elsewhere)
+  el.style.maxHeight = '';
   const cssMax = parseFloat(getComputedStyle(el).maxHeight) || Infinity;
   const isSheet = () => !!sheet && matchMedia(sheet).matches;
   addReset();

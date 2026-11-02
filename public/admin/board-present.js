@@ -22,16 +22,20 @@ import { useState, useEffect, useRef } from './vendor.js';
 import { openDoc, partsOf, coverOf, keptOf } from './board/docs.js';
 
 export const CHANNEL = 'soard-board-screen';
-export const screenUrl = (id) => `/admin/board/#/meetings/${encodeURIComponent(id)}/screen`;
+/** The presentation (./board/screen.js PRESENT): it moves itself, from the cover or the slide `at` (a stop's key) */
+export const screenUrl = (id, at = '') => `/admin/board/?present${at ? `&at=${encodeURIComponent(at)}` : ''}#/meetings/${encodeURIComponent(id)}/screen`;
 /** The same screen as a small copy in the chair's During (it follows, but isn't a screen window: ./board/screen.js MIRROR) */
 export const mirrorUrl = (id) => `/admin/board/?mirror#/meetings/${encodeURIComponent(id)}/screen`;
 
 const windows = new Map();
-/** The screen in its own window (the same one again if it's open), to share or drag onto the TV */
-export function openScreen(id) {
+/**
+ * The presentation in its own window (the same one again if it's open), to share on Google Meet or drag onto the TV.
+ * Shared with the board or not: only an admin can open one that isn't. `at` opens it on that slide
+ */
+export function openScreen(id, at = '') {
   const was = windows.get(id);
-  if (was && !was.closed) { was.focus(); return was; }
-  const w = window.open(screenUrl(id), `soard-screen-${id}`, 'popup,width=1280,height=760');
+  if (was && !was.closed) { if (at) was.location.replace(screenUrl(id, at)); was.focus(); return was; }
+  const w = window.open(screenUrl(id, at), `soard-screen-${id}`, 'popup,width=1280,height=760');
   if (w) windows.set(id, w);
   return w;
 }
