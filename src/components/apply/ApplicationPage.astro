@@ -541,6 +541,7 @@ const breadcrumbs = [
   .af-step-text { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin: 0; font-size: 12px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-text-muted); font-variant-numeric: tabular-nums; }
   .af-part { display: inline-flex; align-items: center; gap: 10px; }
   .af-part:empty { display: none; }
+  .af-part[data-wrapped]::before { display: none; } /* on its own line: nothing to set it apart from */
   .af-part::before { content: ''; width: 4px; height: 4px; border-radius: 50%; background: var(--af-line-strong); }
   /* A heading given the focus so a screen reader starts there (tabindex="-1") isn't a control: no ring */
   .af-app :is(h1, h2, h3, p, div)[tabindex="-1"]:is(:focus, :focus-visible), .af-hub-title:is(:focus, :focus-visible) { outline: none; box-shadow: none; }
@@ -1581,6 +1582,9 @@ const breadcrumbs = [
     html.af-focus .af-upload--photo .af-upload-status { align-self: end; margin: 0; }
     html.af-focus .af-upload--photo .af-upload-actions { grid-column: 2; align-self: start; display: flex; flex-wrap: wrap; gap: 0 12px; align-items: center; }
     html.af-focus .af-upload--photo .af-upload-actions .af-btn--upload { flex: 0 1 auto; min-height: 44px; padding-inline: 18px; }
+    /* Two photos side by side (a window zoomed to 200%): the buttons under the words in their own column, not a
+       second one beside them (that left the photo's name about 50px) */
+    html.af-focus .af-pair--photos .af-upload-actions { grid-column: auto; }
     /* A phone's cards: the icon beside the name, the words the card's full width under them */
     html.af-focus .af-content .af-scope-title { font-size: 21px; line-height: 1.25; }
     html.af-focus .af-content .af-offer-card { grid-template-columns: 36px minmax(0, 1fr); column-gap: 12px; row-gap: 6px; align-items: center; padding: 14px 16px; }

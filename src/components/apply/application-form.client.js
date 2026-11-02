@@ -702,6 +702,8 @@ function init(root, cfg, mode) {
     ui.stepText.textContent = T('step', { n: i + 1, total: ids.length });
     const part = partOf();
     ui.partText.textContent = part.total > 1 ? T('part', { n: part.at, total: part.total }) : '';
+    // On a line of its own (the narrowest phones, in Spanish): no "•" leading that line
+    ui.partText.toggleAttribute('data-wrapped', !!ui.partText.textContent && ui.partText.offsetTop > ui.stepText.offsetTop + 2);
     const title = titleOf(currentId);
     if (ui.stepTitle.textContent !== title) ui.stepTitle.textContent = title;
     const needs = needsSet();
@@ -1636,9 +1638,11 @@ function init(root, cfg, mode) {
   function landOnReview(back) {
     reviewBack = null;
     if (!back || currentId !== 'review') return;
-    const sel = back.edit ? `[data-edit="${CSS.escape(back.edit)}"]` : `[data-page="${CSS.escape(back.page)}"]`;
-    const btn = [...ui.reviewList.querySelectorAll(sel)].find(b => b.getClientRects().length)
-      || ui.reviewList.querySelector(`[data-page="${CSS.escape(back.page || pageOf(back.edit) || '')}"]`);
+    // The answer's Change, else its step's own Edit (a button: the step's section carries its page too, and
+    // focus on a section goes nowhere)
+    const stepEdit = (pid) => ui.reviewList.querySelector(`button[data-edit=""][data-page="${CSS.escape(pid || '')}"]`);
+    const btn = (back.edit && [...ui.reviewList.querySelectorAll(`button[data-edit="${CSS.escape(back.edit)}"]`)].find(b => b.getClientRects().length))
+      || stepEdit(back.page || pageOf(back.edit));
     if (!btn?.getClientRects().length) return;
     requestAnimationFrame(() => {
       btn.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -1987,6 +1991,8 @@ function init(root, cfg, mode) {
   }
   window.addEventListener('online', () => {
     if (lastNav?.m === 'offlineSubmit') navNote(null); // "you seem to be offline" isn't so now (Submit goes again)
+    const laterNote = ui.dialog.querySelector('[data-later-status]');
+    if (ui.dialog.open && laterNote?.textContent === T('sendOffline')) laterNote.textContent = ''; // nor in "Save and finish later"
     if (unsaved() && token && !doneShown) save();
   }, { signal });
   function markDirty() {
@@ -2205,10 +2211,14 @@ function init(root, cfg, mode) {
   function buildReview() {
     const a = readAnswers();
     const errors = formErrors(form, a, files, null, lang);
+    // An answer that stops the application (one brought in from another device, say): never "Everything is here"
+    // over it, but that answer marked, with its Change, before Submit lands on the "can't help" screen
+    const stop = stopFor(form, a);
+    if (stop?.field && byId[stop.field] && !errors[stop.field]) errors[stop.field] = T('reviewStopAnswer');
     const missing = Object.keys(errors).length;
     if (!missing && lastNotice?.m === 'attention') notice(null); // fixed since
     ui.reviewSummary.dataset.kind = missing ? 'missing' : 'ready';
-    ui.reviewSummary.textContent = missing ? (missing === 1 ? T('reviewMissingOne') : T('reviewMissing', { n: missing })) : T('reviewReady');
+    ui.reviewSummary.textContent = stop?.field && byId[stop.field] ? T('reviewStopped') : missing ? (missing === 1 ? T('reviewMissingOne') : T('reviewMissing', { n: missing })) : T('reviewReady');
     // An email they gave that's likely a typo (they're written to there): asked about, with the fix a tap away
     const mails = fields.filter(f => f.type === 'email' && isVisible(f, a, byId) && mailFix(a[f.id]));
     ui.reviewSummary.parentElement.querySelectorAll('.af-review-mail').forEach(n => n.remove());
@@ -2252,8 +2262,9 @@ function init(root, cfg, mode) {
           fix.className = 'af-btn af-btn--ghost';
           fix.dataset.edit = f.id;
           fix.dataset.page = p.id;
-          fix.textContent = T('fix');
-          fix.setAttribute('aria-label', `${T('fix')}: ${f.label || ''}`);
+          const word = f.id === stop?.field ? 'change' : 'fix'; // an answer to change, not one to give
+          fix.textContent = T(word);
+          fix.setAttribute('aria-label', `${T(word)}: ${f.label || ''}`);
           dd.append(note, fix);
         } else if (answered.has(f.id)) {
           const item = answered.get(f.id);
@@ -4831,8 +4842,9 @@ function init(root, cfg, mode) {
   const dropZone = (e) => e.target.closest?.('[data-drop]');
   const onDrag = (e) => {
     const zone = dropZone(e);
-    if (!zone || !hasFiles(e) || zone.dataset.state === 'busy') return;
-    e.preventDefault();
+    if (!zone || !hasFiles(e)) return;
+    e.preventDefault(); // (a box still uploading too: a file let fall on it never opens in the browser, off the application)
+    if (zone.dataset.state === 'busy') { e.dataTransfer.dropEffect = 'none'; return; }
     e.dataTransfer.dropEffect = 'copy';
     zone.dataset.drag = '1';
   };
@@ -4849,7 +4861,8 @@ function init(root, cfg, mode) {
     delete zone.dataset.drag;
     const f = byId[zone.closest('[data-field]')?.dataset.field];
     const file = e.dataTransfer?.files?.[0];
-    if (f && file && zone.dataset.state !== 'busy') takeFile(f, file);
+    if (f && file && zone.dataset.state === 'busy') announce(T('uploadWait')); // said, not dropped without a word
+    else if (f && file) takeFile(f, file);
   });
   window.addEventListener('dragover', (e) => { if (hasFiles(e) && !dropZone(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; } }, { signal });
   window.addEventListener('drop', (e) => { if (hasFiles(e) && !dropZone(e)) e.preventDefault(); }, { signal });
