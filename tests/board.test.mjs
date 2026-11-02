@@ -21,7 +21,7 @@ import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes } from '
 import * as rsvpPage from '../functions/api/board-rsvp.js';
 import { answerLink } from '../functions/api/_board-rsvp.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText, docTitle, docsOf, itemDocs, orgName, signsAs } from '../public/admin/board-shared.js';
+import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText, docTitle, docsOf, itemDocs, orgName, signsAs, isFilled, agendaItems } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
 const TEAM = 'soard';
@@ -1793,6 +1793,13 @@ test('the next meeting the board already has on its calendars shows its day, tim
   assert.equal(page.next, null);
   assert.equal(page.meetings.some((x) => x.id === m.id), false, 'not a shared meeting: no agenda, notes or files');
   assert.doesNotMatch(JSON.stringify(page), /Secret draft heading|draft notes/);
+  assert.equal(page.previews, undefined, 'a member never gets the founders’ preview');
+  // The founders look at it as the board will before sharing it (Board's "See it as the board will"): by its link
+  // only, never in the lists or as the next meeting
+  const look = (await portalApi(FOUNDER)).body;
+  const pv = look.previews.find((x) => x.id === m.id);
+  assert.deepEqual([pv?.preview, pv?.shared, pv?.sections[0].title, pv?.sections[0].items[0].notes], [true, false, 'Secret draft heading', 'draft notes']);
+  assert.equal(look.meetings.some((x) => x.id === m.id), false);
   assert.equal((await portalApi(MEMBER, { action: 'rsvp', meetingId: m.id, answer: 'yes' })).status, 200, 'they’re invited, so they can answer here');
   assert.equal((await portalApi(MEMBER)).body.nextPending.myRsvp, 'yes');
   const ics = await boardIcs(env.DB, m.id);
@@ -2235,6 +2242,40 @@ test('a draft puts the last minutes up for approval whatever their item was call
   assert.ok(!items.some((it) => it.notes), 'nothing written last time comes along');
   assert.equal(liveOfTitle('Events and Marketing Committee', 'Committee reports'), '', 'a committee named for events is not the events list');
   assert.equal(liveOfTitle('Treasurer’s report'), 'cash');
+});
+
+test('an agenda row left empty isn’t on the agenda: the board never sees it, it has no number or time, and the chair never stops on it', () => {
+  // As the Q4 2026 agenda had it: a third row under Call to order and a sixth under Committee reports, both blank
+  const m = cleanMeeting({ id: 'm_rows1', date: '2026-11-05', start: '08:00', end: '10:00', shared: true, sections: [
+    { id: 's_one1', title: 'Call to order', items: [{ id: 'i_roll1', title: 'Roll call', presenter: 'Sam Rivers' }, { id: 'i_best1', title: 'Bragging rights' }, { id: 'i_gap1' }] },
+    { id: 's_two1', title: 'Committee reports', items: [{ id: 'i_gov1', title: 'Governance' }, { id: 'i_gap2', title: '  ' }, { id: 'i_sto1', title: 'Store update' }] },
+    { id: 's_thr1', title: 'Approve the minutes', items: [{ id: 'i_min1', notes: 'Q3 minutes' }] },
+  ] });
+  assert.equal(isFilled(m.sections[0].items[2]), false);
+  assert.equal(isFilled(m.sections[1].items[1]), false, 'spaces are nothing');
+  assert.equal(isFilled(m.sections[2].items[0]), true, 'notes without a title are something');
+  for (const o of [{ presenter: 'Jo' }, { live: 'cash' }, { confidential: true }, { docs: ['f_bud1'] }]) assert.equal(isFilled(cleanMeeting({ sections: [{ title: 'x', items: [o] }] }).sections[0].items[0]), true, JSON.stringify(o));
+  const seen = forBoard(m);
+  assert.deepEqual(seen.sections.map((s) => s.items.map((it) => it.id)), [['i_roll1', 'i_best1'], ['i_gov1', 'i_sto1'], ['i_min1']]);
+  // Numbered as they read, the same in the editor (every row) as on the board page: Store update is 2.2, not 2.3
+  const labels = (x) => agendaItems(x).map((it) => `${it.label} ${it.id}`);
+  assert.deepEqual(labels(m), ['1.1 i_roll1', '1.2 i_best1', '2.1 i_gov1', '2.2 i_sto1', '3.1 i_min1']);
+  assert.deepEqual(labels(seen), labels(m));
+  assert.deepEqual(agendaItems(m).map((it) => [it.si, it.ii]), [[0, 0], [0, 1], [1, 0], [1, 2], [2, 0]], 'where each sits in its part, for the editor');
+  // No time for an empty row: the parts' times match a meeting without them, on both sides
+  const plain = cleanMeeting({ ...m, sections: m.sections.map((s) => ({ ...s, items: s.items.filter(isFilled) })) });
+  assert.deepEqual([...sectionPlan(m)], [...sectionPlan(plain)]);
+  assert.deepEqual([...sectionPlan(seen)], [...sectionPlan(m)]);
+  // The chair's steps: never an empty row, and the same steps the board page's screen has
+  const steps = (x) => deckOf(x).map((st) => st.key);
+  assert.ok(!steps(m).some((k) => /^i_gap/.test(k)));
+  assert.deepEqual(steps(m), steps(seen));
+  assert.ok(!steps(m).includes('section:s_thr1'), 'a part of one item still goes straight to it');
+  // A live list with no title is called what it shows, never its part's name ("Committee reports" under Committee reports)
+  const live = cleanMeeting({ ...m, sections: [{ id: 's_two1', title: 'Committee reports', items: [{ id: 'i_rev1', live: 'reveals' }, { id: 'i_mon1', title: 'Treasurer', live: 'cash' }] }] });
+  assert.deepEqual(forBoard(live).sections[0].items.map((it) => it.title), ['Upcoming reveals', 'Treasurer']);
+  assert.deepEqual(agendaItems(live).map((it) => it.title), ['Upcoming reveals', 'Treasurer']);
+  assert.equal(live.sections[0].items[0].title, '', 'the meeting itself keeps it untitled, for the editor');
 });
 
 test('the meeting’s time is shared out among its parts, a part given its own minutes keeping them', () => {

@@ -563,7 +563,7 @@ function App() {
   useEffect(() => { if (note) { const t = setTimeout(gone, note.act ? 7000 : 4500); return () => clearTimeout(t); } return undefined; }, [note]);
   useEffect(() => {
     if (route.sub === 'screen') return;
-    const m = route.page === 'meetings' && route.id && data && [...data.meetings, data.nextPending].find((x) => x?.id === route.id);
+    const m = route.page === 'meetings' && route.id && data && [...data.meetings, data.nextPending, ...(data.previews || [])].find((x) => x?.id === route.id);
     document.title = m ? `${meetingName(m)} · SOARD Board` : `${NAV.find(([p]) => p === route.page)?.[1] || 'Home'} · SOARD Board`;
   }, [route, data]);
   // The first visit rises in; later pages arrive by transition
@@ -1357,7 +1357,8 @@ const NotFound = () => html`<a class="bp-back" href="#/meetings"><${Icon} name="
 /** A meeting: live on its day (and the founders' practice meeting), its record otherwise */
 function MeetingPage({ id, ctx }) {
   const { data, d } = ctx;
-  const m = data.meetings.find((x) => x.id === id) || (d.featured?.pending && d.featured.id === id ? d.featured : null);
+  // An admin's look at one not shared yet (Board's "See it as the board will"): data.previews, by its link only
+  const m = data.meetings.find((x) => x.id === id) || (d.featured?.pending && d.featured.id === id ? d.featured : null) || data.previews?.find((x) => x.id === id) || null;
   const practice = !m && data.practice?.id === id;
   useFocusTarget();
   if (practice || (m && !m.pending && (isLive(m) || m.date === data.today))) return html`<${LiveMeeting} id=${id} m=${m} ctx=${ctx} />`;
@@ -1833,7 +1834,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
     ${waiting ? html`<p class="bp-waiting" role="status"><span class="bp-live-dot" aria-hidden="true"></span>Today’s meeting. This page follows it live once the chair starts: where the board is on the agenda, who’s here, and votes.</p>` : null}
     <header class=${`bp-aghero ${upcoming ? '' : 'is-past'}`}>
       <div class="bp-aghero__main">
-        <p class="bp-eyebrow">${upcoming ? (m.pending ? 'Agenda coming' : 'Board meeting agenda') : 'Board meeting minutes'}<span class=${`bp-soon ${m.minutes === 'approved' && !upcoming ? 'is-ok' : ''}`}>${status}</span></p>
+        <p class="bp-eyebrow">${upcoming ? (m.pending ? 'Agenda coming' : 'Board meeting agenda') : 'Board meeting minutes'}<span class=${`bp-soon ${m.minutes === 'approved' && !upcoming ? 'is-ok' : ''}`}>${status}</span>${m.preview ? html`<span class="bp-soon is-preview" title="Only you see it. Share it in Board and the board sees it as it is here">Not shared yet</span>` : null}</p>
         <h1 class="bp-aghero__title">${meetingName(m)}</h1>
         <ul class="bp-aghero__facts">
           <li><${DateTile} d=${m.date} big head /><span><strong>${dayOf(m.date)}</strong><span>${nbw(nb([m.start ? timeRange(m.start, m.end) : '', String(m.date).slice(0, 4)].filter(Boolean).join(' · ')))}</span></span></li>

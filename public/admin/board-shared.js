@@ -204,6 +204,8 @@ export const LIVE = [
   { id: 'cash', label: 'Money: the bank balances and the finance summary' },
   { id: 'meetings', label: 'Next board meetings' },
 ];
+/** What a live list with no title of its own is called for the board: what it shows, never its part's name */
+export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings' };
 export const LIMITS = { title: 200, text: 300, notes: 20000, items: 80, sections: 20, people: 80, rows: 100 };
 
 /** The agenda a new meeting starts from, until Settings saves another one */
@@ -431,9 +433,20 @@ function cleanTally(raw) {
 }
 /** Started from the chair's screen and not ended: the meeting is being held now */
 export const isLive = (m) => !!m?.live?.startedAt && !m.live.endedAt;
-/** The agenda's items in order, numbered the way the board page and the chair's screen show them: [{ id, title, label: '3.2', section, si, ii }] */
+/**
+ * An agenda item with something in it. A row added and left empty isn't on the agenda: the board never sees it, it
+ * takes no time and no number, and the chair never stops on it (the editor keeps it, to fill in or delete)
+ */
+export const isFilled = (it) => !!(it && (it.title || it.presenter || it.who?.length || it.notes || it.live || it.about || it.docs?.length || it.confidential));
+/**
+ * The agenda's items in order, numbered the way the board page and the chair's screen show them (an empty row has
+ * none): [{ id, title, label: '3.2', section, si, ii }], `ii` where the item sits in its part
+ */
 export function agendaItems(m) {
-  return (m?.sections || []).flatMap((s, si) => s.items.map((it, ii) => ({ id: it.id, title: it.title || s.title || 'Item', presenter: it.presenter, label: `${si + 1}.${ii + 1}`, section: s.title, si, ii })));
+  return (m?.sections || []).flatMap((s, si) => {
+    let n = 0;
+    return s.items.flatMap((it, ii) => (isFilled(it) ? [{ id: it.id, title: it.title || LIVE_TITLES[it.live] || s.title || 'Item', presenter: it.presenter, label: `${si + 1}.${++n}`, section: s.title, si, ii }] : []));
+  });
 }
 /** "08:00" → 480; null when it isn't a time */
 const dayMinutes = (t) => (TIME.test(String(t || '')) ? Number(t.slice(0, 2)) * 60 + Number(t.slice(3)) : null);
@@ -449,7 +462,7 @@ export function sectionPlan(m) {
   const s0 = dayMinutes(m?.start);
   const e0 = dayMinutes(m?.end);
   const total = s0 != null && e0 != null && e0 > s0 ? e0 - s0 : 120;
-  const weight = (sec) => (sec.items.length ? sec.items.length + (sec.items.some((it) => it.live && it.live !== 'minutes') ? 1 : 0) : 0.5);
+  const weight = (sec) => { const n = sec.items.filter(isFilled).length; return n ? n + (sec.items.some((it) => it.live && it.live !== 'minutes') ? 1 : 0) : 0.5; };
   const fixed = sections.reduce((n, sec) => n + (sec.minutes || 0), 0);
   const auto = sections.filter((sec) => !sec.minutes);
   const sum = auto.reduce((n, sec) => n + weight(sec), 0) || 1;
@@ -580,14 +593,15 @@ export const draftName = (prev) => `${meetingName(prev)} (${shortDate(prev.date)
 
 /**
  * What a board member sees: only shared meetings, never Peter and Holly's
- * own notes or a staff-only file. Null for a meeting not shared yet.
+ * own notes, a staff-only file or an agenda row left empty; a live list with
+ * no title called what it shows. Null for a meeting not shared yet.
  */
 export function forBoard(m) {
   if (!m?.shared) return null;
   const seen = new Set(m.files.filter((f) => !f.staffOnly).map((f) => f.id));
   return {
     ...m,
-    sections: m.sections.map((s) => ({ ...s, items: s.items.map(({ staffNote, ...it }) => ({ ...it, docs: (it.docs || []).filter((id) => seen.has(id)) })) })),
+    sections: m.sections.map((s) => ({ ...s, items: s.items.filter(isFilled).map(({ staffNote, ...it }) => ({ ...it, title: it.title || LIVE_TITLES[it.live] || '', docs: (it.docs || []).filter((id) => seen.has(id)) })) })),
     files: m.files.filter((f) => !f.staffOnly),
     // Named here, where the quarter its calendar invite says is known
     title: meetingName(m),
@@ -711,9 +725,10 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [] } = {}) {
   };
   let n = 0;
   for (const s of m.sections) {
-    if (!s.title && !s.items.length) continue;
-    if (s.items.length !== 1) out.push({ key: `section:${s.id}`, kind: 'section', itemId: '', fileId: '', page: 0, n: -1, sectionId: s.id });
-    for (const it of s.items) add(it, itemDocs(m, it, meetings).map((d) => d.file), n++, s.id);
+    const items = s.items.filter(isFilled);
+    if (!s.title && !items.length) continue;
+    if (items.length !== 1) out.push({ key: `section:${s.id}`, kind: 'section', itemId: '', fileId: '', page: 0, n: -1, sectionId: s.id });
+    for (const it of items) add(it, itemDocs(m, it, meetings).map((d) => d.file), n++, s.id);
   }
   const loose = docsOf(looseFiles(m)).map((d) => d.file);
   if (loose.length) add(MORE, loose, -1, '');

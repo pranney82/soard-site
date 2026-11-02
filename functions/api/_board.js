@@ -30,6 +30,7 @@ import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf,
   agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
+  isFilled, LIVE_TITLES,
 } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
@@ -1045,7 +1046,13 @@ export async function portalData(env, { member = null, admin = false, now = Date
   // An admin looking at the board page: today's practice meeting, if they've started one (members never see it)
   const practice = admin && !member ? await todayPractice(env.DB, now) : null;
   return {
-    ...(admin && !member ? { practice: practice ? { id: practice.id, title: meetingName(practice), date: practice.date, live: practice.live } : null } : {}),
+    ...(admin && !member ? {
+      practice: practice ? { id: practice.id, title: meetingName(practice), date: practice.date, live: practice.live } : null,
+      // Board's "See it as the board will" on a meeting ahead not shared yet: what the board will see once it is, by its
+      // link only (never in the lists, the search or Home, which stay as the board has them)
+      previews: meetings.filter((m) => !m.shared && !m.notBoard && isDate(m.date) && m.date >= today)
+        .map((m) => ({ ...forBoard({ ...m, shared: true }), shared: false, preview: true, myRsvp: '', myInvite: '', onCalendar: false })),
+    } : {}),
     contact,
     admins: admins.map((a) => a.name),
     nextPending: pending ? {
@@ -1195,7 +1202,7 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const seen = m.practice ? m : forBoard({ ...m, shared: true });
   const sections = seen.sections.map((sec) => ({
     id: sec.id, title: sec.title, minutes: sec.minutes || 0,
-    items: sec.items.map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, about: it.about, docs: it.docs })),
+    items: sec.items.filter(isFilled).map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, about: it.about, docs: it.docs })),
   }));
   // The last meeting's minutes, for an item that asks the board to approve them (only from a meeting the board can see)
   const prior = [];
@@ -1316,11 +1323,11 @@ export async function createPractice(env, { by = '', now = Date.now(), fresh = f
   const borrowed = shown(ahead).map((f) => f.id);
   // Its own ids, and no link back to a real meeting (its minutes item can't approve anything). The minutes it would
   // approve stay on that item, as the screen shows them at the real meeting
-  const own = (sections) => sections.map((sec) => ({ ...sec, id: uid('s_'), items: sec.items.map((it) => {
+  const own = (sections) => sections.map((sec) => ({ ...sec, id: uid('s_'), items: sec.items.filter(isFilled).map((it) => {
     const prev = it.live === 'minutes' && it.about ? meetings.find((x) => x.id === it.about) : null;
     const f = prev?.shared ? minutesFileOf(prev) : null;
     if (f && !borrowed.includes(f.id)) borrowed.push(f.id);
-    return { ...it, id: uid('i_'), about: '', docs: f ? [f.id, ...(it.docs || []).filter((d) => d !== f.id)] : it.docs };
+    return { ...it, id: uid('i_'), title: it.title || LIVE_TITLES[it.live] || '', about: '', docs: f ? [f.id, ...(it.docs || []).filter((d) => d !== f.id)] : it.docs };
   }) }));
   const sections = own(ahead ? ahead.sections : last ? draftAgenda(last, { template: settings.template }) : base.sections);
   const startMin = Math.floor(((([h, mm]) => h * 60 + mm)(easternHm(now).split(':').map(Number))) / 5) * 5;

@@ -33,7 +33,7 @@ import {
 import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
-  isLive, agendaItems, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, MORE,
+  isLive, agendaItems, isFilled, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, MORE,
   sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles,
 } from './board-shared.js';
 import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
@@ -979,7 +979,7 @@ function RunOrder({ m, set, ctx, practice, jump, shown }) {
     <div class="bd-card-head"><h3>The agenda, in order</h3><p>Tap an item or a document to put it on the screen. ${running ? 'The board page follows.' : 'Before you start, only the screen on this computer moves.'}</p></div>
     <ol class="bm-order">${m.sections.map((s, si) => html`<li class="bm-order__sec" key=${s.id}>
       <p class="bm-order__head"><span>${String(si + 1).padStart(2, '0')}</span>${s.title || 'Section'}<small>${[plan.get(s.id)?.start ? clock(plan.get(s.id).start) : '', `${plan.get(s.id)?.minutes} min`].filter(Boolean).join(' · ')}</small></p>
-      ${s.items.length ? html`<ol>${s.items.map((it) => {
+      ${s.items.some(isFilled) ? html`<ol>${s.items.filter(isFilled).map((it) => {
         const label = items.find((x) => x.id === it.id)?.label;
         // On the screen: live, or in the preview before Start
         const on = shown.itemId === it.id;
@@ -1061,7 +1061,7 @@ function MinutesDoc({ m }) {
     ${groups.length ? html`<dl class="bm-who bm-who--doc">${groups.map(([t, l]) => html`<div><dt>${t} <b>${l.length}</b></dt><dd>${l.map((x) => x.name).join(', ')}</dd></div>`)}</dl>` : null}
     ${written ? html`<ol class="bm-doc__sections">${m.sections.map((s) => html`<li key=${s.id}>
       <h4>${s.title}</h4>
-      ${s.items.length ? html`<ul class="bm-doc__items">${s.items.map((it) => html`<li key=${it.id}>
+      ${s.items.some(isFilled) ? html`<ul class="bm-doc__items">${s.items.filter(isFilled).map((it) => html`<li key=${it.id}>
         <div class="bm-doc__item">${it.title}${it.presenter ? html`<span class="ag-item__who">${it.presenter}</span>` : null}${it.confidential ? html` <span class="tag tag--warn">Board only</span>` : null}</div>
         <${Notes} text=${it.notes} />
       </li>`)}</ul>` : null}
