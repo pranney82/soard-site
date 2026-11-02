@@ -1642,8 +1642,11 @@ function minutesWords(r) {
  * there, the notes under each item, the decisions, the action items) for the founders to share
  */
 function TakeMinutes({ m, ctx }) {
-  const { data, say, load } = ctx;
+  const { data, d, say, load } = ctx;
   const [busy, setBusy] = useState('');
+  // The secretary sees it as theirs; a founder sees whose it is
+  const mine = d.me?.seat === 'secretary';
+  const secretary = mine ? null : data.people.board.find((p) => p.seat === 'secretary');
   const opts = { meetings: data.meetings, quorum: data.quorum };
   const canSend = m.date <= data.today;
   const sent = m.minutesFrom?.name ? m.minutesFrom : null;
@@ -1674,8 +1677,9 @@ function TakeMinutes({ m, ctx }) {
     say(`Thank you. Board has the minutes${got ? `: ${got}` : ''}.`);
   };
   return html`<div class="bp-minutes" role="group" aria-labelledby=${`tm-${m.id}`}>
-    <p class="bp-minutes__q" id=${`tm-${m.id}`}>You take the minutes</p>
+    <p class="bp-minutes__q" id=${`tm-${m.id}`}>${mine ? 'You take the minutes' : 'The minutes'}</p>
     <p class="bp-minutes__said">${sent ? `Board has them${sent.at ? ` as of ${shortDate(sent.at.slice(0, 10)).replace(/, \d{4}$/, '')}` : ''}. A newer copy replaces what they say.`
+      : !mine ? `${secretary ? `${secretary.name} takes them as Board Secretary, with this same card.` : 'The board’s secretary takes them, with this same card.'} ${canSend ? 'The Word file they were typed into can be sent from here too.' : 'The form and the Word file are here for you too.'}`
       : canSend ? 'Send the Word file you typed them into, and they go into the meeting for the founders to share.'
       : 'Print the form, or type into the Word file at the meeting. Send it here afterwards.'}</p>
     ${canSend ? html`<div class="bp-minutes__do">

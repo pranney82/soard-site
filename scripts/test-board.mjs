@@ -1259,6 +1259,12 @@ try {
     attendance: ['alex-rivera', 'sam-ortiz', 'kim-park'].map((slug) => ({ slug, name: PEOPLE[slug].name, kind: 'board' })),
     sections: [{ title: 'Call to order', items: [{ title: 'Roll call' }] }, { title: 'Committee reports', items: [{ title: 'Financial', live: 'cash', staffNote: 'PRIVATE: ask counsel' }] }],
   }), { by: FOUNDER });
+  // A founder on the board page: the same card, saying whose it is
+  await jane.goto(`${SITE}/admin/board/#/meetings/${today.id}`, { waitUntil: 'networkidle0' });
+  await jane.reload({ waitUntil: 'networkidle0' });
+  const founderCard = await card(jane);
+  ok(/^The minutes\n/.test(founderCard?.text || '') && /Kim Park takes them as Board Secretary, with this same card/.test(founderCard?.text || '') && founderCard.send && JSON.stringify(founderCard.buttons) === '["Word file","Print the form"]', `a founder’s board page has it too, naming the secretary (${JSON.stringify(founderCard)})`);
+  await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await sec.goto(`${SITE}/admin/board/#/meetings/${today.id}`, { waitUntil: 'networkidle0' });
   await sec.reload({ waitUntil: 'networkidle0' });
   ok((await card(sec))?.send && /Send the minutes/.test((await card(sec))?.text || ''), 'on the day: Send the minutes');
