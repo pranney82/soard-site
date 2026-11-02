@@ -782,7 +782,7 @@ ${S} > canvas, ${S} > img { display: block; width: 100%; height: 100%; }
 ${S} .bdoc-page { box-sizing: border-box; background: #fff; color: ${INK}; overflow: hidden; font-family: ${FONT}; font-size: 14.5px; font-weight: 400; font-style: normal; line-height: 1.42; letter-spacing: normal; text-transform: none; text-align: left; white-space: normal; }
 ${S} .bdoc-flow { font-family: ${FONT}; font-size: 14.5px; font-weight: 400; font-style: normal; line-height: 1.42; color: ${INK}; letter-spacing: normal; text-align: left; white-space: normal; font-kerning: normal; font-variant-ligatures: common-ligatures; -webkit-font-smoothing: antialiased; text-rendering: geometricPrecision; overflow-wrap: break-word; }
 ${S} .bdoc-page--word { padding: 72px; }
-${S} .bdoc-p { display: block; padding: 0 0 7px; white-space: pre-wrap; tab-size: 6; position: relative; }
+${S} .bdoc-p { display: block; padding: 0 0 7px; white-space: pre-wrap; tab-size: 48px; position: relative; }
 ${S} .bdoc-p.is-cont { padding-top: 0; }
 ${S} .bdoc-title { font-size: 26px; line-height: 1.2; font-weight: 700; letter-spacing: -0.01em; padding: 0 0 12px; }
 ${S} .bdoc-h1 { font-size: 19px; line-height: 1.3; font-weight: 700; padding: 10px 0 6px; }
@@ -1319,36 +1319,47 @@ async function load(f, url) {
         const v = (await pdf.getPage(i + 1)).getViewport({ scale: 96 / 72 });
         return { w: v.width, h: v.height };
       }));
+      // Let go of only once nothing's drawing from it (a page half drawn by a closed document never finishes)
+      let busy = 0;
+      let closing = false;
       const doc = {
         kind, count: sizes.length,
         size: (i) => ({ ...sizes[Math.max(0, Math.min(sizes.length - 1, i))] }),
         async draw(i, { width = PAGE.w, dpr = (typeof devicePixelRatio === 'number' ? devicePixelRatio : 1) } = {}) {
           i = Math.max(0, Math.min(sizes.length - 1, i));
-          pdf ||= await pdfOpen(url);
-          const s = sizes[i];
-          const w = Math.round(width);
-          const h = Math.round((s.h * width) / s.w);
-          const f2 = el('div', 'bdoc-frame bdoc-x');
-          f2.style.width = `${w}px`;
-          f2.style.height = `${h}px`;
-          const canvas = el('canvas');
-          canvas.width = Math.max(1, Math.round(w * dpr));
-          canvas.height = Math.max(1, Math.round(h * dpr));
-          await inTurn(async () => {
-            const page = await pdf.getPage(i + 1);
-            const one = page.getViewport({ scale: 1 });
-            const vp = page.getViewport({ scale: canvas.width / one.width });
-            const g = canvas.getContext('2d');
-            g.fillStyle = '#fff';
-            g.fillRect(0, 0, canvas.width, canvas.height);
-            await page.render({ canvasContext: g, viewport: vp }).promise;
-            page.cleanup();
-          });
-          f2.append(canvas);
-          return f2;
+          busy += 1;
+          try { return await drawPage(i, width, dpr); } finally {
+            busy -= 1;
+            if (closing && !busy) { closing = false; const p = pdf; pdf = null; p?.destroy().catch(() => {}); }
+          }
         },
-        close() { const p = pdf; pdf = null; p?.destroy().catch(() => {}); },
+        close() { if (busy) { closing = true; return; } const p = pdf; pdf = null; p?.destroy().catch(() => {}); },
       };
+      async function drawPage(i, width, dpr) {
+        pdf ||= await pdfOpen(url);
+        const d = pdf;
+        const s = sizes[i];
+        const w = Math.round(width);
+        const h = Math.round((s.h * width) / s.w);
+        const f2 = el('div', 'bdoc-frame bdoc-x');
+        f2.style.width = `${w}px`;
+        f2.style.height = `${h}px`;
+        const canvas = el('canvas');
+        canvas.width = Math.max(1, Math.round(w * dpr));
+        canvas.height = Math.max(1, Math.round(h * dpr));
+        await inTurn(async () => {
+          const page = await d.getPage(i + 1);
+          const one = page.getViewport({ scale: 1 });
+          const vp = page.getViewport({ scale: canvas.width / one.width });
+          const g = canvas.getContext('2d');
+          g.fillStyle = '#fff';
+          g.fillRect(0, 0, canvas.width, canvas.height);
+          await page.render({ canvasContext: g, viewport: vp }).promise;
+          page.cleanup();
+        });
+        f2.append(canvas);
+        return f2;
+      }
       return doc;
     }
     if (kind === 'image') {
@@ -1392,8 +1403,8 @@ async function load(f, url) {
 }
 
 const cache = new Map();
-const KEEP = 8;
-/** A file as pages, opened once and kept (the last 8 files). `url` is where its bytes are (the board's file address by default) */
+const KEEP = 24;
+/** A file as pages, opened once and kept (the last 24 files: a meeting's packet and more). `url` is where its bytes are (the board's file address by default) */
 export function openDoc(f, { url = fileUrl(f) } = {}) {
   const key = `${f?.id || ''}|${url}`;
   if (cache.has(key)) {
@@ -1543,8 +1554,12 @@ export function splitOf(blocks, size) {
   let near = null;
   let lines = 1;
   let end = -1;
+  const tall = [];
+  let from = rows[0]?.y0 ?? 0;
   for (const b of rows) {
     if (end >= 0 && b.y0 - end > 0.002) {
+      tall.push(end - from);
+      from = b.y0;
       lines += 1;
       const off = Math.abs((end + b.y0) / 2 - mid);
       const wide = b.y0 - end;
@@ -1555,8 +1570,13 @@ export function splitOf(blocks, size) {
   }
   // A page wider than tall is cut only when it's rows and rows (a landscape table: each half then fills the screen's
   // width); a slide stays whole. And with nowhere blank to cut (a photo, a page set solid), whole: never through a line
+  if (end >= 0) tall.push(end - from);
   if (across >= 1.1 && (lines < 16 || span < 0.5)) return whole;
   if (!best && !near) return whole;
+  // Words already big (a "2027 GOALS" page): whole, nothing gained by cutting. A drawn page's lines are its runs of
+  // rows; a laid-out page's are its words' boxes (a paragraph's lines touch, so runs would be whole paragraphs)
+  const lineH = (rows[0]?.xs ? tall : rows.map((b) => b.y1 - b.y0)).filter((h) => h > 0.004).sort((a, b) => a - b);
+  if (lineH.length && lineH[Math.floor(lineH.length / 2)] > 0.028) return whole;
   const { gap } = best || near;
   const head = headingsOf(inked, ink);
   return { part, ink, cut: (gap[0] + gap[1]) / 2, gap, n: 2, head: head && head[1] < gap[0] ? head : null };
@@ -1685,7 +1705,7 @@ export function halfOf(lay, k = 0) {
 const layouts = new Map();
 // Kept on this device too (a file never changes under its id), so a meeting opened again knows its halves at once
 // and its stops don't change count as they're worked out. The version goes up when how a page is read changes
-const keptKey = (f, i) => `bdoc-lay9:${f.id}:${f.size || 0}:${i}`;
+const keptKey = (f, i) => `bdoc-lay10:${f.id}:${f.size || 0}:${i}`;
 const countKey = (f) => `bdoc-count:${f.id}:${f.size || 0}`;
 const kept = (f, i) => { try { const x = JSON.parse(localStorage.getItem(keptKey(f, i)) || 'null'); return x && typeof x.n === 'number' ? x : null; } catch { return null; } };
 // The last version's, read another way, go (once a page load)
@@ -1693,7 +1713,7 @@ let swept = false;
 function sweepKept() {
   if (swept) return;
   swept = true;
-  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay[2-8]:/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
+  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay([2-9]):/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
 }
 const PROBE = 400;
 /**
@@ -1741,7 +1761,10 @@ export function layoutOf(f, doc, i) {
       // A picture is seen whole
       if (doc.kind === 'image' && lay.n === 2) lay = { ...lay, cut: 0, gap: null, n: 1 };
       const ink = lay.ink;
-      if (ink && doc.count > 1 && (ink.x1 - ink.x0) * (ink.y1 - ink.y0) < 0.03) {
+      const inkArea = ink ? (ink.x1 - ink.x0) * (ink.y1 - ink.y0) : 0;
+      // A page with nothing but its number at its foot or head
+      if (ink && doc.count > 1 && inkArea < 0.004 && (ink.y0 > 0.88 || ink.y1 < 0.1)) lay = { part: null, ink: null, cut: 0, gap: null, n: 0 };
+      else if (ink && doc.count > 1 && inkArea < 0.08) {
         const j = i > 0 ? i - 1 : i + 1;
         const a = doc.size(i);
         const b = doc.size(j);
@@ -1756,14 +1779,14 @@ export function layoutOf(f, doc, i) {
 /**
  * Every part of a file the screen shows on pages the size of page i (areaOf: each page's content, or its two
  * halves, each with its page's `n` and the height of the headings it carries, `extra`), so the screen draws them all
- * at one zoom on one sheet: the words stay one size and in one place from stop to stop. A very long file (over 80
- * pages) only page i’s
+ * at one zoom on one sheet: the words stay one size and in one place from stop to stop. A long file (over 80 pages)
+ * by 40 or so of its pages, the same ones from every page
  */
 export async function areasOf(f, doc, i) {
   const size = doc.size(i);
   const out = [];
-  for (let j = 0; j < doc.count; j++) {
-    if (doc.count > 80 && j !== i) continue;
+  const step = doc.count > 80 ? Math.ceil(doc.count / 40) : 1;
+  for (let j = 0; j < doc.count; j += step) {
     const s = doc.size(j);
     if (Math.abs(s.w - size.w) > 1 || Math.abs(s.h - size.h) > 1) continue;
     const lay = await layoutOf(f, doc, j);
@@ -1781,7 +1804,10 @@ export function coverOf(f, width) {
   if (!covers.has(key)) {
     covers.set(key, (async () => {
       const doc = await openDoc(f);
-      const page = await doc.draw(0, { width, dpr: 2 });
+      // The first page with something on it (a blank one in front isn't the document's face)
+      let at = 0;
+      for (let j = 0; j < Math.min(doc.count, 4); j++) { if ((await layoutOf(f, doc, j)).n !== 0) { at = j; break; } }
+      const page = await doc.draw(at, { width, dpr: 2 });
       for (const c of page.querySelectorAll('canvas')) {
         const img = el('img');
         img.src = c.toDataURL('image/jpeg', 0.85);

@@ -1902,8 +1902,8 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
   .bs-faces__one { container-type: inline-size; flex-basis: calc((100% - 2 * var(--gx)) / 3); height: auto; justify-content: flex-start; } .bs-faces__pic { width: min(76cqi, 9rem); } .bs-faces__initials { font-size: min(27cqi, 3rem); }
   .bs-faces__sub { -webkit-line-clamp: 3; }
 }
-/* A phone: under a document its name and page, not cut off after the item's name (the number says which item) */
-@media (max-width: 520px) { .bs-figs { grid-template-columns: minmax(0, 1fr); } .bs--doc .bs-foot__item:has(+ .bs-foot__sep), .bs--doc .bs-foot__item + .bs-foot__sep { display: none; } }
+/* A phone: under a document its page and whether it's continued, never cut off (the number says which item); a long word in a title wraps */
+@media (max-width: 520px) { .bs-figs { grid-template-columns: minmax(0, 1fr); } .bs--doc .bs-foot__item:has(+ .bs-foot__sep), .bs--doc .bs-foot__item + .bs-foot__sep, .bs--doc .bs-foot__name:has(+ .bs-foot__sep--name), .bs--doc .bs-foot__sep--name { display: none; } .bs-display { overflow-wrap: anywhere; hyphens: auto; } }
 @media (prefers-reduced-motion: reduce) { .bs-stage__in, .bs-vote, .bs-timer.is-over, .bs-figs__bar i, .bs-faces__mark { animation: none !important; } .bs-vote__counts i::after, .bs-rail__bar i, .bs-faces__one, .bs-faces__pic, .bs-roll__q { transition: none; } }
 
 /* A phone: the header's tools at its right edge; the meeting's facts one to a line on the narrowest, where a place's

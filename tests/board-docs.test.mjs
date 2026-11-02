@@ -377,6 +377,12 @@ test('a ruled table (its borders down every row) is cut between its rows; a phot
   assert.ok(p2.n === 1 || p2.cut >= 0.6, `not through the photo (${p2.n}, ${p2.cut})`);
 });
 
+test('a page of words already big (a goals page) is never cut', () => {
+  const size = { w: 816, h: 1056 };
+  const rows = Array.from({ length: 9 }, (_, i) => ({ y0: 0.1 + i * 0.09, y1: 0.16 + i * 0.09, x0: 0.1, x1: 0.85 }));
+  assert.equal(splitOf(rows, size).n, 1);
+});
+
 test('a page of one short line and a page number keeps the line (it was read as nothing)', () => {
   const size = { w: 816, h: 1056 };
   const lay = splitOf([{ y0: 0.1, y1: 0.115, x0: 0.1, x1: 0.6 }, { y0: 0.95, y1: 0.96, x0: 0.48, x1: 0.52 }], size);

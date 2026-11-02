@@ -26,7 +26,7 @@ import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, liveOfStop, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
 } from '../board-shared.js';
-import { useCover } from '../board-present.js';
+import { useCover, usePages } from '../board-present.js';
 import { Report } from '../board-report.js';
 import { BooksSlide, BOOKS_TITLES } from './books.js';
 import { mdWords } from '../board-md.js';
@@ -128,38 +128,55 @@ async function drawFitted(f, page, box, { ahead = false, part = 0 } = {}) {
   if (area) {
     // A table's second part carries its column headings over its first line
     const head = headingsArea(lay, part);
-    const all = [{ ...area, extra: head ? head.h + head.gap : 0 }, ...(await areasOf(f, doc, i))];
-    const x0 = Math.min(...all.map((a) => a.x));
-    const x1 = Math.max(...all.map((a) => a.x + a.w));
-    const hi = Math.max(...all.map((a) => a.h + (a.extra || 0)));
+    const mine = { ...area, n: lay.n, extra: head ? head.h + head.gap : 0 };
+    // The file's parts (every page's, or a long file's same 40 or so: never this one added, so the sheet doesn't
+    // change with the page)
+    const theirs = await areasOf(f, doc, i);
+    const all = theirs.length ? theirs : [mine];
+    // The sheet: as wide and as tall as the file's parts cut in two need, and its pages shown whole that are little
+    // taller; a page bigger than that (a photo filling it, a scan) comes up smaller on the same sheet instead of making
+    // every other page small
+    const split = all.filter((a) => a.n === 2);
+    const tallest = Math.max(0, ...split.map((a) => a.h + (a.extra || 0)));
+    const typical = split.length ? all.filter((a) => a.n === 2 || a.h <= tallest * 1.25) : all;
+    const x0 = Math.min(...typical.map((a) => a.x));
+    const x1 = Math.max(...typical.map((a) => a.x + a.w));
+    const hi = Math.max(...typical.map((a) => a.h + (a.extra || 0)));
     const W = Math.floor(Math.min(fit * 3, box.w / (x1 - x0 + 2 * MARGIN), box.h / (hi * tall + 2 * MARGIN)));
     // Close up when it's bigger, and always for a file shown in parts (on a phone each part would else be the whole
     // page again)
-    if (W > fit * 1.12 || all.some((a) => a.n === 2)) {
+    if (W > fit * 1.12 || split.length) {
       close = true;
       const H = Math.round(W * tall);
       const m = Math.floor(W * MARGIN);
-      const drawn = await doc.draw(i, { width: W });
-      drawn.style.marginLeft = `${-Math.round(x0 * W)}px`;
-      drawn.style.marginTop = `${-Math.round(area.y * H)}px`;
-      const crop = document.createElement('div');
-      crop.className = 'bs-crop';
-      crop.style.width = `${Math.round((x1 - x0) * W)}px`;
-      crop.style.height = `${Math.round(area.h * H)}px`;
-      crop.append(drawn);
+      // This part at the sheet's zoom; one bigger than the sheet smaller, across its middle
+      const fits = mine.x >= x0 - 1e-6 && mine.x + mine.w <= x1 + 1e-6 && mine.h + mine.extra <= hi + 1e-6;
+      const k = fits ? 1 : Math.min(1, hi / (mine.h + mine.extra), (x1 - x0) / mine.w);
+      const Wk = Math.floor(W * k);
+      const Hk = Math.round(Wk * tall);
+      const left = fits ? x0 : mine.x;
+      const across = fits ? x1 - x0 : mine.w;
+      const inset = fits ? 0 : Math.max(0, Math.floor(((x1 - x0) * W - across * Wk) / 2));
+      const cropOf = async (y, h) => {
+        const drawn = await doc.draw(i, { width: Wk });
+        drawn.style.marginLeft = `${-Math.round(left * Wk)}px`;
+        drawn.style.marginTop = `${-Math.round(y * Hk)}px`;
+        const crop = document.createElement('div');
+        crop.className = 'bs-crop';
+        crop.style.width = `${Math.round(across * Wk)}px`;
+        crop.style.height = `${Math.round(h * Hk)}px`;
+        if (inset) crop.style.marginLeft = `${inset}px`;
+        crop.append(drawn);
+        return crop;
+      };
       el.style.width = `${Math.round((x1 - x0) * W) + 2 * m}px`;
       el.style.height = `${Math.round(hi * H) + 2 * m}px`;
       el.style.padding = `${m}px`;
+      const crop = await cropOf(area.y, area.h);
       if (head) {
-        const top = await doc.draw(i, { width: W });
-        top.style.marginLeft = `${-Math.round(x0 * W)}px`;
-        top.style.marginTop = `${-Math.round(head.y * H)}px`;
-        const heads = document.createElement('div');
-        heads.className = 'bs-crop bs-crop--head';
-        heads.style.width = crop.style.width;
-        heads.style.height = `${Math.round(head.h * H)}px`;
-        heads.append(top);
-        crop.style.marginTop = `${Math.round(head.gap * H)}px`;
+        const heads = await cropOf(head.y, head.h);
+        heads.classList.add('bs-crop--head');
+        crop.style.marginTop = `${Math.round(head.gap * Hk)}px`;
         el.append(heads);
       }
       el.append(crop);
@@ -541,7 +558,8 @@ export function Screen({ id, data, d, onBack = null }) {
   const [v0, fail, trouble] = useLiveView(id, fast);
   // Presenting and Board's preview never show the meeting as it was held (an ended practice) or a vote: nothing
   // started, nothing ended; they go only where they're moved
-  const v = OWN && v0 ? { ...v0, vote: null, live: { ...v0.live, startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, part: 0, screen: '', sectionId: '', sectionAt: '', vote: null, floor: '' } } : v0;
+  // (made once an answer, not every render: what's built from it, the meeting and its deck, holds still between answers)
+  const v = useMemo(() => (OWN && v0 ? { ...v0, vote: null, live: { ...v0.live, startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, part: 0, screen: '', sectionId: '', sectionAt: '', vote: null, floor: '' } } : v0), [v0]);
   const [told, setTold] = useState(null); // { live, rehearsal, at } from the chair's computer
   // Moving itself: the stop it's on (its key), and its item (that item's card, if the key is gone from a changed deck)
   const [here, setHere] = useState(() => ({ key: PRESENT ? AT || keptAt(id) : '', itemId: '' }));
@@ -652,6 +670,28 @@ export function Screen({ id, data, d, onBack = null }) {
   // meeting today or ahead, the locked ones for a past meeting
   const books = (v?.date && v.date < todayEastern() ? v.snapshot : data.numbers)?.books || null;
   const deck = useMemo(() => (meeting ? deckOf(meeting, { pages, parts: halves, meetings: v.prior || [], books }) : []), [meeting, pages, halves, books]);
+  // Every document's pages and parts from the start (kept on this device, else worked out a file at a time), so the
+  // deck is whole before its documents are shown: a reload or Play from here lands on its slide, and the count holds
+  const docFiles = useMemo(() => {
+    if (!meeting) return [];
+    const ids = new Set(deckOf(meeting, { meetings: v.prior || [], books }).filter((s) => s.kind === 'doc').map((s) => s.fileId));
+    const all = [...meeting.files, ...(v.prior || []).flatMap((x) => x.files || [])];
+    // The one a slide asked for (Play from here, a reload) counted first
+    const asked = (here.key || '').split(':')[1] || '';
+    return all.filter((f, i) => ids.has(f.id) && all.findIndex((g) => g.id === f.id) === i).sort((p, q) => (q.id === asked) - (p.id === asked));
+  }, [meeting, books]);
+  const [knownPages, , knownParts] = usePages(docFiles, !MIRROR);
+  useEffect(() => { if (Object.keys(knownPages).some((k) => !pages[k])) setPages((p) => ({ ...knownPages, ...p })); }, [knownPages]);
+  useEffect(() => { if (Object.keys(knownParts).some((k) => String(halves[k]) !== String(knownParts[k]))) setHalves((x) => ({ ...x, ...knownParts })); }, [knownParts]);
+  // The document a slide asked for: its pages and parts at once, before the rest are counted
+  const askedFile = docFiles.find((x) => x.id === ((here.key || '').split(':')[1] || '')) || null;
+  useEffect(() => {
+    const f = askedFile;
+    if (!f) return undefined;
+    let live = true;
+    openDoc(f).then((doc) => { if (live) setPages((p) => (p[f.id] === doc.count ? p : { ...p, [f.id]: doc.count })); return partsOf(f); }).then((ns) => { if (live && ns && ns.length) setHalves((x) => (String(x[f.id]) === String(ns) ? x : { ...x, [f.id]: ns })); }).catch(() => {});
+    return () => { live = false; };
+  }, [askedFile?.id]);
   const notePages = (fileId, count, page, n) => {
     setPages((p) => {
       if (p[fileId] === count) return p;
@@ -660,12 +700,13 @@ export function Screen({ id, data, d, onBack = null }) {
     });
     setHalves((x) => (x[fileId]?.[page] === n ? x : { ...x, [fileId]: Object.assign([...(x[fileId] || [])], { [page]: n }) }));
   };
-  // Moving itself: the stop with its key; else its item's card; else the cover
+  // Moving itself: the stop with its key; else (a page still being counted) its item's card; else the cover
   const ownAt = useMemo(() => {
     if (!OWN || !deck.length) return 0;
     const k = here.key ? deck.findIndex((s) => s.key === here.key) : -1;
     if (k >= 0) return k;
-    const i = here.itemId ? deck.findIndex((s) => s.itemId === here.itemId) : -1;
+    const item = here.itemId || (here.key && !/^(section|cover|since|end)/.test(here.key) ? here.key.split(':')[0] : '');
+    const i = item ? deck.findIndex((s) => s.itemId === item) : -1;
     return i >= 0 ? i : 0;
   }, [deck, here]);
   deckRef.current = deck;
@@ -676,7 +717,8 @@ export function Screen({ id, data, d, onBack = null }) {
     window.parent?.postMessage({ type: 'board-preview-deck', id, at: ownAt, pages, halves, stops: deck.map(({ key, kind, itemId, fileId, page, part, n, sectionId }) => ({ key, kind, itemId, fileId, page, part: part || 0, n, sectionId })) }, location.origin);
   }, [deck, ownAt, pages, halves]);
   // Presenting: the slide kept for a reload
-  useEffect(() => { if (PRESENT && deck[ownAt]) { try { sessionStorage.setItem(`bs-at:${id}`, deck[ownAt].key); } catch { /* private browsing */ } } }, [ownAt, deck]);
+  // (never while the slide asked for is still being counted: a reload then would lose it)
+  useEffect(() => { if (PRESENT && deck[ownAt] && (!here.key || deck[ownAt].key === here.key)) { try { sessionStorage.setItem(`bs-at:${id}`, deck[ownAt].key); } catch { /* private browsing */ } } }, [ownAt, deck]);
 
   // The next meeting, on the calendar with no agenda yet: there's nothing to show until there is
   const waitingAgenda = data.nextPending?.id === id;
@@ -821,7 +863,9 @@ export function Screen({ id, data, d, onBack = null }) {
   // Its name (not again when the item has the same one), its page or slide, and whether it's a page's second part
   const named = docTitle(file?.name);
   const pageWord = docKind(file || {}) === 'slides' ? 'Slide' : 'Page';
-  const docWords = stop.kind === 'doc' ? [named.toLowerCase() === String(item?.title || '').trim().toLowerCase() ? '' : named, [ofPages > 1 ? `${pageWord} ${stop.page + 1} of ${ofPages}` : '', half ? 'continued' : ''].filter(Boolean).join(', ')].filter(Boolean).join(' · ') : '';
+  const docName = named.toLowerCase() === String(item?.title || '').trim().toLowerCase() ? '' : named;
+  const pageWords = [ofPages > 1 ? `${pageWord} ${stop.page + 1} of ${ofPages}` : '', half ? 'continued' : ''].filter(Boolean).join(', ');
+  const docWords = stop.kind === 'doc' && (docName || pageWords) ? html`${docName ? html`<span class="bs-foot__name">${docName}</span>` : null}${docName && pageWords ? html`<span class="bs-foot__sep bs-foot__sep--name">·</span>` : null}${pageWords}` : null;
 
   // The line under the stage and the rail are there on every stop, so the stage keeps its size from one to the next
   return html`<div class=${`bs bs--${stop.kind} ${awake ? 'is-awake' : ''} ${vote ? 'has-vote' : ''} ${MIRROR ? 'is-mirror' : ''}`}>
@@ -860,10 +904,11 @@ function Shelf({ docs, pages, row = false }) {
 function ShelfDoc({ d, width, pages }) {
   const [count, setCount] = useState(0);
   const [size, setSize] = useState(null);
-  useEffect(() => { let live = true; openDoc(d.file).then((doc) => { if (live) { setCount(doc.count); setSize(doc.size(0)); } }).catch(() => {}); return () => { live = false; }; }, [d.file.id]);
+  // Its pages counted as the screen shows them (a blank one isn't)
+  useEffect(() => { let live = true; openDoc(d.file).then(async (doc) => { if (!live) return; setCount(doc.count); setSize(doc.size(0)); const ns = await partsOf(d.file); if (live && ns.some(Boolean)) setCount(ns.filter(Boolean).length); }).catch(() => {}); return () => { live = false; }; }, [d.file.id]);
   // Its first page as it is, inside a letter page's slot: a slide or a photo sits in the middle, a tall page fits
   const ref = useCover(size ? d.file : null, size ? Math.round(Math.min(width, (width * 1.294 * size.w) / size.h)) : width);
-  const n = pages || count;
+  const n = count || pages;
   return html`<li>
     <span class="bs-shelf__cover" ref=${ref} aria-hidden="true"></span>
     <span class="bs-shelf__text"><span class="bs-shelf__t">${d.title}</span>
