@@ -31,7 +31,7 @@ import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
   isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
-  reportsOn, namesText, showsOf, booksDraw, isStatement, forBoard, cleanMeeting, heldEarly,
+  reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
 } from '../board-shared.js';
 import { YearCompare } from './books.js';
 import { FinanceReview, NoteLine, notesByKey, lineKeysOf, withLineNotes } from './review.js';
@@ -823,14 +823,14 @@ function Figures({ data }) {
   const asOf = budget && !budget.live && budget.asOf ? `, as of ${shortAsOf(budget.asOf).replace(/^(\w{3})\w*/, '$1')}` : '';
   const against = (x) => (x.waiting ? 'The year so far' : x.budget ? `${pctOf(x)}% of the ${compact(x.budget)} budget${asOf}` : growthText(x) || `Through ${shortAsOf(budget.asOf)}`);
   // (a line kept for it while the budget is read)
-  const pace = (x) => (x.waiting ? '\u00a0' : x.budget && x.last != null && x.lastFull > 0 ? `Last year by now: ${Math.round((x.last / x.lastFull) * 100)}%` : '');
+  const pace = (x) => (x.waiting ? '\u00a0' : x.budget && x.last != null && x.lastFull > 0 ? `Last year by now: ${Math.round((x.last / x.lastFull) * 100)}% of its year` : '');
   const tiles = [
     { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', href: '#/financials',
       sub: cash ? (cash.months != null ? `${monthsText(cash.months)} months of spending` : cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : '') : 'From the balance sheet',
       note: cash && cash.prior != null ? `${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} from a year ago` : '', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '' },
-    rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: rev.actual == null ? '…' : compact(rev.actual), meter: rev, sub: against(rev), note: pace(rev), href: '#/financials', focus: rev.budget ? 'budget' : '' }
+    rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: rev.actual == null ? '…' : compact(rev.actual), meter: rev, sub: against(rev), note: pace(rev), aside: rev.inKind ? `Not counting ${compact(rev.inKind)} in\u00a0kind` : '', href: '#/financials', focus: rev.budget ? 'budget' : '' }
       : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${nextWhen || 'date to come'}` : 'None scheduled', href: '#makeovers' },
-    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: exp.actual == null ? '…' : compact(exp.actual), meter: exp, sub: against(exp), note: pace(exp), aside: exp.inKind ? `Not counting ${compact(exp.inKind)} in kind` : '', href: '#/financials', focus: exp.budget ? 'budget' : '' } : null,
+    exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: exp.actual == null ? '…' : compact(exp.actual), meter: exp, sub: against(exp), note: pace(exp), aside: exp.inKind ? `Not counting ${compact(exp.inKind)} in\u00a0kind` : '', href: '#/financials', focus: exp.budget ? 'budget' : '' } : null,
     { key: 'build', label: 'Makeovers under way', value: String(onBoard), sub: onBoard ? [`${inBuild} in build`, waitingFunds.length ? `${waitingFunds.length} awaiting funding` : ''].filter(Boolean).join(' · ') : 'None right now', note: rev && nextWhen ? `Next reveal ${nextWhen}` : '', href: '#makeovers' },
   ].filter(Boolean);
   const go = (e, t) => {
@@ -2466,20 +2466,20 @@ function Statement({ id, title, rows, asOf, priorAsOf, heads = null, which = '',
   const keys = which && said.size ? lineKeysOf(rows, which) : [];
   const noteOf = (r) => (keys.length ? said.get(keys[rows.indexOf(r)]) : null);
   // The main lines: the top headings, each group's total and the subtotals and net; every account a tap away
-  const folded = rows.filter((r) => r.k === 'sum' || (r.k === 'head' && r.d === 0) || (r.k === 'total' && r.d <= 1) || noteOf(r));
+  const folded = mainLines(rows, noteOf);
   const shown = all ? rows : folded;
   const cols = prior ? 4 : 2;
   return html`<div class="bp-stmt">
     <div class="bp-stmt__head">
       <h3 class="bp-stmt__title" id=${id}>${title}</h3>
-      ${folded.length < rows.length ? html`<button type="button" class="bp-more-btn bp-noprint" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? 'Main lines only' : 'Every account'}</button>` : null}
+      ${folded.filter((r) => !r.other).length < rows.length ? html`<button type="button" class="bp-more-btn bp-noprint" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? 'Main lines only' : 'Every account'}</button>` : null}
     </div>
     <div class="bp-stmt__scroll">
       <table class="bp-table bp-stmt__table" aria-labelledby=${id}>
         <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${heads ? heads[0] : shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${heads ? heads[1] : shortDate(priorAsOf)}</th><th scope="col" class="num bp-stmt__chg">${heads ? heads[2] : 'Change'}</th>` : null}</tr></thead>
         <tbody>${shown.map((r, i) => (r.k === 'head'
           ? html`<tr class="bp-stmt__h" key=${i}><th scope="colgroup" colspan=${cols} style=${`--d:${r.d}`}>${r.label}</th></tr>`
-          : [html`<tr class=${`bp-stmt__${r.k} ${noteOf(r) ? 'bp-stmt__noted' : ''}`} key=${i} style=${`--d:${r.d}`}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num bp-stmt__prior" data-label=${heads ? heads[1] : shortDate(priorAsOf)}>${signedMoney(r.p)}</td><td class="num bp-stmt__chg">${changeMoney(r.a, r.p)}</td>` : null}</tr>`,
+          : [html`<tr class=${`bp-stmt__${r.k} ${noteOf(r) ? 'bp-stmt__noted' : ''}`} key=${i} style=${`--d:${r.d}`}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num bp-stmt__prior" data-label=${heads ? heads[1] : shortDate(priorAsOf)}>${signedMoney(r.p)}</td><td class="num bp-stmt__chg" data-label=${heads ? heads[2] : null}>${changeMoney(r.a, r.p)}</td>` : null}</tr>`,
             noteOf(r) ? html`<tr class="bp-stmt__note" key=${`${i}-n`} style=${`--d:${r.d}`}><td colspan=${cols}><${NoteLine} note=${noteOf(r)} /></td></tr>` : null]))}</tbody>
       </table>
     </div>

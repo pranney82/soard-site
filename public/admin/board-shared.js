@@ -758,6 +758,33 @@ export const slidesOf = (it, books) => {
   const drawn = booksDraw(books);
   return showsOf(it).flatMap((k, i) => [...(i ? [{ kind: 'live', id: `live:${k}`, k }] : []), ...(k === 'cash' ? drawn.map((b) => ({ kind: 'books', id: `books:${b}`, k: b })) : [])]);
 };
+/**
+ * A statement's main lines (rows as functions/api/_quickbooks.js statementRows and budgetOf make them: { k, label, d,
+ * a, p, … }): each top heading; under it its groups' totals and, when it has no groups (Cost of Goods Sold, Other
+ * Income), its own accounts; when it has groups and accounts of its own too (Expenses: Payroll and Building, then a
+ * dozen accounts), those accounts as one "Other …" line, so the main lines always add up to its total; then the
+ * subtotals and nets. `keep(r)` keeps a line besides (one with a note on it)
+ */
+export function mainLines(rows, keep = () => false) {
+  const out = [];
+  const add = (list, k) => (list.every((x) => typeof x[k] !== 'number') ? null : Math.round(list.reduce((t, x) => t + (typeof x[k] === 'number' ? x[k] : 0), 0) * 100) / 100);
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    if (!(r.k === 'head' && r.d === 0)) { if (r.k === 'sum' || keep(r)) out.push(r); continue; }
+    let j = i + 1;
+    while (j < rows.length && !(rows[j].k === 'total' && rows[j].d === 0)) j++;
+    const body = rows.slice(i + 1, j);
+    const groups = body.some((x) => x.k === 'head' && x.d === 1);
+    const own = body.filter((x) => x.k === 'acct' && x.d === 1);
+    out.push(r);
+    for (const x of body) if ((x.k === 'total' && x.d === 1) || (!groups && x.k === 'acct' && x.d === 1) || keep(x)) out.push(x);
+    if (groups && own.length) out.push({ k: 'acct', label: `Other ${r.label.toLowerCase()}`, d: 1, other: true, ...Object.fromEntries(['a', 'p', 'b', 'y'].map((k) => [k, add(own, k)]).filter(([, v]) => v !== null)) });
+    if (j < rows.length) out.push(rows[j]);
+    i = j;
+  }
+  return out;
+}
+
 /** A financial statement as a file (a balance sheet, a P&L): QuickBooks draws them once it's connected. A budget isn't one */
 export const isStatement = (f) => f?.kind === 'financials' && !/budget/i.test(String(f.name || ''));
 

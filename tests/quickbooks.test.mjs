@@ -721,7 +721,7 @@ test('the budget against the actuals: QuickBooks’ budget line for line with th
   // Gross profit and the nets are the groups' budgets: 750,000 − 250,000 = 500,000; less 440,400; plus no other income budgeted
   assert.deepEqual(row('Gross Profit'), { k: 'sum', label: 'Gross Profit', d: 0, a: 598831.58, b: 500000, y: 600000 });
   assert.deepEqual(row('Net Income'), { k: 'sum', label: 'Net Income', d: 0, a: 122082.44, b: 59600, y: 71520 });
-  assert.deepEqual(b.totals, { revenue: 900000, spending: 828480, nonCash: 300000 }, 'the year’s revenue and spending, the in kind said apart');
+  assert.deepEqual(b.totals, { revenue: 900000, spending: 828480, nonCash: 300000, nonCashIncome: 300000 }, 'the year’s revenue and spending, the in kind said apart on both sides');
   // A budget QuickBooks keeps by the year: the year's spread evenly to the day
   const yearly = { ...fy26, BudgetDetail: [{ AccountRef: { value: '80', name: 'Individual/Corporate Revenue' }, BudgetDate: '2026-01-01', Amount: 600000 }] };
   const y = budgetOf([yearly], report, '2026-10-31', types);
@@ -755,7 +755,7 @@ test('the budget against the actuals: QuickBooks’ budget line for line with th
   assert.equal(budgetOf([old], report, '2026-10-31', types), null, 'no budget for the year: none');
   // The year in brief for the board's figures: in January, this year's budget though the statements are December's
   const fy27 = { ...fy26, Name: 'Budget_FY27_P&L', StartDate: '2027-01-01', EndDate: '2027-12-31', BudgetDetail: fy26.BudgetDetail.map((x) => ({ ...x, BudgetDate: x.BudgetDate.replace('2026', '2027') })) };
-  assert.deepEqual(budgetYear([fy26, fy27], '2027-01-10', types), { name: 'Budget_FY27_P&L', year: '2027', revenue: 900000, spending: 828480, nonCash: 300000 });
+  assert.deepEqual(budgetYear([fy26, fy27], '2027-01-10', types), { name: 'Budget_FY27_P&L', year: '2027', revenue: 900000, spending: 828480, nonCash: 300000, nonCashIncome: 300000 });
   assert.equal(budgetYear([fy26], '2027-01-10', types), null);
 });
 

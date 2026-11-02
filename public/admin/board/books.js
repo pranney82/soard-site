@@ -15,8 +15,8 @@
  */
 
 import { h, htm, useState } from '../vendor.js';
-import { money, shortDate } from '../board-shared.js';
-import { compact, storeOf, storeChange, budgetMonthsText, spentOf } from './money.js';
+import { money, shortDate, mainLines } from '../board-shared.js';
+import { compact, storeOf, storeChange, budgetMonthsText, spentOf, marginText } from './money.js';
 import { lineKeysOf, notesByKey, NoteLine } from './review.js';
 
 const html = htm.bind(h);
@@ -210,7 +210,7 @@ export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', h
   const said = notesByKey(notes);
   const keys = which && said.size ? lineKeysOf(rows, which) : [];
   const noteOf = (r) => (keys.length ? said.get(keys[rows.indexOf(r)]) : null);
-  const shown = all ? rows : rows.filter((r) => r.k === 'sum' || (r.k === 'head' && r.d === 0) || (r.k === 'total' && r.d <= 1) || noteOf(r));
+  const shown = all ? rows : mainLines(rows, noteOf);
   const cols = prior ? 4 : 2;
   const signed = (v) => (typeof v === 'number' ? (v < 0 ? `(${money(-v)})` : money(v)) : '');
   return html`<table class=${`by-stmt ${cls}`}>
@@ -235,7 +235,7 @@ export function BooksSlide({ books, kind, notes = null }) {
       <p class="bs-eyebrow">From QuickBooks${books.through ? `, January 1 to ${dayMonth(books.through)}` : ''}</p>
       <h1 class="bs-display by-slide__title">The store, ${st?.lastYear ? `${books.year} against ${st.lastYear}` : `${books.year} so far`}</h1>
       ${st ? html`<ul class="bs-figs" style="--n:3">${st.lines.map((x) => html`<li key=${x.k}>
-        <span class="bs-figs__label">${x.name}</span><span class="bs-figs__value">${compact(x.amount)}</span><span class="bs-figs__sub">${storeChange(x) ? `${storeChange(x)} on ${st.lastYear} by now` : `${books.year} so far`}</span>
+        <span class="bs-figs__label">${x.name}</span><span class="bs-figs__value">${compact(x.amount)}</span><span class="bs-figs__sub">${x.last != null ? `${st.lastYear} by now: ${compact(x.last)} · ${storeChange(x)}` : `${books.year} so far`}</span>${x.k === 'profit' && st.margin != null ? html`<span class="bs-figs__sub">${marginText(st)}</span>` : null}
       </li>`)}</ul>` : null}
     </div>`;
   }

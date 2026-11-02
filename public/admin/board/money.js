@@ -202,6 +202,8 @@ export const spentOf = (books) => (typeof books?.nonCash === 'number' ? less(boo
  * QuickBooks' revenue and expenses so far in place of the sheet's actuals. The budget beside them stays the
  * sheet's, and only for the same fiscal year: a new year's figures are never measured against last year's budget
  */
+/** The year's in-kind gifts among its revenue (QuickBooks' categories, ./mixOf) */
+const inKindOf = (sources) => (sources || []).filter((x) => x.key === 'inkind').reduce((t, x) => t + x.amount, 0);
 export function withBooks(sheet, books) {
   if (!books || typeof books.revenue !== 'number') return sheet;
   const same = sameYear(sheet, books);
@@ -213,7 +215,9 @@ export function withBooks(sheet, books) {
     : typeof ly?.nonCash === 'number' && typeof ly?.full?.nonCash === 'number' ? [less(ly.expenses, ly.nonCash), less(ly.full.expenses, ly.full.nonCash)] : [null, null];
   return {
     year: same && sheet.label ? sheet.label : books.year, asOf: shortDate(books.through), live: true, at: books.at,
-    revenue: line(books.revenue, sheet?.revenue, ly?.revenue, ly?.full?.revenue),
+    // Against QuickBooks' own budget (in kind on both sides) revenue leaves the in kind out too, so the two figures are
+    // cash in and cash out (the sheet's budget counts in-kind gifts as revenue). Last year's pace stays its whole revenue's
+    revenue: sheet?.qbo ? { ...line(books.revenue - inKindOf(books.sources), sheet.revenue, ly?.revenue, ly?.full?.revenue), inKind: inKindOf(books.sources) } : line(books.revenue, sheet?.revenue, ly?.revenue, ly?.full?.revenue),
     expenses: { ...line(spentOf(books), sheet?.expenses, ...lyCash), inKind: books.nonCash > 0 ? books.nonCash : 0 }, programs: null,
     meeting: sheet?.meeting || null, file: sheet?.file || null, qbo: sheet?.qbo || '',
   };
@@ -239,7 +243,7 @@ export function booksBudget(books) {
   const st = !now && books.budget?.from === `${books.year}-01-01` ? { name: books.budget.name, ...books.budget.totals } : null;
   const t = now || st;
   if (!(t?.revenue > 0)) return null;
-  return { year: books.year, label: '', asOf: '', revenue: { budget: t.revenue }, expenses: { budget: Math.max(0, t.spending - (t.nonCash || 0)) }, programs: null, meeting: null, file: null, qbo: t.name };
+  return { year: books.year, label: '', asOf: '', revenue: { budget: Math.max(0, t.revenue - (t.nonCashIncome || 0)) }, expenses: { budget: Math.max(0, t.spending - (t.nonCash || 0)) }, programs: null, meeting: null, file: null, qbo: t.name };
 }
 export const pctOf = (x) => (x?.budget ? Math.round((x.actual / x.budget) * 100) : null);
 /** "31% by now last year": how much of last year's whole year had come in (or gone out) by this day, beside this year's share of its budget */
@@ -380,7 +384,7 @@ export function storeOf(books) {
     { k: 'sales', name: 'Sales', amount: s.sales, last: ly ? ly.sales : null, accounts: s.salesAccounts || [] },
     { k: 'cost', name: 'Cost of goods', amount: s.cost, last: ly ? ly.cost : null, accounts: s.costAccounts || [] },
     { k: 'profit', name: 'Profit before staff and rent', amount: s.profit, last: ly ? ly.profit : null, accounts: [] },
-  ] };
+  ], margin: s.sales > 0 ? s.profit / s.sales : null, lastMargin: ly?.sales > 0 ? ly.profit / ly.sales : null };
 }
 /** A store line against last year's same days: a share for its sales and cost, dollars for the profit (which can cross zero) */
 export const storeChange = (x) => (x.last == null ? '' : x.amount === x.last ? 'Even' : x.k === 'profit' ? `${x.amount > x.last ? '▲' : '▼'} ${compact(Math.abs(x.amount - x.last))}` : changeOf(x.amount, x.last));
@@ -390,8 +394,13 @@ export function StoreFigures({ books }) {
   const st = storeOf(books);
   if (!st) return null;
   return html`<ul class="bp-store">${st.lines.map((x) => html`<li key=${x.k} class=${`bp-store__${x.k}`}>
-    <span class="bp-store__name">${x.name}</span><strong class="bp-store__value">${compact(x.amount)}</strong>${storeChange(x) ? html`<span class="bp-store__ly">${storeChange(x)} on ${st.lastYear} by now</span>` : null}
+    <span class="bp-store__name">${x.name}</span><strong class="bp-store__value">${compact(x.amount)}</strong>${storeChange(x) ? html`<span class="bp-store__ly">${storeChange(x)} on ${st.lastYear} by now</span>` : null}${x.k === 'profit' && st.margin != null ? html`<span class="bp-store__ly">${marginText(st)}</span>` : null}
   </li>`)}</ul>`;
+}
+/** "41% of sales (58% in 2025)": the store's profit as a share of its sales, beside last year's */
+export function marginText(st) {
+  const pct = (m) => `${Math.round(m * 100)}%`;
+  return `${pct(st.margin)} of sales${st.lastMargin != null ? ` (${pct(st.lastMargin)} in ${st.lastYear})` : ''}`;
 }
 
 /** Financials: the store's lines beside last year's same days, each with the QuickBooks accounts in it */
@@ -401,7 +410,10 @@ export function StoreTable({ books }) {
   const signed = (n) => `${n < 0 ? '−' : ''}${money(Math.abs(n))}`;
   return html`<table class="bp-table bp-cmp bp-storetable">
     <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${st.year} so far</th>${st.lastYear ? html`<th scope="col" class="num">${st.lastYear}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
-    <tbody>${st.lines.map((x) => html`<tr key=${x.k} class=${x.k === 'profit' ? 'bp-row--net' : ''}>
+    <tbody>${[...st.lines, ...(st.margin != null ? [{ k: 'margin', name: 'Profit as a share of sales', margin: true }] : [])].map((x) => x.margin ? html`<tr key="margin" class="bp-storetable__margin">
+      <th scope="row">${x.name}</th><td class="num">${Math.round(st.margin * 100)}%</td>
+      ${st.lastYear ? html`<td class="num bp-cmp__ly" data-label=${`${st.lastYear}, same days`}>${st.lastMargin == null ? '–' : `${Math.round(st.lastMargin * 100)}%`}</td><td class="num bp-cmp__chg">${st.lastMargin == null ? '–' : `${st.margin >= st.lastMargin ? '▲' : '▼'} ${Math.abs(Math.round((st.margin - st.lastMargin) * 100))} pts`}</td>` : null}
+    </tr>` : html`<tr key=${x.k} class=${x.k === 'profit' ? 'bp-row--net' : ''}>
       <th scope="row">${x.name}${x.accounts.length ? html`<small>${x.accounts.join(', ')}</small>` : null}</th>
       <td class="num">${signed(x.amount)}</td>
       ${st.lastYear ? html`<td class="num bp-cmp__ly" data-label=${`${st.lastYear}, same days`}>${x.last == null ? '–' : signed(x.last)}</td><td class="num bp-cmp__chg">${storeChange(x) || '–'}</td>` : null}

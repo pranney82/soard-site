@@ -671,16 +671,17 @@ function budgetFigures(bud, asOf) {
 
 /**
  * A budget's whole year by kind (`types`: each account's QuickBooks type): { revenue (Income, Other Income),
- * spending (Cost of Goods Sold, Expenses, Other Expenses), nonCash (the spending named in kind, donated, depreciation) }
+ * spending (Cost of Goods Sold, Expenses, Other Expenses), nonCash (the spending named in kind, donated, depreciation),
+ * nonCashIncome (the revenue so named: the in-kind gifts) }
  */
 function budgetTotals(by, type) {
-  const t = { revenue: 0, spending: 0, nonCash: 0 };
+  const t = { revenue: 0, spending: 0, nonCash: 0, nonCashIncome: 0 };
   for (const [id, c] of by) {
     const g = GROUP_OF_TYPE[type.get(id)];
-    if (g === 'Income' || g === 'OtherIncome') t.revenue += c.year;
+    if (g === 'Income' || g === 'OtherIncome') { t.revenue += c.year; if (NON_CASH.test(accountName(c.name.split(':').at(-1)))) t.nonCashIncome += c.year; }
     else if (SPENDING.includes(g)) { t.spending += c.year; if (NON_CASH.test(accountName(c.name.split(':').at(-1)))) t.nonCash += c.year; }
   }
-  return { revenue: round2(t.revenue), spending: round2(t.spending), nonCash: round2(t.nonCash) };
+  return { revenue: round2(t.revenue), spending: round2(t.spending), nonCash: round2(t.nonCash), nonCashIncome: round2(t.nonCashIncome) };
 }
 
 /** The year's budget in brief, for the board's figures (revenue and expenses against it all year, January too) → { name, year, ...budgetTotals } or null */
@@ -782,7 +783,7 @@ export function functionsOf(report) {
 
 const DAILY_RETRY_MS = 60 * 60 * 1000;
 // What the daily read keeps: one up whenever it keeps something new, so a deploy's figures show that day, not the next
-const DAILY_SHAPE = 8;
+const DAILY_SHAPE = 9;
 /**
  * The year in context, now (about ten reports): kept in books_daily with its day. Trouble is logged and kept, and the
  * last good read stays; the hourly read is the one that tells Slack

@@ -200,6 +200,14 @@ function storeBox(books) {
     if (st.lastYear) tr.append(el('td', 'num', x.last == null ? '–' : signed(x.last)), el('td', 'num', storeChange(x) || '–'));
     tbody.append(tr);
   }
+  // Its profit as a share of its sales, beside last year's
+  if (st.margin != null) {
+    const pct = (m) => (m == null ? '–' : `${Math.round(m * 100)}%`);
+    const tr = el('tr', '');
+    tr.append(el('th', '', 'Profit as a share of sales'), el('td', 'num', pct(st.margin)));
+    if (st.lastYear) tr.append(el('td', 'num', pct(st.lastMargin)), el('td', 'num', st.lastMargin == null ? '–' : `${st.margin >= st.lastMargin ? '▲' : '▼'} ${Math.abs(Math.round((st.margin - st.lastMargin) * 100))} pts`));
+    tbody.append(tr);
+  }
   t.append(thead, tbody);
   box.append(t);
   return box;

@@ -1283,7 +1283,7 @@ try {
     position: [{ k: 'head', label: 'Assets', d: 0 }, { k: 'total', label: 'Total Bank Accounts', d: 1, a: 608532, p: 655431 }, { k: 'total', label: 'TOTAL ASSETS', d: 0, a: 870767, p: 794994 }],
     activity: [{ k: 'head', label: 'Income', d: 0 }, { k: 'total', label: 'Total Income', d: 0, a: 1884217, p: 1909703 }, { k: 'sum', label: 'Net Income', d: 0, a: 189248, p: 176000 }] };
   // QuickBooks' budget against the actuals to the statements' day (_quickbooks.js budgetOf): the board's budget
-  const budget = { name: 'Budget_FY26_P&L', from: `${yr}-01-01`, to: `${yr}-12-31`, asOf: day(-30), step: 1, monthly: true, months: 10, of: 12, totals: { revenue: 2000000, spending: 1500000, nonCash: 200000 },
+  const budget = { name: 'Budget_FY26_P&L', from: `${yr}-01-01`, to: `${yr}-12-31`, asOf: day(-30), step: 1, monthly: true, months: 10, of: 12, totals: { revenue: 2000000, spending: 1500000, nonCash: 200000, nonCashIncome: 200000 },
     rows: [{ k: 'head', label: 'Income', d: 0 }, { k: 'acct', label: 'Individual/Corporate Revenue', d: 1, a: 700000, b: 500000, y: 600000 }, { k: 'total', label: 'Total Income', d: 0, a: 1884217, b: 1666667, y: 2000000 }, { k: 'sum', label: 'Net Income', d: 0, a: 189248, b: 150000, y: 180000 }] };
   await DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at) VALUES (?, ?, ?, ?, ?)').bind('qbo', JSON.stringify({ shape: 3, day: day(0), lastYear: lastBooks, trailing: null, months: [], statements, functions: null, monthly, budget }), day(0), readAt, readAt).run();
   for (const width of [1440, 390]) {
@@ -1296,11 +1296,11 @@ try {
     ok(await overflow(money) <= 0, `Home at ${width}: the categories fit`);
     // The year against QuickBooks' budget (the board's): revenue against the year's, expenses against its spending less the in kind
     const against = await money.evaluate(() => [...document.querySelectorAll('.bp-fig')].map((f) => f.textContent.replace(/\s+/g, ' ')).filter((t) => /revenue|expenses/i.test(t)).join(' | '));
-    ok(/94% of the \$2M budget/.test(against) && /75% of the \$1.3M budget/.test(against), `Home at ${width}: revenue and expenses against QuickBooks’ budget (${against})`);
+    ok(/\$1.66M\s*92% of the \$1.8M budget/.test(against) && /75% of the \$1.3M budget/.test(against) && /Not counting \$220K in kind/.test(against.replace(/\u00a0/g, ' ')), `Home at ${width}: revenue and expenses against QuickBooks’ budget (${against})`);
     // The store (_quickbooks.js storeOf: the accounts named for it): its sales, cost of goods and the profit between,
     // each against last year by now; the profit says it's before the staff and rent the books keep with SOARD's
     const store = await money.$$eval('.bp-sum__store .bp-store li', (l) => l.map((x) => [...x.children].map((c) => c.textContent).join(' | ')));
-    ok(JSON.stringify(store) === JSON.stringify([`Sales | $415K | ▼ 50% on ${yr - 1} by now`, `Cost of goods | $250K | ▼ 34% on ${yr - 1} by now`, `Profit before staff and rent | $165K | ▼ $285K on ${yr - 1} by now`]), `Home at ${width}: the store's sales, cost of goods and profit, each against last year by now (${JSON.stringify(store)})`);
+    ok(JSON.stringify(store) === JSON.stringify([`Sales | $415K | ▼ 50% on ${yr - 1} by now`, `Cost of goods | $250K | ▼ 34% on ${yr - 1} by now`, `Profit before staff and rent | $165K | ▼ $285K on ${yr - 1} by now | 40% of sales (54% in ${yr - 1})`]), `Home at ${width}: the store's sales, cost of goods and profit, each against last year by now (${JSON.stringify(store)})`);
     await shot(money, `27a-store-home-${width}`);
     const spent = await money.evaluate(() => [...document.querySelectorAll('.bp-fig')].find((f) => /expenses/i.test(f.querySelector('.bp-fig__label')?.textContent || ''))?.textContent || '');
     ok(/\$980K/.test(spent) && /Not counting \$220K in kind$/.test(spent.replace(/\u00a0/g, ' ')), `Home at ${width}: the expenses as the budget counts them, without the in kind, saying so (${spent})`);
@@ -1310,7 +1310,7 @@ try {
       await money.goto(`${SITE}/admin/board/#/financials`, { waitUntil: 'networkidle0' });
       ok(await money.waitForSelector('.bp-mixtable', { timeout: 6000 }).then(() => true, () => false), 'Financials: the categories as a table');
       const storeRows = await money.$$eval('.bp-storetable tbody tr', (r) => r.map((x) => x.textContent));
-      ok(JSON.stringify(storeRows) === JSON.stringify(['SalesStore Income, Store Discounts$415,000$830,000▼ 50%', 'Cost of goodsStore COGS$250,000$380,000▼ 34%', 'Profit before staff and rent$165,000$450,000▼ $285K']) && /staff, rent and utilities are in SOARD’s shared costs/.test(await money.$eval('#store', (x) => x.textContent)), `Financials: the store beside last year, each line with its accounts, and why the profit is before staff and rent (${JSON.stringify(storeRows)})`);
+      ok(JSON.stringify(storeRows) === JSON.stringify(['SalesStore Income, Store Discounts$415,000$830,000▼ 50%', 'Cost of goodsStore COGS$250,000$380,000▼ 34%', 'Profit before staff and rent$165,000$450,000▼ $285K', 'Profit as a share of sales40%54%▼ 14 pts']) && /staff, rent and utilities are in SOARD’s shared costs/.test(await money.$eval('#store', (x) => x.textContent)), `Financials: the store beside last year, each line with its accounts, and why the profit is before staff and rent (${JSON.stringify(storeRows)})`);
       // The statements one at a time: the year's activities first, the financial position a tap away
       const firstStmt = await money.evaluate(() => [...document.querySelectorAll('#st-h ~ * .bp-stmt__title, .bp-latest .bp-stmt__title')].map((t) => t.textContent));
       await clickText(money, '.bp-stmts button', /^Financial position$/);
@@ -1371,7 +1371,7 @@ try {
       ok(paper.segs === 6 && paper.rows.length === 6 && paper.rows[1] === 'Store sales$415,00022%$830,000▼ 50%', `Print it all: where the revenue came from, beside last year (${JSON.stringify(paper.rows.slice(0, 2))})`);
       const storePaper = await money.evaluate(() => [...document.querySelectorAll('.bpp-store tbody tr')].map((r) => r.textContent));
       ok(await money.evaluate(() => [...document.querySelectorAll('.bpp-stmt caption')].some((c) => /^Budget against actual, January 1 to .*Budget_FY26_P&L/.test(c.textContent))), 'Print it all: QuickBooks’ budget against the actuals after the statements');
-      ok(JSON.stringify(storePaper) === JSON.stringify(['Sales$415,000$830,000▼ 50%', 'Cost of goods$250,000$380,000▼ 34%', 'Profit before staff and rent$165,000$450,000▼ $285K']), `Print it all: the store beside last year (${JSON.stringify(storePaper)})`);
+      ok(JSON.stringify(storePaper) === JSON.stringify(['Sales$415,000$830,000▼ 50%', 'Cost of goods$250,000$380,000▼ 34%', 'Profit before staff and rent$165,000$450,000▼ $285K', 'Profit as a share of sales40%54%▼ 14 pts']), `Print it all: the store beside last year (${JSON.stringify(storePaper)})`);
       await money.evaluate(() => dispatchEvent(new Event('afterprint')));
       // On the screen: QuickBooks' slides after the money, each a slide of its own in the list beside the agenda
       await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}`, { waitUntil: 'networkidle0' });
@@ -1385,7 +1385,7 @@ try {
       await shot(jane, '28-screen-books-year');
       // The store's slide, after the money, in the list beside the agenda (main's e234f2da, on the one meeting page)
       await slide(/The store/);
-      ok(await qb.waitForFunction((want) => /^The store, \d{4} against \d{4}$/.test(document.querySelector('.by-slide__title')?.textContent || '') && [...document.querySelectorAll('.by-slide .bs-figs li')].map((l) => [...l.children].map((c) => c.textContent.trim()).join(' ')).join('|') === want, { timeout: 15000 }, `Sales $415K ▼ 50% on ${yr - 1} by now|Cost of goods $250K ▼ 34% on ${yr - 1} by now|Profit before staff and rent $165K ▼ $285K on ${yr - 1} by now`).then(() => true, () => false), 'the screen: the store after the year, its sales, cost of goods and profit against last year');
+      ok(await qb.waitForFunction((want) => /^The store, \d{4} against \d{4}$/.test(document.querySelector('.by-slide__title')?.textContent || '') && [...document.querySelectorAll('.by-slide .bs-figs li')].map((l) => [...l.children].map((c) => c.textContent.trim()).join(' ')).join('|') === want, { timeout: 15000 }, `Sales $415K ${yr - 1} by now: $830K · ▼ 50%|Cost of goods $250K ${yr - 1} by now: $380K · ▼ 34%|Profit before staff and rent $165K ${yr - 1} by now: $450K · ▼ $285K 40% of sales (54% in ${yr - 1})`).then(() => true, () => false), 'the screen: the store after the year, its sales, cost of goods and profit against last year');
       await shot(jane, '28a-screen-books-store');
       await slide(/Statement of activities/);
       ok(await qb.waitForFunction(() => /^Statement of activities/.test(document.querySelector('.by-slide__title')?.textContent || '') && /Net Income/.test(document.querySelector('.by-stmt')?.textContent || ''), { timeout: 15000 }).then(() => true, () => false), 'then the statement of activities beside a year before');

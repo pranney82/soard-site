@@ -6,7 +6,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanMeeting, deckOf, forBoard, showsOf, booksDraw, cleanLive, liveOfStop, stopIndex, isFilled } from '../public/admin/board-shared.js';
+import { cleanMeeting, deckOf, forBoard, showsOf, booksDraw, cleanLive, liveOfStop, stopIndex, isFilled, mainLines } from '../public/admin/board-shared.js';
 
 const BOOKS = {
   revenue: 1876045, expenses: 1200000, year: '2026',
@@ -75,4 +75,24 @@ test('the meeting as it’s held carries each item’s other shows, so the scree
   const v = await liveView(env, 'm_show1', { admin: true });
   assert.deepEqual(v.sections[0].items.find((it) => it.id === 'i_pro1').also, ['reveals']);
   assert.ok(deckOf(v).some((s) => s.key === 'i_pro1:live:reveals'));
+});
+
+test('a statement’s main lines add up: a group’s own accounts as one “Other …” line, a section without groups by its accounts', () => {
+  const rows = [
+    { k: 'head', label: 'Cost of Goods Sold', d: 0 }, { k: 'acct', label: 'Store COGS', d: 1, a: 271420, p: 383345 }, { k: 'acct', label: 'Makeover COGS', d: 1, a: 289494, p: 206060 },
+    { k: 'total', label: 'Total Cost of Goods Sold', d: 0, a: 560914, p: 589405 },
+    { k: 'head', label: 'Expenses', d: 0 }, { k: 'head', label: 'Payroll Expense', d: 1 }, { k: 'acct', label: 'Salary Expense', d: 2, a: 475793, p: 571071 }, { k: 'total', label: 'Total Payroll Expense', d: 1, a: 475793, p: 571071 },
+    { k: 'acct', label: 'Legal & Professional Expense', d: 1, a: 37245, p: 26934 }, { k: 'acct', label: 'Office Expense', d: 1, a: 38975, p: 25750 },
+    { k: 'total', label: 'Total Expenses', d: 0, a: 552013, p: 623755 }, { k: 'sum', label: 'Net Income', d: 0, a: 176561, p: 150144 },
+  ];
+  const main = mainLines(rows);
+  assert.deepEqual(main.map((r) => r.label), ['Cost of Goods Sold', 'Store COGS', 'Makeover COGS', 'Total Cost of Goods Sold', 'Expenses', 'Total Payroll Expense', 'Other expenses', 'Total Expenses', 'Net Income']);
+  assert.deepEqual(main.find((r) => r.other), { k: 'acct', label: 'Other expenses', d: 1, other: true, a: 76220, p: 52684 }, 'Legal and Office as one line');
+  // Read down, Expenses' main lines add up to its total
+  assert.equal(main.filter((r) => r.d === 1 && ['Total Payroll Expense', 'Other expenses'].includes(r.label)).reduce((t, r) => t + r.a, 0), 552013);
+  // A budget's rows carry their budget (b) and year (y) through the "Other" line too
+  const bud = mainLines(rows.map((r) => (r.k === 'head' ? r : { ...r, b: 1, y: 2 })));
+  assert.deepEqual([bud.find((r) => r.other).b, bud.find((r) => r.other).y], [2, 4]);
+  // A line with a note on it stays besides
+  assert.ok(mainLines(rows, (r) => r.label === 'Salary Expense').some((r) => r.label === 'Salary Expense'));
 });
