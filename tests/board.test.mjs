@@ -288,6 +288,36 @@ test('a member answers for themselves: their own action items, their signature (
 
 // ─── The packet email ───────────────────────────────────────────────
 
+test('the agenda approved is what emails the board: once, put on the board page first, and not before the sign-in email', async () => {
+  const { readSettings, writeState } = await import('../functions/api/_board-roles.js');
+  const { chairApprove } = await import('../functions/api/_board-asks.js');
+  await writeState(env.DB, 'settings', { ...(await readSettings(env.DB)), asks: 'on' });
+  const agendas = () => outside.filter((c) => c.url === 'https://api.resend.com/emails/batch').flatMap((c) => c.body).filter((x) => /^The agenda and documents/.test(x.subject));
+  const admin = { admin: true, adminEmail: FOUNDER };
+  const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(12) })).body.meeting;
+  // Approved before the board knows how to sign in: it waits, off the board page
+  const r = await chairApprove(env, { meetingId: m.id }, admin);
+  assert.equal(r.agenda, 'waiting');
+  assert.equal(agendas().length, 0);
+  assert.equal((await getMeeting(env.DB, m.id)).shared, false);
+  // The sign-in email goes: the heartbeat sends the agenda, on the board page first, to every board member with an email
+  await adminApi(FOUNDER, { action: 'send-welcome' });
+  await maybeRunBoard(env);
+  const sent = agendas();
+  const now = await getMeeting(env.DB, m.id);
+  assert.ok(sent.length >= 2 && sent.every((x) => !/\[Preview\]/.test(x.subject)), JSON.stringify(sent.map((x) => x.to)));
+  assert.deepEqual([now.shared, !!now.packetSentAt, now.packetSentTo], [true, true, sent.length]);
+  // Never twice: not on the next heartbeat, not when approved again
+  await maybeRunBoard(env);
+  await chairApprove(env, { meetingId: m.id }, admin);
+  assert.equal(agendas().length, sent.length);
+  // With the sign-in email out, approving sends it right away
+  const later = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(40) })).body.meeting;
+  assert.equal((await chairApprove(env, { meetingId: later.id }, admin)).agenda, 'sent');
+  assert.equal(agendas().length, sent.length * 2);
+});
+
+
 test('the documents email is the link: the documents by name, nothing attached, no notes or board-only titles; Send it to me goes only to you', async () => {
   const { meeting } = await sharedMeetingWithFiles();
   const mail = packetEmail(await getMeeting(env.DB, meeting.id), { files: ['Balance sheet.pdf'] });

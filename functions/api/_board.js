@@ -1079,6 +1079,46 @@ export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) 
   return { sent: r.sent, failed: r.failed, errors: r.errors, to: test ? to : undefined, documents: docs.names.length + docs.hidden };
 }
 
+/**
+ * The agenda approved (the chair's review on the board page, where Peter and Holly can approve it too) is what emails
+ * the board (Peter, Nov 2 2026: "that's what should trigger the email"): the meeting goes on the board page and the
+ * board gets the email, once. It waits for the email on how to sign in, so nobody gets an agenda before they know how
+ * to open it; the heartbeat sends it then (maybeSendApprovedAgendas).
+ * → { sent, failed, … } | { waiting: 'sign-in' } | null (nothing to send: sent already, not ahead, a practice)
+ */
+export async function sendApprovedAgenda(env, id, { now = Date.now() } = {}) {
+  const m = await getMeeting(env.DB, id);
+  if (!m || m.practice || m.notBoard || m.packetSentAt || !isDate(m.date) || m.date < todayEastern(now) || !emailConfigured(env)) return null;
+  if (!(await readState(env.DB, 'welcome')).sentAt) return { waiting: 'sign-in' };
+  // Once, even when the approval and the heartbeat reach it together
+  const key = `agenda-email:${m.id}`;
+  const at = new Date(now).toISOString();
+  const claim = await env.DB.prepare('INSERT INTO board_state (key, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO NOTHING').bind(key, JSON.stringify({ at }), at).run();
+  if (!claim?.meta?.changes) return null;
+  try {
+    if (!m.shared) await patchMeeting(env.DB, m.id, (cur) => ({ ...cur, shared: true }), { by: 'Board' });
+    const r = await sendPacket(env, m.id, { by: 'Board', replyTo: await boardAdmins(env.DB) });
+    if (!r.sent) throw Object.assign(new Error(r.errors?.[0] || 'No email went'), { status: 502 });
+    return r;
+  } catch (err) {
+    // Not sent: the heartbeat tries again
+    await env.DB.prepare('DELETE FROM board_state WHERE key = ?').bind(key).run();
+    throw err;
+  }
+}
+
+/** Each agenda approved before the board had the sign-in email (or that didn't go): sent once it can be. Never throws */
+export async function maybeSendApprovedAgendas(env, { now = Date.now() } = {}) {
+  try {
+    if (!(await readState(env.DB, 'welcome')).sentAt) return;
+    const since = new Date(now - 60 * 86400000).toISOString();
+    const rows = (await env.DB.prepare("SELECT meeting_id FROM board_asks WHERE kind = 'chair' AND status = 'approved' AND in_at >= ?").bind(since).all()).results || [];
+    for (const { meeting_id: id } of rows) await sendApprovedAgenda(env, id, { now }).catch((err) => console.error('[board] approved agenda', id, err.message));
+  } catch (err) {
+    if (!/no such table/i.test(err.message)) console.error('[board] approved agendas', err.message);
+  }
+}
+
 /** The board approved a meeting's minutes (at a later meeting, on its date) */
 export async function approveMinutes(env, id, { on, by }) {
   const m = await getMeeting(env.DB, id);
@@ -1829,6 +1869,7 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     const invites = await import('./_board-invite.js');
     await invites.maybeRefreshInvites(env, { fetchImpl, now });
     await invites.maybeCheckInvites(env, { fetchImpl, now });
+    await maybeSendApprovedAgendas(env, { now });
     await maybeRereadEmailAgendas(env, { now });
     await maybeDraftAgendas(env, { now });
     await maybeLockNumbers(env, { fetchImpl, now });

@@ -209,7 +209,9 @@ function Approve({ r, ctx, founders }) {
     setBusy(false);
     if (!j.ok) { say(j.error || 'It wasn’t approved. Try again.', 'warn'); return; }
     setData((dd) => withReview(dd, { approvedAt: j.approvedAt, approvedBy: j.approvedBy }));
-    say(`The agenda is approved. ${founders} get word by email.`);
+    say(j.agenda === 'sent' ? 'The agenda is approved and on its way to the board.'
+      : j.agenda === 'waiting' ? 'The agenda is approved. The board gets it as soon as they’ve had the email on how to sign in.'
+      : `The agenda is approved. ${founders} get word by email.`);
   };
   return html`<button type="button" class=${`bp-btn bp-btn--primary cr-approve ${busy ? 'is-busy' : ''}`} disabled=${busy} onClick=${go}>${busy ? 'Approving…' : 'Approve the agenda'}</button>`;
 }

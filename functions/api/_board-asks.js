@@ -32,7 +32,7 @@
  * a meeting ahead not shared yet that they present in (only their own items), so the ask's link opens.
  */
 
-import { getMeeting, listMeetings, patchMeeting, roster, attachToItem, getSettings, SITE } from './_board.js';
+import { getMeeting, listMeetings, patchMeeting, roster, attachToItem, getSettings, sendApprovedAgenda, SITE } from './_board.js';
 import { peopleRows, boardAdmins, readState, writeState, readSettings, normEmail, isStaffEmail, BOARD_PAGE } from './_board-roles.js';
 import { organizerFor } from './_board-invite.js';
 import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
@@ -308,7 +308,7 @@ export function chairEmail({ m, chair, from, asks = [], people = [], cc = [] }) 
     });
     return { head, lines };
   });
-  const page = 'On your review page you can approve it, add your own notes to any item, and send a report back to its presenter with a question. Their answer goes on the agenda under the report.';
+  const page = 'On your review page you can approve it, which emails it to the board, add your own notes to any item, and send a report back to its presenter with a question. Their answer goes on the agenda under the report.';
   const other = `For anything else, or if it all looks good, just reply. It comes to ${replyReaches(cc)}.`;
   const text = [
     `Hi ${firstName(chair.name)},`,
@@ -1104,15 +1104,25 @@ export async function chairApprove(env, { meetingId }, w, { fetchImpl = fetch, n
     await env.DB.prepare(`INSERT INTO board_asks (id, kind, meeting_id, item_id, slug, name, email, title, status, asked_at, in_at, msg_ids, files, updated_at)
       VALUES (?, 'chair', ?, '', ?, ?, ?, '', 'approved', ?, ?, '[]', '[]', ?)`).bind(uid('ask_'), m.id, asker.slug || 'admin', asker.name, asker.email, nowIso(now), nowIso(now), nowIso(now)).run();
   }
+  // The approval is what emails the board the agenda (./_board.js sendApprovedAgenda), or once they've had the sign-in email
+  let agenda = '';
+  try {
+    const r = await sendApprovedAgenda(env, m.id, { now });
+    agenda = r?.sent ? 'sent' : r?.waiting ? 'waiting' : '';
+  } catch (e) {
+    agenda = 'waiting';
+    console.error('[board-asks] agenda email', e.message);
+  }
+  const next = agenda === 'sent' ? ' It’s on its way to the board.' : agenda === 'waiting' ? ' It goes to the board as soon as they’ve had the email on how to sign in.' : '';
   try {
     const ctx = await mailer(env, { fetchImpl, now });
-    const words = body([`Thanks, ${firstName(asker.name)}. The agenda for the ${meetingName(m)} on ${longDay(m.date)} is approved.`, `${firstName(ctx.senders.from.name) || 'SOARD'}`]);
+    const words = body([`Thanks, ${firstName(asker.name)}. The agenda for the ${meetingName(m)} on ${longDay(m.date)} is approved.${next}`, `${firstName(ctx.senders.from.name) || 'SOARD'}`]);
     if (row?.thread && asker.email) await replyInThread(ctx, row, { to: [asker], cc: ctx.senders.cc, ...words });
-    else if (ctx.senders.cc.length) await send(ctx, { to: ctx.senders.cc, subject: `${asker.name} approved the agenda: ${meetingName(m)}, ${shortDay(m.date)}`, ...body([`${asker.name} approved the agenda for the ${meetingName(m)} on ${longDay(m.date)}.`]) });
+    else if (ctx.senders.cc.length) await send(ctx, { to: ctx.senders.cc, subject: `${asker.name} approved the agenda: ${meetingName(m)}, ${shortDay(m.date)}`, ...body([`${asker.name} approved the agenda for the ${meetingName(m)} on ${longDay(m.date)}.${next}`]) });
   } catch (e) {
     console.error('[board-asks] approved', e.message);
   }
-  return { approvedAt: nowIso(now), approvedBy: asker.name };
+  return { approvedAt: nowIso(now), approvedBy: asker.name, agenda };
 }
 
 /** The chair's own note on an item (the chair's and the admins' only); empty takes it off → { notes } */
