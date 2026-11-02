@@ -1,0 +1,249 @@
+/**
+ * The papers every board member signs each year (the Board Member Expectations, a conflict of interest policy):
+ * signed by typing their name, by adding the copy they signed on paper, by a Board admin adding a copy handed in,
+ * or by their copy already in Drive. Who may open a copy, what the board page is told, a signature taken off, the
+ * documents email naming what's left to sign, and the board page's and the admin's routes for each.
+ * Made-up people only (the repo is public).
+ * Run: node --test tests/board-signatures.test.mjs
+ */
+import { test, beforeEach, afterEach } from 'node:test';
+import assert from 'node:assert/strict';
+import { createD1 } from './lib/d1-shim.mjs';
+import { onRequest, _resetKeyCacheForTests } from '../functions/api/_middleware.js';
+import * as admin from '../functions/api/board-admin.js';
+import * as portal from '../functions/api/board-portal.js';
+import * as fileRoute from '../functions/api/board-file.js';
+import { listDocs, saveDoc, deleteDoc, signDoc, signWithCopy, signFromDrive, unsignDoc, fileFor, packetEmail, portalData, saveMeeting, listMeetings, SIGNED_BY } from '../functions/api/_board.js';
+import { todayEastern, newMeeting } from '../public/admin/board-shared.js';
+
+// ── A real RS256 key served as Access's certs (as tests/board.test.mjs does)
+const TEAM = 'soard';
+const AUD = 'aud-tag';
+const ISS = `https://${TEAM}.cloudflareaccess.com`;
+const b64u = (bytes) => Buffer.from(bytes).toString('base64url');
+const pair = await crypto.subtle.generateKey({ name: 'RSASSA-PKCS1-v1_5', modulusLength: 2048, publicExponent: new Uint8Array([1, 0, 1]), hash: 'SHA-256' }, true, ['sign', 'verify']);
+const jwk = { ...(await crypto.subtle.exportKey('jwk', pair.publicKey)), kid: 'k1', alg: 'RS256', use: 'sig' };
+async function signIn(email) {
+  const now = Math.floor(Date.now() / 1000);
+  const h = b64u(JSON.stringify({ alg: 'RS256', kid: 'k1', typ: 'JWT' }));
+  const p = b64u(JSON.stringify({ iss: ISS, aud: [AUD], email, iat: now, nbf: now, exp: now + 3600 }));
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', pair.privateKey, new TextEncoder().encode(`${h}.${p}`));
+  return `${h}.${p}.${b64u(new Uint8Array(sig))}`;
+}
+
+const FOUNDER = 'jane@soardcharity.com';
+const MEMBER = 'alex.board@example.com';
+const OTHER = 'sam.board@example.org';
+const PEOPLE = [
+  ['jane-doe', { name: 'Jane Doe', group: 'team', title: 'Co-Founder/President' }],
+  ['alex-rivera', { name: 'Alex Rivera', group: 'board', title: 'Board Chair' }],
+  ['sam-ortiz', { name: 'Sam Ortiz', group: 'board', title: 'Board Treasurer' }],
+  ['kim-park', { name: 'Kim Park', group: 'board', title: 'Board Member' }],
+  ['old-timer', { name: 'Old Timer', group: 'board', title: 'Board Member', status: 'alumni' }],
+];
+const YEAR = Number(todayEastern().slice(0, 4));
+
+class FakeR2 {
+  constructor() { this.map = new Map(); }
+  async put(key, bytes, opts) { this.map.set(key, { bytes: new Uint8Array(bytes), type: opts?.httpMetadata?.contentType }); }
+  async get(key) { const o = this.map.get(key); return o ? { body: o.bytes, size: o.bytes.length, httpMetadata: { contentType: o.type } } : null; }
+  async delete(key) { this.map.delete(key); }
+}
+const pdf = (name, words = 'signed') => new File([new TextEncoder().encode(`%PDF-1.4 ${words}`)], name, { type: 'application/pdf' });
+const jpeg = (name) => new File([new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, 0, 0, 1, 2])], name, { type: 'image/jpeg' });
+
+let env;
+const realFetch = globalThis.fetch;
+let sent = [];
+beforeEach(async () => {
+  env = { DB: await createD1(), FILES: new FakeR2(), CF_ACCESS_TEAM_DOMAIN: TEAM, CF_ACCESS_AUD: AUD, RESEND_API_KEY: 're_test' };
+  await env.DB.exec('CREATE TABLE team (slug TEXT PRIMARY KEY, name TEXT, "group" TEXT, order_num INTEGER, data TEXT NOT NULL, updated_at TEXT)');
+  await env.DB.exec('CREATE TABLE reveal_board_emails (slug TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at TEXT)');
+  await env.DB.exec('CREATE TABLE site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)');
+  await env.DB.exec('CREATE TABLE audit_log (id INTEGER PRIMARY KEY, user_email TEXT, action TEXT, entity_type TEXT, entity_slug TEXT, entity_name TEXT, changes TEXT, path TEXT, git_status TEXT, created_at TEXT)');
+  for (const [slug, d] of PEOPLE) await env.DB.prepare('INSERT INTO team (slug, name, "group", data) VALUES (?, ?, ?, ?)').bind(slug, d.name, d.group, JSON.stringify(d)).run();
+  for (const [slug, email] of [['alex-rivera', MEMBER], ['sam-ortiz', OTHER], ['kim-park', 'kim.board@example.com']]) {
+    await env.DB.prepare('INSERT INTO reveal_board_emails (slug, email) VALUES (?, ?)').bind(slug, email).run();
+  }
+  _resetKeyCacheForTests();
+  sent = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input);
+    if (url === `${ISS}/cdn-cgi/access/certs`) return Response.json({ keys: [jwk] });
+    if (url.startsWith('https://api.resend.com/')) {
+      const b = JSON.parse(init.body);
+      sent.push(...(Array.isArray(b) ? b : [b]));
+      return Response.json(Array.isArray(b) ? { data: b.map((_, i) => ({ id: `em_${i}` })) } : { id: `em_${sent.length}` });
+    }
+    // Nothing else outside answers in these tests (the numbers, the calendar): they come back empty
+    return new Response('{}', { status: 503 });
+  };
+});
+afterEach(() => { globalThis.fetch = realFetch; });
+
+/** A request through the middleware, signed in as `email`, landing on `handler` */
+async function call(email, path, { method = 'GET', body = null, handler, form = null } = {}) {
+  const headers = { 'CF-Access-JWT-Assertion': await signIn(email), Origin: 'https://sunshineonaranneyday.com' };
+  if (body) headers['Content-Type'] = 'application/json';
+  const request = new Request(`https://sunshineonaranneyday.com${path}`, { method, headers, body: form || (body ? JSON.stringify(body) : undefined) });
+  const ctx = { request, env, data: {}, waitUntil: () => {} };
+  ctx.next = async () => handler(ctx);
+  const res = await onRequest(ctx);
+  const type = res.headers.get('Content-Type') || '';
+  return { status: res.status, body: type.includes('json') ? await res.json() : new Uint8Array(await res.arrayBuffer()) };
+}
+const formOf = (fields) => { const f = new FormData(); for (const [k, v] of Object.entries(fields)) f.append(k, v); return f; };
+const memberOf = (slug) => ({ slug, name: PEOPLE.find((p) => p[0] === slug)[1].name, email: `${slug}@example.com` });
+/** The expectations, every member signing them each year, with their file */
+async function expectations({ shared = true } = {}) {
+  const d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, shared });
+  const { putFile } = await import('../functions/api/_board.js');
+  await putFile(env, { ownerType: 'doc', ownerId: d.id, file: pdf('Board Expectations.pdf', 'the expectations') });
+  return (await listDocs(env.DB)).find((x) => x.id === d.id);
+}
+
+test('typed, or the copy signed on paper: each is the year’s signature, a copy kept staff-only beside the paper (never as its file)', async () => {
+  const d = await expectations();
+  const alex = memberOf('alex-rivera');
+  const typed = await signDoc(env.DB, d.id, alex, 'alex rivera');
+  assert.deepEqual([typed.name, typed.how, typed.year], ['Alex Rivera', 'typed', YEAR]);
+  // Sam's copy, signed on paper: the paper's own file stays the paper
+  const sam = memberOf('sam-ortiz');
+  const copy = await signWithCopy(env, d.id, pdf('Expectations signed.pdf'), { member: sam, by: sam.email });
+  assert.deepEqual([copy.name, copy.how, copy.copy.name, copy.copy.staffOnly], ['Sam Ortiz', 'copy', 'Expectations signed.pdf', true]);
+  let docs = await listDocs(env.DB);
+  let x = docs.find((y) => y.id === d.id);
+  assert.equal(x.file.name, 'Board Expectations.pdf', 'the paper is still the paper');
+  assert.deepEqual(Object.keys(x.signed).sort(), ['alex-rivera', 'sam-ortiz']);
+  assert.deepEqual([x.signed['sam-ortiz'].how, x.signed['sam-ortiz'].copy.name, x.signed['alex-rivera'].copy], ['copy', 'Expectations signed.pdf', null]);
+  const row = await env.DB.prepare("SELECT * FROM board_files WHERE owner_type = 'signed'").first();
+  assert.deepEqual([row.owner_id, row.staff_only, row.r2_key.startsWith(`board/signed/${d.id}/`)], [d.id, 1, true]);
+  // Typing after a copy is in leaves the copy (the better record)
+  const again = await signDoc(env.DB, d.id, sam, 'Sam Ortiz');
+  assert.equal(again.how, 'copy');
+  // A photo of the signed page replaces the copy added before, and the old one is gone
+  const photo = await signWithCopy(env, d.id, jpeg('IMG_2041.jpg'), { member: sam, by: sam.email });
+  assert.equal((await env.DB.prepare("SELECT count(*) AS n FROM board_files WHERE owner_type = 'signed'").first()).n, 1);
+  x = (await listDocs(env.DB)).find((y) => y.id === d.id);
+  assert.deepEqual([x.signed['sam-ortiz'].copy.id, x.signed['sam-ortiz'].copy.type], [photo.copy.id, 'image/jpeg']);
+  // Not a PDF or a picture: refused, nothing kept
+  await assert.rejects(signWithCopy(env, d.id, new File([new TextEncoder().encode('just words')], 'note.txt'), { member: memberOf('kim-park') }), /PDFs, pictures/);
+  assert.equal((await listDocs(env.DB)).find((y) => y.id === d.id).signed['kim-park'], undefined);
+  // A paper nobody signs, or one not on the board page: no signature from a member
+  const bylaws = await saveDoc(env.DB, { title: 'Bylaws' });
+  await assert.rejects(signWithCopy(env, bylaws.id, pdf('b.pdf'), { member: alex }), /doesn’t ask for a signature/);
+  const hidden = await expectations({ shared: false });
+  await assert.rejects(signWithCopy(env, hidden.id, pdf('b.pdf'), { member: alex }), /doesn’t ask for a signature/);
+  assert.deepEqual(SIGNED_BY, ['typed', 'copy', 'staff', 'drive']);
+});
+
+test('a copy is opened by Board’s admins and the member it belongs to, nobody else; deleting the paper takes its copies', async () => {
+  const d = await expectations();
+  const sam = memberOf('sam-ortiz');
+  const { copy } = await signWithCopy(env, d.id, pdf('Sam signed.pdf'), { member: sam });
+  assert.ok(await fileFor(env.DB, copy.id, { admin: true }));
+  assert.ok(await fileFor(env.DB, copy.id, { member: sam }), 'their own');
+  assert.equal(await fileFor(env.DB, copy.id, { member: memberOf('alex-rivera') }), null, 'not another member’s');
+  assert.equal(await fileFor(env.DB, copy.id, {}), null);
+  // Through the route: Sam opens it, Alex gets the same 404 as for nothing at all
+  const mine = await call(OTHER, `/api/board-file?id=${copy.id}`, { handler: fileRoute.onRequestGet });
+  assert.equal(mine.status, 200);
+  assert.match(new TextDecoder().decode(mine.body), /%PDF/);
+  assert.equal((await call(MEMBER, `/api/board-file?id=${copy.id}`, { handler: fileRoute.onRequestGet })).status, 404);
+  assert.equal((await call(FOUNDER, `/api/board-file?id=${copy.id}`, { handler: fileRoute.onRequestGet })).status, 200);
+  await deleteDoc(env, d.id);
+  assert.equal((await env.DB.prepare('SELECT count(*) AS n FROM board_files').first()).n, 0);
+  assert.equal(env.FILES.map.size, 0, 'the copy is out of storage too');
+});
+
+test('a Board admin adds a copy someone handed in, and takes off one added by mistake; a copy in Drive never overrides one they gave', async () => {
+  const d = await expectations();
+  const kim = await signWithCopy(env, d.id, pdf('Kim.pdf'), { slug: 'kim-park', by: FOUNDER });
+  assert.deepEqual([kim.name, kim.how], ['Kim Park', 'staff']);
+  await assert.rejects(signWithCopy(env, d.id, pdf('x.pdf'), { slug: 'old-timer', by: FOUNDER }), /aren’t on People → Board/, 'only someone on the board now');
+  // Taken off: the copy goes, and Kim is asked again
+  assert.equal(await unsignDoc(env, d.id, 'kim-park'), true);
+  assert.equal((await listDocs(env.DB)).find((y) => y.id === d.id).signed['kim-park'], undefined);
+  assert.equal(env.FILES.map.size, 1, 'only the paper’s own file is left');
+  assert.equal(await unsignDoc(env, d.id, 'kim-park'), false);
+  // Drive: a copy for Alex counts; for Sam, who typed already, theirs stays
+  await signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz');
+  await signFromDrive(env.DB, { docId: d.id, slug: 'alex-rivera', year: YEAR, name: 'Alex Rivera', driveId: 'drive-1', driveName: 'Expectations - Alex Rivera.pdf' });
+  await signFromDrive(env.DB, { docId: d.id, slug: 'sam-ortiz', year: YEAR, name: 'Sam Ortiz', driveId: 'drive-2', driveName: 'Expectations - Sam Ortiz.pdf' });
+  const x = (await listDocs(env.DB)).find((y) => y.id === d.id);
+  assert.deepEqual([x.signed['alex-rivera'].how, x.signed['alex-rivera'].drive], ['drive', { id: 'drive-1', name: 'Expectations - Alex Rivera.pdf' }]);
+  assert.equal(x.signed['sam-ortiz'].how, 'typed');
+  // Last year's signature isn't this year's
+  await signFromDrive(env.DB, { docId: d.id, slug: 'kim-park', year: YEAR - 1, name: 'Kim Park', driveId: 'drive-3', driveName: 'old.pdf' });
+  assert.equal((await listDocs(env.DB)).find((y) => y.id === d.id).signed['kim-park'], undefined);
+  assert.equal((await listDocs(env.DB, YEAR - 1)).find((y) => y.id === d.id).signed['kim-park'].how, 'drive');
+});
+
+test('the board page: a member sees their own signature and how many of the board signed, never who else did or their copies', async () => {
+  const d = await expectations();
+  await signWithCopy(env, d.id, pdf('Sam.pdf'), { member: memberOf('sam-ortiz') });
+  await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera');
+  // Someone who has left the board signed before: not counted
+  await env.DB.prepare("INSERT INTO board_signatures (doc_id, slug, year, name, at, how) VALUES (?, 'old-timer', ?, 'Old Timer', ?, 'typed')").bind(d.id, YEAR, new Date().toISOString()).run();
+  const data = await portalData(env, { member: { ...memberOf('sam-ortiz'), title: '' } });
+  const x = data.docs.find((y) => y.id === d.id);
+  assert.equal(x.signed, undefined, 'no one else’s signatures');
+  assert.deepEqual([x.signedCount, x.signedByMe.how, x.signedByMe.copy.name, x.signedByMe.drive], [2, 'copy', 'Sam.pdf', false]);
+  const kim = (await portalData(env, { member: { ...memberOf('kim-park'), title: '' } })).docs.find((y) => y.id === d.id);
+  assert.deepEqual([kim.signedByMe, kim.signedCount], [null, 2]);
+});
+
+test('the board page’s route: a member adds their signed copy; an admin looking can’t sign for anyone there', async () => {
+  const d = await expectations();
+  const r = await call(MEMBER, `/api/board-portal?signed=${d.id}`, { method: 'POST', form: formOf({ file: pdf('My signed expectations.pdf') }), handler: portal.onRequestPost });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.body.name, r.body.how, r.body.copy.name], ['Alex Rivera', 'copy', 'My signed expectations.pdf']);
+  const page = await call(MEMBER, '/api/board-portal', { handler: portal.onRequestGet });
+  assert.equal(page.body.docs.find((y) => y.id === d.id).signedByMe.how, 'copy');
+  const looked = await call(FOUNDER, `/api/board-portal?signed=${d.id}`, { method: 'POST', form: formOf({ file: pdf('x.pdf') }), handler: portal.onRequestPost });
+  assert.equal(looked.status, 403);
+  assert.equal((await call(MEMBER, '/api/board-portal?signed=..%2Fx', { method: 'POST', form: formOf({ file: pdf('x.pdf') }), handler: portal.onRequestPost })).status, 400);
+});
+
+test('the admin’s routes: a copy handed in, a signature taken off, each saying the document as it is now', async () => {
+  const d = await expectations();
+  const added = await call(FOUNDER, '/api/board-admin', { method: 'POST', form: formOf({ signFor: d.id, slug: 'kim-park', file: pdf('Kim paper copy.pdf') }), handler: admin.onRequestPost });
+  assert.equal(added.status, 200, JSON.stringify(added.body));
+  assert.deepEqual([added.body.signed.how, added.body.doc.signed['kim-park'].copy.name], ['staff', 'Kim paper copy.pdf']);
+  const listed = await call(FOUNDER, '/api/board-admin', { handler: admin.onRequestGet });
+  assert.equal(listed.body.docs.find((y) => y.id === d.id).signed['kim-park'].how, 'staff');
+  const off = await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'unsign', docId: d.id, slug: 'kim-park' }, handler: admin.onRequestPost });
+  assert.equal(off.status, 200);
+  assert.equal(off.body.doc.signed['kim-park'], undefined);
+  assert.equal((await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'unsign', docId: d.id, slug: 'kim-park' }, handler: admin.onRequestPost })).status, 404);
+  // A board member never reaches the admin's routes
+  assert.equal((await call(MEMBER, '/api/board-admin', { method: 'POST', form: formOf({ signFor: d.id, slug: 'alex-rivera', file: pdf('x.pdf') }), handler: admin.onRequestPost })).status, 403);
+});
+
+test('the documents email tells each member what they have still to sign this year, after the invite’s question; a preview shows it all', async () => {
+  const m = { ...newMeeting({ date: todayEastern(Date.now() + 14 * 86400000) }), id: 'm_test1', shared: true, files: [] };
+  const one = packetEmail(m, { name: 'Kim Park', toSign: ['Board Member Expectations'] });
+  assert.match(one.html, new RegExp(`Still to sign for ${YEAR}`));
+  assert.match(one.html, /Board Member Expectations/);
+  assert.match(one.html, /#\/documents/);
+  assert.match(one.html, /add the copy you signed on paper/);
+  assert.ok(one.html.indexOf('Will you be there?') < one.html.indexOf('Still to sign'), 'after the invite’s question');
+  assert.match(one.text, new RegExp(`Still to sign for ${YEAR}: Board Member Expectations`));
+  const none = packetEmail(m, { name: 'Alex Rivera', toSign: [] });
+  assert.doesNotMatch(none.html, /Still to sign/);
+  assert.doesNotMatch(none.text, /Still to sign/);
+  // Sent: Alex has signed, Sam and Kim haven't
+  const d = await expectations();
+  await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera');
+  await saveMeeting(env.DB, m, { by: FOUNDER });
+  const id = (await listMeetings(env.DB))[0].id;
+  const r = await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'send-packet', id }, handler: admin.onRequestPost });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  const to = (who) => sent.find((e) => [].concat(e.to).includes(who));
+  assert.doesNotMatch(to(MEMBER).html, /Still to sign/);
+  assert.match(to(OTHER).html, /Still to sign/);
+  assert.match(to('kim.board@example.com').html, /Still to sign/);
+  sent = [];
+  await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'send-packet', id, test: true }, handler: admin.onRequestPost });
+  assert.match(sent[0].html, /Still to sign/, 'a preview shows the papers');
+});

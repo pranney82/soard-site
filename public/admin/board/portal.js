@@ -1113,7 +1113,7 @@ function HomePage({ ctx }) {
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
         ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href="#/documents" onClick=${() => { focusNext = `doc-${x.id}`; }}>
           <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
-          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">Every board member signs it once a year</span></span>
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
       </ul>
@@ -2835,39 +2835,98 @@ function PeoplePage({ ctx }) {
 }
 
 // ─── Documents ──────────────────────────────────────────────────────
+/** A copy of a paper they signed on paper, sent as their signature this year (a later one replaces it) → the answer */
+async function sendCopy(docId, file) {
+  if (file.size > 50 * 1024 * 1024) return { ok: false, error: 'That file is over 50 MB. A PDF or a photo of the signed page is plenty.' };
+  const fd = new FormData();
+  fd.append('file', file);
+  try {
+    const r = await fetch(`${API}?signed=${encodeURIComponent(docId)}`, { method: 'POST', body: fd });
+    return await r.json().catch(() => ({ ok: false, error: /cloudflareaccess/i.test(r.url || '') ? 'Your sign-in expired. Reload the page to sign in again.' : `Something went wrong (${r.status})` }));
+  } catch { return { ok: false, error: 'No connection. Check your internet and try again.' }; }
+}
+/** Their signature this year, as it came: typed, the copy they added (theirs to replace) or SOARD did, or their copy in SOARD's Drive */
+function Signed({ doc, ctx }) {
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  const pick = useRef(null);
+  const me = doc.signedByMe;
+  const when = shortDate(String(me.at || '').slice(0, 10));
+  const copy = me.copy ? viewerLink(asViewer([{ ...me.copy, name: `${doc.title}, signed` }]), 0) : null;
+  // The wrong file sent: another one replaces it
+  const replace = async (file) => {
+    if (pick.current) pick.current.value = '';
+    if (!file) return;
+    setProblem('');
+    setBusy(true);
+    const j = await sendCopy(doc.id, file);
+    setBusy(false);
+    if (!j.ok) { setProblem(j.error); return; }
+    ctx.setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, signedByMe: { name: j.name, at: j.at || new Date().toISOString(), how: j.how, copy: j.copy || null, drive: false } } : y)) }));
+    ctx.say(`Your signed copy of ${doc.title} is replaced`);
+  };
+  const said = me.how === 'drive' ? html`Your signed copy is in SOARD’s files`
+    : me.how === 'staff' ? html`SOARD added your signed copy${when ? `, ${when}` : ''}${copy ? html` · <a class="bp-link" ...${copy}>See it</a>` : null}`
+    : me.how === 'copy' ? html`You added your signed copy${when ? `, ${when}` : ''}${copy ? html` · <a class="bp-link" ...${copy}>See it</a>` : null}
+      · <button type="button" class="bp-linkbtn" disabled=${busy} onClick=${() => pick.current?.click()}>${busy ? 'Replacing…' : 'Replace it'}</button>
+      <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => replace(e.target.files[0])} />`
+    : html`by ${me.name}${when ? `, ${when}` : ''}`;
+  return html`<p class="bp-signed" id=${`signed-${doc.id}`} tabindex="-1"><span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Signed</span> ${said}</p>
+    ${problem ? html`<p class="bp-sign__problem" role="alert">${problem}</p>` : null}`;
+}
+
 function SignForm({ d: doc, ctx }) {
   const { data, setData, say } = ctx;
   const [name, setName] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState('');
   const [problem, setProblem] = useState('');
-  if (doc.signedByMe) return html`<p class="bp-signed" id=${`signed-${doc.id}`} tabindex="-1"><span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Signed</span> by ${doc.signedByMe.name}, ${shortDate(doc.signedByMe.at.slice(0, 10))}</p>`;
+  const pick = useRef(null);
+  if (doc.signedByMe) return html`<${Signed} doc=${doc} ctx=${ctx} />`;
   if (!data.me.slug) return null;
   const id = `sign-${doc.id}`;
   // Their own name, the way the server checks it (../board-shared.js signsAs)
   const own = data.me.name || '';
+  const done = (j, said) => {
+    setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, signedByMe: { name: j.name, at: j.at || new Date().toISOString(), how: j.how || 'typed', copy: j.copy || null, drive: false }, signedCount: y.signedCount + 1 } : y)) }));
+    say(said);
+    // The form gives way to "Signed…": the focus goes there, not to the page
+    requestAnimationFrame(() => document.getElementById(`signed-${doc.id}`)?.focus({ preventScroll: true }));
+  };
   const sign = async (e) => {
     e.preventDefault();
     const typed = name.trim();
     const wrong = typed.length < 3 ? 'Type your full name, the way you sign it.' : own && !signsAs(typed, own) ? `Sign with your own name, as the board has it: ${own}` : '';
     if (wrong) { setProblem(wrong); document.getElementById(id)?.focus(); return; }
     setProblem('');
-    setBusy(true);
+    setBusy('sign');
     const j = await call({ action: 'sign', docId: doc.id, name: typed });
-    setBusy(false);
+    setBusy('');
     if (!j.ok) { setProblem(j.error); document.getElementById(id)?.focus(); return; }
-    setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, signedByMe: { name: j.name, at: new Date().toISOString() }, signedCount: y.signedCount + 1 } : y)) }));
-    say(`Signed: ${doc.title}. Thank you.`);
-    // The form gives way to "Signed by…": the focus goes there, not to the page
-    requestAnimationFrame(() => document.getElementById(`signed-${doc.id}`)?.focus({ preventScroll: true }));
+    done(j, `Signed: ${doc.title}. Thank you.`);
+  };
+  // The copy they signed on paper (a PDF or a photo of it): that's their signature for the year
+  const addCopy = async (file) => {
+    if (pick.current) pick.current.value = '';
+    if (!file) return;
+    setProblem('');
+    setBusy('copy');
+    const j = await sendCopy(doc.id, file);
+    setBusy('');
+    if (!j.ok) { setProblem(j.error); return; }
+    done(j, `Your signed copy of ${doc.title} is in. Thank you.`);
   };
   return html`<form class="bp-sign" onSubmit=${sign} noValidate>
     <label class="bp-sign__label" for=${id}>Type your full name to sign it for ${todayEastern().slice(0, 4)}</label>
     <div class="bp-sign__row">
       <input id=${id} value=${name} autocomplete="name" placeholder=${own || null} data-autofocus aria-invalid=${problem ? 'true' : null} aria-describedby=${problem ? `${id}-p` : null} onInput=${(e) => { setName(e.target.value); if (problem) setProblem(''); }} />
-      <button class="bp-btn bp-btn--primary" type="submit" disabled=${busy}>${busy ? 'Signing…' : 'I’ve read it and agree'}</button>
+      <button class="bp-btn bp-btn--primary" type="submit" disabled=${!!busy}>${busy === 'sign' ? 'Signing…' : 'I’ve read it and agree'}</button>
     </div>
     ${name.trim().length >= 3 && (!own || signsAs(name, own)) ? html`<p class="bp-sign__preview" aria-hidden="true">${(own && signsAs(name, own)) || name.trim()}</p>` : null}
-    ${problem ? html`<p class="bp-sign__problem" id=${`${id}-p`}>${problem}</p>` : null}
+    <p class="bp-sign__or">Signed it on paper already?
+      <button type="button" class="bp-linkbtn" disabled=${!!busy} onClick=${() => pick.current?.click()}>${busy === 'copy' ? 'Adding your copy…' : 'Add your signed copy'}</button>
+      <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => addCopy(e.target.files[0])} />
+    </p>
+    ${problem ? html`<p class="bp-sign__problem" id=${`${id}-p`} role="alert">${problem}</p>` : null}
   </form>`;
 }
 

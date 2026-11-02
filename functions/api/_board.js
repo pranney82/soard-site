@@ -15,8 +15,11 @@
  *                       later agenda keeps its id, so done is done everywhere)
  *   board_rsvps         a member's answer for a meeting
  *   board_docs          the document library (bylaws, policies, budgets...)
- *   board_signatures    "I've read it" for a document, per member per year
- *   board_seen          a member's last visit to the board page
+ *   board_signatures    a member's signature on a paper every member signs, per
+ *                       year: typed on the board page, their signed copy (a
+ *                       board file owned 'signed', staff-only), or their copy
+ *                       in Drive (./_board-drive.js)
+ *   board_seen         a member's last visit to the board page
  *   board_cash          the bank balance, one row per month (the heartbeat)
  *   board_state         settings and caches (./_board-roles.js)
  *
@@ -76,6 +79,10 @@ const _ready = new WeakSet();
 export async function ensureSchema(DB) {
   if (_ready.has(DB)) return;
   for (const s of SCHEMA) await DB.prepare(s).run();
+  // How a signature came (SIGNED_BY), its copy, and who added it: Nov 2026
+  for (const col of ['how', 'file_id', 'drive_id', 'drive_name', 'added_by']) {
+    try { await DB.prepare(`ALTER TABLE board_signatures ADD COLUMN ${col} TEXT`).run(); } catch { /* already there */ }
+  }
   _ready.add(DB);
 }
 
@@ -487,18 +494,35 @@ export function cleanDoc(raw = {}) {
   };
 }
 
-/** Every document with its file and this year's signatures: { ...doc, file, signed: { slug: { name, at } } } */
-export async function listDocs(DB, year = Number(todayEastern().slice(0, 4))) {
+/**
+ * How a signature came: typed on the board page; the member's own signed copy, added there; a copy a Board admin
+ * was handed for them (`staff`); their copy already in SOARD's Drive (./_board-drive.js, `drive`)
+ */
+export const SIGNED_BY = ['typed', 'copy', 'staff', 'drive'];
+const thisYear = () => Number(todayEastern().slice(0, 4));
+/** A signature row as Board shows it: { name, at, how, copy (the file, when one was added), drive ({ id, name } in Drive) } */
+const signatureOf = (s, copies = {}) => ({
+  name: s.name || '', at: s.at || '', how: SIGNED_BY.includes(s.how) ? s.how : 'typed',
+  copy: s.file_id ? copies[s.file_id] || null : null,
+  drive: s.drive_id ? { id: s.drive_id, name: s.drive_name || '' } : null,
+});
+
+/**
+ * Every document with its file and this year's signatures:
+ * { ...doc, file, signed: { slug: { name, at, how, copy, drive } } } (`sign`: every board member signs it each year)
+ */
+export async function listDocs(DB, year = thisYear()) {
   await ensureSchema(DB);
-  const [rows, files, sigs] = await Promise.all([
+  const [rows, files, sigs, copies] = await Promise.all([
     DB.prepare('SELECT data FROM board_docs').all().then((r) => r.results || []),
     filesOf(DB, 'doc'),
     DB.prepare('SELECT * FROM board_signatures WHERE year = ?').bind(year).all().then((r) => r.results || []),
+    filesOf(DB, 'signed').then((by) => Object.fromEntries(Object.values(by).flat().map((f) => [f.id, f]))),
   ]);
   return rows.map((r) => cleanDoc(parse(r.data))).map((d) => ({
     ...d,
     file: (files[d.id] || []).at(-1) || null,
-    signed: Object.fromEntries(sigs.filter((s) => s.doc_id === d.id).map((s) => [s.slug, { name: s.name, at: s.at }])),
+    signed: Object.fromEntries(sigs.filter((s) => s.doc_id === d.id).map((s) => [s.slug, signatureOf(s, copies)])),
   })).sort((a, b) => a.title.localeCompare(b.title));
 }
 
@@ -514,23 +538,75 @@ export async function saveDoc(DB, raw) {
 
 export async function deleteDoc(env, id) {
   await ensureSchema(env.DB);
-  const files = (await env.DB.prepare("SELECT id FROM board_files WHERE owner_type = 'doc' AND owner_id = ?").bind(id).all()).results || [];
+  // Its file, and the signed copies kept beside it
+  const files = (await env.DB.prepare("SELECT id FROM board_files WHERE owner_type IN ('doc', 'signed') AND owner_id = ?").bind(id).all()).results || [];
   for (const f of files) await deleteFile(env, f.id);
   await env.DB.prepare('DELETE FROM board_signatures WHERE doc_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM board_docs WHERE id = ?').bind(id).run();
 }
 
-/** A member's "I've read it" for this year, with their own name typed (../../public/admin/board-shared.js signsAs) */
+const noSignature = () => Object.assign(new Error('That document doesn’t ask for a signature'), { status: 404 });
+const writeSignature = (DB, { docId, slug, year, name, how, fileId = null, driveId = null, driveName = null, by = '', at = nowIso() }, { keep = false } = {}) =>
+  DB.prepare(`INSERT OR ${keep ? 'IGNORE' : 'REPLACE'} INTO board_signatures (doc_id, slug, year, name, at, how, file_id, drive_id, drive_name, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(docId, slug, year, name, at, how, fileId, driveId, driveName, by).run();
+
+/**
+ * A member's signature for this year, with their own name typed (../../public/admin/board-shared.js signsAs).
+ * A signed copy already in (theirs, or one in Drive) stays: it's the better record
+ */
 export async function signDoc(DB, docId, member, name) {
   await ensureSchema(DB);
   const doc = (await listDocs(DB)).find((d) => d.id === docId);
-  if (!doc?.shared || !doc.sign) throw Object.assign(new Error('That document doesn’t ask for a signature'), { status: 404 });
+  if (!doc?.shared || !doc.sign) throw noSignature();
+  const had = doc.signed[member.slug];
+  if (had && had.how !== 'typed') return { docId, year: thisYear(), ...had };
   if (String(name || '').trim().length < 3) throw Object.assign(new Error('Type your full name to sign'), { status: 400 });
   const typed = signsAs(name, member.name);
   if (!typed) throw Object.assign(new Error(`Sign with your own name, as the board has it: ${member.name}`), { status: 400 });
-  const year = Number(todayEastern().slice(0, 4));
-  await DB.prepare('INSERT OR REPLACE INTO board_signatures (doc_id, slug, year, name, at) VALUES (?, ?, ?, ?, ?)').bind(docId, member.slug, year, typed, nowIso()).run();
-  return { docId, year, name: typed };
+  const year = thisYear();
+  const at = nowIso();
+  await writeSignature(DB, { docId, slug: member.slug, year, name: typed, how: 'typed', by: member.email || '', at });
+  return { docId, year, name: typed, at, how: 'typed', copy: null, drive: null };
+}
+
+/**
+ * A signed copy as this year's signature: a board member's own, added on the board page (`member`), or one a Board
+ * admin was handed for a member (`slug`, `by`). Kept staff-only beside the paper (the member opens their own);
+ * it replaces a copy added for them before. → { docId, year, name, at, how, copy, drive }
+ */
+export async function signWithCopy(env, docId, file, { member = null, slug = '', by = '' } = {}) {
+  await ensureSchema(env.DB);
+  const doc = (await listDocs(env.DB)).find((d) => d.id === docId);
+  if (!doc?.sign || (member && !doc.shared)) throw noSignature();
+  const who = member || (await activeBoard(env.DB)).find((p) => p.slug === slug);
+  if (!who) throw Object.assign(new Error('Whose is it? They aren’t on People → Board'), { status: 404 });
+  const year = thisYear();
+  const before = await env.DB.prepare('SELECT file_id FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, who.slug, year).first();
+  const copy = await putFile(env, { ownerType: 'signed', ownerId: docId, file, staffOnly: true, by: by || who.email || '' });
+  const at = nowIso();
+  await writeSignature(env.DB, { docId, slug: who.slug, year, name: who.name, how: member ? 'copy' : 'staff', fileId: copy.id, by: by || who.email || '', at });
+  if (before?.file_id && before.file_id !== copy.id) await deleteFile(env, before.file_id);
+  return { docId, year, name: who.name, at, how: member ? 'copy' : 'staff', copy, drive: null };
+}
+
+/**
+ * A member's copy in Drive as their signature for its year (./_board-drive.js). One they already gave that year,
+ * typed or added, stays theirs (`replace`: a Board admin saying whose a copy is)
+ */
+export async function signFromDrive(DB, { docId, slug, year, name, driveId, driveName, at, by = 'Google Drive' }, { replace = false } = {}) {
+  await ensureSchema(DB);
+  await writeSignature(DB, { docId, slug, year, name, how: 'drive', driveId, driveName, by, at: at || nowIso() }, { keep: !replace });
+}
+
+/** A signature taken off (a copy added for the wrong member, say): its copy goes with it; one from Drive isn't placed again */
+export async function unsignDoc(env, docId, slug, year = thisYear()) {
+  await ensureSchema(env.DB);
+  const row = await env.DB.prepare('SELECT * FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).first();
+  if (!row) return false;
+  await env.DB.prepare('DELETE FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).run();
+  if (row.file_id) await deleteFile(env, row.file_id);
+  if (row.drive_id) await env.DB.prepare("UPDATE board_drive_signed SET state = 'off' WHERE drive_id = ?").bind(row.drive_id).run().catch(() => {});
+  return true;
 }
 
 // ─── Files ──────────────────────────────────────────────────────────
@@ -548,12 +624,16 @@ export function fileTypeOf(bytes, name) {
 }
 const safeName = (n) => String(n || 'file').normalize('NFKD').replace(/[^\w.\- ]+/g, '').replace(/\s+/g, '-').replace(/^[.-]+/, '').slice(-100) || 'file';
 
-/** Store an uploaded file for a meeting or a document → its row as the admin shows it */
+/**
+ * Store an uploaded file for a meeting, a document, or a member's signed copy of a document (`signed`, always
+ * staff-only: signWithCopy) → its row as the admin shows it
+ */
 export async function putFile(env, { ownerType, ownerId, file, kind = 'other', staffOnly = false, by = '' }) {
   await ensureSchema(env.DB);
   const bucket = boardFiles(env);
   if (!bucket) throw Object.assign(new Error('File storage isn’t set up (FILES)'), { status: 503 });
-  if (!['meeting', 'doc'].includes(ownerType) || !ID.test(String(ownerId || ''))) throw Object.assign(new Error('What is this file for?'), { status: 400 });
+  if (!['meeting', 'doc', 'signed'].includes(ownerType) || !ID.test(String(ownerId || ''))) throw Object.assign(new Error('What is this file for?'), { status: 400 });
+  if (ownerType === 'signed') staffOnly = true;
   const owner = ownerType === 'meeting'
     ? await env.DB.prepare('SELECT id FROM board_meetings WHERE id = ?').bind(ownerId).first()
     : await env.DB.prepare('SELECT id FROM board_docs WHERE id = ?').bind(ownerId).first();
@@ -567,7 +647,7 @@ export async function putFile(env, { ownerType, ownerId, file, kind = 'other', s
   const name = String(file.name || 'file').replace(/[\u0000-\u001F]/g, '').trim().slice(0, 200) || 'file';
   const key = `board/${ownerType}/${ownerId}/${id}-${safeName(name)}`;
   await bucket.put(key, bytes, { httpMetadata: { contentType: type } });
-  const fileKind = (ownerType === 'doc' ? ['other'] : FILE_KINDS.map((k) => k.id)).includes(kind) ? kind : 'other';
+  const fileKind = (ownerType === 'meeting' ? FILE_KINDS.map((k) => k.id) : ['other']).includes(kind) ? kind : 'other';
   await env.DB.prepare('INSERT INTO board_files (id, owner_type, owner_id, r2_key, name, type, size, kind, staff_only, at, by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(id, ownerType, ownerId, key, name, type, bytes.byteLength, fileKind, staffOnly ? 1 : 0, nowIso(), by).run();
   return { id, name, type, size: bytes.byteLength, kind: fileKind, staffOnly: !!staffOnly, at: nowIso() };
@@ -616,13 +696,20 @@ export async function readFileAsAgenda(env, id) {
   return parsed.sections.some((s) => s.items.length) ? parsed : null;
 }
 
-/** The file's row if this person may open it: admins any; a member only a shared meeting's or document's, never staff-only */
-export async function fileFor(DB, id, { admin = false } = {}) {
+/**
+ * The file's row if this person may open it: admins any; a member only a shared meeting's or document's, never
+ * staff-only, and their own signed copy (`member`)
+ */
+export async function fileFor(DB, id, { admin = false, member = null } = {}) {
   await ensureSchema(DB);
   if (!ID.test(String(id || ''))) return null;
   const row = await DB.prepare('SELECT * FROM board_files WHERE id = ?').bind(id).first();
   if (!row) return null;
   if (admin) return row;
+  if (row.owner_type === 'signed') {
+    const sig = member?.slug ? await DB.prepare('SELECT slug FROM board_signatures WHERE file_id = ?').bind(id).first() : null;
+    return sig && sig.slug === member.slug ? row : null;
+  }
   if (row.staff_only) return null;
   if (row.owner_type === 'meeting') return (await getMeeting(DB, row.owner_id))?.shared ? row : null;
   const doc = await DB.prepare('SELECT data FROM board_docs WHERE id = ?').bind(row.owner_id).first();
@@ -899,7 +986,8 @@ function inviteFrom(m, people, settings) {
  * The documents email, for one board member: everything stays on the board page (nothing is attached; the board
  * reads it there, the meeting presents it from there, and Print it all is there for paper). When, where and the
  * call; what the documents are (never one on a board-only item, by name); the calendar invite to answer when they
- * haven't (`ask`), naming whose it is (`from`). `files`: the documents' names.
+ * haven't (`ask`), naming whose it is (`from`). `files`: the documents' names. `toSign`: the titles of this year's
+ * papers every member signs that they haven't yet.
  */
 /** The items someone presents at a meeting, each with the page to write its report on: [{ title, url, written }] */
 export function reportsFor(m, slug, people = []) {
@@ -908,7 +996,7 @@ export function reportsFor(m, slug, people = []) {
     .map((it) => ({ title: it.title, url: `${meetingUrl(m)}/report/${it.id}`, written: !!it.report }));
 }
 
-export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', from = '', ask = true, reports = [] } = {}) {
+export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', from = '', ask = true, reports = [], toSign = [] } = {}) {
   const name = meetingName(m);
   const first = firstName(who);
   const titles = files.map((n) => fileTitle(n));
@@ -923,6 +1011,14 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
   const presentHtml = !reports.length ? '' : ruled(`<p class="ink" style="margin:0 0 6px;">You present ${joined(reports.map((r) => `<strong>${esc(r.title)}</strong>`))}</p>`
     + `<p style="margin:0 0 14px;">${todo.length ? 'Write your report on the board page. The board reads it there before the meeting, and it’s on the screen when you present.' : `Your report${reports.length > 1 ? 's are' : ' is'} in. You can change ${reports.length > 1 ? 'them' : 'it'} there until the meeting.`}</p>`
     + reports.map((r) => (r.written ? `<p style="margin:6px 0 0;">${link(`Your report on ${r.title}`, r.url)}</p>` : `<div style="margin:8px 0 0;">${button(reports.length > 1 ? `Write your ${r.title} report` : 'Write your report', r.url)}</div>`)).join(''));
+  // The papers every board member signs each year, while they haven't
+  const year = todayEastern().slice(0, 4);
+  const documentsUrl = `${SITE}${BOARD_PAGE}#/documents`;
+  const signHow = 'Every board member signs these once a year. Read them on the board page and sign by typing your name, or add the copy you signed on paper.';
+  const signHtml = !toSign.length ? '' : ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">Still to sign for ${year}</p>`
+    + `<p class="ink" style="margin:0;">${toSign.map((t) => esc(t)).join('<br>')}</p>` + small(esc(signHow))
+    + `<p style="margin:10px 0 0;">${link(toSign.length > 1 ? 'Read and sign them' : 'Read and sign it', documentsUrl)}</p>`);
+  const signText = !toSign.length ? '' : `Still to sign for ${year}: ${toSign.join(', ')}. ${signHow}\n${documentsUrl}`;
   const presentText = !reports.length ? '' : `You present ${joined(reports.map((r) => `“${r.title}”`))}. ${todo.length ? 'Write your report on the board page; the board reads it there before the meeting.' : 'Your report is in; you can change it there until the meeting.'}\n${reports.map((r) => `${r.title}: ${r.url}`).join('\n')}`;
   return {
     subject: `${test ? '[Preview] ' : ''}The agenda and documents: ${name}, ${shortDate(m.date)}`,
@@ -935,14 +1031,16 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
         + `<div style="margin:18px 0 0;">${button('Open the agenda and documents', meetingUrl(m))}</div>`
         + small(SIGN_IN)
         + presentHtml
-        + answer,
+        + answer
+        + signHtml,
       footerHtml: FOOTER,
     }),
     text: [`The agenda and documents for the ${name}.`, lead, factsText(m),
       count ? `Documents: ${[...titles, hidden ? plural(hidden, 'board-only document') : ''].filter(Boolean).join(', ')}` : '',
       `Open the agenda and documents: ${meetingUrl(m)}\n${SIGN_IN}`,
       presentText,
-      ask ? `Will you be there? ${answerAsk(from)}` : ''].filter(Boolean).join('\n\n'),
+      ask ? `Will you be there? ${answerAsk(from)}` : '',
+      signText].filter(Boolean).join('\n\n'),
   };
 }
 
@@ -971,7 +1069,10 @@ export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) 
   const from = inviteFrom(m, await roster(env.DB), await getSettings(env.DB));
   // Each presenter's own copy asks for their report (a preview shows none: it's for no one in particular)
   const everyone = test ? [] : await roster(env.DB).then((r) => [...r.board, ...r.staff]);
-  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, from, ask: test || open.includes(p.slug), reports: reportsFor(m, p.slug, everyone) }) }));
+  // …and each member's, the papers they haven't signed this year (a preview shows them all)
+  const signable = (await listDocs(env.DB)).filter((d) => d.shared && d.sign && d.file);
+  const toSign = (p) => signable.filter((d) => !(p.slug && d.signed[p.slug])).map((d) => d.title);
+  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, from, ask: test || open.includes(p.slug), reports: reportsFor(m, p.slug, everyone), toSign: toSign(p) }) }));
   const tags = [{ name: 'kind', value: test ? 'board-packet-preview' : 'board-packet' }];
   const r = await sendEach(env, items, { tags, replyTo });
   if (!test && r.sent) await writeMeeting(env.DB, { ...m, packetSentAt: nowIso(), packetSentTo: r.sent, updatedAt: m.updatedAt, updatedBy: m.updatedBy });
@@ -1160,7 +1261,7 @@ export function welcomeEmail({ name = '', email = '', test = false, inviter = nu
   const help = helpers.length ? `${orNames(helpers)} will help` : 'we’ll help';
   const heading = first ? `${first}, your board page is ready` : 'Your board page is ready';
   const intro = `It has ${next ? `the next meeting${next.shared ? ' and its agenda' : ''}, ` : ''}past minutes, the financials, upcoming reveals and SOARD’s papers, all in one place.`;
-  const signHow = `Read ${toSign.length > 1 ? 'them' : 'it'} on the board page, and sign by typing your name.`;
+  const signHow = `Read ${toSign.length > 1 ? 'them' : 'it'} on the board page, and sign by typing your name or adding the copy you signed on paper.`;
   const keep = 'No password to remember. You stay signed in for a week in the browser you used, then it’s a new code.';
   const save = `Bookmark ${bare}, or add it to your phone’s home screen.`;
   const year = todayEastern().slice(0, 4);
@@ -1309,7 +1410,12 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     next: nextMeeting(shared, today)?.id || null,
     quorum: settings.quorum,
     actions: openActions(shared).map((a) => ({ ...a, mine: !!mine && a.owner === mine })),
-    docs: docs.filter((d) => d.shared).map((d) => ({ ...d, file: d.file && !d.file.staffOnly ? d.file : null, signedByMe: mine ? d.signed[mine] || null : null, signedCount: Object.keys(d.signed).length })),
+    // Who has signed is Board's to see: a member sees how many of the board have, and their own (its copy, if one's in)
+    docs: docs.filter((d) => d.shared).map(({ signed, ...d }) => ({
+      ...d, file: d.file && !d.file.staffOnly ? d.file : null,
+      signedByMe: mine && signed[mine] ? { ...signed[mine], drive: !!signed[mine].drive } : null,
+      signedCount: people.board.filter((p) => signed[p.slug]).length,
+    })),
     numbers,
     // Cash at each month's end: QuickBooks' own month-ends once it's connected (13 of them, the books'), else the banks' history
     cashHistory: numbers.books?.months?.length > 1 ? [...numbers.books.months].reverse().map((r) => ({ month: r.month, total: r.total, at: r.end })) : history,

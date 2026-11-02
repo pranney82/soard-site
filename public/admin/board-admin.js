@@ -461,11 +461,112 @@ function ImportPanel({ ctx, onDone }) {
 }
 
 // ─── Documents ──────────────────────────────────────────────────────
+const driveLink = (id) => `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`;
+// How a signature came (_board.js SIGNED_BY)
+const SIGNED_HOW = { typed: 'Typed their name', copy: 'Added their signed copy', staff: 'Signed copy added here', drive: 'Their signed copy in Drive' };
+
+/**
+ * Each board member's signature this year on a paper every member signs: how it came, with its copy (here or in
+ * Drive); a copy someone handed in added for them, and one added by mistake taken off
+ */
+function Signers({ d, ctx, onDoc }) {
+  const { data, addToast } = ctx;
+  const [busy, setBusy] = useState('');
+  const pick = useRef(null);
+  const forWho = useRef('');
+  const year = todayEastern().slice(0, 4);
+  const add = async (file) => {
+    if (pick.current) pick.current.value = '';
+    const slug = forWho.current;
+    if (!file || !slug) return;
+    setBusy(slug);
+    const fd = new FormData();
+    fd.append('signFor', d.id);
+    fd.append('slug', slug);
+    fd.append('file', file);
+    const j = await call(null, { form: fd });
+    setBusy('');
+    if (!j.ok) { addToast(j.error, 'error'); return; }
+    onDoc(j.doc);
+    addToast(`${j.signed.name}’s signed copy is in: signed for ${year}`, 'info');
+  };
+  const off = async (p) => {
+    const s = d.signed[p.slug];
+    if (!(await ask({ title: `Take off ${p.name}’s signature?`, text: `${p.name.split(/\s+/)[0]} is asked to sign ${d.title} for ${year} again${s.copy ? ', and the copy added for it is deleted' : ''}.`, yes: 'Take it off', danger: true }))) return;
+    setBusy(p.slug);
+    const j = await call({ action: 'unsign', docId: d.id, slug: p.slug });
+    setBusy('');
+    if (!j.ok) { addToast(j.error, 'error'); return; }
+    onDoc(j.doc);
+  };
+  return html`<div class="bd-signers">
+    <ul class="bd-signers__list" aria-label=${`Who has signed ${d.title} for ${year}`}>${data.members.map((p) => {
+      const s = d.signed[p.slug];
+      const when = s && s.how !== 'drive' && s.at ? shortDate(s.at.slice(0, 10)) : '';
+      return html`<li class="bd-signer" key=${p.slug}>
+        <span class=${`bd-signer__dot ${s ? 'is-on' : ''}`} aria-hidden="true"></span>
+        <span class="bd-signer__name">${p.name}</span>
+        <span class="bd-signer__how">${s ? [SIGNED_HOW[s.how] || SIGNED_HOW.typed, when].filter(Boolean).join(', ') : 'Not signed yet'}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}</span>
+        <span class="bd-signer__act">${s
+          ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => off(p)}>Take it off</button>`
+          : html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their signed copy'}</button>`}</span>
+      </li>`;
+    })}</ul>
+    <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => add(e.target.files[0])} />
+  </div>`;
+}
+
+/** Signed copies in Drive Board couldn't place by their names: whose each is and which paper, said once (or left out) */
+function DriveCopies({ ctx, signable, onDoc }) {
+  const { data, setData, addToast } = ctx;
+  const waiting = data.drive?.signed?.waiting || [];
+  const [picks, setPicks] = useState({});
+  const [busy, setBusy] = useState('');
+  if (!waiting.length || !signable.length) return null;
+  const pickOf = (w) => ({ slug: w.slug || '', docId: w.docId || (signable.length === 1 ? signable[0].id : ''), ...(picks[w.id] || {}) });
+  const set = (w, patch) => setPicks((x) => ({ ...x, [w.id]: { ...pickOf(w), ...patch } }));
+  const place = async (w, leave = false) => {
+    const pk = pickOf(w);
+    if (!leave && !pk.slug) { addToast('Choose whose signed copy it is', 'error'); return; }
+    if (!leave && !pk.docId) { addToast('Choose which paper it is', 'error'); return; }
+    setBusy(w.id);
+    const j = await call({ action: 'place-signed', driveId: w.id, docId: leave ? '' : pk.docId, slug: leave ? '' : pk.slug });
+    setBusy('');
+    if (!j.ok) { addToast(j.error, 'error'); return; }
+    if (j.doc) onDoc(j.doc);
+    setData((x) => ({ ...x, drive: x.drive ? { ...x.drive, signed: j.drive?.signed || x.drive.signed } : x.drive }));
+  };
+  return html`<div class="card" style="padding:0">
+    <div class="sec-head"><h3>Signed copies in Drive to place <span class="count">${waiting.length}</span></h3><span class="sec-head__hint">${(data.drive.signed.folders || []).join(', ')}</span></div>
+    <ul class="bd-row-list">${waiting.map((w) => {
+      const pk = pickOf(w);
+      return html`<li class="bd-row" key=${w.id}>
+        <div class="bd-row__main">
+          <a class="bd-row__title" href=${driveLink(w.id)} target="_blank" rel="noopener">${w.name}</a>
+          <div class="bd-row__meta">${[w.why, w.year ? `Put in Drive in ${w.year}` : ''].filter(Boolean).join(' · ')}</div>
+        </div>
+        <div class="bd-tags">
+          <select class="form-select bd-select" aria-label=${`Whose signed copy is ${w.name}?`} value=${pk.slug} onChange=${(e) => set(w, { slug: e.target.value })}>
+            <option value="">Whose is it?</option>${data.members.map((p) => html`<option value=${p.slug}>${p.name}</option>`)}
+          </select>
+          ${signable.length > 1 ? html`<select class="form-select bd-select" aria-label=${`Which paper is ${w.name}?`} value=${pk.docId} onChange=${(e) => set(w, { docId: e.target.value })}>
+            <option value="">Which paper?</option>${signable.map((d) => html`<option value=${d.id}>${d.title}</option>`)}
+          </select>` : null}
+          <button class="btn btn-primary btn-sm" disabled=${busy === w.id} onClick=${() => place(w)}>${busy === w.id ? 'Saving…' : 'Count it'}</button>
+          <button class="btn btn-ghost btn-sm" disabled=${busy === w.id} onClick=${() => place(w, true)}>It isn’t a signature</button>
+        </div>
+      </li>`;
+    })}</ul>
+  </div>`;
+}
+
 function DocumentsTab({ ctx }) {
   const { data, setData, addToast } = ctx;
   const [draft, setDraft] = useState(null); // { title, kind, sign, note, file, existing }
   const [saving, setSaving] = useState(false);
+  const [open, setOpen] = useState('');
   const boardCount = data.members.length;
+  const year = todayEastern().slice(0, 4);
   const putDoc = (d) => setData((x) => ({ ...x, docs: [...x.docs.filter((y) => y.id !== d.id), d].sort((a, b) => a.title.localeCompare(b.title)) }));
   const hasFile = draft && (draft.file || draft.existing);
   const save = async () => {
@@ -494,7 +595,7 @@ function DocumentsTab({ ctx }) {
     if (!j.ok) { addToast(j.error, 'error'); return; }
     putDoc(j.doc);
   };
-  const names = Object.fromEntries(data.members.map((p) => [p.slug, p.name]));
+  const signable = data.docs.filter((d) => d.sign);
   return html`
     ${draft ? html`<div class="card">
       <div class="bd-card-head"><h3>${draft.id ? 'Edit the document' : 'Add a document'}</h3></div>
@@ -507,7 +608,7 @@ function DocumentsTab({ ctx }) {
           <input id="bd-doc-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx,.pptx,.doc,.xls" onChange=${(e) => setDraft({ ...draft, file: e.target.files[0] || null })} />
           ${draft.existing ? html`<p class="form-hint">Choose another to replace it.</p>` : null}
         </div>
-        <div class="form-group span-2"><label class="bd-check"><input type="checkbox" checked=${draft.sign && hasFile} disabled=${!hasFile} onChange=${(e) => setDraft({ ...draft, sign: e.target.checked })} /> Ask each board member to read and sign it every year (the conflict of interest policy, the board expectations)</label>
+        <div class="form-group span-2"><label class="bd-check"><input type="checkbox" checked=${draft.sign && hasFile} disabled=${!hasFile} onChange=${(e) => setDraft({ ...draft, sign: e.target.checked })} /> Required: every board member reads and signs it each year (the board expectations, the conflict of interest policy)</label>
           ${hasFile ? null : html`<p class="form-hint">Add the file first: the board signs what they can read.</p>`}</div>
       </div>
       <div class="bd-actions" style="margin-top:1rem">
@@ -516,25 +617,30 @@ function DocumentsTab({ ctx }) {
       </div>
     </div>` : html`<div class="bd-actions"><button class="btn btn-primary btn-sm" onClick=${() => setDraft({ title: '', kind: 'governance', note: '', sign: false, file: null, existing: null })}>Add a document</button></div>`}
     <div class="card" style="padding:0">
-      <div class="sec-head"><h3>On the board page <span class="count">${data.docs.length}</span></h3><span class="sec-head__hint">Signatures are for ${todayEastern().slice(0, 4)}</span></div>
+      <div class="sec-head"><h3>On the board page <span class="count">${data.docs.length}</span></h3><span class="sec-head__hint">Signatures are for ${year}</span></div>
       ${data.docs.length ? html`<ul class="bd-row-list">${data.docs.map((d) => {
-        const signed = Object.keys(d.signed);
-        const all = boardCount && signed.length >= boardCount;
+        // Who's on the board now, signed or not (a signature from someone who has since left isn't counted)
+        const signed = data.members.filter((p) => d.signed[p.slug]);
+        const left = data.members.filter((p) => !d.signed[p.slug]);
+        const all = boardCount && !left.length;
         return html`<li class="bd-row" key=${d.id}>
           <div class="bd-row__main">
             ${d.file ? html`<a class="bd-row__title" ...${viewerLink(viewerFiles([d.file]), 0)}>${d.title}</a>` : html`<span class="bd-row__title">${d.title}</span>`}
             <div class="bd-row__meta">${[DOC_KINDS.find((k) => k.id === d.kind)?.label, d.note, d.file ? `${fileTitle(d.file.name)} · ${sizeText(d.file.size)}` : 'No file yet'].filter(Boolean).join(' · ')}</div>
-            ${d.sign ? html`<div class="bd-row__meta">${signed.length ? `Signed by ${signed.map((s) => names[s] || d.signed[s].name).join(', ')}` : 'No one has signed it this year'}</div>` : null}
+            ${d.sign ? html`<div class="bd-row__meta">${all ? `Every board member has signed it for ${year}` : !signed.length ? `No one has signed it for ${year} yet` : `Still to sign: ${left.map((p) => p.name).join(', ')}`}</div>` : null}
           </div>
           <div class="bd-tags">
-            ${d.sign ? html`<span class=${`tag ${all ? 'tag--success' : ''}`}>${signed.length} of ${boardCount} signed</span>` : null}
+            ${d.sign ? html`<span class="tag">Required</span><span class=${`tag ${all ? 'tag--success' : ''}`}>${signed.length} of ${boardCount} signed</span>
+              <button class="btn btn-ghost btn-sm" aria-expanded=${open === d.id ? 'true' : 'false'} onClick=${() => setOpen(open === d.id ? '' : d.id)}>${open === d.id ? 'Hide who’s signed' : 'Who’s signed'}</button>` : null}
             <${Switch} checked=${d.shared} label="On the board page" onChange=${(v) => toggle(d, { shared: v })} />
             <button class="btn btn-ghost btn-sm" onClick=${() => setDraft({ ...d, file: null, existing: d.file })}>Edit</button>
             <button class="btn btn-ghost btn-sm btn-row-danger" onClick=${() => remove(d)}>Delete</button>
           </div>
+          ${d.sign && open === d.id ? html`<${Signers} d=${d} ctx=${ctx} onDoc=${putDoc} />` : null}
         </li>`;
       })}</ul>` : html`<div class="empty empty--inline"><p class="empty__title">No documents yet</p><p class="empty__text">Start with the bylaws, the board expectations and the conflict of interest policy.</p></div>`}
-    </div>`;
+    </div>
+    <${DriveCopies} ctx=${ctx} signable=${signable} onDoc=${putDoc} />`;
 }
 
 // ─── Members ────────────────────────────────────────────────────────

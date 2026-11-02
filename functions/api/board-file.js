@@ -3,8 +3,8 @@
  * files (a meeting's financials, a bylaws PDF), straight from R2.
  *
  * A board member (context.data.boardMember) opens a shared meeting's or
- * document's files, never a staff-only one; the Board area's admins open
- * any. Anyone else, or a file they can't see, gets the same 404. PDFs open in
+ * document's files, never a staff-only one, and their own signed copy of a
+ * paper; the Board area's admins open any. Anyone else, or a file they can't see, gets the same 404. PDFs open in
  * the browser's viewer (or the board page's), everything else downloads,
  * never cached anywhere (files/[[path]].js fileHeaders + private, no-store).
  */
@@ -20,7 +20,7 @@ export async function onRequestGet(context) {
   const id = new URL(request.url).searchParams.get('id') || '';
   const admin = !context.data?.boardMember && await isBoardAdmin(env.DB, context.data?.userEmail);
   if (!admin && !context.data?.boardMember) return notFound();
-  const row = await fileFor(env.DB, id, { admin });
+  const row = await fileFor(env.DB, id, { admin, member: context.data?.boardMember || null });
   if (!row) return notFound();
   const obj = await boardFiles(env)?.get(row.r2_key);
   if (!obj) return notFound();

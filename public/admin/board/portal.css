@@ -1055,6 +1055,9 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-sign__preview { margin: 0.75rem 0 0; font-family: var(--display); font-style: italic; font-size: 1.5rem; color: var(--ink); border-bottom: 1px solid var(--line-2); padding-bottom: 0.25rem; max-width: 22rem; animation: bp-fade 0.3s both; }
 .bp-sign__problem { margin: 0.5rem 0 0; color: var(--warn); font-size: 0.92rem; font-weight: 600; }
 .bp-signed { margin: 0.65rem 0 0; color: var(--ink-2); font-size: 0.93rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.bp-sign__or { margin: 0.85rem 0 0; color: var(--ink-2); font-size: 0.93rem; }
+.bp-sign__or .bp-linkbtn { margin-left: 0.2rem; }
+.bp-sign__or .bp-linkbtn:disabled { color: var(--muted); text-decoration: none; cursor: default; }
 .bp-library .bp-sechead { margin-bottom: 0.25rem; }
 .bp-chips--filter { margin: 0 0 1.25rem; }
 .bp-libmeet + .bp-libmeet { margin-top: 1.4rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }

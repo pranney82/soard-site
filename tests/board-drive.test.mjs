@@ -14,7 +14,7 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import {
-  readBoardDrive, maybeReadBoardDrive, driveStatus, folderDate, fileDate, stemOf, meetingDoc, docSlot, docTitle, docKind, nameYear, folderIdOf, driveKind, driveSkip, DRIVE_BY, DEFAULT_DRIVE_FOLDER, DRIVE_SCOPE,
+  readBoardDrive, maybeReadBoardDrive, driveStatus, placeSigned, whoseCopy, paperFor, folderDate, fileDate, stemOf, meetingDoc, docSlot, docTitle, docKind, nameYear, folderIdOf, driveKind, driveSkip, DRIVE_BY, DEFAULT_DRIVE_FOLDER, DRIVE_SCOPE,
 } from '../functions/api/_board-drive.js';
 import { listMeetings, getMeeting, saveMeeting, listDocs, deleteDoc } from '../functions/api/_board.js';
 import { writeState } from '../functions/api/_board-roles.js';
@@ -97,7 +97,7 @@ beforeEach(async () => {
         all = Object.values(g.files).filter((f) => f.id !== ROOT && names.some((x) => f.name.toLowerCase().includes(x)) && (!folders || f.mimeType === FOLDER) && (!noFolders || f.mimeType !== FOLDER));
       }
       const from = Number(u.searchParams.get('pageToken') || 0);
-      const page = all.slice(from, from + g.pageSize).map(({ bytes, text, parent: p, ...f }) => ({ ...f, size: f.mimeType.startsWith('application/vnd.google-apps') ? undefined : String(f.size) }));
+      const page = all.slice(from, from + g.pageSize).map(({ bytes, text, parent: p, ...f }) => ({ ...f, parents: p ? [p] : [], size: f.mimeType.startsWith('application/vnd.google-apps') ? undefined : String(f.size) }));
       return Response.json({ files: page, ...(from + g.pageSize < all.length ? { nextPageToken: String(from + g.pageSize) } : {}) });
     }
     const m = u.pathname.match(/^\/drive\/v3\/files\/([^/]+)(\/export)?$/);
@@ -165,7 +165,9 @@ test('the year folders’ meeting folders become past meetings with their files;
   const q1min = add(q1, 'Example Q1 Board Meeting Minutes 2025.01.23.pdf', { text: MINUTES('January 23, 2025') });
   const q3 = add(y25, '7.24.25 Meeting', { mimeType: FOLDER });
   add(q3, 'Example Q3 Board Meeting Minutes 2025.07.24.pdf', { text: MINUTES('July 24, 2025') });
-  const loose = [add(y25, 'Board Expectations Updated.pdf'), add(y25, 'Headshot.jpg', { mimeType: 'image/jpeg' }), add(y25, 'Board Birthdays & Shirt Sizes', { mimeType: SHEET })];
+  // (the expectations beside them are Documents' paper, never a meeting's file)
+  const expectations = add(y25, 'Board Expectations Updated.pdf');
+  const loose = [add(y25, 'Headshot.jpg', { mimeType: 'image/jpeg' }), add(y25, 'Board Birthdays & Shirt Sizes', { mimeType: SHEET })];
   // 2026: the whole packet as Google files and PDFs, a folder inside it, and what isn't the meeting's
   const f26 = add(y26, '2.12.26 Board Meeting', { mimeType: FOLDER });
   const doc = add(f26, '2026 Q1 Example Board Meeting Minutes 2026.02.12', { mimeType: DOC, text: MINUTES('February 12, 2026') });
@@ -200,6 +202,8 @@ test('the year folders’ meeting folders become past meetings with their files;
   assert.ok(g.calls.some((c) => c.startsWith(`/drive/v3/files/${sheet}/export?mimeType=application%2Fpdf`)), 'a Sheet as a PDF');
   for (const id of [...skippedIds, ...loose, rootLoose]) assert.ok(!fetched(id), `${g.files[id].name} isn’t read`);
   assert.ok(!Object.values(g.files).filter((f) => f.parent === ahead).some((f) => fetched(f.id)), 'nothing for the meeting ahead');
+  assert.ok(meetings.every((m) => !m.files.some((f) => /expectations/i.test(f.name))), 'the expectations are on no meeting');
+  assert.deepEqual((await listDocs(env.DB)).filter((d) => d.file?.name === g.files[expectations].name).map((d) => [d.title, d.sign]), [['Board Member Expectations', true]], 'they’re Documents’ paper to sign');
   // The minutes: who was there, the sections and notes, approved once a later meeting exists (the latest stays draft)
   const m1 = by(meetings, '2025-01-23');
   assert.deepEqual(Object.fromEntries(m1.attendance.map((p) => [p.slug, p.status])), { 'alex-rivera': 'present', 'sam-ortiz': 'present', 'jane-doe': 'present', 'kim-park': 'absent' });
@@ -469,14 +473,21 @@ test('Documents gets the newest board manual’s papers and SOARD’s own papers
   const oldDno = add(ROOT, '2017 Board D&O Insurance.pdf', { modifiedTime: '2016-12-15T00:00:00Z' });
   const dno = add(add(ROOT, '2025 Board', { mimeType: FOLDER }), '24-25 D&O Insurance Policy.pdf', { modifiedTime: '2025-01-23T00:00:00Z' });
   const order = add('', 'Example Org Incorporated.pdf');
+  // The expectations: the newest copy wherever it's kept (here a meeting's), never a member's own signed one
+  const expectations = add(add(add(ROOT, '2023 Board', { mimeType: FOLDER }), '01/26/23 Board Meeting', { mimeType: FOLDER }), 'Board Expectations Updated 11.19.21.pdf', { modifiedTime: '2023-01-23T00:00:00Z' });
+  const oldExpectations = add(add('', 'Board archive', { mimeType: FOLDER }), 'Board Expectations.pdf', { modifiedTime: '2019-10-14T00:00:00Z' });
+  const signedExpectations = add(signedDir, 'Board Expectations Updated 11.19.21 - Pat Example.pdf', { modifiedTime: '2026-07-08T00:00:00Z' });
+  const namedCopy = add(biz, 'Alex Rivera Board Expectations.pdf', { modifiedTime: '2026-08-01T00:00:00Z' });
+  const signedWord = add(biz, 'Board Expectations signed.pdf', { modifiedTime: '2026-09-01T00:00:00Z' });
 
   const st = await readBoardDrive(env, { budgetMs: 60000 });
   assert.equal(st.ok, true, JSON.stringify(st.errors));
-  assert.deepEqual([st.docs.count, st.docs.manual, st.docs.missing], [9, '2026 Board Manual', []]);
+  assert.deepEqual([st.docs.count, st.docs.manual, st.docs.missing], [10, '2026 Board Manual', []]);
   let docs = await listDocs(env.DB);
   assert.deepEqual(docs.map((d) => [d.title, d.kind, d.year, d.shared, d.sign]).sort(), [
     ['Articles of Amendment', 'governance', null, true, false],
     ['Articles of Incorporation', 'governance', null, true, false],
+    ['Board Member Expectations', 'policy', null, true, true],
     ['Charitable Organization Permit', 'governance', null, true, false],
     ['D&O insurance', 'governance', null, true, false],
     ['EIN letter', 'governance', null, true, false],
@@ -486,15 +497,17 @@ test('Documents gets the newest board manual’s papers and SOARD’s own papers
     ['W-9', 'governance', null, true, false],
   ]);
   const fileOf = (title) => docs.find((d) => d.title === title).file.name;
-  assert.deepEqual(['EIN letter', 'W-9', 'Charitable Organization Permit', 'D&O insurance'].map(fileOf),
-    ['SOARD EIN number.pdf', '2026 W9 SOARD.pdf', '2022 Charitable Organization Permit.pdf', '24-25 D&O Insurance Policy.pdf'], 'the newest copy of each');
+  assert.deepEqual(['EIN letter', 'W-9', 'Charitable Organization Permit', 'D&O insurance', 'Board Member Expectations'].map(fileOf),
+    ['SOARD EIN number.pdf', '2026 W9 SOARD.pdf', '2022 Charitable Organization Permit.pdf', '24-25 D&O Insurance Policy.pdf', 'Board Expectations Updated 11.19.21.pdf'], 'the newest copy of each');
+  for (const id of [oldExpectations, signedExpectations, namedCopy, signedWord]) assert.ok(!fetched(id), `${g.files[id].name} isn’t read`);
   for (const id of [ein, w9, permit, dno]) assert.ok(fetched(id), `${g.files[id].name} is read`);
   for (const id of [plan401k, otherEin, oldW9, vendorW9, oldPermit, oldDno, order]) assert.ok(!fetched(id), `${g.files[id].name} isn’t read`);
   assert.ok(docs.every((d) => d.file), 'each with its file');
   assert.equal(docs.find((d) => d.title === 'Articles of Incorporation').file.name, 'Articles of Incorporation-State (1).pdf', 'the manual’s own copy');
   for (const id of [bylaws, stateArticles, irs, amendment]) assert.ok(fetched(id), `${g.files[id].name} is read`);
   for (const id of [oldBylaws, pages, signedCopy, grantCopy, redline, otherArticles, license]) assert.ok(!fetched(id), `${g.files[id].name} isn’t read`);
-  assert.ok(!listed(signedDir) && !listed(biz), 'the folders beside them aren’t opened');
+  assert.ok(!listed(biz), 'the folders beside them aren’t opened');
+  assert.ok(listed(signedDir) && !fetched(signedCopy), 'the signed copies are looked at by their names, never read');
   assert.equal(fetched(manualPdf) ? 1 : 0, 0, 'the Doc and its PDF are one document (the Doc, as a PDF)');
 
   // Within the hour: not again. An hour later, nothing changed: nothing brought
@@ -510,10 +523,10 @@ test('Documents gets the newest board manual’s papers and SOARD’s own papers
   g.files[bylaws].modifiedTime = '2026-09-01T00:00:00Z';
   await readBoardDrive(env, { now: Date.now() + 4 * 60 * 60 * 1000 });
   docs = await listDocs(env.DB);
-  assert.equal(docs.length, 8);
+  assert.equal(docs.length, 9);
   const after = docs.find((d) => d.title === 'Signed Amended Bylaws').file;
   assert.notEqual(after.id, before.id);
-  assert.equal(await env.DB.prepare('SELECT count(*) AS n FROM board_files WHERE owner_type = ?').bind('doc').first().then((r) => r.n), 8, 'the old copy is gone');
+  assert.equal(await env.DB.prepare('SELECT count(*) AS n FROM board_files WHERE owner_type = ?').bind('doc').first().then((r) => r.n), 9, 'the old copy is gone');
 
   // Next year's manual: its bylaws fill the same document, which is that year's now
   const next = add(legal, '2027 Board Manual', { mimeType: FOLDER });
@@ -521,8 +534,78 @@ test('Documents gets the newest board manual’s papers and SOARD’s own papers
   await readBoardDrive(env, { now: Date.now() + 6 * 60 * 60 * 1000 });
   docs = await listDocs(env.DB);
   const b = docs.find((d) => d.title === 'Signed Amended Bylaws');
-  assert.deepEqual([b.year, b.file.name, docs.length], [2027, 'Signed Amended Bylaws 2027.pdf', 8]);
+  assert.deepEqual([b.year, b.file.name, docs.length], [2027, 'Signed Amended Bylaws 2027.pdf', 9]);
   assert.equal((await driveStatus(env.DB)).docs.manual, '2027 Board Manual');
+});
+
+test('the members’ signed copies count as their signatures by their names alone: whose, which paper, which year; the rest wait for an admin, and nothing is opened', async () => {
+  const year = Number(todayEastern().slice(0, 4));
+  const t = `${year}-07-08T00:00:00Z`;
+  const manual = add(add('', '2025/2026 Legal Checkup', { mimeType: FOLDER }), `${year} Board Manual`, { mimeType: FOLDER });
+  add(manual, 'Example Org_Board Manual with Policies.pdf');
+  add(manual, 'Board Expectations Updated 11.19.21.pdf', { modifiedTime: '2023-01-23T00:00:00Z' });
+  const dir = add(manual, 'Board Signed Documents', { mimeType: FOLDER });
+  const alex = add(dir, 'Board Expectations Updated 11.19.21 - Alex Rivera.pdf', { modifiedTime: t });
+  const samDir = add(dir, 'Sam Ortiz', { mimeType: FOLDER });
+  const sam = add(samDir, 'Expectations signed.pdf', { modifiedTime: t });
+  const scan = add(dir, 'Scan 0001.pdf', { modifiedTime: t });
+  const manualCopy = add(dir, 'Kim Park - Board Manual with Policies.pdf', { modifiedTime: t });
+  const old = add(dir, `Board Expectations - Kim Park ${year - 1}.pdf`, { modifiedTime: `${year - 1}-07-01T00:00:00Z` });
+
+  const st = await readBoardDrive(env, { budgetMs: 60000 });
+  assert.equal(st.ok, true, JSON.stringify(st.errors));
+  const exp = () => listDocs(env.DB).then((list) => list.find((d) => d.title === 'Board Member Expectations'));
+  let d = await exp();
+  assert.deepEqual([d.sign, d.file.name], [true, 'Board Expectations Updated 11.19.21.pdf'], 'the manual’s own copy, asking for signatures');
+  assert.deepEqual(Object.fromEntries(Object.entries(d.signed).map(([slug, x]) => [slug, [x.how, x.drive.id]])), { 'alex-rivera': ['drive', alex], 'sam-ortiz': ['drive', sam] }, 'by the file’s name, or its folder’s');
+  assert.equal((await listDocs(env.DB, year - 1)).find((x) => x.id === d.id).signed['kim-park'].how, 'drive', 'last year’s copy is last year’s');
+  assert.deepEqual([st.signed.files, st.signed.placed, st.signed.folders], [5, 3, ['Board Signed Documents']]);
+  assert.deepEqual(st.signed.waiting.map((w) => [w.name, w.why, w.slug]), [
+    ['Scan 0001.pdf', 'It doesn’t name anyone on the board', ''],
+    ['Kim Park - Board Manual with Policies.pdf', 'It doesn’t name a paper the board signs', 'kim-park'],
+  ]);
+  for (const id of [alex, sam, scan, manualCopy, old]) assert.ok(!fetched(id), `${g.files[id].name} is never opened`);
+
+  // An admin says the scan is Kim's expectations, and the manual's copy isn't a signature: neither waits again
+  assert.deepEqual(await placeSigned(env, { driveId: scan, docId: d.id, slug: 'kim-park', by: FOUNDER }), { name: 'Kim Park' });
+  await placeSigned(env, { driveId: manualCopy, by: FOUNDER });
+  assert.deepEqual((await driveStatus(env.DB)).signed.waiting, [], 'off the list at once');
+  d = await exp();
+  assert.deepEqual([d.signed['kim-park'].how, d.signed['kim-park'].drive.id], ['drive', scan]);
+  // A signature taken off in Board isn't placed again; an hour later nothing comes back
+  const { unsignDoc } = await import('../functions/api/_board.js');
+  await unsignDoc(env, d.id, 'alex-rivera');
+  const later = await readBoardDrive(env, { now: Date.now() + 2 * 60 * 60 * 1000 });
+  d = await exp();
+  assert.deepEqual(Object.keys(d.signed).sort(), ['kim-park', 'sam-ortiz']);
+  assert.deepEqual([later.signed.waiting, later.signed.placed], [[], 3]);
+  // A copy changed in Drive is read again by its new name
+  g.files[scan].name = 'Scan 0001 - Sam Ortiz.pdf';
+  g.files[scan].modifiedTime = `${year}-09-01T00:00:00Z`;
+  await readBoardDrive(env, { now: Date.now() + 4 * 60 * 60 * 1000 });
+  assert.equal((await env.DB.prepare('SELECT slug, state FROM board_drive_signed WHERE drive_id = ?').bind(scan).first()).slug, 'sam-ortiz');
+  await assert.rejects(placeSigned(env, { driveId: 'nope', docId: d.id, slug: 'kim-park' }), /isn’t with the signed copies/);
+});
+
+test('whose a signed copy is, and which paper, by a name', () => {
+  const people = [{ slug: 'a', name: 'Alex Rivera' }, { slug: 's', name: 'Sam Ortiz' }, { slug: 'k', name: 'Kim Park' }, { slug: 'kp', name: 'Pat Park' }, { slug: 'j', name: 'José Núñez' }];
+  const who = (n, o) => whoseCopy(n, people, o)?.slug || null;
+  assert.equal(who('Board Expectations - Alex Rivera.pdf'), 'a');
+  assert.equal(who('Rivera, Alex - expectations'), 'a', 'last name first');
+  assert.equal(who('Alex J. Rivera signed'), 'a', 'a middle initial');
+  assert.equal(who('ortiz expectations 2026'), 's', 'a last name only one of them has');
+  assert.equal(who('Park expectations'), null, 'two Parks: not this way');
+  assert.equal(who('Kim Park.pdf'), 'k');
+  assert.equal(who('jose nunez.pdf'), 'j', 'without the accents');
+  assert.equal(who('Alex Rivera and Sam Ortiz.pdf'), null, 'two people: nobody’s');
+  assert.equal(who('Riveras Parking.pdf'), null, 'never inside another word');
+  assert.equal(who('ortiz.pdf', { loose: false }), null);
+  const docs = [{ id: 'e', title: 'Board Member Expectations' }, { id: 'c', title: 'Conflict of Interest Policy' }];
+  const which = (n) => paperFor(n, docs, { expectations: 'e' })?.id || null;
+  assert.equal(which('Board Expectations Updated - Alex.pdf'), 'e');
+  assert.equal(which('Conflict of interest - Sam.pdf'), 'c');
+  assert.equal(which('Scan 0001.pdf'), null);
+  assert.equal(which('Board Manual with Policies - Kim.pdf'), null);
 });
 
 test('Documents waits for the past meetings to be read', async () => {

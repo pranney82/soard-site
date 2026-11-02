@@ -715,6 +715,15 @@ try {
   await jane.evaluate(() => [...document.querySelectorAll('.bd-check input')].at(-1).click());
   await clickText(jane, 'button', /^Save$/);
   ok(await waitText(jane, /0 of 3 signed/), 'a document asking for signatures counts them');
+  // The expectations too: required of every member each year (one of them signs by adding a copy signed on paper)
+  await clickText(jane, 'button', /^Add a document$/);
+  await jane.type('#bd-doc-title', 'Board Member Expectations');
+  await jane.select('#bd-doc-kind', 'policy');
+  await (await jane.$('#bd-doc-file')).uploadFile(pdf);
+  ok(/^Required: every board member/.test(await jane.evaluate(() => [...document.querySelectorAll('.bd-check')].at(-1).textContent.trim())), 'the box says it’s required of every board member');
+  await jane.evaluate(() => [...document.querySelectorAll('.bd-check input')].at(-1).click());
+  await clickText(jane, 'button', /^Save$/);
+  ok(await waitText(jane, /Board Member Expectations[\s\S]*No one has signed it for \d{4} yet[\s\S]*Required\s*0 of 3 signed/), 'the expectations: required, and no one has signed yet');
   // A paper to read, not to sign: on the board page it goes on its shelf
   await clickText(jane, 'button', /^Add a document$/);
   await jane.type('#bd-doc-title', 'Signed Amended Bylaws');
@@ -994,7 +1003,7 @@ try {
       // The cash, then the year beside the cash over time, then the statements, then the tax returns and audits
       ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Tax returns and audits[\s\S]*2025/],
       ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/],
-      ['documents', width === 1440 ? /Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it[\s\S]*Every meeting’s files[\s\S]*Balance sheet financials/ : /Conflict of interest policy[\s\S]*Read it[\s\S]*Signed\s*by Alex Rivera/],
+      ['documents', width === 1440 ? /Board Member Expectations[\s\S]*Type your full name to sign it[\s\S]*Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it[\s\S]*Every meeting’s files[\s\S]*Balance sheet financials/ : /Board Member Expectations[\s\S]*Signed\s*by Alex Rivera[\s\S]*Conflict of interest policy[\s\S]*You added your signed copy/],
     ]) {
       await alex.goto(`${SITE}/admin/board/#/${p}`, { waitUntil: 'networkidle0' });
       ok(await waitText(alex, re), `${p} shows what it should`);
@@ -1015,6 +1024,22 @@ try {
       ok(await waitText(alex, /Signed\s*by Alex Rivera/), 'they sign the policy with their typed name (kept the way People spells it)');
       // The focus moves a frame after "Signed by…" shows
       ok(await alex.waitForFunction(() => document.activeElement?.classList.contains('bp-signed'), { timeout: 2000 }).then(() => true, () => false), 'the focus goes to “Signed by…”, not the page');
+      // The other paper, signed on paper already: the copy, added as a PDF, is the signature
+      ok(await waitText(alex, /Signed it on paper already\?\s*Add your signed copy/), 'the other way to sign: the copy signed on paper');
+      const copyInput = await alex.$('.bp-sign input[type="file"]');
+      await copyInput.uploadFile(pdf);
+      ok(await waitText(alex, /You added your signed copy/), 'the copy signed on paper is their signature');
+      ok(await alex.waitForFunction(() => document.activeElement?.classList.contains('bp-signed'), { timeout: 2000 }).then(() => true, () => false), 'the focus goes to “Signed…” after the copy too');
+      ok(await alex.evaluate(() => !document.querySelector('.bp-sign')) && await waitText(alex, /You’ve signed them all for \d{4}\. Thank you\./), 'both signed, nothing left to sign');
+      await alex.$eval('.bp-signed a', (a) => a.click());
+      ok(await alex.waitForFunction(() => document.body.classList.contains('fv-open'), { timeout: 4000 }).then(() => true, () => false), 'their copy opens for them, in the viewer');
+      await alex.keyboard.press('Escape');
+      // The wrong file sent: they replace it themselves
+      const copyOf = () => alex.evaluate(() => fetch('/api/board-portal', { cache: 'no-store' }).then((r) => r.json()).then((d) => d.docs.find((x) => x.signedByMe?.how === 'copy')?.signedByMe.copy.id || ''));
+      const firstCopy = await copyOf();
+      await (await alex.$('.bp-signed input[type="file"]')).uploadFile(pdf);
+      ok(await alex.waitForFunction((was) => fetch('/api/board-portal', { cache: 'no-store' }).then((r) => r.json()).then((d) => { const id = d.docs.find((x) => x.signedByMe?.how === 'copy')?.signedByMe.copy.id; return !!id && id !== was; }), { timeout: 6000, polling: 500 }, firstCopy).then(() => true, () => false)
+        && await waitText(alex, /You added your signed copy[\s\S]*Replace it/), 'a copy they added, replaced by another');
       await alex.goto(`${SITE}/admin/board/#/reveals`, { waitUntil: 'networkidle0' });
       ok(await alex.evaluate(() => location.hash) === '#/' && await alex.waitForSelector('#makeovers .bk-col', { timeout: 8000 }).then(() => true, () => false), 'the old Reveals link opens Home, where reveals are now');
       await alex.goto(`${SITE}/admin/board/#/meetings/${pastId}`, { waitUntil: 'networkidle0' });
@@ -1122,7 +1147,17 @@ try {
   ok(await waitText(jane, /Coming\s+1\s+Alex Rivera/), 'the founder sees Alex’s answer, his reply to the calendar invite');
   ok((await meetingNow(jane, meetingId)).actions.some((a) => a.text === 'Send the venue contract' && a.done), 'and that Alex ticked off the action item');
   await jane.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /Signed by Alex Rivera/), 'and who signed the policy');
+  ok(await waitText(jane, /Conflict of interest policy[\s\S]*Still to sign: Sam Ortiz, Kim Park[\s\S]*1 of 3 signed/), 'and who has still to sign each paper');
+  // Who's signed, and how: typed, or the copy Alex added (which the founder opens); Kim's paper copy added for her, then taken off
+  await jane.evaluate(() => [...document.querySelectorAll('.bd-row')].find((r) => /Conflict of interest policy/.test(r.textContent)).querySelector('button[aria-expanded]').click());
+  ok(await waitText(jane, /Alex Rivera\s*Added their signed copy, [A-Z][a-z]{2} \d+[\s\S]*See it[\s\S]*Sam Ortiz\s*Not signed yet/), 'who’s signed, and how: Alex’s copy');
+  const kimInput = await jane.$('.bd-signers input[type="file"]');
+  await jane.evaluate(() => [...document.querySelectorAll('.bd-signer')].find((r) => /Kim Park/.test(r.textContent)).querySelector('button').click());
+  await kimInput.uploadFile(pdf);
+  ok(await waitText(jane, /Kim Park\s*Signed copy added here/) && await waitText(jane, /2 of 3 signed/), 'a paper copy Kim handed in, added for her');
+  await jane.evaluate(() => [...document.querySelectorAll('.bd-signer')].find((r) => /Kim Park/.test(r.textContent)).querySelector('button').click());
+  ok(await waitText(jane, /Kim Park\s*Not signed yet/) && await waitText(jane, /1 of 3 signed/), 'taken off again: Kim is asked to sign');
+  ok(await waitText(jane, /Board Member Expectations[\s\S]*Still to sign: Sam Ortiz, Kim Park/), 'Alex typed the expectations');
   // Their People headshot on their account button, as a board member's is (the picture served here, not by Cloudflare;
   // the CSP set aside, since headshots are same-origin on sunshineonaranneyday.com but not on localhost)
   const servePhoto = (req) => (/\/cdn-cgi\/imagedelivery\//.test(req.url()) ? req.respond({ status: 200, contentType: 'image/png', body: PNG }) : req.continue());

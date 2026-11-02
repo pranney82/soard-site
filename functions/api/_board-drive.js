@@ -39,12 +39,17 @@
  * copies in the folders inside it), and, wherever the shared drive keeps them
  * when that folder doesn't, the Articles of Incorporation, the Articles of
  * Amendment, the IRS 501(c)(3) determination letter, the EIN letter, the W-9,
- * the state's Charitable Organization Permit and the D&O insurance policy, one
- * copy of each (the newest, for the ones renewed). Only those, by name, and
- * only in the shared drive: the folders they sit in hold other people's
- * papers, and a person's own Drive holds other companies' and their own. A
- * newer copy in Drive replaces the file; a document taken out in Board stays
- * out.
+ * the state's Charitable Organization Permit, the D&O insurance policy and the
+ * Board Member Expectations, one copy of each (the newest, for the ones
+ * renewed). Only those, by name, and only in the shared drive: the folders
+ * they sit in hold other people's papers, and a person's own Drive holds other
+ * companies' and their own. A newer copy in Drive replaces the file; a
+ * document taken out in Board stays out. The expectations come in asking every
+ * board member to sign them each year.
+ *
+ * The members' signed copies (the manual's "Board Signed Documents") are never
+ * brought in: each counts as its member's signature on the paper it names, by
+ * its name alone (readSigned), and Board's admins open it in Drive.
  *
  * It never writes, moves, shares or deletes anything in Drive.
  *
@@ -55,7 +60,7 @@
 
 import { accessToken } from './_google-calendar.js';
 import { boardAdmins, peopleRows, readSettings, readState, writeState } from './_board-roles.js';
-import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster, saveDoc, cleanDoc, MAX_FILE } from './_board.js';
+import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster, saveDoc, cleanDoc, listDocs, signFromDrive, MAX_FILE } from './_board.js';
 import { fileText } from './_board-mail.js';
 import { readMinutes, applyMinutes, minutesNewer } from './_board-minutes.js';
 import { parseAgendaText, cleanMeeting, agendaIsDraft, todayEastern, isDate, docHtmlText, readAgain, AGENDA_READER, orgName } from '../../public/admin/board-shared.js';
@@ -70,6 +75,8 @@ const DONE = 'drive-done';
 // 2: the older years' loose minutes and undated meeting folders, one copy of each document
 // 3: a meeting's screenshots of its numbers and files up to 50 MB, every folder read once more for them
 const VERSION = 3;
+// Documents' papers: 2 brings in the Board Member Expectations (asking for signatures) and reads the signed copies
+const DOCS_VERSION = 2;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 const BUDGET_MS = 8000;
@@ -103,6 +110,9 @@ const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS idx_board_drive_meeting ON board_drive(meeting_id)',
   // Documents' papers from Drive: one row a document ("articles", "manual:signed amended bylaws")
   'CREATE TABLE IF NOT EXISTS board_drive_docs (slot TEXT PRIMARY KEY, doc_id TEXT, drive_id TEXT, board_file_id TEXT, modified TEXT, name TEXT, at TEXT)',
+  // The members' signed copies, each read once by its name: whose and which paper (state: placed by Board, admin
+  // placed by one of Board's admins, waiting for them to say, off: taken off or left out)
+  'CREATE TABLE IF NOT EXISTS board_drive_signed (drive_id TEXT PRIMARY KEY, name TEXT, folder TEXT, modified TEXT, doc_id TEXT, slug TEXT, year INTEGER, state TEXT, why TEXT, at TEXT)',
 ];
 const _ready = new WeakSet();
 async function ensureDrive(DB) {
@@ -228,7 +238,7 @@ async function listFiles(token, query, fetchImpl, where = '') {
   let page = '';
   do {
     const q = encodeURIComponent(query);
-    const r = await drive(token, `/files?q=${q}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,createdTime,size)')}&pageSize=1000&${ALL}${where ? `&${where}` : ''}${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`, fetchImpl);
+    const r = await drive(token, `/files?q=${q}&fields=${encodeURIComponent('nextPageToken,files(id,name,mimeType,modifiedTime,createdTime,size,parents)')}&pageSize=1000&${ALL}${where ? `&${where}` : ''}${page ? `&pageToken=${encodeURIComponent(page)}` : ''}`, fetchImpl);
     out.push(...(r.files || []));
     page = r.nextPageToken || '';
   } while (page && out.length < 5000);
@@ -446,6 +456,9 @@ export const PAPERS = [
   { slot: 'w9', title: 'W-9', re: /\bW-?9\b/i, soard: true, newest: true, terms: ['W9', 'W-9'] },
   { slot: 'charity-permit', title: 'Charitable Organization Permit', re: /charitable organization (permit|registration)/i, newest: true, terms: ['Charitable Organization'] },
   { slot: 'dno', title: 'D&O insurance', re: /\bD\s?&\s?O\b|directors (and|&) officers/i, newest: true, terms: ['D&O', 'Insurance', 'Directors'] },
+  // Every board member signs it each year: it comes in asking them to (Board can stop that). Never a member's own
+  // signed copy (personal: one that names a board member, says it's signed, or sits with the signed copies)
+  { slot: 'expectations', title: 'Board Member Expectations', re: /\bexpectations\b/i, newest: true, terms: ['Expectations'], kind: 'policy', sign: true, personal: true },
 ];
 const SOARD_NAME = /soard|sunshine/i;
 const paperOf = (name) => PAPERS.find((p) => p.re.test(name) && !p.not?.test(name) && (!p.soard || SOARD_NAME.test(name))) || null;
@@ -470,12 +483,52 @@ export function docSlot(name) {
 export const docTitle = (name) => orgName(String(name || '').replace(/(\s*\(\d+\)|\.(docx?|pdf|xlsx?|pptx?|rtf|txt|csv))+\s*$/i, '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim());
 export const docKind = (name) => (/bylaw|by-law|articles|determination|incorporat|charter/i.test(name) ? 'governance' : /polic|manual|handbook|conflict|whistle|retention|code of/i.test(name) ? 'policy' : 'other');
 
+// ─── Members' signed copies ─────────────────────────────────────────
+
+/** A name's words to compare: lower case, no accents or punctuation, a space either side */
+const words = (s) => ` ${String(s || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim()} `;
+const nameParts = (p) => { const w = words(p.name).trim().split(' ').filter((x) => x.length > 1); return { first: w[0] || '', last: w.length > 1 ? w.at(-1) : '' }; };
 /**
- * The papers Documents gets from Drive → [{ slot, title, kind, year, file }]:
- * the newest "2026 Board Manual" folder's own files, then SOARD's papers it
- * doesn't hold, one copy of each from the shared drive
+ * The board member a file's name names → the person, or null when it names nobody or more than one: their full
+ * name, their first and last names apart ("Rivera, Alex", "Alex J. Rivera"), or (`loose`) a last name only one
+ * of them has
  */
-async function papers(token, root, fetchImpl) {
+export function whoseCopy(text, people, { loose = true } = {}) {
+  const t = words(text);
+  const one = (list) => (list.length === 1 ? list[0] : null);
+  const full = people.filter((p) => words(p.name).trim() && t.includes(words(p.name)));
+  if (full.length) return one(full);
+  const both = people.filter((p) => { const { first, last } = nameParts(p); return first && last && t.includes(` ${first} `) && t.includes(` ${last} `); });
+  if (both.length) return one(both);
+  if (!loose) return null;
+  const last = people.filter((p) => nameParts(p).last.length > 2 && t.includes(` ${nameParts(p).last} `));
+  return last.length === 1 && people.filter((q) => nameParts(q).last === nameParts(last[0]).last).length === 1 ? last[0] : null;
+}
+/** A member's own signed copy of a paper, by its name: it names a board member, or it's the expectations signed */
+const personalCopy = (name, people) => !!whoseCopy(name, people, { loose: false }) || (/\bexpectations\b/i.test(name) && /\bsigned\b|signature/i.test(name));
+// A title's words that name it ("Conflict of Interest Policy" → conflict, interest), never the board's or SOARD's
+const TITLE_STOP = new Set(['board', 'member', 'members', 'policy', 'policies', 'with', 'from', 'sunshine', 'ranney', 'soard', 'inc', 'the', 'and', 'for', 'annual', 'signed']);
+const titleWords = (title) => words(title).trim().split(' ').filter((w) => w.length > 3 && !TITLE_STOP.has(w));
+/**
+ * The paper a signed copy is of, by its name: one of SOARD's papers by its own name (the expectations), else the
+ * one document to sign whose title's words its name has. `signable`: the documents every member signs; `slots`:
+ * Documents' papers from Drive (slot → document) → the document, or null
+ */
+export function paperFor(text, signable, slots = {}) {
+  const p = paperOf(text);
+  const bySlot = p && signable.find((d) => d.id === slots[p.slot]);
+  if (bySlot) return bySlot;
+  const t = words(text);
+  const hits = signable.filter((d) => { const k = titleWords(d.title); return k.length && k.every((w) => t.includes(` ${w} `)); });
+  return hits.length === 1 ? hits[0] : null;
+}
+
+/**
+ * The papers Documents gets from Drive → { manual, signedDirs, list: [{ slot, title, kind, year, sign, file }] }:
+ * the newest "2026 Board Manual" folder's own files, then SOARD's papers it doesn't hold, one copy of each from the
+ * shared drive; never a member's own signed copy. `signedDirs`: the manual's folders of them ("Board Signed Documents")
+ */
+async function papers(token, root, fetchImpl, people = []) {
   const { driveId } = await drive(token, `/files/${encodeURIComponent(root)}?fields=driveId&${ALL.split('&')[0]}`, fetchImpl);
   const where = driveId ? `corpora=drive&driveId=${encodeURIComponent(driveId)}` : 'corpora=user';
   const manuals = (await listFiles(token, `name contains 'Board Manual' and mimeType = '${FOLDER}' and trashed = false`, fetchImpl, where))
@@ -483,18 +536,23 @@ async function papers(token, root, fetchImpl) {
     .sort((a, b) => b.year - a.year || String(b.modifiedTime || '').localeCompare(String(a.modifiedTime || '')));
   const manual = manuals[0] || null;
   const out = new Map();
+  const signedDirs = [];
   if (manual) {
-    const { kept } = oneOfEach((await children(token, manual.id, fetchImpl)).filter((f) => f.mimeType !== FOLDER && !NOT_FINAL.test(f.name)));
+    const inManual = await children(token, manual.id, fetchImpl);
+    signedDirs.push(...inManual.filter((f) => f.mimeType === FOLDER && /\bsigned\b|signatures?\b/i.test(f.name)).map((f) => ({ id: f.id, name: f.name })));
+    const { kept } = oneOfEach(inManual.filter((f) => f.mimeType !== FOLDER && !NOT_FINAL.test(f.name) && !personalCopy(f.name, people)));
     for (const f of kept) {
       const slot = docSlot(f.name);
       const paper = paperOf(f.name);
-      if (!out.has(slot)) out.set(slot, { slot, title: paper ? paper.title : docTitle(f.name), kind: paper ? 'governance' : docKind(f.name), year: paper ? null : manual.year, file: f });
+      if (!out.has(slot)) out.set(slot, { slot, title: paper ? paper.title : docTitle(f.name), kind: paper ? paper.kind || 'governance' : docKind(f.name), year: paper ? null : manual.year, sign: !!paper?.sign, file: f });
     }
   }
   const missing = PAPERS.filter((p) => !out.has(p.slot));
   if (missing.length) {
     const terms = [...new Set(missing.flatMap((p) => p.terms))].map((t) => `name contains '${t.replace(/'/g, "\\'")}'`).join(' or ');
-    const found = (await listFiles(token, `(${terms}) and mimeType != '${FOLDER}' and trashed = false`, fetchImpl, where)).filter((f) => !NOT_FINAL.test(f.name) && !driveSkip(f));
+    const withSigned = new Set(signedDirs.map((d) => d.id));
+    const found = (await listFiles(token, `(${terms}) and mimeType != '${FOLDER}' and trashed = false`, fetchImpl, where))
+      .filter((f) => !NOT_FINAL.test(f.name) && !driveSkip(f) && !(paperOf(f.name)?.personal && (personalCopy(f.name, people) || (f.parents || []).some((x) => withSigned.has(x)))));
     // The cleanest copy: no "(2)", no "3-" from a grant's attachments, a PDF
     const rank = (f) => (/\(\d+\)/.test(f.name) ? 2 : 0) + (/^\s*\d+\s*[-.]/.test(f.name) ? 2 : 0) + (/\.pdf$/i.test(f.name) || f.mimeType === 'application/pdf' ? 0 : 1);
     const at = (f) => String(f.modifiedTime || '');
@@ -505,15 +563,15 @@ async function papers(token, root, fetchImpl) {
     const filed = (a, b) => rank(a) - rank(b) || String(a.createdTime || a.modifiedTime || '').localeCompare(String(b.createdTime || b.modifiedTime || '')) || a.name.localeCompare(b.name);
     for (const p of missing) {
       const best = found.filter((f) => paperOf(f.name) === p).sort(p.newest ? newest : filed)[0];
-      if (best) out.set(p.slot, { slot: p.slot, title: p.title, kind: 'governance', year: null, file: best });
+      if (best) out.set(p.slot, { slot: p.slot, title: p.title, kind: p.kind || 'governance', year: null, sign: !!p.sign, file: best });
     }
   }
-  return { manual: manual?.name || '', list: [...out.values()] };
+  return { manual: manual?.name || '', signedDirs, list: [...out.values()] };
 }
 
 /** One paper onto its Documents entry (made the first time; a newer copy replaces the file) → 1 when a file came in */
 async function bringPaper(env, { token, paper, fetchImpl, now }) {
-  const { slot, title, kind, year, file } = paper;
+  const { slot, title, kind, year, sign = false, file } = paper;
   const row = await env.DB.prepare('SELECT * FROM board_drive_docs WHERE slot = ?').bind(slot).first();
   if (row && row.drive_id === file.id && row.modified === (file.modifiedTime || '')) return 0;
   const doc = row?.doc_id ? await env.DB.prepare('SELECT data FROM board_docs WHERE id = ?').bind(row.doc_id).first() : null;
@@ -527,7 +585,7 @@ async function bringPaper(env, { token, paper, fetchImpl, now }) {
     const cur = cleanDoc(JSON.parse(doc.data));
     if (year && cur.year !== year) await saveDoc(env.DB, { ...cur, year });
   } else {
-    docId = (await saveDoc(env.DB, { title, kind, year, shared: true })).id;
+    docId = (await saveDoc(env.DB, { title, kind, year, shared: true, sign })).id;
   }
   const put = await putFile(env, { ownerType: 'doc', ownerId: docId, file: new File([got.bytes], got.name, { type: got.type }), by: DRIVE_BY });
   if (row?.board_file_id) await deleteFile(env, row.board_file_id).catch(() => {});
@@ -536,13 +594,84 @@ async function bringPaper(env, { token, paper, fetchImpl, now }) {
   return 1;
 }
 
-/** The papers onto Documents → { checkedAt, manual (the folder read), count (documents from Drive), brought, missing: [titles not found] } */
-async function readPapers(env, { token, root, fetchImpl, now }) {
-  const { manual, list } = await papers(token, root, fetchImpl);
+/**
+ * The papers onto Documents → { version, checkedAt, manual (the folder read), signedDirs, count (documents from
+ * Drive), brought, missing: [titles not found] }
+ */
+async function readPapers(env, { token, root, fetchImpl, now, people }) {
+  const { manual, signedDirs, list } = await papers(token, root, fetchImpl, people);
   let brought = 0;
   for (const paper of list) brought += await bringPaper(env, { token, paper, fetchImpl, now });
   const ids = ((await env.DB.prepare("SELECT d.id FROM board_drive_docs x JOIN board_docs d ON d.id = x.doc_id").all()).results || []).length;
-  return { checkedAt: new Date(now).toISOString(), manual, count: ids, brought, missing: PAPERS.filter((p) => !list.some((x) => x.slot === p.slot)).map((p) => p.title) };
+  return { version: DOCS_VERSION, checkedAt: new Date(now).toISOString(), manual, signedDirs, count: ids, brought, missing: PAPERS.filter((p) => !list.some((x) => x.slot === p.slot)).map((p) => p.title) };
+}
+
+/**
+ * The members' signed copies in the newest board manual's folders of them ("Board Signed Documents", and the folders
+ * inside): each one its member's signature on the paper it names, for the year its name gives, else the year it went
+ * into Drive. By their names only (the file's, else its folder's): never opened, copied or put on the board page;
+ * Board's admins open it in Drive. Each is placed once, and a signature the member gave that year stays theirs. One
+ * that names nobody on the board, or no paper they sign, waits this year for Board's admins to say (placeSigned).
+ * → { checkedAt, folders, files, placed, waiting: [{ id, name, folder, year, why, slug, docId }] }
+ */
+async function readSigned(env, { token, dirs = [], fetchImpl, now }) {
+  const { DB } = env;
+  const files = [];
+  for (const dir of dirs) {
+    for (const f of await children(token, dir.id, fetchImpl)) {
+      if (f.mimeType !== FOLDER) { files.push({ ...f, folder: dir.name, inside: '' }); continue; }
+      for (const g2 of await children(token, f.id, fetchImpl)) if (g2.mimeType !== FOLDER) files.push({ ...g2, folder: `${dir.name} / ${f.name}`, inside: f.name });
+    }
+  }
+  const people = (await peopleRows(DB)).filter((p) => p.group === 'board').map((p) => ({ slug: p.slug, name: p.name }));
+  const signable = (await listDocs(DB)).filter((d) => d.sign);
+  const slots = Object.fromEntries(((await DB.prepare('SELECT slot, doc_id FROM board_drive_docs').all()).results || []).map((r) => [r.slot, r.doc_id]));
+  const rows = Object.fromEntries(((await DB.prepare('SELECT * FROM board_drive_signed').all()).results || []).map((r) => [r.drive_id, r]));
+  const thisYear = Number(todayEastern(now).slice(0, 4));
+  let placed = 0;
+  const waiting = [];
+  for (const f of files) {
+    const row = rows[f.id];
+    // Placed, or taken off or left out: settled until the file changes
+    if (row && row.state !== 'waiting' && row.modified === (f.modifiedTime || '')) { if (row.state !== 'off') placed += 1; continue; }
+    const year = nameYear(f.name) || Number(String(f.createdTime || f.modifiedTime || '').slice(0, 4)) || null;
+    const who = whoseCopy(f.name, people) || (f.inside ? whoseCopy(f.inside, people) : null);
+    const doc = paperFor(f.name, signable, slots) || (f.inside ? paperFor(f.inside, signable, slots) : null);
+    const why = !who ? 'It doesn’t name anyone on the board' : !doc ? 'It doesn’t name a paper the board signs' : !year ? 'It has no year' : '';
+    if (!why) {
+      await signFromDrive(DB, { docId: doc.id, slug: who.slug, year, name: who.name, driveId: f.id, driveName: f.name, at: f.createdTime || f.modifiedTime || new Date(now).toISOString() });
+      placed += 1;
+    } else if (!year || year >= thisYear) waiting.push({ id: f.id, name: f.name, folder: f.folder, year, why, slug: who?.slug || '', docId: doc?.id || '' });
+    await DB.prepare('INSERT OR REPLACE INTO board_drive_signed (drive_id, name, folder, modified, doc_id, slug, year, state, why, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(f.id, f.name, f.folder, f.modifiedTime || '', doc?.id || '', who?.slug || '', year, why ? 'waiting' : 'placed', why, new Date(now).toISOString()).run();
+  }
+  return { checkedAt: new Date(now).toISOString(), folders: dirs.map((d) => d.name), files: files.length, placed, waiting: waiting.slice(0, 50) };
+}
+
+/**
+ * One of Board's admins saying whose a waiting signed copy in Drive is, and which paper (`docId`; none: it isn't a
+ * signature, and it's left out) → { name } of who signed
+ */
+export async function placeSigned(env, { driveId, docId = '', slug = '', by = '' }) {
+  await ensureDrive(env.DB);
+  const { DB } = env;
+  const row = await DB.prepare('SELECT * FROM board_drive_signed WHERE drive_id = ?').bind(String(driveId || '')).first();
+  if (!row) throw Object.assign(new Error('That copy isn’t with the signed copies in Drive any more'), { status: 404 });
+  let name = '';
+  if (docId) {
+    const who = (await peopleRows(DB)).find((p) => p.group === 'board' && p.slug === slug);
+    if (!who) throw Object.assign(new Error('Whose is it? They aren’t on People → Board'), { status: 404 });
+    const doc = (await listDocs(DB)).find((d) => d.id === docId && d.sign);
+    if (!doc) throw Object.assign(new Error('That document doesn’t ask for a signature'), { status: 404 });
+    // (a copy the member added themselves stays: it's theirs)
+    if (!doc.signed[slug]?.copy) await signFromDrive(DB, { docId, slug, year: row.year || Number(todayEastern().slice(0, 4)), name: who.name, driveId: row.drive_id, driveName: row.name, by }, { replace: true });
+    name = who.name;
+  }
+  await DB.prepare('UPDATE board_drive_signed SET state = ?, doc_id = ?, slug = ?, why = ? WHERE drive_id = ?').bind(docId ? 'admin' : 'off', docId, docId ? slug : '', '', row.drive_id).run();
+  // Off the list of waiting copies at once (the next look writes it again)
+  const st = await readState(DB, KEY);
+  if (st.signed?.waiting) await writeState(DB, KEY, { ...st, signed: { ...st.signed, placed: st.signed.placed + (docId ? 1 : 0), waiting: st.signed.waiting.filter((w) => w.id !== row.drive_id) } });
+  return { name };
 }
 
 // ─── A look ─────────────────────────────────────────────────────────
@@ -629,14 +758,18 @@ export async function readBoardDrive(env, { fetchImpl = fetch, now = Date.now(),
     }
     await writeState(env.DB, DONE, { version: VERSION, root, admin, walkedAt: fresh ? done.walkedAt : new Date(now).toISOString(), folders, seen });
     const backlog = past.filter((f) => !seen[f.id]).length;
-    // Documents' papers: hourly, once the meetings are read (and after an upgrade)
+    // Documents' papers, then the members' signed copies: hourly, once the meetings are read (and after an upgrade)
     let docs = last.docs || null;
-    if (!backlog && (last.version !== VERSION || !docs?.checkedAt || now - Date.parse(docs.checkedAt) >= HOUR)) {
-      try { docs = await readPapers(env, { token, root, fetchImpl, now }); } catch (err) { errors.push(`Documents: ${String(err.message).slice(0, 200)}`); }
+    let signed = last.signed || null;
+    if (!backlog && (last.version !== VERSION || docs?.version !== DOCS_VERSION || !docs?.checkedAt || now - Date.parse(docs.checkedAt) >= HOUR)) {
+      try {
+        docs = await readPapers(env, { token, root, fetchImpl, now, people: people.filter((p) => p.kind === 'board') });
+        try { signed = await readSigned(env, { token, dirs: docs.signedDirs, fetchImpl, now }); } catch (err) { errors.push(`Signed copies: ${String(err.message).slice(0, 200)}`); }
+      } catch (err) { errors.push(`Documents: ${String(err.message).slice(0, 200)}`); }
     }
     const staleLeft = [...(await staleFolders(env.DB))].filter((id) => past.some((f) => f.id === id)).length;
     return await writeState(env.DB, KEY, {
-      ...base, ok: !errors.length, needsScope: false, apiOff: false, folders: folders.length, read, brought: filesNow, backlog, stale: staleLeft, docs,
+      ...base, ok: !errors.length, needsScope: false, apiOff: false, folders: folders.length, read, brought: filesNow, backlog, stale: staleLeft, docs, signed,
       ...(await totals(env.DB)), errors: errors.slice(0, 10),
     });
   } finally {
@@ -666,7 +799,9 @@ export async function maybeReadBoardDrive(env, { fetchImpl = fetch, now = Date.n
     await ensureDrive(env.DB);
     const st = await readState(env.DB, KEY);
     // (and every minute while agendas an older reader filled are still to read again)
-    const due = st.version !== VERSION || st.backlog > 0 || st.stale > 0 || st.reader !== AGENDA_READER || !st.checkedAt || now - Date.parse(st.checkedAt) >= minAgeMs;
+    // (and soon after the documents' upgrade, every ten minutes until it's read)
+    const docsDue = st.docs && st.docs.version !== DOCS_VERSION && (!st.checkedAt || now - Date.parse(st.checkedAt) >= 10 * 60 * 1000);
+    const due = st.version !== VERSION || docsDue || st.backlog > 0 || st.stale > 0 || st.reader !== AGENDA_READER || !st.checkedAt || now - Date.parse(st.checkedAt) >= minAgeMs;
     if (!due) return { busy: false };
     const r = await readBoardDrive(env, { fetchImpl, now });
     return { busy: (r?.read || 0) > 0 && ((r?.brought || 0) > 0 || (r?.backlog || 0) > 0 || (r?.stale || 0) > 0) };

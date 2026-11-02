@@ -10,6 +10,8 @@
  * POST { action: 'rsvp' }                           → 410: the calendar invite is the only answer (Peter, Nov 2 2026)
  * POST { action: 'action-done', actionId, done }    one of their own action items
  * POST { action: 'sign', docId, name }               "I've read it", this year, with their own name typed
+ * POST ?signed=<docId> (multipart "file")           the copy they signed on paper, as this year's signature (staff-only;
+ *                                                    they open their own)
  * POST { action: 'checkin', meetingId, how }         present | remote, on the meeting's day
  * POST { action: 'vote', meetingId, motionId, vote } for | against | abstain, while the chair has it open
  * POST { action: 'report', meetingId, itemId, text, base }  the report on an item they present (Markdown); an admin's
@@ -29,7 +31,7 @@
  * (theirs alone, simulated members) they check in and vote as themselves.
  */
 
-import { portalData, setActionDone, signDoc, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, attachToItem, detachFromItem, listMeetings } from './_board.js';
+import { portalData, setActionDone, signDoc, signWithCopy, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, attachToItem, detachFromItem, listMeetings } from './_board.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
 import { portalExtras, saveLineNote, chairApprove, chairNote, askPresenter } from './_board-asks.js';
@@ -86,8 +88,16 @@ export async function onRequestPost(context) {
         throw err;
       }
     }
-    // A document with an item they present (attachToItem checks), as the form's "file"
     const q = new URL(request.url).searchParams;
+    // The copy of a paper they signed on paper, as the form's "file": their own signature, so a board member's only
+    if (q.has('signed')) {
+      if (!w.member) return fail('Only a board member can sign for themselves', 403);
+      if (!ID.test(String(q.get('signed') || ''))) return fail('Which document?');
+      let file = null;
+      try { file = (await request.formData()).get('file'); } catch { return fail('Send your signed copy as a file'); }
+      return Response.json({ ok: true, ...(await signWithCopy(env, q.get('signed'), file, { member: w.member, by: w.member.email })) });
+    }
+    // A document with an item they present (attachToItem checks), as the form's "file"
     if (q.has('attach')) {
       let file = null;
       try { file = (await request.formData()).get('file'); } catch { return fail('Send the document as a file'); }

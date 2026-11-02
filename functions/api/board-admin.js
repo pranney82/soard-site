@@ -17,6 +17,8 @@
  *   send-packet { id, test }                  email the board (test: only you)
  *   action-done { actionId, done }
  *   save-doc { doc }, delete-doc { id }
+ *   unsign { docId, slug }                    a member's signature this year taken off (its copy goes with it)
+ *   place-signed { driveId, docId, slug }     whose a signed copy in Drive is, when Board couldn't tell (_board-drive.js)
  *   update-file { id, kind, staffOnly, name }, delete-file { id }
  *   save-settings { settings }
  *   sync-access                               try the sign-in list again (offered only when it failed)
@@ -29,6 +31,7 @@
  *                                             { date, name }, fileId }, nothing put on it; anyway: true reads them in all the same
  *                                             dry: true reads it without saving → { dry, read, would }
  * POST multipart (?upload=1): file, ownerType (meeting|doc), ownerId, kind, staffOnly → the stored file
+ * POST multipart: file, signFor (a document), slug   the copy a member signed on paper, as their signature this year
  *
  * The audit log gets what changed by name only: its readers are every staff
  * member, and board notes are for the board.
@@ -36,7 +39,7 @@
 
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
-  setActionDone, listDocs, saveDoc, deleteDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
+  setActionDone, listDocs, saveDoc, deleteDoc, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
   memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
   chairLive, createPractice, resetPractice,
 } from './_board.js';
@@ -46,7 +49,7 @@ import { groupStatus, syncBoardGroup } from './_board-group.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-mail.js';
 import { sendInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites } from './_board-invite.js';
-import { maybeReadBoardDrive, driveStatus, DEFAULT_DRIVE_FOLDER } from './_board-drive.js';
+import { maybeReadBoardDrive, driveStatus, placeSigned, DEFAULT_DRIVE_FOLDER } from './_board-drive.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { readMinutesInto } from './_board-minutes.js';
 import { emailConfigured } from './_broadcast-notify.js';
@@ -118,6 +121,14 @@ export async function onRequestPost(context) {
   try {
     if ((request.headers.get('Content-Type') || '').includes('multipart/form-data')) {
       const form = await request.formData();
+      // A paper a member signed and handed in: their signature for this year
+      if (form.get('signFor')) {
+        const docId = String(form.get('signFor'));
+        if (!ID.test(docId)) return fail('Which document?');
+        const signed = await signWithCopy(env, docId, form.get('file'), { slug: String(form.get('slug') || ''), by: me });
+        await audit(env, me, 'updated', `Board signature added for ${signed.name}`);
+        return Response.json({ ok: true, signed, doc: (await listDocs(env.DB)).find((d) => d.id === docId) });
+      }
       const file = await putFile(env, {
         ownerType: String(form.get('ownerType') || ''), ownerId: String(form.get('ownerId') || ''), file: form.get('file'),
         kind: String(form.get('kind') || 'other'), staffOnly: form.get('staffOnly') === 'true', by: me,
@@ -188,6 +199,20 @@ export async function onRequestPost(context) {
         await deleteDoc(env, id);
         await audit(env, me, 'deleted', 'Board document deleted');
         return Response.json({ ok: true });
+      }
+      case 'unsign': {
+        const docId = String(body.docId || '');
+        if (!ID.test(docId)) return fail('Which document?');
+        if (!(await unsignDoc(env, docId, String(body.slug || '')))) return fail('That signature is gone', 404);
+        await audit(env, me, 'deleted', 'Board signature taken off');
+        return Response.json({ ok: true, doc: (await listDocs(env.DB)).find((d) => d.id === docId) });
+      }
+      case 'place-signed': {
+        const docId = String(body.docId || '');
+        if (!ID.test(docId)) return fail('Which document?');
+        const placed = await placeSigned(env, { driveId: String(body.driveId || ''), docId, slug: String(body.slug || ''), by: me });
+        await audit(env, me, 'updated', `Board signature placed from Drive for ${placed.name}`);
+        return Response.json({ ok: true, doc: (await listDocs(env.DB)).find((d) => d.id === docId), drive: await driveStatus(env.DB) });
       }
       case 'update-file':
         needId();

@@ -587,6 +587,17 @@ export const STYLES = `
   .bd-inline .form-input { width: auto; }
   .bd-check { display: inline-flex; align-items: center; gap: 0.45rem; font-size: var(--fs-sm); cursor: pointer; }
   .bd-check input { width: 16px; height: 16px; margin: 0; }
+  .bd-signers { flex: 1 1 100%; min-width: 0; margin-top: 0.25rem; border-top: 1px solid var(--color-border); }
+  .bd-signers__list { list-style: none; margin: 0; padding: 0; }
+  .bd-signer { display: grid; grid-template-columns: 0.5rem minmax(8rem, 13rem) minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); font-size: var(--fs-sm); }
+  .bd-signer:last-child { border-bottom: none; }
+  .bd-signer__dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-border-strong); }
+  .bd-signer__dot.is-on { background: var(--tone-success-dot, var(--tone-success-fg)); }
+  .bd-signer__name { font-weight: 600; color: var(--color-text); }
+  .bd-signer__how { color: var(--color-text-secondary); overflow-wrap: anywhere; }
+  .bd-signer__how a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+  @media (max-width: 640px) { .bd-signer { grid-template-columns: 0.5rem minmax(0, 1fr); } .bd-signer__how, .bd-signer__act { grid-column: 2; } }
+  .bd-select { width: auto; max-width: 15rem; }
   .bd-back { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--color-text-secondary); font-size: var(--fs-sm); text-decoration: none; margin-bottom: 0.25rem; }
   .bd-back:hover { color: var(--color-text); }
   .bd-grid3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.85rem 1rem; }
