@@ -767,6 +767,40 @@ export function budgetOf(list, report, asOf, type = new Map()) {
  * A Profit and Loss by class → spending by purpose, without the in kind: { list: [{ name, amount }], total }, only when
  * the books keep it (two or more classes carrying at least half the spending); else null
  */
+/**
+ * The store by its own location (QuickBooks' locations, when it keeps them: SOARD's "Store"): from a Profit and Loss
+ * by location, the store's column, every account its entries carry with their groups, and its groups' totals, so the
+ * store's own staff and rent can count once they're tagged to it. → { location, income, cogs, expenses, otherIncome,
+ * otherExpenses, net, untagged (the year's entries with no location), accounts: [{ label, group, amount }] } or null
+ * without a store location in the report
+ */
+export function storeByLocation(report) {
+  const cols = (report?.Columns?.Column || []).map((c) => cleanText(c.ColTitle, 60));
+  const at = cols.findIndex((t, i) => i > 0 && STORE.test(t));
+  if (at < 0) return null;
+  const none = cols.findIndex((t, i) => i > 0 && /^(not specified|no location|unassigned)$/i.test(t));
+  const groups = { Income: 0, COGS: 0, Expenses: 0, OtherIncome: 0, OtherExpenses: 0 };
+  let untagged = 0;
+  const accounts = [];
+  const walk = (rows, group) => {
+    for (const r of rows || []) {
+      const g = r.group && r.group in groups ? r.group : group;
+      if (r.Rows?.Row) walk(r.Rows.Row, g);
+      if (r.ColData && g) {
+        const v = num(r.ColData[at]?.value);
+        if (v) accounts.push({ label: accountName(cellText(r.ColData[0])), group: g, amount: round2(v) });
+      }
+      if (r.Summary && r.group && r.group in groups) {
+        groups[r.group] = round2(num(r.Summary.ColData?.[at]?.value));
+        if (none > 0 && SPENDING.includes(r.group)) untagged += num(r.Summary.ColData?.[none]?.value);
+      }
+    }
+  };
+  walk(report?.Rows?.Row, '');
+  const net = round2(groups.Income + groups.OtherIncome - groups.COGS - groups.Expenses - groups.OtherExpenses);
+  return { location: cols[at], income: groups.Income, cogs: groups.COGS, expenses: groups.Expenses, otherIncome: groups.OtherIncome, otherExpenses: groups.OtherExpenses, net, untagged: round2(untagged), accounts };
+}
+
 export function functionsOf(report) {
   const cols = (report?.Columns?.Column || []).map((c) => cleanText(c.ColTitle, 60));
   const groups = (report?.Rows?.Row || []).filter((r) => SPENDING.includes(r.group));
@@ -783,7 +817,7 @@ export function functionsOf(report) {
 
 const DAILY_RETRY_MS = 60 * 60 * 1000;
 // What the daily read keeps: one up whenever it keeps something new, so a deploy's figures show that day, not the next
-const DAILY_SHAPE = 9;
+const DAILY_SHAPE = 10;
 /**
  * The year in context, now (about ten reports): kept in books_daily with its day. Trouble is logged and kept, and the
  * last good read stays; the hourly read is the one that tells Slack
@@ -855,6 +889,16 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     let budgetList;
     try { budgetList = (await get('/query', { query: 'select * from Budget MAXRESULTS 1000' })).QueryResponse?.Budget || []; } catch (err) { budgetList = { error: err.code || (err.status ? `HTTP_${err.status}` : 'UNREACHABLE') }; }
     const setup = await setupOf(get, prefs, budgetList);
+    // The store by its own location, when QuickBooks keeps one: what's tagged to it (to see whether its staff and rent are)
+    let storeLocation = null;
+    try {
+      if (setup.tracking?.locations && Array.isArray(setup.locations) && setup.locations.some((n) => STORE.test(n))) {
+        const loc = storeByLocation(await pl(jan1(close.asOf), close.asOf, { summarize_column_by: 'Departments' }));
+        storeLocation = loc ? { asOf: close.asOf, ...loc } : null;
+      }
+    } catch (err) {
+      console.error('[books] store location', err.code || '', detailOf(err));
+    }
     let budget = null;
     let budgetNow = null;
     try {
@@ -872,7 +916,7 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
       day: today,
       lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net, nonCash: nonCashOf(lastFullReport) }, sources: sourcesOf(lastSameReport), nonCash: nonCashOf(lastSameReport), store: storeOf(lastSameReport) },
       trailing: { from: tFrom, through: tThrough, spent: trail.spent, cashOut: cashOut ? cashOut.out : null, payments: cashOut ? cashOut.payments : 0 },
-      months, statements, functions, monthly, setup, budget, budgetNow,
+      months, statements, functions, monthly, setup, budget, budgetNow, storeLocation,
     };
     await env.DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at, error) VALUES (?, ?, ?, ?, ?, NULL)').bind(ID, JSON.stringify(data), today, at, at).run();
     return { ok: true, data };

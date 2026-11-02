@@ -787,6 +787,22 @@ test('what else the books keep, for Settings: each budget’s months and how it�
   assert.ok((await booksNow(env.DB, { now: T0 + 25 * HOUR })).statements, 'the statements still read');
 });
 
+test('the store by its own location: the Store column of a Profit and Loss by location, every account tagged to it and its groups', async () => {
+  const { storeByLocation } = await import('../functions/api/_quickbooks.js');
+  const cols = ['', 'Store', 'Not Specified', 'Total'];
+  const row = (label, ...v) => ({ type: 'Data', ColData: [label, ...v].map((value) => ({ value })) });
+  const sec = (group, label, rows, ...tot) => ({ type: 'Section', group, Header: { ColData: [{ value: label }] }, Rows: { Row: rows }, Summary: { ColData: [`Total ${label}`, ...tot].map((value) => ({ value })) } });
+  const report = { Columns: { Column: cols.map((t) => ({ ColTitle: t })) }, Rows: { Row: [
+    sec('Income', 'Income', [row('4210 Store Income', '459452.59', '0', '459452.59'), row('4010 Individual/Corporate Revenue', '0', '728501.72', '728501.72')], '459452.59', '728501.72', '1187954.31'),
+    sec('COGS', 'Cost of Goods Sold', [row('5210 Store COGS', '271420.14', '0', '271420.14')], '271420.14', '0', '271420.14'),
+    sec('Expenses', 'Expenses', [sec(undefined, '6010 Payroll Expense', [row('6011 Salary Expense', '80000', '395793.34', '475793.34')], '80000', '395793.34', '475793.34'), row('6021 Rent Expense', '60000', '55966.58', '115966.58')], '140000', '451759.92', '591759.92'),
+  ] } };
+  const s = storeByLocation(report);
+  assert.deepEqual([s.location, s.income, s.cogs, s.expenses, s.net, s.untagged], ['Store', 459452.59, 271420.14, 140000, 48032.45, 451759.92]);
+  assert.deepEqual(s.accounts.map((a) => [a.label, a.group, a.amount]), [['Store Income', 'Income', 459452.59], ['Store COGS', 'COGS', 271420.14], ['Salary Expense', 'Expenses', 80000], ['Rent Expense', 'Expenses', 60000]], 'its staff and rent, when they’re tagged to it');
+  assert.equal(storeByLocation({ Columns: { Column: [{ ColTitle: '' }, { ColTitle: 'Total' }] }, Rows: { Row: [] } }), null, 'no store location: none');
+});
+
 test('the store: the accounts named for it (sales, cost of goods, the sales tax a shop keeps), in kind left out, profit before the shared staff and rent', async () => {
   const { storeOf } = await import('../functions/api/_quickbooks.js');
   const acct = (label, value) => ({ type: 'Data', ColData: [{ value: label }, { value }] });
