@@ -643,6 +643,7 @@ function App() {
     : route.page === 'meetings' ? html`<${MeetingsPage} ctx=${ctx} />`
     : route.page === 'financials' ? html`<${FinancialsPage} ctx=${ctx} key=${route.id || ''} />`
     : route.page === 'people' ? html`<${PeoplePage} ctx=${ctx} />`
+    : route.page === 'documents' && route.id ? html`<${DocPage} id=${route.id} ctx=${ctx} key=${route.id} />`
     : route.page === 'documents' ? html`<${DocumentsPage} ctx=${ctx} />`
     : html`<${HomePage} ctx=${ctx} />`;
   return html`
@@ -1092,7 +1093,7 @@ function HomePage({ ctx }) {
   const { data, d } = ctx;
   useFocusTarget();
   const mine = data.actions.filter((a) => a.mine);
-  const toSign = data.docs.filter((x) => x.sign && x.file && !x.signedByMe);
+  const toSign = data.docs.filter((x) => x.sign && (x.body || x.file) && !x.signedByMe);
   const toWrite = reportsToWrite(ctx);
   // The chair's agenda to review (./chair.js), until it's approved
   const toReview = reviewTodo(data, d);
@@ -1114,9 +1115,9 @@ function HomePage({ ctx }) {
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
-        ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href="#/documents" onClick=${() => { focusNext = `doc-${x.id}`; }}>
+        ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href=${x.body ? `#/documents/${x.id}` : '#/documents'} onClick=${() => { if (!x.body) focusNext = `doc-${x.id}`; }}>
           <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
-          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">Every board member signs it once a year</span></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">${x.signedEarlier ? 'Its words changed since you signed: sign the new ones' : 'Every board member signs it once a year'}</span></span>
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
       </ul>
@@ -3305,19 +3306,21 @@ function DocumentsPage({ ctx }) {
   const terms = termsOf(q);
   const year = todayEastern().slice(0, 4);
   useFocusTarget();
-  const toSign = docs.filter((x) => x.sign && x.file);
+  const readable = (x) => x.body || x.file;
+  const toSign = docs.filter((x) => x.sign && readable(x));
   const done = toSign.filter((x) => x.signedByMe).length;
-  const found = (x) => !terms.length || hits(`${x.title} ${x.note} ${coverWord(x.title)}`, terms);
-  const onShelves = docs.filter((x) => !(x.sign && x.file) && found(x));
+  const found = (x) => !terms.length || hits(`${x.title} ${x.note} ${coverWord(x.title)} ${x.body ? mdPlain(x.body) : ''}`, terms);
+  const onShelves = docs.filter((x) => !(x.sign && readable(x)) && found(x));
   const shelves = [...SHELVES, ...MORE_SHELVES].map((sh) => ({ ...sh, list: onShelves.filter((x) => shelfOf(x) === sh.id) })).filter((sh) => sh.list.length);
-  const withFile = docs.filter((x) => x.file);
+  // A paper written here opens on its own page (its words, then signing); a file in the viewer
+  const withFile = docs.filter((x) => x.file && !x.body);
   const vf = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
-  const open = (x) => (x.file ? viewerLink(vf, withFile.indexOf(x)) : { href: null });
+  const open = (x) => (x.body ? { href: `#/documents/${x.id}` } : x.file ? viewerLink(vf, withFile.indexOf(x)) : { href: null });
   // What the page holds, said once at the top: what there is to sign, the shelves there are, the meetings' files
   const SAY = { governing: 'SOARD’s governing documents', status: 'its tax-exempt status', standing: 'registrations and insurance', plan: 'plans and reports', money: 'budgets and audits' };
   const said = [
     toSign.length ? 'The papers each board member signs each year' : '',
-    ...[...SHELVES, ...MORE_SHELVES].filter((sh) => SAY[sh.id] && docs.some((x) => !(x.sign && x.file) && shelfOf(x) === sh.id)).map((sh) => SAY[sh.id]),
+    ...[...SHELVES, ...MORE_SHELVES].filter((sh) => SAY[sh.id] && docs.some((x) => !(x.sign && readable(x)) && shelfOf(x) === sh.id)).map((sh) => SAY[sh.id]),
     data.meetings.some((m) => m.files.length) ? 'every file from every meeting' : '',
   ].filter(Boolean);
   const lede = said.length ? `${said.length > 2 ? `${said.slice(0, -1).join(', ')}, and ${said.at(-1)}` : said.join(' and ')}.`.replace(/^\w/, (c) => c.toUpperCase()) : 'SOARD’s papers, and every file from every meeting.';
@@ -3331,7 +3334,7 @@ function DocumentsPage({ ctx }) {
     </header>
     ${toSign.length && data.me.slug && toSign.some(found) ? html`<section class="bp-card bp-gap bp-tosign bp-rise" style=${rise(1)} aria-labelledby="sign-h">
       <div class="bp-tosign__head">
-        <${SecHead} id="sign-h" title="To read and sign" sub=${`Each board member signs these once a year. ${done === toSign.length ? `You’ve signed them all for ${year}. Thank you.` : `You’ve signed ${done} of ${toSign.length} for ${year}.`}`} />
+        <${SecHead} id="sign-h" title="To read and sign" sub=${`Each board member signs these once a year. ${done === toSign.length ? `You’ve signed them all for ${year}. Thank you.` : `You’ve signed ${done}\u00A0of\u00A0${toSign.length}\u00A0for\u00A0${year}.`}`} />
         ${toSign.length > 1 ? html`<div class="bp-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax=${toSign.length} aria-valuenow=${done} aria-label=${`Signed for ${year}`}><span style=${`--p:${(done / toSign.length) * 100}%`}></span></div>` : null}
       </div>
       <ul class="bp-signlist">${toSign.filter(found).map((x) => html`<li key=${x.id} class="bp-doc" id=${`doc-${x.id}`}>
@@ -3339,8 +3342,12 @@ function DocumentsPage({ ctx }) {
         <div class="bp-signlist__body">
           <p class="bp-doc__title">${x.title}</p>
           <p class="bp-doc__meta">${[x.note, nbw(`${x.signedCount} of ${data.people.board.length} board members have signed for ${year}`)].filter(Boolean).join(' · ')}</p>
-          <p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p>
-          <${SignForm} d=${x} ctx=${ctx} />
+          ${x.body ? html`
+            ${x.signedByMe ? html`<p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p><${Signed} doc=${x} ctx=${ctx} />`
+              : html`${x.signedEarlier ? html`<p class="bp-doc__changed">Its words changed since you signed. Read them and sign again.</p>` : null}
+                <p class="bp-btns bp-btns--tight"><a class=${`bp-btn bp-btn--sm ${data.me.slug ? 'bp-btn--primary' : ''}`} ...${open(x)}>${data.me.slug ? 'Read and sign' : 'Read it'}</a></p>`}`
+            : html`<p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p>
+          <${SignForm} d=${x} ctx=${ctx} />`}
         </div>
       </li>`)}</ul>
     </section>` : null}
@@ -3350,7 +3357,8 @@ function DocumentsPage({ ctx }) {
         <h3 class="bp-papers__h" id=${`sh-${sh.id}`}>${sh.label}<span class="bp-count">${sh.list.length}</span></h3>
         ${sh.sub ? html`<p class="bp-papers__sub">${sh.sub}</p>` : null}
         <ul class="bp-files__list bp-papers__list" aria-labelledby=${`sh-${sh.id}`}>${sh.list.map((x) => html`<li key=${x.id} id=${`doc-${x.id}`} class="bp-file bp-doc">
-          ${x.file ? html`<a class="bp-file__main" ...${open(x)}><${FileBadge} f=${x.file} /><span class="bp-file__text"><span class="bp-file__title">${x.title}</span><span class="bp-file__meta">${[x.note, formatOf(x.file), nb(sizeText(x.file.size))].filter(Boolean).join(' · ')}</span></span></a>`
+          ${x.body ? html`<a class="bp-file__main" ...${open(x)}><span class="bp-badge bp-badge--words" aria-hidden="true"><${Icon} name="documents" size=${16} /></span><span class="bp-file__text"><span class="bp-file__title">${x.title}</span><span class="bp-file__meta">${[x.note, readTime(mdWords(x.body))].filter(Boolean).join(' · ')}</span></span></a>`
+            : x.file ? html`<a class="bp-file__main" ...${open(x)}><${FileBadge} f=${x.file} /><span class="bp-file__text"><span class="bp-file__title">${x.title}</span><span class="bp-file__meta">${[x.note, formatOf(x.file), nb(sizeText(x.file.size))].filter(Boolean).join(' · ')}</span></span></a>`
             : html`<div class="bp-file__main"><span class="bp-badge" aria-hidden="true"></span><span class="bp-file__text"><span class="bp-file__title">${x.title}</span><span class="bp-file__meta">${[x.note, 'On its way'].filter(Boolean).join(' · ')}</span></span></div>`}
         </li>`)}</ul>
       </div>`)}</div>
@@ -3363,6 +3371,45 @@ function DocumentsPage({ ctx }) {
     </div>`}
     ${terms.length && !onShelves.length && !toSign.some(found) && !data.meetings.some((m) => m.files.some((f) => hits(`${titleOf(f.name)} ${meetingName(m)} ${kindLabel(f.kind)}`, terms))) ? html`<p class="bp-found" role="status">No document or file matches “${q.trim()}”.</p>` : null}
     <div class="bp-rise" style=${rise(6)}><${Library} data=${data} q=${q} /></div>`;
+}
+
+/**
+ * A paper written in Board, on its own page: its words, then (when every board member signs it) signing at the end,
+ * the way one reads a paper before signing it. Printed, it has the lines to sign on paper instead
+ */
+function DocPage({ id, ctx }) {
+  const { data } = ctx;
+  useFocusTarget();
+  const doc = data.docs.find((x) => x.id === id);
+  const year = todayEastern().slice(0, 4);
+  if (!doc || !doc.body) {
+    return html`<a class="bp-back" href="#/documents"><${Icon} name="back" size=${18} />Documents</a>
+      <div class="bp-card bp-empty bp-empty--row bp-gap"><span class="bp-empty__icon"><${Icon} name="documents" size=${24} /></span>
+        <div><h1 class="bp-h2">That document isn’t here</h1><p class="bp-muted">It may have been taken off the board page. Everything that’s on it is in <a class="bp-link" href="#/documents">Documents</a>.</p></div></div>`;
+  }
+  const changed = doc.wordsAt ? shortDate(doc.wordsAt.slice(0, 10)) : '';
+  return html`<div class="bp-docpage">
+    <a class="bp-back" href="#/documents"><${Icon} name="back" size=${18} />Documents</a>
+    <header class="bp-pagehead bp-docpage__head bp-rise" style=${rise(0)}>
+      <div>
+        <p class="bp-eyebrow">${doc.sign ? 'Every board member signs it each year' : DOC_KINDS.find((k) => k.id === doc.kind)?.label || 'SOARD’s papers'}</p>
+        <h1 class="bp-h1">${doc.title}</h1>
+        <p class="bp-lede">${[doc.note, changed ? `Last changed ${changed}` : '', readTime(mdWords(doc.body))].filter(Boolean).join(' · ')}</p>
+      </div>
+      <p class="bp-btns bp-noprint"><button type="button" class="bp-btn bp-btn--sm" onClick=${() => window.print()}><${Icon} name="print" size=${16} />Print it</button></p>
+    </header>
+    <article class="bp-card bp-docpage__words bp-rise" style=${rise(1)}><${Report} text=${doc.body} level=${2} /></article>
+    ${doc.sign ? html`<section class="bp-card bp-docpage__sign bp-rise" style=${rise(2)} aria-labelledby="docsign-h" id=${`doc-${doc.id}`}>
+      <h2 class="bp-h2" id="docsign-h">${doc.signedByMe ? `Signed for ${year}` : `Sign it for ${year}`}</h2>
+      ${doc.signedEarlier && !doc.signedByMe ? html`<p class="bp-doc__changed">Its words changed since you signed. Read them over and sign again.</p>` : null}
+      <p class="bp-muted">${doc.signedCount} of ${data.people.board.length} board members have signed for ${year}.${data.me.slug ? '' : ' Board members sign here.'}</p>
+      <${SignForm} d=${doc} ctx=${ctx} />
+      <div class="bp-printonly bp-docpage__paper" aria-hidden="true">
+        <p>I have read the ${doc.title} and agree to them for ${year}.</p>
+        <p><span>Signature</span><span>Printed name</span><span>Date</span></p>
+      </div>
+    </section>` : null}
+  </div>`;
 }
 
 // ─── Search ─────────────────────────────────────────────────────────
@@ -3387,9 +3434,10 @@ function searchIndex(data, d) {
   const pend = d.featured?.pending ? d.featured : null;
   if (pend) out.unshift({ group: 'Meetings', title: meetingName(pend), sub: [longDate(pend.date), pend.location, 'Agenda to come'].filter(Boolean).join(' · '), hay: norm([meetingName(pend), longDate(pend.date), pend.date, pend.location].join(' ')), href: `#/meetings/${pend.id}`, icon: 'meetings' });
   for (const p of d.people) out.push({ group: 'People', title: p.name, sub: [p.group === 'board' ? p.title || 'Board member' : p.group === 'advisory' ? 'Advisory Board' : p.title, p.organization].filter(Boolean).join(' · '), hay: norm([p.name, p.title, p.organization, ...(p.committees || [])].join(' ')), href: '#/people', focus: `p-${p.slug}`, person: p });
-  const withFile = data.docs.filter((x) => x.file);
+  const withFile = data.docs.filter((x) => x.file && !x.body);
   const dv = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
-  for (const x of data.docs) out.push({ group: 'Documents', title: x.title, sub: DOC_KINDS.find((k) => k.id === x.kind)?.label || '', hay: norm([x.title, x.note].join(' ')), ...(x.file ? { file: [dv, withFile.indexOf(x)] } : { href: '#/documents' }), icon: 'documents' });
+  // A paper written here opens on its own page, and its words are searched too
+  for (const x of data.docs) out.push({ group: 'Documents', title: x.title, sub: DOC_KINDS.find((k) => k.id === x.kind)?.label || '', hay: norm([x.title, x.note, x.body ? mdPlain(x.body) : ''].join(' ')), ...(x.body ? { href: `#/documents/${x.id}` } : x.file ? { file: [dv, withFile.indexOf(x)] } : { href: '#/documents' }), icon: 'documents' });
   const fv = data.filings.map((x) => ({ name: `${x.title}.pdf`, type: 'application/pdf', url: x.url }));
   data.filings.forEach((x, i) => out.push({ group: 'Files', title: x.title, sub: 'Tax return or audit', hay: norm(`${x.title} ${x.year} tax return form 990 audit`), file: [fv, i], icon: 'financials' }));
   // The money: where the year's revenue came from, and each major gift (who, the campaign)

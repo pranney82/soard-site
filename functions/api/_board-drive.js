@@ -44,8 +44,9 @@
  * renewed). Only those, by name, and only in the shared drive: the folders
  * they sit in hold other people's papers, and a person's own Drive holds other
  * companies' and their own. A newer copy in Drive replaces the file; a
- * document taken out in Board stays out. The expectations come in asking every
- * board member to sign them each year.
+ * document taken out in Board stays out, and one whose words are written in
+ * Board isn't replaced. The expectations come in asking every board member to
+ * sign them each year.
  *
  * The members' signed copies (the manual's "Board Signed Documents") are never
  * brought in: each counts as its member's signature on the paper it names, by
@@ -575,8 +576,9 @@ async function bringPaper(env, { token, paper, fetchImpl, now }) {
   const row = await env.DB.prepare('SELECT * FROM board_drive_docs WHERE slot = ?').bind(slot).first();
   if (row && row.drive_id === file.id && row.modified === (file.modifiedTime || '')) return 0;
   const doc = row?.doc_id ? await env.DB.prepare('SELECT data FROM board_docs WHERE id = ?').bind(row.doc_id).first() : null;
-  // Taken out in Board: it stays out
+  // Taken out in Board: it stays out. Written in Board: its words are Board's now, and Drive's copy is left alone
   if (row?.doc_id && !doc) return 0;
+  if (doc && cleanDoc(JSON.parse(doc.data)).body) return 0;
   const got = await fetchFile(env, token, file, fetchImpl, { wantText: false });
   if (!got) return 0;
   let docId = row?.doc_id;
@@ -639,7 +641,7 @@ async function readSigned(env, { token, dirs = [], fetchImpl, now }) {
     const doc = paperFor(f.name, signable, slots) || (f.inside ? paperFor(f.inside, signable, slots) : null);
     const why = !who ? 'It doesn’t name anyone on the board' : !doc ? 'It doesn’t name a paper the board signs' : !year ? 'It has no year' : '';
     if (!why) {
-      await signFromDrive(DB, { docId: doc.id, slug: who.slug, year, name: who.name, driveId: f.id, driveName: f.name, at: f.createdTime || f.modifiedTime || new Date(now).toISOString() });
+      await signFromDrive(DB, { docId: doc.id, slug: who.slug, year, name: who.name, driveId: f.id, driveName: f.name, at: f.createdTime || f.modifiedTime || new Date(now).toISOString(), version: doc.version });
       placed += 1;
     } else if (!year || year >= thisYear) waiting.push({ id: f.id, name: f.name, folder: f.folder, year, why, slug: who?.slug || '', docId: doc?.id || '' });
     await DB.prepare('INSERT OR REPLACE INTO board_drive_signed (drive_id, name, folder, modified, doc_id, slug, year, state, why, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
@@ -664,7 +666,7 @@ export async function placeSigned(env, { driveId, docId = '', slug = '', by = ''
     const doc = (await listDocs(DB)).find((d) => d.id === docId && d.sign);
     if (!doc) throw Object.assign(new Error('That document doesn’t ask for a signature'), { status: 404 });
     // (a copy the member added themselves stays: it's theirs)
-    if (!doc.signed[slug]?.copy) await signFromDrive(DB, { docId, slug, year: row.year || Number(todayEastern().slice(0, 4)), name: who.name, driveId: row.drive_id, driveName: row.name, by }, { replace: true });
+    if (!doc.signed[slug]?.copy) await signFromDrive(DB, { docId, slug, year: row.year || Number(todayEastern().slice(0, 4)), name: who.name, driveId: row.drive_id, driveName: row.name, by, version: doc.version }, { replace: true });
     name = who.name;
   }
   await DB.prepare('UPDATE board_drive_signed SET state = ?, doc_id = ?, slug = ?, why = ? WHERE drive_id = ?').bind(docId ? 'admin' : 'off', docId, docId ? slug : '', '', row.drive_id).run();

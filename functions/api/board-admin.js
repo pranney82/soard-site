@@ -16,7 +16,9 @@
  *   snapshot { id }                           lock today's numbers into the packet
  *   send-packet { id, test }                  email the board (test: only you)
  *   action-done { actionId, done }
- *   save-doc { doc }, delete-doc { id }
+ *   save-doc { doc, askAgain }, delete-doc { id }   doc.body: its words, written here (a change is the next wording);
+ *                                             askAgain: the board signs the new wording again
+ *   doc-versions { id }                      a paper's wordings written here, newest first
  *   unsign { docId, slug }                    a member's signature this year taken off (its copy goes with it)
  *   place-signed { driveId, docId, slug }     whose a signed copy in Drive is, when Board couldn't tell (_board-drive.js)
  *   update-file { id, kind, staffOnly, name }, delete-file { id }
@@ -39,7 +41,7 @@
 
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
-  setActionDone, listDocs, saveDoc, deleteDoc, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
+  setActionDone, listDocs, saveDoc, deleteDoc, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
   memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
   chairLive, createPractice, resetPractice,
 } from './_board.js';
@@ -190,7 +192,7 @@ export async function onRequestPost(context) {
       case 'action-done':
         return Response.json({ ok: true, ...(await setActionDone(env.DB, String(body.actionId || ''), !!body.done, { by: me })) });
       case 'save-doc': {
-        const d = await saveDoc(env.DB, body.doc || {});
+        const d = await saveDoc(env.DB, body.doc || {}, { by: me, askAgain: body.askAgain === true });
         await audit(env, me, 'updated', `Board document saved: ${d.title}`);
         return Response.json({ ok: true, doc: d });
       }
@@ -200,6 +202,9 @@ export async function onRequestPost(context) {
         await audit(env, me, 'deleted', 'Board document deleted');
         return Response.json({ ok: true });
       }
+      case 'doc-versions':
+        needId();
+        return Response.json({ ok: true, versions: await docVersions(env.DB, id) });
       case 'unsign': {
         const docId = String(body.docId || '');
         if (!ID.test(docId)) return fail('Which document?');

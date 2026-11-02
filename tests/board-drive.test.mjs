@@ -587,6 +587,20 @@ test('the members’ signed copies count as their signatures by their names alon
   await assert.rejects(placeSigned(env, { driveId: 'nope', docId: d.id, slug: 'kim-park' }), /isn’t with the signed copies/);
 });
 
+test('a paper written in Board keeps its words: a newer copy in Drive is left alone', async () => {
+  const exp = add(add(ROOT, '2025 Board', { mimeType: FOLDER }), 'Board Expectations Updated 01_01_26.pdf', { modifiedTime: '2026-02-10T00:00:00Z' });
+  await readBoardDrive(env, { budgetMs: 60000 });
+  let d = (await listDocs(env.DB)).find((x) => x.title === 'Board Member Expectations');
+  assert.equal(d.file.name, 'Board Expectations Updated 01_01_26.pdf');
+  const { saveDoc } = await import('../functions/api/_board.js');
+  await saveDoc(env.DB, { ...d, body: '### Attendance\n\n- Come to three of four meetings' }, { by: FOUNDER });
+  g.files[exp].modifiedTime = '2026-10-01T00:00:00Z';
+  g.calls = [];
+  await readBoardDrive(env, { now: Date.now() + 2 * 60 * 60 * 1000 });
+  d = (await listDocs(env.DB)).find((x) => x.title === 'Board Member Expectations');
+  assert.deepEqual([d.file.name, d.version, fetched(exp)], ['Board Expectations Updated 01_01_26.pdf', 1, false], 'not read again, its words kept');
+});
+
 test('whose a signed copy is, and which paper, by a name', () => {
   const people = [{ slug: 'a', name: 'Alex Rivera' }, { slug: 's', name: 'Sam Ortiz' }, { slug: 'k', name: 'Kim Park' }, { slug: 'kp', name: 'Pat Park' }, { slug: 'j', name: 'José Núñez' }];
   const who = (n, o) => whoseCopy(n, people, o)?.slug || null;

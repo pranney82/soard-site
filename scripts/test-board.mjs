@@ -48,7 +48,7 @@ import * as bankAdmin from '../functions/api/bank-admin.js';
 import * as booksAdmin from '../functions/api/books-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
-import { provideBoardFinance, maybeLockNumbers, takeSnapshot, saveMeeting, getMeeting, patchMeeting } from '../functions/api/_board.js';
+import { provideBoardFinance, maybeLockNumbers, takeSnapshot, saveMeeting, getMeeting, patchMeeting, listDocs } from '../functions/api/_board.js';
 import { maybeReadGifts } from '../functions/api/_board-gifts.js';
 import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-invite.js';
 import { syncBoardGroup } from '../functions/api/_board-group.js';
@@ -263,6 +263,31 @@ async function statementPdf() {
   }
   return Buffer.from(await doc.save());
 }
+
+/** Made-up expectations, the way a board writes them: the letterhead, a title, headings, points, a paragraph over two lines, the blanks to sign */
+async function expectationsPdf() {
+  const doc = await PDFDocument.create();
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  const bold = await doc.embedFont(StandardFonts.HelveticaBold);
+  const page = doc.addPage([612, 792]);
+  let y = 740;
+  const line = (text, { size = 11, f = font, gap = size * 1.5 } = {}) => { y -= gap; page.drawText(text, { x: 72, y, size, font: f }); };
+  line('SUNSHINE ON A RANNEY DAY', { size: 9, f: bold });
+  line('Board Member Expectations', { size: 20, f: bold, gap: 34 });
+  line('Each member of the board agrees to the following for the year. We ask every', { gap: 30 });
+  line('member to read them and sign each January.');
+  line('ATTENDANCE', { size: 13, f: bold, gap: 28 });
+  line('• Attend at least three of four board meetings');
+  line('• Serve on one committee');
+  line('Giving and asking', { size: 13, f: bold, gap: 28 });
+  line('1. Make a personal gift each year');
+  line('2. Open one door for a sponsor or a partner');
+  line('Signature: ______________________     Date: __________', { gap: 48 });
+  return Buffer.from(await doc.save());
+}
+/** The caret at the end of the words editor (ProseMirror follows the page's selection) */
+const toEnd = (page) => page.evaluate(() => { const el = document.querySelector('.rp-edit'); el.focus(); const r = document.createRange(); r.selectNodeContents(el.lastElementChild || el); r.collapse(false); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); });
+const editorText = (page) => page.evaluate(() => document.querySelector('.rp-edit')?.innerText || '');
 
 // ── The server ──
 const ROUTES = { '/api/board-admin': boardAdmin, '/api/board-portal': boardPortal, '/api/board-file': boardFile, '/api/bank-admin': bankAdmin, '/api/books-admin': booksAdmin };
@@ -719,11 +744,23 @@ try {
   await clickText(jane, 'button', /^Add a document$/);
   await jane.type('#bd-doc-title', 'Board Member Expectations');
   await jane.select('#bd-doc-kind', 'policy');
-  await (await jane.$('#bd-doc-file')).uploadFile(pdf);
+  const expPdf = join(OUT, 'Board-Expectations.pdf');
+  writeFileSync(expPdf, await expectationsPdf());
+  await (await jane.$('#bd-doc-file')).uploadFile(expPdf);
   ok(/^Required: every board member/.test(await jane.evaluate(() => [...document.querySelectorAll('.bd-check')].at(-1).textContent.trim())), 'the box says it’s required of every board member');
   await jane.evaluate(() => [...document.querySelectorAll('.bd-check input')].at(-1).click());
   await clickText(jane, 'button', /^Save$/);
   ok(await waitText(jane, /Board Member Expectations[\s\S]*No one has signed it for \d{4} yet[\s\S]*Required\s*0 of 3 signed/), 'the expectations: required, and no one has signed yet');
+  // Their words, written here: Edit starts from the PDF's own, its headings and points, without the blanks to sign
+  const editRow = (title) => jane.evaluate((t) => [...document.querySelectorAll('.bd-row')].find((r) => r.querySelector('.bd-row__title')?.textContent === t).querySelectorAll('.bd-tags button').forEach((b) => { if (b.textContent.trim() === 'Edit') b.click(); }), title);
+  await editRow('Board Member Expectations');
+  ok(await jane.waitForFunction(() => /Attendance[\s\S]*Attend at least three of four board meetings[\s\S]*Giving and asking[\s\S]*Open one door for a sponsor/.test(document.querySelector('.rp-edit')?.innerText || ''), { timeout: 8000 }).then(() => true, () => false), 'Edit starts from the PDF’s words');
+  const fromPdf = await editorText(jane);
+  ok(!/Signature|SUNSHINE ON A RANNEY DAY|^Board Member Expectations/m.test(fromPdf) && /Each member of the board agrees to the following for the year\. We ask every member to read them/.test(fromPdf)
+    && await jane.evaluate(() => document.querySelectorAll('.rp-edit h3').length === 2 && document.querySelectorAll('.rp-edit ul li').length === 2 && document.querySelectorAll('.rp-edit ol li').length === 2), `its two headings, its points and its numbered list; one paragraph again; no letterhead, title or blanks (${JSON.stringify(fromPdf.slice(0, 160))})`);
+  ok(await waitText(jane, /These are the words from Board Expectations\. Read them over and fix anything, then save/), 'it says where the words came from, to read over before saving');
+  await clickText(jane, 'button', /^Save$/);
+  ok(await waitText(jane, /Board Member Expectations[\s\S]*Written here, last changed [A-Z][a-z]{2} \d+/), 'written here now');
   // A paper to read, not to sign: on the board page it goes on its shelf
   await clickText(jane, 'button', /^Add a document$/);
   await jane.type('#bd-doc-title', 'Signed Amended Bylaws');
@@ -1003,7 +1040,7 @@ try {
       // The cash, then the year beside the cash over time, then the statements, then the tax returns and audits
       ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Tax returns and audits[\s\S]*2025/],
       ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/],
-      ['documents', width === 1440 ? /Board Member Expectations[\s\S]*Type your full name to sign it[\s\S]*Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it[\s\S]*Every meeting’s files[\s\S]*Balance sheet financials/ : /Board Member Expectations[\s\S]*Signed\s*by Alex Rivera[\s\S]*Conflict of interest policy[\s\S]*You added your signed copy/],
+      ['documents', width === 1440 ? /Board Member Expectations[\s\S]*Read and sign[\s\S]*Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it[\s\S]*Every meeting’s files[\s\S]*Balance sheet financials/ : /Board Member Expectations[\s\S]*You added your signed copy[\s\S]*Conflict of interest policy[\s\S]*Signed\s*by Alex Rivera/],
     ]) {
       await alex.goto(`${SITE}/admin/board/#/${p}`, { waitUntil: 'networkidle0' });
       ok(await waitText(alex, re), `${p} shows what it should`);
@@ -1024,13 +1061,24 @@ try {
       ok(await waitText(alex, /Signed\s*by Alex Rivera/), 'they sign the policy with their typed name (kept the way People spells it)');
       // The focus moves a frame after "Signed by…" shows
       ok(await alex.waitForFunction(() => document.activeElement?.classList.contains('bp-signed'), { timeout: 2000 }).then(() => true, () => false), 'the focus goes to “Signed by…”, not the page');
-      // The other paper, signed on paper already: the copy, added as a PDF, is the signature
+      // The expectations, written in Board: read on their own page, signed at the end (here with the copy signed on paper)
+      await clickText(alex, 'a', /^Read and sign$/);
+      ok(await alex.waitForFunction(() => /^#\/documents\/d_/.test(location.hash), { timeout: 4000 }).then(() => true, () => false)
+        && await alex.waitForFunction(() => document.querySelector('.bp-docpage .bp-eyebrow')?.textContent === 'Every board member signs it each year', { timeout: 4000 }).then(() => true, () => false)
+        && await waitText(alex, /Board Member Expectations[\s\S]*Each member of the board agrees[\s\S]*Attendance[\s\S]*Attend at least three of four board meetings[\s\S]*Giving and asking[\s\S]*Sign it for \d{4}[\s\S]*0 of 3 board members have signed/), 'the expectations on their own page: the words, then signing at the end');
+      ok(await alex.waitForFunction(() => document.querySelectorAll('.bp-docpage__words h2').length === 2 && !/Signature: _/.test(document.body.innerText), { timeout: 4000 }).then(() => true, () => false), 'its headings as the page’s; no blanks to sign on screen');
+      ok(await alex.evaluate(() => document.querySelector('.bp-docpage__words ol')?.start === 1), 'its numbered list counts from 1');
+      ok(await overflow(alex) <= 0, 'the expectations’ page: nothing past the right edge');
+      await shot(alex, '12-expectations-1440');
+      // Printed: the words and the lines to sign on paper, never the form or the menu
+      await alex.emulateMediaType('print');
+      ok(await alex.evaluate(() => { const seen = (sel) => { const el = document.querySelector(sel); return !!el && getComputedStyle(el).display !== 'none'; }; return seen('.bp-docpage__paper') && !seen('.bp-docpage__sign .bp-sign') && !seen('.bp-docpage__head .bp-btns') && !seen('.bp-nav'); }), 'printed, it has the lines to sign on paper and nothing to click');
+      await alex.emulateMediaType('screen');
       ok(await waitText(alex, /Signed it on paper already\?\s*Add your signed copy/), 'the other way to sign: the copy signed on paper');
       const copyInput = await alex.$('.bp-sign input[type="file"]');
       await copyInput.uploadFile(pdf);
-      ok(await waitText(alex, /You added your signed copy/), 'the copy signed on paper is their signature');
+      ok(await waitText(alex, /Signed for \d{4}[\s\S]*You added your signed copy/), 'the copy signed on paper is their signature');
       ok(await alex.waitForFunction(() => document.activeElement?.classList.contains('bp-signed'), { timeout: 2000 }).then(() => true, () => false), 'the focus goes to “Signed…” after the copy too');
-      ok(await alex.evaluate(() => !document.querySelector('.bp-sign')) && await waitText(alex, /You’ve signed them all for \d{4}\. Thank you\./), 'both signed, nothing left to sign');
       await alex.$eval('.bp-signed a', (a) => a.click());
       ok(await alex.waitForFunction(() => document.body.classList.contains('fv-open'), { timeout: 4000 }).then(() => true, () => false), 'their copy opens for them, in the viewer');
       await alex.keyboard.press('Escape');
@@ -1040,6 +1088,8 @@ try {
       await (await alex.$('.bp-signed input[type="file"]')).uploadFile(pdf);
       ok(await alex.waitForFunction((was) => fetch('/api/board-portal', { cache: 'no-store' }).then((r) => r.json()).then((d) => { const id = d.docs.find((x) => x.signedByMe?.how === 'copy')?.signedByMe.copy.id; return !!id && id !== was; }), { timeout: 6000, polling: 500 }, firstCopy).then(() => true, () => false)
         && await waitText(alex, /You added your signed copy[\s\S]*Replace it/), 'a copy they added, replaced by another');
+      await alex.goto(`${SITE}/admin/board/#/documents`, { waitUntil: 'networkidle0' });
+      ok(await alex.evaluate(() => !document.querySelector('.bp-sign')) && await waitText(alex, /You’ve signed them all for \d{4}\. Thank you\./), 'both signed, nothing left to sign');
       await alex.goto(`${SITE}/admin/board/#/reveals`, { waitUntil: 'networkidle0' });
       ok(await alex.evaluate(() => location.hash) === '#/' && await alex.waitForSelector('#makeovers .bk-col', { timeout: 8000 }).then(() => true, () => false), 'the old Reveals link opens Home, where reveals are now');
       await alex.goto(`${SITE}/admin/board/#/meetings/${pastId}`, { waitUntil: 'networkidle0' });
@@ -1150,14 +1200,44 @@ try {
   ok(await waitText(jane, /Conflict of interest policy[\s\S]*Still to sign: Sam Ortiz, Kim Park[\s\S]*1 of 3 signed/), 'and who has still to sign each paper');
   // Who's signed, and how: typed, or the copy Alex added (which the founder opens); Kim's paper copy added for her, then taken off
   await jane.evaluate(() => [...document.querySelectorAll('.bd-row')].find((r) => /Conflict of interest policy/.test(r.textContent)).querySelector('button[aria-expanded]').click());
-  ok(await waitText(jane, /Alex Rivera\s*Added their signed copy, [A-Z][a-z]{2} \d+[\s\S]*See it[\s\S]*Sam Ortiz\s*Not signed yet/), 'who’s signed, and how: Alex’s copy');
+  ok(await waitText(jane, /Alex Rivera\s*Typed their name, [A-Z][a-z]{2} \d+[\s\S]*Sam Ortiz\s*Not signed yet/), 'who’s signed, and how: Alex typed it');
   const kimInput = await jane.$('.bd-signers input[type="file"]');
   await jane.evaluate(() => [...document.querySelectorAll('.bd-signer')].find((r) => /Kim Park/.test(r.textContent)).querySelector('button').click());
   await kimInput.uploadFile(pdf);
   ok(await waitText(jane, /Kim Park\s*Signed copy added here/) && await waitText(jane, /2 of 3 signed/), 'a paper copy Kim handed in, added for her');
   await jane.evaluate(() => [...document.querySelectorAll('.bd-signer')].find((r) => /Kim Park/.test(r.textContent)).querySelector('button').click());
   ok(await waitText(jane, /Kim Park\s*Not signed yet/) && await waitText(jane, /1 of 3 signed/), 'taken off again: Kim is asked to sign');
-  ok(await waitText(jane, /Board Member Expectations[\s\S]*Still to sign: Sam Ortiz, Kim Park/), 'Alex typed the expectations');
+  ok(await waitText(jane, /Board Member Expectations[\s\S]*Still to sign: Sam Ortiz, Kim Park/), 'Alex signed the expectations too');
+  await jane.evaluate(() => [...document.querySelectorAll('.bd-row')].find((r) => /Board Member Expectations/.test(r.querySelector('.bd-row__title')?.textContent || '')).querySelector('button[aria-expanded]').click());
+  ok(await waitText(jane, /Alex Rivera\s*Added their signed copy, [A-Z][a-z]{2} \d+[\s\S]*See it/), 'with the copy he added, for the founder to open');
+  // New words the board agrees to: who signed signs again, and sees why
+  await editRow('Board Member Expectations');
+  await jane.waitForSelector('.rp-edit');
+  await toEnd(jane);
+  await jane.keyboard.press('Enter');
+  await jane.keyboard.type('Come to the gala each spring.');
+  ok(/Come to the gala each spring/.test(await editorText(jane)), 'the words changed in the editor');
+  await clickText(jane, 'button', /^Save$/);
+  ok(await waitText(jane, /Saved\. The board signs the new words for \d{4}\./) && await waitText(jane, /Board Member Expectations[\s\S]*No one has signed it for \d{4} yet[\s\S]*0 of 3 signed/), 'asked (and answered: sign again), the new words start at nobody signed');
+  const exp = (await listDocs(DB)).find((d) => d.title === 'Board Member Expectations');
+  ok(exp.version === 2 && exp.signFrom === 2 && exp.earlier.includes('alex-rivera') && /Come to the gala each spring/.test(exp.body), `the second wording, kept, Alex’s signature on an earlier one (v${exp.version}, from ${exp.signFrom})`);
+  const alexAgain = await tab(MEMBER, 1440);
+  await alexAgain.goto(`${SITE}/admin/board/#/documents/${exp.id}`, { waitUntil: 'networkidle0' });
+  ok(await waitText(alexAgain, /Come to the gala each spring[\s\S]*Sign it for \d{4}[\s\S]*Its words changed since you signed\. Read them over and sign again\./), 'Alex reads the new words and is asked to sign again');
+  await alexAgain.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
+  ok(await waitText(alexAgain, /Read and sign: Board Member Expectations\s*Its words changed since you signed: sign the new ones/), 'Home says so too');
+  await alexAgain.close();
+  // The earlier wording: read again, and back in the editor (left unsaved)
+  await editRow('Board Member Expectations');
+  const button = (label) => jane.waitForFunction((t) => [...document.querySelectorAll('.bd-words button')].some((b) => b.textContent.trim() === t), { timeout: 5000 }, label).then(() => true, () => false);
+  await button('Earlier wordings (1)');
+  await clickText(jane, '.bd-words button', /^Earlier wordings \(1\)$/);
+  await button('Read it');
+  await clickText(jane, '.bd-wordings button', /^Read it$/);
+  ok(await waitText(jane, /Wording 1 · [A-Z][a-z]{2} \d+, \d{4} · Jane[\s\S]*Attend at least three of four board meetings/), 'the earlier wording, by whom and when, to read');
+  await clickText(jane, 'button', /^Use these words$/);
+  ok(await jane.waitForFunction(() => !/Come to the gala/.test(document.querySelector('.rp-edit')?.innerText || '') && /Attend at least three/.test(document.querySelector('.rp-edit')?.innerText || ''), { timeout: 3000 }).then(() => true, () => false), 'and its words back in the editor');
+  await clickText(jane, 'button', /^Cancel$/);
   // Their People headshot on their account button, as a board member's is (the picture served here, not by Cloudflare;
   // the CSP set aside, since headshots are same-origin on sunshineonaranneyday.com but not on localhost)
   const servePhoto = (req) => (/\/cdn-cgi\/imagedelivery\//.test(req.url()) ? req.respond({ status: 200, contentType: 'image/png', body: PNG }) : req.continue());

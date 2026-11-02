@@ -43,7 +43,8 @@ function Blocks({ blocks, level }) {
     if (b.t === 'h') return h(H, { key: k, class: 'rp-h' }, html`<${Runs} text=${b.text} />`);
     if (b.t === 'quote') return html`<blockquote key=${k} class="rp-callout"><${Blocks} blocks=${b.blocks} level=${level} /></blockquote>`;
     const items = b.items.map((it, j) => html`<li key=${j}><${Blocks} blocks=${it} level=${level} /></li>`);
-    return b.t === 'ol' ? html`<ol key=${k} start=${b.start === 1 ? null : b.start}>${items}</ol>` : html`<ul key=${k}>${items}</ul>`;
+    // (a start only when it isn't 1: Preact writes a null start as the property, which the browser reads as 0)
+    return b.t === 'ol' ? html`<ol key=${k} ...${b.start === 1 ? {} : { start: b.start }}>${items}</ol>` : html`<ul key=${k}>${items}</ul>`;
   });
 }
 
