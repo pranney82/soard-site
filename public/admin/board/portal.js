@@ -2323,7 +2323,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
             const who = presentersOf(it, d.people).map(person);
             // The statements QuickBooks draws aren't shown again as files on the money item: a quiet link under it
             // (by the same books the money item draws: today's for a meeting today or ahead, the locked ones for a past one)
-            const drawsSt = showsOf(it).includes('cash') && booksDraw((m.date < data.today ? numbers : data.numbers)?.books).some((b) => b !== 'year');
+            const drawsSt = showsOf(it).includes('cash') && booksDraw((m.date < data.today ? numbers : data.numbers)?.books).some((b) => b === 'act' || b === 'pos');
             const all = docsOf(it);
             const files = drawsSt ? all.filter((f) => !isStatement(f)) : all;
             const asFiles = drawsSt ? all.filter((f) => isStatement(f)) : [];

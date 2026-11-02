@@ -1393,6 +1393,9 @@ try {
       await slide(/The year against last year/);
       ok(await qb.waitForFunction(() => /against/.test(document.querySelector('.by-slide__title')?.textContent || '') && document.querySelectorAll('.by-slide .by-chart svg').length === 2, { timeout: 15000 }).then(() => true, () => false), 'the screen: the year against last year, month by month');
       await shot(qb, '28-screen-books-year');
+      await slide(/^QBThe store/);
+      ok(await qb.waitForFunction((want) => /^The store, \d{4} against \d{4}$/.test(document.querySelector('.by-slide__title')?.textContent || '') && [...document.querySelectorAll('.by-slide .bs-figs li')].map((l) => [...l.children].map((c) => c.textContent.trim()).join(' ')).join('|') === want, { timeout: 15000 }, `Sales $415K ▼ 50% on ${yr - 1} by now|Cost of goods $250K ▼ 34% on ${yr - 1} by now|Profit before staff and rent $165K ▼ $285K on ${yr - 1} by now`).then(() => true, () => false), 'the screen: the store after the year, its sales, cost of goods and profit against last year');
+      await shot(qb, '28a-screen-books-store');
       await slide(/Statement of activities/);
       ok(await qb.waitForFunction(() => /^Statement of activities/.test(document.querySelector('.by-slide__title')?.textContent || '') && /Net Income/.test(document.querySelector('.by-stmt')?.textContent || ''), { timeout: 15000 }).then(() => true, () => false), 'then the statement of activities beside a year before');
       await slide(/Statement of financial position/);

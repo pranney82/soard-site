@@ -209,7 +209,7 @@ function liveBox(kind, n, m, money) {
 /** The agenda as the first pages: the meeting, then each part with its time, and each item */
 function agendaPages(m, { people, numbers, meetings, money }) {
   // The statements QuickBooks draws on the money item aren't printed again as files
-  const drawsSt = booksDraw(numbers?.books).some((b) => b !== 'year');
+  const drawsSt = booksDraw(numbers?.books).some((b) => b === 'act' || b === 'pos');
   const docFiles = (it) => itemFiles(m, it, meetings).filter((f) => !(drawsSt && showsOf(it).includes('cash') && isStatement(f)));
   const sheet = el('section', 'bpp-agenda');
   const head = el('header', 'bpp-head');
@@ -266,7 +266,7 @@ function agendaPages(m, { people, numbers, meetings, money }) {
  */
 export async function printAll(m, { people = [], numbers = null, meetings = [], data = null, onStep = () => {}, signal } = {}) {
   const items = agendaItems(m);
-  const drawsSt = booksDraw(numbers?.books).some((b) => b !== 'year');
+  const drawsSt = booksDraw(numbers?.books).some((b) => b === 'act' || b === 'pos');
   const docFiles = (it) => itemFiles(m, it, meetings).filter((f) => !(drawsSt && showsOf(it).includes('cash') && isStatement(f)));
   const groups = [
     ...m.sections.flatMap((s) => s.items).map((it) => ({ it, label: items.find((x) => x.id === it.id)?.label || '', files: docFiles(it) })),

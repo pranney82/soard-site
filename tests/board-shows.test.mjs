@@ -40,6 +40,11 @@ test('each show is a stop; after the money QuickBooks’ slides, and its stateme
   const withBooks = deckOf(meeting(), { books: BOOKS }).map((s) => s.key);
   assert.deepEqual(withBooks.filter((k) => k.startsWith('i_fin1')), ['i_fin1', 'i_fin1:books:year', 'i_fin1:books:act', 'i_fin1:books:pos', 'i_fin1:f_bud1:0']);
   assert.deepEqual(deckOf(forBoard(meeting()), { books: BOOKS }).map((s) => s.key), withBooks, 'the screen’s deck, stop for stop');
+  // With the store in the books, its slide comes after the year and before the statements
+  const withStore = deckOf(meeting(), { books: { ...BOOKS, store: { sales: 415000, cost: 250000, profit: 165000 } } }).map((s) => s.key);
+  assert.deepEqual(withStore.filter((k) => k.startsWith('i_fin1')), ['i_fin1', 'i_fin1:books:year', 'i_fin1:books:store', 'i_fin1:books:act', 'i_fin1:books:pos', 'i_fin1:f_bud1:0']);
+  assert.deepEqual(booksDraw({ revenue: 1, store: { sales: 0, cost: 0, profit: 0 } }), [], 'a store at zero is no slide');
+  assert.deepEqual(booksDraw({ revenue: 1, store: { sales: 1, cost: 0, profit: 1 } }), ['store'], 'nor is a store a statement: the year and statements stay their own');
   assert.deepEqual(booksDraw({ revenue: 1 }), [], 'no year to set it beside, no statements: none');
   assert.deepEqual(booksDraw(null), []);
 });

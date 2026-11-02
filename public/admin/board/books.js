@@ -16,7 +16,7 @@
 
 import { h, htm, useState } from '../vendor.js';
 import { money, shortDate } from '../board-shared.js';
-import { compact } from './money.js';
+import { compact, storeOf, storeChange } from './money.js';
 
 const html = htm.bind(h);
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -177,11 +177,22 @@ export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '' })
 }
 
 /** What a 'books' stop is called (the chair's run of show, the screen's foot) */
-export const BOOKS_TITLES = { year: 'The year against last year', act: 'Statement of activities', pos: 'Statement of financial position' };
+export const BOOKS_TITLES = { year: 'The year against last year', store: 'The store', act: 'Statement of activities', pos: 'Statement of financial position' };
 
 /** One of QuickBooks' slides after the money, at the size of a room (the screen is dark: its colors are its own) */
 export function BooksSlide({ books, kind }) {
   const s = books?.statements;
+  if (kind === 'store') {
+    // Its sales on yellow, its cost of goods, the profit before the staff and rent the books keep with SOARD's
+    const st = storeOf(books);
+    return html`<div class="by-slide by-slide--store">
+      <p class="bs-eyebrow">From QuickBooks${books.through ? `, January 1 to ${dayMonth(books.through)}` : ''}</p>
+      <h1 class="bs-display by-slide__title">The store, ${st?.lastYear ? `${books.year} against ${st.lastYear}` : `${books.year} so far`}</h1>
+      ${st ? html`<ul class="bs-figs" style="--n:3">${st.lines.map((x) => html`<li key=${x.k}>
+        <span class="bs-figs__label">${x.name}</span><span class="bs-figs__value">${compact(x.amount)}</span><span class="bs-figs__sub">${storeChange(x) ? `${storeChange(x)} on ${st.lastYear} by now` : `${books.year} so far`}</span>
+      </li>`)}</ul>` : null}
+    </div>`;
+  }
   if (kind === 'year') {
     const ser = yearSeries(books);
     return html`<div class="by-slide">

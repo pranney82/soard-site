@@ -731,16 +731,18 @@ export const SHOW_KINDS = ['projects', 'reveals', 'events', 'cash', 'meetings'];
 /** Everything an item shows live, in order: its first (`live`), then the others (`also`) */
 export const showsOf = (it) => [...new Set([it?.live, ...(it?.also || [])].filter((k) => SHOW_KINDS.includes(k)))];
 /** A stop that's no file: one of an item's other live lists, or one of QuickBooks' slides */
-const PSEUDO_STOP = /^(live:(projects|reveals|events|cash|meetings)|books:(year|act|pos))$/;
+const PSEUDO_STOP = /^(live:(projects|reveals|events|cash|meetings)|books:(year|store|act|pos))$/;
 /**
  * QuickBooks' slides after the money, as the books have them: the year against last year (by month, else the year so
- * far against the same days), the statement of activities, the statement of financial position
+ * far against the same days), the store (its own accounts, ./board/money.js storeOf), the statement of activities, the
+ * statement of financial position
  */
 export function booksDraw(books) {
   if (!books || typeof books.revenue !== 'number') return [];
   const s = books.statements;
   return [
     books.monthly?.months?.length || books.lastYear ? 'year' : '',
+    books.store?.sales || books.store?.cost ? 'store' : '',
     s?.activity?.length ? 'act' : '',
     s?.position?.length ? 'pos' : '',
   ].filter(Boolean);
