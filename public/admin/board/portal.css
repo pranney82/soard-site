@@ -1870,7 +1870,7 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 /* A stop on the line under each stage and each day */
 .bs-pipe__track > li::after, .bs-when__line > li::after { content: ''; position: absolute; left: 0; bottom: calc(-1 * clamp(0.75rem, 1.7vh, 1.1rem) - 10px); width: 17px; height: 17px; box-sizing: border-box; border-radius: 50%; background: var(--yellow); box-shadow: 0 0 0 5px var(--bs-bg); }
 .bs-pipe__track > li.is-empty::after { background: #4A4B45; }
-.bs-pipe__n { font-family: var(--display); font-size: clamp(2.2rem, 6.4vh, 4.6rem); font-weight: 700; line-height: 0.9; letter-spacing: -0.02em; color: var(--yellow); font-variant-numeric: tabular-nums lining-nums; }
+.bs-pipe__n { font-family: var(--display); font-size: clamp(2.2rem, 6.4vh, 4.6rem); font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; color: var(--yellow); font-variant-numeric: tabular-nums lining-nums; }
 .bs-pipe__track > li.is-empty .bs-pipe__n { color: rgba(246, 244, 236, 0.3); }
 .bs-pipe__stage, .bs-pipe__end { font-size: clamp(0.72rem, 1.55vh, 1rem); font-weight: 800; letter-spacing: 0.11em; line-height: 1.2; text-transform: uppercase; color: var(--bs-ink); }
 /* A stage's name on two lines when its column is narrow ("Awaiting / funding"), never cut */
@@ -2016,7 +2016,7 @@ html:has(body .bs) { scrollbar-gutter: auto; }
   .bs-item { height: auto; min-height: 100%; }
   .bs-back { opacity: 1; pointer-events: auto; }
   .bk--screen { overflow-x: auto; } .bk--screen .bk-col { flex: 0 0 70%; } .bs-floor { display: none; }
-  .bs-pipe, .bs-when { height: auto; width: 100%; } .bs-pipe__track, .bs-when__line { display: none; }
+  .bs-pipe, .bs-when, .bs-item--facts .bs-when, .bs-item__body .bs-when { height: auto; width: 100%; } .bs-pipe__track, .bs-when__line { display: none; }
   .bs-pipe__cols, .bs-when__kids { grid-template-columns: minmax(0, 1fr); row-gap: 1.4rem; }
   .bs-pipe__colhead, .bs-when__stophead { display: flex; align-items: baseline; gap: 0.6rem; margin: 0 0 0.6rem; }
   .bs-pipe__colhead span:first-child { font-size: 0.8rem; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase; } .bs-pipe__colhead .bs-pipe__n { font-size: 1.8rem; }

@@ -130,7 +130,8 @@ export function Pipeline({ projects, reveals = [] }) {
   const when = (b) => {
     if (b.kind === 'community') return html`<span class="bs-pipe__when is-quiet">${roomy ? 'Community project' : 'Community'}</span>`;
     const r = revealOf(b);
-    if (r?.confirmed && r.date) return html`<span class="bs-pipe__when is-set">${roomy ? 'Reveal ' : ''}${shortDate(r.date).replace(/, \d{4}$/, '')}${r.time ? ` · ${kept(clock(r.time).replace(':00', ''))}` : ''}</span>`;
+    // (the day alone on a small card: the reveals slide has its time)
+    if (r?.confirmed && r.date) return html`<span class="bs-pipe__when is-set">${roomy ? 'Reveal ' : ''}${shortDate(r.date).replace(/, \d{4}$/, '')}${roomy && r.time ? ` · ${kept(clock(r.time).replace(':00', ''))}` : ''}</span>`;
     if (r?.window?.label) return html`<span class="bs-pipe__when">${roomy || !monthOf(r.window) || !r.window.part ? `${roomy ? 'Reveal ' : ''}${r.window.label}` : `${r.window.part.charAt(0).toUpperCase()}${r.window.part.slice(1)} ${monthOf(r.window)}`}</span>`;
     return b.status === AWAITING ? null : html`<span class="bs-pipe__when is-quiet">${roomy ? 'Reveal date to come' : 'Date to come'}</span>`;
   };
