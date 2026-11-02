@@ -30,7 +30,7 @@ import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from '
 import { join, relative, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const ENFORCE = false;
+export const ENFORCE = true;
 
 export const PLACEHOLDER = "'csp-hashes'";
 export const MAX_LINE = 2000; // Cloudflare Pages ignores longer _headers lines
