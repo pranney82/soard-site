@@ -56,10 +56,12 @@ const stampsFrom = (sections, saved) => {
   const by = new Map(saved.sections.flatMap((s) => s.items).map((it) => [it.id, it]));
   return sections.map((s) => ({ ...s, items: s.items.map((it) => { const x = by.get(it.id); return x && (x.report || '') === (it.report || '') ? { ...it, reportBy: x.reportBy, reportAt: x.reportAt } : it; }) }));
 };
-const stepFor = (m) => { const t = todayEastern(); return !m.date || m.date > t ? 'before' : m.date === t ? 'during' : 'after'; };
+const stepFor = (m) => { const t = todayEastern(); if (isLive(m)) return 'during'; if (m.live?.endedAt) return 'after'; return !m.date || m.date > t ? 'before' : m.date === t ? 'during' : 'after'; };
 const blankItem = () => ({ id: uid('i_'), title: '', presenter: '', who: [], notes: '', staffNote: '', confidential: false, live: '', docs: [] });
 const move = (list, i, d) => { const out = [...list]; const [x] = out.splice(i, 1); out.splice(i + d, 0, x); return out; };
 const STAGES = [['before', 'Before', 'Getting ready'], ['during', 'During', 'Presenting'], ['after', 'After', 'The minutes']];
+/** A card in the layout, with its place in the single column a tablet or a phone reads (--o) */
+const slot = (o, card, name = '') => html`<div class=${`bm-slot ${name ? `bm-slot--${name}` : ''}`} style=${`--o:${o}`}>${card}</div>`;
 
 export function MeetingEditor({ meeting, ctx, step: asked }) {
   const { data, addToast, go, putMeeting, markDirty } = ctx;
@@ -72,6 +74,8 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   const [editWhere, setEditWhere] = useState(!meeting.date);
   const busy = useRef(null);
   const again = useRef(false);
+  const failing = useRef(0); // saves failed in a row
+  const retry = useRef(0);
   const timer = useRef(0);
   const practice = !!meeting.practice;
   const step = practice ? 'during' : asked || stepFor(meeting);
@@ -88,7 +92,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
     if (busy.current) { again.current = true; return busy.current; }
     const mine = mRef.current;
     // Nothing new (a save already took it): say so, in case a change was announced before that save landed
-    if (editable(mine) === editable(saved.current)) { setSt((x) => (x.s === 'unsaved' ? { ...x, s: 'saved' } : x)); return null; }
+    if (editable(mine) === editable(saved.current)) { setSt((x) => (x.s === 'unsaved' || x.s === 'error' ? { s: 'saved', at: x.at } : x)); return null; }
     if (!mine.date) { setSt({ s: 'error', why: 'A meeting needs a date' }); return null; }
     setSt((x) => ({ ...x, s: 'saving' }));
     busy.current = (async () => {
@@ -109,7 +113,16 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
         j = await call({ action: 'save-meeting', meeting: sent, base: base.current });
       }
       busy.current = null;
-      if (!j.ok) { setSt({ s: 'error', why: j.error || 'Couldn’t save' }); return null; }
+      if (!j.ok) {
+        // Said once per outage, then tried again by itself (sooner when the connection comes back)
+        if (!failing.current) addToast(`Not saved: ${j.error || 'try again in a moment'}. Board keeps trying.`, 'error');
+        failing.current += 1;
+        setSt({ s: 'error', why: j.error || 'Couldn’t save' });
+        clearTimeout(retry.current);
+        retry.current = setTimeout(save, [3000, 10000, 30000][Math.min(failing.current - 1, 2)]);
+        return null;
+      }
+      if (failing.current) { failing.current = 0; clearTimeout(retry.current); addToast('Saved', 'info'); }
       saved.current = cleanMeeting(j.meeting);
       base.current = j.meeting.updatedAt;
       // What only the server sets, into the copy being edited (never over what's been typed since)
@@ -140,19 +153,21 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   useEffect(() => {
     const onKey = (e) => { if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); save(); } };
     const onLeave = (e) => { if (editable(mRef.current) !== editable(saved.current)) { save(); e.preventDefault(); e.returnValue = ''; } };
+    const back = () => { if (failing.current) save(); };
     window.addEventListener('keydown', onKey);
     window.addEventListener('beforeunload', onLeave);
-    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('beforeunload', onLeave); save(); markDirty(false); };
+    window.addEventListener('online', back);
+    return () => { window.removeEventListener('keydown', onKey); window.removeEventListener('beforeunload', onLeave); window.removeEventListener('online', back); clearTimeout(retry.current); save(); markDirty(false); };
   }, []);
 
   /** An action the server takes on the saved meeting: anything typed is saved first */
-  const act = async (body) => {
+  const act = async (body, { keep = null } = {}) => {
     // A change made a moment ago (Start, just before the numbers lock) reaches the copy being saved first
     await new Promise((r) => setTimeout(r, 0));
     await save();
     const before = editable(mRef.current);
     const j = await call(body);
-    if (!j.ok) { addToast(j.error, 'error'); return null; }
+    if (!j.ok) { if (keep?.(j)) return j; addToast(j.error, 'error'); return null; }
     if (j.meeting) {
       // Changed here while the server worked (the next item, a vote opening): kept over its copy, and saved after
       const moved = editable(mRef.current) !== before;
@@ -166,7 +181,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
     return j;
   };
   const remove = async () => {
-    if (!(await ask({ title: `Delete the ${meetingName(m)}?`, text: 'Its agenda, notes, minutes and files go for good. Board members stop seeing it.', yes: 'Delete', danger: true }))) return;
+    if (!(await ask({ title: `Delete the ${meetingName(m)}?`, text: `Its agenda, notes, minutes and files go for good. Board members stop seeing it.${m.calendar?.uid && !m.calendar.gone ? ' It’s on the calendar too: unless the event is deleted there, it comes back within the hour as a new meeting.' : ''}`, yes: 'Delete', danger: true }))) return;
     clearTimeout(timer.current);
     saved.current = cleanMeeting(mRef.current);
     const j = await call({ action: 'delete-meeting', id: m.id });
@@ -203,92 +218,137 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   const [shown, setShown] = useState({ itemId: '', fileId: '', pages: {} });
   // The screen opens on the board page, which shows only shared meetings: sharing comes first
   const present = async () => {
-    if (!practice && !m.shared) {
+    if (!practice && !m.shared && !matchMedia('(max-width: 600px)').matches) {
       if (!(await ask({ title: 'Put the meeting on the board page?', text: 'The screen shows the meeting the way the board sees it on their page, so it’s shared first. Board members see its agenda and documents from now on.', yes: 'Share and present' }))) return;
       set({ shared: true });
       await new Promise((r) => setTimeout(r, 0));
       await save();
     }
-    openScreen(m.id);
+    if (!matchMedia('(max-width: 600px)').matches) openScreen(m.id);
     if (step !== 'during') setStep('during');
   };
-  const p = { m, set, setNow, ctx, act, save, numbers, people, keepSaved, saved, setStep, live, practice, jump, shown, setShown, openWhere: () => setEditWhere(true) };
+  const p = { m, set, setNow, ctx, act, save, numbers, people, keepSaved, saved, setStep, live, practice, jump, shown, setShown, openWhere: () => setEditWhere(true), closeWhere: () => { setEditWhere(false); requestAnimationFrame(() => document.getElementById('bm-where-toggle')?.focus()); } };
 
   const subs = {
-    before: m.packetSentAt ? `Board emailed ${shortDate(m.packetSentAt.slice(0, 10))}` : m.shared ? 'On the board page' : 'Agenda, documents, invite',
+    before: m.packetSentAt ? `Board emailed ${shortDate(m.packetSentAt.slice(0, 10))}` : m.shared ? 'On the board page' : 'Agenda and invite',
     during: isLive(m) ? 'Live now' : m.live.endedAt ? 'Held' : 'The agenda on the screen',
     after: m.minutes === 'approved' ? `Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}` : m.minutesFrom ? 'Read from the minutes' : 'Drop the minutes in',
   };
   const done = { before: !!m.packetSentAt, during: !!m.live.endedAt || (!!m.date && m.date < todayEastern() && c.boardHere > 0), after: m.minutes === 'approved' };
   const days = daysFrom(m.date);
+  // Held: the chair ended it, or its day has gone by (a past meeting is never presented)
+  const over = !!m.live.endedAt || (!!m.date && m.date < todayEastern());
+  const when = isLive(m) ? ['Live now', 'is-live'] : m.live.endedAt ? ['Held', 'is-held'] : [whenWords(days), days === 0 ? 'is-today' : days > 0 ? 'is-ahead' : ''];
   const place = [m.location, m.address].filter(Boolean).join(', ');
+  const fromCal = !!m.calendar && !m.calendar.gone;
+  // The steps as tabs: ← → move between them (and Home, End)
+  const stepKeys = (e) => {
+    const i = STAGES.findIndex(([id]) => id === step);
+    const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: STAGES.length - 1 }[e.key];
+    if (to === undefined) return;
+    e.preventDefault();
+    const next = STAGES[(to + STAGES.length) % STAGES.length][0];
+    setStep(next);
+    requestAnimationFrame(() => document.getElementById(`bm-tab-${next}`)?.focus());
+  };
   return html`
-    <div class="bm-top">
+    <div class="bm-top" data-meeting=${m.id}>
       <div class="bm-top__bar">
         <a class="bd-back" href="#board" onClick=${(e) => { e.preventDefault(); go({}); }}>← All meetings</a>
         <div class="bd-actions">
-          <span class=${`bm-saved ${st.s === 'error' ? 'is-error' : ''}`} role="status" aria-live="polite">
-            ${st.s === 'saving' ? 'Saving…' : st.s === 'unsaved' ? 'Saving in a moment' : st.s === 'error' ? html`Not saved: ${st.why} <button class="btn btn-ghost btn-sm" onClick=${save}>Try again</button>` : `Saved ${st.at ? savedAt(st.at) : ''}`}
+          <span class=${`bm-saved ${st.s === 'error' ? 'is-error' : st.s === 'saved' ? 'is-quiet' : ''}`} role="status" aria-live="polite" tabindex="-1">
+            ${st.s === 'saving' ? 'Saving…' : st.s === 'unsaved' ? 'Saving in a moment' : st.s === 'error' ? html`<span title=${st.why}>Not saved</span> <button class="btn btn-ghost btn-sm" onClick=${async () => { await save(); requestAnimationFrame(() => document.querySelector('.bm-saved')?.focus()); }}>Try again</button>` : `Saved ${st.at ? savedAt(st.at) : ''}`}
           </span>
-          <a class="btn btn-ghost btn-sm" href=${`${PAGE}#/meetings/${m.id}`} target="_blank" rel="noopener">Open on the board page</a>
-          <button type="button" class=${`btn btn-sm ${m.date === todayEastern() || practice ? 'btn-primary' : 'btn-ghost'}`} onClick=${present} title="The agenda and its documents on a screen: share it on Google Meet or put it on the TV">Present</button>
-          ${practice ? null : html`<${Menu} label="More for this meeting" items=${[{ label: 'Delete this meeting', danger: true, run: remove }]} />`}
+          ${step !== 'during' && (practice || !over || isLive(m)) ? html`<button type="button" class=${`btn btn-sm bm-present ${m.date === todayEastern() || practice ? 'btn-primary' : 'btn-ghost'}`} onClick=${present} title="The agenda and its documents on a screen: share it on Google Meet or put it on the TV">Present</button>` : null}
+          <${Menu} label="More for this meeting" items=${[
+            { label: 'Open it on the board page', run: () => window.open(`${PAGE}#/meetings/${m.id}`, '_blank', 'noopener') },
+            ...(practice ? [] : [{ label: 'Delete this meeting', danger: true, run: remove }]),
+          ]} />
         </div>
       </div>
       <div class="bm-title">
-        <span class=${`bm-when ${days === 0 ? 'is-today' : days > 0 ? 'is-ahead' : ''}`}>${whenWords(days)}</span>
+        <span class=${`bm-when ${when[1]}`}>${when[0]}</span>
         <h2>${meetingName(m)}</h2>
         <p class="bm-facts">
           <span>${[longDate(m.date), timeRange(m.start, m.end)].filter(Boolean).join(' · ') || 'No date yet'}</span>
           <span>${place || html`<button type="button" class="bm-link" onClick=${() => setEditWhere(true)}>Add the place</button>`}</span>
-          ${m.video ? html`<span><a class="link" href=${m.video} target="_blank" rel="noopener">${callName(m.video)}</a></span>` : null}
-          <button type="button" class="bm-link" aria-expanded=${editWhere} onClick=${() => setEditWhere(!editWhere)}>${editWhere ? 'Done' : 'Change when and where'}</button>
+          ${/^https?:\/\/\S+\.\S+/i.test(m.video || '') ? html`<span><a class="link" href=${m.video} target="_blank" rel="noopener">${callName(m.video)}</a></span>` : null}
+          <button type="button" class="bm-link" id="bm-where-toggle" aria-expanded=${editWhere} aria-controls="bm-where" onClick=${() => setEditWhere(!editWhere)}>${fromCal ? 'When and where' : 'Change when and where'}</button>
         </p>
       </div>
       ${practice ? html`<div class="bm-practice" role="note">
         <div><strong>Practice meeting.</strong> Only ${youAnd(data.settings.admins, data.me)} see it. Its board members are simulated: once you start, they check in over the first minute, and they vote a few seconds after you open a vote.${meeting.docsFrom ? ` Its documents are the ${shortDate(meeting.docsFrom)} meeting’s.` : ''} Nothing here reaches the board, the calendar or anyone’s email.</div>
         <button type="button" class="btn btn-ghost btn-sm" onClick=${async () => { if (await ask({ title: 'Start the practice over?', text: 'A fresh practice meeting: the agenda again, nobody checked in, no votes.', yes: 'Start over' })) { clearTimeout(timer.current); saved.current = cleanMeeting(mRef.current); markDirty(false); ctx.startOver?.(); } }}>Start over</button>
-      </div>` : html`<div class="bm-stages" role="tablist" aria-label="This meeting">
-        ${STAGES.map(([id, t, sub], i) => html`<button type="button" role="tab" aria-selected=${step === id} class=${`bm-stage ${done[id] ? 'is-done' : ''}`} onClick=${() => setStep(id)}>
+      </div>` : html`<div class="bm-stages" role="tablist" aria-label="This meeting" onKeyDown=${stepKeys}>
+        ${STAGES.map(([id, t, sub], i) => html`<button type="button" role="tab" id=${`bm-tab-${id}`} aria-selected=${step === id} tabindex=${step === id ? 0 : -1} class=${`bm-stage ${done[id] ? 'is-done' : ''}`} onClick=${() => setStep(id)}>
           <span class="bm-stage__n" aria-hidden="true">${done[id] ? CHECK : i + 1}</span>
           <span style="min-width:0"><span class="bm-stage__t">${t}<span class="bm-stage__what"> · ${sub}</span></span><span class="bm-stage__s">${subs[id]}</span></span>
         </button>`)}
       </div>`}
     </div>
     ${editWhere ? html`<${WhenWhere} ...${p} />` : null}
-    <div class="bm-layout" role="tabpanel">
+    <div class=${`bm-layout is-${step}`} role="tabpanel" aria-labelledby=${practice ? null : `bm-tab-${step}`}>
       ${step === 'before' ? html`
-        <div class="bm-main"><${AgendaEditor} ...${p} /><${FilesCard} ...${p} goes title="The packet" sub="Drop the financial statements, the budget, a report: each goes with its agenda item by itself, so it’s under that item on the board page and on the screen when the meeting gets to it. PDFs, pictures, Word, Excel or PowerPoint, up to 50 MB." /></div>
-        <aside class="bm-aside"><${GettingReady} ...${p} /><${Coming} ...${p} /><${MinutesTemplate} ...${p} /></aside>`
+        <aside class="bm-aside">${slot(1, html`<${GettingReady} ...${p} />`)}${slot(2, html`<${Coming} ...${p} />`, 'coming')}${slot(5, html`<${MinutesTemplate} ...${p} />`)}</aside>
+        <div class="bm-main">${slot(3, html`<${FilesCard} ...${p} goes title="The packet" sub="Each file goes under its agenda item, on the board page and on the screen. PDF, pictures, Word, Excel or PowerPoint, up to 50 MB." />`)}${slot(4, html`<${AgendaEditor} ...${p} />`)}</div>`
       : step === 'during' ? html`
-        <div class="bm-main"><${RunBar} ...${p} /><${RunOrder} ...${p} /><${Motions} ...${p} /></div>
-        <aside class="bm-aside"><${Quorum} ...${p} /></aside>`
+        <aside class="bm-aside">${slot(2, html`<${Quorum} ...${p} />`)}</aside>
+        <div class="bm-main">${slot(1, html`<${RunBar} ...${p} />`, 'run')}${slot(3, html`<${RunOrder} ...${p} />`)}${slot(4, html`<${Motions} ...${p} />`)}</div>`
       : html`
-        <div class="bm-main"><${MinutesDrop} ...${p} /><${MinutesDoc} ...${p} /><${FilesCard} ...${p} title="Every file" sub="All of this meeting’s files. A staff-only file never reaches the board page." /></div>
-        <aside class="bm-aside"><${WrapUp} ...${p} />${m.minutesFrom ? null : html`<${MinutesTemplate} ...${p} />`}</aside>`}
+        <aside class="bm-aside">${slot(2, html`<${WrapUp} ...${p} />`)}${m.minutesFrom ? null : slot(5, html`<${MinutesTemplate} ...${p} />`)}</aside>
+        <div class="bm-main">${slot(1, html`<${MinutesDrop} ...${p} />`)}${slot(3, html`<${MinutesDoc} ...${p} />`)}${slot(4, html`<${FilesCard} ...${p} title="Every file" sub="All of this meeting’s files. A staff-only file never reaches the board page." />`)}</div>`}
     </div>`;
 }
 
 // ─── When and where ─────────────────────────────────────────────────
 
-function WhenWhere({ m, set }) {
+function WhenWhere({ m, set, ctx, closeWhere }) {
   const cal = m.calendar;
   const fromCal = !!cal && !cal.gone;
-  return html`<div class="card">
-    <div class="bd-card-head"><h3>When and where</h3>${cal ? html`<p>${cal.gone
+  const [badLink, setBadLink] = useState(false);
+  // A link being typed: saved once it's one (or emptied), never as words that would show as a call
+  const [typedLink, setTypedLink] = useState(m.video || '');
+  const isLink = (v) => /^https?:\/\/\S+\.\S+/i.test(v.trim());
+  const mine = fromCal && String(cal.from || '').toLowerCase() === String(ctx.data.me || '').toLowerCase();
+  const whose = fromCal ? (mine ? 'your' : `${firstOf(cal.from)}’s`) : '';
+  // What the calendar sets is read here, never typed over: the day and times always, the place when it has one, the call when
+  // the organizer's own event has it (a call from another invite that day is that invite's, and Board's invite replaces it)
+  const fixed = { date: fromCal, start: fromCal, end: fromCal, place: fromCal && !!cal.place, video: fromCal && !!cal.call && !!cal.callFrom };
+  const otherInvite = fromCal && !!cal.call && !cal.callFrom && !!m.video;
+  const shown = (v, empty = 'None') => html`<p class="bm-fixed">${LOCK}<span>${v || empty}</span></p>`;
+  // Opened: the focus goes into it; Escape closes it
+  const head = useRef(null);
+  useEffect(() => { head.current?.focus(); }, []);
+  const field = (id, label, input, value, lock) => html`<div class="form-group"><${lock ? 'span' : 'label'} class="form-label" for=${lock ? null : id}>${label}</${lock ? 'span' : 'label'}>${lock ? shown(value) : input}</div>`;
+  return html`<div class="card" id="bm-where" onKeyDown=${(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); closeWhere(); } }}>
+    <div class="bd-card-head bm-where__head"><div><h3 tabindex="-1" ref=${head}>When and where</h3>${cal ? html`<p>${cal.gone
       ? html`This meeting is no longer on ${firstOf(cal.from)}’s calendar. If it’s off, delete it (⋯ at the top).`
-      : html`From ${firstOf(cal.from)}’s calendar (“${cal.title}”). Change the day or time there, and it follows here within the hour.${cal.place ? '' : ` The invite has no address${cal.said ? ` (its place says “${cal.said}”)` : ''}: type it here and the invite gets it.`}${cal.link ? html` <a class="link" href=${cal.link} target="_blank" rel="noopener">Open the event</a>` : null}`}</p>` : null}</div>
+      : html`From ${whose} calendar (“${cal.title}”). Change ${andList(['the day', 'the times', fixed.place ? 'the place' : '', fixed.video ? 'the call' : ''].filter(Boolean))} there, and it changes here within the hour.${cal.place ? '' : ` The invite has no address${cal.said ? ` (its place says “${cal.said}”)` : ''}: type it here and the invite gets it.`}${cal.link ? html` <a class="link" href=${cal.link} target="_blank" rel="noopener">Open the event</a>` : null}`}</p>` : null}</div>
+      <button type="button" class="btn btn-ghost btn-sm" onClick=${closeWhere}>Done</button></div>
     <div class="bd-grid3">
-      <div class="form-group"><label class="form-label" for="bd-date">Date</label><input id="bd-date" class="form-input" type="date" value=${m.date} disabled=${fromCal} onInput=${(e) => set({ date: e.target.value })} /></div>
-      <div class="form-group"><label class="form-label" for="bd-start">Starts</label><input id="bd-start" class="form-input" type="time" value=${m.start} disabled=${fromCal} onInput=${(e) => set({ start: e.target.value })} /></div>
-      <div class="form-group"><label class="form-label" for="bd-end">Ends</label><input id="bd-end" class="form-input" type="time" value=${m.end} disabled=${fromCal} onInput=${(e) => set({ end: e.target.value })} /></div>
-      <div class="form-group"><label class="form-label" for="bd-loc">Place</label><input id="bd-loc" class="form-input" value=${m.location} placeholder="Whose office" disabled=${fromCal && cal.place} onInput=${(e) => set({ location: e.target.value })} /></div>
-      <div class="form-group"><label class="form-label" for="bd-addr">Address</label><input id="bd-addr" class="form-input" value=${m.address} placeholder="Street, city" disabled=${fromCal && cal.place} onInput=${(e) => set({ address: e.target.value })} /></div>
-      <div class="form-group"><label class="form-label" for="bd-video">Video link</label><input id="bd-video" class="form-input" type="url" value=${m.video} placeholder="https://" disabled=${fromCal && cal.call} onInput=${(e) => set({ video: e.target.value })} /></div>
-      <div class="form-group span-3"><label class="form-label" for="bd-title">Name</label><input id="bd-title" class="form-input" value=${m.title} placeholder=${meetingName({ ...m, title: '' })} onInput=${(e) => set({ title: e.target.value })} /></div>
+      ${field('bd-date', 'Date', html`<input id="bd-date" class="form-input" type="date" value=${m.date} onInput=${(e) => set({ date: e.target.value })} />`, longDate(m.date), fixed.date)}
+      ${field('bd-start', 'Starts', html`<input id="bd-start" class="form-input" type="time" value=${m.start} onInput=${(e) => set({ start: e.target.value })} />`, m.start ? clock(m.start) : '', fixed.start)}
+      ${field('bd-end', 'Ends', html`<input id="bd-end" class="form-input" type="time" value=${m.end} onInput=${(e) => set({ end: e.target.value })} />`, m.end ? clock(m.end) : '', fixed.end)}
+      ${field('bd-loc', 'Place', html`<input id="bd-loc" class="form-input" value=${m.location} placeholder="Whose office" onInput=${(e) => set({ location: e.target.value })} />`, m.location, fixed.place)}
+      ${field('bd-addr', 'Address', html`<input id="bd-addr" class="form-input" value=${m.address} placeholder="Street, city" onInput=${(e) => set({ address: e.target.value })} />`, m.address, fixed.place)}
+      <div class="form-group">
+        ${fixed.video ? html`<span class="form-label">Video call</span>${shown(m.video ? callName(m.video) : '')}`
+          : otherInvite ? html`<span class="form-label">Video call</span><p class="bm-fixed">${callName(m.video)}<span class="bd-muted"> · from another invite that day; Board’s invite makes it Google Meet</span></p>`
+          : html`<label class="form-label" for="bd-video">Video link</label>
+          <input id="bd-video" class=${`form-input ${badLink ? 'is-invalid' : ''}`} type="url" value=${typedLink} placeholder="https://" aria-invalid=${badLink} aria-describedby=${badLink ? 'bd-video-bad' : null}
+            onInput=${(e) => { const v = e.target.value; setTypedLink(v); if (!v.trim() || isLink(v)) { set({ video: v.trim() }); setBadLink(false); } }}
+            onBlur=${(e) => setBadLink(!!e.target.value.trim() && !isLink(e.target.value))} />
+          ${badLink ? html`<p class="form-error" id="bd-video-bad">That isn’t a link, so it isn’t saved. Paste the call’s link from its invite: it starts with https://</p>` : null}`}
+      </div>
+      <div class="form-group span-3"><label class="form-label" for="bd-title">Name</label><input id="bd-title" class="form-input" value=${m.title} placeholder=${meetingName({ ...m, title: '' })} aria-describedby="bd-title-hint" onInput=${(e) => set({ title: e.target.value })} />
+        <p class="form-hint bm-hint" id="bd-title-hint">${m.title ? 'Empty it to go back to the quarter’s name.' : `Left empty, it’s the “${meetingName({ ...m, title: '' })}”.`}</p></div>
     </div>
   </div>`;
 }
+/** "the day, the times and the place" */
+const andList = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0] || '');
+/** A field the calendar sets, read here only */
+const LOCK = html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>`;
 
 // ─── Before: the agenda ─────────────────────────────────────────────
 
@@ -675,60 +735,121 @@ const placeFile = (fileId, itemId) => (x) => ({ sections: x.sections.map((s) => 
  * The meeting's files. Before the meeting (`goes`), each shows the agenda item it goes with, and a new one goes
  * with the item it most likely belongs to (financial statements with the money item, and so on).
  */
+/** What a board file can be (as the server takes it): PDFs, pictures, Word, Excel and PowerPoint */
+const FILE_OK = /\.(pdf|jpe?g|png|webp|heic|docx?|xlsx?|pptx)$/i;
+const extOf = (name) => (String(name).match(/\.[a-z0-9]{2,5}$/i) || [''])[0];
+
 function FilesCard({ m, set, ctx, keepSaved, title, sub, goes = false }) {
   const { addToast } = ctx;
-  const [uploading, setUploading] = useState(0);
+  const [uploading, setUploading] = useState([]); // the names on their way up
+  const [renaming, setRenaming] = useState('');
+  const renamed = useRef(''); // a rename saves once: Enter, or the box losing the focus, whichever comes first
+  const [over, setOver] = useState(false);
   const items = agendaItems(m);
   const whereOf = (f) => items.find((it) => m.sections[it.si].items[it.ii].docs?.includes(f.id))?.id || '';
   const add = async (list) => {
-    const files = [...(list || [])];
+    const all = [...(list || [])];
+    const bad = all.filter((f) => !FILE_OK.test(f.name));
+    if (bad.length) addToast(`${bad.length === 1 ? bad[0].name : plural(bad.length, 'file')} can’t go in: a PDF, a picture, or a Word, Excel or PowerPoint file can.`, 'error');
+    const files = all.filter((f) => FILE_OK.test(f.name));
     if (!files.length) return;
-    setUploading(files.length);
+    setUploading((u) => [...u, ...files.map((f) => f.name)]);
     const added = [];
     for (const f of files) {
-      const j = await upload(f, { ownerType: 'meeting', ownerId: m.id, kind: kindOfName(f.name) });
+      const kind = kindOfName(f.name);
+      const j = await upload(f, { ownerType: 'meeting', ownerId: m.id, kind: goes && (kind === 'minutes' || kind === 'signed') ? 'other' : kind });
       if (j.ok) added.push(j.file); else addToast(`${f.name}: ${j.error}`, 'error');
-      setUploading((n) => n - 1);
+      setUploading((u) => { const i = u.indexOf(f.name); return i < 0 ? u : [...u.slice(0, i), ...u.slice(i + 1)]; });
     }
     keepSaved((x) => ({ ...x, files: [...x.files, ...added] }));
-    if (!goes) return;
+    // The focus goes to the file that came in
+    if (added.length) requestAnimationFrame(() => document.querySelector(`#${cardId} [data-file="${added[0].id}"]`)?.focus());
+    if (!goes) { if (added.length) addToast(`${added.length === 1 ? docTitle(added[0].name) : plural(added.length, 'file')} added`, 'info'); return; }
     const placed = added.map((f) => [f, guessItem(m, f)]).filter(([, id]) => id);
     for (const [f, id] of placed) set(placeFile(f.id, id));
-    if (placed.length === 1) addToast(`${fileTitle(placed[0][0].name)} goes with ${items.find((it) => it.id === placed[0][1])?.title || 'its item'}`, 'info');
-    else if (placed.length) addToast(`${plural(placed.length, 'file')} put with their agenda items`, 'info');
+    // What went where, and what's on no item yet, in one message
+    const loose = added.filter((f) => !placed.some(([x]) => x.id === f.id));
+    const said = [
+      placed.length === 1 ? `${docTitle(placed[0][0].name)} goes with ${items.find((it) => it.id === placed[0][1])?.title || 'its item'}` : placed.length ? `${plural(placed.length, 'file')} put with their agenda items` : '',
+      loose.length ? `${loose.length === 1 ? docTitle(loose[0].name) : plural(loose.length, 'file')} ${loose.length === 1 ? 'is' : 'are'} on no item yet: choose one, or leave ${loose.length === 1 ? 'it' : 'them'} for the end` : '',
+    ].filter(Boolean);
+    if (said.length) addToast(`${said.join('. ')}.`, 'info');
   };
-  const update = async (f, patch) => {
+  const update = async (f, patch, said = '', undo = null) => {
     const j = await call({ action: 'update-file', id: f.id, ...patch });
-    if (!j.ok) { addToast(j.error, 'error'); return; }
+    if (!j.ok) { addToast(j.error, 'error'); return false; }
     keepSaved((x) => ({ ...x, files: x.files.map((y) => (y.id === f.id ? { ...y, ...j.file } : y)) }));
+    if (said) addToast(said, 'info', undo ? { label: 'Undo', fn: () => update({ ...f, ...j.file }, undo) } : undefined);
+    return true;
   };
-  const remove = async (f) => {
-    if (!(await ask({ title: `Delete ${fileTitle(f.name)}?`, text: 'It goes for good, from the board page too.', yes: 'Delete', danger: true }))) return;
+  const remove = async (f, at) => {
+    if (!(await ask({ title: `Delete ${docTitle(f.name)}?`, text: 'It goes for good, from the board page too.', yes: 'Delete', danger: true }))) return;
     const j = await call({ action: 'delete-file', id: f.id });
     if (!j.ok) { addToast(j.error, 'error'); return; }
     keepSaved((x) => ({ ...x, files: x.files.filter((y) => y.id !== f.id) }));
     set(placeFile(f.id, ''));
+    // The focus goes to the file that took its place, else to adding one
+    requestAnimationFrame(() => (document.querySelectorAll(`#${cardId} .bd-file-name`)[at] || document.querySelector(`#${cardId} .bd-drop .btn`))?.focus());
   };
-  const vf = viewerFiles(m.files);
-  const groups = FILE_KINDS.map((k) => [k, m.files.map((f, i) => ({ f, i })).filter(({ f }) => (FILE_KINDS.some((x) => x.id === f.kind) ? f.kind : 'other') === k.id)]).filter(([, l]) => l.length);
-  return html`<div class="card">
-    <div class="bd-card-head"><h3>${title}${m.files.length ? html` <span class="count">${m.files.length}</span>` : null}</h3><p>${sub}</p></div>
+  const rename = async (f, typed) => {
+    if (renamed.current === f.id) return;
+    renamed.current = f.id;
+    const name = typed.trim();
+    setRenaming('');
+    if (name && name !== docTitle(f.name)) await update(f, { name: `${name}${extOf(f.name)}` }, `Renamed ${name}`, { name: f.name });
+    requestAnimationFrame(() => document.querySelector(`#${cardId} [data-file="${f.id}"]`)?.focus());
+  };
+  // A file dropped anywhere on Before goes in the packet (an agenda item dragged never carries files)
+  useEffect(() => {
+    if (!goes) return undefined;
+    const has = (e) => [...(e.dataTransfer?.types || [])].includes('Files');
+    const enter = (e) => { if (has(e)) { e.preventDefault(); setOver(true); } };
+    const leave = (e) => { if (!e.relatedTarget) setOver(false); };
+    const drop = (e) => { if (!has(e)) return; e.preventDefault(); setOver(false); add(e.dataTransfer.files); };
+    window.addEventListener('dragover', enter);
+    window.addEventListener('dragleave', leave);
+    window.addEventListener('drop', drop);
+    return () => { window.removeEventListener('dragover', enter); window.removeEventListener('dragleave', leave); window.removeEventListener('drop', drop); };
+  }, [goes, m.id, m.sections]);
+  // The packet is what goes out before the meeting: this meeting's own minutes and their signed copy are After's
+  const files = goes ? m.files.filter((f) => f.kind !== 'minutes' && f.kind !== 'signed') : m.files;
+  const vf = viewerFiles(files);
+  // The packet is one list (what matters there is the item each goes with); Every file is by kind
+  const groups = goes ? [[null, files.map((f, i) => ({ f, i }))]].filter(([, l]) => l.length)
+    : FILE_KINDS.map((k) => [k, files.map((f, i) => ({ f, i })).filter(({ f }) => (FILE_KINDS.some((x) => x.id === f.kind) ? f.kind : 'other') === k.id)]).filter(([, l]) => l.length);
+  // What a file can be filed as: before the meeting, nothing that's this meeting's own minutes
+  const kinds = goes ? FILE_KINDS.filter((x) => ['financials', 'agenda', 'other'].includes(x.id)) : FILE_KINDS;
+  const cardId = goes ? 'bm-packet' : 'bm-files';
+  let at = -1;
+  return html`<div class=${`card bm-files ${over ? 'is-over' : ''}`} id=${cardId}>
+    <div class="bd-card-head"><h3>${title}${files.length ? html` <span class="count">${files.length}</span>` : null}</h3><p>${sub}</p></div>
     ${groups.map(([k, list]) => html`<div class="bf-group">
-      <p class="bm-group">${k.label}</p>
-      <ul class="bf-list">${list.map(({ f, i }) => html`<li class="bf-file" key=${f.id}>
-        <div class="bf-file__main"><a class="bd-file-name" ...${viewerLink(vf, i)}>${fileTitle(f.name)}</a><div class="bd-row__meta">${[sizeText(f.size), f.at ? `added ${shortDate(f.at.slice(0, 10))}` : ''].filter(Boolean).join(' · ')}</div></div>
-        ${goes && f.kind !== 'signed' ? html`<${ItemChooser} items=${items} value=${whereOf(f)} label=${`Which agenda item ${fileTitle(f.name)} goes with`} onChange=${(id) => set(placeFile(f.id, id))} />` : null}
-        <button type="button" class=${`bf-seen ${f.staffOnly ? 'is-staff' : ''}`} aria-pressed=${!f.staffOnly} title=${f.staffOnly ? 'Only you and Holly see it. Tap to let the board see it.' : 'The board sees it. Tap to keep it staff only.'} onClick=${() => update(f, { staffOnly: !f.staffOnly })}>${f.staffOnly ? 'Staff only' : html`${CHECK} The board sees it`}</button>
-        <${Menu} label=${`More for ${fileTitle(f.name)}`} items=${[
-          ...FILE_KINDS.filter((x) => x.id !== f.kind).map((x) => ({ label: `File it as ${x.label.toLowerCase()}`, run: () => update(f, { kind: x.id }) })),
-          { label: 'Delete the file', danger: true, run: () => remove(f) },
+      ${k && groups.length > 1 ? html`<p class="bm-group">${k.label}</p>` : null}
+      <ul class="bf-list">${list.map(({ f, i }) => {
+        const n = (at += 1);
+        const name = docTitle(f.name);
+        return html`<li class="bf-file" key=${f.id}>
+        <div class="bf-file__main">${renaming === f.id
+          ? html`<input class="form-input bf-rename" aria-label=${`New name for ${name}`} value=${name} ref=${(el) => { if (el && !el.dataset.on) { el.dataset.on = '1'; renamed.current = ''; el.focus(); el.select(); } }}
+              onKeyDown=${(e) => { if (e.key === 'Enter') { e.preventDefault(); rename(f, e.target.value); } if (e.key === 'Escape') { e.preventDefault(); setRenaming(''); } }} onBlur=${(e) => rename(f, e.target.value)} />`
+          : html`<a class="bd-file-name" data-file=${f.id} ...${viewerLink(vf, i)}>${name}</a>`}<div class="bd-row__meta">${[sizeText(f.size), f.at ? `added ${shortDate(f.at.slice(0, 10))}` : ''].filter(Boolean).join(' · ')}</div></div>
+        ${goes && f.kind !== 'signed' ? html`<${ItemChooser} items=${items} value=${whereOf(f)} label=${`Which agenda item ${name} goes with`} onChange=${(id) => set(placeFile(f.id, id))} />` : null}
+        <button type="button" role="switch" class=${`bf-seen ${f.staffOnly ? 'is-staff' : ''}`} aria-checked=${!f.staffOnly} aria-label=${`The board sees ${name}`}
+          onClick=${() => update(f, { staffOnly: !f.staffOnly }, f.staffOnly ? `The board sees ${name}` : `${name} is staff only: only ${youAnd(ctx.data.settings.admins, ctx.data.me)} see it`, { staffOnly: !!f.staffOnly })}>
+          <span class="bf-seen__track" aria-hidden="true"><span class="bf-seen__dot"></span></span><span class="bf-seen__t">${f.staffOnly ? 'Staff only' : 'Board sees it'}</span></button>
+        <${Menu} label=${`More for ${name}`} items=${[
+          { label: 'Rename', run: () => setRenaming(f.id) },
+          ...kinds.filter((x) => x.id !== f.kind).map((x) => ({ label: `File it under ${x.label}`, run: () => update(f, { kind: x.id }, `${name} is under ${x.label}`, { kind: f.kind }) })),
+          { label: 'Delete the file', danger: true, run: () => remove(f, n) },
         ]} />
-      </li>`)}</ul>
+      </li>`;
+      })}</ul>
     </div>`)}
-    <div class="bd-drop" style=${m.files.length ? 'margin-top:0.75rem' : ''} onDragOver=${(e) => { e.preventDefault(); e.currentTarget.classList.add('is-over'); }} onDragLeave=${(e) => e.currentTarget.classList.remove('is-over')}
-      onDrop=${(e) => { e.preventDefault(); e.currentTarget.classList.remove('is-over'); add(e.dataTransfer.files); }}>
-      <label class="btn btn-ghost btn-sm">Add files<input type="file" multiple hidden accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.docx,.xlsx,.pptx,.doc,.xls" onChange=${(e) => { add(e.target.files); e.target.value = ''; }} /></label>
-      <span class="bd-muted">${uploading ? `Uploading ${plural(uploading, 'file')}…` : 'or drop them here'}</span>
+    ${uploading.length ? html`<ul class="bf-list bf-up" aria-live="polite">${uploading.map((name, i) => html`<li class="bf-file is-up" key=${`${name}-${i}`}><span class="spinner" aria-hidden="true"></span><div class="bf-file__main"><span class="bd-file-name">${docTitle(name)}</span><div class="bd-row__meta">Uploading…</div></div></li>`)}</ul>` : null}
+    <div class=${`bd-drop ${over ? 'is-over' : ''}`} style=${files.length || uploading.length ? 'margin-top:0.75rem' : ''} onDragOver=${(e) => { e.preventDefault(); if (!goes) setOver(true); }} onDragLeave=${() => { if (!goes) setOver(false); }}
+      onDrop=${(e) => { e.preventDefault(); e.stopPropagation(); setOver(false); add(e.dataTransfer.files); }}>
+      <label class="btn btn-ghost btn-sm bd-pick">Add files<input type="file" class="sr-only" multiple accept=".pdf,.jpg,.jpeg,.png,.webp,.heic,.docx,.xlsx,.pptx,.doc,.xls" onChange=${(e) => { add(e.target.files); e.target.value = ''; }} /></label>
+      <span class="bd-muted bd-drop__hint">${over ? 'Let go to add them' : goes ? 'or drop them anywhere on this page' : 'or drop them here'}</span>
     </div>
   </div>`;
 }
@@ -741,7 +862,7 @@ const Task = ({ state, title, sub, children }) => {
   return html`<li class=${`bm-task is-${state}`}>
     <span class="bm-task__mark" aria-hidden="true">${state === 'done' ? CHECK : null}</span>
     <div class="bm-task__body">
-      <div class="bm-task__t">${title}</div>
+      <div class="bm-task__t" tabindex="-1">${title}</div>
       ${sub ? html`<div class="bm-task__s">${sub}</div>` : null}
       ${kids.length ? html`<div class="bm-task__do">${kids}</div>` : null}
     </div>
@@ -750,18 +871,46 @@ const Task = ({ state, title, sub, children }) => {
 /** States for a list of done flags: the first not done is next */
 const statesOf = (dones) => { const first = dones.indexOf(false); return dones.map((d, i) => (d ? 'done' : i === first ? 'next' : 'todo')); };
 const btn = (state) => `btn btn-sm ${state === 'next' ? 'btn-primary' : 'btn-ghost'}`;
+/**
+ * Once one's done, the focus goes to what's next: its name, never a button (a space or Enter typed a moment later
+ * mustn't send anything), and never the undo that just took the done one's place
+ */
+const focusNext = (sel) => requestAnimationFrame(() => (document.querySelector(`${sel} .bm-task.is-next .bm-task__t`) || document.querySelector(`${sel} h3`))?.focus());
+const NO_MAIL = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16v12H4z" /><path d="m4 7 8 6 8-6" /><path d="M3 21 21 3" /></svg>`;
+/** Board members with no email on file: named where it matters, each with the way to add theirs */
+function NoEmail({ ctx, what }) {
+  const none = ctx.data.members.filter((x) => !x.email);
+  if (!none.length) return null;
+  const one = none.length === 1;
+  return html`<p class="bm-note is-warn" role="note">${NO_MAIL}<span><strong>${namesText(none.map((x) => x.name))} ${one ? 'has' : 'have'} no email on file</strong>, so ${one ? 'gets' : 'get'} ${what}.${none.map((x) => html` <a class="link" href=${`#people/board/${x.slug}`}>${one ? 'Add it' : `Add ${x.name.split(' ')[0]}’s`}</a>`)}</span></p>`;
+}
 
 function GettingReady({ m, set, ctx, act, save }) {
   const { data, addToast } = ctx;
   const [working, setWorking] = useState('');
-  const run = async (name, body, ok) => { setWorking(name); const j = await act(body); setWorking(''); if (j && ok) addToast(typeof ok === 'function' ? ok(j) : ok, 'info'); return j; };
-  const share = async (v) => { set({ shared: v }); await new Promise((r) => setTimeout(r, 0)); await save(); };
+  const run = async (name, body, ok) => { setWorking(name); const j = await act(body); setWorking(''); if (j && ok) addToast(typeof ok === 'function' ? ok(j) : ok, 'info'); if (j && !body.test) focusNext('.bm-ready'); return j; };
+  // Shared says so and moves on to what's next; taking it off asks first (its button is where Share was)
+  const share = async (v) => {
+    if (!v && !(await ask({ title: 'Take it off the board page?', text: 'Board members stop seeing its agenda and files until you share it again.', yes: 'Take it off' }))) return;
+    set({ shared: v });
+    await new Promise((r) => setTimeout(r, 0));
+    await save();
+    addToast(v ? 'On the board page: board members see the agenda and files' : 'Taken off the board page', 'info', v ? { label: 'Undo', fn: () => { set({ shared: false }); addToast('Taken off the board page', 'info'); } } : undefined);
+    focusNext('.bm-ready');
+  };
   // The invite: who's on it, and who should be
   const inv = m.invite;
   const from = inv?.organizer || m.calendar?.organizer || data.settings.invitesFrom;
+  // The organizer reads "your calendar"; anyone else reads whose it is
+  const whoseOf = (e) => (String(e || '').toLowerCase() === String(data.me || '').toLowerCase() ? 'your' : `${firstOf(e)}’s`);
+  const whose = whoseOf(from);
+  const nameOf = (e) => data.members.find((x) => x.email === e)?.name || firstOf(e);
+  // Who's added besides the board: the other admins (the organizer is on it already)
+  const alsoAdded = data.settings.admins.filter((e) => e !== from).map(firstOf);
+  const adds = `the board${alsoAdded.length ? ` and ${andList(alsoAdded)}` : ''}`;
   const guests = [...new Set([...data.members.map((x) => x.email).filter(Boolean), ...data.settings.admins])];
   const missing = inv ? guests.filter((e) => !(inv.emails || []).includes(e) && e !== inv.organizer) : [];
-  const transcript = !inv ? '' : inv.transcript === 'on' ? 'transcript on' : inv.transcript === 'needs-setup' ? 'transcript needs one Google setting (see Meetings)' : inv.transcript === 'error' ? 'no transcript (SOARD’s Google plan)' : '';
+  const transcript = !inv ? '' : inv.transcript === 'on' ? 'transcripts on' : inv.transcript === 'needs-setup' ? 'transcript needs one Google setting (see Meetings)' : inv.transcript === 'error' ? 'no transcript (SOARD’s Google plan)' : '';
   const placeNow = [m.location, m.address].filter(Boolean).join(', ');
   const where = !inv ? '' : placeNow && placeNow !== inv.place ? 'the new place goes on it a couple of minutes after you stop typing' : inv.place ? `at ${inv.place}` : 'the place goes on it when you add one';
   // Another call (Teams, Zoom) on the organizer's event, or from another event that day: Google Meet takes its place
@@ -769,7 +918,8 @@ function GettingReady({ m, set, ctx, act, save }) {
   // The invite check found the organizer's Google account can't have transcripts: they're not promised
   const noTranscripts = !!data.google?.check && data.google.check.transcript === 'error';
   const meetWords = noTranscripts ? 'Google Meet' : 'Google Meet with transcripts on';
-  const docs = m.files.filter((f) => !f.staffOnly);
+  // What the board gets: the packet, as they see it (never this meeting's own minutes, nor a staff-only file)
+  const docs = m.files.filter((f) => !f.staffOnly && f.kind !== 'minutes' && f.kind !== 'signed');
   const [sInvite, sShared, sSent] = statesOf([!!inv && !missing.length, m.shared, !!m.packetSentAt]);
   // The reports: each presenter writes theirs on the board page (it asks them there); here, which are in
   const people = useMemo(() => pickable(data.people), [data.people]);
@@ -781,28 +931,59 @@ function GettingReady({ m, set, ctx, act, save }) {
   const inCount = asked.filter(({ it }) => it.report).length;
   // Emailing the link puts the meeting on the board page first: one press, not two
   const email = async () => {
-    if (!(await ask({ title: `Email ${plural(data.packetTo, 'board member')} the link?`, text: `${m.shared ? '' : 'The meeting goes on the board page, and '}the board gets the link to the agenda and ${docs.length ? plural(docs.length, 'document') : 'documents'}, with one-tap answers for anyone who hasn’t said whether they’re coming. Nothing is attached.`, yes: m.packetSentAt ? 'Email them again' : 'Email the board' }))) return;
-    if (!m.shared) await share(true);
+    const to = data.members.filter((x) => x.email).map((x) => x.name);
+    const none = data.members.filter((x) => !x.email).map((x) => x.name);
+    if (!(await ask({ title: `Email ${andList(to)} the link?`, text: `${m.shared ? 'They get' : 'The meeting goes on the board page, and they get'} the link to the agenda${docs.length ? ` and ${plural(docs.length, 'document')}` : ' (no documents yet)'}, with one-tap answers for anyone who hasn’t said whether they’re coming. Nothing is attached.${none.length ? ` ${andList(none)} ${none.length === 1 ? 'has' : 'have'} no email, so ${none.length === 1 ? 'gets' : 'get'} nothing.` : ''}`, yes: m.packetSentAt ? 'Email them again' : 'Email the board' }))) return;
+    if (!m.shared) { set({ shared: true }); await new Promise((r) => setTimeout(r, 0)); await save(); }
     run('send', { action: 'send-packet', id: m.id }, (j) => `Emailed ${plural(j.sent, 'board member')}`);
   };
-  return html`<div class="card bm-check">
-    <div class="bd-card-head"><h3>Getting ready</h3><p>${[sInvite, sShared, sSent].every((x) => x === 'done') ? 'All set. The numbers lock themselves on the day.' : 'The agenda is ready and the numbers lock themselves on the day. What’s left:'}</p></div>
+  // The invite names who Google emails before it goes, and who it can't reach
+  const noEmail = data.members.filter((x) => !x.email).map((x) => x.name);
+  // Where the other call came from: the organizer's own event, or another invite that day
+  const callSource = m.calendar?.callFrom ? `The ${otherCall} call is on ${whose} event.` : `The ${otherCall} call came from another invite that day.`;
+  const invite = async () => {
+    const to = inv ? missing : guests.filter((e) => e !== from);
+    const names = andList(to.map(nameOf));
+    if (!(await ask({
+      title: !inv ? (otherCall ? 'Add everyone and switch to Google Meet?' : 'Send the invite?') : `Add ${names} to the invite?`,
+      text: !inv ? `${otherCall ? `${callSource} The meeting’s call becomes ${meetWords}, on ${whose} event. ` : ''}Google emails the invite to ${names}, with the place and the link to the agenda.${noEmail.length ? ` ${andList(noEmail)} ${noEmail.length === 1 ? 'has' : 'have'} no email, so ${noEmail.length === 1 ? 'gets' : 'get'} no invite.` : ''}` : `Google emails ${to.length === 1 ? 'the invite to them' : 'each of them the invite'}. Nobody else hears about it.`,
+      yes: !inv ? (otherCall ? 'Add everyone' : 'Send the invite') : 'Add them',
+    }))) return;
+    run('invite', { action: 'send-invite', id: m.id }, () => `Invite sent to ${names}`);
+  };
+  // Held (its day gone by, or run here and ended): what was done, nothing left to send
+  if (((m.date && m.date < todayEastern()) || m.live.endedAt) && !isLive(m)) {
+    return html`<div class="card bm-check bm-ready">
+      <div class="bd-card-head"><h3 tabindex="-1">Getting ready</h3><p>${m.live.endedAt ? 'This meeting was held' : `This meeting was on ${longDate(m.date)}`}. ${minutesIn(m) ? 'Its minutes are in After.' : 'Its minutes go in After.'}</p></div>
+      <ol class="bm-tasks">
+        <${Task} state=${inv ? 'done' : 'skip'} title=${inv ? `Invite sent from ${whoseOf(inv.organizer)} calendar` : 'No invite went out from Board'} />
+        <${Task} state=${m.shared ? 'done' : 'skip'} title=${m.shared ? 'On the board page' : 'Not on the board page'} sub=${m.shared ? '' : 'It goes there with its minutes, from After.'} />
+        <${Task} state=${m.packetSentAt ? 'done' : 'skip'} title=${m.packetSentAt ? `${plural(m.packetSentTo, 'board member')} emailed the link` : 'The board wasn’t emailed the link'} />
+      </ol>
+    </div>`;
+  }
+  return html`<div class="card bm-check bm-ready">
+    <div class="bd-card-head"><h3 tabindex="-1">Getting ready</h3><p>${[sInvite, sShared, sSent].every((x) => x === 'done') ? 'The invite, the board page and the email are done. The numbers lock on the meeting day.' : 'The agenda is ready, and the numbers lock on the meeting day. What’s left:'}</p></div>
+    <${NoEmail} ctx=${ctx} what="no invite or email, and can’t check in on the board page" />
     <ol class="bm-tasks">
-      <${Task} state=${sInvite} title=${inv ? `Invite sent from ${firstOf(inv.organizer)}’s calendar` : m.calendar?.eventId ? `Finish ${firstOf(from)}’s invite` : 'Send the invite'}
-        sub=${inv ? [plural(inv.guests, 'guest'), inv.meet ? 'Google Meet' : '', transcript, where, missing.length ? `${missing.length} not on it yet` : ''].filter(Boolean).join(' · ')
-          : otherCall ? `On ${firstOf(from)}’s calendar with a ${otherCall} call. Board adds the board, ${youAnd(data.settings.admins, data.me)}, the place and the agenda link, and makes it ${meetWords}.`
-          : m.calendar?.eventId ? `On ${firstOf(from)}’s calendar. Board adds the board, ${youAnd(data.settings.admins, data.me)}, ${meetWords}, the place and the agenda link.`
-          : `From ${firstOf(from)}’s calendar to the board and ${youAnd(data.settings.admins, data.me)}: ${meetWords}, and the link to the agenda.`}>
-        <button class=${btn(sInvite)} disabled=${!!working || !data.setup.calendar || !m.date} onClick=${() => run('invite', { action: 'send-invite', id: m.id }, (j) => `${j.meeting.invite?.guests ? plural(j.meeting.invite.guests, 'guest') : 'The invite'} on ${firstOf(j.meeting.invite?.organizer)}’s calendar`)}>
-          ${working === 'invite' ? 'Sending…' : !inv ? (otherCall ? 'Add everyone, switch to Meet' : m.calendar?.eventId ? 'Add everyone and Meet' : 'Send the invite') : missing.length ? `Add the ${missing.length === 1 ? 'one' : missing.length} missing` : 'Update the invite'}</button>
+      <${Task} state=${sInvite} title=${inv ? `Invite sent from ${whoseOf(inv.organizer)} calendar` : m.calendar?.eventId ? `Finish ${whose} invite` : 'Send the invite'}
+        sub=${inv ? [plural(inv.guests, 'guest'), inv.meet ? 'Google Meet' : '', transcript, where, missing.length ? `${andList(missing.map(nameOf))} not on it yet` : ''].filter(Boolean).join(' · ')
+          : otherCall ? `On ${whose} calendar with a ${otherCall} call. This adds ${adds}, the place and the link to the agenda, and makes the call ${meetWords}.`
+          : m.calendar?.eventId ? `On ${whose} calendar. This adds ${adds}, ${meetWords}, the place and the link to the agenda.`
+          : `From ${whose} calendar to ${adds}: ${meetWords}, the place and the link to the agenda.`}>
+        ${!inv || missing.length ? html`<button class=${btn(sInvite)} disabled=${!!working || !data.setup.calendar || !m.date} onClick=${invite}>
+          ${working === 'invite' ? 'Sending…' : !inv ? (otherCall ? 'Add everyone, switch to Meet' : m.calendar?.eventId ? 'Add everyone and Meet' : 'Send the invite') : `Add ${missing.length === 1 ? nameOf(missing[0]).split(' ')[0] : `the ${missing.length} missing`}`}</button>` : null}
+        ${!data.setup.calendar ? html`<span class="bd-muted">Board can’t reach Google Calendar yet (Settings).</span>` : null}
+        ${inv && m.calendar?.others?.length ? html`<p class="bm-note">Another invite for this meeting, with its own call, is still on people’s calendars. Ask whoever sent it to cancel it, so nobody joins the wrong call.</p>` : null}
       </${Task}>
       <${Task} state=${sShared} title=${m.shared ? 'On the board page' : 'Put it on the board page'} sub=${m.shared ? 'Board members see the agenda and files (never a private note or a staff-only file).' : 'Board members see nothing of this meeting until then. Emailing the board puts it there too.'}>
         ${m.shared ? html`<button class="btn btn-ghost btn-sm" onClick=${() => share(false)}>Take it off</button>` : html`<button class=${btn(sShared)} onClick=${() => share(true)}>Share with the board</button>`}
       </${Task}>
       <${Task} state=${sSent} title=${m.packetSentAt ? `${plural(m.packetSentTo, 'board member')} emailed the link` : 'Email the board the link'}
-        sub=${m.packetSentAt ? ago(m.packetSentAt) : `The link, ${docs.length ? `the ${plural(docs.length, 'document')} by name` : 'the documents by name once there are some'} (nothing attached), and one-tap “Will you be there?”. To ${plural(data.packetTo, 'board member')}${data.setup.email ? '' : ' · email isn’t set up'}.`}>
-        <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => run('preview', { action: 'send-packet', id: m.id, test: true }, (j) => `Sent to ${j.to?.[0] || 'you'}`)}>${working === 'preview' ? 'Sending…' : 'Send it to me'}</button>
+        sub=${m.packetSentAt ? ago(m.packetSentAt) : `The link to the agenda and ${docs.length ? `the ${plural(docs.length, 'document')} by name` : 'the documents by name'} (nothing attached), with one-tap “Will you be there?” buttons. It goes to ${plural(data.packetTo, 'board member')}.`}>
+        <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => run('preview', { action: 'send-packet', id: m.id, test: true }, (j) => `Sent to ${j.to?.[0] || 'you'}`)}>${working === 'preview' ? 'Sending…' : 'Send me the email'}</button>
         <button class=${btn(sSent)} disabled=${!!working || !data.packetTo || !data.setup.email} onClick=${email}>${working === 'send' ? 'Sending…' : m.packetSentAt ? 'Email again' : 'Email the board'}</button>
+        ${!data.setup.email ? html`<span class="bd-muted">Email isn’t set up yet (Settings).</span>` : null}
       </${Task}>
     </ol>
     ${asked.length ? html`<div class="bm-reports">
@@ -823,22 +1004,36 @@ function GettingReady({ m, set, ctx, act, save }) {
 function Coming({ m, ctx, act }) {
   const { data, addToast } = ctx;
   const [working, setWorking] = useState('');
+  const [asked, setAsked] = useState(null); // { names, at } once a reminder went (here, this visit)
+  const askRef = useRef(null);
   const board = m.attendance.filter((x) => x.kind === 'board');
-  const answer = (x) => answerOf(x.rsvp, repliesOf(m)[x.slug]);
+  const answer = (x) => (x.status === 'present' ? 'Coming' : x.status === 'remote' ? 'By video' : answerOf(x.rsvp, repliesOf(m)[x.slug]));
+  const emailOf = (x) => data.members.find((y) => y.slug === x.slug)?.email || '';
   const groups = [['Coming', board.filter((x) => answer(x) === 'Coming')], ['By video', board.filter((x) => answer(x) === 'By video')], ['Maybe', board.filter((x) => answer(x) === 'Maybe')], ['Can’t come', board.filter((x) => answer(x) === 'Can’t come')], ['No answer', board.filter((x) => !answer(x))]];
-  const quiet = groups.at(-1)[1].filter((x) => data.members.find((y) => y.slug === x.slug)?.email);
-  const remind = async (test) => { setWorking(test ? 'preview' : 'send'); const j = await act({ action: 'remind-rsvp', id: m.id, test }); setWorking(''); if (j) addToast(test ? `Sent to ${j.to?.[0] || 'you'}` : `Asked ${plural(j.sent, 'board member')}`, 'info'); };
+  const quiet = groups.at(-1)[1].filter(emailOf);
+  // A reminder names who gets it before it goes
+  const remind = async (test) => {
+    if (!test && !(await ask({ title: `Ask ${andList(quiet.map((x) => x.name))}?`, text: `${quiet.length === 1 ? 'They get' : 'Each gets'} an email with one-tap answers: coming, by video, or can’t come. The answer shows here.`, yes: quiet.length === 1 ? 'Ask them' : `Ask all ${quiet.length}` }))) return;
+    setWorking(test ? 'preview' : 'send');
+    const j = await act({ action: 'remind-rsvp', id: m.id, test });
+    setWorking('');
+    if (j) addToast(test ? `Sent to ${j.to?.[0] || 'you'}` : `Asked ${plural(j.sent, 'board member')}`, 'info');
+    if (j && !test) setAsked({ names: andList(quiet.map((x) => x.name.split(' ')[0])), at: new Date().toISOString() });
+    requestAnimationFrame(() => askRef.current?.focus());
+  };
   const answered = board.length - groups.at(-1)[1].length;
-  return html`<div class="card">
-    <div class="bd-card-head"><h3>Who’s coming</h3><p>${answered ? `${answered} of ${board.length} board members have answered,` : 'Nobody has answered yet,'} on the board page or the calendar invite.</p></div>
+  // Past (and not run here): who was there is the minutes' to say
+  if (m.date && m.date < todayEastern() && !m.live.startedAt) return null;
+  return html`<div class="card bm-coming">
+    <div class="bd-card-head"><h3>Who’s coming</h3><p>${answered ? `${answered} of ${board.length} board members ${answered === 1 ? 'has' : 'have'} answered,` : 'Nobody has answered yet,'} on the board page or the calendar invite.</p></div>
     <div class="bm-bar" role="img" aria-label=${groups.filter(([, l]) => l.length).map(([t, l]) => `${l.length} ${t.toLowerCase()}`).join(', ')}>
       ${groups.map(([t, l]) => (l.length ? html`<span class=${`bm-bar__part is-${t === 'Coming' || t === 'By video' ? 'yes' : t === 'Can’t come' ? 'no' : t === 'Maybe' ? 'maybe' : 'none'}`} style=${`flex:${l.length}`}></span>` : null))}
     </div>
-    <dl class="bm-who">${groups.filter(([, l]) => l.length).map(([t, l]) => html`<div><dt>${t} <b>${l.length}</b></dt><dd>${l.map((x) => x.name).join(', ')}</dd></div>`)}</dl>
-    ${quiet.length && m.date >= todayEastern() ? html`<div class="bd-actions" style="margin-top:0.75rem">
-      <button class="btn btn-ghost btn-sm" disabled=${!!working || !m.shared} onClick=${() => remind(true)}>${working === 'preview' ? 'Sending…' : 'Send it to me'}</button>
-      <button class="btn btn-ghost btn-sm" disabled=${!!working || !m.shared} title=${m.shared ? '' : 'Share the meeting first'} onClick=${() => remind(false)}>${working === 'send' ? 'Sending…' : `Ask the ${quiet.length === 1 ? 'one' : quiet.length} who haven’t answered`}</button>
-    </div>` : null}
+    <dl class="bm-who">${groups.filter(([, l]) => l.length).map(([t, l]) => html`<div><dt>${t} <b>${l.length}</b></dt><dd>${l.map((x, i) => html`${i ? ', ' : ''}${x.name}${emailOf(x) ? null : html` <span class="bm-who__no">(no email)</span>`}`)}</dd></div>`)}</dl>
+    ${quiet.length && m.date >= todayEastern() && !m.live.startedAt ? (m.shared ? html`${asked ? html`<p class="bd-muted bm-coming__wait" role="status">Asked ${asked.names} ${ago(asked.at)}.</p>` : null}<div class="bd-actions" style="margin-top:0.75rem">
+      <button class=${`btn btn-sm ${asked ? 'btn-ghost' : 'btn-primary'}`} ref=${askRef} disabled=${!!working} onClick=${() => remind(false)}>${working === 'send' ? 'Sending…' : asked ? 'Ask again' : quiet.length === 1 ? `Ask ${quiet[0].name.split(' ')[0]}` : `Ask the ${quiet.length} who haven’t answered`}</button>
+      <button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => remind(true)}>${working === 'preview' ? 'Sending…' : 'Send me the reminder'}</button>
+    </div>` : html`<p class="bd-muted bm-coming__wait">Once it’s on the board page, you can ask the ones who haven’t answered.</p>`) : null}
   </div>`;
 }
 
@@ -863,6 +1058,8 @@ function useLivePoll(id, on) {
   return live;
 }
 const typingIn = (el) => !!el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable);
+/** "4 minutes", "1 h 12 min": how long a meeting ran */
+const ranFor = (ms) => { const min = Math.round(Math.max(0, ms) / 60000); return min < 1 ? 'less than a minute' : min < 60 ? plural(min, 'minute') : `${Math.floor(min / 60)} h${min % 60 ? ` ${min % 60} min` : ''}`; };
 const clockOf = (ms) => { const sec = Math.max(0, Math.floor(ms / 1000)); const h = Math.floor(sec / 3600); const mm = String(Math.floor((sec % 3600) / 60)).padStart(h ? 2 : 1, '0'); return `${h ? `${h}:` : ''}${mm}:${String(sec % 60).padStart(2, '0')}`; };
 /** A vote's counts from the poll, for the motion that's open */
 const countsOf = (list = []) => ({ for: list.filter((x) => x.vote === 'for').length, against: list.filter((x) => x.vote === 'against').length, abstain: list.filter((x) => x.vote === 'abstain').length, voted: list.length });
@@ -906,7 +1103,7 @@ function stopWords(stop, m, items, pages, files, parts = {}) {
  * Page Down), the screen in its own window, and End. The board page follows each move within seconds, a screen on
  * this computer at once. Before Start, the screen can be opened to rehearse on: only it moves.
  */
-function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown, numbers }) {
+function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown, numbers, setStep }) {
   const meetings = ctx.data.meetings;
   const running = isLive(m);
   const items = agendaItems(m);
@@ -958,6 +1155,7 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown, numbers }
   useEffect(() => {
     const keys = (e) => {
       if (typingIn(e.target) || document.querySelector('.modal-overlay, .ask-overlay, .bd-pop.is-open')) return;
+      if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); here.current.go(e.key === 'Home' ? 0 : Infinity); return; }
       const dir = stepKey(e);
       if (dir) { e.preventDefault(); here.current.go(here.current.at + dir); }
     };
@@ -965,21 +1163,31 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown, numbers }
     return () => window.removeEventListener('keydown', keys);
   }, []);
   const present = () => { openScreen(m.id); };
-  const start = () => {
+  const start = async () => {
+    const today = todayEastern();
+    if (!practice && m.date && m.date !== today) {
+      const n = Math.abs(daysFrom(m.date));
+      if (!(await ask({ title: m.date > today ? `Start it ${n === 1 ? 'a day' : `${n} days`} early?` : 'Start a meeting that’s past?', text: `It’s on ${longDate(m.date)}. Starting puts it live on the board page for every board member now: they check in, follow along and vote.`, yes: 'Start it now', careful: true }))) return;
+    }
     const live0 = { startedAt: new Date().toISOString(), endedAt: '', itemId: '', fileId: '', page: 0, screen: '' };
     setNow((x) => ({ live: { ...cleanLive(x.live), ...live0 } }));
     send({ type: 'show', live: live0, rehearsal: false, practice });
     // The numbers the board sees today, locked for the minutes (the heartbeat does it that morning; this if it hasn't)
     if (!practice && !m.snapshot) act({ action: 'snapshot', id: m.id });
+    // Next, never End, takes the place Start had
+    requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector('.bm-run.is-live .bm-run__step .btn-primary')?.focus()));
   };
   const end = async () => {
     const open = m.live.vote ? m.motions.find((y) => y.id === m.live.vote.motionId) : null;
-    if (!(await ask({ title: 'End the meeting?', text: `The board page stops showing it as live and the screen says thank you.${open ? ` The open vote on “${open.text.slice(0, 60)}” closes with the votes in so far.` : ''} Notes, attendance and votes stay for the minutes.`, yes: 'End the meeting' }))) return;
+    if (!(await ask({ title: 'End the meeting?', text: `The board page stops showing it as live and the screen says thank you.${open ? ` The open vote on “${open.text.slice(0, 60)}” closes with the votes in so far.` : ''} Who checked in and the votes stay for the minutes.`, yes: 'End the meeting' }))) return;
     const endedAt = new Date().toISOString();
-    setNow((x) => { const closed = closeVote(x, live, practice); return { ...closed, live: { ...cleanLive(closed.live || x.live), vote: null, endedAt, screen: 'end', itemId: '', fileId: '', page: 0 } }; });
-    send({ type: 'show', live: { ...pos, endedAt, screen: 'end', itemId: '', fileId: '', page: 0 }, rehearsal: false, practice });
+    setNow((x) => { const closed = closeVote(x, live, practice); return { ...closed, live: { ...cleanLive(closed.live || x.live), vote: null, endedAt, screen: 'end' } }; });
+    send({ type: 'show', live: { ...pos, endedAt, screen: 'end' }, rehearsal: false, practice });
+    requestAnimationFrame(() => requestAnimationFrame(() => document.querySelector('.bm-run.is-ended .btn-primary, .bm-run.is-ended .btn')?.focus()));
   };
-  const words = stopWords(deck[at], m, items, pages, files, parts);
+  // An open vote is what the room sees
+  const voting = running && m.live.vote ? m.motions.find((y) => y.id === m.live.vote.motionId) : null;
+  const words = voting ? { label: 'Vote', title: voting.text || 'The vote', sub: 'The board votes on the board page' } : stopWords(deck[at], m, items, pages, files, parts);
   const next = deck[at + 1] ? stopWords(deck[at + 1], m, items, pages, files, parts) : null;
   const same = deck[at + 1]?.fileId && deck[at + 1].fileId === deck[at]?.fileId;
   const nextWords = !next ? 'The last stop' : same && deck[at + 1].page === deck[at].page ? 'Next: the bottom half' : same ? `Next: page ${deck[at + 1].page + 1}` : `Next: ${next.title}${next.label && next.label !== words.label ? ` (${next.label})` : ''}`;
@@ -988,13 +1196,13 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown, numbers }
   const plan = useMemo(() => sectionPlan(m), [m.sections, m.start, m.end]);
   const curItem = items.find((x) => x.id === pos.itemId);
   const curSec = curItem ? m.sections[curItem.si] : pos.sectionId ? m.sections.find((x) => x.id === pos.sectionId) || null : null;
-  const timer = curSec ? sectionClock(plan, curSec.id, pos.sectionAt) : null;
+  const timer = curSec && running ? sectionClock(plan, curSec.id, pos.sectionAt) : null;
   const presenting = curItem ? presentersOf(m.sections[curItem.si].items[curItem.ii], people) : [];
   const floorer = pos.floor ? people.find((x) => x.slug === pos.floor) || null : null;
   const floor = floorer ? [floorer] : presenting;
   const floorMenu = curItem || curSec ? [
     ...(floorer && presenting.length ? [{ label: `Back to ${namesText(presenting.map((x) => x.name))}`, run: () => giveFloor('') }] : []),
-    ...m.attendance.filter((x) => x.slug && x.slug !== pos.floor && !presenting.some((y) => y.slug === x.slug) && people.some((y) => y.slug === x.slug))
+    ...people.filter((x) => x.slug && x.slug !== pos.floor && !presenting.some((y) => y.slug === x.slug))
       .map((x) => ({ label: x.name, run: () => giveFloor(x.slug) })),
   ] : [];
   const total = [...plan.values()].reduce((a, t) => a + (t.minutes || 0), 0);
@@ -1003,13 +1211,13 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown, numbers }
   const meta = html`<div class="bm-run__meta">
     <div class=${`bm-timer ${timer?.over ? 'is-over' : ''}`} role="timer" aria-live="off">
       ${curSec ? html`<span class="bm-timer__t">${timer ? (timer.over ? `${clockText(timer.left)} over` : `${clockText(timer.left)} left`) : `${plan.get(curSec.id)?.minutes} min`}</span>
-        <span class="bm-timer__s">${timer?.over ? 'Time’s up for' : 'for'} ${curSec.title || 'this part'} · ${plan.get(curSec.id)?.minutes} min</span>`
+        <span class="bm-timer__s">${timer ? `${timer.over ? 'Time’s up for' : 'for'} ${curSec.title || 'this part'} · ${plan.get(curSec.id)?.minutes} min` : `for ${curSec.title || 'this part'}, once it starts`}</span>`
       : html`<span class="bm-timer__t">${timeRange(m.start, m.end) || 'The agenda'}</span><span class="bm-timer__s">${total ? `${plural(total, 'minute')} on the agenda` : ''}</span>`}
     </div>
     <div class="bm-floor">
       ${floor.length ? html`<span class="bm-floor__faces">${floor.map((p) => html`<${Face} p=${p} size=${28} key=${p.slug || p.name} />`)}</span>` : null}
       <span class="bm-floor__t"><strong>${floor.length ? namesText(floor.map((x) => x.name)) : 'The chair'}</strong> has the floor</span>
-      ${floorMenu.length ? html`<${Menu} label="Give the floor to someone else" items=${floorMenu} />` : null}
+      ${floorMenu.length ? html`<${Menu} label="Give the floor to someone else" text="Give the floor" items=${floorMenu} />` : null}
     </div>
   </div>`;
   // What's on the screen, as the room sees it, beside Previous and Next (set where they are, whatever the words)
@@ -1028,30 +1236,63 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown, numbers }
     </div>
   </div>`;
   const keysHint = html`<span class="kbd">←</span> <span class="kbd">→</span> or a clicker`;
+  const touch = matchMedia('(pointer: coarse)').matches;
+  // On a tablet or a phone, while the card's Previous / Next are out of sight: a bar of its own at the foot of the
+  // screen, what's on and Previous / Next, so the chair never scrolls to move on
+  const cardRef = useRef(null);
+  const [away, setAway] = useState(false);
+  useEffect(() => {
+    const el = cardRef.current?.querySelector('.bm-run__step');
+    if (!el || !('IntersectionObserver' in window)) { setAway(false); return undefined; }
+    // Scrolled past (the admin's own bar sits over the top 64px on a tablet or a phone)
+    const io = new IntersectionObserver(([e]) => setAway(!e.isIntersecting && e.boundingClientRect.top < 64), { threshold: 0, rootMargin: '-64px 0px 0px 0px' });
+    io.observe(el);
+    return () => io.disconnect();
+  }, [!!m.live.startedAt, !!m.live.endedAt]);
+  // The bar spans the page's own column, never under the admin's sidebar (an iPad held sideways has both)
+  const [edges, setEdges] = useState('');
+  useEffect(() => {
+    const fit = () => { const r = document.querySelector('.main')?.getBoundingClientRect(); setEdges(r ? `--bar-l:${Math.round(r.left)}px;--bar-r:${Math.round(innerWidth - r.right)}px` : ''); };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, []);
+  const bar = html`<div class=${`bm-runbar ${away ? 'is-on' : ''} ${running ? 'is-live' : ''}`} style=${edges} inert=${!away} role="region" aria-label="The screen">
+    <button type="button" class="bm-runbar__now" onClick=${() => cardRef.current?.scrollIntoView({ block: 'start', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })}>
+      <span class="bm-runbar__state">${running ? html`<span class="bm-live-dot" aria-hidden="true"></span><span>Live <b>${clockOf(Date.now() - Date.parse(m.live.startedAt))}</b></span>` : 'Preview'}</span>
+      <span class="bm-runbar__t">${words.label ? html`<b>${words.label}</b> ` : null}${words.title}</span>
+    </button>
+    <button type="button" class="btn btn-ghost btn-sm" disabled=${at <= 0} onClick=${() => go(at - 1)} aria-label="Previous">←</button>
+    <button type="button" class="btn btn-primary btn-sm" disabled=${at >= deck.length - 1} onClick=${() => go(at + 1)}>Next →</button>
+  </div>`;
   if (!m.live.startedAt) {
-    return html`<div class=${`card bm-run is-ready ${screenOn ? 'is-rehearsing' : ''}`}>
+    return html`${bar}<div class=${`card bm-run is-ready ${screenOn ? 'is-rehearsing' : ''}`} ref=${cardRef}>
       <div class="bm-run__head">
         <div class="bm-run__clock"><span class="bm-run__state">Not started</span></div>
         <div class="bm-run__do">${screenBtn}<button type="button" class="btn btn-primary btn-sm" onClick=${start}>Start the meeting</button></div>
       </div>
       ${view}${meta}
-      <p class="bm-run__hint">Click through it first: ${keysHint} move this preview${screenOn ? ' and the screen’s window' : ''}, never the board page. Start puts it live: members check in, follow along and vote.</p>
+      <p class="bm-run__hint">${touch ? html`Click through it first with Next: only this preview moves${screenOn ? ', and the screen’s window' : ''}, never the board page.` : html`Click through it first: ${keysHint} move this preview${screenOn ? ' and the screen’s window' : ''}, never the board page.`} Start puts it live: members check in, follow along and vote.</p>
     </div>`;
   }
   if (!running) {
     const took = Date.parse(m.live.endedAt) - Date.parse(m.live.startedAt);
+    const resume = async () => {
+      if (!(await ask({ title: 'Resume the meeting?', text: 'It goes live on the board page again, where it ended.', yes: 'Resume' }))) return;
+      setNow((x) => ({ live: { ...cleanLive(x.live), endedAt: '', screen: '' } }));
+    };
     return html`<div class="card bm-run is-ended">
-      <div class="bm-run__lead"><span class="bm-run__state">Ended</span><p>${new Date(m.live.endedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}, after ${clockOf(took)}. The notes, attendance and votes are ready for the minutes in After.</p></div>
-      <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setNow((x) => ({ live: { ...cleanLive(x.live), endedAt: '', screen: '' } }))}>Resume</button>
+      <div class="bm-run__lead"><span class="bm-run__state">Ended</span><p>At ${new Date(m.live.endedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}, ${ranFor(took)} after it started. Who checked in and the votes are kept for the minutes.</p></div>
+      <div class="bm-run__do">${practice ? null : html`<button type="button" class="btn btn-primary btn-sm" onClick=${() => setStep('after')}>On to the minutes</button>`}<button type="button" class="btn btn-ghost btn-sm" onClick=${resume}>Resume</button></div>
     </div>`;
   }
-  return html`<div class="card bm-run is-live" role="region" aria-label="The meeting, live">
+  return html`${bar}<div class="card bm-run is-live" role="region" aria-label="The meeting, live" ref=${cardRef}>
     <div class="bm-run__head">
       <div class="bm-run__clock"><span class="bm-live-dot" aria-hidden="true"></span><span class="bm-run__state">Live</span><span class="bm-run__time" aria-label="Time since it started">${clockOf(Date.now() - Date.parse(m.live.startedAt))}</span></div>
       <div class="bm-run__do">${screenBtn}<button type="button" class="btn btn-ghost btn-sm" onClick=${end}>End the meeting</button></div>
     </div>
     ${view}${meta}
-    <p class="bm-run__hint">${keysHint} move the screen when you’re not typing. The board page follows within seconds${practice ? ', and so do the simulated members' : ''}.</p>
+    <p class="bm-run__hint">${touch ? 'Next and Previous move the screen.' : html`${keysHint} move the screen when you’re not typing.`} The board page follows within seconds${practice ? ', and so do the simulated members' : ''}.</p>
   </div>`;
 }
 
@@ -1083,6 +1324,13 @@ function Quorum({ m, ctx, live, practice }) {
   const c = attendanceCounts(m);
   // Practising, the admin who checked in counts too, as on the board page
   const here = hereCount(m, live, practice);
+  if (m.live.endedAt && !isLive(m)) {
+    return html`<div class="card bm-quorum is-held" role="status">
+      <div class="bm-quorum__n"><b>${here}</b> of ${c.board}</div>
+      <div class="bm-quorum__t">board members checked in</div>
+      <p class="bm-quorum__q">${quorum ? (here >= quorum ? 'It had a quorum.' : `Short of the ${quorum} for a quorum on the board page. The minutes say who was there.`) : ''}</p>
+    </div>`;
+  }
   return html`<div class=${`card bm-quorum ${quorum ? (here >= quorum ? 'is-met' : 'is-short') : ''}`} role="status">
     <div class="bm-quorum__n"><b>${here}</b> of ${c.board}</div>
     <div class="bm-quorum__t">board members checked in${c.remote ? ` (${c.remote} by video)` : ''}</div>
@@ -1120,12 +1368,25 @@ function RunOrder({ m, set, ctx, practice, jump, shown, numbers }) {
   const prevName = (id) => { const x = data.meetings.find((y) => y.id === id); return x ? meetingName(x) : 'the last meeting'; };
   const everyone = useMemo(() => [...data.people.board, ...data.people.staff], [data.people]);
   // The last meeting's minutes, approved here: that meeting is marked, and the vote goes in this one's motions
+  const canApprove = practice || running || m.date === todayEastern();
+  // Nothing to approve until that meeting's own minutes are in Board (a file in this packet is no part of it)
+  const noMinutes = (it) => { const prev = data.meetings.find((y) => y.id === it.about); return !!prev && !minutesIn(prev); };
+  const quorum = quorumFor(m, data.settings.quorum);
+  const here = attendanceCounts(m).boardHere;
   const approve = async (it) => {
-    const j = await call({ action: 'approve-minutes', id: it.about, on: m.date });
+    const short = !!quorum && here < quorum;
+    if (!(await ask({ title: `Mark the ${prevName(it.about)}’s minutes approved?`, text: `${short ? `Only ${plural(here, 'board member')} checked in on the board page, and a quorum is ${quorum}. ` : ''}As the board approved them today. It goes in this meeting’s decisions, and the board page shows them approved.`, yes: 'Mark them approved', careful: short }))) return;
+    const j = await call({ action: 'approve-minutes', id: it.about, on: todayEastern() });
     if (!j.ok) { ctx.addToast(j.error, 'error'); return; }
-    set((x) => ({ motions: [...x.motions, { id: uid('v_'), text: `Approve the minutes of the ${prevName(it.about)}`, by: '', second: '', result: 'passed' }] }));
+    const motionId = uid('v_');
+    set((x) => ({ motions: [...x.motions, { id: motionId, text: `Approve the minutes of the ${prevName(it.about)}`, by: '', second: '', result: 'passed', voice: true }] }));
     ctx.putMeeting(j.meeting);
-    ctx.addToast(`The ${prevName(it.about)}’s minutes are approved`, 'info');
+    ctx.addToast(`The ${prevName(it.about)}’s minutes are approved`, 'info', { label: 'Undo', fn: async () => {
+      const k = await call({ action: 'save-meeting', meeting: { ...j.meeting, minutes: 'draft', approvedOn: '' }, base: j.meeting.updatedAt });
+      if (!k.ok) { ctx.addToast(k.error || 'Couldn’t undo it', 'error'); return; }
+      ctx.putMeeting(k.meeting);
+      set((x) => ({ motions: x.motions.filter((y) => y.id !== motionId) }));
+    } });
   };
   if (!items.length) return null;
   // The meeting's documents on no item, after the agenda (the screen comes to them before the close)
@@ -1158,7 +1419,7 @@ function RunOrder({ m, set, ctx, practice, jump, shown, numbers }) {
             <${ShowDoc} d=${d} pages=${shown.pages[d.file.id]} on=${on && shown.fileId === d.file.id} onClick=${() => jump.current?.({ itemId: it.id, fileId: d.file.id })} />
           </li>`)}</ul>` : null}
           ${it.live === 'minutes' && it.about && !practice ? html`<div class="bd-actions bm-order__approve">${data.meetings.find((y) => y.id === it.about)?.minutes === 'approved'
-            ? html`<span class="tag tag--success">Approved</span>` : html`<button class="btn btn-ghost btn-sm" onClick=${() => approve(it)}>The board approved them</button>`}<span class="bd-muted">${prevName(it.about)}</span></div>` : null}
+            ? html`<span class="tag tag--success">Approved</span>` : html`<button class="btn btn-ghost btn-sm" disabled=${!canApprove || noMinutes(it)} onClick=${() => approve(it)}>Mark them approved</button>`}<span class="bd-muted">${data.meetings.find((y) => y.id === it.about)?.minutes === 'approved' ? prevName(it.about) : noMinutes(it) ? html`The ${prevName(it.about)}’s minutes aren’t in Board yet. <a class="link" href=${`#${hashFor({ meetingId: it.about, step: 'after' })}`.replace(/^##/, '#')}>Drop them into it</a>` : canApprove ? prevName(it.about) : `The ${prevName(it.about)}’s, once the meeting starts`}</span></div>` : null}
         </li>`;
       })}</ol>` : null}
     </li>`)}${loose.length ? html`<li class="bm-order__sec" key="more">
@@ -1170,66 +1431,105 @@ function RunOrder({ m, set, ctx, practice, jump, shown, numbers }) {
   </div>`;
 }
 
-function Motions({ m, set, setNow, live, practice, saved }) {
+function Motions({ m, set, setNow, live, practice, saved, ctx }) {
   const running = isLive(m);
   const open = running ? m.live.vote?.motionId || '' : '';
   const savedIds = new Set(saved.current.motions.map((x) => x.id));
+  const fresh = useRef('');
+  const quorum = quorumFor(m, ctx.data.settings.quorum);
+  const here = hereCount(m, live, practice);
+  const toAdd = () => requestAnimationFrame(() => document.getElementById('bm-add-motion')?.focus());
+  const add = () => { const id = uid('v_'); fresh.current = id; set((x) => ({ motions: [...x.motions, { id, text: '', by: '', second: '', result: 'passed' }] })); };
+  const drop = async (x, i) => {
+    if ((x.tally || x.voice) && !(await ask({ title: 'Delete this decision?', text: `“${x.text.slice(0, 80)}” (${x.tally ? tallyText(x) : 'passed'}) comes off the meeting and the minutes.`, yes: 'Delete it', danger: true }))) return;
+    set((y) => ({ motions: y.motions.filter((_, j) => j !== i) }));
+    toAdd();
+  };
   const openVote = async (x) => {
     if (x.tally && !(await ask({ title: 'Take the vote again?', text: `The last result (${tallyText(x)}) stays until you close this one. Everyone votes again.`, yes: 'Take it again' }))) return;
     setNow((y) => ({ live: { ...cleanLive(y.live), vote: { motionId: x.id, openedAt: new Date().toISOString() } } }));
   };
   const upd = (i, patch) => set((x) => ({ motions: x.motions.map((y, j) => (j === i ? { ...y, ...patch } : y)) }));
+  // A result kept without a quorum checked in says so, here and in the minutes
+  const noQuorum = (x) => !!quorum && !!x.tally && x.tally.of < quorum;
   return html`<div class="card">
     <div class="bd-card-head"><h3>Votes</h3><p>${running ? 'Type the motion and open the vote: the board votes on the board page, in the room or on video. Close it to record the result.' : 'Once the meeting is started, the board can vote on the board page. Who moved and seconded it, and every other decision, come from the minutes.'}</p></div>
-    ${m.motions.length ? html`<div class="bd-lines">${m.motions.map((x, i) => html`<div class=${`bm-motion ${open === x.id ? 'is-voting' : ''}`} key=${x.id}>
+    ${m.motions.length ? html`<div class="bd-lines">${m.motions.map((x, i) => {
+      // Its words are fixed once the board votes on them, or once it's decided in the room
+      const fixed = open === x.id || !!x.tally || x.voice;
+      return html`<div class=${`bm-motion ${open === x.id ? 'is-voting' : ''}`} key=${x.id}>
       <div class="bd-line bd-line--vote">
-        <input class="form-input" aria-label="The motion" value=${x.text} placeholder="Approve the 2027 budget" onInput=${(e) => upd(i, { text: e.target.value })} />
-        <button class="bd-icon-btn" aria-label="Delete the motion" disabled=${open === x.id} onClick=${() => set((y) => ({ motions: y.motions.filter((_, j) => j !== i) }))}>✕</button>
+        ${fixed ? html`<p class="bm-motion__text" title=${open === x.id ? 'The board is voting on these words' : x.tally ? 'Voted on: Vote again to change it' : null}>${x.text}</p>`
+          : html`<input class="form-input" aria-label="The motion" value=${x.text} placeholder="Approve the 2027 budget" ref=${(el) => { if (el && fresh.current === x.id) { fresh.current = ''; el.focus(); } }} onInput=${(e) => upd(i, { text: e.target.value })} />`}
+        <button class="bd-icon-btn" aria-label=${fixed ? 'Delete the decision' : 'Delete the motion'} disabled=${open === x.id} onClick=${() => drop(x, i)}>✕</button>
       </div>
-      ${open === x.id ? html`<${VotePanel} m=${m} x=${x} live=${live} practice=${practice} setNow=${setNow} />`
+      ${open === x.id ? html`<${VotePanel} m=${m} x=${x} live=${live} practice=${practice} setNow=${setNow} quorum=${quorum} />`
+        : x.voice ? html`<div class="bm-vote-line"><span class="tag tag--success">Passed</span><span class="bd-muted">approved in the meeting</span></div>`
         : x.tally || running ? html`<div class="bm-vote-line">
-          ${x.tally ? html`<span class=${`tag ${x.result === 'passed' ? 'tag--success' : ''}`}>${tallyText(x)}</span><span class="bd-muted">on the board page${x.tally.of ? `, ${x.tally.of} here` : ''}</span>` : null}
-          ${running ? html`<button type="button" class=${`btn btn-sm ${x.tally ? 'btn-ghost' : 'btn-primary'}`} disabled=${!!open || !x.text.trim() || !savedIds.has(x.id)} title=${open ? 'Close the open vote first' : !savedIds.has(x.id) ? 'Saving…' : ''} onClick=${() => openVote(x)}>${x.tally ? 'Vote again' : 'Open the vote'}</button>` : null}
+          ${x.tally ? html`<span class=${`tag ${x.result === 'passed' ? 'tag--success' : ''}`} id=${`bm-result-${x.id}`} tabindex="-1">${tallyText(x)}</span><span class="bd-muted">on the board page${x.tally.of ? `, ${x.tally.of} here` : ''}${noQuorum(x) ? ', no quorum checked in' : ''}</span>` : null}
+          ${running ? html`<button type="button" class=${`btn btn-sm ${x.tally ? 'btn-ghost' : 'btn-primary'}`} disabled=${!!open || !x.text.trim() || !savedIds.has(x.id) || !here} title=${open ? 'Close the open vote first' : ''} onClick=${() => openVote(x)}>${x.tally ? 'Vote again' : 'Open the vote'}</button>
+            ${!here && !open ? html`<span class="bd-muted">Once board members check in on the board page, they can vote.</span>` : x.text.trim() && !savedIds.has(x.id) && !open ? html`<span class="bd-muted">Saving…</span>` : null}` : null}
         </div>` : null}
-    </div>`)}</div>` : null}
-    <button class=${`btn btn-sm ${running && !m.motions.length ? 'btn-primary' : 'btn-ghost'}`} style=${m.motions.length ? 'margin-top:0.75rem' : ''} onClick=${() => set((x) => ({ motions: [...x.motions, { id: uid('v_'), text: '', by: '', second: '', result: 'passed' }] }))}>Put a motion to a vote</button>
+    </div>`;
+    })}</div>` : null}
+    <button id="bm-add-motion" class=${`btn btn-sm ${running && !m.motions.length ? 'btn-primary' : 'btn-ghost'}`} style=${m.motions.length ? 'margin-top:0.75rem' : ''} onClick=${add}>Put a motion to a vote</button>
   </div>`;
 }
 
 /** An open vote, live: the counts as they come in, who has voted, and Close */
-function VotePanel({ m, x, live, practice, setNow }) {
+function VotePanel({ m, x, live, practice, setNow, quorum = 0 }) {
   const list = live.votes[x.id] || [];
   const n = countsOf(list);
   const of = hereCount(m, live, practice);
+  // Short of a quorum on the board page: said, and asked before the result is kept (some may be in the room without a phone)
+  const short = !!quorum && of < quorum;
+  const close = async () => {
+    if (short && !(await ask({ title: 'Close it without a quorum?', text: `Only ${plural(of, 'board member')} checked in on the board page, and a quorum is ${quorum}. The result is kept, marked as without a quorum, and the minutes say who was there.`, yes: 'Close the vote', careful: true }))) return;
+    setNow((y) => closeVote(y, live, practice));
+    // The result that just came in has the focus
+    requestAnimationFrame(() => requestAnimationFrame(() => (document.getElementById(`bm-result-${x.id}`) || document.getElementById('bm-add-motion'))?.focus()));
+  };
   const bar = (k, label) => html`<div class=${`bm-vote__n is-${k}`}><span class="bm-vote__num">${n[k]}</span><span class="bm-vote__lab">${label}</span><span class="bm-vote__bar" aria-hidden="true"><i style=${`--w:${of ? Math.min(100, (n[k] / of) * 100) : 0}%`}></i></span></div>`;
   return html`<div class="bm-vote" role="region" aria-label="The vote, live">
     <div class="bm-vote__head"><span class="bm-live-dot" aria-hidden="true"></span><strong>Voting now</strong><span class="bd-muted" aria-live="polite">${n.voted} of ${of} here ${n.voted === 1 ? 'has' : 'have'} voted</span></div>
     <div class="bm-vote__counts">${bar('for', 'For')}${bar('against', 'Against')}${bar('abstain', 'Abstain')}</div>
     ${list.length ? html`<ul class="bm-vote__who">${list.map((v) => html`<li class=${`is-${v.vote}`} key=${v.slug}>${v.name || v.slug}<span>${{ for: 'for', against: 'against', abstain: 'abstains' }[v.vote]}</span></li>`)}</ul>` : html`<p class="bd-muted">Votes show here as the board taps them on the board page.</p>`}
-    <div class="bd-actions"><button type="button" class="btn btn-primary btn-sm" onClick=${() => setNow((y) => closeVote(y, live, practice))}>Close the vote</button><span class="bd-muted">${n.for > n.against ? 'It passes as it stands.' : n.voted ? 'It doesn’t pass as it stands.' : ''}</span></div>
+    ${short ? html`<p class="bm-note is-warn" role="note">No quorum checked in: ${of} of the ${quorum} needed.</p>` : null}
+    <div class="bd-actions"><button type="button" class="btn btn-primary btn-sm" onClick=${close}>Close the vote</button><span class="bd-muted">${n.for > n.against ? `It passes as it stands${short ? ', without a quorum checked in' : ''}.` : n.voted ? 'It doesn’t pass as it stands.' : ''}</span></div>
   </div>`;
 }
 
 // ─── After ──────────────────────────────────────────────────────────
 
+/** This meeting's own minutes file, if any: a minutes file on an agenda item is the last meeting's, up for approval */
+const ownMinutesFile = (m) => { const onItem = new Set(m.sections.flatMap((x) => x.items.flatMap((it) => it.docs || []))); return m.files.filter((f) => f.kind === 'minutes' && !onItem.has(f.id)).at(-1) || null; };
+/** There's something to read once the minutes are in: read in, or their file here (an approval is not minutes, nor an item's notes before the meeting) */
+const minutesIn = (m) => !!m.minutesFrom || !!ownMinutesFile(m);
+
 /** The minutes, as the board will read them on their page */
-function MinutesDoc({ m }) {
-  const groups = [['Present', 'present'], ['By video', 'remote'], ['Absent', 'absent'], ['Excused', 'excused']].map(([t, s]) => [t, m.attendance.filter((x) => x.status === s)]).filter(([, l]) => l.length);
-  const written = m.sections.some((s) => s.items.some((it) => it.notes)) || m.motions.length || m.actions.length;
-  const minutesFile = m.files.filter((f) => f.kind === 'minutes').at(-1);
+function MinutesDoc({ m, ctx }) {
+  // Who wasn't there is known once there's something to go by: the minutes, the meeting run here, or anyone marked
+  const held = (!!m.minutesFrom || !!m.live.endedAt || m.attendance.some((x) => x.status)) && !isLive(m);
+  const quorum = quorumFor(m, ctx.data.settings.quorum);
+  const people = useMemo(() => pickable(ctx.data.people), [ctx.data.people]);
+  const groups = [['Present', 'present'], ['By video', 'remote'], ['Absent', 'absent'], ['Excused', 'excused']].map(([t, s]) => [t, m.attendance.filter((x) => x.status === s)])
+    .concat(held ? [['Not there', m.attendance.filter((x) => x.kind === 'board' && !x.status)]] : []).filter(([, l]) => l.length);
+  const names = new Map(agendaItems(m).map((x) => [x.id, x.title]));
+  const written = (minutesIn(m) || m.motions.length || m.actions.length) && (m.sections.some((s) => s.items.some((it) => it.notes)) || m.motions.length || m.actions.length);
+  const minutesFile = ownMinutesFile(m);
   const vf = viewerFiles(minutesFile ? [minutesFile] : []);
-  return html`<div class="card bm-doc">
-    <div class="bd-card-head"><h3>The minutes ${m.minutes === 'approved' ? html`<span class="tag tag--success">Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}</span>` : html`<span class="tag">Draft</span>`}</h3>
+  return html`<div class="card bm-minutes">
+    <div class="bd-card-head"><h3>The minutes ${m.minutes === 'approved' ? html`<span class="tag tag--success">Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}</span>` : written ? html`<span class="tag">Draft</span>` : null}</h3>
       <p>${m.shared ? 'This is what board members read on their page.' : 'What board members will read once you share the meeting.'}${m.minutesFrom ? ` Read from ${fileTitle(m.minutesFrom.name)}.` : minutesFile ? html` Written up in <a class="link" ...${viewerLink(vf, 0)}>${fileTitle(minutesFile.name)}</a>.` : ''}</p></div>
     ${groups.length ? html`<dl class="bm-who bm-who--doc">${groups.map(([t, l]) => html`<div><dt>${t} <b>${l.length}</b></dt><dd>${l.map((x) => x.name).join(', ')}</dd></div>`)}</dl>` : null}
     ${written ? html`<ol class="bm-doc__sections">${m.sections.map((s) => html`<li key=${s.id}>
       <h4>${s.title}</h4>
       ${s.items.some(isFilled) ? html`<ul class="bm-doc__items">${s.items.filter(isFilled).map((it) => html`<li key=${it.id}>
-        <div class="bm-doc__item">${it.title}${it.presenter ? html`<span class="ag-item__who">${it.presenter}</span>` : null}${it.confidential ? html` <span class="tag tag--warn">Board only</span>` : null}</div>
+        <div class="bm-doc__item">${it.title || names.get(it.id)}${presentersOf(it, people).length ? html`<span class="ag-item__who">${namesText(presentersOf(it, people).map((x) => x.name))}</span>` : null}${it.confidential ? html` <span class="tag tag--warn">Board only</span>` : null}</div>
         <${Notes} text=${it.notes} />
       </li>`)}</ul>` : null}
     </li>`)}</ol>
-    ${m.motions.length ? html`<h4 class="bm-doc__h">Decisions</h4><ul class="bm-doc__items">${m.motions.map((x) => html`<li key=${x.id}>${x.text} <span class="bd-muted">(${[x.by && `moved by ${x.by}`, x.second && `seconded by ${x.second}`, x.tally ? tallyText(x) : RESULTS.find((r) => r.id === x.result)?.label.toLowerCase()].filter(Boolean).join(', ')})</span></li>`)}</ul>` : null}
+    ${m.motions.length ? html`<h4 class="bm-doc__h">Decisions</h4><ul class="bm-doc__items">${m.motions.map((x) => html`<li key=${x.id}>${x.text} <span class="bd-muted">(${[x.by && `moved by ${x.by}`, x.second && `seconded by ${x.second}`, x.tally ? `${tallyText(x)}${quorum && x.tally.of < quorum ? ', no quorum checked in' : ''}` : RESULTS.find((r) => r.id === x.result)?.label.toLowerCase()].filter(Boolean).join(', ')})</span></li>`)}</ul>` : null}
     ${m.actions.length ? html`<h4 class="bm-doc__h">Action items</h4><ul class="bm-doc__items">${m.actions.map((a) => html`<li key=${a.id}>${a.text} <span class="bd-muted">(${[a.ownerName || 'no one yet', a.due ? `by ${shortDate(a.due)}` : '', a.done ? 'done' : ''].filter(Boolean).join(', ')})</span></li>`)}</ul>` : null}`
       : html`<div class="empty empty--inline"><p class="empty__title">Nothing here yet</p><p class="empty__text">Drop the minutes in (above): who was there, what was said under each item, the decisions and the action items fill in by themselves.</p></div>`}
   </div>`;
@@ -1260,18 +1560,65 @@ function MinutesDrop({ m, set, ctx, act, keepSaved }) {
   const readIn = async (file) => {
     if (!file) return;
     setBusy(true);
-    const up = await upload(file, { ownerType: 'meeting', ownerId: m.id, kind: 'minutes' });
+    // Unfiled until it's read in: a question left unanswered never leaves it as this meeting's minutes
+    const up = await upload(file, { ownerType: 'meeting', ownerId: m.id, kind: 'other' });
     if (!up.ok) { setBusy(false); addToast(up.error, 'error'); return; }
     keepSaved((x) => ({ ...x, files: [...x.files, up.file] }));
-    const before = { sections: m.sections, attendance: m.attendance, motions: m.motions, actions: m.actions };
-    const j = await act({ action: 'read-minutes', id: m.id, fileId: up.file.id });
+    const replaced = ownMinutesFile(m);
+    const before = { sections: m.sections, attendance: m.attendance, motions: m.motions, actions: m.actions, minutesFrom: m.minutesFrom || null };
+    const body = { action: 'read-minutes', id: m.id, fileId: up.file.id };
+    const dropHere = async () => {
+      const d = await call({ action: 'delete-file', id: up.file.id });
+      if (d.ok) keepSaved((x) => ({ ...x, files: x.files.filter((f) => f.id !== up.file.id) }));
+      return d;
+    };
+    let j = await act(body, { keep: (r) => r.status === 409 && !!r.other });
+    if (j && !j.ok) {
+      setBusy(false);
+      const other = ctx.data.meetings.find((x) => x.id !== m.id && (x.date === j.other.date || meetingName(x) === j.other.name)) || null;
+      // Where they belong, first: that meeting, when Board has it
+      if (other && await ask({ title: `Put them on the ${meetingName(other)}?`, text: `${j.error} Board can read them into that meeting instead, and this one stays as it is.`, yes: `Put them on the ${shortDate(other.date)} meeting`, no: 'Not those' })) {
+        setBusy(true);
+        const there = await upload(file, { ownerType: 'meeting', ownerId: other.id, kind: 'other' });
+        const k = there.ok ? await call({ action: 'read-minutes', id: other.id, fileId: there.file.id }) : there;
+        setBusy(false);
+        if (!k.ok) { addToast(k.error || 'Couldn’t read them in there', 'error'); return; }
+        if (k.meeting) ctx.putMeeting(k.meeting);
+        await call({ action: 'update-file', id: there.file.id, kind: 'minutes' });
+        await dropHere();
+        addToast(`Read into the ${meetingName(other)}: ${readWords(k.read)}`, 'info');
+        return;
+      }
+      if (!(await ask({ title: 'Read them into this meeting?', text: `${other ? '' : `${j.error} `}Board would fill in this meeting’s attendance, notes, decisions and action items from them.`, yes: 'Read them into this one', no: 'Remove the file', careful: true }))) {
+        const d = await dropHere();
+        addToast(d.ok ? `${fileTitle(up.file.name)} is removed. Nothing changed on this meeting.` : d.error, d.ok ? 'info' : 'error');
+        requestAnimationFrame(() => document.querySelector('.bm-minutes-drop input')?.focus());
+        return;
+      }
+      setBusy(true);
+      j = await act({ ...body, anyway: true });
+    }
     setBusy(false);
     if (!j) return;
+    // Read in: this file is the minutes now, and a newer copy takes the last one's place
+    await call({ action: 'update-file', id: up.file.id, kind: 'minutes' });
+    keepSaved((x) => ({ ...x, files: x.files.map((f) => (f.id === up.file.id ? { ...f, kind: 'minutes' } : f)) }));
+    if (replaced && replaced.id !== up.file.id) {
+      const d = await call({ action: 'delete-file', id: replaced.id });
+      if (d.ok) keepSaved((x) => ({ ...x, files: x.files.filter((f) => f.id !== replaced.id) }));
+    }
     if (j.approvedPrev) ctx.load();
-    setLastRead({ name: up.file.name, read: j.read });
-    addToast(`Read from the minutes: ${readWords(j.read)}`, 'info', { label: 'Undo', fn: () => { set(before); setLastRead(null); } });
+    const undo = async () => {
+      set(before);
+      setLastRead(null);
+      const d = await call({ action: 'delete-file', id: up.file.id });
+      if (d.ok) keepSaved((x) => ({ ...x, files: x.files.filter((f) => f.id !== up.file.id) }));
+      addToast('Put back as it was', 'info');
+    };
+    setLastRead({ name: up.file.name, read: j.read, undo });
+    addToast(`Read from the minutes: ${readWords(j.read)}`, 'info', { label: 'Undo', fn: undo });
   };
-  return html`<label class=${`bm-minutes-drop ${over ? 'is-over' : ''} ${busy ? 'is-busy' : ''} ${m.minutesFrom ? 'is-done' : ''}`}
+  return html`<label class=${`bm-minutes-drop ${over ? 'is-over' : ''} ${busy ? 'is-busy' : ''} ${m.minutesFrom && !busy ? 'is-done' : ''}`}
     onDragOver=${(e) => { e.preventDefault(); setOver(true); }} onDragLeave=${() => setOver(false)} onDrop=${(e) => { e.preventDefault(); setOver(false); readIn(e.dataTransfer.files[0]); }}>
     <input type="file" class="sr-only" accept=".pdf,.docx" disabled=${busy} onChange=${(e) => { readIn(e.target.files[0]); e.target.value = ''; }} />
     <span class="bm-minutes-drop__icon" aria-hidden="true">${m.minutesFrom && !busy ? CHECK : html`<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3.5H6.5a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V8z" /><path d="M14 3.5V8h4.5M12 17v-6M9.5 13.5 12 11l2.5 2.5" /></svg>`}</span>
@@ -1279,10 +1626,11 @@ function MinutesDrop({ m, set, ctx, act, keepSaved }) {
       <strong>${busy ? 'Reading the minutes…' : m.minutesFrom ? 'Read from the minutes' : 'Drop the minutes here'}</strong>
       <span>${busy ? 'Who was there, the notes under each item, the decisions and the action items.'
         : lastRead ? `${fileTitle(lastRead.name)}: ${readWords(lastRead.read)}.`
-        : m.minutesFrom ? `${fileTitle(m.minutesFrom.name)}${c.board ? `: ${c.boardHere} of ${c.board} board members there` : ''}. Drop a newer copy to read it again.`
-        : 'A PDF or Word file. Board fills in who was there, the notes under each item, the decisions and the action items by itself.'}</span>
+        : m.minutesFrom ? `${fileTitle(m.minutesFrom.name)}${c.board ? `: ${c.boardHere} of ${c.board} board members there` : ''}.`
+        : 'A PDF or Word file. Board fills in who was there, the notes under each item, the decisions and the action items.'}</span>
     </span>
-    ${busy ? html`<span class="spinner" aria-hidden="true"></span>` : html`<span class="btn btn-ghost btn-sm" aria-hidden="true">${m.minutesFrom ? 'Another copy' : 'Choose the file'}</span>`}
+    ${busy ? html`<span class="spinner" aria-hidden="true"></span>` : html`<span class="btn btn-ghost btn-sm bm-minutes-drop__btn" aria-hidden="true">${m.minutesFrom ? 'Replace the minutes' : 'Choose the file'}</span>`}
+    ${lastRead?.undo && !busy ? html`<button type="button" class="btn btn-ghost btn-sm bm-minutes-drop__undo" onClick=${(e) => { e.preventDefault(); lastRead.undo(); }}>Undo</button>` : null}
   </label>`;
 }
 
@@ -1314,31 +1662,58 @@ function WrapUp({ m, set, ctx, act, save, keepSaved }) {
   const approved = m.minutes === 'approved';
   const next = nextMeeting(data.meetings.filter((x) => x.date > m.date));
   const signed = m.files.filter((f) => f.kind === 'signed').at(-1);
-  const send = async (test) => { setWorking(test ? 'preview' : 'send'); const j = await act({ action: 'send-minutes', id: m.id, test }); setWorking(''); if (j) addToast(test ? `Sent to ${j.to?.[0] || 'you'}` : `Emailed ${plural(j.sent, 'board member')}`, 'info'); };
-  const share = async (v) => { set({ shared: v }); await new Promise((r) => setTimeout(r, 0)); await save(); };
+  const send = async (test) => {
+    const to = data.members.filter((x) => x.email).map((x) => x.name);
+    const none = data.members.filter((x) => !x.email).map((x) => x.name);
+    if (!test && !(await ask({ careful: true, title: `Email ${andList(to)} that the minutes are up?`, text: `Each gets the link to the ${approved ? 'approved' : 'draft'} minutes on the board page. Nothing is attached.${none.length ? ` ${andList(none)} ${none.length === 1 ? 'has' : 'have'} no email, so ${none.length === 1 ? 'gets' : 'get'} nothing.` : ''}`, yes: m.minutesSentAt ? 'Email them again' : 'Email the board' }))) return;
+    setWorking(test ? 'preview' : 'send');
+    const j = await act({ action: 'send-minutes', id: m.id, test });
+    setWorking('');
+    if (j) { addToast(test ? `Sent to ${j.to?.[0] || 'you'}` : `Emailed ${plural(j.sent, 'board member')}`, 'info'); focusNext('.bm-wrap'); }
+  };
+  const share = async (v) => { set({ shared: v }); await new Promise((r) => setTimeout(r, 0)); await save(); addToast(v ? 'On the board page' : 'Taken off the board page', 'info', v ? { label: 'Undo', fn: () => share(false) } : undefined); focusNext('.bm-wrap'); };
+  const hasMinutes = minutesIn(m);
+  const today = todayEastern();
+  // Not held yet: its day is ahead and it hasn't been run here (a meeting held early is held)
+  const ahead = !!m.date && m.date > today && !m.live.startedAt;
+  // Approved on the day the next meeting approved them, once it's been held; else today
+  const approvedDay = next && next.date <= today ? next.date : today;
+  const approve = async (v) => {
+    if (v && !(await ask({ title: 'Mark the minutes approved?', text: `As approved on ${shortDate(approvedDay)}${next && next.date <= today ? `, at the ${meetingName(next)}` : ''}. The board page shows them approved.`, yes: 'Mark them approved' }))) return;
+    set(v ? { minutes: 'approved', approvedOn: approvedDay } : { minutes: 'draft', approvedOn: '' });
+    // The board was told about draft minutes: offer to tell them they're approved
+    addToast(v ? `Marked approved, ${shortDate(approvedDay)}` : 'Back to draft minutes', 'info', v && m.shared && m.minutesSentAt ? { label: 'Tell the board', fn: () => send(false) } : undefined);
+    focusNext('.bm-wrap');
+  };
   const takeSigned = async (file) => {
     if (!file) return;
     setWorking('signed');
-    const up = await upload(file, { ownerType: 'meeting', ownerId: m.id, kind: 'signed' });
+    // Named for what it is, whatever the file was called
+    const named = new File([file], `Signed minutes, ${meetingName(m)}${(String(file.name).match(/\.[a-z0-9]{2,5}$/i) || [''])[0]}`, { type: file.type });
+    const up = await upload(named, { ownerType: 'meeting', ownerId: m.id, kind: 'signed' });
     setWorking('');
     if (!up.ok) { addToast(up.error, 'error'); return; }
     keepSaved((x) => ({ ...x, files: [...x.files, up.file] }));
+    addToast('The signed copy is kept with the meeting', 'info');
   };
   const vf = viewerFiles([signed].filter(Boolean));
-  const [sShared, sApproved] = statesOf([m.shared, approved]);
-  return html`<div class="card bm-check">
-    <div class="bd-card-head"><h3>After the meeting</h3><p>${approved ? 'Done: the minutes are approved.' : 'Drop the minutes in and Board does the rest. The board approves them at the next meeting.'}</p></div>
+  const [sIn, sShared, sApproved] = statesOf([hasMinutes, m.shared, approved]);
+  return html`<div class="card bm-check bm-wrap">
+    <div class="bd-card-head"><h3 tabindex="-1">After the meeting</h3><p>${approved ? 'Done: the minutes are approved.' : 'Drop the minutes in and Board does the rest. The board approves them at the next meeting.'}</p></div>
     <ol class="bm-tasks">
-      <${Task} state=${sShared} title=${m.shared ? 'On the board page' : 'Share them with the board'} sub=${m.shared ? (m.minutesSentAt ? `The board was told ${ago(m.minutesSentAt)}.` : 'The board can read them now.') : 'As draft minutes until they’re approved.'}>
-        ${m.shared ? null : html`<button class=${btn(sShared)} onClick=${() => share(true)}>Share with the board</button>`}
-        <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => send(true)}>${working === 'preview' ? 'Sending…' : 'Send it to me'}</button>
-        <button class="btn btn-ghost btn-sm" disabled=${!!working || !m.shared || !data.packetTo || !data.setup.email} onClick=${() => send(false)}>${working === 'send' ? 'Sending…' : m.minutesSentAt ? 'Email the board again' : 'Email the board'}</button>
+      <${Task} state=${sIn} title=${hasMinutes ? 'The minutes are in' : 'The minutes'} sub=${m.minutesFrom ? `Read from ${fileTitle(m.minutesFrom.name)}.` : hasMinutes ? '' : ahead ? 'After the meeting, drop them in: a PDF or Word file.' : 'Drop them in: a PDF or Word file.'} />
+      <${Task} state=${sShared} title=${m.shared ? 'On the board page' : 'Share them with the board'} sub=${m.shared ? (m.minutesSentAt ? `The board was told ${ago(m.minutesSentAt)}.` : hasMinutes ? 'The board can read them now.' : 'The minutes show there once they’re in.') : 'As draft minutes until they’re approved.'}>
+        ${m.shared || ahead ? null : html`<button class=${btn(sShared)} onClick=${() => share(true)}>Share with the board</button>`}
+        <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email || !hasMinutes} onClick=${() => send(true)}>${working === 'preview' ? 'Sending…' : 'Send me the email'}</button>
+        <button class="btn btn-ghost btn-sm" disabled=${!!working || !m.shared || !data.packetTo || !data.setup.email || !hasMinutes} onClick=${() => send(false)}>${working === 'send' ? 'Sending…' : m.minutesSentAt ? 'Email the board again' : 'Email the board'}</button>
+        ${ahead && !m.shared ? html`<span class="bd-muted">After the meeting.</span>` : !hasMinutes ? html`<span class="bd-muted">Once the minutes are in.</span>` : !m.shared ? html`<span class="bd-muted">Share them first, so the email has something to open.</span>` : null}
       </${Task}>
-      <${Task} state=${sApproved} title=${approved ? `Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}` : 'The board approves them'} sub=${approved ? 'Marked on the board page.' : next ? `On the agenda of the ${meetingName(next)} (${shortDate(next.date)}). Its minutes mark these approved by themselves.` : 'At the next meeting: its agenda asks for this approval.'}>
-        ${approved ? html`<button class="btn btn-ghost btn-sm" onClick=${() => set({ minutes: 'draft', approvedOn: '' })}>Mark as draft</button>` : html`<button class="btn btn-ghost btn-sm" onClick=${() => set({ minutes: 'approved', approvedOn: todayEastern() })}>They’re approved</button>`}
+      <${Task} state=${sApproved} title=${approved ? `Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}` : 'The board approves them'} sub=${approved ? 'Marked on the board page.' : next ? `On the agenda of the ${meetingName(next)} (${shortDate(next.date)}). Approving them there marks them here too.` : 'At the next meeting: its agenda asks for this approval.'}>
+        ${approved ? html`<button class="btn btn-ghost btn-sm" onClick=${() => approve(false)}>Mark as draft</button>` : html`<button class="btn btn-ghost btn-sm" disabled=${ahead || !hasMinutes} onClick=${() => approve(true)}>Mark them approved</button>`}
+        ${!approved && ahead ? html`<span class="bd-muted">The meeting hasn’t happened yet.</span>` : !approved && !hasMinutes ? html`<span class="bd-muted">Once the minutes are in.</span>` : null}
       </${Task}>
       <${Task} state=${signed ? 'done' : 'todo'} title=${signed ? 'Signed copy kept' : 'The signed copy (optional)'} sub=${signed ? html`<a class="link" ...${viewerLink(vf, 0)}>${fileTitle(signed.name)}</a>` : 'The secretary’s signed minutes, as a PDF or a photo.'}>
-        <label class="btn btn-ghost btn-sm">${working === 'signed' ? 'Uploading…' : signed ? 'Replace it' : 'Upload it'}<input type="file" hidden accept=".pdf,.jpg,.jpeg,.png,.heic,.docx" onChange=${(e) => { takeSigned(e.target.files[0]); e.target.value = ''; }} /></label>
+        ${ahead ? html`<span class="bd-muted">After the meeting.</span>` : html`<label class="btn btn-ghost btn-sm bd-pick">${working === 'signed' ? 'Uploading…' : signed ? 'Replace it' : 'Upload it'}<input type="file" class="sr-only" accept=".pdf,.jpg,.jpeg,.png,.heic,.docx" onChange=${(e) => { takeSigned(e.target.files[0]); e.target.value = ''; }} /></label>`}
       </${Task}>
     </ol>
   </div>`;

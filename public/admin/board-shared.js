@@ -205,7 +205,7 @@ export const LIVE = [
   { id: 'meetings', label: 'Next board meetings' },
 ];
 /** What a live list with no title of its own is called for the board: what it shows, never its part's name */
-export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings' };
+export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings', minutes: 'The last meeting’s minutes' };
 export const LIMITS = { title: 200, text: 300, notes: 20000, report: 120000, items: 80, sections: 20, people: 80, rows: 100 };
 
 /** The agenda a new meeting starts from, until Settings saves another one */
@@ -362,6 +362,8 @@ export function cleanMeeting(raw = {}) {
       id: idOr(x?.id, 'v_'), text: str(x?.text, 1000), by: one(x?.by, 120), second: one(x?.second, 120), result: pick(x?.result, RESULTS, 'passed'),
       // The board page's vote, as the chair closed it (null for a motion voted by voice)
       tally: cleanTally(x?.tally),
+      // Decided in the meeting without the board page's vote (the last minutes approved from the agenda): not to vote on
+      voice: bool(x?.voice),
     })).filter((x) => x.text),
     actions: (Array.isArray(raw.actions) ? raw.actions : []).slice(0, LIMITS.rows).map((x) => ({
       id: idOr(x?.id, 'a_'), text: str(x?.text, 1000),

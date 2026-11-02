@@ -6,7 +6,8 @@
  *   if (!(await ask({ title: 'Delete this question?', text: 'Applications already submitted keep their answer.', yes: 'Delete', danger: true }))) return;
  *
  * Resolves true for the action; false for Cancel, Escape or a click outside.
- * A danger dialog opens with the focus on the safe choice. The look is the
+ * A danger dialog opens with the focus on the safe choice, and so does a
+ * `careful` one (an unusual step that isn't destructive, with no red). The look is the
  * shared dialog (kd-dialog classes in index.html).
  */
 import { h, htm, render } from './vendor.js';
@@ -14,7 +15,7 @@ import { h, htm, render } from './vendor.js';
 const html = htm.bind(h);
 let seq = 0;
 
-export function ask({ title, text = '', yes = 'OK', no = 'Cancel', danger = false } = {}) {
+export function ask({ title, text = '', yes = 'OK', no = 'Cancel', danger = false, careful = danger } = {}) {
   return new Promise((resolve) => {
     const host = document.createElement('div');
     document.body.append(host);
@@ -53,7 +54,8 @@ export function ask({ title, text = '', yes = 'OK', no = 'Cancel', danger = fals
         </footer>
       </div>
     </div>`, host);
-    host.querySelector(danger ? '[data-ask="no"]' : '[data-ask="yes"]')?.focus();
+    // A danger dialog, or a careful one (unusual, not destructive: starting early, someone else's file), opens on the safe choice
+    host.querySelector(careful ? '[data-ask="no"]' : '[data-ask="yes"]')?.focus();
   });
 }
 

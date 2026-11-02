@@ -435,7 +435,18 @@ try {
   // A file
   await (await jane.$('.bd-drop input[type="file"]')).uploadFile(pdf);
   ok(await waitText(jane, /Balance sheet financials/), 'a PDF uploads to the meeting, by its readable name');
-  ok(await jane.evaluate(() => [...document.querySelectorAll('.bf-group')].some((g) => /Financial statements/i.test(g.querySelector('.bm-group').textContent) && /Balance sheet financials/.test(g.textContent))), 'a file named like financials is filed as one');
+  // (one kind of file so far: the packet has no heading of its own over it)
+  ok(await jane.evaluate(async (id) => (await (await fetch('/api/board-admin')).json()).meetings.find((x) => x.id === id)?.files.some((f) => f.kind === 'financials' && /Balance.sheet/i.test(f.name)) && !document.querySelector('#bm-packet .bm-group'), meetingId), 'a file named like financials is filed as one, and one kind of file has no heading over it');
+  // Last meeting's minutes, put in the packet for their approval, never become this meeting's minutes
+  await (await jane.$('#bm-packet input[type="file"]')).uploadFile(docx);
+  await jane.waitForFunction(() => document.querySelectorAll('#bm-packet .bf-file:not(.is-up)').length >= 2, { timeout: 8000 }).catch(() => {});
+  const packetMinutes = await jane.evaluate(async (id) => (await (await fetch('/api/board-admin')).json()).meetings.find((x) => x.id === id)?.files.find((f) => /minutes/i.test(f.name)), meetingId);
+  ok(packetMinutes && packetMinutes.kind !== 'minutes' && await jane.evaluate((fid) => !!document.querySelector(`#bm-packet [data-file="${fid}"]`), packetMinutes.id), `a minutes file dropped in the packet stays in the packet, filed as ${packetMinutes?.kind}, never as this meeting's minutes`);
+  // (it goes again, from its ⋯: the rest of this run reads minutes in from After)
+  await jane.evaluate((fid) => document.querySelector(`#bm-packet [data-file="${fid}"]`)?.closest('.bf-file')?.querySelector('.bd-menu summary')?.click(), packetMinutes?.id);
+  await sleep(300);
+  await clickText(jane, '.bd-menu[open] .bd-menu__item', /^Delete the file$/);
+  ok(await jane.waitForFunction((fid) => !document.querySelector(`#bm-packet [data-file="${fid}"]`) && !!document.querySelector('#bm-packet .bf-file'), { timeout: 5000 }, packetMinutes?.id).then(() => true, () => false), 'and its own ⋯ → Delete takes it away again, the statement staying');
   ok(await waitText(jane, /Balance sheet financials goes with Financial/), 'and goes with the Financial item by itself');
   const finRow = () => jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((li) => li.querySelector('.agx-item__title')?.value === 'Financial')?.textContent || '');
   ok(/Balance sheet financials/.test(await finRow()), 'it shows under that item on the agenda');
@@ -557,15 +568,15 @@ try {
   ok(merged.actions.some((a) => a.text === 'Send the venue contract' && a.owner === 'alex-rivera'), 'the last meeting’s open action item carries over');
 
   // Getting ready 1: the invite, from the president's calendar, with Google Meet and transcripts on
-  ok(/From Jane’s calendar to the board and you: Google Meet with transcripts on/.test(await text(jane)), 'Getting ready says who the invite comes from and who it goes to');
+  ok(/From your calendar to the board: Google Meet with transcripts on, the place and the link to the agenda/.test(await text(jane)), 'Getting ready says who the invite comes from and who it goes to (the organizer reads “your calendar”)');
   await clickText(jane, 'button', /^Send the invite$/);
-  ok(await waitText(jane, /Invite sent from Jane’s calendar/), 'Send the invite sends it');
+  ok(await waitText(jane, /Invite sent from your calendar/), 'Send the invite asks, naming who Google emails, then sends it');
   // The invite's write (opening Board also runs the invite check, whose event has no guests)
   const post = google.find((c) => c.method === 'POST' && c.body?.attendees);
   ok(post && post.url.includes(`/calendars/${encodeURIComponent(FOUNDER)}/events?conferenceDataVersion=1&sendUpdates=all`), 'from the president’s own calendar, and Google emails the guests');
   ok(post && post.body.attendees.map((a) => a.email).sort().join() === [MEMBER, OTHER].sort().join(), 'to every board member with an email');
   ok(post?.body.conferenceData?.createRequest?.conferenceSolutionKey?.type === 'hangoutsMeet' && google.some((c) => c.method === 'PATCH' && /meet\.googleapis\.com/.test(c.url) && c.body.config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration === 'ON'), 'with Google Meet, its transcripts turned on');
-  ok(/2 guests · Google Meet · transcript on · the place goes on it when you add one/.test(await text(jane)), 'the step says what went out');
+  ok(/2 guests · Google Meet · transcripts on · the place goes on it when you add one/.test(await text(jane)), 'the step says what went out');
   // The place, added after: one update once it has settled
   const before = google.length;
   await clickText(jane, 'button', /^Add the place$/);
@@ -583,9 +594,9 @@ try {
   await clickText(jane, 'button', /^Share with the board$/);
   ok(await waitText(jane, /Board members see the agenda and files/), 'Share with the board puts it on the board page');
   mail.length = 0;
-  await clickText(jane, 'button', /^Send it to me$/);
+  await clickText(jane, 'button', /^Send me the email$/);
   await waitText(jane, /Sent to jane@soardcharity\.com/);
-  ok(mail.length === 1 && mail[0].to[0] === FOUNDER, 'Send it to me goes only to the founder');
+  ok(mail.length === 1 && mail[0].to[0] === FOUNDER, 'Send me the email goes only to the founder');
   ok(!mail[0]?.attachments && /Balance sheet financials/.test(mail[0]?.html || '') && /Open the agenda and documents/.test(mail[0]?.html || ''), 'the link to the agenda and documents, the documents by name, nothing attached');
   ok(!/ask counsel|Governance/.test(mail[0]?.html || ''), 'the email has no private note and no board-only item');
   await clickText(jane, 'button', /^Email the board$/);
@@ -702,9 +713,9 @@ try {
   await jane.goto(`${SITE}/admin/#board/meeting/${calId}/before`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
   ok(/^Q4 \d{4} Board Meeting$/.test(await jane.$eval('.bm-title h2', (e) => e.textContent)), 'its editor goes by the quarter the event says, not the event’s own words');
-  await clickText(jane, 'button', /^Change when and where$/);
-  ok(await waitText(jane, /From Jane’s calendar \(“SOARD Q4 Board Meeting”\)/), 'and says it follows the calendar');
-  ok(await jane.evaluate(() => document.querySelector('#bd-date').disabled && document.querySelector('#bd-start').value === '08:00' && document.querySelector('#bd-loc').disabled && document.querySelector('#bd-loc').value === 'Example Design Group'), 'its day, time and place come from the event, and are changed there');
+  await clickText(jane, 'button', /^When and where$/);
+  ok(await waitText(jane, /From your calendar \(“SOARD Q4 Board Meeting”\)\. Change the day, the times and the place there/), 'and says it follows the calendar, naming what changes there');
+  ok(await jane.evaluate(() => !document.querySelector('#bd-date') && !document.querySelector('#bd-loc') && [...document.querySelectorAll('#bm-where .bm-fixed')].map((x) => x.textContent).join('|').includes('8:00 AM') && [...document.querySelectorAll('#bm-where .bm-fixed')].some((x) => x.textContent === 'Example Design Group') && !!document.querySelector('#bd-title')), 'its day, time and place come from the event, read here (never typed over); its name stays to type');
   ok(await waitText(jane, /Add everyone and Meet/), 'its invite is the calendar’s own: Board offers to add everyone and Meet to it');
   await shot(jane, '09-calendar-meeting');
 
@@ -900,9 +911,10 @@ try {
         await alex.mouse.move(2, 2);
       }
     }
-    // Home's "All 8 this year" opens Financials at the major gifts: every one, under the year's total
+    // Home's "All 8 this year" opens Financials at the major gifts: every one, under the year's total (the page settles a little
+    // after QuickBooks' year beside last year is read, so this waits for it)
     await alex.goto(`${SITE}/admin/board/#/financials/gifts`, { waitUntil: 'networkidle0' });
-    ok(await alex.waitForFunction(() => { const g = document.getElementById('gifts'); if (!g) return false; const r = g.getBoundingClientRect(); return g.querySelectorAll('.bp-gift').length === 8 && /^\$43,500 from 8\sgifts in\s\d{4}$/.test(g.querySelector('.bp-gifts__total')?.textContent || '') && r.top >= 0 && r.top < innerHeight / 2; }, { timeout: 5000 }).then(() => true, () => false), 'Financials: #/financials/gifts opens at the major gifts, all 8 under the year’s total');
+    ok(await alex.waitForFunction(() => { const g = document.getElementById('gifts'); if (!g) return false; const r = g.getBoundingClientRect(); return g.querySelectorAll('.bp-gift').length === 8 && /^\$43,500 from 8\sgifts in\s\d{4}$/.test(g.querySelector('.bp-gifts__total')?.textContent || '') && r.top >= 0 && r.top < innerHeight / 2; }, { timeout: 12000 }).then(() => true, () => false), 'Financials: #/financials/gifts opens at the major gifts, all 8 under the year’s total');
     for (const [p, re] of [
       // The cash, then the year beside the cash over time, then the statements, then the tax returns and audits
       ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Tax returns and audits[\s\S]*2025/],
@@ -1049,9 +1061,21 @@ try {
   ok(await waitText(jane, /Practice meeting\.[\s\S]*Only you/), 'Practice opens a meeting only the admins see, its members simulated');
   ok(await jane.evaluate(() => !document.querySelector('.bm-stages') && !!document.querySelector('.bm-run.is-ready')), 'just the meeting as it’s held, ready to start');
   ok(await jane.evaluate(() => [...document.querySelectorAll('.bm-order__item')].some((li) => /Financial/.test(li.textContent) && [...li.querySelectorAll('.bm-doc')].some((b) => /Balance sheet financials/.test(b.textContent)))), 'with the next meeting’s documents on their items, to put on the screen');
-  const practiceId = await jane.$eval('a[href*="/admin/board/#/meetings/"]', (a) => a.getAttribute('href').split('/').pop());
+  const practiceId = await jane.$eval('.bm-top[data-meeting]', (el) => el.dataset.meeting);
   await clickText(jane, 'button', /^Start the meeting$/);
   ok(await jane.waitForSelector('.bm-run.is-live', { timeout: 5000 }).then(() => true, () => false), 'Start puts it live, with a clock');
+  // On a phone, while the run card's Previous / Next are out of sight, they're at the foot of the screen
+  // (width only: a change to mobile or touch makes puppeteer load the page again)
+  await jane.setViewport({ width: 390, height: 844 });
+  await sleep(400);
+  await jane.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+  await sleep(700);
+  const runbar = await jane.evaluate(() => { const b = document.querySelector('.bm-runbar'); const r = b?.getBoundingClientRect(); return b ? { on: b.classList.contains('is-on'), vis: getComputedStyle(b).visibility, bottom: Math.round(r.bottom), h: Math.round(r.height), next: !![...b.querySelectorAll('button')].find((x) => /Next/.test(x.textContent)) } : null; });
+  ok(runbar?.on && runbar.vis === 'visible' && runbar.bottom <= 844 && runbar.h < 90 && runbar.next, `a phone, live: Previous and Next at the foot of the screen once the card's are out of sight (${JSON.stringify(runbar)})`);
+  await jane.evaluate(() => window.scrollTo(0, 0));
+  await jane.setViewport({ width: 1440, height: 1000 });
+  await sleep(400);
+  ok(await jane.evaluate(() => getComputedStyle(document.querySelector('.bm-runbar')).display === 'none'), 'on a laptop the live card itself stays in view, no bar');
   ok(await saved(jane), 'and saves at once');
   const firstItem = await jane.$eval('.bm-run__title', (e) => e.textContent);
   await jane.evaluate(() => document.activeElement?.blur());
@@ -1268,6 +1292,22 @@ try {
     await phone.reload({ waitUntil: 'networkidle0' });
     await waitText(phone, /All meetings/);
     ok(await overflow(phone) <= 0, `the meeting editor’s ${s} step fits a phone`);
+    // A phone reads one column, what's to do first (Board admin review, Nov 2026)
+    const firstCard = await phone.evaluate(() => [...document.querySelectorAll('.bm-slot')].filter((x) => x.offsetHeight).sort((p, q) => p.getBoundingClientRect().top - q.getBoundingClientRect().top)[0]?.querySelector('h3, .bm-run, .bm-minutes-drop')?.className || '');
+    const firstClass = await phone.evaluate(() => [...document.querySelectorAll('.bm-slot')].filter((x) => x.offsetHeight).sort((p, q) => p.getBoundingClientRect().top - q.getBoundingClientRect().top)[0]?.firstElementChild?.className || '');
+    ok(s === 'before' ? /bm-coming/.test(firstClass) : s === 'during' ? /bm-run/.test(firstCard) : /bm-minutes-drop/.test(firstCard), `a phone: the ${s} step opens on what's to do first (${s === 'before' ? firstClass : firstCard})`);
+    if (s === 'before') {
+      // (held by now in this run: Getting ready is its summary, and the no-email note is for a meeting still to come)
+      const ready = await phone.evaluate(() => ({ note: document.querySelector('.bm-ready .bm-note')?.textContent || '', head: document.querySelector('.bm-ready .bd-card-head p')?.textContent || '' }));
+      ok(/Kim Park has no email on file/.test(ready.note) || /^This meeting was held\./.test(ready.head), `Getting ready names the board member with no email, or says the meeting was held (${ready.head.slice(0, 60)})`);
+    }
+    if (s === 'during') {
+      // The run card's buttons inside it, and Previous / Next at the foot of the screen while the card's are out of sight
+      ok(await phone.evaluate(() => { const c = document.querySelector('.bm-run'); const r = c.getBoundingClientRect(); return c.scrollWidth <= c.clientWidth + 1 && [...c.querySelectorAll('button')].every((x) => !x.offsetParent || x.getBoundingClientRect().right <= r.right + 1); }), 'a phone: every run card button inside the card');
+    }
+    if (s === 'after') {
+      ok(await phone.evaluate(() => { const c = document.querySelector('.bm-minutes'); return !!c && getComputedStyle(c).display !== 'flex' && c.scrollWidth <= c.clientWidth + 1; }), 'a phone: the minutes as the board will read them, top to bottom (never the screen tile’s row)');
+    }
     if (s === 'before') {
       // A phone: Who presents and the packet's Goes with, each over everything and in view
       for (const sel of ['.agx-item .bd-who .bd-pop__btn', '.bf-file .bd-goes .bd-pop__btn']) {
