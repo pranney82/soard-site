@@ -2,8 +2,8 @@
  * The makeovers as a board: a column per stage, Awaiting funding, then Design
  * to Build, from JobTread (numbers.projects, see _board.js projectsNow). Each
  * card leads with the kid's photo, then their name and the reveal: the day
- * and time once it's set, else the part of the month. A kid with no photo
- * yet, or an organization's room, has a flat block with initials in its place.
+ * and time once it's set, else the part of the month. A kid or organization
+ * with no photo yet has a flat block with initials in its place.
  *
  * One board, three places: Home (`home`), the makeovers item of a meeting's
  * agenda (`agenda`), and the meeting on the screen (`screen`, sized to fill a

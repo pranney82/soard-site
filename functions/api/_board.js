@@ -693,9 +693,9 @@ export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fr
       if (!list) continue;
       const hit = matchProject(job.name, [...kids, ...projects], job.id);
       if (isProject(hit)) {
-        // An organization, by its name on Community even before it's published (the board is SOARD's own;
-        // a child's name waits for their page). Linked and pictured once its page is public
-        list.push({ name: hit.name || null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null, ...photoField(hit.published && hit.heroImage) });
+        // An organization, by its name and photo on Community even before it's published (the board is SOARD's
+        // own; a child's name and photo wait for their page). Linked once its page is public
+        list.push({ name: hit.name || null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null, ...photoField(hit.heroImage) });
         continue;
       }
       const kid = hit;

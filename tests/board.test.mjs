@@ -1822,7 +1822,7 @@ test('the next meeting the board already has on its calendars shows its day, tim
   assert.equal((await portalApi(MEMBER)).body.nextPending, null);
 });
 
-test('the board page’s makeovers and reveals carry their published page’s photo; an unnamed one never does (a draft project is named, never pictured)', async () => {
+test('the board page’s makeovers and reveals carry their published page’s photo; an unnamed one never does (a draft project is named and pictured)', async () => {
   const { projectsNow } = await import('../functions/api/_board.js');
   await env.DB.exec('CREATE TABLE kids (slug TEXT PRIMARY KEY, name TEXT, year INTEGER, data TEXT)');
   await env.DB.exec('CREATE TABLE community (slug TEXT PRIMARY KEY, name TEXT, data TEXT)');
@@ -1837,7 +1837,7 @@ test('the board page’s makeovers and reveals carry their published page’s ph
   const job = (id, name, status) => ({ id, name, customFieldValues: { nodes: [{ value: status, customField: { id: '22P52qfFub9b' } }] } });
   const fetchImpl = async () => Response.json({ organization: { jobs: { nodes: [job('j1', 'Max Example', 'Build'), job('j2', 'Quinn Example', 'Design'), job('j3', 'Example House', 'Approval'), job('j4', 'Odd Example', 'Build')], nextPage: null } } });
   const p = await projectsNow(env, { fetchImpl, fresh: true });
-  assert.deepEqual(p.building.map((b) => [b.name, b.photo ?? null]), [['Max', img('max')], [null, null], ['Example House', null], ['Odd', null]], 'a draft kid page has neither; a draft project goes by its name for the board, with no picture; a picture from anywhere but Cloudflare Images stays out');
+  assert.deepEqual(p.building.map((b) => [b.name, b.photo ?? null]), [['Max', img('max')], [null, null], ['Example House', img('house')], ['Odd', null]], 'a draft kid page has neither; a draft project goes by its name and photo for the board; a picture from anywhere but Cloudflare Images stays out');
   const ahead = new Date(Date.now() + 20 * 86400000).toISOString().slice(0, 10);
   await env.DB.prepare('INSERT INTO site_config (key, data) VALUES (?, ?)').bind('reveals', JSON.stringify({ reveals: [], upcoming: [{ slug: 'max', name: 'Max', confirmed: true, date: ahead }, { slug: 'zoe', name: 'Zoe', confirmed: true, date: ahead, image: 'https://imagedelivery.net/abc123/kids/zoe/photo-2/w=400' }], past: [] })).run();
   const n = await liveNumbers(env);
