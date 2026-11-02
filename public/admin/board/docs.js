@@ -1396,6 +1396,16 @@ export function openDoc(f, { url = fileUrl(f) } = {}) {
 
 /** Blocks of ink down the page ({ y0, y1, x0, x1 } in 0..1) → the part worth showing, or null for the whole page */
 export function mainPart(blocks) {
+  const u = mainInk(blocks);
+  if (!u) return null;
+  const pad = 0.025;
+  const part = { x: Math.max(0, u.x0 - pad), y: Math.max(0, u.y0 - pad) };
+  part.w = Math.min(1, u.x1 + pad) - part.x;
+  part.h = Math.min(1, u.y1 + pad) - part.y;
+  return part.w > 0.05 && part.h > 0.03 ? part : null;
+}
+/** The same blocks → where the ink worth showing is ({ y0, y1, x0, x1 }), its margins left off; null for none */
+function mainInk(blocks) {
   if (!blocks.length) return null;
   blocks.sort((a, b) => a.y0 - b.y0);
   const merged = [];
@@ -1409,18 +1419,13 @@ export function mainPart(blocks) {
     const gap = Math.min(i > 0 ? b.y0 - merged[i - 1].y1 : 1, i < merged.length - 1 ? merged[i + 1].y0 - b.y1 : 1);
     return gap < 0.15;
   });
-  const u = keep.reduce((a, b) => ({ y0: Math.min(a.y0, b.y0), y1: Math.max(a.y1, b.y1), x0: Math.min(a.x0, b.x0), x1: Math.max(a.x1, b.x1) }));
-  const pad = 0.025;
-  const part = { x: Math.max(0, u.x0 - pad), y: Math.max(0, u.y0 - pad) };
-  part.w = Math.min(1, u.x1 + pad) - part.x;
-  part.h = Math.min(1, u.y1 + pad) - part.y;
-  return part.w > 0.05 && part.h > 0.03 ? part : null;
+  return keep.reduce((a, b) => ({ y0: Math.min(a.y0, b.y0), y1: Math.max(a.y1, b.y1), x0: Math.min(a.x0, b.x0), x1: Math.max(a.x1, b.x1) }));
 }
 /** The ink on a drawn page: a PDF's or picture's canvas read pixel by pixel; a laid-out page by where its words and pictures sit */
 export function inkOf(frame) {
   const canvas = frame.querySelector('canvas');
   if (canvas?.width) {
-    const w = 200;
+    const w = Math.min(400, canvas.width);
     const h = Math.max(1, Math.round((canvas.height * w) / canvas.width));
     const c = document.createElement('canvas');
     c.width = w; c.height = h;
@@ -1471,21 +1476,56 @@ function measureBox() {
 
 /**
  * A page's content and, for a tall one (a statement, a report: taller than it is wide), where to cut it in two so
- * each half shows twice as big on a wide screen: at the blank line nearest the middle, never through a line.
- * Pure: `blocks` of ink in 0..1 down and across the page, `size` its { w, h } → { part, cut, n } (n: 1 | 2)
+ * each half shows twice as big on a wide screen: at a blank line near the middle, never through a line, and the
+ * widest one there (between paragraphs, before a heading) over the space between two lines of one. A page with
+ * nothing on it is no stop at all; a few lines are never cut.
+ * Pure: `blocks` of ink in 0..1 down and across the page, `size` its { w, h } → { part, ink, cut, gap, n } (n: 0 | 1
+ * | 2; `ink` where the ink is, `gap` the blank band the cut sits in)
  */
 export function splitOf(blocks, size) {
-  const part = mainPart(blocks.map((b) => ({ ...b })));
-  if (!part || (part.w * size.w) / (part.h * size.h) >= 1.1) return { part, cut: 0, n: 1 };
-  const rows = blocks.filter((b) => !b.line && b.y1 > part.y && b.y0 < part.y + part.h).sort((a, b) => a.y0 - b.y0);
-  const mid = part.y + part.h / 2;
+  const ink = mainInk(blocks.map((b) => ({ ...b })));
+  const part = ink && mainPart(blocks.map((b) => ({ ...b })));
+  if (!part) return { part: null, ink: null, cut: 0, gap: null, n: 0 };
+  if ((part.w * size.w) / (part.h * size.h) >= 1.1 || ink.y1 - ink.y0 < 0.3) return { part, ink, cut: 0, gap: null, n: 1 };
+  const rows = blocks.filter((b) => !b.line && b.y1 > ink.y0 && b.y0 < ink.y1).sort((a, b) => a.y0 - b.y0);
+  const mid = (ink.y0 + ink.y1) / 2;
+  const span = ink.y1 - ink.y0;
+  // The widest blank close to the middle (the taller part sets the file's zoom, so a cut much off the middle makes
+  // every word smaller), else the nearest one a little farther out
   let best = null;
+  let near = null;
   let end = -1;
   for (const b of rows) {
-    if (end >= 0 && b.y0 - end > 0.002) { const y = (end + b.y0) / 2; if (best === null || Math.abs(y - mid) < Math.abs(best - mid)) best = y; }
+    if (end >= 0 && b.y0 - end > 0.002) {
+      const off = Math.abs((end + b.y0) / 2 - mid);
+      const wide = b.y0 - end;
+      if (off <= span * 0.08 && (!best || wide > best.wide + 0.002 || (Math.abs(wide - best.wide) <= 0.002 && off < best.off))) best = { gap: [end, b.y0], wide, off };
+      if (off <= span * 0.2 && (!near || off < near.off)) near = { gap: [end, b.y0], off };
+    }
     end = Math.max(end, b.y1);
   }
-  return { part, cut: best !== null && Math.abs(best - mid) < part.h * 0.2 ? best : mid, n: 2 };
+  const gap = (best || near)?.gap || [mid, mid];
+  return { part, ink, cut: (gap[0] + gap[1]) / 2, gap, n: 2 };
+}
+/**
+ * What the screen shows of a page for its part `k` (0 the top, 1 the bottom; all of it when it's one stop), close
+ * around the ink: the screen gives every part the same margins. Null for a page with nothing to show
+ */
+export function areaOf(lay, k = 0) {
+  if (!lay?.ink || !lay.n) return null;
+  const { ink } = lay;
+  // A hair past the ink (it was found on a small drawing), never past the middle of the blank it's cut in
+  const s = 0.006;
+  const x0 = Math.max(0, ink.x0 - s);
+  const x1 = Math.min(1, ink.x1 + s);
+  let y0 = Math.max(0, ink.y0 - s);
+  let y1 = Math.min(1, ink.y1 + s);
+  if (lay.n === 2 && lay.gap) {
+    const [g0, g1] = lay.gap;
+    if (k) y0 = Math.max((g0 + g1) / 2, g1 - s);
+    else y1 = Math.min((g0 + g1) / 2, g0 + s);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 /** The area of a page to show for its half `k` (0 the top, 1 the bottom; all of it when it has one) */
 export function halfOf(lay, k = 0) {
@@ -1496,31 +1536,76 @@ export function halfOf(lay, k = 0) {
 const layouts = new Map();
 // Kept on this device too (a file never changes under its id), so a meeting opened again knows its halves at once
 // and its stops don't change count as they're worked out. The version goes up when how a page is read changes
-const keptKey = (f, i) => `bdoc-lay2:${f.id}:${f.size || 0}:${i}`;
+const keptKey = (f, i) => `bdoc-lay3:${f.id}:${f.size || 0}:${i}`;
 const countKey = (f) => `bdoc-count:${f.id}:${f.size || 0}`;
 const kept = (f, i) => { try { const x = JSON.parse(localStorage.getItem(keptKey(f, i)) || 'null'); return x && typeof x.n === 'number' ? x : null; } catch { return null; } };
-/** Page i's content and halves (splitOf), from the page drawn small: once a file and page, and the same everywhere */
+// The last version's, read another way, go (once a page load)
+let swept = false;
+function sweepKept() {
+  if (swept) return;
+  swept = true;
+  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (key?.startsWith('bdoc-lay2:')) localStorage.removeItem(key); } } catch { /* storage off */ }
+}
+const PROBE = 400;
+/**
+ * Whether two pages drawn the same size carry the same ink in `box` ({ x0, y0, x1, y1 } in 0..1): a letterhead or a
+ * logo every page has, so a page with only that on it has nothing of its own
+ */
+function sameInk(a, b, box) {
+  const ca = a.querySelector('canvas');
+  const cb = b.querySelector('canvas');
+  if (!ca?.width || !cb?.width || ca.width !== cb.width || ca.height !== cb.height) return false;
+  const x = Math.max(0, Math.floor(box.x0 * ca.width) - 2);
+  const y = Math.max(0, Math.floor(box.y0 * ca.height) - 2);
+  const w = Math.min(ca.width - x, Math.ceil((box.x1 - box.x0) * ca.width) + 4);
+  const h = Math.min(ca.height - y, Math.ceil((box.y1 - box.y0) * ca.height) + 4);
+  if (w < 1 || h < 1) return false;
+  const da = ca.getContext('2d').getImageData(x, y, w, h).data;
+  const db = cb.getContext('2d').getImageData(x, y, w, h).data;
+  let diff = 0;
+  let inked = 0;
+  for (let k = 0; k < da.length; k += 4) {
+    diff += Math.abs(da[k] - db[k]) + Math.abs(da[k + 1] - db[k + 1]) + Math.abs(da[k + 2] - db[k + 2]);
+    if (db[k] < 230 || db[k + 1] < 230 || db[k + 2] < 230) inked += 1;
+  }
+  return inked > 0 && diff / (da.length / 4) / 3 < 10;
+}
+/**
+ * Page i's content and halves (splitOf), from the page drawn small: once a file and page, and the same everywhere.
+ * A page with nothing on it, or nothing but what the page before it has in the same place (the letterhead on a last
+ * page that ran on by a line break), is n 0: no stop on the screen
+ */
 export function layoutOf(f, doc, i) {
   const key = `${f?.id || ''}|${i}`;
   if (!layouts.has(key)) {
+    sweepKept();
     const was = f?.id ? kept(f, i) : null;
     layouts.set(key, was ? Promise.resolve(was) : (async () => {
-      const probe = await doc.draw(i, { width: 320, dpr: 1 });
+      const probe = await doc.draw(i, { width: PROBE, dpr: 1 });
       const tray = measureBox();
       tray.replaceChildren(probe);
-      const blocks = inkOf(probe) || [];
+      const blocks = inkOf(probe);
       tray.replaceChildren();
-      const lay = splitOf(blocks, doc.size(i));
+      // Not measured (a laid-out page with no size): shown whole, as it is
+      if (!blocks) return { part: null, ink: null, cut: 0, gap: null, n: 1 };
+      let lay = splitOf(blocks, doc.size(i));
+      const ink = lay.ink;
+      if (ink && doc.count > 1 && (ink.x1 - ink.x0) * (ink.y1 - ink.y0) < 0.03) {
+        const j = i > 0 ? i - 1 : i + 1;
+        const a = doc.size(i);
+        const b = doc.size(j);
+        if (Math.abs(a.w - b.w) <= 1 && Math.abs(a.h - b.h) <= 1 && sameInk(probe, await doc.draw(j, { width: PROBE, dpr: 1 }), ink)) lay = { part: null, ink: null, cut: 0, gap: null, n: 0 };
+      }
       if (f?.id) { try { localStorage.setItem(keptKey(f, i), JSON.stringify(lay)); } catch { /* full: worked out again next time */ } }
       return lay;
-    })().catch(() => ({ part: null, cut: 0, n: 1 })));
+    })().catch(() => ({ part: null, ink: null, cut: 0, gap: null, n: 1 })));
   }
   return layouts.get(key);
 }
 /**
- * Every part of a file the screen shows on pages the size of page i (each page's content, or its two halves), so
- * the screen draws them all at one zoom: the words stay one size from half to half and page to page. A long file
- * (over 40 pages) only page i's
+ * Every part of a file the screen shows on pages the size of page i (areaOf: each page's content, or its two
+ * halves), so the screen draws them all at one zoom on one sheet: the words stay one size and in one place from
+ * stop to stop. A long file (over 40 pages) only page i's
  */
 export async function areasOf(f, doc, i) {
   const size = doc.size(i);
@@ -1530,7 +1615,7 @@ export async function areasOf(f, doc, i) {
     const s = doc.size(j);
     if (Math.abs(s.w - size.w) > 1 || Math.abs(s.h - size.h) > 1) continue;
     const lay = await layoutOf(f, doc, j);
-    for (let k = 0; k < (lay.n || 1); k++) { const a = halfOf(lay, k); if (a) out.push(a); }
+    for (let k = 0; k < lay.n; k++) { const a = areaOf(lay, k); if (a) out.push(a); }
   }
   return out;
 }

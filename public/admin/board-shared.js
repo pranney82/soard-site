@@ -771,9 +771,13 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null 
     for (const x of slidesOf(it, books)) out.push({ key: `${it.id}:${x.id}`, kind: x.kind, itemId: it.id, fileId: x.id, page: 0, n, sectionId });
     for (const f of files) {
       const count = Math.max(1, Math.round(Number(pages[f.id]) || 1));
-      // A tall page (a statement, a report) is two stops, its top half then its bottom one, each as big as the screen allows
+      // A tall page (a statement, a report) is two stops, its top half then its bottom one, each as big as the screen
+      // allows; a blank page none (unless every page is: then the file as it is)
+      const of = (p) => { const x = parts[f.id]?.[p]; return x === undefined || x === null ? 1 : Number(x); };
+      const blank = (p) => of(p) === 0 && Array.from({ length: count }, (_, q) => q).some((q) => of(q) !== 0);
       for (let p = 0; p < count; p++) {
-        for (let k = 0; k < (Number(parts[f.id]?.[p]) === 2 ? 2 : 1); k++) out.push({ key: `${it.id}:${f.id}:${p}${k ? ':b' : ''}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, part: k, n, sectionId });
+        if (blank(p)) continue;
+        for (let k = 0; k < (of(p) === 2 ? 2 : 1); k++) out.push({ key: `${it.id}:${f.id}:${p}${k ? ':b' : ''}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, part: k, n, sectionId });
       }
     }
   };

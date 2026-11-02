@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { formatValue, readSheets, readWord, readSlides, wordImages, slideImages, docKind, splitOf, halfOf } from '../public/admin/board/docs.js';
+import { formatValue, readSheets, readWord, readSlides, wordImages, slideImages, docKind, splitOf, halfOf, areaOf } from '../public/admin/board/docs.js';
 
 /** A real ZIP of { name: text | bytes } */
 function zip(files) {
@@ -273,9 +273,52 @@ test('a tall page is shown in two halves, cut at the blank line nearest its midd
   // A few lines (a short memo, a cover page): wider than tall, so whole; a landscape slide whole
   assert.equal(splitOf(rows.slice(0, 6), size).n, 1);
   assert.equal(splitOf([{ y0: 0.1, y1: 0.9, x0: 0.05, x1: 0.95 }], { w: 1056, h: 816 }).n, 1);
-  assert.deepEqual(splitOf([], size), { part: null, cut: 0, n: 1 });
+  assert.deepEqual(splitOf([], size), { part: null, ink: null, cut: 0, gap: null, n: 0 }, 'a blank page is no stop');
   assert.equal(halfOf({ part: null, n: 1 }, 1), null);
   assert.deepEqual(halfOf(splitOf(rows.slice(0, 6), size), 1), splitOf(rows.slice(0, 6), size).part, 'a page shown whole is its content either way');
+});
+
+test('a few lines are never cut, even in a column taller than it is wide (a logo, a signature)', () => {
+  const size = { w: 816, h: 1056 };
+  // A letterhead's logo alone at the top of a last page
+  assert.equal(splitOf([{ y0: 0.02, y1: 0.14, x0: 0.42, x1: 0.575 }], size).n, 1);
+  // A signature block: eight short lines in a narrow column
+  const sig = Array.from({ length: 8 }, (_, i) => ({ y0: 0.6 + i * 0.022, y1: 0.612 + i * 0.022, x0: 0.45, x1: 0.62 }));
+  assert.equal(splitOf(sig, size).n, 1);
+});
+
+test('a tall page is cut between paragraphs near the middle rather than between two lines of one', () => {
+  const size = { w: 816, h: 1056 };
+  // 36 lines; a paragraph break (a wider blank) after the 16th, a little above the middle
+  const rows = [];
+  let y = 0.08;
+  for (let i = 0; i < 36; i++) { rows.push({ y0: y, y1: y + 0.012, x0: 0.1, x1: 0.9 }); y += i === 15 ? 0.04 : 0.021; }
+  const lay = splitOf(rows, size);
+  assert.equal(lay.n, 2);
+  assert.ok(lay.gap[0] >= rows[15].y1 - 1e-9 && lay.gap[1] <= rows[16].y0 + 1e-9, `cut in the paragraph break (${lay.gap})`);
+  // A paragraph break far from the middle loses to a line near it: the taller part would make every word smaller
+  const far = [];
+  y = 0.08;
+  for (let i = 0; i < 36; i++) { far.push({ y0: y, y1: y + 0.012, x0: 0.1, x1: 0.9 }); y += i === 4 ? 0.04 : 0.021; }
+  const lay2 = splitOf(far, size);
+  assert.ok(Math.abs(lay2.cut - (lay2.ink.y0 + lay2.ink.y1) / 2) < 0.03, 'near the middle');
+});
+
+test('what the screen shows of each part sits close around its ink and never reaches into the other part', () => {
+  const size = { w: 816, h: 1056 };
+  const rows = Array.from({ length: 40 }, (_, i) => ({ y0: 0.08 + i * 0.021, y1: 0.092 + i * 0.021, x0: 0.1, x1: 0.9 }));
+  const lay = splitOf(rows, size);
+  const top = areaOf(lay, 0);
+  const bottom = areaOf(lay, 1);
+  const mid = (lay.gap[0] + lay.gap[1]) / 2;
+  assert.ok(top.y + top.h <= mid + 1e-9 && bottom.y >= mid - 1e-9, 'each stops at the middle of the blank it’s cut in');
+  assert.ok(!rows.some((r) => r.y0 < top.y + top.h && r.y1 > top.y + top.h) && !rows.some((r) => r.y0 < bottom.y && r.y1 > bottom.y), 'no line cut through');
+  assert.ok(Math.abs(top.y - (lay.ink.y0 - 0.006)) < 1e-9 && Math.abs(bottom.y + bottom.h - (lay.ink.y1 + 0.006)) < 1e-9, 'a hair past the ink, the margin is the screen’s');
+  assert.ok(Math.abs(top.x - 0.094) < 1e-9 && Math.abs(top.w - 0.812) < 1e-9 && top.x === bottom.x && top.w === bottom.w, 'both as wide as the page’s lines');
+  const whole = splitOf(rows.slice(0, 6), size);
+  assert.deepEqual(areaOf(whole, 0), areaOf(whole, 1), 'a page shown whole is one area');
+  assert.equal(areaOf(splitOf([], size), 0), null, 'a blank page none');
+  assert.equal(areaOf({ part: null, n: 1 }, 0), null, 'a page not read (shown whole as it is) none');
 });
 
 test('a table’s ruled lines widen the part shown to reach them, and never decide where a page is cut', () => {

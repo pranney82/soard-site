@@ -21,7 +21,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
-import { openDoc, layoutOf, halfOf, areasOf } from './docs.js';
+import { openDoc, layoutOf, areaOf, areasOf } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
@@ -94,45 +94,68 @@ function useLiveView(id, fast) {
   return [v, fail, trouble];
 }
 
+// A close-up's margin, a share of the page's width as a page's own margin is
+const MARGIN = 0.035;
 /**
- * Page `page` of a file drawn as big as `box` ({ w, h }) allows, showing the part of it with something on it: all
- * of it, or of a tall page the half `part` (./docs.js layoutOf) → { el, count, halves }. `ahead` also draws the next
- * page, so it's there at once.
+ * Page `page` of a file on a sheet as big as `box` ({ w, h }) allows → { el, count, halves }. When the whole page
+ * would leave its words small, the sheet shows them close up: the part of the page with something on it, or of a
+ * tall page its top or its bottom (`part`, ./docs.js layoutOf). Every stop of a file shares one sheet, as wide as
+ * its widest lines and as tall as its tallest part with the same margin all round, at one zoom, so Next never moves
+ * or resizes it: the words change, starting on the same line. A file that reads well whole shows as its pages.
+ * `ahead` also works out the next page, so it's there at once.
  */
 async function drawFitted(f, page, box, { ahead = false, part = 0 } = {}) {
   const doc = await openDoc(f);
   const i = Math.max(0, Math.min(page, doc.count - 1));
   const size = doc.size(i);
-  const fit = Math.floor(Math.min(box.w, (box.h * size.w) / size.h));
+  const tall = size.h / size.w;
+  const fit = Math.floor(Math.min(box.w, box.h / tall));
   // Where its words are (worked out once a page, small, the same everywhere)
   const lay = await layoutOf(f, doc, i);
-  const area = halfOf(lay, part);
-  const H0 = Math.round((size.h * fit) / size.w);
-  // One zoom for the file, the one its biggest half or page needs: Next changes the rows, never the size of the words
-  const zoomOf = (a) => Math.min(3, box.w / (a.w * fit), box.h / (a.h * H0));
-  const zoom = area ? Math.min(zoomOf(area), ...(await areasOf(f, doc, i)).map(zoomOf)) : 1;
-  let el;
-  if (area && zoom > 1.12) {
-    const W = Math.floor(fit * zoom);
-    const H = Math.round((size.h * W) / size.w);
-    const page2 = await doc.draw(i, { width: W });
-    el = document.createElement('div');
-    el.className = 'bs-crop';
-    el.style.width = `${Math.round(area.w * W)}px`;
-    el.style.height = `${Math.round(area.h * H)}px`;
-    page2.style.marginLeft = `${-Math.round(area.x * W)}px`;
-    page2.style.marginTop = `${-Math.round(area.y * H)}px`;
-    el.append(page2);
-  } else {
-    el = await doc.draw(i, { width: fit });
+  const area = areaOf(lay, part);
+  const el = document.createElement('div');
+  el.className = 'bs-sheet';
+  let close = false;
+  if (area) {
+    const all = [area, ...(await areasOf(f, doc, i))];
+    const x0 = Math.min(...all.map((a) => a.x));
+    const x1 = Math.max(...all.map((a) => a.x + a.w));
+    const hi = Math.max(...all.map((a) => a.h));
+    const W = Math.floor(Math.min(fit * 3, box.w / (x1 - x0 + 2 * MARGIN), box.h / (hi * tall + 2 * MARGIN)));
+    if (W > fit * 1.12) {
+      close = true;
+      const H = Math.round(W * tall);
+      const m = Math.floor(W * MARGIN);
+      const drawn = await doc.draw(i, { width: W });
+      drawn.style.marginLeft = `${-Math.round(x0 * W)}px`;
+      drawn.style.marginTop = `${-Math.round(area.y * H)}px`;
+      const crop = document.createElement('div');
+      crop.className = 'bs-crop';
+      crop.style.width = `${Math.round((x1 - x0) * W)}px`;
+      crop.style.height = `${Math.round(area.h * H)}px`;
+      crop.append(drawn);
+      el.style.width = `${Math.round((x1 - x0) * W) + 2 * m}px`;
+      el.style.height = `${Math.round(hi * H) + 2 * m}px`;
+      el.style.padding = `${m}px`;
+      el.append(crop);
+    }
+  }
+  if (!close) {
+    el.style.width = `${fit}px`;
+    el.style.height = `${Math.round(fit * tall)}px`;
+    el.append(await doc.draw(i, { width: fit }));
   }
   if (ahead && i + 1 < doc.count) layoutOf(f, doc, i + 1).catch(() => {});
   return { el, count: doc.count, halves: lay.n };
 }
 
-/** A page (or half of one) on the screen, kept up until the next is drawn (no flash between); `onPages` hears the counts */
+/**
+ * A page (or part of one) on the screen, kept up until the next is drawn (no flash between): on the same sheet only
+ * the words move, a little the way the meeting went; `onPages` hears the counts
+ */
 function DocPage({ f, page, part = 0, box, onPages }) {
   const ref = useRef(null);
+  const was = useRef(null);
   const [state, setState] = useState('opening');
   useEffect(() => {
     if (!f || !box.w || !box.h) return undefined;
@@ -140,7 +163,15 @@ function DocPage({ f, page, part = 0, box, onPages }) {
     drawFitted(f, page, box, { ahead: true, part }).then(({ el, count, halves }) => {
       if (gone || !ref.current) return;
       onPages?.(f.id, count, page, halves);
+      const old = ref.current.firstElementChild;
+      const from = was.current;
+      was.current = { page, part };
       ref.current.replaceChildren(el);
+      const same = old && old.style.width === el.style.width && old.style.height === el.style.height;
+      if (same && from && el.firstElementChild?.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const on = page > from.page || (page === from.page && part > from.part);
+        el.firstElementChild.animate([{ opacity: 0, transform: `translateY(${on ? 14 : -14}px)` }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' });
+      }
       setState('');
     }).catch(() => { if (!gone) setState('failed'); });
     return () => { gone = true; };
@@ -160,7 +191,13 @@ function useBox() {
   const [box, setBox] = useState({ w: 0, h: 0 });
   useEffect(() => {
     if (!el) return undefined;
-    const measure = () => setBox((b) => { const w = Math.floor(el.clientWidth); const h = Math.floor(el.clientHeight); return b.w === w && b.h === h ? b : { w, h }; });
+    // Inside its padding (a phone's gutters): a page fitted to the width otherwise runs off the right edge
+    const measure = () => setBox((b) => {
+      const cs = getComputedStyle(el);
+      const w = Math.floor(el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+      const h = Math.floor(el.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom));
+      return b.w === w && b.h === h ? b : { w, h };
+    });
     measure();
     if (!('ResizeObserver' in window)) return undefined;
     let t = 0;
@@ -405,7 +442,7 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
     : next.kind === 'section' ? html`<span>Next <b>${String(meeting.sections.findIndex((x) => x.id === next.sectionId) + 1).padStart(2, '0')}</b> ${meeting.sections.find((x) => x.id === next.sectionId)?.title || ''}</span>`
     : next.kind === 'books' ? html`<span>Next: ${BOOKS_TITLES[next.fileId.slice(6)]}</span>`
     : next.kind === 'live' ? html`<span>Next: ${LIVE_TITLES[next.fileId.slice(5)]}</span>`
-    : next.kind === 'doc' && next.fileId === stop?.fileId && next.page === stop.page ? html`<span>Next: the bottom half</span>`
+    : next.kind === 'doc' && next.fileId === stop?.fileId && next.page === stop.page ? html`<span>Next: the rest of the page</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId ? html`<span>Next: page ${next.page + 1}</span>`
     : next.kind === 'doc' ? html`<span>Next: ${docTitle(files.find((f) => f.id === next.fileId)?.name || 'the document')}</span>`
     : next.n >= 0 ? html`<span>Next <b>${items[next.n].label}</b> ${items[next.n].title}</span>` : html`<span>Next: ${MORE.title.toLowerCase()}</span>`;
@@ -650,7 +687,10 @@ export function Screen({ id, data, d, onBack = null }) {
   } else {
     stage = html`<${DocPage} f=${file} page=${stop.page} part=${half} box=${box} onPages=${notePages} key=${file?.id} />`;
   }
-  const docWords = stop.kind === 'doc' ? `${docTitle(file?.name)} · Page ${stop.page + 1}${pages[stop.fileId] ? ` of ${pages[stop.fileId]}` : ''}${halves[stop.fileId]?.[stop.page] === 2 ? `, ${half ? 'bottom' : 'top'} half` : ''}` : '';
+  // The pages that are stops (a blank one isn't), counted to the last of them: a blank page at the end isn't "of 2"
+  const shownPages = stop.kind === 'doc' ? Array.from({ length: pages[stop.fileId] || 0 }, (_, i) => i).filter((i) => halves[stop.fileId]?.[i] !== 0) : [];
+  const ofPages = shownPages.length ? shownPages.at(-1) + 1 : pages[stop.fileId] || 0;
+  const docWords = stop.kind === 'doc' ? [docTitle(file?.name), [ofPages > 1 ? `Page ${stop.page + 1} of ${ofPages}` : '', half ? 'continued' : ''].filter(Boolean).join(', ')].filter(Boolean).join(' · ') : '';
 
   // The line under the stage and the rail are there on every stop, so the stage keeps its size from one to the next
   return html`<div class=${`bs bs--${stop.kind} ${awake ? 'is-awake' : ''} ${vote ? 'has-vote' : ''} ${MIRROR ? 'is-mirror' : ''}`}>
@@ -665,7 +705,7 @@ export function Screen({ id, data, d, onBack = null }) {
     </aside>` : null}
     <div class="bs-foot">${stop.kind === 'doc' ? html`
       <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${docWords}</span>
-      ${pages[stop.fileId] > 1 && pages[stop.fileId] <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${Array.from({ length: pages[stop.fileId] }, (_, i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
+      ${shownPages.length > 1 && shownPages.length <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${shownPages.map((i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
       : stop.kind === 'books' || stop.kind === 'live' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? BOOKS_TITLES[stop.fileId.slice(6)] : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
       : !started && !told && !MIRROR ? html`<span class="bs-foot__what">The screen follows the meeting once the chair starts it.</span>` : null}
     </div>
@@ -718,7 +758,7 @@ export function ScreenPeek({ v, onOpen }) {
   if (!f) return null;
   return html`<figure class="bp-peek">
     <div class="bp-peek__page" ref=${ref}></div>
-    <figcaption><span><strong>On the screen:</strong> ${docTitle(f.name)}, page ${v.live.page + 1}${n.count ? ` of ${n.count}` : ''}${n.halves === 2 ? `, ${v.live.part ? 'bottom' : 'top'} half` : ''}</span>
+    <figcaption><span><strong>On the screen:</strong> ${docTitle(f.name)}, page ${v.live.page + 1}${n.count ? ` of ${n.count}` : ''}${n.halves === 2 && v.live.part ? ', continued' : ''}</span>
       <a class="bp-btn bp-btn--sm" href=${`#/meetings/${v.id}/screen`} onClick=${onOpen}>Follow the screen</a></figcaption>
   </figure>`;
 }

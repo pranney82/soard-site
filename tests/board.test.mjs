@@ -381,6 +381,13 @@ test('the screen’s stops: the cover, since we last met, each part’s card, ea
   assert.equal(stopIndex(halves, liveOfStop(halves[bottom])), bottom);
   assert.equal(stopIndex(halves, liveOfStop(halves[bottom - 1])), bottom - 1, 'the top half is the page’s first stop');
   assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 1 }), 8, 'a bottom half this deck hasn’t split yet: that page');
+  // A blank page (docs.js: 0 parts) is no stop; a file blank throughout shows as it is
+  const pagesOf = (parts) => deckOf(m, { pages: { f_bud1: 3 }, parts: { f_bud1: parts }, meetings: [prev] }).filter((x) => x.fileId === 'f_bud1').map((x) => `${x.page}${x.part ? ' bottom' : ''}`);
+  assert.deepEqual(pagesOf([1, 0, 2]), ['0', '2', '2 bottom']);
+  assert.deepEqual(pagesOf([2, 0]), ['0', '0 bottom', '2'], 'a page not worked out yet is a stop');
+  assert.deepEqual(pagesOf([0, 0, 0]), ['0', '1', '2']);
+  const blankAt = deckOf(m, { pages: { f_bud1: 3 }, parts: { f_bud1: [1, 0, 1] }, meetings: [prev] });
+  assert.equal(blankAt[stopIndex(blankAt, { itemId: 'i_fin1', fileId: 'f_bud1', page: 1 })].fileId, 'f_bud1', 'the screen left on a page that turned out blank stays in its document');
   assert.equal(cleanLive({ itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 1 }).part, 1);
   assert.equal(cleanLive({ itemId: 'i_fin1', part: 1 }).part, 0, 'a half only of a document');
   assert.deepEqual(cleanMeeting({ live: { fileId: 'f_bud1', page: 3 } }).live.fileId, '', 'a document is on the screen only with its item');
