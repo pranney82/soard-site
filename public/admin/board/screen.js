@@ -276,6 +276,11 @@ function ReportFit({ text, cols = 1 }) {
       let hid = 0;
       for (let i = blocks.length - 1; i > 0 && over(); i--) { blocks[i].hidden = true; hid++; }
       setCut(hid > 0 || over());
+      // The report page's preview says whether it fits, and about how much the room sees
+      if (PREVIEW) {
+        const count = (list) => list.reduce((n, b) => n + (b.textContent.trim().split(/\s+/).filter(Boolean).length), 0);
+        window.parent?.postMessage({ type: 'board-preview-fit', cut: hid > 0 || over(), shown: count(blocks.filter((b) => !b.hidden)), total: count(blocks) }, location.origin);
+      }
     };
     fit();
     // Again when its box changes (the window, the rail) and once the fonts are in; never on its own size (no loop)
@@ -471,6 +476,9 @@ function Chapter({ n, sec, t, items, people }) {
   </div>`;
 }
 
+/** What an item's presenter asks the board to vote on (item.motion), the way the minutes' motion shows */
+const ItemMotion = ({ text }) => (String(text || '').trim() ? html`<div class="bs-motion"><p class="bs-eyebrow">The board votes on</p><p class="bs-motion__text">${String(text).trim()}</p></div>` : null);
+
 /** The motion to approve the last meeting's minutes: the meeting's own (the chair's words) else the usual one */
 function MinutesMotion({ item, v }) {
   const prev = (v.prior || []).find((x) => x.id === item.about) || null;
@@ -587,8 +595,14 @@ export function Screen({ id, data, d, onBack = null }) {
   const [v0, fail, trouble] = useLiveView(id, fast);
   // Presenting and Board's preview never show the meeting as it was held (an ended practice) or a vote: nothing
   // started, nothing ended; they go only where they're moved
+  // The report page's preview of a meeting ahead its presenter writes on, not shared yet (no live view for them): the
+  // meeting as the page has it
+  const pv = PREVIEW && fail && !v0 ? data.meetings.find((x) => x.id === id) || data.previews?.find((x) => x.id === id) || data.presenting?.find((x) => x.id === id) || null : null;
   // (made once an answer, not every render: what's built from it, the meeting and its deck, holds still between answers)
-  const v = useMemo(() => (OWN && v0 ? { ...v0, vote: null, live: { ...v0.live, startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, part: 0, screen: '', sectionId: '', sectionAt: '', vote: null, floor: '' } } : v0), [v0]);
+  const v = useMemo(() => {
+    const vb = v0 || (pv ? { ok: true, title: pv.title || '', date: pv.date, start: pv.start || '', end: pv.end || '', sections: pv.sections, files: pv.files || [], snapshot: pv.snapshot || null, prior: [], live: {} } : null);
+    return OWN && vb ? { ...vb, vote: null, live: { ...vb.live, startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, part: 0, screen: '', sectionId: '', sectionAt: '', vote: null, floor: '' } } : vb;
+  }, [v0, pv]);
   const [told, setTold] = useState(null); // { live, rehearsal, at } from the chair's computer
   // Moving itself: the stop it's on (its key), and its item (that item's card, if the key is gone from a changed deck)
   const [here, setHere] = useState(() => ({ key: PRESENT ? AT || keptAt(id) : '', itemId: '' }));
@@ -691,7 +705,7 @@ export function Screen({ id, data, d, onBack = null }) {
   useEffect(() => { if (!MIRROR) document.title = v ? `${v.title} · ${PRESENT ? 'Presenting' : 'On the screen'}` : 'SOARD Board · On the screen'; }, [v?.title]);
 
   // (A meeting not shared yet, previewed or presented by an admin, isn't in the board page's list: its name comes with the view)
-  const m = data.meetings.find((x) => x.id === id) || (OWN ? data.previews?.find((x) => x.id === id) : null) || null;
+  const m = data.meetings.find((x) => x.id === id) || (OWN ? data.previews?.find((x) => x.id === id) : null) || (PREVIEW ? data.presenting?.find((x) => x.id === id) : null) || null;
   const unshared = OWN && !data.meetings.some((x) => x.id === id);
   const meeting = useMemo(() => (v ? { ...(m || {}), id, title: m?.title || v.title || '', date: v.date, start: m?.start || v.start || '', end: m?.end || v.end || '', sections: PREVIEW && m ? m.sections : v.sections, files: PREVIEW && m ? m.files : v.files || [] } : null), [v, m]);
   const plan = useMemo(() => (meeting ? sectionPlan(meeting) : new Map()), [meeting]);
@@ -862,7 +876,7 @@ export function Screen({ id, data, d, onBack = null }) {
       stage = html`<div class=${`bs-item bs-item--facts ${item.report ? 'has-report' : ''}`}>
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${whoList}</div></div>
         <div class="bs-item__facts">${facts}</div>
-        ${item.notes || item.report || coming ? html`<div class="bs-item__body">${item.notes ? html`<${Points} text=${item.notes} />` : null}${item.report ? html`<${ReportFit} text=${item.report} />` : null}${coming}</div>` : null}
+        ${item.notes || item.report || item.motion || coming ? html`<div class="bs-item__body">${item.notes ? html`<${Points} text=${item.notes} />` : null}${item.report ? html`<${ReportFit} text=${item.report} />` : null}<${ItemMotion} text=${item.motion} />${coming}</div>` : null}
       </div>`;
     } else if (item.report) {
       // A report: the item and who presents it along the top, the report filling the rest
@@ -870,18 +884,18 @@ export function Screen({ id, data, d, onBack = null }) {
       stage = html`<div class="bs-item bs-item--report">
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${whoList}</div></div>
         <${ReportFit} text=${item.report} cols=${mdWords(item.report) > 110 ? 2 : 1} />
-        ${item.notes || motion || coming ? html`<div class="bs-item__body">${motion}${item.notes ? html`<${Points} text=${item.notes} />` : null}${coming}</div>` : null}
+        ${item.notes || motion || item.motion || coming ? html`<div class="bs-item__body"><${ItemMotion} text=${item.motion} />${motion}${item.notes ? html`<${Points} text=${item.notes} />` : null}${coming}</div>` : null}
       </div>`;
     } else {
       // Approving the last minutes: the motion the board votes on, and how it went once the board page's vote closed
       const motion = item.live === 'minutes' ? html`<${MinutesMotion} item=${item} v=${v} />` : null;
-      const side = item.notes || coming || motion;
+      const side = item.notes || coming || motion || item.motion;
       // Nothing more to show: where it sits in its part, when the part has more than it
       const sec = stop.n >= 0 ? meeting.sections[items[stop.n].si] : null;
       const part = !side && sec?.items.length > 1 ? html`<${PartList} sec=${sec} items=${items} current=${item} people=${people} />` : null;
       stage = html`<div class=${`bs-item ${side || part ? 'bs-item--split' : 'bs-item--title'}`}>
         <div class="bs-item__lead">${head}${whoList}</div>
-        ${side ? html`<div class="bs-item__side">${motion}${item.notes ? html`<${Points} text=${item.notes} />` : null}${coming}</div>` : part ? html`<div class="bs-item__side">${part}</div>` : null}
+        ${side ? html`<div class="bs-item__side"><${ItemMotion} text=${item.motion} />${motion}${item.notes ? html`<${Points} text=${item.notes} />` : null}${coming}</div>` : part ? html`<div class="bs-item__side">${part}</div>` : null}
       </div>`;
     }
   } else {

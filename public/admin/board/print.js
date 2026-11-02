@@ -19,7 +19,7 @@ import {
   showsOf, booksDraw, isStatement,
 } from '../board-shared.js';
 import { moneyFor, moneyTiles, mixOf, shareOf, changeOf, storeOf, storeChange, budgetMonthsText, stepText, readChangeAs, changeIn, overIn } from './money.js';
-import { reportDom } from '../board-report.js';
+import { reportDom, motionDom } from '../board-report.js';
 import { h, render } from '../vendor.js';
 import { YearCompare } from './books.js';
 import { lineKeysOf, notesByKey, noteText } from './review.js';
@@ -281,6 +281,9 @@ function agendaPages(m, { people, numbers, meetings, money, lineNotes = {}, book
         box.append(el('p', 'bpp-report__by', ['Report', it.reportBy ? `by ${it.reportBy}` : ''].filter(Boolean).join(' ')), report);
         row.append(box);
       }
+      // What it asks the board to vote on
+      const motion = motionDom(it.motion);
+      if (motion) row.append(motion);
       // QuickBooks' year and statements under the first item showing the money; another shows its figures (as the screen)
       const bk = booked ? null : books;
       if (showsOf(it).includes('cash')) booked = true;

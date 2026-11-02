@@ -36,11 +36,12 @@ import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
   isLive, agendaItems, isFilled, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, MORE,
-  sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles,
+  sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew,
 } from './board-shared.js';
 import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
 import { printMinutesTemplate, downloadMinutesDocx } from './board-minutes-template.js';
 import { ReportEditor, Report } from './board-report.js';
+import { mdWords } from './board-md.js';
 import { BOOKS_TITLES } from './board/books.js';
 
 // What a person edits (the server keeps files, the packet's numbers and sent records, and done ticks)
@@ -545,6 +546,8 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
       !it.presenter && !it.who?.length && !it.showWho && { icon: 'person', label: 'Add who presents', run: () => setItem(si, ii, { showWho: true }) },
       { icon: 'doc', label: 'Add a document', run: () => setItem(si, ii, { showDocs: true }) },
       !it.report && !writing.has(it.id) && { icon: 'report', label: 'Write the report', run: () => write(it.id, true) },
+      // What the presenter asks the board to vote on: one line, on the board page, the screen, paper and the minutes template
+      !it.motion && !it.showMotion && { icon: 'report', label: 'Ask the board to vote', run: () => setItem(si, ii, { showMotion: true }) },
       // The live lists are on the item itself (Shows); here only the way in for an item that shows none yet
       it.live !== 'minutes' && !showsOf(it).length && !it.showShows && { icon: 'live', label: 'Show live numbers…', run: () => setItem(si, ii, { showShows: true }) },
       { divider: true },
@@ -557,6 +560,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
       ] },
       { divider: true },
       (it.notes || it.showNotes) && { icon: 'remove', label: 'Remove the background', run: () => clear('the background', it.notes, { notes: '', showNotes: false }) },
+      (it.motion || it.showMotion) && { icon: 'remove', label: 'Remove the motion', run: () => clear('the motion', it.motion, { motion: '', showMotion: false }) },
       (it.staffNote || it.showStaff) && { icon: 'remove', label: 'Remove your private note', run: () => clear('your private note', it.staffNote, { staffNote: '', showStaff: false }) },
       it.report && { icon: 'trash', label: 'Delete the report', danger: true, run: async () => { if (await ask({ title: `Delete the report on “${named}”?`, text: `${it.reportBy ? `${it.reportBy} wrote it. ` : ''}The board stops seeing it.`, yes: 'Delete', danger: true })) { write(it.id, false); setItem(si, ii, { report: '' }); refocus(it.id, '.agx-item__title'); } } },
       { icon: 'trash', label: 'Delete the item', danger: true, run: async () => {
@@ -664,13 +668,25 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
               ${it.showDocs ? html`<${DocAdder} free=${free} onPick=${(f) => set(withItem(it.id, (x) => ({ docs: [...(x.docs || []), f.id] })))} onUpload=${(list) => attach(it.id, list)} onDone=${() => setItem(si, ii, { showDocs: false })} />` : null}
             </div>` : null}
             ${writing.has(it.id) ? html`<div class="agx-report is-writing">
-              <${ReportEditor} value=${it.report} onChange=${(md) => setItem(si, ii, { report: md })} label=${`The report on ${it.title || 'this item'}`} autofocus minHeight=${150}
+              <${ReportEditor} value=${it.report} onChange=${(md) => setItem(si, ii, { report: md })} label=${`The report on ${it.title || 'this item'}`} autofocus minHeight=${150} starter=${true}
+                onNothing=${async (current) => {
+                  if (mdWords(current) && !isNothingNew(current) && !(await ask({ title: `Swap the report on “${it.title || 'this item'}” for “${NOTHING_NEW}”?`, text: 'The words written there go.', yes: 'Swap it', careful: true }))) return;
+                  setItem(si, ii, { report: NOTHING_NEW });
+                  write(it.id, false);
+                  refocus(it.id, '.agx-report__head button, .agx-item__title');
+                }}
                 status=${html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { write(it.id, false); refocus(it.id, '.agx-report__head button, .agx-item__title'); }}>Done</button>`} />
             </div>`
             : it.report ? html`<div class="agx-report">
               <div class="agx-report__head"><span class="agx-report__label">Report</span><span class="agx-report__by">${[it.reportBy, it.reportAt ? ago(it.reportAt) : ''].filter(Boolean).join(' · ')}</span>
                 <button type="button" class="btn btn-ghost btn-sm" aria-label=${`Edit the report on ${it.title || 'this item'}`} onClick=${() => write(it.id, true)}>Edit</button></div>
               <${Report} text=${it.report} clamp=${50} />
+            </div>` : null}
+            ${it.motion || it.showMotion ? html`<div class="agx-motion">
+              <label class="agx-motion__label" for=${`agx-mo-${it.id}`}>The board votes on</label>
+              <textarea id=${`agx-mo-${it.id}`} class="ag-input agx-motion__box" rows="1" maxlength="1000" value=${it.motion || ''} placeholder="Move to …"
+                ref=${(el) => { grow(el); if (el && it.showMotion && !it.motion && !el.dataset.focused) { el.dataset.focused = '1'; el.focus({ preventScroll: true }); } }}
+                onInput=${(e) => { grow(e.target); setItem(si, ii, { motion: e.target.value }); }} />
             </div>` : null}
             ${it.notes || it.showNotes ? html`<${NotesBox} label=${`Background for ${it.title || 'this item'}`} value=${it.notes} placeholder="Background for the board" onChange=${(v) => setItem(si, ii, { notes: v })} />` : null}
             ${it.staffNote || it.showStaff ? html`<p class="bd-private-label">Only ${others} see this</p><${NotesBox} tone="is-private" label="Your private note" value=${it.staffNote} placeholder="A private note" onChange=${(v) => setItem(si, ii, { staffNote: v })} />` : null}
@@ -1375,4 +1391,18 @@ function WrapUp({ m, set, ctx, act, save, keepSaved }) {
       </${Task}>
     </ol>
   </div>`;
+}
+
+// The motion under an item in the agenda editor (the editor's other styles are board-ui.js's)
+const MOTION_CSS = `
+.agx-motion { margin: 0.45rem 0 0.25rem 2.95rem; padding: 0.5rem 0.75rem 0.55rem; border-left: 4px solid var(--color-primary, #FFDA24); border-radius: 0 10px 10px 0; background: #FFFAE0; }
+.agx-motion__label { display: block; margin: 0 0 0.25rem; font-size: var(--fs-2xs, 0.72rem); font-weight: 750; letter-spacing: 0.07em; text-transform: uppercase; color: #765C00; }
+.agx-motion__box { display: block; width: 100%; min-height: 2.4rem; resize: none; background: #fff; font-weight: 600; }
+@media (max-width: 640px) { .agx-motion { margin-left: 0; } }
+`;
+if (typeof document !== 'undefined' && !document.getElementById('board-motion-css')) {
+  const st = document.createElement('style');
+  st.id = 'board-motion-css';
+  st.textContent = MOTION_CSS;
+  document.head.append(st);
 }

@@ -10,12 +10,15 @@
  * into what it says.
  *
  * Report draws one for reading (the board page, the live room, the screen);
- * reportDom draws one for paper (./board/print.js).
+ * reportDom draws one for paper (./board/print.js). A report that is only
+ * NOTHING_NEW ("Nothing new to report this time.") reads quietly in both.
+ * Motion and motionDom draw what the presenter asks the board to vote on
+ * (item.motion), under the report wherever it's read.
  */
 
 import { h, htm, useState, useEffect, useRef, Editor, StarterKit, TiptapLink, Placeholder, CharacterCount, DOMPurify } from './vendor.js';
 import { mdBlocks, mdInline, mdToDoc, docToMd, mdWords, safeHref } from './board-md.js';
-import { LIMITS } from './board-shared.js';
+import { LIMITS, NOTHING_NEW, isNothingNew } from './board-shared.js';
 
 const html = htm.bind(h);
 
@@ -92,6 +95,8 @@ function clip(blocks, max) {
  */
 export function Report({ text, level = 4, clamp = 0, cls = '' }) {
   const [all, setAll] = useState(false);
+  // Nothing new this time: said once, quietly
+  if (isNothingNew(text)) return html`<div class=${`rp rp--nothing ${cls}`}><p>${NOTHING_NEW}</p></div>`;
   const blocks = mdBlocks(text);
   if (!blocks.length) return null;
   const total = blocks.reduce((n, b) => n + wordsIn(b), 0);
@@ -106,12 +111,40 @@ export function Report({ text, level = 4, clamp = 0, cls = '' }) {
 
 /** "2 min read" (200 words a minute, at least 1) */
 export const readTime = (words) => `${Math.max(1, Math.round(words / 200))} min read`;
+/** "about 2 minutes to present" (read aloud, about 130 words a minute) */
+export const speakTime = (words) => {
+  const n = Math.round(words / 130);
+  return n < 1 ? 'under a minute to present' : `about ${n} ${n === 1 ? 'minute' : 'minutes'} to present`;
+};
+
+/** What the presenter asks the board to vote on (item.motion), as a callout under the report */
+export function Motion({ text, cls = '' }) {
+  const t = String(text || '').trim();
+  if (!t) return null;
+  return html`<div class=${`rp-motion ${cls}`}><p class="rp-motion__label">The board votes on</p><p class="rp-motion__text">${t}</p></div>`;
+}
+/** The same on paper */
+export function motionDom(text) {
+  const t = String(text || '').trim();
+  if (!t) return null;
+  const box = document.createElement('div');
+  box.className = 'rp-motion';
+  const label = document.createElement('p');
+  label.className = 'rp-motion__label';
+  label.textContent = 'The board votes on';
+  const what = document.createElement('p');
+  what.className = 'rp-motion__text';
+  what.textContent = t;
+  box.append(label, what);
+  return box;
+}
 
 /** A report on paper: the same blocks as elements (text only, nothing from it read as HTML) */
 export function reportDom(text, { level = 4 } = {}) {
+  const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+  if (isNothingNew(text)) { const w = el('div', 'rp rp--nothing'); const p = el('p'); p.textContent = NOTHING_NEW; w.append(p); return w; }
   const blocks = mdBlocks(text);
   if (!blocks.length) return null;
-  const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
   const runs = (parent, t) => {
     for (const r of mdInline(t)) {
       if (r.br) { parent.append(el('br')); continue; }
@@ -231,9 +264,12 @@ const LOOKS_MD = /(^|\n)\s{0,3}(#{1,6}\s|[-*+•]\s|\d{1,3}[.)]\s|>\s)|\*\*[^*\n
 /**
  * Where a report is written. `value` is Markdown; `onChange(md)` hears every change. `resetKey`: a new one puts
  * `value` in even while someone's typing (taking a newer version someone else saved). `status`: what saving says,
- * at the foot. The toolbar stays in view under `stickyTop` while a long report scrolls.
+ * at the foot, beside how long it takes to present. The toolbar stays in view under `stickyTop` while a long report
+ * scrolls. `starter`: an empty report offers an outline to fill in (three headings); `onNothing`: a "Nothing to report
+ * this time" at the foot (the page decides what happens, asking first when there are words)
  */
-export function ReportEditor({ value, onChange, label = 'The report', placeholder = 'What happened, what the board needs to decide, and what’s next', autofocus = false, resetKey = 0, status = null, stickyTop = '0px', minHeight = 220, onBlur }) {
+export const OUTLINE = ['What we did', 'What the board needs to decide', 'What’s next'];
+export function ReportEditor({ value, onChange, label = 'The report', placeholder = 'What happened, what the board needs to decide, and what’s next', autofocus = false, resetKey = 0, status = null, stickyTop = '0px', minHeight = 220, onBlur, starter = false, onNothing = null }) {
   const ed = useRef(null);
   const last = useRef(value || '');
   const change = useRef(onChange);
@@ -363,6 +399,14 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
   };
   const words = e ? mdWords(last.current) : 0;
   const full = !!e && e.storage.characterCount.characters() >= REPORT_LETTERS;
+  // The outline: its three headings with a line to write under each, the caret under the first
+  const outline = () => {
+    if (!e) return;
+    const content = OUTLINE.flatMap((t) => [{ type: 'heading', attrs: { level: 3 }, content: [{ type: 'text', text: t }] }, { type: 'paragraph' }]);
+    e.commands.setContent({ type: 'doc', content }, true);
+    e.chain().focus().setTextSelection(e.state.doc.child(0).nodeSize + 1).run();
+  };
+  const nothing = isNothingNew(last.current);
   return html`<div class="rp-editor" style=${`--rp-sticky:${stickyTop}`}>
     <div class="rp-bar" role="toolbar" aria-label=${`Formatting for ${label.toLowerCase()}`} onKeyDown=${roveKeys} onFocusIn=${roveFocus}>
       ${btn('heading', `Heading (${MOD}Alt+3, or ### then a space)`, on('heading'), (c) => c.toggleHeading({ level: 3 }))}
@@ -388,7 +432,11 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
     </div>
     <div class="rp-page" ref=${mount} style=${`min-height:${minHeight}px`} onClick=${(ev) => { if (ev.target === ev.currentTarget) e?.commands.focus('end'); }}></div>
     <div class="rp-foot">
-      <span class="rp-foot__count" aria-live="off">${full ? html`<strong class="rp-full" role="status">That’s as long as a report can be</strong>` : words ? `${words} ${words === 1 ? 'word' : 'words'} · ${readTime(words)}` : html`<span class="rp-hint">Markdown works: <kbd>###</kbd> a heading, <kbd>-</kbd> points, <kbd>1.</kbd> a list, <kbd>**bold**</kbd></span>`}</span>
+      <span class="rp-foot__count" aria-live="off">${full ? html`<strong class="rp-full" role="status">That’s as long as a report can be</strong>` : words && !nothing ? `${words} ${words === 1 ? 'word' : 'words'} · ${speakTime(words)}` : html`<span class="rp-hint">Markdown works: <kbd>###</kbd> a heading, <kbd>-</kbd> points, <kbd>1.</kbd> a list, <kbd>**bold**</kbd></span>`}</span>
+      ${(starter && !words) || (onNothing && !nothing) ? html`<span class="rp-foot__acts">
+        ${starter && !words ? html`<button type="button" class="rp-foot__btn" onMouseDown=${(ev) => ev.preventDefault()} onClick=${outline}>Start with an outline</button>` : null}
+        ${onNothing && !nothing ? html`<button type="button" class="rp-foot__btn" onMouseDown=${(ev) => ev.preventDefault()} onClick=${() => onNothing(last.current)}>Nothing to report this time</button>` : null}
+      </span>` : null}
       ${status ? html`<span class="rp-foot__status">${status}</span>` : null}
     </div>
   </div>`;
@@ -421,6 +469,13 @@ const CSS = `
 .rp-more { display: inline-flex; align-items: center; margin-top: 0.15rem; padding: 0.35rem 0.75rem; border: 1px solid var(--rp-line); border-radius: 999px; background: var(--card, #fff); color: var(--rp-ink); font: inherit; font-size: 0.88rem; font-weight: 650; cursor: pointer; }
 .rp-more:hover { border-color: var(--rp-ink); }
 .rp-more__n { color: var(--rp-muted); font-weight: 500; }
+.rp--nothing p { margin: 0; color: var(--rp-muted); font-style: italic; }
+.rp-motion { margin: 0.8rem 0 0; padding: 0.65rem 0.95rem 0.7rem; border-left: 4px solid var(--yellow, #FFDA24); border-radius: 0 12px 12px 0; background: var(--yellow-wash, #FFFAE0); }
+.rp-motion__label { margin: 0 0 0.15rem; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold, #765C00); }
+.rp-motion__text { margin: 0; color: var(--ink, var(--color-text, #2D2F2C)); font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.rp-foot__acts { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; }
+.rp-foot__btn { min-height: 32px; padding: 0 0.75rem; border: 1px solid var(--line-2, var(--color-border-strong, #D3D0C7)); border-radius: 999px; background: var(--card, #fff); color: var(--ink-2, var(--color-text, #4E504C)); font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+.rp-foot__btn:hover { border-color: var(--ink, var(--color-text, #2D2F2C)); color: var(--ink, var(--color-text, #2D2F2C)); }
 
 .rp-editor { --rp-line: var(--line, var(--color-border, #E7E5DE)); position: relative; border: 1px solid var(--line-2, var(--color-border-strong, #D3D0C7)); border-radius: 14px; background: var(--card, var(--color-bg-card, #fff)); }
 .rp-editor:focus-within { border-color: var(--ink, var(--color-text, #2D2F2C)); box-shadow: 0 0 0 3px rgba(45,47,44,0.08); }
@@ -449,7 +504,7 @@ const CSS = `
 .rp-foot__status { margin-left: auto; }
 /* A phone: the tools in one row, a finger's size (its own undo is the phone's: shake, or three fingers) */
 @media (max-width: 640px) { .rp-bar { flex-wrap: nowrap; gap: 0; } .rp-tool { width: 40px; height: 40px; flex: none; } .rp-sep { margin: 0 2px; } .rp-bar__end { display: none; } .rp-link { flex-wrap: wrap; } .rp-bar:has(.rp-link) { flex-wrap: wrap; } .rp-page { padding: 0.85rem 0.9rem 0.5rem; } .rp-foot { padding: 0.45rem 0.9rem 0.6rem; } }
-@media print { .rp a { text-decoration: none; } .rp .rp-callout { background: none; } }
+@media print { .rp a { text-decoration: none; } .rp .rp-callout, .rp-motion { background: none; } }
 `;
 if (typeof document !== 'undefined' && !document.getElementById('board-report-css')) {
   const s = document.createElement('style');

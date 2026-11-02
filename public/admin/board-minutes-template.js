@@ -52,6 +52,8 @@ export function minutesOutline(m, { meetings = [], quorum = 0, people = [] } = {
           title: listed.get(it.id)?.title || it.title || 'Item',
           presenter: namesText(presentersOf(it, people).map((p) => p.name)),
           minutes: it.live === 'minutes',
+          // What its presenter asks the board to vote on (item.motion): the secretary records how it went
+          motion: String(it.motion || '').trim(),
         })),
       };
     }),
@@ -103,6 +105,10 @@ function documentXml(o) {
     if (!part.items.length) { body.push(para('', { style: 'Item', level: 1 })); continue; }
     for (const it of part.items) {
       body.push(para(`${run(it.title)}${it.presenter ? run(` (${it.presenter})`, { color: MUTED }) : ''}`, { style: 'Item', level: 1 }));
+      if (it.motion) {
+        body.push(para(`${run('Motion: ', { b: true })}${run(it.motion)}`, { style: 'Note', level: 2 }));
+        body.push(para(run('Moved by:            Seconded by:            For:      Against:      Abstain:      Passed / Failed', { color: MUTED }), { style: 'Fact' }));
+      }
       body.push(para('', { style: 'Note', level: 2 }));
     }
   }
@@ -253,6 +259,8 @@ const PRINT_CSS = `
   .mt-motion { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 0.3rem 0.9rem; margin: 0.35rem 0 0 2.4rem; padding: 0.45rem 0.6rem; border: 1px solid #999; border-radius: 4px; }
   .mt-motion .mt-blank { flex: 1 1 9rem; min-height: 1.3rem; }
   .mt-motion__what { flex: 1 1 100%; margin: 0; font-weight: 650; }
+  .mt-motion__label { font-size: 8pt; text-transform: uppercase; letter-spacing: 0.06em; color: #555; font-weight: 650; }
+  .mt-motion .mt-blank--n { flex: 0 1 5.5rem; }
   .mt-choices { display: inline-flex; gap: 0.75rem; }
   .mt-choice { display: inline-flex; align-items: center; gap: 0.3rem; }
   .mt-log { width: 100%; border-collapse: collapse; font-size: 9.5pt; }
@@ -324,6 +332,12 @@ export async function printMinutesTemplate(m, opts = {}) {
         const mo = el('div', 'mt-motion');
         mo.append(el('p', 'mt-motion__what', 'Motion to approve these minutes'), blank('Moved by'), blank('Seconded by'), choices(['Passed', 'Failed', 'Tabled']));
         item.append(mo, lines(1));
+      } else if (it.motion) {
+        const mo = el('div', 'mt-motion');
+        const what = el('p', 'mt-motion__what');
+        what.append(el('span', 'mt-motion__label', 'The board votes on '), document.createTextNode(it.motion));
+        mo.append(what, blank('Moved by'), blank('Seconded by'), blank('For', 'mt-blank--n'), blank('Against', 'mt-blank--n'), blank('Abstain', 'mt-blank--n'), choices(['Passed', 'Failed']));
+        item.append(mo, lines(2));
       } else item.append(lines(3));
       sec.append(item);
     }

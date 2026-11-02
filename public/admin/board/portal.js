@@ -32,11 +32,12 @@ import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
   isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
   reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
+  NOTHING_NEW, isNothingNew,
 } from '../board-shared.js';
 import { YearCompare } from './books.js';
-import { FinanceReview, NoteLine, notesByKey, lineKeysOf, withLineNotes } from './review.js';
+import { FinanceReview, NoteLine, notesByKey, lineKeysOf, withLineNotes, dueText } from './review.js';
 import { ChairReview, reviewTodo, ChairNoteLine } from './chair.js';
-import { Report, ReportEditor, readTime } from '../board-report.js';
+import { Report, ReportEditor, readTime, Motion } from '../board-report.js';
 import { mdPlain, mdWords } from '../board-md.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
@@ -501,6 +502,8 @@ function App() {
       if (e.origin !== location.origin || e.source !== window.parent) return;
       const msg = e.data || {};
       if (msg.type === 'board-preview' && msg.meeting?.id) setData((dd) => (dd ? withDraft(dd, msg.meeting) : dd));
+      // The report page's own preview: one item's report and motion as they're typed (nothing else of the meeting)
+      if (msg.type === 'board-preview-item' && msg.meetingId && msg.itemId) setData((dd) => (dd ? withItem(dd, msg.meetingId, msg.itemId, { report: String(msg.report ?? ''), motion: String(msg.motion ?? ''), ...(msg.reportBy ? { reportBy: String(msg.reportBy) } : {}) }) : dd));
       if (msg.type === 'board-preview-focus' && msg.itemId) previewFocus(msg.itemId);
     };
     addEventListener('message', on);
@@ -1284,7 +1287,7 @@ function MyAction({ a, ctx }) {
 function meetingTexts(m) {
   return [
     { where: '', text: [meetingName(m), longDate(m.date), m.location].join(' ') },
-    ...m.sections.flatMap((s) => [{ where: s.title, text: s.title, body: '', id: `s-${s.id}` }, ...s.items.map((it) => ({ where: it.title || s.title, text: [it.title, it.presenter, it.notes, mdPlain(it.report)].join(' '), body: [it.presenter, notesLine(it.notes) || notesLine(mdPlain(it.report))].filter(Boolean).join(' · '), id: `i-${it.id}` }))]),
+    ...m.sections.flatMap((s) => [{ where: s.title, text: s.title, body: '', id: `s-${s.id}` }, ...s.items.map((it) => ({ where: it.title || s.title, text: [it.title, it.presenter, it.notes, mdPlain(it.report), it.motion].join(' '), body: [it.presenter, notesLine(it.notes) || notesLine(mdPlain(it.report))].filter(Boolean).join(' · '), id: `i-${it.id}` }))]),
     // A decision by its words and by who moved and seconded it
     ...m.motions.map((x, k) => ({ where: 'Decision', text: [x.text, x.by, x.second].join(' '), body: [x.text, x.by && `moved by ${x.by}`, x.second && `seconded by ${x.second}`].filter(Boolean).join(' · '), id: `mo-${x.id || k}` })),
     ...m.actions.map((a) => ({ where: 'Action item', text: [a.text, a.ownerName].join(' '), body: [a.text, a.ownerName].filter(Boolean).join(' · '), id: 'actions' })),
@@ -1437,16 +1440,23 @@ function reportsToWrite(ctx) {
     .flatMap((m) => m.sections.flatMap((s) => s.items).filter((it) => reportsOn(it) && !it.report && canWrite(m, it, ctx)).map((it) => ({ m, it })));
 }
 
-/** An item's report on the meeting's page: who wrote it and when, then its words; its presenter writes or edits it from here */
-function ItemReport({ m, it, ctx, upcoming }) {
-  const mine = canWrite(m, it, ctx);
+/**
+ * An item's report on the meeting's page: who wrote it and when, then its words, then what it asks the board to vote on
+ * (item.motion); its presenter writes or edits it from here. `preview`: drawn beside the report as it's written (no
+ * way in to write it: they're there)
+ */
+function ItemReport({ m, it, ctx, upcoming, preview = false }) {
+  const mine = !preview && canWrite(m, it, ctx);
+  const motion = it.motion ? html`<${Motion} text=${it.motion} cls="bp-report__motion" />` : null;
   if (!it.report) {
-    return mine && upcoming && reportsOn(it) ? html`<a class="bp-report-ask" href=${reportHref(m, it)}><${Icon} name="edit" size=${18} /><span>Write your report<small>The board reads it here before the meeting</small></span></a>` : null;
+    const ask = mine && upcoming && reportsOn(it) ? html`<a class="bp-report-ask" href=${reportHref(m, it)}><${Icon} name="edit" size=${18} /><span>Write your report<small>The board reads it here before the meeting</small></span></a>` : null;
+    return ask || motion ? html`${ask}${motion}` : null;
   }
-  return html`<section class="bp-report" aria-label=${`The report on ${it.title}`}>
+  return html`<section class=${`bp-report ${isNothingNew(it.report) ? 'is-nothing' : ''}`} aria-label=${`The report on ${it.title}`}>
     <p class="bp-report__by"><span class="bp-report__label">Report</span>${it.reportBy ? html`<span>by ${it.reportBy}${it.reportAt ? `, ${dayShort(it.reportAt)}` : ''}</span>` : null}
       ${mine ? html`<a class="bp-report__edit" href=${reportHref(m, it)} aria-label=${`Edit your report on ${it.title}`}><${Icon} name="edit" size=${15} />Edit</a>` : null}</p>
     <${Report} text=${it.report} clamp=${upcoming ? 160 : 90} />
+    ${motion}
   </section>`;
 }
 
@@ -1484,11 +1494,13 @@ const SENT = new Map();
 const sentByMe = (key, text) => { const l = SENT.get(key) || []; l.push(text); SENT.set(key, l.slice(-12)); };
 const wasMine = (key, text) => (SENT.get(key) || []).includes(text);
 
-/** One item changed in the page's copy of the meetings (a report just saved) */
-const withReport = (data, meetingId, itemId, r) => {
-  const put = (m) => (m.id !== meetingId ? m : { ...m, sections: m.sections.map((s) => ({ ...s, items: s.items.map((it) => (it.id === itemId ? { ...it, report: r.report, reportBy: r.reportBy, reportAt: r.reportAt } : it)) })) });
-  return { ...data, meetings: data.meetings.map(put), ...(data.previews ? { previews: data.previews.map(put) } : {}) };
+/** One item changed in the page's copy of the meetings: the board's, the founders' previews, the ones ahead they present */
+const withItem = (data, meetingId, itemId, patch) => {
+  const put = (m) => (m.id !== meetingId ? m : { ...m, sections: m.sections.map((s) => ({ ...s, items: s.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)) })) });
+  return { ...data, meetings: data.meetings.map(put), ...(data.previews ? { previews: data.previews.map(put) } : {}), ...(data.presenting ? { presenting: data.presenting.map(put) } : {}) };
 };
+/** A report just saved */
+const withReport = (data, meetingId, itemId, r) => withItem(data, meetingId, itemId, { report: r.report, reportBy: r.reportBy, reportAt: r.reportAt });
 
 /** A document put with an item (or taken off): the item's documents as the server has them, the file added or gone */
 const withDocs = (data, meetingId, itemId, docs, { add = null, gone = '' } = {}) => {
@@ -1501,10 +1513,173 @@ const withDocs = (data, meetingId, itemId, docs, { add = null, gone = '' } = {})
 };
 const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.docx,.xlsx,.pptx,.doc,.xls,.ppt';
 
+/** Where a report stands, for the top of its page: due, late, in, or nothing new this time → { tone, text } | null */
+function reportStanding(m, it, data) {
+  if (isNothingNew(it.report)) return { tone: 'ok', text: 'Nothing new this time' };
+  if (String(it.report || '').trim()) return { tone: 'ok', text: m.shared === false ? 'In' : 'In · the board can read it' };
+  const a = (data.myAsks || []).find((x) => x.meetingId === m.id && x.itemId === it.id);
+  if (!a?.due) return null;
+  return a.status === 'late' || Date.parse(a.due) <= Date.now() ? { tone: 'warn', text: `Late, was due ${dueText(a.due)}` } : { tone: '', text: `Due ${dueText(a.due)}` };
+}
+
 /**
- * Writing a report, on a page of its own: the item it's on, who presents it, the editor (./board-report.js). It saves
- * a moment after they stop typing, and when they leave; a newer one someone else saved meanwhile is never written
- * over: they see it and choose. Done goes back to the item on the meeting.
+ * The same item at an earlier meeting, with a report to start from: by its title (any case or punctuation), else by
+ * what it shows live (the money, the makeovers); the newest first → { m, it } or null
+ */
+function lastTime(data, m, it) {
+  const norm = (t) => String(t || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+  const earlier = [...data.meetings].filter((x) => x.id !== m.id && isDate(x.date) && x.date < m.date && !x.practice).sort((a, b) => b.date.localeCompare(a.date));
+  for (const x of earlier) {
+    const written = x.sections.flatMap((s) => s.items).filter((y) => String(y.report || '').trim() && !isNothingNew(y.report));
+    const hit = written.find((y) => norm(it.title) && norm(y.title) === norm(it.title)) || (it.live ? written.find((y) => y.live === it.live) : null);
+    if (hit) return { m: x, it: hit };
+  }
+  return null;
+}
+
+/** A box that has the caret the moment it's there (a ref, not an effect: an effect runs a frame late, after the first keys) */
+const focusIn = (el) => { if (el && !el.dataset.focused) { el.dataset.focused = '1'; el.focus({ preventScroll: true }); if (typeof el.setSelectionRange === 'function') el.setSelectionRange(el.value.length, el.value.length); } };
+
+/**
+ * What the presenter asks the board to vote on (item.motion): asked for with one tap, saved a moment after they stop
+ * typing and when the box loses the focus, then shown as the board reads it. `onDraft(text)`: each change, for the
+ * preview beside it
+ */
+function MotionBox({ m, it, ctx, onDraft }) {
+  const { setData } = ctx;
+  const [editing, setEditing] = useState(false);
+  const [text, setText] = useState(it.motion || '');
+  const [st, setSt] = useState('');
+  const sent = useRef((it.motion || '').trim());
+  const latest = useRef(text);
+  latest.current = text;
+  const timer = useRef(0);
+  const busy = useRef(null);
+  const body = (words) => ({ action: 'motion', meetingId: m.id, itemId: it.id, text: words });
+  const save = async () => {
+    clearTimeout(timer.current);
+    if (busy.current) await busy.current;
+    const words = latest.current.trim();
+    if (words === sent.current) { setSt((x) => (x === 'waiting' ? 'saved' : x)); return true; }
+    setSt('saving');
+    busy.current = call(body(words));
+    const j = await busy.current;
+    busy.current = null;
+    if (!j.ok) { setSt(j.error || 'Couldn’t save'); return false; }
+    const kept = typeof j.motion === 'string' ? j.motion : words;
+    sent.current = kept.trim();
+    setData((dd) => withItem(dd, m.id, it.id, { motion: kept }));
+    if (latest.current.trim() !== words) { setSt('waiting'); timer.current = setTimeout(save, 400); } else setSt('saved');
+    return true;
+  };
+  useEffect(() => {
+    // The page going: what's typed goes, blind
+    const flush = () => {
+      const words = latest.current.trim();
+      if (words === sent.current) return;
+      try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body(words)) }); } catch { /* the page is going */ }
+    };
+    addEventListener('pagehide', flush);
+    return () => { removeEventListener('pagehide', flush); clearTimeout(timer.current); if (latest.current.trim() !== sent.current) save(); };
+  }, []);
+  const type = (v) => { setText(v); latest.current = v; onDraft(v); setSt('waiting'); clearTimeout(timer.current); timer.current = setTimeout(save, 900); };
+  const done = async () => { if (await save()) { setEditing(false); requestAnimationFrame(() => document.querySelector('.bp-rp__motion-again, .bp-rp__motion-add')?.focus()); } };
+  const off = async () => { type(''); if (await save()) { setEditing(false); requestAnimationFrame(() => document.querySelector('.bp-rp__motion-add')?.focus()); } };
+  const status = st === 'saving' ? 'Saving…' : st === 'waiting' ? 'Saving in a moment' : st === 'saved' ? (sent.current ? 'Saved' : 'Taken off') : st
+    ? html`<span class="bp-rp__err" role="alert">Not saved: ${st} <button type="button" class="bp-linkbtn" onClick=${save}>Try again</button></span>` : '';
+  if (!editing && !text.trim()) {
+    return html`<button type="button" class="bp-rp__motion-add" onClick=${() => setEditing(true)}><span class="bp-rp__motion-plus" aria-hidden="true">+</span>Ask the board to vote</button>`;
+  }
+  if (!editing) {
+    return html`<div class="bp-rp__motion">
+      <${Motion} text=${text} />
+      <p class="bp-rp__motion-btns"><button type="button" class="bp-linkbtn bp-rp__motion-again" onClick=${() => setEditing(true)}>Change the motion</button><button type="button" class="bp-linkbtn" onClick=${off}>Take it off</button></p>
+    </div>`;
+  }
+  return html`<div class="bp-rp__motion is-editing">
+    <label class="bp-rp__motion-label" for="rp-motion">The board votes on</label>
+    <textarea id="rp-motion" ref=${focusIn} rows="2" maxlength="1000" value=${text} placeholder="Move to …"
+      onInput=${(e) => type(e.target.value)} onBlur=${() => save()} onKeyDown=${(e) => { if (e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key === 'Enter')) { e.preventDefault(); done(); } }}></textarea>
+    <div class="bp-rp__motion-foot">
+      <span class="bp-rp__motion-st" aria-live="polite">${status}</span>
+      <span class="bp-rp__motion-end">${text.trim() ? html`<button type="button" class="bp-linkbtn" onClick=${off}>Take it off</button>` : null}<button type="button" class="bp-btn bp-btn--sm bp-btn--primary" onClick=${done}>Done</button></span>
+    </div>
+  </div>`;
+}
+
+/**
+ * The screen as the room will see it: the real presentation (./screen.js) in a frame at its own 1280 × 720, scaled to
+ * the column, sent the report and the motion as they're typed; it says back whether the report fits on its slide
+ */
+function ScreenFrame({ m, it, report, motion, by }) {
+  const frame = useRef(null);
+  const ready = useRef(false);
+  const holder = useRef(null);
+  const [w, setW] = useState(0);
+  const [fit, setFit] = useState(null);
+  const now = useRef(null);
+  now.current = { report, motion, reportBy: by };
+  const src = `${location.pathname}?preview#/meetings/${encodeURIComponent(m.id)}/screen`;
+  const post = (msg) => frame.current?.contentWindow?.postMessage(msg, location.origin);
+  const send = () => post({ type: 'board-preview-item', meetingId: m.id, itemId: it.id, ...now.current });
+  useEffect(() => {
+    const el = holder.current;
+    if (!el) return undefined;
+    const measure = () => setW(el.clientWidth);
+    measure();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    return () => ro?.disconnect();
+  }, []);
+  useEffect(() => {
+    const on = (e) => {
+      if (e.origin !== location.origin || e.source !== frame.current?.contentWindow) return;
+      const x = e.data || {};
+      if (x.type === 'board-preview-ready') { ready.current = true; send(); post({ type: 'board-preview-focus', itemId: it.id }); }
+      if (x.type === 'board-preview-fit') setFit(x);
+    };
+    addEventListener('message', on);
+    return () => removeEventListener('message', on);
+  }, []);
+  useEffect(() => { if (ready.current) send(); }, [report, motion]);
+  const scale = w ? w / 1280 : 0;
+  const words = String(report || '').trim() && !isNothingNew(report);
+  const fitLine = !words || !fit ? '' : fit.cut ? `The screen shows about the first ${fit.shown} words. The whole report is on the board page.` : 'Fits on one slide.';
+  return html`<div class="bp-rp__screen" ref=${holder} style=${scale ? `height:${Math.round(720 * scale)}px` : null}>
+      ${scale ? html`<iframe ref=${frame} src=${src} title="The screen, as the room will see it" tabindex="-1" style=${`width:1280px;height:720px;transform:scale(${scale})`}></iframe>` : null}
+    </div>
+    <p class=${`bp-rp__fit ${fit?.cut && words ? 'is-cut' : ''}`} aria-live="polite">${fitLine}</p>`;
+}
+
+/** Beside the report as it's written: the item on the board page, or the screen, as the board will see them */
+const PREVIEW_AS = [['page', 'Board page'], ['screen', 'Screen']];
+function ReportPreview({ m, it, ctx, draft }) {
+  const { data } = ctx;
+  const [as, setAs] = useState(() => { try { return localStorage.getItem('bp-rp-preview') === 'screen' ? 'screen' : 'page'; } catch { return 'page'; } });
+  const pick = (k) => { setAs(k); try { localStorage.setItem('bp-rp-preview', k); } catch { /* private browsing */ } };
+  const s = m.sections.find((x) => x.items.some((y) => y.id === it.id)) || m.sections[0];
+  const label = agendaItems(m).find((x) => x.id === it.id)?.label || '';
+  const upcoming = m.date >= data.today;
+  const numbers = m.snapshot || (upcoming ? data.numbers : null);
+  const moneyFirst = m.sections.flatMap((x) => x.items).find((y) => showsOf(y).includes('cash'))?.id || '';
+  return html`<div class="bp-rp__pv">
+    <div class="bp-rp__pv-bar">
+      <h2 class="bp-mini-h" id="rp-pv-h">How the board sees it</h2>
+      <div class="bp-impact__seg" role="group" aria-label="Show it on">${PREVIEW_AS.map(([k, l]) => html`<button type="button" key=${k} aria-pressed=${as === k} onClick=${() => pick(k)}>${l}</button>`)}</div>
+    </div>
+    ${as === 'screen' ? html`<${ScreenFrame} m=${m} it=${it} report=${draft.report} motion=${draft.motion} by=${draft.reportBy} />`
+      : html`<div class="bp-rp__card"><ol class="bp-agitems"><${AgendaItem} m=${m} s=${s} it=${draft} ctx=${ctx} label=${label} numbers=${numbers} upcoming=${upcoming} moneyFirst=${moneyFirst} preview=${true} /></ol></div>`}
+  </div>`;
+}
+
+/**
+ * Writing a report, on a page of its own: the item it's on, who presents it and where the report stands (due, late, in),
+ * the editor (./board-report.js), what the item asks the board to vote on, and beside it all, the item as the board
+ * will see it as it's typed (on the board page, or on the screen). It saves a moment after they stop typing, and when
+ * they leave; a newer one someone else saved meanwhile is never written over: they see it and choose. An empty report
+ * offers last time's to start from, or an outline; "Nothing to report this time" is one tap (asking first when there
+ * are words, which come back with "Write a report instead"). On a phone, Write and Preview are a switch. Done goes back
+ * to the item on the meeting.
  */
 function ReportPage({ id, itemId, ctx }) {
   const { data, d, setData } = ctx;
@@ -1534,6 +1709,11 @@ function ReportPage({ id, itemId, ctx }) {
   const stuckRef = useRef('');
   stuckRef.current = stuck;
   const failing = useRef(false); // the last save didn't go through
+  const [motion, setMotion] = useState(it?.motion || ''); // what it asks the board to vote on, as it's typed (the preview's)
+  const [view, setView] = useState('write'); // a phone's switch: write | preview
+  const [asking, setAsking] = useState(false); // "Swap your report for Nothing new…?" open
+  const before = useRef(''); // the words a "Nothing to report" took the place of, back with "Write a report instead"
+  const last = useMemo(() => (m && it ? lastTime(data, m, it) : null), [m?.id, it?.id]);
   const [adding, setAdding] = useState(''); // the file being put with it
   const [offering, setOffering] = useState(''); // the file asking "take it off for good?"
   const [dropping, setDropping] = useState(false);
@@ -1663,6 +1843,24 @@ function ReportPage({ id, itemId, ctx }) {
     toItem();
     location.hash = back;
   };
+  // Words put in from outside the editor (last time's, back from a "Nothing to report"): in the editor at once
+  const putIn = (md) => { changed(md); setReset((n) => n + 1); };
+  const nothing = isNothingNew(text);
+  const nothingNow = () => {
+    before.current = latest.current;
+    setAsking(false);
+    changed(NOTHING_NEW);
+    save();
+    requestAnimationFrame(() => document.querySelector('.bp-rp__nothing .bp-btn')?.focus());
+  };
+  // There are words: asked first (they come back with "Write a report instead")
+  const askNothing = (current) => { if (mdWords(current || '') > 0 && !isNothingNew(current)) setAsking(true); else nothingNow(); };
+  const writeInstead = () => { putIn(isNothingNew(before.current) ? '' : before.current); save(); toEditor(); };
+  const startFrom = () => { putIn(last.it.report); toEditor(); };
+  const myName = d.me?.name || (data.me.as ? d.bySlug.get(data.me.as)?.name : '') || '';
+  // The item as the board will see it, with what's typed (saved or not)
+  const draft = { ...it, report: text, motion, reportBy: it.reportBy || myName, reportAt: it.reportAt || new Date().toISOString() };
+  const standing = reportStanding(m, it, data);
   const copy = async () => {
     try { await navigator.clipboard.writeText(latest.current); ctx.say('Your words are copied'); } catch { ctx.say('Select the words and copy them', 'warn'); }
   };
@@ -1702,21 +1900,27 @@ function ReportPage({ id, itemId, ctx }) {
     : st.s === 'error' ? html`<span class="bp-rp__err" role="alert">Not saved: ${st.why}. It tries again by itself. <button type="button" class="bp-link" onClick=${save}>Try now</button></span>`
     : st.s === 'stuck' ? html`<span class="bp-rp__err">Not saved</span>`
     : st.cut ? html`<span class="bp-rp__err" role="alert">${savedAt}, but it’s too long: its end was cut</span>` : savedAt;
-  return html`<div class=${`bp-rp ${dropping ? 'is-dropping' : ''}`} ...${dropOn}>
+  return html`<div class=${`bp-rp ${mine ? 'has-preview' : ''} is-${view} ${dropping ? 'is-dropping' : ''}`} ...${dropOn}>
     <a class="bp-back" href=${back} onClick=${mine ? leave : toItem}><${Icon} name="back" size=${18} />${meetingName(m)}</a>
     <header class="bp-rp__head">
       <p class="bp-eyebrow">${at.label} · ${at.section || 'Agenda'}<span class="bp-soon">${m.date === data.today ? 'Today' : dayOf(m.date)}</span></p>
       <h1 class="bp-rp__title">${it.title}</h1>
-      ${who.length ? html`<div class="bp-rp__who"><${Presenters} people=${who} /></div>` : null}
+      ${who.length || standing ? html`<div class="bp-rp__who">${who.length ? html`<${Presenters} people=${who} />` : null}
+        ${standing ? html`<span class=${`bp-chip ${standing.tone ? `bp-chip--${standing.tone}` : ''} bp-rp__standing`}>${standing.tone === 'ok' ? html`<${Icon} name="check" size=${14} />` : null}${standing.text}</span>` : null}</div>` : null}
     </header>
     ${showsOf(it).includes('cash') ? html`<${FinanceReview} books=${m.date < data.today ? m.snapshot?.books : data.numbers?.books} meeting=${m} item=${it}
-      notes=${data.lineNotes?.[m.id]?.[it.id] || []} due=${(data.myAsks || []).find((a) => a.meetingId === m.id && a.itemId === it.id) || null} canEdit=${mine}
+      notes=${data.lineNotes?.[m.id]?.[it.id] || []} due=${null} canEdit=${mine}
       onSaved=${(list) => setData((dd) => withLineNotes(dd, m.id, it.id, list))} />` : null}
     ${!mine ? html`<div class="bp-card bp-rp__read">
         ${it.report ? html`<${Report} text=${it.report} />` : html`<p class="bp-muted">No report on this item yet.</p>`}
+        <${Motion} text=${it.motion} />
         <p class="bp-muted bp-rp__note">${m.minutes === 'approved' ? 'This meeting’s minutes are approved, so its reports stay as they were.' : who.length ? `Only ${who.map((p) => p.name.split(' ')[0]).join(' and ')} can write this one.` : 'Nobody presents this item, so it has no report to write.'}</p>
       </div>`
-    : html`
+    : html`<div class="bp-rp__cols">
+    <div class="bp-rp__write">
+      <div class="bp-impact__seg bp-rp__switch" role="group" aria-label="Write or see it as the board will">
+        ${[['write', 'Write'], ['preview', 'Preview']].map(([k, l]) => html`<button type="button" key=${k} aria-pressed=${view === k} onClick=${() => setView(k)}>${l}</button>`)}
+      </div>
       ${clash ? html`<div class="bp-rp__clash" role="alert">
         <p><strong>${clash.reportBy || 'Someone'} changed this report${clash.reportAt ? ` at ${new Date(clash.reportAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}</strong> while you were writing. Which one should the board read?</p>
         <details class="bp-rp__theirs"><summary>See ${clash.reportBy ? `${clash.reportBy.split(' ')[0]}’s` : 'their'} version</summary>${clash.report ? html`<${Report} text=${clash.report} />` : html`<p class="bp-muted">They emptied it.</p>`}</details>
@@ -1726,8 +1930,23 @@ function ReportPage({ id, itemId, ctx }) {
         <p><strong>This can’t be saved now.</strong> ${stuck}. Copy what you wrote so it isn’t lost; this device keeps it too.</p>
         <div class="bp-btns"><button type="button" class="bp-btn bp-btn--primary" onClick=${copy}>Copy your words</button><a class="bp-btn" href=${back} onClick=${toItem}>Leave without saving</a></div>
       </div>` : null}
+      ${asking ? html`<div class="bp-rp__clash bp-rp__confirm" role="group" aria-labelledby="rp-nothing-q">
+        <p id="rp-nothing-q"><strong>Swap your report for “${NOTHING_NEW}”?</strong> Your words come back with Write a report instead.</p>
+        <div class="bp-btns"><button type="button" class="bp-btn" ref=${focusIn} onClick=${() => { setAsking(false); toEditor(); }}>Keep my report</button><button type="button" class="bp-btn bp-btn--primary" onClick=${nothingNow}>Nothing to report</button></div>
+      </div>` : null}
+      ${nothing ? html`<div class="bp-rp__nothing">
+        <p class="bp-rp__nothing-t">${NOTHING_NEW}</p>
+        <p class="bp-rp__nothing-st" aria-live="polite">${status}</p>
+        <button type="button" class="bp-btn" onClick=${writeInstead}><${Icon} name="edit" size=${18} />Write a report instead</button>
+      </div>` : html`
+      ${!text.trim() && last ? html`<section class="bp-rp__last" aria-labelledby="rp-last-h">
+        <div class="bp-rp__last-head"><h2 class="bp-mini-h" id="rp-last-h">Last time</h2><span class="bp-muted">${[last.it.reportBy, shortDate(last.m.date)].filter(Boolean).join(', ')}</span></div>
+        <${Report} text=${last.it.report} clamp=${60} />
+        <button type="button" class="bp-btn bp-btn--sm" onClick=${startFrom}>Start from it</button>
+      </section>` : null}
       <${ReportEditor} value=${text} onChange=${changed} resetKey=${reset} label=${`Your report on ${it.title}`} autofocus=${!it.report} stickyTop="calc(var(--head) + env(safe-area-inset-top))" minHeight=${300}
-        placeholder="What the committee did, what the board needs to decide, and what’s next" status=${status} />
+        placeholder="What the committee did, what the board needs to decide, and what’s next" status=${status} starter=${true} onNothing=${askNothing} />`}
+      <${MotionBox} m=${m} it=${it} ctx=${ctx} onDraft=${setMotion} />
       <section class="bp-rp__docs" aria-labelledby="rp-docs-h">
         <h2 class="bp-mini-h" id="rp-docs-h">Documents with it</h2>
         ${files.length ? html`<ul class="bp-rp__files">${files.map((f) => html`<li key=${f.id} class=${offering === f.id ? 'is-asking' : ''}>
@@ -1745,8 +1964,48 @@ function ReportPage({ id, itemId, ctx }) {
       <div class="bp-rp__foot">
         <p class="bp-muted">${who.length > 1 ? `${who.filter((p) => p.slug !== meSlug(data)).map((p) => p.name.split(' ')[0]).join(' and ')} can write in it too.` : ''}</p>
         <a class=${`bp-btn bp-btn--primary ${leaving ? 'is-busy' : ''}`} href=${back} aria-disabled=${leaving ? 'true' : null} onClick=${leave}>${leaving ? 'Saving…' : 'Done'}</a>
-      </div>`}
+      </div>
+    </div>
+    <aside class="bp-rp__preview" aria-labelledby="rp-pv-h"><${ReportPreview} m=${m} it=${it} ctx=${ctx} draft=${draft} /></aside>
+  </div>`}
   </div>`;
+}
+
+/**
+ * One agenda item as the meeting's page draws it: its number and title, who presents it, the background, the report and
+ * what it asks the board to vote on, its live facts and its documents. `preview`: the report page's preview of it, as
+ * the board will see it (the words as they're typed; no way in to write, no chair's note)
+ */
+function AgendaItem({ m, s, it, ctx, label, numbers, upcoming, moneyFirst = '', preview = false }) {
+  const { data, d } = ctx;
+  const person = (p) => d.bySlug.get(p.slug) || p;
+  const docsOf = (x) => itemFiles(m, x, data.meetings);
+  const who = presentersOf(it, d.people).map(person);
+  // The statements QuickBooks draws aren't shown again as files on the money item: a quiet link under it
+  // (by the same books the money item draws: today's for a meeting today or ahead, the locked ones for a past one)
+  const drawsSt = showsOf(it).includes('cash') && booksDraw((m.date < data.today ? numbers : data.numbers)?.books).some((b) => b === 'act' || b === 'pos');
+  const all = docsOf(it);
+  const files = drawsSt ? all.filter((f) => !isStatement(f)) : all;
+  const asFiles = drawsSt ? all.filter((f) => isStatement(f)) : [];
+  const aboutPrev = it.live === 'minutes' && it.about ? data.meetings.find((x) => x.id === it.about) : null;
+  const simple = !who.length && !files.length && !it.notes && !it.report && !it.motion && !aboutPrev && !it.confidential && !(it.live && it.live !== 'minutes') && !(upcoming && canWrite(m, it, ctx));
+  return html`<li class=${`bp-item bp-agitem ${it.live && it.live !== 'minutes' ? `has-live is-${it.live}` : ''} ${simple ? 'is-simple' : ''}`} id=${preview ? null : `i-${it.id}`}>
+    <span class="bp-agitem__n" aria-hidden="true">${label}</span>
+    <div class="bp-agitem__body">
+      <div class="bp-agitem__head">
+        <h3 class="bp-item__title bp-agitem__title">${it.title || s.title}</h3>
+        ${it.confidential ? html`<span class="bp-chip bp-chip--warn">Board only · please don’t share</span>` : null}
+        ${aboutPrev ? (aboutPrev.minutes === 'approved' ? html`<span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Approved</span>` : upcoming ? html`<span class="bp-chip">For a vote</span>` : null) : null}
+        <${Presenters} people=${who} />
+      </div>
+      ${aboutPrev ? html`<p class="bp-agitem__about"><a class="bp-link" href=${`#/meetings/${aboutPrev.id}`}>The ${meetingName(aboutPrev)}, ${shortDate(aboutPrev.date)}</a></p>` : null}
+      <div class="bp-agitem__notes"><${Notes} text=${it.notes} /></div>
+      <${ItemReport} m=${m} it=${it} ctx=${ctx} upcoming=${upcoming} preview=${preview} />
+      ${preview ? null : html`<${ChairNoteLine} data=${data} d=${d} m=${m} it=${it} />`}
+      ${showsOf(it).map((k) => html`<${LiveBlock} key=${k} kind=${k} n=${numbers} m=${m} data=${data} asFiles=${k === 'cash' ? asFiles : []} notes=${k === 'cash' ? data.lineNotes?.[m.id]?.[it.id] : null} again=${k === 'cash' && it.id !== moneyFirst} />`)}
+      ${files.length ? html`<div class="bp-item__docs"><${DocTiles} files=${files} /></div>` : null}
+    </div>
+  </li>`;
 }
 
 /** A meeting: live on its day (and the founders' practice meeting), its record otherwise */
@@ -2359,34 +2618,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
             ${plan ? html`<span class="bp-agsec__meta bp-agsec__time">${!s.items.length ? 'Open to the floor · ' : ''}${timeOf(s)}</span>`
               : s.items.length > 1 ? html`<span class="bp-agsec__meta">${s.items.length} items</span>` : null}
           </header>
-          ${s.items.length ? html`<ol class="bp-agitems">${s.items.map((it) => {
-            const who = presentersOf(it, d.people).map(person);
-            // The statements QuickBooks draws aren't shown again as files on the money item: a quiet link under it
-            // (by the same books the money item draws: today's for a meeting today or ahead, the locked ones for a past one)
-            const drawsSt = showsOf(it).includes('cash') && booksDraw((m.date < data.today ? numbers : data.numbers)?.books).some((b) => b === 'act' || b === 'pos');
-            const all = docsOf(it);
-            const files = drawsSt ? all.filter((f) => !isStatement(f)) : all;
-            const asFiles = drawsSt ? all.filter((f) => isStatement(f)) : [];
-            const aboutPrev = it.live === 'minutes' && it.about ? data.meetings.find((x) => x.id === it.about) : null;
-            const simple = !who.length && !files.length && !it.notes && !it.report && !aboutPrev && !it.confidential && !(it.live && it.live !== 'minutes') && !(upcoming && canWrite(m, it, ctx));
-            return html`<li class=${`bp-item bp-agitem ${it.live && it.live !== 'minutes' ? `has-live is-${it.live}` : ''} ${simple ? 'is-simple' : ''}`} id=${`i-${it.id}`} key=${it.id}>
-              <span class="bp-agitem__n" aria-hidden="true">${labels.get(it.id)}</span>
-              <div class="bp-agitem__body">
-                <div class="bp-agitem__head">
-                  <h3 class="bp-item__title bp-agitem__title">${it.title || s.title}</h3>
-                  ${it.confidential ? html`<span class="bp-chip bp-chip--warn">Board only · please don’t share</span>` : null}
-                  ${aboutPrev ? (aboutPrev.minutes === 'approved' ? html`<span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Approved</span>` : upcoming ? html`<span class="bp-chip">For a vote</span>` : null) : null}
-                  <${Presenters} people=${who} />
-                </div>
-                ${aboutPrev ? html`<p class="bp-agitem__about"><a class="bp-link" href=${`#/meetings/${aboutPrev.id}`}>The ${meetingName(aboutPrev)}, ${shortDate(aboutPrev.date)}</a></p>` : null}
-                <div class="bp-agitem__notes"><${Notes} text=${it.notes} /></div>
-                <${ItemReport} m=${m} it=${it} ctx=${ctx} upcoming=${upcoming} />
-                <${ChairNoteLine} data=${data} d=${d} m=${m} it=${it} />
-                ${showsOf(it).map((k) => html`<${LiveBlock} key=${k} kind=${k} n=${numbers} m=${m} data=${data} asFiles=${k === 'cash' ? asFiles : []} notes=${k === 'cash' ? data.lineNotes?.[m.id]?.[it.id] : null} again=${k === 'cash' && it.id !== moneyFirst} />`)}
-                ${files.length ? html`<div class="bp-item__docs"><${DocTiles} files=${files} /></div>` : null}
-              </div>
-            </li>`;
-          })}</ol>` : null}
+          ${s.items.length ? html`<ol class="bp-agitems">${s.items.map((it) => html`<${AgendaItem} key=${it.id} m=${m} s=${s} it=${it} ctx=${ctx} label=${labels.get(it.id)} numbers=${numbers} upcoming=${upcoming} moneyFirst=${moneyFirst} />`)}</ol>` : null}
         </section>`) : html`<div class="bp-card bp-empty">
           <span class="bp-empty__icon"><${Icon} name="list" size=${26} /></span>
           <h2 class="bp-h2">${upcoming ? 'The agenda isn’t posted yet' : minutesFile ? 'The minutes are in the file' : 'No agenda was kept here'}</h2>

@@ -17,8 +17,8 @@
  */
 
 import { h, htm, useState, useEffect, useRef } from '../vendor.js';
-import { meetingName, longDate, timeRange, clock, presentersOf, sectionPlan, agendaItems, itemFiles, reportsOn } from '../board-shared.js';
-import { Report } from '../board-report.js';
+import { meetingName, longDate, timeRange, clock, presentersOf, sectionPlan, agendaItems, itemFiles, reportsOn, isNothingNew } from '../board-shared.js';
+import { Report, Motion } from '../board-report.js';
 import { dueText } from './review.js';
 
 const html = htm.bind(h);
@@ -59,6 +59,7 @@ const chairOf = (d) => d.people.find((p) => p.group === 'board' && p.seat === 'c
 /** An item's report: in (the report itself is the truth), late (was due), due, or nothing asked → { tone, text } | null */
 export function reportState(it, reports = []) {
   const asks = reports.filter((r) => r.itemId === it.id);
+  if (isNothingNew(it.report)) return { tone: 'ok', text: 'Nothing new this time' };
   if (it.report) return { tone: 'ok', text: 'Report in' };
   const late = asks.find((a) => a.status === 'late');
   if (late) return { tone: 'warn', text: `Late, was due ${dueText(late.due)}` };
@@ -243,6 +244,7 @@ function ReviewItem({ m, it, label, ctx, ui, r, who }) {
       <p class="cr-report__by"><span class="cr-label">Report</span>${it.reportBy ? html`<span>by ${it.reportBy}${it.reportAt ? `, ${dayShort(it.reportAt)}` : ''}</span>` : null}</p>
       <${Report} text=${it.report} clamp=${140} />
     </section>` : null}
+    ${it.motion ? html`<div class="cr-report cr-motion"><${Motion} text=${it.motion} /></div>` : null}
     ${files.length ? html`<div class="cr-item__docs"><${DocTiles} files=${files} /></div>` : null}
     <div class="cr-item__tools">
       <${NoteBox} meetingId=${m.id} itemId=${it.id} title=${it.title || 'this item'} note=${r.notes?.[it.id]} who=${who}
@@ -341,6 +343,8 @@ const CSS = `
 .cr-item__head + .cr-item__tools { margin-top: 0.55rem; padding-top: 0; border-top: none; }
 .cr-label { display: block; margin: 0 0 0.3rem; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
 .cr-report__by .cr-label { display: inline; margin: 0; }
+.cr-motion { padding: 0; background: none; }
+.cr-motion .rp-motion { margin: 0; }
 .cr-act { display: inline-flex; align-items: center; gap: 0.5rem; justify-self: start; min-height: 40px; padding: 0 0.85rem 0 0.4rem; border: 1px dashed var(--line-2); border-radius: 999px; background: none; color: var(--ink-2); font: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer; transition: border-color 0.2s, background 0.2s, color 0.2s; }
 .cr-act:hover { border-style: solid; border-color: var(--ink-2); color: var(--ink); background: var(--card); }
 .cr-act__plus { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--yellow-soft); color: var(--gold); font-weight: 750; font-size: 0.95rem; }
