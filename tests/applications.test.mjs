@@ -581,6 +581,26 @@ test('a replaced video deletes the old one; uploads need a real photo type', asy
   assert.equal(res.status, 400);
 });
 
+test('a video already in stays the video till its replacement is in; then the one before goes', async () => {
+  await openApplications(true);
+  const { body: { token } } = await call({ action: 'start', year: YEAR });
+  await call({ action: 'video-url', token, size: 10, name: 'a.mov' });
+  const first = Object.keys(w.world.videos).at(-1);
+  w.advanceVideo(first, 'uploaded');
+  assert.equal((await call({ action: 'video-done', token })).body.uploaded, true);
+  const gone = w.world.deletedVideos.length;
+  await call({ action: 'video-url', token, size: 20, name: 'b.mov' });
+  const second = Object.keys(w.world.videos).at(-1);
+  // On its way (and cut off, if it never finishes): the video in is still theirs
+  assert.equal(w.world.deletedVideos.length, gone, 'nothing deleted while the replacement is on its way');
+  assert.deepEqual((await call({ action: 'resume', token })).body.files.video, { uploaded: true, name: 'a.mov', size: 10 });
+  assert.equal((await call({ action: 'video-done', token })).body.uploaded, false);
+  w.advanceVideo(second, 'uploaded');
+  assert.equal((await call({ action: 'video-done', token })).body.uploaded, true);
+  assert.deepEqual(w.world.deletedVideos.slice(gone), [first], 'the replacement in: the one before goes');
+  assert.deepEqual((await call({ action: 'resume', token })).body.files.video, { uploaded: true, name: 'b.mov', size: 20 });
+});
+
 // ── Applicant messages (the Zap replacement) ────────────────────────
 
 /** An account made by hand or in the Zap era */

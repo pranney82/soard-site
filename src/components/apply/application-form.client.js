@@ -543,6 +543,7 @@ function init(root, cfg, mode) {
   }
   function exitFocus({ fromPop = false } = {}) {
     if (!focused) return;
+    keepHeldAddresses();
     dropRemoved(); // Save and exit keeps it as it is
     const saving = token && !doneShown && !previewing ? save() : null; // sent: nothing more to save
     resumePiece = currentId !== 'review' && anchor && pageEl(currentId)?.contains(anchor) ? anchor : null; // "Continue where you left off": this screen
@@ -1612,6 +1613,7 @@ function init(root, cfg, mode) {
   function back() {
     if (moving || submitting || performance.now() < calmUntil) return true;
     navNote(null);
+    keepHeldAddresses();
     const before = currentId === 'review' ? -1 : screenBefore();
     const ids = stepIds();
     const at = ids.indexOf(currentId);
@@ -1650,6 +1652,7 @@ function init(root, cfg, mode) {
   function jump(id, { focusField = null, whole = true } = {}) {
     if ((!reached(id) && !previewing) || doneShown) return; // sent: the steps are closed
     if (id === currentId && !focusField) { ui.steps.open = false; return; } // the step they're on: the list closes
+    keepHeldAddresses();
     if (currentId !== 'review') takeDetour(id);
     const dir = Math.sign(order(id) - order(currentId));
     if (dir > 0) {
@@ -2604,6 +2607,8 @@ function init(root, cfg, mode) {
     touched.add(f.id);
     setFieldError(f.id, null);
     uploads.add(f.id);
+    // A video already in stays theirs till this one is (the server keeps it too): put back if this one doesn't go
+    const before = files[f.id]?.uploaded ? { file: files[f.id], ui: { ...uploadUi[f.id] }, token } : null;
     files[f.id] = { uid: true, uploaded: false, name: file.name };
     setUpload(f.id, { state: 'busy', msg: 'starting', pct: 0, thumb: null });
     uploadsChanged();
@@ -2657,9 +2662,9 @@ function init(root, cfg, mode) {
       delete retryFiles[f.id];
       setUpload(f.id, { state: 'done', msg: ['videoDone', { name: file.name }], pct: null });
     } catch (e) {
-      delete files[f.id];
       if (e?.unusable) delete retryFiles[f.id]; else retryFiles[f.id] = file;
-      setUpload(f.id, { state: 'failed', msg: failText(e, true), pct: null });
+      if (before && before.token === token) { files[f.id] = before.file; setUpload(f.id, { ...before.ui, msg: failText(e, true), pct: null }); } // (not an application that expired meanwhile)
+      else { delete files[f.id]; setUpload(f.id, { state: 'failed', msg: failText(e, true), pct: null }); }
     } finally {
       uploads.delete(f.id);
       uploadsChanged();
@@ -2719,6 +2724,9 @@ function init(root, cfg, mode) {
     for (const k of Object.keys(removing)) { clearTimeout(removing[k].timer); delete removing[k]; }
   }
   function takeFile(f, file) {
+    // A file chosen while the camera's on (or recording): the file is the video; the camera stops, its clip let go
+    // (kept, it would replace the file the moment they went on)
+    if (recorder?.id === f.id) closeRecorder();
     if (uploads.has(f.id)) return;
     // The one just removed goes from the server first, so the new one is what stays
     if (removing[f.id]) { dropRemoved(f.id).then(() => takeFile(f, file)); return; }
@@ -2870,7 +2878,11 @@ function init(root, cfg, mode) {
   /** Typing in the line: an address picked before no longer stands (its parts empty), and suggestions for what's there */
   function addressTyped(el, input) {
     const box = addrBox(el);
+    // Typed back to the address it held (a letter typed and taken out again): that address again, nothing lost
+    if (box && !box.dataset.picked && held.get(box)?.line === input.value) { restoreHeld(el); closeSuggest(); return; }
     if (box?.dataset.picked && input.value !== box.dataset.picked) {
+      // Kept aside, so leaving the screen without picking another (Back, the steps, Save and exit) puts it back
+      held.set(box, { line: box.dataset.picked, splitApt: box.dataset.splitApt, area: el.dataset.field === homeAddressId() ? areaNow : null, parts: Object.fromEntries(['line1', 'line2', 'city', 'state', 'zip'].map(k => [k, box.querySelector(`[data-part="${k}"]`)?.value || ''])) });
       delete box.dataset.picked;
       for (const k of ['line1', 'city', 'zip']) box.querySelector(`[data-part="${k}"]`).value = '';
       // An apartment that came from what they'd typed (not one they entered) goes with that address
@@ -2880,6 +2892,33 @@ function init(root, cfg, mode) {
       if (el.dataset.field === homeAddressId()) unfillCounty(); // its county (and the note saying so) with it
     }
     suggestFor(el, input);
+  }
+  // A confirmed address being typed over (see addressTyped): what it was, till another is picked or entered by hand
+  const held = new WeakMap();
+  function restoreHeld(el) {
+    const box = addrBox(el);
+    const h = box && held.get(box);
+    if (!h) return;
+    held.delete(box);
+    for (const [k, v] of Object.entries(h.parts)) { const i = box.querySelector(`[data-part="${k}"]`); if (i) i.value = v; }
+    box.querySelector('[data-search]').value = h.line;
+    box.dataset.picked = h.line;
+    if (h.splitApt) box.dataset.splitApt = h.splitApt;
+    setFieldError(el.dataset.field, null);
+    if (el.dataset.field === homeAddressId()) {
+      // Its place on the map too (what the check found for it), not a fresh look and a moment with no answer
+      if (h.area && h.area.key === addressKey(homeAddressNow())) { area.want = null; clearTimeout(area.timer); areaNow = h.area; }
+      scheduleArea(true);
+      paintArea();
+    }
+    refresh();
+    markDirty();
+  }
+  /** Leaving the screen with an address typed over and nothing picked: the one it held, back (never lost to a stray key) */
+  function keepHeldAddresses() {
+    for (const box of ui.pages.querySelectorAll('.af-address')) {
+      if (box.dataset.mode === 'line' && !box.dataset.picked && held.has(box)) restoreHeld(box.closest('[data-field]'));
+    }
   }
   /**
    * "Enter the address yourself" (what they'd typed becomes the street), or back to the search; `force`
@@ -2911,6 +2950,7 @@ function init(root, cfg, mode) {
   function setAddressMode(el, mode, { force = false } = {}) {
     const box = addrBox(el);
     if (!box || (box.dataset.mode === mode && !force)) return;
+    if (mode === 'parts') held.delete(box); // entering it by hand: theirs now
     closeSuggest();
     const search = box.querySelector('[data-search]');
     const line1 = box.querySelector('[data-part="line1"]');
@@ -3128,7 +3168,7 @@ function init(root, cfg, mode) {
     if (!it.id) { done(it); return; }
     // A Google suggestion: the line shows it at once, its parts (with the ZIP) a moment later. If they
     // don't come, the parts show with what's known, to finish by hand
-    if (search) { search.value = [it.line1, it.sub].filter(Boolean).join(', '); box.dataset.picked = search.value; }
+    if (search) { search.value = [it.line1, it.sub].filter(Boolean).join(', '); box.dataset.picked = search.value; held.delete(box); }
     const [, city, state, zip] = String(it.sub || '').match(/^(.*?),\s*([A-Z]{2})(?:\s+(\d{5}))?$/) || [];
     const byHand = () => done({ line1: it.line1, city, state, zip });
     // Continue waits for this (a slow connection): the pick is made, its parts are on their way
@@ -3917,6 +3957,13 @@ function init(root, cfg, mode) {
   // A likely typo in the address is asked about once ("Did you mean …@gmail.com?") before the link goes there
   const laterInput = dlg.querySelector('input[type=email]');
   let laterAsked = '';
+  // Its note goes as they type (it was about the box as it was), and a likely typo is asked about as they leave it
+  // (as the form's own email boxes do), not only on Send
+  laterInput.addEventListener('input', () => {
+    const status = dlg.querySelector('[data-later-status]');
+    if (laterInput.hasAttribute('aria-invalid')) { laterInput.removeAttribute('aria-invalid'); if (status) status.textContent = ''; }
+  }, { signal });
+  laterInput.addEventListener('blur', () => { const v = laterInput.value.trim(); if (v && mailFix(v)) paintMailFix(laterInput); }, { signal }); // (Send still asks once: pressing it is what blurs the box)
   laterInput.addEventListener('input', () => { const p = dlg.querySelector('[data-mailfix]'); if (p && !p.hidden) p.hidden = true; });
   dlg.addEventListener('click', (e) => {
     const use = e.target.closest('[data-mailfix-use]');
@@ -4459,6 +4506,7 @@ function init(root, cfg, mode) {
     // A sheet or dialog open: Back closes it, and they stay on the screen it was over
     const sheet = [ui.dialog, ui.detail].find(d => d?.open);
     if (sheet) { sheet.close(); swallow = true; history.go(-dir); return true; }
+    keepHeldAddresses(); // the screen's being left: an address typed over and not picked is the one it held
     depth = to;
     if (st?.afAt) trail[to] = st.afAt;
     if (!to || doneShown) { exitFocus({ fromPop: true }); return true; } // back to the page itself
@@ -4507,9 +4555,17 @@ function init(root, cfg, mode) {
       if (!focused || !packSize || !currentId || currentId === 'review' || ui.form.hidden) return;
       const [w0, h0] = packSize.split('x').map(Number);
       if (Math.abs(innerWidth - w0) < 40 && Math.abs(innerHeight - h0) < 120) return;
-      const piece = (anchor && pageEl(currentId)?.contains(anchor) && anchor) || packs[currentId]?.[screenNo]?.[0] || null;
+      // The screen with the box they're typing in stays (a window made shorter, a tablet turned), with the keys in it;
+      // else the screen's own first piece
+      const keysAt = document.activeElement;
+      const typing = keysAt?.closest?.('[data-field]');
+      const mine = (el) => !!el && !!pageEl(currentId)?.contains(el) && !el.closest('[data-off]');
+      const piece = (mine(typing) && typing) || (anchor && pageEl(currentId)?.contains(anchor) && anchor) || packs[currentId]?.[screenNo]?.[0] || null;
       delete packs[currentId];
-      show(currentId, { piece, focus: false, scroll: false, refit: true }).then(() => requestAnimationFrame(() => requestAnimationFrame(() => replan(true))));
+      show(currentId, { piece, focus: false, scroll: false, refit: true }).then(() => {
+        if (mine(typing) && keysAt?.isConnected && keysAt.getClientRects().length && document.activeElement !== keysAt) keysAt.focus({ preventScroll: true });
+        requestAnimationFrame(() => requestAnimationFrame(() => replan(true)));
+      });
     }, 180);
   }, { passive: true, signal });
 
@@ -4650,6 +4706,9 @@ function init(root, cfg, mode) {
     if (tgt.matches('[data-part="line2"]')) { const b = addrBox(el); if (b) delete b.dataset.splitApt; } // an apartment they entered is theirs
     if (tgt.type === 'email') paintMailFix(tgt);
     liveCheck(el);
+    // A whole date entered under a note about it (it's "change" once every part's in): the note says what's so now
+    // ("Please check the year", or gone), not "Please answer this question" over a date
+    if (tgt.type === 'date' && el && shown.has(el.dataset.field)) setFieldError(el.dataset.field, errorFor(el.dataset.field));
     if (el && el.dataset.field === homeAddressId()) scheduleArea();
     if (countyNote && el?.dataset.field === countyNote.field) hideCountyNote();
     refresh();
@@ -4760,7 +4819,9 @@ function init(root, cfg, mode) {
 
   // Leaving (a reload, a closed tab, a phone locking or switching apps): what's not saved yet goes with a
   // keepalive request, which the browser finishes after the page is gone (Safari drops an ordinary one)
-  function saveOnLeave() {
+  function saveOnLeave(e) {
+    // The page closing (not just hidden: they may be off copying an address from another app): a typed-over address back
+    if (e?.type === 'pagehide') keepHeldAddresses();
     dropRemoved(null, { leaving: true });
     if (token && !previewing && (unsaved() || ['unsaved', 'saving'].includes(lastSave))) keepPending();
     if (!token || previewing || !['unsaved', 'saving'].includes(lastSave)) return;

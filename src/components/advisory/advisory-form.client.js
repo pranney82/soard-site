@@ -879,6 +879,16 @@ export function initAdvisoryForm() {
     input.dispatchEvent(new Event('change', { bubbles: true }));
     input.focus();
   });
+  // Leaving a box whose note was about something else ("Please fill this in" over "alex@gmail"): the note says
+  // what's so now (the family form does the same), not only on the next Continue
+  form.addEventListener('focusout', (e) => {
+    const el = e.target.closest?.('[data-field]');
+    if (!el || el.contains(e.relatedTarget) || !el.classList.contains('is-invalid') || step >= total) return;
+    const msg = problemsOn(step)[el.dataset.field];
+    if (!msg) { recheck(el.dataset.field); return; }
+    const err = el.querySelector('.adv-error');
+    if (err && err.textContent !== msg) err.textContent = msg;
+  }, { signal });
   form.addEventListener('input', (e) => { if (e.target.type === 'email') { const p = e.target.parentElement.querySelector('.adv-mailfix'); if (p && !p.hidden) p.hidden = true; } });
   form.addEventListener('change', (e) => {
     const id = e.target.closest('[data-field]')?.dataset.field;

@@ -431,23 +431,41 @@ async function handleVideoUrl(context, draft, body) {
     console.error('video-url', e?.message || e);
     return fail(es ? 'No pudimos comenzar a subir el video en este momento. Intente de nuevo en unos minutos.' : 'We couldn’t start the video upload just now. Please try again in a few minutes.', 500);
   }
-  const previous = draft.files?.video?.uid;
+  const was = draft.files?.video;
   await env.DB.prepare('UPDATE application_drafts SET video_creates = COALESCE(video_creates, 0) + 1 WHERE id = ?').bind(draft.id).run();
-  await setDraftFile(env.DB, draft.id, 'video', { uid: upload.uid, uploaded: false, size, name: String(body.name || 'video').slice(0, 120), at: new Date().toISOString() });
-  if (previous && previous !== upload.uid) context.waitUntil(deleteVideo(env, previous));
+  const next = { uid: upload.uid, uploaded: false, size, name: String(body.name || 'video').slice(0, 120), at: new Date().toISOString() };
+  // A video already in stays the video till its replacement is (a replacement cut off never leaves them with none):
+  // the new one waits beside it. Otherwise it's the video now, and one left half-sent before it goes
+  if (was?.uploaded && was.uid) {
+    await setDraftFile(env.DB, draft.id, 'video', { ...was, next });
+    if (was.next?.uid && was.next.uid !== upload.uid) context.waitUntil(deleteVideo(env, was.next.uid));
+  } else {
+    await setDraftFile(env.DB, draft.id, 'video', next);
+    if (was?.uid && was.uid !== upload.uid) context.waitUntil(deleteVideo(env, was.uid));
+  }
   return json({ ok: true, uploadUrl: upload.uploadUrl });
 }
 
 async function handleVideoDone(context, draft, body = {}) {
   const { env } = context;
   const es = (body.lang || draft.lang) === 'es';
-  const v = draft.files?.video;
+  const was = draft.files?.video;
+  const v = was?.next || was; // a replacement on its way, else the video itself
   if (!v?.uid) return fail('No video upload in progress');
   let video;
   try { video = await getVideo(env, v.uid); } catch (e) { console.error('video-check', e?.message || e); return fail(es ? 'No pudimos revisar el video en este momento. Intente de nuevo en unos minutos.' : 'We couldn’t check the video just now. Please try again in a few minutes.', 500); }
-  if (video?.status?.state === 'error') return fail(es ? 'No pudimos procesar el video. Pruebe con otro archivo de video.' : 'The video could not be processed. Please try a different video file.', 422, { code: 'video-error' });
+  if (video?.status?.state === 'error') {
+    // A replacement Stream can't read: let go of, the video before it kept
+    if (was?.next) { const { next, ...kept } = was; await setDraftFile(env.DB, draft.id, 'video', kept); context.waitUntil(deleteVideo(env, next.uid)); }
+    return fail(es ? 'No pudimos procesar el video. Pruebe con otro archivo de video.' : 'The video could not be processed. Please try a different video file.', 422, { code: 'video-error' });
+  }
   const uploaded = videoUploaded(video);
-  if (uploaded && !v.uploaded) await setDraftFile(env.DB, draft.id, 'video', { ...v, uploaded: true, duration: video.duration > 0 ? video.duration : null });
+  const done = { ...v, uploaded: true, duration: video.duration > 0 ? video.duration : null };
+  if (uploaded && was?.next) {
+    // The replacement is in: it's the video now, and the one before it goes
+    await setDraftFile(env.DB, draft.id, 'video', done);
+    if (was.uid && was.uid !== v.uid) context.waitUntil(deleteVideo(env, was.uid));
+  } else if (uploaded && !v.uploaded) await setDraftFile(env.DB, draft.id, 'video', done);
   return json({ ok: true, uploaded });
 }
 
@@ -456,7 +474,7 @@ async function handleRemoveFile(context, draft, body) {
   const fieldId = String(body.field || '');
   const f = draft.files?.[fieldId];
   if (!f) return json({ ok: true });
-  if (fieldId === 'video') { if (f.uid) context.waitUntil(deleteVideo(env, f.uid)); }
+  if (fieldId === 'video') { for (const uid of [f.uid, f.next?.uid].filter(Boolean)) context.waitUntil(deleteVideo(env, uid)); }
   else if (applicantFiles(env)) for (const key of [f.key, f.thumbKey].filter(Boolean)) await applicantFiles(env).delete(key).catch(() => {});
   await setDraftFile(env.DB, draft.id, fieldId, null);
   return json({ ok: true });

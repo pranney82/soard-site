@@ -389,6 +389,14 @@ try {
   await page.keyboard.press('Enter');
   await sleep(500);
   ok(/choose it from the list/.test(await errorText('address')), `Enter on an address typed but not chosen: the same note (${await errorText('address')})`);
+  // The letter typed back: the address it held, again (one stray key never loses a confirmed address)
+  await page.focus('#af-address-search');
+  await page.keyboard.press('End');
+  await page.keyboard.type('6');
+  await sleep(250);
+  ok(await addressParts() === '3167 Main St|Duluth|GA|30096', `a letter taken out and typed back: the address it held, again (${await addressParts()})`);
+  await page.keyboard.press('Backspace');
+  await sleep(150);
   await clear('#af-address-search');
   await page.type('#af-address-search', '3167 Main');
   await page.waitForSelector('#af-address-suggest:not([hidden])', { timeout: 4000 }).catch(() => {});

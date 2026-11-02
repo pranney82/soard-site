@@ -1685,7 +1685,7 @@ export async function expireDrafts(env, { now = Date.now(), fetchImpl = fetch, l
   for (const r of results || []) {
     const files = parse(r.files, {});
     for (const [k, f] of Object.entries(files)) {
-      if (k === 'video') { if (f?.uid) await deleteVideo(env, f.uid, fetchImpl); continue; }
+      if (k === 'video') { for (const uid of [f?.uid, f?.next?.uid].filter(Boolean)) await deleteVideo(env, uid, fetchImpl); continue; } // (and a replacement left half-sent)
       if (applicantFiles(env)) for (const key of [f?.key, f?.thumbKey].filter(Boolean)) await applicantFiles(env).delete(key).catch(() => {});
     }
     // The area check's band stays for the funnel (inside / close / far); the address, point and county go
@@ -1880,7 +1880,7 @@ export async function deleteApplicationData(env, id, { user = 'admin', now = Dat
   if (app.deleted_at) return { ok: true, already: true };
   const keys = [];
   for (const [k, f] of Object.entries(app.files || {})) {
-    if (k === 'video') { if (f?.uid) await deleteVideo(env, f.uid, fetchImpl); continue; }
+    if (k === 'video') { for (const uid of [f?.uid, f?.next?.uid].filter(Boolean)) await deleteVideo(env, uid, fetchImpl); continue; }
     keys.push(f?.key, f?.thumbKey);
   }
   keys.push(app.jt_state?.pdf?.key);
