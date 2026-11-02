@@ -345,7 +345,11 @@ test('the reminder that morning, past due at noon with the chair copied, then th
   did = await run();
   assert.equal(did.chair, 1);
   const review = gmail.sent.at(-1);
-  assert.equal(hdr(review, 'To'), 'Alex Rivera <alex.board@example.com>');
+  // To the chair and Holly (here Jane), the asker copied: any of them approves it, once
+  assert.equal(hdr(review, 'To'), 'Alex Rivera <alex.board@example.com>, Jane Doe <jane@soardcharity.com>');
+  assert.equal(hdr(review, 'Cc'), 'Max Doe <max@soardcharity.com>');
+  assert.match(review.text, /^Hi Alex and Jane,/);
+  assert.match(review.text, /approving it emails it to the board\. One approval is enough/);
   assert.equal(hdr(review, 'Subject'), 'Agenda for your review: Q4 2026 Board Meeting, Thu, Nov 5');
   assert.match(review.text, /Reports: 1 of 2 in\. Late: Sam Ortiz \(Financial\)\./);
   assert.match(review.text, /8:00  Call to order \(\d+ min\)\n {4}Roll Call · Alex Rivera/);
@@ -426,7 +430,12 @@ test('the chair approves on the page: kept, and said in the review’s conversat
   const note = gmail.sent.at(-1);
   assert.equal(note.threadId, thread);
   assert.equal(hdr(note, 'To'), 'Alex Rivera <alex.board@example.com>');
-  assert.equal(hdr(note, 'Cc'), 'Jane Doe <jane@soardcharity.com>');
+  assert.equal(hdr(note, 'Cc'), 'Jane Doe <jane@soardcharity.com>, Max Doe <max@soardcharity.com>', 'everyone the review went to hears it');
+  // Someone else pressing Approve after: the chair's approval stands, and nothing more is sent
+  const count = gmail.sent.length;
+  const again = await chairApprove(env, { meetingId: 'm_nov5' }, { admin: true, adminEmail: 'jane@soardcharity.com' }, opts());
+  assert.deepEqual([again.already, again.approvedBy], [true, 'Alex Rivera']);
+  assert.equal(gmail.sent.length, count);
   assert.match(note.text, /^Thanks, Alex\. The agenda for the Q4 2026 Board Meeting on Thursday, November 5 is approved\./);
   const { listMeetings } = await import('../functions/api/_board.js');
   const x = await portalExtras(env, { member: ALEX, meetings: await listMeetings(env.DB), today: '2026-11-04' });
@@ -439,7 +448,7 @@ test('approved before the review went: the founder copied hears it, and no revie
   await meeting();
   await chairApprove(env, { meetingId: 'm_nov5' }, { member: ALEX }, opts());
   const told = gmail.sent.at(-1);
-  assert.equal(hdr(told, 'To'), 'Jane Doe <jane@soardcharity.com>');
+  assert.equal(hdr(told, 'To'), 'Jane Doe <jane@soardcharity.com>, Max Doe <max@soardcharity.com>');
   assert.equal(hdr(told, 'Subject'), 'Alex Rivera approved the agenda: Q4 2026 Board Meeting, Thu, Nov 5');
   clock = easternAt('2026-11-04', '12:06');
   await run();

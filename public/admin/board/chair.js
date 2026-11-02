@@ -210,6 +210,8 @@ function Approve({ r, ctx, founders }) {
     setBusy(false);
     if (!j.ok) { say(j.error || 'It wasn’t approved. Try again.', 'warn'); return; }
     setData((dd) => withReview(dd, { approvedAt: j.approvedAt, approvedBy: j.approvedBy }));
+    // Someone else approved it first: theirs stands, and nothing goes twice
+    if (j.already) { say(`${first(j.approvedBy) || 'Someone'} already approved it.`); return; }
     say(j.agenda === 'sent' ? 'The agenda is approved and on its way to the board.'
       : j.agenda === 'waiting' ? 'The agenda is approved. The board gets it as soon as they’ve had the email on how to sign in.'
       : `The agenda is approved. ${founders} get word by email.`);

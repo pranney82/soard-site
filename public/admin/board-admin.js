@@ -855,7 +855,7 @@ function AsksCard({ s, setS }) {
   const copied = s.invitesFrom && s.invitesFrom !== asker ? firstOf(s.invitesFrom) : '';
   const hint = { test: `Each email comes to ${firstOf(asker)} alone, once for each meeting, its subject saying who it would go to. The board gets nothing.`, on: 'The board gets them on the schedule above. Replies go on the agenda.', off: 'No emails. Presenters write their reports on the board page.' };
   return html`<div class="card">
-    <div class="bd-card-head"><h3>Reports from presenters</h3><p>Two weeks before each meeting, each board member presenting an item is emailed from ${firstOf(asker)}’s Gmail${copied ? `, ${copied} copied,` : ''} for their report, due a week before the meeting. A reminder, then past due with the chair copied. Six days before, the chair gets the whole agenda to review.</p></div>
+    <div class="bd-card-head"><h3>Reports from presenters</h3><p>Two weeks before each meeting, each board member presenting an item is emailed from ${firstOf(asker)}’s Gmail${copied ? `, ${copied} copied,` : ''} for their report, due a week before the meeting. A reminder, then past due with the chair copied. Six days before, the chair and Holly get the whole agenda to review, Peter copied; approving it emails it to the board.</p></div>
     <div class="form-group" style="max-width:24rem">
       <label class="form-label" for="bd-asks">Emails to presenters and the chair</label>
       <select id="bd-asks" class="form-select" value=${s.asks} onChange=${(e) => setS({ ...s, asks: e.target.value })}>

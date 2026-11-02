@@ -337,6 +337,8 @@ const replyReaches = (cc = []) => (cc.length ? `me and ${cc.map((c) => firstName
  * The chair's review: the whole agenda, part by part with its times, who presents and where each report stands; the
  * review page (approve, the chair's own notes, a report sent back with a question), and a reply for anything else
  */
+/** "Alex", "Alex and Holly", "Alex, Holly and Sam" */
+const andNames = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0] || '');
 export function chairEmail({ m, chair, from, asks = [], people = [], cc = [] }) {
   const name = meetingName(m);
   const plan = sectionPlan(m);
@@ -357,10 +359,12 @@ export function chairEmail({ m, chair, from, asks = [], people = [], cc = [] }) 
     });
     return { head, lines };
   });
-  const page = 'On your review page you can approve it, which emails it to the board, add your own notes to any item, and send a report back to its presenter with a question. Their answer goes on the agenda under the report.';
+  // To the chair and Holly, Peter copied: any of them approves it, once (Peter, Nov 2 2026)
+  const hi = andNames([chair, ...cc].map((p) => firstName(p.name)).filter(Boolean));
+  const page = `On the review page, approving it emails it to the board.${cc.length ? ' One approval is enough: once one of you approves it, the review page shows who did, and this conversation says so.' : ''} You can also add your own notes to any item, and send a report back to its presenter with a question. Their answer goes on the agenda under the report.`;
   const other = `For anything else, or if it all looks good, just reply. It comes to ${replyReaches(cc)}.`;
   const text = [
-    `Hi ${firstName(chair.name)},`,
+    `Hi ${hi},`,
     `Here’s the agenda for the ${name}, ${when}, for your review.`,
     status,
     parts.map((x) => [x.head, ...x.lines.map((l) => `    ${l}`)].join('\n')).join('\n\n'),
@@ -369,7 +373,7 @@ export function chairEmail({ m, chair, from, asks = [], people = [], cc = [] }) 
     `Thanks,\n${firstName(from.name) || 'SOARD'}`,
   ].filter(Boolean).join('\n\n');
   const html = `<div>`
-    + `<p style="${P}">Hi ${esc(firstName(chair.name))},</p>`
+    + `<p style="${P}">Hi ${esc(hi)},</p>`
     + `<p style="${P}">Here’s the agenda for the ${esc(name)}, ${esc(when)}, for your review.</p>`
     + (status ? `<p style="${P}"><strong>${esc(status)}</strong></p>` : '')
     + parts.map((x) => `<p style="${P}margin-bottom:4px;"><strong>${esc(x.head)}</strong></p>`
@@ -940,7 +944,7 @@ export async function runAsks(env, { fetchImpl = fetch, now = Date.now() } = {})
       const mail = chairEmail({ m: (await getMeeting(env.DB, m.id)) || fresh, chair, from: senders.from, asks: all, people: [...people.board, ...people.staff], cc: ctx.senders.cc });
       if (await claim(env.DB, { kind: 'chair', meetingId: m.id, itemId: '', person: chair, title: '', date: fresh.date, now })) {
         try {
-          const sent = await send(ctx, { to: [chair], cc: ctx.senders.cc, ...mail });
+          const sent = await send(ctx, { to: [chair, ...ctx.senders.cc], cc: [ctx.senders.from], ...mail });
           await env.DB.prepare("UPDATE board_asks SET status = 'sent', thread = ?, msg_ids = ?, subject = ?, updated_at = ? WHERE kind = 'chair' AND meeting_id = ? AND status = 'sending'")
             .bind(sent.threadId, JSON.stringify([sent.messageId].filter(Boolean)), mail.subject, nowIso(now), m.id).run();
           did.chair++;
@@ -1261,7 +1265,7 @@ export async function chairApprove(env, { meetingId }, w, { fetchImpl = fetch, n
     return { approvedAt: nowIso(now), approvedBy: asker.name, test: true };
   }
   const row = askOf(await env.DB.prepare("SELECT * FROM board_asks WHERE kind = 'chair' AND meeting_id = ?").bind(m.id).first());
-  if (row?.status === 'approved') return { approvedAt: row.inAt, approvedBy: row.name };
+  if (row?.status === 'approved') return { approvedAt: row.inAt, approvedBy: row.name, already: true };
   if (row) await env.DB.prepare("UPDATE board_asks SET status = 'approved', in_at = ?, name = ?, updated_at = ? WHERE id = ?").bind(nowIso(now), asker.name, nowIso(now), row.id).run();
   else {
     await env.DB.prepare(`INSERT INTO board_asks (id, kind, meeting_id, item_id, slug, name, email, title, status, asked_at, in_at, msg_ids, files, updated_at)
@@ -1280,8 +1284,10 @@ export async function chairApprove(env, { meetingId }, w, { fetchImpl = fetch, n
   try {
     const ctx = await mailer(env, { fetchImpl, now });
     const words = body([`Thanks, ${firstName(asker.name)}. The agenda for the ${meetingName(m)} on ${longDay(m.date)} is approved.${next}`, `${firstName(ctx.senders.from.name) || 'SOARD'}`]);
-    if (row?.thread && asker.email) await replyInThread(ctx, row, { to: [asker], cc: ctx.senders.cc, ...words });
-    else if (ctx.senders.cc.length) await send(ctx, { to: ctx.senders.cc, subject: `${asker.name} approved the agenda: ${meetingName(m)}, ${shortDay(m.date)}`, ...body([`${asker.name} approved the agenda for the ${meetingName(m)} on ${longDay(m.date)}.${next}`]) });
+    // Everyone the review went to hears who approved it, so nobody else tries to
+    const others = [chairOf(ctx.people), ...ctx.senders.cc, ctx.senders.from].filter((p, i, all) => p?.email && normEmail(p.email) !== normEmail(asker.email) && all.findIndex((x) => x?.email === p.email) === i);
+    if (row?.thread && asker.email) await replyInThread(ctx, row, { to: [asker], cc: others, ...words });
+    else if (others.length) await send(ctx, { to: others, subject: `${asker.name} approved the agenda: ${meetingName(m)}, ${shortDay(m.date)}`, ...body([`${asker.name} approved the agenda for the ${meetingName(m)} on ${longDay(m.date)}.${next}`]) });
   } catch (e) {
     console.error('[board-asks] approved', e.message);
   }

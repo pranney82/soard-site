@@ -643,7 +643,7 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       if (id === 'board-ask-thanks') return gmail(asks.thanksEmail({ m, it, person, from }), { to: 'The presenter alone' });
       if (id === 'board-ask-question') return gmail(asks.questionEmail({ m, it, person, asker: { name: 'Alex Rivera', email: 'chair@example.com' }, question: 'How much of the store’s drop is the shop that closed?', from: { name: 'Peter', email: 'peter@example.com' } }), { to: 'Who presents the item, the chair and Holly copied' });
       const review = asks.chairEmail({ m, chair: { name: 'Alex Rivera' }, from, cc: [{ name: 'Holly' }], people: [{ slug: 'sam-ortiz', name: 'Sam Ortiz' }], asks: [{ kind: 'report', itemId: it.id, status: 'late', due: new Date(due).toISOString() }] });
-      return gmail(review, { to: 'The board chair, Holly copied' });
+      return gmail(review, { to: 'The board chair and Holly, Peter copied' });
     }
     case 'board-welcome':
       return email(welcomeEmail({
