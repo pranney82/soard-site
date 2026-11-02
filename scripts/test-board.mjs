@@ -48,7 +48,7 @@ import * as bankAdmin from '../functions/api/bank-admin.js';
 import * as booksAdmin from '../functions/api/books-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
-import { provideBoardFinance, maybeLockNumbers, takeSnapshot, saveMeeting, getMeeting } from '../functions/api/_board.js';
+import { provideBoardFinance, maybeLockNumbers, takeSnapshot, saveMeeting, getMeeting, patchMeeting } from '../functions/api/_board.js';
 import { maybeReadGifts } from '../functions/api/_board-gifts.js';
 import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-invite.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
@@ -401,6 +401,11 @@ try {
   await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await clickText(jane, 'button', /^New meeting$/);
   await jane.waitForSelector('input[aria-label="Meeting date"]');
+  ok(await jane.evaluate(() => document.activeElement?.matches('input[aria-label="Meeting date"]')), 'New meeting puts the focus in its date');
+  await jane.keyboard.press('Escape');
+  ok(await jane.waitForFunction(() => !document.querySelector('input[aria-label="Meeting date"]') && document.activeElement?.textContent.trim() === 'New meeting', { timeout: 2000 }).then(() => true, () => false), 'Esc puts New meeting back, with the focus on it');
+  await clickText(jane, 'button', /^New meeting$/);
+  await jane.waitForSelector('input[aria-label="Meeting date"]');
   await jane.evaluate((d) => { const el = document.querySelector('input[aria-label="Meeting date"]'); const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(el, d); el.dispatchEvent(new Event('input', { bubbles: true })); }, day(14));
   await clickText(jane, 'button', /^Add$/);
   ok(await waitText(jane, /Getting ready/), 'a new meeting opens on Before, with Getting ready');
@@ -542,6 +547,17 @@ try {
   ok(await itemMenu(jane, 'Personal Best, Business Best and Sunshine Bragging Rights: what', /^Delete the item$/) && await jane.waitForFunction(() => ![...document.querySelectorAll('.agx-item__title')].some((x) => /since we last met$/.test(x.value)), { timeout: 3000 }).then(() => true, () => false), 'and it goes again from its menu');
   ok(await jane.evaluate(() => [...document.querySelectorAll('.agx-item')].filter((li) => li.querySelector('.bd-who:not(.has-who)')).every((li) => { const b = li.querySelector('.bd-who .bd-pop__btn'); return b && Number(getComputedStyle(li.querySelector('.bd-who')).opacity) === 1 && b.getBoundingClientRect().width > 60; })), 'Who presents shows on every item with nobody picked, without hovering');
   await shot(jane, 'agenda-report');
+  // On a phone the agenda fits its card, whatever its parts hold (one wide part once widened them all)
+  {
+    const vp = jane.viewport();
+    await jane.setViewport({ width: 390, height: 844, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+    await jane.reload({ waitUntil: 'networkidle0' });
+    const fit = await jane.evaluate(() => { const c = document.querySelector('.card.agx'); return c ? { card: c.clientWidth, content: c.scrollWidth } : null; });
+    ok(!!fit && fit.content <= fit.card, `on a phone the agenda fits its card (${JSON.stringify(fit)})`);
+    await jane.setViewport(vp);
+    await jane.reload({ waitUntil: 'networkidle0' });
+  }
+
   // The presentation beside the agenda (board-meeting.js AgendaStage), there from the start: the slide for the item
   // worked on, every slide in order, a slide picked, Play from here; then the board page as it's typed, and a phone
   const stageCount = () => jane.$eval('.agx-stage__count', (e) => e.textContent.trim()).catch(() => '');
@@ -716,7 +732,7 @@ try {
   ok(checked?.ok && calendar[FOUNDER].some((e) => /^boardcheck/.test(e.id) && e.status === 'cancelled'), 'the invite check passes and deletes its event');
   await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' }); // a new hash alone doesn't load the page again
-  ok(await waitText(jane, /Meetings come from Jane’s calendar by themselves/), 'Meetings says where meetings come from');
+  ok(await waitText(jane, /Meetings come from your calendar by themselves/) && /anything else for them from your email/.test(await text(jane)), 'Meetings says where meetings come from, to Jane as “your calendar”');
   ok(await waitText(jane, /Ready\. The board was emailed the link/), 'the next meeting: everything done says Ready');
   ok(/Also coming up/i.test(await text(jane)) && /Q4 \d{4} Board Meeting/.test(await text(jane)), 'the meeting after it is listed as also coming up');
   const all = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings);
@@ -1236,8 +1252,8 @@ try {
   const thisMonth = Number(day(0).slice(5, 7));
   const monthly = {
     year: String(yr), lastYear: String(yr - 1),
-    months: Array.from({ length: thisMonth }, (_, i) => ({ month: `${yr}-${String(i + 1).padStart(2, '0')}`, revenue: Math.round(1876045 / thisMonth), spent: Math.round(1200000 / thisMonth) })),
-    last: Array.from({ length: 12 }, (_, i) => ({ month: `${yr - 1}-${String(i + 1).padStart(2, '0')}`, revenue: [90, 110, 150, 140, 160, 170, 150, 160, 180, 190, 240, 260][i] * 1000, spent: 125000 })),
+    months: Array.from({ length: thisMonth }, (_, i) => ({ month: `${yr}-${String(i + 1).padStart(2, '0')}`, revenue: Math.round(1876045 / thisMonth), spent: Math.round(1200000 / thisMonth), nonCash: Math.round(220000 / thisMonth) })),
+    last: Array.from({ length: 12 }, (_, i) => ({ month: `${yr - 1}-${String(i + 1).padStart(2, '0')}`, revenue: [90, 110, 150, 140, 160, 170, 150, 160, 180, 190, 240, 260][i] * 1000, spent: 125000, nonCash: 8000 })),
   };
   // The statements as of the books' close (_quickbooks.js statementRows): a line or two of each
   const statements = { asOf: day(-30), closed: false, priorAsOf: `${yr - 1}${day(-30).slice(4)}`,
@@ -1301,6 +1317,24 @@ try {
       await money.evaluate(() => document.querySelector('.bp-agitem .by-chart svg').focus());
       await money.keyboard.press('ArrowLeft');
       ok(await money.evaluate(() => /through|January|February|March|April|May|June|July|August|September|October|November|December/.test(document.querySelector('.by-tip')?.textContent || '')), 'and from the keyboard: ← → along the months');
+      // Expenses as the figures have them (in kind and depreciation left out), and the month it's in read one way: this
+      // year so far beside last year's same days, then last year's whole month (the point on its line)
+      await money.evaluate(() => document.querySelectorAll('.bp-agitem .by-chart svg')[1].focus());
+      const exp = await money.evaluate(() => ({ cap: document.querySelectorAll('.bp-agitem .by-cap')[1]?.textContent || '', tip: document.querySelector('.by-tip')?.innerText || '' }));
+      const soFar = Number((exp.tip.match(new RegExp(`${yr} \\$([\\d,]+)`)) || [])[1]?.replace(/,/g, ''));
+      ok(/in kind and depreciation left out/.test(exp.cap) && Math.abs(soFar - (1200000 - 220000)) < 50, `Expenses: the year so far without in kind, as the figures (${JSON.stringify(exp)})`);
+      ok(new RegExp(`${yr - 1} by [A-Z][a-z]+ \\d+ \\$1,030,000`).test(exp.tip) && new RegExp(`${yr - 1}, all of [A-Z][a-z]+: \\$`).test(exp.tip), `the month it's in: last year's same days, then its whole month (${JSON.stringify(exp.tip)})`);
+      // On a phone, a month's note stays inside the chart (July, in the middle, used to run off its left edge)
+      if (thisMonth > 7) {
+        const phone = await tab(MEMBER, 390);
+        await phone.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
+        await phone.waitForSelector('.bp-agitem .by-chart svg', { timeout: 6000 }).catch(() => null);
+        await phone.evaluate(() => document.querySelector('.bp-agitem .by-chart svg')?.focus());
+        for (let i = 0; i < thisMonth - 7; i++) await phone.keyboard.press('ArrowLeft');
+        const fit = await phone.evaluate(() => { const ch = document.querySelector('.bp-agitem .by-chart'); if (!ch) return null; const c = ch.getBoundingClientRect(); const t = document.querySelector('.by-tip')?.getBoundingClientRect(); return t ? { month: document.querySelector('.by-tip strong')?.textContent, left: Math.round(t.left - c.left), right: Math.round(c.right - t.right) } : null; });
+        ok(!!fit && fit.month === 'July' && fit.left >= 0 && fit.right >= 0, `on a phone, July's note stays inside the chart (${JSON.stringify(fit)})`);
+        await phone.close();
+      }
       await shot(money, '27b-money-against-last-year');
       // On paper too: Print it all's money has the bar and every category beside last year. The meeting's numbers
       // locked on its day, before QuickBooks; locked again (Board → the meeting → Lock today's numbers), they carry it
@@ -1496,6 +1530,53 @@ try {
     await shot(sec, '27c-secretary-sent');
   }
   await sec.close();
+
+  // A meeting the chair started and ended before its day (moved up, held early) is past: Board's Home goes on to the
+  // one after it and lists it with the past meetings, and its own page says Held
+  {
+    await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
+    await jane.reload({ waitUntil: 'networkidle0' });
+    // Where Home links a meeting: the next one's card, Also coming up, or Past meetings
+    const placeOf = (id) => jane.evaluate((id) => {
+      const find = (links) => [...links].find((a) => a.getAttribute('href').includes(encodeURIComponent(id)))?.getAttribute('href') || '';
+      const card = (h) => [...document.querySelectorAll('.card')].find((c) => h.test(c.querySelector('.sec-head h3')?.textContent || ''));
+      return { next: find(document.querySelectorAll('.bh-next__title a')), ahead: find(card(/^Also coming up/)?.querySelectorAll('.bd-row__title') || []), past: find(card(/^Past meetings/)?.querySelectorAll('.bd-row__title') || []) };
+    }, id);
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const ahead = (await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings)).filter((m) => m.date > today && !m.practice).sort((a, b) => a.date.localeCompare(b.date));
+    // A meeting the chair ran above that's dated ahead is held early already: with the past ones
+    const ranEarly = ahead.filter((m) => m.live?.endedAt);
+    const placed = await Promise.all(ranEarly.map((m) => placeOf(m.id)));
+    if (ranEarly.length) ok(placed.every((x) => !x.next && !x.ahead && x.past), `the meeting held early above is past (${JSON.stringify(placed)})`);
+    // (one the board page has, so it's seen there too)
+    const early = ahead.find((m) => !m.live?.endedAt && m.shared) || ahead.find((m) => !m.live?.endedAt);
+    const before = early ? await placeOf(early.id) : {};
+    ok(!!early && !before.past && !!(before.next || before.ahead), `before: the meeting ahead is coming up, not past (${JSON.stringify(before)})`);
+    if (early) {
+      const was = (await getMeeting(DB, early.id)).live;
+      const t = Date.now();
+      await patchMeeting(DB, early.id, (x) => ({ ...x, live: { ...x.live, startedAt: new Date(t - 3600e3).toISOString(), endedAt: new Date(t - 60e3).toISOString() } }));
+      await jane.reload({ waitUntil: 'networkidle0' });
+      const home = await placeOf(early.id);
+      ok(!home.next && !home.ahead && !!home.past, `held early: not the next meeting, listed with the past ones (${JSON.stringify(home)})`);
+      await shot(jane, '28-held-early');
+      await jane.goto(`${SITE}/admin/#board/meeting/${encodeURIComponent(early.id)}`, { waitUntil: 'networkidle0' });
+      await jane.reload({ waitUntil: 'networkidle0' });
+      ok(await jane.waitForFunction(() => document.querySelector('.bm-when')?.textContent.trim() === 'Held', { timeout: 6000 }).then(() => true, () => false), `and its own page says Held, not its date ahead (${await jane.$eval('.bm-when', (e) => e.textContent).catch(() => '')})`);
+      // And on the board page: with the past meetings, never Home's next meeting or "Will you be there?"
+      if (early.shared) {
+        const member = await tab(MEMBER, 1440);
+        await member.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
+        const onHome = await member.evaluate((id) => !!document.querySelector(`.bp-nextup a[href="#/meetings/${id}"]`), early.id);
+        await member.goto(`${SITE}/admin/board/#/meetings`, { waitUntil: 'networkidle0' });
+        await member.reload({ waitUntil: 'networkidle0' });
+        const listed = await member.evaluate((id) => ({ past: !!document.querySelector(`.bp-archive #mr-${CSS.escape(id)}`), ahead: !![...document.querySelectorAll('#up-h ~ .bp-mlist a')].find((a) => a.getAttribute('href') === `#/meetings/${id}`) }), early.id);
+        ok(!onHome && listed.past && !listed.ahead, `the board page: a meeting held early is with the past ones, not next (${JSON.stringify({ onHome, ...listed })})`);
+        await member.close();
+      }
+      await patchMeeting(DB, early.id, (x) => ({ ...x, live: was }));
+    }
+  }
 
   ok(!consoleErrors.length, `no console errors${consoleErrors.length ? `: ${consoleErrors.slice(0, 5).join(' | ')}` : ''}`);
 } catch (err) {

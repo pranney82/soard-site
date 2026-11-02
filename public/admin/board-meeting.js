@@ -195,9 +195,11 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
 
   const days = daysFrom(m.date);
   // Where it is in its life: ahead (getting it to the board), its day (present it), held (the minutes): a meeting is
-  // held once its day is over, or once its end time has passed on the day (the secretary's minutes may come that afternoon)
+  // held once its day is over, or once its end time has passed on the day (the secretary's minutes may come that
+  // afternoon), or once the chair has ended it (one moved up and held early is held, whatever its date says)
   const over = days === 0 && /^\d{2}:\d{2}$/.test(m.end || '') && nowEastern() >= m.end;
-  const phase = practice ? 'today' : !m.date || days > 0 ? 'ahead' : days === 0 && !over ? 'today' : 'held';
+  const ended = !!m.live?.endedAt && !isLive(m);
+  const phase = practice ? 'today' : ended ? 'held' : !m.date || days > 0 ? 'ahead' : days === 0 && !over ? 'today' : 'held';
   const when = phase === 'held' ? ['Held', 'is-held'] : [whenWords(days), days === 0 ? 'is-today' : days > 0 ? 'is-ahead' : ''];
   const place = [m.location, m.address].filter(Boolean).join(', ');
   const fromCal = !!m.calendar && !m.calendar.gone;

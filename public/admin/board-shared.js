@@ -841,9 +841,12 @@ export function previousMeeting(m, meetings) {
     .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
 }
 
-/** The next meeting from today on, else null */
+/** Held before the day it's set for: the chair started and ended it early (a meeting moved up), so it's past */
+export const heldEarly = (m, today = todayEastern()) => !!m?.live?.endedAt && isDate(m.date) && m.date > today;
+
+/** The next meeting from today on, else null: one held early is past, one held today is still today's */
 export function nextMeeting(meetings, today = todayEastern()) {
-  return [...(meetings || [])].filter((m) => isDate(m.date) && m.date >= today).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
+  return [...(meetings || [])].filter((m) => isDate(m.date) && m.date >= today && !heldEarly(m, today)).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
 }
 
 /** A majority of the board: 13 → 7, 12 → 7 */

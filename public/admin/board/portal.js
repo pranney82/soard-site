@@ -31,7 +31,7 @@ import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
   isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
-  reportsOn, namesText, showsOf, booksDraw, isStatement, forBoard, cleanMeeting,
+  reportsOn, namesText, showsOf, booksDraw, isStatement, forBoard, cleanMeeting, heldEarly,
 } from '../board-shared.js';
 import { YearCompare } from './books.js';
 import { FinanceReview, NoteLine, notesByKey, lineKeysOf, withLineNotes } from './review.js';
@@ -466,7 +466,8 @@ function derive(data) {
   // A meeting already on the board's calendars whose agenda isn't posted yet: its when and where only
   const pending = data.nextPending && isDate(data.nextPending.date) && data.nextPending.date >= data.today ? { ...data.nextPending, pending: true, files: [], sections: [], attendance: [], motions: [], actions: [] } : null;
   const featured = pending && (!next || pending.date < next.date) ? pending : next;
-  const past = byDate.filter((m) => m.date < data.today).reverse();
+  // Past: before today, or held already though it's dated ahead (moved up and held early)
+  const past = byDate.filter((m) => m.date < data.today || heldEarly(m, data.today)).reverse();
   return { people, bySlug, byDate, featured, past, last: past[0] || null, me: bySlug.get(data.me.slug) || null };
 }
 
@@ -626,7 +627,7 @@ function App() {
     : route.sub === 'review' ? html`<${ChairReview} id=${route.id} ctx=${ctx} ui=${{ Icon, Presenters, DocTiles, NotFound }} key=${`review/${route.id}`} />`
     : route.page === 'meetings' && route.id ? html`<${MeetingPage} id=${route.id} ctx=${ctx} key=${route.id} />`
     : route.page === 'meetings' ? html`<${MeetingsPage} ctx=${ctx} />`
-    : route.page === 'financials' ? html`<${FinancialsPage} ctx=${ctx} />`
+    : route.page === 'financials' ? html`<${FinancialsPage} ctx=${ctx} key=${route.id || ''} />`
     : route.page === 'people' ? html`<${PeoplePage} ctx=${ctx} />`
     : route.page === 'documents' ? html`<${DocumentsPage} ctx=${ctx} />`
     : html`<${HomePage} ctx=${ctx} />`;
@@ -1043,9 +1044,10 @@ function GiftsYear({ g, since }) {
   const [all, setAll] = useKept('gifts-all', !!focusNext?.startsWith('gift-') && g.list.findIndex((x) => `gift-${x.id}` === focusNext) >= 12);
   // Home's "All 14 this year" opens Financials here (a gift found by search lands on that gift instead), and stays here
   // until they scroll, tap or type: the page change's own scroll to the top, and what's drawn above it later (the
-  // budget, the charts), never move it off
+  // budget, the charts), never move it off. Once: Back to this step comes back to wherever they'd got to
   useEffect(() => {
-    if (!/^#\/financials\/gifts\b/.test(location.hash) || focusNext || typeof kept().y === 'number') return;
+    if (!/^#\/financials\/gifts\b/.test(location.hash) || focusNext || kept().landed) return;
+    keep({ landed: true });
     untilTheyMove(2500, () => {
       const el = document.getElementById('gifts');
       if (!el) return true;
@@ -1174,7 +1176,7 @@ function NextUp({ m, ctx }) {
 /** Whether the meeting is already on their calendar (they got the invite), else a way to add it */
 function OnCalendar({ m, data }) {
   if (m.onCalendar) return html`<p class="bp-oncal"><${Icon} name="check" size=${18} /><span>${data.me.email ? `It’s on your calendar: the invite went to ${data.me.email}.` : 'It’s on your calendar.'}</span></p>`;
-  if (!isDate(m.date) || m.date < data.today) return null;
+  if (!isDate(m.date) || m.date < data.today || heldEarly(m, data.today)) return null;
   return html`<p class="bp-oncal bp-oncal--add">
     <a class="bp-btn bp-btn--quiet bp-btn--sm" href=${`${API}?ics=${encodeURIComponent(m.id)}`} download="soard-board-meeting.ics"><${Icon} name="calendar" size=${18} />Add it to my calendar</a>
     <a class="bp-link" href=${googleHref(m)} target="_blank" rel="noopener">or to Google Calendar</a>
@@ -1186,7 +1188,7 @@ function Rsvp({ m, ctx, quiet = false }) {
   const [busy, setBusy] = useState('');
   // An admin seeing it as the board will: the question as a member gets it, and pressing it changes nothing
   const look = !data.me.slug && (AS_BOARD || PREVIEW);
-  if (m.date < data.today || (!data.me.slug && !look)) return null;
+  if (m.date < data.today || heldEarly(m, data.today) || (!data.me.slug && !look)) return null;
   const team = theTeam(data);
   const chosen = RSVP.find((r) => r.id === m.myRsvp);
   const onInvite = !chosen && m.myInvite && m.myInvite !== 'invited' ? answerOf('', m.myInvite) : '';
@@ -1324,7 +1326,7 @@ function Snippet({ text, terms }) {
  */
 function MeetingRow({ m, data, terms = [] }) {
   const c = attendanceCounts(m);
-  const ahead = m.date >= data.today;
+  const ahead = m.date >= data.today && !heldEarly(m, data.today);
   const hit = terms.length ? meetingTexts(m).find((x, i) => i > 0 && hits(x.text, terms)) : null;
   // The words that matched, once: where they are, then the point's own words when the match is in them
   const inBody = hit && hit.body && terms.some((w) => norm(hit.body).includes(w)) && norm(hit.body) !== norm(hit.where);
@@ -1351,9 +1353,9 @@ function MeetingsPage({ ctx }) {
   const [opened, setOpened] = useKept('years', []);
   const terms = termsOf(q);
   const said = (m) => meetingTexts(m).some((x) => hits(x.text, terms));
-  const upcoming = d.byDate.filter((m) => m.date >= data.today && m.id !== d.featured?.id);
+  const upcoming = d.byDate.filter((m) => m.date >= data.today && !heldEarly(m, data.today) && m.id !== d.featured?.id);
   // A search looks in every meeting, the ones ahead too (the next one's agenda and packet first)
-  const ahead = terms.length ? [...(d.featured?.pending ? [d.featured] : []), ...d.byDate.filter((m) => m.date >= data.today)].filter(said) : [];
+  const ahead = terms.length ? [...(d.featured?.pending ? [d.featured] : []), ...d.byDate.filter((m) => m.date >= data.today && !heldEarly(m, data.today))].filter(said) : [];
   const past = d.past.filter((m) => !terms.length || said(m));
   const found = ahead.length + past.length;
   const years = [...new Set(past.map((m) => m.date.slice(0, 4)))];
@@ -2267,9 +2269,10 @@ function AgendaRail({ sections, labels, extra, plan = null }) {
 
 function MeetingDetail({ m, ctx, waiting = false }) {
   const { data, d } = ctx;
-  const upcoming = m.date >= data.today;
-  // A past meeting shows only the numbers locked into its packet; one ahead shows today's until then
-  const numbers = m.snapshot || (upcoming ? data.numbers : null);
+  const upcoming = m.date >= data.today && !heldEarly(m, data.today);
+  // A past meeting shows only the numbers locked into its packet; one ahead shows today's until then (one held early,
+  // today's until its own are locked)
+  const numbers = m.snapshot || (m.date >= data.today ? data.numbers : null);
   const c = attendanceCounts(m);
   const person = (p) => d.bySlug.get(p.slug) || p;
   const here = m.attendance.filter((p) => p.status === 'present' || p.status === 'remote');

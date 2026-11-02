@@ -24,7 +24,7 @@ import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE
 import { MeetingEditor, agendaSource } from './board-meeting.js';
 import {
   DOC_KINDS, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
-  attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority, agendaItems,
+  attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority, agendaItems, isLive, heldEarly,
 } from './board-shared.js';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -134,14 +134,21 @@ function DateBlock({ date, small = false }) {
   return html`<div class=${`bh-date ${small ? 'bh-date--sm' : ''}`} aria-hidden="true"><span class="bh-date__m">${MONTHS[d.getUTCMonth()]}</span><span class="bh-date__d">${d.getUTCDate()}</span>${small ? null : html`<span class="bh-date__w">${d.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' })}</span>`}</div>`;
 }
 
+/** The admins' calendars or email, said to whoever reads it: "your and Holly’s", "Jane and Holly’s", "your or Holly’s" */
+const whose = (admins = [], me = '', joiner = 'and') => {
+  const names = [...(admins.includes(me) ? ['your'] : []), ...admins.filter((e) => e !== me).map(firstOf)];
+  if (!names.length) return 'your';
+  const list = names.length > 1 ? `${names.slice(0, -1).join(', ')} ${joiner} ${names.at(-1)}` : names[0];
+  return names.at(-1) === 'your' ? list : `${list}’s`;
+};
+
 /** Where meetings come from: the admins' calendars and email, when they were last read */
 function SourcesLine({ data }) {
   const c = data.calendar || {};
-  const names = data.settings.admins.map(firstOf);
-  const who = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}’s calendars` : `${names[0] || 'your'}’s calendar`;
+  const many = data.settings.admins.length > 1;
   if (!data.setup.calendar) return html`<p class="bd-muted bh-sources">Add meetings with New meeting. (Board can take them from the calendar once GOOGLE_CALENDAR_KEY is in Cloudflare.)</p>`;
   if (c.errors?.length) return html`<div class="notice notice--warn"><div class="notice__body"><strong>Couldn’t read every calendar.</strong> ${c.errors.join(' · ')}</div></div>`;
-  return html`<p class="bd-muted bh-sources">Meetings come from ${who} by themselves (any event named like “Board Meeting”). Past meetings’ minutes and packets come from the Board folder in Google Drive, and anything else for them from your and Holly’s email. ${c.checkedAt ? `Calendars last looked at ${ago(c.checkedAt)}.` : 'Looking for the first time.'}</p>`;
+  return html`<p class="bd-muted bh-sources">Meetings come from ${whose(data.settings.admins, data.me)} ${many ? 'calendars' : 'calendar'} by themselves (any event named like “Board Meeting”). Past meetings’ minutes and packets come from the Board folder in Google Drive, and anything else for them from ${whose(data.settings.admins, data.me)} email. ${c.checkedAt ? `Calendars last looked at ${ago(c.checkedAt)}.` : 'Looking for the first time.'}</p>`;
 }
 
 /** The scopes Board's service account needs on Google Admin's domain-wide delegation */
@@ -216,7 +223,10 @@ function MailCard({ data }) {
 function NextCard({ m, ctx }) {
   const { data, go } = ctx;
   const days = daysFrom(m.date);
-  const today = days === 0;
+  // Being held now (on its day, or moved up and started early), or held already today
+  const now = isLive(m);
+  const ended = !now && !!m.live?.endedAt;
+  const today = days === 0 || now;
   const place = [m.location, m.address].filter(Boolean).join(', ');
   const prep = prepOf(m);
   const up = prep.find((x) => !x.done);
@@ -225,11 +235,12 @@ function NextCard({ m, ctx }) {
   const yes = answers.filter((a) => a === 'Coming' || a === 'By video').length;
   const no = answers.filter((a) => a === 'Can’t come').length;
   const quiet = answers.filter((a) => !a).length;
+  const here = attendanceCounts(m);
   return html`<div class="card bh-next">
     <div class="bh-next__top">
       <${DateBlock} date=${m.date} />
       <div class="bh-next__main">
-        <p class="bh-eyebrow">Next meeting · ${whenWords(days)}</p>
+        <p class="bh-eyebrow">${now ? `Meeting now · started ${ago(m.live.startedAt)}` : ended ? `Held today · ended ${ago(m.live.endedAt)}` : `Next meeting · ${whenWords(days)}`}</p>
         <h3 class="bh-next__title"><a href=${hashFor({ meetingId: m.id })}>${meetingName(m)}</a></h3>
         <p class="bh-facts">
           <span>${[longDate(m.date), timeRange(m.start, m.end)].filter(Boolean).join(' · ')}</span>
@@ -237,12 +248,13 @@ function NextCard({ m, ctx }) {
           ${m.video ? html`<span>${callName(m.video)}</span>` : null}
         </p>
       </div>
-      <button class="btn btn-primary" onClick=${() => go({ meetingId: m.id })}>${today ? 'Open for the meeting' : 'Open the meeting'}</button>
+      <button class="btn btn-primary" onClick=${() => go({ meetingId: m.id })}>${today && !ended ? 'Open for the meeting' : 'Open the meeting'}</button>
     </div>
-    ${today ? html`<p class="bh-nextline"><strong>Today.</strong> Open it to present the agenda and its documents on the screen.</p>` : html`
+    ${ended ? html`<p class="bh-nextline"><strong>Next:</strong> its minutes.</p>` : today ? html`<p class="bh-nextline">${now ? null : html`<strong>Today.</strong> `}Open it to present the agenda and its documents on the screen.</p>` : html`
       <ol class="bh-prep" aria-label="Getting ready">${prep.map((x) => html`<li class=${x.done ? 'is-done' : x === up ? 'is-next' : ''}><span class="bh-prep__mark" aria-hidden="true">${x.done ? CHECK : null}</span>${x.label}</li>`)}</ol>
       <p class="bh-nextline">${up ? html`<strong>Next:</strong> ${up.next}.` : html`<strong>Ready.</strong> The board was emailed the link ${ago(m.packetSentAt)}.`}</p>`}
-    <p class="bh-rsvp"><strong>Who’s coming:</strong> ${[yes && `${yes} coming`, no && `${no} can’t`, quiet && `${quiet} haven’t answered`].filter(Boolean).join(' · ') || 'nobody has answered yet'}</p>
+    ${ended ? html`<p class="bh-rsvp"><strong>Who was there:</strong> ${here.boardHere} of ${plural(here.board, 'board member')}</p>`
+      : html`<p class="bh-rsvp"><strong>Who’s coming:</strong> ${[yes && `${yes} coming`, no && `${no} can’t`, quiet && `${quiet} haven’t answered`].filter(Boolean).join(' · ') || 'nobody has answered yet'}</p>`}
   </div>`;
 }
 
@@ -267,7 +279,7 @@ function AgendaPreview({ m, ctx }) {
 
 function MeetingRow({ m, go }) {
   const c = attendanceCounts(m);
-  const past = m.date && m.date < todayEastern();
+  const past = heldEarly(m) || (m.date && m.date < todayEastern());
   return html`<li class="bh-row" key=${m.id} onClick=${(e) => { if (!e.target.closest('a,button')) go({ meetingId: m.id }); }}>
     <${DateBlock} date=${m.date} small />
     <div class="bh-row__main">
@@ -286,8 +298,8 @@ function MeetingsTab({ ctx }) {
   const [busy, setBusy] = useState(false);
   const today = todayEastern();
   const next = nextMeeting(data.meetings);
-  const ahead = data.meetings.filter((m) => m !== next && (!m.date || m.date >= today)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
-  const past = data.meetings.filter((m) => m.date && m.date < today);
+  const ahead = data.meetings.filter((m) => m !== next && !heldEarly(m) && (!m.date || m.date >= today)).sort((a, b) => String(a.date).localeCompare(String(b.date)));
+  const past = data.meetings.filter((m) => m.date && (m.date < today || heldEarly(m)));
   const actions = openActions(data.meetings);
   const years = useMemo(() => {
     const by = new Map();
@@ -310,15 +322,19 @@ function MeetingsTab({ ctx }) {
     ctx.load();
     addToast(`Done: ${a.text.slice(0, 60)}`, 'info', { label: 'Undo', fn: async () => { await call({ action: 'action-done', actionId: a.id, done: false }); ctx.load(); } });
   };
+  // New meeting turns into its date, ready to type; Cancel (or Esc) goes back to the button
+  const stopAdding = () => { setAdding(false); setDate(''); requestAnimationFrame(() => document.querySelector('.bh-new')?.focus()); };
   const adder = adding ? html`<span class="bd-inline">
-      <input class="form-input" type="date" aria-label="Meeting date" value=${date} onInput=${(e) => setDate(e.target.value)} />
+      <input class="form-input" type="date" aria-label="Meeting date" value=${date} onInput=${(e) => setDate(e.target.value)}
+        ref=${(el) => { if (el && !el.dataset.focused) { el.dataset.focused = '1'; el.focus(); } }}
+        onKeyDown=${(e) => { if (e.key === 'Enter') { e.preventDefault(); create(); } else if (e.key === 'Escape') { e.preventDefault(); stopAdding(); } }} />
       <button class="btn btn-primary btn-sm" disabled=${busy} onClick=${create}>${busy ? 'Adding…' : 'Add'}</button>
-      <button class="btn btn-ghost btn-sm" onClick=${() => setAdding(false)}>Cancel</button>
-    </span>` : html`<button class=${`btn btn-sm ${next ? 'btn-ghost' : 'btn-primary'}`} onClick=${() => setAdding(true)}>New meeting</button>`;
+      <button class="btn btn-ghost btn-sm" onClick=${stopAdding}>Cancel</button>
+    </span>` : html`<button class=${`btn btn-sm bh-new ${next ? 'btn-ghost' : 'btn-primary'}`} onClick=${() => setAdding(true)}>New meeting</button>`;
   return html`
     <${GoogleSetup} data=${data} />
     ${next ? html`<${NextCard} m=${next} ctx=${ctx} /><${AgendaPreview} m=${next} ctx=${ctx} />`
-      : html`<div class="card empty"><p class="empty__title">No meeting coming up</p><p class="empty__text">A board meeting on your or Holly’s calendar shows up here by itself. Or add it: its agenda is drafted from the last one, with open action items carried over.</p><div class="empty__actions">${adder}</div></div>`}
+      : html`<div class="card empty"><p class="empty__title">No meeting coming up</p><p class="empty__text">A board meeting on ${whose(data.settings.admins, data.me, 'or')} calendar shows up here by itself. Or add it: its agenda is drafted from the last one, with open action items carried over.</p><div class="empty__actions">${adder}</div></div>`}
     ${ahead.length ? html`<div class="card" style="padding:0">
       <div class="sec-head"><h3>Also coming up <span class="count">${ahead.length}</span></h3></div>
       <ul class="bd-row-list">${ahead.map((m) => html`<${MeetingRow} m=${m} go=${go} />`)}</ul>

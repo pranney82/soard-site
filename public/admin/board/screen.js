@@ -580,8 +580,9 @@ export function Screen({ id, data, d, onBack = null }) {
   const unshared = OWN && !data.meetings.some((x) => x.id === id);
   const meeting = useMemo(() => (v ? { ...(m || {}), id, title: m?.title || v.title || '', date: v.date, start: m?.start || v.start || '', end: m?.end || v.end || '', sections: PREVIEW && m ? m.sections : v.sections, files: PREVIEW && m ? m.files : v.files || [] } : null), [v, m]);
   const plan = useMemo(() => (meeting ? sectionPlan(meeting) : new Map()), [meeting]);
-  // QuickBooks' slides after the money, as the chair's deck has them (the meeting's locked numbers, else today's)
-  const books = (v?.snapshot || data.numbers)?.books || null;
+  // QuickBooks' slides after the money, the way the money's figures go (CashSlide, the board page): today's for a
+  // meeting today or ahead, the locked ones for a past meeting
+  const books = (v?.date && v.date < todayEastern() ? v.snapshot : data.numbers)?.books || null;
   const deck = useMemo(() => (meeting ? deckOf(meeting, { pages, parts: halves, meetings: v.prior || [], books }) : []), [meeting, pages, halves, books]);
   const notePages = (fileId, count, page, n) => {
     setPages((p) => {
@@ -697,7 +698,7 @@ export function Screen({ id, data, d, onBack = null }) {
     </div>`;
   } else if (stop.kind === 'books') {
     // QuickBooks' own: the year against last year, or a statement beside a year before
-    stage = html`<${BooksSlide} books=${numbers?.books} kind=${stop.fileId.slice(6)} />`;
+    stage = html`<${BooksSlide} books=${books} kind=${stop.fileId.slice(6)} />`;
   } else if (stop.kind === 'live') {
     // One of the item's other live lists, as the item's own would show
     const k = stop.fileId.slice(5);

@@ -481,9 +481,10 @@ export function bankByMonth(report, also = { ids: new Set(), names: new Set() })
 }
 
 /**
- * A month-by-month Profit and Loss → each month's revenue (Income and Other Income) and spending (Cost of Goods Sold,
- * Expenses and Other Expenses), oldest first: [{ month: 'YYYY-MM', revenue, spent }]. A month whose sections don't add
- * up to its own net throws SHAPE, as the year's own report does
+ * A month-by-month Profit and Loss → each month's revenue (Income and Other Income), spending (Cost of Goods Sold,
+ * Expenses and Other Expenses) and the part of that spending that never left the bank (./nonCashOf: in kind,
+ * depreciation), oldest first: [{ month: 'YYYY-MM', revenue, spent, nonCash }]. A month whose sections don't add up to
+ * its own net throws SHAPE, as the year's own report does
  */
 export function plByMonth(report) {
   const cols = (report?.Columns?.Column || []).slice(1);
@@ -501,12 +502,13 @@ export function plByMonth(report) {
     sum[key] = (r?.Summary?.ColData || []).slice(1);
   }
   const at = (k, i) => num(sum[k]?.[i]?.value);
+  const nc = rows.filter((r) => SPENDING.includes(r.group)).flatMap((g) => nonCashRows(g.Rows?.Row));
   return months.map((month, i) => {
     if (!month) return null;
     const revenue = round2(at('income', i) + at('otherIncome', i));
     const spent = round2(at('cogs', i) + at('expenses', i) + at('otherExpenses', i));
     if (sum.net?.[i] && Math.abs(revenue - spent - at('net', i)) > 1) throw Object.assign(new Error(`${month}: the Profit and Loss sections don’t add up to its net income`), { code: 'SHAPE' });
-    return { month, revenue, spent };
+    return { month, revenue, spent, nonCash: round2(nc.reduce((t, r) => t + num(r.ColData?.[i + 1]?.value), 0)) };
   }).filter(Boolean);
 }
 
@@ -557,6 +559,10 @@ export function sourcesOf(report) {
 // "In-Kind Contribution Expense" beside its "In-Kind Contribution"), and depreciation. SOARD's budget leaves these out
 // of its expenses (its revenue counts in-kind gifts; its net is "minus in-kind"), so the board's expenses do too
 const NON_CASH = /in[\s-]?kind|donated|depreciat|amortiz/i;
+/** The rows under a spending section that never left the bank, each with every column: an account named so, or a group named so (its total) */
+const nonCashRows = (rows) => (rows || []).flatMap((r) => (r.Header || r.Rows
+  ? (NON_CASH.test(accountName(cellText(r.Header?.ColData?.[0]))) && r.Summary ? [r.Summary] : nonCashRows(r.Rows?.Row))
+  : r.ColData && NON_CASH.test(accountName(cellText(r.ColData[0]))) ? [r] : []));
 /** The Profit and Loss's non-cash spending: its expense accounts (Cost of Goods Sold, Expenses, Other Expenses) named so */
 export function nonCashOf(report) {
   const spending = treeOf(report?.Rows?.Row).filter((n) => n.kind === 'section' && SPENDING.includes(n.group));
@@ -764,9 +770,6 @@ export function functionsOf(report) {
   const cols = (report?.Columns?.Column || []).map((c) => cleanText(c.ColTitle, 60));
   const groups = (report?.Rows?.Row || []).filter((r) => SPENDING.includes(r.group));
   // Without what never left the bank (./nonCashOf), each class's own share of it, as the expenses are shown
-  const nonCashRows = (rows) => (rows || []).flatMap((r) => (r.Header || r.Rows
-    ? (NON_CASH.test(accountName(cellText(r.Header?.ColData?.[0]))) && r.Summary ? [r.Summary] : nonCashRows(r.Rows?.Row))
-    : r.ColData && NON_CASH.test(accountName(cellText(r.ColData[0]))) ? [r] : []));
   const nc = groups.flatMap((g) => nonCashRows(g.Rows?.Row));
   const at = (i) => groups.reduce((t, r) => t + num(r.Summary?.ColData?.[i]?.value), 0) - nc.reduce((t, r) => t + num(r.ColData?.[i]?.value), 0);
   const totalAt = cols.findIndex((t, i) => i > 0 && /^total$/i.test(t));
@@ -779,7 +782,7 @@ export function functionsOf(report) {
 
 const DAILY_RETRY_MS = 60 * 60 * 1000;
 // What the daily read keeps: one up whenever it keeps something new, so a deploy's figures show that day, not the next
-const DAILY_SHAPE = 7;
+const DAILY_SHAPE = 8;
 /**
  * The year in context, now (about ten reports): kept in books_daily with its day. Trouble is logged and kept, and the
  * last good read stays; the hourly read is the one that tells Slack

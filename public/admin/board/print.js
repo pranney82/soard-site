@@ -206,13 +206,13 @@ function storeBox(books) {
 }
 
 /** An item's live facts on paper, drawn for what they are */
-function liveBox(kind, n, m, money, notes = null) {
+function liveBox(kind, n, m, money, notes = null, books = n?.books) {
   if (!n || !kind || kind === 'minutes') return null;
   if (kind === 'projects') return makeoversBox(n);
   if (kind === 'cash') {
     // The figures, the year against last year, where the revenue came from, the store, then the statements the packet
     // holds (QuickBooks', as of the books' close)
-    const parts = [moneyBox(n, money), yearBox(n?.books), revenueBox(n?.books), storeBox(n?.books), statementsBox(n?.books?.statements, n?.books?.budget, notes)].filter(Boolean);
+    const parts = [moneyBox(n, money), yearBox(books), revenueBox(books), storeBox(books), statementsBox(books?.statements, books?.budget, notes)].filter(Boolean);
     if (parts.length < 2) return parts[0] || null;
     const box = el('div', 'bpp-money');
     box.append(...parts);
@@ -229,9 +229,9 @@ function liveBox(kind, n, m, money, notes = null) {
 }
 
 /** The agenda as the first pages: the meeting, then each part with its time, and each item */
-function agendaPages(m, { people, numbers, meetings, money, lineNotes = {} }) {
+function agendaPages(m, { people, numbers, meetings, money, lineNotes = {}, books = numbers?.books }) {
   // The statements QuickBooks draws on the money item aren't printed again as files
-  const drawsSt = booksDraw(numbers?.books).some((b) => b === 'act' || b === 'pos');
+  const drawsSt = booksDraw(books).some((b) => b === 'act' || b === 'pos');
   const docFiles = (it) => itemFiles(m, it, meetings).filter((f) => !(drawsSt && showsOf(it).includes('cash') && isStatement(f)));
   const sheet = el('section', 'bpp-agenda');
   const head = el('header', 'bpp-head');
@@ -271,7 +271,7 @@ function agendaPages(m, { people, numbers, meetings, money, lineNotes = {} }) {
         box.append(el('p', 'bpp-report__by', ['Report', it.reportBy ? `by ${it.reportBy}` : ''].filter(Boolean).join(' ')), report);
         row.append(box);
       }
-      for (const k of showsOf(it)) { const facts = liveBox(k, numbers, m, money, k === 'cash' ? lineNotes[it.id] : null); if (facts) row.append(facts); }
+      for (const k of showsOf(it)) { const facts = liveBox(k, numbers, m, money, k === 'cash' ? lineNotes[it.id] : null, books); if (facts) row.append(facts); }
       const files = docFiles(it);
       if (files.length) row.append(el('p', 'bpp-docs', `With it: ${files.map((f) => fileTitle(f.name)).join(', ')}`));
       li.append(row);
@@ -288,7 +288,10 @@ function agendaPages(m, { people, numbers, meetings, money, lineNotes = {} }) {
  */
 export async function printAll(m, { people = [], numbers = null, meetings = [], data = null, onStep = () => {}, signal } = {}) {
   const items = agendaItems(m);
-  const drawsSt = booksDraw(numbers?.books).some((b) => b === 'act' || b === 'pos');
+  // The books the way the money's figures go (./portal.js CashBlock): today's for a meeting today or ahead, the locked
+  // ones for a past meeting
+  const books = data && m.date >= data.today ? data.numbers?.books || numbers?.books : numbers?.books;
+  const drawsSt = booksDraw(books).some((b) => b === 'act' || b === 'pos');
   const docFiles = (it) => itemFiles(m, it, meetings).filter((f) => !(drawsSt && showsOf(it).includes('cash') && isStatement(f)));
   const groups = [
     ...m.sections.flatMap((s) => s.items).map((it) => ({ it, label: items.find((x) => x.id === it.id)?.label || '', files: docFiles(it) })),
@@ -299,7 +302,7 @@ export async function printAll(m, { people = [], numbers = null, meetings = [], 
   root.setAttribute('aria-hidden', 'true');
   // The money the Financial item shows: the balance sheet and budget as of this meeting (a past one keeps its own)
   const money = data && m.sections.some((sec) => sec.items.some((it) => showsOf(it).includes('cash'))) ? await moneyFor(data, m.date < data.today ? m.date : '', numbers).catch(() => null) : null;
-  root.append(agendaPages(m, { people, numbers, meetings, money, lineNotes: data?.lineNotes?.[m.id] || {} }));
+  root.append(agendaPages(m, { people, numbers, meetings, money, lineNotes: data?.lineNotes?.[m.id] || {}, books }));
   // How many pages, so the progress can say "12 of 40"
   const docs = [];
   for (const g of groups) for (const f of g.files) {
