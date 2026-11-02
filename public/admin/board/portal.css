@@ -1389,24 +1389,32 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 @media (max-width: 640px) { .by-legend .by-legend__how { margin-left: 0; flex-basis: 100%; } }
 /* The screen: its own colors for the dark (validated against it), at the size of a room */
 .bs .by, .bs .by-stmt { --by-now: #B08F00; --by-then: #5994DA; --by-grid: var(--bs-line); --by-ink: var(--bs-ink); --by-muted: var(--bs-soft); --by-surface: var(--bs-panel); }
-.by-slide { width: min(100%, 1560px); height: 100%; min-height: 0; display: grid; align-content: start; gap: clamp(0.5rem, 1.6vh, 1.2rem); padding-top: clamp(0.25rem, 1vh, 0.75rem); overflow: hidden; }
-.by-slide__title { font-size: clamp(1.8rem, 5.4vh, 3.8rem); }
+.by-slide { width: min(100%, calc(var(--bs-u, 1.48vh) * 98)); height: 100%; min-height: 0; display: grid; align-content: start; gap: calc(var(--bs-u, 1.48vh) * 1.1); padding-top: calc(var(--bs-u, 1.48vh) * 0.5); overflow: hidden; }
+.by-slide__title { font-size: var(--bs-title, calc(var(--bs-u, 1.48vh) * 4.4)); }
 /* The store's slide: its three figures in the room's middle, as big as the screen gives them */
 .by-slide--store { grid-template-rows: auto auto minmax(0, 1fr); }
 .by-slide--store .bs-figs { align-self: center; }
-.by-slide--store .bs-figs li { padding-block: clamp(1.4rem, 6vh, 3.6rem); }
-.by-slide--store .bs-figs__value { font-size: clamp(2rem, min(12vh, 17cqi), 7.5rem); }
-.by-slide--store .bs-figs__sub { font-size: clamp(1rem, 2.8vh, 1.7rem); }
+.by-slide--store .bs-figs li { padding-block: calc(var(--bs-u, 1.48vh) * 4.5); }
+.by-slide--store .bs-figs__value { font-size: max(1.6rem, min(var(--bs-u, 1.48vh) * 8, 17cqi)); }
+.by-slide--store .bs-figs__sub { font-size: max(1rem, var(--bs-u, 1.48vh) * 2.1); }
 .bs .by { max-width: none; margin: 0; }
-.bs .by-legend { font-size: clamp(0.95rem, 2.2vh, 1.3rem); }
-.bs .by-cap__t { font-size: clamp(0.85rem, 1.9vh, 1.15rem); }
-.bs .by-cap__figs { font-size: clamp(1rem, 2.5vh, 1.6rem); }
+.bs .by-legend { font-size: max(0.95rem, var(--bs-u, 1.48vh) * 1.9); }
+.bs .by-cap__t { font-size: max(0.85rem, var(--bs-u, 1.48vh) * 1.5); }
+.bs .by-cap__figs { font-size: max(1rem, var(--bs-u, 1.48vh) * 2.1); }
 .bs .by-table { display: none; }
-.by-stmt.is-big { font-size: calc(var(--fit, 1) * clamp(1rem, 2.5vh, 1.55rem)); }
+.by-stmt.is-big { font-size: calc(var(--fit, 1) * max(0.95rem, var(--bs-u, 1.48vh) * 2.1)); }
+.by-stmt.is-big th, .by-stmt.is-big td { padding-block: 0.2em; }
+.by-stmt.is-big .by-stmt__h th { padding-top: 0.5em; }
 /* A statement fitted to the slide (books.js FitLines): the rest of the slide's height, and where every line is */
 .by-slide:has(> .by-fit) { grid-template-rows: auto auto minmax(0, 1fr) auto; align-content: stretch; }
 .by-fit { min-height: 0; overflow: hidden; }
-.by-fit__more { margin: 0; color: var(--bs-soft, var(--muted)); font-size: clamp(0.9rem, 2vh, 1.2rem); }
+.by-fit__more { margin: 0; color: var(--bs-soft, var(--muted)); font-size: max(0.85rem, var(--bs-u, 1.48vh) * 1.6); }
+/* A tablet or a phone: every line of a statement, the stage scrolling; on a phone the columns closer, so the change
+   column is always there beside the figures */
+@media (max-width: 900px) { .by-slide { height: auto; overflow: visible; } .by-fit { overflow: visible; } }
+@media (max-width: 520px) { .bs .by-stmt.is-big { font-size: 1rem; } .bs .by-stmt th, .bs .by-stmt td { padding-inline: 0.25em; } .bs .by-stmt .num { padding-inline: 0.2em; } .bs .by-stmt thead th { font-size: 0.8em; } }
+/* On the screen, the chart's note under its name at a size a room reads (the page's is fixed small) */
+.bs .by-cap__t small { font-size: 0.85em; }
 @media print { .by-tip, .by-table summary { display: none; } .by-table[open] { display: none; } }
 
 /* ─── Reports: under an item, the ask, and the page to write one (portal.js ReportPage, ../board-report.js) ─── */
@@ -1552,10 +1560,15 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bp-printing small { color: rgba(255, 255, 255, 0.7); font-size: 0.82rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bp-printing .bp-mini { background: rgba(255, 255, 255, 0.12); border-color: rgba(255, 255, 255, 0.25); color: #fff; }
 
-/* The screen: a warm near-black room, type sized to the window (vh), the brand yellow for the marks. The stage
-   changes with a short rise; the rail along the bottom says where the meeting is. */
+/* The screen: a warm near-black room, the brand yellow for the marks. The stage changes with a short rise; the rail
+   along the bottom says where the meeting is.
+   One scale for every size on it: --bs-u (1.48% of the height, or 0.83% of the width on a screen narrower than 16:9)
+   and multiples of it, with no fixed largest size, so a 4K TV shows what 1080p shows, only sharper. Each role one
+   size: at 1280x720 (u about 10.6px) the display 53px, an item's title 47px, lead lines 28px, body 22px, labels 15px */
 .bs { --bs-bg: #1C1D1A; --bs-panel: #262722; --bs-panel-2: #2F302A; --bs-ink: #F6F4EC; --bs-soft: rgba(246, 244, 236, 0.66); --bs-faint: rgba(246, 244, 236, 0.6); --bs-line: rgba(246, 244, 236, 0.12);
-  --bs-pad: clamp(1rem, 3.2vw, 3rem); --bs-top: clamp(3.5rem, 9.2vh, 6rem); --bs-foot-h: clamp(1.9rem, 4.4vh, 3rem);
+  --bs-u: min(1.48vh, 0.83vw);
+  --bs-display: calc(var(--bs-u) * 5); --bs-title: calc(var(--bs-u) * 4.4); --bs-lead: calc(var(--bs-u) * 2.6); --bs-body: calc(var(--bs-u) * 2.1); --bs-label: calc(var(--bs-u) * 1.4);
+  --bs-pad: calc(var(--bs-u) * 3.8); --bs-top: calc(var(--bs-u) * 6.2); --bs-foot-h: calc(var(--bs-u) * 3);
   /* Every row a set height but the stage's, so nothing moves from one stop to the next */
   position: fixed; inset: 0; display: grid; grid-template-rows: var(--bs-top) minmax(0, 1fr) var(--bs-foot-h) auto; grid-template-columns: minmax(0, 1fr) auto;
   background: var(--bs-bg); color: var(--bs-ink); font-family: var(--body); overflow: hidden; cursor: none; }
@@ -1568,7 +1581,7 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-back:focus-visible { opacity: 1; pointer-events: auto; outline: 2px solid var(--yellow); outline-offset: 2px; }
 .bs.is-awake .bs-back { opacity: 1; pointer-events: auto; }
 .bs-back--text { display: inline-block; width: auto; height: auto; margin-top: 1rem; padding: 0.55rem 1.1rem; border-radius: 999px; opacity: 1; pointer-events: auto; color: var(--bs-ink); font-weight: 650; text-decoration: none; }
-.bs-top { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 0; padding: 0 var(--bs-pad); }
+.bs-top { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: calc(var(--bs-u) * 1.5); min-height: 0; padding: 0 var(--bs-pad); }
 .bs-brand { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
 /* The meeting's name gives way (…) before anything along the top runs over it: a 1024px projector, a long name */
 .bs-brand > span { min-width: 0; }
@@ -1578,89 +1591,143 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 @media (max-width: 1180px) { .bs-floor__has { display: none; } }
 .bs-floor > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .bs-brand img { flex: none; width: clamp(32px, 4.4vh, 48px); height: auto; }
-.bs-brand strong { display: block; font-family: var(--display); font-size: clamp(0.95rem, 2vh, 1.25rem); font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-brand strong { display: block; font-family: var(--display); font-size: calc(var(--bs-u) * 1.55); font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-brand small { display: block; color: var(--bs-soft); font-size: clamp(0.75rem, 1.55vh, 0.98rem); }
-.bs-top__right { display: flex; align-items: center; gap: 0.75rem; flex: none; }
-.bs-num { min-width: 3.4em; padding: 0.25rem 0.75rem; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-weight: 800; font-variant-numeric: tabular-nums; font-size: clamp(0.9rem, 1.9vh, 1.15rem); text-align: center; }
-.bs-clock { color: var(--bs-soft); font-variant-numeric: tabular-nums; font-size: clamp(0.9rem, 1.9vh, 1.15rem); }
-.bs-floor { display: flex; align-items: center; gap: 0.7rem; min-width: 0; margin: 0 auto 0 clamp(1rem, 3vw, 3rem); padding: 0.3rem 1rem 0.3rem 0.35rem; border-radius: 999px; background: var(--bs-panel); border: 1px solid var(--bs-line); font-size: clamp(0.85rem, 1.8vh, 1.1rem); color: var(--bs-soft); white-space: nowrap; overflow: hidden; }
+.bs-top__right { display: flex; align-items: center; gap: calc(var(--bs-u) * 1.1); flex: none; }
+.bs-num { min-width: 3.4em; padding: 0.25em 0.75em; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-weight: 800; font-variant-numeric: tabular-nums; font-size: calc(var(--bs-u) * 1.5); text-align: center; }
+/* As wide at 9:59 as at 12:00, so nothing beside it moves as the minutes go by */
+.bs-clock { min-width: 4.6em; text-align: right; color: var(--bs-soft); font-variant-numeric: tabular-nums; font-size: calc(var(--bs-u) * 1.5); }
+.bs-floor { display: flex; align-items: center; gap: 0.6em; min-width: 0; margin: 0 auto 0 calc(var(--bs-u) * 3); padding: 0.25em 1em 0.25em 0.3em; border-radius: 999px; background: var(--bs-panel); border: 1px solid var(--bs-line); font-size: calc(var(--bs-u) * 1.45); color: var(--bs-soft); white-space: nowrap; overflow: hidden; }
 .bs-floor strong { color: var(--bs-ink); font-weight: 700; }
 .bs-floor .bs-face { box-shadow: 0 0 0 2px var(--bs-panel); }
-.bs-floor .bs-face + .bs-face { margin-left: -14px; }
+.bs-floor .bs-face + .bs-face { margin-left: calc(var(--s) * -0.4); }
 .bs-floor.is-given { border-color: rgba(255, 218, 36, 0.45); }
-.bs-timer { display: inline-flex; align-items: center; height: clamp(1.9rem, 4vh, 2.5rem); padding: 0 0.9rem; border-radius: 999px; background: var(--bs-panel); border: 1px solid var(--bs-line); font-weight: 750; font-variant-numeric: tabular-nums; font-size: clamp(0.9rem, 2vh, 1.2rem); }
+.bs-timer { display: inline-flex; align-items: center; height: calc(var(--bs-u) * 3); padding: 0 0.9em; border-radius: 999px; background: var(--bs-panel); border: 1px solid var(--bs-line); font-weight: 750; font-variant-numeric: tabular-nums; font-size: calc(var(--bs-u) * 1.55); }
 .bs-timer.is-over { background: var(--yellow); color: #1C1D1A; border-color: transparent; animation: bs-over 1.6s ease-in-out infinite; }
 @keyframes bs-over { 50% { opacity: 0.7; } }
-.bs-rail__time { margin-left: 0.55em; font-style: normal; font-weight: 750; font-variant-numeric: tabular-nums; color: var(--bs-soft); }
-.bs-rail__time.is-over { color: #1C1D1A; background: var(--yellow); padding: 0.05em 0.45em; border-radius: 6px; }
-.bs-chip { display: inline-flex; align-items: center; height: 1.8rem; padding: 0 0.75rem; border-radius: 999px; border: 1px solid var(--bs-line); color: var(--bs-soft); font-size: clamp(0.8rem, 1.6vh, 0.95rem); font-weight: 650; margin: 0; }
+/* The part on now's time, its own chip beside the part's name on the rail, never cut with it */
+.bs-rail__time { flex: none; padding: 0.05em 0.5em; border-radius: 6px; background: var(--bs-panel); font-style: normal; font-weight: 750; font-variant-numeric: tabular-nums; color: var(--bs-ink); white-space: nowrap; }
+.bs-rail__time.is-over { color: #1C1D1A; background: var(--yellow); }
+.bs-chip { display: inline-flex; align-items: center; height: 2em; padding: 0 0.85em; border-radius: 999px; border: 1px solid var(--bs-line); color: var(--bs-soft); font-size: var(--bs-label); font-weight: 650; margin: 0; }
 .bs-chip--warn { border-color: rgba(255, 218, 36, 0.5); color: var(--yellow); width: max-content; }
-.bs-stage { grid-column: 1; grid-row: 2; min-height: 0; display: grid; padding: 0 var(--bs-pad); outline: none; }
+/* The top bar, whatever it's given: the meeting's name never more than 40% of it (… past that), who has the floor in
+   what's left (… on a long name), and at the right the timer, the number and the clock, as wide on every slide */
+.bs-top > .bs-brand { flex: 0 1 auto; max-width: 40%; }
+.bs-top .bs-brand img { width: calc(var(--bs-u) * 3); }
+.bs-top .bs-brand small { font-size: calc(var(--bs-u) * 1.25); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-floor > .bs-face ~ .bs-face ~ .bs-face ~ .bs-face { display: none; }
+/* Presenting: back and next with the slide count (and on a money slide the % | $), at the right of the line under the
+   stage while the mouse moves; over that line, so nothing along the top moves when they come and go or a slide
+   brings the % | $ (the keys and a clicker always work) */
+.bs-ctl { position: absolute; top: 50%; right: var(--bs-pad); transform: translateY(-50%); display: flex; align-items: center; gap: calc(var(--bs-u) * 0.9); padding-left: calc(var(--bs-u) * 1.5); background: var(--bs-bg); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.bs.is-awake .bs-ctl, .bs-ctl:focus-within { opacity: 1; pointer-events: auto; }
+/* A finger has no mouse to wake them: always there */
+@media (hover: none) { .bs-ctl { opacity: 1; pointer-events: auto; } }
+/* The slide's box is the stage, never taller (a slide sized to 100% is the stage's height, whatever is in it) */
+.bs-stage { grid-column: 1; grid-row: 2; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); padding: 0 var(--bs-pad); outline: none; }
 .bs-stage:focus-visible { box-shadow: inset 0 0 0 2px var(--yellow); }
 .bs-stage__in { min-height: 0; display: grid; place-items: center; }
 .bs:not(.bs--doc) .bs-stage__in { animation: bs-in 0.55s var(--ease) both; }
 .bs--doc .bs-stage__in { animation: bs-fade 0.35s var(--ease) both; }
 .bs.has-vote .bs-stage { padding-right: 1rem; }
-.bs-eyebrow { margin: 0 0 0.7rem; font-size: clamp(0.8rem, 1.8vh, 1.1rem); font-weight: 750; letter-spacing: 0.13em; text-transform: uppercase; color: var(--yellow); }
-.bs-display { margin: 0; font-family: var(--display); font-weight: 700; font-size: clamp(2rem, 6.6vh, 4.6rem); line-height: 1.06; letter-spacing: -0.022em; text-wrap: balance; }
-.bs-h1 { font-family: var(--display); font-size: clamp(1.4rem, 3.4vh, 2rem); margin: 0.5rem 0; }
-.bs-quiet { margin: 0.5rem 0 0; color: var(--bs-soft); font-size: clamp(0.95rem, 2vh, 1.3rem); }
+.bs-eyebrow { margin: 0 0 0.7em; font-size: var(--bs-label); font-weight: 750; letter-spacing: 0.13em; text-transform: uppercase; color: var(--yellow); overflow-wrap: break-word; }
+/* A title breaks inside a long word only when it must, with a hyphen where the language allows */
+.bs-display { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--bs-fs, var(--bs-display)); line-height: 1.06; letter-spacing: -0.022em; text-wrap: balance; overflow-wrap: break-word; hyphens: auto; }
+/* A title fitted to its lines (screen.js Title): stepped down to 60% of its size, then cut with … on its last line */
+.bs-fit { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: calc(var(--bs-fs, var(--bs-display)) * var(--tfit, 1)); }
+.bs-h1 { font-family: var(--display); font-size: var(--bs-lead); margin: 0.5rem 0; }
+.bs-quiet { margin: 0.5em 0 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.8); }
 
 /* The cover and the close */
-.bs-cover { width: min(100%, 1500px); display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: clamp(1.5rem, 5vw, 6rem); align-items: center; }
-.bs-cover__logo { width: clamp(72px, 12vh, 136px); height: auto; margin: 0 0 clamp(0.75rem, 2.5vh, 1.75rem); }
-.bs-cover__when { margin: 1.1rem 0 0; font-size: clamp(1.05rem, 2.7vh, 1.7rem); font-weight: 600; }
-.bs-cover__faces { display: flex; align-items: center; margin: clamp(1.25rem, 3.5vh, 2.5rem) 0 0; color: var(--bs-soft); font-size: clamp(0.9rem, 1.9vh, 1.15rem); }
-.bs-cover__faces .bs-face + .bs-face { margin-left: -10px; }
-.bs-cover__faces span { margin-left: 0.9rem; }
-.bs-outline { list-style: none; margin: 0; padding: clamp(1rem, 3vh, 2rem) 0 clamp(1rem, 3vh, 2rem) clamp(1rem, 3vw, 3rem); border-left: 1px solid var(--bs-line); display: grid; gap: clamp(0.55rem, 1.8vh, 1.25rem); font-size: clamp(1rem, 2.6vh, 1.65rem); font-weight: 600; counter-reset: none; }
-.bs-outline li { display: flex; gap: 1.1rem; align-items: baseline; }
-.bs-outline li > span:last-child { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.8rem; }
-.bs-outline small { color: var(--bs-faint); font-size: 0.62em; font-weight: 600; }
-.bs-outline__n { color: var(--yellow); font-weight: 800; font-variant-numeric: tabular-nums; font-size: 0.78em; min-width: 1.6em; }
+/* The cover (screen.js Cover): its title at most three lines; the parts beside it, larger when there are few, in two
+   columns from nine (past twelve without their times), how many more past sixteen; set smaller (--fit) only as far
+   as it must to fit the stage */
+.bs-cover { width: min(100%, calc(var(--bs-u) * 94)); display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: calc(var(--bs-u) * 5); align-items: center; }
+.bs-cover.is-cols { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: calc(var(--bs-u) * 3.5); }
+.bs-cover .bs-fit { --bs-fs: calc(var(--bs-display) * 1.15); }
+.bs-cover__logo { width: calc(var(--bs-u) * 8.5 * var(--fit, 1)); height: auto; margin: 0 0 calc(var(--bs-u) * 1.6 * var(--fit, 1)); }
+.bs-cover__when { margin: 0.6em 0 0; font-size: calc(var(--bs-u) * 2.3 * var(--fit, 1)); font-weight: 600; }
+.bs-cover__faces { display: flex; align-items: center; margin: calc(var(--bs-u) * 2.2 * var(--fit, 1)) 0 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.6); }
+.bs-cover__faces .bs-face + .bs-face { margin-left: calc(var(--s) * -0.22); }
+.bs-cover__faces span { margin-left: 0.9em; }
+.bs-outline { list-style: none; margin: 0; padding: calc(var(--bs-u) * 2 * var(--fit, 1)) 0 calc(var(--bs-u) * 2 * var(--fit, 1)) calc(var(--bs-u) * 3); border-left: 1px solid var(--bs-line); display: grid; gap: calc(var(--bs-u) * 1.2 * var(--fit, 1)); font-size: calc(var(--bs-body) * var(--fit, 1)); font-weight: 600; counter-reset: none; }
+.bs-outline.is-short { gap: calc(var(--bs-u) * 1.9 * var(--fit, 1)); font-size: calc(var(--bs-u) * 2.8 * var(--fit, 1)); }
+.bs-outline.is-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), auto); grid-auto-flow: column; column-gap: calc(var(--bs-u) * 2.5); font-size: calc(var(--bs-u) * 1.9 * var(--fit, 1)); }
+.bs-outline li { display: flex; gap: 0.6em; align-items: baseline; min-width: 0; }
+.bs-outline li > span:last-child { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 0.6em; }
+/* A long part's name: two lines, then … (one in two columns) */
+.bs-outline__t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: break-word; }
+.bs-outline.is-cols .bs-outline__t { -webkit-line-clamp: 1; }
+.bs-outline small { color: var(--bs-faint); font-size: var(--bs-label); font-weight: 600; white-space: nowrap; }
+.bs-outline__n { flex: none; color: var(--yellow); font-weight: 800; font-variant-numeric: tabular-nums; font-size: 0.78em; min-width: 1.6em; }
+.bs-outline__more { color: var(--bs-soft); font-size: 0.85em; }
 .bs-end { display: grid; justify-items: center; text-align: center; }
 
 /* An item */
-.bs-item { width: min(100%, 1560px); height: 100%; display: grid; align-content: center; gap: clamp(0.75rem, 2.2vh, 1.6rem); min-height: 0; }
-.bs-item__title { font-size: clamp(2.1rem, 7.4vh, 5.2rem); }
-.bs-item--title { justify-items: start; }
-.bs-item--title .bs-item__lead { max-width: 75%; }
-.bs-item--split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: clamp(2rem, 5vw, 6rem); align-items: center; }
-.bs-item__lead { display: grid; gap: clamp(0.75rem, 2.4vh, 1.6rem); align-content: center; min-width: 0; }
-.bs-item__side { display: grid; gap: clamp(1rem, 3vh, 2rem); align-content: center; min-width: 0; padding-left: clamp(1.5rem, 3vw, 3rem); border-left: 1px solid var(--bs-line); }
+.bs-item { width: min(100%, calc(var(--bs-u) * 98)); height: 100%; display: grid; align-content: center; gap: calc(var(--bs-u) * 1.5); min-height: 0; }
+/* An item's title the same size on every kind of slide, fitted to three lines (screen.js Title) */
+.bs-item__title { --bs-fs: var(--bs-title); }
+/* An item with nothing more to show (alone in its part): a card like a part's (.bs-chapter), the part's number large,
+   its name and time over the item's title (a step larger), who presents it under; its motion across the foot */
+.bs-item--title { height: auto; row-gap: calc(var(--bs-u) * 3 * var(--fit, 1)); }
+.bs-item--title.is-plain { grid-template-columns: minmax(0, 1fr); }
+/* An item's own number (3.4: one of several in its part, shown alone because a motion is under it) a size smaller */
+.bs-item--title.is-label .bs-chapter__n { font-size: calc(var(--bs-u) * 13 * var(--fit, 1)); }
+.bs-item--title .bs-item__title { --bs-fs: calc(var(--bs-title) * 1.18); }
+.bs-item--title .bs-who { margin-top: calc(var(--bs-u) * 0.8); }
+.bs-item--split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: calc(var(--bs-u) * 5); align-items: center; }
+.bs-item__lead { display: grid; gap: calc(var(--bs-u) * 1.6); align-content: center; min-width: 0; }
+.bs-item__side { display: grid; gap: calc(var(--bs-u) * 2); align-content: center; min-width: 0; padding-left: calc(var(--bs-u) * 3); border-left: 1px solid var(--bs-line); }
 /* An item with live facts: its name along the top, the facts filling the rest */
-.bs-item--board, .bs-item--facts { align-content: stretch; grid-template-rows: auto minmax(0, 1fr); padding: clamp(0.25rem, 1vh, 0.75rem) 0 clamp(0.5rem, 1.6vh, 1.25rem); }
+.bs-item--board, .bs-item--facts { align-content: stretch; grid-template-rows: auto minmax(0, 1fr); padding: calc(var(--bs-u) * 0.6) 0 calc(var(--bs-u) * 1.2); }
 .bs-item--facts { grid-template-rows: auto auto auto; align-content: center; }
-.bs-item__bar { display: flex; align-items: flex-end; justify-content: space-between; gap: 1rem 3rem; min-width: 0; }
-.bs-item__bar .bs-item__title { font-size: clamp(1.8rem, 5.4vh, 3.8rem); }
-.bs-item__aside { display: grid; justify-items: end; gap: 0.4rem; flex: none; text-align: right; }
+/* The title takes the room; who presents it at most 45% of the bar, their names ending in … when they must */
+.bs-item__bar { display: flex; align-items: flex-end; justify-content: space-between; gap: calc(var(--bs-u) * 1.2) calc(var(--bs-u) * 3); min-width: 0; }
+.bs-item__bar > :first-child { flex: 1 1 auto; min-width: 0; }
+.bs-item__aside { display: grid; justify-items: end; gap: 0.4rem; flex: 0 1 auto; min-width: 0; max-width: 45%; text-align: right; }
 .bs-item__aside .bs-quiet { margin: 0; }
 .bs-item__facts { min-height: 0; display: grid; }
 .bs-item__body { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 26rem), 1fr)); gap: clamp(1rem, 3vw, 3rem); align-items: start; }
-.bs-who { list-style: none; margin: 0.25rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: clamp(0.75rem, 2vw, 2.25rem); }
-.bs-who li { display: flex; align-items: center; gap: 0.9rem; }
-.bs-who strong { display: block; font-size: clamp(1.05rem, 2.6vh, 1.6rem); }
-.bs-who small { display: block; color: var(--bs-soft); font-size: clamp(0.85rem, 1.85vh, 1.1rem); }
+/* Who presents: each face, name and seat (a long one ends in …); four and more, their faces together and a count */
+.bs-who { list-style: none; margin: 0.25rem 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: calc(var(--bs-u) * 1.2) calc(var(--bs-u) * 2.2); min-width: 0; }
+.bs-item__aside .bs-who { justify-content: flex-end; }
+.bs-who li, .bs-who--many { display: flex; align-items: center; gap: calc(var(--bs-u) * 0.9); min-width: 0; max-width: 100%; }
+.bs-who li > span, .bs-who--many > span:last-child { min-width: 0; }
+.bs-who strong { display: block; font-size: var(--bs-body); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-who small { display: block; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.5); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-who__faces { display: flex; flex: none; }
+.bs-who__faces .bs-face + .bs-face { margin-left: calc(var(--s) * -0.3); }
 .bs-face { width: var(--s); height: var(--s); border-radius: 50%; object-fit: cover; flex: none; box-shadow: 0 0 0 3px var(--bs-bg), 0 0 0 4px rgba(255, 218, 36, 0.55); background: #3A3B36; }
 .bs-face--initials { display: inline-grid; place-items: center; background: hsl(var(--hue, 42) 35% 82%); color: hsl(var(--hue, 42) 35% 22%); font-family: var(--display); font-weight: 700; font-size: calc(var(--s) * 0.38); }
-.bs-points { font-size: clamp(1.1rem, 2.8vh, 1.75rem); line-height: 1.45; }
+/* The initials drawn by the style (data-i): a picture of the person, never text the room reads */
+.bs-face--initials::before { content: attr(data-i); }
+.bs-points { font-size: calc(max(1rem, var(--bs-u, 1.48vh) * 2.3) * var(--fit, 1)); line-height: 1.45; min-width: 0; }
+.bs-points [hidden] { display: none; }
+.bs-points__more { margin: 0.4em 0 0; color: var(--bs-soft); font-size: max(0.9rem, var(--bs-u, 1.48vh) * 1.8); }
 .bs-points ul { margin: 0; padding-left: 1.2em; }
 .bs-points li { margin: 0.3em 0; }
 .bs-points li::marker { color: var(--yellow); }
 .bs-points p { margin: 0 0 0.5em; }
 /* A report on the screen (screen.js ReportFit): the screen's colors, sized to fit its box */
 .bs-item--report { align-content: stretch; grid-template-rows: auto minmax(0, 1fr) auto; padding: clamp(0.25rem, 1vh, 0.75rem) 0 clamp(0.5rem, 1.6vh, 1.25rem); }
-.bs-item--facts.has-report { align-content: stretch; grid-template-rows: auto auto minmax(0, 1fr); }
-.bs-item--facts.has-report .bs-item__body { min-height: 0; align-items: stretch; }
 .bs-report { min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto; }
-.bs-report__body { min-height: 0; overflow: hidden; font-size: calc(clamp(1.1rem, 3.1vh, 1.95rem) * var(--fit, 1)); }
-.bs-report.is-cols .bs-report__body { column-count: 2; column-gap: clamp(2rem, 4vw, 4.5rem); column-fill: auto; }
+/* About 24px on a 720p screen, to 82% (20px) at the least before anything is cut. Always set in columns (one, or two
+   balanced): what doesn't fit runs on into a column past the edge, out of sight, so the last line seen is whole */
+.bs-report__body { min-height: 0; overflow: hidden; font-size: calc(max(1rem, var(--bs-u, 1.48vh) * 2.3) * var(--fit, 1)); column-count: 1; column-gap: calc(var(--bs-u, 1.48vh) * 4.5); column-fill: auto; }
+.bs-report.is-cols .bs-report__body { column-count: 2; column-fill: balance; }
+.bs-report.is-full .bs-report__body { column-fill: auto; }
+/* A short report (under about 40 words): large and centred in its box, like a quote; one paragraph set centred too */
+.bs-report.is-short .bs-report__body { display: grid; align-content: center; justify-items: center; font-size: calc(max(1.2rem, var(--bs-u, 1.48vh) * 3.5) * var(--fit, 1)); }
+.bs-report.is-short .rp { max-width: 30em; font-family: var(--display); font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+.bs-report.is-short .rp:has(> p:only-child) { text-align: center; text-wrap: balance; }
+
 .bs-report .rp { --rp-ink: var(--bs-ink); --rp-ink-2: var(--bs-ink); --rp-muted: var(--bs-soft); --rp-line: var(--bs-line); --rp-wash: var(--bs-panel); font-size: inherit; line-height: 1.42; color: var(--bs-ink); }
 .bs-report .rp li::marker { color: var(--yellow); }
 .bs-report .rp .rp-h { margin-top: 0.75em; font-size: 1.1em; color: var(--yellow); break-after: avoid; }
-.bs-report .rp p, .bs-report .rp li { break-inside: avoid; }
+.bs-report .rp li { break-inside: avoid; }
+.bs-report .rp p { orphans: 2; widows: 2; }
 .bs-report .rp a { color: var(--bs-ink); }
-.bs-report__more { margin: 0.6rem 0 0; color: var(--bs-faint); font-size: clamp(0.85rem, 1.8vh, 1.05rem); }
+.bs-report__more { margin: calc(var(--bs-u, 1.48vh) * 0.8) 0 0; color: var(--bs-soft); font-size: max(0.85rem, var(--bs-u, 1.48vh) * 1.5); }
 /* A short report that is only its points (screen.js ReportPoints): the title, then a card per point, two or three
    across, the whole slide set in the middle of the stage; --fit (from screen.js) sets the words as large as it holds */
 .bs-item--points { align-content: center; grid-template-rows: auto minmax(0, max-content); grid-auto-rows: auto; gap: clamp(1.25rem, 4.2vh, 3rem); }
@@ -1705,60 +1772,83 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-shelf--row .bs-shelf__cover > * { border-radius: 3px; box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.7); }
 
 /* The board's faces (the roll call, introductions): as big as their rows allow, each lighting up as they check in */
-.bs-faces { --gx: clamp(0.5rem, 1.2vw, 1.25rem); --gy: clamp(0.75rem, 2.2vh, 1.75rem); list-style: none; margin: 0; padding: clamp(0.5rem, 1.5vh, 1rem) 0 0; height: 100%; min-height: 0; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: var(--gy) var(--gx); }
+.bs-faces { --gx: calc(var(--bs-u) * 1.3); --gy: calc(var(--bs-u) * 1.6); list-style: none; margin: 0; padding: calc(var(--bs-u) * 0.9) 0 0; height: 100%; min-height: 0; display: flex; flex-wrap: wrap; justify-content: center; align-content: center; gap: var(--gy) var(--gx); }
 /* A short last row sits in the middle, under the full ones */
-.bs-faces__one { container-type: size; flex: 0 0 calc((100% - (var(--cols) - 1) * var(--gx)) / var(--cols)); height: calc((100% - (var(--rows) - 1) * var(--gy)) / var(--rows)); min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; text-align: center; transition: opacity 0.6s var(--ease), filter 0.6s var(--ease); }
-.bs-faces__pic { position: relative; flex: none; width: min(calc(100cqh - 6.35rem), 76cqi, 15rem); aspect-ratio: 1; margin-bottom: 0.8rem; border-radius: 50%; background: #3A3B36; box-shadow: 0 0 0 3px var(--bs-bg), 0 0 0 5px rgba(246, 244, 236, 0.14); transition: box-shadow 0.5s var(--ease); }
+.bs-faces__one { container-type: size; flex: 0 0 calc((100% - (var(--cols) - 1) * var(--gx)) / var(--cols)); height: calc((100% - (var(--rows) - 1) * var(--gy)) / var(--rows)); min-width: 0; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; text-align: center; }
+.bs-faces__pic { position: relative; flex: none; width: min(calc(100cqh - var(--bs-u) * 9.5), 76cqi); aspect-ratio: 1; margin-bottom: calc(var(--bs-u) * 1.1); border-radius: 50%; background: #3A3B36; box-shadow: 0 0 0 3px var(--bs-bg), 0 0 0 5px rgba(246, 244, 236, 0.14); transition: box-shadow 0.5s var(--ease), filter 0.6s var(--ease); }
 .bs-faces__pic img { display: block; width: 100%; height: 100%; border-radius: 50%; object-fit: cover; }
-.bs-faces__initials { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; background: hsl(var(--hue, 42) 35% 82%); color: hsl(var(--hue, 42) 35% 22%); font-family: var(--display); font-weight: 700; font-size: min(calc((100cqh - 6.35rem) * 0.36), 27cqi, 5.4rem); }
+.bs-faces__initials { display: grid; place-items: center; width: 100%; height: 100%; border-radius: 50%; background: hsl(var(--hue, 42) 35% 82%); color: hsl(var(--hue, 42) 35% 22%); font-family: var(--display); font-weight: 700; font-size: min(calc((100cqh - var(--bs-u) * 9.5) * 0.36), 27cqi); }
 .bs-faces__mark { position: absolute; right: 2%; bottom: 2%; display: grid; place-items: center; width: 27%; aspect-ratio: 1; border-radius: 50%; background: var(--yellow); color: #1C1D1A; box-shadow: 0 0 0 3px var(--bs-bg); animation: bs-pop 0.45s var(--ease) both; }
 .bs-faces__mark svg { width: 62%; height: 62%; }
-.bs-faces__name { max-width: 100%; font-size: clamp(0.95rem, min(2.4vh, 9cqi), 1.6rem); font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-faces__name { max-width: 100%; font-size: max(min(calc(var(--bs-u) * 2.2), 9cqi), calc(var(--bs-u) * 1.7)); font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Room for two lines under every name, so a long company ("… and Design & Build XR") wraps instead of being cut, and
    every photo in a row stays level */
-.bs-faces__sub { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-width: 100%; min-height: 2.6em; color: var(--bs-soft); font-size: clamp(0.78rem, min(1.8vh, 7cqi), 1.15rem); line-height: 1.3; overflow: hidden; text-wrap: balance; }
+.bs-faces__sub { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; max-width: 100%; min-height: 2.6em; color: var(--bs-soft); font-size: max(min(calc(var(--bs-u) * 1.7), 7cqi), calc(var(--bs-u) * 1.25)); line-height: 1.3; overflow: hidden; text-wrap: balance; }
 /* New this year: on the photo's lower edge, clear of the check mark, so the company line keeps its whole width */
-.bs-faces__new { position: absolute; left: 50%; bottom: 0; transform: translate(-50%, 40%); padding: 0.14em 0.6em; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-size: clamp(0.66rem, min(1.5vh, 6cqi), 0.95rem); font-weight: 750; line-height: 1.2; white-space: nowrap; box-shadow: 0 0 0 3px var(--bs-bg); }
+.bs-faces__new { position: absolute; left: 50%; bottom: 0; transform: translate(-50%, 40%); padding: 0.14em 0.6em; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-size: max(min(calc(var(--bs-u) * 1.4), 6cqi), calc(var(--bs-u) * 1.15)); font-weight: 750; line-height: 1.2; white-space: nowrap; box-shadow: 0 0 0 3px var(--bs-bg); }
 .bs-faces__one.is-here .bs-faces__pic, .bs-faces__one.is-remote .bs-faces__pic { box-shadow: 0 0 0 3px var(--bs-bg), 0 0 0 6px var(--yellow); }
 .bs-faces__one.is-here .bs-faces__sub, .bs-faces__one.is-remote .bs-faces__sub { color: var(--yellow); font-weight: 650; }
-.bs-faces__one.is-away { opacity: 0.38; filter: grayscale(1); }
+/* Not here yet (once anyone has checked in): the photo in grey, the name in the softer ink; never faded, so every
+   name still reads */
+.bs-faces__one.is-away .bs-faces__pic { filter: grayscale(1) brightness(0.62); }
+.bs-faces__one.is-away .bs-faces__name { color: var(--bs-soft); }
 @keyframes bs-pop { from { transform: scale(0.4); opacity: 0; } }
 /* The roll call's count: here of the list, and the quorum (yellow once it's met) */
-.bs-roll { display: grid; justify-items: end; gap: 0.55rem; text-align: right; }
-.bs-roll__n { font-family: var(--display); font-size: clamp(2.2rem, 6.4vh, 4.4rem); font-weight: 700; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.bs-roll { display: grid; justify-items: end; gap: calc(var(--bs-u) * 0.6); text-align: right; }
+.bs-roll__n { font-family: var(--display); font-size: calc(var(--bs-u) * 4.4); font-weight: 700; line-height: 1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
 .bs-roll__n small { margin-left: 0.25em; font-family: var(--body); font-size: 0.4em; font-weight: 650; letter-spacing: 0; color: var(--bs-soft); }
-.bs-roll__q { padding: 0.3rem 0.9rem; border-radius: 999px; border: 1px solid var(--bs-line); color: var(--bs-soft); font-size: clamp(0.85rem, 1.9vh, 1.15rem); font-weight: 700; font-variant-numeric: tabular-nums; transition: background 0.4s, color 0.4s; }
+.bs-roll__q { padding: 0.25em 0.8em; border-radius: 999px; border: 1px solid var(--bs-line); color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.5); font-weight: 700; font-variant-numeric: tabular-nums; transition: background 0.4s, color 0.4s; }
 .bs-roll__q.is-met { background: var(--yellow); border-color: transparent; color: #1C1D1A; }
-.bs-roll .bs-quiet { margin: 0; max-width: 22rem; }
-/* An item with nothing more to show: its part, in order, the one on now marked */
-.bs-part { list-style: none; margin: 0; padding: 0; display: grid; gap: clamp(0.45rem, 1.5vh, 1rem); font-size: clamp(1.05rem, 2.7vh, 1.7rem); }
-.bs-part li { display: flex; align-items: center; gap: clamp(0.75rem, 1.2vw, 1.1rem); min-width: 0; color: var(--bs-soft); font-weight: 600; transition: color 0.3s; }
+.bs-roll .bs-quiet { margin: 0; max-width: calc(var(--bs-u) * 30); }
+/* An item with nothing more to show: its part, in order, the one on now marked; every number as wide (4.10 as 4.9),
+   so the titles stay in line, and who presents at most 40% of a row */
+.bs-part { list-style: none; margin: 0; padding: 0; display: grid; gap: calc(var(--bs-u) * 1); font-size: calc(var(--bs-u) * 2.2); }
+.bs-part li { display: flex; align-items: center; gap: calc(var(--bs-u) * 1.1); min-width: 0; color: var(--bs-soft); font-weight: 600; transition: color 0.3s; }
 .bs-part__label { display: inline-grid; place-items: center; flex: none; min-width: 2.8em; height: 1.65em; padding: 0 0.5em; border-radius: 999px; background: var(--bs-panel); border: 1px solid var(--bs-line); font-size: 0.66em; font-weight: 750; font-variant-numeric: tabular-nums; }
+.bs-part.is-wide .bs-part__label { min-width: 3.5em; }
 .bs-part__label svg { width: 1.2em; height: 1.2em; }
-.bs-part__t { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.bs-part__who { margin-left: auto; padding-left: 1rem; flex: none; color: var(--bs-faint); font-size: 0.72em; font-weight: 600; white-space: nowrap; }
+.bs-part__t { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-part__who { flex: 0 1 auto; min-width: 0; max-width: 40%; margin-left: auto; padding-left: 0.6em; color: var(--bs-faint); font-size: 0.72em; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-part li.is-done { color: var(--bs-faint); }
 .bs-part li.is-now { color: var(--bs-ink); font-weight: 700; }
 .bs-part li.is-now .bs-part__label { background: var(--yellow); border-color: transparent; color: #1C1D1A; }
 /* Approving the last minutes: the motion, and its result once the board has voted */
-.bs-motion { display: grid; gap: 0.6rem; padding: clamp(1.1rem, 3vh, 2rem) clamp(1.1rem, 2vw, 2rem); border-radius: 22px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
+/* A motion (screen.js ItemMotion): a band across the slide under what the item shows, its words as large as fit and
+   never cut, to about 24px on a 720p screen at the least (--mfit); on its own slide ("The decision") the slide's */
+.bs-motion { display: grid; align-content: center; gap: calc(var(--bs-u, 1.48vh) * 0.9); min-width: 0; padding: calc(var(--bs-u, 1.48vh) * 2.2) calc(var(--bs-u, 1.48vh) * 2.6); border-radius: calc(var(--bs-u, 1.48vh) * 2); background: var(--bs-panel); border: 1px solid var(--bs-line); }
 .bs-motion .bs-eyebrow, .bs-motion .bs-quiet { margin: 0; }
-.bs-motion__text { margin: 0; font-family: var(--display); font-size: clamp(1.4rem, 3.8vh, 2.5rem); font-weight: 700; line-height: 1.2; text-wrap: balance; }
-.bs-motion__result { justify-self: start; margin: 0.2rem 0 0; padding: 0.3rem 0.9rem; border-radius: 999px; background: rgba(246, 244, 236, 0.1); font-size: clamp(0.95rem, 2.1vh, 1.3rem); font-weight: 750; font-variant-numeric: tabular-nums; }
+.bs-motion .bs-quiet { font-size: max(0.9rem, var(--bs-u, 1.48vh) * 1.8); }
+.bs-motion__text { margin: 0; font-family: var(--display); font-size: calc(max(1.25rem, var(--bs-u, 1.48vh) * 3.2) * var(--mfit, 1)); font-weight: 700; line-height: 1.22; text-wrap: balance; overflow-wrap: break-word; }
+.bs-motion__result { justify-self: start; margin: 0.2em 0 0; padding: 0.3em 0.9em; border-radius: 999px; background: rgba(246, 244, 236, 0.1); font-size: max(0.95rem, var(--bs-u, 1.48vh) * 1.8); font-weight: 750; font-variant-numeric: tabular-nums; }
 .bs-motion__result.is-passed { background: var(--yellow); color: #1C1D1A; }
-.bs-item__side > .bs-motion + * { margin-top: clamp(0.5rem, 1.5vh, 1rem); }
+.bs-item > .bs-motion--item { grid-column: 1 / -1; justify-self: stretch; }
+/* The decision: the item along the top, the motion filling the rest of the slide, large */
+.bs-item--decision { align-content: stretch; grid-template-rows: auto minmax(0, 1fr); padding: calc(var(--bs-u, 1.48vh) * 0.5) 0 calc(var(--bs-u, 1.48vh) * 1.2); }
+.bs-motion.is-big { min-height: 0; overflow: hidden; gap: calc(var(--bs-u, 1.48vh) * 1.6); padding: calc(var(--bs-u, 1.48vh) * 3.5) calc(var(--bs-u, 1.48vh) * 5); border-radius: calc(var(--bs-u, 1.48vh) * 2.6); }
+.bs-motion.is-big .bs-motion__text { font-size: calc(max(1.5rem, var(--bs-u, 1.48vh) * 4.8) * var(--mfit, 1)); line-height: 1.16; letter-spacing: -0.015em; }
+/* A tablet or a phone scrolls: the decision as tall as its words, at a phone's size */
+@media (max-width: 900px) { .bs-item--decision { grid-template-rows: auto auto; } .bs-motion.is-big { overflow: visible; padding: 1.4rem 1.2rem; } .bs-motion.is-big .bs-motion__text { font-size: 1.6rem; } }
+/* Nothing new to report this time: said calmly under who presents the item, on its card */
+.bs-calm { margin: calc(var(--bs-u, 1.48vh) * 0.6) 0 0; color: var(--bs-soft); font-size: max(1rem, var(--bs-u, 1.48vh) * 2.6); font-weight: 500; line-height: 1.35; }
+/* A slide with nothing to show yet (screen.js Empty): one calm statement in the middle of it */
+.bs-empty { display: grid; justify-items: center; align-content: center; gap: calc(var(--bs-u, 1.48vh) * 1.4); min-height: 100%; padding: calc(var(--bs-u, 1.48vh) * 3); text-align: center; }
+.bs-empty__mark { display: grid; place-items: center; width: calc(var(--bs-u, 1.48vh) * 8); height: calc(var(--bs-u, 1.48vh) * 8); border-radius: 50%; border: 2px solid var(--bs-line); color: var(--yellow); font-family: var(--display); font-weight: 700; font-size: calc(var(--bs-u, 1.48vh) * 3.6); }
+.bs-empty__mark svg { width: 46%; height: 46%; }
+.bs-empty__title { margin: 0; font-family: var(--display); font-weight: 700; font-size: max(1.3rem, var(--bs-u, 1.48vh) * 3.4); line-height: 1.15; text-wrap: balance; }
+.bs-empty__line { margin: 0; max-width: 34em; color: var(--bs-soft); font-size: max(1rem, var(--bs-u, 1.48vh) * 2.1); line-height: 1.45; text-wrap: balance; }
 
 /* The money: three figures */
-.bs-figs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: clamp(0.75rem, 1.6vw, 1.5rem); }
-.bs-figs li { container-type: inline-size; min-width: 0; display: grid; align-content: start; gap: 0.5vh; padding: clamp(1.1rem, 3vh, 2.2rem) clamp(1.1rem, 2vw, 2rem); border-radius: 24px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
+.bs-figs { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: calc(var(--bs-u, 1.48vh) * 1.6); }
+.bs-figs li { container-type: inline-size; min-width: 0; display: grid; align-content: start; gap: calc(var(--bs-u, 1.48vh) * 0.5); padding: calc(var(--bs-u, 1.48vh) * 2.4) calc(var(--bs-u, 1.48vh) * 2.2); border-radius: calc(var(--bs-u, 1.48vh) * 2.2); background: var(--bs-panel); border: 1px solid var(--bs-line); }
 /* The line under a figure keeps two lines' room, so a budget read a moment later moves nothing */
 .bs-money .bs-figs__sub { min-height: 2.7em; }
-.bs-figs li:first-child { background: var(--yellow); color: #1C1D1A; border-color: transparent; }
-.bs-figs__label { font-size: clamp(0.8rem, 1.8vh, 1.1rem); font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; color: var(--bs-faint); }
-.bs-figs li:first-child .bs-figs__label, .bs-figs li:first-child .bs-figs__sub { color: rgba(28, 29, 26, 0.72); }
+.bs-figs li:first-child:not(.is-quiet) { background: var(--yellow); color: #1C1D1A; border-color: transparent; }
+.bs-figs__label { font-size: max(0.8rem, var(--bs-u, 1.48vh) * 1.4); font-weight: 750; letter-spacing: 0.12em; text-transform: uppercase; color: var(--bs-faint); }
+.bs-figs li:first-child:not(.is-quiet) .bs-figs__label, .bs-figs li:first-child:not(.is-quiet) .bs-figs__sub { color: rgba(28, 29, 26, 0.72); }
 /* As big as the tile allows: a seven-figure amount fits four across */
-.bs-figs__value { font-family: var(--display); font-weight: 700; font-size: clamp(1.6rem, min(7.5vh, 14.5cqi), 5.4rem); white-space: nowrap; line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.bs-figs__sub { color: var(--bs-soft); font-size: clamp(0.9rem, 2vh, 1.3rem); line-height: 1.4; }
+.bs-figs__value.is-words { white-space: normal; font-size: max(1.15rem, min(var(--bs-u, 1.48vh) * 3.6, 12cqi)); line-height: 1.1; text-wrap: balance; }
+.bs-figs__value { font-family: var(--display); font-weight: 700; font-size: max(1.3rem, min(var(--bs-u, 1.48vh) * 5, 14.5cqi)); white-space: nowrap; line-height: 1.05; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.bs-figs__sub { color: var(--bs-soft); font-size: max(0.9rem, var(--bs-u, 1.48vh) * 1.9); line-height: 1.4; }
 /* Reveals and dates */
 .bs-reveals { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr)); gap: clamp(0.75rem, 1.6vw, 1.5rem); }
 .bs-reveals li { position: relative; display: grid; grid-template-rows: auto auto; overflow: hidden; border-radius: 24px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
@@ -1768,80 +1858,119 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-reveals__text strong { font-family: var(--display); font-size: clamp(1.3rem, 3.4vh, 2.2rem); line-height: 1.15; }
 .bs-reveals__text span { color: var(--bs-soft); font-size: clamp(0.9rem, 2vh, 1.25rem); }
 .bs-reveals .bs-tile { position: absolute; right: clamp(0.8rem, 1.4vw, 1.25rem); bottom: clamp(0.8rem, 2vh, 1.3rem); }
-.bs-tile { display: inline-grid; justify-items: center; align-content: center; width: clamp(3.6rem, 8vh, 5rem); height: clamp(3.9rem, 8.8vh, 5.5rem); border-radius: 16px; background: var(--yellow); color: #1C1D1A; flex: none; line-height: 1; }
-.bs-tile span { font-size: clamp(0.7rem, 1.5vh, 0.9rem); font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
-.bs-tile strong { font-family: var(--display); font-size: clamp(1.6rem, 4vh, 2.4rem); font-weight: 700; margin-top: 0.15rem; }
+.bs-tile { display: inline-grid; justify-items: center; align-content: center; width: calc(var(--bs-u) * 5.6); height: calc(var(--bs-u) * 6.1); border-radius: calc(var(--bs-u) * 1.4); background: var(--yellow); color: #1C1D1A; flex: none; line-height: 1; }
+.bs-tile span { font-size: calc(var(--bs-u) * 1.25); font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; }
+.bs-tile strong { font-family: var(--display); font-size: calc(var(--bs-u) * 2.8); font-weight: 700; margin-top: 0.1em; }
 .bs-tile.is-soft { background: var(--bs-panel-2); color: var(--bs-ink); }
-.bs-tile.is-soft strong { font-family: var(--body); font-size: clamp(0.95rem, 2.2vh, 1.3rem); font-weight: 750; }
-.bs-dates { list-style: none; margin: 0; padding: 0; display: grid; gap: clamp(0.6rem, 1.6vh, 1rem); max-width: 1100px; }
-.bs-dates li { display: flex; align-items: center; gap: clamp(1rem, 2vw, 1.75rem); padding: clamp(0.6rem, 1.4vh, 0.9rem); padding-right: 1.5rem; border-radius: 22px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
-.bs-dates__text { display: grid; gap: 0.2rem; }
-.bs-dates strong { font-size: clamp(1.15rem, 2.9vh, 1.85rem); font-weight: 650; }
-.bs-dates__text span { color: var(--bs-soft); font-size: clamp(0.9rem, 2vh, 1.25rem); }
+.bs-tile.is-soft strong { font-family: var(--body); font-size: calc(var(--bs-u) * 1.6); font-weight: 750; }
+/* Dates down the slide (screen.js DatesSlide): the stage's width, each on one line (… past it), as many as the screen
+   holds, then two columns (--per to each), then "+3 more" */
+.bs-dates { list-style: none; margin: 0; padding: 0; display: grid; gap: calc(var(--bs-u, 1.48vh) * 1); width: 100%; min-width: 0; font-size: max(1rem, var(--bs-u, 1.48vh) * 2.1); }
+.bs-dates.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--per), auto); grid-auto-flow: column; column-gap: calc(var(--bs-u, 1.48vh) * 2); }
+.bs-dates li { display: flex; align-items: center; gap: calc(var(--bs-u, 1.48vh) * 1.8); min-width: 0; padding: calc(var(--bs-u, 1.48vh) * 0.7); padding-right: calc(var(--bs-u, 1.48vh) * 2); border-radius: calc(var(--bs-u, 1.48vh) * 1.8); background: var(--bs-panel); border: 1px solid var(--bs-line); }
+.bs-dates li[hidden] { display: none; }
+.bs-dates .bs-tile { width: calc(var(--bs-u, 1.48vh) * 5.6); height: calc(var(--bs-u, 1.48vh) * 5.8); border-radius: calc(var(--bs-u, 1.48vh) * 1.3); }
+.bs-dates .bs-tile span { font-size: max(0.7rem, var(--bs-u, 1.48vh) * 1.3); }
+.bs-dates .bs-tile strong { font-size: max(1.2rem, var(--bs-u, 1.48vh) * 2.7); }
+.bs-dates__text { display: grid; gap: 0.15em; }
+.bs-dates strong, .bs-dates__text span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-dates strong { font-size: 1.22em; font-weight: 650; line-height: 1.15; }
+.bs-dates__text span { color: var(--bs-soft); font-size: 0.92em; line-height: 1.25; }
+/* A phone scrolls: each date's words whole, on as many lines as they take */
+@media (max-width: 900px) { .bs-dates strong, .bs-dates__text span { white-space: normal; overflow: visible; } }
+.bs-dates li.bs-dates__more { padding: calc(var(--bs-u, 1.48vh) * 0.4) calc(var(--bs-u, 1.48vh) * 1.2); background: none; border: none; color: var(--bs-soft); font-weight: 650; }
 /* Held, today, next: the year's meetings (and the events held lately) marked on the right */
 .bs-dates__text { flex: 1 1 auto; min-width: 0; }
-.bs-dates__state { flex: none; display: inline-flex; align-items: center; gap: 0.35em; padding: 0.3em 0.85em; border-radius: 999px; background: rgba(246, 244, 236, 0.08); color: var(--bs-soft); font-size: clamp(0.85rem, 1.8vh, 1.1rem); font-weight: 700; }
+.bs-dates__state { flex: none; display: inline-flex; align-items: center; gap: 0.35em; padding: 0.3em 0.85em; border-radius: 999px; background: rgba(246, 244, 236, 0.08); color: var(--bs-soft); font-size: max(0.8rem, var(--bs-u, 1.48vh) * 1.45); font-weight: 700; }
 .bs-dates__state svg { width: 1em; height: 1em; }
-.bs-dates li.is-done { opacity: 0.6; }
+/* Held: its name in the softer ink and its date grey, never faded, so every line still reads */
+.bs-dates li.is-done { background: transparent; }
+.bs-dates li.is-done strong { color: var(--bs-soft); }
+.bs-dates li.is-done .bs-tile { background: var(--bs-panel-2); color: var(--bs-ink); }
 .bs-dates li.is-today .bs-dates__state, .bs-dates li.is-next .bs-dates__state { background: var(--yellow); color: #1C1D1A; }
 .bs-dates li.is-next, .bs-dates li.is-today { border-color: rgba(255, 218, 36, 0.45); }
-.bs-dates__note { margin: 0 0 clamp(0.6rem, 1.6vh, 1rem); }
+.bs-dates__note { margin: 0 0 calc(var(--bs-u, 1.48vh) * 1.2); color: var(--bs-soft); font-size: max(1rem, var(--bs-u, 1.48vh) * 2.1); }
 
-/* A part's card: its number large, its time, what's in it and who presents */
-.bs-chapter { width: min(100%, 1500px); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: clamp(1.5rem, 5vw, 5rem); align-items: center; }
-.bs-chapter__n { font-family: var(--display); font-weight: 700; font-size: calc(clamp(7rem, 30vh, 18rem) * var(--fit, 1)); line-height: 0.82; letter-spacing: -0.05em; color: var(--yellow); font-variant-numeric: tabular-nums; }
-.bs-chapter__title { font-size: calc(clamp(2.4rem, 8vh, 5.6rem) * var(--fit, 1)); }
+/* A part's card: its number large, its time, what's in it and who presents. Each item's title at least 55% of its
+   row, who presents the rest (… on a long name; three and more, the first and how many more); past seven items, two
+   columns with only their faces */
+.bs-chapter { width: min(100%, calc(var(--bs-u) * 94)); display: grid; grid-template-columns: auto minmax(0, 1fr); gap: calc(var(--bs-u) * 4.5); align-items: center; }
+.bs-chapter__body { min-width: 0; }
+.bs-chapter__n { font-family: var(--display); font-weight: 700; font-size: calc(var(--bs-u) * 19 * var(--fit, 1)); line-height: 0.82; letter-spacing: -0.05em; color: var(--yellow); font-variant-numeric: tabular-nums; }
+.bs-chapter__title { --bs-fs: calc(var(--bs-display) * 1.08 * var(--fit, 1)); }
 /* One person presents every item: said once, under the title */
-.bs-chapter__by { display: flex; align-items: center; gap: 0.75rem; margin: calc(clamp(0.75rem, 2.2vh, 1.4rem) * var(--fit, 1)) 0 0; color: var(--bs-soft); font-size: clamp(1.05rem, 2.6vh, 1.6rem); font-weight: 600; }
-.bs-chapter__by .bs-face + .bs-face { margin-left: -0.9rem; }
-.bs-chapter__items { list-style: none; margin: calc(clamp(1.25rem, 4vh, 2.5rem) * var(--fit, 1)) 0 0; padding: 0; display: grid; gap: calc(clamp(0.4rem, 1.4vh, 0.9rem) * var(--fit, 1)); }
-.bs-chapter__items li { display: flex; align-items: center; gap: clamp(0.75rem, 1.4vw, 1.25rem); min-width: 0; font-size: calc(clamp(1.05rem, 2.6vh, 1.6rem) * (0.5 + var(--fit, 1) / 2)); }
+.bs-chapter__by { display: flex; align-items: center; gap: 0.6em; min-width: 0; margin: calc(var(--bs-u) * 1.5 * var(--fit, 1)) 0 0; color: var(--bs-soft); font-size: var(--bs-body); font-weight: 600; }
+.bs-chapter__by > span { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-chapter__by .bs-face + .bs-face { margin-left: calc(var(--s) * -0.3); }
+.bs-chapter__items { list-style: none; margin: calc(var(--bs-u) * 2.6 * var(--fit, 1)) 0 0; padding: 0; display: grid; gap: calc(var(--bs-u) * 0.9 * var(--fit, 1)); }
+.bs-chapter__items.is-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), auto); grid-auto-flow: column; column-gap: calc(var(--bs-u) * 3); }
+.bs-chapter__items li { display: flex; align-items: center; gap: 0.6em; min-width: 0; font-size: calc(var(--bs-body) * (0.5 + var(--fit, 1) / 2)); }
 .bs-chapter__label { flex: none; min-width: 2.8em; padding: 0.15em 0.5em; border-radius: 999px; background: var(--bs-panel); border: 1px solid var(--bs-line); color: var(--bs-soft); font-size: 0.7em; font-weight: 750; text-align: center; font-variant-numeric: tabular-nums; }
 /* 4.10 and on: every label as wide, so the titles stay in line */
 .bs-chapter.is-wide .bs-chapter__label { min-width: 3.5em; }
-.bs-chapter__t { font-weight: 650; min-width: 0; }
-.bs-chapter__who { display: flex; align-items: center; gap: 0.6rem; margin-left: auto; color: var(--bs-soft); font-size: 0.8em; white-space: nowrap; }
-.bs-chapter__who .bs-face + .bs-face { margin-left: -0.9rem; }
-.bs-chapter__open { margin: 1.25rem 0 0; color: var(--bs-soft); font-size: clamp(1.2rem, 3vh, 1.9rem); }
-/* Since we last met */
-.bs-since { width: min(100%, 1560px); height: 100%; padding-bottom: clamp(1rem, 3.5vh, 2.25rem); display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: clamp(1rem, 3vh, 2rem) clamp(1.5rem, 3vw, 3rem); align-content: center; }
+.bs-chapter__t { flex: 1 1 auto; min-width: 55%; font-weight: 650; overflow-wrap: break-word; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.bs-chapter__who { flex: 0 1 auto; min-width: 0; max-width: 45%; display: flex; align-items: center; gap: 0.5em; margin-left: auto; color: var(--bs-soft); font-size: 0.8em; white-space: nowrap; }
+.bs-chapter__who > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.bs-chapter__who .bs-face + .bs-face { margin-left: calc(var(--s) * -0.3); }
+.bs-chapter__open { margin: calc(var(--bs-u) * 1.6) 0 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 2.4); }
+/* Since we last met (screen.js SinceSlide): the reveals' photos at the left, each card 4:5 and as big as the height
+   allows (up to three in a row, four to six in two rows, then how many more); the events held and the actions still
+   open at the right, two lines each at most, then how many more; all of it set smaller (--fit) only as far as it
+   must to fit the stage */
+.bs-since { --g: calc(var(--bs-u) * 1.1); width: min(100%, calc(var(--bs-u) * 98)); height: 100%; padding-bottom: calc(var(--bs-u) * 1.5); display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); gap: calc(var(--bs-u) * 2 * var(--fit, 1)) calc(var(--bs-u) * 3); align-content: center; }
 .bs-since__head { grid-column: 1 / -1; }
-.bs-since__reveals { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: 0.75rem; }
-.bs-since__count { margin: 0; color: var(--bs-soft); font-size: clamp(1rem, 2.4vh, 1.4rem); }
+.bs-since__reveals { min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); gap: calc(var(--bs-u) * 0.8); }
+.bs-since__count { margin: 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 2 * var(--fit, 1)); }
 .bs-since__count strong { font-family: var(--display); color: var(--yellow); font-size: 1.6em; margin-right: 0.25rem; }
-.bs-since__reveals ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(min(var(--n), 3), minmax(0, 1fr)); gap: clamp(0.6rem, 1.2vw, 1.1rem); min-height: 0; }
-.bs-since__reveals li { display: grid; grid-template-rows: minmax(0, 1fr) auto auto; min-height: 0; padding: 0.5rem 0.5rem 0.8rem; border-radius: 22px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
-.bs-since__photo { display: grid; place-items: center; min-height: 0; height: 100%; overflow: hidden; border-radius: 16px; background: var(--bs-panel-2); }
+.bs-since__reveals ul { container-type: size; list-style: none; margin: 0; padding: 0; min-height: 0; display: grid; grid-template-columns: repeat(var(--cols), auto); justify-content: start; align-content: start; gap: var(--g); }
+/* --txt: the name and the day under the photo, with the card's padding */
+.bs-since__reveals li { --txt: calc(var(--bs-u) * 7.6 * var(--fit, 1)); --row: calc((100cqh - (var(--rows) - 1) * var(--g)) / var(--rows)); flex: none; width: min(calc((var(--row) - var(--txt)) * 0.8 + var(--bs-u)), calc((100cqw - (var(--cols) - 1) * var(--g)) / var(--cols))); min-width: 0; padding: calc(var(--bs-u) * 0.5) calc(var(--bs-u) * 0.5) calc(var(--bs-u) * 0.8); border-radius: calc(var(--bs-u) * 1.8); background: var(--bs-panel); border: 1px solid var(--bs-line); }
+.bs-since__photo { display: grid; place-items: center; width: 100%; aspect-ratio: 4 / 5; overflow: hidden; border-radius: calc(var(--bs-u) * 1.3); background: var(--bs-panel-2); }
 .bs-since__photo img { width: 100%; height: 100%; object-fit: cover; }
-.bs-since__reveals strong { margin: 0.6rem 0.4rem 0; font-family: var(--display); font-size: clamp(1.1rem, 2.8vh, 1.8rem); }
-.bs-since__reveals li > span:last-child { margin: 0.1rem 0.4rem 0; color: var(--bs-soft); font-size: clamp(0.85rem, 1.9vh, 1.15rem); }
-.bs-since__side { display: grid; align-content: start; gap: clamp(1rem, 3vh, 2rem); padding-left: clamp(1rem, 2vw, 2rem); border-left: 1px solid var(--bs-line); }
-.bs-since__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.55em; font-size: clamp(1rem, 2.3vh, 1.4rem); }
-.bs-since__list b { display: block; color: var(--bs-soft); font-size: 0.72em; font-weight: 750; letter-spacing: 0.04em; }
+.bs-since__reveals li strong { display: block; margin: 0.45em 0.3em 0; font-family: var(--display); font-size: calc(var(--bs-body) * var(--fit, 1)); line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-since__reveals li > span:last-child { display: block; margin: 0.1em 0.4em 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.5 * var(--fit, 1)); white-space: nowrap; }
+.bs-since__more .bs-since__photo { background: transparent; border: 1px dashed rgba(246, 244, 236, 0.22); }
+.bs-since__more .bs-since__photo { container-type: inline-size; }
+.bs-since__more .bs-since__photo b { font-family: var(--display); font-size: min(calc(var(--bs-u) * 4.4 * var(--fit, 1)), 36cqi); color: var(--yellow); font-variant-numeric: tabular-nums; }
+.bs-since__side { min-height: 0; display: grid; align-content: start; gap: calc(var(--bs-u) * 2.2 * var(--fit, 1)); padding-left: calc(var(--bs-u) * 2.2); border-left: 1px solid var(--bs-line); }
+.bs-since__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.6em; font-size: calc(var(--bs-body) * var(--fit, 1)); }
+.bs-since__list b { display: block; color: var(--bs-soft); font-size: 0.7em; font-weight: 750; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-since__list li > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.3; overflow-wrap: break-word; }
+/* Both lists: a line each */
+.bs-since__side.is-both .bs-since__list li > span { -webkit-line-clamp: 1; }
+.bs-since__left { margin: 0.7em 0 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.8 * var(--fit, 1)); }
 .bs-since:not(:has(.bs-since__reveals)) { grid-template-columns: minmax(0, 1fr); }
-.bs-since:not(:has(.bs-since__reveals)) .bs-since__side { border-left: none; padding-left: 0; grid-template-columns: repeat(auto-fit, minmax(20rem, 1fr)); }
+.bs-since:not(:has(.bs-since__reveals)) .bs-since__side { border-left: none; padding-left: 0; grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--bs-u) * 30)), 1fr)); column-gap: calc(var(--bs-u) * 4); }
 /* The close: thank you, the next meeting, and what was decided */
-.bs-end.has-recap { width: min(100%, 1500px); grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: clamp(2rem, 5vw, 5rem); align-items: center; justify-items: start; text-align: left; }
+/* Five decisions at most, two lines each, then how many more: thank you and the next meeting always keep their place */
+.bs-end.has-recap { width: min(100%, calc(var(--bs-u) * 94)); grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); gap: calc(var(--bs-u) * 4.5); align-items: center; justify-items: start; text-align: left; }
 .bs-end__lead { display: grid; justify-items: inherit; }
-.bs-end__next { display: flex; align-items: center; gap: 1rem; margin: clamp(1.25rem, 3vh, 2rem) 0 0; text-align: left; }
-.bs-end__next small { display: block; color: var(--bs-soft); font-size: clamp(0.8rem, 1.7vh, 1rem); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
-.bs-end__next strong { display: block; font-size: clamp(1.1rem, 2.6vh, 1.6rem); }
-.bs-end__next > span > span { color: var(--bs-soft); font-size: clamp(0.9rem, 2vh, 1.2rem); }
-.bs-end__recap { min-width: 0; }
-.bs-decided { margin: 0; padding: 0; list-style: none; display: grid; gap: clamp(0.5rem, 1.4vh, 0.85rem); counter-reset: d; }
-.bs-decided li { display: flex; align-items: center; gap: 1rem; padding: clamp(0.7rem, 1.8vh, 1.1rem) clamp(0.9rem, 1.4vw, 1.3rem); border-radius: 18px; background: var(--bs-panel); border: 1px solid var(--bs-line); font-size: clamp(1rem, 2.4vh, 1.45rem); font-weight: 600; }
-.bs-decided li > span { flex: 1 1 auto; min-width: 0; }
-.bs-decided b { flex: none; padding: 0.2em 0.65em; border-radius: 999px; background: rgba(246, 244, 236, 0.1); font-size: 0.72em; font-weight: 750; white-space: nowrap; }
+.bs-end__next { display: flex; align-items: center; gap: calc(var(--bs-u) * 1.4); margin: calc(var(--bs-u) * 2.2) 0 0; text-align: left; }
+.bs-end__next small { display: block; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.35); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.bs-end__next strong { display: block; font-size: calc(var(--bs-u) * 2.4); }
+/* The time under the date (never the date tile's own month, which keeps its dark ink on the yellow) */
+.bs-end__next > span:not(.bs-tile) > span { color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.8); }
+.bs-end__recap { min-width: 0; width: 100%; }
+.bs-decided { margin: 0; padding: 0; list-style: none; display: grid; gap: calc(var(--bs-u) * 0.9); counter-reset: d; }
+.bs-decided li { display: flex; align-items: center; gap: calc(var(--bs-u) * 1.4); padding: calc(var(--bs-u) * 1.1) calc(var(--bs-u) * 1.5); border-radius: calc(var(--bs-u) * 1.7); background: var(--bs-panel); border: 1px solid var(--bs-line); font-size: var(--bs-body); font-weight: 600; }
+.bs-decided li > span { flex: 1 1 auto; min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.3; overflow-wrap: break-word; }
+.bs-decided__more { margin: calc(var(--bs-u) * 1.1) 0 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.8); }
+.bs-decided b { flex: none; padding: 0.2em 0.65em; border-radius: 999px; background: rgba(246, 244, 236, 0.1); font-size: calc(var(--bs-u) * 1.7); font-weight: 750; white-space: nowrap; }
 .bs-decided b.is-passed { background: var(--yellow); color: #1C1D1A; }
 /* The money: how far through the budget */
 /* The screen's money: the figures, then where the revenue came from. On the dark, the same hues stepped for it
    (checked against the panel the same way as on white); the gold stays */
-.bs-money { display: grid; gap: clamp(1rem, 3vh, 2.2rem); min-width: 0; }
-.bs-mix { padding: clamp(1rem, 2.6vh, 1.8rem) clamp(1.1rem, 2vw, 2rem); border-radius: 24px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
-.bs-mix > .bs-figs__label { display: block; margin: 0 0 clamp(0.6rem, 1.6vh, 1rem); }
-.bs .bp-mix__bar { height: clamp(14px, 2.4vh, 26px); }
-.bs .bp-mix__key { gap: 0.5em 2em; margin-top: clamp(0.7rem, 1.8vh, 1.2rem); }
-.bs .bp-mix__key li { font-size: clamp(0.95rem, 2.1vh, 1.4rem); color: var(--bs-soft); }
+/* The money's figures (screen.js CashSlide): closer together (--kfit) while the slide would run past the bottom, then
+   without the row of documents coming */
+.bs-item__body[hidden], .bs-coming[hidden] { display: none; }
+.bs-money { display: grid; gap: calc(var(--bs-u, 1.48vh) * 2.2 * var(--kfit, 1)); min-width: 0; }
+.bs-money .bs-figs li { padding-block: calc(var(--bs-u, 1.48vh) * 2.4 * var(--kfit, 1)); }
+.bs-money .bs-figs__value:not(.is-words) { font-size: max(1.3rem, min(var(--bs-u, 1.48vh) * 5 * (0.5 + var(--kfit, 1) / 2), 14.5cqi)); }
+.bs-mix { padding: calc(var(--bs-u, 1.48vh) * 1.9 * var(--kfit, 1)) calc(var(--bs-u, 1.48vh) * 2.2); border-radius: calc(var(--bs-u, 1.48vh) * 2.2); background: var(--bs-panel); border: 1px solid var(--bs-line); }
+.bs-mix > .bs-figs__label { display: block; margin: 0 0 calc(var(--bs-u, 1.48vh) * 1.1); }
+.bs .bp-mix__bar { height: max(14px, var(--bs-u, 1.48vh) * 2.2); }
+.bs .bp-mix__key { gap: 0.5em 1.6em; margin-top: calc(var(--bs-u, 1.48vh) * 1.3); }
+.bs .bp-mix__key li { font-size: max(1rem, var(--bs-u, 1.48vh) * 1.9); color: var(--bs-soft); }
 .bs .bp-mix__key strong { color: var(--bs-ink); }
 .bs .bp-mix__key span { color: var(--bs-faint); }
 .bs .bp-mix__key i { width: 0.75em; height: 0.75em; }
@@ -1855,8 +1984,8 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs .bp-mix__tip strong { color: #765C00; }
 .bs-figs__bar { position: relative; display: block; height: clamp(6px, 1vh, 10px); margin: 0.6rem 0 0.2rem; border-radius: 999px; background: rgba(246, 244, 236, 0.12); overflow: hidden; }
 .bs-figs__bar i { position: absolute; inset: 0 auto 0 0; width: var(--p); border-radius: inherit; background: var(--yellow); animation: bs-grow 0.9s var(--ease) both 0.2s; }
-.bs-figs li:first-child .bs-figs__bar { background: rgba(28, 29, 26, 0.15); }
-.bs-figs li:first-child .bs-figs__bar i { background: #1C1D1A; }
+.bs-figs li:first-child:not(.is-quiet) .bs-figs__bar { background: rgba(28, 29, 26, 0.15); }
+.bs-figs li:first-child:not(.is-quiet) .bs-figs__bar i { background: #1C1D1A; }
 @keyframes bs-grow { from { width: 0; } }
 /* The makeovers on the screen: every column and card in view, the fullest column setting the card size */
 /* The makeovers on the screen (kanban.js Pipeline): the stages as one track toward the reveal, each with its count,
@@ -1947,7 +2076,7 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-page .bs-quiet { position: absolute; }
 /* "Opening…" only if it takes a moment: a page drawn at once never flashes it */
 .bs-page__wait { animation: bs-fade 0.3s 0.7s both; }
-.bs-foot { grid-column: 1 / -1; grid-row: 3; display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 0; padding: 0 var(--bs-pad); color: var(--bs-soft); font-size: clamp(0.85rem, 1.8vh, 1.1rem); }
+.bs-foot { position: relative; grid-column: 1 / -1; grid-row: 3; display: flex; align-items: center; justify-content: space-between; gap: calc(var(--bs-u) * 1.5); min-height: 0; padding: 0 var(--bs-pad); color: var(--bs-soft); font-size: var(--bs-label); }
 .bs-foot__pages { display: flex; gap: 0.45rem; flex: none; }
 .bs-foot__pages i { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--bs-line); transition: background 0.3s; }
 .bs-foot__pages i.is-on { background: var(--yellow); }
@@ -1955,58 +2084,84 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-foot__what b { color: var(--yellow); margin-right: 0.5rem; font-variant-numeric: tabular-nums; }
 .bs-foot__sep { margin: 0 0.55rem; opacity: 0.5; }
 
-/* The rail: the parts of the agenda, done, on now, to come; and what's next */
-.bs-rail { grid-column: 1 / -1; grid-row: 4; display: grid; grid-template-columns: minmax(0, 1fr) clamp(12rem, 22vw, 26rem); align-items: end; gap: clamp(1rem, 2.5vw, 2.5rem); padding: clamp(0.6rem, 1.8vh, 1.1rem) var(--bs-pad) clamp(0.75rem, 2.2vh, 1.4rem); }
-.bs-rail__parts { list-style: none; margin: 0; padding: 0; min-width: 0; display: flex; gap: clamp(0.3rem, 0.5vw, 0.5rem); }
-.bs-rail__parts li { flex: var(--w) 1 0; min-width: min(8.5rem, 12%); display: grid; gap: 0.45rem; }
-.bs-rail__bar { position: relative; height: clamp(4px, 0.7vh, 7px); border-radius: 999px; background: var(--bs-line); overflow: hidden; }
+/* The rail: the parts of the agenda, done, on now, to come; and what's next, in a column of its own nothing runs
+   into. The parts share the width by how much is in each, with no least width: one too narrow for its name shows its
+   number, and past ten only the part on now is named. The part on now is always wide enough for its name and its
+   time (screen.js Rail, --min: the letters in them) */
+.bs-rail { grid-column: 1 / -1; grid-row: 4; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, calc(var(--bs-u) * 24)); align-items: end; gap: calc(var(--bs-u) * 2.5); padding: calc(var(--bs-u) * 1.1) var(--bs-pad) calc(var(--bs-u) * 1.4); }
+.bs-rail__parts { list-style: none; margin: 0; padding: 0; min-width: 0; display: flex; gap: calc(var(--bs-u) * 0.5); }
+/* Each part at least its number, and never so wide together that they run past the rail (--n: how many) */
+.bs-rail__parts li { container-type: inline-size; flex: var(--w) 1 0; min-width: min(2em, calc((62% - (var(--n, 1) - 1) * var(--bs-u) * 0.5) / var(--n, 1))); display: grid; gap: calc(var(--bs-u) * 0.55); font-size: calc(var(--bs-u) * 1.3); }
+.bs-rail__parts li.is-on { min-width: min(45%, calc(var(--min, 12) * 0.56em + 4.5em)); }
+.bs-rail__parts.is-many li.is-on { min-width: min(32%, calc(var(--min, 12) * 0.56em + 4.5em)); }
+.bs-rail__row { display: flex; align-items: center; gap: 0.5em; min-width: 0; }
+@container (max-width: 6.5em) { .bs-rail__name { display: none; } }
+.bs-rail__parts.is-many li:not(.is-on) .bs-rail__name { display: none; }
+.bs-rail__bar { position: relative; height: calc(var(--bs-u) * 0.55); border-radius: 999px; background: var(--bs-line); overflow: hidden; }
 .bs-rail__bar i { position: absolute; inset: 0 auto 0 0; width: calc(var(--fill) * 100%); border-radius: inherit; background: rgba(255, 218, 36, 0.55); transition: width 0.6s var(--ease); }
 .bs-rail__parts li.is-on .bs-rail__bar i { background: var(--yellow); }
-.bs-rail__label { display: block; min-width: 0; padding-right: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--bs-faint); font-size: clamp(0.7rem, 1.5vh, 0.95rem); font-weight: 600; transition: color 0.3s; }
-.bs-rail__label b { margin-right: 0.45em; font-variant-numeric: tabular-nums; }
+.bs-rail__label { display: block; flex: 0 1 auto; min-width: 0; padding-right: 0.4em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--bs-faint); font-weight: 600; transition: color 0.3s; }
+.bs-rail__label b { font-variant-numeric: tabular-nums; }
+.bs-rail__name { margin-left: 0.45em; }
 .bs-rail__parts li.is-done .bs-rail__label { color: var(--bs-soft); }
 .bs-rail__parts li.is-on .bs-rail__label { color: var(--bs-ink); }
 .bs-rail__parts li.is-on .bs-rail__label b { color: var(--yellow); }
-.bs-rail__next { margin: 0; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--bs-soft); font-size: clamp(0.8rem, 1.75vh, 1.1rem); }
+.bs-rail__next { margin: 0; min-width: 0; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.4); }
 .bs-rail__next b { color: var(--yellow); font-variant-numeric: tabular-nums; margin: 0 0.2em 0 0.3em; }
 
-.bs-vote { grid-column: 2; grid-row: 2; width: clamp(18rem, 28vw, 26rem); align-self: center; margin-right: var(--bs-pad); padding: clamp(1.1rem, 3vh, 2rem); border-radius: 22px; background: #2A2B26; border: 1px solid rgba(255, 218, 36, 0.45); animation: bs-in 0.45s var(--ease) both; }
-.bs-vote__what { margin: 0 0 0.5rem; font-family: var(--display); font-size: clamp(1.15rem, 2.8vh, 1.7rem); line-height: 1.25; }
-.bs-vote__counts { list-style: none; margin: 1.1rem 0 0.4rem; padding: 0; display: grid; gap: 0.75rem; }
-.bs-vote__counts li { display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 0.75rem; font-weight: 650; }
-.bs-vote__n { font-family: var(--display); font-size: clamp(1.8rem, 4.6vh, 2.8rem); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
+.bs-vote { grid-column: 2; grid-row: 2; width: calc(var(--bs-u) * 27); align-self: center; margin-right: var(--bs-pad); padding: calc(var(--bs-u) * 2); border-radius: calc(var(--bs-u) * 2); background: #2A2B26; border: 1px solid rgba(255, 218, 36, 0.45); font-size: calc(var(--bs-u) * 1.7); animation: bs-in 0.45s var(--ease) both; }
+.bs-vote__what { margin: 0 0 0.5rem; font-family: var(--display); font-size: calc(var(--bs-u) * 2.2); line-height: 1.25; }
+.bs-vote__counts { list-style: none; margin: 1.1em 0 0.4em; padding: 0; display: grid; gap: 0.75em; }
+.bs-vote__counts li { display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 0.75em; font-weight: 650; }
+.bs-vote__n { font-family: var(--display); font-size: calc(var(--bs-u) * 3.4); font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
 .bs-vote__counts i { grid-column: 1 / -1; height: 6px; margin-top: 0.4rem; border-radius: 999px; background: var(--bs-line); position: relative; overflow: hidden; }
 .bs-vote__counts i::after { content: ''; position: absolute; inset: 0 auto 0 0; width: var(--p); border-radius: inherit; background: var(--bs-soft); transition: width 0.5s var(--ease); }
 .bs-vote__counts .is-for i::after { background: var(--yellow); }
-.bs-full { display: inline-grid; place-items: center; flex: none; width: 2.4rem; height: 2.4rem; padding: 0; border-radius: 50%; border: 1px solid var(--bs-line); background: var(--bs-panel); color: var(--bs-ink); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
+.bs-full { display: inline-grid; place-items: center; flex: none; width: max(2.4rem, calc(var(--bs-u) * 3.4)); height: max(2.4rem, calc(var(--bs-u) * 3.4)); padding: 0; border-radius: 50%; border: 1px solid var(--bs-line); background: var(--bs-panel); color: var(--bs-ink); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.25s; }
 .bs-full:hover { background: var(--bs-panel-2); }
 .bs-full:focus-visible { opacity: 1; pointer-events: auto; outline: 2px solid var(--yellow); outline-offset: 2px; }
 .bs.is-awake .bs-full { opacity: 1; pointer-events: auto; }
-/* Presenting: back and next beside the slide count, there while the mouse moves (the keys and a clicker always work) */
-.bs-steps { display: inline-flex; align-items: center; gap: 0.35rem; flex: none; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
-.bs.is-awake .bs-steps, .bs-steps:focus-within { opacity: 1; pointer-events: auto; }
-.bs-chg { display: inline-flex; align-items: center; gap: 2px; flex: none; padding: 3px; border-radius: 999px; border: 1px solid var(--bs-line); background: var(--bs-panel); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
-.bs.is-awake .bs-chg, .bs-chg:focus-within { opacity: 1; pointer-events: auto; }
-.bs-chg__b { min-width: 2.15rem; height: 2rem; padding: 0 0.6rem; border: none; border-radius: 999px; background: none; color: var(--bs-ink); font: inherit; font-size: 0.95rem; font-weight: 750; cursor: pointer; }
+/* Presenting: back and next beside the slide count, and the % | $, in the strip at the right of the line under the
+   stage (.bs-ctl: there while the mouse moves) */
+.bs-steps { display: inline-flex; align-items: center; gap: 0.35em; flex: none; }
+.bs-chg { display: inline-flex; align-items: center; gap: 2px; flex: none; padding: 2px; border-radius: 999px; border: 1px solid var(--bs-line); background: var(--bs-panel); }
+.bs-chg__b { min-width: 2.2em; height: calc(var(--bs-u) * 2.8); padding: 0 0.6em; border: none; border-radius: 999px; background: none; color: var(--bs-ink); font: inherit; font-size: calc(var(--bs-u) * 1.45); font-weight: 750; cursor: pointer; }
 .bs-chg__b:hover:not([aria-pressed="true"]) { background: var(--bs-panel-2); }
 .bs-chg__b[aria-pressed="true"] { background: var(--yellow); color: #1F201C; }
 .bs-chg__b:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
-.bs-step { display: inline-grid; place-items: center; width: 2.4rem; height: 2.4rem; padding: 0; border-radius: 50%; border: 1px solid var(--bs-line); background: var(--bs-panel); color: var(--bs-ink); cursor: pointer; }
+.bs-step { display: inline-grid; place-items: center; width: max(2.1rem, calc(var(--bs-u) * 3.1)); height: max(2.1rem, calc(var(--bs-u) * 3.1)); padding: 0; border-radius: 50%; border: 1px solid var(--bs-line); background: var(--bs-panel); color: var(--bs-ink); cursor: pointer; }
 .bs-step:hover:not(:disabled) { background: var(--bs-panel-2); }
 .bs-step:disabled { opacity: 0.35; cursor: default; }
 .bs-step:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
-.bs-step__n { min-width: 4.5em; text-align: center; color: var(--bs-soft); font-variant-numeric: tabular-nums; font-size: clamp(0.8rem, 1.7vh, 1rem); }
+.bs-step__n { min-width: 5.2em; text-align: center; color: var(--bs-soft); font-variant-numeric: tabular-nums; font-size: calc(var(--bs-u) * 1.4); }
 .bs-foot__keys { opacity: 0; transition: opacity 0.2s; }
+/* The keys say nothing to a finger or a phone */
+@media (hover: none), (max-width: 900px) { .bs-foot__keys { display: none; } }
 .bs.is-awake .bs-foot__keys { opacity: 1; }
 .bs-foot__keys kbd { display: inline-block; min-width: 1.5em; padding: 0 0.35em; border: 1px solid var(--bs-line); border-radius: 5px; font: inherit; font-size: 0.85em; text-align: center; color: var(--bs-ink); }
 /* B: the screen goes black (the room looks at the speaker); a key or a click brings it back */
 .bs-blank { position: fixed; inset: 0; z-index: 50; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: #000; cursor: none; }
 .bs-blank:focus-visible { outline: none; }
-@media (prefers-reduced-motion: reduce) { .bs-steps, .bs-chg, .bs-foot__keys { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .bs-ctl, .bs-foot__keys { transition: none; } }
 .bs.is-mirror { cursor: default; }
 @keyframes bs-in { from { opacity: 0; transform: translateY(14px); } }
 @keyframes bs-fade { from { opacity: 0; } }
 @media (max-width: 900px) {
+  /* A tablet or a phone: a scale of its own (its narrow width would make every size tiny); the line under the stage
+     wraps instead of being cut; the part's number a heading, not a quarter of the screen; an item's presenters under
+     its title */
+  .bs { --bs-u: 9.6px; --bs-display: 2.15rem; --bs-title: 1.85rem; --bs-lead: 1.2rem; --bs-body: 1.1rem; --bs-label: 0.8rem; --bs-pad: 1rem; --bs-top: 3.5rem; --bs-foot-h: auto; }
+  .bs-top > .bs-brand { flex: 1 1 auto; max-width: none; }
+  .bs-foot { padding-block: 0.35rem; } .bs-foot__what { white-space: normal; }
+  .bs-rail__row { display: none; } .bs-rail__parts li.is-on { min-width: 0; }
+  .bs-foot { flex-wrap: wrap; } .bs-ctl { position: static; transform: none; margin-left: auto; padding-left: 0; background: none; }
+  /* The stage scrolls here: whole names and titles, wrapped, never cut */
+  .bs-part li, .bs-chapter__items li { flex-wrap: wrap; } .bs-part__t, .bs-part__who, .bs-faces__name, .bs-who strong, .bs-who small, .bs-chapter__who, .bs-chapter__by > span { white-space: normal; overflow-wrap: anywhere; }
+  .bs-part__who { max-width: none; } .bs-decided li > span, .bs-since__list li > span, .bs-chapter__t, .bs-outline__t { display: block; -webkit-line-clamp: none; overflow: visible; }
+  .bs-cover.is-cols { grid-template-columns: 1fr; } .bs-outline.is-cols, .bs-chapter__items.is-cols { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; grid-auto-flow: row; }
+  .bs-chapter__n { font-size: calc(var(--bs-u) * 7.5); line-height: 0.9; }
+  .bs-chapter__items li { flex-wrap: wrap; row-gap: 0.35em; } .bs-chapter__t { flex-basis: calc(100% - 3.6em); min-width: 0; } .bs-chapter__who { max-width: 100%; margin-left: 3.6em; }
+  .bs-since { height: auto; grid-template-rows: none; } .bs-since__reveals ul { container-type: normal; grid-template-columns: repeat(2, minmax(0, 1fr)); } .bs-since__reveals li { width: auto; }
   .bs-cover, .bs-item--split, .bs-chapter, .bs-since, .bs-end.has-recap { grid-template-columns: 1fr; } .bs-outline { border-left: none; padding-left: 0; } .bs-item__side { border-left: none; padding-left: 0; }
   .bs { grid-template-columns: minmax(0, 1fr); } .bs-vote { grid-column: 1; grid-row: 3; width: auto; margin: 0 1rem 1rem; }
   .bs-reveals { grid-template-columns: 1fr; } .bs-figs { grid-template-columns: repeat(2, minmax(0, 1fr)); } .bs-rail__next { display: none; } .bs-rail__label { display: none; }
@@ -2194,8 +2349,6 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bp-report__motion { max-width: 46rem; }
 .bp-now__motion { margin: 0.9rem 0 0; }
 /* An item's motion on the screen: four lines at most, a long one smaller, so the report keeps its room */
-.bs-motion--item .bs-motion__text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; }
-.bs-motion--item.is-long .bs-motion__text { font-size: clamp(1.05rem, 2.7vh, 1.7rem); line-height: 1.25; }
 .bp-report.is-nothing .bp-report__by { margin-bottom: 0.2rem; }
 .bp-rp__who { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
 .bp-rp__standing { font-variant-numeric: tabular-nums; }

@@ -42,7 +42,7 @@ import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from '.
 import { printMinutesTemplate, downloadMinutesDocx } from './board-minutes-template.js';
 import { ReportEditor, Report } from './board-report.js';
 import { mdWords } from './board-md.js';
-import { BOOKS_TITLES } from './board/books.js';
+import { booksTitle } from './board/books.js';
 
 // What a person edits (the server keeps files, the packet's numbers and sent records, and done ticks)
 const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'inviteNote', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
@@ -799,7 +799,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
  * saved from there, and never the board's: they see nothing of a meeting until it's shared
  */
 const STAGE_AS = [['screen', 'Presentation'], ['page', 'Board page'], ['phone', 'Phone']];
-const SLIDE_KIND = { cover: 'Cover', since: 'Since we met', section: 'Part', item: 'Item', report: 'Report', doc: 'Page', live: 'Live', books: 'QuickBooks', end: 'Close' };
+const SLIDE_KIND = { cover: 'Cover', since: 'Since we met', section: 'Part', item: 'Item', report: 'Report', decision: 'Vote', doc: 'Page', live: 'Live', books: 'QuickBooks', end: 'Close' };
 function AgendaStage({ m, focusId, meetings }) {
   const [as, setAs] = useState(() => { try { const k = localStorage.getItem('bd-stage-as'); return STAGE_AS.some(([x]) => x === k) ? k : 'screen'; } catch { return 'screen'; } });
   const pick = (k) => { setAs(k); try { localStorage.setItem('bd-stage-as', k); } catch { /* private browsing */ } };
@@ -1254,13 +1254,17 @@ function stopWords(stop, m, items, pages, files, parts = {}) {
   const it = stop.n < 0 && !items.some((x) => x.id === stop.itemId) ? { label: '', title: MORE.title }
     : items.find((x) => x.id === stop.itemId) || { label: '', title: '', section: '', presenter: '' };
   if (stop.kind === 'item') return { label: it.label, title: it.title, sub: [it.section !== it.title ? it.section : '', it.presenter].filter(Boolean).join(' · ') };
-  if (stop.kind === 'books') return { label: it.label, title: BOOKS_TITLES[stop.fileId.slice(6)], sub: `${it.title} · from QuickBooks` };
+  if (stop.kind === 'books') return { label: it.label, title: booksTitle(stop), sub: `${it.title} · from QuickBooks` };
   if (stop.kind === 'live') return { label: it.label, title: LIVE_TITLES[stop.fileId.slice(5)], sub: it.title };
   // The report on an item that shows live facts, its own slide after them
   if (stop.kind === 'report') return { label: it.label, title: `Report · ${it.title}`, sub: it.presenter || '' };
+  // Its motion, a slide of its own after all it shows
+  if (stop.kind === 'decision') return { label: it.label, title: `The decision · ${it.title}`, sub: it.presenter || '' };
   const f = files.find((x) => x.id === stop.fileId);
   const n = pages[stop.fileId];
-  return { label: it.label, title: f ? docTitle(f.name) : 'A document', sub: `${it.title} · page ${stop.page + 1}${n ? ` of ${n}` : ''}${parts[stop.fileId]?.[stop.page] === 2 ? `, ${stop.part ? 'bottom' : 'top'} half` : ''}` };
+  // A tall page cut in parts (the stop says how many, else the screen's count of them)
+  const cuts = stop.parts || Math.min(8, Math.floor(Number(parts[stop.fileId]?.[stop.page]) || 1));
+  return { label: it.label, title: f ? docTitle(f.name) : 'A document', sub: `${it.title} · page ${stop.page + 1}${n ? ` of ${n}` : ''}${cuts === 2 ? `, ${stop.part ? 'bottom' : 'top'} half` : cuts > 2 ? `, part ${(stop.part || 0) + 1} of ${cuts}` : ''}` };
 }
 
 

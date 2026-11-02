@@ -15,7 +15,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef } from '../vendor.js';
-import { money, shortDate, mainLines } from '../board-shared.js';
+import { money, shortDate, mainLines, statementBreaks, linePlaces } from '../board-shared.js';
 import { compact, storeOf, storeChange, budgetMonthsText, spentOf, marginText, changeIn, overIn } from './money.js';
 import { lineKeysOf, notesByKey, NoteLine } from './review.js';
 
@@ -86,21 +86,30 @@ const sm = (v) => (typeof v !== 'number' ? '–' : v < 0 ? `−${money(-v)}` : m
 function YearLines({ id, title, now, then, year, lastYear, upTo, ax, sameDays = null, through = '', tall = false, as = 'pct' }) {
   const [at, setAt] = useState(-1);
   const [w, setW] = useState(0);
+  // On the screen, the height left on its slide under the words above it (the chart never runs past the bottom)
+  const [room, setRoom] = useState(0);
   const box = useRef(null);
   useEffect(() => {
     const el = box.current;
     if (!el || typeof ResizeObserver !== 'function') return undefined;
-    const ro = new ResizeObserver(() => setW(Math.round(el.clientWidth)));
+    const slide = tall ? el.closest('.by-slide') : null;
+    const measure = () => {
+      setW(Math.round(el.clientWidth));
+      if (slide && getComputedStyle(slide).overflow === 'hidden') setRoom(Math.floor(slide.getBoundingClientRect().bottom - el.getBoundingClientRect().top - 2));
+    };
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
+    if (slide) ro.observe(slide);
     return () => ro.disconnect();
   }, []);
   // (before it's measured, and on paper: the width it's mostly shown at)
   const W = Math.max(260, w || 560);
   // On the screen, the words a room reads from its seats; on the page, the page's
-  const fs = tall ? Math.round(Math.max(14, Math.min(24, (typeof innerHeight === 'number' ? innerHeight : 800) * 0.022))) : 12;
-  const H = tall ? Math.round(Math.max(220, Math.min(W * 0.62, (typeof innerHeight === 'number' ? innerHeight : 800) * 0.5))) : Math.round(Math.max(180, Math.min(250, W * 0.5)));
+  const fs = tall ? Math.round(Math.max(16, Math.min((typeof innerHeight === 'number' ? innerHeight : 800) * 0.0148, (typeof innerWidth === 'number' ? innerWidth : 1280) * 0.0083) * 1.75)) : 12;
+  const H = tall ? Math.round(Math.max(room > 0 ? 140 : 220, Math.min(W * 0.62, room > 0 ? room : (typeof innerHeight === 'number' ? innerHeight : 800) * 0.5))) : Math.round(Math.max(180, Math.min(250, W * 0.5)));
   const tickText = (v) => (v ? compact(v) : '$0');
-  const pad = { l: Math.ceil(Math.max(...ax.ticks.map((v) => tickText(v).length)) * fs * 0.62) + 12, r: 14, t: Math.round(fs * 0.9), b: Math.round(fs * 2.3) };
+  // (room at the right for December's name, centered under its point)
+  const pad = { l: Math.ceil(Math.max(...ax.ticks.map((v) => tickText(v).length)) * fs * 0.62) + 12, r: Math.max(14, Math.ceil(fs * 1.15)), t: Math.round(fs * 0.9), b: Math.round(fs * 2.3) };
   const pw = W - pad.l - pad.r;
   const ph = H - pad.t - pad.b;
   const x = (i) => pad.l + (i / 11) * pw;
@@ -221,30 +230,47 @@ export function YearCompare({ books, idp = 'by', tall = false, as = 'pct' }) {
   </section>`;
 }
 
-/** A statement's main lines (each heading, its total, the sums) or every line, beside the same day a year before */
-export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', heads = null, which = '', notes = null, as = 'pct' }) {
+/**
+ * A statement's main lines (each heading, its total, the sums) or every line, beside the same day a year before.
+ * `page`: one slide of them (board-shared.js statementBreaks, as the deck has them), a heading cut short there said
+ * again, continued
+ */
+export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', heads = null, which = '', notes = null, as = 'pct', page = -1 }) {
   if (!rows?.length) return null;
   const prior = rows.some((r) => r.p != null);
   // The presenter's notes (./review.js, which: 'act' | 'pos'), each under its line; a line with one is a main line too
   const said = notesByKey(notes);
   const keys = which && said.size ? lineKeysOf(rows, which) : [];
   const noteOf = (r) => (keys.length ? said.get(keys[rows.indexOf(r)]) : null);
-  const shown = all ? rows : mainLines(rows, noteOf);
+  let shown = all ? rows : mainLines(rows, noteOf);
+  if (!all && page >= 0) {
+    const breaks = statementBreaks(rows);
+    const from = breaks[page] ?? Infinity;
+    const to = breaks[page + 1] ?? Infinity;
+    const at = linePlaces(rows, shown);
+    const head = page > 0 ? rows.slice(0, Math.ceil(from)).findLast((r) => r.k === 'head' && r.d === 0) : null;
+    shown = shown.filter((_, i) => at[i] >= from && at[i] < to);
+    if (head && shown[0] && !(shown[0].k === 'head' && shown[0].d === 0)) shown = [{ ...head, label: `${head.label}, continued` }, ...shown];
+  }
   const cols = prior ? 4 : 2;
   const signed = (v) => (typeof v === 'number' ? (v < 0 ? `(${money(-v)})` : money(v)) : '');
+  // One unit down the change column: a percent only when every line has a base above zero to take it of, else dollars
+  const nums = shown.filter((r) => typeof r.a === 'number' && typeof r.p === 'number' && Math.round(r.a) !== Math.round(r.p));
+  const unit = as !== 'usd' && nums.every((r) => r.p > 0) ? 'pct' : 'usd';
   return html`<table class=${`by-stmt ${cls}`}>
     <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${heads ? heads[0] : shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${heads ? heads[1] : shortDate(priorAsOf)}</th><th scope="col" class="num">${heads ? heads[2] : 'Change'}</th>` : null}</tr></thead>
     <tbody>${shown.map((r, i) => (r.k === 'head'
       ? html`<tr class="by-stmt__h" key=${i} data-d=${r.d}><th scope="colgroup" colspan=${cols}>${r.label}</th></tr>`
-      : [html`<tr class=${`by-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`} data-d=${r.k === 'sum' ? -1 : r.d} data-a=${Math.abs(Number(r.a) || 0)}><th scope="row">${r.label}</th><td class="num">${signed(r.a)}</td>${prior ? html`<td class="num by-stmt__prior">${signed(r.p)}</td><td class="num by-stmt__chg">${heads ? overIn(r.a, r.p, as) : changeIn(r.a, r.p, as) || '–'}</td>` : null}</tr>`,
+      : [html`<tr class=${`by-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`} data-d=${r.k === 'sum' ? -1 : r.d} data-a=${Math.abs(Number(r.a) || 0)}><th scope="row">${r.label}</th><td class="num">${signed(r.a)}</td>${prior ? html`<td class="num by-stmt__prior">${signed(r.p)}</td><td class="num by-stmt__chg">${heads ? overIn(r.a, r.p, unit) : changeIn(r.a, r.p, unit) || '–'}</td>` : null}</tr>`,
         noteOf(r) ? html`<tr class="by-stmt__note" key=${`${i}-n`} style=${`--d:${r.d}`} data-d=${r.k === 'sum' ? -1 : r.d}><td colspan=${cols}><${NoteLine} note=${noteOf(r)} /></td></tr>` : null]))}</tbody>
   </table>`;
 }
 
 /**
- * A statement on the screen at a size a room reads, fitted to it: smaller (to 80%) while it runs past the bottom, then
- * as few lines off as it takes (the deepest first, the smallest of those first; never a heading of the statement or
- * its bottom lines), then as big again as it can be; it says how many are off and where every line is
+ * A statement on the screen at a size a room reads (the deck gives it as many slides as its lines take), fitted to it
+ * only past that: a little smaller (to 90%) while it runs past the bottom, then as few lines off as it takes (the
+ * deepest first, the smallest of those first; never a heading of the statement or its bottom lines), then as big
+ * again as it can be; it says how many are off and where every line is
  */
 function FitLines(props) {
   const ref = useRef(null);
@@ -261,10 +287,12 @@ function FitLines(props) {
       rows.forEach((r) => show(r, true));
       let k = 1;
       size(k);
-      while (k > 0.8 && over()) { k = Math.round((k - 0.05) * 100) / 100; size(k); }
+      while (k > 0.9 && over()) { k = Math.round((k - 0.05) * 100) / 100; size(k); }
       let hid = 0;
       const deep = rows.filter((r) => Number(r.dataset.d) >= 1).sort((x, y) => Number(y.dataset.d) - Number(x.dataset.d) || Number(x.dataset.a || 0) - Number(y.dataset.a || 0));
       for (const r of deep) { if (!over()) break; show(r, false); hid++; }
+      // (never a line cut in half: smaller still, the last resort)
+      while (k > 0.6 && over()) { k = Math.round((k - 0.05) * 100) / 100; size(k); }
       // With lines off, back up toward the room's size while it still fits
       while (hid && k < 1) { size(Math.round((k + 0.05) * 100) / 100); if (over()) { size(k); break; } k = Math.round((k + 0.05) * 100) / 100; }
       setOff(hid || (over() ? -1 : 0));
@@ -275,15 +303,17 @@ function FitLines(props) {
     ro?.observe(el.parentElement);
     document.fonts?.ready.then(fit);
     return () => ro?.disconnect();
-  }, [props.rows, props.as]);
+  }, [props.rows, props.as, props.page]);
   return html`<div class="by-fit" ref=${ref}><${StatementLines} ...${props} cls="is-big" /></div>${off ? html`<p class="by-fit__more">${off > 0 ? `${off} smaller ${off === 1 ? 'line' : 'lines'} left off here. ` : ''}Every line is on the board page</p>` : null}`;
 }
 
 /** What a 'books' stop is called (the chair's run of show, the screen's foot) */
 export const BOOKS_TITLES = { year: 'The year against last year', store: 'The store', act: 'Statement of activities', budget: 'Budget against actual', pos: 'Statement of financial position' };
+/** The same for one stop: a statement's second slide on is its title, continued */
+export const booksTitle = (stop) => `${BOOKS_TITLES[String(stop?.fileId || '').slice(6)] || ''}${stop?.page ? ', continued' : ''}`;
 
 /** One of QuickBooks' slides after the money, at the size of a room (the screen is dark: its colors are its own) */
-export function BooksSlide({ books, kind, notes = null, as = 'pct' }) {
+export function BooksSlide({ books, kind, page = 0, notes = null, as = 'pct' }) {
   const s = books?.statements;
   if (kind === 'store') {
     // Its sales on yellow, its cost of goods, the profit before the staff and rent the books keep with SOARD's
@@ -313,16 +343,16 @@ export function BooksSlide({ books, kind, notes = null, as = 'pct' }) {
     // QuickBooks' budget (the board's) against the actuals, to the statements' day: the main lines, over (under) beside each
     const b = books?.budget;
     return html`<div class="by-slide">
-      <p class="bs-eyebrow">QuickBooks’ budget, ${b?.name}, through ${dayMonth(b?.asOf)}${b ? `: ${budgetMonthsText(b.months)} of ${b.of} months` : ''}</p>
-      <h1 class="bs-display by-slide__title">Budget against actual, January 1 to ${dayMonth(b?.asOf)}</h1>
-      <${FitLines} rows=${(b?.rows || []).map((r) => ({ ...r, p: r.b }))} heads=${['Actual', 'Budget', 'Over (under)']} which="bud" notes=${notes} as=${as} />
+      <p class="bs-eyebrow">QuickBooks’ budget, ${b?.name}, January 1 to ${dayMonth(b?.asOf)}${b ? `: ${budgetMonthsText(b.months)} of ${b.of} months` : ''}</p>
+      <h1 class="bs-display by-slide__title">Budget against actual${page ? ', continued' : ''}</h1>
+      <${FitLines} rows=${(b?.rows || []).map((r) => ({ ...r, p: r.b }))} heads=${['Actual', 'Budget', 'Over (under)']} which="bud" notes=${notes} as=${as} page=${page} />
     </div>`;
   }
   const act = kind === 'act';
   const rows = act ? s?.activity : s?.position;
   return html`<div class="by-slide">
-    <p class="bs-eyebrow">From QuickBooks, as of ${dayMonth(s?.asOf)}, beside the same day a year before</p>
-    <h1 class="bs-display by-slide__title">${act ? `Statement of activities, January 1 to ${dayMonth(s?.asOf)}` : 'Statement of financial position'}</h1>
-    <${FitLines} rows=${rows} asOf=${s?.asOf} priorAsOf=${s?.priorAsOf} which=${act ? 'act' : 'pos'} notes=${notes} as=${as} />
+    <p class="bs-eyebrow">${act ? `From QuickBooks, January 1 to ${dayMonth(s?.asOf)}, beside the same days a year before` : `From QuickBooks, as of ${dayMonth(s?.asOf)}, beside the same day a year before`}</p>
+    <h1 class="bs-display by-slide__title">${act ? 'Statement of activities' : 'Statement of financial position'}${page ? ', continued' : ''}</h1>
+    <${FitLines} rows=${rows} asOf=${s?.asOf} priorAsOf=${s?.priorAsOf} which=${act ? 'act' : 'pos'} notes=${notes} as=${as} page=${page} />
   </div>`;
 }

@@ -442,8 +442,8 @@ export function cleanLive(raw) {
   return {
     startedAt: isoAt(l.startedAt), endedAt: isoAt(l.endedAt), itemId, fileId,
     page: fileId && Number(l.page) > 0 ? Math.min(999, Math.floor(Number(l.page))) : 0,
-    // Which half of a tall page is on the screen (deckOf: 0 the top, 1 the bottom)
-    part: fileId && Number(l.part) === 1 ? 1 : 0,
+    // Which part of a tall page is on the screen (deckOf: 0 the top, then down it; 1 the bottom of one in two)
+    part: fileId && Number.isInteger(Number(l.part)) && Number(l.part) > 0 && Number(l.part) < PAGE_PARTS ? Number(l.part) : 0,
     screen: ['end', 'since', 'section'].includes(l.screen) ? l.screen : '',
     // The part whose card is on the screen (screen 'section')
     sectionId: l.screen === 'section' && ID.test(String(l.sectionId || '')) ? String(l.sectionId) : '',
@@ -755,8 +755,11 @@ export function guessItem(m, f, today = todayEastern()) {
 export const SHOW_KINDS = ['projects', 'reveals', 'events', 'cash', 'meetings'];
 /** Everything an item shows live, in order: its first (`live`), then the others (`also`) */
 export const showsOf = (it) => [...new Set([it?.live, ...(it?.also || [])].filter((k) => SHOW_KINDS.includes(k)))];
-/** A stop that's no file: the report on an item that shows live facts, one of its other live lists, or one of QuickBooks' slides */
-const PSEUDO_STOP = /^(report|live:(projects|reveals|events|cash|meetings)|books:(year|store|act|budget|pos))$/;
+/**
+ * A stop that's no file: the report on an item that shows live facts, its motion on a slide of its own ("The
+ * decision"), one of its other live lists, or one of QuickBooks' slides
+ */
+const PSEUDO_STOP = /^(report|decision|live:(projects|reveals|events|cash|meetings)|books:(year|store|act|budget|pos))$/;
 /**
  * QuickBooks' slides after the money, as the books have them: the year against last year (by month, else the year so
  * far against the same days), the store (its own accounts, ./board/money.js storeOf), the statement of activities,
@@ -808,9 +811,67 @@ export function mainLines(rows, keep = () => false) {
   return out;
 }
 
+/** The most of a statement's lines one slide holds at the size a room reads them (./board/books.js BooksSlide) */
+export const SLIDE_LINES = 10;
+/**
+ * Where each line of mainLines(rows, keep) sits in `rows`: its own place, or (the "Other …" line, made up) just after
+ * the line before it
+ */
+export const linePlaces = (rows, lines) => { let last = -1; return lines.map((l) => { const i = rows.indexOf(l); last = i >= 0 ? i : last + 0.5; return last; }); };
+/**
+ * A statement's main lines in slides a room reads, never smaller to fit: each top heading with its lines on one slide
+ * where that takes no more slides than filling each in turn would (the revenue, then the expenses), else filled in
+ * turn; a heading cut short goes on, "continued", on the next (a line for that), never a slide ending on a heading or
+ * starting on the made-up "Other …" line. → each slide's first line, as its place in `rows` ([0]: one slide)
+ */
+export function statementBreaks(rows, max = SLIDE_LINES) {
+  const lines = mainLines(rows || []);
+  const at = linePlaces(rows || [], lines);
+  const top = (i) => lines[i].k === 'head' && lines[i].d === 0;
+  // From line `k`, a slide's worth (`cap` lines): one line less when it goes on with a heading begun before
+  const take = (k, to, cap) => {
+    let end = Math.min(to, k + (k && !top(k) ? cap - 1 : cap));
+    while (end < to && end - 1 > k && (lines[end - 1].k === 'head' || lines[end].other)) end--;
+    return end;
+  };
+  // Lines `from` to `to` filled in turn, as evenly as the same number of slides allows (never one line left alone)
+  const fill = (from, to) => {
+    const run = (cap) => { const out = []; for (let k = from; k < to; k = take(k, to, cap)) out.push(k); return out; };
+    const most = run(max);
+    const even = run(Math.max(2, Math.ceil((to - from + most.length - 1) / most.length)));
+    return even.length === most.length ? even : most;
+  };
+  // Each top heading with what follows it to the next (its total, the sums under it)
+  const blocks = [];
+  lines.forEach((l, i) => { if (!blocks.length || top(i)) blocks.push([i, i + 1]); else blocks.at(-1)[1] = i + 1; });
+  const byBlock = [];
+  let used = Infinity;
+  for (const [from, to] of blocks) {
+    if (used + (to - from) <= max) { used += to - from; continue; }
+    const starts = fill(from, to);
+    byBlock.push(...starts);
+    used = to - starts.at(-1) + (starts.length > 1 ? 1 : 0);
+  }
+  const inTurn = fill(0, lines.length);
+  const starts = byBlock.length <= inTurn.length ? byBlock : inTurn;
+  return starts.length ? starts.map((i) => at[i]) : [0];
+}
+/** A statement 'books' slide's rows: the statement of activities, of financial position, or QuickBooks' budget */
+export const statementRows = (books, kind) => (kind === 'act' ? books?.statements?.activity : kind === 'pos' ? books?.statements?.position : kind === 'budget' ? books?.budget?.rows : null) || [];
+
+/** A report with something in it: written, and not "nothing new this time" */
+export const hasReport = (it) => !!String(it?.report || '').trim() && !isNothingNew(it.report);
+/**
+ * An item whose motion the screen shows on a slide of its own, "The decision" (deckOf): it has one (the vote on the
+ * last minutes always does) and more to show besides it (a report, the presenter's notes, live facts)
+ */
+export const decidesAlone = (it) => !!(String(it?.motion || '').trim() || it?.live === 'minutes') && (hasReport(it) || !!String(it?.notes || '').trim() || showsOf(it).length > 0);
+
 /** A financial statement as a file (a balance sheet, a P&L): QuickBooks draws them once it's connected. A budget isn't one */
 export const isStatement = (f) => f?.kind === 'financials' && !/budget/i.test(String(f.name || ''));
 
+/** The most stops one tall page is cut into (deckOf; ./board/docs.js partsOf measures how many it takes) */
+export const PAGE_PARTS = 8;
 export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null } = {}) {
   const drawn = booksDraw(books);
   // A statement as a file stays off the screen only once QuickBooks draws the statements themselves
@@ -823,22 +884,30 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null 
     out.push({ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n, sectionId });
     // An item that shows live facts (the makeovers, the money…) fills its own slide with them: its report is a slide of
     // its own, right after (nothing new to report needs none)
-    if (showsOf(it).length && String(it.report || '').trim() && !isNothingNew(it.report)) out.push({ key: `${it.id}:report`, kind: 'report', itemId: it.id, fileId: 'report', page: 0, n, sectionId });
+    if (showsOf(it).length && hasReport(it)) out.push({ key: `${it.id}:report`, kind: 'report', itemId: it.id, fileId: 'report', page: 0, n, sectionId });
     // Each live list after the first, a slide of its own; after the money, QuickBooks' slides (the year against last
-    // year, then each statement)
-    for (const x of slidesOf(it, booked ? null : books)) out.push({ key: `${it.id}:${x.id}`, kind: x.kind, itemId: it.id, fileId: x.id, page: 0, n, sectionId });
+    // year, then each statement, as many slides as its lines take at a size a room reads)
+    for (const x of slidesOf(it, booked ? null : books)) {
+      const pages = x.kind === 'books' && ['act', 'budget', 'pos'].includes(x.k) ? statementBreaks(statementRows(books, x.k)).length : 1;
+      for (let p = 0; p < pages; p++) out.push({ key: `${it.id}:${x.id}${p ? `:${p}` : ''}`, kind: x.kind, itemId: it.id, fileId: x.id, page: p, n, sectionId });
+    }
     if (showsOf(it).includes('cash')) booked = true;
     for (const f of files) {
       const count = Math.max(1, Math.round(Number(pages[f.id]) || 1));
-      // A tall page (a statement, a report) is two stops, its top half then its bottom one, each as big as the screen
-      // allows; a blank page none (unless every page is: then the file as it is)
+      // A tall page (a statement, a report) is as many stops as it takes for its words to read (./board/docs.js
+      // partsOf: 2 to 8), top to bottom, each as big as the screen allows; a blank page none (unless every page is:
+      // then the file as it is). Keys: the page, then ":b" for its second part (as ever), ":p2" on for the rest
       const of = (p) => { const x = parts[f.id]?.[p]; return x === undefined || x === null ? 1 : Number(x); };
       const blank = (p) => of(p) === 0 && Array.from({ length: count }, (_, q) => q).some((q) => of(q) !== 0);
       for (let p = 0; p < count; p++) {
         if (blank(p)) continue;
-        for (let k = 0; k < (of(p) === 2 ? 2 : 1); k++) out.push({ key: `${it.id}:${f.id}:${p}${k ? ':b' : ''}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, part: k, n, sectionId });
+        const cuts = of(p) >= 2 ? Math.min(PAGE_PARTS, Math.floor(of(p))) : 1;
+        for (let k = 0; k < cuts; k++) out.push({ key: `${it.id}:${f.id}:${p}${k === 1 ? ':b' : k > 1 ? `:p${k}` : ''}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, part: k, parts: cuts, n, sectionId });
       }
     }
+    // Its motion, after all it shows (the vote follows what was presented), on a slide of its own when there's more
+    // than the motion to show: never squeezed beside a report, the notes or the facts
+    if (decidesAlone(it)) out.push({ key: `${it.id}:decision`, kind: 'decision', itemId: it.id, fileId: 'decision', page: 0, n, sectionId });
   };
   let n = 0;
   for (const s of m.sections) {
@@ -860,11 +929,9 @@ export function stopIndex(deck, live) {
   if (live?.screen === 'section' && live.sectionId) { const i = deck.findIndex((s) => s.kind === 'section' && s.sectionId === live.sectionId); if (i >= 0) return i; }
   if (!live?.itemId) return 0;
   const at = (s) => s.itemId === live.itemId && s.fileId === (live.fileId || '') && s.page === (live.page || 0);
-  const exact = deck.findIndex((s) => at(s) && (s.part || 0) === (live.part || 0));
-  if (exact >= 0) return exact;
-  // The bottom half of a page this deck hasn't split (yet): that page
-  const page = deck.findIndex(at);
-  if (page >= 0) return page;
+  // That part of the page; a part further down than this deck has cut it (yet, or into fewer): the nearest above it
+  const onPage = deck.map((s, i) => [s, i]).filter(([s]) => at(s));
+  if (onPage.length) return (onPage.filter(([s]) => (s.part || 0) <= (live.part || 0)).at(-1) || onPage[0])[1];
   const pages = deck.map((s, i) => [s, i]).filter(([s]) => s.itemId === live.itemId && s.fileId && s.fileId === live.fileId);
   if (pages.length) return pages.at(-1)[1];
   return Math.max(0, deck.findIndex((s) => s.itemId === live.itemId));

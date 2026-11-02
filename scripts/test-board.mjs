@@ -1364,10 +1364,10 @@ try {
       await card.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`section:${long.sections[si].id}`)}#/meetings/${long.id}/screen`, { waitUntil: 'networkidle0' });
       await card.waitForSelector('.bs-chapter', { timeout: 8000 }).catch(() => {});
       await sleep(500);
-      return card.evaluate(() => { const st = document.querySelector('.bs-stage').getBoundingClientRect(); const c = document.querySelector('.bs-chapter'); const r = c.getBoundingClientRect(); const labs = [...c.querySelectorAll('.bs-chapter__t')].map((t) => Math.round(t.getBoundingClientRect().left)); return { rows: c.querySelectorAll('.bs-chapter__items li').length, inside: r.top >= st.top - 1 && r.bottom <= st.bottom + 1, by: c.querySelector('.bs-chapter__by')?.textContent || '', perRow: c.querySelectorAll('.bs-chapter__who').length, lined: new Set(labs).size === 1 }; });
+      return card.evaluate(() => { const st = document.querySelector('.bs-stage').getBoundingClientRect(); const c = document.querySelector('.bs-chapter'); const r = c.getBoundingClientRect(); const labs = [...c.querySelectorAll('.bs-chapter__t')].map((t) => Math.round(t.getBoundingClientRect().left)); return { rows: c.querySelectorAll('.bs-chapter__items li').length, inside: r.top >= st.top - 1 && r.bottom <= st.bottom + 1, by: c.querySelector('.bs-chapter__by')?.textContent || '', perRow: c.querySelectorAll('.bs-chapter__who').length, lined: new Set(labs).size === (c.querySelector('.bs-chapter__items.is-cols') ? 2 : 1) }; });
     };
     const one = await cardOf(1);
-    ok(one.rows === 11 && one.inside && /Jane Doe/.test(one.by) && one.perRow === 0 && one.lined, `a part of 11 items by one presenter: the card names them once, its titles in line, all of it above the rail (${JSON.stringify(one)})`);
+    ok(one.rows === 11 && one.inside && /Jane Doe/.test(one.by) && one.perRow === 0 && one.lined, `a part of 11 items by one presenter: the card names them once, its titles in line (two columns past seven), all of it above the rail (${JSON.stringify(one)})`);
     await shot(card, '25b-screen-long-part');
     const mixed = await cardOf(0);
     ok(mixed.rows === 2 && mixed.inside && !mixed.by && mixed.perRow === 2, `a part with different presenters keeps each one on its row (${JSON.stringify(mixed)})`);
@@ -1639,7 +1639,7 @@ try {
       await shot(jane, '28b-screen-books-position');
       // The budget's slide (main's caa7c70c), from the list beside the agenda
       await slide(/Budget against actual/);
-      ok(await qb.waitForFunction(() => /^Budget against actual, January 1 to /.test(document.querySelector('.by-slide__title')?.textContent || '') && /Total Income/.test(document.querySelector('.by-stmt')?.textContent || '') && /Over \(under\)/.test(document.querySelector('.by-stmt thead')?.textContent || ''), { timeout: 15000 }).then(() => true, () => false), 'the screen: QuickBooks’ budget against the actuals, a slide of its own');
+      ok(await qb.waitForFunction(() => /^Budget against actual/.test(document.querySelector('.by-slide__title')?.textContent || '') && /January 1 to /.test(document.querySelector('.by-slide .bs-eyebrow')?.textContent || '') && /Total Income/.test(document.querySelector('.by-stmt')?.textContent || '') && /Over \(under\)/.test(document.querySelector('.by-stmt thead')?.textContent || ''), { timeout: 15000 }).then(() => true, () => false), 'the screen: QuickBooks’ budget against the actuals, a slide of its own');
       await shot(jane, '28c-screen-books-budget');
       await slide(/Upcoming reveals/);
       ok(await qb.waitForFunction(() => document.querySelector('.bs-item__title')?.textContent === 'Upcoming reveals', { timeout: 15000 }).then(() => true, () => false), 'an item’s second show, a slide of its own');
@@ -1672,20 +1672,29 @@ try {
         const room = await pres.evaluate(() => { const svgs = [...document.querySelectorAll('.by-slide .by-chart svg')]; return { fs: svgs.map((x) => parseFloat(getComputedStyle(x.querySelector('text.by-axis')).fontSize)), inside: svgs.every((x) => x.getBoundingClientRect().bottom <= innerHeight) }; });
         ok(room.fs.length === 2 && room.fs.every((f) => f >= 14) && room.inside, `presenting the year: words a room reads (${room.fs.join(', ')}px), the charts on the screen`);
         await shot(pres, '28e-presenting-year');
-        // A long statement (QuickBooks' real ones run to twenty lines and more) fits the screen: smaller, then the
-        // groups' own lines off, never the bottom line, and it says where every line is
+        // A long statement (QuickBooks' real ones run to twenty lines and more) goes on as many slides as it takes, each
+        // at the size a room reads: no line left off, never set smaller, the bottom line on the last
         const daily = await DB.prepare("SELECT data FROM books_daily WHERE id = 'qbo'").first();
         const long = JSON.parse(daily.data);
         long.statements.activity = [{ k: 'head', label: 'Income', d: 0 }, ...Array.from({ length: 22 }, (_, i) => ({ k: 'total', label: `Total Group ${i + 1}`, d: 1, a: 10000 * (i + 1), p: 9000 * (i + 1) })), { k: 'total', label: 'Total Income', d: 0, a: 1884217, p: 1909703 }, { k: 'sum', label: 'Net Income', d: 0, a: 189248, p: 176000 }];
         await DB.prepare("UPDATE books_daily SET data = ? WHERE id = 'qbo'").bind(JSON.stringify(long)).run();
         await pres.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`${fin.id}:books:act`)}#/meetings/${meetingId}/screen`, { waitUntil: 'networkidle0' });
         await pres.reload({ waitUntil: 'networkidle0' });
-        const fitted = await pres.waitForFunction(() => {
+        const whole = () => pres.waitForFunction(() => {
           const box = document.querySelector('.by-fit');
-          const net = [...document.querySelectorAll('.by-fit tr')].find((r) => /Net Income/.test(r.textContent));
-          return box && box.scrollHeight <= box.clientHeight + 1 && net && !net.hidden && /^\d+ smaller lines left off here. Every line is on the board page$/.test(document.querySelector('.by-fit__more')?.textContent || '') && [...document.querySelectorAll('.by-fit tr[data-d="1"]')].filter((r) => !r.hidden).length >= 5;
+          const rows = [...document.querySelectorAll('.by-fit tbody tr')];
+          return box && rows.length && box.scrollHeight <= box.clientHeight + 1 && rows.every((r) => !r.hidden) && !document.querySelector('.by-fit__more') && parseFloat(getComputedStyle(document.querySelector('.by-stmt.is-big')).fontSize) >= 20;
         }, { timeout: 8000 }).then(() => true, () => false);
-        ok(fitted, 'a long statement fits the screen, its bottom line kept, and says every line is on the board page');
+        const seen = [];
+        let fitted = await whole();
+        for (let i = 0; fitted && i < 6; i++) {
+          seen.push(...await pres.$$eval('.by-fit tbody tr th', (l) => l.map((x) => x.textContent.trim())));
+          if (seen.includes('Net Income')) break;
+          await pres.keyboard.press('ArrowRight');
+          fitted = await pres.waitForFunction(() => /Statement of activities, continued/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false) && await whole();
+        }
+        const groups = seen.filter((t) => /^Total Group \d+$/.test(t)).length;
+        ok(fitted && groups === 22 && seen.includes('Total Income') && seen.at(-1) === 'Net Income', `a long statement goes on over as many slides as it takes, every line at 20px or more, the bottom line last (${groups} of 22 groups)`);
         await shot(pres, '28f-presenting-long-statement');
         await DB.prepare("UPDATE books_daily SET data = ? WHERE id = 'qbo'").bind(daily.data).run();
         await pres.close();

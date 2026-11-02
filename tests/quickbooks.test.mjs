@@ -542,8 +542,8 @@ test('the board page: QuickBooks’ figures against the packet’s budget for th
   assert.deepEqual([b.revenue, b.expenses, b.year, b.asOf, b.live], [{ actual: 822221.67, budget: 1000000, last: null, lastFull: null }, { actual: 439100.14, budget: 600000, last: null, lastFull: null, inKind: 0 }, '2026', 'Oct 29, 2026', true]);
   const tiles = moneyTiles({ cash: null, budget: b, n: {} });
   assert.deepEqual(tiles.map((t) => [t.k, t.value, t.pct, t.sub]), [
-    ['rev', '$822,222', 82, '82% of the $1M budget, as of Oct 29'],
-    ['exp', '$439,100', 73, '73% of the $600K budget, as of Oct 29'],
+    ['rev', '$822,222', 82, '82% of the $1M budget, as of Oct\u00a029'],
+    ['exp', '$439,100', 73, '73% of the $600K budget, as of Oct\u00a029'],
   ]);
   // In kind the books took in and used: in the revenue (SOARD's budget counts it there), never in the expenses (its
   // budget leaves it out); last year's pace the same way once the daily read has it, else none rather than mixed
@@ -551,12 +551,12 @@ test('the board page: QuickBooks’ figures against the packet’s budget for th
   const k = withBooks(SHEET, { ...BOOKS, nonCash: 100000, lastYear });
   assert.deepEqual(k.expenses, { actual: 339100.14, budget: 600000, last: 420000, lastFull: 600000, inKind: 100000 });
   assert.deepEqual(k.revenue.actual, 822221.67);
-  assert.equal(moneyTiles({ cash: null, budget: k, n: {} })[1].sub, '57% of the $600K budget, as of Oct 29 · 70% by now last year · not counting $100K in kind');
+  assert.equal(moneyTiles({ cash: null, budget: k, n: {} })[1].sub, '57% of the $600K budget, as of Oct\u00a029 · 70% by now last year · not counting $100K in kind');
   assert.deepEqual(withBooks(SHEET, { ...BOOKS, nonCash: 100000, lastYear: { ...lastYear, nonCash: undefined } }).expenses, { actual: 339100.14, budget: 600000, last: null, lastFull: null, inKind: 100000 });
   // January: 2027’s figures before 2027’s budget sheet is in a packet
   const jan = withBooks(SHEET, { ...BOOKS, year: '2027', from: '2027-01-01', through: '2027-01-20', revenue: 5000, expenses: 2000 });
   assert.deepEqual(jan.revenue, { actual: 5000, budget: null, last: null, lastFull: null });
-  assert.deepEqual(moneyTiles({ cash: null, budget: jan, n: {} }).map((t) => [t.label, t.pct, t.sub]), [['2027 revenue', null, 'The year so far, as of Jan 20'], ['2027 expenses', null, 'The year so far, as of Jan 20']]);
+  assert.deepEqual(moneyTiles({ cash: null, budget: jan, n: {} }).map((t) => [t.label, t.pct, t.sub]), [['2027 revenue', null, 'The year so far, as of Jan\u00a020'], ['2027 expenses', null, 'The year so far, as of Jan\u00a020']]);
   // No budget sheet in any packet yet
   assert.deepEqual(withBooks(null, BOOKS).revenue, { actual: 822221.67, budget: null, last: null, lastFull: null });
 });
@@ -592,7 +592,7 @@ test('the figures say where the year stands: months of cash, the budget beside l
   const tiles = moneyTiles({ cash, budget: b, n: {} });
   assert.deepEqual(tiles.map((t) => [t.k, t.value]), [['bank', '$502,779'], ['months', '17'], ['rev', '$822,222'], ['exp', '$439,100']]);
   assert.equal(tiles[1].sub, 'At $30K a month, the last 12 months’ cash out');
-  assert.equal(tiles[2].sub, '82% of the $1M budget, as of Oct 29 · 64% by now last year');
+  assert.equal(tiles[2].sub, '82% of the $1M budget, as of Oct\u00a029 · 64% by now last year');
   // No budget for the year yet: against last year's same days
   const nob = withBooks(null, { ...BOOKS, lastYear: ly });
   assert.equal(moneyTiles({ cash: null, budget: nob, n: {} })[0].sub, '▲ 25% on last year by now');

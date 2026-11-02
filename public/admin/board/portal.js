@@ -1694,19 +1694,34 @@ function ScreenFrame({ m, it, report, motion, by }) {
     addEventListener('message', on);
     return () => removeEventListener('message', on);
   }, []);
-  // A moment after typing stops: the slide is laid out again only then, never on every key
-  useEffect(() => { if (!ready.current) return undefined; const t = setTimeout(send, 300); return () => clearTimeout(t); }, [report, motion, by]);
+  // A moment after typing stops: the slide is laid out again only then, never on every key. The slide it shows follows
+  // what was typed: the motion, its own slide when it has one ("The decision", else the item's); the report, its slide
+  const typed = useRef({ report, motion });
+  useEffect(() => {
+    if (!ready.current) return undefined;
+    const t = setTimeout(() => {
+      send();
+      const to = motion !== typed.current.motion && String(motion || '').trim() ? 'decision' : report !== typed.current.report || motion !== typed.current.motion ? 'report' : '';
+      typed.current = { report, motion };
+      if (to) post({ type: 'board-preview-at', key: `${it.id}:${to}`, itemId: it.id });
+    }, 300);
+    return () => clearTimeout(t);
+  }, [report, motion, by]);
   const scale = w ? w / 1280 : 0;
   const words = String(report || '').trim() && !isNothingNew(report);
-  // Where the slide sits: after the live facts its report follows, or what comes next on its item
+  // Where the slide sits: after the live facts its report follows, or what comes next on its item; and the motion's
+  // own slide at the end of the item, when it has one (./board-shared.js deckOf)
   const here = deck?.stops?.[deck.at];
   const nx = deck?.stops?.[deck.at + 1];
-  const where = here?.itemId !== it.id ? ''
-    : here.kind === 'report' ? `After ${AFTER_LIVE[showsOf(it)[0]] || 'its live slide'}`
-    : here.kind === 'item' && showsOf(it).length ? 'Your report gets a slide of its own, after this one.'
-    : nx?.itemId === it.id && nx.kind === 'doc' ? 'Then its documents' : '';
+  const where = here?.kind === 'decision' && here.itemId === it.id ? 'The last slide of your item, when the board votes.' : [
+    here?.itemId !== it.id ? ''
+      : here.kind === 'report' ? `After ${AFTER_LIVE[showsOf(it)[0]] || 'its live slide'}.`
+      : here.kind === 'item' && showsOf(it).length && words ? 'Your report gets a slide of its own, after this one.'
+      : nx?.itemId === it.id && nx.kind === 'doc' ? 'Then its documents.' : '',
+    deck?.stops?.some((s) => s.kind === 'decision' && s.itemId === it.id) ? 'Your motion gets a slide of its own at the end of your item, for the vote.' : '',
+  ].filter(Boolean).join(' ');
   const fitLine = [
-    words && fit && !(here?.kind === 'item' && showsOf(it).length) ? (fit.cut ? `The screen shows about the first ${fit.shown} words. The whole report is on the board page.` : 'Fits on one slide.') : '',
+    words && fit && here?.kind !== 'decision' && !(here?.kind === 'item' && showsOf(it).length) ? (fit.cut ? `The screen shows about the first ${fit.shown} words. The whole report is on the board page.` : 'Fits on one slide.') : '',
     String(motion || '').trim() && motionCut ? 'The screen cuts the motion short; a shorter one fits.' : '',
   ].filter(Boolean).join(' ');
   return html`<div class="bp-rp__screen" ref=${holder} style=${scale ? `height:${Math.round(720 * scale)}px` : null}>

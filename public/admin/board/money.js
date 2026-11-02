@@ -26,6 +26,11 @@ export const compact = (n) => {
   const s = n < 0 ? '−' : '';
   return a >= 1e9 ? `${s}$${(a / 1e9).toFixed(a >= 1e10 ? 1 : 2).replace(/\.?0+$/, '')}B` : a >= 1e6 ? `${s}$${(a / 1e6).toFixed(a >= 1e7 ? 1 : 2).replace(/\.?0+$/, '')}M` : a >= 1e4 ? `${s}$${Math.round(a / 1e3)}K` : `${s}${money(a)}`;
 };
+/**
+ * An amount as a figure (the money's tiles): whole dollars with a true minus, "−$48,210"; from $10M up the short
+ * form, "$1.4B", so a figure always fits its tile
+ */
+export const amount = (n) => (typeof n !== 'number' || !Number.isFinite(n) ? '' : Math.abs(n) >= 1e7 ? compact(n) : `${n < 0 ? '−' : ''}${money(Math.abs(n))}`);
 function balanceSheet(data, upTo = '') {
   return data.meetings.filter((m) => !upTo || m.date <= upTo).flatMap((m) => m.files.filter((f) => f.kind === 'financials' && isExcel(f) && /financial position|balance sheet/i.test(f.name)).map((f) => ({ f, m })))
     .sort((a, b) => b.m.date.localeCompare(a.m.date) || String(b.f.at || '').localeCompare(String(a.f.at || '')))[0] || null;
@@ -105,8 +110,8 @@ export function booksCash(data, b) {
     months: typeof b.monthsOfCash === 'number' ? b.monthsOfCash : null, perMonth: b.perMonth || null,
   };
 }
-/** 16.8 → "17", 8.46 → "8.5": months of cash, to a tenth under ten */
-export const monthsText = (m) => (m >= 10 ? String(Math.round(m)) : String(Math.round(m * 10) / 10));
+/** 16.8 → "17", 8.46 → "8.5": months of cash, to a tenth under ten; none at all (or less) "Under a month" */
+export const monthsText = (m) => (m <= 0 ? 'Under a month' : m >= 10 ? String(Math.round(m)) : String(Math.round(m * 10) / 10));
 /** "From QuickBooks, as of 3:05 PM" (today) or "…, as of Oct 28": where the cash comes from when it's the books' */
 export const fromBooks = (cash) => (cash?.banks?.length === 1 && cash.banks[0] === 'QuickBooks'
   ? `From QuickBooks, as of ${cash.today ? new Date(cash.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) : shortAsOf(cash.asOf)}` : '');
@@ -132,7 +137,8 @@ function cashToShow(live, sheet, books = null) {
   if (!live) return sheet;
   return !sheet || live.total >= sheet.total * 0.5 ? live : sheet;
 }
-export const shortAsOf = (s) => String(s || '').replace(/, \d{4}$/, '');
+/** "Nov 2, 2026" → "Nov 2", the month and day never apart on two lines */
+export const shortAsOf = (s) => String(s || '').replace(/, \d{4}$/, '').replace(/^([A-Za-z]{3,9}\.?) (\d)/, '$1\u00a0$2');
 
 // The year against its budget: the newest "budget & actual" sheet in a meeting's packet (SOARD's own layout: a
 // heading row naming the Budgeted and Actual columns, then "Revenue Total", "Total Expenses", "Program Total"…)
@@ -258,15 +264,17 @@ export const growthText = (x, as = 'pct') => {
 /**
  * A meeting's money as figures, for its Financial item and the screen: the cash, the year's revenue and expenses
  * against the budget, and (once Mercury holds SOARD's money, so its record is the books') the year's net and the
- * lowest the forecast goes. `cash` and `budget` are undefined while they're read. → [{ k, label, value, sub, tone }]
+ * lowest the forecast goes. `cash` and `budget` are undefined while they're read. A bank account below zero says so,
+ * "Overdrawn", in a plain tile (`quiet`: never the celebratory first one). → [{ k, label, value, sub, tone, quiet }]
  */
 /** "August 3, 2026" → ", as of Aug 3" ('' when there's no date) */
-const asOfWords = (s) => { const t = Date.parse(String(s || '')); return Number.isFinite(t) ? `, as of ${new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : s ? `, ${s}` : ''; };
+const asOfWords = (s) => { const t = Date.parse(String(s || '')); return Number.isFinite(t) ? `, as of ${new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }).replace(' ', '\u00a0')}` : s ? `, ${s}` : ''; };
 export function moneyTiles({ cash, budget, n, due = false, as = '' }) {
   const out = [];
   if (cash !== null) {
+    const over = !!cash && cash.total < 0;
     out.push({
-      k: 'bank', label: 'Cash in the bank', value: cash ? money(cash.total) : '…',
+      k: 'bank', label: over ? 'Overdrawn' : 'Cash in the bank', value: cash ? amount(Math.abs(cash.total)) : '…', quiet: over,
       sub: !cash ? 'From the balance sheet' : fromBooks(cash) || (cash.live
         ? [(cash.accounts || []).length > 1 ? cash.accounts.map((a) => `${a.name} ${compact(a.balance)}`).join(' · ') : '', cash.asOf ? `as of ${shortAsOf(cash.asOf)}` : ''].filter(Boolean).join(', ')
         : `${cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : 'From the balance sheet'}${cash.prior != null ? ` · ${as ? changeIn(cash.total, cash.prior, as, { short: true }) : `${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))}`} on a year` : ''}`),
@@ -279,16 +287,16 @@ export function moneyTiles({ cash, budget, n, due = false, as = '' }) {
   // While a budget sheet is read: its two figures' places, so the tiles never move when they arrive
   // (QuickBooks' figures at once when it's connected, as Home has them; the budget's share follows)
   const books = typeof n?.books?.revenue === 'number' ? n.books : null;
-  if (budget === undefined && (due || books)) for (const [k, word, v] of [['rev', 'revenue', books?.revenue], ['exp', 'expenses', books ? spentOf(books) : null]]) out.push({ k, label: `${(books?.year || todayEastern().slice(0, 4))} ${word}`, value: typeof v === 'number' ? money(v) : '…', pct: 0, sub: '\u00a0' });
+  if (budget === undefined && (due || books)) for (const [k, word, v] of [['rev', 'revenue', books?.revenue], ['exp', 'expenses', books ? spentOf(books) : null]]) out.push({ k, label: `${(books?.year || todayEastern().slice(0, 4))} ${word}`, value: typeof v === 'number' ? amount(v) : '…', pct: 0, sub: '\u00a0' });
   for (const [k, x, word] of [['rev', budget?.revenue, 'revenue'], ['exp', budget?.expenses, 'expenses']]) {
-    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: [x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}`, paceText(x)].filter(Boolean).join(' · ') : growthText(x, as || 'pct') || `The year so far${asOfWords(budget.asOf)}`, x.inKind ? `not counting ${compact(x.inKind)} in kind` : ''].filter(Boolean).join(' · ') });
+    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: amount(x.actual), pct: pctOf(x), sub: [x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}`, paceText(x)].filter(Boolean).join(' · ') : growthText(x, as || 'pct') || `The year so far${asOfWords(budget.asOf)}`, x.inKind ? `not counting ${compact(x.inKind)} in kind` : ''].filter(Boolean).join(' · ') });
   }
   const f = n?.finance;
   // Mercury's own record (the year so far, the forecast) only once its banks are the cash shown
   if (cash?.live && cash.banks?.includes('Mercury') && !n?.mercury?.empty && f?.ytd) {
     const spent = (p) => (p.makeovers || 0) + (p.store || 0) + (p.operating || 0);
-    if (!budget?.revenue) out.push({ k: 'ytd', label: `${f.ytd.year} so far`, value: `${f.ytd.net < 0 ? '−' : '+'}${money(Math.abs(f.ytd.net))}`, sub: `${compact(f.ytd.income)} in · ${compact(spent(f.ytd))} out, through ${new Date(`${f.ytd.through}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })}`, tone: f.ytd.net >= 0 ? 'up' : 'down' });
-    if (f.cash?.lowest) out.push({ k: 'low', label: 'Lowest ahead', value: money(f.cash.lowest.dollars), sub: `${f.cash.lowest.week ? `Week of ${shortDate(f.cash.lowest.week).replace(/, \d{4}$/, '')}` : 'In the forecast'} · ${compact(f.cash.in13Weeks)} in 13 weeks`, tone: f.cash.belowFloor ? 'down' : '' });
+    if (!budget?.revenue) out.push({ k: 'ytd', label: `${f.ytd.year} so far`, value: `${f.ytd.net < 0 ? '' : '+'}${amount(f.ytd.net)}`, sub: `${compact(f.ytd.income)} in · ${compact(spent(f.ytd))} out, through ${new Date(`${f.ytd.through}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })}`, tone: f.ytd.net >= 0 ? 'up' : 'down' });
+    if (f.cash?.lowest) out.push({ k: 'low', label: 'Lowest ahead', value: amount(f.cash.lowest.dollars), sub: `${f.cash.lowest.week ? `Week of ${shortDate(f.cash.lowest.week).replace(/, \d{4}$/, '')}` : 'In the forecast'} · ${compact(f.cash.in13Weeks)} in 13 weeks`, tone: f.cash.belowFloor ? 'down' : '' });
   }
   return out;
 }
@@ -374,7 +382,7 @@ export function changeIn(a, p, as = 'pct', { short = false } = {}) {
 export function overIn(a, b, as = 'usd', { short = false } = {}) {
   if (!(typeof a === 'number' && typeof b === 'number')) return '–';
   if (Math.round(a) === Math.round(b)) return 'Even';
-  if (as === 'pct' && b > 0) { const c = Math.round(((a - b) / b) * 100); if (c !== 0) return `${c > 0 ? '+' : '−'}${Math.abs(c)}%`; }
+  if (as === 'pct' && b > 0) { const c = Math.round(((a - b) / b) * 100); return c === 0 ? 'Even' : `${c > 0 ? '+' : '−'}${Math.abs(c)}%`; }
   return `${a > b ? '+' : '−'}${(short ? compact : money)(Math.abs(a - b))}`;
 }
 

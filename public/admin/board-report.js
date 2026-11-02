@@ -39,12 +39,13 @@ const wordsIn = (b) => (b.t === 'p' || b.t === 'h' ? b.text.split(/\s+/).filter(
 function Blocks({ blocks, level }) {
   const H = `h${Math.min(6, level)}`;
   return blocks.map((b, k) => {
-    if (b.t === 'p') return html`<p key=${k}><${Runs} text=${b.text} runs=${b.runs} />${b.cut ? '…' : null}</p>`;
-    if (b.t === 'h') return h(H, { key: k, class: 'rp-h' }, html`<${Runs} text=${b.text} />`);
-    if (b.t === 'quote') return html`<blockquote key=${k} class="rp-callout"><${Blocks} blocks=${b.blocks} level=${level} /></blockquote>`;
-    const items = b.items.map((it, j) => html`<li key=${j}><${Blocks} blocks=${it} level=${level} /></li>`);
+    // (each block its own direction, as its words have it: Arabic or Hebrew right to left, bullets on the right)
+    if (b.t === 'p') return html`<p key=${k} dir="auto"><${Runs} text=${b.text} runs=${b.runs} />${b.cut ? '…' : null}</p>`;
+    if (b.t === 'h') return h(H, { key: k, class: 'rp-h', dir: 'auto' }, html`<${Runs} text=${b.text} />`);
+    if (b.t === 'quote') return html`<blockquote key=${k} class="rp-callout" dir="auto"><${Blocks} blocks=${b.blocks} level=${level} /></blockquote>`;
+    const items = b.items.map((it, j) => html`<li key=${j} dir="auto"><${Blocks} blocks=${it} level=${level} /></li>`);
     // (a start only when it isn't 1: Preact writes a null start as the property, which the browser reads as 0)
-    return b.t === 'ol' ? html`<ol key=${k} ...${b.start === 1 ? {} : { start: b.start }}>${items}</ol>` : html`<ul key=${k}>${items}</ul>`;
+    return b.t === 'ol' ? html`<ol key=${k} dir="auto" ...${b.start === 1 ? {} : { start: b.start }}>${items}</ol>` : html`<ul key=${k} dir="auto">${items}</ul>`;
   });
 }
 
@@ -97,7 +98,7 @@ function clip(blocks, max) {
 export function Report({ text, level = 4, clamp = 0, cls = '' }) {
   const [all, setAll] = useState(false);
   // Nothing new this time: said once, quietly
-  if (isNothingNew(text)) return html`<div class=${`rp rp--nothing ${cls}`}><p>${NOTHING_NEW}</p></div>`;
+  if (isNothingNew(text)) return html`<div class=${`rp rp--nothing ${cls}`}><p dir="auto">${NOTHING_NEW}</p></div>`;
   const blocks = mdBlocks(text);
   if (!blocks.length) return null;
   const total = blocks.reduce((n, b) => n + wordsIn(b), 0);
@@ -457,8 +458,8 @@ const CSS = `
 .rp > :last-child { margin-bottom: 0; }
 .rp p { margin: 0 0 0.75em; }
 .rp .rp-h, .rp h3 { margin: 1.15em 0 0.4em; color: var(--rp-ink); font-size: 1.06em; font-weight: 700; line-height: 1.35; letter-spacing: -0.005em; }
-.rp ul, .rp ol { margin: 0 0 0.8em; padding-left: 1.35em; }
-.rp li { margin: 0.2em 0; padding-left: 0.15em; }
+.rp ul, .rp ol { margin: 0 0 0.8em; padding-inline-start: 1.35em; }
+.rp li { margin: 0.2em 0; padding-inline-start: 0.15em; }
 .rp li > p { margin: 0; }
 .rp li > ul, .rp li > ol { margin: 0.2em 0 0.3em; }
 .rp ul { list-style-type: disc; }
