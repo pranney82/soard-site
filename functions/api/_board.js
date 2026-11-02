@@ -1097,12 +1097,11 @@ export function inviteNotes(m) {
  */
 export const inviteUrl = (m) => `${SITE}/board/${m.id}`;
 /**
- * What a meeting's calendar invite is called: which meeting, and how to come (Board adds Google Meet to every one).
- * "SOARD Q4 2026 Board Meeting (in person or Google Meet)" (Peter, Nov 2 2026: "make that better and more descriptive")
+ * What a meeting's calendar invite is called: which meeting it is, "SOARD Q4 2026 Board Meeting" (Peter, Nov 2 2026:
+ * "make that better and more descriptive", then without "(in person or Google Meet)")
  */
 export function inviteTitle(m) {
-  const name = /soard/i.test(meetingName(m)) ? meetingName(m) : `SOARD ${meetingName(m)}`;
-  return `${name} (${placeOf(m) ? 'in person or Google Meet' : 'Google Meet'})`;
+  return /soard/i.test(meetingName(m)) ? meetingName(m) : `SOARD ${meetingName(m)}`;
 }
 
 /** A meeting as a calendar file, for a board member who isn't on its invite */

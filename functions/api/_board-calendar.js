@@ -137,10 +137,13 @@ export function eventPlace(ev) {
   let location = raw;
   if (URL_RE.test(raw) && raw.match(URL_RE)[0] === raw) { if (!video) { video = raw; callFrom = 'place'; } location = ''; }
   if (!video) { const u = inText(ev?.description); if (looksLikeCall(u)) { video = u; callFrom = 'notes'; } }
-  // "Example Design Group, 123 Main St, Roswell, GA" → the place, then its address
+  // "Example Design Group, 123 Main St, Roswell, GA" → the place, then its address; "STAG Partners (140 Colony Center Dr,
+  // Woodstock, GA 30188, United States)", as Outlook writes one, the same (the country left off)
   let address = '';
   const comma = location.indexOf(',');
-  if (comma > 0 && /\d/.test(location.slice(comma))) { address = location.slice(comma + 1).trim(); location = location.slice(0, comma).trim(); }
+  const bracket = location.match(/^([^()]+?)\s*\(([^()]*\d[^()]*)\)$/);
+  if (bracket) { location = bracket[1].trim(); address = bracket[2].replace(/\s+/g, ' ').replace(/,\s*(United States|USA|US)$/i, '').trim(); }
+  else if (comma > 0 && /\d/.test(location.slice(comma))) { address = location.slice(comma + 1).trim(); location = location.slice(0, comma).trim(); }
   else if (/^\d/.test(location)) { address = location; location = ''; }
   if (isTbd(location)) location = '';
   // No place on the invite ("TBD"): an address written in its notes

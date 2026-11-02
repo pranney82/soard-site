@@ -250,7 +250,9 @@ const changeOf = (m) => {
 };
 /** A change the board is emailed about (the place, the day or time); the agenda alone isn't one */
 const loudChange = (m) => {
-  const place = placeOf(m) && placeOf(m) !== m.invite.place ? placeOf(m) : '';
+  // The organizer's own event with its own place: that place is the calendar's, never Board's to send (read better here
+  // isn't a new place)
+  const place = placeOf(m) && placeOf(m) !== m.invite.place && !(m.calendar?.place && !m.calendar.gone) ? placeOf(m) : '';
   const when = !m.calendar && whenOf(m) !== m.invite.when ? whenOf(m) : '';
   return place || when ? `${place}|${when}` : '';
 };
@@ -306,8 +308,8 @@ export async function maybeRefreshInvites(env, { fetchImpl = fetch, now = Date.n
 // Board's own words on the invite (inviteNotes in ./_board.js). Raised when they change, so every invite still ahead
 // gets them once, quietly, on the next heartbeat, without anyone saving a meeting.
 // 2: the short link, no "Your reply to this invite shows on the board page", and a name that says which meeting and
-// how to come, on the organizer's own event too (Peter, Nov 2 2026)
-const NOTES_VERSION = 2;
+// how to come, on the organizer's own event too (Peter, Nov 2 2026). 3: the name without "(in person or Google Meet)"
+const NOTES_VERSION = 3;
 const REWORDED = 'invite-notes';
 /** Each invite still ahead whose only change is Board's words: updated without Google emailing anyone. → the meeting ids */
 async function rewordInvites(env, { fetchImpl, now }) {

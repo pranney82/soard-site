@@ -724,6 +724,9 @@ test('which calendar events are board meetings, and their day, time and place in
   const where = (ev) => { const { said, callFrom, ...p } = eventPlace(ev); return p; };
   assert.deepEqual(where({ location: 'Example Design Group, 100 Example St, Roswell, GA 30075' }), { location: 'Example Design Group', address: '100 Example St, Roswell, GA 30075', video: '' });
   assert.deepEqual(where({ location: '100 Example St, Roswell, GA' }), { location: '', address: '100 Example St, Roswell, GA', video: '' });
+  // As Outlook writes a place: its name, then its address in brackets (a comma in the name stays in the name)
+  assert.deepEqual(where({ location: 'Example Partners (140 Example Center Dr, Woodstock, GA 30188, United States)' }), { location: 'Example Partners', address: '140 Example Center Dr, Woodstock, GA 30188', video: '' });
+  assert.deepEqual(where({ location: 'Example Architects, Incorporated (85 Mill St, Roswell, GA  30075)' }), { location: 'Example Architects, Incorporated', address: '85 Mill St, Roswell, GA 30075', video: '' });
   assert.deepEqual(where({ location: 'TBD', description: '<p>Please join us at</p><p>Example Hall</p><p>4001 Example Dr. Marietta, GA 30068</p><p>Microsoft Teams</p>' }), { location: 'Example Hall', address: '4001 Example Dr. Marietta, GA 30068', video: '' }, 'TBD: the address in the invite’s notes');
   assert.equal(eventPlace({ location: 'TBD' }).said, 'TBD', 'what the invite says is kept for the admins');
   assert.equal(eventPlace({ location: 'https://zoom.us/j/123' }).video, 'https://zoom.us/j/123');
@@ -1089,7 +1092,7 @@ test('Send the invite: from the president’s calendar to every board member, wi
   g.calls = [];
   const renamed = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...now, title: 'Fall board meeting' }, base: now.updatedAt })).body.meeting;
   await maybeRefreshInvites(env, { now: Date.now() + 10 * 60 * 1000 });
-  assert.deepEqual(calWrites(g).map((c) => [c.body.summary, c.url.match(/sendUpdates=(\w+)/)[1]]), [['SOARD Fall board meeting (in person or Google Meet)', 'none']]);
+  assert.deepEqual(calWrites(g).map((c) => [c.body.summary, c.url.match(/sendUpdates=(\w+)/)[1]]), [['SOARD Fall board meeting', 'none']]);
   // Saved again with nothing new: nothing sent
   g.calls = [];
   await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...renamed }, base: renamed.updatedAt });
@@ -1132,7 +1135,7 @@ test('a meeting from the organizer’s calendar: that invite gets the missing bo
   assert.deepEqual(body.attendees, [{ email: MEMBER, responseStatus: 'accepted' }, { email: OTHER_MEMBER }], 'who was invited stays, with their answer');
   assert.equal(body.location, 'Example Hall, 100 Example St, Roswell, GA', 'a TBD place is filled in');
   assert.ok(body.conferenceData.createRequest);
-  assert.equal(body.summary, `SOARD ${meetingName(m)} (in person or Google Meet)`, 'its name says which meeting and how to come');
+  assert.equal(body.summary, `SOARD ${meetingName(m)}`, 'its name says which meeting it is');
   assert.equal(body.start, undefined, 'the calendar keeps its own day and time');
   assert.ok(body.description.startsWith(`Dinner provided\n\nThe agenda and documents: https://sunshineonaranneyday.com/board/${m.id}\n`), 'its own notes stay, Board’s follow them');
   // Looked at again: still the calendar's meeting, followed as before, never marked gone
@@ -1194,10 +1197,32 @@ test('Board’s words on the invite change: each invite still ahead gets them on
   const [w] = calWrites(g);
   assert.match(w.url, /sendUpdates=none$/, 'nobody is emailed about it');
   assert.equal(w.body.description, `The agenda and documents: https://sunshineonaranneyday.com/board/${m.id}\nSign in with the email this invite went to. A code comes by email.`);
-  assert.equal(w.body.summary, `SOARD ${meetingName(m)} (Google Meet)`, 'no place yet: Google Meet is how to come');
+  assert.equal(w.body.summary, `SOARD ${meetingName(m)}`);
   g.calls = [];
   assert.deepEqual(await maybeRefreshInvites(env), [], 'once');
   assert.equal(calWrites(g).length, 0);
+});
+
+test('Holly’s own place, read as its name and address here, is never sent to the board as a new place', async () => {
+  const day = inDays(58);
+  const theirs = ev('hol5', 'SOARD Board Meeting', `${day}T13:00:00Z`, `${day}T15:00:00Z`, {
+    location: 'Example Partners (140 Example Center Dr, Woodstock, GA 30188, United States)', organizer: { email: FOUNDER, self: true }, attendees: [{ email: MEMBER }],
+  });
+  const g = fakeGoogleWriter({ events: { [FOUNDER]: [theirs] } });
+  await syncBoardCalendar(env);
+  let [m] = (await listMeetings(env.DB)).filter((x) => x.calendar?.eventId === 'hol5');
+  assert.deepEqual([m.location, m.address], ['Example Partners', '140 Example Center Dr, Woodstock, GA 30188']);
+  m = (await adminApi(FOUNDER, { action: 'send-invite', id: m.id })).body.meeting;
+  assert.equal(m.invite.place, 'Example Partners (140 Example Center Dr, Woodstock, GA 30188, United States)', 'the place stays as Holly wrote it');
+  // Notes typed afterwards: the invite gets them, and Google emails nobody (her place, read better here, isn't a new one)
+  g.calls = [];
+  await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...m, inviteNote: 'Park on the left.' }, base: m.updatedAt });
+  await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 });
+  const writes = calWrites(g);
+  assert.equal(writes.length, 1);
+  assert.match(writes[0].url, /sendUpdates=none$/);
+  assert.equal(writes[0].body.location, undefined, 'her place is left as it is');
+  assert.match(writes[0].body.description, /Park on the left\.$/);
 });
 
 test('Board’s invite, then the meeting turns up on the organizer’s own calendar: one invite, theirs', async () => {

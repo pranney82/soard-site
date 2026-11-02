@@ -998,7 +998,7 @@ function GettingReady({ m, set, ctx, act, save }) {
   const missing = inv ? guests.filter((e) => !(inv.emails || []).includes(e) && e !== inv.organizer) : [];
   const transcript = !inv ? '' : inv.transcript === 'on' ? 'transcripts on' : inv.transcript === 'needs-setup' ? 'transcript needs one Google setting (see Meetings)' : inv.transcript === 'error' ? 'no transcript (SOARD’s Google plan)' : '';
   const placeNow = [m.location, m.address].filter(Boolean).join(', ');
-  const where = !inv ? '' : placeNow && placeNow !== inv.place ? 'the new place goes on it a couple of minutes after you stop typing' : inv.place ? `at ${inv.place}` : 'the place goes on it when you add one';
+  const where = !inv ? '' : placeNow && placeNow !== inv.place && !(m.calendar?.place && !m.calendar.gone) ? 'the new place goes on it a couple of minutes after you stop typing' : inv.place ? `at ${inv.place}` : 'the place goes on it when you add one';
   // Another call (Teams, Zoom) on the organizer's event, or from another event that day: Google Meet takes its place
   const otherCall = !inv && m.calendar?.eventId && m.video && !/meet\.google\.com/.test(m.video) ? callName(m.video) : '';
   // The invite check found the organizer's Google account can't have transcripts: they're not promised
