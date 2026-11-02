@@ -29,7 +29,7 @@ import {
 import { useCover, usePages } from '../board-present.js';
 import { Report } from '../board-report.js';
 import { BooksSlide, BOOKS_TITLES } from './books.js';
-import { mdWords } from '../board-md.js';
+import { mdWords, mdPoints, mdFigures } from '../board-md.js';
 import { Pipeline, sized } from './kanban.js';
 import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, readChangeAs, keepChangeAs } from './money.js';
 
@@ -256,6 +256,84 @@ function useBox() {
     return () => { ro.disconnect(); clearTimeout(t); };
   }, [el]);
   return [setEl, box];
+}
+
+/** Largest and smallest a point's words go on a card, against the report's own size */
+const POINT_FIT_MAX = 1.2;
+const POINT_FIT_MIN = 0.85;
+/**
+ * A short report that is only its points (board-md.js mdPoints): each point a card of its own, two or three across,
+ * the words as large as the slide holds them, each figure in yellow, the cards coming up one after another. Where the
+ * cards can't fit at a size the room still reads (a short window, a motion and notes under them), it's drawn whole
+ * instead (ReportFit), and tried as cards again once there's more room.
+ */
+function ReportPoints({ text }) {
+  const p = mdPoints(text);
+  const ref = useRef(null);
+  // The stage's size when the cards didn't fit in it, else null
+  const [whole, setWhole] = useState(null);
+  useEffect(() => setWhole(null), [text]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || whole) return undefined;
+    // A phone scrolls the slide: the words keep their size there
+    const phone = () => window.matchMedia('(max-width: 900px)').matches;
+    // By the cards' layout, not where they're drawn: they come up from 14px lower, which would read as too tall
+    const over = () => {
+      const list = el.querySelector('.bs-pts__list');
+      return !!list && (list.offsetTop + list.offsetHeight > el.clientHeight + 1 || [...el.querySelectorAll('.bs-pt__t')].some((t) => t.scrollWidth > t.clientWidth + 1));
+    };
+    const fit = () => {
+      let s = phone() ? 1 : POINT_FIT_MAX;
+      el.style.setProperty('--fit', String(s));
+      while (!phone() && s > POINT_FIT_MIN && over()) { s = Math.round((s - 0.05) * 100) / 100; el.style.setProperty('--fit', String(s)); }
+      if (!phone() && over()) {
+        const st = el.closest('.bs-stage');
+        setWhole({ w: st?.clientWidth || 0, h: st?.clientHeight || 0 });
+        return;
+      }
+      // The report page's preview says it fits, as ReportFit says for a report drawn whole
+      if (PREVIEW) {
+        const words = mdWords(text);
+        window.parent?.postMessage({ type: 'board-preview-fit', cut: false, shown: words, total: words }, location.origin);
+      }
+    };
+    fit();
+    // Again when its box changes (the window, the rail) and once the fonts are in; never on its own size (no loop)
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fit()) : null;
+    ro?.observe(el.parentElement);
+    document.fonts?.ready.then(fit);
+    return () => ro?.disconnect();
+  }, [text, whole]);
+  // Drawn whole: as cards again once the stage is bigger than it was
+  useEffect(() => {
+    if (!whole) return undefined;
+    const st = document.querySelector('.bs-stage');
+    if (!st || typeof ResizeObserver !== 'function') return undefined;
+    const ro = new ResizeObserver(() => { if (st.clientWidth > whole.w + 8 || st.clientHeight > whole.h + 8) setWhole(null); });
+    ro.observe(st);
+    return () => ro.disconnect();
+  }, [whole]);
+  if (!p) return null;
+  if (whole) return html`<${ReportFit} text=${text} cols=${mdWords(text) > 110 ? 2 : 1} />`;
+  const n = p.points.length;
+  const runs = (t) => mdFigures(t).map((r, k) => {
+    if (r.br) return html`<br key=${k} />`;
+    // A link breaks anywhere it must; a short hyphenated word (W-9, 20-second) stays on one line
+    let out = r.fig || r.href ? r.text : r.text.split(/([\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)+)/u).map((w, j) => (j % 2 && w.length <= 20 ? html`<span class="bs-pt__w">${w}</span>` : w));
+    if (r.fig) out = html`<b class="bs-pt__fig">${out}</b>`;
+    if (r.i) out = html`<em>${out}</em>`;
+    if (r.b) out = html`<strong>${out}</strong>`;
+    if (r.href) out = html`<span class="bs-pt__a">${out}</span>`;
+    return out;
+  });
+  return html`<div class=${`bs-pts is-${n}`} ref=${ref}>
+    ${p.lead ? html`<p class="bs-pts__lead" dir="auto">${runs(p.lead)}</p>` : null}
+    <ol class="bs-pts__list" start=${p.start}>${p.points.map((t, k) => html`<li class="bs-pt" key=${k} style=${`--i:${k}`}>
+      <span class=${`bs-pt__n ${p.numbered ? '' : 'is-mark'}`} aria-hidden="true">${p.numbered ? p.start + k : ''}</span>
+      <p class="bs-pt__t" dir="auto">${runs(t)}</p>
+    </li>`)}</ol>
+  </div>`;
 }
 
 /**
@@ -855,7 +933,7 @@ export function Screen({ id, data, d, onBack = null }) {
 
   const top = html`<header class="bs-top">
     <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong title=${meetingName(meeting)}>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', !OWN && started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
-    ${onItem && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${namesText(floor.map((p) => p.name))}</strong> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span>` : null}
+    ${onItem && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${namesText(floor.map((p) => p.name))}</strong><span class="bs-floor__has"> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span></span>` : null}
     <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${PRESENT && unshared ? html`<span class="bs-chip" title="Board members can’t see this meeting yet. Share it in Board when it’s ready.">Not on the board page yet</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${PRESENT && moneyHere ? html`<span class="bs-chg" role="group" aria-label="Changes against last year and the budget (C)">${[['pct', '%', 'As percentages'], ['usd', '$', 'In dollars']].map(([k, l, t]) => html`<button type="button" class="bs-chg__b" key=${k} aria-pressed=${chg === k} title=${`${t} (C)`} onClick=${() => setChg(k)}><span aria-hidden="true">${l}</span><span class="sr-only">${t}</span></button>`)}</span>` : null}${PRESENT ? html`<span class="bs-steps" role="group" aria-label="Move the slides"><button type="button" class="bs-step" disabled=${at <= 0} onClick=${() => go(at - 1)} aria-label="Back a slide (←)" title="Back a slide (←)">${PREV}</button><span class="bs-step__n">${at + 1} of ${deck.length}</span><button type="button" class="bs-step" disabled=${at >= deck.length - 1} onClick=${() => go(at + 1)} aria-label="Next slide (→)" title="Next slide (→)">${NEXT}</button></span>` : null}${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
   </header>`;
 
@@ -905,7 +983,10 @@ export function Screen({ id, data, d, onBack = null }) {
   } else if (stop.kind === 'item') {
     const faces = stop.n >= 0 ? facesOf(item) : '';
     const facts = faces ? null : liveSlide(item.live, numbers, id, data, meeting.date, chg);
-    const head = html`<p class="bs-eyebrow">${[section && section !== item.title ? section : '', !section && stop.n < 0 ? 'After the agenda' : ''].filter(Boolean).join('') || 'Agenda'}</p>
+    // Where it sits in its part, when the part has more than it ("1 of 5")
+    const mates = stop.n >= 0 ? items.filter((x) => x.si === items[stop.n].si) : [];
+    const of = mates.length > 1 ? `${mates.findIndex((x) => x.ii === items[stop.n].ii) + 1} of ${mates.length}` : '';
+    const head = html`<p class="bs-eyebrow">${[section && section !== item.title ? section : '', !section && stop.n < 0 ? 'After the agenda' : ''].filter(Boolean).join('') || 'Agenda'}${of ? html`<span class="bs-eyebrow__of">${of}</span>` : null}</p>
       <h1 class="bs-display bs-item__title">${item.title || LIVE_TITLES[item.live] || 'Agenda'}</h1>
       ${item.confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}`;
     const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts || faces || item.report ? 52 : 72} /><span><strong>${p.name}</strong>${roleOf(p) ? html`<small>${roleOf(p)}</small>` : null}</span></li>`)}</ul>` : null;
@@ -931,9 +1012,10 @@ export function Screen({ id, data, d, onBack = null }) {
     } else if (item.report) {
       // A report: the item and who presents it along the top, the report filling the rest
       const motion = item.live === 'minutes' ? html`<${MinutesMotion} item=${item} v=${v} />` : null;
-      stage = html`<div class="bs-item bs-item--report">
+      const points = !!mdPoints(item.report);
+      stage = html`<div class=${`bs-item bs-item--report ${points ? 'bs-item--points' : ''}`}>
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${whoList}</div></div>
-        <${ReportFit} text=${item.report} cols=${mdWords(item.report) > 110 ? 2 : 1} />
+        ${points ? html`<${ReportPoints} text=${item.report} />` : html`<${ReportFit} text=${item.report} cols=${mdWords(item.report) > 110 ? 2 : 1} />`}
         ${item.notes || motion || item.motion || coming ? html`<div class="bs-item__body"><${ItemMotion} text=${item.motion} />${motion}${item.notes ? html`<${Points} text=${item.notes} />` : null}${coming}</div>` : null}
       </div>`;
     } else {

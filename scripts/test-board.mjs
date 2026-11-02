@@ -1168,7 +1168,8 @@ try {
       await sam.evaluate(() => dispatchEvent(new Event('online')));
       ok(await samSaved(sam) && /and offline$/.test((await finOf()).report), 'back online, they save by themselves');
       await clickText(sam, '.bp-rp__foot a', /^Done$/);
-      ok(await sam.waitForFunction((id) => /^Report\s*by Sam Ortiz/.test(document.querySelector(`#i-${id} .bp-report__by`)?.textContent.trim() || ''), { timeout: 8000 }, finId).then(() => true, () => false), 'Done: back on the meeting, the report under its item, by Sam');
+      // His own report says when; the item already names him, so not "by Sam" again
+      ok(await sam.waitForFunction((id) => { const by = document.querySelector(`#i-${id} .bp-report__by`)?.textContent.trim() || ''; return /^Report\s*\w{3} \d+/.test(by) && !/\bby\b/.test(by) && /Sam Ortiz/.test(document.querySelector(`#i-${id} .bp-pres`)?.textContent || ''); }, { timeout: 8000 }, finId).then(() => true, () => false), 'Done: back on the meeting, the report under its item, with its day (Sam is named on the item)');
       ok(await sam.evaluate((id) => !!document.querySelector(`#i-${id} .bp-report strong`) && !!document.querySelector(`#i-${id} .bp-report .rp-callout`) && !document.querySelector(`#i-${id} .bp-report-ask`), finId), 'as it reads: bold, the callout');
       ok(!(await text(sam)).includes('Write your report: Financial'), 'and Home stops asking');
       await shot(sam, 'report-on-meeting');
@@ -1352,6 +1353,55 @@ try {
     ok(mixed.rows === 2 && mixed.inside && !mixed.by && mixed.perRow === 2, `a part with different presenters keeps each one on its row (${JSON.stringify(mixed)})`);
     await card.close();
     await DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(long.id).run();
+  }
+  // A short report that is only its points (the Nov 5 automation update's): a card per point filling the slide, each
+  // figure in yellow, a hyphenated word whole, the words large, "1 of 3" by the part's name; a report with a heading is
+  // drawn whole as before. The board page names the one presenter on the part, once, and their own report by its date
+  {
+    const pts = await saveMeeting(DB, cleanMeeting({ date: day(10), start: '08:00', end: '10:00', shared: false, sections: [
+      { title: 'Automation and technology update', minutes: 25, items: [
+        { title: 'Applications run themselves', presenter: 'Jane', who: ['jane-doe'], report: '- Families apply on our website, in English or Spanish\n- Approving one creates the job and its kid page\n- 22 families are waiting for 2027 applications to open' },
+        { title: 'Job costs and trade partners', presenter: 'Jane', who: ['jane-doe'], report: '- Every open makeover has a live cost sheet\n- Subs sign up online with their W-9, insurance and bank details\n- Bills wait until a sub’s paperwork is current\n- The insurance audit is a ready report' },
+        { title: 'The board page', presenter: 'Jane', who: ['jane-doe'], report: '### Highlights\n\nEvery meeting since 2013, with its minutes and packets.' },
+      ] },
+    ] }), { by: FOUNDER });
+    const its = pts.sections[0].items;
+    const slide = await tab(FOUNDER, 1280);
+    const look = async (it, w, h) => {
+      await slide.setViewport({ width: w, height: h, deviceScaleFactor: 1 });
+      await slide.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(it.id)}#/meetings/${pts.id}/screen`, { waitUntil: 'networkidle0' });
+      await slide.waitForSelector('.bs-item', { timeout: 8000 }).catch(() => {});
+      await sleep(900);
+      return slide.evaluate(() => {
+        const st = document.querySelector('.bs-stage').getBoundingClientRect();
+        const cards = [...document.querySelectorAll('.bs-pt')].map((c) => c.getBoundingClientRect());
+        const t = document.querySelector('.bs-pt__t');
+        return { cards: cards.length, inside: cards.every((r) => r.top >= st.top - 1 && r.bottom <= st.bottom + 1 && r.right <= st.right + 1),
+          px: t ? parseFloat(getComputedStyle(t).fontSize) : 0, figs: [...document.querySelectorAll('.bs-pt__fig')].map((x) => x.textContent),
+          whole: [...document.querySelectorAll('.bs-pt__w')].map((x) => x.textContent), of: document.querySelector('.bs-eyebrow__of')?.textContent || '',
+          cut: !!document.querySelector('.bs-report__more'), drawnWhole: !!document.querySelector('.bs-report__body') };
+      });
+    };
+    for (const [w, h] of [[1280, 720], [1920, 1080]]) {
+      const a = await look(its[0], w, h);
+      ok(a.cards === 3 && a.inside && a.px >= h * 0.03 && a.figs.join() === '22,2027' && a.of === '1 of 3' && !a.drawnWhole, `${w}×${h}: a report of three points is three cards, in view, the words large and its figures picked out (${JSON.stringify(a)})`);
+      const b = await look(its[1], w, h);
+      ok(b.cards === 4 && b.inside && b.whole.includes('W-9') && b.of === '2 of 3', `${w}×${h}: four points two by two, “W-9” never split over a line (${JSON.stringify(b)})`);
+      if (w === 1920) await shot(slide, '25c-screen-points');
+    }
+    const c = await look(its[2], 1280, 720);
+    ok(c.cards === 0 && c.drawnWhole && !c.cut && c.of === '3 of 3', `a report with a heading is drawn whole, as before (${JSON.stringify(c)})`);
+    await slide.close();
+    const page = await tab(FOUNDER, 1440);
+    await page.goto(`${SITE}/admin/board/#/meetings/${pts.id}`, { waitUntil: 'networkidle0' });
+    await waitText(page, /Applications run themselves/);
+    const bp = await page.evaluate(() => {
+      const sec = [...document.querySelectorAll('.bp-agsec')].find((x) => /Automation and technology update/.test(x.textContent));
+      return { onPart: sec?.querySelectorAll('.bp-agsec__head .bp-pres li').length, onItems: sec?.querySelectorAll('.bp-agitem .bp-pres li').length, by: [...(sec?.querySelectorAll('.bp-report__by') || [])].map((x) => x.textContent.replace(/\s+/g, ' ').trim()) };
+    });
+    ok(bp.onPart === 1 && bp.onItems === 0 && bp.by.length === 3 && bp.by.every((x) => /^Report\s*\w{3} \d+/.test(x) && !/\bby\b/.test(x)), `the board page names the part’s one presenter once, and their own reports by date only (${JSON.stringify(bp)})`);
+    await page.close();
+    await DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(pts.id).run();
   }
 
   // ─── Print it all (board/print.js), on the board page ───

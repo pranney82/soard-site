@@ -12,6 +12,8 @@
  *   mdToDoc(md)    → the editor's document (ProseMirror JSON)
  *   docToMd(doc)   → Markdown from the editor's document
  *   mdPlain(md)    → plain text (search, counts, an email's line)
+ *   mdPoints(md)   → a short report that is only its points, for the screen's cards (else null)
+ *   mdFigures(t)   → a point's runs with its figures (22, $1,000, 2013) picked out
  *
  * Old notes ("- a point", "  - under it", a line of text) read as they always
  * did. No imports: the server uses it as it is.
@@ -365,4 +367,65 @@ function blocksMd(nodes, pad = '') {
 /** The editor's document → Markdown */
 export function docToMd(doc) {
   return blocksMd(doc?.content || []).replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// ─── A short report that is only its points ─────────────────────────
+
+/** Most points a slide draws as cards, most words a point may have, and most words in all for one */
+export const POINTS_MAX = 6;
+export const POINT_WORDS = 32;
+export const POINTS_WORDS = 110;
+
+/**
+ * A report that is only a few points (2 to 6, each a line or two, nothing under them, no heading), with at most a
+ * line before them → { lead, points, numbered, start } for the screen to draw each point as a card; else null (it's
+ * drawn as the report it is)
+ */
+export function mdPoints(md) {
+  const blocks = mdBlocks(md);
+  const lead = blocks.length === 2 && blocks[0].t === 'p' ? blocks[0] : null;
+  const list = blocks[lead ? 1 : 0];
+  if (blocks.length !== (lead ? 2 : 1) || !list || (list.t !== 'ul' && list.t !== 'ol')) return null;
+  const { items } = list;
+  if (items.length < 2 || items.length > POINTS_MAX) return null;
+  if (!items.every((it) => it.length === 1 && it[0].t === 'p' && it[0].text.trim())) return null;
+  const words = (t) => mdWords(t);
+  if (items.some((it) => words(it[0].text) > POINT_WORDS) || (lead && words(lead.text) > POINT_WORDS) || words(md) > POINTS_WORDS) return null;
+  return { lead: lead ? lead.text : '', points: items.map((it) => it[0].text), numbered: list.t === 'ol', start: list.t === 'ol' ? list.start || 1 : 1 };
+}
+
+// A quantity: 22, 1,000+, $12,500.50, 40%, $1.2M, 3x, the 15th, 2026–27 (a year's span), 3–5
+const NUMBER = /\$?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:(?<=\b\d{4})[–-]\d{2}(?!\d)|–\d+)?(?:%|\+|[KMB](?![\p{L}\p{N}])|x(?![\p{L}\p{N}])|st|nd|rd|th)?/gu;
+const MONTH_BEFORE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+$/i;
+/** Whether a number found at [i, j) of `t` is a figure, not part of a name, a time, a date or a phone number */
+function isFigure(t, i, j) {
+  const before = t[i - 1] || '';
+  const after = t[j] || '';
+  if (/[\p{L}\p{N}\-–/.,:$]/u.test(before)) return false; // W-9, Q4, 1099, 5:30's 30
+  if (/[\p{L}\p{N}\-–/:]/u.test(after) || (/[.,]/.test(after) && /\d/.test(t[j + 1] || ''))) return false; // 20-second, 5:30, Form 1099-NEC
+  if (before === '(' && after === ')') return false; // (770) 555-1234
+  if (MONTH_BEFORE.test(t.slice(Math.max(0, i - 12), i))) return false; // Nov 5
+  return true;
+}
+
+/**
+ * A point's words as runs, each figure in it a run of its own (22 families, $1,000, since 2013, 40%), so the screen
+ * can make the numbers stand out → [{ text, b, i, href, fig } | { br }]. A number inside a name (W-9, Q4, 20-second),
+ * a time, a date or a phone number isn't a figure; nor is anything in a link.
+ */
+export function mdFigures(text) {
+  return mdInline(text).flatMap((r) => {
+    if (r.br || r.href) return [r];
+    const out = [];
+    let at = 0;
+    for (const m of r.text.matchAll(NUMBER)) {
+      const j = m.index + m[0].length;
+      if (!isFigure(r.text, m.index, j)) continue;
+      if (m.index > at) out.push({ ...r, text: r.text.slice(at, m.index) });
+      out.push({ ...r, text: m[0], fig: true });
+      at = j;
+    }
+    if (at < r.text.length) out.push({ ...r, text: r.text.slice(at) });
+    return out;
+  });
 }

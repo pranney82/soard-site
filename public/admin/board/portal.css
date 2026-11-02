@@ -1295,6 +1295,13 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bp-agsec__n--icon::after { display: none; }
 .bp-agsec__title { margin: 0; font-family: var(--display); font-weight: 700; font-size: clamp(1.3rem, 2.4vw, 1.6rem); line-height: 1.2; letter-spacing: -0.015em; text-wrap: balance; }
 .bp-agsec__meta { margin-left: auto; flex: none; color: var(--faint); font-size: 0.86rem; font-weight: 600; }
+/* Who presents the whole part, beside its name: the title takes the room, then them, then its time */
+.bp-agsec__head .bp-pres { width: auto; max-width: 100%; min-width: 0; margin-left: 0; align-self: center; flex: 0 1 auto; }
+.bp-agsec__head .bp-pres:not(:has(li + li)) + .bp-agsec__meta { margin-left: 0.25rem; }
+/* Two or three of them: on a line under the part's name, which keeps its width */
+.bp-agsec__head .bp-pres:has(li + li) { order: 3; flex-basis: 100%; justify-content: flex-start; }
+.bp-agsec__head .bp-pres li, .bp-agsec__head .bp-pres li > span { min-width: 0; max-width: 100%; }
+.bp-agsec__head .bp-pres strong, .bp-agsec__head .bp-pres small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bp-agsec.is-open { margin-bottom: 1.6rem; }
 .bp-agsec.is-open .bp-agsec__head { margin-bottom: 0; }
 .bp-agsec.is-open .bp-agsec__n { color: var(--quiet); }
@@ -1563,6 +1570,13 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-back--text { display: inline-block; width: auto; height: auto; margin-top: 1rem; padding: 0.55rem 1.1rem; border-radius: 999px; opacity: 1; pointer-events: auto; color: var(--bs-ink); font-weight: 650; text-decoration: none; }
 .bs-top { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 0; padding: 0 var(--bs-pad); }
 .bs-brand { display: flex; align-items: center; gap: 0.8rem; min-width: 0; }
+/* The meeting's name gives way (…) before anything along the top runs over it: a 1024px projector, a long name */
+.bs-brand > span { min-width: 0; }
+.bs-brand small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Who has the floor: "has the floor" goes on a narrower screen (a 1024px projector), and a name too long ends in … */
+.bs-top > .bs-floor { flex-shrink: 2; }
+@media (max-width: 1180px) { .bs-floor__has { display: none; } }
+.bs-floor > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .bs-brand img { flex: none; width: clamp(32px, 4.4vh, 48px); height: auto; }
 .bs-brand strong { display: block; font-family: var(--display); font-size: clamp(0.95rem, 2vh, 1.25rem); font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-brand small { display: block; color: var(--bs-soft); font-size: clamp(0.75rem, 1.55vh, 0.98rem); }
@@ -1647,6 +1661,30 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-report .rp p, .bs-report .rp li { break-inside: avoid; }
 .bs-report .rp a { color: var(--bs-ink); }
 .bs-report__more { margin: 0.6rem 0 0; color: var(--bs-faint); font-size: clamp(0.85rem, 1.8vh, 1.05rem); }
+/* A short report that is only its points (screen.js ReportPoints): the title, then a card per point, two or three
+   across, the whole slide set in the middle of the stage; --fit (from screen.js) sets the words as large as it holds */
+.bs-item--points { align-content: center; grid-template-rows: auto minmax(0, max-content); grid-auto-rows: auto; gap: clamp(1.25rem, 4.2vh, 3rem); }
+/* Too much for cards in this window: drawn whole, the way any report is */
+.bs-item--points:has(> .bs-report) { align-content: stretch; grid-template-rows: auto minmax(0, 1fr) auto; }
+/* --pt-k: the cards' padding and gaps, smaller with the words (1 at the largest) */
+.bs-pts { position: relative; min-height: 0; display: grid; gap: calc(clamp(0.9rem, 2.4vh, 1.6rem) * var(--pt-k)); align-content: start; --pt-size: calc(clamp(1.2rem, 3.35vh, 2.35rem) * var(--fit, 1)); --pt-k: calc(0.4 + var(--fit, 1) / 2); }
+.bs-pts__lead { margin: 0; max-width: 52ch; color: var(--bs-soft); font-size: calc(var(--pt-size) * 0.9); line-height: 1.35; text-wrap: pretty; }
+.bs-pts__list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(var(--pt-cols, 3), minmax(0, 1fr)); gap: calc(clamp(0.9rem, 1.6vw, 1.6rem) * var(--pt-k)); }
+.bs-pts.is-2 { --pt-cols: 2; } .bs-pts.is-4 { --pt-cols: 2; }
+/* Five: three over two, the two as wide as the three */
+.bs-pts.is-5 { --pt-cols: 6; } .bs-pts.is-5 .bs-pt { grid-column: span 2; } .bs-pts.is-5 .bs-pt:nth-child(n + 4) { grid-column: span 3; }
+.bs-pt { min-width: 0; display: flex; flex-direction: column; gap: calc(clamp(0.9rem, 2.6vh, 1.75rem) * var(--pt-k)); padding: calc(clamp(1.1rem, 3vh, 2.1rem) * var(--pt-k)) clamp(1.15rem, 1.7vw, 2rem) calc(clamp(1.2rem, 3.2vh, 2.25rem) * var(--pt-k)); border-radius: 18px; background: var(--bs-panel); border: 1px solid var(--bs-line); animation: bs-pt-in 0.5s var(--ease) both; animation-delay: calc(140ms + var(--i, 0) * 90ms); }
+.bs-pt__n { font-family: var(--display); font-weight: 700; font-size: calc(clamp(1.5rem, 4.6vh, 3.1rem) * var(--pt-k)); line-height: 0.9; color: var(--yellow); font-variant-numeric: tabular-nums; }
+.bs-pt__n.is-mark { width: clamp(2rem, 3.2vw, 3rem); height: 4px; border-radius: 2px; background: var(--yellow); }
+.bs-pt__t { margin: 0; font-size: var(--pt-size); font-weight: 560; line-height: 1.28; letter-spacing: -0.005em; color: var(--bs-ink); text-wrap: pretty; overflow-wrap: break-word; }
+.bs-pt__t strong { font-weight: 750; }
+.bs-pt__fig { color: var(--yellow); font-weight: 750; font-variant-numeric: tabular-nums; }
+.bs-pt__w { white-space: nowrap; }
+.bs-pt__a { overflow-wrap: anywhere; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.15em; }
+.bs-eyebrow__of { margin-left: 0.85em; padding-left: 0.85em; border-left: 1px solid var(--bs-line); color: var(--bs-soft); font-variant-numeric: tabular-nums; }
+@keyframes bs-pt-in { from { opacity: 0; transform: translateY(14px); } }
+@media (prefers-reduced-motion: reduce) { .bs-pt { animation: none; } }
+@media (max-width: 900px) { .bs-pts__list, .bs-pts.is-5 .bs-pts__list { grid-template-columns: minmax(0, 1fr); } .bs-pts.is-5 .bs-pt, .bs-pts.is-5 .bs-pt:nth-child(n + 4) { grid-column: auto; } .bs-item--points { align-content: start; } }
 .bs-numbers { padding: clamp(1rem, 2.4vh, 1.6rem) clamp(1rem, 2vw, 1.75rem); border-radius: 18px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
 .bs-numbers ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.55em; font-size: clamp(1rem, 2.4vh, 1.45rem); font-weight: 600; font-variant-numeric: tabular-nums; }
 .bs-coming .bs-eyebrow { color: var(--bs-faint); }
@@ -1995,7 +2033,7 @@ html:has(body .bs) { scrollbar-gutter: auto; }
   .bs-faces__sub { -webkit-line-clamp: 3; }
 }
 /* A phone: under a document its page and whether it's continued, never cut off (the number says which item); a long word in a title wraps */
-@media (max-width: 520px) { .bs-figs { grid-template-columns: minmax(0, 1fr); } .bs--doc .bs-foot__item:has(+ .bs-foot__sep), .bs--doc .bs-foot__item + .bs-foot__sep, .bs--doc .bs-foot__name:has(+ .bs-foot__sep--name), .bs--doc .bs-foot__sep--name { display: none; } .bs-display { overflow-wrap: anywhere; } .bs-item__bar > div { min-width: 0; max-width: 100%; } .bs-item__bar .bs-item__title { font-size: clamp(1.7rem, 9.5vw, 2.6rem); } }
+@media (max-width: 520px) { .bs-brand > span { display: none; } .bs-figs { grid-template-columns: minmax(0, 1fr); } .bs--doc .bs-foot__item:has(+ .bs-foot__sep), .bs--doc .bs-foot__item + .bs-foot__sep, .bs--doc .bs-foot__name:has(+ .bs-foot__sep--name), .bs--doc .bs-foot__sep--name { display: none; } .bs-display { overflow-wrap: anywhere; } .bs-item__bar > div { min-width: 0; max-width: 100%; } .bs-item__bar .bs-item__title { font-size: clamp(1.7rem, 9.5vw, 2.6rem); } }
 @media (prefers-reduced-motion: reduce) { .bs-stage__in, .bs-vote, .bs-timer.is-over, .bs-figs__bar i, .bs-faces__mark { animation: none !important; } .bs-vote__counts i::after, .bs-rail__bar i, .bs-faces__one, .bs-faces__pic, .bs-roll__q { transition: none; } }
 
 /* A phone: the header's tools at its right edge; the meeting's facts one to a line on the narrowest, where a place's

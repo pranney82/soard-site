@@ -1454,7 +1454,7 @@ function ItemReport({ m, it, ctx, upcoming, preview = false }) {
     return ask || motion ? html`${ask}${motion}` : null;
   }
   return html`<section class=${`bp-report ${isNothingNew(it.report) ? 'is-nothing' : ''}`} aria-label=${`The report on ${it.title}`}>
-    <p class="bp-report__by"><span class="bp-report__label">Report</span>${it.reportBy ? html`<span>by ${it.reportBy}${it.reportAt ? `, ${dayShort(it.reportAt)}` : ''}</span>` : null}
+    <p class="bp-report__by"><span class="bp-report__label">Report</span>${it.reportBy ? html`<span>${presentersOf(it, ctx.d.people).some((p) => p.name === it.reportBy) ? (it.reportAt ? dayShort(it.reportAt) : '') : `by ${it.reportBy}${it.reportAt ? `, ${dayShort(it.reportAt)}` : ''}`}</span>` : null}
       ${mine ? html`<a class="bp-report__edit" href=${reportHref(m, it)} aria-label=${`Edit your report on ${it.title}`}><${Icon} name="edit" size=${15} />Edit</a>` : null}</p>
     <${Report} text=${it.report} clamp=${upcoming ? 160 : 90} />
     ${motion}
@@ -2051,7 +2051,7 @@ function ReportPage({ id, itemId, ctx }) {
  * what it asks the board to vote on, its live facts and its documents. `preview`: the report page's preview of it, as
  * the board will see it (the words as they're typed; no way in to write, no chair's note)
  */
-function AgendaItem({ m, s, it, ctx, label, numbers, upcoming, moneyFirst = '', preview = false }) {
+function AgendaItem({ m, s, it, ctx, label, numbers, upcoming, moneyFirst = '', preview = false, named = false }) {
   const { data, d } = ctx;
   const person = (p) => d.bySlug.get(p.slug) || p;
   const docsOf = (x) => itemFiles(m, x, data.meetings);
@@ -2071,7 +2071,7 @@ function AgendaItem({ m, s, it, ctx, label, numbers, upcoming, moneyFirst = '', 
         <h3 class="bp-item__title bp-agitem__title">${it.title || s.title}</h3>
         ${it.confidential ? html`<span class="bp-chip bp-chip--warn">Board only · please don’t share</span>` : null}
         ${aboutPrev ? (aboutPrev.minutes === 'approved' ? html`<span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Approved</span>` : upcoming ? html`<span class="bp-chip">For a vote</span>` : null) : null}
-        <${Presenters} people=${who} />
+        <${Presenters} people=${named ? [] : who} />
       </div>
       ${aboutPrev ? html`<p class="bp-agitem__about"><a class="bp-link" href=${`#/meetings/${aboutPrev.id}`}>The ${meetingName(aboutPrev)}, ${shortDate(aboutPrev.date)}</a></p>` : null}
       <div class="bp-agitem__notes"><${Notes} text=${it.notes} /></div>
@@ -2629,6 +2629,12 @@ function MeetingDetail({ m, ctx, waiting = false }) {
   const moneyFirst = sections.flatMap((s) => s.items).find((it) => showsOf(it).includes('cash'))?.id || '';
   const hasAgenda = sections.some((s) => s.items.length);
   const labels = new Map(agendaItems(m).map((x) => [x.id, x.label]));
+  // One person (or the same people) presenting every item of a part: named once, on the part, as the screen's card does
+  const oneWho = (s) => {
+    const whos = s.items.map((it) => presentersOf(it, d.people));
+    const key = (ws) => ws.map((p) => p.slug || p.name).join('|');
+    return s.items.length > 1 && whos[0].length && whos.every((ws) => key(ws) === key(whos[0])) ? whos[0].map(person) : null;
+  };
   // Ahead of the meeting, each part's time in the run of show ("8:25 · 60 min")
   const plan = upcoming ? sectionPlan(m) : null;
   const timeOf = (s) => { const t = plan?.get(s.id); return t ? nb([t.start ? clock(t.start) : '', `${t.minutes} min`].filter(Boolean).join(' · ')) : ''; };
@@ -2691,10 +2697,11 @@ function MeetingDetail({ m, ctx, waiting = false }) {
           <header class="bp-agsec__head">
             <span class="bp-agsec__n" aria-hidden="true">${String(si + 1).padStart(2, '0')}</span>
             <h2 class="bp-agsec__title" id=${`sh-${s.id}`}>${s.title || 'Agenda'}</h2>
+            <${Presenters} people=${oneWho(s) || []} />
             ${plan ? html`<span class="bp-agsec__meta bp-agsec__time">${!s.items.length ? 'Open to the floor · ' : ''}${timeOf(s)}</span>`
               : s.items.length > 1 ? html`<span class="bp-agsec__meta">${s.items.length} items</span>` : null}
           </header>
-          ${s.items.length ? html`<ol class="bp-agitems">${s.items.map((it) => html`<${AgendaItem} key=${it.id} m=${m} s=${s} it=${it} ctx=${ctx} label=${labels.get(it.id)} numbers=${numbers} upcoming=${upcoming} moneyFirst=${moneyFirst} />`)}</ol>` : null}
+          ${s.items.length ? html`<ol class="bp-agitems">${s.items.map((it) => html`<${AgendaItem} key=${it.id} m=${m} s=${s} it=${it} ctx=${ctx} label=${labels.get(it.id)} numbers=${numbers} upcoming=${upcoming} moneyFirst=${moneyFirst} named=${!!oneWho(s)} />`)}</ol>` : null}
         </section>`) : html`<div class="bp-card bp-empty">
           <span class="bp-empty__icon"><${Icon} name="list" size=${26} /></span>
           <h2 class="bp-h2">${upcoming ? 'The agenda isn’t posted yet' : minutesFile ? 'The minutes are in the file' : 'No agenda was kept here'}</h2>
