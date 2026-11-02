@@ -20,6 +20,7 @@
  *   update-file { id, kind, staffOnly, name }, delete-file { id }
  *   save-settings { settings }
  *   sync-access                               try the sign-in list again (offered only when it failed)
+ *   sync-group                                bring board@soardcharity.com up to the board now (offered when it failed)
  *   practice                                  today's practice meeting (made the first time): only the admins see it
  *   practice-reset { id }                     start the practice over (a new one; its check-ins and votes go)
  *   read-minutes { id, fileId }               that file read as the meeting's minutes and put on it (_board-minutes.js):
@@ -41,6 +42,7 @@ import {
 } from './_board.js';
 import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
 import { accessStatus, syncBoardAccess } from './_board-access.js';
+import { groupStatus, syncBoardGroup } from './_board-group.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-mail.js';
 import { sendInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites } from './_board-invite.js';
@@ -89,9 +91,11 @@ export async function onRequestGet(context) {
       getSettings(env.DB), listMeetings(env.DB), listDocs(env.DB), memberStatus(env.DB), roster(env.DB),
       accessStatus(env), liveNumbers(env), packetList(env.DB), calendarStatus(env.DB),
     ]);
-    const [mail, mailRecent, welcome, check, drive] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome'), inviteCheck(env.DB), driveStatus(env.DB)]);
+    const [mail, mailRecent, welcome, check, drive, group] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome'), inviteCheck(env.DB), driveStatus(env.DB), groupStatus(env)]);
     return Response.json({
       ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome,
+      // board@soardcharity.com following the board (_board-group.js)
+      group,
       // The Board folder in Google Drive Board reads, and how its last look went
       drive: env.GOOGLE_CALENDAR_KEY ? { ...drive, folder: settings.driveFolder || DEFAULT_DRIVE_FOLDER } : null,
       // For the one-time Google setup: the service account's client ID and its Cloud project (neither is secret),
@@ -255,6 +259,9 @@ export async function onRequestPost(context) {
         return Response.json({ ok: true, meeting: await resetPractice(env, id, { by: me }) });
       case 'sync-access':
         return Response.json({ ok: true, access: { ...(await syncBoardAccess(env)), ...(await accessStatus(env)) } });
+      case 'sync-group':
+        await syncBoardGroup(env);
+        return Response.json({ ok: true, group: await groupStatus(env) });
       default:
         return fail('Unknown action');
     }

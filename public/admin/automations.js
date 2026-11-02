@@ -786,6 +786,23 @@ const MAP = { t: 'SOARD', children: [
             if (!a.current) return ATTN('People → Board changed and the list hasn’t caught up. It rides on the live hub’s heartbeat, so check the Heartbeat entry.', a.syncedAt);
             return ON(`${plural(a.emails, 'board member')} can sign in.${a.missing ? ` ${plural(a.missing, 'member has', 'members have')} no email on People → Board.` : ''}`, a.syncedAt);
           } },
+        { t: 'board@soardcharity.com follows the board', s: 'off', k: 'schedule',
+          when: 'Every 5 minutes on the live hub’s heartbeat when People → Board changed (someone joins, leaves, or gets a new email), every 6 hours anyway, and every half hour while something fails. Board → Members has Try again.',
+          does: 'Keeps the board’s Google Group to the people the meeting invite goes to: each active board member at their private email on People → Board, and the Board area’s admins (Peter and Holly). Adds whoever is missing and takes out whoever left the board, so an email to board@soardcharity.com always reaches the board as it is today.',
+          touches: ['Google Workspace', 'D1'], where: 'functions/api/_board-group.js (broadcast-hooks.js via _board.js maybeRunBoard, board-admin.js)',
+          note: 'Needs admin.directory.group.member on the Google service account’s domain-wide delegation. Board → Members walks through it.',
+          info: 'Never touches the group’s owners and managers (that’s how to keep someone in it who isn’t on the board), a group or the whole domain listed as a member, or anything while People → Board has nobody with an email. Google sends nobody an email when the site adds them. Acts as a founder who is a Workspace admin, like Staff sign-in follows Google.',
+          live: (f) => {
+            const g = f.board?.group;
+            if (!g) return null;
+            if (!g.configured) return OFF('Needs GOOGLE_CALENDAR_KEY in Cloudflare.');
+            if (!g.syncedAt && !g.failedAt) return { why: 'The first look at the group runs within 5 minutes.' };
+            if (g.needs === 'scope') return ATTN('Needs one Google setting: admin.directory.group.member on the service account’s domain-wide delegation. Board → Members has the steps.', g.failedAt);
+            if (!g.ok) return ATTN(`${g.error || 'Google refused a change.'} Board → Members says what to do.`, g.failedAt);
+            if (!g.current) return ATTN('People → Board changed and the group hasn’t caught up. It rides on the live hub’s heartbeat, so check the Heartbeat entry.', g.syncedAt);
+            const changed = g.lastChangeAt ? ` Last change ${stamp(g.lastChangeAt)}: ${[g.added && `${g.added} added`, g.removed && `${g.removed} taken out`].filter(Boolean).join(', ')}.` : '';
+            return ON(`${plural(g.wanted, 'person', 'people')} in it, as on People → Board.${g.missing ? ` ${plural(g.missing, 'board member has', 'board members have')} no email there, so ${g.missing === 1 ? 'isn’t' : 'aren’t'} in it.` : ''}${changed}`, g.syncedAt);
+          } },
       ]},
       { t: 'Meetings', children: [
         { t: 'Board meetings from the calendar', s: 'off', k: 'schedule',

@@ -152,7 +152,8 @@ function SourcesLine({ data }) {
 }
 
 /** The scopes Board's service account needs on Google Admin's domain-wide delegation */
-const SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/meetings.space.settings', 'https://www.googleapis.com/auth/meetings.space.readonly', 'https://www.googleapis.com/auth/drive.readonly'];
+const GROUP_SCOPE = 'https://www.googleapis.com/auth/admin.directory.group.member';
+const SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/meetings.space.settings', 'https://www.googleapis.com/auth/meetings.space.readonly', 'https://www.googleapis.com/auth/drive.readonly', GROUP_SCOPE];
 /** What still needs a Google setting: email, Drive, Meet transcripts, Meet attendance (each only once it's known) */
 function googleNeeds(data) {
   const mail = data.mail || {};
@@ -570,6 +571,54 @@ function AccessCard({ ctx }) {
   </div>`;
 }
 
+/** board@soardcharity.com: follows People → Board by itself (functions/api/_board-group.js); what it last did, or the one thing it needs */
+function GroupCard({ ctx }) {
+  const { data, setData, addToast } = ctx;
+  const g = data.group;
+  const [trying, setTrying] = useState(false);
+  const [copied, setCopied] = useState(false);
+  if (!g) return null;
+  const retry = async () => {
+    setTrying(true);
+    const j = await call({ action: 'sync-group' });
+    setTrying(false);
+    if (j.ok) setData((d) => ({ ...d, group: j.group })); else addToast(j.error, 'error');
+  };
+  const copy = async () => { try { await navigator.clipboard.writeText(GROUP_SCOPE); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* the line is there to select */ } };
+  const ready = g.configured && g.ok;
+  const first = !g.syncedAt && !g.failedAt;
+  const head = !g.configured ? `${g.group} isn’t kept by the site yet`
+    : first ? `${g.group} joins the board within 5 minutes`
+    : g.needs === 'scope' ? `One Google setting, so the site can keep ${g.group}`
+    : !ready ? `${g.group} couldn’t be brought up to date`
+    : `${g.group} reaches ${plural(g.wanted, 'person', 'people')}`;
+  const last = g.changes?.[0];
+  const said = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list.at(-1)}` : list[0]);
+  const fix = {
+    api: html`In Google Cloud${data.google?.project ? html` (project <span class="bd-code">${data.google.project}</span>)` : ''}, turn on the <a class="link" href=${`https://console.cloud.google.com/apis/library/admin.googleapis.com${data.google?.project ? `?project=${encodeURIComponent(data.google.project)}` : ''}`} target="_blank" rel="noopener">Admin SDK API</a> (Enable).`,
+    admin: 'Google says no founder on People → Team is a Workspace admin, so nobody the site can act as may change the group. A founder needs the Super Admin role in Google Admin.',
+    group: html`Google has no group called ${g.group}. Make it in <a class="link" href="https://admin.google.com/ac/groups" target="_blank" rel="noopener">Google Admin → Directory → Groups</a> with that address, and the board goes in within half an hour.`,
+    outside: html`Google won’t put addresses from outside soardcharity.com in the group. In <a class="link" href="https://admin.google.com/ac/groups" target="_blank" rel="noopener">Google Admin → Directory → Groups</a>, open ${g.group}, then Access settings, and turn on <strong>Allow members outside your organization</strong>.`,
+  }[g.needs];
+  return html`<div class="card">
+    <div class="status-head">
+      <div class="status-head__main"><span class=${`dot ${ready ? 'dot--on' : first && g.configured ? '' : 'dot--warn'}`} aria-hidden="true"></span><div>
+        <h3>${head}</h3>
+        <p class="status-head__text">${!g.configured ? 'Once GOOGLE_CALENDAR_KEY is in Cloudflare, the group follows People → Board by itself.'
+          : g.needs === 'scope' ? `Then the group holds exactly the board on People → Board, plus ${youAnd(data.settings.admins, data.me)}, and follows every change there by itself.`
+          : html`Email to <span class="bd-code">${g.group}</span> goes to the board on People → Board and ${youAnd(data.settings.admins, data.me)}, the people the meeting invite goes to. Google’s list follows People → Board within 5 minutes${g.syncedAt ? ` (checked ${ago(g.syncedAt)})` : ''}. The group’s owners and managers in Google stay as they are; anyone else not on the board is taken out.`}</p>
+        ${ready && last ? html`<p class="status-head__text" style="margin-top:0.35rem">Last change ${ago(last.at)}: ${[last.added.length && `added ${said(last.added)}`, last.removed.length && `took out ${said(last.removed)}`].filter(Boolean).join('; ')}.</p>` : null}
+      </div></div>
+      ${g.configured && !ready && !first && g.needs !== 'scope' ? html`<div class="status-head__actions"><button class="btn btn-primary btn-sm" disabled=${trying} onClick=${retry}>${trying ? 'Trying…' : 'Try again'}</button></div>` : null}
+    </div>
+    ${g.needs === 'scope' ? html`<ol class="bd-steps">
+      <li>In <a class="link" href="https://admin.google.com/ac/owl/domainwidedelegation" target="_blank" rel="noopener">Google Admin → Security → API controls → Domain-wide delegation</a>, find client ID <span class="bd-code">${data.google?.clientId || 'the site’s service account'}</span>. Choose Edit, add this to the end of its OAuth scopes (after a comma, keeping the ones already there), and choose Authorize:
+        <div class="bd-inline" style="margin-top:0.4rem"><span class="bd-code">${GROUP_SCOPE}</span><button class="btn btn-ghost btn-sm" onClick=${copy}>${copied ? 'Copied' : 'Copy'}</button></div></li>
+      <li>That’s it. Within half an hour the board is in the group and this card turns green. <button class="btn btn-ghost btn-sm" disabled=${trying} onClick=${retry}>${trying ? 'Checking…' : 'Check now'}</button></li>
+    </ol>` : g.configured && !ready && !first ? html`<div class="notice notice--warn" style="margin:1rem 0 0"><div class="notice__body">${fix || html`Google said: ${g.error}`}</div></div>` : null}
+  </div>`;
+}
+
 function MembersTab({ ctx }) {
   const { data, addToast } = ctx;
   const [working, setWorking] = useState('');
@@ -590,6 +639,7 @@ function MembersTab({ ctx }) {
   };
   return html`
     <${AccessCard} ctx=${ctx} />
+    <${GroupCard} ctx=${ctx} />
     <div class="card">
       <div class="status-head">
         <div class="status-head__main"><span class=${`dot ${data.welcome?.sentAt ? 'dot--on' : ''}`} aria-hidden="true"></span><div>
@@ -723,6 +773,7 @@ function GoogleStatus({ data }) {
       ${row(need.mail ? false : mail.ok ? true : null, 'Agendas and minutes from email', need.mail ? 'Needs the Gmail permission (Meetings shows how).' : mail.checkedAt ? `Read ${ago(mail.checkedAt)}.` : 'Not read yet.')}
       ${row(!check ? null : check.calendar === 'ok' && check.meet === 'ok', 'Invites with Google Meet', !check ? 'Not checked yet.' : check.calendar === 'ok' && check.meet === 'ok' ? 'Board can put meetings on the calendar with a Meet.' : check.error)}
       ${row(!check ? null : check.transcript === 'on' ? true : check.transcript === 'needs-setup' ? false : null, 'Meet transcripts', !check ? 'Not checked yet.' : check.transcript === 'on' ? 'Turned on for every invite.' : check.transcript === 'needs-setup' ? 'Needs the meetings.space.settings permission (Meetings shows how).' : check.error || 'Not available.')}
+      ${data.group?.configured ? row(data.group.ok ? true : data.group.failedAt ? false : null, `${data.group.group} follows the board`, data.group.ok ? `${plural(data.group.wanted, 'person', 'people')} in it, as on People → Board. Checked ${ago(data.group.syncedAt)}.` : data.group.needs === 'scope' ? 'Needs the admin.directory.group.member permission (Members shows how).' : data.group.failedAt ? 'Members says what Google said.' : 'Not checked yet.') : null}
       ${row(!check?.attendance ? null : check.attendance === 'ok', 'Attendance from Google Meet', !check?.attendance ? 'Not checked yet.' : check.attendance === 'ok' ? 'After a meeting, who joined is marked “Video”.' : check.attendance === 'needs-setup' ? 'Needs the meetings.space.readonly permission (Meetings shows how).' : check.attendanceError)}
     </ul>
   </div>`;

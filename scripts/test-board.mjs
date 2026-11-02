@@ -51,6 +51,7 @@ import * as boardFile from '../functions/api/board-file.js';
 import { provideBoardFinance, maybeLockNumbers, takeSnapshot, saveMeeting, getMeeting, patchMeeting } from '../functions/api/_board.js';
 import { maybeReadGifts } from '../functions/api/_board-gifts.js';
 import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-invite.js';
+import { syncBoardGroup } from '../functions/api/_board-group.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
 import { docxText, unzip, cleanMeeting } from '../public/admin/board-shared.js';
 import { generateKeyPairSync } from 'node:crypto';
@@ -172,6 +173,9 @@ const env = { GOOGLE_CALENDAR_KEY: JSON.stringify({ type: 'service_account', cli
 // Workers AI as the minutes reader asks it (./_board-minutes.js): the motions and action items it finds
 env.AI = { run: async () => ({ response: { attendance: [], motions: [{ text: 'Approve the 2027 budget', by: 'Alex Rivera', second: 'Sam Ortiz', result: 'passed' }], actions: [{ text: 'Send the venue contract', owner: 'Alex Rivera', due: '' }], approvedPrev: false } }) };
 const mail = [];
+// board@soardcharity.com in Google: its owner, and someone who left the board long ago. The group permission comes later
+let boardGroup = [{ email: FOUNDER, role: 'OWNER', type: 'USER' }, { email: 'gone.member@example.com', role: 'MEMBER', type: 'USER' }];
+let groupScope = false;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
   const url = String(input);
@@ -185,7 +189,17 @@ globalThis.fetch = async (input, init = {}) => {
     return Response.json(Array.isArray(b) ? { data: list.map((_, i) => ({ id: `em_${mail.length}_${i}` })) } : { id: `em_${mail.length}` });
   }
   if (url === 'https://mercury-relay.sunshineonaranneyday.com/api/v1/accounts') return Response.json({ accounts: [{ name: 'Operating', kind: 'checking', type: 'mercury', status: 'active', currentBalance: 312500 }, { nickname: 'Reserve', kind: 'savings', type: 'mercury', status: 'active', currentBalance: 62500 }] });
-  if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'g-test', expires_in: 3600 });
+  if (url === 'https://oauth2.googleapis.com/token') {
+    const claims = JSON.parse(Buffer.from(new URLSearchParams(init.body).get('assertion').split('.')[1], 'base64url').toString());
+    if (/admin\.directory\.group\.member/.test(claims.scope) && !groupScope) return Response.json({ error: 'unauthorized_client', error_description: 'Client is unauthorized to retrieve access tokens using this method, or client not authorized for any of the scopes requested.' }, { status: 401 });
+    return Response.json({ access_token: 'g-test', expires_in: 3600 });
+  }
+  const groupCall = url.match(/^https:\/\/admin\.googleapis\.com\/admin\/directory\/v1\/groups\/board%40soardcharity\.com\/members(?:\/([^?]+))?/);
+  if (groupCall) {
+    if (method === 'GET') return Response.json({ members: boardGroup });
+    if (method === 'POST') { const b = JSON.parse(init.body); boardGroup.push({ email: b.email, role: b.role, type: 'USER' }); return Response.json(b); }
+    if (method === 'DELETE') { boardGroup = boardGroup.filter((x) => x.email !== decodeURIComponent(groupCall[1])); return new Response(null, { status: 204 }); }
+  }
   if (url.startsWith('https://gmail.googleapis.com/')) return Response.json({ messages: [], resultSizeEstimate: 0 });
   // The Board folder in Google Drive: an empty one here (tests/board-drive.test.mjs covers what's in it)
   if (url.startsWith('https://www.googleapis.com/drive/v3/')) return Response.json({ files: [], id: 'root', name: 'Board', mimeType: 'application/vnd.google-apps.folder' });
@@ -716,6 +730,18 @@ try {
   await clickText(jane, 'button', /^Send it to me$/);
   ok(await waitText(jane, /Sent to jane@soardcharity\.com/) && mail.length === 1 && /board page/i.test(mail[0].subject), 'Members: the sign-in email, sent to the founder first');
   await shot(jane, '06-members');
+  // board@soardcharity.com: the heartbeat's first look, before Google allows the group permission, then after
+  await syncBoardGroup(env);
+  await jane.reload({ waitUntil: 'networkidle0' });
+  ok(await waitText(jane, /One Google setting, so the site can keep board@soardcharity\.com/) && /1234567890/.test(await text(jane)) && /admin\.directory\.group\.member/.test(await text(jane)), 'Members: the board@ group needs one Google setting, with the client ID and the scope to add');
+  ok(boardGroup.length === 2, 'Members: nothing in the group changes before Google allows it');
+  await shot(jane, '06a-members-group-setup');
+  groupScope = true;
+  await clickText(jane, 'button', /^Check now$/);
+  ok(await waitText(jane, /board@soardcharity\.com reaches 3 people/), 'Members: once allowed, Check now brings the group up to the board');
+  ok(/added Alex Rivera and Sam Ortiz; took out gone\.member@example\.com/.test(await text(jane)), 'Members: the group’s last change, by name');
+  ok(JSON.stringify(boardGroup.map((x) => x.email).sort()) === JSON.stringify([MEMBER, FOUNDER, OTHER].sort()) && boardGroup.find((x) => x.email === FOUNDER).role === 'OWNER', 'Google’s group holds the board and the founder, who stays its owner');
+  await shot(jane, '06b-members-group');
   await jane.goto(`${SITE}/admin/#board/settings`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Who can open the Board area/), 'Settings opens');
   ok(await jane.$eval('#bd-from', (e) => e.value) === FOUNDER, 'Settings: invites come from the president until another is chosen');

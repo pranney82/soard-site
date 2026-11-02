@@ -1596,7 +1596,8 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
 
 /**
  * The heartbeat, in order:
- *   - every 5 minutes at most, Access's board list kept in step with People → Board (./_board-access.js)
+ *   - every 5 minutes at most, Access's board list kept in step with People → Board (./_board-access.js),
+ *     and so is the board's Google Group, board@soardcharity.com (./_board-group.js)
  *   - hourly, the board meetings on Peter and Holly's calendars (./_board-calendar.js)
  *   - each minute, a new place onto an invite that's out once it has settled; hourly until it
  *     passes, the check that Calendar, Meet, transcripts and attendance work (./_board-invite.js)
@@ -1617,6 +1618,7 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     if (!env.DB) return;
     await ensureSchema(env.DB);
     await maybeSyncBoardAccess(env, { fetchImpl, now });
+    await (await import('./_board-group.js')).maybeSyncBoardGroup(env, { fetchImpl, now });
     await maybeSyncBoardCalendar(env, { fetchImpl, now });
     const invites = await import('./_board-invite.js');
     await invites.maybeRefreshInvites(env, { fetchImpl, now });
@@ -1678,6 +1680,12 @@ export async function boardFacts(env) {
   const invites = stored.filter((m) => m.invite?.eventId && m.date >= today);
   return {
     access: { configured: a.configured, ok: !!a.ok, attached: !!a.attached, current: !!a.current, emails: a.emails, missing: (a.missing || []).length, syncedAt: a.syncedAt || null, error: a.error ? String(a.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null },
+    // board@soardcharity.com following the board (./_board-group.js): counts and times, never a name or an email
+    group: await (await import('./_board-group.js')).groupStatus(env).then((g) => ({
+      configured: g.configured, ok: g.ok, current: g.current, needs: g.needs, members: g.members, wanted: g.wanted, missing: g.missing.length,
+      syncedAt: g.syncedAt, failedAt: g.failedAt, error: g.error ? String(g.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null,
+      lastChangeAt: g.changes[0]?.at || null, added: g.changes[0]?.added.length || 0, removed: g.changes[0]?.removed.length || 0,
+    })),
     cash: { mercury: Boolean(String(env.MERCURY_API_TOKEN || '').trim() && String(env.MERCURY_RELAY_KEY || '').trim()), months: cash?.n || 0, lastAt: cash?.last || null, empty: !((await readState(env.DB, 'cash')).value?.total > 0), readAt: (await readState(env.DB, 'cash')).at || null, banks },
     // QuickBooks' year so far for the board page (./_quickbooks.js): on/off, the company and times only
     books,
