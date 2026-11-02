@@ -265,7 +265,7 @@ const LOOKS_MD = /(^|\n)\s{0,3}(#{1,6}\s|[-*+•]\s|\d{1,3}[.)]\s|>\s)|\*\*[^*\n
  * Where a report is written. `value` is Markdown; `onChange(md)` hears every change. `resetKey`: a new one puts
  * `value` in even while someone's typing (taking a newer version someone else saved). `status`: what saving says,
  * at the foot, beside how long it takes to present. The toolbar stays in view under `stickyTop` while a long report
- * scrolls. `starter`: an empty report offers an outline to fill in (three headings); `onNothing`: a "Nothing to report
+ * scrolls. `starter`: an empty report offers an outline to fill in (three headings; `onChange(md, { inserted: true })`); `onNothing`: a "Nothing to report
  * this time" at the foot (the page decides what happens, asking first when there are words)
  */
 export const OUTLINE = ['What we did', 'What the board needs to decide', 'What’s next'];
@@ -403,7 +403,11 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
   const outline = () => {
     if (!e) return;
     const content = OUTLINE.flatMap((t) => [{ type: 'heading', attrs: { level: 3 }, content: [{ type: 'text', text: t }] }, { type: 'paragraph' }]);
-    e.commands.setContent({ type: 'doc', content }, true);
+    e.commands.setContent({ type: 'doc', content }, false);
+    // Said as a head start put in (the page saves it only once it's changed)
+    const md = docToMd(e.getJSON());
+    last.current = md;
+    change.current(md, { inserted: true });
     e.chain().focus().setTextSelection(e.state.doc.child(0).nodeSize + 1).run();
   };
   const nothing = isNothingNew(last.current);
@@ -432,7 +436,7 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
     </div>
     <div class="rp-page" ref=${mount} style=${`min-height:${minHeight}px`} onClick=${(ev) => { if (ev.target === ev.currentTarget) e?.commands.focus('end'); }}></div>
     <div class="rp-foot">
-      <span class="rp-foot__count" aria-live="off">${full ? html`<strong class="rp-full" role="status">That’s as long as a report can be</strong>` : words && !nothing ? `${words} ${words === 1 ? 'word' : 'words'} · ${speakTime(words)}` : html`<span class="rp-hint">Markdown works: <kbd>###</kbd> a heading, <kbd>-</kbd> points, <kbd>1.</kbd> a list, <kbd>**bold**</kbd></span>`}</span>
+      <span class="rp-foot__count" aria-live="off">${full ? html`<strong class="rp-full" role="status">That’s as long as a report can be</strong>` : words ? `${words} ${words === 1 ? 'word' : 'words'} · ${speakTime(words)}` : html`<span class="rp-hint">Markdown works: <kbd>###</kbd> a heading, <kbd>-</kbd> points, <kbd>1.</kbd> a list, <kbd>**bold**</kbd></span>`}</span>
       ${(starter && !words) || (onNothing && !nothing) ? html`<span class="rp-foot__acts">
         ${starter && !words ? html`<button type="button" class="rp-foot__btn" onMouseDown=${(ev) => ev.preventDefault()} onClick=${outline}>Start with an outline</button>` : null}
         ${onNothing && !nothing ? html`<button type="button" class="rp-foot__btn" onMouseDown=${(ev) => ev.preventDefault()} onClick=${() => onNothing(last.current)}>Nothing to report this time</button>` : null}

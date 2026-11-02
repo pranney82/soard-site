@@ -686,7 +686,8 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
               <label class="agx-motion__label" for=${`agx-mo-${it.id}`}>The board votes on</label>
               <textarea id=${`agx-mo-${it.id}`} class="ag-input agx-motion__box" rows="1" maxlength="1000" value=${it.motion || ''} placeholder="Move to …"
                 ref=${(el) => { grow(el); if (el && it.showMotion && !it.motion && !el.dataset.focused) { el.dataset.focused = '1'; el.focus({ preventScroll: true }); } }}
-                onInput=${(e) => { grow(e.target); setItem(si, ii, { motion: e.target.value }); }} />
+                onKeyDown=${(e) => { if (e.key === 'Enter') e.preventDefault(); }}
+                onInput=${(e) => { grow(e.target); setItem(si, ii, { motion: e.target.value.replace(/\s*\n\s*/g, ' ') }); }} />
             </div>` : null}
             ${it.notes || it.showNotes ? html`<${NotesBox} label=${`Background for ${it.title || 'this item'}`} value=${it.notes} placeholder="Background for the board" onChange=${(v) => setItem(si, ii, { notes: v })} />` : null}
             ${it.staffNote || it.showStaff ? html`<p class="bd-private-label">Only ${others} see this</p><${NotesBox} tone="is-private" label="Your private note" value=${it.staffNote} placeholder="A private note" onChange=${(v) => setItem(si, ii, { staffNote: v })} />` : null}

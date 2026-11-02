@@ -2120,6 +2120,10 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 /* ─── The report page: writing beside how the board will see it (portal.js ReportPage) ───
    A phone: Write | Preview, one at a time. From 1100px wide: the preview stays beside the writing, in view. */
 .bp-report__motion { max-width: 46rem; }
+.bp-now__motion { margin: 0.9rem 0 0; }
+/* An item's motion on the screen: four lines at most, a long one smaller, so the report keeps its room */
+.bs-motion--item .bs-motion__text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; line-clamp: 4; overflow: hidden; }
+.bs-motion--item.is-long .bs-motion__text { font-size: clamp(1.05rem, 2.7vh, 1.7rem); line-height: 1.25; }
 .bp-report.is-nothing .bp-report__by { margin-bottom: 0.2rem; }
 .bp-rp__who { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
 .bp-rp__standing { font-variant-numeric: tabular-nums; }
@@ -2134,6 +2138,24 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .bp-rp__pv-bar .bp-mini-h { margin: 0; }
 .bp-rp__card { padding: 0.25rem 1.1rem 0.4rem 0.85rem; border-radius: var(--r-lg); background: var(--card); border: 1px solid rgba(45, 47, 44, 0.08); box-shadow: var(--shadow-1); }
 .bp-rp__card .bp-agitem { border-top: none; }
+/* Nothing in it wider than the column: the money's statements scroll inside their own box */
+.bp-rp__card .bp-agitem__body, .bp-rp__card .bp-aglive, .bp-rp__card .bp-agstmts, .bp-rp__card .bp-stmts, .bp-rp__card .bp-stmt, .bp-rp__card .bp-stmt__scroll { min-width: 0; max-width: 100%; }
+.bp-rp__card .bp-stmts { grid-template-columns: minmax(0, 1fr); }
+.bp-rp__card .bp-stmt__table { min-width: 0; }
+/* A narrow column: the statements stacked the way a phone shows them (the window is wide, so its own rules don't apply) */
+@container rpcard (max-width: 560px) {
+  .bp-stmt__table, .bp-stmt__table tbody { display: block; min-width: 0; }
+  .bp-stmt__table thead { display: none; }
+  .bp-stmt__table tr { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 0.1rem 1rem; padding: 0.45rem 0; border-bottom: 1px solid var(--line); }
+  .bp-stmt__table tr.bp-stmt__h { padding: 0.85rem 0 0.1rem; border-bottom: none; }
+  .bp-stmt__table th, .bp-stmt__table td { padding-top: 0 !important; padding-bottom: 0 !important; border: none !important; }
+  .bp-stmt__table th[scope="row"] { padding-left: calc(var(--d, 0) * 0.75rem); }
+  .bp-table td.bp-stmt__prior { grid-column: 1; padding-left: calc(var(--d, 0) * 0.75rem); text-align: left; color: var(--muted); font-size: 0.8rem; font-weight: 400; }
+  .bp-table td.bp-stmt__prior::before { content: attr(data-label) ": "; }
+  .bp-table td.bp-stmt__chg[data-label]::before { content: attr(data-label) ": "; }
+  .bp-table td.bp-stmt__chg { grid-column: 2; font-size: 0.8rem; font-weight: 400; }
+  .bp-stmt__sum { border-top: 2px solid var(--line-2); }
+}
 /* The item in its own width, not the window's: the money's four figures two by two in a narrow column */
 .bp-rp__card { container: rpcard / inline-size; }
 @container rpcard (max-width: 699px) { .bp-agfigs:has(> li:nth-child(4):last-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
@@ -2161,6 +2183,9 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .bp-rp__motion-label { display: block; margin: 0 0 0.35rem; font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
 .bp-rp__motion textarea { display: block; width: 100%; min-height: 3.6em; field-sizing: content; max-height: 12rem; padding: 0.6rem 0.75rem; border: 1px solid var(--line-2); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-weight: 600; font-size: 1rem; line-height: 1.45; resize: vertical; }
 .bp-rp__motion textarea:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px var(--yellow-soft); }
+p.bp-rp__motion-st { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--muted); }
+.bp-rp__theirs-motion { font-weight: 600; color: var(--ink); }
+.bp-rp__motion-clash { margin: 0 0 0.75rem; }
 .bp-rp__motion-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 1rem; margin-top: 0.55rem; font-size: 0.85rem; color: var(--muted); }
 .bp-rp__motion-end { display: inline-flex; align-items: center; gap: 1rem; margin-left: auto; }
 @media (min-width: 1100px) {

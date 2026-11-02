@@ -32,7 +32,7 @@ import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
   isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
   reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
-  NOTHING_NEW, isNothingNew,
+  NOTHING_NEW, isNothingNew, LIMITS,
 } from '../board-shared.js';
 import { YearCompare } from './books.js';
 import { FinanceReview, NoteLine, notesByKey, lineKeysOf, withLineNotes, dueText } from './review.js';
@@ -1513,6 +1513,9 @@ const withDocs = (data, meetingId, itemId, docs, { add = null, gone = '' } = {})
 };
 const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.docx,.xlsx,.pptx,.doc,.xls,.ppt';
 
+/** An item's number on the agenda ("3.2"): a meeting ahead they present on carries it (its agenda here is only their items) */
+const labelOf = (m, it) => (typeof it?.n === 'string' && it.n ? it.n : agendaItems(m).find((x) => x.id === it?.id)?.label || '');
+
 /** Where a report stands, for the top of its page: due, late, in, or nothing new this time → { tone, text } | null */
 function reportStanding(m, it, data) {
   if (isNothingNew(it.report)) return { tone: 'ok', text: 'Nothing new this time' };
@@ -1542,74 +1545,117 @@ const focusIn = (el) => { if (el && !el.dataset.focused) { el.dataset.focused = 
 
 /**
  * What the presenter asks the board to vote on (item.motion): asked for with one tap, saved a moment after they stop
- * typing and when the box loses the focus, then shown as the board reads it. `onDraft(text)`: each change, for the
- * preview beside it
+ * typing and when the box loses the focus, then shown as the board reads it. Never written over someone else's since
+ * this page saw it (a co-presenter, Board): they choose, as with the report. What's typed and not saved stays on this
+ * device until it is. `onDraft(text)`: each change, for the preview; `handle.current.save()`: Done waits on it (→ true
+ * once the server has it)
  */
-function MotionBox({ m, it, ctx, onDraft }) {
+function MotionBox({ m, it, ctx, onDraft, handle }) {
   const { setData } = ctx;
-  const [editing, setEditing] = useState(false);
-  const [text, setText] = useState(it.motion || '');
-  const [st, setSt] = useState('');
-  const sent = useRef((it.motion || '').trim());
+  const key = `bp-motion:${m.id}/${it.id}`;
+  const kept = useMemo(() => { try { const k = localStorage.getItem(key); return k !== null && k.trim() !== (it.motion || '').trim() ? k : null; } catch { return null; } }, []);
+  const [editing, setEditing] = useState(kept !== null);
+  const [text, setText] = useState(kept ?? it.motion ?? '');
+  const [st, setSt] = useState(kept !== null ? 'waiting' : '');
+  const [clash, setClash] = useState(null); // theirs: { motion }
+  const clashRef = useRef(null);
+  clashRef.current = clash;
+  const sent = useRef((it.motion || '').trim()); // what the server has
+  const base = useRef(it.motion || ''); // the motion as this page last saw it
   const latest = useRef(text);
   latest.current = text;
   const timer = useRef(0);
   const busy = useRef(null);
-  const body = (words) => ({ action: 'motion', meetingId: m.id, itemId: it.id, text: words });
+  const body = (words) => ({ action: 'motion', meetingId: m.id, itemId: it.id, text: words, base: base.current });
+  const keepHere = (t) => { try { if (t.trim() === sent.current) localStorage.removeItem(key); else localStorage.setItem(key, t); } catch { /* private browsing */ } };
   const save = async () => {
     clearTimeout(timer.current);
     if (busy.current) await busy.current;
+    if (clashRef.current) return false; // they choose first
     const words = latest.current.trim();
-    if (words === sent.current) { setSt((x) => (x === 'waiting' ? 'saved' : x)); return true; }
+    if (words === sent.current) { keepHere(latest.current); setSt((x) => (x === 'waiting' ? 'saved' : x)); return true; }
     setSt('saving');
     busy.current = call(body(words));
     const j = await busy.current;
     busy.current = null;
-    if (!j.ok) { setSt(j.error || 'Couldn’t save'); return false; }
-    const kept = typeof j.motion === 'string' ? j.motion : words;
-    sent.current = kept.trim();
-    setData((dd) => withItem(dd, m.id, it.id, { motion: kept }));
+    if (j.status === 409 && j.current) { clashRef.current = j.current; setClash(j.current); setSt('choose'); return false; }
+    if (!j.ok) { keepHere(latest.current); setSt(j.error || 'Couldn’t save'); return false; }
+    const now = typeof j.motion === 'string' ? j.motion : words;
+    sent.current = now.trim();
+    base.current = now;
+    keepHere(latest.current);
+    setData((dd) => withItem(dd, m.id, it.id, { motion: now }));
     if (latest.current.trim() !== words) { setSt('waiting'); timer.current = setTimeout(save, 400); } else setSt('saved');
     return true;
   };
+  handle.current = { save: async () => (await save()) && latest.current.trim() === sent.current };
+  // Back on this device and not saved yet: it goes now
+  useEffect(() => { if (kept !== null) { onDraft(kept); save(); } }, []);
   useEffect(() => {
-    // The page going: what's typed goes, blind
+    // The page going: what's typed goes, blind (and stays on this device until the server has it)
     const flush = () => {
       const words = latest.current.trim();
-      if (words === sent.current) return;
+      if (words === sent.current || clashRef.current) return;
       try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body(words)) }); } catch { /* the page is going */ }
     };
     addEventListener('pagehide', flush);
-    return () => { removeEventListener('pagehide', flush); clearTimeout(timer.current); if (latest.current.trim() !== sent.current) save(); };
+    return () => { removeEventListener('pagehide', flush); clearTimeout(timer.current); if (latest.current.trim() !== sent.current && !clashRef.current) save(); };
   }, []);
-  const type = (v) => { setText(v); latest.current = v; onDraft(v); setSt('waiting'); clearTimeout(timer.current); timer.current = setTimeout(save, 900); };
+  const type = (v) => { setText(v); latest.current = v; onDraft(v); keepHere(v); setSt('waiting'); clearTimeout(timer.current); timer.current = setTimeout(save, 900); };
   const done = async () => { if (await save()) { setEditing(false); requestAnimationFrame(() => document.querySelector('.bp-rp__motion-again, .bp-rp__motion-add')?.focus()); } };
   const off = async () => { type(''); if (await save()) { setEditing(false); requestAnimationFrame(() => document.querySelector('.bp-rp__motion-add')?.focus()); } };
-  const status = st === 'saving' ? 'Saving…' : st === 'waiting' ? 'Saving in a moment' : st === 'saved' ? (sent.current ? 'Saved' : 'Taken off') : st
-    ? html`<span class="bp-rp__err" role="alert">Not saved: ${st} <button type="button" class="bp-linkbtn" onClick=${save}>Try again</button></span>` : '';
+  // Someone else changed it since: theirs, or this page's again (written over theirs, on purpose)
+  const take = (mine) => {
+    const theirs = clash;
+    clashRef.current = null;
+    setClash(null);
+    base.current = theirs.motion || '';
+    if (mine) { save(); return; }
+    sent.current = (theirs.motion || '').trim();
+    setText(theirs.motion || '');
+    latest.current = theirs.motion || '';
+    onDraft(theirs.motion || '');
+    keepHere(theirs.motion || '');
+    setData((dd) => withItem(dd, m.id, it.id, { motion: theirs.motion || '' }));
+    setSt('saved');
+    if (!theirs.motion) setEditing(false);
+  };
+  // Said quietly as it goes; only a failure is announced
+  const status = st === 'saving' ? 'Saving…' : st === 'waiting' ? 'Saving in a moment' : st === 'choose' ? 'Waiting for your choice' : st === 'saved' ? (sent.current ? 'Saved' : 'Taken off') : st
+    ? html`<span class="bp-rp__err" role="alert">The motion isn’t saved: ${st} <button type="button" class="bp-linkbtn" onClick=${save}>Try again</button></span>` : '';
+  const choice = clash ? html`<div class="bp-rp__clash bp-rp__motion-clash" role="alert">
+    <p><strong>Someone else changed the motion</strong> while you were writing. Which one should the board vote on?</p>
+    <p class="bp-rp__theirs-motion">${clash.motion ? `Theirs: “${clash.motion}”` : 'They took it off.'}</p>
+    <div class="bp-btns"><button type="button" class="bp-btn" onClick=${() => take(false)}>Use theirs</button><button type="button" class="bp-btn bp-btn--primary" onClick=${() => take(true)}>Keep mine</button></div>
+  </div>` : null;
   if (!editing && !text.trim()) {
-    return html`<button type="button" class="bp-rp__motion-add" onClick=${() => setEditing(true)}><span class="bp-rp__motion-plus" aria-hidden="true">+</span>Ask the board to vote</button>`;
+    return html`${choice}<button type="button" class="bp-rp__motion-add" onClick=${() => setEditing(true)}><span class="bp-rp__motion-plus" aria-hidden="true">+</span>Ask the board to vote</button>
+      ${st && st !== 'saved' && st !== 'choose' ? html`<p class="bp-rp__motion-st">${status}</p>` : null}`;
   }
   if (!editing) {
     return html`<div class="bp-rp__motion">
+      ${choice}
       <${Motion} text=${text} />
       <p class="bp-rp__motion-btns"><button type="button" class="bp-linkbtn bp-rp__motion-again" onClick=${() => setEditing(true)}>Change the motion</button><button type="button" class="bp-linkbtn" onClick=${off}>Take it off</button></p>
+      ${st && st !== 'saved' ? html`<p class="bp-rp__motion-st">${status}</p>` : null}
     </div>`;
   }
   return html`<div class="bp-rp__motion is-editing">
+    ${choice}
     <label class="bp-rp__motion-label" for="rp-motion">The board votes on</label>
-    <textarea id="rp-motion" ref=${focusIn} rows="2" maxlength="1000" value=${text} placeholder="Move to …"
-      onInput=${(e) => type(e.target.value)} onBlur=${() => save()} onKeyDown=${(e) => { if (e.key === 'Escape' || ((e.metaKey || e.ctrlKey) && e.key === 'Enter')) { e.preventDefault(); done(); } }}></textarea>
+    <textarea id="rp-motion" ref=${focusIn} rows="2" maxlength=${LIMITS.motion} value=${text} placeholder="Move to …"
+      onInput=${(e) => type(e.target.value)} onBlur=${() => save()} onKeyDown=${(e) => { if (e.key === 'Escape' || e.key === 'Enter') { e.preventDefault(); done(); } }}></textarea>
     <div class="bp-rp__motion-foot">
-      <span class="bp-rp__motion-st" aria-live="polite">${status}</span>
+      <span class="bp-rp__motion-st">${status}</span>
       <span class="bp-rp__motion-end">${text.trim() ? html`<button type="button" class="bp-linkbtn" onClick=${off}>Take it off</button>` : null}<button type="button" class="bp-btn bp-btn--sm bp-btn--primary" onClick=${done}>Done</button></span>
     </div>
   </div>`;
 }
 
 /**
- * The screen as the room will see it: the real presentation (./screen.js) in a frame at its own 1280 × 720, scaled to
- * the column, sent the report and the motion as they're typed; it says back whether the report fits on its slide
+ * The screen as the room will see it: the real presentation (./screen.js, ?preview&report) in a frame at its own
+ * 1280 × 720, scaled to the column, sent the report and the motion a moment after typing stops; it says back whether
+ * they fit on the slide. Hidden (a phone's Write), it stays loaded
  */
 function ScreenFrame({ m, it, report, motion, by }) {
   const frame = useRef(null);
@@ -1617,15 +1663,17 @@ function ScreenFrame({ m, it, report, motion, by }) {
   const holder = useRef(null);
   const [w, setW] = useState(0);
   const [fit, setFit] = useState(null);
+  const [motionCut, setMotionCut] = useState(false);
   const now = useRef(null);
   now.current = { report, motion, reportBy: by };
-  const src = `${location.pathname}?preview#/meetings/${encodeURIComponent(m.id)}/screen`;
+  const src = `${location.pathname}?preview&report#/meetings/${encodeURIComponent(m.id)}/screen`;
   const post = (msg) => frame.current?.contentWindow?.postMessage(msg, location.origin);
   const send = () => post({ type: 'board-preview-item', meetingId: m.id, itemId: it.id, ...now.current });
   useEffect(() => {
     const el = holder.current;
     if (!el) return undefined;
-    const measure = () => setW(el.clientWidth);
+    // Its last width while hidden (0 then): the frame stays as it was, never loaded again
+    const measure = () => { const cw = el.clientWidth; if (cw) setW(cw); };
     measure();
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
     ro?.observe(el);
@@ -1637,18 +1685,23 @@ function ScreenFrame({ m, it, report, motion, by }) {
       const x = e.data || {};
       if (x.type === 'board-preview-ready') { ready.current = true; send(); post({ type: 'board-preview-focus', itemId: it.id }); }
       if (x.type === 'board-preview-fit') setFit(x);
+      if (x.type === 'board-preview-motion') setMotionCut(!!x.cut);
     };
     addEventListener('message', on);
     return () => removeEventListener('message', on);
   }, []);
-  useEffect(() => { if (ready.current) send(); }, [report, motion]);
+  // A moment after typing stops: the slide is laid out again only then, never on every key
+  useEffect(() => { if (!ready.current) return undefined; const t = setTimeout(send, 300); return () => clearTimeout(t); }, [report, motion, by]);
   const scale = w ? w / 1280 : 0;
   const words = String(report || '').trim() && !isNothingNew(report);
-  const fitLine = !words || !fit ? '' : fit.cut ? `The screen shows about the first ${fit.shown} words. The whole report is on the board page.` : 'Fits on one slide.';
+  const fitLine = [
+    words && fit ? (fit.cut ? `The screen shows about the first ${fit.shown} words. The whole report is on the board page.` : 'Fits on one slide.') : '',
+    String(motion || '').trim() && motionCut ? 'The screen cuts the motion short; a shorter one fits.' : '',
+  ].filter(Boolean).join(' ');
   return html`<div class="bp-rp__screen" ref=${holder} style=${scale ? `height:${Math.round(720 * scale)}px` : null}>
-      ${scale ? html`<iframe ref=${frame} src=${src} title="The screen, as the room will see it" tabindex="-1" style=${`width:1280px;height:720px;transform:scale(${scale})`}></iframe>` : null}
+      ${scale ? html`<iframe ref=${frame} src=${src} title="The screen, as the room will see it" tabindex="-1" aria-hidden="true" inert=${true} style=${`width:1280px;height:720px;transform:scale(${scale})`}></iframe>` : null}
     </div>
-    <p class=${`bp-rp__fit ${fit?.cut && words ? 'is-cut' : ''}`} aria-live="polite">${fitLine}</p>`;
+    <p class=${`bp-rp__fit ${(fit?.cut && words) || motionCut ? 'is-cut' : ''}`}>${fitLine}</p>`;
 }
 
 /** Beside the report as it's written: the item on the board page, or the screen, as the board will see them */
@@ -1658,7 +1711,7 @@ function ReportPreview({ m, it, ctx, draft }) {
   const [as, setAs] = useState(() => { try { return localStorage.getItem('bp-rp-preview') === 'screen' ? 'screen' : 'page'; } catch { return 'page'; } });
   const pick = (k) => { setAs(k); try { localStorage.setItem('bp-rp-preview', k); } catch { /* private browsing */ } };
   const s = m.sections.find((x) => x.items.some((y) => y.id === it.id)) || m.sections[0];
-  const label = agendaItems(m).find((x) => x.id === it.id)?.label || '';
+  const label = labelOf(m, it);
   const upcoming = m.date >= data.today;
   const numbers = m.snapshot || (upcoming ? data.numbers : null);
   const moneyFirst = m.sections.flatMap((x) => x.items).find((y) => showsOf(y).includes('cash'))?.id || '';
@@ -1712,12 +1765,20 @@ function ReportPage({ id, itemId, ctx }) {
   const [motion, setMotion] = useState(it?.motion || ''); // what it asks the board to vote on, as it's typed (the preview's)
   const [view, setView] = useState('write'); // a phone's switch: write | preview
   const [asking, setAsking] = useState(false); // "Swap your report for Nothing new…?" open
-  const before = useRef(''); // the words a "Nothing to report" took the place of, back with "Write a report instead"
+  // The words a "Nothing to report" took the place of, back with "Write a report instead" (kept on this device)
+  const beforeKey = `${draftKey}:before`;
+  const before = useRef(useMemo(() => { try { return localStorage.getItem(beforeKey) || ''; } catch { return ''; } }, []));
+  // "Nothing to report" is on only when it's chosen (or saved as that), never because those words were typed
+  const [nothingOn, setNothingOn] = useState(() => isNothingNew(kept0 ? kept0.text : it?.report));
+  // A head start put in (last time's report, the outline) and not changed since: not saved, so it never counts as in
+  const inserted = useRef(null);
+  const untouched = () => inserted.current !== null && latest.current === inserted.current;
+  const motionBox = useRef(null);
   const last = useMemo(() => (m && it ? lastTime(data, m, it) : null), [m?.id, it?.id]);
   const [adding, setAdding] = useState(''); // the file being put with it
   const [offering, setOffering] = useState(''); // the file asking "take it off for good?"
   const [dropping, setDropping] = useState(false);
-  const keep = (t) => { try { if (t === sent.current) localStorage.removeItem(draftKey); else localStorage.setItem(draftKey, JSON.stringify({ text: t, base: base.current, at: Date.now() })); } catch { /* private browsing */ } };
+  const keep = (t) => { try { if (t === sent.current || (inserted.current !== null && t === inserted.current)) localStorage.removeItem(draftKey); else localStorage.setItem(draftKey, JSON.stringify({ text: t, base: base.current, at: Date.now() })); } catch { /* private browsing */ } };
 
   const save = async () => {
     clearTimeout(timer.current);
@@ -1725,6 +1786,7 @@ function ReportPage({ id, itemId, ctx }) {
     if (clashRef.current || stuckRef.current) return null; // they choose first
     const words = latest.current;
     if (words === sent.current) { keep(words); setSt((x) => (x.s === 'waiting' ? { ...x, s: 'saved' } : x)); return null; }
+    if (untouched()) { keep(words); setSt((x) => ({ ...x, s: 'start' })); return null; }
     setSt((x) => ({ ...x, s: 'saving' }));
     sentByMe(draftKey, words);
     busy.current = (async () => {
@@ -1761,12 +1823,14 @@ function ReportPage({ id, itemId, ctx }) {
     for (let i = 0; i < 4; i++) {
       await save();
       while (busy.current) await busy.current;
-      if (latest.current === sent.current) return true;
+      if (latest.current === sent.current || untouched()) return true;
       if (failing.current || clashRef.current || stuckRef.current) return false;
     }
-    return latest.current === sent.current;
+    return latest.current === sent.current || untouched();
   };
-  const changed = (md) => {
+  // `meta.inserted`: a head start put in (nothing of theirs yet)
+  const changed = (md, meta = null) => {
+    if (meta?.inserted) inserted.current = md;
     setText(md);
     latest.current = md;
     keep(md);
@@ -1780,7 +1844,7 @@ function ReportPage({ id, itemId, ctx }) {
   useEffect(() => {
     // Only a page that's really going sends it blind (and remembers it, so its own save is never a clash later)
     const flush = () => {
-      if (latest.current === sent.current || clashRef.current || stuckRef.current) return;
+      if (latest.current === sent.current || untouched() || clashRef.current || stuckRef.current) return;
       sentByMe(draftKey, latest.current);
       try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', meetingId: id, itemId, text: latest.current, base: base.current }) }); } catch { /* the page is going */ }
     };
@@ -1825,6 +1889,7 @@ function ReportPage({ id, itemId, ctx }) {
     if (mineToo) { save(); toEditor(); return; }
     latest.current = theirs.report;
     setText(theirs.report);
+    setNothingOn(isNothingNew(theirs.report));
     keep(theirs.report);
     setReset((n) => n + 1);
     setData((dd) => withReport(dd, id, itemId, theirs));
@@ -1838,28 +1903,36 @@ function ReportPage({ id, itemId, ctx }) {
     if (stuckRef.current) { document.querySelector('.bp-rp__stuck .bp-btn')?.focus(); return; }
     setLeaving(true);
     const ok = await saveAll();
+    const motionOk = ok && (motionBox.current ? await motionBox.current.save() : true);
     setLeaving(false);
-    if (!ok) { requestAnimationFrame(() => document.querySelector('.bp-rp__clash .bp-btn, .bp-rp__stuck .bp-btn, .bp-rp__err .bp-link')?.focus()); return; }
+    if (!ok || !motionOk) { requestAnimationFrame(() => document.querySelector('.bp-rp__clash .bp-btn, .bp-rp__stuck .bp-btn, .bp-rp__err .bp-link, .bp-rp__err .bp-linkbtn')?.focus()); return; }
     toItem();
     location.hash = back;
   };
   // Words put in from outside the editor (last time's, back from a "Nothing to report"): in the editor at once
-  const putIn = (md) => { changed(md); setReset((n) => n + 1); };
-  const nothing = isNothingNew(text);
+  const putIn = (md, meta = null) => { changed(md, meta); setReset((n) => n + 1); };
   const nothingNow = () => {
     before.current = latest.current;
+    try { if (before.current.trim()) localStorage.setItem(beforeKey, before.current); } catch { /* private browsing */ }
     setAsking(false);
+    setNothingOn(true);
     changed(NOTHING_NEW);
     save();
     requestAnimationFrame(() => document.querySelector('.bp-rp__nothing .bp-btn')?.focus());
   };
   // There are words: asked first (they come back with "Write a report instead")
   const askNothing = (current) => { if (mdWords(current || '') > 0 && !isNothingNew(current)) setAsking(true); else nothingNow(); };
-  const writeInstead = () => { putIn(isNothingNew(before.current) ? '' : before.current); save(); toEditor(); };
-  const startFrom = () => { putIn(last.it.report); toEditor(); };
+  const writeInstead = () => {
+    setNothingOn(false);
+    putIn(isNothingNew(before.current) ? '' : before.current);
+    try { localStorage.removeItem(beforeKey); } catch { /* private browsing */ }
+    save();
+    toEditor();
+  };
+  const startFrom = () => { putIn(last.it.report, { inserted: true }); toEditor(); };
   const myName = d.me?.name || (data.me.as ? d.bySlug.get(data.me.as)?.name : '') || '';
   // The item as the board will see it, with what's typed (saved or not)
-  const draft = { ...it, report: text, motion, reportBy: it.reportBy || myName, reportAt: it.reportAt || new Date().toISOString() };
+  const draft = { ...it, report: text, motion, reportBy: myName || it.reportBy, reportAt: new Date().toISOString() };
   const standing = reportStanding(m, it, data);
   const copy = async () => {
     try { await navigator.clipboard.writeText(latest.current); ctx.say('Your words are copied'); } catch { ctx.say('Select the words and copy them', 'warn'); }
@@ -1896,14 +1969,14 @@ function ReportPage({ id, itemId, ctx }) {
   } : {};
   const savedAt = st.at ? `Saved ${dayShort(st.at) === dayShort(new Date().toISOString()) ? new Date(st.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : dayShort(st.at)}` : 'Saved';
   // Said quietly as it goes (no announcement each pause in typing); a save that fails is announced
-  const status = st.s === 'saving' ? 'Saving…' : st.s === 'waiting' ? 'Saving in a moment' : st.s === 'choose' ? 'Waiting for your choice'
+  const status = st.s === 'saving' ? 'Saving…' : st.s === 'waiting' ? 'Saving in a moment' : st.s === 'choose' ? 'Waiting for your choice' : st.s === 'start' ? 'Saved once you change it'
     : st.s === 'error' ? html`<span class="bp-rp__err" role="alert">Not saved: ${st.why}. It tries again by itself. <button type="button" class="bp-link" onClick=${save}>Try now</button></span>`
     : st.s === 'stuck' ? html`<span class="bp-rp__err">Not saved</span>`
     : st.cut ? html`<span class="bp-rp__err" role="alert">${savedAt}, but it’s too long: its end was cut</span>` : savedAt;
   return html`<div class=${`bp-rp ${mine ? 'has-preview' : ''} is-${view} ${dropping ? 'is-dropping' : ''}`} ...${dropOn}>
     <a class="bp-back" href=${back} onClick=${mine ? leave : toItem}><${Icon} name="back" size=${18} />${meetingName(m)}</a>
     <header class="bp-rp__head">
-      <p class="bp-eyebrow">${at.label} · ${at.section || 'Agenda'}<span class="bp-soon">${m.date === data.today ? 'Today' : dayOf(m.date)}</span></p>
+      <p class="bp-eyebrow">${labelOf(m, it)} · ${at.section || 'Agenda'}<span class="bp-soon">${m.date === data.today ? 'Today' : dayOf(m.date)}</span></p>
       <h1 class="bp-rp__title">${it.title}</h1>
       ${who.length || standing ? html`<div class="bp-rp__who">${who.length ? html`<${Presenters} people=${who} />` : null}
         ${standing ? html`<span class=${`bp-chip ${standing.tone ? `bp-chip--${standing.tone}` : ''} bp-rp__standing`}>${standing.tone === 'ok' ? html`<${Icon} name="check" size=${14} />` : null}${standing.text}</span>` : null}</div>` : null}
@@ -1934,19 +2007,20 @@ function ReportPage({ id, itemId, ctx }) {
         <p id="rp-nothing-q"><strong>Swap your report for “${NOTHING_NEW}”?</strong> Your words come back with Write a report instead.</p>
         <div class="bp-btns"><button type="button" class="bp-btn" ref=${focusIn} onClick=${() => { setAsking(false); toEditor(); }}>Keep my report</button><button type="button" class="bp-btn bp-btn--primary" onClick=${nothingNow}>Nothing to report</button></div>
       </div>` : null}
-      ${nothing ? html`<div class="bp-rp__nothing">
+      ${nothingOn ? html`<div class="bp-rp__nothing">
         <p class="bp-rp__nothing-t">${NOTHING_NEW}</p>
         <p class="bp-rp__nothing-st" aria-live="polite">${status}</p>
         <button type="button" class="bp-btn" onClick=${writeInstead}><${Icon} name="edit" size=${18} />Write a report instead</button>
       </div>` : html`
       ${!text.trim() && last ? html`<section class="bp-rp__last" aria-labelledby="rp-last-h">
         <div class="bp-rp__last-head"><h2 class="bp-mini-h" id="rp-last-h">Last time</h2><span class="bp-muted">${[last.it.reportBy, shortDate(last.m.date)].filter(Boolean).join(', ')}</span></div>
-        <${Report} text=${last.it.report} clamp=${60} />
+        <${Report} text=${last.it.report} clamp=${60} level=${3} />
         <button type="button" class="bp-btn bp-btn--sm" onClick=${startFrom}>Start from it</button>
       </section>` : null}
+      <h2 class="sr-only" id="rp-write-h">Your report</h2>
       <${ReportEditor} value=${text} onChange=${changed} resetKey=${reset} label=${`Your report on ${it.title}`} autofocus=${!it.report} stickyTop="calc(var(--head) + env(safe-area-inset-top))" minHeight=${300}
         placeholder="What the committee did, what the board needs to decide, and what’s next" status=${status} starter=${true} onNothing=${askNothing} />`}
-      <${MotionBox} m=${m} it=${it} ctx=${ctx} onDraft=${setMotion} />
+      <${MotionBox} m=${m} it=${it} ctx=${ctx} onDraft=${setMotion} handle=${motionBox} />
       <section class="bp-rp__docs" aria-labelledby="rp-docs-h">
         <h2 class="bp-mini-h" id="rp-docs-h">Documents with it</h2>
         ${files.length ? html`<ul class="bp-rp__files">${files.map((f) => html`<li key=${f.id} class=${offering === f.id ? 'is-asking' : ''}>
@@ -2196,6 +2270,7 @@ function LiveRoom({ v, setV, m, ctx }) {
           <${FloorLine} v=${v} nowItem=${nowItem} si=${now.si} ctx=${ctx} />
           <${Notes} text=${nowItem.notes} />
           ${nowItem.report ? html`<div class="bp-now__report"><p class="bp-report__by"><span class="bp-report__label">Report</span>${nowItem.reportBy ? html`<span>by ${nowItem.reportBy}</span>` : null}</p><${Report} text=${nowItem.report} clamp=${140} /></div>` : null}
+          <${Motion} text=${nowItem.motion} cls="bp-now__motion" />
           <${ScreenPeek} v=${v} />
           ${itemFiles(v, nowItem, v.prior || []).length ? html`<div class="bp-now__docs"><${FileList} files=${itemFiles(v, nowItem, v.prior || [])} labels=${false} lead=${new Set(itemDocs(v, nowItem, v.prior || []).map((d) => d.file.id))} /></div>` : null}
           ${v.live.fileId ? null : html`<p class="bp-now__screen"><a class="bp-link" href=${`#/meetings/${v.id}/screen`}>Follow the screen</a></p>`}

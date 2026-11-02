@@ -41,6 +41,9 @@ const CHANNEL = 'soard-board-screen';
 const MIRROR = new URLSearchParams(location.search).has('mirror');
 // Board's preview beside the agenda editor (?preview): it follows the item being worked on, never the chair
 const PREVIEW = new URLSearchParams(location.search).has('preview');
+// The report page's preview (?preview&report): one item, drawn from the page's own copy of the meeting; never asks the
+// server for the live view
+const SOLO = PREVIEW && new URLSearchParams(location.search).has('report');
 // Presenting, from Board or the meeting's page (?present): this window moves itself (→ ← and the space bar, a clicker's
 // Page Down and Page Up, Home, End), from the cover or the slide it's opened on (&at=), whatever the meeting's saved
 // state. On the meeting's day each part's timer runs from when the part comes up. B (or .) blanks the screen
@@ -64,12 +67,13 @@ const fullScreen = () => { if (document.fullscreenElement) document.exitFullscre
 const nowClock = () => new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
 
 /** The meeting as it's held, every 1.5 seconds (4 while the chair's computer is moving this screen itself) */
-function useLiveView(id, fast) {
+function useLiveView(id, fast, off = false) {
   const [v, setV] = useState(null);
   const [fail, setFail] = useState('');
   // Three looks in a row that got no answer (the server's trouble, no connection): it says so, and keeps trying
   const [trouble, setTrouble] = useState(false);
   useEffect(() => {
+    if (off) return undefined;
     let stop = false;
     let t = 0;
     let missed = 0;
@@ -272,9 +276,22 @@ function ReportFit({ text, cols = 1 }) {
       el.style.setProperty('--fit', '1');
       // Smaller only to where a room still reads it (80%)
       while (s > 0.8 && over()) { s = Math.round((s - 0.05) * 100) / 100; el.style.setProperty('--fit', String(s)); }
-      // Then whole blocks off the end, never a line cut in half; the note says where the rest is
+      // Then whole blocks off the end, never a line cut in half; the note says where the rest is. How many fit, found
+      // in a few layouts (halving), never one per block: a long report doesn't hold up typing beside it
       let hid = 0;
-      for (let i = blocks.length - 1; i > 0 && over(); i--) { blocks[i].hidden = true; hid++; }
+      if (blocks.length > 1 && over()) {
+        const show = (k) => blocks.forEach((b, i) => { b.hidden = i >= k; });
+        let lo = 1;
+        let hi = blocks.length - 1;
+        let best = 1;
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          show(mid);
+          if (over()) hi = mid - 1; else { best = mid; lo = mid + 1; }
+        }
+        show(best);
+        hid = blocks.length - best;
+      }
       setCut(hid > 0 || over());
       // The report page's preview says whether it fits, and about how much the room sees
       if (PREVIEW) {
@@ -477,7 +494,23 @@ function Chapter({ n, sec, t, items, people }) {
 }
 
 /** What an item's presenter asks the board to vote on (item.motion), the way the minutes' motion shows */
-const ItemMotion = ({ text }) => (String(text || '').trim() ? html`<div class="bs-motion"><p class="bs-eyebrow">The board votes on</p><p class="bs-motion__text">${String(text).trim()}</p></div>` : null);
+function ItemMotion({ text }) {
+  const t = String(text || '').trim();
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!PREVIEW || !el) return undefined;
+    const tell = () => window.parent?.postMessage({ type: 'board-preview-motion', cut: el.scrollHeight > el.clientHeight + 1 }, location.origin);
+    tell();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(tell) : null;
+    ro?.observe(el);
+    document.fonts?.ready.then(tell);
+    return () => ro?.disconnect();
+  }, [t]);
+  if (!t) return null;
+  // Four lines at most on the slide, a long one in smaller type: it never pushes the report off the screen
+  return html`<div class=${`bs-motion bs-motion--item ${t.length > 90 ? 'is-long' : ''}`}><p class="bs-eyebrow">The board votes on</p><p class="bs-motion__text" ref=${ref}>${t}</p></div>`;
+}
 
 /** The motion to approve the last meeting's minutes: the meeting's own (the chair's words) else the usual one */
 function MinutesMotion({ item, v }) {
@@ -592,12 +625,12 @@ const NEXT = html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="t
 /** The screen: the stop the chair is on, or (presenting, Board's preview) the one it has moved itself to */
 export function Screen({ id, data, d, onBack = null }) {
   const fast = useRef(false);
-  const [v0, fail, trouble] = useLiveView(id, fast);
+  const [v0, fail, trouble] = useLiveView(id, fast, SOLO);
   // Presenting and Board's preview never show the meeting as it was held (an ended practice) or a vote: nothing
   // started, nothing ended; they go only where they're moved
   // The report page's preview of a meeting ahead its presenter writes on, not shared yet (no live view for them): the
   // meeting as the page has it
-  const pv = PREVIEW && fail && !v0 ? data.meetings.find((x) => x.id === id) || data.previews?.find((x) => x.id === id) || data.presenting?.find((x) => x.id === id) || null : null;
+  const pv = PREVIEW && (SOLO || fail) && !v0 ? data.meetings.find((x) => x.id === id) || data.previews?.find((x) => x.id === id) || data.presenting?.find((x) => x.id === id) || null : null;
   // (made once an answer, not every render: what's built from it, the meeting and its deck, holds still between answers)
   const v = useMemo(() => {
     const vb = v0 || (pv ? { ok: true, title: pv.title || '', date: pv.date, start: pv.start || '', end: pv.end || '', sections: pv.sections, files: pv.files || [], snapshot: pv.snapshot || null, prior: [], live: {} } : null);
@@ -778,7 +811,8 @@ export function Screen({ id, data, d, onBack = null }) {
   const ended = OWN ? deck[ownAt]?.kind === 'end' : live.screen === 'end' || (!fresh && !!v.live.endedAt);
   const at = OWN ? ownAt : ended ? deck.length - 1 : stopIndex(deck, live);
   const stop = deck[at] || deck[0];
-  const items = agendaItems(meeting);
+  // Each item's number as the agenda has it (a meeting ahead its presenter writes on carries it: this copy is only their items)
+  const items = agendaItems(meeting).map((x) => { const it = meeting.sections[x.si]?.items[x.ii]; return typeof it?.n === 'string' && it.n ? { ...x, label: it.n } : x; });
   const onItem = ['item', 'doc', 'live', 'books'].includes(stop.kind);
   const item = onItem ? (stop.n >= 0 ? meeting.sections[items[stop.n].si].items[items[stop.n].ii] : { ...MORE, notes: '', docs: [] }) : null;
   // A slide with the money's changes on it: QuickBooks' own, or the money item's card or list (% | $ shows there)
