@@ -1331,7 +1331,7 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const seen = m.practice ? m : forBoard({ ...m, shared: true });
   const sections = seen.sections.map((sec) => ({
     id: sec.id, title: sec.title, minutes: sec.minutes || 0,
-    items: sec.items.filter(isFilled).map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, about: it.about, docs: it.docs,
+    items: sec.items.filter(isFilled).map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, also: it.also, about: it.about, docs: it.docs,
       report: it.report, reportBy: it.reportBy, reportAt: it.reportAt })),
   }));
   // The last meeting's minutes, for an item that asks the board to approve them (only from a meeting the board can see)

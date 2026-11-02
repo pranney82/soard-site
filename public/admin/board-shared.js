@@ -290,6 +290,8 @@ export const todayEastern = (now = Date.now()) => new Intl.DateTimeFormat('en-CA
 
 function cleanItem(raw) {
   const live = ['projects', 'reveals', 'events', 'cash', 'meetings', 'minutes'].includes(raw?.live) ? raw.live : '';
+  // The live lists it shows after its first (`live`): the makeovers and the reveals under one item, say
+  const also = [...new Set((Array.isArray(raw?.also) ? raw.also : []).filter((k) => SHOW_KINDS.includes(k) && k !== live))];
   return {
     id: idOr(raw?.id, 'i_'),
     title: one(raw?.title, LIMITS.title),
@@ -304,6 +306,7 @@ function cleanItem(raw) {
     reportAt: /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(raw?.reportAt || '')) ? raw.reportAt : '',
     confidential: bool(raw?.confidential),
     live,
+    also,
     about: ID.test(String(raw?.about || '')) ? raw.about : '',
     docs: [...new Set((Array.isArray(raw?.docs) ? raw.docs : []).filter((id) => ID.test(String(id))))].slice(0, 20),
   };
@@ -417,7 +420,7 @@ export function cleanLive(raw) {
   const l = raw && typeof raw === 'object' ? raw : {};
   const vote = l.vote && typeof l.vote === 'object' && ID.test(String(l.vote.motionId || '')) ? { motionId: String(l.vote.motionId), openedAt: isoAt(l.vote.openedAt) } : null;
   const itemId = ID.test(String(l.itemId || '')) ? String(l.itemId) : '';
-  const fileId = itemId && ID.test(String(l.fileId || '')) ? String(l.fileId) : '';
+  const fileId = itemId && (ID.test(String(l.fileId || '')) || PSEUDO_STOP.test(String(l.fileId || ''))) ? String(l.fileId) : '';
   return {
     startedAt: isoAt(l.startedAt), endedAt: isoAt(l.endedAt), itemId, fileId,
     page: fileId && Number(l.page) > 0 ? Math.min(999, Math.floor(Number(l.page))) : 0,
@@ -442,7 +445,7 @@ export const isLive = (m) => !!m?.live?.startedAt && !m.live.endedAt;
  * An agenda item with something in it. A row added and left empty isn't on the agenda: the board never sees it, it
  * takes no time and no number, and the chair never stops on it (the editor keeps it, to fill in or delete)
  */
-export const isFilled = (it) => !!(it && (it.title || it.presenter || it.who?.length || it.notes || it.report || it.live || it.about || it.docs?.length || it.confidential));
+export const isFilled = (it) => !!(it && (it.title || it.presenter || it.who?.length || it.notes || it.report || it.live || it.also?.length || it.about || it.docs?.length || it.confidential));
 /**
  * The agenda's items in order, numbered the way the board page and the chair's screen show them (an empty row has
  * none): [{ id, title, label: '3.2', section, si, ii }], `ii` where the item sits in its part
@@ -589,6 +592,7 @@ export function draftAgenda(prev, { template = DEFAULT_TEMPLATE } = {}) {
           ...cleanItem({
             title: minutes ? minutesItemTitle(prev) : it.title, presenter: minutes ? '' : it.presenter, who: minutes ? [] : it.who, confidential: it.confidential,
             live: minutes ? 'minutes' : (it.live && it.live !== 'minutes' ? it.live : '') || liveOf.get(it.title.toLowerCase()) || liveOfTitle(it.title, s.title), about: minutes ? prev.id : '',
+            also: minutes ? [] : it.also,
           }),
           id: uid('i_'),
         };
@@ -722,11 +726,47 @@ export function guessItem(m, f, today = todayEastern()) {
  * → [{ key, kind: cover | since | section | item | doc | end, itemId, fileId, page, part, n, sectionId }] where n is the
  * item's place in agendaItems (-1 for the cover, a part's card, the loose files and the close)
  */
-export function deckOf(m, { pages = {}, parts = {}, meetings = [] } = {}) {
+/** The live lists an item can show, beside the vote on the last minutes ('minutes', only ever its first) */
+export const SHOW_KINDS = ['projects', 'reveals', 'events', 'cash', 'meetings'];
+/** Everything an item shows live, in order: its first (`live`), then the others (`also`) */
+export const showsOf = (it) => [...new Set([it?.live, ...(it?.also || [])].filter((k) => SHOW_KINDS.includes(k)))];
+/** A stop that's no file: one of an item's other live lists, or one of QuickBooks' slides */
+const PSEUDO_STOP = /^(live:(projects|reveals|events|cash|meetings)|books:(year|act|pos))$/;
+/**
+ * QuickBooks' slides after the money, as the books have them: the year against last year (by month, else the year so
+ * far against the same days), the statement of activities, the statement of financial position
+ */
+export function booksDraw(books) {
+  if (!books || typeof books.revenue !== 'number') return [];
+  const s = books.statements;
+  return [
+    books.monthly?.months?.length || books.lastYear ? 'year' : '',
+    s?.activity?.length ? 'act' : '',
+    s?.position?.length ? 'pos' : '',
+  ].filter(Boolean);
+}
+/**
+ * An item's slides after its own card, in the deck's order: each live list after its first, and after the money
+ * QuickBooks' slides. → [{ kind: 'live' | 'books', id: 'live:reveals' | 'books:act', k }]
+ */
+export const slidesOf = (it, books) => {
+  const drawn = booksDraw(books);
+  return showsOf(it).flatMap((k, i) => [...(i ? [{ kind: 'live', id: `live:${k}`, k }] : []), ...(k === 'cash' ? drawn.map((b) => ({ kind: 'books', id: `books:${b}`, k: b })) : [])]);
+};
+/** A financial statement as a file (a balance sheet, a P&L): QuickBooks draws them once it's connected. A budget isn't one */
+export const isStatement = (f) => f?.kind === 'financials' && !/budget/i.test(String(f.name || ''));
+
+export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null } = {}) {
+  const drawn = booksDraw(books);
+  // A statement as a file stays off the screen only once QuickBooks draws the statements themselves
+  const drawsStatements = drawn.includes('act') || drawn.includes('pos');
   const out = [{ key: 'cover', kind: 'cover', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' }];
   if (m.sections.some((s) => s.items.some((it) => it.live === 'minutes' && it.about))) out.push({ key: 'since', kind: 'since', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' });
   const add = (it, files, n, sectionId) => {
     out.push({ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n, sectionId });
+    // Each live list after the first, a slide of its own; after the money, QuickBooks' slides (the year against last
+    // year, then each statement)
+    for (const x of slidesOf(it, books)) out.push({ key: `${it.id}:${x.id}`, kind: x.kind, itemId: it.id, fileId: x.id, page: 0, n, sectionId });
     for (const f of files) {
       const count = Math.max(1, Math.round(Number(pages[f.id]) || 1));
       // A tall page (a statement, a report) is two stops, its top half then its bottom one, each as big as the screen allows
@@ -741,7 +781,7 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [] } = {}) {
     if (!s.title && !items.length) continue;
     if (items.length !== 1) out.push({ key: `section:${s.id}`, kind: 'section', itemId: '', fileId: '', page: 0, n: -1, sectionId: s.id });
     // Never a staff-only file: the screen shows the meeting as the board sees it, and the chair's deck matches it stop for stop
-    for (const it of items) add(it, docsOf(itemFiles(m, it, meetings).filter((f) => !f.staffOnly)).map((d) => d.file), n++, s.id);
+    for (const it of items) add(it, docsOf(itemFiles(m, it, meetings).filter((f) => !f.staffOnly && !(drawsStatements && showsOf(it).includes('cash') && isStatement(f)))).map((d) => d.file), n++, s.id);
   }
   const loose = docsOf(looseFiles(m).filter((f) => !f.staffOnly)).map((d) => d.file);
   if (loose.length) add(MORE, loose, -1, '');

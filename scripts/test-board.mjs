@@ -409,7 +409,20 @@ try {
   const meetingId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/')[2]);
   const t1 = await text(jane);
   ok(await jane.evaluate(() => [...document.querySelectorAll('.agx-item__title')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
-  ok(/Money: the bank balances and the finance summary/.test(t1) && /Makeovers in progress \(JobTread\)/.test(t1), 'the agenda marks the items that show live numbers');
+  const chips = await jane.evaluate(() => [...document.querySelectorAll('.bd-showpick .agx-live')].map((x) => x.textContent.trim()));
+  ok(chips.includes('The money') && chips.includes('Makeovers in progress'), `the agenda marks the items that show live numbers (${chips.join(', ')})`);
+  // An item shows more than one live list: the makeovers and the reveals under one item, in the order picked
+  await jane.evaluate(() => [...document.querySelectorAll('.agx-item')].find((x) => x.querySelector('.bd-showpick .agx-live.is-projects'))?.querySelector('.bd-showpick .bd-pop__btn').scrollIntoView({ block: 'center' }));
+  await sleep(300);
+  await jane.evaluate(() => [...document.querySelectorAll('.agx-item')].find((x) => x.querySelector('.bd-showpick .agx-live.is-projects'))?.querySelector('.bd-showpick .bd-pop__btn').click());
+  await jane.waitForSelector('.bd-pop__panel .bd-picker__opt', { timeout: 3000 }).catch(() => {});
+  { const top = await onTop(jane); ok(top === true, `the Shows list draws over everything (${top})`); }
+  await clickText(jane, '.bd-pop__panel .bd-picker__opt', /^Upcoming reveals/);
+  await jane.keyboard.press('Escape');
+  let alsoNow = '';
+  for (let k = 0; k < 30 && alsoNow !== 'reveals'; k++) { await sleep(300); alsoNow = (await meetingNow(jane, meetingId)).sections.flatMap((x) => x.items).find((it) => it.live === 'projects')?.also?.join() || ''; }
+  ok(alsoNow === 'reveals' && await saved(jane), `an item shows a second live list, kept in the order picked (${alsoNow})`);
+  ok((await jane.evaluate(() => [...document.querySelectorAll('.agx-item')].find((x) => x.querySelector('.agx-live.is-projects'))?.querySelectorAll('.bd-showpick .agx-live').length)) === 2, 'both show on the item');
 
   // Board only, and a private note, from an item's ⋯ menu
   ok(await itemMenu(jane, 'Governance', /^Board only/), 'an item’s menu marks it board only');
@@ -519,6 +532,28 @@ try {
   ok(await itemMenu(jane, 'Personal Best, Business Best and Sunshine Bragging Rights: what', /^Delete the item$/) && await jane.waitForFunction(() => ![...document.querySelectorAll('.agx-item__title')].some((x) => /since we last met$/.test(x.value)), { timeout: 3000 }).then(() => true, () => false), 'and it goes again from its menu');
   ok(await jane.evaluate(() => [...document.querySelectorAll('.agx-item')].filter((li) => li.querySelector('.bd-who:not(.has-who)')).every((li) => { const b = li.querySelector('.bd-who .bd-pop__btn'); return b && Number(getComputedStyle(li.querySelector('.bd-who')).opacity) === 1 && b.getBoundingClientRect().width > 60; })), 'Who presents shows on every item with nobody picked, without hovering');
   await shot(jane, 'agenda-report');
+  // The live preview beside the agenda: the board page as it's typed (before it's saved), the item worked on brought
+  // into view; at a phone's width; the screen's slide for that item. Hiding it brings Getting ready back
+  await clickText(jane, '.agx-head button', /^Preview$/);
+  const pv = await jane.waitForFrame((fr) => /\?preview#\/meetings\/[^/]+$/.test(fr.url()), { timeout: 8000 }).catch(() => null);
+  ok(!!pv && await pv.waitForSelector('.bp-agitem', { timeout: 10000 }).then(() => true, () => false), 'Preview puts the board page beside the agenda');
+  ok(await pv.evaluate(() => getComputedStyle(document.querySelector('.bp-top')).display === 'none' && !document.querySelector('.bp-report-ask')), 'as the board sees it: no page header, no ask of the founder’s own');
+  await jane.evaluate(() => { const t = [...document.querySelectorAll('.agx-item__title')].find((x) => x.value === 'Financial'); t.focus(); t.setSelectionRange(t.value.length, t.value.length); });
+  await jane.keyboard.type(' and budget');
+  ok(await pv.waitForFunction(() => [...document.querySelectorAll('.bp-agitem__title')].some((x) => x.textContent === 'Financial and budget'), { timeout: 5000 }).then(() => true, () => false), 'a change shows in the preview as it’s typed');
+  ok(await pv.waitForFunction(() => { const li = [...document.querySelectorAll('.bp-agitem')].find((x) => /Financial and budget/.test(x.textContent)); const r = li?.getBoundingClientRect(); return r && r.top >= -4 && r.top < innerHeight / 2; }, { timeout: 5000 }).then(() => true, () => false), 'the item worked on comes into view there');
+  await shot(jane, 'agenda-preview');
+  for (let k = 0; k < ' and budget'.length; k++) await jane.keyboard.press('Backspace');
+  ok(await saved(jane) && (await meetingNow(jane, meetingId)).sections.flatMap((x) => x.items).some((it) => it.title === 'Financial'), 'and the agenda itself saves as ever');
+  await clickText(jane, '.agx-preview .bd-seg button', /^Phone$/);
+  ok(await pv.waitForFunction(() => innerWidth === 390 && !!document.querySelector('.bp-agitem'), { timeout: 5000 }).then(() => true, () => false), 'Phone: the board page at a phone’s width');
+  await shot(jane, 'agenda-preview-phone');
+  await clickText(jane, '.agx-preview .bd-seg button', /^Screen$/);
+  const sc = await jane.waitForFrame((fr) => /\?preview#\/meetings\/[^/]+\/screen$/.test(fr.url()), { timeout: 8000 }).catch(() => null);
+  ok(!!sc && await sc.waitForFunction(() => document.querySelector('.bs-item__title')?.textContent === 'Financial', { timeout: 10000 }).then(() => true, () => false), 'Screen: the slide of the item worked on');
+  await shot(jane, 'agenda-preview-screen');
+  await clickText(jane, '.agx-head button', /^Hide the preview$/);
+  ok(await jane.evaluate(() => !document.querySelector('.agx-preview') && getComputedStyle(document.querySelector('.bm-aside')).display !== 'none'), 'Hide the preview: Getting ready is back');
   ok(merged.actions.some((a) => a.text === 'Send the venue contract' && a.owner === 'alex-rivera'), 'the last meeting’s open action item carries over');
 
   // Getting ready 1: the invite, from the president's calendar, with Google Meet and transcripts on
@@ -891,7 +926,8 @@ try {
       await alex.type('.bp-sign input', 'alex rivera');
       await clickText(alex, 'button', /^I’ve read it and agree$/);
       ok(await waitText(alex, /Signed\s*by Alex Rivera/), 'they sign the policy with their typed name (kept the way People spells it)');
-      ok(await alex.evaluate(() => document.activeElement?.classList.contains('bp-signed')), 'the focus goes to “Signed by…”, not the page');
+      // The focus moves a frame after "Signed by…" shows
+      ok(await alex.waitForFunction(() => document.activeElement?.classList.contains('bp-signed'), { timeout: 2000 }).then(() => true, () => false), 'the focus goes to “Signed by…”, not the page');
       await alex.goto(`${SITE}/admin/board/#/reveals`, { waitUntil: 'networkidle0' });
       ok(await alex.evaluate(() => location.hash) === '#/' && await alex.waitForSelector('#makeovers .bk-col', { timeout: 8000 }).then(() => true, () => false), 'the old Reveals link opens Home, where reveals are now');
       await alex.goto(`${SITE}/admin/board/#/meetings/${pastId}`, { waitUntil: 'networkidle0' });
@@ -1272,11 +1308,18 @@ try {
   await DB.exec('CREATE TABLE IF NOT EXISTS books_daily (id TEXT PRIMARY KEY, data TEXT, day TEXT, read_at TEXT, tried_at TEXT, error TEXT)');
   const readAt = new Date().toISOString();
   await DB.prepare('INSERT OR REPLACE INTO books_link (id, realm_id, company, refresh_token, ytd, read_at, tried_at) VALUES (?, ?, ?, ?, ?, ?, ?)').bind('qbo', '9130350000000001', 'Example Charity', 'refresh-test', JSON.stringify(ytdBooks), readAt, readAt).run();
+  // Month by month (_quickbooks.js plByMonth): this year through this month, last year all twelve, adding up near the year's own
+  const thisMonth = Number(day(0).slice(5, 7));
+  const monthly = {
+    year: String(yr), lastYear: String(yr - 1),
+    months: Array.from({ length: thisMonth }, (_, i) => ({ month: `${yr}-${String(i + 1).padStart(2, '0')}`, revenue: Math.round(1876045 / thisMonth), spent: Math.round(1200000 / thisMonth) })),
+    last: Array.from({ length: 12 }, (_, i) => ({ month: `${yr - 1}-${String(i + 1).padStart(2, '0')}`, revenue: [90, 110, 150, 140, 160, 170, 150, 160, 180, 190, 240, 260][i] * 1000, spent: 125000 })),
+  };
   // The statements as of the books' close (_quickbooks.js statementRows): a line or two of each
   const statements = { asOf: day(-30), closed: false, priorAsOf: `${yr - 1}${day(-30).slice(4)}`,
     position: [{ k: 'head', label: 'Assets', d: 0 }, { k: 'total', label: 'Total Bank Accounts', d: 1, a: 608532, p: 655431 }, { k: 'total', label: 'TOTAL ASSETS', d: 0, a: 870767, p: 794994 }],
     activity: [{ k: 'head', label: 'Income', d: 0 }, { k: 'total', label: 'Total Income', d: 0, a: 1884217, p: 1909703 }, { k: 'sum', label: 'Net Income', d: 0, a: 189248, p: 176000 }] };
-  await DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at) VALUES (?, ?, ?, ?, ?)').bind('qbo', JSON.stringify({ shape: 3, day: day(0), lastYear: lastBooks, trailing: null, months: [], statements, functions: null }), day(0), readAt, readAt).run();
+  await DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at) VALUES (?, ?, ?, ?, ?)').bind('qbo', JSON.stringify({ shape: 3, day: day(0), lastYear: lastBooks, trailing: null, months: [], statements, functions: null, monthly }), day(0), readAt, readAt).run();
   for (const width of [1440, 390]) {
     const money = await tab(MEMBER, width);
     await money.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
@@ -1312,6 +1355,19 @@ try {
       ok(await money.waitForSelector('.bp-agitem .bp-agmix', { timeout: 6000 }).then(() => true, () => false), 'the meeting: its money item says where the revenue came from');
       ok(/^Sales\$415K/.test(await money.$eval('.bp-agitem .bp-agstore .bp-store li', (x) => x.textContent).catch(() => '')), 'the meeting: its money item has the store');
       await shot(money, '27-revenue-by-category-meeting');
+      // The money item, from QuickBooks: revenue and expenses against last year month by month, the statements open, and
+      // a statement QuickBooks draws only a quiet link (never its pages again)
+      const yc = await money.evaluate(() => ({ charts: document.querySelectorAll('.bp-agitem .by-chart svg').length, files: document.querySelector('.bp-asfiles')?.textContent || '', tiles: [...document.querySelectorAll('.bp-agitem .bp-doctile__title')].map((x) => x.textContent), stmts: !!document.querySelector('.bp-agstmts .bp-stmt__table') }));
+      ok(yc.charts === 2 && yc.stmts, `the money item: revenue and expenses against last year, month by month, and the statements, open (${JSON.stringify(yc)})`);
+      ok(/Also as a file: Balance sheet financials/.test(yc.files) && !yc.tiles.some((x) => /Balance sheet/.test(x)), 'a statement QuickBooks draws isn’t a document tile again: a quiet link');
+      await money.evaluate(() => document.querySelector('.bp-agitem .by-chart').scrollIntoView({ block: 'center' }));
+      await money.hover('.bp-agitem .by-chart svg');
+      ok(await money.waitForFunction(() => /\d{4} \$[\d,]+/.test(document.querySelector('.by-tip')?.textContent || ''), { timeout: 2000 }).then(() => true, () => false), 'over the chart: a month, this year beside last');
+      await money.mouse.move(5, 5);
+      await money.evaluate(() => document.querySelector('.bp-agitem .by-chart svg').focus());
+      await money.keyboard.press('ArrowLeft');
+      ok(await money.evaluate(() => /through|January|February|March|April|May|June|July|August|September|October|November|December/.test(document.querySelector('.by-tip')?.textContent || '')), 'and from the keyboard: ← → along the months');
+      await shot(money, '27b-money-against-last-year');
       // On paper too: Print it all's money has the bar and every category beside last year. The meeting's numbers
       // locked on its day, before QuickBooks; locked again (Board → the meeting → Lock today's numbers), they carry it
       await takeSnapshot(env, meetingId, { by: 'Jane Doe' });
@@ -1325,6 +1381,27 @@ try {
       const storePaper = await money.evaluate(() => [...document.querySelectorAll('.bpp-store tbody tr')].map((r) => r.textContent));
       ok(JSON.stringify(storePaper) === JSON.stringify(['Sales$415,000$830,000▼ 50%', 'Cost of goods$250,000$380,000▼ 34%', 'Profit before staff and rent$165,000$450,000▼ $285K']), `Print it all: the store beside last year (${JSON.stringify(storePaper)})`);
       await money.evaluate(() => dispatchEvent(new Event('afterprint')));
+      // On the screen: QuickBooks' slides after the money, each a stop the chair puts up from the run of show
+      const qb = await tab(FOUNDER, 1280);
+      await qb.setViewport({ width: 1280, height: 720, deviceScaleFactor: 1 });
+      await qb.goto(`${SITE}/admin/board/#/meetings/${meetingId}/screen`, { waitUntil: 'networkidle0' });
+      await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}/during`, { waitUntil: 'networkidle0' });
+      await jane.reload({ waitUntil: 'networkidle0' });
+      ok(await jane.waitForFunction(() => [...document.querySelectorAll('.bm-slide')].map((b) => b.textContent).join('|').includes('The year against last year'), { timeout: 8000 }).then(() => true, () => false), 'the run of show lists QuickBooks’ slides under the money, and the reveals under the makeovers');
+      ok((await jane.$$eval('.bm-slide', (b) => b.map((x) => x.textContent))).some((t) => /Upcoming reveals/.test(t)), 'each show after an item’s first, its own stop');
+      const slide = async (re) => { await clickText(jane, '.bm-slide', re); await qb.bringToFront(); };
+      await slide(/The year against last year/);
+      ok(await qb.waitForFunction(() => /against/.test(document.querySelector('.by-slide__title')?.textContent || '') && document.querySelectorAll('.by-slide .by-chart svg').length === 2, { timeout: 15000 }).then(() => true, () => false), 'the screen: the year against last year, month by month');
+      await shot(qb, '28-screen-books-year');
+      await slide(/Statement of activities/);
+      ok(await qb.waitForFunction(() => /^Statement of activities/.test(document.querySelector('.by-slide__title')?.textContent || '') && /Net Income/.test(document.querySelector('.by-stmt')?.textContent || ''), { timeout: 15000 }).then(() => true, () => false), 'then the statement of activities beside a year before');
+      await slide(/Statement of financial position/);
+      ok(await qb.waitForFunction(() => /^Statement of financial position/.test(document.querySelector('.by-slide__title')?.textContent || '') && /▲|▼/.test(document.querySelector('.by-stmt')?.textContent || ''), { timeout: 15000 }).then(() => true, () => false), 'then the financial position, with the change');
+      await shot(qb, '28b-screen-books-position');
+      await slide(/Upcoming reveals/);
+      ok(await qb.waitForFunction(() => document.querySelector('.bs-item__title')?.textContent === 'Upcoming reveals', { timeout: 15000 }).then(() => true, () => false), 'an item’s second show, a slide of its own');
+      await shot(qb, '28c-screen-second-show');
+      await qb.close();
     }
     if (width === 390) {
       // On a phone a count, an amount or a time never ends a line without its word ("$243K" / "in kind"); a year

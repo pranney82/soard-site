@@ -7,7 +7,7 @@
 
 import { h, htm, useState, useEffect, useRef, useMemo } from './vendor.js';
 import { float, floatRef } from './float.js';
-import { LIVE, liveLines, shortDate, todayEastern, isDate, noteBlocks, callName, fileTitle, docTitle, namesText } from './board-shared.js';
+import { LIVE, liveLines, shortDate, todayEastern, isDate, noteBlocks, callName, fileTitle, docTitle, namesText, SHOW_KINDS, LIVE_TITLES } from './board-shared.js';
 
 export const html = htm.bind(h);
 export const API = '/api/board-admin';
@@ -289,6 +289,39 @@ function PeopleList({ people, value, chosen, max, onChange, close }) {
     <div class="bd-picker__foot"><span class=${`bd-muted ${full ? 'is-full' : ''}`} role=${full ? 'alert' : null}>${full ? `Up to ${max}: take someone off first` : value.length ? `${value.length} of up to ${max}` : `Up to ${max}`}</span>
       <span class="bd-actions">${value.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onChange([])}>Clear</button>` : null}<button type="button" class="btn btn-primary btn-sm" onClick=${() => close()}>Done</button></span></div>
   </div>`;
+}
+
+/** What each live list draws from, under its name in the Shows list */
+const SHOW_FROM = { projects: 'The makeovers board, from JobTread', reveals: 'Reveals ahead, from JobTread', events: 'Events ahead, from the website', cash: 'The bank, the budget and QuickBooks, beside last year', meetings: 'This year’s board meetings' };
+/**
+ * What an item shows live, in order: the lists as chips (the button), and a checklist to add or take off each one.
+ * Order is the order they're picked in: the first on the item's own card on the screen, each next a slide of its own.
+ * `value`: ['projects', 'reveals', …]
+ */
+export function ShowsPicker({ value, onChange, label, startOpen = false, onClosed }) {
+  const button = value.length
+    ? html`<span class="bd-shows">${value.map((k) => html`<span class=${`agx-live is-${k}`} key=${k}><span class="agx-live__dot" aria-hidden="true"></span>${LIVE_TITLES[k]}</span>`)}</span>`
+    : html`<span class="bd-who__empty">+ Show live numbers</span>`;
+  const named = value.length ? `Shows ${value.map((k) => LIVE_TITLES[k]).join(', ')}: ${label}` : label;
+  return html`<${Pop} cls=${`bd-showpick ${value.length ? 'has-who' : ''}`} label=${named} button=${button} startOpen=${startOpen} onClosed=${onClosed}>
+    ${(close) => html`<div class="bd-picker">
+      <p class="bd-picker__lead">Live from JobTread, QuickBooks and the website, under the item on the board page, and on the screen in this order</p>
+      <ul class="bd-picker__list" role="listbox" aria-multiselectable="true" aria-label="Live lists">
+        ${SHOW_KINDS.map((k) => {
+          const at = value.indexOf(k);
+          return html`<li role="option" aria-selected=${at >= 0} class="bd-picker__opt" key=${k} tabindex="0"
+            onClick=${() => onChange(at >= 0 ? value.filter((x) => x !== k) : [...value, k])}
+            onKeyDown=${(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}>
+            <span class=${`bd-showpick__n ${at >= 0 ? 'is-on' : ''}`} aria-hidden="true">${at >= 0 ? at + 1 : ''}</span>
+            <span class="bd-picker__text"><span class="bd-picker__name">${LIVE_TITLES[k]}</span><span class="bd-picker__meta">${SHOW_FROM[k]}</span></span>
+            <span class="bd-picker__check" aria-hidden="true">${at >= 0 ? CHECK : null}</span>
+          </li>`;
+        })}
+      </ul>
+      <div class="bd-picker__foot"><span class="bd-muted">${value.length ? `${value.length} shown` : 'None shown'}</span>
+        <span class="bd-actions">${value.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onChange([])}>Clear</button>` : null}<button type="button" class="btn btn-primary btn-sm" onClick=${() => close()}>Done</button></span></div>
+    </div>`}
+  </${Pop}>`;
 }
 
 /**
@@ -600,6 +633,30 @@ export const STYLES = `
   }
   @media (prefers-reduced-motion: reduce) { .agx-item, .agx-run__part { transition: none; } }
 
+  /* The agenda beside its live preview (board-meeting.js AgendaPreview): the board page, a phone or the screen, as it's written */
+  .bm-layout:has(.agx.is-previewing) { grid-template-columns: minmax(0, 1fr); }
+  .bm-layout:has(.agx.is-previewing) > .bm-aside { display: none; }
+  .agx.is-previewing { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr); column-gap: 1.4rem; align-items: start; }
+  .agx.is-previewing > .agx-head, .agx.is-previewing > .agx-run, .agx.is-previewing > .agx-runmeta { grid-column: 1 / -1; }
+  .agx.is-previewing > .agx-edit { grid-column: 1; min-width: 0; }
+  .agx.is-previewing > .agx-preview { grid-column: 2; grid-row: 4; position: sticky; top: calc(var(--top-h, 0px) + 1rem); min-width: 0; }
+  .agx-preview__bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin-bottom: 0.6rem; }
+  .agx-preview__note { font-size: var(--fs-xs); color: var(--color-text-secondary); }
+  .agx-preview .bd-seg { display: inline-flex; padding: 3px; border-radius: 999px; background: var(--seg-bg, rgba(0,0,0,0.05)); }
+  .agx-preview .bd-seg button { height: 30px; padding: 0 0.85rem; border: none; border-radius: 999px; background: none; font: inherit; font-size: var(--fs-xs); font-weight: 650; color: var(--color-text-secondary); cursor: pointer; }
+  .agx-preview .bd-seg button.is-on { background: var(--color-bg-card); color: var(--color-text); box-shadow: 0 1px 3px rgba(26,27,31,0.14); }
+  .agx-preview .bd-seg button:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+  .agx-preview__frame { position: relative; overflow: hidden; border: 1px solid var(--color-border); border-radius: 12px; background: #FEFCF5; }
+  .agx-preview__frame iframe { display: block; border: 0; transform-origin: 0 0; background: #FEFCF5; }
+  .agx-preview__frame.is-phone { display: flex; justify-content: center; padding: 13px 0; background: var(--color-bg-subtle, #F3F2EE); }
+  .agx-preview__frame.is-phone iframe { transform-origin: 50% 0; border-radius: 26px; box-shadow: 0 0 0 7px #1F201C, 0 18px 40px -16px rgba(0,0,0,0.45); }
+  .agx-preview__frame.is-screen { background: #1C1D1A; border-color: #1C1D1A; }
+  @media (max-width: 1100px) {
+    .agx.is-previewing { grid-template-columns: minmax(0, 1fr); }
+    .agx.is-previewing > .agx-preview { grid-column: 1; grid-row: 4; position: static; margin-bottom: 1rem; }
+    .agx.is-previewing > .agx-edit { grid-row: 5; }
+  }
+
   /* Getting ready: which presenters' reports are in */
   .bm-reports { margin-top: 1rem; padding-top: 0.9rem; border-top: 1px solid var(--color-border); }
   .bm-reports__h { display: flex; justify-content: space-between; align-items: baseline; gap: 0.5rem; margin: 0 0 0.2rem; }
@@ -826,6 +883,12 @@ export const STYLES = `
   .bd-picker__num { flex: none; min-width: 2.2rem; font-variant-numeric: tabular-nums; font-size: var(--fs-xs); font-weight: 700; color: var(--color-text-muted); }
   .bd-picker__opt.is-none .bd-picker__name { color: var(--color-text-secondary); font-weight: 500; }
   .bd-picker__none { padding: 0.75rem 0.5rem; font-size: var(--fs-sm); color: var(--color-text-secondary); }
+  .bd-picker__lead { margin: 0; padding: 0.7rem 0.85rem 0.35rem; font-size: var(--fs-xs); line-height: 1.45; color: var(--color-text-secondary); }
+  .bd-showpick .bd-pop__btn { height: auto; min-height: 30px; padding: 0.15rem 0.35rem; }
+  .bd-showpick:not(.has-who) .bd-pop__btn { border: 1px dashed var(--color-border-strong); color: var(--color-text-secondary); padding: 0 0.55rem; }
+  .bd-shows { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; }
+  .bd-showpick__n { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; border: 1.5px solid var(--color-border-strong); font-size: var(--fs-2xs); font-weight: 800; font-variant-numeric: tabular-nums; }
+  .bd-showpick__n.is-on { border-color: var(--color-primary); background: var(--color-primary); color: #1F201C; }
   .bd-picker__foot .is-full { color: var(--tone-warn-fg); font-weight: 650; }
   .bd-picker__foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.5rem 0.6rem; border-top: 1px solid var(--color-border); }
   .bd-goes .bd-pop__btn { border-color: var(--color-border); max-width: 16rem; }
@@ -889,6 +952,20 @@ export const STYLES = `
   .bm-order__item.is-now .bm-order__go { background: var(--color-primary-bg); border-color: var(--color-primary); }
   .bm-order__item.is-now .bm-order__n { background: #1F201C; }
   .bm-order__approve { margin: 0.2rem 0 0.35rem 2.6rem; }
+  .bm-order__head small { white-space: nowrap; }
+  .bm-order__tags { display: inline-flex; flex-wrap: wrap; gap: 0.3rem; }
+  /* An item's other live lists and QuickBooks' slides, each a stop to put on the screen */
+  .bm-slides { list-style: none; margin: 0.1rem 0 0.3rem 2.75rem; padding: 0; display: flex; flex-wrap: wrap; gap: 0.35rem; }
+  .bm-slide { display: inline-flex; align-items: center; gap: 0.45rem; min-height: 32px; padding: 0 0.7rem 0 0.35rem; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-card); font: inherit; font-size: var(--fs-xs); font-weight: 650; color: var(--color-text); cursor: pointer; }
+  .bm-slide:hover { border-color: var(--color-border-strong); }
+  .bm-slide.is-on { background: var(--color-primary-bg); border-color: var(--color-primary); }
+  .bm-slide__k { display: inline-grid; place-items: center; min-width: 2.1rem; height: 22px; padding: 0 0.35rem; border-radius: 999px; background: var(--seg-bg, rgba(0,0,0,0.05)); font-size: var(--fs-2xs); font-weight: 800; letter-spacing: 0.04em; color: var(--color-text-secondary); }
+  @media (max-width: 600px) {
+    .bm-order__go { flex-wrap: wrap; }
+    .bm-order__t { flex: 1 1 calc(100% - 3rem); }
+    .bm-order__go > .tag, .bm-order__tags { margin-left: 2.7rem; }
+    .bm-slides { margin-left: 0.4rem; }
+  }
   /* After: one place to drop the minutes */
   .bm-minutes-drop { display: flex; align-items: center; gap: 1rem; padding: 1.15rem 1.25rem; margin: 0; border: 1.5px dashed var(--color-border-strong); border-radius: var(--radius-lg, 14px); background: var(--color-bg-card); cursor: pointer; transition: background 0.2s, border-color 0.2s; }
   .bm-minutes-drop:hover, .bm-minutes-drop.is-over { border-color: var(--color-text); background: var(--color-primary-bg); }

@@ -24,10 +24,11 @@ import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
 import { openDoc, layoutOf, halfOf, areasOf } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
-  sectionPlan, sectionClock, clockText, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText,
+  sectionPlan, sectionClock, clockText, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
 } from '../board-shared.js';
 import { useCover } from '../board-present.js';
 import { Report } from '../board-report.js';
+import { BooksSlide, BOOKS_TITLES } from './books.js';
 import { mdWords } from '../board-md.js';
 import { Kanban, kanbanLine, sized } from './kanban.js';
 import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, compact, storeOf, storeChange } from './money.js';
@@ -38,6 +39,8 @@ const CHANNEL = 'soard-board-screen';
 // The chair's own copy of the screen, small in Board's During (?mirror): it follows the chair but isn't a screen
 // window (it never says hello, takes no keys and has no full-screen button)
 const MIRROR = new URLSearchParams(location.search).has('mirror');
+// Board's preview beside the agenda editor (?preview): it follows the item being worked on, never the chair
+const PREVIEW = new URLSearchParams(location.search).has('preview');
 const LOGO = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=256';
 
 const hueOf = (s) => [42, 28, 96, 152, 200, 18][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
@@ -413,6 +416,8 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
   const nextWords = !next || ended ? null
     : next.kind === 'end' ? html`<span>Next: the close</span>`
     : next.kind === 'section' ? html`<span>Next <b>${String(meeting.sections.findIndex((x) => x.id === next.sectionId) + 1).padStart(2, '0')}</b> ${meeting.sections.find((x) => x.id === next.sectionId)?.title || ''}</span>`
+    : next.kind === 'books' ? html`<span>Next: ${BOOKS_TITLES[next.fileId.slice(6)]}</span>`
+    : next.kind === 'live' ? html`<span>Next: ${LIVE_TITLES[next.fileId.slice(5)]}</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId && next.page === stop.page ? html`<span>Next: the bottom half</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId ? html`<span>Next: page ${next.page + 1}</span>`
     : next.kind === 'doc' ? html`<span>Next: ${docTitle(files.find((f) => f.id === next.fileId)?.name || 'the document')}</span>`
@@ -434,7 +439,10 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
 /** The screen: the stop the chair is on, in the window it's given */
 export function Screen({ id, data, d, onBack = null }) {
   const fast = useRef(false);
-  const [v, fail, trouble] = useLiveView(id, fast);
+  const [v0, fail, trouble] = useLiveView(id, fast);
+  // Board's preview never shows the meeting as it's held (or was: an ended practice): nothing started, no vote; it goes
+  // only where the item being worked on is
+  const v = PREVIEW && v0 ? { ...v0, vote: null, live: { ...v0.live, startedAt: '', endedAt: '', itemId: '', fileId: '', page: 0, part: 0, screen: '', sectionId: '', sectionAt: '', vote: null, floor: '' } } : v0;
   const [told, setTold] = useState(null); // { live, rehearsal, at } from the chair's computer
   const [pages, setPages] = useState({});
   const [halves, setHalves] = useState({}); // { fileId: [halves of each page] }: the chair's, and the pages drawn here
@@ -443,9 +451,17 @@ export function Screen({ id, data, d, onBack = null }) {
   const ch = useRef(null);
   const [stageRef, box] = useBox();
 
+  // Board's preview: to the item being worked on
+  useEffect(() => {
+    if (!PREVIEW) return undefined;
+    const to = (e) => { fast.current = true; setTold({ live: { itemId: e.detail, fileId: '', page: 0 }, rehearsal: false, preview: true, at: Date.now() }); };
+    addEventListener('bp-preview-focus', to);
+    return () => removeEventListener('bp-preview-focus', to);
+  }, []);
+
   // The chair's computer, when it's this one
   useEffect(() => {
-    if (!('BroadcastChannel' in window)) return undefined;
+    if (PREVIEW || !('BroadcastChannel' in window)) return undefined;
     const c = new BroadcastChannel(CHANNEL);
     ch.current = c;
     c.onmessage = (e) => {
@@ -465,7 +481,7 @@ export function Screen({ id, data, d, onBack = null }) {
 
   // Keys here go back to the chair; F fills the screen
   useEffect(() => {
-    if (MIRROR) return undefined;
+    if (MIRROR || PREVIEW) return undefined;
     const keys = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fullScreen(); return; }
@@ -489,10 +505,12 @@ export function Screen({ id, data, d, onBack = null }) {
   useEffect(() => { if (!MIRROR) document.title = v ? `${v.title} · On the screen` : 'SOARD Board · On the screen'; }, [v?.title]);
 
   // (A meeting not shared yet, previewed by an admin, isn't in the board page's list: its name comes with the view)
-  const m = data.meetings.find((x) => x.id === id) || null;
-  const meeting = useMemo(() => (v ? { ...(m || {}), id, title: m?.title || v.title || '', date: v.date, start: m?.start || v.start || '', end: m?.end || v.end || '', sections: v.sections, files: v.files || [] } : null), [v, m]);
+  const m = data.meetings.find((x) => x.id === id) || (PREVIEW ? data.previews?.find((x) => x.id === id) : null) || null;
+  const meeting = useMemo(() => (v ? { ...(m || {}), id, title: m?.title || v.title || '', date: v.date, start: m?.start || v.start || '', end: m?.end || v.end || '', sections: PREVIEW && m ? m.sections : v.sections, files: PREVIEW && m ? m.files : v.files || [] } : null), [v, m]);
   const plan = useMemo(() => (meeting ? sectionPlan(meeting) : new Map()), [meeting]);
-  const deck = useMemo(() => (meeting ? deckOf(meeting, { pages, parts: halves, meetings: v.prior || [] }) : []), [meeting, pages, halves]);
+  // QuickBooks' slides after the money, as the chair's deck has them (the meeting's locked numbers, else today's)
+  const books = (v?.snapshot || data.numbers)?.books || null;
+  const deck = useMemo(() => (meeting ? deckOf(meeting, { pages, parts: halves, meetings: v.prior || [], books }) : []), [meeting, pages, halves, books]);
   const notePages = (fileId, count, page, n) => {
     setPages((p) => {
       if (p[fileId] === count) return p;
@@ -510,14 +528,15 @@ export function Screen({ id, data, d, onBack = null }) {
   if (!v || !meeting) return html`<div class="bs bs--center bs--opening" role="status"><img src=${LOGO} alt="" width="96" height="96" /><p class="bs-quiet">${trouble ? 'The board page isn’t answering. Still trying…' : 'Opening the screen…'}</p>${trouble && !MIRROR ? html`<p><a class="bs-back bs-back--text" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }}>Back to the meeting</a></p>` : null}</div>`;
 
   // The chair's own word is the newest while they're moving this screen (the saved state catches up a moment later)
-  const fresh = told && (told.rehearsal || Date.now() - told.at < 60_000);
+  const fresh = told && (told.rehearsal || told.preview || Date.now() - told.at < 60_000);
   const live = fresh ? told.live : v.live;
   const started = !!v.live.startedAt || (fresh && !!told.live.startedAt);
   const ended = live.screen === 'end' || (!fresh && !!v.live.endedAt);
   const at = ended ? deck.length - 1 : stopIndex(deck, live);
   const stop = deck[at] || deck[0];
   const items = agendaItems(meeting);
-  const item = stop.kind === 'item' || stop.kind === 'doc' ? (stop.n >= 0 ? meeting.sections[items[stop.n].si].items[items[stop.n].ii] : { ...MORE, notes: '', docs: [] }) : null;
+  const onItem = ['item', 'doc', 'live', 'books'].includes(stop.kind);
+  const item = onItem ? (stop.n >= 0 ? meeting.sections[items[stop.n].si].items[items[stop.n].ii] : { ...MORE, notes: '', docs: [] }) : null;
   const cardSi = stop.kind === 'section' ? meeting.sections.findIndex((x) => x.id === stop.sectionId) : -1;
   const label = stop.n >= 0 ? items[stop.n].label : cardSi >= 0 ? String(cardSi + 1).padStart(2, '0') : '';
   const section = stop.n >= 0 ? items[stop.n].section : '';
@@ -539,7 +558,7 @@ export function Screen({ id, data, d, onBack = null }) {
 
   const top = html`<header class="bs-top">
     <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong title=${meetingName(meeting)}>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
-    ${(stop.kind === 'item' || stop.kind === 'doc') && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${namesText(floor.map((p) => p.name))}</strong> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span>` : null}
+    ${onItem && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${namesText(floor.map((p) => p.name))}</strong> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span>` : null}
     <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
   </header>`;
 
@@ -584,6 +603,17 @@ export function Screen({ id, data, d, onBack = null }) {
         ${sec?.items.length ? html`<ol class="bs-chapter__items">${sec.items.map((it) => { const ws = presentersOf(it, people); const lab = items.find((x) => x.id === it.id)?.label; return html`<li key=${it.id}><span class="bs-chapter__label">${lab}</span><span class="bs-chapter__t">${it.title}</span>${ws.length ? html`<span class="bs-chapter__who">${ws.map((p) => html`<${Face} p=${p} size=${36} key=${p.slug || p.name} />`)}<span>${ws.map((p) => p.name).join(' & ')}</span></span>` : null}</li>`; })}</ol>`
           : html`<p class="bs-chapter__open">Open to the floor</p>`}
       </div>
+    </div>`;
+  } else if (stop.kind === 'books') {
+    // QuickBooks' own: the year against last year, or a statement beside a year before
+    stage = html`<${BooksSlide} books=${numbers?.books} kind=${stop.fileId.slice(6)} />`;
+  } else if (stop.kind === 'live') {
+    // One of the item's other live lists, as the item's own would show
+    const k = stop.fileId.slice(5);
+    const facts = liveSlide(k, numbers, id, data, meeting.date);
+    stage = html`<div class=${`bs-item ${k === 'projects' ? 'bs-item--board' : 'bs-item--facts'}`}>
+      <div class="bs-item__bar"><div><p class="bs-eyebrow">${item.title}</p><h1 class="bs-display bs-item__title">${LIVE_TITLES[k]}</h1></div>${k === 'projects' && numbers?.projects ? html`<div class="bs-item__aside"><p class="bs-quiet">${kanbanLine(numbers.projects)}</p></div>` : null}</div>
+      <div class="bs-item__facts">${facts || html`<p class="bs-quiet">Nothing to show here yet</p>`}</div>
     </div>`;
   } else if (stop.kind === 'item') {
     const faces = stop.n >= 0 ? facesOf(item) : '';
@@ -649,6 +679,7 @@ export function Screen({ id, data, d, onBack = null }) {
     <div class="bs-foot">${stop.kind === 'doc' ? html`
       <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${docWords}</span>
       ${pages[stop.fileId] > 1 && pages[stop.fileId] <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${Array.from({ length: pages[stop.fileId] }, (_, i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
+      : stop.kind === 'books' || stop.kind === 'live' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? BOOKS_TITLES[stop.fileId.slice(6)] : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
       : !started && !told && !MIRROR ? html`<span class="bs-foot__what">The screen follows the meeting once the chair starts it.</span>` : null}
     </div>
     <${Rail} meeting=${meeting} items=${items} at=${at} deck=${deck} ended=${ended} prior=${v.prior || []} timer=${timer} />

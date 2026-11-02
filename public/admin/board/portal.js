@@ -31,8 +31,9 @@ import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
   isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
-  reportsOn, namesText,
+  reportsOn, namesText, showsOf, booksDraw, isStatement, forBoard, cleanMeeting,
 } from '../board-shared.js';
+import { YearCompare } from './books.js';
 import { Report, ReportEditor, readTime } from '../board-report.js';
 import { mdPlain, mdWords } from '../board-md.js';
 import { Screen, ScreenPeek } from './screen.js';
@@ -477,6 +478,21 @@ function App() {
     const j = await call();
     if (j.ok) { setData(j); setFail(null); } else setFail(j);
   };
+  // Board's preview: the meeting as it's being written (never saved from here), and the item being worked on
+  useEffect(() => {
+    if (!PREVIEW) return undefined;
+    document.documentElement.classList.add('is-preview');
+    const on = (e) => {
+      if (e.origin !== location.origin || e.source !== window.parent) return;
+      const msg = e.data || {};
+      if (msg.type === 'board-preview' && msg.meeting?.id) setData((dd) => (dd ? withDraft(dd, msg.meeting) : dd));
+      if (msg.type === 'board-preview-focus' && msg.itemId) previewFocus(msg.itemId);
+    };
+    addEventListener('message', on);
+    return () => removeEventListener('message', on);
+  }, []);
+  // Ready for the draft once the page has its own data
+  useEffect(() => { if (PREVIEW && data) window.parent?.postMessage({ type: 'board-preview-ready' }, location.origin); }, [!!data]);
   useEffect(() => {
     load();
     // Back to a tab left open: what changed meanwhile (an RSVP count, a new file), quietly
@@ -1378,8 +1394,10 @@ const NotFound = () => html`<a class="bp-back" href="#/meetings"><${Icon} name="
 
 // Board's "See it as the board will" (?as-board): an admin sees just what a board member does, no ask of their own
 const AS_BOARD = new URLSearchParams(location.search).has('as-board');
+/** Board's live preview beside the agenda editor (?preview, in its iframe): the board's view, the draft as it's typed */
+export const PREVIEW = new URLSearchParams(location.search).has('preview');
 /** Who I am on People: a board member, or an admin looking (their staff record) */
-const meSlug = (data) => data.me.slug || (AS_BOARD ? null : data.me.as) || null;
+const meSlug = (data) => data.me.slug || (AS_BOARD || PREVIEW ? null : data.me.as) || null;
 /** Do I present this item */
 const presents = (it, ctx) => { const me = meSlug(ctx.data); return !!me && presentersOf(it, ctx.d.people).some((p) => p.slug === me); };
 /** Can I write its report here: its presenter, until the minutes are approved */
@@ -1405,6 +1423,33 @@ function ItemReport({ m, it, ctx, upcoming }) {
       ${mine ? html`<a class="bp-report__edit" href=${reportHref(m, it)} aria-label=${`Edit your report on ${it.title}`}><${Icon} name="edit" size=${15} />Edit</a>` : null}</p>
     <${Report} text=${it.report} clamp=${upcoming ? 160 : 90} />
   </section>`;
+}
+
+/**
+ * The draft from Board's editor into the page's data, as the board will see it (forBoard): in the meetings when it's
+ * shared, else in the founders' previews of one that isn't. What's only the member's own (an answer) stays
+ */
+function withDraft(dd, raw) {
+  const seen = forBoard({ ...cleanMeeting(raw), shared: true });
+  if (!seen) return dd;
+  const put = (x, extra) => (x.id === seen.id ? { ...x, ...seen, ...extra, myRsvp: x.myRsvp, myInvite: x.myInvite, onCalendar: x.onCalendar } : x);
+  if (dd.meetings.some((x) => x.id === seen.id)) return { ...dd, meetings: dd.meetings.map((x) => put(x, { shared: true })) };
+  if (dd.previews?.some((x) => x.id === seen.id)) return { ...dd, previews: dd.previews.map((x) => put(x, { shared: false, preview: true })) };
+  return dd;
+}
+/** The item being worked on in Board, brought into view here (the screen goes to it: screen.js listens) */
+function previewFocus(itemId) {
+  dispatchEvent(new CustomEvent('bp-preview-focus', { detail: itemId }));
+  const until = Date.now() + 3000;
+  const go = () => {
+    const el = document.getElementById(`i-${itemId}`);
+    if (!el) { if (Date.now() < until) setTimeout(go, 150); return; }
+    el.scrollIntoView({ block: 'start', behavior: reduceMotion() ? 'auto' : 'smooth' });
+    el.classList.remove('is-found');
+    void el.offsetWidth;
+    el.classList.add('is-found');
+  };
+  go();
 }
 
 /** What this tab sent for each report lately: a newer version that is one of these is its own save, never a clash */
@@ -2060,16 +2105,26 @@ function DocTiles({ files }) {
  * The money, as figures (./money.js moneyTiles): the cash, months of cash, the year against its budget; then the
  * statements from QuickBooks. A past meeting keeps to what was locked into it (its books), else its own packet
  */
-function CashBlock({ n, data, m }) {
+/**
+ * The money item: the figures (each beside last year), the year against last year month by month, where the revenue
+ * came from, then the statements themselves, all from QuickBooks; statements also attached as files, a quiet link
+ */
+function CashBlock({ n, data, m, asFiles = [] }) {
   const upTo = m.date < data.today ? m.date : '';
   const tiles = moneyTiles({ cash: useCashNow(data, upTo, n), budget: useBudget(data, upTo, n), n });
-  // The statements the way the figures go: today's for a meeting today or ahead, the locked ones for a past meeting
-  const st = (upTo ? n?.books : data.numbers.books)?.statements;
-  if (!tiles.length && !st) return null;
+  // The books the way the figures go: today's for a meeting today or ahead, the locked ones for a past meeting
   const books = upTo ? n?.books : data.numbers.books;
+  const st = books?.statements;
+  if (!tiles.length && !st) return null;
+  const fv = asViewer(asFiles);
   return html`${tiles.length ? html`<ul class="bp-agfigs">${tiles.map((t) => html`<li class="bp-agfig" key=${t.k}>
     <span class="bp-fig__label">${t.label}</span><span class="bp-agfig__value">${t.value}</span>${t.sub ? html`<span class=${`bp-fig__sub ${t.tone ? `is-${t.tone}` : ''}`}>${nbw(t.sub)}</span>` : null}
-  </li>`)}</ul>` : null}${mixOf(books) ? html`<div class="bp-agmix"><p class="bp-fig__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null}${storeOf(books) ? html`<div class="bp-agmix bp-agstore"><p class="bp-fig__label">The store, ${books.year} so far</p><${StoreFigures} books=${books} /></div>` : null}${st ? html`<details class="bp-more bp-stmts-fold"><summary>The statements, as of ${fullDate(st.asOf)}</summary><${Statements} s=${st} books=${upTo ? n?.books : data.numbers.books} idp=${`m${m.id}`} /></details>` : null}`;
+  </li>`)}</ul>` : null}
+    <${YearCompare} books=${books} idp=${`y${m.id}`} />
+    ${mixOf(books) ? html`<div class="bp-agmix"><p class="bp-fig__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null}
+    ${storeOf(books) ? html`<div class="bp-agmix bp-agstore"><p class="bp-fig__label">The store, ${books.year} so far</p><${StoreFigures} books=${books} /></div>` : null}
+    ${st ? html`<div class="bp-agstmts"><${Statements} s=${st} books=${books} idp=${`m${m.id}`} /></div>` : null}
+    ${asFiles.length ? html`<p class="bp-asfiles">Also as ${asFiles.length === 1 ? 'a file' : 'files'}: ${asFiles.map((f, i) => html`${i ? ', ' : ''}<a class="bp-link" ...${viewerLink(fv, i)}>${docTitle(f.name)}</a>`)}</p>` : null}`;
 }
 
 /** The reveals ahead, by date, each with the kid's photo when their page has one */
@@ -2094,12 +2149,12 @@ function DatesBlock({ rows }) {
 }
 
 /** An item's live facts, drawn for what they are ([] of lines only when the shape isn't known) */
-function LiveBlock({ kind, n, m, data }) {
+function LiveBlock({ kind, n, m, data, asFiles = [] }) {
   if (!n || !kind || kind === 'minutes') return null;
   const stamp = kind === 'cash' ? null : html`<p class="bp-aglive__when">${m.snapshot ? `As of ${shortDate(m.snapshot.at.slice(0, 10))}, locked for this meeting` : 'As of today'}</p>`;
   let body = null;
   if (kind === 'projects') body = html`<${Kanban} projects=${n.projects} reveals=${n.reveals} variant="agenda" />`;
-  else if (kind === 'cash') body = html`<${CashBlock} n=${n} data=${data} m=${m} />`;
+  else if (kind === 'cash') body = html`<${CashBlock} n=${n} data=${data} m=${m} asFiles=${asFiles} />`;
   else if (kind === 'reveals') body = html`<${RevealsBlock} n=${n} />`;
   else if (kind === 'events') body = html`<${DatesBlock} rows=${(n.events || []).slice(0, 6).map((e) => ({ key: e.title + e.date, date: e.date, title: e.title, sub: [dayOf(e.date), e.time, e.location].filter(Boolean).join(' · ') }))} />`;
   else if (kind === 'meetings') body = html`<${DatesBlock} rows=${(n.meetings || []).filter((x) => x.id !== m.id).slice(0, 4).map((x) => ({ key: x.id || x.date, date: x.date, title: x.name, sub: [dayOf(x.date), x.start ? clock(x.start) : ''].filter(Boolean).join(' · ') }))} />`;
@@ -2266,7 +2321,12 @@ function MeetingDetail({ m, ctx, waiting = false }) {
           </header>
           ${s.items.length ? html`<ol class="bp-agitems">${s.items.map((it) => {
             const who = presentersOf(it, d.people).map(person);
-            const files = docsOf(it);
+            // The statements QuickBooks draws aren't shown again as files on the money item: a quiet link under it
+            // (by the same books the money item draws: today's for a meeting today or ahead, the locked ones for a past one)
+            const drawsSt = showsOf(it).includes('cash') && booksDraw((m.date < data.today ? numbers : data.numbers)?.books).some((b) => b !== 'year');
+            const all = docsOf(it);
+            const files = drawsSt ? all.filter((f) => !isStatement(f)) : all;
+            const asFiles = drawsSt ? all.filter((f) => isStatement(f)) : [];
             const aboutPrev = it.live === 'minutes' && it.about ? data.meetings.find((x) => x.id === it.about) : null;
             const simple = !who.length && !files.length && !it.notes && !it.report && !aboutPrev && !it.confidential && !(it.live && it.live !== 'minutes') && !(upcoming && canWrite(m, it, ctx));
             return html`<li class=${`bp-item bp-agitem ${it.live && it.live !== 'minutes' ? `has-live is-${it.live}` : ''} ${simple ? 'is-simple' : ''}`} id=${`i-${it.id}`} key=${it.id}>
@@ -2281,7 +2341,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
                 ${aboutPrev ? html`<p class="bp-agitem__about"><a class="bp-link" href=${`#/meetings/${aboutPrev.id}`}>The ${meetingName(aboutPrev)}, ${shortDate(aboutPrev.date)}</a></p>` : null}
                 <div class="bp-agitem__notes"><${Notes} text=${it.notes} /></div>
                 <${ItemReport} m=${m} it=${it} ctx=${ctx} upcoming=${upcoming} />
-                <${LiveBlock} kind=${it.live} n=${numbers} m=${m} data=${data} />
+                ${showsOf(it).map((k) => html`<${LiveBlock} key=${k} kind=${k} n=${numbers} m=${m} data=${data} asFiles=${k === 'cash' ? asFiles : []} />`)}
                 ${files.length ? html`<div class="bp-item__docs"><${DocTiles} files=${files} /></div>` : null}
               </div>
             </li>`;

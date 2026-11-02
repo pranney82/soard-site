@@ -30,17 +30,18 @@ import { ask } from './ask.js';
 import { viewerLink, sizeText } from './file-viewer.js';
 import {
   html, call, upload, ago, savedAt, firstOf, youAnd, hashFor, PAGE, viewerFiles, CHECK, NotesBox, Menu, callName, daysFrom, whenWords, Notes,
-  PersonPicker, ItemChooser, DocChip, pickable, Face,
+  PersonPicker, ItemChooser, DocChip, pickable, Face, ShowsPicker,
 } from './board-ui.js';
 import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
-  isLive, agendaItems, isFilled, reportsOn, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, MORE,
+  isLive, agendaItems, isFilled, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, MORE,
   sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles,
 } from './board-shared.js';
 import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
 import { printMinutesTemplate, downloadMinutesDocx } from './board-minutes-template.js';
 import { ReportEditor, Report } from './board-report.js';
+import { BOOKS_TITLES } from './board/books.js';
 
 // What a person edits (the server keeps files, the packet's numbers and sent records, and done ticks)
 const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
@@ -300,7 +301,7 @@ export function agendaSource(m) {
   }
   if (f?.kind === 'email') return { draft: false, label: 'From email', text: `From ${fileTitle(f.name)}, emailed${f.at ? ` ${shortDate(f.at.slice(0, 10))}` : ''}.` };
   if (f?.kind === 'drive') return { draft: false, label: 'From the minutes', text: `Read from ${fileTitle(f.name)} in Google Drive.` };
-  return { draft: false, label: 'Ready', text: 'Changes go on the board page as you make them.' };
+  return { draft: false, label: 'Ready', text: m.shared ? 'Changes go on the board page as you make them.' : 'Changes save as you type. The board sees them once the meeting is on the board page.' };
 }
 
 /** What a file is, by its name, when it's uploaded (it can be changed after) */
@@ -347,9 +348,27 @@ function AgendaEditor({ m, set, ctx, keepSaved }) {
   const [busy, setBusy] = useState('');
   const [drag, setDrag] = useState(null); // { kind: 'item' | 'part', id }
   const [hint, setHint] = useState(null); // { id, after } where the dragged one would land
+  // The board's own page beside the agenda, as it's written (kept on this device), and the item being worked on
+  const [previewing, setPreviewing] = useState(() => { try { return localStorage.getItem('bd-agenda-preview') === '1'; } catch { return false; } });
+  const preview = (on) => { setPreviewing(on); try { localStorage.setItem('bd-agenda-preview', on ? '1' : '0'); } catch { /* private browsing */ } };
+  const [focusId, setFocusId] = useState('');
   // Items whose report is open to write in (a report reads until Edit, so a long one never fills the agenda)
   const [writing, setWriting] = useState(() => new Set());
   const write = (id, on) => setWriting((w) => { const n = new Set(w); if (on) n.add(id); else n.delete(id); return n; });
+  // Getting ready's Reports: a row goes to its item, and one to write opens its editor there, ready to type
+  useEffect(() => {
+    const go = (e) => {
+      const { id, write: open } = e.detail || {};
+      if (open) write(id, true);
+      setTimeout(() => {
+        const li = document.querySelector(`[data-item="${id}"]`);
+        li?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' });
+        if (!open) li?.querySelector('.agx-item__title')?.focus({ preventScroll: true });
+      }, 80);
+    };
+    addEventListener('agx-report', go);
+    return () => removeEventListener('agx-report', go);
+  }, []);
   // After the editor closes (Done, Delete): the focus on what's there now, never lost to the page
   const refocus = (id, sel) => setTimeout(() => document.querySelector(`[data-item="${id}"]`)?.querySelector(sel)?.focus(), 60);
   // Without field-sizing, each item's name is sized to its words by hand, again when the window changes
@@ -451,7 +470,8 @@ function AgendaEditor({ m, set, ctx, keepSaved }) {
     (it.notes || it.showNotes) && { label: 'Remove the background', run: () => setItem(si, ii, { notes: '', showNotes: false }) },
     { label: it.confidential ? 'Not board only' : 'Board only (never emailed)', run: () => setItem(si, ii, { confidential: !it.confidential }) },
     { label: it.staffNote || it.showStaff ? 'Remove your private note' : `A private note (only ${others})`, run: () => setItem(si, ii, it.staffNote || it.showStaff ? { staffNote: '', showStaff: false } : { showStaff: true }) },
-    ...[{ id: '', label: 'No live numbers' }, ...LIVE].filter((l) => l.id !== it.live && l.id !== 'minutes').map((l) => ({ label: l.id ? `Show ${l.label.toLowerCase()}` : 'Show no live numbers', run: () => setItem(si, ii, { live: l.id }) })),
+    // The live lists are on the item itself (Shows); here only the way in for an item that shows none yet
+    it.live !== 'minutes' && !showsOf(it).length && !it.showShows && { label: 'Show live numbers…', run: () => setItem(si, ii, { showShows: true }) },
     { label: 'Delete the item', danger: true, run: async () => { if ((!it.notes && !it.report) || await ask({ title: `Delete “${it.title || 'this item'}”?`, text: `${it.report ? 'Its report goes with it.' : 'Its notes go with it.'} Its documents stay with the meeting.`, yes: 'Delete', danger: true })) withMotion(() => setSection(si, { items: s.items.filter((_, j) => j !== ii) })); } },
   ]} />`;
   // Alt ↑ ↓ in an item's name moves it, across parts too
@@ -476,15 +496,18 @@ function AgendaEditor({ m, set, ctx, keepSaved }) {
   const overBy = total - length;
   const lastEnd = [...plan.values()].at(-1)?.end || '';
   const itemCount = m.sections.reduce((n, s) => n + s.items.length, 0);
-  return html`<div class="card agx">
+  return html`<div class=${`card agx ${previewing ? 'is-previewing' : ''}`}>
     <div class="agx-head">
       <div class="bd-card-head"><h3>Agenda <span class=${`tag ${src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
-      <a class="btn btn-ghost btn-sm" href=${`${PAGE}?as-board#/meetings/${m.id}`} target="_blank" rel="noopener">See it as the board will</a>
+      <div class="bd-actions">
+        <button type="button" class=${`btn btn-sm ${previewing ? 'btn-primary' : 'btn-ghost'}`} aria-pressed=${previewing} onClick=${() => preview(!previewing)}>${previewing ? 'Hide the preview' : 'Preview'}</button>
+        <a class="btn btn-ghost btn-sm" href=${`${PAGE}?as-board#/meetings/${m.id}`} target="_blank" rel="noopener">See it as the board will</a>
+      </div>
     </div>
     <nav class="agx-run" aria-label="The run of show">
       ${m.sections.map((s, si) => html`<a class=${`agx-run__part ${s.minutes ? 'is-own' : ''}`} key=${s.id} href=${`#agx-${s.id}`} style=${`flex:${plan.get(s.id)?.minutes || 5} 1 0`} title=${`${s.title || 'A part'}: ${plan.get(s.id)?.minutes} min`}
         onClick=${(e) => { e.preventDefault(); document.getElementById(`agx-${s.id}`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' }); }}>
-        <b>${String(si + 1).padStart(2, '0')}</b><span>${plan.get(s.id)?.minutes}′</span><span class="sr-only">, ${s.title || 'a part'}, ${plan.get(s.id)?.minutes} minutes</span>
+        <b>${String(si + 1).padStart(2, '0')}</b>${(plan.get(s.id)?.minutes || 0) / Math.max(1, total) >= 0.085 ? html`<span>${plan.get(s.id)?.minutes} min</span>` : null}<span class="sr-only">, ${s.title || 'a part'}, ${plan.get(s.id)?.minutes} minutes</span>
       </a>`)}
     </nav>
     <p class="agx-runmeta">
@@ -492,6 +515,7 @@ function AgendaEditor({ m, set, ctx, keepSaved }) {
       <span>${plural(m.sections.length, 'part')} · ${plural(itemCount, 'item')}</span>
       <span class=${overBy > 0 ? 'is-over' : ''}>${overBy > 0 ? `${overBy} min over the meeting’s ${length}` : lastEnd ? `Ends ${clock(lastEnd)}` : `${total} min`}</span>
     </p>
+    <div class="agx-edit" onFocusIn=${(e) => { const li = e.target.closest?.('[data-item]'); if (li) setFocusId(li.dataset.item); }} onPointerDown=${(e) => { const li = e.target.closest?.('[data-item]'); if (li) setFocusId(li.dataset.item); }}>
     <ol class="agx-secs">
       ${m.sections.map((s, si) => {
         const t = plan.get(s.id);
@@ -516,6 +540,7 @@ function AgendaEditor({ m, set, ctx, keepSaved }) {
             const files = itemFiles(m, it, data.meetings);
             const free = m.files.filter((f) => !(it.docs || []).includes(f.id) && f.kind !== 'signed');
             const live = it.live && it.live !== 'minutes' ? it.live : '';
+            const shows = showsOf(it);
             return html`<li class=${`ag-item agx-item ${over === it.id ? 'is-over' : ''} ${live ? 'has-live' : ''} ${drag?.id === it.id ? 'is-dragging' : ''} ${hint?.id === it.id ? (hint.after ? 'drop-after' : 'drop-before') : ''}`} key=${it.id} data-item=${it.id} style=${`view-transition-name: agx-${it.id}`} ...${itemTarget(s, it)}>
             <div class="ag-item__row agx-item__row">
               ${grip('item', it.id, `Move ${it.title || 'this item'}`)}
@@ -527,8 +552,10 @@ function AgendaEditor({ m, set, ctx, keepSaved }) {
                 onChange=${(list) => setItem(si, ii, { who: list.filter((x) => x.slug).map((x) => x.slug), presenter: namesText(list.map((x) => x.name)) })} />
               ${itemMenu(s, si, it, ii)}
             </div>
-            ${it.confidential || live || it.live === 'minutes' ? html`<div class="ag-tags agx-tags">
-              ${live ? html`<span class=${`agx-live is-${live}`} title=${LIVE.find((l) => l.id === live)?.label}><span class="agx-live__dot" aria-hidden="true"></span>${LIVE_SHORT[live]}<span class="sr-only">: ${LIVE.find((l) => l.id === live)?.label}</span></span>` : null}
+            ${it.confidential || shows.length || it.showShows || it.live === 'minutes' ? html`<div class="ag-tags agx-tags">
+              ${it.live !== 'minutes' && (shows.length || it.showShows) ? html`<${ShowsPicker} value=${shows} label=${`What ${it.title || 'this item'} shows live`} startOpen=${!!it.showShows}
+                onClosed=${() => { if (it.showShows) setItem(si, ii, { showShows: false }); }}
+                onChange=${(list) => setItem(si, ii, { live: list[0] || '', also: list.slice(1) })} />` : null}
               ${it.live === 'minutes' ? html`<span class="agx-live is-minutes"><span class="agx-live__dot" aria-hidden="true"></span>Up for approval</span>` : null}
               ${it.confidential ? html`<span class="tag tag--warn">Board only</span>` : null}
             </div>` : null}
@@ -561,7 +588,70 @@ function AgendaEditor({ m, set, ctx, keepSaved }) {
       })}
     </ol>
     <button type="button" class="ag-add ag-add--sec agx-addsec" onClick=${() => withMotion(() => set((x) => ({ sections: [...x.sections, { id: uid('s_'), title: '', minutes: 0, items: [blankItem()] }] })))}>+ Add a part</button>
+    </div>
+    ${previewing ? html`<${AgendaPreview} m=${m} focusId=${focusId} />` : null}
   </div>`;
+}
+
+/**
+ * The agenda as the board will see it, beside the editor, as it's written: the board page itself (on a laptop or a
+ * phone) or the screen's slide, in a frame. Each change reaches it a moment later, before it's saved; it goes to the
+ * item being worked on. Never saved from there, never a board member's view of their own asks
+ */
+const PREVIEW_AS = [['page', 'Board page'], ['phone', 'Phone'], ['screen', 'Screen']];
+function AgendaPreview({ m, focusId }) {
+  const [as, setAs] = useState(() => { try { return PREVIEW_AS.some(([k]) => k === localStorage.getItem('bd-agenda-preview-as')) ? localStorage.getItem('bd-agenda-preview-as') : 'page'; } catch { return 'page'; } });
+  const pick = (k) => { setAs(k); try { localStorage.setItem('bd-agenda-preview-as', k); } catch { /* private browsing */ } };
+  const frame = useRef(null);
+  const ready = useRef(false);
+  const mRef = useRef(m);
+  mRef.current = m;
+  const focusRef = useRef(focusId);
+  focusRef.current = focusId;
+  const [box, setBox] = useState({ w: 520, h: 640 });
+  const holder = useRef(null);
+  const src = `${PAGE}?preview#/meetings/${encodeURIComponent(m.id)}${as === 'screen' ? '/screen' : ''}`;
+  const post = (msg) => frame.current?.contentWindow?.postMessage(msg, location.origin);
+  // The frame's size: the board page drawn at a laptop's width (or a phone's, or the screen's 1280 × 720), scaled to fit
+  useEffect(() => {
+    const el = holder.current;
+    if (!el) return undefined;
+    const measure = () => setBox({ w: el.clientWidth, h: Math.max(360, innerHeight - el.getBoundingClientRect().top - 24) });
+    measure();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
+    ro?.observe(el);
+    addEventListener('resize', measure);
+    return () => { ro?.disconnect(); removeEventListener('resize', measure); };
+  }, []);
+  // Once the page in the frame has its data: the draft, and the item worked on
+  useEffect(() => {
+    ready.current = false;
+    const on = (e) => {
+      if (e.origin !== location.origin || e.source !== frame.current?.contentWindow || e.data?.type !== 'board-preview-ready') return;
+      ready.current = true;
+      post({ type: 'board-preview', meeting: mRef.current });
+      if (focusRef.current) post({ type: 'board-preview-focus', itemId: focusRef.current });
+    };
+    addEventListener('message', on);
+    return () => removeEventListener('message', on);
+  }, [src]);
+  useEffect(() => { if (!ready.current) return undefined; const t = setTimeout(() => post({ type: 'board-preview', meeting: m }), 180); return () => clearTimeout(t); }, [m]);
+  useEffect(() => { if (ready.current && focusId) post({ type: 'board-preview-focus', itemId: focusId }); }, [focusId]);
+  const base = as === 'phone' ? { w: 390, h: 844 } : as === 'screen' ? { w: 1280, h: 720 } : { w: 1280, h: 0 };
+  const scale = Math.min(1, (box.w - (as === 'phone' ? 28 : 2)) / base.w);
+  const h = as === 'page' ? box.h : Math.round(base.h * scale);
+  return html`<aside class="agx-preview" aria-label="Preview of the agenda as the board will see it">
+    <div class="agx-preview__bar">
+      <div class="bd-seg" role="group" aria-label="Preview as">
+        ${PREVIEW_AS.map(([k, label]) => html`<button type="button" key=${k} aria-pressed=${as === k} class=${as === k ? 'is-on' : ''} onClick=${() => pick(k)}>${label}</button>`)}
+      </div>
+      <span class="agx-preview__note">${m.shared ? 'As the board sees it' : 'As the board will see it'}, as you type</span>
+    </div>
+    <div class=${`agx-preview__frame is-${as}`} ref=${holder} style=${`height:${h + (as === 'phone' ? 28 : 2)}px`}>
+      <iframe ref=${frame} src=${src} key=${src} title=${`Preview: the ${PREVIEW_AS.find(([k]) => k === as)[1].toLowerCase()}`}
+        style=${`width:${base.w}px;height:${Math.round(h / scale)}px;transform:scale(${scale})`}></iframe>
+    </div>
+  </aside>`;
 }
 
 /** Adding a document to an item: one of the meeting's files, or a new one uploaded */
@@ -717,9 +807,9 @@ function GettingReady({ m, set, ctx, act, save }) {
     </ol>
     ${asked.length ? html`<div class="bm-reports">
       <p class="bm-reports__h"><strong>Reports</strong><span class=${inCount === asked.length ? 'is-all' : ''}>${inCount} of ${asked.length} in</span></p>
-      <p class="bd-muted">${asked.every(({ it }) => here(it)) ? 'Their presenters can’t sign in to the board page, so these are written here, under each item (⋯ → Write the report).' : `${m.shared ? 'Each presenter writes theirs on the board page, where it asks them.' : 'Once the meeting is on the board page, each presenter writes theirs there.'}${asked.some(({ it }) => here(it)) ? ' The ones marked “Write it here” are yours: their presenters can’t sign in to it.' : ''}`}</p>
+      <p class="bd-muted">${asked.every(({ it }) => here(it)) ? 'These presenters don’t sign in to the board page, so their reports are written here: tap one to write it.' : `${m.shared ? 'Each presenter writes theirs on the board page, where it asks them.' : 'Once the meeting is on the board page, each presenter writes theirs there.'}${asked.some(({ it }) => here(it)) ? ' Where it says “Write it here”, the presenter doesn’t sign in to the board page: tap it to write theirs here.' : ''}`}</p>
       <ul class="bm-reports__list">${asked.map(({ x, it }) => html`<li key=${it.id}>
-        <a class=${`bm-reports__row ${it.report ? 'is-in' : ''}`} href=${`#agx-${m.sections[x.si].id}`} onClick=${(e) => { e.preventDefault(); document.querySelector(`[data-item="${it.id}"]`)?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' }); }}>
+        <a class=${`bm-reports__row ${it.report ? 'is-in' : ''}`} href=${`#agx-${m.sections[x.si].id}`} onClick=${(e) => { e.preventDefault(); dispatchEvent(new CustomEvent('agx-report', { detail: { id: it.id, write: !it.report } })); }}>
           <span class="bm-reports__n">${x.label}</span>
           <span class="bm-reports__t"><span>${x.title}</span><small>${namesText(presentersOf(it, people).map((p) => (presentersOf(it, people).length > 1 ? p.name.split(' ')[0] : p.name)))}</small></span>
           <span class="bm-reports__s">${it.report ? html`${CHECK}<span>${ago(it.reportAt) || 'In'}</span>` : here(it) ? 'Write it here' : 'Not yet'}</span>
@@ -803,6 +893,8 @@ function stopWords(stop, m, items, pages, files, parts = {}) {
   if (stop.kind === 'section') { const si = m.sections.findIndex((x) => x.id === stop.sectionId); const sec = m.sections[si]; return { label: String(si + 1).padStart(2, '0'), title: sec?.title || 'Agenda', sub: sec?.items.length ? `Opens the part: ${plural(sec.items.length, 'item')}` : 'Open to the floor' }; }
   const it = stop.n >= 0 ? items[stop.n] : { label: '', title: MORE.title };
   if (stop.kind === 'item') return { label: it.label, title: it.title, sub: [it.section !== it.title ? it.section : '', it.presenter].filter(Boolean).join(' · ') };
+  if (stop.kind === 'books') return { label: it.label, title: BOOKS_TITLES[stop.fileId.slice(6)], sub: `${it.title} · from QuickBooks` };
+  if (stop.kind === 'live') return { label: it.label, title: LIVE_TITLES[stop.fileId.slice(5)], sub: it.title };
   const f = files.find((x) => x.id === stop.fileId);
   const n = pages[stop.fileId];
   return { label: it.label, title: f ? docTitle(f.name) : 'A document', sub: `${it.title} · page ${stop.page + 1}${n ? ` of ${n}` : ''}${parts[stop.fileId]?.[stop.page] === 2 ? `, ${stop.part ? 'bottom' : 'top'} half` : ''}` };
@@ -814,7 +906,7 @@ function stopWords(stop, m, items, pages, files, parts = {}) {
  * Page Down), the screen in its own window, and End. The board page follows each move within seconds, a screen on
  * this computer at once. Before Start, the screen can be opened to rehearse on: only it moves.
  */
-function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown }) {
+function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown, numbers }) {
   const meetings = ctx.data.meetings;
   const running = isLive(m);
   const items = agendaItems(m);
@@ -828,7 +920,8 @@ function RunBar({ m, setNow, live, practice, ctx, jump, act, setShown }) {
     if (msg.type === 'pages' && msg.pages) addPages(msg.pages);
   });
   const [pages, addPages, parts, ready] = usePages(files, true);
-  const deck = useMemo(() => deckOf(m, { pages, parts, meetings }), [m.sections, m.files, pages, parts, meetings]);
+  // QuickBooks' slides after the money, as the screen's deck has them (the same numbers: locked, else today's)
+  const deck = useMemo(() => deckOf(m, { pages, parts, meetings, books: numbers?.books }), [m.sections, m.files, pages, parts, meetings, numbers?.books]);
   // Which pages show in halves, to the screens on this computer (they'd otherwise learn it a page at a time)
   useEffect(() => { if (Object.keys(parts).length) send({ type: 'parts', parts }); }, [parts]);
   const pos = running ? cleanLive(m.live) : rehearsal;
@@ -1012,7 +1105,7 @@ function ShowDoc({ d, pages, on, onClick }) {
  * The agenda in order, for presenting: the item on the screen marked, and any item or document put straight onto it
  * (while rehearsing, only the screen on this computer moves). The minutes item can be marked approved here.
  */
-function RunOrder({ m, set, ctx, practice, jump, shown }) {
+function RunOrder({ m, set, ctx, practice, jump, shown, numbers }) {
   const { data } = ctx;
   const running = isLive(m);
   const items = agendaItems(m);
@@ -1025,6 +1118,7 @@ function RunOrder({ m, set, ctx, practice, jump, shown }) {
     document.getElementById(`run-${m.live.itemId}`)?.scrollIntoView({ block: 'nearest', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   }, [m.live.itemId]);
   const prevName = (id) => { const x = data.meetings.find((y) => y.id === id); return x ? meetingName(x) : 'the last meeting'; };
+  const everyone = useMemo(() => [...data.people.board, ...data.people.staff], [data.people]);
   // The last meeting's minutes, approved here: that meeting is marked, and the vote goes in this one's motions
   const approve = async (it) => {
     const j = await call({ action: 'approve-minutes', id: it.about, on: m.date });
@@ -1041,17 +1135,25 @@ function RunOrder({ m, set, ctx, practice, jump, shown }) {
     <ol class="bm-order">${m.sections.map((s, si) => html`<li class="bm-order__sec" key=${s.id}>
       <p class="bm-order__head"><span>${String(si + 1).padStart(2, '0')}</span>${s.title || 'Section'}<small>${[plan.get(s.id)?.start ? clock(plan.get(s.id).start) : '', `${plan.get(s.id)?.minutes} min`].filter(Boolean).join(' · ')}</small></p>
       ${s.items.some(isFilled) ? html`<ol>${s.items.filter(isFilled).map((it) => {
-        const label = items.find((x) => x.id === it.id)?.label;
+        const at = items.find((x) => x.id === it.id);
+        const label = at?.label;
         // On the screen: live, or in the preview before Start
         const on = shown.itemId === it.id;
-        const docs = itemDocs(m, it, data.meetings);
+        // What the deck shows after the item's card: its other live lists and QuickBooks' slides, then its documents
+        // (never a staff-only one, or a statement QuickBooks draws)
+        const slides = slidesOf(it, numbers?.books);
+        const drawsSt = slides.some((x) => x.kind === 'books' && x.k !== 'year');
+        const docs = itemDocs(m, it, data.meetings).filter((d) => !d.file.staffOnly && !(drawsSt && isStatement(d.file)));
+        const who = namesText(presentersOf(it, everyone).map((p) => p.name));
         return html`<li class=${`bm-order__item ${on ? 'is-now' : ''}`} id=${`run-${it.id}`} key=${it.id}>
           <button type="button" class="bm-order__go" onClick=${() => jump.current?.({ itemId: it.id })} aria-current=${on ? 'step' : null}>
             <span class="bm-order__n">${on && running ? html`<span class="bm-live-dot" aria-hidden="true"></span>` : label}</span>
-            <span class="bm-order__t">${it.title || html`<em>No title</em>`}${it.presenter ? html`<small>${it.presenter}</small>` : null}</span>
-            ${it.live && it.live !== 'minutes' ? html`<span class="tag tag--info">${LIVE_TAGS[it.live] || 'Live'}</span>` : facesOf(it) ? html`<span class="tag tag--info">${facesOf(it) === 'roll' ? 'The board, checking in' : 'Faces of those here'}</span>` : null}
+            <span class="bm-order__t">${at?.title || it.title || LIVE_TITLES[it.live] || 'An item'}${who ? html`<small>${who}</small>` : null}</span>
+            ${showsOf(it).length ? html`<span class="bm-order__tags">${showsOf(it).map((k) => html`<span class="tag tag--info" key=${k}>${LIVE_TAGS[k]}</span>`)}</span>` : facesOf(it) ? html`<span class="tag tag--info">${facesOf(it) === 'roll' ? 'The board, checking in' : 'Faces of those here'}</span>` : null}
             ${it.confidential ? html`<span class="tag tag--warn">Board only</span>` : null}
           </button>
+          ${slides.length ? html`<ul class="bm-slides">${slides.map((x) => html`<li key=${x.id}><button type="button" class=${`bm-slide ${on && shown.fileId === x.id ? 'is-on' : ''}`} aria-current=${on && shown.fileId === x.id ? 'step' : null} onClick=${() => jump.current?.({ itemId: it.id, fileId: x.id })}>
+            <span class="bm-slide__k" aria-hidden="true">${x.kind === 'books' ? 'QB' : 'Live'}</span>${x.kind === 'books' ? BOOKS_TITLES[x.k] : LIVE_TITLES[x.k]}</button></li>`)}</ul>` : null}
           ${docs.length ? html`<ul class="bm-docs">${docs.map((d) => html`<li key=${d.key}>
             <${ShowDoc} d=${d} pages=${shown.pages[d.file.id]} on=${on && shown.fileId === d.file.id} onClick=${() => jump.current?.({ itemId: it.id, fileId: d.file.id })} />
           </li>`)}</ul>` : null}

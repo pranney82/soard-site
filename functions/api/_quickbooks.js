@@ -480,6 +480,36 @@ export function bankByMonth(report, also = { ids: new Set(), names: new Set() })
   return ends.map((end, i) => (end && vals[i] ? { month: end.slice(0, 7), end, total: round2(num(vals[i].value) + plus(i)) } : null)).filter(Boolean);
 }
 
+/**
+ * A month-by-month Profit and Loss → each month's revenue (Income and Other Income) and spending (Cost of Goods Sold,
+ * Expenses and Other Expenses), oldest first: [{ month: 'YYYY-MM', revenue, spent }]. A month whose sections don't add
+ * up to its own net throws SHAPE, as the year's own report does
+ */
+export function plByMonth(report) {
+  const cols = (report?.Columns?.Column || []).slice(1);
+  const months = cols.map((c) => {
+    if (/^total$/i.test(String(c.ColTitle || '').trim())) return null;
+    const meta = Object.fromEntries((c.MetaData || []).map((m) => [m.Name, m.Value]));
+    if (isDay(meta.StartDate)) return meta.StartDate.slice(0, 7);
+    const t = new Date(Date.parse(`1 ${c.ColTitle} 12:00 UTC`));
+    return Number.isFinite(t.getTime()) ? dayOf(t).slice(0, 7) : null;
+  });
+  const rows = report?.Rows?.Row || [];
+  const sum = {};
+  for (const [key, [group, words]] of Object.entries(SECTIONS)) {
+    const r = rows.find((x) => x.group === group) || rows.find((x) => words.test(String(x.Summary?.ColData?.[0]?.value || '').trim()));
+    sum[key] = (r?.Summary?.ColData || []).slice(1);
+  }
+  const at = (k, i) => num(sum[k]?.[i]?.value);
+  return months.map((month, i) => {
+    if (!month) return null;
+    const revenue = round2(at('income', i) + at('otherIncome', i));
+    const spent = round2(at('cogs', i) + at('expenses', i) + at('otherExpenses', i));
+    if (sum.net?.[i] && Math.abs(revenue - spent - at('net', i)) > 1) throw Object.assign(new Error(`${month}: the Profit and Loss sections don’t add up to its net income`), { code: 'SHAPE' });
+    return { month, revenue, spent };
+  }).filter(Boolean);
+}
+
 // The store's own accounts: named for it (SOARD's "Store Income", "Store COGS") or for one of its shops (Sunny & Ranney,
 // S&R, Partly Sunny: "Partly Sunny - Vendor Compensation" is the sales tax Georgia lets a shop keep)
 const STORE = /\bstore\b|retail|\bshop\b|merchandise|sunny\s*(&|and)\s*ranney|\bs\s*&\s*r\b|partly\s*sunny/i;
@@ -603,7 +633,7 @@ export function functionsOf(report) {
 
 const DAILY_RETRY_MS = 60 * 60 * 1000;
 // What the daily read keeps: one up whenever it keeps something new, so a deploy's figures show that day, not the next
-const DAILY_SHAPE = 5;
+const DAILY_SHAPE = 6;
 /**
  * The year in context, now (about ten reports): kept in books_daily with its day. Trouble is logged and kept, and the
  * last good read stays; the hourly read is the one that tells Slack
@@ -661,6 +691,15 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     const statements = { asOf: close.asOf, closed: close.closed, priorAsOf, position: statementRows(posNow, posThen), activity: statementRows(actNow, actThen) };
     // Spending by purpose, when the books keep it by class
     const functions = functionsOf(await pl(`${year}-01-01`, today, { summarize_column_by: 'Classes' }));
+    // Month by month, this year beside last (the board's year against last year); a month that doesn't read leaves
+    // the rest of the day's read as it is
+    let monthly = null;
+    try {
+      const by = { summarize_column_by: 'Month' };
+      monthly = { year: String(year), months: plByMonth(await pl(`${year}-01-01`, today, by)), lastYear: String(year - 1), last: plByMonth(await pl(`${year - 1}-01-01`, `${year - 1}-12-31`, by)) };
+    } catch (err) {
+      console.error('[books] months', err.code || '', detailOf(err));
+    }
     // What else the books keep (budgets, locations, classes), for Settings
     const setup = await setupOf(get, prefs);
     const data = {
@@ -668,7 +707,7 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
       day: today,
       lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net, nonCash: nonCashOf(lastFullReport) }, sources: sourcesOf(lastSameReport), nonCash: nonCashOf(lastSameReport), store: storeOf(lastSameReport) },
       trailing: { from: tFrom, through: tThrough, spent: trail.spent, cashOut: cashOut ? cashOut.out : null, payments: cashOut ? cashOut.payments : 0 },
-      months, statements, functions, setup,
+      months, statements, functions, monthly, setup,
     };
     await env.DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at, error) VALUES (?, ?, ?, ?, ?, NULL)').bind(ID, JSON.stringify(data), today, at, at).run();
     return { ok: true, data };
@@ -772,7 +811,7 @@ export async function booksNow(DB, { now = Date.now() } = {}) {
     company: row.company, year: y.year, from: y.from, through: y.through, revenue: y.revenue, expenses: y.spent, net: y.net, basis: y.basis, at: row.read_at, stale: now - Date.parse(row.read_at) > STALE_MS, cash,
     sources: y.sources || [], nonCash: typeof y.nonCash === 'number' ? y.nonCash : null, store: y.store || null, monthsOfCash: cash && perMonth ? Math.round((cash.total / perMonth) * 10) / 10 : null, perMonth: perMonth ? round2(perMonth) : null,
     qboYearStarts: row.fiscal_start && row.fiscal_start !== SOARD_YEAR_STARTS ? MONTHS[row.fiscal_start - 1].replace(/^./, (c) => c.toUpperCase()) : null,
-    lastYear: d?.lastYear || null, trailing: d?.trailing || null, months: d?.months || [], statements: d?.statements || null, functions: d?.functions || null, contextAt: daily?.read_at || null,
+    lastYear: d?.lastYear || null, trailing: d?.trailing || null, months: d?.months || [], statements: d?.statements || null, functions: d?.functions || null, monthly: d?.monthly || null, contextAt: daily?.read_at || null,
   };
 }
 
