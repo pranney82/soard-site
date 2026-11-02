@@ -3,10 +3,11 @@
  * ===========================================================================
  * GET  ?config                       → { ok, turnstileSiteKey, trades, requirements, minimums }   for /trade-partners/
  * POST { action, … } (JSON):
- *   signin    { email, lang }          → { ok }   a link goes to that email when JobTread has it (never said either way)
+ *   signin    { email, lang }          → { ok }   a link goes to that email when JobTread or the site has it (never said either way)
  *   start     { company, name, email, phone, lang, turnstileToken, website2 }
- *                                      → { ok }   "Get started": their link by email, JobTread matched or made (never said which)
- *   With a link's token (their own page; an agent's link can't):
+ *                                      → { ok }   "Get started": their link by email, JobTread matched or made, or a company
+ *                                                 only the site knows sent its own page back (never said which)
+ *   With a link's token (their own page; an agent's link can't, and a site-only company's link only does w9 and lang):
  *   company   { token, name, trades, address, license, main, billing }   → { ok }
  *   w9        { token, w9: { … } }    → { ok } | { ok: false, problems }
  *   agent     { token, name, email, agency, phone }                     → { ok }
@@ -72,6 +73,8 @@ export async function onRequestPost(context) {
     const { link, problem } = await findLink(env.DB, body.token);
     if (problem) return fail(GONE[problem], problem === 'unknown' ? 404 : 410, { code: problem });
     if (link.scope === 'agent') return fail('This link is for the certificate of insurance only.', 403);
+    // A company only on the site: its W-9 (and insurance) page, nothing else
+    if (link.scope === 'papers' && !['w9', 'lang'].includes(action)) return fail('This link is for your W-9 only.', 403);
     if (link.uploads >= LIMITS.uploads * 2) return fail('This link has been used a lot. Sign in again for a fresh one.', 429);
     await env.DB.prepare('UPDATE vendor_links SET uploads = uploads + 1, last_upload_at = ? WHERE token_hash = ?').bind(new Date().toISOString(), link.token_hash).run();
     if (action === 'company') return reply(await saveCompany(env, link, body));

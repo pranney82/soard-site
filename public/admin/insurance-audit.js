@@ -225,7 +225,7 @@ function Asking({ s, busy, onSet }) {
 function Cover({ c }) {
   if (!c.cents) {
     const s = c.shown;
-    return html`<span class="tag tag--success">${s?.exempt ? 'Exempt' : 'Covered'}</span>${s && !s.exempt ? html`<span class="ia-sub">${s.insurer || (s.source === 'jobtread' ? 'End date in JobTread' : 'Certificate')}${s.expires ? `, through ${day(s.expires)}` : ''}</span>` : null}`;
+    return html`<span class="tag tag--success">${s?.exempt ? 'Exempt' : 'Covered'}</span>${s && !s.exempt ? html`<span class="ia-sub">${s.insurer || (s.source === 'jobtread' ? 'End date in JobTread' : s.source === 'site' ? 'End date on file' : 'Certificate')}${s.expires ? `, through ${day(s.expires)}` : ''}</span>` : null}`;
   }
   return html`<span class="tag tag--warn">${usd(c.cents)} not covered</span><span class="ia-sub">${months(c.months)}</span>`;
 }

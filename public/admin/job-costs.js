@@ -15,6 +15,8 @@
  *              each sort and read by the DataX Receipt Processor
  *   Bills      subs' bills waiting for approval (the DataX Bill Approver
  *              emails Holly; staff can decide here too), being paid, paid
+ *   W-9s & insurance  every company SOARD pays, on jobs or not, and the W-9
+ *              and certificates kept on the site for each (./vendor-papers.js)
  *   Close-outs every finished makeover's final numbers, and what each cost
  *              code really costs per room (the budget builder's history)
  *   Setup      which Mercury card or account is the store's, Mercury
@@ -27,13 +29,14 @@
  * for what it will build, beside its JobTread budget.
  */
 
-import { h, htm, useState, useEffect } from './vendor.js';
+import { h, htm, useState, useEffect, useRef } from './vendor.js';
 import { ask } from './ask.js';
 import { InsuranceAudit } from './insurance-audit.js';
+import { VendorPapers } from './vendor-papers.js';
 
 const html = htm.bind(h);
 const API = '/api/job-costs-admin';
-const TABS = [['jobs', 'Jobs'], ['charges', 'Charges'], ['bills', 'Bills'], ['closeouts', 'Close-outs'], ['rules', 'Rules'], ['setup', 'Setup'], ['ramp', 'Ramp bills'], ['insurance', 'Insurance audit']];
+const TABS = [['jobs', 'Jobs'], ['charges', 'Charges'], ['bills', 'Bills'], ['papers', 'W-9s & insurance'], ['closeouts', 'Close-outs'], ['rules', 'Rules'], ['setup', 'Setup'], ['ramp', 'Ramp bills'], ['insurance', 'Insurance audit']];
 const BUCKET_NAMES = { job: 'Makeover', store: 'Sunny & Ranney store', operating: 'Operating' };
 const HOW = { person: 'the cardholder’s job', build: 'the job in Build', staff: 'picked by staff', bill: 'from its JobTread bill', rule: 'vendor rule', card: 'the store’s card', account: 'the account', refund: 'the charge it refunds' };
 
@@ -134,8 +137,8 @@ function useStyles() {
 function placeOf(hash = location.hash) {
   const parts = String(hash).replace(/^#/, '').split('/').slice(1).filter(Boolean).map((x) => decodeURIComponent(x));
   if (!parts[0]) return { tab: 'jobs', job: null };
-  // #job-costs/closeouts/<jobId>: one close-out (Slack's button)
-  if (TABS.some(([k]) => k === parts[0])) return { tab: parts[0], job: parts[0] === 'closeouts' ? parts[1] || null : null };
+  // #job-costs/closeouts/<jobId>: one close-out (Slack's button); #job-costs/papers/<id>: one company's W-9 and insurance
+  if (TABS.some(([k]) => k === parts[0])) return { tab: parts[0], job: ['closeouts', 'papers'].includes(parts[0]) ? parts[1] || null : null };
   return { tab: 'jobs', job: parts[0] };
 }
 function go(tab, job = null) {
@@ -149,6 +152,9 @@ export function JobCosts({ addToast = () => {} }) {
   const [err, setErr] = useState(null);
   const [place, setPlace] = useState(placeOf);
   const [busy, setBusy] = useState(null);
+  // On a phone the tabs scroll sideways: the open one is always in sight
+  const tabs = useRef(null);
+  useEffect(() => { tabs.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [place.tab, !!data]);
 
   const load = async (opts) => {
     const j = await call(null, opts);
@@ -201,7 +207,7 @@ export function JobCosts({ addToast = () => {} }) {
         </div>
       </div>
       <${Health} h=${data.health} />
-      <div class="seg" role="tablist" aria-label="Job costs">
+      <div class="seg" role="tablist" aria-label="Job costs" ref=${tabs}>
         ${TABS.map(([k, label]) => html`<button role="tab" aria-selected=${place.tab === k && !(k === 'jobs' && job)} onClick=${() => open(k)}>${label}${counts[k] ? html` <span class="count ${k === 'charges' || k === 'bills' ? 'is-warn' : ''}">${counts[k]}</span>` : ''}</button>`)}
       </div>
       ${job ? html`<${JobDetail} l=${job} data=${data} act=${act} busy=${busy} onBack=${() => open('jobs')} />`
@@ -213,6 +219,7 @@ export function JobCosts({ addToast = () => {} }) {
         : place.tab === 'rules' ? html`<${Rules} data=${data} act=${act} busy=${busy} />`
         : place.tab === 'setup' ? html`<${Setup} data=${data} act=${act} busy=${busy} />`
         : place.tab === 'insurance' ? html`<${InsuranceAudit} addToast=${addToast} />`
+        : place.tab === 'papers' ? html`<${VendorPapers} id=${place.job} onOpen=${(id) => open('papers', id)} addToast=${addToast} />`
         : html`<${Ramp} data=${data} act=${act} busy=${busy} />`}
     </div>`;
 }
@@ -616,7 +623,7 @@ function RampHolds({ ramp }) {
   const names = [...new Set(unmatched.map((r) => r.vendor))];
   return html`<section class="card" style="padding: 0;">
     <div class="sec-head"><h3>Held in Ramp <span class="count">${held.length}</span></h3>
-      <p class="sec-head__desc">Ramp pays bills until the switch to Mercury. A Ramp bill whose vendor’s W-9 or insurance isn’t current in JobTread is put on hold in Ramp and the vendor is emailed; the hold comes off by itself once theirs check out.${starts ? ` Holds start ${starts}. Until then these are only noted, so set a store’s Documents field to “Not needed” in JobTread first.` : ''}</p></div>
+      <p class="sec-head__desc">Ramp pays bills until the switch to Mercury. A Ramp bill whose vendor’s W-9 or insurance isn’t current (W-9s & insurance) is put on hold in Ramp and the vendor is emailed; the hold comes off by itself once theirs check out. A company paid outside JobTread is never held.${starts ? ` Holds start ${starts}. Until then these are only noted, so mark a store “Nothing” under W-9s & insurance first.` : ''}</p></div>
     ${ramp.error && html`<div class="jc-body"><p class="sec-head__hint" style="margin: 0;">${ramp.error.error}</p></div>`}
     ${[...held, ...watch].map((r) => html`<div class="jc-charge" key=${r.rampId}>
       <span class="jc-charge__date">${day(r.heldAt)}</span>
@@ -728,7 +735,7 @@ function BillSettings({ data, act, busy }) {
     </div>
     <div class="jc-body" style="border-top: 1px solid var(--color-border);"><div class="jc-row"><button class="btn btn-primary" disabled=${!!busy} onClick=${() => save()}>${busy === 'bill-settings' ? 'Saving…' : 'Save'}</button></div></div>
     <div class="sec-head" style="border-top: 1px solid var(--color-border);"><h3>W-9 and insurance</h3>
-      <p class="sec-head__desc">A bill is paid only when the vendor’s W-9 and certificate of insurance are current in JobTread. The site asks the vendor for them, and their agent for renewals, by itself; each email is noted on the vendor in JobTread.</p></div>
+      <p class="sec-head__desc">A bill is paid only when the vendor’s W-9 and certificate of insurance are current. They’re kept on the site (W-9s & insurance), and JobTread’s vendor fields show the same dates. The site asks the vendor for them, and their agent for renewals, by itself; each email is noted on the vendor in JobTread.</p></div>
     <div class="sec-head" style="border-top: 1px solid var(--color-border);"><h3>When a bill is approved</h3>${!cfg.payFromAccountId ? html`<p class="sec-head__desc">Pick and save the account bills are paid from to choose how they’re paid.</p>` : ''}</div>
     <div class="jc-body" style="display: grid; gap: .5rem;">
       ${PAY_MODES.map(([k, label, text]) => html`<label class="jc-row" style="align-items: flex-start;" key=${k}>

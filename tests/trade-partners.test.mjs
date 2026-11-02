@@ -11,6 +11,8 @@ import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PDFDocument } from 'pdf-lib';
 import { createD1 } from './lib/d1-shim.mjs';
+import { createR2 } from './lib/r2-shim.mjs';
+import { filesOf, addSiteVendor, archiveSiteVendor } from '../functions/api/_vendor-files.js';
 import { asksOn } from './lib/vendor-asks.mjs';
 import { MERCURY_BASE } from '../functions/api/_mercury.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
@@ -165,7 +167,7 @@ beforeEach(async () => {
   world = fresh();
   const DB = await createD1({ schemaSql: ['CREATE TABLE site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)'] });
   env = {
-    DB, JOBTREAD_GRANT_KEY: 'jt', RESEND_API_KEY: 're_test', SLACK_BOT_TOKEN: 'xoxb-test', MERCURY_API_TOKEN: 'secret-token:test', MERCURY_RELAY_KEY: 'relay:test',
+    DB, FILES: createR2(), VENDOR_FILES: createR2(), JOBTREAD_GRANT_KEY: 'jt', RESEND_API_KEY: 're_test', SLACK_BOT_TOKEN: 'xoxb-test', MERCURY_API_TOKEN: 'secret-token:test', MERCURY_RELAY_KEY: 'relay:test',
     AI: { toMarkdown: async () => ({ format: 'text', data: 'ACORD 25 CERTIFICATE OF LIABILITY INSURANCE '.repeat(5) }), run: async () => ({ response: world.ai }) },
   };
   await ensureSpendSchema(DB);
@@ -240,6 +242,53 @@ test('signing in: a link to any address JobTread has, nothing said about one it 
   assert.doesNotMatch(await dumpDb(), /tom@tko\.example","[^"]*rate/i, 'the limit’s key isn’t the address');
 });
 
+test('a company only the site knows signs in too: by the email on file now (not one it had), to its W-9 page, never once archived', async () => {
+  const { id } = await addSiteVendor(env, { name: 'Capin Crouse LLP', email: 'Billing@Capin.example' }, { now: NOW });
+  // An address SOARD once asked (or the one staff changed it from) signs in to nothing
+  await env.DB.prepare("INSERT INTO vendor_asks (jt_id, name, email, asks, open, updated_at) VALUES (?, 'Capin Crouse LLP', 'bookkeeper@capin.example', 1, 1, '')").bind(id).run();
+  await call({ action: 'signin', email: 'Bookkeeper@Capin.example' });
+  assert.equal(world.emails.length, 0);
+  const r = await call({ action: 'signin', email: 'Billing@Capin.example' });
+  assert.equal(r.ok, true);
+  const mail = world.emails.at(-1);
+  assert.deepEqual(mail.to, ['billing@capin.example']);
+  assert.match(mail.text, /your page with Sunshine on a Ranney Day/, 'a W-9-only company has no trade-partner page to name');
+  const { link, problem } = await findLink(env.DB, mail.text.match(/#t=([\w-]+)/)[1]);
+  assert.equal(problem, null);
+  assert.equal(link.vendor_id, id);
+  assert.equal(link.scope, 'papers', 'the link opens its W-9, never a whole trade-partner page');
+  assert.equal(world.emails.length, 1);
+  await archiveSiteVendor(env, id, true, { now: NOW });
+  await call({ action: 'signin', email: 'billing@capin.example' });
+  assert.equal(world.emails.length, 1, 'a company SOARD no longer has on file gets nothing');
+});
+
+test('“Get started” from a company only the site knows: its own W-9 page back, never a JobTread vendor and a bank setup', async () => {
+  const { id } = await addSiteVendor(env, { name: 'Wiggins Childs Pantazis Fisher & Goldfarb' }, { now: NOW });
+  // Its name, nobody on file yet: nothing goes to an address nobody at SOARD knows (anyone could type the name and sign
+  // its W-9); staff are told, and send it from the admin
+  let r = await startPartner(env, { company: 'Wiggins Childs Pantazis Fisher and Goldfarb, LLC', name: 'Dana Wiggins', email: 'Dana@Wiggins.example', phone: '205-555-0100', lang: 'es' }, { now: NOW });
+  assert.equal(r.how, 'staff');
+  assert.equal(world.made.length, 0, 'no vendor made in JobTread');
+  assert.equal(world.emails.length, 0, 'no link to a typed address');
+  assert.ok(world.slack.some((m) => JSON.stringify(m).includes('asked for their W-9 page')), 'staff are told, with who asked');
+  assert.equal((await env.DB.prepare('SELECT email FROM vendor_papers WHERE id = ?').bind(id).first()).email, null, 'never kept as theirs');
+  assert.equal((await readProfileRow(env.DB, id)).lang, 'es');
+  // Staff add Dana's address (Job Costs → W-9s & insurance)
+  await env.DB.prepare("UPDATE vendor_papers SET email = 'dana@wiggins.example' WHERE id = ?").bind(id).run();
+  // Their email again is a sign-in
+  r = await startPartner(env, { company: 'Whatever', name: 'Dana', email: 'dana@wiggins.example', phone: '2055550100' }, { now: NOW });
+  assert.equal(r.how, 'signin');
+  assert.equal(world.emails.at(-1).to[0], 'dana@wiggins.example');
+  // Someone else typing its name: the link goes to the address on file, not to theirs
+  r = await startPartner(env, { company: 'Wiggins Childs Pantazis Fisher & Goldfarb', name: 'Someone', email: 'someone@elsewhere.example', phone: '2055550199' }, { now: NOW });
+  assert.equal(r.how, 'theirs');
+  assert.deepEqual(world.emails.at(-1).to, ['dana@wiggins.example']);
+  assert.ok(!world.emails.some((m) => m.to.includes('someone@elsewhere.example')));
+  assert.equal((await env.DB.prepare('SELECT email FROM vendor_papers WHERE id = ?').bind(id).first()).email, 'dana@wiggins.example', 'their address stays');
+  assert.equal(world.made.length, 0);
+});
+
 // ─── The company ────────────────────────────────────────────────────
 
 test('the company step: checked, then JobTread gets the name, trades, address, license and people', async () => {
@@ -268,21 +317,22 @@ test('the company step: checked, then JobTread gets the name, trades, address, l
 
 // ─── The W-9, signed on the page ────────────────────────────────────
 
-test('a W-9 signed on the page: problems back to the page, then filed, ticked and on the Mercury recipient', async () => {
+test('a W-9 signed on the page: problems back to the page, then kept on the site and ticked in JobTread, and Mercury gets no copy', async () => {
   const token = await tokenFor();
   let r = await call({ action: 'w9', token, w9: { ...W9, certify: false, tin: '000000000' } });
   assert.equal(r.ok, false);
   assert.deepEqual(Object.keys(r.problems).sort(), ['certify', 'tin']);
-  assert.equal(world.files.length, 0);
+  assert.equal((await filesOf(env.DB, VENDOR)).length, 0);
   r = await call({ action: 'w9', token, w9: W9 });
   assert.equal(r.ok, true);
-  assert.equal(world.files.length, 1);
-  assert.match(world.files[0].name, /^W-9 TKO Plumbing \d{4}-\d{2}-\d{2} \(signed online\)\.pdf$/);
-  assert.deepEqual(world.files[0].fileTagIds, ['T-W9']);
-  assert.equal(world.files[0].folder, 'W-9 & Insurance');
+  const [kept] = await filesOf(env.DB, VENDOR);
+  assert.match(kept.name, /^W-9 TKO Plumbing \d{4}-\d{2}-\d{2} \(signed online\)\.pdf$/);
+  assert.deepEqual([kept.doc, kept.source, kept.status], ['w9', 'signed', 'checked']);
+  assert.equal(new TextDecoder().decode((await (await env.VENDOR_FILES.get(kept.key)).arrayBuffer()).slice(0, 5)), '%PDF-', 'the signed PDF itself');
+  assert.equal(world.files.length, 0, 'nothing filed in JobTread');
   assert.equal(world.accounts[VENDOR].values['F-W9'], true);
   assert.equal(world.accounts[VENDOR].values['F-DOCS'], 'Current');
-  assert.deepEqual(world.attachments, ['/recipient/rec-tko/attachments'], 'onto Mercury for the 1099');
+  assert.deepEqual(world.attachments, [], 'Mercury gets no copy');
   assert.match(world.comments.at(-1).message, /Tom Kowalski filled in and signed a W-9/);
   assert.doesNotMatch(JSON.stringify(world.comments) + await dumpDb(), /3456789/, 'the tax ID lives only in the PDF');
   assert.ok((await readProfileRow(env.DB, VENDOR)).steps.w9);

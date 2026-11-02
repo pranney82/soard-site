@@ -3,7 +3,8 @@
  * ===========================================================================
  * The link from an email carries its token in the address (#t=…); it's kept
  * on this device (an insurance agent's only for the visit) and taken out of
- * the address bar. The page reads everything in one call (/api/vendor-docs →
+ * the address bar. A company SOARD pays off the jobs gets the same page with
+ * only its W-9 (and insurance when it's asked for), and signs in the same way. The page reads everything in one call (/api/vendor-docs →
  * partnerView) and draws:
  *   - an overview: setup progress, a tile per thing on file (company, W-9,
  *     insurance, payments) and their invoices
@@ -19,7 +20,10 @@ import { prepare, pagePictures, thumbnail, isPdf, sizeText, MAX_BYTES } from './
 
 type Step = 'company' | 'w9' | 'coi' | 'bank';
 const STEPS: Step[] = ['company', 'w9', 'coi', 'bank'];
+// A company SOARD pays off the jobs (its link's scope is 'papers'): its W-9, and insurance only when it's asked for
+const steps = (): Step[] => (v?.scope === 'papers' ? (v.docs.w9Only || v.docs.notNeeded ? ['w9'] : ['w9', 'coi']) : STEPS);
 const KEY = 'soard-tp-token';
+const SCOPE_KEY = 'soard-tp-scope';   // the kept link's scope: a W-9-only company's sign-in never offers a new account
 
 let root: HTMLElement;
 let lang: Lang = 'en';
@@ -59,7 +63,7 @@ const svg = (k: keyof typeof ICON, cls = '') => `<svg class="${cls}" viewBox="0 
 async function load() {
   const r = await fetch(`/api/vendor-docs?token=${encodeURIComponent(token)}`, { cache: 'no-store' });
   const d = await r.json().catch(() => ({}));
-  if (!r.ok || !d.ok) return { gone: r.status === 404 || r.status === 410, error: d.error || T.failed };
+  if (!r.ok || !d.ok) return { gone: r.status === 404 || r.status === 410, notOnFile: !!d.notOnFile, error: d.error || T.failed };
   v = d.vendor;
   if (v.preview) keepShown();
   return { ok: true };
@@ -85,7 +89,7 @@ function setLang(next: Lang, save = true) {
   document.documentElement.lang = next;
   if (save) {
     keepLang(next);
-    if (token && v?.scope === 'vendor' && !v.preview) post({ action: 'lang' });
+    if (token && v && v.scope !== 'agent' && !v.preview) post({ action: 'lang' });
   }
 }
 
@@ -102,6 +106,9 @@ function langButton() {
 
 // ─── Signing in ─────────────────────────────────────────────────────
 
+/** The link kept on this device was a company's that SOARD pays off the jobs: signing in gets it back, never a new account */
+const papersBefore = () => { try { return localStorage.getItem(SCOPE_KEY) === 'papers'; } catch { return false; } };
+
 function drawSignIn(message = '') {
   document.documentElement.classList.remove('tpa-focus');
   root.replaceChildren(html(`
@@ -116,7 +123,7 @@ function drawSignIn(message = '') {
           <button class="tpa-btn tpa-btn--primary tpa-btn--wide" type="submit">${esc(T.signBtn)}</button>
           <p class="tpa-note" data-note role="status" aria-live="polite" hidden></p>
         </form>
-        <p class="tpa-small">${esc(T.newHere)} <a href="/trade-partners/#start">${esc(T.workWithUs)}</a></p>
+        ${papersBefore() ? '' : `<p class="tpa-small">${esc(T.newHere)} <a href="/trade-partners/#start">${esc(T.workWithUs)}</a></p>`}
       </div>
     </div>`));
   const form = root.querySelector<HTMLFormElement>('[data-form=signin]')!;
@@ -188,29 +195,31 @@ function tileButton(k: Step, st: string) {
 
 function drawOverview() {
   document.documentElement.classList.remove('tpa-focus');
-  const done = STEPS.filter((k) => ['done', 'checking', 'soon'].includes(tileState(k))).length;
-  const next = STEPS.find((k) => !['done', 'checking', 'soon', 'waiting'].includes(tileState(k)));
+  const list = steps();
+  const papers = v.scope === 'papers';
+  const done = list.filter((k) => ['done', 'checking', 'soon'].includes(tileState(k))).length;
+  const next = list.find((k) => !['done', 'checking', 'soon', 'waiting'].includes(tileState(k)));
   const who = v.signInEmail ? `${esc(T.signedInAs)} ${esc(v.signInEmail)} · ` : '';
   const invoices = v.invoices || [];
   root.replaceChildren(html(`
     <div class="tpa-wrap">
       ${v.preview ? `<p class="tpa-callout">${esc(T.preview)}</p>` : ''}
       <header class="tpa-head">
-        <div class="tpa-row"><p class="tpa-eyebrow">${esc(T.eyebrow)}</p>${langButton()}</div>
+        <div class="tpa-row"><p class="tpa-eyebrow">${esc(papers ? 'Sunshine on a Ranney Day' : T.eyebrow)}</p>${langButton()}</div>
         <h1 class="tpa-h1">${esc(v.company?.name || v.name)}</h1>
         <p class="tpa-who">${who}<button type="button" class="tpa-link" data-act="signout">${esc(T.signOut)}</button></p>
       </header>
       ${next ? `
         <section class="tpa-setup" aria-labelledby="tpa-setup-h">
           <div class="tpa-setup-text">
-            <h2 id="tpa-setup-h">${esc(T.setupTitle)}</h2>
-            <p>${esc(T.setupBody(done))}</p>
-            <div class="tpa-meter" role="progressbar" aria-valuemin="0" aria-valuemax="4" aria-valuenow="${done}" aria-label="${esc(T.setupTitle)}">${STEPS.map((k) => `<span class="${['done', 'checking', 'soon'].includes(tileState(k)) ? 'is-done' : ''}"></span>`).join('')}</div>
+            <h2 id="tpa-setup-h">${esc(papers ? T.papersTitle : T.setupTitle)}</h2>
+            <p>${esc(T.setupBody(done, list.length))}</p>
+            <div class="tpa-meter" role="progressbar" aria-valuemin="0" aria-valuemax="${list.length}" aria-valuenow="${done}" aria-label="${esc(papers ? T.papersTitle : T.setupTitle)}">${list.map((k) => `<span class="${['done', 'checking', 'soon'].includes(tileState(k)) ? 'is-done' : ''}"></span>`).join('')}</div>
           </div>
           <button type="button" class="tpa-btn tpa-btn--primary tpa-btn--lg" data-act="setup">${esc(done ? T.continue : T.start)}</button>
-        </section>` : `<p class="tpa-allset">${svg('check', 'tpa-allset-icon')}<span>${esc(T.setupDone)}</span></p>`}
+        </section>` : `<p class="tpa-allset">${svg('check', 'tpa-allset-icon')}<span>${esc(!papers || list.length > 1 ? T.setupDone : v.docs.w9Only ? T.papersDone : T.nothingNeeded)}</span></p>`}
       <div class="tpa-tiles">
-        ${STEPS.map((k) => {
+        ${list.map((k) => {
           const st = tileState(k);
           return `<article class="tpa-tile" data-state="${st}">
             <div class="tpa-tile-top"><span class="tpa-tile-icon">${svg(k)}</span><span class="tpa-chip" data-tone="${st}">${esc(T.chip[st as keyof typeof T.chip] || '')}</span></div>
@@ -220,7 +229,7 @@ function drawOverview() {
           </article>`;
         }).join('')}
       </div>
-      <section class="tpa-invoices" aria-labelledby="tpa-inv-h">
+      ${papers ? '' : `<section class="tpa-invoices" aria-labelledby="tpa-inv-h">
         <h2 id="tpa-inv-h" class="tpa-h2">${esc(T.invoicesTitle)}</h2>
         ${invoices.length ? `<ul class="tpa-inv-list">${invoices.map((i: any) => `
           <li class="tpa-inv" data-status="${i.status}">
@@ -228,7 +237,7 @@ function drawOverview() {
             <span class="tpa-inv-amt">${money(i.cents)}</span>
             <span class="tpa-inv-status">${esc(i.status === 'paid' ? T.status.paid(day(i.paidAt || i.date, false)) : i.status === 'held' ? (i.heldFor === 'bank' ? T.status.heldBank : T.status.heldDocuments) : T.status[i.status as 'received'] || '')}</span>
           </li>`).join('')}</ul>` : `<p class="tpa-empty">${esc(T.invoicesEmpty)}</p>`}
-      </section>
+      </section>`}
       <section class="tpa-help"><h2 class="tpa-h3">${esc(T.helpTitle)}</h2><p>${esc(T.helpBody)}</p></section>
     </div>`));
 }
@@ -254,7 +263,7 @@ function closeStep({ pop = false } = {}) {
 
 /** The next thing setup still needs after `k`, or null */
 function nextNeeded(k: Step): Step | null {
-  const after = STEPS.slice(STEPS.indexOf(k) + 1);
+  const after = steps().slice(steps().indexOf(k) + 1);
   return after.find((x) => ['needed'].includes(tileState(x))) || null;
 }
 
@@ -266,15 +275,16 @@ async function finishStep(k: Step) {
 }
 
 function stepFrame(k: Step, body: string) {
-  const i = STEPS.indexOf(k) + 1;
+  const list = steps();
+  const i = list.indexOf(k) + 1;
   return `
     <div class="tpa-step" data-step="${k}">
       <div class="tpa-bar">
         <button type="button" class="tpa-backlink" data-act="close">${svg('back')}<span>${esc(T.yourPage)}</span></button>
-        ${setupRun ? `<span class="tpa-stepof">${esc(T.stepOf(i))}</span>` : ''}
+        ${setupRun ? `<span class="tpa-stepof">${esc(T.stepOf(i, list.length))}</span>` : ''}
         ${langButton()}
       </div>
-      ${setupRun ? `<div class="tpa-segs" aria-hidden="true">${STEPS.map((x, j) => `<span class="${j < i - 1 || ['done', 'checking', 'soon'].includes(tileState(x)) ? 'is-done' : j === i - 1 ? 'is-now' : ''}"></span>`).join('')}</div>` : ''}
+      ${setupRun ? `<div class="tpa-segs" aria-hidden="true">${list.map((x, j) => `<span class="${j < i - 1 || ['done', 'checking', 'soon'].includes(tileState(x)) ? 'is-done' : j === i - 1 ? 'is-now' : ''}"></span>`).join('')}</div>` : ''}
       <div class="tpa-step-body">${body}</div>
     </div>`;
 }
@@ -380,7 +390,8 @@ function companyBody(f: HTMLFormElement) {
 // ─── The W-9 ────────────────────────────────────────────────────────
 
 function w9Step() {
-  const c = v.company || {};
+  // A company only on SOARD's site has no company step: its name is still the W-9's business name to start from
+  const c = v.company || (v.scope === 'papers' ? { name: v.name } : {});
   const a = c.address || {};
   const today = day(new Date().toISOString());
   const classes = Object.entries(T.classes).map(([k, label]) => `<label class="tpa-radio"><input type="radio" name="taxClass" value="${k}" ${k === 'llc' && /\bllc\b/i.test(c.name || '') ? 'checked' : ''}><span>${esc(label)}</span></label>`).join('');
@@ -413,7 +424,7 @@ function w9Step() {
         <div class="tpa-cert">
           <p class="tpa-label">${esc(T.certTitle)}</p>
           ${T.certNote ? `<p class="tpa-hint">${esc(T.certNote)}</p>` : ''}
-          <div class="tpa-cert-text" lang="en">${CERTIFICATION.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
+          <div class="tpa-cert-text" lang="en" tabindex="0" role="region" aria-label="${esc(T.certTitle)}">${CERTIFICATION.map((l) => `<p>${esc(l)}</p>`).join('')}</div>
           <label class="tpa-check"><input type="checkbox" name="backupWithholding"><span>${esc(T.backup)}</span></label>
           <label class="tpa-check tpa-check--strong"><input type="checkbox" name="certify" required><span>${esc(T.certify)}</span></label>
         </div>
@@ -493,10 +504,10 @@ function coiStep() {
     <p class="tpa-lead">${esc(T.coiLead)}</p>
     ${needs.length ? `<ul class="tpa-needs">${needs.map((i: any) => `<li>${esc(i.text)}</li>`).join('')}</ul>` : ''}
     <div class="tpa-reqbox"><p class="tpa-label">${esc(T.coiNeeds)}</p>${requirements()}${holderBlock()}</div>
-    <div class="tpa-tabs" role="tablist">
+    ${v.scope === 'papers' ? '' : `<div class="tpa-tabs" role="tablist">
       <button type="button" role="tab" class="tpa-tab" aria-selected="true" data-tab="upload">${esc(T.coiUpload)}</button>
       <button type="button" role="tab" class="tpa-tab" aria-selected="false" data-tab="agent">${esc(T.coiAgent)}</button>
-    </div>
+    </div>`}
     <div data-pane="upload">${dropZone('coi', true)}</div>
     <div data-pane="agent" hidden>
       <p class="tpa-small">${esc(T.agentLead)}</p>
@@ -731,10 +742,10 @@ function onClick(e: Event) {
   if (!el) return;
   const act = el.dataset.act;
   if (act === 'lang') { setLang(lang === 'es' ? 'en' : 'es'); draw(); return; }
-  if (act === 'signout') { try { localStorage.removeItem(KEY); } catch { /* private mode */ } token = ''; v = null; drawSignIn(); return; }
+  if (act === 'signout') { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); } catch { /* private mode */ } token = ''; v = null; drawSignIn(); return; }
   if (act === 'open') return openStep(el.dataset.step as Step, { run: false });
   if (act === 'setup') {
-    const first = STEPS.find((k) => tileState(k) === 'needed') || 'company';
+    const first = steps().find((k) => tileState(k) === 'needed') || steps()[0];
     return openStep(first, { run: true });
   }
   if (act === 'close') return closeStep();
@@ -772,15 +783,17 @@ export async function start(el: HTMLElement) {
   root.replaceChildren(html(`<p class="tpa-loading">${esc(T.loading)}</p>`));
   const r = await load();
   if (!r.ok) {
-    if (r.gone) { try { localStorage.removeItem(KEY); } catch { /* */ } }
-    return drawSignIn(r.gone ? T.gone : r.error);
+    if (r.gone) { try { localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); } catch { /* */ } }
+    return drawSignIn(r.notOnFile ? T.notOnFile : r.gone ? T.gone : r.error);
   }
+  // An agent's link lasts for the visit, never kept on the device. A company's own (a W-9-only one's too: it signs in
+  // and out like any other) is kept, so a new tab or tomorrow opens the same page
   agentLink = v.scope === 'agent';
   try {
     if (agentLink) sessionStorage.setItem(KEY, token);
-    else if (!v.preview) localStorage.setItem(KEY, token);
+    else if (!v.preview) { localStorage.setItem(KEY, token); localStorage.setItem(SCOPE_KEY, v.scope); sessionStorage.removeItem(KEY); }
   } catch { /* private mode: this visit only */ }
   if (v.lang && !fromLink) setLang(v.lang, false);
   draw();
-  if (jumpTo && STEPS.includes(jumpTo) && v.scope === 'vendor') openStep(jumpTo, { run: false });
+  if (jumpTo && steps().includes(jumpTo) && v.scope !== 'agent') openStep(jumpTo, { run: false });
 }

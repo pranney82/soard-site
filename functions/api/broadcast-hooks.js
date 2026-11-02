@@ -112,7 +112,7 @@ export async function onRequestPost(context) {
     // notes back to Mercury; every job's ledger every 15 minutes; the weekday morning receipts card (see _spend.js)
     context.waitUntil(maybeRunSpend(env));
     context.waitUntil(maybeRunFinance(env));
-    // Vendors' W-9s and insurance, kept in JobTread: asked for, checked, and held bills let go (see _vendors.js)
+    // Vendors' W-9s and insurance, kept on the site (JobTread's fields show them): asked for, checked, and held bills let go (see _vendors.js)
     context.waitUntil(maybeRunVendors(env));
     // Daily: subs paid this workers' comp term, and the certificate asked for when none covered the work (see _insurance-audit.js)
     context.waitUntil(maybeRunInsuranceAudit(env));

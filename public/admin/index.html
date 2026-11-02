@@ -6918,11 +6918,11 @@
     // The audit log: every change saved in the admin, newest first, a day at a
     // time. Each says who (their name and photo on People), what and when; open
     // one for what it was before and after.
-    const AUDIT_TYPE_LABELS = { settings: 'Site settings', faq: 'FAQ', 'our-story': 'Our Story', media: 'Media', financials: 'Financials', 'financial-snapshot': 'Financial snapshot', 'application-settings': 'Application settings', golf: 'Golf page', gala: 'Gala page', 'board-committees': 'Board committees' };
+    const AUDIT_TYPE_LABELS = { settings: 'Site settings', faq: 'FAQ', 'our-story': 'Our Story', media: 'Media', financials: 'Financials', 'financial-snapshot': 'Financial snapshot', 'application-settings': 'Application settings', golf: 'Golf page', gala: 'Gala page', 'board-committees': 'Board committees', 'vendor-papers': 'W-9s & insurance', 'vendor-file': 'W-9 and insurance files' };
     const auditTypeLabel = (t) => PUBLISH_TYPES[t]?.label || AUDIT_TYPE_LABELS[t] || String(t || 'Item').replace(/[-_]+/g, ' ').replace(/^./, (c) => c.toUpperCase());
-    const AUDIT_VERBS = { created: 'added', updated: 'edited', deleted: 'deleted', drafted: 'saved a draft of', published: 'published', uploaded: 'uploaded', deployed: 'published' };
-    const AUDIT_ACTIONS = [['created', 'Added'], ['updated', 'Edited'], ['deleted', 'Deleted'], ['drafted', 'Drafts'], ['published', 'Published'], ['uploaded', 'Uploads']];
-    const AUDIT_TYPES = ['kids', 'community', 'team', 'partners', 'community_partners', 'press', 'medialogos', 'events', 'articles', 'settings', 'faq', 'our-story', 'media', 'financials', 'financial-snapshot', 'application-settings'];
+    const AUDIT_VERBS = { created: 'added', updated: 'edited', deleted: 'deleted', drafted: 'saved a draft of', published: 'published', uploaded: 'uploaded', deployed: 'published', viewed: 'opened', downloaded: 'downloaded', sent: 'sent' };
+    const AUDIT_ACTIONS = [['created', 'Added'], ['updated', 'Edited'], ['deleted', 'Deleted'], ['drafted', 'Drafts'], ['published', 'Published'], ['uploaded', 'Uploads'], ['viewed', 'Opened'], ['downloaded', 'Downloads'], ['sent', 'Emails sent']];
+    const AUDIT_TYPES = ['kids', 'community', 'team', 'partners', 'community_partners', 'press', 'medialogos', 'events', 'articles', 'settings', 'faq', 'our-story', 'media', 'financials', 'financial-snapshot', 'application-settings', 'vendor-papers', 'vendor-file'];
     const auditDate = (s) => new Date(/Z$|[+-]\d\d:?\d\d$/.test(s || '') ? s : `${String(s || '').replace(' ', 'T')}Z`);
     const auditValue = (v) => (v == null || v === '' ? null : typeof v === 'object' ? JSON.stringify(v) : String(v));
     function auditDay(d) {

@@ -26,8 +26,12 @@
  *     sub out of the workers' comp audit only: liability still counts them.
  *  3. Coverage on each payment's date, the audit's own kind of insurance:
  *     the certificates found (D1 coi_coverage, ./_coi-backfill.js) and
- *     JobTread's Liability Expires and Workers' Comp Expires (with no start
- *     date the policy is taken to begin a year before it ends, and says so).
+ *     the end dates on file (JobTread's Liability Expires and Workers' Comp
+ *     Expires; the site's own for a company paid outside JobTread; with no
+ *     start date the policy is taken to begin a year before it ends, and
+ *     says so). A company paid outside JobTread is known by its name on the
+ *     site (./_vendor-files.js), and a name a company was moved onto a
+ *     JobTread vendor under is that vendor's.
  *  4. Admin → Job Costs → Insurance audit shows either audit; its spreadsheet
  *     and its auditor's packet (a summary, then each certificate) download
  *     there.
@@ -55,6 +59,7 @@ import { txnRow, readTxns } from './_mercury-txns.js';
 import { ramp, rampConfigured, matchRampBill } from './_ramp.js';
 import { vendorKey, vendorLikeness, dollars } from './_spend-match.js';
 import { vendorNote, asksOnHold, STATE_KEY as VENDORS_KEY } from './_vendors.js';
+import { nameKeyOf, fileObject, isSiteVendor } from './_vendor-files.js';
 
 const DAY = 86400e3;
 /** The two audited policies, each renewing on its own day. plain: words for the spreadsheet; file: for the download's name */
@@ -179,7 +184,8 @@ const monthIn = (ym, t) => ym >= t.start.slice(0, 7) && ym <= addDays(t.end, -1)
 /**
  * Does this payee count for the audit of that policy ('wc' | 'gl'), and why,
  * in words a person (or the auditor) can check. company: { name, docs
- * (JobTread's Documents field), materials, trades, call ({ reason }), paidBy
+ * (JobTread's Documents field, or a person's mark on the site for a company
+ * paid outside JobTread: docsOnSite), materials, trades, call ({ reason }), paidBy
  * ['card' | 'ach' | 'check' | 'wire' | 'bill'], categories (Ramp's coding),
  * costTypes (JobTread's), hasCertificate } → { sub, why, sure }
  */
@@ -189,7 +195,8 @@ export function isSubcontractor(company = {}, policy = 'wc') {
   if (call && (!call.only || call.only === policy)) return { sub: call.sub, why: `${call.label}${c.call.by ? ` (${String(c.call.by).split('@')[0]})` : ''}`, sure: true };
   // A call for the other audit only ("one person, no employees" is workers' comp's): the rest decides, and says so
   if (call) { const rest = isSubcontractor({ ...c, call: null }, policy); return rest.sub ? { ...rest, why: `${rest.why} · ${call.label.toLowerCase()}, still counted for ${POLICIES[policy].name}` } : rest; }
-  if (c.docs === 'Not needed') return { sub: false, why: 'Marked “Not needed” in JobTread', sure: true };
+  if (c.docs === 'Not needed') return { sub: false, why: `Marked “Not needed” ${c.docsOnSite ? 'on SOARD’s site' : 'in JobTread'}`, sure: true };
+  if (c.docsOnSite && c.docs === 'W-9 only') return { sub: false, why: 'Marked “W-9 only” on SOARD’s site', sure: true };
   if (c.materials || c.docs === 'W-9 only') return { sub: false, why: 'Sells materials only (JobTread)', sure: true };
   const trades = (c.trades || []).filter((t) => t && t !== 'Materials and supplies');
   if (trades.length) return { sub: true, why: `Does ${trades.join(', ').toLowerCase()} (JobTread’s Trades)`, sure: true };
@@ -223,12 +230,15 @@ const coverOf = (r) => ({
 /** Is this certificate of that kind ('wc' | 'gl')? An exemption counts for workers' comp */
 const ofKind = (c, kind) => (kind === 'wc' ? c.kind === 'wc' || c.exempt : c.kind === 'gl');
 
-/** The certificates (and JobTread's end dates) that are this payee's: by JobTread vendor, or by the insured's name when the certificate has no vendor */
-export function coverageFor({ jtId, name, fields }, rows) {
-  const mine = rows.filter((r) => (jtId && r.jt_id === jtId) || (!r.jt_id && vendorLikeness(r.insured, name) === 1)).map(coverOf);
+/**
+ * The certificates (and the end dates on file) that are this payee's: by JobTread vendor or site company (siteId),
+ * or by the insured's name when the certificate has no company. fields: { gl, wc } end dates, from: whose they are
+ */
+export function coverageFor({ jtId, siteId = null, name, fields, from = 'jobtread' }, rows) {
+  const mine = rows.filter((r) => (jtId && r.jt_id === jtId) || (siteId && r.jt_id === siteId) || (!r.jt_id && vendorLikeness(r.insured, name) === 1)).map(coverOf);
   for (const kind of ['gl', 'wc']) {
     const end = fields?.[kind];
-    if (end && !mine.some((c) => c.kind === kind && c.expires === end)) mine.push({ kind, effective: null, expires: end, insurer: null, policyNo: null, exempt: false, source: 'jobtread', jtFileId: null, fileHash: null });
+    if (end && !mine.some((c) => c.kind === kind && c.expires === end)) mine.push({ kind, effective: null, expires: end, insurer: null, policyNo: null, exempt: false, source: from, jtFileId: null, fileHash: null });
   }
   return mine;
 }
@@ -298,7 +308,7 @@ export function mercuryPaymentOf(r) {
  * could be read: rampOk).
  * → [{ key, source, ref, billId, jtId, payee, cents, date, dateFrom ('paid' | 'bill'), method, categories, costTypes }]
  */
-export function combinePayments({ term, jtBills = [], jtPayments = [], rampBills = [], mercury = [], txnBills = new Map(), vendors = [], rampWrote = new Set(), rampOk = false }) {
+export function combinePayments({ term, jtBills = [], jtPayments = [], rampBills = [], mercury = [], txnBills = new Map(), vendors = [], rampWrote = new Set(), rampOk = false, siteNames = null }) {
   const inTerm = (d) => !!d && d >= term.start && d < term.end;
   const bills = new Map(jtBills.map((b) => [b.id, b]));
   const out = [];
@@ -319,7 +329,8 @@ export function combinePayments({ term, jtBills = [], jtPayments = [], rampBills
   };
   const rampFor = new Map();
   const ramps = rampBills.map((r) => {
-    const m = matchRampBill(r, jtList, vendorList);
+    // A company kept on the site (paid outside JobTread) is never a look-alike JobTread vendor's bill (./_ramp.js)
+    const m = matchRampBill(r, jtList, vendorList, siteNames);
     if (m?.jtBillId && !rampFor.has(m.jtBillId)) rampFor.set(m.jtBillId, r);
     return { r, m };
   });
@@ -379,11 +390,16 @@ const groupKey = (p) => (p.jtId ? `jt:${p.jtId}` : `name:${vendorKey(p.payee) ||
  * rows; calls: Map(key → { reason, by, at }); asks: [{ jtId, months,
  * toEmail, toKind, sentAt }]
  */
-export function auditFrom({ term, payments = [], vendors = [], coverage = [], calls = new Map(), asks = [], agents = new Map(), sources = {}, builtAt = null, today }) {
+export function auditFrom({ term, payments = [], vendors = [], sites = [], coverage = [], calls = new Map(), asks = [], agents = new Map(), sources = {}, builtAt = null, today }) {
   const k = term.policy || 'wc';
   const byJt = new Map(vendors.map((v) => [v.jtId, v]));
+  // The site's companies by every name they've had (readSites): one paid outside JobTread, or a name moved onto a JobTread vendor
+  const named = new Map();
+  for (const s of sites) for (const key of s.keys || []) if (key && !named.has(key)) named.set(key, s);
   const groups = new Map();
-  for (const p of payments) {
+  for (const pay of payments) {
+    const moved = !pay.jtId ? named.get(nameKeyOf(pay.payee)) : null;
+    const p = moved && !moved.site ? { ...pay, jtId: moved.id } : pay;
     const k = groupKey(p);
     if (!groups.has(k)) groups.set(k, { key: k, jtId: p.jtId || null, payee: p.payee, list: [] });
     groups.get(k).list.push(p);
@@ -391,11 +407,17 @@ export function auditFrom({ term, payments = [], vendors = [], coverage = [], ca
   const rows = [];
   for (const g of groups.values()) {
     const v = g.jtId ? byJt.get(g.jtId) : null;
-    const name = v?.name || g.payee || 'A payee with no name';
-    const certs = coverageFor({ jtId: g.jtId, name, fields: v?.fields }, coverage);
+    const site = !g.jtId ? named.get(nameKeyOf(g.payee)) : null;
+    const siteId = site?.site ? site.id : null;
+    const name = v?.name || (siteId ? site.name : null) || g.payee || 'A payee with no name';
+    const certs = siteId
+      ? coverageFor({ jtId: null, siteId, name, fields: site.fields, from: 'site' }, coverage)
+      : coverageFor({ jtId: g.jtId, name, fields: v?.fields }, coverage);
     const call = calls.get(g.key) || null;
+    // A person's "W-9 only" or "Not needed" on the site counts; the W-9 only every payee starts with doesn't
+    const siteDocs = siteId && site.docsBy ? site.fields?.docs : null;
     const cls = isSubcontractor({
-      name, docs: v?.fields?.docs, materials: v?.fields?.materials, trades: v?.fields?.trades, call,
+      name, docs: v?.fields?.docs ?? siteDocs, docsOnSite: !v && !!siteDocs, materials: v?.fields?.materials, trades: v?.fields?.trades, call,
       paidBy: [...new Set(g.list.map((p) => p.method || 'bill'))], categories: [...new Set(g.list.flatMap((p) => p.categories || []))],
       costTypes: [...new Set(g.list.flatMap((p) => p.costTypes || []))], coded: codedAs(g.list), hasCertificate: certs.some((c) => c.source !== 'jobtread' || c.expires),
     }, k);
@@ -406,12 +428,12 @@ export function auditFrom({ term, payments = [], vendors = [], coverage = [], ca
     };
     const latest = pays.at(-1);
     const shown = (kind) => (latest?.[kind]?.ok ? latest[kind] : [...certs].filter((c) => ofKind(c, kind)).sort((a, b) => String(b.expires).localeCompare(String(a.expires)))[0] || null);
-    // This audit's certificates, each file once
-    const files = [...new Map(certs.filter((c) => c.jtFileId && ofKind(c, k)).map((c) => [c.fileHash || c.jtFileId, c])).values()];
+    // This audit's certificates, each file once (kept on the site by their bytes; one only in JobTread by its id)
+    const files = [...new Map(certs.filter((c) => (c.fileHash || c.jtFileId) && ofKind(c, k)).map((c) => [c.fileHash || c.jtFileId, c])).values()];
     const myAsks = g.jtId ? asks.filter((a) => a.jtId === g.jtId && a.months.some((m) => monthIn(m, term))) : [];
     const agent = g.jtId ? agents.get(g.jtId) : null;
     rows.push({
-      key: g.key, jtId: g.jtId, name, inJobTread: !!v, sub: cls.sub, why: cls.why, sure: cls.sure, call: call ? { reason: call.reason, label: CALLS[call.reason]?.label || call.reason, by: call.by, at: call.at } : null,
+      key: g.key, jtId: g.jtId, siteId, name, inJobTread: !!v, sub: cls.sub, why: cls.why, sure: cls.sure, call: call ? { reason: call.reason, label: CALLS[call.reason]?.label || call.reason, by: call.by, at: call.at } : null,
       trades: (v?.fields?.trades || []).filter(Boolean), paidCents: sum(pays, (p) => p.cents), count: pays.length, first: pays[0]?.date || null, last: latest?.date || null,
       payments: pays, wc: { ...gap('wc'), shown: shown('wc') }, gl: { ...gap('gl'), shown: shown('gl') }, files,
       email: v?.email || v?.emails?.[0] || null, agentEmail: isEmail(agent?.email) ? agent.email : null,
@@ -518,15 +540,45 @@ export async function readMercuryPaid(env, t, { fetchImpl = fetch } = {}) {
   return rows.map(mercuryPaymentOf).filter(Boolean);
 }
 
-/** The vendors cache (./_vendors.js refreshCache) → [{ jtId, name, email, emails, fields }] */
+/**
+ * The vendors cache (./_vendors.js refreshCache) → [{ jtId, name, email, emails, fields }]. Their end dates and Documents
+ * are the site's record (./_vendor-files.js) where it has one: the cache is JobTread's, read every few hours.
+ */
 export async function readVendors(DB) {
   const rows = await DB.prepare('SELECT jt_id, name, email, facts FROM vendors WHERE jt_id IS NOT NULL').all().then((r) => r.results || [], () => []);
-  return rows.map((r) => { const f = parseJson(r.facts, {}); return { jtId: r.jt_id, name: r.name, email: r.email || null, emails: f.emails || [], fields: f.fields || null }; });
+  const record = new Map(await DB.prepare('SELECT id, gl, wc, docs FROM vendor_papers').all().then((r) => (r.results || []).map((p) => [p.id, p]), () => []));
+  return rows.map((r) => {
+    const f = parseJson(r.facts, {});
+    const p = record.get(r.jt_id);
+    const fields = p ? { ...(f.fields || {}), gl: p.gl || null, wc: p.wc || null, docs: p.docs || null } : f.fields || null;
+    return { jtId: r.jt_id, name: r.name, email: r.email || null, emails: f.emails || [], fields };
+  });
 }
 
-/** The certificates found (./_coi-backfill.js); none until that table exists */
+/**
+ * The site's companies the audit knows by name (./_vendor-files.js vendor_papers): each one paid outside JobTread, by
+ * its name and the names it had, and each JobTread vendor a site company was moved onto, by that company's names
+ * → [{ id, site, name, keys, docsBy, fields: { gl, wc, docs } }]
+ */
+export async function readSites(DB) {
+  const rows = await DB.prepare("SELECT id, name, vkey, gl, wc, docs, docs_by, payee FROM vendor_papers WHERE id LIKE 's\\_%' ESCAPE '\\' OR payee LIKE '%aliases%'")
+    .all().then((r) => r.results || [], () => []);
+  return rows.map((r) => {
+    const site = isSiteVendor(r.id);
+    const aliases = parseJson(r.payee, {})?.aliases || [];
+    return { id: r.id, site, name: r.name || '', keys: site ? [r.vkey, ...aliases] : aliases, docsBy: r.docs_by || null, fields: site ? { gl: r.gl || null, wc: r.wc || null, docs: r.docs || null } : null };
+  });
+}
+
+/**
+ * The certificates found (./_coi-backfill.js); none until that table exists. A certificate the site keeps counts only
+ * while one copy of it is still a certificate on a company's list: one taken off, or found to be a W-9, doesn't.
+ */
 export async function readCoverage(DB) {
-  return DB.prepare('SELECT * FROM coi_coverage').all().then((r) => r.results || [], () => []);
+  const kept = await DB.prepare(`SELECT c.* FROM coi_coverage c WHERE NOT EXISTS (SELECT 1 FROM vendor_files f WHERE f.hash = c.file_hash)
+      OR EXISTS (SELECT 1 FROM vendor_files f WHERE f.hash = c.file_hash AND f.doc = 'coi' AND f.status != 'removed')`).all().then((r) => r.results || [], () => null);
+  // Before the site kept any files (no vendor_files yet): every certificate found
+  return kept || DB.prepare('SELECT * FROM coi_coverage').all().then((r) => r.results || [], () => []);
 }
 
 /** Read the term's payments from every source that answers, and keep them → the run */
@@ -550,7 +602,8 @@ export async function buildRun(env, t, { now = Date.now(), fetchImpl = fetch } =
   const txnBills = new Map(await env.DB.prepare('SELECT txn_id, bill_id FROM spend_payments WHERE bill_id IS NOT NULL').all().then((r) => (r.results || []).map((x) => [x.txn_id, x.bill_id]), () => []));
   const rampWrote = new Set(await env.DB.prepare('SELECT bill_id FROM spend_recode').all().then((r) => (r.results || []).map((x) => x.bill_id), () => []));
   const vendors = await readVendors(env.DB);
-  const payments = combinePayments({ term: t, jtBills, jtPayments, rampBills, mercury, txnBills, vendors, rampWrote, rampOk: !!sources.ramp?.ok });
+  const siteNames = new Set((await readSites(env.DB)).filter((s) => s.site).flatMap((s) => s.keys).filter(Boolean));
+  const payments = combinePayments({ term: t, jtBills, jtPayments, rampBills, mercury, txnBills, vendors, rampWrote, rampOk: !!sources.ramp?.ok, siteNames });
   const builtAt = new Date(now).toISOString();
   const data = { payments, sources, version: RUN_VERSION };
   await env.DB.prepare('INSERT OR REPLACE INTO insurance_audit_runs (term, built_at, data, error) VALUES (?, ?, ?, NULL)').bind(t.id, builtAt, JSON.stringify(data)).run();
@@ -587,8 +640,8 @@ export async function auditFor(env, termId, { now = Date.now(), fetchImpl = fetc
   let run = await readRun(env.DB, t.id);
   if (!run) run = await buildRun(env, t, { now, fetchImpl });
   else if (runIsStale(run, t, now) && waitUntil) waitUntil(buildRun(env, t, { now, fetchImpl }).catch((e) => console.error('[insurance-audit] refresh', e.message)));
-  const [vendors, coverage, calls, asks, agents] = await Promise.all([readVendors(env.DB), readCoverage(env.DB), readCalls(env.DB), readAsks(env.DB), readAgents(env.DB)]);
-  return auditFrom({ term: t, payments: run.payments, vendors, coverage, calls, asks, agents, sources: run.sources, builtAt: run.builtAt, today: todayEastern(now) });
+  const [vendors, sites, coverage, calls, asks, agents] = await Promise.all([readVendors(env.DB), readSites(env.DB), readCoverage(env.DB), readCalls(env.DB), readAsks(env.DB), readAgents(env.DB)]);
+  return auditFrom({ term: t, payments: run.payments, vendors, sites, coverage, calls, asks, agents, sources: run.sources, builtAt: run.builtAt, today: todayEastern(now) });
 }
 
 /** A person's call on a payee (Admin → Job Costs → Insurance audit): one of CALLS, or 'clear' */
@@ -758,24 +811,37 @@ function wrap(font, text, size, width) {
 /** A certificate's bytes as a PDF or a picture → 'pdf' | 'jpg' | 'png' | null */
 const fileKind = (b) => (b[0] === 0x25 && b[1] === 0x50 && b[2] === 0x44 && b[3] === 0x46 ? 'pdf' : b[0] === 0xff && b[1] === 0xd8 ? 'jpg' : b[0] === 0x89 && b[1] === 0x50 ? 'png' : null);
 
-/** The certificates to put in the packet for one sub: the files the search found, else their JobTread files tagged COI */
+/**
+ * The certificates to put in the packet for one sub: the files their coverage was read from (kept on the site,
+ * ./_vendor-files.js; one never copied there, from JobTread), else the certificates the site keeps for them, else
+ * their JobTread files tagged COI
+ */
 async function certificateFiles(env, row, coiTag, fetchImpl) {
+  const out = [];
+  const take = (name, bytes) => { if (bytes.byteLength <= 12 * 1024 * 1024 && fileKind(bytes)) out.push({ name, bytes, kind: fileKind(bytes) }); };
+  const kept = async (r) => { const o = await fileObject(env, { key: r.r2_key }).catch(() => null); if (o) take(r.name, new Uint8Array(await o.arrayBuffer())); return !!o; };
   const files = [];
   for (const f of row.files.slice(0, 4)) {
+    // Only a certificate: a file found to be a W-9 (it has a tax ID) never goes to the auditor
+    const r = f.fileHash ? await env.DB.prepare("SELECT name, r2_key FROM vendor_files WHERE hash = ? AND doc = 'coi' AND status != 'removed' ORDER BY added_at LIMIT 1").bind(f.fileHash).first().catch(() => null) : null;
+    if (r && await kept(r)) continue;
+    if (!f.jtFileId || !env.JOBTREAD_GRANT_KEY) continue;
     const d = await jtRead(env, { file: { $: { id: f.jtFileId }, id: {}, name: {}, url: {} } }, fetchImpl).catch(() => null);
     if (d?.file?.url) files.push({ name: d.file.name, url: d.file.url });
   }
-  if (!files.length && row.jtId && coiTag) {
+  const ids = [row.jtId, row.siteId].filter(Boolean);
+  if (!out.length && !files.length && ids.length) {
+    const rows = await env.DB.prepare(`SELECT name, r2_key FROM vendor_files WHERE vendor_id IN (${ids.map(() => '?').join(', ')}) AND doc = 'coi' AND status IN ('checked', 'kept') ORDER BY COALESCE(received_at, added_at) DESC LIMIT 2`)
+      .bind(...ids).all().then((x) => x.results || [], () => []);
+    for (const r of rows) await kept(r);
+  }
+  if (!out.length && !files.length && row.jtId && coiTag && env.JOBTREAD_GRANT_KEY) {
     const d = await jtRead(env, { account: { $: { id: row.jtId }, files: { $: { size: 30, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: { id: {}, name: {}, url: {}, fileTags: { $: { size: 5 }, nodes: { id: {} } } } } } }, fetchImpl).catch(() => null);
     files.push(...(d?.account?.files?.nodes || []).filter((f) => f.url && (f.fileTags?.nodes || []).some((x) => x.id === coiTag)).slice(0, 2).map((f) => ({ name: f.name, url: f.url })));
   }
-  const out = [];
   for (const f of files) {
     const res = await fetchImpl(f.url, { signal: AbortSignal.timeout(30000) }).catch(() => null);
-    if (!res?.ok) continue;
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    if (bytes.byteLength > 12 * 1024 * 1024 || !fileKind(bytes)) continue;
-    out.push({ name: f.name, bytes, kind: fileKind(bytes) });
+    if (res?.ok) take(f.name, new Uint8Array(await res.arrayBuffer()));
   }
   return out;
 }
@@ -793,7 +859,7 @@ export async function auditPacket(env, audit, { fetchImpl = fetch, now = Date.no
   const attach = [];
   for (const r of subs) {
     if (attach.length >= 60) break;
-    const files = env.JOBTREAD_GRANT_KEY ? await certificateFiles(env, r, coiTag, fetchImpl).catch(() => []) : [];
+    const files = await certificateFiles(env, r, coiTag, fetchImpl).catch(() => []);
     const docs = [];
     for (const f of files) {
       if (f.kind !== 'pdf') { docs.push({ ...f, pages: 1 }); continue; }
@@ -875,7 +941,7 @@ export async function auditPacket(env, audit, { fetchImpl = fetch, now = Date.no
       }
       const img = d.kind === 'png' ? await doc.embedPng(d.bytes).catch(() => null) : await doc.embedJpg(d.bytes).catch(() => null);
       const pg = doc.addPage(PAGE);
-      if (!img) { pg.drawText(plain(`${a.row.name}: ${d.name} could not be added; it is in JobTread.`), { x: M, y: PAGE[1] - M, size: 10, font }); continue; }
+      if (!img) { pg.drawText(plain(`${a.row.name}: ${d.name} could not be added; SOARD has it on file.`), { x: M, y: PAGE[1] - M, size: 10, font }); continue; }
       const s = Math.min((PAGE[0] - 2 * M) / img.width, (PAGE[1] - 2 * M) / img.height, 1);
       pg.drawImage(img, { x: (PAGE[0] - img.width * s) / 2, y: (PAGE[1] - img.height * s) / 2, width: img.width * s, height: img.height * s });
     }

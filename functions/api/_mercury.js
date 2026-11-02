@@ -224,25 +224,3 @@ export async function webhookSecret(env) {
   return (await readState(env.DB, WEBHOOK_KEY)).secret || null;
 }
 
-// ─── Vendors: the W-9 for the 1099s (./_vendors.js) ────────────────
-// A W-9 that checked out in JobTread goes onto the vendor's Mercury
-// recipient too, so Mercury can file their 1099. It never moves money.
-
-/** A vendor's W-9 onto their Mercury recipient (multipart "file") */
-export async function uploadRecipientAttachment(env, recipientId, { bytes, fileName, type = 'application/pdf' }, { fetchImpl = fetch } = {}) {
-  const token = String(env.MERCURY_API_TOKEN || '').trim();
-  const relayKey = String(env.MERCURY_RELAY_KEY || '').trim();
-  if (!token) throw Object.assign(new Error('MERCURY_API_TOKEN is not set'), { status: 0 });
-  if (!relayKey) throw Object.assign(new Error('MERCURY_RELAY_KEY is not set'), { status: 0, relay: true });
-  const form = new FormData();
-  form.append('file', new Blob([bytes], { type }), fileName);
-  const res = await fetchImpl(`${MERCURY_API}/recipient/${encodeURIComponent(recipientId)}/attachments`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'X-Relay-Key': relayKey, Accept: 'application/json' },
-    body: form,
-    signal: AbortSignal.timeout(30000),
-  });
-  const text = await res.text();
-  if (!res.ok) throw Object.assign(new Error(`Mercury answered ${res.status}: ${text.slice(0, 200)}`), { status: res.status });
-  try { return text ? JSON.parse(text) : {}; } catch { return {}; }
-}

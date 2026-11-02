@@ -387,7 +387,8 @@ export function judgeCoi(x, req, { vendorName = '', now = Date.now() } = {}) {
  * (readers miss far more than they invent), and one seen without a usable date still counts for its limits.
  * Across files, the policy that runs longest stands, as in judgeCoi.
  * Passes at the least generous → accepted, with the earlier dates.
- * Fails even at the most generous → only the problems that hold either way go back to the vendor.
+ * Fails even at the most generous → only the problems that hold either way go back to the vendor, with the dates of
+ * the least generous reading (a failing certificate that's kept still moves only what it surely shows).
  * Otherwise one misread number decides it, so a person does: { unreadable, unsure: what one reading found }.
  */
 export function judgeCoiReads(reads, req, opts = {}) {
@@ -416,7 +417,7 @@ export function judgeCoiReads(reads, req, opts = {}) {
   const low = judgeCoi(both(true), req, opts);
   if (low.unreadable || low.accepted) return low;
   const high = judgeCoi(both(false), req, opts);
-  if (!high.accepted) return high;
+  if (!high.accepted) return { ...high, gl: low.gl, wc: low.wc, summary: low.summary, lines: low.lines };
   return { unreadable: true, unsure: low.problems.join(' ') };
 }
 

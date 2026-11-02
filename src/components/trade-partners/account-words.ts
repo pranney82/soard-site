@@ -18,8 +18,11 @@ const en = {
   failed: 'That didn’t go through. Check your connection and try again.',
   preview: 'A preview of the page a company gets. What you add here is checked the same way, and nothing is kept or sent anywhere.',
   setupTitle: 'Set up your account',
-  setupBody: (n: number) => `${n} of 4 done. It takes about 10 minutes, and it saves as you go.`,
+  setupBody: (n: number, of = 4) => (of === 4 ? `${n} of 4 done. It takes about 10 minutes, and it saves as you go.` : `${n} of ${of} done. It takes a minute or two.`),
+  papersTitle: 'What we need from you',
   setupDone: 'You’re all set. We’ll email you before anything needs renewing.',
+  papersDone: 'You’re all set. We have your W-9, and that’s all we need from you.',
+  nothingNeeded: 'You’re all set. There’s nothing we need from you.',
   continue: 'Continue',
   start: 'Start',
   tiles: { company: 'Company', w9: 'W-9', coi: 'Insurance', bank: 'Payments' },
@@ -50,7 +53,7 @@ const en = {
   save: 'Save',
   saveNext: 'Save and continue',
   saving: 'Saving…',
-  stepOf: (i: number) => `Step ${i} of 4`,
+  stepOf: (i: number, of = 4) => `Step ${i} of ${of}`,
   // Company
   companyTitle: 'Your company',
   companyLead: 'What we have on file for you, and who we should talk to.',
@@ -159,6 +162,7 @@ const en = {
   agentPageLead: (n: string) => `${n} works with Sunshine on a Ranney Day, a nonprofit that builds bedrooms and bathrooms for children with disabilities. Add their certificate here and it’s checked right away.`,
   // Gone
   gone: 'This link has expired or been replaced. Sign in again and we’ll send a new one.',
+  notOnFile: 'We don’t need anything from you right now, so this link is closed. If someone at SOARD asked you for something, reply to their email.',
 };
 
 type Words = typeof en;
@@ -182,8 +186,11 @@ const es: Words = {
   failed: 'No se pudo enviar. Revise su conexión e intente de nuevo.',
   preview: 'Una vista previa de la página que recibe una empresa. Lo que agregue aquí se revisa igual, y no se guarda ni se envía nada.',
   setupTitle: 'Configure su cuenta',
-  setupBody: (n: number) => `${n} de 4 listos. Toma unos 10 minutos y se guarda mientras avanza.`,
+  setupBody: (n: number, of = 4) => (of === 4 ? `${n} de 4 listos. Toma unos 10 minutos y se guarda mientras avanza.` : `${n} de ${of} listos. Toma uno o dos minutos.`),
+  papersTitle: 'Lo que necesitamos de usted',
   setupDone: 'Todo listo. Le escribiremos antes de que algo necesite renovarse.',
+  papersDone: 'Todo listo. Tenemos su W-9 y es todo lo que necesitamos de usted.',
+  nothingNeeded: 'Todo listo. No necesitamos nada de usted.',
   continue: 'Continuar',
   start: 'Empezar',
   tiles: { company: 'Empresa', w9: 'W-9', coi: 'Seguro', bank: 'Pagos' },
@@ -214,7 +221,7 @@ const es: Words = {
   save: 'Guardar',
   saveNext: 'Guardar y continuar',
   saving: 'Guardando…',
-  stepOf: (i: number) => `Paso ${i} de 4`,
+  stepOf: (i: number, of = 4) => `Paso ${i} de ${of}`,
   companyTitle: 'Su empresa',
   companyLead: 'Lo que tenemos de usted y con quién debemos hablar.',
   companyName: 'Nombre de la empresa',
@@ -316,6 +323,7 @@ const es: Words = {
   agentPageTitle: (n: string) => `Certificado de seguro de ${n}`,
   agentPageLead: (n: string) => `${n} trabaja con Sunshine on a Ranney Day, una organización sin fines de lucro que construye cuartos y baños para niños con discapacidades. Agregue su certificado aquí y se revisa al instante.`,
   gone: 'Este enlace venció o fue reemplazado. Entre de nuevo y le enviaremos uno nuevo.',
+  notOnFile: 'Por ahora no necesitamos nada de usted, así que este enlace está cerrado. Si alguien de SOARD le pidió algo, responda a su correo.',
 };
 
 export const WORDS = { en, es };

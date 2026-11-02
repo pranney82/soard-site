@@ -8,8 +8,8 @@
  * vendor tells us, and every email the site sends them is noted there:
  *   - company: the vendor account's name, its Trades, Address and License
  *     fields, and its contacts (the main one, "Billing", "Insurance agent")
- *   - W-9: signed on the page (./_w9-form.js) or uploaded, filed like any
- *     other (./_vendors.js) and put on their Mercury recipient for the 1099
+ *   - W-9: signed on the page (./_w9-form.js) or uploaded, kept on the site
+ *     like any other (./_vendor-files.js); JobTread's W-9 field shows it
  *   - insurance: uploaded, or asked of their agent, who gets a link of their
  *     own that can add a certificate and nothing else
  *   - bank account: straight onto the vendor's Mercury recipient through the
@@ -26,16 +26,17 @@ import { SOARD_ORG_ID, TZ } from './_reveals.js';
 import { sendEmails, slackResolved } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { emailShell, paragraphs, button, panel, esc } from './_email-shell.js';
-import { mercury, mercuryConfigured, uploadRecipientAttachment } from './_mercury.js';
+import { mercury, mercuryConfigured } from './_mercury.js';
 import { cachedRecipients, recipientFor } from './_bill-pay.js';
 import { vendorKey, vendorLikeness, dollars } from './_spend-match.js';
 import { checkW9, buildW9 } from './_w9-form.js';
 import { requirementLines, longDate } from './_vendor-read.js';
 import {
-  jt, jtSetup, readJtVendor, createLink, ensureVendorSchema, docsState, readDocSettings, writeFields, vendorNote, uploadToJt,
-  patchAsk, readAsk, labelFor, resolveAll, briefState, OVERRIDES, FOLDER, TAGS, TRADES, PREVIEW_ID, LIMITS,
-  CONTACT_VALUES, contactEmail, contactPhone, contactFields, asksOnHold,
+  jt, jtSetup, readJtVendor, readVendor, createLink, ensureVendorSchema, docsState, readDocSettings, writePapers, vendorNote,
+  patchAsk, resolveAll, briefState, TAGS, TRADES, PREVIEW_ID, LIMITS,
+  CONTACT_VALUES, contactEmail, contactPhone, contactFields, asksOnHold, isSiteVendor, postOnce, papersUrl,
 } from './_vendors.js';
+import { keepFile, nameKeyOf, ensurePapersSchema, jobtreadNamed } from './_vendor-files.js';
 
 const DAY = 864e5;
 export const BANK_FRESH_DAYS = 7;          // a link older than this asks for a fresh one before bank details change
@@ -246,33 +247,30 @@ export async function saveCompany(env, link, body, { now = Date.now(), fetchImpl
 
 // ─── The W-9, signed on the page ────────────────────────────────────
 
-/** The W-9 from the form: checked, built, filed in JobTread, ticked, sent to Mercury → { ok } | { ok: false, problems } */
+/** The W-9 from the form: checked, built, kept on the site, ticked (JobTread's field too) → { ok } | { ok: false, problems } */
 export async function signW9(env, link, answers, { now = Date.now(), ip = '', fetchImpl = fetch } = {}) {
   const r = checkW9(answers);
   if (!r.ok) return { ok: false, problems: r.problems };
-  const v = await readJtVendor(env, link.vendor_id, { fetchImpl });
+  // The site is the record: a W-9 signed while JobTread doesn't answer is kept all the same (its field follows later)
+  const v = await readVendor(env, link.vendor_id, { fetchImpl, now, orRecord: true });
   if (!v || v.archived) throw Object.assign(new Error('This link is for a company we no longer have on file.'), { status: 410 });
   const holder = await holderOf(env.DB);
   const bytes = await buildW9(r.w9, { signedAt: now, email: v.email || '', ip, tz: TZ, requester: { name: holder[0], lines: holder.slice(1) } });
   if (v.id === PREVIEW_ID) return { ok: true, preview: true, bytes: bytes.length };
-  const ids = await jtSetup(env, { fetchImpl });
   const day = isoDay(now);
-  const uploadRequestId = await uploadToJt(env, { bytes, type: 'application/pdf' }, fetchImpl);
-  await jt(env, { createFile: { $: { name: `${TAGS.w9} ${v.name} ${day} (signed online).pdf`, targetType: 'account', targetId: v.id, uploadRequestId, folder: FOLDER, fileTagIds: [ids.tags.w9] }, createdFile: { id: {} } } }, fetchImpl);
-  const after = { ...v, w9: true };
-  const req = await readDocSettings(env.DB);
-  const state = docsState(after, req, { now });
-  const ask = await readAsk(env.DB, v.id);
-  const label = OVERRIDES.has(v.docs) ? null : labelFor(after, state, ask);
-  await writeFields(env, ids, v.id, { w9: true, ...(label && label !== v.docs ? { docs: label === 'Needs a look' && v.docs !== 'Needs a look' ? state.label : label } : {}) }, fetchImpl);
-  await vendorNote(env, v.id, 'W-9 from the trade-partner page', `${r.w9.signature} filled in and signed a W-9 on SOARD’s trade-partner page on ${longDate(day)} (${r.w9.business || r.w9.name}, ${r.w9.tinType === 'ein' ? 'EIN' : 'SSN or ITIN'} given). It’s in the ${FOLDER} folder.`, fetchImpl);
+  await keepFile(env, v.id, {
+    doc: 'w9', bytes, type: 'application/pdf', name: `${TAGS.w9} ${v.name} ${day} (signed online).pdf`, source: 'signed', sourceRef: `link:${String(link.token_hash || '').slice(0, 16)}`,
+    receivedAt: day, by: r.w9.signature, status: 'checked', summary: `Filled in and signed on SOARD’s page (${r.w9.tinType === 'ein' ? 'EIN' : 'SSN or ITIN'} given)`,
+    reading: { name: r.w9.name, businessName: r.w9.business, signed: true, signedDate: day }, proves: { w9: true },
+  }, { now });
+  await writePapers(env, null, v.id, { w9: true }, fetchImpl, { now });
+  const { relabel, settleWaiting, settleLook } = await import('./_vendors.js');
+  await settleWaiting(env, v.id, 'w9', null);
+  const { state } = await relabel(env, v.id, { fetchImpl, now });
+  await settleLook(env, v.id, now);
+  await vendorNote(env, v.id, 'W-9 from the trade-partner page', `${r.w9.signature} filled in and signed a W-9 on SOARD’s trade-partner page on ${longDate(day)} (${r.w9.business || r.w9.name}, ${r.w9.tinType === 'ein' ? 'EIN' : 'SSN or ITIN'} given). It’s kept on the site (Job Costs → W-9s & insurance).`, fetchImpl);
   await patchAsk(env.DB, v.id, { name: v.name, email: v.email, state: briefState(state), checkedAt: new Date(now).toISOString(), ...(state.ok && !state.expiring ? { open: false } : {}) }, now);
-  if (state.ok && !state.expiring) await resolveAll(env, v.id, 'Their W-9 and insurance are current in JobTread.', now).catch(() => null);
-  if (mercuryConfigured(env)) {
-    const bank = await readBank(env.DB, v.id);
-    const recipient = bank?.mercuryId ? { id: bank.mercuryId } : recipientFor(v.name, await cachedRecipients(env, { now }).catch(() => []));
-    if (recipient) await uploadRecipientAttachment(env, recipient.id, { bytes, fileName: `W-9 ${v.name}.pdf`, type: 'application/pdf' }).then(() => patchAsk(env.DB, v.id, { mercuryW9At: new Date(now).toISOString() }, now)).catch((e) => console.error('[partners] w9 mercury', e.message));
-  }
+  if (state.ok && !state.expiring) await resolveAll(env, v.id, 'Their W-9 and insurance are current.', now).catch(() => null);
   if (state.ok) {
     const { releaseVendorHolds } = await import('./_bill-pay.js');
     await releaseVendorHolds(env, v.id, { now }).catch(() => 0);
@@ -314,7 +312,7 @@ export async function askAgent(env, jtId, { renewal = false, reminder = false, b
   // The company asking for its own agent goes; SOARD's renewals and reminders wait (./_vendors.js asksOnHold)
   const held = by === 'vendor' ? null : await asksOnHold(env);
   if (held) return { ok: false, held };
-  const v = await readJtVendor(env, jtId, { fetchImpl });
+  const v = await readVendor(env, jtId, { fetchImpl, now });
   if (!v || v.archived) return { ok: false };
   const link = await createLink(env.DB, jtId, { by: `agent:${by}`, scope: 'agent', now });
   const mail = agentEmail({ vendorName: v.name, agentName: agent.name, url: link.url, req: await readDocSettings(env.DB), holder: await holderOf(env.DB), renewal, reminder });
@@ -478,7 +476,7 @@ export async function partnerInvoices(DB, jtId, { now = Date.now(), months = 18 
 /** Everything /trade-partners/account/ shows for a link → see the page */
 export async function partnerView(env, link, { now = Date.now(), fetchImpl = fetch } = {}) {
   await ensurePartnerSchema(env.DB);
-  const v = await readJtVendor(env, link.vendor_id, { fetchImpl });
+  const v = await readVendor(env, link.vendor_id, { fetchImpl, now });
   if (!v || v.archived) return null;
   const req = await readDocSettings(env.DB);
   const state = docsState(v, req, { now });
@@ -490,6 +488,11 @@ export async function partnerView(env, link, { now = Date.now(), fetchImpl = fet
     minimums: { glOccurrence: req.glOccurrence, glAggregate: req.glAggregate, workersComp: !!req.workersComp, elEachAccident: req.elEachAccident },
   };
   if (link.scope === 'agent') return { scope: 'agent', name: v.name, docs, preview: v.id === PREVIEW_ID };
+  // A company only on the site (paid, never on a job): its W-9, and insurance only when it's asked for
+  if (link.scope === 'papers' || isSiteVendor(v.id)) {
+    const profile = await readProfileRow(env.DB, v.id);
+    return { scope: 'papers', name: v.name, lang: profile.lang, docs, steps: { w9: state.w9 !== 'missing', coi: docs.w9Only || docs.notNeeded || (!['missing', 'expired'].includes(state.gl) && !['missing', 'expired'].includes(state.wc)) }, signInEmail: v.email || null };
+  }
   const [company, profile, bank, invoices] = await Promise.all([
     readCompany(env, v.id, { fetchImpl }),
     readProfileRow(env.DB, v.id),
@@ -525,12 +528,14 @@ export async function partnerView(env, link, { now = Date.now(), fetchImpl = fet
 
 // ─── Signing in ─────────────────────────────────────────────────────
 
-/** The sign-in email: one link per company that email belongs to */
-export function signInEmail({ links, lang = 'en' }) {
+/** The sign-in email: one link per company that email belongs to. papers: every one is a company only the site knows (no trade-partner page, just its papers) */
+export function signInEmail({ links, lang = 'en', papers = false }) {
   const es = lang === 'es';
   const one = links.length === 1;
   const subject = es ? 'Su enlace para Sunshine on a Ranney Day' : 'Your sign-in link for Sunshine on a Ranney Day';
-  const lead = es ? 'Use este enlace para abrir su página de socio comercial. Funciona en este dispositivo por 90 días.' : 'Here’s your link to your trade-partner page. It keeps you signed in on that device for 90 days.';
+  const lead = papers
+    ? (es ? 'Use este enlace para abrir su página con Sunshine on a Ranney Day. Funciona en este dispositivo por 90 días.' : 'Here’s your link to your page with Sunshine on a Ranney Day. It keeps you signed in on that device for 90 days.')
+    : es ? 'Use este enlace para abrir su página de socio comercial. Funciona en este dispositivo por 90 días.' : 'Here’s your link to your trade-partner page. It keeps you signed in on that device for 90 days.';
   const body = one
     ? button(es ? 'Abrir mi página' : 'Open my page', links[0].url)
     : links.map((l) => `${paragraphs(l.name, 'font-weight:700;margin-bottom:6px;')}${button(es ? 'Abrir' : 'Open', l.url)}`).join('');
@@ -542,6 +547,26 @@ export function signInEmail({ links, lang = 'en' }) {
   };
 }
 
+/**
+ * Companies only the site knows (paid, never on a job: ./_vendor-files.js) that an email belongs to: the one kept for
+ * them now (staff change it there; an address it had before signs in to nothing) → [{ id, name }]
+ */
+async function siteCompaniesOf(DB, email) {
+  await ensurePapersSchema(DB);
+  const rows = (await DB.prepare('SELECT id, name FROM vendor_papers WHERE archived = 0 AND LOWER(email) = ?').bind(email).all()).results || [];
+  return rows.filter((r) => isSiteVendor(r.id));
+}
+
+/** The site company a typed name means (its name, or one it was known by before) → { id, name, email, archived } or null */
+async function siteNamed(DB, company) {
+  const key = nameKeyOf(company);
+  if (key.replace(/ /g, '').length < 3) return null;
+  await ensurePapersSchema(DB);
+  const rows = (await DB.prepare("SELECT id, name, email, archived, payee FROM vendor_papers WHERE vkey = ? OR payee LIKE '%aliases%'").bind(key).all()).results || [];
+  const hit = rows.find((r) => isSiteVendor(r.id) && (nameKeyOf(r.name) === key || (parseJson(r.payee).aliases || []).includes(key)));
+  return hit ? { id: hit.id, name: hit.name, email: isEmail(hit.email) ? hit.email.toLowerCase() : null, archived: !!hit.archived } : null;
+}
+
 /** Sign-in by email → always { ok: true } (whether the email is on file isn't told), the link emailed when it is */
 export async function signIn(env, email, { lang = 'en', now = Date.now() } = {}) {
   await ensurePartnerSchema(env.DB);
@@ -549,10 +574,13 @@ export async function signIn(env, email, { lang = 'en', now = Date.now() } = {})
   if (!isEmail(e)) throw bad('Type the email address you use with SOARD.', 'email');
   const rows = (await env.DB.prepare('SELECT jt_id, name, email, facts FROM vendors WHERE jt_id IS NOT NULL').all()).results || [];
   const hits = rows.filter((r) => r.email === e || (parseJson(r.facts).emails || []).includes(e)).slice(0, 5);
-  if (!hits.length) return { ok: true, sent: false };
+  // A company only the site knows signs in the same way: its link opens its W-9 (and insurance, when it's asked for)
+  const sites = (await siteCompaniesOf(env.DB, e)).slice(0, 5 - hits.length);
+  if (!hits.length && !sites.length) return { ok: true, sent: false };
   const links = [];
   for (const r of hits) links.push({ name: r.name, url: (await createLink(env.DB, r.jt_id, { by: 'signin', now })).url });
-  const mail = signInEmail({ links, lang });
+  for (const r of sites) links.push({ name: r.name, url: (await createLink(env.DB, r.id, { by: 'signin', now })).url });
+  const mail = signInEmail({ links, lang, papers: !hits.length });
   await sendEmails(env, { to: [e], subject: mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-signin' }] });
   return { ok: true, sent: true };
 }
@@ -591,7 +619,8 @@ export function matchVendor(rows, company) {
 }
 
 /**
- * "Get started" → { ok: true, how: 'signin' | 'theirs' | 'matched' | 'new' } (the page only ever says to check their email).
+ * "Get started" → { ok: true, how: 'signin' | 'theirs' | 'matched' | 'new' | 'staff' | 'off-list' } (the page only ever says
+ * to check their email).
  * body: { company, name, email, phone, lang }
  */
 export async function startPartner(env, body, { now = Date.now(), fetchImpl = fetch } = {}) {
@@ -603,11 +632,17 @@ export async function startPartner(env, body, { now = Date.now(), fetchImpl = fe
   if (!s.phone) throw bad('Add a 10-digit phone number.', 'phone');
   const rows = (await env.DB.prepare('SELECT jt_id, name, email, facts FROM vendors WHERE jt_id IS NOT NULL').all()).results || [];
   const emailsOf = (r) => [...new Set([r.email, ...(parseJson(r.facts).emails || [])].filter(isEmail))];
-  if (rows.some((r) => emailsOf(r).includes(s.email))) {
+  if (rows.some((r) => emailsOf(r).includes(s.email)) || (await siteCompaniesOf(env.DB, s.email)).length) {
     await signIn(env, s.email, { lang: s.lang, now });
     return { ok: true, how: 'signin' };
   }
-  const hit = matchVendor(rows, s.company);
+  // The very name, or one a site company was moved onto this vendor under (./_vendor-files.js); then a site company
+  // by its very name; only then a JobTread vendor that's only alike ("Smith Accounting" is the CPA on the site, not
+  // "Smith Accounting Group" in JobTread)
+  const named = await jobtreadNamed(env.DB, s.company);
+  const exact = named && rows.some((r) => r.jt_id === named.jtId) ? named : null;
+  const site = exact ? null : await siteNamed(env.DB, s.company);
+  const hit = exact || (site ? null : matchVendor(rows, s.company));
   // A company that already has people on file: the link goes to them, never to an address JobTread hasn't seen
   const known = hit && emailsOf(rows.find((r) => r.jt_id === hit.jtId));
   if (known?.length) {
@@ -616,6 +651,27 @@ export async function startPartner(env, body, { now = Date.now(), fetchImpl = fe
     await sendEmails(env, { to: [known[0]], subject: mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-signin' }] });
     await vendorNote(env, hit.jtId, 'Asked to sign in on the trade-partner page', `${s.name} (${s.email}, ${s.phone}) asked for ${hit.name}’s trade-partner page on ${longDate(isoDay(now))}. JobTread already has ${known[0]} for them, so the link went there, not to ${s.email}.`, fetchImpl);
     return { ok: true, how: 'theirs' };
+  }
+  // A company SOARD pays off the jobs (./_vendor-files.js) is never made a new JobTread vendor with the whole setup and
+  // bank details. With an email on file, its page goes there. With none, nothing goes to an address nobody at SOARD
+  // knows (anyone could type the name and sign a W-9 for it): staff are told, and send it from the admin. One SOARD
+  // no longer has on file gets nothing.
+  if (site?.archived) return { ok: true, how: 'off-list' };
+  if (site?.email) {
+    const link = await createLink(env.DB, site.id, { by: 'signup:theirs', now });
+    const mail = signInEmail({ links: [{ name: site.name, url: link.url }], lang: s.lang, papers: true });
+    const r = await sendEmails(env, { to: [site.email], subject: mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-signin' }] });
+    if (!r.sent) throw new Error(r.errors?.[0] || 'The link didn’t send');
+    return { ok: true, how: 'theirs' };
+  }
+  if (site) {
+    await postOnce(env, site.id, 'signup', slackCard({
+      icon: '👋', title: `${site.name} asked for their W-9 page`,
+      lead: `${s.name} (${s.email}, ${s.phone}) asked for it on SOARD’s trade-partner page. There’s no email on file for ${site.name}, so nothing was sent. If that’s them, add the email on their page and press “Email them for it”.`,
+      buttons: [{ label: 'Open it', url: papersUrl(site.id) }],
+    }), `${site.name}: asked for their page`, now);
+    await patchProfile(env.DB, site.id, { lang: s.lang }, now);
+    return { ok: true, how: 'staff' };
   }
   await invitePartner(env, { jtId: hit?.jtId || null, company: s.company, name: s.name, email: s.email, phone: s.phone, lang: s.lang, by: hit ? 'signup' : 'signup:new', typed: s.company }, { now, fetchImpl });
   return { ok: true, how: hit ? 'matched' : 'new' };
@@ -717,7 +773,7 @@ export async function partnerNudges(env, { now = Date.now(), fetchImpl = fetch }
     // An agent asked who hasn't answered: reminded after 3 days, then 7
     const a = p.agent;
     if (a?.open && a.askedAt && (a.asks || 0) <= AGENT_REMIND_DAYS.length && now - Date.parse(a.askedAt) >= (AGENT_REMIND_DAYS[(a.asks || 1) - 1] ?? 7) * DAY) {
-      const v = await readJtVendor(env, p.jtId, { fetchImpl }).catch(() => null);
+      const v = await readVendor(env, p.jtId, { fetchImpl, now }).catch(() => null);
       const state = v && docsState(v, await readDocSettings(env.DB), { now });
       if (state && state.needs.includes('coi')) {
         if ((a.asks || 0) < AGENT_REMIND_DAYS.length + 1) await askAgent(env, p.jtId, { reminder: true, renewal: !!a.renewal, by: 'reminder', now, fetchImpl }).then(() => out.agents++).catch(() => null);

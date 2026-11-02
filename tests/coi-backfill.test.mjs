@@ -8,6 +8,9 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { PDFDocument } from 'pdf-lib';
 import { createD1 } from './lib/d1-shim.mjs';
+import { createR2 } from './lib/r2-shim.mjs';
+import { keepFile } from '../functions/api/_vendor-files.js';
+import { filesOf } from '../functions/api/_vendor-files.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 import { ensureVendorSchema } from '../functions/api/_vendors.js';
 import { W9_PDF_BASE64 } from '../functions/api/_w9-irs.js';
@@ -350,7 +353,7 @@ beforeEach(async () => {
       VHAUL: { name: 'Example Hauling', values: {}, contacts: [], files: [], primary: null },
     },
   };
-  env = { DB: await createD1(), GOOGLE_CALENDAR_KEY: SERVICE_ACCOUNT, JOBTREAD_GRANT_KEY: 'grant-main', AI };
+  env = { DB: await createD1(), FILES: createR2(), VENDOR_FILES: createR2(), GOOGLE_CALENDAR_KEY: SERVICE_ACCOUNT, JOBTREAD_GRANT_KEY: 'grant-main', AI };
   await env.DB.exec('CREATE TABLE staff_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)');
   await env.DB.prepare("INSERT INTO staff_state (key, data) VALUES ('directory', ?)").bind(JSON.stringify({ ok: true, accounts: ACCOUNTS })).run();
   await ensureVendorSchema(env.DB);
@@ -402,16 +405,18 @@ test('a run finds certificates in staff email, reads each file once, files a mat
   assert.equal(rows['roofing coi.pdf'].state, 'unmatched');
   assert.equal(world.ai.filter((x) => x === 'read').length, 4, 'four certificates read by the model; the copy and the waiver never');
 
-  // Filed once, tagged, in the folder; the dates are the newer certificate's, whichever was read first
-  const coiFiles = world.created.filter((f) => f.fileTagIds.includes('T-COI'));
+  // Kept on the site once each, never filed in JobTread; the dates are the newer certificate's, whichever was read first
+  const kept = await filesOf(env.DB, 'VSAMPLE');
+  const coiFiles = kept.filter((f) => f.doc === 'coi');
   assert.equal(coiFiles.length, 2, 'this year’s and last year’s certificates, each once');
-  assert.ok(coiFiles.every((f) => f.folder === 'W-9 & Insurance' && f.targetId === 'VSAMPLE'));
+  assert.ok(coiFiles.every((f) => f.source === 'email' && f.status === 'checked' && env.VENDOR_FILES.objects.has(f.key)));
   assert.ok(coiFiles.some((f) => f.name === 'COI Sample Painting LLC 2026-05-01 to 2027-05-01.pdf'));
+  assert.equal(world.created.length, 0, 'nothing filed in JobTread');
   const v = world.vendors.VSAMPLE.values;
-  assert.equal(v['F-GL'], '2027-05-01');
+  assert.equal(v['F-GL'], '2027-05-01', 'JobTread’s fields show the dates');
   assert.equal(v['F-WC'], '2027-05-01');
   assert.equal(v['F-W9'], true, 'the W-9 photo checked out and ticked W-9');
-  assert.ok(world.created.some((f) => f.fileTagIds.includes('T-W9')));
+  assert.ok(kept.some((f) => f.doc === 'w9'));
   assert.ok(!world.updates.some((u) => u.customFieldValues?.['F-GL'] === '2025-05-01'), 'last year’s never moves a date back');
 
   // The people: the agency for renewals, the painter's office as main contact (never the primary agent)
@@ -464,14 +469,16 @@ test('a close name is Workers AI’s to pick, and only a sure pick is filed', as
   assert.match(row.detail, /\(ai\)$/);
 });
 
-test('an untagged file on a JobTread vendor is tagged where it is, never uploaded again; an agent alone never becomes the primary contact', async () => {
+test('an untagged file on a JobTread vendor is kept on the site, JobTread left as it was; an agent alone never becomes the primary contact', async () => {
   const bytes = pdfOf('jt-coi');
   world.jtFileBytes.FJT1 = bytes;
   world.vendors.VHAUL.files.push({ id: 'FJT1', name: 'insurance cert.pdf', type: 'application/pdf', size: bytes.length, folder: null, tags: [], createdAt: '2025-08-02T12:00:00Z' });
   world.vendors.VHAUL.files.push({ id: 'FJT2', name: 'job photo.jpg', type: 'image/jpeg', size: 400000, folder: null, tags: [], createdAt: '2025-08-02T12:00:00Z' });
   READS['jt-coi'] = coi('Example Hauling LLC', '2027-08-01', '2027-08-01', { name: 'Hauler Insurance', email: 'agent@haulerinsure.example' });
   await runAll();
-  assert.deepEqual(world.tagged, [{ id: 'FJT1', fileTagIds: ['T-COI'], folder: 'W-9 & Insurance' }]);
+  assert.deepEqual(world.tagged, [], 'JobTread’s file is left as it was');
+  const [kept] = await filesOf(env.DB, 'VHAUL');
+  assert.deepEqual([kept.doc, kept.source, kept.sourceRef], ['coi', 'jobtread', 'jt:FJT1']);
   assert.equal(world.created.length, 0);
   assert.equal(world.uploads.length, 0);
   assert.equal(world.vendors.VHAUL.values['F-GL'], '2027-08-01');
@@ -480,14 +487,14 @@ test('an untagged file on a JobTread vendor is tagged where it is, never uploade
   assert.match(world.notes.find((n) => n.targetId === 'VHAUL').message, /found in this vendor’s JobTread files \(insurance cert\.pdf\), where it wasn’t tagged/);
 });
 
-test('a W-9 on a vendor’s JobTread account naming its owner, not a vendor, is filed there', async () => {
+test('a W-9 on a vendor’s JobTread account naming its owner, not a vendor, is kept as theirs', async () => {
   world.vendors.VHAUL.files.push({ id: 'FJTW9', name: 'W9.jpg', type: 'image/jpeg', size: 70010, folder: null, tags: [], createdAt: '2025-08-02T12:00:00Z' });
   world.jtFileBytes.FJTW9 = jpgOf('jt-w9');
   READS['jt-w9'] = { isW9: true, readable: true, name: 'Pat Example & Lee Example', businessName: '', hasTaxId: true, signed: true, signedDate: '2025-01-10' };
   await runAll();
   const row = (await rowsByName())['W9.jpg'];
   assert.deepEqual([row.state, row.jt_id, row.kind], ['filed', 'VHAUL', 'w9']);
-  assert.ok(world.tagged.some((t) => t.id === 'FJTW9' && t.fileTagIds.includes('T-W9')), 'tagged where it is');
+  assert.deepEqual((await filesOf(env.DB, 'VHAUL')).map((f) => f.doc), ['w9'], 'kept as theirs');
   assert.equal(world.vendors.VHAUL.values['F-W9'], true);
 });
 
@@ -634,4 +641,28 @@ test('a scanned W-9 (the converter gives only its framing) is read by its pictur
   const row = (await rowsByName())['Signed W-9.pdf'];
   assert.deepEqual([row.state, row.kind, row.jt_id], ['filed', 'w9', 'VSAMPLE'], row.detail);
   assert.equal(world.vendors.VSAMPLE.values['F-W9'], true);
+});
+
+// ─── What the fourth round of testing broke, kept broken-proof ──────
+
+test('last year’s certificate found in an old email never settles the current certificate the vendor sent that is waiting on a person', async () => {
+  // The painter sent this year's certificate on their page; nobody could read it, so it waits for a person
+  const mine = await keepFile(env, 'VSAMPLE', { doc: 'coi', bytes: pdfOf('vendor-upload'), type: 'application/pdf', name: 'COI Sample 2026.pdf', source: 'page', status: 'look', summary: 'Couldn’t be read automatically' }, { now: NOW });
+  // The search then finds last year's (ended May 2025) in Pat's inbox
+  mail({ box: PAT, at: NOW - 400 * DAY, from: 'Sam Sample <office@samplepainting.example>', subject: 'our COI', files: [{ name: 'COI 2024.pdf', type: 'application/pdf', data: pdfOf('sample-old') }] });
+  await runAll();
+  assert.equal((await rowsByName())['COI 2024.pdf']?.state, 'filed', 'setup: the old one is filed for the painter');
+  const after = (await filesOf(env.DB, 'VSAMPLE', { removed: true })).find((f) => f.id === mine.file.id);
+  assert.equal(after.status, 'look', `the vendor's unreadable current certificate is now "${after.status}": nobody is told to open it, and the record shows insurance that ended ${world.vendors.VSAMPLE.values['F-GL']}`);
+});
+
+test('a certificate under the minimums found by the search never settles the vendor’s waiting certificate', async () => {
+  const mine = await keepFile(env, 'VSAMPLE', { doc: 'coi', bytes: pdfOf('vendor-upload2'), type: 'application/pdf', name: 'COI Sample.pdf', source: 'page', status: 'look' }, { now: NOW });
+  READS['low-coi'] = { ...coi('Sample Painting LLC', '2027-05-01', '2027-05-01'), policies: [{ kind: 'general liability', insurer: 'Sample Mutual', effective: '2026-05-01', expires: '2027-05-01', eachOccurrence: 300000, aggregate: 600000 }] };
+  TEXTS['low-coi'] = `CERTIFICATE OF LIABILITY INSURANCE ACORD 25 ${'line '.repeat(30)} MARK:low-coi`;
+  mail({ box: PAT, at: NOW - 40 * DAY, from: 'Sam Sample <office@samplepainting.example>', subject: 'COI', files: [{ name: 'COI low.pdf', type: 'application/pdf', data: pdfOf('low-coi') }] });
+  await runAll();
+  assert.equal((await rowsByName())['COI low.pdf']?.state, 'filed', 'setup');
+  const after = (await filesOf(env.DB, 'VSAMPLE', { removed: true })).find((f) => f.id === mine.file.id);
+  assert.equal(after.status, 'look', `settled by a $300k certificate that proves nothing (now "${after.status}")`);
 });

@@ -6,6 +6,7 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
+import { createR2 } from './lib/r2-shim.mjs';
 import { asksOn } from './lib/vendor-asks.mjs';
 import { MERCURY_BASE, writeState } from '../functions/api/_mercury.js';
 import { writeSlackConfig } from '../functions/api/_broadcast-notify.js';
@@ -17,6 +18,7 @@ import {
 } from '../functions/api/_vendors.js';
 import { judgeCoi, judgeCoiReads, judgeW9, mergeCoi, documentType, answerOf, scannedPages, pageText } from '../functions/api/_vendor-read.js';
 import { onRequestGet as pageGet, onRequestPost as pagePost } from '../functions/api/vendor-docs.js';
+import { filesOf, readPapers, savePapers } from '../functions/api/_vendor-files.js';
 
 const NOW = Date.parse('2026-10-28T15:00:00Z');
 const DAY = 86400e3;
@@ -131,11 +133,13 @@ globalThis.fetch = async (input, init = {}) => {
 after(() => { globalThis.fetch = realFetch; });
 
 let env;
+// The files the site keeps for the vendor (newest first)
+const kept = (id = VENDOR) => filesOf(env.DB, id);
 beforeEach(async () => {
   world = fresh();
   const DB = await createD1({ schemaSql: ['CREATE TABLE site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)'] });
   env = {
-    DB, JOBTREAD_GRANT_KEY: 'jt', RESEND_API_KEY: 're_test', SLACK_BOT_TOKEN: 'xoxb-test', MERCURY_API_TOKEN: 'secret-token:test', MERCURY_RELAY_KEY: RELAY_KEY,
+    DB, FILES: createR2(), VENDOR_FILES: createR2(), JOBTREAD_GRANT_KEY: 'jt', RESEND_API_KEY: 're_test', SLACK_BOT_TOKEN: 'xoxb-test', MERCURY_API_TOKEN: 'secret-token:test', MERCURY_RELAY_KEY: RELAY_KEY,
     AI: {
       toMarkdown: async () => { world.textReads = (world.textReads || 0) + 1; return { format: 'text', data: world.pdfText }; },
       // world.ai: one answer for every model, or (model) => the answer, to read text and pictures differently
@@ -305,7 +309,7 @@ test('two reads at once set JobTread up once; Trades takes any number of trades;
   assert.deepEqual(await jtSetup(env), d, 'kept, without reading JobTread again');
 });
 
-test('a good certificate goes into JobTread, fills the fields and needs nothing else', async () => {
+test('a good certificate is kept on the site, fills the record and JobTread’s fields, and needs nothing else', async () => {
   await setFields({ w9: true });
   const link = await createLink(env.DB, VENDOR, { now: NOW });
   world.ai = goodCoi();
@@ -315,11 +319,18 @@ test('a good certificate goes into JobTread, fills the fields and needs nothing 
   assert.equal(d.ok, true);
   assert.equal(d.accepted, true);
   assert.equal(d.done, true);
-  assert.equal(world.files.length, 1);
-  assert.equal(world.files[0].folder, FOLDER);
-  assert.equal(world.files[0].targetId, VENDOR);
-  assert.deepEqual(world.files[0].fileTagIds, ['T-COI']);
-  assert.match(world.files[0].name, /^COI TKO Plumbing \d{4}-\d{2}-\d{2}\.pdf$/);
+  assert.equal(world.files.length, 0, 'nothing filed in JobTread');
+  const [f] = await kept();
+  assert.equal(f.doc, 'coi');
+  assert.equal(f.source, 'page');
+  assert.equal(f.status, 'checked');
+  assert.match(f.name, /^COI TKO Plumbing \d{4}-\d{2}-\d{2}\.pdf$/);
+  assert.ok(f.key.startsWith('vendor-docs/ACC-TKO/'), 'under the private prefix');
+  assert.deepEqual([...new Uint8Array(await (await env.VENDOR_FILES.get(f.key)).arrayBuffer())], [...PDF], 'the very bytes');
+  assert.equal(f.reading.policies[0].expires, '2027-03-01');
+  const papers = await readPapers(env.DB, VENDOR);
+  assert.equal(papers.glExpires, '2027-03-01');
+  assert.equal(papers.docs, 'Current');
   const v = world.vendors[VENDOR].values;
   assert.equal(v[fieldId('Liability Expires')], '2027-03-01');
   assert.equal(v[fieldId('Workers\' Comp Expires')], '2027-03-01');
@@ -335,33 +346,33 @@ test('a good certificate goes into JobTread, fills the fields and needs nothing 
   assert.equal(page.vendor.steps.coi, true, 'the trade-partner page shows the insurance step done');
 });
 
-test('an out-of-date certificate goes back to the vendor, not into JobTread', async () => {
+test('an out-of-date certificate goes back to the vendor, not into the record', async () => {
   await setFields({ w9: true });
   const link = await createLink(env.DB, VENDOR, { now: NOW });
   world.ai = goodCoi({ policies: [{ ...goodCoi().policies[0], expires: '2026-09-30' }, goodCoi().policies[1]] });
   const r = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'coi', files: [pdfFile()] }, { now: NOW });
   assert.equal(r.accepted, false);
   assert.match(r.problems[0], /ended September 30, 2026/);
-  assert.equal(world.files.length, 0);
+  assert.equal((await kept()).length, 0);
   assert.equal(world.updates.length, 0);
   // They think it's right: it goes in for a person, and the Finance channel hears once
   const again = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'coi', files: [pdfFile()], anyway: true }, { now: NOW });
   assert.equal(again.look, true);
-  assert.equal(world.files.length, 1);
+  assert.equal((await kept())[0].status, 'look', 'kept for a person');
   assert.equal(world.vendors[VENDOR].values[fieldId('Documents')], 'Needs a look');
   assert.equal(world.vendors[VENDOR].values[fieldId('Liability Expires')], undefined, 'no dates written for a person to check');
   assert.equal(world.slack.filter((s) => /Check TKO Plumbing’s certificate of insurance/.test(JSON.stringify(s))).length, 1);
   assert.match(world.comments.at(-1).message, /sent it anyway/);
 });
 
-test('a scan nobody can read goes into JobTread as Needs a look', async () => {
+test('a scan nobody can read is kept as Needs a look', async () => {
   await setFields({ w9: true });
   world.pdfText = '';
   const link = await createLink(env.DB, VENDOR, { now: NOW });
   const r = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'coi', files: [pdfFile()] }, { now: NOW });
   assert.equal(r.look, true);
   assert.equal(world.aiCalls.length, 0, 'no text, no guess');
-  assert.equal(world.files.length, 1);
+  assert.equal((await kept()).length, 1);
   assert.equal(world.vendors[VENDOR].values[fieldId('Documents')], 'Needs a look');
 });
 
@@ -373,7 +384,7 @@ test('an iPhone photo (HEIC) is turned away with what to send instead, never fil
   await assert.rejects(() => fileUpload(env, found, { doc: 'coi', files: [heic] }, { now: NOW }),
     (e) => e.status === 400 && /^IMG_0412\.jpg is an iPhone photo \(HEIC\), which we can’t read\. Send a PDF or a JPG instead\./.test(e.message));
   assert.equal(world.aiCalls.length, 0);
-  assert.equal(world.files.length, 0, 'nothing in JobTread');
+  assert.equal((await kept()).length, 0, 'nothing kept');
   assert.equal(world.vendors[VENDOR].values[fieldId('Documents')], undefined, 'not Needs a look');
 });
 
@@ -396,8 +407,8 @@ test('a scanned certificate is read from its page photos, not left for a person'
   assert.equal(r.look, false);
   assert.equal(world.aiCalls.length, 2, 'each page read');
   assert.ok(world.aiCalls.every((c) => /vision|scout/.test(c.model) && c.input.messages[1].content[1].image_url.url.startsWith('data:image/jpeg;base64,/9j/')));
-  assert.equal(world.files.length, 1, 'the PDF itself goes into JobTread');
-  assert.match(world.files[0].name, /\.pdf$/);
+  assert.equal((await kept()).length, 1, 'the PDF itself is kept');
+  assert.match((await kept())[0].name, /\.pdf$/);
   assert.equal(world.vendors[VENDOR].values[fieldId('Liability Expires')], '2027-03-01');
 });
 
@@ -411,7 +422,7 @@ test('a scanned W-9: the first page that is a W-9 answers', async () => {
   assert.equal(world.aiCalls.length, 1, 'page one was the W-9, so page two isn’t read');
 });
 
-test('a good W-9 ticks the box in JobTread and goes onto the Mercury recipient', async () => {
+test('a good W-9 is kept, ticks the box in JobTread, and Mercury gets no copy', async () => {
   await setFields({ gl: '2027-06-01', wc: '2027-06-01' });
   world.recipients = [{ id: 'rec-tko', name: 'TKO Plumbing', status: 'active', attachments: [] }];
   const link = await createLink(env.DB, VENDOR, { now: NOW });
@@ -422,10 +433,13 @@ test('a good W-9 ticks the box in JobTread and goes onto the Mercury recipient',
   assert.ok(isVision(world.aiCalls[0]), 'read from its picture');
   assert.equal(world.textReads, undefined, 'a W-9’s text is never asked: its signature and typed-in boxes aren’t in it');
   assert.equal(world.vendors[VENDOR].values['F-W9'], true);
-  assert.equal(world.files.length, 1, 'the PDF is filed, not its pictures');
-  assert.match(world.files[0].name, /\.pdf$/);
-  assert.deepEqual(world.files[0].fileTagIds, ['T-W-9']);
-  assert.deepEqual(world.mercuryUploads, ['rec-tko']);
+  const files = await kept();
+  assert.equal(files.length, 1, 'the PDF is kept, not its pictures');
+  assert.match(files[0].name, /^W-9 TKO Plumbing .*\.pdf$/);
+  assert.equal(files[0].doc, 'w9');
+  assert.deepEqual(files[0].reading, { name: 'TKO Plumbing LLC', business: null, signed: true, signedDate: '2026-10-27' }, 'names and yes/no only');
+  assert.deepEqual(world.mercuryUploads, [], 'Mercury gets no copy');
+  assert.equal(world.files.length, 0, 'JobTread gets no copy');
   assert.doesNotMatch(JSON.stringify(world.comments), /\d{3}-\d{2}-\d{4}|\d{2}-\d{7}/, 'no tax ID anywhere');
 });
 
@@ -463,7 +477,7 @@ test('a certificate read two ways: the browser’s pictures and the text both go
   assert.equal(d.ok, true);
   assert.equal(d.accepted, false, 'one reading short of the minimum is never a pass');
   assert.equal(d.look, true, 'a person decides');
-  assert.equal(world.files.length, 1);
+  assert.equal((await kept()).length, 1);
   assert.equal(world.vendors[VENDOR].values[fieldId('Liability Expires')], undefined, 'no dates written for a person to check');
   assert.match(world.comments.at(-1).message, /read it two ways that didn’t agree \(General liability’s aggregate is \$1,000,000; we need at least \$2,000,000\.\)/);
 });
@@ -677,15 +691,18 @@ test('no email in JobTread: the Finance channel hears once, nobody is emailed', 
   assert.equal(world.slack.filter((s) => /No email for TKO Plumbing/.test(JSON.stringify(s))).length, 1);
 });
 
-test('insurance JobTread has dates for is asked for from 30 days ahead, on a job or not, and each email is noted in JobTread', async () => {
-  const cache = (fields) => env.DB.prepare("INSERT OR REPLACE INTO vendors (id, name, vkey, jt_id, email, facts, created_at, updated_at) VALUES ('jt_TKO', 'TKO Plumbing', 'tko plumbing', ?, 'office@tko.example', ?, 'x', 'x')")
-    .bind(VENDOR, JSON.stringify({ jobs: [], emails: ['office@tko.example'], fields })).run();
+test('insurance the site has dates for is asked for from 30 days ahead, on a job or not, and each email is noted in JobTread', async () => {
+  const cache = async (fields) => {
+    await env.DB.prepare("INSERT OR REPLACE INTO vendors (id, name, vkey, jt_id, email, facts, created_at, updated_at) VALUES ('jt_TKO', 'TKO Plumbing', 'tko plumbing', ?, 'office@tko.example', ?, 'x', 'x')")
+      .bind(VENDOR, JSON.stringify({ jobs: [], emails: ['office@tko.example'] })).run();
+    await savePapers(env, VENDOR, fields, { now: NOW, who: { name: 'TKO Plumbing' } });
+  };
   await cache({ w9: true, gl: '2027-06-01', wc: '2027-06-01', docs: null });
   assert.equal((await vendorsThatNeedDocs(env.DB, { now: NOW })).size, 0, 'months away: nothing to ask');
   await cache({ w9: true, gl: '2026-11-20', wc: '2027-06-01', docs: null });
   assert.deepEqual([...(await vendorsThatNeedDocs(env.DB, { now: NOW })).entries()], [[VENDOR, { why: 'renewal', bill: null }]]);
   await cache({ w9: true, gl: '2026-11-20', wc: null, docs: 'Not needed' });
-  assert.equal((await vendorsThatNeedDocs(env.DB, { now: NOW })).size, 0, 'a person said Not needed in JobTread');
+  assert.equal((await vendorsThatNeedDocs(env.DB, { now: NOW })).size, 0, 'a person said Not needed');
   await cache({ w9: true, gl: '2025-03-01', wc: null, docs: null });
   assert.equal((await vendorsThatNeedDocs(env.DB, { now: NOW })).size, 0, 'lapsed long ago and not working for SOARD: left alone');
   // Ending in 23 days, no bill and no job: asked, and it's on their JobTread record
@@ -702,8 +719,9 @@ test('insurance JobTread has dates for is asked for from 30 days ahead, on a job
 test('a renewal with nobody to email: their agent is asked, and no Slack post about a missing email', async () => {
   world.vendors[VENDOR].email = null;
   await env.DB.prepare("INSERT OR REPLACE INTO vendors (id, name, vkey, jt_id, email, facts, created_at, updated_at) VALUES ('jt_TKO', 'TKO Plumbing', 'tko plumbing', ?, NULL, ?, 'x', 'x')")
-    .bind(VENDOR, JSON.stringify({ jobs: [], emails: [], fields: { w9: true, gl: '2026-11-20', wc: '2027-06-01', docs: null } })).run();
+    .bind(VENDOR, JSON.stringify({ jobs: [], emails: [] })).run();
   await setFields({ w9: true, gl: '2026-11-20', wc: '2027-06-01' });
+  await savePapers(env, VENDOR, { w9: true, gl: '2026-11-20', wc: '2027-06-01' }, { now: NOW, who: { name: 'TKO Plumbing' } });
   const { ensurePartnerSchema, patchProfile } = await import('../functions/api/_trade-partners.js');
   await ensurePartnerSchema(env.DB);
   await patchProfile(env.DB, VENDOR, { agent: { name: 'Ana Agent', email: 'ana@agency.example', agency: 'Example Insurance', asks: 0, open: false } });

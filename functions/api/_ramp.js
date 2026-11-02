@@ -36,6 +36,7 @@ import { slackCard } from './_slack-cards.js';
 import { readState, writeState } from './_mercury.js';
 import { vendorLikeness, dollars } from './_spend-match.js';
 import { billDocs, askForBill } from './_vendors.js';
+import { nameKeyOf } from './_vendor-files.js';
 
 export const RAMP_BASE = 'https://api.ramp.com/developer/v1';
 export const STATE_KEY = 'ramp';
@@ -148,10 +149,16 @@ const plainNo = (s) => String(s || '').replace(/[^a-z0-9]/gi, '').toLowerCase();
 
 /**
  * A Ramp bill's JobTread vendor. jtBills: [{ id, vendor, cents, number,
- * date, accountId }]; vendors: [{ jtId, name }]
+ * date, accountId }]; vendors: [{ jtId, name }]; siteNames: the name keys of
+ * the companies SOARD pays outside JobTread (./_vendor-files.js), whose bills
+ * are tracked there and never held on a JobTread vendor that's only alike
  * → { accountId, jtBillId } or null when nothing (or more than one) fits
  */
-export function matchRampBill(rb, jtBills, vendors) {
+export function matchRampBill(rb, jtBills, vendors, siteNames = null) {
+  // "Wiggins Law Group" is a company of its own on the site, not the JobTread vendor "Wiggins", even when Wiggins has a
+  // bill for the same amount (a JobTread vendor of that very name is still itself)
+  const key = nameKeyOf(rb.vendor);
+  if (siteNames?.has(key) && !vendors.some((v) => nameKeyOf(v.name) === key)) return null;
   const like = jtBills.filter((b) => b.accountId && b.cents === rb.cents && vendorLikeness(b.vendor, rb.vendor) >= 0.5);
   const byNo = rb.invoice ? like.filter((b) => b.number && plainNo(b.number) === plainNo(rb.invoice)) : [];
   const one = byNo.length === 1 ? byNo[0] : like.length === 1 ? like[0] : null;
@@ -244,6 +251,8 @@ export async function runRamp(env, { now = Date.now(), fetchImpl = fetch } = {})
     .map((b) => ({ id: b.id, vendor: b.vendor, cents: b.cents, number: b.number, date: b.date, accountId: b.account_id }));
   const vendors = ((await DB.prepare('SELECT jt_id, name FROM vendors WHERE jt_id IS NOT NULL').all().catch(() => ({ results: [] }))).results || [])
     .map((v) => ({ jtId: v.jt_id, name: v.name }));
+  const siteNames = new Set(((await DB.prepare("SELECT vkey, payee FROM vendor_papers WHERE id LIKE 's\\_%' ESCAPE '\\'").all().catch(() => ({ results: [] }))).results || [])
+    .flatMap((r) => { let aliases = []; try { aliases = JSON.parse(r.payee || '{}')?.aliases || []; } catch { /* none */ } return [r.vkey, ...aliases]; }).filter(Boolean));
 
   const out = { open: bills.length, held: 0, released: 0, watching: 0, unmatched: 0, read: 0 };
   const docsOf = new Map();   // one JobTread read per vendor per run
@@ -268,7 +277,7 @@ export async function runRamp(env, { now = Date.now(), fetchImpl = fetch } = {})
       if (row) await putRow(DB, rb.id, base, now);
       continue;
     }
-    const m = row?.accountId ? { accountId: row.accountId, jtBillId: row.jtBillId } : matchRampBill(rb, jtBills, vendors);
+    const m = row?.accountId ? { accountId: row.accountId, jtBillId: row.jtBillId } : matchRampBill(rb, jtBills, vendors, siteNames);
     if (!m) {
       out.unmatched++;
       if (row?.state !== 'unmatched') await putRow(DB, rb.id, { ...base, state: 'unmatched', checkedAt: iso }, now);

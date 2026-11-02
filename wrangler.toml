@@ -18,6 +18,13 @@ database_id = "71ac037d-2682-4336-9cf7-234e97c5b462"
 binding = "FILES"
 bucket_name = "soard-files"
 
+# W-9s and certificates of insurance (functions/api/_vendor-files.js): a bucket
+# of their own with no public address. Never soard-files, which
+# files.sunshineonaranneyday.com serves to anyone who has a file's address.
+[[r2_buckets]]
+binding = "VENDOR_FILES"
+bucket_name = "soard-vendor-docs"
+
 # A real browser (Cloudflare Browser Rendering) for pages that turn the server
 # away: Google answers plain requests from Workers with its "unusual traffic"
 # page, and some news sites answer 403. Used by the press monitor

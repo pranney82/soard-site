@@ -27,12 +27,15 @@
  * Links stay links: viewerLink(files, i) gives an <a> its href and a click
  * handler, so ⌘/Ctrl-click or a middle click still opens a new tab.
  *
- * A file: { name, type, url, size?, at?, thumb?, preview?, filename?, pages?, kindLabel? }.
+ * A file: { name, type, url, size?, at?, thumb?, preview?, filename?, pages?, kindLabel?, download?, private? }.
  * `pages` is () => Promise<{ count, size(i), draw(i, { width }) }>; `kindLabel`
  * what it is in a word ("Excel") when its name doesn't say.
  * `thumb` is a small JPEG (JobTread makes one for photos, PDFs and videos)
  * for the strip, shown while the full photo loads; `filename` is what
  * Download saves it as when `name` is a label ("Photo of the bedroom").
+ * `download` is the address Download saves from, when the site should know
+ * it was saved, not opened; a `private` file (a W-9: its opening is logged)
+ * is fetched only when it's the one shown, never for the strip or ahead.
  */
 
 import { h, htm, render, useState, useEffect, useRef, useCallback } from './vendor.js';
@@ -123,7 +126,7 @@ async function saveFile(f, onProgress) {
   a.download = f.filename || f.name || '';
   a.rel = 'noopener';
   let blobUrl = null;
-  if (new URL(f.url, location.href).origin === location.origin) a.href = f.url;
+  if (new URL(f.url, location.href).origin === location.origin) a.href = f.download || f.url;
   else {
     const direct = new URL(f.url, location.href).href;
     let r = await fetch(direct, { credentials: 'omit' }).catch((e) => (onJobTread(direct) ? null : Promise.reject(e)));
@@ -265,7 +268,7 @@ function Viewer({ files, start, onClosed }) {
 
   // The photos either side load ahead; the strip keeps the open file in view
   useEffect(() => {
-    for (const j of [i + 1, i - 1]) if (files[j] && kindOf(files[j]) === 'image') new Image().src = files[j].url;
+    for (const j of [i + 1, i - 1]) if (files[j] && kindOf(files[j]) === 'image' && !files[j].private) new Image().src = files[j].url;
     strip.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: 'nearest', inline: 'center' });
   }, [i]);
 
@@ -416,7 +419,7 @@ function Thumb({ f, current, onClick }) {
   const kind = kindOf(f);
   const [broken, setBroken] = useState(false);
   // JobTread's 256px thumbnail is plenty for a 54px tile; the strip is short, so every tile loads at once
-  const src = f.thumb ? f.thumb.replace(/([?&]size=)\d+/, '$1256') : kind === 'image' ? f.url : null;
+  const src = f.thumb ? f.thumb.replace(/([?&]size=)\d+/, '$1256') : kind === 'image' && !f.private ? f.url : null;
   return html`<button class="fv-thumb" aria-current=${current ? 'true' : 'false'} onClick=${onClick} aria-label=${f.name} title=${f.name}>
     ${src && !broken ? html`<img src=${src} alt="" decoding="async" onError=${() => setBroken(true)} />` : html`<span class="fv-thumb-icon" aria-hidden="true">${kindEmoji(f, kind)}</span>`}
     ${kind !== 'image' && html`<span class="fv-thumb-kind" aria-hidden="true">${kind === 'video' ? '▶' : kindName(f, kind)}</span>`}

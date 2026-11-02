@@ -1,5 +1,5 @@
 /**
- * The certificates and W-9s SOARD already had, found and filed in JobTread
+ * The certificates and W-9s SOARD already had, found and kept on the site
  * ===========================================================================
  * For years before the trade-partner page, insurance certificates and W-9s
  * came in by email (agents and contractors writing to Joe, Holly, Christian,
@@ -21,28 +21,29 @@
  *      waivers and invoices and stop there); a certificate, a W-9, or a scan
  *      or photo the email calls one, is read by ./_vendor-read.js, which
  *      finds the agency in the PRODUCER box too.
- *   3. Matching. The insured's name against JobTread's vendors: the same name
+ *   3. Matching. The insured's name against JobTread's vendors and the
+ *      companies only on the site (paid, never on a job): the same name
  *      ("Inc.", "LLC", "&" and "and" aside) counts, the one on the most jobs
  *      when JobTread has it twice; otherwise Workers AI picks among close
  *      names, and only a sure pick counts. SOARD's own certificates and W-9
  *      (it's the insured on its events' and policies' paperwork) are left out.
- *   4. Filing, for a match only. The file goes in the vendor's "W-9 &
- *      Insurance" folder tagged COI or W-9, once: a copy JobTread already has
- *      is tagged where it is. Liability Expires and Workers' Comp Expires only
- *      move forward, and only for coverage that meets the minimums; a W-9
- *      that checks out by the upload rules ticks W-9; an internal note says
- *      where it was found. The agency's email becomes the vendor's "Insurance
- *      agent" contact and their trade-partner agent, so renewals are asked of
- *      the agent; a sender on the vendor's own domain becomes their main
- *      contact when they have no one.
+ *   4. Keeping, for a match only. The file is kept on the site once
+ *      (./_vendor-files.js; the same bytes again are the same file). The
+ *      liability and workers' comp dates only move forward, and only for
+ *      coverage that meets the minimums; a W-9 that checks out by the upload
+ *      rules marks the W-9 on file; JobTread's fields follow, and an internal
+ *      note there says where it was found. The agency's email becomes the
+ *      vendor's "Insurance agent" contact and their trade-partner agent, so
+ *      renewals are asked of the agent; a sender on the vendor's own domain
+ *      becomes their main contact when they have no one.
  *   5. The coverage index (coi_coverage). Every policy on every certificate,
  *      matched or not, with its dates and limits, so the insurance audit
  *      (./_insurance-audit.js) can tell what covered each payment. Files
  *      checked on the trade-partner page are added too (recordUpload).
  *
- * Tax IDs are never kept: a W-9's reading has only names and yes/no answers.
- * The site keeps no copy of the files (JobTread has them); D1 keeps the queue,
- * each file's hash and what it said.
+ * Tax IDs are never read into the record: a W-9's reading has only names and
+ * yes/no answers (the file itself is staff-only). D1 keeps the queue, each
+ * file's hash and what it said.
  */
 
 import { PDFDocument } from 'pdf-lib';
@@ -56,7 +57,8 @@ import { ramp, rampConfigured } from './_ramp.js';
 import { SOARD_ORG_ID, TZ } from './_reveals.js';
 import { SITE_ORIGIN } from './_broadcast-notify.js';
 import { readDocument, readW9Text, pdfText, documentType, judgeW9, mergeCoi, longDate, askModel, scannedPages, money, TEXT_MODEL } from './_vendor-read.js';
-import { jt, jtSetup, readJtVendor, writeFields, vendorNote, uploadToJt, readDocSettings, docsState, labelFor, readAsk, FOLDER, TAGS, CONTACT_VALUES, contactEmail, contactFields } from './_vendors.js';
+import { jt, jtSetup, readVendor, writePapers, relabel, settleWaiting, vendorNote, readDocSettings, FOLDER, CONTACT_VALUES, contactEmail, contactFields, isSiteVendor } from './_vendors.js';
+import { keepFile } from './_vendor-files.js';
 
 export const STATE_KEY = 'coi-backfill';
 const REREAD = 4;            // raised when files already read need reading again (2: matching a W-9 to the JobTread account it's on; 3: Ramp's emails given as text; 4: scans passed by as text)
@@ -173,15 +175,24 @@ export async function recordCoverage(env, { jtId = null, insured = '', policies 
   return rows.length;
 }
 
-/** A certificate that checked out on the trade-partner page (./_vendors.js fileUpload): its policies indexed, its files known */
-export async function recordUpload(env, { jtId, insured, verdict, parts, now = Date.now() }) {
+/**
+ * A certificate that checked out on the trade-partner page or was added by staff (./_vendors.js): its policies indexed
+ * under the file each is on (kinds: per part, which of 'gl' / 'wc' it shows; one file has them all), its files known
+ */
+export async function recordUpload(env, { jtId, insured, verdict, parts, kinds = null, now = Date.now() }) {
   await ensureCoverageSchema(env.DB);
   const hashes = await Promise.all((parts || []).map((p) => sha256(p.bytes)));
   if (!hashes.length) return 0;
   const iso = new Date(now).toISOString();
   await env.DB.batch(hashes.map((h, i) => env.DB.prepare(`INSERT OR IGNORE INTO coi_found (id, source, item, name, size, sent_at, state, kind, file_hash, jt_id, insured, found_at, updated_at)
       VALUES (?, 'upload', 'file', ?, ?, ?, 'filed', 'coi', ?, ?, ?, ?, ?)`).bind(`upload:${h.slice(0, 32)}`, clean(parts[i].name, 120) || null, parts[i].bytes.byteLength, iso, h, jtId, clean(insured, 160), iso, iso)));
-  return recordCoverage(env, { jtId, insured, policies: [verdict.gl, verdict.wc], source: 'upload', sourceRef: `upload:${hashes[0].slice(0, 32)}`, fileHash: hashes[0], now });
+  let n = 0;
+  for (const [i, h] of hashes.entries()) {
+    const mine = kinds ? kinds[i] || [] : i === 0 ? ['gl', 'wc'] : [];
+    const policies = mine.map((k) => verdict[k]).filter(Boolean);
+    if (policies.length) n += await recordCoverage(env, { jtId, insured, policies, source: 'upload', sourceRef: `upload:${h.slice(0, 32)}`, fileHash: h, now });
+  }
+  return n;
 }
 
 // ─── What a file is (pure) ──────────────────────────────────────────
@@ -313,12 +324,22 @@ export function meetsMinimums(p, req) {
   return false;
 }
 
+/** The end dates a certificate proves: its coverage that meets the minimums, ended or not → { gl?, wc? } */
+export function provenDates(reading, req) {
+  const out = {};
+  for (const [key, kind] of [['gl', 'general liability'], ['wc', 'workers compensation']]) {
+    const p = (reading?.policies || []).find((x) => x.kind === kind && isDate(x.expires));
+    if (p && meetsMinimums(p, req)) out[key] = p.expires;
+  }
+  return out;
+}
+
 /** What JobTread's fields become: end dates only move forward → { gl?, wc?, glFrom?, wcFrom? } */
 export function laterDates(v, reading, req) {
   const out = {};
-  for (const [key, kind, have] of [['gl', 'general liability', v.glExpires], ['wc', 'workers compensation', v.wcExpires]]) {
-    const p = (reading?.policies || []).find((x) => x.kind === kind && isDate(x.expires));
-    if (p && meetsMinimums(p, req) && (!have || p.expires > have)) { out[key] = p.expires; out[`${key}From`] = have || null; }
+  const proven = provenDates(reading, req);
+  for (const [key, have] of [['gl', v.glExpires], ['wc', v.wcExpires]]) {
+    if (proven[key] && (!have || proven[key] > have)) { out[key] = proven[key]; out[`${key}From`] = have || null; }
   }
   return out;
 }
@@ -485,13 +506,14 @@ export async function matchVendor(env, names, vendors, { context = '' } = {}) {
   return null;
 }
 
-/** JobTread's vendors as the 4-hourly cache has them → [{ jtId, name, jobs }] */
+/** JobTread's vendors as the 4-hourly cache has them, and the companies only on the site → [{ jtId, name, jobs }] */
 async function cachedVendors(DB) {
   const rows = (await DB.prepare('SELECT jt_id, name, facts FROM vendors WHERE jt_id IS NOT NULL').all().catch(() => ({ results: [] }))).results || [];
-  return rows.map((r) => ({ jtId: r.jt_id, name: r.name, jobs: (parseJson(r.facts).jobs || []).length }));
+  const site = (await DB.prepare("SELECT id, name FROM vendor_papers WHERE id LIKE 's\\_%' ESCAPE '\\' AND archived = 0").all().catch(() => ({ results: [] }))).results || [];
+  return [...rows.map((r) => ({ jtId: r.jt_id, name: r.name, jobs: (parseJson(r.facts).jobs || []).length })), ...site.map((r) => ({ jtId: r.id, name: r.name || '', jobs: 0 }))];
 }
 
-// ─── Filing in JobTread ─────────────────────────────────────────────
+// ─── Keeping it ─────────────────────────────────────────────────────
 
 // JobTread's phone fields take a number as +1 and 10 digits
 const e164 = (s) => { const d = String(s || '').replace(/\D/g, ''); const t = d.length === 11 && d[0] === '1' ? d.slice(1) : d; return /^[2-9]\d{9}$/.test(t) ? `+1${t}` : null; };
@@ -512,17 +534,6 @@ async function accountOf(env, jtId, fetchImpl) {
     contacts: (a?.contacts?.nodes || []).map((c) => ({ id: c.id, name: c.name || '', title: c.title || '', email: contactEmail(c) })),
     files: (a?.files?.nodes || []).map((f) => ({ id: f.id, name: f.name || '', type: String(f.type || '').toLowerCase(), size: f.size || 0, folder: f.folder || null, tags: (f.fileTags?.nodes || []).map((t) => t.id) })),
   };
-}
-
-/** One of a vendor's JobTread files with these very bytes (only one the same size is fetched to compare), or null */
-async function sameFile(env, ctx, files, bytes, hash) {
-  for (const f of files.filter((x) => x.size === bytes.byteLength).slice(0, 3)) {
-    const d = await jt(env, { file: { $: { id: f.id }, id: {}, url: {} } }, ctx.fetchImpl);
-    if (!d?.file?.url) continue;
-    const res = await ctx.fetchImpl(d.file.url, { signal: AbortSignal.timeout(30000) });
-    if (res.ok && (await sha256(new Uint8Array(await res.arrayBuffer()))) === hash) return f;
-  }
-  return null;
 }
 
 async function createContact(env, jtId, { name, title, email, phone }, fetchImpl) {
@@ -597,54 +608,53 @@ const coverageWords = (reading) => {
 };
 
 /**
- * One found file into JobTread for its vendor. doc 'coi' | 'w9'; got: readFound's; file { bytes, type, name }
+ * One found file kept on the site for its vendor. doc 'coi' | 'w9'; got: readFound's; file { bytes, type, name }
  * → { jtFileId, detail }
  */
 async function fileFound(env, ctx, row, h, { jtId, doc, got, file, hash }) {
-  const ids = await jtSetup(env, { fetchImpl: ctx.fetchImpl });
-  const v = await readJtVendor(env, jtId, { fetchImpl: ctx.fetchImpl });
+  const v = await readVendor(env, jtId, { fetchImpl: ctx.fetchImpl, now: ctx.now });
   if (!v || v.archived) return null;
-  const acct = await accountOf(env, jtId, ctx.fetchImpl);
-  const tag = ids.tags[doc];
+  // The same bytes kept as the other kind (a person said what it is): theirs stands, nothing changes
+  const other = await env.DB.prepare("SELECT doc FROM vendor_files WHERE vendor_id = ? AND hash = ? AND doc != ?").bind(jtId, hash, doc).first().catch(() => null);
+  if (other) return { jtFileId: null, detail: `already kept for ${v.name} as their ${other.doc === 'w9' ? 'W-9' : 'certificate'}` };
+  const site = isSiteVendor(jtId);
+  const acct = site ? { primaryId: null, contacts: [], files: [] } : await accountOf(env, jtId, ctx.fetchImpl);
   const reading = got.reading;
   const day = isoDay(Date.parse(row.sent_at) || ctx.now);
-  // Once: the file where JobTread already has it on this account (the same bytes), tagged there
-  const there = row.source === 'jt' && h.jtId === jtId ? acct.files.find((f) => f.id === h.fileId) : await sameFile(env, ctx, acct.files, file.bytes, hash);
-  let jtFileId;
-  if (there) {
-    jtFileId = there.id;
-    if (!there.tags.includes(tag)) await jt(env, { updateFile: { $: { id: there.id, fileTagIds: [...there.tags, tag].slice(0, 10), ...(there.folder ? {} : { folder: FOLDER }) } } }, ctx.fetchImpl);
-  } else {
-    const p = reading?.policies.find((x) => KINDS[x.kind] === 'gl') || reading?.policies[0];
-    const name = doc === 'w9' ? `W-9 ${v.name} ${day}` : reading.isWcExemption && !reading.policies.length ? `WC exemption ${v.name} ${day}`
-      : `COI ${v.name} ${isDate(p?.effective) ? `${p.effective} to ` : ''}${p?.expires || day}`;
-    const target = { name: `${name}.${EXT[file.type] || 'pdf'}`, targetType: 'account', targetId: jtId, folder: FOLDER, fileTagIds: [tag] };
-    const made = row.source === 'jt'
-      ? await jt(env, { createFile: { $: { ...target, copyFromFileId: h.fileId }, createdFile: { id: {} } } }, ctx.fetchImpl)
-      : await jt(env, { createFile: { $: { ...target, uploadRequestId: await uploadToJt(env, file, ctx.fetchImpl) }, createdFile: { id: {} } } }, ctx.fetchImpl);
-    jtFileId = made?.createFile?.createdFile?.id || null;
-  }
-
+  const jtFileId = row.source === 'jt' ? h.fileId || null : null;
+  const p = reading?.policies.find((x) => KINDS[x.kind] === 'gl') || reading?.policies[0];
+  const name = doc === 'w9' ? `W-9 ${v.name} ${day}` : reading.isWcExemption && !reading.policies.length ? `WC exemption ${v.name} ${day}`
+    : `COI ${v.name} ${isDate(p?.effective) ? `${p.effective} to ` : ''}${p?.expires || day}`;
   const req = await readDocSettings(env.DB);
+  const kept = await keepFile(env, jtId, {
+    doc, bytes: file.bytes, type: file.type, name: `${name}.${EXT[file.type] || 'pdf'}`,
+    source: row.source === 'gmail' ? 'email' : row.source === 'ramp' ? 'ramp' : 'jobtread', sourceRef: row.id, receivedAt: row.sent_at, by: 'search', status: 'checked',
+    summary: `Found in ${whereFound(row, h, jtId)}`, reading: doc === 'w9' ? got.w9 : reading,
+    // A certificate proves only coverage that meets the minimums (one under them is kept, and proves nothing)
+    proves: doc === 'w9' ? { w9: true } : provenDates(reading, req),
+  }, { now: ctx.now });
+  // A person took this very file off: found again, it stays off and moves nothing
+  if (kept.file?.status === 'removed') return { jtFileId, detail: `already kept for ${v.name}, and taken off by a person` };
+
   const patch = {};
-  const after = { ...v };
   let said;
   if (doc === 'coi') {
     const later = laterDates(v, reading, req);
-    if (later.gl) { patch.gl = later.gl; after.glExpires = later.gl; }
-    if (later.wc) { patch.wc = later.wc; after.wcExpires = later.wc; }
+    if (later.gl) patch.gl = later.gl;
+    if (later.wc) patch.wc = later.wc;
     if (later.gl || later.wc) patch.check = `${reading.policies.map((x) => `${(KINDS[x.kind] || x.kind).toUpperCase()} to ${x.expires}${x.insurer ? ` (${x.insurer})` : ''}`).join(' · ')} · found ${isoDay(ctx.now)}`.slice(0, 250);
     const moved = [later.gl && `Liability Expires is now ${longDate(later.gl)}`, later.wc && `Workers’ Comp Expires is now ${longDate(later.wc)}`].filter(Boolean);
     said = `Certificate of insurance${reading.producer?.name ? ` from ${clean(reading.producer.name, 80)}` : ''}, found in ${whereFound(row, h, jtId)}: ${coverageWords(reading)}. `
-      + (moved.length ? `${moved.join(', and ')}.` : 'JobTread already had later dates (or this coverage is under the minimums), so the dates stay as they were.');
+      + (moved.length ? `${moved.join(', and ')}.` : 'SOARD already had later dates (or this coverage is under the minimums), so the dates stay as they were.');
   } else {
-    if (!v.w9) { patch.w9 = true; after.w9 = true; }
+    if (!v.w9) patch.w9 = true;
     said = `W-9 for ${[got.w9.name, got.w9.businessName].filter(Boolean).join(' / ') || v.name}, found in ${whereFound(row, h, jtId)} and checked: it has a tax ID${got.w9.signed ? ' and it’s signed' : ''}.${v.w9 ? '' : ' W-9 is ticked.'}`;
   }
-  const state = docsState(after, req, { now: ctx.now });
-  const label = labelFor(after, state, await readAsk(env.DB, jtId));
-  if (label && label !== v.docs) patch.docs = label;
-  if (Object.keys(patch).length) await writeFields(env, ids, jtId, patch, ctx.fetchImpl);
+  if (Object.keys(patch).length) await writePapers(env, null, jtId, patch, ctx.fetchImpl, { now: ctx.now, forward: true });
+  // A good W-9 found settles one waiting on a person. A certificate never does: one found in an old email (last
+  // year's, or under the minimums) must not hide the current one a person still has to read
+  if (doc === 'w9' && patch.w9) await settleWaiting(env, jtId, doc, kept.file?.id);
+  await relabel(env, jtId, { fetchImpl: ctx.fetchImpl, now: ctx.now });
 
   // The people: the agency (for renewals) and a sender on the vendor's own domain
   let added = [];
@@ -654,13 +664,25 @@ async function fileFound(env, ctx, row, h, { jtId, doc, got, file, hash }) {
       ? { name: clean(reading.producer.contact, 80), email: pe, agency: clean(reading.producer.name, 80), phone: clean(reading.producer.phone, 30) } : null;
     const from = row.source === 'gmail' ? addressOf(h.from) : '';
     const main = isEmail(from) && !isStaffEmail(from) && domainOf(from) !== domainOf(pe) && onVendorDomain(from, v.name) ? { name: displayName(h.from), email: from } : null;
-    added = await addPeople(env, ctx, jtId, acct, { agent, main });
+    added = site ? await siteAgent(env, ctx, jtId, v, { agent, main }) : await addPeople(env, ctx, jtId, acct, { agent, main });
     if (added.includes('agent')) said += ` ${agent.name || agent.email}${agent.agency ? ` at ${agent.agency}` : ''} is added as their insurance agent${added.includes('renewals') ? ', and SOARD asks them for renewals' : ''}.`;
     if (added.includes('main')) said += ` ${main.name || main.email} (${main.email}), who sent it, is added as their main contact.`;
   }
   await vendorNote(env, jtId, doc === 'w9' ? 'W-9 found' : 'Certificate of insurance found', said, ctx.fetchImpl);
   if (doc === 'coi') await recordCoverage(env, { jtId, insured: reading.insured || v.name, policies: reading.policies, exempt: reading.isWcExemption, source: row.source, sourceRef: row.id, fileHash: hash, jtFileId, now: ctx.now });
-  return { jtFileId, detail: `${doc === 'w9' ? 'W-9' : 'certificate'} filed on ${v.name}${patch.gl || patch.wc ? ', dates moved' : ''}${added.length ? `, added ${added.join(' and ')}` : ''}` };
+  return { jtFileId, detail: `${doc === 'w9' ? 'W-9' : 'certificate'} ${kept.duplicate ? 'already kept' : 'kept'} for ${v.name}${patch.gl || patch.wc ? ', dates moved' : ''}${added.length ? `, added ${added.join(' and ')}` : ''}` };
+}
+
+/** A site-only company's agent (for renewals) and email, kept here: it has no JobTread contacts */
+async function siteAgent(env, ctx, id, v, { agent, main }) {
+  const added = [];
+  if (main && !v.email) {
+    const { editSiteVendor } = await import('./_vendor-files.js');
+    await editSiteVendor(env, id, { email: main.email }, { now: ctx.now }).catch(() => null);
+    added.push('main');
+  }
+  if (agent && await rememberAgent(env.DB, id, agent, ctx.now)) added.push('agent', 'renewals');
+  return added;
 }
 
 // ─── Fetching a file ────────────────────────────────────────────────

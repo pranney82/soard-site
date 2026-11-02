@@ -11,13 +11,17 @@
  *     "Get started" (checked, then a company new to SOARD is made a vendor in
  *     JobTread and emailed its link, with nobody approving)
  *   - a new partner's setup, one step at a time: company → a W-9 filled in and
- *     signed on the page (the IRS PDF filed in JobTread) → a certificate PDF,
+ *     signed on the page (the IRS PDF kept on the site, ticked in JobTread) → a certificate PDF,
  *     drawn by pdf.js and read from its text and its picture → bank details
  *     straight to Mercury; Back from a step goes back to the overview
  *   - invoices in words; a dropped connection said in words; an iPhone photo
  *     decoded by heic-to.js under the page's own CSP (Safari decodes HEIC
  *     itself); a transparent PNG goes up on white
  *   - an insurance agent's link: the certificate and nothing else
+ *   - a company paid outside JobTread: a page with its W-9 alone, kept on the site,
+ *     and JobTread never hears of it; kept on the device like any company's (a
+ *     new tab opens it), and its expired link signs in again by email, with no
+ *     new account offered
  *   - phones: no sideways scroll, 44px targets, a step has the screen; axe;
  *     no console errors
  * Screenshots land in test-results/trade-partners/.
@@ -33,6 +37,8 @@ import sharp from 'sharp';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { join } from 'node:path';
 import { createD1 } from '../tests/lib/d1-shim.mjs';
+import { createR2 } from '../tests/lib/r2-shim.mjs';
+import { filesOf, addSiteVendor, readPapers } from '../functions/api/_vendor-files.js';
 import { onRequestGet as docsGet, onRequestPost as docsPost } from '../functions/api/vendor-docs.js';
 import { onRequestGet as tpGet, onRequestPost as tpPost } from '../functions/api/trade-partner.js';
 import { createLink, ensureVendorSchema, jtSetup, TRADES, PREVIEW_ID } from '../functions/api/_vendors.js';
@@ -145,7 +151,7 @@ globalThis.fetch = async (input, init = {}) => {
 
 const DB = await createD1({ schemaSql: ['CREATE TABLE site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)'] });
 const env = {
-  DB, JOBTREAD_GRANT_KEY: 'jt', RESEND_API_KEY: 're_test', SLACK_BOT_TOKEN: 'xoxb-test', MERCURY_API_TOKEN: 'secret-token:test', MERCURY_RELAY_KEY: 'relay:test',
+  DB, FILES: createR2(), VENDOR_FILES: createR2(), JOBTREAD_GRANT_KEY: 'jt', RESEND_API_KEY: 're_test', SLACK_BOT_TOKEN: 'xoxb-test', MERCURY_API_TOKEN: 'secret-token:test', MERCURY_RELAY_KEY: 'relay:test',
   AI: {
     toMarkdown: async () => ({ format: 'text', data: 'The document text, long enough to read. '.repeat(5) }),
     run: async (model, { messages }) => {
@@ -313,7 +319,7 @@ try {
     await page.screenshot({ path: `${OUT}step-w9.png`, fullPage: true });
     await page.click('[data-submit]');
     await page.waitForSelector('[data-drop=coi]', { timeout: 15000 });
-    ok(world.files.some((f) => /signed online\)\.pdf$/.test(f.name) && f.fileTagIds[0] === 'T-W9') && world.accounts[VENDOR].values['F-W9'] === true, 'the signed W-9 is filed in JobTread and ticked, and setup goes on to insurance');
+    ok((await filesOf(DB, VENDOR)).some((f) => /signed online\)\.pdf$/.test(f.name) && f.doc === 'w9') && world.files.length === 0 && world.accounts[VENDOR].values['F-W9'] === true, 'the signed W-9 is kept on the site and ticked in JobTread, and setup goes on to insurance');
     // Insurance: a dropped connection, then the certificate
     world.drop = true;
     await give(page, '[data-drop=coi] input[data-pick]', COI, 'certificate.pdf', 'application/pdf');
@@ -383,6 +389,69 @@ try {
     await page.screenshot({ path: `${OUT}agent.png`, fullPage: true });
     ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
     await page.close();
+  }
+
+  console.log('A company paid outside JobTread');
+  {
+    const before = { files: world.files.length, comments: world.comments.length, accounts: Object.keys(world.accounts).length };
+    const s = await addSiteVendor(env, { name: 'Capin Crouse LLP', email: 'billing@capin.example' });
+    const link = await createLink(DB, s.id);
+    const { page, errors } = await open(browser, `/trade-partners/account/#t=${link.token}`, { width: 1280, height: 900 });
+    await page.waitForSelector('.tpa-tiles', { timeout: 15000 });
+    ok((await page.$$eval('.tpa-tile-title', (t) => t.map((x) => x.textContent))).join() === 'W-9', 'the page asks for the W-9 alone');
+    ok(!(await page.$('.tpa-invoices')), 'no invoices');
+    ok(!!(await page.$('[data-act=signout]')), 'a sign-out: it signs in like any company');
+    ok(/^0 of 1 done/.test(await text(page, '#tpa-setup-h + p')), `and counts one step (${await text(page, '#tpa-setup-h + p')})`);
+    await page.click('[data-act=setup]');
+    await page.waitForSelector('form[data-form=w9]');
+    await settled(page);
+    ok(await page.$eval('input[name=business]', (e) => e.value) === 'Capin Crouse LLP', 'the business name starts filled in');
+    const w9axe = await axeScan(page, 'main');
+    ok(!w9axe.length, `axe on the W-9 step: no violations${w9axe.length ? `: ${axeText(w9axe)}` : ''}`);
+    await typeInto(page, 'w9name', 'Pat Partner');
+    await page.$eval('input[name=taxClass][value=partnership]', (e) => e.click());
+    ok(await page.$eval('input[name=taxClass][value=partnership]', (e) => e.checked), 'Partnership picked');
+    await typeInto(page, 'w9address', '875 Old Roswell Rd');
+    await typeInto(page, 'cityStateZip', 'Roswell, GA 30076');
+    await page.type('input[name=tin]', '987654321');
+    await page.click('input[name=certify] + span');
+    await page.type('input[name=signature]', 'Pat Partner');
+    await page.click('[data-submit]');
+    await page.waitForSelector('.tpa-allset', { timeout: 15000 }).catch(() => null);
+    ok(!!(await page.$('.tpa-allset')), 'signed: the page says they’re all set');
+    ok(/that’s all we need/.test(await text(page, '.tpa-allset')), `and that the W-9 is all SOARD needs, nothing about renewing (${await text(page, '.tpa-allset')})`);
+    const kept = await filesOf(DB, s.id);
+    ok(kept.length === 1 && kept[0].source === 'signed' && (await readPapers(DB, s.id)).w9 === true, 'the signed W-9 is kept on the site and marked on file');
+    ok(world.files.length === before.files && world.comments.length === before.comments && Object.keys(world.accounts).length === before.accounts, 'JobTread never hears of them');
+    const a = await axeScan(page, 'main');
+    ok(!a.length, `axe: no violations${a.length ? `: ${axeText(a)}` : ''}`);
+    await page.screenshot({ path: `${OUT}site-company.png`, fullPage: true });
+    ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+    // A new tab, without the link: the same page, kept on this device
+    const tab = await open(browser, '/trade-partners/account/', { width: 1280, height: 900 });
+    ok(!!(await tab.page.waitForSelector('.tpa-allset', { timeout: 15000 }).catch(() => null)), 'a new tab opens their page again');
+    // The link runs out: signing in by email gets a fresh one, and no new account is offered
+    await DB.prepare("UPDATE vendor_links SET expires_at = '2020-01-01T00:00:00.000Z' WHERE vendor_id = ?").bind(s.id).run();
+    await tab.page.reload({ waitUntil: 'networkidle2' });
+    await tab.page.waitForSelector('form[data-form=signin]', { timeout: 15000 });
+    ok(/expired/.test(await text(tab.page, '.tpa-callout')), `an expired link says so (${await text(tab.page, '.tpa-callout')})`);
+    ok(!(await tab.page.$('a[href="/trade-partners/#start"]')), 'and doesn’t offer setting up a new account');
+    const sent = world.emails.length;
+    await tab.page.type('form[data-form=signin] input[name=email]', 'Billing@Capin.example');
+    await tab.page.click('form[data-form=signin] button[type=submit]');
+    await tab.page.waitForFunction(() => document.querySelector('[data-note]')?.dataset.tone === 'good', { timeout: 10000 }).catch(() => null);
+    const mail = world.emails.at(-1);
+    ok(world.emails.length === sent + 1 && mail.to[0] === 'billing@capin.example' && /trade-partners\/account\/#t=/.test(mail.text), 'signing in by email sends their fresh link');
+    ok(tab.errors.length === 0, `no console errors${tab.errors.length ? `: ${tab.errors.join(' | ')}` : ''}`);
+    await tab.page.close();
+    const back = await open(browser, `/trade-partners/account/#t=${mail.text.match(/#t=([\w-]+)/)[1]}`, { width: 1280, height: 900 });
+    ok(!!(await back.page.waitForSelector('.tpa-allset', { timeout: 15000 }).catch(() => null)), 'and it opens their page');
+    await back.page.click('[data-act=signout]');
+    ok(await back.page.evaluate(() => !localStorage.getItem('soard-tp-token')), 'sign-out takes the link off this device');
+    await back.page.evaluate(() => localStorage.removeItem('soard-tp-scope'));
+    ok(back.errors.length === 0, `no console errors${back.errors.length ? `: ${back.errors.join(' | ')}` : ''}`);
+    await back.page.close();
   }
 
   console.log('The preview (Trade Partners → Settings → Send me the vendor email)');

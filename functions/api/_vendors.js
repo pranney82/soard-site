@@ -1,11 +1,10 @@
 /**
- * Vendors: W-9s and insurance, kept in JobTread
+ * Vendors: W-9s and insurance, kept on the site
  * ===========================================================================
- * JobTread is the one place a vendor's W-9 and certificate of insurance
- * (COI) live: the files on the vendor's account (folder "W-9 & Insurance",
- * tagged W-9 or COI) and these vendor fields, which the site makes when
- * they're missing:
- *   W-9                     ticked once a W-9 checks out
+ * The site is where a vendor's W-9 and certificate of insurance (COI) live,
+ * for every company SOARD pays, on jobs or not (./_vendor-files.js): the files
+ * in private storage, and the record of them (vendor_papers):
+ *   W-9                     yes once a W-9 checks out
  *   Liability Expires       general liability's end date
  *   Workers' Comp Expires   workers' compensation's end date
  *   Documents               Current · Expiring soon · Requested · Expired ·
@@ -13,7 +12,10 @@
  *                           W-9 only · Not needed, a person's choice that
  *                           the site never sets or changes
  *   Insurance Check         what the last certificate showed
- * Staff can fill any of these by hand in JobTread; the site trusts them.
+ * A job vendor's JobTread fields of the same names (made when missing) show
+ * these and are written after every change (writePapers). One changed by
+ * hand in JobTread is taken in at the next read (readVendor), so staff can
+ * still fill any of them there.
  *
  * Who is asked: a vendor whose bill is waiting for approval (a bill, not a
  * card purchase), approved, or held; a vendor on a purchase order for an
@@ -25,38 +27,41 @@
  * ./_trade-partners.js). Each
  * file is read there and then (./_vendor-read.js) and judged against SOARD's
  * minimums (DEFAULTS), so the vendor knows at once.
- * A good one goes into JobTread and fills the fields; a W-9 also goes onto
- * the vendor's Mercury recipient, which files the 1099s. A file nobody could
- * read (or one the vendor sends anyway) goes into JobTread as "Needs a look"
- * and the Finance channel hears once. Reminders follow after 3 and 7 days.
- * Every email is noted on the vendor in JobTread, and an insurance agent's
- * contact never gets a vendor's link (an agent's link adds a certificate only).
+ * A good one is kept on the site and fills the record. A file nobody could
+ * read (or one the vendor sends anyway) is kept as "Needs a look" and the
+ * Finance channel hears once. Reminders follow after 3 and 7 days. Every email
+ * is noted on a job vendor in JobTread, and an insurance agent's contact never
+ * gets a vendor's link (an agent's link adds a certificate only). A company
+ * that's only on the site (paid, never on a job) gets a W-9-only link.
  *
  * The stop is in ./_bill-pay.js: an approved bill for a vendor whose W-9 or
  * insurance isn't current is held, says so on the bill in JobTread, and
  * pays itself once the documents check out (releaseVendorHolds, from here).
  * While Ramp still pays bills, ./_ramp.js holds them in Ramp the same way.
  *
- * The site keeps no copy of the documents. D1 holds only the work: links
- * (vendor_links, SHA-256 of each token), who was asked when (vendor_asks),
- * and a cache of JobTread vendors and the open jobs they're on (vendors:
- * jt_id and facts.jobs, which ./_vendor-access.js reads too).
+ * D1 also holds the work: links (vendor_links, SHA-256 of each token), who
+ * was asked when (vendor_asks), and a cache of JobTread vendors and the open
+ * jobs they're on (vendors: jt_id and facts.jobs, which ./_vendor-access.js
+ * reads too).
  */
 
 import { pave, SOARD_ORG_ID, TZ } from './_reveals.js';
 import { slackIssue, slackResolved, sendEmails, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { emailShell, paragraphs, button, panel, esc } from './_email-shell.js';
-import { readState, writeState, mercuryConfigured, uploadRecipientAttachment } from './_mercury.js';
+import { readState, writeState } from './_mercury.js';
 import { vendorKey, dollars } from './_spend-match.js';
 import { readDocument, judgeCoiReads, settleDisputes, judgeW9, documentType, requirementLines, longDate } from './_vendor-read.js';
-import { releaseVendorHolds, cachedRecipients, recipientFor } from './_bill-pay.js';
+import { releaseVendorHolds } from './_bill-pay.js';
 import { maybeRunRamp, rampConfigured } from './_ramp.js';
+import { settlePapers, settleMany, savePapers, markSent, keepFile, readPapers, isSiteVendor, importJobTread, findPayees, papersFacts, ensurePapersSchema, FOLDER, otherKindOf } from './_vendor-files.js';
 
+export { FOLDER, isSiteVendor };
 export const STATE_KEY = 'vendors';
 export const UPLOAD_PAGE = `${SITE_ORIGIN}/trade-partners/account/`;
 export const PARTNERS_PAGE = `${SITE_ORIGIN}/trade-partners/`;
-export const FOLDER = 'W-9 & Insurance';
+/** A company's W-9s and insurance in the admin: Job Costs → W-9s & insurance */
+export const papersUrl = (id) => `${SITE_ORIGIN}/admin/#job-costs/papers/${encodeURIComponent(id)}`;
 
 const MIN = 60 * 1000;
 const DAY = 24 * 60 * MIN;
@@ -353,8 +358,88 @@ export async function writeFields(env, ids, jtId, patch, fetchImpl = fetch) {
   await jt(env, { updateAccount: { $: { id: jtId, customFieldValues: values } } }, fetchImpl);
 }
 
-/** An internal note on the vendor's account, for the record */
+/**
+ * A vendor's W-9 and insurance as the site keeps them → readJtVendor's shape ({ id, name, email, archived, w9,
+ * glExpires, wcExpires, docs, check }; site: true for a company only here) or null. A job vendor's name and email
+ * come from JobTread, and its fields are read there too: one someone changed by hand is taken in, and one the site
+ * changed that hasn't reached JobTread is written again (./_vendor-files.js settlePapers).
+ */
+export async function readVendor(env, id, { fetchImpl = fetch, now = Date.now(), orRecord = false } = {}) {
+  if (id === PREVIEW_ID) return { ...PREVIEW_VENDOR };
+  const fromRecord = (p) => p && { id: p.id, name: p.name, email: p.email, archived: p.archived, w9: p.w9, glExpires: p.glExpires, wcExpires: p.wcExpires, docs: p.docs, check: p.check, site: p.site };
+  if (isSiteVendor(id)) return fromRecord(await readPapers(env.DB, id));
+  // What the site had written to JobTread before asking: a field it writes while JobTread answers isn't undone by the answer
+  const before = await readPapers(env.DB, id);
+  let a;
+  try {
+    a = await readJtVendor(env, id, { fetchImpl });
+  } catch (e) {
+    // orRecord: the site is the record, so a file still comes in while JobTread doesn't answer (its fields follow later)
+    if (orRecord && before) return { ...fromRecord(before), jobtreadDown: true };
+    throw e;
+  }
+  if (!a) return null;
+  const s = await settlePapers(env, id, { w9: a.w9, gl: a.glExpires, wc: a.wcExpires, docs: a.docs, check: a.check }, { name: a.name, email: a.email, archived: a.archived }, { now, sentBefore: before ? before.jtSent || {} : null });
+  if (Object.keys(s.toPush).length) await mirror(env, id, s.toPush, { fetchImpl, now });
+  const p = s.papers;
+  return { ...a, w9: p.w9, glExpires: p.glExpires, wcExpires: p.wcExpires, docs: p.docs, check: p.check };
+}
+
+/** A job vendor's JobTread fields show the site's values; one that doesn't land is written again at the next read */
+async function mirror(env, id, patch, { fetchImpl = fetch, now = Date.now(), ids = null } = {}) {
+  if (isSiteVendor(id) || id === PREVIEW_ID || !env.JOBTREAD_GRANT_KEY) return false;
+  try {
+    await writeFields(env, ids || await jtSetup(env, { fetchImpl }), id, patch, fetchImpl);
+    await markSent(env, id, patch, { now });
+    return true;
+  } catch (e) {
+    console.error('[vendors] JobTread fields', id, e.message);
+    return false;
+  }
+}
+
+/**
+ * The Documents status from what's on file now (the one rule everything uses): a person's W-9 only / Not needed
+ * stays; a file waiting on a person is "Needs a look"; else Current, Expiring soon, or what's missing (Requested
+ * while an ask is out). Written, here and in JobTread, when it changed → { label, state, papers }
+ */
+export async function relabel(env, id, { fetchImpl = fetch, now = Date.now(), by = null } = {}) {
+  const p = await readPapers(env.DB, id);
+  if (!p) return { label: null, state: null, papers: null };
+  const req = await readDocSettings(env.DB);
+  let label = p.docs;
+  if (!OVERRIDES.has(p.docs)) {
+    const state = docsState({ ...p, docs: null }, req, { now });
+    const waiting = await env.DB.prepare("SELECT 1 FROM vendor_files WHERE vendor_id = ? AND status = 'look' LIMIT 1").bind(id).first();
+    const ask = await readAsk(env.DB, id);
+    label = waiting ? 'Needs a look' : state.ok ? state.label : ask?.open ? 'Requested' : state.label;
+    if (label !== p.docs) await writePapers(env, null, id, { docs: label }, fetchImpl, { now, by });
+  }
+  const papers = { ...p, docs: label };
+  return { label, state: docsState(papers, req, { now }), papers };
+}
+
+/** A good W-9 or certificate settles the earlier one of its kind that was waiting on a person */
+export async function settleWaiting(env, id, doc, keptId) {
+  await env.DB.prepare("UPDATE vendor_files SET status = 'kept' WHERE vendor_id = ? AND doc = ? AND status = 'look' AND id != ?").bind(id, doc, keptId || '').run();
+}
+
+/**
+ * Change a vendor's W-9 and insurance ({ w9, gl, wc, docs, check }, any of them): the site's record, then JobTread's
+ * fields show what the record now says. forward: dates from a document only move later.
+ */
+export async function writePapers(env, ids, id, patch, fetchImpl = fetch, { now = Date.now(), by = null, forward = false } = {}) {
+  const change = Object.fromEntries(Object.entries(patch || {}).filter(([, v]) => v !== undefined));
+  if (!Object.keys(change).length) return null;
+  const saved = await savePapers(env, id, change, { now, by, forward });
+  const shown = { w9: saved.w9, gl: saved.glExpires, wc: saved.wcExpires, docs: saved.docs, check: saved.check };
+  await mirror(env, id, Object.fromEntries(Object.keys(change).map((k) => [k, shown[k]])), { fetchImpl, now, ids });
+  return saved;
+}
+
+/** An internal note on the vendor's account, for the record (a company only on the site has no JobTread account to note) */
 export async function vendorNote(env, jtId, name, message, fetchImpl = fetch) {
+  if (isSiteVendor(jtId) || jtId === PREVIEW_ID) return;
   await jt(env, {
     createComment: {
       $: { targetType: 'account', targetId: jtId, name, message: message.slice(0, 4000), isVisibleToAll: false, isVisibleToInternalRoles: true, isVisibleToVendorRoles: false, isVisibleToCustomerRoles: false },
@@ -437,14 +522,16 @@ function newToken() {
 
 /**
  * A new link to the vendor's page (earlier ones keep working until they expire) → { token, url, expiresAt }.
- * scope 'agent': their insurance agent's link, which can add a certificate and nothing else.
+ * scope 'agent': their insurance agent's link, which can add a certificate and nothing else; 'papers': a company
+ * only on the site (paid, never on a job), whose page is its W-9 (and insurance, when asked for) and nothing else.
  */
 export async function createLink(DB, jtId, { by = 'auto', now = Date.now(), scope = 'vendor', step = '' } = {}) {
   await ensureVendorSchema(DB);
   const token = newToken();
   const expiresAt = new Date(now + LINK_DAYS * DAY).toISOString();
+  const kind = scope === 'agent' ? 'agent' : isSiteVendor(jtId) ? 'papers' : 'vendor';
   await DB.prepare('INSERT INTO vendor_links (token_hash, vendor_id, created_at, expires_at, by, scope) VALUES (?, ?, ?, ?, ?, ?)')
-    .bind(await hashToken(token), jtId, new Date(now).toISOString(), expiresAt, by, scope === 'agent' ? 'agent' : 'vendor').run();
+    .bind(await hashToken(token), jtId, new Date(now).toISOString(), expiresAt, by, kind).run();
   return { token, url: `${UPLOAD_PAGE}#t=${token}${step ? `&step=${encodeURIComponent(step)}` : ''}`, expiresAt };
 }
 
@@ -463,8 +550,8 @@ export async function findLink(DB, token, now = Date.now()) {
 
 const whatOf = (needs) => (needs.includes('w9') && needs.includes('coi') ? 'W-9 and certificate of insurance' : needs.includes('w9') ? 'W-9' : 'certificate of insurance');
 
-/** The request: what's missing, why, and their link → { subject, html, text } */
-export function requestEmail({ vendorName, url, state, req = DEFAULTS, bill = null, reminder = false }) {
+/** The request: what's missing, why, and their link → { subject, html, text }. site: a company only on the site, which has no sign-in */
+export function requestEmail({ vendorName, url, state, req = DEFAULTS, bill = null, reminder = false, site = false }) {
   const what = whatOf(state.needs);
   const renewing = state.ok && state.expiring;
   const subject = bill ? `Your payment from Sunshine on a Ranney Day is waiting on your ${what}`
@@ -473,38 +560,44 @@ export function requestEmail({ vendorName, url, state, req = DEFAULTS, bill = nu
   const lead = bill
     ? `Thank you for your work with us. Your invoice${bill.number ? ` #${bill.number}` : ''} for ${dollars(bill.cents)} is approved, and we’ll pay it as soon as we have a current ${what} for ${vendorName} on file.`
     : renewing ? `Thank you for working with us. The insurance we have on file for ${vendorName} ends soon, so we need the renewed certificate to keep paying you without a pause.`
+    : site && !state.needs.includes('coi') ? `Thank you for working with us. We keep a W-9 on file for every company we pay, and we don’t have one for ${vendorName} yet.`
     : `Thank you for working with us. We keep a W-9 and a current certificate of insurance on file for every company we pay, and we’re missing something for ${vendorName}.`;
   const items = state.items.filter((i) => !i.soon || renewing).map((i) => i.text);
   const needsLines = state.needs.includes('coi') ? requirementLines(req) : [];
-  const how = 'It takes a minute: open your page, add each file (a PDF or a clear photo), and it’s checked right there, so you’ll know straight away if anything else is needed.';
+  const how = site && !state.needs.includes('coi')
+    ? 'It takes a minute: open the page and fill in and sign the W-9 right there, or add one you already have (a PDF or a clear photo). It’s checked as soon as it’s in.'
+    : 'It takes a minute: open your page, add each file (a PDF or a clear photo), and it’s checked right there, so you’ll know straight away if anything else is needed.';
+  const after = site ? `The link is for ${vendorName} only and works for 90 days. Questions? Just reply to this email.`
+    : `The link is for ${vendorName} only. Any time after, sign in at ${PARTNERS_PAGE.replace('https://', '')} with this email address. Questions? Just reply to this email.`;
   const list = (rows) => `<ul style="margin:0 0 14px;padding-left:20px;">${rows.map((r) => `<li class="ink" style="margin:0 0 6px;">${esc(r)}</li>`).join('')}</ul>`;
   const html = emailShell({
     preheader: `Upload your ${what} in a minute`,
     heading: bill ? 'Your payment is ready to go' : renewing ? 'Your renewed insurance certificate' : `Your ${what}`,
     bodyHtml: `${paragraphs(lead)}${paragraphs('What we need:')}${list(items)}`
       + (needsLines.length ? panel(`${paragraphs('The certificate needs to show:', 'font-weight:700;margin-bottom:8px;')}${list(needsLines)}`, { accent: true }) : '')
-      + `${paragraphs(how)}${button('Upload your documents', url)}`
-      + paragraphs(`The link is for ${vendorName} only. Any time after, sign in at ${PARTNERS_PAGE.replace('https://', '')} with this email address. Questions? Just reply to this email.`, 'font-size:14px;'),
+      + `${paragraphs(how)}${button(site && !state.needs.includes('coi') ? 'Send your W-9' : 'Upload your documents', url)}`
+      + paragraphs(after, 'font-size:14px;'),
   });
   const text = [lead, '', 'What we need:', ...items.map((i) => `- ${i}`), '',
     ...(needsLines.length ? ['The certificate needs to show:', ...needsLines.map((l) => `- ${l}`), ''] : []),
-    how, '', `Upload them here: ${url}`, '', `The link is for ${vendorName} only. Any time after, sign in at ${PARTNERS_PAGE.replace('https://', '')} with this email address. Questions? Just reply to this email.`].join('\n');
+    how, '', `${site && !state.needs.includes('coi') ? 'Send it here' : 'Upload them here'}: ${url}`, '', after].join('\n');
   return { subject, html, text };
 }
 
 /**
- * Email one vendor their link now. v: readJtVendor; state: docsState.
+ * Email one vendor their link now. v: readVendor; state: docsState.
  * → { ok, url } | { ok: false, noEmail } ; throws when the email doesn't go
  */
-export async function askVendor(env, v, state, { why = 'missing', bill = null, now = Date.now(), to = null, preview = false, fetchImpl = fetch } = {}) {
+export async function askVendor(env, v, state, { why = 'missing', bill = null, now = Date.now(), to = null, preview = false, staffSend = false, fetchImpl = fetch } = {}) {
   const address = to || v.email;
   if (!isEmail(address)) return { ok: false, noEmail: true };
-  const held = preview ? null : await asksOnHold(env);
+  // Someone at SOARD pressing "Email them" sends it now; the site's own asks wait for asking to be on (asksOnHold)
+  const held = preview || staffSend ? null : await asksOnHold(env);
   if (held) return { ok: false, held };
   const before = preview ? null : await readAsk(env.DB, v.id);
   const link = await createLink(env.DB, v.id, { by: preview ? 'preview' : 'auto', now });
   const req = await readDocSettings(env.DB);
-  const mail = requestEmail({ vendorName: v.name, url: link.url, state, req, bill, reminder: !!before?.open && (before?.asks || 0) > 0 && !bill });
+  const mail = requestEmail({ vendorName: v.name, url: link.url, state, req, bill, reminder: !!before?.open && (before?.asks || 0) > 0 && !bill, site: !!v.site });
   const r = await sendEmails(env, { to: [address], subject: preview ? `Preview: ${mail.subject}` : mail.subject, html: mail.html, text: mail.text, tags: [{ name: 'type', value: 'vendor-documents' }] });
   if (!r.sent) throw new Error(r.errors[0] || 'The email didn’t send');
   if (!preview) {
@@ -552,21 +645,30 @@ export async function resolveAll(env, jtId, summary, now = Date.now()) {
   await patchAsk(env.DB, jtId, { posted: {} }, now);
 }
 
+/** "Check X's file" done once nothing of theirs waits on a person any more (a good file settled it, or a person did) */
+export async function settleLook(env, id, now = Date.now()) {
+  const waiting = await env.DB.prepare("SELECT 1 FROM vendor_files WHERE vendor_id = ? AND status = 'look' LIMIT 1").bind(id).first().catch(() => null);
+  if (!waiting) await resolveOne(env, id, 'look', 'Nothing of theirs waits on a person now.', now).catch(() => null);
+}
+
+/** One of a vendor's Slack cards done (key: 'look', 'email' …): resolved, and the next one of its kind can post */
+export async function resolveOne(env, jtId, key, summary, now = Date.now()) {
+  const a = await readAsk(env.DB, jtId);
+  if (!a?.posted?.[key]) return;
+  await slackResolved(env, `vendor:${key}:${jtId}`, slackCard({ icon: '✅', title: `${a.name || 'The vendor'}: looked at` }), { summary }).catch(() => null);
+  const { [key]: _done, ...rest } = a.posted;
+  await patchAsk(env.DB, jtId, { posted: rest }, now);
+}
+
 // ─── A file from the vendor's page ──────────────────────────────────
 
 const EXT = { 'application/pdf': 'pdf', 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 /**
- * Check what a vendor uploaded and, when it's good (or nobody could read
- * it, or they send it anyway for a person), file it in JobTread.
- * doc 'w9' | 'coi'; files: File/Blob list; pages: per file, its first pages as pictures the
- * vendor's browser drew (PDFs only; read, never filed); anyway: send it in despite the check.
- * → { accepted, look, problems, lines, needs (still wanted), done } ; throws Error with .status
+ * The files sent (a W-9 is one; a certificate up to 3), each with the first pages the sender's browser drew of it
+ * (PDFs only: read, never kept) → [{ bytes, type, name, pages }]; throws Error with .status for what can't be read
  */
-export async function fileUpload(env, link, { doc, files, pages = [], anyway = false }, { now = Date.now(), fetchImpl = fetch } = {}) {
-  if (!['w9', 'coi'].includes(doc)) throw Object.assign(new Error('Pick the W-9 or the certificate.'), { status: 400 });
-  // An insurance agent's link adds a certificate and nothing else
-  if (link.scope === 'agent' && doc !== 'coi') throw Object.assign(new Error('This link is for the certificate of insurance only.'), { status: 403 });
+async function takeParts(doc, files, pages = []) {
   const isBlob = (f) => f && typeof f === 'object' && f.size > 0;
   const list = (files || []).map((f, i) => ({ f, pics: pages[i] || [] })).filter(({ f }) => isBlob(f)).slice(0, doc === 'w9' ? 1 : LIMITS.files);
   if (!list.length) throw Object.assign(new Error('Choose the file first.'), { status: 400 });
@@ -587,23 +689,141 @@ export async function fileUpload(env, link, { doc, files, pages = [], anyway = f
     }
     parts.push({ bytes, type, name: String(f.name || '').slice(0, 120), pages: drawn });
   }
-  const v = await readJtVendor(env, link.vendor_id, { fetchImpl });
+  return parts;
+}
+
+/** The check, as on the company's own page → { verdict, reads } */
+async function checkParts(env, doc, parts, v, req, now) {
+  const reads = await Promise.all(parts.map((p) => readDocument(env, doc, p)));
+  let verdict = doc === 'w9' ? judgeW9(reads[0].pictures, { vendorName: v.name }) : judgeCoiReads(reads, req, { vendorName: v.name, now });
+  // The two readings split on a number: it's asked once more, on its own, before a person has to (and what's kept
+  // is the reading the verdict came from)
+  if (verdict.unsure) {
+    const pictures = parts.map((p) => (p.type === 'application/pdf' ? p.pages : [p]));
+    const settled = await settleDisputes(env, reads, pictures);
+    return { verdict: judgeCoiReads(settled, req, { vendorName: v.name, now }), reads: settled };
+  }
+  return { verdict, reads };
+}
+
+/**
+ * A certificate sent as several files (liability on one, workers' comp on another): which files show which of the
+ * verdict's policies → [['gl'] | ['wc'] | ['gl', 'wc'] | [] per file]. Each file's own readings (either of the two)
+ * are looked through for that kind with the verdict's end date, else that kind at all; every file that shows it has
+ * it (two copies of one certificate both do). One no file can be told to show is the first file's. One file has all.
+ */
+const KIND_WORDS = { gl: 'general liability', wc: 'workers compensation' };
+function partKinds(reads, verdict) {
+  const kinds = ['gl', 'wc'].filter((k) => verdict[k]);
+  if (reads.length < 2) return [kinds];
+  const shows = (r, k, exact) => [r?.text, r?.pictures].some((x) => (x?.policies || []).some((p) => p?.kind === KIND_WORDS[k] && (!exact || p.expires === verdict[k].expires)));
+  const out = reads.map(() => []);
+  for (const k of kinds) {
+    let at = reads.map((r, i) => (shows(r, k, true) ? i : -1)).filter((i) => i >= 0);
+    if (!at.length) at = reads.map((r, i) => (shows(r, k, false) ? i : -1)).filter((i) => i >= 0);
+    for (const i of at.length ? at : [0]) out[i].push(k);
+  }
+  return out;
+}
+/** Each file's share of a certificate: what it proves, and the policies it shows */
+const shareOf = (kinds, proven, verdict) => ({
+  proves: Object.fromEntries(kinds.filter((k) => proven?.[k]).map((k) => [k, proven[k]])),
+  reading: kinds.length ? { policies: kinds.map((k) => verdict[k]) } : null,
+});
+
+/**
+ * A W-9 or certificate staff add in Job Costs → W-9s & insurance: checked like one from the company's own page, and
+ * kept whatever the check says (it's SOARD's record either way). A certificate's dates move forward only for coverage
+ * that meets the minimums, ended or not (an old one still says when it ended); a W-9 that checks out is marked on file;
+ * one nobody could read waits for a person, who fills in what it says.
+ * → { file, duplicate, accepted, look, problems, lines, changed, state }
+ */
+export async function staffUpload(env, id, { doc, files, pages = [], by = null }, { now = Date.now(), fetchImpl = fetch } = {}) {
+  if (!['w9', 'coi'].includes(doc)) throw Object.assign(new Error('Pick the W-9 or the certificate.'), { status: 400 });
+  const parts = await takeParts(doc, files, pages);
+  const v = await readVendor(env, id, { fetchImpl, now, orRecord: true });
+  if (!v) throw Object.assign(new Error('No such company'), { status: 404 });
+  // A file already kept for them as the other kind: refused before any of them is kept (one file is one thing)
+  const clash = await otherKindOf(env, v.id, doc, parts.map((p) => p.bytes));
+  if (clash) throw Object.assign(new Error(`A file you added is already kept as ${clash === 'w9' ? 'their W-9' : 'a certificate'}. If it’s really ${doc === 'w9' ? 'a W-9' : 'a certificate'}, use Move on it in the list.`), { status: 409 });
+  const req = await readDocSettings(env.DB);
+  const { verdict, reads } = await checkParts(env, doc, parts, v, req, now);
+  const look = !!verdict.unreadable;
+  const day = isoDay(now);
+  const status = verdict.accepted ? 'checked' : look ? 'look' : 'kept';
+  const summary = verdict.accepted ? verdict.lines.join(' ') : look ? (verdict.unsure ? `Read two ways that didn’t agree: ${verdict.unsure}` : 'Couldn’t be read automatically') : `Kept; it doesn’t pass: ${(verdict.problems || []).join(' ')}`;
+  // What it proves: a W-9 that checks out; a certificate's coverage that meets the minimums, ended or not
+  const { provenDates } = await import('./_coi-backfill.js');
+  const proven = doc === 'coi' && !look ? provenDates({ policies: [verdict.gl, verdict.wc].filter(Boolean) }, req) : null;
+  // Each file proves (and shows) only its own policies: taking one off takes only what it showed
+  const kinds = doc === 'coi' && !look ? partKinds(reads, verdict) : null;
+  let kept = null;
+  let fresh = 0;
+  for (const [i, p] of parts.entries()) {
+    const share = kinds ? shareOf(kinds[i], proven, verdict) : null;
+    const r = await keepFile(env, v.id, {
+      doc, bytes: p.bytes, type: p.type, name: p.name || `${TAGS[doc]} ${v.name} ${day}${parts.length > 1 ? ` (${i + 1})` : ''}.${EXT[p.type]}`,
+      source: 'staff', sourceRef: null, receivedAt: day, by, status, summary,
+      proves: doc === 'w9' ? (verdict.accepted ? { w9: true } : null) : share?.proves || null,
+      reading: doc === 'coi' ? share?.reading || null : reads[0]?.pictures || null,
+    }, { now });
+    kept ||= r;
+    if (!r.duplicate) fresh++;
+  }
+  const patch = {};
+  if (doc === 'w9' && verdict.accepted && !v.w9) patch.w9 = true;
+  if (doc === 'coi' && !look) {
+    const { laterDates } = await import('./_coi-backfill.js');
+    const later = laterDates(v, { policies: [verdict.gl, verdict.wc].filter(Boolean) }, req);
+    if (later.gl) patch.gl = later.gl;
+    if (later.wc) patch.wc = later.wc;
+    if (later.gl || later.wc) patch.check = `${verdict.summary || ''} · added ${day}`.slice(0, 250);
+  }
+  await writePapers(env, null, v.id, patch, fetchImpl, { now, by, forward: true });
+  if (verdict.accepted) await settleWaiting(env, v.id, doc, kept.file?.id);
+  const { state } = await relabel(env, v.id, { fetchImpl, now, by });
+  await settleLook(env, v.id, now);
+  if (doc === 'coi' && !look && (verdict.gl || verdict.wc)) {
+    await import('./_coi-backfill.js').then((b) => b.recordUpload(env, { jtId: v.id, insured: v.name, verdict, parts, kinds, now })).catch((e) => console.error('[vendors] coverage', e.message));
+  }
+  const moved = [patch.w9 && 'W-9 marked on file', patch.gl && `liability through ${longDate(patch.gl)}`, patch.wc && `workers’ comp through ${longDate(patch.wc)}`].filter(Boolean);
+  await vendorNote(env, v.id, `${LABEL[doc]} added by ${by || 'staff'}`, `${by || 'Someone at SOARD'} added a ${LABEL[doc].toLowerCase()} on the site on ${longDate(day)}. ${summary}${moved.length ? ` Now: ${moved.join(', ')}.` : ''}`, fetchImpl);
+  await patchAsk(env.DB, v.id, { name: v.name, email: v.email, state: briefState(state), checkedAt: new Date(now).toISOString(), ...(state.ok && !state.expiring ? { open: false } : {}) }, now);
+  if (state.ok && !look) {
+    await resolveAll(env, v.id, `Their ${LABEL[doc].toLowerCase()} was added and checks out.`, now);
+    await releaseVendorHolds(env, v.id, { now }).catch((e) => console.error('[vendors] release', e.message));
+  }
+  // A duplicate only when every file was kept already (one of three new is still something added)
+  return { file: kept.file, duplicate: !fresh, accepted: !!verdict.accepted, look, problems: verdict.problems || [], lines: verdict.lines || [], changed: patch, state: state && briefState(state) };
+}
+
+/**
+ * Check what a vendor uploaded and, when it's good (or nobody could read
+ * it, or they send it anyway for a person), keep it on the site.
+ * doc 'w9' | 'coi'; files: File/Blob list; pages: per file, its first pages as pictures the
+ * vendor's browser drew (PDFs only; read, never filed); anyway: send it in despite the check.
+ * → { accepted, look, problems, lines, needs (still wanted), done } ; throws Error with .status
+ */
+export async function fileUpload(env, link, { doc, files, pages = [], anyway = false }, { now = Date.now(), fetchImpl = fetch } = {}) {
+  if (!['w9', 'coi'].includes(doc)) throw Object.assign(new Error('Pick the W-9 or the certificate.'), { status: 400 });
+  // An insurance agent's link adds a certificate and nothing else
+  if (link.scope === 'agent' && doc !== 'coi') throw Object.assign(new Error('This link is for the certificate of insurance only.'), { status: 403 });
+  const parts = await takeParts(doc, files, pages);
+  const v = await readVendor(env, link.vendor_id, { fetchImpl, now, orRecord: true });
   if (!v || v.archived) throw Object.assign(new Error('This link is for a company we no longer have on file. Reply to our email and we’ll sort it out.'), { status: 410 });
+  // A file they sent before as the other kind: refused before any of these is kept, in their words
+  const clash = v.id === PREVIEW_ID ? null : await otherKindOf(env, v.id, doc, parts.map((p) => p.bytes));
+  if (clash) throw Object.assign(new Error(`We already have one of these files as your ${clash === 'w9' ? 'W-9' : 'certificate of insurance'}. Send your ${doc === 'w9' ? 'W-9' : 'certificate of insurance'} instead.`), { status: 409 });
+  // A company only asked for its W-9 isn't asked for insurance, so its page takes none
+  if (doc === 'coi' && (link.scope === 'papers' || v.site) && OVERRIDES.has(v.docs)) throw Object.assign(new Error('We only need your W-9.'), { status: 403 });
   const req = await readDocSettings(env.DB);
 
   let verdict;
+  let reads = [];
   if (anyway) verdict = { accepted: false, anyway: true, lines: [], problems: [] };
-  else {
-    const reads = await Promise.all(parts.map((p) => readDocument(env, doc, p)));
-    verdict = doc === 'w9' ? judgeW9(reads[0].pictures, { vendorName: v.name }) : judgeCoiReads(reads, req, { vendorName: v.name, now });
-    // The two readings split on a number: it's asked once more, on its own, before a person has to
-    if (verdict.unsure) {
-      const pictures = parts.map((p) => (p.type === 'application/pdf' ? p.pages : [p]));
-      verdict = judgeCoiReads(await settleDisputes(env, reads, pictures), req, { vendorName: v.name, now });
-    }
-  }
+  else ({ verdict, reads } = await checkParts(env, doc, parts, v, req, now));
   await env.DB.prepare('UPDATE vendor_links SET uploads = uploads + 1, last_upload_at = ? WHERE token_hash = ?').bind(new Date(now).toISOString(), link.token_hash).run();
-  // A readable file that falls short goes back to the vendor, not into JobTread
+  // A readable file that falls short goes back to the vendor, not into the record
   if (!verdict.unreadable && !verdict.anyway && !verdict.accepted) return { accepted: false, look: false, problems: verdict.problems, lines: verdict.lines || [] };
   if (v.id === PREVIEW_ID) {
     const left = docsState({ ...v, ...(verdict.accepted && doc === 'w9' ? { w9: true } : {}), ...(verdict.accepted && doc === 'coi' ? { glExpires: verdict.gl?.expires, wcExpires: verdict.wc?.expires } : {}) }, req, { now });
@@ -611,46 +831,56 @@ export async function fileUpload(env, link, { doc, files, pages = [], anyway = f
   }
 
   const look = !verdict.accepted;
-  const ids = await jtSetup(env, { fetchImpl });
+  const ids = v.site ? null : await jtSetup(env, { fetchImpl }).catch(() => null);
   const day = isoDay(now);
+  const summary = look
+    ? (verdict.anyway ? 'Sent anyway after the check didn’t pass' : verdict.unsure ? `Read two ways that didn’t agree: ${verdict.unsure}` : 'Couldn’t be read automatically')
+    : verdict.lines.join(' ');
+  let keptId = null;
+  // A certificate that passed: each file proves (and shows) only its own policies
+  const kinds = doc === 'coi' && !look ? partKinds(reads, verdict) : null;
+  const proven = kinds ? { gl: verdict.gl?.expires, wc: verdict.wc?.expires } : null;
   for (const [i, p] of parts.entries()) {
-    const uploadRequestId = await uploadToJt(env, p, fetchImpl);
     const name = `${TAGS[doc]} ${v.name} ${day}${parts.length > 1 ? ` (${i + 1})` : ''}.${EXT[p.type]}`;
-    await jt(env, { createFile: { $: { name, targetType: 'account', targetId: v.id, uploadRequestId, folder: FOLDER, fileTagIds: [ids.tags[doc]] }, createdFile: { id: {} } } }, fetchImpl);
+    const share = kinds ? shareOf(kinds[i], proven, verdict) : null;
+    const r = await keepFile(env, v.id, {
+      doc, bytes: p.bytes, type: p.type, name, source: link.scope === 'agent' ? 'agent' : 'page', sourceRef: `link:${String(link.token_hash || '').slice(0, 16)}`,
+      receivedAt: day, by: link.scope === 'agent' ? 'their insurance agent' : v.name, status: look ? 'look' : 'checked', summary,
+      proves: look ? null : doc === 'w9' ? { w9: true } : share.proves,
+      reading: doc === 'coi' ? (share ? share.reading : verdict.gl || verdict.wc ? { policies: [verdict.gl, verdict.wc].filter(Boolean) } : null) : reads[0]?.pictures || null,
+    }, { now }).catch((e) => {
+      // The very file they sent before as the other kind: said in their words
+      if (e.otherKind) throw Object.assign(new Error(`We already have this file as your ${e.otherKind === 'w9' ? 'W-9' : 'certificate of insurance'}. Send your ${doc === 'w9' ? 'W-9' : 'certificate of insurance'} instead.`), { status: 409 });
+      throw e;
+    });
+    keptId ||= r.file?.id;
   }
-  const after = { ...v };
   const patch = {};
-  if (verdict.accepted && doc === 'w9') { patch.w9 = true; after.w9 = true; }
+  if (verdict.accepted && doc === 'w9') patch.w9 = true;
   if (verdict.accepted && doc === 'coi') {
-    if (verdict.gl) { patch.gl = verdict.gl.expires; after.glExpires = verdict.gl.expires; }
-    if (verdict.wc) { patch.wc = verdict.wc.expires; after.wcExpires = verdict.wc.expires; }
+    if (verdict.gl) patch.gl = verdict.gl.expires;
+    if (verdict.wc) patch.wc = verdict.wc.expires;
     patch.check = `${verdict.summary} · read ${day}`.slice(0, 250);
   }
-  if (look && !OVERRIDES.has(v.docs)) { patch.docs = 'Needs a look'; after.docs = 'Needs a look'; }
+  await writePapers(env, ids, v.id, patch, fetchImpl, { now, forward: true });
+  if (verdict.accepted) await settleWaiting(env, v.id, doc, keptId);
   const ask = await readAsk(env.DB, v.id);
-  const state = docsState(after, req, { now });
-  if (!look && !OVERRIDES.has(v.docs)) {
-    // A good file clears "Needs a look" once nothing else is missing
-    const label = state.ok ? state.label : v.docs === 'Needs a look' ? 'Needs a look' : ask?.open ? 'Requested' : state.label;
-    if (label !== v.docs) patch.docs = label;
-  }
-  await writeFields(env, ids, v.id, patch, fetchImpl);
-  if (verdict.accepted && doc === 'coi') await import('./_coi-backfill.js').then((b) => b.recordUpload(env, { jtId: v.id, insured: v.name, verdict, parts, now })).catch((e) => console.error('[vendors] coverage', e.message));
+  const { state } = await relabel(env, v.id, { fetchImpl, now });
+  if (verdict.accepted) await settleLook(env, v.id, now);
+  if (verdict.accepted && doc === 'coi') await import('./_coi-backfill.js').then((b) => b.recordUpload(env, { jtId: v.id, insured: v.name, verdict, parts, kinds, now })).catch((e) => console.error('[vendors] coverage', e.message));
   const from = link.scope === 'agent' ? `${LABEL[doc]} from ${v.name}’s insurance agent` : `${LABEL[doc]} from ${v.name}`;
   await vendorNote(env, v.id, from, look
-    ? `${LABEL[doc]} received through SOARD’s page on ${longDate(day)}. ${verdict.anyway ? 'The vendor sent it anyway after the check didn’t pass' : verdict.unsure ? `The automatic check read it two ways that didn’t agree (${verdict.unsure})` : 'It couldn’t be read automatically'}, so a person needs to open it (folder ${FOLDER}) and fill in ${doc === 'w9' ? 'W-9' : 'Liability Expires and Workers’ Comp Expires'} on this vendor.`
-    : `${LABEL[doc]} received through SOARD’s page on ${longDate(day)} and checked: ${verdict.lines.join(' ')}${verdict.notes?.length ? ` Worth a look: ${verdict.notes.join(' ')}` : ''}`, fetchImpl);
+    ? `${LABEL[doc]} received through SOARD’s page on ${longDate(day)}. ${verdict.anyway ? 'The vendor sent it anyway after the check didn’t pass' : verdict.unsure ? `The automatic check read it two ways that didn’t agree (${verdict.unsure})` : 'It couldn’t be read automatically'}, so a person needs to open it on the site (Job Costs → W-9s & insurance) and fill in ${doc === 'w9' ? 'W-9' : 'the liability and workers’ comp dates'}.`
+    : `${LABEL[doc]} received through SOARD’s page on ${longDate(day)} and checked: ${verdict.lines.join(' ')}${verdict.notes?.length ? ` Worth a look: ${verdict.notes.join(' ')}` : ''} It’s kept on the site (Job Costs → W-9s & insurance).`, fetchImpl);
 
   if (look) {
     await postOnce(env, v.id, 'look', slackCard({
       icon: '🔎', title: `Check ${v.name}’s ${LABEL[doc].toLowerCase()}`,
       lead: verdict.anyway ? 'The automatic check didn’t pass, and they sent it anyway for a person to decide.' : verdict.unsure ? `It came in through their page, and the automatic check read it two ways that didn’t agree: ${verdict.unsure}` : 'It came in through their page but couldn’t be read automatically.',
-      facts: [['What to do', doc === 'w9' ? 'Open it in JobTread and tick W-9 if it’s right.' : 'Open it in JobTread and fill in Liability Expires and Workers’ Comp Expires.']],
-      buttons: [{ label: 'Open in JobTread', url: `${jtVendorUrl(v.id)}/files` }],
+      facts: [['What to do', doc === 'w9' ? 'Open it and mark the W-9 on file if it’s right.' : 'Open it and fill in when liability and workers’ comp end.']],
+      buttons: [{ label: 'Open it', url: papersUrl(v.id) }],
     }), `${v.name}: ${LABEL[doc]}`, now);
   }
-  // A W-9 goes to Mercury too, which files the 1099s
-  if (verdict.accepted && doc === 'w9') await w9ToMercury(env, v, parts[0], { now }).catch((e) => console.error('[vendors] mercury w9', e.message));
   // The trade-partner page's step, and an agent's ask, are done
   if (verdict.accepted) await import('./_trade-partners.js').then((tp) => tp.docArrived(env, v.id, doc, { now })).catch((e) => console.error('[vendors] step', e.message));
 
@@ -667,7 +897,7 @@ export const briefState = (s) => ({ ok: s.ok, expiring: s.expiring, label: s.lab
 
 /** What the vendor's page shows → { name, needs, items, have, requirements } */
 export async function pageView(env, link, { now = Date.now(), fetchImpl = fetch } = {}) {
-  const v = await readJtVendor(env, link.vendor_id, { fetchImpl });
+  const v = await readVendor(env, link.vendor_id, { fetchImpl, now });
   if (!v || v.archived) return null;
   const req = await readDocSettings(env.DB);
   const state = docsState(v, req, { now });
@@ -682,61 +912,17 @@ export async function pageView(env, link, { now = Date.now(), fetchImpl = fetch 
   };
 }
 
-// ─── Mercury: the W-9 for the 1099s ─────────────────────────────────
-
-export async function w9ToMercury(env, v, file, { now = Date.now() } = {}) {
-  if (!mercuryConfigured(env)) return false;
-  const r = recipientFor(v.name, await cachedRecipients(env, { now }));
-  if (!r) return false;
-  await uploadRecipientAttachment(env, r.id, { bytes: file.bytes, fileName: `W-9 ${v.name}.${EXT[file.type] || 'pdf'}`, type: file.type });
-  await patchAsk(env.DB, v.id, { mercuryW9At: new Date(now).toISOString() }, now);
-  return true;
-}
-
-/**
- * Daily: a W-9 that's in JobTread (filed here or by hand) onto the vendor's
- * Mercury recipient when Mercury doesn't have one. → number copied
- */
-export async function w9sToMercury(env, { now = Date.now(), fetchImpl = fetch } = {}) {
-  if (!mercuryConfigured(env)) return 0;
-  const ids = await jtSetup(env, { fetchImpl });
-  const recipients = await cachedRecipients(env, { now });
-  const asks = await readAsks(env.DB);
-  let n = 0;
-  for (const a of asks.values()) {
-    if (a.mercuryW9At || n >= 5) continue;
-    const r = recipientFor(a.name || '', recipients);
-    if (!r || r.hasW9) continue;
-    const d = await jt(env, {
-      account: {
-        $: { id: a.jtId },
-        files: { $: { size: 10, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: { id: {}, name: {}, url: {}, fileTags: { $: { size: 5 }, nodes: { id: {} } } } },
-      },
-    }, fetchImpl).catch(() => null);
-    const f = (d?.account?.files?.nodes || []).find((x) => (x.fileTags?.nodes || []).some((t) => t.id === ids.tags.w9));
-    if (!f?.url) continue;
-    const res = await fetchImpl(f.url, { signal: AbortSignal.timeout(30000) });
-    if (!res.ok) continue;
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const type = documentType(bytes.slice(0, 16)) || 'application/pdf';
-    await uploadRecipientAttachment(env, r.id, { bytes, fileName: f.name || `W-9 ${a.name}.pdf`, type });
-    await patchAsk(env.DB, a.jtId, { mercuryW9At: new Date(now).toISOString() }, now);
-    n++;
-  }
-  return n;
-}
-
 // ─── For bills (./_bill-pay.js) ─────────────────────────────────────
 
-/** A bill's vendor, fresh from JobTread → { ok, vendor, state } (throws when JobTread doesn't answer) */
+/** A bill's vendor, its papers as the site has them now → { ok, vendor, state } (throws when JobTread doesn't answer for a job vendor) */
 export async function billDocs(env, accountId, { now = Date.now(), fetchImpl = fetch } = {}) {
-  const v = await readJtVendor(env, accountId, { fetchImpl });
-  if (!v) throw new Error('JobTread has no such vendor');
+  const v = await readVendor(env, accountId, { fetchImpl, now });
+  if (!v) throw new Error(isSiteVendor(accountId) ? 'The site has no such company' : 'JobTread has no such vendor');
   const state = docsState(v, await readDocSettings(env.DB), { now });
   const ask = await readAsk(env.DB, v.id);
   await patchAsk(env.DB, v.id, { name: v.name, email: v.email, state: briefState(state), checkedAt: new Date(now).toISOString() }, now);
   const label = labelFor(v, state, ask);
-  if (label && label !== v.docs) await writeFields(env, await jtSetup(env, { fetchImpl }), v.id, { docs: label }, fetchImpl).catch(() => null);
+  if (label && label !== v.docs) await writePapers(env, null, v.id, { docs: label }, fetchImpl, { now }).catch(() => null);
   return { ok: state.ok, vendor: v, state };
 }
 
@@ -746,12 +932,16 @@ export async function askForBill(env, v, state, bill, { now = Date.now() } = {})
   if (ask?.open && ask.askedAt && now - Date.parse(ask.askedAt) < DAY) return { ok: true, skipped: true };
   const r = await askVendor(env, v, state, { why: 'bill', bill, now });
   if (r.noEmail && !(await asksOnHold(env))) await postNoEmail(env, v, now);
-  if (r.ok) await writeFields(env, await jtSetup(env), v.id, OVERRIDES.has(v.docs) ? {} : { docs: 'Requested' }).catch(() => null);
+  if (r.ok) await writePapers(env, null, v.id, OVERRIDES.has(v.docs) ? {} : { docs: 'Requested' }, fetch, { now }).catch(() => null);
   return r;
 }
 
 async function postNoEmail(env, v, now) {
-  await postOnce(env, v.id, 'email', slackCard({
+  await postOnce(env, v.id, 'email', slackCard(v.site ? {
+    icon: '✉️', title: `No email for ${v.name}`,
+    lead: 'Their W-9 is needed, and there’s no one to ask. Add their email on the site, then press “Email them for it” there.',
+    buttons: [{ label: 'Open it', url: papersUrl(v.id) }],
+  } : {
     icon: '✉️', title: `No email for ${v.name} in JobTread`,
     lead: 'Their W-9 or insurance is needed, and there’s no one to ask. Add an email to one of their contacts in JobTread; the request goes out within 15 minutes.',
     buttons: [{ label: 'Open in JobTread', url: jtVendorUrl(v.id) }],
@@ -791,7 +981,7 @@ export async function jobtreadVendors(env, { fetchImpl = fetch } = {}) {
       const val = (k) => (a.customFieldValues?.nodes || []).find((n) => n.customField?.id === ids?.fields[k]?.id)?.value ?? null;
       const trades = val('trades');
       const fields = ids && {
-        w9: yes(val('w9')), gl: dateOf(val('gl')), wc: dateOf(val('wc')), docs: val('docs') || null, materials: yes(val('materials')),
+        w9: yes(val('w9')), gl: dateOf(val('gl')), wc: dateOf(val('wc')), docs: val('docs') || null, check: val('check') || null, materials: yes(val('materials')),
         trades: Array.isArray(trades) ? trades : trades ? String(trades).split(/\s*,\s*/).filter(Boolean) : [],
       };
       out.push({ id: a.id, name: a.name, email: emails[0] || null, emails, archived: !!a.archivedAt, fields });
@@ -841,6 +1031,9 @@ export async function vendorsOnJobs(env, jobs, { fetchImpl = fetch } = {}) {
 export async function refreshCache(env, { now = Date.now(), fetchImpl = fetch } = {}) {
   const { cachedJobs } = await import('./_spend.js');
   const jobs = await cachedJobs(env, { now });
+  // What the site had written to JobTread before the list was read: a field written while it's read is left alone
+  await ensurePapersSchema(env.DB);
+  const before = new Map(((await env.DB.prepare('SELECT id, jt_sent FROM vendor_papers').all()).results || []).map((r) => [r.id, parseJson(r.jt_sent, {})]));
   const [vendors, onJobs] = [await jobtreadVendors(env, { fetchImpl }), await vendorsOnJobs(env, jobs, { fetchImpl })];
   const DB = env.DB;
   const iso = new Date(now).toISOString();
@@ -856,7 +1049,19 @@ export async function refreshCache(env, { now = Date.now(), fetchImpl = fetch } 
   // The old join's rows that were never JobTread vendors (Mercury-only, names from spending)
   stmts.push(DB.prepare('DELETE FROM vendors WHERE jt_id IS NULL'));
   for (let i = 0; i < stmts.length; i += 50) await DB.batch(stmts.slice(i, i + 50));
+  await settleAll(env, vendors, { now, fetchImpl, before }).catch((e) => console.error('[vendors] papers', e.message));
   return vendors.length;
+}
+
+/**
+ * Every JobTread vendor's papers against the fields the list just read: one with none yet starts from JobTread's,
+ * one changed by hand there is taken in, and the site's that didn't reach JobTread are written (a few each run)
+ */
+async function settleAll(env, vendors, { now = Date.now(), fetchImpl = fetch, before = null } = {}) {
+  const list = vendors.map((v) => ({ ...v, fields: v.fields && { w9: v.fields.w9, gl: v.fields.gl, wc: v.fields.wc, docs: v.fields.docs, check: v.fields.check } }));
+  const push = await settleMany(env, list, { now, before });
+  const ids = push.length ? await jtSetup(env, { fetchImpl }) : null;
+  for (const p of push.slice(0, 20)) await mirror(env, p.id, p.toPush, { fetchImpl, now, ids });
 }
 
 // ─── Who needs documents now ────────────────────────────────────────
@@ -891,13 +1096,11 @@ export async function vendorsThatNeedDocs(DB, { now = Date.now(), req = DEFAULTS
   for (const h of rampHeld) put(h.account_id, 'held', { id: h.jt_bill_id, number: h.invoice, cents: h.cents, ramp: true });
   const onJobs = await DB.prepare('SELECT jt_id, facts FROM vendors WHERE jt_id IS NOT NULL').all().then((r) => r.results || [], () => []);
   for (const r of onJobs) if ((parseJson(r.facts).jobs || []).some((j) => j.order)) put(r.jt_id, 'job');
-  // Insurance JobTread has dates for, working for SOARD right now or not: asked for from 30 days before it ends, and for a month after if it lapsed
+  // Insurance the site has dates for, working for SOARD right now or not: asked for from 30 days before it ends, and for a month after if it lapsed
   const from = isoDay(now - 30 * DAY);
   const to = isoDay(now + (req.renewDays || 30) * DAY);
-  for (const r of onJobs) {
-    const f = parseJson(r.facts).fields;
-    if (f && !OVERRIDES.has(f.docs) && [f.gl, f.wc].some((d) => d && d >= from && d <= to)) put(r.jt_id, 'renewal');
-  }
+  const papers = await DB.prepare('SELECT id, gl, wc, docs FROM vendor_papers WHERE archived = 0').all().then((r) => r.results || [], () => []);
+  for (const r of papers) if (!OVERRIDES.has(r.docs) && [r.gl, r.wc].some((d) => d && d >= from && d <= to)) put(r.id, 'renewal');
   const asks = await DB.prepare('SELECT jt_id, state FROM vendor_asks').all().then((r) => r.results || [], () => []);
   for (const a of asks) if (parseJson(a.state, {}).expiring) put(a.jt_id, 'renewal');
   return new Map([...out.entries()].sort((x, y) => RANK[x[1].why] - RANK[y[1].why]));
@@ -922,13 +1125,13 @@ export async function sweep(env, { now = Date.now(), fetchImpl = fetch } = {}) {
     if (w.why !== 'held' && !fresh && !(a?.open && askDue(a, now))) continue;
     if (out.read >= READS_PER_RUN) break;
     out.read++;
-    const v = await readJtVendor(env, jtId, { fetchImpl }).catch(() => null);
+    const v = await readVendor(env, jtId, { fetchImpl, now }).catch(() => null);
     if (!v || v.archived) continue;
     const state = docsState(v, req, { now });
     const settled = state.ok && !state.expiring;
     let ask = await patchAsk(env.DB, v.id, { name: v.name, email: v.email || a?.email || null, state: briefState(state), checkedAt: new Date(now).toISOString(), ...(settled ? { open: false } : {}) }, now);
     if (state.ok) {
-      if (settled) await resolveAll(env, v.id, 'Their W-9 and insurance are current in JobTread.', now);
+      if (settled) await resolveAll(env, v.id, 'Their W-9 and insurance are current.', now);
       out.released += await releaseVendorHolds(env, v.id, { now }).catch(() => 0);
     }
     if (held) { /* checked and labeled, nobody emailed */ } else if (!settled && w.why !== 'held') {
@@ -955,20 +1158,20 @@ export async function sweep(env, { now = Date.now(), fetchImpl = fetch } = {}) {
         await postOnce(env, v.id, 'ignored', slackCard({
           icon: '⏳', title: `${v.name} hasn’t sent their documents`,
           lead: `${w.bill?.ramp ? 'A bill on hold in Ramp' : 'An approved bill'} is waiting on ${state.send || 'their documents'}${state.detail ? ` (${state.detail})` : ''}. They’ve been emailed ${ask.asks} times; a call may do it.`,
-          facts: [['Waiting', w.bill ? dollars(w.bill.cents) : 'An approved bill'], ['Email', v.email || 'None in JobTread']],
-          buttons: [{ label: 'Open in JobTread', url: jtVendorUrl(v.id) }],
+          facts: [['Waiting', w.bill ? dollars(w.bill.cents) : 'An approved bill'], ['Email', v.email || (v.site ? 'None on file' : 'None in JobTread')]],
+          buttons: [{ label: 'Open it', url: papersUrl(v.id) }],
         }), `${v.name}: documents`, now);
       }
     }
     const label = labelFor(v, state, ask);
-    if (label && label !== v.docs) await writeFields(env, ids, v.id, { docs: label }, fetchImpl).catch((e) => console.error('[vendors] label', e.message));
+    if (label && label !== v.docs) await writePapers(env, ids, v.id, { docs: label }, fetchImpl, { now }).catch((e) => console.error('[vendors] label', e.message));
   }
   return out;
 }
 
 // ─── The heartbeat ──────────────────────────────────────────────────
 
-/** Every 15 minutes: JobTread's fields, the cache (4-hourly), the sweep, W-9s to Mercury (daily). Never throws. */
+/** Every 15 minutes: JobTread's fields, the cache (4-hourly), the sweep, JobTread's W-9 and insurance files moved here, payees found (daily). Never throws. */
 export async function maybeRunVendors(env, { now = Date.now(), fetchImpl = fetch, force = false } = {}) {
   try {
     if (!env.DB || !env.JOBTREAD_GRANT_KEY) return null;
@@ -993,12 +1196,17 @@ export async function maybeRunVendors(env, { now = Date.now(), fetchImpl = fetch
     try { report.partners = await (await import('./_trade-partners.js')).partnerNudges(env, { now, fetchImpl }); } catch (e) { errors.push(`Trade partners: ${e.message}`); }
     // While Ramp still pays bills: held there until the vendor's papers are in (./_ramp.js keeps its own errors)
     if (rampConfigured(env)) report.ramp = await maybeRunRamp(env, { now, fetchImpl });
-    if (mercuryConfigured(env) && (force || now - Date.parse(st.mercuryAt || 0) > DAY)) {
-      try {
-        report.toMercury = await w9sToMercury(env, { now, fetchImpl });
-        await writeState(env.DB, STATE_KEY, { mercuryAt: report.at });
-      } catch (e) { errors.push(`Mercury: ${e.message}`); }
-    }
+    // The W-9s and certificates in JobTread's folders, moved here a few at a time (and looked for again every 6 hours)
+    try {
+      const ids = await jtSetup(env, { fetchImpl });
+      const r = await importJobTread(env, { now, fetchImpl, tags: ids.tags });
+      if (r) report.imported = r;
+    } catch (e) { errors.push(`Moving JobTread’s files: ${e.message}`); }
+    // Daily: everyone SOARD pays outside JobTread, so they need a W-9 too
+    try {
+      const r = await findPayees(env, { now, fetchImpl, force });
+      if (r) report.payees = { made: r.made, seen: r.seen };
+    } catch (e) { errors.push(`Payees: ${e.message}`); }
     await writeState(env.DB, STATE_KEY, { lastRun: report, lastError: errors.length ? { at: report.at, error: errors.join(' · ') } : null });
     return report;
   } catch (e) {
@@ -1012,9 +1220,11 @@ export async function vendorFacts(DB) {
   await ensureVendorSchema(DB);
   const st = await readState(DB, STATE_KEY);
   const rows = (await DB.prepare('SELECT open, posted FROM vendor_asks').all()).results || [];
+  const papers = await papersFacts({ DB }).catch(() => null);
   return {
     at: st.lastRun?.at || null, error: st.lastError || null, setupError: st.setupError || null, ready: !!st.jt?.fields,
     open: rows.filter((r) => r.open).length,
     look: rows.filter((r) => parseJson(r.posted, {}).look).length,
+    papers,
   };
 }

@@ -12,8 +12,9 @@
  *
  * Public: listed in the middleware's PUBLIC_ROUTES and rate limited per IP.
  * The token is the only key (only its SHA-256 is stored, see _vendors.js).
- * Everything is read from and written to the vendor's account in JobTread;
- * the site keeps no copy of the files. No tax ID is asked for or kept.
+ * Files are kept on the site in private storage (./_vendor-files.js), and a
+ * job vendor's JobTread fields show what they said. The check reads no tax ID
+ * into the record; the file itself, a W-9 with its number, is staff-only.
  */
 import { findLink, fileUpload, LIMITS } from './_vendors.js';
 import { partnerView } from './_trade-partners.js';
@@ -23,7 +24,7 @@ const GONE = {
   closed: 'This link has been replaced by a newer one. Use the link in your latest email, or sign in again.',
 };
 const NO_STORE = { 'Cache-Control': 'no-store' };
-const fail = (error, status) => Response.json({ ok: false, error }, { status, headers: NO_STORE });
+const fail = (error, status, extra = {}) => Response.json({ ok: false, error, ...extra }, { status, headers: NO_STORE });
 
 async function linkFor(env, token) {
   const { link, problem } = await findLink(env.DB, token);
@@ -37,7 +38,8 @@ export async function onRequestGet(context) {
     const { link, stop } = await linkFor(context.env, new URL(context.request.url).searchParams.get('token'));
     if (stop) return stop;
     const vendor = await partnerView(context.env, link);
-    if (!vendor) return fail('This link is for a company we no longer have on file. Reply to our email and we’ll sort it out.', 410);
+    // A company SOARD no longer has on file (archived): the page says so, not "sign in again" (sign-in skips them)
+    if (!vendor) return fail('This link is for a company we no longer have on file. Reply to our email and we’ll sort it out.', 410, { notOnFile: true });
     return Response.json({ ok: true, vendor }, { headers: NO_STORE });
   } catch (err) {
     console.error('[vendor-docs] get', err.message);
