@@ -88,6 +88,13 @@ test('the rules: what has to be answered, follow-ups only when they apply, and c
   assert.ok(ADVISORY_FIELDS.every((f) => !/[—–]/.test(`${f.label} ${f.hint || ''}`)), 'no em or en dashes in the questions');
 });
 
+test('a name (theirs, or typed to sign) is more than one letter', () => {
+  const { problems } = checkAnswers({ ...GOOD, fullName: 'J', signature: 'x' });
+  assert.equal(problems.fullName, 'Please type your full name.');
+  assert.equal(problems.signature, 'Please type your full name.');
+  assert.deepEqual(checkAnswers({ ...GOOD, signature: 'Jo' }).problems, {});
+});
+
 test('applying: stored, the applicant gets a copy, staff get an email and a Slack post', async () => {
   const { res, body } = await apply(GOOD);
   assert.equal(res.status, 200);

@@ -933,14 +933,21 @@ try {
   await tap('.af-review-missing [data-edit]');
   await sleep(400);
   ok((await stepTitle()) === 'Diagnosis' && await page.evaluate(() => document.activeElement?.id) === 'af-diagnosisImpact', '"Answer it" goes to the question');
+  // A reload there (a phone reloads a tab left a while): its Continue still goes back to the review
+  await page.reload({ waitUntil: 'networkidle0' });
+  await sleep(900);
+  ok((await stepTitle()) === 'Diagnosis' && /Back to review/.test(await page.$eval('[data-next]', (e) => e.textContent)), 'a reload keeps "Back to review"');
+  await page.click('#af-diagnosisImpact');
   await page.type('#af-diagnosisImpact', 'Bathing takes two adults.');
   await next();
   ok((await stepTitle()) === 'Review and submit', '"Back to review" goes straight back');
   ok(/Everything is here/.test(await page.$eval('[data-review-summary]', (e) => e.textContent)) && !(await page.$eval('[data-next]', (b) => b.disabled)), 'and Submit is ready again');
 
   console.log('Submit');
-  // Its save not going through: Submit doesn't send the answers from before it, and says so
+  // Its save not going through: Submit doesn't send the answers from before it, and says so (a change the last
+  // save hasn't taken: with nothing new since one that went through, Submit goes straight on)
   failSaves = 500;
+  await page.evaluate(() => { const el = document.querySelector('#af-diagnosisImpact'); el.value += ' A lift would help.'; el.dispatchEvent(new Event('input', { bubbles: true })); });
   await next();
   await sleep(800);
   ok(!(await visible('[data-done]')) && /didn't save/.test(await page.$eval('[data-nav-note]', (e) => (e.hidden ? '' : e.textContent))), "a save that doesn't go through holds Submit back, and says why");

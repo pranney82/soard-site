@@ -135,6 +135,8 @@ export function fieldProblem(field, value) {
     const d = String(value).replace(/\s*(?:x|ext\.?|extension)\s*\d{1,6}\s*$/i, '').replace(/[^\d+]/g, '');
     if (!/^(?:\+\d{8,15}|1?\d{10})$/.test(d)) return d.replace(/\D/g, '').length === 7 ? 'Please add the area code, like (404) 555-0123.' : 'Please enter a 10-digit phone number.'; // "555-1234", as the family form says it
   }
+  // A name (theirs, or typed to sign): at least two letters, never just "x"
+  if (field.autocomplete === 'name' && (String(value).match(/\p{L}/gu) || []).length < 2) return 'Please type your full name.';
   if (field.type === 'url' && !/^https?:\/\/[^\s.]+\.[^\s]+$/i.test(value)) return 'That doesn’t look like a web address.';
   if (field.type === 'choice' && !field.options.includes(value)) return 'Please choose one.';
   return null;

@@ -200,7 +200,11 @@ const breadcrumbs = [
           </div>
           <ol class="af-hub-list" data-hub-list></ol>
           <div class="af-hub-foot">
-            <button type="button" class="af-btn af-btn--link" data-save-later data-hub-later hidden data-af-t="saveLater">{w('saveLater')}</button>
+            <div class="af-hub-acts">
+              <button type="button" class="af-btn af-btn--link" data-save-later data-hub-later hidden data-af-t="saveLater">{w('saveLater')}</button>
+              <!-- A brother's or sister's application this device also had going (a link opened the other one) -->
+              <button type="button" class="af-btn af-btn--link" data-hub-other hidden data-af-t="hubOther">{w('hubOther')}</button>
+            </div>
             <p class="af-hub-help"><span data-af-t="railHelp">{w('railHelp')}</span>
               <a href={`mailto:${siteSettings.email}`}>{siteSettings.email}</a>
               <a href={`tel:${String(siteSettings.phone || '').replace(/[^\d+]/g, '')}`}>{siteSettings.phone}</a></p>
@@ -1377,6 +1381,8 @@ const breadcrumbs = [
   .af-hub-row[data-state="done"] .af-hub-meta { color: var(--c-dark); }
   .af-hub-row:disabled .af-hub-name strong { color: #6E6F74; font-weight: 600; }
   .af-hub-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; margin-top: 18px; }
+  .af-hub-acts { display: flex; flex-wrap: wrap; gap: 0 18px; }
+  .af-hub-acts:not(:has(> :not([hidden]))) { display: none; }
   .af-hub-help { margin: 0; display: flex; flex-wrap: wrap; gap: 2px 14px; font-size: 14px; line-height: 1.6; color: var(--c-text-muted); }
   .af-hub-help a { color: var(--c-dark); font-weight: 600; text-decoration: underline; text-decoration-color: rgba(55,58,54,.3); text-underline-offset: 3px; }
   .af-hub-go { min-width: 240px; }

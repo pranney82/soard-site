@@ -1167,6 +1167,8 @@ export function ageOn(birthdate, now = Date.now()) {
   return age;
 }
 
+/** A limit as people write it: 1,000,000, not 1000000 */
+const big = (n, locale = 'en-US') => (typeof n === 'number' ? n.toLocaleString(locale) : n);
 /** What families read when an answer needs attention, in English and Spanish */
 export const ERROR_TEXT = {
   en: {
@@ -1178,7 +1180,7 @@ export const ERROR_TEXT = {
     date: 'Please enter a valid date.', year: 'Please check the year.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
     address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.', poBox: 'Please enter a street address, not a PO box.', houseNumber: 'Please add the house or building number to the street address.',
     oneOf: 'Please choose one of the answers.', listed: 'Please choose from the answers listed.', upTo: (n) => `Please choose up to ${n}.`,
-    number: 'Please enter a number.', range: 'Please enter one number. Your best guess is fine.', whole: 'Please enter a whole number.', min: (n) => `Please enter ${n} or more.`, max: (n) => `Please enter ${n} or less.`,
+    number: 'Please enter a number.', range: 'Please enter one number. Your best guess is fine.', whole: 'Please enter a whole number.', min: (n) => `Please enter ${big(n)} or more.`, max: (n) => `Please enter ${big(n)} or less.`,
     minLength: (n) => `Please write at least ${n} characters.`, maxLength: (n) => `Please keep this to ${n} characters or fewer.`,
     minAge: (n) => `The child must be at least ${n} years old.`, maxAge: (n) => `The child must be ${n} years old or younger.`,
   },
@@ -1191,7 +1193,7 @@ export const ERROR_TEXT = {
     date: 'Escriba una fecha válida.', year: 'Revise el año.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
     address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.', poBox: 'Escriba una dirección con calle, no un apartado postal.', houseNumber: 'Agregue el número de la casa o del edificio a la dirección.',
     oneOf: 'Elija una de las respuestas.', listed: 'Elija entre las respuestas de la lista.', upTo: (n) => `Elija hasta ${n}.`,
-    number: 'Escriba un número.', range: 'Escriba un solo número. Un cálculo aproximado está bien.', whole: 'Escriba un número entero.', min: (n) => `Escriba ${n} o más.`, max: (n) => `Escriba ${n} o menos.`,
+    number: 'Escriba un número.', range: 'Escriba un solo número. Un cálculo aproximado está bien.', whole: 'Escriba un número entero.', min: (n) => `Escriba ${big(n, 'es-US')} o más.`, max: (n) => `Escriba ${big(n, 'es-US')} o menos.`,
     minLength: (n) => `Escriba al menos ${n} caracteres.`, maxLength: (n) => `Use ${n} caracteres o menos.`,
     minAge: (n) => `El niño o la niña debe tener al menos ${n} años.`, maxAge: (n) => `El niño o la niña debe tener ${n} años o menos.`,
   },
@@ -1267,6 +1269,7 @@ export function fieldError(field, value, lang = 'en') {
       return null;
     }
     case 'text': case 'textarea': case 'signature': {
+      if (field.type === 'signature' && (String(value).match(/\p{L}/gu) || []).length < 2) return E.signature; // a name, never just "x"
       if (field.type === 'text' && field.id === 'website' && !isWebAddress(value)) return E.url; // an organization's website
       const len = String(value).trim().length;
       if (r.minLength != null && len < r.minLength) return E.minLength(r.minLength);

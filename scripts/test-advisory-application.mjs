@@ -394,6 +394,9 @@ if (DIST) {
     // A whole step from the review is walked through: Continue on its first screens, "Back to review" on its last
     for (let i = 0; i < 4 && !/Back to review/.test(await text(p, '#adv-next')); i++) await next();
     ok((await text(p, '#adv-title')) === 'Your interest' && /Back to review/.test(await text(p, '#adv-next')), 'its last screen says "Back to review"');
+    await p.reload({ waitUntil: 'networkidle0' });
+    await sleep(300);
+    ok((await text(p, '#adv-title')) === 'Your interest' && /Back to review/.test(await text(p, '#adv-next')), 'a reload keeps "Back to review"');
     await next();
     ok((await text(p, '#adv-title')) === 'Review and send', 'back to review');
     await sleep(500);

@@ -499,7 +499,8 @@ export function initAdvisoryForm() {
   let left = null; // after Save and exit: the entry and screen they left from
   const trail = []; // depth → the screen that entry is
   let swallow = false;
-  const whereNow = () => ({ step, screen: step >= total ? 0 : screenNo });
+  // (a step reached from the review says so: a reload or Back and Forward keeps "Back to review")
+  const whereNow = () => ({ step, screen: step >= total ? 0 : screenNo, ...(fromReview && step < total ? { fromReview } : {}) });
   const sameAt = (x, y) => !!x && !!y && x.step === y.step && x.screen === y.screen;
   function pushLoc() {
     if (!focused) return;
@@ -531,7 +532,7 @@ export function initAdvisoryForm() {
       }
     }
     packs = {};
-    const target = i != null && i <= furthest ? i : step;
+    const target = i != null && i <= furthest ? i : resumeAt && resumeAt.step <= furthest ? resumeAt.step : step;
     // Coming back to the step they left: the screen they were on
     const screen = resumeAt && resumeAt.step === target ? resumeAt.screen : 0;
     resumeAt = null;
@@ -542,6 +543,13 @@ export function initAdvisoryForm() {
     if (!focused) return;
     saveNow();
     if (step >= 0 && step < total) resumeAt = { step, screen: screenNo }; // "Continue where you left off": this screen
+    // Left by the browser's Back (a screen at a time, back to the first): the furthest step they'd reached instead
+    // (kept with the answers too: after they've been to another page and come back, it's still there)
+    if (fromPop && furthest > step) {
+      resumeAt = { step: Math.min(furthest, REVIEW), screen: 0 };
+      const kept = read();
+      if (kept?.answers) write({ ...kept, step: resumeAt.step, screen: 0 });
+    }
     focused = false;
     root.classList.remove('is-focus');
     document.documentElement.classList.remove('adv-focus', 'adv-vt', 'adv-vt-back', 'adv-vt-same');
@@ -609,7 +617,7 @@ export function initAdvisoryForm() {
       const at = left && left.depth > to ? left.at : st.advAt;
       if (left && left.depth > to) { swallow = true; history.go(left.depth - to); depth = left.depth; } else depth = to;
       left = null;
-      if (at) { trail[depth] = at; resumeAt = at.step < total ? at : null; }
+      if (at) { trail[depth] = at; resumeAt = at.step < total ? at : null; fromReview = (at.step < total && at.fromReview) || false; }
       begin(at?.step ?? null);
       return true;
     }
@@ -621,6 +629,7 @@ export function initAdvisoryForm() {
     if (st?.advAt) trail[to] = st.advAt;
     if (!to || sent) { exitFocus({ fromPop: true }); return true; } // back to the page itself
     const at = st.advAt;
+    if (at && at.step < total) fromReview = at.fromReview || false; // as the entry was left
     if (at && !sameAt(at, whereNow())) go(at.step, { dir, screen: at.screen }).then(save); // a reload comes back here
     else if (!at && dir < 0) back(); // an entry from before they said where they were: a screen back
     return true;
@@ -750,13 +759,18 @@ export function initAdvisoryForm() {
   /** Answers another tab saved, shown here where this one hasn't changed them since */
   function takeTheirs(answers, now = collect()) {
     let took = false;
+    const settled = [];
     for (const f of ADVISORY_FIELDS) {
       const v = answers[f.id];
-      if (v === undefined || same(v, now[f.id]) || !same(now[f.id], synced[f.id])) continue;
+      // Typed here and not saved yet: it stays, and this tab's save puts it over theirs (it's still unsaved till then)
+      if (!same(now[f.id], synced[f.id]) && !same(v, now[f.id])) continue;
+      settled.push(f.id);
+      if (v === undefined || same(v, now[f.id])) continue;
       fill({ [f.id]: v });
       took = true;
     }
-    synced = { ...collect() };
+    const after = took ? collect() : now;
+    for (const id of settled) synced[id] = after[id];
     if (!took) return;
     follow();
     for (const ta of form.querySelectorAll('textarea')) paintCount(ta);
@@ -1237,7 +1251,7 @@ export function initAdvisoryForm() {
   window.__advWant = false;
   // A reload on one of its own history entries: that screen, even when they'd gone back from further on
   const entry = history.state?.advFocus ? history.state.advAt : null;
-  if (restored && session.get() && entry && entry.step <= furthest) { step = entry.step; resumeAt = { step, screen: Math.max(0, Number(entry.screen) || 0) }; }
+  if (restored && session.get() && entry && entry.step <= furthest) { step = entry.step; resumeAt = { step, screen: Math.max(0, Number(entry.screen) || 0) }; if (entry.fromReview && step < total) fromReview = entry.fromReview; }
   let fresh = false;
   try { fresh = sessionStorage.getItem(AGAIN) === '1'; sessionStorage.removeItem(AGAIN); } catch { /* storage off */ }
   if (restored && session.get()) begin(step);

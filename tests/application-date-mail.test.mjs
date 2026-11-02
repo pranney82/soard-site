@@ -54,3 +54,13 @@ test('a number answered as a range ("200-300") asks for one number, a guess; "1e
   assert.equal(fieldError(f, '12.5', 'en'), 'Please enter a whole number.');
   for (const v of ['250', '1,200', ' 40 ']) assert.equal(fieldError(f, v, 'en'), null, v);
 });
+
+test('a limit is written as people write it ("1,000,000 or less"); a typed name to sign is more than one letter', () => {
+  const f = { id: 'childrenServed', type: 'number', required: true, rules: { min: 1, max: 1000000, integer: true } };
+  assert.equal(fieldError(f, '1,250,000', 'en'), 'Please enter 1,000,000 or less.');
+  assert.equal(fieldError(f, '1250000', 'es'), 'Escriba 1,000,000 o menos.');
+  assert.equal(fieldError(f, '0', 'en'), 'Please enter 1 or more.');
+  const sign = { id: 'signature', type: 'signature', required: true };
+  for (const v of ['x', ' . ', 'J.']) assert.equal(fieldError(sign, v, 'en'), 'Please type your full name.', v);
+  for (const v of ['Jo Li', 'Ana', '李明']) assert.equal(fieldError(sign, v, 'en'), null, v);
+});

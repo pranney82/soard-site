@@ -153,6 +153,10 @@ function init(root, cfg, mode) {
   // Where messages go: the parent's email, or the organization's main contact's
   const emailId = org ? 'contactEmail' : 'parentEmail';
   const year = String(cfg.year || root.dataset.year || '');
+  // The application this device had going when a link opened another one (a brother's or sister's): the
+  // overview keeps a way back to it, and from that one back to this
+  const otherStore = local(keyed('soard-application-other'));
+  const otherHere = () => { const x = previewing || testRun ? null : otherStore.get(); return isToken(x?.token) && x.token !== token && (!x.year || x.year === year) ? x : null; };
   const version = cfg.version || 0;
   // The raw definition (resolved here per language); an older server only sends the English form
   let definition = cfg.definition?.pages?.length ? cfg.definition : (cfg.form?.pages?.length ? null : DEFAULT_DEFINITION);
@@ -191,6 +195,7 @@ function init(root, cfg, mode) {
     hubGo: $('[data-hub-go]'),
     hubGoLabel: $('[data-hub-go-label]'),
     hubLater: $('[data-hub-later]'),
+    hubOther: $('[data-hub-other]'),
     reviewAll: $('[data-review-all]'),
     live: $('[data-live]'),
     notice: $('[data-notice]'),
@@ -527,6 +532,10 @@ function init(root, cfg, mode) {
   /** Start, or carry on: the application takes the screen, at `id` if given (a step already reached), else where they were */
   function begin(id = null) {
     if (root.hidden) return;
+    // Left by the browser's Back (which walks back a screen at a time, to the very first): "Continue where you
+    // left off" is the furthest step they'd reached, not the start they backed through
+    if (id == null && backedOut && !focused && order(currentId) < order(furthestId)) id = furthestId;
+    backedOut = false;
     const was = focused;
     // A link that didn't open, pressed past to start afresh: its note was about that link, not this one
     if (!token && lastNotice?.m === 'linkExpired') { notice(null); linkGone = false; }
@@ -544,8 +553,13 @@ function init(root, cfg, mode) {
       requestAnimationFrame(() => requestAnimationFrame(() => replan(true)));
     });
   }
+  let backedOut = false;
   function exitFocus({ fromPop = false } = {}) {
     if (!focused) return;
+    backedOut = fromPop;
+    // Backed out (Back a screen at a time, to the very first): "Continue where you left off" is the furthest step,
+    // after they've been to another page and come back too
+    if (fromPop && order(currentId) < order(furthestId)) try { sessionStorage.setItem(keyed(SCREEN_KEY), JSON.stringify({ page: furthestId })); } catch { /* storage off */ }
     keepHeldAddresses();
     dropRemoved(); // Save and exit keeps it as it is
     const saving = token && !doneShown && !previewing ? save() : null; // sent: nothing more to save
@@ -625,9 +639,11 @@ function init(root, cfg, mode) {
     const el = at?.page && at.page !== 'review' && at.field ? fieldEl(at.field) : null;
     return (at?.area && el?.querySelector(at.area === 'map' ? '[data-area-map]' : '[data-area-result]')) || el;
   };
+  // A screen reached from the review carries that in its entry: a reload (or Back and Forward) keeps "Back to review"
+  const reviewMark = () => (fromReview && currentId !== 'review' ? { fromReview } : {});
   function pushLoc(extra = {}) {
     if (!histOk()) return;
-    const at = { ...whereNow(), ...extra };
+    const at = { ...whereNow(), ...reviewMark(), ...extra };
     try {
       history.pushState({ ...(history.state || {}), afFocus: 1, afDepth: depth + 1, afAt: at }, '');
       depth++;
@@ -638,7 +654,7 @@ function init(root, cfg, mode) {
   /** The entry they're on says the screen they're on now (an in-page Back, a fix that moved them) */
   function replaceLoc() {
     if (!histOk() || !depth) return;
-    const at = { ...whereNow(), ...(stopShown ? { stop: true } : {}) }; // over a "can't help" screen it's still the stop's
+    const at = { ...whereNow(), ...reviewMark(), ...(stopShown ? { stop: true } : {}) }; // over a "can't help" screen it's still the stop's
     try { history.replaceState({ ...(history.state || {}), afFocus: 1, afDepth: depth, afAt: at }, ''); trail[depth] = at; } catch { /* history unavailable */ }
   }
   function armTrap() { if (!depth) pushLoc(); }
@@ -900,6 +916,7 @@ function init(root, cfg, mode) {
     ui.hubGoLabel.textContent = T(sent ? 'hubAnother' : pending ? 'hubContinue' : !started ? 'hubStart' : ready || currentId === 'review' ? 'hubReview' : 'hubContinue');
     ui.hubGo.dataset.go = ready ? 'review' : ''; // "Review and submit" goes there (not to the page they left)
     if (ui.hubLater) ui.hubLater.hidden = !started || previewing;
+    if (ui.hubOther) ui.hubOther.hidden = !otherHere();
     // The hero's button says the same: start, or carry on
     const cta = document.querySelector('[data-hero-cta]');
     if (cta && !root.hidden && /^hero(Start|Continue|Another)$/.test(cta.dataset.afT || '')) {
@@ -1881,7 +1898,7 @@ function init(root, cfg, mode) {
     // Heard only when it matters: saving stopped (offline, the server), and saved again after that; not
     // "Saving…" and "All changes saved" after every pause in typing
     const trouble = (k) => ['offline', 'notSaved', 'paused'].includes(k);
-    if (trouble(key) && lastNotice?.m === 'welcomeBack') notice(null); // "Your answers are saved" isn't so just now
+    if (trouble(key) && /^welcomeBack/.test(lastNotice?.m || '')) notice(null); // "Your answers are saved" isn't so just now
     if (trouble(key) && !trouble(lastSave)) announce(T(key));
     else if (key === 'saved' && trouble(lastSave)) announce(T('saved'));
     lastSave = key;
@@ -1944,23 +1961,40 @@ function init(root, cfg, mode) {
     requestAnimationFrame(() => ui.turnstile.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }));
   }
 
+  // One save on its way at a time, and one waiting behind it at most: it sends what's here when its turn comes
+  // (so a few saves asked for on a slow connection go as one), and "All changes saved" waits for the last
+  let saveWaiting = null;
+  let lastSent = null; // what the last save that went through said (one after it with nothing new isn't sent)
   function save() {
     if (!token || previewing) return Promise.resolve(true);
     clearTimeout(dirtyTimer);
     saveState('saving');
-    const ids = stepIds();
-    const page = currentId === 'review' ? ids[ids.length - 2] : currentId;
-    const now = readAnswers();
-    const body = { action: 'save', token, answers: now, page, lang };
-    saveChain = saveChain.then(async () => {
+    if (saveWaiting) return saveWaiting;
+    const turn = saveChain.then(async () => {
+      saveWaiting = null; // a change from here on is the next save's
+      const ids = stepIds();
+      const page = currentId === 'review' ? ids[ids.length - 2] : currentId;
+      const now = readAnswers();
+      const body = { action: 'save', token, answers: now, page, lang };
+      // The save it follows, and what's changed here since (see saveDraft): asked once it's this one's turn
+      const changed = Object.keys(now).filter(id => !sameAnswer(now[id], synced?.[id]));
+      if (!changed.length && lastSent && lastSent.token === token && lastSent.page === page && lastSent.lang === lang) {
+        saveState(saveWaiting ? 'saving' : 'saved'); // nothing new since the one before (Save and exit after Continue)
+        return true;
+      }
+      lastSent = null;
       try {
-        // The save it follows, and what's changed here since (see saveDraft): asked once it's this one's turn
-        const r = await api({ ...body, rev, changed: Object.keys(now).filter(id => !sameAnswer(now[id], synced?.[id])) });
+        const r = await api({ ...body, rev, changed });
         if (r.ok) {
           if (Number.isInteger(r.rev)) rev = r.rev;
           synced = { ...now };
+          lastSent = { token: body.token, page, lang };
           if (r.theirs) takeTheirs(r, now);
-          saveState('saved');
+          // Saved, unless more is on its way (still "Saving…") or was typed meanwhile (its save follows): a page
+          // closed then still sends it
+          if (saveWaiting) saveState('saving');
+          else if (!sameAnswer(readAnswers(), synced)) markDirty();
+          else saveState('saved');
           retries = 0;
           keepPending(); // anything typed since stays kept; nothing left: forgotten
           return true;
@@ -1979,7 +2013,9 @@ function init(root, cfg, mode) {
         return false;
       }
     });
-    return saveChain;
+    saveChain = turn;
+    saveWaiting = turn;
+    return turn;
   }
   // "We will try again" / "…will save when you reconnect": it does, sooner when the connection's back
   let retryTimer = 0;
@@ -2426,6 +2462,25 @@ function init(root, cfg, mode) {
 
   // ── Uploads: the box's look ──────────────────────────────────────
   const retryFiles = {}; // fieldId → the file that didn't go (its "Try again")
+  // An upload the connection dropped goes again by itself once it's back (a video from where it stopped), as it
+  // says: at the browser's "online", or a few times over a minute when the drop was a hiccup the browser didn't notice
+  const autoTries = {};
+  function retryDropped() {
+    if (!token || doneShown || previewing) return;
+    for (const [id, file] of Object.entries(retryFiles)) {
+      if (uploads.has(id) || recorder?.id === id || uploadUi[id]?.msg?.again !== 'uploadOffline' || !byId[id]) continue;
+      const el = fieldEl(id);
+      if (el?.querySelector('[data-act="retry"]') === document.activeElement) el.querySelector('[data-act="choose"]')?.focus({ preventScroll: true }); // "Try again" steps aside while it goes
+      takeFile(byId[id], file);
+    }
+  }
+  function whenBack(id) {
+    if (uploadUi[id]?.msg?.again !== 'uploadOffline') { delete autoTries[id]; return; }
+    if (!navigator.onLine) return; // its "online" brings it
+    const n = autoTries[id] = (autoTries[id] || 0) + 1;
+    if (n <= 3) setTimeout(retryDropped, 5000 * 2 ** (n - 1));
+  }
+  window.addEventListener('online', retryDropped, { signal });
   function setUpload(id, patch) {
     uploadUi[id] = { ...(uploadUi[id] || { state: 'empty' }), ...patch };
     paintUpload(id);
@@ -2569,10 +2624,12 @@ function init(root, cfg, mode) {
       if (!r.ok) throw said(uploadGone(r, body.get('token')) || r.error || T('uploadFailed'));
       files[f.id] = { key: true, name };
       delete retryFiles[f.id];
+      delete autoTries[f.id];
       setUpload(f.id, { state: 'done', msg: ['added', { name }], pct: null });
     } catch (e) {
       if (e?.unusable) delete retryFiles[f.id]; else retryFiles[f.id] = file;
       setUpload(f.id, files[f.id] ? { ...before, msg: failText(e), pct: null } : { state: 'failed', msg: failText(e), pct: null });
+      whenBack(f.id);
     } finally {
       uploads.delete(f.id);
       uploadsChanged();
@@ -2691,12 +2748,14 @@ function init(root, cfg, mode) {
       if (!uploaded) throw Object.assign(said(T('videoGone')), { key: 'videoGone' });
       files[f.id] = { uid: true, uploaded: true, name: file.name };
       delete retryFiles[f.id];
+      delete autoTries[f.id];
       delete goingOn[f.id];
       setUpload(f.id, { state: 'done', msg: ['videoDone', { name: file.name }], pct: null });
     } catch (e) {
       if (e?.unusable) { delete retryFiles[f.id]; delete goingOn[f.id]; } else retryFiles[f.id] = file;
       if (before && before.token === token) { files[f.id] = before.file; setUpload(f.id, { ...before.ui, msg: failText(e, true), pct: null }); } // (not an application that expired meanwhile)
       else { delete files[f.id]; setUpload(f.id, { state: 'failed', msg: failText(e, true), pct: null }); }
+      whenBack(f.id);
     } finally {
       uploads.delete(f.id);
       uploadsChanged();
@@ -3934,6 +3993,7 @@ function init(root, cfg, mode) {
     p.hidden = !fix;
     p.replaceChildren();
     if (!fix) return;
+    p.dataset.shownAt = String(Date.now()); // (Send in "Save and finish later" knows whether it's been seen)
     const [before, after] = T('mailFix').split('{email}');
     const b = document.createElement('button');
     b.type = 'button';
@@ -3997,7 +4057,11 @@ function init(root, cfg, mode) {
   }, { signal });
   // (Send still asks once: pressing it is what blurs the box.) A hint already showing for these words isn't drawn
   // again: its button would be swapped under a finger pressing it, and the press lost
+  // A press on Send blurs the box: the hint isn't drawn then (it would push Send down under the finger), Send asks
+  let pressingSend = false;
+  dlg.querySelector('[data-later-form] button[type=submit]')?.addEventListener('pointerdown', () => { pressingSend = true; setTimeout(() => { pressingSend = false; }, 700); }, { signal });
   laterInput.addEventListener('blur', () => {
+    if (pressingSend) return;
     const v = laterInput.value.trim();
     const p = dlg.querySelector('[data-mailfix]');
     if (v && mailFix(v) && (p?.hidden || p?.querySelector('[data-mailfix-use]')?.dataset.mailfixUse !== mailFix(v))) paintMailFix(laterInput);
@@ -4021,8 +4085,11 @@ function init(root, cfg, mode) {
     if (btn.getAttribute('aria-busy') === 'true') return;
     const status = dlg.querySelector('[data-later-status]');
     const email = laterInput.value.trim();
-    // A likely typo first ("Did you mean …@gmail.com?", a tap to fix), whether the words are an email or not
-    if (email && mailFix(email) && laterAsked !== email) { laterAsked = email; paintMailFix(laterInput); status.textContent = ''; laterInput.removeAttribute('aria-invalid'); return; }
+    // A likely typo first ("Did you mean …@gmail.com?", a tap to fix), whether the words are an email or not; asked
+    // once (a hint already up a moment, from leaving the box, counts: this press sends)
+    const hint = dlg.querySelector('[data-mailfix]');
+    const seen = !!hint && !hint.hidden && hint.querySelector('[data-mailfix-use]')?.dataset.mailfixUse === mailFix(email) && Date.now() - Number(hint.dataset.shownAt || 0) > 700;
+    if (email && mailFix(email) && laterAsked !== email && !seen) { laterAsked = email; paintMailFix(laterInput); status.textContent = ''; laterInput.removeAttribute('aria-invalid'); return; }
     // Empty or not an email: said here in the form's own words (not the browser's bubble)
     const wrong = email ? fieldError({ id: 'laterEmail', type: 'email', required: true }, email, lang) : T('laterEmailEmpty');
     laterInput.toggleAttribute('aria-invalid', !!wrong);
@@ -4152,19 +4219,20 @@ function init(root, cfg, mode) {
   // The application sent from here (a parent unsure it went through isn't sent into a second one), and a
   // saved one that couldn't be opened just now (its link's words at the top, where they land)
   const sentStore = local(keyed('soard-application-sent'));
-  // The application this device had going when a link opened another one (a brother's or sister's)
-  const otherStore = local(keyed('soard-application-other'));
-  ui.notice.addEventListener('click', (e) => {
-    if (e.target.closest('[data-notice-act="emailLink"]')) { openLater(); return; }
-    if (!e.target.closest('[data-notice-act="openOther"]')) return;
-    const was = otherStore.get();
-    if (!isToken(was?.token)) { notice(null); return; }
-    // This one came from its link (it opens again from there): the device goes back to the one it had
+  /** The device goes to its other application, and keeps this one as the way back */
+  function openOther() {
+    const was = otherHere();
+    if (!was) { notice(null); paintHub(); return; }
     store.set({ token: was.token, year: was.year || year });
-    otherStore.clear();
+    if (token) otherStore.set({ token, year }); else otherStore.clear();
     try { sessionStorage.removeItem(keyed(SCREEN_KEY)); } catch { /* storage off */ }
     location.replace(location.pathname);
+  }
+  ui.notice.addEventListener('click', (e) => {
+    if (e.target.closest('[data-notice-act="emailLink"]')) { openLater(); return; }
+    if (e.target.closest('[data-notice-act="openOther"]')) openOther();
   }, { signal });
+  ui.hubOther?.addEventListener('click', openOther, { signal });
   let resumePending = null; // a saved application not reached yet: Start tries it again (not a blank one)
   let linkGone = false;     // the link they came by has expired
   let wantIn = false;       // they pressed Continue while it was being tried: in, once it opens
@@ -4413,6 +4481,9 @@ function init(root, cfg, mode) {
     const at = tab || (ids.includes(r.page) ? r.page : ids[0]);
     currentId = null;
     resumePiece = (was?.page === at && was.field && atPiece(was)) || null;
+    // Reloaded while changing an answer from the review: its Continue still says "Back to review"
+    const onEntry = !fromLink && history.state?.afFocus ? history.state.afAt : null;
+    if (onEntry?.fromReview && onEntry.page === at) fromReview = onEntry.fromReview;
     show(at, { focus: false, scroll: false, screen: 'open' });
     remember();
     showApp(true); // the hero's button says "Continue"
@@ -4420,8 +4491,10 @@ function init(root, cfg, mode) {
     // one they were on isn't thought lost
     const other = !!fromLink && isToken(saved?.token) && saved.token !== fromLink;
     if (other) otherStore.set({ token: saved.token, year: saved.year || year }); // a way back to it from here (it may have no link of its own)
-    const otherSaid = other && !remindersOff && !keptBack;
-    notice(remindersOff ? 'remindersOff' : keptBack ? 'keptHere' : otherSaid ? 'otherApplication' : 'welcomeBack', otherSaid ? 'info' : 'success', otherSaid ? 'openOther' : null);
+    const otherSaid = other && !keptBack;
+    // (a brother's or sister's this device also has: offered each time they come back, and on the overview)
+    const m = remindersOff ? (otherSaid ? 'remindersOffOther' : 'remindersOff') : keptBack ? 'keptHere' : otherSaid ? 'otherApplication' : otherHere() ? 'welcomeBackOther' : 'welcomeBack';
+    notice(m, otherSaid ? 'info' : 'success', /Other$|^otherApplication$/.test(m) ? 'openOther' : null);
     if (keptBack) save();
     // A reload on a "can't help" screen: that screen again while the answer that led to it stands (its place in
     // the browser's history is the stop's, so Back from it is the question's, as before the reload)
@@ -4538,7 +4611,7 @@ function init(root, cfg, mode) {
       const at = left && left.depth > to ? left.at : st.afAt;
       if (left && left.depth > to) { swallow = true; history.go(left.depth - to); depth = left.depth; } else depth = to;
       left = null;
-      if (at) { trail[depth] = at; resumePiece = atPiece(at); }
+      if (at) { trail[depth] = at; resumePiece = atPiece(at); fromReview = (at.page !== 'review' && at.fromReview) || false; }
       begin(at?.page || null);
       return true;
     }
@@ -4550,6 +4623,7 @@ function init(root, cfg, mode) {
     const sheet = [ui.dialog, ui.detail].find(d => d?.open);
     if (sheet) { sheet.close(); swallow = true; history.go(-dir); return true; }
     keepHeldAddresses(); // the screen's being left: an address typed over and not picked is the one it held
+    if (st?.afAt?.page && st.afAt.page !== 'review') fromReview = st.afAt.fromReview || false; // as the entry was left
     depth = to;
     if (st?.afAt) trail[to] = st.afAt;
     if (!to || doneShown) { exitFocus({ fromPop: true }); return true; } // back to the page itself
@@ -4904,10 +4978,24 @@ function init(root, cfg, mode) {
     // kept on this device, but a family on someone else's phone wouldn't be back to it
     if (uploads.size || recorder?.rec || (token && !doneShown && unsaved())) { e.preventDefault(); e.returnValue = ''; }
   }, { signal });
-  // Leaving through a site link doesn't fire beforeunload; ask before an upload is cut off
+  // Leaving through a site link doesn't fire beforeunload; ask before an upload is cut off. Asked on the link's own
+  // click, before the site's router: a "no" given to the router it turns into a full page load (and the browser
+  // asks a second time); here "Cancel" simply keeps them on the page, the upload going on
+  let leaveOk = false;
+  document.addEventListener('click', (e) => {
+    if (!(uploads.size || recorder?.rec) || e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+    const a = e.target.closest?.('a[href]');
+    if (!a || a.target === '_blank' || a.hasAttribute('download')) return;
+    const url = new URL(a.href, location.href);
+    if (url.origin !== location.origin || (url.pathname === location.pathname && url.hash)) return; // another site: the browser asks
+    if (confirm(T('leaveUpload'))) { leaveOk = true; return; }
+    e.preventDefault();
+    e.stopPropagation();
+  }, { capture: true, signal });
   document.addEventListener('astro:before-preparation', (e) => {
-    if ((uploads.size || recorder?.rec) && !confirm(T('leaveUpload'))) e.preventDefault();
+    if ((uploads.size || recorder?.rec) && !leaveOk && !confirm(T('leaveUpload'))) e.preventDefault(); // (the browser's Back)
     else if (token) save();
+    leaveOk = false;
   }, { signal });
   if (live) window.addEventListener('message', onPreview, { signal });
 
