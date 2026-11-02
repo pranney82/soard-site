@@ -63,8 +63,18 @@ function cleanReplies(raw) {
   return Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? raw : {})
     .filter(([k, v]) => /^[a-z0-9-]{1,80}$/.test(k) && REPLIES.includes(v)).slice(0, LIMITS.people));
 }
-/** Each board member's reply to the meeting's calendar invite, by slug: the organizer's own event's (unless it was deleted), else Board's */
-export const repliesOf = (m) => ({ ...(m?.invite?.replies || {}), ...(m?.calendar && !m.calendar.gone ? m.calendar.replies || {} : {}) });
+/**
+ * Each board member's reply to the meeting's calendar invite, by slug: the organizer's own event's, else Board's. When
+ * Board added the board to the organizer's own event they're one event, read through the calendar (Send the invite
+ * writes its replies there too); a deleted event's replies are no one's
+ */
+export function repliesOf(m) {
+  const cal = m?.calendar && !m.calendar.gone ? m.calendar.replies || {} : {};
+  const one = !!m?.invite?.eventId && m.invite.eventId === m?.calendar?.eventId;
+  return one ? { ...cal } : { ...(m?.invite?.replies || {}), ...cal };
+}
+/** Whether a meeting's calendar invite has gone out: the organizer's own event (not deleted), or Board's own */
+export const inviteOut = (m) => !!((m?.calendar && !m.calendar.gone && (m.calendar.eventId || m.calendar.uid)) || (m?.invite?.eventId && m.invite.eventId !== m?.calendar?.eventId));
 /** "Balance-sheet_financials v2.pdf" → "Balance sheet financials v2" (the file keeps its own name for saving) */
 export function fileTitle(name) {
   const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();

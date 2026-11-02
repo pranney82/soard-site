@@ -225,7 +225,7 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   // Who's on it now and how they answered, by board member, as Google has it: someone just added is invited at once,
   // not only once the calendar is next read (up to an hour)
   const bySlug = Object.fromEntries((await activeBoard(env.DB)).filter((p) => p.email).map((p) => [normEmail(p.email), p.slug]));
-  const replies = { ...(prior?.replies || {}) };
+  const replies = {};
   for (const a of ev.attendees || attendees) {
     const slug = bySlug[normEmail(a.email)];
     if (slug) replies[slug] = ['accepted', 'declined', 'tentative'].includes(a.responseStatus) ? a.responseStatus : 'invited';
@@ -236,7 +236,8 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
     replies,
   };
   // Google Meet is the meeting's video call from now on (onto the meeting as it is now: a save made meanwhile stays)
-  return patchMeeting(env.DB, id, (cur) => ({ ...cur, invite, video: meet || cur.video }));
+  // The organizer's own event: its calendar copy has who's on it now too (repliesOf reads it there)
+  return patchMeeting(env.DB, id, (cur) => ({ ...cur, invite, video: meet || cur.video, ...(theirs && cur.calendar?.eventId === invite.eventId ? { calendar: { ...cur.calendar, replies } } : {}) }));
 }
 
 const SETTLE_MS = 2 * 60 * 1000;

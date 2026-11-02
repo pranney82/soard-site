@@ -1104,8 +1104,12 @@ function Coming({ m, ctx, act }) {
     ['No answer', board.filter((x) => !answer(x) && replies[x.slug])], [invited ? 'Not on the invite' : 'No invite yet', board.filter((x) => !answer(x) && !replies[x.slug])]];
   const quiet = groups.at(-2)[1].filter(emailOf);
   const off = invited ? groups.at(-1)[1] : [];
+  // Only someone with an email on file can be added; who adds them is Send the invite, unless the event is someone's
+  // Board can't change
+  const addable = off.filter(emailOf);
   const owner = m.calendar && !m.calendar.gone ? m.calendar.organizer || m.calendar.from : '';
-  const adds = owner && !(data.settings?.admins || []).includes(owner) ? `ask ${firstOf(owner)} to add ${off.length === 1 ? 'them' : 'them all'}` : `Send the invite adds ${off.length === 1 ? 'them' : 'them all'}`;
+  const them = addable.length === 1 ? 'them' : 'them all';
+  const adds = !addable.length ? 'they have no email on file' : `${owner && !(data.settings?.admins || []).includes(owner) ? `ask ${firstOf(owner)} to add ${them}` : `Send the invite adds ${them}`}${addable.length < off.length ? ` (${off.length - addable.length} with no email can’t be)` : ''}`;
   // A reminder names who gets it before it goes
   const remind = async (test) => {
     if (!test && !(await ask({ title: `Ask ${andList(quiet.map((x) => x.name))}?`, text: `${quiet.length === 1 ? 'They get' : 'Each gets'} an email asking them to answer the calendar invite. Their answer shows here.`, yes: quiet.length === 1 ? 'Ask them' : `Ask all ${quiet.length}` }))) return;

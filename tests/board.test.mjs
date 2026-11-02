@@ -21,7 +21,7 @@ import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes, without
 import * as rsvpPage from '../functions/api/board-rsvp.js';
 import { answerLink } from '../functions/api/_board-rsvp.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText, docTitle, docsOf, itemDocs, orgName, signsAs, isFilled, agendaItems } from '../public/admin/board-shared.js';
+import { repliesOf, parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText, docTitle, docsOf, itemDocs, orgName, signsAs, isFilled, agendaItems } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
 const TEAM = 'soard';
@@ -545,6 +545,37 @@ test('who’s coming is the calendar invite’s alone: the emails ask only who�
   assert.equal((await rsvpPage.onRequestGet({ request: new Request('https://x/api/board-rsvp?t=' + '0'.repeat(32)), env })).status, 404);
   assert.equal((await answerLink(env, tok)).member.slug, 'alex-rivera');
   assert.deepEqual(await answerLink(env, tok, { now: Date.parse('2026-11-21T17:00:00Z') }), { expired: true });
+});
+
+test('the invite’s replies: one event read one way, a deleted one counts for nothing, none before it goes out; old links go by the meeting’s own date', async () => {
+  const { meeting } = await sharedMeetingWithFiles();
+  const event = (calendar, invite) => patchMeeting(env.DB, meeting.id, (m) => ({ ...m, calendar, invite }));
+  // No invite yet: nobody to remind, and the board page says it's on its way
+  const early = await adminApi(FOUNDER, { action: 'remind-rsvp', id: meeting.id });
+  assert.equal(early.status, 409);
+  assert.match(early.body.error, /hasn’t gone out yet/);
+  const page0 = (await portalApi(MEMBER)).body.meetings.find((x) => x.id === meeting.id);
+  assert.deepEqual([page0.inviteOut, page0.myInvite], [false, '']);
+  // Board added the board to Jane's own event (one event): its calendar copy is the answer, not an older one of Board's
+  const cal = { uid: 'q4@google.com', title: 'SOARD Board Meeting', from: FOUNDER, organizer: FOUNDER, eventId: 'evq4', replies: { 'sam-ortiz': 'invited' } };
+  await event(cal, { eventId: 'evq4', organizer: FOUNDER, sentAt: new Date().toISOString(), replies: { 'alex-rivera': 'accepted', 'sam-ortiz': 'accepted' } });
+  let m = await getMeeting(env.DB, meeting.id);
+  assert.deepEqual(repliesOf(m), { 'sam-ortiz': 'invited' }, 'Jane took Alex off her event: he isn’t on it any more');
+  // Jane deleted her event: nobody is on any invite, and nobody is asked to answer one
+  await event({ ...cal, gone: true }, m.invite);
+  m = await getMeeting(env.DB, meeting.id);
+  assert.deepEqual(repliesOf(m), {});
+  assert.equal((await adminApi(FOUNDER, { action: 'remind-rsvp', id: meeting.id })).status, 409);
+  // An old link: the meeting moved a week later, so it's still ahead; a day after its own date, it's over
+  const tok = 'cd'.repeat(16);
+  const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tok)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  await env.DB.prepare('INSERT INTO board_rsvp_links (hash, meeting_id, slug, expires) VALUES (?, ?, ?, ?)').bind(hash, meeting.id, 'alex-rivera', '2026-11-20').run();
+  await saveMeeting(env.DB, { ...(await getMeeting(env.DB, meeting.id)), date: '2026-11-26' }, { by: FOUNDER });
+  assert.equal((await answerLink(env, tok, { now: Date.parse('2026-11-22T17:00:00Z') })).member.slug, 'alex-rivera', 'moved later: still ahead');
+  assert.deepEqual(await answerLink(env, tok, { now: Date.parse('2026-11-27T17:00:00Z') }), { expired: true });
+  // With no invite out, the page says it comes by email
+  const opened = await (await rsvpPage.onRequestGet({ request: new Request(`https://sunshineonaranneyday.com/api/board-rsvp?t=${tok}`), env })).text();
+  assert.match(opened, /Its calendar invite comes by email before the meeting/);
 });
 
 test('the minutes notice says which meeting and when the board votes on them', async () => {
@@ -1892,7 +1923,7 @@ test('the next meeting the board already has on its calendars shows its day, tim
   page = (await portalApi(MEMBER)).body;
   assert.deepEqual(page.nextPending, {
     id: m.id, date: day(20), start: '08:00', end: '10:00', title: '', name: meetingName({ date: day(20) }), location: 'Example Hall', address: '100 Example St', video: '',
-    onCalendar: true, myInvite: 'accepted',
+    onCalendar: true, myInvite: 'accepted', inviteOut: true, inviteBy: 'Jane Doe',
   });
   assert.equal(page.next, null);
   assert.equal(page.meetings.some((x) => x.id === m.id), false, 'not a shared meeting: no agenda, notes or files');

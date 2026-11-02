@@ -18,18 +18,19 @@ const hex = (bytes) => [...new Uint8Array(bytes)].map((b) => b.toString(16).padS
 const hashOf = async (tok) => hex(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(String(tok))));
 
 /**
- * Whose link this is → { meeting, member }, { expired: true } after the day
- * after the meeting, or null (no such link, the meeting is gone or off the
- * board page, or they're off the board)
+ * Whose link this is → { meeting, member }, { expired: true } once the
+ * meeting's day has passed, or null (no such link, the meeting is gone or off
+ * the board page, or they're off the board)
  */
 export async function answerLink(env, tok, { now = Date.now() } = {}) {
   if (!env?.DB || !TOKEN.test(String(tok || ''))) return null;
   await ensureSchema(env.DB);
   const row = await env.DB.prepare('SELECT meeting_id, slug, expires FROM board_rsvp_links WHERE hash = ?').bind(await hashOf(tok)).first();
   if (!row) return null;
-  if (row.expires < todayEastern(now)) return { expired: true };
   const [meeting, board] = await Promise.all([getMeeting(env.DB, row.meeting_id), activeBoard(env.DB)]);
   const member = board.find((p) => p.slug === row.slug);
   if (!meeting?.shared || !member) return null;
+  // Over by the meeting's own date, which may have moved since the email
+  if (meeting.date && meeting.date < todayEastern(now)) return { expired: true };
   return { meeting, member };
 }

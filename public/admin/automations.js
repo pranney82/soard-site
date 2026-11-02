@@ -902,7 +902,7 @@ const MAP = { t: 'SOARD', children: [
             return ON(`${i.ahead ? `${plural(i.ahead, 'invite')} out for meetings ahead${i.waiting ? `, ${plural(i.waiting, 'change')} going on in a moment` : ''}.` : 'No invites out for meetings ahead.'}${checked}`, i.lastAt || i.check?.checkedAt);
           } },
         { t: 'The packet email', s: 'live', k: 'admin',
-          when: 'Peter or Holly presses Email the documents on a shared meeting in Board (Send it to me first sends them a preview). The minutes and the reminder to answer the calendar invite go the same way.',
+          when: 'Peter or Holly presses Email the board on a shared meeting in Board (Send it to me first sends them a preview). The minutes and the reminder to answer the calendar invite go the same way.',
           does: 'Emails each active board member on their own: when, where and the video call, the documents by name (nothing attached; staff-only ones never named), and a button to the meeting on the board page. Whoever is on the calendar invite and hasn’t answered it is asked to (the invite is the only answer). Never notes or numbers; a board-only item shows only as “A board-only item (on the board page)”.',
           touches: ['Resend', 'D1'], where: 'functions/api/_board.js (sendPacket, packetEmail, remindRsvp)',
           live: (f) => {

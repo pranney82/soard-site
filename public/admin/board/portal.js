@@ -1212,11 +1212,13 @@ function Rsvp({ m, ctx, quiet = false }) {
       <p class="bp-rsvp__said">${said[1]}${quiet ? '' : m.myInvite === 'tentative' ? ` Choose yes or no there so ${team} ${/ and |&|,/.test(team) ? 'know' : 'knows'}.` : ' To change it, answer the invite again.'}</p>
     </div>`;
   }
-  const adds = data.contact ? `${firstName(data.contact.name)} can add you` : `${team} can add you`;
+  // Who adds them: whoever the invite comes from
+  const by = m.inviteBy ? firstName(m.inviteBy) : data.contact ? firstName(data.contact.name) : team;
   return html`<div class="bp-rsvp" role="group" aria-labelledby=${qid}>
     <p class="bp-rsvp__q" id=${qid}>Will you be there?</p>
     <p class="bp-rsvp__said">${m.myInvite === 'invited' ? `Answer the calendar invite${to}: yes, no or maybe. ${team} ${sees} your answer there.`
-      : `You’re not on this meeting’s calendar invite yet, and that’s where SOARD sees who’s coming. ${adds}.`}</p>
+      : m.inviteOut === false ? `The calendar invite comes by email${m.inviteBy ? ` from ${m.inviteBy}` : ''} before the meeting. Answer it there: that’s where SOARD sees who’s coming.`
+      : `You’re not on this meeting’s calendar invite yet, and that’s where SOARD sees who’s coming. ${by} can add you.`}</p>
   </div>`;
 }
 

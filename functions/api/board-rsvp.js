@@ -13,7 +13,7 @@ import { answerLink } from './_board-rsvp.js';
 import { BOARD_PAGE } from './_board-roles.js';
 import { SITE } from './_board.js';
 import { escapeHtml as esc } from './_broadcast-notify.js';
-import { meetingName, longDate, timeRange, callName, repliesOf } from '../../public/admin/board-shared.js';
+import { meetingName, longDate, timeRange, callName, repliesOf, inviteOut } from '../../public/admin/board-shared.js';
 
 /** The same look as the board emails (./_email-shell.js), with the site's own fonts */
 function page(title, body, { status = 200 } = {}) {
@@ -74,11 +74,12 @@ async function toInvite(env, tok) {
   if (link.expired) return expired();
   const { meeting: m, member } = link;
   const name = first(member.name);
-  // Not on its invite: there's nothing to answer until they are
+  // Not on its invite: there's nothing to answer until they are; no invite yet: it's on its way
   const on = !!repliesOf(m)[member.slug];
+  const out = inviteOut(m);
   return page('Answer the calendar invite', `<h1>${name ? `${esc(name)}, will` : 'Will'} you be at the ${esc(meetingName(m))}?</h1>${whenBlock(m)}`
     + `<p class="said">This link doesn’t save an answer any more: SOARD goes by the calendar invite now.</p>`
-    + `<p>${on ? esc(INVITE) : 'You’re not on its calendar invite yet. Reply to the email this link came in, and SOARD will send it to you.'}</p>`
+    + `<p>${on ? esc(INVITE) : !out ? 'Its calendar invite comes by email before the meeting. Answer it there: that’s where SOARD sees who’s coming.' : 'You’re not on its calendar invite yet. Reply to the email this link came in, and SOARD will send it to you.'}</p>`
     + `<div class="actions">${boardPage('See the meeting', `#/meetings/${m.id}`)}</div>`);
 }
 

@@ -28,7 +28,7 @@
 
 import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf,
-  longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf,
+  longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf, inviteOut,
   agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
   isFilled, LIVE_TITLES, presentersOf, reportsOn, namesText,
 } from '../../public/admin/board-shared.js';
@@ -887,10 +887,11 @@ const staffFor = (people, email) => {
   const e = String(email || '').toLowerCase();
   return (e && people.staff.find((p) => e.startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))) || null;
 };
-/** Who a meeting's invite comes from, by name: the organizer of its calendar event, else of Board's invite, else Settings' */
+/** Who a meeting's invite comes from: the organizer of its calendar event (not a deleted one), else of Board's invite, else Settings' */
+const inviteOwner = (m, settings) => (m.calendar && !m.calendar.gone ? m.calendar.organizer || m.calendar.from : '') || m.invite?.organizer || settings?.invitesFrom || '';
+/** …by name */
 function inviteFrom(m, people, settings) {
-  const email = m.calendar?.organizer || m.calendar?.from || m.invite?.organizer || settings?.invitesFrom || '';
-  return staffFor(people, email)?.name || '';
+  return staffFor(people, inviteOwner(m, settings))?.name || '';
 }
 
 /**
@@ -1000,8 +1001,8 @@ export function reminderEmail(m, { test = false, name: who = '', from = '' } = {
   const first = firstName(who);
   const heading = `${first ? `${first}, will` : 'Will'} you be at the ${name}?`;
   const ask = answerAsk(from);
-  // What the invite is called in their email: the organizer's own event's title, else Board's (./_board-invite.js)
-  const called = m.calendar?.title || (/soard/i.test(name) ? name : `SOARD ${name}`);
+  // What the invite is called in their email: the organizer's own event's title, else Board's (inviteTitle)
+  const called = (m.calendar && !m.calendar.gone && m.calendar.title) || inviteTitle(m);
   return {
     subject: `${test ? '[Preview] ' : ''}Will you be at the ${name}? ${shortDate(m.date)}`,
     html: emailShell({
@@ -1026,10 +1027,15 @@ export async function remindRsvp(env, id, { to = null, replyTo = [] } = {}) {
   const m = await getMeeting(env.DB, id);
   if (!m?.shared) throw Object.assign(new Error('Share the meeting with the board first, so the button has something to open'), { status: 409 });
   const test = Array.isArray(to);
+  if (!test && !inviteOut(m)) throw Object.assign(new Error('The calendar invite hasn’t gone out yet: Send the invite first, then they can answer it'), { status: 409 });
+  const [team, settings] = await Promise.all([roster(env.DB), getSettings(env.DB)]);
   const missing = test ? [] : (await notOnInvite(env, m)).map((p) => p.name);
   const people = test ? to.map((email) => ({ email, name: '' })) : await notAnswered(env, m);
-  if (!people.length) throw Object.assign(new Error(missing.length ? `Everyone on the invite has answered. ${missing.join(', ')} ${missing.length === 1 ? 'isn’t' : 'aren’t'} on it: Send the invite adds them.` : 'Everyone has answered the invite'), { status: 409 });
-  const from = inviteFrom(m, await roster(env.DB), await getSettings(env.DB));
+  // Who can add someone: Send the invite, unless the event is someone's Board can't change
+  const owner = inviteOwner(m, settings);
+  const adds = owner && !settings.admins.includes(owner) ? `ask ${staffFor(team, owner)?.name.split(/\s+/)[0] || owner.split('@')[0]} to add ${missing.length === 1 ? 'them' : 'them all'}` : `Send the invite adds ${missing.length === 1 ? 'them' : 'them all'}`;
+  if (!people.length) throw Object.assign(new Error(missing.length ? `Everyone on the invite has answered. ${missing.join(', ')} ${missing.length === 1 ? 'isn’t' : 'aren’t'} on it: ${adds}.` : 'Everyone has answered the invite'), { status: 409 });
+  const from = inviteFrom(m, team, settings);
   const items = people.map((p) => ({ to: p.email, ...reminderEmail(m, { test, name: p.name, from }) }));
   const r = await sendEach(env, items, { tags: [{ name: 'kind', value: test ? 'board-reminder-preview' : 'board-reminder' }], replyTo });
   return { sent: r.sent, failed: r.failed, errors: r.errors, to: test ? to : undefined, notOnInvite: missing };
@@ -1207,7 +1213,7 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     nextPending: pending ? {
       id: pending.id, date: pending.date, start: pending.start, end: pending.end, title: pending.title, name: meetingName(pending),
       location: pending.location, address: pending.address, video: pending.video || pending.invite?.meet || '',
-      onCalendar: !!pendingInvite, myInvite: pendingInvite,
+      onCalendar: !!pendingInvite, myInvite: pendingInvite, inviteOut: inviteOut(pending), inviteBy: inviteFrom(pending, people, settings),
     } : null,
     // lastSeen: the visit before this one (a visit lasts 10 minutes), for what's new since
     // An admin looking: who they are on People (`as`), so the item they present asks them for its report too
@@ -1216,8 +1222,9 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     today,
     // Their own answer here, else how they answered the calendar invite (which also means it's on their calendar)
     meetings: shared.map((m) => {
-      const invite = mine ? repliesOf(meetings.find((x) => x.id === m.id))[mine] || '' : '';
-      return { ...m, myInvite: invite, onCalendar: !!invite };
+      const full = meetings.find((x) => x.id === m.id);
+      const invite = mine ? repliesOf(full)[mine] || '' : '';
+      return { ...m, myInvite: invite, onCalendar: !!invite, inviteOut: inviteOut(full), inviteBy: inviteFrom(full, people, settings) };
     }),
     next: nextMeeting(shared, today)?.id || null,
     quorum: settings.quorum,
