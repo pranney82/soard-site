@@ -651,7 +651,7 @@ try {
   await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 });
   const updates = google.slice(before).filter((c) => c.url.includes('/calendar/v3/'));
   ok(updates.length === 1 && updates[0].method === 'PATCH' && updates[0].body.location === 'Example Hall, 100 Example St, Roswell, GA', 'then one update to the invite with the place');
-  ok(/one-time code\.\n\nPark in the back lot\. The side door is open\.\n\nYour reply/.test(updates[0]?.body.description || ''), `the notes typed for the invite are on it, after the way to the board page (${JSON.stringify(updates[0]?.body.description)})`);
+  ok(/A code comes by email\.\n\nPark in the back lot\. The side door is open\.$/.test(updates[0]?.body.description || ''), `the notes typed for the invite are on it, after the way to the board page (${JSON.stringify(updates[0]?.body.description)})`);
 
   // Getting ready 2-3: the board page, the documents by email
   await clickText(jane, 'button', /^Share with the board$/);
@@ -963,6 +963,11 @@ try {
       ok(ag.flat && ag.meets === 1 && ag.glance, `the meeting: agenda items as rows, Google Meet once, no count strip (${JSON.stringify(ag)})`);
       const note = await alex.evaluate(() => { const n = document.querySelector('.bp-aghero__note'); return n && { text: n.textContent, under: n.getBoundingClientRect().top >= document.querySelector('.bp-aghero__facts').getBoundingClientRect().bottom }; });
       ok(note?.text === 'Park in the back lot. The side door is open.' && note.under, `the meeting shows the notes for the invite under where and when (${JSON.stringify(note)})`);
+      // The invite's short link (/board/<id>, public/_redirects) arrives as ?meeting=<id>: the meeting, at its usual address
+      await alex.goto(`${SITE}/admin/board/?meeting=${meetingId}`, { waitUntil: 'networkidle0' });
+      await alex.waitForSelector('.bp-aghero__title', { timeout: 6000 }).catch(() => {});
+      const short = await alex.evaluate(() => ({ at: location.search + location.hash, title: document.querySelector('.bp-aghero__title')?.textContent || '' }));
+      ok(short.at === `#/meetings/${meetingId}` && !!short.title, `the invite’s link opens the meeting (${JSON.stringify(short)})`);
       // People: a directory, a row a person, email and copy as two small buttons named for them
       await alex.goto(`${SITE}/admin/board/#/people`, { waitUntil: 'networkidle0' });
       await alex.waitForSelector('.bp-dir .bp-person', { timeout: 6000 }).catch(() => {});

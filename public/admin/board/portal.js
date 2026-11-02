@@ -46,6 +46,17 @@ const html = htm.bind(h);
 const API = '/api/board-portal';
 const LOGO = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128';
 
+// A meeting's link on its calendar invite (/board/<id>, public/_redirects) arrives as ?meeting=<id>, since a query
+// survives Cloudflare's sign-in and a #/meetings/<id> link lands on Home: the meeting, at its usual address
+{
+  const q = new URLSearchParams(location.search);
+  const id = q.get('meeting');
+  if (id !== null) {
+    q.delete('meeting');
+    history.replaceState(null, '', `${location.pathname}${q.size ? `?${q}` : ''}${/^m_[a-z0-9]{4,24}$/.test(id) ? `#/meetings/${id}` : location.hash}`);
+  }
+}
+
 // ─── Icons (24px line drawings, in the text's color) ────────────────
 const ICONS = {
   home: html`<path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z" />`,

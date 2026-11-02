@@ -1079,18 +1079,30 @@ export const NOTES_START = 'The agenda and documents:';
 export const OLD_NOTES_STARTS = ['The agenda and the packet are on the board page:'];
 /**
  * What a meeting's calendar invite says: the way to its page (the agenda and every document are there, to read,
- * present or print), the notes typed for it in Board (parking and the like), and that replies count. Nothing else,
- * so the agenda changing never touches the invite. The notes stay after NOTES_START, in Board's part, so a change
- * replaces them on the organizer's own event instead of adding them twice (withNotes in ./_board-invite.js)
+ * present or print) and the notes typed for it in Board (parking and the like). Nothing else, so the agenda changing
+ * never touches the invite. The notes stay after NOTES_START, in Board's part, so a change replaces them on the
+ * organizer's own event instead of adding them twice (withNotes in ./_board-invite.js). Its words changed: raise
+ * NOTES_VERSION there, and the invites already out get them
  */
 export function inviteNotes(m) {
   return [
-    `${NOTES_START} ${meetingUrl(m)}`,
-    'Sign in with the email address this invite came to; you’ll get a one-time code.',
+    `${NOTES_START} ${inviteUrl(m)}`,
+    'Sign in with the email this invite went to. A code comes by email.',
     ...(m.inviteNote ? ['', m.inviteNote] : []),
-    '',
-    'Your reply to this invite shows on the board page.',
   ].join('\n');
+}
+/**
+ * A meeting's short link, for its calendar invite: /board/<id> opens the meeting (public/_redirects, then the board
+ * page), even through a first sign-in, where a #/meetings/<id> link would land on Home
+ */
+export const inviteUrl = (m) => `${SITE}/board/${m.id}`;
+/**
+ * What a meeting's calendar invite is called: which meeting, and how to come (Board adds Google Meet to every one).
+ * "SOARD Q4 2026 Board Meeting (in person or Google Meet)" (Peter, Nov 2 2026: "make that better and more descriptive")
+ */
+export function inviteTitle(m) {
+  const name = /soard/i.test(meetingName(m)) ? meetingName(m) : `SOARD ${meetingName(m)}`;
+  return `${name} (${placeOf(m) ? 'in person or Google Meet' : 'Google Meet'})`;
 }
 
 /** A meeting as a calendar file, for a board member who isn't on its invite */
@@ -1105,7 +1117,7 @@ export function meetingIcs(m) {
   const esc2 = (s) => String(s).replace(/[\\;,]/g, (c) => `\\${c}`).replace(/\n/g, '\\n');
   return ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Sunshine on a Ranney Day//Board//EN', 'METHOD:PUBLISH', 'BEGIN:VEVENT', `UID:board-${m.id}@sunshineonaranneyday.com`,
     `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')}`, `DTSTART:${stamp(m.date, start)}`, `DTEND:${stamp(m.date, end)}`,
-    `SUMMARY:${esc2(`SOARD ${meetingName(m)}`)}`, ...(m.location || m.address ? [`LOCATION:${esc2([m.location, m.address].filter(Boolean).join(', '))}`] : []),
+    `SUMMARY:${esc2(inviteTitle(m))}`, ...(m.location || m.address ? [`LOCATION:${esc2([m.location, m.address].filter(Boolean).join(', '))}`] : []),
     `DESCRIPTION:${esc2(`${inviteNotes(m)}${m.video ? `\n\nVideo (${callName(m.video)}): ${m.video}` : ''}`)}`, `URL:${meetingUrl(m)}`,
     'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
 }

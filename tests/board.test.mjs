@@ -1060,7 +1060,7 @@ test('Send the invite: from the president’s calendar to every board member, wi
   assert.equal(post.body.conferenceData.createRequest.conferenceSolutionKey.type, 'hangoutsMeet');
   assert.deepEqual(post.body.start, { dateTime: `${day}T18:00:00`, timeZone: 'America/New_York' });
   assert.equal(post.body.location, undefined, 'no place yet, none on the invite');
-  assert.ok(post.body.description.startsWith(`The agenda and documents: https://sunshineonaranneyday.com/admin/board/#/meetings/${m.id}\n`), 'the way to this meeting’s page');
+  assert.equal(post.body.description, `The agenda and documents: https://sunshineonaranneyday.com/board/${m.id}\nSign in with the email this invite went to. A code comes by email.`, 'the way to this meeting’s page, and nothing about replies');
   assert.doesNotMatch(post.body.description, /AGENDA|Roll call/, 'the link, not the agenda: the board page has it');
   assert.doesNotMatch(post.body.description, /<[a-z]/i, 'plain text: Apple Calendar and Outlook would show HTML as tags');
   assert.deepEqual(g.transcript, { 'abc-defg-hij-space': 'ON' }, 'transcripts on for its Meet');
@@ -1085,10 +1085,15 @@ test('Send the invite: from the president’s calendar to every board member, wi
   const now = await getMeeting(env.DB, m.id);
   assert.equal(now.invite.place, 'Example Hall, 100 Example St, Roswell, GA');
   assert.equal(now.location, 'Example Hall', 'what was typed stays');
+  // Renamed in Board: the invite's name follows, without Google emailing anyone
+  g.calls = [];
+  const renamed = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...now, title: 'Fall board meeting' }, base: now.updatedAt })).body.meeting;
+  await maybeRefreshInvites(env, { now: Date.now() + 10 * 60 * 1000 });
+  assert.deepEqual(calWrites(g).map((c) => [c.body.summary, c.url.match(/sendUpdates=(\w+)/)[1]]), [['SOARD Fall board meeting (in person or Google Meet)', 'none']]);
   // Saved again with nothing new: nothing sent
   g.calls = [];
-  await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...now, title: 'Fall board meeting' }, base: now.updatedAt });
-  await maybeRefreshInvites(env, { now: Date.now() + 10 * 60 * 1000 });
+  await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...renamed }, base: renamed.updatedAt });
+  await maybeRefreshInvites(env, { now: Date.now() + 20 * 60 * 1000 });
   assert.equal(calWrites(g).length, 0);
   assert.equal(after.location, 'Example Hall');
 
@@ -1127,8 +1132,9 @@ test('a meeting from the organizer’s calendar: that invite gets the missing bo
   assert.deepEqual(body.attendees, [{ email: MEMBER, responseStatus: 'accepted' }, { email: OTHER_MEMBER }], 'who was invited stays, with their answer');
   assert.equal(body.location, 'Example Hall, 100 Example St, Roswell, GA', 'a TBD place is filled in');
   assert.ok(body.conferenceData.createRequest);
-  assert.equal(body.summary, undefined); assert.equal(body.start, undefined, 'the calendar keeps its own name, day and time');
-  assert.ok(body.description.startsWith(`Dinner provided\n\nThe agenda and documents: https://sunshineonaranneyday.com/admin/board/#/meetings/${m.id}\n`), 'its own notes stay, Board’s follow them');
+  assert.equal(body.summary, `SOARD ${meetingName(m)} (in person or Google Meet)`, 'its name says which meeting and how to come');
+  assert.equal(body.start, undefined, 'the calendar keeps its own day and time');
+  assert.ok(body.description.startsWith(`Dinner provided\n\nThe agenda and documents: https://sunshineonaranneyday.com/board/${m.id}\n`), 'its own notes stay, Board’s follow them');
   // Looked at again: still the calendar's meeting, followed as before, never marked gone
   await syncBoardCalendar(env);
   [m] = await listMeetings(env.DB);
@@ -1161,7 +1167,7 @@ test('the invite’s notes are the link to the board page: the agenda changing n
   assert.doesNotMatch(JSON.stringify(calWrites(g)[0].body), /Strategic plan|Legal/);
   // A calendar file for a member who isn't on the invite says the same
   const ics = meetingIcs(await getMeeting(env.DB, m.id));
-  assert.match(ics, /DESCRIPTION:The agenda and documents: https:\/\/sunshineonaranneyday\.com\/admin\/board\/#\/meetings\//);
+  assert.match(ics, /DESCRIPTION:The agenda and documents: https:\/\/sunshineonaranneyday\.com\/board\/m_/);
   assert.doesNotMatch(ics, /AGENDA|Strategic plan/);
 
   // The organizer's own words stay in front; Board's part is replaced, never doubled (its older wording too), in HTML when Google keeps it so
@@ -1170,6 +1176,28 @@ test('the invite’s notes are the link to the board page: the agenda changing n
   assert.equal(withNotes('', 'N'), 'N');
   assert.equal(withNotes('<b>Dinner</b> provided<br><br>The agenda and documents: old<br>x', 'The agenda and documents: new\nA & B'),
     '<b>Dinner</b> provided<br><br>The agenda and documents: new<br>A &amp; B');
+});
+
+test('Board’s words on the invite change: each invite still ahead gets them once, on the heartbeat, without Google emailing anyone', async () => {
+  const g = fakeGoogleWriter();
+  let m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(36) })).body.meeting;
+  m = (await adminApi(FOUNDER, { action: 'send-invite', id: m.id })).body.meeting;
+  // As an invite that went out with the old words and name, before they were brought up to date
+  await patchMeeting(env.DB, m.id, (cur) => ({ ...cur, invite: { ...cur.invite, notes: 'old' } }));
+  Object.assign(g.events[FOUNDER].find((e) => e.id === m.invite.eventId), {
+    summary: 'SOARD Board Meeting',
+    description: 'The agenda and documents: https://sunshineonaranneyday.com/admin/board/#/meetings/x\nSign in with the email address this invite came to; you’ll get a one-time code.\n\nYour reply to this invite shows on the board page.',
+  });
+  await env.DB.prepare("DELETE FROM board_state WHERE key = 'invite-notes'").run().catch(() => {});
+  g.calls = [];
+  assert.deepEqual(await maybeRefreshInvites(env), [m.id]);
+  const [w] = calWrites(g);
+  assert.match(w.url, /sendUpdates=none$/, 'nobody is emailed about it');
+  assert.equal(w.body.description, `The agenda and documents: https://sunshineonaranneyday.com/board/${m.id}\nSign in with the email this invite went to. A code comes by email.`);
+  assert.equal(w.body.summary, `SOARD ${meetingName(m)} (Google Meet)`, 'no place yet: Google Meet is how to come');
+  g.calls = [];
+  assert.deepEqual(await maybeRefreshInvites(env), [], 'once');
+  assert.equal(calWrites(g).length, 0);
 });
 
 test('Board’s invite, then the meeting turns up on the organizer’s own calendar: one invite, theirs', async () => {
@@ -1358,7 +1386,7 @@ test('Holly’s invite with a Teams call: Google Meet replaces it, the Teams blo
   const notes = patch.body.description;
   assert.doesNotMatch(notes, /teams\.microsoft|Passcode|Microsoft Teams|_{30}/, 'no Teams joining details left');
   assert.ok(notes.startsWith('Hi everybody, we’ll meet at the office at 8:00.\n\nThere is a Google Meet link in this invitation if you can’t come in person.\n\nThe agenda and documents: '), notes);
-  assert.match(notes, /one-time code\.\n\nPark in the back lot\.\nUse the side door\.\n\nYour reply/);
+  assert.match(notes, /A code comes by email\.\n\nPark in the back lot\.\nUse the side door\.$/);
   assert.equal(r.body.meeting.video, 'https://meet.google.com/abc-defg-hij');
   // Sent again: one call, the same notes, nothing cleared twice
   g.calls = [];

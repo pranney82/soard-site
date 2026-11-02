@@ -27,7 +27,7 @@
 
 import { accessToken, eventIdFor, parseServiceAccount } from './_google-calendar.js';
 import { boardAdmins, activeBoard, peopleRows, readSettings, readState, writeState, normEmail } from './_board-roles.js';
-import { getMeeting, listMeetings, patchMeeting, inviteNotes, NOTES_START, OLD_NOTES_STARTS } from './_board.js';
+import { getMeeting, listMeetings, patchMeeting, inviteNotes, inviteTitle, NOTES_START, OLD_NOTES_STARTS } from './_board.js';
 import { meetingName, timeRange, longDate, todayEastern } from '../../public/admin/board-shared.js';
 
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
@@ -106,10 +106,10 @@ export function withoutCall(text) {
     .replace(/\b(?:Microsoft )?Teams link\b/g, 'Google Meet link')
     .replace(/\n{3,}/g, '\n\n');
 }
-/** A short fingerprint of what Board's notes say, to see when the agenda has changed since */
+/** A short fingerprint of what Board puts on the invite quietly (its name and its notes), to see when either has changed since */
 const notesKey = (m) => {
   let h = 0x811c9dc5;
-  for (const c of inviteNotes(m)) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0;
+  for (const c of `${inviteTitle(m)}\n${inviteNotes(m)}`) h = Math.imul(h ^ c.charCodeAt(0), 0x01000193) >>> 0;
   return h.toString(36);
 };
 
@@ -201,14 +201,16 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   const send = quiet && existing && !added.length ? 'none' : 'all';
   const notes = ours ? inviteNotes(m) : withNotes(withoutCall(existing?.description), inviteNotes(m));
   const place = placeOf(m);
-  const title = /soard/i.test(meetingName(m)) ? meetingName(m) : `SOARD ${meetingName(m)}`;
+  // Its name says which meeting and how to come, on the organizer's own event too (Peter, Nov 2 2026)
+  const title = inviteTitle(m);
   // A Teams or Zoom link written as the place: Google Meet is the call now, so the place is the place (or nothing)
   const callAsPlace = !existing?.hangoutLink && CALL_LINK.test(String(existing?.location || '').trim());
   const body = {
     attendees,
     ...(place && (ours || isTbd(existing?.location) || callAsPlace) ? { location: place } : callAsPlace ? { location: '' } : {}),
     ...(existing?.hangoutLink ? {} : { conferenceData: { createRequest: { requestId: `board-${m.id}-${now}`, conferenceSolutionKey: { type: 'hangoutsMeet' } } } }),
-    ...(ours ? { summary: title, ...times(m) } : {}),
+    summary: title,
+    ...(ours ? times(m) : {}),
     ...(notes !== (existing?.description || '') ? { description: notes } : {}),
     guestsCanSeeOtherGuests: true,
   };
@@ -278,9 +280,10 @@ export async function noteInviteChange(env, m, { now = Date.now() } = {}) {
 export async function maybeRefreshInvites(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   try {
     if (!env.DB || !env.GOOGLE_CALENDAR_KEY) return [];
+    const reworded = await rewordInvites(env, { fetchImpl, now });
     const due = Object.entries(await readState(env.DB, PENDING)).filter(([, p]) => now - Date.parse(p.at) >= SETTLE_MS);
-    if (!due.length) return [];
-    const sent = [];
+    if (!due.length) return reworded;
+    const sent = [...reworded];
     for (const [id] of due) {
       try {
         const m = await getMeeting(env.DB, id);
@@ -298,6 +301,26 @@ export async function maybeRefreshInvites(env, { fetchImpl = fetch, now = Date.n
     console.error('[board-invite] refresh', err.message);
     return [];
   }
+}
+
+// Board's own words on the invite (inviteNotes in ./_board.js). Raised when they change, so every invite still ahead
+// gets them once, quietly, on the next heartbeat, without anyone saving a meeting.
+// 2: the short link, no "Your reply to this invite shows on the board page", and a name that says which meeting and
+// how to come, on the organizer's own event too (Peter, Nov 2 2026)
+const NOTES_VERSION = 2;
+const REWORDED = 'invite-notes';
+/** Each invite still ahead whose only change is Board's words: updated without Google emailing anyone. → the meeting ids */
+async function rewordInvites(env, { fetchImpl, now }) {
+  if ((await readState(env.DB, REWORDED)).version === NOTES_VERSION) return [];
+  const today = todayEastern(now);
+  const sent = [];
+  let failed = 0;
+  for (const m of (await listMeetings(env.DB)).filter((x) => x.date >= today && changeOf(x) && !loudChange(x))) {
+    try { await sendInvite(env, m.id, { fetchImpl, now, quiet: true }); sent.push(m.id); } catch (err) { failed += 1; console.error('[board-invite] reword', m.id, err.message); }
+  }
+  // One that Google turned away is tried again on the next heartbeat
+  if (!failed) await writeState(env.DB, REWORDED, { version: NOTES_VERSION, at: new Date(now).toISOString() });
+  return sent;
 }
 
 const CHECK = 'invite-check';
