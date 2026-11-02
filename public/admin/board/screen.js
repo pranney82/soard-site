@@ -21,7 +21,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
-import { openDoc, layoutOf, areaOf, areasOf } from './docs.js';
+import { openDoc, layoutOf, areaOf, areasOf, partsOf, docKind } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, liveOfStop, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
@@ -113,6 +113,8 @@ const MARGIN = 0.035;
  */
 async function drawFitted(f, page, box, { ahead = false, part = 0 } = {}) {
   const doc = await openDoc(f);
+  // A file the screen can't draw (an old .doc, an iPhone photo): said so, not its download card
+  if (doc.kind === 'other') throw new Error('not drawable');
   const i = Math.max(0, Math.min(page, doc.count - 1));
   const size = doc.size(i);
   const tall = size.h / size.w;
@@ -129,7 +131,9 @@ async function drawFitted(f, page, box, { ahead = false, part = 0 } = {}) {
     const x1 = Math.max(...all.map((a) => a.x + a.w));
     const hi = Math.max(...all.map((a) => a.h));
     const W = Math.floor(Math.min(fit * 3, box.w / (x1 - x0 + 2 * MARGIN), box.h / (hi * tall + 2 * MARGIN)));
-    if (W > fit * 1.12) {
+    // Close up when it's bigger, and always for a file shown in parts (on a phone each part would else be the whole
+    // page again)
+    if (W > fit * 1.12 || all.some((a) => a.n === 2)) {
       close = true;
       const H = Math.round(W * tall);
       const m = Math.floor(W * MARGIN);
@@ -163,6 +167,7 @@ async function drawFitted(f, page, box, { ahead = false, part = 0 } = {}) {
 function DocPage({ f, page, part = 0, box, onPages }) {
   const ref = useRef(null);
   const was = useRef(null);
+  const learned = useRef(false);
   const [state, setState] = useState('opening');
   useEffect(() => {
     if (!f || !box.w || !box.h) return undefined;
@@ -180,12 +185,15 @@ function DocPage({ f, page, part = 0, box, onPages }) {
         el.firstElementChild.animate([{ opacity: 0, transform: `translateY(${on ? 14 : -14}px)` }, { opacity: 1, transform: 'none' }], { duration: 260, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' });
       }
       setState('');
+      // Every page's parts, once a file (they were worked out for its sheet): a screen on its own then counts the
+      // stops as the chair does, a blank page left out of "Next" before it's reached
+      if (!learned.current) { learned.current = true; partsOf(f).then((ns) => { if (ref.current) ns.forEach((n, j) => onPages?.(f.id, count, j, n)); }).catch(() => {}); }
     }).catch(() => { if (!gone) setState('failed'); });
     return () => { gone = true; };
   }, [f?.id, page, part, box.w, box.h]);
   return html`<div class="bs-page">
     <div class="bs-page__sheet" ref=${ref}></div>
-    ${state === 'opening' ? html`<p class="bs-quiet">Opening ${docTitle(f?.name)}…</p>` : state === 'failed' ? html`<p class="bs-quiet">${docTitle(f?.name)} didn’t open here. It’s on the board page.</p>` : null}
+    ${state === 'opening' ? html`<p class="bs-quiet bs-page__wait">Opening ${docTitle(f?.name)}…</p>` : state === 'failed' ? html`<p class="bs-quiet">${docTitle(f?.name)} didn’t open here. It’s on the board page.</p>` : null}
   </div>`;
 }
 
@@ -451,7 +459,7 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
     : next.kind === 'books' ? html`<span>Next: ${BOOKS_TITLES[next.fileId.slice(6)]}</span>`
     : next.kind === 'live' ? html`<span>Next: ${LIVE_TITLES[next.fileId.slice(5)]}</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId && next.page === stop.page ? html`<span>Next: the rest of the page</span>`
-    : next.kind === 'doc' && next.fileId === stop?.fileId ? html`<span>Next: page ${next.page + 1}</span>`
+    : next.kind === 'doc' && next.fileId === stop?.fileId ? html`<span>Next: ${docKind(files.find((f) => f.id === next.fileId) || {}) === 'slides' ? 'slide' : 'page'} ${next.page + 1}</span>`
     : next.kind === 'doc' ? html`<span>Next: ${docTitle(files.find((f) => f.id === next.fileId)?.name || 'the document')}</span>`
     : next.n >= 0 ? html`<span>Next <b>${items[next.n].label}</b> ${items[next.n].title}</span>` : html`<span>Next: ${MORE.title.toLowerCase()}</span>`;
   return html`<footer class="bs-rail" aria-label="Where the meeting is">
@@ -749,7 +757,10 @@ export function Screen({ id, data, d, onBack = null }) {
   // The pages that are stops (a blank one isn't), counted to the last of them: a blank page at the end isn't "of 2"
   const shownPages = stop.kind === 'doc' ? Array.from({ length: pages[stop.fileId] || 0 }, (_, i) => i).filter((i) => halves[stop.fileId]?.[i] !== 0) : [];
   const ofPages = shownPages.length ? shownPages.at(-1) + 1 : pages[stop.fileId] || 0;
-  const docWords = stop.kind === 'doc' ? [docTitle(file?.name), [ofPages > 1 ? `Page ${stop.page + 1} of ${ofPages}` : '', half ? 'continued' : ''].filter(Boolean).join(', ')].filter(Boolean).join(' · ') : '';
+  // Its name (not again when the item has the same one), its page or slide, and whether it's a page's second part
+  const named = docTitle(file?.name);
+  const pageWord = docKind(file || {}) === 'slides' ? 'Slide' : 'Page';
+  const docWords = stop.kind === 'doc' ? [named.toLowerCase() === String(item?.title || '').trim().toLowerCase() ? '' : named, [ofPages > 1 ? `${pageWord} ${stop.page + 1} of ${ofPages}` : '', half ? 'continued' : ''].filter(Boolean).join(', ')].filter(Boolean).join(' · ') : '';
 
   // The line under the stage and the rail are there on every stop, so the stage keeps its size from one to the next
   return html`<div class=${`bs bs--${stop.kind} ${awake ? 'is-awake' : ''} ${vote ? 'has-vote' : ''} ${MIRROR ? 'is-mirror' : ''}`}>
@@ -763,7 +774,7 @@ export function Screen({ id, data, d, onBack = null }) {
       <p class="bs-quiet">${vote.counts.voted} of ${vote.counts.of} here ${vote.counts.voted === 1 ? 'has' : 'have'} voted, on the board page</p>
     </aside>` : null}
     <div class="bs-foot">${stop.kind === 'doc' ? html`
-      <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${docWords}</span>
+      <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}${docWords ? html`<span class="bs-foot__sep">·</span>${docWords}` : null}</span>
       ${shownPages.length > 1 && shownPages.length <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${shownPages.map((i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
       : stop.kind === 'books' || stop.kind === 'live' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? BOOKS_TITLES[stop.fileId.slice(6)] : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
       : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span><kbd>F</kbd> full screen</span>`
@@ -793,7 +804,7 @@ function ShelfDoc({ d, width, pages }) {
   return html`<li>
     <span class="bs-shelf__cover" ref=${ref} aria-hidden="true"></span>
     <span class="bs-shelf__text"><span class="bs-shelf__t">${d.title}</span>
-    <span class="bs-shelf__m">${[formatOf(d.file), n ? plural(n, 'page') : ''].filter(Boolean).join(' · ')}</span></span>
+    <span class="bs-shelf__m">${[formatOf(d.file), n && !['image', 'other'].includes(docKind(d.file)) ? plural(n, docKind(d.file) === 'slides' ? 'slide' : 'page') : ''].filter(Boolean).join(' · ')}</span></span>
   </li>`;
 }
 
@@ -819,7 +830,7 @@ export function ScreenPeek({ v, onOpen }) {
   if (!f) return null;
   return html`<figure class="bp-peek">
     <div class="bp-peek__page" ref=${ref}></div>
-    <figcaption><span><strong>On the screen:</strong> ${docTitle(f.name)}, page ${v.live.page + 1}${n.count ? ` of ${n.count}` : ''}${n.halves === 2 && v.live.part ? ', continued' : ''}</span>
+    <figcaption><span><strong>On the screen:</strong> ${[docTitle(f.name), n.count > 1 ? `${docKind(f) === 'slides' ? 'slide' : 'page'} ${v.live.page + 1} of ${n.count}` : '', n.halves === 2 && v.live.part ? 'continued' : ''].filter(Boolean).join(', ')}</span>
       <a class="bp-btn bp-btn--sm" href=${`#/meetings/${v.id}/screen`} onClick=${onOpen}>Follow the screen</a></figcaption>
   </figure>`;
 }

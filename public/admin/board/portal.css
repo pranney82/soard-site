@@ -1800,6 +1800,8 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .bs-sheet { display: block; box-sizing: border-box; overflow: hidden; background: #fff; border-radius: 3px; box-shadow: 0 30px 70px -20px rgba(0, 0, 0, 0.6); }
 .bs-sheet > * { display: block; box-shadow: none; border-radius: 0; }
 .bs-page .bs-quiet { position: absolute; }
+/* "Opening…" only if it takes a moment: a page drawn at once never flashes it */
+.bs-page__wait { animation: bs-fade 0.3s 0.7s both; }
 .bs-foot { grid-column: 1 / -1; grid-row: 3; display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 0; padding: 0 var(--bs-pad); color: var(--bs-soft); font-size: clamp(0.85rem, 1.8vh, 1.1rem); }
 .bs-foot__pages { display: flex; gap: 0.45rem; flex: none; }
 .bs-foot__pages i { width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--bs-line); transition: background 0.3s; }

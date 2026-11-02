@@ -287,6 +287,29 @@ test('a few lines are never cut, even in a column taller than it is wide (a logo
   assert.equal(splitOf(sig, size).n, 1);
 });
 
+test('a picture, a page set solid and a slide are never cut; a landscape table of many rows is', () => {
+  const size = { w: 816, h: 1056 };
+  // A photo or a scan read as ink from top to bottom: nowhere blank to cut
+  assert.equal(splitOf([{ y0: 0.05, y1: 0.95, x0: 0.05, x1: 0.95 }], size).n, 1);
+  const solid = Array.from({ length: 300 }, (_, i) => ({ y0: 0.05 + i * 0.003, y1: 0.05 + (i + 1) * 0.003, x0: 0.1, x1: 0.9 }));
+  assert.equal(splitOf(solid, size).n, 1, 'lines with no blank between them are never cut through');
+  // A landscape page: a slide's few big lines stay whole; a 26-row table is cut
+  const land = { w: 1056, h: 816 };
+  const slide = Array.from({ length: 6 }, (_, i) => ({ y0: 0.15 + i * 0.12, y1: 0.2 + i * 0.12, x0: 0.08, x1: 0.92 }));
+  assert.equal(splitOf(slide, land).n, 1);
+  const table = Array.from({ length: 26 }, (_, i) => ({ y0: 0.1 + i * 0.032, y1: 0.118 + i * 0.032, x0: 0.06, x1: 0.94 }));
+  const t = splitOf(table, land);
+  assert.equal(t.n, 2);
+  assert.ok(!table.some((r) => r.y0 < t.cut && r.y1 > t.cut));
+});
+
+test('a page of one short line and a page number keeps the line (it was read as nothing)', () => {
+  const size = { w: 816, h: 1056 };
+  const lay = splitOf([{ y0: 0.1, y1: 0.115, x0: 0.1, x1: 0.6 }, { y0: 0.95, y1: 0.96, x0: 0.48, x1: 0.52 }], size);
+  assert.equal(lay.n, 1);
+  assert.ok(lay.ink.y1 < 0.2 && lay.ink.x1 > 0.55, 'the line, not the page number');
+});
+
 test('a tall page is cut between paragraphs near the middle rather than between two lines of one', () => {
   const size = { w: 816, h: 1056 };
   // 36 lines; a paragraph break (a wider blank) after the 16th, a little above the middle
