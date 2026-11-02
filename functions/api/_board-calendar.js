@@ -271,7 +271,8 @@ async function look(env, { fetchImpl, now }) {
       replies,
       // The organizer's own event, so Board can add guests, the place and Google Meet to it (./_board-invite.js)
       eventId: String(ev.id || ''), organizer: String(ev.organizer?.email || '').toLowerCase(),
-      // Where the organizer's event has its call: a Teams link as its place or in its notes stays there when Board adds Meet
+      // Where the organizer's event has its call (meet | conference | place | notes). Board makes it Google Meet: a Teams
+      // or Zoom call comes off the event and out of its notes (./_board-invite.js)
       callFrom: lead.place.callFrom,
     };
     if (!m) {

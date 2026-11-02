@@ -630,12 +630,14 @@ try {
   await jane.waitForSelector('#bd-loc');
   await type(jane, '#bd-loc', 'Example Hall');
   await type(jane, '#bd-addr', '100 Example St, Roswell, GA');
-  ok(await saved(jane), 'the place saves');
+  await type(jane, '#bd-invite-note', 'Park in the back lot. The side door is open.');
+  ok(await saved(jane), 'the place and the notes for the invite save');
   ok(await waitText(jane, /the new place goes on it a couple of minutes after you stop typing/), 'the step says the new place is on its way to the invite');
   ok(google.length === before, 'nothing goes to Google while it’s being typed');
   await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 });
   const updates = google.slice(before).filter((c) => c.url.includes('/calendar/v3/'));
   ok(updates.length === 1 && updates[0].method === 'PATCH' && updates[0].body.location === 'Example Hall, 100 Example St, Roswell, GA', 'then one update to the invite with the place');
+  ok(/one-time code\.\n\nPark in the back lot\. The side door is open\.\n\nYour reply/.test(updates[0]?.body.description || ''), `the notes typed for the invite are on it, after the way to the board page (${JSON.stringify(updates[0]?.body.description)})`);
 
   // Getting ready 2-3: the board page, the documents by email
   await clickText(jane, 'button', /^Share with the board$/);
@@ -646,6 +648,7 @@ try {
   ok(mail.length === 1 && mail[0].to[0] === FOUNDER, 'Send me the email goes only to the founder');
   ok(!mail[0]?.attachments && /Balance sheet financials/.test(mail[0]?.html || '') && /Open the agenda and documents/.test(mail[0]?.html || ''), 'the link to the agenda and documents, the documents by name, nothing attached');
   ok(!/ask counsel|Governance/.test(mail[0]?.html || ''), 'the email has no private note and no board-only item');
+  ok(/Park in the back lot\. The side door is open\./.test(mail[0]?.html || '') && /Notes: Park in the back lot/.test(mail[0]?.text || ''), 'the email carries the notes for the invite');
   await clickText(jane, 'button', /^Email the board$/);
   ok(await waitText(jane, /Emailed 2 board members/), 'Email the board reaches the two members with emails');
   ok(mail.slice(1).map((m) => m.to[0]).sort().join() === [MEMBER, OTHER].sort().join() && mail.slice(1).every((m) => !m.attachments), 'each board member got their own, with nothing attached');
@@ -936,6 +939,8 @@ try {
       await alex.waitForSelector('.bp-agitem', { timeout: 6000 }).catch(() => {});
       const ag = await alex.evaluate(() => { const it = document.querySelector('.bp-agitem'); const cs = it && getComputedStyle(it); return { flat: !!cs && cs.boxShadow === 'none' && cs.backgroundColor === 'rgba(0, 0, 0, 0)', meets: document.querySelectorAll('.bp-aghero a[href^="https://meet.google.com/"]').length, glance: !document.querySelector('ul.bp-glance') }; });
       ok(ag.flat && ag.meets === 1 && ag.glance, `the meeting: agenda items as rows, Google Meet once, no count strip (${JSON.stringify(ag)})`);
+      const note = await alex.evaluate(() => { const n = document.querySelector('.bp-aghero__note'); return n && { text: n.textContent, under: n.getBoundingClientRect().top >= document.querySelector('.bp-aghero__facts').getBoundingClientRect().bottom }; });
+      ok(note?.text === 'Park in the back lot. The side door is open.' && note.under, `the meeting shows the notes for the invite under where and when (${JSON.stringify(note)})`);
       // People: a directory, a row a person, email and copy as two small buttons named for them
       await alex.goto(`${SITE}/admin/board/#/people`, { waitUntil: 'networkidle0' });
       await alex.waitForSelector('.bp-dir .bp-person', { timeout: 6000 }).catch(() => {});

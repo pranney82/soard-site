@@ -1198,6 +1198,8 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bp-aghero__facts strong { font-weight: 650; font-size: 1.02rem; }
 .bp-aghero__facts span > span, .bp-aghero__facts a { color: var(--muted); font-size: 0.92rem; }
 .bp-aghero__facts a { color: var(--info); text-underline-offset: 3px; overflow-wrap: anywhere; }
+/* The notes typed for the meeting's invite (parking, which door), under where and when, as they were written */
+.bp-aghero__note { margin: 1rem 0 0; max-width: 62ch; color: var(--ink-2); font-size: 0.95rem; line-height: 1.5; white-space: pre-line; overflow-wrap: anywhere; }
 .bp-aghero__ico { display: grid; place-items: center; width: 46px; height: 46px; border-radius: 14px; background: var(--warm); color: var(--ink-2); flex: none; }
 .bp-aghero .bp-date--big { width: 3.7rem; height: 4.2rem; }
 .bp-aghero__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 1.5rem; }

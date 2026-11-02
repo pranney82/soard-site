@@ -453,7 +453,7 @@ function utcStamp(date, time) {
 function googleHref(m) {
   const start = m.start || '08:00';
   const end = m.end || `${String(Math.min(23, Number(start.slice(0, 2)) + 2)).padStart(2, '0')}${start.slice(2)}`;
-  const details = `The agenda and documents: ${location.origin}/admin/board/#/meetings/${m.id}${videoOf(m) ? `\nVideo: ${videoOf(m)}` : ''}`;
+  const details = `The agenda and documents: ${location.origin}/admin/board/#/meetings/${m.id}${m.inviteNote ? `\n\n${m.inviteNote}` : ''}${videoOf(m) ? `\nVideo: ${videoOf(m)}` : ''}`;
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`SOARD ${meetingName(m)}`)}&dates=${utcStamp(m.date, start)}/${utcStamp(m.date, end)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent([m.location, m.address].filter(Boolean).join(', '))}`;
 }
 
@@ -2329,6 +2329,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
           ${place.length ? html`<li><span class="bp-aghero__ico"><${Icon} name="pin" /></span><span><strong>${m.location || m.address}</strong>${m.address ? html`<a href=${mapsHref(m.address)} target="_blank" rel="noopener">${m.location ? m.address : 'Directions'}</a>` : null}</span></li>` : null}
           ${video && m.date !== data.today ? html`<li><span class="bp-aghero__ico"><${Icon} name="video" /></span><span><strong>${joinLabel(video).replace(/^Join (with|by) /, '').replace(/^video$/, 'Video call')}</strong><a href=${video} target="_blank" rel="noopener">Join from anywhere</a></span></li>` : null}
         </ul>
+        ${upcoming && m.inviteNote ? html`<p class="bp-aghero__note">${m.inviteNote}</p>` : null}
         <div class="bp-aghero__actions bp-noprint">
           ${video && m.date === data.today ? html`<a class="bp-btn bp-btn--primary" href=${video} target="_blank" rel="noopener"><${Icon} name="video" />${joinLabel(video)}</a>` : null}
           ${data.me.admin && !AS_BOARD && !PREVIEW && upcoming && hasAgenda ? html`<a class="bp-btn bp-btn--primary" href=${`/admin/board/?present#/meetings/${encodeURIComponent(m.id)}/screen`} target=${`soard-screen-${m.id}`} rel="noopener" title="The presentation in its own window: → and ← or a clicker move it"><${Icon} name="present" />Present</a>` : null}

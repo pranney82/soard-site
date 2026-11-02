@@ -93,6 +93,19 @@ export function withNotes(existing, notes) {
   const ours = html ? notes.split('\n').map((l) => l.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')).join('<br>') : notes;
   return before ? `${before}${html ? '<br><br>' : '\n\n'}${ours}` : ours;
 }
+
+/**
+ * The organizer's own notes without another call's joining details, since Google Meet is the board's call (Peter,
+ * Nov 2 2026): Teams' block (between its two long rules), a line that's only a Teams, Zoom or Webex link, and a
+ * "Teams link" in their words is the Google Meet link now
+ */
+export function withoutCall(text) {
+  return String(text || '')
+    .replace(/_{60,}(?:\s|&nbsp;|<br\s*\/?>|<\/?(?:p|div|span|b|strong|font)[^>]*>)*Microsoft Teams[\s\S]*?_{60,}/gi, '')
+    .replace(/^[ \t]*https:\/\/\S*(?:zoom\.us|teams\.microsoft|teams\.live|webex)\S*[ \t]*$/gim, '')
+    .replace(/\b(?:Microsoft )?Teams link\b/g, 'Google Meet link')
+    .replace(/\n{3,}/g, '\n\n');
+}
 /** A short fingerprint of what Board's notes say, to see when the agenda has changed since */
 const notesKey = (m) => {
   let h = 0x811c9dc5;
@@ -171,13 +184,19 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   const guests = await guestsFor(env.DB);
   let existing = null;
   try { existing = await gcal(token, 'GET', `${cal}/${encodeURIComponent(eventId)}`, null, fetchImpl); } catch (err) { if (err.status !== 404 && err.status !== 410) throw err; }
+  // Google Meet is every board meeting's call (Peter, Nov 2 2026): a Teams or Zoom call on the organizer's event comes
+  // off it first, without emailing anyone, so Meet replaces it instead of sitting beside it (Google's docs don't say a
+  // Meet request alone swaps one out). Their notes lose its joining details below
+  if (existing && !existing.hangoutLink && existing.conferenceData && existing.status !== 'cancelled') {
+    existing = await gcal(token, 'PATCH', `${cal}/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=none`, { conferenceData: null }, fetchImpl);
+  }
   const ours = !theirs; // Board's own invite: Board sets its day and time too
   const have = new Set((existing?.attendees || []).map((a) => normEmail(a.email)));
   const added = guests.filter((e) => !have.has(e) && e !== organizer);
   const attendees = [...(existing?.attendees || []), ...added.map((email) => ({ email }))];
   // Only the agenda changed and nobody's new: the invite's notes change without Google emailing the board
   const send = quiet && existing && !added.length ? 'none' : 'all';
-  const notes = ours ? inviteNotes(m) : withNotes(existing?.description, inviteNotes(m));
+  const notes = ours ? inviteNotes(m) : withNotes(withoutCall(existing?.description), inviteNotes(m));
   const place = placeOf(m);
   const title = /soard/i.test(meetingName(m)) ? meetingName(m) : `SOARD ${meetingName(m)}`;
   // A Teams or Zoom link written as the place: Google Meet is the call now, so the place is the place (or nothing)

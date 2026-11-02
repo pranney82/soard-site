@@ -17,7 +17,7 @@ import { syncBoardAccess, accessStatus, maybeSyncBoardAccess, GROUP_NAME, POLICY
 import { packetEmail, meetingIcs, cashNow, getMeeting, listMeetings, maybeRunBoard, cashHistory, provideBoardFinance, liveNumbers, saveMeeting, patchMeeting } from '../functions/api/_board.js';
 import { isBoardMeetingEvent, eventWhen, eventPlace, syncBoardCalendar, calendarStatus } from '../functions/api/_board-calendar.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
-import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes } from '../functions/api/_board-invite.js';
+import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes, withoutCall } from '../functions/api/_board-invite.js';
 import * as rsvpPage from '../functions/api/board-rsvp.js';
 import { answerLink } from '../functions/api/_board-rsvp.js';
 import { generateKeyPairSync } from 'node:crypto';
@@ -1332,6 +1332,42 @@ test('Holly’s invite with a Teams link as its place: Google Meet becomes the c
   await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
   [patch] = calWrites(g);
   assert.equal(patch.body.location, undefined);
+});
+
+test('Holly’s invite with a Teams call: Google Meet replaces it, the Teams block leaves her notes, her own words stay, and the notes typed in Board go on', async () => {
+  const day = inDays(57);
+  const rule = '_'.repeat(80);
+  const teams = `${rule}\nMicrosoft Teams meeting\nJoin: https://teams.microsoft.com/meet/123?p=abc\nMeeting ID: 272 889 675\nPasscode: ws9Dz3KP\n${'_'.repeat(32)}\nNeed help? https://aka.ms/JoinTeamsMeeting\n${rule}\n`;
+  const said = 'Hi everybody, we’ll meet at the office at 8:00.\n\nThere is a Teams link in this invitation if you can’t come in person.';
+  const theirs = ev('hol4', 'SOARD Board Meeting', `${day}T13:00:00Z`, `${day}T15:00:00Z`, {
+    organizer: { email: FOUNDER, self: true }, attendees: [{ email: MEMBER }], description: `${said}\n\n\n${teams}`,
+    conferenceData: { conferenceId: '123', conferenceSolution: { key: { type: 'addOn' }, name: 'Microsoft Teams Meeting' }, entryPoints: [{ entryPointType: 'video', uri: 'https://teams.microsoft.com/meet/123?p=abc' }] },
+  });
+  const g = fakeGoogleWriter({ events: { [FOUNDER]: [theirs] } });
+  await syncBoardCalendar(env);
+  let [m] = (await listMeetings(env.DB)).filter((x) => x.calendar?.eventId === 'hol4');
+  assert.equal(m.video, 'https://teams.microsoft.com/meet/123?p=abc');
+  m = await saveMeeting(env.DB, { ...m, inviteNote: 'Park in the back lot.\nUse the side door.' }, { by: FOUNDER });
+  g.calls = [];
+  const r = await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
+  const [clear, patch] = calWrites(g);
+  // The Teams call comes off first, quietly; then Meet goes on, and everyone hears about it
+  assert.deepEqual([clear.body, clear.url.match(/sendUpdates=(\w+)/)[1]], [{ conferenceData: null }, 'none']);
+  assert.ok(patch.body.conferenceData.createRequest);
+  assert.match(patch.url, /sendUpdates=all$/);
+  const notes = patch.body.description;
+  assert.doesNotMatch(notes, /teams\.microsoft|Passcode|Microsoft Teams|_{30}/, 'no Teams joining details left');
+  assert.ok(notes.startsWith('Hi everybody, we’ll meet at the office at 8:00.\n\nThere is a Google Meet link in this invitation if you can’t come in person.\n\nThe agenda and documents: '), notes);
+  assert.match(notes, /one-time code\.\n\nPark in the back lot\.\nUse the side door\.\n\nYour reply/);
+  assert.equal(r.body.meeting.video, 'https://meet.google.com/abc-defg-hij');
+  // Sent again: one call, the same notes, nothing cleared twice
+  g.calls = [];
+  await adminApi(FOUNDER, { action: 'send-invite', id: m.id });
+  assert.ok(!calWrites(g).some((c) => c.body && 'conferenceData' in c.body && c.body.conferenceData === null));
+  assert.equal(g.events[FOUNDER].find((e) => e.id === 'hol4').description, notes);
+  // HTML notes (as Google keeps them once edited in Calendar) lose the block the same way; a bare Zoom link line goes too
+  assert.equal(withoutCall(`<b>Dinner</b><br>${rule}<br><b>Microsoft Teams</b> Need help?<br>Join: <a href="https://teams.microsoft.com/l/x">x</a><br>${rule}`), '<b>Dinner</b><br>');
+  assert.equal(withoutCall('Dinner\nhttps://us02web.zoom.us/j/123\nSee you'), 'Dinner\n\nSee you');
 });
 
 // ─── Attendance from Google Meet ────────────────────────────────────

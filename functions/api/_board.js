@@ -882,10 +882,11 @@ function meetingFacts(m, more = []) {
     ['When', esc(whenOf(m))],
     ['Where', esc(placeOf(m))],
     ['Video', m.video ? `${esc(callName(m.video))}: <a class="lnk" href="${esc(m.video)}" style="color:#2B6CB0;">${esc(bareLink(m.video))}</a>` : ''],
+    ['Notes', m.inviteNote ? esc(m.inviteNote).replace(/\n/g, '<br>') : ''],
     ...more,
   ]);
 }
-const factsText = (m) => [`When: ${whenOf(m)}`, placeOf(m) && `Where: ${placeOf(m)}`, m.video && `Video (${callName(m.video)}): ${m.video}`].filter(Boolean).join('\n');
+const factsText = (m) => [`When: ${whenOf(m)}`, placeOf(m) && `Where: ${placeOf(m)}`, m.video && `Video (${callName(m.video)}): ${m.video}`, m.inviteNote && `Notes: ${m.inviteNote}`].filter(Boolean).join('\n');
 
 /**
  * "Will you be there?" as three buttons: a member's own one-tap answers
@@ -1074,12 +1075,15 @@ export const NOTES_START = 'The agenda and documents:';
 export const OLD_NOTES_STARTS = ['The agenda and the packet are on the board page:'];
 /**
  * What a meeting's calendar invite says: the way to its page (the agenda and every document are there, to read,
- * present or print) and that replies count. Nothing else, so the agenda changing never touches the invite.
+ * present or print), the notes typed for it in Board (parking and the like), and that replies count. Nothing else,
+ * so the agenda changing never touches the invite. The notes stay after NOTES_START, in Board's part, so a change
+ * replaces them on the organizer's own event instead of adding them twice (withNotes in ./_board-invite.js)
  */
 export function inviteNotes(m) {
   return [
     `${NOTES_START} ${meetingUrl(m)}`,
     'Sign in with the email address this invite came to; you’ll get a one-time code.',
+    ...(m.inviteNote ? ['', m.inviteNote] : []),
     '',
     'Your reply to this invite shows on the board page.',
   ].join('\n');

@@ -44,7 +44,7 @@ import { ReportEditor, Report } from './board-report.js';
 import { BOOKS_TITLES } from './board/books.js';
 
 // What a person edits (the server keeps files, the packet's numbers and sent records, and done ticks)
-const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
+const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'inviteNote', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
 const editable = (m) => {
   const c = cleanMeeting(m);
   // Who wrote a report when is the server's to say (_board.js stampReports), never a change to save
@@ -343,6 +343,8 @@ function WhenWhere({ m, set, ctx, closeWhere }) {
       </div>
       <div class="form-group span-3"><label class="form-label" for="bd-title">Name</label><input id="bd-title" class="form-input" value=${m.title} placeholder=${meetingName({ ...m, title: '' })} aria-describedby="bd-title-hint" onInput=${(e) => set({ title: e.target.value })} />
         <p class="form-hint bm-hint" id="bd-title-hint">${m.title ? 'Empty it to go back to the quarter’s name.' : `Left empty, it’s the “${meetingName({ ...m, title: '' })}”.`}</p></div>
+      <div class="form-group span-3"><label class="form-label" for="bd-invite-note">Notes for the invite</label><textarea id="bd-invite-note" class="form-textarea" rows="2" maxlength="1000" value=${m.inviteNote} placeholder="Parking, which door to use, a gate code" aria-describedby="bd-invite-note-hint" onInput=${(e) => set({ inviteNote: e.target.value })}></textarea>
+        <p class="form-hint bm-hint" id="bd-invite-note-hint">On the calendar invite${fromCal ? ` under ${whose} own notes` : ''}, the board page and the meeting emails. A change updates the invite without emailing anyone.</p></div>
     </div>
   </div>`;
 }

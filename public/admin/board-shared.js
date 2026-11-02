@@ -345,6 +345,8 @@ export function cleanMeeting(raw = {}) {
     title: one(raw.title, LIMITS.title) === one(raw.calendar?.title, 200) ? '' : one(raw.title, LIMITS.title),
     location: one(raw.location, 200),
     address: one(raw.address, 300),
+    // Typed in Board for the calendar invite (parking, which door, a gate code); the board page and emails show it too
+    inviteNote: str(raw.inviteNote, 1000),
     video: httpUrl(raw.video),
     shared: bool(raw.shared),
     // The calendar brought it in, but it isn't a board meeting (a coffee, a reminder, another organization's
@@ -1311,10 +1313,10 @@ function mergeList(base = [], mine = [], theirs = [], key = (x) => x.id, label =
 export function mergeMeeting(base, mine, theirs, { prefer = 'mine' } = {}) {
   const merged = { ...theirs };
   const clashes = [];
-  for (const f of ['date', 'start', 'end', 'title', 'location', 'address', 'video', 'shared', 'minutes', 'approvedOn']) {
+  for (const f of ['date', 'start', 'end', 'title', 'location', 'address', 'inviteNote', 'video', 'shared', 'minutes', 'approvedOn']) {
     const r = pick3(base[f], mine[f], theirs[f], prefer);
     merged[f] = r.value;
-    if (r.clash) clashes.push({ date: 'the date', start: 'the time', end: 'the time', title: 'the name', location: 'the place', address: 'the address', video: 'the video link', shared: 'sharing', minutes: 'the minutes status', approvedOn: 'the minutes status' }[f]);
+    if (r.clash) clashes.push({ date: 'the date', start: 'the time', end: 'the time', title: 'the name', location: 'the place', address: 'the address', inviteNote: 'the invite notes', video: 'the video link', shared: 'sharing', minutes: 'the minutes status', approvedOn: 'the minutes status' }[f]);
   }
   // The agenda: sections in my order, each section's items merged one by one
   const secs = mergeList(base.sections, mine.sections, theirs.sections, (s) => s.id, (s) => `the section “${s.title}”`, ['items'], prefer);
