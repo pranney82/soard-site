@@ -18,7 +18,7 @@ import {
   meetingName, longDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, itemFiles, looseFiles, fileTitle, isDate, clock, sectionPlan, MORE,
   showsOf, booksDraw, isStatement,
 } from '../board-shared.js';
-import { moneyFor, moneyTiles, mixOf, shareOf, changeOf, storeOf, storeChange } from './money.js';
+import { moneyFor, moneyTiles, mixOf, shareOf, changeOf, storeOf, storeChange, budgetMonthsText, stepText } from './money.js';
 import { reportDom } from '../board-report.js';
 import { h, render } from '../vendor.js';
 import { YearCompare, changeWords } from './books.js';
@@ -115,19 +115,26 @@ const fullDate = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateStri
 const shortDay = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
 const signed = (n) => (typeof n === 'number' ? `${n < 0 ? '−' : ''}${n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).replace('-', '')}` : '–');
 /** The statements from QuickBooks on paper, every line (numbers.books.statements), beside the same day a year before */
-function statementsBox(s) {
+function statementsBox(s, budget = null) {
   if (!s?.position?.length && !s?.activity?.length) return null;
   const box = el('div', 'bpp-stmts');
   box.append(el('p', 'bpp-stmts__when', `From QuickBooks, as of ${fullDate(s.asOf)}, beside ${fullDate(s.priorAsOf)}.`));
   const short = shortDay(s.asOf).replace(/, \d{4}$/, '');
-  for (const [title, rows] of [['Statement of financial position', s.position], [`Statement of activities, January 1 to ${short}`, s.activity]]) {
+  // QuickBooks' budget (the board's) against the activities, to the same day: the actual, the budget, over (under)
+  const bud = budget?.rows?.length && budget.asOf === s.asOf ? budget : null;
+  const over = (a, b) => (typeof a === 'number' && typeof b === 'number' ? (a === b ? '–' : `${a > b ? '+' : '−'}${signed(Math.abs(a - b))}`) : '–');
+  for (const [title, rows, heads] of [
+    ['Statement of financial position', s.position],
+    [`Statement of activities, January 1 to ${short}`, s.activity],
+    ...(bud ? [[`Budget against actual, January 1 to ${short} (QuickBooks’ ${bud.name}, ${budgetMonthsText(bud.months)} of ${bud.of} months${stepText(bud.step)})`, bud.rows.map((r) => ({ ...r, p: r.b })), ['Actual', 'Budget', 'Over (under)']]] : []),
+  ]) {
     if (!rows?.length) continue;
     const prior = rows.some((r) => r.p != null);
     const t = el('table', 'bpp-stmt');
     t.append(el('caption', '', title));
     const head = el('tr');
-    head.append(el('th', ''), el('th', 'num', shortDay(s.asOf)));
-    if (prior) head.append(el('th', 'num', shortDay(s.priorAsOf)), el('th', 'num', 'Change'));
+    head.append(el('th', ''), el('th', 'num', heads ? heads[0] : shortDay(s.asOf)));
+    if (prior) head.append(el('th', 'num', heads ? heads[1] : shortDay(s.priorAsOf)), el('th', 'num', heads ? heads[2] : 'Change'));
     const thead = el('thead'); thead.append(head);
     const tbody = el('tbody');
     for (const r of rows) {
@@ -136,7 +143,7 @@ function statementsBox(s) {
       th.style.paddingLeft = `${r.d * 0.8}em`;
       tr.append(th);
       if (r.k === 'head') th.colSpan = prior ? 4 : 2;
-      else { tr.append(el('td', 'num', signed(r.a))); if (prior) tr.append(el('td', 'num', signed(r.p)), el('td', 'num', changeWords(r.a, r.p) || '–')); }
+      else { tr.append(el('td', 'num', signed(r.a))); if (prior) tr.append(el('td', 'num', signed(r.p)), el('td', 'num', heads ? over(r.a, r.p) : changeWords(r.a, r.p) || '–')); }
       tbody.append(tr);
     }
     t.append(thead, tbody);
@@ -190,7 +197,7 @@ function liveBox(kind, n, m, money) {
   if (kind === 'cash') {
     // The figures, the year against last year, where the revenue came from, the store, then the statements the packet
     // holds (QuickBooks', as of the books' close)
-    const parts = [moneyBox(n, money), yearBox(n?.books), revenueBox(n?.books), storeBox(n?.books), statementsBox(n?.books?.statements)].filter(Boolean);
+    const parts = [moneyBox(n, money), yearBox(n?.books), revenueBox(n?.books), storeBox(n?.books), statementsBox(n?.books?.statements, n?.books?.budget)].filter(Boolean);
     if (parts.length < 2) return parts[0] || null;
     const box = el('div', 'bpp-money');
     box.append(...parts);

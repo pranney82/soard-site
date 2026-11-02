@@ -16,13 +16,15 @@
 
 import { h, htm, useState } from '../vendor.js';
 import { money, shortDate } from '../board-shared.js';
-import { compact, storeOf, storeChange } from './money.js';
+import { compact, storeOf, storeChange, budgetMonthsText } from './money.js';
 
 const html = htm.bind(h);
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const MONTH = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const dayMonth = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' }) : '');
 
+/** A budget's over (under), in dollars: "+$217K", "−$12K", "Even" */
+const overWords = (a, b) => (typeof a === 'number' && typeof b === 'number' ? (Math.round(a) === Math.round(b) ? 'Even' : `${a > b ? '+' : '−'}${compact(Math.abs(a - b))}`) : '–');
 /** "▲ 25%" against last year ('Even', or '' with nothing to set it beside) */
 export const changeWords = (a, p) => {
   if (!(typeof a === 'number' && typeof p === 'number' && p > 0)) return '';
@@ -162,22 +164,22 @@ export function YearCompare({ books, idp = 'by', tall = false }) {
 }
 
 /** A statement's main lines (each heading, its total, the sums) or every line, beside the same day a year before */
-export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '' }) {
+export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', heads = null }) {
   if (!rows?.length) return null;
   const prior = rows.some((r) => r.p != null);
   const shown = all ? rows : rows.filter((r) => r.k === 'sum' || (r.k === 'head' && r.d === 0) || (r.k === 'total' && r.d <= 1));
   const cols = prior ? 4 : 2;
   const signed = (v) => (typeof v === 'number' ? (v < 0 ? `(${money(-v)})` : money(v)) : '');
   return html`<table class=${`by-stmt ${cls}`}>
-    <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${shortDate(priorAsOf)}</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
+    <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${heads ? heads[0] : shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${heads ? heads[1] : shortDate(priorAsOf)}</th><th scope="col" class="num">${heads ? heads[2] : 'Change'}</th>` : null}</tr></thead>
     <tbody>${shown.map((r, i) => (r.k === 'head'
       ? html`<tr class="by-stmt__h" key=${i}><th scope="colgroup" colspan=${cols}>${r.label}</th></tr>`
-      : html`<tr class=${`by-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`}><th scope="row">${r.label}</th><td class="num">${signed(r.a)}</td>${prior ? html`<td class="num by-stmt__prior">${signed(r.p)}</td><td class="num by-stmt__chg">${changeWords(r.a, r.p) || (typeof r.a === 'number' && typeof r.p === 'number' ? (r.a >= r.p ? '+' : '−') + compact(Math.abs(r.a - r.p)) : '–')}</td>` : null}</tr>`))}</tbody>
+      : html`<tr class=${`by-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`}><th scope="row">${r.label}</th><td class="num">${signed(r.a)}</td>${prior ? html`<td class="num by-stmt__prior">${signed(r.p)}</td><td class="num by-stmt__chg">${heads ? overWords(r.a, r.p) : changeWords(r.a, r.p) || (typeof r.a === 'number' && typeof r.p === 'number' ? (r.a >= r.p ? '+' : '−') + compact(Math.abs(r.a - r.p)) : '–')}</td>` : null}</tr>`))}</tbody>
   </table>`;
 }
 
 /** What a 'books' stop is called (the chair's run of show, the screen's foot) */
-export const BOOKS_TITLES = { year: 'The year against last year', store: 'The store', act: 'Statement of activities', pos: 'Statement of financial position' };
+export const BOOKS_TITLES = { year: 'The year against last year', store: 'The store', act: 'Statement of activities', budget: 'Budget against actual', pos: 'Statement of financial position' };
 
 /** One of QuickBooks' slides after the money, at the size of a room (the screen is dark: its colors are its own) */
 export function BooksSlide({ books, kind }) {
@@ -203,6 +205,15 @@ export function BooksSlide({ books, kind }) {
         { k: 'line', d: 0, label: 'Expenses', a: books.expenses, p: books.lastYear?.expenses },
         { k: 'sum', d: 0, label: 'Net', a: books.net, p: books.lastYear?.net },
       ]} asOf=${books.through} priorAsOf=${books.lastYear?.through} cls="is-big" />`}
+    </div>`;
+  }
+  if (kind === 'budget') {
+    // QuickBooks' budget (the board's) against the actuals, to the statements' day: the main lines, over (under) beside each
+    const b = books?.budget;
+    return html`<div class="by-slide">
+      <p class="bs-eyebrow">QuickBooks’ budget, ${b?.name}, through ${dayMonth(b?.asOf)}${b ? `: ${budgetMonthsText(b.months)} of ${b.of} months` : ''}</p>
+      <h1 class="bs-display by-slide__title">Budget against actual, January 1 to ${dayMonth(b?.asOf)}</h1>
+      <${StatementLines} rows=${(b?.rows || []).map((r) => ({ ...r, p: r.b }))} heads=${['Actual', 'Budget', 'Over (under)']} cls="is-big" />
     </div>`;
   }
   const act = kind === 'act';

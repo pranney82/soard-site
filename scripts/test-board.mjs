@@ -1319,7 +1319,10 @@ try {
   const statements = { asOf: day(-30), closed: false, priorAsOf: `${yr - 1}${day(-30).slice(4)}`,
     position: [{ k: 'head', label: 'Assets', d: 0 }, { k: 'total', label: 'Total Bank Accounts', d: 1, a: 608532, p: 655431 }, { k: 'total', label: 'TOTAL ASSETS', d: 0, a: 870767, p: 794994 }],
     activity: [{ k: 'head', label: 'Income', d: 0 }, { k: 'total', label: 'Total Income', d: 0, a: 1884217, p: 1909703 }, { k: 'sum', label: 'Net Income', d: 0, a: 189248, p: 176000 }] };
-  await DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at) VALUES (?, ?, ?, ?, ?)').bind('qbo', JSON.stringify({ shape: 3, day: day(0), lastYear: lastBooks, trailing: null, months: [], statements, functions: null, monthly }), day(0), readAt, readAt).run();
+  // QuickBooks' budget against the actuals to the statements' day (_quickbooks.js budgetOf): the board's budget
+  const budget = { name: 'Budget_FY26_P&L', from: `${yr}-01-01`, to: `${yr}-12-31`, asOf: day(-30), step: 1, monthly: true, months: 10, of: 12, totals: { revenue: 2000000, spending: 1500000, nonCash: 200000 },
+    rows: [{ k: 'head', label: 'Income', d: 0 }, { k: 'acct', label: 'Individual/Corporate Revenue', d: 1, a: 700000, b: 500000, y: 600000 }, { k: 'total', label: 'Total Income', d: 0, a: 1884217, b: 1666667, y: 2000000 }, { k: 'sum', label: 'Net Income', d: 0, a: 189248, b: 150000, y: 180000 }] };
+  await DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at) VALUES (?, ?, ?, ?, ?)').bind('qbo', JSON.stringify({ shape: 3, day: day(0), lastYear: lastBooks, trailing: null, months: [], statements, functions: null, monthly, budget }), day(0), readAt, readAt).run();
   for (const width of [1440, 390]) {
     const money = await tab(MEMBER, width);
     await money.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
@@ -1328,6 +1331,9 @@ try {
     // Five categories by name; Golf Classic at 1.6% folds in with rent, interest and the rest
     ok(JSON.stringify(key) === JSON.stringify(['Donations$700K37%', 'Store sales$415K22%', 'Gala$400K21%', 'In kind$220K12%', 'Grants$90K5%', 'Everything else$51K3%']), `Home at ${width}: donations, store sales, gala, in kind and grants, each with its amount and share; the small ones as Everything else (${JSON.stringify(key)})`);
     ok(await overflow(money) <= 0, `Home at ${width}: the categories fit`);
+    // The year against QuickBooks' budget (the board's): revenue against the year's, expenses against its spending less the in kind
+    const against = await money.evaluate(() => [...document.querySelectorAll('.bp-fig')].map((f) => f.textContent.replace(/\s+/g, ' ')).filter((t) => /revenue|expenses/i.test(t)).join(' | '));
+    ok(/94% of the \$2M budget/.test(against) && /75% of the \$1.3M budget/.test(against), `Home at ${width}: revenue and expenses against QuickBooks’ budget (${against})`);
     // The store (_quickbooks.js storeOf: the accounts named for it): its sales, cost of goods and the profit between,
     // each against last year by now; the profit says it's before the staff and rent the books keep with SOARD's
     const store = await money.$$eval('.bp-sum__store .bp-store li', (l) => l.map((x) => [...x.children].map((c) => c.textContent).join(' | ')));
@@ -1346,6 +1352,10 @@ try {
       const firstStmt = await money.evaluate(() => [...document.querySelectorAll('#st-h ~ * .bp-stmt__title, .bp-latest .bp-stmt__title')].map((t) => t.textContent));
       await clickText(money, '.bp-stmts button', /^Financial position$/);
       ok(firstStmt.length === 1 && /^Statement of activities/.test(firstStmt[0]) && await money.waitForFunction(() => { const t = [...document.querySelectorAll('.bp-latest .bp-stmt__title')].map((x) => x.textContent); return t.length === 1 && t[0] === 'Statement of financial position' && /TOTAL ASSETS/.test(document.querySelector('.bp-latest .bp-stmt').textContent); }, { timeout: 2000 }).then(() => true, () => false), `Financials: one statement at a time, activities first, the position a tap away (${JSON.stringify(firstStmt)})`);
+      await clickText(money, '.bp-stmts button', /^Budget$/);
+      ok(await money.waitForFunction(() => { const t = document.querySelector('.bp-latest .bp-stmt__title')?.textContent || ''; const st = document.querySelector('.bp-latest .bp-stmt'); return /^Budget against actual, January 1 to /.test(t) && /ActualBudgetOver \(under\)/.test(st?.querySelector('thead')?.textContent || '') && /Total Income\$1,884,217\$1,666,667\+\$217,550/.test(st?.textContent || '') && /Budget_FY26_P&L, through .*: 10 of its 12 months/.test(document.querySelector('.bp-latest .bp-stmts__when')?.textContent || ''); }, { timeout: 2000 }).then(() => true, () => false), 'Financials: QuickBooks’ budget against the actuals, a tap from the statements, saying which budget and through when');
+      ok(/The budget: QuickBooks’ Budget_FY26_P&L\./.test(await money.$eval('#budget', (x) => x.textContent).catch(() => '')), 'Financials: the year against its budget names QuickBooks’ budget');
+      await shot(money, '27b-budget-financials');
       const year = await money.evaluate(() => [...document.getElementById('by-h').closest('.bp-card').querySelectorAll('tbody tr')].map((r) => r.textContent));
       // Read down it adds up: revenue less the cash spent and the in kind used is the net
       ok(year[0] === 'Revenue$1,876,045$1,500,000▲ 25%' && year[1] === 'Cash expenses$980,000$1,030,000▼ 5%' && year[2] === 'In kind expenses (not cash)$220,000$70,000▲ 214%' && year[3] === 'Net$676,045$400,000+$276,045' && 1876045 - 980000 - 220000 === 676045, `Financials: the year so far splits the in kind from the cash expenses, and adds up to QuickBooks’ net (${JSON.stringify(year)})`);
@@ -1379,6 +1389,7 @@ try {
       const paper = await money.evaluate(() => ({ segs: document.querySelectorAll('.bpp-mix__bar span').length, rows: [...document.querySelectorAll('.bpp-mix tbody tr')].map((r) => r.textContent) }));
       ok(paper.segs === 6 && paper.rows.length === 6 && paper.rows[1] === 'Store sales$415,00022%$830,000▼ 50%', `Print it all: where the revenue came from, beside last year (${JSON.stringify(paper.rows.slice(0, 2))})`);
       const storePaper = await money.evaluate(() => [...document.querySelectorAll('.bpp-store tbody tr')].map((r) => r.textContent));
+      ok(await money.evaluate(() => [...document.querySelectorAll('.bpp-stmt caption')].some((c) => /^Budget against actual, January 1 to .*Budget_FY26_P&L/.test(c.textContent))), 'Print it all: QuickBooks’ budget against the actuals after the statements');
       ok(JSON.stringify(storePaper) === JSON.stringify(['Sales$415,000$830,000▼ 50%', 'Cost of goods$250,000$380,000▼ 34%', 'Profit before staff and rent$165,000$450,000▼ $285K']), `Print it all: the store beside last year (${JSON.stringify(storePaper)})`);
       await money.evaluate(() => dispatchEvent(new Event('afterprint')));
       // On the screen: QuickBooks' slides after the money, each a stop the chair puts up from the run of show
@@ -1401,6 +1412,9 @@ try {
       await slide(/Statement of financial position/);
       ok(await qb.waitForFunction(() => /^Statement of financial position/.test(document.querySelector('.by-slide__title')?.textContent || '') && /▲|▼/.test(document.querySelector('.by-stmt')?.textContent || ''), { timeout: 15000 }).then(() => true, () => false), 'then the financial position, with the change');
       await shot(qb, '28b-screen-books-position');
+      await slide(/^QBBudget against actual/);
+      ok(await qb.waitForFunction(() => /^Budget against actual, January 1 to /.test(document.querySelector('.by-slide__title')?.textContent || '') && /Total Income/.test(document.querySelector('.by-stmt')?.textContent || '') && /Over \(under\)/.test(document.querySelector('.by-stmt thead')?.textContent || ''), { timeout: 15000 }).then(() => true, () => false), 'the screen: QuickBooks’ budget against the actuals, a slide of its own');
+      await shot(qb, '28c-screen-books-budget');
       await slide(/Upcoming reveals/);
       ok(await qb.waitForFunction(() => document.querySelector('.bs-item__title')?.textContent === 'Upcoming reveals', { timeout: 15000 }).then(() => true, () => false), 'an item’s second show, a slide of its own');
       await shot(qb, '28c-screen-second-show');

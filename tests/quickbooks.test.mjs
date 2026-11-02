@@ -681,6 +681,84 @@ test('where the money came from: the income accounts by category, the way SOARD�
   assert.deepEqual(revenueKind('Other Income'), { key: 'other', name: 'Other income' });
 });
 
+test('the budget against the actuals: QuickBooks’ budget line for line with the Profit and Loss, by account id, to the statements’ day and for the year', async () => {
+  const { budgetOf, pickBudget, budgetYear } = await import('../functions/api/_quickbooks.js');
+  // SOARD's Profit and Loss (made-up amounts) the way QuickBooks sends it, each account with its id
+  const acct = (id, label, value) => ({ type: 'Data', ColData: [{ value: label, id }, { value }] });
+  const group = (label, rows, total, g = undefined, id = undefined) => ({ type: 'Section', ...(g ? { group: g } : {}), Header: { ColData: [{ value: label, ...(id ? { id } : {}) }, { value: '' }] }, Rows: { Row: rows }, Summary: { ColData: [{ value: `Total ${label}` }, { value: total }] } });
+  const sum = (g, label, value) => ({ type: 'Section', group: g, Summary: { ColData: [{ value: label }, { value }] } });
+  const report = { Rows: { Row: [
+    group('Income', [
+      group('4000 Revenue', [acct('80', '4010 Individual/Corporate Revenue', '728501.72'), acct('81', '4020 Grant Revenue', '141750.00')], '870251.72', undefined, '79'),
+      group('4300 Other Contribution', [acct('86', '4320 In-Kind Contribution', '242778.95')], '242778.95'),
+    ], '1113030.67', 'Income'),
+    group('Cost of Goods Sold', [acct('90', '5210 Store COGS', '271420.14'), acct('91', '5320 In-Kind Contribution Expense', '242778.95')], '514199.09', 'COGS'),
+    sum('GrossProfit', 'Gross Profit', '598831.58'),
+    group('Expenses', [group('6010 Payroll Expense', [acct('100', '6011 Salary Expense', '475793.34')], '476793.34', undefined, '99')], '476793.34', 'Expenses'),
+    sum('NetOperatingIncome', 'Net Operating Income', '122038.24'),
+    group('Other Income', [acct('120', '7010 Interest Income', '44.20')], '44.20', 'OtherIncome'),
+    sum('NetOtherIncome', 'Net Other Income', '44.20'),
+    sum('NetIncome', 'Net Income', '122082.44'),
+  ] } };
+  // The budget by the month, January to December: $50,000 a month of gifts, the in kind both ways, salaries, and a
+  // merchant fee budgeted with nothing spent on it yet
+  const months = (id, name, each) => Array.from({ length: 12 }, (_, i) => ({ AccountRef: { value: id, name }, BudgetDate: `2026-${String(i + 1).padStart(2, '0')}-01`, Amount: each }));
+  const fy26 = { Name: 'Budget_FY26_P&L', StartDate: '2026-01-01', EndDate: '2026-12-31', BudgetType: 'ProfitAndLoss', BudgetEntryType: 'Yearly', Active: true, BudgetDetail: [
+    ...months('80', 'Revenue:Individual/Corporate Revenue', 50000), ...months('86', 'Other Contribution:In-Kind Contribution', 25000), ...months('91', 'In-Kind Contribution Expense', 25000),
+    ...months('100', 'Payroll Expense:Salary Expense', 44000), ...months('105', 'Merchant Fee Expense', 40),
+  ] };
+  // Each account's QuickBooks type (the daily read asks once): what group a budgeted account with nothing on it goes in
+  const types = new Map([['80', 'Income'], ['81', 'Income'], ['86', 'Income'], ['90', 'Cost of Goods Sold'], ['91', 'Cost of Goods Sold'], ['100', 'Expense'], ['105', 'Expense'], ['120', 'Other Income']]);
+  const b = budgetOf([fy26], report, '2026-10-31', types);
+  assert.deepEqual([b.name, b.from, b.to, b.asOf, b.step, b.monthly, b.months, b.of], ['Budget_FY26_P&L', '2026-01-01', '2026-12-31', '2026-10-31', 1, true, 10, 12]);
+  const row = (label) => b.rows.find((r) => r.label === label);
+  assert.deepEqual(row('Individual/Corporate Revenue'), { k: 'acct', label: 'Individual/Corporate Revenue', d: 2, a: 728501.72, b: 500000, y: 600000 }, 'ten months of its budget, and the year’s');
+  assert.deepEqual(row('Grant Revenue'), { k: 'acct', label: 'Grant Revenue', d: 2, a: 141750, b: 0, y: 0 }, 'an account with no budget still shows');
+  assert.deepEqual(row('Merchant Fee Expense'), { k: 'acct', label: 'Merchant Fee Expense', d: 1, a: 0, b: 400, y: 480 }, 'budgeted, nothing on it yet: in its group');
+  assert.deepEqual(b.rows.find((r) => r.label === 'Payroll Expense' && r.k === 'acct'), { k: 'acct', label: 'Payroll Expense', d: 2, a: 1000, b: 0, y: 0 }, 'a parent account’s own figures on a line of their own');
+  assert.deepEqual(row('Total Income'), { k: 'total', label: 'Total Income', d: 0, a: 1113030.67, b: 750000, y: 900000 });
+  assert.deepEqual(row('Total Expenses'), { k: 'total', label: 'Total Expenses', d: 0, a: 476793.34, b: 440400, y: 528480 });
+  // Gross profit and the nets are the groups' budgets: 750,000 − 250,000 = 500,000; less 440,400; plus no other income budgeted
+  assert.deepEqual(row('Gross Profit'), { k: 'sum', label: 'Gross Profit', d: 0, a: 598831.58, b: 500000, y: 600000 });
+  assert.deepEqual(row('Net Income'), { k: 'sum', label: 'Net Income', d: 0, a: 122082.44, b: 59600, y: 71520 });
+  assert.deepEqual(b.totals, { revenue: 900000, spending: 828480, nonCash: 300000 }, 'the year’s revenue and spending, the in kind said apart');
+  // A budget QuickBooks keeps by the year: the year's spread evenly to the day
+  const yearly = { ...fy26, BudgetDetail: [{ AccountRef: { value: '80', name: 'Individual/Corporate Revenue' }, BudgetDate: '2026-01-01', Amount: 600000 }] };
+  const y = budgetOf([yearly], report, '2026-10-31', types);
+  assert.deepEqual([y.step, y.monthly], [12, false]);
+  assert.equal(y.rows.find((r) => r.label === 'Individual/Corporate Revenue').b, 500000);
+  // A report without ids: matched by name (the budget names a sub-account "Parent:Child")
+  const plain = JSON.parse(JSON.stringify(report).replace(/,"id":"\d+"/g, ''));
+  assert.equal(budgetOf([fy26], plain, '2026-10-31', types).rows.find((r) => r.label === 'Salary Expense').b, 440000);
+  // By the quarter: each quarter counts for the part of it gone by (August 31: Q1, Q2, two thirds of Q3)
+  const quarterly = { ...fy26, BudgetDetail: ['01', '04', '07', '10'].map((m) => ({ AccountRef: { value: '80', name: 'Individual/Corporate Revenue' }, BudgetDate: `2026-${m}-01`, Amount: 300000 })) };
+  const q = budgetOf([quarterly], report, '2026-08-31', types);
+  assert.deepEqual([q.step, q.months, q.rows.find((r) => r.label === 'Individual/Corporate Revenue').b], [3, 8, 800000]);
+  // The books closed mid-month: that month counts for its days gone by (October 15: nine months and 15/31 of October)
+  const mid = budgetOf([fy26], report, '2026-10-15', types);
+  assert.equal(mid.months, 9.5);
+  assert.equal(mid.rows.find((r) => r.label === 'Individual/Corporate Revenue').b, Math.round((450000 + 50000 * 15 / 31) * 100) / 100);
+  // A budgeted sub-account with nothing on it yet goes under its parent when the report has it
+  const sub = { ...fy26, BudgetDetail: [...fy26.BudgetDetail, ...months('107', 'Payroll Expense:Bonus Expense', 1000)] };
+  const withSub = budgetOf([sub], report, '2026-10-31', new Map([...types, ['107', 'Expense']]));
+  const at = withSub.rows.findIndex((r) => r.label === 'Bonus Expense');
+  assert.deepEqual([withSub.rows[at].d, withSub.rows.slice(0, at).reverse().find((r) => r.k === 'head').label], [2, 'Payroll Expense']);
+  // Which budget: SOARD's year's (January to December, whatever QuickBooks' own fiscal year), a whole one before one
+  // split by location, then the one changed last
+  const split = { ...fy26, Name: 'Store', BudgetDetail: fy26.BudgetDetail.map((x) => ({ ...x, DepartmentRef: { value: '1' } })) };
+  const old = { ...fy26, Name: 'FY25', StartDate: '2025-01-01', EndDate: '2025-12-31' };
+  const augJul = { ...fy26, Name: 'FY27 (Aug–Jul)', StartDate: '2026-08-01', EndDate: '2027-07-31', BudgetDetail: [...fy26.BudgetDetail, ...months('81', 'Grant Revenue', 1)] };
+  const revised = { ...fy26, Name: 'Budget_FY26_P&L revised', MetaData: { LastUpdatedTime: '2026-08-04T10:00:00-07:00' } };
+  assert.equal(pickBudget([old, split, augJul, fy26], '2026-10-31').Name, 'Budget_FY26_P&L');
+  assert.equal(pickBudget([fy26, revised], '2026-10-31').Name, 'Budget_FY26_P&L revised', 'two for the year: the one changed last');
+  assert.equal(pickBudget([old, augJul], '2026-10-31'), null, 'a year that isn’t SOARD’s January to December: none');
+  assert.equal(budgetOf([old], report, '2026-10-31', types), null, 'no budget for the year: none');
+  // The year in brief for the board's figures: in January, this year's budget though the statements are December's
+  const fy27 = { ...fy26, Name: 'Budget_FY27_P&L', StartDate: '2027-01-01', EndDate: '2027-12-31', BudgetDetail: fy26.BudgetDetail.map((x) => ({ ...x, BudgetDate: x.BudgetDate.replace('2026', '2027') })) };
+  assert.deepEqual(budgetYear([fy26, fy27], '2027-01-10', types), { name: 'Budget_FY27_P&L', year: '2027', revenue: 900000, spending: 828480, nonCash: 300000 });
+  assert.equal(budgetYear([fy26], '2027-01-10', types), null);
+});
+
 test('what else the books keep, for Settings: each budget’s months and how it’s kept, locations and classes by name, never an amount', async () => {
   // SOARD's budget the way QuickBooks' query answers it (made-up amounts): a P&L budget by month, its fiscal year
   // starting in August, two accounts; locations off, classes on
@@ -693,7 +771,7 @@ test('what else the books keep, for Settings: each budget’s months and how it�
   const s = (await booksStatus(env)).connected.setup;
   assert.deepEqual(s, {
     tracking: { locations: false, locationWord: '', classes: true },
-    budgets: [{ name: 'Budget_FY26_P&L', type: 'ProfitAndLoss', by: 'Monthly', from: '2025-08-01', to: '2026-07-31', active: true, accounts: 2, splits: [] }],
+    budgets: [{ name: 'Budget_FY26_P&L', type: 'ProfitAndLoss', by: 'Monthly', from: '2025-08-01', to: '2026-07-31', active: true, accounts: 2, splits: [], months: 2, step: 1 }],
     locations: null, classes: ['Makeovers', 'Fundraising'],
   });
   assert.ok(!/50000|58333/.test(JSON.stringify(await booksStatus(env))), 'never an amount');

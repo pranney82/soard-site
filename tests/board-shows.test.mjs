@@ -45,6 +45,10 @@ test('each show is a stop; after the money QuickBooks’ slides, and its stateme
   assert.deepEqual(withStore.filter((k) => k.startsWith('i_fin1')), ['i_fin1', 'i_fin1:books:year', 'i_fin1:books:store', 'i_fin1:books:act', 'i_fin1:books:pos', 'i_fin1:f_bud1:0']);
   assert.deepEqual(booksDraw({ revenue: 1, store: { sales: 0, cost: 0, profit: 0 } }), [], 'a store at zero is no slide');
   assert.deepEqual(booksDraw({ revenue: 1, store: { sales: 1, cost: 0, profit: 1 } }), ['store'], 'nor is a store a statement: the year and statements stay their own');
+  // QuickBooks' budget against the actuals: after the activities, when it's to the statements' own day
+  const withBudget = { ...BOOKS, budget: { asOf: '2026-10-31', rows: [{ k: 'sum', d: 0, label: 'Net Income', a: 1, b: 2, y: 3 }] } };
+  assert.deepEqual(booksDraw(withBudget), ['year', 'act', 'budget', 'pos']);
+  assert.deepEqual(booksDraw({ ...withBudget, budget: { ...withBudget.budget, asOf: '2026-09-30' } }), ['year', 'act', 'pos'], 'a budget to another day isn’t set beside these statements');
   assert.deepEqual(booksDraw({ revenue: 1 }), [], 'no year to set it beside, no statements: none');
   assert.deepEqual(booksDraw(null), []);
 });

@@ -31,7 +31,7 @@ function Setup({ s }) {
   const list = Array.isArray(s.budgets) ? s.budgets.filter((b) => b.active) : null;
   const budgets = s.budgets?.error ? `QuickBooks didn’t give its budgets (${s.budgets.error}).`
     : !list?.length ? 'No budget in QuickBooks.'
-    : `${list.length === 1 ? 'Budget' : 'Budgets'} in QuickBooks: ${list.map((b) => [b.name, b.from && b.to ? `${monthYear(b.from)} to ${monthYear(b.to)}` : '', b.by ? b.by.toLowerCase() : '', `${b.accounts} account${b.accounts === 1 ? '' : 's'}${b.splits.length ? ` by ${b.splits.join(' and ')}` : ''}`].filter(Boolean).join(', ')).join('; ')}.`;
+    : `${list.length === 1 ? 'Budget' : 'Budgets'} in QuickBooks: ${list.map((b) => [b.name, b.from && b.to ? `${monthYear(b.from)} to ${monthYear(b.to)}` : '', b.step === 1 ? 'by the month' : b.step === 3 ? 'by the quarter' : b.months ? 'one figure for the year' : '', `${b.accounts} account${b.accounts === 1 ? '' : 's'}${b.splits.length ? ` by ${b.splits.join(' and ')}` : ''}`].filter(Boolean).join(', ')).join('; ')}.`;
   const kept = (on, word, names) => (!on ? `${word} are off.` : Array.isArray(names) ? `${word}: ${names.join(', ') || 'none yet'}.` : `${word} are on.`);
   // QuickBooks' own word for a location (Location, Department, Division, Business, Property, Territory…), made plural
   const plural = (w) => (/[^aeiou]y$/i.test(w) ? `${w.slice(0, -1)}ies` : /(s|x|ch|sh)$/i.test(w) ? `${w}es` : `${w}s`);
@@ -58,7 +58,7 @@ export function QuickBooks({ addToast = () => {} }) {
     if (said) addToast(...said);
   }, []);
 
-  const head = html`<div class="bd-card-head"><h3>QuickBooks</h3><p>The board page’s money from QuickBooks: the cash in the bank and the year’s revenue and expenses, read every hour; the statements, last year’s figures and each month’s cash, read once a day. Each meeting keeps its statements from its own day. The budget is the one in the newest packet. Amounts show on the board page only.</p></div>`;
+  const head = html`<div class="bd-card-head"><h3>QuickBooks</h3><p>The board page’s money from QuickBooks: the cash in the bank and the year’s revenue and expenses, read every hour; the statements, last year’s figures and each month’s cash, read once a day. Each meeting keeps its statements from its own day. The budget is QuickBooks’ own for the year (January to December); without one, the budget sheet in the newest packet. Amounts show on the board page only.</p></div>`;
   if (!d) return html`<div class="card">${head}<div class="area-loading"><span class="spinner" /></div></div>`;
   if (d.error) return html`<div class="card">${head}<div class="notice notice--warn" role="alert"><div class="notice__body">${d.error}</div><div class="notice__actions"><button class="btn btn-ghost btn-sm" onClick=${() => { setD(null); load(); }}>Try again</button></div></div></div>`;
 

@@ -407,6 +407,11 @@ a.bk-card:hover .bk-card__photo img { transform: scale(1.04); }
 .bp-impact__seg { flex: none; display: inline-flex; padding: 3px; border-radius: 999px; background: var(--warm); }
 .bp-impact__seg button { flex: none; white-space: nowrap; height: 32px; padding: 0 0.85rem; border: none; border-radius: 999px; background: none; font-size: 0.86rem; font-weight: 650; color: var(--muted); cursor: pointer; transition: background 0.2s, color 0.2s, box-shadow 0.2s; }
 .bp-impact__seg button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: var(--shadow-1); }
+/* The statements' three views on a phone: closer together, and never wider than their column */
+@media (max-width: 420px) {
+  .bp-stmts__top .bp-impact__seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .bp-stmts__top .bp-impact__seg button { padding: 0 0.6rem; font-size: 0.8rem; }
+}
 .bp-impact__explore { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(16rem, 1fr); gap: 1.5rem 2rem; align-items: start; }
 .bp-years { --bars: 12.4rem; --base: 1.6rem; position: relative; min-width: 0; padding-bottom: 1.6rem; }
 .bp-years__bars { list-style: none; margin: 0; padding: 1.6rem 0 0; height: 14rem; display: flex; align-items: flex-end; gap: 2px; border-bottom: 1px solid var(--line-2); }

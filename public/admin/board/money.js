@@ -215,14 +215,31 @@ export function withBooks(sheet, books) {
     year: same && sheet.label ? sheet.label : books.year, asOf: shortDate(books.through), live: true, at: books.at,
     revenue: line(books.revenue, sheet?.revenue, ly?.revenue, ly?.full?.revenue),
     expenses: { ...line(spentOf(books), sheet?.expenses, ...lyCash), inKind: books.nonCash > 0 ? books.nonCash : 0 }, programs: null,
-    meeting: sheet?.meeting || null, file: sheet?.file || null,
+    meeting: sheet?.meeting || null, file: sheet?.file || null, qbo: sheet?.qbo || '',
   };
 }
 export function useBudget(data, upTo = '', n = null) {
+  const books = booksFor(data, upTo, n);
+  const own = booksBudget(books);
   const [b, setB] = useState(undefined);
-  useEffect(() => { let on = true; readBudget(data, upTo).then((x) => { if (on) setB(x); }); return () => { on = false; }; }, [upTo]);
+  useEffect(() => { if (own) return undefined; let on = true; readBudget(data, upTo).then((x) => { if (on) setB(x); }); return () => { on = false; }; }, [upTo, !!own]);
+  if (own) return withBooks(own, books);
   // While the sheet is read, its budget is still to come: the figures wait for it rather than showing twice
-  return b === undefined ? b : withBooks(b, booksFor(data, upTo, n));
+  return b === undefined ? b : withBooks(b, books);
+}
+/**
+ * QuickBooks' own budget for the books' year (functions/api/_quickbooks.js budgetOf: the board's budget since Nov 2
+ * 2026), as a budget sheet reads (./withBooks): the year's revenue, and its spending without the in kind, the way SOARD's
+ * budget counts expenses. Null without one for that year (then the packet's sheet, as before)
+ */
+export function booksBudget(books) {
+  if (!books?.year) return null;
+  // This year's in brief (the daily read's budgetNow), else the statements' own when it's this year's
+  const now = books.budgetNow?.year === books.year ? books.budgetNow : null;
+  const st = !now && books.budget?.from === `${books.year}-01-01` ? { name: books.budget.name, ...books.budget.totals } : null;
+  const t = now || st;
+  if (!(t?.revenue > 0)) return null;
+  return { year: books.year, label: '', asOf: '', revenue: { budget: t.revenue }, expenses: { budget: Math.max(0, t.spending - (t.nonCash || 0)) }, programs: null, meeting: null, file: null, qbo: t.name };
 }
 export const pctOf = (x) => (x?.budget ? Math.round((x.actual / x.budget) * 100) : null);
 /** "31% by now last year": how much of last year's whole year had come in (or gone out) by this day, beside this year's share of its budget */
@@ -274,10 +291,17 @@ export function moneyTiles({ cash, budget, n, due = false }) {
 
 /** The cash and the budget at once, outside a component (Print it all): { cash, budget }, each null when there's none */
 export async function moneyFor(data, upTo = '', n = null) {
-  const [sheet, budget] = await Promise.all([readCash(data, upTo), readBudget(data, upTo)]);
+  // QuickBooks' own budget when the books have one for their year (as Home and the screen), else the packet's sheet
+  const books = booksFor(data, upTo, n);
+  const own = booksBudget(books);
+  const [sheet, budget] = await Promise.all([readCash(data, upTo), own ? null : readBudget(data, upTo)]);
   const now = !upTo || upTo >= todayEastern();
-  return { cash: cashToShow(now ? liveCash(data) : null, sheet, booksCash(data, now ? data.numbers?.books : n?.books)) || null, budget: withBooks(budget, booksFor(data, upTo, n)) };
+  return { cash: cashToShow(now ? liveCash(data) : null, sheet, booksCash(data, now ? data.numbers?.books : n?.books)) || null, budget: withBooks(own || budget, books) };
 }
+/** How a budget's months read: "10", "9.5" */
+export const budgetMonthsText = (m) => String(Math.round(m * 10) / 10);
+/** How QuickBooks keeps a budget, said after its months: by the month says nothing more */
+export const stepText = (step) => (step === 3 ? ', each quarter’s figure spread over its months' : step === 12 ? ', each month an even share of the year (QuickBooks keeps one figure for it)' : '');
 
 // ─── Where the revenue came from: QuickBooks' income accounts by category (functions/api/_quickbooks.js sourcesOf) ───
 // Home, a meeting's money item and Financials (./portal.js), the screen (./screen.js) and Print it all (./print.js).

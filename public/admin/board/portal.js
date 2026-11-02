@@ -38,7 +38,7 @@ import { Report, ReportEditor, readTime } from '../board-report.js';
 import { mdPlain, mdWords } from '../board-md.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
-import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue } from './money.js';
+import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue, budgetMonthsText as budgetMonths, stepText } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -2422,7 +2422,7 @@ const fullDate = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateStri
  * A statement from QuickBooks (./_quickbooks.js statementRows): each line with the same day a year before and the
  * change. Folded to the main lines and totals until "Every account" opens it
  */
-function Statement({ id, title, rows, asOf, priorAsOf }) {
+function Statement({ id, title, rows, asOf, priorAsOf, heads = null }) {
   const [all, setAll] = useKept(`${id}-all`, false);
   if (!rows?.length) return null;
   const prior = rows.some((r) => r.p != null);
@@ -2437,10 +2437,10 @@ function Statement({ id, title, rows, asOf, priorAsOf }) {
     </div>
     <div class="bp-stmt__scroll">
       <table class="bp-table bp-stmt__table" aria-labelledby=${id}>
-        <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${shortDate(priorAsOf)}</th><th scope="col" class="num bp-stmt__chg">Change</th>` : null}</tr></thead>
+        <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${heads ? heads[0] : shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${heads ? heads[1] : shortDate(priorAsOf)}</th><th scope="col" class="num bp-stmt__chg">${heads ? heads[2] : 'Change'}</th>` : null}</tr></thead>
         <tbody>${shown.map((r, i) => (r.k === 'head'
           ? html`<tr class="bp-stmt__h" key=${i}><th scope="colgroup" colspan=${cols} style=${`--d:${r.d}`}>${r.label}</th></tr>`
-          : html`<tr class=${`bp-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num bp-stmt__prior" data-label=${shortDate(priorAsOf)}>${signedMoney(r.p)}</td><td class="num bp-stmt__chg">${changeMoney(r.a, r.p)}</td>` : null}</tr>`))}</tbody>
+          : html`<tr class=${`bp-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num bp-stmt__prior" data-label=${heads ? heads[1] : shortDate(priorAsOf)}>${signedMoney(r.p)}</td><td class="num bp-stmt__chg">${changeMoney(r.a, r.p)}</td>` : null}</tr>`))}</tbody>
       </table>
     </div>
   </div>`;
@@ -2452,17 +2452,23 @@ function Statement({ id, title, rows, asOf, priorAsOf }) {
  */
 function Statements({ s, books, idp = 'st' }) {
   const [which, setWhich] = useKept(`${idp}-which`, 'act');
-  if (!s?.position?.length && !s?.activity?.length) return null;
-  const both = s.position?.length && s.activity?.length;
-  const show = both ? which : s.activity?.length ? 'act' : 'pos';
+  // The activities, QuickBooks' budget against them (the board's budget, functions/api/_quickbooks.js budgetOf), and
+  // the financial position: the ones the books have
+  const bud = books?.budget?.rows?.length && books.budget.asOf === s?.asOf ? books.budget : null;
+  const views = [['act', 'Activities', s?.activity?.length], ['bud', 'Budget', bud], ['pos', 'Financial position', s?.position?.length]].filter((v) => v[2]);
+  if (!views.length) return null;
+  const show = views.some((v) => v[0] === which) ? which : views[0][0];
+  const budWhen = bud ? `QuickBooks’ budget, ${bud.name}, through ${fullDate(bud.asOf)}: ${budgetMonths(bud.months)} of its ${bud.of} months${stepText(bud.step)}. Over (under) is the actual less the budget.` : '';
   return html`<div class="bp-stmts">
     <div class="bp-stmts__top">
-      <p class="bp-stmts__when">From QuickBooks, as of ${fullDate(s.asOf)}${s.closed ? ', the day the books are closed through' : ', the end of the last full month'}, beside the same day a year before.${books?.qboYearStarts ? ` QuickBooks’ settings start its year in ${books.qboYearStarts}, so its Net Income line counts from ${books.qboYearStarts} 1.` : ''}</p>
-      ${both ? html`<div class="bp-impact__seg bp-noprint" role="group" aria-label="Which statement">${[['act', 'Activities'], ['pos', 'Financial position']].map(([id, label]) => html`<button type="button" aria-pressed=${show === id} onClick=${() => setWhich(id)} key=${id}>${label}</button>`)}</div>` : null}
+      <p class="bp-stmts__when">${show === 'bud' ? budWhen : html`From QuickBooks, as of ${fullDate(s.asOf)}${s.closed ? ', the day the books are closed through' : ', the end of the last full month'}, beside the same day a year before.${books?.qboYearStarts ? ` QuickBooks’ settings start its year in ${books.qboYearStarts}, so its Net Income line counts from ${books.qboYearStarts} 1.` : ''}`}</p>
+      ${views.length > 1 ? html`<div class="bp-impact__seg bp-noprint" role="group" aria-label="Which statement">${views.map(([id, label]) => html`<button type="button" aria-pressed=${show === id} onClick=${() => setWhich(id)} key=${id}>${label}</button>`)}</div>` : null}
     </div>
     ${show === 'pos'
       ? html`<${Statement} id=${`${idp}-pos`} title="Statement of financial position" rows=${s.position} asOf=${s.asOf} priorAsOf=${s.priorAsOf} key="pos" />`
-      : html`<${Statement} id=${`${idp}-act`} title=${`Statement of activities, January 1 to ${dayMonth(s.asOf)}`} rows=${s.activity} asOf=${s.asOf} priorAsOf=${s.priorAsOf} key="act" />`}
+      : show === 'bud'
+        ? html`<${Statement} id=${`${idp}-bud`} title=${`Budget against actual, January 1 to ${dayMonth(bud.asOf)}`} rows=${bud.rows.map((r) => ({ ...r, p: r.b }))} heads=${['Actual', 'Budget', 'Over (under)']} key="bud" />`
+        : html`<${Statement} id=${`${idp}-act`} title=${`Statement of activities, January 1 to ${dayMonth(s.asOf)}`} rows=${s.activity} asOf=${s.asOf} priorAsOf=${s.priorAsOf} key="act" />`}
   </div>`;
 }
 
@@ -2565,6 +2571,7 @@ function BudgetCard({ b }) {
       <p class="bp-budget__sub">${nbw(`${pctOf(x)}% of the ${money(x.budget)} budget${paceText(x) ? ` · ${paceText(x)}` : ''}${x.inKind ? ` · not counting ${compact(x.inKind)} in kind` : ''}`)}</p>
     </li>`)}</ul>
     ${vf ? html`<p class="bp-note">The budget: <a class="bp-link" ...${viewerLink(vf, 0)}>${titleOf(b.file.name)}</a>${b.meeting ? html`, in the <a class="bp-link" href=${`#/meetings/${b.meeting.id}`} onClick=${claimMorph}>${meetingName(b.meeting)}</a> packet` : null}</p>` : null}
+    ${!vf && b.qbo ? html`<p class="bp-note">The budget: QuickBooks’ ${b.qbo}.</p>` : null}
   </section>`;
 }
 

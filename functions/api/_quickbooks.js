@@ -341,9 +341,9 @@ const cellText = (c) => cleanText(c?.value, 100);
 /** A QuickBooks report's rows as a tree: sections (a heading, their rows, a total), summary lines (Net Income), accounts */
 function treeOf(rows) {
   return (rows || []).map((r) => {
-    if (r.Header || r.Rows) return { kind: 'section', label: cellText(r.Header?.ColData?.[0]), group: r.group || '', kids: treeOf(r.Rows?.Row), total: num(r.Summary?.ColData?.at(-1)?.value), totalLabel: cellText(r.Summary?.ColData?.[0]) };
+    if (r.Header || r.Rows) return { kind: 'section', label: cellText(r.Header?.ColData?.[0]), id: cleanText(r.Header?.ColData?.[0]?.id, 20), group: r.group || '', kids: treeOf(r.Rows?.Row), total: num(r.Summary?.ColData?.at(-1)?.value), totalLabel: cellText(r.Summary?.ColData?.[0]) };
     if (r.Summary) return { kind: 'sum', label: cellText(r.Summary.ColData?.[0]), group: r.group || '', amount: num(r.Summary.ColData?.at(-1)?.value) };
-    return { kind: 'acct', label: cellText(r.ColData?.[0]), amount: num(r.ColData?.at(-1)?.value) };
+    return { kind: 'acct', label: cellText(r.ColData?.[0]), id: cleanText(r.ColData?.[0]?.id, 20), amount: num(r.ColData?.at(-1)?.value) };
   }).filter((n) => n.label || n.kind === 'section');
 }
 const keyOf = (n) => `${n.kind}:${n.group || n.label}`;
@@ -588,7 +588,7 @@ export function storeOf(report) {
  * needs to know which budget covers which months (QuickBooks' own year may not be SOARD's January to December), and the
  * store's own staff and rent need a location or class to be told apart
  */
-export async function setupOf(get, prefs = {}) {
+export async function setupOf(get, prefs = {}, read = undefined) {
   const ai = prefs.AccountingInfoPrefs || {};
   const tracking = { locations: ai.TrackDepartments === true, locationWord: cleanText(ai.DepartmentTerminology, 40), classes: ai.ClassTrackingPerTxn === true || ai.ClassTrackingPerTxnLine === true };
   const ask = async (entity, pick) => {
@@ -599,15 +599,161 @@ export async function setupOf(get, prefs = {}) {
     }
   };
   const named = (list) => list.filter((x) => x.Active !== false).map((x) => cleanText(x.FullyQualifiedName || x.Name, 80)).filter(Boolean);
-  const budgets = await ask('Budget', (list) => list.map((b) => {
+  const summary = (list) => list.map((b) => {
     const d = b.BudgetDetail || [];
     return {
       name: cleanText(b.Name, 80), type: cleanText(b.BudgetType, 40), by: cleanText(b.BudgetEntryType, 40), from: isDay(b.StartDate) ? b.StartDate : '', to: isDay(b.EndDate) ? b.EndDate : '', active: b.Active !== false,
       accounts: new Set(d.map((x) => x.AccountRef?.value).filter(Boolean)).size,
       splits: [['class', 'ClassRef'], ['location', 'DepartmentRef'], ['customer', 'CustomerRef']].filter(([, k]) => d.some((x) => x[k]?.value)).map(([w]) => w),
+      // How many months its figures are spread over, and the months each figure is for (1, 3, or 12: one for the year)
+      months: new Set(d.map((x) => String(x.BudgetDate || '').slice(0, 7)).filter(Boolean)).size,
+      step: (() => { const m = [...new Set(d.filter((x) => isDay(x.BudgetDate)).map((x) => monthNo(x.BudgetDate)))].sort((a, b) => a - b); return m.length > 1 ? Math.min(...m.slice(1).map((v, i) => v - m[i])) : 12; })(),
     };
-  }));
+  });
+  // (the budgets the daily read already has, or { error } when QuickBooks wouldn't give them)
+  let budgets;
+  try { budgets = read === undefined ? await ask('Budget', summary) : Array.isArray(read) ? summary(read) : read; } catch { budgets = { error: 'UNREADABLE' }; }
   return { tracking, budgets, locations: tracking.locations ? await ask('Department', named) : null, classes: tracking.classes ? await ask('Class', named) : null };
+}
+
+// The Profit and Loss's groups in its own order, and what each account type is a line of
+const PL_ORDER = ['Income', 'COGS', 'GrossProfit', 'Expenses', 'NetOperatingIncome', 'OtherIncome', 'OtherExpenses', 'NetOtherIncome', 'NetIncome'];
+const PL_NAMES = { Income: 'Income', COGS: 'Cost of Goods Sold', Expenses: 'Expenses', OtherIncome: 'Other Income', OtherExpenses: 'Other Expenses' };
+const GROUP_OF_TYPE = { Income: 'Income', 'Other Income': 'OtherIncome', 'Cost of Goods Sold': 'COGS', Expense: 'Expenses', 'Other Expense': 'OtherExpenses' };
+const monthNo = (d) => Number(d.slice(0, 4)) * 12 + Number(d.slice(5, 7)) - 1;
+const lastName = (s) => normName(String(s || '').split(':').at(-1));
+const accountsIn = (b) => new Set((b.BudgetDetail || []).map((x) => x.AccountRef?.value).filter(Boolean)).size;
+
+/**
+ * The budget the board goes by for `day`'s year: QuickBooks' Profit and Loss budget for SOARD's year (January 1 to
+ * December 31, whatever QuickBooks' own fiscal year says), active; a whole one (not split by class, location or
+ * customer) before a split one, then the one QuickBooks changed last, then the one with the most accounts; null without
+ */
+export function pickBudget(list, day) {
+  const y = day.slice(0, 4);
+  const whole = (b) => !(b.BudgetDetail || []).some((x) => x.ClassRef?.value || x.DepartmentRef?.value || x.CustomerRef?.value);
+  const changed = (b) => String(b.MetaData?.LastUpdatedTime || '');
+  return (list || []).filter((b) => b.Active !== false && (!b.BudgetType || b.BudgetType === 'ProfitAndLoss') && b.StartDate === `${y}-01-01` && b.EndDate === `${y}-12-31` && accountsIn(b) > 0)
+    .sort((a, b) => Number(whole(b)) - Number(whole(a)) || changed(b).localeCompare(changed(a)) || accountsIn(b) - accountsIn(a))[0] || null;
+}
+
+/**
+ * A budget's figures by account: { id → { name, year (the whole year's), toDate (through `asOf`) } }, with how they're
+ * kept: `step`, the months each figure is for (1 by the month, 3 by the quarter, 12 one figure for the year, from how
+ * far apart its dates are), and `months`, how far into the year `asOf` is (October 31 is 10, October 15 about 9.5).
+ * Each figure counts for the part of its months that has gone by
+ */
+function budgetFigures(bud, asOf) {
+  const details = (bud.BudgetDetail || []).filter((x) => x.AccountRef?.value && isDay(x.BudgetDate) && x.BudgetDate >= bud.StartDate && x.BudgetDate <= bud.EndDate);
+  const starts = [...new Set(details.map((x) => monthNo(x.BudgetDate)))].sort((a, b) => a - b);
+  const step = starts.length > 1 ? Math.min(...starts.slice(1).map((m, i) => m - starts[i])) : 12;
+  const y0 = monthNo(bud.StartDate);
+  const [ay, am, ad] = asOf.split('-').map(Number);
+  const inMonth = new Date(Date.UTC(ay, am, 0)).getUTCDate();
+  const months = Math.max(0, Math.min(12, monthNo(asOf) - y0 + Math.min(1, ad / inMonth)));
+  const by = new Map();
+  for (const x of details) {
+    const id = String(x.AccountRef.value);
+    const c = by.get(id) || { name: cleanText(x.AccountRef.name, 120), year: 0, toDate: 0 };
+    const amount = num(x.Amount);
+    c.year += amount;
+    c.toDate += (amount * Math.max(0, Math.min(step, months - (monthNo(x.BudgetDate) - y0)))) / step;
+    by.set(id, c);
+  }
+  return { by, step, months: Math.round(months * 10) / 10 };
+}
+
+/**
+ * A budget's whole year by kind (`types`: each account's QuickBooks type): { revenue (Income, Other Income),
+ * spending (Cost of Goods Sold, Expenses, Other Expenses), nonCash (the spending named in kind, donated, depreciation) }
+ */
+function budgetTotals(by, type) {
+  const t = { revenue: 0, spending: 0, nonCash: 0 };
+  for (const [id, c] of by) {
+    const g = GROUP_OF_TYPE[type.get(id)];
+    if (g === 'Income' || g === 'OtherIncome') t.revenue += c.year;
+    else if (SPENDING.includes(g)) { t.spending += c.year; if (NON_CASH.test(accountName(c.name.split(':').at(-1)))) t.nonCash += c.year; }
+  }
+  return { revenue: round2(t.revenue), spending: round2(t.spending), nonCash: round2(t.nonCash) };
+}
+
+/** The year's budget in brief, for the board's figures (revenue and expenses against it all year, January too) → { name, year, ...budgetTotals } or null */
+export function budgetYear(list, day, type) {
+  const bud = pickBudget(list, day);
+  return bud ? { name: cleanText(bud.Name, 80), year: day.slice(0, 4), ...budgetTotals(budgetFigures(bud, `${day.slice(0, 4)}-12-31`).by, type) } : null;
+}
+
+/**
+ * QuickBooks' budget against the actuals from January 1 through `asOf` (the statements' day), line for line as the
+ * Profit and Loss runs: each account matched by its QuickBooks id (by its name when the report gives no id), with its
+ * budget to that day and the whole year's; an account budgeted with nothing on it yet in its place, under its parent
+ * when the report has the parent (`type`: each account's QuickBooks type); the in kind on both sides, as QuickBooks
+ * keeps it. → { name, from, to, asOf, step, monthly, months, of, totals, rows: [{ k, label, d, a (actual), b (budget
+ * to date), y (the year's budget) }] }, or null without a budget for that year
+ */
+export function budgetOf(list, report, asOf, type = new Map()) {
+  const bud = pickBudget(list, asOf);
+  if (!bud) return null;
+  const { by, step, months } = budgetFigures(bud, asOf);
+  const byName = new Map([...by].map(([id, c]) => [lastName(c.name), id]));
+  const used = new Set();
+  const take = (n) => {
+    const id = n.id && by.has(n.id) ? n.id : !n.id ? byName.get(lastName(n.label)) : null;
+    if (!id || used.has(id)) return null;
+    used.add(id);
+    return by.get(id);
+  };
+  // The report's lines with their budgets; a parent account's own figures on a line of its own, as QuickBooks lists it
+  const fill = (nodes) => nodes.map((n) => {
+    if (n.kind === 'acct') { const c = take(n); return { ...n, b: c ? c.toDate : 0, y: c ? c.year : 0 }; }
+    if (n.kind !== 'section') return n;
+    const kids = fill(n.kids);
+    const own = take(n);
+    const ownActual = round2(n.total - kids.filter((k) => k.kind !== 'sum').reduce((t, k) => t + (k.kind === 'section' ? k.total : k.amount), 0));
+    if (own || Math.abs(ownActual) > 0.004) kids.push({ kind: 'acct', label: n.label, amount: ownActual, b: own ? own.toDate : 0, y: own ? own.year : 0 });
+    return { ...n, kids };
+  });
+  const tree = fill(treeOf(report?.Rows?.Row));
+  // An account budgeted with nothing on it yet: under its parent when the report has it, else in its group (the group's
+  // heading made when the report has none)
+  const sections = (nodes) => nodes.flatMap((n) => (n.kind === 'section' ? [n, ...sections(n.kids)] : []));
+  for (const id of [...by.keys()].filter((x) => !used.has(x))) {
+    const c = by.get(id);
+    const group = GROUP_OF_TYPE[type.get(id)] || '';
+    if (!group) continue;
+    let top = tree.find((n) => n.kind === 'section' && n.group === group);
+    if (!top) {
+      top = { kind: 'section', label: PL_NAMES[group], group, kids: [], total: 0, totalLabel: `Total ${PL_NAMES[group]}` };
+      const at = tree.findIndex((n) => PL_ORDER.indexOf(n.group) > PL_ORDER.indexOf(group));
+      tree.splice(at < 0 ? tree.length : at, 0, top);
+    }
+    const parent = c.name.includes(':') ? sections(top.kids).find((s) => lastName(s.label) === lastName(c.name.split(':').at(-2))) : null;
+    (parent || top).kids.push({ kind: 'acct', label: c.name.split(':').at(-1), amount: 0, b: c.toDate, y: c.year });
+  }
+  // Each section's budget is its lines'; the subtotals (gross profit, net operating income, net income) the groups'
+  const sum = (n, k) => (n.kind === 'section' ? n.kids.reduce((t, x) => t + sum(x, k), 0) : n.kind === 'acct' ? n[k] : 0);
+  const topOf = (group, k) => tree.filter((n) => n.kind === 'section' && n.group === group).reduce((t, n) => t + sum(n, k), 0);
+  const subtotal = (group, k) => {
+    const gp = topOf('Income', k) - topOf('COGS', k);
+    const noi = gp - topOf('Expenses', k);
+    const other = topOf('OtherIncome', k) - topOf('OtherExpenses', k);
+    return { GrossProfit: gp, NetOperatingIncome: noi, NetOtherIncome: other, NetIncome: noi + other }[group] ?? null;
+  };
+  const quiet = (n) => (n.kind === 'section' ? n.kids.every(quiet) && !n.total : n.kind === 'acct' ? !n.amount && !n.b && !n.y : false);
+  const rows = [];
+  const walk = (nodes, d) => {
+    for (const n of nodes) {
+      if (quiet(n)) continue;
+      if (n.kind === 'section') {
+        rows.push({ k: 'head', label: accountName(n.label), d });
+        walk(n.kids, d + 1);
+        rows.push({ k: 'total', label: n.totalLabel || `Total ${accountName(n.label)}`, d, a: round2(n.total), b: round2(sum(n, 'b')), y: round2(sum(n, 'y')) });
+      } else if (n.kind === 'acct') rows.push({ k: 'acct', label: accountName(n.label), d, a: round2(n.amount), b: round2(n.b), y: round2(n.y) });
+      else if (subtotal(n.group, 'b') !== null) rows.push({ k: 'sum', label: n.label, d, a: round2(n.amount), b: round2(subtotal(n.group, 'b')), y: round2(subtotal(n.group, 'y')) });
+    }
+  };
+  walk(tree, 0);
+  return { name: cleanText(bud.Name, 80), from: bud.StartDate, to: bud.EndDate, asOf, step, monthly: step === 1, months, of: 12, totals: budgetTotals(by, type), rows };
 }
 
 /**
@@ -633,7 +779,7 @@ export function functionsOf(report) {
 
 const DAILY_RETRY_MS = 60 * 60 * 1000;
 // What the daily read keeps: one up whenever it keeps something new, so a deploy's figures show that day, not the next
-const DAILY_SHAPE = 6;
+const DAILY_SHAPE = 7;
 /**
  * The year in context, now (about ten reports): kept in books_daily with its day. Trouble is logged and kept, and the
  * last good read stays; the hourly read is the one that tells Slack
@@ -700,14 +846,29 @@ export async function readDaily(env, { fetchImpl = fetch, now = Date.now() } = {
     } catch (err) {
       console.error('[books] months', err.code || '', detailOf(err));
     }
-    // What else the books keep (budgets, locations, classes), for Settings
-    const setup = await setupOf(get, prefs);
+    // QuickBooks' budgets, read once: what Settings says of them, and the board's budget against the actuals as of
+    // the statements' day (the board's budget is QuickBooks', Peter, Nov 2 2026). Trouble with it never stops the rest
+    let budgetList;
+    try { budgetList = (await get('/query', { query: 'select * from Budget MAXRESULTS 1000' })).QueryResponse?.Budget || []; } catch (err) { budgetList = { error: err.code || (err.status ? `HTTP_${err.status}` : 'UNREACHABLE') }; }
+    const setup = await setupOf(get, prefs, budgetList);
+    let budget = null;
+    let budgetNow = null;
+    try {
+      if (Array.isArray(budgetList) && budgetList.length) {
+        const type = new Map((await Promise.all(Object.keys(GROUP_OF_TYPE).map(accountsOf))).flat().map((x) => [String(x.Id), x.AccountType]));
+        budget = budgetOf(budgetList, actNow, close.asOf, type);
+        // The year's budget in brief for today's year (in January the statements are still last December's)
+        budgetNow = budgetYear(budgetList, today, type);
+      }
+    } catch (err) {
+      console.error('[books] budget', err.code || '', detailOf(err));
+    }
     const data = {
       shape: DAILY_SHAPE,
       day: today,
       lastYear: { year: String(year - 1), through: sameDay, revenue: lastSame.revenue, expenses: lastSame.spent, net: lastSame.net, full: { revenue: lastFull.revenue, expenses: lastFull.spent, net: lastFull.net, nonCash: nonCashOf(lastFullReport) }, sources: sourcesOf(lastSameReport), nonCash: nonCashOf(lastSameReport), store: storeOf(lastSameReport) },
       trailing: { from: tFrom, through: tThrough, spent: trail.spent, cashOut: cashOut ? cashOut.out : null, payments: cashOut ? cashOut.payments : 0 },
-      months, statements, functions, monthly, setup,
+      months, statements, functions, monthly, setup, budget, budgetNow,
     };
     await env.DB.prepare('INSERT OR REPLACE INTO books_daily (id, data, day, read_at, tried_at, error) VALUES (?, ?, ?, ?, ?, NULL)').bind(ID, JSON.stringify(data), today, at, at).run();
     return { ok: true, data };
@@ -811,7 +972,7 @@ export async function booksNow(DB, { now = Date.now() } = {}) {
     company: row.company, year: y.year, from: y.from, through: y.through, revenue: y.revenue, expenses: y.spent, net: y.net, basis: y.basis, at: row.read_at, stale: now - Date.parse(row.read_at) > STALE_MS, cash,
     sources: y.sources || [], nonCash: typeof y.nonCash === 'number' ? y.nonCash : null, store: y.store || null, monthsOfCash: cash && perMonth ? Math.round((cash.total / perMonth) * 10) / 10 : null, perMonth: perMonth ? round2(perMonth) : null,
     qboYearStarts: row.fiscal_start && row.fiscal_start !== SOARD_YEAR_STARTS ? MONTHS[row.fiscal_start - 1].replace(/^./, (c) => c.toUpperCase()) : null,
-    lastYear: d?.lastYear || null, trailing: d?.trailing || null, months: d?.months || [], statements: d?.statements || null, functions: d?.functions || null, monthly: d?.monthly || null, contextAt: daily?.read_at || null,
+    lastYear: d?.lastYear || null, trailing: d?.trailing || null, months: d?.months || [], statements: d?.statements || null, budget: d?.budget || null, budgetNow: d?.budgetNow || null, functions: d?.functions || null, monthly: d?.monthly || null, contextAt: daily?.read_at || null,
   };
 }
 
