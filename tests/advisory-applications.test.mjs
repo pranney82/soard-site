@@ -95,6 +95,11 @@ test('a name (theirs, or typed to sign) is more than one letter', () => {
   assert.deepEqual(checkAnswers({ ...GOOD, signature: 'Jo' }).problems, {});
 });
 
+test('an email with ".." is turned away; an apostrophe before the @ is fine', () => {
+  assert.equal(checkAnswers({ ...GOOD, email: 'robin@example..com' }).problems.email, 'That doesn’t look like an email address.');
+  assert.equal(checkAnswers({ ...GOOD, email: "o'brien@example.com" }).problems.email, undefined);
+});
+
 test('a phone number no one can dial ("123-456-7890") is asked to be checked', () => {
   assert.equal(checkAnswers({ ...GOOD, phone: '123-456-7890' }).problems.phone, 'That doesn’t look like a US phone number. Please check it.');
   assert.equal(checkAnswers({ ...GOOD, phone: '+44 20 7946 0958' }).problems.phone, undefined);

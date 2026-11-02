@@ -73,3 +73,11 @@ test('ten digits no one can dial ("123-456-7890") are asked to be checked, not c
   assert.equal(fieldError(f, '12345', 'en'), 'Please enter a 10-digit phone number.');
   for (const v of ['(404) 555-0123', '+44 20 7946 0958', '404 555 0123 ext 5']) assert.equal(fieldError(f, v, 'en'), null, v);
 });
+
+test('an email that can\'t get mail (a comma or period left on the end, "..") is turned away, with the fix offered', () => {
+  const f = { id: 'parentEmail', type: 'email', required: true };
+  for (const v of ['ana.qa@example.com,', 'ana.qa@example.com.', 'ana.qa@example..com', '.ana@example.com']) assert.equal(fieldError(f, v, 'en'), 'Please enter a valid email address, like name@example.com.', v);
+  for (const v of ['ana.qa@example.com,', 'ana.qa@example.com.', 'ana.qa@example..com']) assert.equal(mailFix(v), 'ana.qa@example.com', v);
+  assert.equal(mailFix('ana@gmial.com,'), 'ana@gmail.com');
+  for (const v of ["o'brien@example.com", 'jordan+apply@example.com', 'contact@school.k12.ga.us']) assert.equal(fieldError(f, v, 'en'), null, v);
+});

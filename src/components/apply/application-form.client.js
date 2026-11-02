@@ -585,7 +585,7 @@ function init(root, cfg, mode) {
         // A photo or video still on its way isn't saved yet: they keep the page open till it is (said when it is)
         if (ok && uploads.size) notice('exitUploading', 'info');
         else if (ok) savedOnExit();
-        else notice(lastSave === 'offline' ? 'exitNotSaved' : 'exitNotSavedServer', 'error');
+        else notice(notSavedWord(), 'error');
         paintHub(); // its heading says the same as the note (an earlier save landing first said "saved" too soon)
       });
     }
@@ -1086,7 +1086,10 @@ function init(root, cfg, mode) {
     const saveRow = ui.stage.querySelector('.af-save-row');
     const shown = saveRow && saveRow.offsetParent !== null;
     const tail = (shown ? saveRow.offsetHeight + parseFloat(getComputedStyle(saveRow).marginTop || 0) : 0) + parseFloat(getComputedStyle(ui.stage).paddingBottom || 0);
-    return Math.max(120, innerHeight - top - nav - head - tail);
+    // Good news there for a moment ("Welcome back"): not counted, so "Part 1 of 3" never turns "1 of 4" under it
+    // (the screen may scroll a little till it goes)
+    const brief = passing() ? Math.max(0, ui.form.getBoundingClientRect().top - ui.notice.getBoundingClientRect().top) : 0; // (it sits over the form)
+    return Math.max(120, innerHeight - top - nav - head - tail + brief);
   }
   /**
    * Problem notes on the screen: the questions a little closer together (often room enough). Nothing
@@ -1150,7 +1153,7 @@ function init(root, cfg, mode) {
     if (el.offsetParent === null) return null;
     packSize = `${innerWidth}x${innerHeight}`;
     packAsked[pid] = [...el.querySelectorAll('.af-field--area')].some(asksAboutHome);
-    if (!ui.notice.hidden && ui.notice.offsetParent) packedWithNote.add(pid);
+    if (!ui.notice.hidden && ui.notice.offsetParent && !passing()) packedWithNote.add(pid);
     const fit = room(el);
     const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
     const undo = answeredLook(el, pid);
@@ -1574,6 +1577,11 @@ function init(root, cfg, mode) {
       const type = byId[id]?.type;
       if (type === 'address' || type === 'date' || (type === 'area' && errors[id])) { const m = errorFor(id); if (m) errors[id] = m; }
     }
+    // An answer here that means we can't help (a home far outside the area, a rented one): said first, before
+    // asking for the rest of the screen (an iPad has "Have you applied before?" beside the far home's map)
+    const early = Object.keys(errors).length ? stopFor(form, a) : null;
+    const earlyFrom = early && early.page === currentId ? (here.has(early.field) ? early.field : byId[early.field]?.type === 'area' && here.has(homeAddressId()) ? homeAddressId() : null) : null;
+    if (earlyFrom && !errors[earlyFrom] && !errors[early.field]) { showStop(early); pushLoc({ stop: true }); return; }
     if (Object.keys(errors).length) { showPageErrors(errors); return; }
     // And every screen before this one: a screen passed without its own Continue (an opened group took
     // them on to a screen of its own, the browser's Forward) is checked now, and they go back to it
@@ -1822,6 +1830,7 @@ function init(root, cfg, mode) {
   // Pages whose screens were fitted with a note at the top: fitted again without it, once it's gone (never the
   // screen they're on, under them: the next time a page is shown)
   const packedWithNote = new Set();
+  const passing = () => !ui.notice.hidden && lastNotice?.kind === 'success'; // a note that goes by itself
   function forgetNotePacks(showing = null) {
     if (!packedWithNote.size || !ui.notice.hidden) return;
     for (const id of [...packedWithNote]) {
@@ -1846,7 +1855,7 @@ function init(root, cfg, mode) {
    */
   function retireNotices({ videoDone = false } = {}) {
     const m = Array.isArray(lastNotice?.m) ? lastNotice.m[0] : lastNotice?.m;
-    if (['exitNotSaved', 'exitNotSavedServer'].includes(m) && lastSave === 'saved') { if (focused) notice(null); else savedOnExit(); }
+    if (['exitNotSaved', 'exitNotSavedServer', 'exitNotSavedBusy'].includes(m) && lastSave === 'saved') { if (focused) notice(null); else savedOnExit(); }
     else if (m === 'attention' && currentId === 'review' && !Object.keys(formErrors(form, readAnswers(), files, null, lang)).length) notice(null);
     else if (m === 'renewedFiles' && !fields.some(f => isUpload(f) && uploadUi[f.id]?.msg === 'fileAgain')) notice('renewed', 'info');
     else if (['recKept', 'recKeptLang'].includes(m) && videoDone) {
@@ -1963,6 +1972,8 @@ function init(root, cfg, mode) {
 
   // One save on its way at a time, and one waiting behind it at most: it sends what's here when its turn comes
   // (so a few saves asked for on a slow connection go as one), and "All changes saved" waits for the last
+  // Why Save and exit couldn't save: offline, our server busy (it asked them to wait), or no answer from it
+  const notSavedWord = () => (lastSave === 'offline' ? 'exitNotSaved' : lastSave === 'paused' ? 'exitNotSavedBusy' : 'exitNotSavedServer');
   let saveWaiting = null;
   let lastSent = null; // what the last save that went through said (one after it with nothing new isn't sent)
   let mustSend = false; // ...except one that has to reach the server: Submit's, and one that brings in another device's save
@@ -2534,7 +2545,7 @@ function init(root, cfg, mode) {
     // Save and exit with a photo or video still going: once it's in (or didn't make it), said where they are
     if (!focused && !uploads.size && lastNotice?.m === 'exitUploading') {
       const failed = Object.values(uploadUi).some(u => u?.state === 'failed');
-      save().then((ok) => { if (!focused && lastNotice?.m === 'exitUploading') { if (ok && !failed) savedOnExit(); else notice(failed ? 'exitUploadFailed' : lastSave === 'offline' ? 'exitNotSaved' : 'exitNotSavedServer', 'error'); } });
+      save().then((ok) => { if (!focused && lastNotice?.m === 'exitUploading') { if (ok && !failed) savedOnExit(); else notice(failed ? 'exitUploadFailed' : notSavedWord(), 'error'); } });
     }
     if (currentId === 'review') buildReview();
     if (!uploads.size || lastNotice?.m === 'renewedFiles') retireNotices();
@@ -3460,7 +3471,8 @@ function init(root, cfg, mode) {
     const title = { inside: 'areaInside', near: 'areaNear', far: 'areaFar' }[st];
     const found = areaNow.matched
       ? `<p class="af-area-found">${esc(T(areaNow.county ? 'areaFoundCounty' : 'areaFound', { address: foundAddress(), county: areaNow.county || '' }))}</p>` : '';
-    return `<div class="af-area-card" data-band="${st}">${AREA_ICONS[st]}<div class="af-area-text"><p class="af-area-title">${esc(T(title))}</p><div class="af-area-desc-wrap">${desc}</div>${found}${uspsHtml()}<button type="button" class="af-btn af-btn--link af-area-fix" data-act="area-fix">${esc(T('areaFix'))}</button></div></div>`;
+    // (a home we can't reach: no apartment number asked for, it wouldn't change that)
+    return `<div class="af-area-card" data-band="${st}">${AREA_ICONS[st]}<div class="af-area-text"><p class="af-area-title">${esc(T(title))}</p><div class="af-area-desc-wrap">${desc}</div>${found}${st === 'far' ? '' : uspsHtml()}<button type="button" class="af-btn af-btn--link af-area-fix" data-act="area-fix">${esc(T('areaFix'))}</button></div></div>`;
   }
   /** Draw the check: map (with the home), what it found, and the question when it couldn't place the home */
   function paintArea(force = null) {
@@ -3469,7 +3481,9 @@ function init(root, cfg, mode) {
     if (!el) return;
     const box = el.querySelector('[data-area]');
     const placed = areaPlaced();
+    // (a check on its way for the address on screen: still "Checking…" when the card is drawn again, a language switch)
     const st = force || (placed ? placed.band
+      : area.want && area.want === addressKey(homeAddressNow()) ? 'checking'
       : areaNow && areaNow.key === addressKey(homeAddressNow()) && areaNow.reason !== 'incomplete' ? (areaNow.reason === 'no-match' ? 'unknown' : 'error')
         : 'empty');
     const was = box.dataset.area;
@@ -4624,6 +4638,8 @@ function init(root, cfg, mode) {
     const go = e.target.closest('[data-goto]');
     if (!go || go.disabled) return;
     if (!doneShown) takeDetour(go.dataset.goto);
+    // Left from the review (Save and exit there): the step is walked through, then "Back to review", as its own Edit does
+    if (!doneShown && currentId === 'review' && go.dataset.goto !== 'review') fromReview = 'step';
     begin(go.dataset.goto);
   });
   ui.exit?.addEventListener('click', () => exitFocus());

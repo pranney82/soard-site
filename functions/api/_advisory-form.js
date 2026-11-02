@@ -100,7 +100,7 @@ export function isShown(field, answers) {
   return Object.entries(field.showIf).every(([id, values]) => values.includes(answers?.[id]));
 }
 
-export const EMAIL_RE = /^[^\s@<>"',;]+@[^\s@<>"',;]+\.[a-z]{2,}$/i;
+export const EMAIL_RE = /^[^\s@<>",;]+@[^\s@<>"',;]+\.[a-z]{2,}$/i; // (an apostrophe is fine before the @: o'brien@)
 
 /** A link people typed without https:// still works */
 export function normalizeLink(s) {
@@ -129,7 +129,7 @@ export function fieldProblem(field, value) {
     return 'Please fill this in.';
   }
   // (an ending no address has, "gmail.con", is a typo: the page's "Did you mean" says the fix)
-  if (field.type === 'email' && (!EMAIL_RE.test(value) || /\.(?:con|cmo|ocm|vom|xom|comm|coom|cpm|cim|nte|ent|nett|ogr|rog|orgg)$/i.test(value))) return 'That doesn’t look like an email address.';
+  if (field.type === 'email' && (!EMAIL_RE.test(value) || /^\.|\.\.|\.@|@[.-]/.test(value) || /\.(?:con|cmo|ocm|vom|xom|comm|coom|cpm|cim|nte|ent|nett|ogr|rog|orgg)$/i.test(value))) return 'That doesn’t look like an email address.';
   if (field.type === 'tel') {
     // Ten digits (a 1 before them, or a + number from abroad, is fine; so is a work line's extension), as the family application asks
     const d = String(value).replace(/\s*(?:x|ext\.?|extension)\s*\d{1,6}\s*$/i, '').replace(/[^\d+]/g, '');

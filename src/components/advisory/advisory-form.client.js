@@ -1050,7 +1050,13 @@ export function initAdvisoryForm() {
     try { sessionStorage.setItem(AGAIN, '1'); } catch { /* storage off: the page's own Start, after */ }
     location.reload();
   }
-  ui.hubRows.forEach((b) => b.addEventListener('click', () => { if (!b.disabled) begin(Number(b.dataset.goto)); }));
+  ui.hubRows.forEach((b) => b.addEventListener('click', () => {
+    if (b.disabled) return;
+    const to = Number(b.dataset.goto);
+    // Left from the review (Save and exit there): the step is walked through, then "Back to review", as its own Edit does
+    if (!sent && step === REVIEW && to < REVIEW) fromReview = 'step';
+    begin(to);
+  }));
   ui.exit.addEventListener('click', () => exitFocus());
 
   form.addEventListener('submit', async (e) => {

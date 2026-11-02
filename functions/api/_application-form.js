@@ -1139,7 +1139,8 @@ const isBlank = (v) => v == null || (typeof v === 'string' && !v.trim()) || (Arr
 export const TYPO_TLD = /\.(?:con|cmo|ocm|vom|xom|comm|coom|cpm|cim|nte|ent|nett|ogr|rog|orgg)$/i;
 export function isEmailAddress(s) {
   const v = String(s || '').trim();
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v) && !TYPO_TLD.test(v);
+  // One that can get mail: no comma or period left on the end ("ana@example.com," pasted from a list), no ".."
+  return /^[^\s@<>",;:()]+@[^\s@<>"',;:()]+\.[a-z]{2,}$/i.test(v) && !/^\.|\.\.|\.@|@[.-]/.test(v) && !TYPO_TLD.test(v);
 }
 
 /** US numbers to E.164 (+1XXXXXXXXXX); international numbers kept when they start with + */

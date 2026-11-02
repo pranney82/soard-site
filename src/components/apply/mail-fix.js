@@ -19,7 +19,11 @@ function editDistance(a, b) { // with a swap of two letters counting as one
   return d[a.length][b.length];
 }
 export function mailFix(v) {
-  const m = /^([^\s@]+)@([^\s@]+)$/.exec(String(v || '').trim());
+  const raw = String(v || '').trim();
+  // A comma or period left on the end ("ana@example.com," from a contacts list), or "..": the address without it
+  const tidy = raw.replace(/[.,;:]+$/, '').replace(/\.{2,}/g, '.').replace(/@\./, '@');
+  if (tidy !== raw && /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(tidy)) return mailFix(tidy) || tidy;
+  const m = /^([^\s@]+)@([^\s@]+)$/.exec(raw);
   if (!m) return null;
   const host = m[2].toLowerCase();
   if (MAIL_HOSTS.includes(host)) return null;
