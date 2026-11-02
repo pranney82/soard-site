@@ -97,7 +97,13 @@ test('a screening session: one summary to the person, then each family once', as
   for (const f of fams) assert.equal(f.comments.length, 1, `${f.name}: exactly one email`);
 });
 
-test("the summary's links: Move back (nothing sent), Don't email, Send now; each works once", async () => {
+test("the summary's links: Move back (nothing sent), Don't email, Send now; each works once", async (t) => {
+  // The link page reads the clock itself: Linzi opens the summary a minute after it comes (T0 + 5 minutes),
+  // well inside the links' week, whatever day the tests run
+  const realNow = Date.now;
+  const shift = T0 + 5 * MIN - realNow();
+  Date.now = () => realNow() + shift;
+  t.after(() => { Date.now = realNow; });
   const a = family('Avery Stone', 'In Review');
   const b = family('Blake Ray', 'In Review');
   const c = family('Casey Moore', 'In Review');

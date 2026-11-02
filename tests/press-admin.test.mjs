@@ -959,7 +959,12 @@ describe('press monitor: the second look (what production showed on Oct 21 2026)
     assert.equal((await story(noAi.DB, 'today-tripp-2018')).kids, undefined, 'never on the name alone');
   });
 
-  test('a Google News link Google won’t open: settled without it, found on the outlet’s own site, or tried again later and then given up', async () => {
+  test('a Google News link Google won’t open: settled without it, found on the outlet’s own site, or tried again later and then given up', async (tc) => {
+    // A link's next try is set from the clock itself, so the clock follows the beats' own time, whatever day the tests run
+    const realNow = Date.now;
+    const clockAt = (when) => { const shift = when - realNow(); Date.now = () => realNow() + shift; };
+    tc.after(() => { Date.now = realNow; });
+    clockAt(NOW);
     const env = await newEnv({ press: [{ slug: 'ajc-credit-union', outlet: 'The Atlanta Journal-Constitution', outletLogo: 'ajc', category: 'print', title: 'Sunshine on a Ranney Day receives $10,000 from credit union', date: '2023-06-09', url: 'https://www.ajc.com/x', excerpt: 'A grant.', image: null, featured: false, order: 0 }], medialogos: [...OUTLETS, { slug: 'ajc', name: 'The Atlanta Journal-Constitution', domains: ['ajc.com'] }], kids: KIDS, partners: [] });
     await quietState(env);
     const add = (id, title, source, sourceUrl) => env.DB.prepare(`INSERT INTO press_mentions (id, provider, query, link, title, source, source_url, published, state, stage, found_at) VALUES (?, 'google', 'q', ?, ?, ?, ?, '2026-09-23T00:00:00Z', 'new', 'resolve', ?)`)
@@ -981,9 +986,10 @@ describe('press monitor: the second look (what production showed on Oct 21 2026)
     assert.equal(m['g:lost'].tries, 1);
     assert.ok(JSON.parse(m['g:lost'].data).retryAt, 'tried again in an hour');
     // Waiting: the beat leaves it alone, then tries again once its time comes, four times over about four days
+    clockAt(NOW + 10 * 60e3);
     assert.equal(await E.maybeRunPress(env, { now: NOW + 10 * 60e3, budgetMs: 60000, archiveGapMs: 0 }), null, 'nothing due while it waits');
     let t = NOW;
-    for (const wait of [1, 6, 24, 72]) { t += wait * 3600e3 + 60e3; await E.maybeRunPress(env, { now: t, budgetMs: 60000, archiveGapMs: 0 }); }
+    for (const wait of [1, 6, 24, 72]) { t += wait * 3600e3 + 60e3; clockAt(t); await E.maybeRunPress(env, { now: t, budgetMs: 60000, archiveGapMs: 0 }); }
     const lost = await env.DB.prepare("SELECT state, tries, reason FROM press_mentions WHERE id = 'g:lost'").first();
     assert.equal(lost.state, 'failed');
     assert.equal(lost.tries, 5);

@@ -344,9 +344,17 @@ async function signed(body, { token, signature } = {}) {
   const raw = JSON.stringify(body);
   const sig = signature ?? await signatureFor(token ?? await webhookToken(env), raw);
   const pending = [];
-  const res = await webhookPost({ env, request: new Request('https://sunshineonaranneyday.com/api/companycam-webhook', { method: 'POST', body: raw, headers: { 'X-CompanyCam-Signature': sig, 'Content-Type': 'application/json' } }), waitUntil: (p) => pending.push(p) });
-  await Promise.all(pending);
-  return res;
+  // The webhook route reads the clock itself: it arrives at the world's time (w.now), whatever day the tests run
+  const realNow = Date.now;
+  const shift = w.now - realNow();
+  Date.now = () => realNow() + shift;
+  try {
+    const res = await webhookPost({ env, request: new Request('https://sunshineonaranneyday.com/api/companycam-webhook', { method: 'POST', body: raw, headers: { 'X-CompanyCam-Signature': sig, 'Content-Type': 'application/json' } }), waitUntil: (p) => pending.push(p) });
+    await Promise.all(pending);
+    return res;
+  } finally {
+    Date.now = realNow;
+  }
 }
 const photoCreated = (p) => ({ event_type: 'photo.created', created_at: Math.floor(w.now / 1000), webhook_id: 1, payload: { photo: { id: Number(p.id), project_id: Number(p.project_id), description: 'whatever the body says' } } });
 

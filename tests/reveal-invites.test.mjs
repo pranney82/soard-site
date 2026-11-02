@@ -971,8 +971,16 @@ async function wake(body, { url = 'https://x/api/reveal-invites', headers = {}, 
   }
 }
 const limitCount = async (key) => (await env.DB.prepare('SELECT count FROM rate_limits WHERE key = ?').bind(key).first())?.count || 0;
+/** The wake-up route reads the clock itself: these tests run at NOW (still ticking), the reveal ahead, whatever day the tests run */
+function clockAtNow(t) {
+  const realNow = Date.now;
+  const shift = NOW - realNow();
+  Date.now = () => realNow() + shift;
+  t.after(() => { Date.now = realNow; });
+}
 
-test('the wake-up route: the shared secret when one is set, and { ok } is all it says', async () => {
+test('the wake-up route: the shared secret when one is set, and { ok } is all it says', async (t) => {
+  clockAtNow(t);
   await writeConfig(env.DB, { enabled: true });
   const secret = { JOBTREAD_WEBHOOK_SECRET: 'wake-secret-example' };
   assert.equal((await wake({ jobId: jt.id, eventId: logJobEvent() }, { envOver: secret })).status, 401);
@@ -990,7 +998,8 @@ test('the wake-up route: the shared secret when one is set, and { ok } is all it
   assert.deepEqual(held.body, { ok: true });
 });
 
-test('the wake-up route: only a change JobTread logged on the job counts', async () => {
+test('the wake-up route: only a change JobTread logged on the job counts', async (t) => {
+  clockAtNow(t);
   await writeConfig(env.DB, { enabled: true });
   const junk = [
     {},                                                                  // no event at all
@@ -1007,7 +1016,8 @@ test('the wake-up route: only a change JobTread logged on the job counts', async
   assert.ok(events.has(eventIdFor('soardreveal', jt.id)), 'the real one goes through');
 });
 
-test('junk from one address is cut off at 30 a minute, never counted, and a real wake-up still runs', async () => {
+test('junk from one address is cut off at 30 a minute, never counted, and a real wake-up still runs', async (t) => {
+  clockAtNow(t);
   await writeConfig(env.DB, { enabled: true });
   // About two junk calls a second for a minute, naming the real job, from one address
   const answers = [];
@@ -1024,7 +1034,8 @@ test('junk from one address is cut off at 30 a minute, never counted, and a real
   assert.ok(events.has(eventIdFor('soardreveal', jt.id)), 'the invite went out');
 });
 
-test('with the secret set, JobTread itself is never held to the per-address limit', async () => {
+test('with the secret set, JobTread itself is never held to the per-address limit', async (t) => {
+  clockAtNow(t);
   const secret = { JOBTREAD_WEBHOOK_SECRET: 'wake-secret-example' };
   const statuses = [];
   for (let i = 0; i < 40; i++) {
@@ -1035,7 +1046,8 @@ test('with the secret set, JobTread itself is never held to the per-address limi
   assert.ok(statuses.every((x) => x === 200), 'a burst of task check-offs across jobs, all from JobTread');
 });
 
-test('the wake-up route: hammering one job never holds its invite; the real change still lands', async () => {
+test('the wake-up route: hammering one job never holds its invite; the real change still lands', async (t) => {
+  clockAtNow(t);
   await writeConfig(env.DB, { enabled: true });
   for (let i = 0; i < 3; i++) assert.deepEqual((await wake({ jobId: jt.id, eventId: logJobEvent() })).body, { ok: true });
   const reads = jobReads();

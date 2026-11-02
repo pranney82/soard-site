@@ -218,6 +218,13 @@ async function fakeFetch(url, init = {}) {
 }
 const writesToGoogle = () => calls.filter((c) => /^(PUT|POST|DELETE|PATCH) www\.googleapis\.com/.test(c));
 const run = (o = {}) => reconcileDemo(env, jt.id, { fetchImpl: fakeFetch, now: NOW, ...o });
+/** The admin and the JobTread wake-up read the clock themselves: they run at NOW (still ticking), demo day ahead, whatever day the tests run */
+async function atNow(fn) {
+  const realNow = Date.now;
+  const shift = NOW - realNow();
+  Date.now = () => realNow() + shift;
+  try { return await fn(); } finally { Date.now = realNow; }
+}
 const id = () => eventIdFor('soarddemo', jt.id);
 const lastLog = async () => (await env.DB.prepare('SELECT action FROM demo_invite_log ORDER BY id DESC LIMIT 1').first())?.action;
 
@@ -426,16 +433,19 @@ test('admin: each invite out shows who answered, and so does one sent by hand', 
 test('the JobTread wake-up for a task checked off sends the demo day invite too', async () => {
   await writeConfig(env.DB, { enabled: true });
   const eventId = 'evtJob000001';
-  jtEvents.set(eventId, { id: eventId, createdAt: new Date().toISOString(), organization: { id: '22NJw42j5GLg' }, job: { id: jt.id } });
+  jtEvents.set(eventId, { id: eventId, createdAt: new Date(NOW).toISOString(), organization: { id: '22NJw42j5GLg' }, job: { id: jt.id } });
   const waits = [];
   const real = globalThis.fetch;
   globalThis.fetch = fakeFetch;
   try {
-    const res = await wakeRoute.onRequestPost({
-      request: new Request('https://x/api/reveal-invites', { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.7' }, body: JSON.stringify({ jobId: jt.id, eventId, source: 'construction' }) }),
-      env, waitUntil: (p) => waits.push(p),
+    const res = await atNow(async () => {
+      const r = await wakeRoute.onRequestPost({
+        request: new Request('https://x/api/reveal-invites', { method: 'POST', headers: { 'Content-Type': 'application/json', 'CF-Connecting-IP': '198.51.100.7' }, body: JSON.stringify({ jobId: jt.id, eventId, source: 'construction' }) }),
+        env, waitUntil: (p) => waits.push(p),
+      });
+      await Promise.allSettled(waits);
+      return r;
     });
-    await Promise.allSettled(waits);
     assert.deepEqual(await res.json(), { ok: true });
   } finally {
     globalThis.fetch = real;
@@ -450,9 +460,11 @@ async function adminGet(query = '', userEmail = 'peter@soardcharity.com') {
   const real = globalThis.fetch;
   globalThis.fetch = fakeFetch;
   try {
-    const res = await admin.onRequestGet({ request: new Request(`https://x/api/demo-invites-admin${query}`), env, data: { userEmail }, waitUntil: (p) => waits.push(p) });
-    await Promise.allSettled(waits);
-    return res.json();
+    return await atNow(async () => {
+      const res = await admin.onRequestGet({ request: new Request(`https://x/api/demo-invites-admin${query}`), env, data: { userEmail }, waitUntil: (p) => waits.push(p) });
+      await Promise.allSettled(waits);
+      return res.json();
+    });
   } finally { globalThis.fetch = real; }
 }
 async function adminPost(body) {
@@ -460,9 +472,11 @@ async function adminPost(body) {
   const real = globalThis.fetch;
   globalThis.fetch = fakeFetch;
   try {
-    const res = await admin.onRequestPost({ request: new Request('https://x/api/demo-invites-admin', { method: 'POST', body: JSON.stringify(body) }), env, data: { userEmail: 'peter@soardcharity.com' }, waitUntil: (p) => waits.push(p) });
-    await Promise.allSettled(waits);
-    return { status: res.status, ...(await res.json()) };
+    return await atNow(async () => {
+      const res = await admin.onRequestPost({ request: new Request('https://x/api/demo-invites-admin', { method: 'POST', body: JSON.stringify(body) }), env, data: { userEmail: 'peter@soardcharity.com' }, waitUntil: (p) => waits.push(p) });
+      await Promise.allSettled(waits);
+      return { status: res.status, ...(await res.json()) };
+    });
   } finally { globalThis.fetch = real; }
 }
 
