@@ -356,6 +356,7 @@ const onTop = (page) => page.evaluate(() => {
   return miss.length ? `covered at ${miss.join(', ')}` : true;
 });
 
+
 try {
   // ─── A founder: the Board area ───
   console.log('A founder, the Board area');
@@ -407,7 +408,7 @@ try {
   ok(!/Use this agenda|Write the agenda|Lock them/.test(await text(jane)), 'the agenda is ready as drafted: nothing to approve, write or lock');
   const meetingId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/')[2]);
   const t1 = await text(jane);
-  ok(await jane.evaluate(() => [...document.querySelectorAll('input[aria-label="Item"]')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.agx-item__title')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
   ok(/Money: the bank balances and the finance summary/.test(t1) && /Makeovers in progress \(JobTread\)/.test(t1), 'the agenda marks the items that show live numbers');
 
   // Board only, and a private note, from an item's ⋯ menu
@@ -423,7 +424,7 @@ try {
   ok(await waitText(jane, /Balance sheet financials/), 'a PDF uploads to the meeting, by its readable name');
   ok(await jane.evaluate(() => [...document.querySelectorAll('.bf-group')].some((g) => /Financial statements/i.test(g.querySelector('.bm-group').textContent) && /Balance sheet financials/.test(g.textContent))), 'a file named like financials is filed as one');
   ok(await waitText(jane, /Balance sheet financials goes with Financial/), 'and goes with the Financial item by itself');
-  const finRow = () => jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((li) => li.querySelector('input[aria-label="Item"]')?.value === 'Financial')?.textContent || '');
+  const finRow = () => jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((li) => li.querySelector('.agx-item__title')?.value === 'Financial')?.textContent || '');
   ok(/Balance sheet financials/.test(await finRow()), 'it shows under that item on the agenda');
   ok(await jane.evaluate(() => /Financial/.test([...document.querySelectorAll('.bf-file')].find((li) => /Balance sheet financials/.test(li.textContent))?.querySelector('.bd-goes')?.textContent || '')), 'the file says which item it goes with');
   // The packet's "Goes with": its list of the agenda over everything, never cut off by the card
@@ -433,7 +434,7 @@ try {
   await shot(jane, 'packet-goes-with');
   await jane.keyboard.press('Escape');
   // Who presents: People, with their faces, searched by name
-  await jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((li) => li.querySelector('input[aria-label="Item"]')?.value === 'Financial').querySelector('.bd-who .bd-pop__btn').click());
+  await jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((li) => li.querySelector('.agx-item__title')?.value === 'Financial').querySelector('.bd-who .bd-pop__btn').click());
   ok(await jane.waitForSelector('.bd-pop__panel .bd-picker__find', { timeout: 3000 }).then(() => true, () => false), 'Who presents opens a list of the board and staff');
   ok(await jane.evaluate(() => document.activeElement?.classList.contains('bd-picker__find')), 'ready to type a name at once');
   { const top = await onTop(jane); ok(top === true, `the list draws over the agenda rows under it (${top})`); }
@@ -444,27 +445,80 @@ try {
   await jane.keyboard.press('Escape');
   ok(/Sam Ortiz/.test(await finRow()) && await jane.evaluate(() => !document.querySelector('.bd-pop__panel')), 'typing a name and Enter picks them; Escape closes the list');
   ok(await saved(jane) && (await meetingNow(jane, meetingId)).sections.flatMap((x) => x.items).find((it) => it.title === 'Financial').who.join() === 'sam-ortiz', 'saved as the person, not just a name');
-  // Background for the board under an item, written as points
-  ok(await itemMenu(jane, 'Governance', /^Add background for the board$/), 'an item’s menu adds background for the board');
-  await jane.waitForSelector('textarea[aria-label^="Background for Governance"]');
-  await jane.click('textarea[aria-label^="Background for Governance"]');
-  await sleep(100);
-  await jane.keyboard.type('Insurance renewal is on track');
+  // The report under an item, written in place: Markdown as it's typed (### a heading, - points, Tab to go in)
+  ok(await itemMenu(jane, 'Governance', /^Write the report$/), 'an item’s menu writes its report');
+  ok(await jane.waitForSelector('[aria-label="The report on Governance"][contenteditable="true"]', { timeout: 4000 }).then(() => true, () => false), 'the editor opens in place, ready to type');
+  await sleep(150);
+  await jane.keyboard.type('### Highlights');
+  await jane.keyboard.press('Enter');
+  await jane.keyboard.type('- Insurance renewal is on track');
   await jane.keyboard.press('Enter');
   await jane.keyboard.press('Tab');
   await jane.keyboard.type('Broker sends the quote Friday');
-  const notes = await jane.$eval('textarea[aria-label^="Background for Governance"]', (e) => e.value);
-  ok(notes === '- Insurance renewal is on track\n  - Broker sends the quote Friday', `background writes as points: Enter makes the next one, Tab moves it in${notes.startsWith('- Insurance renewal is on track\n  - Broker') ? '' : ` (${JSON.stringify(notes)})`}`);
   ok(await saved(jane), 'it all saves by itself');
+  const govNow = async () => (await meetingNow(jane, meetingId)).sections.flatMap((x) => x.items).find((it) => it.title === 'Governance');
+  const gov = await govNow();
+  ok(gov.report === '### Highlights\n\n- Insurance renewal is on track\n  - Broker sends the quote Friday', `kept as Markdown: a heading, a point, one under it (${JSON.stringify(gov.report)})`);
+  ok(gov.reportBy === 'Jane Doe' && /^\d{4}-\d{2}-\d{2}T/.test(gov.reportAt), `who wrote it and when, set by the server (${gov.reportBy})`);
+  ok(await jane.evaluate(() => !!document.querySelector('.agx-report .rp-edit h3') && document.querySelectorAll('.agx-report .rp-edit ul ul li').length === 1), 'the editor shows it as it reads: a heading, a point under a point');
+  ok(await jane.evaluate(() => document.querySelector('.bm-saved')?.textContent.trim().startsWith('Saved')), 'and it stays saved: who wrote it and when never count as a change');
   // Someone else saved meanwhile: both changes are kept, item by item
   const stale = await meetingNow(jane, meetingId);
   await jane.evaluate(async (m) => { await fetch('/api/board-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'save-meeting', meeting: { ...m, title: 'Fall board meeting' }, base: m.updatedAt }) }); }, stale);
-  await jane.click('textarea[aria-label^="Background for Governance"]');
-  await jane.keyboard.press('End');
   await jane.keyboard.type(' (or Monday)');
   ok(await saved(jane), `a save made meanwhile doesn’t stop this one (${await jane.$eval('.bm-saved', (e) => e.textContent.trim())})`);
   const merged = await meetingNow(jane, meetingId);
-  ok(merged.title === 'Fall board meeting' && merged.sections.some((s) => s.items.some((it) => /or Monday/.test(it.notes))), 'both the other save and this one are kept');
+  ok(merged.title === 'Fall board meeting' && merged.sections.some((s) => s.items.some((it) => /quote Friday \(or Monday\)$/.test(it.report))), 'both the other save and this one are kept');
+  // Words that only look like Markdown stay words as they're typed; ⌘K is the link, never Board's search; a link typed
+  // at a person's pace keeps every letter; Google Docs' paste keeps its heading, bold and italic (fresh QA, Nov 2)
+  for (let k = 0; k < 3; k++) await jane.keyboard.press('Enter');
+  await jane.keyboard.type('Sales were 2 * 3 * 4 times');
+  await jane.keyboard.press('Enter');
+  await jane.keyboard.type('2026. A strong year');
+  const typed = await jane.evaluate(() => { const e = document.querySelector('.agx-report .rp-edit'); return { text: e.innerText, em: e.querySelectorAll('em').length, ol: e.querySelectorAll('ol').length }; });
+  ok(/Sales were 2 \* 3 \* 4 times/.test(typed.text) && /2026\. A strong year/.test(typed.text) && !typed.em && !typed.ol, `"2 * 3 * 4" and "2026. A strong year" stay as typed (${JSON.stringify({ em: typed.em, ol: typed.ol })})`);
+  await jane.keyboard.down('Shift'); await jane.keyboard.down('Alt'); await jane.keyboard.press('ArrowLeft'); await jane.keyboard.up('Alt'); await jane.keyboard.up('Shift');
+  await jane.keyboard.down('Meta'); await jane.keyboard.press('k'); await jane.keyboard.up('Meta');
+  ok(await jane.waitForSelector('.agx-report .rp-link__box', { timeout: 2000 }).then(() => true, () => false) && !(await jane.$('.cmd-palette')), '⌘K in the report opens its link box, not Board’s search');
+  await jane.type('.agx-report .rp-link__box', 'www.example.org/annual-report', { delay: 60 });
+  await sleep(1500);
+  await jane.keyboard.press('Enter');
+  const linked = await jane.waitForFunction(() => !!document.querySelector('.agx-report .rp-edit a[href="https://www.example.org/annual-report"]'), { timeout: 3000 }).then(() => true, () => false);
+  ok(linked, `a www. address typed at a person’s pace is the link, every letter of it${linked ? '' : ` (${await jane.evaluate(() => JSON.stringify({ box: document.querySelector('.agx-report .rp-link__box')?.value ?? null, bad: !!document.querySelector('.rp-link__bad'), links: [...document.querySelectorAll('.agx-report .rp-edit a')].map((x) => [x.textContent, x.getAttribute('href')]), sel: getSelection().toString(), active: document.activeElement?.className }))})`}`);
+  // On a line of its own, as a person pastes
+  await jane.evaluate(() => { const el = document.querySelector('.agx-report .rp-edit'); el.focus(); const sel = getSelection(); sel.selectAllChildren(el); sel.collapseToEnd(); });
+  await jane.keyboard.press('ArrowRight');
+  await jane.keyboard.press('Enter');
+  await jane.evaluate(() => {
+    const el = document.querySelector('.agx-report .rp-edit');
+    const dt = new DataTransfer();
+    dt.setData('text/html', '<meta charset="utf-8"><b style="font-weight:normal;" id="docs-internal-guid-1a2b"><h1 dir="ltr"><span style="font-size:20pt;font-weight:400">Finance committee</span></h1><p dir="ltr"><span style="font-weight:700">Revenue</span><span style="font-weight:400"> is up this quarter.</span></p><ul><li dir="ltr"><p dir="ltr"><span style="font-style:italic;font-weight:400">Audit</span><span style="font-weight:400"> firm picked</span></p></li></ul></b>');
+    dt.setData('text/plain', 'Finance committee\nRevenue is up this quarter.\nAudit firm picked');
+    el.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  const pasted = await jane.evaluate(() => { const e = document.querySelector('.agx-report .rp-edit'); return { h: [...e.querySelectorAll('h3')].map((x) => x.textContent), b: [...e.querySelectorAll('strong')].map((x) => x.textContent), i: [...e.querySelectorAll('em')].map((x) => x.textContent) }; });
+  ok(pasted.h.includes('Finance committee') && pasted.b.join() === 'Revenue' && pasted.i.join() === 'Audit', `a Google Docs paste keeps its heading, its bold and its italic, and nothing else bold (${JSON.stringify(pasted)})`);
+  ok(await saved(jane), 'and it all saves');
+  await clickText(jane, '.agx-report button', /^Done$/);
+  ok(await jane.waitForSelector('.agx-report:not(.is-writing) .rp h4', { timeout: 3000 }).then(() => true, () => false) && /Report\s*Jane Doe/.test(await jane.$eval('.agx-report__head', (e) => e.textContent)), 'Done: the report reads in place, with who wrote it, and Edit');
+  ok(/Reports\s*0 of \d in/.test(await jane.$eval('.bm-reports', (e) => e.innerText).catch(() => '')) && /Financial[\s\S]*Sam Ortiz[\s\S]*Not yet/.test(await jane.$eval('.bm-reports', (e) => e.innerText).catch(() => '')), 'Getting ready says whose reports are in: Sam’s Financial isn’t yet');
+  // An item's name wraps rather than being cut off, and an empty Who presents is there to see on every item
+  await clickText(jane, '.agx-add', /^\+ Add an item$/);
+  await sleep(300);
+  const tall = await jane.evaluate(() => {
+    const t = [...document.querySelectorAll('.agx-item__title')].find((x) => !x.value);
+    if (!t) return null;
+    const set = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
+    const one = t.getBoundingClientRect().height;
+    set.call(t, 'Personal Best, Business Best and Sunshine Bragging Rights: what each of you has done since we last met');
+    t.dispatchEvent(new Event('input', { bubbles: true }));
+    return { one, two: t.getBoundingClientRect().height, cut: t.scrollHeight > t.clientHeight + 2 };
+  });
+  ok(tall && tall.two > tall.one + 10 && !tall.cut, `a long name wraps to more lines, all of it showing (${JSON.stringify(tall)})`);
+  await sleep(600); // the page settles after scrolling to the new item (a menu closes itself when the page scrolls)
+  ok(await itemMenu(jane, 'Personal Best, Business Best and Sunshine Bragging Rights: what', /^Delete the item$/) && await jane.waitForFunction(() => ![...document.querySelectorAll('.agx-item__title')].some((x) => /since we last met$/.test(x.value)), { timeout: 3000 }).then(() => true, () => false), 'and it goes again from its menu');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.agx-item')].filter((li) => li.querySelector('.bd-who:not(.has-who)')).every((li) => { const b = li.querySelector('.bd-who .bd-pop__btn'); return b && Number(getComputedStyle(li.querySelector('.bd-who')).opacity) === 1 && b.getBoundingClientRect().width > 60; })), 'Who presents shows on every item with nobody picked, without hovering');
+  await shot(jane, 'agenda-report');
   ok(merged.actions.some((a) => a.text === 'Send the venue contract' && a.owner === 'alex-rivera'), 'the last meeting’s open action item carries over');
 
   // Getting ready 1: the invite, from the president's calendar, with Google Meet and transcripts on
@@ -850,6 +904,94 @@ try {
     await alex.close();
   }
 
+  // ─── A presenter writes their report on the board page (portal.js ReportPage, ../board-report.js) ───
+  console.log('A presenter’s report');
+  const finOf = async () => (await meetingNow(jane, meetingId)).sections.flatMap((x) => x.items).find((it) => it.title === 'Financial');
+  const finId = (await finOf()).id;
+  const samSaved = (page) => page.waitForFunction(() => /^Saved/.test(document.querySelector('.rp-foot__status')?.textContent.trim() || ''), { timeout: 8000 }).then(() => true, () => false);
+  for (const width of [1440, 390]) {
+    const sam = await tab(OTHER, width);
+    if (width === 1440) {
+      await sam.goto(`${SITE}/admin/board/`, { waitUntil: 'networkidle0' });
+      ok(await waitText(sam, /Write your report: Financial/), 'Home asks the presenter for their report');
+      await clickText(sam, '.bp-todo', /^Write your report: Financial/);
+      ok(await sam.waitForSelector('.bp-rp [contenteditable="true"]', { timeout: 6000 }).then(() => true, () => false), 'it opens on a page of its own, the editor there');
+      ok(await sam.evaluate(() => !!document.activeElement?.closest('.rp-edit')), 'ready to type at once, before the page has finished arriving');
+      // Markdown as it's typed: **bold** as it closes, "> " a callout
+      await sam.keyboard.type('Cash is **up** 12% on last year');
+      await sam.keyboard.press('Enter');
+      await sam.keyboard.type('> The board needs to approve the audit firm');
+      ok(await samSaved(sam), 'it saves by itself');
+      const fin = await finOf();
+      ok(fin.report === 'Cash is **up** 12% on last year\n\n> The board needs to approve the audit firm' && fin.reportBy === 'Sam Ortiz', `kept as Markdown, by Sam (${JSON.stringify(fin.report)}, ${fin.reportBy})`);
+      const shown = await sam.evaluate(() => ({ text: document.querySelector('.rp-edit')?.innerText.replace(/\s+/g, ' ').trim(), bold: document.querySelector('.rp-edit strong')?.textContent }));
+      ok(shown.text === 'Cash is up 12% on last year The board needs to approve the audit firm' && shown.bold === 'up', `what the editor shows is what's saved (${JSON.stringify(shown)})`);
+      // Jane changes it in Board meanwhile: Sam's next save never writes over hers; he sees it and chooses
+      await jane.evaluate(async (b) => { await fetch('/api/board-portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) }); }, { action: 'report', meetingId, itemId: finId, text: `${fin.report}\n\nJane’s line`, base: fin.reportAt });
+      await sam.keyboard.type(' this quarter');
+      ok(await waitText(sam, /Jane Doe changed this report/), 'someone else’s newer save stops his, and says whose');
+      await shot(sam, 'report-clash');
+      await clickText(sam, '.bp-rp__clash button', /^Keep mine$/);
+      ok(await samSaved(sam), 'Keep mine saves his');
+      const kept = await finOf();
+      ok(/audit firm this quarter$/.test(kept.report) && !/Jane’s line/.test(kept.report), `his words, chosen over hers (${JSON.stringify(kept.report)})`);
+      await shot(sam, 'report-write');
+      // Away to another tab mid-sentence and back: saved as he left, and his next words aren't taken for someone else's
+      await sam.keyboard.type(' and next');
+      await sam.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+      ok(await samSaved(sam) && /this quarter and next$/.test((await finOf()).report), 'leaving for another tab saves what’s typed');
+      await sam.evaluate(() => { Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true }); document.dispatchEvent(new Event('visibilitychange')); });
+      await sam.keyboard.type(' year');
+      ok(await samSaved(sam) && !(await sam.$('.bp-rp__clash')) && /this quarter and next year$/.test((await finOf()).report), 'back again, his next words save with no clash with his own');
+      // A document with his report: attached from here, listed, then taken off again (his own, so gone for good)
+      const filesBefore = (await meetingNow(jane, meetingId)).files.length;
+      await (await sam.$('.bp-rp__attach input[type="file"]')).uploadFile(pdf);
+      ok(await sam.waitForFunction(() => document.querySelectorAll('.bp-rp__files li').length === 2, { timeout: 8000 }).then(() => true, () => false), 'Attach a file puts a document with it, listed under the report');
+      const withDoc = await finOf();
+      ok(withDoc.docs.length === 2 && !(await sam.$('.bp-rp__attach.is-busy')), `on the item, after the one already there (${withDoc.docs.length} documents)`);
+      const offs = await sam.evaluate(() => [...document.querySelectorAll('.bp-rp__files li')].map((li) => !!li.querySelector('.bp-rp__off')));
+      ok(offs.join() === 'false,true', `he can take off only the one he put there (${offs.join()})`);
+      await shot(sam, 'report-docs');
+      await clickText(sam, '.bp-rp__files .bp-rp__off', /^Take it off$/);
+      ok(await waitText(sam, /Take it off for good\?/), 'taking it off asks first, in place');
+      await clickText(sam, '.bp-rp__files .bp-rp__off.is-yes', /^Take it off$/);
+      ok(await sam.waitForFunction(() => document.querySelectorAll('.bp-rp__files li').length === 1, { timeout: 6000 }).then(() => true, () => false), 'and it’s off');
+      const afterOff = await meetingNow(jane, meetingId);
+      ok(afterOff.sections.flatMap((x) => x.items).find((it) => it.id === finId).docs.length === 1 && afterOff.files.length === filesBefore, `gone from the meeting for good, the other one still there (${afterOff.files.length} files, ${filesBefore} before)`);
+      // Offline: Done stays, the words with it; back online, they save by themselves
+      await sam.evaluate(() => document.querySelector('.bp-rp .rp-edit')?.focus());
+      await sam.setOfflineMode(true);
+      await sam.keyboard.type(' and offline');
+      ok(await sam.waitForFunction(() => /Not saved/.test(document.querySelector('.rp-foot__status')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), 'offline: it says it isn’t saved');
+      await clickText(sam, '.bp-rp__foot a', /^Done$/);
+      await sleep(800);
+      ok(/\/report\//.test(await sam.evaluate(() => location.hash)) && /and offline/.test(await sam.$eval('.bp-rp .rp-edit', (e) => e.innerText)), 'Done stays on the page with the words, never leaving them behind');
+      await sam.setOfflineMode(false);
+      await sam.evaluate(() => dispatchEvent(new Event('online')));
+      ok(await samSaved(sam) && /and offline$/.test((await finOf()).report), 'back online, they save by themselves');
+      await clickText(sam, '.bp-rp__foot a', /^Done$/);
+      ok(await sam.waitForFunction((id) => /^Report\s*by Sam Ortiz/.test(document.querySelector(`#i-${id} .bp-report__by`)?.textContent.trim() || ''), { timeout: 8000 }, finId).then(() => true, () => false), 'Done: back on the meeting, the report under its item, by Sam');
+      ok(await sam.evaluate((id) => !!document.querySelector(`#i-${id} .bp-report strong`) && !!document.querySelector(`#i-${id} .bp-report .rp-callout`) && !document.querySelector(`#i-${id} .bp-report-ask`), finId), 'as it reads: bold, the callout');
+      ok(!(await text(sam)).includes('Write your report: Financial'), 'and Home stops asking');
+      await shot(sam, 'report-on-meeting');
+    } else {
+      // A phone: the page fits, its tools in reach
+      await sam.goto(`${SITE}/admin/board/#/meetings/${meetingId}/report/${finId}`, { waitUntil: 'networkidle0' });
+      ok(await sam.waitForSelector('.bp-rp [contenteditable="true"]', { timeout: 6000 }).then(() => true, () => false), 'a phone opens the report to write');
+      ok(await overflow(sam) <= 0, `nothing past a phone’s edge (${await overflow(sam)}px)`);
+      ok(await sam.evaluate(() => [...document.querySelectorAll('.rp-tool')].filter((b) => b.offsetParent).every((b) => b.getBoundingClientRect().height >= 40) && document.querySelector('.rp-bar').getBoundingClientRect().height < 60), 'the tools are a finger’s size, in one row');
+      await shot(sam, 'report-phone');
+    }
+    await sam.close();
+  }
+  // Alex presents nothing: he reads Sam's, and the server refuses him writing it
+  const alexR = await tab(MEMBER);
+  await alexR.goto(`${SITE}/admin/board/#/meetings/${meetingId}/report/${finId}`, { waitUntil: 'networkidle0' });
+  ok(await waitText(alexR, /Only Sam can write this one/) && !(await alexR.$('.bp-rp [contenteditable="true"]')), 'someone who doesn’t present it reads it, with no editor');
+  const refused = await alexR.evaluate(async (b) => (await fetch('/api/board-portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).status, { action: 'report', meetingId, itemId: finId, text: 'Not mine', base: '' });
+  ok(refused === 403, `and the server refuses him (${refused})`);
+  await alexR.close();
+
   // ─── The founder sees what the board did, and sees the board page as they do ───
   console.log('Back to the founder');
   await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}/before`, { waitUntil: 'networkidle0' });
@@ -990,8 +1132,17 @@ try {
     spots.stage.add(at.stage); spots.rail.add(at.rail);
     if (at.title === 'Roll call') roll = at;
   };
-  while (hops < 25 && !/Balance sheet financials/.test(await screenFoot())) { await note(); await jane.keyboard.press('ArrowRight'); await sleep(350); hops += 1; }
+  // An item with a report shows it, fitted to the screen (screen.js ReportFit): Governance's, and Sam's under the money
+  const reportStops = new Map();
+  const noteReport = async () => {
+    const r = await scr.evaluate(() => { const b = document.querySelector('.bs-report__body'); return b ? { title: document.querySelector('.bs-item__title')?.textContent, text: b.innerText.replace(/\s+/g, ' ').trim().slice(0, 60), fits: b.scrollHeight <= b.clientHeight + 1 && b.scrollWidth <= b.clientWidth + 1, fit: b.style.getPropertyValue('--fit') } : null; });
+    if (r && !reportStops.has(r.title)) { reportStops.set(r.title, r); await shot(scr, `21-screen-report-${r.title.toLowerCase()}`); }
+  };
+  while (hops < 25 && !/Balance sheet financials/.test(await screenFoot())) { await note(); await noteReport(); await jane.keyboard.press('ArrowRight'); await sleep(350); hops += 1; }
   await note();
+  const govShown = reportStops.get('Governance');
+  const finShown = reportStops.get('Financial');
+  ok(/^Highlights Insurance renewal/.test(govShown?.text || '') && govShown.fits && /^Cash is up 12%/.test(finShown?.text || '') && finShown.fits, `the screen shows an item’s report, all of it fitting (${JSON.stringify([...reportStops.values()])})`);
   ok(spots.next.size === 1, `the chair’s Next stays where it is on every stop (${spots.next.size} places)`);
   ok(spots.stage.size === 1 && spots.rail.size === 1, `the screen’s stage and rail keep their size and place on every stop (${spots.stage.size} stages, ${spots.rail.size} rails)`);
   ok(roll && roll.faces === 3 && /3\s*on the board/.test(roll.count), `the roll call shows the board’s faces, everyone on the meeting’s list (${JSON.stringify(roll)})`);
@@ -1067,6 +1218,8 @@ try {
   const printed = await alexPrint.evaluate(() => ({ pages: document.querySelectorAll('.bpp-page').length, imgs: document.querySelectorAll('.bpp-page img').length, agenda: document.querySelector('.bpp-agenda')?.innerText || '' }));
   ok(printed.pages === 2 && printed.imgs === 2, `the statement’s 2 pages, drawn (${printed.pages} pages, ${printed.imgs} pictures)`);
   ok(/Financial/.test(printed.agenda) && /Sam Ortiz/.test(printed.agenda) && /With it: Balance sheet financials/.test(printed.agenda) && !/PRIVATE/.test(printed.agenda), 'the agenda first: who presents, what goes with each item, never a private note');
+  const paperReports = await alexPrint.evaluate(() => [...document.querySelectorAll('.bpp-report')].map((r) => r.innerText.replace(/\s+/g, ' ').trim()));
+  ok(paperReports.length === 2 && /^Report by Jane Doe\s*Highlights\s*Insurance renewal is on track\s*Broker sends/.test(paperReports[0]) && /^Report by Sam Ortiz\s*Cash is up 12%/.test(paperReports[1]), `the reports on paper, under their items (${JSON.stringify(paperReports)})`);
   await alexPrint.pdf({ path: join(OUT, '26-print-it-all.pdf'), format: 'letter', printBackground: true });
   await alexPrint.evaluate(() => dispatchEvent(new Event('afterprint')));
   ok(await alexPrint.waitForFunction(() => !document.querySelector('.bpp') && !document.querySelector('.bp-printing'), { timeout: 5000 }).then(() => true, () => false), 'afterwards it’s all taken away again');
@@ -1164,8 +1317,8 @@ try {
     }
     if (width === 390) {
       // On a phone a count, an amount or a time never ends a line without its word ("$243K" / "in kind"); a year
-      // before a word, a day of the month, the tables and what's typed in (a file's name, the meeting's place) are
-      // left to wrap as they will, and a line that never wraps can't break
+      // before a word, a day of the month, the tables and what's typed in (a file's name, the meeting's place, a
+      // presenter's report) are left to wrap as they will, and a line that never wraps can't break
       for (const page of ['#/', '#/meetings', `#/meetings/${meetingId}`, '#/financials', '#/documents', '#/people']) {
         await money.goto(`${SITE}/admin/board/${page}`, { waitUntil: 'networkidle0' });
         await money.evaluate(() => document.querySelectorAll('.bp-main details').forEach((x) => { x.open = true; }));
@@ -1174,7 +1327,7 @@ try {
           const out = [];
           const walk = document.createTreeWalker(document.querySelector('.bp-main'), NodeFilter.SHOW_TEXT);
           for (let n; (n = walk.nextNode());) {
-            if (n.parentElement.closest('table, svg, [hidden], .bp-file__title, .bp-doctile__title, a[href*="google.com/maps"]') || /nowrap|pre/.test(getComputedStyle(n.parentElement).whiteSpace)) continue;
+            if (n.parentElement.closest('table, svg, [hidden], .bp-file__title, .bp-doctile__title, a[href*="google.com/maps"], .rp') || /nowrap|pre/.test(getComputedStyle(n.parentElement).whiteSpace)) continue;
             for (const m of n.nodeValue.matchAll(/(?<![\p{L}\d.,:])(\$?\d(?:[\d,.:]*\d)?[KMB%]?) (\p{L}+)/gu)) {
               if (/^(19|20)\d{2}$/.test(m[1]) || /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? $/.test(n.nodeValue.slice(0, m.index))) continue;
               out.push(`${m[0]} (.${n.parentElement.closest('[class]').className.split(' ')[0]})`);

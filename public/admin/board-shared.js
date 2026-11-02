@@ -206,7 +206,7 @@ export const LIVE = [
 ];
 /** What a live list with no title of its own is called for the board: what it shows, never its part's name */
 export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings' };
-export const LIMITS = { title: 200, text: 300, notes: 20000, items: 80, sections: 20, people: 80, rows: 100 };
+export const LIMITS = { title: 200, text: 300, notes: 20000, report: 120000, items: 80, sections: 20, people: 80, rows: 100 };
 
 /** The agenda a new meeting starts from, until Settings saves another one */
 export const DEFAULT_TEMPLATE = [
@@ -297,6 +297,11 @@ function cleanItem(raw) {
     who: [...new Set((Array.isArray(raw?.who) ? raw.who : []).filter((s) => /^[a-z0-9-]{1,80}$/.test(String(s))))].slice(0, 3),
     notes: str(raw?.notes, LIMITS.notes),
     staffNote: str(raw?.staffNote, LIMITS.notes),
+    // The presenter's report, in Markdown (./board-md.js), and who last wrote it when: written on the board page by
+    // whoever presents the item, or in Board
+    report: str(raw?.report, LIMITS.report),
+    reportBy: one(raw?.reportBy, 120),
+    reportAt: /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(raw?.reportAt || '')) ? raw.reportAt : '',
     confidential: bool(raw?.confidential),
     live,
     about: ID.test(String(raw?.about || '')) ? raw.about : '',
@@ -437,7 +442,7 @@ export const isLive = (m) => !!m?.live?.startedAt && !m.live.endedAt;
  * An agenda item with something in it. A row added and left empty isn't on the agenda: the board never sees it, it
  * takes no time and no number, and the chair never stops on it (the editor keeps it, to fill in or delete)
  */
-export const isFilled = (it) => !!(it && (it.title || it.presenter || it.who?.length || it.notes || it.live || it.about || it.docs?.length || it.confidential));
+export const isFilled = (it) => !!(it && (it.title || it.presenter || it.who?.length || it.notes || it.report || it.live || it.about || it.docs?.length || it.confidential));
 /**
  * The agenda's items in order, numbered the way the board page and the chair's screen show them (an empty row has
  * none): [{ id, title, label: '3.2', section, si, ii }], `ii` where the item sits in its part
@@ -519,11 +524,13 @@ const isOutline = (sections, template = DEFAULT_TEMPLATE) => sections.length ===
 /**
  * An agenda nobody has written: SOARD's usual outline or one drafted from
  * the last meeting (the drafts follow a newer last meeting until someone
- * writes in it or uses it). A meeting from before agendaFrom counts by its look.
+ * writes in it or uses it). A meeting from before agendaFrom counts by its look. One with a report written in it is
+ * never a draft again: drafting it anew would lose the report.
  */
-export const agendaIsDraft = (m, template = DEFAULT_TEMPLATE) => !m?.sections?.some((s) => s.items.length)
-  || ['template', 'last-meeting'].includes(m?.agendaFrom?.kind)
-  || (!m?.agendaFrom && (isOutline(m.sections, template) || isOutline(m.sections)));
+export const agendaIsDraft = (m, template = DEFAULT_TEMPLATE) => !m?.sections?.some((s) => s.items.some((it) => it.report))
+  && (!m?.sections?.some((s) => s.items.length)
+    || ['template', 'last-meeting'].includes(m?.agendaFrom?.kind)
+    || (!m?.agendaFrom && (isOutline(m.sections, template) || isOutline(m.sections))));
 /** "Minutes of the Q3 Board Meeting (Aug 6)": the item that asks the board to approve the last minutes */
 const minutesItemTitle = (prev) => `Minutes of the ${meetingName(prev)} (${shortDate(prev.date)})`;
 /**
@@ -552,6 +559,11 @@ export function facesOf(it) {
   if (/\b(introductions?|welcome|personal best|bragging|around the (room|table))\b/i.test(t)) return 'room';
   return '';
 }
+/**
+ * An item someone reports on: it has a presenter, and isn't the roll call, the welcome or the vote on the last
+ * minutes. Its presenter is asked for a report on the board page; Board counts the ones in.
+ */
+export const reportsOn = (it) => isFilled(it) && !!(it.who?.length || String(it.presenter || '').trim()) && it.live !== 'minutes' && !facesOf(it);
 /** The draft reader's version (agendaFrom.v on a last-meeting draft): a draft an older one made is drafted again */
 export const DRAFTER = 2;
 /**

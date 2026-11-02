@@ -1,0 +1,459 @@
+/**
+ * board-report.js — a committee report: written, and read
+ * ===========================================================================
+ * The presenter of an agenda item writes their report on the board page
+ * (./board/portal.js, its own page per item); Board's admins can in the
+ * agenda editor (./board-meeting.js). Both use ReportEditor: TipTap, kept as
+ * Markdown (./board-md.js). It takes Markdown as it's typed ("### " a
+ * heading, "- " a point, "1. " a list, "> " a callout, **bold**, *italic*),
+ * cleans what's pasted from Word or Google Docs, and turns pasted Markdown
+ * into what it says.
+ *
+ * Report draws one for reading (the board page, the live room, the screen);
+ * reportDom draws one for paper (./board/print.js).
+ */
+
+import { h, htm, useState, useEffect, useRef, Editor, StarterKit, TiptapLink, Placeholder, CharacterCount, DOMPurify } from './vendor.js';
+import { mdBlocks, mdInline, mdToDoc, docToMd, mdWords, safeHref } from './board-md.js';
+import { LIMITS } from './board-shared.js';
+
+const html = htm.bind(h);
+
+// ─── Reading ────────────────────────────────────────────────────────
+
+const LINK = { target: '_blank', rel: 'noopener noreferrer nofollow' };
+function Runs({ text, runs = null }) {
+  return (runs || mdInline(text)).map((r, k) => {
+    if (r.br) return html`<br key=${k} />`;
+    let node = r.text;
+    if (r.i) node = html`<em>${node}</em>`;
+    if (r.b) node = html`<strong>${node}</strong>`;
+    if (r.href) node = html`<a href=${r.href} ...${LINK}>${node}</a>`;
+    return node;
+  });
+}
+const wordsIn = (b) => (b.t === 'p' || b.t === 'h' ? b.text.split(/\s+/).filter(Boolean).length : b.t === 'quote' ? b.blocks.reduce((n, x) => n + wordsIn(x), 0) : b.items.reduce((n, it) => n + it.reduce((m, x) => m + wordsIn(x), 0), 0));
+function Blocks({ blocks, level }) {
+  const H = `h${Math.min(6, level)}`;
+  return blocks.map((b, k) => {
+    if (b.t === 'p') return html`<p key=${k}><${Runs} text=${b.text} runs=${b.runs} />${b.cut ? '…' : null}</p>`;
+    if (b.t === 'h') return h(H, { key: k, class: 'rp-h' }, html`<${Runs} text=${b.text} />`);
+    if (b.t === 'quote') return html`<blockquote key=${k} class="rp-callout"><${Blocks} blocks=${b.blocks} level=${level} /></blockquote>`;
+    const items = b.items.map((it, j) => html`<li key=${j}><${Blocks} blocks=${it} level=${level} /></li>`);
+    return b.t === 'ol' ? html`<ol key=${k} start=${b.start === 1 ? null : b.start}>${items}</ol>` : html`<ul key=${k}>${items}</ul>`;
+  });
+}
+
+/**
+ * The first `max` words of some blocks: whole blocks while they fit, then the one that doesn't, cut inside it (a list
+ * to its first items, a paragraph at a word, with …). → { blocks, left } (`left`: the words still allowed)
+ */
+function clip(blocks, max) {
+  const out = [];
+  let left = max;
+  for (const b of blocks) {
+    if (left <= 0) break;
+    const n = wordsIn(b);
+    if (n <= left) { out.push(b); left -= n; continue; }
+    if (b.t === 'p' || b.t === 'h') {
+      // Cut on the words themselves (never inside **…**): the runs up to the word that's over
+      const runs = [];
+      let w = left;
+      for (const r of mdInline(b.text)) {
+        if (r.br) { runs.push(r); continue; }
+        const words = r.text.split(/(\s+)/);
+        let kept = '';
+        for (const part of words) { if (/\S/.test(part)) { if (w <= 0) break; w--; } kept += part; }
+        if (kept) runs.push({ ...r, text: kept.replace(/\s+$/, '') });
+        if (w <= 0) break;
+      }
+      out.push({ ...b, runs, cut: true });
+    } else if (b.t === 'quote') {
+      out.push({ ...b, blocks: clip(b.blocks, left).blocks });
+    } else {
+      const items = [];
+      let l = left;
+      for (const it of b.items) {
+        if (l <= 0) break;
+        const c = clip(it, l);
+        items.push(c.blocks);
+        l = c.left;
+      }
+      out.push({ ...b, items });
+    }
+    left = 0;
+  }
+  return { blocks: out, left };
+}
+
+/**
+ * A report as it reads. `level`: its headings' level (h4 under an item's h3). `clamp`: about how many words show
+ * before "Keep reading" (0: all of it), cut wherever that falls, a list or a long paragraph too; "Show less" again.
+ */
+export function Report({ text, level = 4, clamp = 0, cls = '' }) {
+  const [all, setAll] = useState(false);
+  const blocks = mdBlocks(text);
+  if (!blocks.length) return null;
+  const total = blocks.reduce((n, b) => n + wordsIn(b), 0);
+  // Cut only when what's left is worth a click (a third more, at least)
+  const long = clamp > 0 && total > clamp * 1.35;
+  const shown = long && !all ? clip(blocks, clamp).blocks : blocks;
+  return html`<div class=${`rp ${cls}`} data-long=${long ? 'true' : null}>
+    <${Blocks} blocks=${shown} level=${level} />
+    ${long ? html`<button type="button" class="rp-more" aria-expanded=${all ? 'true' : 'false'} onClick=${() => setAll(!all)}>${all ? 'Show less' : html`Keep reading<span class="rp-more__n"> · ${readTime(total)}</span>`}</button>` : null}
+  </div>`;
+}
+
+/** "2 min read" (200 words a minute, at least 1) */
+export const readTime = (words) => `${Math.max(1, Math.round(words / 200))} min read`;
+
+/** A report on paper: the same blocks as elements (text only, nothing from it read as HTML) */
+export function reportDom(text, { level = 4 } = {}) {
+  const blocks = mdBlocks(text);
+  if (!blocks.length) return null;
+  const el = (tag, cls) => { const e = document.createElement(tag); if (cls) e.className = cls; return e; };
+  const runs = (parent, t) => {
+    for (const r of mdInline(t)) {
+      if (r.br) { parent.append(el('br')); continue; }
+      let node = document.createTextNode(r.text);
+      if (r.i) { const e = el('em'); e.append(node); node = e; }
+      if (r.b) { const e = el('strong'); e.append(node); node = e; }
+      if (r.href) { const e = el('a'); e.href = r.href; e.append(node); node = e; }
+      parent.append(node);
+    }
+  };
+  const draw = (parent, list) => {
+    for (const b of list) {
+      if (b.t === 'p' || b.t === 'h') { const e = el(b.t === 'p' ? 'p' : `h${level}`, b.t === 'h' ? 'rp-h' : ''); runs(e, b.text); parent.append(e); continue; }
+      if (b.t === 'quote') { const e = el('blockquote', 'rp-callout'); draw(e, b.blocks); parent.append(e); continue; }
+      const e = el(b.t);
+      if (b.t === 'ol' && b.start !== 1) e.start = b.start;
+      for (const it of b.items) { const li = el('li'); draw(li, it); e.append(li); }
+      parent.append(e);
+    }
+  };
+  const wrap = el('div', 'rp');
+  draw(wrap, blocks);
+  return wrap;
+}
+
+// ─── Writing ────────────────────────────────────────────────────────
+
+const svg = (d) => html`<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICON = {
+  heading: svg(html`<path d="M6 12h12" /><path d="M6 20V4" /><path d="M18 20V4" />`),
+  bold: svg(html`<path d="M6 12h9a4 4 0 0 1 0 8H7a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1h7a4 4 0 0 1 0 8" />`),
+  italic: svg(html`<line x1="19" x2="10" y1="4" y2="4" /><line x1="14" x2="5" y1="20" y2="20" /><line x1="15" x2="9" y1="4" y2="20" />`),
+  bullets: svg(html`<path d="M3 12h.01" /><path d="M3 18h.01" /><path d="M3 6h.01" /><path d="M8 12h13" /><path d="M8 18h13" /><path d="M8 6h13" />`),
+  numbers: svg(html`<path d="M10 12h11" /><path d="M10 18h11" /><path d="M10 6h11" /><path d="M4 10h2" /><path d="M4 6h1v4" /><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />`),
+  callout: svg(html`<path d="M4 4v16" /><path d="M9 7h11" /><path d="M9 12h11" /><path d="M9 17h7" />`),
+  link: svg(html`<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />`),
+  undo: svg(html`<path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" />`),
+  redo: svg(html`<path d="m15 14 5-5-5-5" /><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" />`),
+};
+const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
+const MOD = MAC ? '⌘' : 'Ctrl+';
+
+// What a pasted page keeps: what a report can hold, nothing else (no styles, no images, no scripts)
+const PASTE = { ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'a', 'ul', 'ol', 'li', 'blockquote', 'h3'], ALLOWED_ATTR: ['href', 'start'] };
+// The longest a report can be, in letters (its Markdown can run longer: the server keeps LIMITS.report of it)
+export const REPORT_LETTERS = 40000;
+const BULLET = /^[\s\u00a0]*([·•▪◦‣⁃o§\-–*]|\d{1,3}[.)]|[a-z][.)])[\s\u00a0]+/i;
+
+/**
+ * What Google Docs, Word, Pages and a spreadsheet put on the clipboard, as the report's own kinds of thing, read
+ * before anything is thrown away: Docs' bold and italic are styles on spans (and the whole paste sits in a <b> that
+ * isn't bold); Word's points are paragraphs with a bullet character and an indent level; a table's rows are lines.
+ * Then only what a report holds is kept (PASTE)
+ */
+export function cleanPaste(raw) {
+  const doc = new DOMParser().parseFromString(raw, 'text/html');
+  const body = doc.body;
+  const unwrap = (el) => el.replaceWith(...el.childNodes);
+  const styleOf = (el) => String(el.getAttribute('style') || '').toLowerCase();
+  const wrap = (el, tag) => { const w = doc.createElement(tag); w.append(...el.childNodes); el.append(w); };
+  // Bold and italic that are styles
+  for (const el of [...body.querySelectorAll('b, strong')]) if (/font-weight:\s*(normal|[1-4]00)\b/.test(styleOf(el))) unwrap(el);
+  for (const el of [...body.querySelectorAll('span, font')]) {
+    const st = styleOf(el);
+    if (/font-weight:\s*(bold|[6-9]00)\b/.test(st)) wrap(el, 'strong');
+    if (/font-style:\s*italic/.test(st)) wrap(el, 'em');
+  }
+  // Headings of any level: the report's one kind
+  for (const el of [...body.querySelectorAll('h1, h2, h4, h5, h6')]) { const h3 = doc.createElement('h3'); h3.append(...el.childNodes); el.replaceWith(h3); }
+  // A table: each row a line, its cells " · " apart
+  for (const t of [...body.querySelectorAll('table')]) {
+    const lines = [...t.querySelectorAll('tr')].map((tr) => [...tr.children].map((c) => c.textContent.replace(/\s+/g, ' ').trim()).filter(Boolean).join(' · ')).filter(Boolean);
+    const frag = doc.createDocumentFragment();
+    for (const l of lines) { const p = doc.createElement('p'); p.textContent = l; frag.append(p); }
+    t.replaceWith(frag);
+  }
+  // Word's points: paragraphs marked as list items (mso-list, its level) or starting with a bullet; a run of them a list
+  const ps = [...body.querySelectorAll('p')];
+  let run = null;
+  for (const p of ps) {
+    const st = styleOf(p);
+    const marker = p.querySelector('[style*="mso-list:ignore" i], [style*="mso-list: ignore" i]');
+    const text = p.textContent || '';
+    const isItem = /mso-list/.test(st) || /MsoListParagraph/i.test(p.className) || (BULLET.test(text) && p.previousElementSibling && run?.last === p.previousElementSibling) || (BULLET.test(text) && /^[\s\u00a0]*[·•▪◦‣⁃§]/.test(text));
+    if (!isItem) { run = null; continue; }
+    const level = Math.max(1, Number((st.match(/level(\d)/) || [])[1]) || 1);
+    const ordered = /^[\s\u00a0]*\d{1,3}[.)]/.test(marker?.textContent || text);
+    if (marker) marker.remove();
+    else {
+      // The bullet typed into the line itself
+      const walker = doc.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+      const first = walker.nextNode();
+      if (first) first.nodeValue = first.nodeValue.replace(BULLET, '');
+    }
+    const li = doc.createElement('li');
+    li.append(...p.childNodes);
+    if (!run || run.last !== p.previousElementSibling) { run = { stack: [], last: null }; }
+    // The list at this level (deeper ones go inside the last item above them)
+    while (run.stack.length > level) run.stack.pop();
+    while (run.stack.length < level) {
+      const list = doc.createElement(ordered ? 'ol' : 'ul');
+      if (run.stack.length) (run.stack.at(-1).lastElementChild || run.stack.at(-1)).append(list);
+      else p.before(list);
+      run.stack.push(list);
+    }
+    run.stack.at(-1).append(li);
+    const placeholder = doc.createElement('span');
+    p.replaceWith(placeholder);
+    run.last = placeholder;
+  }
+  for (const el of [...body.querySelectorAll('span:empty')]) el.remove();
+  return DOMPurify.sanitize(body.innerHTML, PASTE);
+}
+// Plain text that's written as Markdown (more than a stray asterisk): read as what it says
+const LOOKS_MD = /(^|\n)\s{0,3}(#{1,6}\s|[-*+•]\s|\d{1,3}[.)]\s|>\s)|\*\*[^*\n]+\*\*|\[[^\]\n]+\]\([^)\s]+\)/;
+
+/**
+ * Where a report is written. `value` is Markdown; `onChange(md)` hears every change. `resetKey`: a new one puts
+ * `value` in even while someone's typing (taking a newer version someone else saved). `status`: what saving says,
+ * at the foot. The toolbar stays in view under `stickyTop` while a long report scrolls.
+ */
+export function ReportEditor({ value, onChange, label = 'The report', placeholder = 'What happened, what the board needs to decide, and what’s next', autofocus = false, resetKey = 0, status = null, stickyTop = '0px', minHeight = 220, onBlur }) {
+  const ed = useRef(null);
+  const last = useRef(value || '');
+  const change = useRef(onChange);
+  change.current = onChange;
+  const blurred = useRef(onBlur);
+  blurred.current = onBlur;
+  const [, setTick] = useState(0);
+  const [linking, setLinking] = useState(null); // the address it had when the box opened, or null when it's shut
+  const [badLink, setBadLink] = useState(false);
+  const linkBox = useRef(null);
+  // Focused (its address selected) the moment it's on the page: a first key typed fast never lands before the select
+  const linkRef = useRef((el) => { linkBox.current = el; if (el) { el.focus(); el.select(); } }).current;
+  // The words it goes on, kept as the box opens (the editor's selection can't be trusted once the box has the focus)
+  const linkAt = useRef(null);
+  // What the person sees selected (the page's own selection: the editor's catches up a moment later, so ⌘K pressed
+  // right after Shift+⌥← would find nothing selected yet)
+  const shownRange = () => {
+    const v = ed.current?.view;
+    const s = getSelection();
+    if (!v || !s?.rangeCount || !v.dom.contains(s.anchorNode)) return null;
+    try { const a = v.posAtDOM(s.anchorNode, s.anchorOffset); const b = v.posAtDOM(s.focusNode, s.focusOffset); return { from: Math.min(a, b), to: Math.max(a, b) }; } catch { return null; }
+  };
+  const openLink = () => {
+    const sel = ed.current?.state.selection;
+    linkAt.current = shownRange() || (sel ? { from: sel.from, to: sel.to } : null);
+    if (linkAt.current && ed.current) ed.current.commands.setTextSelection(linkAt.current);
+    setBadLink(false);
+    setLinking(ed.current?.getAttributes('link')?.href || '');
+  };
+  const opener = useRef(openLink);
+  opener.current = openLink;
+
+  // Built the moment its box is on the page (a ref, not an effect: an effect waits for the page's view transition,
+  // and the first words typed after "Write your report" would go nowhere)
+  const mount = useRef((el) => {
+    if (!el || ed.current) return;
+    const editor = new Editor({
+      element: el,
+      extensions: [
+        StarterKit.configure({ heading: { levels: [3] }, code: false, codeBlock: false, strike: false, horizontalRule: false }),
+        TiptapLink.configure({ openOnClick: false, autolink: true, linkOnPaste: true, defaultProtocol: 'https', HTMLAttributes: LINK, validate: (href) => !!safeHref(href) }),
+        Placeholder.configure({ placeholder }),
+        CharacterCount.configure({ limit: REPORT_LETTERS }),
+      ],
+      content: mdToDoc(value),
+      editorProps: {
+        attributes: { role: 'textbox', 'aria-multiline': 'true', 'aria-label': label, class: 'rp rp-edit', spellcheck: 'true' },
+        transformPastedHTML: cleanPaste,
+        handlePaste: (view, e) => {
+          const dt = e.clipboardData;
+          if (!dt || dt.types.includes('text/html')) return false;
+          const text = dt.getData('text/plain');
+          if (!LOOKS_MD.test(text)) return false;
+          e.preventDefault();
+          ed.current?.chain().focus().insertContent(mdToDoc(text).content).run();
+          return true;
+        },
+        handleKeyDown: (view, e) => {
+          // ⌘K is the link here, never the page's search
+          if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') { e.preventDefault(); e.stopPropagation(); opener.current(); return true; }
+          return false;
+        },
+        // Words that only look like Markdown as they're typed stay words: "2026. " starts no list (a list starts under
+        // 100), and a star with a space just inside it ("2 * 3 * 4") is a star, never italic or bold
+        handleTextInput: (view, from, to, text) => {
+          const $from = view.state.doc.resolve(from);
+          const before = $from.parent.textBetween(0, $from.parentOffset, undefined, '\ufffc');
+          const plain = (text === ' ' && /^\d{3,}[.)]$/.test(before)) || (text === '*' && /(?:^|\s)\*{1,2}(\s[^*]*|[^*]*\s)\*?$/.test(before));
+          if (!plain) return false;
+          view.dispatch(view.state.tr.insertText(text, from, to));
+          return true;
+        },
+      },
+      onUpdate: ({ editor: x }) => {
+        const md = docToMd(x.getJSON());
+        if (md === last.current) return;
+        last.current = md;
+        change.current(md);
+      },
+      onCreate: () => setTick((n) => n + 1),
+      onTransaction: () => setTick((n) => n + 1),
+      onBlur: () => blurred.current?.(),
+    });
+    ed.current = editor;
+    // Ready to type now, not a moment later
+    if (autofocus) editor.commands.focus('end');
+  }).current;
+  useEffect(() => () => { ed.current?.destroy(); ed.current = null; }, []);
+
+  // A value from outside (a newer save, a reload): put in when it isn't what's here, unless they're typing
+  const lastReset = useRef(resetKey);
+  useEffect(() => {
+    const editor = ed.current;
+    if (!editor) return;
+    const forced = resetKey !== lastReset.current;
+    lastReset.current = resetKey;
+    if ((value || '') === last.current && !forced) return;
+    if (editor.isFocused && !forced) return;
+    last.current = value || '';
+    editor.commands.setContent(mdToDoc(value), false);
+  }, [value, resetKey]);
+
+  // The toolbar is one Tab stop; ← → Home End move along it (the last one used is where Tab comes back to)
+  const tools = (bar) => [...bar.querySelectorAll('.rp-tool')].filter((b) => !b.disabled && b.offsetParent);
+  const rove = (bar, to) => { for (const b of bar.querySelectorAll('.rp-tool')) b.tabIndex = b === to ? 0 : -1; to?.focus(); };
+  const roveKeys = (ev) => {
+    if (!ev.target.classList?.contains('rp-tool')) return;
+    const list = tools(ev.currentTarget);
+    const i = list.indexOf(ev.target);
+    const to = { ArrowRight: list[(i + 1) % list.length], ArrowLeft: list[(i - 1 + list.length) % list.length], Home: list[0], End: list.at(-1) }[ev.key];
+    if (to) { ev.preventDefault(); rove(ev.currentTarget, to); }
+  };
+  const roveFocus = (ev) => { if (ev.target.classList?.contains('rp-tool')) for (const b of ev.currentTarget.querySelectorAll('.rp-tool')) b.tabIndex = b === ev.target ? 0 : -1; };
+  const e = ed.current;
+  const on = (name, attrs) => !!e?.isActive(name, attrs);
+  const run = (fn) => (ev) => { ev.preventDefault(); if (e) fn(e.chain().focus()).run(); };
+  const btn = (key, title, active, fn, disabled = false) => html`<button type="button" class=${`rp-tool ${active ? 'is-on' : ''}`} tabIndex=${key === 'heading' ? 0 : -1} title=${title} aria-label=${title.replace(/ \(.*\)$/, '')} aria-pressed=${active ? 'true' : 'false'} disabled=${disabled} onMouseDown=${(ev) => ev.preventDefault()} onClick=${run(fn)}>${ICON[key]}</button>`;
+  const applyLink = (href, remove = false) => {
+    const safe = safeHref(href);
+    // Something typed that isn't an address: said, and the box keeps it to fix
+    if (!remove && String(href).trim() && !safe) { setBadLink(true); linkBox.current?.focus(); return; }
+    const c = e.chain().focus();
+    if (linkAt.current) c.setTextSelection(linkAt.current);
+    c.extendMarkRange('link');
+    (safe ? c.setLink({ href: safe }) : c.unsetLink()).run();
+    setLinking(null);
+  };
+  const words = e ? mdWords(last.current) : 0;
+  const full = !!e && e.storage.characterCount.characters() >= REPORT_LETTERS;
+  return html`<div class="rp-editor" style=${`--rp-sticky:${stickyTop}`}>
+    <div class="rp-bar" role="toolbar" aria-label=${`Formatting for ${label.toLowerCase()}`} onKeyDown=${roveKeys} onFocusIn=${roveFocus}>
+      ${btn('heading', `Heading (${MOD}Alt+3, or ### then a space)`, on('heading'), (c) => c.toggleHeading({ level: 3 }))}
+      ${btn('bold', `Bold (${MOD}B)`, on('bold'), (c) => c.toggleBold())}
+      ${btn('italic', `Italic (${MOD}I)`, on('italic'), (c) => c.toggleItalic())}
+      <span class="rp-sep" aria-hidden="true"></span>
+      ${btn('bullets', 'Points (- then a space)', on('bulletList'), (c) => c.toggleBulletList())}
+      ${btn('numbers', 'Numbered list (1. then a space)', on('orderedList'), (c) => c.toggleOrderedList())}
+      ${btn('callout', 'Callout, for what the board needs to decide (> then a space)', on('blockquote'), (c) => c.toggleBlockquote())}
+      <span class="rp-sep" aria-hidden="true"></span>
+      <button type="button" class=${`rp-tool ${on('link') ? 'is-on' : ''}`} tabIndex="-1" title=${`Link (${MOD}K)`} aria-label="Link" aria-pressed=${on('link') ? 'true' : 'false'} aria-expanded=${linking !== null} onMouseDown=${(ev) => ev.preventDefault()} onClick=${openLink}>${ICON.link}</button>
+      <span class="rp-bar__end">
+        ${btn('undo', `Undo (${MOD}Z)`, false, (c) => c.undo(), !e?.can().undo())}
+        ${btn('redo', `Redo (${MOD}Shift+Z)`, false, (c) => c.redo(), !e?.can().redo())}
+      </span>
+      ${linking !== null ? html`<form class="rp-link" noValidate onSubmit=${(ev) => { ev.preventDefault(); applyLink(linkBox.current.value); }}>
+        <input ref=${linkRef} class="rp-link__box" type="text" inputmode="url" autocomplete="off" spellcheck="false" defaultValue=${linking} placeholder="soard.org, https://… or an email" aria-label="Link to" aria-invalid=${badLink ? 'true' : null} aria-describedby=${badLink ? 'rp-link-bad' : null}
+          onInput=${() => setBadLink(false)} onKeyDown=${(ev) => { ev.stopPropagation(); if (ev.key === 'Escape') { ev.preventDefault(); setLinking(null); e?.commands.focus(); } }} />
+        <button type="submit" class="rp-link__go">${linking ? 'Change' : 'Link'}</button>
+        ${on('link') ? html`<button type="button" class="rp-link__go is-quiet" onClick=${() => applyLink('', true)}>Remove</button>` : null}
+        ${badLink ? html`<p class="rp-link__bad" id="rp-link-bad" role="alert">That isn’t a web address or an email</p>` : null}
+      </form>` : null}
+    </div>
+    <div class="rp-page" ref=${mount} style=${`min-height:${minHeight}px`} onClick=${(ev) => { if (ev.target === ev.currentTarget) e?.commands.focus('end'); }}></div>
+    <div class="rp-foot">
+      <span class="rp-foot__count" aria-live="off">${full ? html`<strong class="rp-full" role="status">That’s as long as a report can be</strong>` : words ? `${words} ${words === 1 ? 'word' : 'words'} · ${readTime(words)}` : html`<span class="rp-hint">Markdown works: <kbd>###</kbd> a heading, <kbd>-</kbd> points, <kbd>1.</kbd> a list, <kbd>**bold**</kbd></span>`}</span>
+      ${status ? html`<span class="rp-foot__status">${status}</span>` : null}
+    </div>
+  </div>`;
+}
+
+// ─── How it looks (both pages; each page's own colors where it has them) ───
+
+const CSS = `
+.rp { --rp-ink: var(--ink, var(--color-text, #2D2F2C)); --rp-ink-2: var(--ink-2, var(--color-text, #4E504C)); --rp-muted: var(--muted, var(--color-text-secondary, #5F615A));
+  --rp-line: var(--line, var(--color-border, #E7E5DE)); --rp-yellow: var(--yellow, var(--color-primary, #FFDA24)); --rp-wash: var(--yellow-wash, #FFFAE0);
+  color: var(--rp-ink-2); font-size: 1rem; line-height: 1.65; overflow-wrap: anywhere; }
+.rp > :first-child { margin-top: 0; }
+.rp > :last-child { margin-bottom: 0; }
+.rp p { margin: 0 0 0.75em; }
+.rp .rp-h, .rp h3 { margin: 1.15em 0 0.4em; color: var(--rp-ink); font-size: 1.06em; font-weight: 700; line-height: 1.35; letter-spacing: -0.005em; }
+.rp ul, .rp ol { margin: 0 0 0.8em; padding-left: 1.35em; }
+.rp li { margin: 0.2em 0; padding-left: 0.15em; }
+.rp li > p { margin: 0; }
+.rp li > ul, .rp li > ol { margin: 0.2em 0 0.3em; }
+.rp ul { list-style-type: disc; }
+.rp ul ul { list-style-type: circle; }
+.rp ul ul ul { list-style-type: square; }
+.rp ol { list-style-type: decimal; }
+.rp li::marker { color: var(--rp-muted); }
+.rp strong { color: var(--rp-ink); font-weight: 700; }
+.rp a { color: var(--rp-ink); text-decoration: underline; text-decoration-color: var(--rp-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.rp a:hover { text-decoration-color: currentColor; }
+.rp .rp-callout, .rp blockquote { margin: 0.4em 0 0.9em; padding: 0.7em 1em; border-left: 4px solid var(--rp-yellow); border-radius: 0 10px 10px 0; background: var(--rp-wash); color: var(--rp-ink); }
+.rp blockquote > :last-child { margin-bottom: 0; }
+.rp-more { display: inline-flex; align-items: center; margin-top: 0.15rem; padding: 0.35rem 0.75rem; border: 1px solid var(--rp-line); border-radius: 999px; background: var(--card, #fff); color: var(--rp-ink); font: inherit; font-size: 0.88rem; font-weight: 650; cursor: pointer; }
+.rp-more:hover { border-color: var(--rp-ink); }
+.rp-more__n { color: var(--rp-muted); font-weight: 500; }
+
+.rp-editor { --rp-line: var(--line, var(--color-border, #E7E5DE)); position: relative; border: 1px solid var(--line-2, var(--color-border-strong, #D3D0C7)); border-radius: 14px; background: var(--card, var(--color-bg-card, #fff)); }
+.rp-editor:focus-within { border-color: var(--ink, var(--color-text, #2D2F2C)); box-shadow: 0 0 0 3px rgba(45,47,44,0.08); }
+.rp-bar { position: sticky; top: var(--rp-sticky, 0px); z-index: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 2px; padding: 6px; border-bottom: 1px solid var(--rp-line); border-radius: 14px 14px 0 0; background: inherit; background-color: var(--card, var(--color-bg-card, #fff)); }
+.rp-tool { display: grid; place-items: center; width: 36px; height: 36px; border: none; border-radius: 9px; background: none; color: var(--muted, var(--color-text-secondary, #5F615A)); cursor: pointer; transition: background 0.12s, color 0.12s; }
+.rp-tool:hover:not(:disabled) { background: var(--warm, rgba(45,47,44,0.06)); color: var(--ink, var(--color-text, #2D2F2C)); }
+.rp-tool.is-on { background: var(--yellow-soft, #FFF5C2); color: var(--ink, var(--color-text, #2D2F2C)); }
+.rp-tool:disabled { opacity: 0.35; cursor: default; }
+.rp-tool:focus-visible { outline: 2px solid var(--ink, var(--color-text, #2D2F2C)); outline-offset: 1px; }
+.rp-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--rp-line); }
+.rp-bar__end { display: flex; gap: 2px; margin-left: auto; }
+.rp-link { flex: 1 1 100%; display: flex; gap: 6px; padding: 4px 2px 0; }
+.rp-link__box { flex: 1; min-width: 0; height: 36px; padding: 0 0.7rem; border: 1px solid var(--line-2, var(--color-border-strong, #D3D0C7)); border-radius: 9px; font: inherit; font-size: 0.92rem; background: var(--card, #fff); color: inherit; }
+.rp-link__box:focus { outline: none; border-color: var(--ink, var(--color-text, #2D2F2C)); }
+.rp-link__go { height: 36px; padding: 0 0.9rem; border: none; border-radius: 9px; background: var(--ink, var(--color-text, #2D2F2C)); color: #fff; font: inherit; font-size: 0.88rem; font-weight: 650; cursor: pointer; }
+.rp-link__bad { flex: 1 1 100%; margin: 0; padding: 0 0.2rem; font-size: 0.82rem; font-weight: 600; color: var(--warn, var(--tone-warn-fg, #84550C)); }
+.rp-full { font-weight: 650; color: var(--warn, var(--tone-warn-fg, #84550C)); }
+.rp-link__go.is-quiet { background: none; color: var(--ink, var(--color-text, #2D2F2C)); border: 1px solid var(--rp-line); }
+.rp-page { padding: 1rem 1.15rem 0.6rem; cursor: text; }
+.rp-edit { outline: none; min-height: inherit; white-space: pre-wrap; word-wrap: break-word; }
+.rp-page .ProseMirror { min-height: inherit; }
+.rp-edit p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; color: var(--quiet, var(--color-text-muted, #8C8E86)); pointer-events: none; }
+.rp-edit .ProseMirror-selectednode { outline: 2px solid var(--yellow, #FFDA24); }
+.rp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 1rem; padding: 0.45rem 1.15rem 0.6rem; font-size: 0.8rem; color: var(--muted, var(--color-text-secondary, #5F615A)); font-variant-numeric: tabular-nums; }
+.rp-hint kbd { display: inline-block; padding: 0 0.3em; border: 1px solid var(--rp-line); border-radius: 5px; background: var(--warm, #F5F4F0); font: inherit; font-size: 0.95em; line-height: 1.5; }
+.rp-foot__status { margin-left: auto; }
+/* A phone: the tools in one row, a finger's size (its own undo is the phone's: shake, or three fingers) */
+@media (max-width: 640px) { .rp-bar { flex-wrap: nowrap; gap: 0; } .rp-tool { width: 40px; height: 40px; flex: none; } .rp-sep { margin: 0 2px; } .rp-bar__end { display: none; } .rp-link { flex-wrap: wrap; } .rp-bar:has(.rp-link) { flex-wrap: wrap; } .rp-page { padding: 0.85rem 0.9rem 0.5rem; } .rp-foot { padding: 0.45rem 0.9rem 0.6rem; } }
+@media print { .rp a { text-decoration: none; } .rp .rp-callout { background: none; } }
+`;
+if (typeof document !== 'undefined' && !document.getElementById('board-report-css')) {
+  const s = document.createElement('style');
+  s.id = 'board-report-css';
+  s.textContent = CSS;
+  document.head.append(s);
+}

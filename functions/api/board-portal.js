@@ -12,6 +12,10 @@
  * POST { action: 'sign', docId, name }               "I've read it", this year, with their own name typed
  * POST { action: 'checkin', meetingId, how }         present | remote, on the meeting's day
  * POST { action: 'vote', meetingId, motionId, vote } for | against | abstain, while the chair has it open
+ * POST { action: 'report', meetingId, itemId, text, base }  the report on an item they present (Markdown); an admin's
+ *                                                    on any. base: the reportAt they started from (409 + current)
+ * POST ?attach=<meetingId>&item=<itemId> (multipart "file")  a document with an item they present (an admin's, any)
+ * POST { action: 'detach', meetingId, itemId, fileId }  one they put there taken off again (an admin: any)
  * POST ?minutes=<meetingId> (multipart "file")       the secretary's typed minutes template, read into the meeting
  *                                                    (_board-minutes.js secretarySends); the secretary's seat or an admin.
  *                                                    Another meeting's minutes → 409 { error, other }; &anyway=1 sends them all the same
@@ -19,7 +23,7 @@
  * (theirs alone, simulated members) they check in and vote as themselves.
  */
 
-import { portalData, setRsvp, setActionDone, signDoc, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote } from './_board.js';
+import { portalData, setRsvp, setActionDone, signDoc, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, attachToItem, detachFromItem } from './_board.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
 
@@ -72,11 +76,29 @@ export async function onRequestPost(context) {
         throw err;
       }
     }
+    // A document with an item they present (attachToItem checks), as the form's "file"
+    const q = new URL(request.url).searchParams;
+    if (q.has('attach')) {
+      let file = null;
+      try { file = (await request.formData()).get('file'); } catch { return fail('Send the document as a file'); }
+      return Response.json({ ok: true, ...(await attachToItem(env, q.get('attach'), String(q.get('item') || ''), file, w)) });
+    }
     let body = {};
     try { body = await request.json(); } catch { return fail('Expected JSON'); }
     // A meeting as it's held: a member for themselves; an admin only in their practice meeting (liveMeeting decides)
     if (body.action === 'checkin') return Response.json({ ok: true, ...(await liveCheckIn(env, String(body.meetingId || ''), { ...w, how: String(body.how || '') })) });
     if (body.action === 'vote') return Response.json({ ok: true, ...(await liveVote(env, String(body.meetingId || ''), String(body.motionId || ''), String(body.vote || ''), w)) });
+    if (body.action === 'detach') return Response.json({ ok: true, ...(await detachFromItem(env, String(body.meetingId || ''), String(body.itemId || ''), String(body.fileId || ''), w)) });
+    // A report: who presents the item writes it (saveReport checks), and an admin can on any
+    if (body.action === 'report') {
+      try {
+        const base = typeof body.base === 'string' ? body.base : null;
+        return Response.json({ ok: true, ...(await saveReport(env, String(body.meetingId || ''), String(body.itemId || ''), body.text, { ...w, base })) });
+      } catch (err) {
+        if (err.status === 409 && err.current) return Response.json({ ok: false, error: err.message, current: err.current }, { status: 409 });
+        throw err;
+      }
+    }
     if (!w.member) return fail('Only a board member can answer that for themselves', 403);
     const { member } = w;
     switch (body.action) {

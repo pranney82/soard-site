@@ -18,6 +18,7 @@ import {
   meetingName, longDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, itemFiles, looseFiles, fileTitle, isDate, clock, sectionPlan, MORE,
 } from '../board-shared.js';
 import { moneyFor, moneyTiles, mixOf, shareOf, changeOf } from './money.js';
+import { reportDom } from '../board-report.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
 
@@ -185,7 +186,8 @@ function agendaPages(m, { people, numbers, meetings, money }) {
   const plan = sectionPlan(m);
   const ol = el('ol', 'bpp-secs');
   m.sections.filter((s) => s.title || s.items.length).forEach((s, si) => {
-    const li = el('li', 'bpp-sec');
+    // A part with a report may run on to the next sheet (kept whole, it would leave this one blank)
+    const li = el('li', `bpp-sec ${s.items.some((it) => it.report) ? 'has-report' : ''}`);
     const h = el('h2', 'bpp-sec__title');
     const t = plan.get(s.id);
     h.append(el('span', 'bpp-sec__n', String(si + 1).padStart(2, '0')), el('span', 'bpp-sec__name', s.title || 'Agenda'));
@@ -202,6 +204,14 @@ function agendaPages(m, { people, numbers, meetings, money }) {
       if (it.confidential) row.append(el('p', 'bpp-flag', 'Board only · please don’t share'));
       const notes = points(it.notes);
       if (notes) row.append(notes);
+      // The presenter's report, as it reads on the board page (a long one may run on to the next sheet)
+      const report = reportDom(it.report);
+      if (report) {
+        row.classList.add('has-report');
+        const box = el('div', 'bpp-report');
+        box.append(el('p', 'bpp-report__by', ['Report', it.reportBy ? `by ${it.reportBy}` : ''].filter(Boolean).join(' ')), report);
+        row.append(box);
+      }
       const facts = liveBox(it.live, numbers, m, money);
       if (facts) row.append(facts);
       const files = itemFiles(m, it, meetings);

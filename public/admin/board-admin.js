@@ -24,7 +24,7 @@ import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE
 import { MeetingEditor, agendaSource } from './board-meeting.js';
 import {
   DOC_KINDS, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
-  attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority,
+  attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority, agendaItems,
 } from './board-shared.js';
 
 // ═══════════════════════════════════════════════════════════════════
@@ -257,10 +257,14 @@ function AgendaPreview({ m, ctx }) {
       <div class="bd-card-head" style="margin:0"><h3>Agenda for ${shortDate(m.date)} <span class=${`tag ${src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
       <button class="btn btn-ghost btn-sm" onClick=${() => ctx.go({ meetingId: m.id, step: 'before' })}>Change the agenda</button>
     </div>
-    <ol class="bh-agenda">${m.sections.map((s) => html`<li key=${s.id}>
+    <ol class="bh-agenda">${m.sections.map((s, si) => {
+      // The items as the board reads them: an empty row left out, a live list called what it shows
+      const items = agendaItems(m).filter((x) => x.si === si);
+      return html`<li key=${s.id}>
       <span class="bh-agenda__sec">${s.title || 'Section'}</span>
-      ${s.items.length ? html`<span class="bh-agenda__items">${s.items.map((it) => `${it.title}${it.presenter ? ` (${it.presenter})` : ''}`).join(' · ')}</span>` : null}
-    </li>`)}</ol>
+      ${items.length ? html`<span class="bh-agenda__items">${items.map((x) => `${x.title}${x.presenter ? ` (${x.presenter})` : ''}`).join(' · ')}</span>` : null}
+    </li>`;
+    })}</ol>
   </div>`;
 }
 

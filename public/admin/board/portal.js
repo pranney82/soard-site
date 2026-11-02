@@ -31,7 +31,10 @@ import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
   isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
+  reportsOn, namesText,
 } from '../board-shared.js';
+import { Report, ReportEditor, readTime } from '../board-report.js';
+import { mdPlain, mdWords } from '../board-md.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
 import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix, spentOf, budgetDue } from './money.js';
@@ -51,6 +54,7 @@ const ICONS = {
   pin: html`<path d="M12 21s-6.5-5.8-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.2 12 21 12 21z" /><circle cx="12" cy="10.5" r="2.25" />`,
   video: html`<rect x="3" y="6.5" width="12.5" height="11" rx="2" /><path d="m15.5 10.5 5.5-3v9l-5.5-3" />`,
   check: html`<path d="m5 12.5 4.5 4.5L19 7.5" />`,
+  edit: html`<path d="M4.5 19.5h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4.5 15.5z" /><path d="m13.5 6.5 4 4" />`,
   search: html`<circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" />`,
   arrow: html`<path d="M5 12h14M13 6l6 6-6 6" />`,
   back: html`<path d="M19 12H5M11 18l-6-6 6-6" />`,
@@ -85,8 +89,10 @@ async function call(body) {
   return j;
 }
 const readRoute = () => {
-  const [page = '', id = null, sub = ''] = location.hash.replace(/^#\/?/, '').split('/').map((x) => decodeURIComponent(x));
-  return { page: PAGES.includes(page) ? page : '', id: id || null, sub: page === 'meetings' && id && sub === 'screen' ? 'screen' : '' };
+  const [page = '', id = null, sub = '', item = ''] = location.hash.replace(/^#\/?/, '').split('/').map((x) => decodeURIComponent(x));
+  // A meeting's screen (#/meetings/<id>/screen), or the page to write an item's report on (#/meetings/<id>/report/<item>)
+  const deeper = page === 'meetings' && id ? (sub === 'screen' ? 'screen' : sub === 'report' && item ? 'report' : '') : '';
+  return { page: PAGES.includes(page) ? page : '', id: id || null, sub: deeper, item: deeper === 'report' ? item : '' };
 };
 
 // ─── Words and dates ────────────────────────────────────────────────
@@ -305,8 +311,8 @@ document.addEventListener('click', (e) => {
     else el.click();
   });
 }, true);
-function transition(update, { kind = 'tab', morphTo = null, after = () => {} } = {}) {
-  if (!document.startViewTransition || reduceMotion() || document.visibilityState !== 'visible') { update(); tick().then(after); return; }
+function transition(update, { kind = 'tab', morphTo = null, after = () => {}, instant = false } = {}) {
+  if (instant || !document.startViewTransition || reduceMotion() || document.visibilityState !== 'visible') { update(); tick().then(after); return; }
   const root = document.documentElement;
   root.dataset.vt = kind;
   const t = document.startViewTransition(async () => {
@@ -410,6 +416,8 @@ function useFocusTarget() {
       el.classList.remove('is-found');
       void el.offsetWidth;
       el.classList.add('is-found');
+      // A report cut short opens whole, so what was searched for shows
+      el.querySelectorAll('.rp-more[aria-expanded="false"]').forEach((b) => b.click());
       // The focus goes there too: a field waiting for them (the name to sign with), else the thing itself
       const field = el.querySelector('[data-autofocus]');
       if (field) field.focus({ preventScroll: true });
@@ -484,7 +492,7 @@ function App() {
     let was = readRoute();
     // A page's place as it was left, for "All meetings" (a new step back to the list, not the browser's Back)
     const left = {};
-    const where = (r) => `${r.page}/${r.id || ''}${r.sub ? `/${r.sub}` : ''}`;
+    const where = (r) => `${r.page}/${r.id || ''}${r.sub ? `/${r.sub}` : ''}${r.item ? `/${r.item}` : ''}`;
     let ui = kept().ui;
     let saving = 0;
     // Where this page is, as last kept (Safari moves the scroll to the next page's before saying the page changed,
@@ -521,7 +529,8 @@ function App() {
       here = { ...place };
       ui = kept().ui;
       clearTimeout(saving);
-      transition(() => setRoute(now), { kind, morphTo, after: () => scrollBack(place.y, place.a, place.o) });
+      // A page to type on (a report) opens at once: keys typed while a view transition runs are lost or drawn wrong
+      transition(() => setRoute(now), { kind, morphTo, instant: now.sub === 'report', after: () => scrollBack(place.y, place.a, place.o) });
     };
     const noteUi = () => { ui = kept().ui; };
     addEventListener('hashchange', on);
@@ -535,6 +544,7 @@ function App() {
   useEffect(() => {
     const keys = (e) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(e.target?.tagName || '') || e.target?.isContentEditable;
+      if (e.defaultPrevented || e.target?.closest?.('.rp-editor')) return; // the report editor's ⌘K is its link
       if ((e.key === 'k' && (e.metaKey || e.ctrlKey)) || (e.key === '/' && !typing && !e.metaKey && !e.ctrlKey)) { e.preventDefault(); setFinding(true); }
     };
     // On a phone the header steps away going down the page and comes back going up (8px of intent), at the top always
@@ -562,7 +572,7 @@ function App() {
   const gone = () => { if (document.activeElement?.closest?.('.bp-toast')) (document.getElementById('todo-h') || document.getElementById('main'))?.focus({ preventScroll: true }); setNote(null); };
   useEffect(() => { if (note) { const t = setTimeout(gone, note.act ? 7000 : 4500); return () => clearTimeout(t); } return undefined; }, [note]);
   useEffect(() => {
-    if (route.sub === 'screen') return;
+    if (route.sub === 'screen' || route.sub === 'report') return; // (each names its own window)
     const m = route.page === 'meetings' && route.id && data && [...data.meetings, data.nextPending, ...(data.previews || [])].find((x) => x?.id === route.id);
     document.title = m ? `${meetingName(m)} · SOARD Board` : `${NAV.find(([p]) => p === route.page)?.[1] || 'Home'} · SOARD Board`;
   }, [route, data]);
@@ -593,7 +603,8 @@ function App() {
   const ctx = { data, d, setData, load, say, find: () => setFinding(true) };
   // The meeting on the screen fills the window: no header, tabs or footer
   if (route.sub === 'screen') return html`<${Screen} id=${route.id} data=${data} d=${d} key=${route.id} onBack=${goBack} />`;
-  const page = route.page === 'meetings' && route.id ? html`<${MeetingPage} id=${route.id} ctx=${ctx} key=${route.id} />`
+  const page = route.sub === 'report' ? html`<${ReportPage} id=${route.id} itemId=${route.item} ctx=${ctx} key=${`${route.id}/${route.item}`} />`
+    : route.page === 'meetings' && route.id ? html`<${MeetingPage} id=${route.id} ctx=${ctx} key=${route.id} />`
     : route.page === 'meetings' ? html`<${MeetingsPage} ctx=${ctx} />`
     : route.page === 'financials' ? html`<${FinancialsPage} ctx=${ctx} />`
     : route.page === 'people' ? html`<${PeoplePage} ctx=${ctx} />`
@@ -1035,13 +1046,19 @@ function HomePage({ ctx }) {
   useFocusTarget();
   const mine = data.actions.filter((a) => a.mine);
   const toSign = data.docs.filter((x) => x.sign && x.file && !x.signedByMe);
+  const toWrite = reportsToWrite(ctx);
   const today = new Date(noon(data.today)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
   const who = useAdminWho(data);
   const name = data.me.name || who?.name || '';
   const m = d.featured;
-  const todos = mine.length || toSign.length ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
-      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h" tabindex="-1">For you<span class="bp-count">${mine.length + toSign.length}</span></h2></div>
+  const todos = mine.length || toSign.length || toWrite.length ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
+      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h" tabindex="-1">For you<span class="bp-count">${mine.length + toSign.length + toWrite.length}</span></h2></div>
       <ul class="bp-todos">
+        ${toWrite.map(({ m, it }) => html`<li class="bp-todo-card" key=${`r-${it.id}`}><a class="bp-todo bp-todo--link" href=${reportHref(m, it)}>
+          <span class="bp-todo__icon"><${Icon} name="edit" size=${20} /></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Write your report: ${it.title}</span><span class="bp-todo__meta">For the ${meetingName(m)}, ${dayOf(m.date)}</span></span>
+          <${Icon} name="arrow" size=${18} cls="bp-go" />
+        </a></li>`)}
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
         ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href="#/documents" onClick=${() => { focusNext = `doc-${x.id}`; }}>
           <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
@@ -1157,8 +1174,8 @@ function Rsvp({ m, ctx, quiet = false }) {
     ${quiet ? (chosen || onInvite ? html`<p class="bp-rsvp__said">${chosen ? `You said “${chosen.ask}.”` : fromInvite ? `You said “${fromInvite.ask}” on the calendar invite.` : `You said “${onInvite}” on the calendar invite.`}</p>` : null)
       : html`<p class="bp-rsvp__said">${chosen ? `You said “${chosen.ask}.” You can change it any time.`
         : fromInvite ? `You said “${fromInvite.ask}” on the calendar invite. You can change it here.`
-        : onInvite ? `You said “${onInvite}” on the calendar invite. Choose one so ${team} know.`
-        : `${team} see your answer.`}</p>`}
+        : onInvite ? `You said “${onInvite}” on the calendar invite. Choose one so ${team} ${/ and |&|,/.test(team) ? 'know' : 'knows'}.`
+        : `${team} ${/ and |&|,/.test(team) ? 'see' : 'sees'} your answer.`}</p>`}
   </div>`;
 }
 
@@ -1225,7 +1242,7 @@ function MyAction({ a, ctx }) {
 function meetingTexts(m) {
   return [
     { where: '', text: [meetingName(m), longDate(m.date), m.location].join(' ') },
-    ...m.sections.flatMap((s) => [{ where: s.title, text: s.title, body: '', id: `s-${s.id}` }, ...s.items.map((it) => ({ where: it.title || s.title, text: [it.title, it.presenter, it.notes].join(' '), body: [it.presenter, notesLine(it.notes)].filter(Boolean).join(' · '), id: `i-${it.id}` }))]),
+    ...m.sections.flatMap((s) => [{ where: s.title, text: s.title, body: '', id: `s-${s.id}` }, ...s.items.map((it) => ({ where: it.title || s.title, text: [it.title, it.presenter, it.notes, mdPlain(it.report)].join(' '), body: [it.presenter, notesLine(it.notes) || notesLine(mdPlain(it.report))].filter(Boolean).join(' · '), id: `i-${it.id}` }))]),
     // A decision by its words and by who moved and seconded it
     ...m.motions.map((x, k) => ({ where: 'Decision', text: [x.text, x.by, x.second].join(' '), body: [x.text, x.by && `moved by ${x.by}`, x.second && `seconded by ${x.second}`].filter(Boolean).join(' · '), id: `mo-${x.id || k}` })),
     ...m.actions.map((a) => ({ where: 'Action item', text: [a.text, a.ownerName].join(' '), body: [a.text, a.ownerName].filter(Boolean).join(' · '), id: 'actions' })),
@@ -1354,6 +1371,307 @@ function Notes({ text }) {
 const NotFound = () => html`<a class="bp-back" href="#/meetings"><${Icon} name="back" size=${18} />All meetings</a>
   <div class="bp-card bp-empty"><h1 class="bp-h2">That meeting isn’t on the board page</h1><p class="bp-muted">It may not be shared yet.</p></div>`;
 
+// ─── Reports ────────────────────────────────────────────────────────
+// Whoever presents an agenda item writes its report here, on a page of its own (#/meetings/<id>/report/<item>):
+// Home asks them, the item on the meeting has the way in, and Board's admins see whose are in.
+
+// Board's "See it as the board will" (?as-board): an admin sees just what a board member does, no ask of their own
+const AS_BOARD = new URLSearchParams(location.search).has('as-board');
+/** Who I am on People: a board member, or an admin looking (their staff record) */
+const meSlug = (data) => data.me.slug || (AS_BOARD ? null : data.me.as) || null;
+/** Do I present this item */
+const presents = (it, ctx) => { const me = meSlug(ctx.data); return !!me && presentersOf(it, ctx.d.people).some((p) => p.slug === me); };
+/** Can I write its report here: its presenter, until the minutes are approved */
+const canWrite = (m, it, ctx) => !!it && m.minutes !== 'approved' && presents(it, ctx);
+const reportHref = (m, it) => `#/meetings/${encodeURIComponent(m.id)}/report/${encodeURIComponent(it.id)}`;
+/** "Nov 3" (Atlanta's day) */
+const dayShort = (iso) => { const t = Date.parse(iso || ''); return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) : ''; };
+/** The reports I owe: items I present at a meeting ahead (or today's, before it ends) with nothing written yet */
+function reportsToWrite(ctx) {
+  const { data } = ctx;
+  return data.meetings.filter((m) => m.date >= data.today && !m.live?.endedAt)
+    .flatMap((m) => m.sections.flatMap((s) => s.items).filter((it) => reportsOn(it) && !it.report && canWrite(m, it, ctx)).map((it) => ({ m, it })));
+}
+
+/** An item's report on the meeting's page: who wrote it and when, then its words; its presenter writes or edits it from here */
+function ItemReport({ m, it, ctx, upcoming }) {
+  const mine = canWrite(m, it, ctx);
+  if (!it.report) {
+    return mine && upcoming && reportsOn(it) ? html`<a class="bp-report-ask" href=${reportHref(m, it)}><${Icon} name="edit" size=${18} /><span>Write your report<small>The board reads it here before the meeting</small></span></a>` : null;
+  }
+  return html`<section class="bp-report" aria-label=${`The report on ${it.title}`}>
+    <p class="bp-report__by"><span class="bp-report__label">Report</span>${it.reportBy ? html`<span>by ${it.reportBy}${it.reportAt ? `, ${dayShort(it.reportAt)}` : ''}</span>` : null}
+      ${mine ? html`<a class="bp-report__edit" href=${reportHref(m, it)} aria-label=${`Edit your report on ${it.title}`}><${Icon} name="edit" size=${15} />Edit</a>` : null}</p>
+    <${Report} text=${it.report} clamp=${upcoming ? 160 : 90} />
+  </section>`;
+}
+
+/** What this tab sent for each report lately: a newer version that is one of these is its own save, never a clash */
+const SENT = new Map();
+const sentByMe = (key, text) => { const l = SENT.get(key) || []; l.push(text); SENT.set(key, l.slice(-12)); };
+const wasMine = (key, text) => (SENT.get(key) || []).includes(text);
+
+/** One item changed in the page's copy of the meetings (a report just saved) */
+const withReport = (data, meetingId, itemId, r) => {
+  const put = (m) => (m.id !== meetingId ? m : { ...m, sections: m.sections.map((s) => ({ ...s, items: s.items.map((it) => (it.id === itemId ? { ...it, report: r.report, reportBy: r.reportBy, reportAt: r.reportAt } : it)) })) });
+  return { ...data, meetings: data.meetings.map(put), ...(data.previews ? { previews: data.previews.map(put) } : {}) };
+};
+
+/** A document put with an item (or taken off): the item's documents as the server has them, the file added or gone */
+const withDocs = (data, meetingId, itemId, docs, { add = null, gone = '' } = {}) => {
+  const put = (m) => (m.id !== meetingId ? m : {
+    ...m,
+    files: [...m.files.filter((f) => f.id !== gone && f.id !== add?.id), ...(add ? [add] : [])],
+    sections: m.sections.map((s) => ({ ...s, items: s.items.map((it) => (it.id === itemId ? { ...it, docs } : it)) })),
+  });
+  return { ...data, meetings: data.meetings.map(put), ...(data.previews ? { previews: data.previews.map(put) } : {}) };
+};
+const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.docx,.xlsx,.pptx,.doc,.xls,.ppt';
+
+/**
+ * Writing a report, on a page of its own: the item it's on, who presents it, the editor (./board-report.js). It saves
+ * a moment after they stop typing, and when they leave; a newer one someone else saved meanwhile is never written
+ * over: they see it and choose. Done goes back to the item on the meeting.
+ */
+function ReportPage({ id, itemId, ctx }) {
+  const { data, d, setData } = ctx;
+  const m = data.meetings.find((x) => x.id === id) || data.previews?.find((x) => x.id === id) || null;
+  const at = m ? agendaItems(m).find((x) => x.id === itemId) : null;
+  const it = at ? m.sections[at.si].items[at.ii] : null;
+  const draftKey = `bp-report:${id}/${itemId}`;
+  // What this device kept and the server doesn't have yet (offline, a closed tab): back, from where it was written
+  const kept0 = useMemo(() => { try { const k = JSON.parse(localStorage.getItem(draftKey) || 'null'); return k && typeof k.text === 'string' && k.text !== (it?.report || '') ? k : null; } catch { return null; } }, []);
+  const [text, setText] = useState(kept0 ? kept0.text : it?.report || '');
+  // saved | waiting | saving | error (it tries again) | stuck (it can't: the item's gone, they don't present it now) | choose
+  const [st, setSt] = useState({ s: kept0 ? 'waiting' : 'saved', at: it?.reportAt || '' });
+  const [clash, setClash] = useState(null); // theirs: { report, reportBy, reportAt }
+  const [stuck, setStuck] = useState('');
+  const [leaving, setLeaving] = useState(false);
+  const [reset, setReset] = useState(0);
+  const latest = useRef(text);
+  latest.current = text;
+  const sent = useRef(it?.report || ''); // what the server has
+  const base = useRef(kept0 ? kept0.base : it?.reportAt || '');
+  const timer = useRef(0);
+  const busy = useRef(null);
+  const again = useRef(false);
+  const clashRef = useRef(null);
+  clashRef.current = clash;
+  const stuckRef = useRef('');
+  stuckRef.current = stuck;
+  const failing = useRef(false); // the last save didn't go through
+  const [adding, setAdding] = useState(''); // the file being put with it
+  const [offering, setOffering] = useState(''); // the file asking "take it off for good?"
+  const [dropping, setDropping] = useState(false);
+  const keep = (t) => { try { if (t === sent.current) localStorage.removeItem(draftKey); else localStorage.setItem(draftKey, JSON.stringify({ text: t, base: base.current, at: Date.now() })); } catch { /* private browsing */ } };
+
+  const save = async () => {
+    clearTimeout(timer.current);
+    if (busy.current) { again.current = true; return busy.current; }
+    if (clashRef.current || stuckRef.current) return null; // they choose first
+    const words = latest.current;
+    if (words === sent.current) { keep(words); setSt((x) => (x.s === 'waiting' ? { ...x, s: 'saved' } : x)); return null; }
+    setSt((x) => ({ ...x, s: 'saving' }));
+    sentByMe(draftKey, words);
+    busy.current = (async () => {
+      let j = await call({ action: 'report', meetingId: id, itemId, text: words, base: base.current });
+      // The newer one is this page's own (sent as it was hidden or left, or a save that hadn't come back): built on
+      if (j.status === 409 && j.current && wasMine(draftKey, j.current.report)) {
+        base.current = j.current.reportAt || '';
+        j = await call({ action: 'report', meetingId: id, itemId, text: words, base: base.current });
+      }
+      busy.current = null;
+      if (j.status === 409 && j.current) { clashRef.current = j.current; setClash(j.current); setSt((x) => ({ ...x, s: 'choose' })); return null; }
+      if (!j.ok) {
+        failing.current = true;
+        // A refusal no retry can change (the item gone, not theirs any more, the meeting taken off the board page, its
+        // minutes approved): said, with their words kept to copy. Anything else (no connection) tries again by itself
+        if ([403, 404, 409].includes(j.status)) { stuckRef.current = j.error; setStuck(j.error); setSt({ s: 'stuck', why: j.error }); }
+        else setSt({ s: 'error', why: j.error || 'Couldn’t save' });
+        return null;
+      }
+      failing.current = false;
+      // Their words are what's saved (the server only trims; a report past the limit is cut, and that's said)
+      sent.current = words;
+      base.current = j.reportAt || '';
+      keep(latest.current);
+      setData((dd) => withReport(dd, id, itemId, j));
+      setSt({ s: latest.current === words ? 'saved' : 'waiting', at: j.reportAt || new Date().toISOString(), cut: (j.report || '').length < words.trim().length });
+      if (again.current || latest.current !== words) { again.current = false; timer.current = setTimeout(save, 400); }
+      return j;
+    })();
+    return busy.current;
+  };
+  /** Everything typed, saved before going on: → true once the server has it */
+  const saveAll = async () => {
+    for (let i = 0; i < 4; i++) {
+      await save();
+      while (busy.current) await busy.current;
+      if (latest.current === sent.current) return true;
+      if (failing.current || clashRef.current || stuckRef.current) return false;
+    }
+    return latest.current === sent.current;
+  };
+  const changed = (md) => {
+    setText(md);
+    latest.current = md;
+    keep(md);
+    setSt((x) => (x.s === 'saving' || x.s === 'stuck' || x.s === 'choose' ? x : { ...x, s: 'waiting' }));
+    clearTimeout(timer.current);
+    timer.current = setTimeout(save, 900);
+  };
+  // Back from a closed tab or offline: kept words go to the server at once (theirs since is a choice, as always)
+  useEffect(() => { if (kept0) save(); }, []);
+  // Leaving the page (Done, Back, another tab, closing it): what's typed is saved first
+  useEffect(() => {
+    // Only a page that's really going sends it blind (and remembers it, so its own save is never a clash later)
+    const flush = () => {
+      if (latest.current === sent.current || clashRef.current || stuckRef.current) return;
+      sentByMe(draftKey, latest.current);
+      try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', meetingId: id, itemId, text: latest.current, base: base.current }) }); } catch { /* the page is going */ }
+    };
+    // Another tab or app: saved now, the usual way
+    const hidden = () => { if (document.visibilityState === 'hidden') save(); };
+    // Closing the tab: the browser asks first only when the words can't go (offline, a save failing, a choice open);
+    // they're kept on this device either way
+    const closing = (e) => { if (latest.current !== sent.current && (clashRef.current || stuckRef.current || failing.current || !navigator.onLine)) { e.preventDefault(); e.returnValue = ''; } };
+    // The connection back: a failed save goes again; and while one's failing, every 15 seconds
+    const online = () => { if (failing.current && !stuckRef.current) save(); };
+    const retry = setInterval(online, 15000);
+    addEventListener('pagehide', flush);
+    addEventListener('online', online);
+    document.addEventListener('visibilitychange', hidden);
+    addEventListener('beforeunload', closing);
+    return () => { clearInterval(retry); removeEventListener('pagehide', flush); removeEventListener('online', online); document.removeEventListener('visibilitychange', hidden); removeEventListener('beforeunload', closing); clearTimeout(timer.current); if (latest.current !== sent.current && !clashRef.current && !stuckRef.current) save(); };
+  }, []);
+  // ⌘S saves now
+  useEffect(() => {
+    const keys = (e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); save(); } };
+    addEventListener('keydown', keys);
+    return () => removeEventListener('keydown', keys);
+  }, []);
+  useEffect(() => { document.title = it ? `Report: ${it.title} · SOARD Board` : 'Report · SOARD Board'; }, [it?.title]);
+
+  if (!m) return html`<${NotFound} />`;
+  const back = `#/meetings/${encodeURIComponent(m.id)}`;
+  if (!it) {
+    return html`<a class="bp-back" href=${back}><${Icon} name="back" size=${18} />${meetingName(m)}</a>
+      <div class="bp-card bp-empty"><h1 class="bp-h2">That item isn’t on the agenda any more</h1><p class="bp-muted">Its report went with it. The meeting’s agenda is as it is now.</p></div>`;
+  }
+  const who = presentersOf(it, d.people).map((p) => d.bySlug.get(p.slug) || p);
+  const mine = canWrite(m, it, ctx);
+  const toItem = () => { focusNext = `i-${it.id}`; };
+  const toEditor = () => requestAnimationFrame(() => document.querySelector('.bp-rp .rp-edit')?.focus());
+  const take = (mineToo) => {
+    const theirs = clash;
+    clashRef.current = null;
+    setClash(null);
+    base.current = theirs.reportAt || '';
+    sent.current = theirs.report;
+    if (mineToo) { save(); toEditor(); return; }
+    latest.current = theirs.report;
+    setText(theirs.report);
+    keep(theirs.report);
+    setReset((n) => n + 1);
+    setData((dd) => withReport(dd, id, itemId, theirs));
+    setSt({ s: 'saved', at: theirs.reportAt });
+    toEditor();
+  };
+  /** Done (and the way back): everything saved first; when it can't be, they stay, and the page says why */
+  const leave = async (e) => {
+    e.preventDefault();
+    if (clashRef.current) { document.querySelector('.bp-rp__clash .bp-btn')?.focus(); return; }
+    if (stuckRef.current) { document.querySelector('.bp-rp__stuck .bp-btn')?.focus(); return; }
+    setLeaving(true);
+    const ok = await saveAll();
+    setLeaving(false);
+    if (!ok) { requestAnimationFrame(() => document.querySelector('.bp-rp__clash .bp-btn, .bp-rp__stuck .bp-btn, .bp-rp__err .bp-link')?.focus()); return; }
+    toItem();
+    location.hash = back;
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(latest.current); ctx.say('Your words are copied'); } catch { ctx.say('Select the words and copy them', 'warn'); }
+  };
+  // Documents with it: put there from here (or dropped on the page), taken off again by whoever put them there
+  const files = itemFiles(m, it, data.meetings);
+  const attach = async (list) => {
+    for (const f of [...(list || [])]) {
+      setAdding(f.name);
+      const fd = new FormData();
+      fd.append('file', f);
+      let j;
+      try {
+        const r = await fetch(`${API}?attach=${encodeURIComponent(id)}&item=${encodeURIComponent(itemId)}`, { method: 'POST', body: fd });
+        j = await r.json().catch(() => ({ ok: false, error: `Something went wrong (${r.status})` }));
+      } catch { j = { ok: false, error: 'No connection. Check your internet and try again.' }; }
+      if (!j.ok) { ctx.say(`${f.name}: ${j.error}`, 'warn'); continue; }
+      setData((dd) => withDocs(dd, id, itemId, j.docs, { add: { ...j.file, mine: true } }));
+    }
+    setAdding('');
+  };
+  const detach = async (f) => {
+    const j = await call({ action: 'detach', meetingId: id, itemId, fileId: f.id });
+    setOffering('');
+    if (!j.ok) { ctx.say(j.error, 'warn'); return; }
+    setData((dd) => withDocs(dd, id, itemId, j.docs, { gone: f.mine ? f.id : '' }));
+    ctx.say(`${docTitle(f.name)} is off it`);
+    requestAnimationFrame(() => document.querySelector('.bp-rp__attach')?.focus());
+  };
+  const dropOn = mine ? {
+    onDragOver: (e) => { if ([...(e.dataTransfer?.types || [])].includes('Files')) { e.preventDefault(); setDropping(true); } },
+    onDragLeave: (e) => { if (!e.currentTarget.contains(e.relatedTarget)) setDropping(false); },
+    onDrop: (e) => { if (![...(e.dataTransfer?.types || [])].includes('Files')) return; e.preventDefault(); setDropping(false); attach(e.dataTransfer.files); },
+  } : {};
+  const savedAt = st.at ? `Saved ${dayShort(st.at) === dayShort(new Date().toISOString()) ? new Date(st.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : dayShort(st.at)}` : 'Saved';
+  // Said quietly as it goes (no announcement each pause in typing); a save that fails is announced
+  const status = st.s === 'saving' ? 'Saving…' : st.s === 'waiting' ? 'Saving in a moment' : st.s === 'choose' ? 'Waiting for your choice'
+    : st.s === 'error' ? html`<span class="bp-rp__err" role="alert">Not saved: ${st.why}. It tries again by itself. <button type="button" class="bp-link" onClick=${save}>Try now</button></span>`
+    : st.s === 'stuck' ? html`<span class="bp-rp__err">Not saved</span>`
+    : st.cut ? html`<span class="bp-rp__err" role="alert">${savedAt}, but it’s too long: its end was cut</span>` : savedAt;
+  return html`<div class=${`bp-rp ${dropping ? 'is-dropping' : ''}`} ...${dropOn}>
+    <a class="bp-back" href=${back} onClick=${mine ? leave : toItem}><${Icon} name="back" size=${18} />${meetingName(m)}</a>
+    <header class="bp-rp__head">
+      <p class="bp-eyebrow">${at.label} · ${at.section || 'Agenda'}<span class="bp-soon">${m.date === data.today ? 'Today' : dayOf(m.date)}</span></p>
+      <h1 class="bp-rp__title">${it.title}</h1>
+      ${who.length ? html`<div class="bp-rp__who"><${Presenters} people=${who} /></div>` : null}
+    </header>
+    ${!mine ? html`<div class="bp-card bp-rp__read">
+        ${it.report ? html`<${Report} text=${it.report} />` : html`<p class="bp-muted">No report on this item yet.</p>`}
+        <p class="bp-muted bp-rp__note">${m.minutes === 'approved' ? 'This meeting’s minutes are approved, so its reports stay as they were.' : who.length ? `Only ${who.map((p) => p.name.split(' ')[0]).join(' and ')} can write this one.` : 'Nobody presents this item, so it has no report to write.'}</p>
+      </div>`
+    : html`
+      ${clash ? html`<div class="bp-rp__clash" role="alert">
+        <p><strong>${clash.reportBy || 'Someone'} changed this report${clash.reportAt ? ` at ${new Date(clash.reportAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}` : ''}</strong> while you were writing. Which one should the board read?</p>
+        <details class="bp-rp__theirs"><summary>See ${clash.reportBy ? `${clash.reportBy.split(' ')[0]}’s` : 'their'} version</summary>${clash.report ? html`<${Report} text=${clash.report} />` : html`<p class="bp-muted">They emptied it.</p>`}</details>
+        <div class="bp-btns"><button type="button" class="bp-btn" onClick=${() => take(false)}>Use theirs</button><button type="button" class="bp-btn bp-btn--primary" onClick=${() => take(true)}>Keep mine</button></div>
+      </div>` : null}
+      ${stuck ? html`<div class="bp-rp__clash bp-rp__stuck" role="alert">
+        <p><strong>This can’t be saved now.</strong> ${stuck}. Copy what you wrote so it isn’t lost; this device keeps it too.</p>
+        <div class="bp-btns"><button type="button" class="bp-btn bp-btn--primary" onClick=${copy}>Copy your words</button><a class="bp-btn" href=${back} onClick=${toItem}>Leave without saving</a></div>
+      </div>` : null}
+      <${ReportEditor} value=${text} onChange=${changed} resetKey=${reset} label=${`Your report on ${it.title}`} autofocus=${!it.report} stickyTop="calc(var(--head) + env(safe-area-inset-top))" minHeight=${300}
+        placeholder="What the committee did, what the board needs to decide, and what’s next" status=${status} />
+      <section class="bp-rp__docs" aria-labelledby="rp-docs-h">
+        <h2 class="bp-mini-h" id="rp-docs-h">Documents with it</h2>
+        ${files.length ? html`<ul class="bp-rp__files">${files.map((f) => html`<li key=${f.id} class=${offering === f.id ? 'is-asking' : ''}>
+          <a class="bp-rp__file" ...${viewerLink(asViewer([f]), 0)}><span class="bp-rp__fmt">${formatOf(f)}</span><span class="bp-rp__name">${docTitle(f.name)}</span></a>
+          ${offering === f.id ? html`<span class="bp-rp__ask" role="group" aria-label=${`Take ${docTitle(f.name)} off?`}><span>${f.mine ? 'Take it off for good?' : 'Take it off this item?'}</span>
+              <button type="button" class="bp-rp__off is-yes" onClick=${() => detach(f)}>Take it off</button><button type="button" class="bp-rp__off" onClick=${() => setOffering('')}>Keep it</button></span>`
+            : f.mine || data.me.admin ? html`<button type="button" class="bp-rp__off" aria-label=${`Take ${docTitle(f.name)} off`} onClick=${() => setOffering(f.id)}>Take it off</button>` : null}
+        </li>`)}</ul>` : null}
+        <label class=${`bp-btn bp-rp__attach ${adding ? 'is-busy' : ''}`} tabindex="0" onKeyDown=${(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.querySelector('input').click(); } }}>
+          <${Icon} name="documents" size=${18} />${adding ? `Adding ${adding.length > 32 ? `${adding.slice(0, 30)}…` : adding}` : files.length ? 'Attach another file' : 'Attach a file'}
+          <input type="file" multiple hidden accept=${ACCEPT} disabled=${!!adding} onChange=${(e) => { attach(e.target.files); e.target.value = ''; }} />
+        </label>
+        <p class="bp-muted bp-rp__how">PDF, Word, Excel, PowerPoint or a picture, up to 50 MB. Dropping it on the page works too.</p>
+      </section>
+      <div class="bp-rp__foot">
+        <p class="bp-muted">${who.length > 1 ? `${who.filter((p) => p.slug !== meSlug(data)).map((p) => p.name.split(' ')[0]).join(' and ')} can write in it too.` : ''}</p>
+        <a class=${`bp-btn bp-btn--primary ${leaving ? 'is-busy' : ''}`} href=${back} aria-disabled=${leaving ? 'true' : null} onClick=${leave}>${leaving ? 'Saving…' : 'Done'}</a>
+      </div>`}
+  </div>`;
+}
+
 /** A meeting: live on its day (and the founders' practice meeting), its record otherwise */
 function MeetingPage({ id, ctx }) {
   const { data, d } = ctx;
@@ -1431,7 +1749,7 @@ function FloorLine({ v, nowItem, si, ctx }) {
   const timer = sec && !v.live.endedAt ? sectionClock(sectionPlan(v), sec.id, v.live.sectionAt) : null;
   if (!floor.length && !timer) return null;
   return html`<div class="bp-floor">
-    ${floor.length ? html`<span class="bp-floor__who"><${Faces} people=${floor} max=${3} size=${30} /><span><strong>${floor.map((p) => p.name).join(' & ')}</strong> has the floor</span></span>` : null}
+    ${floor.length ? html`<span class="bp-floor__who"><${Faces} people=${floor} max=${3} size=${30} /><span><strong>${namesText(floor.map((p) => p.name))}</strong> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span>` : null}
     ${timer ? html`<span class=${`bp-floor__time ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left in ${sec.title || 'this part'}`}</span>` : null}
   </div>`;
 }
@@ -1541,6 +1859,7 @@ function LiveRoom({ v, setV, m, ctx }) {
           <p class="bp-now__meta">${now.section !== nowItem.title ? now.section : ''}${nowItem.confidential ? html` <span class="bp-chip bp-chip--warn">Board only · please don’t share</span>` : null}</p>
           <${FloorLine} v=${v} nowItem=${nowItem} si=${now.si} ctx=${ctx} />
           <${Notes} text=${nowItem.notes} />
+          ${nowItem.report ? html`<div class="bp-now__report"><p class="bp-report__by"><span class="bp-report__label">Report</span>${nowItem.reportBy ? html`<span>by ${nowItem.reportBy}</span>` : null}</p><${Report} text=${nowItem.report} clamp=${140} /></div>` : null}
           <${ScreenPeek} v=${v} />
           ${itemFiles(v, nowItem, v.prior || []).length ? html`<div class="bp-now__docs"><${FileList} files=${itemFiles(v, nowItem, v.prior || [])} labels=${false} lead=${new Set(itemDocs(v, nowItem, v.prior || []).map((d) => d.file.id))} /></div>` : null}
           ${v.live.fileId ? null : html`<p class="bp-now__screen"><a class="bp-link" href=${`#/meetings/${v.id}/screen`}>Follow the screen</a></p>`}
@@ -1948,7 +2267,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
             const who = presentersOf(it, d.people).map(person);
             const files = docsOf(it);
             const aboutPrev = it.live === 'minutes' && it.about ? data.meetings.find((x) => x.id === it.about) : null;
-            const simple = !who.length && !files.length && !it.notes && !aboutPrev && !it.confidential && !(it.live && it.live !== 'minutes');
+            const simple = !who.length && !files.length && !it.notes && !it.report && !aboutPrev && !it.confidential && !(it.live && it.live !== 'minutes') && !(upcoming && canWrite(m, it, ctx));
             return html`<li class=${`bp-item bp-agitem ${it.live && it.live !== 'minutes' ? `has-live is-${it.live}` : ''} ${simple ? 'is-simple' : ''}`} id=${`i-${it.id}`} key=${it.id}>
               <span class="bp-agitem__n" aria-hidden="true">${labels.get(it.id)}</span>
               <div class="bp-agitem__body">
@@ -1960,6 +2279,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
                 </div>
                 ${aboutPrev ? html`<p class="bp-agitem__about"><a class="bp-link" href=${`#/meetings/${aboutPrev.id}`}>The ${meetingName(aboutPrev)}, ${shortDate(aboutPrev.date)}</a></p>` : null}
                 <div class="bp-agitem__notes"><${Notes} text=${it.notes} /></div>
+                <${ItemReport} m=${m} it=${it} ctx=${ctx} upcoming=${upcoming} />
                 <${LiveBlock} kind=${it.live} n=${numbers} m=${m} data=${data} />
                 ${files.length ? html`<div class="bp-item__docs"><${DocTiles} files=${files} /></div>` : null}
               </div>
@@ -2567,7 +2887,7 @@ function searchIndex(data, d) {
       // A part with nothing under it (Open forum, New business) is found by its name
       if (!s.items.length && s.title) out.push({ group: 'In agendas and minutes', title: s.title, sub, hay: norm(s.title), href: `#/meetings/${m.id}`, focus: `s-${s.id}`, icon: 'list' });
       // The part it's under says where it is ("2027 budget · Q4 2026 Board Meeting · Nov 5, 2026"), so a point found by its part's name says why
-      for (const it of s.items) out.push({ group: 'In agendas and minutes', title: it.title || s.title, sub: s.title && it.title && norm(s.title) !== norm(it.title) && !/^agenda$/i.test(s.title.trim()) ? `${s.title} · ${sub}` : sub, body: said(it.notes) || it.title, hay: norm([s.title, it.title, it.presenter, it.notes].join(' ')), href: `#/meetings/${m.id}`, focus: `i-${it.id}`, icon: 'list' });
+      for (const it of s.items) out.push({ group: 'In agendas and minutes', title: it.title || s.title, sub: s.title && it.title && norm(s.title) !== norm(it.title) && !/^agenda$/i.test(s.title.trim()) ? `${s.title} · ${sub}` : sub, body: said(it.notes) || said(mdPlain(it.report)) || it.title, hay: norm([s.title, it.title, it.presenter, it.notes, mdPlain(it.report)].join(' ')), href: `#/meetings/${m.id}`, focus: `i-${it.id}`, icon: 'list' });
     }
     m.motions.forEach((x, k) => out.push({ group: 'Decisions', title: x.text, sub: [x.by && `Moved by ${x.by}`, sub].filter(Boolean).join(' · '), hay: norm([x.text, x.by, x.second].join(' ')), href: `#/meetings/${m.id}`, focus: `mo-${x.id || k}`, icon: 'gavel' }));
     const vf = asViewer(m.files);

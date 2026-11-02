@@ -24,9 +24,11 @@ import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
 import { openDoc, layoutOf, halfOf, areasOf } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
-  sectionPlan, sectionClock, clockText, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf,
+  sectionPlan, sectionClock, clockText, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText,
 } from '../board-shared.js';
 import { useCover } from '../board-present.js';
+import { Report } from '../board-report.js';
+import { mdWords } from '../board-md.js';
 import { Kanban, kanbanLine, sized } from './kanban.js';
 import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue } from './money.js';
 
@@ -164,6 +166,42 @@ function useBox() {
     return () => { ro.disconnect(); clearTimeout(t); };
   }, [el]);
   return [setEl, box];
+}
+
+/**
+ * A report on the screen: as large as the room reads it best, smaller only as far as it must be to fit its box (in two
+ * columns when it's long); what still doesn't fit at the smallest size is on the board page, and it says so
+ */
+function ReportFit({ text, cols = 1 }) {
+  const ref = useRef(null);
+  const [cut, setCut] = useState(false);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const over = () => el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1;
+    const fit = () => {
+      const blocks = [...(el.querySelector('.rp')?.children || [])];
+      blocks.forEach((b) => { b.hidden = false; });
+      let s = 1;
+      el.style.setProperty('--fit', '1');
+      // Smaller only to where a room still reads it (80%)
+      while (s > 0.8 && over()) { s = Math.round((s - 0.05) * 100) / 100; el.style.setProperty('--fit', String(s)); }
+      // Then whole blocks off the end, never a line cut in half; the note says where the rest is
+      let hid = 0;
+      for (let i = blocks.length - 1; i > 0 && over(); i--) { blocks[i].hidden = true; hid++; }
+      setCut(hid > 0 || over());
+    };
+    fit();
+    // Again when its box changes (the window, the rail) and once the fonts are in; never on its own size (no loop)
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fit()) : null;
+    ro?.observe(el.parentElement);
+    document.fonts?.ready.then(fit);
+    return () => ro?.disconnect();
+  }, [text, cols]);
+  return html`<div class=${`bs-report ${cols > 1 ? 'is-cols' : ''}`}>
+    <div class="bs-report__body" ref=${ref}><${Report} text=${text} level=${3} /></div>
+    ${cut ? html`<p class="bs-report__more">The whole report is on the board page</p>` : null}
+  </div>`;
 }
 
 function Points({ text }) {
@@ -477,7 +515,8 @@ export function Screen({ id, data, d, onBack = null }) {
   const floor = given ? [given] : who;
   const secId = stop.sectionId || (stop.n >= 0 ? meeting.sections[items[stop.n].si]?.id : '');
   const timer = started && !ended && secId ? sectionClock(plan, secId, live.sectionAt) : null;
-  const docs = item ? (stop.n >= 0 ? itemDocs(meeting, item, v.prior || []) : docsOf(meeting.files.filter((f) => deck.some((s) => s.fileId === f.id && s.n === -1)))) : [];
+  // The item's documents the deck comes to next (never one it leaves out: staff only, a statement QuickBooks draws)
+  const docs = item ? (stop.n >= 0 ? itemDocs(meeting, item, v.prior || []).filter((d) => deck.some((s) => s.fileId === d.file.id)) : docsOf(meeting.files.filter((f) => deck.some((s) => s.fileId === f.id && s.n === -1)))) : [];
   const file = stop.fileId ? [...meeting.files, ...(v.prior || []).flatMap((x) => x.files)].find((f) => f.id === stop.fileId) : null;
   // The half of a tall page on: the chair's word for this page (this deck may not have split it yet), else the stop's
   const half = stop.kind === 'doc' && stop.fileId === live.fileId && stop.page === (live.page || 0) ? (live.part ? 1 : 0) : stop.part || 0;
@@ -487,7 +526,7 @@ export function Screen({ id, data, d, onBack = null }) {
 
   const top = html`<header class="bs-top">
     <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong title=${meetingName(meeting)}>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
-    ${(stop.kind === 'item' || stop.kind === 'doc') && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${floor.map((p) => p.name).join(' & ')}</strong> has the floor</span></span>` : null}
+    ${(stop.kind === 'item' || stop.kind === 'doc') && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${namesText(floor.map((p) => p.name))}</strong> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span>` : null}
     <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
   </header>`;
 
@@ -539,7 +578,7 @@ export function Screen({ id, data, d, onBack = null }) {
     const head = html`<p class="bs-eyebrow">${[section && section !== item.title ? section : '', !section && stop.n < 0 ? 'After the agenda' : ''].filter(Boolean).join('') || 'Agenda'}</p>
       <h1 class="bs-display bs-item__title">${item.title}</h1>
       ${item.confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}`;
-    const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts || faces ? 52 : 72} /><span><strong>${p.name}</strong>${roleOf(p) ? html`<small>${roleOf(p)}</small>` : null}</span></li>`)}</ul>` : null;
+    const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts || faces || item.report ? 52 : 72} /><span><strong>${p.name}</strong>${roleOf(p) ? html`<small>${roleOf(p)}</small>` : null}</span></li>`)}</ul>` : null;
     // Under the money's tiles there's room for a row: each document small, its title beside it
     const coming = docs.length ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document, next' : 'Its documents, next'}</p><${Shelf} docs=${docs} pages=${pages} row=${!!facts && !faces} /></div>` : null;
     if (faces) {
@@ -553,10 +592,18 @@ export function Screen({ id, data, d, onBack = null }) {
         <div class="bs-item__facts">${facts}</div>
       </div>`;
     } else if (facts) {
-      stage = html`<div class="bs-item bs-item--facts">
+      stage = html`<div class=${`bs-item bs-item--facts ${item.report ? 'has-report' : ''}`}>
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${whoList}</div></div>
         <div class="bs-item__facts">${facts}</div>
-        ${item.notes || coming ? html`<div class="bs-item__body">${item.notes ? html`<${Points} text=${item.notes} />` : null}${coming}</div>` : null}
+        ${item.notes || item.report || coming ? html`<div class="bs-item__body">${item.notes ? html`<${Points} text=${item.notes} />` : null}${item.report ? html`<${ReportFit} text=${item.report} />` : null}${coming}</div>` : null}
+      </div>`;
+    } else if (item.report) {
+      // A report: the item and who presents it along the top, the report filling the rest
+      const motion = item.live === 'minutes' ? html`<${MinutesMotion} item=${item} v=${v} />` : null;
+      stage = html`<div class="bs-item bs-item--report">
+        <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${whoList}</div></div>
+        <${ReportFit} text=${item.report} cols=${mdWords(item.report) > 110 ? 2 : 1} />
+        ${item.notes || motion || coming ? html`<div class="bs-item__body">${motion}${item.notes ? html`<${Points} text=${item.notes} />` : null}${coming}</div>` : null}
       </div>`;
     } else {
       // Approving the last minutes: the motion the board votes on, and how it went once the board page's vote closed

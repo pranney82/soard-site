@@ -30,7 +30,7 @@ import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf,
   agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
-  isFilled, LIVE_TITLES,
+  isFilled, LIVE_TITLES, presentersOf, reportsOn, namesText,
 } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
@@ -230,13 +230,13 @@ export async function todayPractice(DB, now = Date.now()) {
  * Server-set fields (the invite, its Meet link, the replies to it) onto the
  * meeting as it's stored now, so a save made while Google was answering is
  * kept: written only if no one saved in between, else read again and redone.
- * A newer updatedAt, so a copy open in an editor merges. → the meeting
+ * A newer updatedAt, so a copy open in an editor merges (`by`: the person, when one made the change). → the meeting
  */
-export async function patchMeeting(DB, id, fn) {
+export async function patchMeeting(DB, id, fn, { by = '' } = {}) {
   for (let i = 0; i < 5; i++) {
     const cur = await getMeeting(DB, id);
     if (!cur) return null;
-    const next = { ...fn(cur), id, updatedAt: nowIso(), updatedBy: cur.updatedBy || '' };
+    const next = { ...fn(cur), id, updatedAt: nowIso(), updatedBy: by || cur.updatedBy || '' };
     const r = await DB.prepare('UPDATE board_meetings SET date = ?, data = ?, updated_at = ?, updated_by = ? WHERE id = ? AND updated_at = ?')
       .bind(next.date || '', stored(next), next.updatedAt, next.updatedBy, id, cur.updatedAt).run();
     if ((r?.meta?.changes ?? r?.changes ?? 0) > 0) return getMeeting(DB, id);
@@ -281,8 +281,29 @@ export async function saveMeeting(DB, raw, { by, base = null } = {}) {
     updatedAt: at,
     updatedBy: by || '',
   };
+  await stampReports(DB, next, current, { by, at });
   await writeMeeting(DB, next);
   return getMeeting(DB, m.id);
+}
+
+/**
+ * Who wrote each report when, set here, never by the editor: a report changed in this save is the admin's (by
+ * name), one that didn't change keeps who wrote it (a presenter on the board page, ./saveReport)
+ */
+async function stampReports(DB, next, current, { by, at }) {
+  const was = new Map((current?.sections || []).flatMap((s) => s.items).map((it) => [it.id, it]));
+  let name = null;
+  for (const it of next.sections.flatMap((s) => s.items)) {
+    const before = was.get(it.id);
+    if ((it.report || '') === (before?.report || '')) {
+      it.reportBy = before?.reportBy || (it.report ? it.reportBy : '');
+      it.reportAt = before?.reportAt || (it.report ? it.reportAt : '');
+      continue;
+    }
+    if (it.report && name === null) name = (await adminVoter(DB, by)).name;
+    it.reportBy = it.report ? name : '';
+    it.reportAt = it.report ? at : '';
+  }
 }
 
 /** A practice meeting saved from the chair's screen: what a person edits, never shared, never an invite or a packet */
@@ -349,6 +370,91 @@ export async function setRsvp(DB, meetingId, slug, answer) {
   if (!onBoardPage(m)) throw Object.assign(new Error('That meeting isn’t on the board page'), { status: 404 });
   await DB.prepare('INSERT OR REPLACE INTO board_rsvps (meeting_id, slug, answer, at) VALUES (?, ?, ?, ?)').bind(meetingId, slug, answer, nowIso()).run();
   return { meetingId, answer };
+}
+
+/**
+ * An agenda item someone may write a report for, or put a document with: a board member who presents it (picked, or
+ * named in its presenter line) on a meeting the board can see, until its minutes are approved; one of Board's admins,
+ * any time. → { m, it }, else throws (404, 403, 409)
+ */
+async function presenterGate(env, id, itemId, { member = null, admin = false } = {}) {
+  if (!ID.test(String(id || '')) || !ID.test(String(itemId || ''))) throw err('Which item?', 400);
+  const m = await getMeeting(env.DB, id);
+  if (!m || (!admin && !forBoard(m))) throw err('That meeting isn’t on the board page', 404);
+  const it = m.sections.flatMap((s) => s.items).find((x) => x.id === itemId);
+  if (!it) throw err('That item isn’t on the agenda any more', 404);
+  if (member) {
+    const people = await roster(env.DB);
+    if (!presentersOf(it, [...people.board, ...people.staff]).some((p) => p.slug === member.slug)) throw err('Only the person presenting this item can write its report or add documents to it', 403);
+    if (m.minutes === 'approved') throw err('This meeting’s minutes are approved, so its reports stay as they were', 409);
+  }
+  return { m, it };
+}
+
+/** A file's kind by its name, as Board files a new one (financial statements, else other) */
+const kindOfName = (name) => (/financ|balance|income|p&l|profit|loss|budget|statement/i.test(name) ? 'financials' : 'other');
+
+/**
+ * A document with an item, put there by who presents it on the board page (or an admin): stored as Board stores any,
+ * then placed on the item, after its others. → { file, docs }
+ */
+export async function attachToItem(env, id, itemId, file, { member = null, admin = false, adminEmail = '' } = {}) {
+  await ensureSchema(env.DB);
+  const { it } = await presenterGate(env, id, itemId, { member, admin });
+  if ((it.docs || []).length >= 20) throw err('That item has 20 documents already', 409);
+  const stored = await putFile(env, { ownerType: 'meeting', ownerId: id, file, kind: kindOfName(file?.name || ''), by: member?.email || adminEmail });
+  try {
+    const saved = await patchMeeting(env.DB, id, (cur) => {
+      if (!cur.sections.some((s) => s.items.some((x) => x.id === itemId))) throw err('That item isn’t on the agenda any more', 404);
+      return { ...cur, sections: cur.sections.map((s) => ({ ...s, items: s.items.map((x) => (x.id === itemId ? { ...x, docs: [...(x.docs || []), stored.id] } : x)) })) };
+    }, { by: member?.name || adminEmail });
+    return { file: stored, docs: saved.sections.flatMap((s) => s.items).find((x) => x.id === itemId)?.docs || [] };
+  } catch (e) {
+    await deleteFile(env, stored.id); // never a file nothing shows
+    throw e;
+  }
+}
+
+/**
+ * A document taken off an item on the board page: its presenter, only one they put there themselves (and it's gone
+ * for good once nothing else has it); an admin, any (it stays with the meeting, as in Board). → { docs }
+ */
+export async function detachFromItem(env, id, itemId, fileId, { member = null, admin = false, adminEmail = '' } = {}) {
+  await ensureSchema(env.DB);
+  const { it } = await presenterGate(env, id, itemId, { member, admin });
+  if (!(it.docs || []).includes(fileId)) throw err('That document isn’t with this item', 404);
+  const row = await env.DB.prepare('SELECT by FROM board_files WHERE id = ?').bind(fileId).first();
+  if (member && (!row || String(row.by || '').toLowerCase() !== String(member.email || '').toLowerCase())) throw err('Only Board’s admins can take off a document someone else put there', 403);
+  const saved = await patchMeeting(env.DB, id, (cur) => ({ ...cur, sections: cur.sections.map((s) => ({ ...s, items: s.items.map((x) => (x.id === itemId ? { ...x, docs: (x.docs || []).filter((d) => d !== fileId) } : x)) })) }), { by: member?.name || adminEmail });
+  if (member && !saved.sections.some((s) => s.items.some((x) => (x.docs || []).includes(fileId)))) await deleteFile(env, fileId);
+  return { docs: saved.sections.flatMap((s) => s.items).find((x) => x.id === itemId)?.docs || [] };
+}
+
+/**
+ * A report on an agenda item, written on the board page: by a board member who presents the item (picked, or named
+ * in its presenter line) on a meeting the board can see, until its minutes are approved; or by one of Board's
+ * admins, any time. `base` is the reportAt the writer started from: a report someone else saved since is refused
+ * (409, with theirs as `current`), never written over. → { itemId, report, reportBy, reportAt }
+ */
+export async function saveReport(env, id, itemId, text, { member = null, admin = false, adminEmail = '', base = null } = {}) {
+  await ensureSchema(env.DB);
+  if (typeof text !== 'string') throw err('What does the report say?', 400);
+  const { m, it } = await presenterGate(env, id, itemId, { member, admin });
+  const itemOf = (x) => x.sections.flatMap((s) => s.items).find((y) => y.id === itemId);
+  const report = text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, LIMITS.report);
+  const theirs = (x) => ({ itemId, report: x.report, reportBy: x.reportBy, reportAt: x.reportAt });
+  if (report === it.report) return theirs(it);
+  const by = member ? member.name : (await adminVoter(env.DB, adminEmail)).name;
+  const at = nowIso();
+  const saved = await patchMeeting(env.DB, id, (cur) => {
+    const now = itemOf(cur);
+    if (!now) throw err('That item isn’t on the agenda any more', 404);
+    if (base !== null && String(base) !== (now.reportAt || '') && now.report !== report) {
+      throw Object.assign(err(`${now.reportBy || 'Someone'} changed this report since you opened it`, 409), { current: theirs(now) });
+    }
+    return { ...cur, sections: cur.sections.map((s) => ({ ...s, items: s.items.map((x) => (x.id === itemId ? { ...x, report, reportBy: report ? by : '', reportAt: report ? at : '' } : x)) })) };
+  }, { by: member?.name || adminEmail });
+  return theirs(itemOf(saved));
 }
 
 /**
@@ -791,7 +897,14 @@ const answerText = (m, links) => RSVP.map((r) => `${r.ask}: ${links?.[r.id] || m
  * call; what the documents are (never one on a board-only item, by name); their one-tap answer when they haven't
  * given one (`links`). `files`: the documents' names.
  */
-export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', links = null, ask = true } = {}) {
+/** The items someone presents at a meeting, each with the page to write its report on: [{ title, url, written }] */
+export function reportsFor(m, slug, people = []) {
+  if (!slug) return [];
+  return m.sections.flatMap((s) => s.items).filter((it) => reportsOn(it) && presentersOf(it, people).some((p) => p.slug === slug))
+    .map((it) => ({ title: it.title, url: `${meetingUrl(m)}/report/${it.id}`, written: !!it.report }));
+}
+
+export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', links = null, ask = true, reports = [] } = {}) {
   const name = meetingName(m);
   const first = firstName(who);
   const titles = files.map((n) => fileTitle(n));
@@ -799,6 +912,14 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
   const lead = `${first ? `${first}, the` : 'The'} agenda${count ? ` and ${plural(count, 'document')}` : ''} for the ${name} ${count ? 'are' : 'is'} on the board page. Read ${count ? 'them' : 'it'} there, or print it all from there if you’d like paper.`;
   const answer = ask ? ruled(`<p class="ink" style="margin:0 0 12px;font-weight:700;">Will you be there?</p>${answerButtons(m, links)}${small('One tap answers. No sign-in needed.')}`) : '';
   const docsHtml = [...titles.map((t) => esc(t)), hidden ? `${plural(hidden, 'board-only document')}` : ''].filter(Boolean).join('<br>');
+  // What they present: the report to write on the board page (or theirs, already in)
+  const todo = reports.filter((r) => !r.written);
+  // Each item by name, bold, joined in words (a title with "and" in it stays one title)
+  const joined = (list) => (list.length > 2 ? `${list.slice(0, -1).join(', ')}, and ${list.at(-1)}` : list.join(' and '));
+  const presentHtml = !reports.length ? '' : ruled(`<p class="ink" style="margin:0 0 6px;">You present ${joined(reports.map((r) => `<strong>${esc(r.title)}</strong>`))}</p>`
+    + `<p style="margin:0 0 14px;">${todo.length ? 'Write your report on the board page. The board reads it there before the meeting, and it’s on the screen when you present.' : `Your report${reports.length > 1 ? 's are' : ' is'} in. You can change ${reports.length > 1 ? 'them' : 'it'} there until the meeting.`}</p>`
+    + reports.map((r) => (r.written ? `<p style="margin:6px 0 0;">${link(`Your report on ${r.title}`, r.url)}</p>` : `<div style="margin:8px 0 0;">${button(reports.length > 1 ? `Write your ${r.title} report` : 'Write your report', r.url)}</div>`)).join(''));
+  const presentText = !reports.length ? '' : `You present ${joined(reports.map((r) => `“${r.title}”`))}. ${todo.length ? 'Write your report on the board page; the board reads it there before the meeting.' : 'Your report is in; you can change it there until the meeting.'}\n${reports.map((r) => `${r.title}: ${r.url}`).join('\n')}`;
   return {
     subject: `${test ? '[Preview] ' : ''}The agenda and documents: ${name}, ${shortDate(m.date)}`,
     html: emailShell({
@@ -809,12 +930,14 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
       bodyHtml: meetingFacts(m, [['Documents', docsHtml]])
         + `<div style="margin:18px 0 0;">${button('Open the agenda and documents', meetingUrl(m))}</div>`
         + small(SIGN_IN)
+        + presentHtml
         + answer,
       footerHtml: FOOTER,
     }),
     text: [`The agenda and documents for the ${name}.`, lead, factsText(m),
       count ? `Documents: ${[...titles, hidden ? plural(hidden, 'board-only document') : ''].filter(Boolean).join(', ')}` : '',
       `Open the agenda and documents: ${meetingUrl(m)}\n${SIGN_IN}`,
+      presentText,
       ask ? `Will you be there? One tap answers, no sign-in needed.\n${answerText(m, links)}` : ''].filter(Boolean).join('\n\n'),
   };
 }
@@ -842,7 +965,9 @@ export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) 
   // Only someone who hasn't said whether they'll come is asked, with their own links
   const open = test ? [] : (await notAnswered(env, m)).map((p) => p.slug);
   const links = await answerLinks(env.DB, m, open);
-  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, links: links[p.slug], ask: test || open.includes(p.slug) }) }));
+  // Each presenter's own copy asks for their report (a preview shows none: it's for no one in particular)
+  const everyone = test ? [] : await roster(env.DB).then((r) => [...r.board, ...r.staff]);
+  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, links: links[p.slug], ask: test || open.includes(p.slug), reports: reportsFor(m, p.slug, everyone) }) }));
   const tags = [{ name: 'kind', value: test ? 'board-packet-preview' : 'board-packet' }];
   const r = await sendEach(env, items, { tags, replyTo });
   if (!test && r.sent) await writeMeeting(env.DB, { ...m, packetSentAt: nowIso(), packetSentTo: r.sent, updatedAt: m.updatedAt, updatedBy: m.updatedBy });
@@ -1017,7 +1142,7 @@ async function siteDoc(DB, key) {
 }
 
 /** Everything the board page shows, for a member (`member`) or an admin looking (`admin`) */
-export async function portalData(env, { member = null, admin = false, now = Date.now() } = {}) {
+export async function portalData(env, { member = null, admin = false, adminEmail = '', now = Date.now() } = {}) {
   await ensureSchema(env.DB);
   const today = todayEastern(now);
   const [meetings, docs, numbers, history, people, filings, snapshot, settings, gifts] = await Promise.all([
@@ -1029,7 +1154,9 @@ export async function portalData(env, { member = null, admin = false, now = Date
     seen = await env.DB.prepare('SELECT at FROM board_seen WHERE slug = ?').bind(member.slug).first();
     if (!seen || now - Date.parse(seen.at) > 10 * 60 * 1000) await env.DB.prepare('INSERT OR REPLACE INTO board_seen (slug, at) VALUES (?, ?)').bind(member.slug, new Date(now).toISOString()).run();
   }
-  const shared = meetings.map(forBoard).filter(Boolean);
+  // A member's own documents (put with an item they present) are marked, so they can take them off again
+  const own = member?.email ? new Set(((await env.DB.prepare('SELECT id FROM board_files WHERE lower(by) = ?').bind(String(member.email).toLowerCase()).all()).results || []).map((r) => r.id)) : new Set();
+  const shared = meetings.map(forBoard).filter(Boolean).map((m) => (own.size ? { ...m, files: m.files.map((f) => (own.has(f.id) ? { ...f, mine: true } : f)) } : m));
   const mine = member?.slug || null;
   // A member's own answers, whether or not they're on that meeting's list yet
   const answers = mine ? Object.fromEntries(((await env.DB.prepare('SELECT meeting_id, answer FROM board_rsvps WHERE slug = ?').bind(mine).all()).results || []).map((r) => [r.meeting_id, r.answer])) : {};
@@ -1061,7 +1188,9 @@ export async function portalData(env, { member = null, admin = false, now = Date
       onCalendar: !!pendingInvite, myInvite: pendingInvite, myRsvp: answers[pending.id] || '',
     } : null,
     // lastSeen: the visit before this one (a visit lasts 10 minutes), for what's new since
-    me: member ? { name: member.name, slug: member.slug, title: member.title, email: member.email, admin, lastSeen: seen?.at || null } : { name: null, slug: null, admin },
+    // An admin looking: who they are on People (`as`), so the item they present asks them for its report too
+    me: member ? { name: member.name, slug: member.slug, title: member.title, email: member.email, admin, lastSeen: seen?.at || null }
+      : { name: null, slug: null, admin, as: people.staff.find((p) => String(adminEmail).toLowerCase().startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))?.slug || null },
     today,
     // Their own answer here, else how they answered the calendar invite (which also means it's on their calendar)
     meetings: shared.map((m) => {
@@ -1202,7 +1331,8 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const seen = m.practice ? m : forBoard({ ...m, shared: true });
   const sections = seen.sections.map((sec) => ({
     id: sec.id, title: sec.title, minutes: sec.minutes || 0,
-    items: sec.items.filter(isFilled).map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, about: it.about, docs: it.docs })),
+    items: sec.items.filter(isFilled).map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, about: it.about, docs: it.docs,
+      report: it.report, reportBy: it.reportBy, reportAt: it.reportAt })),
   }));
   // The last meeting's minutes, for an item that asks the board to approve them (only from a meeting the board can see)
   const prior = [];
