@@ -30,7 +30,7 @@ export const DEFAULT_ES = {
 <li>Suba fotos del espacio que le gustaría remodelar.</li>
 <li>Grabe o suba un video corto de 90 segundos presentando a ${kid}, contando su historia y mostrándonos el espacio.</li>
 </ul>
-<p>Le recomendamos tener listas sus fotos y su video antes de comenzar, pero no es necesario completar todo de una vez. Sus respuestas se guardan a medida que avanza, y puede tocar "Guardar y terminar después" al final de cualquier página. Recibirá un enlace para volver a su solicitud cuando esté listo.</p>
+<p>Le recomendamos tener listas sus fotos y su video antes de comenzar, pero no es necesario completar todo de una vez. Sus respuestas se guardan a medida que avanza, y puede tocar "Guardar y terminar más tarde" al final de cualquier página. Recibirá un enlace para volver a su solicitud cuando esté listo.</p>
 <p>Sobre todo, queremos conocer a ${kid} más allá de su diagnóstico. Cuéntenos sobre su personalidad, lo que le hace feliz, los retos que enfrenta su familia y cómo una remodelación podría hacer la vida diaria un poco más fácil.</p>
 <p>Gracias por tomarse el tiempo de compartir la historia de su familia con nosotros. ¡Esperamos conocerle pronto!</p>`,
 

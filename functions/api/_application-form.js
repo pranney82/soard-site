@@ -1176,6 +1176,7 @@ export const ERROR_TEXT = {
     ack: 'Please check the box to continue.', choose: 'Please choose an answer.', signature: 'Please type your full name.', answer: 'Please answer this question.',
     area: 'Please enter the home address so we can check it, or choose an answer.',
     email: 'Please enter a valid email address, like name@example.com.', phone: 'Please enter a 10-digit phone number.', phoneArea: 'Please add the area code, like (404) 555-0123.',
+    phoneCheck: "That doesn't look like a US phone number. Please check it.",
     url: 'Please enter a web address, like example.org.',
     date: 'Please enter a valid date.', year: 'Please check the year.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
     address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.', poBox: 'Please enter a street address, not a PO box.', houseNumber: 'Please add the house or building number to the street address.',
@@ -1189,6 +1190,7 @@ export const ERROR_TEXT = {
     ack: 'Marque la casilla para continuar.', choose: 'Elija una respuesta.', signature: 'Escriba su nombre completo.', answer: 'Responda esta pregunta.',
     area: 'Escriba la dirección de la casa para que podamos revisarla, o elija una respuesta.',
     email: 'Escriba un correo electrónico válido, como nombre@ejemplo.com.', phone: 'Escriba un número de teléfono de 10 dígitos.', phoneArea: 'Agregue el código de área, como (404) 555-0123.',
+    phoneCheck: 'Ese no parece un número de teléfono de EE. UU. Revíselo, por favor.',
     url: 'Escriba una dirección web, como ejemplo.org.',
     date: 'Escriba una fecha válida.', year: 'Revise el año.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
     address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.', poBox: 'Escriba una dirección con calle, no un apartado postal.', houseNumber: 'Agregue el número de la casa o del edificio a la dirección.',
@@ -1223,7 +1225,12 @@ export function fieldError(field, value, lang = 'en') {
   const r = field.rules || {};
   switch (field.type) {
     case 'email': return isEmailAddress(value) ? null : E.email;
-    case 'phone': return toE164(value) ? null : String(value).replace(/\D/g, '').length === 7 ? E.phoneArea : E.phone; // "555-1234": the area code
+    case 'phone': {
+      if (toE164(value)) return null;
+      const d = String(value).replace(/\s*(?:x|ext\.?|extension)\s*\d{1,6}\s*$/i, '').replace(/\D/g, '');
+      // "555-1234": the area code. Ten digits no one can dial ("123-456-7890"): checked, not counted again
+      return d.length === 7 ? E.phoneArea : /^1?\d{10}$/.test(d) ? E.phoneCheck : E.phone;
+    }
     case 'number': {
       const t = String(value).replace(/,/g, '').trim();
       if (/^\d[\d.]*\s*(?:-|–|to|or|a|o)\s*\d/i.test(t)) return E.range; // "200-300": one number, a guess

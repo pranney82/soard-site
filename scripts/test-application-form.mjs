@@ -628,6 +628,14 @@ try {
   await tap('[data-more="parent2"] [data-more-close]');
   await sleep(400); // Remove can slide back to the screen with its button: a press that soon after a change doesn't count
   ok(!(await visible('#af-parent2Email')) && await page.$eval('#af-parent2Name-first', (e) => e.value) === '', 'Remove clears it and tucks it away again');
+  // Answers in it: an Undo for a moment, as a removed photo has
+  ok(await page.evaluate(() => document.activeElement?.matches('[data-more="parent2"] [data-more-undo]')), 'with an Undo that has the keys');
+  await tap('[data-more="parent2"] [data-more-undo]');
+  await sleep(450);
+  ok(await visible('#af-parent2Email') && await page.$eval('#af-parent2Name-last', (e) => e.value) === 'Stone' && await page.$eval('#af-parent2Email', (e) => e.value) === 'sam@example.com', 'Undo brings the second parent back');
+  await reach('[data-more="parent2"] [data-more-close]');
+  await tap('[data-more="parent2"] [data-more-close]');
+  await sleep(400);
   // Scrolled down, the bar across the top stays (and Continue at the bottom)
   await reach('[data-field="ownership"]');
   await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
@@ -944,10 +952,9 @@ try {
   ok(/Everything is here/.test(await page.$eval('[data-review-summary]', (e) => e.textContent)) && !(await page.$eval('[data-next]', (b) => b.disabled)), 'and Submit is ready again');
 
   console.log('Submit');
-  // Its save not going through: Submit doesn't send the answers from before it, and says so (a change the last
-  // save hasn't taken: with nothing new since one that went through, Submit goes straight on)
+  // Its save not going through: Submit doesn't send the answers from before it, and says so (Submit always
+  // saves first, with nothing new here too: another device may have saved since)
   failSaves = 500;
-  await page.evaluate(() => { const el = document.querySelector('#af-diagnosisImpact'); el.value += ' A lift would help.'; el.dispatchEvent(new Event('input', { bubbles: true })); });
   await next();
   await sleep(800);
   ok(!(await visible('[data-done]')) && /didn't save/.test(await page.$eval('[data-nav-note]', (e) => (e.hidden ? '' : e.textContent))), "a save that doesn't go through holds Submit back, and says why");

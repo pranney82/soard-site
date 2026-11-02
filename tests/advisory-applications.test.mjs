@@ -95,6 +95,11 @@ test('a name (theirs, or typed to sign) is more than one letter', () => {
   assert.deepEqual(checkAnswers({ ...GOOD, signature: 'Jo' }).problems, {});
 });
 
+test('a phone number no one can dial ("123-456-7890") is asked to be checked', () => {
+  assert.equal(checkAnswers({ ...GOOD, phone: '123-456-7890' }).problems.phone, 'That doesn’t look like a US phone number. Please check it.');
+  assert.equal(checkAnswers({ ...GOOD, phone: '+44 20 7946 0958' }).problems.phone, undefined);
+});
+
 test('applying: stored, the applicant gets a copy, staff get an email and a Slack post', async () => {
   const { res, body } = await apply(GOOD);
   assert.equal(res.status, 200);

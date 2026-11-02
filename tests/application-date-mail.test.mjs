@@ -64,3 +64,12 @@ test('a limit is written as people write it ("1,000,000 or less"); a typed name 
   for (const v of ['x', ' . ', 'J.']) assert.equal(fieldError(sign, v, 'en'), 'Please type your full name.', v);
   for (const v of ['Jo Li', 'Ana', '李明']) assert.equal(fieldError(sign, v, 'en'), null, v);
 });
+
+test('ten digits no one can dial ("123-456-7890") are asked to be checked, not counted again', () => {
+  const f = { id: 'parentPhone', type: 'phone', required: true };
+  for (const v of ['123-456-7890', '0000000000', '1-123-456-7890']) assert.equal(fieldError(f, v, 'en'), "That doesn't look like a US phone number. Please check it.", v);
+  assert.equal(fieldError(f, '123-456-7890', 'es'), 'Ese no parece un número de teléfono de EE. UU. Revíselo, por favor.');
+  assert.equal(fieldError(f, '555-1234', 'en'), 'Please add the area code, like (404) 555-0123.');
+  assert.equal(fieldError(f, '12345', 'en'), 'Please enter a 10-digit phone number.');
+  for (const v of ['(404) 555-0123', '+44 20 7946 0958', '404 555 0123 ext 5']) assert.equal(fieldError(f, v, 'en'), null, v);
+});

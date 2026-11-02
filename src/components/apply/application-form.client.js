@@ -1965,8 +1965,10 @@ function init(root, cfg, mode) {
   // (so a few saves asked for on a slow connection go as one), and "All changes saved" waits for the last
   let saveWaiting = null;
   let lastSent = null; // what the last save that went through said (one after it with nothing new isn't sent)
-  function save() {
+  let mustSend = false; // ...except one that has to reach the server: Submit's, and one that brings in another device's save
+  function save({ force = false } = {}) {
     if (!token || previewing) return Promise.resolve(true);
+    if (force) mustSend = true;
     clearTimeout(dirtyTimer);
     saveState('saving');
     if (saveWaiting) return saveWaiting;
@@ -1978,11 +1980,12 @@ function init(root, cfg, mode) {
       const body = { action: 'save', token, answers: now, page, lang };
       // The save it follows, and what's changed here since (see saveDraft): asked once it's this one's turn
       const changed = Object.keys(now).filter(id => !sameAnswer(now[id], synced?.[id]));
-      if (!changed.length && lastSent && lastSent.token === token && lastSent.page === page && lastSent.lang === lang) {
+      if (!mustSend && !changed.length && lastSent && lastSent.token === token && lastSent.page === page && lastSent.lang === lang) {
         saveState(saveWaiting ? 'saving' : 'saved'); // nothing new since the one before (Save and exit after Continue)
         return true;
       }
       lastSent = null;
+      mustSend = false;
       try {
         const r = await api({ ...body, rev, changed });
         if (r.ok) {
@@ -2047,7 +2050,9 @@ function init(root, cfg, mode) {
     const now = readAnswers();
     const changed = {};
     for (const id of Object.keys(now)) if (!sameAnswer(now[id], synced?.[id])) changed[id] = now[id];
-    if (Object.keys(changed).length) pending.set({ token, changed, at: Date.now() });
+    // (and the screen they were on: a new tab opens there)
+    const where = currentId && currentId !== 'review' && packs[currentId] ? screenAt(currentId, screenNo) : {}; // (Save and exit's save lands after they've left it)
+    if (Object.keys(changed).length) pending.set({ token, changed, page: currentId, field: where.field || null, area: where.area || null, at: Date.now() });
     else pending.clear();
   }
   /**
@@ -2150,7 +2155,7 @@ function init(root, cfg, mode) {
       if (r?.code === 'submitted') { finished(true, { elsewhere: lastSave === 'unsaved' || unsaved() }); return; }
       if (r?.code === 'no-draft') { await expired(); return; }
       if (!r?.ok) return;
-      if (r.rev !== rev) await save();
+      if (r.rev !== rev) await save({ force: true }); // (with nothing new here too: it's what brings theirs in)
       else if (takeFiles(r.files || {})) notice('fromElsewhere', 'success');
     } finally {
       peeking = false;
@@ -2388,7 +2393,7 @@ function init(root, cfg, mode) {
       // Sent only as it is here: a save that didn't go would send the answers from before it
       const was = token;
       const theirs = theirsTaken;
-      const saved = await save();
+      const saved = await save({ force: true }); // always asked (another device may have saved since: shown, never sent unseen)
       if (doneShown) return; // it turned out to be sent already (another device)
       // Another device's changes came in just now: shown on the review first, never sent unseen
       if (theirsTaken !== theirs && currentId === 'review') { buildReview(); notice('reviewTheirs', 'info'); readNotice(); return; }
@@ -3837,6 +3842,15 @@ function init(root, cfg, mode) {
   }
   function closeTucked(box) {
     const ids = [...box.querySelectorAll('[data-field]')].map(el => el.dataset.field);
+    // What was in it: a group they'd filled in goes with an Undo for a moment, as a removed photo does
+    const was = {};
+    for (const id of ids) {
+      const f = byId[id];
+      const v = f ? readField(f) : undefined;
+      if (!f || unanswered(f, { [id]: v })) continue;
+      const ab = addrBox(fieldEl(id));
+      was[id] = { v, addr: ab ? { line: ab.querySelector('[data-search]').value, picked: ab.dataset.picked, splitApt: ab.dataset.splitApt, mode: ab.dataset.mode } : null };
+    }
     for (const id of ids) {
       const f = byId[id];
       if (!f) continue;
@@ -3863,6 +3877,51 @@ function init(root, cfg, mode) {
     btn.hidden = false;
     btn.setAttribute('aria-expanded', 'false');
     btn.focus();
+    if (Object.keys(was).length) showGroupUndo(box, was);
+    refresh();
+    markDirty();
+  }
+  const groupUndo = new WeakMap(); // a group's box → { was, row, timer } while its Undo shows
+  function showGroupUndo(box, was) {
+    dropGroupUndo(box);
+    const row = document.createElement('p');
+    row.className = 'af-more-undo';
+    row.innerHTML = '<span></span> <button type="button" class="af-btn af-btn--link" data-more-undo></button>';
+    row.firstChild.textContent = T('groupRemoved');
+    row.lastChild.textContent = T('undo');
+    box.append(row); // (before the screen is worked out again: it's measured with it)
+    groupUndo.set(box, { was, row, timer: setTimeout(() => dropGroupUndo(box), UNDO_MS) });
+    row.lastChild.focus({ preventScroll: true }); // the keys go to Undo, as a removed photo's do
+    announce(T('groupRemoved'));
+  }
+  function dropGroupUndo(box) {
+    const u = groupUndo.get(box);
+    if (!u) return;
+    clearTimeout(u.timer);
+    groupUndo.delete(box);
+    const keys = u.row.contains(document.activeElement);
+    u.row.remove();
+    if (keys) box.querySelector('[data-more-open]')?.focus({ preventScroll: true });
+  }
+  function undoGroup(box) {
+    const u = groupUndo.get(box);
+    if (!u) return;
+    clearTimeout(u.timer);
+    groupUndo.delete(box);
+    u.row.remove();
+    for (const [id, { v, addr }] of Object.entries(u.was)) {
+      const f = byId[id];
+      if (!f) continue;
+      writeField(f, v);
+      const ab = addr ? addrBox(fieldEl(id)) : null;
+      if (ab) {
+        ab.querySelector('[data-search]').value = addr.line;
+        for (const k of ['picked', 'splitApt', 'mode']) { if (addr[k] != null) ab.dataset[k] = addr[k]; else delete ab.dataset[k]; }
+      }
+      answers[id] = readField(f);
+    }
+    openTucked(box.querySelector('[data-field]'), { focus: true });
+    makeRoom(box);
     refresh();
     markDirty();
   }
@@ -3898,12 +3957,12 @@ function init(root, cfg, mode) {
     packs[currentId] = fresh;
     fresh.size = packSize;
     const to = fresh.findIndex(sc => has(sc, box));
-    const btn = box.querySelector('[data-more-open]');
-    if (to >= 0 && to !== screenNo) { show(currentId, { dir: -1, screen: to, focus: false }).then(() => { btn.focus({ preventScroll: true }); replaceLoc(); }); return; }
+    const btn = () => box.querySelector('[data-more-undo]') || box.querySelector('[data-more-open]'); // (its Undo, while that shows)
+    if (to >= 0 && to !== screenNo) { show(currentId, { dir: -1, screen: to, focus: false }).then(() => { btn().focus({ preventScroll: true }); replaceLoc(); }); return; }
     replaceLoc();
     paintScreen();
     paintHeader();
-    btn.focus({ preventScroll: true });
+    btn().focus({ preventScroll: true });
   }
   /** After a redraw: a group with an answer in it stays open */
   function openAnsweredTucked() {
@@ -4478,9 +4537,11 @@ function init(root, cfg, mode) {
       if (entry?.page && entry.page !== was?.page) was = entry;
     }
     const tab = was?.page && ids.includes(was.page) && order(was.page) <= order(furthestId) ? was.page : null;
-    const at = tab || (ids.includes(r.page) ? r.page : ids[0]);
+    // Answers this device kept (never saved: offline when they left): the page they were on then, not the server's last
+    const keptAt = keptBack && kept.page && ids.includes(kept.page) && order(kept.page) <= order(furthestId) ? kept.page : null;
+    const at = tab || keptAt || (ids.includes(r.page) ? r.page : ids[0]);
     currentId = null;
-    resumePiece = (was?.page === at && was.field && atPiece(was)) || null;
+    resumePiece = (was?.page === at && was.field && atPiece(was)) || (keptAt && keptAt === at && kept.field && atPiece(kept)) || null;
     // Reloaded while changing an answer from the review: its Continue still says "Back to review"
     const onEntry = !fromLink && history.state?.afFocus ? history.state.afAt : null;
     if (onEntry?.fromReview && onEntry.page === at) fromReview = onEntry.fromReview;
@@ -4708,9 +4769,10 @@ function init(root, cfg, mode) {
   });
 
   ui.form.addEventListener('click', (e) => {
-    const more = e.target.closest('[data-more-open], [data-more-close]');
+    const more = e.target.closest('[data-more-open], [data-more-close], [data-more-undo]');
     if (more) {
-      if (more.matches('[data-more-open]')) { openTucked(more.closest('[data-more]').querySelector('[data-field]'), { focus: true }); makeRoom(more.closest('[data-more]')); }
+      if (more.matches('[data-more-undo]')) undoGroup(more.closest('[data-more]'));
+      else if (more.matches('[data-more-open]')) { dropGroupUndo(more.closest('[data-more]')); openTucked(more.closest('[data-more]').querySelector('[data-field]'), { focus: true }); makeRoom(more.closest('[data-more]')); }
       else { closeTucked(more.closest('[data-more]')); closeRoom(more.closest('[data-more]')); }
       return;
     }

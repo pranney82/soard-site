@@ -134,6 +134,8 @@ export function fieldProblem(field, value) {
     // Ten digits (a 1 before them, or a + number from abroad, is fine; so is a work line's extension), as the family application asks
     const d = String(value).replace(/\s*(?:x|ext\.?|extension)\s*\d{1,6}\s*$/i, '').replace(/[^\d+]/g, '');
     if (!/^(?:\+\d{8,15}|1?\d{10})$/.test(d)) return d.replace(/\D/g, '').length === 7 ? 'Please add the area code, like (404) 555-0123.' : 'Please enter a 10-digit phone number.'; // "555-1234", as the family form says it
+    // Ten digits no one can dial (an area code or exchange starting 0 or 1, "123-456-7890")
+    if (!d.startsWith('+') || d.startsWith('+1')) { const us = d.replace(/^\+?1(?=\d{10}$)/, ''); if (/^\d{10}$/.test(us) && !/^[2-9]\d{2}[2-9]/.test(us)) return 'That doesn’t look like a US phone number. Please check it.'; }
   }
   // A name (theirs, or typed to sign): at least two letters, never just "x"
   if (field.autocomplete === 'name' && (String(value).match(/\p{L}/gu) || []).length < 2) return 'Please type your full name.';

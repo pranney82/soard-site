@@ -70,6 +70,15 @@ try {
   const s2 = await api({ action: 'resume', token });
   ok(s2.answers.otherChildren === 'A brother, 8' && s2.answers.parentRelation === 'Mom', "the phone's save doesn't undo the laptop's answer");
   ok(await page.evaluate(() => document.getElementById('af-otherChildren')?.value) === 'A brother, 8', 'and the phone shows it');
+
+  console.log('The laptop once more; the phone, with nothing new of its own, looked at again');
+  await sleep(4500); // the phone's last save is in, nothing typed there since
+  const s3 = await api({ action: 'resume', token });
+  r = await api({ action: 'save', token, answers: { ...s3.answers, interests: 'Trains' }, page: 'child', lang: 'en', rev: s3.rev, changed: ['interests'] });
+  ok(r.ok && r.rev === s3.rev + 1, `the laptop's save is save ${s3.rev + 1} (${r.rev})`);
+  await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange')));
+  await sleep(2500);
+  ok(await page.evaluate(() => document.getElementById('af-interests')?.value) === 'Trains', "with nothing new of its own, the phone still brings in the laptop's change");
 } catch (e) {
   failures.push(`crashed: ${e.message}`);
   console.log(e);

@@ -681,6 +681,8 @@ const breadcrumbs = [
   .af-usps:is([data-status="unit"], [data-status="check"]) { color: var(--af-attn-ink); }
   .af-usps-by, .af-suggest[data-google]::after { font-family: Roboto, var(--font-body), sans-serif; font-weight: 400; font-style: normal; letter-spacing: normal; font-size: 12px; color: #5E5E5E; white-space: nowrap; text-transform: none; }
   .af-suggest[data-google]::after { content: 'Google Maps'; display: block; text-align: right; padding: 6px 12px 4px; position: sticky; bottom: -6px; background: #fff; }
+  /* An option reached with the arrow keys stops above Google's credit, never under it */
+  .af-suggest[data-google] { scroll-padding-bottom: 30px; }
   /* Opened over the street box when there's more room there (a phone's keyboard below) */
   .af-suggest.is-up { top: auto; bottom: calc(100% + 6px); }
 
@@ -797,6 +799,8 @@ const breadcrumbs = [
   .af-more-body { display: grid; gap: 28px; padding: 22px 0 4px 20px; border-left: 3px solid var(--c-yellow-soft); }
   .af-more-body[hidden] { display: none; }
   .af-more-remove { justify-self: start; margin-top: -12px; }
+  /* Removed with answers in it: an Undo for a moment, under its button */
+  .af-more-undo { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; margin: 6px 0 0; font-size: 14.5px; color: var(--c-text-muted); }
 
   /* A long answer box grows with what's written in it (the script does it where the browser can't) */
   .af-field textarea { field-sizing: content; max-height: 60vh; }
