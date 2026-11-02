@@ -837,7 +837,7 @@ function SinceLast({ ctx }) {
       <h2 class="bp-h2" id="since-h">Last meeting</h2>
       <a class="bp-cardhead__go" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>${m.minutes === 'approved' ? 'The minutes' : 'The meeting'}<${Icon} name="arrow" size=${16} cls="bp-go" /></a>
     </div>
-    <div class="bp-since__what"><${DateTile} d=${m.date} mid=${m.id} /><p><strong>${meetingName(m)}</strong><span>${c.boardHere ? `${c.boardHere} of ${c.board} board members${c.boardHere >= quorumFor(m, data.quorum) ? ', a quorum' : ', short of a quorum'}` : dayOf(m.date)}</span></p><${MinutesChip} m=${m} /></div>
+    <div class="bp-since__what"><${DateTile} d=${m.date} mid=${m.id} /><p><strong>${meetingName(m)}</strong><span>${c.boardHere ? nbw(`${c.boardHere} of ${c.board} board members${c.boardHere >= quorumFor(m, data.quorum) ? ', a quorum' : ', short of a quorum'}`) : dayOf(m.date)}</span></p><${MinutesChip} m=${m} /></div>
     ${decided.length ? html`<h3 class="bp-mini-h">Decided</h3><ul class="bp-facts-list">${decided.map((x) => html`<li key=${x.id || x.text}><span>${x.text}</span><strong>${tallyText(x) || ({ passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[x.result] || '')}</strong></li>`)}</ul>` : null}
   </section>`;
 }
@@ -1015,7 +1015,7 @@ function GiftsYear({ g, since }) {
   }, []);
   const shown = all ? g.list : g.list.slice(0, 12);
   return html`<section class="bp-card bp-gifts bp-gifts--year" aria-labelledby="gifts-y-h" id="gifts">
-    <${SecHead} id="gifts-y-h" title="Major gifts" sub=${`From Zeffy, every gift of $1,000 or more${g.stale ? `, as of ${giftDay(Date.parse(g.at) / 1000)}` : ''}`} />
+    <${SecHead} id="gifts-y-h" title="Major gifts" sub=${nbw(`From Zeffy, every gift of $1,000 or more${g.stale ? `, as of ${giftDay(Date.parse(g.at) / 1000)}` : ''}`)} />
     ${g.count ? html`<p class="bp-gifts__total"><strong>${money(g.total / 100)}</strong> ${nbw(`from ${plural(g.count, 'gift')} in ${g.year}`)}</p>
       <ul class="bp-gifts__list">${shown.map((x) => html`<${GiftRow} g=${x} since=${since} key=${x.id} />`)}</ul>
       ${g.count > 12 ? html`<button type="button" class="bp-more-btn" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? 'Show the newest 12' : `Show all ${g.count}`}</button>` : null}`
@@ -1102,7 +1102,7 @@ function NextUp({ m, ctx }) {
   return html`<section class=${`bp-card bp-next bp-nextup ${today ? 'is-today' : ''}`} aria-labelledby=${`next-h-${m.id}`}>
     <div class="bp-cardhead">
       <h2 class="bp-h2" id=${`next-h-${m.id}`}>${today ? 'Today’s meeting' : 'Next meeting'}<span class=${`bp-soon ${phase === 'now' ? 'is-live' : ''}`}>${phase === 'now' ? html`<span class="bp-live-dot" aria-hidden="true"></span>` : null}${status}</span></h2>
-      <a class="bp-cardhead__go" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>${running ? html`<span class="bp-live-dot" aria-hidden="true"></span>Follow the meeting` : m.pending || !(m.sections || []).some((x) => x.items?.length) ? 'See the meeting' : `See the agenda${fileCount ? ` and ${plural(fileCount, 'file')}` : ''}`}<${Icon} name="arrow" size=${16} cls="bp-go" /></a>
+      <a class="bp-cardhead__go" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>${running ? html`<span class="bp-live-dot" aria-hidden="true"></span>Follow the meeting` : m.pending || !(m.sections || []).some((x) => x.items?.length) ? 'See the meeting' : nbw(`See the agenda${fileCount ? ` and ${plural(fileCount, 'file')}` : ''}`)}<${Icon} name="arrow" size=${16} cls="bp-go" /></a>
     </div>
     <div class="bp-nextup__when">
       <${DateTile} d=${m.date} mid=${m.id} big />
@@ -1270,14 +1270,14 @@ function MeetingRow({ m, data, terms = [] }) {
   // The words that matched, once: where they are, then the point's own words when the match is in them
   const inBody = hit && hit.body && terms.some((w) => norm(hit.body).includes(w)) && norm(hit.body) !== norm(hit.where);
   const files = fileRows(m.files).reduce((n, g) => n + g.rows.length, 0);
-  const side = [!ahead && c.boardHere ? `${c.boardHere} of ${c.board} there` : '', files ? plural(files, 'file') : ''].filter(Boolean).join(' · ');
+  const side = nbw([!ahead && c.boardHere ? `${c.boardHere} of ${c.board} there` : '', files ? plural(files, 'file') : ''].filter(Boolean).join(' · '));
   // Opened from a search, the meeting opens at the match, marked
   const open = (e) => { claimMorph(e); if (hit?.id) focusNext = hit.id; };
   return html`<li key=${m.id} id=${`mr-${m.id}`}><a class="bp-mrow" href=${`#/meetings/${m.id}`} onClick=${open}>
     <${DateTile} d=${m.date} mid=${m.id} />
     <span class="bp-mrow__main">
       <span class="bp-mrow__title">${meetingName(m)}${ahead ? html`<span class="bp-chip bp-chip--info">${inWords(m.date, data.today)}</span>` : m.minutes !== 'approved' ? html`<span class="bp-chip">Draft minutes</span>` : null}</span>
-      <span class="bp-mrow__meta">${[weekdayOf(m.date), m.start ? clock(m.start) : '', m.location].filter(Boolean).join(' · ')}</span>
+      <span class="bp-mrow__meta">${nb([weekdayOf(m.date), m.start ? clock(m.start) : '', m.location].filter(Boolean).join(' · '))}</span>
       ${hit ? html`<span class="bp-hit"><span class="bp-hit__where">${inBody ? hit.where : html`<${Marked} text=${hit.where} terms=${terms} />`}</span>${inBody ? html` <${Snippet} text=${hit.body} terms=${terms} />` : null}</span>` : null}
     </span>
     ${side ? html`<span class="bp-mrow__side">${side}</span>` : null}
@@ -1329,7 +1329,7 @@ function MeetingsPage({ ctx }) {
         <div class="bp-yearfolds">${years.slice(2).map((y) => {
           const list = past.filter((m) => m.date.startsWith(y));
           return html`<details class="bp-yearfold" key=${y} open=${opened.includes(y)} onToggle=${(e) => { if (e.currentTarget.open !== opened.includes(y)) fold(y, e.currentTarget.open); }}>
-            <summary><span class="bp-yearfold__y">${y}</span><span class="bp-yearfold__n">${plural(list.length, 'meeting')}</span>${list.some((m) => m.minutes !== 'approved') ? html`<span class="bp-chip">${plural(list.filter((m) => m.minutes !== 'approved').length, 'draft')}</span>` : null}<${Icon} name="chevron" size=${18} cls="bp-yearfold__chev" /></summary>
+            <summary><span class="bp-yearfold__y">${y}</span><span class="bp-yearfold__n">${nbw(plural(list.length, 'meeting'))}</span>${list.some((m) => m.minutes !== 'approved') ? html`<span class="bp-chip">${nbw(plural(list.filter((m) => m.minutes !== 'approved').length, 'draft'))}</span>` : null}<${Icon} name="chevron" size=${18} cls="bp-yearfold__chev" /></summary>
             <ol class="bp-mlist">${list.map((m) => html`<${MeetingRow} m=${m} data=${data} key=${m.id} />`)}</ol>
           </details>`;
         })}</div>
@@ -1675,7 +1675,7 @@ function CashBlock({ n, data, m }) {
   if (!tiles.length && !st) return null;
   const books = upTo ? n?.books : data.numbers.books;
   return html`${tiles.length ? html`<ul class="bp-agfigs">${tiles.map((t) => html`<li class="bp-agfig" key=${t.k}>
-    <span class="bp-fig__label">${t.label}</span><span class="bp-agfig__value">${t.value}</span>${t.sub ? html`<span class=${`bp-fig__sub ${t.tone ? `is-${t.tone}` : ''}`}>${t.sub}</span>` : null}
+    <span class="bp-fig__label">${t.label}</span><span class="bp-agfig__value">${t.value}</span>${t.sub ? html`<span class=${`bp-fig__sub ${t.tone ? `is-${t.tone}` : ''}`}>${nbw(t.sub)}</span>` : null}
   </li>`)}</ul>` : null}${mixOf(books) ? html`<div class="bp-agmix"><p class="bp-fig__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null}${st ? html`<details class="bp-more bp-stmts-fold"><summary>The statements, as of ${fullDate(st.asOf)}</summary><${Statements} s=${st} books=${upTo ? n?.books : data.numbers.books} idp=${`m${m.id}`} /></details>` : null}`;
 }
 
@@ -1688,7 +1688,7 @@ function RevealsBlock({ n }) {
     const photo = photoOf(r);
     return html`<li key=${r.slug || r.name}>
       <span class="bp-agrev__photo">${photo ? html`<img src=${sized(photo, 'w=240,h=240,fit=cover,gravity=face')} alt="" loading="lazy" width="64" height="64" />` : html`<span class="bp-avatar bp-avatar--initials" style=${`--s:64px;--hue:${hueOf(r.name)}`} data-i=${initialsOf(r.name)} aria-hidden="true"></span>`}</span>
-      <span class="bp-agrev__text"><strong>${r.name}</strong><span>${r.confirmed && r.date ? `${dayOf(r.date)}${r.time ? `, ${clock(r.time)}` : ''}` : `${r.window?.label || 'Date to come'}, not set yet`}</span></span>
+      <span class="bp-agrev__text"><strong>${r.name}</strong><span>${r.confirmed && r.date ? nb(`${dayOf(r.date)}${r.time ? `, ${clock(r.time)}` : ''}`) : `${r.window?.label || 'Date to come'}, not set yet`}</span></span>
       ${r.confirmed && r.date ? html`<${DateTile} d=${r.date} />` : html`<${WindowTile} w=${r.window} />`}
     </li>`;
   })}</ul>`;
@@ -1697,7 +1697,7 @@ function RevealsBlock({ n }) {
 /** Events or board meetings ahead, by date */
 function DatesBlock({ rows }) {
   if (!rows.length) return html`<p class="bp-muted">Nothing on the calendar yet.</p>`;
-  return html`<ul class="bp-agdates">${rows.map((r) => html`<li key=${r.key}><${DateTile} d=${r.date} /><span><strong>${r.title}</strong><span>${r.sub}</span></span></li>`)}</ul>`;
+  return html`<ul class="bp-agdates">${rows.map((r) => html`<li key=${r.key}><${DateTile} d=${r.date} /><span><strong>${r.title}</strong><span>${nb(r.sub)}</span></span></li>`)}</ul>`;
 }
 
 /** An item's live facts, drawn for what they are ([] of lines only when the shape isn't known) */
@@ -1836,7 +1836,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
         <p class="bp-eyebrow">${upcoming ? (m.pending ? 'Agenda coming' : 'Board meeting agenda') : 'Board meeting minutes'}<span class=${`bp-soon ${m.minutes === 'approved' && !upcoming ? 'is-ok' : ''}`}>${status}</span></p>
         <h1 class="bp-aghero__title">${meetingName(m)}</h1>
         <ul class="bp-aghero__facts">
-          <li><${DateTile} d=${m.date} big head /><span><strong>${dayOf(m.date)}</strong><span>${nb([m.start ? timeRange(m.start, m.end) : '', String(m.date).slice(0, 4)].filter(Boolean).join(' · '))}</span></span></li>
+          <li><${DateTile} d=${m.date} big head /><span><strong>${dayOf(m.date)}</strong><span>${nbw(nb([m.start ? timeRange(m.start, m.end) : '', String(m.date).slice(0, 4)].filter(Boolean).join(' · ')))}</span></span></li>
           ${place.length ? html`<li><span class="bp-aghero__ico"><${Icon} name="pin" /></span><span><strong>${m.location || m.address}</strong>${m.address ? html`<a href=${mapsHref(m.address)} target="_blank" rel="noopener">${m.location ? m.address : 'Directions'}</a>` : null}</span></li>` : null}
           ${video && m.date !== data.today ? html`<li><span class="bp-aghero__ico"><${Icon} name="video" /></span><span><strong>${joinLabel(video).replace(/^Join (with|by) /, '').replace(/^video$/, 'Video call')}</strong><a href=${video} target="_blank" rel="noopener">Join from anywhere</a></span></li>` : null}
         </ul>
@@ -2048,7 +2048,7 @@ function BooksYear({ b }) {
       <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${b.year} so far</th>${ly ? html`<th scope="col" class="num">${ly.year}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
       <tbody>${rows.map(([label, a, p, kind]) => html`<tr class=${`bp-row--${kind}`} key=${label}><th scope="row">${label}</th><td class="num">${signedMoney(a)}</td>${ly ? html`<td class="num bp-cmp__ly" data-label=${`${ly.year}, same days`}>${signedMoney(p)}</td><td class="num bp-cmp__chg">${kind === 'net' ? changeMoney(a, p) : pct(a, p)}</td>` : null}</tr>`)}</tbody>
     </table>
-    ${ly?.full?.revenue > 0 ? html`<p class="bp-note">By this day last year, ${Math.round((ly.revenue / ly.full.revenue) * 100)}% of ${ly.year}’s revenue (${compact(ly.full.revenue)}) had come in${lySpent?.[1] > 0 ? `, and ${Math.round((lySpent[0] / lySpent[1]) * 100)}% of its spending had gone out` : ''}.</p>` : null}
+    ${ly?.full?.revenue > 0 ? html`<p class="bp-note">${nbw(`By this day last year, ${Math.round((ly.revenue / ly.full.revenue) * 100)}% of ${ly.year}’s revenue (${compact(ly.full.revenue)}) had come in${lySpent?.[1] > 0 ? `, and ${Math.round((lySpent[0] / lySpent[1]) * 100)}% of its spending had gone out` : ''}.`)}</p>` : null}
     <div class="bp-meters">
       ${mixOf(b) ? html`<div class="bp-meter"><div class="bp-meter__head"><span>Where the money came from</span></div><${RevenueMix} books=${b} table=${true} /></div>` : null}
       ${b.functions ? html`<${PartsBar} label="Where it went, by purpose" parts=${b.functions.list} total=${b.functions.total} />` : null}
@@ -2106,7 +2106,7 @@ function BudgetCard({ b }) {
     <ul class="bp-budget__list">${rows.map(([label, x]) => html`<li key=${label}>
       <p class="bp-budget__head"><span>${label}</span><strong>${money(x.actual)}</strong></p>
       <${Meter} x=${x} />
-      <p class="bp-budget__sub">${pctOf(x)}% of the ${money(x.budget)} budget${paceText(x) ? ` · ${paceText(x)}` : ''}${x.inKind ? ` · not counting ${compact(x.inKind)} in kind` : ''}</p>
+      <p class="bp-budget__sub">${nbw(`${pctOf(x)}% of the ${money(x.budget)} budget${paceText(x) ? ` · ${paceText(x)}` : ''}${x.inKind ? ` · not counting ${compact(x.inKind)} in kind` : ''}`)}</p>
     </li>`)}</ul>
     ${vf ? html`<p class="bp-note">The budget: <a class="bp-link" ...${viewerLink(vf, 0)}>${titleOf(b.file.name)}</a>${b.meeting ? html`, in the <a class="bp-link" href=${`#/meetings/${b.meeting.id}`} onClick=${claimMorph}>${meetingName(b.meeting)}</a> packet` : null}</p>` : null}
   </section>`;
@@ -2131,10 +2131,10 @@ function CashCard({ data }) {
         <h2 class="bp-h2" id="cash-h">Cash in the bank</h2>
         <p class="bp-cash__total">${money(cash.total)}</p>
         <p class="bp-muted">${cash.asOf ? `As of ${cash.asOf}` : ''}${change != null ? html` · <span class=${change >= 0 ? 'bp-up' : 'bp-down'}>${change >= 0 ? 'up' : 'down'} ${money(Math.abs(change))}</span> from ${cash.priorAsOf || 'a year earlier'}` : ''}</p>
-        ${cash.months != null ? html`<p class="bp-cash__months"><strong>${monthsText(cash.months)} months</strong> of spending${cash.perMonth ? `, at the ${money(cash.perMonth)} a month that left the bank in the last 12 months (moves between SOARD’s own accounts aside)` : ''}</p>` : null}
+        ${cash.months != null ? html`<p class="bp-cash__months"><strong>${nbw(`${monthsText(cash.months)} months`)}</strong>${nbw(` of spending${cash.perMonth ? `, at the ${money(cash.perMonth)} a month that left the bank in the last 12 months (moves between SOARD’s own accounts aside)` : ''}`)}</p>` : null}
       </div>
       ${cash.live
-        ? html`<p class="bp-cash__src">${fromBooks(cash) || `Straight from ${andText(cash.banks)}, read ${cash.today ? `today at ${clockAt(cash.at)}` : cash.asOf}`}${cash.stale.length ? html`<br />${andText(cash.stale)} hasn’t answered since then` : null}</p>`
+        ? html`<p class="bp-cash__src">${nb(fromBooks(cash) || `Straight from ${andText(cash.banks)}, read ${cash.today ? `today at ${clockAt(cash.at)}` : cash.asOf}`)}${cash.stale.length ? html`<br />${andText(cash.stale)} hasn’t answered since then` : null}</p>`
         : html`<p class="bp-cash__src">From the <a class="bp-link" ...${viewerLink(vf, 0)}>statement of financial position</a> in the <a class="bp-link" href=${`#/meetings/${cash.meeting.id}`} onClick=${claimMorph}>${meetingName(cash.meeting)}</a> packet</p>`}
     </div>
     ${shown.length > 1 ? html`<ul class="bp-accounts">${shown.map((a) => html`<li key=${a.name}>
@@ -2258,7 +2258,7 @@ function FinancialsPage({ ctx }) {
             <thead><tr><th scope="col">Year</th><th scope="col">Form 990</th><th scope="col">Audit</th></tr></thead>
             <tbody>${shownYears.map((y) => html`<tr key=${y}><th scope="row">${y}</th><td>${cell(y, '990')}</td><td>${cell(y, 'audit')}</td></tr>`)}</tbody>
           </table>
-          ${years.length > 6 ? html`<button type="button" class="bp-more-btn" aria-expanded=${allYears} onClick=${() => setAllYears(!allYears)}>${allYears ? 'Show fewer years' : `Show all ${years.length} years`}</button>` : null}
+          ${years.length > 6 ? html`<button type="button" class="bp-more-btn" aria-expanded=${allYears} onClick=${() => setAllYears(!allYears)}>${allYears ? 'Show fewer years' : nbw(`Show all ${years.length} years`)}</button>` : null}
           ${others.length ? html`<p class="bp-note">Also: ${others.map((x, k) => html`${k ? ', ' : ''}<a class="bp-link" ...${viewerLink(fv, data.filings.indexOf(x))}>${x.title}</a>`)}</p>` : null}
         </section>` : null, earlier.length ? html`<section class="bp-card" aria-labelledby="ea-h">
           <${SecHead} id="ea-h" title="Earlier statements" sub="From each meeting’s packet" />
@@ -2380,7 +2380,7 @@ function Library({ data, q = '' }) {
       <a class="bp-libmeet__head" href=${`#/meetings/${m.id}`} onClick=${claimMorph}><${DateTile} d=${m.date} mid=${m.id} /><span><span class="bp-row__title">${meetingName(m)}</span><span class="bp-row__meta">${longDate(m.date)}</span></span></a>
       <${FileList} files=${files} labels=${false} kinds=${kind === 'all'} />
     </div>`) : terms.length && kind !== 'all' && elsewhere ? null : html`<p class="bp-muted">No file matches.</p>`}
-    ${cut ? html`<button type="button" class="bp-more-btn" onClick=${() => setAll(true)}>Show ${plural(shown.length - 4, 'earlier meeting')}</button>` : null}
+    ${cut ? html`<button type="button" class="bp-more-btn" onClick=${() => setAll(true)}>${nbw(`Show ${plural(shown.length - 4, 'earlier meeting')}`)}</button>` : null}
   </section>`;
 }
 
@@ -2454,7 +2454,7 @@ function DocumentsPage({ ctx }) {
         <a class="bp-signlist__cover" ...${open(x)} aria-label=${`Read ${x.title}`}><${Cover} x=${x} shelf=${shelfOf(x)} /></a>
         <div class="bp-signlist__body">
           <p class="bp-doc__title">${x.title}</p>
-          <p class="bp-doc__meta">${[x.note, `${x.signedCount} of ${data.people.board.length} board members have signed for ${year}`].filter(Boolean).join(' · ')}</p>
+          <p class="bp-doc__meta">${[x.note, nbw(`${x.signedCount} of ${data.people.board.length} board members have signed for ${year}`)].filter(Boolean).join(' · ')}</p>
           <p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p>
           <${SignForm} d=${x} ctx=${ctx} />
         </div>

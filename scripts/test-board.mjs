@@ -613,7 +613,7 @@ try {
     ok(new URL(alex.url()).pathname === '/admin/board/', 'opening /admin/ takes a board member to their page');
     ok(await waitText(alex, /Good (morning|afternoon|evening), Alex/), 'Home greets them by name');
     const home = await text(alex);
-    ok(/Next meeting/.test(home) && /See the agenda and 1 file/.test(home), 'Home: the next meeting, and its packet');
+    ok(/Next meeting/.test(home) && /See the agenda and\s1\sfile/.test(home), 'Home: the next meeting, and its packet');
     ok(/Example Hall/.test(home) && await alex.$('.bp-next a[href^="https://www.google.com/maps/search/"]') !== null, 'Home: its place, the address opening in Maps');
     ok(await alex.$('.bp-next a[href="https://meet.google.com/abc-defg-hij"]') !== null && /Google Meet/.test(home), 'Home: the Google Meet link, in the meeting’s one line');
     // Their yes on the calendar invite is their answer here until they choose: said, and its choice marked
@@ -629,9 +629,9 @@ try {
     ok(await alex.evaluate(() => !!document.querySelector('.bp-sum .bp-figs') && !!document.querySelector('.bp-sum #impact')), 'Home: the figures and Impact are one panel, SOARD at a glance');
     ok(await alex.$$eval('.bp-next .bp-agpeek li', (l) => l.length) > 0, 'Home: the next meeting’s agenda headings, right there');
     const cols = await alex.$$eval('#makeovers .bk-col', (c) => c.map((e) => e.textContent));
-    ok(/^Awaiting funding1[\s\S]*1 family/.test(cols[0]) && /^Design2[\s\S]*Leo[\s\S]*\+1 more family/.test(cols[1]) && /^Build1[\s\S]*Maya/.test(cols.at(-1)) && !/Not Published Yet|Someone Else|Coming up/.test(home), `Home: the makeovers as a kanban, Awaiting funding first, then Design to Build; published kids by name only (${JSON.stringify(cols)})`);
+    ok(/^Awaiting funding1[\s\S]*1\sfamily/.test(cols[0]) && /^Design2[\s\S]*Leo[\s\S]*\+1\smore family/.test(cols[1]) && /^Build1[\s\S]*Maya/.test(cols.at(-1)) && !/Not Published Yet|Someone Else|Coming up/.test(home), `Home: the makeovers as a kanban, Awaiting funding first, then Design to Build; published kids by name only (${JSON.stringify(cols)})`);
     const kids = await alex.$$eval('#makeovers .bk-card:not(.is-quiet)', (c) => c.map((e) => ({ text: e.querySelector('.bk-card__body').textContent, img: !!e.querySelector('.bk-card__photo img, .bk-card__initials') })));
-    ok(kids.length === 2 && kids.every((k) => k.img) && kids.some((k) => /^Maya\s*Reveal \w{3} \d+ · 10 AM$/.test(k.text)) && kids.some((k) => /^Leo\s*Reveal mid December$/.test(k.text)), `Home: each kid’s card leads with their photo and carries their reveal, a set day or the part of the month (${JSON.stringify(kids)})`);
+    ok(kids.length === 2 && kids.every((k) => k.img) && kids.some((k) => /^Maya\s*Reveal \w{3} \d+ · 10\sAM$/.test(k.text)) && kids.some((k) => /^Leo\s*Reveal mid December$/.test(k.text)), `Home: each kid’s card leads with their photo and carries their reveal, a set day or the part of the month (${JSON.stringify(kids)})`);
     ok(await alex.evaluate(() => /kids served/.test(document.querySelector('#impact')?.textContent || '') && document.querySelector('#impact').getBoundingClientRect().top < document.querySelector('.bp-next').getBoundingClientRect().top), 'Home: Impact near the top, under the figures');
     ok(await alex.evaluate(() => { const so = [...document.querySelectorAll('#impact .bp-impact__stats > div')].find((d) => /so far$/.test(d.querySelector('dt')?.textContent || '')); return !so || /^\d+\skids? · \d+\srooms?/.test(so.querySelector('dd').textContent); }), 'Home: this year so far gives its kids and its rooms');
     const gifts = await alex.evaluate(() => { const c = document.querySelector('.bp-gifts'); return c && { sum: c.querySelector('.bp-gifts__sum')?.textContent, rows: [...c.querySelectorAll('.bp-gift')].map((r) => r.textContent), fresh: c.querySelectorAll('.bp-gift.is-new').length, all: c.querySelector('a[href="#/financials/gifts"]')?.textContent, beforeMakeovers: c.getBoundingClientRect().top < document.querySelector('#makeovers').getBoundingClientRect().top, inside: c.scrollWidth <= c.clientWidth }; });
@@ -1101,6 +1101,29 @@ try {
       const paper = await money.evaluate(() => ({ segs: document.querySelectorAll('.bpp-mix__bar span').length, rows: [...document.querySelectorAll('.bpp-mix tbody tr')].map((r) => r.textContent) }));
       ok(paper.segs === 6 && paper.rows.length === 6 && paper.rows[1] === 'Store sales$415,00022%$830,000▼ 50%', `Print it all: where the revenue came from, beside last year (${JSON.stringify(paper.rows.slice(0, 2))})`);
       await money.evaluate(() => dispatchEvent(new Event('afterprint')));
+    }
+    if (width === 390) {
+      // On a phone a count, an amount or a time never ends a line without its word ("$243K" / "in kind"); a year
+      // before a word, a day of the month, the tables and what's typed in (a file's name, the meeting's place) are
+      // left to wrap as they will, and a line that never wraps can't break
+      for (const page of ['#/', '#/meetings', `#/meetings/${meetingId}`, '#/financials', '#/documents', '#/people']) {
+        await money.goto(`${SITE}/admin/board/${page}`, { waitUntil: 'networkidle0' });
+        await money.evaluate(() => document.querySelectorAll('.bp-main details').forEach((x) => { x.open = true; }));
+        await new Promise((r) => setTimeout(r, 300));
+        const loose = await money.evaluate(() => {
+          const out = [];
+          const walk = document.createTreeWalker(document.querySelector('.bp-main'), NodeFilter.SHOW_TEXT);
+          for (let n; (n = walk.nextNode());) {
+            if (n.parentElement.closest('table, svg, [hidden], .bp-file__title, .bp-doctile__title, a[href*="google.com/maps"]') || /nowrap|pre/.test(getComputedStyle(n.parentElement).whiteSpace)) continue;
+            for (const m of n.nodeValue.matchAll(/(?<![\p{L}\d.,:])(\$?\d(?:[\d,.:]*\d)?[KMB%]?) (\p{L}+)/gu)) {
+              if (/^(19|20)\d{2}$/.test(m[1]) || /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.? $/.test(n.nodeValue.slice(0, m.index))) continue;
+              out.push(`${m[0]} (.${n.parentElement.closest('[class]').className.split(' ')[0]})`);
+            }
+          }
+          return out;
+        });
+        ok(!loose.length, `${page} at 390: every count, amount and time kept with its word${loose.length ? ` (${loose.slice(0, 5).join(' | ')})` : ''}`);
+      }
     }
     await money.close();
   }

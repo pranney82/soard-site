@@ -14,6 +14,8 @@ import { h, htm } from '../vendor.js';
 import { shortDate, clock, plural, initialsOf } from '../board-shared.js';
 
 const html = htm.bind(h);
+// "+2 more families", "10 AM": the number kept with its word
+const kept = (s) => s.replace(/(\d) (\S+)/, '$1 $2');
 
 export const AWAITING = 'Awaiting Funding';
 const STAGE_FLOW = ['Design', 'Finalization', 'Approval', 'Mobilization', 'Build'];
@@ -61,7 +63,7 @@ export function Kanban({ projects, reveals = [], variant = 'home', links = varia
   const reveal = (b) => {
     if (b.kind === 'community') return html`<span class="bk-card__reveal is-quiet">Community project</span>`;
     const r = revealOf(b);
-    if (r?.confirmed && r.date) return html`<span class="bk-card__reveal is-set">${CAL}Reveal ${shortDate(r.date).replace(/, \d{4}$/, '')}${r.time ? ` · ${clock(r.time).replace(':00', '')}` : ''}</span>`;
+    if (r?.confirmed && r.date) return html`<span class="bk-card__reveal is-set">${CAL}Reveal ${shortDate(r.date).replace(/, \d{4}$/, '')}${r.time ? ` · ${kept(clock(r.time).replace(':00', ''))}` : ''}</span>`;
     if (r?.window?.label) return html`<span class="bk-card__reveal">${CAL}Reveal ${r.window.label}</span>`;
     // Awaiting funding: the column says why there's no date yet
     return b.status === AWAITING ? null : html`<span class="bk-card__reveal is-quiet">Reveal date to come</span>`;
@@ -88,8 +90,8 @@ export function Kanban({ projects, reveals = [], variant = 'home', links = varia
         <p class="bk-col__head"><span title=${label}>${label}</span><span class="bk-col__n">${list.length}</span></p>
         <ul class="bk-col__cards">
           ${named.map(card)}
-          ${unnamed ? html`<li><span class="bk-card is-quiet"><span class="bk-card__body"><span class="bk-card__name">${named.length ? `+${unnamed} more ${unnamed === 1 ? 'family' : 'families'}` : plural(unnamed, 'family', 'families')}</span><span class="bk-card__reveal is-quiet">Named once their page is up</span></span></span></li>` : null}
-          ${orgs ? html`<li><span class="bk-card is-quiet"><span class="bk-card__body"><span class="bk-card__name">${plural(orgs, 'community project')}</span><span class="bk-card__reveal is-quiet">Not on Community yet</span></span></span></li>` : null}
+          ${unnamed ? html`<li><span class="bk-card is-quiet"><span class="bk-card__body"><span class="bk-card__name">${kept(named.length ? `+${unnamed} more ${unnamed === 1 ? 'family' : 'families'}` : plural(unnamed, 'family', 'families'))}</span><span class="bk-card__reveal is-quiet">Named once their page is up</span></span></span></li>` : null}
+          ${orgs ? html`<li><span class="bk-card is-quiet"><span class="bk-card__body"><span class="bk-card__name">${kept(plural(orgs, 'community project'))}</span><span class="bk-card__reveal is-quiet">Not on Community yet</span></span></span></li>` : null}
           ${list.length ? null : html`<li class="bk-col__none">None now</li>`}
         </ul>
       </div>`;
