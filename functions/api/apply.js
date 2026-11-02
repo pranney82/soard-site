@@ -327,7 +327,7 @@ async function handleEmailLink(context, draft, body) {
   // so a draft can't be used to send our email to anyone a stranger types in
   const same = (a, b) => String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
   if (!draft.test_by && draft.email && !same(to, draft.email) && !same(to, draft.answers?.[emailId])) {
-    return fail(es ? `Por su privacidad, solo podemos enviar este enlace a ${maskEmail(draft.email)}, el correo que usó antes.` : `For your privacy, we can only send this link to ${maskEmail(draft.email)}, the address you used before.`, 403, { code: 'email-locked' });
+    return fail(es ? `Por su privacidad, solo podemos enviar este enlace a ${maskEmail(draft.email)} (el correo que usó antes) o al correo de su solicitud.` : `For your privacy, we can only send this link to ${maskEmail(draft.email)} (the address you used before) or to the email in your application.`, 403, { code: 'email-locked' });
   }
   if ((draft.link_sends || 0) >= MAX_LINK_SENDS) return fail(es ? 'Ya le enviamos este enlace varias veces. Revise su bandeja de entrada y la carpeta de correo no deseado.' : 'We have already emailed this link several times. Please check your inbox and spam folder.', 429);
   const origin = new URL(request.url).origin;

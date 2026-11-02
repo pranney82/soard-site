@@ -228,6 +228,7 @@ function init(root, cfg, mode) {
   let furthestId = null;     // the furthest page reached
   let fromReview = false;    // came from the review page: 'answer' (one, then straight back) or 'step' (a whole step, walked through)
   let detour = null;         // gone back to an earlier step from the overview or the steps: { page, piece } of where they were
+  let reviewBack = null;     // the review's answer (or step) they went from to change: { edit } | { page }
   let token = null;
   let rev = null;            // the draft's save this page last had (another device's save since is brought in, not saved over)
   let synced = null;         // the answers as of that save (what's changed here since goes with the next one)
@@ -564,7 +565,8 @@ function init(root, cfg, mode) {
         if (focused || lastNotice?.m !== 'exitSaving') return;
         // A photo or video still on its way isn't saved yet: they keep the page open till it is (said when it is)
         if (ok && uploads.size) notice('exitUploading', 'info');
-        else notice(ok ? 'exitSaved' : lastSave === 'offline' ? 'exitNotSaved' : 'exitNotSavedServer', ok ? 'success' : 'error');
+        else if (ok) savedOnExit();
+        else notice(lastSave === 'offline' ? 'exitNotSaved' : 'exitNotSavedServer', 'error');
         paintHub(); // its heading says the same as the note (an earlier save landing first said "saved" too soon)
       });
     }
@@ -1519,6 +1521,17 @@ function init(root, cfg, mode) {
       if (areaWaiting()) { setBusy(true); try { await Promise.race([flushArea(), wait(9000)]); } finally { setBusy(false); } }
       if (moved()) return;
     }
+    // Recording with the camera when Continue is pressed: stopped and used as the video (as Stop does, and as
+    // Back does), then Continue waits for its upload like any other (not "Please upload your video" over it)
+    if (recorder?.rec && recorder.rec.state !== 'inactive' && screenFieldIds().has(recorder.id)) {
+      const id = recorder.id;
+      setBusy(true);
+      try {
+        toggleRecording();
+        for (let t = 0; t < 40 && !uploads.has(id) && !files[id] && !moved(); t++) await wait(100);
+      } finally { setBusy(false); }
+      if (moved()) return;
+    }
     // A photo or video on this screen still on its way: Continue waits for it (the button shows it's
     // working) rather than saying it's missing
     const sending = () => [...screenFieldIds()].some(id => uploads.has(id));
@@ -1561,7 +1574,7 @@ function init(root, cfg, mode) {
     try {
       if (!(await start())) return;
       if (toCard) await show(currentId, { dir: 1, piece: card, step: 1 });
-      else if (fromReview === 'answer' || (fromReview && last)) await show('review', { dir: 1 });
+      else if (fromReview === 'answer' || (fromReview && last)) { const was = reviewBack; await show('review', { dir: 1 }); landOnReview(was); }
       else if (detourHere(last)) { const d = detour; detour = null; await show(d.page, { dir: 1, piece: d.piece && pageEl(d.page)?.contains(d.piece) ? d.piece : null, screen: 'open' }); }
       else if (!last) await show(currentId, { dir: 1, screen: screenNo + 1, step: 1 });
       else {
@@ -1604,6 +1617,22 @@ function init(root, cfg, mode) {
     return true;
   }
   /** Jump to a page already reached (the steps list, Edit, Answer it, Change) */
+  /**
+   * Back on the review after changing one answer: at that answer (a long "Show all answers" list isn't scrolled
+   * through again), with the keys on its Change; its step's row when the answer's isn't open
+   */
+  function landOnReview(back) {
+    reviewBack = null;
+    if (!back || currentId !== 'review') return;
+    const sel = back.edit ? `[data-edit="${CSS.escape(back.edit)}"]` : `[data-page="${CSS.escape(back.page)}"]`;
+    const btn = [...ui.reviewList.querySelectorAll(sel)].find(b => b.getClientRects().length)
+      || ui.reviewList.querySelector(`[data-page="${CSS.escape(back.page || pageOf(back.edit) || '')}"]`);
+    if (!btn?.getClientRects().length) return;
+    requestAnimationFrame(() => {
+      btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+      btn.focus({ preventScroll: true });
+    });
+  }
   /** On the last screen of a step they went back to (Edit on the overview, a step in the list): Continue goes back to where they were */
   const detourHere = (lastScreen) => !!detour && lastScreen && !fromReview && currentId !== 'review' && order(currentId) < order(detour.page);
   /** Going back to an earlier step: where they were, kept for its Continue (the furthest of a few such trips) */
@@ -1737,6 +1766,14 @@ function init(root, cfg, mode) {
   }
 
   // ── Notices ──────────────────────────────────────────────────────
+  /**
+   * Saved, after Save and exit: "here whenever you come back", unless this browser won't keep their place (every
+   * cookie blocked): then the way back is a link, a tap away
+   */
+  function savedOnExit() {
+    if (canKeep || testRun) notice('exitSaved', 'success');
+    else notice('exitSavedNoStore', 'info', 'emailLink');
+  }
   function notice(m, kind = 'info', act = null) {
     lastNotice = m ? { m, kind, act, at: Date.now() } : null;
     paintNotice();
@@ -1773,7 +1810,7 @@ function init(root, cfg, mode) {
    */
   function retireNotices({ videoDone = false } = {}) {
     const m = Array.isArray(lastNotice?.m) ? lastNotice.m[0] : lastNotice?.m;
-    if (['exitNotSaved', 'exitNotSavedServer'].includes(m) && lastSave === 'saved') notice(focused ? null : 'exitSaved', 'success');
+    if (['exitNotSaved', 'exitNotSavedServer'].includes(m) && lastSave === 'saved') { if (focused) notice(null); else savedOnExit(); }
     else if (m === 'attention' && currentId === 'review' && !Object.keys(formErrors(form, readAnswers(), files, null, lang)).length) notice(null);
     else if (m === 'renewedFiles' && !fields.some(f => isUpload(f) && uploadUi[f.id]?.msg === 'fileAgain')) notice('renewed', 'info');
     else if (['recKept', 'recKeptLang'].includes(m) && videoDone) {
@@ -1812,8 +1849,13 @@ function init(root, cfg, mode) {
     paintNavNote();
   }
   function paintNavNote() {
-    ui.navNote.textContent = lastNav ? say(lastNav.m) : '';
+    const was = ui.navNote.hidden ? '' : ui.navNote.textContent;
+    const text = lastNav ? say(lastNav.m) : '';
+    ui.navNote.textContent = text;
     ui.navNote.hidden = !lastNav;
+    // Heard as well as seen (a screen reader on Submit hears why it didn't go), and Continue / Submit described by it
+    if (text && text !== was) announce(text);
+    if (text) ui.next.setAttribute('aria-describedby', ui.navNote.id); else ui.next.removeAttribute('aria-describedby');
   }
   const TOP_SAVE = { saved: 'savedShort', offline: 'offlineShort', notSaved: 'notSavedShort', paused: 'pausedShort' };
   function saveState(key) {
@@ -1979,6 +2021,7 @@ function init(root, cfg, mode) {
    * a tab left open): shown here, and the photos added there; an answer changed here meanwhile stays
    * this page's (its next save says so)
    */
+  let theirsTaken = 0; // times another device's answers were brought in (Submit looks before it sends)
   function takeTheirs(r, sent) {
     const now = readAnswers();
     const took = [];
@@ -1993,6 +2036,7 @@ function init(root, cfg, mode) {
     const gotFiles = takeFiles(r.files || {});
     if (order(r.maxPage) > order(furthestId)) { furthestId = r.maxPage; remember(); }
     if (!took.length && !gotFiles) { paintHeader(); return; }
+    theirsTaken++;
     openAnsweredTucked();
     if (homeAddressId() && took.includes(homeAddressId()) && !areaPlaced() && checkable(homeAddressNow())) scheduleArea(true);
     paintArea();
@@ -2278,8 +2322,11 @@ function init(root, cfg, mode) {
       if (!(await start())) return; // expired, and a new one couldn't start just now (it says why)
       // Sent only as it is here: a save that didn't go would send the answers from before it
       const was = token;
+      const theirs = theirsTaken;
       const saved = await save();
       if (doneShown) return; // it turned out to be sent already (another device)
+      // Another device's changes came in just now: shown on the review first, never sent unseen
+      if (theirsTaken !== theirs && currentId === 'review') { buildReview(); notice('reviewTheirs', 'info'); readNotice(); return; }
       // It had expired: the answers went into a new one (or will on Submit), and its note says what's next
       if (token !== was) { readNotice(); return; }
       if (!saved) { navNote(lastSave === 'offline' ? 'offlineSubmit' : 'submitUnsaved'); return; }
@@ -2396,7 +2443,7 @@ function init(root, cfg, mode) {
     // Save and exit with a photo or video still going: once it's in (or didn't make it), said where they are
     if (!focused && !uploads.size && lastNotice?.m === 'exitUploading') {
       const failed = Object.values(uploadUi).some(u => u?.state === 'failed');
-      save().then((ok) => { if (!focused && lastNotice?.m === 'exitUploading') notice(failed ? 'exitUploadFailed' : ok ? 'exitSaved' : lastSave === 'offline' ? 'exitNotSaved' : 'exitNotSavedServer', ok && !failed ? 'success' : 'error'); });
+      save().then((ok) => { if (!focused && lastNotice?.m === 'exitUploading') { if (ok && !failed) savedOnExit(); else notice(failed ? 'exitUploadFailed' : lastSave === 'offline' ? 'exitNotSaved' : 'exitNotSavedServer', 'error'); } });
     }
     if (currentId === 'review') buildReview();
     if (!uploads.size || lastNotice?.m === 'renewedFiles') retireNotices();
@@ -2752,7 +2799,8 @@ function init(root, cfg, mode) {
   /** What was recorded, as the video: the same upload path as a chosen file */
   function useRecording(r) {
     const ext = r.type.includes('mp4') ? 'mp4' : 'webm';
-    const stamp = new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '');
+    const d = new Date(); // their own clock's time, not UTC (one made in the evening isn't named tomorrow)
+    const stamp = [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes()].map((n, i) => String(n).padStart(i ? 2 : 4, '0')).join('');
     const file = new File(r.chunks, `recording-${stamp}.${ext}`, { type: r.type });
     const f = byId[r.id];
     if (f && file.size) uploadVideo(f, file);
@@ -3195,7 +3243,9 @@ function init(root, cfg, mode) {
     // A building with apartments, and they've given theirs: the Postal Service couldn't confirm that one
     const unitGiven = status === 'unit' && !!homeAddressNow()?.line2;
     const words = { confirmed: 'uspsConfirmed', unit: unitGiven ? 'uspsUnitGiven' : 'uspsUnit', check: 'uspsCheck' }[status];
-    return words ? `<p class="af-usps" data-status="${status}"><span>${esc(T(words))}</span> <span class="af-usps-by" translate="no">Google Maps</span></p>` : '';
+    // An apartment they may have left off: a way straight to its box (it's on the address's screen, often not this one)
+    const apt = status === 'unit' && !unitGiven ? `<button type="button" class="af-btn af-btn--link af-area-apt" data-act="area-apt">${esc(T('addApt'))}</button>` : '';
+    return words ? `<p class="af-usps" data-status="${status}"><span>${esc(T(words))}</span> <span class="af-usps-by" translate="no">Google Maps</span></p>${apt}` : '';
   }
   function runArea(addr, key) {
     runUsps(addr, key);
@@ -3823,6 +3873,15 @@ function init(root, cfg, mode) {
   // ── Save and finish later ────────────────────────────────────────
   const dlg = ui.dialog;
   let laterOpener = null;
+  let laterWaiting = null; // an email the link is to go to once the quick check is done
+  function sendLaterNow() {
+    const email = laterWaiting;
+    laterWaiting = null;
+    openLater();
+    laterInput.value = email;
+    laterAsked = email; // asked about a likely typo already, if it was one
+    dlg.querySelector('[data-later-form]').requestSubmit();
+  }
   const openLater = (e) => {
     if (doneShown) return; // sent: nothing to finish later
     if (previewing) { notice('previewNoSave', 'info'); return; }
@@ -3876,8 +3935,9 @@ function init(root, cfg, mode) {
     try {
       if (!navigator.onLine) { status.textContent = T('sendOffline'); return; }
       if (!(await start())) {
-        // The quick check wants a tap: it's on the page, under this (shown once this closes)
-        if (checkAsked) { dlg.close(); return; }
+        // The quick check wants a tap: it's on the page, under this (shown once this closes), and the link goes
+        // once it's done (they aren't left to send it again, thinking it went)
+        if (checkAsked) { laterWaiting = email; dlg.close(); if (!turnstileFailed) navNote('turnstileLater'); return; }
         status.textContent = say(lastNav?.m) || T('startFail');
         return;
       }
@@ -3997,6 +4057,7 @@ function init(root, cfg, mode) {
   // The application this device had going when a link opened another one (a brother's or sister's)
   const otherStore = local(keyed('soard-application-other'));
   ui.notice.addEventListener('click', (e) => {
+    if (e.target.closest('[data-notice-act="emailLink"]')) { openLater(); return; }
     if (!e.target.closest('[data-notice-act="openOther"]')) return;
     const was = otherStore.get();
     if (!isToken(was?.token)) { notice(null); return; }
@@ -4124,7 +4185,11 @@ function init(root, cfg, mode) {
     window.onSoardTurnstile = () => {
       window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
         sitekey: turnstileSiteKey,
-        callback: (t) => { turnstileToken = t; turnstileFailed = false; turnstileWaiting.splice(0).forEach(r => r()); if (['turnstile', 'turnstileFailed'].includes(lastNav?.m)) navNote(null); },
+        callback: (t) => {
+          turnstileToken = t; turnstileFailed = false; turnstileWaiting.splice(0).forEach(r => r());
+          if (['turnstile', 'turnstileFailed', 'turnstileLater'].includes(lastNav?.m)) navNote(null);
+          if (laterWaiting) sendLaterNow(); // "Email me the link" was pressed before the check: it goes now
+        },
         // It couldn't pass at all (it tries again by itself): said so, with a way forward, not "complete the check"
         'error-callback': () => { turnstileFailed = true; turnstileWaiting.splice(0).forEach(r => r()); if (checkAsked) navNote('turnstileFailed'); },
         'expired-callback': () => { turnstileToken = null; },
@@ -4507,6 +4572,14 @@ function init(root, cfg, mode) {
           document.activeElement?.select?.();
           break;
         }
+        case 'area-apt': {
+          // To the apartment's own box, on the address's screen
+          if (!homeAddressId()) break;
+          focusOn(homeAddressId());
+          const apt = fieldEl(homeAddressId())?.querySelector('[data-part="line2"]');
+          if (apt?.getClientRects().length) apt.focus();
+          break;
+        }
         default:
       }
       return;
@@ -4521,6 +4594,7 @@ function init(root, cfg, mode) {
     if (edit) {
       const pid = edit.dataset.page;
       const fid = edit.dataset.edit || firstQuestion(pid);
+      reviewBack = edit.dataset.edit ? { edit: edit.dataset.edit } : { page: pid }; // "Back to review" lands here again
       if (edit.dataset.edit) { touched.add(fid); setFieldError(fid, errorFor(fid)); }
       jump(pid, { focusField: fid, whole: !edit.dataset.edit });
     }
@@ -4619,6 +4693,9 @@ function init(root, cfg, mode) {
       else if (q.length >= 4 && /\d/.test(q)) { e.preventDefault(); fetchSuggest(el, input, q); }
       return;
     }
+    // Enter on what's typed, none of the list picked (open or not): as Continue does, the exact match is taken, or
+    // they're told to choose from the list (and it's open), never nothing at all
+    if (e.key === 'Enter' && !e.isComposing && !(open && sug.active >= 0) && input.value.trim() && addrBox(input.closest('[data-field]'))?.dataset.picked !== input.value) { e.preventDefault(); next(); return; }
     if (!open) return;
     if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); moveActive(e.key === 'ArrowDown' ? 1 : -1); }
     else if (e.key === 'Enter') { e.preventDefault(); if (sug.active >= 0) chooseOption(options()[sug.active]); else closeSuggest(); }

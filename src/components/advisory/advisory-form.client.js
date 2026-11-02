@@ -70,6 +70,17 @@ export function initAdvisoryForm() {
   let focused = false;
   let moving = false;
   let fromReview = false; // came from the review: 'answer' (one, then straight back) or 'step' (a whole step, walked through)
+  let reviewBack = null; // the review step they went from to change (its row is where "Back to review" lands)
+  /** Back on the review: at the step they changed (a long list isn't scrolled through again), the keys on its Edit */
+  function landOnReview(i) {
+    reviewBack = null;
+    const btn = i == null ? null : ui.review.querySelector(`[data-edit="${i}"]`);
+    if (!btn?.getClientRects().length) return;
+    requestAnimationFrame(() => {
+      btn.scrollIntoView({ block: 'center', behavior: 'instant' });
+      btn.focus({ preventScroll: true });
+    });
+  }
   let calmUntil = 0; // till when a new screen is settling (presses before then don't count)
   let resumeAt = null; // the screen of the step they left, for coming back to it
   let startedAt = stored?.startedAt || Date.now();
@@ -693,6 +704,7 @@ export function initAdvisoryForm() {
     if (edit) {
       const id = edit.dataset.answer || null;
       fromReview = id ? 'answer' : 'step';
+      reviewBack = Number(edit.dataset.edit); // "Back to review" lands at this step's row again
       go(Number(edit.dataset.edit), { dir: -1, at: id || null }).then(pushLoc); // Back returns to the review
     }
   });
@@ -1017,7 +1029,7 @@ export function initAdvisoryForm() {
     if (Object.keys(problems).length) { showProblems(problems); return; }
     showProblems({}, { focus: false });
     const lastHere = !screenAhead();
-    if (fromReview === 'answer' || (fromReview && lastHere)) await go(REVIEW, { dir: 1 });
+    if (fromReview === 'answer' || (fromReview && lastHere)) { const was = reviewBack; await go(REVIEW, { dir: 1 }); landOnReview(was); }
     else if (!lastHere) await go(step, { dir: 1, screen: screenNo + 1 });
     else await go(step + 1, { dir: 1 });
     pushLoc(); // the browser's Back comes back to the screen they've just left

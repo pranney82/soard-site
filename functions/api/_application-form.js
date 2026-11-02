@@ -1244,7 +1244,10 @@ export function fieldError(field, value, lang = 'en') {
       return null;
     }
     case 'name': {
-      if (field.required && (!String(value.first || '').trim() || !String(value.last || '').trim())) return E.name;
+      // Required, or begun: a first name with no last (or the other way round) is half a name
+      const first = String(value.first || '').trim();
+      const last = String(value.last || '').trim();
+      if ((field.required || first || last) && (!first || !last)) return E.name;
       return null;
     }
     case 'address': {

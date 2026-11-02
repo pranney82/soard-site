@@ -367,7 +367,8 @@ const logo = 'brand-logo-light-bg-display';
     transition: border-color 0.2s ease, box-shadow 0.2s ease;
   }
   .adv-field textarea { resize: vertical; min-height: 116px; field-sizing: content; max-height: 50vh; }
-  .adv-field input:focus, .adv-field textarea:focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 4px var(--c-yellow-soft); }
+  /* (as specific as the boxes' own rule above, or its light border would win and the focus barely show) */
+  .adv-field :is(input:not([type="radio"]):not([type="checkbox"]), textarea):focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 4px var(--c-yellow-soft); }
   .adv-field.is-invalid input:not([type="radio"]):not([type="checkbox"]), .adv-field.is-invalid textarea { border-color: #8A7200; background: #FFFDF3; }
   .adv-count { margin: 6px 0 0; font-size: 13.5px; line-height: 1.4; color: var(--c-text-muted); text-align: right; font-variant-numeric: tabular-nums; }
   .adv-count[hidden] { display: none; }

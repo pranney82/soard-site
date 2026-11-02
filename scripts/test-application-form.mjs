@@ -383,6 +383,12 @@ try {
   ok(await addressParts() === '||GA|', `changing the line lets go of the address it held (${await addressParts()})`);
   await next();
   ok(/choose it from the list, or enter it yourself/.test(await errorText('address')), `Continue with an address typed but not chosen says what to do (${await errorText('address')})`);
+  // Enter on it (the keyboard's, or a phone's "next"), nothing in the list picked: the same as Continue, not nothing
+  await page.focus('#af-address-search');
+  await page.$eval('[data-field="address"] .af-error', (e) => { e.textContent = ''; });
+  await page.keyboard.press('Enter');
+  await sleep(500);
+  ok(/choose it from the list/.test(await errorText('address')), `Enter on an address typed but not chosen: the same note (${await errorText('address')})`);
   await clear('#af-address-search');
   await page.type('#af-address-search', '3167 Main');
   await page.waitForSelector('#af-address-suggest:not([hidden])', { timeout: 4000 }).catch(() => {});
@@ -930,6 +936,8 @@ try {
   await next();
   await sleep(800);
   ok(!(await visible('[data-done]')) && /didn't save/.test(await page.$eval('[data-nav-note]', (e) => (e.hidden ? '' : e.textContent))), "a save that doesn't go through holds Submit back, and says why");
+  const heard = await page.evaluate(() => ({ live: document.querySelector('[data-live]')?.textContent || '', described: document.querySelector('[data-next]').getAttribute('aria-describedby') }));
+  ok(/didn't save/.test(heard.live) && heard.described === 'af-nav-note', `and a screen reader hears it, Submit described by it (${JSON.stringify(heard)})`);
   failSaves = 0;
   await sleep(400);
   // A slow connection: while it sends, the review stays as it is (a change made then would never be sent)
