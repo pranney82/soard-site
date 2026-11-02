@@ -1446,7 +1446,8 @@ function mainInk(blocks) {
   });
   // Only small lines far apart (a last page's "Thank you" and its page number): the biggest of them
   if (!keep.length) keep.push(merged.reduce((a, b) => ((b.x1 - b.x0) * (b.y1 - b.y0) > (a.x1 - a.x0) * (a.y1 - a.y0) ? b : a)));
-  return keep.reduce((a, b) => ({ y0: Math.min(a.y0, b.y0), y1: Math.max(a.y1, b.y1), x0: Math.min(a.x0, b.x0), x1: Math.max(a.x1, b.x1) }));
+  const u = keep.reduce((a, b) => ({ y0: Math.min(a.y0, b.y0), y1: Math.max(a.y1, b.y1), x0: Math.min(a.x0, b.x0), x1: Math.max(a.x1, b.x1) }));
+  return { y0: u.y0, y1: u.y1, x0: u.x0, x1: u.x1 };
 }
 /** The ink on a drawn page: a PDF's or picture's canvas read pixel by pixel; a laid-out page by where its words and pictures sit */
 export function inkOf(frame) {
@@ -1460,19 +1461,22 @@ export function inkOf(frame) {
     g.drawImage(canvas, 0, 0, w, h);
     const d = g.getImageData(0, 0, w, h).data;
     const rows = [];
-    // Each row's runs of ink too (`xs`), apart by more than a word space: a table's columns
+    // Each row's runs of ink too (`xs`), apart by more than a word space: a table's columns; and how solid it is
+    // (`fill`, its inked share of the width it spans): a rule is solid, a line of words isn't
     const apart = Math.max(2, Math.round(w * 0.03));
     for (let y = 0; y < h; y++) {
       let x0 = -1; let x1 = -1;
+      let n = 0;
       const xs = [];
       for (let x = 0; x < w; x++) {
         const i = (y * w + x) * 4;
         if (d[i] < 230 || d[i + 1] < 230 || d[i + 2] < 230) {
           if (x0 < 0) { x0 = x; xs.push([x, x]); } else if (x - x1 > apart) xs.push([x, x]); else xs.at(-1)[1] = x;
           x1 = x;
+          n += 1;
         }
       }
-      if (x0 >= 0) rows.push({ y0: y / h, y1: (y + 1) / h, x0: x0 / w, x1: (x1 + 1) / w, xs: xs.map(([a, b]) => [a / w, (b + 1) / w]) });
+      if (x0 >= 0) rows.push({ y0: y / h, y1: (y + 1) / h, x0: x0 / w, x1: (x1 + 1) / w, xs: xs.map(([a, b]) => [a / w, (b + 1) / w]), fill: n / (x1 - x0 + 1) });
     }
     return rows;
   }
@@ -1527,7 +1531,11 @@ export function splitOf(blocks, size) {
   const span = ink.y1 - ink.y0;
   const across = (part.w * size.w) / (part.h * size.h);
   if (span < 0.3 || across >= 1.5) return whole;
-  const rows = blocks.filter((b) => !b.line && b.y1 > ink.y0 && b.y0 < ink.y1).sort((a, b) => a.y0 - b.y0);
+  const inked = blocks.filter((b) => !b.line && b.y1 > ink.y0 && b.y0 < ink.y1).sort((a, b) => a.y0 - b.y0);
+  // A table's ruled lines (its columns' borders down every row, a rule across between rows) are no words: the cut can
+  // fall between its rows
+  const ruled = rulesOf(inked, ink);
+  const rows = inked.filter((b) => !ruled(b));
   const mid = (ink.y0 + ink.y1) / 2;
   // The widest blank close to the middle (the taller part sets the file's zoom, so a cut much off the middle makes
   // every word smaller), else the nearest one a little farther out
@@ -1550,42 +1558,96 @@ export function splitOf(blocks, size) {
   if (across >= 1.1 && (lines < 16 || span < 0.5)) return whole;
   if (!best && !near) return whole;
   const { gap } = best || near;
-  const head = headingsOf(rows, ink);
+  const head = headingsOf(inked, ink);
   return { part, ink, cut: (gap[0] + gap[1]) / 2, gap, n: 2, head: head && head[1] < gap[0] ? head : null };
 }
 /**
- * A table's column headings at its top (a statement's "Oct 2026   Jan–Oct   Budget   %"): the lines just above its
- * first line that starts at the left, set to the right in two columns or more (a rule under them counts) → [y0, y1]
- * in 0..1, or null (a report's centered title, a letter's date: one run of words, not columns)
+ * Which rows of a drawn page are only a table's ruled lines (`xs`, each row's runs of ink, from inkOf): its borders,
+ * narrow stripes down most of the rows, and thin rules across it (a photo's rows are wide too, but many deep). A
+ * laid-out page's rules are marked already (`line`) → (row) => true for a row with nothing else on it
  */
-function headingsOf(rows, ink) {
+function rulesOf(rows, ink) {
+  if (!rows.length || !rows[0].xs) return () => false;
+  const N = 400;
+  const count = new Uint16Array(N + 1);
+  for (const r of rows) for (const [a, b] of r.xs) for (let x = Math.floor(a * N); x <= Math.min(N, Math.ceil(b * N) - 1); x++) count[x] += 1;
+  // The borders: stripes no wider than a double rule, inked on at least half the rows
+  const border = new Uint8Array(N + 1);
+  for (let x = 0; x <= N;) {
+    if (count[x] < rows.length / 2) { x += 1; continue; }
+    let e = x;
+    while (e + 1 <= N && count[e + 1] >= rows.length / 2) e += 1;
+    if (e - x + 1 <= N * 0.03) for (let k = Math.max(0, x - 1); k <= Math.min(N, e + 1); k++) border[k] = 1;
+    x = e + 1;
+  }
+  const bordersOnly = (r) => r.xs.every(([a, b]) => { for (let x = Math.floor(a * N); x <= Math.min(N, Math.ceil(b * N) - 1); x++) if (!border[x]) return false; return true; });
+  // The rules across: one long solid run, a row or two deep, clear of words above and below it (small words drawn
+  // small are as long and as solid, but the tops and tails of their letters touch them)
+  const wide = (r) => r.xs.length === 1 && r.x1 - r.x0 > (ink.x1 - ink.x0) * 0.6 && (r.fill ?? 1) > 0.85;
+  const clear = (k, edge) => k < 0 || k >= rows.length || Math.abs(rows[k].y0 - edge) > 0.0025 && Math.abs(rows[k].y1 - edge) > 0.0025 || bordersOnly(rows[k]);
+  const across = new Set();
+  for (let i = 0; i < rows.length;) {
+    if (!wide(rows[i])) { i += 1; continue; }
+    let j = i;
+    while (j + 1 < rows.length && wide(rows[j + 1]) && rows[j + 1].y0 - rows[j].y1 < 0.003) j += 1;
+    if (rows[j].y1 - rows[i].y0 < 0.005 && clear(i - 1, rows[i].y0) && clear(j + 1, rows[j].y1)) for (let k = i; k <= j; k++) across.add(rows[k]);
+    i = j + 1;
+  }
+  return (r) => across.has(r) || bordersOnly(r);
+}
+/**
+ * A table's column headings at its top (a statement's "Jan 1 – Aug 3, 2026   Jan 1 – Aug 3, 2025 (PY)", a "Total"
+ * over them, the rules with them): the lines just above a line that starts at the left, the lowest of them in two
+ * columns or more set to the right, any over it right of the middle, close together → [y0, y1] in 0..1, a hair past
+ * their ink, or null (a report's centered title, a letter's date: never columns)
+ */
+export function headingsOf(rows, ink) {
   const wid = ink.x1 - ink.x0;
   // A rule (one thin stroke across most of the width) is a line of its own, never part of the words beside it
-  const isRule = (b) => b.y1 - b.y0 < 0.006 && (b.xs || [0]).length === 1 && b.x1 - b.x0 > wid * 0.6;
+  const isRule = (b) => b.y1 - b.y0 < 0.006 && (b.xs || [0]).length === 1 && b.x1 - b.x0 > wid * 0.6 && (b.fill ?? 1) > 0.85;
   const lines = [];
   for (const b of rows) {
     const cur = lines.at(-1);
-    const xs = b.xs || [[b.x0, b.x1]];
     const rule = isRule(b);
-    if (cur && !rule && !cur.rule && b.y0 - cur.y1 <= 0.002) { cur.y1 = Math.max(cur.y1, b.y1); cur.x0 = Math.min(cur.x0, b.x0); cur.x1 = Math.max(cur.x1, b.x1); cur.xs.push(...xs); } else if (cur?.rule && rule && b.y0 - cur.y1 <= 0.002) cur.y1 = Math.max(cur.y1, b.y1); else lines.push({ y0: b.y0, y1: b.y1, x0: b.x0, x1: b.x1, xs: [...xs], rule });
+    if (cur && !rule && !cur.rule && b.y0 - cur.y1 <= 0.002) { cur.y1 = Math.max(cur.y1, b.y1); cur.rows.push(b); } else if (cur?.rule && rule && b.y0 - cur.y1 <= 0.002) { cur.y1 = Math.max(cur.y1, b.y1); cur.rows.push(b); } else lines.push({ y0: b.y0, y1: b.y1, rows: [b], rule, cells: !b.xs });
   }
-  const cols = (l) => { let n = 0; let end = -1; for (const [a, b] of [...l.xs].sort((p, q) => p[0] - q[0])) { if (a - end > 0.03) n += 1; end = Math.max(end, b); } return n; };
-  const first = lines.findIndex((l) => !l.rule && l.x0 <= ink.x0 + 0.02);
-  if (first < 1) return null;
-  const band = [];
-  for (let j = first - 1; j >= 0 && band.length < 4; j--) {
-    const l = lines[j];
-    if (!l.rule && (l.x0 <= ink.x0 + wid * 0.2 || l.x1 < ink.x1 - 0.03 || (cols(l) < 2 && l.y1 - l.y0 > 0.005))) break;
-    band.unshift(l);
+  // A drawn line read by its middle rows (not a letter's top, a rule touching it); a laid-out one by its cells
+  const body = (l) => { if (l.cells) return l.rows; const a = Math.floor(l.rows.length * 0.2); return l.rows.slice(a, Math.max(a + 1, Math.ceil(l.rows.length * 0.8))); };
+  for (const l of lines) { const rs = body(l); l.x0 = Math.min(...rs.map((r) => r.x0)); l.x1 = Math.max(...rs.map((r) => r.x1)); }
+  const cols = (l) => {
+    if (!l.cells) { const n = body(l).map((r) => r.xs.length).sort((p, q) => p - q); return n[Math.floor(n.length / 2)]; }
+    let n = 0; let end = -1;
+    for (const r of [...l.rows].sort((p, q) => p.x0 - q.x0)) { if (r.x0 - end > 0.005) n += 1; end = Math.max(end, r.x1); }
+    return n;
+  };
+  const thin = (l) => l.rule || l.y1 - l.y0 < 0.005;
+  const near = ink.y0 + (ink.y1 - ink.y0) * 0.35;
+  // Under a title set at the left too (a budget's name over its columns): each line that starts at the left, in turn
+  for (let first = 1; first < lines.length && lines[first].y0 < near; first++) {
+    const at = lines[first];
+    if (thin(at) || at.x0 > ink.x0 + 0.02) continue;
+    const band = [];
+    for (let j = first - 1; j >= 0 && band.length < 6; j--) {
+      const l = lines[j];
+      if ((band.length ? band[0].y0 : at.y0) - l.y1 > 0.025) break;
+      if (thin(l)) { band.unshift(l); continue; }
+      if (l.x0 <= ink.x0 + wid * 0.2) break;
+      if (!band.some((x) => !thin(x))) { if (cols(l) < 2) break; band.unshift(l); continue; }
+      // A heading over the headings (a "Total" over the dates) sits right of the middle; a title is centered
+      if ((l.x0 + l.x1) / 2 <= (ink.x0 + ink.x1) / 2 + wid * 0.1) break;
+      band.unshift(l);
+    }
+    while (band.length && thin(band[0])) band.shift();
+    if (!band.length || band.at(-1).y1 - band[0].y0 >= 0.08) continue;
+    // Headings stand clear of what's over them (a line run up against them is part of a block of words)
+    const top = lines.indexOf(band[0]);
+    if (top > 0 && band[0].y0 - lines[top - 1].y1 < 0.006) continue;
+    // A hair past their ink, never into the line above them or the first line under them
+    const y0 = Math.max(band[0].y0 - 0.006, top > 0 ? (lines[top - 1].y1 + band[0].y0) / 2 : 0);
+    const y1 = Math.min(band.at(-1).y1 + 0.006, (band.at(-1).y1 + at.y0) / 2);
+    return [y0, y1];
   }
-  while (band[0]?.rule) band.shift();
-  if (!band.some((l) => cols(l) >= 2)) return null;
-  const top = lines.indexOf(band[0]);
-  if (band.at(-1).y1 - band[0].y0 >= 0.06 || band[0].y0 >= ink.y0 + (ink.y1 - ink.y0) * 0.25) return null;
-  // A hair past their ink, never into the line above them or the first line under them
-  const y0 = Math.max(band[0].y0 - 0.006, top > 0 ? (lines[top - 1].y1 + band[0].y0) / 2 : 0);
-  const y1 = Math.min(band.at(-1).y1 + 0.006, (band.at(-1).y1 + lines[first].y0) / 2);
-  return [y0, y1];
+  return null;
 }
 // The headings carried onto a page's second part, and the space between them and its first line (in 0..1 of the page)
 const HEAD_GAP = 0.014;
@@ -1623,7 +1685,7 @@ export function halfOf(lay, k = 0) {
 const layouts = new Map();
 // Kept on this device too (a file never changes under its id), so a meeting opened again knows its halves at once
 // and its stops don't change count as they're worked out. The version goes up when how a page is read changes
-const keptKey = (f, i) => `bdoc-lay6:${f.id}:${f.size || 0}:${i}`;
+const keptKey = (f, i) => `bdoc-lay9:${f.id}:${f.size || 0}:${i}`;
 const countKey = (f) => `bdoc-count:${f.id}:${f.size || 0}`;
 const kept = (f, i) => { try { const x = JSON.parse(localStorage.getItem(keptKey(f, i)) || 'null'); return x && typeof x.n === 'number' ? x : null; } catch { return null; } };
 // The last version's, read another way, go (once a page load)
@@ -1631,7 +1693,7 @@ let swept = false;
 function sweepKept() {
   if (swept) return;
   swept = true;
-  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay[2-5]:/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
+  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay[2-8]:/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
 }
 const PROBE = 400;
 /**

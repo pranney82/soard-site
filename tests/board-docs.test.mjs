@@ -338,6 +338,45 @@ test('a table’s second part carries its column headings; a report’s title or
   assert.equal(splitOf(letter, size).head, null);
 });
 
+test('a ruled table (its borders down every row) is cut between its rows; a photo is never cut through', () => {
+  const size = { w: 816, h: 1056 };
+  const px = 1 / 517;
+  const borders = [[0.055, 0.0625], [0.0925, 0.0975], [0.2775, 0.28], [0.475, 0.5], [0.5325, 0.5375], [0.7325, 0.7375], [0.9375, 0.9425]];
+  // An attendance table: 24 rows, each a line of words between the borders, borders alone between them, a rule across under each
+  const rows = [];
+  const texts = [];
+  for (let r = 0; r < 24; r++) {
+    const top = 0.15 + r * 0.032;
+    for (let y = top; y < top + 0.032 - px / 2; y += px) {
+      const inText = y >= top + 0.01 && y < top + 0.022;
+      const rule = y >= top + 0.032 - px * 1.5;
+      const xs = rule ? [[0.055, 0.9425]] : inText ? [...borders, [0.11, 0.2], [0.55, 0.7]].sort((a, b) => a[0] - b[0]) : borders;
+      rows.push({ y0: y, y1: y + px, x0: xs[0][0], x1: xs.at(-1)[1], xs });
+    }
+    texts.push([top + 0.01, top + 0.022]);
+  }
+  const lay = splitOf(rows, size);
+  assert.equal(lay.n, 2, 'cut in two');
+  assert.ok(!texts.some(([a, b]) => a < lay.cut && b > lay.cut), `between two rows of words (${lay.cut})`);
+  assert.ok(Math.abs(lay.cut - (lay.ink.y0 + lay.ink.y1) / 2) < 0.06, 'near the middle');
+  // Small words set close (a 6pt contract): a line only a few rows deep is as long as a rule, but never solid
+  const small = [];
+  const lines6 = [];
+  for (let l = 0; l < 110; l++) {
+    const top = 0.08 + l * 4 * px;
+    for (let k = 0; k < 3; k++) small.push({ y0: top + k * px, y1: top + (k + 1) * px, x0: 0.1, x1: 0.9, xs: [[0.1, 0.9]], fill: 0.45 });
+    lines6.push([top, top + 3 * px]);
+  }
+  const s6 = splitOf(small, size);
+  assert.ok(s6.n === 1 || !lines6.some(([a, b]) => a < s6.cut - 1e-9 && b > s6.cut + 1e-9), `never through a line of small words (${s6.n}, ${s6.cut})`);
+  // A photo over a few lines of words: if cut, never inside the photo
+  const photo = [];
+  for (let y = 0.1; y < 0.6; y += px) photo.push({ y0: y, y1: y + px, x0: 0.1, x1: 0.9, xs: [[0.1, 0.9]] });
+  for (let i = 0; i < 10; i++) photo.push({ y0: 0.66 + i * 0.024, y1: 0.672 + i * 0.024, x0: 0.1, x1: 0.85, xs: [[0.1, 0.85]] });
+  const p2 = splitOf(photo, size);
+  assert.ok(p2.n === 1 || p2.cut >= 0.6, `not through the photo (${p2.n}, ${p2.cut})`);
+});
+
 test('a page of one short line and a page number keeps the line (it was read as nothing)', () => {
   const size = { w: 816, h: 1056 };
   const lay = splitOf([{ y0: 0.1, y1: 0.115, x0: 0.1, x1: 0.6 }, { y0: 0.95, y1: 0.96, x0: 0.48, x1: 0.52 }], size);
