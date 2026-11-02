@@ -794,11 +794,14 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null 
   const drawsStatements = drawn.includes('act') || drawn.includes('pos');
   const out = [{ key: 'cover', kind: 'cover', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' }];
   if (m.sections.some((s) => s.items.some((it) => it.live === 'minutes' && it.about))) out.push({ key: 'since', kind: 'since', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' });
+  // QuickBooks' slides once, after the first item that shows the money (a second one shows the figures, not them again)
+  let booked = false;
   const add = (it, files, n, sectionId) => {
     out.push({ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n, sectionId });
     // Each live list after the first, a slide of its own; after the money, QuickBooks' slides (the year against last
     // year, then each statement)
-    for (const x of slidesOf(it, books)) out.push({ key: `${it.id}:${x.id}`, kind: x.kind, itemId: it.id, fileId: x.id, page: 0, n, sectionId });
+    for (const x of slidesOf(it, booked ? null : books)) out.push({ key: `${it.id}:${x.id}`, kind: x.kind, itemId: it.id, fileId: x.id, page: 0, n, sectionId });
+    if (showsOf(it).includes('cash')) booked = true;
     for (const f of files) {
       const count = Math.max(1, Math.round(Number(pages[f.id]) || 1));
       // A tall page (a statement, a report) is two stops, its top half then its bottom one, each as big as the screen

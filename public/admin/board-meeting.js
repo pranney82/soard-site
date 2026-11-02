@@ -439,10 +439,10 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
   }, []);
   // After the editor closes (Done, Delete): the focus on what's there now, never lost to the page
   const refocus = (id, sel) => setTimeout(() => document.querySelector(`[data-item="${id}"]`)?.querySelector(sel)?.focus(), 60);
-  // Without field-sizing, each item's name is sized to its words by hand, again when the window changes
+  // Without field-sizing, each part's and item's name is sized to its words by hand, again when the window changes
   useEffect(() => {
     if (FITS) return undefined;
-    const all = () => document.querySelectorAll('.agx-item__title').forEach(grow);
+    const all = () => document.querySelectorAll('.agx-item__title, .agx-sec__title').forEach(grow);
     addEventListener('resize', all);
     return () => removeEventListener('resize', all);
   }, []);
@@ -612,7 +612,8 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
         <div class="ag-sec__head agx-sec__head">
           ${grip('part', s.id, `Move the part ${s.title || si + 1}`)}
           <span class="agx-sec__n" aria-hidden="true">${String(si + 1).padStart(2, '0')}</span>
-          <input class="ag-input ag-input--sec agx-sec__title" aria-label=${`Section ${si + 1}`} value=${s.title} placeholder="Name this part" onInput=${(e) => setSection(si, { title: e.target.value })} />
+          <textarea class="ag-input ag-input--sec agx-sec__title" rows="1" aria-label=${`Section ${si + 1}`} value=${s.title} placeholder="Name this part" ref=${grow}
+            onInput=${(e) => { grow(e.target); setSection(si, { title: e.target.value.replace(/\s*\n\s*/g, ' ') }); }} onKeyDown=${(e) => { if (e.key === 'Enter') e.preventDefault(); }} />
           <label class="ag-mins" title=${s.minutes ? 'The time this part has. Empty shares out the meeting’s time by itself.' : 'Shared out from the meeting’s time by itself. Type minutes to give it its own.'}>
             ${t?.start ? html`<span class="ag-mins__at">${clock(t.start)}</span>` : null}
             <input type="number" min="1" max="600" inputmode="numeric" aria-label=${`Minutes for ${s.title || `section ${si + 1}`}`} value=${s.minutes || ''} placeholder=${String(t?.minutes || '')} onInput=${(e) => setSection(si, { minutes: Math.max(0, Math.min(600, Math.round(Number(e.target.value) || 0))) })} />

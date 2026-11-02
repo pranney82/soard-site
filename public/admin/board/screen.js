@@ -31,7 +31,7 @@ import { Report } from '../board-report.js';
 import { BooksSlide, BOOKS_TITLES } from './books.js';
 import { mdWords } from '../board-md.js';
 import { Kanban, kanbanLine, sized } from './kanban.js';
-import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue } from './money.js';
+import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, readChangeAs, keepChangeAs } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -299,9 +299,9 @@ function Tile({ d, word = '' }) {
  * The money as figures: the cash, the year against its budget (./money.js moneyTiles), the first on yellow; under
  * them, where the year's revenue came from (the meeting's own numbers for one already held)
  */
-function CashSlide({ n, data, date }) {
+function CashSlide({ n, data, date, as = 'pct' }) {
   const upTo = date && date < todayEastern() ? date : '';
-  const tiles = moneyTiles({ cash: useCashNow(data, upTo, n), budget: useBudget(data, upTo, n), n, due: budgetDue(data, upTo) });
+  const tiles = moneyTiles({ cash: useCashNow(data, upTo, n), budget: useBudget(data, upTo, n), n, due: budgetDue(data, upTo), as });
   const books = upTo ? n?.books : data.numbers.books;
   if (!tiles.length) return null;
   const mix = mixOf(books) ? html`<div class="bs-mix"><p class="bs-figs__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null;
@@ -440,10 +440,10 @@ function MinutesMotion({ item, v }) {
 }
 
 /** An item's live facts on the screen, or null when it has none */
-function liveSlide(kind, n, id, data, date) {
+function liveSlide(kind, n, id, data, date, as = 'pct') {
   if (!n || !kind || kind === 'minutes') return null;
   if (kind === 'projects') return n.projects ? html`<${Kanban} projects=${n.projects} reveals=${n.reveals || []} variant="screen" />` : null;
-  if (kind === 'cash') return html`<${CashSlide} n=${n} data=${data} date=${date} />`;
+  if (kind === 'cash') return html`<${CashSlide} n=${n} data=${data} date=${date} as=${as} />`;
   if (kind === 'reveals') return html`<${RevealsSlide} n=${n} />`;
   if (kind === 'events') {
     // Nothing ahead: the ones held lately, so the slide still says what's happened
@@ -549,6 +549,15 @@ export function Screen({ id, data, d, onBack = null }) {
   const [pages, setPages] = useState({});
   const [halves, setHalves] = useState({}); // { fileId: [halves of each page] }: the chair's, and the pages drawn here
   const [awake, setAwake] = useState(true);
+  // The money's changes as percentages or in dollars (C, or the % | $ beside the slide count): kept on this device, and
+  // the same on the board page and on paper (./money.js readChangeAs), so a pick in one window reaches the others
+  const [chg, setChgNow] = useState(readChangeAs);
+  const setChg = (as) => { keepChangeAs(as); setChgNow(as); };
+  useEffect(() => {
+    const on = (e) => { if (e.key === 'bd-change-as') setChgNow(readChangeAs()); };
+    addEventListener('storage', on);
+    return () => removeEventListener('storage', on);
+  }, []);
   const [, setTick] = useState(0);
   const ch = useRef(null);
   const deckRef = useRef([]);
@@ -606,6 +615,11 @@ export function Screen({ id, data, d, onBack = null }) {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fullScreen(); return; }
       if (PRESENT && (e.key === 'b' || e.key === 'B' || e.key === '.')) { e.preventDefault(); setBlank((x) => !x); return; }
+      if (PRESENT && ['c', 'C', '%', '$'].includes(e.key)) {
+        e.preventDefault();
+        setChgNow((x) => { const as = e.key === '%' ? 'pct' : e.key === '$' ? 'usd' : x === 'usd' ? 'pct' : 'usd'; keepChangeAs(as); return as; });
+        return;
+      }
       if (PRESENT && (e.key === 'Home' || e.key === 'End')) { e.preventDefault(); go(e.key === 'Home' ? 0 : deckRef.current.length - 1); return; }
       const dir = ['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'j'].includes(e.key) ? (e.key === ' ' && e.shiftKey ? -1 : 1) : ['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'k'].includes(e.key) ? -1 : 0;
       if (!dir || (!PRESENT && e.key === 'Enter') || (!PRESENT && e.key === 'Backspace')) return;
@@ -682,6 +696,8 @@ export function Screen({ id, data, d, onBack = null }) {
   const items = agendaItems(meeting);
   const onItem = ['item', 'doc', 'live', 'books'].includes(stop.kind);
   const item = onItem ? (stop.n >= 0 ? meeting.sections[items[stop.n].si].items[items[stop.n].ii] : { ...MORE, notes: '', docs: [] }) : null;
+  // A slide with the money's changes on it: QuickBooks' own, or the money item's card or list (% | $ shows there)
+  const moneyHere = stop.kind === 'books' || (stop.kind === 'live' && stop.fileId === 'live:cash') || (stop.kind === 'item' && item?.live === 'cash');
   const cardSi = stop.kind === 'section' ? meeting.sections.findIndex((x) => x.id === stop.sectionId) : -1;
   const label = stop.n >= 0 ? items[stop.n].label : cardSi >= 0 ? String(cardSi + 1).padStart(2, '0') : '';
   const section = stop.n >= 0 ? items[stop.n].section : '';
@@ -705,7 +721,7 @@ export function Screen({ id, data, d, onBack = null }) {
   const top = html`<header class="bs-top">
     <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong title=${meetingName(meeting)}>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', !OWN && started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
     ${onItem && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${namesText(floor.map((p) => p.name))}</strong> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span>` : null}
-    <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${PRESENT && unshared ? html`<span class="bs-chip" title="Board members can’t see this meeting yet. Share it in Board when it’s ready.">Not on the board page yet</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${PRESENT ? html`<span class="bs-steps" role="group" aria-label="Move the slides"><button type="button" class="bs-step" disabled=${at <= 0} onClick=${() => go(at - 1)} aria-label="Back a slide (←)" title="Back a slide (←)">${PREV}</button><span class="bs-step__n">${at + 1} of ${deck.length}</span><button type="button" class="bs-step" disabled=${at >= deck.length - 1} onClick=${() => go(at + 1)} aria-label="Next slide (→)" title="Next slide (→)">${NEXT}</button></span>` : null}${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
+    <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${PRESENT && unshared ? html`<span class="bs-chip" title="Board members can’t see this meeting yet. Share it in Board when it’s ready.">Not on the board page yet</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${PRESENT && moneyHere ? html`<span class="bs-chg" role="group" aria-label="Changes against last year and the budget (C)">${[['pct', '%', 'As percentages'], ['usd', '$', 'In dollars']].map(([k, l, t]) => html`<button type="button" class="bs-chg__b" key=${k} aria-pressed=${chg === k} title=${`${t} (C)`} onClick=${() => setChg(k)}><span aria-hidden="true">${l}</span><span class="sr-only">${t}</span></button>`)}</span>` : null}${PRESENT ? html`<span class="bs-steps" role="group" aria-label="Move the slides"><button type="button" class="bs-step" disabled=${at <= 0} onClick=${() => go(at - 1)} aria-label="Back a slide (←)" title="Back a slide (←)">${PREV}</button><span class="bs-step__n">${at + 1} of ${deck.length}</span><button type="button" class="bs-step" disabled=${at >= deck.length - 1} onClick=${() => go(at + 1)} aria-label="Next slide (→)" title="Next slide (→)">${NEXT}</button></span>` : null}${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
   </header>`;
 
   let stage;
@@ -742,18 +758,18 @@ export function Screen({ id, data, d, onBack = null }) {
     stage = html`<${Chapter} n=${cardSi + 1} sec=${meeting.sections[cardSi]} t=${plan.get(meeting.sections[cardSi]?.id)} items=${items} people=${people} />`;
   } else if (stop.kind === 'books') {
     // QuickBooks' own: the year against last year, or a statement beside a year before
-    stage = html`<${BooksSlide} books=${books} kind=${stop.fileId.slice(6)} notes=${data.lineNotes?.[id]?.[item?.id]} />`;
+    stage = html`<${BooksSlide} books=${books} kind=${stop.fileId.slice(6)} notes=${data.lineNotes?.[id]?.[item?.id]} as=${chg} />`;
   } else if (stop.kind === 'live') {
     // One of the item's other live lists, as the item's own would show
     const k = stop.fileId.slice(5);
-    const facts = liveSlide(k, numbers, id, data, meeting.date);
+    const facts = liveSlide(k, numbers, id, data, meeting.date, chg);
     stage = html`<div class=${`bs-item ${k === 'projects' ? 'bs-item--board' : 'bs-item--facts'}`}>
       <div class="bs-item__bar"><div><p class="bs-eyebrow">${item.title || section || 'Agenda'}</p><h1 class="bs-display bs-item__title">${LIVE_TITLES[k]}</h1></div>${k === 'projects' && numbers?.projects ? html`<div class="bs-item__aside"><p class="bs-quiet">${kanbanLine(numbers.projects)}</p></div>` : null}</div>
       <div class="bs-item__facts">${facts || html`<p class="bs-quiet">Nothing to show here yet</p>`}</div>
     </div>`;
   } else if (stop.kind === 'item') {
     const faces = stop.n >= 0 ? facesOf(item) : '';
-    const facts = faces ? null : liveSlide(item.live, numbers, id, data, meeting.date);
+    const facts = faces ? null : liveSlide(item.live, numbers, id, data, meeting.date, chg);
     const head = html`<p class="bs-eyebrow">${[section && section !== item.title ? section : '', !section && stop.n < 0 ? 'After the agenda' : ''].filter(Boolean).join('') || 'Agenda'}</p>
       <h1 class="bs-display bs-item__title">${item.title}</h1>
       ${item.confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}`;
@@ -822,7 +838,7 @@ export function Screen({ id, data, d, onBack = null }) {
       <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}<span class="bs-foot__item">${item?.title}</span>${docWords ? html`<span class="bs-foot__sep">·</span>${docWords}` : null}</span>
       ${shownPages.length > 1 && shownPages.length <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${shownPages.map((i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
       : stop.kind === 'books' || stop.kind === 'live' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${item?.title}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? BOOKS_TITLES[stop.fileId.slice(6)] : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
-      : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span><kbd>F</kbd> full screen</span>`
+      : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span><kbd>C</kbd> the money’s changes in % or $<span class="bs-foot__sep">·</span><kbd>F</kbd> full screen</span>`
       : !started && !told && !MIRROR && !OWN ? html`<span class="bs-foot__what">The screen follows the meeting once the chair starts it.</span>` : null}
     </div>
     <${Rail} meeting=${meeting} items=${items} at=${at} deck=${deck} ended=${ended} prior=${v.prior || []} timer=${timer} />

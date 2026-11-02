@@ -96,3 +96,12 @@ test('a statement’s main lines add up: a group’s own accounts as one “Othe
   // A line with a note on it stays besides
   assert.ok(mainLines(rows, (r) => r.label === 'Salary Expense').some((r) => r.label === 'Salary Expense'));
 });
+
+test('QuickBooks’ slides come once, after the first item that shows the money; a second shows its own card', () => {
+  const m = meeting();
+  m.sections.push({ id: 's_two1', title: 'Treasurer', items: [{ id: 'i_fin2', title: 'The money again', live: 'events', also: ['cash'] }] });
+  const keys = deckOf(cleanMeeting(m), { books: BOOKS }).map((s) => s.key);
+  assert.equal(keys.filter((k) => /:books:/.test(k)).every((k) => k.startsWith('i_fin1:')), true, keys.join(' '));
+  assert.ok(keys.includes('i_fin2') && keys.includes('i_fin2:live:cash'), 'the second still shows the money as its own slide');
+  assert.equal(keys.filter((k) => /:books:year$/.test(k)).length, 1);
+});

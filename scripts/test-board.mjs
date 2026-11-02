@@ -421,7 +421,17 @@ try {
   await jane.evaluate(() => [...document.querySelectorAll('.agx-item')].find((x) => x.querySelector('.bd-showpick .agx-live.is-projects'))?.querySelector('.bd-showpick .bd-pop__btn').click());
   await jane.waitForSelector('.bd-pop__panel .bd-picker__opt', { timeout: 3000 }).catch(() => {});
   { const top = await onTop(jane); ok(top === true, `the Shows list draws over everything (${top})`); }
-  await clickText(jane, '.bd-pop__panel .bd-picker__opt', /^Upcoming reveals/);
+  // From the keyboard: the list has the focus as it opens (on the one shown), ↓ along it, Enter picks, Alt+↑ moves a
+  // picked one earlier, and the order under the list has Earlier
+  ok(await jane.evaluate(() => document.activeElement?.getAttribute('role') === 'option' && /Makeovers in progress/.test(document.activeElement.textContent)), 'the Shows list has the focus as it opens, on the one shown');
+  await jane.keyboard.press('ArrowDown');
+  ok(await jane.evaluate(() => /Upcoming reveals/.test(document.activeElement?.textContent || '')), '↓ moves along the list');
+  await jane.keyboard.press('Enter');
+  const showOrder = () => jane.$$eval('.bd-showorder .bd-showorder__t', (l) => l.map((x) => x.firstChild.textContent.trim()).join(', '));
+  await jane.keyboard.down('Alt'); await jane.keyboard.press('ArrowUp'); await jane.keyboard.up('Alt');
+  ok(await showOrder() === 'Upcoming reveals, Makeovers in progress', `Alt+↑ puts a picked one first (${await showOrder()})`);
+  await jane.evaluate(() => document.querySelector('.bd-showorder__up')?.click());
+  ok(await showOrder() === 'Makeovers in progress, Upcoming reveals', `Earlier puts the other back first (${await showOrder()})`);
   await jane.keyboard.press('Escape');
   let alsoNow = '';
   for (let k = 0; k < 30 && alsoNow !== 'reveals'; k++) { await sleep(300); alsoNow = (await meetingNow(jane, meetingId)).sections.flatMap((x) => x.items).find((it) => it.live === 'projects')?.also?.join() || ''; }
@@ -1316,12 +1326,21 @@ try {
       await clickText(money, '.bp-stmts button', /^Financial position$/);
       ok(firstStmt.length === 1 && /^Statement of activities/.test(firstStmt[0]) && await money.waitForFunction(() => { const t = [...document.querySelectorAll('.bp-latest .bp-stmt__title')].map((x) => x.textContent); return t.length === 1 && t[0] === 'Statement of financial position' && /TOTAL ASSETS/.test(document.querySelector('.bp-latest .bp-stmt').textContent); }, { timeout: 2000 }).then(() => true, () => false), `Financials: one statement at a time, activities first, the position a tap away (${JSON.stringify(firstStmt)})`);
       await clickText(money, '.bp-stmts button', /^Budget$/);
-      ok(await money.waitForFunction(() => { const t = document.querySelector('.bp-latest .bp-stmt__title')?.textContent || ''; const st = document.querySelector('.bp-latest .bp-stmt'); return /^Budget against actual, January 1 to /.test(t) && /ActualBudgetOver \(under\)/.test(st?.querySelector('thead')?.textContent || '') && /Total Income\$1,884,217\$1,666,667\+\$217,550/.test(st?.textContent || '') && /Budget_FY26_P&L, through .*: 10 of its 12 months/.test(document.querySelector('.bp-latest .bp-stmts__when')?.textContent || ''); }, { timeout: 2000 }).then(() => true, () => false), 'Financials: QuickBooks’ budget against the actuals, a tap from the statements, saying which budget and through when');
+      ok(await money.waitForFunction(() => { const t = document.querySelector('.bp-latest .bp-stmt__title')?.textContent || ''; const st = document.querySelector('.bp-latest .bp-stmt'); return /^Budget against actual, January 1 to /.test(t) && /ActualBudgetOver \(under\)/.test(st?.querySelector('thead')?.textContent || '') && /Total Income\$1,884,217\$1,666,667\+13%/.test(st?.textContent || '') && /Budget_FY26_P&L, through .*: 10 of its 12 months/.test(document.querySelector('.bp-latest .bp-stmts__when')?.textContent || ''); }, { timeout: 2000 }).then(() => true, () => false), 'Financials: QuickBooks’ budget against the actuals, a tap from the statements, saying which budget and through when');
       ok(/The budget: QuickBooks’ Budget_FY26_P&L\./.test(await money.$eval('#budget', (x) => x.textContent).catch(() => '')), 'Financials: the year against its budget names QuickBooks’ budget');
       await shot(money, '27b-budget-financials');
       const year = await money.evaluate(() => [...document.getElementById('by-h').closest('.bp-card').querySelectorAll('tbody tr')].map((r) => r.textContent));
       // Read down it adds up: revenue less the cash spent and the in kind used is the net
-      ok(year[0] === 'Revenue$1,876,045$1,500,000▲ 25%' && year[1] === 'Cash expenses$980,000$1,030,000▼ 5%' && year[2] === 'In kind expenses (not cash)$220,000$70,000▲ 214%' && year[3] === 'Net$676,045$400,000+$276,045' && 1876045 - 980000 - 220000 === 676045, `Financials: the year so far splits the in kind from the cash expenses, and adds up to QuickBooks’ net (${JSON.stringify(year)})`);
+      ok(year[0] === 'Revenue$1,876,045$1,500,000▲ 25%' && year[1] === 'Cash expenses$980,000$1,030,000▼ 5%' && year[2] === 'In kind expenses (not cash)$220,000$70,000▲ 214%' && year[3] === 'Net$676,045$400,000▲ $276,045' && 1876045 - 980000 - 220000 === 676045, `Financials: the year so far splits the in kind from the cash expenses, and adds up to QuickBooks’ net (${JSON.stringify(year)})`);
+      // % | $: the changes as percentages (the first time) or in dollars, one pick for the statements and the year so far
+      await money.evaluate(() => [...document.querySelectorAll('.bp-chgas button')].find((x) => x.textContent.includes('$'))?.click());
+      const inDollars = await money.waitForFunction(() => {
+        const rows = [...document.getElementById('by-h').closest('.bp-card').querySelectorAll('tbody tr')].map((r) => r.textContent);
+        return rows[0] === 'Revenue$1,876,045$1,500,000▲ $376,045' && rows[1] === 'Cash expenses$980,000$1,030,000▼ $50,000' && /Total Income\$1,884,217\$1,666,667\+\$217,550/.test(document.querySelector('.bp-latest .bp-stmt')?.textContent || '');
+      }, { timeout: 3000 }).then(() => true, () => false);
+      ok(inDollars && await money.evaluate(() => [...document.querySelectorAll('.bp-chgas')].every((g) => g.querySelector('[aria-pressed="true"]')?.textContent.includes('$'))), 'Financials: $ says the changes in dollars, in the statements and the year so far at once');
+      await money.evaluate(() => [...document.querySelectorAll('.bp-chgas button')].find((x) => x.textContent.includes('%'))?.click());
+      ok(await money.waitForFunction(() => /Total Income\$1,884,217\$1,666,667\+13%/.test(document.querySelector('.bp-latest .bp-stmt')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'and % back to percentages');
       const rows = await money.$$eval('.bp-mixtable tbody tr', (r) => r.map((x) => x.textContent));
       ok(rows.length === 6 && rows[1] === 'Store salesStore Income, Store Discounts$415,00022%$830,000▼ 50%' && /^Everything elseGolf Classic, Rent, Interest, Makeover\$51,0453%\$0/.test(rows[5]) && rows[4] === 'GrantsGrant Revenue$90,0005%$0–', `Financials: each category with its accounts, beside last year’s same days (${JSON.stringify(rows)})`);
       await money.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
@@ -1332,6 +1351,11 @@ try {
       // a statement QuickBooks draws only a quiet link (never its pages again)
       const yc = await money.evaluate(() => ({ charts: document.querySelectorAll('.bp-agitem .by-chart svg').length, files: document.querySelector('.bp-asfiles')?.textContent || '', tiles: [...document.querySelectorAll('.bp-agitem .bp-doctile__title')].map((x) => x.textContent), stmts: !!document.querySelector('.bp-agstmts .bp-stmt__table') }));
       ok(yc.charts === 2 && yc.stmts, `the money item: revenue and expenses against last year, month by month, and the statements, open (${JSON.stringify(yc)})`);
+      // One axis for both (the bigger reads bigger), each drawn at the size it's shown, and the month it's in ends at
+      // its day (two days into a month isn't a flat month)
+      const axes = await money.evaluate(() => [...document.querySelectorAll('.bp-agitem .by-chart svg')].map((svg) => ({ ticks: [...svg.querySelectorAll('g text.by-axis')].map((t) => t.textContent).join('|'), w: Math.round(svg.getBoundingClientRect().width), vw: Math.round(svg.viewBox.baseVal.width), now: Number(svg.querySelector('circle.by-dot--now')?.getAttribute('cx')), label: Number(svg.querySelector('text.by-axis.is-now')?.getAttribute('x')), fs: getComputedStyle(svg.querySelector('text.by-axis')).fontSize })));
+      ok(axes.length === 2 && axes[0].ticks === axes[1].ticks && axes.every((a) => Math.abs(a.w - a.vw) <= 2 && a.fs === '12px'), `revenue and expenses on one axis, drawn at their own size (${JSON.stringify(axes)})`);
+      if (Number(day(0).slice(8, 10)) <= 20) ok(axes.every((a) => a.now < a.label - 10), `this year's line ends at its day in the month (${JSON.stringify(axes.map((a) => [a.now, a.label]))})`);
       ok(/Also as a file: Balance sheet financials/.test(yc.files) && !yc.tiles.some((x) => /Balance sheet/.test(x)), 'a statement QuickBooks draws isn’t a document tile again: a quiet link');
       await money.evaluate(() => document.querySelector('.bp-agitem .by-chart').scrollIntoView({ block: 'center' }));
       await money.hover('.bp-agitem .by-chart svg');
@@ -1399,6 +1423,52 @@ try {
       await slide(/Upcoming reveals/);
       ok(await qb.waitForFunction(() => document.querySelector('.bs-item__title')?.textContent === 'Upcoming reveals', { timeout: 15000 }).then(() => true, () => false), 'an item’s second show, a slide of its own');
       await shot(jane, '28c-screen-second-show');
+      // Presenting: C (or the % | $ beside the count) says the money's changes in dollars, then as percentages again;
+      // the board page open in another window follows the pick
+      {
+        const fin = (await meetingNow(jane, meetingId)).sections.flatMap((x) => x.items).find((it) => it.live === 'cash' || (it.also || []).includes('cash'));
+        const pres = await tab(FOUNDER, 1280);
+        await pres.setViewport({ width: 1280, height: 720 });
+        await pres.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`${fin.id}:books:act`)}#/meetings/${meetingId}/screen`, { waitUntil: 'networkidle0' });
+        const chg = () => pres.$$eval('.by-stmt .by-stmt__chg', (l) => l.map((x) => x.textContent.trim()).filter((t) => t && t !== '–'));
+        ok(await pres.waitForFunction(() => /^Statement of activities/.test(document.querySelector('.by-slide__title')?.textContent || ''), { timeout: 10000 }).then(() => true, () => false) && (await chg()).length > 0 && (await chg()).every((t) => /%|Even/.test(t)), `presenting the statement: its changes as percentages (${(await chg()).join(' | ')})`);
+        await pres.mouse.move(640, 300);
+        await pres.mouse.move(650, 310);
+        ok(await pres.$eval('.bs-chg', (g) => g.querySelector('[aria-pressed="true"]')?.textContent.trim().startsWith('%')).catch(() => false), 'the % | $ beside the count, % picked');
+        await pres.keyboard.press('c');
+        ok(await pres.waitForFunction(() => { const t = [...document.querySelectorAll('.by-stmt .by-stmt__chg')].map((x) => x.textContent.trim()).filter((x) => x && x !== '–'); return t.length > 0 && t.every((x) => /\$|Even/.test(x)); }, { timeout: 3000 }).then(() => true, () => false), `C: in dollars (${(await chg()).join(' | ')})`);
+        await money.goto(`${SITE}/admin/board/#/financials`, { waitUntil: 'networkidle0' });
+        await pres.keyboard.press('c');
+        await pres.keyboard.press('c');
+        ok(await money.waitForFunction(() => document.querySelector('.bp-chgas [aria-pressed="true"]')?.textContent.includes('$') && /\+\$|▲ \$|▼ \$/.test(document.querySelector('.bp-latest .bp-stmt')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'the board page in another window follows the pick, as it’s made');
+        await shot(pres, '28d-presenting-dollars');
+        await pres.keyboard.press('%');
+        ok(await pres.waitForFunction(() => [...document.querySelectorAll('.by-stmt .by-stmt__chg')].some((x) => /%/.test(x.textContent)), { timeout: 3000 }).then(() => true, () => false), '% back to percentages');
+        // The year against last year on a 720p screen
+        await pres.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`${fin.id}:books:year`)}#/meetings/${meetingId}/screen`, { waitUntil: 'networkidle0' });
+        await pres.waitForSelector('.by-slide .by-chart svg', { timeout: 10000 }).catch(() => {});
+        await sleep(400);
+        const room = await pres.evaluate(() => { const svgs = [...document.querySelectorAll('.by-slide .by-chart svg')]; return { fs: svgs.map((x) => parseFloat(getComputedStyle(x.querySelector('text.by-axis')).fontSize)), inside: svgs.every((x) => x.getBoundingClientRect().bottom <= innerHeight) }; });
+        ok(room.fs.length === 2 && room.fs.every((f) => f >= 14) && room.inside, `presenting the year: words a room reads (${room.fs.join(', ')}px), the charts on the screen`);
+        await shot(pres, '28e-presenting-year');
+        // A long statement (QuickBooks' real ones run to twenty lines and more) fits the screen: smaller, then the
+        // groups' own lines off, never the bottom line, and it says where every line is
+        const daily = await DB.prepare("SELECT data FROM books_daily WHERE id = 'qbo'").first();
+        const long = JSON.parse(daily.data);
+        long.statements.activity = [{ k: 'head', label: 'Income', d: 0 }, ...Array.from({ length: 22 }, (_, i) => ({ k: 'total', label: `Total Group ${i + 1}`, d: 1, a: 10000 * (i + 1), p: 9000 * (i + 1) })), { k: 'total', label: 'Total Income', d: 0, a: 1884217, p: 1909703 }, { k: 'sum', label: 'Net Income', d: 0, a: 189248, p: 176000 }];
+        await DB.prepare("UPDATE books_daily SET data = ? WHERE id = 'qbo'").bind(JSON.stringify(long)).run();
+        await pres.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`${fin.id}:books:act`)}#/meetings/${meetingId}/screen`, { waitUntil: 'networkidle0' });
+        await pres.reload({ waitUntil: 'networkidle0' });
+        const fitted = await pres.waitForFunction(() => {
+          const box = document.querySelector('.by-fit');
+          const net = [...document.querySelectorAll('.by-fit tr')].find((r) => /Net Income/.test(r.textContent));
+          return box && box.scrollHeight <= box.clientHeight + 1 && net && !net.hidden && /^\d+ smaller lines left off here. Every line is on the board page$/.test(document.querySelector('.by-fit__more')?.textContent || '') && [...document.querySelectorAll('.by-fit tr[data-d="1"]')].filter((r) => !r.hidden).length >= 5;
+        }, { timeout: 8000 }).then(() => true, () => false);
+        ok(fitted, 'a long statement fits the screen, its bottom line kept, and says every line is on the board page');
+        await shot(pres, '28f-presenting-long-statement');
+        await DB.prepare("UPDATE books_daily SET data = ? WHERE id = 'qbo'").bind(daily.data).run();
+        await pres.close();
+      }
     }
     if (width === 390) {
       // On a phone a count, an amount or a time never ends a line without its word ("$243K" / "in kind"); a year

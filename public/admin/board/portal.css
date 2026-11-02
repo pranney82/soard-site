@@ -407,6 +407,8 @@ a.bk-card:hover .bk-card__photo img { transform: scale(1.04); }
 .bp-impact__seg { flex: none; display: inline-flex; padding: 3px; border-radius: 999px; background: var(--warm); }
 .bp-impact__seg button { flex: none; white-space: nowrap; height: 32px; padding: 0 0.85rem; border: none; border-radius: 999px; background: none; font-size: 0.86rem; font-weight: 650; color: var(--muted); cursor: pointer; transition: background 0.2s, color 0.2s, box-shadow 0.2s; }
 .bp-impact__seg button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: var(--shadow-1); }
+/* % | $ (the changes as percentages or in dollars): two narrow buttons */
+.bp-chgas button { min-width: 2.5rem; padding: 0 0.75rem; font-size: 0.95rem; font-weight: 750; }
 /* The statements' three views on a phone: closer together, and never wider than their column */
 @media (max-width: 420px) {
   .bp-stmts__top .bp-impact__seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
@@ -1298,13 +1300,20 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .by-key--then { border-top: 2px dashed var(--by-then); }
 .by-charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 1rem 1.75rem; }
 .by-fig { margin: 0; min-width: 0; }
-.by-cap { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem; margin: 0 0 0.3rem; font-size: 0.78rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; color: var(--by-muted); }
-.by-cap small { font-size: 0.8rem; font-weight: 400; letter-spacing: 0; text-transform: none; }
+.by-cap { display: grid; gap: 0.2rem; margin: 0 0 0.4rem; color: var(--by-ink); }
+.by-cap__t { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.15rem 0.5rem; font-size: 0.78rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; color: var(--by-muted); }
+.by-cap__t small { font-size: 0.8rem; font-weight: 400; letter-spacing: 0; text-transform: none; }
+/* What the lines end at, in words: this year so far, last year by the same day (and the change), its whole year */
+.by-cap__figs { display: flex; flex-wrap: wrap; gap: 0.1rem 1rem; font-size: 0.9rem; font-variant-numeric: tabular-nums; }
+.by-cap__figs b { font-weight: 750; }
+.by-cap__then { color: var(--by-muted); }
+.by-cap__then b { color: var(--by-ink); font-weight: 650; }
+.by-cap__then em { font-style: normal; font-weight: 650; color: var(--by-ink); }
 .by-chart { position: relative; }
 .by-chart svg { display: block; width: 100%; height: auto; overflow: visible; border-radius: 8px; touch-action: pan-y; }
 .by-chart svg:focus-visible { outline: 2px solid var(--by-ink); outline-offset: 4px; }
 .by-grid { stroke: var(--by-grid); stroke-width: 1; }
-.by-axis { fill: var(--by-muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.by-axis { fill: var(--by-muted); font-size: var(--fs, 12px); font-variant-numeric: tabular-nums; }
 .by-axis.is-now { fill: var(--by-ink); font-weight: 700; }
 .by-line { fill: none; stroke-linecap: round; stroke-linejoin: round; }
 .by-line--now { stroke: var(--by-now); stroke-width: 3; }
@@ -1313,9 +1322,6 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .by-dot--now { fill: var(--by-now); }
 .by-dot--then { fill: var(--by-then); }
 .by-guide { stroke: var(--by-muted); stroke-width: 1; stroke-dasharray: 2 3; }
-.by-end { fill: var(--by-ink); font-size: 13px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.by-end--then { fill: var(--by-muted); font-weight: 600; }
-.by-end__y { fill: var(--by-muted); font-weight: 500; }
 .by-tip { position: absolute; top: 0.2rem; left: 0; z-index: 2; display: grid; gap: 0.2rem; min-width: 11.5rem; padding: 0.5rem 0.7rem; border-radius: 10px; background: var(--by-surface); border: 1px solid var(--by-grid); box-shadow: var(--shadow-2); font-size: 0.84rem; color: var(--by-ink); pointer-events: none; white-space: nowrap; }
 .by-tip span { display: flex; align-items: center; gap: 0.45rem; font-variant-numeric: tabular-nums; }
 .by-tip b { margin-left: auto; padding-left: 0.7rem; font-weight: 650; }
@@ -1343,7 +1349,7 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .by-stmt__prior { color: var(--by-muted, var(--muted)); }
 .bp-agstmts { margin-top: 1.1rem; max-width: 54rem; }
 .bp-asfiles { margin: 0.7rem 0 0; font-size: 0.88rem; color: var(--muted); }
-@media (max-width: 640px) { .by-axis__rest { display: none; } .by-legend .by-legend__how { margin-left: 0; flex-basis: 100%; } }
+@media (max-width: 640px) { .by-legend .by-legend__how { margin-left: 0; flex-basis: 100%; } }
 /* The screen: its own colors for the dark (validated against it), at the size of a room */
 .bs .by, .bs .by-stmt { --by-now: #B08F00; --by-then: #5994DA; --by-grid: var(--bs-line); --by-ink: var(--bs-ink); --by-muted: var(--bs-soft); --by-surface: var(--bs-panel); }
 .by-slide { width: min(100%, 1560px); height: 100%; min-height: 0; display: grid; align-content: start; gap: clamp(0.5rem, 1.6vh, 1.2rem); padding-top: clamp(0.25rem, 1vh, 0.75rem); overflow: hidden; }
@@ -1356,11 +1362,14 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .by-slide--store .bs-figs__sub { font-size: clamp(1rem, 2.8vh, 1.7rem); }
 .bs .by { max-width: none; margin: 0; }
 .bs .by-legend { font-size: clamp(0.95rem, 2.2vh, 1.3rem); }
-.bs .by-cap { font-size: clamp(0.85rem, 1.9vh, 1.1rem); }
-.bs .by-axis { font-size: 13px; }
-.bs .by-end { font-size: 15px; }
+.bs .by-cap__t { font-size: clamp(0.85rem, 1.9vh, 1.15rem); }
+.bs .by-cap__figs { font-size: clamp(1rem, 2.5vh, 1.6rem); }
 .bs .by-table { display: none; }
-.by-stmt.is-big { font-size: clamp(1rem, 2.5vh, 1.55rem); }
+.by-stmt.is-big { font-size: calc(var(--fit, 1) * clamp(1rem, 2.5vh, 1.55rem)); }
+/* A statement fitted to the slide (books.js FitLines): the rest of the slide's height, and where every line is */
+.by-slide:has(> .by-fit) { grid-template-rows: auto auto minmax(0, 1fr) auto; align-content: stretch; }
+.by-fit { min-height: 0; overflow: hidden; }
+.by-fit__more { margin: 0; color: var(--bs-soft, var(--muted)); font-size: clamp(0.9rem, 2vh, 1.2rem); }
 @media print { .by-tip, .by-table summary { display: none; } .by-table[open] { display: none; } }
 
 /* ─── Reports: under an item, the ask, and the page to write one (portal.js ReportPage, ../board-report.js) ─── */
@@ -1852,6 +1861,12 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 /* Presenting: back and next beside the slide count, there while the mouse moves (the keys and a clicker always work) */
 .bs-steps { display: inline-flex; align-items: center; gap: 0.35rem; flex: none; opacity: 0; pointer-events: none; transition: opacity 0.2s; }
 .bs.is-awake .bs-steps, .bs-steps:focus-within { opacity: 1; pointer-events: auto; }
+.bs-chg { display: inline-flex; align-items: center; gap: 2px; flex: none; padding: 3px; border-radius: 999px; border: 1px solid var(--bs-line); background: var(--bs-panel); opacity: 0; pointer-events: none; transition: opacity 0.2s; }
+.bs.is-awake .bs-chg, .bs-chg:focus-within { opacity: 1; pointer-events: auto; }
+.bs-chg__b { min-width: 2.15rem; height: 2rem; padding: 0 0.6rem; border: none; border-radius: 999px; background: none; color: var(--bs-ink); font: inherit; font-size: 0.95rem; font-weight: 750; cursor: pointer; }
+.bs-chg__b:hover:not([aria-pressed="true"]) { background: var(--bs-panel-2); }
+.bs-chg__b[aria-pressed="true"] { background: var(--yellow); color: #1F201C; }
+.bs-chg__b:focus-visible { outline: 2px solid var(--yellow); outline-offset: 2px; }
 .bs-step { display: inline-grid; place-items: center; width: 2.4rem; height: 2.4rem; padding: 0; border-radius: 50%; border: 1px solid var(--bs-line); background: var(--bs-panel); color: var(--bs-ink); cursor: pointer; }
 .bs-step:hover:not(:disabled) { background: var(--bs-panel-2); }
 .bs-step:disabled { opacity: 0.35; cursor: default; }
@@ -1863,7 +1878,7 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 /* B: the screen goes black (the room looks at the speaker); a key or a click brings it back */
 .bs-blank { position: fixed; inset: 0; z-index: 50; display: block; width: 100%; height: 100%; padding: 0; border: 0; background: #000; cursor: none; }
 .bs-blank:focus-visible { outline: none; }
-@media (prefers-reduced-motion: reduce) { .bs-steps, .bs-foot__keys { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .bs-steps, .bs-chg, .bs-foot__keys { transition: none; } }
 .bs.is-mirror { cursor: default; }
 @keyframes bs-in { from { opacity: 0; transform: translateY(14px); } }
 @keyframes bs-fade { from { opacity: 0; } }
@@ -1997,6 +2012,7 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .bp-stmts__when { margin: 0; color: var(--muted); font-size: 0.9rem; max-width: 46rem; }
 .bp-stmts__top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem 1.5rem; }
 .bp-stmts__top .bp-stmts__when { flex: 1 1 22rem; }
+.bp-stmts__ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; max-width: 100%; }
 .bp-stmt__head { display: flex; justify-content: space-between; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.4rem; }
 .bp-stmt__title { margin: 0; font-family: var(--display); font-size: 1.08rem; font-weight: 700; }
 .bp-stmt__head .bp-more-btn { margin-top: 0; min-height: 36px; }

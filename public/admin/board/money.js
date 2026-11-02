@@ -249,10 +249,10 @@ export const pctOf = (x) => (x?.budget ? Math.round((x.actual / x.budget) * 100)
 /** "31% by now last year": how much of last year's whole year had come in (or gone out) by this day, beside this year's share of its budget */
 export const paceText = (x) => (x?.budget && x.last != null && x.lastFull > 0 ? `${Math.round((x.last / x.lastFull) * 100)}% by now last year` : '');
 /** "▲ 12% on last year by now": this year's so far against last year's same days, when there's no budget to measure by */
-export const growthText = (x) => {
+export const growthText = (x, as = 'pct') => {
   if (!(x?.last > 0)) return '';
-  const g = Math.round(((x.actual - x.last) / x.last) * 100);
-  return g === 0 ? 'Even with last year by now' : `${g > 0 ? '▲' : '▼'} ${Math.abs(g)}% on last year by now`;
+  const c = changeIn(x.actual, x.last, as, { short: true });
+  return c === 'Even' ? 'Even with last year by now' : `${c} on last year by now`;
 };
 
 /**
@@ -262,14 +262,14 @@ export const growthText = (x) => {
  */
 /** "August 3, 2026" → ", as of Aug 3" ('' when there's no date) */
 const asOfWords = (s) => { const t = Date.parse(String(s || '')); return Number.isFinite(t) ? `, as of ${new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}` : s ? `, ${s}` : ''; };
-export function moneyTiles({ cash, budget, n, due = false }) {
+export function moneyTiles({ cash, budget, n, due = false, as = '' }) {
   const out = [];
   if (cash !== null) {
     out.push({
       k: 'bank', label: 'Cash in the bank', value: cash ? money(cash.total) : '…',
       sub: !cash ? 'From the balance sheet' : fromBooks(cash) || (cash.live
         ? [(cash.accounts || []).length > 1 ? cash.accounts.map((a) => `${a.name} ${compact(a.balance)}`).join(' · ') : '', cash.asOf ? `as of ${shortAsOf(cash.asOf)}` : ''].filter(Boolean).join(', ')
-        : `${cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : 'From the balance sheet'}${cash.prior != null ? ` · ${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} on a year` : ''}`),
+        : `${cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : 'From the balance sheet'}${cash.prior != null ? ` · ${as ? changeIn(cash.total, cash.prior, as, { short: true }) : `${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))}`} on a year` : ''}`),
       tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '',
     });
   }
@@ -281,7 +281,7 @@ export function moneyTiles({ cash, budget, n, due = false }) {
   const books = typeof n?.books?.revenue === 'number' ? n.books : null;
   if (budget === undefined && (due || books)) for (const [k, word, v] of [['rev', 'revenue', books?.revenue], ['exp', 'expenses', books ? spentOf(books) : null]]) out.push({ k, label: `${(books?.year || todayEastern().slice(0, 4))} ${word}`, value: typeof v === 'number' ? money(v) : '…', pct: 0, sub: '\u00a0' });
   for (const [k, x, word] of [['rev', budget?.revenue, 'revenue'], ['exp', budget?.expenses, 'expenses']]) {
-    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: [x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}`, paceText(x)].filter(Boolean).join(' · ') : growthText(x) || `The year so far${asOfWords(budget.asOf)}`, x.inKind ? `not counting ${compact(x.inKind)} in kind` : ''].filter(Boolean).join(' · ') });
+    if (x) out.push({ k, label: `${yr} ${word}`.trim(), value: money(x.actual), pct: pctOf(x), sub: [x.budget ? [`${pctOf(x)}% of the ${compact(x.budget)} budget${asOfWords(budget.asOf)}`, paceText(x)].filter(Boolean).join(' · ') : growthText(x, as || 'pct') || `The year so far${asOfWords(budget.asOf)}`, x.inKind ? `not counting ${compact(x.inKind)} in kind` : ''].filter(Boolean).join(' · ') });
   }
   const f = n?.finance;
   // Mercury's own record (the year so far, the forecast) only once its banks are the cash shown
@@ -340,6 +340,44 @@ export function mixOf(books) {
 export const shareOf = (a, total) => { const p = (a / total) * 100; return p > 0 && p < 1 ? 'under 1%' : `${Math.round(p)}%`; };
 export const changeOf = (a, p) => (p > 0 ? `${a >= p ? '▲' : '▼'} ${Math.abs(Math.round(((a - p) / p) * 100))}%` : '');
 
+// ─── A change said as a percent or in dollars: the presenter's pick on the screen, the reader's on the board page ───
+// One choice on this device ('pct' or 'usd'), so the screen, the board page's statements and Print it all say the same
+const AS_KEY = 'bd-change-as';
+export const readChangeAs = () => { try { return localStorage.getItem(AS_KEY) === 'usd' ? 'usd' : 'pct'; } catch { return 'pct'; } };
+export const keepChangeAs = (as) => {
+  try { localStorage.setItem(AS_KEY, as === 'usd' ? 'usd' : 'pct'); } catch { /* private browsing */ }
+  // (other windows hear it as a storage event; this one's other controls, this)
+  dispatchEvent(new Event(AS_KEY));
+};
+/** The pick as state, kept in step with every other % | $ on this page and in other windows: [as, setAs] */
+export function useChangeAs() {
+  const [as, setAs] = useState(readChangeAs);
+  useEffect(() => {
+    const on = (e) => { if (!e.key || e.key === AS_KEY) setAs(readChangeAs()); };
+    addEventListener('storage', on);
+    addEventListener(AS_KEY, on);
+    return () => { removeEventListener('storage', on); removeEventListener(AS_KEY, on); };
+  }, []);
+  return [as, keepChangeAs];
+}
+/**
+ * Against last year: "▲ 25%" or "▲ $25,486" ("▲ $25K" when `short`), 'Even', or '' with nothing to set it beside. A
+ * percent needs last year above zero; without it the change is said in dollars
+ */
+export function changeIn(a, p, as = 'pct', { short = false } = {}) {
+  if (!(typeof a === 'number' && typeof p === 'number')) return '';
+  if (as !== 'usd' && p > 0) { const c = Math.round(((a - p) / p) * 100); return c === 0 ? 'Even' : `${c > 0 ? '▲' : '▼'} ${Math.abs(c)}%`; }
+  if (Math.round(a) === Math.round(p)) return 'Even';
+  return `${a > p ? '▲' : '▼'} ${(short ? compact : money)(Math.abs(a - p))}`;
+}
+/** Over (under) a budget: "+$217,340" or "+12%" (of the budget; dollars when it's zero), 'Even', or '–' with nothing */
+export function overIn(a, b, as = 'usd', { short = false } = {}) {
+  if (!(typeof a === 'number' && typeof b === 'number')) return '–';
+  if (Math.round(a) === Math.round(b)) return 'Even';
+  if (as === 'pct' && b > 0) { const c = Math.round(((a - b) / b) * 100); if (c !== 0) return `${c > 0 ? '+' : '−'}${Math.abs(c)}%`; }
+  return `${a > b ? '+' : '−'}${(short ? compact : money)(Math.abs(a - b))}`;
+}
+
 /**
  * The revenue as one bar, a part per category, and a key giving each its amount and share; over a part, its exact
  * amount and the same days last year. `table` (Financials): every category beside last year, with its accounts
@@ -387,7 +425,7 @@ export function storeOf(books) {
   ], margin: s.sales > 0 ? s.profit / s.sales : null, lastMargin: ly?.sales > 0 ? ly.profit / ly.sales : null };
 }
 /** A store line against last year's same days: a share for its sales and cost, dollars for the profit (which can cross zero) */
-export const storeChange = (x) => (x.last == null ? '' : x.amount === x.last ? 'Even' : x.k === 'profit' ? `${x.amount > x.last ? '▲' : '▼'} ${compact(Math.abs(x.amount - x.last))}` : changeOf(x.amount, x.last));
+export const storeChange = (x, as = '') => (x.last == null ? '' : x.amount === x.last ? 'Even' : as === 'usd' ? changeIn(x.amount, x.last, as, { short: true }) : x.k === 'profit' ? `${x.amount > x.last ? '▲' : '▼'} ${compact(Math.abs(x.amount - x.last))}` : changeOf(x.amount, x.last));
 
 /** The store's three figures in a row (Home, a meeting's money item), each with how it stands against last year by now */
 export function StoreFigures({ books }) {

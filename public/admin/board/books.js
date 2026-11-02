@@ -14,9 +14,9 @@
  * gold #8A6A00 / #B08F00, last year blue #2B6CB0 / #5994DA, last year dashed too, and every line named at its end.
  */
 
-import { h, htm, useState } from '../vendor.js';
+import { h, htm, useState, useEffect, useRef } from '../vendor.js';
 import { money, shortDate, mainLines } from '../board-shared.js';
-import { compact, storeOf, storeChange, budgetMonthsText, spentOf, marginText } from './money.js';
+import { compact, storeOf, storeChange, budgetMonthsText, spentOf, marginText, changeIn, overIn } from './money.js';
 import { lineKeysOf, notesByKey, NoteLine } from './review.js';
 
 const html = htm.bind(h);
@@ -24,8 +24,6 @@ const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct
 const MONTH = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
 const dayMonth = (d) => (d ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' }) : '');
 
-/** A budget's over (under), in dollars: "+$217K", "−$12K", "Even" */
-const overWords = (a, b) => (typeof a === 'number' && typeof b === 'number' ? (Math.round(a) === Math.round(b) ? 'Even' : `${a > b ? '+' : '−'}${compact(Math.abs(a - b))}`) : '–');
 /** "▲ 25%" against last year ('Even', or '' with nothing to set it beside) */
 export const changeWords = (a, p) => {
   if (!(typeof a === 'number' && typeof p === 'number' && p > 0)) return '';
@@ -79,35 +77,48 @@ function axisOf(values) {
 /** Dollars with a real minus: "−$250,000" */
 const sm = (v) => (typeof v !== 'number' ? '–' : v < 0 ? `−${money(-v)}` : money(v));
 
-const W = 640;
-const BASE_H = 250;
-const PAD = { l: 52, r: 92, t: 14, b: 30 };
 /**
- * One measure, this year against last, added up month by month. This year's last point is the year so far: last year
- * beside it is its same days (`sameDays`, through `through`), as the figures above say, and its line goes on to the
- * month's end
+ * One measure, this year against last, added up month by month, drawn at the size it's shown (its words stay their
+ * size on a phone and in a room), on the axis it shares with its neighbor (`ax`, so revenue and expenses read against
+ * each other). This year's last point is the year so far, at its own day in the month (a month two days in isn't a
+ * flat line); last year beside it is its same days (`sameDays`, through `through`), and its line goes on to the end
  */
-function YearLines({ id, title, now, then, year, lastYear, upTo, sameDays = null, through = '', tall = false }) {
+function YearLines({ id, title, now, then, year, lastYear, upTo, ax, sameDays = null, through = '', tall = false, as = 'pct' }) {
   const [at, setAt] = useState(-1);
-  // Taller on the screen, where there's the room (the same width, so the words stay their size)
-  const H = tall ? 340 : BASE_H;
-  const ax = axisOf([...now.filter((v) => v !== null), ...(then || [])]);
-  const pw = W - PAD.l - PAD.r;
-  const ph = H - PAD.t - PAD.b;
-  const x = (i) => PAD.l + (i / 11) * pw;
-  const y = (v) => PAD.t + ((ax.top - v) / (ax.top - ax.bottom)) * ph;
-  const path = (list) => list.map((v, i) => (v === null ? '' : `${i && list[i - 1] !== null ? 'L' : 'M'}${x(i).toFixed(1)} ${y(v).toFixed(1)}`)).join(' ');
-  // The end labels, apart when the lines end close together
+  const [w, setW] = useState(0);
+  const box = useRef(null);
+  useEffect(() => {
+    const el = box.current;
+    if (!el || typeof ResizeObserver !== 'function') return undefined;
+    const ro = new ResizeObserver(() => setW(Math.round(el.clientWidth)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // (before it's measured, and on paper: the width it's mostly shown at)
+  const W = Math.max(260, w || 560);
+  // On the screen, the words a room reads from its seats; on the page, the page's
+  const fs = tall ? Math.round(Math.max(14, Math.min(24, (typeof innerHeight === 'number' ? innerHeight : 800) * 0.022))) : 12;
+  const H = tall ? Math.round(Math.max(220, Math.min(W * 0.62, (typeof innerHeight === 'number' ? innerHeight : 800) * 0.5))) : Math.round(Math.max(180, Math.min(250, W * 0.5)));
+  const tickText = (v) => (v ? compact(v) : '$0');
+  const pad = { l: Math.ceil(Math.max(...ax.ticks.map((v) => tickText(v).length)) * fs * 0.62) + 12, r: 14, t: Math.round(fs * 0.9), b: Math.round(fs * 2.3) };
+  const pw = W - pad.l - pad.r;
+  const ph = H - pad.t - pad.b;
+  const x = (i) => pad.l + (i / 11) * pw;
+  const y = (v) => pad.t + ((ax.top - v) / (ax.top - ax.bottom)) * ph;
+  // This year's last point at its day: the end of the month before, and the share of this month gone by
+  const td = through && Number(through.slice(5, 7)) - 1 === upTo ? Number(through.slice(8, 10)) : 0;
+  const inMonth = new Date(Date.UTC(Number(year) || 2001, upTo + 1, 0)).getUTCDate();
+  const pos = (i) => (i === upTo && td ? Math.max(0, upTo - 1 + td / inMonth) : i);
+  const xn = (i) => x(pos(i));
+  const path = (list, xs) => list.map((v, i) => (v === null ? '' : `${i && list[i - 1] !== null ? 'L' : 'M'}${xs(i).toFixed(1)} ${y(v).toFixed(1)}`)).join(' ');
+  // Last year's line where this year's point is (between its month ends, a straight line)
+  const thenAt = (p) => { const i = Math.floor(p); const f = p - i; return i >= 11 || !f ? then[Math.min(11, i)] : then[i] + (then[i + 1] - then[i]) * f; };
   const nowEnd = now[upTo];
   const thenEnd = then ? then[11] : null;
-  let yNow = y(nowEnd);
-  let yThen = thenEnd !== null ? y(thenEnd) : null;
-  if (yThen !== null && Math.abs(yNow - yThen) < 30) { const mid = (yNow + yThen) / 2; const up = yNow <= yThen; yNow = mid + (up ? -15 : 15); yThen = mid + (up ? 15 : -15); }
-  // Last year by this year's own day (the figures' "by now"), when the read has it
   const same = then && typeof sameDays === 'number' && through ? sameDays : null;
   const said = `${title}: ${year} so far ${sm(nowEnd)}${then ? `, ${lastYear} ${same !== null ? `by ${dayMonth(through)} ${sm(same)}` : `by the end of ${MONTH[upTo]} ${sm(then[upTo])}`}, ${lastYear} in all ${sm(thenEnd)}` : ''}`;
   // The month being read: this year's against last year's by the same point. The year so far's own month sets it
-  // beside last year's same days, then says last year's whole month too (the point on its line)
+  // beside last year's same days, then says last year's whole month too
   const cur = at === upTo && same !== null;
   const read = at >= 0 ? {
     month: at === upTo && through ? `${MONTH[at]} (through ${dayMonth(through)})` : MONTH[at],
@@ -116,7 +127,7 @@ function YearLines({ id, title, now, then, year, lastYear, upTo, sameDays = null
   const pick = (e) => {
     const r = e.currentTarget.getBoundingClientRect();
     const px = ((e.clientX - r.left) / r.width) * W;
-    setAt(Math.max(0, Math.min(11, Math.round(((px - PAD.l) / pw) * 11))));
+    setAt(Math.max(0, Math.min(11, Math.round(((px - pad.l) / pw) * 11))));
   };
   const keys = (e) => {
     const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
@@ -128,42 +139,43 @@ function YearLines({ id, title, now, then, year, lastYear, upTo, sameDays = null
   // The note beside the month read, on whichever side has the room, never past the chart's edges (a phone's July)
   const place = (el) => {
     if (!el || at < 0) return;
-    const box = el.parentElement.clientWidth;
-    const w = el.offsetWidth;
-    const px = (x(at) / W) * box;
+    const width = el.parentElement.clientWidth;
+    const tw = el.offsetWidth;
+    const px = (xn(at) / W) * width;
     const right = px + 14;
-    const left = px - 14 - w;
-    el.style.left = `${Math.max(0, Math.min(box - w, right + w <= box || box - px > px ? right : left))}px`;
+    const left = px - 14 - tw;
+    el.style.left = `${Math.max(0, Math.min(width - tw, right + tw <= width || width - px > px ? right : left))}px`;
   };
-  return html`<div class="by-chart" onPointerMove=${pick} onPointerLeave=${() => setAt(-1)}>
-    <svg viewBox=${`0 0 ${W} ${H}`} role="img" aria-labelledby=${`${id}-t`} tabindex="0" onKeyDown=${keys} onFocus=${() => setAt(upTo)} onBlur=${() => setAt(-1)}>
+  // The month names a room can read: whole on a wide chart, the first letter on a narrow one
+  const short = pw / 12 < fs * 2.1;
+  return html`<div class="by-chart" ref=${box} onPointerMove=${pick} onPointerLeave=${() => setAt(-1)}>
+    <svg viewBox=${`0 0 ${W} ${H}`} width=${W} height=${H} role="img" aria-labelledby=${`${id}-t`} tabindex="0" onKeyDown=${keys} onFocus=${() => setAt(upTo)} onBlur=${() => setAt(-1)} style=${`--fs:${fs}px`}>
       <title id=${`${id}-t`}>${said}</title>
-      ${ax.ticks.map((v) => html`<g key=${v}><line class=${`by-grid ${v === 0 && ax.bottom < 0 ? 'is-zero' : ''}`} x1=${PAD.l} x2=${W - PAD.r} y1=${y(v)} y2=${y(v)} /><text class="by-axis" x=${PAD.l - 8} y=${y(v) + 4} text-anchor="end">${v ? compact(v) : '$0'}</text></g>`)}
-      ${MON.map((mo, i) => html`<text class=${`by-axis ${i === upTo ? 'is-now' : ''}`} key=${mo} x=${x(i)} y=${H - 8} text-anchor="middle">${mo.slice(0, 1)}<tspan class="by-axis__rest">${mo.slice(1)}</tspan></text>`)}
-      ${read ? html`<line class="by-guide" x1=${x(at)} x2=${x(at)} y1=${PAD.t} y2=${H - PAD.b} />` : null}
-      ${then ? html`<path class="by-line by-line--then" d=${path(then)} />` : null}
-      <path class="by-line by-line--now" d=${path(now)} />
+      ${ax.ticks.map((v) => html`<g key=${v}><line class=${`by-grid ${v === 0 && ax.bottom < 0 ? 'is-zero' : ''}`} x1=${pad.l} x2=${W - pad.r} y1=${y(v)} y2=${y(v)} /><text class="by-axis" x=${pad.l - 8} y=${y(v) + fs * 0.35} text-anchor="end">${tickText(v)}</text></g>`)}
+      ${MON.map((mo, i) => html`<text class=${`by-axis ${i === upTo ? 'is-now' : ''}`} key=${mo} x=${x(i)} y=${H - fs * 0.6} text-anchor="middle">${short ? mo.slice(0, 1) : mo}</text>`)}
+      ${read ? html`<line class="by-guide" x1=${xn(at)} x2=${xn(at)} y1=${pad.t} y2=${H - pad.b} />` : null}
+      ${then ? html`<path class="by-line by-line--then" d=${path(then, x)} />` : null}
+      <path class="by-line by-line--now" d=${path(now, xn)} />
       ${then ? html`<circle class="by-dot by-dot--then" cx=${x(11)} cy=${y(thenEnd)} r="4" />` : null}
-      <circle class="by-dot by-dot--now" cx=${x(upTo)} cy=${y(nowEnd)} r="4.5" />
-      ${read && then ? html`<circle class="by-dot by-dot--then" cx=${x(at)} cy=${y(then[at])} r="4" />` : null}
-      ${read && read.a !== null ? html`<circle class="by-dot by-dot--now" cx=${x(at)} cy=${y(read.a)} r="4.5" />` : null}
-      <text class="by-end" x=${x(upTo) + 9} y=${yNow + 4}><tspan class="by-end__y">${year}</tspan> ${compact(nowEnd)}</text>
-      ${then ? html`<text class="by-end by-end--then" x=${x(11) + 9} y=${yThen + 4}><tspan class="by-end__y">${lastYear}</tspan> ${compact(thenEnd)}</text>` : null}
+      <circle class="by-dot by-dot--now" cx=${xn(upTo)} cy=${y(nowEnd)} r="4.5" />
+      ${read && then ? html`<circle class="by-dot by-dot--then" cx=${xn(at)} cy=${y(thenAt(pos(at)))} r="4" />` : null}
+      ${read && read.a !== null ? html`<circle class="by-dot by-dot--now" cx=${xn(at)} cy=${y(read.a)} r="4.5" />` : null}
     </svg>
     ${read ? html`<div class="by-tip" ref=${place} aria-hidden="true">
       <strong>${read.month}</strong>
       ${read.a !== null ? html`<span><i class="by-key by-key--now"></i>${year} ${sm(read.a)}</span>` : html`<span class="by-tip__soft">${year}: not yet</span>`}
-      ${read.b !== null ? html`<span><i class="by-key by-key--then"></i>${lastYear}${cur ? ` by ${dayMonth(through)}` : ''} ${sm(read.b)}${read.a !== null ? html` <b>${changeWords(read.a, read.b)}</b>` : null}</span>` : null}
+      ${read.b !== null ? html`<span><i class="by-key by-key--then"></i>${lastYear}${cur ? ` by ${dayMonth(through)}` : ''} ${sm(read.b)}${read.a !== null ? html` <b>${changeIn(read.a, read.b, as)}</b>` : null}</span>` : null}
       ${read.whole !== null ? html`<span class="by-tip__soft">${lastYear}, all of ${MONTH[at]}: ${sm(read.whole)}</span>` : null}
     </div>` : null}
   </div>`;
 }
 
 /**
- * The year so far against last year, month by month: revenue and expenses side by side (two charts, one axis each),
- * a key above them, the numbers as a table under. Null without the months
+ * The year so far against last year, month by month: revenue and expenses side by side (two charts on one axis, so
+ * the bigger reads bigger), each with its figures in words above it, the numbers as a table under. Null without the
+ * months
  */
-export function YearCompare({ books, idp = 'by', tall = false }) {
+export function YearCompare({ books, idp = 'by', tall = false, as = 'pct' }) {
   const s = yearSeries(books);
   if (!s) return null;
   const ly = books.lastYear;
@@ -171,6 +183,7 @@ export function YearCompare({ books, idp = 'by', tall = false }) {
   // Last year by this year's own day, as the figures have it (its expenses without in kind once the months leave it out)
   const sameRev = typeof ly?.revenue === 'number' ? ly.revenue : null;
   const sameExp = typeof ly?.expenses !== 'number' ? null : !s.cash ? ly.expenses : typeof ly.nonCash === 'number' ? ly.expenses - ly.nonCash : null;
+  const ax = axisOf([s.revenue, s.spent].flatMap((m) => [...m.now, ...(m.then || [])]).filter((v) => v !== null));
   const lastAt = (series, same, i) => (i === s.upTo && typeof same === 'number' && through ? same : series?.[i] ?? null);
   const monthEnd = (i) => `${MONTH[i]} ${new Date(Date.UTC(Number(s.lastYear) || 2001, i + 1, 0)).getUTCDate()}`;
   const lastCell = (series, same, i) => {
@@ -178,16 +191,22 @@ export function YearCompare({ books, idp = 'by', tall = false }) {
     const whole = series?.[i] ?? null;
     return html`<td class="num">${sm(v)}${v !== whole && whole !== null ? html`<small class="by-table__whole">${sm(whole)} by ${monthEnd(i)}</small>` : null}</td>`;
   };
+  // Above each chart, what its lines end at: this year so far, last year by the same day (with the change), its year
+  const figs = (m, same) => {
+    const nowEnd = m.now[s.upTo];
+    const by = typeof same === 'number' && through ? same : m.then?.[s.upTo] ?? null;
+    return html`<span class="by-cap__figs"><span class="by-cap__now">${s.year} so far <b>${compact(nowEnd)}</b></span>${m.then ? html`<span class="by-cap__then">${s.lastYear} ${typeof same === 'number' && through ? `by ${dayMonth(through)}` : `by the end of ${MONTH[s.upTo]}`} <b>${compact(by)}</b>${changeIn(nowEnd, by, as, { short: true }) ? html` <em>${changeIn(nowEnd, by, as, { short: true })}</em>` : null} · ${compact(m.then[11])} in all</span>` : null}</span>`;
+  };
   return html`<section class="by" aria-label=${`${s.year} against ${s.lastYear}, month by month`}>
     <p class="by-legend" aria-hidden="true"><span><i class="by-key by-key--now"></i>${s.year} so far</span>${s.revenue.then ? html`<span><i class="by-key by-key--then"></i>${s.lastYear}</span>` : null}<span class="by-legend__how">Added up month by month, from QuickBooks</span></p>
     <div class="by-charts">
       <figure class="by-fig">
-        <figcaption class="by-cap">Revenue</figcaption>
-        <${YearLines} id=${`${idp}-rev`} title="Revenue" now=${s.revenue.now} then=${s.revenue.then} year=${s.year} lastYear=${s.lastYear} upTo=${s.upTo} sameDays=${sameRev} through=${through} tall=${tall} />
+        <figcaption class="by-cap"><span class="by-cap__t">Revenue</span>${figs(s.revenue, sameRev)}</figcaption>
+        <${YearLines} id=${`${idp}-rev`} title="Revenue" now=${s.revenue.now} then=${s.revenue.then} year=${s.year} lastYear=${s.lastYear} upTo=${s.upTo} ax=${ax} sameDays=${sameRev} through=${through} tall=${tall} as=${as} />
       </figure>
       <figure class="by-fig">
-        <figcaption class="by-cap">Expenses<small>${s.cash ? 'in kind and depreciation left out' : 'in kind included, as the books have them'}</small></figcaption>
-        <${YearLines} id=${`${idp}-exp`} title="Expenses" now=${s.spent.now} then=${s.spent.then} year=${s.year} lastYear=${s.lastYear} upTo=${s.upTo} sameDays=${sameExp} through=${through} tall=${tall} />
+        <figcaption class="by-cap"><span class="by-cap__t">Expenses<small>${s.cash ? 'in kind and depreciation left out' : 'in kind included, as the books have them'}</small></span>${figs(s.spent, sameExp)}</figcaption>
+        <${YearLines} id=${`${idp}-exp`} title="Expenses" now=${s.spent.now} then=${s.spent.then} year=${s.year} lastYear=${s.lastYear} upTo=${s.upTo} ax=${ax} sameDays=${sameExp} through=${through} tall=${tall} as=${as} />
       </figure>
     </div>
     <details class="by-table">
@@ -203,7 +222,7 @@ export function YearCompare({ books, idp = 'by', tall = false }) {
 }
 
 /** A statement's main lines (each heading, its total, the sums) or every line, beside the same day a year before */
-export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', heads = null, which = '', notes = null }) {
+export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', heads = null, which = '', notes = null, as = 'pct' }) {
   if (!rows?.length) return null;
   const prior = rows.some((r) => r.p != null);
   // The presenter's notes (./review.js, which: 'act' | 'pos'), each under its line; a line with one is a main line too
@@ -216,17 +235,55 @@ export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', h
   return html`<table class=${`by-stmt ${cls}`}>
     <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${heads ? heads[0] : shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${heads ? heads[1] : shortDate(priorAsOf)}</th><th scope="col" class="num">${heads ? heads[2] : 'Change'}</th>` : null}</tr></thead>
     <tbody>${shown.map((r, i) => (r.k === 'head'
-      ? html`<tr class="by-stmt__h" key=${i}><th scope="colgroup" colspan=${cols}>${r.label}</th></tr>`
-      : [html`<tr class=${`by-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`}><th scope="row">${r.label}</th><td class="num">${signed(r.a)}</td>${prior ? html`<td class="num by-stmt__prior">${signed(r.p)}</td><td class="num by-stmt__chg">${heads ? overWords(r.a, r.p) : changeWords(r.a, r.p) || (typeof r.a === 'number' && typeof r.p === 'number' ? (r.a >= r.p ? '+' : '−') + compact(Math.abs(r.a - r.p)) : '–')}</td>` : null}</tr>`,
-        noteOf(r) ? html`<tr class="by-stmt__note" key=${`${i}-n`} style=${`--d:${r.d}`}><td colspan=${cols}><${NoteLine} note=${noteOf(r)} /></td></tr>` : null]))}</tbody>
+      ? html`<tr class="by-stmt__h" key=${i} data-d=${r.d}><th scope="colgroup" colspan=${cols}>${r.label}</th></tr>`
+      : [html`<tr class=${`by-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`} data-d=${r.k === 'sum' ? -1 : r.d} data-a=${Math.abs(Number(r.a) || 0)}><th scope="row">${r.label}</th><td class="num">${signed(r.a)}</td>${prior ? html`<td class="num by-stmt__prior">${signed(r.p)}</td><td class="num by-stmt__chg">${heads ? overIn(r.a, r.p, as) : changeIn(r.a, r.p, as) || '–'}</td>` : null}</tr>`,
+        noteOf(r) ? html`<tr class="by-stmt__note" key=${`${i}-n`} style=${`--d:${r.d}`} data-d=${r.k === 'sum' ? -1 : r.d}><td colspan=${cols}><${NoteLine} note=${noteOf(r)} /></td></tr>` : null]))}</tbody>
   </table>`;
+}
+
+/**
+ * A statement on the screen at a size a room reads, fitted to it: smaller (to 80%) while it runs past the bottom, then
+ * as few lines off as it takes (the deepest first, the smallest of those first; never a heading of the statement or
+ * its bottom lines), then as big again as it can be; it says how many are off and where every line is
+ */
+function FitLines(props) {
+  const ref = useRef(null);
+  const [off, setOff] = useState(0);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return undefined;
+    const over = () => el.scrollHeight > el.clientHeight + 1;
+    // A line and the presenter's note under it go together
+    const show = (r, on) => { r.hidden = !on; const n = r.nextElementSibling; if (n?.classList.contains('by-stmt__note')) n.hidden = !on; };
+    const size = (k) => el.style.setProperty('--fit', String(k));
+    const fit = () => {
+      const rows = [...el.querySelectorAll('tr[data-d]:not(.by-stmt__note)')];
+      rows.forEach((r) => show(r, true));
+      let k = 1;
+      size(k);
+      while (k > 0.8 && over()) { k = Math.round((k - 0.05) * 100) / 100; size(k); }
+      let hid = 0;
+      const deep = rows.filter((r) => Number(r.dataset.d) >= 1).sort((x, y) => Number(y.dataset.d) - Number(x.dataset.d) || Number(x.dataset.a || 0) - Number(y.dataset.a || 0));
+      for (const r of deep) { if (!over()) break; show(r, false); hid++; }
+      // With lines off, back up toward the room's size while it still fits
+      while (hid && k < 1) { size(Math.round((k + 0.05) * 100) / 100); if (over()) { size(k); break; } k = Math.round((k + 0.05) * 100) / 100; }
+      setOff(hid || (over() ? -1 : 0));
+    };
+    fit();
+    // Again when its box changes (the window) and once the fonts are in; never on its own size (no loop)
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fit()) : null;
+    ro?.observe(el.parentElement);
+    document.fonts?.ready.then(fit);
+    return () => ro?.disconnect();
+  }, [props.rows, props.as]);
+  return html`<div class="by-fit" ref=${ref}><${StatementLines} ...${props} cls="is-big" /></div>${off ? html`<p class="by-fit__more">${off > 0 ? `${off} smaller ${off === 1 ? 'line' : 'lines'} left off here. ` : ''}Every line is on the board page</p>` : null}`;
 }
 
 /** What a 'books' stop is called (the chair's run of show, the screen's foot) */
 export const BOOKS_TITLES = { year: 'The year against last year', store: 'The store', act: 'Statement of activities', budget: 'Budget against actual', pos: 'Statement of financial position' };
 
 /** One of QuickBooks' slides after the money, at the size of a room (the screen is dark: its colors are its own) */
-export function BooksSlide({ books, kind, notes = null }) {
+export function BooksSlide({ books, kind, notes = null, as = 'pct' }) {
   const s = books?.statements;
   if (kind === 'store') {
     // Its sales on yellow, its cost of goods, the profit before the staff and rent the books keep with SOARD's
@@ -235,7 +292,7 @@ export function BooksSlide({ books, kind, notes = null }) {
       <p class="bs-eyebrow">From QuickBooks${books.through ? `, January 1 to ${dayMonth(books.through)}` : ''}</p>
       <h1 class="bs-display by-slide__title">The store, ${st?.lastYear ? `${books.year} against ${st.lastYear}` : `${books.year} so far`}</h1>
       ${st ? html`<ul class="bs-figs" style="--n:3">${st.lines.map((x) => html`<li key=${x.k}>
-        <span class="bs-figs__label">${x.name}</span><span class="bs-figs__value">${compact(x.amount)}</span><span class="bs-figs__sub">${x.last != null ? `${st.lastYear} by now: ${compact(x.last)} · ${storeChange(x)}` : `${books.year} so far`}</span>${x.k === 'profit' && st.margin != null ? html`<span class="bs-figs__sub">${marginText(st)}</span>` : null}
+        <span class="bs-figs__label">${x.name}</span><span class="bs-figs__value">${compact(x.amount)}</span><span class="bs-figs__sub">${x.last != null ? `${st.lastYear} by now: ${compact(x.last)} · ${storeChange(x, as)}` : `${books.year} so far`}</span>${x.k === 'profit' && st.margin != null ? html`<span class="bs-figs__sub">${marginText(st)}</span>` : null}
       </li>`)}</ul>` : null}
     </div>`;
   }
@@ -246,7 +303,7 @@ export function BooksSlide({ books, kind, notes = null }) {
     return html`<div class="by-slide">
       <p class="bs-eyebrow">From QuickBooks${books.through ? `, January 1 to ${dayMonth(books.through)}` : ''}</p>
       <h1 class="bs-display by-slide__title">${books.year} against ${books.lastYear?.year || 'last year'}</h1>
-      ${ser ? html`<${YearCompare} books=${books} idp="bys" tall />` : html`<${StatementLines} all rows=${[
+      ${ser ? html`<${YearCompare} books=${books} idp="bys" tall as=${as} />` : html`<${StatementLines} all as=${as} rows=${[
         { k: 'line', d: 0, label: 'Revenue', a: books.revenue, p: books.lastYear?.revenue },
         { k: 'line', d: 0, label: 'Expenses', a: spentOf(books), p: books.lastYear ? spentOf(books.lastYear) : null },
       ]} asOf=${books.through} priorAsOf=${books.lastYear?.through} cls="is-big" />`}
@@ -258,7 +315,7 @@ export function BooksSlide({ books, kind, notes = null }) {
     return html`<div class="by-slide">
       <p class="bs-eyebrow">QuickBooks’ budget, ${b?.name}, through ${dayMonth(b?.asOf)}${b ? `: ${budgetMonthsText(b.months)} of ${b.of} months` : ''}</p>
       <h1 class="bs-display by-slide__title">Budget against actual, January 1 to ${dayMonth(b?.asOf)}</h1>
-      <${StatementLines} rows=${(b?.rows || []).map((r) => ({ ...r, p: r.b }))} heads=${['Actual', 'Budget', 'Over (under)']} cls="is-big" which="bud" notes=${notes} />
+      <${FitLines} rows=${(b?.rows || []).map((r) => ({ ...r, p: r.b }))} heads=${['Actual', 'Budget', 'Over (under)']} which="bud" notes=${notes} as=${as} />
     </div>`;
   }
   const act = kind === 'act';
@@ -266,6 +323,6 @@ export function BooksSlide({ books, kind, notes = null }) {
   return html`<div class="by-slide">
     <p class="bs-eyebrow">From QuickBooks, as of ${dayMonth(s?.asOf)}, beside the same day a year before</p>
     <h1 class="bs-display by-slide__title">${act ? `Statement of activities, January 1 to ${dayMonth(s?.asOf)}` : 'Statement of financial position'}</h1>
-    <${StatementLines} rows=${rows} asOf=${s?.asOf} priorAsOf=${s?.priorAsOf} cls="is-big" which=${act ? 'act' : 'pos'} notes=${notes} />
+    <${FitLines} rows=${rows} asOf=${s?.asOf} priorAsOf=${s?.priorAsOf} which=${act ? 'act' : 'pos'} notes=${notes} as=${as} />
   </div>`;
 }

@@ -18,10 +18,10 @@ import {
   meetingName, longDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, itemFiles, looseFiles, fileTitle, isDate, clock, sectionPlan, MORE,
   showsOf, booksDraw, isStatement,
 } from '../board-shared.js';
-import { moneyFor, moneyTiles, mixOf, shareOf, changeOf, storeOf, storeChange, budgetMonthsText, stepText } from './money.js';
+import { moneyFor, moneyTiles, mixOf, shareOf, changeOf, storeOf, storeChange, budgetMonthsText, stepText, readChangeAs, changeIn, overIn } from './money.js';
 import { reportDom } from '../board-report.js';
 import { h, render } from '../vendor.js';
-import { YearCompare, changeWords } from './books.js';
+import { YearCompare } from './books.js';
 import { lineKeysOf, notesByKey, noteText } from './review.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
@@ -127,7 +127,8 @@ function statementsBox(s, budget = null, notes = null) {
   const short = shortDay(s.asOf).replace(/, \d{4}$/, '');
   // QuickBooks' budget (the board's) against the activities, to the same day: the actual, the budget, over (under)
   const bud = budget?.rows?.length && budget.asOf === s.asOf ? budget : null;
-  const over = (a, b) => (typeof a === 'number' && typeof b === 'number' ? (a === b ? '–' : `${a > b ? '+' : '−'}${signed(Math.abs(a - b))}`) : '–');
+  // Changes as this device last picked them (% or $: the board page's statements, the meeting's screen)
+  const as = readChangeAs();
   for (const [title, rows, heads, which] of [
     ['Statement of financial position', s.position, null, 'pos'],
     [`Statement of activities, January 1 to ${short}`, s.activity, null, 'act'],
@@ -149,7 +150,7 @@ function statementsBox(s, budget = null, notes = null) {
       th.style.paddingLeft = `${r.d * 0.8}em`;
       tr.append(th);
       if (r.k === 'head') th.colSpan = prior ? 4 : 2;
-      else { tr.append(el('td', 'num', signed(r.a))); if (prior) tr.append(el('td', 'num', signed(r.p)), el('td', 'num', heads ? over(r.a, r.p) : changeWords(r.a, r.p) || '–')); }
+      else { tr.append(el('td', 'num', signed(r.a))); if (prior) tr.append(el('td', 'num', signed(r.p)), el('td', 'num', heads ? overIn(r.a, r.p, as) : changeIn(r.a, r.p, as) || '–')); }
       tbody.append(tr);
       const note = keys.length && r.k !== 'head' ? said.get(keys[i]) : null;
       if (note) {
@@ -197,7 +198,7 @@ function storeBox(books) {
   for (const x of st.lines) {
     const tr = el('tr', x.k === 'profit' ? 'bpp-stmt__sum' : '');
     tr.append(el('th', '', x.name), el('td', 'num', signed(x.amount)));
-    if (st.lastYear) tr.append(el('td', 'num', x.last == null ? '–' : signed(x.last)), el('td', 'num', storeChange(x) || '–'));
+    if (st.lastYear) tr.append(el('td', 'num', x.last == null ? '–' : signed(x.last)), el('td', 'num', storeChange(x, readChangeAs()) || '–'));
     tbody.append(tr);
   }
   // Its profit as a share of its sales, beside last year's
@@ -238,6 +239,7 @@ function liveBox(kind, n, m, money, notes = null, books = n?.books) {
 
 /** The agenda as the first pages: the meeting, then each part with its time, and each item */
 function agendaPages(m, { people, numbers, meetings, money, lineNotes = {}, books = numbers?.books }) {
+  let booked = false;
   // The statements QuickBooks draws on the money item aren't printed again as files
   const drawsSt = booksDraw(books).some((b) => b === 'act' || b === 'pos');
   const docFiles = (it) => itemFiles(m, it, meetings).filter((f) => !(drawsSt && showsOf(it).includes('cash') && isStatement(f)));
@@ -279,7 +281,10 @@ function agendaPages(m, { people, numbers, meetings, money, lineNotes = {}, book
         box.append(el('p', 'bpp-report__by', ['Report', it.reportBy ? `by ${it.reportBy}` : ''].filter(Boolean).join(' ')), report);
         row.append(box);
       }
-      for (const k of showsOf(it)) { const facts = liveBox(k, numbers, m, money, k === 'cash' ? lineNotes[it.id] : null, books); if (facts) row.append(facts); }
+      // QuickBooks' year and statements under the first item showing the money; another shows its figures (as the screen)
+      const bk = booked ? null : books;
+      if (showsOf(it).includes('cash')) booked = true;
+      for (const k of showsOf(it)) { const facts = liveBox(k, numbers, m, money, k === 'cash' ? lineNotes[it.id] : null, bk); if (facts) row.append(facts); }
       const files = docFiles(it);
       if (files.length) row.append(el('p', 'bpp-docs', `With it: ${files.map((f) => fileTitle(f.name)).join(', ')}`));
       li.append(row);

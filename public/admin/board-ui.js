@@ -468,21 +468,51 @@ export function ShowsPicker({ value, onChange, label, startOpen = false, onClose
     ? html`<span class="bd-shows">${value.map((k) => html`<span class=${`agx-live is-${k}`} key=${k}><span class="agx-live__dot" aria-hidden="true"></span>${LIVE_TITLES[k]}</span>`)}</span>`
     : html`<span class="bd-who__empty">+ Show live numbers</span>`;
   const named = value.length ? `Shows ${value.map((k) => LIVE_TITLES[k]).join(', ')}: ${label}` : label;
+  const toggle = (k) => onChange(value.includes(k) ? value.filter((x) => x !== k) : [...value, k]);
+  // One earlier (−1) or later (+1) in the order the screen shows them
+  const move = (k, d) => {
+    const i = value.indexOf(k);
+    if (i < 0 || i + d < 0 || i + d >= value.length) return;
+    const next = [...value];
+    [next[i], next[i + d]] = [next[i + d], next[i]];
+    onChange(next);
+  };
+  // The list has the focus as it opens (from its button or the ⋯ menu): on the first one shown, else the first
+  const focusList = (el) => {
+    if (!el || el.dataset.focused) return;
+    el.dataset.focused = '1';
+    (el.querySelector('[aria-selected="true"]') || el.querySelector('[role="option"]'))?.focus({ preventScroll: true });
+  };
+  // ↑ ↓ (Home, End) along the list, Enter or the space bar picks, Alt with ↑ ↓ moves a picked one in the order
+  const keys = (e, k) => {
+    const opts = [...e.currentTarget.parentElement.querySelectorAll('[role="option"]')];
+    const i = opts.indexOf(e.currentTarget);
+    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(k); }
+    else if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); move(k, e.key === 'ArrowUp' ? -1 : 1); }
+    else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); opts[(i + (e.key === 'ArrowDown' ? 1 : -1) + opts.length) % opts.length]?.focus(); }
+    else if (e.key === 'Home' || e.key === 'End') { e.preventDefault(); opts[e.key === 'Home' ? 0 : opts.length - 1]?.focus(); }
+  };
   return html`<${Pop} cls=${`bd-showpick ${value.length ? 'has-who' : ''}`} label=${named} button=${button} startOpen=${startOpen} onClosed=${onClosed}>
     ${(close) => html`<div class="bd-picker">
       <p class="bd-picker__lead">Live from JobTread, QuickBooks and the website, under the item on the board page, and on the screen in this order</p>
-      <ul class="bd-picker__list" role="listbox" aria-multiselectable="true" aria-label="Live lists">
+      <ul class="bd-picker__list" role="listbox" aria-multiselectable="true" aria-label="Live lists" ref=${focusList}>
         ${SHOW_KINDS.map((k) => {
           const at = value.indexOf(k);
-          return html`<li role="option" aria-selected=${at >= 0} class="bd-picker__opt" key=${k} tabindex="0"
-            onClick=${() => onChange(at >= 0 ? value.filter((x) => x !== k) : [...value, k])}
-            onKeyDown=${(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.currentTarget.click(); } }}>
+          return html`<li role="option" aria-selected=${at >= 0} class="bd-picker__opt" key=${k} tabindex="0" onClick=${() => toggle(k)} onKeyDown=${(e) => keys(e, k)}>
             <span class=${`bd-showpick__n ${at >= 0 ? 'is-on' : ''}`} aria-hidden="true">${at >= 0 ? at + 1 : ''}</span>
             <span class="bd-picker__text"><span class="bd-picker__name">${LIVE_TITLES[k]}</span><span class="bd-picker__meta">${SHOW_FROM[k]}</span></span>
             <span class="bd-picker__check" aria-hidden="true">${at >= 0 ? CHECK : null}</span>
           </li>`;
         })}
       </ul>
+      ${value.length > 1 ? html`<div class="bd-showorder">
+        <p class="bd-showorder__h">The order on the screen</p>
+        <ol>${value.map((k, i) => html`<li key=${k}>
+          <span class="bd-showpick__n is-on" aria-hidden="true">${i + 1}</span>
+          <span class="bd-showorder__t">${LIVE_TITLES[k]}<small>${i ? 'a slide of its own' : 'on the item’s slide'}</small></span>
+          ${i ? html`<button type="button" class="bd-icon-btn bd-showorder__up" aria-label=${`Show ${LIVE_TITLES[k]} before ${LIVE_TITLES[value[i - 1]]}`} title="Earlier" onClick=${() => move(k, -1)}>${menuIcon('up')}</button>` : null}
+        </li>`)}</ol>
+      </div>` : null}
       <div class="bd-picker__foot"><span class="bd-muted">${value.length ? `${value.length} shown` : 'None shown'}</span>
         <span class="bd-actions">${value.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onChange([])}>Clear</button>` : null}<button type="button" class="btn btn-primary btn-sm" onClick=${() => close()}>Done</button></span></div>
     </div>`}
@@ -785,7 +815,8 @@ export const STYLES = `
   .agx-sec { position: relative; padding: 0.85rem 0.85rem 0.6rem; border-radius: 16px; background: #FAF9F6; border: 1px solid var(--color-border); scroll-margin: calc(var(--top-h, 0px) + 6rem); transition: box-shadow 0.25s, opacity 0.25s; }
   .agx-sec__head { gap: 0.45rem; }
   .agx-sec__n { flex: none; min-width: 2.2rem; font-size: 1.55rem; font-weight: 800; letter-spacing: -0.04em; line-height: 1; font-variant-numeric: tabular-nums; color: var(--color-text); }
-  .agx-sec__title.ag-input { height: 40px; font-size: var(--fs-lg, 1.15rem); font-weight: 750; letter-spacing: -0.01em; }
+  /* A part's name wraps, as an item's does, never cut off beside the presentation or on a phone */
+  .agx-sec__title.ag-input { display: block; height: auto; min-height: 40px; padding-block: 0.4rem; line-height: 1.25; font-size: var(--fs-lg, 1.15rem); font-weight: 750; letter-spacing: -0.01em; resize: none; overflow: hidden; field-sizing: content; }
   .agx-items.ag-items { padding: 0; margin: 0.65rem 0 0; display: grid; gap: 0.45rem; }
   .agx-item { position: relative; padding: 0.45rem 0.55rem 0.5rem 0.35rem; border-radius: 12px; background: var(--color-bg-card); border: 1px solid var(--color-border); box-shadow: 0 1px 2px rgba(26,27,31,0.04); transition: box-shadow 0.25s, border-color 0.2s, opacity 0.25s, translate 0.35s cubic-bezier(0.22,1,0.36,1); }
   @starting-style { .agx-item { opacity: 0; translate: 0 6px; } }
@@ -1144,6 +1175,15 @@ export const STYLES = `
   .bd-picker__group { padding: 0.55rem 0.5rem 0.25rem; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); }
   .bd-picker__opt { display: flex; align-items: center; gap: 0.6rem; padding: 0.4rem 0.5rem; border-radius: 8px; cursor: pointer; }
   .bd-picker__opt.is-active { background: var(--seg-bg); }
+  .bd-picker__opt:hover { background: var(--seg-bg); }
+  .bd-picker__opt:focus-visible { outline: 2px solid var(--color-text); outline-offset: -2px; }
+  /* The order the screen shows them, each after the first a step earlier */
+  .bd-showorder { margin: 0 0.35rem; padding: 0.5rem 0.5rem 0.35rem; border-top: 1px solid var(--color-border); }
+  .bd-showorder__h { margin: 0 0 0.35rem; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-muted); }
+  .bd-showorder ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.25rem; }
+  .bd-showorder li { display: flex; align-items: center; gap: 0.6rem; min-height: 34px; }
+  .bd-showorder__t { flex: 1; min-width: 0; display: grid; font-size: var(--fs-sm); font-weight: 600; }
+  .bd-showorder__t small { font-size: var(--fs-xs); font-weight: 400; color: var(--color-text-secondary); }
   .bd-picker__opt[aria-selected="true"] .bd-picker__name { font-weight: 700; }
   .bd-picker__text { display: grid; min-width: 0; flex: 1; }
   .bd-picker__name { font-size: var(--fs-sm); font-weight: 600; color: var(--color-text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1201,7 +1241,7 @@ export const STYLES = `
   .bm-run.is-rehearsing { border-color: var(--tone-info-line-strong); }
   /* A part's time, beside its name in the agenda editor */
   .ag-mins { display: inline-flex; align-items: center; gap: 0.35rem; flex: none; height: 32px; padding: 0 0.5rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); color: var(--color-text-secondary); font-size: var(--fs-xs); cursor: text; }
-  .ag-mins:focus-within { border-color: var(--color-text); }
+  .ag-mins:focus-within { border-color: var(--color-text); background: var(--color-bg-card); box-shadow: 0 0 0 3px rgba(26,27,31,0.1); }
   .ag-mins input { width: 2.6rem; border: none; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--color-text); text-align: right; -moz-appearance: textfield; }
   .ag-mins input::-webkit-outer-spin-button, .ag-mins input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   .ag-mins input:focus { outline: none; }
