@@ -170,9 +170,9 @@ PUBLIC_ROUTES.push('/api/spend-rules', '/api/spend-hint', '/api/spend-recode', '
 // (honeypot, too-fast, Turnstile, a per-day limit in D1) and rate limited below
 PUBLIC_ROUTES.push('/api/advisory-apply');
 
-// A board member's "Will you be there?" answer from a board email: each link
+// An old "Will you be there?" link from a board email (before Nov 2 2026): each
 // carries that member's own 128-bit token for one meeting, checked inside
-// (_board-rsvp.js); GET only shows the answer to confirm, rate limited below
+// (_board-rsvp.js); it only sends them to the calendar invite, rate limited below
 PUBLIC_ROUTES.push('/api/board-rsvp');
 
 // The anniversary book's reading counts (/<book>/): anonymous daily counters,

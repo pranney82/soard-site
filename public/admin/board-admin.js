@@ -232,10 +232,15 @@ function NextCard({ m, ctx }) {
   const prep = prepOf(m);
   const up = prep.find((x) => !x.done);
   const board = m.attendance.filter((x) => x.kind === 'board');
-  const answers = board.map((x) => answerOf(x.rsvp, repliesOf(m)[x.slug]));
-  const yes = answers.filter((a) => a === 'Coming' || a === 'By video').length;
+  // Who's coming, as the calendar invite says (the only answer): each board member counted once
+  const replies = repliesOf(m);
+  const answers = board.map((x) => answerOf('', replies[x.slug]));
+  const yes = answers.filter((a) => a === 'Coming').length;
+  const maybe = answers.filter((a) => a === 'Maybe').length;
   const no = answers.filter((a) => a === 'Can’t come').length;
-  const quiet = answers.filter((a) => !a).length;
+  const quiet = board.filter((x) => replies[x.slug] === 'invited').length;
+  const off = board.filter((x) => !replies[x.slug]).length;
+  const invited = !!(m.invite?.eventId || (m.calendar && !m.calendar.gone));
   const here = attendanceCounts(m);
   return html`<div class="card bh-next">
     <div class="bh-next__top">
@@ -255,7 +260,7 @@ function NextCard({ m, ctx }) {
       <ol class="bh-prep" aria-label="Getting ready">${prep.map((x) => html`<li class=${x.done ? 'is-done' : x === up ? 'is-next' : ''}><span class="bh-prep__mark" aria-hidden="true">${x.done ? CHECK : null}</span>${x.label}</li>`)}</ol>
       <p class="bh-nextline">${up ? html`<strong>Next:</strong> ${up.next}.` : html`<strong>Ready.</strong> The board was emailed the link ${ago(m.packetSentAt)}.`}</p>`}
     ${ended ? html`<p class="bh-rsvp"><strong>Who was there:</strong> ${here.boardHere} of ${plural(here.board, 'board member')}</p>`
-      : html`<p class="bh-rsvp"><strong>Who’s coming:</strong> ${[yes && `${yes} coming`, no && `${no} can’t`, quiet && `${quiet} haven’t answered`].filter(Boolean).join(' · ') || 'nobody has answered yet'}</p>`}
+      : html`<p class="bh-rsvp"><strong>Who’s coming:</strong> ${!invited ? 'the invite hasn’t gone out yet' : [yes && `${yes} coming`, maybe && `${maybe} maybe`, no && `${no} can’t`, quiet && `${quiet} haven’t answered`, off && `${off} not on the invite`].filter(Boolean).join(' · ') || 'nobody has answered yet'}</p>`}
   </div>`;
 }
 

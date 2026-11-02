@@ -1,18 +1,19 @@
 /**
- * /api/board-rsvp — the "Will you be there?" buttons in a board email
- * =====================================================================
- * Public (no sign-in, so it works from a phone): each link carries a board
- * member's own token for one meeting (./_board-rsvp.js). GET only shows the
- * answer to confirm, because mail scanners open links on their own; the
- * answer is recorded when the person presses the button (POST).
+ * /api/board-rsvp — where the old "Will you be there?" buttons in a board email go
+ * ==================================================================================
+ * Public (no sign-in, so it works from a phone). Until Nov 2 2026 these links
+ * recorded an answer; since then the calendar invite is the only answer
+ * (Peter), so a link (GET, or a page's old button, POST) only sends them to
+ * the invite, by name and meeting when its token is still good
+ * (./_board-rsvp.js). Nothing is recorded.
  *   ?t=<token>&a=yes|remote|no
  */
 
-import { answerLink, answerByLink } from './_board-rsvp.js';
+import { answerLink } from './_board-rsvp.js';
 import { BOARD_PAGE } from './_board-roles.js';
 import { SITE } from './_board.js';
 import { escapeHtml as esc } from './_broadcast-notify.js';
-import { RSVP, meetingName, longDate, timeRange, callName } from '../../public/admin/board-shared.js';
+import { meetingName, longDate, timeRange, callName, repliesOf } from '../../public/admin/board-shared.js';
 
 /** The same look as the board emails (./_email-shell.js), with the site's own fonts */
 function page(title, body, { status = 200 } = {}) {
@@ -54,9 +55,10 @@ a{color:var(--link)}
   });
 }
 
-const boardPage = (label = 'Open the board page') => `<a class="btn" href="${SITE}${BOARD_PAGE}">${esc(label)}</a>`;
-const broken = () => page('Link not working', `<h1>This link isn’t working</h1><p>It may be from an older email, or the meeting has moved. You can answer on the board page; sign in with your email address.</p><div class="actions">${boardPage()}</div>`, { status: 404 });
-const expired = () => page('Meeting passed', `<h1>This meeting has passed</h1><p>The links in a board email work until the day after the meeting. The board page has its minutes once they’re up.</p><div class="actions">${boardPage()}</div>`, { status: 410 });
+const boardPage = (label = 'Open the board page', hash = '') => `<a class="btn" href="${SITE}${BOARD_PAGE}${esc(hash)}">${esc(label)}</a>`;
+const INVITE = 'Answer the calendar invite for it in your email or calendar: yes, no or maybe. That’s where SOARD sees who’s coming.';
+const broken = () => page('Answer the calendar invite', `<h1>Answer the calendar invite</h1><p>This link is from an older email. ${INVITE}</p><div class="actions">${boardPage()}</div>`, { status: 404 });
+const expired = () => page('Meeting passed', `<h1>This meeting has passed</h1><p>Its minutes go on the board page once they’re up.</p><div class="actions">${boardPage()}</div>`, { status: 410 });
 
 const first = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 /** When and where, under the question */
@@ -65,48 +67,28 @@ function whenBlock(m) {
   const where = m.location && call ? `${m.location}, or ${call}` : m.location || (call && call[0].toUpperCase() + call.slice(1));
   return `<p class="when">${esc(longDate(m.date))}${m.start ? `, <b>${esc(timeRange(m.start, m.end))}</b>` : ''}${where ? `<span>${esc(where)}</span>` : ''}</p>`;
 }
-/** The answer buttons (`pick` the one tapped in the email, in yellow), as one form */
-const answers = (tok, pick, list = RSVP) => `<form method="post" class="actions"><input type="hidden" name="t" value="${esc(tok)}">${list.map((r) => `<button type="submit" name="a" value="${r.id}"${r.id === pick ? ' class="primary"' : ''}>${esc(r.ask)}</button>`).join('')}</form>`;
-
-export async function onRequestGet({ request, env }) {
-  const url = new URL(request.url);
-  const tok = url.searchParams.get('t') || '';
-  const pick = RSVP.some((r) => r.id === url.searchParams.get('a')) ? url.searchParams.get('a') : '';
+/** A link's meeting, by name, and where its answer goes now */
+async function toInvite(env, tok) {
   const link = await answerLink(env, tok).catch(() => null);
-  if (!link) return broken();
-  if (link.expired) return expired();
-  const { meeting: m, member, answer } = link;
-  const said = RSVP.find((r) => r.id === answer);
-  const name = first(member.name);
-  return page('Will you be there?', `<h1>${name ? `${esc(name)}, will` : 'Will'} you be at the ${esc(meetingName(m))}?</h1>${whenBlock(m)}`
-    + (said ? `<p class="said">You said: ${esc(said.label)}. Pick again to change it.</p>` : '')
-    + answers(tok, pick || answer)
-    + `<p class="foot" style="text-align:left;margin:14px 0 0;">The same as answering on the board page.</p>`);
-}
-
-const DONE = {
-  yes: (n, d) => `See you there. You’re down as coming to the ${n} on ${d}.`,
-  remote: (n, d) => `You’re down as joining the ${n} by video on ${d}.`,
-  no: (n, d) => `Thanks for letting us know. You’re down as not able to make the ${n} on ${d}.`,
-};
-
-export async function onRequestPost({ request, env }) {
-  let tok = '';
-  let a = '';
-  try {
-    const form = await request.formData();
-    tok = String(form.get('t') || '');
-    a = String(form.get('a') || '');
-  } catch { /* the error page below */ }
-  if (!RSVP.some((r) => r.id === a)) return broken();
-  let link;
-  try { link = await answerByLink(env, tok, a); } catch { link = null; }
   if (!link) return broken();
   if (link.expired) return expired();
   const { meeting: m, member } = link;
   const name = first(member.name);
-  const call = a === 'remote' && m.video ? `<p>The video link: <a href="${esc(m.video)}" target="_blank" rel="noopener">${esc(callName(m.video))}</a>. It’s on your calendar invite too.</p>` : '';
-  return page('Thanks', `<h1>Thanks${name ? `, ${esc(name)}` : ''}</h1><p>${esc(DONE[a](meetingName(m), longDate(m.date)))}</p>${call}`
-    + `<div class="then"><p>Changed your mind?</p>${answers(tok, '', RSVP.filter((r) => r.id !== a))}</div>`
-    + `<div class="then"><p>The agenda and documents are on the board page.</p><div class="actions">${boardPage()}</div></div>`);
+  // Not on its invite: there's nothing to answer until they are
+  const on = !!repliesOf(m)[member.slug];
+  return page('Answer the calendar invite', `<h1>${name ? `${esc(name)}, will` : 'Will'} you be at the ${esc(meetingName(m))}?</h1>${whenBlock(m)}`
+    + `<p class="said">This link doesn’t save an answer any more: SOARD goes by the calendar invite now.</p>`
+    + `<p>${on ? esc(INVITE) : 'You’re not on its calendar invite yet. Reply to the email this link came in, and SOARD will send it to you.'}</p>`
+    + `<div class="actions">${boardPage('See the meeting', `#/meetings/${m.id}`)}</div>`);
+}
+
+export async function onRequestGet({ request, env }) {
+  return toInvite(env, new URL(request.url).searchParams.get('t') || '');
+}
+
+// A page opened before Nov 2 2026 still has the buttons: pressing one records nothing, the same page says where to answer
+export async function onRequestPost({ request, env }) {
+  let tok = '';
+  try { tok = String((await request.formData()).get('t') || ''); } catch { /* the page for a broken link */ }
+  return toInvite(env, tok);
 }

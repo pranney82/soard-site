@@ -1019,7 +1019,7 @@ function GettingReady({ m, set, ctx, act, save }) {
   const email = async () => {
     const to = data.members.filter((x) => x.email).map((x) => x.name);
     const none = data.members.filter((x) => !x.email).map((x) => x.name);
-    if (!(await ask({ title: `Email ${andList(to)} the link?`, text: `${m.shared ? 'They get' : 'The meeting goes on the board page, and they get'} the link to the agenda${docs.length ? ` and ${plural(docs.length, 'document')}` : ' (no documents yet)'}, with one-tap answers for anyone who hasn’t said whether they’re coming. Nothing is attached.${none.length ? ` ${andList(none)} ${none.length === 1 ? 'has' : 'have'} no email, so ${none.length === 1 ? 'gets' : 'get'} nothing.` : ''}`, yes: m.packetSentAt ? 'Email them again' : 'Email the board' }))) return;
+    if (!(await ask({ title: `Email ${andList(to)} the link?`, text: `${m.shared ? 'They get' : 'The meeting goes on the board page, and they get'} the link to the agenda${docs.length ? ` and ${plural(docs.length, 'document')}` : ' (no documents yet)'}, and anyone on the calendar invite who hasn’t answered it is asked to. Nothing is attached.${none.length ? ` ${andList(none)} ${none.length === 1 ? 'has' : 'have'} no email, so ${none.length === 1 ? 'gets' : 'get'} nothing.` : ''}`, yes: m.packetSentAt ? 'Email them again' : 'Email the board' }))) return;
     if (!m.shared) { set({ shared: true }); await new Promise((r) => setTimeout(r, 0)); await save(); }
     run('send', { action: 'send-packet', id: m.id }, (j) => `Emailed ${plural(j.sent, 'board member')}`);
   };
@@ -1066,7 +1066,7 @@ function GettingReady({ m, set, ctx, act, save }) {
         ${m.shared ? html`<button class="btn btn-ghost btn-sm" onClick=${() => share(false)}>Take it off</button>` : html`<button class=${btn(sShared)} onClick=${() => share(true)}>Share with the board</button>`}
       </${Task}>
       <${Task} state=${sSent} title=${m.packetSentAt ? `${plural(m.packetSentTo, 'board member')} emailed the link` : 'Email the board the link'}
-        sub=${m.packetSentAt ? ago(m.packetSentAt) : `The link to the agenda and ${docs.length ? `the ${plural(docs.length, 'document')} by name` : 'the documents by name'} (nothing attached), with one-tap “Will you be there?” buttons. It goes to ${plural(data.packetTo, 'board member')}.`}>
+        sub=${m.packetSentAt ? ago(m.packetSentAt) : `The link to the agenda and ${docs.length ? `the ${plural(docs.length, 'document')} by name` : 'the documents by name'} (nothing attached), and a nudge to answer the calendar invite for anyone who hasn’t. It goes to ${plural(data.packetTo, 'board member')}.`}>
         <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => run('preview', { action: 'send-packet', id: m.id, test: true }, (j) => `Sent to ${j.to?.[0] || 'you'}`)}>${working === 'preview' ? 'Sending…' : 'Send me the email'}</button>
         <button class=${btn(sSent)} disabled=${!!working || !data.packetTo || !data.setup.email} onClick=${email}>${working === 'send' ? 'Sending…' : m.packetSentAt ? 'Email again' : 'Email the board'}</button>
         ${!data.setup.email ? html`<span class="bd-muted">Email isn’t set up yet (Settings).</span>` : null}
@@ -1093,25 +1093,34 @@ function Coming({ m, ctx, act }) {
   const [asked, setAsked] = useState(null); // { names, at } once a reminder went (here, this visit)
   const askRef = useRef(null);
   const board = m.attendance.filter((x) => x.kind === 'board');
-  const answer = (x) => (x.status === 'present' ? 'Coming' : x.status === 'remote' ? 'By video' : answerOf(x.rsvp, repliesOf(m)[x.slug]));
+  // Their reply to the calendar invite, the only answer SOARD goes by (Peter, Nov 2 2026); checked in on the day, there
+  const replies = repliesOf(m);
+  const answer = (x) => (x.status === 'present' ? 'Coming' : x.status === 'remote' ? 'By video' : answerOf('', replies[x.slug]));
   const emailOf = (x) => data.members.find((y) => y.slug === x.slug)?.email || '';
-  const groups = [['Coming', board.filter((x) => answer(x) === 'Coming')], ['By video', board.filter((x) => answer(x) === 'By video')], ['Maybe', board.filter((x) => answer(x) === 'Maybe')], ['Can’t come', board.filter((x) => answer(x) === 'Can’t come')], ['No answer', board.filter((x) => !answer(x))]];
-  const quiet = groups.at(-1)[1].filter(emailOf);
+  // Before any invite went out nobody is "not on" it; and who adds someone is Send the invite, unless the event is
+  // someone's Board can't change
+  const invited = !!(m.invite?.eventId || (m.calendar && !m.calendar.gone));
+  const groups = [['Coming', board.filter((x) => answer(x) === 'Coming')], ['By video', board.filter((x) => answer(x) === 'By video')], ['Maybe', board.filter((x) => answer(x) === 'Maybe')], ['Can’t come', board.filter((x) => answer(x) === 'Can’t come')],
+    ['No answer', board.filter((x) => !answer(x) && replies[x.slug])], [invited ? 'Not on the invite' : 'No invite yet', board.filter((x) => !answer(x) && !replies[x.slug])]];
+  const quiet = groups.at(-2)[1].filter(emailOf);
+  const off = invited ? groups.at(-1)[1] : [];
+  const owner = m.calendar && !m.calendar.gone ? m.calendar.organizer || m.calendar.from : '';
+  const adds = owner && !(data.settings?.admins || []).includes(owner) ? `ask ${firstOf(owner)} to add ${off.length === 1 ? 'them' : 'them all'}` : `Send the invite adds ${off.length === 1 ? 'them' : 'them all'}`;
   // A reminder names who gets it before it goes
   const remind = async (test) => {
-    if (!test && !(await ask({ title: `Ask ${andList(quiet.map((x) => x.name))}?`, text: `${quiet.length === 1 ? 'They get' : 'Each gets'} an email with one-tap answers: coming, by video, or can’t come. The answer shows here.`, yes: quiet.length === 1 ? 'Ask them' : `Ask all ${quiet.length}` }))) return;
+    if (!test && !(await ask({ title: `Ask ${andList(quiet.map((x) => x.name))}?`, text: `${quiet.length === 1 ? 'They get' : 'Each gets'} an email asking them to answer the calendar invite. Their answer shows here.`, yes: quiet.length === 1 ? 'Ask them' : `Ask all ${quiet.length}` }))) return;
     setWorking(test ? 'preview' : 'send');
     const j = await act({ action: 'remind-rsvp', id: m.id, test });
     setWorking('');
-    if (j) addToast(test ? `Sent to ${j.to?.[0] || 'you'}` : `Asked ${plural(j.sent, 'board member')}`, 'info');
+    if (j) addToast(test ? `Sent to ${j.to?.[0] || 'you'}` : `Asked ${plural(j.sent, 'board member')}${j.notOnInvite?.length ? `. Not on the invite: ${j.notOnInvite.join(', ')}` : ''}`, 'info');
     if (j && !test) setAsked({ names: andList(quiet.map((x) => x.name.split(' ')[0])), at: new Date().toISOString() });
     requestAnimationFrame(() => askRef.current?.focus());
   };
-  const answered = board.length - groups.at(-1)[1].length;
+  const answered = board.length - groups.at(-2)[1].length - groups.at(-1)[1].length;
   // Past (and not run here): who was there is the minutes' to say
   if (m.date && m.date < todayEastern() && !m.live.startedAt) return null;
   return html`<div class="card bm-coming">
-    <div class="bd-card-head"><h3>Who’s coming</h3><p>${answered ? `${answered} of ${board.length} board members ${answered === 1 ? 'has' : 'have'} answered,` : 'Nobody has answered yet,'} on the board page or the calendar invite.</p></div>
+    <div class="bd-card-head"><h3>Who’s coming</h3><p>${answered ? `${answered} of ${board.length} board members ${answered === 1 ? 'has' : 'have'} answered` : 'Nobody has answered'} the calendar invite${!invited ? '. The invite hasn’t gone out yet' : off.length ? `. ${off.length === 1 ? `${off[0].name} isn’t` : `${off.length} aren’t`} on it: ${adds}` : ''}.</p></div>
     <div class="bm-bar" role="img" aria-label=${groups.filter(([, l]) => l.length).map(([t, l]) => `${l.length} ${t.toLowerCase()}`).join(', ')}>
       ${groups.map(([t, l]) => (l.length ? html`<span class=${`bm-bar__part is-${t === 'Coming' || t === 'By video' ? 'yes' : t === 'Can’t come' ? 'no' : t === 'Maybe' ? 'maybe' : 'none'}`} style=${`flex:${l.length}`}></span>` : null))}
     </div>

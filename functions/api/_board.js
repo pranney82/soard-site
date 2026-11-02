@@ -38,7 +38,6 @@ import { peopleRows, privateEmails, activeBoard, boardAdmins, readState, writeSt
 import { cachedReveals, fetchJobs, loadKids, loadProjects, matchProject, isProject, isRehearsalJob, FIELD_JOB_STATUS, BUILDING_STATUSES } from './_reveals.js';
 import { sendEmails, sendEmailItems, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js';
 import { emailShell, button, esc, facts, link } from './_email-shell.js';
-import { answerLinks } from './_board-rsvp.js';
 import { sniffType } from './upload-file.js';
 import { maybeSyncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
@@ -60,7 +59,7 @@ const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS idx_board_files_owner ON board_files(owner_type, owner_id)',
   'CREATE TABLE IF NOT EXISTS board_action_state (action_id TEXT PRIMARY KEY, done INTEGER NOT NULL, done_on TEXT, by TEXT)',
   'CREATE TABLE IF NOT EXISTS board_rsvps (meeting_id TEXT NOT NULL, slug TEXT NOT NULL, answer TEXT NOT NULL, at TEXT, PRIMARY KEY (meeting_id, slug))',
-  // A one-tap answer link's token (its hash) from a board email: ./_board-rsvp.js
+  // An old one-tap answer link's token (its hash) from a board email before Nov 2 2026: ./_board-rsvp.js
   'CREATE TABLE IF NOT EXISTS board_rsvp_links (hash TEXT PRIMARY KEY, meeting_id TEXT NOT NULL, slug TEXT NOT NULL, expires TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS board_docs (id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
   'CREATE TABLE IF NOT EXISTS board_signatures (doc_id TEXT NOT NULL, slug TEXT NOT NULL, year INTEGER NOT NULL, name TEXT, at TEXT, PRIMARY KEY (doc_id, slug, year))',
@@ -161,23 +160,22 @@ async function filesOf(DB, type, ids = null) {
   return by;
 }
 
-/** Meetings with what lives beside them: their files, each action's done state, each member's answer */
+/**
+ * Meetings with what lives beside them: their files and each action's done state. Who's coming is the calendar
+ * invite's (repliesOf): answers once given on the board page or by email (board_rsvps) never show again
+ */
 async function withState(DB, meetings) {
   if (!meetings.length) return [];
-  const [files, done, rsvps] = await Promise.all([
+  const [files, done] = await Promise.all([
     filesOf(DB, 'meeting'),
     DB.prepare('SELECT * FROM board_action_state').all().then((r) => Object.fromEntries((r.results || []).map((x) => [x.action_id, x]))),
-    DB.prepare('SELECT * FROM board_rsvps').all().then((r) => r.results || []),
   ]);
-  return meetings.map((m) => {
-    const answers = Object.fromEntries(rsvps.filter((r) => r.meeting_id === m.id).map((r) => [r.slug, r.answer]));
-    return cleanMeeting({
-      ...m,
-      files: files[m.id] || [],
-      actions: m.actions.map((a) => (done[a.id] ? { ...a, done: !!done[a.id].done, doneOn: done[a.id].done_on || '' } : { ...a, done: false, doneOn: '' })),
-      attendance: m.attendance.map((p) => ({ ...p, rsvp: (p.slug && answers[p.slug]) || '' })),
-    });
-  });
+  return meetings.map((m) => cleanMeeting({
+    ...m,
+    files: files[m.id] || [],
+    actions: m.actions.map((a) => (done[a.id] ? { ...a, done: !!done[a.id].done, doneOn: done[a.id].done_on || '' } : { ...a, done: false, doneOn: '' })),
+    attendance: m.attendance.map((p) => ({ ...p, rsvp: '' })),
+  }));
 }
 
 /** Every meeting, newest first, with its files, done states and answers. Practice meetings only when asked ({ practice: true }) */
@@ -364,15 +362,6 @@ export async function setActionDone(DB, actionId, done, { by, slug = null } = {}
   await DB.prepare('INSERT OR REPLACE INTO board_action_state (action_id, done, done_on, by) VALUES (?, ?, ?, ?)')
     .bind(actionId, done ? 1 : 0, done ? todayEastern() : null, by || '').run();
   return { id: actionId, done: !!done, doneOn: done ? todayEastern() : '' };
-}
-
-export async function setRsvp(DB, meetingId, slug, answer) {
-  await ensureSchema(DB);
-  if (!RSVP.some((r) => r.id === answer)) throw Object.assign(new Error('Pick an answer'), { status: 400 });
-  const m = await getMeeting(DB, meetingId);
-  if (!onBoardPage(m)) throw Object.assign(new Error('That meeting isn’t on the board page'), { status: 404 });
-  await DB.prepare('INSERT OR REPLACE INTO board_rsvps (meeting_id, slug, answer, at) VALUES (?, ?, ?, ?)').bind(meetingId, slug, answer, nowIso()).run();
-  return { meetingId, answer };
 }
 
 /**
@@ -889,19 +878,26 @@ function meetingFacts(m, more = []) {
 const factsText = (m) => [`When: ${whenOf(m)}`, placeOf(m) && `Where: ${placeOf(m)}`, m.video && `Video (${callName(m.video)}): ${m.video}`, m.inviteNote && `Notes: ${m.inviteNote}`].filter(Boolean).join('\n');
 
 /**
- * "Will you be there?" as three buttons: a member's own one-tap answers
- * (./_board-rsvp.js). A preview's open the meeting on the board page.
+ * "Will you be there?": answered on the calendar invite and nowhere else (Peter, Nov 2 2026). `from`: the name of
+ * whoever the invite comes from, so they know which one to look for
  */
-function answerButtons(m, links, { lead = false } = {}) {
-  return RSVP.map((r, i) => button(r.ask, links?.[r.id] || meetingUrl(m), lead && !i ? 'primary' : 'outline')).join('');
+const answerAsk = (from = '') => `Answer the calendar invite${from ? ` from ${from}` : ''}: yes, no or maybe. That’s where SOARD sees who’s coming.`;
+/** Who a staff address is on People → Team (first@soardcharity.com), else null */
+const staffFor = (people, email) => {
+  const e = String(email || '').toLowerCase();
+  return (e && people.staff.find((p) => e.startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))) || null;
+};
+/** Who a meeting's invite comes from, by name: the organizer of its calendar event, else of Board's invite, else Settings' */
+function inviteFrom(m, people, settings) {
+  const email = m.calendar?.organizer || m.calendar?.from || m.invite?.organizer || settings?.invitesFrom || '';
+  return staffFor(people, email)?.name || '';
 }
-const answerText = (m, links) => RSVP.map((r) => `${r.ask}: ${links?.[r.id] || meetingUrl(m)}`).join('\n');
 
 /**
  * The documents email, for one board member: everything stays on the board page (nothing is attached; the board
  * reads it there, the meeting presents it from there, and Print it all is there for paper). When, where and the
- * call; what the documents are (never one on a board-only item, by name); their one-tap answer when they haven't
- * given one (`links`). `files`: the documents' names.
+ * call; what the documents are (never one on a board-only item, by name); the calendar invite to answer when they
+ * haven't (`ask`), naming whose it is (`from`). `files`: the documents' names.
  */
 /** The items someone presents at a meeting, each with the page to write its report on: [{ title, url, written }] */
 export function reportsFor(m, slug, people = []) {
@@ -910,13 +906,13 @@ export function reportsFor(m, slug, people = []) {
     .map((it) => ({ title: it.title, url: `${meetingUrl(m)}/report/${it.id}`, written: !!it.report }));
 }
 
-export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', links = null, ask = true, reports = [] } = {}) {
+export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', from = '', ask = true, reports = [] } = {}) {
   const name = meetingName(m);
   const first = firstName(who);
   const titles = files.map((n) => fileTitle(n));
   const count = titles.length + hidden;
   const lead = `${first ? `${first}, the` : 'The'} agenda${count ? ` and ${plural(count, 'document')}` : ''} for the ${name} ${count ? 'are' : 'is'} on the board page. Read ${count ? 'them' : 'it'} there, or print it all from there if you’d like paper.`;
-  const answer = ask ? ruled(`<p class="ink" style="margin:0 0 12px;font-weight:700;">Will you be there?</p>${answerButtons(m, links)}${small('One tap answers. No sign-in needed.')}`) : '';
+  const answer = ask ? ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">Will you be there?</p><p class="ink" style="margin:0;">${esc(answerAsk(from))}</p>`) : '';
   const docsHtml = [...titles.map((t) => esc(t)), hidden ? `${plural(hidden, 'board-only document')}` : ''].filter(Boolean).join('<br>');
   // What they present: the report to write on the board page (or theirs, already in)
   const todo = reports.filter((r) => !r.written);
@@ -944,7 +940,7 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
       count ? `Documents: ${[...titles, hidden ? plural(hidden, 'board-only document') : ''].filter(Boolean).join(', ')}` : '',
       `Open the agenda and documents: ${meetingUrl(m)}\n${SIGN_IN}`,
       presentText,
-      ask ? `Will you be there? One tap answers, no sign-in needed.\n${answerText(m, links)}` : ''].filter(Boolean).join('\n\n'),
+      ask ? `Will you be there? ${answerAsk(from)}` : ''].filter(Boolean).join('\n\n'),
   };
 }
 
@@ -958,7 +954,7 @@ export function packetDocs(m) {
 /** Each email on its own: each member's has their own answer links */
 const sendEach = (env, items, { tags, replyTo }) => sendEmailItems(env, items, { from: fromBoard(), tags, replyTo });
 
-/** Email the board the link to the agenda and documents, what the documents are, and one-tap answers (test: only `to`) */
+/** Email the board the link to the agenda and documents, what the documents are, and (to who hasn't answered it) the calendar invite to answer (test: only `to`) */
 export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) {
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
@@ -968,12 +964,12 @@ export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) 
   const people = test ? to.map((email) => ({ email, name: '' })) : await packetList(env.DB);
   if (!people.length) throw Object.assign(new Error('No board member has an email on file (People → Board)'), { status: 409 });
   const docs = packetDocs(m);
-  // Only someone who hasn't said whether they'll come is asked, with their own links
+  // Only someone on the invite who hasn't answered it is asked to
   const open = test ? [] : (await notAnswered(env, m)).map((p) => p.slug);
-  const links = await answerLinks(env.DB, m, open);
+  const from = inviteFrom(m, await roster(env.DB), await getSettings(env.DB));
   // Each presenter's own copy asks for their report (a preview shows none: it's for no one in particular)
   const everyone = test ? [] : await roster(env.DB).then((r) => [...r.board, ...r.staff]);
-  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, links: links[p.slug], ask: test || open.includes(p.slug), reports: reportsFor(m, p.slug, everyone) }) }));
+  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, from, ask: test || open.includes(p.slug), reports: reportsFor(m, p.slug, everyone) }) }));
   const tags = [{ name: 'kind', value: test ? 'board-packet-preview' : 'board-packet' }];
   const r = await sendEach(env, items, { tags, replyTo });
   if (!test && r.sent) await writeMeeting(env.DB, { ...m, packetSentAt: nowIso(), packetSentTo: r.sent, updatedAt: m.updatedAt, updatedBy: m.updatedBy });
@@ -987,48 +983,56 @@ export async function approveMinutes(env, id, { on, by }) {
   return saveMeeting(env.DB, { ...m, minutes: 'approved', approvedOn: isDate(on) ? on : todayEastern() }, { by });
 }
 
-/** Board members who haven't said whether they'll come, here or on the calendar invite */
+/** Board members on the meeting's calendar invite who haven't answered it (yes, no or maybe) */
 export async function notAnswered(env, m) {
-  const list = await packetList(env.DB);
-  return list.filter((p) => {
-    const here = m.attendance.find((a) => a.slug === p.slug);
-    const invite = repliesOf(m)[p.slug];
-    return !(here?.rsvp) && !['accepted', 'declined', 'tentative'].includes(invite);
-  });
+  const replies = repliesOf(m);
+  return (await packetList(env.DB)).filter((p) => replies[p.slug] === 'invited');
+}
+/** Board members the meeting's calendar invite doesn't have (by the email on People → Board): they can't answer it */
+export async function notOnInvite(env, m) {
+  const replies = repliesOf(m);
+  return (await packetList(env.DB)).filter((p) => !replies[p.slug]);
 }
 
-/** The reminder, for one board member: three one-tap answers, then when and where */
-export function reminderEmail(m, { test = false, name: who = '', links = null } = {}) {
+/** The reminder, for one board member: answer the calendar invite (`from`: whose), then when and where */
+export function reminderEmail(m, { test = false, name: who = '', from = '' } = {}) {
   const name = meetingName(m);
   const first = firstName(who);
   const heading = `${first ? `${first}, will` : 'Will'} you be at the ${name}?`;
+  const ask = answerAsk(from);
+  // What the invite is called in their email: the organizer's own event's title, else Board's (./_board-invite.js)
+  const called = m.calendar?.title || (/soard/i.test(name) ? name : `SOARD ${name}`);
   return {
     subject: `${test ? '[Preview] ' : ''}Will you be at the ${name}? ${shortDate(m.date)}`,
     html: emailShell({
       eyebrow: 'SOARD Board',
-      preheader: `${whenOf(m)}. One tap answers; no sign-in needed.`,
+      preheader: `${whenOf(m)}. ${ask}`,
       heading,
-      intro: esc('One tap answers. You don’t need to sign in.'),
-      bodyHtml: `<div style="margin:4px 0 14px;">${answerButtons(m, links, { lead: true })}</div>`
-        + meetingFacts(m)
+      intro: esc(ask),
+      bodyHtml: meetingFacts(m)
+        + small(`Can’t find the invite? Search your email for “${esc(called)}”, or reply to this email and we’ll send it again.`)
         + `<div style="margin:10px 0 0;">${small(`The agenda and documents: ${link('the board page', meetingUrl(m))}. ${SIGN_IN}`)}</div>`,
       footerHtml: FOOTER,
     }),
-    text: [heading, `One tap answers. You don't need to sign in.\n${answerText(m, links)}`, factsText(m), `The agenda and documents: ${meetingUrl(m)}`].join('\n\n'),
+    text: [heading, ask, factsText(m), `Can't find the invite? Search your email for "${called}", or reply to this email and we'll send it again.`, `The agenda and documents: ${meetingUrl(m)}`].join('\n\n'),
   };
 }
 
-/** Ask the board members who haven't answered whether they'll come, each with their own one-tap answers (test: only `to`) */
+/**
+ * Ask the board members on the invite who haven't answered it, each by name (test: only `to`). Who isn't on the
+ * invite can't answer it: they come back by name (`notOnInvite`), for the invite to add them
+ */
 export async function remindRsvp(env, id, { to = null, replyTo = [] } = {}) {
   const m = await getMeeting(env.DB, id);
   if (!m?.shared) throw Object.assign(new Error('Share the meeting with the board first, so the button has something to open'), { status: 409 });
   const test = Array.isArray(to);
+  const missing = test ? [] : (await notOnInvite(env, m)).map((p) => p.name);
   const people = test ? to.map((email) => ({ email, name: '' })) : await notAnswered(env, m);
-  if (!people.length) throw Object.assign(new Error('Everyone has answered'), { status: 409 });
-  const links = test ? {} : await answerLinks(env.DB, m, people.map((p) => p.slug));
-  const items = people.map((p) => ({ to: p.email, ...reminderEmail(m, { test, name: p.name, links: links[p.slug] }) }));
+  if (!people.length) throw Object.assign(new Error(missing.length ? `Everyone on the invite has answered. ${missing.join(', ')} ${missing.length === 1 ? 'isn’t' : 'aren’t'} on it: Send the invite adds them.` : 'Everyone has answered the invite'), { status: 409 });
+  const from = inviteFrom(m, await roster(env.DB), await getSettings(env.DB));
+  const items = people.map((p) => ({ to: p.email, ...reminderEmail(m, { test, name: p.name, from }) }));
   const r = await sendEach(env, items, { tags: [{ name: 'kind', value: test ? 'board-reminder-preview' : 'board-reminder' }], replyTo });
-  return { sent: r.sent, failed: r.failed, errors: r.errors, to: test ? to : undefined };
+  return { sent: r.sent, failed: r.failed, errors: r.errors, to: test ? to : undefined, notOnInvite: missing };
 }
 
 /** The minutes notice: which meeting, and (a draft) when the board votes on them */
@@ -1167,8 +1171,6 @@ export async function portalData(env, { member = null, admin = false, adminEmail
   const own = member?.email ? new Set(((await env.DB.prepare('SELECT id FROM board_files WHERE lower(by) = ?').bind(String(member.email).toLowerCase()).all()).results || []).map((r) => r.id)) : new Set();
   const shared = meetings.map(forBoard).filter(Boolean).map((m) => (own.size ? { ...m, files: m.files.map((f) => (own.has(f.id) ? { ...f, mine: true } : f)) } : m));
   const mine = member?.slug || null;
-  // A member's own answers, whether or not they're on that meeting's list yet
-  const answers = mine ? Object.fromEntries(((await env.DB.prepare('SELECT meeting_id, answer FROM board_rsvps WHERE slug = ?').bind(mine).all()).results || []).map((r) => [r.meeting_id, r.answer])) : {};
   // The Board area's admins by their names on People; who to ask is the one the invites come from
   const nameOf = (e) => people.staff.find((p) => e.startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))?.name || e.split('@')[0];
   const admins = settings.admins.map((e) => ({ email: e, name: nameOf(e) }));
@@ -1187,14 +1189,14 @@ export async function portalData(env, { member = null, admin = false, adminEmail
       // Board's "See it as the board will" on a meeting ahead not shared yet: what the board will see once it is, by its
       // link only (never in the lists, the search or Home, which stay as the board has them)
       previews: meetings.filter((m) => !m.shared && !m.notBoard && isDate(m.date) && m.date >= today)
-        .map((m) => ({ ...forBoard({ ...m, shared: true }), shared: false, preview: true, myRsvp: '', myInvite: '', onCalendar: false })),
+        .map((m) => ({ ...forBoard({ ...m, shared: true }), shared: false, preview: true, myInvite: '', onCalendar: false })),
     } : {}),
     contact,
     admins: admins.map((a) => a.name),
     nextPending: pending ? {
       id: pending.id, date: pending.date, start: pending.start, end: pending.end, title: pending.title, name: meetingName(pending),
       location: pending.location, address: pending.address, video: pending.video || pending.invite?.meet || '',
-      onCalendar: !!pendingInvite, myInvite: pendingInvite, myRsvp: answers[pending.id] || '',
+      onCalendar: !!pendingInvite, myInvite: pendingInvite,
     } : null,
     // lastSeen: the visit before this one (a visit lasts 10 minutes), for what's new since
     // An admin looking: who they are on People (`as`), so the item they present asks them for its report too
@@ -1204,7 +1206,7 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     // Their own answer here, else how they answered the calendar invite (which also means it's on their calendar)
     meetings: shared.map((m) => {
       const invite = mine ? repliesOf(meetings.find((x) => x.id === m.id))[mine] || '' : '';
-      return { ...m, myRsvp: answers[m.id] || '', myInvite: invite, onCalendar: !!invite };
+      return { ...m, myInvite: invite, onCalendar: !!invite };
     }),
     next: nextMeeting(shared, today)?.id || null,
     quorum: settings.quorum,

@@ -220,10 +220,18 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   const code = meetCodeOf(ev);
   const t = meet && !(prior?.transcript === 'on' && prior.meet === meet) ? await transcriptOn(env, organizer, code, fetchImpl, now) : { transcript: prior?.transcript || '', error: prior?.error || '' };
   const at = new Date(now).toISOString();
+  // Who's on it now and how they answered, by board member, as Google has it: someone just added is invited at once,
+  // not only once the calendar is next read (up to an hour)
+  const bySlug = Object.fromEntries((await activeBoard(env.DB)).filter((p) => p.email).map((p) => [normEmail(p.email), p.slug]));
+  const replies = { ...(prior?.replies || {}) };
+  for (const a of ev.attendees || attendees) {
+    const slug = bySlug[normEmail(a.email)];
+    if (slug) replies[slug] = ['accepted', 'declined', 'tentative'].includes(a.responseStatus) ? a.responseStatus : 'invited';
+  }
   const invite = {
     eventId: ev.id || eventId, organizer, sentAt: prior?.sentAt || at, updatedAt: at, meet, guests: (ev.attendees || attendees).length,
     emails: (ev.attendees || attendees).map((a) => normEmail(a.email)), place: ev.location || place, when: whenOf(m), notes: notesKey(m), ...t,
-    replies: prior?.replies || {},
+    replies,
   };
   // Google Meet is the meeting's video call from now on (onto the meeting as it is now: a save made meanwhile stays)
   return patchMeeting(env.DB, id, (cur) => ({ ...cur, invite, video: meet || cur.video }));

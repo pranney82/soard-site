@@ -1183,47 +1183,32 @@ function OnCalendar({ m, data }) {
   </p>`;
 }
 
+/**
+ * Whether they're coming, as their calendar invite says: the only answer SOARD goes by (Peter, Nov 2 2026), so it's
+ * answered there, never here. Not on the invite: who adds them
+ */
 function Rsvp({ m, ctx, quiet = false }) {
-  const { data, setData, say } = ctx;
-  const [busy, setBusy] = useState('');
-  // An admin seeing it as the board will: the question as a member gets it, and pressing it changes nothing
-  const look = !data.me.slug && (AS_BOARD || PREVIEW);
-  if (m.date < data.today || heldEarly(m, data.today) || (!data.me.slug && !look)) return null;
+  const { data } = ctx;
+  if (m.date < data.today || !data.me.slug) return null;
   const team = theTeam(data);
-  const chosen = RSVP.find((r) => r.id === m.myRsvp);
-  const onInvite = !chosen && m.myInvite && m.myInvite !== 'invited' ? answerOf('', m.myInvite) : '';
-  // A yes or no on the calendar invite is their answer here too until they choose one (a maybe stays open)
-  const fromInvite = !chosen ? RSVP.find((r) => r.id === { accepted: 'yes', declined: 'no' }[m.myInvite]) || null : null;
-  const current = busy || m.myRsvp || fromInvite?.id || '';
-  const at = RSVP.findIndex((r) => r.id === current);
-  const answer = async (id) => {
-    if (look) { say('In the preview, nobody’s answer changes. Board members answer here.'); return; }
-    if (!data.me.slug || id === m.myRsvp) return;
-    setBusy(id);
-    const j = await call({ action: 'rsvp', meetingId: m.id, answer: id });
-    setBusy('');
-    if (!j.ok) { say(j.error, 'warn'); return; }
-    const set = (x) => (x?.id === m.id ? { ...x, myRsvp: id } : x);
-    setData((dd) => ({ ...dd, meetings: dd.meetings.map(set), nextPending: set(dd.nextPending) }));
-    say(`Thanks. ${team} can see your answer.`);
-  };
+  const sees = / and |&|,/.test(team) ? 'see' : 'sees';
+  const to = data.me.email ? ` that went to ${data.me.email}` : '';
+  const said = { accepted: ['You’re coming', 'You said yes on the calendar invite.'], declined: ['You can’t make it', 'You said no on the calendar invite.'], tentative: ['Maybe', 'You said maybe on the calendar invite.'] }[m.myInvite];
   const qid = `rsvp-${m.id}`;
+  if (said) {
+    return html`<div class="bp-rsvp" role="group" aria-labelledby=${qid}>
+      <p class="bp-rsvp__q" id=${qid}>${m.myInvite === 'tentative' ? null : html`<${Icon} name="check" size=${18} /> `}${said[0]}</p>
+      <p class="bp-rsvp__said">${said[1]}${quiet ? '' : m.myInvite === 'tentative' ? ` Choose yes or no there so ${team} ${/ and |&|,/.test(team) ? 'know' : 'knows'}.` : ' To change it, answer the invite again.'}</p>
+    </div>`;
+  }
+  const adds = data.contact ? `${firstName(data.contact.name)} can add you` : `${team} can add you`;
   return html`<div class="bp-rsvp" role="group" aria-labelledby=${qid}>
     <p class="bp-rsvp__q" id=${qid}>Will you be there?</p>
-    <div class="bp-seg" style=${`--at:${Math.max(0, at)}`} data-on=${at >= 0 ? 'yes' : null}>
-      <span class="bp-seg__thumb" aria-hidden="true"></span>
-      ${RSVP.map((r) => html`<button type="button" class="bp-choice" aria-pressed=${current === r.id} disabled=${!!busy} onClick=${() => answer(r.id)} key=${r.id}>
-        ${current === r.id && !busy ? html`<${Icon} name="check" size=${16} cls="bp-choice__check" />` : null}${busy === r.id ? 'Saving…' : r.label}</button>`)}
-    </div>
-    ${quiet ? (chosen || onInvite ? html`<p class="bp-rsvp__said">${chosen ? `You said “${chosen.ask}.”` : fromInvite ? `You said “${fromInvite.ask}” on the calendar invite.` : `You said “${onInvite}” on the calendar invite.`}</p>` : null)
-      : html`<p class="bp-rsvp__said">${chosen ? `You said “${chosen.ask}.” You can change it any time.`
-        : fromInvite ? `You said “${fromInvite.ask}” on the calendar invite. You can change it here.`
-        : onInvite ? `You said “${onInvite}” on the calendar invite. Choose one so ${team} ${/ and |&|,/.test(team) ? 'know' : 'knows'}.`
-        : `${team} ${/ and |&|,/.test(team) ? 'see' : 'sees'} your answer.`}</p>`}
+    <p class="bp-rsvp__said">${m.myInvite === 'invited' ? `Answer the calendar invite${to}: yes, no or maybe. ${team} ${sees} your answer there.`
+      : `You’re not on this meeting’s calendar invite yet, and that’s where SOARD sees who’s coming. ${adds}.`}</p>
   </div>`;
 }
 
-// To-dos put back with Undo before they had left the list
 // To-dos put back (unticked, or Undo) before they had left the list
 const undone = new Set();
 /**

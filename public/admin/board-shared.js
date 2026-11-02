@@ -54,7 +54,8 @@ export const RSVP = [
 ];
 /** A member's answer in words: their own here, else how they answered the calendar invite */
 export function answerOf(rsvp, invite) {
-  if (rsvp) return RSVP.find((r) => r.id === rsvp)?.label || '';
+  // The calendar invite is the only answer (Peter, Nov 2 2026): one given on the board page or in an email before
+  // then (rsvp) doesn't count
   return { accepted: 'Coming', declined: 'Can’t come', tentative: 'Maybe' }[invite] || '';
 }
 const REPLIES = ['accepted', 'declined', 'tentative', 'invited'];
@@ -62,8 +63,8 @@ function cleanReplies(raw) {
   return Object.fromEntries(Object.entries(raw && typeof raw === 'object' ? raw : {})
     .filter(([k, v]) => /^[a-z0-9-]{1,80}$/.test(k) && REPLIES.includes(v)).slice(0, LIMITS.people));
 }
-/** Each board member's reply to the meeting's calendar invite, by slug: the organizer's own event's, else Board's */
-export const repliesOf = (m) => ({ ...(m?.invite?.replies || {}), ...(m?.calendar?.replies || {}) });
+/** Each board member's reply to the meeting's calendar invite, by slug: the organizer's own event's (unless it was deleted), else Board's */
+export const repliesOf = (m) => ({ ...(m?.invite?.replies || {}), ...(m?.calendar && !m.calendar.gone ? m.calendar.replies || {} : {}) });
 /** "Balance-sheet_financials v2.pdf" → "Balance sheet financials v2" (the file keeps its own name for saving) */
 export function fileTitle(name) {
   const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();

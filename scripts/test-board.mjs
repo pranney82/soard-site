@@ -833,9 +833,8 @@ try {
     ok(/Next meeting/.test(home) && /See the agenda and\s1\sfile/.test(home), 'Home: the next meeting, and its packet');
     ok(/Example Hall/.test(home) && await alex.$('.bp-next a[href^="https://www.google.com/maps/search/"]') !== null, 'Home: its place, the address opening in Maps');
     ok(await alex.$('.bp-next a[href="https://meet.google.com/abc-defg-hij"]') !== null && /Google Meet/.test(home), 'Home: the Google Meet link, in the meeting’s one line');
-    // Their yes on the calendar invite is their answer here until they choose: said, and its choice marked
-    const picked = await alex.$eval('.bp-next .bp-choice[aria-pressed="true"]', (b) => b.textContent.trim()).catch(() => '');
-    ok(width === 1440 ? /You said “I’ll be there” on the calendar invite\./.test(home) && picked === 'Coming' : /You said “I’ll join by video\.”/.test(home) && picked === 'By video', width === 1440 ? `Home: their reply to the invite shows, Coming marked (${picked})` : `Home: the answer they gave here shows (${picked})`);
+    // Their reply to the calendar invite is their answer, the only one: said, with nothing to press here
+    ok(/You’re coming/.test(home) && /You said yes on the calendar invite\./.test(home) && !(await alex.$('.bp-next .bp-choice')), 'Home: their reply to the invite is their answer, with no buttons here');
     ok(width === 1440 ? /Send the venue contract/.test(home) : !/Send the venue contract/.test(home), width === 1440 ? 'Home: their own action item' : 'Home: the action item they ticked off is gone');
     const figs = await alex.evaluate(() => Object.fromEntries([...document.querySelectorAll('.bp-fig')].map((f) => [f.querySelector('.bp-fig__label').textContent, f.querySelector('.bp-fig__value').textContent])));
     // No budget sheet and no QuickBooks here: the reveals stand in for the year's revenue, and nothing for its
@@ -912,9 +911,6 @@ try {
     }
     await shot(alex, `10-home-${width}`);
     if (width === 1440) {
-      await clickText(alex, '.bp-choice', /^By video$/);
-      ok(await waitText(alex, /Thanks\. Jane can see your answer\./), 'they answer whether they’re coming, and it says who sees it');
-      ok(await alex.evaluate(() => document.querySelector('.bp-choice[aria-pressed="true"]')?.textContent.trim() === 'By video' && getComputedStyle(document.querySelector('.bp-seg')).getPropertyValue('--at').trim() === '1'), 'their answer stays picked, the yellow marker under it');
       await alex.evaluate(() => document.querySelector('.bp-todo input').click());
       await sleep(1500);
       // Search: ⌘K, a word from the meeting's notes, Enter opens the meeting at that point
@@ -1118,7 +1114,7 @@ try {
   console.log('Back to the founder');
   await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /By video\s+1\s+Alex Rivera/), 'the founder sees Alex’s answer');
+  ok(await waitText(jane, /Coming\s+1\s+Alex Rivera/), 'the founder sees Alex’s answer, his reply to the calendar invite');
   ok((await meetingNow(jane, meetingId)).actions.some((a) => a.text === 'Send the venue contract' && a.done), 'and that Alex ticked off the action item');
   await jane.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /Signed by Alex Rivera/), 'and who signed the policy');

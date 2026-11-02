@@ -259,15 +259,14 @@ test('files: a member opens a shared meeting’s files, never a staff-only one; 
   for (const key of env.FILES.map.keys()) assert.match(key, /^board\/meeting\//, 'board files live under board/, which nothing public serves');
 });
 
-test('a member answers for themselves: whether they’ll come, their own action items, their signature', async () => {
+test('a member answers for themselves: their own action items, their signature (whether they’ll come is the calendar invite’s)', async () => {
   const { meeting } = await sharedMeetingWithFiles();
-  assert.equal((await portalApi(MEMBER, { action: 'rsvp', meetingId: meeting.id, answer: 'remote' })).status, 200);
-  const shown = (await adminApi(FOUNDER)).body.meetings.find((m) => m.id === meeting.id);
-  assert.equal(shown.attendance.find((p) => p.slug === 'alex-rivera').rsvp, 'remote');
+  const said = await portalApi(MEMBER, { action: 'rsvp', meetingId: meeting.id, answer: 'remote' });
+  assert.equal(said.status, 410);
+  assert.match(said.body.error, /calendar invite/);
   const [mine, theirs] = meeting.actions;
   assert.equal((await portalApi(MEMBER, { action: 'action-done', actionId: mine.id, done: true })).status, 200);
   assert.equal((await portalApi(MEMBER, { action: 'action-done', actionId: theirs.id, done: true })).status, 403);
-  assert.equal((await portalApi(FOUNDER, { action: 'rsvp', meetingId: meeting.id, answer: 'yes' })).status, 403, 'an admin looking has no seat');
 
   const doc = (await adminApi(FOUNDER, { action: 'save-doc', doc: { title: 'Conflict of interest policy', kind: 'policy', sign: true } })).body.doc;
   const plain = (await adminApi(FOUNDER, { action: 'save-doc', doc: { title: 'Bylaws', kind: 'governance' } })).body.doc;
@@ -479,72 +478,73 @@ test('a signature is the member’s own name: any case or spacing, a middle name
   for (const [typed, name] of [['Mickey Mouse', 'Sam Rivers'], ['Mickey Rivers', 'Sam Rivers'], ['Tom Rivers', 'Sam Rivers'], ['x Rivers', 'Sam Rivers'], ['Rivers Rivers', 'Sam Rivers'], ['Sam Rivers 2', 'Sam Rivers'], ['Sam Mickey Rivers', 'Sam Rivers'], ['Joe Ann', 'Mary Ann Smith'], ['Mary Ann', 'Mary Ann Smith'], ['Sam Rivres', 'Sam Rivers'], ['Sam', 'Sam Rivers'], ['Rivers Sam', 'Sam Rivers'], ['Sam Rivers Sam Rivers', 'Sam Rivers'], ['', 'Sam Rivers']]) ok(typed, name, '');
 });
 
-test('one-tap answers: each board member who hasn’t answered gets their own links; opening one only asks, pressing it answers', async () => {
+test('who’s coming is the calendar invite’s alone: the emails ask only who’s on it without an answer, by whose invite; old one-tap links record nothing', async () => {
   const { meeting } = await sharedMeetingWithFiles();
-  // Sam already said on the board page; Alex hasn't
-  assert.equal((await portalApi(OTHER_MEMBER, { action: 'rsvp', meetingId: meeting.id, answer: 'no' })).status, 200);
+  // Jane's own event: Alex hasn't answered it, Sam said no
+  const onCalendar = (replies) => patchMeeting(env.DB, meeting.id, (m) => ({ ...m, calendar: { uid: 'q4@google.com', title: 'SOARD Board Meeting', from: FOUNDER, organizer: FOUNDER, eventId: 'evq4', replies } }));
+  await onCalendar({ 'alex-rivera': 'invited', 'sam-ortiz': 'declined' });
+  // An answer given on the board page before Nov 2 2026 never shows again
+  await env.DB.prepare('INSERT INTO board_rsvps (meeting_id, slug, answer, at) VALUES (?, ?, ?, ?)').bind(meeting.id, 'alex-rivera', 'yes', new Date().toISOString()).run();
+  assert.equal((await getMeeting(env.DB, meeting.id)).attendance.find((p) => p.slug === 'alex-rivera')?.rsvp || '', '');
+  assert.equal((await portalApi(MEMBER)).body.meetings.find((x) => x.id === meeting.id).myInvite, 'invited');
+
   const sends = () => outside.filter((c) => c.url === 'https://api.resend.com/emails/batch').flatMap((c) => c.body);
   const r = await adminApi(FOUNDER, { action: 'send-packet', id: meeting.id });
   assert.equal(r.body.sent, 2);
   const to = (addr) => sends().find((c) => c.to[0] === addr);
   const alex = to(MEMBER);
   assert.match(alex.html, /Alex, the agenda and 1 document for the .+ are on the board page/);
-  const links = [...alex.html.matchAll(/\/api\/board-rsvp\?t=([0-9a-f]{32})&amp;a=(yes|remote|no)/g)];
-  assert.deepEqual(links.map((x) => x[2]), ['yes', 'remote', 'no']);
-  assert.equal(new Set(links.map((x) => x[1])).size, 1, 'one token, Alex’s own');
-  assert.match(alex.text, /I’ll be there: https:\/\/sunshineonaranneyday\.com\/api\/board-rsvp\?t=/);
-  assert.doesNotMatch(to(OTHER_MEMBER).html, /board-rsvp|Will you be there/, 'Sam already answered: not asked again');
-  assert.match(to(OTHER_MEMBER).html, /Sam, the agenda/);
-  const tok = links[0][1];
-  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM board_rsvp_links WHERE hash = ?').bind(tok).first()).n, 0, 'D1 keeps only the hash');
+  assert.match(alex.html, /Will you be there\?/);
+  assert.match(alex.html, /Answer the calendar invite from Jane Doe: yes, no or maybe/);
+  assert.match(alex.text, /Will you be there\? Answer the calendar invite from Jane Doe/);
+  assert.doesNotMatch(alex.html, /board-rsvp/, 'no one-tap links');
+  assert.doesNotMatch(to(OTHER_MEMBER).html, /Will you be there/, 'Sam answered the invite: not asked again');
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM board_rsvp_links').first()).n, 0, 'no answer links are made');
 
-  // Opening the link (a mail scanner does) changes nothing
-  const opened = await rsvpPage.onRequestGet({ request: new Request(`https://sunshineonaranneyday.com/api/board-rsvp?t=${tok}&a=remote`), env });
-  const page = await opened.text();
-  assert.equal(opened.status, 200);
-  assert.match(page, /Alex, will you be at the /);
-  assert.match(page, /<button type="submit" name="a" value="remote" class="primary">I’ll join by video<\/button>/, 'the one tapped is the yellow one');
-  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM board_rsvps WHERE slug = ?').bind('alex-rivera').first()).n, 0);
-  // Pressing it answers, the same as on the board page
-  const press = (t, a) => rsvpPage.onRequestPost({ request: new Request('https://sunshineonaranneyday.com/api/board-rsvp', { method: 'POST', body: new URLSearchParams({ t, a }) }), env });
-  const done = await press(tok, 'remote');
-  assert.equal(done.status, 200);
-  assert.match(await done.text(), /Thanks, Alex.*joining the .* by video/s);
-  assert.equal((await getMeeting(env.DB, meeting.id)).attendance.find((p) => p.slug === 'alex-rivera').rsvp, 'remote');
-  // Changed their mind from the same link
-  await press(tok, 'yes');
-  assert.equal((await getMeeting(env.DB, meeting.id)).attendance.find((p) => p.slug === 'alex-rivera').rsvp, 'yes');
-  assert.match(await (await rsvpPage.onRequestGet({ request: new Request(`https://x/api/board-rsvp?t=${tok}`), env })).text(), /You said: Coming\./);
-
-  // A made-up token, a bad answer, or a meeting off the board page: nothing recorded
-  assert.equal((await press('0'.repeat(32), 'yes')).status, 404);
-  assert.equal((await press(tok, 'maybe')).status, 404);
-  await saveMeeting(env.DB, { ...(await getMeeting(env.DB, meeting.id)), shared: false }, { by: FOUNDER });
-  assert.equal((await press(tok, 'no')).status, 404);
-  assert.equal((await getMeeting(env.DB, meeting.id)).attendance.find((p) => p.slug === 'alex-rivera').rsvp, 'yes');
-  // Two days after the meeting, the link has run out
-  await saveMeeting(env.DB, { ...(await getMeeting(env.DB, meeting.id)), shared: true }, { by: FOUNDER });
-  assert.equal((await answerLink(env, tok)).member.slug, 'alex-rivera');
-  assert.deepEqual(await answerLink(env, tok, { now: Date.parse('2026-11-21T17:00:00Z') }), { expired: true });
-
-  // The reminder: only who hasn't answered, each by name with their own links; a preview's buttons open the board page
+  // The reminder: only who's on the invite without an answer; who isn't on it comes back by name, for the invite
+  await onCalendar({ 'alex-rivera': 'invited' });
   outside = [];
-  await env.DB.prepare('DELETE FROM board_rsvps').run();
   const remind = await adminApi(FOUNDER, { action: 'remind-rsvp', id: meeting.id });
-  assert.equal(remind.body.sent, 2);
-  const batch = outside.find((c) => c.url === 'https://api.resend.com/emails/batch').body;
-  assert.deepEqual(batch.map((e) => e.to[0]).sort(), [MEMBER, OTHER_MEMBER].sort());
-  const toAlex = batch.find((e) => e.to[0] === MEMBER);
+  assert.equal(remind.body.sent, 1);
+  assert.deepEqual(remind.body.notOnInvite, ['Sam Ortiz']);
+  const toAlex = sends()[0];
+  assert.equal(toAlex.to[0], MEMBER);
   assert.match(toAlex.subject, /^Will you be at the .*\? Nov 19, 2026$/);
   assert.match(toAlex.html, /Alex, will you be at the/);
-  assert.equal([...toAlex.html.matchAll(/board-rsvp\?t=/g)].length, 3);
+  assert.match(toAlex.html, /Answer the calendar invite from Jane Doe/);
+  assert.match(toAlex.html, /Can’t find the invite\?/);
+  assert.doesNotMatch(toAlex.html, /board-rsvp/);
   outside = [];
   await adminApi(FOUNDER, { action: 'remind-rsvp', id: meeting.id, test: true });
   const preview = outside.find((c) => c.url.startsWith('https://api.resend.com/')).body;
   const one = Array.isArray(preview) ? preview[0] : preview;
   assert.equal(one.to[0], FOUNDER);
-  assert.doesNotMatch(one.html, /board-rsvp/, 'a preview has no one’s answer links');
   assert.match(one.html, new RegExp(`/admin/board/#/meetings/${meeting.id}`));
+  // Everyone on it answered: nobody to ask, and Sam named
+  await onCalendar({ 'alex-rivera': 'accepted' });
+  const none = await adminApi(FOUNDER, { action: 'remind-rsvp', id: meeting.id });
+  assert.equal(none.status, 409);
+  assert.match(none.body.error, /Sam Ortiz isn’t on it: Send the invite adds them/);
+
+  // A link from an email before Nov 2 2026: opening it or pressing its button only says where to answer
+  const tok = 'ab'.repeat(16);
+  const hash = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(tok)))].map((b) => b.toString(16).padStart(2, '0')).join('');
+  await env.DB.prepare('INSERT INTO board_rsvp_links (hash, meeting_id, slug, expires) VALUES (?, ?, ?, ?)').bind(hash, meeting.id, 'alex-rivera', '2026-11-20').run();
+  const before = (await env.DB.prepare('SELECT COUNT(*) AS n FROM board_rsvps').first()).n;
+  const opened = await rsvpPage.onRequestGet({ request: new Request(`https://sunshineonaranneyday.com/api/board-rsvp?t=${tok}&a=yes`), env });
+  assert.equal(opened.status, 200);
+  const page = await opened.text();
+  assert.match(page, /Alex, will you be at the /);
+  assert.match(page, /doesn’t save an answer any more/);
+  assert.match(page, /Answer the calendar invite for it in your email or calendar: yes, no or maybe/);
+  assert.match(page, new RegExp(`/admin/board/#/meetings/${meeting.id}`), 'See the meeting opens that meeting');
+  assert.doesNotMatch(page, /<button/, 'no answer buttons');
+  const pressed = await rsvpPage.onRequestPost({ request: new Request('https://sunshineonaranneyday.com/api/board-rsvp', { method: 'POST', body: new URLSearchParams({ t: tok, a: 'no' }) }), env });
+  assert.match(await pressed.text(), /Answer the calendar invite/);
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM board_rsvps').first()).n, before, 'nothing recorded');
+  assert.equal((await rsvpPage.onRequestGet({ request: new Request('https://x/api/board-rsvp?t=' + '0'.repeat(32)), env })).status, 404);
+  assert.equal((await answerLink(env, tok)).member.slug, 'alex-rivera');
+  assert.deepEqual(await answerLink(env, tok, { now: Date.parse('2026-11-21T17:00:00Z') }), { expired: true });
 });
 
 test('the minutes notice says which meeting and when the board votes on them', async () => {
@@ -1824,7 +1824,7 @@ test('an agenda read by an older reader is read again once, only from Drive or e
 
 // ─── The next meeting before it's shared, and photos ────────────────
 
-test('the next meeting the board already has on its calendars shows its day, time and place before it’s shared; members can answer', async () => {
+test('the next meeting the board already has on its calendars shows its day, time and place before it’s shared, and their invite answer', async () => {
   const { boardIcs } = await import('../functions/api/_board.js');
   const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
   const invited = (slugs) => ({ uid: 'next@google.com', title: 'SOARD Board Meeting', from: FOUNDER, replies: Object.fromEntries(slugs.map(([s, a]) => [s, a])) });
@@ -1833,14 +1833,13 @@ test('the next meeting the board already has on its calendars shows its day, tim
     calendar: invited([['alex-rivera', 'accepted'], ['sam-ortiz', 'invited']]) }), { by: 'the calendar' });
   let page = (await portalApi(MEMBER)).body;
   assert.equal(page.nextPending, null, 'two of the board invited: not theirs yet');
-  assert.equal((await portalApi(MEMBER, { action: 'rsvp', meetingId: m.id, answer: 'yes' })).status, 404);
   assert.equal(await boardIcs(env.DB, m.id), null);
 
   m = await saveMeeting(env.DB, { ...m, calendar: invited([['alex-rivera', 'accepted'], ['sam-ortiz', 'invited'], ['kim-park', 'declined']]) }, { by: 'the calendar' });
   page = (await portalApi(MEMBER)).body;
   assert.deepEqual(page.nextPending, {
     id: m.id, date: day(20), start: '08:00', end: '10:00', title: '', name: meetingName({ date: day(20) }), location: 'Example Hall', address: '100 Example St', video: '',
-    onCalendar: true, myInvite: 'accepted', myRsvp: '',
+    onCalendar: true, myInvite: 'accepted',
   });
   assert.equal(page.next, null);
   assert.equal(page.meetings.some((x) => x.id === m.id), false, 'not a shared meeting: no agenda, notes or files');
@@ -1852,8 +1851,7 @@ test('the next meeting the board already has on its calendars shows its day, tim
   const pv = look.previews.find((x) => x.id === m.id);
   assert.deepEqual([pv?.preview, pv?.shared, pv?.sections[0].title, pv?.sections[0].items[0].notes], [true, false, 'Secret draft heading', 'draft notes']);
   assert.equal(look.meetings.some((x) => x.id === m.id), false);
-  assert.equal((await portalApi(MEMBER, { action: 'rsvp', meetingId: m.id, answer: 'yes' })).status, 200, 'they’re invited, so they can answer here');
-  assert.equal((await portalApi(MEMBER)).body.nextPending.myRsvp, 'yes');
+  assert.equal((await portalApi(MEMBER, { action: 'rsvp', meetingId: m.id, answer: 'yes' })).status, 410, 'they answer the invite, never here');
   const ics = await boardIcs(env.DB, m.id);
   assert.match(ics, /DTSTART:/);
   assert.doesNotMatch(ics, /Secret draft heading/, 'its calendar file carries no agenda');
@@ -2101,7 +2099,7 @@ test('a practice meeting is the admins’ alone: its own table, never the board 
   assert.equal((await portalApi(FOUNDER)).body.practice.id, p.id, 'an admin on the board page sees today’s practice');
   assert.equal((await liveGet(MEMBER, p.id)).status, 404);
   assert.equal((await portalApi(MEMBER, { action: 'checkin', meetingId: p.id, how: 'present' })).status, 404);
-  assert.equal((await portalApi(MEMBER, { action: 'rsvp', meetingId: p.id, answer: 'yes' })).status, 404);
+  assert.equal((await portalApi(MEMBER, { action: 'rsvp', meetingId: p.id, answer: 'yes' })).status, 410);
   for (const action of ['send-invite', 'send-packet', 'snapshot', 'remind-rsvp', 'send-minutes', 'keep-agenda']) {
     assert.notEqual((await adminApi(FOUNDER, { action, id: p.id, test: true })).body.ok, true, `${action} can’t reach a practice meeting`);
   }

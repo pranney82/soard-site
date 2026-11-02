@@ -601,12 +601,12 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
     case 'board-packet':
       return email(packetEmail(sampleBoardMeeting(), { name: 'Alex Rivera', files: ['Q3 financials.pdf'] }), {
         from: BOARD_FROM, to: 'Each active board member with an email on People → Board, on their own',
-        note: 'Peter or Holly sends it from Board, after sharing the meeting. The “Will you be there?” buttons are each member’s own one-tap answers, and only for those who haven’t answered (here they open the board page). Send it to me sends a [Preview] copy first.',
+        note: 'Peter or Holly sends it from Board, after sharing the meeting. “Will you be there?” asks only those on the calendar invite who haven’t answered it: the invite is the only answer. Send it to me sends a [Preview] copy first.',
       });
     case 'board-reminder':
-      return email(reminderEmail(sampleBoardMeeting(), { name: 'Alex Rivera' }), {
-        from: BOARD_FROM, to: 'Each board member who hasn’t answered on the board page or the calendar invite, on their own',
-        note: 'Peter or Holly sends it from a meeting’s Who’s coming card. Each button answers for that member with one tap and no sign-in; opening the link only asks, so a mail scanner can’t answer (here they open the board page).',
+      return email(reminderEmail(sampleBoardMeeting(), { name: 'Alex Rivera', from: 'Jordan Ellis' }), {
+        from: BOARD_FROM, to: 'Each board member on the calendar invite who hasn’t answered it, on their own',
+        note: 'Peter or Holly sends it from a meeting’s Who’s coming card. It asks them to answer the calendar invite, the only answer SOARD goes by; anyone not on the invite is named to the admin instead, for Send the invite to add them.',
       });
     case 'board-minutes':
       return email(minutesEmail({ ...sampleBoardMeeting(), minutes: 'draft' }, { next: { date: '2026-12-03', start: '08:00', end: '10:00' } }), {
