@@ -60,6 +60,7 @@ import { listAccounts } from './_mercury.js';
 import { boardFacts } from './_board.js';
 import { staffStatus } from './_staff-access.js';
 import { mailSweepStatus } from './_mail-sweep.js';
+import { asksFacts } from './_board-asks.js';
 import { backfillStatus } from './_coi-backfill.js';
 import { processFacts } from './_process-docs.js';
 import { giftsStatus } from './_board-gifts.js';
@@ -447,6 +448,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     jobCosts: await settle(() => jobCostFacts(DB)),
     // Access's board list and the monthly bank balance: counts, times and on/off only (_board.js)
     board: await settle(() => boardFacts(env)),
+    // The next meeting's report asks and the chair's review: counts, times and on/off only (_board-asks.js)
+    boardAsks: await settle(() => asksFacts(DB)),
     // Staff sign-in from SOARD's Google accounts: counts, times, on/off, and who was signed out (_staff-access.js)
     staff: await settle(() => staffStatus(env)),
     // Staff inboxes swept: receipts to the receipt inbox, family emails onto JobTread (_mail-sweep.js)

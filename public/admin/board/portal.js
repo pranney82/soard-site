@@ -34,6 +34,8 @@ import {
   reportsOn, namesText, showsOf, booksDraw, isStatement, forBoard, cleanMeeting,
 } from '../board-shared.js';
 import { YearCompare } from './books.js';
+import { FinanceReview, NoteLine, notesByKey, lineKeysOf, withLineNotes } from './review.js';
+import { ChairReview, reviewTodo, ChairNoteLine } from './chair.js';
 import { Report, ReportEditor, readTime } from '../board-report.js';
 import { mdPlain, mdWords } from '../board-md.js';
 import { Screen, ScreenPeek } from './screen.js';
@@ -92,7 +94,8 @@ async function call(body) {
 const readRoute = () => {
   const [page = '', id = null, sub = '', item = ''] = location.hash.replace(/^#\/?/, '').split('/').map((x) => decodeURIComponent(x));
   // A meeting's screen (#/meetings/<id>/screen), or the page to write an item's report on (#/meetings/<id>/report/<item>)
-  const deeper = page === 'meetings' && id ? (sub === 'screen' ? 'screen' : sub === 'report' && item ? 'report' : '') : '';
+  // …or the chair's review of the agenda ahead (#/meetings/<id>/review, ./chair.js)
+  const deeper = page === 'meetings' && id ? (sub === 'screen' ? 'screen' : sub === 'report' && item ? 'report' : sub === 'review' ? 'review' : '') : '';
   return { page: PAGES.includes(page) ? page : '', id: id || null, sub: deeper, item: deeper === 'report' ? item : '' };
 };
 
@@ -620,6 +623,7 @@ function App() {
   // The meeting on the screen fills the window: no header, tabs or footer
   if (route.sub === 'screen') return html`<${Screen} id=${route.id} data=${data} d=${d} key=${route.id} onBack=${goBack} />`;
   const page = route.sub === 'report' ? html`<${ReportPage} id=${route.id} itemId=${route.item} ctx=${ctx} key=${`${route.id}/${route.item}`} />`
+    : route.sub === 'review' ? html`<${ChairReview} id=${route.id} ctx=${ctx} ui=${{ Icon, Presenters, DocTiles, NotFound }} key=${`review/${route.id}`} />`
     : route.page === 'meetings' && route.id ? html`<${MeetingPage} id=${route.id} ctx=${ctx} key=${route.id} />`
     : route.page === 'meetings' ? html`<${MeetingsPage} ctx=${ctx} />`
     : route.page === 'financials' ? html`<${FinancialsPage} ctx=${ctx} />`
@@ -1074,13 +1078,20 @@ function HomePage({ ctx }) {
   const mine = data.actions.filter((a) => a.mine);
   const toSign = data.docs.filter((x) => x.sign && x.file && !x.signedByMe);
   const toWrite = reportsToWrite(ctx);
+  // The chair's agenda to review (./chair.js), until it's approved
+  const toReview = reviewTodo(data, d);
   const today = new Date(noon(data.today)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
   const who = useAdminWho(data);
   const name = data.me.name || who?.name || '';
   const m = d.featured;
-  const todos = mine.length || toSign.length || toWrite.length ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
-      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h" tabindex="-1">For you<span class="bp-count">${mine.length + toSign.length + toWrite.length}</span></h2></div>
+  const todos = mine.length || toSign.length || toWrite.length || toReview ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
+      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h" tabindex="-1">For you<span class="bp-count">${mine.length + toSign.length + toWrite.length + (toReview ? 1 : 0)}</span></h2></div>
       <ul class="bp-todos">
+        ${toReview ? html`<li class="bp-todo-card" key="review"><a class="bp-todo bp-todo--link" href=${toReview.href}>
+          <span class="bp-todo__icon"><${Icon} name="list" size=${20} /></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">${toReview.title}</span><span class="bp-todo__meta">${toReview.meta}</span></span>
+          <${Icon} name="arrow" size=${18} cls="bp-go" />
+        </a></li>` : null}
         ${toWrite.map(({ m, it }) => html`<li class="bp-todo-card" key=${`r-${it.id}`}><a class="bp-todo bp-todo--link" href=${reportHref(m, it)}>
           <span class="bp-todo__icon"><${Icon} name="edit" size=${20} /></span>
           <span class="bp-todo__text"><span class="bp-todo__title">Write your report: ${it.title}</span><span class="bp-todo__meta">For the ${meetingName(m)}, ${dayOf(m.date)}</span></span>
@@ -1497,7 +1508,8 @@ const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.docx,.xlsx,.pptx,.doc,.xls,.pp
  */
 function ReportPage({ id, itemId, ctx }) {
   const { data, d, setData } = ctx;
-  const m = data.meetings.find((x) => x.id === id) || data.previews?.find((x) => x.id === id) || null;
+  // A meeting ahead not shared with the board yet, where they present an item: theirs to write (data.presenting)
+  const m = data.meetings.find((x) => x.id === id) || data.previews?.find((x) => x.id === id) || data.presenting?.find((x) => x.id === id) || null;
   const at = m ? agendaItems(m).find((x) => x.id === itemId) : null;
   const it = at ? m.sections[at.si].items[at.ii] : null;
   const draftKey = `bp-report:${id}/${itemId}`;
@@ -1697,6 +1709,9 @@ function ReportPage({ id, itemId, ctx }) {
       <h1 class="bp-rp__title">${it.title}</h1>
       ${who.length ? html`<div class="bp-rp__who"><${Presenters} people=${who} /></div>` : null}
     </header>
+    ${showsOf(it).includes('cash') ? html`<${FinanceReview} books=${m.date < data.today ? m.snapshot?.books : data.numbers?.books} meeting=${m} item=${it}
+      notes=${data.lineNotes?.[m.id]?.[it.id] || []} due=${(data.myAsks || []).find((a) => a.meetingId === m.id && a.itemId === it.id) || null} canEdit=${mine}
+      onSaved=${(list) => setData((dd) => withLineNotes(dd, m.id, it.id, list))} />` : null}
     ${!mine ? html`<div class="bp-card bp-rp__read">
         ${it.report ? html`<${Report} text=${it.report} />` : html`<p class="bp-muted">No report on this item yet.</p>`}
         <p class="bp-muted bp-rp__note">${m.minutes === 'approved' ? 'This meeting’s minutes are approved, so its reports stay as they were.' : who.length ? `Only ${who.map((p) => p.name.split(' ')[0]).join(' and ')} can write this one.` : 'Nobody presents this item, so it has no report to write.'}</p>
@@ -2125,7 +2140,7 @@ function DocTiles({ files }) {
  * The money item: the figures (each beside last year), the year against last year month by month, where the revenue
  * came from, then the statements themselves, all from QuickBooks; statements also attached as files, a quiet link
  */
-function CashBlock({ n, data, m, asFiles = [] }) {
+function CashBlock({ n, data, m, asFiles = [], notes = null }) {
   const upTo = m.date < data.today ? m.date : '';
   const tiles = moneyTiles({ cash: useCashNow(data, upTo, n), budget: useBudget(data, upTo, n), n });
   // The books the way the figures go: today's for a meeting today or ahead, the locked ones for a past meeting
@@ -2139,7 +2154,7 @@ function CashBlock({ n, data, m, asFiles = [] }) {
     <${YearCompare} books=${books} idp=${`y${m.id}`} />
     ${mixOf(books) ? html`<div class="bp-agmix"><p class="bp-fig__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null}
     ${storeOf(books) ? html`<div class="bp-agmix bp-agstore"><p class="bp-fig__label">The store, ${books.year} so far</p><${StoreFigures} books=${books} /></div>` : null}
-    ${st ? html`<div class="bp-agstmts"><${Statements} s=${st} books=${books} idp=${`m${m.id}`} /></div>` : null}
+    ${st ? html`<div class="bp-agstmts"><${Statements} s=${st} books=${books} idp=${`m${m.id}`} notes=${notes} /></div>` : null}
     ${asFiles.length ? html`<p class="bp-asfiles">Also as ${asFiles.length === 1 ? 'a file' : 'files'}: ${asFiles.map((f, i) => html`${i ? ', ' : ''}<a class="bp-link" ...${viewerLink(fv, i)}>${docTitle(f.name)}</a>`)}</p>` : null}`;
 }
 
@@ -2165,12 +2180,12 @@ function DatesBlock({ rows }) {
 }
 
 /** An item's live facts, drawn for what they are ([] of lines only when the shape isn't known) */
-function LiveBlock({ kind, n, m, data, asFiles = [] }) {
+function LiveBlock({ kind, n, m, data, asFiles = [], notes = null }) {
   if (!n || !kind || kind === 'minutes') return null;
   const stamp = kind === 'cash' ? null : html`<p class="bp-aglive__when">${m.snapshot ? `As of ${shortDate(m.snapshot.at.slice(0, 10))}, locked for this meeting` : 'As of today'}</p>`;
   let body = null;
   if (kind === 'projects') body = html`<${Kanban} projects=${n.projects} reveals=${n.reveals} variant="agenda" />`;
-  else if (kind === 'cash') body = html`<${CashBlock} n=${n} data=${data} m=${m} asFiles=${asFiles} />`;
+  else if (kind === 'cash') body = html`<${CashBlock} n=${n} data=${data} m=${m} asFiles=${asFiles} notes=${notes} />`;
   else if (kind === 'reveals') body = html`<${RevealsBlock} n=${n} />`;
   else if (kind === 'events') body = html`<${DatesBlock} rows=${(n.events || []).slice(0, 6).map((e) => ({ key: e.title + e.date, date: e.date, title: e.title, sub: [dayOf(e.date), e.time, e.location].filter(Boolean).join(' · ') }))} />`;
   else if (kind === 'meetings') body = html`<${DatesBlock} rows=${(n.meetings || []).filter((x) => x.id !== m.id).slice(0, 4).map((x) => ({ key: x.id || x.date, date: x.date, title: x.name, sub: [dayOf(x.date), x.start ? clock(x.start) : ''].filter(Boolean).join(' · ') }))} />`;
@@ -2357,7 +2372,8 @@ function MeetingDetail({ m, ctx, waiting = false }) {
                 ${aboutPrev ? html`<p class="bp-agitem__about"><a class="bp-link" href=${`#/meetings/${aboutPrev.id}`}>The ${meetingName(aboutPrev)}, ${shortDate(aboutPrev.date)}</a></p>` : null}
                 <div class="bp-agitem__notes"><${Notes} text=${it.notes} /></div>
                 <${ItemReport} m=${m} it=${it} ctx=${ctx} upcoming=${upcoming} />
-                ${showsOf(it).map((k) => html`<${LiveBlock} key=${k} kind=${k} n=${numbers} m=${m} data=${data} asFiles=${k === 'cash' ? asFiles : []} />`)}
+                <${ChairNoteLine} data=${data} d=${d} m=${m} it=${it} />
+                ${showsOf(it).map((k) => html`<${LiveBlock} key=${k} kind=${k} n=${numbers} m=${m} data=${data} asFiles=${k === 'cash' ? asFiles : []} notes=${k === 'cash' ? data.lineNotes?.[m.id]?.[it.id] : null} />`)}
                 ${files.length ? html`<div class="bp-item__docs"><${DocTiles} files=${files} /></div>` : null}
               </div>
             </li>`;
@@ -2438,12 +2454,16 @@ const fullDate = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateStri
  * A statement from QuickBooks (./_quickbooks.js statementRows): each line with the same day a year before and the
  * change. Folded to the main lines and totals until "Every account" opens it
  */
-function Statement({ id, title, rows, asOf, priorAsOf, heads = null }) {
+function Statement({ id, title, rows, asOf, priorAsOf, heads = null, which = '', notes = null }) {
   const [all, setAll] = useKept(`${id}-all`, false);
   if (!rows?.length) return null;
   const prior = rows.some((r) => r.p != null);
+  // The presenter's notes (./review.js), each under its line; a line with one is a main line too
+  const said = notesByKey(notes);
+  const keys = which && said.size ? lineKeysOf(rows, which) : [];
+  const noteOf = (r) => (keys.length ? said.get(keys[rows.indexOf(r)]) : null);
   // The main lines: the top headings, each group's total and the subtotals and net; every account a tap away
-  const folded = rows.filter((r) => r.k === 'sum' || (r.k === 'head' && r.d === 0) || (r.k === 'total' && r.d <= 1));
+  const folded = rows.filter((r) => r.k === 'sum' || (r.k === 'head' && r.d === 0) || (r.k === 'total' && r.d <= 1) || noteOf(r));
   const shown = all ? rows : folded;
   const cols = prior ? 4 : 2;
   return html`<div class="bp-stmt">
@@ -2456,7 +2476,8 @@ function Statement({ id, title, rows, asOf, priorAsOf, heads = null }) {
         <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${heads ? heads[0] : shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${heads ? heads[1] : shortDate(priorAsOf)}</th><th scope="col" class="num bp-stmt__chg">${heads ? heads[2] : 'Change'}</th>` : null}</tr></thead>
         <tbody>${shown.map((r, i) => (r.k === 'head'
           ? html`<tr class="bp-stmt__h" key=${i}><th scope="colgroup" colspan=${cols} style=${`--d:${r.d}`}>${r.label}</th></tr>`
-          : html`<tr class=${`bp-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num bp-stmt__prior" data-label=${heads ? heads[1] : shortDate(priorAsOf)}>${signedMoney(r.p)}</td><td class="num bp-stmt__chg">${changeMoney(r.a, r.p)}</td>` : null}</tr>`))}</tbody>
+          : [html`<tr class=${`bp-stmt__${r.k} ${noteOf(r) ? 'bp-stmt__noted' : ''}`} key=${i} style=${`--d:${r.d}`}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num bp-stmt__prior" data-label=${heads ? heads[1] : shortDate(priorAsOf)}>${signedMoney(r.p)}</td><td class="num bp-stmt__chg">${changeMoney(r.a, r.p)}</td>` : null}</tr>`,
+            noteOf(r) ? html`<tr class="bp-stmt__note" key=${`${i}-n`} style=${`--d:${r.d}`}><td colspan=${cols}><${NoteLine} note=${noteOf(r)} /></td></tr>` : null]))}</tbody>
       </table>
     </div>
   </div>`;
@@ -2466,7 +2487,7 @@ function Statement({ id, title, rows, asOf, priorAsOf, heads = null }) {
  * The statements as of the books' close, as a meeting's packet holds them (`s`: numbers.books.statements): one at a
  * time, the activities (the year's money in and out) first, the financial position a tap away
  */
-function Statements({ s, books, idp = 'st' }) {
+function Statements({ s, books, idp = 'st', notes = null }) {
   const [which, setWhich] = useKept(`${idp}-which`, 'act');
   // The activities, QuickBooks' budget against them (the board's budget, functions/api/_quickbooks.js budgetOf), and
   // the financial position: the ones the books have
@@ -2478,13 +2499,17 @@ function Statements({ s, books, idp = 'st' }) {
   return html`<div class="bp-stmts">
     <div class="bp-stmts__top">
       <p class="bp-stmts__when">${show === 'bud' ? budWhen : html`From QuickBooks, as of ${fullDate(s.asOf)}${s.closed ? ', the day the books are closed through' : ', the end of the last full month'}, beside the same day a year before.${books?.qboYearStarts ? ` QuickBooks’ settings start its year in ${books.qboYearStarts}, so its Net Income line counts from ${books.qboYearStarts} 1.` : ''}`}</p>
-      ${views.length > 1 ? html`<div class="bp-impact__seg bp-noprint" role="group" aria-label="Which statement">${views.map(([id, label]) => html`<button type="button" aria-pressed=${show === id} onClick=${() => setWhich(id)} key=${id}>${label}</button>`)}</div>` : null}
+      ${views.length > 1 ? html`<div class="bp-impact__seg bp-noprint" role="group" aria-label="Which statement">${views.map(([id, label]) => {
+        // Its presenter's notes counted, so another view's aren't missed
+        const n = [...notesByKey(notes).keys()].filter((k) => k.startsWith(`${id}|`)).length;
+        return html`<button type="button" aria-pressed=${show === id} onClick=${() => setWhich(id)} key=${id}>${label}${n ? html`<span class="bp-stmts__n"><span class="sr-only">, </span>${n}<span class="sr-only"> ${n === 1 ? 'note' : 'notes'}</span></span>` : null}</button>`;
+      })}</div>` : null}
     </div>
     ${show === 'pos'
-      ? html`<${Statement} id=${`${idp}-pos`} title="Statement of financial position" rows=${s.position} asOf=${s.asOf} priorAsOf=${s.priorAsOf} key="pos" />`
+      ? html`<${Statement} id=${`${idp}-pos`} title="Statement of financial position" rows=${s.position} asOf=${s.asOf} priorAsOf=${s.priorAsOf} which="pos" notes=${notes} key="pos" />`
       : show === 'bud'
-        ? html`<${Statement} id=${`${idp}-bud`} title=${`Budget against actual, January 1 to ${dayMonth(bud.asOf)}`} rows=${bud.rows.map((r) => ({ ...r, p: r.b }))} heads=${['Actual', 'Budget', 'Over (under)']} key="bud" />`
-        : html`<${Statement} id=${`${idp}-act`} title=${`Statement of activities, January 1 to ${dayMonth(s.asOf)}`} rows=${s.activity} asOf=${s.asOf} priorAsOf=${s.priorAsOf} key="act" />`}
+        ? html`<${Statement} id=${`${idp}-bud`} title=${`Budget against actual, January 1 to ${dayMonth(bud.asOf)}`} rows=${bud.rows.map((r) => ({ ...r, p: r.b }))} heads=${['Actual', 'Budget', 'Over (under)']} which="bud" notes=${notes} key="bud" />`
+        : html`<${Statement} id=${`${idp}-act`} title=${`Statement of activities, January 1 to ${dayMonth(s.asOf)}`} rows=${s.activity} asOf=${s.asOf} priorAsOf=${s.priorAsOf} which="act" notes=${notes} key="act" />`}
   </div>`;
 }
 

@@ -17,6 +17,7 @@
 import { h, htm, useState } from '../vendor.js';
 import { money, shortDate } from '../board-shared.js';
 import { compact, storeOf, storeChange, budgetMonthsText } from './money.js';
+import { lineKeysOf, notesByKey, NoteLine } from './review.js';
 
 const html = htm.bind(h);
 const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -164,17 +165,22 @@ export function YearCompare({ books, idp = 'by', tall = false }) {
 }
 
 /** A statement's main lines (each heading, its total, the sums) or every line, beside the same day a year before */
-export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', heads = null }) {
+export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', heads = null, which = '', notes = null }) {
   if (!rows?.length) return null;
   const prior = rows.some((r) => r.p != null);
-  const shown = all ? rows : rows.filter((r) => r.k === 'sum' || (r.k === 'head' && r.d === 0) || (r.k === 'total' && r.d <= 1));
+  // The presenter's notes (./review.js, which: 'act' | 'pos'), each under its line; a line with one is a main line too
+  const said = notesByKey(notes);
+  const keys = which && said.size ? lineKeysOf(rows, which) : [];
+  const noteOf = (r) => (keys.length ? said.get(keys[rows.indexOf(r)]) : null);
+  const shown = all ? rows : rows.filter((r) => r.k === 'sum' || (r.k === 'head' && r.d === 0) || (r.k === 'total' && r.d <= 1) || noteOf(r));
   const cols = prior ? 4 : 2;
   const signed = (v) => (typeof v === 'number' ? (v < 0 ? `(${money(-v)})` : money(v)) : '');
   return html`<table class=${`by-stmt ${cls}`}>
     <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${heads ? heads[0] : shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${heads ? heads[1] : shortDate(priorAsOf)}</th><th scope="col" class="num">${heads ? heads[2] : 'Change'}</th>` : null}</tr></thead>
     <tbody>${shown.map((r, i) => (r.k === 'head'
       ? html`<tr class="by-stmt__h" key=${i}><th scope="colgroup" colspan=${cols}>${r.label}</th></tr>`
-      : html`<tr class=${`by-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`}><th scope="row">${r.label}</th><td class="num">${signed(r.a)}</td>${prior ? html`<td class="num by-stmt__prior">${signed(r.p)}</td><td class="num by-stmt__chg">${heads ? overWords(r.a, r.p) : changeWords(r.a, r.p) || (typeof r.a === 'number' && typeof r.p === 'number' ? (r.a >= r.p ? '+' : '−') + compact(Math.abs(r.a - r.p)) : '–')}</td>` : null}</tr>`))}</tbody>
+      : [html`<tr class=${`by-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`}><th scope="row">${r.label}</th><td class="num">${signed(r.a)}</td>${prior ? html`<td class="num by-stmt__prior">${signed(r.p)}</td><td class="num by-stmt__chg">${heads ? overWords(r.a, r.p) : changeWords(r.a, r.p) || (typeof r.a === 'number' && typeof r.p === 'number' ? (r.a >= r.p ? '+' : '−') + compact(Math.abs(r.a - r.p)) : '–')}</td>` : null}</tr>`,
+        noteOf(r) ? html`<tr class="by-stmt__note" key=${`${i}-n`} style=${`--d:${r.d}`}><td colspan=${cols}><${NoteLine} note=${noteOf(r)} /></td></tr>` : null]))}</tbody>
   </table>`;
 }
 
@@ -182,7 +188,7 @@ export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', h
 export const BOOKS_TITLES = { year: 'The year against last year', store: 'The store', act: 'Statement of activities', budget: 'Budget against actual', pos: 'Statement of financial position' };
 
 /** One of QuickBooks' slides after the money, at the size of a room (the screen is dark: its colors are its own) */
-export function BooksSlide({ books, kind }) {
+export function BooksSlide({ books, kind, notes = null }) {
   const s = books?.statements;
   if (kind === 'store') {
     // Its sales on yellow, its cost of goods, the profit before the staff and rent the books keep with SOARD's
@@ -213,7 +219,7 @@ export function BooksSlide({ books, kind }) {
     return html`<div class="by-slide">
       <p class="bs-eyebrow">QuickBooks’ budget, ${b?.name}, through ${dayMonth(b?.asOf)}${b ? `: ${budgetMonthsText(b.months)} of ${b.of} months` : ''}</p>
       <h1 class="bs-display by-slide__title">Budget against actual, January 1 to ${dayMonth(b?.asOf)}</h1>
-      <${StatementLines} rows=${(b?.rows || []).map((r) => ({ ...r, p: r.b }))} heads=${['Actual', 'Budget', 'Over (under)']} cls="is-big" />
+      <${StatementLines} rows=${(b?.rows || []).map((r) => ({ ...r, p: r.b }))} heads=${['Actual', 'Budget', 'Over (under)']} cls="is-big" which="bud" notes=${notes} />
     </div>`;
   }
   const act = kind === 'act';
@@ -221,6 +227,6 @@ export function BooksSlide({ books, kind }) {
   return html`<div class="by-slide">
     <p class="bs-eyebrow">From QuickBooks, as of ${dayMonth(s?.asOf)}, beside the same day a year before</p>
     <h1 class="bs-display by-slide__title">${act ? `Statement of activities, January 1 to ${dayMonth(s?.asOf)}` : 'Statement of financial position'}</h1>
-    <${StatementLines} rows=${rows} asOf=${s?.asOf} priorAsOf=${s?.priorAsOf} cls="is-big" />
+    <${StatementLines} rows=${rows} asOf=${s?.asOf} priorAsOf=${s?.priorAsOf} cls="is-big" which=${act ? 'act' : 'pos'} notes=${notes} />
   </div>`;
 }

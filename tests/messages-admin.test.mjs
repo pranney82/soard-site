@@ -207,7 +207,7 @@ test('GET: facts, or one preview', async (t) => {
 });
 
 test('every message says who sends it: Resend, JobTread, Kit, Google Calendar, Twilio, the browser, Slack or your own email', () => {
-  const KNOWN = new Set(['resend', 'jobtread', 'kit', 'google', 'twilio', 'push', 'slack', 'you']);
+  const KNOWN = new Set(['resend', 'jobtread', 'kit', 'google', 'twilio', 'push', 'slack', 'you', 'gmail']);
   for (const n of ENTRIES) {
     const s = sendersOf(n);
     assert.ok(s.length && s.every((x) => KNOWN.has(x)), `${n.t} has a known sender (${s.join(', ')})`);

@@ -53,6 +53,7 @@ import { medicalNote, fallbackMedicalNote } from './_applicant-comms.js';
 import { activity, comingUp, deliverability, deliveryFacts, emailDetail, invitesOut } from './_messages-activity.js';
 import { applicantEmail as advisoryThanks, staffEmail as advisoryStaff } from './_advisory-applications.js';
 import { packetEmail, welcomeEmail, reminderEmail, minutesEmail, inviteNotes } from './_board.js';
+import * as asks from './_board-asks.js';
 import { organizerFor } from './_board-invite.js';
 import { newMeeting, meetingName } from '../../public/admin/board-shared.js';
 import { checkAnswers as advisoryAnswers } from './_advisory-form.js';
@@ -622,6 +623,23 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
         note: 'A sample meeting from the usual agenda, one item board-only. Google Meet is the call. A new place, day or time sends Google’s update email; an agenda change updates these notes without emailing anyone.',
         send: null,
       };
+    }
+    // The report asks and the chair's review, from Peter's Gmail (_board-asks.js): the sample meeting's Financial item
+    case 'board-ask': case 'board-ask-reminder': case 'board-ask-late': case 'board-ask-thanks': case 'board-ask-question': case 'board-chair-review': {
+      const m = sampleBoardMeeting();
+      const it = m.sections[2].items[1];
+      const person = { name: 'Sam Ortiz' };
+      const from = { name: 'Peter' };
+      const due = asks.easternAt(asks.addDays(m.date, -7), '17:00');
+      const ask = asks.askEmail({ m, it, person, due, from, books: { statements: { asOf: '2026-10-31' } } });
+      const gmail = (mail, extra) => ({ ...email({ subject: `Re: ${ask.subject}`, ...mail }), from: 'Peter’s Gmail', send: null, ...extra });
+      if (id === 'board-ask') return gmail(ask, { to: 'Each board member presenting an item, one email per item; Holly copied', note: 'A reply is all it takes: it goes on the agenda word for word, with its files. Here, the money’s presenter, whose link opens their review of the statements.' });
+      if (id === 'board-ask-reminder') return gmail(asks.reminderEmail({ m, it, person, due, from, now: due - 2 * 24 * 60 * 60 * 1000 }), { to: 'The presenter, Holly copied' });
+      if (id === 'board-ask-late') return gmail(asks.lateEmail({ m, it, person, due, from, chair: { name: 'Alex Rivera' }, now: due }), { to: 'The presenter, the chair and Holly copied' });
+      if (id === 'board-ask-thanks') return gmail(asks.thanksEmail({ m, it, person, from }), { to: 'The presenter alone' });
+      if (id === 'board-ask-question') return gmail(asks.questionEmail({ m, it, person, asker: { name: 'Alex Rivera', email: 'chair@example.com' }, question: 'How much of the store’s drop is the shop that closed?', from: { name: 'Peter', email: 'peter@example.com' } }), { to: 'Who presents the item, the chair and Holly copied' });
+      const review = asks.chairEmail({ m, chair: { name: 'Alex Rivera' }, from, cc: [{ name: 'Holly' }], people: [{ slug: 'sam-ortiz', name: 'Sam Ortiz' }], asks: [{ kind: 'report', itemId: it.id, status: 'late', due: new Date(due).toISOString() }] });
+      return gmail(review, { to: 'The board chair, Holly copied' });
     }
     case 'board-welcome':
       return email(welcomeEmail({ name: 'Alex Rivera', email: 'alex@example.com' }), {

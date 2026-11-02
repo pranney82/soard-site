@@ -112,14 +112,14 @@ const PEOPLE = [
 const ALEX = { slug: 'alex-rivera', name: 'Alex Rivera', email: 'alex.board@example.com' };
 const SAM = { slug: 'sam-ortiz', name: 'Sam Ortiz', email: 'sam.board@example.org' };
 const KIM = { slug: 'kim-park', name: 'Kim Park', email: 'kim@example.org' };
-async function world({ shared = true, minutes = 'draft' } = {}) {
+async function world({ shared = true, minutes = 'draft', date = '2099-11-05' } = {}) {
   const env = { DB: await createD1() };
   await env.DB.exec('CREATE TABLE team (slug TEXT PRIMARY KEY, name TEXT, "group" TEXT, order_num INTEGER, data TEXT NOT NULL, updated_at TEXT)');
   await env.DB.exec('CREATE TABLE reveal_board_emails (slug TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at TEXT)');
   await env.DB.exec('CREATE TABLE site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)');
   for (const [slug, d] of PEOPLE) await env.DB.prepare('INSERT INTO team (slug, name, "group", data) VALUES (?, ?, ?, ?)').bind(slug, d.name, d.group, JSON.stringify(d)).run();
   const m = await saveMeeting(env.DB, {
-    id: 'm_rep1', date: '2099-11-05', start: '08:00', end: '10:00', shared, minutes,
+    id: 'm_rep1', date, start: '08:00', end: '10:00', shared, minutes,
     sections: [{ id: 's_com1', title: 'Committee reports', items: [
       { id: 'i_gov1', title: 'Governance', presenter: 'Alex' }, // named, not picked: "Alex" is Alex Rivera
       { id: 'i_fin1', title: 'Financial', who: ['sam-ortiz'], presenter: 'Sam Ortiz' },
@@ -174,10 +174,14 @@ test('a report saved by someone else meanwhile is never written over: 409 with t
   assert.deepEqual([gone.report, gone.reportBy, gone.reportAt], ['', '', '']);
 });
 
-test('not on the board page yet, or its minutes approved: a member can’t write; an admin still can', async () => {
-  const hidden = await world({ shared: false });
+test('a past meeting never shared, or its minutes approved: a member can’t write; an admin still can', async () => {
+  const hidden = await world({ shared: false, date: '2020-11-05' });
   await assert.rejects(saveReport(hidden.env, 'm_rep1', 'i_gov1', 'Early', { member: ALEX }), (e) => e.status === 404);
   assert.equal((await saveReport(hidden.env, 'm_rep1', 'i_gov1', 'Early', { admin: true, adminEmail: 'jane@soardcharity.com' })).report, 'Early');
+  // A meeting ahead not shared yet: who presents writes the report their email asked for (_board-asks.js); no one else
+  const ahead = await world({ shared: false });
+  assert.equal((await saveReport(ahead.env, 'm_rep1', 'i_gov1', 'Early', { member: ALEX })).report, 'Early');
+  await assert.rejects(saveReport(ahead.env, 'm_rep1', 'i_gov1', 'Mine', { member: SAM }), (e) => e.status === 403);
   const done = await world({ minutes: 'approved' });
   await assert.rejects(saveReport(done.env, 'm_rep1', 'i_gov1', 'Late', { member: ALEX }), (e) => e.status === 409);
 });

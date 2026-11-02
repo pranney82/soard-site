@@ -22,6 +22,7 @@ import { moneyFor, moneyTiles, mixOf, shareOf, changeOf, storeOf, storeChange, b
 import { reportDom } from '../board-report.js';
 import { h, render } from '../vendor.js';
 import { YearCompare, changeWords } from './books.js';
+import { lineKeysOf, notesByKey, noteText } from './review.js';
 
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined && text !== null) e.textContent = String(text); return e; };
 
@@ -114,8 +115,12 @@ function revenueBox(books) {
 const fullDate = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
 const shortDay = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
 const signed = (n) => (typeof n === 'number' ? `${n < 0 ? '−' : ''}${n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).replace('-', '')}` : '–');
-/** The statements from QuickBooks on paper, every line (numbers.books.statements), beside the same day a year before */
-function statementsBox(s, budget = null) {
+/**
+ * The statements from QuickBooks on paper, every line (numbers.books.statements), beside the same day a year before,
+ * and QuickBooks' budget against them; the presenter's notes (./review.js) each under its line
+ */
+function statementsBox(s, budget = null, notes = null) {
+  const said = notesByKey(notes);
   if (!s?.position?.length && !s?.activity?.length) return null;
   const box = el('div', 'bpp-stmts');
   box.append(el('p', 'bpp-stmts__when', `From QuickBooks, as of ${fullDate(s.asOf)}, beside ${fullDate(s.priorAsOf)}.`));
@@ -123,12 +128,13 @@ function statementsBox(s, budget = null) {
   // QuickBooks' budget (the board's) against the activities, to the same day: the actual, the budget, over (under)
   const bud = budget?.rows?.length && budget.asOf === s.asOf ? budget : null;
   const over = (a, b) => (typeof a === 'number' && typeof b === 'number' ? (a === b ? '–' : `${a > b ? '+' : '−'}${signed(Math.abs(a - b))}`) : '–');
-  for (const [title, rows, heads] of [
-    ['Statement of financial position', s.position],
-    [`Statement of activities, January 1 to ${short}`, s.activity],
-    ...(bud ? [[`Budget against actual, January 1 to ${short} (QuickBooks’ ${bud.name}, ${budgetMonthsText(bud.months)} of ${bud.of} months${stepText(bud.step)})`, bud.rows.map((r) => ({ ...r, p: r.b })), ['Actual', 'Budget', 'Over (under)']]] : []),
+  for (const [title, rows, heads, which] of [
+    ['Statement of financial position', s.position, null, 'pos'],
+    [`Statement of activities, January 1 to ${short}`, s.activity, null, 'act'],
+    ...(bud ? [[`Budget against actual, January 1 to ${short} (QuickBooks’ ${bud.name}, ${budgetMonthsText(bud.months)} of ${bud.of} months${stepText(bud.step)})`, bud.rows.map((r) => ({ ...r, p: r.b })), ['Actual', 'Budget', 'Over (under)'], 'bud']] : []),
   ]) {
     if (!rows?.length) continue;
+    const keys = said.size ? lineKeysOf(rows, which) : [];
     const prior = rows.some((r) => r.p != null);
     const t = el('table', 'bpp-stmt');
     t.append(el('caption', '', title));
@@ -137,7 +143,7 @@ function statementsBox(s, budget = null) {
     if (prior) head.append(el('th', 'num', heads ? heads[1] : shortDay(s.priorAsOf)), el('th', 'num', heads ? heads[2] : 'Change'));
     const thead = el('thead'); thead.append(head);
     const tbody = el('tbody');
-    for (const r of rows) {
+    rows.forEach((r, i) => {
       const tr = el('tr', `bpp-stmt__${r.k}`);
       const th = el('th', '', r.label);
       th.style.paddingLeft = `${r.d * 0.8}em`;
@@ -145,7 +151,16 @@ function statementsBox(s, budget = null) {
       if (r.k === 'head') th.colSpan = prior ? 4 : 2;
       else { tr.append(el('td', 'num', signed(r.a))); if (prior) tr.append(el('td', 'num', signed(r.p)), el('td', 'num', heads ? over(r.a, r.p) : changeWords(r.a, r.p) || '–')); }
       tbody.append(tr);
-    }
+      const note = keys.length && r.k !== 'head' ? said.get(keys[i]) : null;
+      if (note) {
+        const nr = el('tr', 'bpp-stmt__note');
+        const td = el('td', '', noteText(note));
+        td.colSpan = prior ? 4 : 2;
+        td.style.paddingLeft = `${r.d * 0.8}em`;
+        nr.append(td);
+        tbody.append(nr);
+      }
+    });
     t.append(thead, tbody);
     box.append(t);
   }
@@ -191,13 +206,13 @@ function storeBox(books) {
 }
 
 /** An item's live facts on paper, drawn for what they are */
-function liveBox(kind, n, m, money) {
+function liveBox(kind, n, m, money, notes = null) {
   if (!n || !kind || kind === 'minutes') return null;
   if (kind === 'projects') return makeoversBox(n);
   if (kind === 'cash') {
     // The figures, the year against last year, where the revenue came from, the store, then the statements the packet
     // holds (QuickBooks', as of the books' close)
-    const parts = [moneyBox(n, money), yearBox(n?.books), revenueBox(n?.books), storeBox(n?.books), statementsBox(n?.books?.statements, n?.books?.budget)].filter(Boolean);
+    const parts = [moneyBox(n, money), yearBox(n?.books), revenueBox(n?.books), storeBox(n?.books), statementsBox(n?.books?.statements, n?.books?.budget, notes)].filter(Boolean);
     if (parts.length < 2) return parts[0] || null;
     const box = el('div', 'bpp-money');
     box.append(...parts);
@@ -214,7 +229,7 @@ function liveBox(kind, n, m, money) {
 }
 
 /** The agenda as the first pages: the meeting, then each part with its time, and each item */
-function agendaPages(m, { people, numbers, meetings, money }) {
+function agendaPages(m, { people, numbers, meetings, money, lineNotes = {} }) {
   // The statements QuickBooks draws on the money item aren't printed again as files
   const drawsSt = booksDraw(numbers?.books).some((b) => b === 'act' || b === 'pos');
   const docFiles = (it) => itemFiles(m, it, meetings).filter((f) => !(drawsSt && showsOf(it).includes('cash') && isStatement(f)));
@@ -256,7 +271,7 @@ function agendaPages(m, { people, numbers, meetings, money }) {
         box.append(el('p', 'bpp-report__by', ['Report', it.reportBy ? `by ${it.reportBy}` : ''].filter(Boolean).join(' ')), report);
         row.append(box);
       }
-      for (const k of showsOf(it)) { const facts = liveBox(k, numbers, m, money); if (facts) row.append(facts); }
+      for (const k of showsOf(it)) { const facts = liveBox(k, numbers, m, money, k === 'cash' ? lineNotes[it.id] : null); if (facts) row.append(facts); }
       const files = docFiles(it);
       if (files.length) row.append(el('p', 'bpp-docs', `With it: ${files.map((f) => fileTitle(f.name)).join(', ')}`));
       li.append(row);
@@ -284,7 +299,7 @@ export async function printAll(m, { people = [], numbers = null, meetings = [], 
   root.setAttribute('aria-hidden', 'true');
   // The money the Financial item shows: the balance sheet and budget as of this meeting (a past one keeps its own)
   const money = data && m.sections.some((sec) => sec.items.some((it) => showsOf(it).includes('cash'))) ? await moneyFor(data, m.date < data.today ? m.date : '', numbers).catch(() => null) : null;
-  root.append(agendaPages(m, { people, numbers, meetings, money }));
+  root.append(agendaPages(m, { people, numbers, meetings, money, lineNotes: data?.lineNotes?.[m.id] || {} }));
   // How many pages, so the progress can say "12 of 40"
   const docs = [];
   for (const g of groups) for (const f of g.files) {

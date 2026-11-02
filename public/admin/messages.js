@@ -20,7 +20,8 @@
  * Channels (k): email (the site, through Resend) | jobtread (posted on the
  * family's JobTread account; JobTread emails it) | jtnote (an internal
  * JobTread note: staff only) | kit (Kit, to a list) | invite (Google Calendar)
- * | text (Twilio) | slack (a Slack card only) | mail (opens your own email app).
+ * | text (Twilio) | slack (a Slack card only) | mail (opens your own email app)
+ * | gmail (the site, from Peter's own Gmail: the board's report asks).
  * An entry's key for What went out and its delivery numbers is its `preview`
  * id, or `key` when it has no preview.
  * `also` lists more channels the same message goes by. by: auto | visitor | staff.
@@ -762,6 +763,44 @@ const MAP = { t: 'Everything we send', children: [
           touches: ['Google Calendar', 'D1'], where: 'functions/api/_reveal-invites.js (guestGroups, refreshForBoardChange)',
           live: first(needs('calendar', NO_CAL), (f) => (!f.invites ? null : !f.invites.enabled ? OFF('Sending is paused in Reveals → Invites.') : ON(f.invites.boardEmails != null ? `${plural(f.invites.boardEmails, 'board or advisory address', 'board and advisory addresses')} on file.` : null))) },
       ]},
+      { t: 'From Peter’s Gmail', children: [
+        { t: 'Your report for the meeting', s: 'live', k: 'gmail', by: 'auto', preview: 'board-ask', change: CHANGE.boardArea,
+          who: 'Each board member presenting an item on the next meeting’s agenda (one email per item), Holly copied. Staff presenters are never asked.',
+          when: 'Two weeks before the meeting, once its agenda isn’t a draft (a nearer meeting: at once), between 8 AM and 7 PM.',
+          subject: '{meeting}: your {item} report, due {day} at {time}',
+          does: 'The deadline (a week before the meeting at 5 PM; a nearer meeting, noon a day later), that a reply is all it takes, and a link to write it on the board page. The money’s presenter gets their review: the statements beside last year’s and the budget, with a note on any line. A reply goes on the agenda word for word with its files, under any report already there.',
+          touches: ['Gmail', 'Workers AI', 'D1'], where: 'functions/api/_board-asks.js (askEmail, runAsks)' },
+        { t: 'Report reminder', s: 'live', k: 'gmail', by: 'auto', preview: 'board-ask-reminder', change: CHANGE.boardArea,
+          who: 'A presenter whose report isn’t in, Holly copied.',
+          when: 'Two days before it’s due at 9 AM, or that morning at 8 when the ask went late. In the ask’s conversation.',
+          subject: 'Re: {meeting}: your {item} report…',
+          does: 'When it’s due and the link to write it.',
+          touches: ['Gmail'], where: 'functions/api/_board-asks.js (reminderEmail)' },
+        { t: 'Report past due', s: 'live', k: 'gmail', by: 'auto', preview: 'board-ask-late', change: CHANGE.boardArea,
+          who: 'A presenter whose report didn’t come in, the chair and Holly copied.',
+          when: 'The moment it’s due, unless it’s the meeting’s day. In the ask’s conversation.',
+          subject: 'Re: {meeting}: your {item} report…',
+          does: 'That it was due and hasn’t come in, and that the chair is copied.',
+          touches: ['Gmail'], where: 'functions/api/_board-asks.js (lateEmail)' },
+        { t: 'It’s on the agenda', s: 'live', k: 'gmail', by: 'auto', preview: 'board-ask-thanks', change: CHANGE.boardArea,
+          who: 'The presenter alone (an answer to the chair’s question: the chair copied).',
+          when: 'Right after their reply goes on the agenda, whatever the hour.',
+          subject: 'Re: {meeting}: your {item} report…',
+          does: 'Thanks, and the link to read or change it on the board page.',
+          touches: ['Gmail'], where: 'functions/api/_board-asks.js (thanksEmail)' },
+        { t: 'Agenda for your review', s: 'live', k: 'gmail', by: 'auto', preview: 'board-chair-review', change: CHANGE.boardArea,
+          who: 'The board chair (the chair’s seat on People → Board), Holly copied.',
+          when: 'Six days before the meeting at 9 AM, or just after the last report is due when that’s later. Never once the chair has approved.',
+          subject: 'Agenda for your review: {meeting}, {date}',
+          does: 'The whole agenda by part with its times, who presents, and each report in, late or due. The review page approves it, keeps the chair’s own notes, and sends a report back to its presenter with a question. A reply reaches Peter and Holly; “looks good” approves it, and an approval is said back in the same conversation.',
+          touches: ['Gmail', 'Workers AI', 'D1'], where: 'functions/api/_board-asks.js (chairEmail, chairApprove)' },
+        { t: 'A question about your report', s: 'live', k: 'gmail', by: 'staff', preview: 'board-ask-question', change: CHANGE.boardArea,
+          who: 'Who presents the item (board members), the chair and Holly copied.',
+          when: 'The chair presses Send on a report in their review page.',
+          subject: 'Re: {meeting}: your {item} report…',
+          does: 'The chair’s question, in the presenter’s report conversation. Their reply goes on the agenda under the report, below the question.',
+          touches: ['Gmail', 'D1'], where: 'functions/api/_board-asks.js (questionEmail, askPresenter)' },
+      ]},
       { t: 'From your own email', children: [
         { t: 'Bio request', s: 'live', k: 'mail', by: 'staff', change: CHANGE.board,
           who: 'One board member or advisor.',
@@ -793,9 +832,10 @@ const SENDERS = {
   push: { label: 'Browser', color: '#5B4BC4', from: 'The person’s own browser, as a notification from sunshineonaranneyday.com.' },
   slack: { label: 'Slack', color: '#6B2D6B', from: 'Slack, as a card from the site’s Slack app in the alerts channel (#team-everyone). Nobody is emailed.' },
   you: { label: 'Your email', color: '#5F6066', from: 'Your own email app, from your own address. The site doesn’t send it.' },
+  gmail: { label: 'Gmail', color: '#1F5F8B', from: 'Peter’s own Gmail, with Holly copied. The site sends it as him (Google’s gmail.send), so it’s in his Sent folder and replies come to his inbox.' },
 };
-const SENDER_OF = { email: 'resend', jobtread: 'jobtread', jtnote: 'jobtread', kit: 'kit', invite: 'google', text: 'twilio', push: 'push', slack: 'slack', mail: 'you' };
-const PART = { email: 'The email', jobtread: 'The email', jtnote: 'The note', kit: 'The email', invite: 'The invite', text: 'The text', push: 'The browser alert', slack: 'The Slack card', mail: 'The email' };
+const SENDER_OF = { email: 'resend', jobtread: 'jobtread', jtnote: 'jobtread', kit: 'kit', invite: 'google', text: 'twilio', push: 'push', slack: 'slack', mail: 'you', gmail: 'gmail' };
+const PART = { gmail: 'The email', email: 'The email', jobtread: 'The email', jtnote: 'The note', kit: 'The email', invite: 'The invite', text: 'The text', push: 'The browser alert', slack: 'The Slack card', mail: 'The email' };
 // A channel whose words differ from its sender's usual ones (an internal JobTread note is never emailed)
 const FROM_OF = { jtnote: 'JobTread, as an internal note on the family’s page (or the job). Only staff see it, and JobTread emails no one outside SOARD.' };
 /** Who sends an entry, first sender first. Exported for tests */
@@ -821,7 +861,7 @@ const shape = (n) => (n.k === 'invite' ? 'square' : 'circle');
 const PALETTE = { family: '#8C3D6B', reveals: '#B08900', live: '#6352C9', site: '#13807A', email: '#2B6CB0', board: '#A0571A' };
 const TEXT_FROM = 'SOARD’s alert number, through Twilio';
 const PUSH_FROM = 'sunshineonaranneyday.com, as a browser notification';
-const SEE = { email: 'See the email', jobtread: 'See the email', jtnote: 'See the note', kit: 'See the email', invite: 'See the invite', text: 'See the text' };
+const SEE = { gmail: 'See the email', email: 'See the email', jobtread: 'See the email', jtnote: 'See the note', kit: 'See the email', invite: 'See the invite', text: 'See the text' };
 
 const model = prepareMap(MAP, 'm');
 /** Apply the live facts to every entry. Exported for tests. */

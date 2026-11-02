@@ -99,6 +99,8 @@ export async function getSettings(DB) {
     adminsSaved: Array.isArray(s.admins) && s.admins.length > 0,
     invitesFrom: await (await import('./_board-invite.js')).organizerFor(DB),
     driveFolder: s.driveFolder || '',
+    // Emails asking presenters for their reports (./_board-asks.js): 'test' (to the asker alone) until switched 'on'; or 'off'
+    asks: ['on', 'off'].includes(s.asks) ? s.asks : 'test',
   };
 }
 
@@ -114,6 +116,7 @@ export async function saveSettings(DB, patch, by) {
   if (patch.invitesFrom !== undefined) next.invitesFrom = normEmail(patch.invitesFrom);
   // The Board folder in Google Drive (./_board-drive.js): a link to it or its id; '' for the usual one
   if (patch.driveFolder !== undefined) next.driveFolder = (String(patch.driveFolder || '').match(/folders\/([\w-]{10,})/) || String(patch.driveFolder || '').trim().match(/^([\w-]{10,})$/) || [])[1] || '';
+  if (patch.asks !== undefined) next.asks = ['on', 'off', 'test'].includes(patch.asks) ? patch.asks : 'test';
   if (patch.quorum !== undefined) next.quorum = Math.max(0, Math.min(50, Math.round(Number(patch.quorum) || 0)));
   if (patch.defaults) {
     const clean = cleanMeeting({ ...patch.defaults, date: '2026-01-01' });
@@ -380,7 +383,9 @@ export async function setRsvp(DB, meetingId, slug, answer) {
 async function presenterGate(env, id, itemId, { member = null, admin = false } = {}) {
   if (!ID.test(String(id || '')) || !ID.test(String(itemId || ''))) throw err('Which item?', 400);
   const m = await getMeeting(env.DB, id);
-  if (!m || (!admin && !forBoard(m))) throw err('That meeting isn’t on the board page', 404);
+  // A meeting ahead not shared yet opens to who presents in it (their report was asked for by email: _board-asks.js)
+  const ahead = !!member && isDate(m?.date) && m.date >= todayEastern() && !m.notBoard;
+  if (!m || (!admin && !forBoard(m) && !ahead)) throw err('That meeting isn’t on the board page', 404);
   const it = m.sections.flatMap((s) => s.items).find((x) => x.id === itemId);
   if (!it) throw err('That item isn’t on the agenda any more', 404);
   if (member) {

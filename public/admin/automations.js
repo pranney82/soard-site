@@ -32,7 +32,7 @@ import { reviewOf } from './process-shared.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 30, 2026';
+const WRITTEN_ON = 'November 2, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -837,6 +837,22 @@ const MAP = { t: 'SOARD', children: [
             const d = f.board?.drafts;
             if (!d) return null;
             return ON(d.ahead ? `${plural(d.ahead, 'meeting')} ahead with a drafted agenda.` : 'No drafted agendas ahead.', d.lastAt);
+          } },
+        { t: 'Reports asked for, and the chair’s review', s: 'live', k: 'schedule',
+          when: 'Every five minutes on the live hub’s heartbeat, for the next meeting once its agenda isn’t a draft: two weeks ahead, or at once when it’s nearer. Emails go between 8 AM and 7 PM Eastern.',
+          does: 'Each board member presenting an agenda item gets an email from Peter’s Gmail, Holly copied, asking for their report by a deadline: a week before the meeting at 5 PM (a nearer meeting, noon a day later). A reminder two days before it’s due; past due, a note with the chair copied. Six days before the meeting, the chair gets the whole agenda to review on the board page: approve it, keep their own notes, or send a report back to its presenter with a question. Replies are read: a report goes on the agenda word for word with its files and the presenter is thanked; an answer goes under the report it was asked about; a question, an out-of-office or “I’ll send it Friday” stays in the inbox for a person.',
+          touches: ['Gmail', 'Workers AI', 'D1', 'R2'], where: 'functions/api/_board-asks.js (broadcast-hooks.js, board-portal.js)',
+          note: 'Needs https://www.googleapis.com/auth/gmail.send on the site’s domain-wide delegation (added Nov 2, 2026), beside gmail.readonly.',
+          info: 'Staff presenters are never asked: they write theirs in Board. A reply never replaces a report already there; it goes under it. The treasurer’s page has the statements beside last year’s and the budget, with a note on any line, and the notes show under those lines on the agenda, the screen and in Print it all.',
+          live: (f) => {
+            const a = f.boardAsks;
+            if (!a) return null;
+            if (a.off) return OFF('Switched off.');
+            if (a.error) return ATTN(/unauthorized_client/.test(a.error) ? 'Google hasn’t allowed the site to send as Peter: gmail.send on the domain-wide delegation.' : `The last run failed: ${a.error}`, a.errorAt || a.at);
+            if (!a.at) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(a.at, HOUR)) return ATTN(`Hasn’t run since ${stamp(a.at)}. Check the Heartbeat entry.`, a.at);
+            if (!a.meeting || !a.asked) return ON(a.meeting ? `Nothing asked for yet for the ${a.meeting.name}.` : 'No meeting ahead.', a.at);
+            return ON(`${a.meeting.name}: ${a.in} of ${plural(a.asked, 'report')} in${a.late ? `, ${a.late} late` : ''}${a.chair === 'approved' ? '. The chair approved the agenda.' : a.chair ? '. The chair has the agenda to review.' : '.'}`, a.at);
           } },
         { t: 'Attendance from Google Meet', s: 'live', k: 'schedule',
           when: 'From half an hour after a meeting on Google Meet ends, hourly for two days (every ten minutes at most).',

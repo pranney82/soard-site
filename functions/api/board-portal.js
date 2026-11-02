@@ -16,6 +16,12 @@
  *                                                    on any. base: the reportAt they started from (409 + current)
  * POST ?attach=<meetingId>&item=<itemId> (multipart "file")  a document with an item they present (an admin's, any)
  * POST { action: 'detach', meetingId, itemId, fileId }  one they put there taken off again (an admin: any)
+ * POST { action: 'line-note', meetingId, itemId, key, line, text }  a note on one line of the money's statements by who
+ *                                                    presents the item (an admin's, any); empty text takes it off (_board-asks.js)
+ * POST { action: 'chair-approve', meetingId }        the chair approves the agenda ahead (or an admin)
+ * POST { action: 'chair-note', meetingId, itemId, text }  the chair's own note on an item (the chair's and the admins' only)
+ * POST { action: 'ask-presenter', meetingId, itemId, question }  the chair sends a report back to who presents it with a
+ *                                                    question, by email from the asker's Gmail; their answer goes under the report
  * POST ?minutes=<meetingId> (multipart "file")       the secretary's typed minutes template, read into the meeting
  *                                                    (_board-minutes.js secretarySends); the secretary's seat or an admin.
  *                                                    Another meeting's minutes → 409 { error, other }; &anyway=1 sends them all the same
@@ -23,9 +29,10 @@
  * (theirs alone, simulated members) they check in and vote as themselves.
  */
 
-import { portalData, setRsvp, setActionDone, signDoc, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, attachToItem, detachFromItem } from './_board.js';
+import { portalData, setRsvp, setActionDone, signDoc, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, attachToItem, detachFromItem, listMeetings } from './_board.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
+import { portalExtras, saveLineNote, chairApprove, chairNote, askPresenter } from './_board-asks.js';
 
 const fail = (error, status = 400) => Response.json({ ok: false, error }, { status });
 
@@ -52,7 +59,10 @@ export async function onRequestGet(context) {
       if (!ics) return fail('That meeting isn’t on the board page', 404);
       return new Response(ics, { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': 'attachment; filename="soard-board-meeting.ics"', 'Cache-Control': 'private, no-store' } });
     }
-    return Response.json({ ok: true, ...(await portalData(context.env, w)) }, { headers: { 'Cache-Control': 'private, no-store' } });
+    // Beside it: the notes on the money's lines, a member's own report asks (when each is due), and a meeting ahead
+    // not shared yet that they present in (their items only), so the ask's link opens (_board-asks.js)
+    const [data, extras] = await Promise.all([portalData(context.env, w), listMeetings(context.env.DB).then((meetings) => portalExtras(context.env, { ...w, meetings }))]);
+    return Response.json({ ok: true, ...data, ...extras }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err) {
     return fromError(err);
   }
@@ -89,6 +99,14 @@ export async function onRequestPost(context) {
     if (body.action === 'checkin') return Response.json({ ok: true, ...(await liveCheckIn(env, String(body.meetingId || ''), { ...w, how: String(body.how || '') })) });
     if (body.action === 'vote') return Response.json({ ok: true, ...(await liveVote(env, String(body.meetingId || ''), String(body.motionId || ''), String(body.vote || ''), w)) });
     if (body.action === 'detach') return Response.json({ ok: true, ...(await detachFromItem(env, String(body.meetingId || ''), String(body.itemId || ''), String(body.fileId || ''), w)) });
+    // The chair's review (the chair's seat, or an admin: _board-asks.js chairGate checks)
+    if (body.action === 'chair-approve') return Response.json({ ok: true, ...(await chairApprove(env, { meetingId: String(body.meetingId || '') }, w)) });
+    if (body.action === 'chair-note') return Response.json({ ok: true, ...(await chairNote(env, { meetingId: String(body.meetingId || ''), itemId: String(body.itemId || ''), text: String(body.text ?? '') }, w)) });
+    if (body.action === 'ask-presenter') return Response.json({ ok: true, ...(await askPresenter(env, { meetingId: String(body.meetingId || ''), itemId: String(body.itemId || ''), question: String(body.question ?? '') }, w)) });
+    if (body.action === 'line-note') {
+      const note = { meetingId: String(body.meetingId || ''), itemId: String(body.itemId || ''), key: String(body.key || ''), line: String(body.line || ''), text: String(body.text ?? '') };
+      return Response.json({ ok: true, ...(await saveLineNote(env, note, w)) });
+    }
     // A report: who presents the item writes it (saveReport checks), and an admin can on any
     if (body.action === 'report') {
       try {

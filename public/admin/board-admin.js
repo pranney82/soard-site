@@ -608,7 +608,7 @@ function MembersTab({ ctx }) {
 // ─── Settings ───────────────────────────────────────────────────────
 function SettingsTab({ ctx }) {
   const { data, setData, addToast } = ctx;
-  const pick = (x) => ({ admins: x.admins, invitesFrom: x.invitesFrom, quorum: x.quorum, defaults: x.defaults, template: x.template, driveFolder: x.driveFolder || '' });
+  const pick = (x) => ({ admins: x.admins, invitesFrom: x.invitesFrom, quorum: x.quorum, defaults: x.defaults, template: x.template, driveFolder: x.driveFolder || '', asks: x.asks || 'test' });
   const [s, setS] = useState(() => pick(data.settings));
   const [newAdmin, setNewAdmin] = useState('');
   const [saving, setSaving] = useState(false);
@@ -652,6 +652,7 @@ function SettingsTab({ ctx }) {
         <div class="form-group"><label class="form-label" for="bd-da">Its address</label><input id="bd-da" class="form-input" value=${s.defaults.address} onInput=${(e) => setDef({ address: e.target.value })} /></div>
       </div>
     </div>
+    <${AsksCard} s=${s} setS=${setS} />
     <div class="card">
       <div class="bd-card-head"><h3>Past meetings from Google Drive</h3><p>Board reads the Board folder in Google Drive: in each year’s folder (“2025 Board”), a folder per meeting (“7.24.25 Meeting”), with its minutes and packet. They come onto that meeting by themselves, on the board page. Loose files in a year’s folder (policies, photos, sign-up sheets) stay in Drive.</p></div>
       <div class="form-group" style="max-width:44rem">
@@ -665,6 +666,28 @@ function SettingsTab({ ctx }) {
       <span class="bd-savebar__state">${saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
       <button class="btn btn-primary" disabled=${saving || !dirty} onClick=${save}>Save</button>
     </div>`;
+}
+
+/**
+ * The emails asking presenters for their reports, and the chair's review (functions/api/_board-asks.js): sent from the
+ * admin the invites don't come from, the organizer copied. Test sends each one to that admin alone, once a meeting.
+ */
+function AsksCard({ s, setS }) {
+  const asker = s.admins.find((e) => e !== s.invitesFrom) || s.invitesFrom || s.admins[0] || '';
+  const copied = s.invitesFrom && s.invitesFrom !== asker ? firstOf(s.invitesFrom) : '';
+  const hint = { test: `Each email comes to ${firstOf(asker)} alone, once for each meeting, its subject saying who it would go to. The board gets nothing.`, on: 'The board gets them on the schedule above. Replies go on the agenda.', off: 'No emails. Presenters write their reports on the board page.' };
+  return html`<div class="card">
+    <div class="bd-card-head"><h3>Reports from presenters</h3><p>Two weeks before each meeting, each board member presenting an item is emailed from ${firstOf(asker)}’s Gmail${copied ? `, ${copied} copied,` : ''} for their report, due a week before the meeting. A reminder, then past due with the chair copied. Six days before, the chair gets the whole agenda to review.</p></div>
+    <div class="form-group" style="max-width:24rem">
+      <label class="form-label" for="bd-asks">Emails to presenters and the chair</label>
+      <select id="bd-asks" class="form-select" value=${s.asks} onChange=${(e) => setS({ ...s, asks: e.target.value })}>
+        <option value="test">Test: to ${firstOf(asker)} only</option>
+        <option value="on">On: to the board</option>
+        <option value="off">Off</option>
+      </select>
+      <p class="form-hint">${hint[s.asks] || hint.test}</p>
+    </div>
+  </div>`;
 }
 
 /** What Board does with Google, and whether each part works (from the hourly looks and the invite check) */
