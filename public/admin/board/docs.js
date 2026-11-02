@@ -808,6 +808,7 @@ ${S} .bdoc-shape { position: absolute; display: flex; flex-direction: column; ov
 ${S} .bdoc-shape.is-ctr { justify-content: center; } ${S} .bdoc-shape.is-b { justify-content: flex-end; }
 ${S} .bdoc-shape .bdoc-p { padding: 0 0 0.3em; line-height: 1.18; }
 ${S} .bdoc-pic { position: absolute; display: block; object-fit: fill; }
+${S} .bdoc-tile { display: grid; place-items: center; background: #F1EFE8; } ${S} .bdoc-tile__fmt { font-weight: 800; font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: #6B6D67; }
 ${S} .bdoc-stbl { width: 100%; border-collapse: collapse; line-height: 1.25; }
 ${S} .bdoc-stbl th, ${S} .bdoc-stbl td { padding: 0.3em 0.5em; text-align: left; vertical-align: top; border-bottom: 1px solid #D3D0C7; }
 ${S} .bdoc-stbl th { font-weight: 700; border-bottom-color: #1A1B1F; }
@@ -1568,10 +1569,11 @@ export function splitOf(blocks, size) {
     }
     end = Math.max(end, b.y1);
   }
-  // A page wider than tall is cut only when it's rows and rows (a landscape table: each half then fills the screen's
-  // width); a slide stays whole. And with nowhere blank to cut (a photo, a page set solid), whole: never through a line
   if (end >= 0) tall.push(end - from);
-  if (across >= 1.1 && (lines < 16 || span < 0.5)) return whole;
+  // A landscape page is cut only when it's rows and rows (a table: each half then fills the screen's width); a slide
+  // stays whole. (A letter page's text is cut whatever its shape, so a binder's pages all come up the same size.) And
+  // with nowhere blank to cut (a photo, a page set solid), whole: never through a line
+  if (size.w > size.h * 1.05 && (lines < 16 || span < 0.5)) return whole;
   if (!best && !near) return whole;
   // Words already big (a "2027 GOALS" page): whole, nothing gained by cutting. A drawn page's lines are its runs of
   // rows; a laid-out page's are its words' boxes (a paragraph's lines touch, so runs would be whole paragraphs)
@@ -1705,7 +1707,7 @@ export function halfOf(lay, k = 0) {
 const layouts = new Map();
 // Kept on this device too (a file never changes under its id), so a meeting opened again knows its halves at once
 // and its stops don't change count as they're worked out. The version goes up when how a page is read changes
-const keptKey = (f, i) => `bdoc-lay10:${f.id}:${f.size || 0}:${i}`;
+const keptKey = (f, i) => `bdoc-lay11:${f.id}:${f.size || 0}:${i}`;
 const countKey = (f) => `bdoc-count:${f.id}:${f.size || 0}`;
 const kept = (f, i) => { try { const x = JSON.parse(localStorage.getItem(keptKey(f, i)) || 'null'); return x && typeof x.n === 'number' ? x : null; } catch { return null; } };
 // The last version's, read another way, go (once a page load)
@@ -1713,7 +1715,7 @@ let swept = false;
 function sweepKept() {
   if (swept) return;
   swept = true;
-  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay([2-9]):/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
+  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay([2-9]|10):/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
 }
 const PROBE = 400;
 /**
@@ -1758,8 +1760,8 @@ export function layoutOf(f, doc, i) {
       // Not measured (a laid-out page with no size): shown whole, as it is
       if (!blocks) return { part: null, ink: null, cut: 0, gap: null, n: 1 };
       let lay = splitOf(blocks, doc.size(i));
-      // A picture is seen whole
-      if (doc.kind === 'image' && lay.n === 2) lay = { ...lay, cut: 0, gap: null, n: 1 };
+      // A picture is seen whole (a phone's screenshot, far taller than wide, is read like a page)
+      if (doc.kind === 'image' && lay.n === 2 && doc.size(i).h / doc.size(i).w < 1.7) lay = { ...lay, cut: 0, gap: null, n: 1 };
       const ink = lay.ink;
       const inkArea = ink ? (ink.x1 - ink.x0) * (ink.y1 - ink.y0) : 0;
       // A page with nothing but its number at its foot or head
@@ -1804,6 +1806,14 @@ export function coverOf(f, width) {
   if (!covers.has(key)) {
     covers.set(key, (async () => {
       const doc = await openDoc(f);
+      // A file the screen can't draw: its format, plainly (never its download card)
+      if (doc.kind === 'other') {
+        const t = el('div', 'bdoc-frame bdoc-x bdoc-tile');
+        t.style.width = `${Math.round(width)}px`;
+        t.style.height = `${Math.round(width * 1.294)}px`;
+        t.append(el('span', 'bdoc-tile__fmt', formatName(f)));
+        return t;
+      }
       // The first page with something on it (a blank one in front isn't the document's face)
       let at = 0;
       for (let j = 0; j < Math.min(doc.count, 4); j++) { if ((await layoutOf(f, doc, j)).n !== 0) { at = j; break; } }

@@ -1317,6 +1317,8 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .is-preview .bp-top, .is-preview .bp-foot, .is-preview .bp-skip, .is-preview .bp-back, .is-preview .bs-back, .is-preview .bs-full { display: none !important; }
 .is-preview .bp-main { padding-top: 1rem; }
 html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
+/* The meeting's screen fills the window: no scroll bar's room kept along its right edge (a pale stripe on Windows) */
+html:has(body .bs) { scrollbar-gutter: auto; }
 .is-preview body { scrollbar-width: thin; }
 
 /* ─── The money beside last year (books.js): two small charts, one axis each; statements as lines ─── */
@@ -1832,7 +1834,12 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .bs-pipe__track > li.is-empty::after { background: #4A4B45; }
 .bs-pipe__n { font-family: var(--display); font-size: clamp(2.2rem, 6.4vh, 4.6rem); font-weight: 700; line-height: 0.9; letter-spacing: -0.02em; color: var(--yellow); font-variant-numeric: tabular-nums lining-nums; }
 .bs-pipe__track > li.is-empty .bs-pipe__n { color: rgba(246, 244, 236, 0.3); }
-.bs-pipe__stage, .bs-pipe__end { font-size: clamp(0.72rem, 1.55vh, 1rem); font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase; color: var(--bs-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-pipe__stage, .bs-pipe__end { font-size: clamp(0.72rem, 1.55vh, 1rem); font-weight: 800; letter-spacing: 0.11em; line-height: 1.2; text-transform: uppercase; color: var(--bs-ink); }
+/* A stage's name on two lines when its column is narrow ("Awaiting / funding"), never cut */
+.bs-pipe__stage { overflow-wrap: normal; }
+.bs-pipe__none { align-self: center; margin: 0; font-family: var(--display); font-size: clamp(1.4rem, 4vh, 2.6rem); color: var(--bs-soft); }
+/* Beside notes or a report, the reveals keep to their share of the slide */
+.bs-item--facts .bs-when, .bs-item__body .bs-when { height: min(46vh, 30rem); }
 .bs-pipe__track > li.is-empty .bs-pipe__stage { color: var(--bs-faint); }
 .bs-pipe__track > li.is-last { padding-right: 6.5em; }
 .bs-pipe__end { position: absolute; right: 1.6em; bottom: 0; color: var(--yellow); overflow: visible; }
@@ -1842,30 +1849,34 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
 .bs-pipe__card, .bs-when__stop li { min-height: 0; min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; align-content: start; gap: 0.35rem; }
 .bs-pipe__name { min-height: 2.16em; }
 .bs-pipe__photo, .bs-when__photo { position: relative; min-height: 0; display: grid; overflow: hidden; border-radius: 20px; background: var(--bs-panel-2); margin-bottom: 0.35rem; }
-.bs-pipe__photo img, .bs-when__photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 28%; }
+.bs-pipe__photo img, .bs-when__photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; }
 .bs-pipe__initials, .bs-when__initials { display: grid; place-items: center; width: 100%; height: 100%; background: hsl(var(--hue, 42) 22% 30%); color: hsl(var(--hue, 42) 45% 86%); font-family: var(--display); font-weight: 700; font-size: clamp(1.8rem, 6vh, 3.6rem); }
 .bs-pipe__name, .bs-when__name { font-family: var(--display); font-size: clamp(1.15rem, 3vh, 2rem); font-weight: 700; line-height: 1.08; color: var(--bs-ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 .bs-pipe[data-rows="2"] .bs-pipe__name, .bs-when[data-rows="2"] .bs-when__name { font-size: clamp(1rem, 2.4vh, 1.6rem); }
 .bs-pipe[data-rows="3"] .bs-pipe__name { font-size: clamp(0.9rem, 2vh, 1.3rem); -webkit-line-clamp: 1; }
-/* The reveal, a tag on the photo's corner */
-.bs-pipe__when { position: absolute; left: clamp(0.45rem, 0.7vw, 0.75rem); bottom: clamp(0.45rem, 0.9vh, 0.75rem); max-width: calc(100% - 1.2rem); box-sizing: border-box; padding: 0.3em 0.75em; border-radius: 999px; background: rgba(28, 29, 26, 0.86); color: var(--bs-ink); font-size: clamp(0.74rem, 1.6vh, 1.02rem); font-weight: 750; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The reveal, a tag on the photo's top corner (the face is in its middle) */
+.bs-pipe__when { position: absolute; left: clamp(0.45rem, 0.7vw, 0.75rem); top: clamp(0.45rem, 0.9vh, 0.75rem); max-width: calc(100% - 1.2rem); box-sizing: border-box; padding: 0.3em 0.75em; border-radius: 999px; background: rgba(28, 29, 26, 0.86); color: var(--bs-ink); font-size: clamp(0.74rem, 1.6vh, 1.02rem); font-weight: 750; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-pipe__when.is-set { background: var(--yellow); color: #1C1D1A; }
 .bs-pipe__when.is-quiet { color: rgba(246, 244, 236, 0.86); font-weight: 650; }
-.bs-pipe__card.is-quiet .bs-pipe__when { position: static; padding: 0; background: none; color: var(--bs-soft); }
-.bs-pipe[data-rows="3"] .bs-pipe__when { display: none; }
+.bs-pipe__card.is-quiet .bs-pipe__when { position: static; max-width: none; padding: 0; background: none; color: var(--bs-soft); white-space: normal; overflow: visible; }
+.bs-pipe__card.is-quiet { overflow: hidden; min-width: 0; }
+.bs-pipe[data-rows="3"] .bs-pipe__card.is-quiet .bs-pipe__when { display: none; }
+.bs-pipe[data-rows="3"] .bs-pipe__when { font-size: clamp(0.66rem, 1.35vh, 0.85rem); }
 .bs-pipe__card.is-quiet { grid-template-rows: auto auto; align-content: center; padding: clamp(0.8rem, 1.6vh, 1.2rem); border: 2px dashed rgba(246, 244, 236, 0.2); border-radius: 20px; }
 .bs-pipe__card.is-quiet .bs-pipe__name { color: var(--bs-soft); }
-.bs-when__line strong { font-family: var(--display); font-size: clamp(1.6rem, 5vh, 3.4rem); font-weight: 700; line-height: 0.95; letter-spacing: -0.015em; color: var(--bs-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-when__line strong { font-family: var(--display); font-size: clamp(1.6rem, 5vh, 3.4rem); font-weight: 700; line-height: 1.12; padding-bottom: 0.04em; letter-spacing: -0.015em; color: var(--bs-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-when__line > li.is-more::after { display: none; } .bs-when__line > li.is-more strong { color: var(--bs-soft); }
 .bs-when__line li.is-set strong { color: var(--yellow); }
 /* More stops, narrower: their days smaller so a "Late Dec" still reads whole */
 .bs-when[data-busy="yes"] .bs-when__line strong { font-size: clamp(1.35rem, 3.9vh, 2.6rem); }
 .bs-when[data-busy="more"] .bs-when__line strong { font-size: clamp(1.15rem, 3.1vh, 2.05rem); }
 .bs-when[data-busy="more"] .bs-when__line span { font-size: clamp(0.72rem, 1.5vh, 0.95rem); }
-.bs-pipe__card.is-quiet .bs-pipe__name { font-size: clamp(0.95rem, 2vh, 1.3rem); min-height: 0; }
+.bs-pipe__card.is-quiet .bs-pipe__name { font-size: clamp(0.85rem, 1.75vh, 1.15rem); min-height: 0; overflow-wrap: anywhere; -webkit-line-clamp: 3; }
 .bs-when__line span, .bs-when__stophead span { font-size: clamp(0.8rem, 1.8vh, 1.15rem); font-weight: 650; color: var(--bs-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A day not set yet: an open stop on the line */
 .bs-when__line > li:not(.is-set)::after { background: var(--bs-bg); border: 3px solid var(--yellow); }
-.bs-when__time { justify-self: start; padding: 0.28em 0.7em; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-size: clamp(0.74rem, 1.6vh, 1.02rem); font-weight: 750; }
+.bs-when__time { position: absolute; left: clamp(0.45rem, 0.7vw, 0.75rem); top: clamp(0.45rem, 0.9vh, 0.75rem); padding: 0.3em 0.75em; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-size: clamp(0.74rem, 1.6vh, 1.02rem); font-weight: 750; white-space: nowrap; }
+.bs-when__name { min-height: 2.16em; }
 .bk--screen { display: flex; gap: clamp(0.5rem, 1vw, 1rem); margin: 0; padding: 0; overflow: hidden; min-height: 0; height: 100%; }
 .bk--screen .bk-col { flex: 1 1 0; }
 /* A stage with nobody in it gives its room to the ones that have families */
@@ -1984,7 +1995,7 @@ html.is-preview:has(.bs) { scrollbar-gutter: auto; overflow: hidden; }
   .bs-faces__sub { -webkit-line-clamp: 3; }
 }
 /* A phone: under a document its page and whether it's continued, never cut off (the number says which item); a long word in a title wraps */
-@media (max-width: 520px) { .bs-figs { grid-template-columns: minmax(0, 1fr); } .bs--doc .bs-foot__item:has(+ .bs-foot__sep), .bs--doc .bs-foot__item + .bs-foot__sep, .bs--doc .bs-foot__name:has(+ .bs-foot__sep--name), .bs--doc .bs-foot__sep--name { display: none; } .bs-display { overflow-wrap: break-word; } }
+@media (max-width: 520px) { .bs-figs { grid-template-columns: minmax(0, 1fr); } .bs--doc .bs-foot__item:has(+ .bs-foot__sep), .bs--doc .bs-foot__item + .bs-foot__sep, .bs--doc .bs-foot__name:has(+ .bs-foot__sep--name), .bs--doc .bs-foot__sep--name { display: none; } .bs-display { overflow-wrap: anywhere; } .bs-item__bar > div { min-width: 0; max-width: 100%; } .bs-item__bar .bs-item__title { font-size: clamp(1.7rem, 9.5vw, 2.6rem); } }
 @media (prefers-reduced-motion: reduce) { .bs-stage__in, .bs-vote, .bs-timer.is-over, .bs-figs__bar i, .bs-faces__mark { animation: none !important; } .bs-vote__counts i::after, .bs-rail__bar i, .bs-faces__one, .bs-faces__pic, .bs-roll__q { transition: none; } }
 
 /* A phone: the header's tools at its right edge; the meeting's facts one to a line on the narrowest, where a place's

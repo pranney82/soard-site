@@ -106,32 +106,44 @@ export function Kanban({ projects, reveals = [], variant = 'home', links = varia
  */
 export function Pipeline({ projects, reveals = [] }) {
   if (!projects) return html`<p class="bs-quiet">The makeovers from JobTread aren’t available right now.</p>`;
-  const cols = columnsOf(projects).map((c) => {
-    const named = c.list.filter((b) => b.name);
-    const families = c.list.filter((b) => !b.name && b.kind !== 'community').length;
-    const orgs = c.list.filter((b) => !b.name && b.kind === 'community').length;
-    return { ...c, named, families, orgs, cards: named.length + (families ? 1 : 0) + (orgs ? 1 : 0) };
+  const all = columnsOf(projects);
+  const busy = all.filter((c) => c.list.length).length || 1;
+  // So many a card would be too small (past three rows of ten): each stage its first families and "+N more"
+  const cap = Math.max(2, Math.floor(30 / busy));
+  const cols = all.map((c) => {
+    let named = c.list.filter((b) => b.name);
+    let families = c.list.filter((b) => !b.name && b.kind !== 'community').length;
+    let orgs = c.list.filter((b) => !b.name && b.kind === 'community').length;
+    let over = 0;
+    if (named.length + (families ? 1 : 0) + (orgs ? 1 : 0) > cap) { over = named.length - (cap - 1) + families + orgs; named = named.slice(0, cap - 1); families = 0; orgs = 0; }
+    return { ...c, named, families, orgs, over, cards: named.length + (families ? 1 : 0) + (orgs ? 1 : 0) + (over > 0 ? 1 : 0) };
   });
   const total = cols.reduce((n, c) => n + c.cards, 0);
+  if (!total) return html`<p class="bs-quiet bs-pipe__none">No makeovers in progress right now.</p>`;
   const rows = total <= 6 ? 1 : total <= 14 ? 2 : 3;
   const across = (c) => Math.max(1, Math.ceil(c.cards / rows));
   const template = cols.map((c) => (c.cards ? `minmax(0, ${across(c)}fr)` : 'minmax(8.5rem, 0.45fr)')).join(' ');
   const revealOf = (b) => (b.slug ? reveals.find((r) => r.slug === b.slug) : null);
+  // The reveal's tag: in full on a big card ("Reveal mid November"), short on a small one ("Mid Nov", "Nov 6 · 1 PM")
+  const roomy = rows === 1;
+  const monthOf = (w) => (/^\d{4}-\d{2}$/.test(String(w?.month || '')) ? new Date(`${w.month}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }) : '');
   const when = (b) => {
-    if (b.kind === 'community') return html`<span class="bs-pipe__when is-quiet">Community project</span>`;
+    if (b.kind === 'community') return html`<span class="bs-pipe__when is-quiet">${roomy ? 'Community project' : 'Community'}</span>`;
     const r = revealOf(b);
-    if (r?.confirmed && r.date) return html`<span class="bs-pipe__when is-set">Reveal ${shortDate(r.date).replace(/, \d{4}$/, '')}${r.time ? ` · ${kept(clock(r.time).replace(':00', ''))}` : ''}</span>`;
-    if (r?.window?.label) return html`<span class="bs-pipe__when">Reveal ${r.window.label}</span>`;
-    return b.status === AWAITING ? null : html`<span class="bs-pipe__when is-quiet">Reveal date to come</span>`;
+    if (r?.confirmed && r.date) return html`<span class="bs-pipe__when is-set">${roomy ? 'Reveal ' : ''}${shortDate(r.date).replace(/, \d{4}$/, '')}${r.time ? ` · ${kept(clock(r.time).replace(':00', ''))}` : ''}</span>`;
+    if (r?.window?.label) return html`<span class="bs-pipe__when">${roomy || !monthOf(r.window) || !r.window.part ? `${roomy ? 'Reveal ' : ''}${r.window.label}` : `${r.window.part.charAt(0).toUpperCase()}${r.window.part.slice(1)} ${monthOf(r.window)}`}</span>`;
+    return b.status === AWAITING ? null : html`<span class="bs-pipe__when is-quiet">${roomy ? 'Reveal date to come' : 'Date to come'}</span>`;
   };
+  // Each photo cut to its card's shape around the face: tall on one row, wider on two or three
+  const crop = rows === 1 ? 'w=640,h=760' : rows === 2 ? 'w=640,h=520' : 'w=640,h=380';
   // The reveal on the photo's corner, the name under it (two lines kept for every name, so a row's photos match)
   const card = (b) => html`<li class="bs-pipe__card" key=${b.slug || b.name}>
     <span class="bs-pipe__photo">${b.photo
-      ? html`<img src=${sized(b.photo, 'w=640,h=760,fit=cover,gravity=face')} alt="" decoding="async" />`
+      ? html`<img src=${sized(b.photo, `${crop},fit=cover,gravity=face`)} alt="" decoding="async" />`
       : html`<span class="bs-pipe__initials" style=${`--hue:${hueOf(b.name)}`} aria-hidden="true">${initialsOf(b.name)}</span>`}${when(b)}</span>
     <span class="bs-pipe__name">${b.name}</span>
   </li>`;
-  const quiet = (words, sub) => html`<li class="bs-pipe__card is-quiet"><span class="bs-pipe__name">${kept(words)}</span><span class="bs-pipe__when is-quiet">${sub}</span></li>`;
+  const quiet = (words, sub) => html`<li class="bs-pipe__card is-quiet"><span class="bs-pipe__name">${words}</span><span class="bs-pipe__when is-quiet">${sub}</span></li>`;
   const units = cols.reduce((t, c) => t + (c.cards ? across(c) : 0.45), 0);
   return html`<div class="bs-pipe" data-rows=${rows} style=${`--tmpl:${template};--rows:${rows};--units:${units}`}>
     <ol class="bs-pipe__track" aria-label="The makeovers by stage">${cols.map((c, i) => html`<li class=${`${c.cards ? '' : 'is-empty'} ${i === cols.length - 1 ? 'is-last' : ''}`} key=${c.stage}>
@@ -143,6 +155,7 @@ export function Pipeline({ projects, reveals = [] }) {
         ${c.named.map(card)}
         ${c.families ? quiet(c.named.length ? `+${c.families} more ${c.families === 1 ? 'family' : 'families'}` : plural(c.families, 'family', 'families'), 'Named once their page is up') : null}
         ${c.orgs ? quiet(plural(c.orgs, 'community project'), 'Not on Community yet') : null}
+        ${c.over > 0 ? quiet(`+${c.over} more`, 'in this stage') : null}
       </ul>
     </div>`)}</div>
   </div>`;

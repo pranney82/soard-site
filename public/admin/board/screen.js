@@ -353,9 +353,15 @@ function CashSlide({ n, data, date, as = 'pct' }) {
  */
 function RevealsSlide({ n }) {
   const set = (r) => !!(r.confirmed && r.date);
-  const list = [...(n?.reveals || [])].map((r) => ({ ...r, at: set(r) ? r.date : windowStart(r.window) || '9999' })).sort((a, b) => a.at.localeCompare(b.at)).slice(0, 10);
-  if (!list.length) return html`<p class="bs-quiet">No reveals on the calendar yet.</p>`;
-  const photoOf = (r) => [...(n.projects?.building || []), ...(n.projects?.waiting || [])].find((b) => b.slug && b.slug === r.slug)?.photo || '';
+  const all = [...(n?.reveals || [])].map((r) => ({ ...r, at: set(r) ? r.date : windowStart(r.window) || '9999' })).sort((a, b) => a.at.localeCompare(b.at));
+  if (!all.length) return html`<p class="bs-quiet bs-pipe__none">No reveals on the calendar yet.</p>`;
+  // As many as fit across the screen at a readable size (about 135px a stop), the rest counted after them
+  const room = Math.max(4, Math.floor(((typeof innerWidth === 'number' ? innerWidth : 1600) * 0.8) / 135));
+  let list = all.slice(0, 10);
+  const stopsOf = (l) => new Set(l.map((r) => (set(r) ? `d:${r.date}` : `w:${r.window?.month || ''}:${r.window?.part || ''}`))).size;
+  while (list.length > 1 && stopsOf(list) > room - (list.length < all.length ? 1 : 0)) list = list.slice(0, -1);
+  const more = all.length - list.length;
+  const photoOf = (r) => r.photo || [...(n.projects?.building || []), ...(n.projects?.waiting || [])].find((b) => b.slug && b.slug === r.slug)?.photo || '';
   // A set day is its own stop on the line; the families not set yet share their part of the month
   const stops = [];
   for (const r of list) {
@@ -364,27 +370,36 @@ function RevealsSlide({ n }) {
     if (!g) stops.push(g = { key, set: set(r), first: r, list: [] });
     g.list.push(r);
   }
-  const rows = list.length <= 6 ? 1 : 2;
+  // Two rows only when they save real room (days with several families); one family a stop stays one row
+  const wide1 = list.length;
+  const wide2 = stops.reduce((t, g) => t + Math.ceil(g.list.length / 2), 0);
+  const rows = wide1 > 7 && wide2 <= wide1 * 0.75 ? 2 : 1;
   const across = (g) => Math.max(1, Math.ceil(g.list.length / rows));
+  const units = stops.reduce((t, g) => t + across(g), 0) + (more ? 1 : 0);
+  // One way of saying the months along the whole line: in full when there's room, short when it's busy
+  const full = stops.length <= 3 && !more && stops.every((g) => across(g) >= 2);
   const month = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
-  const weekday = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' });
+  const weekday = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: full ? 'long' : 'short', timeZone: 'UTC' });
+  const sameTime = (g) => g.list.every((x) => x.time === g.first.time);
   const head = (g) => {
     const r = g.first;
-    if (g.set) return html`<strong>${month(r.date)}</strong><span>${[weekday(r.date), g.list.every((x) => x.time === r.time) && r.time ? clock(r.time) : ''].filter(Boolean).join(', ')}</span>`;
-    // "Mid November", or on a stop one photo wide "Mid Nov"
-    const label = r.window?.label || 'Date to come';
-    const short = /^\d{4}-\d{2}$/.test(String(r.window?.month || '')) && r.window?.part ? `${r.window.part} ${new Date(`${r.window.month}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })}` : label;
-    const words = across(g) > 1 ? label : short;
+    if (g.set) return html`<strong>${month(r.date)}</strong><span>${[weekday(r.date), sameTime(g) && r.time ? clock(r.time) : ''].filter(Boolean).join(', ')}</span>`;
+    const w = r.window || {};
+    if (!w.label) return html`<strong>Date to come</strong>`;
+    const short = /^\d{4}-\d{2}$/.test(String(w.month || '')) && w.part ? `${w.part} ${new Date(`${w.month}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' })}` : w.label;
+    const words = full ? w.label : short;
     return html`<strong>${words.charAt(0).toUpperCase()}${words.slice(1)}</strong><span>Date to be set</span>`;
   };
-  const units = stops.reduce((t, g) => t + across(g), 0);
-  return html`<div class="bs-when" data-rows=${rows} data-busy=${units > 4 ? (units > 6 ? 'more' : 'yes') : null} style=${`--tmpl:${stops.map((g) => `minmax(0, ${across(g)}fr)`).join(' ')};--rows:${rows};--units:${units}`}>
-    <ol class="bs-when__line">${stops.map((g) => html`<li class=${g.set ? 'is-set' : ''} key=${g.key}>${head(g)}</li>`)}</ol>
+  const tmpl = [...stops.map((g) => `minmax(0, ${across(g)}fr)`), ...(more ? ['minmax(0, 1fr)'] : [])].join(' ');
+  return html`<div class="bs-when" data-rows=${rows} data-busy=${units > 4 ? (units > 6 ? 'more' : 'yes') : null} style=${`--tmpl:${tmpl};--rows:${rows};--units:${units}`}>
+    <ol class="bs-when__line">${stops.map((g) => html`<li class=${g.set ? 'is-set' : ''} key=${g.key}>${head(g)}</li>`)}${more ? html`<li class="is-more"><strong>+${more} more</strong><span>after these</span></li>` : null}</ol>
     <div class="bs-when__kids">${stops.map((g) => html`<div class=${`bs-when__stop ${g.set ? 'is-set' : ''}`} key=${g.key}><p class="bs-when__stophead">${head(g)}</p><ul style=${`--across:${across(g)}`}>${g.list.map((r) => {
       const photo = photoOf(r);
+      // A time of its own (two families the same day at different times) on the photo's corner
+      const time = g.set && r.time && !sameTime(g) ? html`<span class="bs-when__time">${clock(r.time)}</span>` : null;
       return html`<li key=${r.slug || r.name}>
-        <span class="bs-when__photo">${photo ? html`<img src=${sized(photo, 'w=640,h=760,fit=cover,gravity=face')} alt="" decoding="async" />` : html`<span class="bs-when__initials" aria-hidden="true">${initialsOf(r.name)}</span>`}</span>
-        <span class="bs-when__name">${r.name}</span>${g.set && r.time && !g.list.every((x) => x.time === r.time) ? html`<span class="bs-when__time">${clock(r.time)}</span>` : null}
+        <span class="bs-when__photo">${photo ? html`<img src=${sized(photo, `${rows === 1 ? 'w=640,h=760' : 'w=640,h=520'},fit=cover,gravity=face`)} alt="" decoding="async" />` : html`<span class="bs-when__initials" aria-hidden="true">${initialsOf(r.name)}</span>`}${time}</span>
+        <span class="bs-when__name">${r.name}</span>
       </li>`;
     })}</ul></div>`)}</div>
   </div>`;
@@ -529,7 +544,8 @@ function MinutesMotion({ item, v }) {
 /** An item's live facts on the screen, or null when it has none */
 function liveSlide(kind, n, id, data, date, as = 'pct') {
   if (!n || !kind || kind === 'minutes') return null;
-  if (kind === 'projects') return n.projects ? html`<${Pipeline} projects=${n.projects} reveals=${n.reveals || []} />` : null;
+  // (JobTread not answering: the pipeline says so, never a slide with nothing on it)
+  if (kind === 'projects') return html`<${Pipeline} projects=${n.projects} reveals=${n.reveals || []} />`;
   if (kind === 'cash') return html`<${CashSlide} n=${n} data=${data} date=${date} as=${as} />`;
   if (kind === 'reveals') return html`<${RevealsSlide} n=${n} />`;
   if (kind === 'events') {
@@ -894,7 +910,7 @@ export function Screen({ id, data, d, onBack = null }) {
       ${item.confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}`;
     const whoList = who.length ? html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${facts || faces || item.report ? 52 : 72} /><span><strong>${p.name}</strong>${roleOf(p) ? html`<small>${roleOf(p)}</small>` : null}</span></li>`)}</ul>` : null;
     // Under the money's tiles there's room for a row: each document small, its title beside it
-    const coming = docs.length ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document, next' : 'Its documents, next'}</p><${Shelf} docs=${docs} pages=${pages} row=${!!facts && !faces} /></div>` : null;
+    const coming = docs.length ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document, next' : 'Its documents, next'}</p><${Shelf} docs=${docs} pages=${pages} row=${!!facts && !faces} max=${item.notes && (item.live === 'minutes' || item.report) ? 2 : item.notes || item.live === 'minutes' ? 3 : 6} /></div>` : null;
     if (faces) {
       stage = html`<div class="bs-item bs-item--board bs-item--faces">
         <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${faces === 'roll' ? html`<${RollCount} v=${v} started=${started} />` : whoList}</div></div>
@@ -972,10 +988,12 @@ export function Screen({ id, data, d, onBack = null }) {
  * An item's documents, coming up after its card: each one's first page, title, and what it is, in a row (the first
  * six, and how many more)
  */
-function Shelf({ docs, pages, row = false }) {
+function Shelf({ docs, pages, row: asRow = false, max = 6 }) {
+  // More than three come up as the row (each small, its title beside it): as covers they'd need rows past the screen
+  const row = asRow || docs.length > 3;
   // Sized to the screen once: a TV's covers are bigger than a laptop's (a row's small, beside their titles)
   const [w] = useState(() => (row ? Math.round(Math.max(34, Math.min(64, innerHeight * 0.06))) : Math.round(Math.max(84, Math.min(170, innerHeight * 0.15)))));
-  const shown = docs.slice(0, docs.length > 6 ? 5 : 6);
+  const shown = docs.slice(0, docs.length > max ? max - 1 : max);
   return html`<ul class=${`bs-shelf ${row ? 'bs-shelf--row' : ''}`} style=${`--cover:${w}px`}>${shown.map((d) => html`<${ShelfDoc} d=${d} width=${w} pages=${pages[d.file.id]} key=${d.key} />`)}${docs.length > shown.length ? html`<li class="bs-shelf__more">and ${docs.length - shown.length} more</li>` : null}</ul>`;
 }
 /** One of them: its first page, and its pages counted as it opens (the screen hasn't drawn it yet) */
