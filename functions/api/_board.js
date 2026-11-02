@@ -37,7 +37,7 @@ import { reachedCount } from '../../public/admin/community-shared.js';
 import { peopleRows, privateEmails, activeBoard, boardAdmins, readState, writeState, readSettings, normEmail, BOARD_PAGE } from './_board-roles.js';
 import { cachedReveals, fetchJobs, loadKids, loadProjects, matchProject, isProject, isRehearsalJob, FIELD_JOB_STATUS, BUILDING_STATUSES } from './_reveals.js';
 import { sendEmails, sendEmailItems, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js';
-import { emailShell, button, esc, facts, link } from './_email-shell.js';
+import { emailShell, button, esc, facts, link, panel, SANS, SERIF } from './_email-shell.js';
 import { sniffType } from './upload-file.js';
 import { maybeSyncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
@@ -858,7 +858,8 @@ const fromBoard = () => EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board ');
 const meetingUrl = (m) => `${SITE}${BOARD_PAGE}#/meetings/${m.id}`;
 const whenOf = (m) => [longDate(m.date), timeRange(m.start, m.end)].filter(Boolean).join(', ');
 const placeOf = (m) => [m.location, m.address].filter(Boolean).join(', ');
-const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || '';
+// A title or an initial isn't a first name: "Dr. Lee Park" → Lee, "J. Michael Ortiz" → Michael, "Ortiz, Sam" → Sam
+const firstName = (name) => String(name || '').replace(/^([^,]+),\s*(?!\s|(?:jr|sr|ii|iii|iv|md|phd|esq|cpa)\b)(.+)$/i, '$2').trim().split(/\s+/).find((w) => w && !/^(dr|mr|mrs|ms|mx|rev|hon|prof|sir|judge)\.?$/i.test(w) && !/^\p{L}\.?$/u.test(w)) || '';
 // A call link as people read it: meet.google.com/abc-defg-hij
 const bareLink = (url) => String(url).replace(/^https?:\/\//, '').replace(/[?#].*$/, '');
 const SIGN_IN = 'Sign in with this email address. You’ll get a one-time code by email.';
@@ -1127,42 +1128,121 @@ export function meetingIcs(m) {
     'END:VEVENT', 'END:VCALENDAR'].join('\r\n');
 }
 
-/** The email that tells a board member their page is ready, and how to sign in */
-export function welcomeEmail({ name = '', email = '', test = false } = {}) {
+// The board page's sign-in word for word as Cloudflare Access shows it (soard.cloudflareaccess.com; its heading is
+// the Access app's name), and who sends its code. Checked against the live page and Cloudflare's docs, Nov 2026
+const ACCESS = { heading: 'Log in to SOARD Admin', send: 'Send login code', signIn: 'Sign in', again: 'Request new code', from: 'noreply@notify.cloudflare.com' };
+// The sign-in page's own joke, on purpose (Peter's): the email says it too
+const FIGURE_IT_OUT = '1-800-FIGUREITOUT';
+
+/** "Sam", "Sam or Jordan", "Sam, Jordan or Lee" */
+const orNames = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} or ${list.at(-1)}` : list[0] || '');
+
+/** A numbered step, its number in a yellow circle (table cells, so Outlook keeps them) */
+const step = (n, html) => `<tr><td valign="top" width="38" style="width:38px;padding:0 0 14px;"><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>`
+  + `<td class="num" width="26" height="26" align="center" valign="middle" bgcolor="#FFDA24" style="width:26px;height:26px;border-radius:999px;background:#FFDA24;color:#2D2E33;font-family:${SANS};font-size:13px;font-weight:700;line-height:26px;text-align:center;">${n}</td></tr></table></td>`
+  + `<td class="ink" valign="top" style="padding:2px 0 14px 4px;font-family:${SANS};font-size:15px;line-height:1.5;color:#2D2E33;">${html}</td></tr>`;
+const kicker = (text) => `<p class="muted" style="margin:0 0 6px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;color:#5A5B61;">${esc(text)}</p>`;
+const para = (html, { muted = false, top = 2 } = {}) => `<p class="${muted ? 'muted' : 'ink'}" style="margin:${top}px 0 0;font-family:${SANS};font-size:${muted ? 14 : 15}px;line-height:1.5;color:${muted ? '#5A5B61' : '#2D2E33'};">${html}</p>`;
+
+/**
+ * The email that brings a board member to their page: who invited them, what's waiting there (the next meeting,
+ * papers to sign), and the first sign-in step by step in the screens' own words, with what to do when no code comes.
+ * `inviter`: { name, title, photo } from People → Team; `next`: the next meeting on the board page; `toSign`: the
+ * titles of this year's papers they haven't signed; `helpers`: the first names a reply reaches
+ */
+export function welcomeEmail({ name = '', email = '', test = false, inviter = null, next = null, toSign = [], helpers = [] } = {}) {
   const url = `${SITE}/board`;
-  const first = String(name).split(/\s+/)[0];
+  const bare = 'sunshineonaranneyday.com/board';
+  const first = firstName(name);
+  const who = String(inviter?.name || '').replace(/\s+/g, ' ').trim();
+  // A long address wraps on a phone instead of pushing the page sideways
+  const address = email ? `<strong style="word-break:break-all;">${esc(email)}</strong>` : 'the address this email came to';
+  const help = helpers.length ? `${orNames(helpers)} will help` : 'we’ll help';
+  const heading = first ? `${first}, your board page is ready` : 'Your board page is ready';
+  const intro = `It has ${next ? `the next meeting${next.shared ? ' and its agenda' : ''}, ` : ''}past minutes, the financials, upcoming reveals and SOARD’s papers, all in one place.`;
+  const signHow = `Read ${toSign.length > 1 ? 'them' : 'it'} on the board page, and sign by typing your name.`;
+  const keep = 'No password to remember. You stay signed in for a week in the browser you used, then it’s a new code.';
+  const save = `Bookmark ${bare}, or add it to your phone’s home screen.`;
+  const year = todayEastern().slice(0, 4);
+  const byline = !who ? '' : '<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:0 0 18px;"><tr>'
+    + (inviter.photo ? `<td valign="middle" style="width:44px;padding:0 12px 0 0;"><img src="${esc(inviter.photo)}" width="44" height="44" alt="" style="display:block;width:44px;height:44px;border:0;border-radius:999px;"></td>` : '')
+    + `<td class="ink" valign="middle" style="font-family:${SANS};font-size:15px;line-height:1.4;color:#2D2E33;"><strong>${esc(who)}</strong> invited you`
+    + `${inviter.title ? `<br><span class="muted" style="font-size:13px;color:#5A5B61;">${esc(inviter.title)}</span>` : ''}</td></tr></table>`;
+  const waiting = (next ? panel(kicker('Next meeting') + para(`<strong>${esc(meetingName(next))}</strong>`, { top: 0 }) + para(esc(whenOf(next)))
+    + (placeOf(next) ? para(esc(placeOf(next)), { muted: true }) : '') + (next.shared ? para('Its agenda is on the board page.', { muted: true, top: 8 }) : ''), { accent: true }) : '')
+    + (toSign.length ? panel(kicker(`To sign for ${year}`) + para(toSign.map((t) => esc(t)).join('<br>'), { top: 0 }) + para(esc(signHow), { muted: true, top: 8 }), { accent: true }) : '');
+  const steps = '<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width:100%;">'
+    + step(1, `Open ${link(bare, url)}. A Cloudflare page that says <strong>${ACCESS.heading}</strong> opens. That’s the right one: Cloudflare keeps the board’s papers private.`)
+    + step(2, `Type ${address} and choose <strong>${ACCESS.send}</strong>.`)
+    + step(3, `A six-digit code comes by email from Cloudflare (${ACCESS.from}), usually within a minute. Type or paste it in and choose <strong>${ACCESS.signIn}</strong>. Leave the page open while you get it; the code works for 10 minutes.`)
+    + '</table>';
+  const noCode = `Look in spam, Junk or Promotions, and check that you typed ${address}. Another address gets no code, even though the page says one was sent. If the page says the code was already used, choose <strong>${ACCESS.again}</strong>. If the page closed, open the link again and ask for a new code.`;
+  const stuck = `Still stuck? Reply to this email and ${help}, or call the SOARD admin team at ${FIGURE_IT_OUT}.`;
+  const strip = (html) => html.replace(/<[^>]+>/g, '').replace(/&amp;/g, '&');
   return {
-    subject: `${test ? '[Preview] ' : ''}Your SOARD board page is ready`,
+    subject: `${test ? '[Preview] ' : ''}${who ? `${who} invited you to SOARD’s board page` : 'Your SOARD board page is ready'}`,
+    // From the person who sent it, through the board's address: "Sam Ortiz via SOARD Board", quoted (a name may
+    // have a period or a comma), a phone's curly apostrophe kept as a plain one
+    from: who ? EMAIL_FROM.replace(/^[^<]*/, `"${who.replace(/[‘’]/g, "'").replace(/["\\<>\r\n]/g, '').trim()} via SOARD Board" `) : fromBoard(),
     html: emailShell({
       eyebrow: 'SOARD Board',
-      preheader: 'Meetings, minutes, financials and reveals in one place. Sign in with this email address.',
-      heading: first ? `${first}, your board page is ready` : 'Your board page is ready',
-      intro: 'Everything for the board, in one place: the next meeting and its agenda, past minutes, the financials, upcoming reveals, and the documents to sign.',
-      bodyHtml: `<div style="margin:4px 0 16px;">${button('Open the board page', url)}</div>`
-        + `<p class="ink" style="margin:0 0 10px;font-weight:700;">Signing in takes a minute</p>`
-        + `<ol class="ink" style="margin:0 0 14px 18px;padding:0;"><li style="margin:0 0 6px;">Open <a href="${esc(url)}" style="color:#2B6CB0;">sunshineonaranneyday.com/board</a>.</li>`
-        + `<li style="margin:0 0 6px;">Type ${email ? `<strong>${esc(email)}</strong>` : 'this email address'} and choose Send code.</li>`
-        + '<li style="margin:0 0 6px;">Copy the six-digit code from the email that arrives, and paste it in.</li></ol>'
-        + '<p class="muted" style="margin:0;font-size:13px;color:#5A5B61;">You stay signed in on that device for a week. Bookmark the page, or save it to your phone’s home screen.</p>',
+      preheader: `${next ? `Next meeting ${shortDate(next.date)}. ` : ''}Sign in with ${email || 'this email address'}. No password, just a code by email.`,
+      heading,
+      intro: esc(intro),
+      bodyHtml: byline
+        + `<div style="margin:0 0 18px;">${button('Open the board page', url)}</div>`
+        + waiting
+        + `<p class="ink" style="margin:${waiting ? 22 : 4}px 0 12px;font-family:${SERIF};font-size:18px;line-height:1.3;font-weight:700;color:#2D2E33;">The first time you sign in</p>`
+        + steps
+        + small(esc(`${keep} ${save}`))
+        + ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">No code?</p><p class="ink" style="margin:0 0 10px;">${noCode}</p>${small(esc(stuck).replace(FIGURE_IT_OUT, `<span style="white-space:nowrap;">${FIGURE_IT_OUT}</span>`))}`),
       footerHtml: FOOTER,
     }),
-    text: `Your SOARD board page is ready: ${url}\nSign in with ${email || 'this email address'}: choose Send code, then paste the six-digit code from the email that arrives.`,
+    text: [
+      heading,
+      `${intro}${who ? ` ${who}${inviter.title ? ` (${inviter.title})` : ''} invited you.` : ''}`,
+      `Open the board page: ${url}`,
+      next ? [`Next meeting: ${meetingName(next)}`, whenOf(next), placeOf(next), next.shared ? 'Its agenda is on the board page.' : ''].filter(Boolean).join('\n') : '',
+      toSign.length ? `To sign for ${year}:\n${toSign.map((t) => `- ${t}`).join('\n')}\n${signHow}` : '',
+      ['The first time you sign in',
+        `1. Open ${bare}. A Cloudflare page that says "${ACCESS.heading}" opens. That’s the right one: Cloudflare keeps the board’s papers private.`,
+        `2. Type ${email || 'the address this email came to'} and choose ${ACCESS.send}.`,
+        `3. A six-digit code comes by email from Cloudflare (${ACCESS.from}), usually within a minute. Type or paste it in and choose ${ACCESS.signIn}. Leave the page open while you get it; the code works for 10 minutes.`].join('\n'),
+      `${keep} ${save}`,
+      `No code? ${strip(noCode)}`,
+      stuck,
+    ].filter(Boolean).join('\n\n'),
   };
 }
 
-/** Email each active board member (on their own) how to sign in; test: only `to` */
-export async function sendWelcome(env, { to = null, slugs = null, replyTo = [] } = {}) {
+/** Email each active board member (on their own) how to sign in, from the admin sending it (`by`); test: only `to` */
+export async function sendWelcome(env, { to = null, slugs = null, replyTo = [], by = '' } = {}) {
   if (!emailConfigured(env)) throw Object.assign(new Error('Email isn’t set up (RESEND_API_KEY)'), { status: 503 });
-  const people = Array.isArray(to) ? to.map((email) => ({ email, name: '' })) : (await packetList(env.DB)).filter((p) => !slugs || slugs.includes(p.slug));
-  if (!people.length) throw Object.assign(new Error('No board member has an email on file (People → Board)'), { status: 409 });
-  let sent = 0; let failed = 0; const errors = [];
-  for (const p of people) {
-    const mail = welcomeEmail({ name: p.name, email: p.email, test: Array.isArray(to) });
-    const r = await sendEmails(env, { to: [p.email], ...mail, from: fromBoard(), tags: [{ name: 'kind', value: Array.isArray(to) ? 'board-welcome-preview' : 'board-welcome' }], replyTo });
-    sent += r.sent; failed += r.failed; errors.push(...r.errors);
+  const test = Array.isArray(to);
+  const [list, people, settings, meetings, docs] = await Promise.all([packetList(env.DB), roster(env.DB), getSettings(env.DB), listMeetings(env.DB), listDocs(env.DB)]);
+  // A preview greets the admin by name, as a member's copy greets them
+  const recipients = test ? to.map((email) => ({ email, name: staffFor(people, email)?.name || '', slug: '' })) : list.filter((p) => !slugs || slugs.includes(p.slug));
+  if (!recipients.length) throw Object.assign(new Error('No board member has an email on file (People → Board)'), { status: 409 });
+  // Who it's from: the admin sending it, else the one the invites come from
+  const sender = staffFor(people, by) || staffFor(people, settings.invitesFrom);
+  const inviter = sender ? { name: sender.name, title: sender.title, photo: sender.photo } : null;
+  const today = todayEastern();
+  // The next meeting: not one taken off the calendar, nor today's once it's over
+  const nowHm = easternHm(Date.now());
+  const next = nextMeeting(meetings.filter((m) => onBoardPage(m, today) && !m.calendar?.gone && !(m.date === today && (m.end || m.start) && (m.end || m.start) <= nowHm)), today);
+  const helpers = [...new Set(replyTo.map((e) => firstName(staffFor(people, e)?.name)).filter(Boolean))];
+  const signable = docs.filter((d) => d.shared && d.sign && d.file && !d.file.staffOnly);
+  const items = recipients.map((p) => ({ to: p.email, ...welcomeEmail({ name: p.name, email: p.email, test, inviter, next, helpers, toSign: signable.filter((d) => !(p.slug && d.signed[p.slug])).map((d) => d.title) }) }));
+  // One batch: every member's email goes, or none does, so sending again never gives anyone a second copy
+  const r = await sendEmailItems(env, items, { from: items[0].from, tags: [{ name: 'kind', value: test ? 'board-welcome-preview' : 'board-welcome' }], replyTo });
+  if (!test && r.sent) {
+    // Each member's own time (their row on Board → Members); "told" for the board only when all of it was
+    const at = nowIso();
+    const was = await readState(env.DB, 'welcome');
+    const members = { ...(was.members || {}), ...Object.fromEntries(recipients.map((p) => [p.slug, at])) };
+    await writeState(env.DB, 'welcome', slugs ? { ...was, members } : { sentAt: at, sent: r.sent, members });
   }
-  if (!Array.isArray(to) && sent) await writeState(env.DB, 'welcome', { sentAt: nowIso(), sent });
-  return { sent, failed, errors, to: Array.isArray(to) ? to : undefined };
+  return { sent: r.sent, failed: r.failed, errors: r.errors, to: test ? to : undefined };
 }
 
 // ─── The board page ─────────────────────────────────────────────────

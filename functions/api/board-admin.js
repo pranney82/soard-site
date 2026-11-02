@@ -41,7 +41,7 @@ import {
   chairLive, createPractice, resetPractice,
 } from './_board.js';
 import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
-import { accessStatus, syncBoardAccess } from './_board-access.js';
+import { accessStatus, syncBoardAccess, accessConfigured } from './_board-access.js';
 import { groupStatus, syncBoardGroup } from './_board-group.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-mail.js';
@@ -248,7 +248,15 @@ export async function onRequestPost(context) {
       }
       case 'send-welcome': {
         const admins = (await getSettings(env.DB)).admins;
-        const r = await sendWelcome(env, { to: body.test ? [me] : null, slugs: Array.isArray(body.slugs) ? body.slugs.map(String) : null, replyTo: admins });
+        // Only once their codes will come: a member added minutes ago is put on Access's list now (not at the next
+        // heartbeat), and the list has to be on the admin app
+        if (!body.test && accessConfigured(env)) {
+          let st = await accessStatus(env);
+          if (!st.current || !st.ok) st = await syncBoardAccess(env);
+          if (!st.ok) return Response.json({ ok: false, error: `Cloudflare doesn’t have the board’s addresses yet (${st.error || 'it didn’t answer'}), so their codes wouldn’t come. Try again in a minute.` }, { status: 503 });
+          if (!st.attached) return Response.json({ ok: false, error: 'The board’s sign-in list isn’t on the admin app in Cloudflare (the card above), so their codes wouldn’t come.' }, { status: 409 });
+        }
+        const r = await sendWelcome(env, { to: body.test ? [me] : null, slugs: Array.isArray(body.slugs) ? body.slugs.map(String) : null, replyTo: admins, by: me });
         if (!body.test && r.sent) await audit(env, me, 'updated', `Board page sign-in email sent to ${r.sent} board members`);
         return Response.json({ ok: r.failed === 0, ...r, ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
       }

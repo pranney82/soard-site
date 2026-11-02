@@ -8,7 +8,9 @@
  * Built for email clients, not browsers: tables and inline styles; buttons
  * drawn as table cells so Outlook keeps their color and padding; a hidden
  * preheader (the line inboxes show beside the subject); a phone layout; and a
- * dark palette for Apple Mail and iOS Mail (Gmail repaints dark mode itself).
+ * dark palette for Apple Mail and iOS Mail (Gmail repaints dark mode itself;
+ * Outlook.com's keeps dark ink on yellow). Outlook for Windows can't load web
+ * fonts and would fall back to Times New Roman, so it gets Arial and Georgia.
  */
 
 const Y = '#FFDA24';
@@ -43,7 +45,7 @@ export function pill(text, color = STATUS_COLORS[text] || TONES.gray) {
 export function button(label, href, kind = 'primary') {
   const [bg, fg, border] = { primary: [Y, INK, Y], dark: [INK, '#FFFFFF', INK], outline: ['#FFFFFF', INK, '#D4D2CB'] }[kind] || [Y, INK, Y];
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display:inline-table;margin:0 6px 8px 0;border-collapse:separate;"><tr>`
-    + `<td class="btn-${kind}" bgcolor="${bg}" style="border-radius:999px;background:${bg};border:1px solid ${border};">`
+    + `<td class="btn-${kind}" bgcolor="${bg}" style="border-radius:999px;background:${bg};border:1px solid ${border};mso-padding-alt:11px 20px;">`
     + `<a href="${esc(href)}" target="_blank" style="display:inline-block;padding:11px 20px;font-family:${SANS};font-size:14px;font-weight:700;line-height:18px;color:${fg};text-decoration:none;border-radius:999px;white-space:nowrap;">${esc(label)}</a>`
     + '</td></tr></table>';
 }
@@ -59,7 +61,7 @@ export function paragraphs(text, style = '') {
 
 /** A white panel inside the card (one family, one fact list) */
 export function panel(inner, { accent = false } = {}) {
-  return `<table role="presentation" class="panel" cellspacing="0" cellpadding="0" border="0" width="100%" style="width:100%;background:#FFFFFF;border:1px solid ${BORDER};${accent ? `border-left:3px solid ${Y};` : ''}border-radius:12px;margin:0 0 12px;border-collapse:separate;">`
+  return `<table role="presentation" class="panel${accent ? ' panel--accent' : ''}" cellspacing="0" cellpadding="0" border="0" width="100%" style="width:100%;background:#FFFFFF;border:1px solid ${BORDER};${accent ? `border-left:3px solid ${Y};` : ''}border-radius:12px;margin:0 0 12px;border-collapse:separate;">`
     + `<tr><td style="padding:16px 18px;">${inner}</td></tr></table>`;
 }
 
@@ -96,14 +98,17 @@ table,td{border-collapse:collapse}
 @media (prefers-color-scheme:dark){
 body,.page{background:#141518!important}.card{background:#1F2024!important}
 .ink,.ink a{color:#ECECEA!important}.muted{color:#ABACB2!important}.eyebrow{color:#E6C744!important}
-.panel{background:#26272C!important;border-color:#3A3B41!important}.quote{background:#1A1B1F!important}
+.panel{background:#26272C!important;border-color:#3A3B41!important}.panel--accent{border-left-color:${Y}!important}.quote{background:#1A1B1F!important}
 .rule{border-color:#3A3B41!important}.btn-outline{background:#26272C!important;border-color:#56575D!important}.btn-outline a{color:#ECECEA!important}
 .btn-primary a{color:${INK}!important}.btn-dark{background:#ECECEA!important;border-color:#ECECEA!important}.btn-dark a{color:#1F2024!important}
 a.lnk{color:#8DB8EC!important}
 .pill{background:#2E2F35!important;border-color:#45464C!important}.pill-blue{color:#8DB8EC!important}.pill-amber{color:#E8B25A!important}
 .pill-green{color:#7FCB9A!important}.pill-gray{color:#C9CACE!important}.track{background:#3A3B41!important}
 }
-</style></head>
+[data-ogsc] .btn-primary a,[data-ogsc] .num{color:${INK}!important}
+</style>
+<!--[if mso]><style>body,table,td,p,a,li,span,strong{font-family:Arial,Helvetica,sans-serif!important}h1{font-family:Georgia,'Times New Roman',serif!important}</style><![endif]-->
+</head>
 <body class="page" style="margin:0;padding:0;background:${PAGE};">
 <div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;">${esc(preheader)}${'&#8199;&#65279;&#847;'.repeat(60)}</div>
 <center class="page" style="width:100%;background:${PAGE};padding:28px 0 20px;">

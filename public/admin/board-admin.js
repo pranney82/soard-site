@@ -634,8 +634,9 @@ function MembersTab({ ctx }) {
     setWorking(label);
     const j = await call({ action: 'send-welcome', ...body });
     setWorking('');
-    if (!j.ok) { addToast(j.error, 'error'); return; }
-    addToast(body.test ? `Sent to ${j.to?.[0] || 'you'}` : `Emailed ${plural(j.sent, 'board member')}`, 'info');
+    // One batch: it all went or none of it did, so after a failure sending again never doubles anyone's
+    if (!j.ok) addToast(j.sent ? `Emailed ${j.sent}; ${plural(j.failed, 'email')} didn’t go (${j.error})` : `Nobody got it, so sending again is safe. ${j.error}`, 'error');
+    else addToast(body.test ? `Sent to ${j.to?.[0] || 'you'}` : `Emailed ${plural(j.sent, 'board member')}`, 'info');
     ctx.load();
   };
   const answer = (p) => {

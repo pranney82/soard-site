@@ -642,9 +642,12 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       return gmail(review, { to: 'The board chair, Holly copied' });
     }
     case 'board-welcome':
-      return email(welcomeEmail({ name: 'Alex Rivera', email: 'alex@example.com' }), {
-        from: BOARD_FROM, to: 'Each active board member with an email on People → Board, on their own',
-        note: 'Peter or Holly sends it from Board → Members once board sign-in is set up. Send it to me sends a [Preview] copy first.',
+      return email(welcomeEmail({
+        name: 'Alex Rivera', email: 'alex@example.com', inviter: { name: 'Jordan Ellis', title: 'Executive Director', photo: '' },
+        next: sampleBoardMeeting(), toSign: ['Conflict of Interest Policy'], helpers: ['Jordan', 'Pat'],
+      }), {
+        from: 'The admin who sends it, “via SOARD Board”', to: 'Each active board member with an email on People → Board, on their own',
+        note: 'Peter or Holly sends it from Board → Members once board sign-in is set up; it comes from whoever sends it, with their photo from People → Team. The next meeting and the papers they haven’t signed are their own. Send it to me sends a [Preview] copy first.',
       });
     case 'advisory-thanks':
     case 'advisory-staff': {
