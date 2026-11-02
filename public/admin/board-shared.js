@@ -728,9 +728,10 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [] } = {}) {
     const items = s.items.filter(isFilled);
     if (!s.title && !items.length) continue;
     if (items.length !== 1) out.push({ key: `section:${s.id}`, kind: 'section', itemId: '', fileId: '', page: 0, n: -1, sectionId: s.id });
-    for (const it of items) add(it, itemDocs(m, it, meetings).map((d) => d.file), n++, s.id);
+    // Never a staff-only file: the screen shows the meeting as the board sees it, and the chair's deck matches it stop for stop
+    for (const it of items) add(it, docsOf(itemFiles(m, it, meetings).filter((f) => !f.staffOnly)).map((d) => d.file), n++, s.id);
   }
-  const loose = docsOf(looseFiles(m)).map((d) => d.file);
+  const loose = docsOf(looseFiles(m).filter((f) => !f.staffOnly)).map((d) => d.file);
   if (loose.length) add(MORE, loose, -1, '');
   out.push({ key: 'end', kind: 'end', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' });
   return out;
