@@ -462,14 +462,25 @@ export async function saveReport(env, id, itemId, text, { member = null, admin =
  * What an item's presenter asks the board to vote on (item.motion), written ahead on the board page: the presenter or
  * Board's admins, until the meeting's minutes are approved (presenterGate). Empty takes it off. → { itemId, motion }
  */
-export async function saveMotion(env, id, itemId, text, { member = null, admin = false, adminEmail = '' } = {}) {
+export async function saveMotion(env, id, itemId, text, { member = null, admin = false, adminEmail = '', base = null } = {}) {
   await ensureSchema(env.DB);
   if (typeof text !== 'string') throw err('What should the board vote on?', 400);
-  const { it } = await presenterGate(env, id, itemId, { member, admin });
-  const motion = text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/\s*\n\s*/g, ' ').trim().slice(0, LIMITS.motion);
+  let it;
+  try {
+    ({ it } = await presenterGate(env, id, itemId, { member, admin }));
+  } catch (e) {
+    if (e.status === 403 && member) throw err('Only the person presenting this item can ask the board to vote on it', 403);
+    throw e;
+  }
+  const motion = text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').replace(/\s+/g, ' ').trim().slice(0, LIMITS.motion);
   if (motion === (it.motion || '')) return { itemId, motion };
+  // `base`: the motion as the page last saw it. Someone else's since (a co-presenter, Board) is never written over
   const saved = await patchMeeting(env.DB, id, (cur) => {
-    if (!cur.sections.some((s) => s.items.some((x) => x.id === itemId))) throw err('That item isn’t on the agenda any more', 404);
+    const now = cur.sections.flatMap((s) => s.items).find((x) => x.id === itemId);
+    if (!now) throw err('That item isn’t on the agenda any more', 404);
+    if (base !== null && String(base) !== (now.motion || '') && (now.motion || '') !== motion) {
+      throw Object.assign(err('Someone changed this motion since you opened it', 409), { current: { itemId, motion: now.motion || '' } });
+    }
     return { ...cur, sections: cur.sections.map((s) => ({ ...s, items: s.items.map((x) => (x.id === itemId ? { ...x, motion } : x)) })) };
   }, { by: member?.name || adminEmail });
   return { itemId, motion: saved.sections.flatMap((s) => s.items).find((x) => x.id === itemId)?.motion || '' };
@@ -1603,7 +1614,7 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const seen = m.practice ? m : forBoard({ ...m, shared: true });
   const sections = seen.sections.map((sec) => ({
     id: sec.id, title: sec.title, minutes: sec.minutes || 0,
-    items: sec.items.filter(isFilled).map((it) => ({ id: it.id, title: it.title, presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, also: it.also, about: it.about, docs: it.docs,
+    items: sec.items.filter(isFilled).map((it) => ({ id: it.id, title: it.title, motion: it.motion || '', presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, also: it.also, about: it.about, docs: it.docs,
       report: it.report, reportBy: it.reportBy, reportAt: it.reportAt })),
   }));
   // The last meeting's minutes, for an item that asks the board to approve them (only from a meeting the board can see)

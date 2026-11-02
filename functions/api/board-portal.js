@@ -18,8 +18,8 @@
  *                                                    on any. base: the reportAt they started from (409 + current)
  * POST ?attach=<meetingId>&item=<itemId> (multipart "file")  a document with an item they present (an admin's, any)
  * POST { action: 'detach', meetingId, itemId, fileId }  one they put there taken off again (an admin: any)
- * POST { action: 'motion', meetingId, itemId, text }   what an item's presenter asks the board to vote on (an admin's, any);
- *                                                    empty takes it off
+ * POST { action: 'motion', meetingId, itemId, text, base }  what an item's presenter asks the board to vote on (an admin's,
+ *                                                    any); empty takes it off. base: the motion the page last saw (409 + current)
  * POST { action: 'line-note', meetingId, itemId, key, line, text }  a note on one line of the money's statements by who
  *                                                    presents the item (an admin's, any); empty text takes it off (_board-asks.js)
  * POST { action: 'chair-approve', meetingId }        the chair approves the agenda ahead (or an admin)
@@ -120,7 +120,15 @@ export async function onRequestPost(context) {
       return Response.json({ ok: true, ...(await saveLineNote(env, note, w)) });
     }
     // A motion for the board to vote on: who presents the item, or an admin (saveMotion checks, as for a report)
-    if (body.action === 'motion') return Response.json({ ok: true, ...(await saveMotion(env, String(body.meetingId || ''), String(body.itemId || ''), body.text, w)) });
+    if (body.action === 'motion') {
+      try {
+        const base = typeof body.base === 'string' ? body.base : null;
+        return Response.json({ ok: true, ...(await saveMotion(env, String(body.meetingId || ''), String(body.itemId || ''), body.text, { ...w, base })) });
+      } catch (err) {
+        if (err.status === 409 && err.current) return Response.json({ ok: false, error: err.message, current: err.current }, { status: 409 });
+        throw err;
+      }
+    }
     // A report: who presents the item writes it (saveReport checks), and an admin can on any
     if (body.action === 'report') {
       try {

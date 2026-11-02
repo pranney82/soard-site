@@ -808,3 +808,55 @@ test('the minutes template’s motions read exactly as the secretary filled them
   const read = await readMinutes(env, { text: doc('Moved by:            Seconded by:            For:      Against:      Abstain:      Passed / Failed'), people, meeting: { date: '2026-11-05', sections: [] } });
   assert.deepEqual(read.motions.map((x) => x.text), ['Thank the gala volunteers']);
 });
+
+test('the template’s record as secretaries really fill it: Word’s list marks, the printed form, initials, tabled, and a blank one never borrowing the next one’s record', async () => {
+  const { templateMotionsIn } = await import('../functions/api/_board-minutes.js');
+  const people = [{ name: 'Sam Ortiz' }, { name: 'Kim Park' }, { name: 'Nia Ford' }];
+  const t = (text) => templateMotionsIn(text, people);
+  // Word's text puts the list mark back ("- Motion: …")
+  assert.deepEqual(t('      - Motion: Move to approve the 2027 budget.\nMoved by: Sam Ortiz Seconded by: Kim Park For: 7 Against: 0 Abstain: 0 Passed').motions.map((x) => [x.text, x.result, x.tally.for]), [['Approve the 2027 budget', 'passed', 7]]);
+  // The printed form read from a PDF: a line a field, no colons, both words printed
+  assert.equal(t('The board votes on Move to approve the budget.\nMoved by Sam Ortiz\nSeconded by Kim Park\nFor 7 Against 0 Abstain 1\nPassed Failed').motions[0].result, 'passed');
+  assert.deepEqual(t('Motion: Move to approve the budget.\nMoved by: SO   Seconded by: KP   Tabled').motions.map((x) => [x.by, x.second, x.result]), [['Sam Ortiz', 'Kim Park', 'tabled']]);
+  assert.equal(t('Motion: Move to approve the budget.\nMoved by: Nia Ford   Seconded by: Kim Park   For: 7   Against: 0   Abstain: 0   Passed').motions[0].tally.for, 7, '"Ford" is not "For:"');
+  // A blank one above a filled one: never its record
+  const two = t('Motion: Move to adopt the bylaws change.\n\nMotion: Move to approve the budget.\nMoved by: Sam Ortiz   Seconded by: Kim Park   For: 7   Against: 0   Abstain: 0   Passed');
+  assert.deepEqual(two.motions.map((x) => x.text), ['Approve the budget']);
+  // Ordinary minutes are left to the usual reading: never the template's, never held open
+  assert.deepEqual(t('Motion to approve the minutes of August 10 made by Sam Ortiz, seconded by Kim Park. Motion carried unanimously.'), { motions: [], open: [] });
+  assert.deepEqual(t('Motion carried unanimously.\nMotion: Move to approve the budget.\nMoved by: Sam Ortiz  Seconded by: Kim Park  For: 7  Against: 0  Abstain: 0  Passed').motions.map((x) => x.text), ['Approve the budget']);
+});
+
+test('ordinary minutes keep their motions and the last minutes’ approval, as before the template’s reading', async () => {
+  const { readMinutes } = await import('../functions/api/_board-minutes.js');
+  const text = 'Board Meeting Minutes\nNovember 5, 2026\nCall to order at 8:02 AM.\nMotion to approve the minutes of the August 10 meeting made by Sam Ortiz, seconded by Kim Park. Motion carried.\nMOTION: To adjourn at 9:15 AM, moved by Kim Park, seconded by Sam Ortiz. Passed.';
+  const r = await readMinutes({}, { text, people: [{ name: 'Sam Ortiz' }, { name: 'Kim Park' }], meeting: { date: '2026-11-05', sections: [] } });
+  assert.ok(r.motions.some((x) => /minutes of the August 10 meeting/i.test(x.text)));
+  assert.equal(r.approvedPrev, true);
+});
+
+test('the count lands on the meeting with its motion', async () => {
+  const { applyMinutes } = await import('../functions/api/_board-minutes.js');
+  const { cleanMeeting } = await import('../public/admin/board-shared.js');
+  const next = applyMinutes(cleanMeeting({ id: 'm_t', date: '2026-11-05', sections: [] }), { attendance: [], sections: [], actions: [], approvedPrev: false, said: { by: 'rules' }, motions: [{ text: 'Approve the budget', by: 'Sam Ortiz', second: 'Kim Park', result: 'passed', tally: { for: 6, against: 2, abstain: 1 } }] });
+  assert.deepEqual(cleanMeeting(next).motions.map((x) => [x.result, x.tally?.for, x.tally?.against, x.tally?.abstain]), [['passed', 6, 2, 1]]);
+});
+
+test('a motion: one line, 400 characters, never saved over someone else’s, its own words when refused; the room sees it', async () => {
+  const { saveMotion, liveView } = await import('../functions/api/_board.js');
+  await meeting({ shared: true });
+  const first = await saveMotion(env, 'm_nov5', 'i_fin', `Move to approve\n\nthe budget. ${'x'.repeat(600)}`, { member: SAM, base: '' });
+  assert.ok(!first.motion.includes('\n') && first.motion.length === 400);
+  await assert.rejects(saveMotion(env, 'm_nov5', 'i_fin', 'Mine instead', { member: SAM, base: 'an older one' }), (e) => e.status === 409 && e.current.motion === first.motion);
+  assert.equal((await saveMotion(env, 'm_nov5', 'i_fin', 'Move to approve the budget.', { member: SAM, base: first.motion })).motion, 'Move to approve the budget.');
+  await assert.rejects(saveMotion(env, 'm_nov5', 'i_fin', 'x', { member: { slug: 'kim-park', name: 'Kim Park', email: 'kim.board@example.net' } }), /ask the board to vote on it/);
+  const v = await liveView(env, 'm_nov5', { member: SAM });
+  assert.equal(v.sections.flatMap((s) => s.items).find((x) => x.id === 'i_fin').motion, 'Move to approve the budget.');
+});
+
+test('a presenter’s items in a meeting not shared yet keep their numbers on the agenda (3.2, not 1.1)', async () => {
+  await meeting();
+  const { listMeetings } = await import('../functions/api/_board.js');
+  const x = await portalExtras(env, { member: SAM, meetings: await listMeetings(env.DB), today: '2026-11-03' });
+  assert.deepEqual(x.presenting[0].sections.flatMap((s) => s.items.map((it) => [it.title, it.n])), [['Financial', '2.2']]);
+});

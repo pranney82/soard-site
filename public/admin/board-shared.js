@@ -217,7 +217,7 @@ export const LIVE = [
 ];
 /** What a live list with no title of its own is called for the board: what it shows, never its part's name */
 export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings', minutes: 'The last meeting’s minutes' };
-export const LIMITS = { title: 200, text: 300, notes: 20000, report: 120000, motion: 1000, items: 80, sections: 20, people: 80, rows: 100 };
+export const LIMITS = { title: 200, text: 300, notes: 20000, report: 120000, motion: 400, items: 80, sections: 20, people: 80, rows: 100 };
 
 /** The agenda a new meeting starts from, until Settings saves another one */
 export const DEFAULT_TEMPLATE = [
@@ -317,7 +317,7 @@ function cleanItem(raw) {
     reportAt: /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(raw?.reportAt || '')) ? raw.reportAt : '',
     // What its presenter asks the board to vote on ("Move to approve the 2027 budget as presented."), written ahead:
     // on the agenda, the screen and the minutes template, where the secretary records who moved it and how it went
-    motion: str(raw?.motion, LIMITS.motion),
+    motion: one(raw?.motion, LIMITS.motion),
     confidential: bool(raw?.confidential),
     live,
     also,

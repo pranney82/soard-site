@@ -1274,7 +1274,10 @@ export async function portalExtras(env, { member = null, admin = false, meetings
     // Before it's shared: only the two weeks the asks go out in, and only an agenda that isn't a draft
     const presenting = member ? ahead.filter((m) => !m.shared && daysUntil(today, m.date) <= ASK_DAYS && !agendaIsDraft(m, template)).map((m) => {
       const mine = (it) => presentersOf(it, everyone).some((p) => p.slug === member.slug);
-      const sections = m.sections.map((s) => ({ ...s, items: s.items.filter(mine) })).filter((s) => s.items.length);
+      // Their items keep the numbers the whole agenda gives them (3.2), as the board page will show
+      const full = forBoard({ ...m, shared: true });
+      const num = new Map(full.sections.flatMap((s, si) => s.items.map((it, ii) => [it.id, { n: `${si + 1}.${ii + 1}`, sectionN: si + 1 }])));
+      const sections = m.sections.map((s) => ({ ...s, items: s.items.filter(mine).map((it) => ({ ...it, ...(num.get(it.id) || {}) })) })).filter((s) => s.items.length);
       if (!sections.length) return null;
       const seen = forBoard({ ...m, shared: true, sections });
       const docs = new Set(seen.sections.flatMap((s) => s.items.flatMap((it) => it.docs || [])));

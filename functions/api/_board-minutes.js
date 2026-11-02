@@ -142,34 +142,68 @@ export function motionsIn(text, people = []) {
 
 /**
  * The minutes template's own motions (board-minutes-template.js): an item's "Motion: …" (or the printed form's "The board
- * votes on …"), then its line "Moved by: … Seconded by: … For: … Against: … Abstain: … Passed / Failed" as the secretary
- * filled it in. A result counts only when one of Passed and Failed is left, else from the counts; one never filled in
- * isn't a decision, so it's left out (`open`: so a reading by the model can't make it one either).
- * → { motions: [{ text, by, second, result, tally }], open: [texts] }
+ * votes on …") with the template's record line under it, "Moved by: … Seconded by: … For: … Against: … Abstain: …
+ * Passed / Failed", as the secretary filled it in. Only a motion with that record line is the template's: any other
+ * "Motion …" sentence is left to the usual wording and the model. The result is the word left after the template's own
+ * "Passed / Failed" pair (passed, carried, unanimous; failed, defeated; tabled), else from the counts. A record left as it
+ * was printed (nothing written in) is no decision: `open`, so a model's reading can't make it one either.
+ * → { motions: [{ text, by, second, result, tally? }], open: [texts] }
  */
+const LIST_MARK = /^(?:[-•*▪◦]|\d{1,3}[.)]|[a-z][.)]|[ivx]{1,4}[.)])\s+/i;
+const TEMPLATE_MOTION = /^(?:motion|the board votes on)\s*:?\s+(.{6,})$/i;
+const RECORD = /\bmoved\s+by\b/i;
+const RECORD_REST = /\b(?:for|against|abstain)\s*:|\bpassed\b|\bfailed\b|\btabled\b|\bcarried\b/i;
 export function templateMotionsIn(text, people = []) {
-  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim());
+  const lines = String(text || '').replace(/\r\n?/g, '\n').split('\n').map((l) => l.trim().replace(LIST_MARK, '').trim());
   const motions = [];
   const open = [];
+  const isMotionLine = (l) => TEMPLATE_MOTION.test(l) && !/^motion\s+(?:carried|passed|failed|tabled|was)\b/i.test(l);
   lines.forEach((line, i) => {
-    const m = line.match(/^(?:motion|the board votes on)\s*:?\s+(.{6,})$/i);
-    if (!m) return;
-    const text = cleanMotion(m[1].replace(/^(?:i\s+)?(?:move|motion)\s+(?:to\s+|that\s+)?/i, ''));
+    if (!isMotionLine(line)) return;
+    // Its record: the next lines up to the next motion, and only the template's (Moved by … Seconded by …)
+    const window = [];
+    for (const l of lines.slice(i + 1, i + 5)) { if (isMotionLine(l)) break; window.push(l); }
+    const at = window.findIndex((l) => RECORD.test(l));
+    if (at < 0) return;
+    // A record carried onto the lines under it (the printed form has a line per field: Seconded by, the counts, the result)
+    let rec = window[at];
+    for (const l of window.slice(at + 1)) {
+      if (!/^(?:seconded\s+by|for\b|against\b|abstain\b|passed\b|failed\b|tabled\b|carried\b|result\b|unanimous)/i.test(l)) break;
+      rec = `${rec} ${l}`;
+    }
+    // The template's record has more than a mover: who seconded, the counts or the result
+    if (!/\bseconded\s+by\b/i.test(rec) && !RECORD_REST.test(rec)) return;
+    const text = cleanMotion(TEMPLATE_MOTION.exec(line)[1].replace(/^(?:i\s+)?(?:move|motion)\s+(?:to\s+|that\s+)?/i, ''));
     if (!text) return;
-    const rec = lines.slice(i + 1, i + 4).find((l) => /\bmoved\s+by\b/i.test(l));
-    if (!rec) { open.push(text); return; }
-    const field = (name, next) => (rec.match(new RegExp(`${name}\\s*:?\\s*(.*?)\\s*(?=${next}|$)`, 'i'))?.[1] || '').replace(/[_\s]+$/, '').replace(/^[_\s]+/, '');
-    const by = field('moved\\s+by', 'seconded\\s+by|for\\s*:|against\\s*:|abstain|passed|failed');
-    const second = field('seconded\\s+by', 'for\\s*:|against\\s*:|abstain|passed|failed');
-    const num = (name) => { const v = rec.match(new RegExp(`\\b${name}\\s*:?\\s*(\\d{1,3})\\b`, 'i')); return v ? Number(v[1]) : null; };
-    const tally = { for: num('for'), against: num('against'), abstain: num('abstain') };
-    const passed = /\bpassed\b/i.test(rec);
-    const failed = /\bfailed\b/i.test(rec);
-    const counted = tally.for !== null && tally.against !== null;
-    const result = passed !== failed ? (passed ? 'passed' : 'failed') : counted ? (tally.for > tally.against ? 'passed' : 'failed') : '';
-    if (!result) { open.push(text); return; }
-    const name = (t) => (t && !NOT_A_NAME.test(t) ? nameOf(one(t, 120), people) : '');
-    motions.push({ text, by: name(by), second: name(second), result, ...(counted ? { tally: { for: tally.for, against: tally.against, abstain: tally.abstain || 0 } } : {}) });
+    const field = (name, next2) => (rec.match(new RegExp(`${name}\\s*:?\\s*(.*?)\\s*(?=${next2}|$)`, 'i'))?.[1] || '').replace(/^[_\s:]+|[_\s:]+$/g, '');
+    const STOP = 'seconded\\s+by|\\bfor\\s*:|\\bagainst\\s*:|\\babstain\\b|\\bpassed\\b|\\bfailed\\b|\\btabled\\b|\\bcarried\\b';
+    const by = field('moved\\s+by', STOP);
+    const second = field('seconded\\s+by', STOP.replace('seconded\\s+by|', ''));
+    const word = (name) => (rec.match(new RegExp(`\\b${name}\\b\\s*:?\\s*([A-Za-z]+|\\d{1,3})\\b`, 'i'))?.[1] || '');
+    const count = (v) => (/^\d+$/.test(v) ? Number(v) : /^(all|unanimous(ly)?)$/i.test(v) ? 'all' : /^(none|no|nobody|zero)$/i.test(v) ? 0 : null);
+    const f = count(word('for'));
+    const a = count(word('against'));
+    const ab = count(word('abstain'));
+    // The result: what's left once the template's own "Passed / Failed" is taken out
+    const said = rec.replace(/\bpassed\s*(?:\/|\s)\s*failed\b/i, ' ');
+    const result = /\btabled\b/i.test(said) ? 'tabled'
+      : /\b(failed|defeated|did not pass)\b/i.test(said) ? 'failed'
+      : /\b(passed|carried|approved|unanimous(ly)?)\b/i.test(said) ? 'passed'
+      : f === 'all' || a === 0 && typeof f === 'number' && f > 0 ? 'passed'
+      : typeof f === 'number' && typeof a === 'number' && f !== a ? (f > a ? 'passed' : 'failed')
+      : '';
+    const blank = !by && !second && f === null && a === null && ab === null;
+    if (!result) { if (blank) open.push(text); return; }
+    // A name as written, or initials ("SO") when one person has them
+    const initialsOf = (n) => String(n || '').split(/\s+/).filter(Boolean).map((w) => w[0].toUpperCase()).join('');
+    const name = (t) => {
+      if (!t || NOT_A_NAME.test(t)) return '';
+      const caps = t.replace(/\./g, '').replace(/\s+/g, '');
+      if (/^[A-Z]{2,3}$/.test(caps)) { const hit = people.filter((p) => initialsOf(p.name) === caps); if (hit.length === 1) return hit[0].name; }
+      return nameOf(one(t, 120), people);
+    };
+    const counted = typeof f === 'number' && typeof a === 'number';
+    motions.push({ text, by: name(by), second: name(second), result, ...(counted ? { tally: { for: f, against: a, abstain: typeof ab === 'number' ? ab : 0 } } : {}) });
   });
   return { motions, open };
 }
@@ -562,7 +596,7 @@ export function applyMinutes(cur, read, { fileName = '', now = Date.now(), keepM
   if (read.sections.some((s) => s.items.length)) next.sections = mergeSections(cur, read, shape);
   if (shape === 'minutes') next.agendaFrom = agendaFrom || { kind: 'typed', name: one(fileName, 200), at };
   const motions = [...(cur.motions || [])];
-  for (const x of read.motions) if (!motions.some((y) => similar(y.text, x.text))) motions.push({ id: uid('v_'), text: x.text, by: x.by || '', second: x.second || '', result: x.result || 'passed', tally: null });
+  for (const x of read.motions) if (!motions.some((y) => similar(y.text, x.text))) motions.push({ id: uid('v_'), text: x.text, by: x.by || '', second: x.second || '', result: x.result || 'passed', tally: x.tally ? { for: x.tally.for || 0, against: x.tally.against || 0, abstain: x.tally.abstain || 0, of: 0, at: '' } : null });
   next.motions = motions;
   const actions = [...(cur.actions || [])];
   for (const x of read.actions) if (!actions.some((y) => similar(y.text, x.text))) actions.push({ id: uid('a_'), text: x.text, owner: x.owner || '', ownerName: x.ownerName || '', due: x.due || '', done: false, doneOn: '' });
