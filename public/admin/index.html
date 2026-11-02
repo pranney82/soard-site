@@ -20817,7 +20817,7 @@ ${sections || '<p>No one yet.</p>'}
                         <input class="form-input ev-input-sm" placeholder="Alt text" value=${p.alt || ''} 
                           onInput=${(e) => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.map((ph, j) => j === i ? { ...ph, alt: e.target.value } : ph) }))} />
                         <div class="ev-tools ev-center">
-                          <button class="btn btn-ghost btn-sm ev-mini-icon"" type="button"
+                          <button class="btn btn-ghost btn-sm ev-mini-icon" type="button"
                             disabled=${i === 0}
                             onClick=${() => setData(d => {
                               const arr = [...(d.galleryPhotos || [])];
@@ -20827,7 +20827,7 @@ ${sections || '<p>No one yet.</p>'}
                             })}
                             disabled=${i === 0}
                             title="Move left" aria-label="Move this photo left">${icons.chevLeft}</button>
-                          <button class="btn btn-ghost btn-sm ev-mini-icon"" type="button"
+                          <button class="btn btn-ghost btn-sm ev-mini-icon" type="button"
                             disabled=${i === (data.galleryPhotos || []).length - 1}
                             onClick=${() => setData(d => {
                               const arr = [...(d.galleryPhotos || [])];
@@ -21759,7 +21759,7 @@ ${sections || '<p>No one yet.</p>'}
                         <input class="form-input ev-input-sm" placeholder="Alt text" value=${p.alt || ''} 
                           onInput=${(e) => setData(d => ({ ...d, galleryPhotos: d.galleryPhotos.map((ph, j) => j === i ? { ...ph, alt: e.target.value } : ph) }))} />
                         <div class="ev-tools ev-center">
-                          <button class="btn btn-ghost btn-sm ev-mini-icon"" type="button"
+                          <button class="btn btn-ghost btn-sm ev-mini-icon" type="button"
                             disabled=${i === 0}
                             onClick=${() => setData(d => {
                               const arr = [...(d.galleryPhotos || [])];
@@ -21769,7 +21769,7 @@ ${sections || '<p>No one yet.</p>'}
                             })}
                             disabled=${i === 0}
                             title="Move left" aria-label="Move this photo left">${icons.chevLeft}</button>
-                          <button class="btn btn-ghost btn-sm ev-mini-icon"" type="button"
+                          <button class="btn btn-ghost btn-sm ev-mini-icon" type="button"
                             disabled=${i === (data.galleryPhotos || []).length - 1}
                             onClick=${() => setData(d => {
                               const arr = [...(d.galleryPhotos || [])];
