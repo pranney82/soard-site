@@ -1,6 +1,6 @@
 /**
- * test-publish-history.mjs — drive Admin → Publish history in a real browser
- * ==========================================================================
+ * test-publish-history.mjs — drive Admin → History → Publishes in a real browser
+ * ===============================================================================
  * Serves public/ directly and stubs every /api call. Checks:
  *   - the sidebar has no Email tab (newsletters are written and sent in Kit)
  *   - Publish history has no Refresh button and reloads when you come back
@@ -54,8 +54,11 @@ try {
   ok(await page.evaluate(() => [...document.querySelectorAll('.sidebar a, .sidebar button, nav a, nav button')].some((x) => x.textContent.trim() === 'Reveals')), 'Comms still has Reveals');
 
   console.log('Publish history');
-  ok(await clickText('a, button', /^Publish history$/), 'Publish history is in the sidebar');
+  ok(await clickText('a, button', /^History$/), 'History is in the sidebar');
+  await pause(500);
+  ok(await clickText('.hub-tab', /^Publishes$/), 'its Publishes tab');
   await pause(800);
+  ok(await page.evaluate(() => document.querySelector('.main h2')?.textContent.trim()) === 'Publish history', 'shows Publish history');
   ok(!(await buttons()).some((t) => /Refresh/.test(t)), 'no ↻ Refresh button');
   const depBefore = reqs.filter((r) => r.path.startsWith('/api/deployments')).length;
   await page.evaluate(() => document.dispatchEvent(new Event('visibilitychange'))); await pause(500);

@@ -234,7 +234,7 @@ export const PAGES = [
   { key: 'ways', title: 'Ways to Give', url: '/ways-to-give/', group: 'pages', docs: ['settings'], blurb: 'Three photos', fields: { settings: ['waysToGivePhotos'] } },
   { key: 'partners', title: 'Partners', url: '/partners/', group: 'pages', docs: ['settings'], blurb: 'Hero photo and partner quote', fields: { settings: ['partnerPhoto', 'partnerQuote', 'partnerQuoteName', 'partnerQuoteOrg'] } },
   { key: 'community', title: 'Community Projects', url: '/community/', group: 'pages', docs: ['settings'], blurb: 'Hero photos', fields: { settings: ['communityPhotos'] } },
-  { key: 'resources', title: 'Resources', url: '/resources/', group: 'pages', docs: ['settings'], blurb: 'Guide photos', fields: { settings: ['resourcesPhotos'] } },
+  { key: 'resources', title: 'Resources', url: '/resources/', group: 'pages', docs: ['settings'], blurb: 'The guides and their photos', fields: { settings: ['resourcesPhotos'] } },
   { key: 'about', title: 'Our Story', url: '/about/', group: 'pages', docs: ['our-story'], blurb: 'Founders, Tripp, Gracie, the store, timeline', fields: { 'our-story': ['images', 'founders', 'turningPoint', 'mascot', 'store', 'milestones', 'today', 'finale'] } },
   { key: 'financials', title: 'Financials', url: '/about/financials/', group: 'pages', docs: ['settings', 'financial-snapshot', 'financials'], blurb: 'The numbers, 990s, audits, reports',
     fields: { settings: ['financialsPhotos'], 'financial-snapshot': [''], financials: [''] } },

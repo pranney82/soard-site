@@ -12,8 +12,11 @@
  *     match or the photo can't load
  *   - addresses: every area, a tab inside one (#people/board), an open item
  *     (#events/test-picnic) that Back closes and Forward reopens, old addresses
- *     (#broadcast/demo, #deploys, #advisory-applications), Reveals' tabs,
- *     reload, ⌘-click into a new tab, an unknown anchor left alone
+ *     (#broadcast/demo, #deploys, #audit-log, #articles, #advisory-applications),
+ *     Reveals' tabs, reload, ⌘-click into a new tab, an unknown anchor left alone
+ *   - History's two tabs (Changes, Publishes), and the Resources guides on
+ *     Site Config → Resources: a guide's editor keeps Site Config current, and
+ *     its Back returns to #site/resources
  *   - the icon rail: the panel button, [ and the logo button, remembered after
  *     reload, labels beside the icons on hover and focus
  *   - an area's code starts loading on hover, and opens without a spinner
@@ -47,6 +50,7 @@ const pause = (ms) => new Promise((r) => setTimeout(r, ms));
 const MOD = process.platform === 'darwin' ? 'Meta' : 'Control';
 
 const EVENT = { slug: 'test-picnic', title: 'Test Picnic', date: '2027-05-01', status: 'upcoming', location: 'Example Park' };
+const GUIDE = { slug: 'test-guide', title: 'Test Guide', tag: 'Guide', order: 1, description: 'A test guide', datePublished: '2026-01-05', body: '<p>Hello</p>', faqs: [] };
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 const TEAM = [
   { slug: 'linzi-berkowitz', name: 'Linzi Lawsky', group: 'team', status: 'active', photo: `${CF}/team/linzi-berkowitz/1/public` },
@@ -85,10 +89,17 @@ async function open(w, h, hash = '', { rail = false } = {}) {
     if (url.pathname === '/api/list-content') {
       const dir = url.searchParams.get('dir');
       if (dir === 'src/content/events') return json({ success: true, items: [{ name: 'test-picnic.json', content: EVENT }], pages: 1 });
+      if (dir === 'src/content/articles') return json({ success: true, items: [{ name: 'test-guide.json', content: GUIDE }], pages: 1 });
       if (dir === 'src/content/team') return json({ success: true, items: TEAM.map((t) => ({ name: `${t.slug}.json`, content: t })), pages: 1 });
       return json({ success: true, items: [], files: [], pages: 1 });
     }
-    if (url.pathname === '/api/read-content') return json(/events\/test-picnic\.json$/.test(url.searchParams.get('path') || '') ? { success: true, content: EVENT, sha: 'abc' } : { success: false, error: 'not in this test' }, /test-picnic/.test(url.search) ? 200 : 404);
+    if (url.pathname === '/api/read-content') {
+      const path = url.searchParams.get('path') || '';
+      if (/events\/test-picnic\.json$/.test(path)) return json({ success: true, content: EVENT, sha: 'abc' });
+      if (/articles\/test-guide\.json$/.test(path)) return json({ success: true, content: GUIDE, sha: 'def' });
+      if (/^src\/content\/site\//.test(path)) return json({ success: true, content: '{}', sha: 'ghi' });
+      return json({ success: false, error: 'not in this test' }, 404);
+    }
     if (url.pathname.startsWith('/api/')) return json({ success: true, ok: true, items: [], entries: [], deploys: [] });
     return req.continue();
   });
@@ -109,7 +120,7 @@ try {
   console.log('Desktop 1440×900');
   let page = await open(1440, 900);
   const groups = await page.$$eval('.side-nav .nav-group', (gs) => gs.map((g) => `${g.querySelector('.nav-section')?.textContent || '·'}: ${[...g.querySelectorAll('.nav-label')].map((l) => l.textContent).join(', ')}`));
-  ok(groups.join(' | ') === '·: Dashboard, Applications, Kids, Demo Day, Reveals, Job Costs | Website: People, Partners, Press, Events, Articles, Site Config | System: Emails & invites, Automations, Audit log, Publish history', `groups and order (${groups.join(' | ')})`);
+  ok(groups.join(' | ') === '·: Dashboard, Applications, Kids, Demo Day, Reveals, Job Costs | Website: People, Partners, Press, Events, Site Config | System: Emails & invites, Automations, History', `groups and order (${groups.join(' | ')})`);
   ok(await active(page) === 'Dashboard', 'Dashboard is current on load');
   const badges = await page.evaluate(() => Object.fromEntries([...document.querySelectorAll('.side-nav .nav-item')].map((a) => [a.querySelector('.nav-label').textContent, (a.querySelector('.nav-count')?.textContent || '') + (a.querySelector('.nav-live') ? 'LIVE' : '')]).filter(([, v]) => v)));
   ok(JSON.stringify(badges) === JSON.stringify({ Applications: '4', Reveals: 'LIVE', People: '2', Press: '3' }), `counts and LIVE (${JSON.stringify(badges)})`);
@@ -155,14 +166,48 @@ try {
   ok(page.errors.length === 0, `no errors (${page.errors.slice(0, 2).join(' | ')})`);
   await page.close();
 
-  for (const [hash, want, extra] of [['#broadcast/invites', 'Reveals'], ['#broadcast/demo', 'Demo Day'], ['#demo-day', 'Demo Day'], ['#advisory-applications', 'People', 'Applications'],
+  for (const [hash, want, extra, moved] of [['#broadcast/invites', 'Reveals'], ['#broadcast/demo', 'Demo Day'], ['#demo-day', 'Demo Day'], ['#advisory-applications', 'People', 'Applications'],
     ['#people/advisory', 'People', 'Advisory'], ['#kids/community', 'Kids', 'Community Projects'], ['#partners/community-partners', 'Partners', 'Community partners'],
-    ['#site/newsletter', 'Site Config'], ['#publish-history', 'Publish history'], ['#deploys', 'Publish history'], ['#audit-log', 'Audit log'], ['#press/found', 'Press'], ['#nonsense', 'Dashboard']]) {
+    ['#site/newsletter', 'Site Config'], ['#history', 'History', 'Changes'], ['#history/publishes', 'History', 'Publishes'],
+    ['#publish-history', 'History', 'Publishes', '#history/publishes'], ['#deploys', 'History', 'Publishes', '#history/publishes'], ['#audit-log', 'History', 'Changes', '#history'],
+    ['#articles', 'Site Config', null, '#site/resources'], ['#press/found', 'Press'], ['#nonsense', 'Dashboard']]) {
     const p = await open(1440, 900, hash);
     ok(await active(p) === want && (!extra || await activeTab(p) === extra), `${hash} opens ${want}${extra ? ` → ${extra}` : ''}`);
+    if (moved) ok(hashOf(p) === moved, `  and the address becomes ${moved} (${hashOf(p)})`);
     if (p.errors.length) ok(false, `  errors on ${hash}: ${p.errors.slice(0, 2).join(' | ')}`);
     await p.close();
   }
+
+  console.log('History');
+  page = await open(1440, 900);
+  const title = () => page.$eval('.main h2', (e) => e.textContent.trim()).catch(() => null);
+  await clickNav(page, 'History'); await pause(500);
+  ok(hashOf(page) === '#history' && await active(page) === 'History' && await activeTab(page) === 'Changes' && await title() === 'Audit log', 'History opens on Changes, the audit log: #history');
+  await clickText(page, '.hub-tab', 'Publishes'); await pause(500);
+  ok(hashOf(page) === '#history/publishes' && await activeTab(page) === 'Publishes' && await title() === 'Publish history', 'its Publishes tab: #history/publishes');
+  await page.reload({ waitUntil: 'networkidle2' }); await page.waitForSelector('.side-nav .nav-item'); await pause(500);
+  ok(await active(page) === 'History' && await activeTab(page) === 'Publishes', 'reload keeps History → Publishes');
+  await clickText(page, '.hub-tab', 'Changes'); await pause(400);
+  ok(hashOf(page) === '#history' && await title() === 'Audit log', 'back to Changes: #history');
+  ok(page.errors.length === 0, `no errors (${page.errors.slice(0, 2).join(' | ')})`);
+  await page.close();
+
+  console.log('Resources guides');
+  page = await open(1440, 900, '#site/resources');
+  await page.waitForSelector('.ar-guides .kd-row', { timeout: 8000 }).catch(() => {});
+  ok(await active(page) === 'Site Config' && !!(await page.$('.ar-guides')), 'Site Config → Resources lists the guides');
+  ok(await page.$eval('.ar-guides', (s) => s.textContent.includes('Test Guide') && s.textContent.includes('Add a guide')).catch(() => false), 'each guide, and Add a guide');
+  ok(!!(await page.$('.ar-guides + .sc-card, .ar-guides ~ .sc-card')), 'the guides come before the page’s photos');
+  await page.screenshot({ path: join(OUT, 'resources-guides.png') });
+  await page.evaluate(() => [...document.querySelectorAll('.ar-guides .kd-row__name')].find((b) => b.textContent.includes('Test Guide'))?.click()); await pause(800);
+  ok(hashOf(page) === '#articles/test-guide' && await active(page) === 'Site Config', `opening a guide: #articles/test-guide, Site Config stays current (${hashOf(page)})`);
+  ok(await page.$eval('.breadcrumb button', (b) => b.textContent.trim()).catch(() => null) === 'Resources', 'its breadcrumb goes back to Resources');
+  await page.reload({ waitUntil: 'networkidle2' }); await page.waitForSelector('.side-nav .nav-item'); await pause(800);
+  ok(await active(page) === 'Site Config' && await page.evaluate(() => [...document.querySelectorAll('.main input')].some((i) => i.value === 'Test Guide')), 'reload keeps the guide open');
+  await clickText(page, '.editor-save-footer .btn', 'Back to Resources'); await pause(800);
+  ok(hashOf(page) === '#site/resources' && !!(await page.$('.ar-guides')), `Back to Resources: #site/resources, the guides (${hashOf(page)})`);
+  ok(page.errors.length === 0, `no errors (${page.errors.slice(0, 2).join(' | ')})`);
+  await page.close();
 
   console.log('⌘K');
   page = await open(1440, 900);

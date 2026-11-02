@@ -1162,9 +1162,11 @@ function CommunityPage({ c }) {
     <//>`;
 }
 
+// The guides themselves are the admin's list (index.html ArticlesList), handed in as `guides`; each saves on its own
 function ResourcesPage({ c }) {
   return html`
-    <${Card} title="Photos" sub="Every guide without its own photo uses the hero photo. A guide’s own photo is set in Articles.">
+    ${c.guides?.()}
+    <${Card} title="Photos" sub="Every guide without its own photo uses the hero photo. A guide’s own photo is set in the guide.">
       <${Photos} cols="2">
         <${PhotoField} ...${photoProps(c, 'resourcesPhotos.hero')} />
         <${PhotoField} ...${photoProps(c, 'resourcesPhotos.why', { borrows: true, fallback: c.doc('settings').sectionPhotos?.missionMain || 'kids/eli/photo-01' })} />
@@ -1747,7 +1749,7 @@ const KEYWORDS = {
 const readHash = () => { const m = String(location.hash).match(/^#site(?:\/([\w-]+))?/); return m ? (S.pageByKey(m[1]) ? m[1] : null) : undefined; };
 
 // ─── The area ──────────────────────────────────────────────────────
-export function SiteConfigArea({ addToast = () => {}, setGlobalDirty = null, onPublish = null, kids = [], partners = [], initialTab = null }) {
+export function SiteConfigArea({ addToast = () => {}, setGlobalDirty = null, onPublish = null, kids = [], partners = [], initialTab = null, guides = null }) {
   injectStyles();
   const narrow = useNarrow();
   const docs = useDocs(addToast);
@@ -1788,7 +1790,7 @@ export function SiteConfigArea({ addToast = () => {}, setGlobalDirty = null, onP
     doc: (k) => docs.docs[k]?.edit || {},
     set: docs.set, update: docs.update,
     photo: (path, v) => docs.update('settings', (e) => S.withPhoto(e, path, v)),
-    kids, partners, addToast, go,
+    kids, partners, addToast, go, guides,
     open: (view, hash = null) => { if (hash) history.replaceState?.(null, '', hash); window.dispatchEvent(new CustomEvent('soard-navigate', { detail: view })); },
   };
 

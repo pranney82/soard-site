@@ -38,6 +38,7 @@ import * as readContentApi from '../functions/api/read-content.js';
 import * as saveContentApi from '../functions/api/save-content.js';
 import * as historyApi from '../functions/api/content-history.js';
 import { answerAsks } from './lib/ask.mjs';
+import { PAGES } from '../public/admin/site-config-shared.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = join(ROOT, 'test-results/site-config-admin/');
@@ -177,6 +178,8 @@ const saveNow = async (page) => {
   await page.waitForFunction(() => !/Saving/.test(document.querySelector('.sc-bar-state')?.textContent || '') && !document.querySelector('.sc-bar[data-state="saving"]'), { timeout: 10000 }).catch(() => {});
   await sleep(150);
 };
+// A kid picker's search takes focus on the frame after it opens; typing sooner lands on its button
+const pickerReady = (page) => page.waitForFunction(() => document.activeElement?.matches('.sc-pop input'), { timeout: 3000 });
 const goPage = async (page, key) => { await page.evaluate((k) => { location.hash = `#site/${k}`; }, key); await page.waitForFunction((k) => document.querySelector('.sc-rail a.is-on')?.getAttribute('href') === `#site/${k}` && document.querySelector('.sc-page'), { timeout: 10000 }, key).catch(() => {}); await sleep(200); };
 async function shot(page, name, maxH = 3200) {
   const vp = page.viewport();
@@ -203,7 +206,7 @@ try {
     await page.waitForSelector('.sc-page', { timeout: 15000 });
     ok(/Homepage/.test(await text(page, '.sc-bar h2')), 'desktop opens on the Homepage');
     const titles = await page.$$eval('.sc-rail-title', (els) => els.map((e) => e.textContent.trim()));
-    ok(titles.length === 19 && titles.includes('Apply') && titles.includes('Trust badges'), `every page is listed (${titles.length})`);
+    ok(titles.length === PAGES.length && titles.includes('Apply') && titles.includes('Trust badges'), `every page is listed (${titles.length} of ${PAGES.length})`);
     await page.type('.sc-rail .sc-search input', 'phone');
     await sleep(100);
     ok(JSON.stringify(await page.$$eval('.sc-rail-title', (els) => els.map((e) => e.textContent.trim()))) === '["Organization & contact"]', 'searching “phone” finds Organization & contact');
@@ -256,7 +259,7 @@ try {
   await section('Hero kid and photo', async () => {
     const kidField = await fieldSel(page, /^Who’s in the hero photo$/);
     await (await kidField.$('.sc-kid-btn')).click();
-    await page.waitForSelector('.sc-pop input', { timeout: 3000 });
+    await pickerReady(page);
     await page.keyboard.type('Dex');
     await sleep(100);
     await page.keyboard.press('Enter');
@@ -297,7 +300,7 @@ try {
     await clickText(page, '#sc-strip .sc-add', /Add a kid/);
     await page.waitForSelector('#sc-strip .sc-adding .sc-kid-btn');
     await page.click('#sc-strip .sc-adding .sc-kid-btn');
-    await page.waitForSelector('.sc-pop input');
+    await pickerReady(page);
     const add = KIDS.map((k) => k.content).find((k) => k.publishStatus !== 'draft' && k.name && !(seedDocs.settings.kidShowcase || []).some((x) => x.slug === k.slug));
     await page.keyboard.type(add.name);
     await sleep(100);
@@ -410,7 +413,7 @@ try {
     await goPage(page, 'donate');
     const storyKid = await fieldSel(page, /^Family$/);
     await (await storyKid.$('.sc-kid-btn')).click();
-    await page.waitForSelector('.sc-pop input');
+    await pickerReady(page);
     await page.keyboard.type('Dylan');
     await page.keyboard.press('Enter');
     await sleep(150);

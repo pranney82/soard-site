@@ -3397,6 +3397,7 @@
     .cm-thumb--color span { font-size: var(--fs-2xs); font-weight: 750; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
     .kd-row.is-draft .cm-thumb { opacity: 0.6; }
     .kd-section__head .kd-view { margin-left: auto; }
+    .ar-guides__add { margin-left: auto; display: inline-flex; align-items: center; gap: 0.35rem; }
 
     /* The card as the Community page shows it */
     .cm-card { display: flex; flex-direction: column; gap: 0.3rem; min-width: 0; }
@@ -8405,7 +8406,7 @@
         key: 'deploy-failed', tone: 'urgent', icon: DI.alert,
         title: 'The last site update failed',
         detail: `${lastDeploy.commitMessage || 'Deploy'} · ${dashAgo(lastDeploy.createdOn)}. The live site still shows the update before it.`,
-        action: { label: 'See what failed', go: () => onNavigate('deploys') },
+        action: { label: 'See what failed', go: () => onNavigate('history', null, 'publishes') },
       });
       if (pendingChanges.length) {
         const names = pendingChanges.map((c) => c.name || c.slug).filter(Boolean);
@@ -8416,7 +8417,7 @@
           detail: `${dashNames(names)}${people.length ? ` · by ${dashNames(people, 2)}` : ''}`,
           action: pendingChanges.some((c) => c.state !== 'publishing')
             ? { label: 'Publish now', go: onDeploy, primary: true, busy: deploying }
-            : { label: 'Publishing…', go: () => onNavigate('deploys'), busy: true },
+            : { label: 'Publishing…', go: () => onNavigate('history', null, 'publishes'), busy: true },
         });
       }
       if (nextReveal && !isLive) {
@@ -8720,7 +8721,7 @@
             <p class="dcard-foot">Reveal dates come from JobTread. A date stays tentative until Reveal Date Confirmed is Yes; only confirmed reveals appear on the website.</p>
           <//>
 
-          <${DashActivity} onViewAll=${() => onNavigate('audit-log')} />
+          <${DashActivity} onViewAll=${() => onNavigate('history')} />
           </div>
         </div>
       `;
@@ -17673,7 +17674,8 @@ ${sections || '<p>No one yet.</p>'}
     // ═══════════════════════════════════════════
     // Resource articles, in the Resources page's order: drag a row into place
     // (saved in one request, with Undo), open one to write it
-    function ArticlesList({ articles, onEdit, onAdd, onDelete, addToast, onReload }) {
+    // embedded: the list on Site Config → Resources (that page has the title), so just the guides and Add
+    function ArticlesList({ articles, onEdit, onAdd, onDelete, addToast, onReload, embedded = false }) {
       const [search, setSearch] = useState('');
       const [savingOrder, setSavingOrder] = useState(false);
       const publish = usePublishData();
@@ -17733,6 +17735,20 @@ ${sections || '<p>No one yet.</p>'}
           ]} />
         </li>`;
       };
+
+      if (embedded) return html`
+        <p class="sr-only" id="ar-reorder-help">Press Space to pick up, the arrow keys to move, Space again to drop, or Escape to cancel.</p>
+        <div class="sr-only" aria-live="assertive" aria-atomic="true">${drag.announce}</div>
+        <section class="card kd-section ar-guides" aria-labelledby="ar-sec-h">
+          <header class="sec-head kd-section__head">
+            <h3 id="ar-sec-h">Guides <span class="count kd-count">${articles.length}</span></h3>
+            ${savingOrder ? html`<span class="kd-hint is-busy"><span class="spinner spinner-14" /> Saving the order</span>`
+              : html`<span class="kd-hint">${sorted.length > 1 ? html`In this order on the page. Drag ${kdIcon.grip} to reorder.` : 'Each one has its own page.'}</span>`}
+            <button type="button" class="btn btn-primary btn-sm ar-guides__add" onClick=${onAdd}>${kdIcon.plus} Add a guide</button>
+          </header>
+          ${shown.length ? html`<ul class="kd-rows">${shown.map(row)}</ul>`
+            : html`<p class="kd-empty">No guides yet. Add one and it appears on the Resources page after you publish.</p>`}
+        </section>`;
 
       return html`
         <div class="page-header kd-head">
@@ -17879,13 +17895,13 @@ ${sections || '<p>No one yet.</p>'}
           onClose=${() => setShowHeroPicker(false)}
         />` : null}
         <nav class="breadcrumb" aria-label="Breadcrumb">
-          <button onClick=${onBack}>Articles</button>
+          <button onClick=${onBack}>Resources</button>
           <span class="sep">›</span>
-          <span class="current">${data.title || 'New article'}</span>
+          <span class="current">${data.title || 'New guide'}</span>
         </nav>
         <div class="page-header ar-head">
           <div>
-            <h2 class="u-row-center">${data.title || (slug ? 'Untitled article' : 'New article')} <${PublishBadge} type="articles" slug=${slug} draft=${data.publishStatus === 'draft'} /></h2>
+            <h2 class="u-row-center">${data.title || (slug ? 'Untitled guide' : 'New guide')} <${PublishBadge} type="articles" slug=${slug} draft=${data.publishStatus === 'draft'} /></h2>
             <p class="page-sub">${slug
               ? html`On the Resources page at <a class="link" href=${`/resources/${data.slug}/`} target="_blank" rel="noopener">/resources/${data.slug}/</a>. Changes go live when you publish.`
               : 'A guide on the Resources page. It goes live when you save and publish.'}</p>
@@ -17998,7 +18014,7 @@ ${sections || '<p>No one yet.</p>'}
         </section>
 
         <div class="editor-save-footer">
-          <button type="button" class="btn btn-ghost" onClick=${onBack}>${dirty ? 'Cancel' : 'Back to Articles'}</button>
+          <button type="button" class="btn btn-ghost" onClick=${onBack}>${dirty ? 'Cancel' : 'Back to Resources'}</button>
           <button type="button" class="btn btn-primary" onClick=${handleSave} disabled=${saving || (!!slug && !dirty)}>${saving ? 'Saving…' : !slug || dirty ? 'Save' : html`${kdIcon.check} Saved`}</button>
         </div>
       `;
@@ -22348,13 +22364,15 @@ ${sections || '<p>No one yet.</p>'}
           { type: 'page', label: 'Found coverage (press monitor)', id: 'press-hub', subTab: 'found', section: 'Pages' },
           // Site Config's pages (public/admin/site-config-shared.js PAGES)
           ...[['home', 'Homepage'], ['kids', 'Meet the Kids page'], ['how', 'How It Works page'], ['apply', 'Apply page'], ['donate', 'Donate page'],
-            ['ways', 'Ways to Give page'], ['partners', 'Partners page'], ['community', 'Community Projects page'], ['resources', 'Resources page'],
+            ['ways', 'Ways to Give page'], ['partners', 'Partners page'], ['community', 'Community Projects page'], ['resources', 'Resources page and its guides'],
             ['about', 'Our Story'], ['financials', 'Financials (numbers, 990s, reports)'], ['faq', 'FAQs'], ['advisory', 'Advisory Board page'],
             ['store', 'Sunny & Ranney page'], ['media', 'Media Kit'], ['org', 'Organization, phone, email, address'], ['social', 'Social links'],
             ['badges', 'Trust badges'], ['newsletter', 'Newsletter']]
             .map(([k, label]) => ({ type: 'page', label, meta: 'Site Config', id: 'site-hub', subTab: k, section: 'Pages' })),
           { type: 'page', label: 'Reveal invites', meta: 'Reveals', id: 'broadcast', hash: '#broadcast/invites', section: 'Pages' },
           { type: 'page', label: 'What went out', meta: 'Emails & invites', id: 'messages', hash: '#messages/sent', section: 'Pages' },
+          { type: 'page', label: 'Audit log (who changed what)', meta: 'History', id: 'history', section: 'Pages' },
+          { type: 'page', label: 'Publish history', meta: 'History', id: 'history', subTab: 'publishes', section: 'Pages' },
           { type: 'link', label: 'View site', meta: 'sunshineonaranneyday.com', href: '/', section: 'Links' },
           { type: 'link', label: 'GitHub repository', meta: 'The site’s code', href: 'https://github.com/pranney82/soard', section: 'Links' },
         ];
@@ -22366,7 +22384,7 @@ ${sections || '<p>No one yet.</p>'}
           { type: 'action', label: 'Add New Board Member', id: 'people-hub', subTab: 'board', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Team Member', id: 'people-hub', subTab: 'team', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Advisory Board Member', id: 'people-hub', subTab: 'advisory', slug: '', section: 'Actions' },
-          { type: 'action', label: 'Add New Article', id: 'articles', slug: '', section: 'Actions' },
+          { type: 'action', label: 'Add New Guide', meta: 'Resources article', id: 'articles', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Event', id: 'events', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add New Community Project', id: 'kids-hub', subTab: 'community', slug: '', section: 'Actions' },
           { type: 'action', label: 'Add a press story', id: 'press-hub', subTab: 'press', slug: '', section: 'Actions' },
@@ -22377,7 +22395,7 @@ ${sections || '<p>No one yet.</p>'}
           ...(communityPartners || []).map(c => ({ type: 'content', label: c.name, meta: `Community Partner · ${c.category || ''}`, id: 'partners-hub', subTab: 'community-partners', slug: c.slug, section: 'Content' })),
           ...(mediaLogos || []).map(m => ({ type: 'content', label: m.name, meta: 'Outlet', id: 'press-hub', subTab: 'outlets', slug: m.slug, section: 'Content' })),
           ...(team || []).map(t => ({ type: 'content', label: t.name, meta: `${pplGroup(t.group).heading} · ${t.title || ''}`, id: 'people-hub', subTab: tsGroupOf(t.group).id, slug: t.slug, section: 'Content' })),
-          ...(articles || []).map(a => ({ type: 'content', label: a.title || a.name, meta: 'Article', id: 'articles', slug: a.slug, section: 'Content' })),
+          ...(articles || []).map(a => ({ type: 'content', label: a.title || a.name, meta: 'Resources article', id: 'articles', slug: a.slug, section: 'Content' })),
           ...(events || []).map(e => ({ type: 'content', label: e.title || e.name, meta: `Event · ${e.date || ''}`, id: 'events', slug: e.slug, section: 'Content' })),
           ...(communityProjects || []).map(c => ({ type: 'content', label: c.name, meta: `Community · ${c.year || ''}`, id: 'kids-hub', subTab: 'community', slug: c.slug, section: 'Content' })),
           ...(press || []).map(p => ({ type: 'content', label: p.title || p.name, meta: `Press · ${p.outlet || ''}`, id: 'press-hub', subTab: 'press', slug: p.slug, section: 'Content' })),
@@ -22705,39 +22723,48 @@ ${sections || '<p>No one yet.</p>'}
         { id: 'partners-hub', label: 'Partners', icon: 'partners', hash: '#partners', meta: 'Sponsors and community partners' },
         { id: 'press-hub', label: 'Press', icon: 'press', hash: '#press', meta: 'Stories, found coverage, outlets' },
         { id: 'events', label: 'Events', icon: 'events', hash: '#events' },
-        { id: 'articles', label: 'Articles', icon: 'articles', hash: '#articles' },
         { id: 'site-hub', label: 'Site Config', icon: 'globe', hash: '#site', meta: 'Every public page, page by page' },
       ] },
       { label: 'System', items: [
         { id: 'messages', label: 'Emails & invites', icon: 'mail', hash: '#messages', meta: 'Everything the site sends' },
         { id: 'automations', label: 'Automations', icon: 'automations', hash: '#automations' },
-        { id: 'audit-log', label: 'Audit log', icon: 'auditLog', hash: '#audit-log', meta: 'Who changed what' },
-        { id: 'deploys', label: 'Publish history', icon: 'history', hash: '#publish-history' },
+        // Changes (the audit log) and Publishes (#history/publishes)
+        { id: 'history', label: 'History', icon: 'history', hash: '#history', meta: 'Who changed what, and every publish' },
         // Where the money figures come from (Mercury, Chase, QuickBooks): the Board area's admins only, like Board
         { id: 'settings', label: 'Settings', icon: 'settings', hash: '#settings', meta: 'Where the money figures come from: the banks and QuickBooks', gate: 'board' },
       ] },
     ];
     const NAV_ITEMS = NAV.flatMap((g) => g.items);
+    // Areas with an address but no line in the menu: the one they belong to shows as current.
+    // A Resources guide opens its editor here (#articles/<slug>); the guides are listed in Site Config → Resources.
+    const NAV_OFF = [{ id: 'articles', hash: '#articles', under: 'site-hub' }];
+    const NAV_PLACES = [...NAV_ITEMS, ...NAV_OFF];
     // Older addresses, and the ones Slack posts and emails link to
-    const NAV_ALIASES = { 'reveal-invites': 'broadcast', 'go-live': 'broadcast', 'advisory-applications': 'people-hub', deploys: 'deploys', 'trade-partners': 'job-costs' };
+    const NAV_ALIASES = { 'reveal-invites': 'broadcast', 'go-live': 'broadcast', 'advisory-applications': 'people-hub', 'audit-log': 'history', 'publish-history': 'history', deploys: 'history', 'trade-partners': 'job-costs' };
+    // Articles had a page of its own; the bare old address opens the guides where they are now
+    const settleOldAddress = () => { if (/^#articles\/?$/.test(location.hash)) history.replaceState(null, '', '#site/resources'); };
+    settleOldAddress();
     /** The area an address is in ('dashboard' with no hash), or null for one the menu doesn't know (an in-page anchor) */
     function viewOfHash(hash = location.hash) {
       // Demo Day was a Reveals tab first; its old address still opens it
       if (/^#broadcast\/demo\b/.test(String(hash))) return 'demo-day';
       const seg = (String(hash).match(/^#([\w-]+)/) || [])[1];
       if (!seg) return 'dashboard';
-      return NAV_ITEMS.find((it) => it.hash === `#${seg}`)?.id || NAV_ALIASES[seg] || null;
+      return NAV_PLACES.find((it) => it.hash === `#${seg}`)?.id || NAV_ALIASES[seg] || null;
     }
     const navIdOf = (view) => (view === 'go-live' ? 'broadcast' : view);
+    /** The menu line that shows as current for an area */
+    const navLineOf = (view) => NAV_OFF.find((x) => x.id === navIdOf(view))?.under || navIdOf(view);
     // The areas whose tab and open editor the admin itself keeps; they go in the
     // address too (#kids/community, #people/board/jane-doe, #events/gala-2026).
     // The other areas keep their own (#press/outlets, #site/faq, #broadcast/invites).
-    const NAV_TABS = { 'kids-hub': ['kids', 'community'], 'people-hub': ['team', 'board', 'advisory', 'applications', 'photos'], 'partners-hub': ['partners', 'community-partners'], articles: [], events: [] };
+    const NAV_TABS = { 'kids-hub': ['kids', 'community'], 'people-hub': ['team', 'board', 'advisory', 'applications', 'photos'], 'partners-hub': ['partners', 'community-partners'], articles: [], events: [], history: ['changes', 'publishes'] };
     const tabOf = (view, t) => (t && NAV_TABS[view]?.includes(t) && t !== NAV_TABS[view][0] ? t : null);
     /** Where in one of those areas an address points: { subTab, editSlug } (null for the other areas) */
     function placeOfHash(view, hash = location.hash) {
       if (!NAV_TABS[view]) return null;
       if (view === 'people-hub' && /^#advisory-applications\b/.test(hash)) return { subTab: 'applications', editSlug: null };
+      if (view === 'history') return { subTab: /^#(history\/publishes|publish-history|deploys)\b/.test(hash) ? 'publishes' : null, editSlug: null };
       const parts = String(hash).replace(/^#/, '').split('?')[0].split('/').slice(1).filter(Boolean)
         .map((x) => { try { return decodeURIComponent(x); } catch { return x; } });
       const subTab = parts[0] && NAV_TABS[view].includes(parts[0]) ? parts.shift() : null;
@@ -22778,7 +22805,7 @@ ${sections || '<p>No one yet.</p>'}
     }
     /** An area's own address: its hash, or the bare admin URL for the Dashboard */
     const addressOf = (view) => {
-      const it = NAV_ITEMS.find((x) => x.id === navIdOf(view));
+      const it = NAV_PLACES.find((x) => x.id === navIdOf(view));
       return it ? it.hash || location.pathname + location.search : null;
     };
 
@@ -23277,8 +23304,8 @@ ${sections || '<p>No one yet.</p>'}
       };
       const navigate = (v, slug = null, tab = null, filter = null) => leaveThen(() => {
         // The address follows the area. One the caller already set inside it
-        // (#broadcast/invites, #site/newsletter) stays as it is.
-        const to = addressOf(v);
+        // (#broadcast/invites, #site/newsletter) stays as it is. A Site Config page asked for by name goes in it too.
+        const to = v === 'site-hub' && tab ? `#site/${tab}` : addressOf(v);
         if (to !== null && viewOfHash() !== navIdOf(v)) history.pushState(null, '', to);
         setView(v);
         setEditSlug(slug);
@@ -23290,6 +23317,7 @@ ${sections || '<p>No one yet.</p>'}
       // the menu doesn't know, or a move inside the same area, is left to the page)
       useEffect(() => {
         const onAddress = () => {
+          settleOldAddress();
           const v = viewOfHash();
           const cur = navIdOf(viewRef.current);
           if (!v) return;
@@ -23444,7 +23472,7 @@ ${sections || '<p>No one yet.</p>'}
       // Everyone who shows who did something (audit log, Dashboard, Publish) reads People from here
       useEffect(() => { setPeopleList(team); }, [team]);
       const myPhoto = mine?.photo ? pplPhoto(mine, 56) : '';
-      const activeId = navIdOf(view);
+      const activeId = navLineOf(view);
       const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
       const badgeOf = (id) => {
         // A family waiting on a reply comes first; new applications are in the note
@@ -23455,10 +23483,10 @@ ${sections || '<p>No one yet.</p>'}
         return null;
       };
       // A plain click moves inside the admin; ⌘/Ctrl/Shift/middle click opens the area's address in a new tab
-      const follow = (e, id) => {
+      const follow = (e, id, tab = null) => {
         if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
         e.preventDefault();
-        navigate(id);
+        navigate(id, null, tab);
       };
       const isMac = navigator.platform?.includes('Mac');
 
@@ -23553,6 +23581,9 @@ ${sections || '<p>No one yet.</p>'}
             <div class="empty__actions"><button class="btn btn-ghost btn-sm" onClick=${loadData}>Try again</button></div>
           </div>`
         : listHtml;
+      // The Resources guides, shown on Site Config → Resources; each opens its own editor (#articles/<slug>)
+      const guidesList = () => listOrError('articles', 'guides', html`<${ArticlesList} embedded articles=${articles} onEdit=${s => navigate('articles', s)} onAdd=${() => navigate('articles', '')}
+        onDelete=${a => setDeleteModal({ type: 'article', item: a })} addToast=${addToast} onReload=${loadData} />`);
 
       const renderView = () => {
         if (loading && view === 'dashboard') {
@@ -23658,11 +23689,11 @@ ${sections || '<p>No one yet.</p>'}
           }
 
 
+          // A Resources guide's editor; the guides themselves are listed in Site Config → Resources
           case 'articles':
             return editSlug !== null
-              ? html`<${ArticleEditor} slug=${editSlug || undefined} onBack=${() => { navigate('articles'); loadData(); }} addToast=${addToast} existingSlugs=${articles.map(a => a.slug)} />`
-              : listOrError('articles', 'articles', html`<${ArticlesList} articles=${articles} onEdit=${s => navigate('articles', s)} onAdd=${() => navigate('articles', '')}
-                  onDelete=${a => setDeleteModal({ type: 'article', item: a })} addToast=${addToast} onReload=${loadData} />`);
+              ? html`<${ArticleEditor} slug=${editSlug || undefined} onBack=${() => { navigate('site-hub', null, 'resources'); loadData(); }} addToast=${addToast} existingSlugs=${articles.map(a => a.slug)} />`
+              : html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} initialTab="resources" onPublish=${promptDeploy} guides=${guidesList} />`;
           case 'events': {
             // The newest gala or tournament opens its own editor (it lays out
             // /events/gala/ or /events/golf/); older years are plain events
@@ -23718,8 +23749,17 @@ ${sections || '<p>No one yet.</p>'}
             return listOrError('press', 'press stories', html`<${PressLazy} addToast=${addToast} press=${press} outlets=${mediaLogos} kids=${kids} partners=${partners}
               onReload=${loadData} initialTab=${subTab} initialSlug=${editSlug} />`);
 
-          case 'audit-log':
-            return html`<${AuditLogPage} addToast=${addToast} />`;
+          // ─── History: who changed what (the audit log), and every publish ───
+          case 'history': {
+            const tab = subTab === 'publishes' ? 'publishes' : 'changes';
+            return html`
+              <div class="hub-tabs">
+                <button class="hub-tab ${tab === 'changes' ? 'active' : ''}" onClick=${() => setSubTab(null)}>Changes</button>
+                <button class="hub-tab ${tab === 'publishes' ? 'active' : ''}" onClick=${() => setSubTab('publishes')}>Publishes</button>
+              </div>
+              ${tab === 'publishes' ? html`<${Deploys} addToast=${addToast} onDeploy=${promptDeploy} />` : html`<${AuditLogPage} addToast=${addToast} />`}
+            `;
+          }
 
           case 'automations':
             return html`<${AutomationsLazy} />`;
@@ -23748,12 +23788,9 @@ ${sections || '<p>No one yet.</p>'}
           case 'demo-day':
             return html`<${DemoDayPage} addToast=${addToast} />`;
 
-          case 'deploys':
-            return html`<${Deploys} addToast=${addToast} onDeploy=${promptDeploy} />`;
-
           // ─── Site Config: ./site-config.js, by public page (#site/<page>) ───
           case 'site-hub':
-            return html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} initialTab=${subTab} onPublish=${promptDeploy} />`;
+            return html`<${SiteConfigLazy} addToast=${addToast} kids=${kids} partners=${partners} initialTab=${subTab} onPublish=${promptDeploy} guides=${guidesList} />`;
 
           default:
             return html`<${Dashboard} kids=${kids} partners=${partners} team=${team} events=${events} communityProjects=${communityProjects} press=${press} articles=${articles} onNavigate=${navigate} pendingData=${publishData} onDeploy=${promptDeploy} deploying=${deploying} />`;
@@ -23822,7 +23859,7 @@ ${sections || '<p>No one yet.</p>'}
                   <span class="nav-count" aria-hidden="true">${waitingCount}</span><span class="sr-only">, ${waitingCount} waiting</span>
                 </button>`
               : building ? html`
-                <a href="#publish-history" class="nav-item sidebar-publishing" onClick=${(e) => follow(e, 'deploys')} data-tip="Publishing…" data-tip-note="See it in Publish history">
+                <a href="#history/publishes" class="nav-item sidebar-publishing" onClick=${(e) => follow(e, 'history', 'publishes')} data-tip="Publishing…" data-tip-note="See it in History">
                   <span class="nav-icon"><span class="pub-dot" /></span><span class="nav-label">Publishing…</span>
                 </a>`
               : null,
@@ -23861,7 +23898,7 @@ ${sections || '<p>No one yet.</p>'}
             <${PublishTracker} tracker=${tracker} publish=${pendingData?.publish}
               onClose=${() => { if (tracker.buildId) dismissedBuilds.current.add(tracker.buildId); setTracker(null); }}
               onRetry=${() => { setTracker(null); promptDeploy(); }}
-              onHistory=${() => { setTracker(null); navigate('deploys'); }} />
+              onHistory=${() => { setTracker(null); navigate('history', null, 'publishes'); }} />
           ` : null}
         </div>
       `;
