@@ -345,7 +345,11 @@ test('a new file on a paper some signed: asked, and asked to sign again it’s a
   // signature still counting; asked again: the next version, Sam's signature on the old one stops counting
   let x = await saveDoc(env.DB, { ...d }, { by: FOUNDER, base: 0, newFile: 'Code of Conduct 2027.pdf', askAgain: false });
   assert.deepEqual([x.version, x.signFrom, Object.keys(x.signed)], [1, 0, ['sam-ortiz']]);
-  await assert.rejects(signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera', { version: 0 }), (err) => err.status === 409 && /A new version of it came in/.test(err.message));
+  // (kept: a page still on the version before may sign, the signature on what it read)
+  const fresh = await expectations({ title: 'Gift Acceptance Policy' });
+  await saveDoc(env.DB, { ...fresh }, { by: FOUNDER, base: 0, newFile: 'Gift Acceptance 2027.pdf' });
+  // Nobody had signed, so nobody was asked: a page still showing the old file re-reads before signing
+  await assert.rejects(signDoc(env.DB, fresh.id, memberOf('alex-rivera'), 'Alex Rivera', { version: 0 }), (err) => err.status === 409 && /It changed while you had it open/.test(err.message));
   x = await saveDoc(env.DB, { ...x }, { by: FOUNDER, base: 1, newFile: 'Code of Conduct 2027.pdf', askAgain: true });
   assert.deepEqual([x.version, x.signFrom, x.signed, x.earlier], [2, 2, {}, ['sam-ortiz']]);
   // Words read from that new file: asked too (they're not what Sam signed), and recorded as from it
@@ -360,7 +364,7 @@ test('a new file on a paper some signed: asked, and asked to sign again it’s a
   x = await saveDoc(env.DB, { ...x, note: 'Adopted 2027', body: undefined }, { by: FOUNDER });
   assert.equal(x.wordsFile, 'f_newone1');
   const versions = await docVersions(env.DB, d.id);
-  assert.deepEqual(versions.map((v) => [v.version, v.note, v.signed]), [[3, 'From Code of Conduct 2027', 0], [2, 'A new file: Code of Conduct 2027.pdf', 1], [1, 'A new file: Code of Conduct 2027.pdf', 0]], 'Sam signed the new file, kept for the small change after it');
+  assert.deepEqual(versions.map((v) => [v.version, v.note, v.signed]), [[3, 'From Code of Conduct 2027', 0], [2, 'A new file: Code of Conduct 2027.pdf · The board signs again from here', 1], [1, 'A new file: Code of Conduct 2027.pdf', 0]], 'Sam signed the new file, kept for the small change after it');
   // An editor open on a paper deleted meanwhile: refused, not made again
   await deleteDoc(env, d.id);
   await assert.rejects(saveDoc(env.DB, { ...x, body: '- Be kind, always' }, { by: FOUNDER, base: 3 }), (err) => err.status === 410 && err.extra.deleted);
@@ -410,4 +414,21 @@ test('signing the new version keeps the signature on the earlier one, its copy t
   // New words and Required unticked in the same save: nobody to ask
   d = await saveDoc(env.DB, { ...d, body: '- Come to every meeting, and the retreat', sign: false }, { by: FOUNDER, base: 2 });
   assert.deepEqual([d.version, d.sign], [3, false]);
+});
+
+test('a small change kept (no signing again): a page on the version before still signs, on what it read; taking a signature off gives back the one before it', async () => {
+  let d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, body: '- Come to three of four meetings' }, { by: FOUNDER });
+  await signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz', { version: 1 });
+  d = await saveDoc(env.DB, { ...d, body: '- Come to three of the four meetings' }, { by: FOUNDER, base: 1, askAgain: false });
+  assert.deepEqual([d.version, d.signFrom, d.readFrom], [2, 0, 1]);
+  // Alex's page shows wording 1: his signature goes in, on wording 1 (it counts)
+  const alex = await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera', { version: 1 });
+  assert.equal(alex.version, 1);
+  assert.ok((await listDocs(env.DB)).find((x) => x.id === d.id).signed['alex-rivera']);
+  // Then the board is asked to sign again: Sam signs the new words; taking that off, his first signature is his again
+  d = await saveDoc(env.DB, { ...d, body: '- Come to every meeting' }, { by: FOUNDER, base: 2, askAgain: true });
+  await signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz', { version: 3 });
+  assert.ok(await unsignDoc(env, d.id, 'sam-ortiz'));
+  const after = (await listDocs(env.DB)).find((x) => x.id === d.id);
+  assert.deepEqual([after.signed['sam-ortiz'], after.earlier.includes('sam-ortiz'), after.before['sam-ortiz']?.version], [undefined, true, 1]);
 });

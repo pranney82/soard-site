@@ -445,7 +445,7 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
       ${btn('bullets', 'Points (- then a space)', on('bulletList'), (c) => c.toggleBulletList())}
       ${btn('numbers', 'Numbered list (1. then a space)', on('orderedList'), (c) => c.toggleOrderedList())}
       ${btn('callout', 'Callout, for what the board needs to decide (> then a space)', on('blockquote'), (c) => c.toggleBlockquote())}
-      ${btn('slide', 'New slide here (the meeting’s screen starts one; --- on a line of its own)', false, (c) => newSlide(e, c))}
+      ${paper ? null : btn('slide', 'New slide here (the meeting’s screen starts one; --- on a line of its own)', false, (c) => newSlide(e, c))}
       <span class="rp-sep" aria-hidden="true"></span>
       <button type="button" class=${`rp-tool ${on('link') ? 'is-on' : ''}`} tabIndex="-1" title=${`Link (${MOD}K)`} aria-label="Link" aria-pressed=${on('link') ? 'true' : 'false'} aria-expanded=${linking !== null} onMouseDown=${(ev) => ev.preventDefault()} onClick=${openLink}>${ICON.link}</button>
       <span class="rp-bar__end">

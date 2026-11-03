@@ -813,7 +813,7 @@ try {
   const fromPdf = await editorText(jane);
   ok(!/Signature|SUNSHINE ON A RANNEY DAY|^Board Member Expectations/m.test(fromPdf) && /Each member of the board agrees to the following for the year\. We ask every member to read them/.test(fromPdf)
     && await jane.evaluate(() => document.querySelectorAll('.rp-edit h3').length === 2 && document.querySelectorAll('.rp-edit ul li').length === 2 && document.querySelectorAll('.rp-edit ol li').length === 2), `its two headings, its points and its numbered list; one paragraph again; no letterhead, title or blanks (${JSON.stringify(fromPdf.slice(0, 160))})`);
-  ok(await waitText(jane, /These are the words from Board Expectations\. Read them over beside it and fix anything, then save[\s\S]*Keep the file instead/), 'it says where the words came from, to read over beside it before saving (or keep the file)');
+  ok(await waitText(jane, /These are the words from Board Expectations \(open it to compare\)\. Read them over and fix anything, then save[\s\S]*Keep the file instead/), 'it says where the words came from, to read over beside it before saving (or keep the file)');
   ok(await jane.evaluate(() => [...document.querySelectorAll('.bd-words .form-hint a, label[for="bd-doc-file"] a')].filter((a) => /Board Expectations/.test(a.textContent)).length === 2), 'the PDF opens from beside the words, to compare');
   await clickText(jane, 'button', /^Save$/);
   ok(await waitText(jane, /Board Member Expectations[\s\S]*Written here, last changed [A-Z][a-z]{2} \d+/), 'written here now');
@@ -1323,9 +1323,9 @@ try {
   ok(exp.version === 2 && exp.signFrom === 2 && exp.earlier.includes('alex-rivera') && /Come to the gala each spring/.test(exp.body), `the second wording, kept, Alex’s signature on an earlier one (v${exp.version}, from ${exp.signFrom})`);
   const alexAgain = await tab(MEMBER, 1440);
   await alexAgain.goto(`${SITE}/admin/board/#/documents/${exp.id}`, { waitUntil: 'networkidle0' });
-  ok(await waitText(alexAgain, /It changed since you signed: read it, then sign again at the end\.[\s\S]*Come to the gala each spring[\s\S]*Sign it for \d{4}/), 'Alex is told at the top it changed, reads the new words and signs again at the end');
+  ok(await waitText(alexAgain, /It changed since you signed: read it, then sign again\.[\s\S]*Come to the gala each spring[\s\S]*Sign it for \d{4}/), 'Alex is told at the top it changed, reads the new words and signs again at the end');
   await alexAgain.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
-  ok(await waitText(alexAgain, /Read and sign: Board Member Expectations\s*It changed since you signed: read it and sign again/), 'Home says so too');
+  ok(await waitText(alexAgain, /Read and sign: Board Member Expectations\s*It changed since you signed: read it, then sign again/), 'Home says so too');
   await alexAgain.close();
   // The earlier wording: read again, and back in the editor (left unsaved)
   await editRow('Board Member Expectations');
@@ -1358,7 +1358,7 @@ try {
   ok(await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 5000 }).then(() => true, () => false) && (await listDocs(DB)).find((d) => d.id === exp.id).version === 3, 'saved straight away: nobody had signed wording 2 to ask about');
   await reader.type('.bp-docpage .bp-sign input', 'Alex Rivera');
   await clickText(reader, 'button', /^I’ve read it and agree$/);
-  ok(await waitText(reader, /Its words changed while you were reading them\. Read the new words, then sign\./) && await waitText(reader, /Sponsor one family a year/) && !(await listDocs(DB)).find((d) => d.id === exp.id).signed['alex-rivera'], 'signing words that changed meanwhile: refused, said, and the new words are on the page');
+  ok(await waitText(reader, /It changed while you had it open\. Read it again, then sign\./) && await waitText(reader, /Sponsor one family a year/) && !(await listDocs(DB)).find((d) => d.id === exp.id).signed['alex-rivera'], 'signing words that changed meanwhile: refused, said, and the new words are on the page');
   await clickText(reader, 'button', /^I’ve read it and agree$/);
   ok(await waitText(reader, /Signed for \d{4}/) && (await listDocs(DB)).find((d) => d.id === exp.id).signed['alex-rivera']?.version === 3, 'read, then signed: wording 3');
   await reader.close();
@@ -1366,7 +1366,7 @@ try {
   asked.length = 0;
   await answerAsks(jane, { accept: null, onAsk: (t) => asked.push(t) });
   await words('Bring a guest to one reveal.');
-  ok(await jane.waitForFunction(() => /Ask Alex to sign again\?/.test(document.querySelector('.ask h2')?.textContent || '') && /Alex Rivera signed the earlier words/.test(document.querySelector('.ask__text')?.textContent || ''), { timeout: 5000 }).then(() => true, () => false), 'the question names who signed');
+  ok(await jane.waitForFunction(() => /Ask Alex to sign again\?/.test(document.querySelector('.ask h2')?.textContent || '') && /Alex Rivera signed the earlier version/.test(document.querySelector('.ask__text')?.textContent || ''), { timeout: 5000 }).then(() => true, () => false), 'the question names who signed');
   await jane.keyboard.press('Escape');
   ok(await jane.waitForFunction(() => !document.querySelector('.ask') && /Bring a guest to one reveal/.test(document.querySelector('.rp-edit')?.innerText || ''), { timeout: 3000 }).then(() => true, () => false) && (await listDocs(DB)).find((d) => d.id === exp.id).version === 3, 'Escape: back to the words, nothing saved (not “keep their signatures”)');
   await answerAsks(jane, { accept: false, onAsk: (t) => asked.push(t) });
@@ -1408,7 +1408,7 @@ try {
   await clickText(jane, 'button', /^Save$/);
   await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 8000 }).catch(() => {});
   const coiDoc = (await listDocs(DB)).find((d) => /conflict of interest/i.test(d.title));
-  ok(coiAsked.some((t) => /^Ask Alex to sign again\?.*Alex Rivera signed it as its file for \d{4}\. With Conflict of Interest 2027 it’s a new version/.test(t)) && coiDoc.file.name === 'Conflict of Interest 2027.pdf' && coiDoc.signed['alex-rivera'] && coiDoc.version === 1,
+  ok(coiAsked.some((t) => /^Ask Alex to sign again\?.*Alex Rivera signed the earlier version for \d{4}\. With Conflict of Interest 2027 it’s a new version/.test(t)) && coiDoc.file.name === 'Conflict of Interest 2027.pdf' && coiDoc.signed['alex-rivera'] && coiDoc.version === 1,
     `a new file on a signed paper asks first, naming who signed (kept here: still signed, the new file a version of its own) (${JSON.stringify(coiAsked)})`);
   await answerAsks(jane);
   // Sam about to sign the policy's PDF when its words are written in Board: told it didn't go, where the form was
@@ -1424,7 +1424,7 @@ try {
   await clickText(jane, 'button', /^Save$/);
   await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 8000 }).catch(() => {});
   await samDocs.evaluate((id) => [...document.querySelectorAll(`#doc-${id} button`)].find((b) => /I’ve read it and agree/.test(b.textContent))?.click(), coiDoc.id);
-  ok(await waitText(samDocs, /Conflict of interest policy[\s\S]*Not signed yet: Its words changed while you were reading them\. Read the new words, then sign\.[\s\S]*Read and sign/) && !(await listDocs(DB)).find((d) => d.id === coiDoc.id).signed['sam-ortiz'],
+  ok(await waitText(samDocs, /Conflict of interest policy[\s\S]*Not signed yet: It changed while you had it open\. Read it again, then sign\.[\s\S]*Read and sign/) && !(await listDocs(DB)).find((d) => d.id === coiDoc.id).signed['sam-ortiz'],
     'a signature that didn’t go (its PDF written in Board meanwhile) says so where the paper is now, with Read and sign');
   await samDocs.close();
   // A member who signed prints the paper with their signature on it, not blank lines

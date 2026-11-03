@@ -1086,6 +1086,13 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-docpage__file .bp-muted { margin: 0 0 0.85rem; }
 .bp-docpage__sign > .bp-muted { margin: 0.3rem 0 0; }
 .bp-docpage__sign .bp-sign { margin-top: 1rem; }
+/* What changed since they signed: the new lines and the ones taken out */
+.bp-doc__changed > p { margin: 0; }
+.bp-whatchanged { margin-top: 0.45rem; font-weight: 500; color: var(--ink-2); }
+.bp-whatchanged summary { cursor: pointer; font-weight: 650; color: var(--gold); min-height: 32px; display: flex; align-items: center; }
+.bp-whatchanged__h { margin: 0.5rem 0 0.15rem; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.bp-whatchanged ul { margin: 0; padding-inline-start: 1.2em; }
+.bp-whatchanged li { margin: 0.15rem 0; }
 .bp-doc__changed { margin: 0.6rem 0 0; padding: 0.55rem 0.8rem; border-radius: var(--r-sm); background: var(--yellow-soft); color: var(--gold); font-size: 0.92rem; font-weight: 600; }
 .bp-badge--words { place-items: center; padding: 0; background: var(--yellow-soft); color: var(--gold); }
 .bp-printonly { display: none; }
@@ -1101,6 +1108,7 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
   .bp-docpage__words .rp h2 { margin: 0.9rem 0 0.2rem; font-size: 12.5pt; break-after: avoid; page-break-after: avoid; }
   .bp-docpage__words .rp p, .bp-docpage__words .rp ul, .bp-docpage__words .rp ol { margin: 0 0 0.45rem; }
   .bp-docpage__words .rp li { margin: 0.05rem 0; }
+  .bp-docpage__words .rp ol { padding-inline-start: 2.4em; }
   .bp-docpage__sign > :not(.bp-printonly) { display: none !important; }
   .bp-printonly { display: block; margin-top: 1rem; break-inside: avoid; }
   .bp-docpage__head .bp-docpage__org { margin: 0 0 0.15rem; font-size: 8pt; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #5F615A; }

@@ -536,6 +536,9 @@ export function cleanDoc(raw = {}) {
     // whom it was written; a signature on a wording before `signFrom` (the board asked to sign again) doesn't count
     version: Math.max(0, Math.round(Number(raw.version) || 0)),
     signFrom: Math.max(0, Math.round(Number(raw.signFrom) || 0)),
+    // The first version a page must have read to sign: a change the admin said doesn't need signing again (a typo)
+    // leaves it, so a page showing the version just before can still sign
+    readFrom: Math.max(0, Math.round(Number(raw.readFrom) || 0)),
     wordsAt: one(raw.wordsAt, 40),
     wordsBy: one(raw.wordsBy, 200),
     // The file its words were read from (a board file's id): a newer file than that is one to bring the words in from
@@ -626,15 +629,18 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
     if (names.length) throw Object.assign(new Error('Do they sign the new version?'), { status: 409, extra: { ask: { names, since: was.body ? 'words' : 'file', now: body ? 'words' : 'file', newFile: newFile ? String(newFile) : '' } } });
   }
   // The wording's number, and who wrote it when, are the server's
-  const next = { ...d, body, version: was?.version || 0, signFrom: was?.signFrom || 0, wordsAt: was?.wordsAt || '', wordsBy: was?.wordsBy || '', createdAt: row ? parse(row.data).createdAt : nowIso(), updatedAt: nowIso() };
+  const next = { ...d, body, version: was?.version || 0, signFrom: was?.signFrom || 0, readFrom: was?.readFrom || 0, wordsAt: was?.wordsAt || '', wordsBy: was?.wordsBy || '', createdAt: row ? parse(row.data).createdAt : nowIso(), updatedAt: nowIso() };
   // A new version: new words, or a new file for a paper read as its file (whether or not the board signs it again:
   // a page still showing the old file can't sign the new one unread)
   if (changed || (was && newRead)) {
     next.version += 1;
     if (changed) { next.wordsAt = nowIso(); next.wordsBy = String(by || '').slice(0, 200); }
-    const note = changed ? (wordsFrom ? `From ${String(wordsFrom).slice(0, 200)}` : '') : `A new file: ${String(newFile).slice(0, 200)}`;
+    // (its note: where its words came from, or the file it was; and that the board signed again from it)
+    const note = [changed ? (wordsFrom ? `From ${String(wordsFrom).slice(0, 200)}` : '') : `A new file: ${String(newFile).slice(0, 200)}`, askAgain === true ? 'The board signs again from here' : ''].filter(Boolean).join(' · ');
     await DB.prepare('INSERT OR REPLACE INTO board_doc_versions (doc_id, version, body, at, by, note) VALUES (?, ?, ?, ?, ?, ?)').bind(d.id, next.version, body, nowIso(), String(by || '').slice(0, 200), note).run();
     if (askAgain === true) next.signFrom = next.version;
+    // A page still on an earlier version re-reads before signing, unless the admin said the change doesn't need it
+    if (askAgain !== false) next.readFrom = next.version;
   }
   await DB.prepare('INSERT OR REPLACE INTO board_docs (id, data, updated_at) VALUES (?, ?, ?)').bind(d.id, JSON.stringify(next), next.updatedAt).run();
   return (await listDocs(DB)).find((x) => x.id === d.id);
@@ -666,9 +672,11 @@ export async function deleteDoc(env, id) {
 const noSignature = (doc) => Object.assign(new Error(!doc || !doc.shared ? 'That paper isn’t on the board page anymore' : 'That paper doesn’t ask for a signature anymore'), { status: 404, extra: { gone: true } });
 /** The words they read aren't the paper's words anymore: they read the new ones first */
 const notWhatTheyRead = (doc, version) => {
-  if (version == null || version === '' || Number(version) === doc.version) return null;
-  return Object.assign(new Error(doc.body ? 'Its words changed while you were reading them. Read the new words, then sign.' : 'A new version of it came in while you had it open. Read it, then sign.'), { status: 409, extra: { changed: true } });
+  if (version == null || version === '' || Number(version) >= doc.readFrom) return null;
+  return Object.assign(new Error('It changed while you had it open. Read it again, then sign.'), { status: 409, extra: { changed: true } });
 };
+/** The version a signature is on: the one they read (a small change since doesn't need it read again), else the paper's */
+const signedOn = (doc, version) => (version == null || version === '' ? doc.version : Math.min(doc.version, Math.max(Number(version), doc.readFrom)));
 async function writeSignature(DB, { docId, slug, year, name, how, fileId = null, driveId = null, driveName = null, by = '', at = nowIso(), version = 0 }, { keep = false } = {}) {
   if (!keep) {
     const was = await DB.prepare('SELECT * FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).first();
@@ -699,8 +707,9 @@ export async function signDoc(DB, docId, member, name, { version = null } = {}) 
   if (!typed) throw Object.assign(new Error(`Sign with your own name, as the board has it: ${member.name}`), { status: 400 });
   const year = thisYear();
   const at = nowIso();
-  await writeSignature(DB, { docId, slug: member.slug, year, name: typed, how: 'typed', by: member.email || '', at, version: doc.version });
-  return { docId, year, name: typed, at, how: 'typed', version: doc.version, copy: null, drive: null };
+  const on = signedOn(doc, version);
+  await writeSignature(DB, { docId, slug: member.slug, year, name: typed, how: 'typed', by: member.email || '', at, version: on });
+  return { docId, year, name: typed, at, how: 'typed', version: on, copy: null, drive: null };
 }
 
 /**
@@ -724,9 +733,10 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
   const before = await env.DB.prepare('SELECT file_id, version FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, who.slug, year).first();
   const copy = await putFile(env, { ownerType: 'signed', ownerId: docId, file, staffOnly: true, by: by || who.email || '' });
   const at = nowIso();
-  await writeSignature(env.DB, { docId, slug: who.slug, year, name: who.name, how: member ? 'copy' : 'staff', fileId: copy.id, by: by || who.email || '', at, version: doc.version });
-  if (before?.file_id && before.file_id !== copy.id && (Number(before.version) || 0) === doc.version) await deleteFile(env, before.file_id);
-  return { docId, year, name: who.name, at, how: member ? 'copy' : 'staff', version: doc.version, copy, drive: null };
+  const on = member ? signedOn(doc, version) : doc.version;
+  await writeSignature(env.DB, { docId, slug: who.slug, year, name: who.name, how: member ? 'copy' : 'staff', fileId: copy.id, by: by || who.email || '', at, version: on });
+  if (before?.file_id && before.file_id !== copy.id && (Number(before.version) || 0) === on) await deleteFile(env, before.file_id);
+  return { docId, year, name: who.name, at, how: member ? 'copy' : 'staff', version: on, copy, drive: null };
 }
 
 /**
@@ -745,6 +755,12 @@ export async function unsignDoc(env, docId, slug, year = thisYear()) {
   if (!row) return false;
   await env.DB.prepare('DELETE FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).run();
   if (row.file_id) await deleteFile(env, row.file_id);
+  const earlier = await env.DB.prepare('SELECT * FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? ORDER BY version DESC LIMIT 1').bind(docId, slug, year).first();
+  if (earlier) {
+    await env.DB.prepare('INSERT OR REPLACE INTO board_signatures (doc_id, slug, year, name, at, how, file_id, drive_id, drive_name, added_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(docId, slug, year, earlier.name, earlier.at, earlier.how, earlier.file_id, earlier.drive_id, earlier.drive_name, earlier.added_by, earlier.version).run();
+    await env.DB.prepare('DELETE FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? AND version = ?').bind(docId, slug, year, earlier.version).run();
+  }
   if (row.drive_id) await env.DB.prepare("UPDATE board_drive_signed SET state = 'off' WHERE drive_id = ?").bind(row.drive_id).run().catch(() => {});
   return true;
 }
@@ -1614,6 +1630,14 @@ export async function portalData(env, { member = null, admin = false, adminEmail
   const own = member?.email ? new Set(((await env.DB.prepare('SELECT id FROM board_files WHERE lower(by) = ?').bind(String(member.email).toLowerCase()).all()).results || []).map((r) => r.id)) : new Set();
   const shared = meetings.map(forBoard).filter(Boolean).map((m) => (own.size ? { ...m, files: m.files.map((f) => (own.has(f.id) ? { ...f, mine: true } : f)) } : m));
   const mine = member?.slug || null;
+  // The words a member signed, for each paper they're asked to sign again: what changed, shown beside the new
+  const signedBodies = {};
+  for (const d of docs) {
+    const v = mine && d.body && !d.signed[mine] && d.before?.[mine]?.version;
+    if (!v) continue;
+    const row = await env.DB.prepare('SELECT body FROM board_doc_versions WHERE doc_id = ? AND version = ?').bind(d.id, v).first();
+    if (row?.body) signedBodies[d.id] = row.body;
+  }
   // The Board area's admins by their names on People; who to ask is the one the invites come from
   const nameOf = (e) => people.staff.find((p) => e.startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))?.name || e.split('@')[0];
   const admins = settings.admins.map((e) => ({ email: e, name: nameOf(e) }));
@@ -1661,6 +1685,7 @@ export async function portalData(env, { member = null, admin = false, adminEmail
       ...d, file: d.file && !d.file.staffOnly ? d.file : null,
       signedByMe: mine && signed[mine] ? { ...signed[mine], drive: !!signed[mine].drive } : null,
       signedEarlier: !!mine && !signed[mine] && earlier.includes(mine),
+      ...(signedBodies[d.id] ? { signedBody: signedBodies[d.id] } : {}),
       signedCount: people.board.filter((p) => signed[p.slug]).length,
     })),
     numbers,
