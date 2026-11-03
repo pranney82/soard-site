@@ -1297,12 +1297,15 @@ try {
   await shot(scr, '20-screen-cover');
   const screenFoot = () => scr.evaluate(() => document.querySelector('.bs-foot__what')?.textContent || '');
   let hops = 0;
-  // Nothing moves from stop to stop: the screen's stage and its rail (whatever the words in them)
-  const spots = { stage: new Set(), rail: new Set() };
+  // Nothing moves from stop to stop: the screen's stage and its rail (whatever the words in them), and who has the floor
+  // (said along the top on every slide it's anyone's, an item's or a document's, never drawn in the slide again)
+  const spots = { stage: new Set(), rail: new Set(), floor: new Set(), floorOn: 0, inSlide: [] };
   let roll = null;
   const note = async () => {
-    const at = await scr.evaluate(() => ({ stage: JSON.stringify(document.querySelector('.bs-stage')?.getBoundingClientRect()), rail: document.querySelector('.bs-rail__parts li:last-child')?.getBoundingClientRect().right, faces: document.querySelectorAll('.bs-faces__one').length, title: document.querySelector('.bs-item__title')?.textContent || '', count: document.querySelector('.bs-roll')?.textContent || '' }));
+    const at = await scr.evaluate(() => { const f = document.querySelector('.bs-top > .bs-floor')?.getBoundingClientRect(); return { stage: JSON.stringify(document.querySelector('.bs-stage')?.getBoundingClientRect()), rail: document.querySelector('.bs-rail__parts li:last-child')?.getBoundingClientRect().right, faces: document.querySelectorAll('.bs-faces__one').length, title: document.querySelector('.bs-item__title')?.textContent || '', count: document.querySelector('.bs-roll')?.textContent || '', floor: f ? `${Math.round(f.left)},${Math.round(f.top)}` : '', kind: [...document.querySelector('.bs').classList].find((c) => c.startsWith('bs--')) || '', inSlide: document.querySelectorAll('.bs-stage .bs-who, .bs-stage .bs-item__aside .bs-face, .bs-stage .bs-item__lead .bs-face, .bs-stage .bs-chapter__by').length }; });
     spots.stage.add(at.stage); spots.rail.add(at.rail);
+    if (at.floor) { spots.floor.add(at.floor); spots.floorOn += 1; }
+    if (at.inSlide) spots.inSlide.push(`${at.kind} ${at.title}`);
     if (at.title === 'Roll call') roll = at;
   };
   // An item with a report shows it, fitted to the screen (screen.js ReportFit): Governance's, and Sam's under the money
@@ -1317,6 +1320,7 @@ try {
   const finShown = reportStops.get('Financial');
   ok(/^Highlights Insurance renewal/.test(govShown?.text || '') && govShown.fits && /^Cash is up 12%/.test(finShown?.text || '') && finShown.fits, `the screen shows an item’s report, all of it fitting (${JSON.stringify([...reportStops.values()])})`);
   ok(spots.stage.size === 1 && spots.rail.size === 1, `the screen’s stage and rail keep their size and place on every slide (${spots.stage.size} stages, ${spots.rail.size} rails)`);
+  ok(spots.floorOn >= 3 && spots.floor.size === 1 && !spots.inSlide.length, `who has the floor sits in one place along the top on every slide it shows on, and no slide draws its presenters again (${spots.floorOn} slides, spots ${[...spots.floor].join(' | ')}${spots.inSlide.length ? `; in the slide on ${spots.inSlide.join(', ')}` : ''})`);
   ok(roll && roll.faces === 3 && /3\s*on the board/.test(roll.count), `the roll call shows the board’s faces, everyone on the meeting’s list (${JSON.stringify(roll)})`);
   ok(await scr.waitForFunction(() => /Financial.*Balance sheet financials.*Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), '→ steps the screen through the items to the Financial item’s statement, page 1 of 2');
   ok(await scr.waitForFunction(() => document.querySelector('.bs-page__sheet canvas')?.width > 0, { timeout: 8000 }).then(() => true, () => false), 'the page is drawn, as big as the screen allows');
@@ -1328,10 +1332,10 @@ try {
   ok(await scr.waitForFunction(() => /Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'Page Up: back to page 1');
   await scr.keyboard.press('ArrowLeft');
   // The money fills its own slide, so the treasurer's report is a slide of its own after it (./board-shared.js deckOf)
-  const back = await scr.waitForSelector('.bs.bs--report', { timeout: 3000 }).then(() => scr.evaluate(() => ({ title: document.querySelector('.bs-item__title')?.textContent || '', who: document.querySelector('.bs-who')?.textContent || '', report: !!document.querySelector('.bs-stage .bs-report'), foot: document.querySelector('.bs-foot__what')?.textContent || '' })), () => null);
+  const back = await scr.waitForSelector('.bs.bs--report', { timeout: 3000 }).then(() => scr.evaluate(() => ({ title: document.querySelector('.bs-item__title')?.textContent || '', who: document.querySelector('.bs-top > .bs-floor')?.textContent || '', report: !!document.querySelector('.bs-stage .bs-report'), foot: document.querySelector('.bs-foot__what')?.textContent || '' })), () => null);
   ok(back && /Financial/.test(back.title) && /Sam Ortiz/.test(back.who) && back.report && /Financial\s*·\s*Report/.test(back.foot), `← the treasurer’s report, a slide of its own after the money (${JSON.stringify(back)})`);
   await scr.keyboard.press('ArrowLeft');
-  ok(await scr.waitForSelector('.bs--item .bs-item', { timeout: 3000 }).then(() => true, () => false) && await scr.evaluate(() => /Financial/.test(document.querySelector('.bs-item__title')?.textContent || '') && /Sam Ortiz/.test(document.querySelector('.bs-who')?.textContent || '') && !document.querySelector('.bs-stage .bs-report')), '← back to the item, who presents it (its report on the next slide, not here too)');
+  ok(await scr.waitForSelector('.bs--item .bs-item', { timeout: 3000 }).then(() => true, () => false) && await scr.evaluate(() => /Financial/.test(document.querySelector('.bs-item__title')?.textContent || '') && /Sam Ortiz has the floor/.test(document.querySelector('.bs-top > .bs-floor')?.textContent || '') && !document.querySelector('.bs-stage .bs-report')), '← back to the item, who presents it along the top (its report on the next slide, not here too)');
   ok(await scr.waitForFunction(() => [...document.querySelectorAll('.bs-shelf > li')].some((li) => /Balance sheet financials/.test(li.textContent) && !!li.querySelector('.bs-shelf__cover > *')), { timeout: 6000 }).then(() => true, () => false), 'its documents coming up, each by its first page');
   await shot(scr, '22-screen-item');
   // The makeovers item on the screen: the stages as one track toward the reveal, every family's card in view
@@ -1371,10 +1375,10 @@ try {
       await card.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`section:${long.sections[si].id}`)}#/meetings/${long.id}/screen`, { waitUntil: 'networkidle0' });
       await card.waitForSelector('.bs-chapter', { timeout: 8000 }).catch(() => {});
       await sleep(500);
-      return card.evaluate(() => { const st = document.querySelector('.bs-stage').getBoundingClientRect(); const c = document.querySelector('.bs-chapter'); const r = c.getBoundingClientRect(); const labs = [...c.querySelectorAll('.bs-chapter__t')].map((t) => Math.round(t.getBoundingClientRect().left)); return { rows: c.querySelectorAll('.bs-chapter__items li').length, inside: r.top >= st.top - 1 && r.bottom <= st.bottom + 1, by: c.querySelector('.bs-chapter__by')?.textContent || '', perRow: c.querySelectorAll('.bs-chapter__who').length, lined: new Set(labs).size === (c.querySelector('.bs-chapter__items.is-cols') ? 2 : 1) }; });
+      return card.evaluate(() => { const st = document.querySelector('.bs-stage').getBoundingClientRect(); const c = document.querySelector('.bs-chapter'); const r = c.getBoundingClientRect(); const labs = [...c.querySelectorAll('.bs-chapter__t')].map((t) => Math.round(t.getBoundingClientRect().left)); return { rows: c.querySelectorAll('.bs-chapter__items li').length, inside: r.top >= st.top - 1 && r.bottom <= st.bottom + 1, by: document.querySelector('.bs-top > .bs-floor')?.textContent || '', perRow: c.querySelectorAll('.bs-chapter__who').length, lined: new Set(labs).size === (c.querySelector('.bs-chapter__items.is-cols') ? 2 : 1) }; });
     };
     const one = await cardOf(1);
-    ok(one.rows === 11 && one.inside && /Jane Doe/.test(one.by) && one.perRow === 0 && one.lined, `a part of 11 items by one presenter: the card names them once, its titles in line (two columns past seven), all of it above the rail (${JSON.stringify(one)})`);
+    ok(one.rows === 11 && one.inside && /Jane Doe/.test(one.by) && one.perRow === 0 && one.lined, `a part of 11 items by one presenter: named once, along the top as the floor's, its titles in line (two columns past seven), all of it above the rail (${JSON.stringify(one)})`);
     await shot(card, '25b-screen-long-part');
     const mixed = await cardOf(0);
     ok(mixed.rows === 2 && mixed.inside && !mixed.by && mixed.perRow === 2, `a part with different presenters keeps each one on its row (${JSON.stringify(mixed)})`);

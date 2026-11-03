@@ -89,7 +89,8 @@ function useFit(deps, { min = 0.6, lines = 0 } = {}) {
     const over = () => {
       if (lines) return el.scrollHeight > parseFloat(getComputedStyle(el).lineHeight) * lines + 2;
       const cs = getComputedStyle(stage);
-      return Math.max(el.offsetHeight, el.scrollHeight) > stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom) + 1;
+      // Whole pixels both sides, so a slide a pixel taller than the stage (564 in 563) is over, not let through as rounding
+      return Math.max(el.offsetHeight, el.scrollHeight) > Math.floor(stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom));
     };
     const fit = () => {
       el.style.setProperty(prop, '1');
@@ -730,11 +731,16 @@ const partWhen = (t) => (t ? [t.start ? `${clock(t.start)} to ${clock(t.end)}` :
  *  items, two columns with only the faces. A part too long for the screen is set smaller, the big number and the title
  *  first, until it all fits above the rail (useFit); a phone scrolls it instead */
 const CHAPTER_ROWS = 24;
+const keyOf = (ws) => ws.map((p) => p.slug || p.name).join('|');
+/** Who presents every item in a part, when that's one person (or the same pair): else null */
+function partWho(sec, people) {
+  const whos = (sec?.items || []).map((it) => presentersOf(it, people));
+  return whos.length > 1 && whos[0].length && whos.every((ws) => keyOf(ws) === keyOf(whos[0])) ? whos[0] : null;
+}
 function Chapter({ n, sec, t, items, people }) {
   const rows = sec?.items || [];
   const whos = rows.map((it) => presentersOf(it, people));
-  const keyOf = (ws) => ws.map((p) => p.slug || p.name).join('|');
-  const one = rows.length > 1 && whos[0].length && whos.every((ws) => keyOf(ws) === keyOf(whos[0])) ? whos[0] : null;
+  const one = partWho(sec, people);
   const labels = rows.map((it) => items.find((x) => x.id === it.id)?.label || '');
   const cols = rows.length > 7;
   // Two columns of twelve at the most, the rest said ("and 6 more"): past that a part's items no longer read
@@ -746,24 +752,15 @@ function Chapter({ n, sec, t, items, people }) {
     <div class="bs-chapter__body">
       ${t ? html`<p class="bs-eyebrow">${partWhen(t)}</p>` : null}
       <${Title} text=${partName(sec, n - 1)} cls="bs-chapter__title" />
-      ${one ? html`<p class="bs-chapter__by">${one.slice(0, 3).map((p) => html`<${Face} p=${p} size=${44} key=${p.slug || p.name} />`)}<span>${one.length > 2 ? whoWords(one) : namesText(one.map((p) => p.name))}</span></p>` : null}
       ${rows.length ? html`<ol class=${`bs-chapter__items ${cols ? 'is-cols' : ''}`} style=${cols ? `--rows:${Math.ceil((shown.length + (left ? 1 : 0)) / 2)}` : null}>${shown.map((it, i) => html`<li key=${it.id}><span class="bs-chapter__label">${labels[i]}</span><span class="bs-chapter__t" dir="auto">${it.title || LIVE_TITLES[it.live] || ''}</span>${!one && whos[i].length ? html`<span class="bs-chapter__who">${whos[i].slice(0, 3).map((p) => html`<${Face} p=${p} size=${36} key=${p.slug || p.name} />`)}${cols ? null : html`<span>${whoWords(whos[i])}</span>`}</span>` : null}</li>`)}${left ? html`<li class="bs-chapter__more" key="more">and ${left} more</li>` : null}</ol>`
         : html`<p class="bs-chapter__open">Open to the floor</p>`}
     </div>
   </div>`;
 }
 
-/** Who presents an item, beside or under its title: each face, name and seat (a long one ends in …); four and more,
- *  their faces together and "Alex & 3 more" */
-function WhoList({ who, size = 52 }) {
-  if (!who.length) return null;
-  if (who.length > 3) return html`<div class="bs-who bs-who--many"><span class="bs-who__faces">${who.slice(0, 5).map((p) => html`<${Face} p=${p} size=${size} key=${p.slug || p.name} />`)}</span><span><strong>${whoWords(who)}</strong><small>${who.length} presenting</small></span></div>`;
-  return html`<ul class="bs-who">${who.map((p) => html`<li key=${p.slug || p.name}><${Face} p=${p} size=${size} /><span><strong dir="auto">${p.name}</strong>${roleOf(p) ? html`<small>${roleOf(p)}</small>` : null}</span></li>`)}</ul>`;
-}
-
 /** An item with nothing beside it: a card like a part's (.bs-chapter), set smaller only as far as it must to fit with
  *  its motion under it (useFit) */
-function TitleCard({ big, over, title, confidential, who, calm, motion, fits }) {
+function TitleCard({ big, over, title, confidential, calm, motion, fits }) {
   const ref = useFit([fits], { min: 0.5 });
   return html`<div class=${`bs-item bs-chapter bs-item--title ${big ? '' : 'is-plain'} ${big.length > 2 ? 'is-label' : ''}`} ref=${ref}>
     ${big ? html`<span class="bs-chapter__n" aria-hidden="true">${big}</span>` : null}
@@ -771,7 +768,7 @@ function TitleCard({ big, over, title, confidential, who, calm, motion, fits }) 
       ${over ? html`<p class="bs-eyebrow">${over}</p>` : null}
       <${Title} text=${title} cls="bs-item__title" />
       ${confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}
-      ${who}${calm}
+      ${calm}
     </div>
     ${motion}
   </div>`;
@@ -1182,11 +1179,11 @@ export function Screen({ id, data, d, onBack = null }) {
   const section = stop.n >= 0 ? items[stop.n].section : '';
   const people = d?.people || [];
   const who = item ? presentersOf(item, people) : [];
-  // Who has the floor: the one the chair gave it to, else whoever presents the item; along the top only when the slide
-  // doesn't already show them (an item's own slides have its presenters beside the title)
+  // Who has the floor: the one the chair gave it to, else whoever presents the item (on a part's card, whoever presents
+  // all of it). Said in one place, along the top, on every slide of the agenda (Peter: never a face that moves from
+  // slide to slide), so no slide draws its presenters again
   const given = live.floor ? people.find((p) => p.slug === live.floor) || null : null;
-  const onSlide = ['item', 'report', 'decision'].includes(stop.kind) ? who.map((p) => p.slug || p.name) : [];
-  const floor = (given ? [given] : who).filter((p) => !onSlide.includes(p.slug || p.name));
+  const floor = given ? [given] : item ? who : stop.kind === 'section' ? partWho(meeting.sections[cardSi], people) || [] : [];
   const secId = stop.sectionId || (stop.n >= 0 ? meeting.sections[items[stop.n].si]?.id : '');
   if (OWN && started && secId && !partsAt.current.has(secId)) partsAt.current.set(secId, new Date().toISOString());
   const timer = started && !ended && secId ? sectionClock(plan, secId, OWN ? partsAt.current.get(secId) : live.sectionAt) : null;
@@ -1205,7 +1202,7 @@ export function Screen({ id, data, d, onBack = null }) {
 
   const top = html`<header class="bs-top">
     <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong title=${meetingName(meeting)}>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', !OWN && started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
-    ${onItem && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${namesText(floor.map((p) => p.name))}</strong><span class="bs-floor__has"> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span></span>` : null}
+    ${(onItem || stop.kind === 'section') && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span><strong>${namesText(floor.map((p) => p.name))}</strong><span class="bs-floor__has"> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span></span>` : null}
     <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${PRESENT && unshared ? html`<span class="bs-chip" title="Board members can’t see this meeting yet. Share it in Board when it’s ready.">Not on the board page yet</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
   </header>`;
   // Presenting: back, the slide count and next, and on a money slide the % | $; in the line under the stage, there while
@@ -1252,8 +1249,7 @@ export function Screen({ id, data, d, onBack = null }) {
     // The report on an item that shows live facts (./board-shared.js deckOf): the part, the item and who presents it
     // along the top, the report filling the rest (its motion is the decision's slide, after all the item shows)
     stage = html`<div class=${`bs-item bs-item--report ${mdPoints(item.report) ? 'bs-item--points' : ''}`}>
-      <div class="bs-item__bar"><div><p class="bs-eyebrow">${where}</p><${Title} text=${itemTitle} cls="bs-item__title" /></div>
-        ${who.length ? html`<div class="bs-item__aside"><${WhoList} who=${who} /></div>` : null}</div>
+      <div class="bs-item__bar"><div><p class="bs-eyebrow">${where}</p><${Title} text=${itemTitle} cls="bs-item__title" /></div></div>
       <${ReportBody} report=${item.report} />
       ${motionHere}
     </div>`;
@@ -1261,8 +1257,7 @@ export function Screen({ id, data, d, onBack = null }) {
     // The item's motion on a slide of its own, after all the item showed (./board-shared.js deckOf): the part, the
     // item and who presents it along the top, the motion as large as it fits under them, how the vote went once closed
     stage = html`<div class="bs-item bs-item--decision">
-      <div class="bs-item__bar"><div><p class="bs-eyebrow">${where}</p><${Title} text=${itemTitle} cls="bs-item__title" /></div>
-        ${who.length ? html`<div class="bs-item__aside"><${WhoList} who=${who} /></div>` : null}</div>
+      <div class="bs-item__bar"><div><p class="bs-eyebrow">${where}</p><${Title} text=${itemTitle} cls="bs-item__title" /></div></div>
       <${ItemMotion} text=${motionText} mo=${recordedAs(motionText, v)} big />
     </div>`;
   } else if (stop.kind === 'item') {
@@ -1275,7 +1270,6 @@ export function Screen({ id, data, d, onBack = null }) {
     const head = html`<p class="bs-eyebrow">${where}${of ? html`<span class="bs-eyebrow__of">${of}</span>` : null}</p>
       <${Title} text=${title} cls="bs-item__title" />
       ${item.confidential ? html`<p class="bs-chip bs-chip--warn">Board only · please don’t share</p>` : null}`;
-    const whoList = who.length ? html`<${WhoList} who=${who} size=${facts || faces || item.report || motionHere ? 52 : 72} />` : null;
     // A report with something in it ("nothing new this time" is said calmly on the item's card instead); beside it
     // nothing else, its notes and its documents on the board page (the documents next in the deck). The documents
     // coming show only on a slide with no report and no notes on it (the slide holds one thing; under live facts, a row)
@@ -1288,7 +1282,7 @@ export function Screen({ id, data, d, onBack = null }) {
     const coming = docs.length && !reportHere && !notes ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document' : 'Its documents'}${deck[at + 1]?.kind === 'report' ? ', after the report' : ', next'}</p><${Shelf} docs=${docs} pages=${pages} row=${!!facts && !faces} max=${item.notes && (item.live === 'minutes' || item.report) ? 2 : item.notes || item.live === 'minutes' ? 3 : 6} /></div>` : null;
     if (faces) {
       stage = html`<div class="bs-item bs-item--board bs-item--faces">
-        <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${faces === 'roll' ? html`<${RollCount} v=${v} started=${started} />` : whoList}</div></div>
+        <div class="bs-item__bar"><div>${head}</div>${faces === 'roll' ? html`<div class="bs-item__aside"><${RollCount} v=${v} started=${started} /></div>` : null}</div>
         <div class="bs-item__facts"><${FacesGrid} kind=${faces} v=${v} people=${people} started=${started} year=${Number(String(meeting.date).slice(0, 4))} /></div>
         ${notesRow}${motionHere}
       </div>`;
@@ -1296,14 +1290,14 @@ export function Screen({ id, data, d, onBack = null }) {
     } else if (facts && (item.live === 'projects' || (item.live === 'reveals' && (!item.report || deck[at + 1]?.kind === 'report') && !coming))) {
       // The makeovers and the reveals: the item's name and who presents it along the top, the rest of the screen theirs
       stage = html`<div class="bs-item bs-item--board">
-        <div class="bs-item__bar"><div>${head}</div>${whoList ? html`<div class="bs-item__aside">${whoList}</div>` : null}</div>
+        <div class="bs-item__bar"><div>${head}</div></div>
         <div class="bs-item__facts">${facts}</div>
         ${notesRow}
       </div>`;
     } else if (facts) {
       // (its report is a slide of its own next, its motion the decision's after all it shows: deckOf)
       stage = html`<div class="bs-item bs-item--facts">
-        <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${whoList}</div></div>
+        <div class="bs-item__bar"><div>${head}</div></div>
         <div class="bs-item__facts">${facts}</div>
         ${notes || coming ? html`<div class="bs-item__body">${notes ? html`<${Points} text=${notes} />` : null}${coming}</div>` : null}
         ${calm ? html`<p class="bs-calm" dir="auto">${NOTHING_NEW}</p>` : null}
@@ -1313,7 +1307,7 @@ export function Screen({ id, data, d, onBack = null }) {
       // A report: the item and who presents it along the top, the report filling the rest (a motion beside a report is
       // the decision's slide, after the report); a short one is its points as cards (ReportBody)
       stage = html`<div class=${`bs-item bs-item--report ${mdPoints(item.report) ? 'bs-item--points' : ''}`}>
-        <div class="bs-item__bar"><div>${head}</div><div class="bs-item__aside">${whoList}</div></div>
+        <div class="bs-item__bar"><div>${head}</div></div>
         <${ReportBody} report=${item.report} />
         ${motionHere}
       </div>`;
@@ -1330,10 +1324,10 @@ export function Screen({ id, data, d, onBack = null }) {
       const big = stop.n < 0 ? '' : sec?.items.length > 1 ? items[stop.n].label : String(items[stop.n].si + 1).padStart(2, '0');
       const over = [section && section !== title ? section : stop.n < 0 ? 'After the agenda' : '', partWhen(sec ? plan.get(sec.id) : null)].filter(Boolean).join(' · ');
       stage = side || part ? html`<div class="bs-item bs-item--split">
-        <div class="bs-item__lead">${head}${whoList}${calmLine}</div>
+        <div class="bs-item__lead">${head}${calmLine}</div>
         ${side ? html`<div class="bs-item__side">${notes ? html`<${Points} text=${notes} />` : null}${coming}</div>` : html`<div class="bs-item__side">${part}</div>`}
         ${motionHere}
-      </div>` : html`<${TitleCard} big=${big} over=${over} title=${title} confidential=${!!item.confidential} who=${whoList} calm=${calmLine} motion=${motionHere} fits=${[title, over, who.length, motionText, calm].join('|')} />`;
+      </div>` : html`<${TitleCard} big=${big} over=${over} title=${title} confidential=${!!item.confidential} calm=${calmLine} motion=${motionHere} fits=${[title, over, motionText, calm].join('|')} />`;
     }
   } else {
     stage = html`<${DocPage} f=${file} page=${stop.page} part=${half} box=${box} onPages=${notePages} key=${file?.id} />`;
