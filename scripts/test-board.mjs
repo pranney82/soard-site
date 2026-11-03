@@ -1318,7 +1318,7 @@ try {
   await jane.keyboard.type('Come to the gala each spring.');
   ok(/Come to the gala each spring/.test(await editorText(jane)), 'the words changed in the editor');
   await clickText(jane, 'button', /^Save$/);
-  ok(await waitText(jane, /Saved\. The board signs the new version for \d{4}\./) && await waitText(jane, /Board Member Expectations[\s\S]*No one has signed the new version for \d{4} yet \(1 member signed the earlier one\)[\s\S]*0 of 3 signed/), 'asked (and answered: sign again), the new words start at nobody signed, saying Alex signed the earlier ones');
+  ok(await waitText(jane, /Saved\. The board signs the new version for \d{4}: each member sees it on Home and on the paper, and in the next documents email\./) && await waitText(jane, /Board Member Expectations[\s\S]*No one has signed the new version for \d{4} yet \(1 member signed the earlier one\)[\s\S]*0 of 3 signed/), 'asked (and answered: sign again), the new words start at nobody signed, saying Alex signed the earlier ones');
   const exp = (await listDocs(DB)).find((d) => d.title === 'Board Member Expectations');
   ok(exp.version === 2 && exp.signFrom === 2 && exp.earlier.includes('alex-rivera') && /Come to the gala each spring/.test(exp.body), `the second wording, kept, Alex’s signature on an earlier one (v${exp.version}, from ${exp.signFrom})`);
   const alexAgain = await tab(MEMBER, 1440);

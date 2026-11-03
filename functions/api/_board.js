@@ -50,6 +50,7 @@ import { emailShell, button, esc, facts, link, panel, SANS, SERIF } from './_ema
 import { sniffType } from './upload-file.js';
 import { maybeSyncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
+import { pdfText } from './_vendor-read.js';
 import { maybeReadBoardMail, mailStatus } from './_board-mail.js';
 import { mercury } from './_mercury.js';
 import { bankBalances, plaidConfigured, bankFacts } from './_plaid.js';
@@ -96,6 +97,8 @@ export async function ensureSchema(DB) {
   try { await DB.prepare('ALTER TABLE board_signatures ADD COLUMN version INTEGER').run(); } catch { /* already there */ }
   // What a wording was: words read from a file, or a new file the board signs again
   try { await DB.prepare('ALTER TABLE board_doc_versions ADD COLUMN note TEXT').run(); } catch { /* already there */ }
+  // A paper's PDF's words, read once, for finding it by them on the board page ('' when it has none: a scan)
+  try { await DB.prepare('ALTER TABLE board_files ADD COLUMN words TEXT').run(); } catch { /* already there */ }
   _ready.add(DB);
 }
 
@@ -655,6 +658,26 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
   return (await listDocs(DB)).find((x) => x.id === d.id);
 }
 
+/** Papers' PDFs not read yet, a few at a time: their words kept for finding them (Workers AI's reader; '' for a scan) */
+export async function fillDocWords(env, { limit = 3 } = {}) {
+  try {
+    await ensureSchema(env.DB);
+    const bucket = boardFiles(env);
+    if (!bucket || !env.AI?.toMarkdown) return 0;
+    const rows = (await env.DB.prepare("SELECT id, r2_key, name FROM board_files WHERE owner_type = 'doc' AND type = 'application/pdf' AND words IS NULL ORDER BY at DESC LIMIT ?").bind(limit).all()).results || [];
+    for (const r of rows) {
+      const obj = await bucket.get(r.r2_key);
+      const bytes = obj ? new Uint8Array(await new Response(obj.body).arrayBuffer()) : null;
+      const words = bytes ? await pdfText(env, { bytes, name: r.name }) : '';
+      await env.DB.prepare('UPDATE board_files SET words = ? WHERE id = ?').bind(String(words || '').replace(/\s+/g, ' ').trim().slice(0, 60000), r.id).run();
+    }
+    return rows.length;
+  } catch (err) {
+    console.error('[board] doc words', err.message);
+    return 0;
+  }
+}
+
 /**
  * A paper's wordings written in Board, newest first: [{ version, body, at, by, note, signed }] (`note`: where its
  * words came from, or the new file it was; `signed`: how many signed it this year)
@@ -727,13 +750,17 @@ export async function signDoc(DB, docId, member, name, { version = null } = {}) 
  * it replaces a copy added for them before. A PDF or a photo of the signed page. `version`: the wording on the
  * member's page (as signDoc). → { docId, year, name, at, how, copy, drive }
  */
-export async function signWithCopy(env, docId, file, { member = null, slug = '', by = '', version = null } = {}) {
+export async function signWithCopy(env, docId, file, { member = null, slug = '', by = '', version = null, replace = false } = {}) {
   await ensureSchema(env.DB);
   const doc = (await listDocs(env.DB)).find((d) => d.id === docId);
   if (!doc?.sign || (member && !doc.shared)) throw noSignature(doc);
   if (member) { const stale = notWhatTheyRead(doc, version); if (stale) throw stale; }
   const who = member || (await activeBoard(env.DB)).find((p) => p.slug === slug);
   if (!who) throw Object.assign(new Error('Whose is it? They aren’t on People → Board'), { status: 404 });
+  const theirs = !member && doc.signed[who.slug];
+  if (theirs && (theirs.how === 'typed' || theirs.how === 'copy') && !replace) {
+    throw Object.assign(new Error(`${who.name} has signed it already (${theirs.how === 'typed' ? 'typed on the board page' : 'their own copy'})`), { status: 409, extra: { exists: { how: theirs.how, at: theirs.at, name: who.name } } });
+  }
   if (file && typeof file.arrayBuffer === 'function') {
     const type = fileTypeOf(new Uint8Array(await file.arrayBuffer()), file.name);
     if (!type && /\.(pdf|jpe?g|png|gif|webp|hei[cf])$/i.test(file.name || '')) throw Object.assign(new Error(`${file.name} isn’t what its name says (another kind of file renamed): save the signed page again as a PDF or a photo`), { status: 415 });
@@ -1644,10 +1671,15 @@ export async function portalData(env, { member = null, admin = false, adminEmail
   const own = member?.email ? new Set(((await env.DB.prepare('SELECT id FROM board_files WHERE lower(by) = ?').bind(String(member.email).toLowerCase()).all()).results || []).map((r) => r.id)) : new Set();
   const shared = meetings.map(forBoard).filter(Boolean).map((m) => (own.size ? { ...m, files: m.files.map((f) => (own.has(f.id) ? { ...f, mine: true } : f)) } : m));
   const mine = member?.slug || null;
-  // The words a member signed, for each paper they're asked to sign again: what changed, shown beside the new
+  // A paper read as its PDF: its words, as read, to find it by them
+  const fileWords = {};
+  const pdfIds = docs.filter((d) => d.shared && !d.body && d.file?.type === 'application/pdf').map((d) => d.file.id);
+  if (pdfIds.length) for (const r of ((await env.DB.prepare(`SELECT id, words FROM board_files WHERE id IN (${pdfIds.map(() => '?').join(',')})`).bind(...pdfIds).all()).results || [])) if (r.words) fileWords[r.id] = r.words.slice(0, 20000);
+  // The words a member signed, for each paper they're asked to sign again: what changed, shown beside the new (from the
+  // last version their signature counted on: a typo kept since isn't a change to them)
   const signedBodies = {};
   for (const d of docs) {
-    const v = mine && d.body && !d.signed[mine] && d.before?.[mine]?.version;
+    const v = mine && d.body && !d.signed[mine] && d.before?.[mine] && Math.max(d.before[mine].version, d.signFrom - 1);
     if (!v) continue;
     const row = await env.DB.prepare('SELECT body FROM board_doc_versions WHERE doc_id = ? AND version = ?').bind(d.id, v).first();
     if (row?.body) signedBodies[d.id] = row.body;
@@ -1701,6 +1733,7 @@ export async function portalData(env, { member = null, admin = false, adminEmail
       signedByMe: mine && signed[mine] ? { ...signed[mine], drive: !!signed[mine].drive } : null,
       signedEarlier: !!mine && !signed[mine] && earlier.includes(mine),
       ...(signedBodies[d.id] ? { signedBody: signedBodies[d.id] } : {}),
+      ...(!d.body && d.file && fileWords[d.file.id] ? { fileWords: fileWords[d.file.id] } : {}),
       signedCount: people.board.filter((p) => signed[p.slug]).length,
     })),
     numbers,

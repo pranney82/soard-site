@@ -55,6 +55,8 @@ img { display: block; max-width: 100%; }
 .bp-brand__words strong { display: block; font-family: var(--display); font-size: 0.98rem; line-height: 1.2; font-weight: 700; white-space: nowrap; }
 .bp-brand__words small { display: block; font-size: 0.8rem; color: var(--muted); letter-spacing: 0.01em; }
 .bp-nav { position: relative; isolation: isolate; display: flex; align-items: center; gap: 0.15rem; margin: 0 auto; }
+.bp-nav__due { position: absolute; top: 4px; right: 10px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--yellow); color: var(--ink); font-size: 0.72rem; font-weight: 750; line-height: 18px; text-align: center; }
+.bp-docpage__next { margin: 1rem 0 0; }
 .bp-nav a { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 0.45rem; height: 42px; padding: 0 0.95rem; border-radius: 999px; text-decoration: none; color: var(--muted); font-weight: 600; font-size: 0.95rem; transition: color 0.2s, background 0.2s; }
 .bp-nav a:hover { color: var(--ink); background: rgba(45, 47, 44, 0.05); }
 .bp-nav a[aria-current="page"] { color: var(--ink); background: none; }
@@ -1089,7 +1091,8 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 /* What changed since they signed: the new lines and the ones taken out */
 .bp-doc__changed > p { margin: 0; }
 .bp-whatchanged { margin-top: 0.45rem; font-weight: 500; color: var(--ink-2); }
-.bp-whatchanged summary { cursor: pointer; font-weight: 650; color: var(--ink); min-height: 44px; display: inline-flex; align-items: center; gap: 0.35rem; text-decoration: underline; text-underline-offset: 3px; list-style: none; }
+.bp-whatchanged summary { cursor: pointer; font-weight: 650; color: var(--ink); min-height: 44px; display: inline-flex; align-items: center; gap: 0.35rem; list-style: none; }
+.bp-whatchanged summary span { text-decoration: underline; text-underline-offset: 3px; }
 .bp-whatchanged summary::-webkit-details-marker { display: none; }
 .bp-whatchanged summary::before { content: '›'; display: inline-block; font-size: 1.2em; line-height: 1; transition: transform 0.2s; }
 .bp-whatchanged[open] summary::before { transform: rotate(90deg); }

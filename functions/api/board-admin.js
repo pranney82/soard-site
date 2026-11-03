@@ -45,7 +45,7 @@
 
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
-  setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
+  setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, fillDocWords, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
   memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
   chairLive, createPractice, resetPractice,
 } from './_board.js';
@@ -106,6 +106,8 @@ export async function onRequestGet(context) {
     const { me, refused } = await gate(context);
     if (refused) return refused;
     if (q.has('numbers')) return Response.json({ ok: true, numbers: await liveNumbers(env) });
+    // Papers' PDFs read for the board page's search, a few each time an admin comes by
+    context.waitUntil?.(fillDocWords(env));
     // Board access's quick look while a sign-in email is going out (and as the panel opens)
     if (q.has('welcome')) return Response.json({ ok: true, ...(await welcomeNow(env.DB)) }, { headers: { 'Cache-Control': 'no-store' } });
     // One board member's sign-ins and what they did on the board page (Members → their row)
@@ -167,7 +169,7 @@ export async function onRequestPost(context) {
       if (form.get('signFor')) {
         const docId = String(form.get('signFor'));
         if (!ID.test(docId)) return fail('Which document?');
-        const signed = await signWithCopy(env, docId, form.get('file'), { slug: String(form.get('slug') || ''), by: me });
+        const signed = await signWithCopy(env, docId, form.get('file'), { slug: String(form.get('slug') || ''), by: me, replace: form.get('replace') === '1' });
         await audit(env, me, 'updated', `Board signature added for ${signed.name}`);
         return Response.json({ ok: true, signed, doc: (await listDocs(env.DB)).find((d) => d.id === docId) });
       }

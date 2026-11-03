@@ -661,7 +661,7 @@ function App() {
     <header class="bp-top">
       <div class="bp-bar">
         <a class="bp-brand" href="#/"><img src=${LOGO} alt="SOARD board home" width="44" height="44" /><span class="bp-brand__words"><strong>Sunshine on a Ranney Day</strong> <small>Board of Directors</small></span></a>
-        <${Nav} page=${route.page} />
+        <${Nav} page=${route.page} toSign=${data?.me?.slug ? data.docs.filter((x) => x.sign && !x.hidden && (x.body || x.file) && !x.signedByMe).length : 0} />
         <div class="bp-tools">
           <button type="button" class="bp-find" onClick=${() => setFinding(true)} aria-keyshortcuts="Meta+K Control+K /">
             <${Icon} name="search" size=${18} /><span class="bp-find__label">Search</span><kbd class="bp-kbd" aria-hidden="true">${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
@@ -685,7 +685,7 @@ function App() {
  * The five pages. The yellow marker is one element that slides behind the labels to the open page (a CSS move).
  * It's never part of the page's view transition: as its own layer there it was drawn over the labels while it moved.
  */
-function Nav({ page }) {
+function Nav({ page, toSign = 0 }) {
   const ref = useRef(null);
   const [ink, setInk] = useState(null);
   useEffect(() => {
@@ -701,7 +701,7 @@ function Nav({ page }) {
   return html`<nav class="bp-nav" aria-label="Board" ref=${ref}>
     ${ink ? html`<span class=${`bp-nav__ink ${ink.moving ? 'is-moving' : ''}`} style=${`--x:${ink.x}px;--y:${ink.y}px;--w:${ink.w}px;--h:${ink.h}px`} aria-hidden="true"></span>` : null}
     ${NAV.map(([p, label, icon]) => html`<a href=${`#/${p}`} aria-current=${page === p ? 'page' : null} key=${p}>
-      <${Icon} name=${icon} size=${20} /><span class="bp-nav__label">${label}</span>
+      <${Icon} name=${icon} size=${20} /><span class="bp-nav__label">${label}</span>${p === 'documents' && toSign ? html`<span class="bp-nav__due" aria-label=${`${toSign} to sign`}>${toSign}</span>` : null}
     </a>`)}
   </nav>`;
 }
@@ -3443,7 +3443,7 @@ function DocumentsPage({ ctx }) {
   const readable = (x) => x.body || x.file;
   const toSign = docs.filter((x) => x.sign && readable(x));
   const done = toSign.filter((x) => x.signedByMe).length;
-  const found = (x) => !terms.length || hits(`${x.title} ${x.note} ${coverWord(x.title)} ${x.body ? mdPlain(x.body) : ''}`, terms);
+  const found = (x) => !terms.length || hits(`${x.title} ${x.note} ${coverWord(x.title)} ${x.body ? mdPlain(x.body) : x.fileWords || ''}`, terms);
   const onShelves = docs.filter((x) => !(x.sign && readable(x)) && found(x));
   const shelves = [...SHELVES, ...MORE_SHELVES].map((sh) => ({ ...sh, list: onShelves.filter((x) => shelfOf(x) === sh.id) })).filter((sh) => sh.list.length);
   // A paper written here opens on its own page (its words, then signing); a file in the viewer
@@ -3452,7 +3452,7 @@ function DocumentsPage({ ctx }) {
   const inTitle = (x) => terms.every((w) => termIn(spaced(`${x.title} ${x.note}`), squashed(`${x.title} ${x.note}`), w));
   const open = (x) => (x.body ? { href: `#/documents/${x.id}`, onClick: () => { if (terms.length && !inTitle(x)) focusNext = `words:${terms.join(' ')}`; } } : x.file ? viewerLink(vf, withFile.indexOf(x)) : { href: null });
   // The words a search found in a paper, when its title doesn't say it
-  const foundIn = (x) => (terms.length && x.body && !inTitle(x) ? html`<span class="bp-doc__found"><${Snippet} text=${mdPlain(x.body)} terms=${terms} /></span>` : null);
+  const foundIn = (x) => (terms.length && (x.body || x.fileWords) && !inTitle(x) ? html`<span class="bp-doc__found"><${Snippet} text=${x.body ? mdPlain(x.body) : x.fileWords} terms=${terms} /></span>` : null);
   // What the page holds, said once at the top: what there is to sign, the shelves there are, the meetings' files
   const SAY = { governing: 'SOARD’s governing documents', status: 'its tax-exempt status', standing: 'registrations and insurance', plan: 'plans and reports', money: 'budgets and audits' };
   const said = [
@@ -3543,6 +3543,7 @@ function DocPage({ id, ctx }) {
   // The paper's own last line already agrees ("I have read and understand…"): printed, it isn't said twice
   const agrees = written && /^(i have read|i acknowledge|i agree|by signing)/i.test(mdPlain(doc.body).trim().split('\n').at(-1).replace(/^[•\d.\s-]+/, ''));
   const me = doc.signedByMe;
+  const nextToSign = data.me.slug ? data.docs.find((x) => x.id !== doc.id && x.sign && !x.hidden && (x.body || x.file) && !x.signedByMe) : null;
   const trouble = troubleFor(doc.id, doc);
   const changes = doc.signedBody && written ? (() => {
     // Each line of the Markdown as it reads (a heading marked, a point's bullet or number aside)
@@ -3574,7 +3575,7 @@ function DocPage({ id, ctx }) {
       </div>
       ${written ? html`<p class="bp-btns bp-noprint"><button type="button" class="bp-btn bp-btn--sm" onClick=${() => ctx.load().then(() => requestAnimationFrame(() => window.print()))}><${Icon} name="print" size=${16} />Print it</button></p>` : null}
     </header>
-    ${doc.sign && doc.signedEarlier && !me ? html`<div class="bp-doc__changed bp-noprint"><p>It changed since you signed: read it, then sign again.</p>${changes ? html`<details class="bp-whatchanged"><summary>What changed</summary>
+    ${doc.sign && doc.signedEarlier && !me ? html`<div class="bp-doc__changed bp-noprint"><p>It changed since you signed: read it, then sign again.</p>${changes ? html`<details class="bp-whatchanged"><summary><span>What changed</span></summary>
       ${changes.changed.length ? html`<p class="bp-whatchanged__h">Changed</p><ul>${changes.changed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${runsOf(l.diff).map((r, j) => (r.op === '+' ? html`<ins key=${j}>${r.w}</ins> ` : r.op === '-' ? html`<del key=${j}>${r.w}</del> ` : `${r.w} `))}</li>`)}</ul>` : null}
       ${changes.added.length ? html`<p class="bp-whatchanged__h">New</p><ul>${changes.added.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${l.h ? html`<strong>${l.t}</strong>` : l.t}</li>`)}</ul>${changes.added.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.added.length - 20, 'more new line')}</p>` : null}` : null}
       ${changes.removed.length ? html`<p class="bp-whatchanged__h">Taken out</p><ul>${changes.removed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}><s>${l.h ? html`<strong>${l.t}</strong>` : l.t}</s></li>`)}</ul>${changes.removed.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.removed.length - 20, 'more line')} taken out</p>` : null}` : null}
@@ -3589,6 +3590,7 @@ function DocPage({ id, ctx }) {
       <h2 class="bp-h2" id="docsign-h">${!data.me.slug ? `Signatures for ${year}` : me ? `Signed for ${year}` : `Sign it for ${year}`}</h2>
       <p class="bp-muted">${doc.signedCount} of ${data.people.board.length} board members ${doc.signedCount === 1 ? 'has' : 'have'} signed for ${year}.${data.me.slug ? '' : ' Board members sign here.'}</p>
       <${SignForm} d=${doc} ctx=${ctx} />
+      ${me && nextToSign ? html`<p class="bp-docpage__next bp-noprint"><a class="bp-btn bp-btn--sm bp-btn--primary" href=${`#/documents/${nextToSign.id}`}>Next to sign: ${nextToSign.title}</a></p>` : null}
       ${written ? html`<div class="bp-printonly bp-docpage__paper" aria-hidden="true">
         ${agrees ? null : html`<p>I have read and agree to the ${doc.title} for ${year}.</p>`}
         ${me ? html`<p class="bp-docpage__signedas">Signed for ${year} by ${me.name || data.me.name}${me.at && me.how !== 'drive' ? `, ${shortDate(todayEastern(Date.parse(me.at)))}` : ''}, ${HOW[me.how] || HOW.typed}</p>`
@@ -3623,7 +3625,7 @@ function searchIndex(data, d) {
   const withFile = data.docs.filter((x) => x.file && !x.body);
   const dv = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
   // A paper written here opens on its own page, and its words are searched too
-  for (const x of data.docs.filter((y) => !y.hidden)) out.push({ group: 'Documents', title: x.title, sub: DOC_KINDS.find((k) => k.id === x.kind)?.label || '', hay: norm([x.title, x.note, x.body ? mdPlain(x.body) : ''].join(' ')), body: x.body ? mdPlain(x.body) : '', ...(x.body ? { href: `#/documents/${x.id}` } : x.file ? { file: [dv, withFile.indexOf(x)] } : { href: '#/documents' }), icon: 'documents' });
+  for (const x of data.docs.filter((y) => !y.hidden)) out.push({ group: 'Documents', title: x.title, sub: DOC_KINDS.find((k) => k.id === x.kind)?.label || '', hay: norm([x.title, x.note, x.body ? mdPlain(x.body) : x.fileWords || ''].join(' ')), body: x.body ? mdPlain(x.body) : x.fileWords || '', ...(x.body ? { href: `#/documents/${x.id}` } : x.file ? { file: [dv, withFile.indexOf(x)] } : { href: '#/documents' }), icon: 'documents' });
   const fv = data.filings.map((x) => ({ name: `${x.title}.pdf`, type: 'application/pdf', url: x.url }));
   data.filings.forEach((x, i) => out.push({ group: 'Files', title: x.title, sub: 'Tax return or audit', hay: norm(`${x.title} ${x.year} tax return form 990 audit`), file: [fv, i], icon: 'financials' }));
   // The money: where the year's revenue came from, and each major gift (who, the campaign)

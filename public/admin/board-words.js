@@ -283,7 +283,7 @@ export function wordsFromLines(lines, { title = '' } = {}) {
   const titleLike = (b) => b && (b.t === 'h' || (b.t === 'p' && plain(b.text).length <= 90 && !ENDED.test(plain(b.text))));
   // (the title's words most of the heading's: "Section 3. Committees at a glance" isn't the title "Committees")
   const sig = (b) => words(plain(b.text)).split(' ').filter((w) => w.length > 3);
-  const drop = tw.length ? blocks.slice(0, 2).findIndex((b) => titleLike(b) && !(/\b(19|20)\d{2}\b/.test(plain(b.text)) && !/\b(19|20)\d{2}\b/.test(title)) && words(plain(b.text)).split(' ').length <= tw.length + 5
+  const drop = tw.length ? blocks.slice(0, 2).findIndex((b) => titleLike(b) && words(plain(b.text)).split(' ').length <= tw.length + 5
     && tw.filter((w) => sig(b).includes(w)).length >= Math.ceil(tw.length * 0.6) && sig(b).filter((w) => tw.includes(w)).length >= sig(b).length * 0.5) : -1;
   if (drop >= 0) blocks.splice(drop, 1);
 

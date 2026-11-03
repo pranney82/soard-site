@@ -483,3 +483,19 @@ test('taking off a signature on an earlier version takes off that one only; Boar
   assert.equal(admin?.hidden, true);
   assert.equal((await portalData(env, { member: { ...memberOf('sam-ortiz'), title: '' } })).docs.some((y) => y.id === d.id), false);
 });
+
+test('a paper copy added for a member never takes the place of their own signature unasked; a PDF paper’s words are read once, for finding it on the board page', async () => {
+  const { fillDocWords } = await import('../functions/api/_board.js');
+  const d = await expectations({ title: 'Conflict of Interest Policy' });
+  await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera');
+  await assert.rejects(signWithCopy(env, d.id, pdf('Alex.pdf'), { slug: 'alex-rivera', by: FOUNDER }), (err) => err.status === 409 && err.extra.exists.how === 'typed');
+  assert.equal((await listDocs(env.DB)).find((x) => x.id === d.id).signed['alex-rivera'].how, 'typed', 'still his own');
+  const placed = await signWithCopy(env, d.id, pdf('Alex.pdf'), { slug: 'alex-rivera', by: FOUNDER, replace: true });
+  assert.equal(placed.how, 'staff');
+  // Its PDF's words, read by Workers AI's reader once (as an admin comes by), go with it to the board page
+  env.AI = { ...(env.AI || {}), toMarkdown: async () => ({ format: 'text', data: 'Every director discloses any conflict of interest in writing.' }) };
+  assert.equal(await fillDocWords(env), 1);
+  assert.equal(await fillDocWords(env), 0, 'read once');
+  const page = (await portalData(env, { member: { ...memberOf('sam-ortiz'), title: '' } })).docs.find((x) => x.id === d.id);
+  assert.match(page.fileWords, /discloses any conflict of interest/);
+});
