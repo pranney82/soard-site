@@ -1083,8 +1083,16 @@ const MAP = { t: 'SOARD', children: [
       { t: 'Signups', children: [
         { t: 'Newsletter signup', s: 'live', k: 'visitor',
           when: 'A visitor signs up in the footer or a form.',
-          does: 'Adds them to Kit, tagged by where they signed up.',
+          does: 'Adds them to Kit, tagged by where they signed up. Once a confirmation form is set (KIT_FORM_ID), a newsletter signup waits until its owner taps the link in Kit’s confirmation email; the applications waitlist never waits.',
           touches: ['Kit'], where: 'functions/api/newsletter.js · _kit.js', live: needsKey('kit', 'KIT_API_KEY is missing, so signups fail.') },
+        { t: 'Quiet subscribers check-in', s: 'off', k: 'schedule',
+          when: 'Once a day after 10am, while it’s on in Site Config → Newsletter.',
+          does: 'Finds up to 300 people in Kit who haven’t opened or clicked anything in 90 days and emails them “Do you still want our emails?” (store subscribers get the store’s version from the store’s address), then a last call a week later. Anyone who opens or clicks stays; after 3 weeks the rest are unsubscribed in Kit, never deleted. Families waiting for applications to open and the board are never asked.',
+          touches: ['Kit', 'D1'], where: 'functions/api/_kit-quiet.js (the heartbeat) · Site Config → Newsletter',
+          live: (f) => (!env(f) ? null : !f.env.kit ? ATTN('KIT_API_KEY is missing.') : !f.kitQuiet ? null
+            : f.kitQuiet.error ? ATTN(`Last problem: ${f.kitQuiet.error}`)
+              : f.kitQuiet.on ? ON(`${f.kitQuiet.waiting} in their three weeks, ${f.kitQuiet.kept} stayed, ${f.kitQuiet.unsubscribed} unsubscribed.`, f.kitQuiet.lastRunAt)
+                : OFF('Switched off in Site Config → Newsletter.')) },
         { t: 'Reveal reminder signup', s: 'live', k: 'visitor',
           when: 'A visitor asks to be reminded about a reveal.',
           does: 'Stores their email, phone or browser for the reminder sends.',

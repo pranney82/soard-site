@@ -272,8 +272,8 @@ export async function onRequestPost(context) {
     const kit = await kitSubscribe(context.env, email, { source });
 
     if (kit.ok) {
-      if (isFormPost) return redirect(origin, backPath, { subscribed: '1' });
-      return jsonOk({ ok: true });
+      if (isFormPost) return redirect(origin, backPath, { subscribed: '1', ...(kit.confirm ? { confirm: '1' } : {}) });
+      return jsonOk({ ok: true, ...(kit.confirm ? { confirm: true } : {}) });
     }
 
     if (!kit.configured) {

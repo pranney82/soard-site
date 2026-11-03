@@ -20,20 +20,22 @@
 const KIT_API = 'https://api.kit.com/v4';
 
 /**
- * The state a newsletter signup from the website starts in. 'active' means
- * on the list at once. Double opt-in is this one line: 'inactive' makes Kit
- * hold a new address, unconfirmed, until its owner clicks the confirmation
- * email Kit sends from KIT_FORM_ID's form (turn that form's incentive email
- * on in Kit first). The applications waitlist keeps 'active' either way: its
- * one email goes out whether or not Kit can reach them (_application-waitlist.js).
+ * Newsletter signups confirm by email once KIT_FORM_ID is set: a new address
+ * starts 'inactive' and Kit holds it until its owner clicks the confirmation
+ * email that form sends (the form's incentive email, on in Kit). That stops
+ * bots and typos ever reaching the list. Without KIT_FORM_ID, signups are on
+ * the list at once. The applications waitlist is always 'active': its one
+ * email goes out whether or not Kit can reach them (_application-waitlist.js).
  */
-export const NEWSLETTER_SIGNUP_STATE = 'active';
+export function signupState(env, source) {
+  return cleanSource(source) === 'newsletter' && env?.KIT_FORM_ID ? 'inactive' : 'active';
+}
 
 export function kitConfigured(env) {
   return Boolean(env.KIT_API_KEY);
 }
 
-function kitFetch(env, path, init = {}) {
+export function kitFetch(env, path, init = {}) {
   return fetch(`${KIT_API}${path}`, {
     signal: AbortSignal.timeout(20000), // a hung Kit call never holds a signup or the heartbeat
     ...init,
@@ -54,20 +56,25 @@ function kitFetch(env, path, init = {}) {
  *   Kit tag (see SOURCE_TAGS) so the team can email one audience at a time,
  *   e.g. only the families waiting for applications to reopen. A request
  *   can't name a tag: the only ones ever made here are SOURCE_TAGS' own.
- * @returns {Promise<{configured: boolean, ok: boolean}>}
+ * @returns {Promise<{configured: boolean, ok: boolean, confirm?: boolean}>} confirm: Kit is
+ *   holding the address until its owner clicks the confirmation email
  */
 export async function kitSubscribe(env, email, opts = {}) {
   if (!kitConfigured(env)) return { configured: false, ok: false };
   try {
+    const state = signupState(env, opts.source);
     const res = await kitFetch(env, '/subscribers', {
       method: 'POST',
-      body: JSON.stringify({ email_address: email, state: NEWSLETTER_SIGNUP_STATE }),
+      body: JSON.stringify({ email_address: email, state }),
     });
     if (!res.ok) {
       console.error(`Kit subscribe error ${res.status}: ${await res.text()}`);
       return { configured: true, ok: false };
     }
-    const subscriberId = (await res.json().catch(() => ({})))?.subscriber?.id;
+    const sub = (await res.json().catch(() => ({})))?.subscriber || {};
+    const subscriberId = sub.id;
+    // Someone already on the list who signs up again isn't asked to confirm
+    const confirm = state === 'inactive' && (sub.state || 'inactive') === 'inactive';
 
     if (env.KIT_FORM_ID) {
       const formRes = await kitFetch(env, `/forms/${env.KIT_FORM_ID}/subscribers`, {
@@ -92,7 +99,7 @@ export async function kitSubscribe(env, email, opts = {}) {
       if (onlyId) await kitUntagSubscriber(env, onlyId, subscriberId);
     }
 
-    return { configured: true, ok: true };
+    return { configured: true, ok: true, confirm };
   } catch (err) {
     console.error('Kit subscribe failed:', err);
     return { configured: true, ok: false };
@@ -403,11 +410,12 @@ export async function kitBroadcastStats(env, id) {
  * admin reviews & sends from the Kit dashboard, narrowing the audience there.
  * With `sendAt` (ISO) Kit schedules it and sends on its own; `audience`
  * ({ type: 'all' } | { type: 'tag'|'segment', id }) picks who gets it, and
- * omitting it means every active subscriber.
+ * omitting it means every active subscriber. `from` picks one of the account's
+ * confirmed sending addresses.
  *
  * @returns {Promise<{ok: boolean, status?: number, error?: string, broadcast?: object}>}
  */
-export async function kitCreateBroadcast(env, { subject, previewText, description, html, sendAt = null, audience = null }) {
+export async function kitCreateBroadcast(env, { subject, previewText, description, html, sendAt = null, audience = null, from = null }) {
   const body = {
     subject,
     preview_text: previewText || '',
@@ -416,6 +424,7 @@ export async function kitCreateBroadcast(env, { subject, previewText, descriptio
     public: false,
     send_at: sendAt,
   };
+  if (from) body.email_address = from; // a confirmed sending address in Kit; the account's default otherwise
   const filter = kitSubscriberFilter(audience);
   if (filter) body.subscriber_filter = filter;
   // "Everyone" means everyone who asked for list mail: not the families who
@@ -529,4 +538,58 @@ export async function kitListBroadcasts(env) {
     subject: b.subject || null,
   }));
   return { ok: true, broadcasts };
+}
+
+/**
+ * Every subscriber matching Kit's filter (POST /subscribers/filter), page by
+ * page. `body` is Kit's: { all: [conditions], include: [...] }. Ids come back
+ * as strings from Kit. Never throws.
+ * @returns {Promise<{ok: boolean, subscribers?: object[], error?: string}>}
+ */
+export async function kitFilterSubscribers(env, body, { perPage = 1000, maxPages = 50 } = {}) {
+  if (!kitConfigured(env)) return { ok: false, error: 'KIT_API_KEY is not set' };
+  const out = [];
+  const seen = new Set();
+  let after = null;
+  try {
+    for (let page = 0; page < maxPages; page++) {
+      const q = new URLSearchParams({ per_page: String(perPage) });
+      if (after) q.set('after', after);
+      const res = await kitFetch(env, `/subscribers/filter?${q}`, { method: 'POST', body: JSON.stringify(body) });
+      const got = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const error = Array.isArray(got.errors) ? got.errors.join('; ') : (got.error || `HTTP ${res.status}`);
+        return { ok: false, error: `Kit: ${error}` };
+      }
+      let fresh = 0;
+      for (const s of got.subscribers || []) {
+        if (seen.has(String(s.id))) continue;
+        seen.add(String(s.id)); out.push(s); fresh++;
+      }
+      const next = got.pagination?.has_next_page ? got.pagination.end_cursor : null;
+      // A next page that brings nobody new means Kit ignored the cursor: stop rather than loop
+      if (!next || next === after || !fresh) break;
+      after = next;
+    }
+    return { ok: true, subscribers: out };
+  } catch (err) {
+    return { ok: false, error: `Kit: ${err.message}` };
+  }
+}
+
+/**
+ * Unsubscribe one subscriber (Kit keeps them, as "cancelled": history and
+ * tags stay, and they can rejoin). gone: Kit has no such subscriber. Never throws.
+ * @returns {Promise<{ok: boolean, gone?: boolean, error?: string}>}
+ */
+export async function kitUnsubscribe(env, subscriberId) {
+  if (!kitConfigured(env) || !Number.isFinite(Number(subscriberId))) return { ok: false, error: 'no subscriber' };
+  try {
+    const res = await kitFetch(env, `/subscribers/${subscriberId}/unsubscribe`, { method: 'POST', body: '{}' });
+    if (res.ok) return { ok: true };
+    if (res.status === 404) return { ok: false, gone: true };
+    return { ok: false, error: `HTTP ${res.status} ${(await res.text().catch(() => '')).slice(0, 120)}` };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
 }

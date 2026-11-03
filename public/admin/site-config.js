@@ -1787,6 +1787,37 @@ function NewsletterPage() {
       ${kit === null ? html`<p class="sc-hint">Checking Kit…</p>`
         : kit ? html`<p class="sc-callout is-open"><span class="sc-dot" aria-hidden="true"></span><span>Kit is connected. New subscribers land there.</span></p>`
           : html`<p class="sc-callout"><span class="sc-dot" aria-hidden="true"></span><span>Kit isn’t connected. Set <code>KIT_API_KEY</code> in the Cloudflare Pages dashboard; until then the site can’t save signups.</span></p>`}
+    <//>
+    <${QuietCard} />`;
+}
+
+// Kit's quiet-subscriber check-in (functions/api/_kit-quiet.js), off until staff turn it on
+function QuietCard() {
+  const [st, setSt] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  useEffect(() => { call('/api/kit-quiet-admin').then(d => (d.success ? setSt(d.quiet) : setErr(d.error || 'Couldn’t load'))); }, []);
+  const flip = async (on) => {
+    setBusy(true); setErr(null);
+    const d = await call('/api/kit-quiet-admin', { on });
+    setBusy(false);
+    if (d.success) setSt(d.quiet); else setErr(d.error || 'That didn’t save. Try again.');
+  };
+  const n = (x) => Number(x || 0).toLocaleString();
+  return html`
+    <${Card} title="Quiet subscribers" sub=${`People who haven’t opened or clicked anything in ${st?.quietDays || 90} days hurt where everyone else’s email lands, and Kit bills for them. When this is on, up to ${st?.dailyMax || 300} of them a day get “Do you still want our emails?”, and a last call a week later. Anyone who opens or clicks stays. After 3 weeks the rest are unsubscribed in Kit, never deleted. Families waiting for applications to open and the board are never asked.`}>
+      ${!st && !err ? html`<p class="sc-hint">Checking…</p>` : null}
+      ${err ? html`<p class="sc-callout"><span class="sc-dot" aria-hidden="true"></span><span>${err}</span></p>` : null}
+      ${st ? html`
+        <label class="bc-switch">
+          <input type="checkbox" role="switch" checked=${st.on} disabled=${busy || !st.configured} onChange=${(e) => flip(e.target.checked)} />
+          <span class="bc-switch-track" aria-hidden="true"></span>
+          ${st.on ? 'On: checking in once a day' : 'Off'}
+        </label>
+        ${st.on || st.waiting || st.kept || st.unsubscribed ? html`
+          <p class="sc-hint">${n(st.waiting)} in their three weeks now · ${n(st.kept)} stayed · ${n(st.unsubscribed)} unsubscribed${st.lastDay ? ` · last ran ${st.lastDay}` : ''}</p>` : null}
+        ${!st.storeAddress ? html`<p class="sc-hint">Store subscribers wait until Kit has a confirmed @sunnyandranney.com sending address (Kit → Settings → Email).</p>` : null}
+        ${st.lastError ? html`<p class="sc-callout"><span class="sc-dot" aria-hidden="true"></span><span>Last problem: ${st.lastError}</span></p>` : null}` : null}
     <//>`;
 }
 

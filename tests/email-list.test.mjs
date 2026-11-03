@@ -23,7 +23,8 @@ beforeEach(() => {
     calls.push({ url, method: init.method || 'GET', body, headers: init.headers });
     const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
     if (url === 'https://challenges.cloudflare.com/turnstile/v0/siteverify') return json({ success: body.get('response') === 'good-token' });
-    if (url === 'https://api.kit.com/v4/subscribers') return json({ subscriber: { id: 1 } }, kit.subscribeStatus);
+    if (url === 'https://api.kit.com/v4/subscribers') return json({ subscriber: { id: 1, state: kit.existingState || body.state } }, kit.existingState ? 200 : kit.subscribeStatus);
+    if (/^https:\/\/api\.kit\.com\/v4\/forms\/\d+\/subscribers$/.test(url)) return json({ subscriber: { id: 1 } }, 201);
     if (url.startsWith('https://api.kit.com/v4/tags')) return json({ tags: kit.tags, tag: { id: 99 } });
     if (url === 'https://api.resend.com/emails/batch') return json(resend.status < 300 ? { data: body.map((_, i) => ({ id: `em${i}` })) } : { message: 'down' }, resend.status);
     throw new Error(`no fake for ${url}`);
@@ -51,6 +52,32 @@ test('a signup lands in Kit only, tagged by its source', async () => {
   const sub = calls.find(c => c.url === 'https://api.kit.com/v4/subscribers');
   assert.deepEqual(sub.body, { email_address: 'fan@example.com', state: 'active' });
   assert.ok(calls.some(c => c.url.includes('/v4/tags')), 'tagged');
+  noResend();
+});
+
+test('with the confirmation form set, a newsletter signup waits for its owner to confirm; the waitlist never does', async () => {
+  const env = { ...KIT, ...RESEND, KIT_FORM_ID: '55' };
+  const res = await newsletterPost(ctx('/api/newsletter', { email: 'fan@example.com', source: 'newsletter' }, env));
+  assert.deepEqual(await res.json(), { ok: true, confirm: true });
+  assert.equal(calls.find(c => c.url === 'https://api.kit.com/v4/subscribers').body.state, 'inactive');
+  assert.ok(calls.some(c => c.url === 'https://api.kit.com/v4/forms/55/subscribers'), 'added to the form that sends the confirmation');
+  // A plain form post says so on the way back too
+  calls.length = 0;
+  const form = await newsletterPost(ctx('/api/newsletter', { email: 'fan2@example.com', source: 'newsletter', 'cf-turnstile-response': 'x' }, env, { form: true }));
+  if (form.status === 303 || form.status === 302) assert.match(form.headers.get('location') || '', /confirm=1/);
+  // Someone already on the list isn't asked to confirm again
+  calls.length = 0; kit.existingState = 'active';
+  const again = await newsletterPost(ctx('/api/newsletter', { email: 'old@example.com', source: 'newsletter' }, env));
+  assert.deepEqual(await again.json(), { ok: true });
+  kit.existingState = null;
+  // The applications waitlist stays instant (its one email can't wait on a click)
+  const { kitSubscribe, signupState } = await import('../functions/api/_kit.js');
+  assert.equal(signupState(env, 'application-waitlist'), 'active');
+  calls.length = 0;
+  await kitSubscribe(env, 'family@example.com', { source: 'application-waitlist' });
+  assert.equal(calls.find(c => c.url === 'https://api.kit.com/v4/subscribers').body.state, 'active');
+  // Without the form, nothing changes: on the list at once
+  assert.equal(signupState({ ...KIT }, 'newsletter'), 'active');
   noResend();
 });
 

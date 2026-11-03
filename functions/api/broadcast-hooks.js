@@ -44,6 +44,7 @@ import { maybeRunBoard } from './_board.js';
 import { maybeRunAsks } from './_board-asks.js';
 import { maybeSyncStaff } from './_staff-access.js';
 import { maybeSweepMail } from './_mail-sweep.js';
+import { maybeRunQuiet } from './_kit-quiet.js';
 import { maybeRunBackfill } from './_coi-backfill.js';
 import { maybeCheckOrgFacts } from './_org-facts.js';
 
@@ -115,6 +116,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunFinance(env));
     // Vendors' W-9s and insurance, kept on the site (JobTread's fields show them): asked for, checked, and held bills let go (see _vendors.js)
     context.waitUntil(maybeRunVendors(env));
+    // Quiet Kit subscribers: once a day after 10am, while staff have it on in Site Config → Newsletter (see _kit-quiet.js)
+    context.waitUntil(maybeRunQuiet(env));
     // Daily: subs paid this workers' comp term, and the certificate asked for when none covered the work (see _insurance-audit.js)
     context.waitUntil(maybeRunInsuranceAudit(env));
     // The board: Access's sign-in list kept to People → Board (every 5 minutes when it changed), and the month's bank balance once a day (see _board.js)

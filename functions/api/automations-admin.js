@@ -30,6 +30,7 @@
  *  - jobtread:  SOARD workflows (on/off) and webhooks (host and events only)
  *  - quo:       Quo texts and calls DataX logged with applicant families (last one, count in 30 days; never content)
  *  - waitlist:  families waiting for the applications-open email, signups not in Kit yet, the last opening
+ *  - kitQuiet:  the quiet Kit subscribers check-in (the switch, last day, in the three weeks / stayed / unsubscribed; counts only)
  *  - applicationLimit: the season's limit, how many are in, the last heads-up or close (counts only)
  *  - eventRecap: event pages turning into their recap (last check, last rebuild, a rebuild still waiting)
  *  - orgFacts:  SOARD's facts against the IRS's list, its W-9 and its Board Manual (when, the list's date, what doesn't match)
@@ -432,6 +433,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     reminders: { subscribers: typeof reminders === 'number' ? reminders : null },
     jobtread: jobtread || { error: 'JobTread check failed' },
     waitlist: await settle(() => waitlistFacts(DB)),
+    kitQuiet: await settle(() => kitQuietFacts(DB)),
     applicationLimit: await settle(() => applicationLimitFacts(DB, now)),
     approvals: approvalFacts(await settle(() => approvalsStatus(DB))),
     replyAlerts: await settle(() => replyAlertFacts(DB)).then((r) => (r && !r.error ? r : null)),
@@ -522,6 +524,19 @@ export async function applicationLimitFacts(DB, now = Date.now()) {
   const f = await capFacts(DB, a, { now, openedAt: stored.openChangedAt });
   const last = await lastCapNotice(DB);
   return { open: a.open, year: f.year, max: f.max, warnAt: f.warnAt, received: f.received, full: f.full, last: last && last.year === f.year ? last : null };
+}
+
+/** The quiet Kit subscribers check-in (_kit-quiet.js): the switch and counts, never addresses */
+export async function kitQuietFacts(DB) {
+  // The tables appear with the first heartbeat after deploy; until then this settles to an error
+  const rt = Object.fromEntries(((await DB.prepare("SELECT key, value, updated_at FROM kit_quiet_runtime WHERE key IN ('on', 'last_day', 'last_error')").all()).results || []).map(r => [r.key, r]));
+  const c = await DB.prepare(`SELECT SUM(CASE WHEN outcome IS NULL THEN 1 ELSE 0 END) AS waiting,
+      SUM(CASE WHEN outcome = 'kept' THEN 1 ELSE 0 END) AS kept, SUM(CASE WHEN outcome = 'unsubscribed' THEN 1 ELSE 0 END) AS unsubscribed
+    FROM kit_quiet_people`).first();
+  return {
+    on: rt.on?.value === '1', lastDay: rt.last_day?.value || null, lastRunAt: rt.last_day?.updated_at || null,
+    error: rt.last_error?.value || null, waiting: c?.waiting || 0, kept: c?.kept || 0, unsubscribed: c?.unsubscribed || 0,
+  };
 }
 
 /** The applications waitlist (_application-waitlist.js): counts and times only, never addresses */

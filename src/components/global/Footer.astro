@@ -238,11 +238,14 @@ const trustBadges = getTrustBadges(site);
       const check = signupCheck(form);
       document.addEventListener('astro:before-swap', () => check.destroy(), { once: true });
 
+      // New signups confirm by email (Kit holds them until they click)
+      const CONFIRM_NOTE = 'Almost there! Check your email and tap the link to confirm.';
+
       // ── No-JS fallback: read query params from form redirect ──
       const params = new URLSearchParams(window.location.search);
       if (params.has('subscribed')) {
         btn.classList.add('is-done');
-        note.textContent = "You're in! Welcome to the Sunshine family.";
+        note.textContent = params.has('confirm') ? CONFIRM_NOTE : "You're in! Welcome to the Sunshine family.";
         note.classList.add('newsletter-note--success');
         // Clean URL without reloading
         history.replaceState(null, '', window.location.pathname + window.location.hash);
@@ -299,7 +302,7 @@ const trustBadges = getTrustBadges(site);
           if (data && data.ok) {
             btn.classList.add('is-done');
             input.value = '';
-            note.textContent = "You're in! Welcome to the Sunshine family.";
+            note.textContent = data.confirm ? CONFIRM_NOTE : "You're in! Welcome to the Sunshine family.";
             note.classList.add('newsletter-note--success');
           } else {
             note.textContent = res.status === 429

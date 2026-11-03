@@ -124,6 +124,10 @@ async function answer(req, user = 'peter@soardcharity.com') {
   if (p === '/api/upload-file') { state.files++; return json({ success: true, url: `${SITE}/files/financials/x.pdf` }); }
   if (p.startsWith('/api/pending-changes')) return json({ success: true, changes: [], publish: { live: null, active: null, failed: null } });
   if (p.startsWith('/api/kit-status')) return json({ ok: true, configured: true });
+  if (p === '/api/kit-quiet-admin') {
+    if (req.method() === 'POST') state.quietOn = JSON.parse(req.postData() || '{}').on === true;
+    return json({ success: true, quiet: { on: !!state.quietOn, configured: true, lastDay: state.quietOn ? '2026-11-03' : null, lastError: null, waiting: state.quietOn ? 300 : 0, kept: 0, unsubscribed: 0, storeAddress: null, dailyMax: 300, quietDays: 90, decideDays: 21 } });
+  }
   // Upcoming reveals (JobTread): the Up Next strip's date line comes from here
   if (p === '/api/reveals') return json({ reveals: [], upcoming: [{ slug: 'colin', name: 'Colin', confirmed: false, window: { part: 'late', month: '2026-11', through: '2099-11-30', label: 'late November' }, image: null, kidUrl: '/kids/colin/', liveUrl: '/live/colin/', rooms: ['Bathroom'] }] });
   if (p.startsWith('/api/live-ws')) return req.abort();
@@ -512,6 +516,26 @@ try {
     ok(dialogs.some((m) => /changes in Site Config aren’t saved/.test(m)), `the admin asks, in its own dialog (${dialogs[0] || 'no prompt'})`);
   });
 
+  await section('Newsletter: the quiet subscribers switch', async () => {
+    await goPage(page, 'newsletter');
+    await page.waitForFunction(() => /Quiet subscribers/.test(document.querySelector('.sc-page')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+    const text = await page.$eval('.sc-page', (e) => e.textContent);
+    ok(/Quiet subscribers/.test(text) && /never deleted/.test(text), 'the card says what it does');
+    ok(!/—/.test(text), 'no em dashes in its words');
+    const sw = 'input[role="switch"]';
+    ok(await page.$eval(sw, (e) => !e.checked), 'it starts off');
+    ok(/@sunnyandranney\.com/.test(text), 'it says store subscribers wait for a confirmed store address');
+    await page.click(sw);
+    await page.waitForFunction((s) => document.querySelector(s)?.checked, { timeout: 5000, polling: 100 }, sw).catch(() => {});
+    const after = await page.$eval('.sc-page', (e) => e.textContent);
+    ok(state.calls.some((c) => c === 'POST /api/kit-quiet-admin') && /On: checking in once a day/.test(after), 'turning it on saves at once and says so');
+    ok(/300 in their three weeks now/.test(after), 'it shows how many are in their three weeks');
+    await shot(page, '13-newsletter-quiet.png');
+    await page.click(sw);
+    await page.waitForFunction((s) => !document.querySelector(s)?.checked, { timeout: 5000, polling: 100 }, sw).catch(() => {});
+    ok(!state.quietOn, 'and off again');
+  });
+
   await section('Dark', async () => {
     const d = await open(1440, 1000, '#site/home');
     await d.page.waitForSelector('.sc-page');
@@ -540,7 +564,7 @@ try {
     const small = await p.$$eval('.sc-bar button, .sc-row-tools button, .sc-grip', (els) => els.filter((e) => e.offsetParent && (e.getBoundingClientRect().width < 44 && e.getBoundingClientRect().height < 44)).length);
     ok(small === 0, `touch targets are at least 44px (${small} smaller)`);
     await p.screenshot({ path: join(OUT, '10-phone-home.png') });
-    for (const k of ['apply', 'financials', 'faq', 'about', 'badges']) {
+    for (const k of ['apply', 'financials', 'faq', 'about', 'badges', 'newsletter']) {
       await goPage(p, k);
       ok(await wide() <= 1, `${k}: nothing wider than the screen (${await wide()}px over)`);
       await p.screenshot({ path: join(OUT, `11-phone-${k}.png`) });
