@@ -55,7 +55,8 @@ img { display: block; max-width: 100%; }
 .bp-brand__words strong { display: block; font-family: var(--display); font-size: 0.98rem; line-height: 1.2; font-weight: 700; white-space: nowrap; }
 .bp-brand__words small { display: block; font-size: 0.8rem; color: var(--muted); letter-spacing: 0.01em; }
 .bp-nav { position: relative; isolation: isolate; display: flex; align-items: center; gap: 0.15rem; margin: 0 auto; }
-.bp-nav__due { position: absolute; top: 4px; right: 10px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--yellow); color: var(--ink); font-size: 0.72rem; font-weight: 750; line-height: 18px; text-align: center; }
+/* How many papers are left to sign: after the word on a laptop, by the icon on the phone's bar; ink, so it shows on the open tab's yellow too */
+.bp-nav__due { display: inline-block; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--ink); color: #fff; font-size: 0.72rem; font-weight: 750; line-height: 18px; text-align: center; }
 .bp-docpage__next { margin: 1rem 0 0; }
 .bp-nav a { position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 0.45rem; height: 42px; padding: 0 0.95rem; border-radius: 999px; text-decoration: none; color: var(--muted); font-weight: 600; font-size: 0.95rem; transition: color 0.2s, background 0.2s; }
 .bp-nav a:hover { color: var(--ink); background: rgba(45, 47, 44, 0.05); }
@@ -114,6 +115,7 @@ img { display: block; max-width: 100%; }
   /* On the bar, the marker is a pill around the open page's icon */
   .bp-nav__ink { width: 56px; height: 30px; transform: translate(calc(var(--x) + var(--w) / 2 - 28px), calc(var(--y) + 5px)); }
   .bp-nav a:active .bp-icon { transform: scale(0.9); }
+  .bp-nav__due { position: absolute; top: 4px; left: calc(50% + 6px); }
 }
 /* The narrowest phones: the whole name, on two lines when it must, never cut off */
 @media (max-width: 400px) { .bp-brand__words strong { font-size: 0.86rem; white-space: normal; line-height: 1.15; } .bp-brand__words small { display: none; } }
