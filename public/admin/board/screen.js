@@ -617,7 +617,7 @@ function RevealsSlide({ n }) {
         <span class="bs-when__photo">${photo ? html`<img src=${sized(photo, `${rows === 1 ? 'w=640,h=760' : 'w=640,h=520'},fit=cover,gravity=face`)} alt="" decoding="async" />` : html`<span class="bs-when__initials" aria-hidden="true">${initialsOf(r.name)}</span>`}${time}</span>
         <span class="bs-when__name" style=${nameFit(r.name)}>${r.name}</span>
       </li>`;
-    })}</ul></div>`)}</div>
+    })}</ul></div>`)}${more ? html`<p class="bs-when__more">+${more} more after these</p>` : null}</div>
   </div>`;
 }
 const DATE_STATES = { done: 'Held', today: 'Today', next: 'Next' };

@@ -1523,8 +1523,11 @@ try {
   ok(await scr.waitForSelector('.bs-pipe .bs-pipe__card', { timeout: 4000 }).then(() => true, () => false) && await scr.evaluate(() => {
     const cards = [...document.querySelectorAll('.bs-pipe__card')].map((c) => c.getBoundingClientRect());
     const stages = [...document.querySelectorAll('.bs-pipe__track > li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim());
-    return cards.length && cards.every((r) => r.bottom <= innerHeight && r.right <= innerWidth) && /Maya/.test(document.querySelector('.bs-pipe').textContent) && stages[0].startsWith('1') && /Build/.test(stages.at(-2)) && stages.at(-1) === 'Reveal';
-  }), 'the makeovers item: the stages with their counts toward the reveal (the line’s end, past the last stage), every card in view');
+    // (each photo a real height, one height in a row: a card that's a size container drops out of the shared rows)
+    const photos = [...document.querySelectorAll('.bs-pipe__card:not(.is-quiet) .bs-pipe__photo')].map((p) => p.getBoundingClientRect());
+    const level = photos.every((p) => p.height > innerHeight * 0.08 && photos.every((q) => Math.abs(q.top - p.top) > 2 || Math.abs(q.height - p.height) < 2));
+    return cards.length && level && cards.every((r) => r.bottom <= innerHeight && r.right <= innerWidth) && /Maya/.test(document.querySelector('.bs-pipe').textContent) && stages[0].startsWith('1') && /Build/.test(stages.at(-2)) && stages.at(-1) === 'Reveal';
+  }), 'the makeovers item: the stages with their counts toward the reveal (the line’s end, past the last stage), every card in view, its photos level');
   await shot(scr, '22b-screen-makeovers');
   // B blanks the room's screen; a key brings it back. A reload comes back to the same slide
   await scr.keyboard.press('b');

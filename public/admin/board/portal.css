@@ -1817,7 +1817,7 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-shelf__cover { display: grid; place-items: center; width: var(--cover); height: calc(var(--cover) * 1.294); margin-bottom: 0.55em; }
 /* The page itself is the card (a slide or a photo its own shape, never a white page with a strip at its top) */
 .bs-shelf__cover > * { overflow: hidden; border-radius: 4px; background: #fff; box-shadow: 0 18px 36px -16px rgba(0, 0, 0, 0.7); }
-.bs-shelf__t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: calc(var(--bs-u) * 1.29); font-weight: 650; line-height: 1.25; color: var(--bs-ink); }
+.bs-shelf__t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: calc(var(--bs-u) * 1.7); font-weight: 650; line-height: 1.25; color: var(--bs-ink); }
 .bs-shelf__m { font-size: calc(var(--bs-u) * 1.2); color: var(--bs-soft); }
 .bs-shelf > .bs-shelf__more { width: auto; align-self: center; font-size: calc(var(--bs-u) * 1.29); color: var(--bs-soft); }
 .bs-shelf__text { display: grid; gap: 0.2em; min-width: 0; }
@@ -2069,38 +2069,54 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-pipe__colhead, .bs-when__stophead { display: none; }
 .bs-pipe__col ul, .bs-when__stop ul { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; min-height: 0; display: grid; grid-template-columns: subgrid; grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); row-gap: calc(var(--bs-u) * 1.69); }
 .bs-pipe__card, .bs-when__stop li { container-type: inline-size; min-height: 0; min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; align-content: start; gap: 0.35rem; }
-/* Two lines kept under every photo for its name, so a row's photos stay level whatever size a long name is set at */
-.bs-pipe__card:not(.is-quiet) { grid-template-rows: minmax(0, 1fr) calc(var(--bs-u) * 4.38); }
-.bs-pipe[data-rows="2"] .bs-pipe__card:not(.is-quiet) { grid-template-rows: minmax(0, 1fr) calc(var(--bs-u) * 3.78); }
-.bs-pipe[data-rows="3"] .bs-pipe__card:not(.is-quiet) { grid-template-rows: minmax(0, 1fr) calc(var(--bs-u) * 3.56); }
-.bs-pipe__name { align-self: start; }
+/* The rows line up across every stage: a row's photos one height, its names the lines its longest needs (up to
+   three), so a long name ("Perfect Harmony Health") reads whole at the size of the others and every photo stays level */
+.bs-pipe__cols { grid-template-rows: repeat(var(--rows), minmax(0, 1fr) auto); margin-top: calc(var(--bs-u) * -1.69); }
+.bs-pipe__col { grid-row: 1 / -1; grid-template-rows: subgrid; }
+.bs-pipe__col ul { grid-row: 1 / -1; grid-template-rows: subgrid; row-gap: 0; }
+.bs-pipe__card { grid-row: span 2; }
+.bs-pipe__card:not(.is-quiet) { container-type: normal; grid-template-rows: subgrid; gap: 0; }
+/* (the room between rows over each card, so the last row's cards end where the stage does) */
+.bs-pipe__card:not(.is-quiet) .bs-pipe__photo { margin: calc(var(--bs-u) * 1.69) 0 calc(var(--bs-u) * 0.7); }
+.bs-pipe__card.is-quiet { margin-top: calc(var(--bs-u) * 1.69); }
+.bs-pipe__namebox { container-type: inline-size; min-width: 0; }
+.bs-pipe__namebox { align-self: start; }
 .bs-pipe__photo, .bs-when__photo { position: relative; container-type: size; min-height: 0; display: grid; overflow: hidden; border-radius: 20px; background: var(--bs-panel-2); margin-bottom: 0.35rem; }
 .bs-pipe__photo img, .bs-when__photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; }
 .bs-pipe__initials, .bs-when__initials { display: grid; place-items: center; width: 100%; height: 100%; background: hsl(var(--hue, 42) 22% 30%); color: hsl(var(--hue, 42) 45% 86%); font-family: var(--display); font-weight: 700; font-size: min(calc(var(--bs-u) * 3.6), 52cqh, 42cqw); }
 .bs-pipe__name, .bs-when__name { font-family: var(--display); font-size: min(calc(var(--bs-u) * 2.03), calc(100cqi / (var(--c2, 4) * 0.66))); font-weight: 700; line-height: 1.08; color: var(--bs-ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
 /* A long name ("Perfect Harmony Health") no bigger than its card holds in its lines, so it reads whole */
-.bs-pipe[data-rows="2"] .bs-pipe__name, .bs-when[data-rows="2"] .bs-when__name { font-size: min(calc(var(--bs-u) * 1.75), calc(100cqi / (var(--c2, 4) * 0.66))); }
-.bs-pipe[data-rows="3"] .bs-pipe__name { font-size: min(calc(var(--bs-u) * 1.65), calc(100cqi / (var(--c1, 4) * 0.66))); -webkit-line-clamp: 1; }
+.bs-when[data-rows="2"] .bs-when__name { font-size: min(calc(var(--bs-u) * 1.75), calc(100cqi / (var(--c2, 4) * 0.66))); }
+/* A makeover's name one size for its row count, in as many lines as it takes; only a word wider than its card (a long
+   hyphenated name) sets it smaller, and past three lines it ends in "…" */
+.bs-pipe__name { font-size: min(calc(var(--bs-u) * 2.03), calc(100cqi / (var(--w, 4) * 0.66))); -webkit-line-clamp: 3; text-wrap: balance; }
+.bs-pipe[data-rows="2"] .bs-pipe__name { font-size: min(calc(var(--bs-u) * 1.75), calc(100cqi / (var(--w, 4) * 0.66))); }
+.bs-pipe[data-rows="3"] .bs-pipe__name { font-size: min(calc(var(--bs-u) * 1.7), calc(100cqi / (var(--w, 4) * 0.66))); -webkit-line-clamp: 2; }
 /* The reveal, a tag on the photo's top corner (the face is in its middle) */
-.bs-pipe__when { position: absolute; left: calc(var(--bs-u) * 0.84); top: calc(var(--bs-u) * 0.61); max-width: calc(100% - 1.2rem); box-sizing: border-box; padding: 0.3em 0.75em; border-radius: 999px; background: rgba(28, 29, 26, 0.86); color: var(--bs-ink); font-size: calc(var(--bs-u) * 1.2); font-weight: 750; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-pipe__when { position: absolute; left: calc(var(--bs-u) * 0.84); top: calc(var(--bs-u) * 0.61); max-width: calc(100% - var(--bs-u) * 1.68); box-sizing: border-box; padding: 0.3em 0.75em; border-radius: 999px; background: rgba(28, 29, 26, 0.86); color: var(--bs-ink); font-size: calc(var(--bs-u) * 1.2); font-weight: 750; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-pipe__when.is-set { background: var(--yellow); color: #1C1D1A; }
 .bs-pipe__when.is-quiet { color: rgba(246, 244, 236, 0.86); font-weight: 650; }
 .bs-pipe__card.is-quiet .bs-pipe__when { position: static; max-width: none; padding: 0; background: none; color: var(--bs-soft); white-space: normal; overflow: visible; }
 .bs-pipe__card.is-quiet { overflow: hidden; min-width: 0; }
 /* A card with initials and a tag: the initials under the tag, never behind it */
-.bs-pipe__photo:has(> .bs-pipe__when) .bs-pipe__initials { box-sizing: border-box; padding-top: calc(var(--bs-u) * 1.8); }
+.bs-pipe__photo:has(> .bs-pipe__when) .bs-pipe__initials { box-sizing: border-box; padding-top: calc(var(--bs-u) * 2.9); line-height: 1; font-size: min(calc(var(--bs-u) * 3.6), calc((100cqh - var(--bs-u) * 2.9) * 0.8), 42cqw); }
 .bs-pipe[data-rows="3"] .bs-pipe__card.is-quiet .bs-pipe__when { display: none; }
 .bs-pipe[data-rows="3"] .bs-pipe__when { font-size: calc(var(--bs-u) * 1.15); }
 .bs-pipe__card.is-quiet { grid-template-rows: auto auto; align-content: center; padding: calc(var(--bs-u) * 1.08); border: 2px dashed rgba(246, 244, 236, 0.2); border-radius: 20px; }
 .bs-pipe__card.is-quiet .bs-pipe__name { color: var(--bs-soft); }
 .bs-when__line strong { font-family: var(--display); font-size: calc(var(--bs-u) * 3.39); font-weight: 700; line-height: 1.12; padding-bottom: 0.04em; letter-spacing: -0.015em; color: var(--bs-ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-when__line > li.is-more::after { display: none; } .bs-when__line > li.is-more strong { color: var(--bs-soft); }
+/* (the line says how many more on a TV; a phone has no line, so its list says it at the end) */
+.bs-when__more { display: none; }
 .bs-when__line li.is-set strong { color: var(--yellow); }
 /* More stops, narrower: their days smaller so a "Late Dec" still reads whole */
 .bs-when[data-busy="yes"] .bs-when__line strong { font-size: calc(var(--bs-u) * 2.64); }
 .bs-when[data-busy="more"] .bs-when__line strong { font-size: calc(var(--bs-u) * 2.1); }
 .bs-when[data-busy="more"] .bs-when__line span { font-size: calc(var(--bs-u) * 1.15); }
-.bs-pipe__card.is-quiet .bs-pipe__name { font-size: calc(var(--bs-u) * 1.19); min-height: 0; overflow-wrap: anywhere; -webkit-line-clamp: 3; }
+/* "+7 more" as big as the names beside it, what it's about under it */
+.bs-pipe__card.is-quiet .bs-pipe__name { font-size: calc(var(--bs-u) * 1.75); min-height: 0; overflow-wrap: anywhere; -webkit-line-clamp: 3; }
+.bs-pipe[data-rows="1"] .bs-pipe__card.is-quiet .bs-pipe__name { font-size: calc(var(--bs-u) * 2.03); }
+.bs-pipe[data-rows="3"] .bs-pipe__card.is-quiet .bs-pipe__name { font-size: calc(var(--bs-u) * 1.5); }
 .bs-when__line span, .bs-when__stophead span { font-size: calc(var(--bs-u) * 1.35); font-weight: 650; color: var(--bs-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A day not set yet: an open stop on the line */
 .bs-when__line > li:not(.is-set)::after { background: var(--bs-bg); border: var(--rule) solid var(--yellow); }
@@ -2240,7 +2256,11 @@ html:has(body .bs) { scrollbar-gutter: auto; }
   .bs-pipe__col.is-empty ul { display: none; } .bs-pipe__col.is-empty .bs-pipe__colhead { opacity: 0.55; }
   .bs-pipe__col, .bs-when__stop { grid-column: auto; grid-template-columns: minmax(0, 1fr); } .bs-pipe__col.is-end { display: none; }
   .bs-pipe__col ul, .bs-when__stop ul { grid-column: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; column-gap: 1rem; }
+  .bs-pipe__cols { grid-template-rows: none; margin-top: 0; } .bs-pipe__col, .bs-pipe__col ul, .bs-pipe__card { grid-row: auto; } .bs-pipe__col { grid-template-rows: none; }
+  .bs-pipe__col ul { row-gap: calc(var(--bs-u) * 1.69); } .bs-pipe__card:not(.is-quiet) { grid-template-rows: auto auto; } .bs-pipe__card:not(.is-quiet) .bs-pipe__photo { margin-top: 0; } .bs-pipe__card.is-quiet { margin-top: 0; }
+  .bs-pipe[data-rows] .bs-pipe__when { font-size: 0.78rem; }
   .bs-pipe__photo, .bs-when__photo { aspect-ratio: 4 / 5; }
+  .bs-when__more { display: block; margin: 0; font-size: 1rem; font-weight: 650; color: var(--bs-soft); } .bs-shelf__m { font-size: 0.78rem; }
   .bs-rail { grid-template-columns: minmax(0, 1fr); }
   /* A phone following the screen: the meeting's name and the part's time along the top; an item's people or count under its title */
   .bs-brand > span { min-width: 0; } .bs-brand small, .bs-clock, .bs-full, .bs-chip { display: none; }
