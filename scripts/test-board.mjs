@@ -52,6 +52,7 @@ import { provideBoardFinance, maybeLockNumbers, takeSnapshot, saveMeeting, getMe
 import { maybeReadGifts } from '../functions/api/_board-gifts.js';
 import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-invite.js';
 import { syncBoardGroup } from '../functions/api/_board-group.js';
+import { syncBoardCalendar } from '../functions/api/_board-calendar.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
 import { docxText, unzip, cleanMeeting } from '../public/admin/board-shared.js';
 import { generateKeyPairSync } from 'node:crypto';
@@ -677,6 +678,23 @@ try {
   const updates = google.slice(before).filter((c) => c.url.includes('/calendar/v3/'));
   ok(updates.length === 1 && updates[0].method === 'PATCH' && updates[0].body.location === 'Example Hall, 100 Example St, Roswell, GA', 'then one update to the invite with the place');
   ok(/A code comes by email\.\n\nPark in the back lot\. The side door is open\.$/.test(updates[0]?.body.description || ''), `the notes typed for the invite are on it, after the way to the board page (${JSON.stringify(updates[0]?.body.description)})`);
+  // A new time, typed in Board (meetings are Board's, Peter, Nov 2 2026): the step says so, then one update Google emails
+  // the guests about; and back again
+  const setStart = (v) => jane.evaluate((v) => { const i = document.querySelector('#bd-start'); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(i, v); i.dispatchEvent(new Event('input', { bubbles: true })); }, v);
+  // Saved once the server has it ("Saved" is already showing from the save before)
+  const savedStart = (v) => jane.waitForFunction(async (id, v) => (await (await fetch('/api/board-admin')).json()).meetings.find((x) => x.id === id)?.start === v, { polling: 250, timeout: 10000 }, meetingId, v).then(() => true, () => false);
+  const startWas = await jane.$eval('#bd-start', (i) => i.value);
+  const beforeTime = google.length;
+  await setStart('18:30');
+  ok(await savedStart('18:30'), 'the new time saves');
+  ok(await waitText(jane, /the new time goes on it a couple of minutes after you stop typing/), 'the step says the new time is on its way to the invite');
+  await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 });
+  const moved = google.slice(beforeTime).filter((c) => c.url.includes('/calendar/v3/'));
+  ok(moved.length === 1 && /sendUpdates=all$/.test(moved[0].url) && /T18:30:00$/.test(moved[0].body.start?.dateTime || ''), `then one update with the new time, which Google emails the guests (${JSON.stringify(moved.map((c) => [c.url.slice(-16), c.body.start]))})`);
+  await setStart(startWas);
+  ok(await savedStart(startWas), 'the time goes back');
+  await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 });
+  ok(google.slice(beforeTime).filter((c) => c.url.includes('/calendar/v3/') && c.method === 'PATCH').length === 2, 'and onto the invite again');
 
   // Getting ready 2-3: the board page, the documents by email
   await clickText(jane, 'button', /^Share with the board$/);
@@ -829,7 +847,8 @@ try {
   ok(/https:\/\/sunshineonaranneyday\.com\/api\/books-callback[\s\S]*QBO_CLIENT_ID/.test(books) && !/\$/.test(books) && !(await jane.$('.bk-books .btn-primary')), 'Settings: QuickBooks waits for its two keys, with the redirect URI to give Intuit, no button until they’re in, and no amounts');
   await shot(jane, '07b-system-settings');
 
-  // A board meeting on the founder's calendar becomes a meeting in Board; Board's own invite isn't brought in again
+  // A board meeting put on the founder's calendar some other way never becomes a meeting in Board (they're added in
+  // Board only); the reply to Board's own invite comes back onto its meeting
   const calDay = day(35);
   calendar[FOUNDER].push({ id: 'q1', iCalUID: 'q1@google.com', summary: 'SOARD Q4 Board Meeting', status: 'confirmed', start: { dateTime: `${calDay}T13:00:00Z` }, end: { dateTime: `${calDay}T15:00:00Z` }, location: 'Example Design Group, 100 Example St, Roswell, GA', organizer: { email: FOUNDER, self: true }, attendees: [{ email: MEMBER, responseStatus: 'accepted' }, { email: OTHER }], htmlLink: 'https://www.google.com/calendar/event?eid=q1' });
   // Alex said yes to Board's invite in their calendar
@@ -841,25 +860,38 @@ try {
   ok(checked?.ok && calendar[FOUNDER].some((e) => /^boardcheck/.test(e.id) && e.status === 'cancelled'), 'the invite check passes and deletes its event');
   await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' }); // a new hash alone doesn't load the page again
-  ok(await waitText(jane, /Meetings come from your calendar by themselves/) && /anything else for them from your email/.test(await text(jane)), 'Meetings says where meetings come from, to Jane as “your calendar”');
+  ok(await waitText(jane, /Past meetings’ minutes and packets come from the Board folder in Google Drive, and anything else for them from your email/) && !/Meetings come from/.test(await text(jane)), 'Meetings says where past meetings’ papers come from, and nothing about meetings coming from a calendar');
   ok(await waitText(jane, /Ready\. The board was emailed the link/), 'the next meeting: everything done says Ready');
-  ok(/Also coming up/i.test(await text(jane)) && /Q4 \d{4} Board Meeting/.test(await text(jane)), 'the meeting after it is listed as also coming up');
   const all = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings);
-  ok(all.length === 3, `the event on the calendar is a meeting, and Board’s own invite isn’t a second one (${all.length})`);
+  ok(!all.some((m) => m.date === calDay), `the event on the calendar isn’t a meeting (${all.map((m) => m.date).join(', ')})`);
+  ok(await waitText(jane, /A board meeting on the calendar isn’t in Board\./) && /Board\. Meetings are added here/.test(await text(jane)) && /“SOARD Q4 Board Meeting”, \w+day, [A-Z][a-z]+ \d+, \d{4}, on your calendar/.test(await text(jane)), 'Meetings names the board meeting on the calendar that isn’t in Board');
+  await shot(jane, '08a-not-in-board');
+  // Added from there, its calendar event is then a second invite for it, which the meeting asks to have cancelled
+  await clickText(jane, '.bh-strays button', /^Add /);
+  await jane.waitForFunction(() => /#board\/meeting\//.test(location.hash), { timeout: 10000 });
+  const strayId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/')[2]);
+  ok((await getMeeting(DB, strayId))?.date === calDay, 'Add makes the meeting on that day, and opens it');
+  await syncBoardCalendar(env);
+  await jane.reload({ waitUntil: 'networkidle0' });
+  ok(await waitText(jane, /Another invite for this meeting is on your calendar: “SOARD Q4 Board Meeting”\. Cancel it, so the board has one invite and one call\./), 'the meeting names the other invite, for whoever sent it to cancel');
+  await shot(jane, '08b-other-invite');
+  const gone = await jane.evaluate(async (id) => (await fetch('/api/board-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'delete-meeting', id }) })).json(), strayId);
+  ok(gone.ok && gone.cancelled === false, 'deleting it (no invite sent) cancels nothing');
+  await syncBoardCalendar(env);
+  await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
+  await jane.reload({ waitUntil: 'networkidle0' });
   ok(all.find((m) => m.id === meetingId)?.invite?.replies?.['alex-rivera'] === 'accepted', 'the reply to Board’s invite comes back onto its meeting');
   await shot(jane, '08-meetings');
   await jane.goto(`${SITE}/admin/#board/settings`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /Invites with Google Meet\s+Board can put meetings on the calendar with a Meet/) && /Meet transcripts\s+Turned on for every invite/.test(await text(jane)) && /Attendance from Google Meet\s+After a meeting, who joined is marked/.test(await text(jane)), 'Settings: the invite check says Calendar, Meet, transcripts and attendance all work');
-  const calId = all.find((m) => m.calendar)?.id;
-  await jane.goto(`${SITE}/admin/#board/meeting/${calId}`, { waitUntil: 'networkidle0' });
+  ok(await waitText(jane, /Invites with Google Meet\s+Board can put meetings on the calendar with a Meet/) && /Meet transcripts\s+Turned on for every invite/.test(await text(jane)) && /Attendance from Google Meet\s+After a meeting, who joined is marked/.test(await text(jane)) && /Answers to the invites\s+Read/.test(await text(jane)), 'Settings: the invite check says Calendar, Meet, transcripts and attendance all work, and the invites’ answers were read');
+  // Its day, time and place are typed in Board, invite or not; the call is the invite's Google Meet
+  await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
-  ok(/^Q4 \d{4} Board Meeting$/.test(await jane.$eval('.bm-title h2', (e) => e.textContent)), 'its editor goes by the quarter the event says, not the event’s own words');
-  await clickText(jane, 'button', /^When and where$/);
-  ok(await waitText(jane, /From your calendar \(“SOARD Q4 Board Meeting”\)\. Change the day, the times and the place there/), 'and says it follows the calendar, naming what changes there');
-  ok(await jane.evaluate(() => !document.querySelector('#bd-date') && !document.querySelector('#bd-loc') && [...document.querySelectorAll('#bm-where .bm-fixed')].map((x) => x.textContent).join('|').includes('8:00 AM') && [...document.querySelectorAll('#bm-where .bm-fixed')].some((x) => x.textContent === 'Example Design Group') && !!document.querySelector('#bd-title')), 'its day, time and place come from the event, read here (never typed over); its name stays to type');
-  ok(await waitText(jane, /Add everyone and Meet/), 'its invite is the calendar’s own: Board offers to add everyone and Meet to it');
-  await shot(jane, '09-calendar-meeting');
+  await clickText(jane, 'button', /^Change when and where$/);
+  ok(await waitText(jane, /A new day, time or place goes on the invite a couple of minutes after you stop typing, and Google emails the guests once/), 'When and where says a change goes onto the invite, with one email from Google');
+  ok(await jane.evaluate(() => !!document.querySelector('#bd-date') && !!document.querySelector('#bd-start') && !!document.querySelector('#bd-loc') && !document.querySelector('#bd-video') && /Google Meet/.test(document.querySelector('#bm-where .bm-fixed')?.textContent || '')), 'the day, times and place are all typed here; the call is Google Meet, never a link to type');
+  await shot(jane, '09-when-and-where');
 
   // ⌘K
   await jane.keyboard.down('Meta'); await jane.keyboard.press('k'); await jane.keyboard.up('Meta');

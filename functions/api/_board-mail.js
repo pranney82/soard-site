@@ -14,9 +14,9 @@
  *     (or its name, or the email) gives; with no date, an agenda or packet goes
  *     to the next meeting within three weeks of the email, minutes to the
  *     last one before it within four months. A dated agenda or minutes with no
- *     meeting near it brings that meeting in (most come from the calendar,
- *     ./_board-calendar.js). Anything else waits, and is tried again once a
- *     meeting is added.
+ *     past meeting near it brings that meeting in, as a record. A meeting
+ *     ahead is added in Board only, so its email waits, like anything else
+ *     with no meeting, and is tried again once a meeting is added.
  *   - An agenda fills the meeting's agenda while it's still a draft
  *     (agendaIsDraft: the usual outline, or none), never one a person wrote.
  *     Minutes are read into a past meeting (./_board-minutes.js): its
@@ -38,7 +38,7 @@
 
 import { accessToken, GMAIL_READ_SCOPE, parseServiceAccount } from './_google-calendar.js';
 import { boardAdmins, readState, writeState, peopleRows, activeBoard, normEmail } from './_board-roles.js';
-import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, createMeeting, putFile, deleteFile, roster } from './_board.js';
+import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster } from './_board.js';
 import { readMinutes, applyMinutes, minutesNewer } from './_board-minutes.js';
 import { parseAgendaText, isDate, todayEastern, meetingName, docxText, unzip, cleanMeeting, agendaIsDraft, shortDate, AGENDA_READER } from '../../public/admin/board-shared.js';
 
@@ -410,9 +410,10 @@ async function bringIn(env, { token, admin, id, fetchImpl, people, boardEmails, 
   for (const f of sorted) {
     // (never onto one the calendar brought in that isn't a board meeting, nor the admins' practice meeting)
     let { meeting: m, create } = meetingFor(boardOnly(meetings), { kind: f.kind, date: f.date, sent });
-    // A dated agenda or minutes with no meeting near it brings the meeting in (never far ahead)
-    if (!m && create && f.firm && ['agenda', 'minutes'].includes(f.kind) && create <= new Date(now + 120 * DAY).toISOString().slice(0, 10)) {
-      m = create < today ? await saveMeeting(env.DB, cleanMeeting({ date: create }), { by: MAIL_BY }) : await createMeeting(env, { date: create, by: MAIL_BY });
+    // A dated agenda or minutes with no meeting near it brings a past meeting in, as a record. A meeting ahead is added
+    // in Board only (Peter, Nov 2 2026): its email waits for it
+    if (!m && create && f.firm && ['agenda', 'minutes'].includes(f.kind) && create < today) {
+      m = await saveMeeting(env.DB, cleanMeeting({ date: create }), { by: MAIL_BY });
       made.push(m.id);
       meetings = await listMeetings(env.DB);
     }

@@ -53,7 +53,7 @@ import { accessStatus, syncBoardAccess, accessConfigured } from './_board-access
 import { groupStatus, syncBoardGroup } from './_board-group.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-mail.js';
-import { sendInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites } from './_board-invite.js';
+import { sendInvite, cancelInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites } from './_board-invite.js';
 import { maybeReadBoardDrive, driveStatus, placeSigned, DEFAULT_DRIVE_FOLDER } from './_board-drive.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { readMinutesInto } from './_board-minutes.js';
@@ -112,7 +112,7 @@ export async function onRequestGet(context) {
       return Response.json({ ok: true, ...(await memberActivity(env.DB, slug)) }, { headers: { 'Cache-Control': 'no-store' } });
     }
     if (q.has('live')) return Response.json({ ok: true, ...(await chairLive(env, q.get('live'))) }, { headers: { 'Cache-Control': 'no-store' } });
-    // A look at the calendars when the last one is over 10 minutes old (at most 6 seconds; the rest finishes after)
+    // The invites' answers read again when the last look is over 10 minutes old (at most 6 seconds; the rest finishes after)
     const looking = maybeSyncBoardCalendar(env, { minAgeMs: 10 * 60 * 1000 });
     context.waitUntil?.(looking);
     await Promise.race([looking, new Promise((r) => setTimeout(r, 6000))]);
@@ -177,6 +177,9 @@ export async function onRequestPost(context) {
     const needId = () => { if (!ID.test(id)) throw Object.assign(new Error('Which one?'), { status: 400 }); };
     switch (body.action) {
       case 'new-meeting': {
+        // One meeting a day: one already on that day opens instead, so the board never gets two invites for it
+        const same = (await listMeetings(env.DB)).find((x) => x.date === body.date && !x.notBoard && !x.practice);
+        if (same) return Response.json({ ok: true, meeting: same, existing: true });
         const m = await createMeeting(env, { date: body.date, by: me });
         await audit(env, me, 'created', `Board meeting added: ${meetingName(m)}`);
         return Response.json({ ok: true, meeting: m });
@@ -200,9 +203,11 @@ export async function onRequestPost(context) {
       case 'delete-meeting': {
         needId();
         const m = await getMeeting(env.DB, id);
+        // Its invite comes off the board's calendars first (Google tells them): should Google refuse, nothing is deleted
+        const cancelled = await cancelInvite(env, m);
         await deleteMeeting(env, id);
-        await audit(env, me, 'deleted', `Board meeting deleted: ${m ? meetingName(m) : id}`);
-        return Response.json({ ok: true });
+        await audit(env, me, 'deleted', `Board meeting deleted: ${m ? meetingName(m) : id}${cancelled ? ', its calendar invite cancelled' : ''}`);
+        return Response.json({ ok: true, cancelled });
       }
       case 'keep-agenda': {
         // The draft agenda, as it is, becomes the meeting's (an emailed agenda no longer replaces it)

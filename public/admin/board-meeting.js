@@ -176,7 +176,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
     return j;
   };
   const remove = async () => {
-    if (!(await ask({ title: `Delete the ${meetingName(m)}?`, text: `Its agenda, notes, minutes and files go for good. Board members stop seeing it.${m.calendar?.uid && !m.calendar.gone ? ' It’s on the calendar too: unless the event is deleted there, it comes back within the hour as a new meeting.' : ''}`, yes: 'Delete', danger: true }))) return;
+    if (!(await ask({ title: `Delete the ${meetingName(m)}?`, text: `Its agenda, notes, minutes and files go for good. Board members stop seeing it.${m.invite && m.date >= todayEastern() ? ' Its calendar invite is cancelled too, and Google emails everyone on it.' : ''}`, yes: 'Delete', danger: true }))) return;
     clearTimeout(timer.current);
     saved.current = cleanMeeting(mRef.current);
     const j = await call({ action: 'delete-meeting', id: m.id });
@@ -203,7 +203,6 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   const phase = practice ? 'today' : ended ? 'held' : !m.date || days > 0 ? 'ahead' : days === 0 && !over ? 'today' : 'held';
   const when = phase === 'held' ? ['Held', 'is-held'] : [whenWords(days), days === 0 ? 'is-today' : days > 0 ? 'is-ahead' : ''];
   const place = [m.location, m.address].filter(Boolean).join(', ');
-  const fromCal = !!m.calendar && !m.calendar.gone;
   const path = pathOf(m, data, phase);
   // The status line stays at the top as the page scrolls. Its height goes on the page (--bm-path-h) for whatever sticks
   // or is scrolled to below it. Too narrow for every step (one row that scrolls sideways), the next one is brought into
@@ -322,7 +321,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
           <span>${[longDate(m.date), timeRange(m.start, m.end)].filter(Boolean).join(' · ') || 'No date yet'}</span>
           <span>${place || html`<button type="button" class="bm-link" onClick=${() => setEditWhere(true)}>Add the place</button>`}</span>
           ${/^https?:\/\/\S+\.\S+/i.test(m.video || '') ? html`<span><a class="link" href=${m.video} target="_blank" rel="noopener">${callName(m.video)}</a></span>` : null}
-          <button type="button" class="bm-link" id="bm-where-toggle" aria-expanded=${editWhere} aria-controls="bm-where" onClick=${() => setEditWhere(!editWhere)}>${fromCal ? 'When and where' : 'Change when and where'}</button>
+          <button type="button" class="bm-link" id="bm-where-toggle" aria-expanded=${editWhere} aria-controls="bm-where" onClick=${() => setEditWhere(!editWhere)}>Change when and where</button>
         </p>
       </div>
     </div>
@@ -375,7 +374,7 @@ function pathOf(m, data, phase) {
   const ready = held ? '' : 'bm-ready';
   const steps = [
     { id: 'agenda', card: 'bm-work', title: 'Agenda', done: items.length > 0 && reportsIn === asked.length, sub: !items.length ? 'Nothing on it yet' : asked.length ? `${plural(items.length, 'item')} · ${reportsIn} of ${asked.length} reports in` : plural(items.length, 'item') },
-    { id: 'invite', card: ready, title: 'Invite', done: !!inv, sub: inv ? `On ${firstOf(inv.organizer)}’s calendar` : m.calendar?.eventId ? 'On the calendar, board not on it yet' : 'Not sent' },
+    { id: 'invite', card: ready, title: 'Invite', done: !!inv, sub: inv ? `On ${firstOf(inv.organizer)}’s calendar` : m.inviteGone ? 'Deleted in Google Calendar' : 'Not sent' },
     { id: 'shared', card: held ? 'bm-after' : 'bm-ready', title: 'Board page', done: !!m.shared, sub: m.shared ? 'The board can see it' : 'Only you can see it' },
     { id: 'emailed', card: ready, title: 'Board emailed', done: !!m.packetSentAt, sub: m.packetSentAt ? `${plural(m.packetSentTo || 0, 'member')}, ${shortDate(m.packetSentAt.slice(0, 10))}` : 'Not yet' },
     { id: 'day', card: 'bm-work', title: phase === 'today' ? 'Today' : held ? 'Held' : 'The meeting', done: held, sub: [m.date ? shortDate(m.date) : 'No date yet', m.start ? clock(m.start) : ''].filter(Boolean).join(' · ') },
@@ -389,55 +388,31 @@ function pathOf(m, data, phase) {
 
 // ─── When and where ─────────────────────────────────────────────────
 
-function WhenWhere({ m, set, ctx, closeWhere }) {
-  const cal = m.calendar;
-  const fromCal = !!cal && !cal.gone;
-  const [badLink, setBadLink] = useState(false);
-  // A link being typed: saved once it's one (or emptied), never as words that would show as a call
-  const [typedLink, setTypedLink] = useState(m.video || '');
-  const isLink = (v) => /^https?:\/\/\S+\.\S+/i.test(v.trim());
-  const mine = fromCal && String(cal.from || '').toLowerCase() === String(ctx.data.me || '').toLowerCase();
-  const whose = fromCal ? (mine ? 'your' : `${firstOf(cal.from)}’s`) : '';
-  // What the calendar sets is read here, never typed over: the day and times always, the place when it has one, the call when
-  // the organizer's own event has it (a call from another invite that day is that invite's, and Board's invite replaces it)
-  const fixed = { date: fromCal, start: fromCal, end: fromCal, place: fromCal && !!cal.place, video: fromCal && !!cal.call && !!cal.callFrom };
-  const otherInvite = fromCal && !!cal.call && !cal.callFrom && !!m.video;
-  const shown = (v, empty = 'None') => html`<p class="bm-fixed">${LOCK}<span>${v || empty}</span></p>`;
+function WhenWhere({ m, set, closeWhere }) {
   // Opened: the focus goes into it; Escape closes it
   const head = useRef(null);
   useEffect(() => { head.current?.focus(); }, []);
-  const field = (id, label, input, value, lock) => html`<div class="form-group"><${lock ? 'span' : 'label'} class="form-label" for=${lock ? null : id}>${label}</${lock ? 'span' : 'label'}>${lock ? shown(value) : input}</div>`;
+  const meet = m.invite?.meet || '';
+  const field = (id, label, input) => html`<div class="form-group"><label class="form-label" for=${id}>${label}</label>${input}</div>`;
   return html`<div class="card" id="bm-where" onKeyDown=${(e) => { if (e.key === 'Escape' && !e.defaultPrevented) { e.preventDefault(); closeWhere(); } }}>
-    <div class="bd-card-head bm-where__head"><div><h3 tabindex="-1" ref=${head}>When and where</h3>${cal ? html`<p>${cal.gone
-      ? html`This meeting is no longer on ${firstOf(cal.from)}’s calendar. If it’s off, delete it (⋯ at the top).`
-      : html`From ${whose} calendar (“${cal.title}”). Change ${andList(['the day', 'the times', fixed.place ? 'the place' : '', fixed.video ? 'the call' : ''].filter(Boolean))} there, and it changes here within the hour.${cal.place ? '' : ` The invite has no address${cal.said ? ` (its place says “${cal.said}”)` : ''}: type it here and the invite gets it.`}${cal.link ? html` <a class="link" href=${cal.link} target="_blank" rel="noopener">Open the event</a>` : null}`}</p>` : null}</div>
+    <div class="bd-card-head bm-where__head"><div><h3 tabindex="-1" ref=${head}>When and where</h3>${m.invite ? html`<p>A new day, time or place goes on the invite a couple of minutes after you stop typing, and Google emails the guests once.</p>` : null}</div>
       <button type="button" class="btn btn-ghost btn-sm" onClick=${closeWhere}>Done</button></div>
     <div class="bd-grid3">
-      ${field('bd-date', 'Date', html`<input id="bd-date" class="form-input" type="date" value=${m.date} onInput=${(e) => set({ date: e.target.value })} />`, longDate(m.date), fixed.date)}
-      ${field('bd-start', 'Starts', html`<input id="bd-start" class="form-input" type="time" value=${m.start} onInput=${(e) => set({ start: e.target.value })} />`, m.start ? clock(m.start) : '', fixed.start)}
-      ${field('bd-end', 'Ends', html`<input id="bd-end" class="form-input" type="time" value=${m.end} onInput=${(e) => set({ end: e.target.value })} />`, m.end ? clock(m.end) : '', fixed.end)}
-      ${field('bd-loc', 'Place', html`<input id="bd-loc" class="form-input" value=${m.location} placeholder="Whose office" onInput=${(e) => set({ location: e.target.value })} />`, m.location, fixed.place)}
-      ${field('bd-addr', 'Address', html`<input id="bd-addr" class="form-input" value=${m.address} placeholder="Street, city" onInput=${(e) => set({ address: e.target.value })} />`, m.address, fixed.place)}
-      <div class="form-group">
-        ${fixed.video ? html`<span class="form-label">Video call</span>${shown(m.video ? callName(m.video) : '')}`
-          : otherInvite ? html`<span class="form-label">Video call</span><p class="bm-fixed">${callName(m.video)}<span class="bd-muted"> · from another invite that day; Board’s invite makes it Google Meet</span></p>`
-          : html`<label class="form-label" for="bd-video">Video link</label>
-          <input id="bd-video" class=${`form-input ${badLink ? 'is-invalid' : ''}`} type="url" value=${typedLink} placeholder="https://" aria-invalid=${badLink} aria-describedby=${badLink ? 'bd-video-bad' : null}
-            onInput=${(e) => { const v = e.target.value; setTypedLink(v); if (!v.trim() || isLink(v)) { set({ video: v.trim() }); setBadLink(false); } }}
-            onBlur=${(e) => setBadLink(!!e.target.value.trim() && !isLink(e.target.value))} />
-          ${badLink ? html`<p class="form-error" id="bd-video-bad">That isn’t a link, so it isn’t saved. Paste the call’s link from its invite: it starts with https://</p>` : null}`}
-      </div>
+      ${field('bd-date', 'Date', html`<input id="bd-date" class="form-input" type="date" value=${m.date} onInput=${(e) => set({ date: e.target.value })} />`)}
+      ${field('bd-start', 'Starts', html`<input id="bd-start" class="form-input" type="time" value=${m.start} onInput=${(e) => set({ start: e.target.value })} />`)}
+      ${field('bd-end', 'Ends', html`<input id="bd-end" class="form-input" type="time" value=${m.end} onInput=${(e) => set({ end: e.target.value })} />`)}
+      ${field('bd-loc', 'Place', html`<input id="bd-loc" class="form-input" value=${m.location} placeholder="Whose office" onInput=${(e) => set({ location: e.target.value })} />`)}
+      ${field('bd-addr', 'Address', html`<input id="bd-addr" class="form-input" value=${m.address} placeholder="Street, city" onInput=${(e) => set({ address: e.target.value })} />`)}
+      <div class="form-group"><span class="form-label">Video call</span><p class="bm-fixed">${meet ? html`<a class="link" href=${meet} target="_blank" rel="noopener">Google Meet</a>` : html`<span>Google Meet, added with the invite</span>`}</p></div>
       <div class="form-group span-3"><label class="form-label" for="bd-title">Name</label><input id="bd-title" class="form-input" value=${m.title} placeholder=${meetingName({ ...m, title: '' })} aria-describedby="bd-title-hint" onInput=${(e) => set({ title: e.target.value })} />
         <p class="form-hint bm-hint" id="bd-title-hint">${m.title ? 'Empty it to go back to the quarter’s name.' : `Left empty, it’s the “${meetingName({ ...m, title: '' })}”.`}</p></div>
       <div class="form-group span-3"><label class="form-label" for="bd-invite-note">Notes for the invite</label><textarea id="bd-invite-note" class="form-textarea" rows="2" maxlength="1000" value=${m.inviteNote} placeholder="Parking, which door to use, a gate code" aria-describedby="bd-invite-note-hint" onInput=${(e) => set({ inviteNote: e.target.value })}></textarea>
-        <p class="form-hint bm-hint" id="bd-invite-note-hint">On the calendar invite${fromCal ? ` under ${whose} own notes` : ''}, the board page and the meeting emails. A change updates the invite without emailing anyone.</p></div>
+        <p class="form-hint bm-hint" id="bd-invite-note-hint">On the calendar invite, the board page and the meeting emails. A change updates the invite without emailing anyone.</p></div>
     </div>
   </div>`;
 }
 /** "the day, the times and the place" */
 const andList = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0] || '');
-/** A field the calendar sets, read here only */
-const LOCK = html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2" /><path d="M8 11V8a4 4 0 0 1 8 0v3" /></svg>`;
 
 // ─── Before: the agenda ─────────────────────────────────────────────
 
@@ -1104,7 +1079,7 @@ function GettingReady({ m, set, ctx, act, save }) {
   };
   // The invite: who's on it, and who should be
   const inv = m.invite;
-  const from = inv?.organizer || m.calendar?.organizer || data.settings.invitesFrom;
+  const from = inv?.organizer || data.settings.invitesFrom;
   // The organizer reads "your calendar"; anyone else reads whose it is
   const whoseOf = (e) => (String(e || '').toLowerCase() === String(data.me || '').toLowerCase() ? 'your' : `${firstOf(e)}’s`);
   const whose = whoseOf(from);
@@ -1116,9 +1091,15 @@ function GettingReady({ m, set, ctx, act, save }) {
   const missing = inv ? guests.filter((e) => !(inv.emails || []).includes(e) && e !== inv.organizer) : [];
   const transcript = !inv ? '' : inv.transcript === 'on' ? 'transcripts on' : inv.transcript === 'needs-setup' ? 'transcript needs one Google setting (see Meetings)' : inv.transcript === 'error' ? 'no transcript (SOARD’s Google plan)' : '';
   const placeNow = [m.location, m.address].filter(Boolean).join(', ');
-  const where = !inv ? '' : placeNow && placeNow !== inv.place && !(m.calendar?.place && !m.calendar.gone) ? 'the new place goes on it a couple of minutes after you stop typing' : inv.place ? `at ${inv.place}` : 'the place goes on it when you add one';
-  // Another call (Teams, Zoom) on the organizer's event, or from another event that day: Google Meet takes its place
-  const otherCall = !inv && m.calendar?.eventId && m.video && !/meet\.google\.com/.test(m.video) ? callName(m.video) : '';
+  // A new day, time or place: onto the invite once the typing has stopped (functions/api/_board-invite.js, whose "when"
+  // is "YYYY-MM-DD HH:MM-HH:MM")
+  const changed = !inv ? [] : [m.date !== String(inv.when).slice(0, 10) && 'day', `${m.start || ''}-${m.end || ''}` !== String(inv.when).slice(11) && 'time', !!placeNow && placeNow !== inv.place && 'place'].filter(Boolean);
+  const where = !inv ? '' : changed.length ? `the new ${andList(changed)} ${changed.length > 1 ? 'go' : 'goes'} on it a couple of minutes after you stop typing` : inv.place ? `at ${inv.place}` : 'the place goes on it when you add one';
+  // Board meeting invites Board didn't send, on an admin's calendar on this meeting's day (functions/api/_board-calendar.js)
+  const others = data.calendar?.others?.[m.id] || [];
+  const senders = [...new Set(others.map((o) => o.by).filter(Boolean))];
+  const mineOnly = senders.length === 1 && senders[0] === String(data.me || '').toLowerCase();
+  const senderName = (e) => (/@soardcharity\.com$/i.test(e) ? firstOf(e) : data.members.find((x) => x.email === e)?.name || e);
   // The invite check found the organizer's Google account can't have transcripts: they're not promised
   const noTranscripts = !!data.google?.check && data.google.check.transcript === 'error';
   const meetWords = noTranscripts ? 'Google Meet' : 'Google Meet with transcripts on';
@@ -1143,15 +1124,13 @@ function GettingReady({ m, set, ctx, act, save }) {
   };
   // The invite names who Google emails before it goes, and who it can't reach
   const noEmail = data.members.filter((x) => !x.email).map((x) => x.name);
-  // Where the other call came from: the organizer's own event, or another invite that day
-  const callSource = m.calendar?.callFrom ? `The ${otherCall} call is on ${whose} event.` : `The ${otherCall} call came from another invite that day.`;
   const invite = async () => {
     const to = inv ? missing : guests.filter((e) => e !== from);
     const names = andList(to.map(nameOf));
     if (!(await ask({
-      title: !inv ? (otherCall ? 'Add everyone and switch to Google Meet?' : 'Send the invite?') : `Add ${names} to the invite?`,
-      text: !inv ? `${otherCall ? `${callSource} The meeting’s call becomes ${meetWords}, on ${whose} event. ` : ''}Google emails the invite to ${names}, with the place and the link to the agenda.${noEmail.length ? ` ${andList(noEmail)} ${noEmail.length === 1 ? 'has' : 'have'} no email, so ${noEmail.length === 1 ? 'gets' : 'get'} no invite.` : ''}` : `Google emails ${to.length === 1 ? 'the invite to them' : 'each of them the invite'}. Nobody else hears about it.`,
-      yes: !inv ? (otherCall ? 'Add everyone' : 'Send the invite') : 'Add them',
+      title: !inv ? 'Send the invite?' : `Add ${names} to the invite?`,
+      text: !inv ? `Google emails the invite to ${names}, with ${meetWords}, the place and the link to the agenda.${noEmail.length ? ` ${andList(noEmail)} ${noEmail.length === 1 ? 'has' : 'have'} no email, so ${noEmail.length === 1 ? 'gets' : 'get'} no invite.` : ''}` : `Google emails ${to.length === 1 ? 'the invite to them' : 'each of them the invite'}. Nobody else hears about it.`,
+      yes: !inv ? 'Send the invite' : 'Add them',
     }))) return;
     run('invite', { action: 'send-invite', id: m.id }, () => `Invite sent to ${names}`);
   };
@@ -1170,15 +1149,16 @@ function GettingReady({ m, set, ctx, act, save }) {
     <div class="bd-card-head"><h3 tabindex="-1">Getting ready</h3><p>${[sInvite, sShared, sSent].every((x) => x === 'done') ? 'The invite, the board page and the email are done. The numbers lock on the meeting day.' : 'The agenda is ready, and the numbers lock on the meeting day. What’s left:'}</p></div>
     <${NoEmail} ctx=${ctx} what="no invite or email, and can’t check in on the board page" />
     <ol class="bm-tasks">
-      <${Task} state=${sInvite} title=${inv ? `Invite sent from ${whoseOf(inv.organizer)} calendar` : m.calendar?.eventId ? `Finish ${whose} invite` : 'Send the invite'}
-        sub=${inv ? [plural(inv.guests, 'guest'), inv.meet ? 'Google Meet' : '', transcript, where, missing.length ? `${andList(missing.map(nameOf))} not on it yet` : ''].filter(Boolean).join(' · ')
-          : otherCall ? `On ${whose} calendar with a ${otherCall} call. This adds ${adds}, the place and the link to the agenda, and makes the call ${meetWords}.`
-          : m.calendar?.eventId ? `On ${whose} calendar. This adds ${adds}, ${meetWords}, the place and the link to the agenda.`
+      <${Task} state=${sInvite} title=${inv ? `Invite sent from ${whoseOf(inv.organizer)} calendar` : m.inviteGone ? 'The invite was deleted' : 'Send the invite'}
+        sub=${inv ? [plural(inv.guests, 'guest'), inv.meet ? 'Google Meet' : '', transcript, where, missing.length ? `${andList(missing.map(nameOf))} not on it yet` : '', inv.putBackAt ? `changed in Google Calendar, Board’s put back ${ago(inv.putBackAt)}` : ''].filter(Boolean).join(' · ')
+          : m.inviteGone ? `Someone deleted it in Google Calendar ${ago(m.inviteGone)}, so it’s off the board’s calendars. Send it again, or delete this meeting (⋯ at the top).`
           : `From ${whose} calendar to ${adds}: ${meetWords}, the place and the link to the agenda.`}>
         ${!inv || missing.length ? html`<button class=${btn(sInvite)} disabled=${!!working || !data.setup.calendar || !m.date} onClick=${invite}>
-          ${working === 'invite' ? 'Sending…' : !inv ? (otherCall ? 'Add everyone, switch to Meet' : m.calendar?.eventId ? 'Add everyone and Meet' : 'Send the invite') : `Add ${missing.length === 1 ? nameOf(missing[0]).split(' ')[0] : `the ${missing.length} missing`}`}</button>` : null}
+          ${working === 'invite' ? 'Sending…' : !inv ? (m.inviteGone ? 'Send it again' : 'Send the invite') : `Add ${missing.length === 1 ? nameOf(missing[0]).split(' ')[0] : `the ${missing.length} missing`}`}</button>` : null}
         ${!data.setup.calendar ? html`<span class="bd-muted">Board can’t reach Google Calendar yet (Settings).</span>` : null}
-        ${inv && m.calendar?.others?.length ? html`<p class="bm-note">Another invite for this meeting, with its own call, is still on people’s calendars. Ask whoever sent it to cancel it, so nobody joins the wrong call.</p>` : null}
+        ${inv?.differs ? html`<div class="bm-note is-warn" role="note"><span>Someone changed this invite in Google Calendar again after Board put its day, time and place back. Change them here (Change when and where) and they go on it, or send Board’s again.</span>
+          <button class="btn btn-sm btn-primary" disabled=${!!working} onClick=${() => run('invite', { action: 'send-invite', id: m.id }, 'Board’s day, time and place are back on the invite')}>${working === 'invite' ? 'Sending…' : 'Send Board’s again'}</button></div>` : null}
+        ${others.length ? html`<p class="bm-note is-warn" role="note">${others.length === 1 ? 'Another invite for this meeting is' : `${others.length} other invites for this meeting are`} on ${andList([...new Set(others.map((o) => whoseOf(o.on)))])} calendar: ${andList(others.map((o) => `“${o.title}”`))}${senders.length && !mineOnly ? `, sent by ${andList(senders.map(senderName))}` : ''}. ${mineOnly ? `Cancel ${others.length === 1 ? 'it' : 'them'}` : `Ask ${senders.length ? (senders.length === 1 ? 'them' : 'each') : 'whoever sent it'} to cancel ${others.length === 1 ? 'it' : 'theirs'}`}, so the board has one invite and one call.</p>` : null}
       </${Task}>
       <${Task} state=${sShared} title=${m.shared ? 'On the board page' : 'Put it on the board page'} sub=${m.shared ? 'Board members see the agenda and files (never a private note or a staff-only file).' : 'Board members see nothing of this meeting until then. Emailing the board puts it there too.'}>
         ${m.shared ? html`<button class="btn btn-ghost btn-sm" onClick=${() => share(false)}>Take it off</button>` : html`<button class=${btn(sShared)} onClick=${() => share(true)}>Share with the board</button>`}
@@ -1215,19 +1195,16 @@ function Coming({ m, ctx, act }) {
   const replies = repliesOf(m);
   const answer = (x) => (x.status === 'present' ? 'Coming' : x.status === 'remote' ? 'By video' : answerOf('', replies[x.slug]));
   const emailOf = (x) => data.members.find((y) => y.slug === x.slug)?.email || '';
-  // Before any invite went out nobody is "not on" it; and who adds someone is Send the invite, unless the event is
-  // someone's Board can't change
-  const invited = !!(m.invite?.eventId || (m.calendar && !m.calendar.gone));
+  // Before any invite went out nobody is "not on" it
+  const invited = !!m.invite?.eventId;
   const groups = [['Coming', board.filter((x) => answer(x) === 'Coming')], ['By video', board.filter((x) => answer(x) === 'By video')], ['Maybe', board.filter((x) => answer(x) === 'Maybe')], ['Can’t come', board.filter((x) => answer(x) === 'Can’t come')],
     ['No answer', board.filter((x) => !answer(x) && replies[x.slug])], [invited ? 'Not on the invite' : 'No invite yet', board.filter((x) => !answer(x) && !replies[x.slug])]];
   const quiet = groups.at(-2)[1].filter(emailOf);
   const off = invited ? groups.at(-1)[1] : [];
-  // Only someone with an email on file can be added; who adds them is Send the invite, unless the event is someone's
-  // Board can't change
+  // Only someone with an email on file can be added (Getting ready's button adds them)
   const addable = off.filter(emailOf);
-  const owner = m.calendar && !m.calendar.gone ? m.calendar.organizer || m.calendar.from : '';
   const them = addable.length === 1 ? 'them' : 'them all';
-  const adds = !addable.length ? 'they have no email on file' : `${owner && !(data.settings?.admins || []).includes(owner) ? `ask ${firstOf(owner)} to add ${them}` : `Send the invite adds ${them}`}${addable.length < off.length ? ` (${off.length - addable.length} with no email can’t be)` : ''}`;
+  const adds = !addable.length ? 'they have no email on file' : `Send the invite adds ${them}${addable.length < off.length ? ` (${off.length - addable.length} with no email can’t be)` : ''}`;
   // A reminder names who gets it before it goes
   const remind = async (test) => {
     if (!test && !(await ask({ title: `Ask ${andList(quiet.map((x) => x.name))}?`, text: `${quiet.length === 1 ? 'They get' : 'Each gets'} an email asking them to answer the calendar invite. Their answer shows here.`, yes: quiet.length === 1 ? 'Ask them' : `Ask all ${quiet.length}` }))) return;

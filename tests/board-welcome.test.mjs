@@ -7,7 +7,7 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { welcomeEmail, sendWelcome, saveMeeting, saveDoc } from '../functions/api/_board.js';
+import { welcomeEmail, sendWelcome, saveMeeting, patchMeeting, saveDoc } from '../functions/api/_board.js';
 import { readState } from '../functions/api/_board-roles.js';
 import { welcomeHad } from '../public/admin/board-shared.js';
 import { newMeeting, todayEastern, longDate } from '../public/admin/board-shared.js';
@@ -120,7 +120,9 @@ test('the From name is quoted and keeps a phone’s apostrophe; a title or initi
 
 test('the next meeting is never one taken off the calendar', async () => {
   const gone = newMeeting({ date: inDays(3), defaults: { start: '18:00', end: '19:30' } });
-  await saveMeeting(env.DB, { ...gone, shared: true, calendar: { uid: 'e1@google.com', eventId: 'e1', gone: true } }, { by: 'jane@soardcharity.com' });
+  // (as older code left a meeting whose calendar event was deleted)
+  const saved = await saveMeeting(env.DB, { ...gone, shared: true }, { by: 'jane@soardcharity.com' });
+  await patchMeeting(env.DB, saved.id, (cur) => ({ ...cur, calendar: { uid: 'e1@google.com', eventId: 'e1', gone: true } }));
   const real = newMeeting({ date: inDays(20), defaults: { start: '18:00', end: '19:30' } });
   await saveMeeting(env.DB, { ...real, shared: true }, { by: 'jane@soardcharity.com' });
   await sendWelcome(env, { to: ['jane@soardcharity.com'] });

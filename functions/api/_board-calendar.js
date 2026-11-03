@@ -1,48 +1,54 @@
 /**
- * Board meetings from Peter and Holly's calendars
+ * The board's answers to each meeting's calendar invite
  * ===========================================================================
- * Board meetings are already on the calendar (it's how the board is invited),
- * so Board takes them from there, the way reveals follow JobTread. Every event
- * from today on that's named like a board meeting, on the Google calendar of
- * each of the Board area's admins, becomes a meeting with its day, time,
- * place and video link:
- *   - "SOARD Q4 Board Meeting", "Board Meeting", "Board of Directors mtg" and
- *     "Q4 Board" all count, as does any event with "board" in its name and
- *     three or more board members invited.
- *   - Advisory Board, reveal and demo day events never count.
- * The event's name never names the meeting: every meeting is "Q4 2026 Board
- * Meeting", the quarter the event's name says ("Q3 SOARD Board Meeting
- * (Reschedule)" held in November is Q3's) or else its date's, until someone
- * types another name in Board (meetingName). A moved event moves its meeting: the calendar is where the day changes. A
- * meeting added here by hand on the same day is linked to the event instead
- * of doubled, and so is each admin's own copy of the same meeting: one meeting
- * per day, named and timed by the copy that organized it. A meeting whose event is gone stays, marked gone for the admins.
- * New meetings start from Settings' agenda, not shared, like any new meeting.
- * Past board meetings (back four years) come in too, as a record only: their
- * day, time, place and name, with no agenda, attendance list or invite, so
- * the agendas and minutes Board finds in email (./_board-mail.js) have a
- * meeting to land on. A past meeting is never invited, reminded or marked gone.
- * An invite Board sent itself (./_board-invite.js) isn't a meeting to bring
- * in: Board already has it, so only the board's replies come back from it.
+ * A board meeting is added in Board, and only there (Peter, Nov 2 2026: "the
+ * ONLY way should be to add it to the board in admin"). Its day, time, place
+ * and notes are typed there, and Board's invite carries them to the board
+ * (./_board-invite.js). A calendar event never makes, moves or renames a
+ * meeting.
+ *
+ * Hourly (and at most every ten minutes while Board is open) it reads each
+ * invite still ahead from the event itself:
+ *   - who is on it and how each board member answered: yes, no or maybe,
+ *     the only answer SOARD goes by
+ *   - its day, time or place changed in Google Calendar: Board puts its own
+ *     back on the invite (Google emails the guests the correction) and says
+ *     so on the meeting; once for each change, never back and forth
+ *   - the event deleted in Google Calendar: the meeting stays, its invite is
+ *     marked gone, and Board offers to send it again
+ * and looks on the admins' calendars for board meeting invites Board didn't
+ * send (named like one: isBoardMeetingEvent), only to say so: another invite
+ * on a meeting's day (the board would have two, with two calls: whoever sent
+ * it should cancel it), or a board meeting on a day Board has none (add it in
+ * Board, then delete that event). Neither ever makes or changes a meeting.
+ *
+ * Meetings ahead that older code took from Holly's calendar are Board's from
+ * the first look (VERSION 8): their link to the calendar comes off, their
+ * invite stays the event Board already added the board to, and its place is
+ * read as Board has it, so nobody is emailed about a place that didn't
+ * change. Past meetings keep theirs as a record.
  *
  * It reads through the site's Google service account (GOOGLE_CALENDAR_KEY,
- * domain-wide delegation, the same one reveal invites go out with) and never
- * writes to anyone's calendar.
+ * domain-wide delegation), and writes only Board's own day, time and place
+ * back onto Board's invite (./_board-invite.js).
  */
 
 import { accessToken } from './_google-calendar.js';
 import { easternParts } from './_reveals.js';
-import { boardAdmins, activeBoard, readState, writeState } from './_board-roles.js';
-import { listMeetings, getMeeting, saveMeeting, patchMeeting, createMeeting, deleteMeeting, ensureSchema } from './_board.js';
-import { todayEastern, cleanMeeting, meetingName } from '../../public/admin/board-shared.js';
+import { activeBoard, boardAdmins, readState, writeState, normEmail } from './_board-roles.js';
+import { listMeetings, patchMeeting, ensureSchema } from './_board.js';
+import { placeOf, driftOf, sendInvite } from './_board-invite.js';
+import { todayEastern, isDate, meetingName } from '../../public/admin/board-shared.js';
 
 const KEY = 'calendar';
 const EVERY_MS = 60 * 60 * 1000;
 const AHEAD_DAYS = 400;
-const PAST_DAYS = 4 * 366;
-// A look by older code is redone at once (2: one meeting per day across calendars; 3: the invite's address from its notes, replies, the event's id, Board's own invites; 4: where its call link is; 5: past meetings; 6: coffees, reminders and other boards aren't meetings; 7: their files find a board meeting up to 60 days off)
-const VERSION = 7;
+const CAL_API = 'https://www.googleapis.com/calendar/v3';
+// A look by older code is redone at once (2–7: meetings taken from the admins' calendars; 8: meetings are added in
+// Board only, and the calendar sends back the answers to Board's invites)
+const VERSION = 8;
 export const CALENDAR_BY = 'the calendar';
+const REPLIES = ['accepted', 'declined', 'tentative'];
 
 const NAMED = /\b(meeting|mtg)\b|\bQ[1-4]\b/i;
 const NEVER = /\b(advisory|reveal|demo)\b/i;
@@ -78,80 +84,11 @@ function ownBoard(title) {
   return before.toLowerCase().split(/[^a-z0-9-]+/).filter(Boolean).every((w) => OURS.has(w) || /^\d{4}$/.test(w));
 }
 
-/** The event's day and times in Atlanta: { date, start, end } (no times for an all-day event) */
-export function eventWhen(ev) {
-  if (ev?.start?.date) return { date: ev.start.date, start: '', end: '' };
-  const s = easternParts(ev?.start?.dateTime);
-  if (!s) return { date: '', start: '', end: '' };
-  const e = easternParts(ev?.end?.dateTime);
-  return { date: s.date, start: s.time || '00:00', end: e && e.date === s.date ? (e.time || '') : '' };
-}
-
-const URL_RE = /https:\/\/[^\s<>"]+/i;
-const TBD = /^(tbd|tba|to be (determined|announced|confirmed))\.?$/i;
-/** "TBD", "To be determined": no place yet */
-export const isTbd = (s) => TBD.test(String(s || '').trim());
-
-/** An invite's notes (often Outlook's HTML) as plain lines */
-export function plainText(s) {
-  return String(s || '')
-    .replace(/<\s*br\s*\/?>/gi, '\n').replace(/<\/\s*(p|div|li|tr|h\d)\s*>/gi, '\n').replace(/<[^>]+>/g, ' ')
-    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&#39;|&rsquo;/gi, '’').replace(/&quot;/gi, '"')
-    .split('\n').map((l) => l.replace(/\s+/g, ' ').trim()).filter(Boolean).join('\n');
-}
-
-const STREET = '(?:St|Street|Rd|Road|Ave|Avenue|Blvd|Boulevard|Dr|Drive|Ln|Lane|Way|Pkwy|Parkway|Hwy|Highway|Ct|Court|Pl|Place|Cir|Circle|Trl|Trail|Ter|Terrace|Sq|Square|Pike|Row|Crossing|Xing|Point|Pt|Ridge|Loop|Bend|Walk|Commons)';
-const ADDRESS = new RegExp(`\\b(\\d{1,6}\\s+(?:[A-Za-z0-9.'’-]+\\s){0,5}${STREET}\\.?(?:,?\\s*(?:Suite|Ste\\.?|Unit|Bldg|Building|#)\\s*[\\w-]+)?(?:,?\\s+[A-Za-z .'’-]+?){1,3},?\\s+(?:[A-Z]{2}|Georgia)\\s+\\d{5}(?:-\\d{4})?)\\b`);
-/** A street address in an invite's notes, and the place name before it (on its line or the line above): { location, address } or null */
-export function addressIn(notes) {
-  const lines = plainText(notes).split('\n');
-  const label = /^(location|where|address|place)\s*[:\-–]?\s*/i;
-  const looksLikePlace = (t) => !!t && t.length < 70 && !/https?:|teams|zoom|meeting id|passcode|join|dial|please|agenda/i.test(t)
-    && !/\b(at|in|on|to|is|are|be|will|meet|held|located|address)\s*[:\-–]?$/i.test(t);
-  for (let i = 0; i < lines.length; i++) {
-    // On one line, or a street on this line with its city, state and ZIP on the next
-    let m = lines[i].match(ADDRESS);
-    let line = lines[i];
-    if (!m && lines[i + 1]) {
-      const both = `${lines[i]}, ${lines[i + 1]}`;
-      const joined = both.match(ADDRESS);
-      if (joined && joined.index < lines[i].length) { m = joined; line = both; }
-    }
-    if (!m) continue;
-    const before = line.slice(0, m.index).replace(label, '').replace(/[:\-–,\s]+$/, '').trim();
-    const above = i > 0 ? lines[i - 1].replace(label, '').replace(/[:\s]+$/, '').trim() : '';
-    const location = looksLikePlace(before) ? before : !before && looksLikePlace(above) ? above : '';
-    return { location, address: m[1].replace(/\s+/g, ' ').trim() };
-  }
-  return null;
-}
-
-/** Where: { location, address, video, callFrom } from the event's location, its Meet link or a meeting link in its notes (callFrom: meet | conference | place | notes) */
-export function eventPlace(ev) {
-  const raw = String(ev?.location || '').trim();
-  const entry = (ev?.conferenceData?.entryPoints || []).find((p) => p.entryPointType === 'video' && /^https:\/\//.test(p.uri || ''));
-  const inText = (s) => (String(s || '').match(URL_RE) || [])[0] || '';
-  const looksLikeCall = (u) => /zoom\.us|teams\.microsoft|teams\.live|meet\.google|webex/i.test(u);
-  let video = ev?.hangoutLink || entry?.uri || '';
-  let callFrom = ev?.hangoutLink ? 'meet' : video ? 'conference' : '';
-  let location = raw;
-  if (URL_RE.test(raw) && raw.match(URL_RE)[0] === raw) { if (!video) { video = raw; callFrom = 'place'; } location = ''; }
-  if (!video) { const u = inText(ev?.description); if (looksLikeCall(u)) { video = u; callFrom = 'notes'; } }
-  // "Example Design Group, 123 Main St, Roswell, GA" → the place, then its address; "STAG Partners (140 Colony Center Dr,
-  // Woodstock, GA 30188, United States)", as Outlook writes one, the same (the country left off)
-  let address = '';
-  const comma = location.indexOf(',');
-  const bracket = location.match(/^([^()]+?)\s*\(([^()]*\d[^()]*)\)$/);
-  if (bracket) { location = bracket[1].trim(); address = bracket[2].replace(/\s+/g, ' ').replace(/,\s*(United States|USA|US)$/i, '').trim(); }
-  else if (comma > 0 && /\d/.test(location.slice(comma))) { address = location.slice(comma + 1).trim(); location = location.slice(0, comma).trim(); }
-  else if (/^\d/.test(location)) { address = location; location = ''; }
-  if (isTbd(location)) location = '';
-  // No place on the invite ("TBD"): an address written in its notes
-  if (!location && !address) {
-    const found = addressIn(ev?.description);
-    if (found) ({ location, address } = found);
-  }
-  return { location, address, video: video.replace(/[).,]+$/, ''), callFrom, said: raw.slice(0, 200) };
+/** An event's day in Atlanta */
+function dayOf(ev) {
+  if (ev?.start?.date) return ev.start.date;
+  const s = String(ev?.start?.dateTime || '');
+  return /(Z|[+-]\d\d:?\d\d)$/i.test(s) ? easternParts(s)?.date || '' : s.slice(0, 10);
 }
 
 /**
@@ -174,17 +111,18 @@ async function eventsBetween(token, calendarId, { timeMin, timeMax, q, fetchImpl
   return out;
 }
 
+
 /**
- * Look at the admins' calendars and bring Board's meetings up to them.
- * → the saved state: { ok, checkedAt, found (from today on), past, added, moved, linked, gone, calendars, errors }
+ * Look at each invite still ahead and bring its answers onto its meeting.
+ * → the saved state: { ok, checkedAt, invites, replies, gone, handedOver, rehomed, errors }
  */
 export async function syncBoardCalendar(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   await ensureSchema(env.DB);
   if (!env.GOOGLE_CALENDAR_KEY) return writeState(env.DB, KEY, { ok: false, configured: false, checkedAt: new Date(now).toISOString() });
-  // One look at a time (the heartbeat and someone opening Board can arrive together), or a new event would be added twice
+  // One look at a time (the heartbeat and someone opening Board can arrive together)
   const last = await readState(env.DB, KEY); // (makes board_state on a new database)
   if (!(await takeLock(env.DB, now))) return last;
-  try { return await look(env, { fetchImpl, now }); } finally { await env.DB.prepare("DELETE FROM board_state WHERE key = 'calendar-lock'").run().catch(() => {}); }
+  try { return await look(env, { fetchImpl, now, handOver: last.version !== VERSION }); } finally { await env.DB.prepare("DELETE FROM board_state WHERE key = 'calendar-lock'").run().catch(() => {}); }
 }
 
 async function takeLock(DB, now) {
@@ -194,143 +132,114 @@ async function takeLock(DB, now) {
   return (r?.meta?.changes ?? r?.changes ?? 0) > 0;
 }
 
-async function look(env, { fetchImpl, now }) {
+/**
+ * Once: each meeting ahead older code took from an admin's calendar becomes Board's. The invite Board sent onto that
+ * event stays its invite, with the event's latest answers and the place as Board has it (Holly's "Name (street, city,
+ * United States)" is the same place). A meeting whose event was deleted stays as it was: off the board page
+ */
+async function handOver(DB, today) {
+  let n = 0;
+  for (const m of await listMeetings(DB)) {
+    if (!m.calendar || m.calendar.gone || m.practice || !isDate(m.date) || m.date < today) continue;
+    await patchMeeting(DB, m.id, (cur) => {
+      const same = !!cur.invite?.eventId && cur.invite.eventId === cur.calendar?.eventId;
+      // (location: the event's own words for its place, as Board last saw them, so the place isn't taken for a change made
+      // in Google Calendar either)
+      const invite = same ? { ...cur.invite, replies: { ...(cur.invite.replies || {}), ...(cur.calendar.replies || {}) }, location: cur.invite.location || cur.invite.place, place: placeOf(cur) || cur.invite.place } : cur.invite;
+      return { ...cur, calendar: null, invite };
+    });
+    n += 1;
+  }
+  return n;
+}
+
+async function look(env, { fetchImpl, now, handOver: first }) {
   const today = todayEastern(now);
-  const [admins, board] = await Promise.all([boardAdmins(env.DB), activeBoard(env.DB)]);
-  const boardEmails = board.map((p) => p.email).filter(Boolean);
-  const timeMin = new Date(now - PAST_DAYS * 86_400_000).toISOString();
-  const timeMax = new Date(now + AHEAD_DAYS * 86_400_000).toISOString();
-  const found = new Map(); // iCalUID → { ev, from }
-  const rejected = new Set(); // iCalUIDs of events with "board" in them that aren't board meetings
+  const at = new Date(now).toISOString();
+  const handedOver = first ? await handOver(env.DB, today) : 0;
+  const [board, admins] = await Promise.all([activeBoard(env.DB), boardAdmins(env.DB)]);
+  const bySlug = Object.fromEntries(board.filter((p) => p.email).map((p) => [normEmail(p.email), p.slug]));
+  const counts = { invites: 0, replies: 0, gone: 0, putBack: 0 };
   const errors = [];
-  let read = 0;
+  const tokens = new Map();
+  const tokenFor = async (email) => {
+    if (!tokens.has(email)) tokens.set(email, await accessToken(env, email, { fetchImpl, now }));
+    return tokens.get(email);
+  };
+  for (const m of await listMeetings(env.DB)) {
+    const inv = m.invite;
+    if (!inv?.eventId || !inv.organizer || m.practice || !isDate(m.date) || m.date < today) continue;
+    counts.invites += 1;
+    try {
+      const token = await tokenFor(inv.organizer);
+      const res = await fetchImpl(`${CAL_API}/calendars/${encodeURIComponent(inv.organizer)}/events/${encodeURIComponent(inv.eventId)}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20000) });
+      const ev = await res.json().catch(() => null);
+      // Deleted in Google Calendar: the meeting stays, its invite doesn't (Send the invite puts it back)
+      if (res.status === 404 || res.status === 410 || (res.ok && ev?.status === 'cancelled')) {
+        const done = await patchMeeting(env.DB, m.id, (cur) => (cur.invite?.eventId === inv.eventId ? { ...cur, invite: null, inviteGone: at } : cur));
+        if (!done?.invite) counts.gone += 1;
+        continue;
+      }
+      if (!res.ok) throw new Error(`Google Calendar read failed (${res.status}): ${ev?.error?.message || ''}`.trim());
+      // Its day, time or place changed in Google Calendar: Board's go back on it, once for each change. The same change
+      // again (made again, or kept by Google) is never fought over by email: the meeting says so, for a person to decide
+      const drift = driftOf(ev, m);
+      if (drift && inv.putBackFor !== drift) {
+        await sendInvite(env, m.id, { fetchImpl, now });
+        await patchMeeting(env.DB, m.id, (cur) => (cur.invite ? { ...cur, invite: { ...cur.invite, putBackAt: at, putBackFor: drift } } : cur));
+        counts.putBack += 1;
+        continue;
+      }
+      if ((drift || '') !== (inv.differs || '')) {
+        await patchMeeting(env.DB, m.id, (cur) => (cur.invite?.eventId === inv.eventId ? { ...cur, invite: { ...cur.invite, differs: drift } } : cur));
+      }
+      // Who's on it now and how they answered, by board member
+      const attendees = ev?.attendees || [];
+      const replies = {};
+      for (const a of attendees) {
+        const slug = bySlug[normEmail(a.email)];
+        if (slug && !replies[slug]) replies[slug] = REPLIES.includes(a.responseStatus) ? a.responseStatus : 'invited';
+      }
+      const emails = attendees.map((a) => normEmail(a.email)).filter(Boolean);
+      if (JSON.stringify(replies) === JSON.stringify(inv.replies || {}) && JSON.stringify(emails) === JSON.stringify(inv.emails || [])) continue;
+      await patchMeeting(env.DB, m.id, (cur) => (cur.invite?.eventId === inv.eventId ? { ...cur, invite: { ...cur.invite, replies, emails, guests: emails.length } } : cur));
+      counts.replies += 1;
+    } catch (err) {
+      errors.push(`${meetingName(m)}: ${String(err.message).slice(0, 200)}`);
+    }
+  }
+  // Board meeting invites Board didn't send, on the admins' calendars: on a meeting's day (another invite for it), or on
+  // a day with none (a meeting to add in Board). Said, never made into a meeting
+  const meetings = await listMeetings(env.DB);
+  const ours = new Set(meetings.filter((x) => x.invite?.eventId).flatMap((x) => [x.invite.eventId, `${x.invite.eventId}@google.com`]));
+  const onDay = new Map(meetings.filter((x) => !x.practice && !x.notBoard && isDate(x.date) && x.date >= today).map((x) => [x.date, x.id]));
+  const boardEmails = board.map((p) => p.email).filter(Boolean);
+  const others = {};
+  const strays = [];
+  const seen = new Set();
   for (const email of admins) {
     try {
-      const token = await accessToken(env, email, { fetchImpl, now });
-      for (const ev of await eventsBetween(token, email, { timeMin, timeMax, q: 'board', fetchImpl })) {
+      const events = await eventsBetween(await tokenFor(email), email, { timeMin: new Date(now).toISOString(), timeMax: new Date(now + AHEAD_DAYS * 86_400_000).toISOString(), q: 'board', fetchImpl });
+      for (const ev of events) {
         const uid = ev.iCalUID || ev.id;
-        if (!isBoardMeetingEvent(ev, boardEmails)) { if (uid) rejected.add(uid); continue; }
-        if (uid && !found.has(uid)) found.set(uid, { ev, from: email });
+        if (ours.has(ev.id) || ours.has(uid) || seen.has(uid) || !isBoardMeetingEvent(ev, boardEmails)) continue;
+        seen.add(uid);
+        const date = dayOf(ev);
+        if (!isDate(date) || date < today) continue;
+        const one = { title: String(ev.summary || '').slice(0, 200), on: email, by: normEmail(ev.organizer?.email), date, link: /^https:\/\//.test(ev.htmlLink || '') ? ev.htmlLink : '' };
+        // On a meeting's day, only an invite counts (a time held on someone's own calendar, with no one invited, confuses no one)
+        const invites = (ev.attendees || []).some((a) => !a.self && !a.organizer && !a.resource);
+        if (onDay.has(date)) { if (invites) (others[onDay.get(date)] ||= []).push(one); } else strays.push(one);
       }
-      read += 1;
     } catch (err) {
       errors.push(`${email.split('@')[0]}’s calendar: ${String(err.message).slice(0, 200)}`);
     }
   }
-  let meetings = await listMeetings(env.DB);
-  const bySlug = Object.fromEntries(board.filter((p) => p.email).map((p) => [p.email, p.slug]));
-  // Who's invited and how they answered, by board member (the organizer's copy knows best, so it goes first)
-  const repliesIn = (events) => {
-    const replies = {};
-    for (const ev of events) {
-      for (const a of ev.attendees || []) {
-        const slug = bySlug[String(a.email || '').toLowerCase()];
-        if (slug && !replies[slug]) replies[slug] = ['accepted', 'declined', 'tentative'].includes(a.responseStatus) ? a.responseStatus : 'invited';
-      }
-    }
-    return replies;
-  };
-  // Board's own invites (not the organizer's event Board added the board to): their meeting is already here, so only the replies come back
-  const ownInvite = new Map(meetings.filter((m) => m.invite?.eventId && m.invite.eventId !== m.calendar?.eventId).map((m) => [m.invite.eventId, m]));
-  const own = new Map(); // meeting id → [ev]
-  // One meeting per day. Peter's and Holly's copies of the same meeting are one meeting: the copy that
-  // organized it names it and sets its times, and a video link or a real place comes from whichever copy has one
-  const days = new Map(); // date → [{ uid, ev, from, when, place }]
-  for (const [uid, { ev, from }] of found) {
-    const mine = ownInvite.get(ev.id);
-    if (mine) { own.set(mine.id, [...(own.get(mine.id) || []), ev].sort((a, b) => Number(!!b.organizer?.self) - Number(!!a.organizer?.self))); continue; }
-    const when = eventWhen(ev);
-    if (!when.date) continue;
-    if (!days.has(when.date)) days.set(when.date, []);
-    days.get(when.date).push({ uid, ev, from, when, place: eventPlace(ev) });
-  }
-  const counts = { added: 0, moved: 0, linked: 0, gone: 0, merged: 0, past: 0, notBoard: 0, rehomed: 0 };
-  const onCalendar = new Set();
-  for (const [date, copies] of days) {
-    const isPast = date < today;
-    if (isPast) counts.past += 1;
-    const lead = copies.find((c) => c.ev.organizer?.self) || copies[0];
-    const uids = [lead.uid, ...copies.filter((c) => c !== lead).map((c) => c.uid)];
-    uids.forEach((u) => onCalendar.add(u));
-    const hasPlace = (c) => !!(c.place.location || c.place.address);
-    const place = hasPlace(lead) ? lead.place : (copies.find(hasPlace)?.place || lead.place);
-    const video = lead.place.video || copies.find((c) => c.place.video)?.place.video || '';
-    const { when, ev, from } = lead;
-    const replies = repliesIn([lead, ...copies.filter((x) => x !== lead)].map((c) => c.ev));
-    // Its meeting: one a person has worked on, else the oldest. An untouched extra copy goes (one per calendar, before)
-    const linked = meetings.filter((x) => x.calendar && [x.calendar.uid, ...(x.calendar.others || [])].some((u) => uids.includes(u)))
-      .sort((a, b) => (Number(b.updatedBy !== CALENDAR_BY) - Number(a.updatedBy !== CALENDAR_BY)) || String(a.createdAt).localeCompare(String(b.createdAt)));
-    for (const extra of linked.slice(1)) {
-      if (extra.updatedBy !== CALENDAR_BY || extra.shared || extra.files.length) continue;
-      await deleteMeeting(env, extra.id);
-      counts.merged += 1;
-    }
-    let m = linked[0] || meetings.find((x) => !x.calendar?.uid && x.date === date) || null;
-    // What the calendar says wins; what it leaves out stays as typed here (place: it has a place; call: it has a video link)
-    const link = {
-      uid: lead.uid, others: uids.slice(1), title: String(ev.summary || '').slice(0, 200), from,
-      link: /^https:\/\//.test(ev.htmlLink || '') ? ev.htmlLink : '', gone: false, place: !!(place.location || place.address), call: !!video,
-      said: copies.map((c) => c.place.said).find(Boolean) || '',
-      replies,
-      // The organizer's own event, so Board can add guests, the place and Google Meet to it (./_board-invite.js)
-      eventId: String(ev.id || ''), organizer: String(ev.organizer?.email || '').toLowerCase(),
-      // Where the organizer's event has its call (meet | conference | place | notes). Board makes it Google Meet: a Teams
-      // or Zoom call comes off the event and out of its notes (./_board-invite.js)
-      callFrom: lead.place.callFrom,
-    };
-    if (!m) {
-      // A past meeting is a record of when and where it was: its agenda and minutes come from email, not the template
-      m = isPast ? await saveMeeting(env.DB, cleanMeeting({ date, start: when.start, end: when.end }), { by: CALENDAR_BY }) : await createMeeting(env, { date, by: CALENDAR_BY });
-      counts.added += 1;
-    } else if (!m.calendar?.uid) counts.linked += 1;
-    const next = {
-      // (never its name: a meeting is named by its quarter, or what's typed in Board; see meetingName)
-      ...m, date, start: when.start, end: when.end,
-      location: place.location || (isTbd(m.location) ? '' : m.location),
-      address: place.address || (place.location && place.location !== m.location ? '' : m.address),
-      video: video || m.video,
-      calendar: link,
-    };
-    // Compared as the stored record has it (cleanMeeting's field order), or every look would save again
-    const sameLink = JSON.stringify(cleanMeeting({ calendar: link }).calendar) === JSON.stringify(cleanMeeting({ calendar: m.calendar }).calendar);
-    const changed = ['date', 'start', 'end', 'title', 'location', 'address', 'video'].some((k) => next[k] !== m[k]) || !sameLink;
-    if (changed) {
-      if (m.calendar?.uid && (m.date !== next.date || m.start !== next.start)) counts.moved += 1;
-      await saveMeeting(env.DB, next, { by: CALENDAR_BY });
-    }
-  }
-  // The replies to Board's own invites
-  for (const [id, events] of own) {
-    const m = await getMeeting(env.DB, id);
-    if (!m?.invite) continue;
-    const replies = repliesIn(events);
-    if (JSON.stringify(replies) !== JSON.stringify(m.invite.replies || {})) await patchMeeting(env.DB, id, (cur) => ({ ...cur, invite: cur.invite ? { ...cur.invite, replies } : cur.invite }));
-  }
-  // A meeting brought in from an event that isn't a board meeting (older rules let in coffees, reminders and other
-  // organizations' boards): off the board page and marked, never deleted, while nobody here has worked on it.
-  // Sharing it again keeps it. Its files find a board meeting next (rehomeStranded)
-  meetings = await listMeetings(env.DB);
-  for (const m of meetings) {
-    if (!m.calendar?.uid || m.notBoard || !untouched(m)) continue;
-    const uids = [m.calendar.uid, ...(m.calendar.others || [])];
-    if (!uids.some((u) => rejected.has(u)) || uids.some((u) => onCalendar.has(u))) continue;
-    const done = await patchMeeting(env.DB, m.id, (cur) => (untouched(cur) ? { ...cur, notBoard: true, shared: false } : cur));
-    if (done?.notBoard) counts.notBoard += 1;
-  }
-  counts.rehomed = (await rehomeStranded(env, { now, rejected })).moved;
-  // A meeting from today on whose event is on no calendar any more: kept, marked gone (only when every calendar was read)
-  if (!errors.length) {
-    meetings = await listMeetings(env.DB);
-    for (const m of meetings) {
-      if (!m.calendar?.uid || m.calendar.gone || m.notBoard || m.date < today) continue;
-      if ([m.calendar.uid, ...(m.calendar.others || [])].some((u) => onCalendar.has(u))) continue;
-      await saveMeeting(env.DB, { ...m, calendar: { ...m.calendar, gone: true } }, { by: CALENDAR_BY });
-      counts.gone += 1;
-    }
-  }
+  strays.sort((x, y) => x.date.localeCompare(y.date));
+  const rehomed = (await rehomeStranded(env, { now })).moved;
   return writeState(env.DB, KEY, {
-    version: VERSION, ok: !errors.length, configured: true, checkedAt: new Date(now).toISOString(),
-    found: days.size - counts.past, ...counts, calendars: read, errors,
+    version: VERSION, ok: !errors.length, configured: true, checkedAt: at,
+    ...counts, handedOver, rehomed, others, strays: strays.slice(0, 20), errors,
   });
 }
 
@@ -366,9 +275,9 @@ export function homeFor(real, date, file) {
  * added. Never deletes a file or a row; keeps staff-only as it was. Each meeting once, and again only when a
  * meeting has been added since (board_state 'rehome'). → { moved, waiting, same }
  */
-export async function rehomeStranded(env, { now = Date.now(), rejected = new Set() } = {}) {
+export async function rehomeStranded(env, { now = Date.now() } = {}) {
   const meetings = await listMeetings(env.DB);
-  const real = meetings.filter((x) => !x.notBoard && !x.practice && /^\d{4}-\d{2}-\d{2}$/.test(x.date || '') && !rejectedMeeting(x, rejected));
+  const real = meetings.filter((x) => !x.notBoard && !x.practice && /^\d{4}-\d{2}-\d{2}$/.test(x.date || ''));
   const newest = meetings.reduce((a, x) => (String(x.createdAt || '') > a ? String(x.createdAt) : a), '');
   const state = await readState(env.DB, REHOME);
   const done = { ...(state.meetings || {}) };
@@ -405,10 +314,7 @@ export async function rehomeStranded(env, { now = Date.now(), rejected = new Set
   return out;
 }
 
-// Nobody here has worked on it: only the calendar, board email or Google Drive has saved it
-const untouched = (m) => [CALENDAR_BY, 'board email', 'Google Drive', ''].includes(m.updatedBy || '');
 const daysApart = (a, b) => Math.round((Date.parse(`${a}T12:00:00Z`) - Date.parse(`${b}T12:00:00Z`)) / 86_400_000);
-const rejectedMeeting = (m, rejected) => !!m.calendar?.uid && [m.calendar.uid, ...(m.calendar.others || [])].some((u) => rejected.has(u));
 
 /** Every hour (or sooner: minAgeMs) at most. Never throws. */
 export async function maybeSyncBoardCalendar(env, { fetchImpl = fetch, now = Date.now(), minAgeMs = EVERY_MS } = {}) {

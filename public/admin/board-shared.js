@@ -64,17 +64,15 @@ function cleanReplies(raw) {
     .filter(([k, v]) => /^[a-z0-9-]{1,80}$/.test(k) && REPLIES.includes(v)).slice(0, LIMITS.people));
 }
 /**
- * Each board member's reply to the meeting's calendar invite, by slug: the organizer's own event's, else Board's. When
- * Board added the board to the organizer's own event they're one event, read through the calendar (Send the invite
- * writes its replies there too); a deleted event's replies are no one's
+ * Each board member's reply to the meeting's calendar invite, by slug: Board's invite's (functions/api/_board-calendar.js
+ * reads them); a past meeting taken from a calendar before Nov 2 2026 keeps that event's as its record
  */
 export function repliesOf(m) {
-  const cal = m?.calendar && !m.calendar.gone ? m.calendar.replies || {} : {};
-  const one = !!m?.invite?.eventId && m.invite.eventId === m?.calendar?.eventId;
-  return one ? { ...cal } : { ...(m?.invite?.replies || {}), ...cal };
+  if (m?.invite?.eventId) return { ...(m.invite.replies || {}) };
+  return m?.calendar && !m.calendar.gone ? { ...(m.calendar.replies || {}) } : {};
 }
-/** Whether a meeting's calendar invite has gone out: the organizer's own event (not deleted), or Board's own */
-export const inviteOut = (m) => !!((m?.calendar && !m.calendar.gone && (m.calendar.eventId || m.calendar.uid)) || (m?.invite?.eventId && m.invite.eventId !== m?.calendar?.eventId));
+/** Whether a meeting's calendar invite has gone out (Board's, sent from Board) */
+export const inviteOut = (m) => !!m?.invite?.eventId;
 /** "Balance-sheet_financials v2.pdf" → "Balance sheet financials v2" (the file keeps its own name for saving) */
 export function fileTitle(name) {
   const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
@@ -425,9 +423,13 @@ export function cleanMeeting(raw = {}) {
       eventId: one(raw.invite.eventId, 1024), organizer: one(raw.invite.organizer, 200), sentAt: one(raw.invite.sentAt, 40), updatedAt: one(raw.invite.updatedAt, 40),
       meet: /^https:\/\/meet\.google\.com\//.test(String(raw.invite.meet || '')) ? one(raw.invite.meet, 300) : '', guests: Number(raw.invite.guests) > 0 ? Math.round(raw.invite.guests) : 0,
       transcript: ['on', 'needs-setup', 'error', ''].includes(raw.invite.transcript) ? raw.invite.transcript : '', error: one(raw.invite.error, 300),
-      place: one(raw.invite.place, 400), when: one(raw.invite.when, 60), notes: one(raw.invite.notes, 20), emails: (Array.isArray(raw.invite.emails) ? raw.invite.emails : []).map((e) => one(e, 200)).filter(Boolean).slice(0, 100),
+      place: one(raw.invite.place, 400), location: one(raw.invite.location, 400), when: one(raw.invite.when, 60), notes: one(raw.invite.notes, 20),
+      // Board's day, time and place put back on it after someone changed them in Google Calendar (functions/api/_board-calendar.js)
+      putBackAt: one(raw.invite.putBackAt, 40), putBackFor: one(raw.invite.putBackFor, 200), differs: one(raw.invite.differs, 200), emails: (Array.isArray(raw.invite.emails) ? raw.invite.emails : []).map((e) => one(e, 200)).filter(Boolean).slice(0, 100),
       replies: cleanReplies(raw.invite.replies),
     } : null,
+    // When the invite was deleted in Google Calendar (functions/api/_board-calendar.js): server-set
+    inviteGone: one(raw.inviteGone, 40),
     agendaFrom: raw.agendaFrom && typeof raw.agendaFrom === 'object' && AGENDA_FROM.includes(raw.agendaFrom.kind)
       ? { kind: raw.agendaFrom.kind, name: one(raw.agendaFrom.name, 200), at: one(raw.agendaFrom.at, 40), ...(Number(raw.agendaFrom.v) > 0 ? { v: Math.round(Number(raw.agendaFrom.v)) } : {}) } : null,
     // The minutes file that filled in who was there, the notes, the motions and the action items (functions/api/_board-minutes.js)
@@ -665,6 +667,7 @@ export function forBoard(m) {
     title: meetingName(m),
     calendar: undefined,
     invite: m.invite ? { meet: m.invite.meet } : null,
+    inviteGone: undefined,
     agendaFrom: undefined,
     fromMeet: undefined,
     updatedBy: undefined,

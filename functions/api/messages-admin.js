@@ -620,7 +620,7 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
         channel: 'invite', from: `${organizer}'s Google Calendar`, to: 'Every active board member with an email on People → Board, plus Peter and Holly',
         subject: `Invitation: ${meetingName(m)}`,
         invite: { title: meetingName(m), status: 'confirmed', start: { dateTime: `${m.date}T08:00:00-05:00` }, end: { dateTime: `${m.date}T10:00:00-05:00` }, location: `${m.location}, ${m.address}`, description: inviteNotes(m), organizer, busy: true },
-        note: 'A sample meeting from the usual agenda, one item board-only. Google Meet is the call. A new place, day or time sends Google’s update email; an agenda change updates these notes without emailing anyone.',
+        note: 'A sample meeting from the usual agenda, one item board-only. Google Meet is the call. A new day, time or place sends Google’s update email; a new name or notes update it without emailing anyone.',
         send: null,
       };
     }

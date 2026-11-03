@@ -285,6 +285,9 @@ export async function saveMeeting(DB, raw, { by, base = null } = {}) {
     packetSentTo: current?.packetSentTo || 0,
     minutesSentAt: current?.minutesSentAt || '',
     invite: current?.invite || null,
+    inviteGone: current?.inviteGone || '',
+    // A meeting's day, time and place are typed in Board; a link to a calendar event older code made stays as it was
+    calendar: current?.calendar || null,
     // Who joined by Meet is the server's (./_board-attendance.js). Where the agenda came from is named by
     // server code that fills it (board mail, the drafts); a person changing the agenda or its notes makes it theirs
     fromMeet: 'fromMeet' in raw ? m.fromMeet : current?.fromMeet || null,
@@ -493,11 +496,8 @@ export async function saveMotion(env, id, itemId, text, { member = null, admin =
   return { itemId, motion: saved.sections.flatMap((s) => s.items).find((x) => x.id === itemId)?.motion || '' };
 }
 
-/**
- * The board already has it on their calendars: Board's own invite went out, or
- * the organizer's event invites three or more of the board
- */
-export const boardHasIt = (m) => !!m?.invite?.sentAt || Object.keys(repliesOf(m) || {}).length >= 3;
+/** The board already has it on their calendars: Board's invite went out */
+export const boardHasIt = (m) => !!m?.invite?.sentAt;
 /**
  * A meeting a board member can see something of: a shared one, or one ahead
  * that's on their calendars already but isn't shared yet (its day, time and
@@ -1046,8 +1046,8 @@ const staffFor = (people, email) => {
   const e = String(email || '').toLowerCase();
   return (e && people.staff.find((p) => e.startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))) || null;
 };
-/** Who a meeting's invite comes from: the organizer of its calendar event (not a deleted one), else of Board's invite, else Settings' */
-const inviteOwner = (m, settings) => (m.calendar && !m.calendar.gone ? m.calendar.organizer || m.calendar.from : '') || m.invite?.organizer || settings?.invitesFrom || '';
+/** Who a meeting's invite comes from: whoever Board's invite went out from, else Settings' */
+const inviteOwner = (m, settings) => m.invite?.organizer || settings?.invitesFrom || '';
 /** …by name */
 function inviteFrom(m, people, settings) {
   return staffFor(people, inviteOwner(m, settings))?.name || '';
@@ -1214,8 +1214,8 @@ export function reminderEmail(m, { test = false, name: who = '', from = '' } = {
   const first = firstName(who);
   const heading = `${first ? `${first}, will` : 'Will'} you be at the ${name}?`;
   const ask = answerAsk(from);
-  // What the invite is called in their email: the organizer's own event's title, else Board's (inviteTitle)
-  const called = (m.calendar && !m.calendar.gone && m.calendar.title) || inviteTitle(m);
+  // What the invite is called in their email (Board names it, on the organizer's own event too)
+  const called = inviteTitle(m);
   return {
     subject: `${test ? '[Preview] ' : ''}Will you be at the ${name}? ${shortDate(m.date)}`,
     html: emailShell({
@@ -2071,12 +2071,11 @@ export async function boardFacts(env) {
       read: stored.filter((m) => m.fromMeet?.status === 'ok').length, needsSetup: stored.filter((m) => m.fromMeet?.status === 'needs-setup').length,
       failing: stored.filter((m) => m.fromMeet?.status === 'error').length, lastAt: stored.map((m) => m.fromMeet?.at).filter(Boolean).sort().at(-1) || null,
     },
-    calendar: { configured: Boolean(env.GOOGLE_CALENDAR_KEY), ok: !!cal.ok, checkedAt: cal.checkedAt || null, found: cal.found || 0, failing: (cal.errors || []).length },
+    calendar: { configured: Boolean(env.GOOGLE_CALENDAR_KEY), ok: !!cal.ok, checkedAt: cal.checkedAt || null, invites: cal.invites || 0, gone: cal.gone || 0, failing: (cal.errors || []).length },
     mail: {
       configured: Boolean(env.GOOGLE_CALENDAR_KEY), ok: !!mail.ok, needsScope: !!mail.needsScope, checkedAt: mail.checkedAt || null, waiting: mail.backlog ?? mail.waiting ?? 0, failing: (mail.errors || []).length,
       meetings: mail.totals?.meetings || 0, files: mail.totals?.files || 0, skipped: mail.totals?.skipped || 0,
     },
-    calendarPast: cal.past || 0,
     drive: await (await import('./_board-drive.js')).driveStatus(env.DB).then((d) => ({
       checkedAt: d.checkedAt || null, needsScope: !!d.needsScope, apiOff: !!d.apiOff, failing: (d.errors || []).length,
       backlog: d.backlog || 0, meetings: d.meetings || 0, files: d.files || 0,

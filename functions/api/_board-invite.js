@@ -15,11 +15,13 @@
  *   - notes (plain text): the way to the meeting's page, where the agenda
  *     and every document are (inviteNotes in ./_board.js); when only the
  *     notes change, they update without Google emailing anyone
- * A meeting that came from the organizer's calendar (Holly already sent its
- * invite) gets that same event updated, never a second invite: the board
- * members missing from it are added, and so are Meet, the place and Board's
- * notes (after the organizer's own, which stay).
- * The calendar stays where the day and time change (./_board-calendar.js).
+ * Meetings are added in Board only, and Board is where their day, time and
+ * place change (Peter, Nov 2 2026): a change goes onto the invite, and Google
+ * emails the guests once. A meeting deleted in Board takes its invite off
+ * the calendar, and Google tells the guests (cancelInvite).
+ * A meeting older code took from the organizer's calendar keeps that event
+ * as its invite: Board updates it the same way, and the organizer's own
+ * notes stay above Board's. The answers come back by ./_board-calendar.js.
  *
  * Writes only to the organizer's own calendar, through the site's service
  * account (GOOGLE_CALENDAR_KEY, domain-wide delegation, calendar.events).
@@ -29,6 +31,7 @@ import { accessToken, eventIdFor, parseServiceAccount } from './_google-calendar
 import { boardAdmins, activeBoard, peopleRows, readSettings, readState, writeState, normEmail } from './_board-roles.js';
 import { getMeeting, listMeetings, patchMeeting, inviteNotes, inviteTitle, NOTES_START, OLD_NOTES_STARTS } from './_board.js';
 import { meetingName, timeRange, longDate, todayEastern } from '../../public/admin/board-shared.js';
+import { easternParts } from './_reveals.js';
 
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
 const MEET_API = 'https://meet.googleapis.com/v2';
@@ -64,9 +67,8 @@ async function gcal(token, method, path, body, fetchImpl) {
   return data;
 }
 
-const placeOf = (m) => [m.location, m.address].filter(Boolean).join(', ');
+export const placeOf = (m) => [m.location, m.address].filter(Boolean).join(', ');
 const whenOf = (m) => `${m.date} ${m.start || ''}-${m.end || ''}`;
-const isTbd = (s) => /^(tbd|tba|to be (determined|announced|confirmed))?\.?$/i.test(String(s || '').trim());
 
 const CALL_LINK = /^https:\/\/\S*(zoom\.us|teams\.microsoft|teams\.live|webex)\S*$/i;
 const dayAfter = (date) => new Date(Date.parse(`${date}T12:00:00Z`) + 86400000).toISOString().slice(0, 10);
@@ -76,6 +78,31 @@ function times(m) {
   if (!m.start) return { start: { date: m.date }, end: { date: dayAfter(m.date) } };
   const end = m.end || `${String(Math.min(23, Number(m.start.slice(0, 2)) + 2)).padStart(2, '0')}${m.start.slice(2)}`;
   return { start: { dateTime: `${m.date}T${m.start}:00`, timeZone: TZ }, end: { dateTime: `${m.date}T${end}:00`, timeZone: TZ } };
+}
+
+/** A start or end on an event, as "YYYY-MM-DDTHH:MM" in Atlanta (or "YYYY-MM-DD" all day): as Board writes it, or as Google answers with an offset */
+function slotOf(t) {
+  if (t?.date) return t.date;
+  const s = String(t?.dateTime || '');
+  if (!/(Z|[+-]\d\d:?\d\d)$/i.test(s)) return s.slice(0, 16);
+  const p = easternParts(s);
+  return p ? `${p.date}T${p.time || '00:00'}` : '';
+}
+
+/**
+ * What someone changed on the invite in Google Calendar since Board last put it there: its day or time, or the place
+ * Board gave it. '' when it's as Board left it (a change typed in Board and not sent yet isn't one: the event is
+ * compared with what Board last sent, never with the meeting)
+ */
+export function driftOf(ev, m) {
+  const inv = m?.invite;
+  if (!ev?.start || !inv?.when) return '';
+  const [date, span = ''] = String(inv.when).split(' ');
+  const [start = '', end = ''] = span.split('-');
+  const want = times({ date, start, end });
+  const when = slotOf(ev.start) !== slotOf(want.start) || slotOf(ev.end) !== slotOf(want.end) ? `${slotOf(ev.start)}/${slotOf(ev.end)}` : '';
+  const place = placeOf(m) && String(ev.location || '') !== (inv.location || inv.place) ? String(ev.location || '') : '';
+  return when || place ? `${when}|${place}`.slice(0, 200) : '';
 }
 
 /**
@@ -162,25 +189,13 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
   if (!m.date) throw Object.assign(new Error('Give the meeting a date first'), { status: 400 });
-  // Holly's own event (the meeting came from her calendar), or Board's earlier invite, or a new one
-  const theirs = m.calendar && !m.calendar.gone && m.calendar.eventId && m.calendar.organizer ? { eventId: m.calendar.eventId, organizer: m.calendar.organizer } : null;
-  const admins = await boardAdmins(env.DB);
-  if (theirs && !admins.includes(theirs.organizer)) {
-    throw Object.assign(new Error(`This meeting’s invite comes from ${theirs.organizer}, whose calendar Board can’t change. Ask them to add the board, or delete that event and send Board’s invite.`), { status: 409 });
-  }
-  const organizer = theirs?.organizer || m.invite?.organizer || await organizerFor(env.DB);
+  // Board's invite (sent before, or new), from whoever it came from
+  const organizer = m.invite?.organizer || await organizerFor(env.DB);
   if (!organizer) throw Object.assign(new Error('No one to send it from: add yourself in Board → Settings'), { status: 409 });
   const token = await accessToken(env, organizer, { fetchImpl, now });
   const cal = `/calendars/${encodeURIComponent(organizer)}/events`;
-  const eventId = theirs?.eventId || m.invite?.eventId || eventIdFor('board', m.id);
-  // Board invited the board, then the meeting turned up on the organizer's own calendar too: one invite, theirs
-  if (theirs && m.invite?.eventId && m.invite.eventId !== eventId) {
-    try {
-      const was = m.invite.organizer === organizer ? token : await accessToken(env, m.invite.organizer, { fetchImpl, now });
-      await gcal(was, 'DELETE', `/calendars/${encodeURIComponent(m.invite.organizer)}/events/${encodeURIComponent(m.invite.eventId)}?sendUpdates=all`, null, fetchImpl);
-    } catch (err) { if (err.status !== 404 && err.status !== 410) throw err; }
-  }
-  const prior = m.invite?.eventId === eventId ? m.invite : null;
+  const eventId = m.invite?.eventId || eventIdFor('board', m.id);
+  const prior = m.invite;
   const guests = await guestsFor(env.DB);
   let existing = null;
   try { existing = await gcal(token, 'GET', `${cal}/${encodeURIComponent(eventId)}`, null, fetchImpl); } catch (err) { if (err.status !== 404 && err.status !== 410) throw err; }
@@ -193,7 +208,9 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
       existing = await gcal(token, 'PATCH', `${cal}/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=none`, { conferenceData: null }, fetchImpl);
     } catch (err) { if (err.status !== 400 && err.status !== 403) throw err; }
   }
-  const ours = !theirs; // Board's own invite: Board sets its day and time too
+  // Board made the event, so its notes are all Board's; on the organizer's own event (taken from their calendar before
+  // Nov 2 2026), their words stay above Board's
+  const ours = eventId === eventIdFor('board', m.id);
   const have = new Set((existing?.attendees || []).map((a) => normEmail(a.email)));
   const added = guests.filter((e) => !have.has(e) && e !== organizer);
   const attendees = [...(existing?.attendees || []), ...added.map((email) => ({ email }))];
@@ -205,12 +222,13 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   const title = inviteTitle(m);
   // A Teams or Zoom link written as the place: Google Meet is the call now, so the place is the place (or nothing)
   const callAsPlace = !existing?.hangoutLink && CALL_LINK.test(String(existing?.location || '').trim());
+  // The day, time and place are Board's, on the organizer's own event too (an event's own place stays while Board has none)
   const body = {
     attendees,
-    ...(place && (ours || isTbd(existing?.location) || callAsPlace) ? { location: place } : callAsPlace ? { location: '' } : {}),
+    ...(place ? { location: place } : callAsPlace ? { location: '' } : {}),
     ...(existing?.hangoutLink ? {} : { conferenceData: { createRequest: { requestId: `board-${m.id}-${now}`, conferenceSolutionKey: { type: 'hangoutsMeet' } } } }),
     summary: title,
-    ...(ours ? times(m) : {}),
+    ...times(m),
     ...(notes !== (existing?.description || '') ? { description: notes } : {}),
     guestsCanSeeOtherGuests: true,
   };
@@ -232,29 +250,42 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   }
   const invite = {
     eventId: ev.id || eventId, organizer, sentAt: prior?.sentAt || at, updatedAt: at, meet, guests: (ev.attendees || attendees).length,
-    emails: (ev.attendees || attendees).map((a) => normEmail(a.email)), place: ev.location || place, when: whenOf(m), notes: notesKey(m), ...t,
+    emails: (ev.attendees || attendees).map((a) => normEmail(a.email)), place: place || ev.location || '', location: ev.location || '', when: whenOf(m), notes: notesKey(m), ...t,
     replies,
   };
   // Google Meet is the meeting's video call from now on (onto the meeting as it is now: a save made meanwhile stays)
-  // The organizer's own event: its calendar copy has who's on it now too (repliesOf reads it there)
-  return patchMeeting(env.DB, id, (cur) => ({ ...cur, invite, video: meet || cur.video, ...(theirs && cur.calendar?.eventId === invite.eventId ? { calendar: { ...cur.calendar, replies } } : {}) }));
+  return patchMeeting(env.DB, id, (cur) => ({ ...cur, invite, inviteGone: '', video: meet || cur.video }));
+}
+
+/**
+ * A meeting deleted in Board: its invite comes off the calendar, and Google tells everyone on it. Nothing for a
+ * meeting already held (its invite is a record) or never invited. → whether an invite was cancelled
+ */
+export async function cancelInvite(env, m, { fetchImpl = fetch, now = Date.now() } = {}) {
+  if (!m?.invite?.eventId || !m.invite.organizer || m.practice || !m.date || m.date < todayEastern(now)) return false;
+  if (!env.GOOGLE_CALENDAR_KEY) throw Object.assign(new Error('Google Calendar isn’t set up (GOOGLE_CALENDAR_KEY), so its invite can’t come off the calendar'), { status: 503 });
+  const token = await accessToken(env, m.invite.organizer, { fetchImpl, now });
+  try {
+    await gcal(token, 'DELETE', `/calendars/${encodeURIComponent(m.invite.organizer)}/events/${encodeURIComponent(m.invite.eventId)}?sendUpdates=all`, null, fetchImpl);
+  } catch (err) {
+    if (err.status !== 404 && err.status !== 410) throw err;
+  }
+  return true;
 }
 
 const SETTLE_MS = 2 * 60 * 1000;
 const PENDING = 'invite-pending';
-/** What changed since the invite went out: its place, (Board's own invite) its day or time, or the agenda in its notes; '' when nothing */
+/** What changed since the invite went out: its place, its day or time, or its name and notes; '' when nothing (or once it's held) */
 const changeOf = (m) => {
-  if (!m?.invite?.eventId) return '';
+  if (!m?.invite?.eventId || !m.date || m.date < todayEastern()) return '';
   const loud = loudChange(m);
   const notes = notesKey(m) !== m.invite.notes ? notesKey(m) : '';
   return loud || notes ? `${loud}|${notes}` : '';
 };
-/** A change the board is emailed about (the place, the day or time); the agenda alone isn't one */
+/** A change the board is emailed about (the place, the day or time); the name and notes alone aren't one */
 const loudChange = (m) => {
-  // The organizer's own event with its own place: that place is the calendar's, never Board's to send (read better here
-  // isn't a new place)
-  const place = placeOf(m) && placeOf(m) !== m.invite.place && !(m.calendar?.place && !m.calendar.gone) ? placeOf(m) : '';
-  const when = !m.calendar && whenOf(m) !== m.invite.when ? whenOf(m) : '';
+  const place = placeOf(m) && placeOf(m) !== m.invite.place ? placeOf(m) : '';
+  const when = whenOf(m) !== m.invite.when ? whenOf(m) : '';
   return place || when ? `${place}|${when}` : '';
 };
 

@@ -805,19 +805,19 @@ const MAP = { t: 'SOARD', children: [
           } },
       ]},
       { t: 'Meetings', children: [
-        { t: 'Board meetings from the calendar', s: 'off', k: 'schedule',
+        { t: 'Answers to the board meeting invites', s: 'live', k: 'schedule',
           when: 'Every hour on the live hub’s heartbeat, and whenever Peter or Holly opens Board (if the last look is over 10 minutes old).',
-          does: 'Reads the Board area’s admins’ Google calendars for events named like a board meeting (“SOARD Q4 Board Meeting”, “Board Meeting”, or “board” in the name with three or more board members invited), four years back and ahead, and makes each one a meeting in Board with its day, time, place and video link. A past one comes in as a record for its agenda and minutes (from email, below); a moved event moves the meeting; a meeting added by hand on the same day is linked, not doubled. Advisory Board, reveal and demo day events never count.',
+          does: 'Reads each invite Board sent for a meeting ahead, from the organizer’s Google calendar: who is on it and how each board member answered (yes, no or maybe), the only answer SOARD goes by. A day, time or place changed on the invite in Google Calendar goes back to Board’s (Google emails the guests the correction, once for each change). An invite deleted there is marked on its meeting, which stays, and Board offers to send it again. It also looks on Peter’s and Holly’s calendars for board meeting invites Board didn’t send: another one on a meeting’s day shows on that meeting, to be cancelled, and one on a day without a meeting shows on Meetings, with a button to add it.',
           touches: ['Google Calendar', 'D1'], where: 'functions/api/_board-calendar.js (broadcast-hooks.js via _board.js maybeRunBoard, board-admin.js)',
-          info: 'It only reads; the meeting invite (below) is the one thing Board writes to a calendar. New meetings aren’t shared with the board until Peter or Holly shares them. Board’s own invites aren’t brought in again: only the board’s replies come back from them.',
+          info: 'Board meetings are added in Board only (New meeting), and their day, time and place change there: a calendar event never makes or moves a meeting (Peter, Nov 2 2026). The one thing it writes is Board’s own day, time and place back onto Board’s invite.',
           live: (f) => {
             const c = f.board?.calendar;
             if (!c) return null;
-            if (!c.configured) return ATTN('GOOGLE_CALENDAR_KEY is missing, so meetings are added by hand in Board.');
-            if (c.failing) return ATTN(`Couldn’t read ${plural(c.failing, 'calendar')} on the last look. Board → Meetings says why.`, c.checkedAt);
+            if (!c.configured) return ATTN('GOOGLE_CALENDAR_KEY is missing, so Board can’t send invites or read their answers.');
+            if (c.failing) return ATTN(`Couldn’t read ${plural(c.failing, 'invite')} on the last look. Board → Meetings says why.`, c.checkedAt);
             if (!c.checkedAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
             if (stale(c.checkedAt, 3 * HOUR)) return ATTN(`Hasn’t looked since ${stamp(c.checkedAt)}. Check the Heartbeat entry.`, c.checkedAt);
-            return ON(`${plural(c.found, 'board meeting')} ahead on the calendars${f.board.calendarPast ? `, ${f.board.calendarPast} past` : ''}.`, c.checkedAt);
+            return ON(c.invites ? `${plural(c.invites, 'invite')} ahead read.${c.gone ? ` ${plural(c.gone, 'was', 'were')} deleted in Google Calendar.` : ''}` : 'No invite ahead to read.', c.checkedAt);
           } },
         { t: 'Google Drive → past minutes and packets', s: 'live', k: 'schedule',
           when: 'Every minute on the live hub’s heartbeat while there’s a backlog (newest meetings first, about 8 seconds a look), then hourly, and when Board is opened.',

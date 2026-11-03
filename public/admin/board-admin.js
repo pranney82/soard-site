@@ -2,9 +2,9 @@
  * Board (admin)
  * =============
  * Loaded on demand by the admin's Board area (#board), which only its admins
- * see (Settings → Who can open it; the founders until saved). Meetings come
- * from Peter and Holly's calendars, their agendas, minutes and financials from
- * their email. The agenda drafts itself and the minutes, dropped in, fill in
+ * see (Settings → Who can open it; the founders until saved). Meetings are
+ * added here (New meeting), and only here; past ones' agendas, minutes and
+ * financials come from Drive and email. The agenda drafts itself and the minutes, dropped in, fill in
  * the rest; here are the invite and the packet before, presenting it during,
  * and the minutes after (./board-meeting.js). Board members see what's shared on their own page
  * (/admin/board/, ./board/portal.js), signed in with the same emailed code.
@@ -125,7 +125,7 @@ function PracticeMeeting({ ctx }) {
 /** Before a meeting, what's left (the same as the meeting's Getting ready; the agenda and the numbers take care of themselves): { id, label, next, done } */
 function prepOf(m) {
   return [
-    { id: 'invite', label: 'Invite', next: m.calendar?.eventId ? `add everyone and Google Meet to ${firstOf(m.calendar.organizer)}’s invite` : 'send the invite', done: !!m.invite },
+    { id: 'invite', label: 'Invite', next: m.inviteGone ? 'send the invite again (it was deleted in Google Calendar)' : 'send the invite', done: !!m.invite },
     { id: 'agenda', label: 'Agenda', next: '', done: true },
     { id: 'shared', label: 'Board page', next: 'put the meeting on the board page', done: m.shared },
     { id: 'packet', label: 'Email', next: 'email the board the link to the agenda and documents', done: !!m.packetSentAt },
@@ -151,13 +151,38 @@ const whose = (admins = [], me = '', joiner = 'and') => {
   return names.at(-1) === 'your' ? list : `${list}’s`;
 };
 
-/** Where meetings come from: the admins' calendars and email, when they were last read */
+/** Where past meetings' papers come from, and the invites' answers when they couldn't be read */
 function SourcesLine({ data }) {
   const c = data.calendar || {};
-  const many = data.settings.admins.length > 1;
-  if (!data.setup.calendar) return html`<p class="bd-muted bh-sources">Add meetings with New meeting. (Board can take them from the calendar once GOOGLE_CALENDAR_KEY is in Cloudflare.)</p>`;
-  if (c.errors?.length) return html`<div class="notice notice--warn"><div class="notice__body"><strong>Couldn’t read every calendar.</strong> ${c.errors.join(' · ')}</div></div>`;
-  return html`<p class="bd-muted bh-sources">Meetings come from ${whose(data.settings.admins, data.me)} ${many ? 'calendars' : 'calendar'} by themselves (any event named like “Board Meeting”). Past meetings’ minutes and packets come from the Board folder in Google Drive, and anything else for them from ${whose(data.settings.admins, data.me)} email. ${c.checkedAt ? `Calendars last looked at ${ago(c.checkedAt)}.` : 'Looking for the first time.'}</p>`;
+  if (c.errors?.length) return html`<div class="notice notice--warn"><div class="notice__body"><strong>Couldn’t read every invite’s answers.</strong> ${c.errors.join(' · ')}</div></div>`;
+  return html`<p class="bd-muted bh-sources">Past meetings’ minutes and packets come from the Board folder in Google Drive, and anything else for them from ${whose(data.settings.admins, data.me)} email.</p>`;
+}
+
+/**
+ * Board meetings on the admins' calendars that Board doesn't have (functions/api/_board-calendar.js): meetings are added
+ * here and only here (Peter, Nov 2 2026), so each is named, with a button that adds it; its calendar event is then
+ * another invite, which the meeting asks to have cancelled
+ */
+function NotInBoard({ ctx }) {
+  const { data, go, putMeeting, addToast } = ctx;
+  const [busy, setBusy] = useState('');
+  const have = new Set(data.meetings.map((m) => m.date));
+  const strays = (data.calendar?.strays || []).filter((x) => !have.has(x.date));
+  if (!strays.length) return null;
+  const add = async (x) => {
+    setBusy(x.date);
+    const j = await call({ action: 'new-meeting', date: x.date });
+    setBusy('');
+    if (!j.ok) { addToast(j.error, 'error'); return; }
+    putMeeting(j.meeting);
+    go({ meetingId: j.meeting.id });
+  };
+  const on = (e) => (e === data.me ? 'your' : `${firstOf(e)}’s`);
+  return html`<div class="notice notice--warn bh-strays"><div class="notice__body">
+    <strong>${strays.length === 1 ? 'A board meeting on the calendar isn’t in Board.' : `${strays.length} board meetings on the calendar aren’t in Board.`}</strong>${' '}Meetings are added here, and their invites go from here: add ${strays.length === 1 ? 'it' : 'each'}, then delete the calendar event so the board gets one invite.
+    ${strays.map((x) => html`<div class="bd-inline" key=${x.date + x.title} style="margin-top:0.5rem"><span>“${x.title}”, ${longDate(x.date)}, on ${on(x.on)} calendar</span>
+      <button class="btn btn-primary btn-sm" disabled=${!!busy} onClick=${() => add(x)}>${busy === x.date ? 'Adding…' : `Add ${shortDate(x.date)}`}</button></div>`)}
+  </div></div>`;
 }
 
 /** The scopes Board's service account needs on Google Admin's domain-wide delegation */
@@ -251,7 +276,7 @@ function NextCard({ m, ctx }) {
   const no = answers.filter((a) => a === 'Can’t come').length;
   const quiet = board.filter((x) => replies[x.slug] === 'invited').length;
   const off = board.filter((x) => !replies[x.slug]).length;
-  const invited = !!(m.invite?.eventId || (m.calendar && !m.calendar.gone));
+  const invited = !!m.invite?.eventId;
   const here = attendanceCounts(m);
   return html`<div class="card bh-next">
     <div class="bh-next__top">
@@ -303,7 +328,7 @@ function MeetingRow({ m, go }) {
       <a class="bd-row__title" href=${hashFor({ meetingId: m.id })}>${meetingName(m)}</a>
       <div class="bd-row__meta">${[longDate(m.date), m.location, c.boardHere ? `${c.boardHere} of ${c.board} board members there` : '', m.files.length ? plural(m.files.length, 'file') : ''].filter(Boolean).join(' · ')}</div>
     </div>
-    <div class="bd-tags">${past ? minutesTag(m) : null}${sharedTag(m)}${m.calendar?.gone ? html`<span class="tag tag--warn">Off the calendar</span>` : null}${m.notBoard && !m.shared ? html`<span class="tag tag--warn" title="Its calendar event isn’t a board meeting (a coffee, a reminder or another organization’s board), so it came off the board page. Share it to put it back.">Not a board meeting</span>` : null}</div>
+    <div class="bd-tags">${past ? minutesTag(m) : null}${sharedTag(m)}${!past && m.inviteGone && !m.invite ? html`<span class="tag tag--warn">Invite deleted</span>` : null}${m.notBoard && !m.shared ? html`<span class="tag tag--warn" title="Its calendar event isn’t a board meeting (a coffee, a reminder or another organization’s board), so it came off the board page. Share it to put it back.">Not a board meeting</span>` : null}</div>
   </li>`;
 }
 
@@ -331,6 +356,7 @@ function MeetingsTab({ ctx }) {
     if (!j.ok) { addToast(j.error, 'error'); return; }
     putMeeting(j.meeting);
     setAdding(false); setDate('');
+    if (j.existing) addToast(`The ${meetingName(j.meeting)} is already on ${shortDate(j.meeting.date)}: here it is`, 'info');
     go({ meetingId: j.meeting.id });
   };
   const done = async (a) => {
@@ -350,8 +376,9 @@ function MeetingsTab({ ctx }) {
     </span>` : html`<button class=${`btn btn-sm bh-new ${next ? 'btn-ghost' : 'btn-primary'}`} onClick=${() => setAdding(true)}>New meeting</button>`;
   return html`
     <${GoogleSetup} data=${data} />
+    <${NotInBoard} ctx=${ctx} />
     ${next ? html`<${NextCard} m=${next} ctx=${ctx} /><${AgendaPreview} m=${next} ctx=${ctx} />`
-      : html`<div class="card empty"><p class="empty__title">No meeting coming up</p><p class="empty__text">A board meeting on ${whose(data.settings.admins, data.me, 'or')} calendar shows up here by itself. Or add it: its agenda is drafted from the last one, with open action items carried over.</p><div class="empty__actions">${adder}</div></div>`}
+      : html`<div class="card empty"><p class="empty__title">No meeting coming up</p><p class="empty__text">Add the next one. Its agenda is drafted from the last one, with open action items carried over, and its invite goes from here.</p><div class="empty__actions">${adder}</div></div>`}
     ${ahead.length ? html`<div class="card" style="padding:0">
       <div class="sec-head"><h3>Also coming up <span class="count">${ahead.length}</span></h3></div>
       <ul class="bd-row-list">${ahead.map((m) => html`<${MeetingRow} m=${m} go=${go} />`)}</ul>
@@ -442,7 +469,7 @@ function ImportPanel({ ctx, onDone }) {
   };
   const items = parsed ? parsed.sections.reduce((n, s) => n + s.items.length, 0) : 0;
   return html`<div class="bd-import">
-    <p class="bd-muted" style="margin:0 0 0.75rem">For a meeting that isn’t on the calendars or in email: choose its agenda or minutes (PDF or Word), or paste the text. The date, place, who was there (the x’s), each section, its items and the notes under them come across. Check it over before it’s added.</p>
+    <p class="bd-muted" style="margin:0 0 0.75rem">For a past meeting that isn’t in Google Drive or email: choose its agenda or minutes (PDF or Word), or paste the text. The date, place, who was there (the x’s), each section, its items and the notes under them come across. Check it over before it’s added.</p>
     <div class="bd-drop" onDragOver=${(e) => { e.preventDefault(); e.currentTarget.classList.add('is-over'); }} onDragLeave=${(e) => e.currentTarget.classList.remove('is-over')}
       onDrop=${(e) => { e.preventDefault(); e.currentTarget.classList.remove('is-over'); choose(e.dataTransfer.files[0]); }}>
       <label class="btn btn-ghost btn-sm">Choose the file<input type="file" accept="application/pdf,.pdf,.docx" hidden onChange=${(e) => choose(e.target.files[0])} /></label>
@@ -1086,7 +1113,7 @@ function SettingsTab({ ctx }) {
   };
   return html`
     <div class="card">
-      <div class="bd-card-head"><h3>Who can open the Board area</h3><p>The agenda, notes, minutes and files here are for these people only. Other staff don’t see Board in the menu, and its pages refuse them. Meetings come from their calendars, and past agendas from their email.</p></div>
+      <div class="bd-card-head"><h3>Who can open the Board area</h3><p>The agenda, notes, minutes and files here are for these people only. Other staff don’t see Board in the menu, and its pages refuse them. Past agendas come from their email.</p></div>
       <ul class="bm-people">${s.admins.map((e) => html`<li class="bm-person" key=${e} style="min-height:0"><span>${e}${e === data.me ? html` <span class="tag">You</span>` : null}</span>
         ${e === data.me ? null : html`<button class="btn btn-ghost btn-sm btn-row-danger" onClick=${() => setS({ ...s, admins: s.admins.filter((x) => x !== e) })}>Remove</button>`}</li>`)}</ul>
       <div class="bd-inline" style="margin-top:0.75rem">
@@ -1155,7 +1182,7 @@ function GoogleStatus({ data }) {
   return html`<div class="card">
     <div class="bd-card-head"><h3>Google</h3><p>What Board does through SOARD’s Google account, as the last looks found it.${check?.checkedAt ? ` Invites checked ${ago(check.checkedAt)}.` : ''}</p></div>
     <ul class="bm-tasks">
-      ${row(c.ok && !c.errors?.length ? true : c.errors?.length ? false : null, 'Meetings from the calendars', c.errors?.length ? c.errors.join(' · ') : c.checkedAt ? `Read ${ago(c.checkedAt)}.` : 'Not read yet.')}
+      ${row(c.ok && !c.errors?.length ? true : c.errors?.length ? false : null, 'Answers to the invites', c.errors?.length ? c.errors.join(' · ') : c.checkedAt ? `Read ${ago(c.checkedAt)}.` : 'Not read yet.')}
       ${row(need.drive ? false : data.drive?.ok ? true : data.drive?.errors?.length ? false : null, 'Past minutes and packets from Google Drive', need.drive ? 'Needs the Drive permission (Meetings shows how).' : data.drive?.errors?.length ? data.drive.errors.join(' · ') : data.drive?.checkedAt ? `${plural(data.drive.folders || 0, 'meeting')} found, ${plural(data.drive.files || 0, 'file')} brought in${data.drive.backlog ? `, ${data.drive.backlog} still to read` : ''}. Read ${ago(data.drive.checkedAt)}.` : 'Not read yet.')}
       ${row(need.drive ? false : data.drive?.docs?.count ? true : data.drive?.docs ? false : null, 'Bylaws and SOARD’s papers from Google Drive', need.drive ? 'Needs the Drive permission (Meetings shows how).' : data.drive?.docs ? `${plural(data.drive.docs.count || 0, 'document')} on Documents${data.drive.docs.manual ? `, from “${data.drive.docs.manual}”` : ''}${data.drive.docs.missing?.length ? `. Not found in Drive: ${data.drive.docs.missing.join(', ')}` : ''}. Read ${ago(data.drive.docs.checkedAt)}.` : 'Read once the past meetings are in.')}
       ${row(need.mail ? false : mail.ok ? true : null, 'Agendas and minutes from email', need.mail ? 'Needs the Gmail permission (Meetings shows how).' : mail.checkedAt ? `Read ${ago(mail.checkedAt)}.` : 'Not read yet.')}

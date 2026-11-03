@@ -11,7 +11,7 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from './vendor.js';
-import { html, call, ago, Face, firstOf } from './board-ui.js';
+import { html, call, ago, Face } from './board-ui.js';
 import { meetingName, todayEastern, longDate, plural, fileTitle, answerOf, repliesOf, inviteOut, docsOf, itemFiles, looseFiles } from './board-shared.js';
 import { welcomeHad } from './board-shared.js';
 
@@ -210,17 +210,12 @@ export function docsLine(reads, printed = false) {
 }
 
 /** Whether they're coming, as the meeting's calendar invite says (the only answer SOARD goes by) */
-function Coming({ m, slug, admins = [] }) {
+function Coming({ m, slug }) {
   const reply = repliesOf(m)[slug];
   if (!reply && !inviteOut(m)) return html`<span class="ba-muted">No invite yet</span>`;
-  if (!reply) return html`<span class="tag tag--warn" title=${addsHint(m, admins)}>Not on the invite</span>`;
+  // Board sends every invite, so the meeting's own button adds them
+  if (!reply) return html`<span class="tag tag--warn" title="Send the invite on the meeting adds them">Not on the invite</span>`;
   return answerOf('', reply) || html`<span class="ba-muted">No answer yet</span>`;
-}
-/** An invite has gone out: the organizer's own event, or Board's */
-/** Who can add someone to the invite: Send the invite, unless it's the event of someone Board can't change */
-function addsHint(m, admins) {
-  const owner = m?.calendar && !m.calendar.gone ? m.calendar.organizer || m.calendar.from : '';
-  return owner && !admins.includes(owner) ? `Ask ${firstOf(owner)} to add them to the invite` : 'Send the invite on the meeting adds them';
 }
 
 // Members' last summary, kept while the admin is open: shown at once the next time Members opens, while it's asked again
@@ -292,7 +287,7 @@ function MemberSheet({ p, face, a, loaded = true, began = null, data, next, sent
       ${next ? html`<section class="ba-sec">
         <h3 class="ba-sec__h">For the ${meetingName(next)}, ${longDate(next.date)}</h3>
         ${printedAt ? html`<p class="ba-coming">${since ? `Printed it all ${ago(printedAt)}, before ${plural(since, 'more document')} came.` : `Printed it all (the agenda and documents) ${ago(printedAt)}.`}</p>` : null}
-        <p class="ba-coming">On the calendar invite: <${Coming} m=${next} slug=${p.slug} admins=${data.settings?.admins || []} /></p>
+        <p class="ba-coming">On the calendar invite: <${Coming} m=${next} slug=${p.slug} /></p>
         ${loaded && reads.length ? html`<ul class="ba-reads">${reads.map(({ d, secs }) => html`<li key=${d.file.id} class=${secs === null ? 'is-unread' : 'is-read'}>
           <span class="ba-reads__mark" aria-hidden="true">${secs === null || !next.shared ? '' : html`<${Icon} name="check" />`}</span>
           <span class="ba-reads__name">${d.title}</span>
@@ -385,7 +380,7 @@ export function BoardActivity({ data, next, signDocs, ready, working, onWelcome 
               ${ready && p.email ? html`<button class="btn btn-ghost btn-sm" disabled=${!!working} aria-label=${`${sent[p.slug] ? 'Send the sign-in email again' : 'Send the sign-in email'} to ${p.name}`} onClick=${() => onWelcome(p.slug)}>${working === p.slug ? 'Sending…' : sent[p.slug] ? 'Send it again' : 'Send the sign-in email'}</button>` : null}</span>`}</td>
           <td data-label="Last on the board page">${last ? html`<span class="ba-line" title=${fullTime(last)}>${ago(last)}</span>${a?.device ? html`<span class="bd-row__meta">${a.device}</span>` : null}` : html`<span class="ba-line ba-muted">Never</span>`}</td>
           <td data-label="The last 5 weeks">${loaded ? html`<${DayStrip} days=${a?.days || {}} meetingDays=${meetingDays} today=${today} />${a?.visits35 ? html`<span class="bd-row__meta">${plural(a.visits35, 'visit')} in 5 weeks${(a.secs35 || 0) >= 60 ? `, ${span(a.secs35)} in all` : ''}</span>` : null}` : null}</td>
-          ${next ? html`<td data-label=${meetingName(next)}><span class="ba-line"><${Coming} m=${next} slug=${p.slug} admins=${data.settings?.admins || []} /></span>${nextFiles && !next.shared ? html`<span class="bd-row__meta">Not shared with the board yet</span>` : nextFiles && loaded ? html`<span class="bd-row__meta">${docsLine(reads, cameAfter(reads, a?.printedAll?.[next.id]) === 0)}</span>` : null}</td>` : null}
+          ${next ? html`<td data-label=${meetingName(next)}><span class="ba-line"><${Coming} m=${next} slug=${p.slug} /></span>${nextFiles && !next.shared ? html`<span class="bd-row__meta">Not shared with the board yet</span>` : nextFiles && loaded ? html`<span class="bd-row__meta">${docsLine(reads, cameAfter(reads, a?.printedAll?.[next.id]) === 0)}</span>` : null}</td>` : null}
           ${signDocs.length ? html`<td data-label="Signed this year"><span class=${`tag ${signed === signDocs.length ? 'tag--success' : ''}`}>${signed} of ${signDocs.length}</span></td>` : null}
           <td class="ba-go" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M8 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></td>
         </tr>`;

@@ -1,6 +1,6 @@
 /**
- * Board mail: SOARD's past board meetings brought in from the calendars and
- * Peter and Holly's email, each document sorted (Workers AI, rules when it
+ * Board mail: SOARD's past board meetings' papers from Peter and Holly's
+ * email (a meeting ahead is added in Board only), each document sorted (Workers AI, rules when it
  * can't) and filed on its meeting, what the board was sent shared with the
  * board, and version 1's mis-filed files taken off once. Made-up people and
  * subjects only (the repo is public).
@@ -11,7 +11,6 @@ import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import { readBoardMail, maybeReadBoardMail, mailLog, mailStatus, classifyFile, attendanceIn, leftOut, ruleKind, otherBoard, MAIL_BY } from '../functions/api/_board-mail.js';
-import { syncBoardCalendar } from '../functions/api/_board-calendar.js';
 import { listMeetings, getMeeting, saveMeeting, putFile, createMeeting } from '../functions/api/_board.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 import { cleanMeeting } from '../public/admin/board-shared.js';
@@ -107,16 +106,15 @@ beforeEach(async () => {
 });
 afterEach(() => { globalThis.fetch = realFetch; });
 
-const ev = (id, summary, date, extra = {}) => ({ id, iCalUID: `${id}@google.com`, summary, status: 'confirmed', start: { dateTime: `${date}T13:00:00Z` }, end: { dateTime: `${date}T15:00:00Z` }, ...extra });
 const AGENDA = (date) => `MEETING Example Board – Agenda DATE ${date}\nLOCATION Example Hall TIME 8:00a - 10:00a\n1. CALL TO ORDER\n1. Roll Call\n2. COMMITTEE REPORTS\n1. Financial (Sam)\n3. NEW BUSINESS\n1. Spring gala`;
 const MINUTES = (when) => `Example Board of Directors – Meeting Minutes\n${when}\nPresent: Alex Rivera, Sam Ortiz, Jane Doe\nAbsent – Kim Park\nThe meeting was called to order at 8:02 a.m. and a motion to approve the agenda was seconded.\nThe meeting adjourned at 9:45 a.m.`;
 const by = (meetings, date) => meetings.find((m) => m.date === date);
+/** A past meeting's record, as older code brought them in from the calendars */
+const record = (date, extra = {}) => saveMeeting(env.DB, cleanMeeting({ date, start: '08:00', end: '10:00', ...extra }), { by: 'the calendar' });
 
-test('past meetings come from the calendars as records, with their agendas, minutes and financials from email', async () => {
+test('past meetings’ records get their agendas, minutes and financials from email', async () => {
   const q1 = day(-260); const q2 = day(-170); const q3 = day(-80);
-  g.calendars[FOUNDER] = [ev('p1', 'Example Q1 Board Meeting', q1), ev('p2', 'Example Q2 Board Meeting', q2), ev('p3', 'Example Q3 Board Meeting', q3, { location: 'Example Hall, 1 Example St, Roswell, GA' }), ev('adv', 'Advisory Board meeting', q3)];
-  const cal = await syncBoardCalendar(env);
-  assert.deepEqual([cal.past, cal.found, cal.added], [3, 0, 3]);
+  for (const [date, extra] of [[q1], [q2], [q3, { location: 'Example Hall', address: '1 Example St, Roswell, GA' }]]) await record(date, extra);
   // The Q3 packet: its agenda and financials (the board's), the last meeting's minutes, and things that aren't board material
   g.texts['Q3 Agenda.pdf'] = AGENDA(`${q3.slice(5, 7)}/${q3.slice(8)}/${q3.slice(0, 4)}`);
   g.texts['Minutes.pdf'] = MINUTES(new Date(`${q2}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }));
@@ -177,9 +175,8 @@ test('dated material with no meeting near it brings the meeting in; undated minu
   assert.deepEqual(by(all, '2025-02-13').files.map((f) => f.kind).sort(), ['agenda', 'minutes']);
   assert.equal(all.length, 1, 'an undated packet never makes a meeting');
   assert.equal((await mailLog(env.DB, 12, { outcome: 'waiting' }))[0].subject, 'For the next board meeting');
-  // The calendar adds the meeting after it: the packet comes back and lands
-  g.calendars[FOUNDER] = [ev('c2', 'Example Q2 Board Meeting', '2025-04-24')];
-  await syncBoardCalendar(env);
+  // The meeting after it is added: the packet comes back and lands
+  await record('2025-04-24');
   await readBoardMail(env);
   assert.deepEqual(by(await listMeetings(env.DB), '2025-04-24').files.map((f) => [f.name, f.kind]), [['Packet slides.pdf', 'packet']]);
   assert.equal((await mailLog(env.DB, 12, { outcome: 'waiting' })).length, 0);
@@ -188,8 +185,7 @@ test('dated material with no meeting near it brings the meeting in; undated minu
 test('another organization’s board is never SOARD’s: its mail is left out whole, its files one by one, even with a SOARD meeting days away', async () => {
   for (const t of ['ABC BOD Packet & July 15 Meeting', 'RE: ABC BOD Meeting Postponed', 'Approval Needed – New ABC Board Members', 'Example Inc Board Meeting 10/19', 'Example, Inc. Full Board Meeting', 'Example School Board meeting', 'July 18 2024 ABC BOD Annual Mtg Packet.pdf']) assert.ok(otherBoard(t), t);
   for (const t of ['Q1 SOARD BOD Agenda', '1st Qtr SOARD Board Meeting <Reschedule>', 'RE: Q4 SOARD Board Meeting', 'FW: Q3 Board Meeting Information', 'Q1 - Upcoming Quarterly Board Meeting & Board Expectations', 'NEW BOARD MEMBERS', 'Minutes - 2.12.26 board meeting', 'SOARD’s Board Expectations', 'Advisory Board Expectations.pdf', 'Board-Level-10.pdf', 'December 1 BOD Packet.pdf', 'SOARD_Board_Member_Process.docx']) assert.equal(otherBoard(t), '', t);
-  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', '2025-07-24')];
-  await syncBoardCalendar(env);
+  await record('2025-07-24');
   g.answers = { 'Finance deck.pdf': { kind: 'financials', meetingDate: '', reason: 'financials' }, 'Agenda.pdf': { kind: 'agenda', meetingDate: '2025-07-15', reason: 'agenda' }, 'ABC BOD Packet July 2025.pdf': { kind: 'packet', meetingDate: '', reason: 'packet' }, 'Q3 financials.pdf': { kind: 'financials', meetingDate: '', reason: 'financials' } };
   g.inboxes[FOUNDER] = [
     msg('o1', 'RE: ABC BOD Meeting Tuesday, July 15 - Financial deck', '2025-07-15T14:00:00Z', [{ name: 'Finance deck.pdf' }, { name: 'Agenda.pdf' }]),
@@ -207,8 +203,7 @@ test('another organization’s board is never SOARD’s: its mail is left out wh
 });
 
 test('a date a day off finds its meeting (within ten days), and never makes a second one', async () => {
-  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', '2025-07-24')];
-  await syncBoardCalendar(env);
+  await record('2025-07-24');
   g.texts['Minutes 2025.07.23.pdf'] = MINUTES('July 23, 2025');
   g.answers['Minutes 2025.07.23.pdf'] = { kind: 'minutes', meetingDate: '2025-07-23', reason: 'minutes' };
   g.inboxes[FOUNDER] = [msg('b1', 'Example board minutes', '2025-07-28T14:00:00Z', [{ name: 'Minutes 2025.07.23.pdf' }])];
@@ -220,8 +215,7 @@ test('a date a day off finds its meeting (within ten days), and never makes a se
 
 test('who sees it: an email to a few people is for Peter and Holly only; to the board or its group, for the board', async () => {
   const past = day(-30);
-  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', past)];
-  await syncBoardCalendar(env);
+  await record(past);
   g.answers = { 'Financials draft.pdf': { kind: 'financials', meetingDate: past, reason: 'board financials' }, 'Agenda final.pdf': { kind: 'agenda', meetingDate: past, reason: 'agenda' } };
   g.inboxes[FOUNDER] = [msg('w1', 'Financials for the board meeting', `${day(-32)}T12:00:00Z`, [{ name: 'Financials draft.pdf' }], { to: 'jane@soardcharity.com, sam.board@example.org' })];
   await readBoardMail(env);
@@ -241,12 +235,17 @@ test('who sees it: an email to a few people is for Peter and Holly only; to the 
   await readBoardMail(env);
   m = by(await listMeetings(env.DB), past);
   assert.deepEqual(m.files.filter((f) => /minutes/i.test(f.name)).map((f) => [f.name, f.staffOnly]).sort(), [['Group minutes.pdf', false], ['Newsletter minutes.pdf', true]]);
-  // A meeting a person has worked on (or one ahead) is theirs to share
+  // A meeting ahead: an agenda dated for it waits until it's added in Board (never brings it in), then lands; it's a
+  // person's to share
   const ahead = day(20);
-  g.calendars[FOUNDER].push(ev('c2', 'SOARD Board Meeting', ahead));
-  await syncBoardCalendar(env);
   g.answers['Ahead agenda.pdf'] = { kind: 'agenda', meetingDate: ahead, reason: 'agenda' };
+  g.texts['Ahead agenda.pdf'] = AGENDA(`${ahead.slice(5, 7)}/${ahead.slice(8)}/${ahead.slice(0, 4)}`);
   g.inboxes[FOUNDER].push(msg('w3', 'Agenda', `${day(-1)}T12:00:00Z`, [{ name: 'Ahead agenda.pdf' }]));
+  await readBoardMail(env);
+  assert.equal(by(await listMeetings(env.DB), ahead), undefined, 'a meeting ahead is added in Board only');
+  assert.equal((await mailLog(env.DB, 12, { outcome: 'waiting' }))[0]?.subject, 'Agenda');
+  await new Promise((res) => setTimeout(res, 5));
+  await createMeeting(env, { date: ahead, by: FOUNDER });
   await readBoardMail(env);
   const next = by(await listMeetings(env.DB), ahead);
   assert.deepEqual([next.files.length, next.files[0].staffOnly, next.shared], [1, false, false]);
@@ -301,8 +300,7 @@ test('who was there, from minutes written every which way', () => {
 
 test('a backlog is read newest first, a little each look and every minute, until it’s done; then hourly', async () => {
   g.pageSize = 2;
-  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', '2025-05-01')];
-  await syncBoardCalendar(env);
+  await record('2025-05-01');
   for (let i = 0; i < 5; i++) {
     g.answers[`Agenda ${i}.pdf`] = { kind: 'agenda', meetingDate: '2025-05-01', reason: 'agenda' };
     g.inboxes[FOUNDER].push(msg(`k${i}`, `Board agenda draft ${i}`, `2025-04-2${i}T12:00:00Z`, [{ name: `Agenda ${i}.pdf` }]));
@@ -320,8 +318,7 @@ test('a backlog is read newest first, a little each look and every minute, until
 
 test('an email a look was cut off in the middle of is sorted by the rules next time, so it always finishes', async () => {
   const past = day(-15);
-  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', past)];
-  await syncBoardCalendar(env);
+  await record(past);
   g.inboxes[FOUNDER] = [msg('slow', 'Board agenda', `${day(-17)}T12:00:00Z`, [{ name: `Board Agenda ${past}.pdf` }])];
   await readBoardMail(env, { budgetMs: -1 }); // reads the state, makes the table
   await env.DB.prepare('DELETE FROM board_mail').run();
@@ -356,8 +353,8 @@ test('version 1’s mis-filed copies come off once, and everything is read again
 
 test('the same email in both inboxes is read once, and Gmail errors are reported without losing the email', async () => {
   const past = day(-20);
-  g.calendars[FOUNDER] = [ev('c1', 'SOARD Board Meeting', past)];
-  await syncBoardCalendar(env);
+  await record(past);
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS board_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)');
   await env.DB.prepare("INSERT OR REPLACE INTO board_state (key, data) VALUES ('settings', ?)").bind(JSON.stringify({ admins: [FOUNDER, 'pat@soardcharity.com'] })).run();
   g.answers['Agenda.pdf'] = { kind: 'agenda', meetingDate: past, reason: 'agenda' };
   const one = msg('s1', 'Board agenda', `${day(-22)}T12:00:00Z`, [{ name: 'Agenda.pdf' }]);
