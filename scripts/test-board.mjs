@@ -1504,7 +1504,7 @@ try {
   ok(roll && roll.faces === 3 && /3\s*on the board/.test(roll.count), `the roll call shows the board’s faces, everyone on the meeting’s list (${JSON.stringify(roll)})`);
   ok(await scr.waitForFunction(() => /Financial.*Balance sheet financials.*Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), '→ steps the screen through the items to the Financial item’s statement, page 1 of 2');
   ok(await scr.waitForFunction(() => document.querySelector('.bs-page__sheet canvas')?.width > 0, { timeout: 8000 }).then(() => true, () => false), 'the page is drawn, as big as the screen allows');
-  ok(await scr.evaluate(() => /Sam Ortiz has the floor/.test(document.querySelector('.bs-floor')?.textContent || '')), 'with who presents it, along the top');
+  ok(await scr.evaluate(() => /Sam Ortiz has the floor/.test(document.querySelector('.bs-floor')?.innerText || '')), 'with who presents it, along the top');
   await shot(scr, '21-screen-document');
   await scr.keyboard.press('PageDown');
   ok(await scr.waitForFunction(() => /Page 2 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'a clicker’s Page Down: page 2');
@@ -1512,10 +1512,10 @@ try {
   ok(await scr.waitForFunction(() => /Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'Page Up: back to page 1');
   await scr.keyboard.press('ArrowLeft');
   // The money fills its own slide, so the treasurer's report is a slide of its own after it (./board-shared.js deckOf)
-  const back = await scr.waitForSelector('.bs.bs--report', { timeout: 3000 }).then(() => scr.evaluate(() => ({ title: document.querySelector('.bs-item__title')?.textContent || '', who: document.querySelector('.bs-top > .bs-floor')?.textContent || '', report: !!document.querySelector('.bs-stage .bs-report'), foot: document.querySelector('.bs-foot__what')?.textContent || '' })), () => null);
+  const back = await scr.waitForSelector('.bs.bs--report', { timeout: 3000 }).then(() => scr.evaluate(() => ({ title: document.querySelector('.bs-item__title')?.textContent || '', who: document.querySelector('.bs-top > .bs-floor')?.innerText || '', report: !!document.querySelector('.bs-stage .bs-report'), foot: document.querySelector('.bs-foot__what')?.textContent || '' })), () => null);
   ok(back && /Financial/.test(back.title) && /Sam Ortiz/.test(back.who) && back.report && /Financial\s*·\s*Report/.test(back.foot), `← the treasurer’s report, a slide of its own after the money (${JSON.stringify(back)})`);
   await scr.keyboard.press('ArrowLeft');
-  ok(await scr.waitForSelector('.bs--item .bs-item', { timeout: 3000 }).then(() => true, () => false) && await scr.evaluate(() => /Financial/.test(document.querySelector('.bs-item__title')?.textContent || '') && /Sam Ortiz has the floor/.test(document.querySelector('.bs-top > .bs-floor')?.textContent || '') && !document.querySelector('.bs-stage .bs-report')), '← back to the item, who presents it along the top (its report on the next slide, not here too)');
+  ok(await scr.waitForSelector('.bs--item .bs-item', { timeout: 3000 }).then(() => true, () => false) && await scr.evaluate(() => /Financial/.test(document.querySelector('.bs-item__title')?.textContent || '') && /Sam Ortiz has the floor/.test(document.querySelector('.bs-top > .bs-floor')?.innerText || '') && !document.querySelector('.bs-stage .bs-report')), '← back to the item, who presents it along the top (its report on the next slide, not here too)');
   ok(await scr.waitForFunction(() => [...document.querySelectorAll('.bs-shelf > li')].some((li) => /Balance sheet financials/.test(li.textContent) && !!li.querySelector('.bs-shelf__cover > *')), { timeout: 6000 }).then(() => true, () => false), 'its documents coming up, each by its first page');
   await shot(scr, '22-screen-item');
   // The makeovers item on the screen: the stages as one track toward the reveal, every family's card in view
@@ -1558,7 +1558,7 @@ try {
       await card.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`section:${long.sections[si].id}`)}#/meetings/${long.id}/screen`, { waitUntil: 'networkidle0' });
       await card.waitForSelector('.bs-chapter', { timeout: 8000 }).catch(() => {});
       await sleep(500);
-      return card.evaluate(() => { const st = document.querySelector('.bs-stage').getBoundingClientRect(); const c = document.querySelector('.bs-chapter'); const r = c.getBoundingClientRect(); const labs = [...c.querySelectorAll('.bs-chapter__t')].map((t) => Math.round(t.getBoundingClientRect().left)); return { rows: c.querySelectorAll('.bs-chapter__items li').length, inside: r.top >= st.top - 1 && r.bottom <= st.bottom + 1, by: document.querySelector('.bs-top > .bs-floor')?.textContent || '', perRow: c.querySelectorAll('.bs-chapter__who').length, lined: new Set(labs).size === (c.querySelector('.bs-chapter__items.is-cols') ? 2 : 1) }; });
+      return card.evaluate(() => { const st = document.querySelector('.bs-stage').getBoundingClientRect(); const c = document.querySelector('.bs-chapter'); const r = c.getBoundingClientRect(); const labs = [...c.querySelectorAll('.bs-chapter__t')].map((t) => Math.round(t.getBoundingClientRect().left)); return { rows: c.querySelectorAll('.bs-chapter__items li').length, inside: r.top >= st.top - 1 && r.bottom <= st.bottom + 1, by: document.querySelector('.bs-top > .bs-floor')?.innerText || '', perRow: c.querySelectorAll('.bs-chapter__who').length, lined: new Set(labs).size === (c.querySelector('.bs-chapter__items.is-cols') ? 2 : 1) }; });
     };
     const one = await cardOf(1);
     ok(one.rows === 11 && one.inside && /Jane Doe/.test(one.by) && one.perRow === 0 && one.lined, `a part of 11 items by one presenter: named once, along the top as the floor's, its titles in line (two columns past seven), all of it above the rail (${JSON.stringify(one)})`);
@@ -1633,10 +1633,13 @@ try {
     await member.close();
     await DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(pts.id).run();
   }
-  // Many presenting one item: the top bar says one by name, two by first names, three and more the first and how many
-  // more ("Alex & 4 more", every name in its title), its words never cut on any screen (a phone: one face, two lines)
+  // Many presenting one item, the meeting's clock running and "Not on the board page yet" beside it (the top bar at its
+  // fullest): the floor says one by name, two by first names, three and more the first and how many more ("Alex & 4
+  // more", every name in its title), in the longest wording that fits (screen.js fitFloor), never cut, no word broken
+  // over two lines, clear of the logo and the clock. A phone gives it a row of its own, there on every slide, so the
+  // stage keeps its place; and the cover's faces fit a phone
   {
-    const many = await saveMeeting(DB, cleanMeeting({ date: day(12), start: '08:00', end: '09:00', shared: false, sections: [
+    const many = await saveMeeting(DB, cleanMeeting({ date: day(0), start: '08:00', end: '09:00', shared: false, sections: [
       { title: 'Committee reports', minutes: 20, items: [
         { title: 'Three committees', who: ['jane-doe', 'pat-lee', 'alex-rivera'], report: '- Governance met twice\n- Finance closed the year' },
         { title: 'Every committee at once', presenter: 'Alex Rivera, Sam Ortiz, Kim Park, Tom Reedington & Nia Fordham', report: '- One thing\n- Another thing' },
@@ -1647,17 +1650,38 @@ try {
     const want = [/^Jane & 2 more( have the floor)?$/, /^Alex & 4 more( have the floor)?$/, /^Christopher & Alexandra( have the floor)?$/];
     const all = [/Alex Rivera/, /Nia Fordham/, /Alexandra Whitfield/];
     const seen = [];
-    for (const [w, h] of [[1920, 1080], [1280, 720], [1024, 768], [390, 844], [360, 740]]) {
+    for (const [w, h] of [[1920, 1080], [1280, 720], [1024, 768], [768, 1024], [600, 960], [390, 844], [360, 740], [320, 568]]) {
       await look.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: w < 600, hasTouch: w < 600 });
+      await look.goto(`${SITE}/admin/board/?present&at=cover#/meetings/${many.id}/screen`, { waitUntil: 'networkidle0' });
+      await look.waitForSelector('.bs-cover__faces', { timeout: 8000 }).catch(() => {});
+      await sleep(300);
+      const cover = await look.evaluate(() => { const st = document.querySelector('.bs-stage')?.getBoundingClientRect(); const fc = document.querySelector('.bs-cover__faces'); return { top: Math.round(st?.top ?? -1), fits: !!fc && fc.scrollWidth <= fc.clientWidth + 1 && fc.getBoundingClientRect().right <= st.right + 1 }; });
+      if (!cover.fits) seen.push(`${w}×${h} the cover's faces run off the screen`);
       for (const [k, it] of many.sections[0].items.entries()) {
         await look.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(it.id)}#/meetings/${many.id}/screen`, { waitUntil: 'networkidle0' });
         await look.waitForSelector('.bs-top > .bs-floor', { timeout: 8000 }).catch(() => {});
         await sleep(300);
-        const f = await look.evaluate(() => { const c = document.querySelector('.bs-top > .bs-floor'); const t = c?.querySelector(':scope > span:last-child'); return c ? { words: t.innerText.replace(/\s+/g, ' ').trim(), all: t.title, cut: t.scrollWidth > t.clientWidth + 1 || t.scrollHeight > t.clientHeight + 1 || c.scrollWidth > c.clientWidth + 1 } : null; });
-        if (!(f && want[k].test(f.words) && all[k].test(f.all) && !f.cut)) seen.push(`${w}×${h} ${it.title}: ${JSON.stringify(f)}`);
+        const f = await look.evaluate(() => {
+          const c = document.querySelector('.bs-top > .bs-floor');
+          if (!c) return null;
+          const t = c.querySelector(':scope > span:last-child');
+          const over = () => t.scrollWidth > t.clientWidth + 1 || c.scrollWidth > c.clientWidth + 1;
+          const split = [];
+          const walk = document.createTreeWalker(t, NodeFilter.SHOW_TEXT);
+          for (let n; (n = walk.nextNode());) for (const m of n.data.matchAll(/\S+/g)) { const r = document.createRange(); r.setStart(n, m.index); r.setEnd(n, m.index + m[0].length); if (new Set([...r.getClientRects()].filter((x) => x.width).map((x) => Math.round(x.top))).size > 1) split.push(m[0]); }
+          const box = c.getBoundingClientRect();
+          const clear = ['.bs-brand', '.bs-top__right'].every((s) => { const o = document.querySelector(s).getBoundingClientRect(); return box.right <= o.left + 1 || box.left >= o.right - 1 || box.bottom <= o.top + 1 || box.top >= o.bottom - 1; });
+          const fit = Number(c.dataset.fit || 0);
+          const cut = over();
+          // The wording before this one didn't fit: it never steps down further than it has to
+          let needed = true;
+          if (fit > 0) { c.dataset.fit = String(fit - 1); needed = over(); c.dataset.fit = String(fit); }
+          return { words: t.innerText.replace(/\s+/g, ' ').trim(), all: t.title, fit, cut, needed, split, clear, clock: !!document.querySelector('.bs-top .bs-timer'), stage: Math.round(document.querySelector('.bs-stage').getBoundingClientRect().top) };
+        });
+        if (!(f && f.clock && want[k].test(f.words) && all[k].test(f.all) && !f.cut && f.needed && !f.split.length && f.clear && f.stage === cover.top)) seen.push(`${w}×${h} ${it.title}: ${JSON.stringify({ ...f, coverTop: cover.top })}`);
       }
     }
-    ok(!seen.length, `many presenting: the top bar says “Jane & 2 more”, “Alex & 4 more”, “Christopher & Alexandra”, never cut, on five screens${seen.length ? ` (${seen.join('; ')})` : ''}`);
+    ok(!seen.length, `many presenting, the clock running: the top bar says “Jane & 2 more”, “Alex & 4 more”, “Christopher & Alexandra”, never cut or broken mid-word, clear of the clock, the stage in its place, on eight screens${seen.length ? ` (${seen.join('; ')})` : ''}`);
     await look.close();
     await DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(many.id).run();
   }

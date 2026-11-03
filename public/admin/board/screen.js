@@ -71,6 +71,28 @@ const nowClock = () => new Date().toLocaleTimeString('en-US', { hour: 'numeric',
 const firstName = (name) => String(name || '').trim().split(/\s+/)[0] || '';
 /** Who presents, in words that stay short: "Alex Morgan", "Alex & Sam", "Alex & 2 more" */
 const whoWords = (ws) => (ws.length === 1 ? ws[0].name : ws.length === 2 ? namesText(ws.map((p) => firstName(p.name))) : `${firstName(ws[0].name)} & ${ws.length - 1} more`);
+/** Shorter still, for a top bar with little room: "Alex", "Christopher & 1 more" (never longer than whoWords) */
+const whoShort = (ws) => {
+  const s = ws.length === 1 ? firstName(ws[0].name) : `${firstName(ws[0].name)} & ${ws.length - 1} more`;
+  return s.length < whoWords(ws).length ? s : whoWords(ws);
+};
+/**
+ * Who has the floor, along the top, in the longest of its wordings that fits beside the clock: with "has the floor",
+ * the names alone, first names, then one face (data-fit, portal.css). Stepped as it's drawn (its ref, every render) and
+ * as the window changes, so a name is never cut or broken mid-word (a phone with the clock running had room for three
+ * letters); every name is in its title
+ */
+const floorWatch = typeof ResizeObserver === 'function' ? new ResizeObserver((es) => es.forEach((e) => fitFloor(e.target.querySelector(':scope > .bs-floor')))) : null;
+function fitFloor(el) {
+  if (!el?.isConnected) return;
+  floorWatch?.observe(el.parentElement);
+  const t = el.lastElementChild;
+  for (let n = 0; n <= 3; n += 1) {
+    el.dataset.fit = String(n);
+    if (t.scrollWidth <= t.clientWidth + 1 && el.scrollWidth <= el.clientWidth + 1) return;
+  }
+}
+document.fonts?.ready.then(() => document.querySelectorAll('.bs-top > .bs-floor').forEach(fitFloor));
 /** A part's name: its title, else its one item's, else "Part 3" (never "Agenda") */
 const partName = (s, si) => s?.title || (s?.items?.length === 1 ? s.items[0].title || LIVE_TITLES[s.items[0].live] || '' : '') || `Part ${si + 1}`;
 
@@ -1259,8 +1281,8 @@ export function Screen({ id, data, d, onBack = null }) {
 
   const top = html`<header class="bs-top">
     <span class="bs-brand">${MIRROR ? null : html`<a class="bs-back" href=${`#/meetings/${encodeURIComponent(id)}`} onClick=${(e) => { if (onBack) { e.preventDefault(); onBack(`#/meetings/${encodeURIComponent(id)}`); } }} aria-label="Back to the meeting" title="Back to the meeting">${BACK}</a>`}<img src=${LOGO} alt="" width="40" height="40" /><span><strong title=${meetingName(meeting)}>${meetingName(meeting)}</strong><small>${[isDate(meeting.date) ? longDate(meeting.date) : '', !OWN && started && !ended && (v.practice || meeting.date === todayEastern()) ? 'Live' : ''].filter(Boolean).join(' · ')}</small></span></span>
-    ${(onItem || stop.kind === 'section') && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span title=${namesText(floor.map((p) => p.name))}><strong>${whoWords(floor)}</strong><span class="bs-floor__has"> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span></span>` : null}
-    <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? `Time’s up · ${clockText(timer.left)} over` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${PRESENT && unshared ? html`<span class="bs-chip" title="Board members can’t see this meeting yet. Share it in Board when it’s ready.">Not on the board page yet</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
+    ${(onItem || stop.kind === 'section') && floor.length ? html`<span class=${`bs-floor ${given ? 'is-given' : ''}`} ref=${(el) => fitFloor(el)}>${floor.map((p) => html`<${Face} p=${p} size=${34} key=${p.slug || p.name} />`)}<span title=${namesText(floor.map((p) => p.name))}><strong class="bs-floor__long">${whoWords(floor)}</strong><strong class="bs-floor__short">${whoShort(floor)}</strong><span class="bs-floor__has"> ${floor.length > 1 ? 'have' : 'has'} the floor</span></span></span>` : null}
+    <span class="bs-top__right">${timer ? html`<span class=${`bs-timer ${timer.over ? 'is-over' : ''}`} role="timer">${timer.over ? html`<span><span class="bs-timer__up">Time’s up · </span>${clockText(timer.left)} over</span>` : `${clockText(timer.left)} left`}</span>` : null}${told?.rehearsal ? html`<span class="bs-chip">Rehearsal</span>` : null}${v.practice ? html`<span class="bs-chip">Practice</span>` : null}${PRESENT && unshared ? html`<span class="bs-chip" title="Board members can’t see this meeting yet. Share it in Board when it’s ready.">Not on the board page yet</span>` : null}${label ? html`<span class="bs-num">${label}</span>` : null}<span class="bs-clock">${nowClock()}</span>${MIRROR ? null : html`<button type="button" class="bs-full" onClick=${fullScreen} aria-label=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'} title=${document.fullscreenElement ? 'Exit full screen (F)' : 'Full screen (F)'}>${FULL}</button>`}</span>
   </header>`;
   // Presenting: back, the slide count and next, and on a money slide the % | $; in the line under the stage, there while
   // the mouse moves (portal.css .bs-ctl), so nothing along the top moves when a slide brings the % | $

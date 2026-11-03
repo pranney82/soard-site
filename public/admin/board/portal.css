@@ -1642,7 +1642,12 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-top > .bs-floor { flex-shrink: 2; }
 /* Who has the floor stays put from slide to slide: the meeting's name beside it never gives way to a longer name in it */
 .bs-top > .bs-brand:has(+ .bs-floor) { flex-shrink: 0; }
-@media (max-width: 1180px) { .bs-floor__has { display: none; } }
+/* Its words, the longest that fits beside the clock (screen.js fitFloor): with "has the floor", the names, first names, one face */
+.bs-floor__short { display: none; }
+.bs-floor:not([data-fit="0"]) .bs-floor__has, .bs-floor:is([data-fit="2"], [data-fit="3"]) .bs-floor__long, .bs-floor[data-fit="3"] > .bs-face ~ .bs-face { display: none; }
+.bs-floor:is([data-fit="2"], [data-fit="3"]) .bs-floor__short { display: inline; }
+/* Short of a wide screen, a part past its time says only how far ("0:31 over"), yellow and pulsing, so the floor has its room */
+@media (max-width: 1180px) { .bs-timer__up { display: none; } }
 .bs-floor > span:last-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .bs-brand img { flex: none; width: clamp(32px, 4.4vh, 48px); height: auto; }
 .bs-brand strong { display: block; font-family: var(--display); font-size: calc(var(--bs-u) * 1.55); font-weight: 700; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -2269,8 +2274,17 @@ html:has(body .bs) { scrollbar-gutter: auto; }
   .bs-faces__one { container-type: inline-size; flex-basis: calc((100% - 2 * var(--gx)) / 3); height: auto; justify-content: flex-start; } .bs-faces__pic { width: min(76cqi, 9rem); } .bs-faces__initials { font-size: min(27cqi, 3rem); }
   .bs-faces__sub { -webkit-line-clamp: 3; }
 }
+/* A phone, or a tablet upright: who has the floor on a row of its own, under the meeting and the clock (beside them, the
+   clock running, a name had room for three letters), the row there on every slide so the stage never moves */
+@media (max-width: 760px) {
+  .bs { --bs-top: 6.6rem; }
+  .bs-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: 3.5rem auto; align-content: start; align-items: center; gap: 0 0.75rem; }
+  .bs-top > .bs-brand, .bs-top > .bs-brand:has(+ .bs-floor) { grid-area: 1 / 1; max-width: none; }
+  .bs-top > .bs-top__right { grid-area: 1 / 2; }
+  .bs-top > .bs-floor { grid-area: 2 / 1 / auto / -1; justify-self: start; max-width: 100%; margin: 0; }
+}
 /* A phone: under a document its page and whether it's continued, never cut off (the number says which item); a long word in a title wraps */
-@media (max-width: 520px) { .bs-brand > span { display: none; } .bs-floor > .bs-face ~ .bs-face { display: none; } .bs-floor { white-space: normal; line-height: 1.15; } .bs-floor > span:last-child { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow-wrap: anywhere; } .bs-eyebrow__of { display: block; margin: 0.2em 0 0; padding: 0; border: 0; } .bs-figs { grid-template-columns: minmax(0, 1fr); } .bs--doc .bs-foot__item:has(+ .bs-foot__sep), .bs--doc .bs-foot__item + .bs-foot__sep, .bs--doc .bs-foot__name:has(+ .bs-foot__sep--name), .bs--doc .bs-foot__sep--name { display: none; } .bs-display { overflow-wrap: anywhere; } .bs-item__bar > div { min-width: 0; max-width: 100%; } .bs-item__bar .bs-item__title { font-size: clamp(1.7rem, 9.5vw, 2.6rem); } }
+@media (max-width: 520px) { .bs-brand > span { display: none; } .bs-cover__faces > .bs-face:nth-child(n+7) { display: none; } .bs-eyebrow__of { display: block; margin: 0.2em 0 0; padding: 0; border: 0; } .bs-figs { grid-template-columns: minmax(0, 1fr); } .bs--doc .bs-foot__item:has(+ .bs-foot__sep), .bs--doc .bs-foot__item + .bs-foot__sep, .bs--doc .bs-foot__name:has(+ .bs-foot__sep--name), .bs--doc .bs-foot__sep--name { display: none; } .bs-display { overflow-wrap: anywhere; } .bs-item__bar > div { min-width: 0; max-width: 100%; } .bs-item__bar .bs-item__title { font-size: clamp(1.7rem, 9.5vw, 2.6rem); } }
 @media (prefers-reduced-motion: reduce) { .bs-stage__in, .bs-vote, .bs-timer.is-over, .bs-figs__bar i, .bs-faces__mark { animation: none !important; } .bs-vote__counts i::after, .bs-rail__bar i, .bs-faces__one, .bs-faces__pic, .bs-roll__q { transition: none; } }
 
 /* A phone: the header's tools at its right edge; the meeting's facts one to a line on the narrowest, where a place's
