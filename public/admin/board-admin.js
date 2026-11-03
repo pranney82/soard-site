@@ -91,7 +91,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
           <p class="page-sub">${{
             meetings: 'The next meeting and what’s left to do for it, then every past meeting with its agenda and minutes. The board sees a meeting once it’s shared.',
             documents: 'Bylaws, policies, budgets and plans, on the board page for every member. Ask for a signature where the board signs each year.',
-            members: 'Who’s on the board, how they get in, and what they’ve looked at on the board page.',
+            members: 'Who’s on the board, how they get in, when each last signed in, and who has signed this year’s papers.',
             settings: 'Who can open this area, who invites come from, the quorum, and where past minutes come from. The banks and QuickBooks the board page’s money comes from are in System → Settings.',
           }[route.tab]}</p>
         </div>
@@ -1225,7 +1225,6 @@ const badKey = (e) => /Authentication error|Unauthorized|Invalid API Token|not a
 function MembersTab({ ctx }) {
   const { data, addToast } = ctx;
   const [working, setWorking] = useState('');
-  const next = nextMeeting(data.meetings);
   // The papers each member signs this year: written in Board, or a file the board can open (as the sign-in email counts them)
   const signDocs = data.docs.filter((d) => d.sign && d.shared && (d.body || (d.file && !d.file.staffOnly)));
   // When the sign-in email can go, for Board access and every row alike (the server's own rule): email set up, and the list
@@ -1283,7 +1282,7 @@ function MembersTab({ ctx }) {
   };
   return html`
     <${AccessPanel} ctx=${ctx} ready=${ready} working=${working} welcome=${welcome} />
-    <${BoardActivity} data=${data} next=${next} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy} />`;
+    <${BoardActivity} data=${data} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy} />`;
 }
 
 // ─── Settings ───────────────────────────────────────────────────────

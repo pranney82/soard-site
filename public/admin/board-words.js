@@ -31,7 +31,7 @@
  */
 
 // A bullet as fonts write one (Symbol's and Wingdings' private-use ones too)
-const BULLET = /^(?:[•●▪◦■□➢➤►▶✓✔·\-–*]|\uF0B7|\uF0A7|\uF0D8|\uF076|o(?=\s))\s*/;
+const BULLET = /^(?:[•●○◯▪▫◦■□◆◇❖➢➤►▶▸▹‣⁃✓✔·\-–*]|\uF0B7|\uF0A7|\uF0D8|\uF076|o(?=\s))\s*/;
 const NUMBERED = /^\(?(\d{1,2})[.)]\s+/;
 // a. / (b) / i. / IV) — Markdown numbers lists only with numbers, so these stay as written, a line each
 const LABELED = /^\(?(?:[a-zA-Z]|[ivxIVX]{2,4})[.)]\s+/;
@@ -49,8 +49,10 @@ const PAGE_REF = /\bp\s?a\s?g\s?e\s*[|:]?\s*\d{1,3}(\s+of\s+\d{1,3})?\b|\b\d{1,3
 const NAME_TITLE = /^[A-Z][\w.'’-]+(?:\s+[A-Z][\w.'’-]+){0,3},\s*(?:board\s+)?(?:secretary|chair|chairman|chairwoman|chairperson|president|vice[\s-]?president|treasurer|director|member|founder|ceo|cfo|coo|executive director)\b/i;
 // The letterhead: SOARD's name alone (the board page says whose paper it is), or a line of where to reach it
 const LETTERHEAD = /^(sunshine on a ranney day|soard)(,?\s*inc\.?)?$/i;
-const CONTACT = /\b\d{2,6}\s+(?:[NSEW]\.?\s+)?[A-Za-z0-9][\w'.-]*(?:\s+[\w'.-]+){0,4}\s+(?:street|st|road|rd|avenue|ave|boulevard|blvd|drive|dr|lane|ln|way|parkway|pkwy|court|ct|circle|cir|highway|hwy|place|pl|trail|trl|suite|ste)\b|\(\d{3}\)\s*\d{3}[-.\s]\d{4}|\b\d{3}[-.]\d{3}[-.]\d{4}\b|\bwww\.|https?:\/\/|[\w.+-]+@[\w-]+\.[a-z]{2,}|\b[\w-]+\.(?:org|com|net)\b|\bp\.?\s?o\.?\s+box\b/i;
+const CONTACT = /\b\d{2,6}[A-Z]?\s+(?:[NSEW]\.?\s+)?[A-Za-z0-9][\w'.-]*(?:\s+[\w'.-]+){0,4}\s+(?:street|st|road|rd|avenue|ave|boulevard|blvd|drive|dr|lane|ln|way|parkway|pkwy|court|ct|circle|cir|highway|hwy|place|pl|trail|trl|suite|ste)\b|\(\d{3}\)\s*\d{3}[-.\s]\d{4}|\b\d{3}[-.]\d{3}[-.]\d{4}\b|\bwww\.|https?:\/\/|[\w.+-]+@[\w-]+\.[a-z]{2,}|\b[\w-]+\.(?:org|com|net)\b|\bp\.?\s?o\.?\s+box\b/i;
 const STATE_ZIP = /\b[A-Z]{2},?\s+\d{5}(?:-\d{4})?\b/;
+// A line naming what to fill in on paper: "Board Member Contact Information (Name, Phone, Email, Home Address)"
+const FILL_IN = /\((?:\s*(?:full\s+|home\s+|mailing\s+|cell\s+|work\s+|phone\s+|e-?mail\s+)?(?:name|phone|email|e-mail|address|date|signature|title|cell|mobile|number)s?\s*(?:,|\/|&|\band\b)?){3,}\)\s*:?\s*$/i;
 const DATED = /^(effective|adopted|approved|revised|updated|amended|ratified|as of)\b.*\b(19|20)\d{2}\b/i;
 // Kept in capitals when a heading in capitals is put in title case
 // (never one that's also a word: IT, US, ED, PR, AL read as words in a heading, "CARRYING IT OUT")
@@ -139,10 +141,14 @@ export function wordsFromLines(lines, { title = '' } = {}) {
   const allBody = median(clean.flatMap((l) => Array(Math.min(20, Math.ceil(l.text.length / 10))).fill(l.size || 0))) || 0;
   // Atop the first page (a letterhead typed into the page, not Word's header): its first four lines
   const atop = (l, i) => l.page === clean[0]?.page && i - firstOfPage.get(l.page) < 4;
+  // A later page's header naming the paper ("Board Expectations" atop page 2, under its title on page 1 in big type)
+  const named = (l) => words(l.text) === words(title) || clean.some((o) => o.page === clean[0]?.page && (o.size || 0) > (l.size || 0) * 1.3 && words(o.text) === words(l.text));
+  const runningHead = (l, i) => l.page !== clean[0]?.page && i - firstOfPage.get(l.page) < 2 && margin(l, i) && named(l);
   // (SOARD's name alone: a letterhead in a margin or as the paper's first line; lower, it's in a title, "BYLAWS OF …")
   const paperOnly = (l, i) => PAGE_NO.test(l.text)
     || (LETTERHEAD.test(l.text) && (margin(l, i) || i === 0))
     || ((margin(l, i) || atop(l, i)) && contact(l.text))
+    || runningHead(l, i) || FILL_IN.test(l.text)
     || (margin(l, i) && (repeated(l) || PAGE_REF.test(l.text) || (l.h && allBody && l.size && l.size < allBody * 0.92 && !footnote(l.text))))
     || SIGN_LABEL.test(l.text.replace(BLANK, '').replace(/[_.\s]+$/, '').trim()) || signLabels(l.text)
     // (blanks to sign beside their labels go; a line to fill in, "My giving commitment: $_____", keeps its words)
@@ -420,7 +426,8 @@ export function linesOfItems(items, { width = 612, height = 792 } = {}) {
 /** A PDF's lines as its pages show them: each line's words in order, where it sits, its biggest letters, whether bold */
 export async function pdfLines(bytes) {
   const { pdfjsLib } = await import('./vendor-pdf.js');
-  const doc = await pdfjsLib.getDocument({ data: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes) }).promise;
+  // (fontExtraProperties: a font's name, "ProximaNova-Bold", which an embedded font, as Google Docs' and Word's are, says bold by only)
+  const doc = await pdfjsLib.getDocument({ data: bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes), fontExtraProperties: true }).promise;
   const out = [];
   for (let p = 1; p <= doc.numPages; p++) {
     const page = await doc.getPage(p);

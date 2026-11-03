@@ -6,11 +6,10 @@
  *   - a board member uses the board page: Home, a meeting, a document read in the viewer, the video call,
  *     their answer; the page's tracker reports it, the server keeps it (pages and files with the time spent)
  *   - an admin looking at the board page is never recorded
- *   - a founder opens Board → Members: who has signed in and who hasn't (with the sign-in email), last on the
- *     page and on what, the five-week strip, the next meeting's documents read, then the member's own sheet:
- *     each sitting, what they read and for how long, their answer
- *   - at 320, 375, 390, 768, 820, 1025, 1100, 1180, 1280 and 1440: nothing past the edge, the filter whole with a
- *     13-member board's counts, no console errors
+ *   - a founder opens Board → Members: when each member last signed in (or never, with the sign-in email) and
+ *     whether they've signed this year's paper, then a member's sheet with their papers year by year; never
+ *     what they did on the page (Peter: "i dont need to see their level of activity")
+ *   - at 320, 375, 390, 768, 820, 1025, 1100, 1180, 1280 and 1440: nothing past the edge, no console errors
  * Screenshots land in test-results/board-activity/. Exits non-zero on any failure.
  *
  *   node scripts/test-board-activity.mjs
@@ -163,8 +162,6 @@ const SITE = `http://localhost:${server.address().port}`;
 const browser = await puppeteer.launch({ headless: 'shell', args: ['--no-sandbox', '--disable-gpu', '--disable-gpu-vsync', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--disable-background-timer-throttling'] });
 const consoleErrors = [];
 // Members' summary, or one member's sheet, not answering (D1 down for a moment), for the tab that tries it
-let failOverview = false;
-let failSheet = false;
 async function tab(email, width = 1440) {
   const page = await browser.newPage();
   await page.setViewport({ width, height: 1000, deviceScaleFactor: 1, isMobile: width < 600, hasTouch: width < 600 });
@@ -175,13 +172,11 @@ async function tab(email, width = 1440) {
   page.on('pageerror', (e) => consoleErrors.push(`${email} ${width}: ${e.message}`));
   // The video call opens in a new tab: never really leave for Google
   await page.setRequestInterception(true);
-  page.on('request', (r) => (/^https:\/\/meet\.google\.com\//.test(r.url()) ? r.abort()
-    : (failOverview && /\/api\/board-admin\?activity=$/.test(r.url())) || (failSheet && /\/api\/board-admin\?activity=[a-z]/.test(r.url())) ? r.respond({ status: 500, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'D1_ERROR: Network connection lost.' }) })
-      : r.continue()));
+  page.on('request', (r) => (/^https:\/\/meet\.google\.com\//.test(r.url()) ? r.abort() : r.continue()));
   await answerAsks(page);
   return page;
 }
-const text = (page) => page.evaluate(() => document.body.innerText);
+const text = (page, sel = 'body') => page.evaluate((q) => document.querySelector(q)?.innerText || '', sel);
 const waitText = (page, re, timeout = 8000) => page.waitForFunction((src) => new RegExp(src).test(document.body.innerText), { timeout }, re.source).then(() => true, () => false);
 const rows = async (slug) => (await DB.prepare('SELECT kind, ref, sub, secs FROM board_activity WHERE slug = ? ORDER BY id').bind(slug).all()).results || [];
 const overflow = (page) => page.evaluate(() => {
@@ -252,97 +247,60 @@ try {
   ok((await DB.prepare('SELECT COUNT(*) AS n FROM board_signins').first()).n === 1, 'an admin’s sign-in isn’t kept');
   await janeLook.close();
 
-  // ─── A founder: Board → Members ───
+  // ─── A founder: Board → Members (when each last signed in, and the papers; never what they did) ───
   console.log('A founder, Board → Members');
+  const year = new Date().getFullYear();
   for (const width of [1440, 1280, 1180, 1100, 1025, 820, 768, 390, 375, 320]) {
     const jane = await tab(FOUNDER, width);
     await jane.goto(`${SITE}/admin/#board/members`, { waitUntil: 'networkidle0' });
     await jane.reload({ waitUntil: 'networkidle0' });
-    ok(await waitText(jane, /Each square is a day/), `${width}: Members opens, with what each member did`);
+    ok(await waitText(jane, /(The board|THE BOARD)\s*4/), `${width}: Members opens with the board`);
     const t = await text(jane);
     if (width === 1440) {
-      ok(/Signed in\s*1/.test(t) && /Not yet\s*3/.test(t), 'the filter counts who has signed in');
-      ok(/Yes\s*Earlier on [A-Z][a-z]{2} \d+/.test(t), 'Alex: signed in before Board began keeping sign-ins, so only that (never a “since” it didn’t see)');
-      ok(/Opened 1 of 2 documents/.test(t), 'Alex: what they’ve read of the next meeting’s documents');
-      ok(/Coming\s*Opened 1 of 2/.test(t), 'Alex: Coming, from the calendar invite');
-      ok(/No answer yet\s*Hasn’t opened/.test(t), 'Sam: on the invite, no answer yet');
-      ok(/Not on the invite\s*Hasn’t opened/.test(t), 'Kim: not on the invite, flagged');
-      ok(/Each square is a day/.test(t), 'the strip says what it shows');
-      ok(/Signed this year/i.test(t) && /0 of 1/.test(t), 'the paper written in Board counts among what they sign');
-      ok(/Hasn’t opened the 2 documents/.test(t), 'Sam: hasn’t opened them');
-      ok(/Never/.test(t) && /No email on file/.test(t), 'Kim: never, and no email to send to');
-      ok(await jane.$$eval('.ba-day--1, .ba-day--2, .ba-day--3', (x) => x.length) >= 1, 'the strip marks today');
-      ok(await jane.$$eval('.ba-day--meeting', (x) => x.length) >= 1, 'and the past meeting’s day');
+      const head = await jane.$$eval('.ba-table thead th', (th) => th.filter((x) => !x.matches('.ba-go-h')).map((x) => x.textContent.trim()).join(' | '));
+      ok(head === 'Member | Last signed in | Board Member Expectations', `the columns: who, when they last signed in, the paper (${head})`);
+      const row = (slug) => jane.$eval(`.ba-name[data-slug="${slug}"]`, (b) => b.closest('tr').innerText.replace(/\s+/g, ' '));
+      ok(/(just now|min ago|seconds? ago|\d+ ?m ago)/i.test(await row('alex-rivera')) && /Not signed/.test(await row('alex-rivera')), `Alex: signed in just now, not signed yet (${await row('alex-rivera')})`);
+      ok(/Never/.test(await row('sam-ortiz')), 'Sam: never signed in');
+      ok(/Never/.test(await row('kim-park')) && /No email on file/.test(await row('kim-park')), 'Kim: never, and no email to send to');
+      ok(new RegExp(`0 of 4 signed for ${year}`).test(t), 'how many have signed this year, at the top');
+      ok(!/Each square is a day|Opened \d of|Hasn’t opened|Coming|On the invite|visits? in 5 weeks/.test(t) && !(await jane.$('.ba-strip, .ba-seg, .ba-day')), 'nothing about what they did on the page');
       await shot(jane, `02-members-${width}`);
-      // Not yet: just those
-      await jane.evaluate(() => [...document.querySelectorAll('.ba-seg button')].find((b) => /^Not yet/.test(b.textContent.trim()))?.click());
-      await sleep(200);
-      const shown = await jane.$$eval('.ba-tr', (x) => x.length);
-      ok(shown === 3, `Not yet shows the three who haven’t (${shown})`);
-      await jane.evaluate(() => [...document.querySelectorAll('.ba-seg button')].find((b) => /^All/.test(b.textContent.trim()))?.click());
-      // Alex's sheet
+      // Alex's sheet: when, and the papers each year; never what they did
       await jane.evaluate(() => [...document.querySelectorAll('.ba-name')].find((b) => b.textContent.trim() === 'Alex Rivera')?.click());
-      ok(await waitText(jane, /What Alex did/), 'Alex’s row opens their sheet');
+      ok(await waitText(jane, /Papers signed, each year/), 'Alex’s row opens their papers, each year');
       await sleep(200);
       ok(await jane.evaluate(() => { const el = document.activeElement; const by = el?.getAttribute('aria-labelledby'); return el?.getAttribute('role') === 'region' && document.getElementById(by)?.textContent.trim() === 'Alex Rivera'; }), 'its first focus is named by the title, never read out whole');
-      ok(await waitText(jane, /Opened “September financial statements”/), 'it says what they opened (a few seconds: opened, not read)');
-      const s = await text(jane);
-      ok(/Looked at Home/.test(s) && /Looked at the Q\d \d{4} Board Meeting/.test(s), 'the pages they were on, by name');
-      ok(/Opened the video call for the/.test(s), 'the video call');
-      ok(/On the calendar invite: Coming/.test(s), 'their answer, from the invite');
-      ok(/Signed in on /.test(s), 'the sign-in, with its device');
-      ok(/For the Q\d \d{4} Board Meeting/.test(s) && /Not opened/.test(s), 'the next meeting’s documents, read and not');
+      const s = await text(jane, '.ba-dialog');
+      ok(new RegExp(`${year}\\s*Board Member Expectations\\s*Not signed yet\\s*Add their signed copy`, 'i').test(s) && /Last signed in/i.test(s), `when they last signed in, and this year’s paper to sign (${s.replace(/\s+/g, ' ').slice(0, 260)})`);
+      ok(!/What Alex did|Looked at|Opened|For the Q\d|The last 5 weeks/.test(s), 'nothing about what they did');
       await shot(jane, '03-sheet-1440');
       await jane.keyboard.press('Escape');
       await sleep(300);
       ok(!(await jane.$('.ba-dialog')), 'Escape closes it');
       ok(await jane.evaluate(() => document.activeElement?.matches('.ba-name[data-slug="alex-rivera"]')), 'and the focus is back on their name');
-      // Sam's: nothing yet, and the email to send
+      // Sam's: never signed in
       await jane.evaluate(() => [...document.querySelectorAll('.ba-name')].find((b) => b.textContent.trim() === 'Sam Ortiz')?.click());
-      ok(await waitText(jane, /Once Sam signs in/), 'a member who hasn’t signed in: says what will show');
+      ok(await waitText(jane, /(Last signed in|LAST SIGNED IN)\s*Never/), 'a member who hasn’t signed in: Never');
       await shot(jane, '04-sheet-not-yet');
       await jane.keyboard.press('Escape');
-      // Members when what they did doesn't load: the board is all there, it says what didn't load, and Try again
-      failOverview = true;
-      const down = await tab(FOUNDER, 1440);
-      await down.goto(`${SITE}/admin/#board/members`, { waitUntil: 'networkidle0' });
-      ok(await waitText(down, /didn’t load/), 'what didn’t load says so');
-      const dt = await text(down);
-      ok(/Alex Rivera/.test(dt) && /Sam Ortiz/.test(dt) && /Kim Park/.test(dt) && /Never/.test(dt), 'and the board is all there, as Board knows it');
-      ok(!/Hasn’t opened|Opened \d/.test(dt), 'never a guess at what they opened');
-      await shot(down, '07-members-not-loaded');
-      failOverview = false;
-      await down.evaluate(() => [...document.querySelectorAll('.ba-status button')].find((b) => /Try again/.test(b.textContent))?.click());
-      ok(await waitText(down, /Each square is a day/), 'Try again loads it');
-      ok(/Opened 1 of 2 documents/.test(await text(down)), 'with what each opened');
-      // A member's sheet that doesn't load: says so, and Try again
-      failSheet = true;
-      await down.evaluate(() => [...document.querySelectorAll('.ba-name')].find((b) => b.textContent.trim() === 'Alex Rivera')?.click());
-      ok(await waitText(down, /What Alex did didn’t load/), 'a sheet that didn’t load says so');
-      failSheet = false;
-      await down.evaluate(() => [...document.querySelectorAll('.ba-dialog button')].find((b) => /Try again/.test(b.textContent))?.click());
-      ok(await waitText(down, /Looked at Home/), 'Try again loads it');
-      await down.close();
     }
     const o = await overflow(jane);
     ok(o.page <= 0 && !o.past.length, `${width}: nothing past the edge (${o.page}px${o.past.length ? `; ${o.past.join(', ')}` : ''})`);
     // The table inside its card (the arrow at the end of each row in view, nothing cut off at its edge)
     const inCard = await jane.evaluate(() => { const c = document.querySelector('.ba-card')?.getBoundingClientRect(); const t = document.querySelector('.ba-table')?.getBoundingClientRect(); return c && t ? Math.round(t.right - c.right) : 0; });
     ok(inCard <= 1, `${width}: the table fits its card (${inCard}px over)`);
-    // A board of 13: two-figure counts on every choice still fit, none of it scrolled out of sight
-    const seg = await jane.evaluate(() => { const el = document.querySelector('.ba-seg'); el.querySelectorAll('.count').forEach((c) => { c.textContent = '13'; }); return el.scrollWidth - el.clientWidth; });
-    ok(seg <= 0, `${width}: the filter’s three choices fit (${seg}px over)`);
     if (width === 390) {
       await shot(jane, '05-members-390');
       await jane.evaluate(() => [...document.querySelectorAll('.ba-name')].find((b) => b.textContent.trim() === 'Alex Rivera')?.click());
-      await waitText(jane, /What Alex did/);
+      await waitText(jane, /Papers signed, each year/);
       await sleep(300);
       const so = await overflow(jane);
       ok(so.page <= 0, `390: the sheet fits a phone (${so.page}px)`);
       await jane.keyboard.press('Escape');
       await sleep(300);
       await jane.evaluate(() => [...document.querySelectorAll('.ba-name')].find((b) => /^Bartholomew/.test(b.textContent.trim()))?.click());
-      await waitText(jane, /What Bartholomew did/);
+      await waitText(jane, /Papers signed, each year/);
       await sleep(300);
       const close = await jane.evaluate(() => { const r = document.querySelector('.ba-dialog .kd-x')?.getBoundingClientRect(); return r ? { left: r.left, right: r.right } : null; });
       ok(close && close.right <= 390 && close.left >= 0, `390: a long name keeps the sheet’s Close on the screen (${JSON.stringify(close)})`);

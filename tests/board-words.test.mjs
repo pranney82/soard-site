@@ -166,3 +166,45 @@ test('a date in a file’s name reads as a date', async () => {
   assert.equal(fileTitle('Board Expectations Updated 01_01_26.pdf'), 'Board Expectations Updated 01/01/26');
   assert.equal(fileTitle('2024_990_return.pdf'), '2024 990 return');
 });
+
+test('a Google Docs paper: ○ points under bold numbered sections, i./ii. under them, a letterhead with a street number and letter, the title again atop page 2, a line to fill in on paper', () => {
+  // As pdfLines reads one (made-up words in its layout): [text, x, x1, y, size, bold, page]
+  const L = (rows) => rows.map(([text, x, x1, y, size = 11, bold = false, p = 1]) => ({ text, x, x1, tx: x, y, size, bold, h: 792, page: p, cellX: [x] }));
+  const roman = ['i.', 'ii.', 'iii.', 'iv.', 'v.'];
+  const romanX = [157, 154.5, 152, 152.3, 154.8];
+  let y = 560;
+  const step = () => (y -= 17.25);
+  const lines = L([
+    ['Sunshine on a Ranney Day', 72, 241, 695, 14, true],
+    ['123B Example Street', 72, 160, 682.6, 10],
+    ['Example, GA 30000', 72, 156, 670.6, 10],
+    ['(555) 010-0100', 72, 139, 658.6, 10],
+    ['Board Expectations', 72, 276, 617, 24],
+    ['1. Duties', 90, 150, 576.7, 11, true],
+    ...['Read the budget each quarter', 'Know the families the program serves', 'Bring one new friend to an event'].map((t) => [`○ ${t}`, 126, 400, step()]),
+    ['2. Committees', 90, 168, step() - 10, 11, true],
+    ['○ Roles', 126, 170, step()],
+    ...['Board Chair', 'Vice Chair', 'Secretary'].map((t, k) => [`${roman[k]} ${t}`, romanX[k], 237, step()]),
+    ['○ Groups', 126, 201, step()],
+    ...['Finance', 'Events'].map((t, k) => [`${roman[k]} ${t}`, romanX[k], 230, step()]),
+    ['1', 536, 540, 28],
+    ['Board Expectations', 72, 165, 756.2, 11, false, 2],
+    ['○ Qualities', 126, 234, 706, 11, false, 2],
+    ...['Kind to everyone', 'Shows up on time'].map((t, k) => [`${roman[k]} ${t}`, romanX[k], 311, 689 - k * 17.25, 11, false, 2]),
+    ['3. Service', 90, 217, 634, 11, true, 2],
+    ['○ Each member is expected to attend at least 75% of board meetings. (4 total', 126, 538, 614.4, 11, false, 2],
+    ['meetings, 1 per quarter)', 144, 256, 600.9, 11, false, 2],
+    ['○ Annual minimum $1,000.00 Donation/Sponsorship', 126, 387, 583.6, 11, false, 2],
+    ['Board Member Contact Information (Name, Phone, Email, Home Address)', 72, 536, 540, 14, true, 2],
+    ['I have read and agreed to the terms of this commitment document.', 72, 392, 480, 11, false, 2],
+    ['_______________________________________', 72, 313, 453, 11, false, 2],
+    ['Print Name', 72, 125, 426, 11, false, 2],
+    ['_______________________________________ _______________', 72, 480, 399, 11, false, 2],
+    ['Signature Date', 72, 411, 382, 11, false, 2],
+    ['2', 533, 540, 28, 11, false, 2],
+  ]);
+  lines.at(-2).cells = ['Signature', 'Date'];
+  const md = wordsFromLines(lines, { title: 'Board Member Expectations' });
+  assert.ok(!/Example Street|Example, GA|555|Sunshine on a Ranney Day/.test(md), `the letterhead is left out, its street number with a letter too (${md.slice(0, 80)})`);
+  assert.match(md, /^### 1\\?\. Duties\n\n- Read the budget each quarter\n- Know the families the program serves\n- Bring one new friend to an event\n\n### 2\\?\. Committees\n\n- Roles\n {2}- i\. Board Chair\n {2}- ii\. Vice Chair\n {2}- iii\. Secretary\n- Groups\n {2}- i\. Finance\n {2}- ii\. Events\n- Qualities\n {2}- i\. Kind to everyone\n {2}- ii\. Shows up on time\n\n### 3\\?\. Service\n\n- Each member is expected to attend at least 75% of board meetings\. \(4 total meetings, 1 per quarter\)\n- Annual minimum \$1,000\.00 Donation\/Sponsorship\n\nI have read and agreed to the terms of this commitment document\.$/, md);
+});
