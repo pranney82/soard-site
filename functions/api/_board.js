@@ -750,6 +750,16 @@ export function fileTypeOf(bytes, name) {
   return null;
 }
 const safeName = (n) => String(n || 'file').normalize('NFKD').replace(/[^\w.\- ]+/g, '').replace(/\s+/g, '-').replace(/^[.-]+/, '').slice(-100) || 'file';
+const KNOWN_EXT = /\.(pdf|jpe?g|png|gif|webp|heic|heif|docx|xlsx|pptx|doc|xls)$/i;
+/** Why a file can't be a board file ('' when it can): too big, or not what its name says, in plain words */
+export async function boardFileProblem(file) {
+  if (!file || typeof file.arrayBuffer !== 'function') return 'No file came with that';
+  if (file.size > MAX_FILE) return 'That file is over 50 MB';
+  if (fileTypeOf(new Uint8Array(await file.arrayBuffer()), file.name)) return '';
+  return KNOWN_EXT.test(file.name || '') ? `${file.name} isn’t what its name says (a .docx named .doc, or a picture named .pdf): open it and save it again as what it is` : 'Board files can be PDFs, pictures, or Word, Excel and PowerPoint files';
+}
+// A signed copy saved under the name it really is (a photo named .pdf is a .jpg)
+const EXT_OF = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '.png', 'image/gif': '.gif', 'image/webp': '.webp', 'image/heic': '.heic' };
 
 /**
  * Store an uploaded file for a meeting, a document, or a member's signed copy of a document (`signed`, always
@@ -769,9 +779,12 @@ export async function putFile(env, { ownerType, ownerId, file, kind = 'other', s
   if (file.size > MAX_FILE) throw Object.assign(new Error('That file is over 50 MB'), { status: 413 });
   const bytes = await file.arrayBuffer();
   const type = fileTypeOf(new Uint8Array(bytes), file.name);
-  if (!type) throw Object.assign(new Error('Board files can be PDFs, pictures, or Word, Excel and PowerPoint files'), { status: 415 });
+  if (!type) throw Object.assign(new Error(await boardFileProblem(file)), { status: 415 });
   const id = uid('f_');
-  const name = String(file.name || 'file').replace(/[\u0000-\u001F]/g, '').trim().slice(0, 200) || 'file';
+  let name = String(file.name || 'file').replace(/[\u0000-\u001F]/g, '').trim().slice(0, 200) || 'file';
+  const ext = EXT_OF[type];
+  // (a signed copy: a photo of the page named .pdf is kept as the .jpg it is)
+  if (ownerType === 'signed' && ext && !name.toLowerCase().endsWith(ext) && !(ext === '.jpg' && /\.jpeg$/i.test(name))) name = `${name.replace(/\.[a-z0-9]{2,5}$/i, '')}${ext}`;
   const key = `board/${ownerType}/${ownerId}/${id}-${safeName(name)}`;
   await bucket.put(key, bytes, { httpMetadata: { contentType: type } });
   const fileKind = (ownerType === 'meeting' ? FILE_KINDS.map((k) => k.id) : ['other']).includes(kind) ? kind : 'other';

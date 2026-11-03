@@ -39,6 +39,9 @@ const MARKER = new RegExp(`${BULLET.source}|${NUMBERED.source}|${LABELED.source}
 // The blanks paper needs to be signed: "Signature: ________", "Date ____", "Printed name"
 const BLANK = /_{4,}|\.{8,}/;
 const SIGN_LABEL = /^(board member )?(signature|signed|date|printed name|print name|name|member name|board member name( \(print\))?)\s*:?\s*$/i;
+// The labels under a signature block's lines ("Board Member Signature   Date", "Name (please print)", "Board Chair   Date")
+const SIGN_WORDS = /^(?:(?:board|member|chair|chairman|chairperson|president|secretary|treasurer|director|officer|witness|signature|signed|date|name|printed|print|please|title|of|and|\(|\)|:|\/|,)\s*)+$/i;
+const signLabels = (t) => SIGN_WORDS.test(t.replace(/[()]/g, ' ( ').replace(/\s+/g, ' ').trim()) && /\b(signature|date|print)/i.test(t);
 // A page number however a footer writes it: "3", "Page 3 of 9", "- 3 -", "3 | P a g e", "Page | 3", "3/9"
 const PAGE_NO = /^[\s\-–—|]*(?:p\s?a\s?g\s?e\s*[|:]?\s*)?\d{1,3}(?:\s*(?:of|\/)\s*\d{1,3})?[\s\-–—|]*(?:p\s?a\s?g\s?e)?[\s\-–—|]*$/i;
 const PAGE_REF = /\bp\s?a\s?g\s?e\s*[|:]?\s*\d{1,3}(\s+of\s+\d{1,3})?\b|\b\d{1,3}\s*\|\s*p\s?a\s?g\s?e\b/i;
@@ -81,6 +84,9 @@ const words = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').t
 const median = (list) => { const s = [...list].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0; };
 // A sentence that ended (a closing quote or bracket after its stop too)
 const ENDED = /[.!?:;]["”’)\]]?$/;
+const COMPOUND = /\b(one|two|three|four|five|six|seven|eight|nine|ten|half|self|well|non|co|ex|full|part|long|short|year|day|first|second|third|board|decision|follow|record|vice|re)-$/i;
+/** A line carried onto the next: a hyphen at its end joins a word broken there, or stays in a word that has one */
+const joinLines = (a, b) => (/[a-z]-$/.test(a) && /^[a-z]/.test(b) ? (COMPOUND.test(a) ? `${a}${b}` : `${a.slice(0, -1)}${b}`) : `${a} ${b}`);
 
 /**
  * Lines of a paper → Markdown. Each line: `{ text, x, y, size, page }` (y growing up the page as PDFs measure it),
@@ -109,7 +115,9 @@ export function wordsFromLines(lines, { title = '' } = {}) {
   const sameBut = (t) => words(t).replace(/\b\d+\b/g, '#');
   for (const l of clean) { const k = sameBut(l.text); seen.set(k, (seen.get(k) || new Set()).add(l.page)); }
   const repeated = (l) => pages > 1 && (seen.get(sameBut(l.text))?.size || 0) >= Math.max(2, Math.ceil(pages / 2));
-  const contact = (t) => t.length <= 160 && (CONTACT.test(t) || STATE_ZIP.test(t));
+  // A line of where to reach SOARD (an address, phone, website), not a sentence that happens to name one
+  const contact = (t) => t.length <= 160 && (CONTACT.test(t) || STATE_ZIP.test(t)) && !/[a-z]{2}[.?!]\s+[A-Z]/.test(t) && t.split(' ').length <= 16;
+  const footnote = (t) => /^[*†‡]|^\d{1,2}\s+[A-Z]/.test(t);
   // The body's letters, before anything's left out (small type in a margin is a header or footer, on one page too)
   const allBody = median(clean.flatMap((l) => Array(Math.min(20, Math.ceil(l.text.length / 10))).fill(l.size || 0))) || 0;
   // Atop the first page (a letterhead typed into the page, not Word's header): its first four lines
@@ -118,10 +126,11 @@ export function wordsFromLines(lines, { title = '' } = {}) {
   const paperOnly = (l, i) => PAGE_NO.test(l.text)
     || (LETTERHEAD.test(l.text) && (margin(l, i) || i === 0))
     || ((margin(l, i) || atop(l, i)) && contact(l.text))
-    || (margin(l, i) && (repeated(l) || PAGE_REF.test(l.text) || (l.h && allBody && l.size && l.size < allBody * 0.92)))
-    || SIGN_LABEL.test(l.text.replace(BLANK, '').replace(/[_.\s]+$/, '').trim())
-    || (BLANK.test(l.text) && l.text.replace(/[_.\s]/g, '').length < 40);
-  const kept = clean.filter((l, i) => !paperOnly(l, i));
+    || (margin(l, i) && (repeated(l) || PAGE_REF.test(l.text) || (l.h && allBody && l.size && l.size < allBody * 0.92 && !footnote(l.text))))
+    || SIGN_LABEL.test(l.text.replace(BLANK, '').replace(/[_.\s]+$/, '').trim()) || signLabels(l.text)
+    // (blanks to sign beside their labels go; a line to fill in, "My giving commitment: $_____", keeps its words)
+    || (BLANK.test(l.text) && signLabels(l.text.replace(/_{2,}|\.{4,}/g, ' ').replace(/\s+/g, ' ').trim() || 'signature'));
+  const kept = clean.map((l, i) => (margin(l, i) && footnote(l.text) && l.h && allBody && l.size < allBody * 0.92 ? { ...l, foot: true } : l)).filter((l, i) => !paperOnly(l, i));
   // The body's letters (the size most of the words are), the space between its lines, and how wide a full line runs
   const sizes = kept.flatMap((l) => Array(Math.min(20, Math.ceil(l.text.length / 10))).fill(l.size || 0));
   const body = median(sizes) || 0;
@@ -147,6 +156,7 @@ export function wordsFromLines(lines, { title = '' } = {}) {
     const t = l.text;
     const next = kept[i + 1];
     const prev = kept[i - 1];
+    if (prev && /:$/.test(prev.text) && !l.bold && !sized(l)) return false;
     if (t.length > 50 || t.split(' ').length > 6 || !/^[A-Z]/.test(t) || /:$/.test(t) || !next || !short(l) || /\b(19|20)\d{2}\b/.test(t)) return false;
     if ((!/^[A-Z0-9“"•]/.test(next.text) && !MARKER.test(next.text)) || NAME_TITLE.test(next.text) || /^(approved|adopted|ratified|accepted)\s+by\b/i.test(t)) return false;
     return !prev || l.own || prev.page !== l.page || prev.y - l.y > paraGap || ENDED.test(prev.text) || headingLike(prev, i - 1);
@@ -183,19 +193,44 @@ export function wordsFromLines(lines, { title = '' } = {}) {
       const sameLook = prev && Math.abs((prev.size || 0) - (l.size || 0)) < 0.5 && !!prev.bold === !!l.bold && (prev.level || 0) === (l.level || 0);
       // (close for its own letters: a big heading's lines sit further apart than the body's)
       const near = !!samePage && !l.own && prev.y - l.y <= Math.max(paraGap, (l.size || 0) * 1.6);
-      if (last?.t === 'h' && last.at === i - 1 && sameLook && (near || (l.own && caps(l.text) && caps(prev.text)))) { last.text = `${tail(last.text)} ${tail(l.text)}`; last.at = i; }
+      const joiner = /^(OF|AND|THE|FOR)$/.test(l.text) || /^(OF|AND|THE|FOR)$/.test(prev?.text || '');
+      if (last?.t === 'h' && last.at === i - 1 && (sameLook || (joiner && caps(l.text))) && (near || joiner || (l.own && caps(l.text) && caps(prev.text)))) { last.text = `${tail(last.text)} ${tail(l.text)}`; last.at = i; }
+      // A first line in capitals too long to be a heading alone, its heading's second line under it: one heading
+      else if (last?.t === 'p' && last.at === i - 1 && caps(l.text) && plain(last.text) === plain(last.text).toUpperCase() && plain(last.text).length <= 120 && near) { Object.assign(last, { t: 'h', text: `${tail(plain(last.text))} ${tail(l.text)}`, at: i }); }
       else blocks.push({ t: 'h', text: tail(l.text), at: i });
       continue;
     }
     // A table's row (cells set apart): a table's next row, or its first
+    if (last?.t === 'table' && last.at === i - 1 && last.cols && l.cellX && close) {
+      // Under the table's columns: a new row (every column), or a cell's words carried onto a second line (some)
+      const at = l.cellX.map((x) => last.cols.findIndex((c) => Math.abs(c - x) <= 8));
+      if (at.every((k) => k >= 0)) {
+        if (at.length === last.cols.length && l.cells.length === last.cols.length && at[0] === 0) last.rows.push(l.cells);
+        else { const row = last.rows.at(-1); at.forEach((k, j) => { row[k] = joinLines(row[k], (l.cells || [l.text])[j]); }); }
+        last.at = i;
+        continue;
+      }
+    }
     if (l.cells?.length >= 2) {
       const aligned = last?.t === 'table' && last.at === i - 1 && last.rows[0].length === l.cells.length;
-      if (aligned) { last.rows.push(l.cells); last.at = i; } else blocks.push({ t: 'table', rows: [l.cells], bold: !!l.bold, at: i });
+      if (aligned) { last.rows.push(l.cells); last.at = i; } else blocks.push({ t: 'table', rows: [l.cells], bold: !!l.bold, cols: l.cellX || null, at: i });
       continue;
     }
-    const m = l.text.match(BULLET) || null;
-    const n = !m && l.text.match(NUMBERED);
-    const lab = !m && !n && l.text.match(LABELED);
+    if (l.foot) { blocks.push({ t: 'p', text: l.marked, x: l.x, at: i }); continue; }
+    // A line that carries a sentence on, though it starts like a point ("(3) months", "5. Directors" after "Section")
+    const midSentence = last && last.t === 'p' && prev && prev.page === l.page && close && full(prev) && !ENDED.test(prev.text) && l.x <= prev.x + 4;
+    // Lines under a list's lead-in, short and set like each other: its points
+    const leadIn = last && last.t === 'p' && /:$/.test(plain(last.text)) && last.at === i - 1;
+    const pointRun = last && last.t === 'li' && last.kind === 'ul' && last.implicit && last.at === i - 1 && Math.abs(l.x - last.x) <= 4;
+    if (!midSentence && (leadIn || pointRun) && l.x1 != null && short(l) && !MARKER.test(l.text) && !l.bold && !sized(l) && l.text.split(' ').length <= 14) {
+      blocks.push({ t: 'li', kind: 'ul', implicit: true, text: l.marked, x: l.x, tx: l.x, at: i });
+      continue;
+    }
+    // A line that starts with a label in bold ("Attendance: …"): a paragraph of its own
+    if (!midSentence && /^\uE000[^\uE001]{1,40}:\s*\uE001/.test(l.marked) && last && last.t === 'p') { blocks.push({ t: 'p', text: l.marked, x: l.x, at: i }); continue; }
+    const m = !midSentence && l.text.match(BULLET);
+    const n = !midSentence && !m && l.text.match(NUMBERED);
+    const lab = !midSentence && !m && !n && l.text.match(LABELED);
     // The words after a bullet or number, with their bold (the prefix itself never carries it)
     const after = (k) => (l.marked.startsWith(l.text.slice(0, k)) ? l.marked.slice(k) : l.text.slice(k));
     if (m) blocks.push({ t: 'li', kind: 'ul', text: after(m[0].length), x: l.x, tx: l.tx ?? l.x, at: i });
@@ -203,7 +238,7 @@ export function wordsFromLines(lines, { title = '' } = {}) {
     else if (lab) blocks.push({ t: 'li', kind: 'lab', label: lab[0].trim(), text: after(lab[0].length), x: l.x, tx: l.tx ?? l.x, at: i });
     else if (last && last.t !== 'h' && carriesOn(last, prev, l, close)) {
       // The paragraph (or the point) carried on: a word broken over the line is one word again
-      last.text = /[a-z]-$/.test(last.text) && /^[a-z]/.test(l.marked) ? `${last.text.slice(0, -1)}${l.marked}` : `${last.text} ${l.marked}`;
+      last.text = joinLines(last.text, l.marked);
     } else {
       blocks.push({ t: 'p', text: l.marked, x: l.x, at: i });
     }
@@ -322,7 +357,7 @@ export function linesOfItems(items, { width = 612, height = 792 } = {}) {
     for (const p of r.parts) {
       const gap = prev ? p.x0 - prev.x1 : 0;
       const known = prev && prev.x1 > prev.x0;
-      if (prev && !/\s$/.test(text) && !/^\s/.test(p.s) && (!known || gap > Math.max(p.size, prev.size) * 0.12)) text += ' ';
+      if (prev && !/\s$/.test(text) && !/^\s/.test(p.s) && (!known || gap > Math.max(p.size, prev.size) * 0.12 || (/[.:;!?]$/.test(prev.s) && /^[A-Z(“"]/.test(p.s) && gap > -Math.max(p.size, prev.size) * 0.25))) text += ' ';
       text += p.s;
       const n = p.s.replace(/\s/g, '').length;
       chars += n;
@@ -338,7 +373,7 @@ export function linesOfItems(items, { width = 612, height = 792 } = {}) {
       for (const p of r.parts) {
         const gap = q ? p.x0 - q.x1 : 0;
         const known = q && q.x1 > q.x0;
-        const sp = q && !/\s$/.test(marked.replace(/[\uE000\uE001]+$/, '')) && !/^\s/.test(p.s) && (!known || gap > Math.max(p.size, q.size) * 0.12) ? ' ' : '';
+        const sp = q && !/\s$/.test(marked.replace(/[\uE000\uE001]+$/, '')) && !/^\s/.test(p.s) && (!known || gap > Math.max(p.size, q.size) * 0.12 || (/[.:;!?]$/.test(q.s) && /^[A-Z(“"]/.test(p.s) && gap > -Math.max(p.size, q.size) * 0.25)) ? ' ' : '';
         marked += sp + (p.bold && p.s.trim() ? `${B0}${p.s}${B1}` : p.s);
         q = p;
       }
@@ -357,7 +392,7 @@ export function linesOfItems(items, { width = 612, height = 792 } = {}) {
     const mk = first.s.trim().match(MARKER);
     if (mk && first.s.trim().length === mk[0].trim().length && r.parts[1]) tx = r.parts[1].x0;
     else if (mk && first.s.length && first.x1 > first.x0) tx = first.x0 + ((first.x1 - first.x0) / first.s.length) * (first.s.indexOf(first.s.trim()) + mk[0].length);
-    return { text, ...(marked ? { marked } : {}), ...(tableRow ? { cells: cells.map((c) => c.s.replace(/\s+/g, ' ').trim()) } : {}), x: first.x0, x1: Math.max(...r.parts.map((p) => p.x1)), tx, y: r.y, size: Math.round(r.size * 10) / 10, bold: allBold, h: height, col: r.col || 0 };
+    return { text, ...(marked ? { marked } : {}), ...(tableRow ? { cells: cells.map((c) => c.s.replace(/\s+/g, ' ').trim()) } : {}), cellX: cells.map((c) => c.x0), x: first.x0, x1: Math.max(...r.parts.map((p) => p.x1)), tx, y: r.y, size: Math.round(r.size * 10) / 10, bold: allBold, h: height, col: r.col || 0 };
   });
 }
 

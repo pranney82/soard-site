@@ -370,3 +370,26 @@ test('a new file on a paper some signed: asked, and asked to sign again it’s a
   x = await saveDoc(env.DB, { title: 'Amended Bylaws', kind: 'bylaws', body: long }, { by: FOUNDER });
   assert.ok(x.body.length > 100000 && x.body.endsWith('The last line.'));
 });
+
+test('a paper saved with a new file goes in one: a file that can’t go up changes nothing, and nobody is asked to sign again for it', async () => {
+  const d = await expectations({ title: 'Conflict of Interest Policy' });
+  await signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz');
+  const send = (req, file) => { const f = new FormData(); f.append('saveDoc', JSON.stringify(req)); f.append('file', file); return call(FOUNDER, '/api/board-admin', { method: 'POST', form: f, handler: admin.onRequestPost }); };
+  // A Word file renamed .doc: refused before anything, said as what it is
+  const bad = await send({ doc: d, base: 0, askAgain: true }, new File([new Uint8Array([0x50, 0x4B, 0x03, 0x04, 1, 2, 3, 4])], 'COI disclosure.doc'));
+  assert.equal(bad.status, 415);
+  assert.match(bad.body.error, /isn’t what its name says/);
+  let x = (await listDocs(env.DB)).find((y) => y.id === d.id);
+  assert.deepEqual([x.version, x.signFrom, Object.keys(x.signed), x.file.name], [0, 0, ['sam-ortiz'], 'Board Expectations.pdf']);
+  // A good one over Sam's signature: asked first, nothing stored meanwhile
+  const asked = await send({ doc: d, base: 0 }, pdf('COI 2027.pdf'));
+  assert.deepEqual([asked.status, asked.body.ask?.names], [409, ['Sam Ortiz']]);
+  assert.equal((await listDocs(env.DB)).find((y) => y.id === d.id).file.name, 'Board Expectations.pdf');
+  // Answered: the file in, the next version, Sam to sign it
+  const done = await send({ doc: d, base: 0, askAgain: true }, pdf('COI 2027.pdf'));
+  assert.equal(done.status, 200);
+  assert.deepEqual([done.body.doc.file.name, done.body.doc.version, done.body.doc.signed], ['COI 2027.pdf', 1, {}]);
+  // A photo of a signed page named .pdf is kept as the .jpg it is
+  const photo = await signWithCopy(env, d.id, new File([jpeg('x.jpg').slice ? await jpeg('x.jpg').arrayBuffer() : new Uint8Array()], 'Signed copy.pdf'), { member: memberOf('kim-park') });
+  assert.equal(photo.copy.name, 'Signed copy.jpg');
+});

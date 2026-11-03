@@ -28,6 +28,14 @@
  *     of a sentence (left out, the sentence whole); a table (its rows, header
  *     in bold); a signature block ("Kim Park, Secretary": words, not a
  *     heading); "CARRYING IT OUT" in title case ("Carrying It Out")
+ *   - a form: points under "expected to:" with no bullets (points), a line to
+ *     fill in (kept), the labels under the lines to sign (left out); a line
+ *     wrapped before "(3)" or "5." (the same sentence); an opening sentence
+ *     naming the website (kept); "two-" / "thirds" (two-thirds); a footnote in
+ *     small type (kept); a table cell over two lines (one cell); lines each
+ *     starting with a bold label (each its own); a bold lead-in run straight
+ *     into its sentence ("Vacancies. A vacancy"); "BYLAWS / OF / SUNSHINE…"
+ *     at different sizes (one heading)
  * Made-up words only (the repo is public). Exits non-zero on any failure.
  *
  *   node scripts/test-board-words.mjs
@@ -217,6 +225,42 @@ for (const [k, foot] of [['dash', (n) => `- ${n} -`], ['pipe', (n) => `${n} | P 
   papers.table = { title: 'Committees', ...(await pdf([runs])) };
 }
 
+{
+  // A form
+  const { width } = await pdf([[]]);
+  const runs = flow([
+    ['Please read this paper each year. The full policies are at sunshineonaranneyday.org/board'],
+    ['and the board page. Ask the Chair about anything here.', { gap: 22 }],
+    ['Board members are expected to:'],
+    ['Attend three of four meetings'], ['Serve on one committee'], ['Give or get $5,000 each year'], ['Attend two room reveals', { gap: 22 }],
+    ['Every director keeps a reserve of at least three'],
+  ]);
+  // (the line above runs to the right edge, as a wrapped line does)
+  runs.at(-1).t = 'Every director keeps a reserve for the organization that is enough to last at least three';
+  runs.push(...flow([
+    ['(3) months of operating expenses, as the board sets it each year, and a vote of two-'],
+    ['thirds of the board changes it.*', { gap: 22 }],
+    ['My giving commitment for 2027: $______________', { gap: 26 }],
+    ['__________________________          __________'], ['Board Member Signature                        Date', { gap: 22 }],
+    ['Name (please print)'],
+  ], { y: 586 }));
+  runs.push({ t: '* Gifts of stock count at their value on the day they arrive.', x: 72, y: 50, size: 8 });
+  papers.form = { title: 'Board Member Expectations', ...(await pdf([runs])) };
+  // Labels in bold, each a line; a bold lead-in straight into its sentence; a wrapped table cell; a title at three sizes
+  const r2 = [{ t: 'BYLAWS', x: 270, y: 740, size: 16, b: true }, { t: 'OF', x: 296, y: 718, size: 11, b: true }, { t: 'SUNSHINE ON A RANNEY DAY, INC.', x: 200, y: 698, size: 14, b: true }];
+  let y = 660;
+  for (const [label, rest] of [['Attendance:', ' three of four meetings a year.'], ['Giving:', ' a gift that is meaningful to you.'], ['Committees:', ' at least one, of your choosing.']]) {
+    r2.push({ t: label, x: 72, y, b: true }, { t: rest, x: 72 + width(label, 11, true), y }); y -= 15;
+  }
+  y -= 10;
+  r2.push({ t: 'Section 2.5 Vacancies.', x: 72, y, b: true }, { t: 'A vacancy is filled by the board for the rest of the term.', x: 72 + width('Section 2.5 Vacancies.', 11, true) + 0.5, y });
+  y -= 30;
+  [['Committee', 'Duties', 'Meets'], ['Finance', 'Reviews the budget and', 'Monthly']].forEach((row, i) => row.forEach((t, c) => r2.push({ t, x: [72, 220, 430][c], y: y - i * 15, b: i === 0 })));
+  r2.push({ t: 'the annual audit', x: 220, y: y - 30 });
+  [['Events', 'Plans the Gala', 'Quarterly']].forEach((row) => row.forEach((t, c) => r2.push({ t, x: [72, 220, 430][c], y: y - 45 })));
+  papers.labels2 = { title: 'Amended Bylaws', ...(await pdf([r2])) };
+}
+
 // ── Read them in the browser ──
 const server = http.createServer((req, res) => {
   const f = join(ROOT, 'public', decodeURIComponent(req.url.split('?')[0]));
@@ -290,6 +334,19 @@ for (const k of ['dash', 'pipe', 'rev', 'endash', 'pageword']) ok(/goods and ser
 ok(/^### Section 3\. Committees at a glance$/m.test(md.table) && /\*\*Committee · Chair · Meets\*\*\n\n- Finance and Audit · Sam Ortiz · Monthly\n- Events · Alex Rivera · Every other month\n- Governance · Kim Park · Quarterly/.test(md.table), `a table: its header in bold, a row a point, cells side by side, the heading above it its own (${JSON.stringify(md.table.slice(0, 260))})`);
 ok(/^### Carrying It Out$/m.test(md.table), 'IT in a heading in capitals is the word “It”');
 ok(/^Approved by the Board of Directors$/m.test(md.table) && /^Kim Park, Secretary$/m.test(md.table) && !/### Kim Park/.test(md.table), 'a signature block’s lines stay words, each its own');
+
+console.log('A form, labels in bold, a wrapped cell, a title at three sizes');
+ok(/^Board members are expected to:\n\n- Attend three of four meetings\n- Serve on one committee\n- Give or get \$5,000 each year\n- Attend two room reveals$/m.test(md.form), `points under “expected to:” with no bullets are points (${JSON.stringify((md.form.match(/Board members[\s\S]{0,160}/) || [''])[0])})`);
+ok(/^Please read this paper each year\. The full policies are at sunshineonaranneyday\.org\/board and the board page\./m.test(md.form), 'an opening sentence that names the website stays');
+ok(/enough to last at least three \(3\) months of operating expenses/.test(md.form), 'a line wrapped before “(3)” is the same sentence, not a numbered point');
+ok(/a vote of two-thirds of the board changes it/.test(md.form), '“two-” / “thirds” keeps its hyphen');
+ok(/My giving commitment for 2027: \$\\_/.test(md.form), 'a line to fill in keeps its words');
+ok(!/Board Member Signature|please print/i.test(md.form), 'the labels under the lines to sign are left out');
+ok(/^\\\* Gifts of stock count at their value on the day they arrive\.$/m.test(md.form), `a footnote in small type stays (${JSON.stringify((md.form.match(/.*Gifts of stock.*/) || [''])[0])})`);
+ok(/^### Bylaws of Sunshine on a Ranney Day, Inc\.$/m.test(md.labels2), `a title over three lines at three sizes is one heading (${JSON.stringify(md.labels2.slice(0, 80))})`);
+ok(/^\*\*Attendance:\*\* three of four meetings a year\.\n\n\*\*Giving:\*\* a gift that is meaningful to you\.\n\n\*\*Committees:\*\* at least one, of your choosing\.$/m.test(md.labels2), 'lines each starting with a bold label are each their own');
+ok(/Vacancies\.\*\* A vacancy is filled/.test(md.labels2) || /Vacancies\. A vacancy is filled/.test(md.labels2), `a bold lead-in and its sentence keep their space (${JSON.stringify((md.labels2.match(/.*Vacanc.*/) || [''])[0])})`);
+ok(/- Finance · Reviews the budget and the annual audit · Monthly\n- Events · Plans the Gala · Quarterly/.test(md.labels2), `a table cell over two lines is one cell, the rows after it rows (${JSON.stringify((md.labels2.match(/\*\*Committee[\s\S]*/) || [''])[0])})`);
 
 ok(!errors.length, `no errors in the page${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 if (failures.length) { console.log(`\n${failures.length} failed`); process.exit(1); }

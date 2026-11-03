@@ -147,3 +147,9 @@ test('a Word paragraph bold some of the way keeps its bold word', async () => {
   const docx = zip({ 'word/document.xml': `<w:document><w:body><w:p>${run('Each member gives ')}${run('personally', true)}${run(' each year.')}</w:p></w:body></w:document>` });
   assert.equal(wordsFromLines(docxLines(await docxText(docx, { paragraphs: true }))), 'Each member gives **personally** each year.');
 });
+
+test('a Word file’s points styled as a list (List Bullet, List Number: the numbering in the style) are points', async () => {
+  const p = (t, style) => `<w:p><w:pPr><w:pStyle w:val="${style}"/></w:pPr><w:r><w:t>${t}</w:t></w:r></w:p>`;
+  const docx = zip({ 'word/document.xml': `<w:document><w:body><w:p><w:r><w:t>Board members are expected to:</w:t></w:r></w:p>${p('Attend three of four meetings', 'ListBullet')}${p('Serve on one committee', 'ListBullet')}${p('Read the packet', 'ListNumber')}${p('Vote', 'ListNumber')}</w:body></w:document>` });
+  assert.equal(wordsFromLines(docxLines(await docxText(docx, { paragraphs: true }))), 'Board members are expected to:\n\n- Attend three of four meetings\n- Serve on one committee\n\n1. Read the packet\n2. Vote');
+});

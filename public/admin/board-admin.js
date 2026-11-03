@@ -645,17 +645,18 @@ function Wordings({ id, current, signFrom = 0, onUse, addToast }) {
 
 // What a paper's file can be on the board page (the server checks too: functions/api/_board.js fileTypeOf)
 const MAX_FILE = 50 * 1024 * 1024;
-/** What a file really is, from its first bytes (its name can say anything): 'pdf', 'image', 'office' or '' */
+/** What a file really is, from its first bytes (its name can say anything): 'pdf', 'image', 'zip' (a .docx, .xlsx, .pptx), 'ole' (a .doc, .xls) or '' */
 async function fileKind(f) {
   const b = new Uint8Array(await f.slice(0, 12).arrayBuffer());
   const s = String.fromCharCode(...b);
   if (s.startsWith('%PDF')) return 'pdf';
   if ((b[0] === 0xFF && b[1] === 0xD8) || s.startsWith('\x89PNG') || s.startsWith('GIF8') || (s.startsWith('RIFF') && s.slice(8, 12) === 'WEBP') || s.slice(4, 8) === 'ftyp') return 'image';
-  if ((b[0] === 0x50 && b[1] === 0x4B) || (b[0] === 0xD0 && b[1] === 0xCF)) return 'office';
+  if (b[0] === 0x50 && b[1] === 0x4B) return 'zip';
+  if (b[0] === 0xD0 && b[1] === 0xCF) return 'ole';
   return '';
 }
-const kindOfName = (n) => (/\.pdf$/i.test(n) ? 'pdf' : /\.(jpe?g|png|gif|webp|heic)$/i.test(n) ? 'image' : /\.(docx|xlsx|pptx|doc|xls)$/i.test(n) ? 'office' : '');
-const KIND_WORD = { pdf: 'PDF', image: 'picture', office: 'Word, Excel or PowerPoint file' };
+const kindOfName = (n) => (/\.pdf$/i.test(n) ? 'pdf' : /\.(jpe?g|png|gif|webp|hei[cf])$/i.test(n) ? 'image' : /\.(docx|xlsx|pptx)$/i.test(n) ? 'zip' : /\.(doc|xls)$/i.test(n) ? 'ole' : '');
+const KIND_WORD = { pdf: 'PDF', image: 'picture', zip: 'Word, Excel or PowerPoint file', ole: 'older Word or Excel file (.doc, .xls)' };
 /** Why a file can't go on the board page, said before anything's saved ('' when it can) */
 async function fileProblem(f) {
   const want = kindOfName(f.name || '');
@@ -724,6 +725,7 @@ function DocumentsTab({ ctx }) {
         setDraft((x) => (x && x.id === d.id ? { ...x, body: md } : x));
         setRead({ md, from, name: source.name });
         setWordsKey((k) => k + 1);
+        setTimeout(() => document.querySelector('.bd-words .rp-edit')?.focus({ preventScroll: true }), 60);
       }
     } catch (err) {
       addToast(`Couldn’t read ${fileTitle(source.name)}: ${unread(err)}. Write the words in the box instead.`, 'error');
@@ -771,11 +773,18 @@ function DocumentsTab({ ctx }) {
     const words = asRead;
     const back = () => requestAnimationFrame(() => document.querySelector('[data-save-doc]')?.focus());
     setSaving(true);
-    const j = await call({
+    const payload = {
       action: 'save-doc', askAgain, base: doc.id ? base ?? doc.version ?? 0 : undefined,
       doc: { ...doc, body, ...(words?.from === 'existing' && existing ? { wordsFile: existing.id } : {}) },
-      fromFile: words?.from === 'existing', wordsFrom: words ? fileTitle(words.name) : '', newFile: file ? file.name : '',
-    });
+      fromFile: words?.from === 'existing', wordsFrom: words ? fileTitle(words.name) : '',
+    };
+    let j;
+    if (file) {
+      const fd = new FormData();
+      fd.append('saveDoc', JSON.stringify({ ...payload, wordsFromNew: words?.from === 'new' }));
+      fd.append('file', file);
+      j = await call(null, { form: fd });
+    } else j = await call(payload);
     if (!j.ok) {
       setSaving(false);
       // A new version over signatures: the server asks, naming who signed. Keeping them is the safe answer, so it has
@@ -813,25 +822,17 @@ function DocumentsTab({ ctx }) {
         } else back();
         return;
       }
+      // Deleted meanwhile: what's in the editor can be saved as a new paper (or Cancel)
+      if (j.deleted) {
+        addToast(`${j.error}. Save to add it again as a new paper, or Cancel.`, 'error');
+        setDraft((x) => (x ? { ...x, id: undefined, version: 0, signFrom: 0, existing: null } : x));
+        call().then((r) => { if (r.ok) setData(r); });
+        return;
+      }
       addToast(j.error, 'error');
-      if (j.deleted) call().then((r) => { if (r.ok) setData(r); });
       return;
     }
-    let d = j.doc;
-    if (file) {
-      const up = await upload(file, { ownerType: 'doc', ownerId: d.id });
-      if (up.ok) {
-        d = { ...d, file: up.file };
-        // Its words read from this file: where they came from, so the file isn't "newer than its words"
-        if (words?.from === 'new') { const k = await call({ action: 'save-doc', doc: { ...d, body: undefined, wordsFile: up.file.id } }); if (k.ok) d = k.doc; }
-      } else if (!doc.id) {
-        // A new paper whose file didn't go: not left on the board page without it
-        await call({ action: 'delete-doc', id: d.id });
-        setSaving(false);
-        addToast(`${file.name} didn’t upload: ${up.error}. Nothing was added.`, 'error');
-        return;
-      } else addToast(`Saved, but the new file didn’t upload: ${up.error}`, 'error');
-    }
+    const d = j.doc;
     setSaving(false);
     putDoc(d);
     opened.current = snap(null);

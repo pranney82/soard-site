@@ -45,7 +45,7 @@
 
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
-  setActionDone, listDocs, saveDoc, deleteDoc, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
+  setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
   memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
   chairLive, createPractice, resetPractice,
 } from './_board.js';
@@ -77,6 +77,11 @@ async function welcomeNow(DB) {
   return { welcome, welcomeSending: !!c && Date.now() - Date.parse(c.updated_at) < 2 * 60 * 1000, welcomeAt: Date.now() };
 }
 
+/** save-doc's options from what the page sent (its words' source, the wording it started from, its answer to "sign again?") */
+const docOptions = (body, me) => ({
+  by: me, askAgain: typeof body.askAgain === 'boolean' ? body.askAgain : null, base: Number.isInteger(body.base) ? body.base : null,
+  fromFile: body.fromFile === true, wordsFrom: String(body.wordsFrom || '').slice(0, 200),
+});
 const fail = (error, status = 400, extra = {}) => Response.json({ ok: false, error, ...extra }, { status });
 const fromError = (err) => (err.status && err.status < 500 ? fail(err.message, err.status, { ...(err.current ? { current: err.current } : {}), ...(err.extra || {}) }) : Response.json({ ok: false, error: err.message }, { status: 500 }));
 
@@ -166,6 +171,23 @@ export async function onRequestPost(context) {
         await audit(env, me, 'updated', `Board signature added for ${signed.name}`);
         return Response.json({ ok: true, signed, doc: (await listDocs(env.DB)).find((d) => d.id === docId) });
       }
+      // A paper saved with its new file, in one: the file checked first, so nothing changes (no new version, nobody
+      // asked to sign again) unless it can go up; a new paper whose file then didn't go isn't left without it
+      if (form.get('saveDoc')) {
+        let req = {};
+        try { req = JSON.parse(String(form.get('saveDoc'))); } catch { return fail('Expected the paper with its file'); }
+        const upload = form.get('file');
+        const why = await boardFileProblem(upload);
+        if (why) return fail(why, 415);
+        const d = await saveDoc(env.DB, req.doc || {}, { ...docOptions(req, me), newFile: String(upload.name || 'file').slice(0, 200) });
+        let put;
+        try { put = await putFile(env, { ownerType: 'doc', ownerId: d.id, file: upload, by: me }); } catch (err) { if (!req.doc?.id) await deleteDoc(env, d.id); throw err; }
+        let doc = (await listDocs(env.DB)).find((x) => x.id === d.id);
+        // Its words read from this file: where they came from
+        if (req.wordsFromNew) doc = await saveDoc(env.DB, { ...doc, body: undefined, wordsFile: put.id }, { by: me });
+        await audit(env, me, 'updated', `Board document saved with a new file: ${doc.title}`);
+        return Response.json({ ok: true, doc });
+      }
       const file = await putFile(env, {
         ownerType: String(form.get('ownerType') || ''), ownerId: String(form.get('ownerId') || ''), file: form.get('file'),
         kind: String(form.get('kind') || 'other'), staffOnly: form.get('staffOnly') === 'true', by: me,
@@ -232,10 +254,7 @@ export async function onRequestPost(context) {
       case 'action-done':
         return Response.json({ ok: true, ...(await setActionDone(env.DB, String(body.actionId || ''), !!body.done, { by: me })) });
       case 'save-doc': {
-        const d = await saveDoc(env.DB, body.doc || {}, {
-          by: me, askAgain: typeof body.askAgain === 'boolean' ? body.askAgain : null, base: Number.isInteger(body.base) ? body.base : null,
-          fromFile: body.fromFile === true, wordsFrom: String(body.wordsFrom || '').slice(0, 200), newFile: String(body.newFile || '').slice(0, 200),
-        });
+        const d = await saveDoc(env.DB, body.doc || {}, docOptions(body, me));
         await audit(env, me, 'updated', `Board document saved: ${d.title}`);
         return Response.json({ ok: true, doc: d });
       }

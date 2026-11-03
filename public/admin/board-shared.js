@@ -1861,7 +1861,7 @@ export async function asJpeg(f) {
  * { text, level (a Heading or Title style's, else 0), bold (all its words), ilvl, marker }, for ./board-words.js
  */
 export async function docxText(bytes, { paragraphs = false } = {}) {
-  const files = await unzip(bytes, ['word/document.xml', 'word/numbering.xml']);
+  const files = await unzip(bytes, ['word/document.xml', 'word/numbering.xml', ...(paragraphs ? ['word/styles.xml'] : [])]);
   const dec = new TextDecoder();
   const doc = files['word/document.xml'] ? dec.decode(files['word/document.xml']) : '';
   if (!doc) throw new Error('no document in that Word file');
@@ -1890,6 +1890,14 @@ export async function docxText(bytes, { paragraphs = false } = {}) {
     return `${n}.`;
   };
   const body = (doc.match(/<w:body>([\s\S]*)<\/w:body>/) || [])[1] || doc;
+  // The styles that number their paragraphs (styles.xml: a style's own numPr)
+  const styleNum = {};
+  const listCount = {};
+  const styles = files['word/styles.xml'] ? dec.decode(files['word/styles.xml']) : '';
+  for (const [, sid, inner] of styles.matchAll(/<w:style\b[^>]*w:styleId="([^"]+)"[^>]*>([\s\S]*?)<\/w:style>/g)) {
+    const num = (inner.match(/<w:numId w:val="(\d+)"/) || [])[1];
+    if (num) styleNum[sid] = { numId: num, ilvl: Number((inner.match(/<w:ilvl w:val="(\d+)"/) || [])[1] || 0) };
+  }
   const lines = [];
   const paras = [];
   for (const [block] of body.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>|<w:p\b[\s\S]*?<\/w:p>/g)) {
@@ -1902,13 +1910,16 @@ export async function docxText(bytes, { paragraphs = false } = {}) {
     }
     const text = xmlText(block.replace(/<w:pPr>[\s\S]*?<\/w:pPr>/, '')).replace(/\s+/g, ' ').trim();
     if (!text) continue;
-    const numId = (block.match(/<w:numId w:val="(\d+)"/) || [])[1];
-    const ilvl = Number((block.match(/<w:ilvl w:val="(\d+)"/) || [])[1] || 0);
-    const mark = numId && numId !== '0' ? marker(numId, ilvl) : '';
+    const pStyle = (block.match(/<w:pStyle w:val="([^"]+)"/) || [])[1] || '';
+    // (a paragraph styled as a list keeps its numbering in the style: List Bullet, List Number, a style of one's own)
+    const styled = paragraphs ? styleNum[pStyle] : null;
+    const numId = (block.match(/<w:numId w:val="(\d+)"/) || [])[1] || styled?.numId;
+    const ilvl = Number((block.match(/<w:ilvl w:val="(\d+)"/) || [])[1] || styled?.ilvl || 0);
+    const mark = numId && numId !== '0' ? marker(numId, ilvl) : paragraphs && /^list\s?bullet/i.test(pStyle) ? '-' : paragraphs && /^list\s?number/i.test(pStyle) ? `${(listCount[pStyle] = (listCount[pStyle] || 0) + 1)}.` : '';
     // Each list level three spaces further in, so the agenda rules can tell an item from a point under it
     lines.push(mark ? `${'   '.repeat(ilvl)}${mark} ${text}` : text);
     if (paragraphs) {
-      const style = (block.match(/<w:pStyle w:val="([^"]+)"/) || [])[1] || '';
+      const style = pStyle;
       const level = /^title$/i.test(style) ? 1 : /^subtitle$/i.test(style) ? 2 : Number((style.match(/^heading\s?([1-6])$/i) || [])[1] || 0);
       // Bold all through: every run with words in it is bold (<w:b/>, not <w:b w:val="0"/>)
       const words = (r) => xmlText(r.replace(/<w:rPr>[\s\S]*?<\/w:rPr>/, ''));

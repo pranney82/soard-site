@@ -150,7 +150,7 @@ function phaseOf(m) {
   return now < s - 10 ? 'before' : now <= e ? 'now' : 'after';
 }
 const hueOf = (s) => [42, 28, 96, 152, 200, 18][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
-const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[’‘]/g, "'");
+const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[’‘]/g, "'").replace(/\u2044/g, '/');
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** A time, a size or a length that never breaks before its unit on a narrow phone ("10:00 AM", "51 KB", "130 min") */
 const nb = (s) => String(s ?? '').replace(/(\d) (AM|PM|KB|MB|min|h)\b/g, '$1\u00a0$2');
@@ -443,7 +443,7 @@ function useFocusTarget() {
       // A report cut short opens whole, so what was searched for shows
       el.querySelectorAll('.rp-more[aria-expanded="false"]').forEach((b) => b.click());
       // The focus goes there too: a field waiting for them (the name to sign with), else the thing itself
-      const field = matchMedia('(pointer: coarse)').matches ? null : el.querySelector('[data-autofocus]');
+      const field = matchMedia('(pointer: coarse)').matches ? null : (el.classList.contains('bp-doc') && el.querySelector('a.bp-btn')) || el.querySelector('[data-autofocus]');
       if (field) field.focus({ preventScroll: true });
       else { if (!el.matches('a, button, input, select, textarea, [tabindex]')) el.setAttribute('tabindex', '-1'); el.focus({ preventScroll: true }); }
       // What arrives above it a moment later (a budget read, photos) doesn't push it away: the jump is aimed again
@@ -1309,7 +1309,7 @@ function meetingTexts(m) {
  * A term as it may be written, at a word's start: a number with its commas, points or slash ("7500" is "7,500", "73"
  * is "7.3", "23" is "2/3"), a word with its hyphens ("twothirds" is "two-thirds")
  */
-const termRe = (t) => `(?<![a-z0-9])${[...t].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(/^\d+$/.test(t) ? '[,./]?' : "[-'’.]?")}`;
+const termRe = (t) => (/^\d+ \d+$/.test(t) ? `(?<![a-z0-9])${t.replace(' ', '[/\u2044]')}(?![0-9])` : `(?<![a-z0-9])${[...t].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(/^\d+$/.test(t) ? '[,./]?' : "[-'’.]?")}`);
 const Marked = ({ text, terms }) => { const re = new RegExp(`(${terms.map(termRe).join('|')})`, 'ig'); return String(text || '').split(re).map((part, i) => (i % 2 ? html`<mark>${part}</mark>` : part)); };
 /**
  * Finding words the way a person types them: each word at the start of a word ("bud" finds Budget, "aug 6" August 6
@@ -1319,8 +1319,9 @@ const Marked = ({ text, terms }) => { const re = new RegExp(`(${terms.map(termRe
 // (a word joined by punctuation counts as itself too: "D&O" is "d o" and "do", "W-9" is "w 9" and "w9")
 const spaced = (s) => { const t = norm(s); return ` ${t.replace(/[^a-z0-9]+/g, ' ').trim()} ${t.replace(/(\d),(?=\d{3}\b)/g, '$1').replace(/([a-z0-9])[&.'’\-/()]+(?=[a-z0-9])/g, '$1').replace(/[^a-z0-9]+/g, ' ').trim()} `; };
 const squashed = (s) => norm(s).replace(/[^a-z0-9]+/g, '');
-const termsOf = (q) => norm(q).split(/\s+/).map((w) => w.replace(/[^a-z0-9]+/g, '')).filter(Boolean);
-const termIn = (sp, sq, w) => sp.includes(` ${w}`) || ((/\d/.test(w) && /[a-z]/.test(w)) || w.length >= 5 ? sq.includes(w) : false);
+// (a fraction, "1/2" or "½", is its two numbers apart: " 1 2 " in the words, never "12")
+const termsOf = (q) => norm(q).split(/\s+/).map((w) => (/^\d+\/\d+$/.test(w) ? w.replace('/', ' ') : w.replace(/[^a-z0-9]+/g, ''))).filter(Boolean);
+const termIn = (sp, sq, w) => (w.includes(' ') ? sp.includes(` ${w} `) : false) || (!w.includes(' ') && sp.includes(` ${w}`)) || ((/\d/.test(w) && /[a-z]/.test(w)) || w.length >= 5 ? sq.includes(w) : false);
 const hits = (text, terms) => { const sp = spaced(text); const sq = squashed(text); return terms.every((w) => termIn(sp, sq, w)); };
 /** Notes as one line ("Recommending … · $300k revenue from golf"), their bullets gone */
 const notesLine = (t) => String(t || '').split('\n').map((l) => l.replace(/^\s*[-•*]\s+/, '').trim()).filter(Boolean).join(' · ');
@@ -3426,7 +3427,7 @@ function DocumentsPage({ ctx }) {
             ${x.signedByMe ? html`<p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p><${Signed} doc=${x} ctx=${ctx} />`
               : html`${signTrouble.has(x.id) ? html`<p class="bp-doc__changed" role="alert">Not signed yet: ${signTrouble.get(x.id)}</p>` : x.signedEarlier ? html`<p class="bp-doc__changed">Its words changed since you signed. Read them and sign again.</p>` : null}
                 <p class="bp-btns bp-btns--tight"><a class=${`bp-btn bp-btn--sm ${data.me.slug ? 'bp-btn--primary' : ''}`} ...${open(x)}>${data.me.slug ? 'Read and sign' : 'Read it'}</a></p>`}`
-            : html`${!x.signedByMe && signTrouble.has(x.id) ? html`<p class="bp-doc__changed" role="alert">Not signed yet: ${signTrouble.get(x.id)}</p>` : !x.signedByMe && x.signedEarlier ? html`<p class="bp-doc__changed">A new version came in since you signed. Read it and sign again.</p>` : null}
+            : html`${!x.signedByMe && x.signedEarlier && !signTrouble.has(x.id) ? html`<p class="bp-doc__changed">A new version came in since you signed. Read it and sign again.</p>` : null}
           <p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p>
           <${SignForm} d=${x} ctx=${ctx} />`}
         </div>
@@ -3476,6 +3477,7 @@ function DocPage({ id, ctx }) {
   // The paper's own last line already agrees ("I have read and understand…"): printed, it isn't said twice
   const agrees = written && /^(i have read|i acknowledge|i agree|by signing)/i.test(mdPlain(doc.body).trim().split('\n').at(-1).replace(/^[•\d.\s-]+/, ''));
   const me = doc.signedByMe;
+  const trouble = !doc.sign && signTrouble.get(doc.id);
   const HOW = { typed: 'typed on the board page', copy: 'with the copy signed on paper', staff: 'with a signed copy SOARD added', drive: 'with a signed copy in SOARD’s files' };
   return html`<div class="bp-docpage">
     <a class="bp-back" href="#/documents"><${Icon} name="back" size=${18} />Documents</a>
@@ -3488,6 +3490,8 @@ function DocPage({ id, ctx }) {
       </div>
       ${written ? html`<p class="bp-btns bp-noprint"><button type="button" class="bp-btn bp-btn--sm" onClick=${() => window.print()}><${Icon} name="print" size=${16} />Print it</button></p>` : null}
     </header>
+    ${trouble ? html`<p class="bp-doc__changed bp-noprint" role="alert">Not signed: ${trouble}</p>` : null}
+    ${doc.sign && doc.signedEarlier && !me ? html`<p class="bp-doc__changed bp-noprint">${written ? 'Its words changed since you signed: read them, then sign again at the end.' : 'A new version came in since you signed: read it, then sign again below.'}</p>` : null}
     ${written ? html`<article class="bp-card bp-docpage__words bp-rise" style=${rise(1)}><${Report} text=${doc.body} level=${2} /></article>`
       : html`<div class="bp-card bp-docpage__file bp-rise" style=${rise(1)}>
         <p class="bp-muted">${doc.title} is ${({ PDF: 'a PDF', Word: 'a Word file', Excel: 'a spreadsheet', Slides: 'a slide deck', Photo: 'a photo' })[formatOf(doc.file)] || 'a file'}: open it to read it${doc.sign ? ', then sign here' : ''}.</p>
