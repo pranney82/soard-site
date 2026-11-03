@@ -5,7 +5,7 @@
  * the chair's review, and the treasurer's line notes. Made-up people only (the repo is public).
  * Run: node --test tests/board-asks.test.mjs
  */
-import { test, beforeEach } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
@@ -106,6 +106,9 @@ let gmail;
 let clock;
 // Tuesday Nov 3 2026, 9:00 AM Eastern (standard time): the meeting is Thursday Nov 5
 const NOV3_9AM = Date.parse('2026-11-03T14:00:00Z');
+// The site's own clock (what a route reads when it isn't handed one: who may see a meeting ahead, a note's day) kept on
+// the test's, still ticking, so the fixture's week is "now" whatever day the tests run
+const realNow = Date.now;
 
 async function meeting(extra = {}) {
   return saveMeeting(env.DB, {
@@ -136,7 +139,10 @@ beforeEach(async () => {
   gmail = fakeGmail();
   clock = NOV3_9AM;
   gmail.now = () => clock;
+  const t0 = realNow();
+  Date.now = () => clock + (realNow() - t0);
 });
+afterEach(() => { Date.now = realNow; });
 
 const run = () => runAsks(env, { fetchImpl: gmail.fetch, now: clock });
 
@@ -744,6 +750,9 @@ test('once: the Oct 29 practice run on the real Nov 5 meeting is cleared, only t
   await saveMeeting(env.DB, { id: PRACTICE_RUN.meetingId, date: '2026-11-05', sections: [] }, { by: 'jane@soardcharity.com' });
   await store('2026-10-30T01:04:42.357Z', PRACTICE_RUN.endedAt);
   const before = await getMeeting(env.DB, PRACTICE_RUN.meetingId);
+  // (a moment on, so the clear's version is never stamped the same millisecond as the save's: _board.js stamps by the
+  // real clock)
+  await new Promise((r) => setTimeout(r, 5));
   assert.equal(await clearPracticeRun(env.DB), true);
   const live = await stored();
   assert.deepEqual([live.startedAt, live.endedAt], ['', '']);

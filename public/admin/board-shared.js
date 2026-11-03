@@ -838,7 +838,7 @@ export function statementBreaks(rows, max = SLIDE_LINES) {
   const fill = (from, to) => {
     const run = (cap) => { const out = []; for (let k = from; k < to; k = take(k, to, cap)) out.push(k); return out; };
     const most = run(max);
-    const even = run(Math.max(2, Math.ceil((to - from + most.length - 1) / most.length)));
+    const even = run(Math.min(max, Math.max(2, Math.ceil((to - from + most.length - 1) / most.length))));
     return even.length === most.length ? even : most;
   };
   // Each top heading with what follows it to the next (its total, the sums under it)
@@ -865,7 +865,12 @@ export const hasReport = (it) => !!String(it?.report || '').trim() && !isNothing
  * An item whose motion the screen shows on a slide of its own, "The decision" (deckOf): it has one (the vote on the
  * last minutes always does) and more to show besides it (a report, the presenter's notes, live facts)
  */
-export const decidesAlone = (it) => !!(String(it?.motion || '').trim() || it?.live === 'minutes') && (hasReport(it) || !!String(it?.notes || '').trim() || showsOf(it).length > 0);
+export const decidesAlone = (it) => !!(String(it?.motion || '').trim() || it?.live === 'minutes') && (hasReport(it) || !!String(it?.notes || '').trim() || showsOf(it).length > 0 || !!facesOf(it));
+/**
+ * An item whose report is a slide of its own, right after the item's (deckOf): its own slide is full of something
+ * else (live facts, the board's faces) or carries the presenter's notes, which the report would crowd off
+ */
+export const reportAlone = (it) => hasReport(it) && (showsOf(it).length > 0 || !!facesOf(it) || !!String(it?.notes || '').trim());
 
 /** A financial statement as a file (a balance sheet, a P&L): QuickBooks draws them once it's connected. A budget isn't one */
 export const isStatement = (f) => f?.kind === 'financials' && !/budget/i.test(String(f.name || ''));
@@ -882,9 +887,9 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null 
   let booked = false;
   const add = (it, files, n, sectionId) => {
     out.push({ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n, sectionId });
-    // An item that shows live facts (the makeovers, the money…) fills its own slide with them: its report is a slide of
-    // its own, right after (nothing new to report needs none)
-    if (showsOf(it).length && hasReport(it)) out.push({ key: `${it.id}:report`, kind: 'report', itemId: it.id, fileId: 'report', page: 0, n, sectionId });
+    // An item that shows live facts (the makeovers, the money…) or the board's faces fills its own slide with them, and
+    // one with notes keeps them there: its report is a slide of its own, right after (nothing new to report needs none)
+    if (reportAlone(it)) out.push({ key: `${it.id}:report`, kind: 'report', itemId: it.id, fileId: 'report', page: 0, n, sectionId });
     // Each live list after the first, a slide of its own; after the money, QuickBooks' slides (the year against last
     // year, then each statement, as many slides as its lines take at a size a room reads)
     for (const x of slidesOf(it, booked ? null : books)) {

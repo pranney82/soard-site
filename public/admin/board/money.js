@@ -23,14 +23,15 @@ const monthOf = (ym) => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString('en-US
 // packet (QuickBooks' Excel copy), read in the browser
 export const compact = (n) => {
   const a = Math.abs(n);
-  const s = n < 0 ? '−' : '';
+  // (no minus on what rounds to nothing: "$0", never "−$0")
+  const s = n <= -0.5 ? '−' : '';
   return a >= 1e9 ? `${s}$${(a / 1e9).toFixed(a >= 1e10 ? 1 : 2).replace(/\.?0+$/, '')}B` : a >= 1e6 ? `${s}$${(a / 1e6).toFixed(a >= 1e7 ? 1 : 2).replace(/\.?0+$/, '')}M` : a >= 1e4 ? `${s}$${Math.round(a / 1e3)}K` : `${s}${money(a)}`;
 };
 /**
  * An amount as a figure (the money's tiles): whole dollars with a true minus, "−$48,210"; from $10M up the short
  * form, "$1.4B", so a figure always fits its tile
  */
-export const amount = (n) => (typeof n !== 'number' || !Number.isFinite(n) ? '' : Math.abs(n) >= 1e7 ? compact(n) : `${n < 0 ? '−' : ''}${money(Math.abs(n))}`);
+export const amount = (n) => (typeof n !== 'number' || !Number.isFinite(n) ? '' : Math.abs(n) >= 1e7 ? compact(n) : `${n <= -0.5 ? '−' : ''}${money(Math.abs(n))}`);
 function balanceSheet(data, upTo = '') {
   return data.meetings.filter((m) => !upTo || m.date <= upTo).flatMap((m) => m.files.filter((f) => f.kind === 'financials' && isExcel(f) && /financial position|balance sheet/i.test(f.name)).map((f) => ({ f, m })))
     .sort((a, b) => b.m.date.localeCompare(a.m.date) || String(b.f.at || '').localeCompare(String(a.f.at || '')))[0] || null;
@@ -110,8 +111,10 @@ export function booksCash(data, b) {
     months: typeof b.monthsOfCash === 'number' ? b.monthsOfCash : null, perMonth: b.perMonth || null,
   };
 }
-/** 16.8 → "17", 8.46 → "8.5": months of cash, to a tenth under ten; none at all (or less) "Under a month" */
-export const monthsText = (m) => (m <= 0 ? 'Under a month' : m >= 10 ? String(Math.round(m)) : String(Math.round(m * 10) / 10));
+/** 16.8 → "17", 8.46 → "8.5": months of cash, to a tenth under ten; what rounds to none (or less) "Under a month" */
+export const monthsText = (m) => { const r = m >= 10 ? Math.round(m) : Math.round(m * 10) / 10; return r > 0 ? String(r) : 'Under a month'; };
+/** The same in a sentence: "Under a month", "1 month", "8.5 months" (the board page's "… of spending") */
+export const monthsPhrase = (m) => { const t = monthsText(m); return t === 'Under a month' ? t : `${t} ${t === '1' ? 'month' : 'months'}`; };
 /** "From QuickBooks, as of 3:05 PM" (today) or "…, as of Oct 28": where the cash comes from when it's the books' */
 export const fromBooks = (cash) => (cash?.banks?.length === 1 && cash.banks[0] === 'QuickBooks'
   ? `From QuickBooks, as of ${cash.today ? new Date(cash.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' }) : shortAsOf(cash.asOf)}` : '');
@@ -272,9 +275,10 @@ const asOfWords = (s) => { const t = Date.parse(String(s || '')); return Number.
 export function moneyTiles({ cash, budget, n, due = false, as = '' }) {
   const out = [];
   if (cash !== null) {
-    const over = !!cash && cash.total < 0;
+    // (overdrawn by what rounds to nothing is $0 in the bank; a total that isn't a figure says so, never a blank tile)
+    const over = !!cash && cash.total <= -0.5;
     out.push({
-      k: 'bank', label: over ? 'Overdrawn' : 'Cash in the bank', value: cash ? amount(Math.abs(cash.total)) : '…', quiet: over,
+      k: 'bank', label: over ? 'Overdrawn' : 'Cash in the bank', value: !cash ? '…' : Number.isFinite(cash.total) ? amount(Math.abs(cash.total)) : '–', quiet: over,
       sub: !cash ? 'From the balance sheet' : fromBooks(cash) || (cash.live
         ? [(cash.accounts || []).length > 1 ? cash.accounts.map((a) => `${a.name} ${compact(a.balance)}`).join(' · ') : '', cash.asOf ? `as of ${shortAsOf(cash.asOf)}` : ''].filter(Boolean).join(', ')
         : `${cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : 'From the balance sheet'}${cash.prior != null ? ` · ${as ? changeIn(cash.total, cash.prior, as, { short: true }) : `${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))}`} on a year` : ''}`),
@@ -295,7 +299,7 @@ export function moneyTiles({ cash, budget, n, due = false, as = '' }) {
   // Mercury's own record (the year so far, the forecast) only once its banks are the cash shown
   if (cash?.live && cash.banks?.includes('Mercury') && !n?.mercury?.empty && f?.ytd) {
     const spent = (p) => (p.makeovers || 0) + (p.store || 0) + (p.operating || 0);
-    if (!budget?.revenue) out.push({ k: 'ytd', label: `${f.ytd.year} so far`, value: `${f.ytd.net < 0 ? '' : '+'}${amount(f.ytd.net)}`, sub: `${compact(f.ytd.income)} in · ${compact(spent(f.ytd))} out, through ${new Date(`${f.ytd.through}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })}`, tone: f.ytd.net >= 0 ? 'up' : 'down' });
+    if (!budget?.revenue) out.push({ k: 'ytd', label: `${f.ytd.year} so far`, value: `${f.ytd.net >= 0.5 ? '+' : ''}${amount(f.ytd.net)}`, sub: `${compact(f.ytd.income)} in · ${compact(spent(f.ytd))} out, through ${new Date(`${f.ytd.through}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })}`, tone: f.ytd.net >= 0 ? 'up' : 'down' });
     if (f.cash?.lowest) out.push({ k: 'low', label: 'Lowest ahead', value: amount(f.cash.lowest.dollars), sub: `${f.cash.lowest.week ? `Week of ${shortDate(f.cash.lowest.week).replace(/, \d{4}$/, '')}` : 'In the forecast'} · ${compact(f.cash.in13Weeks)} in 13 weeks`, tone: f.cash.belowFloor ? 'down' : '' });
   }
   return out;

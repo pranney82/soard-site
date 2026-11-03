@@ -242,7 +242,8 @@ export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', h
   const said = notesByKey(notes);
   const keys = which && said.size ? lineKeysOf(rows, which) : [];
   const noteOf = (r) => (keys.length ? said.get(keys[rows.indexOf(r)]) : null);
-  let shown = all ? rows : mainLines(rows, noteOf);
+  const whole = all ? rows : mainLines(rows, noteOf);
+  let shown = whole;
   if (!all && page >= 0) {
     const breaks = statementBreaks(rows);
     const from = breaks[page] ?? Infinity;
@@ -254,8 +255,9 @@ export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', h
   }
   const cols = prior ? 4 : 2;
   const signed = (v) => (typeof v === 'number' ? (v < 0 ? `(${money(-v)})` : money(v)) : '');
-  // One unit down the change column: a percent only when every line has a base above zero to take it of, else dollars
-  const nums = shown.filter((r) => typeof r.a === 'number' && typeof r.p === 'number' && Math.round(r.a) !== Math.round(r.p));
+  // One unit down the change column: a percent only when every line has a base above zero to take it of, else dollars;
+  // chosen over the whole statement, so its continued slides never change unit from the first
+  const nums = whole.filter((r) => typeof r.a === 'number' && typeof r.p === 'number' && Math.round(r.a) !== Math.round(r.p));
   const unit = as !== 'usd' && nums.every((r) => r.p > 0) ? 'pct' : 'usd';
   return html`<table class=${`by-stmt ${cls}`}>
     <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${heads ? heads[0] : shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${heads ? heads[1] : shortDate(priorAsOf)}</th><th scope="col" class="num">${heads ? heads[2] : 'Change'}</th>` : null}</tr></thead>

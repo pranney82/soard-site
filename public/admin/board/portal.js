@@ -41,7 +41,7 @@ import { Report, ReportEditor, readTime, Motion } from '../board-report.js';
 import { mdPlain, mdWords } from '../board-md.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
-import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsText, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue, budgetMonthsText as budgetMonths, stepText, useChangeAs, changeIn, overIn } from './money.js';
+import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsPhrase, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue, budgetMonthsText as budgetMonths, stepText, useChangeAs, changeIn, overIn } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -841,7 +841,7 @@ function Figures({ data }) {
   const pace = (x) => (x.waiting ? '\u00a0' : x.budget && x.last != null && x.lastFull > 0 ? `Last year by now: ${Math.round((x.last / x.lastFull) * 100)}% of its year` : '');
   const tiles = [
     { key: 'cash', label: 'Cash in the bank', value: cash ? compact(cash.total) : cash === null ? '–' : '…', href: '#/financials',
-      sub: cash ? (cash.months != null ? `${monthsText(cash.months)} months of spending` : cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : '') : 'From the balance sheet',
+      sub: cash ? (cash.months != null ? `${monthsPhrase(cash.months)} of spending` : cash.asOf ? `As of ${shortAsOf(cash.asOf)}` : '') : 'From the balance sheet',
       note: cash && cash.prior != null ? `${cash.total >= cash.prior ? '▲' : '▼'} ${compact(Math.abs(cash.total - cash.prior))} from a year ago` : '', tone: cash && cash.prior != null ? (cash.total >= cash.prior ? 'up' : 'down') : '' },
     rev ? { key: 'rev', label: `${yr} revenue`.trim(), value: rev.actual == null ? '…' : compact(rev.actual), meter: rev, sub: against(rev), note: pace(rev), aside: rev.inKind ? `Not counting ${compact(rev.inKind)} in\u00a0kind` : '', href: '#/financials', focus: rev.budget ? 'budget' : '' }
       : { key: 'reveals', label: 'Reveals ahead', value: String(n.reveals.length), sub: next ? `Next ${nextWhen || 'date to come'}` : 'None scheduled', href: '#makeovers' },
@@ -2979,7 +2979,7 @@ function CashCard({ data }) {
         <h2 class="bp-h2" id="cash-h">Cash in the bank</h2>
         <p class="bp-cash__total">${money(cash.total)}</p>
         <p class="bp-muted">${cash.asOf ? `As of ${cash.asOf}` : ''}${change != null ? html` · <span class=${change >= 0 ? 'bp-up' : 'bp-down'}>${change >= 0 ? 'up' : 'down'} ${money(Math.abs(change))}</span> from ${cash.priorAsOf || 'a year earlier'}` : ''}</p>
-        ${cash.months != null ? html`<p class="bp-cash__months"><strong>${nbw(`${monthsText(cash.months)} months`)}</strong>${nbw(` of spending${cash.perMonth ? `, at the ${money(cash.perMonth)} a month that left the bank in the last 12 months (moves between SOARD’s own accounts aside)` : ''}`)}</p>` : null}
+        ${cash.months != null ? html`<p class="bp-cash__months"><strong>${nbw(monthsPhrase(cash.months))}</strong>${nbw(` of spending${cash.perMonth ? `, at the ${money(cash.perMonth)} a month that left the bank in the last 12 months (moves between SOARD’s own accounts aside)` : ''}`)}</p>` : null}
       </div>
       ${cash.live
         ? html`<p class="bp-cash__src">${nb(fromBooks(cash) || `Straight from ${andText(cash.banks)}, read ${cash.today ? `today at ${clockAt(cash.at)}` : cash.asOf}`)}${cash.stale.length ? html`<br />${andText(cash.stale)} hasn’t answered since then` : null}</p>`

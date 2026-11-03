@@ -8,8 +8,10 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { cleanMeeting, deckOf, cleanLive, liveOfStop, stopIndex, NOTHING_NEW, statementBreaks, mainLines, linePlaces, SLIDE_LINES } from '../public/admin/board-shared.js';
-import { amount, monthsText, moneyTiles, shortAsOf, overIn } from '../public/admin/board/money.js';
+import { amount, compact, monthsText, monthsPhrase, moneyTiles, shortAsOf, overIn } from '../public/admin/board/money.js';
+import { StatementLines } from '../public/admin/board/books.js';
 
 const BOOKS = {
   revenue: 1876045, expenses: 1200000, year: '2026',
@@ -123,6 +125,42 @@ test('a statement’s lines go on as many slides as they take, its top headings 
   assert.deepEqual(statementBreaks([]), [0]);
 });
 
+test('no statement slide holds more than a slide’s lines, "continued" line and all, whatever the shape (three headings, every size)', () => {
+  // A top heading with g groups (a heading, an account, a total each) and o accounts of its own, then its total
+  const blk = (h, g, o) => [{ k: 'head', label: h, d: 0 }, ...Array.from({ length: g }, (_, i) => [{ k: 'head', label: `${h} G${i}`, d: 1 }, { k: 'acct', label: 'x', d: 2, a: 1, p: 1 }, { k: 'total', label: `Total ${h} G${i}`, d: 1, a: 1, p: 1 }]).flat(), ...Array.from({ length: o }, (_, i) => ({ k: 'acct', label: `${h} A${i}`, d: 1, a: 1, p: 1 })), { k: 'total', label: `Total ${h}`, d: 0, a: 1, p: 1 }];
+  const over = [];
+  for (let g = 0; g <= 9; g++) for (let o1 = 0; o1 <= 18; o1++) for (let o2 = 0; o2 <= 18; o2++) for (let o3 = 0; o3 <= 12; o3++) {
+    const rows = [...blk('Income', g, o1), ...blk('Expenses', 0, o2), ...(o3 ? blk('Other Income', 0, o3) : [])];
+    const lines = mainLines(rows);
+    const at = linePlaces(rows, lines);
+    const breaks = statementBreaks(rows);
+    const pages = breaks.map((b, i) => lines.filter((_, j) => at[j] >= b && at[j] < (breaks[i + 1] ?? Infinity)));
+    // A slide that goes on with a heading begun before has a line for that ("Expenses, continued")
+    const sizes = pages.map((p, i) => p.length + (i > 0 && !(p[0].k === 'head' && p[0].d === 0) ? 1 : 0));
+    if (Math.max(...sizes) > SLIDE_LINES || pages.flat().length !== lines.length) over.push(`g=${g} ${o1}/${o2}/${o3}: ${sizes.join(',')}`);
+  }
+  assert.deepEqual(over.slice(0, 5), [], `${over.length} shapes over ${SLIDE_LINES} lines a slide`);
+});
+
+test('a statement’s change column is one unit on all its slides: percents only when every line has a base to take one of', () => {
+  // The words a slide's table says, its cells apart
+  const text = (v) => (v == null || typeof v === 'boolean' ? '' : typeof v !== 'object' ? String(v) : Array.isArray(v) ? v.map(text).join('|') : text(v.props?.children));
+  const units = (rows) => statementBreaks(rows).map((_, page) => {
+    const changes = text(StatementLines({ rows, asOf: '2026-10-31', priorAsOf: '2025-10-31', page, as: 'pct' })).match(/[▲▼] [^|]+/g) || [];
+    return [...new Set(changes.map((c) => (c.endsWith('%') ? '%' : '$')))].join('');
+  });
+  const rows = (net) => [
+    { k: 'head', label: 'Revenue', d: 0 }, ...Array.from({ length: 9 }, (_, i) => ({ k: 'acct', label: `Gifts ${i + 1}`, d: 1, a: 1100 * (i + 1), p: 1000 * (i + 1) })), { k: 'total', label: 'Total Revenue', d: 0, a: 49500, p: 45000 },
+    { k: 'head', label: 'Expenses', d: 0 }, ...Array.from({ length: 9 }, (_, i) => ({ k: 'acct', label: `Cost ${i + 1}`, d: 1, a: 600 * (i + 1), p: 500 * (i + 1) })), { k: 'total', label: 'Total Expenses', d: 0, a: 27000, p: 22500 },
+    { k: 'sum', label: 'Net Revenue', d: 0, ...net },
+  ];
+  // Every line has a year-ago base: percents on every slide
+  assert.ok(units(rows({ a: 22500, p: 22500 * 0.9 })).length > 1);
+  assert.deepEqual([...new Set(units(rows({ a: 22500, p: 20250 })))], ['%']);
+  // The net was nothing a year ago (on the last slide): dollars on every slide, never % then $
+  assert.deepEqual([...new Set(units(rows({ a: 1200, p: 0 })))], ['$']);
+});
+
 test('the deck gives each statement its slides, keys kept for the first, the same item and statement for the rest', () => {
   const books = { ...BOOKS, statements: { ...BOOKS.statements, activity: ROWS } };
   const deck = deckOf(meeting(), { books });
@@ -174,4 +212,61 @@ test('amounts read in one form: a true minus, the short form from $10M, an overd
   assert.equal(moneyTiles({ cash: { total: 1400000000, asOf: '', live: true, accounts: [] }, budget: null, n: null })[0].value, '$1.4B');
   assert.equal(shortAsOf('Nov 2, 2026'), 'Nov 2', 'the month and its day never on two lines');
   assert.equal(overIn(1000, 1004, 'pct'), 'Even', 'a percent column never falls back to dollars');
+});
+
+test('what rounds to nothing reads as nothing: "$0" (never −$0 or +$0), "Under a month" in a sentence, a tile never blank', () => {
+  for (const n of [0, -0.4, 0.4, -0]) { assert.equal(amount(n), '$0', String(n)); assert.equal(compact(n), '$0', String(n)); }
+  assert.equal(amount(-0.6), '−$1');
+  // Months of cash in the board page's sentence: "Under a month of spending", "1 month", "8.5 months"
+  assert.equal(monthsText(0.04), 'Under a month', 'never "0"');
+  assert.deepEqual([0, -2, 0.04, 1, 1.04, 8.46, 16.8].map(monthsPhrase), ['Under a month', 'Under a month', 'Under a month', '1 month', '1 month', '8.5 months', '17 months']);
+  // Overdrawn by 30¢ is $0 in the bank, not "Overdrawn $0"; a total that isn't a figure says so
+  const tile = (total) => moneyTiles({ cash: { total, asOf: 'Nov 2, 2026', live: true, accounts: [] }, budget: null, n: null })[0];
+  assert.deepEqual([tile(-0.3).label, tile(-0.3).value, tile(-0.3).quiet], ['Cash in the bank', '$0', false]);
+  assert.equal(tile(NaN).value, '–');
+  assert.equal(tile(undefined).value, '–');
+  // Mercury's year so far: a sign only on a figure that has one
+  const ytd = (net) => moneyTiles({ cash: { total: 5000, asOf: '', live: true, banks: ['Mercury'], accounts: [] }, budget: null, n: { finance: { ytd: { year: 2026, net, income: 1000, makeovers: 0, store: 0, operating: 1000, through: '2026-10-31' } } } }).find((t) => t.k === 'ytd').value;
+  assert.deepEqual([ytd(0), ytd(-0.4), ytd(0.4), ytd(1200), ytd(-1200)], ['$0', '$0', '$0', '+$1,200', '−$1,200']);
+});
+
+test('the money item\'s generic figures list grows with the screen (the one type scale, no fixed most)', () => {
+  const css = readFileSync(new URL('../public/admin/board/portal.css', import.meta.url), 'utf8');
+  const rules = css.split('\n').filter((l) => l.startsWith('.bs-numbers'));
+  assert.ok(rules.length >= 2);
+  for (const r of rules) assert.ok(!/rem\)|\dvh/.test(r) && /--bs-(u|body)/.test(r), r);
+});
+
+test('a report with notes is a slide of its own after the item, which keeps the notes; the decision after both', () => {
+  const d = keys(deckOf(meeting({ gov: { notes: '- Read the redline first', motion: 'Move to adopt the bylaws changes.' } })));
+  const at = d.indexOf('i_gov1');
+  assert.deepEqual(d.slice(at, at + 3), ['i_gov1', 'i_gov1:report', 'i_gov1:decision']);
+  // No notes: the report is on the item's own slide, the decision after it
+  const plain = keys(deckOf(meeting({ gov: { motion: 'Move to adopt the bylaws changes.' } })));
+  assert.ok(!plain.includes('i_gov1:report'));
+  assert.ok(plain.includes('i_gov1:decision'));
+});
+
+test("the board's faces keep their slide: a motion on the roll call is the decision's slide, a report on it a slide of its own", () => {
+  const m = cleanMeeting({ id: 'm_roll1', date: '2099-11-05', shared: true, files: [], sections: [{ id: 's_c1', title: 'Call to order', items: [
+    { id: 'i_roll1', title: 'Roll call', motion: 'Move to excuse Kim Park.' },
+    { id: 'i_wel1', title: 'Welcome and introductions', report: 'Three guests tonight.' },
+  ] }] });
+  const d = keys(deckOf(m));
+  assert.ok(d.includes('i_roll1:decision'));
+  assert.ok(d.includes('i_wel1:report'));
+});
+
+test('the screen titles an untitled live item by what it shows, on its report and decision slides and in the foot', () => {
+  const src = readFileSync(new URL('../public/admin/board/screen.js', import.meta.url), 'utf8');
+  assert.match(src, /const itemTitle = item \? item\.title \|\| LIVE_TITLES\[item\.live\] \|\| MORE\.title : ''/);
+  assert.ok(!/<\$\{Title\} text=\$\{item\.title\}/.test(src), 'no slide titles itself from item.title alone');
+  assert.ok(!/\$\{item\?\.title\}/.test(src), 'nor the foot');
+});
+
+test("the vote on the last minutes shows the meeting's own motion approving them, never one that only mentions minutes", () => {
+  const src = readFileSync(new URL('../public/admin/board/screen.js', import.meta.url), 'utf8');
+  const re = new RegExp(src.match(/const MINUTES_MOTION = \/(.+)\/i;/)[1], 'i');
+  for (const t of ['Approve the minutes of the Q3 Board Meeting', 'Move to approve the Q3 2026 board meeting minutes as written', 'I move that we adopt the minutes of Aug 10, 2026', 'Motion to accept the draft minutes']) assert.ok(re.test(t), t);
+  for (const t of ['Move to approve the 2027 operating budget as presented and to report it in the minutes', 'Record the vote in the minutes', 'Approve the agenda as written']) assert.ok(!re.test(t), t);
 });

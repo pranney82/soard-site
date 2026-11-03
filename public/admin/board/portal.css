@@ -1681,6 +1681,8 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 /* An item with live facts: its name along the top, the facts filling the rest */
 .bs-item--board, .bs-item--facts { align-content: stretch; grid-template-rows: auto minmax(0, 1fr); padding: calc(var(--bs-u) * 0.6) 0 calc(var(--bs-u) * 1.2); }
 .bs-item--facts { grid-template-rows: auto auto auto; align-content: center; }
+/* The makeovers or the board's faces with the presenter's notes under them: the notes their height, the rest theirs */
+.bs-item--board:has(> .bs-item__body) { grid-template-rows: auto minmax(0, 1fr) auto; }
 /* The title takes the room; who presents it at most 45% of the bar, their names ending in … when they must */
 .bs-item__bar { display: flex; align-items: flex-end; justify-content: space-between; gap: calc(var(--bs-u) * 1.2) calc(var(--bs-u) * 3); min-width: 0; }
 .bs-item__bar > :first-child { flex: 1 1 auto; min-width: 0; }
@@ -1752,8 +1754,9 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 @keyframes bs-pt-in { from { opacity: 0; transform: translateY(14px); } }
 @media (prefers-reduced-motion: reduce) { .bs-pt { animation: none; } }
 @media (max-width: 900px) { .bs-pts__list, .bs-pts.is-5 .bs-pts__list { grid-template-columns: minmax(0, 1fr); } .bs-pts.is-5 .bs-pt, .bs-pts.is-5 .bs-pt:nth-child(n + 4) { grid-column: auto; } .bs-item--points { align-content: start; } }
-.bs-numbers { padding: clamp(1rem, 2.4vh, 1.6rem) clamp(1rem, 2vw, 1.75rem); border-radius: 18px; background: var(--bs-panel); border: 1px solid var(--bs-line); }
-.bs-numbers ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.55em; font-size: clamp(1rem, 2.4vh, 1.45rem); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* (on the one type scale, --bs-u: at 4K as at 1080p, only sharper) */
+.bs-numbers { padding: calc(var(--bs-u) * 1.6) calc(var(--bs-u) * 1.8); border-radius: calc(var(--bs-u) * 1.7); background: var(--bs-panel); border: 1px solid var(--bs-line); }
+.bs-numbers ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.55em; font-size: var(--bs-body); font-weight: 600; font-variant-numeric: tabular-nums; }
 .bs-coming .bs-eyebrow { color: var(--bs-faint); }
 /* An item's documents, coming up: their first pages in a row, each with its title and what it is */
 .bs-shelf { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: flex-start; gap: clamp(1rem, 2vw, 2rem); }
@@ -1905,6 +1908,7 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-chapter__items { list-style: none; margin: calc(var(--bs-u) * 2.6 * var(--fit, 1)) 0 0; padding: 0; display: grid; gap: calc(var(--bs-u) * 0.9 * var(--fit, 1)); }
 .bs-chapter__items.is-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), auto); grid-auto-flow: column; column-gap: calc(var(--bs-u) * 3); }
 .bs-chapter__items li { display: flex; align-items: center; gap: 0.6em; min-width: 0; font-size: calc(var(--bs-body) * (0.5 + var(--fit, 1) / 2)); }
+.bs-chapter__items li.bs-chapter__more { padding-left: 3.1em; color: var(--bs-soft); font-weight: 600; }
 .bs-chapter__label { flex: none; min-width: 2.8em; padding: 0.15em 0.5em; border-radius: 999px; background: var(--bs-panel); border: 1px solid var(--bs-line); color: var(--bs-soft); font-size: 0.7em; font-weight: 750; text-align: center; font-variant-numeric: tabular-nums; }
 /* 4.10 and on: every label as wide, so the titles stay in line */
 .bs-chapter.is-wide .bs-chapter__label { min-width: 3.5em; }
@@ -1942,6 +1946,7 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-since__list li > span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; line-height: 1.3; overflow-wrap: break-word; }
 /* Both lists: a line each */
 .bs-since__side.is-both .bs-since__list li > span { -webkit-line-clamp: 1; }
+.bs-since__side.is-both > div:last-child .bs-since__list li > span { -webkit-line-clamp: 2; }
 .bs-since__left { margin: 0.7em 0 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.8 * var(--fit, 1)); }
 .bs-since:not(:has(.bs-since__reveals)) { grid-template-columns: minmax(0, 1fr); }
 .bs-since:not(:has(.bs-since__reveals)) .bs-since__side { border-left: none; padding-left: 0; grid-template-columns: repeat(auto-fit, minmax(min(100%, calc(var(--bs-u) * 30)), 1fr)); column-gap: calc(var(--bs-u) * 4); }
