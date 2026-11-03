@@ -25,6 +25,7 @@
 
 import { h, htm, render, Component, useState, useEffect, useRef, useMemo, Sortable, DOMPurify } from './vendor.js';
 import * as S from './site-config-shared.js';
+import * as OF from './org-facts-shared.js';
 import { floatRef } from './float.js';
 import { BookPage, BOOK_CSS, bookAddressProblem } from './book-editor.js';
 
@@ -1533,19 +1534,16 @@ function MediaPage({ c }) {
   const photos = Array.isArray(m.brandingPhotos) ? m.brandingPhotos : [];
   const copy = async (t) => { try { await navigator.clipboard.writeText(t); c.addToast('Copied.', 'success'); } catch { c.addToast('Couldn’t copy.', 'error'); } };
   return html`
-    <${Card} title="Organization bio" sub="Facts at the top of the press page, at /branding/.">
+    <${Card} title="Organization bio" sub=${html`Facts at the top of the press page, at /branding/. The name and EIN there come from <button type="button" class="sc-link" onClick=${() => c.go('org')}>Organization & contact</button>.`}>
       <div class="sc-pair">
-        <${TextField} label="Name" value=${bio.orgName} onChange=${set('bio.orgName')} max=${80} />
-        <${TextField} label="Founded" value=${bio.founded} onChange=${set('bio.founded')} max=${20} />
-        <${TextField} label="Founders" value=${bio.founders} onChange=${set('bio.founders')} max=${80} />
+        <${TextField} label="Founded" value=${bio.founded} onChange=${set('bio.founded')} max=${20} hint="Also on the board page." />
+        <${TextField} label="Founders" value=${bio.founders} onChange=${set('bio.founders')} max=${80} hint="Also on the board page." />
         <${TextField} label="Location" value=${bio.location} onChange=${set('bio.location')} max=${60} />
-        <${TextField} label="EIN" value=${bio.ein} onChange=${set('bio.ein')} problem=${S.einProblem(bio.ein)} />
-        <${TextField} label="Website" value=${bio.website} onChange=${set('bio.website')} max=${60} hint="Shown as text, not a link." />
+        <${TextField} label="Website" value=${bio.website} onChange=${set('bio.website')} max=${60} hint="Shown as text, not a link. Also on the board page." />
       </div>
-      <${AreaField} label="One-line bio for press" value=${bio.boilerplate} onChange=${set('bio.boilerplate')} rows=${2} max=${300} hint=${html`Has a copy button on the page. <button type="button" class="sc-link" onClick=${() => copy(bio.boilerplate || '')}>Copy it</button>`} />
+      <${AreaField} label="One-line bio for press" value=${bio.boilerplate} onChange=${set('bio.boilerplate')} rows=${2} max=${300} hint=${html`Has a copy button on the page and on the board page. <button type="button" class="sc-link" onClick=${() => copy(bio.boilerplate || '')}>Copy it</button>`} />
     <//>
-    <${Card} title="Mission and who we are">
-      <${AreaField} label="Mission statement" value=${m.mission} onChange=${set('mission')} rows=${3} max=${600} />
+    <${Card} title="Who we are" sub=${html`Under the mission statement, which is on <button type="button" class="sc-link" onClick=${() => c.go('org', 'sc-mission')}>Organization & contact</button> with the vision and values.`}>
       <${AreaField} label="Who we are" value=${m.who} onChange=${set('who')} rows=${3} max=${600} />
     <//>
     <${Card} title="Founders’ story" sub="Plain paragraphs, no formatting.">
@@ -1564,12 +1562,9 @@ function MediaPage({ c }) {
             </div>
           </div>`} />
     <//>
-    <${Card} title="Contact and social">
+    <${Card} title="Press contact" sub=${html`The social links beside it are the footer’s, from <button type="button" class="sc-link" onClick=${() => c.go('social')}>Social links</button>.`}>
       <div class="sc-pair">
         <${TextField} label="Press email" value=${m.contactEmail} onChange=${set('contactEmail')} type="email" problem=${S.emailProblem(m.contactEmail)} />
-        <${TextField} label="Facebook" value=${m.socialLinks?.facebook} onChange=${set('socialLinks.facebook')} problem=${S.urlProblem(m.socialLinks?.facebook)} inputmode="url" />
-        <${TextField} label="Instagram" value=${m.socialLinks?.instagram} onChange=${set('socialLinks.instagram')} problem=${S.urlProblem(m.socialLinks?.instagram)} inputmode="url" />
-        <${TextField} label="YouTube" value=${m.socialLinks?.youtube} onChange=${set('socialLinks.youtube')} problem=${S.urlProblem(m.socialLinks?.youtube)} inputmode="url" />
       </div>
     <//>
     <${Card} title="Search engines" sub="The page’s description in Google results and link previews.">
@@ -1600,31 +1595,111 @@ function StorePage({ c }) {
 }
 
 // ─── Across the site ───────────────────────────────────────────────
+const andList = (xs) => (xs.length > 1 ? `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}` : xs[0] || '');
+/**
+ * SOARD's facts against the IRS's list, its W-9 and its Board Manual (/api/org-facts-admin, read every 6 hours):
+ * what doesn't match, worked out from what's typed here (./org-facts-shared.js), each with what the other says and
+ * a button to put the right one in
+ */
+function OrgCheck({ c }) {
+  const [check, setCheck] = useState(undefined);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [loadError, setLoadError] = useState('');
+  useEffect(() => { call('/api/org-facts-admin').then((j) => { if (j.ok) setCheck(j.check); else { setCheck(null); setLoadError(j.error || 'it didn’t answer'); } }); }, []);
+  // A save on this page compares what's kept with what's saved now (SiteConfigArea's save sends it)
+  useEffect(() => { const on = (e) => { if (e.detail) setCheck(e.detail); }; window.addEventListener('soard-org-check', on); return () => window.removeEventListener('soard-org-check', on); }, []);
+  if (check === undefined) return null;
+  const problems = OF.problemsFor({ settings: c.doc('settings'), media: c.doc('media'), check });
+  const again = async () => {
+    setBusy(true); setError('');
+    const j = await call('/api/org-facts-admin', { action: 'check' });
+    setBusy(false);
+    if (j.ok) { setCheck(j.check); c.addToast('Checked again.', 'success'); } else setError(j.error || 'The check didn’t run. Try again in a minute.');
+  };
+  const put = (p) => { for (const [doc, path, value] of p.fix.set) c.set(doc, path, S.clone(value)); c.addToast('Put in. Save to keep it.', 'success'); };
+  const against = [check?.irs?.date && `the IRS’s list of ${check.irs.date}`, check?.w9?.read?.isW9 && 'SOARD’s W-9', check?.manual && 'the Board Manual'].filter(Boolean);
+  const w9Note = check?.w9?.unreadable ? ` SOARD’s W-9 couldn’t be read (${check.w9.unreadable.replace(/\.$/, '')}), so it isn’t checked.` : '';
+  const againBtn = html`<button type="button" class="sc-link sc-orgok__again" disabled=${busy} onClick=${again}>${busy ? 'Checking…' : check?.irs ? 'Check again' : 'Check now'}</button>`;
+  if (!problems.length) {
+    const said = loadError ? html`<span class="sc-bad">The check against the IRS couldn’t be loaded (${loadError.replace(/\.$/, '')}).</span>`
+      : check?.irs ? `Matches ${andList(against)}.${w9Note}` : 'Not checked against the IRS’s list yet. It runs every 6 hours.';
+    return html`<p class=${`sc-orgok ${loadError ? 'is-bad' : ''}`}>${loadError ? html`<${Icon} name="warn" />` : check?.irs ? html`<${Icon} name="check" />` : null} <span>${said} ${againBtn}</span>${error ? html` <span class="sc-bad" role="alert">${error}</span>` : ''}</p>`;
+  }
+  const n = problems.length;
+  const urgent = problems.some((p) => p.level === 'urgent');
+  const Link = ({ l }) => (l.url.startsWith('#') ? html`<a class="sc-link" href=${l.url} onClick=${(e) => { e.preventDefault(); c.open('board', l.url); }}>${l.label}</a>` : html`<a class="sc-link" href=${l.url} target="_blank" rel="noopener">${l.label}<${Icon} name="ext" size=${13} /></a>`);
+  return html`
+    <section class=${`card sc-card sc-orgcheck ${urgent ? 'is-urgent' : ''}`} aria-labelledby="sc-orgcheck-h">
+      <header class="sc-card-head">
+        <div><h3 id="sc-orgcheck-h">${n === 1 ? '1 thing doesn’t match' : `${n} things don’t match`}</h3><p class="sc-sub">Checked against ${andList(against) || 'the IRS’s list'}. Put the right one in, then save.${w9Note}</p></div>
+        <button type="button" class="btn btn-ghost btn-sm" disabled=${busy} onClick=${again}><${Icon} name="refresh" /> ${busy ? 'Checking…' : 'Check again'}</button>
+      </header>
+      <ul class="sc-orgcheck__list">${problems.map((p) => html`<li key=${p.key} class=${`is-${p.level}`}>
+        <p class="sc-orgcheck__t"><${Icon} name="warn" /> ${p.title}</p>
+        ${p.site || p.other ? html`<dl class="sc-orgcheck__pair">
+          ${p.site ? html`<div><dt>${p.siteLabel || 'The site has'}</dt><dd>${p.site}</dd></div>` : null}
+          ${p.other ? html`<div><dt>${p.otherLabel || 'It has'}</dt><dd>${p.other}</dd></div>` : null}
+        </dl>` : null}
+        <p class="sc-hint">${p.detail}</p>
+        ${p.fix || p.link ? html`<p class="sc-orgcheck__acts">${p.fix ? html`<button type="button" class="btn btn-sm" onClick=${() => put(p)}>${p.fix.label}</button>` : null}${p.link ? html`<${Link} l=${p.link} />` : null}</p>` : null}
+      </li>`)}</ul>
+      ${error ? html`<p class="sc-bad" role="alert">${error}</p>` : null}
+    </section>`;
+}
+
 function OrgPage({ c }) {
   const st = c.doc('settings');
+  const md = c.doc('media');
   const set = (p) => (v) => c.set('settings', p, v);
   const a = st.address || {};
+  const ma = st.mailingAddress || {};
+  const values = Array.isArray(st.values) ? st.values : [];
+  const mailingTyped = ['street', 'city', 'state', 'zip'].some((k) => String(ma[k] || '').trim());
   return html`
-    <${Card} title="Organization" sub="Used across the site and the legal pages.">
+    <${OrgCheck} c=${c} />
+    <${Card} title="Organization" sub="Across the site, the legal pages and the board page’s facts.">
       <div class="sc-pair">
-        <${TextField} label="Name" value=${st.name} onChange=${set('name')} max=${80} problem=${!String(st.name || '').trim() ? 'The name is required' : null} hint="Donate, Ways to Give, Advisory Board, legal pages." />
-        <${TextField} label="EIN" value=${st.ein} onChange=${set('ein')} problem=${S.einProblem(st.ein)} hint="Donate (with a copy button), Ways to Give, legal pages." />
-        <${TextField} label="Short name" value=${st.shortName} onChange=${set('shortName')} max=${20} hint="The Terms page." />
-        <${TextField} label="Tagline" value=${st.tagline} onChange=${set('tagline')} max=${80} hint="The Terms page." />
+        <${TextField} label="Name" value=${st.name} onChange=${set('name')} max=${80} problem=${!String(st.name || '').trim() ? 'The name is required' : null} hint="Donate, Ways to Give, Advisory Board, legal pages, the board page." />
+        <${TextField} label="Legal name" value=${st.legalName} onChange=${set('legalName')} max=${160} optional hint="Exactly as the IRS has it, for forms and grants. The board page." />
+        <${TextField} label="EIN" value=${st.ein} onChange=${set('ein')} problem=${!String(st.ein || '').trim() ? 'The EIN is required' : S.einProblem(st.ein)} hint="Donate (with a copy button), Ways to Give, /branding/, legal pages, the board page." />
+        <${TextField} label="Short name" value=${st.shortName} onChange=${set('shortName')} max=${20} hint="The Terms page, the board page." />
+        <${TextField} label="Tagline" value=${st.tagline} onChange=${set('tagline')} max=${80} hint="The Terms page, the board page." />
       </div>
     <//>
-    <${Card} title="Phone and email" sub="In the footer of every page, and wherever people are asked to get in touch.">
+    <${Card} title="Phone and email" sub="In the footer of every page, wherever people are asked to get in touch, and on the board page.">
       <div class="sc-pair">
         <${TextField} label="Phone" value=${st.phone} onChange=${set('phone')} type="tel" autocomplete="tel" problem=${S.phoneProblem(st.phone)} hint="Shown as typed; tapping it calls." />
-        <${TextField} label="Email" value=${st.email} onChange=${set('email')} type="email" problem=${S.emailProblem(st.email)} hint="Footer, Apply, the application form, Ways to Give, Advisory Board." />
+        <${TextField} label="Email" value=${st.email} onChange=${set('email')} type="email" problem=${S.emailProblem(st.email)} hint="Footer, Apply, the application form, Ways to Give, Advisory Board, the board page." />
       </div>
     <//>
-    <${Card} title="Address" sub="Footer (with a map link), Donate, Ways to Give, legal pages.">
+    <${Card} title="Office address" sub="Footer (with a map link), Donate, Ways to Give, legal pages, the board page.">
       <${TextField} label="Street" value=${a.street} onChange=${set('address.street')} max=${80} wide />
       <div class="sc-trio">
         <${TextField} label="City" value=${a.city} onChange=${set('address.city')} max=${40} />
         <${TextField} label="State" value=${a.state} onChange=${(v) => set('address.state')(v.toUpperCase().slice(0, 2))} max=${2} />
         <${TextField} label="ZIP" value=${a.zip} onChange=${set('address.zip')} inputmode="numeric" problem=${S.zipProblem(a.zip)} />
+      </div>
+    <//>
+    <${Card} id="sc-mailing" title="Mailing address" sub="Where mail, checks and the IRS’s letters go, when it isn’t the office. W-9s and grant forms use it; the board page shows it. Blank: mail comes to the office."
+      aside=${mailingTyped ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => c.set('settings', 'mailingAddress', undefined)}>Clear it</button>` : null}>
+      <${TextField} label="Street" value=${ma.street} onChange=${set('mailingAddress.street')} max=${80} wide optional placeholder="PO Box, or a street and suite" problem=${mailingTyped && !OF.isAddress(ma) ? 'Add the street, or clear the mailing address' : null} />
+      <div class="sc-trio">
+        <${TextField} label="City" value=${ma.city} onChange=${set('mailingAddress.city')} max=${40} problem=${OF.isAddress(ma) && !String(ma.city || '').trim() ? 'Add the city' : null} />
+        <${TextField} label="State" value=${ma.state} onChange=${(v) => set('mailingAddress.state')(v.toUpperCase().slice(0, 2))} max=${2} problem=${OF.isAddress(ma) && !String(ma.state || '').trim() ? 'Add the state' : null} />
+        <${TextField} label="ZIP" value=${ma.zip} onChange=${set('mailingAddress.zip')} inputmode="numeric" problem=${S.zipProblem(ma.zip)} />
+      </div>
+    <//>
+    <${Card} id="sc-mission" title="Mission, vision and values" sub="The mission: the homepage’s Our Mission, /branding/ and the board page. The vision and values: the board page.">
+      <${AreaField} label="Mission statement" value=${md.mission} onChange=${(v) => c.set('media', 'mission', v)} rows=${3} max=${600} problem=${!String(md.mission || '').trim() ? 'The homepage needs a mission statement' : null} />
+      <${AreaField} label="Vision" value=${st.vision} onChange=${set('vision')} rows=${2} max=${400} optional hint="Where SOARD is headed, in a sentence or two." />
+      <div class="sc-field is-wide">
+        <span class="sc-label" id="sc-values-label">Values<span class="sc-opt">optional</span></span>
+        <${ListEditor} items=${values} label="value" max=${8} addToast=${c.addToast} onChange=${set('values')} make=${() => ({ name: '', text: '' })} addLabel="Add a value"
+          renderItem=${(v, i, up) => html`<div class="sc-pair is-narrow-first sc-value">
+            <${TextField} label=${`Value ${i + 1}`} value=${v.name} onChange=${(x) => up({ name: x })} max=${60} placeholder="Joy" problem=${!String(v.name || '').trim() ? 'Name the value' : null} />
+            <${TextField} label="What it means" value=${v.text} onChange=${(x) => up({ text: x })} max=${240} optional placeholder="A sentence" />
+          </div>`} />
       </div>
     <//>`;
 }
@@ -1633,7 +1708,7 @@ const SOCIALS = [['facebook', 'Facebook', 'https://www.facebook.com/…'], ['ins
 function SocialPage({ c }) {
   const so = c.doc('settings').social || {};
   return html`
-    <${Card} title="Social links" sub="Icons in the footer of every page; Facebook and Instagram also on Apply. A blank one is left out.">
+    <${Card} title="Social links" sub="Icons in the footer of every page; Facebook and Instagram also on Apply; all of them on /branding/. A blank one is left out.">
       ${SOCIALS.map(([k, label, ph]) => html`
         <div class="sc-social">
           <${TextField} label=${label} value=${so[k]} onChange=${(v) => c.set('settings', `social.${k}`, v)} placeholder=${ph} problem=${S.urlProblem(so[k])} inputmode="url" />
@@ -1722,9 +1797,15 @@ const PROBLEMS = {
   faq: (d) => [(d.faq?.categories || []).some(x => !String(x.label || '').trim()) && 'a category without a name', (d.faq?.items || []).some(i => !String(i.question || '').trim() || !S.plainText(i.answer)) && 'a question without its words'].filter(Boolean),
   about: (d) => ((d['our-story']?.milestones || []).some(m => !/^\d{4}$/.test(String(m.year || '')) || !String(m.title || '').trim()) ? ['a timeline milestone without its year or title'] : []),
   financials: (d) => [(d.financials?.documents || []).some(x => !/^\d{4}$/.test(String(x.year || '')) || !x.url) && 'a document without its year or file', (d.financials?.annualReports || []).some(x => !/^\d{4}$/.test(String(x.year || ''))) && 'an annual report without its year'].filter(Boolean),
-  media: (d) => { const m = d.media || {}; return [S.einProblem(m.bio?.ein) && 'the EIN', S.emailProblem(m.contactEmail) && 'the press email', ['facebook', 'instagram', 'youtube'].some(k => S.urlProblem(m.socialLinks?.[k])) && 'a social link'].filter(Boolean); },
+  media: (d) => { const m = d.media || {}; return [S.emailProblem(m.contactEmail) && 'the press email'].filter(Boolean); },
   store: (d) => ((d.settings?.sunnyAndRanneyRooms || []).some(r => r && (!r.cfId || !String(r.label || '').trim())) ? ['a room card without its photo or name'] : []),
-  org: (d) => { const st = d.settings || {}; return [!String(st.name || '').trim() && 'the organization name', S.einProblem(st.ein) && 'the EIN', S.phoneProblem(st.phone) && 'the phone number', S.emailProblem(st.email) && 'the email', S.zipProblem(st.address?.zip) && 'the ZIP code'].filter(Boolean); },
+  org: (d) => {
+    const st = d.settings || {}; const ma = st.mailingAddress || {};
+    return [!String(st.name || '').trim() && 'the organization name', (!String(st.ein || '').trim() || S.einProblem(st.ein)) && 'the EIN',
+      ['city', 'state', 'zip'].some((k) => String(ma[k] || '').trim()) && !OF.isAddress(ma) && 'the mailing address’s street', S.phoneProblem(st.phone) && 'the phone number', S.emailProblem(st.email) && 'the email', S.zipProblem(st.address?.zip) && 'the ZIP code',
+      OF.isAddress(ma) && (!String(ma.city || '').trim() || !String(ma.state || '').trim()) && 'the mailing address’s city and state', S.zipProblem(ma.zip) && 'the mailing address’s ZIP code',
+      !String(d.media?.mission || '').trim() && 'the mission statement', (Array.isArray(st.values) ? st.values : []).some((v) => v && !String(v.name || '').trim()) && 'a value without its name'].filter(Boolean);
+  },
   social: (d) => (SOCIALS.some(([k]) => S.urlProblem(d.settings?.social?.[k])) ? ['a social link'] : []),
   badges: (d) => (Array.isArray(d.settings?.trustBadges) && d.settings.trustBadges.some(b => !String(b.name || '').trim() || S.urlProblem(b.url)) ? ['a badge’s name or link'] : []),
   book: (d) => [bookAddressProblem(d.book?.slug) && 'the address', (d.book?.chapters || []).some(ch => !String(ch?.title || '').trim()) && 'the chapter with no title'].filter(Boolean),
@@ -1741,9 +1822,9 @@ const KEYWORDS = {
   kids: 'summary line title', how: 'project drawings plans reveal video', apply: 'applications open closed photos journey quote testimonial questions faq meet family',
   donate: 'hero story family questions', ways: 'photos legacy break', partners: 'quote testimonial hero', community: 'hero accent', resources: 'guides articles why',
   about: 'our story founders tripp turning point gracie mascot store timeline milestones today closing', financials: '990 tax return audit annual report numbers revenue expenses programs net assets volunteers employees',
-  faq: 'questions answers categories donate star', advisory: 'hero', store: 'sunny ranney rooms cards', media: 'press branding bio boilerplate mission photos download',
+  faq: 'questions answers categories donate star', advisory: 'hero', store: 'sunny ranney rooms cards', media: 'press branding bio boilerplate founders story photos download',
   book: 'anniversary 15 fifteen years flip flipbook pdf pages chapters bookmarks download',
-  org: 'name ein phone email address street city zip contact', social: 'facebook instagram youtube tiktok', badges: 'charity navigator candid guidestar rating seal footer', newsletter: 'kit signups subscribers',
+  org: 'name legal ein irs w-9 w9 tax phone email address mailing street city zip contact mission vision values board facts', social: 'facebook instagram youtube tiktok', badges: 'charity navigator candid guidestar rating seal footer', newsletter: 'kit signups subscribers',
 };
 
 const readHash = () => { const m = String(location.hash).match(/^#site(?:\/([\w-]+))?/); return m ? (S.pageByKey(m[1]) ? m[1] : null) : undefined; };
@@ -1809,8 +1890,10 @@ export function SiteConfigArea({ addToast = () => {}, setGlobalDirty = null, onP
   }, [dirty]);
   const save = async () => {
     if (blocking.length) { addToast(`Fix ${blocking[0].list[0]} on ${blocking[0].page.title} first.`, 'error'); go(blocking[0].page.key); return false; }
+    const orgTouched = changed.some((p) => p.key === 'org');
     const ok = await docs.save();
     if (ok) loadPending();
+    if (ok && orgTouched) call('/api/org-facts-admin', { action: 'refresh' }).then((j) => { if (j.ok) window.dispatchEvent(new CustomEvent('soard-org-check', { detail: j.check })); });
     return ok;
   };
   const saveRef = useRef(save);
@@ -2021,6 +2104,25 @@ const CSS = `
 .sc-note { display: block; margin: .25rem 0 1rem; padding: .7rem .85rem; border: 1px solid var(--color-border); border-radius: 10px; background: var(--color-bg-secondary); font-size: var(--fs-sm); line-height: 1.5; color: var(--color-text-secondary); }
 .sc-note.is-warn { border-color: color-mix(in srgb, var(--color-warning) 45%, var(--color-border)); background: color-mix(in srgb, var(--color-warning) 10%, var(--color-bg-card)); color: var(--color-text); }
 .sc-note > .sc-ico { display: inline-block; vertical-align: -3px; margin-right: .35rem; }
+.sc-orgok { display: flex; align-items: flex-start; gap: .45rem; margin: 0 0 1rem; font-size: var(--fs-sm); line-height: 1.5; color: var(--color-text-secondary); }
+.sc-orgok > .sc-ico { flex-shrink: 0; margin-top: .2rem; color: var(--color-success, #2B7349); }
+.sc-orgok.is-bad > .sc-ico { color: color-mix(in srgb, var(--color-warning) 70%, var(--color-text)); }
+.sc-orgok__again { margin-left: .35rem; white-space: nowrap; }
+.sc-orgcheck { border-color: color-mix(in srgb, var(--color-warning) 45%, var(--color-border)); }
+.sc-orgcheck.is-urgent { border-width: 2px; }
+.sc-orgcheck__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.sc-orgcheck__list > li { padding: .9rem 0; border-top: 1px solid var(--color-border); }
+.sc-orgcheck__list > li:first-child { border-top: 0; padding-top: .2rem; }
+.sc-orgcheck__t { display: flex; align-items: flex-start; gap: .45rem; margin: 0 0 .5rem; font-weight: 650; color: var(--color-text); }
+.sc-orgcheck__t > .sc-ico { flex-shrink: 0; margin-top: .2rem; color: color-mix(in srgb, var(--color-warning) 70%, var(--color-text)); }
+.sc-orgcheck__list > li.is-note .sc-orgcheck__t > .sc-ico { color: var(--color-text-secondary); }
+.sc-orgcheck__pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr)); gap: .5rem 1.25rem; margin: 0 0 .45rem; }
+.sc-orgcheck__pair dt { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-secondary); }
+.sc-orgcheck__pair dd { margin: .1rem 0 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--color-text); overflow-wrap: anywhere; }
+.sc-orgcheck__acts { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin: .55rem 0 0; font-size: var(--fs-sm); }
+.sc-orgcheck__acts .sc-ico { vertical-align: -2px; margin-left: .2rem; }
+.sc-orgcheck__acts a, .sc-orgcheck .sc-card-head .btn { white-space: nowrap; }
+.sc-value { align-items: start; }
 
 /* Rail */
 .sc-rail { position: sticky; top: 1rem; max-height: calc(100vh - 2rem); overflow: auto; padding: .25rem .25rem 1rem 0; overscroll-behavior: contain; }

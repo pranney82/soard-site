@@ -76,7 +76,7 @@ const jsonLd = {
   "about": {
     "@type": "NGO",
     "name": "Sunshine on a Ranney Day",
-    "taxID": "45-4773997"
+    "taxID": siteSettings.ein
   }
 };
 ---
@@ -442,7 +442,7 @@ const jsonLd = {
           })}
           <div class="verify">
             <span class="verify__text">
-              <span class="verify__label">EIN 45-4773997</span>
+              <span class="verify__label">EIN {siteSettings.ein}</span>
               <span class="verify__detail">501(c)(3) since 2012</span>
             </span>
           </div>

@@ -243,8 +243,9 @@ export const PAGES = [
   { key: 'book', title: 'Anniversary book', url: null, group: 'pages', docs: ['book'], blurb: 'The flip book and its PDF', fields: { book: [''] } },
   { key: 'advisory', title: 'Advisory Board', url: '/advisory-board/', group: 'pages', docs: ['settings'], blurb: 'Hero photo', fields: { settings: ['advisoryBoardPhotos'] } },
   { key: 'store', title: 'Sunny & Ranney', url: '/sunny-and-ranney/', group: 'pages', docs: ['settings'], blurb: 'Room cards', fields: { settings: ['sunnyAndRanneyRooms'] } },
-  { key: 'media', title: 'Media Kit', url: '/branding/', group: 'pages', docs: ['media'], blurb: 'Press bio, mission, photos', fields: { media: [''] } },
-  { key: 'org', title: 'Organization & contact', url: '/', group: 'site', docs: ['settings'], blurb: 'Name, EIN, phone, email, address', fields: { settings: ['name', 'shortName', 'tagline', 'ein', 'phone', 'email', 'address'] } },
+  // The mission is on Organization & contact, with the vision and values (the homepage, /branding/ and the board page show it)
+  { key: 'media', title: 'Media Kit', url: '/branding/', group: 'pages', docs: ['media'], blurb: 'Press bio, founders’ story, photos', fields: { media: ['bio', 'who', 'founderStory', 'brandingPhotos', 'contactEmail', 'socialLinks', 'metaDescription', 'pressLogos'] } },
+  { key: 'org', title: 'Organization & contact', url: '/', group: 'site', docs: ['settings', 'media'], blurb: 'Name, EIN, addresses, mission, vision, values', fields: { settings: ['name', 'shortName', 'legalName', 'tagline', 'ein', 'phone', 'email', 'address', 'mailingAddress', 'vision', 'values'], media: ['mission'] } },
   { key: 'social', title: 'Social links', url: '/', group: 'site', docs: ['settings'], blurb: 'Footer icons', fields: { settings: ['social'] } },
   { key: 'badges', title: 'Trust badges', url: '/about/financials/', group: 'site', docs: ['settings'], blurb: 'Rating seals in the footer', fields: { settings: ['trustBadges'] } },
   { key: 'newsletter', title: 'Newsletter', url: '/', group: 'site', docs: [], blurb: 'Where signups go', fields: {} },

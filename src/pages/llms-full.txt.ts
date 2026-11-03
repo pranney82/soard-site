@@ -2,6 +2,10 @@ import type { APIRoute } from 'astro';
 import { getCollection } from 'astro:content';
 import { getPublishedKids, getPublishedCommunity } from '../utils/collections';
 import { getSiteStats } from '../utils/stats';
+/* SOARD's facts as Site Config → Organization & contact has them */
+import site from '../content/site/settings.json';
+const where = [site.address?.street, site.address?.city, [site.address?.state, site.address?.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+const phone = String(site.phone || '').replace(/\D/g, '').slice(-10).replace(/(\d{3})(\d{3})(\d{4})/, '$1.$2.$3');
 import { normalizePerson, isListed, hasProfile, profilePath } from '../utils/team';
 
 export const GET: APIRoute = async () => {
@@ -47,18 +51,18 @@ export const GET: APIRoute = async () => {
 
   const body = `# Sunshine on a Ranney Day
 
-> 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs and life-altering illnesses in the greater Atlanta area. We design and build custom dream bedrooms, wheelchair-accessible bathrooms, and in-home therapy rooms — all at no cost to families. EIN: 45-4773997. Operating since 2012. Based in Roswell, Georgia.
+> 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs and life-altering illnesses in the greater Atlanta area. We design and build custom dream bedrooms, wheelchair-accessible bathrooms, and in-home therapy rooms, all at no cost to families. EIN: ${site.ein}. Operating since 2012. Based in Roswell, Georgia.
 
 We are a nonprofit that partners with professional designers, contractors, and suppliers to transform the homes of children facing serious medical challenges. Our work gives families functional, beautiful spaces that support their child's independence, therapy, and joy.
 
 ## Organization Details
-- Legal name: Sunshine on a Ranney Day, Inc.
-- EIN: 45-4773997
+- Legal name: ${site.legalName || site.name}
+- EIN: ${site.ein}
 - Tax status: 501(c)(3) public charity
 - Founded: 2012
-- Location: 250 Hembree Park Drive, Suite 106, Roswell GA 30076
-- Phone: 770.990.2434
-- Email: info@soardcharity.com
+- Location: ${where}
+- Phone: ${phone}
+- Email: ${site.email}
 - Website: https://sunshineonaranneyday.com
 - Facebook: https://www.facebook.com/sunshineonaranneyday
 - Instagram: https://www.instagram.com/sunshineonaranneyday

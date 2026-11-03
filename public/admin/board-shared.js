@@ -78,7 +78,10 @@ export function repliesOf(m) {
 export const inviteOut = (m) => !!m?.invite?.eventId;
 /** "Balance-sheet_financials v2.pdf" → "Balance sheet financials v2" (the file keeps its own name for saving) */
 export function fileTitle(name) {
-  const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\b(\d{1,2})_(\d{1,2})_(\d{2,4})\b/g, '$1/$2/$3').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  // A tax form's own dash stays (W-9, I-9, W-8BEN, 1099-NEC, 990-EZ, 8822-B); every other one is a space
+  const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\b(\d{1,2})_(\d{1,2})_(\d{2,4})\b/g, '$1/$2/$3')
+    .replace(/(?<![a-z0-9])([a-z])-(\d{1,4}[a-z]{0,3})(?![a-z0-9])/gi, '$1\u2011$2').replace(/(?<![a-z0-9])(\d{3,4})-([a-z]{1,3})(?![a-z0-9])/gi, '$1\u2011$2')
+    .replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\u2011/g, '-');
   return base ? base[0].toUpperCase() + base.slice(1) : 'File';
 }
 /** A file's format in a word: PDF, Excel, Word, Slides, Photo or File */

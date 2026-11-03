@@ -5,7 +5,8 @@
  * and put them in context.data.boardMember), or one of the Board area's
  * admins looking at it. Any other staff sign-in gets 403.
  *
- * GET                                   → everything the page shows (see _board.js portalData)
+ * GET                                   → everything the page shows (see _board.js portalData), and `org`: SOARD's
+ *                                         facts for Documents (_org-facts.js orgFacts)
  * GET ?live=<id>                        → the meeting as it's held (_board.js liveView): every few seconds while it runs
  * POST { action: 'rsvp' }                           → 410: the calendar invite is the only answer (Peter, Nov 2 2026)
  * POST { action: 'action-done', actionId, done }    one of their own action items
@@ -41,6 +42,7 @@ import { secretarySends } from './_board-minutes.js';
 import { noteGet, noteLook, noteAnswer, noteEvents, answerOf } from './_board-activity.js';
 import { portalExtras, saveLineNote, chairApprove, chairNote, askPresenter } from './_board-asks.js';
 import { shorterFor } from './_board-shorter.js';
+import { orgFacts } from './_org-facts.js';
 
 const fail = (error, status = 400, extra = {}) => Response.json({ ok: false, error, ...extra }, { status });
 
@@ -78,8 +80,9 @@ export async function onRequestGet(context) {
     }
     // Beside it: the notes on the money's lines, a member's own report asks (when each is due), and a meeting ahead
     // not shared yet that they present in (their items only), so the ask's link opens (_board-asks.js)
-    const [data, extras] = await Promise.all([portalData(context.env, w), listMeetings(context.env.DB).then((meetings) => portalExtras(context.env, { ...w, meetings }))]);
-    return Response.json({ ok: true, ...data, ...extras }, { headers: { 'Cache-Control': 'private, no-store' } });
+    // and SOARD's facts for Documents, as the site has them saved (_org-facts.js)
+    const [data, extras, org] = await Promise.all([portalData(context.env, w), listMeetings(context.env.DB).then((meetings) => portalExtras(context.env, { ...w, meetings })), orgFacts(context.env)]);
+    return Response.json({ ok: true, ...data, ...extras, org }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err) {
     return fromError(err);
   }

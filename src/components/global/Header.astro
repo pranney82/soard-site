@@ -925,8 +925,6 @@ document.addEventListener('astro:before-swap', function () {
     flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
     padding: var(--space-lg) var(--space-lg) max(var(--space-xl), calc(48px + env(safe-area-inset-bottom)));
     display: flex; flex-direction: column; gap: var(--space-lg);
-    mask-image: linear-gradient(to bottom, black calc(100% - 48px), transparent 100%);
-    -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 48px), transparent 100%);
   }
   @keyframes mobFadeUp {
     from { opacity: 0; transform: translateY(24px); }

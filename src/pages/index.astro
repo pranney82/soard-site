@@ -18,6 +18,8 @@ import { upcomingAtBuild } from '../utils/reveals-copy';
 
 /* ── Site settings (all editable from admin) ── */
 import siteSettings from '../content/site/settings.json';
+/* The mission statement: Site Config → Organization & contact (also /branding/ and the board page) */
+import media from '../content/site/media.json';
 import financialSnapshot from '../content/site/financial-snapshot.json';
 
 /* ── Auto-computed stats from content collections ── */
@@ -279,7 +281,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
       <div class="mission-text" data-reveal>
         <div class="section-label">Our Mission</div>
         <h2 id="mission-heading">Every child deserves a space that makes them feel <em class="highlight">safe</em>, <em class="highlight">seen</em>, and <em class="highlight">loved</em>.</h2>
-        <p class="mission-body">A bedroom that feels like theirs. A bathroom that works for them. A therapy room built around who they are. For children with special needs, the right space changes everything. It brings independence, comfort, and confidence to daily life for the entire family.</p>
+        <p class="mission-body">{media.mission}</p>
         <p class="mission-body">Since 2012, we've partnered with designers, contractors, and families across Greater Atlanta to create over {stats.totalRooms} life-changing spaces. Every project is unique because every child is unique.</p>
         <a href="/how-it-works/" class="mission-link">See how a room gets built <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3.5 8h9M8.5 4l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></a>
       </div>
@@ -440,7 +442,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
         </div>
         <div class="trust-card" data-reveal data-delay="2">
           <div class="trust-card-top"><span class="trust-big trust-big--icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/><path d="m9 12 2 2 4-4"/></svg></span><span class="trust-card-label">501(c)(3)</span></div>
-          <p>Registered nonprofit. EIN 45-4773997. All donations are fully tax-deductible.</p>
+          <p>Registered nonprofit. EIN {siteSettings.ein}. All donations are fully tax-deductible.</p>
         </div>
       </div>
       <div class="trust-cta" data-reveal><a href="/about/financials/" class="btn btn-ghost-light">View Our Financials →</a></div>
@@ -457,7 +459,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
         <a href="/donate/" class="btn btn-dark btn-lg">Donate Today</a>
         <a href="/partners/" class="btn btn-outline-dark">Become a Partner</a>
       </div>
-      <p class="finale-note" data-reveal data-delay="3">All donations tax-deductible · 501(c)(3) · EIN 45-4773997</p>
+      <p class="finale-note" data-reveal data-delay="3">All donations tax-deductible · 501(c)(3) · EIN {siteSettings.ein}</p>
     </div>
   </section>
 

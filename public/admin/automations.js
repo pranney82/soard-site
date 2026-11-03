@@ -1046,6 +1046,23 @@ const MAP = { t: 'SOARD', children: [
             const signedOut = last ? ` Last signed out: ${last.name} (${last.why === 'gone' ? 'deleted' : last.why} in Google) ${stamp(last.at)}.` : '';
             return ON(`${plural(s.active, 'active Google account')} can sign in${s.off ? `; ${plural(s.off, 'suspended or deleted one', 'suspended or deleted ones')} can’t` : ''}.${signedOut}`, s.syncedAt);
           } },
+        { t: 'SOARD’s facts checked against the IRS', s: 'live', k: 'schedule',
+          when: 'Every 6 hours on the live hub’s heartbeat; the IRS’s list read again when the IRS publishes a new one (about monthly); the W-9 when its file changes. Check again in Site Config reads both now.',
+          does: 'Finds SOARD’s EIN in the IRS’s list of tax-exempt organizations for its state and compares it with the site: the legal name, the mailing address, 501(c)(3), exempt, gifts deductible. Workers AI reads SOARD’s W-9 on Board → Documents (line 1, the EIN, the address), a second time when something differs, and only what both readings agree on counts. The Board Manual’s mission statement is compared with the site’s. Whatever doesn’t match shows in Site Config → Organization & contact with what each one says and a button to put the right one in, and goes to Slack once; the post turns ✅ when it all matches. The board page shows the site’s facts under Documents → SOARD’s facts, with what the IRS’s list says of the exemption.',
+          touches: ['IRS', 'Workers AI', 'D1', 'Slack'], where: 'functions/api/_org-facts.js, org-facts-admin.js (broadcast-hooks.js) · public/admin/org-facts-shared.js · Site Config → Organization & contact',
+          info: 'The list is irs.gov/pub/irs-soi/eo_<state>.csv (the Business Master File), read as it streams until SOARD’s line. A list the IRS can’t serve keeps the last good reading. Kept in D1 site_config ‘org-check’; never part of the built site.',
+          live: (f) => {
+            const o = f.orgFacts;
+            if (!o) return null;
+            if (!o.at) return { why: 'The first check runs within 6 hours of the deploy.' };
+            if (stale(o.at, 13 * HOUR)) return ATTN(`Hasn’t checked since ${stamp(o.at)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, o.at);
+            if (o.irsError && o.irsErrorAt && (!o.irsReadAt || stale(o.irsReadAt, 3 * 24 * HOUR))) return ATTN(`The IRS’s list didn’t answer (${o.irsError}); the check goes by the reading from ${o.irsDate || 'before'}.`, o.irsErrorAt);
+            if (o.irsFound === false) return ATTN('The IRS’s list doesn’t have SOARD’s EIN. Site Config → Organization & contact says more.', o.at);
+            const w9 = o.w9 === 'unreadable' ? ` SOARD’s W-9 couldn’t be read (${String(o.w9Unreadable || '').replace(/\.$/, '')}), so it wasn’t checked.` : o.w9 === 'none' ? ' No W-9 on Board → Documents to check.' : '';
+            if (o.problems?.length) return ATTN(`${plural(o.problems.length, 'thing doesn’t', 'things don’t')} match: ${o.problems.join('; ')}. Fix them in Site Config → Organization & contact.${w9}`, o.at);
+            const matched = [`the IRS’s list${o.irsDate ? ` of ${o.irsDate}` : ''}`, o.w9 === 'read' && 'SOARD’s W-9', o.manual && 'the Board Manual'].filter(Boolean);
+            return ON(`Everything matches ${matched.length > 1 ? `${matched.slice(0, -1).join(', ')} and ${matched.at(-1)}` : matched[0]}.${w9}`, o.at);
+          } },
         { t: 'Audit log', s: 'live', k: 'event',
           when: 'Any admin save and any automatic action.',
           does: 'Records who or what changed what, viewable under Site → Audit Log.',

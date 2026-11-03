@@ -10,6 +10,7 @@
  * /events/gala/2026/. See public/admin/events-shared.js.
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import siteSettings from '../../content/site/settings.json';
 import FAQAccordion from '../../components/ui/FAQAccordion.astro';
 import { cfRaw, cfSrcset, cfLqip, cfAbsolute } from '../../utils/cf-image';
 import { getCollection, getEntry } from 'astro:content';
@@ -551,7 +552,7 @@ const eventJsonLd = {
           Secure checkout via Zeffy &middot; Zero platform fees
         </p>
         <p class="gv-tickets__trust-note">
-          Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN 45-4773997). Your contribution is tax-deductible to the fullest extent allowed by law.
+          Sunshine on a Ranney Day is a registered 501(c)(3) nonprofit (EIN {siteSettings.ein}). Your contribution is tax-deductible to the fullest extent allowed by law.
         </p>
       </div>
     </div>

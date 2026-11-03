@@ -10,6 +10,7 @@
  * - Team photos from CF Images
  */
 import PageLayout from '../../layouts/PageLayout.astro';
+import siteSettings from '../../content/site/settings.json';
 import FAQSection from '../../components/ui/FAQSection.astro';
 import { getFAQSchema } from '../../utils/schema';
 import { getSiteStats } from '../../utils/stats';
@@ -283,7 +284,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
         <a href="/donate/" class="btn btn-dark btn-lg">Donate Today</a>
         <a href="/kids/" class="btn btn-outline-dark">Meet the Kids</a>
       </div>
-      <p class="story-finale-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible · <a href="/publicity/" style="color: inherit; text-decoration: underline;">See our press coverage</a></p>
+      <p class="story-finale-note" data-reveal data-delay="3">501(c)(3) · EIN {siteSettings.ein} · All donations tax-deductible · <a href="/publicity/" style="color: inherit; text-decoration: underline;">See our press coverage</a></p>
     </div>
   </section>
 

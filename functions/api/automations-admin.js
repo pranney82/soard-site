@@ -32,6 +32,7 @@
  *  - waitlist:  families waiting for the applications-open email, signups not in Kit yet, the last opening
  *  - applicationLimit: the season's limit, how many are in, the last heads-up or close (counts only)
  *  - eventRecap: event pages turning into their recap (last check, last rebuild, a rebuild still waiting)
+ *  - orgFacts:  SOARD's facts against the IRS's list, its W-9 and its Board Manual (when, the list's date, what doesn't match)
  *  - jotform:   the one-time Jotform copy (submissions copied, left, families and files added; counts only)
  *  - advisory:  Advisory Board applications (how many, New, the last one and who heard; counts only)
  *  - demoInvites: demo day invites (the switch, the last 5-minute check, invites out; counts only)
@@ -50,6 +51,7 @@ import { coverFacts } from './_job-covers.js';
 import { backfillFacts } from './_jotform-backfill.js';
 import { advisoryFacts } from './_advisory-applications.js';
 import { eventRecapState } from './_event-recap.js';
+import { orgCheckFacts } from './_org-facts.js';
 import { companycamFacts } from './_companycam-sync.js';
 import { jobsFacts } from './_companycam-jobs.js';
 import { applicationSettings, pickApplication } from './_applications.js';
@@ -437,6 +439,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     press: await settle(() => pressFacts(DB)),
     quo: await settle(() => quoFacts(DB, now)),
     eventRecap: await settle(() => eventRecapFacts(DB)),
+    // SOARD's facts checked against the IRS's list, its W-9 and its Board Manual: times and what doesn't match (_org-facts.js)
+    orgFacts: await settle(() => orgCheckFacts(DB)),
     jotform: await settle(() => backfillFacts(DB)),
     advisory: await settle(() => advisoryFacts(DB)),
     demoInvites: await settle(() => demoFacts(DB)),

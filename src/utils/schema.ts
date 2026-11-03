@@ -7,6 +7,8 @@
  */
 
 import { cfAbsolute } from './cf-image';
+/* The EIN, address, phone and email: Site Config → Organization & contact */
+import site from '../content/site/settings.json';
 
 const SITE_URL = 'https://sunshineonaranneyday.com';
 const ORG_NAME = 'Sunshine on a Ranney Day';
@@ -32,9 +34,9 @@ export function getOrgSchema() {
       "caption": ORG_NAME
     },
     "image": { "@id": `${SITE_URL}/#logo` },
-    "description": "A 501(c)(3) nonprofit creating life-changing home makeovers — dream bedrooms, accessible bathrooms, and therapy rooms — for children with special needs in the greater Atlanta area, all at no cost to families.",
+    "description": "A 501(c)(3) nonprofit creating life-changing home makeovers (dream bedrooms, accessible bathrooms and therapy rooms) for children with special needs in the greater Atlanta area, all at no cost to families.",
     "foundingDate": "2012",
-    "taxID": "45-4773997",
+    "taxID": site.ein,
     "nonprofitStatus": "Nonprofit501c3",
     "areaServed": {
       "@type": "GeoCircle",
@@ -47,14 +49,14 @@ export function getOrgSchema() {
     },
     "address": {
       "@type": "PostalAddress",
-      "streetAddress": "250 Hembree Park Drive, Suite 106",
-      "addressLocality": "Roswell",
-      "addressRegion": "GA",
-      "postalCode": "30076",
+      "streetAddress": site.address?.street,
+      "addressLocality": site.address?.city,
+      "addressRegion": site.address?.state,
+      "postalCode": site.address?.zip,
       "addressCountry": "US"
     },
-    "telephone": "+17709902434",
-    "email": "info@soardcharity.com",
+    "telephone": `+1${String(site.phone || '').replace(/\D/g, '').slice(-10)}`,
+    "email": site.email,
     "sameAs": [
       "https://www.facebook.com/sunshineonaranneyday",
       "https://www.instagram.com/sunshineonaranneyday",

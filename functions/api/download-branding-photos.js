@@ -140,7 +140,7 @@ function buildFilename(kid, index) {
 }
 
 /** Build credits.txt content */
-function buildCredits(photos, kids) {
+function buildCredits(photos, kids, ein = '45-4773997') {
   const lines = [
     'SUNSHINE ON A RANNEY DAY',
     'Press Photo Credits & Usage Rights',
@@ -173,7 +173,7 @@ function buildCredits(photos, kids) {
 
   lines.push('─'.repeat(48));
   lines.push('');
-  lines.push('Sunshine on a Ranney Day is a 501(c)(3) nonprofit (EIN 45-4773997)');
+  lines.push(`Sunshine on a Ranney Day is a 501(c)(3) nonprofit (EIN ${ein})`);
   lines.push('that renovates homes for children with special needs at no cost to families.');
   lines.push('');
   lines.push(`Generated ${new Date().toISOString().slice(0, 10)}`);
@@ -275,7 +275,9 @@ export async function onRequestGet(context) {
   }
 
   // 5. Build credits.txt
-  const creditsData = buildCredits(zipPhotos, kids);
+  // The EIN as Site Config → Organization & contact has it
+  const settings = await DB.prepare("SELECT data FROM site_config WHERE key = 'settings'").first().then((r) => JSON.parse(r?.data || '{}')).catch(() => ({}));
+  const creditsData = buildCredits(zipPhotos, kids, settings.ein || undefined);
   const allFiles = [
     ...images,
     { filename: 'credits.txt', data: creditsData },

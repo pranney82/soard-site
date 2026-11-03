@@ -106,6 +106,12 @@ test('the page map: every setting on one page, old tab names lead somewhere', ()
   assert.equal(S.pageOf('faq', 'items').key, 'faq');
   assert.equal(S.pageOf('settings', 'photoTimestamps'), null);
   assert.equal(S.pageOf('settings', 'application.open'), null, 'Applications owns the application block');
+  assert.equal(S.pageOf('media', 'mission').key, 'org', 'the mission is with the vision and values, not on the Media Kit');
+  assert.equal(S.pageOf('media', 'bio.founded').key, 'media');
+  assert.equal(S.pageOf('settings', 'mailingAddress.zip').key, 'org');
+  assert.equal(S.pageOf('settings', 'values').key, 'org');
+  // Every key the Media Kit document has is on a page (only the mission left it)
+  for (const k of ['bio', 'mission', 'who', 'founderStory', 'contactEmail', 'socialLinks', 'metaDescription', 'pressLogos', 'brandingPhotos']) assert.ok(S.pageOf('media', k), `media.${k}`);
   const docs = { settings: { base: { homeHero: { lead: 'a' } }, edit: { homeHero: { lead: 'b' }, donatePhotos: { hero: 'x' } } } };
   assert.deepEqual(S.pageChanges(S.pageByKey('home'), docs), [{ doc: 'settings', path: 'homeHero.lead' }]);
   assert.deepEqual(S.pageChanges(S.pageByKey('donate'), docs), [{ doc: 'settings', path: 'donatePhotos' }]);

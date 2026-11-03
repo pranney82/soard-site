@@ -2547,3 +2547,86 @@ p.bp-rp__motion-st { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--muted
   .bp-rp__preview { position: sticky; top: calc(var(--head) + 1.25rem); max-height: calc(100vh - var(--head) - 2.5rem); overflow: auto; overscroll-behavior: contain; margin: 0; padding: 0 0.25rem 1rem 0; }
 }
 @media (prefers-reduced-motion: reduce) { .bp-rp__motion-add { transition: none; } }
+
+/* ─── Documents → SOARD's facts and its brand ───
+   Each fact a line: the label small above it, the words, a copy button at its end (a tick for a moment once
+   copied). Short facts two to a row, the mission and the like across. The brand: each official logo on its own
+   ground with PNG and SVG, the colors as swatches with the hex to copy, the fonts. Printed, the facts alone. */
+.bp-org__grid, .bp-org__wide { display: grid; gap: 0; margin: 0.4rem 0 0; }
+.bp-org__grid { grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); column-gap: 2rem; }
+.bp-org__wide { margin-top: 0; }
+.bp-org__fact { display: grid; gap: 0.15rem; padding: 0.7rem 0; border-top: 1px solid var(--line); min-width: 0; }
+.bp-org__fact dt { font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); }
+.bp-org__fact dd { display: flex; align-items: flex-start; gap: 0.75rem; margin: 0; min-width: 0; }
+.bp-org__v { flex: 1; min-width: 0; display: grid; gap: 0.1rem; font-size: 1rem; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }
+.bp-org__fact.is-wide .bp-org__v { font-size: 0.97rem; max-width: 62rem; text-wrap: pretty; }
+.bp-org__note { font-size: 0.84rem; color: var(--muted); }
+.bp-org__link { color: inherit; text-decoration: underline; text-decoration-color: var(--line-2); text-underline-offset: 3px; }
+.bp-org__link:hover { text-decoration-color: var(--ink-2); }
+.bp-org__copy { flex-shrink: 0; width: 34px; height: 34px; margin-top: -0.2rem; margin-left: auto; transition: background 0.2s, border-color 0.2s, color 0.2s, transform 0.25s var(--spring); }
+.bp-org__copy:active { transform: scale(0.92); }
+.bp-org__copy.is-done { background: var(--ok-bg); border-color: var(--ok-bg); color: var(--ok); }
+.bp-org__values { list-style: none; margin: 0.1rem 0 0; padding: 0; display: grid; gap: 0.35rem; }
+.bp-org__values strong { font-weight: 650; }
+.bp-org__values span::before { content: ': '; }
+.bp-org__fact.is-found { animation: bp-found 2.2s var(--ease) both; border-radius: 10px; }
+.bp-org__foot { display: grid; gap: 0.6rem; margin-top: 0.4rem; padding-top: 0.9rem; border-top: 1px solid var(--line); }
+.bp-org__papers { display: flex; flex-wrap: wrap; align-items: center; gap: 0.45rem; margin: 0; }
+.bp-org__footlabel { margin-right: 0.35rem; font-size: 0.86rem; color: var(--muted); }
+.bp-org__more { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem 0.6rem; margin: 0; font-size: 0.9rem; color: var(--muted); }
+.bp-org__more .bp-link { font-size: inherit; }
+.bp-chip--link { min-height: 32px; padding: 0.15rem 0.8rem; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); text-decoration: none; transition: border-color 0.2s, background 0.2s; }
+.bp-chip--link:hover { border-color: var(--ink-2); background: var(--warm); }
+.bp-kit:focus { outline: none; }
+.bp-kit.is-found { animation: bp-found-ring 2.2s var(--ease); }
+.bp-kit__size { font-weight: 500; color: var(--muted); font-size: 0.84rem; }
+.bp-kit__logos { list-style: none; margin: 0.5rem 0 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem 1rem; }
+@media (min-width: 1000px) { .bp-kit__logos { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.bp-kit__logo { display: grid; gap: 0.55rem; align-content: start; min-width: 0; }
+.bp-kit__pic { display: grid; place-items: center; aspect-ratio: 1; border-radius: var(--r); border: 1px solid var(--line); padding: 14%; }
+.bp-kit__pic.is-light { background: #fff; }
+.bp-kit__pic.is-dark { background: #1A1B1F; border-color: #1A1B1F; }
+.bp-kit__pic img { width: 100%; height: 100%; object-fit: contain; }
+.bp-kit__name { display: grid; font-weight: 650; font-size: 0.93rem; line-height: 1.3; }
+.bp-kit__name span { font-weight: 400; font-size: 0.82rem; color: var(--muted); }
+.bp-kit__dl { display: flex; gap: 0.4rem; }
+.bp-kit__h { margin: 1.6rem 0 0.6rem; font-size: 1rem; font-weight: 700; }
+.bp-kit__colors { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem 1rem; }
+@media (min-width: 1000px) { .bp-kit__colors { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.bp-kit__color { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; min-width: 0; }
+.bp-kit__swatch { align-self: stretch; height: 64px; margin-bottom: 0.4rem; border-radius: 12px; box-shadow: inset 0 0 0 1px rgba(45, 47, 44, 0.08); }
+.bp-kit__swatch.is-light { box-shadow: inset 0 0 0 1px var(--line-2); }
+.bp-kit__cname { font-weight: 650; font-size: 0.93rem; line-height: 1.3; }
+.bp-kit__use { font-size: 0.82rem; line-height: 1.35; color: var(--muted); }
+.bp-kit__vals { display: grid; gap: 0.05rem; font-size: 0.78rem; line-height: 1.4; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bp-kit__hex { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 30px; margin: 0.25rem 0 0.15rem; padding: 0 0.55rem; border: 1px solid var(--line); border-radius: 999px; background: var(--card); color: var(--ink); font: inherit; font-weight: 650; cursor: pointer; transition: border-color 0.2s, background 0.2s; }
+.bp-kit__hex:hover { border-color: var(--ink-2); background: var(--warm); }
+.bp-kit__fonts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 19rem), 1fr)); gap: 0.5rem 2rem; margin: 0; }
+.bp-kit__fonts dt { font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gold); margin-bottom: 0.25rem; }
+.bp-kit__fonts dd { display: grid; gap: 0.2rem; margin: 0; font-size: 0.93rem; color: var(--ink-2); }
+.bp-kit__fonts strong { color: var(--ink); font-weight: 650; }
+@media (max-width: 600px) {
+  .bp-org .bp-sechead .bp-btns { margin-top: 0; }
+  .bp-org__fact { padding: 0.55rem 0; }
+  .bp-org__fact.is-wide .bp-org__v { font-size: 0.94rem; line-height: 1.5; }
+  .bp-kit__logos, .bp-kit__colors { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 0.85rem; }
+}
+/* A finger's size on a touch screen, as the page's other buttons */
+@media (pointer: coarse) {
+  .bp-org__copy { width: 44px; height: 44px; margin-top: -0.45rem; }
+  .bp-chip--link, .bp-kit__hex { min-height: 44px; }
+  .bp-chip--link { padding: 0.2rem 1rem; }
+}
+@media (prefers-reduced-motion: reduce) { .bp-org__copy, .bp-kit__hex, .bp-chip--link { transition: none; } .bp-org__copy:active { transform: none; } }
+@media print {
+  /* Print on SOARD's facts: a one-page fact sheet, the facts alone */
+  html.bp-printing-org .bp-main > :not(.bp-org) { display: none !important; }
+  html.bp-printing-org .bp-org .bp-sechead { display: none; }
+  .bp-org__printhead { margin: 0 0 0.4rem; font-family: var(--display); font-size: 18pt; font-weight: 700; }
+  .bp-org__copy { display: none !important; }
+  .bp-org__fact { padding: 0.35rem 0; break-inside: avoid; }
+  .bp-org__fact dt { font-size: 7.5pt; color: #5F615A; }
+  .bp-org__v, .bp-org__fact.is-wide .bp-org__v { font-size: 10pt; }
+  .bp-org__note { font-size: 8.5pt; }
+  .bp-org__link { text-decoration: none; }
+}

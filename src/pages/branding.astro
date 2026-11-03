@@ -2,6 +2,9 @@
 /* noindex: brand assets page is for partners/press, not search traffic */
 import BaseLayout from '../layouts/BaseLayout.astro';
 import media from '../content/site/media.json';
+import settings from '../content/site/settings.json';
+/* The logos, colors and kit, as the board page has them too */
+import { KIT, LOGOS, COLORS, pngHref } from '../data/brand.js';
 import { getSiteStats } from '../utils/stats';
 
 const stats = await getSiteStats();
@@ -17,15 +20,11 @@ import { cfRaw, cfSrcset as _cfSrcset, cfLqip } from '../utils/cf-image';
 const cfSrc = (id: string, w: number) => cfRaw(id, `w=${w},q=85`);
 const cfSrcset = (id: string, widths: number[]) => _cfSrcset(id, widths);
 
-/* Display image IDs on CF Images */
-const logos = {
-  lightTagline: 'brand-logo-light-bg-tagline-display',
-  darkTagline:  'brand-logo-dark-bg-tagline-display',
-  circleTagline:'brand-logo-circle-tagline-display',
-  light:        'brand-logo-light-bg-display',
-  dark:         'brand-logo-dark-bg-display',
-  circle:       'brand-logo-circle-display',
-};
+/* Display image IDs on CF Images, by name (src/data/brand.js) */
+const logos = Object.fromEntries(LOGOS.map((l) => [l.key, l.id]));
+const logoAlt = (l) => `Sunshine on a Ranney Day ${l.circle ? 'circle logo' : 'logo'} ${l.group === 'primary' ? 'with Dreams Built Here tagline' : 'without tagline'}${l.circle ? '' : l.bg === 'dark' ? ' on dark background' : ' on white background'}`;
+/* The name, EIN and social links are the site's own (Site Config → Organization & contact, Social links) */
+const social = settings.social || {};
 
 const breadcrumbs = [
   { name: 'Home', url: '/' },
@@ -57,7 +56,7 @@ const toc = [
     { id: 'social-specs', label: 'Social Specs', short: 'Social Specs' },
   ]},
 ];
-const kitSize = '2.6 MB'; /* public/SOARD-Logo-Kit.zip */
+const kitSize = KIT.size; /* public/SOARD-Logo-Kit.zip */
 
 const jsonLd = {
   '@type': 'WebPage',
@@ -79,7 +78,7 @@ const jsonLd = {
       <h1>Brand & Media Kit</h1>
       <p class="brand-hero-sub">Official brand assets, logos, and press-ready information for representing Sunshine on a Ranney Day.</p>
       <div class="brand-hero-actions">
-        <a href="/SOARD-Logo-Kit.zip" download class="hero-btn hero-btn-primary" aria-label="Download full media kit ZIP">
+        <a href={KIT.href} download class="hero-btn hero-btn-primary" aria-label="Download full media kit ZIP">
           <Fragment set:html={dlIcon} />Download Full Media Kit
         </a>
       </div>
@@ -123,7 +122,7 @@ const jsonLd = {
             </ul>
           </div>
         ))}
-        <a href="/SOARD-Logo-Kit.zip" download class="sidebar-download" aria-label={`Download logo kit, ZIP, ${kitSize}`}>
+        <a href={KIT.href} download class="sidebar-download" aria-label={`Download logo kit, ZIP, ${kitSize}`}>
           <span class="sidebar-download-icon" aria-hidden="true"><Fragment set:html={dlIcon} /></span>
           <span class="sidebar-download-text">Download logo kit<small>ZIP · {kitSize}</small></span>
         </a>
@@ -149,7 +148,7 @@ const jsonLd = {
         <div class="media-details-grid">
           <div class="media-detail">
             <span class="media-detail-label">Organization</span>
-            <span class="media-detail-value">{media.bio.orgName}</span>
+            <span class="media-detail-value">{settings.name}</span>
           </div>
           <div class="media-detail">
             <span class="media-detail-label">Founded</span>
@@ -165,7 +164,7 @@ const jsonLd = {
           </div>
           <div class="media-detail">
             <span class="media-detail-label">EIN</span>
-            <span class="media-detail-value">{media.bio.ein}</span>
+            <span class="media-detail-value">{settings.ein}</span>
           </div>
           <div class="media-detail">
             <span class="media-detail-label">Website</span>
@@ -290,22 +289,28 @@ const jsonLd = {
             <span class="media-detail-label">Press Contact</span>
             <span class="media-detail-value"><a href={`mailto:${media.contactEmail}`}>{media.contactEmail}</a></span>
           </div>
-          {media.socialLinks.facebook && (
+          {social.facebook && (
             <div class="media-detail">
               <span class="media-detail-label">Facebook</span>
-              <span class="media-detail-value"><a href={media.socialLinks.facebook} target="_blank" rel="noopener">{media.socialLinks.facebook.replace('https://www.facebook.com/', 'facebook.com/')}</a></span>
+              <span class="media-detail-value"><a href={social.facebook} target="_blank" rel="noopener">{social.facebook.replace('https://www.facebook.com/', 'facebook.com/')}</a></span>
             </div>
           )}
-          {media.socialLinks.instagram && (
+          {social.instagram && (
             <div class="media-detail">
               <span class="media-detail-label">Instagram</span>
-              <span class="media-detail-value"><a href={media.socialLinks.instagram} target="_blank" rel="noopener">{media.socialLinks.instagram.replace('https://www.instagram.com/', 'instagram.com/')}</a></span>
+              <span class="media-detail-value"><a href={social.instagram} target="_blank" rel="noopener">{social.instagram.replace('https://www.instagram.com/', 'instagram.com/')}</a></span>
             </div>
           )}
-          {media.socialLinks.youtube && (
+          {social.youtube && (
             <div class="media-detail">
               <span class="media-detail-label">YouTube</span>
-              <span class="media-detail-value"><a href={media.socialLinks.youtube} target="_blank" rel="noopener">YouTube Channel</a></span>
+              <span class="media-detail-value"><a href={social.youtube} target="_blank" rel="noopener">YouTube Channel</a></span>
+            </div>
+          )}
+          {social.tiktok && (
+            <div class="media-detail">
+              <span class="media-detail-label">TikTok</span>
+              <span class="media-detail-value"><a href={social.tiktok} target="_blank" rel="noopener">{social.tiktok.replace('https://www.tiktok.com/', 'tiktok.com/')}</a></span>
             </div>
           )}
         </div>
@@ -320,23 +325,23 @@ const jsonLd = {
       <section id="logos" class="brand-section">
         <div class="section-header-row">
           <div><h2>Logos</h2><p>Download our official logos in various formats and variations.</p></div>
-          <a href="/SOARD-Logo-Kit.zip" download class="download-all-btn" aria-label="Download all logo assets as ZIP"><Fragment set:html={dlIcon} />Download All Logos</a>
+          <a href={KIT.href} download class="download-all-btn" aria-label="Download all logo assets as ZIP"><Fragment set:html={dlIcon} />Download All Logos</a>
         </div>
 
         <h3 class="logo-subhead" id="logos-primary">Primary Logos</h3>
         <p class="section-desc">Main logos with the "Dreams Built Here" tagline.</p>
         <div class="logo-grid logo-grid-3">
-          <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.lightTagline, 400)} srcset={cfSrcset(logos.lightTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>White Background</h3><p>Logo with tagline for light backgrounds</p><div class="btn-row"><a href="/api/download-logo?id=brand-logo-light-bg-tagline-download" download class="dl-btn" aria-label="Download white background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-dark"><img src={cfSrc(logos.darkTagline, 400)} srcset={cfSrcset(logos.darkTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day logo with Dreams Built Here tagline on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>Dark Background</h3><p>Logo with tagline for dark backgrounds</p><div class="btn-row"><a href="/api/download-logo?id=brand-logo-dark-bg-tagline-download" download class="dl-btn" aria-label="Download dark background logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.circleTagline, 400)} srcset={cfSrcset(logos.circleTagline, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day circle logo with Dreams Built Here tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>Circle</h3><p>Circle logo with tagline</p><div class="btn-row"><a href="/api/download-logo?id=brand-logo-circle-tagline-download" download class="dl-btn" aria-label="Download circle logo with tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          {LOGOS.filter((l) => l.group === 'primary').map((l) => (
+            <div class="card"><div class:list={['card-preview', l.bg === 'dark' ? 'bg-dark' : 'bg-light']}><img src={cfSrc(l.id, 400)} srcset={cfSrcset(l.id, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt={logoAlt(l)} class:list={['logo-img', { 'logo-img-circle': l.circle }]} width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>{l.name}</h3><p>{l.sub}</p><div class="btn-row"><a href={pngHref(l)} download class="dl-btn" aria-label={`Download ${logoAlt(l)} as PNG`}><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          ))}
         </div>
 
         <h3 class="logo-subhead" id="logos-alternate">Alternate Logos</h3>
         <p class="section-desc">Logos without the tagline for smaller uses.</p>
         <div class="logo-grid logo-grid-3">
-          <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.light, 400)} srcset={cfSrcset(logos.light, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day logo without tagline on white background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>White Background</h3><p>Logo without tagline for light backgrounds</p><div class="btn-row"><a href="/api/download-logo?id=brand-logo-light-bg-download" download class="dl-btn" aria-label="Download white background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-dark"><img src={cfSrc(logos.dark, 400)} srcset={cfSrcset(logos.dark, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day logo without tagline on dark background" class="logo-img" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>Dark Background</h3><p>Logo without tagline for dark backgrounds</p><div class="btn-row"><a href="/api/download-logo?id=brand-logo-dark-bg-download" download class="dl-btn" aria-label="Download dark background logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
-          <div class="card"><div class="card-preview bg-light"><img src={cfSrc(logos.circle, 400)} srcset={cfSrcset(logos.circle, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt="Sunshine on a Ranney Day circle logo without tagline" class="logo-img logo-img-circle" width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>Circle</h3><p>Circle logo without tagline</p><div class="btn-row"><a href="/api/download-logo?id=brand-logo-circle-download" download class="dl-btn" aria-label="Download circle logo without tagline as PNG"><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          {LOGOS.filter((l) => l.group === 'alternate').map((l) => (
+            <div class="card"><div class:list={['card-preview', l.bg === 'dark' ? 'bg-dark' : 'bg-light']}><img src={cfSrc(l.id, 400)} srcset={cfSrcset(l.id, [200, 400, 600])} sizes="(max-width: 768px) 80vw, 200px" alt={logoAlt(l)} class:list={['logo-img', { 'logo-img-circle': l.circle }]} width="600" height="600" loading="lazy" decoding="async"/></div><div class="card-body"><h3>{l.name}</h3><p>{l.sub}</p><div class="btn-row"><a href={pngHref(l)} download class="dl-btn" aria-label={`Download ${logoAlt(l)} as PNG`}><Fragment set:html={dlIcon} />PNG</a></div></div></div>
+          ))}
         </div>
       </section>
 
@@ -365,12 +370,9 @@ const jsonLd = {
         <h2>Color Palette</h2>
         <p class="section-desc">Our color system ensures visual consistency and brand recognition. Click any swatch to copy its hex value.</p>
         <div class="color-grid">
-          <div class="color-card" data-hex="#FFDA24"><div class="color-swatch" style="background:#FFDA24;"><span class="swatch-hover">Click to copy</span></div><div class="color-body"><h3>Sunshine Yellow</h3><p class="color-usage">CTAs, brand accents</p><div class="color-vals"><span class="pms">PMS 116 C</span><span class="hex">#FFDA24</span><span>RGB 254, 217, 37</span><span>CMYK 0, 6, 87, 0</span></div></div></div>
-          <div class="color-card" data-hex="#373A36"><div class="color-swatch" style="background:#373A36;"><span class="swatch-hover">Click to copy</span></div><div class="color-body"><h3>SOARD Dark</h3><p class="color-usage">Primary text, headings</p><div class="color-vals"><span class="pms">PMS 447 C</span><span class="hex">#373A36</span><span>RGB 55, 58, 54</span><span>CMYK 50, 30, 40, 90</span></div></div></div>
-          <div class="color-card" data-hex="#FFFFFF"><div class="color-swatch" style="background:#FFFFFF;border-bottom:1px solid #E5E7EB;"><span class="swatch-hover swatch-hover-light">Click to copy</span></div><div class="color-body"><h3>White</h3><p class="color-usage">Backgrounds, logo element</p><div class="color-vals"><span class="hex">#FFFFFF</span><span>RGB 255, 255, 255</span><span>CMYK 0, 0, 0, 0</span></div></div></div>
-          <div class="color-card" data-hex="#1A1B1F"><div class="color-swatch" style="background:#1A1B1F;"><span class="swatch-hover">Click to copy</span></div><div class="color-body"><h3>Dark Deep</h3><p class="color-usage">Footer, dark sections</p><div class="color-vals"><span class="hex">#1A1B1F</span><span>RGB 26, 27, 31</span></div></div></div>
-          <div class="color-card" data-hex="#FEFCF5"><div class="color-swatch" style="background:#FEFCF5;border-bottom:1px solid #E5E7EB;"><span class="swatch-hover swatch-hover-light">Click to copy</span></div><div class="color-body"><h3>Cream</h3><p class="color-usage">Page backgrounds</p><div class="color-vals"><span class="hex">#FEFCF5</span><span>RGB 254, 252, 245</span></div></div></div>
-          <div class="color-card" data-hex="#F5F4F0"><div class="color-swatch" style="background:#F5F4F0;border-bottom:1px solid #E5E7EB;"><span class="swatch-hover swatch-hover-light">Click to copy</span></div><div class="color-body"><h3>Warm Gray</h3><p class="color-usage">Section backgrounds, cards</p><div class="color-vals"><span class="hex">#F5F4F0</span><span>RGB 245, 244, 240</span></div></div></div>
+          {COLORS.map((c) => (
+            <div class="color-card" data-hex={c.hex}><div class="color-swatch" style={`background:${c.hex};${c.light ? 'border-bottom:1px solid #E5E7EB;' : ''}`}><span class:list={['swatch-hover', { 'swatch-hover-light': c.light }]}>Click to copy</span></div><div class="color-body"><h3>{c.name}</h3><p class="color-usage">{c.use}</p><div class="color-vals">{c.pms && <span class="pms">{c.pms}</span>}<span class="hex">{c.hex}</span><span>RGB {c.rgb}</span>{c.cmyk && <span>CMYK {c.cmyk}</span>}</div></div></div>
+          ))}
         </div>
         <div class="info-box"><p><strong>Print requirement:</strong> The three core brand colors are required for all print materials: Sunshine Yellow (PMS 116 C), SOARD Dark (PMS 447 C), and White. Digital applications should use the hex values listed above. Ensure WCAG AA contrast minimum for accessibility.</p></div>
       </section>
@@ -559,13 +561,13 @@ const jsonLd = {
   .brand-sidebar{width:224px;flex-shrink:0}
 
   /* Sticky sidebar. Fits any viewport height: scrolls internally, hidden scrollbar,
-     edge fades (.fade-top/.fade-bottom set by script) signal overflow. */
+     a hairline at an edge with more past it (.fade-top/.fade-bottom set by script). Flat: no fades */
   .sidebar-inner{position:sticky;top:var(--toc-top);max-height:calc(100vh - var(--toc-top) - 24px);max-height:calc(100dvh - var(--toc-top) - 24px);overflow-y:auto;overscroll-behavior:contain;scrollbar-width:none;padding:4px 8px 8px 0;isolation:isolate}
   .sidebar-inner::-webkit-scrollbar{display:none}
-  .sidebar-inner.fade-bottom{-webkit-mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(to bottom,#000 calc(100% - 40px),transparent)}
-  .sidebar-inner.fade-top{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 40px);mask-image:linear-gradient(to bottom,transparent,#000 40px)}
-  .sidebar-inner.fade-top.fade-bottom{-webkit-mask-image:linear-gradient(to bottom,transparent,#000 40px,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(to bottom,transparent,#000 40px,#000 calc(100% - 40px),transparent)}
-  .sidebar-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(55,58,54,.5);padding:0 0 0 26px;margin:0 0 18px}
+  .sidebar-inner.fade-top{box-shadow:inset 0 1px 0 rgba(55,58,54,.14)}
+  .sidebar-inner.fade-bottom{box-shadow:inset 0 -1px 0 rgba(55,58,54,.14)}
+  .sidebar-inner.fade-top.fade-bottom{box-shadow:inset 0 1px 0 rgba(55,58,54,.14),inset 0 -1px 0 rgba(55,58,54,.14)}
+      .sidebar-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:rgba(55,58,54,.5);padding:0 0 0 26px;margin:0 0 18px}
   .sidebar-group{margin-bottom:22px}
   .sidebar-group:last-of-type{margin-bottom:0}
   .sidebar-group-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.1em;color:var(--c-dark);padding:0 0 0 26px;margin:0 0 8px}
@@ -600,8 +602,8 @@ const jsonLd = {
   /* Pill bar (tablet + phone). Height in --brand-nav-h keeps anchor offsets in sync. */
   .brand-mobile-nav{--brand-nav-h:52px;display:none;position:sticky;top:var(--header-height);z-index:90;background:var(--c-cream,#FEFCF5);border-bottom:1px solid rgba(55,58,54,.08)}
   .brand-mobile-nav::before,.brand-mobile-nav::after{content:"";position:absolute;top:0;bottom:1px;width:40px;pointer-events:none;z-index:1;transition:opacity .2s ease}
-  .brand-mobile-nav::before{left:0;background:linear-gradient(to right,var(--c-cream,#FEFCF5) 30%,rgba(254,252,245,0))}
-  .brand-mobile-nav::after{right:0;background:linear-gradient(to left,var(--c-cream,#FEFCF5) 30%,rgba(254,252,245,0))}
+  .brand-mobile-nav::before{left:0;display:none}
+  .brand-mobile-nav::after{right:0;display:none}
   .brand-mobile-nav.at-start::before,.brand-mobile-nav.at-end::after{opacity:0}
   .mobile-nav-scroll{display:flex;align-items:center;gap:6px;height:var(--brand-nav-h);padding:0 16px;margin:0;list-style:none;overflow-x:auto;overscroll-behavior-x:contain;scrollbar-width:none;-ms-overflow-style:none}
   .mobile-nav-scroll::-webkit-scrollbar{display:none}
@@ -661,10 +663,10 @@ const jsonLd = {
   /* ═══ LOGO CARDS ═══ */
   .card{background:#fff;border:1px solid rgba(55,58,54,.1);border-radius:16px;overflow:hidden;transition:transform .2s ease,box-shadow .2s ease;display:flex;flex-direction:column}
   .card:hover{transform:translateY(-3px);box-shadow:0 12px 32px rgba(0,0,0,.08)}
-  .card-preview{padding:32px;border-bottom:1px solid rgba(55,58,54,.08);display:flex;align-items:center;justify-content:center;height:220px;background:linear-gradient(135deg,#f9fafb,#f3f4f6)}
+  .card-preview{padding:32px;border-bottom:1px solid rgba(55,58,54,.08);display:flex;align-items:center;justify-content:center;height:220px;background:#F7F6F2}
   .card-preview picture{display:flex;align-items:center;justify-content:center;width:100%;height:100%}
   .bg-dark{background:var(--c-dark-deep)!important}
-  .bg-light{background:linear-gradient(135deg,#fafafa,#f5f5f4)!important}
+  .bg-light{background:#FFFFFF!important}
   .card-body{padding:20px 24px;display:flex;flex-direction:column;flex:1}
   .card-body h3{font-family:var(--font-body);font-size:15px;font-weight:600;color:var(--c-dark);margin:0 0 4px}
   .card-body p{font-size:13px;color:rgba(55,58,54,.7);margin-bottom:16px;flex:1}
@@ -672,7 +674,7 @@ const jsonLd = {
   .download-all-btn:hover{filter:brightness(1.05);box-shadow:0 4px 16px rgba(255,213,0,.35)}
   .dl-btn{display:inline-flex;align-items:center;gap:6px;padding:7px 14px;background:var(--c-yellow);color:var(--c-dark);font-size:12px;font-weight:700;border-radius:8px;text-decoration:none;transition:all .15s;letter-spacing:.02em}
   .dl-btn:hover{filter:brightness(1.05);box-shadow:0 2px 8px rgba(255,213,0,.35)}
-  .btn-row{display:flex;gap:8px;margin-top:auto}
+  .btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:auto}
   .logo-img{max-width:65%;max-height:160px;width:auto;height:auto;object-fit:contain}
   .logo-img-circle{max-width:55%;max-height:160px}
   .logo-subhead{font-size:1.15rem;font-weight:600;margin:0 0 .25rem 0;color:var(--c-dark)}
@@ -698,7 +700,7 @@ const jsonLd = {
   .color-vals span{font-size:13px;font-family:'SF Mono','Courier New',monospace;color:rgba(55,58,54,.7)}
   .color-vals .hex{font-weight:700;color:var(--c-dark)}
   .color-vals .pms{font-weight:700;color:var(--c-dark);font-family:var(--font-body);font-size:11px;letter-spacing:.04em}
-  .info-box{background:linear-gradient(135deg,#fafafa,#f5f5f4);border:1px solid rgba(55,58,54,.1);border-radius:16px;padding:24px}
+  .info-box{background:#F7F6F2;border:1px solid rgba(55,58,54,.1);border-radius:16px;padding:24px}
   .info-box p{font-size:14px;line-height:1.65}
   .info-box strong{color:var(--c-dark)}
 
@@ -734,8 +736,8 @@ const jsonLd = {
   .usage-preview .logo-img{max-width:60%;max-height:220px}
   .usage-text{font-size:14px;color:rgba(55,58,54,.7);padding:16px 20px;border-top:1px solid rgba(55,58,54,.08);line-height:1.6}
   .dodont-card{border-radius:16px;padding:28px;border:1.5px solid}
-  .dodont-card.do{background:linear-gradient(135deg,#f0fdf4,#ecfdf5);border-color:#bbf7d0}
-  .dodont-card.dont{background:linear-gradient(135deg,#f6f4ee,#f1efe8);border-color:rgba(55,58,54,.3)}
+  .dodont-card.do{background:#F0FDF4;border-color:#bbf7d0}
+  .dodont-card.dont{background:#F4F2EC;border-color:rgba(55,58,54,.3)}
   .dodont-card h4{font-size:15px;font-weight:700;margin-bottom:16px;display:flex;align-items:center;gap:8px}
   .dodont-card.do h4{color:#166534}
   .dodont-card.dont h4{color:#373A36}

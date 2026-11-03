@@ -19,6 +19,7 @@
  * changing it, run: node scripts/test-page-preview.mjs
  */
 import BaseLayout from '../../layouts/BaseLayout.astro';
+import siteSettings from '../../content/site/settings.json';
 import Button from '../../components/ui/Button.astro';
 import CFImage from '../../components/ui/CFImage.astro';
 import { getVideoSchema } from '../../utils/schema';
@@ -335,7 +336,7 @@ const jsonLd = videoSchema ? [videoSchema] : undefined;
         <Button href="/donate/" variant="secondary" size="lg">Donate Today</Button>
         <Button href="/community/" variant="outline">All Projects</Button>
       </div>
-      <p class="cp-detail-cta-note" data-reveal data-delay="3">501(c)(3) · EIN 45-4773997 · All donations tax-deductible</p>
+      <p class="cp-detail-cta-note" data-reveal data-delay="3">501(c)(3) · EIN {siteSettings.ein} · All donations tax-deductible</p>
     </div>
   </section>
 

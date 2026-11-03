@@ -45,6 +45,7 @@ import { maybeRunAsks } from './_board-asks.js';
 import { maybeSyncStaff } from './_staff-access.js';
 import { maybeSweepMail } from './_mail-sweep.js';
 import { maybeRunBackfill } from './_coi-backfill.js';
+import { maybeCheckOrgFacts } from './_org-facts.js';
 
 // The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
 const HUB_ANSWER_MS = 10 * 1000;
@@ -128,6 +129,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunBackfill(env));
     // Hourly: SOARD's process Docs in Drive, so Site → Automations knows if Drive stops answering (see _process-docs.js)
     context.waitUntil(maybeRefreshProcess(env));
+    // Every 6 hours: SOARD's own facts against the IRS's list, its W-9 and its Board Manual (see _org-facts.js)
+    context.waitUntil(maybeCheckOrgFacts(env));
     // The hub passes `reason` to every open page and keeps `work` in its status, so both go
     // as kinds only ('email', 'kid', 'auto-start'), never kid slugs or send counts
     if (!r) return Response.json({ ok: true, state: (await publicPayload(env)).state, reason: 'tick', work: [], changed: false, cached: false, busy: true });
