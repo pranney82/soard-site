@@ -126,8 +126,12 @@ export function wordsFromLines(lines, { title = '' } = {}) {
   // A header or footer: the same words on most pages, in the margin
   const seen = new Map();
   const sameBut = (t) => words(t).replace(/\b\d+\b/g, '#');
-  for (const l of clean) { const k = sameBut(l.text); seen.set(k, (seen.get(k) || new Set()).add(l.page)); }
-  const repeated = (l) => pages > 1 && (seen.get(sameBut(l.text))?.size || 0) >= Math.max(2, Math.ceil(pages / 2));
+  for (const l of clean) { const k = sameBut(l.text); seen.set(k, [...(seen.get(k) || []), l]); }
+  const repeated = (l) => {
+    if (pages < 2) return false;
+    const at = new Set((seen.get(sameBut(l.text)) || []).filter((o) => Math.abs(o.y - l.y) <= 6).map((o) => o.page));
+    return at.size >= Math.max(2, Math.ceil(pages / 2));
+  };
   // A line of where to reach SOARD (an address, phone, website), not a sentence that happens to name one
   const contact = (t) => t.length <= 160 && (CONTACT.test(t) || STATE_ZIP.test(t)) && !/[a-z]{2}[.?!]\s+[A-Z]/.test(t) && t.split(' ').length <= 16;
   const footnote = (t) => /^[*†‡]|^\d{1,2}\s+[A-Z]/.test(t);
@@ -147,8 +151,10 @@ export function wordsFromLines(lines, { title = '' } = {}) {
   VOCAB = new Set(clean.flatMap((l) => l.text.toLowerCase().match(/[a-z]+(?:-[a-z]+)*/g) || []).filter((w) => !/-$/.test(w)));
   const kept = clean.map((l, i) => (margin(l, i) && footnote(l.text) && l.h && allBody && l.size < allBody * 0.92 ? { ...l, foot: true } : l)).filter((l, i) => !paperOnly(l, i));
   // The body's letters (the size most of the words are), the space between its lines, and how wide a full line runs
-  const sizes = kept.flatMap((l) => Array(Math.min(20, Math.ceil(l.text.length / 10))).fill(l.size || 0));
-  const body = median(sizes) || 0;
+  const share = new Map();
+  for (const l of kept) share.set(Math.round((l.size || 0) * 2) / 2, (share.get(Math.round((l.size || 0) * 2) / 2) || 0) + l.text.length);
+  const letters = [...share.values()].reduce((a, b) => a + b, 0) || 1;
+  const body = Math.max(0, ...[...share.entries()].filter(([size, n]) => size && n / letters >= 0.2).map(([size]) => size)) || median(kept.map((l) => l.size || 0)) || 0;
   const gaps = [];
   kept.forEach((l, i) => {
     const p = kept[i - 1];

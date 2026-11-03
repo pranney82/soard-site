@@ -548,7 +548,7 @@ function Signers({ d, ctx, onDoc }) {
   const off = async (p) => {
     const s = d.signed[p.slug] || d.before?.[p.slug];
     const first = p.name.split(/\s+/)[0];
-    if (!(await ask({ title: `Take off ${p.name}’s signature${d.signed[p.slug] ? '' : ' on the earlier version'}?`, text: d.signed[p.slug] ? `${first} is asked to sign the ${d.title} for ${year}${s?.copy ? ', and the copy added for it is deleted' : ''}.` : `It goes from the record${s?.copy ? ' with the copy added for it' : ''}. ${first} is still to sign the new version.`, yes: 'Take it off', danger: true }))) return;
+    if (!(await ask({ title: `Take off ${p.name}’s signature${d.signed[p.slug] ? '' : ' on the earlier version'}?`, text: d.signed[p.slug] ? `${first} then shows as still to sign the ${d.title} for ${year}${s?.copy ? ', and the copy added for it is deleted' : ''}.` : `It goes from the record${s?.copy ? ' with the copy added for it' : ''}. ${first} is still to sign the new version.`, yes: 'Take it off', danger: true }))) return;
     setBusy(p.slug);
     const j = await call({ action: 'unsign', docId: d.id, slug: p.slug });
     setBusy('');
@@ -565,7 +565,7 @@ function Signers({ d, ctx, onDoc }) {
       return html`<li class="bd-signer" key=${p.slug} data-signer=${p.slug}>
         <span class=${`bd-signer__dot ${s ? 'is-on' : ''}`} aria-hidden="true"></span>
         <span class="bd-signer__name">${p.name}</span>
-        <span class="bd-signer__how">${s ? signedHow(s) : was ? `Signed the earlier version (${dayOf(was.at)}): to sign the new one` : 'Not signed yet'}${was?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...was.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}</span>
+        <span class="bd-signer__how">${s ? signedHow(s) : was ? `Signed the earlier version on ${dayOf(was.at)}, not the new one yet` : 'Not signed yet'}${was?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...was.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}</span>
         <span class="bd-signer__act">${was ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their new signed copy'}</button>` : null}${s || was
           ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => off(p)}>${was ? 'Take the earlier one off' : 'Take it off'}</button>`
           : html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their signed copy'}</button>`}</span>
@@ -756,7 +756,11 @@ function DocumentsTab({ ctx }) {
     setWordsKey((k) => k + 1);
     focusTitle();
   };
-  const focusTitle = () => requestAnimationFrame(() => { const t = document.getElementById('bd-doc-title'); t?.scrollIntoView({ block: 'center', behavior: 'smooth' }); t?.focus({ preventScroll: true }); });
+  const focusTitle = (always = false) => requestAnimationFrame(() => {
+    const t = document.getElementById('bd-doc-title');
+    t?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    if (always || !matchMedia('(pointer: coarse)').matches) t?.focus({ preventScroll: true });
+  });
   // The focus back where the editor was opened from: its row's Edit, or Add a document
   const refocus = (id) => requestAnimationFrame(() => (document.querySelector(id ? `[data-edit="${id}"]` : '[data-add-doc]') || document.querySelector('[data-add-doc]'))?.focus());
   const close = async () => {
@@ -767,7 +771,7 @@ function DocumentsTab({ ctx }) {
     refocus(id);
   };
   const save = async ({ askAgain = null, base = null } = {}) => {
-    if (!draft.title.trim()) { addToast('Give it a title', 'error'); return; }
+    if (!draft.title.trim()) { addToast('Give it a title', 'error'); focusTitle(true); return; }
     const { file, existing, ...doc } = draft;
     const body = (doc.body || '').trim();
     // Checked before anything's saved, so a paper never goes on the board page without the file it was added with
@@ -899,11 +903,14 @@ function DocumentsTab({ ctx }) {
         </div>
         <div class="form-group span-2">
           <label class="form-label" for="bd-doc-file">${draft.existing ? html`The file: ${fileLink(draft.existing, fileTitle(draft.existing.name))}` : 'The file'} <span class="form-optional">${hasWords ? 'kept, but the board reads the words' : 'optional when the words are written here'}</span></label>
-          <input id="bd-doc-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx,.pptx,.doc,.xls" onChange=${(e) => setDraft({ ...draft, file: e.target.files[0] || null })} />
-          ${draft.existing ? html`<p class="form-hint">Choose another to replace it.</p>` : null}
+          <input id="bd-doc-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx,.pptx,.doc,.xls" onChange=${(e) => { const f = e.target.files[0] || null; setDraft({ ...draft, file: f, title: draft.title.trim() || !f ? draft.title : fileTitle(f.name) }); }} />
+          ${draft.file && readable(draft.file) && !(asRead && asRead.from === 'new') ? html`<div class="bd-words__start" style="margin-top:0.5rem">
+            <p>${hasWords ? `Saved as it is, the board keeps reading the words above, with ${fileTitle(draft.file.name)} as its file.` : `The board reads ${fileTitle(draft.file.name)} as its file, or its words written here.`}</p>
+            <button class="btn btn-primary btn-sm" disabled=${!!reading} onClick=${async () => { await bringFrom(draft.file, 'new'); document.querySelector('.bd-words')?.scrollIntoView({ block: 'start', behavior: 'smooth' }); }}>${reading ? `Reading ${formatWord(draft.file)}…` : `Bring in its words`}</button>
+          </div>` : draft.existing ? html`<p class="form-hint">Choose another to replace it.</p>` : null}
         </div>
         <div class="form-group span-2"><label class="bd-check"><input type="checkbox" checked=${!!draft.sign} disabled=${!hasFile && !draft.sign} onChange=${(e) => setDraft({ ...draft, sign: e.target.checked })} /> Required: every board member reads and signs it each year (the board expectations, the conflict of interest policy)</label>
-          ${hasFile ? null : html`<p class="form-hint">${draft.sign ? 'Nothing to read yet: write the words or add the file, or untick Required.' : 'Write the words or add the file first: the board signs what they can read.'}</p>`}</div>
+          ${hasFile ? null : html`<p class="form-hint">${draft.sign ? 'Nothing to read yet: write the words or add the file, or untick Required.' : 'To make it required, write its words or add its file first: the board signs what they can read.'}</p>`}</div>
       </div>
       <div class="bd-actions" style="margin-top:1rem">
         <button class="btn btn-primary" data-save-doc disabled=${saving || !!reading} onClick=${() => save()}>${saving ? 'Saving…' : 'Save'}</button>

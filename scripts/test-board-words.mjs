@@ -271,6 +271,23 @@ for (const [k, foot] of [['dash', (n) => `- ${n} -`], ['pipe', (n) => `${n} | P 
   ])])) };
 }
 
+{
+  // A line low on page 1 with a twin on page 2 that differs by its number (not a footer: not at the same height)
+  const p1 = []; for (let n = 1; n <= 15; n++) p1.push({ t: `Additional note ${n}: the board keeps this one.`, x: 72, y: 740 - n * 46 });
+  const p2 = []; for (let n = 16; n <= 18; n++) p2.push({ t: `Additional note ${n}: the board keeps this one.`, x: 72, y: 720 - (n - 16) * 30 });
+  papers.twins = { title: 'Notes', ...(await pdf([p1, p2])) };
+  // More small print than body: the notes at 9pt don't make the body 9pt
+  const runs = flow([
+    ['As a member of the board I understand that my role carries the responsibilities below, and I agree'],
+    ['to fulfill them to the best of my ability.', { gap: 22 }],
+    ['1. Make a personal gift each year that is meaningful to me, so the board can say 100% board'],
+    ['participation.'],
+    ['2. Attend at least three of four meetings.', { gap: 22 }],
+  ]);
+  for (let n = 0; n < 24; n++) runs.push({ t: `Note ${n + 1}. A long note in small print about how the board works, kept for the record, as written.`, x: 72, y: 600 - n * 12, size: 9 });
+  papers.smallprint = { title: 'Board Member Expectations', ...(await pdf([runs])) };
+}
+
 // ── Read them in the browser ──
 const server = http.createServer((req, res) => {
   const f = join(ROOT, 'public', decodeURIComponent(req.url.split('?')[0]));
@@ -359,6 +376,9 @@ ok(/Vacancies\.\*\* A vacancy is filled/.test(md.labels2) || /Vacancies\. A vaca
 ok(/- Finance · Reviews the budget and the annual audit · Monthly\n- Events · Plans the Gala · Quarterly/.test(md.labels2), `a table cell over two lines is one cell, the rows after it rows (${JSON.stringify((md.labels2.match(/\*\*Committee[\s\S]*/) || [''])[0])})`);
 
 ok(/^1\. Interested Person\. Any director, officer or member of a committee with governing board delegated powers, who has a financial interest, is one\.\n2\. Financial Interest\./m.test(md.spaced), `a numbered point’s next line set in with spaces stays the point’s (${JSON.stringify(md.spaced)})`);
+
+ok([...Array(18).keys()].every((i) => md.twins.includes(`Additional note ${i + 1}: the board keeps this one.`)), `a line low on a page with a numbered twin on another page is kept (${(md.twins.match(/Additional note/g) || []).length} of 18)`);
+ok(/^As a member of the board I understand that my role carries the responsibilities below, and I agree to fulfill them to the best of my ability\.$/m.test(md.smallprint) && /^1\. Make a personal gift each year that is meaningful to me, so the board can say 100% board participation\.\n2\. Attend/m.test(md.smallprint) && !/^###/m.test(md.smallprint), `more small print than body: the body is still the body, no headings made of it (${JSON.stringify(md.smallprint.slice(0, 260))})`);
 
 ok(!errors.length, `no errors in the page${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 if (failures.length) { console.log(`\n${failures.length} failed`); process.exit(1); }

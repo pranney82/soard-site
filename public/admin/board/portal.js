@@ -523,9 +523,10 @@ function App() {
     load();
     // Back to a tab left open: what changed meanwhile (an RSVP count, a new file), quietly
     let at = Date.now();
-    const back = () => { if (document.visibilityState === 'visible' && Date.now() - at > 60 * 1000) { at = Date.now(); call().then((j) => { if (j.ok) setData(j); }); } };
+    const back = () => { if (document.visibilityState === 'visible' && Date.now() - at > 10 * 1000) { at = Date.now(); call().then((j) => { if (j.ok) setData(j); }); } };
+    addEventListener('focus', back);
     document.addEventListener('visibilitychange', back);
-    return () => document.removeEventListener('visibilitychange', back);
+    return () => { document.removeEventListener('visibilitychange', back); removeEventListener('focus', back); };
   }, []);
   useEffect(() => {
     // The old Reveals page is part of Home now
@@ -3211,6 +3212,8 @@ function PeoplePage({ ctx }) {
 // form that was there may be gone (a PDF written in Board meanwhile has "Read and sign" in its place)
 const signTrouble = new Map(); // id → { msg, kind: 'changed' | 'gone', title }
 /** The reason a signature didn't go through, while it's still the case: the paper changed (until they sign), or it went (until it's back) */
+/** A word diff as runs: the words next to each other that changed the same way, one mark */
+const runsOf = (diff) => diff.reduce((out, p) => { const last = out.at(-1); if (last && last.op === p.op) last.w += ` ${p.w}`; else out.push({ ...p }); return out; }, []);
 /** Two lines' words, the old against the new: [{ w, op: '' (both), '+' (new), '-' (gone) }] (the longest run they share kept) */
 function wordDiff(a, b) {
   const x = a.split(/\s+/); const y = b.split(/\s+/);
@@ -3292,6 +3295,7 @@ function SignForm({ d: doc, ctx }) {
   const [name, setName] = useState('');
   const [busy, setBusy] = useState('');
   const [problem, setProblem] = useState('');
+  const [copyProblem, setCopyProblem] = useState('');
   const pick = useRef(null);
   // The version on the page when the form came up: a newer one brought in while it's open (the page catching up when
   // its tab comes back) is said, and the name typed for the old one taken out
@@ -3301,7 +3305,8 @@ function SignForm({ d: doc, ctx }) {
     seen.current = doc.version;
     if (doc.signedByMe) return;
     setName('');
-    setProblem('It changed while you had it open. Read it again, then sign.');
+    // (a signature or copy just refused for it says so itself)
+    if (!signTrouble.has(doc.id)) setProblem('It changed while you had it open. Read it again, then sign.');
   }, [doc.version]);
   if (doc.signedByMe) return html`<${Signed} doc=${doc} ctx=${ctx} />`;
   if (!data.me.slug) return null;
@@ -3335,11 +3340,14 @@ function SignForm({ d: doc, ctx }) {
   const addCopy = async (file) => {
     if (pick.current) pick.current.value = '';
     if (!file) return;
-    setProblem('');
+    setCopyProblem('');
     setBusy('copy');
     const j = await sendCopy(doc.id, file, doc.version, data.me.slug);
     setBusy('');
-    if (!j.ok) { setProblem(j.error); if (j.changed || j.gone) { signTrouble.set(doc.id, { msg: j.error, kind: j.gone ? 'gone' : 'changed', title: doc.title }); ctx.load().then(() => focusTrouble(doc.id)); } return; }
+    if (!j.ok) {
+      if (j.changed || j.gone) { signTrouble.set(doc.id, { msg: `Your copy wasn’t added: ${j.error}`, kind: j.gone ? 'gone' : 'changed', title: doc.title }); ctx.load().then(() => focusTrouble(doc.id)); } else setCopyProblem(j.error);
+      return;
+    }
     signTrouble.delete(doc.id);
     done(j, 'Your signed copy is in. Thank you.');
   };
@@ -3355,6 +3363,7 @@ function SignForm({ d: doc, ctx }) {
       <button type="button" class="bp-linkbtn" disabled=${!!busy} onClick=${() => pick.current?.click()}>${busy === 'copy' ? 'Adding your copy…' : 'Add your signed copy'}</button>
       <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => addCopy(e.target.files[0])} />
     </p>
+    ${copyProblem ? html`<p class="bp-sign__problem bp-sign__copyproblem" role="alert">${copyProblem}</p>` : null}
     ${problem ? html`<p class="bp-sign__problem" id=${`${id}-p`} role="alert" tabindex="-1">${problem}</p>` : null}
   </form>`;
 }
@@ -3513,6 +3522,11 @@ function DocumentsPage({ ctx }) {
 function DocPage({ id, ctx }) {
   const { data } = ctx;
   useFocusTarget();
+  // A paper to sign, open: the page looks again now and then while it's in view (the board may be asked to sign again)
+  useEffect(() => {
+    const t = setInterval(() => { if (document.visibilityState === 'visible') call().then((j) => { if (j.ok) ctx.setData(j); }); }, 45 * 1000);
+    return () => clearInterval(t);
+  }, [id]);
   const doc = data.docs.find((x) => x.id === id);
   const year = todayEastern().slice(0, 4);
   // A paper that's a file (a link to it from an email, from before its words were written or after they were taken
@@ -3538,7 +3552,7 @@ function DocPage({ id, ctx }) {
     let added = now.filter((l) => !has(was, l)); let removed = was.filter((l) => !has(now, l));
     // A line changed (most of its words the same): the new line with its changes marked, its old one not listed again
     const wordsOf = (t) => t.split(/\s+/);
-    const alike = (a, b) => { const x = new Set(wordsOf(a)); const y = wordsOf(b); return y.filter((w) => x.has(w)).length / Math.max(x.size, y.length) >= 0.5; };
+    const alike = (a, b) => { const x = new Set(wordsOf(a)); const y = wordsOf(b); return y.filter((w) => x.has(w)).length / Math.max(x.size, y.length) >= 0.65; };
     const changed = [];
     for (const l of added) {
       const k = removed.findIndex((r) => r.h === l.h && alike(r.t, l.t));
@@ -3558,10 +3572,10 @@ function DocPage({ id, ctx }) {
         <h1 class="bp-h1">${doc.title}</h1>
         <p class="bp-lede">${[doc.note, changed ? `Last changed ${changed}` : ''].filter(Boolean).join(' · ')}${written ? html`<span class="bp-noprint">${doc.note || changed ? ' · ' : ''}${readTime(mdWords(doc.body))}</span>` : null}</p>
       </div>
-      ${written ? html`<p class="bp-btns bp-noprint"><button type="button" class="bp-btn bp-btn--sm" onClick=${() => window.print()}><${Icon} name="print" size=${16} />Print it</button></p>` : null}
+      ${written ? html`<p class="bp-btns bp-noprint"><button type="button" class="bp-btn bp-btn--sm" onClick=${() => ctx.load().then(() => requestAnimationFrame(() => window.print()))}><${Icon} name="print" size=${16} />Print it</button></p>` : null}
     </header>
     ${doc.sign && doc.signedEarlier && !me ? html`<div class="bp-doc__changed bp-noprint"><p>It changed since you signed: read it, then sign again.</p>${changes ? html`<details class="bp-whatchanged"><summary>What changed</summary>
-      ${changes.changed.length ? html`<p class="bp-whatchanged__h">Changed</p><ul>${changes.changed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${l.diff.map((p, j) => (p.op === '+' ? html`<ins key=${j}>${p.w}</ins> ` : p.op === '-' ? html`<del key=${j}>${p.w}</del> ` : `${p.w} `))}</li>`)}</ul>` : null}
+      ${changes.changed.length ? html`<p class="bp-whatchanged__h">Changed</p><ul>${changes.changed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${runsOf(l.diff).map((r, j) => (r.op === '+' ? html`<ins key=${j}>${r.w}</ins> ` : r.op === '-' ? html`<del key=${j}>${r.w}</del> ` : `${r.w} `))}</li>`)}</ul>` : null}
       ${changes.added.length ? html`<p class="bp-whatchanged__h">New</p><ul>${changes.added.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${l.h ? html`<strong>${l.t}</strong>` : l.t}</li>`)}</ul>${changes.added.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.added.length - 20, 'more new line')}</p>` : null}` : null}
       ${changes.removed.length ? html`<p class="bp-whatchanged__h">Taken out</p><ul>${changes.removed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}><s>${l.h ? html`<strong>${l.t}</strong>` : l.t}</s></li>`)}</ul>${changes.removed.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.removed.length - 20, 'more line')} taken out</p>` : null}` : null}
     </details>` : null}</div>` : null}

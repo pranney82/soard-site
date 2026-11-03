@@ -1089,12 +1089,15 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 /* What changed since they signed: the new lines and the ones taken out */
 .bp-doc__changed > p { margin: 0; }
 .bp-whatchanged { margin-top: 0.45rem; font-weight: 500; color: var(--ink-2); }
-.bp-whatchanged summary { cursor: pointer; font-weight: 650; color: var(--gold); min-height: 32px; display: flex; align-items: center; }
+.bp-whatchanged summary { cursor: pointer; font-weight: 650; color: var(--ink); min-height: 44px; display: inline-flex; align-items: center; gap: 0.35rem; text-decoration: underline; text-underline-offset: 3px; list-style: none; }
+.bp-whatchanged summary::-webkit-details-marker { display: none; }
+.bp-whatchanged summary::before { content: '›'; display: inline-block; font-size: 1.2em; line-height: 1; transition: transform 0.2s; }
+.bp-whatchanged[open] summary::before { transform: rotate(90deg); }
 .bp-whatchanged__h { margin: 0.5rem 0 0.15rem; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .bp-whatchanged ul { margin: 0; padding-inline-start: 1.2em; }
 .bp-whatchanged li { margin: 0.15rem 0; }
 .bp-whatchanged li.is-h { list-style: none; margin-top: 0.4rem; }
-.bp-whatchanged ins { text-decoration: none; background: var(--yellow-soft); color: var(--ink); border-radius: 3px; padding: 0 2px; font-weight: 650; }
+.bp-whatchanged ins { text-decoration: underline; text-decoration-color: var(--yellow); text-decoration-thickness: 3px; text-underline-offset: 2px; color: var(--ink); font-weight: 650; }
 .bp-whatchanged del { color: var(--muted); }
 .bp-docpage > .bp-doc__changed { margin: 0 0 1rem; }
 .bp-docpage .bp-docpage__head + .bp-doc__changed { margin-top: 0.25rem; }

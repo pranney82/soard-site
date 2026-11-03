@@ -594,6 +594,7 @@ export const STYLES = `
   .bd-inline .form-input { width: auto; }
   .bd-check { display: inline-flex; align-items: center; gap: 0.45rem; font-size: var(--fs-sm); cursor: pointer; }
   .bd-check input { width: 16px; height: 16px; min-height: 0; margin: 0; flex: none; }
+  .bd-signer__act { display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.4rem; }
   .bd-signers { flex: 1 1 100%; min-width: 0; margin-top: 0.25rem; border-top: 1px solid var(--color-border); }
   .bd-signers__list { list-style: none; margin: 0; padding: 0; }
   .bd-signer { display: grid; grid-template-columns: 0.5rem minmax(8rem, 13rem) minmax(0, 1fr) auto; align-items: center; gap: 0.25rem 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); font-size: var(--fs-sm); }
