@@ -352,6 +352,11 @@ export async function setBoardEmail(DB, slug, email) {
   await ensureSchema(DB);
   const e = normEmail(email);
   if (e && !isEmail(e)) throw new Error('That email doesn\'t look right');
+  // (each board member signs in with their own: an address already someone else's would sign one in as the other)
+  if (e) {
+    const other = await DB.prepare('SELECT r.slug, t.name FROM reveal_board_emails r LEFT JOIN team t ON t.slug = r.slug WHERE lower(r.email) = ? AND r.slug != ? LIMIT 1').bind(e, slug).first().catch(() => null);
+    if (other) throw new Error(`That email is already ${other.name || other.slug}’s. Each person signs in to the board page with their own.`);
+  }
   const was = await DB.prepare('SELECT email FROM reveal_board_emails WHERE slug = ?').bind(slug).first().catch(() => null);
   const r = e
     ? await DB.prepare('INSERT OR REPLACE INTO reveal_board_emails (slug, email, updated_at) VALUES (?, ?, ?)').bind(slug, e, new Date().toISOString()).run()

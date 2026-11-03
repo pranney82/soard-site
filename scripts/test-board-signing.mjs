@@ -221,13 +221,21 @@ try {
   await sleep(300);
   await sleep(200);
   ok(await alex.evaluate(() => document.activeElement?.matches?.('.bp-field__btn')), 'once adopted, the first point is initialed and the focus is on the next one to initial');
-  for (const b of await alex.$$('.bp-field__btn')) await b.click();
-  await sleep(200);
+  // (a person taps once the page has scrolled to the next point)
+  for (const b of await alex.$$('.bp-field__btn')) { await sleep(700); await b.click(); }
+  await sleep(700);
   ok(await alex.evaluate(() => document.activeElement?.matches?.('input.bp-field__input')), 'then on the answer');
   await alex.type('input.bp-field__input', '$6,000 as a Reveal Day sponsor');
+  await sleep(700);
+  // (scrolled to the middle first, as a person would: at the bottom it's under the signing bar and the tab bar)
+  await alex.$eval('.bp-sign__agree input', (el) => el.scrollIntoView({ block: 'center' }));
+  await sleep(200);
   await alex.click('.bp-sign__agree input');
+  await sleep(300);
   await clickText(alex, '.bp-sign button[type="submit"]', /^Sign$/);
-  ok(await waitText(alex, /Signed: Board Member Expectations\. Thank you\./, 10000), 'signed');
+  const signedOk = await waitText(alex, /Signed: Board Member Expectations\. Thank you\./, 10000);
+  if (!signedOk) { await shot(alex, 'debug-not-signed'); console.log('DEBUG', (await alex.evaluate(() => document.querySelector('.bp-docpage__sign')?.innerText || document.body.innerText.slice(0, 600))).replace(/\s+/g, ' ').slice(0, 700)); }
+  ok(signedOk, `signed${signedOk ? '' : ` (${await alex.evaluate(() => [document.querySelector('.bp-sign__problem')?.textContent, document.querySelector('.bp-toast')?.textContent, document.querySelector('.bp-sign__agree input')?.checked, document.querySelector('dialog.bp-adopt[open]') ? 'dialog open' : ''].join(' | '))})`}`);
   const row = await DB.prepare("SELECT * FROM board_signatures WHERE slug = 'alex-rivera' AND doc_id = ?").bind(exp.id).first();
   ok(row && JSON.parse(row.fields).map((f) => f.value).join('|') === 'AR|AR|$6,000 as a Reveal Day sponsor' && row.process_v === 1, 'kept with each initial and the answer');
   ok(!(await listDocs(DB)).find((d) => d.id === exp.id).declined['alex-rivera'], 'Declined ends once they sign');
@@ -296,6 +304,20 @@ try {
   await jane.click(`[data-edit="${exp.id}"]`);
   await jane.waitForSelector('#bd-doc-due', { timeout: 6000 });
   ok(await jane.$eval('#bd-doc-due', (i) => i.value) === `${YEAR}-01-31`, 'the editor has its due date');
+  // Enter in the middle of a point marked for an answer: the mark stays on that point, the new one has none
+  const marksBefore = await jane.evaluate(() => document.querySelectorAll('.rp-edit p[data-field]').length);
+  await jane.evaluate(() => {
+    const p = document.querySelector('.rp-edit p[data-field="answer"]');
+    const t = p.firstChild;
+    const r = document.createRange();
+    r.setStart(t, Math.floor(t.textContent.length / 2));
+    r.collapse(true);
+    const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    p.closest('.rp-edit').focus();
+  });
+  await jane.keyboard.press('Enter');
+  await sleep(200);
+  ok(await jane.evaluate(() => document.querySelectorAll('.rp-edit p[data-field]').length) === marksBefore, `Enter mid-point keeps one mark (${marksBefore})`);
   await clickText(jane, 'button', /^Cancel$/);
   // On a phone, the founder's Members
   const janePhone = await tab(FOUNDER, 390);

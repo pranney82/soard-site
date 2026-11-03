@@ -382,7 +382,7 @@ export function BoardActivity({ data, signDocs, ready, working, now = Date.now()
   const done = data.members.filter(current).length;
   // Who an email can ask to sign: not signed, with an email, once the board page's sign-in works (their code has to come)
   const asking = ready && signDocs.length && onAsk;
-  const unsigned = data.members.filter((p) => !current(p) && p.email);
+  const unsigned = data.members.filter((p) => !current(p) && p.email && signDocs.some((d) => !d.signed[p.slug] && !d.declined?.[p.slug]));
   const papersWord = signDocs.length === 1 ? `the ${signDocs[0].title.replace(/^the\s+/i, '')}` : 'the papers to sign';
   const person = open && data.members.find((p) => p.slug === open);
   return html`<div class="card ba-card" style="padding:0" onFocusIn=${onFocusIn} onFocusOut=${onFocusOut}>

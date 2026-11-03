@@ -2679,6 +2679,8 @@ p.bp-rp__motion-st { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--muted
 @media (max-width: 640px) {
   body:has(.bp-signbar) .bp-foot__in { padding-bottom: calc(6.5rem + var(--tabbar)); }
   body:has(.bp-signbar) .bp-toast { bottom: calc(5.4rem + var(--tabbar)); }
+  html { scroll-padding-bottom: calc(1rem + var(--tabbar)); }
+  html:has(.bp-signbar) { scroll-padding-bottom: calc(5.5rem + var(--tabbar)); }
 }
 /* What's left to fill in: in view while they read (above the phone's tab bar) */
 .bp-signbar { position: sticky; top: 76px; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin: 0 0 1rem; padding: 0.6rem 0.6rem 0.6rem 1rem; border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 255, 255, 0.97); box-shadow: 0 6px 18px rgba(45, 47, 44, 0.08); }
@@ -2708,7 +2710,9 @@ p.bp-rp__motion-st { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--muted
 .bp-adopt__ini { font-size: 1.4rem; color: var(--ink-2); }
 .bp-pad { display: block; width: 100%; height: auto; aspect-ratio: 3 / 1; border: 1px dashed var(--line-2); border-radius: 14px; background: #fff; touch-action: none; cursor: crosshair; }
 .bp-pad__line { stroke: var(--line-2); stroke-width: 2; }
-.bp-pad__hint { fill: var(--quiet); font-size: 22px; font-family: inherit; }
+.bp-pad__hint { fill: var(--quiet); font-size: 28px; font-family: inherit; }
+.bp-adopt__drawrow .bp-linkbtn:disabled { color: var(--muted); text-decoration: none; cursor: default; }
+@media (max-width: 400px) { .bp-pad__hint { font-size: 34px; } }
 .bp-adopt__drawrow { margin: 0.25rem 0 0; text-align: right; }
 .bp-adopt__acts { margin: 0.6rem 0 0; }
 @media print {

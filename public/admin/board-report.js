@@ -221,7 +221,12 @@ const PaperFields = StarterKit.constructor.create({
       Enter: ({ editor }) => {
         const { $from, empty } = editor.state.selection;
         const field = $from.parent.type.name === 'paragraph' ? $from.parent.attrs.field : null;
-        if (!empty || !field || $from.parentOffset !== 0 || !$from.parent.content.size) return false;
+        if (!empty || !field) return false;
+        if ($from.parentOffset !== 0 || !$from.parent.content.size) {
+          // (split inside a list, splitListItem copies the paragraph's attributes: the lower half's taken off here)
+          return editor.chain().first(({ commands }) => [() => commands.splitListItem('listItem'), () => commands.splitBlock()])
+            .updateAttributes('paragraph', { field: null }).run();
+        }
         return editor.chain().updateAttributes('paragraph', { field: null })
           .first(({ commands }) => [() => commands.splitListItem('listItem'), () => commands.splitBlock()])
           .updateAttributes('paragraph', { field }).run();
@@ -694,7 +699,7 @@ const CSS = `
 .rp-tool.is-on { background: var(--yellow-soft, #FFF5C2); color: var(--ink, var(--color-text, #2D2F2C)); }
 .rp-tool:disabled { opacity: 0.35; cursor: default; }
 .rp-tool:focus-visible { outline: 2px solid var(--ink, var(--color-text, #2D2F2C)); outline-offset: 1px; }
-.rp-tool--text { width: auto; padding: 0 0.6rem; font-family: inherit; font-weight: 600; font-size: 0.8rem; line-height: 1; white-space: nowrap; }
+.rp-tool--text { display: inline-flex; align-items: center; width: auto; padding: 0 0.6rem; font-family: inherit; font-weight: 600; font-size: 0.8rem; line-height: 1; white-space: nowrap; }
 .rp-edit p[data-field]::after { content: 'Initials'; display: inline-block; margin-left: 0.5em; padding: 0.1em 0.45em; border: 1px solid var(--line-2, #D3D0C7); border-radius: 5px; background: var(--yellow-soft, #FFF5C2); color: var(--ink, #2D2F2C); font-size: 0.72em; font-weight: 650; line-height: 1.5; vertical-align: 0.1em; }
 .rp-edit p[data-field="answer"]::after { content: 'Answer'; }
 .rp-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--rp-line); }

@@ -732,3 +732,24 @@ test('round two: renaming a member back to their own earlier address is fine; so
   const taken = await rename({ ...env, CF_IMAGES_TOKEN: '' }, { collection: 'team', from: 'kim-park', to: 'alex-riviera' }, FOUNDER);
   assert.equal(taken?.status, 409);
 });
+
+test('round three: one email is one person’s; asking everyone leaves out what a member declined; a decline is about its wording', async () => {
+  const { setBoardEmail } = await import('../functions/api/_reveal-invites.js');
+  await assert.rejects(setBoardEmail(env.DB, 'sam-ortiz', 'KIM.board@example.com'), /already Kim Park’s/);
+  assert.equal((await env.DB.prepare("SELECT email FROM reveal_board_emails WHERE slug = 'sam-ortiz'").first()).email, OTHER, 'Sam’s kept');
+  // (two on one address from before this check: neither signs in)
+  await env.DB.prepare("UPDATE reveal_board_emails SET email = ? WHERE slug = 'kim-park'").bind(OTHER).run();
+  const { boardMemberFor } = await import('../functions/api/_board-roles.js');
+  assert.equal(await boardMemberFor(env.DB, OTHER), null);
+  await env.DB.prepare("UPDATE reveal_board_emails SET email = 'kim.board@example.com' WHERE slug = 'kim-park'").run();
+  // Sam declines; Ask everyone leaves him out, asking Sam alone asks him
+  const d = await written();
+  await call(OTHER, '/api/board-portal', { method: 'POST', body: { action: 'decline', docId: d.id, reason: 'Not as written', as: 'sam-ortiz', year: YEAR }, handler: portal.onRequestPost });
+  await settle();
+  sent = [];
+  await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'ask-to-sign' }, handler: admin.onRequestPost });
+  assert.deepEqual(sent.map((m) => m.to[0]).sort(), [MEMBER, 'kim.board@example.com'].sort());
+  // The board asked to sign a new wording: Sam's decline was about the old one
+  await saveDoc(env.DB, { ...(await listDocs(env.DB)).find((x) => x.id === d.id), body: `${d.body}\n- A new point` }, { by: FOUNDER, askAgain: true, base: 1 });
+  assert.deepEqual((await listDocs(env.DB)).find((x) => x.id === d.id).declined, {});
+});

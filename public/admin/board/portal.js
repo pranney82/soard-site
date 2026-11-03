@@ -3735,9 +3735,10 @@ function Signed({ doc, ctx }) {
     ctx.setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, myCopies: (y.myCopies || []).filter((c) => c.year !== yr), signedByMe: { name: j.name, at: j.at || new Date().toISOString(), how: j.how, copy: j.copy || null, drive: false } } : y)) }));
     ctx.say('Your signed copy is replaced');
     requestAnimationFrame(() => document.getElementById(`signed-${doc.id}`)?.focus({ preventScroll: true }));
+    for (const ms of [5000, 15000]) setTimeout(() => ctx.load(), ms);
   };
   const said = me.how === 'drive' ? html`Your signed copy is in SOARD’s files`
-    : me.how === 'staff' ? html`<span>SOARD added your signed copy${when ? `, ${when}` : ''}</span>${copy ? html`<span class="bp-signed__acts"><a class="bp-link" ...${copy}>See it</a></span>` : null}`
+    : me.how === 'staff' ? html`<span>SOARD added your signed copy${when ? `, ${when}` : ''}</span>${copy && !me.record?.id ? html`<span class="bp-signed__acts"><a class="bp-link" ...${copy}>See it</a></span>` : null}`
     : me.how === 'copy' ? html`<span>You added your signed copy${when ? `, ${when}` : ''}</span>
       <span class="bp-signed__acts">${copy ? html`<a class="bp-link" ...${copy}>See it</a><span aria-hidden="true">·</span>` : null}<button type="button" class="bp-linkbtn" disabled=${busy} onClick=${() => pick.current?.click()}>${busy ? 'Replacing…' : 'Replace it'}</button></span>
       <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => replace(e.target.files[0])} />`
@@ -3770,7 +3771,7 @@ function Pad({ path, onPath, label }) {
   const down = useRef(false);
   const last = useRef(null);
   const at = (e) => { const r = ref.current.getBoundingClientRect(); return [Math.round(((e.clientX - r.left) / r.width) * 600), Math.round(((e.clientY - r.top) / r.height) * 200)]; };
-  const start = (e) => { e.preventDefault(); ref.current.setPointerCapture?.(e.pointerId); down.current = true; const [x, y] = at(e); last.current = [x, y]; onPath(`${path ? `${path} ` : ''}M${x} ${y} L${x + 1} ${y}`); };
+  const start = (e) => { if ((path || '').length > 36000) return; e.preventDefault(); ref.current.setPointerCapture?.(e.pointerId); down.current = true; const [x, y] = at(e); last.current = [x, y]; onPath(`${path ? `${path} ` : ''}M${x} ${y} L${x + 1} ${y}`); };
   const move = (e) => {
     if (!down.current) return;
     const [x, y] = at(e);
@@ -3793,6 +3794,7 @@ function Pad({ path, onPath, label }) {
 function AdoptDialog({ own, start = null, onAdopt, onClose }) {
   const ref = useRef(null);
   const [tab, setTab] = useState(start?.type === 'drawn' ? 'draw' : 'type');
+  // (empty until they type it: their own name, typed, is their intent to sign; their name shown there read as done)
   const [name, setName] = useState(start?.text || '');
   const [style, setStyle] = useState(start?.style || SIGN_STYLES[0].id);
   const [initials, setInitials] = useState(start?.initials || '');
@@ -3932,7 +3934,10 @@ function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, nee
     // Every point it marks first (Sign takes them there), then how they sign (chosen, it carries on), then agreeing
     // to sign electronically
     const blank = fields.find((f) => !String(vals[f.n] || '').trim());
-    if (blank) { setProblem(''); say(`${blank.kind === 'initials' ? 'Initial' : 'Answer'} point ${blank.n} first.`, 'warn'); toField(blank.n); return; }
+    if (blank) {
+      const left = fields.filter((f) => !String(vals[f.n] || '').trim()).length;
+      setProblem(''); say(`${blank.kind === 'initials' ? 'Initial' : 'Answer'} point ${blank.n} first${left > 1 ? ` (${left} left)` : ''}.`, 'warn'); toField(blank.n); return;
+    }
     if (!m) { needMark((picked) => sign(null, picked)); return; }
     if (!consented && !agree) { setProblem('Tick that you agree to sign electronically, then sign.'); document.getElementById(`${id}-agree`)?.focus(); return; }
     setProblem('');
@@ -3961,7 +3966,7 @@ function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, nee
     setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, declinedByMe: j.declined } : y)) }));
     setDeclining(false);
     setWhy('');
-    say('Sent to SOARD. They’ll answer you by email.');
+    say(j.told === false ? 'Kept. SOARD has these words already.' : 'Sent to SOARD. They’ll answer you by email.');
     requestAnimationFrame(() => document.getElementById(`${id}-declined`)?.focus({ preventScroll: true }));
   };
   // The copy they signed on paper (a PDF or a photo of it): that's their signature for the year

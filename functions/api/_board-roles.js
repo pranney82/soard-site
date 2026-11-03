@@ -59,7 +59,9 @@ export async function boardMemberFor(DB, email) {
   try { slugs = ((await DB.prepare('SELECT slug FROM reveal_board_emails WHERE lower(email) = ?').bind(e).all()).results || []).map((r) => r.slug); } catch { return null; }
   if (!slugs.length) return null;
   const people = await peopleRows(DB);
-  const p = people.find((x) => slugs.includes(x.slug) && x.group === 'board' && x.status === 'active');
+  // (two board members on one address: neither, never a guess at which)
+  const on = people.filter((x) => slugs.includes(x.slug) && x.group === 'board' && x.status === 'active');
+  const p = on.length === 1 ? on[0] : null;
   return p ? { slug: p.slug, name: p.name, title: p.title || '', seat: p.seat || '', email: e } : null;
 }
 

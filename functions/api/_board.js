@@ -663,7 +663,7 @@ export async function listDocs(DB, year = thisYear()) {
       earlier: theirs.filter((s) => !counts(s)).map((s) => s.slug),
       before: Object.fromEntries(theirs.filter((s) => !counts(s)).map((s) => [s.slug, signatureOf(s, copies)])),
       prior: Object.fromEntries(prior.filter((s) => s.doc_id === d.id).map((s) => [s.slug, { year: Number(s.year), at: s.at || '', how: SIGNED_BY.includes(s.how) ? s.how : 'typed', version: Number(s.version) || 0 }])),
-      declined: Object.fromEntries(Object.entries(declined[d.id] || {}).filter(([slug]) => !theirs.some((s) => s.slug === slug && counts(s)))),
+      declined: Object.fromEntries(Object.entries(declined[d.id] || {}).filter(([slug, x]) => !theirs.some((s) => s.slug === slug && counts(s)) && (Number(x.version) || 0) >= d.signFrom).map(([slug, { version, ...x }]) => [slug, x])),
       // (each member's copies kept for this paper: earlier ones, replaced or taken off, and a photo's original; Board only)
       kept: keptRows.filter((f) => f.owner_id === d.id && f.slug).reduce((by, f) => {
         const originalOf = keptRows.find((x) => x.original_id === f.id);
@@ -878,7 +878,7 @@ async function writeSignature(DB, sig, { keep = false, same = null } = {}) {
         stmts.push(putSignature(DB, 'board_signatures_earlier', { ...was, version: wasV }));
       } else {
         events.push({ kind: 'superseded', docId, slug, year, version: wasV, at, by: row.added_by, detail: { row: was } });
-        if (was.file_id && was.file_id !== row.file_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL').bind(at, was.file_id));
+        if (was.file_id && was.file_id !== row.file_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ?1 WHERE (id = ?2 OR id = (SELECT original_id FROM board_files WHERE id = ?2)) AND superseded_at IS NULL').bind(at, was.file_id));
         // (its signed copy too: kept, as an earlier signature's)
         if (was.record_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL').bind(at, was.record_id));
       }
@@ -975,6 +975,7 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
     if (!type || !(type === 'application/pdf' || type.startsWith('image/'))) throw Object.assign(new Error('A signed copy is a PDF, or a photo of the signed page'), { status: 415 });
   }
   const year = thisYear();
+  if (!file || typeof file.arrayBuffer !== 'function') throw Object.assign(new Error('Choose the signed copy: a PDF, or a photo of the signed page'), { status: 400 });
   // (an iPhone photo: the HEIC as it was taken is the record, the JPEG beside it what a browser shows)
   const kept = original && typeof original.arrayBuffer === 'function' ? await putFile(env, { ownerType: 'signed', ownerId: docId, file: original, staffOnly: true, by: by || who.email || '', slug: who.slug }) : null;
   const copy = await putFile(env, { ownerType: 'signed', ownerId: docId, file, staffOnly: true, by: by || who.email || '', slug: who.slug, originalId: kept?.id || null });
@@ -1012,7 +1013,7 @@ export async function unsignDoc(env, docId, slug, year = thisYear(), { by = '', 
     const earlier = counted ? await DB.prepare('SELECT * FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? ORDER BY version DESC LIMIT 1').bind(docId, slug, year).first() : null;
     const at = nowIso();
     const stmts = [DB.prepare('DELETE FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year)];
-    if (row.file_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL').bind(at, row.file_id));
+    if (row.file_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ?1 WHERE (id = ?2 OR id = (SELECT original_id FROM board_files WHERE id = ?2)) AND superseded_at IS NULL').bind(at, row.file_id));
     if (row.record_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL').bind(at, row.record_id));
     if (earlier) {
       stmts.push(putSignature(DB, 'board_signatures', earlier));
@@ -2005,7 +2006,8 @@ export async function askToSign(env, { slugs = null, by = '', replyTo = [], to =
   ]);
   const signable = docs.filter((d) => d.shared && d.sign && (d.body || (d.file && !d.file.staffOnly)));
   if (!signable.length) throw Object.assign(new Error('There’s nothing for the board to sign: tick Required on a paper in Documents, with its words or its file'), { status: 409 });
-  const papersOf = (slug) => signable.filter((d) => !d.signed[slug]).map((d) => ({ title: d.title, id: d.id, due: dueOn(d, year) }));
+  const one = Array.isArray(slugs) && slugs.length === 1;
+  const papersOf = (slug) => signable.filter((d) => !d.signed[slug] && (one || !d.declined?.[slug])).map((d) => ({ title: d.title, id: d.id, due: dueOn(d, year) }));
   // Who it's from: the admin asking, else the one the invites come from
   const sender = staffFor(people, by) || staffFor(people, settings.invitesFrom);
   if (test) {

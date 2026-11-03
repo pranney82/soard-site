@@ -218,9 +218,17 @@ function blocksHtml(blocks, fields, style) {
 const onPageHow = (how) => how === 'typed' || how === 'drawn';
 /** A copy whose pages can go into the signed copy as they are: a PDF pdf-lib can open, or a JPEG or PNG photo */
 async function pagesOf(copy) {
-  if (/^image\/(jpeg|png)$/.test(copy?.type || '')) return true;
-  if (copy?.type !== 'application/pdf') return false;
-  try { const { PDFDocument } = await import('pdf-lib'); await PDFDocument.load(copy.bytes); return true; } catch { return false; }
+  const { PDFDocument } = await import('pdf-lib');
+  try {
+    if (copy?.type === 'application/pdf') { copy.src = await PDFDocument.load(copy.bytes); return true; }
+    if (/^image\/(jpeg|png)$/.test(copy?.type || '')) {
+      const probe = await PDFDocument.create();
+      await (copy.type === 'image/png' ? probe.embedPng(copy.bytes) : probe.embedJpg(copy.bytes));
+      return true;
+    }
+  } catch { /* attached whole, said so */ }
+  copy.src = null;
+  return false;
 }
 /** A drawn signature's path, checked again (it only ever holds M, L, Q, C and numbers) */
 const safePath = (p) => (/^M[\d.\s,MLQC-]+$/i.test(String(p || '')) ? String(p) : '');
@@ -332,7 +340,7 @@ ${copied ? '' : `<p class="org">Sunshine on a Ranney Day · Board of Directors</
 <h1>${escHtml(doc.title)}</h1>
 <p class="sub">Signed for ${escHtml(year)}${wording ? ` · ${wording}` : ''}</p>
 ${noWords ? `<p>The words ${escHtml(sig.name)} signed weren’t kept with this signature: it was given before Board kept each wording of a paper.</p>` : fileOnly ? `<p>${escHtml(doc.title)} is its file: its pages come before this one in this PDF.</p>` : blocksHtml(head, fields, mark?.style)}
-<div class="end">${last.length ? blocksHtml(last, fields, mark?.style) : ''}<div class="sign"><p class="agree">I have read and agree to the ${escHtml(doc.title)} for ${escHtml(year)}.</p>
+<div class="end">${last.length ? blocksHtml(last, fields, mark?.style) : ''}<div class="sign"><p class="agree">Signed for ${escHtml(year)}</p>
 ${markHtml(mark, sig.name)}<div class="line"></div><p>${escHtml(sig.name)} · ${escHtml(dayEt(sig.at))}</p></div></div>`}
 <section class="${copied ? 'rec rec--alone' : 'rec'}"><p class="org">Signing record</p><h1>${escHtml(doc.title)}</h1><p class="sub">Signed by ${escHtml(sig.name)} for ${escHtml(year)}</p>
 <table>${rows.map(([k, v]) => `<tr><th>${escHtml(k)}</th><td>${v}</td></tr>`).join('')}</table>
@@ -384,8 +392,9 @@ export async function finishPdf(printed, { doc, sig, body = '', source = null, e
   if (copy?.bytes) {
     const label = String(copy.name || 'their signed copy').replace(/[^\w .,()-]+/g, '').slice(0, 100) || 'signed copy';
     try {
+      if (copy.unpageable) throw new Error('not one to draw');
       if (copy.type === 'application/pdf') {
-        const src = await PDFDocument.load(copy.bytes);
+        const src = copy.src || await PDFDocument.load(copy.bytes);
         const pages = await out.copyPages(src, src.getPageIndices());
         pages.forEach((p, i) => out.insertPage(i, p));
       } else if (/^image\/(jpeg|png)$/.test(copy.type || '')) {
@@ -473,13 +482,14 @@ export async function buildRecord(env, sigKey, { launch = null, render = null } 
       if (obj) {
         copy = { bytes: new Uint8Array(await new Response(obj.body).arrayBuffer()), type: f.type, name: f.name };
         copied = { name: f.name, sha256: f.sha256 || await sha256Hex(copy.bytes), pages: await pagesOf(copy) };
+        if (!copied.pages) copy.unpageable = true;
       } else copied = sig.drive_id ? { drive: sig.drive_name || 'their signed copy' } : {};
     }
-    const html = recordHtml({ doc, body, sig, events, fonts: await fontFaces(env), fileOnly: !body, noWords: !body && !source && !copied, signedHash: signedEv?.hash || '', consent: marks?.consent_at ? { at: marks.consent_at, text: (await eventsOf(DB, { slug })).find((e) => e.kind === 'consented')?.detail?.text || '' } : null, copied });
+    const html = recordHtml({ doc, body, sig, events, fonts: await fontFaces(env), fileOnly: !body && !copied, noWords: !body && !source && !copied, signedHash: signedEv?.hash || '', consent: marks?.consent_at ? { at: marks.consent_at, text: (await eventsOf(DB, { slug })).find((e) => e.kind === 'consented')?.detail?.text || '' } : null, copied });
     const printed = render ? await render(html) : await printPdf(env, html, { launch });
     const { record_id, record_hash, record_claim_at, record_tries, ...kept } = sig;
     const evidence = { signature: { ...kept, fields: sig.fields ? JSON.parse(sig.fields) : null, mark: sig.mark ? JSON.parse(sig.mark) : null }, events: events.map(({ detail, ...e }) => ({ ...e, detail })), consent: CONSENT_TEXT, process: { version: PROCESS_V, text: PROCESS_TEXT } };
-    const bytes = await finishPdf(printed, { doc, sig, body, source: copy ? null : source, evidence, copy });
+    const bytes = await finishPdf(printed, { doc, sig, body: copied ? '' : body, source: copied ? null : source, evidence, copy });
     const name = `${String(doc.title).replace(/[\\/:*?"<>|]+/g, '').slice(0, 120)}, signed by ${sig.name} ${year}.pdf`;
     const put = await board.putFile(env, { ownerType: 'record', ownerId: docId, file: new File([bytes], name, { type: 'application/pdf' }), by: 'SOARD board page', slug });
     // (onto the signature it was printed from: one replaced or taken off meanwhile keeps this copy as an earlier one)
@@ -585,15 +595,19 @@ export async function maybeRunSigning(env, opts = {}) {
     const due = !canPrint ? null : await DB.prepare(`SELECT doc_id, slug, year FROM board_signatures WHERE record_id IS NULL AND (record_claim_at IS NULL OR (COALESCE(record_tries, 0) < ${TRIES} AND record_claim_at < ?) OR record_claim_at < ?) ORDER BY at LIMIT 1`).bind(stale, new Date(Date.now() - 6 * 60 * 60_000).toISOString()).first();
     const admins = (await getSettings(DB)).admins;
     if (due) {
-      const made = await buildRecord(env, { docId: due.doc_id, slug: due.slug, year: due.year }, opts);
-      const after = await DB.prepare('SELECT record_tries, name, process_v FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(due.doc_id, due.slug, due.year).first();
-      // (the admins told once a day at most: a browser that's down fails every copy, and that's one email)
-      const alertDay = `sign-alert:${todayEastern()}`;
-      if (!made.built && Number(after?.record_tries) >= TRIES && !(await readState(DB, alertDay)).at
-        && (await DB.prepare('INSERT INTO board_state (key, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO NOTHING').bind(alertDay, JSON.stringify({ at: new Date().toISOString() }), new Date().toISOString()).run())?.meta?.changes) await tellAdmins(env, admins, { subject: `A signed copy couldn’t be made: ${after?.name || due.slug}`, text: `Board couldn’t make the signed copy (PDF) for ${after?.name || due.slug}’s signature (${due.doc_id}, ${due.year}) after ${TRIES} tries: ${made.error}. The signature and its record are kept; their receipt goes without the PDF.` });
-      return;
+      await buildRecord(env, { docId: due.doc_id, slug: due.slug, year: due.year }, opts);
     }
-    // A receipt still to go (its copy made, or given up on)
+    {
+      // (the admins told once a day at most: a browser that's down fails every copy, and that's one email; a try
+      // Cloudflare cut short counts as it began, so it's here too)
+      const stuck = await DB.prepare(`SELECT COUNT(*) AS n, MIN(name) AS name FROM board_signatures WHERE record_id IS NULL AND COALESCE(record_tries, 0) >= ${TRIES}`).first();
+      const alertDay = `sign-alert:${todayEastern()}`;
+      if (Number(stuck?.n) > 0 && !(await readState(DB, alertDay)).at
+        && (await DB.prepare('INSERT INTO board_state (key, data, updated_at) VALUES (?, ?, ?) ON CONFLICT(key) DO NOTHING').bind(alertDay, JSON.stringify({ at: new Date().toISOString() }), new Date().toISOString()).run())?.meta?.changes) {
+        const n = Number(stuck.n);
+        await tellAdmins(env, admins, { subject: n === 1 ? `A signed copy couldn’t be made: ${stuck.name}` : `${n} signed copies couldn’t be made`, text: `Board couldn’t make ${n === 1 ? `${stuck.name}’s signed copy (PDF)` : `${n} signed copies (PDFs)`} after ${TRIES} tries. Each signature and its record are kept, receipts go without the PDF, and Board tries again every 6 hours. Site → Automations shows how many are waiting.` });
+      }
+    }
     // (signed in the last week: a receipt that won't go isn't tried for ever, nor holds up what comes after)
     const pending = (await DB.prepare(`SELECT s.doc_id, s.slug, s.year FROM board_signatures s WHERE s.process_v >= 1 AND s.how IN ('typed', 'drawn') AND s.signer_email IS NOT NULL AND (s.record_id IS NOT NULL OR COALESCE(s.record_tries, 0) >= ${TRIES}) AND s.at > ? AND NOT EXISTS (SELECT 1 FROM board_sign_events e WHERE e.kind = 'receipt-sent' AND e.doc_id = s.doc_id AND e.year = s.year AND e.slug = s.slug AND e.at >= s.at) ORDER BY s.at LIMIT 20`).bind(new Date(Date.now() - 7 * DAY).toISOString()).all()).results || [];
     let tried = 0;
@@ -715,7 +729,7 @@ async function currentSlugs(DB) {
  * signature after a decline ends it → { docId: { slug: { at, reason } } }
  */
 export async function declinedOf(DB, year) {
-  const rows = (await DB.prepare("SELECT seq, doc_id, slug, kind, at, detail FROM board_sign_events WHERE year = ? AND doc_id IS NOT NULL AND kind IN ('declined', 'signed', 'copy-added') ORDER BY seq").bind(year).all()).results || [];
+  const rows = (await DB.prepare("SELECT seq, doc_id, slug, kind, at, version, detail FROM board_sign_events WHERE year = ? AND doc_id IS NOT NULL AND kind IN ('declined', 'signed', 'copy-added') ORDER BY seq").bind(year).all()).results || [];
   if (!rows.some((r) => r.kind === 'declined')) return {};
   const now = await currentSlugs(DB);
   const out = {};
@@ -725,7 +739,7 @@ export async function declinedOf(DB, year) {
     if (r.kind !== 'declined') { delete by[slug]; continue; }
     let d = {};
     try { d = JSON.parse(r.detail) || {}; } catch { /* no reason kept */ }
-    by[slug] = { at: r.at, reason: String(d.reason || '') };
+    by[slug] = { at: r.at, reason: String(d.reason || ''), version: Number(r.version) || 0 };
   }
   return out;
 }
@@ -801,6 +815,7 @@ export async function maybeRemindSigners(env, { now = Date.now(), limit = 10 } =
   if (!signable.length) return { sent: 0, none: true };
   const asks = Object.fromEntries((((await DB.prepare('SELECT slug, at, by, n, reminders FROM board_sign_asks WHERE year = ?').bind(year).all()).results) || []).map((r) => [r.slug, r]));
   const w = await readState(DB, 'welcome');
+  const seen = new Set(((await DB.prepare('SELECT slug FROM board_seen').all().catch(() => ({ results: [] }))).results || []).map((r) => r.slug));
   const onBoard = members.map((p) => p.slug);
   const inviter = board.staffFor(people, settings.invitesFrom);
   let sent = 0;
@@ -822,7 +837,7 @@ export async function maybeRemindSigners(env, { now = Date.now(), limit = 10 } =
       : await DB.prepare('INSERT INTO board_sign_asks (slug, year, at, by, n, reminders) VALUES (?, ?, ?, ?, 1, 1) ON CONFLICT(slug, year) DO NOTHING').bind(p.slug, year, at, 'SOARD board page').run();
     if (!claim?.meta?.changes) continue;
     const n = (Number(a?.reminders) || 0) + 1;
-    const email = board.signAskEmail({ name: p.name, email: p.email, papers: papers.map((d) => ({ title: d.title, id: d.id, due: dueOn(d, year) })), from: inviter?.name || '', firstTime: !welcomed && !a, reminder: !!a || !!welcomed });
+    const email = board.signAskEmail({ name: p.name, email: p.email, papers: papers.map((d) => ({ title: d.title, id: d.id, due: dueOn(d, year) })), from: inviter?.name || '', firstTime: !seen.has(p.slug), reminder: !!a || !!welcomed });
     const r = await sendEmailOne(env, { to: p.email, ...email, replyTo: settings.admins, tags: [{ name: 'kind', value: 'board-sign-reminder' }], idempotencyKey: `remind:${p.slug}:${year}:${n}` });
     if (!r.sent && !r.already) {
       // Not sent: their row as it was, to try on a later heartbeat
@@ -880,7 +895,11 @@ export function zipWriter() {
   const w = writable.getWriter();
   const central = [];
   let offset = 0;
-  const dos = (d) => ({ time: (d.getUTCHours() << 11) | (d.getUTCMinutes() << 5) | (d.getUTCSeconds() >> 1), date: ((Math.max(1980, d.getUTCFullYear()) - 1980) << 9) | ((d.getUTCMonth() + 1) << 5) | d.getUTCDate() });
+  const ET_PARTS = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric' });
+  const dos = (d) => {
+    const p = Object.fromEntries(ET_PARTS.formatToParts(d).map((x) => [x.type, Number(x.value)]));
+    return { time: (p.hour << 11) | (p.minute << 5) | (p.second >> 1), date: ((Math.max(1980, p.year) - 1980) << 9) | (p.month << 5) | p.day };
+  };
   const used = new Set();
   const add = async (asked, data, at = new Date()) => {
     // (never two files under one name: the second is "… (2).pdf")
@@ -974,7 +993,7 @@ export async function exportYear(env, docId, year, { waitUntil = null } = {}) {
   }).filter((r) => r && !earlier.some((x) => x.slug === r.slug && x.at === r.at));
   const counts = (s) => (Number(s.version) || 0) >= (Number(doc.signFrom) || 0);
   const rows = [
-    ...now.map((s) => ({ ...s, status: counts(s) ? 'Signed' : `Not signed (signed wording ${Number(s.version) || 0}, before the board was asked to sign again)` })),
+    ...now.map((s) => ({ ...s, ...(!counts(s) && listed.declined?.[s.slug] ? { reason: listed.declined[s.slug].reason } : {}), status: counts(s) ? 'Signed' : `${listed.declined?.[s.slug] ? 'Declined' : 'Not signed'} (signed wording ${Number(s.version) || 0}, before the board was asked to sign again)` })),
     ...earlier.map((s) => ({ ...s, status: 'Earlier signature (an earlier wording)' })),
     ...gone,
     ...members.filter((p) => !now.some((s) => s.slug === p.slug)).map((p) => ({ slug: p.slug, name: p.name, status: listed.declined?.[p.slug] ? 'Declined' : 'Not signed', reason: listed.declined?.[p.slug]?.reason || '' })),
@@ -997,7 +1016,7 @@ body{margin:0;font-family:'Outfit',Helvetica,Arial,sans-serif;font-size:10pt;col
     `Made ${whenEt(new Date().toISOString())} by SOARD's board page.`,
     '',
     'signatures.csv      every signature this year (and earlier ones replaced or taken off), and each board member who hasn’t signed',
-    `summary.${env.BROWSER ? 'pdf' : 'html'}         the same, to print`,
+    'summary.pdf (or .html) the same, to print',
     'signed-copies/      each member’s signed copy: the paper as signed, then its signing record page (the words and the evidence are attached inside each PDF)',
     'copies-on-paper/    copies signed on paper, as they came in (an iPhone photo’s original beside its JPEG), when there are any',
     'wordings/           the exact words of each wording signed, with their SHA-256 in signatures.csv',
@@ -1040,7 +1059,7 @@ body{margin:0;font-family:'Outfit',Helvetica,Arial,sans-serif;font-size:10pt;col
       const nameOf = Object.fromEntries([...gone, ...earlier, ...now].map((s) => [s.slug, s.name]));
       for (const o of orphans) await put('signed-copies', o.id, `${nameOf[o.slug] || o.slug} (earlier)`);
       // (every copy kept for them on this paper: replaced, and photos' originals)
-      const kept = (await DB.prepare("SELECT id, slug FROM board_files WHERE owner_type = 'signed' AND owner_id = ? AND (superseded_at IS NOT NULL OR id IN (SELECT original_id FROM board_files WHERE original_id IS NOT NULL))").bind(docId).all()).results || [];
+      const kept = (await DB.prepare("SELECT id, slug FROM board_files WHERE owner_type = 'signed' AND owner_id = ? AND substr(at, 1, 4) = ? AND (superseded_at IS NOT NULL OR id IN (SELECT original_id FROM board_files WHERE original_id IS NOT NULL))").bind(docId, String(y)).all()).results || [];
       const names = Object.fromEntries([...gone, ...earlier, ...now].map((s) => [s.slug, s.name]));
       for (const k of kept.filter((x) => names[x.slug])) await put('copies-on-paper', k.id, `${names[k.slug]} (kept)`);
       await zip.add('events.json', JSON.stringify({ paper: { id: docId, title }, year: y, chain, events: events.map((e) => ({ ...e, detail: (() => { try { return e.detail ? JSON.parse(e.detail) : null; } catch { return e.detail; } })() })) }, null, 2));

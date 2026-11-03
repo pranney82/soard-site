@@ -257,7 +257,7 @@ async function post(context) {
         if (body.as && body.as !== member.slug) return fail(`This browser is signed in as ${member.name} now. Reload the page.`, 409, { who: true });
         const d = await declineDoc(env.DB, body.docId, member, { reason: body.reason, evidence: evidence(context), year: Number.isInteger(body.year) ? body.year : null });
         if (d.tell) context.waitUntil?.(tellDeclined(env, { doc: d.doc, member, reason: d.reason, year: d.year }).catch(() => {}));
-        return Response.json({ ok: true, declined: { at: d.at, reason: d.reason } });
+        return Response.json({ ok: true, declined: { at: d.at, reason: d.reason }, told: d.tell });
       }
       // A paper they sign, opened (once a year: evidence they had it in front of them)
       case 'opened':
