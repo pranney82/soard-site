@@ -18,6 +18,7 @@ import { mailFix } from '../apply/mail-fix.js';
 const STORE = 'soard-advisory-application';
 const SENT = 'soard-advisory-sent'; // when this device sent one (a reload says so, not "Start the application")
 const FOCUS = 'soard-advisory-focus';
+const SENDING = 'soard-advisory-sending'; // Send pressed and no answer yet: a page closed then may have sent it
 const API = '/api/advisory-apply';
 const CHECK = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3L12.5 5" /></svg>';
 const CHEV = '<svg class="adv-review-chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4" /></svg>';
@@ -37,6 +38,11 @@ const sentStore = {
   get() { try { const x = JSON.parse(localStorage.getItem(SENT) || 'null'); return Number(x?.at) > Date.now() - 183 * 864e5 ? x : null; } catch { return null; } },
   set(at) { try { localStorage.setItem(SENT, JSON.stringify({ at })); } catch { /* private mode */ } },
 };
+const sendingStore = {
+  get() { try { const x = JSON.parse(localStorage.getItem(SENDING) || 'null'); return Number(x?.at) > Date.now() - 30 * 864e5 ? x : null; } catch { return null; } },
+  set(on) { try { if (on) localStorage.setItem(SENDING, JSON.stringify({ at: Date.now() })); else localStorage.removeItem(SENDING); } catch { /* private mode */ } },
+};
+const MAYBE_SENT = 'This was being sent when the page closed, so it may have arrived. Send it again to be sure: if it did, it won’t be sent twice.';
 const session = {
   get() { try { return sessionStorage.getItem(FOCUS) === '1'; } catch { return false; } },
   set(on) { try { if (on) sessionStorage.setItem(FOCUS, '1'); else sessionStorage.removeItem(FOCUS); } catch { /* private mode */ } },
@@ -78,11 +84,13 @@ export function initAdvisoryForm() {
   let focused = false;
   let moving = false;
   let fromReview = false; // came from the review: 'answer' (one, then straight back) or 'step' (a whole step, walked through)
-  let reviewBack = null; // the review step they went from to change (its row is where "Back to review" lands)
-  /** Back on the review: at the step they changed (a long list isn't scrolled through again), the keys on its Edit */
-  function landOnReview(i) {
+  let reviewBack = null; // where on the review they went to change something ({ i: its step, id: the answer's Change })
+  /** Back on the review: at what they changed (a long list isn't scrolled through again), the keys on that answer's Change, else its step's Edit */
+  function landOnReview(was) {
     reviewBack = null;
-    const btn = i == null ? null : ui.review.querySelector(`[data-edit="${i}"]`);
+    if (!was) return;
+    const change = was.id ? ui.review.querySelector(`[data-edit="${was.i}"][data-answer="${CSS.escape(was.id)}"]`) : null;
+    const btn = change?.getClientRects().length ? change : ui.review.querySelector(`[data-edit="${was.i}"]:not([data-answer])`) || ui.review.querySelector(`[data-edit="${was.i}"]`);
     if (!btn?.getClientRects().length) return;
     requestAnimationFrame(() => {
       btn.scrollIntoView({ block: 'center', behavior: 'instant' });
@@ -97,6 +105,23 @@ export function initAdvisoryForm() {
   let startedAt = stored?.startedAt || Date.now();
   let turnstileKey = null;
   let turnstileToken = null;
+  let turnstileScript = null; // the quick check's script: 'loading' | 'loaded' | 'failed'
+  let keyState = null; // its key from our server: 'loading' | 'ok' | 'failed'
+  let keyAsk = null; // that request, while it's out
+  let posting = false; // the application on its way to our server
+  const CHECK_BLOCKED = 'The quick check didn’t load (a content blocker can stop it). Check your connection and press Send again, or email info@soardcharity.com and we’ll help.';
+  /** A note's words, with our email address in it a link (a tap writes to us) */
+  function putText(el, text) {
+    el.textContent = '';
+    if (!text) return;
+    const words = document.createElement('span'); // one run of words (a note laid out beside its icon keeps them together)
+    for (const [i, part] of String(text).split(/(\b[\w.+-]+@soardcharity\.com\b)/).entries()) {
+      if (!part) continue;
+      if (i % 2) { const a = document.createElement('a'); a.href = `mailto:${part}`; a.textContent = part; words.append(a); } else words.append(part);
+    }
+    el.append(words);
+  }
+  const sayError = (text) => putText(ui.sendError, text);
   let sending = false;
   let clearedThere = false; // Start over pressed in another tab: the overview here says why its answers went
   let restored = false;
@@ -436,7 +461,7 @@ export function initAdvisoryForm() {
     ui.hubTitle.textContent = was ? 'We received your application' : started ? (canKeep ? 'Your application is saved on this device' : 'Keep this page open until you send it') : 'Six steps, about 20 minutes';
     ui.hubLead.textContent = was ? `It arrived on ${on}, and we’ll be in touch by email.`
       : !canKeep ? (started ? 'This browser blocks saving, so your answers are only on this page until you send them.' : 'Have a reference in mind. This browser blocks saving, so plan to finish in one sitting.')
-        : started ? (doneCount === total ? 'Every step is done. Look it over and send it.' : `${doneCount} of ${total + 1} steps done. Pick up where you left off.`)
+        : started ? (doneCount === total ? (sendingStore.get() ? MAYBE_SENT : 'Every step is done. Look it over and send it.') : `${doneCount} of ${total + 1} steps done. Pick up where you left off.`)
           : clearedThere ? 'Your answers were deleted: Start over was pressed in another tab. Start again whenever you’re ready.'
             : 'Have a reference in mind. Your answers save on this device as you go.';
     ui.goLabel.textContent = was ? 'Start a new application' : !started ? 'Start the application' : doneCount === total ? 'Review and send' : 'Continue where you left off';
@@ -529,6 +554,7 @@ export function initAdvisoryForm() {
       paintScreen();
       anchor = packs[i]?.[screenNo]?.find((k) => k.getClientRects().length) || null;
       ui.sendError.hidden = true;
+      if (i === REVIEW && !sent && sendingStore.get()) { sayError(MAYBE_SENT); ui.sendError.hidden = false; } // (said on the review too)
       paint();
       if (focused) window.scrollTo({ top: 0, behavior: 'auto' });
     }, dir, !changed).then(() => {
@@ -793,7 +819,7 @@ export function initAdvisoryForm() {
     if (edit) {
       const id = edit.dataset.answer || null;
       fromReview = id ? 'answer' : 'step';
-      reviewBack = Number(edit.dataset.edit); // "Back to review" lands at this step's row again
+      reviewBack = { i: Number(edit.dataset.edit), id }; // "Back to review" lands at that Change again (its step's Edit for a whole step)
       go(Number(edit.dataset.edit), { dir: -1, at: id || null }).then(pushLoc); // Back returns to the review
     }
   });
@@ -868,6 +894,7 @@ export function initAdvisoryForm() {
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden' && saveTimer) saveNow(); }, { signal });
   // A browser that blocks saving keeps nothing: leaving with answers asks first
   window.addEventListener('beforeunload', (e) => {
+    if (posting) { e.preventDefault(); e.returnValue = ''; return; } // leaving while it sends: asked first
     if (canKeep || sent || !anyAnswer(collect())) return;
     e.preventDefault();
     e.returnValue = '';
@@ -900,10 +927,11 @@ export function initAdvisoryForm() {
 
   // A long answer: its count once it's near what the box holds, and a paste cut short says so (it was silent)
   let pasteCut = null;
+  // (seen as it changes; heard as it nears the end, as it's down to its last few, and when it's full, never every keystroke)
+  const countSaid = new WeakMap();
   for (const ta of form.querySelectorAll('textarea[maxlength]')) {
     const p = document.createElement('p');
     p.className = 'adv-count';
-    p.setAttribute('aria-live', 'polite');
     p.hidden = true;
     ta.after(p);
   }
@@ -919,6 +947,13 @@ export function initAdvisoryForm() {
       : near ? `${n.toLocaleString('en-US')} of ${max.toLocaleString('en-US')} characters` : '';
     p.dataset.kind = cut ? 'cut' : '';
     p.hidden = !cut && !near;
+    const mark = cut ? 'cut' : n >= max ? 'full' : max - n <= 25 ? 'last' : near ? 'near' : '';
+    if (mark === (countSaid.get(ta) || '')) return;
+    countSaid.set(ta, mark);
+    if (!mark || document.activeElement !== ta || !ui.live) return;
+    const words = mark === 'full' ? `No characters left: ${p.textContent}` : p.textContent;
+    ui.live.textContent = '';
+    setTimeout(() => { ui.live.textContent = words; }, 40);
   }
   form.addEventListener('paste', (e) => {
     const ta = e.target;
@@ -1208,16 +1243,29 @@ export function initAdvisoryForm() {
       showProblems(all.problems);
       return;
     }
+    // Whether the site has the quick check (and its key) didn't come as the page loaded: asked for again first
+    const keyFirst = keyState === 'failed' || keyAsk;
+    if (keyFirst) {
+      sending = true;
+      ui.next.setAttribute('aria-busy', 'true');
+      try { await Promise.race([loadKey(), new Promise((r) => setTimeout(r, 8000))]); } finally { sending = false; ui.next.removeAttribute('aria-busy'); }
+    }
     if (turnstileKey && !turnstileToken) {
       // The check passes on its own in a moment (Send looks busy meanwhile); said, and in view, only when it wants a tap
       sending = true; // a second press meanwhile counts once
       ui.next.setAttribute('aria-busy', 'true');
       ui.review.inert = true; // what's sent is what's here now
-      try { if (!turnstileWants && !turnstileFailed) await Promise.race([new Promise((r) => turnstileWaiting.push(r)), new Promise((r) => setTimeout(r, 6000))]); } finally { sending = false; ui.next.removeAttribute('aria-busy'); ui.review.inert = false; }
+      try {
+        // Its script didn't come (offline as the page loaded, or a blocker): asked for again now, and waited for
+        const again = !window.turnstile && loadTurnstile();
+        if (!turnstileWants && !turnstileFailed && turnstileScript !== 'failed') await Promise.race([new Promise((r) => turnstileWaiting.push(r)), new Promise((r) => setTimeout(r, again || keyFirst ? 10000 : 6000))]);
+      } finally { sending = false; ui.next.removeAttribute('aria-busy'); ui.review.inert = false; }
       if (!turnstileToken) {
-        ui.sendError.textContent = turnstileFailed
-          ? 'The quick check couldn’t confirm this browser. It tries again on its own; if it keeps failing, reload the page (your answers stay), or email info@soardcharity.com and we’ll help.'
-          : 'Please confirm you’re not a robot, just above.';
+        sayError(!window.turnstile
+          ? CHECK_BLOCKED
+          : turnstileFailed
+            ? 'The quick check couldn’t confirm this browser. It tries again on its own; if it keeps failing, reload the page (your answers stay), or email info@soardcharity.com and we’ll help.'
+            : 'Please confirm you’re not a robot, just above.');
         ui.sendError.hidden = false;
         requestAnimationFrame(() => ui.turnstile.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }));
         return;
@@ -1235,6 +1283,8 @@ export function initAdvisoryForm() {
       ui.next.textContent = 'Still sending…';
       if (ui.live) { ui.live.textContent = ''; setTimeout(() => { ui.live.textContent = 'Still sending. This is taking longer than usual; please keep this page open.'; }, 40); }
     }, 15000);
+    posting = true;
+    sendingStore.set(true);
     try {
       // No connection: said in words, not the browser's ("Failed to fetch", "Load failed")
       const res = await fetch(API, {
@@ -1243,13 +1293,22 @@ export function initAdvisoryForm() {
         body: JSON.stringify({ answers: all.answers, website: form.elements.website?.value || '', turnstileToken, startedAt }),
       }).catch(() => { throw new Error('That didn’t send: you seem to be offline. Your answers are still here; please try again once you’re connected.'); });
       const d = await res.json().catch(() => ({}));
+      sendingStore.set(false); // answered: it's known whether it arrived
       if (res.status === 422 && d.problems) {
         const at = ADVISORY_STEPS.findIndex((s) => s.fields.some((f) => d.problems[f.id]));
         if (at !== -1) { fromReview = 'answer'; await go(at, { dir: -1 }); showProblems(d.problems); }
         throw Object.assign(new Error(d.error || 'A few answers need a look.'), { sentBack: at !== -1 });
       }
       if (!res.ok || !d.ok) {
-        if (d.code === 'turnstile') resetTurnstile();
+        if (d.code === 'turnstile') {
+          resetTurnstile();
+          // Sent without the check (its key never came): the check, asked for now, and said in this page's words
+          if (!turnstileKey) {
+            await Promise.race([loadKey(), new Promise((r) => setTimeout(r, 8000))]);
+            if (turnstileKey) { paint(); throw new Error('Please confirm you’re not a robot, just above, then press Send again.'); }
+            throw new Error(CHECK_BLOCKED);
+          }
+        }
         throw new Error(d.error || 'That didn’t send. Please try again in a moment.');
       }
       markSent({ first: d.first });
@@ -1264,7 +1323,7 @@ export function initAdvisoryForm() {
         paint();
         return;
       }
-      ui.sendError.textContent = err.message || 'That didn’t send. Your answers are still here; please try again.';
+      sayError(err.message || 'That didn’t send. Your answers are still here; please try again.');
       ui.sendError.hidden = false;
       ui.next.removeAttribute('aria-disabled');
       ui.back.disabled = false;
@@ -1280,6 +1339,8 @@ export function initAdvisoryForm() {
       });
     } finally {
       clearTimeout(slow);
+      if (posting && !navigator.onLine) sendingStore.set(false); // never left this device
+      posting = false;
       sending = false;
       ui.exit.disabled = false;
       ui.review.inert = false;
@@ -1290,7 +1351,8 @@ export function initAdvisoryForm() {
   function markSent({ first = '', elsewhere = false } = {}) {
     sent = true;
     clearTimeout(saveTimer);
-    if (!elsewhere) { sentStore.set(Date.now()); write(null); } // (in this order: another tab hears it was sent, not started over)
+    if (!elsewhere) { sentStore.set(Date.now()); write(null); }
+    sendingStore.set(false); // (in this order: another tab hears it was sent, not started over)
     ui.saved.textContent = '';
     session.set(false);
     form.hidden = true;
@@ -1309,14 +1371,17 @@ export function initAdvisoryForm() {
   }
 
   // ── Turnstile (once the site has it set up) ──
-  let turnstileLoading = false;
   const turnstileWaiting = [];
   let turnstileWants = false;
   let turnstileFailed = false;
+  let rendered = false;
+  /** Its script, from Cloudflare; one that doesn't come is asked for again (at Send, and when the connection's back). True when asked for now */
   function loadTurnstile() {
-    if (turnstileLoading || !turnstileKey) return;
-    turnstileLoading = true;
+    if (!turnstileKey || window.turnstile || turnstileScript === 'loading') return false;
+    turnstileScript = 'loading';
     window.onAdvisoryTurnstile = () => {
+      if (rendered) return;
+      rendered = true;
       window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
         sitekey: turnstileKey,
         language: 'en', // the page's language, not the browser's
@@ -1331,13 +1396,35 @@ export function initAdvisoryForm() {
     const s = document.createElement('script');
     s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onAdvisoryTurnstile&render=explicit';
     s.async = true;
+    s.onload = () => { turnstileScript = 'loaded'; };
+    s.onerror = () => {
+      turnstileScript = 'failed';
+      s.remove();
+      turnstileWaiting.splice(0).forEach((r) => r());
+    };
     document.head.append(s);
+    return true;
   }
   function resetTurnstile() {
     turnstileToken = null;
     try { window.turnstile?.reset(ui.turnstile.querySelector('.cf-turnstile')); } catch { /* not loaded */ }
   }
-  fetch(API, { cache: 'no-store' }).then((r) => r.json()).then((d) => { turnstileKey = d?.turnstileSiteKey || null; paint(); }).catch(() => {});
+  /** Whether the site has the quick check, and its key: asked again when it didn't come (at Send, and when the connection's back) */
+  function loadKey() {
+    if (keyAsk) return keyAsk;
+    keyState = 'loading';
+    keyAsk = fetch(API, { cache: 'no-store' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+      .then((d) => { turnstileKey = d?.turnstileSiteKey || null; keyState = 'ok'; paint(); })
+      .catch(() => { keyState = 'failed'; })
+      .finally(() => { keyAsk = null; });
+    return keyAsk;
+  }
+  loadKey();
+  window.addEventListener('online', () => {
+    if (keyState === 'failed') loadKey();
+    if (turnstileScript === 'failed' && step === REVIEW) loadTurnstile();
+  }, { signal });
 
   // ── Picking up where they left off ──
   // The answers are this device's saved ones, never what the browser put back in the boxes from its history (after
@@ -1366,7 +1453,7 @@ export function initAdvisoryForm() {
     // Deleting every answer takes a second tap (it sits by "Continue where you left off": one slip shouldn't do it)
     if (Date.now() > startOverArmed) {
       startOverArmed = Date.now() + 5000;
-      ui.startOver.textContent = 'Tap again to delete your answers';
+      ui.startOver.textContent = 'Press again to delete your answers';
       hubSay('Press Start over again to delete your answers.'); // (a focused button's new name isn't read out)
       setTimeout(() => { if (Date.now() > startOverArmed) ui.startOver.textContent = 'Start over'; }, 5100);
       return;

@@ -52,6 +52,7 @@ const RING = 113.1; // the upload ring's circumference (r = 18)
 const EASE = 'cubic-bezier(.2,.8,.2,1)';
 const SLIDE_MS = 260;
 const CHECK_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3L12.5 5" /></svg>';
+const HUB_ARROW = '<svg class="af-hub-arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5l4.5 4.5L6 12.5" /></svg>';
 const PENCIL_SVG = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.8 2.7l2.5 2.5L6 12.5l-3.2.7.7-3.2z" /></svg>';
 
 /** localStorage behind try/catch: private windows and blocked storage just forget */
@@ -61,6 +62,10 @@ const local = (key) => ({
   clear() { try { localStorage.removeItem(key); } catch { /* private mode */ } },
 });
 const store = local(STORE_KEY);
+// The Postal Service's word on the home address (each is paid for): kept on the device by a fingerprint of the
+// address, not the address, so coming back to the application shows the card as it was
+const uspsKept = local('soard-application-usps');
+const fingerprint = (s) => { let h = 0x811c9dc5; for (const c of String(s || '')) { h ^= c.codePointAt(0); h = Math.imul(h, 0x01000193) >>> 0; } return h.toString(36); };
 const langPref = local(LANG_KEY);
 // Some browsers block saving on the device (every cookie blocked, strict privacy): the server still has
 // the answers, but this device won't remember the way back to them
@@ -719,6 +724,7 @@ function init(root, cfg, mode) {
 
   // The browser tab says where they are while the application has the screen
   const baseTitle = document.title.replace(/^Test run · /, '');
+  const pageLang = document.documentElement.lang || 'en';
   // In Spanish, the application's own name in Spanish too (the site's name after it stays)
   const siteName = baseTitle.includes(' | ') ? baseTitle.slice(baseTitle.indexOf(' | ')) : '';
   function paintTitle(ids = stepIds()) {
@@ -730,6 +736,10 @@ function init(root, cfg, mode) {
     }
     title = (testRun?.by ? 'Test run · ' : '') + title;
     if (document.title !== title) document.title = title;
+    // The page's language is the application's while it has the screen (a screen reader reads the tab's Spanish
+    // title, and the steps, in a Spanish voice); the page's own outside it, where the site around it is English
+    const want = focused ? lang : pageLang;
+    if (want && document.documentElement.lang !== want) document.documentElement.lang = want;
   }
 
   function paintHeader() {
@@ -980,7 +990,8 @@ function init(root, cfg, mode) {
       if (mark.dataset.v !== markHtml) { mark.dataset.v = markHtml; if (done) { mark.innerHTML = CHECK_SVG; delete mark.dataset.n; } else { mark.textContent = ''; mark.dataset.n = String(i + 1); } }
       name.firstChild.textContent = titleOf(id);
       name.lastChild.textContent = done ? summaryOf(id, a) : now ? T('stepNow') : '';
-      const metaHtml = done ? `${PENCIL_SVG}<span>${esc(T('edit'))}</span>` : id === 'review' ? '' : esc(T('minutes', { n: minutesOf(id) }));
+      // (a phone has no room for the minutes: an arrow says the row opens, as Edit does on a done one)
+      const metaHtml = done ? `${PENCIL_SVG}<span>${esc(T('edit'))}</span>` : `${id === 'review' ? '' : `<span class="af-hub-min">${esc(T('minutes', { n: minutesOf(id) }))}</span>`}${HUB_ARROW}`;
       if (meta.dataset.v !== metaHtml) { meta.dataset.v = metaHtml; meta.innerHTML = metaHtml; }
       // Its name holds what it shows, in that order (the minutes, Edit too), so a voice command naming what's
       // seen finds it; done or locked after
@@ -1159,7 +1170,7 @@ function init(root, cfg, mode) {
       // A home inside, with the Postal Service's tallest word for one (a building with apartments: its note and the
       // button to the apartment's box): a card that turns out taller than planned pushed the next question onto a
       // screen "Parte 2 de 2" never had
-      const usps = uspsOn ? `<p class="af-usps" data-status="unit"><span>${esc(T('uspsUnit'))}</span> <span class="af-usps-by" translate="no">Google Maps</span></p><button type="button" class="af-btn af-btn--link af-area-apt">${esc(T('addApt'))}</button>` : '';
+      const usps = uspsOn ? uspsUnitHtml({ act: false }) : '';
       res.innerHTML = `<div class="af-area-card" data-band="inside">${AREA_ICONS.inside}<div class="af-area-text"><p class="af-area-title">${esc(T('areaInside'))}</p><div class="af-area-desc-wrap"><p class="af-area-desc">${esc(af.descriptions?.[AREA_VALUES.inside] || '')}</p></div><p class="af-area-found">${esc(sample)}</p>${usps}<button type="button" class="af-btn af-btn--link af-area-fix">${esc(T('areaFix'))}</button></div></div>`;
       undo.push(() => { res.innerHTML = was; });
     }
@@ -1348,9 +1359,10 @@ function init(root, cfg, mode) {
   const onScreen = (el) => el.getClientRects().length && !el.closest('[data-off], [hidden]');
   const overflows = () => document.documentElement.scrollHeight > innerHeight;
   /**
-   * Choices that each explain themselves, on a phone too short for all their words: a little snugger
+   * Choices that each explain themselves, on a screen too short for all their words: a little snugger
    * first, then every tile says its first lines (as many for each, as many as the screen has room
-   * for), the rest under its More. Two to a row (a computer), every word shows
+   * for), the rest under its More. Two to a row (a computer), snugger first; a longer language that still
+   * doesn't fit (Spanish on a 1024x768 screen) says first lines too
    */
   function fitTiles() {
     for (const s of pageEl(currentId)?.querySelectorAll('.af-choices--tiles') || []) {
@@ -1358,7 +1370,7 @@ function init(root, cfg, mode) {
       settle();
       if (!overflows()) continue;
       // Two to a row (a computer): every word still shows, the tiles just a little closer
-      if (getComputedStyle(s).getPropertyValue('--af-narrow').trim() !== '1') { s.setAttribute('data-snug', ''); continue; }
+      if (getComputedStyle(s).getPropertyValue('--af-narrow').trim() !== '1') { s.setAttribute('data-snug', ''); settle(); if (!overflows()) continue; }
       const tiles = [...s.querySelectorAll('.af-tile')].map((tile) => {
         const d = tile.querySelector('.af-choice-desc');
         return { tile, lines: d ? Math.round(d.getBoundingClientRect().height / (parseFloat(getComputedStyle(d).lineHeight) || 21)) : 0 };
@@ -1886,6 +1898,17 @@ function init(root, cfg, mode) {
     ui.live.textContent = '';
     setTimeout(() => { ui.live.textContent = text; }, 40);
   }
+  /** A note's words, with our email address in it a link (a tap writes to us) */
+  function putText(el, text) {
+    el.textContent = '';
+    if (!text) return;
+    const words = document.createElement('span'); // one run of words (a note laid out beside its icon keeps them together)
+    for (const [i, part] of String(text).split(/(\b[\w.+-]+@soardcharity\.com\b)/).entries()) {
+      if (!part) continue;
+      if (i % 2) { const a = document.createElement('a'); a.href = `mailto:${part}`; a.textContent = part; words.append(a); } else words.append(part);
+    }
+    el.append(words);
+  }
 
   // ── Notices ──────────────────────────────────────────────────────
   /**
@@ -1988,7 +2011,7 @@ function init(root, cfg, mode) {
   function paintNavNote() {
     const was = ui.navNote.hidden ? '' : ui.navNote.textContent;
     const text = lastNav ? say(lastNav.m) : '';
-    ui.navNote.textContent = text;
+    putText(ui.navNote, text);
     ui.navNote.hidden = !lastNav;
     // Heard as well as seen (a screen reader on Submit hears why it didn't go), and Continue / Submit described by it
     if (text && text !== was) announce(text);
@@ -2022,8 +2045,10 @@ function init(root, cfg, mode) {
     if (previewing || token) return true; // a preview walks the pages and saves nothing
     if (testRun?.signIn) { navNote({ raw: TEST.signInNote }); return false; }
     if (turnstileSiteKey && !turnstileToken && !testRun && !renew) {
+      // Its script didn't come (offline as the page loaded, or held up): asked for again now, and waited for
+      const again = !window.turnstile && loadTurnstileScript();
       // The check passes on its own in a moment (Continue looks busy meanwhile); said only when it wants a tap
-      if (!turnstileWants && !turnstileFailed) await Promise.race([new Promise(r => turnstileWaiting.push(r)), wait(6000)]);
+      if (!turnstileWants && !turnstileFailed && turnstileScript !== 'failed') await Promise.race([new Promise(r => turnstileWaiting.push(r)), wait(again ? 10000 : 6000)]);
       if (token) return true;
       if (!turnstileToken) { askCheck(); return false; }
     }
@@ -2060,9 +2085,10 @@ function init(root, cfg, mode) {
   let turnstileWants = false;
   let turnstileFailed = false;
   const turnstileWaiting = [];
+  let turnstileScript = null; // its script: 'loading' | 'loaded' | 'failed'
   function askCheck() {
     checkAsked = true;
-    navNote(turnstileFailed ? 'turnstileFailed' : 'turnstile');
+    navNote(!window.turnstile ? 'turnstileBlocked' : turnstileFailed ? 'turnstileFailed' : 'turnstile');
     paintNav();
     if (!ui.turnstile || ui.turnstile.hidden) return;
     requestAnimationFrame(() => ui.turnstile.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' }));
@@ -2509,6 +2535,7 @@ function init(root, cfg, mode) {
     paintSubmitting();
     // A connection that stalls: said that it's still going (not given up on: it may have arrived)
     const slow = setTimeout(() => { if (submitting && !lastNav) navNote('stillSending'); }, 15000);
+    let sendingNow = false; // the application itself on its way (a connection lost then may still have delivered it)
     try {
       await dropRemoved(); // sent without what they removed
       if (!(await start())) return; // expired, and a new one couldn't start just now (it says why)
@@ -2522,7 +2549,9 @@ function init(root, cfg, mode) {
       // It had expired: the answers went into a new one (or will on Submit), and its note says what's next
       if (token !== was) { readNotice(); return; }
       if (!saved) { navNote(lastSave === 'offline' ? 'offlineSubmit' : 'submitUnsaved'); return; }
+      sendingNow = true;
       const r = await api({ action: 'submit', token });
+      sendingNow = false;
       if (r.ok) { finished(); return; }
       if (r.code === 'no-draft') { await expired(); readNotice(); return; } // its note says what happened (a new one: Submit again)
       if (r.code === 'submitted') { finished(true); return; }
@@ -2541,7 +2570,8 @@ function init(root, cfg, mode) {
       }
       navNote(r.error ? { raw: r.error } : 'submitFail');
     } catch {
-      navNote('offlineSubmit');
+      // Lost on the way: it may have arrived. Submit again finds out (one that arrived says so, never sent twice)
+      navNote(sendingNow ? 'offlineMidSubmit' : 'offlineSubmit');
     } finally {
       clearTimeout(slow);
       if (lastNav?.m === 'stillSending') navNote(null);
@@ -2555,6 +2585,7 @@ function init(root, cfg, mode) {
   function finished(already = false, { elsewhere = false } = {}) {
     forgetRemoved();
     store.clear();
+    uspsKept.clear();
     pending.clear();
     if (!testRun && !previewing && (!already || sentStore.get()?.year !== year)) sentStore.set({ year, at: already ? null : Date.now() });
     closeRecorder();
@@ -2579,7 +2610,12 @@ function init(root, cfg, mode) {
     ui.done.classList.add('is-in');
     const top = focused ? 0 : ui.done.getBoundingClientRect().top + window.scrollY - headerOffset();
     window.scrollTo({ top: Math.max(0, top), behavior: 'auto' });
-    ui.done.querySelector('[data-done-title]').focus({ preventScroll: true });
+    const title = ui.done.querySelector('[data-done-title]');
+    title.focus({ preventScroll: true });
+    // A screen too short for the sun and the words (400% zoom): the words in view, just under the bar (where it rises to)
+    const under = focused ? ui.top?.getBoundingClientRect().bottom || 0 : headerOffset();
+    const r = title.getBoundingClientRect();
+    if (r.bottom - (reducedMotion() ? 0 : 14) > innerHeight) window.scrollBy({ top: r.top - (reducedMotion() ? 0 : 14) - under - 12, behavior: 'auto' });
   }
   function paintDone() {
     // Nothing left to save: the way out of the bar just closes it
@@ -3681,6 +3717,7 @@ function init(root, cfg, mode) {
     if (uspsGoing === key) uspsGoing = '';
     if (addressKey(homeAddressNow()) !== key) return; // the address has changed since
     uspsNow = { key, status };
+    if (status) uspsKept.set({ k: fingerprint(key), s: status }); else uspsKept.clear();
     paintArea();
   }
   /** Its line in the result card (Google's terms: the answer shows with its credit) */
@@ -3688,9 +3725,16 @@ function init(root, cfg, mode) {
     // A building with apartments, and they've given theirs: the Postal Service couldn't confirm that one
     const unitGiven = status === 'unit' && !!homeAddressNow()?.line2;
     const words = { confirmed: 'uspsConfirmed', unit: unitGiven ? 'uspsUnitGiven' : 'uspsUnit', check: 'uspsCheck' }[status];
-    // An apartment they may have left off: a way straight to its box (it's on the address's screen, often not this one)
-    const apt = status === 'unit' && !unitGiven ? `<button type="button" class="af-btn af-btn--link af-area-apt" data-act="area-apt">${esc(T('addApt'))}</button>` : '';
-    return words ? `<p class="af-usps" data-status="${status}"><span>${esc(T(words))}</span> <span class="af-usps-by" translate="no">Google Maps</span></p>${apt}` : '';
+    if (status === 'unit' && !unitGiven) return uspsUnitHtml();
+    return words ? `<p class="af-usps" data-status="${status}"><span>${esc(T(words))}</span> <span class="af-usps-by" translate="no">Google Maps</span></p>` : '';
+  }
+  /**
+   * An apartment they may have left off: the note is the way straight to its box (it's on the address's screen,
+   * often not this one). One line of words, not the note and a button saying it again under it (on a small
+   * phone the two pushed "Change the address" under Continue)
+   */
+  function uspsUnitHtml({ act = true } = {}) {
+    return `<p class="af-usps" data-status="unit"><button type="button" class="af-usps-apt"${act ? ' data-act="area-apt"' : ''}>${esc(T('uspsUnitLead'))} <span class="af-usps-do">${esc(T('uspsUnitDo'))}</span></button> <span class="af-usps-by" translate="no">Google Maps</span></p>`;
   }
   function runArea(addr, key, { again = false } = {}) {
     if (!again) runUsps(addr, key);
@@ -4515,6 +4559,8 @@ function init(root, cfg, mode) {
       if (!(await start()) && !token) {
         // The quick check wants a tap: it's on the page, under this (shown once this closes), and the link goes
         // once it's done (they aren't left to send it again, thinking it went)
+        // (a check that couldn't load: said here, the link can't go until it does)
+        if (checkAsked && !window.turnstile) { putText(status, T('turnstileBlocked')); return; }
         if (checkAsked) { laterWaiting = email; dlg.close(); if (!turnstileFailed) navNote('turnstileLater'); return; }
         status.textContent = say(lastNav?.m) || T('startFail');
         return;
@@ -4779,7 +4825,7 @@ function init(root, cfg, mode) {
         language: lang, // the form's language, not the browser's (a Spanish form on an English phone)
         callback: (t) => {
           turnstileToken = t; turnstileFailed = false; turnstileWaiting.splice(0).forEach(r => r());
-          if (['turnstile', 'turnstileFailed', 'turnstileLater'].includes(lastNav?.m)) navNote(null);
+          if (['turnstile', 'turnstileFailed', 'turnstileLater', 'turnstileBlocked'].includes(lastNav?.m)) navNote(null);
           if (laterWaiting) sendLaterNow(); // "Email me the link" was pressed before the check: it goes now
         },
         // It couldn't pass at all (it tries again by itself): said so, with a way forward, not "complete the check"
@@ -4789,12 +4835,30 @@ function init(root, cfg, mode) {
         'before-interactive-callback': () => { turnstileWants = true; turnstileWaiting.splice(0).forEach(r => r()); },
       });
     };
+    loadTurnstileScript();
+    paintNav();
+  }
+  /**
+   * The check's script, from Cloudflare. One that doesn't come (offline as the page loaded, a blocker) is asked
+   * for again when the connection's back and at Continue; true when it's asked for now
+   */
+  function loadTurnstileScript() {
+    if (!turnstileSiteKey || window.turnstile || turnstileScript === 'loading') return false;
+    turnstileScript = 'loading';
     const s = document.createElement('script');
     s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onSoardTurnstile&render=explicit';
     s.async = true;
+    s.onload = () => { turnstileScript = 'loaded'; };
+    s.onerror = () => {
+      turnstileScript = 'failed';
+      s.remove();
+      turnstileWaiting.splice(0).forEach(r => r());
+      if (checkAsked && !token) navNote('turnstileBlocked');
+    };
     document.head.append(s);
-    paintNav();
+    return true;
   }
+  window.addEventListener('online', () => { if (turnstileScript === 'failed' && !token) loadTurnstileScript(); }, { signal });
 
   // ── Resume (a saved draft on this device, or an emailed link) ─────
   /** The last page with anything filled in (how far they got, when this device doesn't know) */
@@ -4868,6 +4932,9 @@ function init(root, cfg, mode) {
     answers = { ...(r.answers || {}) };
     // The last address check, for the address they left (the server placed it against today's area)
     areaNow = r.area ? { ...r.area, key: addressKey(answers[homeAddressId() || 'address']) } : null;
+    // The Postal Service's word on it, as this device had it (not asked again: each is paid for)
+    const word = uspsKept.get();
+    if (areaNow?.key && word?.s && word.k === fingerprint(areaNow.key)) uspsNow = { key: areaNow.key, status: word.s };
     // Their answer to the area question is theirs only when the check couldn't place the address (else it was the check's)
     askedFor = areaField() && answers[areaField().id] && !(areaNow && AREA_VALUES[areaNow.band]) ? addressKey(answers[homeAddressId() || 'address']) : null;
     for (const [id, pf] of Object.entries(r.files || {})) {
@@ -4891,7 +4958,13 @@ function init(root, cfg, mode) {
     }
     // A video cut off by the page going (a reload, the tab closed), its upload kept here: the same video again carries on
     const going = videoGoing.get();
-    if (going?.token === candidate && byId[going.field] && !r.files?.[going.field]?.uploaded) uploadUi[going.field] = { state: 'empty', msg: 'videoResume' };
+    if (going?.token === candidate && byId[going.field]) {
+      const had = r.files?.[going.field];
+      const name = String(going.sig || '').split('|').slice(0, -2).join('|');
+      if (!had?.uploaded) uploadUi[going.field] = { state: 'empty', msg: 'videoResume' };
+      // One chosen over a video already there: said that the new one didn't finish (the earlier one is what's kept)
+      else if (name && had.name !== name) uploadUi[going.field] = { ...uploadUi[going.field], state: 'done', msg: ['videoNewResume', { name, was: had.name || '' }] };
+    }
     draw({ merge: false });
     synced = readAnswers();
     // What was typed here last time and never reached the server (offline, the tab closed): back on top
@@ -5105,10 +5178,19 @@ function init(root, cfg, mode) {
       showStop(stop);
       return true;
     }
+    // Two entries now one screen (worked out again since: a shorter card, another language): on to the one after,
+    // never a press that changes nothing
+    if (st.afAt && (sameAt(st.afAt, whereNow()) || landsHere(st.afAt))) { history.go(dir); return true; }
     if (st.afAt) goTo(st.afAt, dir);
     else if (dir < 0) back(); // an entry from before they said where they were: a screen back
     return true;
   };
+  /** An entry's screen is the one showing */
+  function landsHere(at) {
+    if (!at?.page || at.page === 'review' || at.page !== currentId || !packs[currentId]) return false;
+    const p = atPiece(at);
+    return !!p && packs[currentId].findIndex(kids => kids.some(k => k === p || k.contains(p) || p.contains(k))) === screenNo;
+  }
   const rearm = () => { if (focused && !depth) armTrap(); };
   // Typing in a box when the page goes (a reload): that box's screen is the one to come back to
   window.addEventListener('pagehide', () => {

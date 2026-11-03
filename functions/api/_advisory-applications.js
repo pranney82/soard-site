@@ -170,8 +170,9 @@ export async function saveAdvisorySettings(DB, { staffEmails, committee }, { by 
 
 /**
  * Store one from the site's form. The answers are checked here too (the page
- * checks first). A second send of the same answers within ten minutes (a
- * double tap, a flaky connection) is the same application.
+ * checks first). A second send of the same answers within a month (a double
+ * tap, a flaky connection, a page closed while it sent and sent again later)
+ * is the same application.
  * Returns { app } or { problems }.
  */
 export async function submitApplication(env, raw, { ipHash = null, now = Date.now() } = {}) {
@@ -181,7 +182,7 @@ export async function submitApplication(env, raw, { ipHash = null, now = Date.no
   if (Object.keys(problems).length) return { problems };
   const json = JSON.stringify(answers);
   const again = await DB.prepare("SELECT * FROM advisory_applications WHERE source = 'site' AND email = ? AND answers = ? AND created_at > ?")
-    .bind(answers.email, json, iso(now - 10 * 60 * 1000)).first();
+    .bind(answers.email, json, iso(now - 30 * 24 * 3600 * 1000)).first();
   if (again) return { app: fromRow(again, { full: true }), repeat: true };
   const id = newId();
   await DB.prepare(`INSERT INTO advisory_applications (id, source, name, email, phone, company, job_title, answers, status, ip_hash, created_at, updated_at)

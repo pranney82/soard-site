@@ -541,6 +541,8 @@ const breadcrumbs = [
   .af-notice[data-kind="error"], .af-nav-note { background: var(--af-attn-bg); border-color: #E6C400; color: var(--af-attn-ink); font-weight: 600; }
   .af-notice[data-kind="error"]::before, .af-nav-note::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%238A7200' stroke-width='1.8' stroke-linecap='round'%3E%3Ccircle cx='10' cy='10' r='8.2'/%3E%3Cpath d='M10 5.8v5.2M10 14v.1'/%3E%3C/svg%3E"); }
   .af-nav-note { margin: 0 0 12px; }
+  /* Our email in a note: a link in the note's own color */
+  :is(.af-nav-note, .af-dialog-status) a { color: inherit; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; overflow-wrap: anywhere; }
 
   /* ── The step's header: where they are, then its name ── */
   .af-head { margin-bottom: 28px; }
@@ -688,6 +690,11 @@ const breadcrumbs = [
   .af-usps { margin: 6px 0 0; font-size: 14px; line-height: 1.45; font-weight: 600; color: var(--c-dark); }
   .af-usps-by { margin-left: 6px; }
   .af-usps:is([data-status="unit"], [data-status="check"]) { color: var(--af-attn-ink); }
+  /* The apartment note is its own way to the apartment's box: its words, the doing part underlined */
+  .af-usps-apt { display: inline-block; min-height: 24px; padding: 2px 0; margin: -2px 0; border: 0; background: none; font: inherit; color: inherit; text-align: left; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .af-usps-do { text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .af-usps-apt:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; border-radius: 4px; }
+  @media (hover: hover) { .af-usps-apt:hover .af-usps-do { text-decoration-color: var(--c-dark); } }
   .af-usps-by, .af-suggest[data-google]::after { font-family: Roboto, var(--font-body), sans-serif; font-weight: 400; font-style: normal; letter-spacing: normal; font-size: 12px; color: #5E5E5E; white-space: nowrap; text-transform: none; }
   .af-suggest[data-google]::after { content: 'Google Maps'; display: block; text-align: right; padding: 6px 12px 4px; position: sticky; bottom: -6px; background: #fff; }
   /* An option reached with the arrow keys stops above Google's credit, never under it */
@@ -747,6 +754,14 @@ const breadcrumbs = [
      under both. When the screen has room for only part of the words, each tile says its first lines
      (the script picks how many) and More opens the rest */
   .af-tile-more { display: none; }
+  /* Two to a row on a screen too short for every word (a longer language on a small laptop): each tile says its
+     first lines too, More beside its box opening the rest */
+  @container (min-width: 560px) {
+    .af-tile[data-clamp] .af-choice-title { padding-right: 96px; }
+    .af-tile[data-clamp] .af-choice-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 2); overflow: hidden; }
+    .af-tile[data-clamp="0"] .af-choice-desc { display: none; }
+    .af-tile[data-clamp] .af-tile-more { display: inline-flex; top: 3px; right: 44px; }
+  }
   @container (max-width: 559.98px) {
     .af-choices--tiles { --af-narrow: 1; }
     .af-choices--tiles .af-choice { display: grid; grid-template-columns: 24px minmax(0, 1fr); column-gap: 12px; row-gap: 4px; align-items: start; }
@@ -754,7 +769,8 @@ const breadcrumbs = [
     .af-choices--tiles .af-choice-text { display: contents; }
     .af-choices--tiles .af-choice-title { padding-right: 0; align-self: center; }
     .af-choices--tiles .af-choice-desc { grid-column: 1 / -1; }
-    .af-tile[data-clamp] .af-choice-title { padding-right: 62px; }
+    .af-tile[data-clamp] .af-choice-title { padding-right: 44px; }
+    .af-tile[data-clamp] .af-tile-more { padding: 0 6px; }
     .af-tile[data-clamp] .af-choice-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: var(--lines, 2); overflow: hidden; }
     .af-tile[data-clamp="0"] .af-choice-desc { display: none; }
     .af-tile[data-clamp] .af-tile-more { display: inline-flex; }
@@ -1195,7 +1211,7 @@ const breadcrumbs = [
   .af-area-title { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.35; color: var(--c-dark); }
   .af-area-desc, .af-area-desc-wrap p { margin: 4px 0 0; font-size: 15.5px; line-height: 1.6; color: var(--c-text); }
   .af-area-found { margin: 10px 0 0; font-size: 14px; line-height: 1.5; color: var(--c-text-muted); overflow-wrap: anywhere; }
-  .af-area-fix, .af-area-apt, .af-area-again { padding-left: 0; font-size: 14.5px; text-align: left; justify-content: flex-start; }
+  .af-area-fix, .af-area-again { padding-left: 0; font-size: 14.5px; text-align: left; justify-content: flex-start; }
   .af-area-again { display: flex; gap: 8px; align-items: center; }
   .af-area-again[aria-disabled="true"] { cursor: default; text-decoration: none; }
   .af-map-labels .is-crowded { visibility: hidden; }
@@ -1209,6 +1225,13 @@ const breadcrumbs = [
     .af-map-town > span { font-size: 11.5px; }
     .af-map-county-name { font-size: 9px; letter-spacing: .12em; }
     .af-area-card { padding: 16px 16px 10px; gap: 12px; }
+    /* A phone's card: the mark beside its title, the words under both the card's whole width (in a column
+       beside the mark they took twice the lines, and pushed its links under Continue on a small phone) */
+    .af-area-card { row-gap: 0; }
+    .af-area-text { display: contents; }
+    .af-area-title { align-self: center; }
+    .af-area-text > :not(.af-area-title) { grid-column: 1 / -1; }
+    .af-area-desc-wrap > :first-child, .af-area-text > .af-area-desc { margin-top: 6px; }
   }
   /* ══════════ The application on its own screen (html.af-focus) ══════════
      Once a family starts, everything else on the page steps aside, like Plaid's and Airbnb's
@@ -1398,6 +1421,7 @@ const breadcrumbs = [
   .af-hub-meta { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 600; color: var(--c-text-muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
   .af-hub-meta svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   .af-hub-row[data-state="done"] .af-hub-meta { color: var(--c-dark); }
+  .af-hub-arrow { display: none; }
   .af-hub-row:disabled .af-hub-name strong { color: #6E6F74; font-weight: 600; }
   .af-hub-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px 20px; flex-wrap: wrap; margin-top: 18px; }
   .af-hub-acts { display: flex; flex-wrap: wrap; gap: 0 18px; }
@@ -1636,8 +1660,11 @@ const breadcrumbs = [
     html.af-focus .af-nav { padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); }
     .af-nav-row [data-next] { flex: 1; min-width: 0; }
     html.af-focus .af-main > :is(.af-testbar, .af-notice) { width: calc(100% - 28px); margin-top: 14px; }
-    .af-hub-row { grid-template-columns: 32px minmax(0, 1fr); }
-    .af-hub-meta { display: none; }
+    /* No room for the minutes: Edit on a done step, an arrow on one to go on with, so every row that opens says so */
+    .af-hub-row { gap: 12px; padding-right: 12px; }
+    .af-hub-min { display: none; }
+    .af-hub-row:disabled .af-hub-meta { display: none; }
+    .af-hub-arrow { display: block; width: 16px; height: 16px; }
     .af-hub-go { width: 100%; min-width: 0; }
     .af-review-body { padding: 0 16px 8px; }
   }
@@ -1666,6 +1693,9 @@ const breadcrumbs = [
     html.af-focus .af-nav { padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
     html.af-focus .af-field textarea { min-height: 76px; }
     html.af-focus .af-choice { padding: 10px 14px; min-height: 48px; }
+    /* Tiles down to their names: the question a little closer to them */
+    html.af-focus .af-field:has(.af-choices--tiles[data-snug]) > legend.af-label { margin-bottom: 8px; }
+    html.af-focus .af-choices--tiles[data-snug] .af-choice { padding-block: 8px; min-height: 46px; }
     /* An address entered by hand (street, apartment, city / state / ZIP) still fits beside its question */
     html.af-focus .af-address { gap: 10px; }
     html.af-focus .af-address-switch { margin: -12px 0 -8px; }

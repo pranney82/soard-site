@@ -8,7 +8,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { checkAnswers, ADVISORY_FIELDS, ADVISORY_STEPS, normalizeLink, answerSections, greetName } from '../functions/api/_advisory-form.js';
-import { applicantEmail, staffEmail, staffSlack, fromJotform, importJotformApplications, listAdvisoryApplications, getAdvisorySettings } from '../functions/api/_advisory-applications.js';
+import { applicantEmail, staffEmail, staffSlack, fromJotform, importJotformApplications, listAdvisoryApplications, getAdvisorySettings, submitApplication } from '../functions/api/_advisory-applications.js';
 import * as publicApi from '../functions/api/advisory-apply.js';
 import * as adminApi from '../functions/api/advisory-applications-admin.js';
 
@@ -136,6 +136,10 @@ test('applying: stored, the applicant gets a copy, staff get an email and a Slac
   await apply(GOOD);
   assert.equal((await listAdvisoryApplications(env.DB)).length, 1);
   assert.equal(sent.emails.length, 2, 'and nobody is emailed twice');
+  // A page closed while it sent, sent again days later: the same one (it had arrived)
+  const later = await submitApplication(env, GOOD, { now: Date.now() + 5 * 864e5 });
+  assert.equal(later.repeat, true);
+  assert.equal((await submitApplication(env, GOOD, { now: Date.now() + 40 * 864e5 })).repeat, undefined, 'a month on, a new one');
 });
 
 test('answers that need a look come back by field; bots are answered and dropped', async () => {

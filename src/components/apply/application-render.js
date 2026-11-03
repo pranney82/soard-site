@@ -72,9 +72,9 @@ export const UI = {
     expired: 'This saved application has expired. Your answers are still here: press Continue to save them in a new one.', renewed: 'Your saved application had expired, so we saved all your answers in a new one.', renewedFiles: 'Your saved application had expired, so we saved all your answers in a new one. Please add your photos and video again.', fileAgain: 'This expired with your saved application. Please add it again.',
     linkExpired: 'That link has expired or is not valid. Please start a new application.',
     resumeFailed: "We couldn't open your saved application just now. It's still saved, and it will open here as soon as we can reach it.",
-    startFail: 'We could not start your application. Please try again.', stillSending: 'Still sending. This is taking longer than usual; please keep this page open.', startOffline: "You seem to be offline, so your application can't start yet. Your answers are still here; press Continue again once you're connected.", turnstile: 'Please complete the quick check above the Continue button.', turnstileLater: "Please complete the quick check above the Continue button, and we'll email your link.", laterEmailEmpty: 'Please enter your email address.', turnstileFailed: "The quick check couldn't confirm this browser. It tries again on its own; if it keeps failing, reload the page, or email info@soardcharity.com and we'll help you apply.",
+    startFail: 'We could not start your application. Please try again.', stillSending: 'Still sending. This is taking longer than usual; please keep this page open.', startOffline: "You seem to be offline, so your application can't start yet. Your answers are still here; press Continue again once you're connected.", turnstile: 'Please complete the quick check above the Continue button.', turnstileLater: "Please complete the quick check above the Continue button, and we'll email your link.", laterEmailEmpty: 'Please enter your email address.', turnstileBlocked: "The quick check didn't load (a content blocker can stop it). Check your connection and press Continue again, or email info@soardcharity.com and we'll help you apply.", turnstileFailed: "The quick check couldn't confirm this browser. It tries again on its own; if it keeps failing, reload the page, or email info@soardcharity.com and we'll help you apply.",
     waitUploads: 'Please wait for your uploads to finish, then submit.', attention: 'A few answers need attention before you submit.',
-    offlineSubmit: "You seem to be offline, so your application wasn't sent. Your answers are still here; press Submit again once you're connected.", submitUnsaved: "Your latest changes didn't save, so your application wasn't sent. Please press Submit again in a moment.",
+    offlineMidSubmit: "The connection dropped while your application was sending, so we can't tell yet whether it arrived. Press Submit again once you're connected: if it arrived, we'll say so, and it's never sent twice.", offlineSubmit: "You seem to be offline, so your application wasn't sent. Your answers are still here; press Submit again once you're connected.", submitUnsaved: "Your latest changes didn't save, so your application wasn't sent. Please press Submit again in a moment.",
     submitFail: 'We could not submit just now. Please try again in a minute.',
     preview: 'Preview of your unpublished form changes. Nothing you enter here is saved or sent.', previewSent: 'This is a preview, so nothing was sent.', previewNoSave: 'Saving is off in a preview.',
     previewLive: 'Live preview. Changes in the form editor show here as you make them. Nothing entered here is saved or sent.',
@@ -84,7 +84,7 @@ export const UI = {
     uploading: 'Uploading… {pct}%', added: 'Added: {name}', tryAgain: '{msg}. Please try again.', uploadFailed: 'Upload failed', videoFailed: "Your video didn't upload", uploadOffline: "The upload stopped when the connection dropped. It picks up again by itself once you're back online, or press Try again.", notImage: "That file isn't a photo we can use. Please choose a JPEG, PNG or HEIC photo.",
     dropPhoto: 'Drop the photo here', dropVideo: 'Drop the video here', orDrag: 'or drag one here', orDragVideo: 'or drag one here', undo: 'Undo', uploadWait: 'Please wait for this upload to finish.', uploadRetrying: 'The connection dropped. Trying again ({pct}% sent)…', uploadRetryServer: 'The upload paused on our end. Trying again ({pct}% sent)…', photoRemoved: 'Photo removed.', videoRemoved: 'Video removed.', groupRemoved: 'Answers removed.',
     noVideo: 'No video yet', chooseVideo: 'Choose or record a video', chooseVideoDesk: 'Choose a video file', chooseOther: 'Choose a different video', starting: 'Starting upload…',
-    uploadingPct: 'Uploading your video… {pct}%', finishing: 'Finishing up…', videoDone: 'Video uploaded: {name}', videoGone: 'Your video did not finish uploading. Please choose it again.', videoResume: 'Your video was still uploading when the page closed. Choose the same video again and it picks up where it stopped.', cancelUpload: 'Cancel upload', videoCanceled: 'Upload canceled.', videoKept: 'Upload canceled. Your video is still here: {name}',
+    uploadingPct: 'Uploading your video… {pct}%', finishing: 'Finishing up…', videoDone: 'Video uploaded: {name}', videoGone: 'Your video did not finish uploading. Please choose it again.', videoResume: 'Your video was still uploading when the page closed. Choose the same video again and it picks up where it stopped.', videoNewResume: 'Your new video ({name}) was still uploading when the page closed, so your earlier one is still here: {was}. Choose the new one again and it picks up where it stopped.', cancelUpload: 'Cancel upload', videoCanceled: 'Upload canceled.', videoKept: 'Upload canceled. Your video is still here: {name}',
     photoStill: "That file isn't a photo we can use. Your photo is still here: {name}", photoStillEmpty: 'That file is empty. Your photo is still here: {name}',
     videoStill: "That file isn't a video. Your video is still here: {name}", videoStillEmpty: 'That file is empty. Your video is still here: {name}',
     notVideo: "That file isn't a video. Please choose a video file.", uploadStartFail: 'We could not start the upload',
@@ -98,7 +98,7 @@ export const UI = {
     leaveUpload: 'Your upload is still in progress. Leave this page and stop it?',
     suggestions: 'Suggested addresses', countyFilled: 'We filled in {county} County from your address.',
     // The Postal Service's word on the home address, in what the check found (with a Google key: ../../functions/api/_google.js)
-    uspsConfirmed: 'Confirmed by the Postal Service.', uspsUnit: "If there's an apartment or unit number, add it to the address.", addApt: 'Add the apartment or unit number', uspsUnitGiven: "The Postal Service couldn't confirm that apartment or unit number. Please check it.",
+    uspsConfirmed: 'Confirmed by the Postal Service.', uspsUnit: "If there's an apartment or unit number, add it to the address.", uspsUnitLead: "If there's an apartment or unit number,", uspsUnitDo: 'add it to the address.', uspsUnitGiven: "The Postal Service couldn't confirm that apartment or unit number. Please check it.",
     uspsCheck: "The Postal Service doesn't know this address. Check the number and ZIP.",
     // The service-area check under the home address
     areaPrompt: "Enter the address, and we'll show it on the map.", areaChecking: 'Checking the address…',
@@ -198,9 +198,9 @@ export const UI = {
     expired: 'Esta solicitud guardada venció. Sus respuestas siguen aquí: presione Continuar para guardarlas en una nueva.', renewed: 'Su solicitud guardada había vencido, así que guardamos todas sus respuestas en una nueva.', renewedFiles: 'Su solicitud guardada había vencido, así que guardamos todas sus respuestas en una nueva. Vuelva a agregar sus fotos y su video.', fileAgain: 'Esto venció con su solicitud guardada. Vuelva a agregarlo.',
     linkExpired: 'Ese enlace venció o no es válido. Comience una nueva solicitud.',
     resumeFailed: 'No pudimos abrir su solicitud guardada en este momento. Sigue guardada, y se abrirá aquí en cuanto podamos conectarnos.',
-    startFail: 'No pudimos comenzar su solicitud. Intente de nuevo.', stillSending: 'Todavía se está enviando. Está tardando más de lo normal; mantenga esta página abierta.', startOffline: 'Parece que no tiene conexión, así que su solicitud todavía no puede comenzar. Sus respuestas siguen aquí; presione Continuar de nuevo cuando tenga conexión.', turnstile: 'Complete la verificación rápida arriba del botón Continuar.', turnstileLater: 'Complete la verificación rápida arriba del botón Continuar y le enviaremos su enlace por correo.', laterEmailEmpty: 'Escriba su correo electrónico.', turnstileFailed: 'La verificación rápida no pudo confirmar este navegador. Vuelve a intentarlo sola; si sigue fallando, vuelva a cargar la página o escríbanos a info@soardcharity.com y le ayudaremos con la solicitud.',
+    startFail: 'No pudimos comenzar su solicitud. Intente de nuevo.', stillSending: 'Todavía se está enviando. Está tardando más de lo normal; mantenga esta página abierta.', startOffline: 'Parece que no tiene conexión, así que su solicitud todavía no puede comenzar. Sus respuestas siguen aquí; presione Continuar de nuevo cuando tenga conexión.', turnstile: 'Complete la verificación rápida arriba del botón Continuar.', turnstileLater: 'Complete la verificación rápida arriba del botón Continuar y le enviaremos su enlace por correo.', laterEmailEmpty: 'Escriba su correo electrónico.', turnstileBlocked: 'La verificación rápida no se cargó (un bloqueador de contenido puede detenerla). Revise su conexión y presione Continuar de nuevo, o escríbanos a info@soardcharity.com y le ayudaremos con la solicitud.', turnstileFailed: 'La verificación rápida no pudo confirmar este navegador. Vuelve a intentarlo sola; si sigue fallando, vuelva a cargar la página o escríbanos a info@soardcharity.com y le ayudaremos con la solicitud.',
     waitUploads: 'Espere a que terminen de subir sus archivos y después envíe la solicitud.', attention: 'Algunas respuestas necesitan atención antes de enviar.',
-    offlineSubmit: 'Parece que no tiene conexión, así que su solicitud no se envió. Sus respuestas siguen aquí; presione Enviar de nuevo cuando tenga conexión.', submitUnsaved: 'Sus últimos cambios no se guardaron, así que su solicitud no se envió. Presione Enviar de nuevo en un momento.',
+    offlineMidSubmit: 'Se perdió la conexión mientras se enviaba su solicitud, así que todavía no sabemos si llegó. Presione Enviar de nuevo cuando tenga conexión: si llegó, se lo diremos, y nunca se envía dos veces.', offlineSubmit: 'Parece que no tiene conexión, así que su solicitud no se envió. Sus respuestas siguen aquí; presione Enviar de nuevo cuando tenga conexión.', submitUnsaved: 'Sus últimos cambios no se guardaron, así que su solicitud no se envió. Presione Enviar de nuevo en un momento.',
     submitFail: 'No pudimos enviar la solicitud en este momento. Intente de nuevo en un minuto.',
     preview: 'Vista previa de los cambios sin publicar. Nada de lo que escriba aquí se guarda ni se envía.', previewSent: 'Es una vista previa, así que no se envió nada.', previewNoSave: 'Guardar está desactivado en la vista previa.',
     previewLive: 'Vista previa en vivo. Los cambios del editor aparecen aquí al instante. Nada de lo que escriba aquí se guarda ni se envía.',
@@ -210,7 +210,7 @@ export const UI = {
     uploading: 'Subiendo… {pct}%', added: 'Agregada: {name}', tryAgain: '{msg}. Intente de nuevo.', uploadFailed: 'No se pudo subir', videoFailed: 'Su video no se subió', uploadOffline: 'La carga se detuvo cuando se perdió la conexión. Continúa sola cuando vuelva a tener conexión, o presione Intentar de nuevo.', notImage: 'Ese archivo no es una foto que podamos usar. Elija una foto JPEG, PNG o HEIC.',
     dropPhoto: 'Suelte la foto aquí', dropVideo: 'Suelte el video aquí', orDrag: 'o arrástrela aquí', orDragVideo: 'o arrástrelo aquí', undo: 'Deshacer', uploadWait: 'Espere a que termine esta carga.', uploadRetrying: 'Se cortó la conexión. Intentando de nuevo ({pct}% enviado)…', uploadRetryServer: 'La carga se detuvo de nuestro lado. Intentando de nuevo ({pct}% enviado)…', photoRemoved: 'Se quitó la foto.', videoRemoved: 'Se quitó el video.', groupRemoved: 'Se quitaron las respuestas.',
     noVideo: 'Todavía no hay video', chooseVideo: 'Elegir o grabar un video', chooseVideoDesk: 'Elegir un archivo de video', chooseOther: 'Elegir otro video', starting: 'Comenzando a subir…',
-    uploadingPct: 'Subiendo su video… {pct}%', finishing: 'Terminando…', videoDone: 'Video subido: {name}', videoGone: 'Su video no terminó de subirse. Elíjalo de nuevo.', videoResume: 'Su video todavía se estaba subiendo cuando se cerró la página. Elija el mismo video de nuevo y continuará donde se detuvo.', cancelUpload: 'Cancelar la carga', videoCanceled: 'Se canceló la carga.', videoKept: 'Se canceló la carga. Su video sigue aquí: {name}',
+    uploadingPct: 'Subiendo su video… {pct}%', finishing: 'Terminando…', videoDone: 'Video subido: {name}', videoGone: 'Su video no terminó de subirse. Elíjalo de nuevo.', videoResume: 'Su video todavía se estaba subiendo cuando se cerró la página. Elija el mismo video de nuevo y continuará donde se detuvo.', videoNewResume: 'Su nuevo video ({name}) todavía se estaba subiendo cuando se cerró la página, así que el anterior sigue aquí: {was}. Vuelva a elegir el nuevo y continuará donde se detuvo.', cancelUpload: 'Cancelar la carga', videoCanceled: 'Se canceló la carga.', videoKept: 'Se canceló la carga. Su video sigue aquí: {name}',
     photoStill: 'Ese archivo no es una foto que podamos usar. Su foto sigue aquí: {name}', photoStillEmpty: 'Ese archivo está vacío. Su foto sigue aquí: {name}',
     videoStill: 'Ese archivo no es un video. Su video sigue aquí: {name}', videoStillEmpty: 'Ese archivo está vacío. Su video sigue aquí: {name}',
     notVideo: 'Ese archivo no es un video. Elija un archivo de video.', uploadStartFail: 'No pudimos comenzar a subir el archivo',
@@ -223,7 +223,7 @@ export const UI = {
     yourPhoto: 'su foto', yourVideo: 'su video',
     leaveUpload: 'Todavía se está subiendo un archivo. ¿Salir de esta página y detenerlo?',
     suggestions: 'Direcciones sugeridas', countyFilled: 'Completamos el condado de {county} con su dirección.',
-    uspsConfirmed: 'Confirmada por el Servicio Postal.', uspsUnit: 'Si hay un número de apartamento o unidad, agréguelo a la dirección.', addApt: 'Agregar el número de apartamento o unidad', uspsUnitGiven: 'El Servicio Postal no pudo confirmar ese número de apartamento o unidad. Revíselo, por favor.',
+    uspsConfirmed: 'Confirmada por el Servicio Postal.', uspsUnit: 'Si hay un número de apartamento o unidad, agréguelo a la dirección.', uspsUnitLead: 'Si hay un número de apartamento o unidad,', uspsUnitDo: 'agréguelo a la dirección.', uspsUnitGiven: 'El Servicio Postal no pudo confirmar ese número de apartamento o unidad. Revíselo, por favor.',
     uspsCheck: 'El Servicio Postal no reconoce esta dirección. Revise el número y el código postal.',
     areaPrompt: 'Escriba la dirección y la mostraremos en el mapa.', areaChecking: 'Revisando la dirección…',
     areaInside: 'Dentro de nuestra área de servicio', areaNear: 'Cerca de nuestra área de servicio', areaFar: 'Fuera de nuestra área de servicio',
@@ -284,7 +284,7 @@ export const UI_ORG = {
   doneLink: 'See the community projects we have built',
   stopApply: 'Back to community projects',
   // A space's suite, building or room (its box says so), not an apartment
-  uspsUnit: "If there's a suite, building or room number, add it to the address.", addApt: 'Add the suite, building or room',
+  uspsUnit: "If there's a suite, building or room number, add it to the address.", uspsUnitLead: "If there's a suite, building or room number,", uspsUnitDo: 'add it to the address.',
   uspsUnitGiven: "The Postal Service couldn't confirm that suite, building or room. Please check it.",
   addContact2: 'Add another contact at your organization', apt: 'Suite, building or room',
   heroFaq: 'See our community projects',
@@ -536,6 +536,9 @@ const pairable = (f, leads) => !!f && !f.showIf && !f.stops && !f.help && !leads
   && (PAIR_TYPES.has(f.type) || (sideBySide(f) && f.options.length === 2))
   && String(f.label || '').length <= 64;
 
+/** An email and a phone: the pair that belongs together ("Your title" alone, then email beside phone, not title beside email) */
+const mates = (a, b) => !!a && !!b && ((a.type === 'email' && b.type === 'phone') || (a.type === 'phone' && b.type === 'email'));
+
 /** A run of questions: pairs where they fit, photos side by side */
 function fieldsHtml(fields, lang, area, kind, leads) {
   const out = [];
@@ -549,7 +552,7 @@ function fieldsHtml(fields, lang, area, kind, leads) {
     } else if (n && f.type === 'photo' && n.type === 'photo' && !f.showIf && !n.showIf) {
       out.push(`<div class="af-pair af-pair--photos">${renderField(f, lang, area, kind)}${renderField(n, lang, area, kind)}</div>`);
       i++;
-    } else if (pairable(f, leads) && pairable(n, leads)) {
+    } else if (pairable(f, leads) && pairable(n, leads) && !(mates(n, fields[i + 2]) && !mates(f, n) && pairable(fields[i + 2], leads))) {
       out.push(`<div class="af-pair">${renderField(f, lang, area, kind)}${renderField(n, lang, area, kind)}</div>`);
       i++;
     } else out.push(renderField(f, lang, area, kind));
