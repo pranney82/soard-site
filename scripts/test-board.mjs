@@ -1535,6 +1535,9 @@ try {
   const phone = await tab(FOUNDER, 390);
   const heldPhone = await saveMeeting(DB, cleanMeeting({ date: day(-2), start: '08:00', end: '10:00', shared: true, sections: [{ title: 'Call to order', items: [{ title: 'Roll call' }] }] }), { by: FOUNDER });
   for (const [s, id] of [['ahead', meetingId], ['held', heldPhone.id]]) {
+    // (each opened as a person comes to it, from the top: the meeting before was scrolled about in this tab, and a
+    // reload would bring that scroll back)
+    await phone.evaluate(() => scrollTo(0, 0));
     await phone.goto(`${SITE}/admin/#board/meeting/${id}`, { waitUntil: 'networkidle0' });
     await phone.reload({ waitUntil: 'networkidle0' });
     await waitText(phone, /All meetings/);
