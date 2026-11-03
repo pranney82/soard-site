@@ -33,7 +33,7 @@ import { drawPages, closeBrowser } from './_coi-backfill.js';
 import { boardFiles } from './_board.js';
 import { KIT, LOGOS, COLORS, FONTS, pngHref } from '../../src/data/brand.js';
 import {
-  einDigits, irsRecord, exempt, rulingText, PUBLIC_CHARITY, manualMission, problemsFor, hasMailing, sameName, csvCells, SITE_HOST,
+  einDigits, irsRecord, exempt, rulingText, PUBLIC_CHARITY, manualMission, problemsFor, hasMailing, sameName, sameAddress, csvCells, SITE_HOST,
 } from '../../public/admin/org-facts-shared.js';
 
 export const CHECK_KEY = 'org-check';
@@ -80,7 +80,8 @@ export async function orgFacts(env) {
     ein: str(st.ein, 20),
     tagline: str(st.tagline, 120),
     address: addr(st.address),
-    mailing: hasMailing(st) ? addr(st.mailingAddress) : null,
+    // (a mailing address that's the office's is one address, said once)
+    mailing: hasMailing(st) && !sameAddress(st.mailingAddress, st.address) ? addr(st.mailingAddress) : null,
     phone: str(st.phone, 40),
     email: str(st.email, 120),
     website: str(m.bio?.website, 120) || SITE_HOST,
@@ -365,7 +366,9 @@ export async function checkOrgFacts(env, { now = Date.now(), fetchImpl = fetch, 
     }
   }
   if (pending) {
+    // This run's step is kept: the next tick goes on at once, rather than after the hold runs out
     check.pending = true;
+    delete check.runningUntil;
     await save();
     return { ...check };
   }

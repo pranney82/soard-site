@@ -2120,7 +2120,7 @@ const CSS = `
 .sc-orgcheck__pair dt { font-size: var(--fs-2xs); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--color-text-secondary); }
 .sc-orgcheck__pair dd { margin: .1rem 0 0; font-size: var(--fs-sm); line-height: 1.45; color: var(--color-text); overflow-wrap: anywhere; }
 .sc-orgcheck__acts { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem 1rem; margin: .55rem 0 0; font-size: var(--fs-sm); }
-.sc-orgcheck__acts .sc-ico { vertical-align: -2px; margin-left: .2rem; }
+.sc-root .sc-orgcheck__acts .sc-ico { display: inline-block; vertical-align: -2px; margin-left: .2rem; }
 .sc-orgcheck__acts a, .sc-orgcheck .sc-card-head .btn { white-space: nowrap; }
 .sc-value { align-items: start; }
 

@@ -278,6 +278,7 @@ test('the heartbeat: one slow step a tick (the list, then the W-9), one run at a
   let c = (await env.DB.prepare("SELECT data FROM site_config WHERE key = 'org-check'").first()).data;
   c = JSON.parse(c);
   assert.equal(c.pending, true);
+  assert.equal(c.runningUntil, undefined, 'and let go, so the next tick goes on at once');
   assert.equal(c.irs.found, true, 'the list’s reading kept already');
   assert.equal(posts().length, 0, 'nothing posted halfway');
   // A held check (another run within its 3 minutes) is left alone
@@ -376,6 +377,11 @@ test('the board page’s facts: the site’s, as saved, and the IRS’s words on
   await env.DB.prepare("UPDATE site_config SET data = ? WHERE key = 'settings'").bind(JSON.stringify({ ...SETTINGS, ein: '12-3456789', vision: 'Every child home.', values: [{ name: 'Joy', text: 'We build it in.' }, { name: '' }] })).run();
   f = await orgFacts(env);
   assert.equal(f.irs, null);
+  // A mailing address typed as the office's is one address on the board page
+  await env.DB.prepare("UPDATE site_config SET data = ? WHERE key = 'settings'").bind(JSON.stringify({ ...SETTINGS, mailingAddress: { street: '250 Hembree Park Dr, Ste 106', city: 'Roswell', state: 'GA', zip: '30076' } })).run();
+  assert.equal((await orgFacts(env)).mailing, null);
+  await env.DB.prepare("UPDATE site_config SET data = ? WHERE key = 'settings'").bind(JSON.stringify({ ...SETTINGS, ein: '12-3456789', vision: 'Every child home.', values: [{ name: 'Joy', text: 'We build it in.' }, { name: '' }] })).run();
+  f = await orgFacts(env);
   assert.equal(f.vision, 'Every child home.');
   assert.deepEqual(f.values, [{ name: 'Joy', text: 'We build it in.' }]);
 });
