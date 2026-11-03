@@ -137,6 +137,15 @@ function useFit(deps, { min = 0.6, lines = 0 } = {}) {
         let hi = parts.length - 1;
         while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); upTo(mid); if (over()) hi = mid - 1; else lo = mid; }
         upTo(lo);
+        // (not even its first word fits its lines, a link or a name run together: as much of that word as does)
+        if (!lo) {
+          const w = parts[0];
+          let a = 1;
+          let b = w.length;
+          const cut = (k) => { words.data = `${w.slice(0, k).trimEnd()}…`; };
+          while (a < b) { const mid = Math.ceil((a + b) / 2); cut(mid); if (over()) b = mid - 1; else a = mid; }
+          cut(a);
+        }
         el.setAttribute('aria-label', full);
         el.setAttribute('title', full);
       }

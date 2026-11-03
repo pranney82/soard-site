@@ -1748,7 +1748,8 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-item--title.is-label .bs-chapter__n { font-size: calc(var(--bs-u) * 13 * var(--fit, 1)); }
 .bs-item--title .bs-item__title { --bs-fs: calc(var(--bs-title) * 1.18); }
 .bs-item--split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: calc(var(--bs-u) * 5); align-items: center; }
-.bs-item__lead { display: grid; gap: calc(var(--bs-u) * 1.6); align-content: center; min-width: 0; }
+/* (its one column never wider than the slide: a title of one long word, a pasted link, breaks to fit instead of running off) */
+.bs-item__lead { display: grid; grid-template-columns: minmax(0, 1fr); gap: calc(var(--bs-u) * 1.6); align-content: center; min-width: 0; }
 .bs-item__side { display: grid; gap: calc(var(--bs-u) * 2); align-content: center; min-width: 0; padding-left: calc(var(--bs-u) * 3); border-left: 1px solid var(--bs-line); }
 /* An item with live facts: its name along the top, the facts filling the rest */
 .bs-item--board, .bs-item--facts { align-content: stretch; grid-template-rows: auto minmax(0, 1fr); padding: calc(var(--bs-u) * 0.6) 0 calc(var(--bs-u) * 1.2); }
