@@ -513,11 +513,14 @@ async function addSignedCopy({ d, p, picked, addToast, setBusy = () => {}, repla
   if (file.size > MAX_FILE) { addToast(`${file.name} is over 50 MB. A PDF or a photo of the signed page is plenty.`, 'error'); return null; }
   if (!['pdf', 'image'].includes(await fileKind(file))) { addToast('A signed copy is a PDF, or a photo of the signed page', 'error'); return null; }
   setBusy(p.slug);
-  if (isHeic(file)) { try { file = await asJpeg(file); } catch { /* sent as it is */ } }
+  // (an iPhone photo: the JPEG a browser shows, and the HEIC as it was taken, kept as the record)
+  let original = null;
+  if (isHeic(file)) { try { file = await asJpeg(file); original = picked; } catch { /* sent as it is */ } }
   const fd = new FormData();
   fd.append('signFor', d.id);
   fd.append('slug', p.slug);
   fd.append('file', file);
+  if (original) fd.append('original', original);
   if (replace) fd.append('replace', '1');
   const j = await call(null, { form: fd });
   setBusy('');
@@ -821,9 +824,18 @@ function DocumentsTab({ ctx }) {
     refocus(d.id);
     addToast(askAgain === true ? `Saved. The board signs the new version for ${year}: each member sees it on Home and on the paper, and in the next documents email.` : `Saved: ${d.title}`, 'info');
   };
+  // A paper the board signed is SOARD's record (the server keeps it): offered off the board page instead
+  const keepOnRecord = async (d) => {
+    if (!d.shared) { addToast(`The board signed ${d.title}, so it stays on record. It’s already off the board page.`, 'info'); return; }
+    if (!(await ask({ title: `${d.title} stays on record`, text: 'The board has signed it, so it’s kept with their signatures and copies. Take it off the board page instead: members won’t see it or be asked to sign it.', yes: 'Take it off the board page', no: 'Keep it as it is' }))) return;
+    await toggle(d, { shared: false });
+  };
   const remove = async (d) => {
-    if (!(await ask({ title: `Delete ${d.title}?`, text: (() => { const l = [d.file ? 'its file' : '', d.version > 1 ? 'its earlier wordings' : '', 'every signature and signed copy on it'].filter(Boolean); const t = l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0]; return `${t.charAt(0).toUpperCase()}${t.slice(1)} go with it.`; })(), yes: 'Delete', danger: true }))) return;
+    // (signed this year, an earlier wording, or a year before: on record)
+    if (Object.keys(d.signed || {}).length || (d.earlier || []).length || Object.keys(d.prior || {}).length) { await keepOnRecord(d); return; }
+    if (!(await ask({ title: `Delete ${d.title}?`, text: (() => { const l = [d.file ? 'its file' : '', d.version > 1 ? 'its earlier wordings' : ''].filter(Boolean); const t = l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0]; return t ? `${t.charAt(0).toUpperCase()}${t.slice(1)} go with it.` : 'Nobody has signed it, so nothing is lost.'; })(), yes: 'Delete', danger: true }))) return;
     const j = await call({ action: 'delete-doc', id: d.id });
+    if (!j.ok && j.signed) { await keepOnRecord(d); return; }
     if (!j.ok) { addToast(j.error, 'error'); return; }
     setData((x) => ({ ...x, docs: x.docs.filter((y) => y.id !== d.id) }));
     refocus(null);

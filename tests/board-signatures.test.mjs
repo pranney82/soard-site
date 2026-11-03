@@ -121,9 +121,13 @@ test('typed, or the copy signed on paper: each is the year’s signature, a copy
   // Typing after a copy is in leaves the copy (the better record)
   const again = await signDoc(env.DB, d.id, sam, 'Sam Ortiz');
   assert.equal(again.how, 'copy');
-  // A photo of the signed page replaces the copy added before, and the old one is gone
+  // A photo of the signed page takes the place of the copy added before; the old one is kept, marked superseded
   const photo = await signWithCopy(env, d.id, jpeg('IMG_2041.jpg'), { member: sam, by: sam.email });
-  assert.equal((await env.DB.prepare("SELECT count(*) AS n FROM board_files WHERE owner_type = 'signed'").first()).n, 1);
+  const copies = (await env.DB.prepare("SELECT id, superseded_at, slug, sha256 FROM board_files WHERE owner_type = 'signed' ORDER BY at").all()).results;
+  assert.equal(copies.length, 2, 'nothing a signature rested on is deleted');
+  assert.deepEqual([!!copies.find((c) => c.id !== photo.copy.id).superseded_at, copies.find((c) => c.id === photo.copy.id).superseded_at, copies.every((c) => c.slug === 'sam-ortiz' && /^[0-9a-f]{64}$/.test(c.sha256))], [true, null, true]);
+  const swapped = (await env.DB.prepare("SELECT detail FROM board_sign_events WHERE kind = 'superseded' AND slug = 'sam-ortiz'").all()).results.map((r) => JSON.parse(r.detail).row.file_id);
+  assert.ok(swapped.includes(copies.find((c) => c.id !== photo.copy.id).id), 'the row it replaced is in the chain whole');
   x = (await listDocs(env.DB)).find((y) => y.id === d.id);
   assert.deepEqual([x.signed['sam-ortiz'].copy.id, x.signed['sam-ortiz'].copy.type], [photo.copy.id, 'image/jpeg']);
   // Not a PDF or a picture (a Word file, or words named .pdf): refused, saying what a signed copy is, nothing kept
@@ -152,9 +156,14 @@ test('a copy is opened by Board’s admins and the member it belongs to, nobody 
   assert.match(new TextDecoder().decode(mine.body), /%PDF/);
   assert.equal((await call(MEMBER, `/api/board-file?id=${copy.id}`, { handler: fileRoute.onRequestGet })).status, 404);
   assert.equal((await call(FOUNDER, `/api/board-file?id=${copy.id}`, { handler: fileRoute.onRequestGet })).status, 200);
-  await deleteDoc(env, d.id);
-  assert.equal((await env.DB.prepare('SELECT count(*) AS n FROM board_files').first()).n, 0);
-  assert.equal(env.FILES.map.size, 0, 'the copy is out of storage too');
+  // A paper someone signed is SOARD's record: it can't be deleted, and its copies stay
+  await assert.rejects(deleteDoc(env, d.id), (err) => err.status === 409 && err.extra.signed && /Take it off the board page instead/.test(err.message));
+  assert.ok((await env.DB.prepare('SELECT count(*) AS n FROM board_files').first()).n >= 2);
+  // One nobody signed or was asked to sign goes, its file too
+  const draft = await expectations({ title: 'Draft policy' });
+  const before = env.FILES.map.size;
+  await deleteDoc(env, draft.id);
+  assert.equal(env.FILES.map.size, before - 1, 'an unsigned paper’s file is out of storage');
 });
 
 test('a Board admin adds a copy someone handed in, and takes off one added by mistake; a copy in Drive never overrides one they gave', async () => {
@@ -162,10 +171,14 @@ test('a Board admin adds a copy someone handed in, and takes off one added by mi
   const kim = await signWithCopy(env, d.id, pdf('Kim.pdf'), { slug: 'kim-park', by: FOUNDER });
   assert.deepEqual([kim.name, kim.how], ['Kim Park', 'staff']);
   await assert.rejects(signWithCopy(env, d.id, pdf('x.pdf'), { slug: 'old-timer', by: FOUNDER }), /aren’t on People → Board/, 'only someone on the board now');
-  // Taken off: the copy goes, and Kim is asked again
-  assert.equal(await unsignDoc(env, d.id, 'kim-park'), true);
+  // Taken off: Kim is asked again; the copy is kept, superseded, and the row goes into the chain whole
+  const off = await unsignDoc(env, d.id, 'kim-park', YEAR, { by: FOUNDER, reason: 'Added for the wrong member' });
+  assert.equal(off.row.file_id, kim.copy.id);
   assert.equal((await listDocs(env.DB)).find((y) => y.id === d.id).signed['kim-park'], undefined);
-  assert.equal(env.FILES.map.size, 1, 'only the paper’s own file is left');
+  assert.equal(env.FILES.map.size, 2, 'the paper’s file and the copy, kept');
+  assert.ok((await env.DB.prepare('SELECT superseded_at FROM board_files WHERE id = ?').bind(kim.copy.id).first()).superseded_at);
+  const taken = (await env.DB.prepare("SELECT * FROM board_sign_events WHERE kind = 'taken-off'").all()).results;
+  assert.deepEqual([taken.length, taken[0].by, JSON.parse(taken[0].detail).reason, JSON.parse(taken[0].detail).row.how], [1, FOUNDER, 'Added for the wrong member', 'staff']);
   assert.equal(await unsignDoc(env, d.id, 'kim-park'), false);
   // Drive: a copy for Alex counts; for Sam, who typed already, theirs stays
   await signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz');
@@ -309,9 +322,10 @@ test('the words written in Board: each change the next wording, kept on record; 
   // Taken off the board page: signing says so (the page reloads), not "doesn't ask for a signature"
   await saveDoc(env.DB, { ...d, body: undefined, shared: false }, { by: FOUNDER });
   await assert.rejects(signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz'), (err) => /isn’t on the board page anymore/.test(err.message) && err.extra.gone);
-  // Deleted, its wordings go with it
-  await deleteDoc(env, d.id);
-  assert.equal((await env.DB.prepare('SELECT count(*) AS n FROM board_doc_versions').first()).n, 0);
+  // Signed, it can't be deleted: its wordings stay on record, each with its SHA-256
+  await assert.rejects(deleteDoc(env, d.id), (err) => err.status === 409);
+  const kept = (await env.DB.prepare('SELECT version, hash FROM board_doc_versions WHERE doc_id = ? ORDER BY version').bind(d.id).all()).results;
+  assert.ok(kept.length >= 3 && kept.every((v) => /^[0-9a-f]{64}$/.test(v.hash)));
 });
 
 test('a paper that came as a PDF, written in Board from its own words: who signed the PDF keeps their signature, unless the words were changed', async () => {
@@ -365,10 +379,11 @@ test('a new file on a paper some signed: asked, and asked to sign again it’s a
   assert.equal(x.wordsFile, 'f_newone1');
   const versions = await docVersions(env.DB, d.id);
   assert.deepEqual(versions.map((v) => [v.version, v.note, v.signed]), [[3, 'From Code of Conduct 2027', 0], [2, 'A new file: Code of Conduct 2027.pdf · The board signs again from here', 1], [1, 'A new file: Code of Conduct 2027.pdf', 0]], 'Sam signed the new file, kept for the small change after it');
-  // An editor open on a paper deleted meanwhile: refused, not made again
-  await deleteDoc(env, d.id);
-  await assert.rejects(saveDoc(env.DB, { ...x, body: '- Be kind, always' }, { by: FOUNDER, base: 3 }), (err) => err.status === 410 && err.extra.deleted);
-  assert.equal((await listDocs(env.DB)).some((y) => y.id === d.id), false);
+  // An editor open on a paper deleted meanwhile (one nobody signed): refused, not made again
+  const unsigned = await saveDoc(env.DB, { title: 'A paper to delete', kind: 'policy', body: '- Draft' }, { by: FOUNDER });
+  await deleteDoc(env, unsigned.id);
+  await assert.rejects(saveDoc(env.DB, { ...unsigned, body: '- Be kind, always' }, { by: FOUNDER, base: 1 }), (err) => err.status === 410 && err.extra.deleted);
+  assert.equal((await listDocs(env.DB)).some((y) => y.id === unsigned.id), false);
   // A long paper (long bylaws): all of it kept
   const long = `${'Every article of the bylaws, said in full. '.repeat(2500)}The last line.`;
   x = await saveDoc(env.DB, { title: 'Amended Bylaws', kind: 'bylaws', body: long }, { by: FOUNDER });
@@ -407,10 +422,10 @@ test('signing the new version keeps the signature on the earlier one, its copy t
   assert.notEqual(again.copy.id, kimCopy.copy.id);
   assert.ok(await fileFor(env.DB, kimCopy.copy.id, { admin: true }), 'the copy on the earlier version is still there');
   assert.deepEqual((await docVersions(env.DB, d.id)).map((v) => [v.version, v.signed]), [[2, 1], [1, 1]], 'both wordings keep who signed them');
-  // A copy replaced on the same version is the one before gone
+  // A copy replaced on the same version: the one before is kept, marked superseded
   const third = await signWithCopy(env, d.id, pdf('Kim third.pdf'), { slug: 'kim-park', by: FOUNDER });
-  assert.equal(await fileFor(env.DB, again.copy.id, { admin: true }), null);
-  assert.ok(await fileFor(env.DB, third.copy.id, { admin: true }));
+  assert.ok((await fileFor(env.DB, again.copy.id, { admin: true }))?.superseded_at);
+  assert.equal((await fileFor(env.DB, third.copy.id, { admin: true })).superseded_at, null);
   // New words and Required unticked in the same save: nobody to ask
   d = await saveDoc(env.DB, { ...d, body: '- Come to every meeting, and the retreat', sign: false }, { by: FOUNDER, base: 2 });
   assert.deepEqual([d.version, d.sign], [3, false]);
@@ -439,11 +454,11 @@ test('a copy replaced across a kept small change replaces it (taking it off leav
   const wrong = await signWithCopy(env, d.id, pdf('wrong.pdf'), { member: memberOf('sam-ortiz'), version: 1 });
   d = await saveDoc(env.DB, { ...d, body: '- Come to three of the four meetings' }, { by: FOUNDER, base: 1, askAgain: false });
   const right = await signWithCopy(env, d.id, pdf('right.pdf'), { member: memberOf('sam-ortiz'), version: 2 });
-  assert.equal(await fileFor(env.DB, wrong.copy.id, { admin: true }), null, 'the wrong copy is gone, replaced');
+  assert.ok((await fileFor(env.DB, wrong.copy.id, { admin: true }))?.superseded_at, 'the wrong copy is replaced: kept, superseded');
   assert.ok(await unsignDoc(env, d.id, 'sam-ortiz'));
   let x = (await listDocs(env.DB)).find((y) => y.id === d.id);
   assert.deepEqual([x.signed['sam-ortiz'], x.before['sam-ortiz']], [undefined, undefined], 'taken off: unsigned, nothing coming back');
-  assert.equal(await fileFor(env.DB, right.copy.id, { admin: true }), null);
+  assert.ok((await fileFor(env.DB, right.copy.id, { admin: true }))?.superseded_at, 'taken off: its copy kept, superseded');
   // Paused (not required), its words changed, required again: Alex, who signed before, is asked about
   await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera', { version: 2 });
   d = await saveDoc(env.DB, { ...x, sign: false, body: '- Come to every meeting and give $1,000' }, { by: FOUNDER, base: 2 });

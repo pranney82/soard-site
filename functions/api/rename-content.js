@@ -129,11 +129,19 @@ export async function rename(env, { collection, from, to } = {}, userEmail = 'un
   try { await moveVersions(DB, 'team', from, to); } catch {}
   try { await moveRequests(DB, from, to); } catch {}
   // A board member's board records follow them too: their sign-ins and what they did on the board page (Board →
-  // Members), their last visit, signatures, check-ins, votes and asks
+  // Members), their last visit, signatures (this year's, earlier wordings', their signed copies and records), asks to
+  // sign, adopted signature, check-ins, votes and asks. The signing chain is never rewritten: a 'renamed' event says
+  // the old slug is theirs (./_board-sign.js slugsOf)
   if (table === 'team') {
-    for (const t of ['board_signins', 'board_activity', 'board_activity_reports', 'board_seen', 'board_signatures', 'board_checkins', 'board_votes', 'board_asks']) {
+    for (const t of ['board_signins', 'board_activity', 'board_activity_reports', 'board_seen', 'board_signatures', 'board_signatures_earlier', 'board_sign_asks', 'board_member_marks', 'board_checkins', 'board_votes', 'board_asks']) {
       try { await DB.prepare(`UPDATE OR IGNORE ${t} SET slug = ? WHERE slug = ?`).bind(to, from).run(); } catch {}
     }
+    try { await DB.prepare("UPDATE board_files SET slug = ? WHERE slug = ? AND owner_type IN ('signed', 'record')").bind(to, from).run(); } catch {}
+    try {
+      const { appendEvents } = await import('./_board-sign.js');
+      const had = await DB.prepare('SELECT COUNT(*) AS n FROM board_sign_events WHERE slug = ?').bind(from).first();
+      if (Number(had?.n) > 0) await appendEvents(DB, async () => ({ events: [{ kind: 'renamed', slug: to, by: userEmail || '', detail: { from, to } }] }));
+    } catch {}
   }
   if (oldImageId) {
     try { await fetchImpl(`${API(env)}/${oldImageId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${env.CF_IMAGES_TOKEN}` } }); } catch {}

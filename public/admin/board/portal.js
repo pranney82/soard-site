@@ -3656,6 +3656,8 @@ function PeoplePage({ ctx }) {
 // Why a signature didn't go through (the paper changed while they signed), by paper, said until they sign it: the
 // form that was there may be gone (a PDF written in Board meanwhile has "Read and sign" in its place)
 const signTrouble = new Map(); // id → { msg, kind: 'changed' | 'gone', title }
+// The papers this page has said were opened (once each, a year)
+const openedSaid = new Set();
 /** The reason a signature didn't go through, while it's still the case: the paper changed (until they sign), or it went (until it's back) */
 /** A word diff as runs: the words next to each other that changed the same way, one mark */
 const runsOf = (diff) => diff.reduce((out, p) => { const last = out.at(-1); if (last && last.op === p.op) last.w += ` ${p.w}`; else out.push({ ...p }); return out; }, []);
@@ -3689,9 +3691,11 @@ async function sendCopy(docId, picked, version = null, as = '') {
   if (picked.size > 50 * 1024 * 1024) return { ok: false, error: 'That file is over 50 MB. A PDF or a photo of the signed page is plenty.' };
   // An iPhone photo (HEIC) goes as a JPEG, which any browser shows
   let file = picked;
-  if (isHeic(file)) { try { file = await asJpeg(file); } catch { /* sent as it is */ } }
+  let original = null;
+  if (isHeic(file)) { try { file = await asJpeg(file); original = picked; } catch { /* sent as it is */ } }
   const fd = new FormData();
   fd.append('file', file);
+  if (original) fd.append('original', original);
   if (version != null) fd.append('version', String(version));
   if (as) fd.append('as', as);
   try {
@@ -4077,9 +4081,9 @@ function DocumentsPage({ ctx }) {
             ${x.signedByMe ? html`<p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p><${Signed} doc=${x} ctx=${ctx} />`
               : html`${troubleFor(x.id, x) ? html`<p class="bp-doc__changed" role="alert">Not signed yet: ${troubleFor(x.id, x).msg}</p>` : x.signedEarlier ? html`<p class="bp-doc__changed">It changed since you signed: read it, then sign again.</p>` : lastTime(x)}
                 <p class="bp-btns bp-btns--tight"><a class=${`bp-btn bp-btn--sm ${data.me.slug ? 'bp-btn--primary' : ''}`} ...${open(x)}>${data.me.slug ? 'Read and sign' : 'Read it'}</a></p>`}`
-            : html`${!x.signedByMe && x.signedEarlier && !troubleFor(x.id, x) ? html`<p class="bp-doc__changed">It changed since you signed: read it, then sign again.</p>` : lastTime(x)}
-          <p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p>
-          <${SignForm} d=${x} ctx=${ctx} />`}
+            : html`${x.signedByMe ? html`<p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p><${Signed} doc=${x} ctx=${ctx} />`
+              : html`${troubleFor(x.id, x) ? html`<p class="bp-doc__changed" role="alert">Not signed yet: ${troubleFor(x.id, x).msg}</p>` : x.signedEarlier ? html`<p class="bp-doc__changed">It changed since you signed: read it, then sign again.</p>` : lastTime(x)}
+                <p class="bp-btns bp-btns--tight"><a class=${`bp-btn bp-btn--sm ${data.me.slug ? 'bp-btn--primary' : ''}`} href=${`#/documents/${x.id}`}>${data.me.slug ? 'Read and sign' : 'Read it'}</a></p>`}`}
         </div>
       </li>`)}</ul>
     </section>` : null}
@@ -4119,6 +4123,9 @@ function DocPage({ id, ctx }) {
     return () => clearInterval(t);
   }, [id]);
   const doc = data.docs.find((x) => x.id === id);
+  // A paper they sign, opened: said once a year, for its signing record (the server keeps only the first)
+  const opens = doc?.sign && !doc.hidden && data.me.slug ? `${id}:${todayEastern().slice(0, 4)}` : '';
+  useEffect(() => { if (opens && !openedSaid.has(opens)) { openedSaid.add(opens); call({ action: 'opened', docId: id }).catch(() => {}); } }, [opens]);
   const year = todayEastern().slice(0, 4);
   // A paper that's a file (a link to it from an email, from before its words were written or after they were taken
   // out): its page is the file to open, and signing

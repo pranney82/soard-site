@@ -1182,7 +1182,8 @@ try {
       // The cash, then the year beside the cash over time, then the statements, then the tax returns and audits
       ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Tax returns and audits[\s\S]*2025/],
       ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/],
-      ['documents', width === 1440 ? /Board Member Expectations[\s\S]*Read and sign[\s\S]*Conflict of interest policy[\s\S]*Read it[\s\S]*Type your full name to sign it[\s\S]*Every meeting’s files[\s\S]*Balance sheet financials/ : /Board Member Expectations[\s\S]*You added your signed copy[\s\S]*Conflict of interest policy[\s\S]*Signed\s*by Alex Rivera/],
+      // (one way to sign: every paper's on its own page, a PDF too)
+      ['documents', width === 1440 ? /Board Member Expectations[\s\S]*Read and sign[\s\S]*Conflict of interest policy[\s\S]*Read and sign[\s\S]*Every meeting’s files[\s\S]*Balance sheet financials/ : /Board Member Expectations[\s\S]*You added your signed copy[\s\S]*Conflict of interest policy[\s\S]*Signed\s*by Alex Rivera/],
     ]) {
       await alex.goto(`${SITE}/admin/board/#/${p}`, { waitUntil: 'networkidle0' });
       ok(await waitText(alex, re), `${p} shows what it should`);
@@ -1190,6 +1191,10 @@ try {
       await shot(alex, `12-${p}-${width}`);
     }
     if (width === 1440) {
+      ok(await alex.evaluate(() => !document.querySelector('.bp-signlist .bp-sign')), 'Documents has no form to sign: Read and sign opens each paper');
+      // The policy (a PDF): its own page, the file to read and the signing under it
+      await alex.evaluate(() => [...document.querySelectorAll('.bp-signlist li')].find((li) => /Conflict of interest/i.test(li.innerText))?.querySelector('a.bp-btn')?.click());
+      ok(await alex.waitForSelector('.bp-docpage .bp-sign input', { timeout: 6000 }).then(() => true, () => false) && /^#\/documents\/d_/.test(await alex.evaluate(() => location.hash)), 'Read and sign on a PDF opens its own page');
       await clickText(alex, 'button', /^I’ve read it and agree$/);
       ok(await waitText(alex, /Type your full name, first and last, the way you sign it/), 'signing with no name says what to do');
       ok(await alex.$eval('.bp-sign input', (i) => i.placeholder) === 'Your full name', 'the name box is empty until they type (their name in grey read as filled in)');
@@ -1204,6 +1209,9 @@ try {
       // The focus moves a frame after "Signed by…" shows
       ok(await alex.waitForFunction(() => document.activeElement?.classList.contains('bp-signed'), { timeout: 2000 }).then(() => true, () => false), 'the focus goes to “Signed by…”, not the page');
       // The expectations, written in Board: read on their own page, signed at the end (here with the copy signed on paper)
+      // (only the # changes: the list draws a moment after the jump, so its link is waited for)
+      await alex.goto(`${SITE}/admin/board/#/documents`, { waitUntil: 'networkidle0' });
+      await alex.waitForFunction(() => [...document.querySelectorAll('.bp-signlist a')].some((a) => /^Read and sign$/.test(a.textContent.trim())), { timeout: 6000 }).catch(() => {});
       await clickText(alex, 'a', /^Read and sign$/);
       ok(await alex.waitForFunction(() => /^#\/documents\/d_/.test(location.hash), { timeout: 4000 }).then(() => true, () => false)
         && await alex.waitForFunction(() => document.querySelector('.bp-docpage .bp-eyebrow')?.textContent === 'Every board member signs it each year', { timeout: 4000 }).then(() => true, () => false)
@@ -1485,10 +1493,10 @@ try {
   ok(coiAsked.some((t) => /^Ask Alex to sign again\?.*Alex Rivera signed the earlier version for \d{4}\. With Conflict of Interest 2027 it’s a new version/.test(t)) && coiDoc.file.name === 'Conflict of Interest 2027.pdf' && coiDoc.signed['alex-rivera'] && coiDoc.version === 1,
     `a new file on a signed paper asks first, naming who signed (kept here: still signed, the new file a version of its own) (${JSON.stringify(coiAsked)})`);
   await answerAsks(jane);
-  // Sam about to sign the policy's PDF when its words are written in Board: told it didn't go, where the form was
+  // Sam about to sign the policy's PDF on its page when its words are written in Board: told it didn't go, there
   const samDocs = await tab(OTHER, 1440);
-  await samDocs.goto(`${SITE}/admin/board/#/documents`, { waitUntil: 'networkidle0' });
-  const samInput = `#doc-${coiDoc.id} .bp-sign input:not([type="file"])`;
+  await samDocs.goto(`${SITE}/admin/board/#/documents/${coiDoc.id}`, { waitUntil: 'networkidle0' });
+  const samInput = `.bp-docpage .bp-sign input:not([type="file"])`;
   await samDocs.waitForSelector(samInput);
   await samDocs.type(samInput, 'Sam Ortiz');
   await editRow('Conflict of interest policy');
@@ -1497,9 +1505,9 @@ try {
   await jane.waitForFunction(() => (document.querySelector('.rp-edit')?.innerText || '').length > 40, { timeout: 8000 }).catch(() => {});
   await clickText(jane, 'button', /^Save$/);
   await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 8000 }).catch(() => {});
-  await samDocs.evaluate((id) => [...document.querySelectorAll(`#doc-${id} button`)].find((b) => /I’ve read it and agree/.test(b.textContent))?.click(), coiDoc.id);
-  ok(await waitText(samDocs, /Conflict of interest policy[\s\S]*Not signed yet: It changed while you had it open\. Read it again, then sign\.[\s\S]*Read and sign/) && !(await listDocs(DB)).find((d) => d.id === coiDoc.id).signed['sam-ortiz'],
-    'a signature that didn’t go (its PDF written in Board meanwhile) says so where the paper is now, with Read and sign');
+  await samDocs.evaluate(() => [...document.querySelectorAll('.bp-docpage button')].find((b) => /I’ve read it and agree/.test(b.textContent))?.click());
+  ok(await waitText(samDocs, /It changed while you had it open\. Read it again, then sign\./) && !(await listDocs(DB)).find((d) => d.id === coiDoc.id).signed['sam-ortiz'],
+    'a signature that didn’t go (its PDF written in Board meanwhile) says so on its page, with its words to read');
   await samDocs.close();
   // A member who signed prints the paper with their signature on it, not blank lines
   const signedPrint = await tab(MEMBER, 1280);

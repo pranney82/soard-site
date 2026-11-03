@@ -46,7 +46,7 @@
 
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
-  setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, fillDocWords, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
+  setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, fillDocWords, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, fileLocked, liveNumbers, takeSnapshot, sendPacket,
   memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, askToSign, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
   chairLive, createPractice, resetPractice,
 } from './_board.js';
@@ -58,7 +58,10 @@ import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-ma
 import { sendInvite, cancelInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites } from './_board-invite.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { readMinutesInto } from './_board-minutes.js';
-import { activityOverview, memberActivity } from './_board-activity.js';
+import { activityOverview, memberActivity, deviceOf, accessIat } from './_board-activity.js';
+import { evidenceOf } from './_board-sign.js';
+// Where an admin's change to a signature came from: its evidence, under the admin's own name
+const evidence = (context) => evidenceOf(context, { deviceOf, accessIat });
 import { shorterFor } from './_board-shorter.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
@@ -168,7 +171,8 @@ export async function onRequestPost(context) {
       if (form.get('signFor')) {
         const docId = String(form.get('signFor'));
         if (!ID.test(docId)) return fail('Which document?');
-        const signed = await signWithCopy(env, docId, form.get('file'), { slug: String(form.get('slug') || ''), by: me, replace: form.get('replace') === '1' });
+        const original = form.get('original');
+        const signed = await signWithCopy(env, docId, form.get('file'), { slug: String(form.get('slug') || ''), by: me, replace: form.get('replace') === '1', evidence: evidence(context), original: original && typeof original.arrayBuffer === 'function' ? original : null });
         await audit(env, me, 'updated', `Board signature added for ${signed.name}`);
         return Response.json({ ok: true, signed, doc: (await listDocs(env.DB)).find((d) => d.id === docId) });
       }
@@ -189,8 +193,11 @@ export async function onRequestPost(context) {
         await audit(env, me, 'updated', `Board document saved with a new file: ${doc.title}`);
         return Response.json({ ok: true, doc });
       }
+      // A meeting's file only: a paper's file goes with its save (above), a signed copy with its signature, and a
+      // signing record is the site's own
+      if (String(form.get('ownerType') || '') !== 'meeting') return fail('Add a paper’s file from Documents, and a signed copy from Who’s signed', 400);
       const file = await putFile(env, {
-        ownerType: String(form.get('ownerType') || ''), ownerId: String(form.get('ownerId') || ''), file: form.get('file'),
+        ownerType: 'meeting', ownerId: String(form.get('ownerId') || ''), file: form.get('file'),
         kind: String(form.get('kind') || 'other'), staffOnly: form.get('staffOnly') === 'true', by: me,
       });
       await audit(env, me, 'created', `Board file added: ${file.name}`);
@@ -271,18 +278,22 @@ export async function onRequestPost(context) {
       case 'unsign': {
         const docId = String(body.docId || '');
         if (!ID.test(docId)) return fail('Which document?');
-        if (!(await unsignDoc(env, docId, String(body.slug || '')))) return fail('That signature is gone', 404);
+        if (!(await unsignDoc(env, docId, String(body.slug || ''), undefined, { by: me, evidence: evidence(context), reason: String(body.reason || '').slice(0, 500) }))) return fail('That signature is gone', 404);
         await audit(env, me, 'deleted', 'Board signature taken off');
         return Response.json({ ok: true, doc: (await listDocs(env.DB)).find((d) => d.id === docId) });
       }
       case 'update-file':
         needId();
         return Response.json({ ok: true, file: await updateFile(env.DB, id, { kind: body.kind, staffOnly: body.staffOnly, name: body.name }) });
-      case 'delete-file':
+      case 'delete-file': {
         needId();
+        // (a signed copy, a record, or a signed paper's file is SOARD's record: kept)
+        const locked = await fileLocked(env.DB, id);
+        if (locked) return fail(locked, 409, { kept: true });
         await deleteFile(env, id);
         await audit(env, me, 'deleted', 'Board file deleted');
         return Response.json({ ok: true });
+      }
       case 'save-settings': {
         const s = await saveSettings(env.DB, body.settings || {}, me);
         await audit(env, me, 'updated', 'Board settings saved');

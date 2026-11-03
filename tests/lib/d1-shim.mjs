@@ -1,7 +1,7 @@
 /**
  * Minimal D1 shim over sql.js (WebAssembly SQLite) for Node tests.
  * Supports the subset the functions use: prepare().bind().first()/all()/run(),
- * batch(), exec(). Positional "?" params only.
+ * batch() (one transaction, all or nothing, as D1's is), exec(). Positional "?" params only.
  */
 import initSqlJs from 'sql.js';
 import { readFileSync } from 'node:fs';
@@ -25,6 +25,8 @@ export async function createD1({ schemaFiles = [], schemaSql = [] } = {}) {
   for (const s of schemaSql) db.exec(s);
 
   const makeStmt = (sql, params) => ({
+    _sql: sql,
+    _params: params,
     bind: (...p) => { checkLikePatterns(sql, p); return makeStmt(sql, p); },
     async first(col) {
       const st = db.prepare(sql);
@@ -50,7 +52,19 @@ export async function createD1({ schemaFiles = [], schemaSql = [] } = {}) {
 
   return {
     prepare: (sql) => makeStmt(sql, []),
-    async batch(stmts) { const out = []; for (const s of stmts) out.push(await s.run()); return out; },
+    // One transaction, run without yielding (nothing else interleaves), rolled back whole when a statement fails
+    async batch(stmts) {
+      const out = [];
+      db.run('BEGIN');
+      try {
+        for (const s of stmts) { db.run(s._sql, s._params); out.push({ success: true, meta: { changes: db.getRowsModified() } }); }
+        db.run('COMMIT');
+      } catch (err) {
+        db.run('ROLLBACK');
+        throw err;
+      }
+      return out;
+    },
     async exec(sql) { db.exec(sql); return { count: 1 }; },
     _db: db,
   };

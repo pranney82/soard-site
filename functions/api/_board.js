@@ -57,6 +57,7 @@ import { bankBalances, plaidConfigured, bankFacts } from './_plaid.js';
 import { booksNow, booksFacts } from './_quickbooks.js';
 import { giftsNow } from './_board-gifts.js';
 import { limit } from './_rate-limit.js';
+import { SIG_EVIDENCE, putSignature, addColumns, appendEvents, sha256Hex } from './_board-sign.js';
 
 export const SITE = 'https://sunshineonaranneyday.com';
 export const boardFiles = (env) => env?.BOARD_FILES || env?.FILES || null;
@@ -78,6 +79,11 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS board_signatures_earlier (doc_id TEXT NOT NULL, slug TEXT NOT NULL, year INTEGER NOT NULL, version INTEGER NOT NULL, name TEXT, at TEXT, how TEXT, file_id TEXT, drive_id TEXT, drive_name TEXT, added_by TEXT, PRIMARY KEY (doc_id, slug, year, version))',
   'CREATE TABLE IF NOT EXISTS board_doc_versions (doc_id TEXT NOT NULL, version INTEGER NOT NULL, body TEXT, at TEXT, by TEXT, PRIMARY KEY (doc_id, version))',
   'CREATE TABLE IF NOT EXISTS board_seen (slug TEXT PRIMARY KEY, at TEXT)',
+  // Every step of signing, in one chain (./_board-sign.js): append-only, never pruned, each over the one before it
+  'CREATE TABLE IF NOT EXISTS board_sign_events (seq INTEGER PRIMARY KEY, prev TEXT NOT NULL UNIQUE, hash TEXT NOT NULL, doc_id TEXT, slug TEXT NOT NULL, year INTEGER, version INTEGER, kind TEXT NOT NULL, at TEXT NOT NULL, by TEXT, ip TEXT, device TEXT, detail TEXT)',
+  'CREATE INDEX IF NOT EXISTS idx_board_sign_events_who ON board_sign_events(slug, year)',
+  // A member's adopted signature and initials, and when they agreed to sign electronically
+  'CREATE TABLE IF NOT EXISTS board_member_marks (slug TEXT PRIMARY KEY, mark TEXT, initials TEXT, consent_at TEXT, consent_ip TEXT, consent_hash TEXT, updated_at TEXT)',
   'CREATE TABLE IF NOT EXISTS board_cash (month TEXT PRIMARY KEY, total REAL, accounts TEXT, at TEXT)',
   // The admins' practice meetings (simulated members): a table of their own, so nothing that reads board_meetings
   // (the board page, the calendar, invites, emails, Drive, mail, Meet attendance, drafts) can ever reach one
@@ -90,18 +96,19 @@ const _ready = new WeakSet();
 export async function ensureSchema(DB) {
   if (_ready.has(DB)) return;
   for (const s of SCHEMA) await DB.prepare(s).run();
-  // How a signature came (SIGNED_BY), its copy, and who added it: Nov 2026
-  for (const col of ['how', 'file_id', 'drive_id', 'drive_name', 'added_by']) {
-    try { await DB.prepare(`ALTER TABLE board_signatures ADD COLUMN ${col} TEXT`).run(); } catch { /* already there */ }
-  }
-  // Which wording of a paper written in Board it signs (cleanDoc version)
-  try { await DB.prepare('ALTER TABLE board_signatures ADD COLUMN version INTEGER').run(); } catch { /* already there */ }
-  // What a wording was: words read from a file, or a new file the board signs again
-  try { await DB.prepare('ALTER TABLE board_doc_versions ADD COLUMN note TEXT').run(); } catch { /* already there */ }
-  // A paper's PDF's words, read once, for finding it by them on the board page ('' when it has none: a scan)
-  try { await DB.prepare('ALTER TABLE board_files ADD COLUMN words TEXT').run(); } catch { /* already there */ }
-  // …and every meeting file's, read by the reader words_v names (./_board-file-words.js)
-  try { await DB.prepare('ALTER TABLE board_files ADD COLUMN words_v INTEGER').run(); } catch { /* already there */ }
+  // How a signature came (SIGNED_BY), its copy, who added it, which wording (cleanDoc version), and its evidence
+  // (./_board-sign.js SIG_EVIDENCE), the same in both signature tables
+  const sig = { how: 'TEXT', file_id: 'TEXT', drive_id: 'TEXT', drive_name: 'TEXT', added_by: 'TEXT', version: 'INTEGER', ...SIG_EVIDENCE };
+  await addColumns(DB, 'board_signatures', sig);
+  await addColumns(DB, 'board_signatures_earlier', sig);
+  // What a wording was (words read from a file, a new file), and its SHA-256
+  await addColumns(DB, 'board_doc_versions', { note: 'TEXT', hash: 'TEXT' });
+  // A paper's PDF's words (for finding it by them; and every meeting file's, read by the reader words_v names,
+  // ./_board-file-words.js); whose a signed copy or record is (`slug`: access never rests on
+  // the signature row); its SHA-256; when it stopped counting (never deleted); an iPhone photo's original
+  await addColumns(DB, 'board_files', { words: 'TEXT', words_v: 'INTEGER', slug: 'TEXT', sha256: 'TEXT', superseded_at: 'TEXT', original_id: 'TEXT' });
+  // (copies from before `slug`: whose each is, from the signature it was added for)
+  await DB.prepare("UPDATE board_files SET slug = COALESCE((SELECT slug FROM board_signatures WHERE file_id = board_files.id), (SELECT slug FROM board_signatures_earlier WHERE file_id = board_files.id)) WHERE owner_type = 'signed' AND slug IS NULL").run().catch(() => {});
   _ready.add(DB);
 }
 
@@ -687,7 +694,8 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
     if (changed) { next.wordsAt = nowIso(); next.wordsBy = String(by || '').slice(0, 200); }
     // (its note: where its words came from, or the file it was; and that the board signed again from it)
     const note = [changed ? (wordsFrom ? `From ${String(wordsFrom).slice(0, 200)}` : '') : `A new file: ${String(newFile).slice(0, 200)}`, askAgain === true ? 'The board signs again from here' : ''].filter(Boolean).join(' · ');
-    await DB.prepare('INSERT OR REPLACE INTO board_doc_versions (doc_id, version, body, at, by, note) VALUES (?, ?, ?, ?, ?, ?)').bind(d.id, next.version, body, nowIso(), String(by || '').slice(0, 200), note).run();
+    // (with its SHA-256: what a signature on this wording signed, exactly)
+    await DB.prepare('INSERT OR REPLACE INTO board_doc_versions (doc_id, version, body, at, by, note, hash) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(d.id, next.version, body, nowIso(), String(by || '').slice(0, 200), note, body ? await sha256Hex(body) : null).run();
     if (askAgain === true) next.signFrom = next.version;
     // A page still on an earlier version re-reads before signing, unless the admin said the change doesn't need it
     if (askAgain !== false) next.readFrom = next.version;
@@ -712,8 +720,24 @@ export async function docVersions(DB, id, year = thisYear()) {
     .map((r) => ({ version: Number(r.version), body: r.body || '', at: r.at || '', by: r.by || '', note: r.note || '', signed: counts[Number(r.version)] || 0 }));
 }
 
+/** Why a file can't be deleted ('' when it can): a signed copy or record, or a paper's file a signature rests on */
+export async function fileLocked(DB, id) {
+  await ensureSchema(DB);
+  const row = await DB.prepare('SELECT owner_type, owner_id FROM board_files WHERE id = ?').bind(id).first();
+  if (!row) return '';
+  if (row.owner_type === 'signed' || row.owner_type === 'record') return 'A signed copy is SOARD’s record of a signature, so it’s kept';
+  if (row.owner_type === 'doc' && (await everSigned(DB, row.owner_id))) return 'The board signed this paper, so its file is kept with their signatures. Add a new file instead; this one stays on record.';
+  return '';
+}
+/** Has anyone ever signed this paper (any year, any wording), or been asked to, or taken a signature off? */
+async function everSigned(DB, id) {
+  const r = await DB.prepare('SELECT (SELECT COUNT(*) FROM board_signatures WHERE doc_id = ?1) + (SELECT COUNT(*) FROM board_signatures_earlier WHERE doc_id = ?1) + (SELECT COUNT(*) FROM board_sign_events WHERE doc_id = ?1) AS n').bind(id).first();
+  return Number(r?.n) > 0;
+}
+
 export async function deleteDoc(env, id) {
   await ensureSchema(env.DB);
+  if (await everSigned(env.DB, id)) throw Object.assign(new Error('The board has signed this paper, so it’s kept as SOARD’s record. Take it off the board page instead (the switch on its row), or untick Required.'), { status: 409, extra: { signed: true } });
   // Its file, and the signed copies kept beside it
   const files = (await env.DB.prepare("SELECT id FROM board_files WHERE owner_type IN ('doc', 'signed') AND owner_id = ?").bind(id).all()).results || [];
   for (const f of files) await deleteFile(env, f.id);
@@ -732,23 +756,74 @@ const notWhatTheyRead = (doc, version) => {
 };
 /** The version a signature is on: the one they read (a small change since doesn't need it read again), else the paper's */
 const signedOn = (doc, version) => (version == null || version === '' ? doc.version : Math.min(doc.version, Math.max(Number(version), doc.readFrom)));
-async function writeSignature(DB, { docId, slug, year, name, how, fileId = null, driveId = null, driveName = null, by = '', at = nowIso(), version = 0, signFrom = 0 }, { keep = false } = {}) {
-  if (!keep) {
+/**
+ * The SHA-256 of what a member reads to sign a paper now: its words, else its file's bytes (read once and kept on
+ * the file's row). `store`: { DB, bucket } (no bucket: only a hash already kept)
+ */
+export async function contentHash({ DB, bucket = null }, doc) {
+  if (doc?.body) return sha256Hex(doc.body);
+  if (!doc?.file?.id) return '';
+  const row = await DB.prepare('SELECT sha256, r2_key FROM board_files WHERE id = ?').bind(doc.file.id).first();
+  if (row?.sha256 || !bucket || !row?.r2_key) return row?.sha256 || '';
+  const obj = await bucket.get(row.r2_key);
+  if (!obj) return '';
+  const hash = await sha256Hex(new Uint8Array(await new Response(obj.body).arrayBuffer()));
+  await DB.prepare('UPDATE board_files SET sha256 = ? WHERE id = ?').bind(hash, doc.file.id).run();
+  return hash;
+}
+const storeOf = (env) => ({ DB: env.DB, bucket: boardFiles(env) });
+
+/**
+ * A signature written with its events in one batch (./_board-sign.js appendEvents): the row it replaces goes to
+ * board_signatures_earlier when it no longer counts (the board signed again), else into the chain whole
+ * ('superseded'), its copy marked superseded, never deleted. `keep`: one already there stays (a Drive copy never
+ * takes the place of one they gave). `same(was)`: a signature already there that this one repeats (a second tap of
+ * Sign) is returned instead. `evidence`: { ip, device, signinAt, signerEmail } → { written, row } | { written: false, was, same }
+ */
+async function writeSignature(DB, sig, { keep = false, same = null } = {}) {
+  const { docId, slug, year } = sig;
+  const e = sig.evidence || {};
+  return appendEvents(DB, async () => {
     const was = await DB.prepare('SELECT * FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).first();
-    if (was && (Number(was.version) || 0) < signFrom) {
-      await DB.prepare('INSERT OR REPLACE INTO board_signatures_earlier (doc_id, slug, year, version, name, at, how, file_id, drive_id, drive_name, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-        .bind(docId, slug, year, Number(was.version) || 0, was.name, was.at, was.how, was.file_id, was.drive_id, was.drive_name, was.added_by).run();
+    if (was && keep) return { result: { written: false, was } };
+    const repeat = was && same ? same(was) : null;
+    if (repeat) return { result: { written: false, was, same: repeat } };
+    const at = sig.at || nowIso();
+    const row = {
+      doc_id: docId, slug, year, version: sig.version || 0, name: sig.name, at, how: sig.how, file_id: sig.fileId || null,
+      drive_id: sig.driveId || null, drive_name: sig.driveName || null, added_by: sig.by || '',
+      ip: e.ip || null, device: e.device || null, signin_at: e.signinAt || null, signer_email: e.signerEmail || null,
+      hash: sig.hash || null, fields: sig.fields ? JSON.stringify(sig.fields) : null, mark: sig.mark ? JSON.stringify(sig.mark) : null,
+      consent_hash: sig.consentHash || null, process_v: sig.processV ?? null, record_id: null, record_hash: null, record_claim_at: null, record_tries: 0,
+    };
+    const stmts = [];
+    const events = [];
+    if (was) {
+      const wasV = Number(was.version) || 0;
+      if (wasV < (sig.signFrom || 0)) {
+        // (its wording before the board signed again: kept as it was, its copy too)
+        const there = await DB.prepare('SELECT * FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? AND version = ?').bind(docId, slug, year, wasV).first();
+        if (there) events.push({ kind: 'superseded', docId, slug, year, version: wasV, at, by: row.added_by, detail: { row: there } });
+        stmts.push(putSignature(DB, 'board_signatures_earlier', { ...was, version: wasV }));
+      } else {
+        events.push({ kind: 'superseded', docId, slug, year, version: wasV, at, by: row.added_by, detail: { row: was } });
+        if (was.file_id && was.file_id !== row.file_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL').bind(at, was.file_id));
+      }
     }
-  }
-  return DB.prepare(`INSERT OR ${keep ? 'IGNORE' : 'REPLACE'} INTO board_signatures (doc_id, slug, year, name, at, how, file_id, drive_id, drive_name, added_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .bind(docId, slug, year, name, at, how, fileId, driveId, driveName, by, version).run();
+    stmts.push(putSignature(DB, 'board_signatures', row));
+    events.push({
+      kind: 'signed', docId, slug, year, version: row.version, at, by: row.added_by, ip: e.ip, device: e.device,
+      detail: { how: row.how, name: row.name, hash: row.hash, file: row.file_id, drive: row.drive_id, signerEmail: row.signer_email, signinAt: row.signin_at, ...(sig.detail || {}) },
+    });
+    return { stmts, events, result: { written: true, row } };
+  });
 }
 
 /**
  * A member's signature for this year, with their own name typed (../../public/admin/board-shared.js signsAs).
  * A signed copy already in (theirs, or one in Drive) stays: it's the better record
  */
-export async function signDoc(DB, docId, member, name, { version = null } = {}) {
+export async function signDoc(DB, docId, member, name, { version = null, evidence = {}, bucket = null } = {}) {
   await ensureSchema(DB);
   const doc = (await listDocs(DB)).find((d) => d.id === docId);
   if (!doc?.shared || !doc.sign) throw noSignature(doc);
@@ -763,7 +838,11 @@ export async function signDoc(DB, docId, member, name, { version = null } = {}) 
   const year = thisYear();
   const at = nowIso();
   const on = signedOn(doc, version);
-  await writeSignature(DB, { docId, slug: member.slug, year, name: typed, how: 'typed', by: member.email || '', at, version: on, signFrom: doc.signFrom });
+  const hash = await contentHash({ DB, bucket }, doc);
+  const r = await writeSignature(DB, { docId, slug: member.slug, year, name: typed, how: 'typed', by: member.email || '', at, version: on, signFrom: doc.signFrom, evidence, hash },
+    { same: (was) => (was.how === 'typed' && (Number(was.version) || 0) === on ? was : null) });
+  // (Sign pressed twice, or from two devices: the first one is the signature)
+  if (r?.same) return { docId, year, name: r.same.name, at: r.same.at, how: 'typed', version: on, copy: null, drive: null };
   return { docId, year, name: typed, at, how: 'typed', version: on, copy: null, drive: null };
 }
 
@@ -773,7 +852,7 @@ export async function signDoc(DB, docId, member, name, { version = null } = {}) 
  * it replaces a copy added for them before. A PDF or a photo of the signed page. `version`: the wording on the
  * member's page (as signDoc). → { docId, year, name, at, how, copy, drive }
  */
-export async function signWithCopy(env, docId, file, { member = null, slug = '', by = '', version = null, replace = false } = {}) {
+export async function signWithCopy(env, docId, file, { member = null, slug = '', by = '', version = null, replace = false, evidence = {}, original = null } = {}) {
   await ensureSchema(env.DB);
   const doc = (await listDocs(env.DB)).find((d) => d.id === docId);
   if (!doc?.sign || (member && !doc.shared)) throw noSignature(doc);
@@ -790,13 +869,14 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
     if (!type || !(type === 'application/pdf' || type.startsWith('image/'))) throw Object.assign(new Error('A signed copy is a PDF, or a photo of the signed page'), { status: 415 });
   }
   const year = thisYear();
-  const before = await env.DB.prepare('SELECT file_id, version FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, who.slug, year).first();
-  const copy = await putFile(env, { ownerType: 'signed', ownerId: docId, file, staffOnly: true, by: by || who.email || '' });
+  // (an iPhone photo: the HEIC as it was taken is the record, the JPEG beside it what a browser shows)
+  const kept = original && typeof original.arrayBuffer === 'function' ? await putFile(env, { ownerType: 'signed', ownerId: docId, file: original, staffOnly: true, by: by || who.email || '', slug: who.slug }) : null;
+  const copy = await putFile(env, { ownerType: 'signed', ownerId: docId, file, staffOnly: true, by: by || who.email || '', slug: who.slug, originalId: kept?.id || null });
   const at = nowIso();
   const on = member ? signedOn(doc, version) : doc.version;
-  await writeSignature(env.DB, { docId, slug: who.slug, year, name: who.name, how: member ? 'copy' : 'staff', fileId: copy.id, by: by || who.email || '', at, version: on, signFrom: doc.signFrom });
-  // (the copy before it, while it still counted, is replaced: gone; one from before the board signed again is kept)
-  if (before?.file_id && before.file_id !== copy.id && (Number(before.version) || 0) >= doc.signFrom) await deleteFile(env, before.file_id);
+  const hash = await contentHash(storeOf(env), doc);
+  // (the copy it replaces is marked superseded inside writeSignature: kept, never deleted)
+  await writeSignature(env.DB, { docId, slug: who.slug, year, name: who.name, how: member ? 'copy' : 'staff', fileId: copy.id, by: by || who.email || '', at, version: on, signFrom: doc.signFrom, evidence, hash, detail: { copySha256: copy.sha256, original: kept ? { id: kept.id, sha256: kept.sha256 } : null } });
   return { docId, year, name: who.name, at, how: member ? 'copy' : 'staff', version: on, copy, drive: null };
 }
 
@@ -806,26 +886,34 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
  */
 export async function signFromDrive(DB, { docId, slug, year, name, driveId, driveName, at, by = 'Google Drive', version = 0 }, { replace = false } = {}) {
   await ensureSchema(DB);
-  await writeSignature(DB, { docId, slug, year, name, how: 'drive', driveId, driveName, by, at: at || nowIso(), version }, { keep: !replace });
+  await writeSignature(DB, { docId, slug, year, name, how: 'drive', driveId, driveName, by, at: at || nowIso(), version, detail: { driveName } }, { keep: !replace });
 }
 
 const DB_doc = async (DB, id) => { const r = await DB.prepare('SELECT data FROM board_docs WHERE id = ?').bind(id).first(); return r ? cleanDoc(parse(r.data)) : null; };
-/** A signature taken off (a copy added for the wrong member, say): its copy goes with it */
-export async function unsignDoc(env, docId, slug, year = thisYear()) {
+/**
+ * A signature taken off (a copy added for the wrong member, say): the row goes into the chain whole ('taken-off'),
+ * its copy marked superseded (kept), the signature before it on an earlier wording back in its place. `by`, `evidence`: the admin taking it off → { row, earlier } | false
+ */
+export async function unsignDoc(env, docId, slug, year = thisYear(), { by = '', evidence = {}, reason = '' } = {}) {
   await ensureSchema(env.DB);
-  const row = await env.DB.prepare('SELECT * FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).first();
-  if (!row) return false;
-  await env.DB.prepare('DELETE FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).run();
-  if (row.file_id) await deleteFile(env, row.file_id);
-  const doc = await DB_doc(env.DB, docId);
-  const counted = (Number(row.version) || 0) >= (doc?.signFrom || 0);
-  const earlier = counted ? await env.DB.prepare('SELECT * FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? ORDER BY version DESC LIMIT 1').bind(docId, slug, year).first() : null;
-  if (earlier) {
-    await env.DB.prepare('INSERT OR REPLACE INTO board_signatures (doc_id, slug, year, name, at, how, file_id, drive_id, drive_name, added_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .bind(docId, slug, year, earlier.name, earlier.at, earlier.how, earlier.file_id, earlier.drive_id, earlier.drive_name, earlier.added_by, earlier.version).run();
-    await env.DB.prepare('DELETE FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? AND version = ?').bind(docId, slug, year, earlier.version).run();
-  }
-  return true;
+  const DB = env.DB;
+  const done = await appendEvents(DB, async () => {
+    const row = await DB.prepare('SELECT * FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).first();
+    if (!row) return { result: false };
+    const doc = await DB_doc(DB, docId);
+    const counted = (Number(row.version) || 0) >= (doc?.signFrom || 0);
+    const earlier = counted ? await DB.prepare('SELECT * FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? ORDER BY version DESC LIMIT 1').bind(docId, slug, year).first() : null;
+    const at = nowIso();
+    const stmts = [DB.prepare('DELETE FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year)];
+    if (row.file_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL').bind(at, row.file_id));
+    if (earlier) {
+      stmts.push(putSignature(DB, 'board_signatures', earlier));
+      stmts.push(DB.prepare('DELETE FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? AND version = ?').bind(docId, slug, year, earlier.version));
+    }
+    const events = [{ kind: 'taken-off', docId, slug, year, version: Number(row.version) || 0, at, by, ip: evidence.ip, device: evidence.device, detail: { row, reason: String(reason || '').slice(0, 500), restored: earlier ? Number(earlier.version) || 0 : null } }];
+    return { stmts, events, result: { row, earlier } };
+  });
+  return done || false;
 }
 
 // ─── Files ──────────────────────────────────────────────────────────
@@ -857,12 +945,16 @@ const EXT_OF = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '
  * Store an uploaded file for a meeting, a document, or a member's signed copy of a document (`signed`, always
  * staff-only: signWithCopy) → its row as the admin shows it
  */
-export async function putFile(env, { ownerType, ownerId, file, kind = 'other', staffOnly = false, by = '' }) {
+export async function putFile(env, { ownerType, ownerId, file, kind = 'other', staffOnly = false, by = '', slug = null, originalId = null }) {
   await ensureSchema(env.DB);
   const bucket = boardFiles(env);
   if (!bucket) throw Object.assign(new Error('File storage isn’t set up (FILES)'), { status: 503 });
-  if (!['meeting', 'doc', 'signed'].includes(ownerType) || !ID.test(String(ownerId || ''))) throw Object.assign(new Error('What is this file for?'), { status: 400 });
-  if (ownerType === 'signed') staffOnly = true;
+  if (!['meeting', 'doc', 'signed', 'record'].includes(ownerType) || !ID.test(String(ownerId || ''))) throw Object.assign(new Error('What is this file for?'), { status: 400 });
+  // A signed copy or a signing record: staff-only, and always whose it is
+  if (ownerType === 'signed' || ownerType === 'record') {
+    staffOnly = true;
+    if (!slug) throw Object.assign(new Error('Whose is it?'), { status: 400 });
+  }
   const owner = ownerType === 'meeting'
     ? await env.DB.prepare('SELECT id FROM board_meetings WHERE id = ?').bind(ownerId).first()
     : await env.DB.prepare('SELECT id FROM board_docs WHERE id = ?').bind(ownerId).first();
@@ -880,9 +972,10 @@ export async function putFile(env, { ownerType, ownerId, file, kind = 'other', s
   const key = `board/${ownerType}/${ownerId}/${id}-${safeName(name)}`;
   await bucket.put(key, bytes, { httpMetadata: { contentType: type } });
   const fileKind = (ownerType === 'meeting' ? FILE_KINDS.map((k) => k.id) : ['other']).includes(kind) ? kind : 'other';
-  await env.DB.prepare('INSERT INTO board_files (id, owner_type, owner_id, r2_key, name, type, size, kind, staff_only, at, by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind(id, ownerType, ownerId, key, name, type, bytes.byteLength, fileKind, staffOnly ? 1 : 0, nowIso(), by).run();
-  return { id, name, type, size: bytes.byteLength, kind: fileKind, staffOnly: !!staffOnly, at: nowIso() };
+  const sha256 = await sha256Hex(new Uint8Array(bytes));
+  await env.DB.prepare('INSERT INTO board_files (id, owner_type, owner_id, r2_key, name, type, size, kind, staff_only, at, by, slug, sha256, original_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, ownerType, ownerId, key, name, type, bytes.byteLength, fileKind, staffOnly ? 1 : 0, nowIso(), by, slug, sha256, originalId).run();
+  return { id, name, type, size: bytes.byteLength, kind: fileKind, staffOnly: !!staffOnly, at: nowIso(), sha256 };
 }
 
 export async function updateFile(DB, id, { kind, staffOnly, name } = {}) {
@@ -938,8 +1031,11 @@ export async function fileFor(DB, id, { admin = false, member = null } = {}) {
   const row = await DB.prepare('SELECT * FROM board_files WHERE id = ?').bind(id).first();
   if (!row) return null;
   if (admin) return row;
-  if (row.owner_type === 'signed') {
-    const sig = member?.slug ? await DB.prepare('SELECT slug FROM board_signatures WHERE file_id = ?').bind(id).first() : null;
+  if (row.owner_type === 'signed' || row.owner_type === 'record') {
+    if (!member?.slug) return null;
+    if (row.slug) return row.slug === member.slug ? row : null;
+    // (a copy from before files said whose: the signature it was added for, this year's or an earlier wording's)
+    const sig = await DB.prepare('SELECT slug FROM board_signatures WHERE file_id = ?1 UNION SELECT slug FROM board_signatures_earlier WHERE file_id = ?1').bind(id).first();
     return sig && sig.slug === member.slug ? row : null;
   }
   if (row.staff_only) return null;
@@ -1756,6 +1852,22 @@ export function signAskEmail({ name = '', email = '', papers = [], from = '', fi
   };
 }
 
+/**
+ * A member opening a paper they sign each year, kept once a year (the first time): evidence they had it in front of
+ * them, on the record page (never on Members: Peter, Nov 3 2026, no activity there) → true when it was the first
+ */
+export async function noteOpened(DB, docId, member, evidence = {}) {
+  await ensureSchema(DB);
+  const doc = (await listDocs(DB)).find((d) => d.id === docId);
+  if (!doc?.sign || !doc.shared || !member?.slug) return false;
+  const year = thisYear();
+  return appendEvents(DB, async () => {
+    const had = await DB.prepare("SELECT seq FROM board_sign_events WHERE kind = 'opened' AND doc_id = ? AND slug = ? AND year = ? LIMIT 1").bind(docId, member.slug, year).first();
+    if (had) return { result: false };
+    return { events: [{ kind: 'opened', docId, slug: member.slug, year, version: doc.version, by: evidence.signerEmail || member.email || '', ip: evidence.ip, device: evidence.device }], result: true };
+  });
+}
+
 /** Who has been asked to sign this year, and when last: { slug: { at, by, n } } */
 export async function signAsks(DB, year = thisYear()) {
   await ensureSchema(DB);
@@ -1801,9 +1913,11 @@ export async function askToSign(env, { slugs = null, by = '', replyTo = [], to =
   const unsure = r.failed > 0 && r.errors.some((e) => !/^Resend \d+:/.test(String(e)) || /^Resend 50[234]:/.test(String(e)));
   if (r.sent || unsure) {
     const at = nowIso();
-    for (const p of recipients) {
-      await env.DB.prepare('INSERT INTO board_sign_asks (slug, year, at, by, n) VALUES (?, ?, ?, ?, 1) ON CONFLICT(slug, year) DO UPDATE SET at = excluded.at, by = excluded.by, n = board_sign_asks.n + 1').bind(p.slug, year, at, String(by || '').slice(0, 200)).run();
-    }
+    // (each ask in the chain too: about every paper they have to sign, so no one paper's)
+    await appendEvents(env.DB, async () => ({
+      stmts: recipients.map((p) => env.DB.prepare('INSERT INTO board_sign_asks (slug, year, at, by, n) VALUES (?, ?, ?, ?, 1) ON CONFLICT(slug, year) DO UPDATE SET at = excluded.at, by = excluded.by, n = board_sign_asks.n + 1').bind(p.slug, year, at, String(by || '').slice(0, 200))),
+      events: recipients.map((p) => ({ kind: 'asked', docId: null, slug: p.slug, year, at, by, detail: { to: p.email, papers: papersOf(p.slug).map((x) => x.id), unsure: unsure || undefined } })),
+    }));
   }
   return { sent: r.sent, failed: r.failed, errors: r.errors, unsure: unsure || undefined, ...base };
 }
