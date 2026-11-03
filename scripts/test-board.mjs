@@ -1534,14 +1534,14 @@ try {
   // (said along the top on every slide it's anyone's, an item's or a document's, never drawn in the slide again)
   // and a slide's big title that fits its lines is drawn whole, its last line's g, y and p never cut by the clamp
   // (screen.js useFit data-whole; Peter: "the g and y are cut off!")
-  const spots = { stage: new Set(), rail: new Set(), floor: new Set(), floorOn: 0, inSlide: [], titles: 0, cut: [] };
+  const spots = { stage: new Set(), rail: new Set(), floor: new Set(), floorOn: 0, inSlide: [], titles: 0, cut: [], small: [] };
   let roll = null;
   const note = async () => {
-    const at = await scr.evaluate(() => { const f = document.querySelector('.bs-top > .bs-floor')?.getBoundingClientRect(); return { stage: JSON.stringify(document.querySelector('.bs-stage')?.getBoundingClientRect()), rail: document.querySelector('.bs-rail__parts li:last-child')?.getBoundingClientRect().right, faces: document.querySelectorAll('.bs-faces__one').length, title: document.querySelector('.bs-item__title')?.textContent || '', count: document.querySelector('.bs-roll')?.textContent || '', floor: f ? `${Math.round(f.left)},${Math.round(f.top)}` : '', kind: [...document.querySelector('.bs').classList].find((c) => c.startsWith('bs--')) || '', inSlide: document.querySelectorAll('.bs-stage .bs-who, .bs-stage .bs-item__aside .bs-face, .bs-stage .bs-item__lead .bs-face, .bs-stage .bs-chapter__by').length, titles: document.querySelectorAll('.bs-stage .bs-fit').length, cut: [...document.querySelectorAll('.bs-stage .bs-fit')].filter((t) => getComputedStyle(t).overflow !== 'visible').map((t) => t.textContent.trim().slice(0, 40)) }; });
+    const at = await scr.evaluate(() => { const f = document.querySelector('.bs-top > .bs-floor')?.getBoundingClientRect(); return { stage: JSON.stringify(document.querySelector('.bs-stage')?.getBoundingClientRect()), rail: document.querySelector('.bs-rail__parts li:last-child')?.getBoundingClientRect().right, faces: document.querySelectorAll('.bs-faces__one').length, title: document.querySelector('.bs-item__title')?.textContent || '', count: document.querySelector('.bs-roll')?.textContent || '', floor: f ? `${Math.round(f.left)},${Math.round(f.top)}` : '', kind: [...document.querySelector('.bs').classList].find((c) => c.startsWith('bs--')) || '', inSlide: document.querySelectorAll('.bs-stage .bs-who, .bs-stage .bs-item__aside .bs-face, .bs-stage .bs-item__lead .bs-face, .bs-stage .bs-chapter__by').length, titles: document.querySelectorAll('.bs-stage .bs-fit').length, cut: [...document.querySelectorAll('.bs-stage .bs-fit')].filter((t) => getComputedStyle(t).overflow !== 'visible').map((t) => t.textContent.trim().slice(0, 40)), small: [...document.querySelectorAll('.bs-stage .bs-fit')].filter((t) => { const f = Number(t.style.getPropertyValue('--tfit') || 1); if (f >= 1) return false; t.style.setProperty('--tfit', String(Math.min(1, f + 0.05))); const fits = t.scrollHeight <= parseFloat(getComputedStyle(t).lineHeight) * 3.5; t.style.setProperty('--tfit', String(f)); return fits; }).map((t) => t.textContent.trim().slice(0, 40)) }; });
     spots.stage.add(at.stage); spots.rail.add(at.rail);
     if (at.floor) { spots.floor.add(at.floor); spots.floorOn += 1; }
     if (at.inSlide) spots.inSlide.push(`${at.kind} ${at.title}`);
-    spots.titles += at.titles; spots.cut.push(...at.cut);
+    spots.titles += at.titles; spots.cut.push(...at.cut); spots.small.push(...at.small);
     if (at.title === 'Roll call') roll = at;
   };
   // An item with a report shows it, fitted to the screen (screen.js ReportFit): Governance's, and Sam's under the money
@@ -1557,6 +1557,7 @@ try {
   ok(/^Highlights Insurance renewal/.test(govShown?.text || '') && govShown.fits && /^Cash is up 12%/.test(finShown?.text || '') && finShown.fits, `the screen shows an item’s report, all of it fitting (${JSON.stringify([...reportStops.values()])})`);
   ok(spots.stage.size === 1 && spots.rail.size === 1, `the screen’s stage and rail keep their size and place on every slide (${spots.stage.size} stages, ${spots.rail.size} rails)`);
   ok(spots.titles >= 5 && !spots.cut.length, `every slide's title is drawn whole, a g's or a y's tail never cut by its clamp (${spots.titles} titles${spots.cut.length ? `; cut: ${spots.cut.join(' | ')}` : ''})`);
+  ok(!spots.small.length, `and no title is set smaller than its lines need (a g's tail isn't a line more)${spots.small.length ? ` (${spots.small.join(' | ')})` : ''}`);
   ok(spots.floorOn >= 3 && spots.floor.size === 1 && !spots.inSlide.length, `who has the floor sits in one place along the top on every slide it shows on, and no slide draws its presenters again (${spots.floorOn} slides, spots ${[...spots.floor].join(' | ')}${spots.inSlide.length ? `; in the slide on ${spots.inSlide.join(', ')}` : ''})`);
   ok(roll && roll.faces === 3 && /3\s*on the board/.test(roll.count), `the roll call shows the board’s faces, everyone on the meeting’s list (${JSON.stringify(roll)})`);
   ok(await scr.waitForFunction(() => /Financial.*Balance sheet financials.*Pages 1–2 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), '→ steps the screen through the items to the Financial item’s statement, its two pages on one stop');
@@ -1706,11 +1707,14 @@ try {
         { title: 'Two long names', presenter: 'Christopher Montgomery & Alexandra Whitfield', report: '- One thing\n- Another thing' },
         // (and a title past three lines on a phone: read whole there, its stage scrolls; never cut short with …)
         { title: 'Personal Best/Business Best/Sunshine Bragging Rights (What have you done since the last meeting)', who: ['jane-doe'], report: '- One thing\n- Another thing' },
+        // (and one far past three lines even at its smallest, a title card's: a TV cuts it at a word with …, its whole
+        // words its name)
+        { title: 'The reveal calendar for spring, the trade partner agreements, the store lease and its renewal terms, the gala sponsorship levels, the golf classic, the volunteer kickoff and anything else we bring up', who: ['jane-doe'] },
       ] },
     ] }), { by: FOUNDER });
     const look = await tab(FOUNDER, 1280);
-    const want = [/^Jane & 2 more( have the floor)?$/, /^Alex & 4 more( have the floor)?$/, /^Christopher & Alexandra( have the floor)?$/, /^Jane Doe( has the floor)?$/];
-    const all = [/Alex Rivera/, /Nia Fordham/, /Alexandra Whitfield/, /Jane Doe/];
+    const want = [/^Jane & 2 more( have the floor)?$/, /^Alex & 4 more( have the floor)?$/, /^Christopher & Alexandra( have the floor)?$/, /^Jane Doe( has the floor)?$/, /^Jane Doe( has the floor)?$/];
+    const all = [/Alex Rivera/, /Nia Fordham/, /Alexandra Whitfield/, /Jane Doe/, /Jane Doe/];
     const seen = [];
     for (const [w, h] of [[1920, 1080], [1280, 720], [1024, 768], [768, 1024], [600, 960], [390, 844], [360, 740], [320, 568]]) {
       await look.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: w < 600, hasTouch: w < 600 });
@@ -1739,12 +1743,14 @@ try {
           let needed = true;
           if (fit > 0) { c.dataset.fit = String(fit - 1); needed = over(); c.dataset.fit = String(fit); }
           const h1 = document.querySelector('.bs-stage .bs-fit');
-          return { words: t.innerText.replace(/\s+/g, ' ').trim(), all: t.title, fit, cut, needed, split, clear, clock: !!document.querySelector('.bs-top .bs-timer'), stage: Math.round(document.querySelector('.bs-stage').getBoundingClientRect().top), titleWhole: !h1 || getComputedStyle(h1).overflow === 'visible' };
+          return { words: t.innerText.replace(/\s+/g, ' ').trim(), all: t.title, fit, cut, needed, split, clear, clock: !!document.querySelector('.bs-top .bs-timer'), stage: Math.round(document.querySelector('.bs-stage').getBoundingClientRect().top), titleWhole: !h1 || getComputedStyle(h1).overflow === 'visible', titleCut: h1 ? { dots: h1.textContent.endsWith('…'), named: h1.getAttribute('aria-label') || '', lines: Math.round(h1.scrollHeight / parseFloat(getComputedStyle(h1).lineHeight)) } : null };
         });
-        if (!(f && f.clock && want[k].test(f.words) && all[k].test(f.all) && !f.cut && f.needed && !f.split.length && f.clear && f.stage === cover.top && f.titleWhole)) seen.push(`${w}×${h} ${it.title}: ${JSON.stringify({ ...f, coverTop: cover.top })}`);
+        // the long one: a TV's (its stage doesn't scroll) three lines ending … and named whole; a phone's every word
+        const longOk = k < 4 || (w > 900 ? f?.titleCut?.dots && f.titleCut.lines <= 3 && f.titleCut.named === it.title : f?.titleCut && !f.titleCut.dots && !f.titleCut.named);
+        if (!(f && f.clock && want[k].test(f.words) && all[k].test(f.all) && !f.cut && f.needed && !f.split.length && f.clear && f.stage === cover.top && f.titleWhole && longOk)) seen.push(`${w}×${h} ${it.title}: ${JSON.stringify({ ...f, coverTop: cover.top })}`);
       }
     }
-    ok(!seen.length, `many presenting, the clock running: the top bar says “Jane & 2 more”, “Alex & 4 more”, “Christopher & Alexandra”, never cut or broken mid-word, clear of the clock, the stage in its place, a long title whole, on eight screens${seen.length ? ` (${seen.join('; ')})` : ''}`);
+    ok(!seen.length, `many presenting, the clock running: the top bar says “Jane & 2 more”, “Alex & 4 more”, “Christopher & Alexandra”, never cut or broken mid-word, clear of the clock, the stage in its place, a long title whole (on a TV, past three lines, cut at a word with …), on eight screens${seen.length ? ` (${seen.join('; ')})` : ''}`);
     await look.close();
     await DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(many.id).run();
   }

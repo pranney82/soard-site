@@ -99,9 +99,9 @@ const partName = (s, si) => s?.title || (s?.items?.length === 1 ? s.items[0].tit
 /**
  * Fitted to the stage. A slide: set smaller in steps (its --fit, down to `min`) until it all fits above the rail (a
  * phone scrolls it instead). A title (`lines` given): stepped down (--tfit, to `min`) until it's at most that many
- * lines, and past that its line clamp ends it with …; one that fits is drawn whole (data-whole), since the clamp's
- * edge would cut its last line's g, y and p (Peter: "the g and y are cut off!"), and so is any on a phone, whose stage
- * scrolls (a long title read to its end there, never cut short with …)
+ * lines, and past that it's cut at a word with … (its whole words its name and its hover); drawn whole either way
+ * (data-whole), since a clamp's edge would cut its last line's g, y and p (Peter: "the g and y are cut off!"). On a
+ * phone, whose stage scrolls, a long title is read to its end, never cut short
  */
 function useFit(deps, { min = 0.6, lines = 0 } = {}) {
   const ref = useRef(null);
@@ -110,18 +110,37 @@ function useFit(deps, { min = 0.6, lines = 0 } = {}) {
     const stage = el?.closest('.bs-stage');
     if (!el || !stage) return undefined;
     const prop = lines ? '--tfit' : '--fit';
+    // A title's words as given, its one text (cut short below only when even at its smallest it runs past its lines)
+    const words = lines && el.firstChild?.nodeType === 3 ? el.firstChild : null;
+    const full = words?.data ?? '';
     const over = () => {
-      if (lines) return el.scrollHeight > parseFloat(getComputedStyle(el).lineHeight) * lines + 2;
+      // (half a line past is the letters' own tails, a g's or a y's: a line more is a whole line)
+      if (lines) { const lh = parseFloat(getComputedStyle(el).lineHeight); return el.scrollHeight > lh * (lines + 0.5); }
       const cs = getComputedStyle(stage);
       // Whole pixels both sides, so a slide a pixel taller than the stage (564 in 563) is over, not let through as rounding
       return Math.max(el.offsetHeight, el.scrollHeight) > Math.floor(stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom));
     };
     const fit = () => {
+      if (words && words.data !== full) { words.data = full; el.removeAttribute('aria-label'); el.removeAttribute('title'); }
       el.style.setProperty(prop, '1');
-      if (!lines && getComputedStyle(stage).overflowY === 'auto') return;
+      const scrolls = getComputedStyle(stage).overflowY === 'auto';
+      if (!lines && scrolls) return;
       let f = 1;
       while (f > min && over()) { f = Math.max(min, Math.round((f - 0.05) * 100) / 100); el.style.setProperty(prop, String(f)); }
-      if (lines) el.toggleAttribute('data-whole', !over() || getComputedStyle(stage).overflowY === 'auto');
+      if (!lines) return;
+      // Still past its lines at its smallest (a TV's): as many of its words as fit, then …, so no line hides under
+      // the clamp and the last one's tails are whole
+      if (words && !scrolls && over()) {
+        const parts = full.split(/(?<=\s)/);
+        const upTo = (k) => { words.data = `${parts.slice(0, k).join('').trimEnd()}…`; };
+        let lo = 0;
+        let hi = parts.length - 1;
+        while (lo < hi) { const mid = Math.ceil((lo + hi) / 2); upTo(mid); if (over()) hi = mid - 1; else lo = mid; }
+        upTo(lo);
+        el.setAttribute('aria-label', full);
+        el.setAttribute('title', full);
+      }
+      el.toggleAttribute('data-whole', !over() || scrolls);
     };
     fit();
     // Again when the stage changes (the window, full screen) and once the fonts are in; never on its own size (no loop)
