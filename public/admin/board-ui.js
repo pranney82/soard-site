@@ -616,6 +616,14 @@ export const STYLES = `
   .bd-signer__name { font-weight: 600; color: var(--color-text); }
   .bd-signer__how { color: var(--color-text-secondary); overflow-wrap: anywhere; }
   .bd-signer__how a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+  .bd-signer__kept { display: block; margin-top: 0.15rem; font-size: var(--fs-xs); }
+  .bd-signer__why { font-style: italic; color: var(--color-text); }
+  .bd-signers__foot { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 0.5rem 0.75rem; padding: 0.75rem 1rem 1rem; border-top: 1px solid var(--color-border); }
+  .bd-signers__how { flex: 1 1 18rem; font-size: var(--fs-sm); color: var(--color-text-secondary); }
+  .bd-signers__how summary { cursor: pointer; padding: 0.45rem 0; width: fit-content; text-decoration: underline; text-underline-offset: 3px; }
+  .bd-signers__how p { margin: 0.35rem 0 0; line-height: 1.5; max-width: 46rem; }
+  .bd-due { margin-top: 0.85rem; }
+  .bd-due__input { max-width: 12rem; }
   @media (max-width: 640px) { .bd-signer { grid-template-columns: 0.5rem minmax(0, 1fr); } .bd-signer__how, .bd-signer__act { grid-column: 2; } }
   .bd-select { width: auto; max-width: 15rem; }
   .bd-words { min-width: 0; }

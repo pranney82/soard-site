@@ -4,6 +4,14 @@
 @font-face { font-family: 'Outfit'; src: url('/fonts/outfit-latin-variable.woff2') format('woff2'); font-weight: 100 900; font-display: swap; }
 @font-face { font-family: 'Libre Baskerville'; src: url('/fonts/libre-baskerville-latin-400-normal.woff2') format('woff2'); font-weight: 400; font-display: swap; }
 @font-face { font-family: 'Libre Baskerville'; src: url('/fonts/libre-baskerville-latin-700-normal.woff2') format('woff2'); font-weight: 700; font-display: swap; }
+/* Handwriting for a typed signature (SIL Open Font License: public/fonts/OFL-*.txt), latin and accented letters,
+   downloaded only when a member signs */
+@font-face { font-family: 'Dancing Script'; src: url('/fonts/dancing-script-latin-ext.woff2') format('woff2'); font-weight: 400 700; font-display: swap; unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'Dancing Script'; src: url('/fonts/dancing-script-latin.woff2') format('woff2'); font-weight: 400 700; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Caveat'; src: url('/fonts/caveat-latin-ext.woff2') format('woff2'); font-weight: 400 700; font-display: swap; unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'Caveat'; src: url('/fonts/caveat-latin.woff2') format('woff2'); font-weight: 400 700; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+@font-face { font-family: 'Great Vibes'; src: url('/fonts/great-vibes-latin-ext.woff2') format('woff2'); font-weight: 400 700; font-display: swap; unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+@font-face { font-family: 'Great Vibes'; src: url('/fonts/great-vibes-latin.woff2') format('woff2'); font-weight: 400 700; font-display: swap; unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
 
 :root {
   color-scheme: light;
@@ -1055,11 +1063,9 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-doc__meta { color: var(--muted); font-size: 0.9rem; }
 .bp-sign { margin: 1rem 0 0; padding: 1rem 0 0; border-top: 1px solid var(--line); }
 .bp-sign__label { display: block; font-weight: 600; font-size: 0.94rem; margin-bottom: 0.5rem; }
-.bp-sign__row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.bp-sign input { min-height: 48px; padding: 0.5rem 0.95rem; border: 1px solid var(--line-2); border-radius: var(--r-sm); font-size: 16px; background: #fff; min-width: 0; flex: 1 1 14rem; transition: border-color 0.2s, box-shadow 0.2s; }
-.bp-sign input:focus { outline: none; border-color: var(--ink-2); box-shadow: 0 0 0 4px rgba(255, 218, 36, 0.35); }
-.bp-sign input[aria-invalid="true"] { border-color: var(--warn); }
-.bp-sign__preview { margin: 0.75rem 0 0; font-family: var(--display); font-style: italic; font-size: 1.5rem; color: var(--ink); border-bottom: 1px solid var(--line-2); padding-bottom: 0.25rem; max-width: 22rem; animation: bp-fade 0.3s both; }
+.bp-sign input[type="text"] { min-height: 48px; padding: 0.5rem 0.95rem; border: 1px solid var(--line-2); border-radius: var(--r-sm); font-size: 16px; background: #fff; min-width: 0; flex: 1 1 14rem; transition: border-color 0.2s, box-shadow 0.2s; }
+.bp-sign input[type="text"]:focus { outline: none; border-color: var(--ink-2); box-shadow: 0 0 0 4px rgba(255, 218, 36, 0.35); }
+.bp-sign input[type="text"][aria-invalid="true"] { border-color: var(--warn); }
 .bp-sign__problem { margin: 0.5rem 0 0; color: var(--warn); font-size: 0.92rem; font-weight: 600; }
 .bp-signed { margin: 0.65rem 0 0; color: var(--ink-2); font-size: 0.93rem; display: flex; align-items: center; gap: 0.35rem 0.5rem; flex-wrap: wrap; }
 /* Focused for a screen reader when the form gives way to it, not drawn as a box */
@@ -1067,16 +1073,6 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 /* See it · Replace it: together on one line, a whole tap tall without moving the text */
 .bp-signed__acts { display: inline-flex; align-items: center; gap: 0.4rem; white-space: nowrap; }
 .bp-signed__acts .bp-linkbtn, .bp-signed__acts .bp-link { padding: 0.75rem 0; margin: -0.75rem 0; }
-/* On a phone the signature shows under the name as it's typed, above the button */
-@media (max-width: 560px) {
-  .bp-sign { display: flex; flex-direction: column; }
-  .bp-sign__row { display: contents; }
-  .bp-sign input { flex: none; order: 1; }
-  .bp-sign__problem { order: 2; }
-  .bp-sign__preview { order: 3; margin-bottom: 0.25rem; }
-  .bp-sign__row .bp-btn { order: 4; margin-top: 0.5rem; }
-  .bp-sign__or { order: 5; }
-}
 .bp-sign__or { margin: 0.85rem 0 0; color: var(--ink-2); font-size: 0.93rem; }
 .bp-sign__or .bp-linkbtn { margin: -0.75rem 0 -0.75rem 0.2rem; padding: 0.75rem 0; }
 .bp-sign__or .bp-linkbtn:disabled { color: var(--muted); text-decoration: none; cursor: default; }
@@ -2644,3 +2640,77 @@ p.bp-rp__motion-st { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--muted
   .bp-org__note { font-size: 8.5pt; }
   .bp-org__link { text-decoration: none; }
 }
+
+/* ─── Signing: the signature adopted once, the paper's initials and answers, consent, intent ─── */
+.bp-mark { display: inline-block; font-size: 2rem; line-height: 1.15; color: var(--ink); overflow-wrap: anywhere; }
+.bp-mark--drawn { display: block; width: min(100%, 18rem); height: auto; }
+.bp-mark--drawn path, .bp-pad path { fill: none; stroke: var(--ink); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; }
+.bp-sign__mark { margin: 0 0 0.75rem; }
+.bp-sign__adopted { display: grid; gap: 0.2rem; padding: 0.6rem 0 0.4rem; border-bottom: 1px solid var(--line-2); max-width: 26rem; }
+.bp-sign__who { margin: 0; font-size: 0.85rem; }
+.bp-sign__declined { margin: 0.75rem 0 0; padding: 0.7rem 0.9rem; border-left: 3px solid var(--gold); background: var(--yellow-wash); border-radius: 0 10px 10px 0; font-size: 0.93rem; line-height: 1.5; color: var(--ink); max-width: 40rem; }
+.bp-sign__declined:focus { outline: none; box-shadow: 0 0 0 3px var(--yellow-soft); }
+.bp-sign__decline { margin: 0.85rem 0 0; max-width: 40rem; }
+.bp-sign__decline-l { display: block; margin: 0 0 0.4rem; font-size: 0.93rem; color: var(--ink-2); }
+.bp-sign__decline textarea { display: block; width: 100%; min-height: 4.5em; field-sizing: content; max-height: 14rem; padding: 0.6rem 0.75rem; border: 1px solid var(--line-2); border-radius: 10px; background: var(--card); color: var(--ink); font: inherit; font-size: 1rem; line-height: 1.45; resize: vertical; }
+.bp-sign__decline textarea:focus { outline: none; border-color: var(--ink); box-shadow: 0 0 0 3px var(--yellow-soft); }
+.bp-sign__decline .bp-linkbtn { margin-left: 0.75rem; padding: 0.75rem 0; }
+.bp-sign__how { margin: 0.85rem 0 0; max-width: 40rem; font-size: 0.88rem; color: var(--ink-2); }
+.bp-sign__how summary { cursor: pointer; padding: 0.6rem 0; width: fit-content; text-decoration: underline; text-underline-offset: 3px; }
+.bp-sign__how p { margin: 0.25rem 0 0; line-height: 1.5; }
+@media print { .bp-sign__decline, .bp-sign__how { display: none; } }
+.bp-sign__agree { display: flex; gap: 0.6rem; align-items: flex-start; margin: 0.75rem 0 0; font-size: 0.9rem; line-height: 1.45; color: var(--ink-2); max-width: 40rem; cursor: pointer; }
+.bp-sign__agree input { flex: none; width: 20px; height: 20px; margin: 0.1rem 0 0; accent-color: var(--ink); }
+.bp-sign__intent { margin: 0.75rem 0 0.5rem; font-weight: 600; color: var(--ink); }
+.bp-signed__mark { margin: 0.35rem 0 0; }
+.bp-signed__mark .bp-mark { font-size: 1.6rem; }
+/* A point that asks for initials or an answer: the box at its end */
+.rp-field { margin: 0 0 0.6rem; }
+.rp-field > p:first-child { margin-bottom: 0.35rem; }
+.bp-field__ask, .bp-field__done, .bp-field__answer { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; margin: 0 0 0.35rem; }
+.bp-field__btn { min-height: 44px; min-width: 6.5rem; border-style: dashed; border-color: var(--gold); background: var(--yellow-wash); }
+.bp-field__btn:hover { background: var(--yellow-soft); }
+.bp-field__stamp { display: inline-grid; place-items: center; min-width: 3.4rem; min-height: 44px; padding: 0 0.6rem; border: 1px solid var(--line-2); border-radius: 10px; background: #fff; font-size: 1.6rem; line-height: 1; color: var(--ink); }
+.bp-field__input { width: min(100%, 22rem); min-height: 44px; padding: 0.5rem 0.75rem; border: 1px dashed var(--gold); border-radius: 10px; background: var(--yellow-wash); font: inherit; color: var(--ink); }
+.bp-field__input:focus { outline: 2px solid var(--ink); outline-offset: 1px; border-style: solid; background: #fff; }
+.bp-field__print { display: none; }
+/* What's left to fill in: in view while they read (above the phone's tab bar) */
+.bp-signbar { position: sticky; top: 76px; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin: 0 0 1rem; padding: 0.6rem 0.6rem 0.6rem 1rem; border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 255, 255, 0.97); box-shadow: 0 6px 18px rgba(45, 47, 44, 0.08); }
+.bp-signbar__count { margin: 0; font-weight: 650; color: var(--ink); }
+@media (max-width: 640px) {
+  .bp-signbar { position: fixed; top: auto; left: 0.6rem; right: 0.6rem; bottom: calc(74px + env(safe-area-inset-bottom)); margin: 0; }
+  .bp-docpage:has(.bp-signbar) { padding-bottom: 4.5rem; }
+}
+/* Adopting a signature */
+.bp-adopt { width: min(100% - 1.5rem, 34rem); max-height: calc(100dvh - 2rem); padding: 0; border: none; border-radius: 22px; background: var(--card); color: var(--ink); box-shadow: 0 24px 64px rgba(45, 47, 44, 0.25); }
+.bp-adopt::backdrop { background: rgba(45, 47, 44, 0.45); }
+.bp-adopt__card { display: grid; gap: 0.5rem; padding: 1.25rem 1.25rem 1.1rem; }
+.bp-adopt__head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.bp-adopt__head .bp-h2 { margin: 0; }
+.bp-adopt__lede { margin: 0 0 0.4rem; }
+.bp-adopt__name, .bp-adopt__ininput { min-height: 44px; padding: 0.5rem 0.75rem; border: 1px solid var(--line-2); border-radius: 12px; font: inherit; color: var(--ink); background: #fff; }
+.bp-adopt__ininput { width: 7rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.bp-adopt__tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 0.4rem 0 0.2rem; border-radius: 14px; background: var(--warm); border: 1px solid var(--line); }
+.bp-adopt__tabs button { min-height: 40px; border: none; border-radius: 10px; background: none; font: inherit; font-weight: 600; color: var(--muted); cursor: pointer; }
+.bp-adopt__tabs button[aria-pressed="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(45, 47, 44, 0.12); }
+.bp-adopt__styles { display: grid; gap: 0.5rem; margin: 0; padding: 0; border: none; }
+.bp-adopt__style { position: relative; display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 64px; padding: 0.4rem 1rem; border: 1px solid var(--line); border-radius: 14px; background: #fff; cursor: pointer; }
+.bp-adopt__style.is-on { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.bp-adopt__style input { position: absolute; opacity: 0; pointer-events: none; }
+.bp-adopt__style:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.bp-adopt__style .bp-mark { font-size: 1.75rem; }
+.bp-adopt__ini { font-size: 1.4rem; color: var(--ink-2); }
+.bp-pad { display: block; width: 100%; height: auto; aspect-ratio: 3 / 1; border: 1px dashed var(--line-2); border-radius: 14px; background: #fff; touch-action: none; cursor: crosshair; }
+.bp-pad__line { stroke: var(--line-2); stroke-width: 2; }
+.bp-pad__hint { fill: var(--quiet); font-size: 22px; font-family: inherit; }
+.bp-adopt__drawrow { margin: 0.25rem 0 0; text-align: right; }
+.bp-adopt__acts { margin: 0.6rem 0 0; }
+@media print {
+  .bp-signbar, .bp-field__btn, .bp-field__input, .bp-field__ask .bp-linkbtn { display: none !important; }
+  .bp-field__print { display: inline; }
+}
+.bp-signed__copy { margin: 0.4rem 0 0; }
+.bp-copies { margin: 1rem 0 0; padding: 0.75rem 0 0; border-top: 1px solid var(--line); }
+.bp-copies__h { margin: 0 0 0.35rem; font-weight: 650; color: var(--ink); }
+.bp-copies ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 0.25rem; }
+

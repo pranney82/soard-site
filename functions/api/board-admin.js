@@ -50,7 +50,7 @@ import {
   memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, askToSign, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
   chairLive, createPractice, resetPractice,
 } from './_board.js';
-import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
+import { isBoardAdmin, isStaffEmail, readState, activeBoard } from './_board-roles.js';
 import { accessStatus, syncBoardAccess, accessConfigured } from './_board-access.js';
 import { groupStatus, syncBoardGroup } from './_board-group.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
@@ -59,7 +59,8 @@ import { sendInvite, cancelInvite, noteInviteChange, projectOf, inviteCheck, may
 import { meetingName } from '../../public/admin/board-shared.js';
 import { readMinutesInto } from './_board-minutes.js';
 import { activityOverview, memberActivity, deviceOf, accessIat } from './_board-activity.js';
-import { evidenceOf } from './_board-sign.js';
+import { evidenceOf, voidEmail, appendEvents, exportYear } from './_board-sign.js';
+import { sendEmailOne, EMAIL_FROM } from './_broadcast-notify.js';
 // Where an admin's change to a signature came from: its evidence, under the admin's own name
 const evidence = (context) => evidenceOf(context, { deviceOf, accessIat });
 import { shorterFor } from './_board-shorter.js';
@@ -112,6 +113,13 @@ export async function onRequestGet(context) {
     const { me, refused } = await gate(context);
     if (refused) return refused;
     if (q.has('numbers')) return Response.json({ ok: true, numbers: await liveNumbers(env) });
+    // A paper's signing record for a year, for an auditor: one ZIP (./_board-sign.js exportYear)
+    if (q.has('record')) {
+      const docId = String(q.get('record') || '');
+      if (!ID.test(docId)) return Response.json({ ok: false, error: 'Which paper?' }, { status: 400 });
+      await audit(env, me, 'exported', `Board signing record downloaded: ${docId} ${q.get('year') || ''}`.trim());
+      return exportYear(env, docId, Number(q.get('year')) || null, { waitUntil: (p) => context.waitUntil?.(p) });
+    }
     // Papers' PDFs read for the board page's search, a few each time an admin comes by
     context.waitUntil?.(fillDocWords(env));
     // Board access's quick look while a sign-in email is going out (and as the panel opens)
@@ -187,6 +195,8 @@ export async function onRequestPost(context) {
         const d = await saveDoc(env.DB, req.doc || {}, { ...docOptions(req, me), newFile: String(upload.name || 'file').slice(0, 200) });
         let put;
         try { put = await putFile(env, { ownerType: 'doc', ownerId: d.id, file: upload, by: me }); } catch (err) { if (!req.doc?.id) await deleteDoc(env, d.id); throw err; }
+        // (a new version that's this file: which file it was, for what a signature on it signed)
+        await env.DB.prepare("UPDATE board_doc_versions SET file_id = ? WHERE doc_id = ? AND version = ? AND (body IS NULL OR body = '')").bind(put.id, d.id, d.version).run();
         let doc = (await listDocs(env.DB)).find((x) => x.id === d.id);
         // Its words read from this file: where they came from
         if (req.wordsFromNew) doc = await saveDoc(env.DB, { ...doc, body: undefined, wordsFile: put.id }, { by: me });
@@ -278,8 +288,21 @@ export async function onRequestPost(context) {
       case 'unsign': {
         const docId = String(body.docId || '');
         if (!ID.test(docId)) return fail('Which document?');
-        if (!(await unsignDoc(env, docId, String(body.slug || ''), undefined, { by: me, evidence: evidence(context), reason: String(body.reason || '').slice(0, 500) }))) return fail('That signature is gone', 404);
+        const reason = String(body.reason || '').slice(0, 500);
+        const off = await unsignDoc(env, docId, String(body.slug || ''), undefined, { by: me, evidence: evidence(context), reason });
+        if (!off) return fail('That signature is gone', 404);
         await audit(env, me, 'deleted', 'Board signature taken off');
+        // A signature they gave themselves (typed, drawn, their own copy) taken off: they're told (a copy filed under
+        // the wrong member isn't theirs to hear about)
+        if (['typed', 'drawn', 'copy'].includes(off.row.how)) {
+          context.waitUntil?.((async () => {
+            const who = (await activeBoard(env.DB)).find((p) => p.slug === off.row.slug);
+            const doc = (await listDocs(env.DB)).find((d) => d.id === docId);
+            if (!who?.email || !doc) return;
+            const r = await sendEmailOne(env, { to: who.email, from: EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board '), replyTo: (await getSettings(env.DB)).admins, tags: [{ name: 'kind', value: 'board-void' }], idempotencyKey: `void:${docId}:${off.row.slug}:${off.row.year}:${off.row.at}`, ...voidEmail({ doc, year: off.row.year, reason }) });
+            if (r.sent || r.already) await appendEvents(env.DB, async () => ({ events: [{ kind: 'void-sent', docId, slug: off.row.slug, year: off.row.year, by: me, detail: { to: who.email } }] }));
+          })().catch(() => {}));
+        }
         return Response.json({ ok: true, doc: (await listDocs(env.DB)).find((d) => d.id === docId) });
       }
       case 'update-file':

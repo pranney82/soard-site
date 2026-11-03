@@ -41,6 +41,7 @@ import { maybeRunInsuranceAudit } from './_insurance-audit.js';
 import { maybeRefreshProcess } from './_process-docs.js';
 import { alertAdmins } from './_broadcast-notify.js';
 import { maybeRunBoard } from './_board.js';
+import { maybeRunSigning } from './_board-sign.js';
 import { maybeRunAsks } from './_board-asks.js';
 import { maybeSyncStaff } from './_staff-access.js';
 import { maybeSweepMail } from './_mail-sweep.js';
@@ -122,6 +123,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRunInsuranceAudit(env));
     // The board: Access's sign-in list kept to People → Board (every 5 minutes when it changed), and the month's bank balance once a day (see _board.js)
     context.waitUntil(maybeRunBoard(env));
+    // The board's signed papers: each signature's signed copy made, its receipt sent, a changed email told to the old address (see _board-sign.js)
+    context.waitUntil(maybeRunSigning(env));
     // The next meeting's report asks from Peter's Gmail, their due dates, the chair's review, and the replies put on the agenda (see _board-asks.js)
     context.waitUntil(maybeRunAsks(env));
     // Staff sign-in follows SOARD's Google accounts: read every 5 minutes, a suspended or deleted one signed out (_staff-access.js)

@@ -21,7 +21,7 @@ import { UA } from './_press-sources.js';
 const KEEP_ALIVE_MS = 120000;
 const SKIP = new Set(['image', 'media', 'font', 'stylesheet']);
 /** A browser to use: one left open by an earlier call when there is one (`launch` is for tests: a local Puppeteer) */
-async function openBrowser(env, launch) {
+export async function openBrowser(env, launch) {
   if (launch) return { browser: await launch(), shared: false };
   const { default: puppeteer } = await import('@cloudflare/puppeteer');
   try {
@@ -32,7 +32,7 @@ async function openBrowser(env, launch) {
   } catch { /* none to list */ }
   return { browser: await puppeteer.launch(env.BROWSER, { keep_alive: KEEP_ALIVE_MS }), shared: true };
 }
-async function release({ browser, shared }) {
+export async function release({ browser, shared }) {
   try { if (shared) await browser.disconnect(); else await browser.close(); } catch { /* gone already */ }
 }
 

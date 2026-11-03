@@ -11,7 +11,7 @@
  * server still keeps; Members no longer shows it.
  */
 
-import { useState, useEffect, useRef } from './vendor.js';
+import { useState, useEffect, useRef, qrcode } from './vendor.js';
 import { html, call, ago, Face, viewerFiles, driveLink, dayOf, signedHow } from './board-ui.js';
 import { viewerLink } from './file-viewer.js';
 import { meetingName, todayEastern, fileTitle, docsOf, itemFiles, looseFiles } from './board-shared.js';
@@ -224,8 +224,8 @@ function SignedEachYear({ p, signDocs, onCopy }) {
   const year = Number(todayEastern().slice(0, 4));
   const past = (p.pastYears || []).filter((s) => s.year < year);
   if (!signDocs.length && !past.length) return null;
-  const see = (s, title) => (s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${title}, signed by ${p.name}` }]), 0)}>See it</a>`
-    : s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null);
+  const see = (s, title) => html`${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${title}, signed by ${p.name}` }]), 0)}>See it</a>`
+    : s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}${s?.record?.id ? html` · <a ...${viewerLink(viewerFiles([{ id: s.record.id, name: `${title}, signed by ${p.name}.pdf`, type: 'application/pdf' }]), 0)}>Signed copy (PDF)</a>` : null}`;
   const add = async (file) => {
     if (pick.current) pick.current.value = '';
     const d = forDoc.current;
@@ -245,7 +245,7 @@ function SignedEachYear({ p, signDocs, onCopy }) {
           return html`<li class="ba-sign" key=${d.id} data-sign-row=${d.id} tabindex="-1">
             <span class=${`ba-sign__dot ${s ? 'is-on' : ''}`} aria-hidden="true"></span>
             <span class="ba-sign__name">${d.title}</span>
-            <span class="ba-sign__how">${s ? signedHow(s) : was ? `Signed the earlier version on ${dayOf(was.at)}, not the new one yet` : 'Not signed yet'}${see(s || was, d.title)}</span>
+            <span class="ba-sign__how">${s ? signedHow(s) : d.declined?.[p.slug] ? html`Declined on ${dayOf(d.declined[p.slug].at)}: <q class="ba-why">${d.declined[p.slug].reason}</q>` : was ? `Signed the earlier version on ${dayOf(was.at)}, not the new one yet` : 'Not signed yet'}${see(s || was, d.title)}</span>
             ${!s && onCopy ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forDoc.current = d; pick.current?.click(); }}>${busy === d.id ? 'Adding…' : was ? 'Add their new signed copy' : 'Add their signed copy'}</button>` : null}
           </li>`;
         })
@@ -258,6 +258,33 @@ function SignedEachYear({ p, signDocs, onCopy }) {
     })}
     <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => add(e.target.files[0])} />
   </section>`;
+}
+
+/**
+ * Signing in person (at a meeting, say): a code their own phone's camera opens, straight to the paper (or to
+ * Documents, with more than one). They sign in with their own email's code and sign it themselves: nobody signs
+ * for them (an admin's copy of a paper they signed is the other way)
+ */
+function InPerson({ p, papers }) {
+  const [shown, setShown] = useState(false);
+  if (!papers.length) return null;
+  const first = String(p.name).split(/\s+/)[0];
+  const url = `${location.origin}/board/${papers.length === 1 ? papers[0].id : 'documents'}`;
+  let svg = '';
+  if (shown) {
+    try { const q = qrcode(0, 'M'); q.addData(url); q.make(); svg = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true }); } catch { svg = ''; }
+  }
+  return html`<div class="ba-inperson">
+    <p class="ba-sheet__ask"><button type="button" class="btn btn-ghost btn-sm" aria-expanded=${shown ? 'true' : 'false'} onClick=${() => setShown(!shown)}>${shown ? 'Hide the code' : 'Sign in person'}</button></p>
+    ${shown ? html`<div class="ba-qr">
+      <div class="ba-qr__code" role="img" aria-label=${`A code for ${first}’s phone camera, opening ${url}`} dangerouslySetInnerHTML=${{ __html: svg }}></div>
+      <div class="ba-qr__text">
+        <p><strong>${first} points their phone’s camera at this</strong> and opens the link: ${papers.length === 1 ? `the ${papers[0].title}` : 'their papers to sign'}, on the board page.</p>
+        <p class="ba-muted">The board page emails ${first} a code at ${p.email} to sign in, so it’s their own phone and their own signature. Nobody can sign it for them.</p>
+        <p class="ba-muted ba-qr__url">${url}</p>
+      </div>
+    </div>` : null}
+  </div>`;
 }
 
 /**
@@ -276,6 +303,7 @@ function MemberSheet({ p, sentAt, going = false, unconfirmed = false, tooSoon = 
       </div>
       ${!last && usableEmail(p.email) && onWelcome && !going && !tooSoon ? html`<p class="ba-sheet__ask"><button class="btn btn-ghost btn-sm" aria-disabled=${held ? 'true' : null} onKeyDown=${once} onClick=${() => { if (!held) onWelcome(p.slug); }}>${working === p.slug ? 'Sending…' : sentAt ? 'Send the sign-in email again' : 'Send the sign-in email'}</button></p>` : null}
       ${due && p.email && onAsk ? html`<p class="ba-sheet__ask">${p.asked ? html`<span class="ba-muted">${askedWords(p.asked)}. </span>` : null}<button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => onAsk(p.slug)}>${working === `ask:${p.slug}` ? 'Emailing…' : p.asked ? `Ask ${first} again` : `Ask ${first} to sign`}</button></p>` : null}
+      ${due && p.email ? html`<${InPerson} p=${p} papers=${signDocs.filter((d) => !d.signed[p.slug])} />` : null}
       <${SignedEachYear} p=${p} signDocs=${signDocs} onCopy=${onCopy} />
     </div>
   <//>`;
@@ -292,7 +320,7 @@ function askedWords(a) {
  * A row opens their papers year by year
  */
 let styled = false;
-export function BoardActivity({ data, signDocs, ready, working, now = Date.now(), onWelcome, onCopy = null, onAsk = null, onAskAll = null, onAskPreview = null }) {
+export function BoardActivity({ data, signDocs, ready, working, now = Date.now(), onWelcome, onCopy = null, onAsk = null, onAskAll = null, onAskPreview = null, onRemind = null }) {
   if (!styled && typeof document !== 'undefined') {
     styled = true;
     const el = document.createElement('style');
@@ -361,7 +389,9 @@ export function BoardActivity({ data, signDocs, ready, working, now = Date.now()
     <div class="sec-head ba-head"><h3>The board <span class="count">${data.members.length}</span></h3>
       ${signDocs.length && data.members.length ? html`<div class="ba-asks"><span class="sec-head__hint">${done === data.members.length ? `Everyone has signed for ${year}` : `${done} of ${data.members.length} signed for ${year}`}</span>
         ${asking && unsigned.length ? html`<button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => onAskPreview?.()}>${working === 'ask:me' ? 'Sending…' : 'Send it to me'}</button>
-          <button class="btn btn-primary btn-sm" disabled=${!!working} onClick=${() => onAskAll?.(unsigned, papersWord)}>${working === 'ask:all' ? 'Emailing…' : unsigned.length === 1 ? `Ask ${unsigned[0].name.split(/\s+/)[0]} to sign` : `Ask the ${unsigned.length} who haven’t signed`}</button>` : null}</div>` : null}</div>
+          <button class="btn btn-primary btn-sm" disabled=${!!working} onClick=${() => onAskAll?.(unsigned, papersWord)}>${working === 'ask:all' ? 'Emailing…' : unsigned.length === 1 ? `Ask ${unsigned[0].name.split(/\s+/)[0]} to sign` : `Ask the ${unsigned.length} who haven’t signed`}</button>` : null}
+        ${asking && onRemind ? html`<label class="ba-remind"><span>Remind by email</span><select class="form-select" value=${data.settings?.remind || 'off'} disabled=${working === 'remind'} onChange=${(e) => onRemind(e.target.value, e.target)}>
+          <option value="off">Off</option><option value="3">Every 3 days</option><option value="7">Weekly</option></select></label>` : null}</div>` : null}</div>
     ${!data.members.length ? html`<div class="empty empty--inline ba-none"><p class="empty__title">Nobody is on the board in People yet</p></div>` : html`<table class="bd-table ba-table">
       <thead><tr><th>Member</th><th>Last signed in</th>${signDocs.map((d) => html`<th key=${d.id}>${d.title}</th>`)}<th class="ba-go-h" aria-hidden="true"></th></tr></thead>
       <tbody>${data.members.map((p) => {
@@ -382,6 +412,7 @@ export function BoardActivity({ data, signDocs, ready, working, now = Date.now()
             const ask = k === signDocs.length - 1 && !current(p);
             return html`<td key=${d.id} data-label=${d.title}>${s
               ? html`<span class="tag tag--success">Signed</span>${s.how !== 'drive' && s.at ? html`<span class="bd-row__meta">${dayOf(s.at)}</span>` : null}`
+              : d.declined?.[p.slug] ? html`<span class="tag tag--warn">Declined</span><span class="bd-row__meta" title=${d.declined[p.slug].reason}>${dayOf(d.declined[p.slug].at)}</span>`
               : html`<span class="tag">Not signed</span>${was ? html`<span class="bd-row__meta">Signed the earlier version</span>` : prior ? html`<span class="bd-row__meta">Signed for ${prior.year}</span>` : null}`}
               ${ask && p.asked ? html`<span class="bd-row__meta">${askedWords(p.asked)}</span>` : null}
               ${ask && asking && p.email ? html`<button class="btn btn-ghost btn-sm ba-ask" disabled=${!!working} aria-label=${`${p.asked ? 'Ask again' : 'Ask to sign'}: email ${p.name}`} onClick=${() => onAsk(p.slug)}>${working === `ask:${p.slug}` ? 'Emailing…' : p.asked ? 'Ask again' : 'Ask to sign'}</button>` : null}</td>`;
@@ -423,6 +454,15 @@ export const ACTIVITY_STYLES = `
   .ba-fact--in:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
   .ba-not { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
   .ba-asks { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem 0.75rem; }
+  .ba-remind { display: inline-flex; align-items: center; gap: 0.5rem; font-size: var(--fs-sm); color: var(--color-text-secondary); white-space: nowrap; }
+  .ba-remind .form-select { width: auto; min-height: 36px; padding-block: 0.3rem; }
+  .ba-why { font-style: italic; color: var(--color-text); }
+  .ba-qr { display: flex; flex-wrap: wrap; gap: 1rem 1.25rem; align-items: flex-start; margin: 0.5rem 0 0.75rem; padding: 1rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-surface, #fff); }
+  .ba-qr__code { flex: none; width: 168px; height: 168px; background: #fff; }
+  .ba-qr__code svg { display: block; width: 100%; height: 100%; }
+  .ba-qr__text { flex: 1 1 16rem; min-width: 0; }
+  .ba-qr__text p { margin: 0 0 0.5rem; line-height: 1.45; }
+  .ba-qr__url { font-size: var(--fs-xs); overflow-wrap: anywhere; }
   .ba-ask { display: block; margin-top: 0.4rem; }
   .ba-go { width: 1%; color: var(--color-text-muted); vertical-align: middle !important; }
   .ba-go-h { width: 1%; }

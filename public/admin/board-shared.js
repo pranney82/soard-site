@@ -222,6 +222,36 @@ export const LIVE = [
 /** What a live list with no title of its own is called for the board: what it shows, never its part's name */
 export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings', minutes: 'The last meeting’s minutes' };
 // (paper: a paper written in Board, its Markdown: long bylaws run past 70,000 letters; ./board-report.js PAPER_LETTERS)
+/**
+ * Signing a paper electronically (../../functions/api/_board-sign.js): what a member agrees to, once, before they
+ * first sign (its SHA-256 is kept with each signature), and the handwriting a typed signature can take (portal.css
+ * @font-face; the signed copy embeds the same fonts)
+ */
+export const CONSENT_TEXT = 'I agree to sign SOARD’s board papers electronically. It counts the same as signing on paper. I can sign on paper instead (add a photo or PDF of the signed page), stop signing electronically by telling SOARD, and keep a copy of anything I sign: it’s on the board page, and emailed to me.';
+/** How signing works, by version (printed on each signing record): what the evidence rests on */
+export const PROCESS_V = 1;
+export const PROCESS_TEXT = [
+  'A board member signs on SOARD’s board page, which opens only after Cloudflare Access emails a one-time code to the address SOARD has for them.',
+  'They read the paper there, initial and answer each point it marks, agree once to sign electronically, and sign with their name typed in a style they choose or drawn. Nobody else can sign for them: an admin can add a copy they signed on paper, recorded as added by that admin.',
+  'Each signature keeps the address Access checked, the IP address and device it came from, when that sign-in began, and the SHA-256 of the exact words or file they signed. Every step (asked, opened, signed, replaced, taken off) is an event in one chain, each hashed over the one before, so a change afterwards shows.',
+  'Nothing a signature rests on is deleted. Each signer gets their signed copy, with this record, by email.',
+].join(' ');
+/** A paper's due date in a year ('MM-DD' kept on the paper, so it rolls forward each year; Feb 29 is Feb 28 in other years) → 'YYYY-MM-DD' | '' */
+export const dueOn = (doc, year) => {
+  const m = String(doc?.due || '').match(/^(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const last = new Date(Date.UTC(Number(year), Number(m[1]), 0)).getUTCDate();
+  return `${year}-${m[1]}-${String(Math.min(Number(m[2]), last)).padStart(2, '0')}`;
+};
+/** "January 31" */
+export const dueWords = (day) => (day ? new Date(`${day}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' }) : '');
+export const SIGN_STYLES = [
+  { id: 'dancing-script', font: 'Dancing Script', label: 'Flowing' },
+  { id: 'caveat', font: 'Caveat', label: 'Handwritten' },
+  { id: 'great-vibes', font: 'Great Vibes', label: 'Script' },
+];
+export const styleFont = (id) => (SIGN_STYLES.find((x) => x.id === id) || SIGN_STYLES[0]).font;
+
 export const LIMITS = { title: 200, text: 300, notes: 20000, report: 120000, paper: 400000, motion: 400, items: 80, sections: 20, people: 80, rows: 100 };
 
 /** The agenda a new meeting starts from, until Settings saves another one */

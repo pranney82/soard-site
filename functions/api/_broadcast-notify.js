@@ -200,6 +200,33 @@ export async function sendEmails(env, { to, subject, html, text, from = EMAIL_FR
 }
 
 /**
+ * One email on its own (Resend's /emails: its batch takes no attachments), with files attached ([{ filename,
+ * content: base64 }]) and an `idempotencyKey`, so the same email asked for twice goes once (Resend keeps the key a
+ * day; a second ask with it is no second email). → { sent, failed, errors, id, already }
+ */
+export async function sendEmailOne(env, { to, subject, html, text, from = EMAIL_FROM, tags = [], replyTo = null, attachments = [], idempotencyKey = '' }) {
+  const reply = replyToOf(replyTo);
+  if (!isEmail(to)) return { sent: 0, failed: 1, errors: ['No email address'] };
+  if (!emailConfigured(env)) return { sent: 0, failed: 1, errors: ['RESEND_API_KEY not set'] };
+  try {
+    const res = await fetch(`${RESEND_API}/emails`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json', ...(idempotencyKey ? { 'Idempotency-Key': String(idempotencyKey).slice(0, 256) } : {}) },
+      body: JSON.stringify({ from, to: [to], subject, html, text, tags, ...(reply ? { reply_to: reply } : {}), ...(attachments.length ? { attachments } : {}) }),
+      signal: AbortSignal.timeout(30000),
+    });
+    // (the same key again: Resend already has this email)
+    if (res.status === 409) return { sent: 0, failed: 0, errors: [], already: true };
+    if (!res.ok) return { sent: 0, failed: 1, errors: [`Resend ${res.status}: ${await resendWhy(res)}`] };
+    const id = (await res.json().catch(() => null))?.id || null;
+    await logSent(env, [{ id, to, subject }], { tags });
+    return { sent: 1, failed: 0, errors: [], id };
+  } catch (e) {
+    return { sent: 0, failed: 1, errors: [e.message] };
+  }
+}
+
+/**
  * Send pre-built messages (each with its own html, e.g. a personal
  * unsubscribe link, and its own `headers`, e.g. List-Unsubscribe), 100 per
  * Resend call.

@@ -367,6 +367,14 @@ const clickText = (page, selector, re) => page.evaluate((sel, src) => {
   return !!el;
 }, selector, re.source);
 const overflow = (page) => page.evaluate(() => document.scrollingElement.scrollWidth - window.innerWidth);
+/** Adopting a signature in the board page's How you sign (opened by Choose how you sign, or by Sign with none yet) */
+async function adoptTyped(page, name, { open = true } = {}) {
+  if (open) await clickText(page, '.bp-sign button', /^Choose how you sign$/);
+  await page.waitForSelector('dialog.bp-adopt[open] #bp-adopt-name', { timeout: 4000 });
+  await page.$eval('#bp-adopt-name', (i) => { i.value = ''; });
+  await page.type('#bp-adopt-name', name);
+  await page.click('.bp-adopt button[type="submit"]');
+}
 async function shot(page, name) {
   // A taller window rather than fullPage, which squeezes the admin's fixed sidebar
   const vp = page.viewport();
@@ -845,6 +853,8 @@ try {
   ok(await waitText(jane, /Board Member Expectations[\s\S]*Written here, last changed [A-Z][a-z]{2} \d+/), 'written here now');
   // A paper to read, not to sign: on the board page it goes on its shelf
   await clickText(jane, 'button', /^Add a document$/);
+  // (typed once the title has the focus the form gives it, so no keystroke lands in the words box)
+  await jane.waitForFunction(() => document.activeElement?.id === 'bd-doc-title', { timeout: 3000 }).catch(() => {});
   await jane.type('#bd-doc-title', 'Signed Amended Bylaws');
   await jane.select('#bd-doc-kind', 'policy');
   await (await jane.$('#bd-doc-file')).uploadFile(pdf);
@@ -1194,17 +1204,21 @@ try {
       ok(await alex.evaluate(() => !document.querySelector('.bp-signlist .bp-sign')), 'Documents has no form to sign: Read and sign opens each paper');
       // The policy (a PDF): its own page, the file to read and the signing under it
       await alex.evaluate(() => [...document.querySelectorAll('.bp-signlist li')].find((li) => /Conflict of interest/i.test(li.innerText))?.querySelector('a.bp-btn')?.click());
-      ok(await alex.waitForSelector('.bp-docpage .bp-sign input', { timeout: 6000 }).then(() => true, () => false) && /^#\/documents\/d_/.test(await alex.evaluate(() => location.hash)), 'Read and sign on a PDF opens its own page');
-      await clickText(alex, 'button', /^I’ve read it and agree$/);
+      ok(await alex.waitForSelector('.bp-docpage .bp-sign', { timeout: 6000 }).then(() => true, () => false) && /^#\/documents\/d_/.test(await alex.evaluate(() => location.hash)), 'Read and sign on a PDF opens its own page');
+      // Sign with no signature yet: How you sign (their name typed, never filled in for them)
+      await clickText(alex, '.bp-sign button', /^Sign$/);
+      ok(await alex.waitForSelector('dialog.bp-adopt[open]', { timeout: 4000 }).then(() => true, () => false), 'Sign with no signature yet asks how they sign');
+      ok(await alex.$eval('#bp-adopt-name', (i) => i.value === '' && i.placeholder === 'Your full name'), 'the name box is empty until they type (their name in grey read as filled in)');
+      await alex.click('.bp-adopt button[type="submit"]');
       ok(await waitText(alex, /Type your full name, first and last, the way you sign it/), 'signing with no name says what to do');
-      ok(await alex.$eval('.bp-sign input', (i) => i.placeholder) === 'Your full name', 'the name box is empty until they type (their name in grey read as filled in)');
-      await alex.type('.bp-sign input', 'Mickey Mouse');
-      await clickText(alex, 'button', /^I’ve read it and agree$/);
+      await alex.type('#bp-adopt-name', 'Mickey Mouse');
+      await alex.click('.bp-adopt button[type="submit"]');
       ok(await waitText(alex, /Sign with your own name, as the board has it: Alex Rivera/) && !(await waitText(alex, /Signed\s*by Mickey/, 600)), 'someone else’s name isn’t a signature');
-      await alex.$eval('.bp-sign input', (i) => { i.select(); });
-      await alex.keyboard.press('Backspace');
-      await alex.type('.bp-sign input', 'alex rivera');
-      await clickText(alex, 'button', /^I’ve read it and agree$/);
+      await adoptTyped(alex, 'alex rivera', { open: false });
+      // (adopted, it carries on signing: agreeing to sign electronically, the first time, comes first)
+      ok(await waitText(alex, /Tick that you agree to sign electronically, then sign/), 'the first time, they agree to sign electronically');
+      await alex.click('.bp-sign__agree input');
+      await clickText(alex, '.bp-sign button', /^Sign$/);
       ok(await waitText(alex, /Signed\s*by Alex Rivera/), 'they sign the policy with their typed name (kept the way People spells it)');
       // The focus moves a frame after "Signed by…" shows
       ok(await alex.waitForFunction(() => document.activeElement?.classList.contains('bp-signed'), { timeout: 2000 }).then(() => true, () => false), 'the focus goes to “Signed by…”, not the page');
@@ -1432,16 +1446,13 @@ try {
   };
   const reader = await tab(MEMBER, 390);
   await reader.goto(`${SITE}/admin/board/#/documents/${exp.id}`, { waitUntil: 'networkidle0' });
-  await reader.waitForSelector('.bp-docpage .bp-sign input');
+  await reader.waitForSelector('.bp-docpage .bp-sign .bp-sign__adopted');
   await words('Sponsor one family a year.');
   ok(await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 5000 }).then(() => true, () => false) && (await listDocs(DB)).find((d) => d.id === exp.id).version === 3, 'saved straight away: nobody had signed wording 2 to ask about');
-  await reader.type('.bp-docpage .bp-sign input', 'Alex Rivera');
-  await clickText(reader, 'button', /^I’ve read it and agree$/);
+  await clickText(reader, '.bp-sign button', /^Sign$/);
   ok(await waitText(reader, /It changed while you had it open\. Read it again, then sign\./) && await waitText(reader, /Sponsor one family a year/) && !(await listDocs(DB)).find((d) => d.id === exp.id).signed['alex-rivera'], 'signing words that changed meanwhile: refused, said, and the new words are on the page');
-  // (the name box emptied with the refusal: read again, then typed again)
-  ok(await reader.$eval('.bp-docpage .bp-sign input:not([type="file"])', (i) => i.value === ''), 'the name box is emptied, to read it again first');
-  await reader.type('.bp-docpage .bp-sign input:not([type="file"])', 'Alex Rivera');
-  await clickText(reader, 'button', /^I’ve read it and agree$/);
+  ok(!!(await reader.$('.bp-docpage .bp-sign .bp-sign__adopted')), 'their adopted signature stays, to sign once they’ve read it');
+  await clickText(reader, '.bp-sign button', /^Sign$/);
   ok(await waitText(reader, /Signed for \d{4}/) && (await listDocs(DB)).find((d) => d.id === exp.id).signed['alex-rivera']?.version === 3, 'read, then signed: wording 3');
   await reader.close();
   // New words over Alex's signature: the question names him; Escape goes back to the words, nothing saved
@@ -1496,16 +1507,17 @@ try {
   // Sam about to sign the policy's PDF on its page when its words are written in Board: told it didn't go, there
   const samDocs = await tab(OTHER, 1440);
   await samDocs.goto(`${SITE}/admin/board/#/documents/${coiDoc.id}`, { waitUntil: 'networkidle0' });
-  const samInput = `.bp-docpage .bp-sign input:not([type="file"])`;
-  await samDocs.waitForSelector(samInput);
-  await samDocs.type(samInput, 'Sam Ortiz');
+  await samDocs.waitForSelector('.bp-docpage .bp-sign');
+  await adoptTyped(samDocs, 'Sam Ortiz');
+  await samDocs.waitForSelector('.bp-sign__agree input');
+  await samDocs.click('.bp-sign__agree input');
   await editRow('Conflict of interest policy');
   await jane.waitForSelector('.bd-words__start button');
   await clickText(jane, '.bd-words__start button', /^Start from the PDF’s words$/);
   await jane.waitForFunction(() => (document.querySelector('.rp-edit')?.innerText || '').length > 40, { timeout: 8000 }).catch(() => {});
   await clickText(jane, 'button', /^Save$/);
   await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 8000 }).catch(() => {});
-  await samDocs.evaluate(() => [...document.querySelectorAll('.bp-docpage button')].find((b) => /I’ve read it and agree/.test(b.textContent))?.click());
+  await samDocs.evaluate(() => [...document.querySelectorAll('.bp-docpage .bp-sign button')].find((b) => /^Sign$/.test(b.textContent.trim()))?.click());
   ok(await waitText(samDocs, /It changed while you had it open\. Read it again, then sign\./) && !(await listDocs(DB)).find((d) => d.id === coiDoc.id).signed['sam-ortiz'],
     'a signature that didn’t go (its PDF written in Board meanwhile) says so on its page, with its words to read');
   await samDocs.close();

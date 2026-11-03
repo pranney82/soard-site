@@ -8,7 +8,10 @@
  * search and the server read, so it stays readable as plain text too.
  *
  *   mdBlocks(md)   → the blocks, to draw: [{ t: 'p'|'h', text } | { t: 'quote', blocks } | { t: 'ul'|'ol', start, items: [blocks] } | { t: 'hr' }]
- *                    ("---" alone on a line: a new slide here, on the meeting's screen)
+ *                    ("---" alone on a line: a new slide here, on the meeting's screen). A paper's point that asks
+ *                    each member for something ends " {initials}" or " {answer}": its paragraph has `field` and
+ *                    `n` (numbered in reading order, one source for the page, the server and the signed copy)
+ *   paperFields(md)→ what a paper asks each signer for: [{ n, kind: 'initials'|'answer', text }]
  *   mdInline(text) → a block's words as runs: [{ text, b, i, href } | { br: true }]
  *   mdToDoc(md)    → the editor's document (ProseMirror JSON)
  *   docToMd(doc)   → Markdown from the editor's document
@@ -60,9 +63,22 @@ function blocksOf(lines) {
     // A paragraph: its lines until a blank one or another block (each line break kept)
     const para = [];
     while (i < lines.length && !isBlank(lines[i]) && !(para.length && (RULE.test(lines[i]) || LIST.test(lines[i]) || QUOTE.test(lines[i]) || (HEADING.test(lines[i]) && indentOf(lines[i]) <= 3)))) para.push(lines[i++].trim());
-    out.push({ t: 'p', text: para.join('\n') });
+    const text = para.join('\n');
+    // A point asking for the signer's initials or an answer (" {initials}" at its end; "\{initials}" is just words)
+    const f = text.match(FIELD);
+    out.push(f ? { t: 'p', text: text.slice(0, f.index + f[1].length).trimEnd(), field: f[2] } : { t: 'p', text });
   }
   return out;
+}
+const FIELD = /(^|[^\\])\s*\{(initials|answer)\}$/;
+/** The fields' numbers, in reading order (into points and callouts too) */
+function numberFields(blocks, at = { n: 0 }) {
+  for (const b of blocks) {
+    if (b.t === 'p' && b.field) b.n = ++at.n;
+    else if (b.t === 'quote') numberFields(b.blocks, at);
+    else if (b.items) for (const it of b.items) numberFields(it, at);
+  }
+  return blocks;
 }
 
 /** A list starting at lines[i]: its items (each with what's indented under it), into `out`. → the next line */
@@ -103,7 +119,21 @@ function listAt(lines, i, out) {
 /** Markdown → its blocks, to draw */
 export function mdBlocks(md) {
   const lines = String(md || '').replace(/\r\n?/g, '\n').replace(/\t/g, '  ').split('\n');
-  return blocksOf(lines);
+  return numberFields(blocksOf(lines));
+}
+
+/** What a paper asks each member for as they sign: each point marked for initials or an answer, in order */
+export function paperFields(md) {
+  const out = [];
+  const walk = (blocks) => {
+    for (const b of blocks) {
+      if (b.t === 'p' && b.field) out.push({ n: b.n, kind: b.field, text: mdInline(b.text).map((r) => (r.br ? ' ' : r.text)).join('').replace(/\s+/g, ' ').trim() });
+      else if (b.t === 'quote') walk(b.blocks);
+      else if (b.items) for (const it of b.items) walk(it);
+    }
+  };
+  walk(mdBlocks(md));
+  return out;
 }
 
 /** The closing `**` or `*` (or `__`, `_`) for one opened at `from`: not after a space, not part of a longer run → index or -1 */
@@ -236,7 +266,7 @@ function pmInline(text) {
 }
 function pmBlocks(blocks) {
   return blocks.map((b) => {
-    if (b.t === 'p') { const content = pmInline(b.text); return content.length ? { type: 'paragraph', content } : { type: 'paragraph' }; }
+    if (b.t === 'p') { const content = pmInline(b.text); const attrs = b.field ? { attrs: { field: b.field } } : {}; return content.length ? { type: 'paragraph', ...attrs, content } : { type: 'paragraph', ...attrs }; }
     if (b.t === 'h') { const content = pmInline(b.text); return { type: 'heading', attrs: { level: 3 }, ...(content.length ? { content } : {}) }; }
     if (b.t === 'quote') { const content = pmBlocks(b.blocks); return { type: 'blockquote', content: content.length ? content : [{ type: 'paragraph' }] }; }
     if (b.t === 'hr') return { type: 'horizontalRule' };
@@ -257,8 +287,10 @@ export function mdToDoc(md) {
 // ─── Writing Markdown ───────────────────────────────────────────────
 
 /** Words that would read as Markdown, made plain: * _ [ ] ` \ anywhere, and what starts a block at a line's start */
+const FIELDS = ['initials', 'answer'];
 function escapeText(t) {
-  return t.replace(/[\\*[\]`]/g, '\\$&').replace(/(^|[^a-z0-9])_|_(?=[^a-z0-9]|$)/gi, (m) => m.replace('_', '\\_'));
+  // (a "{" too: words that happen to end "{initials}" never become a field)
+  return t.replace(/[\\*[\]`{]/g, '\\$&').replace(/(^|[^a-z0-9])_|_(?=[^a-z0-9]|$)/gi, (m) => m.replace('_', '\\_'));
 }
 const escapeLineStart = (line) => line.replace(/^(\s*)([#>+-]|\d+(?=[.)]))/, (m, sp, ch) => (/\d/.test(ch) ? `${sp}${ch}\\` : `${sp}\\${ch}`)).replace(/^(\s*\d+)\\([.)])/, '$1\\$2');
 const ORDER = ['link', 'bold', 'italic'];
@@ -337,7 +369,8 @@ function inlineMd(nodes = [], pad = '') {
 
 function blockMd(node, pad) {
   switch (node.type) {
-    case 'paragraph': return escapeLineStart(inlineMd(node.content, pad).trim());
+    // (a point asking each signer for their initials or an answer says so at its end)
+    case 'paragraph': { const md = escapeLineStart(inlineMd(node.content, pad).trim()); return md && FIELDS.includes(node.attrs?.field) ? `${md} {${node.attrs.field}}` : md; }
     case 'heading': return `### ${inlineMd(node.content, pad).trim()}`;
     // A new slide here (the screen starts one at it; ./board-shared.js reportSlides)
     case 'horizontalRule': return '---';

@@ -353,7 +353,18 @@ export async function setBoardEmail(DB, slug, email) {
   const e = normEmail(email);
   if (!e) return DB.prepare('DELETE FROM reveal_board_emails WHERE slug = ?').bind(slug).run();
   if (!isEmail(e)) throw new Error('That email doesn\'t look right');
-  return DB.prepare('INSERT OR REPLACE INTO reveal_board_emails (slug, email, updated_at) VALUES (?, ?, ?)').bind(slug, e, new Date().toISOString()).run();
+  const was = await DB.prepare('SELECT email FROM reveal_board_emails WHERE slug = ?').bind(slug).first().catch(() => null);
+  const r = await DB.prepare('INSERT OR REPLACE INTO reveal_board_emails (slug, email, updated_at) VALUES (?, ?, ?)').bind(slug, e, new Date().toISOString()).run();
+  // A changed address (the one a board member signs in, and signs, with): in the signing record, and the old
+  // address is told by the heartbeat (./_board-sign.js maybeRunSigning)
+  if (was?.email && normEmail(was.email) !== e) {
+    try {
+      const { appendEvents } = await import('./_board-sign.js');
+      const name = (await DB.prepare('SELECT name FROM team WHERE slug = ?').bind(slug).first().catch(() => null))?.name || '';
+      await appendEvents(DB, async () => ({ events: [{ kind: 'email-changed', slug, detail: { from: normEmail(was.email), to: e, name } }] }));
+    } catch { /* the address is saved either way */ }
+  }
+  return r;
 }
 
 /**

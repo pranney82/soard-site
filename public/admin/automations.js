@@ -804,6 +804,31 @@ const MAP = { t: 'SOARD', children: [
             return ON(`${plural(g.wanted, 'person', 'people')} in it, as on People → Board.${g.missing ? ` ${plural(g.missing, 'board member has', 'board members have')} no email there, so ${g.missing === 1 ? 'isn’t' : 'aren’t'} in it.` : ''}${changed}`, g.syncedAt);
           } },
       ]},
+      { t: 'Signing papers', children: [
+        { t: 'Signed copies and receipts', s: 'live', k: 'event',
+          when: 'As a board member signs on the board page, and every minute on the live hub’s heartbeat for any still to make or send.',
+          does: 'Prints each signature’s signed copy in Cloudflare’s browser: the paper as signed (each initial and answer, the signature), then a signing record page (the words’ SHA-256, the address Cloudflare Access checked, the IP, device and times, agreeing to sign electronically), with the exact words and the evidence attached inside the PDF. A member who signed on the board page gets it by email once, with both fingerprints; copies signed on paper, added by SOARD or from Drive get their copy quietly, never an email. A copy that can’t be made after 3 tries tells the admins once, and the receipt goes without it. When SOARD takes off a signature a member gave, they’re told; when a member’s email changes on People, the old address is told. When every board member has signed a paper for the year, the admins are told once.',
+          touches: ['Cloudflare Browser Rendering', 'Resend', 'D1', 'R2'], where: 'functions/api/_board-sign.js (board-portal.js, board-admin.js, broadcast-hooks.js)',
+          info: 'Nothing a signature rests on is deleted. Board → Documents → Who’s signed downloads a year’s record for an auditor: every copy, the words, a spreadsheet, a summary and the chain of events.',
+          live: (f) => {
+            const g = f.boardSigning;
+            if (!g) return null;
+            if (!g.browser) return ATTN('The BROWSER binding is missing, so signed copies can’t be printed and receipts wait.');
+            if (g.failed) return ATTN(`${plural(g.failed, 'signed copy', 'signed copies')} couldn’t be made after 3 tries (the admins were emailed). The signatures are kept.`, g.copiesLast);
+            return ON(`${plural(g.copies, 'signed copy', 'signed copies')} made${g.waiting ? `, ${g.waiting} on the way` : ''}; ${plural(g.receipts, 'receipt')} sent this year.${g.declines ? ` ${plural(g.declines, 'member')} said they can’t sign a paper as written.` : ''}`, g.receiptsLast || g.copiesLast);
+          } },
+        { t: 'Remind by email', s: 'off', k: 'schedule',
+          when: 'On the live hub’s heartbeat, weekdays 8 AM to 7 PM Eastern that aren’t holidays, once an admin turns it on in Board → Members (every 3 days or weekly).',
+          does: 'Emails each board member who hasn’t signed this year’s papers, naming every one they haven’t, that many days after they were last asked or had the board page’s sign-in email. At most 4 a year; signing, or telling SOARD they can’t sign a paper as written, stops them, and so does a week past a paper’s due date. Each January it asks the whole board again by itself, on the first weekday after New Year’s Day.',
+          touches: ['Resend', 'D1'], where: 'functions/api/_board-sign.js maybeRemindSigners (via _board.js maybeRunBoard)',
+          info: 'Off until an admin turns it on. Ask to sign on Board → Members emails whoever an admin chooses, any time.',
+          live: (f) => {
+            const g = f.boardSigning;
+            if (!g) return null;
+            if (g.remind === 'off') return OFF('Off. Board → Members turns it on.');
+            return ON(`${g.remind === '3' ? 'Every 3 days' : 'Weekly'}. ${plural(g.reminders, 'reminder')} sent this year.`, g.remindersLast);
+          } },
+      ]},
       { t: 'Meetings', children: [
         { t: 'Answers to the board meeting invites', s: 'live', k: 'schedule',
           when: 'Every hour on the live hub’s heartbeat, and whenever Peter or Holly opens Board (if the last look is over 10 minutes old).',

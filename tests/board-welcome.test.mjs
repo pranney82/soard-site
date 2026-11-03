@@ -90,7 +90,7 @@ test('from the admin who sends it: their name, photo and title; the next meeting
   assert.match(alex.text, new RegExp(`Next meeting: .*\\n.*6:00 to 7:30 PM\\nExample Hall, 1 Example St, Roswell, GA\\nIts agenda is on the board page\\.`));
   assert.match(alex.text, /To sign for \d{4}:\n- Conflict of Interest Policy\n/);
   assert.doesNotMatch(alex.text, new RegExp(noFile.title), 'a paper with no file isn’t asked for');
-  assert.match(alex.text, /Read it on the board page, and sign by typing your name or adding the copy you signed on paper\./, 'one paper is “it”');
+  assert.match(alex.text, /Read it on the board page and sign there, or add the copy you signed on paper\./, 'one paper is “it”');
   assert.doesNotMatch(sam.text, /To sign for/, 'Sam signed it already');
   assert.match(alex.text, /Reply to this email and Jane or Pat will help/);
 });

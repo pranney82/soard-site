@@ -139,7 +139,7 @@ test('typed, or the copy signed on paper: each is the year’s signature, a copy
   await assert.rejects(signWithCopy(env, bylaws.id, pdf('b.pdf'), { member: alex }), /doesn’t ask for a signature/);
   const hidden = await expectations({ shared: false });
   await assert.rejects(signWithCopy(env, hidden.id, pdf('b.pdf'), { member: alex }), /isn’t on the board page anymore/);
-  assert.deepEqual(SIGNED_BY, ['typed', 'copy', 'staff', 'drive']);
+  assert.deepEqual(SIGNED_BY, ['typed', 'drawn', 'copy', 'staff', 'drive']);
 });
 
 test('a copy is opened by Board’s admins and the member it belongs to, nobody else; deleting the paper takes its copies', async () => {

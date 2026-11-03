@@ -23,14 +23,14 @@ import { viewerLink, sizeText } from './file-viewer.js';
 import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords, driveLink, dayOf, signedHow, Face } from './board-ui.js';
 import { MeetingEditor, agendaSource } from './board-meeting.js';
 import { ReportEditor, Report, PAPER_LETTERS } from './board-report.js';
-import { mdPlain } from './board-md.js';
+import { mdPlain, paperFields } from './board-md.js';
 import { pdfLines, docxLines, wordsFromLines } from './board-words.js';
 import { BoardActivity } from './board-activity.js';
 import {
   isHeic, asJpeg, DOC_KINDS, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
   attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority, agendaItems, isLive, heldEarly,
 } from './board-shared.js';
-import { welcomeHad, usableEmail } from './board-shared.js';
+import { welcomeHad, usableEmail, PROCESS_TEXT, dueOn, dueWords } from './board-shared.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // The area
@@ -515,7 +515,13 @@ async function addSignedCopy({ d, p, picked, addToast, setBusy = () => {}, repla
   setBusy(p.slug);
   // (an iPhone photo: the JPEG a browser shows, and the HEIC as it was taken, kept as the record)
   let original = null;
-  if (isHeic(file)) { try { file = await asJpeg(file); original = picked; } catch { /* sent as it is */ } }
+  if (isHeic(file)) {
+    try { file = await asJpeg(file); original = picked; } catch {
+      setBusy('');
+      addToast(`${picked.name} is a photo this browser couldn’t read. Take a screenshot of it, or save it as a JPEG, and add that.`, 'error');
+      return null;
+    }
+  }
   const fd = new FormData();
   fd.append('signFor', d.id);
   fd.append('slug', p.slug);
@@ -526,7 +532,7 @@ async function addSignedCopy({ d, p, picked, addToast, setBusy = () => {}, repla
   setBusy('');
   if (j.exists) {
     const who = j.exists.name.split(/\s+/)[0];
-    if (await ask({ title: `${who} has signed it already`, text: `${j.exists.name} signed it ${j.exists.how === 'typed' ? 'by typing their name on the board page' : 'with their own copy'}${j.exists.at ? `, ${dayOf(j.exists.at)}` : ''}. Put this copy in its place?`, yes: 'Use this copy', no: 'Keep theirs', careful: true })) return addSignedCopy({ d, p, picked, addToast, setBusy, replace: true });
+    if (await ask({ title: `${who} has signed it already`, text: `${j.exists.name} signed it ${j.exists.how === 'typed' ? 'by typing their name on the board page' : j.exists.how === 'drawn' ? 'by drawing their signature on the board page' : 'with their own copy'}${j.exists.at ? `, ${dayOf(j.exists.at)}` : ''}. Put this copy in its place?`, yes: 'Use this copy', no: 'Keep theirs', careful: true })) return addSignedCopy({ d, p, picked, addToast, setBusy, replace: true });
     return (await call()).docs?.find((x) => x.id === d.id) || null;
   }
   if (!j.ok) { addToast(j.error, 'error'); return null; }
@@ -538,6 +544,18 @@ async function addSignedCopy({ d, p, picked, addToast, setBusy = () => {}, repla
  * Each board member's signature this year on a paper every member signs: how it came, with its copy (here or in
  * Drive); a copy someone handed in added for them, and one added by mistake taken off
  */
+/**
+ * A member's copies kept for a paper beyond the one that counts: earlier copies (replaced, or taken off, with when),
+ * and an iPhone photo's original as it was taken, each to open (Board → Documents → Who's signed)
+ */
+function keptLinks(d, p) {
+  const list = d.kept?.[p.slug] || [];
+  const files = viewerFiles(list.map((f) => ({ ...f, name: `${d.title}, ${f.originalOf ? 'the original photo' : 'an earlier copy'} from ${p.name}` })));
+  const earlier = list.map((f, i) => ({ f, i })).filter(({ f }) => f.supersededAt && !f.originalOf);
+  const originals = list.map((f, i) => ({ f, i })).filter(({ f }) => f.originalOf);
+  return html`${earlier.length ? html`Earlier copies: ${earlier.map(({ f, i }, k) => html`${k ? ', ' : ''}<a ...${viewerLink(files, i)}>${dayOf(f.at)}</a>`)}` : null}${earlier.length && originals.length ? ' · ' : ''}${originals.length ? html`<a ...${viewerLink(files, originals[0].i)}>The original photo</a>${originals.length > 1 ? ` (and ${originals.length - 1} more)` : ''}` : null}`;
+}
+
 function Signers({ d, ctx, onDoc }) {
   const { data, addToast } = ctx;
   const [busy, setBusy] = useState('');
@@ -555,7 +573,7 @@ function Signers({ d, ctx, onDoc }) {
   const off = async (p) => {
     const s = d.signed[p.slug] || d.before?.[p.slug];
     const first = p.name.split(/\s+/)[0];
-    if (!(await ask({ title: `Take off ${p.name}’s signature${d.signed[p.slug] ? '' : ' on the earlier version'}?`, text: d.signed[p.slug] ? `${first} then shows as still to sign the ${d.title} for ${year}${s?.copy ? ', and the copy added for it is deleted' : ''}.` : `It goes from the record${s?.copy ? ' with the copy added for it' : ''}. ${first} is still to sign the new version.`, yes: 'Take it off', danger: true }))) return;
+    if (!(await ask({ title: `Take off ${p.name}’s signature${d.signed[p.slug] ? '' : ' on the earlier version'}?`, text: d.signed[p.slug] ? `${first} then shows as still to sign the ${d.title} for ${year}.${s?.copy ? ' The copy added for it stays on record, under Earlier copies.' : ''}` : `${first} is still to sign the new version.${s?.copy ? ' The copy added for the earlier one stays on record, under Earlier copies.' : ''}`, yes: 'Take it off', danger: true }))) return;
     setBusy(p.slug);
     const j = await call({ action: 'unsign', docId: d.id, slug: p.slug });
     setBusy('');
@@ -572,13 +590,18 @@ function Signers({ d, ctx, onDoc }) {
       return html`<li class="bd-signer" key=${p.slug} data-signer=${p.slug}>
         <span class=${`bd-signer__dot ${s ? 'is-on' : ''}`} aria-hidden="true"></span>
         <span class="bd-signer__name">${p.name}</span>
-        <span class="bd-signer__how">${s ? signedHow(s) : was ? `Signed the earlier version on ${dayOf(was.at)}, not the new one yet` : d.prior?.[p.slug] ? `Not signed for ${year} yet (signed for ${d.prior[p.slug].year})` : 'Not signed yet'}${was?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...was.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}</span>
+        <span class="bd-signer__how">${s ? signedHow(s) : d.declined?.[p.slug] ? html`Declined on ${dayOf(d.declined[p.slug].at)}: <q class="bd-signer__why">${d.declined[p.slug].reason}</q>` : was ? `Signed the earlier version on ${dayOf(was.at)}, not the new one yet` : d.prior?.[p.slug] ? `Not signed for ${year} yet (signed for ${d.prior[p.slug].year})` : 'Not signed yet'}${was?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...was.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}${s?.record?.id ? html` · <a ...${viewerLink(viewerFiles([{ id: s.record.id, name: `${d.title}, signed by ${p.name}.pdf`, type: 'application/pdf' }]), 0)}>Signed copy (PDF)</a>` : null}${(d.kept?.[p.slug] || []).length ? html`<span class="bd-signer__kept">${keptLinks(d, p)}</span>` : null}</span>
         <span class="bd-signer__act">${was ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their new signed copy'}</button>` : null}${s || was
           ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => off(p)}>${was ? 'Take the earlier one off' : 'Take it off'}</button>`
           : html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their signed copy'}</button>`}</span>
       </li>`;
     })}</ul>
     <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => add(e.target.files[0])} />
+    <div class="bd-signers__foot">
+      <a class="btn btn-ghost btn-sm" href=${`/api/board-admin?record=${encodeURIComponent(d.id)}&year=${year}`} download>Download the ${year} record</a>
+      ${Object.keys(d.prior || {}).length ? html`<a class="btn btn-ghost btn-sm" href=${`/api/board-admin?record=${encodeURIComponent(d.id)}&year=${Number(year) - 1}`} download>The ${Number(year) - 1} record</a>` : null}
+      <details class="bd-signers__how"><summary>How signing works</summary><p>${PROCESS_TEXT}</p><p>The record is a ZIP: each member’s signed copy and record, any copy signed on paper, the exact words signed, a spreadsheet, a summary and every event in the chain, with members who have left the board.</p></details>
+    </div>
   </div>`;
 }
 
@@ -776,6 +799,7 @@ function DocumentsTab({ ctx }) {
           title: n.length === 1 ? `Ask ${first} to sign again?` : `Ask the ${n.length} who signed to sign again?`,
           text: `${who} signed the earlier version for ${year}. ${j.ask.newFile && j.ask.now === 'file' ? `With ${fileTitle(j.ask.newFile)} it’s a new version: if what they agree to changed, they sign it.`
             : j.ask.newFile ? `With the words from ${fileTitle(j.ask.newFile)} it’s a new version: if what they agree to changed, they sign it.`
+            : j.ask.fields ? 'What each member initials or answers changed. Keeping their signatures keeps them as they signed, without the new initials or answers; asking again has each of them initial and answer it.'
             : j.ask.paused ? 'Its words changed while it wasn’t required: if what they agree to changed, they sign the new version.'
             : j.ask.now === 'file' ? 'With the words taken out, the board reads its file again: if that’s not what they signed, they sign it.'
             : j.ask.since === 'file' ? 'Its words written here are what the board reads now: if they say something the file didn’t, they sign them.'
@@ -833,7 +857,7 @@ function DocumentsTab({ ctx }) {
   const remove = async (d) => {
     // (signed this year, an earlier wording, or a year before: on record)
     if (Object.keys(d.signed || {}).length || (d.earlier || []).length || Object.keys(d.prior || {}).length) { await keepOnRecord(d); return; }
-    if (!(await ask({ title: `Delete ${d.title}?`, text: (() => { const l = [d.file ? 'its file' : '', d.version > 1 ? 'its earlier wordings' : ''].filter(Boolean); const t = l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0]; return t ? `${t.charAt(0).toUpperCase()}${t.slice(1)} go with it.` : 'Nobody has signed it, so nothing is lost.'; })(), yes: 'Delete', danger: true }))) return;
+    if (!(await ask({ title: `Delete ${d.title}?`, text: (() => { const l = [d.file ? 'its file' : '', d.version > 1 ? 'its earlier wordings' : ''].filter(Boolean); const t = l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0]; return t ? `${t.charAt(0).toUpperCase()}${t.slice(1)} ${l.length > 1 ? 'go' : 'goes'} with it. Nobody has signed it, so no signature is lost.` : 'Nobody has signed it, so nothing is lost.'; })(), yes: 'Delete', danger: true }))) return;
     const j = await call({ action: 'delete-doc', id: d.id });
     if (!j.ok && j.signed) { await keepOnRecord(d); return; }
     if (!j.ok) { addToast(j.error, 'error'); return; }
@@ -872,6 +896,14 @@ function DocumentsTab({ ctx }) {
           <${ReportEditor} value=${draft.body || ''} resetKey=${wordsKey} label=${`The words of ${draft.title || 'the document'}`} minHeight=${hasWords ? 280 : 160} timed="read"
             placeholder="What the board reads and agrees to. Headings, points and bold are in the bar above; text pasted from Word or Google Docs keeps its shape."
             onChange=${(md) => setDraft((x) => (x ? { ...x, body: md } : x))} />
+          ${(() => {
+            // What each member is asked for as they sign (the bar's Initials here and Answer here), said under the words
+            const f = paperFields(draft.body || '');
+            if (!f.length) return draft.sign && hasWords ? html`<p class="form-hint">To have each member initial a point or fill something in as they sign, put the cursor in it and choose Initials here or Answer here in the bar.</p>` : null;
+            const ini = f.filter((x) => x.kind === 'initials').length;
+            const ans = f.length - ini;
+            return html`<p class="form-hint bd-fields" role="status">${draft.sign ? 'Members' : 'When it’s required, members'} ${[ini ? `initial ${plural(ini, 'point')}` : '', ans ? `answer ${ans === 1 ? 'one' : ans}` : ''].filter(Boolean).join(' and ')} as they sign it.</p>`;
+          })()}
           ${draft.id && draft.version > 1 ? html`<${Wordings} id=${draft.id} current=${draft.version} signFrom=${draft.signFrom} addToast=${addToast}
             onUse=${async (body) => {
               if (dirty && (draft.body || '').trim() !== (data.docs.find((x) => x.id === draft.id)?.body || '').trim() && !(await ask({ title: 'Put those words in the editor?', text: 'They take the place of the changes there now, which aren’t saved.', yes: 'Put them in', no: 'Keep my changes' }))) return;
@@ -889,7 +921,10 @@ function DocumentsTab({ ctx }) {
           </div>` : draft.existing ? html`<p class="form-hint">Choose another to replace it.</p>` : null}
         </div>
         <div class="form-group span-2"><label class="bd-check"><input type="checkbox" checked=${!!draft.sign} disabled=${!hasFile && !draft.sign} onChange=${(e) => setDraft({ ...draft, sign: e.target.checked })} /> Required: every board member reads and signs it each year (the board expectations, the conflict of interest policy)</label>
-          ${hasFile ? null : html`<p class="form-hint">${draft.sign ? 'Nothing to read yet: write the words or add the file, or untick Required.' : 'To make it required, write its words or add its file first: the board signs what they can read.'}</p>`}</div>
+          ${hasFile ? null : html`<p class="form-hint">${draft.sign ? 'Nothing to read yet: write the words or add the file, or untick Required.' : 'To make it required, write its words or add its file first: the board signs what they can read.'}</p>`}
+          ${draft.sign ? html`<div class="bd-due"><label class="form-label" for="bd-doc-due">Due each year <span class="form-optional">optional</span></label>
+            <input id="bd-doc-due" class="form-input bd-due__input" type="date" value=${draft.due ? `${year}-${draft.due}` : ''} onChange=${(e) => setDraft({ ...draft, due: /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) ? e.target.value.slice(5) : '' })} />
+            <p class="form-hint">On the board page and in the emails asking them to sign. Remind by email stops a week after it.</p></div>` : null}</div>
       </div>
       <div class="bd-actions" style="margin-top:1rem">
         <button class="btn btn-primary" data-save-doc disabled=${saving || !!reading} onClick=${() => save()}>${saving ? 'Saving…' : 'Save'}</button>
@@ -912,6 +947,7 @@ function DocumentsTab({ ctx }) {
               d.body ? `Written here${d.wordsAt ? `, last changed ${dayOf(d.wordsAt)}` : ''}` : d.file ? `${fileTitle(d.file.name)} · ${sizeText(d.file.size).replace(' ', '\u00a0')}` : 'No words or file yet'].filter(Boolean).join(' · ')}${d.body && d.file ? html` · its ${formatWord(d.file)}: ${fileLink(d.file, fileTitle(d.file.name))}` : null}</div>
             ${newerOf(d, d.file) ? html`<div class="bd-row__meta bd-row__newer">A newer ${formatWord(d.file)} came in on ${dayOf(d.file.at)}, after these words were last changed. If it’s a new version, Edit to bring its words in.</div>` : null}
             ${d.sign && !d.shared ? html`<div class="bd-row__meta">Off the board page: the board can’t read or sign it until it’s back on.</div>` : null}
+            ${d.sign && d.due ? html`<div class="bd-row__meta">Due ${dueWords(dueOn(d, year))} each year</div>` : null}
             ${d.sign ? html`<div class="bd-row__meta">${all ? `Every board member has signed it for ${year}` : !signed.length ? `No one has signed ${earlier ? 'the new version' : 'it'} for ${year} yet${earlier ? ` (${plural(earlier, 'member')} signed the earlier one)` : ''}` : `Still to sign: ${left.map((p) => (d.before?.[p.slug] ? `${p.name} (signed the earlier version)` : p.name)).join(', ')}`}</div>` : null}
           </div>
           <div class="bd-tags">
@@ -1354,14 +1390,35 @@ function MembersTab({ ctx }) {
     const n = unsigned.length;
     const first = unsigned[0].name.split(/\s+/)[0];
     if (!(await ask({ title: n === 1 ? `Email ${first}, asking them to sign?` : `Email the ${n} who haven’t signed?`,
-      text: `${n === 1 ? `${unsigned[0].name} gets` : 'Each gets'} an email from you with a button straight to ${title}, to read it and sign by typing their name.${n > 1 ? ' Anyone you asked in the last ten minutes is left out.' : ''}`,
+      text: `${n === 1 ? `${unsigned[0].name} gets` : 'Each gets'} an email from you with a button straight to ${title}, to read and sign on the board page.${n > 1 ? ' Anyone you asked in the last ten minutes is left out.' : ''}`,
       yes: n === 1 ? `Email ${first}` : `Email all ${n}`, no: 'Cancel' }))) return;
     await askSign({}, 'ask:all');
+  };
+  // Remind by email: turned on, asked first (who gets an email, and when); off at once
+  const remind = async (value, el) => {
+    const was = data.settings?.remind || 'off';
+    if (value === was) return;
+    if (value !== 'off') {
+      const days = value === '3' ? 3 : 7;
+      const n = data.members.filter((p) => usableEmail(p.email) && signDocs.some((d) => !d.signed[p.slug] && !d.declined?.[p.slug])).length;
+      const ok = await ask({
+        title: `Remind ${n === 1 ? 'the one' : `the ${n}`} who haven’t signed, ${days === 3 ? 'every 3 days' : 'weekly'}?`,
+        text: `Each gets an email naming the papers they haven’t signed, ${days} days after they were last asked (anyone not asked yet, on the next weekday), between 8 AM and 7 PM Eastern on weekdays that aren’t holidays. At most 4 a year; signing, or telling SOARD they can’t sign it as written, stops them, and so does a week past a paper’s due date. Each January it asks the whole board again by itself.`,
+        yes: 'Turn reminders on', no: 'Cancel',
+      });
+      if (!ok) { if (el) el.value = was; return; }
+    }
+    setWorking('remind');
+    const j = await call({ action: 'save-settings', settings: { remind: value } });
+    setWorking('');
+    if (!j.ok) { addToast(j.error, 'error'); if (el) el.value = was; return; }
+    ctx.setData((x) => ({ ...x, settings: { ...x.settings, remind: j.settings?.remind ?? value } }));
+    addToast(value === 'off' ? 'Reminders are off. Ask to sign still emails whoever you choose.' : `Reminders are on, ${value === '3' ? 'every 3 days' : 'weekly'}.`, 'info');
   };
   return html`
     <${AccessPanel} ctx=${ctx} ready=${ready} working=${working} welcome=${welcome} now=${now} />
     <${BoardActivity} data=${data} signDocs=${signDocs} ready=${ready} working=${working} now=${now} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy}
-      onAsk=${(slug) => askSign({ slugs: [slug] }, `ask:${slug}`)} onAskAll=${askAll} onAskPreview=${() => askSign({ test: true }, 'ask:me')} />
+      onAsk=${(slug) => askSign({ slugs: [slug] }, `ask:${slug}`)} onAskAll=${askAll} onAskPreview=${() => askSign({ test: true }, 'ask:me')} onRemind=${remind} />
     <${RunsBoard} ctx=${ctx} />`;
 }
 

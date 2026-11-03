@@ -30,7 +30,7 @@ import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
-  isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
+  isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf, CONSENT_TEXT, SIGN_STYLES, styleFont, PROCESS_TEXT, dueOn, dueWords,
   reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
   NOTHING_NEW, isNothingNew, LIMITS, slidesOfItem, reportAlone, decidesAlone, facesOf, hasReport, LIVE_TITLES, orderUnits,
 } from '../board-shared.js';
@@ -39,7 +39,7 @@ import { FinanceReview, NoteLine, notesByKey, lineKeysOf, withLineNotes, dueText
 import { ChairReview, reviewTodo, ChairNoteLine } from './chair.js';
 import { Report, ReportEditor, readTime, Motion } from '../board-report.js';
 import { partFor } from '../board-coach.js';
-import { mdPlain, mdWords } from '../board-md.js';
+import { mdPlain, mdWords, paperFields } from '../board-md.js';
 import { prep, termsOf, termIn as wordIn, stemIn, ENDINGS, planOf, matches, howIn, termAt, scoreOf, marksOf, pageAt, norm as findNorm } from './find.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
@@ -1222,7 +1222,7 @@ function HomePage({ ctx }) {
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
         ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href=${`#/documents/${x.id}`}>
           <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
-          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">${x.signedEarlier ? 'It changed since you signed: read it, then sign again' : 'Every board member signs it once a year'}</span></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">${x.signedEarlier ? 'It changed since you signed: read it, then sign again' : x.declinedByMe ? 'You told SOARD you can’t sign it as written' : dueOn(x, todayEastern().slice(0, 4)) ? `Sign by ${dueWords(dueOn(x, todayEastern().slice(0, 4)))}` : 'Every board member signs it once a year'}</span></span>
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
       </ul>
@@ -3692,7 +3692,11 @@ async function sendCopy(docId, picked, version = null, as = '') {
   // An iPhone photo (HEIC) goes as a JPEG, which any browser shows
   let file = picked;
   let original = null;
-  if (isHeic(file)) { try { file = await asJpeg(file); original = picked; } catch { /* sent as it is */ } }
+  if (isHeic(file)) {
+    try { file = await asJpeg(file); original = picked; } catch {
+      return { ok: false, error: `${picked.name} is a photo this phone or browser couldn’t read. Take a screenshot of it, or save it as a JPEG, and add that.` };
+    }
+  }
   const fd = new FormData();
   fd.append('file', file);
   if (original) fd.append('original', original);
@@ -3736,24 +3740,159 @@ function Signed({ doc, ctx }) {
       <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => replace(e.target.files[0])} />`
     : html`by ${me.name}${when ? `, ${when}` : ''}`;
   return html`<p class="bp-signed" id=${`signed-${doc.id}`} tabindex="-1"><span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Signed</span> ${said}</p>
+    ${me.mark ? html`<div class="bp-signed__mark"><${Mark} mark=${me.mark} /></div>` : null}
+    ${me.record?.id ? html`<p class="bp-signed__copy bp-noprint"><a class="bp-link" ...${viewerLink(asViewer([{ id: me.record.id, name: `${doc.title}, signed by you.pdf`, type: 'application/pdf' }]), 0)}>Your signed copy (PDF)</a></p>` : null}
     ${problem ? html`<p class="bp-sign__problem" role="alert">${problem}</p>` : null}`;
 }
 
-function SignForm({ d: doc, ctx }) {
+// ─── Signing: a signature adopted once, the paper's initials and answers, consent, intent ───────────
+
+/** The initials and answers a page keeps while a member fills a paper in, until they sign: by member, paper and version */
+const fieldsKey = (slug, doc) => `bp-fields:${slug}:${doc.id}:${doc.version}`;
+const readFields = (k) => { try { return JSON.parse(sessionStorage.getItem(k) || '{}') || {}; } catch { return {}; } };
+const keepFields = (k, v) => { try { sessionStorage.setItem(k, JSON.stringify(v)); } catch { /* private browsing: kept on the page only */ } };
+/** The initials a mark carries, or the name's */
+const marksInitials = (mark, name) => (mark?.initials || initialsOf(name || '').replace('?', '')).toUpperCase();
+
+/** A signature as adopted: their name in a handwriting, or what they drew */
+function Mark({ mark, cls = '' }) {
+  if (!mark) return null;
+  if (mark.type === 'drawn' && mark.path) return html`<svg class=${`bp-mark bp-mark--drawn ${cls}`} viewBox="0 0 600 200" role="img" aria-label=${`${mark.text || 'Their'} signature, drawn`}><path d=${mark.path} /></svg>`;
+  return html`<span class=${`bp-mark ${cls}`} style=${`font-family:'${styleFont(mark.style)}', cursive`}>${mark.text}</span>`;
+}
+
+/** A pad to draw a signature on (a finger or the mouse): an SVG path in a 600 × 200 box */
+function Pad({ path, onPath, label }) {
+  const ref = useRef(null);
+  const down = useRef(false);
+  const last = useRef(null);
+  const at = (e) => { const r = ref.current.getBoundingClientRect(); return [Math.round(((e.clientX - r.left) / r.width) * 600), Math.round(((e.clientY - r.top) / r.height) * 200)]; };
+  const start = (e) => { e.preventDefault(); ref.current.setPointerCapture?.(e.pointerId); down.current = true; const [x, y] = at(e); last.current = [x, y]; onPath(`${path ? `${path} ` : ''}M${x} ${y} L${x + 1} ${y}`); };
+  const move = (e) => {
+    if (!down.current) return;
+    const [x, y] = at(e);
+    if (Math.abs(x - last.current[0]) + Math.abs(y - last.current[1]) < 3) return;
+    last.current = [x, y];
+    onPath((p) => `${p} L${x} ${y}`);
+  };
+  const end = () => { down.current = false; };
+  return html`<svg ref=${ref} class="bp-pad" viewBox="0 0 600 200" role="img" aria-label=${label} onPointerDown=${start} onPointerMove=${move} onPointerUp=${end} onPointerCancel=${end} onPointerLeave=${end}>
+    <line x1="30" y1="160" x2="570" y2="160" class="bp-pad__line" />
+    ${path ? html`<path d=${path} />` : html`<text x="300" y="110" text-anchor="middle" class="bp-pad__hint">Sign here with your finger or the mouse</text>`}
+  </svg>`;
+}
+
+/**
+ * Adopting a signature, once (as DocuSign's "Adopt your signature"): their name typed (their own, as the board has
+ * it, checked as they go), shown in 3 handwritings with the first chosen; or drawn. Initials come from the name and
+ * can be changed. Kept for next time. → onAdopt({ type, style, text, path, initials })
+ */
+function AdoptDialog({ own, start = null, onAdopt, onClose }) {
+  const ref = useRef(null);
+  const [tab, setTab] = useState(start?.type === 'drawn' ? 'draw' : 'type');
+  const [name, setName] = useState(start?.text || '');
+  const [style, setStyle] = useState(start?.style || SIGN_STYLES[0].id);
+  const [initials, setInitials] = useState(start?.initials || '');
+  const [mine, setMine] = useState(!!start?.initials);
+  const [path, setPathState] = useState(start?.type === 'drawn' ? start.path || '' : '');
+  const setPath = (v) => setPathState((p) => (typeof v === 'function' ? v(p) : v));
+  const [problem, setProblem] = useState('');
+  useEffect(() => { const d = ref.current; if (d && !d.open) d.showModal(); requestAnimationFrame(() => d?.querySelector('input')?.focus()); }, []);
+  const typed = name.trim();
+  const ok = typed.length >= 3 && /\S\s+\S/.test(typed) && (!own || !!signsAs(typed, own));
+  const shown = ok ? signsAs(typed, own) || typed : typed;
+  const ini = (mine ? initials : marksInitials(null, ok ? shown : '')).replace(/[^\p{L}]/gu, '').slice(0, 4).toUpperCase();
+  const close = () => { ref.current?.close(); onClose(); };
+  const use = (e) => {
+    e?.preventDefault();
+    if (typed.length < 3 || !/\S\s+\S/.test(typed)) { setProblem('Type your full name, first and last, the way you sign it.'); ref.current?.querySelector('#bp-adopt-name')?.focus(); return; }
+    if (own && !signsAs(typed, own)) { setProblem(`Sign with your own name, as the board has it: ${own}`); ref.current?.querySelector('#bp-adopt-name')?.focus(); return; }
+    if (tab === 'draw' && (path.match(/[LQC]/g) || []).length < 4) { setProblem('Draw your signature in the box, or choose Type it'); return; }
+    if (!ini) { setProblem('Type your initials'); ref.current?.querySelector('#bp-adopt-ini')?.focus(); return; }
+    ref.current?.close();
+    onAdopt({ type: tab === 'draw' ? 'drawn' : 'typed', style, text: shown, initials: ini, ...(tab === 'draw' ? { path } : {}) });
+  };
+  return html`<dialog class="bp-adopt" ref=${ref} aria-labelledby="bp-adopt-h" onClose=${onClose} onCancel=${(e) => { e.preventDefault(); close(); }}>
+    <form class="bp-adopt__card" onSubmit=${use} noValidate>
+      <header class="bp-adopt__head"><h2 class="bp-h2" id="bp-adopt-h">How you sign</h2>
+        <button type="button" class="bp-iconbtn" aria-label="Close" onClick=${close}><${Icon} name="close" size=${20} /></button></header>
+      <p class="bp-muted bp-adopt__lede">Your signature and initials for SOARD’s papers, kept for next time.</p>
+      <label class="bp-sign__label" for="bp-adopt-name">Your full name</label>
+      <input id="bp-adopt-name" class="bp-adopt__name" value=${name} autocomplete="name" placeholder="Your full name" aria-invalid=${problem && !ok ? 'true' : null} onInput=${(e) => { setName(e.target.value); if (problem) setProblem(''); }} />
+      <div class="bp-adopt__tabs" role="group" aria-label="How you sign">
+        <button type="button" aria-pressed=${tab === 'type'} onClick=${() => setTab('type')}>Type it</button>
+        <button type="button" aria-pressed=${tab === 'draw'} onClick=${() => setTab('draw')}>Draw it</button>
+      </div>
+      ${tab === 'type' ? html`<fieldset class="bp-adopt__styles"><legend class="sr-only">A style</legend>
+        ${SIGN_STYLES.map((st) => html`<label key=${st.id} class=${`bp-adopt__style ${style === st.id ? 'is-on' : ''}`}>
+          <input type="radio" name="bp-style" value=${st.id} checked=${style === st.id} onChange=${() => setStyle(st.id)} />
+          <span class="bp-mark" style=${`font-family:'${st.font}', cursive`}>${shown || 'Your name'}</span>
+          <span class="bp-adopt__ini" style=${`font-family:'${st.font}', cursive`} aria-hidden="true">${ini || 'AB'}</span>
+        </label>`)}
+      </fieldset>` : html`<div class="bp-adopt__draw">
+        <${Pad} path=${path} onPath=${setPath} label="The box to draw your signature in" />
+        <p class="bp-adopt__drawrow"><button type="button" class="bp-linkbtn" disabled=${!path} onClick=${() => setPath('')}>Clear</button></p>
+      </div>`}
+      <label class="bp-sign__label" for="bp-adopt-ini">Your initials</label>
+      <input id="bp-adopt-ini" class="bp-adopt__ininput" value=${ini} maxlength="4" autocomplete="off" autocapitalize="characters" onInput=${(e) => { setMine(true); setInitials(e.target.value); if (problem) setProblem(''); }} />
+      ${problem ? html`<p class="bp-sign__problem" role="alert">${problem}</p>` : null}
+      <p class="bp-btns bp-adopt__acts"><button type="submit" class="bp-btn bp-btn--primary">Use this signature</button><button type="button" class="bp-btn" onClick=${close}>Cancel</button></p>
+    </form>
+  </dialog>`;
+}
+
+/**
+ * A point that asks each signer for something, on the paper itself: an Initial box (their adopted initials, the
+ * time, Undo) or a short answer. Once signed, what they gave; for an admin looking, what members are asked for
+ */
+function FieldBox({ b, doc, me, vals, setVal, mark, needMark }) {
+  const n = b.n;
+  const total = paperFields(doc.body).length;
+  const name = `${b.field === 'initials' ? 'Initial' : 'Answer'} point ${n} of ${total}`;
+  const signedF = doc.signedByMe?.fields?.find((x) => x.n === n);
+  if (doc.signedByMe) return signedF ? html`<p class="bp-field__done">${b.field === 'initials' ? html`<span class="bp-field__stamp" style=${`font-family:'${styleFont(doc.signedByMe.mark?.style)}', cursive`}>${signedF.value}</span><span class="bp-muted">Initialed</span>` : html`<span class="bp-muted">Your answer:</span> <strong>${signedF.value}</strong>`}</p>` : null;
+  if (!me) return html`<p class="bp-field__ask bp-muted">${b.field === 'initials' ? 'Each member initials this point as they sign' : 'Each member answers this as they sign'}</p>`;
+  const v = vals[n] || '';
+  if (b.field === 'answer') {
+    return html`<p class="bp-field__answer"><label class="sr-only" for=${`bp-f-${doc.id}-${n}`}>${name}</label>
+      <input id=${`bp-f-${doc.id}-${n}`} data-field-input=${n} class="bp-field__input" value=${v} maxlength="500" placeholder="Your answer" autocomplete="off" onInput=${(e) => setVal(n, e.target.value)} /></p>`;
+  }
+  if (v) {
+    return html`<p class="bp-field__done"><span class="bp-field__stamp" style=${`font-family:'${styleFont(mark?.style)}', cursive`} aria-label=${`Initialed ${v}`}>${v}</span><span class="bp-muted">Initialed</span>
+      <button type="button" class="bp-linkbtn" aria-label=${`Undo your initials on point ${n}`} onClick=${() => { setVal(n, ''); requestAnimationFrame(() => document.querySelector(`[data-field-input="${n}"]`)?.focus()); }}>Undo</button></p>`;
+  }
+  const stamp = (m) => setVal(n, marksInitials(m));
+  return html`<p class="bp-field__ask"><button type="button" class="bp-btn bp-btn--sm bp-field__btn" data-field-input=${n} aria-label=${name} onClick=${() => (mark ? stamp(mark) : needMark(stamp))}>Initial</button>
+    <span class="bp-field__print" aria-hidden="true">Initials ______</span></p>`;
+}
+
+/** What's left to fill in before signing, and the way to the next one (a paper that asks for initials or answers) */
+function SignBar({ fields, vals, next }) {
+  const done = fields.filter((f) => String(vals[f.n] || '').trim()).length;
+  const all = done === fields.length;
+  return html`<div class="bp-signbar bp-noprint" role="region" aria-label="Signing">
+    <p class="bp-signbar__count" aria-live="polite">${all ? 'Everything’s filled in' : `${done} of ${fields.length} done`}</p>
+    <button type="button" class="bp-btn bp-btn--sm bp-btn--primary" onClick=${next}>${all ? 'Go to signing' : done ? 'Next' : 'Start'}</button>
+  </div>`;
+}
+
+function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, needMark = null, clearVals = () => {} }) {
   const { data, setData, say } = ctx;
-  const [name, setName] = useState('');
   const [busy, setBusy] = useState('');
   const [problem, setProblem] = useState('');
   const [copyProblem, setCopyProblem] = useState('');
+  const [agree, setAgree] = useState(false);
+  // Can't sign it as written: what they'd tell SOARD (open: the box showing)
+  const [declining, setDeclining] = useState(false);
+  const [why, setWhy] = useState('');
   const pick = useRef(null);
   // The version on the page when the form came up: a newer one brought in while it's open (the page catching up when
-  // its tab comes back) is said, and the name typed for the old one taken out
+  // its tab comes back) is said (what was filled in for the old one stays with it)
   const seen = useRef(doc.version);
   useEffect(() => {
     if (seen.current === doc.version) return;
     seen.current = doc.version;
     if (doc.signedByMe) return;
-    setName('');
     // (a signature or copy just refused for it says so itself)
     if (!signTrouble.has(doc.id)) setProblem('It changed while you had it open. Read it again, then sign.');
   }, [doc.version]);
@@ -3761,29 +3900,60 @@ function SignForm({ d: doc, ctx }) {
   if (!data.me.slug) return null;
   const trouble = troubleFor(doc.id, doc);
   const id = `sign-${doc.id}`;
-  // Their own name, the way the server checks it (../board-shared.js signsAs)
+  const year = Number(todayEastern().slice(0, 4));
+  const fields = doc.body ? paperFields(doc.body) : [];
+  const consented = !!data.me.mark?.consented;
   const own = data.me.name || '';
   const done = (j, said) => {
-    setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, signedByMe: { name: j.name, at: j.at || new Date().toISOString(), how: j.how || 'typed', copy: j.copy || null, drive: !!j.drive }, signedCount: y.signedCount + 1 } : y)) }));
+    setData((x) => ({ ...x, me: j.mark ? { ...x.me, mark: { ...j.mark, consented: true } } : x.me, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, signedByMe: { name: j.name, at: j.at || new Date().toISOString(), how: j.how || 'typed', copy: j.copy || null, drive: !!j.drive, ...(j.mark ? { mark: j.mark } : {}), ...(j.fields?.length ? { fields: j.fields } : {}) }, signedCount: y.signedCount + 1 } : y)) }));
     signTrouble.delete(doc.id);
-    // (the count as the server has it: others may have signed meanwhile)
+    clearVals();
+    try { sessionStorage.removeItem(`bp-mark:${data.me.slug}`); } catch { /* fine */ }
+    // (the count as the server has it: others may have signed meanwhile; then again for their signed copy, made after)
     ctx.load();
+    for (const ms of [5000, 15000]) setTimeout(() => ctx.load(), ms);
     say(j.how === 'staff' || j.how === 'drive' ? `Your signature was already in: SOARD has your signed copy of ${doc.title}.` : said);
     // The form gives way to "Signed…": the focus goes there, not to the page
     requestAnimationFrame(() => document.getElementById(`signed-${doc.id}`)?.focus({ preventScroll: true }));
   };
-  const sign = async (e) => {
-    e.preventDefault();
-    const typed = name.trim();
-    const wrong = typed.length < 3 || !/\S\s+\S/.test(typed) ? 'Type your full name, first and last, the way you sign it.' : own && !signsAs(typed, own) ? `Sign with your own name, as the board has it: ${own}` : '';
-    if (wrong) { setProblem(wrong); document.getElementById(id)?.focus(); return; }
+  const toField = (n) => { const el = document.querySelector(`[data-field-input="${n}"]`); el?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); el?.focus({ preventScroll: true }); };
+  const sign = async (e, chosen = null) => {
+    e?.preventDefault?.();
+    const m = chosen || mark;
+    // Every point it marks first (Sign takes them there), then how they sign (chosen, it carries on), then agreeing
+    // to sign electronically
+    const blank = fields.find((f) => !String(vals[f.n] || '').trim());
+    if (blank) { setProblem(`${blank.kind === 'initials' ? 'Initial' : 'Answer'} point ${blank.n} first.`); toField(blank.n); return; }
+    if (!m) { needMark((picked) => sign(null, picked)); return; }
+    if (!consented && !agree) { setProblem('Tick that you agree to sign electronically, then sign.'); document.getElementById(`${id}-agree`)?.focus(); return; }
     setProblem('');
     setBusy('sign');
-    const j = await call({ action: 'sign', docId: doc.id, name: typed, version: doc.version, as: data.me.slug });
+    const j = await call({ action: 'sign', docId: doc.id, version: doc.version, as: data.me.slug, year, mark: m, fields: Object.fromEntries(fields.map((f) => [f.n, String(vals[f.n] || '').trim()])), consent: !consented && agree });
     setBusy('');
-    if (!j.ok) { setProblem(j.error); if (j.changed) setName(''); if (j.changed || j.gone) { signTrouble.set(doc.id, { msg: j.error, kind: j.gone ? 'gone' : 'changed', title: doc.title }); ctx.load().then(() => focusTrouble(doc.id)); } document.getElementById(id)?.focus(); return; }
+    if (!j.ok) {
+      setProblem(j.error);
+      if (j.missing?.length) toField(j.missing[0]);
+      if (j.newYear || j.reload) ctx.load();
+      if (j.changed || j.gone) { signTrouble.set(doc.id, { msg: j.error, kind: j.gone ? 'gone' : 'changed', title: doc.title }); ctx.load().then(() => focusTrouble(doc.id)); }
+      document.getElementById(`${id}-p`)?.focus();
+      return;
+    }
     signTrouble.delete(doc.id);
     done(j, `Signed: ${doc.title}. Thank you.`);
+  };
+  // Can't sign it as written: why, to SOARD (the admins are emailed; they can still sign it later)
+  const decline = async () => {
+    if (String(why).trim().length < 3) { setProblem('Say what you can’t agree to, so SOARD can answer.'); document.getElementById(`${id}-why`)?.focus(); return; }
+    setProblem('');
+    setBusy('decline');
+    const j = await call({ action: 'decline', docId: doc.id, reason: why, as: data.me.slug, year });
+    setBusy('');
+    if (!j.ok) { setProblem(j.error); if (j.newYear) ctx.load(); document.getElementById(`${id}-p`)?.focus(); return; }
+    setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, declinedByMe: j.declined } : y)) }));
+    setDeclining(false);
+    setWhy('');
+    say('Sent to SOARD. They’ll answer you by email.');
+    requestAnimationFrame(() => document.getElementById(`${id}-declined`)?.focus({ preventScroll: true }));
   };
   // The copy they signed on paper (a PDF or a photo of it): that's their signature for the year
   const addCopy = async (file) => {
@@ -3800,20 +3970,30 @@ function SignForm({ d: doc, ctx }) {
     signTrouble.delete(doc.id);
     done(j, 'Your signed copy is in. Thank you.');
   };
-  return html`<form class="bp-sign" onSubmit=${sign} noValidate>
+  return html`<form class="bp-sign" id=${id} onSubmit=${sign} noValidate>
     ${trouble && !problem ? html`<p class="bp-sign__problem" role="alert" tabindex="-1" id=${`trouble-${doc.id}`}>${trouble.msg}</p>` : null}
-    <label class="bp-sign__label" for=${id}>Type your full name to sign it for ${todayEastern().slice(0, 4)}</label>
-    <div class="bp-sign__row">
-      <input id=${id} value=${name} autocomplete="name" placeholder="Your full name" data-autofocus aria-invalid=${problem ? 'true' : null} aria-describedby=${problem ? `${id}-p` : null} onInput=${(e) => { setName(e.target.value); if (problem) setProblem(''); }} />
-      <button class="bp-btn bp-btn--primary" type="submit" disabled=${!!busy}>${busy === 'sign' ? 'Signing…' : 'I’ve read it and agree'}</button>
+    <div class="bp-sign__mark">
+      ${mark ? html`<div class="bp-sign__adopted"><${Mark} mark=${mark} /><p class="bp-muted bp-sign__who">${mark.text} · initials ${mark.initials} · <button type="button" class="bp-linkbtn" onClick=${() => needMark(() => {})}>Change</button></p></div>`
+        : html`<button type="button" class="bp-btn bp-btn--primary" data-autofocus onClick=${() => needMark(() => {})}>Choose how you sign</button>`}
     </div>
-    ${name.trim().length >= 3 && (!own || signsAs(name, own)) ? html`<p class="bp-sign__preview" aria-hidden="true">${(own && signsAs(name, own)) || name.trim()}</p>` : null}
+    ${doc.declinedByMe ? html`<p class="bp-sign__declined" id=${`${id}-declined`} tabindex="-1">You told SOARD on ${shortDate(todayEastern(Date.parse(doc.declinedByMe.at)))} that you can’t sign it as written: “${doc.declinedByMe.reason}” They’ll answer you by email, and you can still sign it here.</p>` : null}
+    ${consented ? null : html`<label class="bp-sign__agree"><input type="checkbox" id=${`${id}-agree`} checked=${agree} onChange=${(e) => { setAgree(e.target.checked); if (problem) setProblem(''); }} /><span>${CONSENT_TEXT}</span></label>`}
+    <p class="bp-sign__intent">By choosing Sign, I sign the ${doc.title} for ${year}.${dueOn(doc, year) ? ` SOARD asks for it by ${dueWords(dueOn(doc, year))}.` : ''}</p>
+    <p class="bp-btns bp-btns--tight"><button class="bp-btn bp-btn--primary" type="submit" disabled=${!!busy}>${busy === 'sign' ? 'Signing…' : 'Sign'}</button></p>
     <p class="bp-sign__or">Signed it on paper already?
       <button type="button" class="bp-linkbtn" disabled=${!!busy} onClick=${() => pick.current?.click()}>${busy === 'copy' ? 'Adding your copy…' : 'Add your signed copy'}</button>
       <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => addCopy(e.target.files[0])} />
     </p>
     ${copyProblem ? html`<p class="bp-sign__problem bp-sign__copyproblem" role="alert">${copyProblem}</p>` : null}
+    ${declining ? html`<div class="bp-sign__decline">
+        <label class="bp-sign__decline-l" for=${`${id}-why`}>What can’t you agree to? SOARD reads it and answers you by email.</label>
+        <textarea id=${`${id}-why`} rows="3" maxlength="1000" value=${why} onInput=${(e) => setWhy(e.target.value)}></textarea>
+        <p class="bp-btns bp-btns--tight"><button type="button" class="bp-btn" disabled=${!!busy} onClick=${decline}>${busy === 'decline' ? 'Sending…' : 'Send to SOARD'}</button>
+          <button type="button" class="bp-linkbtn" onClick=${() => { setDeclining(false); setProblem(''); }}>Cancel</button></p>
+      </div>`
+      : html`<p class="bp-sign__or">Can’t sign it as written? <button type="button" class="bp-linkbtn" disabled=${!!busy} onClick=${() => { setDeclining(true); setWhy(doc.declinedByMe?.reason || ''); requestAnimationFrame(() => document.getElementById(`${id}-why`)?.focus()); }}>${doc.declinedByMe ? 'Change what you told SOARD' : 'Tell SOARD why'}</button></p>`}
     ${problem ? html`<p class="bp-sign__problem" id=${`${id}-p`} role="alert" tabindex="-1">${problem}</p>` : null}
+    <details class="bp-sign__how"><summary>How signing works</summary><p>${PROCESS_TEXT}</p></details>
   </form>`;
 }
 
@@ -4072,10 +4252,10 @@ function DocumentsPage({ ctx }) {
         ${toSign.length > 1 && data.me.slug ? html`<div class="bp-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax=${toSign.length} aria-valuenow=${done} aria-label=${`Signed for ${year}`}><span style=${`--p:${(done / toSign.length) * 100}%`}></span></div>` : null}
       </div>
       <ul class="bp-signlist">${toSign.filter(found).map((x) => html`<li key=${x.id} class="bp-doc" id=${`doc-${x.id}`}>
-        <a class="bp-signlist__cover" ...${open(x)} aria-label=${`Read ${x.title}`} tabindex="-1"><${Cover} x=${x} shelf=${shelfOf(x)} /></a>
+        <a class="bp-signlist__cover" ...${x.body ? open(x) : { href: `#/documents/${x.id}` }} aria-label=${`Read ${x.title}`} tabindex="-1"><${Cover} x=${x} shelf=${shelfOf(x)} /></a>
         <div class="bp-signlist__body">
           <p class="bp-doc__title">${x.title}</p>
-          <p class="bp-doc__meta">${[x.note, nbw(`${x.signedCount} of ${data.people.board.length} board members ${x.signedCount === 1 ? 'has' : 'have'} signed for ${year}`)].filter(Boolean).join(' · ')}</p>
+          <p class="bp-doc__meta">${[x.note, !x.signedByMe && dueOn(x, year) ? nbw(`Sign by ${dueWords(dueOn(x, year))}`) : '', nbw(`${x.signedCount} of ${data.people.board.length} board members ${x.signedCount === 1 ? 'has' : 'have'} signed for ${year}`)].filter(Boolean).join(' · ')}</p>
           ${foundIn(x)}
           ${x.body ? html`
             ${x.signedByMe ? html`<p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p><${Signed} doc=${x} ctx=${ctx} />`
@@ -4125,7 +4305,23 @@ function DocPage({ id, ctx }) {
   const doc = data.docs.find((x) => x.id === id);
   // A paper they sign, opened: said once a year, for its signing record (the server keeps only the first)
   const opens = doc?.sign && !doc.hidden && data.me.slug ? `${id}:${todayEastern().slice(0, 4)}` : '';
-  useEffect(() => { if (opens && !openedSaid.has(opens)) { openedSaid.add(opens); call({ action: 'opened', docId: id }).catch(() => {}); } }, [opens]);
+  const sayOpened = () => { if (opens && !openedSaid.has(opens)) { openedSaid.add(opens); call({ action: 'opened', docId: id }).catch(() => {}); } };
+  // (its words on this page: opened with it; a paper that's its PDF, when they open the PDF)
+  useEffect(() => { if (doc?.body) sayOpened(); }, [opens]);
+  // Signing: what they've initialed and answered (kept for this version while they read), the signature they adopted
+  // (kept from last time), and the dialog to adopt one (`then`: what asked for it, an Initial box, done after)
+  const fk = doc && data.me.slug ? fieldsKey(data.me.slug, doc) : '';
+  const [vals, setVals] = useState(() => (fk ? readFields(fk) : {}));
+  useEffect(() => { setVals(fk ? readFields(fk) : {}); }, [fk]);
+  const setVal = (n, v) => setVals((x) => { const next = { ...x, [n]: v }; if (!v) delete next[n]; if (fk) keepFields(fk, next); return next; });
+  const clearVals = () => { setVals({}); if (fk) { try { sessionStorage.removeItem(fk); } catch { /* fine */ } } };
+  // (one adopted on this page and not signed with yet stays through a reload: the server keeps it once they sign)
+  const mk = data.me.slug ? `bp-mark:${data.me.slug}` : '';
+  const [mark, setMarkState] = useState(() => (mk ? readFields(mk).type ? readFields(mk) : null : null) || (data.me.mark?.type ? data.me.mark : null));
+  useEffect(() => { if (data.me.mark?.type && !mark) setMarkState(data.me.mark); }, [data.me.mark]);
+  const adopt = (m) => { setMarkState(m); if (mk) keepFields(mk, m); };
+  const [adopting, setAdopting] = useState(null);
+  const needMark = (then) => setAdopting({ then });
   const year = todayEastern().slice(0, 4);
   // A paper that's a file (a link to it from an email, from before its words were written or after they were taken
   // out): its page is the file to open, and signing
@@ -4136,8 +4332,10 @@ function DocPage({ id, ctx }) {
         <div><h1 class="bp-h2" tabindex="-1" id=${t ? `trouble-${id}` : null}>${t ? 'Your signature didn’t go through' : 'That document isn’t here'}</h1><p class="bp-muted">${t ? `${t.title} ${/deleted|isn’t on the board page/.test(t.msg) ? 'was taken off the board page' : 'changed'} while you were signing it.` : 'It may have been taken off the board page.'} Everything that’s on it is in <a class="bp-link" href="#/documents">Documents</a>.</p></div></div>`;
   }
   const written = !!doc.body;
+  const fieldsOf = written ? paperFields(doc.body) : [];
   const changed = doc.wordsAt ? shortDate(todayEastern(Date.parse(doc.wordsAt))) : '';
-  const fileOpen = !written ? viewerLink(asViewer([{ ...doc.file, name: doc.title }]), 0) : null;
+  const fileLink = !written ? viewerLink(asViewer([{ ...doc.file, name: doc.title }]), 0) : null;
+  const fileOpen = fileLink ? { ...fileLink, onClick: (e) => { sayOpened(); fileLink.onClick(e); } } : null;
   // The paper's own last line already agrees ("I have read and understand…"): printed, it isn't said twice
   const agrees = written && /^(i have read|i acknowledge|i agree|by signing)/i.test(mdPlain(doc.body).trim().split('\n').at(-1).replace(/^[•\d.\s-]+/, ''));
   const me = doc.signedByMe;
@@ -4183,7 +4381,13 @@ function DocPage({ id, ctx }) {
       ${changes.added.length ? html`<p class="bp-whatchanged__h">New</p><ul>${changes.added.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${l.h ? html`<strong>${l.t}</strong>` : l.t}</li>`)}</ul>${changes.added.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.added.length - 20, 'more new line')}</p>` : null}` : null}
       ${changes.removed.length ? html`<p class="bp-whatchanged__h">Taken out</p><ul>${changes.removed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}><s>${l.h ? html`<strong>${l.t}</strong>` : l.t}</s></li>`)}</ul>${changes.removed.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.removed.length - 20, 'more line')} taken out</p>` : null}` : null}
     </details>` : null}</div>` : null}
-    ${written ? html`<article class="bp-card bp-docpage__words bp-rise" style=${rise(1)}><${Report} text=${doc.body} level=${2} /></article>`
+    ${written && doc.sign && fieldsOf.length && data.me.slug && !me ? html`<${SignBar} fields=${fieldsOf} vals=${vals} next=${() => {
+      const blank = fieldsOf.find((f) => !String(vals[f.n] || '').trim());
+      const el = blank ? document.querySelector(`[data-field-input="${blank.n}"]`) : document.getElementById(`doc-${doc.id}`);
+      el?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+      (blank ? el : el?.querySelector('button, input'))?.focus({ preventScroll: true });
+    }} />` : null}
+    ${written ? html`<article class="bp-card bp-docpage__words bp-rise" style=${rise(1)}><${Report} text=${doc.body} level=${2} slot=${doc.sign ? (b) => html`<${FieldBox} b=${b} doc=${doc} me=${!!data.me.slug} vals=${vals} setVal=${setVal} mark=${mark} needMark=${needMark} />` : null} /></article>`
       : html`<div class="bp-card bp-docpage__file bp-rise" style=${rise(1)}>
         <p class="bp-muted">${doc.title} is ${({ PDF: 'a PDF', Word: 'a Word file', Excel: 'a spreadsheet', Slides: 'a slide deck', Photo: 'a photo' })[formatOf(doc.file)] || 'a file'}: open it to read it${doc.sign ? ', then sign here' : ''}.</p>
         <p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--primary" ...${fileOpen}>Read it</a></p>
@@ -4193,7 +4397,9 @@ function DocPage({ id, ctx }) {
       <h2 class="bp-h2" id="docsign-h">${!data.me.slug ? `Signatures for ${year}` : me ? `Signed for ${year}` : `Sign it for ${year}`}</h2>
       <p class="bp-muted">${doc.signedCount} of ${data.people.board.length} board members ${doc.signedCount === 1 ? 'has' : 'have'} signed for ${year}.${data.me.slug ? '' : ' Board members sign here.'}</p>
       ${last && !sinceLast ? html`<p class="bp-muted bp-noprint">You signed it for ${last.year}${lastOn ? ` on ${lastOn}` : ''}.${last.version && doc.version === last.version ? ' It hasn’t changed since.' : ''} Each year it’s signed again.</p>` : null}
-      <${SignForm} d=${doc} ctx=${ctx} />
+      <${SignForm} d=${doc} ctx=${ctx} vals=${vals} mark=${mark} needMark=${needMark} clearVals=${clearVals} />
+      ${(doc.myCopies || []).filter((c) => !(me?.record?.id === c.id)).length ? html`<div class="bp-copies bp-noprint"><p class="bp-copies__h">Your signed copies</p><ul>${doc.myCopies.filter((c) => !(me?.record?.id === c.id)).map((c) => html`<li key=${c.id}><a class="bp-link" ...${viewerLink(asViewer([{ id: c.id, name: `${doc.title}, signed ${c.year}.pdf`, type: 'application/pdf' }]), 0)}>${c.year}</a><span class="bp-muted"> · signed ${shortDate(todayEastern(Date.parse(c.at)))}${c.version ? `, wording ${c.version}` : ''}</span></li>`)}</ul></div>` : null}
+      ${adopting ? html`<${AdoptDialog} own=${data.me.name || ''} start=${mark} onClose=${() => setAdopting(null)} onAdopt=${(m) => { adopt(m); const then = adopting.then; setAdopting(null); then?.(m); }} />` : null}
       ${me && nextToSign ? html`<p class="bp-docpage__next bp-noprint"><a class="bp-btn bp-btn--sm bp-btn--primary" href=${`#/documents/${nextToSign.id}`}>Next to sign: ${nextToSign.title}</a></p>` : null}
       ${written ? html`<div class="bp-printonly bp-docpage__paper" aria-hidden="true">
         ${agrees ? null : html`<p>I have read and agree to the ${doc.title} for ${year}.</p>`}

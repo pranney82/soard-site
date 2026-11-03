@@ -39,16 +39,19 @@ function Runs({ text, runs = null }) {
 /** A point that says its own letter ("a. …", "(ii) …", as a paper letters them): it shows the letter, not a bullet */
 const lettered = (it) => it[0]?.t === 'p' && /^\(?(?:[a-z]|[ivxlc]{1,5})[.)]\s/i.test(it[0].text || '');
 const wordsIn = (b) => (b.t === 'hr' ? 0 : b.t === 'p' || b.t === 'h' ? b.text.split(/\s+/).filter(Boolean).length : b.t === 'quote' ? b.blocks.reduce((n, x) => n + wordsIn(x), 0) : b.items.reduce((n, it) => n + it.reduce((m, x) => m + wordsIn(x), 0), 0));
-function Blocks({ blocks, level }) {
+function Blocks({ blocks, level, slot = null }) {
   const H = `h${Math.min(6, level)}`;
   return blocks.map((b, k) => {
+    // A paper's point asking each signer for their initials or an answer: the page signing it draws the box
+    // (`slot`); anywhere else it reads as its words
+    if (b.t === 'p' && b.field && slot) return html`<div key=${k} class=${`rp-field rp-field--${b.field}`} data-field-n=${b.n}><p dir="auto"><${Runs} text=${b.text} runs=${b.runs} /></p>${slot(b)}</div>`;
     // (each block its own direction, as its words have it: Arabic or Hebrew right to left, bullets on the right)
     if (b.t === 'p') return html`<p key=${k} dir="auto"><${Runs} text=${b.text} runs=${b.runs} />${b.cut ? '…' : null}</p>`;
     if (b.t === 'h') return h(H, { key: k, class: 'rp-h', dir: 'auto' }, html`<${Runs} text=${b.text} />`);
-    if (b.t === 'quote') return html`<blockquote key=${k} class="rp-callout" dir="auto"><${Blocks} blocks=${b.blocks} level=${level} /></blockquote>`;
+    if (b.t === 'quote') return html`<blockquote key=${k} class="rp-callout" dir="auto"><${Blocks} blocks=${b.blocks} level=${level} slot=${slot} /></blockquote>`;
     // Where the presenter started a new slide: read as one report here, a quiet rule
     if (b.t === 'hr') return html`<hr key=${k} class="rp-break" />`;
-    const items = b.items.map((it, j) => html`<li key=${j} dir="auto" class=${b.t === 'ul' && lettered(it) ? 'rp-li--lettered' : null}><${Blocks} blocks=${it} level=${level} /></li>`);
+    const items = b.items.map((it, j) => html`<li key=${j} dir="auto" class=${b.t === 'ul' && lettered(it) ? 'rp-li--lettered' : null}><${Blocks} blocks=${it} level=${level} slot=${slot} /></li>`);
     // (a start only when it isn't 1: Preact writes a null start as the property, which the browser reads as 0)
     return b.t === 'ol' ? html`<ol key=${k} dir="auto" ...${b.start === 1 ? {} : { start: b.start }}>${items}</ol>` : html`<ul key=${k} dir="auto">${items}</ul>`;
   });
@@ -101,7 +104,7 @@ function clip(blocks, max) {
  * A report as it reads. `level`: its headings' level (h4 under an item's h3). `clamp`: about how many words show
  * before "Keep reading" (0: all of it), cut wherever that falls, a list or a long paragraph too; "Show less" again.
  */
-export function Report({ text, level = 4, clamp = 0, cls = '' }) {
+export function Report({ text, level = 4, clamp = 0, cls = '', slot = null }) {
   const [all, setAll] = useState(false);
   // Nothing new this time: said once, quietly
   if (isNothingNew(text)) return html`<div class=${`rp rp--nothing ${cls}`}><p dir="auto">${NOTHING_NEW}</p></div>`;
@@ -112,7 +115,7 @@ export function Report({ text, level = 4, clamp = 0, cls = '' }) {
   const long = clamp > 0 && total > clamp * 1.35;
   const shown = long && !all ? clip(blocks, clamp).blocks : blocks;
   return html`<div class=${`rp ${cls}`} data-long=${long ? 'true' : null}>
-    <${Blocks} blocks=${shown} level=${level} />
+    <${Blocks} blocks=${shown} level=${level} slot=${slot} />
     ${long ? html`<button type="button" class="rp-more" aria-expanded=${all ? 'true' : 'false'} onClick=${() => setAll(!all)}>${all ? 'Show less' : html`Keep reading<span class="rp-more__n"> · ${readTime(total)}</span>`}</button>` : null}
   </div>`;
 }
@@ -193,8 +196,39 @@ const ICON = {
 const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = MAC ? '⌘' : 'Ctrl+';
 
-// What a pasted page keeps: what a report can hold, nothing else (no styles, no images, no scripts)
-const PASTE = { ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'a', 'ul', 'ol', 'li', 'blockquote', 'h3'], ALLOWED_ATTR: ['href', 'start'] };
+// What a pasted page keeps: what a report can hold, nothing else (no styles, no images, no scripts); a paper's
+// point asking for initials or an answer keeps that (data-field)
+const PASTE = { ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'a', 'ul', 'ol', 'li', 'blockquote', 'h3'], ALLOWED_ATTR: ['href', 'start', 'data-field'] };
+
+// A paper's point asking each signer for their initials or an answer (./board-md.js " {initials}"): an attribute
+// on its paragraph, never carried to the next one by Enter; Enter at the very start of a marked point takes the
+// mark down with its words. (vendor.js has no Extension of its own to export: StarterKit is one, and its class
+// makes this one)
+const FIELDS = ['initials', 'answer'];
+const PaperFields = StarterKit.constructor.create({
+  name: 'paperFields',
+  priority: 1000,
+  addGlobalAttributes() {
+    return [{ types: ['paragraph'], attributes: { field: {
+      default: null,
+      keepOnSplit: false,
+      parseHTML: (el) => (FIELDS.includes(el.getAttribute('data-field')) ? el.getAttribute('data-field') : null),
+      renderHTML: (a) => (FIELDS.includes(a.field) ? { 'data-field': a.field } : {}),
+    } } }];
+  },
+  addKeyboardShortcuts() {
+    return {
+      Enter: ({ editor }) => {
+        const { $from, empty } = editor.state.selection;
+        const field = $from.parent.type.name === 'paragraph' ? $from.parent.attrs.field : null;
+        if (!empty || !field || $from.parentOffset !== 0 || !$from.parent.content.size) return false;
+        return editor.chain().updateAttributes('paragraph', { field: null })
+          .first(({ commands }) => [() => commands.splitListItem('listItem'), () => commands.splitBlock()])
+          .updateAttributes('paragraph', { field }).run();
+      },
+    };
+  },
+});
 // The longest a report can be, in letters (its Markdown can run longer: the server keeps LIMITS.report of it)
 export const REPORT_LETTERS = 40000;
 /** A paper written in Board (Board → Documents): long bylaws run past 70,000 letters, all of it kept */
@@ -325,6 +359,8 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
         TiptapLink.configure({ openOnClick: false, autolink: true, linkOnPaste: true, defaultProtocol: 'https', HTMLAttributes: LINK, validate: (href) => !!safeHref(href) }),
         Placeholder.configure({ placeholder }),
         CharacterCount.configure({ limit: letters }),
+        // (a paper's fields: only a paper's editor marks points; a report's never has them)
+        ...(paper ? [PaperFields] : []),
       ],
       content: mdToDoc(value),
       editorProps: {
@@ -446,6 +482,13 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
       ${btn('numbers', 'Numbered list (1. then a space)', on('orderedList'), (c) => c.toggleOrderedList())}
       ${btn('callout', 'Callout, for what the board needs to decide (> then a space)', on('blockquote'), (c) => c.toggleBlockquote())}
       ${paper ? null : btn('slide', 'New slide here (the meeting’s screen starts one; --- on a line of its own)', false, (c) => newSlide(e, c))}
+      ${paper ? html`<span class="rp-sep" aria-hidden="true"></span>
+        ${['initials', 'answer'].map((f) => {
+          const here = on('paragraph', { field: f });
+          const title = f === 'initials' ? 'Initials here: each member initials this point as they sign' : 'Answer here: each member fills this in as they sign';
+          return html`<button type="button" key=${f} class=${`rp-tool rp-tool--text ${here ? 'is-on' : ''}`} tabIndex="-1" title=${title} aria-label=${f === 'initials' ? 'Initials here' : 'Answer here'} aria-pressed=${here ? 'true' : 'false'} disabled=${on('heading')}
+            onMouseDown=${(ev) => ev.preventDefault()} onClick=${run((c) => c.updateAttributes('paragraph', { field: here ? null : f }))}>${f === 'initials' ? 'Initials here' : 'Answer here'}</button>`;
+        })}` : null}
       <span class="rp-sep" aria-hidden="true"></span>
       <button type="button" class=${`rp-tool ${on('link') ? 'is-on' : ''}`} tabIndex="-1" title=${`Link (${MOD}K)`} aria-label="Link" aria-pressed=${on('link') ? 'true' : 'false'} aria-expanded=${linking !== null} onMouseDown=${(ev) => ev.preventDefault()} onClick=${openLink}>${ICON.link}</button>
       <span class="rp-bar__end">
@@ -651,6 +694,9 @@ const CSS = `
 .rp-tool.is-on { background: var(--yellow-soft, #FFF5C2); color: var(--ink, var(--color-text, #2D2F2C)); }
 .rp-tool:disabled { opacity: 0.35; cursor: default; }
 .rp-tool:focus-visible { outline: 2px solid var(--ink, var(--color-text, #2D2F2C)); outline-offset: 1px; }
+.rp-tool--text { width: auto; padding: 0 0.6rem; font: 600 0.8rem/1 inherit; font-family: inherit; white-space: nowrap; }
+.rp-edit p[data-field]::after { content: 'Initials'; display: inline-block; margin-left: 0.5em; padding: 0.1em 0.45em; border: 1px solid var(--line-2, #D3D0C7); border-radius: 5px; background: var(--yellow-soft, #FFF5C2); color: var(--ink, #2D2F2C); font-size: 0.72em; font-weight: 650; line-height: 1.5; vertical-align: 0.1em; }
+.rp-edit p[data-field="answer"]::after { content: 'Answer'; }
 .rp-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--rp-line); }
 .rp-bar__end { display: flex; gap: 2px; margin-left: auto; }
 .rp-link { flex: 1 1 100%; display: flex; gap: 6px; padding: 4px 2px 0; }

@@ -57,7 +57,8 @@ import { bankBalances, plaidConfigured, bankFacts } from './_plaid.js';
 import { booksNow, booksFacts } from './_quickbooks.js';
 import { giftsNow } from './_board-gifts.js';
 import { limit } from './_rate-limit.js';
-import { SIG_EVIDENCE, putSignature, addColumns, appendEvents, sha256Hex } from './_board-sign.js';
+import { SIG_EVIDENCE, putSignature, addColumns, appendEvents, sha256Hex, cleanMark, CONSENT_TEXT, PROCESS_V, declinedOf, dueOn, dueWords } from './_board-sign.js';
+import { paperFields } from '../../public/admin/board-md.js';
 
 export const SITE = 'https://sunshineonaranneyday.com';
 export const boardFiles = (env) => env?.BOARD_FILES || env?.FILES || null;
@@ -102,11 +103,13 @@ export async function ensureSchema(DB) {
   await addColumns(DB, 'board_signatures', sig);
   await addColumns(DB, 'board_signatures_earlier', sig);
   // What a wording was (words read from a file, a new file), and its SHA-256
-  await addColumns(DB, 'board_doc_versions', { note: 'TEXT', hash: 'TEXT' });
+  await addColumns(DB, 'board_doc_versions', { note: 'TEXT', hash: 'TEXT', file_id: 'TEXT' });
   // A paper's PDF's words (for finding it by them; and every meeting file's, read by the reader words_v names,
   // ./_board-file-words.js); whose a signed copy or record is (`slug`: access never rests on
   // the signature row); its SHA-256; when it stopped counting (never deleted); an iPhone photo's original
   await addColumns(DB, 'board_files', { words: 'TEXT', words_v: 'INTEGER', slug: 'TEXT', sha256: 'TEXT', superseded_at: 'TEXT', original_id: 'TEXT' });
+  // How many of a member's asks this year Remind by email sent itself (at most MAX_REMINDERS)
+  await addColumns(DB, 'board_sign_asks', { reminders: 'INTEGER' });
   // (copies from before `slug`: whose each is, from the signature it was added for)
   await DB.prepare("UPDATE board_files SET slug = COALESCE((SELECT slug FROM board_signatures WHERE file_id = board_files.id), (SELECT slug FROM board_signatures_earlier WHERE file_id = board_files.id)) WHERE owner_type = 'signed' AND slug IS NULL").run().catch(() => {});
   _ready.add(DB);
@@ -132,6 +135,9 @@ export async function getSettings(DB) {
     invitesFrom: await (await import('./_board-invite.js')).organizerFor(DB),
     // Emails asking presenters for their reports (./_board-asks.js): 'test' (to the asker alone) until switched 'on'; or 'off'
     asks: ['on', 'off'].includes(s.asks) ? s.asks : 'test',
+    // Remind by email (Board → Members): those who haven't signed this year's papers asked again by themselves, every
+    // 3 days or weekly; off until an admin turns it on (./_board-sign.js maybeRemindSigners)
+    remind: ['3', '7'].includes(String(s.remind)) ? String(s.remind) : 'off',
   };
 }
 
@@ -146,6 +152,7 @@ export async function saveSettings(DB, patch, by) {
   }
   if (patch.invitesFrom !== undefined) next.invitesFrom = normEmail(patch.invitesFrom);
   if (patch.asks !== undefined) next.asks = ['on', 'off', 'test'].includes(patch.asks) ? patch.asks : 'test';
+  if (patch.remind !== undefined) next.remind = ['3', '7'].includes(String(patch.remind)) ? String(patch.remind) : 'off';
   if (patch.quorum !== undefined) next.quorum = Math.max(0, Math.min(50, Math.round(Number(patch.quorum) || 0)));
   if (patch.defaults) {
     const clean = cleanMeeting({ ...patch.defaults, date: '2026-01-01' });
@@ -586,22 +593,42 @@ export function cleanDoc(raw = {}) {
     wordsBy: one(raw.wordsBy, 200),
     // The file its words were read from (a board file's id): a newer file than that is one to bring the words in from
     wordsFile: one(raw.wordsFile, 40),
+    // When the board signs it by each year ('MM-DD', so it rolls forward): on the board page and in the asks, and
+    // Remind by email stops a week after it
+    due: validDue(raw.due),
     createdAt: one(raw.createdAt, 40),
     updatedAt: one(raw.updatedAt, 40),
   };
+}
+
+/** 'MM-DD' a real day of the year ('02-29' too: it's Feb 28 in other years), else '' */
+function validDue(v) {
+  const m = String(v || '').trim().match(/^(\d{2})-(\d{2})$/);
+  if (!m) return '';
+  const mo = Number(m[1]); const d = Number(m[2]);
+  return mo >= 1 && mo <= 12 && d >= 1 && d <= new Date(Date.UTC(2024, mo, 0)).getUTCDate() ? `${m[1]}-${m[2]}` : '';
 }
 
 /**
  * How a signature came: typed on the board page; the member's own signed copy, added there; a copy a Board admin
  * was handed for them (`staff`); their copy in SOARD's Drive (`drive`: Board read those until Nov 3 2026, when papers moved into Board)
  */
-export const SIGNED_BY = ['typed', 'copy', 'staff', 'drive'];
+export const SIGNED_BY = ['typed', 'drawn', 'copy', 'staff', 'drive'];
+// Signed on the board page (typed or drawn), not a copy
+const onPage = (how) => how === 'typed' || how === 'drawn';
 const thisYear = () => Number(todayEastern().slice(0, 4));
-/** A signature row as Board shows it: { name, at, how, copy (the file, when one was added), drive ({ id, name } in Drive) } */
+/**
+ * A signature row as Board shows it: { name, at, how, copy (the file, when one was added), drive ({ id, name } in
+ * Drive), mark (how they signed it: typed in a style, or drawn), fields (each initial and answer, with its point) }
+ */
 const signatureOf = (s, copies = {}) => ({
   name: s.name || '', at: s.at || '', how: SIGNED_BY.includes(s.how) ? s.how : 'typed', version: Number(s.version) || 0,
   copy: s.file_id ? copies[s.file_id] || null : null,
   drive: s.drive_id ? { id: s.drive_id, name: s.drive_name || '' } : null,
+  ...(s.mark ? { mark: parse(s.mark, null) } : {}),
+  ...(s.fields ? { fields: parse(s.fields, []) } : {}),
+  // (its signed copy, the paper as signed with its record, once it's made)
+  ...(s.record_id ? { record: { id: s.record_id, hash: s.record_hash || '' } } : {}),
 });
 
 /**
@@ -614,13 +641,17 @@ const signatureOf = (s, copies = {}) => ({
  */
 export async function listDocs(DB, year = thisYear()) {
   await ensureSchema(DB);
-  const [rows, files, sigs, copies, prior] = await Promise.all([
+  const [rows, files, sigs, copies, prior, keptRows, declined] = await Promise.all([
     DB.prepare('SELECT data FROM board_docs').all().then((r) => r.results || []),
     filesOf(DB, 'doc'),
     DB.prepare('SELECT * FROM board_signatures WHERE year = ?').bind(year).all().then((r) => r.results || []),
     filesOf(DB, 'signed').then((by) => Object.fromEntries(Object.values(by).flat().map((f) => [f.id, f]))),
     // (SQLite gives the other columns from the row with the latest year)
     DB.prepare('SELECT doc_id, slug, MAX(year) AS year, at, how, version FROM board_signatures WHERE year < ? GROUP BY doc_id, slug').bind(year).all().then((r) => r.results || []),
+    // Every signed copy kept (replaced or taken off copies too, and an iPhone photo's original), for the admins
+    DB.prepare("SELECT id, owner_id, slug, name, type, size, at, superseded_at, original_id FROM board_files WHERE owner_type = 'signed' ORDER BY at").all().then((r) => r.results || []),
+    // Who told SOARD they can't sign it as written this year, and why (until they sign)
+    declinedOf(DB, year),
   ]);
   return rows.map((r) => cleanDoc(parse(r.data))).map((d) => {
     const theirs = sigs.filter((s) => s.doc_id === d.id);
@@ -632,9 +663,19 @@ export async function listDocs(DB, year = thisYear()) {
       earlier: theirs.filter((s) => !counts(s)).map((s) => s.slug),
       before: Object.fromEntries(theirs.filter((s) => !counts(s)).map((s) => [s.slug, signatureOf(s, copies)])),
       prior: Object.fromEntries(prior.filter((s) => s.doc_id === d.id).map((s) => [s.slug, { year: Number(s.year), at: s.at || '', how: SIGNED_BY.includes(s.how) ? s.how : 'typed', version: Number(s.version) || 0 }])),
+      declined: Object.fromEntries(Object.entries(declined[d.id] || {}).filter(([slug]) => !theirs.some((s) => s.slug === slug && counts(s)))),
+      // (each member's copies kept for this paper: earlier ones, replaced or taken off, and a photo's original; Board only)
+      kept: keptRows.filter((f) => f.owner_id === d.id && f.slug).reduce((by, f) => {
+        const originalOf = keptRows.find((x) => x.original_id === f.id);
+        if (f.superseded_at || originalOf) (by[f.slug] ||= []).push({ id: f.id, name: f.name, type: f.type, size: f.size, at: f.at, supersededAt: f.superseded_at || null, ...(originalOf ? { originalOf: originalOf.id } : {}) });
+        return by;
+      }, {}),
     };
   }).sort((a, b) => a.title.localeCompare(b.title));
 }
+
+/** Did which points a paper asks initials or an answer on change (their kind or their words)? */
+const fieldsMoved = (a, b) => JSON.stringify(paperFields(a || '').map((f) => [f.kind, f.text])) !== JSON.stringify(paperFields(b || '').map((f) => [f.kind, f.text]));
 
 /**
  * A document saved (`by`: who). Its words are the next wording when they changed, kept on record. A save without
@@ -681,7 +722,7 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
     const names = board.filter((p) => current?.signed[p.slug] && (changesNow || current.signed[p.slug].version < was.version)).map((p) => p.name);
     // since: what they signed (the earlier words, or the file); now: what the board will read; newFile: a new file;
     // paused: its words changed while it wasn't required
-    if (names.length) throw Object.assign(new Error('Do they sign the new version?'), { status: 409, extra: { ask: { names, since: was.body ? 'words' : 'file', now: body ? 'words' : 'file', newFile: newFile ? String(newFile) : '', paused: reRequired && !changesNow } } });
+    if (names.length) throw Object.assign(new Error('Do they sign the new version?'), { status: 409, extra: { ask: { names, since: was.body ? 'words' : 'file', now: body ? 'words' : 'file', newFile: newFile ? String(newFile) : '', paused: reRequired && !changesNow, fields: fieldsMoved(was.body, body) } } });
   }
   // The wording's number, and who wrote it when, are the server's
   const next = { ...d, body, version: was?.version || 0, signFrom: was?.signFrom || 0, readFrom: was?.readFrom || 0, wordsAt: was?.wordsAt || '', wordsBy: was?.wordsBy || '', createdAt: row ? parse(row.data).createdAt : nowIso(), updatedAt: nowIso() };
@@ -698,7 +739,8 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
     await DB.prepare('INSERT OR REPLACE INTO board_doc_versions (doc_id, version, body, at, by, note, hash) VALUES (?, ?, ?, ?, ?, ?, ?)').bind(d.id, next.version, body, nowIso(), String(by || '').slice(0, 200), note, body ? await sha256Hex(body) : null).run();
     if (askAgain === true) next.signFrom = next.version;
     // A page still on an earlier version re-reads before signing, unless the admin said the change doesn't need it
-    if (askAgain !== false) next.readFrom = next.version;
+    // (and always when what they initial or answer moved: a page from before can't sign without them)
+    if (askAgain !== false || fieldsMoved(was?.body, body)) next.readFrom = next.version;
   }
   await DB.prepare('INSERT OR REPLACE INTO board_docs (id, data, updated_at) VALUES (?, ?, ?)').bind(d.id, JSON.stringify(next), next.updatedAt).run();
   return (await listDocs(DB)).find((x) => x.id === d.id);
@@ -729,9 +771,9 @@ export async function fileLocked(DB, id) {
   if (row.owner_type === 'doc' && (await everSigned(DB, row.owner_id))) return 'The board signed this paper, so its file is kept with their signatures. Add a new file instead; this one stays on record.';
   return '';
 }
-/** Has anyone ever signed this paper (any year, any wording), or been asked to, or taken a signature off? */
+/** Has anyone ever signed this paper (any year, any wording, a signature since replaced or taken off)? Opening it or being asked isn't signing */
 async function everSigned(DB, id) {
-  const r = await DB.prepare('SELECT (SELECT COUNT(*) FROM board_signatures WHERE doc_id = ?1) + (SELECT COUNT(*) FROM board_signatures_earlier WHERE doc_id = ?1) + (SELECT COUNT(*) FROM board_sign_events WHERE doc_id = ?1) AS n').bind(id).first();
+  const r = await DB.prepare("SELECT (SELECT COUNT(*) FROM board_signatures WHERE doc_id = ?1) + (SELECT COUNT(*) FROM board_signatures_earlier WHERE doc_id = ?1) + (SELECT COUNT(*) FROM board_sign_events WHERE doc_id = ?1 AND kind IN ('signed', 'superseded', 'taken-off')) AS n").bind(id).first();
   return Number(r?.n) > 0;
 }
 
@@ -772,6 +814,18 @@ export async function contentHash({ DB, bucket = null }, doc) {
   return hash;
 }
 const storeOf = (env) => ({ DB: env.DB, bucket: boardFiles(env) });
+/**
+ * The SHA-256 of the wording a signature is on (`version`: the one their page showed, an earlier one when a small
+ * change since was kept): its words as saved then, or the file that version was; the paper's now when it's that one
+ */
+export async function versionHash(store, doc, version) {
+  if (Number(version) !== Number(doc.version)) {
+    const row = await store.DB.prepare('SELECT hash, body, file_id FROM board_doc_versions WHERE doc_id = ? AND version = ?').bind(doc.id, Number(version) || 0).first();
+    if (row?.file_id && !row.body) return contentHash(store, { ...doc, body: '', file: { id: row.file_id } });
+    if (row?.body) return row.hash || sha256Hex(row.body);
+  }
+  return contentHash(store, doc);
+}
 
 /**
  * A signature written with its events in one batch (./_board-sign.js appendEvents): the row it replaces goes to
@@ -820,30 +874,62 @@ async function writeSignature(DB, sig, { keep = false, same = null } = {}) {
 }
 
 /**
- * A member's signature for this year, with their own name typed (../../public/admin/board-shared.js signsAs).
- * A signed copy already in (theirs, or one in Drive) stays: it's the better record
+ * A member's signature for this year on the board page. Today's page sends their adopted `mark` ({ type: 'typed' |
+ * 'drawn', style, text: their name as typed (signsAs: their own), path, initials }), each of the paper's `fields`
+ * ({ [n]: value }: every initial and answer it marks, required), `consent` (agreeing once to sign electronically,
+ * the first time) and the `year` on the page. A page from before marks (`name` only) still signs a paper that asks
+ * for nothing else. A signed copy already in (theirs, or one in Drive) stays: it's the better record.
+ * → { docId, year, name, at, how, version, mark, fields, copy, drive }
  */
-export async function signDoc(DB, docId, member, name, { version = null, evidence = {}, bucket = null } = {}) {
+export async function signDoc(DB, docId, member, name, { version = null, evidence = {}, bucket = null, mark: rawMark = null, fields: given = null, consent = false, year: pageYear = null } = {}) {
   await ensureSchema(DB);
+  const year = thisYear();
+  // (a page left open over New Year's: it signs for the year it says, so it reloads)
+  if (pageYear != null && Number(pageYear) !== year) throw Object.assign(new Error(`It’s ${year} now. Reload the page to sign for ${year}.`), { status: 409, extra: { newYear: true } });
   const doc = (await listDocs(DB)).find((d) => d.id === docId);
   if (!doc?.shared || !doc.sign) throw noSignature(doc);
   // `version`: the wording on their page when they signed; a newer one is signed only once they've read it
   const stale = notWhatTheyRead(doc, version);
   if (stale) throw stale;
   const had = doc.signed[member.slug];
-  if (had && had.how !== 'typed') return { docId, year: thisYear(), ...had };
-  if (String(name || '').trim().length < 3) throw Object.assign(new Error('Type your full name to sign'), { status: 400 });
-  const typed = signsAs(name, member.name);
+  if (had && !onPage(had.how)) return { docId, year, ...had };
+  const asks = doc.body ? paperFields(doc.body) : [];
+  // A page from before marks: only for a paper that asks for nothing but the signature
+  if (!rawMark && asks.length) throw Object.assign(new Error('This paper asks for your initials now. Reload the page to sign it.'), { status: 409, extra: { reload: true } });
+  const mark = rawMark ? cleanMark(rawMark) : null;
+  if (typeof mark === 'string') throw Object.assign(new Error(mark), { status: 400 });
+  const said = mark ? mark.text : name;
+  if (String(said || '').trim().length < 3) throw Object.assign(new Error('Type your full name to sign'), { status: 400 });
+  const typed = signsAs(said, member.name);
   if (!typed) throw Object.assign(new Error(`Sign with your own name, as the board has it: ${member.name}`), { status: 400 });
-  const year = thisYear();
+  // Every point it marks, filled in: initials as adopted, an answer in words
+  const fields = asks.map((f) => ({ ...f, value: String((given || {})[f.n] ?? '').replace(/\s+/g, ' ').trim().slice(0, 500) }));
+  const blank = fields.filter((f) => !f.value || (f.kind === 'initials' && (!mark?.initials || f.value.toUpperCase() !== mark.initials)));
+  if (blank.length) throw Object.assign(new Error(`${blank[0].kind === 'initials' ? 'Initial' : 'Answer'} point ${blank[0].n} first${blank.length > 1 ? ` (${blank.length} left)` : ''}`), { status: 400, extra: { missing: blank.map((f) => f.n) } });
+  // Agreeing to sign electronically, once, kept with when and where from
+  const marks = mark ? await DB.prepare('SELECT * FROM board_member_marks WHERE slug = ?').bind(member.slug).first() : null;
+  const consentHash = mark ? await sha256Hex(CONSENT_TEXT) : null;
+  if (mark && !marks?.consent_at && !consent) throw Object.assign(new Error('Tick that you agree to sign electronically, then sign'), { status: 409, extra: { consent: true } });
   const at = nowIso();
   const on = signedOn(doc, version);
-  const hash = await contentHash({ DB, bucket }, doc);
-  const r = await writeSignature(DB, { docId, slug: member.slug, year, name: typed, how: 'typed', by: member.email || '', at, version: on, signFrom: doc.signFrom, evidence, hash },
-    { same: (was) => (was.how === 'typed' && (Number(was.version) || 0) === on ? was : null) });
+  const hash = await versionHash({ DB, bucket }, doc, on);
+  const how = mark?.type === 'drawn' ? 'drawn' : 'typed';
+  const markKept = mark ? { type: mark.type, style: mark.style, text: typed, initials: mark.initials, ...(mark.path ? { path: mark.path } : {}) } : null;
+  const r = await writeSignature(DB, {
+    docId, slug: member.slug, year, name: typed, how, by: member.email || '', at, version: on, signFrom: doc.signFrom, evidence, hash,
+    fields: fields.length ? fields : null, mark: markKept, consentHash, processV: mark ? PROCESS_V : null,
+    detail: mark ? { mark: { type: mark.type, style: mark.style }, fields: fields.map((f) => ({ n: f.n, kind: f.kind, value: f.value })), consentHash } : undefined,
+  }, { same: (was) => (onPage(was.how) && (Number(was.version) || 0) === on ? was : null) });
   // (Sign pressed twice, or from two devices: the first one is the signature)
-  if (r?.same) return { docId, year, name: r.same.name, at: r.same.at, how: 'typed', version: on, copy: null, drive: null };
-  return { docId, year, name: typed, at, how: 'typed', version: on, copy: null, drive: null };
+  if (r?.same) return { docId, year, name: r.same.name, at: r.same.at, how: r.same.how, version: on, copy: null, drive: null };
+  if (mark) {
+    // Their adopted signature and initials, for next time; agreeing to sign electronically, the first time
+    const first = !marks?.consent_at;
+    await DB.prepare('INSERT INTO board_member_marks (slug, mark, initials, consent_at, consent_ip, consent_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(slug) DO UPDATE SET mark = excluded.mark, initials = excluded.initials, consent_at = COALESCE(board_member_marks.consent_at, excluded.consent_at), consent_ip = COALESCE(board_member_marks.consent_ip, excluded.consent_ip), consent_hash = COALESCE(board_member_marks.consent_hash, excluded.consent_hash), updated_at = excluded.updated_at')
+      .bind(member.slug, JSON.stringify({ type: mark.type, style: mark.style, text: typed, ...(mark.path ? { path: mark.path } : {}) }), mark.initials, first ? at : null, first ? evidence.ip || '' : null, first ? consentHash : null, at).run();
+    if (first) await appendEvents(DB, async () => ({ events: [{ kind: 'consented', docId, slug: member.slug, year, version: on, at, by: member.email || '', ip: evidence.ip, device: evidence.device, detail: { consentHash, text: CONSENT_TEXT } }] }));
+  }
+  return { docId, year, name: typed, at, how, version: on, mark: markKept, fields, copy: null, drive: null };
 }
 
 /**
@@ -860,8 +946,8 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
   const who = member || (await activeBoard(env.DB)).find((p) => p.slug === slug);
   if (!who) throw Object.assign(new Error('Whose is it? They aren’t on People → Board'), { status: 404 });
   const theirs = !member && doc.signed[who.slug];
-  if (theirs && (theirs.how === 'typed' || theirs.how === 'copy') && !replace) {
-    throw Object.assign(new Error(`${who.name} has signed it already (${theirs.how === 'typed' ? 'typed on the board page' : 'their own copy'})`), { status: 409, extra: { exists: { how: theirs.how, at: theirs.at, name: who.name } } });
+  if (theirs && (onPage(theirs.how) || theirs.how === 'copy') && !replace) {
+    throw Object.assign(new Error(`${who.name} has signed it already (${onPage(theirs.how) ? 'on the board page' : 'their own copy'})`), { status: 409, extra: { exists: { how: theirs.how, at: theirs.at, name: who.name } } });
   }
   if (file && typeof file.arrayBuffer === 'function') {
     const type = fileTypeOf(new Uint8Array(await file.arrayBuffer()), file.name);
@@ -874,7 +960,7 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
   const copy = await putFile(env, { ownerType: 'signed', ownerId: docId, file, staffOnly: true, by: by || who.email || '', slug: who.slug, originalId: kept?.id || null });
   const at = nowIso();
   const on = member ? signedOn(doc, version) : doc.version;
-  const hash = await contentHash(storeOf(env), doc);
+  const hash = await versionHash(storeOf(env), doc, on);
   // (the copy it replaces is marked superseded inside writeSignature: kept, never deleted)
   await writeSignature(env.DB, { docId, slug: who.slug, year, name: who.name, how: member ? 'copy' : 'staff', fileId: copy.id, by: by || who.email || '', at, version: on, signFrom: doc.signFrom, evidence, hash, detail: { copySha256: copy.sha256, original: kept ? { id: kept.id, sha256: kept.sha256 } : null } });
   return { docId, year, name: who.name, at, how: member ? 'copy' : 'staff', version: on, copy, drive: null };
@@ -1302,7 +1388,7 @@ const factsText = (m) => [`When: ${whenOf(m)}`, placeOf(m) && `Where: ${placeOf(
  */
 const answerAsk = (from = '') => `Answer the calendar invite${from ? ` from ${from}` : ''}: yes, no or maybe. That’s where SOARD sees who’s coming.`;
 /** Who a staff address is on People → Team (first@soardcharity.com), else null */
-const staffFor = (people, email) => {
+export const staffFor = (people, email) => {
   const e = String(email || '').toLowerCase();
   return (e && people.staff.find((p) => e.startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))) || null;
 };
@@ -1348,7 +1434,7 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
   // One paper opens on its own page, its words (or its file) and the signing at their end; more, on Documents
   // (/board/<id>: a #/ link loses its place through Cloudflare's sign-in, public/_redirects)
   const documentsUrl = `${SITE}/board/${papers.length === 1 && papers[0].id ? papers[0].id : 'documents'}`;
-  const signHow = 'Every board member signs these once a year. Read them on the board page and sign by typing your name, or add the copy you signed on paper.';
+  const signHow = 'Every board member signs these once a year. Read them on the board page and sign there, or add the copy you signed on paper.';
   const signHtml = !toSign.length ? '' : ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">Still to sign for ${year}</p>`
     + `<p class="ink" style="margin:0;">${papers.map((t) => esc(t.title)).join('<br>')}</p>` + small(esc(signHow))
     + `<p style="margin:10px 0 0;">${link(toSign.length > 1 ? 'Read and sign them' : 'Read and sign it', documentsUrl)}</p>`);
@@ -1657,7 +1743,7 @@ export function welcomeEmail({ name = '', email = '', test = false, inviter = nu
   const help = helpers.length ? `${orNames(helpers)} will help` : 'we’ll help';
   const heading = first ? `${first}, your board page is ready` : 'Your board page is ready';
   const intro = `It has ${next ? `the next meeting${next.shared ? ' and its agenda' : ''}, ` : ''}past minutes, the financials, upcoming reveals and SOARD’s papers, all in one place.`;
-  const signHow = `Read ${toSign.length > 1 ? 'them' : 'it'} on the board page, and sign by typing your name or adding the copy you signed on paper.`;
+  const signHow = `Read ${toSign.length > 1 ? 'them' : 'it'} on the board page and sign there, or add the copy you signed on paper.`;
   const keep = 'No password to remember. You stay signed in for a week in the browser you used, then it’s a new code.';
   const save = `Bookmark ${bare}, or add it to your phone’s home screen.`;
   const year = todayEastern().slice(0, 4);
@@ -1812,28 +1898,31 @@ async function sendWelcomeNow(env, { to = null, slugs = null, due = false, again
  * Documents, where they're listed to sign). One who has never been on the board page (`firstTime`) is told how its
  * sign-in works; `test`: a preview
  */
-export function signAskEmail({ name = '', email = '', papers = [], from = '', firstTime = false, test = false } = {}) {
+export function signAskEmail({ name = '', email = '', papers = [], from = '', firstTime = false, test = false, reminder = false } = {}) {
   const year = todayEastern().slice(0, 4);
   const first = firstName(name);
   const one = papers.length === 1 ? papers[0] : null;
   const what = one ? `the ${one.title.replace(/^the\s+/i, '')}` : `${papers.length} papers`;
   // (/board/<id>, which keeps its place through Cloudflare's sign-in; a #/ link lands on Home)
   const url = `${SITE}/board/${one ? one.id : 'documents'}`;
-  const heading = `${first ? `${first}, please` : 'Please'} sign ${what} for ${year}`;
+  const heading = `${reminder ? 'A reminder: ' : ''}${first ? `${first}, please` : 'Please'} sign ${what} for ${year}`;
   const it = one ? 'it' : 'them';
-  const intro = `Every board member reads and signs ${it} once a year. On the board page it takes a few minutes: read ${one ? 'it' : 'each one'}, then type your name at the end.`;
+  // (by when: the earliest due date among them)
+  const due = papers.map((x) => x.due).filter(Boolean).sort()[0] || '';
+  const by = due ? ` by ${dueWords(due)}` : '';
+  const intro = `Every board member reads and signs ${it} once a year${by}. On the board page it takes a few minutes: read ${one ? 'it' : 'each one'}, then sign at the end.`;
   const paper = `Signed ${it} on paper already? Add a photo or PDF of the signed page there instead.`;
   const signIn = `The board page opens with your email address${email ? `, ${email}` : ''}: Cloudflare emails you a six-digit code to type in. No password.`;
   const reply = 'Questions? Reply to this email.';
   return {
-    subject: `${test ? '[Preview] ' : ''}Please sign ${what} for ${year}`,
+    subject: `${test ? '[Preview] ' : ''}${reminder ? 'Reminder: please' : 'Please'} sign ${what} for ${year}${by}`,
     from: viaBoard(from),
     html: emailShell({
       eyebrow: 'SOARD Board',
       preheader: `${one ? one.title : `${papers.length} papers`}: read and sign on the board page. A few minutes.`,
       heading,
       intro: esc(intro),
-      bodyHtml: (one ? '' : panel(kicker(`To sign for ${year}`) + para(papers.map((x) => esc(x.title)).join('<br>'), { top: 0 }), { accent: true }))
+      bodyHtml: (one ? '' : panel(kicker(`To sign for ${year}`) + para(papers.map((x) => `${esc(x.title)}${x.due ? ` (by ${esc(dueWords(x.due))})` : ''}`).join('<br>'), { top: 0 }), { accent: true }))
         + `<div style="margin:${one ? 4 : 18}px 0 0;">${button(one ? 'Read and sign it' : 'Read and sign them', url)}</div>`
         + small(esc(paper))
         + (firstTime ? ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">The first time</p><p class="ink" style="margin:0;">${esc(signIn).replace(esc(email), `<strong style="word-break:break-all;">${esc(email)}</strong>`)}</p>`) : '')
@@ -1843,7 +1932,7 @@ export function signAskEmail({ name = '', email = '', papers = [], from = '', fi
     text: [
       heading,
       intro,
-      one ? '' : `To sign for ${year}:\n${papers.map((x) => `- ${x.title}`).join('\n')}`,
+      one ? '' : `To sign for ${year}:\n${papers.map((x) => `- ${x.title}${x.due ? ` (by ${dueWords(x.due)})` : ''}`).join('\n')}`,
       `${one ? 'Read and sign it' : 'Read and sign them'}: ${url}`,
       paper,
       firstTime ? `The first time: ${signIn}` : '',
@@ -1871,7 +1960,7 @@ export async function noteOpened(DB, docId, member, evidence = {}) {
 /** Who has been asked to sign this year, and when last: { slug: { at, by, n } } */
 export async function signAsks(DB, year = thisYear()) {
   await ensureSchema(DB);
-  return Object.fromEntries((((await DB.prepare('SELECT slug, at, by, n FROM board_sign_asks WHERE year = ?').bind(year).all()).results) || []).map((r) => [r.slug, { at: r.at, by: r.by || '', n: Number(r.n) || 1 }]));
+  return Object.fromEntries((((await DB.prepare('SELECT slug, at, by, n, reminders FROM board_sign_asks WHERE year = ?').bind(year).all()).results) || []).map((r) => [r.slug, { at: r.at, by: r.by || '', n: Number(r.n) || 1, reminders: Number(r.reminders) || 0 }]));
 }
 
 /**
@@ -1891,11 +1980,11 @@ export async function askToSign(env, { slugs = null, by = '', replyTo = [], to =
   ]);
   const signable = docs.filter((d) => d.shared && d.sign && (d.body || (d.file && !d.file.staffOnly)));
   if (!signable.length) throw Object.assign(new Error('There’s nothing for the board to sign: tick Required on a paper in Documents, with its words or its file'), { status: 409 });
-  const papersOf = (slug) => signable.filter((d) => !d.signed[slug]).map((d) => ({ title: d.title, id: d.id }));
+  const papersOf = (slug) => signable.filter((d) => !d.signed[slug]).map((d) => ({ title: d.title, id: d.id, due: dueOn(d, year) }));
   // Who it's from: the admin asking, else the one the invites come from
   const sender = staffFor(people, by) || staffFor(people, settings.invitesFrom);
   if (test) {
-    const items = to.map((email) => ({ to: email, ...signAskEmail({ name: staffFor(people, email)?.name || '', email, papers: signable.map((d) => ({ title: d.title, id: d.id })), from: sender?.name || '', firstTime: true, test }) }));
+    const items = to.map((email) => ({ to: email, ...signAskEmail({ name: staffFor(people, email)?.name || '', email, papers: signable.map((d) => ({ title: d.title, id: d.id, due: dueOn(d, year) })), from: sender?.name || '', firstTime: true, test }) }));
     const r = await sendEmailItems(env, items, { from: items[0].from, tags: [{ name: 'kind', value: 'board-sign-ask-preview' }], replyTo });
     return { ...r, to };
   }
@@ -1963,6 +2052,11 @@ export async function portalData(env, { member = null, admin = false, adminEmail
   // A member's own documents (put with an item they present) are marked, so they can take them off again
   const own = member?.email ? new Set(((await env.DB.prepare('SELECT id FROM board_files WHERE lower(by) = ?').bind(String(member.email).toLowerCase()).all()).results || []).map((r) => r.id)) : new Set();
   const shared = meetings.map(forBoard).filter(Boolean).map((m) => (own.size ? { ...m, files: m.files.map((f) => (own.has(f.id) ? { ...f, mine: true } : f)) } : m));
+  // Their adopted signature and initials (from the last time they signed), and whether they've agreed to sign electronically
+  const marked = member?.slug ? await env.DB.prepare('SELECT mark, initials, consent_at FROM board_member_marks WHERE slug = ?').bind(member.slug).first().catch(() => null) : null;
+  const myMark = marked ? { ...parse(marked.mark, {}), initials: marked.initials || '', consented: !!marked.consent_at } : null;
+  // Their signed copies, every year's (this year's and earlier wordings' too): each to open again
+  const myCopies = member?.slug ? ((await env.DB.prepare('SELECT doc_id, year, version, record_id, at FROM board_signatures WHERE slug = ?1 AND record_id IS NOT NULL UNION ALL SELECT doc_id, year, version, record_id, at FROM board_signatures_earlier WHERE slug = ?1 AND record_id IS NOT NULL ORDER BY year DESC, at DESC').bind(member.slug).all().catch(() => ({ results: [] }))).results || []) : [];
   const mine = member?.slug || null;
   // A paper read as its PDF: its words, as read, to find it by them
   const fileWords = {};
@@ -2008,7 +2102,7 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     } : null,
     // lastSeen: the visit before this one (a visit lasts 10 minutes), for what's new since
     // An admin looking: who they are on People (`as`), so the item they present asks them for its report too
-    me: member ? { name: member.name, slug: member.slug, title: member.title, email: member.email, admin, lastSeen: seen?.at || null }
+    me: member ? { name: member.name, slug: member.slug, title: member.title, email: member.email, admin, lastSeen: seen?.at || null, ...(myMark ? { mark: myMark } : {}) }
       : { name: null, slug: null, admin, as: people.staff.find((p) => String(adminEmail).toLowerCase().startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))?.slug || null },
     today,
     // Their own answer here, else how they answered the calendar invite (which also means it's on their calendar)
@@ -2022,14 +2116,17 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     actions: openActions(shared).map((a) => ({ ...a, mine: !!mine && a.owner === mine })),
     // Who has signed is Board's to see: a member sees how many of the board have, and their own (its copy, if one's in)
     // (and whether they signed an earlier wording, before the board was asked to sign again)
-    docs: docs.filter((d) => d.shared || !member).map(({ signed, earlier, before, prior, wordsBy, ...d }) => ({
+    docs: docs.filter((d) => d.shared || !member).map(({ signed, earlier, before, prior, kept, declined, wordsBy, ...d }) => ({
       ...(d.shared ? {} : { hidden: true }),
       ...d, file: d.file && !d.file.staffOnly ? d.file : null,
       signedByMe: mine && signed[mine] ? { ...signed[mine], drive: !!signed[mine].drive } : null,
       signedEarlier: !!mine && !signed[mine] && earlier.includes(mine),
+      // They told SOARD they can't sign it as written: when, and what they said (they can still sign it)
+      declinedByMe: mine && declined[mine] ? declined[mine] : null,
       // Not signed this year, but in an earlier one: when, and on which wording (0: not known)
       signedBefore: mine && !signed[mine] && !earlier.includes(mine) && prior[mine] ? { year: prior[mine].year, at: prior[mine].how === 'drive' ? '' : prior[mine].at, version: prior[mine].version } : null,
       ...(signedBodies[d.id] ? { signedBody: signedBodies[d.id] } : {}),
+      ...(myCopies.some((c) => c.doc_id === d.id) ? { myCopies: myCopies.filter((c) => c.doc_id === d.id).map((c) => ({ year: Number(c.year), version: Number(c.version) || 0, id: c.record_id, at: c.at })) } : {}),
       ...(!d.body && d.file && fileWords[d.file.id] ? { fileWords: fileWords[d.file.id] } : {}),
       signedCount: people.board.filter((p) => signed[p.slug]).length,
     })),
@@ -2466,6 +2563,8 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await maybeDraftAgendas(env, { now });
     await maybeLockNumbers(env, { fetchImpl, now });
     await (await import('./_board-attendance.js')).maybeFillAttendance(env, { fetchImpl, now });
+    // Remind by email, when it's on: its own try, so a failure there never holds up mail or the banks
+    try { await (await import('./_board-sign.js')).maybeRemindSigners(env, { now }); } catch (err) { console.error('[board] reminders', err?.message || err); }
     // Last: board mail (it reads for seconds while it has a backlog), then minutes read without Workers AI (it ran out
     // of time): their motions and action items, one meeting at a time
     await maybeReadBoardMail(env, { fetchImpl, now });

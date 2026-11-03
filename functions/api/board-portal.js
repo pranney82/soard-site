@@ -14,6 +14,7 @@
  * POST { action: 'action-done', actionId, done }    one of their own action items
  * POST { action: 'sign', docId, name, version }      "I've read it", this year, with their own name typed (409 { changed }: the words changed since)
  * POST { action: 'opened', docId }                a paper they sign, opened (once a year, for its record)
+ * POST { action: 'decline', docId, reason, year }  can't sign it as written: why, kept, the admins emailed
  * POST ?signed=<docId> (multipart "file")           the copy they signed on paper, as this year's signature (staff-only;
  *                                                    they open their own)
  * POST { action: 'checkin', meetingId, how }         present | remote, on the meeting's day
@@ -44,7 +45,7 @@ import { readBoardWords } from './_board-file-words.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
 import { noteGet, noteLook, noteAnswer, noteEvents, answerOf, deviceOf, accessIat } from './_board-activity.js';
-import { evidenceOf } from './_board-sign.js';
+import { evidenceOf, afterSigning, buildRecord, declineDoc, tellDeclined } from './_board-sign.js';
 // Where a signing request came from (its IP, device, this sign-in's start, the address Access checked): its evidence
 const evidence = (context) => evidenceOf(context, { deviceOf, accessIat });
 import { portalExtras, saveLineNote, chairApprove, chairNote, askPresenter } from './_board-asks.js';
@@ -172,7 +173,10 @@ async function post(context) {
       const version = form.get('version');
       // (an iPhone photo comes twice: the JPEG a browser shows as "file", the HEIC as it was taken as "original")
       const original = form.get('original');
-      return Response.json({ ok: true, ...(await signWithCopy(env, q.get('signed'), form.get('file'), { member: w.member, by: w.member.email, version: version == null ? null : Number(version), evidence: evidence(context), original: original && typeof original.arrayBuffer === 'function' ? original : null })) });
+      const copied = await signWithCopy(env, q.get('signed'), form.get('file'), { member: w.member, by: w.member.email, version: version == null ? null : Number(version), evidence: evidence(context), original: original && typeof original.arrayBuffer === 'function' ? original : null });
+      // (its record made quietly: a copy signed on paper gets no receipt)
+      context.waitUntil?.(buildRecord(env, { docId: q.get('signed'), slug: w.member.slug, year: copied.year }).catch(() => {}));
+      return Response.json({ ok: true, ...copied });
     }
     // A document with an item they present (attachToItem checks), as the form's "file"
     if (q.has('attach')) {
@@ -234,7 +238,25 @@ async function post(context) {
         if (!ID.test(String(body.docId || ''))) return fail('Which document?');
         // (the page was opened by someone else: another sign-in in this browser since)
         if (body.as && body.as !== member.slug) return fail(`This browser is signed in as ${member.name} now. Reload the page to sign as yourself.`, 409, { who: true });
-        return Response.json({ ok: true, ...(await signDoc(env.DB, body.docId, member, body.name, { version: Number.isInteger(body.version) ? body.version : null, evidence: evidence(context), bucket: boardFiles(env) })) });
+        // (today's page: their adopted mark, each initial and answer, agreeing to sign electronically, the year it says)
+        {
+          const signed = await signDoc(env.DB, body.docId, member, body.name, {
+            version: Number.isInteger(body.version) ? body.version : null, evidence: evidence(context), bucket: boardFiles(env),
+            mark: body.mark && typeof body.mark === 'object' ? body.mark : null, fields: body.fields && typeof body.fields === 'object' ? body.fields : null,
+            consent: body.consent === true, year: Number.isInteger(body.year) ? body.year : null,
+          });
+          // Their signed copy made, and their receipt sent, after the answer (the heartbeat finishes any that stop)
+          context.waitUntil?.(afterSigning(env, { docId: body.docId, slug: member.slug, year: signed.year }));
+          return Response.json({ ok: true, ...signed });
+        }
+      // Can't sign it as written: why, kept, and the admins told (they can still sign it later)
+      case 'decline': {
+        if (!ID.test(String(body.docId || ''))) return fail('Which document?');
+        if (body.as && body.as !== member.slug) return fail(`This browser is signed in as ${member.name} now. Reload the page.`, 409, { who: true });
+        const d = await declineDoc(env.DB, body.docId, member, { reason: body.reason, evidence: evidence(context), year: Number.isInteger(body.year) ? body.year : null });
+        if (d.tell) context.waitUntil?.(tellDeclined(env, { doc: d.doc, member, reason: d.reason, year: d.year }).catch(() => {}));
+        return Response.json({ ok: true, declined: { at: d.at, reason: d.reason } });
+      }
       // A paper they sign, opened (once a year: evidence they had it in front of them)
       case 'opened':
         if (!ID.test(String(body.docId || ''))) return fail('Which document?');
