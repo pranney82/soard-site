@@ -563,8 +563,18 @@ try {
   await sleep(150);
   await waitArea('inside');
   ok(await addressLine() === '3167 Main St, Duluth, GA 30096' && await areaState() === 'inside', 'and a tap finishes it');
+  // The whole address typed, its one suggestion word for word, the list closed (Escape; Tab to the apartment box and a
+  // tap outside close it too): Continue takes it, not "choose it from the list"
+  await clear('#af-address-search');
+  await page.focus('#af-address-search');
+  await page.type('#af-address-search', '3167 Main St, Duluth, GA 30096');
+  await page.waitForSelector('#af-address-suggest:not([hidden]) [role="option"]', { timeout: 4000 }).catch(() => {});
+  await page.keyboard.press('Escape');
+  await sleep(100);
+  ok(!(await visible('#af-address-suggest')) && await stepTitle() === AREA, 'Escape closes the list (and stays on the screen)');
   await noSideScroll('service area');
   await next();
+  ok(await errorText('address') === '' && await addressParts() === '3167 Main St|Duluth|GA|30096', `the address its one suggestion matched is taken on Continue, the list closed (${await errorText('address') || await addressParts()})`);
   ok(await visible('[data-field="boundary"] .af-map-frame') && await visible('[data-field="boundary"] .af-map-pin'), 'Continue: the map, with a pin on the home');
   ok(await page.$$eval('[data-field="boundary"] .af-map-town', (els) => els.length) >= 8, 'with towns families know');
   const areaCard = await page.$eval('[data-area-result]', (e) => e.textContent.replace(/\s+/g, ' ').trim());

@@ -91,6 +91,9 @@ export function initAdvisoryForm() {
   }
   let calmUntil = 0; // till when a new screen is settling (presses before then don't count)
   let resumeAt = null; // the screen of the step they left, for coming back to it
+  // The screen they came to (its first piece): a phone turned sideways and back works the screens out twice, and
+  // comes back to this one, not to whichever screen that piece's neighbor ended up on (the family form's way)
+  let anchor = null;
   let startedAt = stored?.startedAt || Date.now();
   let turnstileKey = null;
   let turnstileToken = null;
@@ -132,7 +135,7 @@ export function initAdvisoryForm() {
       // Put away, its note goes with it: asked again, it's a new question (no "Please fill this in" before they've typed)
       if (el.hidden && el.classList.contains('is-invalid')) { clearProblem(el); putAway = true; }
     }
-    if (putAway && step >= 0 && step < total && !pages[step]?.querySelector('.adv-field.is-invalid')) { const sum = pages[step]?.querySelector('[data-summary]'); if (sum) sum.hidden = true; }
+    if (putAway && step >= 0 && step < total) paintSummary(stillWrong(), { always: true });
   }
   function clearProblem(el) {
     el.classList.remove('is-invalid');
@@ -285,17 +288,27 @@ export function initAdvisoryForm() {
       }
     }
     const mine = ids.filter((id) => problems[id]);
-    const summary = page.querySelector('[data-summary]');
+    paintSummary(mine);
+    if (mine.length) refit(mine); // the notes and the summary take room: the questions close up a little
+    if (focus && mine.length) focusField(mine[0]);
+  }
+  const stillWrong = () => [...(pages[step]?.querySelectorAll('.adv-field.is-invalid') || [])].map((el) => el.dataset.field);
+  /**
+   * The summary of the step's problems, a link to each, only while some are out of sight (another of its screens:
+   * beside each question on this one its own note says it). Two or more as Continue finds them; as they're fixed,
+   * it says what's left, down to the last one on another screen
+   */
+  function paintSummary(ids, { always = false } = {}) {
+    const summary = step < total ? pages[step]?.querySelector('[data-summary]') : null;
     if (!summary) return;
-    // The summary only when some are out of sight (another screen): beside each question its own note says it
-    const elsewhere = mine.some((id) => fieldEl(id)?.closest('[data-off]'));
-    if (mine.length < 2 || !elsewhere) { summary.hidden = true; summary.textContent = ''; if (mine.length) refit(mine); if (focus && mine.length) focusField(mine[0]); return; }
+    const elsewhere = ids.some((id) => fieldEl(id)?.closest('[data-off]'));
+    if (!elsewhere || (ids.length < 2 && !always)) { summary.hidden = true; summary.textContent = ''; return; }
     summary.innerHTML = '';
     const head = document.createElement('p');
-    head.textContent = `${mine.length} answers need a look:`;
+    head.textContent = ids.length === 1 ? '1 answer needs a look:' : `${ids.length} answers need a look:`;
     head.style.margin = '0';
     const list = document.createElement('ul');
-    for (const id of mine) {
+    for (const id of ids) {
       const f = ADVISORY_FIELDS.find((x) => x.id === id);
       const li = document.createElement('li');
       const link = document.createElement('a');
@@ -307,13 +320,17 @@ export function initAdvisoryForm() {
     }
     summary.append(head, list);
     summary.hidden = false;
-    refit(mine); // the notes and the summary take room: the questions close up a little
-    if (focus) focusField(mine[0]);
   }
   function focusField(id) {
     const el = fieldEl(id);
     if (!el) return;
-    if (packs[step] && el.closest('[data-off]')) { screenNo = screenOf(step, id); paintScreen(); paint(); }
+    if (packs[step] && el.closest('[data-off]')) {
+      screenNo = screenOf(step, id);
+      paintScreen();
+      anchor = packs[step][screenNo]?.find((k) => k.getClientRects().length) || null;
+      if (!pages[step].querySelector('[data-summary]')?.hidden) paintSummary(stillWrong(), { always: true }); // (what's on another screen now)
+      paint();
+    }
     // (a choice: the one picked, as a screen reader and Space find it, else the first)
     const input = el.querySelector('input[type="radio"]:checked') || el.querySelector('input:not([type="hidden"]), textarea');
     // In view already, between the bar across the top and Back / Continue: left where it is (the step's line stays
@@ -330,7 +347,7 @@ export function initAdvisoryForm() {
     const msg = problemsOn(step)[id];
     if (msg) return;
     clearProblem(el);
-    if (![...pages[step].querySelectorAll('.adv-field.is-invalid')].length) pages[step].querySelector('[data-summary]').hidden = true;
+    paintSummary(stillWrong(), { always: true }); // what's left (one fixed: "2 answers" no more), or gone
   }
 
   // ── What's on screen ──
@@ -377,7 +394,7 @@ export function initAdvisoryForm() {
     if (ui.next.textContent !== label) ui.next.textContent = label;
     ui.turnstile.hidden = !(turnstileKey && step === REVIEW);
     if (turnstileKey && step === REVIEW) loadTurnstile();
-    document.title = focused ? `Step ${step + 1} of ${total + 1}: ${titles[step]} · ${baseTitle}` : baseTitle;
+    document.title = focused && !sent ? `Step ${step + 1} of ${total + 1}: ${titles[step]} · ${baseTitle}` : baseTitle; // (sent: the page's own)
     paintHub(a);
     if (focusHeading) ui.title.focus({ preventScroll: true });
   }
@@ -486,6 +503,7 @@ export function initAdvisoryForm() {
       if (!at && dir > 0) while (screenNo < n - 1 && emptyScreen(i, screenNo)) screenNo++;
       if (!at && (dir < 0 || screen === 'last')) while (screenNo > 0 && emptyScreen(i, screenNo)) screenNo--;
       paintScreen();
+      anchor = packs[i]?.[screenNo]?.find((k) => k.getClientRects().length) || null;
       ui.sendError.hidden = true;
       paint();
       if (focused) window.scrollTo({ top: 0, behavior: 'auto' });
@@ -729,6 +747,10 @@ export function initAdvisoryForm() {
       box.dispatchEvent(new Event('input', { bubbles: true }));
       box.dispatchEvent(new Event('change', { bubbles: true }));
       buildReview();
+      // Its button went with the question: the keys stay at the top of the review (another typo asked about, or the
+      // review's heading), and the change is said
+      (ui.review.querySelector('[data-review-fix]') || ui.title).focus({ preventScroll: true });
+      if (ui.live) { ui.live.textContent = ''; setTimeout(() => { ui.live.textContent = `Changed to ${fix.dataset.fix}.`; }, 40); }
       return;
     }
     const tg = e.target.closest('.adv-review-toggle');
@@ -1064,11 +1086,16 @@ export function initAdvisoryForm() {
       if (Math.abs(innerWidth - w0) < 40 && Math.abs(innerHeight - h0) < 120) return;
       packedSize = `${innerWidth}x${innerHeight}`;
       if (!focused || step < 0 || step >= total || !packs[step]) return;
-      const was = packs[step][screenNo]?.[0] || null;
+      // The screen with the box they're typing in stays, the keys still in it; else the screen they came to
+      const keysAt = document.activeElement;
+      const typing = keysAt?.closest?.('[data-field]');
+      const mine = (el) => !!el && !!pages[step]?.contains(el) && !el.closest('[data-off]');
+      const was = (mine(typing) && typing) || (anchor && pages[step]?.contains(anchor) && anchor) || packs[step][screenNo]?.[0] || null;
       packs[step] = pack(step);
       screenNo = Math.max(0, was ? packs[step].findIndex((kids) => kids.some((k) => k === was || k.contains(was) || was.contains(k))) : 0);
       paintScreen();
       paint();
+      if (mine(typing) && keysAt.isConnected && keysAt.getClientRects().length && document.activeElement !== keysAt) keysAt.focus({ preventScroll: true });
     }, 180);
   }, { passive: true, signal });
 
@@ -1082,8 +1109,11 @@ export function initAdvisoryForm() {
   }, { signal });
 
   ui.back.addEventListener('click', () => { back(); });
-  ui.go.addEventListener('click', () => (sent ? again() : begin()));
-  document.querySelector('[data-adv-cta]')?.addEventListener('click', (e) => { e.preventDefault(); if (sent) again(); else begin(); });
+  // Every step done, the button says "Review and send": the review, not the screen they last left (Back from the
+  // review, then Save and exit, left them on a question)
+  const goOn = () => (sent ? again() : begin(ADVISORY_STEPS.every((_, i) => stepDone(i, collect())) ? REVIEW : null));
+  ui.go.addEventListener('click', goOn);
+  document.querySelector('[data-adv-cta]')?.addEventListener('click', (e) => { e.preventDefault(); goOn(); });
   /** Sent, and "Start a new application": the page afresh (nothing of the one sent kept), straight into it */
   const AGAIN = 'soard-advisory-again';
   function again() {
@@ -1105,10 +1135,14 @@ export function initAdvisoryForm() {
     ui.sendError.hidden = true;
     if (step === REVIEW) { await send(); return; }
     const here = screenIds();
-    const problems = Object.fromEntries(Object.entries(problemsOn(step)).filter(([id]) => here.has(id)));
+    const all = problemsOn(step);
+    const problems = Object.fromEntries(Object.entries(all).filter(([id]) => here.has(id)));
     if (Object.keys(problems).length) { showProblems(problems); return; }
-    showProblems({}, { focus: false });
     const lastHere = !screenAhead();
+    // Leaving the step (on, or back to the review): an answer still wrong on another of its screens is gone to
+    // first, never left behind (the review would only send them back to it)
+    if ((lastHere || fromReview === 'answer') && Object.keys(all).length) { showProblems(all); replaceLoc(); return; }
+    showProblems({}, { focus: false });
     if (fromReview === 'answer' || (fromReview && lastHere)) { const was = reviewBack; await go(REVIEW, { dir: 1 }); landOnReview(was); }
     else if (!lastHere) await go(step, { dir: 1, screen: screenNo + 1 });
     else await go(step + 1, { dir: 1 });

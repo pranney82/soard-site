@@ -55,6 +55,18 @@ test('a number answered as a range ("200-300") asks for one number, a guess; "1e
   for (const v of ['250', '1,200', ' 40 ']) assert.equal(fieldError(f, v, 'en'), null, v);
 });
 
+test('one number with words round it ("40+", "about 40") is asked for on its own, theirs the example; an optional website says it can be left blank', () => {
+  const f = { id: 'children', type: 'number', required: true, rules: { integer: true } };
+  for (const v of ['40+', 'about 40', '40 kids', '~40']) assert.equal(fieldError(f, v, 'en'), 'Please enter just the number, like 40. Your best guess is fine.', v);
+  assert.equal(fieldError(f, 'about 1,200', 'en'), 'Please enter just the number, like 1,200. Your best guess is fine.');
+  assert.equal(fieldError(f, '40+', 'es'), 'Escriba solo el número, como 40. Un cálculo aproximado está bien.');
+  for (const v of ['forty', '3 classes of 25']) assert.equal(fieldError(f, v, 'en'), 'Please enter a number.', v);
+  const site = { id: 'website', type: 'text' };
+  for (const v of ['N/A', 'none', 'No website', '-']) assert.equal(fieldError(site, v, 'en'), 'Please enter a web address, like example.org, or leave this blank if you don’t have one.', v);
+  assert.equal(fieldError({ ...site, required: true }, 'N/A', 'en'), 'Please enter a web address, like example.org.');
+  assert.equal(fieldError(site, 'example.org', 'en'), null);
+});
+
 test('a limit is written as people write it ("1,000,000 or less"); a typed name to sign is more than one letter', () => {
   const f = { id: 'childrenServed', type: 'number', required: true, rules: { min: 1, max: 1000000, integer: true } };
   assert.equal(fieldError(f, '1,250,000', 'en'), 'Please enter 1,000,000 or less.');

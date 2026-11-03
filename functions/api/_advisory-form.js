@@ -155,7 +155,7 @@ export function fieldProblem(field, value) {
   if (field.autocomplete === 'name' && (String(value).match(/\p{L}/gu) || []).length < 2) return 'Please type your full name.';
   // (an email address typed here, "jordan@example.com", isn't a link: said so, as the community form's website does)
   if (field.type === 'url' && /^(?:https?:\/\/)?(?:mailto:)?[^\s/@]+@[^\s/@]+\.[a-z]{2,}\/?$/i.test(value)) return 'That’s an email address. Please enter a web address, like linkedin.com/in/yourname.';
-  if (field.type === 'url' && !isWebAddress(value)) return 'That doesn’t look like a web address.';
+  if (field.type === 'url' && !isWebAddress(value)) return field.required ? 'That doesn’t look like a web address.' : 'That doesn’t look like a web address. Leave this blank if you don’t have one.';
   if (field.type === 'choice' && !field.options.includes(value)) return 'Please choose one.';
   return null;
 }

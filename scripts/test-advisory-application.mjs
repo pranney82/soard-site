@@ -399,6 +399,15 @@ if (DIST) {
     ok((await text(p, '#adv-title')) === 'Your interest' && /Back to review/.test(await text(p, '#adv-next')), 'a reload keeps "Back to review"');
     await next();
     ok((await text(p, '#adv-title')) === 'Review and send', 'back to review');
+    // Every step done, a few screens back to read something, then Save and exit: "Review and send" opens the review
+    for (let i = 0; i < 3; i++) { await p.click('#adv-back'); await sleep(450); }
+    const readAgain = await text(p, '#adv-title');
+    await p.click('#adv-exit');
+    await sleep(400);
+    ok((await text(p, '#adv-go')) === 'Review and send', `every step done: the overview offers "Review and send" (${await text(p, '#adv-go')})`);
+    await p.click('#adv-go');
+    await sleep(500);
+    ok((await text(p, '#adv-title')) === 'Review and send', `and it opens the review, not the screen they left (${readAgain})`);
     await sleep(500);
     // A test fills it in seconds: say they took their time (the server drops anything faster than a person)
     await p.evaluate(() => { const k = 'soard-advisory-application'; const s = JSON.parse(localStorage.getItem(k)); s.startedAt = Date.now() - 900000; localStorage.setItem(k, JSON.stringify(s)); });
@@ -427,8 +436,10 @@ if (DIST) {
   ok(copies.length === 2 && staff.length === 6 && staff.every((e) => /^(peter|linzi|lee)@example\.org$/.test(e.to[0])) && sent.slack.length === 2,
     `each one: the applicant’s copy, the staff email to the two saved above and the committee’s Lee Lead, and Slack (${copies.length}, ${staff.length}, ${sent.slack.length})`);
   const ab = await open(1440, '/advisory-board/');
-  const links = await ab.$$eval('a', (els) => els.filter((a) => /Apply to Join/.test(a.textContent)).map((a) => [a.getAttribute('href'), a.target]));
+  const links = await ab.$$eval('a', (els) => els.filter((a) => /Apply to Join/.test(a.textContent)).map((a) => [a.getAttribute('href'), a.target, a.hasAttribute('data-astro-reload')]));
   ok(links.length === 3 && links.every(([h, t]) => h === '/advisory-board/apply/' && !t), 'the Advisory Board page’s three Apply buttons go to the new page, same tab');
+  // A page of its own, not one the site's router brings (the router would hear Back first and fetch the page again)
+  ok(links.every(([, , reload]) => reload), 'each loads the application afresh (data-astro-reload), as the family form’s links do');
   await ab.close();
 } else {
   console.log('(DIST not set: the Apply page checks are skipped)');

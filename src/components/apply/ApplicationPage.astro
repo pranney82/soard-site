@@ -373,6 +373,7 @@ const breadcrumbs = [
           <form data-later-form novalidate>
             <h2 id="af-later-title" data-af-t="laterTitle">{w('laterTitle')}</h2>
             <p data-af-t="laterIntro">{w('laterIntro')}</p>
+            <p class="af-later-upload" data-later-upload data-af-t="laterUploading" hidden>{w('laterUploading')}</p>
             <label class="af-label" for="af-later-email" data-af-t="email">{w('email')}</label>
             <input type="email" id="af-later-email" required autocomplete="email" inputmode="email" spellcheck="false" />
             <p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>
@@ -382,6 +383,7 @@ const breadcrumbs = [
           <div data-later-sent hidden>
             <h2 data-af-t="sentTitle">{w('sentTitle')}</h2>
             <p data-af-t-html="sentBodyHtml" set:html={w('sentBodyHtml')} />
+            <p class="af-later-upload" data-later-upload data-af-t="laterUploading" hidden>{w('laterUploading')}</p>
             <button type="button" class="af-btn af-btn--primary" data-later-done data-af-t="keepGoing">{w('keepGoing')}</button>
           </div>
         </dialog>
@@ -1071,6 +1073,8 @@ const breadcrumbs = [
   .af-dialog-close:hover { background: var(--c-warm-gray); color: var(--c-dark); }
   .af-dialog-close:focus-visible { outline: 3px solid var(--c-dark); outline-offset: 2px; }
   .af-dialog-status { min-height: 1.4em; font-size: 14px; margin: 0; color: var(--af-attn-ink); font-weight: 600; }
+  /* A photo or video still uploading as the link goes: said in the dialog (the link opens it without it till then) */
+  .af-later-upload { font-size: 14px; color: var(--af-attn-ink); font-weight: 600; }
   .af-dialog-status:empty { min-height: 0; }
   /* A choice's whole description: a card in the middle on a computer, a sheet up from the bottom on a phone */
   .af-dialog--detail h2 { margin-bottom: 12px; padding-right: 44px; }

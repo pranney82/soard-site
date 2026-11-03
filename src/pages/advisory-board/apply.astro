@@ -529,6 +529,13 @@ const logo = 'brand-logo-light-bg-display';
     .adv-nav-row :is(.adv-back, .adv-next).btn { min-height: 44px; }
     .adv-page:not([hidden]):not(.adv-page--review) { gap: 14px; }
   }
+  /* Short and narrow too (a window zoomed to 400%, 320 x 256): no line for both, so the step's name and where they
+     are each get theirs, whole (cut short, "Your inter…" said nothing) */
+  @media (max-height: 450px) and (orientation: landscape) and (max-width: 520px) {
+    .adv-head { display: block; }
+    .adv-head h2 { white-space: normal; font-size: 18px; line-height: 1.2; }
+    .adv-kicker { flex-wrap: wrap; white-space: normal; margin-bottom: 2px; font-size: 11px; }
+  }
   @media (max-width: 768px) {
     .adv { padding-inline: 12px; }
     .adv-card { border-radius: 20px; }

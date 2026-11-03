@@ -1176,11 +1176,11 @@ export const ERROR_TEXT = {
     area: 'Please enter the home address so we can check it, or choose an answer.',
     email: 'Please enter a valid email address, like name@example.com.', phone: 'Please enter a 10-digit phone number.', phoneArea: 'Please add the area code, like (404) 555-0123.',
     phoneCheck: "That doesn't look like a US phone number. Please check it.",
-    url: 'Please enter a web address, like example.org.',
+    url: 'Please enter a web address, like example.org.', urlOptional: 'Please enter a web address, like example.org, or leave this blank if you don’t have one.',
     date: 'Please enter a valid date.', year: 'Please check the year.', future: 'Please enter a date in the past.', name: 'Please enter a first and last name.',
     address: 'Please enter the street address, city, state and ZIP code.', zip: 'Please enter a 5-digit ZIP code.', poBox: 'Please enter a street address, not a PO box.', houseNumber: 'Please add the house or building number to the street address.',
     oneOf: 'Please choose one of the answers.', listed: 'Please choose from the answers listed.', upTo: (n) => `Please choose up to ${n}.`,
-    number: 'Please enter a number.', range: 'Please enter one number. Your best guess is fine.', whole: 'Please enter a whole number.', min: (n) => `Please enter ${big(n)} or more.`, max: (n) => `Please enter ${big(n)} or less.`,
+    number: 'Please enter a number.', range: 'Please enter one number. Your best guess is fine.', justNumber: (n) => `Please enter just the number, like ${n}. Your best guess is fine.`, whole: 'Please enter a whole number.', min: (n) => `Please enter ${big(n)} or more.`, max: (n) => `Please enter ${big(n)} or less.`,
     minLength: (n) => `Please write at least ${n} characters.`, maxLength: (n) => `Please keep this to ${n} characters or fewer.`,
     minAge: (n) => `The child must be at least ${n} years old.`, maxAge: (n) => `The child must be ${n} years old or younger.`,
   },
@@ -1190,11 +1190,11 @@ export const ERROR_TEXT = {
     area: 'Escriba la dirección de la casa para que podamos revisarla, o elija una respuesta.',
     email: 'Escriba un correo electrónico válido, como nombre@ejemplo.com.', phone: 'Escriba un número de teléfono de 10 dígitos.', phoneArea: 'Agregue el código de área, como (404) 555-0123.',
     phoneCheck: 'Ese no parece un número de teléfono de EE. UU. Revíselo, por favor.',
-    url: 'Escriba una dirección web, como ejemplo.org.',
+    url: 'Escriba una dirección web, como ejemplo.org.', urlOptional: 'Escriba una dirección web, como ejemplo.org, o deje esto en blanco si no tiene una.',
     date: 'Escriba una fecha válida.', year: 'Revise el año.', future: 'Escriba una fecha en el pasado.', name: 'Escriba el nombre y el apellido.',
     address: 'Escriba la dirección, la ciudad, el estado y el código postal.', zip: 'Escriba un código postal de 5 dígitos.', poBox: 'Escriba una dirección con calle, no un apartado postal.', houseNumber: 'Agregue el número de la casa o del edificio a la dirección.',
     oneOf: 'Elija una de las respuestas.', listed: 'Elija entre las respuestas de la lista.', upTo: (n) => `Elija hasta ${n}.`,
-    number: 'Escriba un número.', range: 'Escriba un solo número. Un cálculo aproximado está bien.', whole: 'Escriba un número entero.', min: (n) => `Escriba ${big(n, 'es-US')} o más.`, max: (n) => `Escriba ${big(n, 'es-US')} o menos.`,
+    number: 'Escriba un número.', range: 'Escriba un solo número. Un cálculo aproximado está bien.', justNumber: (n) => `Escriba solo el número, como ${n}. Un cálculo aproximado está bien.`, whole: 'Escriba un número entero.', min: (n) => `Escriba ${big(n, 'es-US')} o más.`, max: (n) => `Escriba ${big(n, 'es-US')} o menos.`,
     minLength: (n) => `Escriba al menos ${n} caracteres.`, maxLength: (n) => `Use ${n} caracteres o menos.`,
     minAge: (n) => `El niño o la niña debe tener al menos ${n} años.`, maxAge: (n) => `El niño o la niña debe tener ${n} años o menos.`,
   },
@@ -1234,6 +1234,9 @@ export function fieldError(field, value, lang = 'en') {
       const t = String(value).replace(/,/g, '').trim();
       if (/^\d[\d.]*\s*(?:-|–|to|or|a|o)\s*\d/i.test(t)) return E.range; // "200-300": one number, a guess
       const n = /^[-+]?(?:\d+\.?\d*|\.\d+)$/.test(t) ? Number(t) : NaN; // digits only ("1e3" isn't how anyone writes a count)
+      // One number with words round it ("40+", "about 40", "40 kids"): the number on its own, theirs as the example
+      const only = Number.isFinite(n) ? null : t.match(/\d+(?:\.\d+)?/g);
+      if (only?.length === 1) return E.justNumber(big(Number(only[0]), lang === 'es' ? 'es-US' : 'en-US'));
       if (!Number.isFinite(n)) return E.number;
       if (r.integer && !Number.isInteger(n)) return E.whole;
       if (r.min != null && n < r.min) return E.min(r.min);
@@ -1276,7 +1279,8 @@ export function fieldError(field, value, lang = 'en') {
     }
     case 'text': case 'textarea': case 'signature': {
       if (field.type === 'signature' && (String(value).match(/\p{L}/gu) || []).length < 2) return E.signature; // a name, never just "x"
-      if (field.type === 'text' && field.id === 'website' && !isWebAddress(value)) return E.url; // an organization's website
+      // An organization's website ("N/A" in one that's optional: it can be left blank, and it's said)
+      if (field.type === 'text' && field.id === 'website' && !isWebAddress(value)) return field.required ? E.url : E.urlOptional;
       const len = String(value).trim().length;
       if (r.minLength != null && len < r.minLength) return E.minLength(r.minLength);
       if (r.maxLength != null && len > r.maxLength) return E.maxLength(r.maxLength);

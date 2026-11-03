@@ -1156,7 +1156,11 @@ function init(root, cfg, mode) {
     if (res && !res.querySelector('.af-area-card')) {
       const was = res.innerHTML;
       const sample = T('areaFoundCounty', { address: '1234 Sample Street, Sampleville, GA 30000', county: 'Sample' });
-      res.innerHTML = `<div class="af-area-card" data-band="inside">${AREA_ICONS.inside}<div class="af-area-text"><p class="af-area-title">${esc(T('areaInside'))}</p><div class="af-area-desc-wrap"><p class="af-area-desc">${esc(af.descriptions?.[AREA_VALUES.inside] || '')}</p></div><p class="af-area-found">${esc(sample)}</p>${uspsOn ? uspsHtml('check') : ''}<button type="button" class="af-btn af-btn--link af-area-fix">${esc(T('areaFix'))}</button></div></div>`;
+      // A home inside, with the Postal Service's tallest word for one (a building with apartments: its note and the
+      // button to the apartment's box): a card that turns out taller than planned pushed the next question onto a
+      // screen "Parte 2 de 2" never had
+      const usps = uspsOn ? `<p class="af-usps" data-status="unit"><span>${esc(T('uspsUnit'))}</span> <span class="af-usps-by" translate="no">Google Maps</span></p><button type="button" class="af-btn af-btn--link af-area-apt">${esc(T('addApt'))}</button>` : '';
+      res.innerHTML = `<div class="af-area-card" data-band="inside">${AREA_ICONS.inside}<div class="af-area-text"><p class="af-area-title">${esc(T('areaInside'))}</p><div class="af-area-desc-wrap"><p class="af-area-desc">${esc(af.descriptions?.[AREA_VALUES.inside] || '')}</p></div><p class="af-area-found">${esc(sample)}</p>${usps}<button type="button" class="af-btn af-btn--link af-area-fix">${esc(T('areaFix'))}</button></div></div>`;
       undo.push(() => { res.innerHTML = was; });
     }
     const note = res && el.querySelector('.af-county-note[hidden]');
@@ -1544,8 +1548,10 @@ function init(root, cfg, mode) {
   function clearOfBars(el) {
     const r = el.getBoundingClientRect();
     const navTop = ui.form.querySelector('[data-nav]')?.getBoundingClientRect().top ?? innerHeight;
-    const by = Math.min(r.bottom + 12 - navTop, r.top - (ui.top?.getBoundingClientRect().bottom || 0) - 8);
-    if (by > 0) window.scrollBy({ top: by, behavior: 'auto' });
+    const topEnd = (ui.top?.getBoundingClientRect().bottom || 0) + 8;
+    // Under the bar across the top: brought down to just below it; under Back / Continue: up, its top kept in sight
+    const by = r.top < topEnd ? r.top - topEnd : Math.min(r.bottom + 12 - navTop, r.top - topEnd);
+    if (by) window.scrollBy({ top: by, behavior: 'auto' });
   }
   /** The screen's first question (past any words to read) when it's a box to type in, still empty */
   function firstBox() {
@@ -1854,6 +1860,18 @@ function init(root, cfg, mode) {
       || el.querySelector('input:checked') || el.querySelector('input[type=radio], input[type=checkbox]')
       || el.querySelector('[data-act="choose"]');
     target?.focus({ preventScroll: true });
+    // What has the keys is in sight, never under a bar (a window zoomed in, a phone on its side: the note at the foot of
+    // a tall choice brought into view put its first choice under the bar across the top, and Space ticked it unseen),
+    // with its question over it when the two fit between the bars
+    if (!target || !(seen || note || reducedMotion())) return;
+    const t = target.closest('label, .af-tile') || target;
+    const tr = t.getBoundingClientRect();
+    const topEnd = (ui.top?.getBoundingClientRect().bottom || 0) + 4;
+    const navTop = (ui.form.querySelector('[data-nav]')?.getBoundingClientRect().top ?? innerHeight) - 4;
+    if (tr.top >= topEnd && tr.bottom <= navTop) return;
+    const qTop = el.getBoundingClientRect().top;
+    if (qTop <= tr.top && tr.bottom - qTop <= navTop - topEnd) window.scrollBy({ top: qTop - topEnd, behavior: 'auto' });
+    else clearOfBars(t);
   }
   /** While they fix an answer, the note goes as soon as it's right */
   function liveCheck(el) {
@@ -2598,7 +2616,9 @@ function init(root, cfg, mode) {
     const heard = box.querySelector('[data-upload-said]');
     if (heard) {
       const pct = Array.isArray(msg) && ['uploading', 'uploadingPct'].includes(msg[0]) ? Math.min(75, Math.floor((Number(msg[1]?.pct) || 0) / 25) * 25) : null;
-      const words = pct == null ? status.textContent : pct ? say([msg[0], { pct }]) : heard.textContent;
+      // (its first words said once it starts, also in a box drawn again mid-way, a language switch: not "No photo yet")
+      const words = pct == null ? status.textContent : pct || !heard.hasAttribute('data-up') ? say([msg[0], { pct }]) : heard.textContent;
+      heard.toggleAttribute('data-up', pct != null);
       if (heard.textContent !== words) heard.textContent = words;
     }
     // A problem is read whole, even over a photo already added (a file's name is what's cut short)
@@ -2651,6 +2671,7 @@ function init(root, cfg, mode) {
       save().then((ok) => { if (!focused && lastNotice?.m === 'exitUploading') { if (ok && !failed) savedOnExit(); else notice(failed ? 'exitUploadFailed' : notSavedWord(), 'error'); } });
     }
     if (currentId === 'review') buildReview();
+    if (ui.dialog?.open) paintLaterUpload(); // in now: Save and finish later stops saying it's on its way
     if (!uploads.size || lastNotice?.m === 'renewedFiles') retireNotices();
     // A note that said the photo or video was missing goes once it's in
     for (const id of [...shown]) if (byId[id] && isUpload(byId[id]) && !errorFor(id)) setFieldError(id, null);
@@ -2851,7 +2872,8 @@ function init(root, cfg, mode) {
               onShouldRetry(err) {
                 const status = err?.originalResponse?.getStatus?.() || 0;
                 const again = (!(status >= 400 && status < 500) || status === 409 || status === 423) && navigator.onLine !== false;
-                if (again) setUpload(f.id, { msg: ['uploadRetrying', { pct: uploadUi[f.id]?.pct || 0 }] });
+                // (the video service answering with a fault isn't their connection: said as ours)
+                if (again) setUpload(f.id, { msg: [status >= 500 ? 'uploadRetryServer' : 'uploadRetrying', { pct: uploadUi[f.id]?.pct || 0 }] });
                 return again;
               },
               onError: reject,
@@ -3485,13 +3507,21 @@ function init(root, cfg, mode) {
     openSuggest(sug.el, input, sug.last.items, sug.last.google);
   }
   function takeExactMatch() {
-    const el = sug.el;
-    const box = el && addrBox(el);
-    const search = box?.querySelector('[data-search]');
-    if (!search || sug.items.length !== 1 || box.dataset.mode === 'parts' || box.dataset.picked === search.value) return;
-    const it = sug.items[0];
     const words = (x) => String(x || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
-    if (words(search.value) === words([it.line1, it.sub || [it.city, it.state, it.zip].filter(Boolean).join(' ')].join(' '))) pickSuggestion(0);
+    // The list open, or closed since (Tab to the apartment box, a tap outside, Escape): the one suggestion for
+    // the words in the line, word for word what's there, is the address they mean
+    for (const el of pageEl(currentId)?.querySelectorAll('[data-field]') || []) {
+      const box = byId[el.dataset.field]?.type === 'address' && onScreen(el) ? addrBox(el) : null;
+      const search = box?.querySelector('[data-search]');
+      if (!search || box.dataset.mode === 'parts' || box.dataset.picked === search.value) continue;
+      const q = search.value.trim();
+      const items = sug.input === search && sug.items.length ? sug.items : (searchable(q) && (sugSeen.get(sugKey(q)) || narrowed(q))?.items) || [];
+      const it = items.length === 1 ? items[0] : null;
+      if (!it || words(q) !== words([it.line1, it.sub || [it.city, it.state, it.zip].filter(Boolean).join(' ')].join(' '))) continue;
+      Object.assign(sug, { el, input: search, items });
+      pickSuggestion(0);
+      return;
+    }
   }
   /** The county question, set from the address when the county is one of its choices */
   function fillCounty(county, addressEl) {
@@ -4289,7 +4319,8 @@ function init(root, cfg, mode) {
     if (d.length > 10) return v;
     if (whole) return d.length === 10 ? `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}` : v;
     if (d.length < 4) return v;
-    return d.length < 7 ? `(${d.slice(0, 3)}) ${d.slice(3)}` : `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+    const shaped = d.length < 7 ? `(${d.slice(0, 3)}) ${d.slice(3)}` : `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+    return d.length === 10 && /\s$/.test(v) ? `${shaped} ` : shaped; // (a space after the whole number: an extension's coming)
   }
 
   /** "jordan@gmial.com" → "jordan@gmail.com": the big email services, a letter or two off, or a .con */
@@ -4344,10 +4375,14 @@ function init(root, cfg, mode) {
     if (intro) { intro.dataset.afT = token && (!lastSave || lastSave === 'saved') ? 'laterIntro' : 'laterIntroUnsaved'; intro.textContent = T(intro.dataset.afT); }
     dlg.querySelector('[data-later-form]').hidden = false;
     dlg.querySelector('[data-later-sent]').hidden = true;
+    paintLaterUpload();
     dlg.showModal();
     // On a computer the keys go to the email (not the ×, where Enter would close it); a phone's keyboard waits for a tap
     if (finePointer()) input.focus();
   };
+  // A photo or video still on its way: the link opens the application without it until it's in, so it's said
+  // (as Save and exit says it), here and once the link has gone
+  function paintLaterUpload() { dlg.querySelectorAll('[data-later-upload]').forEach(p => { p.hidden = !uploads.size; }); }
   ui.saveLaters.forEach(b => b.addEventListener('click', openLater));
   // Closed (Escape, Close, done): the focus goes back to what opened it, not to the page
   dlg.addEventListener('close', () => { if (laterOpener?.isConnected && laterOpener.getClientRects().length) laterOpener.focus({ preventScroll: true }); laterOpener = null; });
@@ -4436,6 +4471,7 @@ function init(root, cfg, mode) {
       dlg.querySelector('[data-later-email]').textContent = email;
       dlg.querySelector('[data-later-form]').hidden = true;
       dlg.querySelector('[data-later-sent]').hidden = false;
+      paintLaterUpload();
       dlg.querySelector('[data-later-done]').focus();
     } catch {
       status.textContent = T('sendOffline'); // the request never got there

@@ -72,6 +72,7 @@ test('the rules: what has to be answered, follow-ups only when they apply, and c
   for (const link of ['jordan@example.com', 'mailto:jordan@example.com']) assert.match(checkAnswers({ ...GOOD, link }).problems.link || '', /email address/, link);
   for (const link of ['www.example', 'https://', 'javascript:alert(1)']) assert.match(checkAnswers({ ...GOOD, link }).problems.link || '', /web address/, link);
   assert.equal(checkAnswers({ ...GOOD, link: 'https://www.linkedin.com/in/jordan-avery/?trk=x' }).problems.link, undefined);
+  assert.match(checkAnswers({ ...GOOD, link: 'N/A' }).problems.link || '', /Leave this blank if you don’t have one/, 'an optional link says it can be left blank');
   assert.equal(ok.answers.anythingElse, undefined, 'empty answers are left out');
 
   const bad = checkAnswers({ ...GOOD, email: 'jordan@', phone: '123', meetings: 'Sometimes', acknowledge: false, conflict: 'Yes', conflictMore: '', why: '   ', link: 'not a link', surprise: 'x' });
