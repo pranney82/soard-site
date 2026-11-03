@@ -111,3 +111,24 @@ test('every suggestion’s change reads back as Markdown with no word lost (a ra
     }
   }
 });
+
+test('sentences: never inside a quotation, straight or curly', () => {
+  assert.deepEqual(sentencesOf('She said "We love it. Thank you so much." Then we left.'), ['She said "We love it. Thank you so much."', 'Then we left.']);
+  assert.deepEqual(sentencesOf('She said “We love it. Thank you so much.” Then we left.'), ['She said “We love it. Thank you so much.”', 'Then we left.']);
+});
+
+test('the ask first is never offered where moving it would run two lists into one', () => {
+  const filler = 'The committee met twice this quarter and read every application that came in, and the families heard back within a week.';
+  // The ask ends with a list and the report starts with one: moved, they'd read as one list
+  const md = `- First thing we did\n- Second thing we did\n\n${filler} ${filler}\n\n### What we need from the board\n\n- Approve the budget\n- Name a sponsor`;
+  assert.ok(!reportAdvice(md).some((s) => s.id.startsWith('first:')));
+  // The same, the report starting with words: offered, and the lists stay two
+  const ok = `${filler}\n\n- First thing we did\n- Second thing we did\n\n${filler}\n\n### What we need from the board\n\n- Approve the budget\n- Name a sponsor`;
+  const s = reportAdvice(ok).find((x) => x.id.startsWith('first:'));
+  assert.ok(s);
+  const done = s.action.run(ok);
+  assert.equal(mdBlocks(done).filter((b) => b.t === 'ul').length, 2);
+  // Taking it out of the middle never joins the lists either side of it
+  const mid = `${filler} ${filler}\n\n- One\n- Two\n\nWe need the board to approve the budget tonight.\n\n- Three\n- Four`;
+  assert.ok(!reportAdvice(mid).some((x) => x.id.startsWith('first:')));
+});

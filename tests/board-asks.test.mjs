@@ -979,15 +979,22 @@ test('the test-words clear leaves a real report alone', async () => {
 test('the thanks says how the report shows in the meeting: one slide, or how many (reportSlides); nothing for nothing new', async () => {
   const m = await meeting();
   const it = m.sections[1].items.find((x) => x.id === 'i_fin');
-  const { reportSlides } = await import('../public/admin/board-shared.js');
+  const { reportSlides, slidesOfItem } = await import('../public/admin/board-shared.js');
   const long = Array.from({ length: 6 }, (_, k) => `### Part ${k + 1}\n\n${Array.from({ length: 6 }, (__, j) => `- Point ${j + 1} of part ${k + 1}, with enough words in it to take most of a line on the screen`).join('\n')}`).join('\n\n');
-  const n = reportSlides(long).length;
+  const n = slidesOfItem({ ...it, report: long }).length;
   assert.ok(n > 1, `a long report is more than one slide (${n})`);
   const mail = thanksEmail({ m, it, person: { name: 'Sam Ortiz' }, from: { name: 'Max' }, report: long });
   assert.match(mail.text, new RegExp(`In the meeting it’s ${n} slides\\. You can see it or change it on the board page until then:`));
   assert.match(mail.html, new RegExp(`In the meeting it’s ${n} slides\\.`));
+  // The screen's count: an item with a three-line title, Board only, has less room under it than a bare report
+  const tall = { ...it, title: 'The finance committee’s quarterly report on the reserve, the audit, the insurance renewal and the budget for next year', confidential: true };
+  const points = (k) => Array.from({ length: k }, (_, j) => `- Point ${j + 1}, with enough words in it to take most of a line on the meeting’s screen`).join('\n');
+  const k = [8, 9, 10, 11, 12, 13, 14, 15, 16].find((x) => slidesOfItem({ ...tall, report: points(x) }).length !== reportSlides(points(x)).length);
+  assert.ok(k, 'a report the title and Board only push onto another slide');
+  const its = slidesOfItem({ ...tall, report: points(k) }).length;
+  assert.match(thanksEmail({ m, it: tall, person: { name: 'Sam Ortiz' }, from: { name: 'Max' }, report: points(k) }).text, new RegExp(`In the meeting it’s ${its} slides\\.`));
   assert.equal(slidesLine('Cash is up.'), 'In the meeting it fits on one slide.');
-  assert.equal(slidesLine(long, { answer: true }), `With it, the report is ${n} slides in the meeting.`);
+  assert.equal(slidesLine(long, { answer: true, it }), `With it, the report is ${n} slides in the meeting.`);
   assert.equal(slidesLine('Nothing new to report this time.'), '');
   assert.equal(slidesLine(''), '');
 });

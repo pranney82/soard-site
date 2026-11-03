@@ -9,7 +9,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { saveMeeting, getMeeting } from '../functions/api/_board.js';
-import { shorterReport, shorterFor, cleanAnswer, figuresOf, linksOf } from '../functions/api/_board-shorter.js';
+import { shorterReport, shorterFor, cleanAnswer, figuresOf, figureList, linksOf, shorterProblem } from '../functions/api/_board-shorter.js';
 import { onRequestPost as portalPost } from '../functions/api/board-portal.js';
 
 const PEOPLE = [
@@ -120,8 +120,28 @@ test('empty, already short, too long, no model, or the model failing: a plain re
 });
 
 test('the figures and links read as written', () => {
-  assert.deepEqual([...figuresOf('1. Cash $412,000 (12%)\n2. 3.50 and 7.0')].sort(), ['12', '3.5', '412000', '7']);
+  assert.deepEqual([...figuresOf('1. Cash $412,000 (12%)\n2. 3.50 and 7.0')].sort(), ['$412000', '12%', '3.5', '7']);
+  assert.deepEqual(figureList('Net -$4,000, 2025-26, $1.2M, 1.5k, 40 %, $1.2 million'), ['-$4000', '2025', '26', '$1.2M', '1.5K', '40%', '$1.2M']);
   assert.deepEqual([...linksOf('[a](https://a.example/x) and https://b.example/y.')].sort(), ['https://a.example/x', 'https://b.example/y']);
+  assert.deepEqual([...linksOf('Go to www.soard.example, <mailto:a@b.example> or tel:+14045551234.')].sort(), ['mailto:a@b.example', 'tel:+14045551234', 'www.soard.example']);
+});
+
+test("a shorter version that changes a fact is refused: a sign, a unit, a size, figures swapped or moved, a new link, a new heading", () => {
+  const fill = ' The committee met twice this quarter and read every application that came in, and the families were told within a week what the committee decided about their homes.';
+  const short = ' The committee met twice and told families within a week.';
+  const changed = [
+    ['Net -$4,000 this year, and the store made $31,000.', 'Net $4,000; the store $31,000.'],
+    ['Attendance was up 40% at the gala.', 'Attendance up $40 at the gala.'],
+    ['We raised $1.2 million in the campaign.', 'Raised $1.2 billion in the campaign.'],
+    ['Revenue was $500,000 and expenses $300,000 this quarter.', 'Revenue $300,000, expenses $500,000.'],
+    ['The gala is Nov 5 with 12 tables sold so far.', 'Gala Nov 12, 5 tables sold.'],
+    ['See our page for details on the event.', 'See www.evil-phish.example for details.'],
+    ['Email the office for details on the event.', 'Email <mailto:bad@evil.example> for details.'],
+    ['### Where we are\n\nWe raised $1.2 million.', '### Where we are\n\nRaised $1.2 million.\n\n### Give now'],
+  ];
+  for (const [mine, theirs] of changed) assert.match(shorterProblem(mine + fill, theirs + short), /changed the facts/, theirs);
+  // The same facts, shorter: kept
+  assert.equal(shorterProblem(`Net -$4,000 this year, and the store made $31,000.${fill}`, `Net -$4,000; store $31,000.${short}`), '');
 });
 
 test('10 a minute each, then a plain "try again in a minute" (429); another person still can', async () => {

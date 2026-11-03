@@ -41,7 +41,7 @@
  * deeper for each level under it.
  */
 
-import { mdBlocks, mdInline, mdWords } from './board-md.js';
+import { mdBlocks, mdInline, mdWords, mdPlain } from './board-md.js';
 
 export const ATTEND = [
   { id: 'present', label: 'Present' },
@@ -938,6 +938,8 @@ function heightOf(b, width, inItem = false) {
   if (b.t === 'h') return SLIDE.hBefore + linesIn(b.text, width / SLIDE.hSize, 'b') * SLIDE.hLine + SLIDE.hAfter;
   if (b.t === 'quote') return SLIDE.quoteAround + SLIDE.quotePad + b.blocks.reduce((n, x) => n + heightOf(x, width - SLIDE.quoteIndent), 0);
   if (b.t === 'ul' || b.t === 'ol') return b.items.reduce((n, it) => n + itemHeight(it, width - SLIDE.indent), 0) + (inItem ? 0 : SLIDE.listAfter);
+  // (a rule inside a point or a callout: drawn there, a line's room above and below it)
+  if (b.t === 'hr') return 2.6;
   return 0;
 }
 const itemHeight = (blocks, width) => SLIDE.itemGap + blocks.reduce((n, x) => n + heightOf(x, width, true), 0);
@@ -961,20 +963,75 @@ function pointMd(list, it, n, pad = '') {
   return `${pad}${mark}${head ? ` ${head}` : ''}${under ? `\n${under}` : ''}`;
 }
 
-/** Where a paragraph's sentences end: after . ! ? (and a closing quote), never in "1.5", "Dr." or "U.S.", nor inside
- *  bold, italic or a link → the indexes its later sentences start at */
-const ABBR = /(?:\b(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|vs|etc|Inc|Co|No|approx|e\.g|i\.e|U\.S|a\.m|p\.m)|\b[A-Z])\.$/;
-function sentenceStarts(text) {
+/** Where a paragraph can go on to the next slide → [{ at, by }]: `at` the index its rest starts at; `by` 'sentence'
+ *  (after . ! ? ؟ and a closing quote or bracket, before a capital, a number or a letter of a script with no capitals),
+ *  'line' (after a line break kept in it) or 'word' (between words, the last resort). Never inside bold, italic, a
+ *  link or an open quotation (a backslash's letter is a letter); never after "Dr." "U.S." "1." or a one-letter
+ *  initial; never where the rest would read as a point, a heading or a callout ("* Includes…", "1. Approve…"). One pass */
+const ABBR = /(?:^|[\s(])(?:mr|mrs|ms|dr|st|jr|sr|vs|etc|inc|ltd|co|corp|no|approx|dept|est|mt|ave|blvd|jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|e\.g|i\.e|u\.s|u\.k|a\.m|p\.m|[a-z]|\d{1,3})\.$/i;
+const BLOCKY = /^(?:[-*+•][ \t]|\d{1,9}[.)][ \t]|#{1,6}(?:[ \t]|$)|> ?|(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$)/;
+const STARTS = /["“‘(¿¡*_[]?[\p{Lu}\p{Lo}\p{N}]/u;
+function cutsIn(text, upTo = Infinity) {
+  // First, which marks are a pair, read as the screen reads them (./board-md.js mdInline): one opens before a letter,
+  // closes after one, an _ inside a word is a letter; a mark with no partner, or a [ with no ], is only a character
+  const marks = [];
+  const brackets = [];
+  const stack = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '\\') { i++; continue; }
+    if (c === '[') { brackets.push(i); continue; }
+    if (c === ']') { brackets.pop(); continue; }
+    if (c !== '*' && c !== '_') continue;
+    const m = c === '*' && text[i + 1] === '*' ? '**' : c;
+    const prev = text[i - 1] || ' ';
+    const next = text[i + m.length] || ' ';
+    const word = /[\p{L}\p{N}]/u;
+    const canOpen = !/\s/.test(next) && !(m === '_' && word.test(prev));
+    const canClose = !/\s/.test(prev) && !(m === '_' && word.test(next));
+    const k = stack.map((x) => x.m).lastIndexOf(m);
+    if (k >= 0 && canClose) { marks.push(stack[k], { i, m }); stack.splice(k); } else if (canOpen) stack.push({ i, m });
+    i += m.length - 1;
+  }
+  const lone = new Set(brackets);
+  const markAt = new Map(marks.map((x) => [x.i, x.m]));
   const out = [];
-  const re = /[.!?]["”’)]*\s+(?=["“(]?[\p{Lu}\p{N}*_[])/gu;
-  let m;
-  while ((m = re.exec(text))) {
-    const end = m.index + m[0].trimEnd().length;
-    const before = text.slice(0, end);
-    if (ABBR.test(before.replace(/["”’)]+$/, ''))) continue;
-    // Not inside ** or * or a link: an even count of each before it
-    if (((before.match(/\*\*/g) || []).length % 2) || ((before.replace(/\*\*/g, '').match(/\*/g) || []).length % 2) || (before.split('[').length !== before.split(']').length)) continue;
-    out.push(m.index + m[0].length);
+  // What's open where we are: bold, italic (* or _), as a stack (closed innermost first); a link; a quotation
+  const open = [];
+  let link = 0;
+  let quote = 0;
+  const end = Math.min(text.length, upTo);
+  for (let i = 0; i < end; i++) {
+    const c = text[i];
+    if (c === '\\') { i++; continue; }
+    const m = markAt.get(i);
+    if (m) {
+      const k = open.lastIndexOf(m);
+      if (k >= 0) open.splice(k, 1); else open.push(m);
+      i += m.length - 1;
+      continue;
+    }
+    if (c === '[' && !lone.has(i)) { link++; continue; }
+    if (c === ']' && link) { link--; if (text[i + 1] === '(') { const j = text.indexOf(')', i + 2); if (j > 0) i = j; } continue; }
+    if (c === '“') { quote++; continue; }
+    if (c === '”') { quote = Math.max(0, quote - 1); continue; }
+    if (c === '"') { quote = quote > 0 ? quote - 1 : quote + 1; continue; }
+    if (c !== ' ' && c !== '\n') continue;
+    // At a space or a line break: where the next word starts
+    let j = i;
+    while (j < text.length && (text[j] === ' ' || text[j] === '\n')) j++;
+    if (j >= text.length || link) { i = j - 1; continue; }
+    const rest = text.slice(j, j + 12);
+    const before = text.slice(Math.max(0, i - 12), i);
+    const broke = text.slice(i, j).includes('\n');
+    if (!BLOCKY.test(rest)) {
+      const trimmed = before.replace(/["”’)\]*_]+$/, '');
+      const kind = /[.!?؟。]$/.test(trimmed) && STARTS.test(rest.replace(/^[*_]+/, '')) && !(trimmed.endsWith('.') && ABBR.test(trimmed)) ? 'sentence' : broke ? 'line' : 'word';
+      // Inside a quotation: only when nothing else will do; inside bold or italic: closed on this slide, opened again on
+      // the next (as a typesetter does)
+      out.push({ at: j, by: quote > 0 ? `${kind}-quoted` : kind, open: open.slice() });
+    }
+    i = j - 1;
   }
   return out;
 }
@@ -1032,7 +1089,8 @@ function reportSlidesFrom(text, title, confidential) {
     let hi = 1;
     for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (paginate(units, H * mid).length <= pages.length) hi = mid; else lo = mid; }
     const even = paginate(units, H * hi);
-    if (even.length === pages.length) return even;
+    const ok = (pg) => fitsSlide(pg, H) || pg.filter((u) => u.kind !== 'cont').length === 1;
+    if (even.length === pages.length && even.every(ok)) return even;
   }
   const kept = pages.filter((pg) => pg.some((u) => u.kind !== 'cont'));
   return kept.length ? kept : [[{ kind: 'raw', md: '' }]];
@@ -1081,6 +1139,29 @@ function paginate(units, H) {
   const close = () => { if (cur.some((u) => u.kind !== 'cont')) pages.push(cur); cur = []; };
   const begin = (u) => { if (!cur.length && under && u.kind !== 'h') cur.push({ kind: 'cont', b: under.b, h: under.h, h1: under.h1, after: under.after }); };
   const fill = (xs) => xs.reduce((n, u) => n + u.h, 0) / (2 * H);
+  // Nothing of its own on this slide yet (only the heading it goes on under, or headings that lead into it)
+  const fresh = () => cur.every((u) => u.kind === 'cont' || u.kind === 'h');
+  // The most of a paragraph that goes on this slide, cut where `by` allows → { head, rest } or null
+  const cutOf = (u, by) => {
+    // (no slide holds more than about 3,000 of its characters: no cut past that is worth measuring)
+    const cuts = cutsIn(u.b.text, 4000).filter((c) => by.includes(c.by));
+    const headOf = (c) => `${u.b.text.slice(0, c.at).trimEnd()}${c.open.slice().reverse().join('')}`;
+    const restOf = (c) => `${c.open.join('')}${u.b.text.slice(c.at)}`;
+    let lo = 0;
+    let hi = cuts.length - 1;
+    let best = -1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (fitsSlide([...cur, unitOf({ t: 'p', text: headOf(cuts[mid]) })], H)) { best = mid; lo = mid + 1; } else hi = mid - 1;
+    }
+    // Read back the same words either side of it (bold or italic closed and opened again as the screen reads them),
+    // else the next one down
+    const same = mdPlain(u.b.text).split(/\s+/).join(' ');
+    for (let k = best, tries = 0; k >= 0 && tries < 40; k--, tries++) {
+      if (`${mdPlain(headOf(cuts[k]))} ${mdPlain(restOf(cuts[k]))}`.split(/\s+/).join(' ') === same) return { head: unitOf({ t: 'p', text: headOf(cuts[k]) }), rest: unitOf({ t: 'p', text: restOf(cuts[k]) }) };
+    }
+    return null;
+  };
   const queue = [...units];
   while (queue.length) {
     const u = queue.shift();
@@ -1088,31 +1169,20 @@ function paginate(units, H) {
     begin(u);
     if (u.kind === 'h') under = u;
     if (fitsSlide([...cur, u], H)) { cur.push(u); continue; }
-    // A paragraph between its sentences: when it's longer than a slide, or would leave this one mostly empty
     if (u.kind === 'p') {
+      // Between its sentences (or the lines it keeps): on this slide when it's longer than a slide or this one is
+      // mostly empty; on a fresh slide always; between words only when nothing else will do there
       const alone = !fitsSlide([u], H);
-      if (alone || fill(cur) < 0.6) {
-        const cuts = sentenceStarts(u.b.text);
-        let best = -1;
-        for (let k = cuts.length - 1; k >= 0; k--) {
-          const head = unitOf({ t: 'p', text: u.b.text.slice(0, cuts[k]).trimEnd() });
-          if (fitsSlide([...cur, head], H)) { best = k; break; }
-        }
-        if (best >= 0) {
-          cur.push(unitOf({ t: 'p', text: u.b.text.slice(0, cuts[best]).trimEnd() }));
-          queue.unshift(unitOf({ t: 'p', text: u.b.text.slice(cuts[best]) }));
-          close();
-          continue;
-        }
-      }
+      const cut = alone || fill(cur) < 0.6 || fresh() ? cutOf(u, ['sentence', 'line']) || (fresh() ? cutOf(u, ['sentence-quoted', 'line-quoted']) || cutOf(u, ['word']) || cutOf(u, ['word-quoted']) : null) : null;
+      if (cut) { cur.push(cut.head); queue.unshift(cut.rest); close(); continue; }
     }
-    // Never a heading last on a slide: it goes on with what follows it
+    // A slide of its own (too long for one even so, one point or one word: it has one, as large as it fits: ReportFit)
+    if (fresh()) { cur.push(u); continue; }
+    // Never a heading last on a slide: it goes on with what follows it, on the next
     const carry = [];
     while (cur.length && cur.at(-1).kind === 'h') carry.unshift(cur.pop());
     close();
-    // (too long for a slide even on its own, one point or one sentence: it has one, as large as it fits: ReportFit)
-    if (!carry.length) begin(u);
-    cur = [...cur, ...carry, u];
+    queue.unshift(...carry, u);
   }
   close();
   return pages;
@@ -1142,7 +1212,7 @@ export const slidesOfItem = (it) => (hasReport(it) ? reportSlides(it.report, sli
 export const slideHeadsOfItem = (it) => (hasReport(it) ? reportSlideHeads(it.report, slideOpts(it)) : []);
 
 /** A report with something in it: written, and not "nothing new this time" */
-export const hasReport = (it) => !!String(it?.report || '').trim() && !isNothingNew(it.report);
+export const hasReport = (it) => !!String(it?.report || '').trim() && !isNothingNew(it.report) && /[\p{L}\p{N}]/u.test(mdPlain(it.report));
 /**
  * An item whose motion the screen shows on a slide of its own, "The decision" (deckOf): it has one (the vote on the
  * last minutes always does) and more to show besides it (a report, the presenter's notes, live facts)
@@ -1223,7 +1293,9 @@ export function stopIndex(deck, live) {
   const onPage = deck.map((s, i) => [s, i]).filter(([s]) => at(s));
   if (onPage.length) return (onPage.filter(([s]) => (s.part || 0) <= (live.part || 0)).at(-1) || onPage[0])[1];
   const pages = deck.map((s, i) => [s, i]).filter(([s]) => s.itemId === live.itemId && s.fileId && s.fileId === live.fileId);
-  if (pages.length) return pages.at(-1)[1];
+  // A report's slide: the nearest at or before it (it was cut into fewer), else the item's own slide (the report on it)
+  if (live.fileId === 'report') { const near = pages.filter(([s]) => (s.page || 0) <= (live.page || 0)).at(-1); if (near) return near[1]; }
+  else if (pages.length) return pages.at(-1)[1];
   return Math.max(0, deck.findIndex((s) => s.itemId === live.itemId));
 }
 /** A stop as the live state that puts it on the screen */

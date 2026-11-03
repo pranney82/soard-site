@@ -14,7 +14,9 @@ let seed = 11;
 const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
 const pick = (a) => a[Math.floor(rnd() * a.length)];
 const VOCAB = 'the committee met twice this quarter and read every application that came in while our store had its best month on record with volunteers from three companies building families homes children reveal sponsors budget renewal Atlanta board approved design builders kitchen ramp donation $12,500 2026 40% 1,200 Dr. Smith U.S. 3.5 Nov. 5'.split(' ');
-const sentence = (n) => { const w = Array.from({ length: n }, () => pick(VOCAB)); if (rnd() < 0.15 && n > 3) { const k = Math.floor(rnd() * (n - 2)); w[k] = `**${w[k]}`; w[k + 1] = `${w[k + 1]}**`; } w[0] = w[0][0].toUpperCase() + w[0].slice(1); return `${w.join(' ')}.`; };
+const sentence = (n) => { const w = Array.from({ length: n }, () => pick(VOCAB)); if (rnd() < 0.15 && n > 3) { const k = Math.floor(rnd() * (n - 2)); w[k] = `**${w[k]}`; w[k + 1] = `${w[k + 1]}**`; } if (rnd() < 0.04) w[Math.floor(rnd() * n)] += '\\*'; if (rnd() < 0.03) w[Math.floor(rnd() * n)] = `[${w[0]}`; w[0] = w[0][0].toUpperCase() + w[0].slice(1); return `${w.join(' ')}.`; };
+// Some long stretches in italic or bold, as the editor writes them (_…_, **…**), across sentences
+const styled = (t) => (rnd() < 0.12 ? `_${t}_` : rnd() < 0.06 ? `**${t}**` : t);
 const para = (words) => { const out = []; let left = words; while (left > 0) { const n = Math.min(left, 5 + Math.floor(rnd() * 16)); out.push(sentence(n)); left -= n; } return out.join(' '); };
 function randomReport() {
   const target = 40 + Math.floor(rnd() * 1200);
@@ -23,7 +25,7 @@ function randomReport() {
   while (words < target) {
     const r = rnd();
     if (r < 0.14) { blocks.push(`### ${sentence(2 + Math.floor(rnd() * 5)).replace(/\.$/, '')}`); words += 3; }
-    else if (r < 0.5) { const n = 10 + Math.floor(rnd() * 160); blocks.push(para(n)); words += n; }
+    else if (r < 0.5) { const n = 10 + Math.floor(rnd() * 400); blocks.push(styled(para(n))); words += n; }
     else if (r < 0.53) { blocks.push('---'); }
     else if (r < 0.56) { blocks.push(`> ${para(12)}`); words += 12; }
     else { const ord = rnd() < 0.35; const k = 2 + Math.floor(rnd() * 10); const items = []; for (let i = 0; i < k; i++) { const n = 3 + Math.floor(rnd() * 40); items.push(`${ord ? `${i + 1}.` : '-'} ${para(n)}${rnd() < 0.12 ? `\n  - ${para(5 + Math.floor(rnd() * 12))}` : ''}`); words += n; } blocks.push(items.join('\n')); }
@@ -77,7 +79,7 @@ test('a numbered list goes on with its numbers; a paragraph is cut only after a 
     next += list.items.length;
   }
   const wall = para(700);
-  for (const s of reportSlides(wall, { title: 'X' })) assert.match(s.trim(), /[.!?]$/);
+  for (const s of reportSlides(wall, { title: 'X' })) assert.match(s.trim(), /[.!?][*_]*$/);
 });
 
 test('"---" starts a new slide there, even in a short report', () => {

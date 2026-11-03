@@ -40,7 +40,7 @@ import { header, bytesOf, partsOf } from './_mailbox.js';
 import { booksNow } from './_quickbooks.js';
 import {
   presentersOf, reportsOn, agendaIsDraft, meetingName, sectionPlan, isFilled, forBoard, todayEastern, isDate, LIMITS, showsOf, timeRange, isNothingNew,
-  reportSlides,
+  reportSlides, slidesOfItem,
 } from '../../public/admin/board-shared.js';
 import { mdToDoc, docToMd, mdPlain } from '../../public/admin/board-md.js';
 
@@ -308,17 +308,20 @@ export function lateEmail({ m, it, person, due, from, chair = null, now = Date.n
   ]);
 }
 
-/** How a report shows on the meeting's screen, in a sentence: one slide, or how many (board-shared.js reportSlides) */
-export function slidesLine(report, { answer = false } = {}) {
+/**
+ * How a report shows on the meeting's screen, in a sentence: one slide, or how many. `it`: the item it's on, so the
+ * count is the screen's own (its title and "Board only" take room: board-shared.js slidesOfItem)
+ */
+export function slidesLine(report, { answer = false, it = null } = {}) {
   if (!String(report || '').trim() || isNothingNew(report)) return '';
-  const n = reportSlides(report).length;
+  const n = (it ? slidesOfItem({ ...it, report }) : reportSlides(report)).length || 1;
   if (answer) return n > 1 ? `With it, the report is ${n} slides in the meeting.` : 'With it, the report still fits on one slide in the meeting.';
   return n > 1 ? `In the meeting it’s ${n} slides.` : 'In the meeting it fits on one slide.';
 }
 
 /** Thanks, to the presenter alone: it's on the agenda, and how it shows in the meeting (`report`: as it now reads) */
 export function thanksEmail({ m, it, person, from, answer = false, report = it.report }) {
-  const slides = slidesLine(report, { answer });
+  const slides = slidesLine(report, { answer, it });
   return body([
     answer
       ? `Thanks, ${firstName(person.name)}. Your answer is on the agenda under ${yourReport(it)} for ${weekdayOf(m.date)}’s meeting.${slides ? ` ${slides}` : ''} Here it is:`

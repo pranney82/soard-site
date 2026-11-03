@@ -41,17 +41,33 @@ export function cleanAnswer(raw) {
   return (inner ? inner[1] : t).trim();
 }
 
-/** The figures a report states, as written (commas, $ and % aside): list numbers ("1.") aren't figures */
-export function figuresOf(md) {
+// A figure as written: its sign, $, the number, then % or how big (thousand, million, billion; k, M, B)
+const FIGURE = /(?<![\p{L}\p{N}.])([-−](?=\s?\$?\d))?\s?(\$)?\s?(\d[\d,]*(?:\.\d+)?)(?:\s?(%)|\s?(k|K|M|B|thousand|million|billion)(?![\p{L}\p{N}]))?/gu;
+const SCALE = { k: 'K', K: 'K', thousand: 'K', M: 'M', million: 'M', B: 'B', billion: 'B' };
+/**
+ * The figures a report states, in order, each as one token: its sign, $, the number (no commas, no trailing zeros), %
+ * or its size ("-$4000", "40%", "$1.2M"). List numbers ("1.") aren't figures
+ */
+export function figureList(md) {
   const plain = mdPlain(md).replace(/^\s*(?:•|\d+\.)\s/gm, '');
-  return new Set((plain.match(/\d[\d,]*(?:\.\d+)?/g) || []).map((n) => n.replace(/,/g, '').replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')));
+  return [...plain.matchAll(FIGURE)].map((m) => `${m[1] ? '-' : ''}${m[2] || ''}${m[3].replace(/,/g, '').replace(/(\.\d*?)0+$/, '$1').replace(/\.$/, '')}${m[4] || SCALE[m[5]] || ''}`);
 }
-/** The links a report has (its [text](url) ones and any written out) */
+/** …as a set */
+export const figuresOf = (md) => new Set(figureList(md));
+/** Whether `sub` is `all` with some taken out (nothing added, nothing moved) */
+const inOrder = (sub, all) => { let i = 0; for (const x of all) if (x === sub[i]) i++; return i === sub.length; };
+/**
+ * The links a report has: its [text](url) ones, <…> ones, and any written out (http(s)://, www., mailto:, tel:), each
+ * without what ends a sentence after it
+ */
 export function linksOf(md) {
   const s = String(md || '');
   const out = new Set();
-  for (const m of s.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)) out.add(m[1]);
-  for (const m of s.replace(/\]\([^)]*\)/g, ']').matchAll(/\bhttps?:\/\/[^\s)<>\]]+/gi)) out.add(m[0].replace(/[.,;:!?]+$/, ''));
+  const trim = (u) => u.replace(/[.,;:!?]+$/, '').toLowerCase();
+  for (const m of s.matchAll(/\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)/g)) out.add(trim(m[1]));
+  const rest = s.replace(/\]\([^)]*\)/g, ']');
+  for (const m of rest.matchAll(/<([^<>\s]+)>/g)) if (/[:.@]/.test(m[1])) out.add(trim(m[1]));
+  for (const m of rest.replace(/<[^<>\s]+>/g, ' ').matchAll(/\b(?:https?:\/\/|www\.|mailto:|tel:)[^\s)<>\]]+/gi)) out.add(trim(m[0]));
   return out;
 }
 /** Its headings, as their words read (marks aside) */
@@ -69,14 +85,18 @@ export function headingsOf(md) {
 /** Why `out` can't stand in for `md` ('' when it can) */
 export function shorterProblem(md, out) {
   if (!out || !mdBlocks(out).length || !mdWords(out)) return 'The shorter version came back empty, so yours stays as it is.';
-  const had = figuresOf(md);
-  const has = figuresOf(out);
-  if ([...has].some((n) => !had.has(n))) return FACTS;
-  if ([...had].some((n) => !has.has(n))) return 'A shorter version would have left out some of your figures, so yours stays as it is.';
+  // Its figures are yours, in your order: none added, none moved, none with another sign, unit or size; and every one
+  // of yours is still in it
+  const had = figureList(md);
+  const has = figureList(out);
+  if (!inOrder(has, had)) return FACTS;
+  if (had.some((n) => !has.includes(n))) return 'A shorter version would have left out some of your figures, so yours stays as it is.';
   const links = linksOf(md);
   if ([...linksOf(out)].some((u) => !links.has(u))) return FACTS;
   const heads = new Set(headingsOf(out));
   if (headingsOf(md).some((x) => !heads.has(x))) return 'A shorter version would have lost one of your headings, so yours stays as it is.';
+  const mine = new Set(headingsOf(md));
+  if ([...heads].some((x) => !mine.has(x))) return FACTS;
   if (mdWords(out) > mdWords(md) * (1 - AT_LEAST)) return 'It couldn’t be made much shorter without losing something, so yours stays as it is.';
   return '';
 }

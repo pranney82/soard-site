@@ -30,7 +30,7 @@ import {
 import { useCover, usePages } from '../board-present.js';
 import { Report } from '../board-report.js';
 import { BooksSlide, booksTitle } from './books.js';
-import { mdWords, mdPoints, mdFigures } from '../board-md.js';
+import { mdWords, mdPoints, mdFigures, mdPlain } from '../board-md.js';
 import { Pipeline, sized } from './kanban.js';
 import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, readChangeAs, keepChangeAs } from './money.js';
 
@@ -432,7 +432,7 @@ function ReportFit({ text, more = false, part = false, cont = '' }) {
     return () => ro?.disconnect();
   }, [text]);
   return html`<div class=${`bs-report ${short ? 'is-short' : ''}`}>
-    <div class="bs-report__body" ref=${ref}>${cont ? html`<p class="bs-report__cont" dir="auto">${cont}<span>, continued</span></p>` : null}<${Report} text=${text} level=${3} /></div>
+    <div class="bs-report__body" ref=${ref}>${cont ? html`<p class="bs-report__cont" dir="auto">${mdPlain(cont)}<span>, continued</span></p>` : null}<${Report} text=${text} level=${3} /></div>
     ${cut ? html`<p class="bs-report__more">The whole report is on the board page</p>` : more ? html`<p class="bs-report__more">Continued on the next slide</p>` : null}
   </div>`;
 }
@@ -440,7 +440,10 @@ function ReportFit({ text, more = false, part = false, cont = '' }) {
 /** A report on its own slide (a 'report' stop): as large as it fits, its columns measured */
 /** A report's slide (one of reportSlides'): its points as cards when that's all it is, else the words as they fit.
  *  `more`: it goes on, on the next slide; `part`: one of several, never set large as a short one would be */
-const ReportBody = ({ report, more = false, part = false, cont = '' }) => (mdPoints(report) && !cont ? html`<${ReportPoints} text=${report} />` : html`<${ReportFit} text=${report} more=${more} part=${part} cont=${cont} />`);
+const ReportBody = ({ report, more = false, part = false, cont = '' }) => (asCards(report, part) ? html`<${ReportPoints} text=${report} />` : html`<${ReportFit} text=${report} more=${more} part=${part} cont=${cont} />`);
+/** A report drawn as its points' cards: one that is only a few short points, on a slide of its own (one of several reads
+ *  as words, the same on each, "continued" between them) */
+const asCards = (md, part) => !part && !!mdPoints(md);
 
 /**
  * The presenter's notes beside an item, at a size a room reads: smaller only as far as it must be to fit the slide (to
@@ -1255,7 +1258,7 @@ export function Screen({ id, data, d, onBack = null }) {
     const chunk = slides[shownPage] || item.report;
     // (partway into one of its headings' parts: that heading, "continued", over it)
     const cont = slideHeadsOfItem(item)[shownPage] || '';
-    stage = html`<div class=${`bs-item bs-item--report ${mdPoints(chunk) ? 'bs-item--points' : ''}`}>
+    stage = html`<div class=${`bs-item bs-item--report ${asCards(chunk, slides.length > 1) ? 'bs-item--points' : ''}`}>
       <div class="bs-item__bar"><div><p class="bs-eyebrow">${where}${slides.length > 1 ? html`<span class="bs-eyebrow__of">Report, ${(stop.page || 0) + 1} of ${slides.length}</span>` : null}</p><${Title} text=${itemTitle} cls="bs-item__title" /></div></div>
       <${ReportBody} report=${chunk} more=${shownPage < slides.length - 1} part=${slides.length > 1} cont=${cont} />
       ${motionHere}
@@ -1316,7 +1319,7 @@ export function Screen({ id, data, d, onBack = null }) {
       // A report: the item and who presents it along the top, the report filling the rest (a motion beside a report is
       // the decision's slide, after the report); a short one is its points as cards (ReportBody)
       const first = firstSlides[0] || item.report;
-      stage = html`<div class=${`bs-item bs-item--report ${mdPoints(first) ? 'bs-item--points' : ''}`}>
+      stage = html`<div class=${`bs-item bs-item--report ${asCards(first, firstSlides.length > 1) ? 'bs-item--points' : ''}`}>
         <div class="bs-item__bar"><div>${head}</div></div>
         <${ReportBody} report=${first} more=${firstSlides.length > 1} part=${firstSlides.length > 1} />
         ${motionHere}

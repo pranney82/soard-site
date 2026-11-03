@@ -63,6 +63,9 @@ const balanced = (s) => {
   return bold % 2 === 0 && lone % 2 === 0 && (t.match(/\[/g) || []).length === (t.match(/\]/g) || []).length && (t.match(/\(/g) || []).length === (t.match(/\)/g) || []).length;
 };
 
+/** Whether a quotation opened in `s` is still open at its end ("…, or “… without its ”) */
+const quoteOpen = (s) => (s.match(/"/g) || []).length % 2 === 1 || (s.match(/“/g) || []).length > (s.match(/”/g) || []).length;
+
 /** A paragraph's sentences, in its own words: never split at a number ("1.5"), "Dr.", "U.S." or inside **bold** */
 export function sentencesOf(text) {
   const t = String(text || '').replace(/\s*\n\s*/g, ' ').trim();
@@ -75,6 +78,8 @@ export function sentencesOf(text) {
     if (!next || !/[\p{Lu}\p{N}"“‘([*_$]/u.test(next)) continue;
     const word = t.slice(start, end).match(/(\S+)$/)?.[1] || '';
     if (m[0][0] === '.' && isAbbr(word.replace(/[”’"')\]*_]+$/, ''))) continue;
+    // Never inside a quotation: She said "We love it. Thank you." is one sentence
+    if (quoteOpen(t.slice(start, end))) continue;
     raw.push(t.slice(start, end));
     start = m.index + m[0].length;
   }
@@ -119,12 +124,16 @@ function askLate(blocks) {
       let to = i + 1;
       while (to < blocks.length && blocks[to].t !== 'h' && blocks[to].t !== 'hr') to++;
       if (to === i + 1) continue; // nothing under it to move
-      return { from: i, to, text: b.text };
+      return joins(blocks, i, to) ? null : { from: i, to, text: b.text };
     }
-    if (ASK.test(plainOf(b))) return { from: i, to: i + 1, text: '' };
+    if (ASK.test(plainOf(b))) return joins(blocks, i, i + 1) ? null : { from: i, to: i + 1, text: '' };
   }
   return null;
 }
+/** Whether moving blocks [from, to) to the top would run two lists into one: its last against the first block, or
+ *  the blocks either side of where it was (two lists of the same kind side by side are read as one) */
+const sameList = (a, b) => !!a && !!b && (a.t === 'ul' || a.t === 'ol') && a.t === b.t;
+const joins = (blocks, from, to) => sameList(blocks[to - 1], blocks[0]) || sameList(blocks[from - 1], blocks[to]);
 
 /** A paragraph long for a screen, with sentences to make points of → { at, points } (none when the report has a list) */
 function longParagraph(blocks) {

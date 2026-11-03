@@ -54,7 +54,7 @@ import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-
 import { syncBoardGroup } from '../functions/api/_board-group.js';
 import { syncBoardCalendar } from '../functions/api/_board-calendar.js';
 import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
-import { docxText, unzip, cleanMeeting } from '../public/admin/board-shared.js';
+import { docxText, unzip, cleanMeeting, reportSlides } from '../public/admin/board-shared.js';
 import { generateKeyPairSync } from 'node:crypto';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 
@@ -1244,6 +1244,13 @@ try {
       ok(await samSaved(sam) && /^Cash is \*\*up\*\* 12% on last year\n\n---\n\n> /.test((await finOf()).report), `kept as a line of --- after the first paragraph (${JSON.stringify((await finOf()).report.slice(0, 60))})`);
       await sam.click('.rp-tool[aria-label="Undo"]');
       ok(await samSaved(sam) && !/---/.test((await finOf()).report), 'Undo takes it back');
+      // In a callout, the new slide goes after the whole callout (a break inside one would start none)
+      await sam.evaluate(() => { const ed = document.querySelector('.bp-rp .rp-edit'); ed.focus(); const r = document.createRange(); r.selectNodeContents(ed.querySelector('blockquote p') || ed.querySelector('blockquote')); r.collapse(false); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); });
+      await sleep(150);
+      await sam.click('.rp-tool[aria-label="New slide here"]');
+      ok(await samSaved(sam) && /\n> [^\n]*\n\n---\n\n+- We met twice/.test((await finOf()).report) && reportSlides((await finOf()).report).length === 2, `in a callout: after the whole callout, a new slide on the screen (${JSON.stringify((await finOf()).report.slice(0, 160))})`);
+      await sam.click('.rp-tool[aria-label="Undo"]');
+      ok(await samSaved(sam) && !/---/.test((await finOf()).report), 'and Undo takes that back too');
       await clickText(sam, '.bp-rp__foot a', /^Done$/);
       // His own report says when; the item already names him, so not "by Sam" again
       ok(await sam.waitForFunction((id) => { const by = document.querySelector(`#i-${id} .bp-report__by`)?.textContent.trim() || ''; return /^Report\s*\w{3} \d+/.test(by) && !/\bby\b/.test(by) && /Sam Ortiz/.test(document.querySelector(`#i-${id} .bp-pres`)?.textContent || ''); }, { timeout: 8000 }, finId).then(() => true, () => false), 'Done: back on the meeting, the report under its item, with its day (Sam is named on the item)');

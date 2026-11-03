@@ -1742,7 +1742,7 @@ function ScreenFrame({ m, it, report, motion, by }) {
     </div>
     ${n > 1 ? html`<div class="bp-rp__pager" role="group" aria-label="Your report’s slides">
       <button type="button" class="bp-rp__step" disabled=${shown <= 0} onClick=${() => showPage(shown - 1)} aria-label="The slide before">‹</button>
-      <span class="bp-rp__pages">${slides.map((_, p) => html`<button type="button" key=${p} class=${`bp-rp__dot ${p === shown ? 'is-on' : ''}`} aria-label=${`Slide ${p + 1} of ${n}`} aria-current=${p === shown ? 'true' : null} onClick=${() => showPage(p)}></button>`)}</span>
+      ${n <= 8 ? html`<span class="bp-rp__pages">${slides.map((_, p) => html`<button type="button" key=${p} class=${`bp-rp__dot ${p === shown ? 'is-on' : ''}`} aria-label=${`Slide ${p + 1} of ${n}`} aria-current=${p === shown ? 'true' : null} onClick=${() => showPage(p)}></button>`)}</span>` : null}
       <span class="bp-rp__of">Slide ${shown + 1} of ${n}</span>
       <button type="button" class="bp-rp__step" disabled=${shown >= n - 1} onClick=${() => showPage(shown + 1)} aria-label="The next slide">›</button>
     </div>` : null}

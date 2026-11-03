@@ -16,7 +16,7 @@
  * (item.motion), under the report wherever it's read.
  */
 
-import { h, htm, useState, useEffect, useRef, Editor, StarterKit, TiptapLink, Placeholder, CharacterCount, DOMPurify } from './vendor.js';
+import { h, htm, useState, useEffect, useRef, useMemo, Editor, StarterKit, TiptapLink, Placeholder, CharacterCount, DOMPurify } from './vendor.js';
 import { mdBlocks, mdInline, mdToDoc, docToMd, mdWords, safeHref } from './board-md.js';
 import { LIMITS, NOTHING_NEW, isNothingNew, reportSlides } from './board-shared.js';
 import { reportAdvice, reportFitLine, speakTime } from './board-coach.js';
@@ -390,6 +390,16 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
   const e = ed.current;
   const on = (name, attrs) => !!e?.isActive(name, attrs);
   const run = (fn) => (ev) => { ev.preventDefault(); if (e) fn(e.chain().focus()).run(); };
+  // A new slide goes between the report's own blocks: in a point or a callout, after the whole list or callout (a rule
+  // inside one starts no slide), the cursor on a new line after it
+  const newSlide = (ed, c) => {
+    const { $from } = ed.state.selection;
+    if ($from.depth <= 1) return c.setHorizontalRule();
+    const at = $from.after(1);
+    // (more after it: the rule alone; at the end, a line to go on writing on)
+    if (ed.state.doc.resolve(at).nodeAfter) return c.insertContentAt(at, { type: 'horizontalRule' });
+    return c.insertContentAt(at, [{ type: 'horizontalRule' }, { type: 'paragraph' }]).setTextSelection(at + 2);
+  };
   const btn = (key, title, active, fn, disabled = false) => html`<button type="button" class=${`rp-tool ${active ? 'is-on' : ''}`} tabIndex=${key === 'heading' ? 0 : -1} title=${title} aria-label=${title.replace(/ \(.*\)$/, '')} aria-pressed=${active ? 'true' : 'false'} disabled=${disabled} onMouseDown=${(ev) => ev.preventDefault()} onClick=${run(fn)}>${ICON[key]}</button>`;
   const applyLink = (href, remove = false) => {
     const safe = safeHref(href);
@@ -427,7 +437,7 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
       ${btn('bullets', 'Points (- then a space)', on('bulletList'), (c) => c.toggleBulletList())}
       ${btn('numbers', 'Numbered list (1. then a space)', on('orderedList'), (c) => c.toggleOrderedList())}
       ${btn('callout', 'Callout, for what the board needs to decide (> then a space)', on('blockquote'), (c) => c.toggleBlockquote())}
-      ${btn('slide', 'New slide here (the meeting’s screen starts one; --- on a line of its own)', false, (c) => c.setHorizontalRule())}
+      ${btn('slide', 'New slide here (the meeting’s screen starts one; --- on a line of its own)', false, (c) => newSlide(e, c))}
       <span class="rp-sep" aria-hidden="true"></span>
       <button type="button" class=${`rp-tool ${on('link') ? 'is-on' : ''}`} tabIndex="-1" title=${`Link (${MOD}K)`} aria-label="Link" aria-pressed=${on('link') ? 'true' : 'false'} aria-expanded=${linking !== null} onMouseDown=${(ev) => ev.preventDefault()} onClick=${openLink}>${ICON.link}</button>
       <span class="rp-bar__end">
@@ -465,14 +475,19 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
  */
 export function ReportCoach({ value, onChange, part = null, admin = false, id = '', itemId = '', title = '', confidential = false }) {
   const text = String(value || '');
-  const words = isNothingNew(text) ? 0 : mdWords(text);
-  const slides = words ? reportSlides(text, { title, confidential }).filter((x) => String(x).trim()).length || 1 : 0;
+  // What it says is worked out a moment after typing stops (cutting a long report into slides is real work), once
+  // for each wording
+  const [settled, setSettled] = useState(text);
+  useEffect(() => { if (text === settled) return undefined; const t = setTimeout(() => setSettled(text), 300); return () => clearTimeout(t); }, [text]);
+  const words = useMemo(() => (isNothingNew(settled) ? 0 : mdWords(settled)), [settled]);
+  const slides = useMemo(() => (words ? reportSlides(settled, { title, confidential }).filter((x) => String(x).trim()).length || 1 : 0), [settled, words, title, confidential]);
   const [off, setOff] = useState(() => new Set());
   const [alt, setAlt] = useState(null); // { text, for: the report it shortens } | { busy } | { error }
   // A shorter version is for the words it was written from: typing on puts it away
   const stale = alt?.for !== undefined && alt.for !== text;
   useEffect(() => { if (stale) setAlt(null); }, [stale]);
-  const tips = reportAdvice(text, { slides, part }).filter((x) => !off.has(x.id));
+  const advice = useMemo(() => reportAdvice(settled, { slides, part }), [settled, slides, part?.name, part?.minutes, part?.reports]);
+  const tips = advice.filter((x) => !off.has(x.id));
   const tip = alt ? null : tips[0];
   const fit = reportFitLine({ slides, words, part });
   if (!fit && !tip && !alt) return null;
