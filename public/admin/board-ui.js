@@ -36,6 +36,14 @@ export function upload(file, { ownerType, ownerId, kind = 'other', staffOnly = f
 
 export const fileUrl = (f) => `/api/board-file?id=${encodeURIComponent(f.id)}`;
 export const viewerFiles = (files) => files.map((f) => ({ name: f.name, type: f.type, size: f.size, at: f.at, url: fileUrl(f) }));
+/** A file in SOARD's Drive, opened there */
+export const driveLink = (id) => `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`;
+// How a signature came (_board.js SIGNED_BY)
+const SIGNED_HOW = { typed: 'Typed their name', copy: 'Added their signed copy', staff: 'Signed copy added here', drive: 'Their signed copy in Drive' };
+/** A day as Atlanta has it (a time saved after 8pm there is the next day in UTC) */
+export const dayOf = (iso) => (iso ? shortDate(todayEastern(Date.parse(iso))) : '');
+/** How a signature came, and when: "Typed “Alex Rivera”, Nov 2, 2026" (Documents → Who's signed, a member on Members) */
+export const signedHow = (s) => [s.how === 'typed' && s.name ? `Typed “${s.name}”` : SIGNED_HOW[s.how] || SIGNED_HOW.typed, s.how !== 'drive' ? dayOf(s.at) : ''].filter(Boolean).join(', ');
 export function ago(iso) {
   const t = Date.parse(iso || '');
   if (!Number.isFinite(t)) return '';

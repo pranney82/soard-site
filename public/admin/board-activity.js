@@ -1,9 +1,10 @@
 /**
  * Board → Members: who on the board has signed in, when each was last on the
  * board page and on what, the last five weeks day by day, whether they've read
- * the next meeting's documents, and (their row opens it) everything they did:
- * each sitting, the pages they were on and the files they read with the time
- * they spent, their answers, sign-ins.
+ * the next meeting's documents and signed this year's papers, and (their row
+ * opens it) everything they did: each sitting, the pages they were on and the
+ * files they read with the time they spent, their answers, sign-ins, and the
+ * papers they signed, every year's.
  *
  * The data: GET /api/board-admin's `activity` (each member's summary) and
  * GET ?activity=<slug> (one member's), from ../../functions/api/_board-activity.js.
@@ -11,7 +12,8 @@
  */
 
 import { useState, useEffect, useRef, useMemo } from './vendor.js';
-import { html, call, ago, Face } from './board-ui.js';
+import { html, call, ago, Face, viewerFiles, driveLink, dayOf, signedHow } from './board-ui.js';
+import { viewerLink } from './file-viewer.js';
 import { meetingName, todayEastern, longDate, plural, fileTitle, answerOf, repliesOf, inviteOut, docsOf, itemFiles, looseFiles } from './board-shared.js';
 import { welcomeHad } from './board-shared.js';
 
@@ -232,9 +234,11 @@ function Dialog({ title, sub = '', children, onClose }) {
     const prev = document.activeElement;
     document.body.classList.add('modal-open');
     const onKey = (e) => {
+      // A question asked over it (ask.js) or a file opened from it has the keys until it closes
+      if (document.querySelector('.ask-overlay') || document.querySelector('.fv-host')?.firstElementChild) return;
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); live.current(); return; }
       if (e.key !== 'Tab') return;
-      const f = [...(ref.current?.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), [tabindex="0"]') || [])].filter((el) => el.getClientRects().length);
+      const f = [...(ref.current?.querySelectorAll('button:not([disabled]), [href], input:not([disabled]):not([tabindex="-1"]), [tabindex="0"]') || [])].filter((el) => el.getClientRects().length);
       if (!f.length) return;
       const inside = ref.current.contains(document.activeElement);
       if (e.shiftKey && (!inside || document.activeElement === f[0])) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && (!inside || document.activeElement === f[f.length - 1])) { e.preventDefault(); f[0].focus(); }
@@ -258,8 +262,55 @@ function Dialog({ title, sub = '', children, onClose }) {
   </div>`;
 }
 
-/** One member, everything: the facts, the next meeting's documents, then each sitting */
-function MemberSheet({ p, face, a, loaded = true, began = null, data, next, sentAt, onWelcome, working, onClose }) {
+/**
+ * The papers every board member signs, for one member, a year at a time: this year's each (how and when they signed,
+ * its copy, or not yet, with the copy they signed on paper to add), then each earlier year's they signed, kept
+ */
+function SignedEachYear({ p, signDocs, onCopy }) {
+  const [busy, setBusy] = useState('');
+  const pick = useRef(null);
+  const forDoc = useRef(null);
+  const year = Number(todayEastern().slice(0, 4));
+  const past = (p.pastYears || []).filter((s) => s.year < year);
+  if (!signDocs.length && !past.length) return null;
+  const see = (s, title) => (s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${title}, signed by ${p.name}` }]), 0)}>See it</a>`
+    : s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null);
+  const add = async (file) => {
+    if (pick.current) pick.current.value = '';
+    const d = forDoc.current;
+    if (!file || !d || !onCopy) return;
+    await onCopy(d, p, file, (k) => setBusy(k ? d.id : ''));
+    // The focus stays on its line (signed now, it has no button: the line itself)
+    requestAnimationFrame(() => { const li = document.querySelector(`[data-sign-row="${CSS.escape(d.id)}"]`); (li?.querySelector('button') || li)?.focus(); });
+  };
+  const years = [year, ...new Set(past.map((s) => s.year))];
+  return html`<section class="ba-sec">
+    <h3 class="ba-sec__h">Papers signed, each year</h3>
+    ${years.map((y) => {
+      const rows = y === year
+        ? signDocs.map((d) => {
+          const s = d.signed[p.slug];
+          const was = !s && d.before?.[p.slug];
+          return html`<li class="ba-sign" key=${d.id} data-sign-row=${d.id} tabindex="-1">
+            <span class=${`ba-sign__dot ${s ? 'is-on' : ''}`} aria-hidden="true"></span>
+            <span class="ba-sign__name">${d.title}</span>
+            <span class="ba-sign__how">${s ? signedHow(s) : was ? `Signed the earlier version on ${dayOf(was.at)}, not the new one yet` : 'Not signed yet'}${see(s || was, d.title)}</span>
+            ${!s && onCopy ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forDoc.current = d; pick.current?.click(); }}>${busy === d.id ? 'Adding…' : was ? 'Add their new signed copy' : 'Add their signed copy'}</button>` : null}
+          </li>`;
+        })
+        : past.filter((s) => s.year === y).map((s) => html`<li class="ba-sign" key=${s.docId}>
+            <span class="ba-sign__dot is-on" aria-hidden="true"></span>
+            <span class="ba-sign__name">${s.title}</span>
+            <span class="ba-sign__how">${signedHow(s)}${see(s, s.title)}</span>
+          </li>`);
+      return rows.length ? html`<h4 class="ba-sign__y" key=${`y-${y}`}>${y}</h4><ul class="ba-signs" key=${`l-${y}`} aria-label=${`Signed for ${y}`}>${rows}</ul>` : null;
+    })}
+    <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => add(e.target.files[0])} />
+  </section>`;
+}
+
+/** One member, everything: the facts, the next meeting's documents, the papers they signed each year, then each sitting */
+function MemberSheet({ p, face, a, loaded = true, began = null, data, next, sentAt, onWelcome, working, onClose, signDocs = [], onCopy = null }) {
   const [got, setGot] = useState(null);
   const [asking, setAsking] = useState(0);
   useEffect(() => {
@@ -293,6 +344,7 @@ function MemberSheet({ p, face, a, loaded = true, began = null, data, next, sent
           <span class="ba-reads__name">${d.title}</span>
           <span class="ba-reads__t">${next.shared ? readWords(secs) : 'Not on the board page yet'}</span></li>`)}</ul>` : null}
       </section>` : null}
+      <${SignedEachYear} p=${p} signDocs=${signDocs} onCopy=${onCopy} />
       <section class="ba-sec">
         <h3 class="ba-sec__h">What ${first} did</h3>
         ${!got ? html`<p class="ba-muted" role="status">Loading…</p>`
@@ -317,7 +369,7 @@ function MemberSheet({ p, face, a, loaded = true, began = null, data, next, sent
  * on the page and on what, the five-week strip, the next meeting (their answer and what they've read), papers signed
  */
 let styled = false;
-export function BoardActivity({ data, next, signDocs, ready, working, onWelcome }) {
+export function BoardActivity({ data, next, signDocs, ready, working, onWelcome, onCopy = null }) {
   if (!styled && typeof document !== 'undefined') {
     styled = true;
     const el = document.createElement('style');
@@ -364,12 +416,14 @@ export function BoardActivity({ data, next, signDocs, ready, working, onWelcome 
       : !got.ok || got.failed ? html`<p class="ba-status" role="status">${loaded ? 'This is from when Members last opened: loading it again didn’t work' : 'What each member did on the board page didn’t load'} (${got.failed || got.error || 'no answer'}).
         <button type="button" class="btn btn-ghost btn-sm" onClick=${() => { setGot((g) => (g?.ok ? { ...g, failed: '' } : null)); setAsking((n) => n + 1); }}>Try again</button></p>` : null}
     ${!shown.length ? html`<div class="empty empty--inline ba-none"><p class="empty__title">${!data.members.length ? 'Nobody is on the board in People yet' : show === 'not' ? 'Everyone has signed in' : 'Nobody has signed in yet'}</p></div>` : html`<table class="bd-table ba-table">
-      <thead><tr><th>Member</th><th>Signed in</th><th>Last on the board page</th><th>The last 5 weeks</th>${next ? html`<th>${meetingName(next)}</th>` : null}${signDocs.length ? html`<th>Signed this year</th>` : null}<th class="ba-go-h" aria-hidden="true"></th></tr></thead>
+      <thead><tr><th>Member</th><th>Signed in</th><th>Last on the board page</th><th>The last 5 weeks</th>${next ? html`<th>${meetingName(next)}</th>` : null}${signDocs.length ? html`<th>Signed for ${today.slice(0, 4)}</th>` : null}<th class="ba-go-h" aria-hidden="true"></th></tr></thead>
       <tbody>${shown.map((p) => {
         const a = act[p.slug];
         const last = lastOf(p);
         const reads = next ? readOf(next, a, data.meetings) : [];
         const signed = signDocs.filter((d) => d.signed[p.slug]).length;
+        // Not all signed this year: the last year they had (a new year's first weeks), said under it
+        const lastYear = (x) => (signed < signDocs.length && x.pastYears?.length ? x.pastYears[0].year : 0);
         const openRow = () => setOpen(p.slug);
         return html`<tr key=${p.slug} class="ba-tr" onClick=${(e) => { if (!e.target.closest('button, a')) openRow(); }}>
           <td><span class="ba-who"><${Face} p=${faces.get(p.slug) || p} size=${32} /><span class="ba-who__text"><button type="button" class="ba-name" data-slug=${p.slug} onClick=${openRow}>${p.name}</button>
@@ -381,13 +435,13 @@ export function BoardActivity({ data, next, signDocs, ready, working, onWelcome 
           <td data-label="Last on the board page">${last ? html`<span class="ba-line" title=${fullTime(last)}>${ago(last)}</span>${a?.device ? html`<span class="bd-row__meta">${a.device}</span>` : null}` : html`<span class="ba-line ba-muted">Never</span>`}</td>
           <td data-label="The last 5 weeks">${loaded ? html`<${DayStrip} days=${a?.days || {}} meetingDays=${meetingDays} today=${today} />${a?.visits35 ? html`<span class="bd-row__meta">${plural(a.visits35, 'visit')} in 5 weeks${(a.secs35 || 0) >= 60 ? `, ${span(a.secs35)} in all` : ''}</span>` : null}` : null}</td>
           ${next ? html`<td data-label=${meetingName(next)}><span class="ba-line"><${Coming} m=${next} slug=${p.slug} /></span>${nextFiles && !next.shared ? html`<span class="bd-row__meta">Not shared with the board yet</span>` : nextFiles && loaded ? html`<span class="bd-row__meta">${docsLine(reads, cameAfter(reads, a?.printedAll?.[next.id]) === 0)}</span>` : null}</td>` : null}
-          ${signDocs.length ? html`<td data-label="Signed this year"><span class=${`tag ${signed === signDocs.length ? 'tag--success' : ''}`}>${signed} of ${signDocs.length}</span></td>` : null}
+          ${signDocs.length ? html`<td data-label=${`Signed for ${today.slice(0, 4)}`}><span class=${`tag ${signed === signDocs.length ? 'tag--success' : ''}`}>${signDocs.length === 1 ? (signed ? 'Signed' : 'Not yet') : `${signed} of ${signDocs.length}`}</span>${lastYear(p) ? html`<span class="bd-row__meta">Signed for ${lastYear(p)}</span>` : null}</td>` : null}
           <td class="ba-go" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M8 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></td>
         </tr>`;
       })}</tbody>
     </table>`}
     ${loaded && shown.length ? html`<p class="ba-key"><span class="ba-key__i"><span class="ba-strip" aria-hidden="true"><span class="ba-day"></span><span class="ba-day ba-day--in"></span><span class="ba-day ba-day--1"></span><span class="ba-day ba-day--2"></span><span class="ba-day ba-day--3"></span></span>Each square is a day, darker for more time on the board page</span>${meetingIn ? html`<span class="ba-key__i"><span class="ba-key__dot" aria-hidden="true"></span>A board meeting</span>` : null}</p>` : null}
-    ${person ? html`<${MemberSheet} p=${person} face=${faces.get(person.slug)} a=${act[person.slug]} loaded=${loaded} began=${began} data=${data} next=${next} sentAt=${sent[person.slug]} onWelcome=${ready ? onWelcome : null} working=${working} onClose=${() => { const slug = open; setOpen(null); requestAnimationFrame(() => document.querySelector(`.ba-name[data-slug="${CSS.escape(slug)}"]`)?.focus()); }} />` : null}
+    ${person ? html`<${MemberSheet} p=${person} face=${faces.get(person.slug)} a=${act[person.slug]} loaded=${loaded} began=${began} data=${data} next=${next} sentAt=${sent[person.slug]} onWelcome=${ready ? onWelcome : null} working=${working} signDocs=${signDocs} onCopy=${onCopy} onClose=${() => { const slug = open; setOpen(null); requestAnimationFrame(() => document.querySelector(`.ba-name[data-slug="${CSS.escape(slug)}"]`)?.focus()); }} />` : null}
   </div>`;
 }
 
@@ -440,6 +494,20 @@ export const ACTIVITY_STYLES = `
   .ba-sheet__ask { margin: -0.25rem 0 0; }
   .ba-coming { margin: -0.2rem 0 0.6rem; font-size: var(--fs-sm); color: var(--color-text-secondary); }
   .ba-sec__h { margin: 0 0 0.6rem; font-size: var(--fs-sm); font-weight: 600; color: var(--color-text); }
+  .ba-sign__y { margin: 0.75rem 0 0.35rem; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; color: var(--color-text-secondary); }
+  .ba-sign__y:first-of-type { margin-top: 0; }
+  .ba-signs { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: 10px; }
+  .ba-sign { display: grid; grid-template-columns: 0.5rem minmax(0, 1fr) auto; gap: 0.15rem 0.6rem; align-items: center; padding: 0.55rem 0.8rem; border-top: 1px solid var(--color-border); font-size: var(--fs-sm); }
+  .ba-sign:first-child { border-top: none; }
+  .ba-sign:focus { outline: none; }
+  .ba-sign:focus-visible { outline: 2px solid var(--color-focus, currentColor); outline-offset: -2px; }
+  .ba-sign__dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--color-border-strong); grid-row: 1 / span 2; }
+  .ba-sign__dot.is-on { background: var(--tone-success-dot, var(--tone-success-fg)); }
+  .ba-sign__name { font-weight: 600; color: var(--color-text); grid-column: 2; }
+  .ba-sign__how { color: var(--color-text-secondary); grid-column: 2; overflow-wrap: anywhere; }
+  .ba-sign__how a { color: inherit; text-decoration: underline; text-underline-offset: 3px; }
+  .ba-sign > .btn { grid-column: 3; grid-row: 1 / span 2; }
+  @media (max-width: 560px) { .ba-sign > .btn { grid-column: 2; grid-row: auto; justify-self: start; } }
   .ba-muted { color: var(--color-text-muted); }
   .ba-since { margin: 0.6rem 0 0; font-size: var(--fs-xs); }
   .ba-reads { list-style: none; margin: 0; padding: 0; border: 1px solid var(--color-border); border-radius: 10px; }

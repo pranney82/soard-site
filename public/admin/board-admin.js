@@ -20,7 +20,7 @@
 import { useState, useEffect, useRef, useMemo } from './vendor.js';
 import { ask, askToLeave } from './ask.js';
 import { viewerLink, sizeText } from './file-viewer.js';
-import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords } from './board-ui.js';
+import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords, driveLink, dayOf, signedHow } from './board-ui.js';
 import { MeetingEditor, agendaSource } from './board-meeting.js';
 import { ReportEditor, Report, PAPER_LETTERS } from './board-report.js';
 import { mdPlain } from './board-md.js';
@@ -504,15 +504,36 @@ function ImportPanel({ ctx, onDone }) {
 }
 
 // ─── Documents ──────────────────────────────────────────────────────
-const driveLink = (id) => `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`;
 // What a file is, in a word ("the PDF's words")
 const formatWord = (f) => (/\.docx$/i.test(f?.name || '') ? 'Word file' : 'PDF');
-// How a signature came (_board.js SIGNED_BY)
-const SIGNED_HOW = { typed: 'Typed their name', copy: 'Added their signed copy', staff: 'Signed copy added here', drive: 'Their signed copy in Drive' };
-// A day as Atlanta has it (a time saved after 8pm there is the next day in UTC)
-const dayOf = (iso) => (iso ? shortDate(todayEastern(Date.parse(iso))) : '');
-/** How a signature came, and when: "Typed “Alex Rivera”, Nov 2" */
-const signedHow = (s) => [s.how === 'typed' && s.name ? `Typed “${s.name}”` : SIGNED_HOW[s.how] || SIGNED_HOW.typed, s.how !== 'drive' ? dayOf(s.at) : ''].filter(Boolean).join(', ');
+/**
+ * A copy a board member signed on paper, added as their signature this year (Documents → Who's signed, or their row on
+ * Members): a PDF or a photo, checked first (an iPhone's made a JPEG); over a signature they gave themselves, asked
+ * first. `setBusy`: told the member's slug while it's going, '' after. → the paper as it is now, or null (nothing changed)
+ */
+async function addSignedCopy({ d, p, picked, addToast, setBusy = () => {}, replace = false }) {
+  let file = picked;
+  if (!file || !p) return null;
+  if (file.size > MAX_FILE) { addToast(`${file.name} is over 50 MB. A PDF or a photo of the signed page is plenty.`, 'error'); return null; }
+  if (!['pdf', 'image'].includes(await fileKind(file))) { addToast('A signed copy is a PDF, or a photo of the signed page', 'error'); return null; }
+  setBusy(p.slug);
+  if (isHeic(file)) { try { file = await asJpeg(file); } catch { /* sent as it is */ } }
+  const fd = new FormData();
+  fd.append('signFor', d.id);
+  fd.append('slug', p.slug);
+  fd.append('file', file);
+  if (replace) fd.append('replace', '1');
+  const j = await call(null, { form: fd });
+  setBusy('');
+  if (j.exists) {
+    const who = j.exists.name.split(/\s+/)[0];
+    if (await ask({ title: `${who} has signed it already`, text: `${j.exists.name} signed it ${j.exists.how === 'typed' ? 'by typing their name on the board page' : 'with their own copy'}${j.exists.at ? `, ${dayOf(j.exists.at)}` : ''}. Put this copy in its place?`, yes: 'Use this copy', no: 'Keep theirs', careful: true })) return addSignedCopy({ d, p, picked, addToast, setBusy, replace: true });
+    return (await call()).docs?.find((x) => x.id === d.id) || null;
+  }
+  if (!j.ok) { addToast(j.error, 'error'); return null; }
+  addToast(`${j.signed.name}’s signed copy is in: signed for ${todayEastern().slice(0, 4)}`, 'info');
+  return j.doc;
+}
 
 /**
  * Each board member's signature this year on a paper every member signs: how it came, with its copy (here or in
@@ -524,31 +545,11 @@ function Signers({ d, ctx, onDoc }) {
   const pick = useRef(null);
   const forWho = useRef('');
   const year = todayEastern().slice(0, 4);
-  const add = async (picked, replace = false) => {
-    let file = picked;
+  const add = async (picked) => {
     if (pick.current) pick.current.value = '';
     const slug = forWho.current;
-    if (!file || !slug) return;
-    if (file.size > MAX_FILE) { addToast(`${file.name} is over 50 MB. A PDF or a photo of the signed page is plenty.`, 'error'); return; }
-    if (!['pdf', 'image'].includes(await fileKind(file))) { addToast('A signed copy is a PDF, or a photo of the signed page', 'error'); return; }
-    setBusy(slug);
-    if (isHeic(file)) { try { file = await asJpeg(file); } catch { /* sent as it is */ } }
-    const fd = new FormData();
-    fd.append('signFor', d.id);
-    fd.append('slug', slug);
-    fd.append('file', file);
-    if (replace) fd.append('replace', '1');
-    const j = await call(null, { form: fd });
-    setBusy('');
-    if (j.exists) {
-      const who = j.exists.name.split(/\s+/)[0];
-      if (await ask({ title: `${who} has signed it already`, text: `${j.exists.name} signed it ${j.exists.how === 'typed' ? 'by typing their name on the board page' : 'with their own copy'}${j.exists.at ? `, ${dayOf(j.exists.at)}` : ''}. Put this copy in its place?`, yes: 'Use this copy', no: 'Keep theirs', careful: true })) { forWho.current = slug; add(picked, true); }
-      onDoc((await call()).docs?.find((x) => x.id === d.id) || d);
-      return;
-    }
-    if (!j.ok) { addToast(j.error, 'error'); requestAnimationFrame(() => document.querySelector(`[data-signer="${slug}"] button`)?.focus()); return; }
-    onDoc(j.doc);
-    addToast(`${j.signed.name}’s signed copy is in: signed for ${year}`, 'info');
+    const doc = await addSignedCopy({ d, p: data.members.find((x) => x.slug === slug), picked, addToast, setBusy });
+    if (doc) onDoc(doc);
     // The focus stays on their row (its button is "Take it off" now)
     requestAnimationFrame(() => document.querySelector(`[data-signer="${slug}"] button`)?.focus());
   };
@@ -572,7 +573,7 @@ function Signers({ d, ctx, onDoc }) {
       return html`<li class="bd-signer" key=${p.slug} data-signer=${p.slug}>
         <span class=${`bd-signer__dot ${s ? 'is-on' : ''}`} aria-hidden="true"></span>
         <span class="bd-signer__name">${p.name}</span>
-        <span class="bd-signer__how">${s ? signedHow(s) : was ? `Signed the earlier version on ${dayOf(was.at)}, not the new one yet` : 'Not signed yet'}${was?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...was.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}</span>
+        <span class="bd-signer__how">${s ? signedHow(s) : was ? `Signed the earlier version on ${dayOf(was.at)}, not the new one yet` : d.prior?.[p.slug] ? `Not signed for ${year} yet (signed for ${d.prior[p.slug].year})` : 'Not signed yet'}${was?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...was.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}</span>
         <span class="bd-signer__act">${was ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their new signed copy'}</button>` : null}${s || was
           ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => off(p)}>${was ? 'Take the earlier one off' : 'Take it off'}</button>`
           : html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their signed copy'}</button>`}</span>
@@ -1275,9 +1276,14 @@ function MembersTab({ ctx }) {
     return looked;
   };
   const rowHad = (slug) => { const p = data.members.find((x) => x.slug === slug); return !!(p && welcomeHad(data.welcome, p, data.members.map((x) => x.slug))); };
+  // A copy a member signed on paper, added from their row (as Documents → Who's signed does)
+  const onCopy = async (d, p, file, setBusy) => {
+    const doc = await addSignedCopy({ d, p, picked: file, addToast, setBusy });
+    if (doc) ctx.setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? doc : y)) }));
+  };
   return html`
     <${AccessPanel} ctx=${ctx} ready=${ready} working=${working} welcome=${welcome} />
-    <${BoardActivity} data=${data} next=${next} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} />`;
+    <${BoardActivity} data=${data} next=${next} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy} />`;
 }
 
 // ─── Settings ───────────────────────────────────────────────────────

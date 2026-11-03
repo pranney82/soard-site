@@ -3453,6 +3453,13 @@ function DocumentsPage({ ctx }) {
   const open = (x) => (x.body ? { href: `#/documents/${x.id}`, onClick: () => { if (terms.length && !inTitle(x)) focusNext = `words:${terms.join(' ')}`; } } : x.file ? viewerLink(vf, withFile.indexOf(x)) : { href: null });
   // The words a search found in a paper, when its title doesn't say it
   const foundIn = (x) => (terms.length && (x.body || x.fileWords) && !inTitle(x) ? html`<span class="bp-doc__found"><${Snippet} text=${x.body ? mdPlain(x.body) : x.fileWords} terms=${terms} /></span>` : null);
+  // Signed in an earlier year, not yet this one (a new year's first weeks): said, and when it changed since, that too
+  const lastTime = (x) => {
+    const l = !x.signedByMe && !x.signedEarlier && !troubleFor(x.id, x) ? x.signedBefore : null;
+    if (!l) return null;
+    return l.version && x.version > l.version ? html`<p class="bp-doc__changed">It changed since you signed it for ${l.year}: read it, then sign it for ${year}.</p>`
+      : html`<p class="bp-doc__meta">You signed it for ${l.year}. Each year it’s signed again.</p>`;
+  };
   // What the page holds, said once at the top: what there is to sign, the shelves there are, the meetings' files
   const SAY = { governing: 'SOARD’s governing documents', status: 'its tax-exempt status', standing: 'registrations and insurance', plan: 'plans and reports', money: 'budgets and audits' };
   const said = [
@@ -3485,9 +3492,9 @@ function DocumentsPage({ ctx }) {
           ${foundIn(x)}
           ${x.body ? html`
             ${x.signedByMe ? html`<p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p><${Signed} doc=${x} ctx=${ctx} />`
-              : html`${troubleFor(x.id, x) ? html`<p class="bp-doc__changed" role="alert">Not signed yet: ${troubleFor(x.id, x).msg}</p>` : x.signedEarlier ? html`<p class="bp-doc__changed">It changed since you signed: read it, then sign again.</p>` : null}
+              : html`${troubleFor(x.id, x) ? html`<p class="bp-doc__changed" role="alert">Not signed yet: ${troubleFor(x.id, x).msg}</p>` : x.signedEarlier ? html`<p class="bp-doc__changed">It changed since you signed: read it, then sign again.</p>` : lastTime(x)}
                 <p class="bp-btns bp-btns--tight"><a class=${`bp-btn bp-btn--sm ${data.me.slug ? 'bp-btn--primary' : ''}`} ...${open(x)}>${data.me.slug ? 'Read and sign' : 'Read it'}</a></p>`}`
-            : html`${!x.signedByMe && x.signedEarlier && !troubleFor(x.id, x) ? html`<p class="bp-doc__changed">It changed since you signed: read it, then sign again.</p>` : null}
+            : html`${!x.signedByMe && x.signedEarlier && !troubleFor(x.id, x) ? html`<p class="bp-doc__changed">It changed since you signed: read it, then sign again.</p>` : lastTime(x)}
           <p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p>
           <${SignForm} d=${x} ctx=${ctx} />`}
         </div>
@@ -3545,6 +3552,11 @@ function DocPage({ id, ctx }) {
   const me = doc.signedByMe;
   const nextToSign = data.me.slug ? data.docs.find((x) => x.id !== doc.id && x.sign && !x.hidden && (x.body || x.file) && !x.signedByMe) : null;
   const trouble = troubleFor(doc.id, doc);
+  // Signed in an earlier year, not yet this one: when, and whether it changed since (the wording they signed is older;
+  // 0 is a wording not known, as a copy from Drive's)
+  const last = doc.sign && !me && !doc.signedEarlier ? doc.signedBefore : null;
+  const lastOn = last?.at ? shortDate(todayEastern(Date.parse(last.at))) : '';
+  const sinceLast = !!last && last.version > 0 && doc.version > last.version;
   const changes = doc.signedBody && written ? (() => {
     // Each line of the Markdown as it reads (a heading marked, a point's bullet or number aside)
     const lines = (md) => String(md).split('\n').map((l) => ({ h: /^\s*#{1,6}\s/.test(l), t: mdPlain(l.replace(/^\s*(?:#{1,6}|[-*+]|\d+[.)])\s+/, '')).trim() })).filter((l) => l.t);
@@ -3575,7 +3587,7 @@ function DocPage({ id, ctx }) {
       </div>
       ${written ? html`<p class="bp-btns bp-noprint"><button type="button" class="bp-btn bp-btn--sm" onClick=${() => ctx.load().then(() => requestAnimationFrame(() => window.print()))}><${Icon} name="print" size=${16} />Print it</button></p>` : null}
     </header>
-    ${doc.sign && doc.signedEarlier && !me ? html`<div class="bp-doc__changed bp-noprint"><p>It changed since you signed: read it, then sign again.</p>${changes ? html`<details class="bp-whatchanged"><summary><span>What changed</span></summary>
+    ${doc.sign && (doc.signedEarlier || sinceLast) && !me ? html`<div class="bp-doc__changed bp-noprint"><p>${doc.signedEarlier ? 'It changed since you signed: read it, then sign again.' : `It changed since you signed it for ${last.year}${lastOn ? ` on ${lastOn}` : ''}: read it, then sign it for ${year}.`}</p>${changes ? html`<details class="bp-whatchanged"><summary><span>What changed</span></summary>
       ${changes.changed.length ? html`<p class="bp-whatchanged__h">Changed</p><ul>${changes.changed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${runsOf(l.diff).map((r, j) => (r.op === '+' ? html`<ins key=${j}>${r.w}</ins> ` : r.op === '-' ? html`<del key=${j}>${r.w}</del> ` : `${r.w} `))}</li>`)}</ul>` : null}
       ${changes.added.length ? html`<p class="bp-whatchanged__h">New</p><ul>${changes.added.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${l.h ? html`<strong>${l.t}</strong>` : l.t}</li>`)}</ul>${changes.added.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.added.length - 20, 'more new line')}</p>` : null}` : null}
       ${changes.removed.length ? html`<p class="bp-whatchanged__h">Taken out</p><ul>${changes.removed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}><s>${l.h ? html`<strong>${l.t}</strong>` : l.t}</s></li>`)}</ul>${changes.removed.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.removed.length - 20, 'more line')} taken out</p>` : null}` : null}
@@ -3589,6 +3601,7 @@ function DocPage({ id, ctx }) {
     ${doc.sign ? html`<section class="bp-card bp-docpage__sign bp-rise" style=${rise(2)} aria-labelledby="docsign-h" id=${`doc-${doc.id}`}>
       <h2 class="bp-h2" id="docsign-h">${!data.me.slug ? `Signatures for ${year}` : me ? `Signed for ${year}` : `Sign it for ${year}`}</h2>
       <p class="bp-muted">${doc.signedCount} of ${data.people.board.length} board members ${doc.signedCount === 1 ? 'has' : 'have'} signed for ${year}.${data.me.slug ? '' : ' Board members sign here.'}</p>
+      ${last && !sinceLast ? html`<p class="bp-muted bp-noprint">You signed it for ${last.year}${lastOn ? ` on ${lastOn}` : ''}.${last.version && doc.version === last.version ? ' It hasn’t changed since.' : ''} Each year it’s signed again.</p>` : null}
       <${SignForm} d=${doc} ctx=${ctx} />
       ${me && nextToSign ? html`<p class="bp-docpage__next bp-noprint"><a class="bp-btn bp-btn--sm bp-btn--primary" href=${`#/documents/${nextToSign.id}`}>Next to sign: ${nextToSign.title}</a></p>` : null}
       ${written ? html`<div class="bp-printonly bp-docpage__paper" aria-hidden="true">

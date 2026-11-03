@@ -499,3 +499,45 @@ test('a paper copy added for a member never takes the place of their own signatu
   const page = (await portalData(env, { member: { ...memberOf('sam-ortiz'), title: '' } })).docs.find((x) => x.id === d.id);
   assert.match(page.fileWords, /discloses any conflict of interest/);
 });
+
+test('a new year: last year’s signatures are kept on record and each member signs again; Members shows each member’s years, and their page says when they signed', async () => {
+  const { memberStatus } = await import('../functions/api/_board.js');
+  let d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, body: '### Attendance\n\n- Come to three of four meetings' }, { by: FOUNDER });
+  await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera');
+  await signWithCopy(env, d.id, pdf('Sam.pdf'), { member: memberOf('sam-ortiz') });
+  // The year turns: what they signed is last year's
+  await env.DB.prepare('UPDATE board_signatures SET year = ?').bind(YEAR - 1).run();
+  d = (await listDocs(env.DB)).find((x) => x.id === d.id);
+  assert.deepEqual([d.signed, d.earlier, Object.keys(d.prior).sort()], [{}, [], ['alex-rivera', 'sam-ortiz']]);
+  assert.deepEqual([d.prior['alex-rivera'].year, d.prior['alex-rivera'].version, d.prior['sam-ortiz'].how], [YEAR - 1, 1, 'copy']);
+  // Nobody has signed this year's, so new words for the new year ask nobody anything
+  d = await saveDoc(env.DB, { ...d, body: `${d.body}\n- Give each year` }, { by: FOUNDER });
+  assert.equal(d.version, 2);
+  // Alex's page: signed last year, on the words before these, and what changed since; Kim never signed
+  const alex = (await portalData(env, { member: { ...memberOf('alex-rivera'), title: '' } })).docs.find((x) => x.id === d.id);
+  assert.deepEqual([alex.signedByMe, alex.signedEarlier, alex.signedBefore.year, alex.signedBefore.version, !!alex.signedBefore.at, alex.prior], [null, false, YEAR - 1, 1, true, undefined]);
+  assert.match(alex.signedBody, /three of four meetings$/, 'the words they signed, to show what changed');
+  const kim = (await portalData(env, { member: { ...memberOf('kim-park'), title: '' } })).docs.find((x) => x.id === d.id);
+  assert.deepEqual([kim.signedBefore, kim.signedBody], [null, undefined]);
+  // Members: each member's earlier years, newest first, with the copy they added
+  let members = await memberStatus(env.DB);
+  const of = (slug) => members.find((p) => p.slug === slug);
+  assert.deepEqual(of('alex-rivera').pastYears.map((s) => [s.year, s.title, s.how, s.name]), [[YEAR - 1, 'Board Member Expectations', 'typed', 'Alex Rivera']]);
+  assert.ok(of('sam-ortiz').pastYears[0].copy?.id, 'Sam’s copy, to see');
+  assert.deepEqual(of('kim-park').pastYears, []);
+  // Signing this year's leaves last year's on record, and the page stops saying it
+  await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera', { version: 2 });
+  const after = (await portalData(env, { member: { ...memberOf('alex-rivera'), title: '' } })).docs.find((x) => x.id === d.id);
+  assert.deepEqual([!!after.signedByMe, after.signedBefore, after.signedBody], [true, null, undefined]);
+  members = await memberStatus(env.DB);
+  assert.deepEqual(of('alex-rivera').pastYears.map((s) => s.year), [YEAR - 1]);
+  // The admin's Members has them (its route), and the documents email asks the others for this year
+  const got = await call(FOUNDER, '/api/board-admin', { handler: admin.onRequestGet });
+  assert.deepEqual(got.body.members.find((p) => p.slug === 'sam-ortiz').pastYears.map((s) => s.year), [YEAR - 1]);
+  // A copy from Drive for two years back says the year, its wording not known (nothing claimed about what changed)
+  await signFromDrive(env.DB, { docId: d.id, slug: 'kim-park', year: YEAR - 2, name: 'Kim Park', driveId: 'drv1', driveName: 'Kim signed.pdf' });
+  const kim2 = (await portalData(env, { member: { ...memberOf('kim-park'), title: '' } })).docs.find((x) => x.id === d.id);
+  assert.deepEqual([kim2.signedBefore.year, kim2.signedBefore.version, kim2.signedBefore.at, kim2.signedBody], [YEAR - 2, 0, '', undefined]);
+  members = await memberStatus(env.DB);
+  assert.deepEqual(of('kim-park').pastYears.map((s) => [s.year, s.how, s.drive?.id]), [[YEAR - 2, 'drive', 'drv1']]);
+});

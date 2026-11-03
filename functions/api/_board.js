@@ -566,17 +566,21 @@ const signatureOf = (s, copies = {}) => ({
 
 /**
  * Every document with its file and this year's signatures:
- * { ...doc, file, signed: { slug: { name, at, how, version, copy, drive } }, earlier: [slugs], before: { slug: … } }
+ * { ...doc, file, signed: { slug: { name, at, how, version, copy, drive } }, earlier: [slugs], before: { slug: … },
+ *   prior: { slug: { year, at, how, version } } }
  * (`sign`: every board member signs it each year; `earlier`: who signed a wording before the one the board was asked
- * to sign again, their signature in `before`)
+ * to sign again, their signature in `before`; `prior`: each member's signature in the last year before this one they
+ * signed it, so a new year's "to sign" says they signed it then)
  */
 export async function listDocs(DB, year = thisYear()) {
   await ensureSchema(DB);
-  const [rows, files, sigs, copies] = await Promise.all([
+  const [rows, files, sigs, copies, prior] = await Promise.all([
     DB.prepare('SELECT data FROM board_docs').all().then((r) => r.results || []),
     filesOf(DB, 'doc'),
     DB.prepare('SELECT * FROM board_signatures WHERE year = ?').bind(year).all().then((r) => r.results || []),
     filesOf(DB, 'signed').then((by) => Object.fromEntries(Object.values(by).flat().map((f) => [f.id, f]))),
+    // (SQLite gives the other columns from the row with the latest year)
+    DB.prepare('SELECT doc_id, slug, MAX(year) AS year, at, how, version FROM board_signatures WHERE year < ? GROUP BY doc_id, slug').bind(year).all().then((r) => r.results || []),
   ]);
   return rows.map((r) => cleanDoc(parse(r.data))).map((d) => {
     const theirs = sigs.filter((s) => s.doc_id === d.id);
@@ -587,6 +591,7 @@ export async function listDocs(DB, year = thisYear()) {
       signed: Object.fromEntries(theirs.filter(counts).map((s) => [s.slug, signatureOf(s, copies)])),
       earlier: theirs.filter((s) => !counts(s)).map((s) => s.slug),
       before: Object.fromEntries(theirs.filter((s) => !counts(s)).map((s) => [s.slug, signatureOf(s, copies)])),
+      prior: Object.fromEntries(prior.filter((s) => s.doc_id === d.id).map((s) => [s.slug, { year: Number(s.year), at: s.at || '', how: SIGNED_BY.includes(s.how) ? s.how : 'typed', version: Number(s.version) || 0 }])),
     };
   }).sort((a, b) => a.title.localeCompare(b.title));
 }
@@ -1679,7 +1684,9 @@ export async function portalData(env, { member = null, admin = false, adminEmail
   // last version their signature counted on: a typo kept since isn't a change to them)
   const signedBodies = {};
   for (const d of docs) {
-    const v = mine && d.body && !d.signed[mine] && d.before?.[mine] && Math.max(d.before[mine].version, d.signFrom - 1);
+    // (or, in a new year, the wording they signed last time, when it's known and there's a newer one)
+    const last = mine && d.prior?.[mine];
+    const v = mine && d.body && !d.signed[mine] && (d.before?.[mine] ? Math.max(d.before[mine].version, d.signFrom - 1) : last && last.version && last.version < d.version ? last.version : 0);
     if (!v) continue;
     const row = await env.DB.prepare('SELECT body FROM board_doc_versions WHERE doc_id = ? AND version = ?').bind(d.id, v).first();
     if (row?.body) signedBodies[d.id] = row.body;
@@ -1727,11 +1734,13 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     actions: openActions(shared).map((a) => ({ ...a, mine: !!mine && a.owner === mine })),
     // Who has signed is Board's to see: a member sees how many of the board have, and their own (its copy, if one's in)
     // (and whether they signed an earlier wording, before the board was asked to sign again)
-    docs: docs.filter((d) => d.shared || !member).map(({ signed, earlier, before, wordsBy, ...d }) => ({
+    docs: docs.filter((d) => d.shared || !member).map(({ signed, earlier, before, prior, wordsBy, ...d }) => ({
       ...(d.shared ? {} : { hidden: true }),
       ...d, file: d.file && !d.file.staffOnly ? d.file : null,
       signedByMe: mine && signed[mine] ? { ...signed[mine], drive: !!signed[mine].drive } : null,
       signedEarlier: !!mine && !signed[mine] && earlier.includes(mine),
+      // Not signed this year, but in an earlier one: when, and on which wording (0: not known)
+      signedBefore: mine && !signed[mine] && !earlier.includes(mine) && prior[mine] ? { year: prior[mine].year, at: prior[mine].how === 'drive' ? '' : prior[mine].at, version: prior[mine].version } : null,
       ...(signedBodies[d.id] ? { signedBody: signedBodies[d.id] } : {}),
       ...(!d.body && d.file && fileWords[d.file.id] ? { fileWords: fileWords[d.file.id] } : {}),
       signedCount: people.board.filter((p) => signed[p.slug]).length,
@@ -2027,11 +2036,24 @@ export async function resetPractice(env, id, { by = '', now = Date.now() } = {})
   return createPractice(env, { by, now, fresh: true });
 }
 
-/** For the admin's Members tab: each active board member, their email on file, last visit and this year's signatures */
+/**
+ * For the admin's Members tab: each active board member, their email on file, last visit, and what they signed in
+ * the years before this one (`pastYears`, newest first: [{ year, docId, title, name, at, how, copy, drive }]; this
+ * year's are on the documents)
+ */
 export async function memberStatus(DB) {
   await ensureSchema(DB);
-  const [board, seen] = await Promise.all([activeBoard(DB), DB.prepare('SELECT slug, at FROM board_seen').all().then((r) => Object.fromEntries((r.results || []).map((x) => [x.slug, x.at])))]);
-  return board.sort(comparePeople).map((p) => ({ slug: p.slug, name: p.name, title: p.title || '', seat: p.seat || '', email: p.email, lastSeen: seen[p.slug] || null }));
+  const [board, seen, past, titles, copies] = await Promise.all([
+    activeBoard(DB),
+    DB.prepare('SELECT slug, at FROM board_seen').all().then((r) => Object.fromEntries((r.results || []).map((x) => [x.slug, x.at]))),
+    DB.prepare('SELECT * FROM board_signatures WHERE year < ? ORDER BY year DESC, at').bind(thisYear()).all().then((r) => r.results || []),
+    DB.prepare('SELECT data FROM board_docs').all().then((r) => Object.fromEntries((r.results || []).map((x) => cleanDoc(parse(x.data))).map((d) => [d.id, d.title]))),
+    filesOf(DB, 'signed').then((by) => Object.fromEntries(Object.values(by).flat().map((f) => [f.id, f]))),
+  ]);
+  return board.sort(comparePeople).map((p) => ({
+    slug: p.slug, name: p.name, title: p.title || '', seat: p.seat || '', email: p.email, lastSeen: seen[p.slug] || null,
+    pastYears: past.filter((s) => s.slug === p.slug && titles[s.doc_id]).map((s) => ({ year: Number(s.year), docId: s.doc_id, title: titles[s.doc_id], ...signatureOf(s, copies) })),
+  }));
 }
 
 // ─── The heartbeat ──────────────────────────────────────────────────
