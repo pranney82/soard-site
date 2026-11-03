@@ -67,7 +67,7 @@ export const isSiteVendor = (id) => /^s_[a-z0-9]{10,}$/.test(String(id || ''));
 const isoDay = (ms) => new Date(ms).toLocaleDateString('en-CA', { timeZone: TZ });
 const parseJson = (s, d = {}) => { try { return s ? JSON.parse(s) ?? d : d; } catch { return d; } };
 const clean = (s, n = 160) => String(s ?? '').replace(/\s+/g, ' ').trim().slice(0, n);
-const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || ''));
+export const isEmail = (s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(s || ''));
 const hex = (buf) => [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 export const sha256 = async (bytes) => hex(await crypto.subtle.digest('SHA-256', bytes));
 const randomId = (n = 20) => [...crypto.getRandomValues(new Uint8Array(n))].map((b) => 'abcdefghijklmnopqrstuvwxyz0123456789'[b % 36]).join('');

@@ -20,7 +20,8 @@
  *                                                                values the page showed; one that changed since is a 409, never
  *                                                                overwritten
  * POST { action: 'add', name, email? }                           a company only on the site (paid, never on a job)
- * POST { action: 'edit', id, name?, email? }                     a site company's name or email
+ * POST { action: 'edit', id, name?, email? }                     a site company's name or email; a JobTread vendor with no email:
+ *                                                                one added to its JobTread contacts (an email it has is changed there)
  * POST { action: 'archive', id, archived }                       a site company out of the list, or back
  * POST { action: 'merge', id, jtId }                             a site company that is that JobTread vendor
  * POST { action: 'link', id }                                    their page's link, to send them yourself → { url }
@@ -40,7 +41,7 @@ import {
 } from './_vendors.js';
 import {
   ensurePapersSchema, allPapers, filesOf, readFile, fileObject, addSiteVendor, editSiteVendor, archiveSiteVendor, mergeIntoJobTread, setFileStatus,
-  removeFile, restoreFile, moveFile, proofOff, proofOn, papersFacts, readPapers, likelySame, nameKeyOf, realDate, mergedInto, provenByPerson, lookedAt, handTyped,
+  removeFile, restoreFile, moveFile, proofOff, proofOn, papersFacts, readPapers, likelySame, nameKeyOf, realDate, mergedInto, provenByPerson, lookedAt, handTyped, isEmail,
 } from './_vendor-files.js';
 import { fileHeaders } from '../files/[[path]].js';
 import { logAudit } from './_audit.js';
@@ -329,6 +330,19 @@ export async function onRequestPost(context) {
 
     if (action === 'edit') {
       needId();
+      // A JobTread vendor's email is on its JobTread contacts: one typed here goes there as its main contact
+      if (!isSiteVendor(id)) {
+        const email = String(body.email || '').trim().toLowerCase();
+        if (!isEmail(email)) return fail('Check the email address.', 400, { field: 'email' });
+        const v = await readVendor(env, id).catch((e) => { throw Object.assign(new Error(`${jtWords(e)}, so it wasn’t added. Try again in a minute.`), { status: 503 }); });
+        if (!v) return fail('That company isn’t here any more', 404);
+        if (v.email) return fail(`Their email is ${v.email}, on their JobTread contacts. Change it in JobTread.`, 409, { vendor: await oneVendor(env, id) });
+        const { addMainEmail } = await import('./_coi-backfill.js');
+        const r = await addMainEmail(env, id, email);
+        if (!r.added) return fail(r.agent ? 'That’s their insurance agent’s email. Add the company’s own.' : 'That email is on their JobTread contacts already.', 409, { field: 'email' });
+        await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'vendor-papers', entitySlug: id, entityName: `${v.name}: ${email} added to JobTread`.slice(0, 120) });
+        return ok({ vendor: await oneVendor(env, id) });
+      }
       await editSiteVendor(env, id, { name: body.name, email: body.email });
       await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'vendor-papers', entitySlug: id, entityName: String(body.name || '').slice(0, 120) });
       return ok({ vendor: await oneVendor(env, id) });

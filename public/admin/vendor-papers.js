@@ -555,6 +555,10 @@ function AddFile({ v, onDone, addToast }) {
 
 /** Their link and the email asking for what's missing */
 function Reach({ v, act, busy, addToast }) {
+  // A JobTread vendor with no email: one typed here goes onto their JobTread contacts
+  const [typed, setTyped] = useState('');
+  useEffect(() => { setTyped(''); }, [v.id, v.email]);
+  const add = (e) => { e.preventDefault(); act({ action: 'edit', id: v.id, email: typed.trim() }, (j) => `${j.vendor?.email || 'Their email'} is on their JobTread contacts now`); };
   const copy = async () => {
     const j = await act({ action: 'link', id: v.id });
     if (!j?.url) return;
@@ -569,6 +573,10 @@ function Reach({ v, act, busy, addToast }) {
     <div class="vp-card">
       <h4>Asking them</h4>
       <p class="vp-lead">${v.ask?.askedAt ? `Asked ${v.ask.asks} time${v.ask.asks === 1 ? '' : 's'}, last on ${day(v.ask.askedAt)}. ` : ''}${v.email ? `Their email: ${v.email}.` : v.site ? 'No email on file yet.' : 'No email on their JobTread contacts.'}${v.agent ? ` Their insurance agent: ${v.agent.name || v.agent.email}${v.agent.agency ? ` at ${v.agent.agency}` : ''} (${v.agent.email}).` : ''}</p>
+      ${!v.email && !v.site ? html`<form onSubmit=${add}>
+        <div class="vp-grid"><label class="vp-field"><span>Their email (it goes on their JobTread contacts)</span><input class="form-input" type="email" autocomplete="off" value=${typed} onInput=${(e) => setTyped(e.target.value)} /></label></div>
+        <div class="vp-actions"><button class="btn btn-primary" type="submit" disabled=${!!busy || !typed.trim()}>Add their email</button></div>
+      </form>` : null}
       <div class="vp-actions">
         <button class="btn btn-ghost" disabled=${!!busy} onClick=${copy}>Copy their link</button>
         ${asking && v.email ? html`<button class="btn btn-ghost" disabled=${!!busy} onClick=${email}>Email them for it</button>` : null}

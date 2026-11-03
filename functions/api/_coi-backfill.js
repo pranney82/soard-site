@@ -591,6 +591,17 @@ async function addPeople(env, ctx, jtId, acct, { agent, main }) {
   return added;
 }
 
+/**
+ * An email a person at SOARD typed for a JobTread vendor with none (Job Costs → W-9s & insurance): its main contact, as
+ * the search adds one → { added } (not added: that email is on their contacts already; agent: as their insurance agent)
+ */
+export async function addMainEmail(env, jtId, email, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const acct = await accountOf(env, jtId, fetchImpl);
+  const same = acct.contacts.find((c) => c.email === email);
+  if (same) return { added: false, agent: AGENT_TITLE.test(same.title) };
+  return { added: (await addPeople(env, { fetchImpl, now }, jtId, acct, { main: { email } })).includes('main') };
+}
+
 /** Where a file was found, in words for the note: "Joe Lane’s email from March 2025" */
 function whereFound(row, h, jtId) {
   if (row.source === 'gmail') return `${h.owner ? `${h.owner}’s` : 'a staff'} email from ${monthYear(row.sent_at)}`;

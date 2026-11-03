@@ -43,7 +43,7 @@ const fresh = () => ({
   ],
   tags: [{ id: 'T-W9', name: 'W-9' }, { id: 'T-COI', name: 'COI' }],
   vendors: { [VENDOR]: { name: 'TKO Plumbing', email: 'office@tko.example', values: {}, files: [] } },
-  updates: [], comments: [], created: [], emails: [], slack: [], ai: null, refuseWrites: false, recipients: [], rampBills: [],
+  updates: [], comments: [], created: [], contactsMade: [], emails: [], slack: [], ai: null, refuseWrites: false, recipients: [], rampBills: [],
   fileBytes: {}, deleted: [], refuseDelete: false,
 });
 
@@ -55,7 +55,8 @@ function account(id) {
     id, name: v.name, type: 'vendor', archivedAt: null,
     customFieldValues: { nodes: Object.entries(v.values).map(([fid, value]) => ({ value, customField: { id: fid } })) },
     primaryContact: { id: 'CON1', title: 'Owner', customFieldValues: email },
-    contacts: { nodes: [{ id: 'CON1', name: 'Tom', title: 'Owner', customFieldValues: email }] },
+    contacts: { nodes: [{ id: 'CON1', name: 'Tom', title: 'Owner', customFieldValues: email },
+      ...(v.agent ? [{ id: 'CON3', name: 'Ann', title: 'Insurance agent', customFieldValues: { nodes: [{ value: v.agent, customField: { id: 'VC-EMAIL', type: 'emailAddress' } }] } }] : [])] },
   };
 }
 
@@ -84,6 +85,12 @@ globalThis.fetch = async (input, init = {}) => {
       return Response.json({});
     }
     if (query.createComment) { world.comments.push(query.createComment.$); return Response.json({ createComment: { createdComment: { id: 'C1' } } }); }
+    if (query.createContact) {
+      const { accountId, customFieldValues } = query.createContact.$;
+      world.contactsMade.push(query.createContact.$);
+      world.vendors[accountId].email ||= customFieldValues['VC-EMAIL'];
+      return Response.json({ createContact: { createdContact: { id: 'CON2' } } });
+    }
     if (query.createFile || query.createUploadRequest) { world.created.push(query); return Response.json({}); }
     if (query.deleteFile) {
       if (world.refuseDelete) return Response.json({ errors: [{ message: 'You can’t delete that file' }] }, { status: 400 });
@@ -878,7 +885,7 @@ test('a site-only company that uses "Get started" (the only way forward from its
     }
     return inner(input, init);
   };
-  try { r = await startPartner(env, { company: 'Capin Crouse LLP', name: 'Pat Partner', email: 'ap@capin.example', phone: '4045550188' }, { now: NOW }); } catch (e) { r = { error: e.message }; }
+  try { r = await startPartner(env, { company: 'Capin Crouse LLP', name: 'Pat Partner', email: 'ap@capin.example', phone: '4045550188' }, { now: NOW }); } catch (e) { r = { error: e.message }; } finally { globalThis.fetch = inner; }
   const made = Object.keys(world.vendors).filter((id) => id !== VENDOR);
   assert.equal(made.length + (r?.how === 'new' ? 1 : 0), 0, `startPartner → ${JSON.stringify(r)}; JobTread vendors made: ${made.map((id) => world.vendors[id].name).join(', ')}`);
   void s;
@@ -1326,6 +1333,28 @@ test('after the only certificate is taken off (or moved away), JobTread\'s Insur
   assert.ok(check, 'setup: Insurance Check was written');
   const j = await admin({ action: 'remove-file', fileId: up.vendor.files[0].id });
   assert.deepEqual({ gl: jtVals()['F-GL'], check: jtVals()['F-CHECK'] }, { gl: null, check: null }, `JobTread's Insurance Check still reads "${jtVals()['F-CHECK']}" with liability cleared (changed ${JSON.stringify(j.changed)})`);
+});
+
+test('a JobTread vendor with no email gets one from its page: onto its JobTread contacts as the main contact, never over one', async () => {
+  world.vendors[VENDOR].email = null;
+  await env.DB.prepare('UPDATE vendors SET email = NULL WHERE jt_id = ?').bind(VENDOR).run();
+  assert.equal((await admin({ action: 'edit', id: VENDOR, email: 'not an email' })).success, false);
+  // Their insurance agent's email isn't the company's
+  world.vendors[VENDOR].agent = 'ann@agency.example';
+  let r = await admin({ action: 'edit', id: VENDOR, email: 'ann@agency.example' });
+  assert.deepEqual([r.success, r.error], [false, 'That’s their insurance agent’s email. Add the company’s own.']);
+  r = await admin({ action: 'edit', id: VENDOR, email: ' Office@TKO.example ' });
+  assert.equal(r.success, true, r.error);
+  assert.equal(r.vendor.email, 'office@tko.example');
+  assert.deepEqual(world.contactsMade.map((c) => [c.accountId, c.title, c.customFieldValues]), [[VENDOR, 'Main contact', { 'VC-EMAIL': 'office@tko.example' }]]);
+  // The list (JobTread's vendors as last read) has it now, not after the next read
+  assert.equal((await env.DB.prepare('SELECT email FROM vendors WHERE jt_id = ?').bind(VENDOR).first()).email, 'office@tko.example');
+  // One they have is changed in JobTread
+  r = await admin({ action: 'edit', id: VENDOR, email: 'new@tko.example' });
+  assert.deepEqual([r.success, r.error], [false, 'Their email is office@tko.example, on their JobTread contacts. Change it in JobTread.']);
+  assert.equal(world.contactsMade.length, 1);
+  // It's in History under who added it
+  assert.ok((await env.DB.prepare("SELECT entity_name FROM audit_log WHERE entity_slug = ? AND entity_name LIKE '%added to JobTread'").bind(VENDOR).first()), 'History says who added the email');
 });
 
 test('a site company\'s email changed by staff: the old address no longer gets a sign-in link to its W-9 page', async () => {
