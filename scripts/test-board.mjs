@@ -1630,6 +1630,34 @@ try {
     await member.close();
     await DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(pts.id).run();
   }
+  // Many presenting one item: the top bar says one by name, two by first names, three and more the first and how many
+  // more ("Alex & 4 more", every name in its title), its words never cut on any screen (a phone: one face, two lines)
+  {
+    const many = await saveMeeting(DB, cleanMeeting({ date: day(12), start: '08:00', end: '09:00', shared: false, sections: [
+      { title: 'Committee reports', minutes: 20, items: [
+        { title: 'Three committees', who: ['jane-doe', 'pat-lee', 'alex-rivera'], report: '- Governance met twice\n- Finance closed the year' },
+        { title: 'Every committee at once', presenter: 'Alex Rivera, Sam Ortiz, Kim Park, Tom Reedington & Nia Fordham', report: '- One thing\n- Another thing' },
+        { title: 'Two long names', presenter: 'Christopher Montgomery & Alexandra Whitfield', report: '- One thing\n- Another thing' },
+      ] },
+    ] }), { by: FOUNDER });
+    const look = await tab(FOUNDER, 1280);
+    const want = [/^Jane & 2 more( have the floor)?$/, /^Alex & 4 more( have the floor)?$/, /^Christopher & Alexandra( have the floor)?$/];
+    const all = [/Alex Rivera/, /Nia Fordham/, /Alexandra Whitfield/];
+    const seen = [];
+    for (const [w, h] of [[1920, 1080], [1280, 720], [1024, 768], [390, 844], [360, 740]]) {
+      await look.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: w < 600, hasTouch: w < 600 });
+      for (const [k, it] of many.sections[0].items.entries()) {
+        await look.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(it.id)}#/meetings/${many.id}/screen`, { waitUntil: 'networkidle0' });
+        await look.waitForSelector('.bs-top > .bs-floor', { timeout: 8000 }).catch(() => {});
+        await sleep(300);
+        const f = await look.evaluate(() => { const c = document.querySelector('.bs-top > .bs-floor'); const t = c?.querySelector(':scope > span:last-child'); return c ? { words: t.innerText.replace(/\s+/g, ' ').trim(), all: t.title, cut: t.scrollWidth > t.clientWidth + 1 || t.scrollHeight > t.clientHeight + 1 || c.scrollWidth > c.clientWidth + 1 } : null; });
+        if (!(f && want[k].test(f.words) && all[k].test(f.all) && !f.cut)) seen.push(`${w}×${h} ${it.title}: ${JSON.stringify(f)}`);
+      }
+    }
+    ok(!seen.length, `many presenting: the top bar says “Jane & 2 more”, “Alex & 4 more”, “Christopher & Alexandra”, never cut, on five screens${seen.length ? ` (${seen.join('; ')})` : ''}`);
+    await look.close();
+    await DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(many.id).run();
+  }
 
   // ─── Print it all (board/print.js), on the board page ───
   console.log('Print it all');
