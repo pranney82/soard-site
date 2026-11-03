@@ -109,7 +109,7 @@ export async function disconnectBank(env, itemId, { fetchImpl = fetch } = {}) {
   const row = await env.DB.prepare('SELECT item_id, institution, told FROM bank_links WHERE item_id = ?').bind(itemId).first();
   if (!row) throw Object.assign(new Error('That bank isn’t connected any more'), { status: 404 });
   await removeItem(env, itemId, { fetchImpl });
-  if (row.told) await slackResolved(env, keyOf(row), slackCard({ icon: '✅', title: `${row.institution} disconnected`, lead: `${row.institution} was disconnected in Board → Settings, so the board page no longer counts it.` }), { summary: `${row.institution} disconnected` }).catch(() => null);
+  if (row.told) await slackResolved(env, keyOf(row), slackCard({ icon: '✅', title: `${row.institution} disconnected`, lead: `${row.institution} was disconnected in System → Settings, so the board page no longer counts it.` }), { summary: `${row.institution} disconnected` }).catch(() => null);
 }
 
 async function removeItem(env, itemId, { fetchImpl }) {
@@ -214,7 +214,7 @@ export async function bankBalances(DB, { now = Date.now() } = {}) {
   return { accounts, owed, at, stale };
 }
 
-/** Board → Settings: each bank, its accounts by name and kind (never balances), when it was read, any trouble */
+/** System → Settings: each bank, its accounts by name and kind (never balances), when it was read, any trouble */
 export async function bankStatus(env) {
   const configured = plaidConfigured(env);
   if (!env.DB) return { configured, env: envName(env), banks: [] };

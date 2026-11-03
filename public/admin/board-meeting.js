@@ -34,7 +34,7 @@ import {
 } from './board-ui.js';
 import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
-  todayEastern, attendanceCounts, quorumFor, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
+  todayEastern, attendanceCounts, quorumFor, majority, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
   isLive, agendaItems, isFilled, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, pagesText, MORE,
   sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew,
 } from './board-shared.js';
@@ -1091,7 +1091,6 @@ function GettingReady({ m, set, ctx, act, save }) {
   const adds = `the board${alsoAdded.length ? ` and ${andList(alsoAdded)}` : ''}`;
   const guests = [...new Set([...data.members.map((x) => x.email).filter(Boolean), ...data.settings.admins])];
   const missing = inv ? guests.filter((e) => !(inv.emails || []).includes(e) && e !== inv.organizer) : [];
-  const transcript = !inv ? '' : inv.transcript === 'on' ? 'transcripts on' : inv.transcript === 'needs-setup' ? 'transcript needs one Google setting (see Meetings)' : inv.transcript === 'error' ? 'no transcript (SOARD’s Google plan)' : '';
   const placeNow = [m.location, m.address].filter(Boolean).join(', ');
   // A new day, time or place: onto the invite once the typing has stopped (functions/api/_board-invite.js, whose "when"
   // is "YYYY-MM-DD HH:MM-HH:MM")
@@ -1102,9 +1101,6 @@ function GettingReady({ m, set, ctx, act, save }) {
   const senders = [...new Set(others.map((o) => o.by).filter(Boolean))];
   const mineOnly = senders.length === 1 && senders[0] === String(data.me || '').toLowerCase();
   const senderName = (e) => (/@soardcharity\.com$/i.test(e) ? firstOf(e) : data.members.find((x) => x.email === e)?.name || e);
-  // The invite check found the organizer's Google account can't have transcripts: they're not promised
-  const noTranscripts = !!data.google?.check && data.google.check.transcript === 'error';
-  const meetWords = noTranscripts ? 'Google Meet' : 'Google Meet with transcripts on';
   // What the board gets: the packet, as they see it (never this meeting's own minutes, nor a staff-only file)
   const docs = m.files.filter((f) => !f.staffOnly && f.kind !== 'minutes' && f.kind !== 'signed');
   const [sInvite, sShared, sSent] = statesOf([!!inv && !missing.length, m.shared, !!m.packetSentAt]);
@@ -1131,7 +1127,7 @@ function GettingReady({ m, set, ctx, act, save }) {
     const names = andList(to.map(nameOf));
     if (!(await ask({
       title: !inv ? 'Send the invite?' : `Add ${names} to the invite?`,
-      text: !inv ? `Google emails the invite to ${names}, with ${meetWords}, the place and the link to the agenda.${noEmail.length ? ` ${andList(noEmail)} ${noEmail.length === 1 ? 'has' : 'have'} no email, so ${noEmail.length === 1 ? 'gets' : 'get'} no invite.` : ''}` : `Google emails ${to.length === 1 ? 'the invite to them' : 'each of them the invite'}. Nobody else hears about it.`,
+      text: !inv ? `Google emails the invite to ${names}, with Google Meet, the place and the link to the agenda.${noEmail.length ? ` ${andList(noEmail)} ${noEmail.length === 1 ? 'has' : 'have'} no email, so ${noEmail.length === 1 ? 'gets' : 'get'} no invite.` : ''}` : `Google emails ${to.length === 1 ? 'the invite to them' : 'each of them the invite'}. Nobody else hears about it.`,
       yes: !inv ? 'Send the invite' : 'Add them',
     }))) return;
     run('invite', { action: 'send-invite', id: m.id }, () => `Invite sent to ${names}`);
@@ -1152,12 +1148,12 @@ function GettingReady({ m, set, ctx, act, save }) {
     <${NoEmail} ctx=${ctx} what="no invite or email, and can’t check in on the board page" />
     <ol class="bm-tasks">
       <${Task} state=${sInvite} title=${inv ? `Invite sent from ${whoseOf(inv.organizer)} calendar` : m.inviteGone ? 'The invite was deleted' : 'Send the invite'}
-        sub=${inv ? [plural(inv.guests, 'guest'), inv.meet ? 'Google Meet' : '', transcript, where, missing.length ? `${andList(missing.map(nameOf))} not on it yet` : '', inv.putBackAt ? `changed in Google Calendar, Board’s put back ${ago(inv.putBackAt)}` : ''].filter(Boolean).join(' · ')
+        sub=${inv ? [plural(inv.guests, 'guest'), inv.meet ? 'Google Meet' : '', where, missing.length ? `${andList(missing.map(nameOf))} not on it yet` : '', inv.putBackAt ? `changed in Google Calendar, Board’s put back ${ago(inv.putBackAt)}` : ''].filter(Boolean).join(' · ')
           : m.inviteGone ? `Someone deleted it in Google Calendar ${ago(m.inviteGone)}, so it’s off the board’s calendars. Send it again, or delete this meeting (⋯ at the top).`
-          : `From ${whose} calendar to ${adds}: ${meetWords}, the place and the link to the agenda.`}>
+          : `From ${whose} calendar to ${adds}: Google Meet, the place and the link to the agenda.`}>
         ${!inv || missing.length ? html`<button class=${btn(sInvite)} disabled=${!!working || !data.setup.calendar || !m.date} onClick=${invite}>
           ${working === 'invite' ? 'Sending…' : !inv ? (m.inviteGone ? 'Send it again' : 'Send the invite') : `Add ${missing.length === 1 ? nameOf(missing[0]).split(' ')[0] : `the ${missing.length} missing`}`}</button>` : null}
-        ${!data.setup.calendar ? html`<span class="bd-muted">Board can’t reach Google Calendar yet (Settings).</span>` : null}
+        ${!data.setup.calendar ? html`<span class="bd-muted">Board can’t reach Google Calendar yet (Site → Automations says what’s missing).</span>` : null}
         ${inv?.differs ? html`<div class="bm-note is-warn" role="note"><span>Someone changed this invite in Google Calendar again after Board put its day, time and place back. Change them here (Change when and where) and they go on it, or send Board’s again.</span>
           <button class="btn btn-sm btn-primary" disabled=${!!working} onClick=${() => run('invite', { action: 'send-invite', id: m.id }, 'Board’s day, time and place are back on the invite')}>${working === 'invite' ? 'Sending…' : 'Send Board’s again'}</button></div>` : null}
         ${others.length ? html`<p class="bm-note is-warn" role="note">${others.length === 1 ? 'Another invite for this meeting is' : `${others.length} other invites for this meeting are`} on ${andList([...new Set(others.map((o) => whoseOf(o.on)))])} calendar: ${andList(others.map((o) => `“${o.title}”`))}${senders.length && !mineOnly ? `, sent by ${andList(senders.map(senderName))}` : ''}. ${mineOnly ? `Cancel ${others.length === 1 ? 'it' : 'them'}` : `Ask ${senders.length ? (senders.length === 1 ? 'them' : 'each') : 'whoever sent it'} to cancel ${others.length === 1 ? 'it' : 'theirs'}`}, so the board has one invite and one call.</p>` : null}
@@ -1169,20 +1165,62 @@ function GettingReady({ m, set, ctx, act, save }) {
         sub=${m.packetSentAt ? ago(m.packetSentAt) : `It goes by itself when the agenda is approved on the chair’s review (on the board page, where you can approve it too), or now from here. The link to the agenda and ${docs.length ? `the ${plural(docs.length, 'document')} by name` : 'the documents by name'} (nothing attached), and a nudge to answer the calendar invite for anyone who hasn’t. It goes to ${plural(data.packetTo, 'board member')}.`}>
         <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => run('preview', { action: 'send-packet', id: m.id, test: true }, (j) => `Sent to ${j.to?.[0] || 'you'}`)}>${working === 'preview' ? 'Sending…' : 'Send me the email'}</button>
         <button class=${btn(sSent)} disabled=${!!working || !data.packetTo || !data.setup.email} onClick=${email}>${working === 'send' ? 'Sending…' : m.packetSentAt ? 'Email again' : 'Email the board'}</button>
-        ${!data.setup.email ? html`<span class="bd-muted">Email isn’t set up yet (Settings).</span>` : null}
+        ${!data.setup.email ? html`<span class="bd-muted">Email isn’t set up yet (Site → Automations says what’s missing).</span>` : null}
       </${Task}>
     </ol>
-    ${asked.length ? html`<div class="bm-reports">
-      <p class="bm-reports__h"><strong>Reports</strong><span class=${inCount === asked.length ? 'is-all' : ''}>${inCount} of ${asked.length} in</span></p>
-      <p class="bd-muted">${asked.every(({ it }) => here(it)) ? 'These presenters don’t sign in to the board page, so their reports are written here: tap one to write it.' : `${m.shared ? 'Each presenter writes theirs on the board page, where it asks them.' : 'Once the meeting is on the board page, each presenter writes theirs there.'}${asked.some(({ it }) => here(it)) ? ' Where it says “Write it here”, the presenter doesn’t sign in to the board page: tap it to write theirs here.' : ''}`}</p>
+    <div class="bm-reports">
+      <p class="bm-reports__h"><strong>Reports</strong>${asked.length ? html`<span class=${inCount === asked.length ? 'is-all' : ''}>${inCount} of ${asked.length} in</span>` : null}</p>
+      ${asked.length ? html`<p class="bd-muted">${asked.every(({ it }) => here(it)) ? 'These presenters don’t sign in to the board page, so their reports are written here: tap one to write it.' : `${m.shared ? 'Each presenter writes theirs on the board page, where it asks them.' : 'Once the meeting is on the board page, each presenter writes theirs there.'}${asked.some(({ it }) => here(it)) ? ' Where it says “Write it here”, the presenter doesn’t sign in to the board page: tap it to write theirs here.' : ''}`}</p>
       <ul class="bm-reports__list">${asked.map(({ x, it }) => html`<li key=${it.id}>
         <a class=${`bm-reports__row ${it.report ? 'is-in' : ''}`} href=${`#agx-${m.sections[x.si].id}`} onClick=${(e) => { e.preventDefault(); dispatchEvent(new CustomEvent('agx-report', { detail: { id: it.id, write: !it.report } })); }}>
           <span class="bm-reports__n">${x.label}</span>
           <span class="bm-reports__t"><span>${x.title}</span><small>${namesText(presentersOf(it, people).map((p) => (presentersOf(it, people).length > 1 ? p.name.split(' ')[0] : p.name)))}</small></span>
           <span class="bm-reports__s">${it.report ? html`${CHECK}<span>${ago(it.reportAt) || 'In'}</span>` : here(it) ? 'Write it here' : 'Not yet'}</span>
         </a>
-      </li>`)}</ul>
-    </div>` : null}
+      </li>`)}</ul>` : html`<p class="bd-muted">None asked for yet: an item asks for one once someone on the board presents it.</p>`}
+      <${ReportEmails} ctx=${ctx} />
+    </div>
+  </div>`;
+}
+
+/**
+ * The emails asking presenters for their reports, and the chair's review (functions/api/_board-asks.js): from the admin
+ * the invites don't come from, the organizer copied. Test sends each one to that admin alone, once a meeting; On sends
+ * them to the board, so it asks first; Off sends none. One switch for every meeting, beside the reports it asks for.
+ */
+function ReportEmails({ ctx }) {
+  const { data, setData, addToast } = ctx;
+  const s = data.settings;
+  const [busy, setBusy] = useState(false);
+  const asker = s.admins.find((e) => e !== s.invitesFrom) || s.invitesFrom || s.admins[0] || '';
+  const mine = asker === data.me;
+  const who = mine ? 'you' : firstOf(asker);
+  const copied = s.invitesFrom && s.invitesFrom !== asker ? (s.invitesFrom === data.me ? 'you' : firstOf(s.invitesFrom)) : '';
+  const from = `${mine ? 'your' : `${firstOf(asker)}’s`} Gmail${copied ? `, ${copied} copied` : ''}`;
+  const mode = ['on', 'off'].includes(s.asks) ? s.asks : 'test';
+  const hint = {
+    test: `Each email comes to ${who} alone, once a meeting, its subject saying who it’s for. The board gets nothing yet.`,
+    on: `From ${from}: two weeks before each meeting, each presenter is asked for their report, due a week before; then a reminder. Six days before, the chair gets the whole agenda to review.`,
+    off: 'No emails. Presenters write their reports on the board page.',
+  };
+  const change = async (v) => {
+    if (v === mode) return;
+    if (v === 'on' && !(await ask({ title: 'Email the board for their reports?', text: `From ${from}: two weeks before each meeting, each board member presenting an item is asked for their report, then reminded, and six days before, the chair gets the whole agenda to review. Their replies go on the agenda.`, yes: 'Turn them on', no: 'Not yet' }))) return;
+    setBusy(true);
+    const j = await call({ action: 'save-settings', settings: { asks: v } });
+    setBusy(false);
+    if (!j.ok) { addToast(j.error, 'error'); return; }
+    setData((d) => ({ ...d, settings: j.settings }));
+    addToast(v === 'on' ? 'Report emails are on: the board gets them' : v === 'off' ? 'Report emails are off' : `Report emails go to ${who} only`, 'info');
+  };
+  return html`<div class="bm-asks">
+    <div class="bm-asks__row"><label class="bm-asks__l" for="bm-asks">Emails asking for them</label>
+      <select id="bm-asks" class="form-select bm-asks__pick" value=${mode} disabled=${busy} onChange=${(e) => change(e.target.value)}>
+        <option value="test">Test: to ${mine ? 'me' : firstOf(asker)} only</option>
+        <option value="on">On: to the board</option>
+        <option value="off">Off</option>
+      </select></div>
+    <p class="bd-muted bm-asks__hint">${hint[mode]}</p>
   </div>`;
 }
 
@@ -1226,11 +1264,50 @@ function Coming({ m, ctx, act }) {
       ${groups.map(([t, l]) => (l.length ? html`<span class=${`bm-bar__part is-${t === 'Coming' || t === 'By video' ? 'yes' : t === 'Can’t come' ? 'no' : t === 'Maybe' ? 'maybe' : 'none'}`} style=${`flex:${l.length}`}></span>` : null))}
     </div>
     <dl class="bm-who">${groups.filter(([, l]) => l.length).map(([t, l]) => html`<div><dt>${t} <b>${l.length}</b></dt><dd>${l.map((x, i) => html`${i ? ', ' : ''}${x.name}${emailOf(x) ? null : html` <span class="bm-who__no">(no email)</span>`}`)}</dd></div>`)}</dl>
+    <${Quorum} m=${m} ctx=${ctx} coming=${groups[0][1].length + groups[1][1].length} />
     ${quiet.length && m.date >= todayEastern() && !m.live.startedAt ? (m.shared ? html`${asked ? html`<p class="bd-muted bm-coming__wait" role="status">Asked ${asked.names} ${ago(asked.at)}.</p>` : null}<div class="bd-actions" style="margin-top:0.75rem">
       <button class=${`btn btn-sm ${asked ? 'btn-ghost' : 'btn-primary'}`} ref=${askRef} disabled=${!!working} onClick=${() => remind(false)}>${working === 'send' ? 'Sending…' : asked ? 'Ask again' : quiet.length === 1 ? `Ask ${quiet[0].name.split(' ')[0]}` : `Ask the ${quiet.length} who haven’t answered`}</button>
       <button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => remind(true)}>${working === 'preview' ? 'Sending…' : 'Send me the reminder'}</button>
     </div>` : html`<p class="bd-muted bm-coming__wait">Once it’s on the board page, you can ask the ones who haven’t answered.</p>`) : null}
   </div>`;
+}
+
+/**
+ * How many make a quorum, beside who's coming: a majority of the board on the meeting's list, or the number the bylaws
+ * set (saved for every meeting; empty goes back to a majority). Said as what it means for this meeting.
+ */
+function Quorum({ m, ctx, coming }) {
+  const { data, setData, addToast } = ctx;
+  const [editing, setEditing] = useState(false);
+  const [n, setN] = useState('');
+  const [busy, setBusy] = useState(false);
+  const field = useRef(null);
+  const board = attendanceCounts(m).board;
+  if (!board) return null;
+  const set = Number(data.settings.quorum) > 0;
+  const need = quorumFor(m, data.settings.quorum);
+  const open = () => { setN(set ? String(data.settings.quorum) : ''); setEditing(true); requestAnimationFrame(() => field.current?.focus()); };
+  const save = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    const j = await call({ action: 'save-settings', settings: { quorum: Number(n) || 0 } });
+    setBusy(false);
+    if (!j.ok) { addToast(j.error, 'error'); return; }
+    setData((d) => ({ ...d, settings: j.settings }));
+    setEditing(false);
+    addToast(j.settings.quorum ? `A quorum is ${j.settings.quorum} board members, for every meeting` : 'A quorum is a majority of the board again', 'info');
+  };
+  if (editing) {
+    return html`<form class="bm-quorum-set" onSubmit=${save}>
+      <label class="bm-asks__l" for="bm-q">Board members for a quorum</label>
+      <div class="bd-inline"><input id="bm-q" ref=${field} class="form-input bm-quorum-set__n" type="number" min="1" max="50" inputmode="numeric" placeholder=${`${majority(board)}`} value=${n} onInput=${(e) => setN(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Escape') { e.preventDefault(); setEditing(false); } }} />
+        <button class="btn btn-primary btn-sm" type="submit" disabled=${busy}>${busy ? 'Saving…' : 'Save'}</button>
+        <button class="btn btn-ghost btn-sm" type="button" onClick=${() => setEditing(false)}>Cancel</button></div>
+      <p class="bd-muted bm-asks__hint">Empty is a majority of the board on each meeting’s list (${majority(board)} of ${board} now). A number only if the bylaws say so; it’s for every meeting.</p>
+    </form>`;
+  }
+  return html`<p class="bm-quorum-line"><span><strong>${need} of ${board}</strong> make a quorum${set ? '' : ' (a majority)'}${coming >= need ? '. Enough are coming.' : coming ? `. ${need - coming} more needed.` : '.'}</span>
+    <button type="button" class="bd-linkbtn" onClick=${open}>Change</button></p>`;
 }
 
 // ─── The presentation's slides, in words ──────────────────────────

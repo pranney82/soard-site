@@ -323,7 +323,7 @@ const dayMs = (d) => Date.parse(`${d}T12:00:00Z`);
 /** A file's name to compare by: "Minutes 2025.07.24 (1).pdf" and "Minutes 2025.07.24" are the same file */
 const titleKey = (name) => String(name || '').toLowerCase().replace(/\.[a-z0-9]{2,5}$/, '').replace(/\(\d+\)/g, '').replace(/[^a-z0-9]+/g, ' ').trim();
 const daysApart = (a, b) => Math.round((dayMs(a) - dayMs(b)) / DAY);
-const untouched = (m) => [CALENDAR_BY, MAIL_BY, 'Google Drive', ''].includes(m.updatedBy || ''); // Google Drive: ./_board-drive.js
+const untouched = (m) => [CALENDAR_BY, MAIL_BY, 'Google Drive', ''].includes(m.updatedBy || ''); // Google Drive: what Board brought in from Drive until Nov 3 2026
 const KIND_FILE = { agenda: 'agenda', minutes: 'minutes', financials: 'financials', packet: 'packet' };
 /** Board meetings only: not one the calendar brought in that isn't (notBoard), nor a practice meeting */
 export const boardOnly = (meetings) => meetings.filter((x) => !x.notBoard && !x.practice);

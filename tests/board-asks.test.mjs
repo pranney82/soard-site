@@ -133,7 +133,7 @@ beforeEach(async () => {
   await env.DB.exec('CREATE TABLE site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)');
   for (const [slug, d] of PEOPLE) await env.DB.prepare('INSERT INTO team (slug, name, "group", data) VALUES (?, ?, ?, ?)').bind(slug, d.name, d.group, JSON.stringify(d)).run();
   for (const [slug, email] of EMAILS) await env.DB.prepare('INSERT INTO reveal_board_emails (slug, email) VALUES (?, ?)').bind(slug, email).run();
-  // Board → Settings: the emails on (test mode has its own tests below)
+  // The emails on (test mode has its own tests below)
   await env.DB.exec(`CREATE TABLE IF NOT EXISTS board_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)`);
   await env.DB.prepare('INSERT INTO board_state (key, data) VALUES (?, ?)').bind('settings', JSON.stringify({ asks: 'on' })).run();
   gmail = fakeGmail();
@@ -519,7 +519,7 @@ test('a report sent back with a question: to its presenter in their conversation
   assert.ok((await portalExtras(env, { member: ALEX, meetings: await listMeetings(env.DB), today: '2026-11-03' })).review.questions[0].answeredAt);
 });
 
-// ─── Test mode, until Board → Settings says On ──────────────────────
+// ─── Test mode, until the switch says On ────────────────────────────
 
 const setMode = (mode) => env.DB.prepare("UPDATE board_state SET data = ? WHERE key = 'settings'").bind(JSON.stringify({ asks: mode })).run();
 
@@ -556,7 +556,7 @@ test('off: nothing at all, and the chair’s question says so', async () => {
   await meeting();
   await run();
   assert.equal(gmail.sent.length, 0);
-  await assert.rejects(askPresenter(env, { meetingId: 'm_nov5', itemId: 'i_fin', question: 'Why?' }, { member: ALEX }, opts()), /off in Board → Settings/);
+  await assert.rejects(askPresenter(env, { meetingId: 'm_nov5', itemId: 'i_fin', question: 'Why?' }, { member: ALEX }, opts()), /Emails to presenters are off/);
 });
 
 test('the chair sees the review page once the emails are on; the admins always', async () => {

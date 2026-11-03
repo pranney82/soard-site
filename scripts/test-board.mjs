@@ -16,13 +16,15 @@
  *   - a meeting's three steps. Before: the agenda ready as drafted, a
  *     board-only item, its background as points, a private note, a file
  *     that goes with its item by itself, then Getting ready: the invite from
- *     the president's calendar with Google Meet and transcripts on, the place
+ *     the president's calendar with Google Meet (never transcripts), the place
  *     added after (one update, once it settles), shared, the documents
  *     emailed with nothing attached; the numbers lock themselves on the day.
  *     A save someone else made meanwhile merges. During: the agenda in
  *     order, a vote.
  *   - Documents (one asking for a signature), Members (Cloudflare's steps,
- *     the sign-in email), Settings (who invites come from)
+ *     the sign-in email, who runs Board and whose calendar invites come from);
+ *     no Settings tab (an old #board/settings link opens Members), the
+ *     reports' emails switch beside the reports, the quorum in Who's coming
  *   - a board member opening /admin/ lands on /admin/board/; Home (the next
  *     meeting with its place, Google Meet, already on their calendar, the
  *     makeovers by stage, coming up), answering whether they'll come, ticking
@@ -177,6 +179,8 @@ const mail = [];
 // board@soardcharity.com in Google: its owner, and someone who left the board long ago. The group permission comes later
 let boardGroup = [{ email: FOUNDER, role: 'OWNER', type: 'USER' }, { email: 'gone.member@example.com', role: 'MEMBER', type: 'USER' }];
 let groupScope = false;
+// Board keeps the board's papers itself (Nov 3 2026): it never reads Google Drive
+let driveCalls = 0;
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
   const url = String(input);
@@ -202,8 +206,7 @@ globalThis.fetch = async (input, init = {}) => {
     if (method === 'DELETE') { boardGroup = boardGroup.filter((x) => x.email !== decodeURIComponent(groupCall[1])); return new Response(null, { status: 204 }); }
   }
   if (url.startsWith('https://gmail.googleapis.com/')) return Response.json({ messages: [], resultSizeEstimate: 0 });
-  // The Board folder in Google Drive: an empty one here (tests/board-drive.test.mjs covers what's in it)
-  if (url.startsWith('https://www.googleapis.com/drive/v3/')) return Response.json({ files: [], id: 'root', name: 'Board', mimeType: 'application/vnd.google-apps.folder' });
+  if (url.startsWith('https://www.googleapis.com/drive/v3/')) { driveCalls += 1; return Response.json({ files: [] }); }
   // Who joined a Meet (the invite check reads a space's records): none here
   if (url.startsWith('https://meet.googleapis.com/v2/conferenceRecords')) { google.push({ method, url, body: null }); return Response.json({ conferenceRecords: [], participants: [] }); }
   const meet = url.match(/^https:\/\/meet\.googleapis\.com\/v2\/spaces\/([^?]+)/);
@@ -451,6 +454,8 @@ try {
   ok(await waitText(jane, /Getting ready/), 'a new meeting opens on Before, with Getting ready');
   ok(!/Use this agenda|Write the agenda|Lock them/.test(await text(jane)), 'the agenda is ready as drafted: nothing to approve, write or lock');
   const meetingId = decodeURIComponent((await jane.evaluate(() => location.hash)).split('/')[2]);
+  // Its time and place are the last meeting's (there's no setting for the usual ones)
+  { const fresh = await meetingNow(jane, meetingId); ok(fresh && [fresh.start, fresh.end, fresh.location, fresh.address].join('|') === '08:00|10:00|Example Hall|', `a new meeting takes the last meeting’s time and place (${fresh && [fresh.start, fresh.end, fresh.location].join(' ')})`); }
   const t1 = await text(jane);
   ok(await jane.evaluate(() => [...document.querySelectorAll('.agx-item__title')].some((i) => /^Minutes of the /.test(i.value))), 'the last meeting’s minutes are up for approval');
   const chips = await jane.evaluate(() => [...document.querySelectorAll('.bd-showpick .agx-live')].map((x) => x.textContent.trim()));
@@ -654,19 +659,38 @@ try {
   ok(await saved(jane), 'saved');
   ok(merged.actions.some((a) => a.text === 'Send the venue contract' && a.owner === 'alex-rivera'), 'the last meeting’s open action item carries over');
 
-  // Getting ready 1: the invite, from the president's calendar, with Google Meet and transcripts on
-  ok(/From your calendar to the board: Google Meet with transcripts on, the place and the link to the agenda/.test(await text(jane)), 'Getting ready says who the invite comes from and who it goes to (the organizer reads “your calendar”)');
+  // Getting ready 1: the invite, from the president's calendar, with Google Meet (SOARD's Google plan has no transcripts)
+  ok(/From your calendar to the board: Google Meet, the place and the link to the agenda/.test(await text(jane)) && !/transcript/i.test(await text(jane)), 'Getting ready says who the invite comes from and who it goes to (the organizer reads “your calendar”), and nothing about transcripts');
+  // The reports' emails, beside the reports (there's no Settings tab): Test until switched on, Off and back kept for every meeting
+  ok(await jane.$eval('#bm-asks', (e) => e.value).catch(() => '') === 'test' && /Emails asking for them/.test(await text(jane)), 'the reports’ emails switch is beside the reports, on Test');
+  await jane.select('#bm-asks', 'off');
+  ok(await waitText(jane, /No emails\. Presenters write their reports on the board page\./) && (await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).settings.asks)) === 'off', 'switched Off, it’s saved at once and says what it means');
+  await jane.select('#bm-asks', 'test');
+  ok(await waitText(jane, /Each email comes to you alone/) && (await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).settings.asks)) === 'test', 'and back to Test');
+  // The quorum, beside who's coming: a majority until the bylaws' number is set, for every meeting
+  ok(/2 of 3\s*make a quorum \(a majority\)/.test(await text(jane)), 'Who’s coming says how many make a quorum');
+  await clickText(jane, '.bm-quorum-line button', /^Change$/);
+  await jane.waitForSelector('#bm-q');
+  await type(jane, '#bm-q', '3');
+  await clickText(jane, '.bm-quorum-set button', /^Save$/);
+  ok(await waitText(jane, /3 of 3\s*make a quorum\./), 'a number set says so');
+  await clickText(jane, '.bm-quorum-line button', /^Change$/);
+  await jane.waitForSelector('#bm-q');
+  await jane.$eval('#bm-q', (e) => { const set = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set; set.call(e, ''); e.dispatchEvent(new Event('input', { bubbles: true })); });
+  await clickText(jane, '.bm-quorum-set button', /^Save$/);
+  ok(await waitText(jane, /2 of 3\s*make a quorum \(a majority\)/), 'emptied, it’s a majority again');
+  await shot(jane, '03c-reports-quorum');
   await clickText(jane, 'button', /^Send the invite$/);
   ok(await waitText(jane, /Invite sent from your calendar/), 'Send the invite asks, naming who Google emails, then sends it');
   // The invite's write (opening Board also runs the invite check, whose event has no guests)
   const post = google.find((c) => c.method === 'POST' && c.body?.attendees);
   ok(post && post.url.includes(`/calendars/${encodeURIComponent(FOUNDER)}/events?conferenceDataVersion=1&sendUpdates=all`), 'from the president’s own calendar, and Google emails the guests');
   ok(post && post.body.attendees.map((a) => a.email).sort().join() === [MEMBER, OTHER].sort().join(), 'to every board member with an email');
-  ok(post?.body.conferenceData?.createRequest?.conferenceSolutionKey?.type === 'hangoutsMeet' && google.some((c) => c.method === 'PATCH' && /meet\.googleapis\.com/.test(c.url) && c.body.config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration === 'ON'), 'with Google Meet, its transcripts turned on');
-  ok(/2 guests · Google Meet · transcripts on · the place goes on it when you add one/.test(await text(jane)), 'the step says what went out');
-  // The place, added after: one update once it has settled
+  ok(post?.body.conferenceData?.createRequest?.conferenceSolutionKey?.type === 'hangoutsMeet' && !google.some((c) => c.method === 'PATCH' && /meet\.googleapis\.com/.test(c.url)), 'with Google Meet, its settings left alone (no transcripts asked for)');
+  ok(/2 guests · Google Meet · at Example Hall/.test(await text(jane)), 'the step says what went out, at the last meeting’s place');
+  // The address, added after: one update once it has settled
   const before = google.length;
-  await clickText(jane, 'button', /^Add the place$/);
+  await clickText(jane, 'button', /^Change when and where$/);
   await jane.waitForSelector('#bd-loc');
   await type(jane, '#bd-loc', 'Example Hall');
   await type(jane, '#bd-addr', '100 Example St, Roswell, GA');
@@ -845,11 +869,35 @@ try {
   ok(/took out gone\.member@example\.com; 2 people added/.test(await text(jane)), 'Members: the group’s last change, by name');
   ok(JSON.stringify(boardGroup.map((x) => x.email).sort()) === JSON.stringify([MEMBER, FOUNDER, OTHER].sort()) && boardGroup.find((x) => x.email === FOUNDER).role === 'OWNER', 'Google’s group holds the board and the founder, who stays its owner');
   await shot(jane, '06b-members-group');
+  // Who runs Board, on Members: Board has no Settings, and an old link to it opens here
   await jane.goto(`${SITE}/admin/#board/settings`, { waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /Who can open the Board area/), 'Settings opens');
-  ok(await jane.$eval('#bd-from', (e) => e.value) === FOUNDER, 'Settings: invites come from the president until another is chosen');
-  ok(!(await jane.$('.bk-banks, .bk-books')) && /System → Settings/.test(await text(jane)), 'Board settings: no banks or QuickBooks, just where they are');
-  await shot(jane, '07-settings');
+  await jane.reload({ waitUntil: 'networkidle0' });
+  { const runsOk = await waitText(jane, /WHO RUNS BOARD|Who runs Board/); const seen = await jane.evaluate(() => ({ hash: location.hash, tabs: [...document.querySelectorAll('.hub-tab')].map((t) => t.textContent.trim()).join(), on: document.querySelector('.hub-tab.active')?.textContent.trim() }));
+    ok(runsOk && seen.tabs === 'Meetings,Documents,Members' && seen.on === 'Members', `an old Board → Settings link opens Members; Board’s tabs are Meetings, Documents and Members (${JSON.stringify(seen)})`); }
+  const runs = () => jane.$eval('.bd-runs', (e) => e.innerText);
+  ok(/Jane Doe\s*You[\s\S]*Invites come from your calendar/.test(await runs()) && !/Send invites from/.test(await runs()), 'Members: the president runs Board and the invites come from her calendar (“your”, to her); with one admin there’s nothing to choose');
+  ok(/Until someone is added or taken off, it’s the founders on People → Team/.test(await text(jane)), 'Members: until it’s saved, it’s the founders');
+  ok(!(await jane.$('.bk-banks, .bk-books')), 'Board: no banks or QuickBooks (System → Settings has them)');
+  await type(jane, '#bd-runs-add', 'pat@example.com');
+  await clickText(jane, '.bd-runs__add button', /^Add$/);
+  ok(await waitText(jane, /Only a soardcharity\.com sign-in can run Board/), 'Members: only a soardcharity.com sign-in can be added');
+  await type(jane, '#bd-runs-add', STAFF);
+  await clickText(jane, '.bd-runs__add button', /^Add$/);
+  ok(await waitText(jane, /Pat Lee can open Board now/) && /Pat Lee[\s\S]*Asks presenters for their reports from their Gmail/.test(await runs()) && /Send invites from Pat’s calendar/.test(await runs()), 'Members: someone added saves at once; the other admin asks for the reports, and the invites can come from their calendar');
+  ok((await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).settings.admins)).join() === [FOUNDER, STAFF].join(), 'saved');
+  await shot(jane, '07-runs-board');
+  // On a phone: nothing past the edge, every button whole
+  await jane.setViewport({ width: 390, height: 900, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await sleep(300);
+  ok(await overflow(jane) <= 0 && await jane.$$eval('.bd-runs button, .bd-runs__add button', (bs) => bs.every((b) => b.getBoundingClientRect().right <= innerWidth && b.scrollWidth <= b.clientWidth + 1)), 'Who runs Board fits a phone');
+  await jane.evaluate(() => document.querySelector('.bd-runs')?.scrollIntoView({ block: 'start' }));
+  await jane.screenshot({ path: join(OUT, '07-runs-board-390.png') });
+  await jane.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
+  // Leaving the phone's isMobile reloads the page: its buttons are back before one is pressed
+  await jane.waitForFunction(() => [...document.querySelectorAll('.bd-runs button')].some((b) => b.textContent.trim() === 'Take off'), { timeout: 15000 }).catch(() => {});
+  await clickText(jane, '.bd-runs button', /^Take off$/);
+  ok(await waitText(jane, /Pat Lee is off Board/) && !/Pat Lee/.test(await runs()), 'Members: taken off, after asking');
+  ok((await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).settings.admins)).join() === FOUNDER, 'saved');
   // The money's sources: System → Settings, in the menu for the Board area's admins
   await jane.goto(`${SITE}/admin/#settings`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
@@ -870,12 +918,12 @@ try {
   const boards = calendar[FOUNDER].find((e) => /^board[0-9a-f]/.test(e.id) && e.attendees);
   boards.attendees = boards.attendees.map((a) => (a.email === MEMBER ? { ...a, responseStatus: 'accepted' } : a));
   await DB.exec("DELETE FROM board_state WHERE key = 'calendar'");
-  // The heartbeat's check of Calendar, Meet and transcripts (an event with no guests, deleted again)
+  // The heartbeat's check of Calendar, Meet and attendance (an event with no guests, deleted again)
   const checked = await maybeCheckInvites(env);
   ok(checked?.ok && calendar[FOUNDER].some((e) => /^boardcheck/.test(e.id) && e.status === 'cancelled'), 'the invite check passes and deletes its event');
   await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' }); // a new hash alone doesn't load the page again
-  ok(await waitText(jane, /Past meetings’ minutes and packets come from the Board folder in Google Drive, and anything else for them from your email/) && !/Meetings come from/.test(await text(jane)), 'Meetings says where past meetings’ papers come from, and nothing about meetings coming from a calendar');
+  ok(await waitText(jane, /Past meetings’ agendas and minutes also come in from your email by themselves/) && !/Google Drive|Meetings come from/.test(await text(jane)), 'Meetings says where past meetings’ papers come from (email, never Drive), and nothing about meetings coming from a calendar');
   ok(await waitText(jane, /Ready\. The board was emailed the link/), 'the next meeting: everything done says Ready');
   const all = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings);
   ok(!all.some((m) => m.date === calDay), `the event on the calendar isn’t a meeting (${all.map((m) => m.date).join(', ')})`);
@@ -897,9 +945,6 @@ try {
   await jane.reload({ waitUntil: 'networkidle0' });
   ok(all.find((m) => m.id === meetingId)?.invite?.replies?.['alex-rivera'] === 'accepted', 'the reply to Board’s invite comes back onto its meeting');
   await shot(jane, '08-meetings');
-  await jane.goto(`${SITE}/admin/#board/settings`, { waitUntil: 'networkidle0' });
-  await jane.reload({ waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /Invites with Google Meet\s+Board can put meetings on the calendar with a Meet/) && /Meet transcripts\s+Turned on for every invite/.test(await text(jane)) && /Attendance from Google Meet\s+After a meeting, who joined is marked/.test(await text(jane)) && /Answers to the invites\s+Read/.test(await text(jane)), 'Settings: the invite check says Calendar, Meet, transcripts and attendance all work, and the invites’ answers were read');
   // Its day, time and place are typed in Board, invite or not; the call is the invite's Google Meet
   await jane.goto(`${SITE}/admin/#board/meeting/${meetingId}`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
@@ -2220,6 +2265,7 @@ try {
     }
   }
 
+  ok(driveCalls === 0, 'Board never reads Google Drive');
   ok(!consoleErrors.length, `no console errors${consoleErrors.length ? `: ${consoleErrors.slice(0, 5).join(' | ')}` : ''}`);
 } catch (err) {
   failures.push(`crashed: ${err.stack || err.message}`);

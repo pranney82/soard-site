@@ -196,7 +196,7 @@ export async function finishConnect(env, { code, state, realmId, fetchImpl = fet
   await ready(env.DB);
   const pending = await readState(env.DB, 'books-oauth');
   const fresh = pending.state && now - Date.parse(pending.at || '') < STATE_MS;
-  if (!fresh || !state || state !== pending.state) throw Object.assign(new Error('That sign-in didn’t start from Board → Settings, or took longer than 15 minutes'), { status: 400, code: 'STATE' });
+  if (!fresh || !state || state !== pending.state) throw Object.assign(new Error('That sign-in didn’t start from System → Settings, or took longer than 15 minutes'), { status: 400, code: 'STATE' });
   await writeState(env.DB, 'books-oauth', {});
   if (!/^\d{1,24}$/.test(String(realmId || '')) || !code) throw Object.assign(new Error('Intuit didn’t say which company'), { status: 400, code: 'REALM' });
   const t = tokenFields(await tokenCall(env, { grant_type: 'authorization_code', code: String(code), redirect_uri: REDIRECT_URI }, { fetchImpl }), now);
@@ -1024,7 +1024,7 @@ export async function booksNow(DB, { now = Date.now() } = {}) {
   };
 }
 
-/** Board → Settings: the company by name, when it was read and through which day, any trouble (never an amount) */
+/** System → Settings: the company by name, when it was read and through which day, any trouble (never an amount) */
 export async function booksStatus(env) {
   const configured = booksConfigured(env);
   const base = { configured, env: envName(env), redirectUri: REDIRECT_URI, connected: null };

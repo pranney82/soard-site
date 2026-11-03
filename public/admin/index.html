@@ -22848,7 +22848,7 @@ ${sections || '<p>No one yet.</p>'}
     const advisoryNew = sharedPoll('/api/advisory-applications-admin?count=1', (j) => (j?.success ? j.new || 0 : 0), 300e3);
     // Families at Applied, waiting for a first look: Applications' badge
     const applicantsNew = sharedPoll('/api/applicants-count', (j) => (j?.success ? j.applied || 0 : 0), 300e3);
-    // One of the Board area's admins (Board → Settings): the menu and ⌘K show Board only to them
+    // One of the Board area's admins (Board → Members): the menu and ⌘K show Board only to them
     const boardAdminGate = sharedPoll('/api/board-admin?me=1', (j) => j?.admin === true, 30 * 60e3);
     const navShown = (it, boardAdmin) => it.gate !== 'board' || boardAdmin;
 

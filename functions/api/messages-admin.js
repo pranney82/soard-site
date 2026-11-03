@@ -615,7 +615,7 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       });
     case 'board-meeting-invite': {
       const m = sampleBoardMeeting();
-      const organizer = await organizerFor(env.DB).catch(() => '') || 'The organizer in Board → Settings';
+      const organizer = await organizerFor(env.DB).catch(() => '') || 'The organizer on Board → Members';
       return {
         channel: 'invite', from: `${organizer}'s Google Calendar`, to: 'Every active board member with an email on People → Board, plus Peter and Holly',
         subject: `Invitation: ${meetingName(m)}`,

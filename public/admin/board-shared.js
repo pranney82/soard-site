@@ -26,7 +26,8 @@
  *                replies: { slug: accepted | declined | tentative | invited }, eventId, organizer,
  *                callFrom (where its video link is: meet | conference | place | notes) }, or null
  *   invite       the calendar invite Board sent or took over (functions/api/_board-invite.js):
- *                { eventId, organizer, sentAt, updatedAt, meet, guests, transcript, error,
+ *                { eventId, organizer, sentAt, updatedAt, meet, guests, transcript, error (both
+ *                only on invites from before Nov 3 2026: SOARD's Google plan has no transcripts),
  *                place, when, notes (a fingerprint of the agenda it carries), emails,
  *                replies (to Board's own invite, like calendar's) }, or null
  *   agendaFrom   where the agenda came from: { kind: template (SOARD's usual outline) |

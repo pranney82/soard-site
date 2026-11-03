@@ -26,7 +26,6 @@
  *   unsign { docId, slug }                    a member's signature this year taken off (its copy goes with it)
  *   ask-to-sign { slugs?, test? }             an email to each picked member (none: everyone) who hasn't signed this
  *                                             year's papers, asking them to; test: to the admin only
- *   place-signed { driveId, docId, slug }     whose a signed copy in Drive is, when Board couldn't tell (_board-drive.js)
  *   update-file { id, kind, staffOnly, name }, delete-file { id }
  *   save-settings { settings }
  *   sync-access                               try the sign-in list again (offered only when it failed)
@@ -57,7 +56,6 @@ import { groupStatus, syncBoardGroup } from './_board-group.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-mail.js';
 import { sendInvite, cancelInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites } from './_board-invite.js';
-import { maybeReadBoardDrive, driveStatus, placeSigned, DEFAULT_DRIVE_FOLDER } from './_board-drive.js';
 import { meetingName } from '../../public/admin/board-shared.js';
 import { readMinutesInto } from './_board-minutes.js';
 import { activityOverview, memberActivity } from './_board-activity.js';
@@ -131,13 +129,11 @@ export async function onRequestGet(context) {
     context.waitUntil?.(maybeReadBoardMail(env, { minAgeMs: 10 * 60 * 1000 }));
     // The invite check, when it hasn't passed: a change made in Google shows on the next open
     context.waitUntil?.(maybeCheckInvites(env, { retryMs: 10 * 60 * 1000 }));
-    // Past meetings from the Board folder in Google Drive, when the last look is over 10 minutes old
-    context.waitUntil?.(maybeReadBoardDrive(env, { minAgeMs: 10 * 60 * 1000 }));
     const [settings, meetings, docs, members, people, access, numbers, recipients, calendar] = await Promise.all([
       getSettings(env.DB), listMeetings(env.DB), listDocs(env.DB), memberStatus(env.DB), roster(env.DB),
       accessStatus(env), liveNumbers(env), packetList(env.DB), calendarStatus(env.DB),
     ]);
-    const [mail, mailRecent, welcome, check, drive, group] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome'), inviteCheck(env.DB), driveStatus(env.DB), groupStatus(env)]);
+    const [mail, mailRecent, welcome, check, group] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome'), inviteCheck(env.DB), groupStatus(env)]);
     return Response.json({
       ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome,
       // board@soardcharity.com following the board (_board-group.js)
@@ -145,10 +141,8 @@ export async function onRequestGet(context) {
       // Who has had the sign-in email and whether one is going out right now (its claim, _board.js sendWelcome), from one
       // moment: Board access says so instead of offering another
       ...(await welcomeNow(env.DB)),
-      // The Board folder in Google Drive Board reads, and how its last look went
-      drive: env.GOOGLE_CALENDAR_KEY ? { ...drive, folder: settings.driveFolder || DEFAULT_DRIVE_FOLDER } : null,
       // For the one-time Google setup: the service account's client ID and its Cloud project (neither is secret),
-      // and the heartbeat's check that the invite's Calendar, Meet and transcripts work
+      // and the heartbeat's check that the invite's Calendar, Meet and attendance work
       google: env.GOOGLE_CALENDAR_KEY ? { clientId: clientIdOf(env), project: projectOf(env), check } : null,
       people: { board: people.board, staff: people.staff },
       // Mercury answers only through SOARD's relay (_mercury.js), so the balance needs both keys
@@ -277,13 +271,6 @@ export async function onRequestPost(context) {
         if (!(await unsignDoc(env, docId, String(body.slug || '')))) return fail('That signature is gone', 404);
         await audit(env, me, 'deleted', 'Board signature taken off');
         return Response.json({ ok: true, doc: (await listDocs(env.DB)).find((d) => d.id === docId) });
-      }
-      case 'place-signed': {
-        const docId = String(body.docId || '');
-        if (!ID.test(docId)) return fail('Which document?');
-        const placed = await placeSigned(env, { driveId: String(body.driveId || ''), docId, slug: String(body.slug || ''), by: me });
-        await audit(env, me, 'updated', `Board signature placed from Drive for ${placed.name}`);
-        return Response.json({ ok: true, doc: (await listDocs(env.DB)).find((d) => d.id === docId), drive: await driveStatus(env.DB) });
       }
       case 'update-file':
         needId();

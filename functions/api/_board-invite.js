@@ -2,13 +2,12 @@
  * A board meeting's calendar invite, from Holly's calendar, with Google Meet
  * ===========================================================================
  * "Send the invite" in Board puts the meeting on the organizer's Google
- * calendar (Settings → Invites come from; the president among the founders
- * until saved) and Google sends the invitations:
+ * calendar (Board → Members: whose calendar invites come from; the president
+ * among the founders until one is chosen) and Google sends the invitations:
  *   - guests: every active board member with an email on People → Board,
  *     and the Board area's admins (Holly and Peter)
- *   - Google Meet as the video call, with transcripts turned on when Google
- *     allows it (the Meet API's meetings.space.settings scope; Board says so
- *     when it doesn't)
+ *   - Google Meet as the video call (no transcripts: SOARD's Google plan
+ *     doesn't have them)
  *   - the place and address when the meeting has them; added later, or
  *     changed, the invite updates two minutes after the typing stops
  *     (one email from Google to every guest, not one per word)
@@ -34,8 +33,6 @@ import { meetingName, timeRange, longDate, todayEastern } from '../../public/adm
 import { easternParts } from './_reveals.js';
 
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
-const MEET_API = 'https://meet.googleapis.com/v2';
-export const MEET_SETTINGS_SCOPE = 'https://www.googleapis.com/auth/meetings.space.settings';
 const TZ = 'America/New_York';
 
 /** The service account's Google Cloud project (for the APIs it must have turned on), from its key */
@@ -43,7 +40,7 @@ export function projectOf(env) {
   try { const k = parseServiceAccount(env.GOOGLE_CALENDAR_KEY); return String(k.project_id || (k.client_email || '').split('@')[1]?.split('.')[0] || ''); } catch { return ''; }
 }
 
-/** Who sends the invite: Settings, else the founder who's president, else the first admin */
+/** Who sends the invite: the admin chosen on Board → Members, else the founder who's president, else the first admin */
 export async function organizerFor(DB) {
   const s = await readSettings(DB);
   const admins = await boardAdmins(DB, s);
@@ -140,34 +137,6 @@ const notesKey = (m) => {
   return h.toString(36);
 };
 
-/** Turn on transcripts for the event's Meet (Meet REST API). → 'on' | 'needs-setup' | 'error' */
-async function transcriptOn(env, organizer, meetCode, fetchImpl, now) {
-  if (!meetCode) return { transcript: 'error', error: 'No Meet code on the event' };
-  let token;
-  try { token = await accessToken(env, organizer, { fetchImpl, now, scope: MEET_SETTINGS_SCOPE }); } catch (err) {
-    return { transcript: 'needs-setup', error: /unauthorized_client|access_denied/i.test(err.message) ? 'Google Admin hasn’t allowed meetings.space.settings yet' : String(err.message).slice(0, 200) };
-  }
-  const call = async (method, path, body) => {
-    const res = await fetchImpl(`${MEET_API}${path}`, { method, headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(15000) });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) throw Object.assign(new Error(`Google Meet answered ${res.status}: ${data?.error?.message || ''}`.trim()), { status: res.status });
-    return data;
-  };
-  try {
-    const space = await call('GET', `/spaces/${encodeURIComponent(meetCode)}`);
-    const done = await call('PATCH', `/${space.name}?updateMask=config.artifactConfig.transcriptionConfig.autoTranscriptionGeneration`, { config: { artifactConfig: { transcriptionConfig: { autoTranscriptionGeneration: 'ON' } } } });
-    // What Google kept, read back: an edition without transcripts may take the setting and leave it off
-    const kept = (done?.config ? done : await call('GET', `/${space.name}`))?.config?.artifactConfig?.transcriptionConfig?.autoTranscriptionGeneration;
-    if (kept !== 'ON') return { transcript: 'error', error: `Google Meet left transcripts ${kept ? String(kept).toLowerCase() : 'off'} (SOARD’s Google Workspace plan may not include them)` };
-    return { transcript: 'on', error: '' };
-  } catch (err) {
-    const setup = err.status === 403 && /has not been used|is disabled|insufficient|permission/i.test(err.message);
-    // What production answered on Oct 28 2026, with every scope and API in place: the account can't have transcripts
-    if (/not available to the user/i.test(err.message)) return { transcript: 'error', error: 'Google says transcripts aren’t available on the organizer’s account. SOARD’s Google Workspace plan may not include them (Business Standard and up do), or they’re turned off in Google Admin → Apps → Google Workspace → Google Meet → Meet video settings.' };
-    return { transcript: setup ? 'needs-setup' : 'error', error: String(err.message).slice(0, 300) };
-  }
-}
-
 const meetCodeOf = (ev) => ev?.conferenceData?.conferenceId || (String(ev?.hangoutLink || '').match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/) || [])[1] || '';
 
 /** Google sometimes answers a new Meet as still being made: asked again (three times, a second apart) until it has its link */
@@ -191,7 +160,7 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   if (!m.date) throw Object.assign(new Error('Give the meeting a date first'), { status: 400 });
   // Board's invite (sent before, or new), from whoever it came from
   const organizer = m.invite?.organizer || await organizerFor(env.DB);
-  if (!organizer) throw Object.assign(new Error('No one to send it from: add yourself in Board → Settings'), { status: 409 });
+  if (!organizer) throw Object.assign(new Error('No one to send it from: add yourself in Board → Members'), { status: 409 });
   const token = await accessToken(env, organizer, { fetchImpl, now });
   const cal = `/calendars/${encodeURIComponent(organizer)}/events`;
   const eventId = m.invite?.eventId || eventIdFor('board', m.id);
@@ -237,8 +206,6 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
     ? await gcal(token, 'PATCH', `${cal}/${encodeURIComponent(eventId)}?conferenceDataVersion=1&sendUpdates=${send}`, existing.status === 'cancelled' ? { status: 'confirmed', ...times(m), summary: title, ...body } : body, fetchImpl)
     : await gcal(token, 'POST', `${cal}?conferenceDataVersion=1&sendUpdates=all`, { id: eventId, ...times(m), summary: title, ...body }, fetchImpl), fetchImpl);
   const meet = ev.hangoutLink || '';
-  const code = meetCodeOf(ev);
-  const t = meet && !(prior?.transcript === 'on' && prior.meet === meet) ? await transcriptOn(env, organizer, code, fetchImpl, now) : { transcript: prior?.transcript || '', error: prior?.error || '' };
   const at = new Date(now).toISOString();
   // Who's on it now and how they answered, by board member, as Google has it: someone just added is invited at once,
   // not only once the calendar is next read (up to an hour)
@@ -250,7 +217,7 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
   }
   const invite = {
     eventId: ev.id || eventId, organizer, sentAt: prior?.sentAt || at, updatedAt: at, meet, guests: (ev.attendees || attendees).length,
-    emails: (ev.attendees || attendees).map((a) => normEmail(a.email)), place: place || ev.location || '', location: ev.location || '', when: whenOf(m), notes: notesKey(m), ...t,
+    emails: (ev.attendees || attendees).map((a) => normEmail(a.email)), place: place || ev.location || '', location: ev.location || '', when: whenOf(m), notes: notesKey(m),
     replies,
   };
   // Google Meet is the meeting's video call from now on (onto the meeting as it is now: a save made meanwhile stays)
@@ -358,22 +325,22 @@ async function rewordInvites(env, { fetchImpl, now }) {
 }
 
 const CHECK = 'invite-check';
-// 2: who joined by Meet (the attendance) is checked too
-const CHECK_VERSION = 2;
+// 2: who joined by Meet (the attendance) is checked too; 3: transcripts aren't (SOARD's Google plan has none)
+const CHECK_VERSION = 3;
 const HOUR = 60 * 60 * 1000;
 const DAY = 24 * HOUR;
 
 /**
  * The invite's Google parts, proved without inviting anyone: a private event
  * on the organizer's calendar with Google Meet (no guests, no emails, no
- * reminders), transcripts turned on for its Meet and read back, its
- * attendance readable (./_board-attendance.js), then the event deleted.
- * → { ok (all of it), calendar, meet, transcript ('on' | 'needs-setup' | 'error'), attendance ('ok' | 'needs-setup' | 'error'), error, attendanceError, leftover }
+ * reminders), its attendance readable (./_board-attendance.js), then the
+ * event deleted.
+ * → { ok (all of it), calendar, meet, attendance ('ok' | 'needs-setup' | 'error'), error, attendanceError, leftover }
  */
 export async function checkInvites(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const organizer = await organizerFor(env.DB);
-  const out = { ok: false, organizer, calendar: '', meet: '', transcript: '', attendance: '', error: '', attendanceError: '', leftover: '' };
-  if (!organizer) return { ...out, error: 'No one to send invites from: Board → Settings' };
+  const out = { ok: false, organizer, calendar: '', meet: '', attendance: '', error: '', attendanceError: '', leftover: '' };
+  if (!organizer) return { ...out, error: 'No one to send invites from: add one of Board’s admins on Board → Members' };
   let token;
   try { token = await accessToken(env, organizer, { fetchImpl, now }); } catch (err) { return { ...out, calendar: 'error', error: String(err.message).slice(0, 300) }; }
   const cal = `/calendars/${encodeURIComponent(organizer)}/events`;
@@ -383,7 +350,7 @@ export async function checkInvites(env, { fetchImpl = fetch, now = Date.now() } 
   try {
     const ev = await meetReady(token, `${cal}/${id}`, await gcal(token, 'POST', `${cal}?conferenceDataVersion=1&sendUpdates=none`, {
       id, summary: 'Board invite check (Board deletes this in a moment)',
-      description: 'Board checks it can send board meeting invites with Google Meet and transcripts. Nobody was invited, and Board deletes this event by itself.',
+      description: 'Board checks it can send board meeting invites with Google Meet. Nobody was invited, and Board deletes this event by itself.',
       start: { dateTime: `${day}T03:00:00`, timeZone: TZ }, end: { dateTime: `${day}T03:15:00`, timeZone: TZ },
       transparency: 'transparent', visibility: 'private', reminders: { useDefault: false, overrides: [] },
       conferenceData: { createRequest: { requestId: `board-check-${now}`, conferenceSolutionKey: { type: 'hangoutsMeet' } } },
@@ -393,11 +360,10 @@ export async function checkInvites(env, { fetchImpl = fetch, now = Date.now() } 
     const code = meetCodeOf(ev);
     if (!code) return { ...out, meet: 'error', error: 'Google Calendar made the event without a Google Meet' };
     out.meet = 'ok';
-    const t = await transcriptOn(env, organizer, code, fetchImpl, now);
     const { whoJoined } = await import('./_board-attendance.js');
     const a = await whoJoined(env, { organizer, code }, { fetchImpl, now });
     const attendance = a.status === 'needs-setup' ? 'needs-setup' : a.status === 'error' ? 'error' : 'ok';
-    Object.assign(out, { ok: t.transcript === 'on' && attendance === 'ok', transcript: t.transcript, error: t.error, attendance, attendanceError: a.error });
+    Object.assign(out, { ok: attendance === 'ok', attendance, attendanceError: a.error });
   } catch (err) {
     out.calendar ||= 'error';
     out.error = String(err.message).slice(0, 300);
@@ -413,24 +379,20 @@ export async function checkInvites(env, { fetchImpl = fetch, now = Date.now() } 
 
 /**
  * The heartbeat: the check above until it passes (hourly while a Google
- * setting is missing; daily when Google says no for another reason, like a
- * plan without transcripts; and when Board is opened, at most every ten
- * minutes, while it hasn't passed), then hourly, transcripts turned on
- * for any upcoming invite that went out before Google allowed them, so a fix
- * in Google Admin reaches every invite by itself. → the check's state. Never throws.
+ * setting is missing; daily when Google says no for another reason; and when
+ * Board is opened, at most every ten minutes, while it hasn't passed), then
+ * hourly, a check event Google wouldn't delete. → the check's state. Never throws.
  */
 export async function maybeCheckInvites(env, { fetchImpl = fetch, now = Date.now(), retryMs = 0 } = {}) {
   try {
     if (!env.DB || !env.GOOGLE_CALENDAR_KEY) return null;
     const st = await readState(env.DB, CHECK);
     const fresh = st.version === CHECK_VERSION;
-    const fixable = st.ok || st.transcript === 'needs-setup' || st.attendance === 'needs-setup' || st.calendar === 'error' || st.leftover;
+    const fixable = st.ok || st.attendance === 'needs-setup' || st.calendar === 'error' || st.leftover;
     // Board opened (retryMs): a check that didn't pass is tried again sooner, so a change in Google shows on the next open
     const wait = fixable ? HOUR : DAY;
     if (fresh && now - Date.parse(st.at || 0) < (retryMs && !st.ok ? Math.min(retryMs, wait) : wait)) return st;
     const at = new Date(now).toISOString();
-    const today = todayEastern(now);
-    const behind = (await listMeetings(env.DB)).filter((m) => m.date >= today && m.invite?.meet && m.invite.transcript !== 'on');
     let next = { ...st, version: CHECK_VERSION, at };
     // A check event Google wouldn't delete last time goes first
     if (st.leftover && st.organizer) {
@@ -442,16 +404,9 @@ export async function maybeCheckInvites(env, { fetchImpl = fetch, now = Date.now
     }
     if (!fresh || !st.ok) {
       const c = await checkInvites(env, { fetchImpl, now });
-      // A leftover from before stays with its organizer until it's gone
-      next = next.leftover ? { ...next, ...c, organizer: next.organizer, leftover: next.leftover, checkedAt: at } : { ...next, ...c, checkedAt: at };
-    }
-    if (next.transcript === 'on') {
-      for (const m of behind) {
-        const t = await transcriptOn(env, m.invite.organizer, meetCodeOf({ hangoutLink: m.invite.meet }), fetchImpl, now);
-        await patchMeeting(env.DB, m.id, (cur) => (cur.invite?.meet === m.invite.meet ? { ...cur, invite: { ...cur.invite, ...t } } : cur));
-        // Google stopped allowing it since the check: the check again on the next hour, to say what's missing
-        if (t.transcript === 'needs-setup') next = { ...next, ok: false, transcript: 'needs-setup', error: t.error };
-      }
+      // The new check takes the old one's place whole (nothing of an older version's stays); a leftover from before stays
+      // with its organizer until it's gone
+      next = next.leftover ? { version: CHECK_VERSION, at, ...c, organizer: next.organizer, leftover: next.leftover, checkedAt: at } : { version: CHECK_VERSION, at, ...c, checkedAt: at };
     }
     await writeState(env.DB, CHECK, next);
     return next;

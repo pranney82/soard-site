@@ -69,7 +69,7 @@ export const youAnd = (admins = [], me = '') => {
 };
 
 // ─── Addresses ──────────────────────────────────────────────────────
-export const TABS = [['meetings', 'Meetings'], ['documents', 'Documents'], ['members', 'Members'], ['settings', 'Settings']];
+export const TABS = [['meetings', 'Meetings'], ['documents', 'Documents'], ['members', 'Members']];
 export const STEPS = ['before', 'during', 'after'];
 export function readHash() {
   const m = location.hash.match(/^#board(?:\/([^?]*))?/);
@@ -77,6 +77,8 @@ export function readHash() {
   const [a, b, c] = decodeURIComponent(m[1] || '').split('/');
   if (a === 'meeting' && b) return { tab: 'meetings', meetingId: b, step: STEPS.includes(c) ? c : null };
   if (a === 'practice') return { tab: 'meetings', meetingId: null, step: null, practice: true };
+  // Settings went into the pages they set (Nov 3 2026): who runs Board and whose calendar invites come from are on Members
+  if (a === 'settings') return { tab: 'members', meetingId: null, step: null };
   return { tab: TABS.some(([id]) => id === a) ? a : 'meetings', meetingId: null, step: null };
 }
 export const hashFor = (r) => (r.practice ? '#board/practice' : r.meetingId ? `#board/meeting/${encodeURIComponent(r.meetingId)}${r.step ? `/${r.step}` : ''}` : r.tab === 'meetings' ? '#board' : `#board/${r.tab}`);
@@ -1036,6 +1038,22 @@ export const STYLES = `
   .bm-reports__s { flex: none; display: inline-flex; align-items: center; gap: 0.25rem; font-size: var(--fs-xs); color: var(--color-text-muted); white-space: nowrap; }
   .bm-reports__row.is-in .bm-reports__s { color: var(--tone-success-fg); font-weight: 650; }
   .bm-reports__s svg { width: 13px; height: 13px; }
+  /* The reports' emails (one switch for every meeting) and the quorum beside who's coming */
+  .bm-asks { margin-top: 0.85rem; }
+  .bm-asks__row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.4rem 0.75rem; }
+  .bm-asks__l { font-size: var(--fs-sm); font-weight: 650; color: var(--color-text); }
+  .bm-asks__pick { width: auto; min-width: 12.5rem; max-width: 100%; }
+  .bm-asks__hint { margin: 0.35rem 0 0; font-size: var(--fs-xs); line-height: 1.5; }
+  .bm-quorum-line { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 0.75rem; margin: 0.85rem 0 0; padding-top: 0.75rem; border-top: 1px solid var(--color-border); font-size: var(--fs-sm); color: var(--color-text-secondary); }
+  .bm-quorum-line strong { color: var(--color-text); font-variant-numeric: tabular-nums; }
+  .bm-quorum-set { margin: 0.85rem 0 0; padding-top: 0.75rem; border-top: 1px solid var(--color-border); display: grid; gap: 0.4rem; }
+  .bm-quorum-set__n { width: 5.5rem; }
+  /* Members: who runs Board */
+  .bd-runs .bd-row { flex-wrap: wrap; }
+  .bd-runs__name { font-weight: 600; color: var(--color-text); }
+  .bd-runs__add { padding: 0.85rem 1.25rem 1.1rem; border-top: 1px solid var(--color-border); }
+  .bd-runs__add .form-input { flex: 1 1 16rem; max-width: 22rem; }
+  .bd-runs__add .form-hint { flex-basis: 100%; margin: 0; }
 
   /* Files, by what they are */
   .bf-group + .bf-group { margin-top: 0.85rem; }

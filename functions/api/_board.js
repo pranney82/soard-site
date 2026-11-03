@@ -18,7 +18,7 @@
  *   board_signatures    a member's signature on a paper every member signs, per
  *                       year: typed on the board page, their signed copy (a
  *                       board file owned 'signed', staff-only), or their copy
- *                       in Drive (./_board-drive.js), and the wording signed
+ *                       in Drive (brought in until Nov 3 2026), and the wording signed
  *   board_signatures_earlier  a member's signature on an earlier wording, kept
  *                       (its copy too) once they sign the next one
  *   board_doc_versions  each wording of a paper written in Board, kept: what
@@ -122,7 +122,6 @@ export async function getSettings(DB) {
     admins: await boardAdmins(DB, s),
     adminsSaved: Array.isArray(s.admins) && s.admins.length > 0,
     invitesFrom: await (await import('./_board-invite.js')).organizerFor(DB),
-    driveFolder: s.driveFolder || '',
     // Emails asking presenters for their reports (./_board-asks.js): 'test' (to the asker alone) until switched 'on'; or 'off'
     asks: ['on', 'off'].includes(s.asks) ? s.asks : 'test',
   };
@@ -138,8 +137,6 @@ export async function saveSettings(DB, patch, by) {
     next.admins = list.slice(0, 10);
   }
   if (patch.invitesFrom !== undefined) next.invitesFrom = normEmail(patch.invitesFrom);
-  // The Board folder in Google Drive (./_board-drive.js): a link to it or its id; '' for the usual one
-  if (patch.driveFolder !== undefined) next.driveFolder = (String(patch.driveFolder || '').match(/folders\/([\w-]{10,})/) || String(patch.driveFolder || '').trim().match(/^([\w-]{10,})$/) || [])[1] || '';
   if (patch.asks !== undefined) next.asks = ['on', 'off', 'test'].includes(patch.asks) ? patch.asks : 'test';
   if (patch.quorum !== undefined) next.quorum = Math.max(0, Math.min(50, Math.round(Number(patch.quorum) || 0)));
   if (patch.defaults) {
@@ -351,14 +348,23 @@ async function savePractice(DB, current, raw, { by, base = null } = {}) {
   return getPractice(DB, current.id);
 }
 
-/** A new meeting from Settings' template, saved (not shared yet) */
+/**
+ * A new meeting from the agenda template, saved (not shared yet). Its time and place are the last meeting's (the one
+ * before its day, else the next one), so the usual ones need no setting: a meeting moved somewhere new carries on there
+ */
 export async function createMeeting(env, { date, by }) {
   await ensureSchema(env.DB);
   if (!isDate(date)) throw Object.assign(new Error('Pick the meeting’s date'), { status: 400 });
   const [settings, meetings, people] = await Promise.all([getSettings(env.DB), listMeetings(env.DB), roster(env.DB)]);
   const founders = people.staff.filter((p) => /founder/i.test(p.title));
+  const real = meetings.filter((x) => !x.practice && !x.notBoard && isDate(x.date));
+  const nearest = [...real.filter((x) => x.date <= date).sort((a, b) => b.date.localeCompare(a.date)), ...real.filter((x) => x.date > date).sort((a, b) => a.date.localeCompare(b.date))];
+  const timed = nearest.find((x) => x.start && x.end);
+  // A real place only: an older meeting's "place" that's a call (Teams, Zoom, a link) or TBD isn't one (Meet is the call)
+  const placed = nearest.find((x) => x.location && !/\b(teams|zoom|webex|google meet|tbd|to be determined)\b|https?:\/\//i.test(`${x.location} ${x.address || ''}`));
+  const defaults = { ...settings.defaults, ...(timed ? { start: timed.start, end: timed.end } : {}), ...(placed ? { location: placed.location, address: placed.address || '' } : {}) };
   const m = newMeeting({
-    date, template: settings.template, meetings, defaults: settings.defaults,
+    date, template: settings.template, meetings, defaults,
     board: people.board.map((p) => ({ slug: p.slug, name: p.name, org: p.organization })),
     staff: founders.map((p) => ({ slug: p.slug, name: p.name })),
   });
@@ -562,7 +568,7 @@ export function cleanDoc(raw = {}) {
 
 /**
  * How a signature came: typed on the board page; the member's own signed copy, added there; a copy a Board admin
- * was handed for them (`staff`); their copy already in SOARD's Drive (./_board-drive.js, `drive`)
+ * was handed for them (`staff`); their copy in SOARD's Drive (`drive`: Board read those until Nov 3 2026, when papers moved into Board)
  */
 export const SIGNED_BY = ['typed', 'copy', 'staff', 'drive'];
 const thisYear = () => Number(todayEastern().slice(0, 4));
@@ -792,8 +798,8 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
 }
 
 /**
- * A member's copy in Drive as their signature for its year (./_board-drive.js). One they already gave that year,
- * typed or added, stays theirs (`replace`: a Board admin saying whose a copy is)
+ * A member's copy in Drive as their signature for its year, as Board recorded those until Nov 3 2026 (papers are
+ * kept in Board now). One they already gave that year, typed or added, stays theirs (`replace`)
  */
 export async function signFromDrive(DB, { docId, slug, year, name, driveId, driveName, at, by = 'Google Drive', version = 0 }, { replace = false } = {}) {
   await ensureSchema(DB);
@@ -801,7 +807,7 @@ export async function signFromDrive(DB, { docId, slug, year, name, driveId, driv
 }
 
 const DB_doc = async (DB, id) => { const r = await DB.prepare('SELECT data FROM board_docs WHERE id = ?').bind(id).first(); return r ? cleanDoc(parse(r.data)) : null; };
-/** A signature taken off (a copy added for the wrong member, say): its copy goes with it; one from Drive isn't placed again */
+/** A signature taken off (a copy added for the wrong member, say): its copy goes with it */
 export async function unsignDoc(env, docId, slug, year = thisYear()) {
   await ensureSchema(env.DB);
   const row = await env.DB.prepare('SELECT * FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).first();
@@ -816,7 +822,6 @@ export async function unsignDoc(env, docId, slug, year = thisYear()) {
       .bind(docId, slug, year, earlier.name, earlier.at, earlier.how, earlier.file_id, earlier.drive_id, earlier.drive_name, earlier.added_by, earlier.version).run();
     await env.DB.prepare('DELETE FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? AND version = ?').bind(docId, slug, year, earlier.version).run();
   }
-  if (row.drive_id) await env.DB.prepare("UPDATE board_drive_signed SET state = 'off' WHERE drive_id = ?").bind(row.drive_id).run().catch(() => {});
   return true;
 }
 
@@ -2216,7 +2221,7 @@ export async function maybeDraftAgendas(env, { now = Date.now() } = {}) {
     const real = meetings.filter((x) => !x.notBoard);
     for (const m of real.filter((x) => x.date >= today && agendaIsDraft(x, settings.template))) {
       const prev = draftSource(m, real, settings.template);
-      // Already drafted from it, unless that agenda was read again (from Drive or email) since
+      // Already drafted from it, unless that agenda was read again (from email) since
       const since = prev?.agendaFrom?.at && m.agendaFrom?.at && prev.agendaFrom.at > m.agendaFrom.at;
       // A draft an older drafter made is drafted again (DRAFTER: the minutes item and the live facts are found better now)
       const current = m.agendaFrom?.kind === 'last-meeting' && m.agendaFrom.name === draftName(prev) && (m.agendaFrom.v || 1) >= DRAFTER;
@@ -2237,7 +2242,7 @@ export async function maybeDraftAgendas(env, { now = Date.now() } = {}) {
  * Once for each newer agenda reader (board-shared.js AGENDA_READER): an agenda
  * an older reader filled from an emailed file, nobody has changed since, read
  * again from the copy Board keeps. Kept as it was when it reads no better.
- * Google Drive's are read again from Drive (./_board-drive.js). → ids read again
+ * → ids read again
  */
 export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
   const done = [];
@@ -2264,13 +2269,12 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *     and so is the board's Google Group, board@soardcharity.com (./_board-group.js)
  *   - hourly, the board meetings on Peter and Holly's calendars (./_board-calendar.js)
  *   - each minute, a new place onto an invite that's out once it has settled; hourly until it
- *     passes, the check that Calendar, Meet, transcripts and attendance work (./_board-invite.js)
+ *     passes, the check that Calendar, Meet and attendance work (./_board-invite.js)
  *   - once a newer agenda reader ships, emailed agendas it reads better (maybeRereadEmailAgendas); then
  *   - every ten minutes, agendas nobody wrote drafted from the last one (maybeDraftAgendas), a meeting's
  *     numbers locked on its day (maybeLockNumbers), and
  *     who joined a Google Meet that ended (./_board-attendance.js)
- *   - last, past meetings from the Board folder in Google Drive (./_board-drive.js), then board mail
- *     (./_board-mail.js): every minute while there's a backlog, hourly after; then minutes read without
+ *   - last, board mail (./_board-mail.js): every minute while there's a backlog, hourly after; then minutes read without
  *     Workers AI read again for their motions and action items (./_board-minutes.js maybeFinishMinutes)
  *   - hourly, QuickBooks' revenue and expenses for the year so far (./_quickbooks.js)
  *   - every 15 minutes, the year's major gifts from Zeffy (./_board-gifts.js)
@@ -2292,14 +2296,10 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await maybeDraftAgendas(env, { now });
     await maybeLockNumbers(env, { fetchImpl, now });
     await (await import('./_board-attendance.js')).maybeFillAttendance(env, { fetchImpl, now });
-    // Last: past meetings' minutes and packets from Google Drive, then board mail (each reads for seconds while it has
-    // a backlog; mail waits out a minute Drive was busy, so one heartbeat stays within its time)
-    const drive = await (await import('./_board-drive.js')).maybeReadBoardDrive(env, { fetchImpl, now });
-    if (!drive?.busy) {
-      await maybeReadBoardMail(env, { fetchImpl, now });
-      // Minutes read without Workers AI (it ran out of time): their motions and action items, one meeting at a time
-      await (await import('./_board-minutes.js')).maybeFinishMinutes(env, { now });
-    }
+    // Last: board mail (it reads for seconds while it has a backlog), then minutes read without Workers AI (it ran out
+    // of time): their motions and action items, one meeting at a time
+    await maybeReadBoardMail(env, { fetchImpl, now });
+    await (await import('./_board-minutes.js')).maybeFinishMinutes(env, { now });
     // The banks connected through Plaid every six hours (they keep their own times), then the day's cash
     await (await import('./_plaid.js')).maybeReadBanks(env, { fetchImpl, now });
     // QuickBooks' year so far, hourly once it's connected
@@ -2356,9 +2356,9 @@ export async function boardFacts(env) {
     books,
     lastPacketAt: packet,
     invite: {
-      ahead: invites.length, needsSetup: invites.filter((m) => m.invite.transcript === 'needs-setup').length, failing: invites.filter((m) => m.invite.transcript === 'error').length,
+      ahead: invites.length,
       waiting: Object.keys(pending || {}).length, lastAt: stored.map((m) => m.invite?.updatedAt).filter(Boolean).sort().at(-1) || null,
-      check: check ? { ok: !!check.ok, transcript: check.transcript || '', attendance: check.attendance || '', checkedAt: check.checkedAt || null, error: check.error ? String(check.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null } : null,
+      check: check ? { ok: !!check.ok, attendance: check.attendance || '', checkedAt: check.checkedAt || null, error: check.error ? String(check.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null } : null,
     },
     // The agendas drafted from the last one, and who joined by Meet, for the meetings that had it
     drafts: { ahead: stored.filter((m) => m.date >= today && m.agendaFrom?.kind === 'last-meeting').length, lastAt: stored.map((m) => (m.agendaFrom?.kind === 'last-meeting' ? m.agendaFrom.at : '')).filter(Boolean).sort().at(-1) || null },
@@ -2371,9 +2371,5 @@ export async function boardFacts(env) {
       configured: Boolean(env.GOOGLE_CALENDAR_KEY), ok: !!mail.ok, needsScope: !!mail.needsScope, checkedAt: mail.checkedAt || null, waiting: mail.backlog ?? mail.waiting ?? 0, failing: (mail.errors || []).length,
       meetings: mail.totals?.meetings || 0, files: mail.totals?.files || 0, skipped: mail.totals?.skipped || 0,
     },
-    drive: await (await import('./_board-drive.js')).driveStatus(env.DB).then((d) => ({
-      checkedAt: d.checkedAt || null, needsScope: !!d.needsScope, apiOff: !!d.apiOff, failing: (d.errors || []).length,
-      backlog: d.backlog || 0, meetings: d.meetings || 0, files: d.files || 0,
-    })),
   };
 }

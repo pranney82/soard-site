@@ -18,8 +18,8 @@
  * readMinutes reads; applyMinutes (pure) puts what was read onto a meeting:
  * the minutes are the record of who was there, the agenda keeps its items and
  * their documents, each taking its notes from the minutes. readMinutesInto is
- * the admin's upload (POST /api/board-admin read-minutes). Board's Google Drive
- * and email readers (./_board-drive.js, ./_board-mail.js) use the same two for
+ * the admin's upload (POST /api/board-admin read-minutes). Board's email reader
+ * (./_board-mail.js) uses the same two for
  * minutes that come in by themselves, leaving attendance a person marked as it is.
  * Without Workers AI (or when it fails) the rules alone read them; never throws.
  */

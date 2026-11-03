@@ -2,9 +2,9 @@
  * Board (admin)
  * =============
  * Loaded on demand by the admin's Board area (#board), which only its admins
- * see (Settings → Who can open it; the founders until saved). Meetings are
- * added here (New meeting), and only here; past ones' agendas, minutes and
- * financials come from Drive and email. The agenda drafts itself and the minutes, dropped in, fill in
+ * see (Members → Who runs Board; the founders until saved). Meetings are
+ * added here (New meeting), and only here, and so are the board's papers;
+ * past meetings' agendas, minutes and financials also come in from email. The agenda drafts itself and the minutes, dropped in, fill in
  * the rest; here are the invite and the packet before, presenting it during,
  * and the minutes after (./board-meeting.js). Board members see what's shared on their own page
  * (/admin/board/, ./board/portal.js), signed in with the same emailed code.
@@ -12,15 +12,15 @@
  *   #board                         Meetings: the next one (what to do next, its agenda), past meetings, open action items, from email
  *   #board/meeting/<id>[/<step>]   one meeting (before | during | after)
  *   #board/documents               bylaws, policies, budgets; who has signed this year
- *   #board/members                 who can sign in, their last visit, the sign-in email
- *   #board/settings                who can open this area, who invites come from, quorum, the Drive folder
+ *   #board/members                 who can sign in, their last visit, the sign-in email; who runs Board and sends the invites
+ * (There's no Settings: each setting is where it's used. Old #board/settings links open Members.)
  * Server: /api/board-admin. Rules: ./board-shared.js. Shared bits: ./board-ui.js.
  */
 
 import { useState, useEffect, useRef, useMemo } from './vendor.js';
 import { ask, askToLeave } from './ask.js';
 import { viewerLink, sizeText } from './file-viewer.js';
-import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords, driveLink, dayOf, signedHow } from './board-ui.js';
+import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords, driveLink, dayOf, signedHow, Face } from './board-ui.js';
 import { MeetingEditor, agendaSource } from './board-meeting.js';
 import { ReportEditor, Report, PAPER_LETTERS } from './board-report.js';
 import { mdPlain } from './board-md.js';
@@ -75,7 +75,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
   const ctx = { data, setData, load, addToast, go, putMeeting, markDirty, setStep };
 
   // Not one of its admins: said as that, with who to ask (nothing to try again)
-  if (error && !data && error.refused) return html`<div class="card empty" role="alert"><p class="empty__title">Board is open to its admins</p><p class="empty__text">${error.text}. A founder adds people in Board → Settings.</p></div>`;
+  if (error && !data && error.refused) return html`<div class="card empty" role="alert"><p class="empty__title">Board is open to its admins</p><p class="empty__text">${error.text}. A founder adds people in Board → Members.</p></div>`;
   if (error && !data) return html`<div class="card empty" role="alert"><p class="empty__title">The board didn’t load</p><p class="empty__text">${error.text}</p><div class="empty__actions"><button class="btn btn-ghost btn-sm" onClick=${load}>Try again</button></div></div>`;
   if (!data) return html`<div class="area-loading"><span class="spinner" /></div>`;
   const meeting = route.meetingId ? data.meetings.find((m) => m.id === route.meetingId) : null;
@@ -87,12 +87,11 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
       </div>
       <div class="page-header">
         <div>
-          <h2>${{ meetings: 'Board meetings', documents: 'Board documents', members: 'Board members', settings: 'Board settings' }[route.tab]}</h2>
+          <h2>${{ meetings: 'Board meetings', documents: 'Board documents', members: 'Board members' }[route.tab]}</h2>
           <p class="page-sub">${{
             meetings: 'The next meeting and what’s left to do for it, then every past meeting with its agenda and minutes. The board sees a meeting once it’s shared.',
             documents: 'Bylaws, policies, budgets and plans, on the board page for every member. Ask for a signature where the board signs each year.',
-            members: 'Who’s on the board, how they get in, when each last signed in, and who has signed this year’s papers.',
-            settings: 'Who can open this area, who invites come from, the quorum, and where past minutes come from. The banks and QuickBooks the board page’s money comes from are in System → Settings.',
+            members: 'Who’s on the board, how they get in, when each last signed in and who has signed this year’s papers. Then the staff who run Board.',
           }[route.tab]}</p>
         </div>
         <a class="btn btn-ghost btn-sm" href=${PAGE} target="_blank" rel="noopener">Open the board page</a>
@@ -102,7 +101,6 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
       ? (meeting ? html`<${MeetingEditor} key=${meeting.id} meeting=${meeting} step=${route.step} ctx=${ctx} />` : html`<div class="card empty"><p class="empty__title">That meeting isn’t here</p><div class="empty__actions"><button class="btn btn-ghost btn-sm" onClick=${() => go({})}>All meetings</button></div></div>`)
       : route.tab === 'documents' ? html`<${DocumentsTab} ctx=${ctx} />`
       : route.tab === 'members' ? html`<${MembersTab} ctx=${ctx} />`
-      : route.tab === 'settings' ? html`<${SettingsTab} ctx=${ctx} />`
       : html`<${MeetingsTab} ctx=${ctx} />`}
   </div>`;
 }
@@ -160,7 +158,7 @@ const whose = (admins = [], me = '', joiner = 'and') => {
 function SourcesLine({ data }) {
   const c = data.calendar || {};
   if (c.errors?.length) return html`<div class="notice notice--warn"><div class="notice__body"><strong>Couldn’t read every invite’s answers.</strong> ${c.errors.join(' · ')}</div></div>`;
-  return html`<p class="bd-muted bh-sources">Past meetings’ minutes and packets come from the Board folder in Google Drive, and anything else for them from ${whose(data.settings.admins, data.me)} email.</p>`;
+  return html`<p class="bd-muted bh-sources">Past meetings’ agendas and minutes also come in from ${whose(data.settings.admins, data.me)} email by themselves.</p>`;
 }
 
 /**
@@ -194,15 +192,13 @@ function NotInBoard({ ctx }) {
 const GROUP_SCOPE = 'https://www.googleapis.com/auth/admin.directory.group.member';
 /** What “Email the board how to sign in” asks before it sends */
 const WELCOME_ASK = 'From you: the board page’s link, what’s waiting for them there, and the three sign-in steps.';
-const SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/meetings.space.settings', 'https://www.googleapis.com/auth/meetings.space.readonly', 'https://www.googleapis.com/auth/drive.readonly', GROUP_SCOPE];
-/** What still needs a Google setting: email, Drive, Meet transcripts, Meet attendance (each only once it's known) */
+const SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send', 'https://www.googleapis.com/auth/meetings.space.readonly', GROUP_SCOPE];
+/** What still needs a Google setting: email, Meet attendance (each only once it's known) */
 function googleNeeds(data) {
   const mail = data.mail || {};
   const check = data.google?.check;
   return {
     mail: !!(mail.needsScope || (mail.errors || []).some((e) => /has not been used|disabled|403/i.test(e))),
-    drive: !!(data.drive?.needsScope || data.drive?.apiOff),
-    transcript: check?.transcript === 'needs-setup' || data.meetings.some((m) => m.invite?.transcript === 'needs-setup'),
     attendance: check?.attendance === 'needs-setup' || data.meetings.some((m) => m.fromMeet?.status === 'needs-setup'),
   };
 }
@@ -217,9 +213,9 @@ function GoogleSetup({ data }) {
   if (check && (check.calendar === 'error' || check.meet === 'error') && check.error) {
     return html`<div class="notice notice--warn"><div class="notice__body"><strong>${check.calendar === 'error' ? 'Board can’t write invites on the calendar.' : 'Google Calendar won’t add Google Meet to invites.'}</strong> Google said: ${check.error} Board checks again by itself.</div></div>`;
   }
-  if (!need.mail && !need.drive && !need.transcript && !need.attendance) return null;
-  const what = [need.drive && 'bring in past minutes and packets from the Board folder in Google Drive', need.mail && 'read past agendas and minutes from email', need.transcript && 'turn on transcripts in Google Meet', need.attendance && 'fill in attendance from who joined the Google Meet'].filter(Boolean);
-  const apis = [need.mail && ['gmail.googleapis.com', 'Gmail API'], need.drive && ['drive.googleapis.com', 'Google Drive API'], (need.transcript || need.attendance) && ['meet.googleapis.com', 'Google Meet REST API']].filter(Boolean);
+  if (!need.mail && !need.attendance) return null;
+  const what = [need.mail && 'read past agendas and minutes from email', need.attendance && 'fill in attendance from who joined the Google Meet'].filter(Boolean);
+  const apis = [need.mail && ['gmail.googleapis.com', 'Gmail API'], need.attendance && ['meet.googleapis.com', 'Google Meet REST API']].filter(Boolean);
   const scopes = SCOPES.join(',');
   const api = (id) => `https://console.cloud.google.com/apis/library/${id}${g.project ? `?project=${encodeURIComponent(g.project)}` : ''}`;
   const copy = async () => { try { await navigator.clipboard.writeText(scopes); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* the line is there to select */ } };
@@ -396,7 +392,7 @@ function MeetingsTab({ ctx }) {
       </div>
       ${importing ? html`<div style="padding:0 1.25rem 1.25rem"><${ImportPanel} ctx=${ctx} onDone=${(m) => { setImporting(false); if (m) go({ meetingId: m.id }); }} /></div>` : null}
       ${past.length ? years.map(([y, list]) => html`<div class="bd-year">${y}</div><ul class="bd-row-list">${list.map((m) => html`<${MeetingRow} m=${m} go=${go} />`)}</ul>`)
-        : html`<div class="empty empty--inline"><p class="empty__text">${data.drive?.backlog || data.mail?.backlog ? 'Board is bringing in past meetings from Google Drive now. They show up here as they come in.' : 'Past meetings come in from the Board folder in Google Drive and the calendars by themselves.'}</p></div>`}
+        : html`<div class="empty empty--inline"><p class="empty__text">${data.mail?.backlog ? 'Board is bringing in past meetings from email now. They show up here as they come in.' : 'Past meetings come in from email by themselves. Have one’s agenda or minutes? Add a past meeting from a file.'}</p></div>`}
     </div>
 
     ${actions.length ? html`<div class="card" style="padding:0">
@@ -474,7 +470,7 @@ function ImportPanel({ ctx, onDone }) {
   };
   const items = parsed ? parsed.sections.reduce((n, s) => n + s.items.length, 0) : 0;
   return html`<div class="bd-import">
-    <p class="bd-muted" style="margin:0 0 0.75rem">For a past meeting that isn’t in Google Drive or email: choose its agenda or minutes (PDF or Word), or paste the text. The date, place, who was there (the x’s), each section, its items and the notes under them come across. Check it over before it’s added.</p>
+    <p class="bd-muted" style="margin:0 0 0.75rem">For a past meeting that didn’t come in from email: choose its agenda or minutes (PDF or Word), or paste the text. The date, place, who was there (the x’s), each section, its items and the notes under them come across. Check it over before it’s added.</p>
     <div class="bd-drop" onDragOver=${(e) => { e.preventDefault(); e.currentTarget.classList.add('is-over'); }} onDragLeave=${(e) => e.currentTarget.classList.remove('is-over')}
       onDrop=${(e) => { e.preventDefault(); e.currentTarget.classList.remove('is-over'); choose(e.dataTransfer.files[0]); }}>
       <label class="btn btn-ghost btn-sm">Choose the file<input type="file" accept="application/pdf,.pdf,.docx" hidden onChange=${(e) => choose(e.target.files[0])} /></label>
@@ -580,50 +576,6 @@ function Signers({ d, ctx, onDoc }) {
       </li>`;
     })}</ul>
     <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => add(e.target.files[0])} />
-  </div>`;
-}
-
-/** Signed copies in Drive Board couldn't place by their names: whose each is and which paper, said once (or left out) */
-function DriveCopies({ ctx, signable, onDoc }) {
-  const { data, setData, addToast } = ctx;
-  const waiting = data.drive?.signed?.waiting || [];
-  const [picks, setPicks] = useState({});
-  const [busy, setBusy] = useState('');
-  if (!waiting.length || !signable.length) return null;
-  const pickOf = (w) => ({ slug: w.slug || '', docId: w.docId || (signable.length === 1 ? signable[0].id : ''), ...(picks[w.id] || {}) });
-  const set = (w, patch) => setPicks((x) => ({ ...x, [w.id]: { ...pickOf(w), ...patch } }));
-  const place = async (w, leave = false) => {
-    const pk = pickOf(w);
-    if (!leave && !pk.slug) { addToast('Choose whose signed copy it is', 'error'); return; }
-    if (!leave && !pk.docId) { addToast('Choose which paper it is', 'error'); return; }
-    setBusy(w.id);
-    const j = await call({ action: 'place-signed', driveId: w.id, docId: leave ? '' : pk.docId, slug: leave ? '' : pk.slug });
-    setBusy('');
-    if (!j.ok) { addToast(j.error, 'error'); return; }
-    if (j.doc) onDoc(j.doc);
-    setData((x) => ({ ...x, drive: x.drive ? { ...x.drive, signed: j.drive?.signed || x.drive.signed } : x.drive }));
-  };
-  return html`<div class="card" style="padding:0">
-    <div class="sec-head"><h3>Signed copies in Drive to place <span class="count">${waiting.length}</span></h3><span class="sec-head__hint">${(data.drive.signed.folders || []).join(', ')}</span></div>
-    <ul class="bd-row-list">${waiting.map((w) => {
-      const pk = pickOf(w);
-      return html`<li class="bd-row" key=${w.id}>
-        <div class="bd-row__main">
-          <a class="bd-row__title" href=${driveLink(w.id)} target="_blank" rel="noopener">${w.name}</a>
-          <div class="bd-row__meta">${[w.why, w.year ? `Put in Drive in ${w.year}` : ''].filter(Boolean).join(' · ')}</div>
-        </div>
-        <div class="bd-tags">
-          <select class="form-select bd-select" aria-label=${`Whose signed copy is ${w.name}?`} value=${pk.slug} onChange=${(e) => set(w, { slug: e.target.value })}>
-            <option value="">Whose is it?</option>${data.members.map((p) => html`<option value=${p.slug}>${p.name}</option>`)}
-          </select>
-          ${signable.length > 1 ? html`<select class="form-select bd-select" aria-label=${`Which paper is ${w.name}?`} value=${pk.docId} onChange=${(e) => set(w, { docId: e.target.value })}>
-            <option value="">Which paper?</option>${signable.map((d) => html`<option value=${d.id}>${d.title}</option>`)}
-          </select>` : null}
-          <button class="btn btn-primary btn-sm" disabled=${busy === w.id} onClick=${() => place(w)}>${busy === w.id ? 'Saving…' : 'Count it'}</button>
-          <button class="btn btn-ghost btn-sm" disabled=${busy === w.id} onClick=${() => place(w, true)}>It isn’t a signature</button>
-        </div>
-      </li>`;
-    })}</ul>
   </div>`;
 }
 
@@ -881,11 +833,10 @@ function DocumentsTab({ ctx }) {
     if (!j.ok) { addToast(j.error, 'error'); if (j.deleted) call().then((r) => { if (r.ok) setData(r); }); return; }
     putDoc(j.doc);
   };
-  const signable = data.docs.filter((d) => d.sign);
   // The file to read words from: one just chosen, else the paper's own
   const source = draft && readable(draft.file) ? draft.file : draft && readable(draft.existing) ? draft.existing : null;
   const sourceFrom = draft && readable(draft.file) ? 'new' : 'existing';
-  // Its file newer than its words, and not the one they were read from (next year's PDF from Drive, say)
+  // Its file newer than its words, and not the one they were read from (next year's PDF, say)
   const newerOf = (d, f) => !!(d.body && f && d.wordsAt && f.id !== d.wordsFile && f.at > d.wordsAt);
   const fileLink = (f, label) => html`<a class="link" ...${viewerLink(viewerFiles([f]), 0)}>${label}</a>`;
   return html`
@@ -961,8 +912,7 @@ function DocumentsTab({ ctx }) {
           ${d.sign && open === d.id ? html`<${Signers} d=${d} ctx=${ctx} onDoc=${putDoc} />` : null}
         </li>`;
       })}</ul>` : html`<div class="empty empty--inline"><p class="empty__title">No documents yet</p><p class="empty__text">Start with the bylaws, the board expectations and the conflict of interest policy.</p></div>`}
-    </div>
-    <${DriveCopies} ctx=${ctx} signable=${signable} onDoc=${putDoc} />`;
+    </div>`;
 }
 
 // ─── Members ────────────────────────────────────────────────────────
@@ -1310,113 +1260,68 @@ function MembersTab({ ctx }) {
   return html`
     <${AccessPanel} ctx=${ctx} ready=${ready} working=${working} welcome=${welcome} />
     <${BoardActivity} data=${data} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy}
-      onAsk=${(slug) => askSign({ slugs: [slug] }, `ask:${slug}`)} onAskAll=${askAll} onAskPreview=${() => askSign({ test: true }, 'ask:me')} />`;
+      onAsk=${(slug) => askSign({ slugs: [slug] }, `ask:${slug}`)} onAskAll=${askAll} onAskPreview=${() => askSign({ test: true }, 'ask:me')} />
+    <${RunsBoard} ctx=${ctx} />`;
 }
 
-// ─── Settings ───────────────────────────────────────────────────────
-function SettingsTab({ ctx }) {
-  const { data, setData, addToast } = ctx;
-  const pick = (x) => ({ admins: x.admins, invitesFrom: x.invitesFrom, quorum: x.quorum, defaults: x.defaults, template: x.template, driveFolder: x.driveFolder || '', asks: x.asks || 'test' });
-  const [s, setS] = useState(() => pick(data.settings));
-  const [newAdmin, setNewAdmin] = useState('');
-  const [saving, setSaving] = useState(false);
-  const dirty = JSON.stringify(s) !== JSON.stringify(pick(data.settings));
-  useEffect(() => { ctx.markDirty(dirty, 'the settings'); return () => ctx.markDirty(false); }, [dirty]);
-  const setDef = (patch) => setS({ ...s, defaults: { ...s.defaults, ...patch } });
-  const save = async () => {
-    setSaving(true);
-    const j = await call({ action: 'save-settings', settings: s });
-    setSaving(false);
-    if (!j.ok) { addToast(j.error, 'error'); return; }
-    setData((d) => ({ ...d, settings: j.settings }));
-    setS(pick(j.settings));
-    addToast('Board settings saved', 'info');
-  };
-  const addAdmin = () => {
-    const e = newAdmin.trim().toLowerCase();
-    if (!/^[^\s@]+@soardcharity\.com$/.test(e)) { addToast('Only a soardcharity.com sign-in can open the Board area', 'error'); return; }
-    if (!s.admins.includes(e)) setS({ ...s, admins: [...s.admins, e] });
-    setNewAdmin('');
-  };
-  return html`
-    <div class="card">
-      <div class="bd-card-head"><h3>Who can open the Board area</h3><p>The agenda, notes, minutes and files here are for these people only. Other staff don’t see Board in the menu, and its pages refuse them. Past agendas come from their email.</p></div>
-      <ul class="bm-people">${s.admins.map((e) => html`<li class="bm-person" key=${e} style="min-height:0"><span>${e}${e === data.me ? html` <span class="tag">You</span>` : null}</span>
-        ${e === data.me ? null : html`<button class="btn btn-ghost btn-sm btn-row-danger" onClick=${() => setS({ ...s, admins: s.admins.filter((x) => x !== e) })}>Remove</button>`}</li>`)}</ul>
-      <div class="bd-inline" style="margin-top:0.75rem">
-        <input class="form-input" type="email" aria-label="Add someone" placeholder="name@soardcharity.com" value=${newAdmin} onInput=${(e) => setNewAdmin(e.target.value)} onKeyDown=${(e) => { if (e.key === 'Enter') addAdmin(); }} />
-        <button class="btn btn-ghost btn-sm" disabled=${!newAdmin.trim()} onClick=${addAdmin}>Add</button>
-      </div>
-      ${data.settings.adminsSaved ? null : html`<p class="form-hint">Until this is saved, it’s the founders on People → Team.</p>`}
-    </div>
-    <div class="card">
-      <div class="bd-card-head"><h3>Meetings</h3></div>
-      <div class="bd-grid3">
-        <div class="form-group"><label class="form-label" for="bd-from">Invites come from</label><select id="bd-from" class="form-select" value=${s.invitesFrom} onChange=${(e) => setS({ ...s, invitesFrom: e.target.value })}>${s.admins.map((e) => html`<option value=${e}>${firstOf(e)}’s calendar (${e})</option>`)}</select><p class="form-hint">Every board member, ${s.admins.map(firstOf).join(' and ')} are invited.</p></div>
-        <div class="form-group"><label class="form-label" for="bd-q">Quorum (board members)</label><input id="bd-q" class="form-input" type="number" min="0" max="50" value=${s.quorum || ''} placeholder=${`A majority${data.members?.length ? `: ${majority(data.members.length)}` : ''}`} onInput=${(e) => setS({ ...s, quorum: Number(e.target.value) || 0 })} /><p class="form-hint">Empty is a majority of the board on each meeting’s list${data.members?.length ? ` (${majority(data.members.length)} of ${data.members.length} today)` : ''}. A number here only if the bylaws say otherwise.</p></div>
-        <div class="form-group"><label class="form-label" for="bd-ds">Usually starts</label><input id="bd-ds" class="form-input" type="time" value=${s.defaults.start} onInput=${(e) => setDef({ start: e.target.value })} /></div>
-        <div class="form-group"><label class="form-label" for="bd-de">Usually ends</label><input id="bd-de" class="form-input" type="time" value=${s.defaults.end} onInput=${(e) => setDef({ end: e.target.value })} /></div>
-        <div class="form-group"><label class="form-label" for="bd-dl">Usual place</label><input id="bd-dl" class="form-input" value=${s.defaults.location} onInput=${(e) => setDef({ location: e.target.value })} /></div>
-        <div class="form-group"><label class="form-label" for="bd-da">Its address</label><input id="bd-da" class="form-input" value=${s.defaults.address} onInput=${(e) => setDef({ address: e.target.value })} /></div>
-      </div>
-    </div>
-    <${AsksCard} s=${s} setS=${setS} />
-    <div class="card">
-      <div class="bd-card-head"><h3>Past meetings from Google Drive</h3><p>Board reads the Board folder in Google Drive: in each year’s folder (“2025 Board”), a folder per meeting (“7.24.25 Meeting”), with its minutes and packet. They come onto that meeting by themselves, on the board page. Loose files in a year’s folder (policies, photos, sign-up sheets) stay in Drive.</p></div>
-      <div class="form-group" style="max-width:44rem">
-        <label class="form-label" for="bd-drive">The Board folder</label>
-        <input id="bd-drive" class="form-input" value=${s.driveFolder} placeholder="The usual Board folder (Sunshine - Leadership → Board)" onInput=${(e) => setS({ ...s, driveFolder: e.target.value })} />
-        <p class="form-hint">Paste a folder’s link to read another one. ${data.drive?.folder ? html`<a class="link" href=${`https://drive.google.com/drive/folders/${data.drive.folder}`} target="_blank" rel="noopener">Open the folder Board reads</a>` : null}</p>
-      </div>
-    </div>
-    <${GoogleStatus} data=${data} />
-    <div class="bd-savebar">
-      <span class="bd-savebar__state">${saving ? 'Saving…' : dirty ? 'Unsaved changes' : 'Saved'}</span>
-      <button class="btn btn-primary" disabled=${saving || !dirty} onClick=${save}>Save</button>
-    </div>`;
-}
-
+// ─── Who runs Board ─────────────────────────────────────────────────
 /**
- * The emails asking presenters for their reports, and the chair's review (functions/api/_board-asks.js): sent from the
- * admin the invites don't come from, the organizer copied. Test sends each one to that admin alone, once a meeting.
+ * The staff who run Board (the agenda, the minutes, the money, the files): only they see Board in the menu, and its pages
+ * refuse anyone else. One of them sends the invites, from their calendar; another asks presenters for their reports from
+ * their Gmail (functions/api/_board-asks.js). Each change saves as it's made. Until someone is added or taken off it's
+ * the founders on People → Team. The rest of what was Settings lives where it's used: the reports' emails beside the
+ * meeting's reports, the quorum in Who's coming, a new meeting's time and place from the last one.
  */
-function AsksCard({ s, setS }) {
-  const asker = s.admins.find((e) => e !== s.invitesFrom) || s.invitesFrom || s.admins[0] || '';
-  const copied = s.invitesFrom && s.invitesFrom !== asker ? firstOf(s.invitesFrom) : '';
-  const hint = { test: `Each email comes to ${firstOf(asker)} alone, once for each meeting, its subject saying who it would go to. The board gets nothing.`, on: 'The board gets them on the schedule above. Replies go on the agenda.', off: 'No emails. Presenters write their reports on the board page.' };
-  return html`<div class="card">
-    <div class="bd-card-head"><h3>Reports from presenters</h3><p>Two weeks before each meeting, each board member presenting an item is emailed from ${firstOf(asker)}’s Gmail${copied ? `, ${copied} copied,` : ''} for their report, due a week before the meeting. A reminder, then past due with the chair copied. Six days before, the chair and Holly get the whole agenda to review, Peter copied; approving it emails it to the board.</p></div>
-    <div class="form-group" style="max-width:24rem">
-      <label class="form-label" for="bd-asks">Emails to presenters and the chair</label>
-      <select id="bd-asks" class="form-select" value=${s.asks} onChange=${(e) => setS({ ...s, asks: e.target.value })}>
-        <option value="test">Test: to ${firstOf(asker)} only</option>
-        <option value="on">On: to the board</option>
-        <option value="off">Off</option>
-      </select>
-      <p class="form-hint">${hint[s.asks] || hint.test}</p>
-    </div>
-  </div>`;
-}
-
-/** What Board does with Google, and whether each part works (from the hourly looks and the invite check) */
-function GoogleStatus({ data }) {
-  if (!data.google) return null;
-  const c = data.calendar || {};
-  const mail = data.mail || {};
-  const check = data.google.check;
-  const need = googleNeeds(data);
-  const row = (ok, t, s) => html`<li class=${`bm-task is-${ok === true ? 'done' : ok === false ? 'next' : 'todo'}`}><span class="bm-task__mark" aria-hidden="true">${ok === true ? CHECK : null}</span><div><div class="bm-task__t">${t}</div><div class="bm-task__s">${s}</div></div></li>`;
-  return html`<div class="card">
-    <div class="bd-card-head"><h3>Google</h3><p>What Board does through SOARD’s Google account, as the last looks found it.${check?.checkedAt ? ` Invites checked ${ago(check.checkedAt)}.` : ''}</p></div>
-    <ul class="bm-tasks">
-      ${row(c.ok && !c.errors?.length ? true : c.errors?.length ? false : null, 'Answers to the invites', c.errors?.length ? c.errors.join(' · ') : c.checkedAt ? `Read ${ago(c.checkedAt)}.` : 'Not read yet.')}
-      ${row(need.drive ? false : data.drive?.ok ? true : data.drive?.errors?.length ? false : null, 'Past minutes and packets from Google Drive', need.drive ? 'Needs the Drive permission (Meetings shows how).' : data.drive?.errors?.length ? data.drive.errors.join(' · ') : data.drive?.checkedAt ? `${plural(data.drive.folders || 0, 'meeting')} found, ${plural(data.drive.files || 0, 'file')} brought in${data.drive.backlog ? `, ${data.drive.backlog} still to read` : ''}. Read ${ago(data.drive.checkedAt)}.` : 'Not read yet.')}
-      ${row(need.drive ? false : data.drive?.docs?.count ? true : data.drive?.docs ? false : null, 'Bylaws and SOARD’s papers from Google Drive', need.drive ? 'Needs the Drive permission (Meetings shows how).' : data.drive?.docs ? `${plural(data.drive.docs.count || 0, 'document')} on Documents${data.drive.docs.manual ? `, from “${data.drive.docs.manual}”` : ''}${data.drive.docs.missing?.length ? `. Not found in Drive: ${data.drive.docs.missing.join(', ')}` : ''}. Read ${ago(data.drive.docs.checkedAt)}.` : 'Read once the past meetings are in.')}
-      ${row(need.mail ? false : mail.ok ? true : null, 'Agendas and minutes from email', need.mail ? 'Needs the Gmail permission (Meetings shows how).' : mail.checkedAt ? `Read ${ago(mail.checkedAt)}.` : 'Not read yet.')}
-      ${row(!check ? null : check.calendar === 'ok' && check.meet === 'ok', 'Invites with Google Meet', !check ? 'Not checked yet.' : check.calendar === 'ok' && check.meet === 'ok' ? 'Board can put meetings on the calendar with a Meet.' : check.error)}
-      ${row(!check ? null : check.transcript === 'on' ? true : check.transcript === 'needs-setup' ? false : null, 'Meet transcripts', !check ? 'Not checked yet.' : check.transcript === 'on' ? 'Turned on for every invite.' : check.transcript === 'needs-setup' ? 'Needs the meetings.space.settings permission (Meetings shows how).' : check.error || 'Not available.')}
-      ${data.group?.configured ? row(data.group.ok && data.group.current ? true : data.group.failedAt && data.group.needs !== 'empty' ? false : null, `${data.group.group} follows the board`, data.group.ok && data.group.current ? `Has every board member at their email on People → Board. Checked ${ago(data.group.syncedAt)}.` : data.group.needs === 'scope' ? 'Needs the admin.directory.group.member permission (Members shows how).' : data.group.needs === 'empty' ? 'Left as it is until a board member has an email on People → Board.' : data.group.failedAt ? 'Members says what Google said.' : 'Catching up with People → Board.') : null}
-      ${row(!check?.attendance ? null : check.attendance === 'ok', 'Attendance from Google Meet', !check?.attendance ? 'Not checked yet.' : check.attendance === 'ok' ? 'After a meeting, who joined is marked “Video”.' : check.attendance === 'needs-setup' ? 'Needs the meetings.space.readonly permission (Meetings shows how).' : check.attendanceError)}
-    </ul>
+function RunsBoard({ ctx }) {
+  const { data, setData, addToast } = ctx;
+  const s = data.settings;
+  const [adding, setAdding] = useState('');
+  const [busy, setBusy] = useState('');
+  const staffOf = (e) => (data.people?.staff || []).find((p) => String(e).startsWith(`${String(p.name || '').toLowerCase().match(/[a-z]+/)?.[0]}@`)) || null;
+  const nameOf = (e) => staffOf(e)?.name || e;
+  const first = (e) => nameOf(e).split(/\s+/)[0];
+  // As the server picks (functions/api/_board-asks.js sendersFor): the admin the invites don't come from, else the organizer
+  const asker = s.admins.find((e) => e !== s.invitesFrom) || s.invitesFrom || '';
+  const save = async (patch, label, said) => {
+    setBusy(label);
+    const j = await call({ action: 'save-settings', settings: patch });
+    setBusy('');
+    if (!j.ok) { addToast(j.error, 'error'); return false; }
+    setData((d) => ({ ...d, settings: j.settings }));
+    if (said) addToast(said, 'info');
+    return true;
+  };
+  const add = async (e) => {
+    e?.preventDefault();
+    const email = adding.trim().toLowerCase();
+    if (!/^[^\s@]+@soardcharity\.com$/.test(email)) { addToast('Only a soardcharity.com sign-in can run Board', 'error'); return; }
+    if (s.admins.includes(email)) { setAdding(''); return; }
+    if (await save({ admins: [...s.admins, email] }, 'add', `${nameOf(email)} can open Board now`)) setAdding('');
+  };
+  const remove = async (e) => {
+    if (!(await ask({ title: `Take ${nameOf(e)} off Board?`, text: `${first(e)} stops seeing Board in the menu, and its pages and the board’s money refuse them.${e === s.invitesFrom ? ` New invites come from ${first(s.admins.find((x) => x !== e))}’s calendar; ones already sent stay on ${first(e)}’s.` : ''}`, yes: 'Take them off' }))) return;
+    await save({ admins: s.admins.filter((x) => x !== e) }, `rm:${e}`, `${nameOf(e)} is off Board`);
+  };
+  const sendFrom = (e) => save({ invitesFrom: e }, `from:${e}`, `New invites come from ${first(e)}’s calendar. Ones already sent stay where they are.`);
+  // What each one does besides open Board: the invites, the reports' emails
+  const does = (e) => { const whose = e === data.me ? 'your' : 'their'; return [e === s.invitesFrom && `Invites come from ${whose} calendar`, e === asker && `Asks presenters for their reports from ${whose} Gmail`].filter(Boolean); };
+  return html`<div class="card" style="padding:0">
+    <div class="sec-head"><h3>Who runs Board <span class="count">${s.admins.length}</span></h3><span class="sec-head__hint">Only they see Board. Other staff don’t.</span></div>
+    <ul class="bd-row-list bd-runs">${s.admins.map((e) => html`<li class="bd-row" key=${e}>
+      <span class="ba-who"><${Face} p=${staffOf(e) || { name: e }} size=${32} /><span class="ba-who__text">
+        <span class="bd-runs__name">${nameOf(e)}${e === data.me ? html` <span class="tag">You</span>` : null}</span>
+        <span class="bd-row__meta">${[staffOf(e) ? e : '', ...does(e)].filter(Boolean).join(' · ')}</span>
+      </span></span>
+      <div class="bd-tags">
+        ${s.admins.length > 1 && e !== s.invitesFrom ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => sendFrom(e)}>${busy === `from:${e}` ? 'Saving…' : `Send invites from ${e === data.me ? 'your' : `${first(e)}’s`} calendar`}</button>` : null}
+        ${e === data.me ? null : html`<button class="btn btn-ghost btn-sm btn-row-danger" disabled=${!!busy} aria-label=${`Take ${nameOf(e)} off Board`} onClick=${() => remove(e)}>${busy === `rm:${e}` ? 'Saving…' : 'Take off'}</button>`}
+      </div>
+    </li>`)}</ul>
+    <form class="bd-inline bd-runs__add" onSubmit=${add}>
+      <label class="sr-only" for="bd-runs-add">Add someone who runs Board</label>
+      <input id="bd-runs-add" class="form-input" type="email" placeholder="name@soardcharity.com" value=${adding} onInput=${(e) => setAdding(e.target.value)} />
+      <button class="btn btn-ghost btn-sm" type="submit" disabled=${!adding.trim() || !!busy}>${busy === 'add' ? 'Adding…' : 'Add'}</button>
+      ${s.adminsSaved ? null : html`<span class="form-hint">Until someone is added or taken off, it’s the founders on People → Team.</span>`}
+    </form>
   </div>`;
 }

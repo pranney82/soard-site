@@ -468,7 +468,7 @@ async function messageIdOf(readToken, id, fetchImpl) {
 }
 
 /** Send one email as the asker → { id, threadId, messageId } */
-/** Test mode (Board → Settings): an email goes to the asker alone, its subject saying who it would really go to */
+/** Test mode (the switch beside a meeting's reports, in Board): an email goes to the asker alone, its subject saying who it would really go to */
 export function asTest(mail, from) {
   const names = (list) => (list || []).map((p) => p.name || p.email).join(' & ');
   const who = `${names(mail.to)}${mail.cc?.length ? `, ${names(mail.cc)} copied` : ''}`;
@@ -829,7 +829,7 @@ export async function maybeRunAsks(env, { fetchImpl = fetch, now = Date.now(), f
   }
 }
 
-/** Board → Settings: 'on' (the board gets them), 'off' (nothing), else 'test' (only the test set, to the asker) */
+/** The switch beside a meeting's reports, in Board: 'on' (the board gets them), 'off' (nothing), else 'test' (only the test set, to the asker) */
 export const asksMode = (settings) => (['on', 'off'].includes(settings?.asks) ? settings.asks : 'test');
 
 export async function runAsks(env, { fetchImpl = fetch, now = Date.now() } = {}) {
@@ -1218,7 +1218,7 @@ async function mailer(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   if (!senders) throw err('No one is set up to send the board’s email', 503);
   const people = await withStaffEmails(env.DB, rosterNow);
   const mode = asksMode(settings);
-  if (mode === 'off') throw err('Emails to presenters are off in Board → Settings', 409);
+  if (mode === 'off') throw err('Emails to presenters are off (Board, beside the meeting’s reports)', 409);
   const ctx = { env, fetchImpl, now, senders, people, today: todayEastern(now), test: mode === 'test' };
   ctx.readToken = await accessToken(env, senders.from.email, { fetchImpl, now, scope: GMAIL_READ_SCOPE });
   ctx.sendToken = await accessToken(env, senders.from.email, { fetchImpl, now, scope: GMAIL_SEND_SCOPE });
