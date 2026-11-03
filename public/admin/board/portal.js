@@ -2101,8 +2101,10 @@ function AgendaItem({ m, s, it, ctx, label, numbers, upcoming, moneyFirst = '', 
 /** A meeting: live on its day (and the founders' practice meeting), its record otherwise */
 function MeetingPage({ id, ctx }) {
   const { data, d } = ctx;
-  // An admin's look at one not shared yet (Board's "See it as the board will"): data.previews, by its link only
-  const m = data.meetings.find((x) => x.id === id) || (d.featured?.pending && d.featured.id === id ? d.featured : null) || data.previews?.find((x) => x.id === id) || null;
+  // An admin's look at one not shared yet (Board's "See it as the board will", its Board page preview): data.previews,
+  // by its link only, before the when-and-where the board has of it once its invite is out (Nov 5 2026: invited, not
+  // shared, the preview said "The agenda isn't posted yet")
+  const m = data.meetings.find((x) => x.id === id) || data.previews?.find((x) => x.id === id) || (d.featured?.pending && d.featured.id === id ? d.featured : null) || null;
   const practice = !m && data.practice?.id === id;
   useFocusTarget();
   if (practice || (m && !m.pending && (isLive(m) || m.date === data.today))) return html`<${LiveMeeting} id=${id} m=${m} ctx=${ctx} />`;
@@ -2285,7 +2287,7 @@ function LiveRoom({ v, setV, m, ctx }) {
           <p class="bp-now__meta">${now.section !== nowItem.title ? now.section : ''}${nowItem.confidential ? html` <span class="bp-chip bp-chip--warn">Board only · please don’t share</span>` : null}</p>
           <${FloorLine} v=${v} nowItem=${nowItem} si=${now.si} ctx=${ctx} />
           <${Notes} text=${nowItem.notes} />
-          ${nowItem.report ? html`<div class="bp-now__report"><p class="bp-report__by"><span class="bp-report__label">Report</span>${nowItem.reportBy ? html`<span>by ${nowItem.reportBy}</span>` : null}</p><${Report} text=${nowItem.report} clamp=${140} /></div>` : null}
+          ${nowItem.report ? html`<div class="bp-now__report"><p class="bp-report__by"><span class="bp-report__label">Report</span>${nowItem.reportBy && !presentersOf(nowItem, ctx.d.people).some((p) => p.name === nowItem.reportBy) ? html`<span>by ${nowItem.reportBy}</span>` : null}</p><${Report} text=${nowItem.report} clamp=${140} /></div>` : null}
           <${Motion} text=${nowItem.motion} cls="bp-now__motion" />
           <${ScreenPeek} v=${v} />
           ${itemFiles(v, nowItem, v.prior || []).length ? html`<div class="bp-now__docs"><${FileList} files=${itemFiles(v, nowItem, v.prior || [])} labels=${false} lead=${new Set(itemDocs(v, nowItem, v.prior || []).map((d) => d.file.id))} /></div>` : null}

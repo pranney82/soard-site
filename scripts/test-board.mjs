@@ -1432,7 +1432,23 @@ try {
       return { onPart: sec?.querySelectorAll('.bp-agsec__head .bp-pres li').length, onItems: sec?.querySelectorAll('.bp-agitem .bp-pres li').length, by: [...(sec?.querySelectorAll('.bp-report__by') || [])].map((x) => x.textContent.replace(/\s+/g, ' ').trim()) };
     });
     ok(bp.onPart === 1 && bp.onItems === 0 && bp.by.length === 3 && bp.by.every((x) => /^Report\s*\w{3} \d+/.test(x) && !/\bby\b/.test(x)), `the board page names the part’s one presenter once, and their own reports by date only (${JSON.stringify(bp)})`);
+    // Invited but not shared yet (the live Nov 5 meeting, Nov 2 2026): the board has its when and where only, and the
+    // founder's look at it (Board's Board page preview, "See it as the board will") is still the agenda, never the stub
+    await patchMeeting(DB, pts.id, (cur) => ({ ...cur, invite: { eventId: 'evt-pts', organizer: 'holly@soardcharity.com', sentAt: new Date().toISOString(), replies: {} } }), { by: FOUNDER });
+    await page.goto(`${SITE}/admin/board/?preview#/meetings/${pts.id}`, { waitUntil: 'networkidle0' });
+    const pvLook = await page.waitForSelector('.bp-agitem', { timeout: 8000 }).then(() => page.evaluate(() => ({ items: document.querySelectorAll('.bp-agitem').length, stub: /isn’t posted yet/.test(document.body.textContent) })), () => page.evaluate(() => ({ items: 0, stub: /isn’t posted yet/.test(document.body.textContent) })));
+    ok(pvLook.items === 3 && !pvLook.stub, `invited, not shared: Board’s preview of the board page is its agenda, not “The agenda isn’t posted yet” (${JSON.stringify(pvLook)})`);
     await page.close();
+    const member = await tab(MEMBER, 1440);
+    await member.goto(`${SITE}/admin/board/#/meetings/${pts.id}`, { waitUntil: 'networkidle0' });
+    ok(await waitText(member, /isn’t posted yet/) && await member.evaluate(() => !document.querySelector('.bp-agitem') && !/Applications run themselves/.test(document.body.textContent)), 'and a board member has its when and where only, no agenda');
+    // Held, on its first item: the board page's "Now discussing" says who has the floor once, and the report they wrote
+    // by its label only, never "by" them again under it
+    await patchMeeting(DB, pts.id, (cur) => ({ ...cur, shared: true, live: { ...(cur.live || {}), startedAt: new Date().toISOString(), endedAt: '', itemId: its[0].id, screen: 'item' } }), { by: FOUNDER });
+    await member.reload({ waitUntil: 'networkidle0' });
+    const nowCard = await member.waitForSelector('.bp-now .bp-now__report', { timeout: 10000 }).then(() => member.evaluate(() => ({ title: document.querySelector('.bp-now__title')?.textContent || '', floor: document.querySelector('.bp-now')?.textContent.includes('Jane Doe') || false, by: document.querySelector('.bp-now__report .bp-report__by')?.textContent.replace(/\s+/g, ' ').trim() || '' })), async () => { await shot(member, '25d-now-card-missing'); return { debug: await member.evaluate(() => (document.querySelector('main') || document.body).innerText.slice(0, 400)) }; });
+    ok(nowCard && /Applications run themselves/.test(nowCard.title) && nowCard.floor && nowCard.by === 'Report', `held: “Now discussing” names who has the floor, and their own report says “Report”, not “by” them again (${JSON.stringify(nowCard)})`);
+    await member.close();
     await DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(pts.id).run();
   }
 
