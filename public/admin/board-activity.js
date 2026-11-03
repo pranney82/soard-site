@@ -165,6 +165,12 @@ const PATHS = {
 };
 const Icon = ({ name }) => html`<svg class="ba-ico" viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d=${PATHS[name] || PATHS.page} fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
 
+/** An address that breaks only where it reads well: after the @, before a dot ("pnielsen@" / "tridentconstructiongroup" / ".com") */
+const emailParts = (email) => {
+  const [name, ...rest] = String(email).split('@');
+  return html`${name}@<wbr />${rest.join('@').split('.').map((part, i) => (i ? html`<wbr />.${part}` : part))}`;
+};
+
 /** The last five weeks, a square a day (today last): darker for more time on the page; a dot under a meeting day */
 export function DayStrip({ days = {}, meetingDays = new Set(), today = todayEastern() }) {
   const cells = Array.from({ length: DAYS }, (_, i) => shiftDay(today, i - DAYS + 1));
@@ -372,7 +378,7 @@ export function BoardActivity({ data, next, signDocs, ready, working, onWelcome 
         const openRow = () => setOpen(p.slug);
         return html`<tr key=${p.slug} class="ba-tr" onClick=${(e) => { if (!e.target.closest('button, a')) openRow(); }}>
           <td><span class="ba-who"><${Face} p=${faces.get(p.slug) || p} size=${32} /><span class="ba-who__text"><button type="button" class="ba-name" data-slug=${p.slug} onClick=${openRow}>${p.name}</button>
-            <span class="bd-row__meta ba-email">${p.email ? html`${p.email.split('@')[0]}@<wbr />${p.email.split('@').slice(1).join('@')}` : html`<span class="tag tag--warn">No email on file</span>`}</span></span></span></td>
+            <span class="bd-row__meta ba-email">${p.email ? emailParts(p.email) : html`<span class="tag tag--warn">No email on file</span>`}</span></span></span></td>
           <td data-label="Signed in">${last
             ? html`<span class="ba-line">${firstWords(a, began)?.v || 'Yes'}</span>${a?.signIns ? html`<span class="bd-row__meta">${firstWords(a, began).s}</span>` : null}`
             : html`<span class="ba-not"><span class="ba-line ba-muted">Not yet</span>${sent[p.slug] ? html`<span class="bd-row__meta">Email sent ${dateOnly(sent[p.slug])}</span>` : null}
@@ -403,6 +409,14 @@ export const ACTIVITY_STYLES = `
   .ba-who__text { display: grid; gap: 0.05rem; min-width: 0; }
   .ba-who .bd-row__meta { margin-top: 0; }
   .ba-email { overflow-wrap: anywhere; }
+  /* Wide enough for the table: room for a member's name on a line and their address in two or three pieces, and
+     the sign-in email's line and button each on one */
+  @container (min-width: 1101px) {
+    .ba-table th:first-child, .ba-table td:first-child { min-width: 15rem; }
+    /* (a heading as wide as its column needs, on two lines if it must: "Last on the / board page") */
+    .ba-table th { white-space: normal; vertical-align: bottom; }
+    .ba-table td[data-label="Signed in"] .bd-row__meta, .ba-table td[data-label="Signed in"] .btn { white-space: nowrap; }
+  }
   .ba-table td[data-label="Signed in"] > .ba-line { white-space: nowrap; }
   .ba-name { all: unset; cursor: pointer; font-weight: 600; color: var(--color-text); overflow-wrap: anywhere; }
   .ba-name:hover { text-decoration: underline; text-underline-offset: 3px; }
@@ -411,7 +425,7 @@ export const ACTIVITY_STYLES = `
   .ba-go { width: 1%; color: var(--color-text-muted); vertical-align: middle !important; }
   .ba-go-h { width: 1%; }
   .ba-strip { display: flex; gap: 2px; padding: 3px 0 8px; }
-  .ba-day { display: block; flex: 0 0 auto; position: relative; width: 5px; height: 16px; border-radius: 2px; background: #ECEBE6; }
+  .ba-day { display: block; flex: 0 0 auto; position: relative; width: 4px; height: 16px; border-radius: 2px; background: #ECEBE6; }
   .ba-day--in { background: #D9DADD; }
   .ba-day--1 { background: #B9BABF; }
   .ba-day--2 { background: #77787E; }
@@ -460,7 +474,7 @@ export const ACTIVITY_STYLES = `
   .ba-row__t { overflow-wrap: anywhere; }
   .ba-row__s { color: var(--color-text-muted); font-size: var(--fs-xs); white-space: nowrap; padding-top: 1px; }
   /* Narrower than the table needs: each member a block of labelled facts, two across (one on a phone) */
-  @container (max-width: 1000px) {
+  @container (max-width: 1100px) {
     .ba-table thead { display: none; }
     .ba-table, .ba-table tbody { display: block; }
     .ba-table tr { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem 1.25rem; padding: 0.95rem 1.25rem; border-bottom: 1px solid var(--color-border); }

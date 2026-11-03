@@ -326,6 +326,9 @@ try {
     }
     const o = await overflow(jane);
     ok(o.page <= 0 && !o.past.length, `${width}: nothing past the edge (${o.page}px${o.past.length ? `; ${o.past.join(', ')}` : ''})`);
+    // The table inside its card (the arrow at the end of each row in view, nothing cut off at its edge)
+    const inCard = await jane.evaluate(() => { const c = document.querySelector('.ba-card')?.getBoundingClientRect(); const t = document.querySelector('.ba-table')?.getBoundingClientRect(); return c && t ? Math.round(t.right - c.right) : 0; });
+    ok(inCard <= 1, `${width}: the table fits its card (${inCard}px over)`);
     // A board of 13: two-figure counts on every choice still fit, none of it scrolled out of sight
     const seg = await jane.evaluate(() => { const el = document.querySelector('.ba-seg'); el.querySelectorAll('.count').forEach((c) => { c.textContent = '13'; }); return el.scrollWidth - el.clientWidth; });
     ok(seg <= 0, `${width}: the filter’s three choices fit (${seg}px over)`);
