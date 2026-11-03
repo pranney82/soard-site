@@ -261,13 +261,18 @@ try {
       const page = await tab(MEMBER, width);
       await page.goto(`${SITE}/admin/board/#/documents`, { waitUntil: 'networkidle0' });
       ok(await waitText(page, /SOARD’s facts/), 'SOARD’s facts on Documents');
-      const facts = await page.$$eval('.bp-org__fact', (els) => els.map((e) => ({ id: e.id, label: e.querySelector('dt').textContent, v: e.querySelector('.bp-org__v').innerText })));
+      // Small: the six a form asks for first, the rest folded
+      const visible = () => page.$$eval('.bp-org__fact', (els) => els.filter((e) => e.offsetParent !== null).map((e) => e.id.replace('fact-', '')));
+      ok((await visible()).join(',') === 'name,ein,status,office,phone,email', `the six a form asks for first (${(await visible()).join(', ')})`);
+      const height = await page.$eval('.bp-org', (e) => Math.round(e.getBoundingClientRect().height));
+      ok(height <= (width === 1440 ? 330 : 720), `the card is small (${height}px)`);
+      const facts = await page.$$eval('.bp-org__fact', (els) => els.map((e) => ({ id: e.id, label: e.querySelector('dt').textContent, v: e.querySelector('.bp-org__v').textContent })));
       const by = Object.fromEntries(facts.map((f) => [f.id, f]));
-      ok(by['fact-ein']?.v.startsWith(ST.ein), `the EIN (${by['fact-ein']?.v.split('\n')[0]})`);
-      ok(/501\(c\)\(3\) public charity/.test(by['fact-status']?.v || '') && /Since July 2012/.test(by['fact-status']?.v || '') && /509\(a\)\(1\) and 170\(b\)\(1\)\(A\)\(vi\)/.test(by['fact-status']?.v || ''), `the tax status as the IRS lists it (${(by['fact-status']?.v || '').replace(/\n/g, ' / ')})`);
+      ok(by['fact-ein']?.v.startsWith(ST.ein), `the EIN (${by['fact-ein']?.v})`);
+      ok(/501\(c\)\(3\) public charity/.test(by['fact-status']?.v || ''), `the tax status as the IRS lists it (${by['fact-status']?.v})`);
+      ok(await page.$eval('#fact-status .bp-org__note', (n) => getComputedStyle(n).display === 'none'), 'its small print waits for the rest to open');
       ok(by['fact-office']?.v.startsWith(ST.address.street) && !by['fact-mailing'], 'the address; no mailing address until Site Config has one');
-      ok(by['fact-mission']?.v.trim().startsWith(String(seed.media.mission).trim().slice(0, 40)), 'the mission, as the Media Kit’s');
-      ok(by['fact-phone'] && by['fact-email'] && by['fact-website'] && by['fact-founded'] && by['fact-impact'], `phone, email, website, founded, impact (${facts.map((f) => f.label).join(', ')})`);
+      ok(by['fact-mission']?.v.trim().startsWith(String(seed.media.mission).trim().slice(0, 40)) && by['fact-website'] && by['fact-founded'] && by['fact-impact'], 'the mission, website, founding and impact folded under them');
       ok(!by['fact-legal'] && !by['fact-vision'], 'no legal name, vision or values shown while there are none');
       ok(await page.$eval('#fact-phone a', (a) => a.getAttribute('href')) === `tel:+1${String(ST.phone).replace(/\D/g, '').slice(-10)}`, 'the phone a tap to call');
       // Copy one
@@ -276,43 +281,41 @@ try {
       ok((await copied(page)).at(-1) === ST.ein, 'the EIN’s copy button copies the EIN');
       ok(await page.$eval('#fact-ein .bp-org__copy', (b) => b.classList.contains('is-done')), 'and ticks');
       ok(await waitText(page, /EIN copied/), 'and says so (“EIN copied”)');
-      // Copy all
+      // Copy all: every fact, the folded ones too
       await clickText(page, '.bp-org .bp-btn', /^Copy all$/);
       await sleep(150);
       const all = (await copied(page)).at(-1) || '';
-      ok(all.startsWith(ST.name) && all.includes(`EIN: ${ST.ein}`) && /Tax status: 501\(c\)\(3\) public charity, 509\(a\)\(1\)/.test(all) && all.includes(`Phone: ${ST.phone}`) && /Mission: /.test(all) && !/SOARD in a few lines/.test(all), 'Copy all: every fact, form-ready', all.slice(0, 300));
+      ok(all.startsWith(ST.name) && all.includes(`EIN: ${ST.ein}`) && /Tax status: 501\(c\)\(3\) public charity, 509\(a\)\(1\)/.test(all) && all.includes(`Phone: ${ST.phone}`) && /Mission: /.test(all) && /Website: /.test(all) && !/SOARD in a few lines/.test(all), 'Copy all: every fact, form-ready', all.slice(0, 300));
+      // The rest, a click away, and kept open next time
+      await clickText(page, '.bp-org__toggle', /^All of SOARD’s facts$/);
+      await sleep(250);
+      ok((await visible()).includes('mission') && await page.$eval('.bp-org__toggle', (b) => b.getAttribute('aria-expanded') === 'true'), 'All of SOARD’s facts opens the rest');
+      ok(await page.$eval('#fact-status .bp-org__note', (n) => getComputedStyle(n).display !== 'none' && /Since July 2012/.test(n.textContent) && /509\(a\)\(1\)/.test(n.textContent)), 'the tax status’s small print with it');
+      await page.reload({ waitUntil: 'networkidle0' });
+      await page.waitForSelector('.bp-org');
+      ok((await visible()).includes('mission'), 'still open after a reload, as it was left');
+      await clickText(page, '.bp-org__toggle', /^Fewer facts$/);
+      await sleep(200);
+      ok(!(await visible()).includes('mission'), 'Fewer facts folds them again');
       // The papers forms ask for
       const papers = await page.$$eval('.bp-org__papers a', (as) => as.map((a) => a.textContent.trim()));
       ok(papers.join(',') === 'W-9,IRS letter', `the papers beside the facts (${papers.join(', ')})`);
       await clickText(page, '.bp-org__papers a', /^W-9$/);
       const viewer = await page.waitForSelector('.fv[role="dialog"]', { timeout: 4000 }).then(() => page.$eval('.fv[role="dialog"]', (d) => d.getAttribute('aria-label')), () => null);
-      ok(/^W-9( \(\d of \d\))?$/.test(viewer || ''), `the W-9 opens in the viewer, named W-9 (${viewer})`, await page.evaluate(() => JSON.stringify({ viewer: document.querySelector('.fv')?.getAttribute('aria-label'), hash: location.hash, link: document.querySelector('.bp-org__papers a')?.outerHTML.slice(0, 200) })));
+      ok(/^W-9( \(\d of \d\))?$/.test(viewer || ''), `the W-9 opens in the viewer, named W-9 (${viewer})`);
       await page.keyboard.press('Escape');
       await sleep(300);
-      // Tell the founder
+      // The brand is the website's page; tell the founder
+      ok(!(await page.$('.bp-kit')), 'no brand card on the board page');
+      ok(await page.$eval('.bp-org__more a[href="/branding/"]', (a) => /Logos, colors and fonts/.test(a.textContent) && a.target === '_blank'), 'Logos, colors and fonts: the brand page, in a tab of its own');
       ok(await page.$eval('.bp-org__more', (p) => /Tell Jane/.test(p.textContent) && /mailto:jane@soardcharity\.com/.test(p.innerHTML)), 'something out of date: tell Jane');
-      // The brand
-      const logos = await page.$$eval('.bp-kit__logo', (els) => els.map((e) => [...e.querySelectorAll('.bp-kit__dl a')].map((a) => `${a.textContent.trim()}:${a.getAttribute('href')}`).join(' ')));
-      ok(logos.length === 6 && logos.every((l) => /^Download:\/api\/download-logo\?id=brand-logo-[a-z-]+-download$/.test(l)), `six official logos, each to download (${logos[0]})`);
-      if (width === 390) ok(await page.$eval('.bp-org__copy', (b) => b.getBoundingClientRect().height >= 44) && await page.$eval('.bp-kit__dl a', (a) => a.getBoundingClientRect().height >= 44), 'a finger’s size on a phone (44px)');
-      // "Logos, colors and fonts" goes to the brand, on this page
-      await clickText(page, '.bp-org__more a', /^Logos, colors and fonts$/);
-      await sleep(400);
-      ok(await page.evaluate(() => location.hash === '#/documents' && document.activeElement?.id === 'kit'), 'its link brings the brand into view, on Documents');
-      await page.evaluate(() => window.scrollTo(0, 0));
-      await page.click('.bp-kit__hex');
-      await sleep(100);
-      ok((await copied(page)).at(-1) === '#FFDA24', 'a color’s hex copied');
-      ok(await page.$eval('.bp-kit', (k) => /Libre Baskerville/.test(k.textContent) && /Rainer North 100/.test(k.textContent) && /ask Jane for the files/.test(k.textContent)), 'the fonts, and who to ask for the licensed ones');
-      ok(await page.$eval('.bp-kit a[href="/SOARD-Logo-Kit.zip"]', (a) => a.hasAttribute('download')), 'the whole kit to download');
-      const gradients = await page.evaluate(() => [...document.querySelectorAll('.bp-org, .bp-org *, .bp-kit, .bp-kit *')].filter((e) => /gradient/.test(getComputedStyle(e).backgroundImage + getComputedStyle(e).maskImage)).length);
+      if (width === 390) ok(await page.$eval('.bp-org__copy', (b) => b.getBoundingClientRect().height >= 44) && await page.$eval('.bp-org__papers a', (a) => a.getBoundingClientRect().height >= 44), 'a finger’s size on a phone (44px)');
+      const gradients = await page.evaluate(() => [...document.querySelectorAll('.bp-org, .bp-org *')].filter((e) => /gradient/.test(getComputedStyle(e).backgroundImage + getComputedStyle(e).maskImage)).length);
       ok(gradients === 0, 'flat: no gradients');
       ok(await overflow(page) <= 0, `nothing past the right edge (${await overflow(page)}px)`);
-      if (width === 390) ok(await page.$eval('.bp-kit__logos', (u) => getComputedStyle(u).gridTemplateColumns.split(' ').length === 2), 'two logos a row on a phone');
       await axeScan(page, '.bp-org', 'SOARD’s facts');
-      await axeScan(page, '.bp-kit', 'SOARD’s brand');
       await shot(page, `documents-${width}`);
-      // Print: the facts alone
+      // Print: the facts alone, every one of them
       await page.evaluate(() => window.scrollTo(0, 0));
       await clickText(page, '.bp-org .bp-btn', /^Print$/);
       await sleep(200);
@@ -320,12 +323,13 @@ try {
       await page.emulateMediaType('print');
       const shown = await page.evaluate(() => [...document.querySelector('.bp-main').children].filter((e) => getComputedStyle(e).display !== 'none').map((e) => e.className));
       ok(shown.length === 1 && /bp-org/.test(shown[0]), `printed, the facts alone (${shown.join(' | ')})`);
+      ok(await page.$eval('#fact-mission', (f) => f.offsetParent !== null), 'the folded ones printed too');
       ok(await page.$eval('.bp-org__copy', (b) => getComputedStyle(b).display === 'none'), 'without their buttons');
       if (width === 1440) await page.pdf({ path: join(OUT, 'fact-sheet.pdf'), format: 'letter', printBackground: true });
       await page.emulateMediaType('screen');
       await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
       ok(await page.evaluate(() => !document.documentElement.classList.contains('bp-printing-org')), 'and the page is itself again after');
-      // The Documents filter
+      // The Documents filter: the facts that match, folded or not
       const filter = 'input[type="search"][placeholder^="Find a document"]';
       await page.type(filter, 'mailing');
       await sleep(250);
@@ -335,12 +339,10 @@ try {
       await sleep(250);
       const only = await page.$$eval('.bp-org__fact', (els) => els.map((e) => e.id));
       ok(only.join(',') === 'fact-ein', `“tax id” finds the EIN alone (${only.join(', ')})`);
-      ok(!(await page.$('.bp-kit')), 'and not the brand');
       await page.$eval(filter, (i) => { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); });
-      await page.type(filter, 'logo');
+      await page.type(filter, 'mission');
       await sleep(250);
-      ok(!!(await page.$('.bp-kit')) && !(await page.$('.bp-org')), '“logo” finds the brand');
-      ok(!/No document or file matches/.test(await text(page)), 'and isn’t said to find nothing');
+      ok((await visible()).join(',') === 'mission', '“mission” finds the folded mission');
       await page.$eval(filter, (i) => { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); });
       await page.close();
     });
@@ -355,20 +357,20 @@ try {
     const page = await tab(MEMBER, 390);
     await page.goto(`${SITE}/admin/board/#/documents`, { waitUntil: 'networkidle0' });
     await waitText(page, /To read and sign/);
-    const order = () => page.evaluate(() => [...document.querySelectorAll('.bp-main > section')].map((x) => (x.classList.contains('bp-tosign') ? 'sign' : x.classList.contains('bp-org') ? 'facts' : x.classList.contains('bp-papers') ? 'papers' : x.classList.contains('bp-kit') ? 'brand' : '')).filter(Boolean).join(' '));
-    ok(await order() === 'sign facts papers brand', `to sign first, then the facts (${await order()})`);
+    const order = () => page.evaluate(() => [...document.querySelectorAll('.bp-main > section')].map((x) => (x.classList.contains('bp-tosign') ? 'sign' : x.classList.contains('bp-org') ? 'facts' : x.classList.contains('bp-papers') ? 'papers' : '')).filter(Boolean).join(' '));
+    ok(await order() === 'sign facts papers', `to sign first, then the facts (${await order()})`);
     // Signed: nothing moves while they're there; the next visit has the facts on top
     await page.type('#sign-d_expect1', 'Alex Rivera');
     await clickText(page, '.bp-sign button', /I’ve read it and agree/);
     ok(await waitText(page, /Signed: Board Member Expectations|Signed\s*by Alex Rivera/), 'signed');
     await sleep(400);
-    ok(await order() === 'sign facts papers brand', `signing moves nothing (${await order()})`);
+    ok(await order() === 'sign facts papers', `signing moves nothing (${await order()})`);
     await page.evaluate(() => { location.hash = '#/'; });
     await sleep(500);
     await page.evaluate(() => { location.hash = '#/documents'; });
     await page.waitForSelector('.bp-org', { timeout: 5000 });
     await sleep(300);
-    ok(await order() === 'facts sign papers brand', `the next visit: the facts first (${await order()})`);
+    ok(await order() === 'facts sign papers', `the next visit: the facts first (${await order()})`);
     await page.close();
     await DB.prepare("DELETE FROM board_signatures WHERE doc_id = 'd_expect1'").run().catch(() => {});
     await DB.prepare("DELETE FROM board_files WHERE id = 'f_expect1'").run();
@@ -393,6 +395,21 @@ try {
     await page.keyboard.press('Enter');
     await sleep(150);
     ok((await copied(page)).at(-1) === ST.ein, 'Enter copies it');
+    // A folded one: the rest open for it
+    await page.evaluate(() => { location.hash = '#/'; });
+    await sleep(500);
+    await page.keyboard.down('Meta'); await page.keyboard.press('KeyK'); await page.keyboard.up('Meta');
+    await page.waitForSelector('dialog.bp-finder[open] input', { timeout: 4000 });
+    await page.keyboard.type('mission statement');
+    await sleep(400);
+    await page.evaluate(() => { const el = [...document.querySelectorAll('dialog.bp-finder[open] [role="option"], dialog.bp-finder[open] li a, dialog.bp-finder[open] li button')].find((x) => /^Mission/.test(x.innerText.trim())); el?.click(); });
+    ok(await page.waitForFunction(() => document.activeElement?.closest('#fact-mission') && document.querySelector('#fact-mission').offsetParent !== null, { timeout: 5000 }).then(() => true, () => false), 'a folded fact: the rest open, the focus on its copy button');
+    // The brand: the website's page
+    await page.keyboard.down('Meta'); await page.keyboard.press('KeyK'); await page.keyboard.up('Meta');
+    await page.waitForSelector('dialog.bp-finder[open] input', { timeout: 4000 });
+    await page.keyboard.type('logo');
+    await sleep(400);
+    ok(await page.evaluate(() => /SOARD’s logos, colors and fonts\s*The brand guide, on the website/.test(document.querySelector('dialog.bp-finder[open]')?.innerText || '')), '“logo” finds the brand page (it opens /branding/ in a tab of its own)', await page.evaluate(() => `${document.querySelector('dialog.bp-finder[open] input')?.value} :: ${(document.querySelector('dialog.bp-finder[open]')?.innerText || 'no dialog').replace(/\s+/g, ' ').slice(0, 300)}`));
     await page.close();
   });
 

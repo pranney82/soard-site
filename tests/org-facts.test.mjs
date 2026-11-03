@@ -365,10 +365,7 @@ test('the board page’s facts: the site’s, as saved, and the IRS’s words on
   assert.equal(f.mission, MISSION);
   assert.equal(f.mailing, null, 'no mailing address yet');
   assert.equal(f.irs, null, 'not checked yet');
-  assert.equal(f.brand.logos.length, 6);
-  assert.equal(f.brand.logos[0].png, '/api/download-logo?id=brand-logo-light-bg-tagline-download');
-  assert.equal(f.brand.logos[0].svg, undefined, 'no SVG: the kit’s .svg files hold PNG pictures, not drawings');
-  assert.equal(f.brand.colors[0].hex, '#FFDA24');
+  assert.equal(f.brand, undefined, 'the brand is /branding/’s, linked from the board page');
   assert.equal(f.bio, 'A short bio.');
   await checkOrgFacts(env, { now: Date.now(), fetchImpl: irsFetch, slack: false });
   f = await orgFacts(env);

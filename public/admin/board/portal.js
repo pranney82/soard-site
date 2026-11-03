@@ -87,7 +87,6 @@ const ICONS = {
   gavel: html`<path d="m13.5 4.5 6 6M11 7l6 6M12.25 5.75l-4.5 4.5M17.75 11.25l-4.5 4.5M10 12l-6.5 6.5M3.5 20.5h9" />`,
   present: html`<rect x="3" y="4.5" width="18" height="12" rx="1.5" /><path d="M12 16.5v3.5M8 20.5h8M10 8.5v4.5l4-2.25z" />`,
   list: html`<path d="M9 6.5h11M9 12h11M9 17.5h11" /><circle cx="4.75" cy="6.5" r="1" /><circle cx="4.75" cy="12" r="1" /><circle cx="4.75" cy="17.5" r="1" />`,
-  download: html`<path d="M12 4v11M7 10.5l5 5 5-5M4.5 19.5h15" />`,
 };
 const Icon = ({ name, size = 20, cls = '' }) => html`<svg class=${`bp-icon ${cls}`} width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
 
@@ -3599,7 +3598,7 @@ function Cover({ x, shelf }) {
   </span>`;
 }
 
-// ─── SOARD's facts and its brand ────────────────────────────────────
+// ─── SOARD's facts ──────────────────────────────────────────────────
 // What a donation form, a grant, a matching gift or an introduction asks for, as the site has it saved (/api/board-portal's
 // `org`, ../../functions/api/_org-facts.js): edited in Site Config → Organization & contact, never here
 const lineOf = (a) => (a?.street ? [a.street, a.city, [a.state, a.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '');
@@ -3638,7 +3637,6 @@ const factNote = (x) => (Array.isArray(x.note) ? x.note.join(' · ') : x.note ||
 /** Every fact as one block of text, the way a form asks: "EIN: 45-…" */
 const factsText = (facts) => facts.filter((x) => x.id !== 'bio').map((x) => (x.id === 'name' ? `${x.value}${x.note ? ` (${factNote(x).replace(/^Also /, '')})` : ''}` : `${x.label}: ${x.list ? `\n${x.copy}` : x.copy}`)).join('\n');
 const factHay = (x) => `${x.label} ${x.value} ${factNote(x)} ${{ ein: 'tax id taxpayer federal employer identification number', status: '501c3 501(c)(3) tax exempt deductible irs', office: 'address street location map', mailing: 'address mail po box', phone: 'telephone call number', email: 'contact', website: 'url web site', mission: 'mission statement', bio: 'boilerplate about elevator pitch', name: 'organization', legal: 'organization' }[x.id] || ''}`;
-const BRAND_HAY = 'brand logo logos colors colours color hex pms fonts typeface kit png zip';
 /** The papers forms ask for next, by their titles on Documents */
 const FORM_PAPERS = [[/w-?9/i, 'W-9'], [/501|determination|irs letter/i, 'IRS letter'], [/\bein\b/i, 'EIN letter'], [/permit|registration/i, 'Charity permit']];
 
@@ -3663,19 +3661,33 @@ const FactRow = ({ x, ctx }) => html`<div class=${`bp-org__fact ${x.wide ? 'is-w
   <dd><span class="bp-org__v"><${FactValue} x=${x} />${Array.isArray(x.note) ? html`<span class="bp-org__note">${x.note.map((n, i) => html`${i ? ' · ' : ''}<span class="bp-nowrap" key=${n}>${n}</span>`)}</span>` : x.note ? html`<span class="bp-org__note">${x.note}</span>` : null}</span><${CopyBtn} text=${x.copy} label=${x.label} ctx=${ctx} /></dd>
 </div>`;
 
+/** The six a form asks for first, in that order; the rest are a click away */
+function keyFacts(all) {
+  const has = (id) => all.some((x) => x.id === id);
+  return [has('legal') ? 'legal' : 'name', 'ein', 'status', has('mailing') ? 'mailing' : 'office', 'phone', 'email'].map((id) => all.find((x) => x.id === id)).filter(Boolean);
+}
+
+/**
+ * SOARD's facts, small: the six a form asks for first, the rest (the mission, the website, the founding, the impact…)
+ * folded under them, as each member left it last (a search landing on one opens them). Copy all and Print take every
+ * fact; the brand is the website's own page, /branding/
+ */
 function OrgFacts({ ctx, terms }) {
   const { data } = ctx;
   const all = factsOf(data.org, data.numbers);
+  const key = keyFacts(all);
+  const rest = all.filter((x) => !key.includes(x));
+  const [open, setOpen] = useKept('org-all', false);
+  const [landed] = useState(() => typeof focusNext === 'string' && rest.some((x) => focusNext === `fact-${x.id}`));
   if (!all.length) return null;
-  const facts = terms.length ? all.filter((x) => hits(factHay(x), terms)) : all;
-  if (!facts.length) return null;
-  const shortOnes = facts.filter((x) => !x.wide);
-  const wideOnes = facts.filter((x) => x.wide);
+  const found = terms.length ? all.filter((x) => hits(factHay(x), terms)) : null;
+  if (found && !found.length) return null;
+  const shown = open || landed;
   const withFile = data.docs.filter((x) => x.file && !x.body && !x.hidden);
   const vf = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
-  const papers = terms.length ? [] : FORM_PAPERS.map(([re, word]) => { const x = withFile.find((d) => re.test(d.title)); return x ? { word, x, link: viewerLink(vf, withFile.indexOf(x)) } : null; }).filter(Boolean)
+  const papers = found ? [] : FORM_PAPERS.map(([re, word]) => { const x = withFile.find((d) => re.test(d.title)); return x ? { word, x, link: viewerLink(vf, withFile.indexOf(x)) } : null; }).filter(Boolean)
     .filter((p, i, list) => list.findIndex((q) => q.x.id === p.x.id) === i);
-  // A one-page fact sheet: the page prints this card alone
+  // A one-page fact sheet: the page prints this card alone, every fact in it
   const print = () => {
     const root = document.documentElement;
     root.classList.add('bp-printing-org');
@@ -3684,56 +3696,23 @@ function OrgFacts({ ctx, terms }) {
     requestAnimationFrame(() => window.print());
   };
   const who = data.contact;
-  return html`<section class="bp-card bp-gap bp-org bp-rise" style=${rise(1)} aria-labelledby="org-h" id="org">
-    <div class="bp-sechead">
-      <div><h2 class="bp-h2" id="org-h">SOARD’s facts</h2><p class="bp-sub">For a form, a grant or an introduction${data.org.irs?.listed ? `. The tax status is as the IRS lists it (${data.org.irs.listed})` : ''}.</p></div>
-      ${terms.length ? null : html`<p class="bp-btns bp-btns--tight bp-noprint">
-        <button type="button" class="bp-btn bp-btn--sm" onClick=${() => copyText(ctx, factsText(all), 'Copied all of SOARD’s facts')}><${Icon} name="copy" size=${16} />Copy all</button>
-        <button type="button" class="bp-btn bp-btn--sm" onClick=${print}><${Icon} name="print" size=${16} />Print</button>
+  const rows = (list) => html`${list.some((x) => !x.wide) ? html`<dl class="bp-org__grid">${list.filter((x) => !x.wide).map((x) => html`<${FactRow} x=${x} ctx=${ctx} key=${x.id} />`)}</dl>` : null}
+    ${list.some((x) => x.wide) ? html`<dl class="bp-org__wide">${list.filter((x) => x.wide).map((x) => html`<${FactRow} x=${x} ctx=${ctx} key=${x.id} />`)}</dl>` : null}`;
+  return html`<section class=${`bp-card bp-gap bp-org bp-rise ${shown || found ? 'is-open' : ''}`} style=${rise(1)} aria-labelledby="org-h" id="org">
+    <div class="bp-org__head">
+      <h2 class="bp-h2" id="org-h">SOARD’s facts</h2>
+      ${found ? null : html`<p class="bp-org__acts bp-noprint">
+        <button type="button" class="bp-btn bp-btn--sm bp-btn--quiet" onClick=${() => copyText(ctx, factsText(all), 'Copied all of SOARD’s facts')}><${Icon} name="copy" size=${16} />Copy all</button>
+        <button type="button" class="bp-btn bp-btn--sm bp-btn--quiet" onClick=${print}><${Icon} name="print" size=${16} />Print</button>
       </p>`}
     </div>
     <p class="bp-printonly bp-org__printhead" aria-hidden="true">${data.org.name}</p>
-    ${shortOnes.length ? html`<dl class="bp-org__grid">${shortOnes.map((x) => html`<${FactRow} x=${x} ctx=${ctx} key=${x.id} />`)}</dl>` : null}
-    ${wideOnes.length ? html`<dl class="bp-org__wide">${wideOnes.map((x) => html`<${FactRow} x=${x} ctx=${ctx} key=${x.id} />`)}</dl>` : null}
-    ${papers.length || !terms.length ? html`<div class="bp-org__foot bp-noprint">
-      ${papers.length ? html`<p class="bp-org__papers"><span class="bp-org__footlabel">The papers forms ask for</span>${papers.map((p) => html`<a class="bp-chip bp-chip--link" ...${p.link} key=${p.x.id}><${Icon} name="documents" size=${14} />${p.word}</a>`)}</p>` : null}
-      <p class="bp-org__more"><a class="bp-link" href="#/documents" onClick=${(e) => { const el = document.getElementById('kit'); if (!el) return; e.preventDefault(); el.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' }); el.focus({ preventScroll: true }); }}>Logos, colors and fonts</a>${who?.email ? html`<span aria-hidden="true">·</span><span>Something out of date? <a class="bp-link" href=${`mailto:${who.email}?subject=${encodeURIComponent('SOARD’s facts on the board page')}`}>Tell ${firstName(who.name)}</a></span>` : null}</p>
-    </div>` : null}
-  </section>`;
-}
-
-/** The brand, as the logo kit has it: each official logo to see and download, the colors to copy, the fonts */
-function BrandKit({ ctx, terms }) {
-  const b = ctx.data.org?.brand;
-  if (!b?.logos?.length) return null;
-  if (terms.length && !hits(`${BRAND_HAY} ${b.colors.map((c) => `${c.name} ${c.hex}`).join(' ')} ${[...b.fonts.web, ...b.fonts.print].map((f) => f.name).join(' ')}`, terms)) return null;
-  const IMG = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ';
-  return html`<section class="bp-card bp-gap bp-kit bp-rise bp-noprint" style=${rise(3)} aria-labelledby="kit-h" id="kit" tabindex="-1">
-    <div class="bp-sechead">
-      <div><h2 class="bp-h2" id="kit-h">SOARD’s brand</h2><p class="bp-sub">The official logos, colors and fonts, as SOARD’s logo kit has them. Use a logo as it is: never redrawn, recolored or rearranged.</p></div>
-      <p class="bp-btns bp-btns--tight">
-        <a class="bp-btn bp-btn--sm" href=${b.kit.href} download><${Icon} name="download" size=${16} />Logo kit<span class="bp-kit__size">ZIP · ${nbw(b.kit.size)}</span></a>
-        <a class="bp-btn bp-btn--sm bp-btn--quiet" href="/branding/" target="_blank" rel="noopener">Brand guide<${Icon} name="external" size=${15} /></a>
-      </p>
-    </div>
-    <ul class="bp-kit__logos">${b.logos.map((l) => html`<li key=${l.key} class="bp-kit__logo">
-      <span class=${`bp-kit__pic is-${l.bg}`}><img src=${`${IMG}/${l.id}/w=360`} alt="" loading="lazy" decoding="async" width="180" height="180" /></span>
-      <span class="bp-kit__name">${l.name}<span>${l.group === 'primary' ? 'With the tagline' : 'Without the tagline'}</span></span>
-      <span class="bp-kit__dl"><a class="bp-chip bp-chip--link" href=${l.png} download aria-label=${`Download the ${l.name.toLowerCase()} logo, ${l.group === 'primary' ? 'with' : 'without'} the tagline`}><${Icon} name="download" size=${14} />Download</a></span>
-    </li>`)}</ul>
-    <h3 class="bp-kit__h">Colors</h3>
-    <ul class="bp-kit__colors">${b.colors.map((c) => html`<li key=${c.hex} class="bp-kit__color">
-      <span class=${`bp-kit__swatch ${c.light ? 'is-light' : ''}`} style=${`background:${c.hex}`} aria-hidden="true"></span>
-      <span class="bp-kit__cname">${c.name}</span>
-      <span class="bp-kit__use">${c.use}</span>
-      <button type="button" class="bp-kit__hex" onClick=${() => copyText(ctx, c.hex, `Copied ${c.name}, ${c.hex}`)} aria-label=${`Copy ${c.name}’s hex code, ${c.hex}`}>${c.hex}<${Icon} name="copy" size=${13} /></button>
-      <span class="bp-kit__vals"><span>RGB ${c.rgb}</span>${c.cmyk ? html`<span>CMYK ${c.cmyk}</span>` : null}${c.pms ? html`<span>${nbw(c.pms)}</span>` : null}</span>
-    </li>`)}</ul>
-    <h3 class="bp-kit__h">Fonts</h3>
-    <dl class="bp-kit__fonts">
-      <div><dt>On the website</dt><dd>${b.fonts.web.map((f) => html`<span key=${f.name}><strong>${f.name}</strong> ${f.use.toLowerCase()}</span>`)}</dd></div>
-      <div><dt>In print</dt><dd>${b.fonts.print.map((f) => html`<span key=${f.name}><strong>${f.name}</strong> ${f.use.toLowerCase()}</span>`)}<span class="bp-org__note">Licensed fonts: ${ctx.data.contact ? `ask ${firstName(ctx.data.contact.name)} for the files` : 'ask SOARD for the files'}</span></dd></div>
-    </dl>
+    ${found ? rows(found) : html`${rows(key)}<div class=${`bp-org__rest ${shown ? '' : 'is-folded'}`} id="org-rest">${rows(rest)}</div>`}
+    ${found ? null : html`<div class="bp-org__foot bp-noprint">
+      ${rest.length ? html`<button type="button" class="bp-org__toggle" aria-expanded=${shown} aria-controls="org-rest" onClick=${() => setOpen(!shown)}>${shown ? 'Fewer facts' : 'All of SOARD’s facts'}<${Icon} name="chevron" size=${16} cls=${shown ? 'is-up' : ''} /></button>` : null}
+      ${papers.length ? html`<p class="bp-org__papers">${papers.map((p) => html`<a class="bp-chip bp-chip--link" ...${p.link} key=${p.x.id}><${Icon} name="documents" size=${14} />${p.word}</a>`)}</p>` : null}
+      <p class="bp-org__more"><a class="bp-link" href="/branding/" target="_blank" rel="noopener">Logos, colors and fonts<${Icon} name="external" size=${13} /></a>${who?.email ? html`<span aria-hidden="true">·</span><span>Something out of date? <a class="bp-link" href=${`mailto:${who.email}?subject=${encodeURIComponent('SOARD’s facts on the board page')}`}>Tell ${firstName(who.name)}</a></span>` : null}</p>
+    </div>`}
   </section>`;
 }
 
@@ -3772,7 +3751,7 @@ function DocumentsPage({ ctx }) {
   // What the page holds, said once at the top: what there is to sign, the shelves there are, the meetings' files
   const SAY = { governing: 'SOARD’s governing documents', status: 'its tax-exempt status', standing: 'registrations and insurance', plan: 'plans and reports', money: 'budgets and audits' };
   const said = [
-    factsOf(data.org, data.numbers).length ? 'SOARD’s facts and brand' : '',
+    factsOf(data.org, data.numbers).length ? 'SOARD’s facts' : '',
     toSign.length ? 'the papers each board member signs each year' : '',
     ...[...SHELVES, ...MORE_SHELVES].filter((sh) => SAY[sh.id] && docs.some((x) => !(x.sign && readable(x)) && shelfOf(x) === sh.id)).map((sh) => (sh.id === 'governing' && factsOf(data.org, data.numbers).length ? 'its governing documents' : SAY[sh.id])),
     data.meetings.some((m) => m.files.length) ? 'every file from every meeting' : '',
@@ -3830,8 +3809,7 @@ function DocumentsPage({ ctx }) {
       <div><h2 class="bp-h2">Bylaws and policies show here</h2>
       <p class="bp-muted">${data.contact ? `Once ${firstName(data.contact.name)} adds them, they’re here to read.` : 'They’re here to read once they’re added.'} Anything to read and sign shows on Home too.</p></div>
     </div>`}
-    <${BrandKit} ctx=${ctx} terms=${terms} />
-    ${terms.length && !onShelves.length && !toSign.some(found) && !factsOf(data.org, data.numbers).some((x) => hits(factHay(x), terms)) && !(data.org?.brand && hits(BRAND_HAY, terms)) && !data.meetings.some((m) => m.files.some((f) => hits(`${titleOf(f.name)} ${meetingName(m)} ${kindLabel(f.kind)}`, terms))) ? html`<p class="bp-found" role="status">No document or file matches “${q.trim()}”.</p>` : null}
+    ${terms.length && !onShelves.length && !toSign.some(found) && !factsOf(data.org, data.numbers).some((x) => hits(factHay(x), terms)) && !data.meetings.some((m) => m.files.some((f) => hits(`${titleOf(f.name)} ${meetingName(m)} ${kindLabel(f.kind)}`, terms))) ? html`<p class="bp-found" role="status">No document or file matches “${q.trim()}”.</p>` : null}
     <div class="bp-rise" style=${rise(6)}><${Library} data=${data} q=${q} /></div>`;
 }
 
@@ -3977,7 +3955,8 @@ function searchIndex(data, d) {
 /** SOARD's facts and its brand in search: each lands on its line on Documents, its copy button ready */
 function orgEntries(data) {
   const facts = factsOf(data.org, data.numbers).map((x) => ({ key: `org:${x.id}`, group: 'Documents', title: x.label, sub: String(x.value).split('\n')[0].slice(0, 120), hay: norm(`${factHay(x)} soard facts`), href: '#/documents', focus: `fact-${x.id}`, icon: 'documents' }));
-  return data.org?.brand ? [...facts, { key: 'org:brand', group: 'Documents', title: 'SOARD’s logos, colors and fonts', sub: 'The official logos and the logo kit', hay: norm(BRAND_HAY), href: '#/documents', focus: 'kit', icon: 'documents' }] : facts;
+  // The brand is the website's own page
+  return facts.length ? [...facts, { key: 'org:brand', group: 'Documents', title: 'SOARD’s logos, colors and fonts', sub: 'The brand guide, on the website', hay: norm('brand logo logos colors colours color hex pms fonts typeface kit soard'), href: '/branding/', ext: true, icon: 'documents' }] : facts;
 }
 
 function Finder({ ctx, onClose }) {

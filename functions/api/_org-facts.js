@@ -31,7 +31,6 @@ import { slackCard } from './_slack-cards.js';
 import { askModel, scannedPages, documentType } from './_vendor-read.js';
 import { drawPages, closeBrowser } from './_coi-backfill.js';
 import { boardFiles } from './_board.js';
-import { KIT, LOGOS, COLORS, FONTS, pngHref } from '../../src/data/brand.js';
 import {
   einDigits, irsRecord, exempt, rulingText, PUBLIC_CHARITY, manualMission, problemsFor, hasMailing, sameName, sameAddress, csvCells, SITE_HOST,
 } from '../../public/admin/org-facts-shared.js';
@@ -91,13 +90,6 @@ export async function orgFacts(env) {
     mission: str(m.mission),
     vision: str(st.vision),
     values,
-    // The official logos as the kit has them, the colors and the fonts (../../src/data/brand.js)
-    brand: {
-      kit: KIT,
-      logos: LOGOS.map((l) => ({ key: l.key, group: l.group, name: l.name, sub: l.sub, bg: l.bg, circle: !!l.circle, id: l.id, png: pngHref(l) })),
-      colors: COLORS,
-      fonts: FONTS,
-    },
     irs: rec ? { exempt: exempt(rec), since: rulingText(rec.ruling), publicCharity: PUBLIC_CHARITY[Number(rec.foundation)] || '', listed: check.irs.date || '' } : null,
   };
 }

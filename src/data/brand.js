@@ -1,7 +1,7 @@
 /**
  * SOARD's brand, in one place: the official logos (the files in public/SOARD-Logo-Kit.zip, unaltered, shown from
- * Cloudflare Images), the colors and the fonts. /branding/ draws them for press and partners, and the board page
- * (functions/api/_org-facts.js → Documents → SOARD's facts) for the board. Plain JS so both can import it.
+ * Cloudflare Images), the colors and the fonts, as /branding/ draws them for press, partners and the board (the board
+ * page links there). functions/api/download-logo.js serves only these logos. Plain JS so both can import it.
  *
  * A logo downloads as a PNG (/api/download-logo?id=<download id>, from Cloudflare Images at 2048px). The kit's .svg
  * files hold the same PNG pictures inside an SVG, not drawings that scale, so they aren't offered on their own: a
