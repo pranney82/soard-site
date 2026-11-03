@@ -304,7 +304,11 @@ export function initAdvisoryForm() {
     if (!el) return;
     if (packs[step] && el.closest('[data-off]')) { screenNo = screenOf(step, id); paintScreen(); paint(); }
     const input = el.querySelector('input:not([type="hidden"]), textarea');
-    el.scrollIntoView({ block: 'center', behavior: reducedMotion() ? 'auto' : 'smooth' });
+    // In view already, between the bar across the top and Back / Continue: left where it is (the step's line stays
+    // in sight), else brought just into view
+    const r = el.getBoundingClientRect();
+    const seen = r.top >= (ui.top?.getBoundingClientRect().bottom || 0) + 4 && r.bottom <= (form.querySelector('.adv-nav')?.getBoundingClientRect().top ?? innerHeight) - 4;
+    if (!seen) el.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
     input?.focus({ preventScroll: true });
   }
   /** Once someone fixes an answer, its message goes as they type */
@@ -1119,7 +1123,7 @@ export function initAdvisoryForm() {
       if (res.status === 422 && d.problems) {
         const at = ADVISORY_STEPS.findIndex((s) => s.fields.some((f) => d.problems[f.id]));
         if (at !== -1) { fromReview = 'answer'; await go(at, { dir: -1 }); showProblems(d.problems); }
-        throw new Error(d.error || 'A few answers need a look.');
+        throw Object.assign(new Error(d.error || 'A few answers need a look.'), { sentBack: at !== -1 });
       }
       if (!res.ok || !d.ok) {
         if (d.code === 'turnstile') resetTurnstile();
@@ -1127,6 +1131,16 @@ export function initAdvisoryForm() {
       }
       markSent({ first: d.first });
     } catch (err) {
+      // Sent back to an answer: its own note says what to fix, with the cursor in it (heard too); a second one in
+      // the bar would only push the step off the top
+      if (err.sentBack) {
+        ui.sendError.hidden = true;
+        if (ui.live) { ui.live.textContent = ''; setTimeout(() => { ui.live.textContent = err.message; }, 60); }
+        ui.next.removeAttribute('aria-disabled');
+        ui.back.disabled = false;
+        paint();
+        return;
+      }
       ui.sendError.textContent = err.message || 'That didn’t send. Your answers are still here; please try again.';
       ui.sendError.hidden = false;
       ui.next.removeAttribute('aria-disabled');

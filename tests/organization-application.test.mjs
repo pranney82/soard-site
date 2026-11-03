@@ -84,7 +84,7 @@ test('the organization form is its own: valid as built, its own questions the si
 test('an organization’s website is a web address, typed however people type one', () => {
   const site = { id: 'website', type: 'text', label: 'Website' };
   for (const ok of ['soard.org', 'www.soard.org', 'https://www.soard.org/about-us', 'kids.example.co.uk/x?y=1']) assert.equal(fieldError(site, ok), null, ok);
-  for (const bad of ['not a site', 'javascript:alert(1)', 'example', 'http://localhost']) assert.match(fieldError(site, bad), /web address/, bad);
+  for (const bad of ['not a site', 'javascript:alert(1)', 'example', 'http://localhost', 'www.example', 'www.facebook']) assert.match(fieldError(site, bad), /web address/, bad); // (the ending forgotten)
   assert.equal(fieldError({ ...site, id: 'contactTitle' }, 'not a site'), null); // only the website is one
   assert.equal(isWebAddress(''), false);
 });

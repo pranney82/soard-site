@@ -532,6 +532,7 @@ function init(root, cfg, mode) {
   /** Start, or carry on: the application takes the screen, at `id` if given (a step already reached), else where they were */
   function begin(id = null) {
     if (root.hidden) return;
+    const fromPage = !focused && !session.get(); // in from the page (the overview, the hero, a link), not a reload on a screen
     // Left by the browser's Back (which walks back a screen at a time, to the very first): "Continue where you
     // left off" is the furthest step they'd reached, not the start they backed through
     if (id == null && backedOut && !focused && order(currentId) < order(furthestId)) id = furthestId;
@@ -545,8 +546,11 @@ function init(root, cfg, mode) {
     if (go !== currentId) currentId = null; // a new page: worked out afresh
     const piece = resumePiece && pageEl(go)?.contains(resumePiece) ? resumePiece : null;
     resumePiece = null;
+    // An answer that stops it: "Continue to see why" (the overview's words) is that screen, after a reload too
+    const stopNow = fromPage && id == null && !stopShown && token && !previewing ? stopFor(form, readAnswers()) : null;
     show(go, piece ? { piece, scroll: true } : { screen: 'open', scroll: true }).then(() => {
       if (depth) replaceLoc(); else pushLoc();
+      if (stopNow && stopNow.page === currentId && !stopShown) { showStop(stopNow); pushLoc({ stop: true }); } // (Back from it: the question, as from any stop)
       if (stopShown && !ui.stop.hidden) ui.stopTitle.focus({ preventScroll: true }); // back onto a "can't help" screen: its words
       // Measured again once the application has the screen (Safari can measure the first frame's words a
       // line long), before the count is read: "Part 1 of 5" then "Part 2 of 4" never happens
@@ -1787,8 +1791,13 @@ function init(root, cfg, mode) {
     // To the question; and when it has a note, the note in view too (on a tall question, the map and its
     // question over its answers, the note is what they need to see)
     const note = [...el.querySelectorAll('.af-error')].find(n => n.textContent.trim() && n.getClientRects().length);
-    el.scrollIntoView({ block: 'start', behavior: note || reducedMotion() ? 'auto' : 'smooth' });
-    note?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    // (already in view between the bar across the top and Back / Continue: the screen stays as it is, its top too)
+    const r = el.getBoundingClientRect();
+    const seen = r.top >= (ui.top?.getBoundingClientRect().bottom || 0) + 4 && r.bottom <= (ui.form.querySelector('[data-nav]')?.getBoundingClientRect().top ?? innerHeight) - 4;
+    if (!seen) {
+      el.scrollIntoView({ block: 'start', behavior: note || reducedMotion() ? 'auto' : 'smooth' });
+      note?.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+    }
     // An address entered by hand: the part the note is about (still empty, or a ZIP short a digit), not the street they've typed
     const box = addrBox(el);
     const empty = box?.dataset.mode === 'parts' ? box.querySelector('[data-part][aria-invalid="true"]:not([disabled])') : null;
@@ -1880,6 +1889,20 @@ function init(root, cfg, mode) {
     ui.notice.dataset.kind = lastNotice?.kind || 'info';
     // A saved application that couldn't open: said once on the page, at the top (the hero's note)
     ui.notice.hidden = !lastNotice || (!focused && !root.hidden && ['resumeFailed', 'linkExpired'].includes(lastNotice.m));
+  }
+  /**
+   * The note at the top, said over the screen they were sent back to ("A few answers need attention"): clear of the
+   * bar across the top, as far as the box with the cursor can go down and stay clear of Back / Continue
+   */
+  function noticeInView() {
+    if (ui.notice.hidden || !focused) return;
+    const under = (ui.top?.getBoundingClientRect().bottom || 0) + 12 - ui.notice.getBoundingClientRect().top;
+    if (under <= 0 || window.scrollY <= 0) return;
+    const navTop = ui.form.querySelector('[data-nav]')?.getBoundingClientRect().top ?? innerHeight;
+    const box = document.activeElement?.closest?.('[data-field]')?.getBoundingClientRect();
+    const room = box ? navTop - 12 - Math.min(box.bottom, box.top + 96) : under; // (its question and box at least)
+    const by = Math.min(under, window.scrollY, Math.max(0, room));
+    if (by > 0) window.scrollBy({ top: -by, behavior: 'auto' });
   }
   /** A notice their own press led to (Submit, on an expired draft): in view, with the keys on it */
   function readNotice() {
@@ -2422,7 +2445,7 @@ function init(root, cfg, mode) {
         const page = pageOf(ids[0]);
         if (page) {
           fromReview = 'answer';
-          show(page, { dir: -1, focusField: ids[0] });
+          show(page, { dir: -1, focusField: ids[0] }).then(() => setTimeout(noticeInView, reducedMotion() ? 0 : 450)); // (once its scroll is done)
           for (const id of ids) setFieldError(id, r.errors[id]);
         }
         notice('attention', 'error');

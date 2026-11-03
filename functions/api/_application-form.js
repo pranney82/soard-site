@@ -1156,7 +1156,12 @@ export function toE164(s) {
   return null;
 }
 /** A web address as people type one ("soard.org", "www.example.org/about", with or without https://) */
-export const isWebAddress = (s) => /^(?:https?:\/\/)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}(?::\d{2,5})?(?:[/?#]\S*)?$/i.test(String(s || '').trim());
+export const isWebAddress = (s) => {
+  const v = String(s || '').trim();
+  // ("www.example", the ending forgotten, isn't one: past "www." it still needs a name and an ending)
+  return /^(?:https?:\/\/)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}(?::\d{2,5})?(?:[/?#]\S*)?$/i.test(v)
+    && /^[^/?#:]+\.[a-z]{2,}(?:[:/?#]|$)/i.test(v.replace(/^https?:\/\//i, '').replace(/^www\./i, ''));
+};
 
 /** Whole years between a YYYY-MM-DD birthday and now */
 export function ageOn(birthdate, now = Date.now()) {

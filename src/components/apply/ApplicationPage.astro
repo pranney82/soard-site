@@ -673,6 +673,12 @@ const breadcrumbs = [
   /* The list's last row: an address it doesn't have, entered by hand */
   .af-suggest li.af-suggest-by-hand { align-content: center; font-weight: 600; text-decoration: underline; text-decoration-color: rgba(55,58,54,.35); text-underline-offset: 4px; }
   .af-suggest li.af-suggest-by-hand:not(:first-child) { margin-top: 4px; }
+  /* Pinned to the list's foot (over Google's credit): never below what a short list shows (a phone, opened upward) */
+  .af-suggest li.af-suggest-by-hand { position: sticky; bottom: 0; z-index: 1; background: #fff; box-shadow: 0 -1px 0 var(--c-border); border-radius: 0 0 10px 10px; }
+  .af-suggest[data-google] li.af-suggest-by-hand { bottom: 22px; }
+  .af-suggest li.af-suggest-by-hand[aria-selected="true"], .af-suggest li.af-suggest-by-hand:hover { background: var(--af-picked); box-shadow: inset 0 0 0 1.5px var(--c-yellow); }
+  .af-suggest:has(.af-suggest-by-hand) { scroll-padding-bottom: 60px; }
+  .af-suggest[data-google]:has(.af-suggest-by-hand) { scroll-padding-bottom: 84px; }
   .af-county-note { display: flex; gap: 8px; align-items: center; margin: 2px 0 0; font-size: 14px; font-weight: 500; color: var(--c-dark); animation: afFadeIn .3s var(--af-ease) both; }
   .af-county-note::before { content: ''; flex: 0 0 18px; height: 18px; background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3E%3Ccircle cx='10' cy='10' r='9' fill='%23FFDA24'/%3E%3Cpath d='M6 10.4l2.6 2.6L14 7.6' fill='none' stroke='%23373A36' stroke-width='1.9' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") no-repeat center / contain; }
   /* The Postal Service's word on the home address, in the check's card (with Google's credit, which its terms require) */
@@ -1666,6 +1672,11 @@ const breadcrumbs = [
     html.af-focus .af-step-title { order: -1; flex: 0 1 auto; min-width: 0; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     html.af-focus .af-step-text { flex: 1 1 auto; min-width: 0; flex-wrap: nowrap; white-space: nowrap; overflow: hidden; font-size: 11.5px; letter-spacing: .07em; gap: 8px; }
     html.af-focus .af-steps { margin-block: -8px; } /* still 44px to tap, the line no taller than the name */
+    /* As narrow as a window zoomed to 400%: the step's name on its own line, whole (never "Basic I…") */
+    @media (max-width: 520px) {
+      html.af-focus .af-head { flex-wrap: wrap; row-gap: 2px; }
+      html.af-focus .af-step-title { flex: 1 1 100%; white-space: normal; overflow: visible; }
+    }
     html.af-focus .af-page { gap: 14px; }
     html.af-focus .af-label { font-size: 16px; line-height: 1.4; }
     html.af-focus .af-field textarea { min-height: 64px; }
