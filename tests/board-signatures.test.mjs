@@ -541,3 +541,63 @@ test('a new year: last year’s signatures are kept on record and each member si
   members = await memberStatus(env.DB);
   assert.deepEqual(of('kim-park').pastYears.map((s) => [s.year, s.how, s.drive?.id]), [[YEAR - 2, 'drive', 'drv1']]);
 });
+
+test('asking the board to sign: an email to each who hasn’t, straight to the paper, from the admin asking; never twice in ten minutes, never to whoever signed; Members says when', async () => {
+  const { askToSign, memberStatus } = await import('../functions/api/_board.js');
+  const d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, body: '### Attendance\n\n- Come to three of four meetings' }, { by: FOUNDER });
+  await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera');
+  // Sam has been on the board page; Kim never has
+  await env.DB.prepare('INSERT INTO board_seen (slug, at) VALUES (?, ?)').bind('sam-ortiz', new Date().toISOString()).run();
+  const got = await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'ask-to-sign' }, handler: admin.onRequestPost });
+  assert.equal(got.status, 200, JSON.stringify(got.body));
+  assert.deepEqual([got.body.sent, got.body.signed, got.body.recent, got.body.noEmail], [2, 1, [], []]);
+  assert.deepEqual(sent.map((m) => m.to[0]).sort(), ['kim.board@example.com', OTHER], 'Sam and Kim, never Alex (signed)');
+  const sam = sent.find((m) => m.to[0] === OTHER);
+  const kim = sent.find((m) => m.to[0] === 'kim.board@example.com');
+  assert.equal(sam.subject, `Please sign the Board Member Expectations for ${YEAR}`);
+  assert.match(sam.from, /^"Jane Doe via SOARD Board" </, 'from the admin asking, through the board’s address');
+  assert.ok(sam.html.includes(`/board#/documents/${d.id}`) || sam.html.includes(`#/documents/${d.id}`), 'its button opens the paper itself');
+  assert.match(sam.text, /Sam, please sign the Board Member Expectations/);
+  assert.ok(!/The first time/.test(sam.text) && /The first time: The board page opens with your email address, kim\.board@example\.com/.test(kim.text), 'only someone never on the board page is told how its sign-in works');
+  assert.ok(!/—/.test(sam.text + kim.text), 'no em dashes');
+  // Members: when each was asked
+  let members = await memberStatus(env.DB);
+  const of = (slug) => members.find((p) => p.slug === slug);
+  assert.deepEqual([!!of('sam-ortiz').asked?.at, of('sam-ortiz').asked?.n, of('sam-ortiz').asked?.by, of('alex-rivera').asked], [true, 1, FOUNDER, null]);
+  assert.ok(got.body.members.find((p) => p.slug === 'kim-park').asked, 'the answer brings Members up to date');
+  // Again at once (a double click, another admin): nobody gets a second
+  sent = [];
+  const again = await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'ask-to-sign', slugs: ['sam-ortiz'] }, handler: admin.onRequestPost });
+  assert.deepEqual([again.body.sent, again.body.recent, sent.length], [0, ['Sam Ortiz'], 0]);
+  // Later: Sam asked again, counted
+  await env.DB.prepare("UPDATE board_sign_asks SET at = '2000-01-01T00:00:00.000Z'").run();
+  await askToSign(env, { slugs: ['sam-ortiz'], by: FOUNDER });
+  members = await memberStatus(env.DB);
+  assert.deepEqual([of('sam-ortiz').asked.n, sent.length], [2, 1]);
+  // Someone who has signed: nobody emailed, said so
+  sent = [];
+  const signed = await askToSign(env, { slugs: ['alex-rivera'], by: FOUNDER });
+  assert.deepEqual([signed.sent, signed.signed, sent.length], [0, 1, 0]);
+  // No email on file: said, never sent
+  await env.DB.prepare("DELETE FROM reveal_board_emails WHERE slug = 'kim-park'").run();
+  await env.DB.prepare("UPDATE board_sign_asks SET at = '2000-01-01T00:00:00.000Z'").run();
+  const none = await askToSign(env, { by: FOUNDER });
+  assert.deepEqual(none.noEmail, ['Kim Park']);
+  // A preview: to the admin asking only, recorded for nobody
+  sent = [];
+  const before = JSON.stringify(await memberStatus(env.DB));
+  const preview = await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'ask-to-sign', test: true }, handler: admin.onRequestPost });
+  assert.deepEqual([preview.body.sent, sent.map((m) => m.to[0]), /^\[Preview\] /.test(sent[0].subject)], [1, [FOUNDER], true]);
+  assert.equal(JSON.stringify(await memberStatus(env.DB)), before, 'a preview asks nobody');
+  // Two papers to sign: one email naming both, its button to Documents
+  sent = [];
+  await saveDoc(env.DB, { title: 'Conflict of Interest Policy', kind: 'policy', sign: true, body: 'Say so.' }, { by: FOUNDER });
+  await env.DB.prepare("UPDATE board_sign_asks SET at = '2000-01-01T00:00:00.000Z'").run();
+  await askToSign(env, { slugs: ['alex-rivera'], by: FOUNDER });
+  assert.equal(sent.length, 1);
+  assert.equal(sent[0].subject, `Please sign the Conflict of Interest Policy for ${YEAR}`, 'Alex signed the expectations: only the policy is asked for');
+  await askToSign(env, { slugs: ['sam-ortiz'], by: FOUNDER });
+  assert.match(sent[1].subject, new RegExp(`Please sign 2 papers for ${YEAR}`));
+  assert.match(sent[1].text, /To sign for \d{4}:\n- Board Member Expectations\n- Conflict of Interest Policy/);
+  assert.match(sent[1].text, /#\/documents\n/, 'two papers: to Documents');
+});

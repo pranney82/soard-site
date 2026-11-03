@@ -1280,9 +1280,37 @@ function MembersTab({ ctx }) {
     const doc = await addSignedCopy({ d, p, picked: file, addToast, setBusy });
     if (doc) ctx.setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? doc : y)) }));
   };
+  // Asking by email to sign this year's papers: one member (their row), everyone who hasn't (asked first), or a
+  // preview to the admin. The server skips whoever has signed, or was asked in the last ten minutes
+  const listed = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list.at(-1)}` : list[0]);
+  const askSign = async ({ slugs = null, test = false } = {}, label) => {
+    setWorking(label);
+    const j = await call({ action: 'ask-to-sign', ...(slugs ? { slugs } : {}), ...(test ? { test: true } : {}) });
+    setWorking('');
+    if (j.members) ctx.setData((d) => ({ ...d, members: j.members }));
+    if (test) { addToast(j.ok ? `Sent to ${j.to?.[0] || 'you'}` : `Not sent: ${j.error}`, j.ok ? 'info' : 'error'); return j; }
+    const one = slugs?.length === 1 ? data.members.find((p) => p.slug === slugs[0])?.name : '';
+    const left = [j.recent?.length ? `${listed(j.recent)} ${j.recent.length === 1 ? 'was' : 'were'} asked in the last ten minutes` : '',
+      j.noEmail?.length ? `${listed(j.noEmail)} ${j.noEmail.length === 1 ? 'has' : 'have'} no email on People → Board` : ''].filter(Boolean).join('; ');
+    if (typeof j.sent !== 'number') addToast(`Couldn’t tell whether it went (${j.error || 'no answer'}). Reload the page to see who was asked.`, 'error');
+    else if (j.unsure) addToast('Resend didn’t confirm it went, so it may have gone. It’s counted as asked; Emails & invites → What went out shows whether it was delivered.', 'error');
+    else if (!j.ok) addToast(j.sent ? `Emailed ${j.sent}; ${plural(j.failed, 'email')} didn’t go (${j.error})` : `Not sent: ${j.error}`, 'error');
+    else if (!j.sent) addToast(left ? `Nobody was emailed: ${left}.` : one ? `${one} has signed already` : 'Everyone has signed', left ? 'error' : 'info');
+    else addToast(`${one && j.sent === 1 ? `Emailed ${one}` : `Emailed ${plural(j.sent, 'board member')}`}, asking them to sign.${left ? ` ${left.replace(/^./, (c) => c.toUpperCase())}.` : ''}`, 'info');
+    return j;
+  };
+  const askAll = async (unsigned, title) => {
+    const n = unsigned.length;
+    const first = unsigned[0].name.split(/\s+/)[0];
+    if (!(await ask({ title: n === 1 ? `Email ${first}, asking them to sign?` : `Email the ${n} who haven’t signed?`,
+      text: `${n === 1 ? `${unsigned[0].name} gets` : 'Each gets'} an email from you with a button straight to ${title}, to read it and sign by typing their name.${n > 1 ? ' Anyone you asked in the last ten minutes is left out.' : ''}`,
+      yes: n === 1 ? `Email ${first}` : `Email all ${n}`, no: 'Cancel' }))) return;
+    await askSign({}, 'ask:all');
+  };
   return html`
     <${AccessPanel} ctx=${ctx} ready=${ready} working=${working} welcome=${welcome} />
-    <${BoardActivity} data=${data} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy} />`;
+    <${BoardActivity} data=${data} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy}
+      onAsk=${(slug) => askSign({ slugs: [slug] }, `ask:${slug}`)} onAskAll=${askAll} onAskPreview=${() => askSign({ test: true }, 'ask:me')} />`;
 }
 
 // ─── Settings ───────────────────────────────────────────────────────

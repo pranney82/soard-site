@@ -25,6 +25,8 @@ import * as boardAdmin from '../functions/api/board-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
 import { saveMeeting, ensureSchema, patchMeeting, saveDoc } from '../functions/api/_board.js';
+import { boardSignIns } from '../functions/api/_board-access.js';
+import { writeState } from '../functions/api/_board-roles.js';
 import { newMeeting } from '../public/admin/board-shared.js';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 
@@ -284,6 +286,27 @@ try {
       ok(await waitText(jane, /(Last signed in|LAST SIGNED IN)\s*Never/), 'a member who hasn’t signed in: Never');
       await shot(jane, '04-sheet-not-yet');
       await jane.keyboard.press('Escape');
+      ok(!(await jane.$('.ba-ask')), 'no asking to sign before the board page’s sign-in works (their code wouldn’t come)');
+      // The sign-in set up: each who hasn't signed can be asked, one at a time or all at once (asked first)
+      { const { emails } = await boardSignIns(DB); const b = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(emails.join('\n')))); await writeState(DB, 'access', { groupId: 'g1', hash: [...b.slice(0, 8)].map((x) => x.toString(16).padStart(2, '0')).join('') }); }
+      await jane.reload({ waitUntil: 'networkidle0' });
+      ok(await waitText(jane, /Ask the 3 who haven’t signed/), 'the head asks the 3 with an email who haven’t signed');
+      const rowOf = (slug) => jane.$eval(`.ba-name[data-slug="${slug}"]`, (b) => b.closest('tr').innerText.replace(/\s+/g, ' '));
+      ok(/Not signed Ask to sign/.test(await rowOf('sam-ortiz')) && !/Ask to sign/.test(await rowOf('kim-park')), 'a row each asks its member; Kim (no email) has none');
+      const sent0 = mail.length;
+      await jane.evaluate(() => document.querySelector('.ba-name[data-slug="sam-ortiz"]').closest('tr').querySelector('.ba-ask').click());
+      ok(await waitText(jane, /Emailed Sam Ortiz, asking them to sign/), 'Sam’s row: emailed, said so');
+      const toSam = mail.slice(sent0).find((m) => m.to[0] === OTHER);
+      ok(toSam && /^Please sign the Board Member Expectations for \d{4}$/.test(toSam.subject) && /#\/documents\/d_/.test(toSam.text) && /Jane Doe via SOARD Board/.test(toSam.from), `the email to Sam: straight to the paper, from the founder (${toSam?.subject})`);
+      ok(/Asked [A-Z][a-z]{2} \d+ Ask again/.test(await rowOf('sam-ortiz')), 'his row says when, and Ask again');
+      const asked = [];
+      await answerAsks(jane, { onAsk: (t) => asked.push(t) });
+      const sent1 = mail.length;
+      await jane.evaluate(() => [...document.querySelectorAll('.ba-head button')].find((b) => /Ask the/.test(b.textContent)).click());
+      ok(await waitText(jane, /Emailed 2 board members, asking them to sign\. Sam Ortiz was asked in the last ten minutes/), 'everyone: the 2 not just asked, and Sam left out, said');
+      ok(/Email the 3 who haven’t signed\?/.test(asked.join(' ')), `asked first (${asked.join(' | ')})`);
+      ok(mail.slice(sent1).map((m) => m.to[0]).sort().join() === [MEMBER, 'bartholomew.montgomery-fitzgerald.board@a-very-long-company-name-example.com'].sort().join(), 'Alex and Bartholomew emailed, nobody twice');
+      await shot(jane, '04b-members-asked');
     }
     const o = await overflow(jane);
     ok(o.page <= 0 && !o.past.length, `${width}: nothing past the edge (${o.page}px${o.past.length ? `; ${o.past.join(', ')}` : ''})`);

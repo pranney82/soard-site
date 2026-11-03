@@ -24,6 +24,8 @@
  *                                             askAgain: the board signs the new wording again
  *   doc-versions { id }                      a paper's wordings written here, newest first
  *   unsign { docId, slug }                    a member's signature this year taken off (its copy goes with it)
+ *   ask-to-sign { slugs?, test? }             an email to each picked member (none: everyone) who hasn't signed this
+ *                                             year's papers, asking them to; test: to the admin only
  *   place-signed { driveId, docId, slug }     whose a signed copy in Drive is, when Board couldn't tell (_board-drive.js)
  *   update-file { id, kind, staffOnly, name }, delete-file { id }
  *   save-settings { settings }
@@ -46,7 +48,7 @@
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
   setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, fillDocWords, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, liveNumbers, takeSnapshot, sendPacket,
-  memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
+  memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, askToSign, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
   chairLive, createPractice, resetPractice,
 } from './_board.js';
 import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
@@ -339,6 +341,29 @@ export async function onRequestPost(context) {
         const r = await sendMinutesNotice(env, id, { to: body.test ? [me] : null, replyTo: (await getSettings(env.DB)).admins });
         if (!body.test && r.sent) await audit(env, me, 'updated', `Board told the minutes are up (${r.sent})`);
         return Response.json({ ok: r.failed === 0, ...r, meeting: await getMeeting(env.DB, id), ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
+      }
+      case 'ask-to-sign': {
+        // An email asking each board member picked (none: the whole board) who hasn't signed this year's papers to;
+        // `test`: to the admin asking only. Their codes have to come: a member added minutes ago is put on Access's list first
+        const admins = (await getSettings(env.DB)).admins;
+        if (!body.test && accessConfigured(env)) {
+          let st = await accessStatus(env);
+          if (!st.current || !st.ok) st = await syncBoardAccess(env);
+          if (!st.ok) return Response.json({ ok: false, sent: 0, error: `Cloudflare doesn’t have the board’s addresses yet (${String(st.error || 'it didn’t answer').replace(/^Cloudflare \w+ \S+: /, '')}), so their sign-in codes wouldn’t come. Try again in a minute.` }, { status: 503 });
+          if (!st.attached) return Response.json({ ok: false, sent: 0, error: 'The board’s sign-in list isn’t on the admin app in Cloudflare (Board access), so their sign-in codes wouldn’t come.' }, { status: 409 });
+        }
+        let r;
+        try {
+          const going = askToSign(env, { slugs: Array.isArray(body.slugs) ? body.slugs.map(String) : null, by: me, replyTo: admins, to: body.test ? [me] : null });
+          // Finished even if the page goes away mid-send, so the emails and the record always match
+          context.waitUntil?.(going.catch(() => {}));
+          r = await going;
+        } catch (err) {
+          if (err.status) return Response.json({ ok: false, sent: 0, error: err.message }, { status: err.status });
+          throw err;
+        }
+        if (!body.test && r.sent) await audit(env, me, 'updated', `Board asked ${r.sent === 1 ? 'a board member' : `${r.sent} board members`} by email to sign this year’s papers`);
+        return Response.json({ ok: r.failed === 0, ...r, ...(body.test ? {} : { members: await memberStatus(env.DB) }), ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
       }
       case 'send-welcome': {
         const admins = (await getSettings(env.DB)).admins;

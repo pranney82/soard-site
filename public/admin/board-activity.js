@@ -253,9 +253,14 @@ function SignedEachYear({ p, signDocs, onCopy }) {
   </section>`;
 }
 
-/** One member: when they last signed in (or the sign-in email to send), then the papers they signed, each year */
-function MemberSheet({ p, sentAt, onWelcome, working, onClose, signDocs = [], onCopy = null }) {
+/**
+ * One member: when they last signed in (or the sign-in email to send), asking them by email to sign this year's papers
+ * while they haven't, then the papers they signed, each year
+ */
+function MemberSheet({ p, sentAt, onWelcome, working, onClose, signDocs = [], onCopy = null, onAsk = null }) {
   const last = p.lastSeen || null;
+  const first = String(p.name).split(/\s+/)[0];
+  const due = signDocs.some((d) => !d.signed[p.slug]);
   return html`<${Dialog} title=${p.name} sub=${[p.title && p.title !== 'Board Member' ? p.title : '', p.email].filter(Boolean).join(' · ')} onClose=${onClose}>
     <div class="ba-sheet">
       <div class="ba-facts">
@@ -263,9 +268,15 @@ function MemberSheet({ p, sentAt, onWelcome, working, onClose, signDocs = [], on
           <span class="ba-fact__s">${last ? fullTime(last) : sentAt ? `Sign-in email sent ${dateOnly(sentAt)}` : p.email ? 'No sign-in email yet' : 'No email on file'}</span></div>
       </div>
       ${!last && p.email && onWelcome ? html`<p class="ba-sheet__ask"><button class="btn btn-ghost btn-sm" disabled=${!!working} aria-label=${`${sentAt ? 'Send the sign-in email again' : 'Send the sign-in email'} to ${p.name}`} onClick=${() => onWelcome(p.slug)}>${working === p.slug ? 'Sending…' : sentAt ? 'Send the sign-in email again' : 'Send the sign-in email'}</button></p>` : null}
+      ${due && p.email && onAsk ? html`<p class="ba-sheet__ask">${p.asked ? html`<span class="ba-muted">${askedWords(p.asked)}. </span>` : null}<button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => onAsk(p.slug)}>${working === `ask:${p.slug}` ? 'Emailing…' : p.asked ? `Ask ${first} again` : `Ask ${first} to sign`}</button></p>` : null}
       <${SignedEachYear} p=${p} signDocs=${signDocs} onCopy=${onCopy} />
     </div>
   <//>`;
+}
+
+/** "Asked Nov 3" / "Asked twice, last Nov 3" */
+function askedWords(a) {
+  return a.n > 1 ? `Asked ${a.n === 2 ? 'twice' : `${a.n} times`}, last ${dateOnly(a.at)}` : `Asked ${dateOnly(a.at)}`;
 }
 
 /**
@@ -274,7 +285,7 @@ function MemberSheet({ p, sentAt, onWelcome, working, onClose, signDocs = [], on
  * A row opens their papers year by year
  */
 let styled = false;
-export function BoardActivity({ data, signDocs, ready, working, onWelcome, onCopy = null }) {
+export function BoardActivity({ data, signDocs, ready, working, onWelcome, onCopy = null, onAsk = null, onAskAll = null, onAskPreview = null }) {
   if (!styled && typeof document !== 'undefined') {
     styled = true;
     const el = document.createElement('style');
@@ -290,10 +301,16 @@ export function BoardActivity({ data, signDocs, ready, working, onWelcome, onCop
   const year = todayEastern().slice(0, 4);
   const current = (p) => signDocs.every((d) => d.signed[p.slug]);
   const done = data.members.filter(current).length;
+  // Who an email can ask to sign: not signed, with an email, once the board page's sign-in works (their code has to come)
+  const asking = ready && signDocs.length && onAsk;
+  const unsigned = data.members.filter((p) => !current(p) && p.email);
+  const papersWord = signDocs.length === 1 ? `the ${signDocs[0].title.replace(/^the\s+/i, '')}` : 'the papers to sign';
   const person = open && data.members.find((p) => p.slug === open);
   return html`<div class="card ba-card" style="padding:0">
     <div class="sec-head ba-head"><h3>The board <span class="count">${data.members.length}</span></h3>
-      ${signDocs.length && data.members.length ? html`<span class="sec-head__hint">${done === data.members.length ? `Everyone has signed for ${year}` : `${done} of ${data.members.length} signed for ${year}`}</span>` : null}</div>
+      ${signDocs.length && data.members.length ? html`<div class="ba-asks"><span class="sec-head__hint">${done === data.members.length ? `Everyone has signed for ${year}` : `${done} of ${data.members.length} signed for ${year}`}</span>
+        ${asking && unsigned.length ? html`<button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => onAskPreview?.()}>${working === 'ask:me' ? 'Sending…' : 'Send it to me'}</button>
+          <button class="btn btn-primary btn-sm" disabled=${!!working} onClick=${() => onAskAll?.(unsigned, papersWord)}>${working === 'ask:all' ? 'Emailing…' : unsigned.length === 1 ? `Ask ${unsigned[0].name.split(/\s+/)[0]} to sign` : `Ask the ${unsigned.length} who haven’t signed`}</button>` : null}</div>` : null}</div>
     ${!data.members.length ? html`<div class="empty empty--inline ba-none"><p class="empty__title">Nobody is on the board in People yet</p></div>` : html`<table class="bd-table ba-table">
       <thead><tr><th>Member</th><th>Last signed in</th>${signDocs.map((d) => html`<th key=${d.id}>${d.title}</th>`)}<th class="ba-go-h" aria-hidden="true"></th></tr></thead>
       <tbody>${data.members.map((p) => {
@@ -306,19 +323,23 @@ export function BoardActivity({ data, signDocs, ready, working, onWelcome, onCop
             ? html`<span class="ba-line" title=${fullTime(last)}>${ago(last)}</span>`
             : html`<span class="ba-not"><span class="ba-line ba-muted">Never</span>${sent[p.slug] ? html`<span class="bd-row__meta">Sign-in email sent ${dateOnly(sent[p.slug])}</span>` : null}
               ${ready && p.email ? html`<button class="btn btn-ghost btn-sm" disabled=${!!working} aria-label=${`${sent[p.slug] ? 'Send the sign-in email again' : 'Send the sign-in email'} to ${p.name}`} onClick=${() => onWelcome(p.slug)}>${working === p.slug ? 'Sending…' : sent[p.slug] ? 'Send it again' : 'Send the sign-in email'}</button>` : null}</span>`}</td>
-          ${signDocs.map((d) => {
+          ${signDocs.map((d, k) => {
             const s = d.signed[p.slug];
             const was = !s && d.before?.[p.slug];
             const prior = !s && !was && d.prior?.[p.slug];
+            // (asked once for all their papers: said, with its button, under the last one)
+            const ask = k === signDocs.length - 1 && !current(p);
             return html`<td key=${d.id} data-label=${d.title}>${s
               ? html`<span class="tag tag--success">Signed</span>${s.how !== 'drive' && s.at ? html`<span class="bd-row__meta">${dayOf(s.at)}</span>` : null}`
-              : html`<span class="tag">Not signed</span>${was ? html`<span class="bd-row__meta">Signed the earlier version</span>` : prior ? html`<span class="bd-row__meta">Signed for ${prior.year}</span>` : null}`}</td>`;
+              : html`<span class="tag">Not signed</span>${was ? html`<span class="bd-row__meta">Signed the earlier version</span>` : prior ? html`<span class="bd-row__meta">Signed for ${prior.year}</span>` : null}`}
+              ${ask && p.asked ? html`<span class="bd-row__meta">${askedWords(p.asked)}</span>` : null}
+              ${ask && asking && p.email ? html`<button class="btn btn-ghost btn-sm ba-ask" disabled=${!!working} aria-label=${`${p.asked ? 'Ask again' : 'Ask to sign'}: email ${p.name}`} onClick=${() => onAsk(p.slug)}>${working === `ask:${p.slug}` ? 'Emailing…' : p.asked ? 'Ask again' : 'Ask to sign'}</button>` : null}</td>`;
           })}
           <td class="ba-go" aria-hidden="true"><svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M8 5l5 5-5 5" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" /></svg></td>
         </tr>`;
       })}</tbody>
     </table>`}
-    ${person ? html`<${MemberSheet} p=${person} sentAt=${sent[person.slug]} onWelcome=${ready ? onWelcome : null} working=${working} signDocs=${signDocs} onCopy=${onCopy} onClose=${() => { const slug = open; setOpen(null); requestAnimationFrame(() => document.querySelector(`.ba-name[data-slug="${CSS.escape(slug)}"]`)?.focus()); }} />` : null}
+    ${person ? html`<${MemberSheet} p=${person} sentAt=${sent[person.slug]} onWelcome=${ready ? onWelcome : null} working=${working} signDocs=${signDocs} onCopy=${onCopy} onAsk=${asking ? onAsk : null} onClose=${() => { const slug = open; setOpen(null); requestAnimationFrame(() => document.querySelector(`.ba-name[data-slug="${CSS.escape(slug)}"]`)?.focus()); }} />` : null}
   </div>`;
 }
 
@@ -348,6 +369,8 @@ export const ACTIVITY_STYLES = `
   .ba-name:hover { text-decoration: underline; text-underline-offset: 3px; }
   .ba-name:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
   .ba-not { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
+  .ba-asks { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem 0.75rem; }
+  .ba-ask { display: block; margin-top: 0.4rem; }
   .ba-go { width: 1%; color: var(--color-text-muted); vertical-align: middle !important; }
   .ba-go-h { width: 1%; }
   .ba-sheet { display: grid; gap: 1.25rem; }

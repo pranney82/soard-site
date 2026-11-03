@@ -24,6 +24,7 @@
  *   board_doc_versions  each wording of a paper written in Board, kept: what
  *                       each signature was on
  *   board_seen         a member's last visit to the board page
+ *   board_sign_asks    a member asked by email to sign this year's papers: when last, by whom, how many times
  *   board_cash          the bank balance, one row per month (the heartbeat)
  *   board_state         settings and caches (./_board-roles.js)
  *
@@ -74,6 +75,7 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS board_docs (id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
   'CREATE TABLE IF NOT EXISTS board_signatures (doc_id TEXT NOT NULL, slug TEXT NOT NULL, year INTEGER NOT NULL, name TEXT, at TEXT, PRIMARY KEY (doc_id, slug, year))',
   // A signature on an earlier version, kept (with its copy) when its member signs the next one
+  'CREATE TABLE IF NOT EXISTS board_sign_asks (slug TEXT NOT NULL, year INTEGER NOT NULL, at TEXT NOT NULL, by TEXT, n INTEGER NOT NULL DEFAULT 1, PRIMARY KEY (slug, year))',
   'CREATE TABLE IF NOT EXISTS board_signatures_earlier (doc_id TEXT NOT NULL, slug TEXT NOT NULL, year INTEGER NOT NULL, version INTEGER NOT NULL, name TEXT, at TEXT, how TEXT, file_id TEXT, drive_id TEXT, drive_name TEXT, added_by TEXT, PRIMARY KEY (doc_id, slug, year, version))',
   'CREATE TABLE IF NOT EXISTS board_doc_versions (doc_id TEXT NOT NULL, version INTEGER NOT NULL, body TEXT, at TEXT, by TEXT, PRIMARY KEY (doc_id, version))',
   'CREATE TABLE IF NOT EXISTS board_seen (slug TEXT PRIMARY KEY, at TEXT)',
@@ -1157,6 +1159,9 @@ export async function packetList(DB) {
 
 const FOOTER = 'You’re getting this as a member of the Sunshine on a Ranney Day Board of Directors.';
 const fromBoard = () => EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board ');
+// From a person, through the board's address: "Sam Ortiz via SOARD Board", quoted (a name may have a period or a
+// comma), a phone's curly apostrophe kept as a plain one; no one, the board's own
+const viaBoard = (who) => (who ? EMAIL_FROM.replace(/^[^<]*/, `"${who.replace(/[‘’]/g, "'").replace(/["\\<>\r\n]/g, '').trim()} via SOARD Board" `) : fromBoard());
 const meetingUrl = (m) => `${SITE}${BOARD_PAGE}#/meetings/${m.id}`;
 const whenOf = (m) => [longDate(m.date), timeRange(m.start, m.end)].filter(Boolean).join(', ');
 const placeOf = (m) => [m.location, m.address].filter(Boolean).join(', ');
@@ -1541,7 +1546,7 @@ export function welcomeEmail({ name = '', email = '', test = false, inviter = nu
     subject: `${test ? '[Preview] ' : ''}${who ? `${who} invited you to SOARD’s board page` : 'Your SOARD board page is ready'}`,
     // From the person who sent it, through the board's address: "Sam Ortiz via SOARD Board", quoted (a name may
     // have a period or a comma), a phone's curly apostrophe kept as a plain one
-    from: who ? EMAIL_FROM.replace(/^[^<]*/, `"${who.replace(/[‘’]/g, "'").replace(/["\\<>\r\n]/g, '').trim()} via SOARD Board" `) : fromBoard(),
+    from: viaBoard(who),
     html: emailShell({
       eyebrow: 'SOARD Board',
       preheader: `${next ? `Next meeting ${shortDate(next.date)}. ` : ''}Sign in with ${email || 'this email address'}. No password, just a code by email.`,
@@ -1651,6 +1656,105 @@ async function sendWelcomeNow(env, { to = null, slugs = null, due = false, again
     await writeState(env.DB, 'welcome', { ...now, unconfirmed: unconfirmed.length ? unconfirmed : undefined });
   }
   return { sent: r.sent, ...(!test && r.sent && recipients.length !== items.length ? { reached: recipients.length } : {}), failed: r.failed, errors: r.errors, unsure: unsure || undefined, ...(unusable.length ? { unusable } : {}), to: test ? to : undefined };
+}
+
+// ─── Asking a member to sign ────────────────────────────────────────
+
+/**
+ * The email asking a board member to sign this year's papers they haven't (`papers`: [{ title, id }]), from the
+ * admin asking (`from`: their name): its button opens the paper itself, ready to read and sign (more than one:
+ * Documents, where they're listed to sign). One who has never been on the board page (`firstTime`) is told how its
+ * sign-in works; `test`: a preview
+ */
+export function signAskEmail({ name = '', email = '', papers = [], from = '', firstTime = false, test = false } = {}) {
+  const year = todayEastern().slice(0, 4);
+  const first = firstName(name);
+  const one = papers.length === 1 ? papers[0] : null;
+  const what = one ? `the ${one.title.replace(/^the\s+/i, '')}` : `${papers.length} papers`;
+  const url = `${SITE}${BOARD_PAGE}#/documents${one ? `/${one.id}` : ''}`;
+  const heading = `${first ? `${first}, please` : 'Please'} sign ${what} for ${year}`;
+  const it = one ? 'it' : 'them';
+  const intro = `Every board member reads and signs ${it} once a year. On the board page it takes a few minutes: read ${one ? 'it' : 'each one'}, then type your name at the end.`;
+  const paper = `Signed ${it} on paper already? Add a photo or PDF of the signed page there instead.`;
+  const signIn = `The board page opens with your email address${email ? `, ${email}` : ''}: Cloudflare emails you a six-digit code to type in. No password.`;
+  const reply = 'Questions? Reply to this email.';
+  return {
+    subject: `${test ? '[Preview] ' : ''}Please sign ${what} for ${year}`,
+    from: viaBoard(from),
+    html: emailShell({
+      eyebrow: 'SOARD Board',
+      preheader: `${one ? one.title : `${papers.length} papers`}: read and sign on the board page. A few minutes.`,
+      heading,
+      intro: esc(intro),
+      bodyHtml: (one ? '' : panel(kicker(`To sign for ${year}`) + para(papers.map((x) => esc(x.title)).join('<br>'), { top: 0 }), { accent: true }))
+        + `<div style="margin:${one ? 4 : 18}px 0 0;">${button(one ? 'Read and sign it' : 'Read and sign them', url)}</div>`
+        + small(esc(paper))
+        + (firstTime ? ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">The first time</p><p class="ink" style="margin:0;">${esc(signIn).replace(esc(email), `<strong style="word-break:break-all;">${esc(email)}</strong>`)}</p>`) : '')
+        + small(esc(reply)),
+      footerHtml: FOOTER,
+    }),
+    text: [
+      heading,
+      intro,
+      one ? '' : `To sign for ${year}:\n${papers.map((x) => `- ${x.title}`).join('\n')}`,
+      `${one ? 'Read and sign it' : 'Read and sign them'}: ${url}`,
+      paper,
+      firstTime ? `The first time: ${signIn}` : '',
+      reply,
+    ].filter(Boolean).join('\n\n'),
+  };
+}
+
+/** Who has been asked to sign this year, and when last: { slug: { at, by, n } } */
+export async function signAsks(DB, year = thisYear()) {
+  await ensureSchema(DB);
+  return Object.fromEntries((((await DB.prepare('SELECT slug, at, by, n FROM board_sign_asks WHERE year = ?').bind(year).all()).results) || []).map((r) => [r.slug, { at: r.at, by: r.by || '', n: Number(r.n) || 1 }]));
+}
+
+/**
+ * Email each board member picked (`slugs`; none: the whole board) who hasn't signed this year's papers, asking them
+ * to, from the admin asking (`by`). Whoever has signed them all, or was asked in the last ten minutes (a double
+ * click, two admins at once), isn't emailed. `test`: a preview to `to` only.
+ * → { sent, failed, errors, signed: n already signed, recent: [names], noEmail: [names], unsure }
+ */
+export async function askToSign(env, { slugs = null, by = '', replyTo = [], to = null } = {}) {
+  if (!emailConfigured(env)) throw Object.assign(new Error('Email isn’t set up (RESEND_API_KEY)'), { status: 503 });
+  await ensureSchema(env.DB);
+  const test = Array.isArray(to);
+  const year = thisYear();
+  const [board, people, settings, docs, asks, seen] = await Promise.all([
+    activeBoard(env.DB), roster(env.DB), getSettings(env.DB), listDocs(env.DB), signAsks(env.DB, year),
+    env.DB.prepare('SELECT slug FROM board_seen').all().then((r) => new Set((r.results || []).map((x) => x.slug))),
+  ]);
+  const signable = docs.filter((d) => d.shared && d.sign && (d.body || (d.file && !d.file.staffOnly)));
+  if (!signable.length) throw Object.assign(new Error('There’s nothing for the board to sign: tick Required on a paper in Documents, with its words or its file'), { status: 409 });
+  const papersOf = (slug) => signable.filter((d) => !d.signed[slug]).map((d) => ({ title: d.title, id: d.id }));
+  // Who it's from: the admin asking, else the one the invites come from
+  const sender = staffFor(people, by) || staffFor(people, settings.invitesFrom);
+  if (test) {
+    const items = to.map((email) => ({ to: email, ...signAskEmail({ name: staffFor(people, email)?.name || '', email, papers: signable.map((d) => ({ title: d.title, id: d.id })), from: sender?.name || '', firstTime: true, test }) }));
+    const r = await sendEmailItems(env, items, { from: items[0].from, tags: [{ name: 'kind', value: 'board-sign-ask-preview' }], replyTo });
+    return { ...r, to };
+  }
+  const picked = board.filter((p) => !slugs || slugs.includes(p.slug));
+  if (!picked.length) throw Object.assign(new Error('They aren’t on People → Board now'), { status: 409 });
+  const left = picked.filter((p) => papersOf(p.slug).length);
+  const noEmail = left.filter((p) => !isEmail(p.email)).map((p) => p.name);
+  const recent = left.filter((p) => isEmail(p.email) && asks[p.slug] && Date.now() - Date.parse(asks[p.slug].at) < 10 * 60 * 1000);
+  const recipients = left.filter((p) => isEmail(p.email) && !recent.includes(p));
+  const base = { signed: picked.length - left.length, recent: recent.map((p) => p.name), noEmail };
+  if (!recipients.length) return { sent: 0, failed: 0, errors: [], ...base };
+  const items = recipients.map((p) => ({ to: p.email, ...signAskEmail({ name: p.name, email: p.email, papers: papersOf(p.slug), from: sender?.name || '', firstTime: !seen.has(p.slug) }) }));
+  const r = await sendEmailItems(env, items, { from: items[0].from, tags: [{ name: 'kind', value: 'board-sign-ask' }], replyTo });
+  // Asked, once Resend took it, or when it may have (no answer is no sure no); Resend's own error is a sure no
+  const unsure = r.failed > 0 && r.errors.some((e) => !/^Resend \d+:/.test(String(e)) || /^Resend 50[234]:/.test(String(e)));
+  if (r.sent || unsure) {
+    const at = nowIso();
+    for (const p of recipients) {
+      await env.DB.prepare('INSERT INTO board_sign_asks (slug, year, at, by, n) VALUES (?, ?, ?, ?, 1) ON CONFLICT(slug, year) DO UPDATE SET at = excluded.at, by = excluded.by, n = board_sign_asks.n + 1').bind(p.slug, year, at, String(by || '').slice(0, 200)).run();
+    }
+  }
+  return { sent: r.sent, failed: r.failed, errors: r.errors, unsure: unsure || undefined, ...base };
 }
 
 // ─── The board page ─────────────────────────────────────────────────
@@ -2037,22 +2141,25 @@ export async function resetPractice(env, id, { by = '', now = Date.now() } = {})
 }
 
 /**
- * For the admin's Members tab: each active board member, their email on file, last visit, and what they signed in
- * the years before this one (`pastYears`, newest first: [{ year, docId, title, name, at, how, copy, drive }]; this
- * year's are on the documents)
+ * For the admin's Members tab: each active board member, their email on file, last visit, when they were last asked
+ * to sign this year's papers (`asked`: { at, by, n }), and what they signed in the years before this one (`pastYears`,
+ * newest first: [{ year, docId, title, name, at, how, copy, drive }]; this year's are on the documents)
  */
 export async function memberStatus(DB) {
   await ensureSchema(DB);
-  const [board, seen, past, titles, copies] = await Promise.all([
+  const [board, seen, past, titles, copies, asks] = await Promise.all([
     activeBoard(DB),
     DB.prepare('SELECT slug, at FROM board_seen').all().then((r) => Object.fromEntries((r.results || []).map((x) => [x.slug, x.at]))),
     DB.prepare('SELECT * FROM board_signatures WHERE year < ? ORDER BY year DESC, at').bind(thisYear()).all().then((r) => r.results || []),
     DB.prepare('SELECT data FROM board_docs').all().then((r) => Object.fromEntries((r.results || []).map((x) => cleanDoc(parse(x.data))).map((d) => [d.id, d.title]))),
     filesOf(DB, 'signed').then((by) => Object.fromEntries(Object.values(by).flat().map((f) => [f.id, f]))),
+    signAsks(DB),
   ]);
   return board.sort(comparePeople).map((p) => ({
     slug: p.slug, name: p.name, title: p.title || '', seat: p.seat || '', email: p.email, lastSeen: seen[p.slug] || null,
     pastYears: past.filter((s) => s.slug === p.slug && titles[s.doc_id]).map((s) => ({ year: Number(s.year), docId: s.doc_id, title: titles[s.doc_id], ...signatureOf(s, copies) })),
+    // Asked by email to sign this year's: when last, how many times
+    asked: asks[p.slug] || null,
   }));
 }
 
