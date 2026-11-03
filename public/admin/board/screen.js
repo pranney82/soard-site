@@ -31,7 +31,7 @@ import { useCover, usePages } from '../board-present.js';
 import { Report } from '../board-report.js';
 import { BooksSlide, booksTitle } from './books.js';
 import { mdWords, mdPoints, mdFigures, mdPlain } from '../board-md.js';
-import { Pipeline, sized } from './kanban.js';
+import { Pipeline, sized, nameFit } from './kanban.js';
 import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, readChangeAs, keepChangeAs } from './money.js';
 
 const html = htm.bind(h);
@@ -605,16 +605,17 @@ function RevealsSlide({ n }) {
     const words = full ? w.label : short;
     return html`<strong>${words.charAt(0).toUpperCase()}${words.slice(1)}</strong><span>Date to be set</span>`;
   };
-  const tmpl = [...stops.map((g) => `minmax(0, ${across(g)}fr)`), ...(more ? ['minmax(0, 1fr)'] : [])].join(' ');
+  // One column a photo across every stop (each stop spans its own), so every photo is the same width
+  const tmpl = [...stops.map((g) => Array(across(g)).fill('minmax(0, 1fr)').join(' ')), ...(more ? ['minmax(0, 1fr)'] : [])].join(' ');
   return html`<div class="bs-when" data-rows=${rows} data-busy=${units > 4 ? (units > 6 ? 'more' : 'yes') : null} style=${`--tmpl:${tmpl};--rows:${rows};--units:${units}`}>
-    <ol class="bs-when__line">${stops.map((g) => html`<li class=${g.set ? 'is-set' : ''} key=${g.key}>${head(g)}</li>`)}${more ? html`<li class="is-more"><strong>+${more} more</strong><span>after these</span></li>` : null}</ol>
-    <div class="bs-when__kids">${stops.map((g) => html`<div class=${`bs-when__stop ${g.set ? 'is-set' : ''}`} key=${g.key}><p class="bs-when__stophead">${head(g)}</p><ul style=${`--across:${across(g)}`}>${g.list.map((r) => {
+    <ol class="bs-when__line">${stops.map((g) => html`<li class=${g.set ? 'is-set' : ''} style=${`--across:${across(g)}`} key=${g.key}>${head(g)}</li>`)}${more ? html`<li class="is-more"><strong>+${more} more</strong><span>after these</span></li>` : null}</ol>
+    <div class="bs-when__kids">${stops.map((g) => html`<div class=${`bs-when__stop ${g.set ? 'is-set' : ''}`} style=${`--across:${across(g)}`} key=${g.key}><p class="bs-when__stophead">${head(g)}</p><ul>${g.list.map((r) => {
       const photo = photoOf(r);
       // A time of its own (two families the same day at different times) on the photo's corner
       const time = g.set && r.time && !sameTime(g) ? html`<span class="bs-when__time">${clock(r.time)}</span>` : null;
       return html`<li key=${r.slug || r.name}>
         <span class="bs-when__photo">${photo ? html`<img src=${sized(photo, `${rows === 1 ? 'w=640,h=760' : 'w=640,h=520'},fit=cover,gravity=face`)} alt="" decoding="async" />` : html`<span class="bs-when__initials" aria-hidden="true">${initialsOf(r.name)}</span>`}${time}</span>
-        <span class="bs-when__name">${r.name}</span>
+        <span class="bs-when__name" style=${nameFit(r.name)}>${r.name}</span>
       </li>`;
     })}</ul></div>`)}</div>
   </div>`;
@@ -1026,6 +1027,32 @@ export function Screen({ id, data, d, onBack = null }) {
     setBlank(false);
     setHere({ key: s.key, itemId: s.itemId || '' });
   };
+  // A step from or to a document still being counted (a fresh device's first seconds) waits for its pages and parts,
+  // counted then and there: they go in between, so a quick Next never jumps past them. Six seconds at most (a file
+  // that won't open is never counted); steps pressed meanwhile are taken one by one after
+  const countedRef = useRef(() => true);
+  const countRef = useRef(() => {});
+  const held = useRef({ dir: 0, timer: 0 });
+  const waits = (dir) => {
+    const ids = [deckRef.current[atRef.current], deckRef.current[atRef.current + dir]].filter((s) => s?.kind === 'doc' && !countedRef.current(s.fileId)).map((s) => s.fileId);
+    ids.forEach((fileId) => countRef.current(fileId));
+    return ids.length > 0;
+  };
+  const step = (dir) => {
+    const h = held.current;
+    if (!h.dir && !waits(dir)) { go(atRef.current + dir); return; }
+    h.dir += dir;
+    if (!h.timer) h.timer = setTimeout(() => { h.timer = -1; setTick(Date.now()); }, 6000);
+  };
+  useEffect(() => {
+    const h = held.current;
+    if (!h.dir) return;
+    const d = Math.sign(h.dir);
+    if (h.timer > 0 && waits(d)) return;
+    h.dir -= d;
+    if (!h.dir) { clearTimeout(h.timer); h.timer = 0; }
+    go(atRef.current + d);
+  });
 
   // Board's preview: to the item being worked on, a slide picked beside it, or a step either way
   useEffect(() => {
@@ -1035,7 +1062,7 @@ export function Screen({ id, data, d, onBack = null }) {
       if (e.origin !== location.origin || e.source !== window.parent) return;
       const x = e.data || {};
       if (x.type === 'board-preview-stop') { const s = deckRef.current.find((y) => y.key === x.key); if (s) setHere({ key: s.key, itemId: s.itemId || '' }); }
-      if (x.type === 'board-preview-step') go(atRef.current + (x.dir < 0 ? -1 : 1));
+      if (x.type === 'board-preview-step') step(x.dir < 0 ? -1 : 1);
       // The report page's preview: the stop its words are on (an item that shows live facts has its report after them)
       if (x.type === 'board-preview-at' && x.itemId) setHere({ key: String(x.key || ''), itemId: String(x.itemId) });
     };
@@ -1077,11 +1104,21 @@ export function Screen({ id, data, d, onBack = null }) {
         return;
       }
       if (PRESENT && (e.key === 'Home' || e.key === 'End')) { e.preventDefault(); go(e.key === 'Home' ? 0 : deckRef.current.length - 1); return; }
+      // Shift with an arrow: the next item, or back to the start of this one (then the one before), past a document's pages
+      if (PRESENT && e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        e.preventDefault();
+        const deck = deckRef.current;
+        const at = atRef.current;
+        const of = (i) => deck[i]?.itemId || deck[i]?.key || '';
+        const startOf = (i) => { let j = i; while (j > 0 && deck[j - 1].itemId && of(j - 1) === of(i)) j -= 1; return j; };
+        if (e.key === 'ArrowRight') { let j = at + 1; while (j < deck.length - 1 && deck[at].itemId && of(j) === of(at)) j += 1; go(j); } else { const s0 = startOf(at); go(s0 < at ? s0 : startOf(Math.max(0, at - 1))); }
+        return;
+      }
       const dir = ['ArrowRight', 'ArrowDown', 'PageDown', ' ', 'Enter', 'j'].includes(e.key) ? (e.key === ' ' && e.shiftKey ? -1 : 1) : ['ArrowLeft', 'ArrowUp', 'PageUp', 'Backspace', 'k'].includes(e.key) ? -1 : 0;
       if (!dir || (!PRESENT && e.key === 'Enter') || (!PRESENT && e.key === 'Backspace')) return;
       if (e.repeat && PRESENT && e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return; // a held clicker button: one step
       e.preventDefault();
-      if (PRESENT) go(atRef.current + dir); else ch.current?.postMessage({ type: 'key', id, dir });
+      if (PRESENT) step(dir); else ch.current?.postMessage({ type: 'key', id, dir });
     };
     addEventListener('keydown', keys);
     return () => removeEventListener('keydown', keys);
@@ -1149,6 +1186,21 @@ export function Screen({ id, data, d, onBack = null }) {
   }, [deck, here]);
   deckRef.current = deck;
   if (OWN) atRef.current = ownAt;
+  // Counted: its pages, and each page's parts (a step waiting on one counts it then and there, ahead of the rest)
+  countedRef.current = (fileId) => pages[fileId] > 0 && Array.from({ length: pages[fileId] }, (_, i) => halves[fileId]?.[i]).every((n) => n !== undefined && n !== null);
+  const counting = useRef(new Set());
+  countRef.current = (fileId) => {
+    const f = docFiles.find((x) => x.id === fileId);
+    if (!f || counting.current.has(fileId)) return;
+    counting.current.add(fileId);
+    openDoc(f).then((doc) => { setPages((p) => (p[f.id] === doc.count ? p : { ...p, [f.id]: doc.count })); return partsOf(f); })
+      .then((ns) => { if (ns?.length) setHalves((x) => (String(x[f.id]) === String(ns) ? x : { ...x, [f.id]: ns })); })
+      .catch(() => {});
+  };
+  // "5 of 54" once every document is counted (it would climb from 35 as they are), or after 8 seconds whatever is left
+  const [late, setLate] = useState(false);
+  useEffect(() => { const t = setTimeout(() => setLate(true), 8000); return () => clearTimeout(t); }, []);
+  const total = late || docFiles.every((f) => countedRef.current(f.id)) ? ` of ${deck.length}` : '';
   // Board's preview is told the deck and where it is, for its list of slides and its "4 of 31"
   useEffect(() => {
     if (!PREVIEW || !deck.length) return;
@@ -1212,7 +1264,7 @@ export function Screen({ id, data, d, onBack = null }) {
   </header>`;
   // Presenting: back, the slide count and next, and on a money slide the % | $; in the line under the stage, there while
   // the mouse moves (portal.css .bs-ctl), so nothing along the top moves when a slide brings the % | $
-  const ctl = PRESENT ? html`<span class="bs-ctl">${moneyHere ? html`<span class="bs-chg" role="group" aria-label="Changes against last year and the budget (C)">${[['pct', '%', 'As percentages'], ['usd', '$', 'In dollars']].map(([k, l, t]) => html`<button type="button" class="bs-chg__b" key=${k} aria-pressed=${chg === k} title=${`${t} (C)`} onClick=${() => setChg(k)}><span aria-hidden="true">${l}</span><span class="sr-only">${t}</span></button>`)}</span>` : null}<span class="bs-steps" role="group" aria-label="Move the slides"><button type="button" class="bs-step" disabled=${at <= 0} onClick=${() => go(at - 1)} aria-label="Back a slide (←)" title="Back a slide (←)">${PREV}</button><span class="bs-step__n">${at + 1} of ${deck.length}</span><button type="button" class="bs-step" disabled=${at >= deck.length - 1} onClick=${() => go(at + 1)} aria-label="Next slide (→)" title="Next slide (→)">${NEXT}</button></span></span>` : null;
+  const ctl = PRESENT ? html`<span class="bs-ctl">${moneyHere ? html`<span class="bs-chg" role="group" aria-label="Changes against last year and the budget (C)">${[['pct', '%', 'As percentages'], ['usd', '$', 'In dollars']].map(([k, l, t]) => html`<button type="button" class="bs-chg__b" key=${k} aria-pressed=${chg === k} title=${`${t} (C)`} onClick=${() => setChg(k)}><span aria-hidden="true">${l}</span><span class="sr-only">${t}</span></button>`)}</span>` : null}<span class="bs-steps" role="group" aria-label="Move the slides"><button type="button" class="bs-step" disabled=${at <= 0} onClick=${() => step(-1)} aria-label="Back a slide (←)" title="Back a slide (←)">${PREV}</button><span class="bs-step__n">${at + 1}${total}</span><button type="button" class="bs-step" disabled=${at >= deck.length - 1} onClick=${() => step(1)} aria-label="Next slide (→)" title="Next slide (→)">${NEXT}</button></span></span>` : null;
   // Above an item's title: its part, by name (or "Part 3"), never "Agenda" (nor the item's own name again); after the
   // agenda, that
   const where = stop.n < 0 ? 'After the agenda' : section && section !== item?.title ? section : `Part ${items[stop.n].si + 1}`;
@@ -1370,7 +1422,7 @@ export function Screen({ id, data, d, onBack = null }) {
       <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}<span class="bs-foot__item">${itemTitle}</span>${docWords ? html`<span class="bs-foot__sep">·</span>${docWords}` : null}</span>
       ${shownPages.length > 1 && shownPages.length <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${shownPages.map((i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
       : stop.kind === 'books' || stop.kind === 'live' || stop.kind === 'report' || stop.kind === 'decision' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${itemTitle}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? booksTitle(stop) : stop.kind === 'report' ? (stop.of > 1 ? `Report, ${(stop.page || 0) + 1} of ${stop.of}` : 'Report') : stop.kind === 'decision' ? 'The decision' : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
-      : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span><kbd>C</kbd> the money’s changes in % or $<span class="bs-foot__sep">·</span><kbd>F</kbd> full screen</span>`
+      : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>⇧</kbd><kbd>→</kbd> the next item<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span><kbd>C</kbd> the money’s changes in % or $<span class="bs-foot__sep">·</span><kbd>F</kbd> full screen</span>`
       : !started && !told && !MIRROR && !OWN ? html`<span class="bs-foot__what">The screen follows the meeting once the chair starts it.</span>` : null}
       ${ctl}
     </div>
@@ -1386,10 +1438,14 @@ export function Screen({ id, data, d, onBack = null }) {
 function Shelf({ docs, pages, row: asRow = false, max = 6 }) {
   // More than three come up as the row (each small, its title beside it): as covers they'd need rows past the screen
   const row = asRow || docs.length > 3;
-  // Sized to the screen once: a TV's covers are bigger than a laptop's (a row's small, beside their titles)
-  const [w] = useState(() => (row ? Math.round(Math.max(34, Math.min(64, innerHeight * 0.06))) : Math.round(Math.max(84, Math.min(170, innerHeight * 0.15)))));
+  // On the screen's one measure, worked out again as the window changes (a 4K TV's covers twice a 1080p one's, a
+  // window moved to the TV and filled grows them): a row's small beside their titles, one document bigger, and the
+  // fewer there are, the wider each one's title
+  const unit = Math.min(innerHeight * 0.0148, innerWidth * 0.0083);
+  const w = Math.round(row ? Math.max(34, unit * 4) : Math.max(84, unit * (docs.length === 1 ? 12 : 10)));
+  const wide = row ? '' : `;--each:${[2.4, 1.75, 1.35][Math.min(docs.length, 3) - 1]}`;
   const shown = docs.slice(0, docs.length > max ? max - 1 : max);
-  return html`<ul class=${`bs-shelf ${row ? 'bs-shelf--row' : ''}`} style=${`--cover:${w}px`}>${shown.map((d) => html`<${ShelfDoc} d=${d} width=${w} pages=${pages[d.file.id]} key=${d.key} />`)}${docs.length > shown.length ? html`<li class="bs-shelf__more">and ${docs.length - shown.length} more</li>` : null}</ul>`;
+  return html`<ul class=${`bs-shelf ${row ? 'bs-shelf--row' : ''}`} style=${`--cover:${w}px${wide}`}>${shown.map((d) => html`<${ShelfDoc} d=${d} width=${w} pages=${pages[d.file.id]} key=${d.key} />`)}${docs.length > shown.length ? html`<li class="bs-shelf__more">and ${docs.length - shown.length} more</li>` : null}</ul>`;
 }
 /** One of them: its first page, and its pages counted as it opens (the screen hasn't drawn it yet) */
 function ShelfDoc({ d, width, pages }) {

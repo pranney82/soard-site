@@ -34,6 +34,17 @@ export function sized(url, transform) {
 }
 /** Where a makeover's link goes: a kid's page, or a community project's page once it's public */
 /** A makeover's card on Home, for a search to land on */
+/**
+ * A name's widest line, in letters, set in two lines (the break that leaves the shorter longest line) and in one: the
+ * screen sets it no bigger than its card fits ("Perfect Harmony / Health" whole, not "Perfect / Harmony…")
+ */
+export function nameFit(name) {
+  const words = String(name || '').trim().split(/\s+/);
+  const one = words.join(' ').length;
+  let two = one;
+  for (let k = 1; k < words.length; k++) two = Math.min(two, Math.max(words.slice(0, k).join(' ').length, words.slice(k).join(' ').length));
+  return `--c1:${Math.max(4, one)};--c2:${Math.max(4, two)}`;
+}
 export const cardId = (b) => `kb-${String(b.slug || b.name || '').toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
 export const hrefOf = (b) => (b.kind === 'community' ? b.url || '' : b.url || (b.slug ? `/kids/${b.slug}/` : ''));
 
@@ -122,7 +133,9 @@ export function Pipeline({ projects, reveals = [] }) {
   if (!total) return html`<p class="bs-quiet bs-pipe__none">No makeovers in progress right now.</p>`;
   const rows = total <= 6 ? 1 : total <= 14 ? 2 : 3;
   const across = (c) => Math.max(1, Math.ceil(c.cards / rows));
-  const template = cols.map((c) => (c.cards ? `minmax(0, ${across(c)}fr)` : 'minmax(calc(var(--bs-u) * 8.5), 0.45fr)')).join(' ');
+  // One column a card across every stage (each stage spans its own), so every card is the same width; a stage with none
+  // a sliver; the reveal the line's end, a column of its own past the last stage's cards
+  const template = [...cols.map((c) => (c.cards ? Array(across(c)).fill('minmax(0, 1fr)').join(' ') : 'minmax(calc(var(--bs-u) * 8.5), 0.45fr)')), 'minmax(calc(var(--bs-u) * 7), 0.4fr)'].join(' ');
   const revealOf = (b) => (b.slug ? reveals.find((r) => r.slug === b.slug) : null);
   // The reveal's tag: in full on a big card ("Reveal mid November"), short on a small one ("Mid Nov", "Nov 6 · 1 PM")
   const roomy = rows === 1;
@@ -142,22 +155,22 @@ export function Pipeline({ projects, reveals = [] }) {
     <span class="bs-pipe__photo">${b.photo
       ? html`<img src=${sized(b.photo, `${crop},fit=cover,gravity=face`)} alt="" decoding="async" />`
       : html`<span class="bs-pipe__initials" style=${`--hue:${hueOf(b.name)}`} aria-hidden="true">${initialsOf(b.name)}</span>`}${when(b)}</span>
-    <span class="bs-pipe__name">${b.name}</span>
+    <span class="bs-pipe__name" style=${nameFit(b.name)}>${b.name}</span>
   </li>`;
   const quiet = (words, sub) => html`<li class="bs-pipe__card is-quiet"><span class="bs-pipe__name">${words}</span><span class="bs-pipe__when is-quiet">${sub}</span></li>`;
-  const units = cols.reduce((t, c) => t + (c.cards ? across(c) : 0.45), 0);
+  const units = cols.reduce((t, c) => t + (c.cards ? across(c) : 0.45), 0.4);
   return html`<div class="bs-pipe" data-rows=${rows} style=${`--tmpl:${template};--rows:${rows};--units:${units}`}>
-    <ol class="bs-pipe__track" aria-label="The makeovers by stage">${cols.map((c, i) => html`<li class=${`${c.cards ? '' : 'is-empty'} ${i === cols.length - 1 ? 'is-last' : ''}`} key=${c.stage}>
-      <span class="bs-pipe__n">${c.list.length}</span><span class="bs-pipe__stage">${c.label}</span>${i === cols.length - 1 ? html`<span class="bs-pipe__end">Reveal</span>` : null}
-    </li>`)}</ol>
-    <div class="bs-pipe__cols">${cols.map((c) => html`<div class=${`bs-pipe__col ${c.cards ? '' : 'is-empty'}`} key=${c.stage}>
+    <ol class="bs-pipe__track" aria-label="The makeovers by stage">${cols.map((c) => html`<li class=${c.cards ? '' : 'is-empty'} style=${`--across:${c.cards ? across(c) : 1}`} key=${c.stage}>
+      <span class="bs-pipe__n">${c.list.length}</span><span class="bs-pipe__stage">${c.label}</span>
+    </li>`)}<li class="is-end"><span class="bs-pipe__end">Reveal</span></li></ol>
+    <div class="bs-pipe__cols">${cols.map((c) => html`<div class=${`bs-pipe__col ${c.cards ? '' : 'is-empty'}`} style=${`--across:${c.cards ? across(c) : 1}`} key=${c.stage}>
       <p class="bs-pipe__colhead"><span>${c.label}</span><span class="bs-pipe__n">${c.list.length}</span></p>
-      <ul style=${`--across:${across(c)}`}>
+      <ul>
         ${c.named.map(card)}
         ${c.families ? quiet(c.named.length ? `+${c.families} more ${c.families === 1 ? 'family' : 'families'}` : plural(c.families, 'family', 'families'), 'Named once their page is up') : null}
         ${c.orgs ? quiet(plural(c.orgs, 'community project'), 'Not on Community yet') : null}
         ${c.over > 0 ? quiet(`+${c.over} more`, 'in this stage') : null}
       </ul>
-    </div>`)}</div>
+    </div>`)}<div class="bs-pipe__col is-end" aria-hidden="true"></div></div>
   </div>`;
 }

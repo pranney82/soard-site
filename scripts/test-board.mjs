@@ -1404,8 +1404,8 @@ try {
   ok(await scr.waitForSelector('.bs-pipe .bs-pipe__card', { timeout: 4000 }).then(() => true, () => false) && await scr.evaluate(() => {
     const cards = [...document.querySelectorAll('.bs-pipe__card')].map((c) => c.getBoundingClientRect());
     const stages = [...document.querySelectorAll('.bs-pipe__track > li')].map((li) => li.textContent.replace(/\s+/g, ' ').trim());
-    return cards.length && cards.every((r) => r.bottom <= innerHeight && r.right <= innerWidth) && /Maya/.test(document.querySelector('.bs-pipe').textContent) && stages[0].startsWith('1') && /Build/.test(stages.at(-1)) && /Reveal/.test(stages.at(-1));
-  }), 'the makeovers item: the stages with their counts toward the reveal, every card in view');
+    return cards.length && cards.every((r) => r.bottom <= innerHeight && r.right <= innerWidth) && /Maya/.test(document.querySelector('.bs-pipe').textContent) && stages[0].startsWith('1') && /Build/.test(stages.at(-2)) && stages.at(-1) === 'Reveal';
+  }), 'the makeovers item: the stages with their counts toward the reveal (the line’s end, past the last stage), every card in view');
   await shot(scr, '22b-screen-makeovers');
   // B blanks the room's screen; a key brings it back. A reload comes back to the same slide
   await scr.keyboard.press('b');

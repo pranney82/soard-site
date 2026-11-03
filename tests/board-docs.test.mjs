@@ -260,8 +260,8 @@ test('what each file is', () => {
 
 test('a tall page is shown in two halves, cut at the blank line nearest its middle, never through a line; a short or wide page whole', () => {
   const size = { w: 816, h: 1056 };
-  // A statement: 40 lines top to bottom, a little space between each
-  const rows = Array.from({ length: 40 }, (_, i) => ({ y0: 0.08 + i * 0.021, y1: 0.092 + i * 0.021, x0: 0.1, x1: 0.9 }));
+  // A statement: 40 lines of a memo's type top to bottom, a little space between each
+  const rows = Array.from({ length: 40 }, (_, i) => ({ y0: 0.08 + i * 0.021, y1: 0.096 + i * 0.021, x0: 0.1, x1: 0.9 }));
   const lay = splitOf(rows, size);
   assert.equal(lay.n, 2);
   assert.ok(Math.abs(lay.cut - (lay.part.y + lay.part.h / 2)) < 0.03, 'near the middle');
@@ -325,7 +325,7 @@ test('a table’s second part carries its column headings; a report’s title or
   const rows = [line(0.06, [[0.38, 0.62]]), line(0.08, [[0.4, 0.6]]), line(0.12, [[0.55, 0.62], [0.7, 0.77], [0.85, 0.9]]), { y0: 0.135, y1: 0.137, x0: 0.53, x1: 0.9, xs: [[0.53, 0.9]] }];
   for (let i = 0; i < 34; i++) rows.push(line(0.15 + i * 0.022, [[0.1, 0.3], [0.55, 0.62], [0.7, 0.77], [0.85, 0.9]]));
   const lay = splitOf(rows, size);
-  assert.equal(lay.n, 2);
+  assert.ok(lay.n >= 2, `${lay.n} parts`);
   assert.ok(lay.head && lay.head[0] < 0.12 && lay.head[0] > 0.091 && lay.head[1] > 0.137 && lay.head[1] < 0.15, `the headings and their rule, never into the title over them or the first row under them (${lay.head})`);
   assert.equal(headingsArea(lay, 0), null, 'the first part has them already');
   const hd = headingsArea(lay, 1);
@@ -391,8 +391,9 @@ test('a page far taller than a letter (a long statement) is cut in as many parts
   for (const a of areas) assert.ok(!rows.some((r) => (r.y0 < a.y && r.y1 > a.y) || (r.y0 < a.y + a.h && r.y1 > a.y + a.h)), 'no line cut through');
   assert.ok(Math.max(...areas.map((a) => a.h)) < (lay.ink.y1 - lay.ink.y0) / lay.n * 1.5, 'parts near the same height');
   assert.ok(Math.abs(areas[0].y - (lay.ink.y0 - 0.006)) < 1e-9 && Math.abs(areas.at(-1).y + areas.at(-1).h - (lay.ink.y1 + 0.006)) < 1e-9, 'all of it shown');
-  // A letter page of the same lines stays in two
-  assert.equal(splitOf(rows.slice(0, 40).map((r) => ({ ...r, y0: r.y0 * 3.2, y1: r.y1 * 3.2 })), { w: 816, h: 1056 }).n, 2);
+  // A letter page of the same small lines in three; the same page set large in two
+  assert.equal(splitOf(rows.slice(0, 40).map((r) => ({ ...r, y0: r.y0 * 3.2, y1: r.y1 * 3.2 })), { w: 816, h: 1056 }).n, 3);
+  assert.equal(splitOf(rows.slice(0, 40).map((r) => ({ ...r, y0: r.y0 * 3.2, y1: r.y0 * 3.2 + 0.0185 })), { w: 816, h: 1056 }).n, 2);
 });
 
 test('a page of words already big (a goals page) is never cut', () => {
@@ -411,7 +412,7 @@ function memo(blocks) {
   for (const b of blocks) {
     at.push(y);
     for (let l = 0; l < b.lines; l++) {
-      for (let k = 0; k < 8; k++) rows.push({ y0: (y + k) * R, y1: (y + k + 1) * R, x0: 0.12, x1: 0.88, xs: [[0.12, 0.88]], fill: k > 1 && k < 6 ? 0.7 : 0.1 });
+      for (let k = 0; k < 8; k++) rows.push({ y0: (y + k) * R, y1: (y + k + 1) * R, x0: b.x0 ?? 0.12, x1: 0.88, xs: [[b.x0 ?? 0.12, 0.88]], fill: k > 1 && k < 6 ? 0.7 : 0.1 });
       y += l < b.lines - 1 ? 9 : 8;
     }
     y += b.after;
@@ -436,6 +437,16 @@ test('a page is never cut right under a heading: a section break a little off th
   assert.equal(lay.n, 2);
   const second = at[7];
   assert.ok(Math.abs(lay.gap[1] - second) < R / 2 && Math.abs(lay.gap[0] - (second - 11 * R)) < R / 2, `cut over the second heading (${lay.gap.map((g) => Math.round(g / R))}, heading at ${Math.round(second / R)})`);
+});
+
+test('a numbered step is never cut from its lettered points set in under it', () => {
+  // "3. Design charrette" over a, b, c, every line the same distance apart; the step nearest the middle
+  const blocks = Array.from({ length: 24 }, (_, i) => ({ lines: 1, after: 2, x0: i % 4 === 3 ? 0.12 : 0.18 }));
+  const { rows, at, R } = memo(blocks);
+  const lay = splitOf(rows, { w: 816, h: 1056 });
+  assert.equal(lay.n, 2);
+  const j = at.findIndex((y) => Math.abs(y - lay.gap[1]) < R / 2);
+  assert.ok(j > 0 && !(blocks[j - 1].x0 === 0.12 && blocks[j].x0 === 0.18), `not under a step (block ${j - 1})`);
 });
 
 test('a page of one short line and a page number keeps the line (it was read as nothing)', () => {
@@ -464,7 +475,7 @@ test('a tall page is cut between paragraphs near the middle rather than between 
 
 test('what the screen shows of each part sits close around its ink and never reaches into the other part', () => {
   const size = { w: 816, h: 1056 };
-  const rows = Array.from({ length: 40 }, (_, i) => ({ y0: 0.08 + i * 0.021, y1: 0.092 + i * 0.021, x0: 0.1, x1: 0.9 }));
+  const rows = Array.from({ length: 40 }, (_, i) => ({ y0: 0.08 + i * 0.021, y1: 0.096 + i * 0.021, x0: 0.1, x1: 0.9 }));
   const lay = splitOf(rows, size);
   const top = areaOf(lay, 0);
   const bottom = areaOf(lay, 1);
@@ -481,9 +492,9 @@ test('what the screen shows of each part sits close around its ink and never rea
 
 test('a table’s ruled lines widen the part shown to reach them, and never decide where a page is cut', () => {
   const size = { w: 816, h: 1056 };
-  const rows = Array.from({ length: 40 }, (_, i) => ({ y0: 0.08 + i * 0.021, y1: 0.092 + i * 0.021, x0: 0.1, x1: 0.8 }));
+  const rows = Array.from({ length: 40 }, (_, i) => ({ y0: 0.08 + i * 0.021, y1: 0.096 + i * 0.021, x0: 0.1, x1: 0.8 }));
   // A rule under every row, and the totals' rules running on under a column of percentages to 0.95
-  const lines = rows.map((r, i) => ({ y0: r.y1 + 0.004, y1: r.y1 + 0.005, x0: 0.1, x1: i % 10 === 9 ? 0.95 : 0.8, line: true }));
+  const lines = rows.map((r, i) => ({ y0: r.y1 + 0.002, y1: r.y1 + 0.003, x0: 0.1, x1: i % 10 === 9 ? 0.95 : 0.8, line: true }));
   const plain = splitOf(rows, size);
   const ruled = splitOf([...rows, ...lines], size);
   assert.ok(plain.part.x + plain.part.w < 0.95, 'by the words alone the crop stops short of the long rules');

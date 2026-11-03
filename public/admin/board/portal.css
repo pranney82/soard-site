@@ -1761,17 +1761,17 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-coming .bs-eyebrow { color: var(--bs-faint); }
 /* An item's documents, coming up: their first pages in a row, each with its title and what it is */
 .bs-shelf { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: flex-start; gap: calc(var(--bs-u) * 2.41); }
-.bs-shelf > li { width: calc(var(--cover) * 1.35); min-width: 0; display: grid; gap: 0.2em; }
+.bs-shelf > li { width: calc(var(--cover) * var(--each, 1.35)); min-width: 0; display: grid; gap: 0.2em; }
 .bs-shelf__cover { display: grid; place-items: center; width: var(--cover); height: calc(var(--cover) * 1.294); margin-bottom: 0.55em; }
 /* The page itself is the card (a slide or a photo its own shape, never a white page with a strip at its top) */
 .bs-shelf__cover > * { overflow: hidden; border-radius: 4px; background: #fff; box-shadow: 0 18px 36px -16px rgba(0, 0, 0, 0.7); }
-.bs-shelf__t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: calc(var(--bs-u) * 1.29); font-weight: 650; line-height: 1.25; color: var(--bs-ink); }
-.bs-shelf__m { font-size: calc(var(--bs-u) * 1.08); color: var(--bs-soft); }
+.bs-shelf__t { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: calc(var(--bs-u) * 1.29); font-weight: 650; line-height: 1.25; color: var(--bs-ink); }
+.bs-shelf__m { font-size: calc(var(--bs-u) * 1.2); color: var(--bs-soft); }
 .bs-shelf > .bs-shelf__more { width: auto; align-self: center; font-size: calc(var(--bs-u) * 1.29); color: var(--bs-soft); }
 .bs-shelf__text { display: grid; gap: 0.2em; min-width: 0; }
 /* Under the money's tiles: a row, each document's first page small beside its title */
 .bs-shelf--row { gap: calc(var(--bs-u) * 1.93); }
-.bs-shelf--row > li { width: auto; max-width: 22rem; display: flex; align-items: center; gap: 0.8em; }
+.bs-shelf--row > li { width: auto; max-width: calc(var(--bs-u) * 22); display: flex; align-items: center; gap: 0.8em; }
 .bs-shelf--row .bs-shelf__cover { flex: none; margin-bottom: 0; }
 .bs-shelf--row .bs-shelf__cover > * { border-radius: 3px; box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.7); }
 
@@ -1991,37 +1991,46 @@ html:has(body .bs) { scrollbar-gutter: auto; }
    its families under it as photos; and the reveals coming up (screen.js RevealsSlide) along a line the same way */
 .bs-pipe, .bs-when { height: 100%; min-height: 0; width: min(100%, calc(var(--units) * var(--bs-u) * 23)); display: grid; grid-template-rows: auto minmax(0, 1fr); gap: calc(var(--bs-u) * 1.76); padding-top: calc(var(--bs-u) * 1.36); box-sizing: border-box; }
 .bs-pipe__track, .bs-pipe__cols, .bs-when__line, .bs-when__kids { display: grid; grid-template-columns: var(--tmpl); column-gap: calc(var(--bs-u) * 1.81); min-height: 0; }
-.bs-pipe__track, .bs-when__line { position: relative; list-style: none; margin: 0; padding: 0 0 calc(var(--bs-u) * 1.15); border-bottom: 3px solid var(--bs-line); }
+.bs-pipe__track, .bs-when__line { --rule: max(3px, calc(var(--bs-u) * 0.19)); --dot: max(17px, calc(var(--bs-u) * 1.06)); position: relative; list-style: none; margin: 0; padding: 0 0 calc(var(--bs-u) * 1.15); border-bottom: var(--rule) solid var(--bs-line); }
 /* The line runs on to the reveal: its arrowhead */
-.bs-pipe__track::after { content: ''; position: absolute; right: -3px; bottom: -9.5px; border-style: solid; border-width: 8px 0 8px 13px; border-color: transparent transparent transparent var(--yellow); }
-.bs-pipe__track > li, .bs-when__line > li { position: relative; min-width: 0; display: grid; align-content: end; gap: 0.2rem; }
+.bs-pipe__track::after { content: ''; position: absolute; right: calc(-1 * var(--rule)); bottom: calc(-1 * (var(--rule) / 2 + var(--dot) / 2)); border-style: solid; border-width: calc(var(--dot) / 2) 0 calc(var(--dot) / 2) calc(var(--dot) * 0.76); border-color: transparent transparent transparent var(--yellow); }
+.bs-pipe__track > li, .bs-when__line > li { position: relative; grid-column: span var(--across, 1); min-width: 0; display: grid; align-content: end; gap: 0.2rem; }
 /* A stop on the line under each stage and each day */
-.bs-pipe__track > li::after, .bs-when__line > li::after { content: ''; position: absolute; left: 0; bottom: calc(-1 * calc(var(--bs-u) * 1.15) - 10px); width: 17px; height: 17px; box-sizing: border-box; border-radius: 50%; background: var(--yellow); box-shadow: 0 0 0 5px var(--bs-bg); }
+.bs-pipe__track > li::after, .bs-when__line > li::after { content: ''; position: absolute; left: 0; bottom: calc(-1 * (var(--bs-u) * 1.15 + var(--rule) / 2 + var(--dot) / 2)); width: var(--dot); height: var(--dot); box-sizing: border-box; border-radius: 50%; background: var(--yellow); box-shadow: 0 0 0 calc(var(--dot) * 0.3) var(--bs-bg); }
 .bs-pipe__track > li.is-empty::after { background: #4A4B45; }
 .bs-pipe__n { font-family: var(--display); font-size: calc(var(--bs-u) * 4.34); font-weight: 700; line-height: 1.05; letter-spacing: -0.02em; color: var(--yellow); font-variant-numeric: tabular-nums lining-nums; }
 .bs-pipe__track > li.is-empty .bs-pipe__n { color: rgba(246, 244, 236, 0.3); }
-.bs-pipe__stage, .bs-pipe__end { font-size: calc(var(--bs-u) * 1.05); font-weight: 800; letter-spacing: 0.11em; line-height: 1.2; text-transform: uppercase; color: var(--bs-ink); }
-/* A stage's name on two lines when its column is narrow ("Awaiting / funding"), never cut */
+.bs-pipe__stage, .bs-pipe__end { font-size: calc(var(--bs-u) * 1.2); font-weight: 800; letter-spacing: 0.11em; line-height: 1.2; text-transform: uppercase; color: var(--bs-ink); }
+/* A stage's name on two lines when its column is narrow ("Awaiting / funding"), never cut; every stage keeps two
+   lines' room, so the counts over them stay level */
+.bs-pipe__stage, .bs-pipe__end { min-height: 2.4em; }
 .bs-pipe__stage { overflow-wrap: normal; }
 .bs-pipe__none { align-self: center; margin: 0; font-family: var(--display); font-size: calc(var(--bs-u) * 2.71); color: var(--bs-soft); }
 /* Beside notes or a report, the reveals keep to their share of the slide */
 .bs-item--facts .bs-when, .bs-item__body .bs-when { height: calc(var(--bs-u) * 31); }
 .bs-pipe__track > li.is-empty .bs-pipe__stage { color: var(--bs-faint); }
-.bs-pipe__track > li.is-last { padding-right: 8em; }
-.bs-pipe__end { position: absolute; right: 1.6em; bottom: 0; color: var(--yellow); overflow: visible; }
-.bs-pipe__col, .bs-when__stop { min-height: 0; display: grid; }
+/* The reveal: the line's end, its own column past the last stage's cards */
+.bs-pipe__track > li.is-end { justify-items: end; }
+.bs-pipe__track > li.is-end::after { display: none; }
+.bs-pipe__end { color: var(--yellow); padding-right: calc(var(--bs-u) * 0.4); }
+.bs-pipe__col, .bs-when__stop { grid-column: span var(--across, 1); min-height: 0; display: grid; grid-template-columns: subgrid; }
 .bs-pipe__colhead, .bs-when__stophead { display: none; }
-.bs-pipe__col ul, .bs-when__stop ul { list-style: none; margin: 0; padding: 0; min-height: 0; display: grid; grid-template-columns: repeat(var(--across), minmax(0, 1fr)); grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); gap: calc(var(--bs-u) * 1.69) calc(var(--bs-u) * 1.45); }
-.bs-pipe__card, .bs-when__stop li { min-height: 0; min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; align-content: start; gap: 0.35rem; }
-.bs-pipe__name { min-height: 2.16em; }
+.bs-pipe__col ul, .bs-when__stop ul { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0; min-height: 0; display: grid; grid-template-columns: subgrid; grid-template-rows: repeat(var(--rows), minmax(0, 1fr)); row-gap: calc(var(--bs-u) * 1.69); }
+.bs-pipe__card, .bs-when__stop li { container-type: inline-size; min-height: 0; min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr) auto auto; align-content: start; gap: 0.35rem; }
+/* Two lines kept under every photo for its name, so a row's photos stay level whatever size a long name is set at */
+.bs-pipe__card:not(.is-quiet) { grid-template-rows: minmax(0, 1fr) calc(var(--bs-u) * 4.38); }
+.bs-pipe[data-rows="2"] .bs-pipe__card:not(.is-quiet) { grid-template-rows: minmax(0, 1fr) calc(var(--bs-u) * 3.78); }
+.bs-pipe[data-rows="3"] .bs-pipe__card:not(.is-quiet) { grid-template-rows: minmax(0, 1fr) calc(var(--bs-u) * 3.56); }
+.bs-pipe__name { align-self: start; }
 .bs-pipe__photo, .bs-when__photo { position: relative; container-type: size; min-height: 0; display: grid; overflow: hidden; border-radius: 20px; background: var(--bs-panel-2); margin-bottom: 0.35rem; }
 .bs-pipe__photo img, .bs-when__photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; }
 .bs-pipe__initials, .bs-when__initials { display: grid; place-items: center; width: 100%; height: 100%; background: hsl(var(--hue, 42) 22% 30%); color: hsl(var(--hue, 42) 45% 86%); font-family: var(--display); font-weight: 700; font-size: min(calc(var(--bs-u) * 3.6), 52cqh, 42cqw); }
-.bs-pipe__name, .bs-when__name { font-family: var(--display); font-size: calc(var(--bs-u) * 2.03); font-weight: 700; line-height: 1.08; color: var(--bs-ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.bs-pipe[data-rows="2"] .bs-pipe__name, .bs-when[data-rows="2"] .bs-when__name { font-size: calc(var(--bs-u) * 1.75); }
-.bs-pipe[data-rows="3"] .bs-pipe__name { font-size: calc(var(--bs-u) * 1.65); -webkit-line-clamp: 1; }
+.bs-pipe__name, .bs-when__name { font-family: var(--display); font-size: min(calc(var(--bs-u) * 2.03), calc(100cqi / (var(--c2, 4) * 0.66))); font-weight: 700; line-height: 1.08; color: var(--bs-ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* A long name ("Perfect Harmony Health") no bigger than its card holds in its lines, so it reads whole */
+.bs-pipe[data-rows="2"] .bs-pipe__name, .bs-when[data-rows="2"] .bs-when__name { font-size: min(calc(var(--bs-u) * 1.75), calc(100cqi / (var(--c2, 4) * 0.66))); }
+.bs-pipe[data-rows="3"] .bs-pipe__name { font-size: min(calc(var(--bs-u) * 1.65), calc(100cqi / (var(--c1, 4) * 0.66))); -webkit-line-clamp: 1; }
 /* The reveal, a tag on the photo's top corner (the face is in its middle) */
-.bs-pipe__when { position: absolute; left: calc(var(--bs-u) * 0.84); top: calc(var(--bs-u) * 0.61); max-width: calc(100% - 1.2rem); box-sizing: border-box; padding: 0.3em 0.75em; border-radius: 999px; background: rgba(28, 29, 26, 0.86); color: var(--bs-ink); font-size: calc(var(--bs-u) * 1.08); font-weight: 750; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-pipe__when { position: absolute; left: calc(var(--bs-u) * 0.84); top: calc(var(--bs-u) * 0.61); max-width: calc(100% - 1.2rem); box-sizing: border-box; padding: 0.3em 0.75em; border-radius: 999px; background: rgba(28, 29, 26, 0.86); color: var(--bs-ink); font-size: calc(var(--bs-u) * 1.2); font-weight: 750; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bs-pipe__when.is-set { background: var(--yellow); color: #1C1D1A; }
 .bs-pipe__when.is-quiet { color: rgba(246, 244, 236, 0.86); font-weight: 650; }
 .bs-pipe__card.is-quiet .bs-pipe__when { position: static; max-width: none; padding: 0; background: none; color: var(--bs-soft); white-space: normal; overflow: visible; }
@@ -2038,11 +2047,11 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 /* More stops, narrower: their days smaller so a "Late Dec" still reads whole */
 .bs-when[data-busy="yes"] .bs-when__line strong { font-size: calc(var(--bs-u) * 2.64); }
 .bs-when[data-busy="more"] .bs-when__line strong { font-size: calc(var(--bs-u) * 2.1); }
-.bs-when[data-busy="more"] .bs-when__line span { font-size: calc(var(--bs-u) * 1.02); }
+.bs-when[data-busy="more"] .bs-when__line span { font-size: calc(var(--bs-u) * 1.15); }
 .bs-pipe__card.is-quiet .bs-pipe__name { font-size: calc(var(--bs-u) * 1.19); min-height: 0; overflow-wrap: anywhere; -webkit-line-clamp: 3; }
-.bs-when__line span, .bs-when__stophead span { font-size: calc(var(--bs-u) * 1.22); font-weight: 650; color: var(--bs-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bs-when__line span, .bs-when__stophead span { font-size: calc(var(--bs-u) * 1.35); font-weight: 650; color: var(--bs-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A day not set yet: an open stop on the line */
-.bs-when__line > li:not(.is-set)::after { background: var(--bs-bg); border: 3px solid var(--yellow); }
+.bs-when__line > li:not(.is-set)::after { background: var(--bs-bg); border: var(--rule) solid var(--yellow); }
 .bs-when__time { position: absolute; left: calc(var(--bs-u) * 0.84); top: calc(var(--bs-u) * 0.61); padding: 0.3em 0.75em; border-radius: 999px; background: var(--yellow); color: #1C1D1A; font-size: calc(var(--bs-u) * 1.08); font-weight: 750; white-space: nowrap; }
 .bs-when__name { min-height: 2.16em; }
 .bk--screen { display: flex; gap: clamp(0.5rem, 1vw, 1rem); margin: 0; padding: 0; overflow: hidden; min-height: 0; height: 100%; }
@@ -2177,7 +2186,8 @@ html:has(body .bs) { scrollbar-gutter: auto; }
   .bs-pipe__colhead span:first-child { font-size: 0.8rem; font-weight: 800; letter-spacing: 0.11em; text-transform: uppercase; } .bs-pipe__colhead .bs-pipe__n { font-size: 1.8rem; }
   .bs-when__stophead strong { font-family: var(--display); font-size: 1.6rem; } .bs-when__stop.is-set .bs-when__stophead strong { color: var(--yellow); }
   .bs-pipe__col.is-empty ul { display: none; } .bs-pipe__col.is-empty .bs-pipe__colhead { opacity: 0.55; }
-  .bs-pipe__col ul, .bs-when__stop ul { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; }
+  .bs-pipe__col, .bs-when__stop { grid-column: auto; grid-template-columns: minmax(0, 1fr); } .bs-pipe__col.is-end { display: none; }
+  .bs-pipe__col ul, .bs-when__stop ul { grid-column: auto; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; column-gap: 1rem; }
   .bs-pipe__photo, .bs-when__photo { aspect-ratio: 4 / 5; }
   .bs-rail { grid-template-columns: minmax(0, 1fr); }
   /* A phone following the screen: the meeting's name and the part's time along the top; an item's people or count under its title */
