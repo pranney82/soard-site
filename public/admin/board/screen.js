@@ -21,7 +21,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
-import { openDoc, layoutOf, areaOf, areasOf, headingsArea, partsOf, docKind } from './docs.js';
+import { openDoc, layoutOf, areaOf, areasOf, headingsArea, partsOf, docKind, pageWordOf } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, liveOfStop, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
@@ -952,7 +952,7 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
     : next.kind === 'report' ? html`<span>Next: Report</span>`
     : next.kind === 'decision' ? html`<span>Next: The decision</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId && next.page === stop.page ? html`<span>Next: the rest of the page</span>`
-    : next.kind === 'doc' && next.fileId === stop?.fileId ? html`<span>Next: ${docKind(files.find((f) => f.id === next.fileId) || {}) === 'slides' ? 'slide' : 'page'} ${next.page + 1}</span>`
+    : next.kind === 'doc' && next.fileId === stop?.fileId ? html`<span>Next: ${pageWordOf(files.find((f) => f.id === next.fileId))} ${next.page + 1}</span>`
     : next.kind === 'doc' ? html`<span>Next: ${docTitle(files.find((f) => f.id === next.fileId)?.name || 'the document')}</span>`
     : next.n >= 0 ? html`<span>Next <b>${items[next.n].label}</b> ${items[next.n].title}</span>` : html`<span>Next: ${MORE.title.toLowerCase()}</span>`;
   // Past ten parts, only the one on now is named (portal.css .is-many); it's always as wide as its name and its time
@@ -1337,7 +1337,7 @@ export function Screen({ id, data, d, onBack = null }) {
   const ofPages = shownPages.length ? shownPages.at(-1) + 1 : pages[stop.fileId] || 0;
   // Its name (not again when the item has the same one), its page or slide, and whether it's a page's second part
   const named = docTitle(file?.name);
-  const pageWord = docKind(file || {}) === 'slides' ? 'Slide' : 'Page';
+  const pageWord = pageWordOf(file) === 'slide' ? 'Slide' : 'Page';
   const docName = named.toLowerCase() === String(item?.title || '').trim().toLowerCase() ? '' : named;
   const pageWords = [ofPages > 1 ? `${pageWord} ${stop.page + 1} of ${ofPages}` : '', half ? 'continued' : ''].filter(Boolean).join(', ');
   const docWords = stop.kind === 'doc' && (docName || pageWords) ? html`${docName ? html`<span class="bs-foot__name">${docName}</span>` : null}${docName && pageWords ? html`<span class="bs-foot__sep bs-foot__sep--name">·</span>` : null}${pageWords}` : null;
@@ -1390,7 +1390,7 @@ function ShelfDoc({ d, width, pages }) {
   return html`<li>
     <span class="bs-shelf__cover" ref=${ref} aria-hidden="true"></span>
     <span class="bs-shelf__text"><span class="bs-shelf__t">${d.title}</span>
-    <span class="bs-shelf__m">${[formatOf(d.file), n && !['image', 'other'].includes(docKind(d.file)) ? plural(n, docKind(d.file) === 'slides' ? 'slide' : 'page') : ''].filter(Boolean).join(' · ')}</span></span>
+    <span class="bs-shelf__m">${[formatOf(d.file), n && !['image', 'other'].includes(docKind(d.file)) ? plural(n, pageWordOf(d.file)) : ''].filter(Boolean).join(' · ')}</span></span>
   </li>`;
 }
 
@@ -1416,7 +1416,7 @@ export function ScreenPeek({ v, onOpen }) {
   if (!f) return null;
   return html`<figure class="bp-peek">
     <div class="bp-peek__page" ref=${ref}></div>
-    <figcaption><span><strong>On the screen:</strong> ${[docTitle(f.name), n.count > 1 ? `${docKind(f) === 'slides' ? 'slide' : 'page'} ${v.live.page + 1} of ${n.count}` : '', n.halves >= 2 && v.live.part ? 'continued' : ''].filter(Boolean).join(', ')}</span>
+    <figcaption><span><strong>On the screen:</strong> ${[docTitle(f.name), n.count > 1 ? `${pageWordOf(f)} ${v.live.page + 1} of ${n.count}` : '', n.halves >= 2 && v.live.part ? 'continued' : ''].filter(Boolean).join(', ')}</span>
       <a class="bp-btn bp-btn--sm" href=${`#/meetings/${v.id}/screen`} onClick=${onOpen}>Follow the screen</a></figcaption>
   </figure>`;
 }

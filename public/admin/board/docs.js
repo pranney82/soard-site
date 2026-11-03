@@ -1325,6 +1325,8 @@ async function load(f, url) {
       let closing = false;
       const doc = {
         kind, count: sizes.length,
+        // Every page a widescreen slide's shape: a deck saved as a PDF
+        slides: sizes.every((s) => s.w / s.h > 1.7 && s.w / s.h < 1.85),
         size: (i) => ({ ...sizes[Math.max(0, Math.min(sizes.length - 1, i))] }),
         async draw(i, { width = PAGE.w, dpr = (typeof devicePixelRatio === 'number' ? devicePixelRatio : 1) } = {}) {
           i = Math.max(0, Math.min(sizes.length - 1, i));
@@ -1405,6 +1407,9 @@ async function load(f, url) {
 
 const cache = new Map();
 const KEEP = 24;
+const decks = new Set();
+/** What a file's pages are called: a deck's slides (a PowerPoint, or a PDF of one once it's open), else its pages */
+export const pageWordOf = (f) => (docKind(f || {}) === 'slides' || decks.has(f?.id) ? 'slide' : 'page');
 /** A file as pages, opened once and kept (the last 24 files: a meeting's packet and more). `url` is where its bytes are (the board's file address by default) */
 export function openDoc(f, { url = fileUrl(f) } = {}) {
   const key = `${f?.id || ''}|${url}`;
@@ -1417,7 +1422,10 @@ export function openDoc(f, { url = fileUrl(f) } = {}) {
   const p = load(f, url);
   cache.set(key, p);
   // Its page count, kept on this device (keptOf), so a meeting's stops are all known when it opens again
-  p.then((d) => { if (f?.id && d.kind !== 'other' && d.count) { try { localStorage.setItem(countKey(f), String(d.count)); } catch { /* full */ } } }).catch(() => {});
+  p.then((d) => {
+    if (f?.id && d.slides) decks.add(f.id);
+    if (f?.id && d.kind !== 'other' && d.count) { try { localStorage.setItem(countKey(f), String(d.count)); } catch { /* full */ } }
+  }).catch(() => {});
   while (cache.size > KEEP) {
     const [oldKey, old] = cache.entries().next().value;
     cache.delete(oldKey);
