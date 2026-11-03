@@ -1241,8 +1241,9 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
   // The papers every board member signs each year, while they haven't
   const year = todayEastern().slice(0, 4);
   const papers = toSign.map((t) => (typeof t === 'string' ? { title: t } : t));
-  // One paper written in Board opens on its own page, its words and the signing at their end; more, on Documents
-  const documentsUrl = `${SITE}${BOARD_PAGE}#/documents${papers.length === 1 && papers[0].written && papers[0].id ? `/${papers[0].id}` : ''}`;
+  // One paper opens on its own page, its words (or its file) and the signing at their end; more, on Documents
+  // (/board/<id>: a #/ link loses its place through Cloudflare's sign-in, public/_redirects)
+  const documentsUrl = `${SITE}/board/${papers.length === 1 && papers[0].id ? papers[0].id : 'documents'}`;
   const signHow = 'Every board member signs these once a year. Read them on the board page and sign by typing your name, or add the copy you signed on paper.';
   const signHtml = !toSign.length ? '' : ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">Still to sign for ${year}</p>`
     + `<p class="ink" style="margin:0;">${papers.map((t) => esc(t.title)).join('<br>')}</p>` + small(esc(signHow))
@@ -1678,7 +1679,8 @@ export function signAskEmail({ name = '', email = '', papers = [], from = '', fi
   const first = firstName(name);
   const one = papers.length === 1 ? papers[0] : null;
   const what = one ? `the ${one.title.replace(/^the\s+/i, '')}` : `${papers.length} papers`;
-  const url = `${SITE}${BOARD_PAGE}#/documents${one ? `/${one.id}` : ''}`;
+  // (/board/<id>, which keeps its place through Cloudflare's sign-in; a #/ link lands on Home)
+  const url = `${SITE}/board/${one ? one.id : 'documents'}`;
   const heading = `${first ? `${first}, please` : 'Please'} sign ${what} for ${year}`;
   const it = one ? 'it' : 'them';
   const intro = `Every board member reads and signs ${it} once a year. On the board page it takes a few minutes: read ${one ? 'it' : 'each one'}, then type your name at the end.`;

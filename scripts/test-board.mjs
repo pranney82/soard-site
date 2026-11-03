@@ -1085,6 +1085,14 @@ try {
       await alex.waitForSelector('.bp-aghero__title', { timeout: 6000 }).catch(() => {});
       const short = await alex.evaluate(() => ({ at: location.search + location.hash, title: document.querySelector('.bp-aghero__title')?.textContent || '' }));
       ok(short.at === `#/meetings/${meetingId}` && !!short.title, `the invite’s link opens the meeting (${JSON.stringify(short)})`);
+      // A paper's short link in an email (/board/<paper id>, or /board/documents) keeps its place the same way
+      const paperId = await alex.evaluate(async () => ((await (await fetch('/api/board-portal')).json()).docs || []).find((d) => d.sign && !d.hidden)?.id || '');
+      ok(!!paperId, 'a paper to sign, for its short link');
+      await alex.goto(`${SITE}/admin/board/?meeting=${paperId}`, { waitUntil: 'networkidle0' });
+      await alex.waitForSelector('.bp-docpage', { timeout: 6000 }).catch(() => {});
+      ok(await alex.evaluate((id) => location.search === '' && location.hash === `#/documents/${id}` && !!document.querySelector('.bp-docpage'), paperId), 'a paper’s link in an email opens the paper');
+      await alex.goto(`${SITE}/admin/board/?meeting=documents`, { waitUntil: 'networkidle0' });
+      ok(await alex.evaluate(() => location.search === '' && location.hash === '#/documents'), 'the link to every paper opens Documents');
       // People: a directory, a row a person, email and copy as two small buttons named for them
       await alex.goto(`${SITE}/admin/board/#/people`, { waitUntil: 'networkidle0' });
       await alex.waitForSelector('.bp-dir .bp-person', { timeout: 6000 }).catch(() => {});

@@ -226,19 +226,19 @@ test('the documents email tells each member what they have still to sign this ye
   const one = packetEmail(m, { name: 'Kim Park', toSign: ['Board Member Expectations'] });
   assert.match(one.html, new RegExp(`Still to sign for ${YEAR}`));
   assert.match(one.html, /Board Member Expectations/);
-  assert.match(one.html, /#\/documents/);
+  assert.match(one.html, /sunshineonaranneyday\.com\/board\/documents"/, 'to Documents, by a link that keeps its place through the sign-in');
   assert.match(one.html, /add the copy you signed on paper/);
   assert.ok(one.html.indexOf('Will you be there?') < one.html.indexOf('Still to sign'), 'after the invite’s question');
   assert.match(one.text, new RegExp(`Still to sign for ${YEAR}: Board Member Expectations`));
-  // One written in Board opens on its own page; a PDF, or more than one, on Documents
+  // One opens on its own page (written in Board or a PDF); more than one, on Documents
   const written = packetEmail(m, { name: 'Kim Park', toSign: [{ title: 'Board Member Expectations', id: 'd_words1', written: true }] });
-  assert.match(written.html, /#\/documents\/d_words1"/);
-  assert.match(written.text, /#\/documents\/d_words1$/m);
+  assert.match(written.html, /\/board\/d_words1"/);
+  assert.match(written.text, /\/board\/d_words1$/m);
   assert.match(written.html, /Board Member Expectations/);
   const two = packetEmail(m, { name: 'Kim Park', toSign: [{ title: 'Board Member Expectations', id: 'd_words1', written: true }, { title: 'Conflict of Interest Policy', id: 'd_pdf1', written: false }] });
-  assert.match(two.html, /#\/documents"/);
+  assert.match(two.html, /\/board\/documents"/);
   assert.match(two.html, /Board Member Expectations<br>Conflict of Interest Policy/);
-  assert.match(packetEmail(m, { name: 'Kim Park', toSign: [{ title: 'Conflict of Interest Policy', id: 'd_pdf1', written: false }] }).html, /#\/documents"/);
+  assert.match(packetEmail(m, { name: 'Kim Park', toSign: [{ title: 'Conflict of Interest Policy', id: 'd_pdf1', written: false }] }).html, /\/board\/d_pdf1"/, 'a PDF to sign opens on its own page too');
   const none = packetEmail(m, { name: 'Alex Rivera', toSign: [] });
   assert.doesNotMatch(none.html, /Still to sign/);
   assert.doesNotMatch(none.text, /Still to sign/);
@@ -556,7 +556,7 @@ test('asking the board to sign: an email to each who hasn’t, straight to the p
   const kim = sent.find((m) => m.to[0] === 'kim.board@example.com');
   assert.equal(sam.subject, `Please sign the Board Member Expectations for ${YEAR}`);
   assert.match(sam.from, /^"Jane Doe via SOARD Board" </, 'from the admin asking, through the board’s address');
-  assert.ok(sam.html.includes(`/board#/documents/${d.id}`) || sam.html.includes(`#/documents/${d.id}`), 'its button opens the paper itself');
+  assert.ok(sam.html.includes(`sunshineonaranneyday.com/board/${d.id}"`) && !sam.html.includes('#/documents'), 'its button opens the paper itself, by a link that keeps its place through the sign-in');
   assert.match(sam.text, /Sam, please sign the Board Member Expectations/);
   assert.ok(!/The first time/.test(sam.text) && /The first time: The board page opens with your email address, kim\.board@example\.com/.test(kim.text), 'only someone never on the board page is told how its sign-in works');
   assert.ok(!/—/.test(sam.text + kim.text), 'no em dashes');
@@ -599,5 +599,5 @@ test('asking the board to sign: an email to each who hasn’t, straight to the p
   await askToSign(env, { slugs: ['sam-ortiz'], by: FOUNDER });
   assert.match(sent[1].subject, new RegExp(`Please sign 2 papers for ${YEAR}`));
   assert.match(sent[1].text, /To sign for \d{4}:\n- Board Member Expectations\n- Conflict of Interest Policy/);
-  assert.match(sent[1].text, /#\/documents\n/, 'two papers: to Documents');
+  assert.match(sent[1].text, /\/board\/documents\n/, 'two papers: to Documents');
 });

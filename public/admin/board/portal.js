@@ -48,14 +48,16 @@ const html = htm.bind(h);
 const API = '/api/board-portal';
 const LOGO = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128';
 
-// A meeting's link on its calendar invite (/board/<id>, public/_redirects) arrives as ?meeting=<id>, since a query
-// survives Cloudflare's sign-in and a #/meetings/<id> link lands on Home: the meeting, at its usual address
+// A meeting's link on its calendar invite, or a paper's in an email (/board/<id>, public/_redirects), arrives as
+// ?meeting=<id>, since a query survives Cloudflare's sign-in and a #/ link lands on Home: the meeting or the paper
+// (d_…, or "documents" for them all), at its usual address
 {
   const q = new URLSearchParams(location.search);
   const id = q.get('meeting');
   if (id !== null) {
     q.delete('meeting');
-    history.replaceState(null, '', `${location.pathname}${q.size ? `?${q}` : ''}${/^m_[a-z0-9]{4,24}$/.test(id) ? `#/meetings/${id}` : location.hash}`);
+    const to = /^m_[a-z0-9]{4,24}$/.test(id) ? `#/meetings/${id}` : /^d_[a-z0-9]{4,24}$/.test(id) ? `#/documents/${id}` : id === 'documents' ? '#/documents' : location.hash;
+    history.replaceState(null, '', `${location.pathname}${q.size ? `?${q}` : ''}${to}`);
   }
 }
 
