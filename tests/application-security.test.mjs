@@ -99,6 +99,12 @@ test('a photo is checked by its own bytes, and stored as what it really is', asy
   const real = await upload(TEST_JPEG, 'image/jpeg', 'kid.jpg');
   assert.equal(real.status, 200);
   assert.equal((await getDraft(env.DB, id)).files.photoChild.type, 'image/jpeg');
+  // A browser that doesn't know the type (Chrome on Windows and an iPhone's .heic) sends none: the bytes decide
+  const heic = Uint8Array.from([0, 0, 0, 0x18, ...new TextEncoder().encode('ftypheic'), 0, 0, 0, 0, ...new TextEncoder().encode('mif1heic')]);
+  assert.equal((await upload(heic, '', 'IMG_0001.HEIC')).status, 200, 'an iPhone photo with no type goes');
+  assert.equal((await getDraft(env.DB, id)).files.photoChild.type, 'image/heic', 'kept as what it is');
+  assert.equal((await upload(html, '', 'kid.heic')).status, 400, 'no type and not a photo: turned away');
+  assert.equal((await upload(TEST_JPEG, 'application/pdf', 'kid.jpg')).status, 400, 'a type that isn’t a photo’s: turned away');
 });
 
 test('deleting a family’s data takes where the check placed their home, the site’s timeline and the change log entries', async () => {

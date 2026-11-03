@@ -43,10 +43,10 @@
 
 import { DEFAULT_ES } from './_application-form-es.js';
 import { areaRules, NEAR_MILES } from '../../public/admin/area-shared.js';
-import { YES_NO, COUNTIES, AREA_VALUES } from './_application-constants.js';
+import { YES_NO, COUNTIES, AREA_VALUES, isWebAddress } from './_application-constants.js';
 import { ORG_LOCKED_FIELDS, ORG_DEFAULT_MESSAGES, ORG_DEFAULT_REMINDERS, ORG_DEFAULT_DEFINITION, ORG_SPACE_TYPES } from './_application-form-org.js';
 
-export { YES_NO, COUNTIES, AREA_VALUES, ORG_LOCKED_FIELDS, ORG_DEFAULT_DEFINITION, ORG_SPACE_TYPES };
+export { YES_NO, COUNTIES, AREA_VALUES, isWebAddress, ORG_LOCKED_FIELDS, ORG_DEFAULT_DEFINITION, ORG_SPACE_TYPES };
 
 // The old static map picture (the form draws a live map now; kept for older stop screens)
 export const SERVICE_MAP_IMAGE = 'd993cd7c-7863-4a1b-ea5e-50602623cb00';
@@ -1155,13 +1155,6 @@ export function toE164(s) {
   if (/^\d{10}$/.test(digits)) return us(digits);
   return null;
 }
-/** A web address as people type one ("soard.org", "www.example.org/about", with or without https://) */
-export const isWebAddress = (s) => {
-  const v = String(s || '').trim();
-  // ("www.example", the ending forgotten, isn't one: past "www." it still needs a name and an ending)
-  return /^(?:https?:\/\/)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}(?::\d{2,5})?(?:[/?#]\S*)?$/i.test(v)
-    && /^[^/?#:]+\.[a-z]{2,}(?:[:/?#]|$)/i.test(v.replace(/^https?:\/\//i, '').replace(/^www\./i, ''));
-};
 
 /** Whole years between a YYYY-MM-DD birthday and now */
 export function ageOn(birthdate, now = Date.now()) {

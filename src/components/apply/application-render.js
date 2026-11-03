@@ -60,6 +60,7 @@ export const UI = {
     sentBodyHtml: 'We sent a link to <strong data-later-email></strong>. It works for 60 days after your last change. Please keep it private, since anyone with it can see your answers.',
     keepGoing: 'Keep going now', close: 'Close',
     welcomeBack: 'Welcome back! Your answers are saved, so you can pick up right where you left off.',
+    pickedUp: 'You already have an application going on this device, started in another tab or window. Here it is, right where you left off.',
     otherApplication: 'This link opened a different application from the one you had going on this device. That one is still saved.', openOther: 'Open that one instead',
     welcomeBackOther: 'Welcome back! Your answers are saved. Another application is saved on this device too.',
     noStorage: "Your answers save as you go, but this browser blocks keeping your place on this device. Before you leave, use “Save and finish later” to get a link by email.",
@@ -67,7 +68,7 @@ export const UI = {
     remindersOff: "You won't get any more reminder emails. Your answers are still saved here.",
     remindersOffOther: "You won't get any more reminder emails. This link opened a different application from the one you had going on this device. That one is still saved.",
     hubOther: 'Open the other application saved on this device',
-    expired: 'This saved application has expired. Your answers are still here: press Continue to save them in a new one.', renewed: 'Your saved application had expired, so we saved the answers on this page in a new one.', renewedFiles: 'Your saved application had expired, so we saved the answers on this page in a new one. Please add your photos and video again.', fileAgain: 'This expired with your saved application. Please add it again.',
+    expired: 'This saved application has expired. Your answers are still here: press Continue to save them in a new one.', renewed: 'Your saved application had expired, so we saved all your answers in a new one.', renewedFiles: 'Your saved application had expired, so we saved all your answers in a new one. Please add your photos and video again.', fileAgain: 'This expired with your saved application. Please add it again.',
     linkExpired: 'That link has expired or is not valid. Please start a new application.',
     resumeFailed: "We couldn't open your saved application just now. It's still saved, and it will open here as soon as we can reach it.",
     startFail: 'We could not start your application. Please try again.', turnstile: 'Please complete the quick check above the Continue button.', turnstileLater: "Please complete the quick check above the Continue button, and we'll email your link.", laterEmailEmpty: 'Please enter your email address.', turnstileFailed: "The quick check couldn't confirm this browser. It tries again on its own; if it keeps failing, reload the page, or email info@soardcharity.com and we'll help you apply.",
@@ -82,7 +83,7 @@ export const UI = {
     uploading: 'Uploading… {pct}%', added: 'Added: {name}', tryAgain: '{msg}. Please try again.', uploadFailed: 'Upload failed', videoFailed: "Your video didn't upload", uploadOffline: "The upload stopped when the connection dropped. It picks up again by itself once you're back online, or press Try again.", notImage: "That file isn't a photo we can use. Please choose a JPEG, PNG or HEIC photo.",
     dropPhoto: 'Drop the photo here', dropVideo: 'Drop the video here', orDrag: 'or drag one here', orDragVideo: 'or drag one here', undo: 'Undo', uploadWait: 'Please wait for this upload to finish.', uploadRetrying: 'The connection dropped. Trying again ({pct}% sent)…', photoRemoved: 'Photo removed.', videoRemoved: 'Video removed.', groupRemoved: 'Answers removed.',
     noVideo: 'No video yet', chooseVideo: 'Choose or record a video', chooseVideoDesk: 'Choose a video file', chooseOther: 'Choose a different video', starting: 'Starting upload…',
-    uploadingPct: 'Uploading your video… {pct}%', finishing: 'Finishing up…', videoDone: 'Video uploaded: {name}', videoGone: 'Your video did not finish uploading. Please choose it again.', cancelUpload: 'Cancel upload', videoCanceled: 'Upload canceled.', videoKept: 'Upload canceled. Your video is still here: {name}',
+    uploadingPct: 'Uploading your video… {pct}%', finishing: 'Finishing up…', videoDone: 'Video uploaded: {name}', videoGone: 'Your video did not finish uploading. Please choose it again.', videoResume: 'Your video was still uploading when the page closed. Choose the same video again and it picks up where it stopped.', cancelUpload: 'Cancel upload', videoCanceled: 'Upload canceled.', videoKept: 'Upload canceled. Your video is still here: {name}',
     notVideo: "That file isn't a video. Please choose a video file.", uploadStartFail: 'We could not start the upload',
     empty: 'That file is empty. If it is in iCloud or Google Drive, download it to your device first.', videoHint: 'Up to 10 minutes. Please keep this page open while it uploads.',
     record: 'Record with my camera', recordStart: 'Start recording', recordStop: 'Stop and use this video', recordCancel: 'Cancel', recording: 'Recording {time}',
@@ -182,6 +183,7 @@ export const UI = {
     sentBodyHtml: 'Enviamos un enlace a <strong data-later-email></strong>. Funciona durante 60 días después de su último cambio. Manténgalo privado, ya que cualquier persona que lo tenga puede ver sus respuestas.',
     keepGoing: 'Seguir ahora', close: 'Cerrar',
     welcomeBack: '¡Bienvenido de nuevo! Sus respuestas están guardadas, así que puede continuar justo donde se quedó.',
+    pickedUp: 'Ya tiene una solicitud en curso en este dispositivo, empezada en otra pestaña o ventana. Aquí está, justo donde se quedó.',
     otherApplication: 'Este enlace abrió una solicitud distinta de la que tenía en este dispositivo. Aquella sigue guardada.', openOther: 'Abrir esa en su lugar',
     welcomeBackOther: '¡Bienvenido de nuevo! Sus respuestas están guardadas. En este dispositivo también hay otra solicitud guardada.',
     noStorage: 'Sus respuestas se guardan a medida que avanza, pero este navegador no permite recordar su lugar en este dispositivo. Antes de salir, use “Guardar y terminar más tarde” para recibir un enlace por correo electrónico.',
@@ -189,7 +191,7 @@ export const UI = {
     remindersOff: 'Ya no recibirá más correos de recordatorio. Sus respuestas siguen guardadas aquí.',
     remindersOffOther: 'Ya no recibirá más correos de recordatorio. Este enlace abrió una solicitud distinta de la que tenía en este dispositivo. Aquella sigue guardada.',
     hubOther: 'Abrir la otra solicitud guardada en este dispositivo',
-    expired: 'Esta solicitud guardada venció. Sus respuestas siguen aquí: presione Continuar para guardarlas en una nueva.', renewed: 'Su solicitud guardada había vencido, así que guardamos las respuestas de esta página en una nueva.', renewedFiles: 'Su solicitud guardada había vencido, así que guardamos las respuestas de esta página en una nueva. Vuelva a agregar sus fotos y su video.', fileAgain: 'Esto venció con su solicitud guardada. Vuelva a agregarlo.',
+    expired: 'Esta solicitud guardada venció. Sus respuestas siguen aquí: presione Continuar para guardarlas en una nueva.', renewed: 'Su solicitud guardada había vencido, así que guardamos todas sus respuestas en una nueva.', renewedFiles: 'Su solicitud guardada había vencido, así que guardamos todas sus respuestas en una nueva. Vuelva a agregar sus fotos y su video.', fileAgain: 'Esto venció con su solicitud guardada. Vuelva a agregarlo.',
     linkExpired: 'Ese enlace venció o no es válido. Comience una nueva solicitud.',
     resumeFailed: 'No pudimos abrir su solicitud guardada en este momento. Sigue guardada, y se abrirá aquí en cuanto podamos conectarnos.',
     startFail: 'No pudimos comenzar su solicitud. Intente de nuevo.', turnstile: 'Complete la verificación rápida arriba del botón Continuar.', turnstileLater: 'Complete la verificación rápida arriba del botón Continuar y le enviaremos su enlace por correo.', laterEmailEmpty: 'Escriba su correo electrónico.', turnstileFailed: 'La verificación rápida no pudo confirmar este navegador. Vuelve a intentarlo sola; si sigue fallando, vuelva a cargar la página o escríbanos a info@soardcharity.com y le ayudaremos con la solicitud.',
@@ -204,7 +206,7 @@ export const UI = {
     uploading: 'Subiendo… {pct}%', added: 'Agregada: {name}', tryAgain: '{msg}. Intente de nuevo.', uploadFailed: 'No se pudo subir', videoFailed: 'Su video no se subió', uploadOffline: 'La carga se detuvo cuando se perdió la conexión. Continúa sola cuando vuelva a tener conexión, o presione Intentar de nuevo.', notImage: 'Ese archivo no es una foto que podamos usar. Elija una foto JPEG, PNG o HEIC.',
     dropPhoto: 'Suelte la foto aquí', dropVideo: 'Suelte el video aquí', orDrag: 'o arrástrela aquí', orDragVideo: 'o arrástrelo aquí', undo: 'Deshacer', uploadWait: 'Espere a que termine esta carga.', uploadRetrying: 'Se cortó la conexión. Intentando de nuevo ({pct}% enviado)…', photoRemoved: 'Se quitó la foto.', videoRemoved: 'Se quitó el video.', groupRemoved: 'Se quitaron las respuestas.',
     noVideo: 'Todavía no hay video', chooseVideo: 'Elegir o grabar un video', chooseVideoDesk: 'Elegir un archivo de video', chooseOther: 'Elegir otro video', starting: 'Comenzando a subir…',
-    uploadingPct: 'Subiendo su video… {pct}%', finishing: 'Terminando…', videoDone: 'Video subido: {name}', videoGone: 'Su video no terminó de subirse. Elíjalo de nuevo.', cancelUpload: 'Cancelar la carga', videoCanceled: 'Se canceló la carga.', videoKept: 'Se canceló la carga. Su video sigue aquí: {name}',
+    uploadingPct: 'Subiendo su video… {pct}%', finishing: 'Terminando…', videoDone: 'Video subido: {name}', videoGone: 'Su video no terminó de subirse. Elíjalo de nuevo.', videoResume: 'Su video todavía se estaba subiendo cuando se cerró la página. Elija el mismo video de nuevo y continuará donde se detuvo.', cancelUpload: 'Cancelar la carga', videoCanceled: 'Se canceló la carga.', videoKept: 'Se canceló la carga. Su video sigue aquí: {name}',
     notVideo: 'Ese archivo no es un video. Elija un archivo de video.', uploadStartFail: 'No pudimos comenzar a subir el archivo',
     empty: 'Ese archivo está vacío. Si está en iCloud o Google Drive, descárguelo primero a su dispositivo.', videoHint: 'Hasta 10 minutos. Mantenga esta página abierta mientras se sube.',
     record: 'Grabar con mi cámara', recordStart: 'Comenzar a grabar', recordStop: 'Detener y usar este video', recordCancel: 'Cancelar', recording: 'Grabando {time}',
@@ -478,7 +480,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip"${req} inputm
         control = `<div class="af-upload af-upload--photo" data-state="empty" data-drop>
 <input type="file" id="${id}" accept="image/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview" aria-hidden="true">${RING}</div>
-<div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noPhoto')}</p>
+<div class="af-upload-body"><p class="af-upload-status">${T('noPhoto')}</p><p class="af-sr" data-upload-said aria-live="polite">${T('noPhoto')}</p>
 <div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" aria-describedby="${id}-label ${errId}" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose" aria-describedby="${id}-label ${errId}">${T('choosePhoto')}</button><span class="af-drag-hint">${T('orDrag')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" aria-describedby="${id}-label ${errId}" hidden>${T('remove')}</button><button type="button" class="af-btn af-btn--link" data-act="undo" aria-describedby="${id}-label ${errId}" hidden>${T('undo')}</button></div></div>
 <div class="af-drop-veil" aria-hidden="true"><span>${T('dropPhoto')}</span></div></div>`;
         break;
@@ -486,13 +488,13 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip"${req} inputm
         control = `<div class="af-upload af-upload--video" data-state="empty" data-drop>
 <input type="file" id="${id}" accept="video/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview af-upload-preview--video" aria-hidden="true">${RING}<span class="af-pct"></span></div>
-<div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noVideo')}</p>
+<div class="af-upload-body"><p class="af-upload-status">${T('noVideo')}</p><p class="af-sr" data-upload-said aria-live="polite">${T('noVideo')}</p>
 <div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" aria-describedby="${id}-label ${errId}" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose" aria-describedby="${id}-label ${errId}">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" aria-describedby="${id}-label ${errId}" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDragVideo')}</span><button type="button" class="af-btn af-btn--link" data-act="cancel" aria-describedby="${id}-label ${errId}" hidden>${T('cancelUpload')}</button><button type="button" class="af-btn af-btn--link" data-act="remove" aria-describedby="${id}-label ${errId}" hidden>${T('remove')}</button><button type="button" class="af-btn af-btn--link" data-act="undo" aria-describedby="${id}-label ${errId}" hidden>${T('undo')}</button></div>
 <p class="af-hint">${T('videoHint')}</p></div>
 <div class="af-drop-veil" aria-hidden="true"><span>${T('dropVideo')}</span></div></div>
 <div class="af-recorder" hidden>
 <video class="af-recorder-view" muted playsinline aria-hidden="true"></video>
-<div class="af-recorder-bar"><p class="af-recorder-time" aria-live="polite"></p>
+<div class="af-recorder-bar"><p class="af-recorder-time" role="timer"></p><p class="af-sr" data-rec-said aria-live="polite"></p>
 <div class="af-recorder-actions"><button type="button" class="af-btn af-btn--link af-btn--on-dark" data-act="rec-cancel">${T('recordCancel')}</button>
 <button type="button" class="af-btn af-btn--primary af-btn--sm" data-act="rec-toggle" aria-disabled="true">${T('recordStart')}</button></div></div></div>`;
         break;

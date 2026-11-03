@@ -89,8 +89,11 @@ const ask = (env, url, init = {}, ms = 4000) => fetch(url, {
   signal: AbortSignal.timeout(ms),
 });
 
+/** The page's search session (a UUID): Google counts a session's searches past its first dozen as free once a pick ends it */
+const sessionOf = (s) => (/^[A-Za-z0-9_-]{8,36}$/.test(String(s || '')) ? String(s) : null);
+
 /** Up to five homes matching what's typed: [{ id, line1, sub }], or null for the free path */
-export async function googleSuggest(env, q) {
+export async function googleSuggest(env, q, session = null) {
   const input = String(q || '').trim().slice(0, 120);
   // Only while a pick can still be filled in from Google too
   if (!googleOn(env) || input.length < 4 || (await used(env.DB, 'place')) >= GOOGLE_MONTHLY.place || !(await spend(env, 'suggest'))) return null;
@@ -103,20 +106,26 @@ export async function googleSuggest(env, q) {
       includedRegionCodes: ['us'],
       locationBias: { circle: { center: ATLANTA, radius: 50000 } },
       languageCode: 'en', // street names as the Postal Service writes them, in either language
+      ...(sessionOf(session) ? { sessionToken: sessionOf(session) } : {}),
     }),
   });
   if (!res.ok) return null;
   const data = await res.json().catch(() => ({}));
   // Georgia's only: every family SOARD serves lives there, and "3167 Main St, Dothan, AL" is no help
-  return (data.suggestions || []).map(s => s.placePrediction).filter(p => p?.placeId && p.structuredFormat?.mainText?.text)
+  const list = (data.suggestions || []).map(s => s.placePrediction).filter(p => p?.placeId && p.structuredFormat?.mainText?.text)
     .map(p => ({ id: p.placeId, line1: shorten(p.structuredFormat.mainText.text), sub: String(p.structuredFormat.secondaryText?.text || '').replace(/, USA$/, '') }))
     .filter(p => /, GA(?: \d{5}(?:-\d{4})?)?$/.test(p.sub)).slice(0, 5); // "Roswell, GA 30076" when the ZIP was typed too
+  // Fewer than Google's five: all it has for these words, so more of the same words is that list narrowed (the page
+  // narrows it itself, no new search)
+  Object.defineProperty(list, 'complete', { value: (data.suggestions || []).length < 5 });
+  return list;
 }
 
 /** The address parts of the home they picked: { line1, line2, city, state, zip }, or null */
-export async function googlePlace(env, id) {
+export async function googlePlace(env, id, session = null) {
   if (!googleOn(env) || !/^[\w-]{10,300}$/.test(String(id || '')) || !(await spend(env, 'place'))) return null;
-  const res = await ask(env, `${PLACES}/places/${encodeURIComponent(id)}`, { headers: { 'X-Goog-FieldMask': 'addressComponents' } });
+  const ends = sessionOf(session) ? `?sessionToken=${sessionOf(session)}` : ''; // (the session its searches were in)
+  const res = await ask(env, `${PLACES}/places/${encodeURIComponent(id)}${ends}`, { headers: { 'X-Goog-FieldMask': 'addressComponents' } });
   if (!res.ok) return null;
   const parts = (await res.json().catch(() => ({})))?.addressComponents || [];
   const part = (type, short = false) => { const c = parts.find(x => x.types?.includes(type)); return String((c && (short ? c.shortText : c.longText)) || ''); };
@@ -142,7 +151,8 @@ export async function googlePlace(env, id) {
 export async function googleVerify(env, a) {
   const line1 = [a?.line1, a?.line2].map(s => String(s || '').trim()).filter(Boolean).join(' ');
   const last = [a?.city, a?.state, a?.zip].map(s => String(s || '').trim()).filter(Boolean).join(' ');
-  if (!googleOn(env) || !line1 || !/^\d{5}/.test(String(a?.zip || '').trim()) || !(await spend(env, 'verify'))) return null;
+  // (a ZIP the form itself turns away, "30076-12", isn't asked about: nothing to pay for)
+  if (!googleOn(env) || !line1 || !/^\d{5}(?:-\d{4})?$/.test(String(a?.zip || '').trim()) || !(await spend(env, 'verify'))) return null;
   const res = await ask(env, VALIDATE, {
     method: 'POST',
     body: JSON.stringify({ address: { regionCode: 'US', addressLines: [line1.slice(0, 160), last.slice(0, 120)] }, enableUspsCass: true }),

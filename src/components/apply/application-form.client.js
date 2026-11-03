@@ -32,7 +32,7 @@
 import * as tus from 'tus-js-client';
 import {
   DEFAULT_DEFINITION, LANGS, AREA_VALUES, resolveForm, allFields, indexById, isVisible, pageVisible,
-  stopFor, fieldError, namedError, formErrors, answerSections, isInput, isUpload, dateText,
+  stopFor, fieldError, namedError, formErrors, answerSections, isInput, isUpload, dateText, optionLabel,
 } from '../../../functions/api/_application-form.js';
 import { addressKey, checkableAddress } from '../../../functions/api/_geo.js';
 import { renderPages, t as word, imageHtml, mapWords, esc } from './application-render.js';
@@ -252,6 +252,7 @@ function init(root, cfg, mode) {
   let countyNote = null;
   let laterEmail = '';
   let uspsNow = null;        // the Postal Service's word on the home address (with a Google key): { key, status }
+  let uspsGoing = '';        // ...the address it's being asked about
   const uspsOn = !!cfg.usps;
   let areaNow = null;        // the last service-area check of the home address: { key, band, answer, lat, lng, miles, county, matched, reason }
   let askedFor = null;       // the address (its key) the family's own answer to "is the home inside the area?" is about
@@ -287,6 +288,12 @@ function init(root, cfg, mode) {
       default: return el.querySelector('input, textarea, select')?.value ?? '';
     }
   }
+  // Safari on a Mac draws today's date, grayed, in an empty date box (WebKit bug 233215), so a birthday left empty
+  // looks answered. There it's drawn empty, as an iPhone's Safari draws it, till they're in it (the styles); one
+  // begun and left part-way ("03/dd/yyyy") stays as it is
+  if (/^((?!chrome|chromium|crios|fxios|edg|opr|android).)*safari/i.test(navigator.userAgent) && navigator.maxTouchPoints < 2) root.classList.add('af-mac-safari');
+  const paintDate = (i) => i.toggleAttribute('data-empty', !i.value && !i.validity?.badInput);
+  for (const type of ['input', 'change', 'focusout']) ui.pages.addEventListener(type, (e) => { if (e.target.type === 'date') paintDate(e.target); }, { signal });
   function writeField(f, v) {
     const el = fieldEl(f.id);
     if (!el || v == null) return;
@@ -301,6 +308,7 @@ function init(root, cfg, mode) {
       default: {
         const input = el.querySelector('input, textarea, select');
         if (input && input.type !== 'file') input.value = v;
+        if (input?.type === 'date') paintDate(input);
       }
     }
   }
@@ -332,6 +340,7 @@ function init(root, cfg, mode) {
     packs = {}; // new pieces, new sizes: each page's screens are worked out again when it shows
     pageEls = Object.fromEntries([...ui.pages.querySelectorAll('[data-page]')].map(el => [el.dataset.page, el]));
     for (const f of fields) if (isInput(f)) writeField(f, answers[f.id]);
+    ui.pages.querySelectorAll('input[type=date]').forEach(paintDate);
     for (const was of addrWas) {
       const b = addrBox(fieldEl(was.id));
       if (!b) continue;
@@ -540,6 +549,9 @@ function init(root, cfg, mode) {
     // left off" is the furthest step they'd reached, not the start they backed through
     if (id == null && backedOut && !focused && order(currentId) < order(furthestId)) id = furthestId;
     backedOut = false;
+    // ...and when another tab or device took it further meanwhile: on from there, with what was answered there
+    if (id == null && fromPage && aheadElsewhere && order(currentId) < order(furthestId)) { id = furthestId; peek(); }
+    aheadElsewhere = false;
     const was = focused;
     // A link that didn't open, pressed past to start afresh: its note was about that link, not this one
     if (!token && lastNotice?.m === 'linkExpired') { notice(null); linkGone = false; }
@@ -561,6 +573,7 @@ function init(root, cfg, mode) {
     });
   }
   let backedOut = false;
+  let aheadElsewhere = false; // the application went further in another tab or on another device while this page sat
   function exitFocus({ fromPop = false } = {}) {
     if (!focused) return;
     backedOut = fromPop;
@@ -811,13 +824,22 @@ function init(root, cfg, mode) {
     let photos = 0;
     let video = false;
     let acks = 0;
+    // "Something else" chosen and named in its own box: the name, in its place ("Public library", not "Something else")
+    const named = {};
+    for (const it of sec.items) {
+      const on = byId[it.id]?.showIf;
+      if (on?.field && byId[on.field] && on.in?.length === 1 && /^something else$/i.test(on.in[0]) && String(it.text || '').trim()) named[on.field] = { id: it.id, value: on.in[0], text: String(it.text).trim() };
+    }
+    const namedIds = new Set(Object.values(named).map(n => n.id));
     for (const it of sec.items) {
       const f = byId[it.id];
-      if (!f) continue;
+      if (!f || namedIds.has(it.id)) continue;
       if (it.upload) { if (f.type === 'video') video = true; else photos++; continue; }
       if (f.type === 'ack') { acks++; continue; }
       if (f.type === 'area') continue;
-      const text = String((f.type === 'date' ? dateText(a[f.id], lang) : it.text) || '').split('\n')[0].trim();
+      const n = named[f.id];
+      const said = n ? [].concat(a[f.id] ?? []).map(v => (v === n.value ? n.text : optionLabel(f, v))).join(', ') : it.text;
+      const text = String((f.type === 'date' ? dateText(a[f.id], lang) : said) || '').split('\n')[0].trim();
       if (text && parts.length < 2) parts.push(text); // a long one is cut where the line ends (one "…", the styles')
     }
     if (photos) parts.push(photos === 1 ? T('photoAdded') : T('photosAdded', { n: photos }));
@@ -1483,7 +1505,7 @@ function init(root, cfg, mode) {
       if (pageChanged || dir) {
         ui.steps.open = false;
         if (!lastNav?.reason) navNote(null);
-        if (lastNotice?.kind === 'success' || lastNotice?.m === 'remindersOff') notice(null); // "Welcome back" has done its job once they move on
+        if (lastNotice?.kind === 'success' || ['remindersOff', 'pickedUp'].includes(lastNotice?.m)) notice(null); // "Welcome back" has done its job once they move on
       }
       // A screen that can't fit with a note at the top (one question that can't be split, like the makeover tiles):
       // the note goes sooner, so nothing waits under Back / Continue for long
@@ -1510,6 +1532,7 @@ function init(root, cfg, mode) {
         const part = partOf();
         if (box) {
           box.focus({ preventScroll: true });
+          clearOfBars(box); // (a window zoomed in far: the box with the keys isn't left under Back / Continue)
           if (pageChanged) announce(`${T('step', { n: stepIds().indexOf(id) + 1, total: stepIds().length })}: ${titleOf(id)}`);
           else if (part.total > 1) announce(T('part', { n: part.at, total: part.total }));
         } else ui.stepTitle.focus({ preventScroll: true });
@@ -1517,6 +1540,13 @@ function init(root, cfg, mode) {
     });
   }
   const keysFirst = () => finePointer() && !matchMedia('(any-pointer: coarse)').matches;
+  /** Out from under Back / Continue, as little as it takes (never past the bar across the top) */
+  function clearOfBars(el) {
+    const r = el.getBoundingClientRect();
+    const navTop = ui.form.querySelector('[data-nav]')?.getBoundingClientRect().top ?? innerHeight;
+    const by = Math.min(r.bottom + 12 - navTop, r.top - (ui.top?.getBoundingClientRect().bottom || 0) - 8);
+    if (by > 0) window.scrollBy({ top: by, behavior: 'auto' });
+  }
   /** The screen's first question (past any words to read) when it's a box to type in, still empty */
   function firstBox() {
     if (currentId === 'review') return null;
@@ -1977,6 +2007,12 @@ function init(root, cfg, mode) {
       if (token) return true;
       if (!turnstileToken) { askCheck(); return false; }
     }
+    // Another tab or window on this device started one since this page opened: that one, where they left off
+    // there (not a second application, and this device then remembering only the second)
+    if (!renew && !testRun && othersStarted()) {
+      await resume();
+      if (token) { notice('pickedUp', 'info'); announce(T('pickedUp')); return false; }
+    }
     let r;
     try { r = await api({ action: 'start', kind, year, lang, turnstileToken, website: ui.honeypot?.value || '', ...(renew ? { renew } : {}), ...(testRun ? { test: true } : {}) }); } catch { r = { ok: false }; }
     if (token) return true; // started meanwhile (a second press)
@@ -2092,13 +2128,11 @@ function init(root, cfg, mode) {
     saveState('unsaved');
     clearTimeout(dirtyTimer);
     dirtyTimer = setTimeout(save, 4000);
-    clearTimeout(pendingTimer);
-    pendingTimer = setTimeout(keepPending, 500);
+    // Kept at once (not a moment later): a tab opened now reads what's here, never an answer already changed back
+    keepPending();
   }
-  let pendingTimer = 0;
   /** This page's answers the server doesn't have yet, on this device (see `pending`) */
   function keepPending() {
-    clearTimeout(pendingTimer);
     if (!token || previewing || doneShown) return;
     const now = readAnswers();
     const changed = {};
@@ -2152,7 +2186,7 @@ function init(root, cfg, mode) {
       took.push(id);
     }
     const gotFiles = takeFiles(r.files || {});
-    if (order(r.maxPage) > order(furthestId)) { furthestId = r.maxPage; remember(); }
+    if (order(r.maxPage) > order(furthestId)) { furthestId = r.maxPage; remember(); if (!focused) aheadElsewhere = true; }
     if (!took.length && !gotFiles) { paintHeader(); return; }
     theirsTaken++;
     openAnsweredTucked();
@@ -2559,6 +2593,14 @@ function init(root, cfg, mode) {
     if (Array.isArray(msg) && msg[1] && 'name' in msg[1] && !msg[1].name) msg = [msg[0], { ...msg[1], name: T(video ? 'yourVideo' : 'yourPhoto') }];
     const status = box.querySelector('.af-upload-status');
     status.textContent = msg ? say(msg) : T(video ? 'noVideo' : 'noPhoto');
+    // What a screen reader hears: each change, an upload's progress only at each quarter ("Uploading… 25%", not
+    // every number the line shows)
+    const heard = box.querySelector('[data-upload-said]');
+    if (heard) {
+      const pct = Array.isArray(msg) && ['uploading', 'uploadingPct'].includes(msg[0]) ? Math.min(75, Math.floor((Number(msg[1]?.pct) || 0) / 25) * 25) : null;
+      const words = pct == null ? status.textContent : pct ? say([msg[0], { pct }]) : heard.textContent;
+      if (heard.textContent !== words) heard.textContent = words;
+    }
     // A problem is read whole, even over a photo already added (a file's name is what's cut short)
     status.toggleAttribute('data-problem', !!msg && ((typeof msg === 'object' && !Array.isArray(msg)) || ['notImage', 'notVideo', 'empty', 'camBlocked'].includes(msg)));
     const done = s.state === 'done';
@@ -2750,6 +2792,10 @@ function init(root, cfg, mode) {
   }
 
   const goingOn = {}; // field id → { sig, url, token }: a video upload cut off, to carry on with (Try again)
+  // ...kept on the device too: a reload (a phone that closed the tab while they were in another app) and the same
+  // video chosen again carries on from where it stopped, as Try again does, not from 0%
+  const videoGoing = local(keyed('soard-application-video'));
+  const forgetGoing = (id) => { delete goingOn[id]; if (videoGoing.get()?.field === id) videoGoing.clear(); };
   async function uploadVideo(f, file) {
     if (!isVideoFile(file)) { setUpload(f.id, { msg: 'notVideo' }); return; }
     if (!file.size) { setUpload(f.id, { msg: 'empty' }); return; }
@@ -2778,7 +2824,10 @@ function init(root, cfg, mode) {
       const sig = `${file.name}|${file.size}|${file.lastModified}`;
       for (let fresh = 0; ; fresh++) {
         const was = token;
-        // Try again on the same file after the connection dropped: on from where it stopped (the same upload, not 0%)
+        // Try again on the same file after the connection dropped (or the page reloaded): on from where it stopped
+        // (the same upload, not 0%)
+        const kept = videoGoing.get();
+        if (!fresh && !goingOn[f.id] && kept?.field === f.id && kept.token === token && kept.sig === sig && kept.url) goingOn[f.id] = { sig, url: kept.url, token };
         let url = !fresh && goingOn[f.id]?.sig === sig && goingOn[f.id].token === token ? goingOn[f.id].url : null;
         if (!url) {
           const r = await api({ action: 'video-url', token, size: file.size, name: file.name, lang });
@@ -2786,6 +2835,7 @@ function init(root, cfg, mode) {
           if (!r.ok) throw said(uploadGone(r, was) || r.error || T('uploadStartFail'));
           url = r.uploadUrl;
           goingOn[f.id] = { sig, url, token };
+          videoGoing.set({ field: f.id, sig, url, token });
         }
         try {
           halt();
@@ -2816,7 +2866,7 @@ function init(root, cfg, mode) {
           break;
         } catch (e) {
           // Its upload link ran out or was let go (Stream keeps one for a while): a new one, once, from the start
-          if (!fresh && !ctl.canceled && [404, 410].includes(e?.originalResponse?.getStatus?.())) { delete goingOn[f.id]; setUpload(f.id, { pct: 0, msg: 'starting' }); continue; }
+          if (!fresh && !ctl.canceled && [404, 410].includes(e?.originalResponse?.getStatus?.())) { forgetGoing(f.id); setUpload(f.id, { pct: 0, msg: 'starting' }); continue; }
           throw e;
         }
       }
@@ -2834,12 +2884,12 @@ function init(root, cfg, mode) {
       files[f.id] = { uid: true, uploaded: true, name: file.name };
       delete retryFiles[f.id];
       delete autoTries[f.id];
-      delete goingOn[f.id];
+      forgetGoing(f.id);
       setUpload(f.id, { state: 'done', msg: ['videoDone', { name: file.name }], pct: null });
     } catch (e) {
       if (e?.canceled) {
         // Stopped: the server lets go of what came of it (the one before it stays the video)
-        delete goingOn[f.id];
+        forgetGoing(f.id);
         delete retryFiles[f.id];
         delete autoTries[f.id];
         const keep = before && before.token === token;
@@ -2848,7 +2898,7 @@ function init(root, cfg, mode) {
         if (token && !previewing) api({ action: 'remove-file', token, field: f.id, ...(keep ? { next: true } : {}) }).catch(() => {});
         return; // (its status line says so)
       }
-      if (e?.unusable) { delete retryFiles[f.id]; delete goingOn[f.id]; } else retryFiles[f.id] = file;
+      if (e?.unusable) { delete retryFiles[f.id]; forgetGoing(f.id); } else retryFiles[f.id] = file;
       if (before && before.token === token) { files[f.id] = before.file; setUpload(f.id, { ...before.ui, msg: failText(e, true), pct: null }); } // (not an application that expired meanwhile)
       else { delete files[f.id]; setUpload(f.id, { state: 'failed', msg: failText(e, true), pct: null }); }
       whenBack(f.id);
@@ -2901,6 +2951,7 @@ function init(root, cfg, mode) {
         paintUpload(k);
         if (had) fieldEl(k)?.querySelector('[data-act="choose"]')?.focus({ preventScroll: true });
       }
+      if (byId[k]?.type === 'video') forgetGoing(k); // (its upload goes with it)
       if (!token || previewing) continue;
       const body = { action: 'remove-file', token, field: k };
       if (leaving) { try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); } catch { /* the page is going either way */ } }
@@ -2940,9 +2991,11 @@ function init(root, cfg, mode) {
     const box = el.querySelector('.af-recorder');
     const time = box.querySelector('.af-recorder-time');
     const toggle = box.querySelector('[data-act="rec-toggle"]');
+    const heard = box.querySelector('[data-rec-said]');
     box.hidden = false;
     delete box.dataset.rec;
     time.textContent = T('camStarting');
+    if (heard) heard.textContent = T('camStarting'); // (the clock itself isn't read out each second)
     // Waiting on the camera: busy, not disabled, so the keys move here from "Record with my camera" (which goes)
     toggle.setAttribute('aria-disabled', 'true');
     toggle.textContent = T('recordStart');
@@ -2964,6 +3017,7 @@ function init(root, cfg, mode) {
     view.srcObject = stream;
     view.play().catch(() => {});
     time.textContent = T('camReady');
+    if (heard) heard.textContent = T('camReady');
     toggle.removeAttribute('aria-disabled');
     box.scrollIntoView({ block: 'nearest', behavior: reducedMotion() ? 'auto' : 'smooth' });
   }
@@ -2987,6 +3041,8 @@ function init(root, cfg, mode) {
       recorder.started = Date.now();
       box.dataset.rec = 'on';
       toggle.textContent = T('recordStop');
+      const heard = box.querySelector('[data-rec-said]');
+      if (heard) heard.textContent = T('recording', { time: recTime(0) }); // (once: the clock isn't read out each second)
       const tick = () => {
         const ms = Date.now() - recorder.started;
         time.textContent = T('recording', { time: recTime(ms) });
@@ -3183,11 +3239,41 @@ function init(root, cfg, mode) {
   // ── Address suggestions (a combobox on the address line) ──────────
   const sug = { timer: 0, due: null, going: null, ctrl: null, items: [], active: -1, input: null, list: null, el: null, closing: 0 };
   const homeAddressId = () => (byId.address?.type === 'address' ? 'address' : fields.find(f => f.type === 'address')?.id);
+  // Each search is a paid lookup: asked once a house number has a few letters of its street after it ("1234 Pea",
+  // not "1234"), and never twice for the same words (a space typed, a letter taken back and typed again)
+  const sugSeen = new Map(); // the words, as searched → { items, google, complete }
+  const sugKey = (q) => q.toLowerCase().replace(/[\s,]+/g, ' ').trim();
+  const searchable = (q) => q.length >= 4 && /\d/.test(q) && (q.match(/\p{L}/gu) || []).length >= 3;
+  // One search session per address picked (Google counts a session's searches, past its first dozen, as free)
+  let sugSession = '';
+  const newSession = () => { try { sugSession = crypto.randomUUID(); } catch { sugSession = ''; } };
+  newSession();
+  // ...nor for more of words whose list was all Google had (it sent fewer than five): that list, narrowed to what's
+  // typed now ("1234 Peachtree Indu…" from "1234 Peachtree Ind"'s two), a search again only once none of it fits
+  const labelOf = (it) => sugKey([it.line1, it.sub || [it.city, it.state, it.zip].filter(Boolean).join(' ')].join(' '));
+  function narrowed(q) {
+    const key = sugKey(q);
+    let from = null;
+    for (const [k, v] of sugSeen) if (v.complete && key.startsWith(k) && (!from || k.length > from.k.length)) from = { k, v };
+    const items = from ? from.v.items.filter(it => labelOf(it).startsWith(key)) : [];
+    if (!items.length) return null;
+    const hit = { items, google: from.v.google, complete: true };
+    sugSeen.set(key, hit);
+    return hit;
+  }
   function suggestFor(el, input) {
     clearTimeout(sug.timer);
     sug.due = null;
     const q = input.value.trim();
-    if (q.length < 4 || !/\d/.test(q)) { closeSuggest(); return; }
+    if (!searchable(q)) { closeSuggest(); return; }
+    const seen = sugSeen.get(sugKey(q)) || narrowed(q);
+    if (seen) {
+      sug.ctrl?.abort(); // (words asked about before this: their answer isn't for what's typed now)
+      sug.last = { input, q, ...seen };
+      const open = sug.list && !sug.list.hidden && sug.input === input && sug.items === seen.items; // (the same list: its place in it kept)
+      if (!open && document.activeElement === input) openSuggest(el, input, seen.items, seen.google);
+      return;
+    }
     sug.due = { el, input, q };
     sug.timer = setTimeout(() => { sug.due = null; fetchSuggest(el, input, q); }, 250);
   }
@@ -3211,14 +3297,18 @@ function init(root, cfg, mode) {
     sug.ctrl = ctrl;
     let items = [];
     let google = false;
+    let complete = false;
     try {
-      const res = await fetch(`${API}?address=${encodeURIComponent(q)}`, { signal: ctrl.signal });
+      const res = await fetch(`${API}?address=${encodeURIComponent(q)}${sugSession ? `&session=${sugSession}` : ''}`, { signal: ctrl.signal });
       const data = await res.json();
       items = Array.isArray(data.results) ? data.results : Array.isArray(data.items) ? data.items : [];
       google = data.source === 'google';
+      complete = google && data.complete === true;
     } catch { return; } // offline or the lookup is down: they keep typing as normal
+    items = items.filter(i => i?.line1).slice(0, 5);
+    if (!ctrl.signal.aborted) sugSeen.set(sugKey(q), { items, google, complete }); // (an answer that came is kept, whatever they've typed since)
     if (ctrl.signal.aborted || input.value.trim() !== q) return;
-    sug.last = { input, q, items: items.filter(i => i?.line1).slice(0, 5), google };
+    sug.last = { input, q, items, google };
     // Continue pressed meanwhile (a whole address pasted, then straight on): no list, but known, so it can take it
     if (document.activeElement !== input) {
       if (sug.list && sug.input !== input) return; // another address's list is open: left as it is
@@ -3338,10 +3428,11 @@ function init(root, cfg, mode) {
     };
     const box = addrBox(el);
     const search = box?.querySelector('[data-search]');
+    const typed = search?.value || '';
     const done = (a) => {
       for (const k of ['line1', 'city', 'zip']) { const i = el.querySelector(`[data-part="${k}"]`); if (i) i.value = ''; }
       set('line1', a.line1);
-      set('line2', a.line2);
+      set('line2', unitAsTyped(a.line2, typed));
       set('city', a.city);
       set('state', a.state);
       set('zip', a.zip);
@@ -3363,10 +3454,25 @@ function init(root, cfg, mode) {
     const [, city, state, zip] = String(it.sub || '').match(/^(.*?),\s*([A-Z]{2})(?:\s+(\d{5}))?$/) || [];
     const byHand = () => done({ line1: it.line1, city, state, zip });
     // Continue waits for this (a slow connection): the pick is made, its parts are on their way
-    const p = placing = fetch(`${API}?place=${encodeURIComponent(it.id)}`).then(r => r.json()).then((r) => { if (r?.address) done(r.address); else byHand(); }).catch(byHand)
+    const p = placing = fetch(`${API}?place=${encodeURIComponent(it.id)}${sugSession ? `&session=${sugSession}` : ''}`).then(r => r.json()).then((r) => { if (r?.address) done(r.address); else byHand(); }).catch(byHand)
       .finally(() => { if (placing === p) placing = null; });
+    newSession(); // (the pick ends Google's session: the next address is a new one)
   }
   let placing = null; // a picked suggestion's parts still on their way
+  /**
+   * The apartment as they typed it ("Apt 4B"), not as Google sends it back ("apt 4b"); one they didn't type is
+   * written the usual way, its word capitalized and its number's letter a capital ("Unit C", "#12B")
+   */
+  const UNIT_WORD = '(?:(?:apartment|apt|building|bldg|floor|fl|room|rm|suite|ste|space|spc|unit|lot|trlr)(?![a-z])|#)';
+  function unitAsTyped(unit, typed) {
+    const u = String(unit || '').trim();
+    if (!u) return u;
+    const core = u.replace(new RegExp(`^${UNIT_WORD}\\.?\\s*#?\\s*`, 'i'), '');
+    const m = core ? String(typed).match(new RegExp(`(?:^|[\\s,])(${UNIT_WORD}\\.?\\s*#?\\s*)?(${core.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})(?![\\p{L}\\d])`, 'iu')) : null;
+    if (m?.[1]) return `${m[1]}${m[2]}`.trim();
+    const word = u.replace(new RegExp(`^${UNIT_WORD}`, 'i'), w => (w === '#' ? w : w[0].toUpperCase() + w.slice(1).toLowerCase()));
+    return m ? word.slice(0, word.length - core.length) + m[2] : word.replace(/(\d+[a-z]?|\b[a-z])$/i, x => x.toUpperCase());
+  }
   /** A whole address typed (or pasted) that the list offers back exactly, alone: Continue takes it, no tap on the list needed */
   /**
    * Suggestions that came while Continue waited (the keys were on Continue, so they opened for no one), and none
@@ -3468,8 +3574,9 @@ function init(root, cfg, mode) {
       if (areaNow) { areaNow = null; paintArea(); }
       return;
     }
-    // Typed back to the address already checked: its result again (and nothing on its way may replace it)
-    if (areaNow?.key === key) { area.want = null; clearTimeout(area.showTimer); paintArea(); return; }
+    // Typed back to the address already checked: its result again (and nothing on its way may replace it). Its ZIP
+    // put right since ("30076-12" to "30076", the same place to the check): the Postal Service is asked now
+    if (areaNow?.key === key) { area.want = null; clearTimeout(area.showTimer); if (uspsNow?.key !== key) runUsps(addr, key); paintArea(); return; }
     if (area.want === key) return;
     // The old result no longer describes what's typed
     if (areaNow) paintArea('checking');
@@ -3477,10 +3584,13 @@ function init(root, cfg, mode) {
   }
   /** The Postal Service's word on the home address, in what the check found: known, a unit number may be missing, or check it */
   async function runUsps(addr, key) {
-    if (!uspsOn || !/^\d{5}/.test(String(addr?.zip || '').trim())) return;
+    // (a ZIP the box itself says is wrong, "30076-12", isn't asked about: each check is paid for; nor one already on its way)
+    if (!uspsOn || !/^\d{5}(?:-\d{4})?$/.test(String(addr?.zip || '').trim()) || uspsGoing === key) return;
+    uspsGoing = key;
     const q = new URLSearchParams({ usps: '1', ...Object.fromEntries(['line1', 'line2', 'city', 'state', 'zip'].map(k => [k, String(addr[k] || '')])) });
     let status = null;
     try { status = (await (await fetch(`${API}?${q}`)).json())?.usps || null; } catch { /* no word: nothing shows */ }
+    if (uspsGoing === key) uspsGoing = '';
     if (addressKey(homeAddressNow()) !== key) return; // the address has changed since
     uspsNow = { key, status };
     paintArea();
@@ -4228,6 +4338,7 @@ function init(root, cfg, mode) {
     if (email && (!input.value || testRun?.by)) input.value = email;
     input.readOnly = !!testRun?.by; // a test run's link only ever goes to the person running it
     dlg.querySelector('[data-later-status]').textContent = '';
+    markLater(null);
     // "Already saved" only when they are (offline, or a save still on its way: it's saved as the link goes)
     const intro = dlg.querySelector('[data-af-t^="laterIntro"]');
     if (intro) { intro.dataset.afT = token && (!lastSave || lastSave === 'saved') ? 'laterIntro' : 'laterIntroUnsaved'; intro.textContent = T(intro.dataset.afT); }
@@ -4241,16 +4352,27 @@ function init(root, cfg, mode) {
   // Closed (Escape, Close, done): the focus goes back to what opened it, not to the page
   dlg.addEventListener('close', () => { if (laterOpener?.isConnected && laterOpener.getClientRects().length) laterOpener.focus({ preventScroll: true }); laterOpener = null; });
   dlg.querySelector('[data-later-close]').addEventListener('click', () => dlg.close());
-  dlg.querySelectorAll('[data-later-done]').forEach(b => b.addEventListener('click', () => dlg.close()));
+  dlg.querySelectorAll('[data-later-done]').forEach(b => b.addEventListener('click', () => {
+    // "Keep going now" from the overview: the application, where they left off (from a screen, that screen)
+    const go = !focused && !!token && !doneShown && !root.hidden;
+    if (go) laterOpener = null;
+    dlg.close();
+    if (go) begin(ui.hubGo?.dataset.go || null);
+  }));
   dlg.addEventListener('click', (e) => { if (tappedOutside(dlg, e)) dlg.close(); });
   // A likely typo in the address is asked about once ("Did you mean …@gmail.com?") before the link goes there
   const laterInput = dlg.querySelector('input[type=email]');
   let laterAsked = '';
+  // The box marked wrong with its note read with it (as the form's own boxes are), or both let go of
+  const markLater = (wrong) => {
+    if (wrong) { laterInput.setAttribute('aria-invalid', 'true'); laterInput.setAttribute('aria-describedby', 'af-later-status'); }
+    else { laterInput.removeAttribute('aria-invalid'); laterInput.removeAttribute('aria-describedby'); }
+  };
   // Its note goes as they type (it was about the box as it was), and a likely typo is asked about as they leave it
   // (as the form's own email boxes do), not only on Send
   laterInput.addEventListener('input', () => {
     const status = dlg.querySelector('[data-later-status]');
-    if (laterInput.hasAttribute('aria-invalid')) { laterInput.removeAttribute('aria-invalid'); if (status) status.textContent = ''; }
+    if (laterInput.hasAttribute('aria-invalid')) { markLater(null); if (status) status.textContent = ''; }
   }, { signal });
   // (Send still asks once: pressing it is what blurs the box.) A hint already showing for these words isn't drawn
   // again: its button would be swapped under a finger pressing it, and the press lost
@@ -4270,7 +4392,7 @@ function init(root, cfg, mode) {
     laterInput.value = use.dataset.mailfixUse;
     paintMailFix(laterInput);
     // Fixed: the note about the old words goes with them
-    laterInput.removeAttribute('aria-invalid');
+    markLater(null);
     const status = dlg.querySelector('[data-later-status]');
     if (status) status.textContent = '';
     laterInput.focus();
@@ -4286,17 +4408,18 @@ function init(root, cfg, mode) {
     // once (a hint already up a moment, from leaving the box, counts: this press sends)
     const hint = dlg.querySelector('[data-mailfix]');
     const seen = !!hint && !hint.hidden && hint.querySelector('[data-mailfix-use]')?.dataset.mailfixUse === mailFix(email) && Date.now() - Number(hint.dataset.shownAt || 0) > 700;
-    if (email && mailFix(email) && laterAsked !== email && !seen) { laterAsked = email; paintMailFix(laterInput); status.textContent = ''; laterInput.removeAttribute('aria-invalid'); return; }
+    if (email && mailFix(email) && laterAsked !== email && !seen) { laterAsked = email; paintMailFix(laterInput); status.textContent = ''; markLater(null); return; }
     // Empty or not an email: said here in the form's own words (not the browser's bubble)
     const wrong = email ? fieldError({ id: 'laterEmail', type: 'email', required: true }, email, lang) : T('laterEmailEmpty');
-    laterInput.toggleAttribute('aria-invalid', !!wrong);
+    markLater(wrong);
     status.textContent = wrong || '';
     if (wrong) { laterInput.focus(); return; }
     btn.setAttribute('aria-busy', 'true');
     status.textContent = T('sending');
     try {
       if (!navigator.onLine) { status.textContent = T('sendOffline'); return; }
-      if (!(await start())) {
+      // (an application another tab started, picked up instead: the link is that one's)
+      if (!(await start()) && !token) {
         // The quick check wants a tap: it's on the page, under this (shown once this closes), and the link goes
         // once it's done (they aren't left to send it again, thinking it went)
         if (checkAsked) { laterWaiting = email; dlg.close(); if (!turnstileFailed) navNote('turnstileLater'); return; }
@@ -4577,6 +4700,17 @@ function init(root, cfg, mode) {
   let resumeTimer = 0;
   let resumeAgain = null; // not reached: tried again a little later, and as soon as the connection's back
   window.addEventListener('online', () => { if (resumeAgain) { clearTimeout(resumeTimer); resumeAgain(); } }, { signal });
+  /** An application this device has going, started in another tab or window (this one has none of its own) */
+  const othersStarted = () => { const s = token || previewing || testRun ? null : store.get(); return isToken(s?.token) && (!s.year || s.year === year); };
+  // Started there while this page sat on its start: "Continue where you left off" here too. (Already on the
+  // application's screen, it's picked up at Continue: the screen isn't changed under them.) The same application
+  // taken further there: this page's Continue goes on from there, with that tab's answers
+  window.addEventListener('storage', (e) => {
+    if (e.key !== keyed(STORE_KEY) || focused || doneShown || root.hidden) return;
+    if (othersStarted()) { resume().then(() => { if (token && lastNotice?.m === 'welcomeBack') notice('pickedUp', 'info'); }).catch(() => {}); return; }
+    const s = store.get();
+    if (token && !previewing && s?.token === token && order(s.furthest) > order(furthestId)) { furthestId = s.furthest; aheadElsewhere = true; paintHub(); }
+  }, { signal });
   async function resume(link = null, tries = 0) {
     const params = new URLSearchParams(location.search);
     const fromLink = link?.token || params.get('resume');
@@ -4639,6 +4773,9 @@ function init(root, cfg, mode) {
         uploadUi[id] = { state: 'done', msg: ['added', { name: pf.name }] };
       }
     }
+    // A video cut off by the page going (a reload, the tab closed), its upload kept here: the same video again carries on
+    const going = videoGoing.get();
+    if (going?.token === candidate && byId[going.field] && !r.files?.[going.field]?.uploaded) uploadUi[going.field] = { state: 'empty', msg: 'videoResume' };
     draw({ merge: false });
     synced = readAnswers();
     // What was typed here last time and never reached the server (offline, the tab closed): back on top
@@ -5095,7 +5232,8 @@ function init(root, cfg, mode) {
       const el = input.closest('[data-field]');
       const q = input.value.trim();
       if (sug.last?.input === input && sug.last.q === q) { e.preventDefault(); openSuggest(el, input, sug.last.items, sug.last.google); moveActive(1); }
-      else if (q.length >= 4 && /\d/.test(q)) { e.preventDefault(); fetchSuggest(el, input, q); }
+      else if (sugSeen.get(sugKey(q)) || narrowed(q)) { e.preventDefault(); const seen = sugSeen.get(sugKey(q)); sug.last = { input, q, ...seen }; openSuggest(el, input, seen.items, seen.google); moveActive(1); }
+      else if (searchable(q)) { e.preventDefault(); fetchSuggest(el, input, q); }
       return;
     }
     // Enter on what's typed, none of the list picked (open or not): as Continue does, the exact match is taken, or

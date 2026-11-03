@@ -123,11 +123,22 @@ export function initAdvisoryForm() {
   /** Follow-ups show after the answer that asks for them */
   function follow() {
     const a = collect();
+    let putAway = false;
     for (const f of ADVISORY_FIELDS) {
       if (!f.showIf) continue;
       const el = fieldEl(f.id);
-      if (el) el.hidden = !isShown(f, a);
+      if (!el) continue;
+      el.hidden = !isShown(f, a);
+      // Put away, its note goes with it: asked again, it's a new question (no "Please fill this in" before they've typed)
+      if (el.hidden && el.classList.contains('is-invalid')) { clearProblem(el); putAway = true; }
     }
+    if (putAway && step >= 0 && step < total && !pages[step]?.querySelector('.adv-field.is-invalid')) { const sum = pages[step]?.querySelector('[data-summary]'); if (sum) sum.hidden = true; }
+  }
+  function clearProblem(el) {
+    el.classList.remove('is-invalid');
+    const err = el.querySelector('.adv-error');
+    if (err) { err.hidden = true; err.textContent = ''; }
+    for (const input of el.querySelectorAll('input, textarea')) input.removeAttribute('aria-invalid');
   }
   const problemsOn = (i, a = collect()) => (i >= total ? {} : checkAnswers(a, { step: ADVISORY_STEPS[i].id }).problems);
   const stepDone = (i, a) => i < total && i < furthest && !Object.keys(problemsOn(i, a)).length;
@@ -318,9 +329,7 @@ export function initAdvisoryForm() {
     if (!el?.classList.contains('is-invalid') || step >= total) return;
     const msg = problemsOn(step)[id];
     if (msg) return;
-    el.classList.remove('is-invalid');
-    el.querySelector('.adv-error').hidden = true;
-    for (const input of el.querySelectorAll('input, textarea')) input.removeAttribute('aria-invalid');
+    clearProblem(el);
     if (![...pages[step].querySelectorAll('.adv-field.is-invalid')].length) pages[step].querySelector('[data-summary]').hidden = true;
   }
 
@@ -947,19 +956,43 @@ export function initAdvisoryForm() {
       sugList.style.maxHeight = `${Math.max(140, Math.floor(above))}px`;
     } else sugList.style.maxHeight = `${Math.max(140, Math.floor(below))}px`;
   }
+  // Each search is a paid lookup (the application's rule): once a house number has a few letters of its street
+  // after it, never twice for the same words, and one session per address picked
+  const searched = new Map();
+  const searchedKey = (q) => q.toLowerCase().replace(/[\s,]+/g, ' ').trim();
+  let searchSession = '';
+  const newSession = () => { try { searchSession = crypto.randomUUID(); } catch { searchSession = ''; } };
+  newSession();
+  // (more of words whose list was all Google had: that list narrowed, no new search; the application's rule too)
+  function narrowed(q) {
+    const key = searchedKey(q);
+    let from = null;
+    for (const [k, v] of searched) if (v.complete && key.startsWith(k) && (!from || k.length > from.k.length)) from = { k, v };
+    const items = from ? from.v.items.filter((it) => searchedKey([it.line1, it.sub || [it.city, it.state, it.zip].filter(Boolean).join(' ')].join(' ')).startsWith(key)) : [];
+    if (!items.length) return null;
+    const hit = { items, google: from.v.google, complete: true };
+    searched.set(key, hit);
+    return hit;
+  }
   async function suggest() {
     const q = sugInput.value.trim();
-    if (q.length < 4 || !/\d/.test(q)) { closeSuggest(); return; }
+    if (q.length < 4 || !/\d/.test(q) || (q.match(/\p{L}/gu) || []).length < 3) { closeSuggest(); return; }
     sug.ctrl?.abort();
-    const ctrl = new AbortController();
-    sug.ctrl = ctrl;
-    let data = null;
-    try { data = await (await fetch(`/api/apply?address=${encodeURIComponent(q)}`, { signal: ctrl.signal })).json(); } catch { return; }
-    if (ctrl.signal.aborted || sugInput.value.trim() !== q || document.activeElement !== sugInput) return;
-    const items = (Array.isArray(data?.results) ? data.results : []).filter((i) => i?.line1).slice(0, 5);
+    let hit = searched.get(searchedKey(q)) || narrowed(q);
+    if (!hit) {
+      const ctrl = new AbortController();
+      sug.ctrl = ctrl;
+      let data = null;
+      try { data = await (await fetch(`/api/apply?address=${encodeURIComponent(q)}${searchSession ? `&session=${searchSession}` : ''}`, { signal: ctrl.signal })).json(); } catch { return; }
+      if (ctrl.signal.aborted) return;
+      hit = { items: (Array.isArray(data?.results) ? data.results : []).filter((i) => i?.line1).slice(0, 5), google: data?.source === 'google', complete: data?.source === 'google' && data.complete === true };
+      searched.set(searchedKey(q), hit);
+    } else if (sug.items === hit.items && !sugList.hidden) return; // (the same list, open: its place in it kept)
+    if (sugInput.value.trim() !== q || document.activeElement !== sugInput) return;
+    const { items } = hit;
     if (!items.length) { closeSuggest(); return; }
     Object.assign(sug, { items, active: -1 });
-    sugList.toggleAttribute('data-google', data.source === 'google');
+    sugList.toggleAttribute('data-google', hit.google);
     sugList.replaceChildren(...items.map((it, i) => {
       const li = document.createElement('li');
       li.id = `${sugList.id}-${i}`;
@@ -998,7 +1031,9 @@ export function initAdvisoryForm() {
     if (!it.id) { put(oneLine(it)); return; }
     put([it.line1, it.sub].filter(Boolean).join(', '));
     try {
-      const r = await (await fetch(`/api/apply?place=${encodeURIComponent(it.id)}`)).json();
+      const was = searchSession;
+      newSession(); // (the pick ends Google's session: the next address is a new one)
+      const r = await (await fetch(`/api/apply?place=${encodeURIComponent(it.id)}${was ? `&session=${was}` : ''}`)).json();
       if (r?.address && sugInput.value.startsWith(it.line1)) put(oneLine(r.address)); // unless they've typed on since
     } catch { /* the street and town stay */ }
   }

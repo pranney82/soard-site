@@ -1,7 +1,8 @@
 /**
  * The Advisory Board application: its questions in order, and the checks
  * both the page (/advisory-board/apply/) and the server run on the answers.
- * No imports, so the page's script can share it.
+ * Its one import (the applications' web-address rule) imports nothing, so
+ * the page's script can share it.
  *
  * It asks what the Jotform application asked (form 261805783731058, used
  * July to October 2026), grouped into the page's five steps. JOTFORM_FIELDS
@@ -9,6 +10,8 @@
  * read the same in the admin (./_advisory-applications.js imports them).
  * Applications are always open: nothing here has a deadline.
  */
+
+import { isWebAddress } from './_application-constants.js';
 
 export const OVERVIEW_PDF = 'https://files.sunshineonaranneyday.com/advisory/SOARD_Advisory%20Board%20Overview.docx.pdf';
 
@@ -150,7 +153,9 @@ export function fieldProblem(field, value) {
   }
   // A name (theirs, or typed to sign): at least two letters, never just "x"
   if (field.autocomplete === 'name' && (String(value).match(/\p{L}/gu) || []).length < 2) return 'Please type your full name.';
-  if (field.type === 'url' && !/^https?:\/\/[^\s.]+\.[^\s]+$/i.test(value)) return 'That doesn’t look like a web address.';
+  // (an email address typed here, "jordan@example.com", isn't a link: said so, as the community form's website does)
+  if (field.type === 'url' && /^(?:https?:\/\/)?(?:mailto:)?[^\s/@]+@[^\s/@]+\.[a-z]{2,}\/?$/i.test(value)) return 'That’s an email address. Please enter a web address, like linkedin.com/in/yourname.';
+  if (field.type === 'url' && !isWebAddress(value)) return 'That doesn’t look like a web address.';
   if (field.type === 'choice' && !field.options.includes(value)) return 'Please choose one.';
   return null;
 }

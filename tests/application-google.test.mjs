@@ -70,6 +70,21 @@ test('suggestions: Georgia homes near Atlanta (one in Alabama left out), the key
   assert.equal(await googleSuggest({ DB: env.DB }, '3167 Main'), null, 'no key: the free path');
 });
 
+test('a search session: the page’s token rides with each search and ends with the pick; fewer than five is the whole list', async () => {
+  const session = '7c9e6679-7425-40de-944b-e07fc1f90ae7';
+  const out = await googleSuggest(env, '3167 Main', session);
+  assert.equal(asked.at(-1).body.sessionToken, session, 'Google counts the session’s searches together');
+  assert.equal(out.complete, true, 'three from Google: all it has for these words (the page narrows it, no new search)');
+  assert.deepEqual(Object.keys(out[0]), ['id', 'line1', 'sub'], '(the flag isn’t one of the homes)');
+  await googlePlace(env, 'ChIJ_home_one_0001', session);
+  assert.equal(new URL(asked.at(-1).url).searchParams.get('sessionToken'), session, 'the pick ends it');
+  await googleSuggest(env, '3167 Main', 'bad token!');
+  assert.equal(asked.at(-1).body.sessionToken, undefined, 'not a token: left out');
+  const five = google.suggest.suggestions[0];
+  google.suggest = { suggestions: [five, five, five, five, five] };
+  assert.equal((await googleSuggest(env, '3167 Mai')).complete, false, 'five: maybe more past them');
+});
+
 test('a whole address typed, ZIP and all: Google names the town with the ZIP, and the home is still offered', async () => {
   google.suggest = { suggestions: [
     { placePrediction: { placeId: 'ChIJj65tPqB19YgRNdBT5ocaJ8Y', structuredFormat: { mainText: { text: '1000 Holcomb Woods Parkway' }, secondaryText: { text: 'Roswell, GA 30076, USA' } } } },
@@ -108,6 +123,11 @@ test('the Postal Service: known, a unit number may be missing, or check it; USPS
   google.verify = 503;
   assert.equal(await googleVerify(env, home), null, 'Google down: no word, nothing in the way');
   assert.equal(await googleVerify(env, { ...home, zip: '300' }), null, 'not asked before the ZIP is whole');
+  const n = asked.length;
+  assert.equal(await googleVerify(env, { ...home, zip: '30096-12' }), null, 'a ZIP the form turns away ("30096-12") isn’t asked about');
+  assert.equal(asked.length, n, '(nothing paid for)');
+  assert.equal(await googleVerify(env, { ...home, zip: '30096-1234' }), null);
+  assert.equal(asked.length, n + 1, 'ZIP+4 is asked about');
 });
 
 test('never past the free allowance: at the cap each kind stops asking Google for the rest of the month', async () => {

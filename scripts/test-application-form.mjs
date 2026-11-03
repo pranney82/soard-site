@@ -332,10 +332,19 @@ try {
   await tap('[data-field="ackParameters"] .af-choice');
   ok(await errorText('ackParameters') === '', 'ticking it clears its note straight away');
   await tap('[data-field="ackSeason"] .af-choice');
+  // A second tab opened just as the boxes are ticked: it carries on with this application (not a second one), and
+  // never saves a box's earlier answer over this tab's
+  const tab2 = await newTab();
+  await tab2.goto(`${SITE}/apply/form/`, { waitUntil: 'networkidle0' });
   await next();
   ok((await stepTitle()) === AREA, 'on to the service area');
   const token = await draftToken();
   ok(/^[0-9a-f]{32}$/.test(token || ''), 'a draft started and its token is kept on this device');
+  const hero2 = await tab2.$eval('[data-hero-cta]', (b) => b.textContent.trim());
+  await tab2.close();
+  await sleep(1200);
+  const acksKept = await page.evaluate(() => ['ackParameters', 'ackSeason'].map((f) => document.querySelector(`[data-field="${f}"] input`)?.checked));
+  ok(/continue/i.test(hero2) && acksKept.every(Boolean), `a second tab carries on with this application ("${hero2}"), and this one's ticked boxes stay ticked (${acksKept})`);
 
   console.log('Service area: one line finds the address, then the map with what the check found');
   const areaState = () => page.$eval('[data-area]', (e) => e.dataset.area);
@@ -355,6 +364,12 @@ try {
   ok(await visible('#af-address-suggest'), 'suggestions open by the address line');
   ok(await page.$eval('#af-address-search', (e) => e.getAttribute('aria-expanded')) === 'true', 'the combobox says it is expanded');
   ok(addressAsks >= 1 && addressAsks <= 3, `asked after a pause, not on every key (${addressAsks} lookups for 9 keys)`);
+  const asksNow = addressAsks;
+  await page.type('#af-address-search', ' ');
+  await sleep(400);
+  await page.keyboard.press('Backspace');
+  await sleep(400);
+  ok(addressAsks === asksNow, `the same words aren't looked up twice (a space typed and taken back: ${addressAsks - asksNow} more lookups)`);
   const listRows = await page.$$eval('#af-address-suggest [role="option"]', (els) => els.map((e) => e.textContent));
   ok(listRows.length === 2 && /Not in the list\? Enter it yourself/.test(listRows[1]), `its last row is the way to enter it by hand (${listRows.join(' / ')})`);
   const listOnTop = await page.evaluate(() => getComputedStyle(document.querySelector('#af-address-suggest')).zIndex);
@@ -899,6 +914,8 @@ try {
   await (await page.$('#af-video')).uploadFile(VIDEO);
   await page.waitForFunction(() => document.querySelector('[data-field="video"] .af-upload')?.dataset.state === 'done', { timeout: 30000 });
   ok(/Video uploaded/.test(await page.$eval('[data-field="video"] .af-upload-status', (e) => e.textContent)), 'the video uploads with progress and a done state');
+  const videoHeard = await page.$eval('[data-field="video"] .af-upload-body', (b) => ({ said: b.querySelector('[data-upload-said]')?.textContent, live: b.querySelector('[data-upload-said]')?.getAttribute('aria-live'), line: b.querySelector('.af-upload-status').hasAttribute('aria-live') }));
+  ok(/Video uploaded/.test(videoHeard.said || '') && videoHeard.live === 'polite' && !videoHeard.line, 'a screen reader hears it in (its progress at each quarter, not every number the line shows)');
   ok(await errorText('video') === '', 'and its note goes');
   await shot('09-video-phone');
   await next();
@@ -918,6 +935,12 @@ try {
   await sleep(300);
   ok(await page.$eval('[data-later-dialog]', (d) => d.open), 'the dialog opens');
   ok(await page.$eval('#af-later-email', (e) => e.value) === 'jordan+apply@example.com', 'with the parent email filled in');
+  await page.$eval('#af-later-email', (e) => { e.value = ''; });
+  await page.click('[data-later-form] button[type=submit]');
+  await sleep(300);
+  const laterWrong = await page.$eval('#af-later-email', (e) => [e.getAttribute('aria-invalid'), document.getElementById(e.getAttribute('aria-describedby') || '-')?.textContent || '']);
+  ok(laterWrong[0] === 'true' && /enter your email/i.test(laterWrong[1]), `left empty, the box is marked wrong with its note read with it (${JSON.stringify(laterWrong)})`);
+  await page.$eval('#af-later-email', (e) => { e.value = 'jordan+apply@example.com'; });
   const topEl = await page.evaluate(() => { const r = document.querySelector('[data-later-dialog] h2').getBoundingClientRect(); return document.elementFromPoint(r.left + 10, r.top + 5)?.closest('dialog') != null; });
   ok(topEl, 'the dialog sits on top of the header (nothing covers its heading)');
   await page.click('[data-later-form] button[type=submit]');

@@ -51,7 +51,7 @@ import { sendEmails, escapeHtml, isEmail } from './_broadcast-notify.js';
 
 const MAX_DRAFTS_PER_IP_DAY = 20;
 const MAX_LINK_SENDS = 5;
-const MAX_VIDEO_CREATES = 8;
+const MAX_VIDEO_CREATES = 20; // (each new one lets go of the one before it: a few re-recordings and cancels never run out)
 const PHOTO_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
 
 const json = (body, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -164,14 +164,14 @@ export async function onRequestGet(context) {
   if (url.searchParams.has('address')) {
     if (!addressAllowed(ip)) return json({ ok: true, results: [] });
     const q = url.searchParams.get('address');
-    const google = await googleSuggest(env, q).catch(() => null);
-    if (google?.length) return json({ ok: true, results: google, source: 'google' });
+    const google = await googleSuggest(env, q, url.searchParams.get('session')).catch(() => null);
+    if (google?.length) return json({ ok: true, results: google, source: 'google', complete: !!google.complete });
     const results = await suggestAddresses(q).catch(() => []);
     return json({ ok: true, results });
   }
   if (url.searchParams.has('place')) {
     if (!addressAllowed(ip)) return json({ ok: false });
-    const address = await googlePlace(env, url.searchParams.get('place')).catch(() => null);
+    const address = await googlePlace(env, url.searchParams.get('place'), url.searchParams.get('session')).catch(() => null);
     return json({ ok: !!address, address });
   }
   if (url.searchParams.has('usps')) {
@@ -392,7 +392,9 @@ async function handlePhoto(context) {
   const file = form.get('file');
   if (!file || typeof file === 'string') return fail('No photo attached');
   const notPhoto = es ? 'Elija una foto (JPEG, PNG, WebP o HEIC).' : 'Please choose a photo (JPEG, PNG, WebP or HEIC).';
-  if (!PHOTO_TYPES.has((file.type || '').toLowerCase())) return fail(notPhoto, 400, { code: 'not-photo' });
+  // (a browser that doesn't know a type, Chrome on Windows with an iPhone's .heic, sends none: the bytes decide)
+  const declared = (file.type || '').toLowerCase();
+  if (declared && declared !== 'application/octet-stream' && !PHOTO_TYPES.has(declared)) return fail(notPhoto, 400, { code: 'not-photo' });
   if (file.size > MAX_PHOTO_BYTES) return fail(es ? 'Esa foto es demasiado grande. Elija una de menos de 25 MB.' : 'That photo is too large. Please choose one under 25 MB.');
   // The file's own first bytes must say it's a photo of that kind (a renamed file is turned away)
   const bytes = new Uint8Array(await file.arrayBuffer());

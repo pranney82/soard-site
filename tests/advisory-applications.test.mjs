@@ -68,6 +68,10 @@ test('the rules: what has to be answered, follow-ups only when they apply, and c
   assert.deepEqual(ok.problems, {});
   assert.equal(ok.answers.email, 'jordan@example.org', 'emails are kept in lower case');
   assert.equal(ok.answers.link, 'https://linkedin.com/in/jordan-avery', 'a link without https:// works');
+  // An email typed as the link isn't one (it would be sent as https://jordan@example.com): said so, in its own words
+  for (const link of ['jordan@example.com', 'mailto:jordan@example.com']) assert.match(checkAnswers({ ...GOOD, link }).problems.link || '', /email address/, link);
+  for (const link of ['www.example', 'https://', 'javascript:alert(1)']) assert.match(checkAnswers({ ...GOOD, link }).problems.link || '', /web address/, link);
+  assert.equal(checkAnswers({ ...GOOD, link: 'https://www.linkedin.com/in/jordan-avery/?trk=x' }).problems.link, undefined);
   assert.equal(ok.answers.anythingElse, undefined, 'empty answers are left out');
 
   const bad = checkAnswers({ ...GOOD, email: 'jordan@', phone: '123', meetings: 'Sometimes', acknowledge: false, conflict: 'Yes', conflictMore: '', why: '   ', link: 'not a link', surprise: 'x' });
