@@ -294,6 +294,23 @@ export function timeRange(start, end) {
 }
 export const money = (n) => (typeof n === 'number' && Number.isFinite(n) ? n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }) : '');
 export const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+
+/**
+ * When a board member had the board page's sign-in email, or null: their own send (welcome.members), counted only at the
+ * address it went to (a corrected address is due again), or kept under an older web address with the same email. One rule
+ * for the server's send, Board access and each member's row.
+ */
+export const welcomeHad = (welcome, p, onBoard = []) => {
+  const w = welcome || {};
+  const members = w.members || {};
+  if (members[p.slug]) return !w.addresses?.[p.slug] || w.addresses[p.slug] === p.email ? members[p.slug] : null;
+  // Kept under an older web address (renamed on People): the same email had it
+  const moved = p.email && Object.keys(w.addresses || {}).find((k) => w.addresses[k] === p.email && members[k] && !onBoard.includes(k));
+  return moved ? members[moved] : null;
+};
+
+/** An address the mailer can send to (its own rule, _broadcast-notify.js isEmail): kim@gmail.c and kim@example.net, aren't */
+export const usableEmail = (e) => /^(?!\.)(?!.*\.\.)(?!.*\.@)[^\s@<>()[\],;:"]+@[^\s@<>()[\],;:".]+(?:\.[^\s@<>()[\],;:".]+)*\.[^\s@<>()[\],;:".]{2,}$/.test(String(e || '').trim());
 /** Today in Atlanta (YYYY-MM-DD) */
 export const todayEastern = (now = Date.now()) => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(now));
 

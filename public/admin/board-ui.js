@@ -579,6 +579,13 @@ export const STYLES = `
   .bd-row__title { font-weight: 650; font-size: var(--fs-base); color: var(--color-text); text-decoration: none; }
   a.bd-row__title:hover { text-decoration: underline; text-underline-offset: 3px; }
   .bd-row__meta { margin-top: 0.15rem; font-size: var(--fs-sm); color: var(--color-text-secondary); overflow-wrap: anywhere; }
+  /* Board → Members: Board access, a line each (the dot hangs left of the title, so the text lines up under it) */
+  .bd-access__t { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.6rem; }
+  .bd-access__t .tag { white-space: nowrap; }
+  .bd-access .bd-row__meta, .bd-access__fix, .bd-access__after { padding-left: calc(8px + 0.6rem); }
+  .bd-access__after { flex: 1 1 100%; }
+  /* The line takes focus when its button goes away: an inset ring, since the card clips anything outside */
+  li.bd-access[tabindex]:focus-visible { box-shadow: inset 0 0 0 2px var(--color-primary); border-radius: 0; }
   .bd-next { margin-top: 0.2rem; font-size: var(--fs-sm); font-weight: 600; color: var(--tone-info-fg); }
   .bd-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
   .bd-year { padding: 0.55rem 1.25rem; background: var(--color-bg-subtle, #F7F7F5); border-bottom: 1px solid var(--color-border); font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }

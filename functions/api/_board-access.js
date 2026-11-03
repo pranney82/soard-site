@@ -21,6 +21,7 @@
  */
 
 import { activeBoard, readState, writeState } from './_board-roles.js';
+import { isEmail } from './_broadcast-notify.js';
 
 const API = 'https://api.cloudflare.com/client/v4';
 export const GROUP_NAME = 'SOARD board (kept by the website)';
@@ -36,7 +37,8 @@ export const accessConfigured = (env) => Boolean(String(env.CF_ACCESS_API_TOKEN 
 /** The active board's sign-in emails, A to Z, and who has none on file */
 export async function boardSignIns(DB) {
   const board = await activeBoard(DB);
-  const emails = [...new Set(board.map((p) => p.email).filter(Boolean))].sort();
+  // Only addresses that are whole (the mailer's rule): one malformed one would stop Cloudflare taking the list at all
+  const emails = [...new Set(board.map((p) => p.email).filter(isEmail))].sort();
   return { emails, missing: board.filter((p) => !p.email).map((p) => ({ slug: p.slug, name: p.name })) };
 }
 
@@ -93,7 +95,8 @@ export async function syncBoardAccess(env, { fetchImpl = fetch, now = Date.now()
       appName: app?.name || null, appFound: Boolean(app), attached, syncedAt: new Date(now).toISOString(), error: null,
     });
   } catch (err) {
-    return await writeState(env.DB, KEY, { ...prev, ok: false, configured: true, error: err.message, failedAt: new Date(now).toISOString() });
+    // failingSince: when this run of failures began, so a passing outage reads as one (a working sync clears it)
+    return await writeState(env.DB, KEY, { ...prev, ok: false, configured: true, error: err.message, failedAt: new Date(now).toISOString(), failingSince: prev.failingSince || new Date(now).toISOString() });
   }
 }
 
@@ -102,8 +105,9 @@ export async function accessStatus(env) {
   const [state, { emails, missing }] = await Promise.all([readState(env.DB, KEY), boardSignIns(env.DB)]);
   const hash = await hashOf(emails);
   return {
-    configured: accessConfigured(env),
     ...state,
+    // Whether the key is there now (the saved state says only whether it was at the last sync)
+    configured: accessConfigured(env),
     current: state.hash === hash,
     emails: emails.length,
     missing,

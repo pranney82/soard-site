@@ -63,8 +63,10 @@ export function escapeHtml(s) {
     .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
+// A plain address Resend takes (no "..", trailing dot, comma, "mailto:" or <>), the same rule wherever one is checked
+// (_reveal-invites.js, board-shared.js usableEmail, People in index.html): Resend refuses a whole batch over one bad `to`
 export function isEmail(s) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(s || '').trim());
+  return /^(?!\.)(?!.*\.\.)(?!.*\.@)[^\s@<>()[\],;:"]+@[^\s@<>()[\],;:".]+(?:\.[^\s@<>()[\],;:".]+)*\.[^\s@<>()[\],;:".]{2,}$/.test(String(s || '').trim());
 }
 
 // +1 area codes that aren't the US or Canada (the Caribbean and Bermuda, where
@@ -162,6 +164,12 @@ const replyToOf = (r) => {
  * reply goes, since the sending address is no one's inbox.
  * @returns {{sent:number, failed:number, errors:string[]}}
  */
+/** Resend's reason in its own words (its JSON's message), not the JSON itself */
+async function resendWhy(res) {
+  const t = await res.text().catch(() => '');
+  try { return String(JSON.parse(t).message || t).slice(0, 200); } catch { return t.slice(0, 200); }
+}
+
 export async function sendEmails(env, { to, subject, html, text, from = EMAIL_FROM, tags = [], replyTo = null }) {
   const reply = replyToOf(replyTo);
   const out = { sent: 0, failed: 0, errors: [] };
@@ -182,7 +190,7 @@ export async function sendEmails(env, { to, subject, html, text, from = EMAIL_FR
         // Resend's ids, so its delivery reports find each email (Site → Emails & invites → What went out)
         const ids = batchIds(await res.json().catch(() => null));
         await logSent(env, chunk.map((addr, j) => ({ id: ids[j], to: addr, subject })), { tags });
-      } else { out.failed += chunk.length; out.errors.push(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`); }
+      } else { out.failed += chunk.length; out.errors.push(`Resend ${res.status}: ${await resendWhy(res)}`); }
     } catch (e) {
       out.failed += chunk.length;
       out.errors.push(e.message);
@@ -216,7 +224,7 @@ export async function sendEmailItems(env, items, { from = EMAIL_FROM, tags = [],
         out.sent += chunk.length;
         const ids = batchIds(await res.json().catch(() => null));
         await logSent(env, chunk.map((m, j) => ({ id: ids[j], to: m.to, subject: m.subject })), { tags });
-      } else { out.failed += chunk.length; out.errors.push(`Resend ${res.status}: ${(await res.text()).slice(0, 200)}`); }
+      } else { out.failed += chunk.length; out.errors.push(`Resend ${res.status}: ${await resendWhy(res)}`); }
     } catch (e) {
       out.failed += chunk.length;
       out.errors.push(e.message);

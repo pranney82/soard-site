@@ -35,6 +35,8 @@ export function ask({ title, text = '', yes = 'OK', no = 'Cancel', danger = fals
     // On window, capturing: it runs before a dialog underneath this one sees the key
     const onKey = (e) => {
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(false); return; }
+      // A held Enter or Space that opened the dialog repeats onto its answer: only a fresh press answers
+      if ((e.key === 'Enter' || e.key === ' ') && e.repeat) { e.preventDefault(); e.stopPropagation(); return; }
       if (e.key !== 'Tab') return;
       const f = [...host.querySelectorAll('button')];
       const i = f.indexOf(document.activeElement);
@@ -44,7 +46,9 @@ export function ask({ title, text = '', yes = 'OK', no = 'Cancel', danger = fals
     };
     window.addEventListener('keydown', onKey, true);
     document.body.classList.add('modal-open');
-    render(html`<div class="modal-overlay kd-overlay ask-overlay" onClick=${(e) => { if (e.target === e.currentTarget) finish(false); }}>
+    // A double click's second half lands on the overlay the first one opened: it isn't a click outside
+    const openedAt = Date.now();
+    render(html`<div class="modal-overlay kd-overlay ask-overlay" onClick=${(e) => { if (e.target === e.currentTarget && Date.now() - openedAt > 400) finish(false); }}>
       <div class="modal kd-dialog kd-dialog--sm ask" role=${danger ? 'alertdialog' : 'dialog'} aria-modal="true" aria-labelledby=${id} aria-describedby=${text ? `${id}-text` : null}>
         <header class="kd-dialog__head"><div class="kd-dialog__titles"><h2 id=${id}>${title}</h2></div></header>
         ${text ? html`<div class="kd-dialog__body"><p class="ask__text" id=${`${id}-text`}>${text}</p></div>` : null}

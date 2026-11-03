@@ -37,11 +37,13 @@ import {
   agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
   isFilled, LIVE_TITLES, presentersOf, reportsOn, namesText,
 } from '../../public/admin/board-shared.js';
+import { welcomeHad } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
 import { peopleRows, privateEmails, activeBoard, boardAdmins, readState, writeState, readSettings, normEmail, BOARD_PAGE } from './_board-roles.js';
 import { cachedReveals, fetchJobs, loadKids, loadProjects, matchProject, isProject, isRehearsalJob, FIELD_JOB_STATUS, BUILDING_STATUSES } from './_reveals.js';
 import { sendEmails, sendEmailItems, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js';
+import { isEmail } from './_broadcast-notify.js';
 import { emailShell, button, esc, facts, link, panel, SANS, SERIF } from './_email-shell.js';
 import { sniffType } from './upload-file.js';
 import { maybeSyncBoardAccess } from './_board-access.js';
@@ -1426,13 +1428,46 @@ export function welcomeEmail({ name = '', email = '', test = false, inviter = nu
 }
 
 /** Email each active board member (on their own) how to sign in, from the admin sending it (`by`); test: only `to` */
-export async function sendWelcome(env, { to = null, slugs = null, replyTo = [], by = '' } = {}) {
+export async function sendWelcome(env, opts = {}) {
+  if (Array.isArray(opts.to)) return sendWelcomeNow(env, opts);
+  // One send at a time: a second (another tab, the table during the panel's, a re-posted request) is turned away, and
+  // the next finds who already has it. The claim lapses after two minutes if a send never finishes.
+  await readState(env.DB, 'welcome');
+  const now = nowIso();
+  const got = await env.DB.prepare("INSERT INTO board_state (key, data, updated_at) VALUES ('welcome-sending', '{}', ?) ON CONFLICT(key) DO UPDATE SET updated_at = excluded.updated_at WHERE board_state.updated_at < ?")
+    .bind(now, new Date(Date.parse(now) - 2 * 60 * 1000).toISOString()).run();
+  if (!got?.meta?.changes) throw Object.assign(new Error('Another sign-in email was going out at the same moment, so this one wasn’t sent. Board access shows who has it now.'), { status: 409 });
+  try {
+    if (opts.check) await opts.check();
+    return await sendWelcomeNow(env, opts);
+  } finally {
+    await env.DB.prepare("DELETE FROM board_state WHERE key = 'welcome-sending'").run();
+  }
+}
+
+async function sendWelcomeNow(env, { to = null, slugs = null, due = false, again = false, replyTo = [], by = '' } = {}) {
   if (!emailConfigured(env)) throw Object.assign(new Error('Email isn’t set up (RESEND_API_KEY)'), { status: 503 });
   const test = Array.isArray(to);
   const [list, people, settings, meetings, docs] = await Promise.all([packetList(env.DB), roster(env.DB), getSettings(env.DB), listMeetings(env.DB), listDocs(env.DB)]);
+  const was = test ? {} : await readState(env.DB, 'welcome');
+  // Nobody gets a second copy by accident:
+  //   - the whole board's send, and a pick that's due (`due`: those who haven't had it), skip anyone who has it at the
+  //     address on file
+  //   - someone picked again, or everyone again (`again`), skips whoever had it in the last ten minutes (a double click,
+  //     two admins at once)
+  // A new address makes it due again. An address the mailer would drop (kim@gmail.c) isn't sent to, nor counted.
+  const hasIt = (p) => !!welcomeHad(was, p, people.board.map((x) => x.slug));
+  const justNow = (p) => Date.now() - Date.parse((was.members || {})[p.slug]) < 10 * 60 * 1000;
+  const asked = test ? [] : list.filter((p) => !slugs || slugs.includes(p.slug));
+  const usable = asked.filter((p) => isEmail(p.email));
+  const unusable = asked.filter((p) => !isEmail(p.email)).map((p) => p.name);
   // A preview greets the admin by name, as a member's copy greets them
-  const recipients = test ? to.map((email) => ({ email, name: staffFor(people, email)?.name || '', slug: '' })) : list.filter((p) => !slugs || slugs.includes(p.slug));
-  if (!recipients.length) throw Object.assign(new Error('No board member has an email on file (People → Board)'), { status: 409 });
+  const recipients = test ? to.map((email) => ({ email, name: staffFor(people, email)?.name || '', slug: '' })) : usable.filter((p) => !hasIt(p) || (((slugs && !due) || again) && !justNow(p)));
+  if (!test && !recipients.length) {
+    if (!asked.length) throw Object.assign(new Error(slugs ? 'They aren’t on People → Board with an email now' : 'No board member has an email on file (People → Board)'), { status: 409 });
+    if (!usable.length) throw Object.assign(new Error(`The email on People → Board for ${unusable.join(', ')} isn’t a whole address`), { status: 409 });
+    return { sent: 0, failed: 0, errors: [], already: usable.length, ...(unusable.length ? { unusable } : {}) };
+  }
   // Who it's from: the admin sending it, else the one the invites come from
   const sender = staffFor(people, by) || staffFor(people, settings.invitesFrom);
   const inviter = sender ? { name: sender.name, title: sender.title, photo: sender.photo } : null;
@@ -1442,17 +1477,34 @@ export async function sendWelcome(env, { to = null, slugs = null, replyTo = [], 
   const next = nextMeeting(meetings.filter((m) => onBoardPage(m, today) && !m.calendar?.gone && !(m.date === today && (m.end || m.start) && (m.end || m.start) <= nowHm)), today);
   const helpers = [...new Set(replyTo.map((e) => firstName(staffFor(people, e)?.name)).filter(Boolean))];
   const signable = docs.filter((d) => d.shared && d.sign && (d.body || (d.file && !d.file.staffOnly)));
-  const items = recipients.map((p) => ({ to: p.email, ...welcomeEmail({ name: p.name, email: p.email, test, inviter, next, helpers, toSign: signable.filter((d) => !(p.slug && d.signed[p.slug])).map((d) => d.title) }) }));
+  const items = recipients.filter((p, i) => recipients.findIndex((x) => x.email === p.email) === i).map((p) => ({ to: p.email, ...welcomeEmail({ name: p.name, email: p.email, test, inviter, next, helpers, toSign: signable.filter((d) => !(p.slug && d.signed[p.slug])).map((d) => d.title) }) }));
+  if (!test) {
+    // Recorded before it goes: a send cut off midway (the page closed, the Worker stopped) counts as sent, so it never
+    // doubles. Each member's own time (their row on Board → Members) and the address it went to (a corrected one is due
+    // again); the board counts as told (sentAt) by the whole board's send, or once a pick has reached everyone
+    const at = nowIso();
+    const members = { ...(was.members || {}), ...Object.fromEntries(recipients.map((p) => [p.slug, at])) };
+    const addresses = { ...(was.addresses || {}), ...Object.fromEntries(recipients.map((p) => [p.slug, p.email])) };
+    const everyone = list.filter((p) => isEmail(p.email)).every((p) => welcomeHad({ members, addresses }, p, people.board.map((x) => x.slug)));
+    // Unconfirmed until Resend says it took them (a send cut off midway stays unconfirmed, and Board access says so)
+    const unconfirmed = [...new Set([...(was.unconfirmed || []), ...recipients.map((p) => p.slug)])];
+    await writeState(env.DB, 'welcome', slugs && !(everyone && !was.sentAt) ? { ...was, members, addresses, unconfirmed } : { ...was, sentAt: at, sent: recipients.length, members, addresses, unconfirmed });
+  }
   // One batch: every member's email goes, or none does, so sending again never gives anyone a second copy
   const r = await sendEmailItems(env, items, { from: items[0].from, tags: [{ name: 'kind', value: test ? 'board-welcome-preview' : 'board-welcome' }], replyTo });
-  if (!test && r.sent) {
-    // Each member's own time (their row on Board → Members); "told" for the board only when all of it was
-    const at = nowIso();
-    const was = await readState(env.DB, 'welcome');
-    const members = { ...(was.members || {}), ...Object.fromEntries(recipients.map((p) => [p.slug, at])) };
-    await writeState(env.DB, 'welcome', slugs ? { ...was, members } : { sentAt: at, sent: r.sent, members });
+  // Resend not answering (a timeout, a dropped connection) may still have sent it: it stays counted as sent
+  // (a gateway's 502, 503 or 504 in front of Resend is no answer too). Resend's own error status is a sure no: nobody got
+  // it, so the record goes back as it was
+  const unsure = !test && r.failed > 0 && r.errors.some((e) => !/^Resend \d+:/.test(String(e)) || /^Resend 50[234]:/.test(String(e)));
+  if (!test && !r.sent && !unsure) await writeState(env.DB, 'welcome', was);
+  // Resend confirmed it: these are no longer unconfirmed
+  else if (!test && !unsure) {
+    const now = await readState(env.DB, 'welcome');
+    const sentTo = new Set(recipients.map((p) => p.slug));
+    const unconfirmed = (now.unconfirmed || []).filter((k) => !sentTo.has(k));
+    await writeState(env.DB, 'welcome', { ...now, unconfirmed: unconfirmed.length ? unconfirmed : undefined });
   }
-  return { sent: r.sent, failed: r.failed, errors: r.errors, to: test ? to : undefined };
+  return { sent: r.sent, ...(!test && r.sent && recipients.length !== items.length ? { reached: recipients.length } : {}), failed: r.failed, errors: r.errors, unsure: unsure || undefined, ...(unusable.length ? { unusable } : {}), to: test ? to : undefined };
 }
 
 // ─── The board page ─────────────────────────────────────────────────

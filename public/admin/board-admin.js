@@ -29,6 +29,7 @@ import {
   DOC_KINDS, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
   attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority, agendaItems, isLive, heldEarly,
 } from './board-shared.js';
+import { welcomeHad, usableEmail } from './board-shared.js';
 
 // ═══════════════════════════════════════════════════════════════════
 // The area
@@ -39,10 +40,15 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const dirty = useRef(false);
+  const looks = useRef(0);
 
+  // Only the newest look shows: a slow one that comes back after a newer one (a send's) is dropped
   const load = async () => {
+    const n = ++looks.current;
     const j = await call();
-    if (j.ok) { setData(j); setError(null); } else setError(j.error || 'Couldn’t load the board');
+    if (n !== looks.current) return j;
+    // ...and never an older sign-in email record than a quick look already showed (welcomeAt)
+    if (j.ok) { setData((d) => (d?.welcomeAt > j.welcomeAt ? { ...j, welcome: d.welcome, welcomeSending: d.welcomeSending, welcomeAt: d.welcomeAt } : j)); setError(null); } else setError(j.error || 'Couldn’t load the board');
     return j;
   };
   useEffect(() => { load(); }, []);
@@ -80,7 +86,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
           <p class="page-sub">${{
             meetings: 'The next meeting and what’s left to do for it, then every past meeting with its agenda and minutes. The board sees a meeting once it’s shared.',
             documents: 'Bylaws, policies, budgets and plans, on the board page for every member. Ask for a signature where the board signs each year.',
-            members: 'Board members sign in at sunshineonaranneyday.com/board with the email on People → Board, the way you do.',
+            members: 'Who’s on the board, how they get in, and what they’ve looked at on the board page.',
             settings: 'Who can open this area, who invites come from, the quorum, and where past minutes come from. The banks and QuickBooks the board page’s money comes from are in System → Settings.',
           }[route.tab]}</p>
         </div>
@@ -156,6 +162,8 @@ function SourcesLine({ data }) {
 
 /** The scopes Board's service account needs on Google Admin's domain-wide delegation */
 const GROUP_SCOPE = 'https://www.googleapis.com/auth/admin.directory.group.member';
+/** What “Email the board how to sign in” asks before it sends */
+const WELCOME_ASK = 'From you: the board page’s link, what’s waiting for them there, and the three sign-in steps.';
 const SCOPES = ['https://www.googleapis.com/auth/calendar.events', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/meetings.space.settings', 'https://www.googleapis.com/auth/meetings.space.readonly', 'https://www.googleapis.com/auth/drive.readonly', GROUP_SCOPE];
 /** What still needs a Google setting: email, Drive, Meet transcripts, Meet attendance (each only once it's known) */
 function googleNeeds(data) {
@@ -736,91 +744,261 @@ function DocumentsTab({ ctx }) {
 }
 
 // ─── Members ────────────────────────────────────────────────────────
-function AccessCard({ ctx }) {
+/**
+ * Board access, a line each: the board page's sign-in (Cloudflare's list, functions/api/_board-access.js),
+ * board@soardcharity.com (functions/api/_board-group.js) and the sign-in email. Green works, grey is on its way,
+ * amber is waiting on you ("Needs you", with what to do and its button after the steps). A passing outage is grey
+ * for half an hour, then amber. Every line says only what's true now; how soon it follows People → Board is said once.
+ */
+function AccessPanel({ ctx, ready, working, welcome }) {
   const { data, setData, addToast } = ctx;
   const a = data.access;
-  const [trying, setTrying] = useState(false);
-  const retry = async () => {
-    setTrying(true);
-    const j = await call({ action: 'sync-access' });
-    setTrying(false);
-    if (j.ok) setData((d) => ({ ...d, access: j.access })); else addToast(j.error, 'error');
-  };
-  const ready = a.configured && a.ok && a.attached;
-  const head = !a.configured ? 'Board members can’t sign in yet'
-    : a.error && !a.ok ? 'The sign-in list couldn’t be updated'
-    : !a.attached ? 'One step left in Cloudflare'
-    : `${plural(a.emails, 'board member')} can sign in`;
-  return html`<div class="card">
-    <div class="status-head">
-      <div class="status-head__main"><span class=${`dot ${ready ? 'dot--on' : 'dot--warn'}`} aria-hidden="true"></span><div>
-        <h3>${head}</h3>
-        <p class="status-head__text">${ready
-          ? html`They go to <a class="link" href=${PAGE} target="_blank" rel="noopener">sunshineonaranneyday.com/board</a> and sign in with their email’s code, the way you do. Cloudflare’s list follows People → Board within 5 minutes${a.syncedAt ? ` (checked ${ago(a.syncedAt)})` : ''}. A board sign-in opens the board page and nothing else.`
-          : a.error && !a.ok ? html`Cloudflare said: ${a.error}`
-          : 'The site keeps Cloudflare’s list of board emails itself once it has a key to do it.'}</p>
-      </div></div>
-      ${a.configured && a.error && !a.ok ? html`<div class="status-head__actions"><button class="btn btn-primary btn-sm" disabled=${trying} onClick=${retry}>${trying ? 'Trying…' : 'Try again'}</button></div>` : null}
-    </div>
-    ${!a.configured ? html`<ol class="bd-steps">
-      <li>In Cloudflare, open <strong>My Profile → API Tokens → Create Token → Custom token</strong>. Give it two permissions, both under Account: <span class="bd-code">Access: Organizations, Identity Providers, and Groups</span> Edit, and <span class="bd-code">Access: Apps and Policies</span> Edit.</li>
-      <li>Open <strong>Workers & Pages → soard-site → Settings → Variables and Secrets</strong>, add a secret named <span class="bd-code">CF_ACCESS_API_TOKEN</span> with that token, then publish.</li>
-      <li>Within 5 minutes the site makes the list “SOARD board (kept by the website)” and the policy “SOARD board members”. This card then names the one setting left.</li>
-    </ol>` : a.ok && !a.attached ? html`<ol class="bd-steps">
-      <li>In Cloudflare, open <strong>Zero Trust → Access → Applications → ${a.appName || 'the admin’s application'} → Policies</strong>.</li>
-      <li>Choose <strong>Select existing policies</strong>, tick <strong>SOARD board members</strong>, and save. This card turns green within 5 minutes. (The site never changes the application itself, so a mistake can’t lock staff out.)</li>
-    </ol>` : null}
-    ${a.missing?.length ? html`<div class="notice notice--warn" style="margin:1rem 0 0"><div class="notice__body"><strong>No email on file for ${a.missing.map((p) => p.name).join(', ')}.</strong> Add it on People → Board (the private email reveal invites go to), and they can sign in a few minutes later.</div><div class="notice__actions"><a class="btn btn-ghost btn-sm" href="#people/board">People → Board</a></div></div>` : null}
-  </div>`;
-}
-
-/** board@soardcharity.com: follows People → Board by itself (functions/api/_board-group.js); what it last did, or the one thing it needs */
-function GroupCard({ ctx }) {
-  const { data, setData, addToast } = ctx;
   const g = data.group;
-  const [trying, setTrying] = useState(false);
+  const board = data.members;
+  const [trying, setTrying] = useState('');
+  const [sending, setSending] = useState(false);
   const [copied, setCopied] = useState(false);
-  if (!g) return null;
-  const retry = async () => {
-    setTrying(true);
-    const j = await call({ action: 'sync-group' });
-    setTrying(false);
-    if (j.ok) setData((d) => ({ ...d, group: j.group })); else addToast(j.error, 'error');
+  const [, setTick] = useState(0);
+  const looking = useRef(false);
+  useEffect(() => { const t = setInterval(() => setTick((n) => n + 1), 60 * 1000); return () => clearInterval(t); }, []);
+  const busy = !!working || sending;
+  const names = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list.at(-1)}` : list[0]);
+  // A long list (the first look at an old group, a board with no emails yet) as its first two and how many more
+  const some = (list) => (list.length > 3 ? `${list.slice(0, 2).join(', ')} and ${list.length - 2} more` : names(list));
+  // A failure younger than half an hour is a passing outage: the site is already asking again
+  const passing = (since) => !!since && Date.now() - Date.parse(since) < 30 * 60 * 1000;
+  const clock = (iso) => {
+    const d = new Date(iso);
+    const time = d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+    return d.toDateString() === new Date().toDateString() ? time : `${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`;
   };
-  const copy = async () => { try { await navigator.clipboard.writeText(GROUP_SCOPE); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { /* the line is there to select */ } };
-  const ready = g.configured && g.ok;
-  const first = !g.syncedAt && !g.failedAt;
-  const head = !g.configured ? `${g.group} isn’t kept by the site yet`
-    : first ? `${g.group} joins the board within 5 minutes`
-    : g.needs === 'scope' ? `One Google setting, so the site can keep ${g.group}`
-    : !ready ? `${g.group} couldn’t be brought up to date`
-    : `${g.group} reaches ${plural(g.wanted, 'person', 'people')}`;
-  const last = g.changes?.[0];
-  const said = (list) => (list.length > 1 ? `${list.slice(0, -1).join(', ')} and ${list.at(-1)}` : list[0]);
-  const fix = {
-    api: html`In Google Cloud${data.google?.project ? html` (project <span class="bd-code">${data.google.project}</span>)` : ''}, turn on the <a class="link" href=${`https://console.cloud.google.com/apis/library/admin.googleapis.com${data.google?.project ? `?project=${encodeURIComponent(data.google.project)}` : ''}`} target="_blank" rel="noopener">Admin SDK API</a> (Enable).`,
-    admin: 'Google says no founder on People → Team is a Workspace admin, so nobody the site can act as may change the group. A founder needs the Super Admin role in Google Admin.',
-    group: html`Google has no group called ${g.group}. Make it in <a class="link" href="https://admin.google.com/ac/groups" target="_blank" rel="noopener">Google Admin → Directory → Groups</a> with that address, and the board goes in within half an hour.`,
-    outside: html`Google won’t put addresses from outside soardcharity.com in the group. In <a class="link" href="https://admin.google.com/ac/groups" target="_blank" rel="noopener">Google Admin → Directory → Groups</a>, open ${g.group}, then Access settings, and turn on <strong>Allow members outside your organization</strong>.`,
-  }[g.needs];
-  return html`<div class="card">
-    <div class="status-head">
-      <div class="status-head__main"><span class=${`dot ${ready ? 'dot--on' : first && g.configured ? '' : 'dot--warn'}`} aria-hidden="true"></span><div>
-        <h3>${head}</h3>
-        <p class="status-head__text">${!g.configured ? 'Once GOOGLE_CALENDAR_KEY is in Cloudflare, the group follows People → Board by itself.'
-          : g.needs === 'scope' ? `Then the group holds exactly the board on People → Board, plus ${youAnd(data.settings.admins, data.me)}, and follows every change there by itself.`
-          : html`Email to <span class="bd-code">${g.group}</span> goes to the board on People → Board and ${youAnd(data.settings.admins, data.me)}, the people the meeting invite goes to. Google’s list follows People → Board within 5 minutes${g.syncedAt ? ` (checked ${ago(g.syncedAt)})` : ''}. The group’s owners and managers in Google stay as they are; anyone else not on the board is taken out.`}</p>
-        ${ready && last ? html`<p class="status-head__text" style="margin-top:0.35rem">Last change ${ago(last.at)}: ${[last.added.length && `added ${said(last.added)}`, last.removed.length && `took out ${said(last.removed)}`].filter(Boolean).join('; ')}.</p>` : null}
-      </div></div>
-      ${g.configured && !ready && !first && g.needs !== 'scope' ? html`<div class="status-head__actions"><button class="btn btn-primary btn-sm" disabled=${trying} onClick=${retry}>${trying ? 'Trying…' : 'Try again'}</button></div>` : null}
-    </div>
-    ${g.needs === 'scope' ? html`<ol class="bd-steps">
+  // After any action, focus stays on its button, or on its line when the button went away
+  const refocus = (btn, row) => requestAnimationFrame(() => {
+    const at = document.activeElement;
+    if (at && at !== document.body && at !== btn && !at.closest?.('.bd-access')) return; // moved on meanwhile: left there
+    (btn?.isConnected ? btn : document.getElementById(`bd-access-${row}`))?.focus();
+  });
+
+  const retry = async (e, action, key, row) => {
+    if (trying) return;
+    const btn = e.currentTarget;
+    setTrying(key);
+    const j = await call({ action });
+    if (j.ok) {
+      // The check's answer now (focus follows at once), then a fresh look, so an older look still on its way can't put the line back
+      setData((d) => ({ ...d, [key]: j[key] }));
+      refocus(btn, row);
+      await ctx.load();
+    }
+    setTrying('');
+    if (!j.ok) addToast(j.error, 'error');
+    else {
+      // What worked shows on the line itself; a toast only for what still doesn't, so the two never disagree
+      const r = j[key];
+      const still = key === 'access'
+        ? (!r.ok ? (badKey(r.error) ? 'Cloudflare still refuses the key' : `Cloudflare still has a problem: ${cfWhy(r.error)}`) : !r.attached ? 'The “SOARD board members” policy still isn’t on the admin’s application' : '')
+        : (r.ok ? '' : {
+          scope: 'Google still doesn’t allow it. Check the scope was saved with Authorize.',
+          api: 'The Admin SDK API is still off in Google Cloud',
+          admin: 'Google still says no founder is a Workspace admin',
+          founder: 'People → Team still has no founder marked',
+          group: `Google still has no ${r.group} group`,
+          outside: 'Google still won’t take addresses from outside soardcharity.com',
+        }[r.needs] || `Google still has a problem: ${gWhy(r.error)}`);
+      if (still) addToast(still, 'error');
+    }
+    refocus(btn, row);
+  };
+  // A held Enter or Space acts once, not once per repeat
+  const once = (e) => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); };
+  const again = (action, key, row, label = 'Try again') => html`<button class="btn btn-ghost btn-sm" aria-disabled=${trying ? 'true' : null} onKeyDown=${once} onClick=${(e) => retry(e, action, key, row)}>${trying === key ? 'Checking…' : label}</button>`;
+  // welcome() holds every send button until the page has the result; this covers the moment before it starts
+  const send = async (btn, body, label) => {
+    if (busy) return;
+    setSending(true);
+    if (!body.test) {
+      setData((d) => ({ ...d, welcomeSending: true }));
+      requestAnimationFrame(() => document.getElementById('bd-access-email')?.focus());
+    }
+    try {
+      const looked = await welcome(body, label);
+      // Never reached the server and no look since (signed out, offline): not going out after all
+      if (!body.test && !looked?.ok) setData((d) => ({ ...d, welcomeSending: false }));
+    } finally { setSending(false); }
+    refocus(btn, 'email');
+  };
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(GROUP_SCOPE); setCopied(true); setTimeout(() => setCopied(false), 1500); } catch { addToast('Couldn’t copy it here: select the line and copy it instead', 'error'); }
+  };
+  const tokenSteps = (replace) => html`<ol class="bd-steps">
+      <li>In Cloudflare, open <strong>My Profile → API Tokens → Create Token → Custom token</strong>. Give it two permissions, both under Account: <span class="bd-code">Access: Organizations, Identity Providers, and Groups</span> Edit, and <span class="bd-code">Access: Apps and Policies</span> Edit.</li>
+      <li>Open <strong>Workers & Pages → soard-site → Settings → Variables and Secrets</strong>, ${replace ? html`replace the secret <span class="bd-code">CF_ACCESS_API_TOKEN</span> with the new token` : html`add a secret named <span class="bd-code">CF_ACCESS_API_TOKEN</span> with that token`}, then publish.</li>
+      <li>Within 5 minutes this line says what’s left${replace ? ', or choose Check now' : ''}.</li>
+    </ol>`;
+  const peopleLink = (text) => html`<a class="link" href="#people/board">${text}</a>`;
+
+  // The board page's sign-in
+  const missing = (a.missing || []).map((p) => p.name);
+  // An address no code can reach (kim@gmail.c), from before People → Board checked them the mailer's way
+  const broken = board.filter((p) => p.email && !usableEmail(p.email));
+  const brokenText = broken.length ? html` ${peopleLink(`The email for ${some(broken.map((p) => p.name))} on People → Board ${broken.length === 1 ? 'isn’t a whole address' : 'aren’t whole addresses'}`)}.` : '';
+  const signIn = !board.length ? { meta: html`Nobody is on ${peopleLink('People → Board')} yet.` }
+    : !a.configured && a.groupId ? { warn: true, meta: 'The site’s Cloudflare key is gone, so changes on People → Board can’t reach the sign-in list. Everyone already on it can still sign in.', fix: tokenSteps(false) }
+    : !a.configured ? { warn: true, meta: 'Nobody can sign in yet: the site needs a Cloudflare key to keep the list of board emails.', fix: tokenSteps(false) }
+    : !a.syncedAt && !a.failedAt ? { meta: 'Making the sign-in list now.' }
+    : a.error && !a.ok ? (badKey(a.error)
+      ? { warn: true, meta: 'Cloudflare refused the site’s key, so the sign-in list can’t be kept. Make a new one:', fix: tokenSteps(true), actions: again('sync-access', 'access', 'signin', 'Check now') }
+      : passing(a.failingSince) ? { meta: `Cloudflare had a problem at ${clock(a.failingSince)} (${cfWhy(a.error)}). The site is asking again.` }
+        : { warn: true, meta: `Cloudflare has had a problem since ${clock(a.failingSince || a.failedAt)} (${cfWhy(a.error)}), so changes on People → Board aren’t reaching the sign-in list. Everyone already on it can still sign in.`, actions: again('sync-access', 'access', 'signin') })
+    : !a.attached ? { warn: true, meta: 'One step left in Cloudflare, then board members can sign in.', actions: again('sync-access', 'access', 'signin', 'Check now'), fix: html`<ol class="bd-steps">
+      <li>In Cloudflare, open <strong>Zero Trust → Access → Applications → ${a.appName || 'the admin’s application'} → Policies</strong>.</li>
+      <li>Choose <strong>Select existing policies</strong>, tick <strong>SOARD board members</strong>, save, then choose Check now.</li>
+    </ol>` }
+    : !a.current ? { meta: 'Updating the sign-in list.' }
+    : !a.emails && !broken.length ? { warn: true, meta: html`Nobody can sign in yet: ${peopleLink('no board member has an email on People → Board')}.` }
+    : missing.length || broken.length ? { warn: true, meta: html`${board.filter((p) => usableEmail(p.email)).length} of ${plural(board.length, 'board member')} can sign in with an emailed code.${missing.length ? html` ${peopleLink(`${some(missing)} ${missing.length === 1 ? 'has' : 'have'} no email on People → Board`)}.` : ''}${brokenText}` }
+    : { on: true, meta: board.length === 1 ? `${board[0].name} can sign in with an emailed code.` : 'Everyone on the board can sign in with an emailed code.' };
+
+  // board@soardcharity.com (not shown until there's a board, or while the site has no Google key: there's nothing it can keep)
+  const last = g?.changes?.[0];
+  const recent = last && Date.now() - Date.parse(last.at) < 7 * 86400000;
+  // A name both taken out and added is a changed address
+  const moved = recent ? last.removed.filter((n) => last.added.includes(n)) : [];
+  const out = recent ? last.removed.filter((n) => !moved.includes(n)) : [];
+  const added = recent ? last.added.length - moved.length : 0;
+  const history = recent ? ` Last change ${ago(last.at)}: ${[moved.length && `new address for ${some(moved)}`, out.length && `took out ${some(out)}`, added && `${plural(added, 'person', 'people')} added`].filter(Boolean).join('; ')}.` : '';
+  const admins = [...(data.settings.admins.includes(data.me) ? ['you'] : []), ...data.settings.admins.filter((e) => e !== data.me).map(firstOf)];
+  const inGroup = g?.missing?.length ? `the ${plural(g.board, 'board member')} with an email` : board.length === 1 ? board[0].name : 'every board member';
+  const project = data.google?.project;
+  const groupFix = {
+    api: html`In Google Cloud${project ? html` (project <span class="bd-code">${project}</span>)` : ''}, turn on the <a class="link" href=${`https://console.cloud.google.com/apis/library/admin.googleapis.com${project ? `?project=${encodeURIComponent(project)}` : ''}`} target="_blank" rel="noopener">Admin SDK API</a> (Enable), then choose Try again.`,
+    admin: 'Google says none of the founders on People → Team is a Workspace admin. Give one of them the Super Admin role in Google Admin, then choose Try again.',
+    founder: html`The site changes the group as a founder, and nobody on ${html`<a class="link" href="#people">People → Team</a>`} is marked as one. Mark the founders there, then choose Try again.`,
+    group: html`Google has no group called ${g?.group}. Make it in <a class="link" href="https://admin.google.com/ac/groups" target="_blank" rel="noopener">Google Admin → Directory → Groups</a> with that address, then choose Try again.`,
+    outside: html`Google won’t put addresses from outside soardcharity.com in it. In <a class="link" href="https://admin.google.com/ac/groups" target="_blank" rel="noopener">Google Admin → Directory → Groups</a>, open ${g?.group}, then Access settings, and turn on <strong>Allow members outside your organization</strong>. Then choose Try again.`,
+  }[g?.needs];
+  const group = !g || !g.configured || !board.length ? null
+    : g.needs === 'empty' ? { meta: 'Left as it is for now.' }
+    : !g.syncedAt && !g.failedAt ? { meta: 'Adding the board now.' }
+    : g.needs === 'scope' ? { warn: true, meta: 'Needs one Google setting before the site can keep it.', actions: again('sync-group', 'group', 'group', 'Check now'), fix: html`<ol class="bd-steps">
       <li>In <a class="link" href="https://admin.google.com/ac/owl/domainwidedelegation" target="_blank" rel="noopener">Google Admin → Security → API controls → Domain-wide delegation</a>, find client ID <span class="bd-code">${data.google?.clientId || 'the site’s service account'}</span>. Choose Edit, add this to the end of its OAuth scopes (after a comma, keeping the ones already there), and choose Authorize:
         <div class="bd-inline" style="margin-top:0.4rem"><span class="bd-code">${GROUP_SCOPE}</span><button class="btn btn-ghost btn-sm" onClick=${copy}>${copied ? 'Copied' : 'Copy'}</button></div></li>
-      <li>That’s it. Within half an hour the board is in the group and this card turns green. <button class="btn btn-ghost btn-sm" disabled=${trying} onClick=${retry}>${trying ? 'Checking…' : 'Check now'}</button></li>
-    </ol>` : g.configured && !ready && !first ? html`<div class="notice notice--warn" style="margin:1rem 0 0"><div class="notice__body">${fix || html`Google said: ${g.error}`}</div></div>` : null}
+      <li>Choose Check now, or this line updates by itself within half an hour.</li>
+    </ol>` }
+    : !g.ok && !groupFix && passing(g.failingSince) ? { meta: `Google had a problem at ${clock(g.failingSince)}. The site is asking again.${history}` }
+    : !g.ok ? { warn: true, meta: groupFix || (/^Google didn’t take/.test(g.error || '') ? `${g.error}. The site keeps trying every half hour.` : `Google has had a problem since ${clock(g.failingSince || g.failedAt)} (${gWhy(g.error)}), so changes on People → Board aren’t reaching the group. The site keeps trying every half hour.`), actions: again('sync-group', 'group', 'group') }
+    : !g.current ? { meta: `Updating the group.${history}` }
+    : { on: true, meta: `Has ${names([inGroup, ...admins])}.${history}` };
+
+  // The sign-in email, from who has had it (welcomeHad: their own send at the address it went to). It can go when the
+  // server would send it (`ready`, MembersTab's one rule for the panel and every row).
+  const w = data.welcome || {};
+  const canSend = ready && !!data.packetTo;
+  // What it waits for, in the words of the sign-in line above
+  const waitFor = !data.setup.email ? 'the site can send email'
+    : !a.configured ? (a.groupId ? 'the site has its Cloudflare key again' : 'the site has its Cloudflare key')
+      : !a.syncedAt && !a.failedAt ? 'the sign-in list is made'
+        : a.error && !a.ok ? (badKey(a.error) ? 'Cloudflare takes the site’s new key' : 'Cloudflare answers again')
+          : !a.attached ? 'the step above is done' : 'the sign-in list is updated';
+  // Who has had it: the same rule as the server's send and each member's row (board-shared.js)
+  const hadIt = (p) => welcomeHad(w, p, board.map((x) => x.slug));
+  const told = board.filter((p) => usableEmail(p.email) && hadIt(p));
+  const notYet = board.filter((p) => usableEmail(p.email) && !hadIt(p));
+  const latest = told.map(hadIt).sort().at(-1) || null;
+  // Sends Resend didn't confirm (it may not have gone): said beside them
+  const unconfirmed = told.filter((p) => (w.unconfirmed || []).includes(p.slug));
+  const who = (list) => (list.length <= 3 ? names(list.map((p) => p.name)) : `the ${list.length} board members${told.length ? ' who haven’t had it' : ''}`);
+  const confirm = async (e, list) => {
+    if (busy) return;
+    const btn = e.currentTarget;
+    if (await ask({ title: `Email ${who(list)} how to sign in?`, text: WELCOME_ASK, yes: list.length === 1 ? `Email ${list[0].name}` : 'Email them' })) {
+      // Exactly who the question named, and only those who still haven't had it when it goes (a stale page can't double anyone)
+      send(btn, { slugs: list.map((p) => p.slug), due: true }, told.length ? 'some' : 'all');
+    }
+  };
+  // Everyone again (a rebuilt email), but not who had it in the last ten minutes (the server skips them too)
+  const justSent = told.filter((p) => Date.now() - Date.parse(hadIt(p)) < 10 * 60 * 1000);
+  const againTo = told.filter((p) => !justSent.includes(p));
+  const resend = async (e) => {
+    if (busy) return;
+    const btn = e.currentTarget;
+    const skip = justSent.length ? ` Not ${names(justSent.map((p) => p.name))}: had it in the last ten minutes.` : '';
+    if (await ask({ title: `Email ${againTo.length <= 3 ? names(againTo.map((p) => p.name)) : `${againTo.length === told.length ? 'all ' : ''}${againTo.length} board members`} again?`, text: `${WELCOME_ASK}${skip}`, yes: 'Email them again' })) send(btn, { slugs: againTo.map((p) => p.slug), again: true }, 'again');
+  };
+  const preview = html`<button key="preview" class="btn btn-ghost btn-sm" aria-disabled=${busy ? 'true' : null} onKeyDown=${once} onClick=${(e) => send(e.currentTarget, { test: true }, 'preview')}>${working === 'preview' ? 'Sending…' : 'Send it to me'}</button>`;
+  const noKey = html`The site can’t send email yet: add <span class="bd-code">RESEND_API_KEY</span> in Cloudflare (Workers & Pages → soard-site → Settings → Variables and Secrets).`;
+  const has = (list) => `${some(list.map((p) => p.name))} ${list.length === 1 ? 'has' : 'have'} it`;
+  const doubt = unconfirmed.length ? ` Resend didn’t confirm the email to ${some(unconfirmed.map((p) => p.name))}; Emails & invites → What went out shows whether it was delivered.` : '';
+  const email = !board.length || (!latest && !notYet.length) ? null
+    // This page's send, another admin's or another tab's, going out right now
+    : data.welcomeSending || (working && working !== 'preview') ? { meta: 'Going out now.' }
+    // Everyone with an email has it
+    : !notYet.length ? { on: true, meta: `${told.length === 1 ? `${told[0].name} has` : `All ${told.length}${board.some((p) => !usableEmail(p.email)) ? ' with an email' : ''} have`} it (last sent ${ago(latest)}).${doubt}`,
+      actions: data.setup.email ? html`${preview}${canSend && againTo.length ? html`<button key="again" class="btn btn-ghost btn-sm" aria-disabled=${busy ? 'true' : null} onKeyDown=${once} onClick=${(e) => resend(e)}>${working === 'again' ? 'Sending…' : 'Email them again'}</button>` : null}` : null }
+    : !data.setup.email ? { warn: true, meta: noKey }
+    : !told.length ? (canSend
+      ? { warn: true, meta: 'Not sent yet.', actions: html`${preview}<button key="all" class="btn btn-primary btn-sm" aria-disabled=${busy ? 'true' : null} onKeyDown=${once} onClick=${(e) => confirm(e, notYet)}>${working === 'all' ? 'Sending…' : 'Email the board how to sign in'}</button>` }
+      : { meta: `Not sent yet. It can go once ${waitFor}.`, actions: preview })
+    : canSend
+      ? { warn: true, meta: `${has(told)}. ${some(notYet.map((p) => p.name))} ${notYet.length === 1 ? 'hasn’t' : 'haven’t'} yet.${doubt}`,
+        actions: html`${preview}<button key="some" class="btn btn-primary btn-sm" aria-disabled=${busy ? 'true' : null} onKeyDown=${once} onClick=${(e) => confirm(e, notYet)}>${working === 'some' ? 'Sending…' : notYet.length <= 2 ? `Email ${names(notYet.map((p) => p.name))}` : `Email the ${notYet.length} who haven’t had it`}</button>` }
+      : { meta: `${has(told)}. ${some(notYet.map((p) => p.name))} ${notYet.length === 1 ? 'hasn’t' : 'haven’t'} yet; it can go once ${waitFor}.${doubt}`, actions: preview };
+
+  // An open page keeps up: a fresh look on coming back to the tab, and each minute while anything is on its way or waiting.
+  // Focus that was on a button the fresh look took away goes to its line.
+  const settled = [signIn, group, email].every((r) => !r || r.on);
+  useEffect(() => {
+    const look = async () => {
+      // One look at a time: a slow one is never overtaken by the next (whose answer would then be the only one kept)
+      if (looking.current || document.visibilityState !== 'visible' || document.querySelector('.modal-overlay') || busy || trying) return;
+      looking.current = true;
+      const row = document.activeElement?.closest?.('.bd-access')?.id;
+      try { await ctx.load(); } finally { looking.current = false; }
+      if (row && (!document.activeElement || document.activeElement === document.body)) document.getElementById(row)?.focus();
+    };
+    const t = settled ? null : setInterval(look, 60 * 1000);
+    document.addEventListener('visibilitychange', look);
+    return () => { if (t) clearInterval(t); document.removeEventListener('visibilitychange', look); };
+  }, [settled, busy, trying]);
+  useEffect(() => {
+    let stop = false;
+    let next = null;
+    let misses = 0;
+    const quick = async () => {
+      const q = await Promise.race([call(null, { query: '?welcome=1' }), new Promise((r) => setTimeout(() => r({ ok: false }), 5000))]);
+      if (stop) return;
+      if (q.ok) { misses = 0; setData((d) => (d.welcomeAt > q.welcomeAt ? d : { ...d, welcome: q.welcome, welcomeSending: q.welcomeSending, welcomeAt: q.welcomeAt })); }
+      else if (++misses >= 5) { setData((d) => ({ ...d, welcomeSending: false })); return; } // can't check: the minute's look takes over
+      if (q.ok ? q.welcomeSending : data.welcomeSending) next = setTimeout(quick, 2000);
+    };
+    quick();
+    return () => { stop = true; clearTimeout(next); };
+  }, [data.welcomeSending]);
+
+  // A line with steps puts its button after them, where the steps say to choose it
+  const row = (id, title, r) => r && html`<li class="bd-row bd-access" id=${`bd-access-${id}`} tabindex="-1" key=${id}>
+    <div class="bd-row__main">
+      <div class="bd-access__t"><span class=${`dot ${r.on ? 'dot--on' : r.warn ? 'dot--warn' : ''}`} aria-hidden="true"></span><span class="bd-row__title">${title}</span>${r.warn ? html`<span class="tag tag--warn">Needs you</span>` : null}</div>
+      <div class="bd-row__meta">${r.meta}</div>
+    </div>
+    ${r.fix ? html`<div class="bd-access__fix">${r.fix}</div>` : null}
+    ${r.actions ? html`<div class=${`bd-inline ${r.fix ? 'bd-access__after' : ''}`}>${r.actions}</div>` : null}
+  </li>`;
+  return html`<div class="card" style="padding:0">
+    <div class="sec-head"><h3>Board access</h3><span class="sec-head__hint">Follows People → Board within 5 minutes</span></div>
+    <ul class="bd-row-list">
+      ${row('signin', 'Board page sign-in', signIn)}
+      ${row('group', g?.group || 'board@soardcharity.com', group)}
+      ${row('email', 'Sign-in email', email)}
+    </ul>
   </div>`;
 }
+/** Cloudflare's reason without the request it came from ("Cloudflare GET /access/groups: Authentication error" → "Authentication error") */
+const cfWhy = (e) => (/aborted|timed? ?out/i.test(String(e)) ? 'no answer in time' : String(e || 'no answer').replace(/^Cloudflare \w+ \S+: /, ''));
+/** Google's reason without the wrapping ("Google: The service is currently unavailable." → "The service is currently unavailable") */
+const gWhy = (e) => (/aborted|timed? ?out/i.test(String(e)) ? 'no answer in time' : String(e || 'no answer').replace(/^Google: /, '').replace(/^no answer \(.*\)$/, 'no answer in time').replace(/\.$/, ''));
+/** Cloudflare refusing the key itself: only a new token fixes that, so Try again isn't offered as the fix */
+const badKey = (e) => /Authentication error|Unauthorized|Invalid API Token|not authorized|permission|HTTP 40[13]/i.test(String(e || ''));
 
 function MembersTab({ ctx }) {
   const { data, addToast } = ctx;
@@ -828,33 +1006,57 @@ function MembersTab({ ctx }) {
   const next = nextMeeting(data.meetings);
   // The papers each member signs this year: written in Board, or a file the board can open (as the sign-in email counts them)
   const signDocs = data.docs.filter((d) => d.sign && d.shared && (d.body || (d.file && !d.file.staffOnly)));
-  const ready = data.access.configured && data.access.ok && data.access.attached;
+  // When the sign-in email can go, for Board access and every row alike (the server's own rule): email set up, and the list
+  // kept and on the admin's application, or the key gone with the list still matching the board
+  const a = data.access;
+  const ready = !!data.setup.email && (a.configured ? a.ok && a.attached : !!a.groupId && a.current);
   const welcome = async (body, label) => {
     setWorking(label);
     const j = await call({ action: 'send-welcome', ...body });
+    let looked = null;
+    // Every send button (here and on each row) stays held until the page knows who has it (the server never sends anyone
+    // a second copy either way). Who has it usually comes with the answer; without it (turned away while another send went
+    // out, or no answer at all) the page looks first, waiting out the other send
+    if (!body.test && j.welcome) ctx.setData((d) => ({ ...d, welcome: j.welcome, welcomeSending: j.welcomeSending, welcomeAt: j.welcomeAt }));
+    else if (!body.test) {
+      if (j.status === 409) {
+        for (let i = 0; i < 30; i++) {
+          const q = await call(null, { query: '?welcome=1' });
+          if (!q.ok || !q.welcomeSending) break;
+          await new Promise((r) => setTimeout(r, 2000));
+        }
+      }
+      looked = await ctx.load();
+    }
     setWorking('');
     // One batch: it all went or none of it did, so after a failure sending again never doubles anyone's
-    if (!j.ok) addToast(j.sent ? `Emailed ${j.sent}; ${plural(j.failed, 'email')} didn’t go (${j.error})` : `Nobody got it, so sending again is safe. ${j.error}`, 'error');
-    else addToast(body.test ? `Sent to ${j.to?.[0] || 'you'}` : `Emailed ${plural(j.sent, 'board member')}`, 'info');
-    ctx.load();
+    const one = body.slugs?.length === 1 ? data.members.find((p) => p.slug === body.slugs[0])?.name : '';
+    // Only the server's own answer says who got it: no answer at all says nothing either way, a refusal (sent: 0, nothing
+    // failed) sent nobody, and Resend not answering may still have sent it (the server counts it as sent)
+    if (body.test) addToast(j.ok ? `Sent to ${j.to?.[0] || 'you'}` : j.error, j.ok ? 'info' : 'error');
+    else if (typeof j.sent !== 'number') addToast(`Couldn’t tell whether it went (${j.status === 200 ? 'the answer was cut off' : j.error}). ${looked?.ok ? 'Board access now shows who has it.' : 'Reload the page to see who has it; sending again never gives anyone a second copy.'}`, 'error');
+    else if (j.unsure) addToast('Resend didn’t confirm it went, so it may have gone. It’s counted as sent; Emails & invites → What went out shows whether it was delivered.', 'error');
+    else if (j.status === 409 && /going out at the same moment/.test(j.error || '')) {
+      // Another send went at the same moment (another tab, or the browser posting this one again): say who has it now
+      const asked = data.members.filter((p) => usableEmail(p.email) && (!body.slugs || body.slugs.includes(p.slug)));
+      const have = looked?.welcome && asked.length && asked.every((p) => welcomeHad(looked.welcome, p, data.members.map((x) => x.slug)));
+      addToast(have ? `${asked.length === 1 ? `${asked[0].name} has` : 'They have'} it now: another send went out at the same moment.` : j.error, have ? 'info' : 'error');
+    }
+    else if (!j.ok) addToast(j.failed ? (j.sent ? `Emailed ${j.sent}; ${plural(j.failed, 'email')} didn’t go (${j.error})` : `Nobody got it, so sending again is safe. ${j.error}`) : `Not sent: ${j.error}`, 'error');
+    else {
+      // An address the mailer can't use (kim@gmail.c) is named, so it gets fixed on People → Board
+      const bad = j.unusable?.length ? ` The email on People → Board for ${j.unusable.join(', ')} isn’t a whole address.` : '';
+      if (!j.sent && j.already) addToast(`${body.again ? 'Nobody was emailed again: everyone had it in the last ten minutes' : one ? `${one} already has it` : 'They already have it'}.${bad}`, bad ? 'error' : 'info');
+      else addToast(`${one && j.sent === 1 ? `Emailed ${one}` : `Emailed ${plural(j.reached || j.sent, 'board member')}`}.${bad}`, bad ? 'error' : 'info');
+    }
+    // The full look, after the answer is shown
+    if (!body.test && j.welcome) looked = await ctx.load();
+    return looked;
   };
+  const rowHad = (slug) => { const p = data.members.find((x) => x.slug === slug); return !!(p && welcomeHad(data.welcome, p, data.members.map((x) => x.slug))); };
   return html`
-    <${AccessCard} ctx=${ctx} />
-    <${GroupCard} ctx=${ctx} />
-    <div class="card">
-      <div class="status-head">
-        <div class="status-head__main"><span class=${`dot ${data.welcome?.sentAt ? 'dot--on' : ''}`} aria-hidden="true"></span><div>
-          <h3>${data.welcome?.sentAt ? `Told how to sign in ${ago(data.welcome.sentAt)}` : 'Tell the board how to sign in'}</h3>
-          <p class="status-head__text">${ready ? 'An email to each board member: what the board page has, a button to it, and the three steps to sign in with the emailed code.' : 'Once board members can sign in (the card above), email each of them the link and the three steps.'}</p>
-        </div></div>
-        <div class="status-head__actions">
-          <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => welcome({ test: true }, 'preview')}>${working === 'preview' ? 'Sending…' : 'Send it to me'}</button>
-          <button class="btn btn-primary btn-sm" disabled=${!!working || !ready || !data.packetTo}
-            onClick=${async () => { if (await ask({ title: `Email ${plural(data.packetTo, 'board member')} how to sign in?`, text: '“Your SOARD board page is ready,” with the link and the three steps.', yes: 'Email the board' })) welcome({}, 'all'); }}>${working === 'all' ? 'Sending…' : data.welcome?.sentAt ? 'Email them again' : 'Email the board how to sign in'}</button>
-        </div>
-      </div>
-    </div>
-    <${BoardActivity} data=${data} next=${next} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug] }, slug)} />`;
+    <${AccessPanel} ctx=${ctx} ready=${ready} working=${working} welcome=${welcome} />
+    <${BoardActivity} data=${data} next=${next} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} />`;
 }
 
 // ─── Settings ───────────────────────────────────────────────────────
@@ -959,7 +1161,7 @@ function GoogleStatus({ data }) {
       ${row(need.mail ? false : mail.ok ? true : null, 'Agendas and minutes from email', need.mail ? 'Needs the Gmail permission (Meetings shows how).' : mail.checkedAt ? `Read ${ago(mail.checkedAt)}.` : 'Not read yet.')}
       ${row(!check ? null : check.calendar === 'ok' && check.meet === 'ok', 'Invites with Google Meet', !check ? 'Not checked yet.' : check.calendar === 'ok' && check.meet === 'ok' ? 'Board can put meetings on the calendar with a Meet.' : check.error)}
       ${row(!check ? null : check.transcript === 'on' ? true : check.transcript === 'needs-setup' ? false : null, 'Meet transcripts', !check ? 'Not checked yet.' : check.transcript === 'on' ? 'Turned on for every invite.' : check.transcript === 'needs-setup' ? 'Needs the meetings.space.settings permission (Meetings shows how).' : check.error || 'Not available.')}
-      ${data.group?.configured ? row(data.group.ok ? true : data.group.failedAt ? false : null, `${data.group.group} follows the board`, data.group.ok ? `${plural(data.group.wanted, 'person', 'people')} in it, as on People → Board. Checked ${ago(data.group.syncedAt)}.` : data.group.needs === 'scope' ? 'Needs the admin.directory.group.member permission (Members shows how).' : data.group.failedAt ? 'Members says what Google said.' : 'Not checked yet.') : null}
+      ${data.group?.configured ? row(data.group.ok && data.group.current ? true : data.group.failedAt && data.group.needs !== 'empty' ? false : null, `${data.group.group} follows the board`, data.group.ok && data.group.current ? `Has every board member at their email on People → Board. Checked ${ago(data.group.syncedAt)}.` : data.group.needs === 'scope' ? 'Needs the admin.directory.group.member permission (Members shows how).' : data.group.needs === 'empty' ? 'Left as it is until a board member has an email on People → Board.' : data.group.failedAt ? 'Members says what Google said.' : 'Catching up with People → Board.') : null}
       ${row(!check?.attendance ? null : check.attendance === 'ok', 'Attendance from Google Meet', !check?.attendance ? 'Not checked yet.' : check.attendance === 'ok' ? 'After a meeting, who joined is marked “Video”.' : check.attendance === 'needs-setup' ? 'Needs the meetings.space.readonly permission (Meetings shows how).' : check.attendanceError)}
     </ul>
   </div>`;

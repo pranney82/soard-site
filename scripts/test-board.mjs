@@ -793,8 +793,8 @@ try {
   ok(await waitText(jane, /Signed Amended Bylaws/), 'a paper to read is added');
   await shot(jane, '05-documents');
   await jane.goto(`${SITE}/admin/#board/members`, { waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /Board members can’t sign in yet/), 'Members: says plainly that board members can’t sign in yet');
-  ok(/CF_ACCESS_API_TOKEN/.test(await text(jane)) && /No email on file for Kim Park/.test(await text(jane)), 'Members: the steps, and who has no email on file');
+  ok(await waitText(jane, /Board page sign-in\s*Needs you\s*Nobody can sign in yet/), 'Members: Board access says plainly that board members can’t sign in yet');
+  ok(/CF_ACCESS_API_TOKEN/.test(await text(jane)) && /No email on file/.test(await text(jane)), 'Members: the steps, and who has no email on file');
   mail.length = 0;
   await clickText(jane, 'button', /^Send it to me$/);
   ok(await waitText(jane, /Sent to jane@soardcharity\.com/) && mail.length === 1 && /board page/i.test(mail[0].subject), 'Members: the sign-in email, sent to the founder first');
@@ -802,13 +802,14 @@ try {
   // board@soardcharity.com: the heartbeat's first look, before Google allows the group permission, then after
   await syncBoardGroup(env);
   await jane.reload({ waitUntil: 'networkidle0' });
-  ok(await waitText(jane, /One Google setting, so the site can keep board@soardcharity\.com/) && /1234567890/.test(await text(jane)) && /admin\.directory\.group\.member/.test(await text(jane)), 'Members: the board@ group needs one Google setting, with the client ID and the scope to add');
+  ok(await waitText(jane, /board@soardcharity\.com\s*Needs you\s*Needs one Google setting before the site can keep it/) && /1234567890/.test(await text(jane)) && /admin\.directory\.group\.member/.test(await text(jane)), 'Members: the board@ group needs one Google setting, with the client ID and the scope to add');
   ok(boardGroup.length === 2, 'Members: nothing in the group changes before Google allows it');
+  await shot(jane, '06a-members-group-setup');
   await shot(jane, '06a-members-group-setup');
   groupScope = true;
   await clickText(jane, 'button', /^Check now$/);
-  ok(await waitText(jane, /board@soardcharity\.com reaches 3 people/), 'Members: once allowed, Check now brings the group up to the board');
-  ok(/added Alex Rivera and Sam Ortiz; took out gone\.member@example\.com/.test(await text(jane)), 'Members: the group’s last change, by name');
+  ok(await waitText(jane, /board@soardcharity\.com\s*Has the 2 board members with an email and you\./), 'Members: once allowed, Check now brings the group up to the board');
+  ok(/took out gone\.member@example\.com; 2 people added/.test(await text(jane)), 'Members: the group’s last change, by name');
   ok(JSON.stringify(boardGroup.map((x) => x.email).sort()) === JSON.stringify([MEMBER, FOUNDER, OTHER].sort()) && boardGroup.find((x) => x.email === FOUNDER).role === 'OWNER', 'Google’s group holds the board and the founder, who stays its owner');
   await shot(jane, '06b-members-group');
   await jane.goto(`${SITE}/admin/#board/settings`, { waitUntil: 'networkidle0' });

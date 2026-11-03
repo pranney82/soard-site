@@ -798,7 +798,7 @@ const MAP = { t: 'SOARD', children: [
             if (!g.configured) return OFF('Needs GOOGLE_CALENDAR_KEY in Cloudflare.');
             if (!g.syncedAt && !g.failedAt) return { why: 'The first look at the group runs within 5 minutes.' };
             if (g.needs === 'scope') return ATTN('Needs one Google setting: admin.directory.group.member on the service account’s domain-wide delegation. Board → Members has the steps.', g.failedAt);
-            if (!g.ok) return ATTN(`${g.error || 'Google refused a change.'} Board → Members says what to do.`, g.failedAt);
+            if (!g.ok) return ATTN(`${g.error || 'Google refused a change'}. Board → Members says what to do.`, g.failedAt);
             if (!g.current) return ATTN('People → Board changed and the group hasn’t caught up. It rides on the live hub’s heartbeat, so check the Heartbeat entry.', g.syncedAt);
             const changed = g.lastChangeAt ? ` Last change ${stamp(g.lastChangeAt)}: ${[g.added && `${g.added} added`, g.removed && `${g.removed} taken out`].filter(Boolean).join(', ')}.` : '';
             return ON(`${plural(g.wanted, 'person', 'people')} in it, as on People → Board.${g.missing ? ` ${plural(g.missing, 'board member has', 'board members have')} no email there, so ${g.missing === 1 ? 'isn’t' : 'aren’t'} in it.` : ''}${changed}`, g.syncedAt);

@@ -165,6 +165,7 @@ test('People → Board with nobody on it (or a read that came back empty) never 
   const s = await syncBoardGroup(env);
   assert.equal(s.ok, false);
   assert.match(s.error, /nobody with an email/);
+  assert.equal(s.needs, 'empty');
   assert.deepEqual(emails(), before);
   assert.equal(calls.length, 0, 'Google isn’t even asked');
 });
@@ -203,10 +204,17 @@ test('a group that won’t take outside addresses: the soardcharity.com ones go 
   assert.equal(s.ok, false);
   assert.equal(s.needs, 'outside');
   assert.ok(group.some((x) => x.email === 'hal@soardcharity.com'));
-  assert.match(s.error, /Bo Kim \(Condition not met\.\)/);
+  assert.equal(s.error, 'Google didn’t take a change: Condition not met (Bo Kim)');
   const st = await groupStatus(env);
   assert.deepEqual(st.failing.map((f) => f.name), ['Bo Kim']);
   assert.equal(st.current, false, 'tried again until it goes in');
+});
+
+test('the same reason for many failed changes is said once, with who', async () => {
+  globalThis.fetch = ((inner) => async (input, init = {}) => (String(input).startsWith(MEMBERS) && (init.method === 'POST' || init.method === 'DELETE') ? Response.json({ error: { code: 503, message: 'The service is currently unavailable.' } }, { status: 503 }) : inner(input, init)))(globalThis.fetch);
+  const s = await syncBoardGroup(env);
+  assert.equal(s.ok, false);
+  assert.equal(s.error, 'Google didn’t take 4 changes: The service is currently unavailable (Bo Kim, Hal Hart and 2 more)');
 });
 
 test('no such group in Google says so', async () => {

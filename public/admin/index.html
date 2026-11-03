@@ -17183,7 +17183,8 @@ ${sections || '<p>No one yet.</p>'}
       const [email, setEmail] = useState(null);
       const emailValue = email ?? savedEmail;
       const emailClean = emailValue.trim().toLowerCase();
-      const emailBad = emailClean && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailClean);
+      // The mailer's rule (_broadcast-notify.js isEmail), so an address it would drop is caught here, not after saving
+      const emailBad = emailClean && !/^(?!\.)(?!.*\.\.)(?!.*\.@)[^\s@<>()[\],;:"]+@[^\s@<>()[\],;:".]+(?:\.[^\s@<>()[\],;:".]+)*\.[^\s@<>()[\],;:".]{2,}$/.test(emailClean);
       const emailDirty = withEmail && data.status === 'active' && email !== null && emailClean !== (savedEmail || '');
 
       const [showPreview, setShowPreview] = useState(false);

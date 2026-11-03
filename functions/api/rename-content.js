@@ -116,6 +116,16 @@ export async function rename(env, { collection, from, to } = {}, userEmail = 'un
   }
   // Their private reveal email, saved versions and profile requests follow them
   try { await DB.prepare('UPDATE reveal_board_emails SET slug = ? WHERE slug = ?').bind(to, from).run(); } catch {}
+  // ...and so does the board page sign-in email they had (Board → Members), so they aren't sent it again
+  try {
+    const row = await DB.prepare("SELECT data FROM board_state WHERE key = 'welcome'").first();
+    const w = row ? JSON.parse(row.data || '{}') : null;
+    if (w && (['members', 'addresses'].some((k) => w[k]?.[from] !== undefined) || w.unconfirmed?.includes(from))) {
+      for (const k of ['members', 'addresses']) if (w[k]?.[from] !== undefined) { w[k][to] = w[k][from]; delete w[k][from]; }
+      if (w.unconfirmed) w.unconfirmed = w.unconfirmed.map((k) => (k === from ? to : k));
+      await DB.prepare("UPDATE board_state SET data = ? WHERE key = 'welcome'").bind(JSON.stringify(w)).run();
+    }
+  } catch {}
   try { await moveVersions(DB, 'team', from, to); } catch {}
   try { await moveRequests(DB, from, to); } catch {}
   // A board member's board records follow them too: their sign-ins and what they did on the board page (Board →

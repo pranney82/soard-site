@@ -61,6 +61,20 @@ import { activityOverview, memberActivity } from './_board-activity.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
 
+/**
+ * Who has had the sign-in email and whether one is going out, read in one query so both are from the same moment (a
+ * send that's put back can never show as done). `welcomeAt` orders it against other looks.
+ */
+async function welcomeNow(DB) {
+  let rows = [];
+  try { rows = (await DB.prepare("SELECT key, data, updated_at FROM board_state WHERE key IN ('welcome', 'welcome-sending')").all()).results || []; } catch { /* no board state yet */ }
+  const w = rows.find((r) => r.key === 'welcome');
+  const c = rows.find((r) => r.key === 'welcome-sending');
+  let welcome = {};
+  try { welcome = w ? JSON.parse(w.data) || {} : {}; } catch { /* a broken record reads as none */ }
+  return { welcome, welcomeSending: !!c && Date.now() - Date.parse(c.updated_at) < 2 * 60 * 1000, welcomeAt: Date.now() };
+}
+
 const fail = (error, status = 400, extra = {}) => Response.json({ ok: false, error, ...extra }, { status });
 const fromError = (err) => (err.status && err.status < 500 ? fail(err.message, err.status, err.current ? { current: err.current } : {}) : Response.json({ ok: false, error: err.message }, { status: 500 }));
 
@@ -85,6 +99,8 @@ export async function onRequestGet(context) {
     const { me, refused } = await gate(context);
     if (refused) return refused;
     if (q.has('numbers')) return Response.json({ ok: true, numbers: await liveNumbers(env) });
+    // Board access's quick look while a sign-in email is going out (and as the panel opens)
+    if (q.has('welcome')) return Response.json({ ok: true, ...(await welcomeNow(env.DB)) }, { headers: { 'Cache-Control': 'no-store' } });
     // One board member's sign-ins and what they did on the board page (Members → their row)
     if (q.has('activity') && !q.get('activity')) {
       const activity = await activityOverview(env.DB);
@@ -115,6 +131,9 @@ export async function onRequestGet(context) {
       ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome,
       // board@soardcharity.com following the board (_board-group.js)
       group,
+      // Who has had the sign-in email and whether one is going out right now (its claim, _board.js sendWelcome), from one
+      // moment: Board access says so instead of offering another
+      ...(await welcomeNow(env.DB)),
       // The Board folder in Google Drive Board reads, and how its last look went
       drive: env.GOOGLE_CALENDAR_KEY ? { ...drive, folder: settings.driveFolder || DEFAULT_DRIVE_FOLDER } : null,
       // For the one-time Google setup: the service account's client ID and its Cloud project (neither is secret),
@@ -293,16 +312,26 @@ export async function onRequestPost(context) {
       case 'send-welcome': {
         const admins = (await getSettings(env.DB)).admins;
         // Only once their codes will come: a member added minutes ago is put on Access's list now (not at the next
-        // heartbeat), and the list has to be on the admin app
-        if (!body.test && accessConfigured(env)) {
+        // heartbeat), and the list has to be on the admin app. Checked inside the send's claim, so the page shows it going out
+        const check = body.test || !accessConfigured(env) ? null : async () => {
           let st = await accessStatus(env);
           if (!st.current || !st.ok) st = await syncBoardAccess(env);
-          if (!st.ok) return Response.json({ ok: false, error: `Cloudflare doesn’t have the board’s addresses yet (${st.error || 'it didn’t answer'}), so their codes wouldn’t come. Try again in a minute.` }, { status: 503 });
-          if (!st.attached) return Response.json({ ok: false, error: 'The board’s sign-in list isn’t on the admin app in Cloudflare (the card above), so their codes wouldn’t come.' }, { status: 409 });
+          if (!st.ok) throw Object.assign(new Error(`Cloudflare doesn’t have the board’s addresses yet (${String(st.error || 'it didn’t answer').replace(/^Cloudflare \w+ \S+: /, '')}), so their codes wouldn’t come. Try again in a minute.`), { status: 503 });
+          if (!st.attached) throw Object.assign(new Error('The board’s sign-in list isn’t on the admin app in Cloudflare (Board access), so their codes wouldn’t come.'), { status: 409 });
+        };
+        let r;
+        try {
+          const going = sendWelcome(env, { to: body.test ? [me] : null, slugs: Array.isArray(body.slugs) ? body.slugs.map(String) : null, due: body.due === true, again: body.again === true, check, replyTo: admins, by: me });
+          // Finished even if the page goes away mid-send, so the emails and the record always match
+          context.waitUntil?.(going.catch(() => {}));
+          r = await going;
+        } catch (err) {
+          if (err.status) return Response.json({ ok: false, sent: 0, error: err.message }, { status: err.status });
+          throw err;
         }
-        const r = await sendWelcome(env, { to: body.test ? [me] : null, slugs: Array.isArray(body.slugs) ? body.slugs.map(String) : null, replyTo: admins, by: me });
         if (!body.test && r.sent) await audit(env, me, 'updated', `Board page sign-in email sent to ${r.sent} board members`);
-        return Response.json({ ok: r.failed === 0, ...r, ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
+        // Who has it now, with the answer: the page shows it even if its next look is dropped
+        return Response.json({ ok: r.failed === 0, ...r, ...(body.test ? {} : await welcomeNow(env.DB)), ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
       }
       case 'practice':
         return Response.json({ ok: true, meeting: await createPractice(env, { by: me }) });

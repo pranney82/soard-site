@@ -321,7 +321,8 @@ export const normEmail = (e) => {
   const x = String(e || '').trim().toLowerCase();
   return EMAIL_ALIASES[x] || x;
 };
-export const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '');
+// The mailer's own rule (_broadcast-notify.js isEmail): an address it would drop (kim@gmail.c, kim@example.net,) is never saved
+export const isEmail = (e) => /^(?!\.)(?!.*\.\.)(?!.*\.@)[^\s@<>()[\],;:"]+@[^\s@<>()[\],;:".]+(?:\.[^\s@<>()[\],;:".]+)*\.[^\s@<>()[\],;:".]{2,}$/.test(e || '');
 
 /**
  * The website's board (People → Board) with each member's private reveal email:

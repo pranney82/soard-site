@@ -9,6 +9,7 @@ import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { welcomeEmail, sendWelcome, saveMeeting, saveDoc } from '../functions/api/_board.js';
 import { readState } from '../functions/api/_board-roles.js';
+import { welcomeHad } from '../public/admin/board-shared.js';
 import { newMeeting, todayEastern, longDate } from '../public/admin/board-shared.js';
 
 const PEOPLE = [
@@ -131,6 +132,7 @@ test('a sender not on People is the one the invites come from; with no one to na
   assert.match(sent[0].from, /^"Jane Doe via SOARD Board" </, 'the founder titled President, as the invites');
   sent = [];
   await env.DB.prepare("DELETE FROM team WHERE \"group\" = 'team'").run();
+  await env.DB.prepare("DELETE FROM board_state WHERE key = 'welcome'").run(); // a board that hasn't had it (a second send skips who has)
   await sendWelcome(env, { by: 'someone@example.com' });
   assert.equal(sent.length, 2);
   assert.match(sent[0].from, /^SOARD Board </);
@@ -148,6 +150,7 @@ test('one member sent it on their own: their time is kept, and the board isn’t
   st = await readState(env.DB, 'welcome');
   assert.ok(st.sentAt && st.members['alex-rivera'] && st.members['sam-ortiz']);
   // Resend down: nobody got it, nothing is marked
+  await env.DB.prepare("DELETE FROM board_state WHERE key = 'welcome'").run();
   sent = [];
   globalThis.fetch = async () => new Response('down', { status: 500 });
   const before = JSON.stringify(await readState(env.DB, 'welcome'));
@@ -155,4 +158,124 @@ test('one member sent it on their own: their time is kept, and the board isn’t
   assert.equal(r.sent, 0);
   assert.equal(r.failed, 2);
   assert.equal(JSON.stringify(await readState(env.DB, 'welcome')), before);
+});
+
+test('nobody gets a second copy by accident: the board’s send skips who has it, a pick or “again” skips who had it in the last ten minutes, and a new address is due again', async () => {
+  const to = () => sent.map((m) => m.to).flat().sort();
+  await sendWelcome(env, { by: 'jane@soardcharity.com' });
+  assert.deepEqual(to(), ['alex.board@example.com', 'sam.board@example.org']);
+  sent = [];
+  // A second click, a slow page, two admins: the board's send again goes to nobody
+  const twice = await sendWelcome(env, { by: 'jane@soardcharity.com' });
+  assert.equal(twice.sent, 0);
+  assert.equal(twice.already, 2);
+  assert.equal(sent.length, 0);
+  // Someone picked, or everyone again, minutes later: still nobody
+  assert.equal((await sendWelcome(env, { slugs: ['sam-ortiz'], by: 'jane@soardcharity.com' })).sent, 0);
+  assert.equal((await sendWelcome(env, { again: true, by: 'jane@soardcharity.com' })).sent, 0);
+  assert.equal(sent.length, 0);
+  // Ten minutes on: the pick goes, and so does everyone again
+  const st = await readState(env.DB, 'welcome');
+  const old = new Date(Date.now() - 11 * 60 * 1000).toISOString();
+  await env.DB.prepare("UPDATE board_state SET data = ? WHERE key = 'welcome'").bind(JSON.stringify({ ...st, members: { 'alex-rivera': old, 'sam-ortiz': old } })).run();
+  assert.equal((await sendWelcome(env, { slugs: ['sam-ortiz'], by: 'jane@soardcharity.com' })).sent, 1);
+  assert.deepEqual(to(), ['sam.board@example.org']);
+  sent = [];
+  assert.equal((await sendWelcome(env, { again: true, by: 'jane@soardcharity.com' })).sent, 1, 'everyone again: Alex, not Sam (just now)');
+  assert.deepEqual(to(), ['alex.board@example.com']);
+  sent = [];
+  // Alex's address corrected on People → Board: due again, and the board's send reaches only them
+  await env.DB.prepare("UPDATE reveal_board_emails SET email = ? WHERE slug = 'alex-rivera'").bind('alex.new@example.com').run();
+  assert.equal((await sendWelcome(env, { by: 'jane@soardcharity.com' })).sent, 1);
+  assert.deepEqual(to(), ['alex.new@example.com']);
+  assert.equal((await readState(env.DB, 'welcome')).addresses['alex-rivera'], 'alex.new@example.com');
+});
+
+test('one send at a time: two at once (another tab, the table during the panel’s) send once, and the second is turned away', async () => {
+  const [a, b] = await Promise.allSettled([sendWelcome(env, { by: 'jane@soardcharity.com' }), sendWelcome(env, { by: 'jane@soardcharity.com' })]);
+  const done = [a, b].filter((x) => x.status === 'fulfilled');
+  const away = [a, b].filter((x) => x.status === 'rejected');
+  assert.equal(done.length, 1);
+  assert.equal(away.length, 1);
+  assert.equal(away[0].reason.status, 409);
+  assert.match(away[0].reason.message, /Another sign-in email was going out at the same moment/);
+  assert.equal(sent.length, 2, 'each member once');
+  // The claim is let go: the next send runs (and finds everyone has it)
+  assert.equal((await sendWelcome(env, { by: 'jane@soardcharity.com' })).already, 2);
+});
+
+test('Resend not answering may still have sent it: counted as sent, so the next send doesn’t give anyone a second copy', async () => {
+  globalThis.fetch = async () => { throw new Error('The operation was aborted due to timeout'); };
+  const r = await sendWelcome(env, { by: 'jane@soardcharity.com' });
+  assert.equal(r.unsure, true);
+  assert.ok((await readState(env.DB, 'welcome')).members['alex-rivera']);
+  // Resend answering with an error is a sure failure: nothing marked (another board, fresh)
+  await env.DB.prepare("DELETE FROM board_state WHERE key = 'welcome'").run();
+  globalThis.fetch = async () => new Response(JSON.stringify({ message: 'The from address domain is not verified' }), { status: 422 });
+  const sure = await sendWelcome(env, { by: 'jane@soardcharity.com' });
+  assert.equal(sure.unsure, undefined);
+  assert.equal(sure.errors[0], 'Resend 422: The from address domain is not verified');
+  assert.deepEqual(await readState(env.DB, 'welcome'), {});
+});
+
+test('who has had it, one rule: their own send at the address it went to, else (before each was kept) the whole board’s', () => {
+  const alex = { slug: 'alex-rivera', email: 'alex@example.com' };
+  assert.equal(welcomeHad({ members: { 'alex-rivera': 't1' }, addresses: { 'alex-rivera': 'alex@example.com' } }, alex), 't1');
+  assert.equal(welcomeHad({ members: { 'alex-rivera': 't1' }, addresses: { 'alex-rivera': 'old@example.com' } }, alex), null, 'a corrected address is due again');
+  assert.equal(welcomeHad({ members: { 'alex-rivera': 't1' } }, alex), 't1', 'kept before addresses were');
+  assert.equal(welcomeHad({ sentAt: 't0', sent: 4 }, alex), null, 'only their own send counts');
+  assert.equal(welcomeHad({ sentAt: 't0', members: { 'sam-ortiz': 't2' } }, alex), null, 'once each is kept, only their own counts');
+  assert.equal(welcomeHad(null, alex), null);
+  assert.equal(welcomeHad({ members: { 'alex-old': 't3' }, addresses: { 'alex-old': 'alex@example.com' } }, alex), 't3', 'a renamed web address: the same email had it');
+});
+
+test('a catch-up never doubles: the board’s send (or a pick that’s due) skips who has it, however old the page or the record', async () => {
+  await sendWelcome(env, { slugs: ['sam-ortiz'], by: 'jane@soardcharity.com' });
+  // Long after (the ten minutes long gone), a stale page asks for everyone who hasn't had it, and a row's first send asks for Sam
+  const st = await readState(env.DB, 'welcome');
+  const old = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  await env.DB.prepare("UPDATE board_state SET data = ? WHERE key = 'welcome'").bind(JSON.stringify({ ...st, members: { 'sam-ortiz': old } })).run();
+  sent = [];
+  assert.equal((await sendWelcome(env, { by: 'jane@soardcharity.com' })).sent, 1, 'only Alex');
+  assert.deepEqual(sent.map((m) => m.to).flat(), ['alex.board@example.com']);
+  sent = [];
+  assert.equal((await sendWelcome(env, { slugs: ['sam-ortiz'], due: true, by: 'jane@soardcharity.com' })).already, 1, 'a due pick of someone who has it: nobody');
+  assert.equal(sent.length, 0);
+});
+
+test('an address the mailer can’t use is never counted as told, and is named; a pick of someone no longer on the board says so', async () => {
+  await env.DB.prepare("UPDATE reveal_board_emails SET email = ? WHERE slug = 'sam-ortiz'").bind('sam.board@gmail.c').run();
+  const r = await sendWelcome(env, { by: 'jane@soardcharity.com' });
+  assert.equal(r.sent, 1);
+  assert.deepEqual(r.unusable, ['Sam Ortiz']);
+  const st = await readState(env.DB, 'welcome');
+  assert.ok(st.members['alex-rivera'] && !st.members['sam-ortiz'], 'Sam isn’t counted as told');
+  await assert.rejects(sendWelcome(env, { slugs: ['sam-ortiz'], by: 'jane@soardcharity.com' }), /The email on People → Board for Sam Ortiz isn’t a whole address/);
+  await assert.rejects(sendWelcome(env, { slugs: ['someone-who-left'], by: 'jane@soardcharity.com' }), /They aren’t on People → Board with an email now/);
+});
+
+test('a gateway’s 502, 503 or 504 in front of Resend may still have sent it: counted as sent (Resend’s own error status is a sure no)', async () => {
+  globalThis.fetch = async () => new Response('Gateway Timeout', { status: 504 });
+  const r = await sendWelcome(env, { by: 'jane@soardcharity.com' });
+  assert.equal(r.unsure, true);
+  assert.ok((await readState(env.DB, 'welcome')).members['alex-rivera']);
+});
+
+test('a pick that reaches everyone left counts the board as told; until then it doesn’t', async () => {
+  await sendWelcome(env, { slugs: ['alex-rivera'], due: true, by: 'jane@soardcharity.com' });
+  assert.equal((await readState(env.DB, 'welcome')).sentAt, undefined);
+  await sendWelcome(env, { slugs: ['sam-ortiz'], due: true, by: 'jane@soardcharity.com' });
+  assert.ok((await readState(env.DB, 'welcome')).sentAt, 'everyone with an address has it now');
+});
+
+test('recorded before it goes: a send cut off midway counts as sent; a sure no from Resend puts the record back', async () => {
+  let seen = null;
+  globalThis.fetch = async (input, init = {}) => {
+    seen = await readState(env.DB, 'welcome'); // what's recorded while Resend has it
+    const b = JSON.parse(init.body);
+    sent.push(...b);
+    return Response.json({ data: b.map((_, i) => ({ id: `em_${i}` })) });
+  };
+  await sendWelcome(env, { by: 'jane@soardcharity.com' });
+  assert.ok(seen?.members?.['alex-rivera'] && seen.members['sam-ortiz'], 'already counted while it goes');
 });

@@ -13,6 +13,7 @@
 import { useState, useEffect, useRef, useMemo } from './vendor.js';
 import { html, call, ago, Face, firstOf } from './board-ui.js';
 import { meetingName, todayEastern, longDate, plural, fileTitle, answerOf, repliesOf, inviteOut, docsOf, itemFiles, looseFiles } from './board-shared.js';
+import { welcomeHad } from './board-shared.js';
 
 const DAYS = 35;
 const GAP_MS = 30 * 60_000; // one sitting: no gap longer than this (VISIT_GAP_MS on the server)
@@ -340,7 +341,9 @@ export function BoardActivity({ data, next, signDocs, ready, working, onWelcome 
   }, [asking]);
   const loaded = !!got?.ok;
   const act = got?.activity || {};
-  const sent = data.welcome?.members || {};
+  // Who has had the sign-in email: one rule with Board access and the server's send (board-shared.js welcomeHad)
+  const onBoard = data.members.map((x) => x.slug);
+  const sent = Object.fromEntries(data.members.map((p) => [p.slug, welcomeHad(data.welcome, p, onBoard)]).filter(([, at]) => at));
   const faces = new Map([...(data.people?.board || [])].map((p) => [p.slug, p]));
   const today = todayEastern();
   const meetingDays = useMemo(() => new Set((data.meetings || []).filter((m) => !m.notBoard && !m.practice).map((m) => m.date)), [data.meetings]);

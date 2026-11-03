@@ -25,6 +25,7 @@
  */
 
 import { accessToken } from './_google-calendar.js';
+import { isEmail } from './_broadcast-notify.js';
 import { activeBoard, boardAdmins, founderEmails, normEmail, peopleRows, privateEmails, readState, writeState, isStaffEmail } from './_board-roles.js';
 
 export const GROUP_EMAIL = 'board@soardcharity.com';
@@ -56,11 +57,11 @@ async function primaryOf(DB) {
 export async function groupWanted(DB) {
   const [board, admins, people, primary] = await Promise.all([activeBoard(DB), boardAdmins(DB), peopleRows(DB), primaryOf(DB)]);
   const byEmail = new Map();
-  for (const p of board) if (p.email) byEmail.set(primary(p.email), p.name);
+  for (const p of board) if (isEmail(p.email)) byEmail.set(primary(p.email), p.name);
   const founders = new Map(people.filter((p) => p.group !== 'board' && p.group !== 'advisory').map((p) => [String(p.name || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().match(/[a-z]+/)?.[0], p.name]));
   for (const e of admins) if (!byEmail.has(primary(e))) byEmail.set(primary(e), founders.get(e.split('@')[0]) || e);
   const members = [...byEmail].map(([email, name]) => ({ email, name })).sort((a, b) => a.email.localeCompare(b.email));
-  return { members, board: board.filter((p) => p.email).length, missing: board.filter((p) => !p.email).map((p) => ({ slug: p.slug, name: p.name })) };
+  return { members, board: board.filter((p) => isEmail(p.email)).length, missing: board.filter((p) => !isEmail(p.email)).map((p) => ({ slug: p.slug, name: p.name })) };
 }
 
 async function hashOf(emails) {
@@ -68,7 +69,7 @@ async function hashOf(emails) {
   return [...bytes.slice(0, 8)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** A Google error, with what would fix it: 'scope' (domain-wide delegation), 'api' (Admin SDK API off), 'admin' (not a Workspace admin), 'group' (no such group) */
+/** A Google error, with what would fix it: 'scope' (domain-wide delegation), 'api' (Admin SDK API off), 'admin' (not a Workspace admin), 'group' (no such group); 'empty' and 'outside' are set where they're found */
 function googleError(status, body) {
   const message = body?.error?.message || `HTTP ${status}`;
   const needs = /SERVICE_DISABLED|has not been used|is disabled/i.test(JSON.stringify(body?.error || {})) ? 'api'
@@ -116,6 +117,17 @@ async function listMembers(token, fetchImpl) {
   return out;
 }
 
+/** What didn't go through, each reason once: "Google didn’t take 5 changes: The service is currently unavailable (Alex Rivera, Sam Ortiz and 3 more)" */
+function failedText(failing) {
+  const by = new Map();
+  for (const f of failing) {
+    const why = /aborted|timed? ?out/i.test(f.error) ? 'no answer in time' : f.error.replace(/^Google: /, '').replace(/\.$/, '');
+    by.set(why, [...(by.get(why) || []), f.name || f.email]);
+  }
+  const some = (l) => (l.length > 3 ? `${l.slice(0, 2).join(', ')} and ${l.length - 2} more` : l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0]);
+  return `Google didn’t take ${failing.length === 1 ? 'a change' : `${failing.length} changes`}: ${[...by].map(([why, who]) => `${why} (${some(who)})`).join('; ')}`;
+}
+
 /** Only plain members who are people are the site's to remove: owners, managers, groups and the domain stay */
 const keptBySite = (m) => m.email && m.role === 'MEMBER' && (m.type === 'USER' || m.type === 'EXTERNAL');
 
@@ -128,15 +140,16 @@ export async function syncBoardGroup(env, { fetchImpl = fetch, now = Date.now() 
   const at = new Date(now).toISOString();
   const want = await groupWanted(env.DB);
   const hash = await hashOf(want.members.map((m) => m.email));
-  const fail = (err) => writeState(env.DB, KEY, { ...prev, ok: false, configured: true, triedHash: hash, error: err.message, needs: err.needs || null, failedAt: at });
+  // failingSince: when this run of failures began, so a passing outage reads as one
+  const fail = (err) => writeState(env.DB, KEY, { ...prev, ok: false, configured: true, triedHash: hash, error: err.message, needs: err.needs || null, failedAt: at, failingSince: prev.failingSince || at });
   if (!env.GOOGLE_CALENDAR_KEY) return { ...prev, ok: false, configured: false };
-  if (!want.board) return fail(new Error('People → Board has nobody with an email, so the group was left as it is'));
+  if (!want.board) return fail(Object.assign(new Error('People → Board has nobody with an email, so the group was left as it is'), { needs: 'empty' }));
 
   // The founder that worked last time, then staff sign-in's, then each founder: only "not a Workspace admin" is worth trying the next one for
   let staffSubject = '';
   try { staffSubject = JSON.parse((await env.DB.prepare("SELECT data FROM staff_state WHERE key = 'directory'").first())?.data || '{}').subject || ''; } catch { /* not read yet */ }
   const subjects = [...new Set([prev.subject, staffSubject, ...founderEmails(await peopleRows(env.DB))].filter(Boolean))];
-  if (!subjects.length) return fail(new Error('No founder on People → Team to ask Google as'));
+  if (!subjects.length) return fail(Object.assign(new Error('No founder on People → Team to ask Google as'), { needs: 'founder' }));
   let token = null, subject = null, current = null, lastErr = null;
   for (const s of subjects) {
     try { token = await groupToken(env, s, { fetchImpl, now }); current = await listMembers(token, fetchImpl); subject = s; break; } catch (err) { lastErr = err; if (err.needs !== 'admin') break; }
@@ -181,8 +194,8 @@ export async function syncBoardGroup(env, { fetchImpl = fetch, now = Date.now() 
     owners: current.filter((m) => m.role !== 'MEMBER').length,
     // Caught up only when everything went: anything left is tried again
     hash: failing.length || more ? prev.hash || null : hash, triedHash: more ? null : hash,
-    syncedAt: at, failedAt: failing.length ? at : null,
-    error: failing.length ? `${failing.length === 1 ? 'One change' : `${failing.length} changes`} didn’t go through: ${failing.map((f) => `${f.name || f.email} (${f.error.replace(/^Google: /, '')})`).join(' · ')}` : null,
+    syncedAt: at, failedAt: failing.length ? at : null, failingSince: failing.length ? prev.failingSince || at : null,
+    error: failing.length ? failedText(failing) : null,
     needs: outsideRefused ? 'outside' : null,
     failing, changes,
     names: [...new Map([...(prev.names || []), ...removed.map((m) => [m.email, m.name]), ...want.members.map((m) => [m.email, m.name])].filter(([, n]) => n))].slice(-60),
@@ -196,7 +209,7 @@ export async function groupStatus(env) {
   return {
     group: GROUP_EMAIL,
     configured: Boolean(env.GOOGLE_CALENDAR_KEY),
-    ok: !!state.ok, syncedAt: state.syncedAt || null, failedAt: state.failedAt || null,
+    ok: !!state.ok, syncedAt: state.syncedAt || null, failedAt: state.failedAt || null, failingSince: state.ok ? null : state.failingSince || state.failedAt || null,
     error: state.ok ? null : state.error || null, needs: state.ok ? null : state.needs || null,
     current: state.hash === hash, members: state.members ?? null, owners: state.owners ?? 0,
     wanted: want.members.length, board: want.board, missing: want.missing,
@@ -215,7 +228,9 @@ export async function maybeSyncBoardGroup(env, { fetchImpl = fetch, now = Date.n
     const state = await readState(env.DB, KEY);
     const hash = await hashOf((await groupWanted(env.DB)).members.map((m) => m.email));
     const last = Date.parse((state.ok ? state.syncedAt : state.failedAt) || '') || 0;
-    const due = state.triedHash !== hash || now - last >= (state.ok ? RECHECK_MS : RETRY_MS);
+    // A young outage (Google erring, nothing to set) is asked again at each look for its first half hour, as the panel says
+    const young = !state.ok && !state.needs && state.failingSince && now - Date.parse(state.failingSince) < RETRY_MS;
+    const due = state.triedHash !== hash || now - last >= (state.ok ? RECHECK_MS : young ? LOOK_MS : RETRY_MS);
     return due ? await syncBoardGroup(env, { fetchImpl, now }) : null;
   } catch (err) {
     console.error('[board-group]', err.message);
