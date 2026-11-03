@@ -794,6 +794,7 @@ try {
   const draftFiles = () => d1(`SELECT files FROM application_drafts WHERE id = '${tok}'`) || '';
   await tap('[data-field="photoChild"] [data-act="remove"]');
   ok(/Photo removed/.test(await status('photoChild')) && await visible('[data-field="photoChild"] [data-act="undo"]') && await page.evaluate(() => document.activeElement?.dataset.act === 'undo'), 'Remove: "Photo removed." with Undo, the keys on it');
+  await sleep(400); // (Undo sits where Remove was: a press within a third of a second is Remove's double press)
   await tap('[data-field="photoChild"] [data-act="undo"]');
   ok(await page.$eval('[data-field="photoChild"] .af-upload', (e) => e.dataset.state) === 'done' && !(await visible('[data-field="photoChild"] [data-act="undo"]')), 'Undo: the photo is back');
   if (PAGES_DIR) ok(/photoChild/.test(draftFiles()), 'and the server kept it');
@@ -801,6 +802,17 @@ try {
   await sleep(8800);
   ok(!(await visible('[data-field="photoChild"] [data-act="undo"]')) && /No photo yet/.test(await status('photoChild')), `a moment on, Undo goes (${await status('photoChild')})`);
   if (PAGES_DIR) ok(!/photoChild/.test(draftFiles()), 'and the server lets the photo go');
+  await (await page.$('#af-photoChild')).uploadFile(PHOTO);
+  await page.waitForFunction(() => document.querySelector('[data-field="photoChild"] .af-upload')?.dataset.state === 'done', { timeout: 20000 });
+  // Removed with the connection down: the server lets it go once it's back (it kept it, and sent it with the application)
+  await cdp.send('Network.emulateNetworkConditions', { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  await tap('[data-field="photoChild"] [data-act="remove"]');
+  await sleep(8800);
+  const topSave = () => page.$eval('[data-top] [data-save-state]', (e) => e.textContent).catch(() => '');
+  ok(/offline/i.test(await topSave()), `removed offline: the bar says it isn't saved yet (${await topSave()})`);
+  await cdp.send('Network.emulateNetworkConditions', { offline: false, latency: 0, downloadThroughput: -1, uploadThroughput: -1 });
+  await page.waitForFunction(() => /saved/i.test(document.querySelector('[data-top] [data-save-state]')?.textContent || ''), { timeout: 20000 }).catch(() => {});
+  if (PAGES_DIR) ok(!/photoChild/.test(draftFiles()), `and once it's back, the server lets the photo go (${await topSave()})`);
   await (await page.$('#af-photoChild')).uploadFile(PHOTO);
   await page.waitForFunction(() => document.querySelector('[data-field="photoChild"] .af-upload')?.dataset.state === 'done', { timeout: 20000 });
   // Another photo over it that doesn't go: its words say "Try again", and the button is there

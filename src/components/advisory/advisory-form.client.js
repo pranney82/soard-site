@@ -64,7 +64,7 @@ export function initAdvisoryForm() {
     stage: $('adv-stage'), stepText: $('adv-step-text'), part: $('adv-part'), title: $('adv-title'), live: $('adv-live'),
     top: root.querySelector('[data-adv-top]'), segs: [...root.querySelectorAll('.adv-seg')], exit: $('adv-exit'),
     hub: $('adv-hub'), hubTitle: $('adv-hub-title'), hubLead: $('adv-hub-lead'), go: $('adv-go'), goLabel: $('adv-go-label'),
-    startOver: $('adv-start-over'), hubRows: [...root.querySelectorAll('.adv-hub-row')],
+    startOver: $('adv-start-over'), hubLive: $('adv-hub-live'), hubRows: [...root.querySelectorAll('.adv-hub-row')],
     review: $('adv-review'), reviewAll: $('adv-review-all'), done: $('adv-done'),
   };
   const titles = [...ADVISORY_STEPS.map((s) => s.title), 'Review and send'];
@@ -98,6 +98,7 @@ export function initAdvisoryForm() {
   let turnstileKey = null;
   let turnstileToken = null;
   let sending = false;
+  let clearedThere = false; // Start over pressed in another tab: the overview here says why its answers went
   let restored = false;
   let typedHere = false; // something typed or picked on this visit (not the browser filling boxes from its history)
 
@@ -197,59 +198,81 @@ export function initAdvisoryForm() {
     const gap = parseFloat(getComputedStyle(el).rowGap) || 0;
     const join = (a, b) => (a && b ? a + gap + b : a + b);
     tucked.forEach((k) => { k.hidden = true; });
-    const blocks = [];
+    const hOf = new Map(kids.map((k, j) => [k, h[j]]));
+    const followUp = (k) => !!(k.matches('[data-field]') && ADVISORY_FIELDS.find((x) => x.id === k.dataset.field)?.showIf);
     // Questions of one group (the reference's name, how they know you, email, phone) share a screen while they fit one
     const groupOf = (k) => idsOf(k).map((x) => ADVISORY_FIELDS.find((y) => y.id === x)?.group).find(Boolean) || null;
-    kids.forEach((k, j) => {
-      const f = k.matches('[data-field]') ? ADVISORY_FIELDS.find((x) => x.id === k.dataset.field) : null;
-      const g = groupOf(k);
-      // A follow-up shows on its question's screen when the two fit one together (its question may sit a
-      // piece back, a pair split on a phone: they join); else it's the next screen's
-      const lead = f?.showIf ? blocks.findIndex((b) => Object.keys(f.showIf).some((x) => b.ids.has(x))) : -1;
-      const together = lead >= 0 && join(blocks.slice(lead).reduce((t, b) => join(t, b.h), 0), h[j]) <= fit;
-      if (lead >= 0 && lead < blocks.length - 1 && together) {
-        const [first, ...rest] = blocks.splice(lead);
-        for (const b of rest) { first.kids.push(...b.kids); first.h = join(first.h, b.h); b.ids.forEach((x) => first.ids.add(x)); }
-        first.carry = false;
-        blocks.push(first);
-      }
-      const prev = blocks[blocks.length - 1];
-      const follows = prev && (!h[j] || k.matches('.adv-date') || (f?.showIf && together && Object.keys(f.showIf).some((x) => prev.ids.has(x)))
-        || (g && prev.group === g && join(prev.h, h[j]) <= fit));
-      if (prev && (follows || prev.carry)) {
-        prev.kids.push(k); prev.h = join(prev.h, h[j]);
-        prev.group = g || prev.group;
-        idsOf(k).forEach((x) => prev.ids.add(x));
-        prev.carry = prev.carry && !h[j];
-        return;
-      }
-      // The step's intro leads into what follows, when both fit a screen together
-      blocks.push({ kids: [k], h: h[j], ids: new Set(idsOf(k)), group: g, carry: k.matches('.adv-intro') && h[j] < fit * 0.5 && join(h[j], h[j + 1] || 0) <= fit });
-    });
-    let n = 0;
-    let acc = -1;
-    for (const b of blocks) { if (acc < 0 || join(acc, b.h) > fit) { n++; acc = b.h; } else acc = join(acc, b.h); }
-    if (n <= 1) return [kids];
-    // The most even split into that many screens (none over the room unless one piece is)
-    const B = blocks.length;
-    const cost = (x, y) => blocks.slice(x, y).reduce((t, b) => join(t, b.h), 0);
-    const best = Array.from({ length: n + 1 }, () => Array(B + 1).fill(Infinity));
-    const cut = Array.from({ length: n + 1 }, () => Array(B + 1).fill(0));
-    best[0][0] = 0;
-    for (let k = 1; k <= n; k++) {
-      for (let y = k; y <= B; y++) {
-        for (let x = k - 1; x < y; x++) {
-          const c = cost(x, y);
-          if (c > fit && y - x > 1) continue; // only a piece taller than the room may have a screen over it
-          const v = best[k - 1][x] + c * c;
-          if (v < best[k][y]) { best[k][y] = v; cut[k][y] = x; }
+    const split = (list) => {
+      const blocks = [];
+      list.forEach((k, j) => {
+        const hj = hOf.get(k);
+        const f = k.matches('[data-field]') ? ADVISORY_FIELDS.find((x) => x.id === k.dataset.field) : null;
+        const g = groupOf(k);
+        // A follow-up shows on its question's screen when the two fit one together (its question may sit a
+        // piece back, a pair split on a phone: they join); else it's the next screen's
+        const lead = f?.showIf ? blocks.findIndex((b) => Object.keys(f.showIf).some((x) => b.ids.has(x))) : -1;
+        const together = lead >= 0 && join(blocks.slice(lead).reduce((t, b) => join(t, b.h), 0), hj) <= fit;
+        if (lead >= 0 && lead < blocks.length - 1 && together) {
+          const [first, ...rest] = blocks.splice(lead);
+          for (const b of rest) { first.kids.push(...b.kids); first.h = join(first.h, b.h); b.ids.forEach((x) => first.ids.add(x)); }
+          first.carry = false;
+          blocks.push(first);
+        }
+        const prev = blocks[blocks.length - 1];
+        const follows = prev && (!hj || k.matches('.adv-date') || (f?.showIf && together && Object.keys(f.showIf).some((x) => prev.ids.has(x)))
+          || (g && prev.group === g && join(prev.h, hj) <= fit));
+        if (prev && (follows || prev.carry)) {
+          prev.kids.push(k); prev.h = join(prev.h, hj);
+          prev.group = g || prev.group;
+          idsOf(k).forEach((x) => prev.ids.add(x));
+          prev.carry = prev.carry && !hj;
+          return;
+        }
+        // The step's intro leads into what follows, when both fit a screen together
+        const next = list[j + 1];
+        blocks.push({ kids: [k], h: hj, ids: new Set(idsOf(k)), group: g, carry: k.matches('.adv-intro') && hj < fit * 0.5 && join(hj, next ? hOf.get(next) : 0) <= fit });
+      });
+      let n = 0;
+      let acc = -1;
+      for (const b of blocks) { if (acc < 0 || join(acc, b.h) > fit) { n++; acc = b.h; } else acc = join(acc, b.h); }
+      if (n <= 1) return [list];
+      // The most even split into that many screens (none over the room unless one piece is)
+      const B = blocks.length;
+      const cost = (x, y) => blocks.slice(x, y).reduce((t, b) => join(t, b.h), 0);
+      const best = Array.from({ length: n + 1 }, () => Array(B + 1).fill(Infinity));
+      const cut = Array.from({ length: n + 1 }, () => Array(B + 1).fill(0));
+      best[0][0] = 0;
+      for (let k = 1; k <= n; k++) {
+        for (let y = k; y <= B; y++) {
+          for (let x = k - 1; x < y; x++) {
+            const c = cost(x, y);
+            if (c > fit && y - x > 1) continue; // only a piece taller than the room may have a screen over it
+            const v = best[k - 1][x] + c * c;
+            if (v < best[k][y]) { best[k][y] = v; cut[k][y] = x; }
+          }
         }
       }
+      if (!Number.isFinite(best[n][B])) return [list];
+      const screens = [];
+      for (let k = n, y = B; k > 0; k--) { const x = cut[k][y]; screens.unshift(blocks.slice(x, y).flatMap((b) => b.kids)); y = x; }
+      return screens;
+    };
+    const asked = (plan) => plan.filter((sc) => sc.some((k) => !followUp(k))).length; // screens while no follow-up is asked
+    const kept = split(kids);
+    // Room held for a follow-up can cost a screen while it isn't asked ("Your interest" in three, two of them one
+    // question each): the screens without it, each follow-up then beside its question or on the screen after it
+    if (!kids.some(followUp)) return kept;
+    const plan = split(kids.filter((k) => !followUp(k)));
+    for (const k of kids.filter(followUp)) {
+      const f = ADVISORY_FIELDS.find((x) => x.id === k.dataset.field);
+      const at = plan.findIndex((sc) => sc.some((x) => idsOf(x).some((id) => Object.keys(f.showIf).includes(id))));
+      if (at < 0) return kept;
+      const on = plan[at].reduce((t, x) => join(t, hOf.get(x)), 0);
+      if (join(on, hOf.get(k)) <= fit) plan[at].push(k);
+      else plan.splice(at + 1, 0, [k]);
     }
-    if (!Number.isFinite(best[n][B])) return [kids];
-    const screens = [];
-    for (let k = n, y = B; k > 0; k--) { const x = cut[k][y]; screens.unshift(blocks.slice(x, y).flatMap((b) => b.kids)); y = x; }
-    return screens;
+    const inOrder = (plan) => plan.flat().every((k, j, all) => !j || (all[j - 1].compareDocumentPosition(k) & Node.DOCUMENT_POSITION_FOLLOWING));
+    return asked(plan) < asked(kept) && inOrder(plan) ? plan : kept;
   }
   const screensIn = (i) => packs[i]?.length || 1;
   // A screen holding only a follow-up that isn't asked (its answer wasn't the one) is passed by
@@ -414,7 +437,8 @@ export function initAdvisoryForm() {
     ui.hubLead.textContent = was ? `It arrived on ${on}, and we’ll be in touch by email.`
       : !canKeep ? (started ? 'This browser blocks saving, so your answers are only on this page until you send them.' : 'Have a reference in mind. This browser blocks saving, so plan to finish in one sitting.')
         : started ? (doneCount === total ? 'Every step is done. Look it over and send it.' : `${doneCount} of ${total + 1} steps done. Pick up where you left off.`)
-          : 'Have a reference in mind. Your answers save on this device as you go.';
+          : clearedThere ? 'Your answers were deleted: Start over was pressed in another tab. Start again whenever you’re ready.'
+            : 'Have a reference in mind. Your answers save on this device as you go.';
     ui.goLabel.textContent = was ? 'Start a new application' : !started ? 'Start the application' : doneCount === total ? 'Review and send' : 'Continue where you left off';
     const cta = document.querySelector('[data-adv-cta]'); // the hero's button says the same
     if (cta && cta.textContent !== ui.goLabel.textContent) cta.textContent = ui.goLabel.textContent;
@@ -551,6 +575,7 @@ export function initAdvisoryForm() {
   }
   function armTrap() { if (!depth) pushLoc(); }
   function begin(i = null) {
+    clearedThere = false;
     if (!focused) {
       focused = true;
       root.classList.add('is-focus');
@@ -571,9 +596,9 @@ export function initAdvisoryForm() {
     step = -1; // a step put on screen afresh
     go(target, { screen }).then(() => (depth ? replaceLoc() : pushLoc()));
   }
-  function exitFocus({ fromPop = false } = {}) {
+  function exitFocus({ fromPop = false, keep = true } = {}) {
     if (!focused) return;
-    saveNow();
+    if (keep) saveNow();
     if (step >= 0 && step < total) resumeAt = { step, screen: screenNo }; // "Continue where you left off": this screen
     // Left by the browser's Back (a screen at a time, back to the first): the furthest step they'd reached instead
     // (kept with the answers too: after they've been to another page and come back, it's still there)
@@ -593,13 +618,22 @@ export function initAdvisoryForm() {
     pageAt = 0;
     restored = restored || furthest > 0;
     paint();
+    // The overview (or the thank-you) just under the site's header, and again a frame on: the thank-you's card
+    // settles a frame late (it was over the header's bottom edge)
+    const land = () => {
+      const el = sent ? ui.done : document.getElementById('application');
+      const off = (el?.getBoundingClientRect().top || 0) - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 84) - 16;
+      if (Math.abs(off) > 1) window.scrollTo({ top: Math.max(0, window.scrollY + off), behavior: 'auto' });
+    };
     requestAnimationFrame(() => {
-      const app = document.getElementById('application');
-      const top = Math.max(0, (app?.getBoundingClientRect().top || 0) + window.scrollY - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 84) - 16);
-      window.scrollTo({ top, behavior: 'auto' });
+      land();
       (sent ? ui.done : ui.hubTitle).focus({ preventScroll: true });
+      requestAnimationFrame(land);
     });
   }
+  // A press while a new screen slides in lands on the browser's slide, not the page: it's no press (as Continue's
+  // isn't), so it leaves the keys where they were, not on the page with nothing focused
+  document.addEventListener('mousedown', (e) => { if (focused && performance.now() < calmUntil) e.preventDefault(); }, { capture: true, signal });
   const keysFirst = () => matchMedia('(pointer: fine)').matches && !matchMedia('(any-pointer: coarse)').matches;
   /** The screen's first question when it's a box to type in, still empty */
   function firstBox() {
@@ -789,7 +823,8 @@ export function initAdvisoryForm() {
     furthest = Math.max(furthest, Math.min(REVIEW, Number(there?.furthest) || 0));
     write({ answers, step: Math.min(step, REVIEW), screen: screenNo, furthest, startedAt: Math.min(startedAt, Number(there?.startedAt) || startedAt), savedAt: Date.now() });
     takeTheirs(answers, now);
-    ui.saved.textContent = canKeep ? 'Saved on this device' : 'Not saved: this browser blocks it';
+    const said = canKeep ? 'Saved on this device' : 'Not saved: this browser blocks it';
+    if (ui.saved.textContent !== said) ui.saved.textContent = said; // (heard once, not at every pause in typing)
   }
   const same = (x, y) => JSON.stringify(x ?? '') === JSON.stringify(y ?? '');
   /** Answers another tab saved, shown here where this one hasn't changed them since */
@@ -817,6 +852,7 @@ export function initAdvisoryForm() {
   window.addEventListener('storage', (e) => {
     if (sent || e.storageArea !== localStorage) return;
     if (e.key === SENT && e.newValue) { sentElsewhere(); return; }
+    if (e.key === STORE && !e.newValue && e.oldValue) { overElsewhere(); return; }
     if (e.key !== STORE || !e.newValue) return;
     const there = read();
     if (!there?.answers) return;
@@ -1138,6 +1174,17 @@ export function initAdvisoryForm() {
     const all = problemsOn(step);
     const problems = Object.fromEntries(Object.entries(all).filter(([id]) => here.has(id)));
     if (Object.keys(problems).length) { showProblems(problems); return; }
+    // Working through the answers it said need a look: Continue goes to the next of them still wrong (on a screen
+    // after this one, else back to the first), not on past them
+    const flagged = stillWrong().filter((id) => all[id] && !here.has(id));
+    if (flagged.length) {
+      const to = flagged.find((id) => screenOf(step, id) > screenNo) || flagged[0];
+      const on = screenOf(step, to) > screenNo;
+      showProblems(Object.fromEntries(flagged.map((id) => [id, all[id]])), { focus: false });
+      focusField(to);
+      if (on) pushLoc(); else replaceLoc();
+      return;
+    }
     const lastHere = !screenAhead();
     // Leaving the step (on, or back to the review): an answer still wrong on another of its screens is gone to
     // first, never left behind (the review would only send them back to it)
@@ -1182,6 +1229,12 @@ export function initAdvisoryForm() {
     ui.review.inert = true; // its Edit buttons wait: a change made now wouldn't be sent, and the thank-you would cover it
     ui.exit.disabled = true; // the way out waits while it sends ("Look it over and send it" while it was going was wrong)
     ui.next.textContent = 'Sending…';
+    // A connection that stalls: said that it's still going (not given up on: it may have arrived)
+    const slow = setTimeout(() => {
+      if (!sending) return;
+      ui.next.textContent = 'Still sending…';
+      if (ui.live) { ui.live.textContent = ''; setTimeout(() => { ui.live.textContent = 'Still sending. This is taking longer than usual; please keep this page open.'; }, 40); }
+    }, 15000);
     try {
       // No connection: said in words, not the browser's ("Failed to fetch", "Load failed")
       const res = await fetch(API, {
@@ -1226,6 +1279,7 @@ export function initAdvisoryForm() {
         if (over > 0) window.scrollBy({ top: over, behavior: 'auto' });
       });
     } finally {
+      clearTimeout(slow);
       sending = false;
       ui.exit.disabled = false;
       ui.review.inert = false;
@@ -1236,7 +1290,7 @@ export function initAdvisoryForm() {
   function markSent({ first = '', elsewhere = false } = {}) {
     sent = true;
     clearTimeout(saveTimer);
-    if (!elsewhere) { write(null); sentStore.set(Date.now()); }
+    if (!elsewhere) { sentStore.set(Date.now()); write(null); } // (in this order: another tab hears it was sent, not started over)
     ui.saved.textContent = '';
     session.set(false);
     form.hidden = true;
@@ -1265,6 +1319,7 @@ export function initAdvisoryForm() {
     window.onAdvisoryTurnstile = () => {
       window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
         sitekey: turnstileKey,
+        language: 'en', // the page's language, not the browser's
         callback: (t) => { turnstileToken = t; turnstileFailed = false; turnstileWaiting.splice(0).forEach((r) => r()); if (/robot|quick check/.test(ui.sendError.textContent)) ui.sendError.hidden = true; },
         // It couldn't pass at all (it tries again by itself): said so, with a way forward
         'error-callback': () => { turnstileFailed = true; turnstileWaiting.splice(0).forEach((r) => r()); },
@@ -1306,17 +1361,27 @@ export function initAdvisoryForm() {
   }
   synced = collect();
   let startOverArmed = 0;
+  const hubSay = (words) => { if (ui.hubLive) { ui.hubLive.textContent = ''; setTimeout(() => { ui.hubLive.textContent = words; }, 40); } };
   ui.startOver.addEventListener('click', () => {
     // Deleting every answer takes a second tap (it sits by "Continue where you left off": one slip shouldn't do it)
     if (Date.now() > startOverArmed) {
       startOverArmed = Date.now() + 5000;
       ui.startOver.textContent = 'Tap again to delete your answers';
+      hubSay('Press Start over again to delete your answers.'); // (a focused button's new name isn't read out)
       setTimeout(() => { if (Date.now() > startOverArmed) ui.startOver.textContent = 'Start over'; }, 5100);
       return;
     }
     startOverArmed = 0;
     ui.startOver.textContent = 'Start over';
     write(null);
+    clearAll();
+    hubSay('Your answers were deleted.');
+    ui.hubTitle.focus({ preventScroll: true });
+  });
+  /** Every answer gone, the overview as at the start */
+  function clearAll() {
+    clearTimeout(saveTimer);
+    saveTimer = null;
     form.reset();
     synced = collect();
     step = 0;
@@ -1329,8 +1394,16 @@ export function initAdvisoryForm() {
     ui.saved.textContent = '';
     follow();
     paint();
-    ui.hubTitle.focus({ preventScroll: true });
-  });
+  }
+  /** Start over in another tab of this device: here too, never saved back over it (this tab's answers were the same) */
+  function overElsewhere() {
+    if (sending) return;
+    const wasIn = focused;
+    if (wasIn) exitFocus({ keep: false });
+    clearedThere = true;
+    clearAll();
+    if (wasIn || document.visibilityState === 'visible') hubSay(ui.hubLead.textContent);
+  }
   follow();
   paint();
   // A reload mid-application goes straight back to it; a tap on Start made while this script was loading

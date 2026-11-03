@@ -110,6 +110,7 @@ const logo = 'brand-logo-light-bg-display';
         <div class="adv-hub-go-row">
           <button type="button" class="btn btn-primary adv-hub-go" id="adv-go"><span id="adv-go-label">Start the application</span><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 3.5L10.5 8 6 12.5" /></svg></button>
           <button type="button" class="adv-linkbtn" id="adv-start-over" hidden>Start over</button>
+          <span class="sr-only" id="adv-hub-live" aria-live="polite"></span>
         </div>
         <ol class="adv-hub-list" id="adv-hub-list">
           {[...ADVISORY_STEPS.map((s) => s.title), 'Review and send'].map((t, i) => (
@@ -214,7 +215,7 @@ const logo = 'brand-logo-light-bg-display';
   .hero-trust { display: flex; gap: 12px 22px; flex-wrap: wrap; }
   .hero-trust-item { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--c-text-muted); }
   .hero-trust-item[hidden] { display: none; }
-  .hero-trust-item a { color: inherit; text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+  .hero-trust-item a { display: inline-flex; align-items: center; color: inherit; text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; }
   .hero-trust-icon { width: 16px; height: 16px; flex-shrink: 0; }
   .hero-photo-wrap { position: relative; max-width: 360px; justify-self: end; width: 100%; }
   .hero-frame { position: relative; border-radius: 24px; overflow: hidden; aspect-ratio: 4 / 5; background-size: cover; background-position: center; box-shadow: 0 32px 80px rgba(0,0,0,0.12), 0 8px 24px rgba(0,0,0,0.06); }

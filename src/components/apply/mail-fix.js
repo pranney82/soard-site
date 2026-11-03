@@ -1,6 +1,6 @@
 /**
- * A likely typo in an email address's provider ("name@gmial.com", "name@yahoo.con"): the address it
- * was probably meant to be, else null. Shared by the family, organization and Advisory Board forms.
+ * A likely typo in an email address's provider ("name@gmial.com", "name@yahoo.con") or an accent before
+ * its @ ("maría@gmail.com"): the address it was probably meant to be, else null. Shared by the family, organization and Advisory Board forms.
  */
 const MAIL_HOSTS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icloud.com', 'aol.com', 'comcast.net', 'att.net', 'bellsouth.net', 'live.com', 'msn.com', 'me.com', 'ymail.com', 'sbcglobal.net', 'verizon.net', 'charter.net', 'protonmail.com', 'mac.com', 'yahoo.com.mx', 'hotmail.es', 'outlook.es', 'yahoo.es',
   // Real providers that sit a letter or two from the big ones (mail.com is not a typo of gmail.com)
@@ -18,6 +18,39 @@ function editDistance(a, b) { // with a swap of two letters counting as one
   }
   return d[a.length][b.length];
 }
+/** A label as the browser keeps it, back in its own letters (Chrome keeps "gmaíl" as "xn--gmal-xpa"): RFC 3492 */
+function punyDecode(code) {
+  const digit = (c) => (c >= 48 && c <= 57 ? c - 22 : c >= 65 && c <= 90 ? c - 65 : c >= 97 && c <= 122 ? c - 97 : 36);
+  const adapt = (delta, points, first) => {
+    let d = first ? Math.floor(delta / 700) : delta >> 1;
+    d += Math.floor(d / points);
+    let k = 0;
+    for (; d > 455; k += 36) d = Math.floor(d / 35);
+    return k + Math.floor((36 * d) / (d + 38));
+  };
+  const cut = code.lastIndexOf('-');
+  const out = cut > 0 ? [...code.slice(0, cut)].map((c) => c.codePointAt(0)) : [];
+  let n = 128;
+  let i = 0;
+  let bias = 72;
+  for (let at = cut > 0 ? cut + 1 : 0; at < code.length;) {
+    const was = i;
+    for (let w = 1, k = 36; ; k += 36) {
+      if (at >= code.length) return null;
+      const d = digit(code.charCodeAt(at++));
+      if (d >= 36) return null;
+      i += d * w;
+      const t = k <= bias ? 1 : k >= bias + 26 ? 26 : k - bias;
+      if (d < t) break;
+      w *= 36 - t;
+    }
+    bias = adapt(i - was, out.length + 1, was === 0);
+    n += Math.floor(i / (out.length + 1));
+    i %= out.length + 1;
+    out.splice(i++, 0, n);
+  }
+  return n > 0x10ffff ? null : String.fromCodePoint(...out);
+}
 export function mailFix(v) {
   const raw = String(v || '').trim();
   // A comma or period left on the end ("ana@example.com," from a contacts list), or "..": the address without it
@@ -25,7 +58,10 @@ export function mailFix(v) {
   if (tidy !== raw && /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(tidy)) return mailFix(tidy) || tidy;
   const m = /^([^\s@]+)@([^\s@]+)$/.exec(raw);
   if (!m) return null;
-  const host = m[2].toLowerCase();
+  const host = m[2].toLowerCase().split('.').map((l) => (l.startsWith('xn--') && punyDecode(l.slice(4))) || l).join('.');
+  // An accent before the @ ("maría@gmail.com"): mail providers take plain letters only, so mail to it never arrives
+  const plain = m[1].normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (plain !== m[1] && /^[\x21-\x7e]+$/.test(plain)) return mailFix(`${plain}@${host}`) || `${plain}@${host}`;
   if (MAIL_HOSTS.includes(host)) return null;
   let best = null;
   let bestD = Infinity;

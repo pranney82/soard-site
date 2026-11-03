@@ -22,10 +22,13 @@ export const AREA_VALUES = {
 };
 
 /** A web address as people type one ("soard.org", "www.example.org/about", with or without https://) */
+const WEB_LABEL = '[\\p{L}\\p{N}](?:[\\p{L}\\p{N}-]*[\\p{L}\\p{N}])?'; // (a name in any letters: "bücher.de")
+const WEB_END = '(?:\\p{L}{2,}|xn--[a-z0-9-]+)\\.?'; // the ending, and a period after it ("ourschool.org.") still the address
+const WEB_WHOLE = new RegExp(`^(?:https?:\\/\\/)?${WEB_LABEL}(?:\\.${WEB_LABEL})*\\.${WEB_END}(?::\\d{2,5})?(?:[/?#]\\S*)?$`, 'iu');
+const WEB_NAMED = new RegExp(`^[^/?#:]+\\.${WEB_END}(?:[:/?#]|$)`, 'iu');
 export const isWebAddress = (s) => {
   const v = String(s || '').trim();
   // ("www.example", the ending forgotten, isn't one: past "www." it still needs a name and an ending; an email
   // address, "jordan@example.com" or "mailto:…", isn't one either)
-  return /^(?:https?:\/\/)?[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.[a-z]{2,}(?::\d{2,5})?(?:[/?#]\S*)?$/i.test(v)
-    && /^[^/?#:]+\.[a-z]{2,}(?:[:/?#]|$)/i.test(v.replace(/^https?:\/\//i, '').replace(/^www\./i, ''));
+  return WEB_WHOLE.test(v) && WEB_NAMED.test(v.replace(/^https?:\/\//i, '').replace(/^www\./i, ''));
 };

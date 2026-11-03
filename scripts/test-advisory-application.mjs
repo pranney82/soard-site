@@ -338,7 +338,11 @@ if (DIST) {
     await type('heardFrom', 'LinkedIn'); await type('why', 'To help.'); await type('connection', 'Neighbors.');
     ok(!(await visible(p, '[data-field="involvedHow"]')), 'a follow-up waits');
     await choose('involved', 'Yes'); await sleep(80);
-    ok(await visible(p, '[data-field="involvedHow"]'), 'and shows after a Yes, on the same screen');
+    // On its question's screen when both fit there; else the screen after (no room held for it while it waits)
+    const beside = await visible(p, '[data-field="involvedHow"]');
+    const partNow = await text(p, '#adv-part');
+    if (!beside) { await p.click('#adv-next'); await sleep(700); }
+    ok(await visible(p, '[data-field="involvedHow"]') && (beside || /^Part (\d) of \1$/.test(await text(p, '#adv-part'))), `and shows after a Yes: beside it when both fit, else on the next screen (${beside ? 'beside it' : `${partNow}, then ${await text(p, '#adv-part')}`})`);
     await type('involvedHow', 'Golf tournament.');
     await sleep(500);
     await p.reload({ waitUntil: 'networkidle0' });
@@ -435,6 +439,32 @@ if (DIST) {
   const staff = sent.emails.filter((e) => e.subject === 'New Advisory Board application: Taylor Brooks');
   ok(copies.length === 2 && staff.length === 6 && staff.every((e) => /^(peter|linzi|lee)@example\.org$/.test(e.to[0])) && sent.slack.length === 2,
     `each one: the applicant’s copy, the staff email to the two saved above and the committee’s Lee Lead, and Slack (${copies.length}, ${staff.length}, ${sent.slack.length})`);
+  // Start over in one tab, another tab open on the same answers: that tab starts over too (it wrote them back before)
+  {
+    const a = await open(1280, '/advisory-board/apply/', 720);
+    await a.evaluate(() => { localStorage.removeItem('soard-advisory-application'); localStorage.removeItem('soard-advisory-sent'); sessionStorage.clear(); });
+    await a.reload({ waitUntil: 'networkidle0' });
+    await a.click('#adv-go');
+    await sleep(700);
+    await a.type('#adv-fullName', 'Morgan Tabs');
+    await sleep(900);
+    const b = await open(1280, '/advisory-board/apply/', 720);
+    await b.click('#adv-go');
+    await sleep(700);
+    ok(await b.$eval('#adv-fullName', (e) => e.value) === 'Morgan Tabs', 'a second tab carries on with the first’s answers');
+    await a.click('#adv-exit');
+    await sleep(600);
+    await a.click('#adv-start-over');
+    await sleep(150);
+    await a.click('#adv-start-over');
+    await sleep(800);
+    const there = { lead: await text(b, '#adv-hub-lead'), focus: await b.evaluate(() => document.documentElement.classList.contains('adv-focus')), name: await b.$eval('#adv-fullName', (e) => e.value) };
+    await sleep(900);
+    const kept = await b.evaluate(() => localStorage.getItem('soard-advisory-application'));
+    ok(/Start over was pressed in another tab/.test(there.lead) && !there.focus && !there.name && !kept, `Start over in one tab: the other starts over too, says why, and never saves its answers back (${JSON.stringify(there)}, kept ${kept ? 'yes' : 'no'})`);
+    await a.close();
+    await b.close();
+  }
   const ab = await open(1440, '/advisory-board/');
   const links = await ab.$$eval('a', (els) => els.filter((a) => /Apply to Join/.test(a.textContent)).map((a) => [a.getAttribute('href'), a.target, a.hasAttribute('data-astro-reload')]));
   ok(links.length === 3 && links.every(([h, t]) => h === '/advisory-board/apply/' && !t), 'the Advisory Board page’s three Apply buttons go to the new page, same tab');

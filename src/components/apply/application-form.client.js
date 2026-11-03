@@ -1091,7 +1091,7 @@ function init(root, cfg, mode) {
       if (!now || now.map(sc => sc.length).join() === was) { paintScreen(); fitScreen(); return; }
     }
     delete packs[currentId];
-    show(currentId, { piece, focus: false, scroll: false, refit: true });
+    return show(currentId, { piece, focus: false, scroll: false, refit: true });
   }
   /**
    * A step they've been on, come back to: its screens as they were ("Part 3 of 3" stays 3 of 3), while
@@ -1461,6 +1461,7 @@ function init(root, cfg, mode) {
     if (!pageEl(id)) id = stepIds()[0];
     const pageChanged = id !== currentId;
     const update = () => {
+      settleUploadNotes();
       currentId = id;
       reach(id);
       if (id === 'review') fromReview = false;
@@ -1816,12 +1817,13 @@ function init(root, cfg, mode) {
       return part === 'line1' && (/\b(?:p\.?\s*o\.?\s*box|post\s+office\s+box)\b/i.test(v) || (id === 'address' && !/\d/.test(v)));
     };
     const errId = p?.id;
+    const firstChoice = el.querySelector('input:is([type=radio], [type=checkbox])');
     el.querySelectorAll('input:not([type=file]), textarea, select').forEach(i => {
       const bad = !!msg && wrong(i);
       if (bad) i.setAttribute('aria-invalid', 'true'); else i.removeAttribute('aria-invalid');
       // A name's or address's own boxes read the note too (a screen reader landing on "First name" hears it,
-      // not only one going in at the group's legend)
-      if (!errId || !(i.dataset.part || i.hasAttribute('data-search'))) return;
+      // not only one going in at the group's legend), and a choice's first answer, where the keys land for it
+      if (!errId || !(i.dataset.part || i.hasAttribute('data-search') || i === firstChoice)) return;
       const ids = (i.getAttribute('aria-describedby') || '').split(/\s+/).filter(x => x && x !== errId);
       if (bad) ids.push(errId);
       if (ids.length) i.setAttribute('aria-describedby', ids.join(' ')); else i.removeAttribute('aria-describedby');
@@ -2032,13 +2034,13 @@ function init(root, cfg, mode) {
       if (token) { notice('pickedUp', 'info'); announce(T('pickedUp')); return false; }
     }
     let r;
-    try { r = await api({ action: 'start', kind, year, lang, turnstileToken, website: ui.honeypot?.value || '', ...(renew ? { renew } : {}), ...(testRun ? { test: true } : {}) }); } catch { r = { ok: false }; }
+    try { r = await api({ action: 'start', kind, year, lang, turnstileToken, website: ui.honeypot?.value || '', ...(renew ? { renew } : {}), ...(testRun ? { test: true } : {}) }); } catch { r = { ok: false, offline: true }; }
     if (token) return true; // started meanwhile (a second press)
     if (r.code === 'staff-only') { testRun = { signIn: true }; paintTestBar(); }
     if (!r.ok) {
       if (renew) return false; // said by expired()
       // The quick check's own words here (the server's are English and name a different button)
-      if (r.code === 'turnstile') { resetTurnstile(); askCheck(); } else navNote(r.error ? { raw: r.error } : 'startFail');
+      if (r.code === 'turnstile') { resetTurnstile(); askCheck(); } else navNote(r.error ? { raw: r.error } : r.offline && !navigator.onLine ? 'startOffline' : 'startFail');
       return false;
     }
     token = r.token;
@@ -2074,13 +2076,15 @@ function init(root, cfg, mode) {
   let lastSent = null; // what the last save that went through said (one after it with nothing new isn't sent)
   let mustSend = false; // ...except one that has to reach the server: Submit's, and one that brings in another device's save
   function save({ force = false } = {}) {
-    if (!token || previewing) return Promise.resolve(true);
+    if (!token || previewing || doneShown) return Promise.resolve(true); // (sent: nothing more to save, "Saving…" never shown)
     if (force) mustSend = true;
     clearTimeout(dirtyTimer);
     saveState('saving');
     if (saveWaiting) return saveWaiting;
     const turn = saveChain.then(async () => {
       saveWaiting = null; // a change from here on is the next save's
+      const stuck = await letGoRemoved();
+      if (stuck) { saveState(stuck); keepPending(); retrySave(); return false; }
       const ids = stepIds();
       const page = currentId === 'review' ? ids[ids.length - 2] : currentId;
       const now = readAnswers();
@@ -2111,7 +2115,7 @@ function init(root, cfg, mode) {
         }
         if (r.code === 'no-draft') { await expired(body.token); return false; }
         // Sent from another device or tab: this one says so (what's typed here since can't be added)
-        if (r.code === 'submitted') { if (body.token === token && !doneShown) finished(true, { elsewhere: true }); return true; }
+        if (r.code === 'submitted') { if (body.token === token && !doneShown) finished(true, { elsewhere: true }); else saveState(null); return true; }
         saveState(r.status === 429 ? 'paused' : 'notSaved');
         keepPending();
         retrySave();
@@ -2136,7 +2140,7 @@ function init(root, cfg, mode) {
     retryTimer = setTimeout(() => { if (unsaved() && token && !doneShown) save(); }, Math.min(60000, 5000 * 2 ** retries++));
   }
   window.addEventListener('online', () => {
-    if (lastNav?.m === 'offlineSubmit') navNote(null); // "you seem to be offline" isn't so now (Submit goes again)
+    if (['offlineSubmit', 'startOffline'].includes(lastNav?.m)) navNote(null); // "you seem to be offline" isn't so now (Submit, Continue go again)
     const laterNote = ui.dialog.querySelector('[data-later-status]');
     if (ui.dialog.open && laterNote?.textContent === T('sendOffline')) laterNote.textContent = ''; // nor in "Save and finish later"
     if (unsaved() && token && !doneShown) save();
@@ -2157,7 +2161,7 @@ function init(root, cfg, mode) {
     for (const id of Object.keys(now)) if (!sameAnswer(now[id], synced?.[id])) changed[id] = now[id];
     // (and the screen they were on: a new tab opens there)
     const where = currentId && currentId !== 'review' && packs[currentId] ? screenAt(currentId, screenNo) : {}; // (Save and exit's save lands after they've left it)
-    if (Object.keys(changed).length) pending.set({ token, changed, page: currentId, field: where.field || null, area: where.area || null, at: Date.now() });
+    if (Object.keys(changed).length || Object.keys(unremoved).length) pending.set({ token, changed, removed: { ...unremoved }, page: currentId, field: where.field || null, area: where.area || null, at: Date.now() });
     else pending.clear();
   }
   /**
@@ -2207,11 +2211,22 @@ function init(root, cfg, mode) {
     if (order(r.maxPage) > order(furthestId)) { furthestId = r.maxPage; remember(); if (!focused) aheadElsewhere = true; }
     if (!took.length && !gotFiles) { paintHeader(); return; }
     theirsTaken++;
+    const was = focused && currentId !== 'review' ? { page: currentId, screen: screenNo } : null;
     openAnsweredTucked();
     if (homeAddressId() && took.includes(homeAddressId()) && !areaPlaced() && checkable(homeAddressNow())) scheduleArea(true);
     paintArea();
     refresh({ animate: false });
-    replan(true);
+    Promise.resolve(replan(true)).then(() => {
+      if (!was || was.page !== currentId || !depth || !histOk()) return;
+      // The screen they're on now isn't the one its entry says (theirs went in where they were): it says this one
+      if (!sameAt(trail[depth], whereNow())) { replaceLoc(); return; }
+      // Theirs opened a screen before this one (a second contact added there): the browser's Back goes to it
+      // first, not past it to the screen they came from
+      if (screenNo <= was.screen) return;
+      const at = { page: currentId, ...screenAt(currentId, screenNo - 1) };
+      try { history.replaceState({ ...(history.state || {}), afFocus: 1, afDepth: depth, afAt: at }, ''); trail[depth] = at; } catch { return; }
+      pushLoc();
+    });
     if (currentId === 'review') buildReview();
     notice('fromElsewhere', 'success');
   }
@@ -2219,7 +2234,7 @@ function init(root, cfg, mode) {
   function takeFiles(rf) {
     let any = false;
     for (const f of fields) {
-      if (!isUpload(f) || uploads.has(f.id)) continue;
+      if (!isUpload(f) || uploads.has(f.id) || removing[f.id] || f.id in unremoved) continue; // (removed here: not put back)
       const pf = rf[f.id];
       const had = !!files[f.id];
       if (pf && !had) {
@@ -2492,6 +2507,8 @@ function init(root, cfg, mode) {
     setBusy(true);
     submitting = true;
     paintSubmitting();
+    // A connection that stalls: said that it's still going (not given up on: it may have arrived)
+    const slow = setTimeout(() => { if (submitting && !lastNav) navNote('stillSending'); }, 15000);
     try {
       await dropRemoved(); // sent without what they removed
       if (!(await start())) return; // expired, and a new one couldn't start just now (it says why)
@@ -2526,6 +2543,8 @@ function init(root, cfg, mode) {
     } catch {
       navNote('offlineSubmit');
     } finally {
+      clearTimeout(slow);
+      if (lastNav?.m === 'stillSending') navNote(null);
       submitting = false;
       paintSubmitting();
       setBusy(false);
@@ -2622,7 +2641,7 @@ function init(root, cfg, mode) {
       if (heard.textContent !== words) heard.textContent = words;
     }
     // A problem is read whole, even over a photo already added (a file's name is what's cut short)
-    status.toggleAttribute('data-problem', !!msg && ((typeof msg === 'object' && !Array.isArray(msg)) || ['notImage', 'notVideo', 'empty', 'camBlocked'].includes(msg)));
+    status.toggleAttribute('data-problem', !!msg && ((typeof msg === 'object' && !Array.isArray(msg)) || ['notImage', 'notVideo', 'empty', 'camBlocked'].includes(msg) || /Still/.test(msg[0])));
     const done = s.state === 'done';
     const failed = s.state === 'failed';
     box.querySelector('[data-act="remove"]').hidden = !done;
@@ -2725,8 +2744,8 @@ function init(root, cfg, mode) {
   };
 
   async function uploadPhoto(f, file) {
-    if (!isPhotoFile(file)) { setUpload(f.id, { msg: 'notImage' }); return; }
-    if (!file.size) { setUpload(f.id, { msg: 'empty' }); return; } // a cloud file not on the device yet: said as the video says it
+    if (!isPhotoFile(file)) { setUpload(f.id, { msg: stillHere(f, 'notImage') }); return; }
+    if (!file.size) { setUpload(f.id, { msg: stillHere(f, 'empty') }); return; } // a cloud file not on the device yet: said as the video says it
     if (previewing) {
       files[f.id] = { key: true, name: file.name };
       const thumb = await toJpeg(file, THUMB_MAX, 0.72).catch(() => null);
@@ -2763,6 +2782,7 @@ function init(root, cfg, mode) {
       if (r.code === 'not-photo') throw Object.assign(said(T('notImage')), { unusable: true, key: 'notImage' });
       if (!r.ok) throw said(uploadGone(r, body.get('token')) || r.error || T('uploadFailed'));
       files[f.id] = { key: true, name };
+      if (f.id in unremoved) { delete unremoved[f.id]; keepPending(); } // (in its place on the server)
       delete retryFiles[f.id];
       delete autoTries[f.id];
       setUpload(f.id, { state: 'done', msg: ['added', { name }], pct: null });
@@ -2773,6 +2793,21 @@ function init(root, cfg, mode) {
     } finally {
       uploads.delete(f.id);
       uploadsChanged();
+    }
+  }
+
+  /** A file that can't go, over one already in: said with the one that stays (back to its own line on the next screen) */
+  function stillHere(f, key) {
+    if (uploadUi[f.id]?.state !== 'done' || !files[f.id]) return key;
+    const still = f.type === 'video' ? 'videoStill' : 'photoStill';
+    return [key === 'empty' ? `${still}Empty` : still, { name: files[f.id].name }];
+  }
+  /** "…is still here" and "Upload canceled. Your video is still here" said their piece: the box's own line again */
+  function settleUploadNotes() {
+    for (const [id, s] of Object.entries(uploadUi)) {
+      if (s?.state !== 'done' || !files[id] || !Array.isArray(s.msg) || !/Still|Kept/.test(s.msg[0])) continue;
+      uploadUi[id] = { ...s, msg: [byId[id]?.type === 'video' ? 'videoDone' : 'added', { name: files[id].name }] };
+      paintUpload(id);
     }
   }
 
@@ -2818,8 +2853,8 @@ function init(root, cfg, mode) {
   const videoGoing = local(keyed('soard-application-video'));
   const forgetGoing = (id) => { delete goingOn[id]; if (videoGoing.get()?.field === id) videoGoing.clear(); };
   async function uploadVideo(f, file) {
-    if (!isVideoFile(file)) { setUpload(f.id, { msg: 'notVideo' }); return; }
-    if (!file.size) { setUpload(f.id, { msg: 'empty' }); return; }
+    if (!isVideoFile(file)) { setUpload(f.id, { msg: stillHere(f, 'notVideo') }); return; }
+    if (!file.size) { setUpload(f.id, { msg: stillHere(f, 'empty') }); return; }
     if (previewing) {
       files[f.id] = { uid: true, uploaded: true, name: file.name };
       setUpload(f.id, { state: 'done', msg: ['previewFile', { name: file.name }], thumb: null });
@@ -2904,6 +2939,7 @@ function init(root, cfg, mode) {
       }
       if (!uploaded) throw Object.assign(said(T('videoGone')), { key: 'videoGone' });
       files[f.id] = { uid: true, uploaded: true, name: file.name };
+      if (f.id in unremoved) { delete unremoved[f.id]; keepPending(); }
       delete retryFiles[f.id];
       delete autoTries[f.id];
       forgetGoing(f.id);
@@ -2917,7 +2953,10 @@ function init(root, cfg, mode) {
         const keep = before && before.token === token;
         if (keep) { files[f.id] = before.file; setUpload(f.id, { ...before.ui, msg: ['videoKept', { name: before.file.name }], pct: null }); }
         else { delete files[f.id]; setUpload(f.id, { state: 'empty', msg: 'videoCanceled', pct: null, thumb: null }); }
-        if (token && !previewing) api({ action: 'remove-file', token, field: f.id, ...(keep ? { next: true } : {}) }).catch(() => {});
+        if (token && !previewing) {
+          if (keep) api({ action: 'remove-file', token, field: f.id, next: true }).catch(() => {}); // (a new one replaces it on the server anyway)
+          else { unremoved[f.id] = file.name; save(); } // let go of as a removed one is (offline: when it's back)
+        }
         return; // (its status line says so)
       }
       if (e?.unusable) { delete retryFiles[f.id]; forgetGoing(f.id); } else retryFiles[f.id] = file;
@@ -2936,6 +2975,9 @@ function init(root, cfg, mode) {
   // Remove can be undone for a moment (a video can take minutes to upload again): the server lets go of the
   // file once that's past, or straight away when another file is chosen, it's sent or saved, or the page goes
   const removing = {}; // field id → { timer, was }
+  // Removed here and not let go of on the server yet (offline, our server busy): sent before each save's answers
+  // until it is (Submit's save then never sends it), and kept on this device till then (a reload brings it back gone)
+  const unremoved = {}; // field id → the removed file's name
   const UNDO_MS = 8000;
   function removeFile(f) {
     clearTimeout(removing[f.id]?.timer);
@@ -2959,7 +3001,6 @@ function init(root, cfg, mode) {
   }
   /** Removed files the server lets go of now (all of them, or one); `leaving`: the page is going, so it's sent as it goes */
   function dropRemoved(id = null, { leaving = false } = {}) {
-    const going = [];
     for (const k of id ? [id] : Object.keys(removing)) {
       const r = removing[k];
       if (!r) continue;
@@ -2974,18 +3015,35 @@ function init(root, cfg, mode) {
         if (had) fieldEl(k)?.querySelector('[data-act="choose"]')?.focus({ preventScroll: true });
       }
       if (byId[k]?.type === 'video') forgetGoing(k); // (its upload goes with it)
-      if (!token || previewing) continue;
-      const body = { action: 'remove-file', token, field: k };
-      if (leaving) { try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); } catch { /* the page is going either way */ } }
-      else going.push(api(body).catch(() => {}));
+      if (token && !previewing) unremoved[k] = r.was.file?.name || '';
     }
-    return Promise.all(going);
+    if (!token || previewing || !Object.keys(unremoved).length) return Promise.resolve(true);
+    if (!leaving) return save();
+    for (const k of Object.keys(unremoved)) {
+      const body = { action: 'remove-file', token, field: k };
+      try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); } catch { /* the page is going either way */ }
+    }
+    keepPending(); // (sent again when they're back, in case it didn't go)
+    return Promise.resolve(true);
+  }
+  /** The server lets go of what was removed here: null once it has, else why not (a save's trouble) */
+  async function letGoRemoved() {
+    for (const k of Object.keys(unremoved)) {
+      if (uploads.has(k)) continue; // the file on its way takes its place
+      let r;
+      try { r = await api({ action: 'remove-file', token, field: k }); } catch { return 'offline'; }
+      if (!r.ok && (r.status === 429 || r.status >= 500)) return r.status === 429 ? 'paused' : 'notSaved';
+      delete unremoved[k];
+      keepPending(); // (no longer kept on this device: a photo chosen later under the same name stays)
+    }
+    return null;
   }
   /** Removed and not undone, of an application that's gone (expired, sent): nothing left to let go of */
   function forgetRemoved() {
     for (const k of Object.keys(removing)) { clearTimeout(removing[k].timer); delete removing[k]; }
+    for (const k of Object.keys(unremoved)) delete unremoved[k];
   }
-  function takeFile(f, file) {
+  function takeFile(f, file, dropped = false) {
     // A file chosen while the camera's on (or recording): the file is the video; the camera stops, its clip let go
     // (kept, it would replace the file the moment they went on)
     if (recorder?.id === f.id) closeRecorder();
@@ -2993,7 +3051,7 @@ function init(root, cfg, mode) {
     if (uploads.has(f.id) && stoppable(f.id)) { cancelVideo(f.id).then(() => takeFile(f, file)); return; }
     if (uploads.has(f.id)) return;
     // The one just removed goes from the server first, so the new one is what stays
-    if (removing[f.id]) { dropRemoved(f.id).then(() => takeFile(f, file)); return; }
+    if (!dropped && (removing[f.id] || f.id in unremoved)) { dropRemoved(f.id).then(() => takeFile(f, file, true)); return; }
     if (f.type === 'video') uploadVideo(f, file); else uploadPhoto(f, file);
   }
 
@@ -4462,9 +4520,9 @@ function init(root, cfg, mode) {
         return;
       }
       // The link opens what's saved: not sent until this page's answers are
+      dropRemoved(); // the link opens it as it is (let go of with the save)
       if (!(await save())) { if (dlg.open) status.textContent = T(navigator.onLine ? 'laterUnsaved' : 'sendOffline'); return; }
       if (doneShown) return; // sent already, from another device (the thank-you says so)
-      await dropRemoved(); // the link opens it as it is
       const r = await api({ action: 'email-link', token, email, lang });
       if (!r.ok) { status.textContent = r.error || T('sendFail'); return; }
       laterEmail = email;
@@ -4545,6 +4603,7 @@ function init(root, cfg, mode) {
     show(currentId, { focus: false, scroll: false, ...(area?.area ? { piece: atPiece({ page: currentId, ...area }) } : { at: anchor && fieldEl(anchor) ? anchor : null }) })
       .then(() => { langAt = anchor ? { page: currentId, screen: screenNo, lang, field: anchor } : null; });
     if (!reducedMotion()) [ui.form, ui.stop, ui.done].forEach(el => !el.hidden && el.animate?.([{ opacity: 0.4 }, { opacity: 1 }], { duration: 220, easing: EASE }));
+    turnstileLang();
     if (persist) save();
   }
   ui.langSwitches.forEach(sw => sw.addEventListener('click', (e) => {
@@ -4689,6 +4748,16 @@ function init(root, cfg, mode) {
     }, { signal });
   }
 
+  let turnstileWidget = null;
+  /** A language switch before the check has passed: the check in that language too (it starts over, unseen mostly) */
+  function turnstileLang() {
+    if (turnstileWidget == null || turnstileToken || !window.turnstile) return;
+    try { window.turnstile.remove(turnstileWidget); } catch { /* gone already */ }
+    turnstileWidget = null;
+    turnstileWants = false;
+    turnstileFailed = false;
+    window.onSoardTurnstile();
+  }
   function resetTurnstile() {
     turnstileToken = null;
     try { window.turnstile?.reset(ui.turnstile.querySelector('.cf-turnstile')); } catch { /* not loaded */ }
@@ -4705,8 +4774,9 @@ function init(root, cfg, mode) {
     if (!cfg.turnstileSiteKey || token || previewing || testRun) return;
     turnstileSiteKey = cfg.turnstileSiteKey;
     window.onSoardTurnstile = () => {
-      window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
+      turnstileWidget = window.turnstile.render(ui.turnstile.querySelector('.cf-turnstile'), {
         sitekey: turnstileSiteKey,
+        language: lang, // the form's language, not the browser's (a Spanish form on an English phone)
         callback: (t) => {
           turnstileToken = t; turnstileFailed = false; turnstileWaiting.splice(0).forEach(r => r());
           if (['turnstile', 'turnstileFailed', 'turnstileLater'].includes(lastNav?.m)) navNote(null);
@@ -4809,13 +4879,22 @@ function init(root, cfg, mode) {
         uploadUi[id] = { state: 'done', msg: ['added', { name: pf.name }] };
       }
     }
+    // Removed here and never let go of on the server (offline when they left): gone again, and sent
+    const kept = pending.get();
+    if (kept?.token === candidate && !r.submitted) {
+      for (const [id, name] of Object.entries(kept.removed || {})) {
+        if (!byId[id] || !r.files?.[id] || (name && r.files[id].name !== name)) continue; // gone already, or another file since
+        delete files[id];
+        uploadUi[id] = { state: 'empty' };
+        unremoved[id] = name;
+      }
+    }
     // A video cut off by the page going (a reload, the tab closed), its upload kept here: the same video again carries on
     const going = videoGoing.get();
     if (going?.token === candidate && byId[going.field] && !r.files?.[going.field]?.uploaded) uploadUi[going.field] = { state: 'empty', msg: 'videoResume' };
     draw({ merge: false });
     synced = readAnswers();
     // What was typed here last time and never reached the server (offline, the tab closed): back on top
-    const kept = pending.get();
     let keptBack = 0;
     if (kept?.token === candidate && !r.submitted) {
       for (const [id, v] of Object.entries(kept.changed || {})) {
@@ -4827,11 +4906,11 @@ function init(root, cfg, mode) {
       }
       if (keptBack) { openAnsweredTucked(); refresh({ animate: false }); }
     }
-    if (!keptBack) pending.clear();
+    if (!keptBack) keepPending(); // (what's left of it: a removal not sent yet)
     applyWords();
     if (r.submitted) { finished(true); return; }
     // Their photos' small previews, so they see which ones they sent (not a gray box)
-    for (const [id, pf] of Object.entries(r.files || {})) if (id !== 'video' && pf.hasThumb) loadThumb(id);
+    for (const [id, pf] of Object.entries(r.files || {})) if (id !== 'video' && pf.hasThumb && files[id]) loadThumb(id);
     // An address without the check's answer for it (it changed just before they left): checked again
     if (homeAddressId() && !areaPlaced() && checkable(homeAddressNow())) scheduleArea(true);
     // How far they got: the draft's record, this device's, the page they were on, what they filled in
@@ -4868,7 +4947,7 @@ function init(root, cfg, mode) {
     const m = remindersOff ? (otherSaid ? 'remindersOffOther' : 'remindersOff') : keptBack ? 'keptHere' : otherSaid ? 'otherApplication' : otherHere() ? 'welcomeBackOther' : 'welcomeBack';
     // ("No more reminder emails" is what their press was for: there till they move on, the screen fitted with it)
     notice(m, otherSaid || remindersOff ? 'info' : 'success', /Other$|^otherApplication$/.test(m) ? 'openOther' : null);
-    if (keptBack) save();
+    if (keptBack || Object.keys(unremoved).length) save();
     // A reload on a "can't help" screen: that screen again while the answer that led to it stands (its place in
     // the browser's history is the stop's, so Back from it is the question's, as before the reload)
     const stopAgain = !fromLink && history.state?.afFocus && history.state.afAt?.stop ? stopFor(form, readAnswers()) : null;
@@ -5082,7 +5161,22 @@ function init(root, cfg, mode) {
     paintReviewAll();
   });
 
+  // A press while a new screen slides in lands on the browser's slide, not the page: it's no press (as Continue's
+  // isn't), so it leaves the keys where they were (the step's title), not on the page with nothing focused
+  document.addEventListener('mousedown', (e) => { if (focused && performance.now() < calmUntil) e.preventDefault(); }, { capture: true, signal });
+  // A double press of a button that changes the screen (an Add, Remove, Undo) counts once, as Continue's does: its
+  // second press, on the same spot a moment later, would land on whatever moved under it (the next Add, Undo, a
+  // label taking the keys away). Keys never count as one (typed since: a press of its own)
+  let pressed = null; // { at, x, y }
+  ui.form.addEventListener('keydown', () => { pressed = null; }, { capture: true, signal });
+  for (const type of ['mousedown', 'click']) ui.form.addEventListener(type, (e) => {
+    if (!e.isTrusted || !pressed || !e.detail && type === 'click' || performance.now() - pressed.at > 350) return;
+    if (Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) > 24 || e.target.closest?.('input:not([type=checkbox], [type=radio]), textarea')) return;
+    e.preventDefault();
+    e.stopPropagation();
+  }, { capture: true, signal });
   ui.form.addEventListener('click', (e) => {
+    if (e.detail && e.target.closest('[data-more-open], [data-more-close], [data-more-undo], [data-act], [data-mailfix-use], [data-addr-mode]')) pressed = { at: performance.now(), x: e.clientX, y: e.clientY };
     const more = e.target.closest('[data-more-open], [data-more-close], [data-more-undo]');
     if (more) {
       if (more.matches('[data-more-undo]')) undoGroup(more.closest('[data-more]'));

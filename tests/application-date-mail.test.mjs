@@ -29,6 +29,16 @@ test('a likely typo in an email provider is offered its fix; a real address neve
   assert.equal(mailFix('not an email'), null);
 });
 
+test('an accent before the @ is offered without it (providers take plain letters); one in a provider is the provider, as Chrome keeps it too', () => {
+  assert.equal(mailFix('maría@gmail.com'), 'maria@gmail.com');
+  assert.equal(mailFix('josé.pérez@hotmail.com'), 'jose.perez@hotmail.com');
+  assert.equal(mailFix('niño@yahoo.con'), 'nino@yahoo.com');
+  assert.equal(mailFix('jose@gmaíl.com'), 'jose@gmail.com');
+  assert.equal(mailFix('jose@xn--gmal-xpa.com'), 'jose@gmail.com'); // "gmaíl.com" as Chrome's email box keeps it
+  assert.equal(mailFix('info@xn--bcher-kva.de'), null); // a real address in its own letters (bücher.de)
+  assert.equal(mailFix('名前@example.com'), null); // not letters with accents: left as it is
+});
+
 test('the home is a place, not a mailbox: a PO box is turned away there (a parent\'s mailing address may be one)', () => {
   const home = { id: 'address', type: 'address', required: true };
   const box = { line1: 'PO Box 123', line2: '', city: 'Roswell', state: 'GA', zip: '30076' };
