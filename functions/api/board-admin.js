@@ -19,7 +19,8 @@
  *   snapshot { id }                           lock today's numbers into the packet
  *   send-packet { id, test }                  email the board (test: only you)
  *   action-done { actionId, done }
- *   save-doc { doc, askAgain }, delete-doc { id }   doc.body: its words, written here (a change is the next wording);
+ *   save-doc { doc, askAgain, base, fromFile, wordsFrom, newFile }, delete-doc { id }   doc.body: its words, written here (a change is the next wording;
+ *                                             409 { conflict } or { ask }: see saveDoc);
  *                                             askAgain: the board signs the new wording again
  *   doc-versions { id }                      a paper's wordings written here, newest first
  *   unsign { docId, slug }                    a member's signature this year taken off (its copy goes with it)
@@ -77,7 +78,7 @@ async function welcomeNow(DB) {
 }
 
 const fail = (error, status = 400, extra = {}) => Response.json({ ok: false, error, ...extra }, { status });
-const fromError = (err) => (err.status && err.status < 500 ? fail(err.message, err.status, err.current ? { current: err.current } : {}) : Response.json({ ok: false, error: err.message }, { status: 500 }));
+const fromError = (err) => (err.status && err.status < 500 ? fail(err.message, err.status, { ...(err.current ? { current: err.current } : {}), ...(err.extra || {}) }) : Response.json({ ok: false, error: err.message }, { status: 500 }));
 
 async function gate(context) {
   const me = context.data?.userEmail || '';
@@ -231,7 +232,10 @@ export async function onRequestPost(context) {
       case 'action-done':
         return Response.json({ ok: true, ...(await setActionDone(env.DB, String(body.actionId || ''), !!body.done, { by: me })) });
       case 'save-doc': {
-        const d = await saveDoc(env.DB, body.doc || {}, { by: me, askAgain: body.askAgain === true });
+        const d = await saveDoc(env.DB, body.doc || {}, {
+          by: me, askAgain: typeof body.askAgain === 'boolean' ? body.askAgain : null, base: Number.isInteger(body.base) ? body.base : null,
+          fromFile: body.fromFile === true, wordsFrom: String(body.wordsFrom || '').slice(0, 200), newFile: String(body.newFile || '').slice(0, 200),
+        });
         await audit(env, me, 'updated', `Board document saved: ${d.title}`);
         return Response.json({ ok: true, doc: d });
       }

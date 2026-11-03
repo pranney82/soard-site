@@ -90,6 +90,8 @@ export async function ensureSchema(DB) {
   }
   // Which wording of a paper written in Board it signs (cleanDoc version)
   try { await DB.prepare('ALTER TABLE board_signatures ADD COLUMN version INTEGER').run(); } catch { /* already there */ }
+  // What a wording was: words read from a file, or a new file the board signs again
+  try { await DB.prepare('ALTER TABLE board_doc_versions ADD COLUMN note TEXT').run(); } catch { /* already there */ }
   _ready.add(DB);
 }
 
@@ -525,13 +527,15 @@ export function cleanDoc(raw = {}) {
     shared: raw.shared !== false,
     year: Number(raw.year) >= 2000 && Number(raw.year) <= 2100 ? Math.round(raw.year) : null,
     // Its words, when it's written in Board (Markdown, ../../public/admin/board-report.js): what the board page shows
-    body: String(raw.body ?? '').replace(/\r\n?/g, '\n').trim().slice(0, LIMITS.report),
+    body: String(raw.body ?? '').replace(/\r\n?/g, '\n').trim().slice(0, LIMITS.paper),
     // Which wording it is (each saved change of its words is the next, kept in board_doc_versions), and when and by
     // whom it was written; a signature on a wording before `signFrom` (the board asked to sign again) doesn't count
     version: Math.max(0, Math.round(Number(raw.version) || 0)),
     signFrom: Math.max(0, Math.round(Number(raw.signFrom) || 0)),
     wordsAt: one(raw.wordsAt, 40),
     wordsBy: one(raw.wordsBy, 200),
+    // The file its words were read from (a board file's id): a newer file than that is one to bring the words in from
+    wordsFile: one(raw.wordsFile, 40),
     createdAt: one(raw.createdAt, 40),
     updatedAt: one(raw.updatedAt, 40),
   };
@@ -552,8 +556,9 @@ const signatureOf = (s, copies = {}) => ({
 
 /**
  * Every document with its file and this year's signatures:
- * { ...doc, file, signed: { slug: { name, at, how, version, copy, drive } }, earlier: [slugs] } (`sign`: every board
- * member signs it each year; `earlier`: who signed a wording before the one the board was asked to sign again)
+ * { ...doc, file, signed: { slug: { name, at, how, version, copy, drive } }, earlier: [slugs], before: { slug: … } }
+ * (`sign`: every board member signs it each year; `earlier`: who signed a wording before the one the board was asked
+ * to sign again, their signature in `before`)
  */
 export async function listDocs(DB, year = thisYear()) {
   await ensureSchema(DB);
@@ -571,39 +576,75 @@ export async function listDocs(DB, year = thisYear()) {
       file: (files[d.id] || []).at(-1) || null,
       signed: Object.fromEntries(theirs.filter(counts).map((s) => [s.slug, signatureOf(s, copies)])),
       earlier: theirs.filter((s) => !counts(s)).map((s) => s.slug),
+      before: Object.fromEntries(theirs.filter((s) => !counts(s)).map((s) => [s.slug, signatureOf(s, copies)])),
     };
   }).sort((a, b) => a.title.localeCompare(b.title));
 }
 
 /**
- * A document saved (`by`: who). Its words are the next wording when they changed, kept on record; `askAgain`: the
- * board signs that wording again (signatures on earlier ones stop counting). A save without words keeps them
+ * A document saved (`by`: who). Its words are the next wording when they changed, kept on record. A save without
+ * words keeps them. Decided here, from what's saved now (never from the page the admin opened a while ago):
+ *   - `base`: the wording the admin's editor started from; someone else's newer one is a 409 with { conflict }
+ *     (who, when, its number) and nothing is saved, until the admin chooses (base: that number, to save theirs over)
+ *   - new words, or a new file (`newFile`: its name, uploaded right after), on a paper some of the board signed this
+ *     year: a 409 with { ask: { names, since } } until the admin says whether they sign again (`askAgain` true or
+ *     false; true: signatures on earlier wordings stop counting, a new file a wording of its own). `fromFile`: the
+ *     words are its own file's, as read (the paper is the same, so nobody signs again); `wordsFrom`: the file's name,
+ *     for the record
+ *   - a paper everyone signs keeps its words or its file: one with neither can't be required
  */
-export async function saveDoc(DB, raw, { by = '', askAgain = false } = {}) {
+export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, fromFile = false, wordsFrom = '', newFile = '' } = {}) {
   await ensureSchema(DB);
   const d = cleanDoc(raw);
   if (!d.title) throw Object.assign(new Error('A document needs a title'), { status: 400 });
   const row = await DB.prepare('SELECT data FROM board_docs WHERE id = ?').bind(d.id).first();
+  // An editor open on a paper deleted meanwhile (another tab, someone else): not made again from what it had
+  if (!row && base != null) throw Object.assign(new Error('This paper was deleted (in another tab, or by someone else), so nothing was saved'), { status: 410, extra: { deleted: true } });
   const was = row ? cleanDoc(parse(row.data)) : null;
   const body = raw.body === undefined ? was?.body || '' : d.body;
+  const changed = body !== (was?.body || '');
+  if (raw.wordsFile === undefined) d.wordsFile = was?.wordsFile || '';
+  if (was && changed && base != null && Number(base) !== was.version) {
+    throw Object.assign(new Error('These words changed while you had them open'), { status: 409, extra: { conflict: { version: was.version, by: was.wordsBy, at: was.wordsAt, body: was.body } } });
+  }
+  if (was && d.sign && !body) {
+    const file = await DB.prepare("SELECT id FROM board_files WHERE owner_type = 'doc' AND owner_id = ? LIMIT 1").bind(d.id).first();
+    if (!file) throw Object.assign(new Error('A paper every member signs needs its words or its file: write them, add the file, or untick Required'), { status: 400 });
+  }
+  // A new file changes what the board reads only when it reads the paper as its file (written here, it reads the words)
+  const newRead = !!newFile && !body;
+  if (was && (changed || newRead) && was.sign && askAgain == null && !(fromFile && !newFile && !was.body)) {
+    const current = (await listDocs(DB)).find((x) => x.id === d.id);
+    const board = await activeBoard(DB);
+    const names = board.filter((p) => current?.signed[p.slug]).map((p) => p.name);
+    // since: what they signed (the earlier words, or the file); `newFile`: what they'd sign now is a new file
+    // (now: what the board will read, its words or its file)
+    if (names.length) throw Object.assign(new Error('Do they sign the new version?'), { status: 409, extra: { ask: { names, since: was.body ? 'words' : 'file', now: body ? 'words' : 'file', newFile: newFile ? String(newFile) : '' } } });
+  }
   // The wording's number, and who wrote it when, are the server's
   const next = { ...d, body, version: was?.version || 0, signFrom: was?.signFrom || 0, wordsAt: was?.wordsAt || '', wordsBy: was?.wordsBy || '', createdAt: row ? parse(row.data).createdAt : nowIso(), updatedAt: nowIso() };
-  if (body !== (was?.body || '')) {
+  // A new version: new words, or a new file for a paper read as its file (whether or not the board signs it again:
+  // a page still showing the old file can't sign the new one unread)
+  if (changed || (was && newRead)) {
     next.version += 1;
-    next.wordsAt = nowIso();
-    next.wordsBy = String(by || '').slice(0, 200);
-    await DB.prepare('INSERT OR REPLACE INTO board_doc_versions (doc_id, version, body, at, by) VALUES (?, ?, ?, ?, ?)').bind(d.id, next.version, body, next.wordsAt, next.wordsBy).run();
-    if (askAgain) next.signFrom = next.version;
+    if (changed) { next.wordsAt = nowIso(); next.wordsBy = String(by || '').slice(0, 200); }
+    const note = changed ? (wordsFrom ? `From ${String(wordsFrom).slice(0, 200)}` : '') : `A new file: ${String(newFile).slice(0, 200)}`;
+    await DB.prepare('INSERT OR REPLACE INTO board_doc_versions (doc_id, version, body, at, by, note) VALUES (?, ?, ?, ?, ?, ?)').bind(d.id, next.version, body, nowIso(), String(by || '').slice(0, 200), note).run();
+    if (askAgain === true) next.signFrom = next.version;
   }
   await DB.prepare('INSERT OR REPLACE INTO board_docs (id, data, updated_at) VALUES (?, ?, ?)').bind(d.id, JSON.stringify(next), next.updatedAt).run();
   return (await listDocs(DB)).find((x) => x.id === d.id);
 }
 
-/** A paper's wordings written in Board, newest first: [{ version, body, at, by }] */
-export async function docVersions(DB, id) {
+/**
+ * A paper's wordings written in Board, newest first: [{ version, body, at, by, note, signed }] (`note`: where its
+ * words came from, or the new file it was; `signed`: how many signed it this year)
+ */
+export async function docVersions(DB, id, year = thisYear()) {
   await ensureSchema(DB);
-  return ((await DB.prepare('SELECT version, body, at, by FROM board_doc_versions WHERE doc_id = ? ORDER BY version DESC LIMIT 50').bind(id).all()).results || [])
-    .map((r) => ({ version: Number(r.version), body: r.body || '', at: r.at || '', by: r.by || '' }));
+  const counts = Object.fromEntries((((await DB.prepare('SELECT version, count(*) AS n FROM board_signatures WHERE doc_id = ? AND year = ? GROUP BY version').bind(id, year).all()).results) || []).map((r) => [Number(r.version) || 0, Number(r.n)]));
+  return ((await DB.prepare('SELECT version, body, at, by, note FROM board_doc_versions WHERE doc_id = ? ORDER BY version DESC LIMIT 50').bind(id).all()).results || [])
+    .map((r) => ({ version: Number(r.version), body: r.body || '', at: r.at || '', by: r.by || '', note: r.note || '', signed: counts[Number(r.version)] || 0 }));
 }
 
 export async function deleteDoc(env, id) {
@@ -616,7 +657,13 @@ export async function deleteDoc(env, id) {
   await env.DB.prepare('DELETE FROM board_docs WHERE id = ?').bind(id).run();
 }
 
-const noSignature = () => Object.assign(new Error('That document doesn’t ask for a signature'), { status: 404 });
+// Why a paper can't be signed now: taken off the board page, gone, or no longer asking (the page reloads it)
+const noSignature = (doc) => Object.assign(new Error(!doc || !doc.shared ? 'That paper isn’t on the board page anymore' : 'That paper doesn’t ask for a signature anymore'), { status: 404, extra: { gone: true } });
+/** The words they read aren't the paper's words anymore: they read the new ones first */
+const notWhatTheyRead = (doc, version) => {
+  if (version == null || version === '' || Number(version) === doc.version) return null;
+  return Object.assign(new Error(doc.body ? 'Its words changed while you were reading them. Read the new words, then sign.' : 'A new version of it came in while you had it open. Read it, then sign.'), { status: 409, extra: { changed: true } });
+};
 const writeSignature = (DB, { docId, slug, year, name, how, fileId = null, driveId = null, driveName = null, by = '', at = nowIso(), version = 0 }, { keep = false } = {}) =>
   DB.prepare(`INSERT OR ${keep ? 'IGNORE' : 'REPLACE'} INTO board_signatures (doc_id, slug, year, name, at, how, file_id, drive_id, drive_name, added_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(docId, slug, year, name, at, how, fileId, driveId, driveName, by, version).run();
@@ -625,10 +672,13 @@ const writeSignature = (DB, { docId, slug, year, name, how, fileId = null, drive
  * A member's signature for this year, with their own name typed (../../public/admin/board-shared.js signsAs).
  * A signed copy already in (theirs, or one in Drive) stays: it's the better record
  */
-export async function signDoc(DB, docId, member, name) {
+export async function signDoc(DB, docId, member, name, { version = null } = {}) {
   await ensureSchema(DB);
   const doc = (await listDocs(DB)).find((d) => d.id === docId);
-  if (!doc?.shared || !doc.sign) throw noSignature();
+  if (!doc?.shared || !doc.sign) throw noSignature(doc);
+  // `version`: the wording on their page when they signed; a newer one is signed only once they've read it
+  const stale = notWhatTheyRead(doc, version);
+  if (stale) throw stale;
   const had = doc.signed[member.slug];
   if (had && had.how !== 'typed') return { docId, year: thisYear(), ...had };
   if (String(name || '').trim().length < 3) throw Object.assign(new Error('Type your full name to sign'), { status: 400 });
@@ -643,14 +693,20 @@ export async function signDoc(DB, docId, member, name) {
 /**
  * A signed copy as this year's signature: a board member's own, added on the board page (`member`), or one a Board
  * admin was handed for a member (`slug`, `by`). Kept staff-only beside the paper (the member opens their own);
- * it replaces a copy added for them before. → { docId, year, name, at, how, copy, drive }
+ * it replaces a copy added for them before. A PDF or a photo of the signed page. `version`: the wording on the
+ * member's page (as signDoc). → { docId, year, name, at, how, copy, drive }
  */
-export async function signWithCopy(env, docId, file, { member = null, slug = '', by = '' } = {}) {
+export async function signWithCopy(env, docId, file, { member = null, slug = '', by = '', version = null } = {}) {
   await ensureSchema(env.DB);
   const doc = (await listDocs(env.DB)).find((d) => d.id === docId);
-  if (!doc?.sign || (member && !doc.shared)) throw noSignature();
+  if (!doc?.sign || (member && !doc.shared)) throw noSignature(doc);
+  if (member) { const stale = notWhatTheyRead(doc, version); if (stale) throw stale; }
   const who = member || (await activeBoard(env.DB)).find((p) => p.slug === slug);
   if (!who) throw Object.assign(new Error('Whose is it? They aren’t on People → Board'), { status: 404 });
+  if (file && typeof file.arrayBuffer === 'function') {
+    const type = fileTypeOf(new Uint8Array(await file.arrayBuffer()), file.name);
+    if (!type || !(type === 'application/pdf' || type.startsWith('image/'))) throw Object.assign(new Error('A signed copy is a PDF, or a photo of the signed page'), { status: 415 });
+  }
   const year = thisYear();
   const before = await env.DB.prepare('SELECT file_id FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, who.slug, year).first();
   const copy = await putFile(env, { ownerType: 'signed', ownerId: docId, file, staffOnly: true, by: by || who.email || '' });
@@ -1057,8 +1113,8 @@ function inviteFrom(m, people, settings) {
  * The documents email, for one board member: everything stays on the board page (nothing is attached; the board
  * reads it there, the meeting presents it from there, and Print it all is there for paper). When, where and the
  * call; what the documents are (never one on a board-only item, by name); the calendar invite to answer when they
- * haven't (`ask`), naming whose it is (`from`). `files`: the documents' names. `toSign`: the titles of this year's
- * papers every member signs that they haven't yet.
+ * haven't (`ask`), naming whose it is (`from`). `files`: the documents' names. `toSign`: this year's papers every
+ * member signs that they haven't yet, each a title or { title, id, written } (one written in Board opens on its own page).
  */
 /** The items someone presents at a meeting, each with the page to write its report on: [{ title, url, written }] */
 export function reportsFor(m, slug, people = []) {
@@ -1084,12 +1140,14 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
     + reports.map((r) => (r.written ? `<p style="margin:6px 0 0;">${link(`Your report on ${r.title}`, r.url)}</p>` : `<div style="margin:8px 0 0;">${button(reports.length > 1 ? `Write your ${r.title} report` : 'Write your report', r.url)}</div>`)).join(''));
   // The papers every board member signs each year, while they haven't
   const year = todayEastern().slice(0, 4);
-  const documentsUrl = `${SITE}${BOARD_PAGE}#/documents`;
+  const papers = toSign.map((t) => (typeof t === 'string' ? { title: t } : t));
+  // One paper written in Board opens on its own page, its words and the signing at their end; more, on Documents
+  const documentsUrl = `${SITE}${BOARD_PAGE}#/documents${papers.length === 1 && papers[0].written && papers[0].id ? `/${papers[0].id}` : ''}`;
   const signHow = 'Every board member signs these once a year. Read them on the board page and sign by typing your name, or add the copy you signed on paper.';
   const signHtml = !toSign.length ? '' : ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">Still to sign for ${year}</p>`
-    + `<p class="ink" style="margin:0;">${toSign.map((t) => esc(t)).join('<br>')}</p>` + small(esc(signHow))
+    + `<p class="ink" style="margin:0;">${papers.map((t) => esc(t.title)).join('<br>')}</p>` + small(esc(signHow))
     + `<p style="margin:10px 0 0;">${link(toSign.length > 1 ? 'Read and sign them' : 'Read and sign it', documentsUrl)}</p>`);
-  const signText = !toSign.length ? '' : `Still to sign for ${year}: ${toSign.join(', ')}. ${signHow}\n${documentsUrl}`;
+  const signText = !toSign.length ? '' : `Still to sign for ${year}: ${papers.map((t) => t.title).join(', ')}. ${signHow}\n${documentsUrl}`;
   const presentText = !reports.length ? '' : `You present ${joined(reports.map((r) => `“${r.title}”`))}. ${todo.length ? 'Write your report on the board page; the board reads it there before the meeting.' : 'Your report is in; you can change it there until the meeting.'}\n${reports.map((r) => `${r.title}: ${r.url}`).join('\n')}`;
   return {
     subject: `${test ? '[Preview] ' : ''}The agenda and documents: ${name}, ${shortDate(m.date)}`,
@@ -1142,7 +1200,7 @@ export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) 
   const everyone = test ? [] : await roster(env.DB).then((r) => [...r.board, ...r.staff]);
   // …and each member's, the papers they haven't signed this year (a preview shows them all)
   const signable = (await listDocs(env.DB)).filter((d) => d.shared && d.sign && (d.body || d.file));
-  const toSign = (p) => signable.filter((d) => !(p.slug && d.signed[p.slug])).map((d) => d.title);
+  const toSign = (p) => signable.filter((d) => !(p.slug && d.signed[p.slug])).map((d) => ({ title: d.title, id: d.id, written: !!d.body }));
   const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, from, ask: test || open.includes(p.slug), reports: reportsFor(m, p.slug, everyone), toSign: toSign(p) }) }));
   const tags = [{ name: 'kind', value: test ? 'board-packet-preview' : 'board-packet' }];
   const r = await sendEach(env, items, { tags, replyTo });
@@ -1573,7 +1631,7 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     actions: openActions(shared).map((a) => ({ ...a, mine: !!mine && a.owner === mine })),
     // Who has signed is Board's to see: a member sees how many of the board have, and their own (its copy, if one's in)
     // (and whether they signed an earlier wording, before the board was asked to sign again)
-    docs: docs.filter((d) => d.shared).map(({ signed, earlier, wordsBy, ...d }) => ({
+    docs: docs.filter((d) => d.shared).map(({ signed, earlier, before, wordsBy, ...d }) => ({
       ...d, file: d.file && !d.file.staffOnly ? d.file : null,
       signedByMe: mine && signed[mine] ? { ...signed[mine], drive: !!signed[mine].drive } : null,
       signedEarlier: !!mine && !signed[mine] && earlier.includes(mine),

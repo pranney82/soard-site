@@ -9,7 +9,7 @@
  * GET ?live=<id>                        → the meeting as it's held (_board.js liveView): every few seconds while it runs
  * POST { action: 'rsvp' }                           → 410: the calendar invite is the only answer (Peter, Nov 2 2026)
  * POST { action: 'action-done', actionId, done }    one of their own action items
- * POST { action: 'sign', docId, name }               "I've read it", this year, with their own name typed
+ * POST { action: 'sign', docId, name, version }      "I've read it", this year, with their own name typed (409 { changed }: the words changed since)
  * POST ?signed=<docId> (multipart "file")           the copy they signed on paper, as this year's signature (staff-only;
  *                                                    they open their own)
  * POST { action: 'checkin', meetingId, how }         present | remote, on the meeting's day
@@ -42,7 +42,7 @@ import { noteGet, noteLook, noteAnswer, noteEvents, answerOf } from './_board-ac
 import { portalExtras, saveLineNote, chairApprove, chairNote, askPresenter } from './_board-asks.js';
 import { shorterFor } from './_board-shorter.js';
 
-const fail = (error, status = 400) => Response.json({ ok: false, error }, { status });
+const fail = (error, status = 400, extra = {}) => Response.json({ ok: false, error, ...extra }, { status });
 
 async function who(context) {
   const member = context.data?.boardMember || null;
@@ -53,7 +53,7 @@ async function who(context) {
 }
 // After the answer when the platform allows (waitUntil), else before it (tests)
 const later = async (context, p) => { if (context.waitUntil) context.waitUntil(p); else await p; };
-const fromError = (err) => (err.status && err.status < 500 ? fail(err.message, err.status) : Response.json({ ok: false, error: err.message }, { status: 500 }));
+const fromError = (err) => (err.status && err.status < 500 ? fail(err.message, err.status, err.extra || {}) : Response.json({ ok: false, error: err.message }, { status: 500 }));
 
 export async function onRequestGet(context) {
   try {
@@ -150,9 +150,11 @@ async function post(context) {
     if (q.has('signed')) {
       if (!w.member) return fail('Only a board member can sign for themselves', 403);
       if (!ID.test(String(q.get('signed') || ''))) return fail('Which document?');
-      let file = null;
-      try { file = (await request.formData()).get('file'); } catch { return fail('Send your signed copy as a file'); }
-      return Response.json({ ok: true, ...(await signWithCopy(env, q.get('signed'), file, { member: w.member, by: w.member.email })) });
+      let form = null;
+      try { form = await request.formData(); } catch { return fail('Send your signed copy as a file'); }
+      // The wording on their page when they added it (a newer one is read first)
+      const version = form.get('version');
+      return Response.json({ ok: true, ...(await signWithCopy(env, q.get('signed'), form.get('file'), { member: w.member, by: w.member.email, version: version == null ? null : Number(version) })) });
     }
     // A document with an item they present (attachToItem checks), as the form's "file"
     if (q.has('attach')) {
@@ -209,7 +211,7 @@ async function post(context) {
         return Response.json({ ok: true, ...(await setActionDone(env.DB, String(body.actionId || ''), !!body.done, { by: member.email, slug: member.slug })) });
       case 'sign':
         if (!ID.test(String(body.docId || ''))) return fail('Which document?');
-        return Response.json({ ok: true, ...(await signDoc(env.DB, body.docId, member, body.name)) });
+        return Response.json({ ok: true, ...(await signDoc(env.DB, body.docId, member, body.name, { version: Number.isInteger(body.version) ? body.version : null })) });
       default:
         return fail('Unknown action');
     }

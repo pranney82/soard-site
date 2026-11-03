@@ -36,6 +36,8 @@ function Runs({ text, runs = null }) {
     return node;
   });
 }
+/** A point that says its own letter ("a. …", "(ii) …", as a paper letters them): it shows the letter, not a bullet */
+const lettered = (it) => it[0]?.t === 'p' && /^\(?(?:[a-z]|[ivxlc]{1,5})[.)]\s/i.test(it[0].text || '');
 const wordsIn = (b) => (b.t === 'hr' ? 0 : b.t === 'p' || b.t === 'h' ? b.text.split(/\s+/).filter(Boolean).length : b.t === 'quote' ? b.blocks.reduce((n, x) => n + wordsIn(x), 0) : b.items.reduce((n, it) => n + it.reduce((m, x) => m + wordsIn(x), 0), 0));
 function Blocks({ blocks, level }) {
   const H = `h${Math.min(6, level)}`;
@@ -46,7 +48,7 @@ function Blocks({ blocks, level }) {
     if (b.t === 'quote') return html`<blockquote key=${k} class="rp-callout" dir="auto"><${Blocks} blocks=${b.blocks} level=${level} /></blockquote>`;
     // Where the presenter started a new slide: read as one report here, a quiet rule
     if (b.t === 'hr') return html`<hr key=${k} class="rp-break" />`;
-    const items = b.items.map((it, j) => html`<li key=${j} dir="auto"><${Blocks} blocks=${it} level=${level} /></li>`);
+    const items = b.items.map((it, j) => html`<li key=${j} dir="auto" class=${b.t === 'ul' && lettered(it) ? 'rp-li--lettered' : null}><${Blocks} blocks=${it} level=${level} /></li>`);
     // (a start only when it isn't 1: Preact writes a null start as the property, which the browser reads as 0)
     return b.t === 'ol' ? html`<ol key=${k} dir="auto" ...${b.start === 1 ? {} : { start: b.start }}>${items}</ol>` : html`<ul key=${k} dir="auto">${items}</ul>`;
   });
@@ -164,7 +166,7 @@ export function reportDom(text, { level = 4 } = {}) {
       if (b.t === 'hr') { parent.append(el('hr', 'rp-break')); continue; }
       const e = el(b.t);
       if (b.t === 'ol' && b.start !== 1) e.start = b.start;
-      for (const it of b.items) { const li = el('li'); draw(li, it); e.append(li); }
+      for (const it of b.items) { const li = el('li', b.t === 'ul' && lettered(it) ? 'rp-li--lettered' : ''); draw(li, it); e.append(li); }
       parent.append(e);
     }
   };
@@ -195,6 +197,8 @@ const MOD = MAC ? '⌘' : 'Ctrl+';
 const PASTE = { ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'a', 'ul', 'ol', 'li', 'blockquote', 'h3'], ALLOWED_ATTR: ['href', 'start'] };
 // The longest a report can be, in letters (its Markdown can run longer: the server keeps LIMITS.report of it)
 export const REPORT_LETTERS = 40000;
+/** A paper written in Board (Board → Documents): long bylaws run past 70,000 letters, all of it kept */
+export const PAPER_LETTERS = 200000;
 const BULLET = /^[\s\u00a0]*([·•▪◦‣⁃o§\-–*]|\d{1,3}[.)]|[a-z][.)])[\s\u00a0]+/i;
 
 /**
@@ -270,10 +274,14 @@ const LOOKS_MD = /(^|\n)\s{0,3}(#{1,6}\s|[-*+•]\s|\d{1,3}[.)]\s|>\s)|\*\*[^*\n
  * `value` in even while someone's typing (taking a newer version someone else saved). `status`: what saving says,
  * at the foot, beside how long it takes to present. The toolbar stays in view under `stickyTop` while a long report
  * scrolls. `starter`: an empty report offers an outline to fill in (three headings; `onChange(md, { inserted: true })`); `onNothing`: a "Nothing to report
- * this time" at the foot (the page decides what happens, asking first when there are words)
+ * this time" at the foot (the page decides what happens, asking first when there are words). `timed`: 'read' for
+ * words the board reads (a paper), not presents: "2 min read", with a paper's length (PAPER_LETTERS) and none of
+ * the Markdown hint (the admin writing a paper uses the bar above)
  */
 export const OUTLINE = ['What we did', 'What the board needs to decide', 'What’s next'];
-export function ReportEditor({ value, onChange, label = 'The report', placeholder = 'What happened, what the board needs to decide, and what’s next', autofocus = false, resetKey = 0, status = null, stickyTop = '0px', minHeight = 220, onBlur, starter = false, onNothing = null, coach = null }) {
+export function ReportEditor({ value, onChange, label = 'The report', placeholder = 'What happened, what the board needs to decide, and what’s next', autofocus = false, resetKey = 0, status = null, stickyTop = '0px', minHeight = 220, onBlur, starter = false, onNothing = null, coach = null, timed = 'present' }) {
+  const paper = timed === 'read';
+  const letters = paper ? PAPER_LETTERS : REPORT_LETTERS;
   const ed = useRef(null);
   const last = useRef(value || '');
   const change = useRef(onChange);
@@ -316,7 +324,7 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
         StarterKit.configure({ heading: { levels: [3] }, code: false, codeBlock: false, strike: false }),
         TiptapLink.configure({ openOnClick: false, autolink: true, linkOnPaste: true, defaultProtocol: 'https', HTMLAttributes: LINK, validate: (href) => !!safeHref(href) }),
         Placeholder.configure({ placeholder }),
-        CharacterCount.configure({ limit: REPORT_LETTERS }),
+        CharacterCount.configure({ limit: letters }),
       ],
       content: mdToDoc(value),
       editorProps: {
@@ -412,7 +420,7 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
     setLinking(null);
   };
   const words = e ? mdWords(last.current) : 0;
-  const full = !!e && e.storage.characterCount.characters() >= REPORT_LETTERS;
+  const full = !!e && e.storage.characterCount.characters() >= letters;
   // The outline: its three headings with a line to write under each, the caret under the first
   const outline = () => {
     if (!e) return;
@@ -454,7 +462,7 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
     </div>
     <div class="rp-page" ref=${mount} style=${`min-height:${minHeight}px`} onClick=${(ev) => { if (ev.target === ev.currentTarget) e?.commands.focus('end'); }}></div>
     <div class="rp-foot">
-      <span class="rp-foot__count" aria-live="off">${full ? html`<strong class="rp-full" role="status">That’s as long as a report can be</strong>` : words ? `${words} ${words === 1 ? 'word' : 'words'} · ${speakTime(words)}` : html`<span class="rp-hint">Markdown works: <kbd>###</kbd> a heading, <kbd>-</kbd> points, <kbd>1.</kbd> a list, <kbd>**bold**</kbd></span>`}</span>
+      <span class="rp-foot__count" aria-live="off">${full ? html`<strong class="rp-full" role="status">${paper ? 'That’s as long as a paper can be' : 'That’s as long as a report can be'}</strong>` : words ? `${words} ${words === 1 ? 'word' : 'words'} · ${timed === 'read' ? readTime(words) : speakTime(words)}` : paper ? '' : html`<span class="rp-hint">Markdown works: <kbd>###</kbd> a heading, <kbd>-</kbd> points, <kbd>1.</kbd> a list, <kbd>**bold**</kbd></span>`}</span>
       ${(starter && !words) || (onNothing && !nothing) ? html`<span class="rp-foot__acts">
         ${starter && !words ? html`<button type="button" class="rp-foot__btn" onMouseDown=${(ev) => ev.preventDefault()} onClick=${outline}>Start with an outline</button>` : null}
         ${onNothing && !nothing ? html`<button type="button" class="rp-foot__btn" onMouseDown=${(ev) => ev.preventDefault()} onClick=${() => onNothing(last.current)}>Nothing to report this time</button>` : null}
@@ -533,6 +541,7 @@ const CSS = `
 .rp ul, .rp ol { margin: 0 0 0.8em; padding-inline-start: 1.35em; }
 .rp li { margin: 0.2em 0; padding-inline-start: 0.15em; }
 .rp li > p { margin: 0; }
+.rp li.rp-li--lettered { list-style: none; }
 .rp li > ul, .rp li > ol { margin: 0.2em 0 0.3em; }
 .rp ul { list-style-type: disc; }
 .rp ul ul { list-style-type: circle; }

@@ -95,8 +95,8 @@ async function call(email, path, { method = 'GET', body = null, handler, form = 
 const formOf = (fields) => { const f = new FormData(); for (const [k, v] of Object.entries(fields)) f.append(k, v); return f; };
 const memberOf = (slug) => ({ slug, name: PEOPLE.find((p) => p[0] === slug)[1].name, email: `${slug}@example.com` });
 /** The expectations, every member signing them each year, with their file */
-async function expectations({ shared = true } = {}) {
-  const d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, shared });
+async function expectations({ shared = true, title = 'Board Member Expectations' } = {}) {
+  const d = await saveDoc(env.DB, { title, kind: 'policy', sign: true, shared });
   const { putFile } = await import('../functions/api/_board.js');
   await putFile(env, { ownerType: 'doc', ownerId: d.id, file: pdf('Board Expectations.pdf', 'the expectations') });
   return (await listDocs(env.DB)).find((x) => x.id === d.id);
@@ -126,14 +126,15 @@ test('typed, or the copy signed on paper: each is the year’s signature, a copy
   assert.equal((await env.DB.prepare("SELECT count(*) AS n FROM board_files WHERE owner_type = 'signed'").first()).n, 1);
   x = (await listDocs(env.DB)).find((y) => y.id === d.id);
   assert.deepEqual([x.signed['sam-ortiz'].copy.id, x.signed['sam-ortiz'].copy.type], [photo.copy.id, 'image/jpeg']);
-  // Not a PDF or a picture: refused, nothing kept
-  await assert.rejects(signWithCopy(env, d.id, new File([new TextEncoder().encode('just words')], 'note.txt'), { member: memberOf('kim-park') }), /PDFs, pictures/);
+  // Not a PDF or a picture (a Word file, or words named .pdf): refused, saying what a signed copy is, nothing kept
+  await assert.rejects(signWithCopy(env, d.id, new File([new TextEncoder().encode('just words')], 'note.txt'), { member: memberOf('kim-park') }), /A signed copy is a PDF, or a photo of the signed page/);
+  await assert.rejects(signWithCopy(env, d.id, new File([new TextEncoder().encode('just words')], 'fake.pdf'), { member: memberOf('kim-park') }), /A signed copy is a PDF/);
   assert.equal((await listDocs(env.DB)).find((y) => y.id === d.id).signed['kim-park'], undefined);
   // A paper nobody signs, or one not on the board page: no signature from a member
   const bylaws = await saveDoc(env.DB, { title: 'Bylaws' });
   await assert.rejects(signWithCopy(env, bylaws.id, pdf('b.pdf'), { member: alex }), /doesn’t ask for a signature/);
   const hidden = await expectations({ shared: false });
-  await assert.rejects(signWithCopy(env, hidden.id, pdf('b.pdf'), { member: alex }), /doesn’t ask for a signature/);
+  await assert.rejects(signWithCopy(env, hidden.id, pdf('b.pdf'), { member: alex }), /isn’t on the board page anymore/);
   assert.deepEqual(SIGNED_BY, ['typed', 'copy', 'staff', 'drive']);
 });
 
@@ -229,6 +230,15 @@ test('the documents email tells each member what they have still to sign this ye
   assert.match(one.html, /add the copy you signed on paper/);
   assert.ok(one.html.indexOf('Will you be there?') < one.html.indexOf('Still to sign'), 'after the invite’s question');
   assert.match(one.text, new RegExp(`Still to sign for ${YEAR}: Board Member Expectations`));
+  // One written in Board opens on its own page; a PDF, or more than one, on Documents
+  const written = packetEmail(m, { name: 'Kim Park', toSign: [{ title: 'Board Member Expectations', id: 'd_words1', written: true }] });
+  assert.match(written.html, /#\/documents\/d_words1"/);
+  assert.match(written.text, /#\/documents\/d_words1$/m);
+  assert.match(written.html, /Board Member Expectations/);
+  const two = packetEmail(m, { name: 'Kim Park', toSign: [{ title: 'Board Member Expectations', id: 'd_words1', written: true }, { title: 'Conflict of Interest Policy', id: 'd_pdf1', written: false }] });
+  assert.match(two.html, /#\/documents"/);
+  assert.match(two.html, /Board Member Expectations<br>Conflict of Interest Policy/);
+  assert.match(packetEmail(m, { name: 'Kim Park', toSign: [{ title: 'Conflict of Interest Policy', id: 'd_pdf1', written: false }] }).html, /#\/documents"/);
   const none = packetEmail(m, { name: 'Alex Rivera', toSign: [] });
   assert.doesNotMatch(none.html, /Still to sign/);
   assert.doesNotMatch(none.text, /Still to sign/);
@@ -260,8 +270,15 @@ test('the words written in Board: each change the next wording, kept on record; 
   d = await saveDoc(env.DB, { ...d, body: undefined, shared: true }, { by: FOUNDER });
   d = await saveDoc(env.DB, { ...d }, { by: FOUNDER });
   assert.deepEqual([d.version, d.body], [1, '### Attendance\n\n- Come to three of four meetings']);
+  // New words over signatures: the server asks (naming who signed) before anything is saved
+  await assert.rejects(saveDoc(env.DB, { ...d, body: '### Attendance\n\n- Come to three of the four meetings' }, { by: FOUNDER }),
+    (err) => err.status === 409 && err.extra.ask.since === 'words' && err.extra.ask.names.join() === 'Alex Rivera,Sam Ortiz');
+  assert.equal((await listDocs(env.DB)).find((x) => x.id === d.id).version, 1, 'nothing saved while it asks');
+  // An editor opened on an older wording: someone else's newer words aren't overwritten without a word
+  await assert.rejects(saveDoc(env.DB, { ...d, body: 'mine' }, { by: FOUNDER, base: 0, askAgain: false }),
+    (err) => err.status === 409 && err.extra.conflict.version === 1 && err.extra.conflict.by === FOUNDER && /three of four/.test(err.extra.conflict.body));
   // A typo fixed: the next wording, signatures kept
-  d = await saveDoc(env.DB, { ...d, body: '### Attendance\n\n- Come to three of the four meetings' }, { by: FOUNDER });
+  d = await saveDoc(env.DB, { ...d, body: '### Attendance\n\n- Come to three of the four meetings' }, { by: FOUNDER, base: 1, askAgain: false });
   assert.deepEqual([d.version, d.signFrom, Object.keys(d.signed).sort()], [2, 0, ['alex-rivera', 'sam-ortiz']]);
   // What they agree to changed: the board signs again; who signed before shows as having signed an earlier wording
   d = await saveDoc(env.DB, { ...d, body: `${d.body}\n- Give each year` }, { by: FOUNDER, askAgain: true });
@@ -271,11 +288,15 @@ test('the words written in Board: each change the next wording, kept on record; 
   assert.match(versions[0].body, /three of four/, 'the first wording, as it was');
   const { docVersions } = await import('../functions/api/_board.js');
   assert.deepEqual((await docVersions(env.DB, d.id)).map((v) => v.version), [3, 2, 1], 'newest first');
+  assert.deepEqual(Object.keys(d.before).sort(), ['alex-rivera', 'sam-ortiz'], 'their earlier signatures, for Who’s signed');
+  // A member whose page still shows wording 2 can't sign wording 3 they never saw (typed, or with a copy)
+  await assert.rejects(signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera', { version: 2 }), (err) => err.status === 409 && err.extra.changed);
+  await assert.rejects(signWithCopy(env, d.id, pdf('Alex.pdf'), { member: memberOf('alex-rivera'), version: 2 }), (err) => err.status === 409 && err.extra.changed);
   // Alex signs the new words; the board page says who still has to and that Sam signed an earlier wording
-  const signed = await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera');
+  const signed = await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera', { version: 3 });
   assert.equal(signed.version, 3);
   const sam = (await portalData(env, { member: { ...memberOf('sam-ortiz'), title: '' } })).docs.find((x) => x.id === d.id);
-  assert.deepEqual([sam.signedByMe, sam.signedEarlier, sam.signedCount, sam.body.includes('Give each year'), sam.wordsBy, sam.earlier], [null, true, 1, true, undefined, undefined]);
+  assert.deepEqual([sam.signedByMe, sam.signedEarlier, sam.signedCount, sam.body.includes('Give each year'), sam.wordsBy, sam.earlier, sam.before], [null, true, 1, true, undefined, undefined, undefined]);
   const alex = (await portalData(env, { member: { ...memberOf('alex-rivera'), title: '' } })).docs.find((x) => x.id === d.id);
   assert.deepEqual([alex.signedByMe.version, alex.signedEarlier], [3, false]);
   // The documents email asks who hasn't signed these words, and the sign-in email too
@@ -283,7 +304,69 @@ test('the words written in Board: each change the next wording, kept on record; 
   sent = [];
   await sendWelcome(env, { to: [FOUNDER] });
   assert.match(sent[0].html, /Board Member Expectations/, 'a paper written here is one to sign');
+  // Required, it keeps its words or a file: emptied with neither, it isn't saved
+  await assert.rejects(saveDoc(env.DB, { ...d, body: '' }, { by: FOUNDER, base: 3, askAgain: false }), /needs its words or its file/);
+  // Taken off the board page: signing says so (the page reloads), not "doesn't ask for a signature"
+  await saveDoc(env.DB, { ...d, body: undefined, shared: false }, { by: FOUNDER });
+  await assert.rejects(signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz'), (err) => /isn’t on the board page anymore/.test(err.message) && err.extra.gone);
   // Deleted, its wordings go with it
   await deleteDoc(env, d.id);
   assert.equal((await env.DB.prepare('SELECT count(*) AS n FROM board_doc_versions').first()).n, 0);
+});
+
+test('a paper that came as a PDF, written in Board from its own words: who signed the PDF keeps their signature, unless the words were changed', async () => {
+  const d = await expectations();
+  await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera');
+  // The PDF's words as read: the same paper, nobody asked
+  let x = await saveDoc(env.DB, { ...d, body: '- Attend three of four meetings' }, { by: FOUNDER, base: 0, fromFile: true });
+  assert.deepEqual([x.version, x.signFrom, Object.keys(x.signed)], [1, 0, ['alex-rivera']]);
+  // Changed from the PDF's: asked, since the PDF is what Alex signed
+  const other = await expectations({ title: 'Conflict of Interest Policy' });
+  await signDoc(env.DB, other.id, memberOf('sam-ortiz'), 'Sam Ortiz');
+  await assert.rejects(saveDoc(env.DB, { ...other, body: '- Tell the board of any conflict, and more' }, { by: FOUNDER, base: 0 }),
+    (err) => err.status === 409 && err.extra.ask.since === 'file' && err.extra.ask.names.join() === 'Sam Ortiz');
+  x = await saveDoc(env.DB, { ...other, body: '- Tell the board of any conflict, and more' }, { by: FOUNDER, base: 0, askAgain: true });
+  assert.deepEqual([x.version, x.signFrom, x.signed], [1, 1, {}]);
+  // Over the API: the question and the conflict come back as data the page acts on
+  const r = await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'save-doc', doc: { ...x, body: 'newer' }, base: 0 }, handler: admin.onRequestPost });
+  assert.deepEqual([r.status, r.body.conflict?.version], [409, 1]);
+  const typed = await call(MEMBER, '/api/board-portal', { method: 'POST', body: { action: 'sign', docId: x.id, name: 'Alex Rivera', version: 0 }, handler: portal.onRequestPost });
+  assert.deepEqual([typed.status, typed.body.changed], [409, true]);
+});
+
+test('a new file on a paper some signed: asked, and asked to sign again it’s a version of its own; the words keep where they came from; a long paper is kept whole', async () => {
+  const { docVersions } = await import('../functions/api/_board.js');
+  const d = await expectations({ title: 'Code of Conduct' });
+  await signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz');
+  // A new PDF (its name; it uploads right after): asked, naming Sam, nothing saved yet
+  await assert.rejects(saveDoc(env.DB, { ...d }, { by: FOUNDER, base: 0, newFile: 'Code of Conduct 2027.pdf' }),
+    (err) => err.status === 409 && err.extra.ask.names.join() === 'Sam Ortiz' && err.extra.ask.since === 'file' && err.extra.ask.newFile === 'Code of Conduct 2027.pdf');
+  // Kept: a version of its own all the same (a page still showing the old file can't sign the new one), Sam's
+  // signature still counting; asked again: the next version, Sam's signature on the old one stops counting
+  let x = await saveDoc(env.DB, { ...d }, { by: FOUNDER, base: 0, newFile: 'Code of Conduct 2027.pdf', askAgain: false });
+  assert.deepEqual([x.version, x.signFrom, Object.keys(x.signed)], [1, 0, ['sam-ortiz']]);
+  await assert.rejects(signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera', { version: 0 }), (err) => err.status === 409 && /A new version of it came in/.test(err.message));
+  x = await saveDoc(env.DB, { ...x }, { by: FOUNDER, base: 1, newFile: 'Code of Conduct 2027.pdf', askAgain: true });
+  assert.deepEqual([x.version, x.signFrom, x.signed, x.earlier], [2, 2, {}, ['sam-ortiz']]);
+  // Words read from that new file: asked too (they're not what Sam signed), and recorded as from it
+  await signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz', { version: 2 });
+  await assert.rejects(saveDoc(env.DB, { ...x, body: '- Be kind' }, { by: FOUNDER, base: 2, fromFile: true, wordsFrom: 'Code of Conduct 2027', newFile: 'Code of Conduct 2027.pdf' }), (err) => err.status === 409 && err.extra.ask.now === 'words');
+  x = await saveDoc(env.DB, { ...x, body: '- Be kind', wordsFile: 'f_newone1' }, { by: FOUNDER, base: 2, wordsFrom: 'Code of Conduct 2027', askAgain: false });
+  assert.equal(x.wordsFile, 'f_newone1');
+  // Written here, a new file alone changes nothing the board reads: not asked, no new version
+  const written = await saveDoc(env.DB, { ...x, body: undefined }, { by: FOUNDER, base: 3, newFile: 'Code of Conduct 2028.pdf' });
+  assert.equal(written.version, 3);
+  // Saved again without saying: where its words came from stays
+  x = await saveDoc(env.DB, { ...x, note: 'Adopted 2027', body: undefined }, { by: FOUNDER });
+  assert.equal(x.wordsFile, 'f_newone1');
+  const versions = await docVersions(env.DB, d.id);
+  assert.deepEqual(versions.map((v) => [v.version, v.note, v.signed]), [[3, 'From Code of Conduct 2027', 0], [2, 'A new file: Code of Conduct 2027.pdf', 1], [1, 'A new file: Code of Conduct 2027.pdf', 0]], 'Sam signed the new file, kept for the small change after it');
+  // An editor open on a paper deleted meanwhile: refused, not made again
+  await deleteDoc(env, d.id);
+  await assert.rejects(saveDoc(env.DB, { ...x, body: '- Be kind, always' }, { by: FOUNDER, base: 3 }), (err) => err.status === 410 && err.extra.deleted);
+  assert.equal((await listDocs(env.DB)).some((y) => y.id === d.id), false);
+  // A long paper (long bylaws): all of it kept
+  const long = `${'Every article of the bylaws, said in full. '.repeat(2500)}The last line.`;
+  x = await saveDoc(env.DB, { title: 'Amended Bylaws', kind: 'bylaws', body: long }, { by: FOUNDER });
+  assert.ok(x.body.length > 100000 && x.body.endsWith('The last line.'));
 });

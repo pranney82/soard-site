@@ -576,16 +576,20 @@ async function bringPaper(env, { token, paper, fetchImpl, now }) {
   const row = await env.DB.prepare('SELECT * FROM board_drive_docs WHERE slot = ?').bind(slot).first();
   if (row && row.drive_id === file.id && row.modified === (file.modifiedTime || '')) return 0;
   const doc = row?.doc_id ? await env.DB.prepare('SELECT data FROM board_docs WHERE id = ?').bind(row.doc_id).first() : null;
-  // Taken out in Board: it stays out. Written in Board: its words are Board's now, and Drive's copy is left alone
+  // Taken out in Board: it stays out. Written in Board: its words stay Board's, and a newer copy (next year's PDF)
+  // still comes in as its file, for Board to say so beside the words and bring its words in when they're asked for
   if (row?.doc_id && !doc) return 0;
-  if (doc && cleanDoc(JSON.parse(doc.data)).body) return 0;
   const got = await fetchFile(env, token, file, fetchImpl, { wantText: false });
   if (!got) return 0;
   let docId = row?.doc_id;
   if (doc) {
-    // A newer year's copy: the document is that year's now (its title, sharing and signing are Board's)
+    // A newer year's copy: the document is that year's now (its title, sharing and signing are Board's). Read as its
+    // file (no words written in Board), it's a new version, so a page still showing the older one can't sign this one
+    // unread (who signed keeps their signature: it's Board's to ask them again)
     const cur = cleanDoc(JSON.parse(doc.data));
-    if (year && cur.year !== year) await saveDoc(env.DB, { ...cur, year });
+    const next = year && cur.year !== year ? { ...cur, year } : cur;
+    if (!cur.body) await saveDoc(env.DB, next, { by: DRIVE_BY, newFile: got.name, askAgain: false });
+    else if (next !== cur) await saveDoc(env.DB, next);
   } else {
     docId = (await saveDoc(env.DB, { title, kind, year, shared: true, sign })).id;
   }

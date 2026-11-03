@@ -587,7 +587,7 @@ test('the members’ signed copies count as their signatures by their names alon
   await assert.rejects(placeSigned(env, { driveId: 'nope', docId: d.id, slug: 'kim-park' }), /isn’t with the signed copies/);
 });
 
-test('a paper written in Board keeps its words: a newer copy in Drive is left alone', async () => {
+test('a paper written in Board keeps its words: a newer copy in Drive comes in as its file, the words as they were', async () => {
   const exp = add(add(ROOT, '2025 Board', { mimeType: FOLDER }), 'Board Expectations Updated 01_01_26.pdf', { modifiedTime: '2026-02-10T00:00:00Z' });
   await readBoardDrive(env, { budgetMs: 60000 });
   let d = (await listDocs(env.DB)).find((x) => x.title === 'Board Member Expectations');
@@ -598,7 +598,13 @@ test('a paper written in Board keeps its words: a newer copy in Drive is left al
   g.calls = [];
   await readBoardDrive(env, { now: Date.now() + 2 * 60 * 60 * 1000 });
   d = (await listDocs(env.DB)).find((x) => x.title === 'Board Member Expectations');
-  assert.deepEqual([d.file.name, d.version, fetched(exp)], ['Board Expectations Updated 01_01_26.pdf', 1, false], 'not read again, its words kept');
+  assert.deepEqual([d.file.name, d.version, d.body, fetched(exp)], ['Board Expectations Updated 01_01_26.pdf', 1, '### Attendance\n\n- Come to three of four meetings', true], 'the newer copy in, its words kept');
+  // After the words: Board says so beside them (the file came in later than they were written)
+  assert.ok(d.file.at > d.wordsAt, 'the file is newer than the words');
+  // Read again with nothing newer: nothing fetched
+  g.calls = [];
+  await readBoardDrive(env, { now: Date.now() + 4 * 60 * 60 * 1000 });
+  assert.equal(fetched(exp), false);
 });
 
 test('whose a signed copy is, and which paper, by a name', () => {

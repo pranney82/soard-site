@@ -3,7 +3,8 @@
  * the browser's confirm(). This answers those dialogs the way
  * page.on('dialog', (d) => d.accept()) answers native ones: each question's
  * title and text go to onAsk, then the action is chosen (accept: false picks
- * Cancel instead). Call it again on the same page to change either; it covers
+ * Cancel instead; accept: null leaves the question open, for the test to press
+ * Escape or click). Call it again on the same page to change either; it covers
  * the page already loaded and every page after it.
  *
  * Only the top page is touched (after each load), never evaluateOnNewDocument
@@ -26,6 +27,7 @@ export async function answerAsks(page, { accept = true, onAsk = () => {} } = {})
         if (seen.has(d)) continue;
         seen.add(d);
         console.debug(tag + [d.querySelector('h2')?.textContent, d.querySelector('.ask__text')?.textContent].filter(Boolean).join(' '));
+        if (window.__soardAskAccept === null) continue;
         setTimeout(() => d.querySelector(window.__soardAskAccept ? '[data-ask="yes"]' : '[data-ask="no"]')?.click(), 0);
       }
     }).observe(document, { childList: true, subtree: true });

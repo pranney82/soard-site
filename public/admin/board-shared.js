@@ -217,7 +217,8 @@ export const LIVE = [
 ];
 /** What a live list with no title of its own is called for the board: what it shows, never its part's name */
 export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings', minutes: 'The last meeting’s minutes' };
-export const LIMITS = { title: 200, text: 300, notes: 20000, report: 120000, motion: 400, items: 80, sections: 20, people: 80, rows: 100 };
+// (paper: a paper written in Board, its Markdown: long bylaws run past 70,000 letters; ./board-report.js PAPER_LETTERS)
+export const LIMITS = { title: 200, text: 300, notes: 20000, report: 120000, paper: 400000, motion: 400, items: 80, sections: 20, people: 80, rows: 100 };
 
 /** The agenda a new meeting starts from, until Settings saves another one */
 export const DEFAULT_TEMPLATE = [
@@ -1835,12 +1836,31 @@ const roman = (n) => [['m', 1000], ['cm', 900], ['d', 500], ['cd', 400], ['c', 1
   .reduce((acc, [r, v]) => { while (n >= v) { acc += r; n -= v; } return acc; }, '');
 const letter = (n) => { let s = ''; for (; n > 0; n = Math.floor((n - 1) / 26)) s = String.fromCharCode(97 + ((n - 1) % 26)) + s; return s; };
 
+/** An iPhone photo (HEIC) as a JPEG any browser shows: drawn by the browser when it can, else ./vendor-heic.js */
+export const isHeic = (f) => /^image\/hei[cf]$/i.test(f?.type || '') || /\.hei[cf]$/i.test(f?.name || '');
+export async function asJpeg(f) {
+  const name = `${String(f.name || 'photo').replace(/\.[^.]+$/, '')}.jpg`;
+  try {
+    const bmp = await createImageBitmap(f);
+    const scale = Math.min(1, 3000 / Math.max(bmp.width, bmp.height));
+    const c = document.createElement('canvas');
+    c.width = Math.round(bmp.width * scale);
+    c.height = Math.round(bmp.height * scale);
+    c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+    const blob = await new Promise((r) => c.toBlob(r, 'image/jpeg', 0.9));
+    if (blob) return new File([blob], name, { type: 'image/jpeg' });
+  } catch { /* not a picture this browser draws */ }
+  const { heicTo } = await import('./vendor-heic.js');
+  return new File([await heicTo({ blob: f, type: 'image/jpeg', quality: 0.9 })], name, { type: 'image/jpeg' });
+}
+
 /**
  * A Word document's text the way it prints: Word numbers its own lists, so
  * each numbered paragraph gets its "1." / "a." / "i." back from numbering.xml,
- * and each table row is one line. Ready for parseAgendaText.
+ * and each table row is one line. Ready for parseAgendaText. `paragraphs`: each paragraph instead, as
+ * { text, level (a Heading or Title style's, else 0), bold (all its words), ilvl, marker }, for ./board-words.js
  */
-export async function docxText(bytes) {
+export async function docxText(bytes, { paragraphs = false } = {}) {
   const files = await unzip(bytes, ['word/document.xml', 'word/numbering.xml']);
   const dec = new TextDecoder();
   const doc = files['word/document.xml'] ? dec.decode(files['word/document.xml']) : '';
@@ -1871,11 +1891,12 @@ export async function docxText(bytes) {
   };
   const body = (doc.match(/<w:body>([\s\S]*)<\/w:body>/) || [])[1] || doc;
   const lines = [];
+  const paras = [];
   for (const [block] of body.matchAll(/<w:tbl>[\s\S]*?<\/w:tbl>|<w:p\b[\s\S]*?<\/w:p>/g)) {
     if (block.startsWith('<w:tbl>')) {
       for (const [row] of block.matchAll(/<w:tr\b[\s\S]*?<\/w:tr>/g)) {
         const cells = [...row.matchAll(/<w:tc\b[\s\S]*?<\/w:tc>/g)].map(([c]) => xmlText(c).replace(/\s+/g, ' ').trim()).filter(Boolean);
-        if (cells.length) lines.push(cells.join(' '));
+        if (cells.length) { lines.push(cells.join(' ')); paras.push({ text: cells.join(' '), cells, level: 0, bold: false, ilvl: 0, marker: '' }); }
       }
       continue;
     }
@@ -1883,9 +1904,23 @@ export async function docxText(bytes) {
     if (!text) continue;
     const numId = (block.match(/<w:numId w:val="(\d+)"/) || [])[1];
     const ilvl = Number((block.match(/<w:ilvl w:val="(\d+)"/) || [])[1] || 0);
+    const mark = numId && numId !== '0' ? marker(numId, ilvl) : '';
     // Each list level three spaces further in, so the agenda rules can tell an item from a point under it
-    lines.push(numId && numId !== '0' ? `${'   '.repeat(ilvl)}${marker(numId, ilvl)} ${text}` : text);
+    lines.push(mark ? `${'   '.repeat(ilvl)}${mark} ${text}` : text);
+    if (paragraphs) {
+      const style = (block.match(/<w:pStyle w:val="([^"]+)"/) || [])[1] || '';
+      const level = /^title$/i.test(style) ? 1 : /^subtitle$/i.test(style) ? 2 : Number((style.match(/^heading\s?([1-6])$/i) || [])[1] || 0);
+      // Bold all through: every run with words in it is bold (<w:b/>, not <w:b w:val="0"/>)
+      const words = (r) => xmlText(r.replace(/<w:rPr>[\s\S]*?<\/w:rPr>/, ''));
+      const isBold = (r) => /<w:b(?:\s+w:val="(?:1|true|on)")?\s*\/>/.test(r);
+      const runs = [...block.matchAll(/<w:r\b[\s\S]*?<\/w:r>/g)].map(([r]) => r).filter((r) => words(r).trim());
+      const bold = runs.length > 0 && runs.every(isBold);
+      // Bold some of the way ("gives personally each year"): those runs marked as ./board-words.js marks a PDF's
+      const marked = !bold && runs.some(isBold) ? runs.map((r) => (isBold(r) ? `\uE000${words(r)}\uE001` : words(r))).join('').replace(/\s+/g, ' ').trim() : '';
+      paras.push({ text, ...(marked ? { marked } : {}), level, bold, ilvl: mark ? ilvl : 0, marker: mark });
+    }
   }
+  if (paragraphs) return paras;
   return lines.join('\n');
 }
 

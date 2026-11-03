@@ -651,7 +651,7 @@ function ImageView({ f, ctl, onZoom, onNote, onStep, fail }) {
     if (src !== fallback && fallback) { setSrc(fallback); onNote('Shown as a preview. Download keeps the original photo.'); }
     else { onNote(''); setFailed(true); }
   };
-  if (failed) return fail({ title: 'This photo didn’t load', text: 'It may have moved in JobTread. Download it, or open it in a new tab.' });
+  if (failed) return fail({ title: 'This photo didn’t load', text: `${onJobTread(f.url || '') ? 'It may have moved in JobTread.' : /\.hei[cf]$/i.test(f.filename || f.name || '') || /hei[cf]/i.test(f.type || '') ? 'It’s an iPhone photo (HEIC) this browser can’t show.' : 'It may have been moved or deleted.'} Download it, or open it in a new tab.` });
   return html`<div class="fv-imgbox" ref=${box}>
     ${!loaded && (f.thumb || f.preview ? html`<span class="fv-img-wait" aria-hidden="true">
       ${f.thumb && html`<img src=${f.thumb} alt="" />`}
@@ -794,7 +794,7 @@ function PdfView({ f, ctl, onZoom, onPage, onFound, fail }) {
     };
   }, [f.url, whole, site]);
   if (state === 'locked') return fail({ title: 'This PDF has a password', text: 'Download it and open it with the password.' });
-  if (state === 'failed') return fail({ title: 'This PDF didn’t open', text: 'It may have moved in JobTread. Download it, or open it in a new tab.' });
+  if (state === 'failed') return fail({ title: 'This PDF didn’t open', text: `${onJobTread(f.url || '') ? 'It may have moved in JobTread.' : 'It may have been moved or deleted.'} Download it, or open it in a new tab.` });
   return html`<div class="fv-pdf" ref=${wrap} tabindex="0" aria-label=${`${f.name || 'PDF'}, pages`}>
     <div class="pdfViewer"></div>
     ${state === 'loading' && html`<div class="fv-pdf-wait">

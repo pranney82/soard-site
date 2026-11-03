@@ -608,6 +608,10 @@ export const STYLES = `
   .bd-words { min-width: 0; }
   .bd-words__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.35rem 0.75rem; margin-bottom: 0.4rem; }
   .bd-words__head .form-label { margin: 0; }
+  .bd-words__newer { margin: 0 0 0.5rem; }
+  .bd-words__start { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; margin: 0 0 0.6rem; padding: 0.8rem 1rem; border-radius: 8px; background: var(--color-bg-subtle, #F7F7F5); }
+  .bd-words__start p { margin: 0; flex: 1 1 22rem; font-size: var(--fs-sm); color: var(--color-text-secondary); }
+  .bd-linkbtn { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--color-text); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
   .bd-wordings { margin-top: 0.6rem; }
   .bd-wordings__list { list-style: none; margin: 0.5rem 0 0; padding: 0; border-top: 1px solid var(--color-border); }
   .bd-wordings__list > li { padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); font-size: var(--fs-sm); }

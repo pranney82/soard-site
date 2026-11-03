@@ -22,11 +22,12 @@ import { ask, askToLeave } from './ask.js';
 import { viewerLink, sizeText } from './file-viewer.js';
 import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords } from './board-ui.js';
 import { MeetingEditor, agendaSource } from './board-meeting.js';
-import { ReportEditor, Report } from './board-report.js';
+import { ReportEditor, Report, PAPER_LETTERS } from './board-report.js';
+import { mdPlain } from './board-md.js';
 import { pdfLines, docxLines, wordsFromLines } from './board-words.js';
 import { BoardActivity } from './board-activity.js';
 import {
-  DOC_KINDS, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
+  isHeic, asJpeg, DOC_KINDS, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
   attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority, agendaItems, isLive, heldEarly,
 } from './board-shared.js';
 import { welcomeHad, usableEmail } from './board-shared.js';
@@ -41,6 +42,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
   const [error, setError] = useState(null);
   const dirty = useRef(false);
   const looks = useRef(0);
+  const dirtyWhere = useRef('this meeting');
 
   // Only the newest look shows: a slow one that comes back after a newer one (a send's) is dropped
   const load = async () => {
@@ -48,7 +50,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
     const j = await call();
     if (n !== looks.current) return j;
     // ...and never an older sign-in email record than a quick look already showed (welcomeAt)
-    if (j.ok) { setData((d) => (d?.welcomeAt > j.welcomeAt ? { ...j, welcome: d.welcome, welcomeSending: d.welcomeSending, welcomeAt: d.welcomeAt } : j)); setError(null); } else setError(j.error || 'Couldn’t load the board');
+    if (j.ok) { setData((d) => (d?.welcomeAt > j.welcomeAt ? { ...j, welcome: d.welcome, welcomeSending: d.welcomeSending, welcomeAt: d.welcomeAt } : j)); setError(null); } else setError({ text: j.error || 'Couldn’t load the board', refused: j.status === 403 });
     return j;
   };
   useEffect(() => { load(); }, []);
@@ -56,8 +58,8 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
     const on = () => {
       const r = readHash();
       if (!r) return;
-      if (dirty.current && r.meetingId !== route.meetingId) {
-        askToLeave('this meeting').then((ok) => { if (ok) { dirty.current = false; setGlobalDirty?.(false); setRoute(r); } else history.replaceState(null, '', hashFor(route)); });
+      if (dirty.current && (r.meetingId !== route.meetingId || r.tab !== route.tab)) {
+        askToLeave(dirtyWhere.current).then((ok) => { if (ok) { dirty.current = false; setGlobalDirty?.(false); setRoute(r); } else history.replaceState(null, '', hashFor(route)); });
         return;
       }
       setRoute(r);
@@ -66,12 +68,15 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
     return () => window.removeEventListener('hashchange', on);
   }, [route]);
   const go = (r) => { const next = { tab: 'meetings', meetingId: null, step: null, practice: false, ...r }; if (hashFor(next) !== location.hash) location.hash = hashFor(next); else setRoute(next); };
-  const markDirty = (d) => { dirty.current = d; setGlobalDirty?.(d, d ? 'board meeting' : ''); };
+  // `where`: what's being edited, as the question to leave names it ("this meeting", "this document")
+  const markDirty = (d, where = 'this meeting') => { dirty.current = d; if (d) dirtyWhere.current = where; setGlobalDirty?.(d, d ? `the board ${where.replace(/^(this|the) /, '')}` : ''); };
   const putMeeting = (m) => setData((d) => ({ ...d, meetings: [m, ...d.meetings.filter((x) => x.id !== m.id)].sort((a, b) => String(b.date).localeCompare(String(a.date))) }));
   const setStep = (step) => setRoute((r) => ({ ...r, step }));
   const ctx = { data, setData, load, addToast, go, putMeeting, markDirty, setStep };
 
-  if (error && !data) return html`<div class="card empty" role="alert"><p class="empty__title">The board didn’t load</p><p class="empty__text">${error}</p><div class="empty__actions"><button class="btn btn-ghost btn-sm" onClick=${load}>Try again</button></div></div>`;
+  // Not one of its admins: said as that, with who to ask (nothing to try again)
+  if (error && !data && error.refused) return html`<div class="card empty" role="alert"><p class="empty__title">Board is open to its admins</p><p class="empty__text">${error.text}. A founder adds people in Board → Settings.</p></div>`;
+  if (error && !data) return html`<div class="card empty" role="alert"><p class="empty__title">The board didn’t load</p><p class="empty__text">${error.text}</p><div class="empty__actions"><button class="btn btn-ghost btn-sm" onClick=${load}>Try again</button></div></div>`;
   if (!data) return html`<div class="area-loading"><span class="spinner" /></div>`;
   const meeting = route.meetingId ? data.meetings.find((m) => m.id === route.meetingId) : null;
 
@@ -504,6 +509,10 @@ const driveLink = (id) => `https://drive.google.com/file/d/${encodeURIComponent(
 const formatWord = (f) => (/\.docx$/i.test(f?.name || '') ? 'Word file' : 'PDF');
 // How a signature came (_board.js SIGNED_BY)
 const SIGNED_HOW = { typed: 'Typed their name', copy: 'Added their signed copy', staff: 'Signed copy added here', drive: 'Their signed copy in Drive' };
+// A day as Atlanta has it (a time saved after 8pm there is the next day in UTC)
+const dayOf = (iso) => (iso ? shortDate(todayEastern(Date.parse(iso))) : '');
+/** How a signature came, and when: "Typed “Alex Rivera”, Nov 2" */
+const signedHow = (s) => [s.how === 'typed' && s.name ? `Typed “${s.name}”` : SIGNED_HOW[s.how] || SIGNED_HOW.typed, s.how !== 'drive' ? dayOf(s.at) : ''].filter(Boolean).join(', ');
 
 /**
  * Each board member's signature this year on a paper every member signs: how it came, with its copy (here or in
@@ -515,11 +524,15 @@ function Signers({ d, ctx, onDoc }) {
   const pick = useRef(null);
   const forWho = useRef('');
   const year = todayEastern().slice(0, 4);
-  const add = async (file) => {
+  const add = async (picked) => {
+    let file = picked;
     if (pick.current) pick.current.value = '';
     const slug = forWho.current;
     if (!file || !slug) return;
+    if (file.size > MAX_FILE) { addToast(`${file.name} is over 50 MB. A PDF or a photo of the signed page is plenty.`, 'error'); return; }
+    if (!['pdf', 'image'].includes(await fileKind(file))) { addToast('A signed copy is a PDF, or a photo of the signed page', 'error'); return; }
     setBusy(slug);
+    if (isHeic(file)) { try { file = await asJpeg(file); } catch { /* sent as it is */ } }
     const fd = new FormData();
     fd.append('signFor', d.id);
     fd.append('slug', slug);
@@ -532,21 +545,24 @@ function Signers({ d, ctx, onDoc }) {
   };
   const off = async (p) => {
     const s = d.signed[p.slug];
-    if (!(await ask({ title: `Take off ${p.name}’s signature?`, text: `${p.name.split(/\s+/)[0]} is asked to sign ${d.title} for ${year} again${s.copy ? ', and the copy added for it is deleted' : ''}.`, yes: 'Take it off', danger: true }))) return;
+    if (!(await ask({ title: `Take off ${p.name}’s signature?`, text: `${p.name.split(/\s+/)[0]} shows as still to sign the ${d.title} for ${year}${s.copy ? ', and the copy added for it is deleted' : ''}.`, yes: 'Take it off', danger: true }))) return;
     setBusy(p.slug);
     const j = await call({ action: 'unsign', docId: d.id, slug: p.slug });
     setBusy('');
     if (!j.ok) { addToast(j.error, 'error'); return; }
     onDoc(j.doc);
+    // The focus stays on their row (its button is "Add their signed copy" now)
+    requestAnimationFrame(() => document.querySelector(`[data-signer="${p.slug}"] button`)?.focus());
   };
   return html`<div class="bd-signers">
     <ul class="bd-signers__list" aria-label=${`Who has signed ${d.title} for ${year}`}>${data.members.map((p) => {
       const s = d.signed[p.slug];
-      const when = s && s.how !== 'drive' && s.at ? shortDate(s.at.slice(0, 10)) : '';
-      return html`<li class="bd-signer" key=${p.slug}>
+      // Signed an earlier wording, before the board was asked to sign again: said, so it isn't read as never signed
+      const was = !s && d.before?.[p.slug];
+      return html`<li class="bd-signer" key=${p.slug} data-signer=${p.slug}>
         <span class=${`bd-signer__dot ${s ? 'is-on' : ''}`} aria-hidden="true"></span>
         <span class="bd-signer__name">${p.name}</span>
-        <span class="bd-signer__how">${s ? [SIGNED_HOW[s.how] || SIGNED_HOW.typed, when].filter(Boolean).join(', ') : 'Not signed yet'}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}</span>
+        <span class="bd-signer__how">${s ? signedHow(s) : was ? `Signed the earlier version (${dayOf(was.at)}): to sign the new one` : 'Not signed yet'}${was?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...was.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}</span>
         <span class="bd-signer__act">${s
           ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => off(p)}>Take it off</button>`
           : html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their signed copy'}</button>`}</span>
@@ -600,8 +616,8 @@ function DriveCopies({ ctx, signable, onDoc }) {
   </div>`;
 }
 
-/** A paper's earlier wordings, newest first: each to read, and to start from again (`onUse`) */
-function Wordings({ id, current, onUse, addToast }) {
+/** A paper's earlier wordings, newest first: each to read (when, who, where it came from, who signed it), and to start from again (`onUse`) */
+function Wordings({ id, current, signFrom = 0, onUse, addToast }) {
   const [list, setList] = useState(null);
   const [shown, setShown] = useState(0);
   const load = async () => {
@@ -610,104 +626,239 @@ function Wordings({ id, current, onUse, addToast }) {
     if (!j.ok) { addToast(j.error, 'error'); return; }
     setList(j.versions.filter((v) => v.version !== current));
   };
+  // The day and the time, as Atlanta has them: two saved the same day are told apart
+  const when = (iso) => (iso ? `${dayOf(iso)}, ${new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}` : '');
   return html`<div class="bd-wordings">
     <button type="button" class="btn btn-ghost btn-sm" aria-expanded=${list ? 'true' : 'false'} onClick=${load}>${list ? 'Hide the earlier wordings' : `Earlier wordings (${current - 1})`}</button>
     ${list ? html`<ol class="bd-wordings__list">${list.map((v) => html`<li key=${v.version}>
       <div class="bd-wordings__row">
-        <span><strong>Wording ${v.version}</strong> · ${v.at ? shortDate(v.at.slice(0, 10)) : ''}${v.by ? ` · ${firstOf(v.by)}` : ''}</span>
+        <span><strong>Wording ${v.version}</strong> · ${[when(v.at), v.by ? firstOf(v.by) : '', v.note.replace(/^(From |A new file: )(.+)$/, (_, a, n) => a + fileTitle(n)), v.signed ? `${plural(v.signed, 'signature')} on it this year${v.version < signFrom ? ', before the board was asked to sign again' : ''}` : ''].filter(Boolean).join(' · ')}</span>
         <span class="bd-actions">
           <button type="button" class="btn btn-ghost btn-sm" aria-expanded=${shown === v.version ? 'true' : 'false'} onClick=${() => setShown(shown === v.version ? 0 : v.version)}>${shown === v.version ? 'Hide' : 'Read it'}</button>
-          <button type="button" class="btn btn-ghost btn-sm" onClick=${() => onUse(v.body)}>Use these words</button>
+          ${v.body && !/^A new file:/.test(v.note) ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onUse(v.body)}>Use these words</button>` : null}
         </span>
       </div>
-      ${shown === v.version ? html`<div class="bd-wordings__words"><${Report} text=${v.body} level=${4} /></div>` : null}
+      ${shown === v.version ? html`<div class="bd-wordings__words">${v.body ? html`<${Report} text=${v.body} level=${4} />` : html`<p class="form-hint" style="margin:0">No words were written for it here: the board read its file.</p>`}</div>` : null}
     </li>`)}</ol>` : null}
   </div>`;
 }
 
+// What a paper's file can be on the board page (the server checks too: functions/api/_board.js fileTypeOf)
+const MAX_FILE = 50 * 1024 * 1024;
+/** What a file really is, from its first bytes (its name can say anything): 'pdf', 'image', 'office' or '' */
+async function fileKind(f) {
+  const b = new Uint8Array(await f.slice(0, 12).arrayBuffer());
+  const s = String.fromCharCode(...b);
+  if (s.startsWith('%PDF')) return 'pdf';
+  if ((b[0] === 0xFF && b[1] === 0xD8) || s.startsWith('\x89PNG') || s.startsWith('GIF8') || (s.startsWith('RIFF') && s.slice(8, 12) === 'WEBP') || s.slice(4, 8) === 'ftyp') return 'image';
+  if ((b[0] === 0x50 && b[1] === 0x4B) || (b[0] === 0xD0 && b[1] === 0xCF)) return 'office';
+  return '';
+}
+const kindOfName = (n) => (/\.pdf$/i.test(n) ? 'pdf' : /\.(jpe?g|png|gif|webp|heic)$/i.test(n) ? 'image' : /\.(docx|xlsx|pptx|doc|xls)$/i.test(n) ? 'office' : '');
+const KIND_WORD = { pdf: 'PDF', image: 'picture', office: 'Word, Excel or PowerPoint file' };
+/** Why a file can't go on the board page, said before anything's saved ('' when it can) */
+async function fileProblem(f) {
+  const want = kindOfName(f.name || '');
+  if (!want) return `${f.name} can’t go on the board page: choose a PDF, a picture, or a Word, Excel or PowerPoint file`;
+  if (f.size > MAX_FILE) return `${f.name} is over 50 MB`;
+  if ((await fileKind(f)) !== want) return `${f.name} isn’t really a ${KIND_WORD[want]} (another kind of file renamed, perhaps). Open it and save it as a ${KIND_WORD[want]} again.`;
+  return '';
+}
+/** Why a file's words didn't come out, in plain words */
+const unread = (err) => (/invalid pdf|pdf structure|password|unexpected server response|not a pdf/i.test(err?.message || '') ? 'it isn’t a PDF its words can be read from' : String(err?.message || 'it didn’t open').replace(/\.+$/, ''));
+
 function DocumentsTab({ ctx }) {
-  const { data, setData, addToast } = ctx;
-  const [draft, setDraft] = useState(null); // { title, kind, sign, note, body, file, existing }
+  const { data, setData, addToast, markDirty } = ctx;
+  const [draft, setDraft] = useState(null); // { ...doc, body, file (one just chosen), existing (its file now) }
+  // The draft as it opened, to tell what's changed since; its words now (to know they were typed into while a file was read)
+  const opened = useRef('');
+  const bodyNow = useRef('');
+  bodyNow.current = draft?.body || '';
   const [saving, setSaving] = useState(false);
   const [open, setOpen] = useState('');
-  // The words brought in from its file: reading (the PDF), done (said under the editor), and the editor's reset
-  const [reading, setReading] = useState(false);
-  const [fromFile, setFromFile] = useState(false);
+  // Words brought in from a file: reading them, and what was read from which ({ md, from: 'existing' | 'new', name }).
+  // Saved as read, they're that file's own words: the paper's own file's aren't new words to sign again
+  const [reading, setReading] = useState('');
+  const [read, setRead] = useState(null);
   const [wordsKey, setWordsKey] = useState(0);
   const boardCount = data.members.length;
   const year = todayEastern().slice(0, 4);
   const putDoc = (d) => setData((x) => ({ ...x, docs: [...x.docs.filter((y) => y.id !== d.id), d].sort((a, b) => a.title.localeCompare(b.title)) }));
+  const snap = (d) => JSON.stringify(d ? [d.title, d.kind, d.note, !!d.sign, (d.body || '').trim(), d.file?.name || ''] : null);
+  const dirty = !!draft && snap(draft) !== opened.current;
+  useEffect(() => { markDirty(dirty, 'this document'); }, [dirty]);
+  useEffect(() => () => markDirty(false), []);
+  // Closing the tab or reloading with words changed asks first, as every editor here does
+  useEffect(() => {
+    if (!dirty) return undefined;
+    const warn = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [dirty]);
   const hasWords = !!draft?.body?.trim();
   const hasFile = draft && (draft.file || draft.existing || hasWords);
   const readable = (f) => f && (/\.(pdf|docx)$/i.test(f.name || '') || /pdf|wordprocessingml/.test(f.type || ''));
-  /** Its file's words into the editor, to write it here from them: the PDF read the way its pages lay it out */
-  const bringWords = async (d = draft) => {
-    const f = d?.existing;
-    if (!readable(f)) return;
-    setReading(true);
+  const asRead = read && hasWords && mdPlain(draft.body) === mdPlain(read.md) ? read : null;
+  /** A file's words into the editor, read the way its pages lay them out: the paper's own file, or one just chosen */
+  const bringWords = async (d, source, from) => {
+    const before = bodyNow.current;
+    setReading(source.name || 'the file');
     try {
-      const r = await fetch(`/api/board-file?id=${encodeURIComponent(f.id)}`, { cache: 'no-store' });
-      if (!r.ok) throw new Error(`the file didn’t open (${r.status})`);
-      const bytes = new Uint8Array(await r.arrayBuffer());
-      const lines = /\.docx$/i.test(f.name || '') ? docxLines(await docxText(bytes)) : await pdfLines(bytes);
+      let bytes;
+      if (source instanceof Blob) {
+        const problem = await fileProblem(source);
+        if (problem) { addToast(problem, 'error'); setReading(''); return; }
+        bytes = new Uint8Array(await source.arrayBuffer());
+      } else {
+        const r = await fetch(`/api/board-file?id=${encodeURIComponent(source.id)}`, { cache: 'no-store' });
+        if (!r.ok) throw new Error(`the file didn’t open (${r.status})`);
+        bytes = new Uint8Array(await r.arrayBuffer());
+      }
+      const lines = /\.docx$/i.test(source.name || '') ? docxLines(await docxText(bytes, { paragraphs: true })) : await pdfLines(bytes);
       const md = wordsFromLines(lines, { title: d.title });
       if (!md) throw new Error('it has no words to read (a scan?)');
-      setDraft((x) => (x && x.id === d.id && !x.body?.trim() ? { ...x, body: md } : x));
-      setWordsKey((k) => k + 1);
-      setFromFile(true);
+      if (mdPlain(md).length > PAPER_LETTERS) { addToast(`${fileTitle(source.name)} is longer than a paper written here can be, so it stays its file: the board reads it there.`, 'error'); setReading(''); return; }
+      // Typed into while it was read: what they typed stays
+      if (bodyNow.current !== before) addToast(`You typed while ${fileTitle(source.name)} was being read, so your words stay. To use its words instead, bring them in again.`, 'info');
+      else {
+        setDraft((x) => (x && x.id === d.id ? { ...x, body: md } : x));
+        setRead({ md, from, name: source.name });
+        setWordsKey((k) => k + 1);
+      }
     } catch (err) {
-      addToast(`Couldn’t read ${fileTitle(f.name)}: ${err.message}. Write the words in the box instead.`, 'error');
+      addToast(`Couldn’t read ${fileTitle(source.name)}: ${unread(err)}. Write the words in the box instead.`, 'error');
     }
-    setReading(false);
+    setReading('');
   };
-  // A paper the board signs, opened to edit with no words written yet: it starts from its file's words
-  const edit = (d) => {
+  /** Words already in the editor: asked first, since a file's words take their place */
+  const bringFrom = async (source, from) => {
+    if (hasWords && !(await ask({
+      title: `Put ${fileTitle(source.name)}’s words in the editor?`,
+      text: 'They take the place of the words there now. Nothing changes on the board page until you save, and saved, today’s words are kept under Earlier wordings.',
+      yes: 'Bring them in', no: 'Keep these words',
+    }))) return;
+    bringWords(draft, source, from);
+  };
+  const edit = async (doc) => {
+    if (dirty && !(await askToLeave('this document'))) return;
+    const fresh = await call();
+    if (fresh.ok) setData(fresh);
+    const d = (fresh.ok && fresh.docs.find((x) => x.id === doc.id)) || doc;
     const next = { ...d, body: d.body || '', file: null, existing: d.file };
-    setFromFile(false);
+    opened.current = snap(next);
+    setRead(null);
     setDraft(next);
     setWordsKey((k) => k + 1);
-    if (d.sign && !d.body && readable(d.file)) bringWords(next);
+    focusTitle();
   };
-  const save = async () => {
+  const focusTitle = () => requestAnimationFrame(() => { const t = document.getElementById('bd-doc-title'); t?.scrollIntoView({ block: 'center', behavior: 'smooth' }); t?.focus({ preventScroll: true }); });
+  // The focus back where the editor was opened from: its row's Edit, or Add a document
+  const refocus = (id) => requestAnimationFrame(() => (document.querySelector(id ? `[data-edit="${id}"]` : '[data-add-doc]') || document.querySelector('[data-add-doc]'))?.focus());
+  const close = async () => {
+    if (dirty && !(await askToLeave('this document'))) return;
+    const id = draft?.id;
+    setDraft(null);
+    setRead(null);
+    refocus(id);
+  };
+  const save = async ({ askAgain = null, base = null } = {}) => {
     if (!draft.title.trim()) { addToast('Give it a title', 'error'); return; }
     const { file, existing, ...doc } = draft;
-    // New words on a paper some have signed this year: do they sign the new ones? (A typo fixed: no)
-    const was = data.docs.find((x) => x.id === doc.id);
-    const signedNow = was?.sign ? data.members.filter((p) => was.signed[p.slug]).length : 0;
-    let askAgain = false;
-    if (was && signedNow && (doc.body || '').trim() !== (was.body || '').trim()) {
-      askAgain = await ask({
-        title: `Ask the ${plural(signedNow, 'member')} who signed to sign again?`,
-        text: `${plural(signedNow, 'board member')} signed the earlier words for ${year}. If what they agreed to has changed, they sign the new words. A typo or a heading fixed doesn’t need it.`,
-        yes: 'Ask them to sign again', no: 'Keep their signatures',
-      });
-    }
+    const body = (doc.body || '').trim();
+    // Checked before anything's saved, so a paper never goes on the board page without the file it was added with
+    if (file) { const problem = await fileProblem(file); if (problem) { addToast(problem, 'error'); return; } }
+    if (doc.sign && !body && !file && !existing) { addToast('A paper every member signs needs its words or its file: write them, add the file, or untick Required', 'error'); return; }
+    const words = asRead;
+    const back = () => requestAnimationFrame(() => document.querySelector('[data-save-doc]')?.focus());
     setSaving(true);
-    const j = await call({ action: 'save-doc', doc: { ...doc, body: doc.body || '', sign: doc.sign && !!(file || existing || (doc.body || '').trim()) }, askAgain });
-    if (!j.ok) { setSaving(false); addToast(j.error, 'error'); return; }
+    const j = await call({
+      action: 'save-doc', askAgain, base: doc.id ? base ?? doc.version ?? 0 : undefined,
+      doc: { ...doc, body, ...(words?.from === 'existing' && existing ? { wordsFile: existing.id } : {}) },
+      fromFile: words?.from === 'existing', wordsFrom: words ? fileTitle(words.name) : '', newFile: file ? file.name : '',
+    });
+    if (!j.ok) {
+      setSaving(false);
+      // A new version over signatures: the server asks, naming who signed. Keeping them is the safe answer, so it has
+      // the focus; Escape goes back to editing, nothing saved
+      if (j.ask) {
+        const n = j.ask.names;
+        const who = n.length > 2 ? `${n.slice(0, -1).join(', ')} and ${n.at(-1)}` : n.join(' and ');
+        const choice = await ask({
+          title: n.length === 1 ? `Ask ${n[0].split(/\s+/)[0]} to sign again?` : `Ask the ${n.length} who signed to sign again?`,
+          text: `${who} signed ${j.ask.since === 'file' ? `the ${fileTitle(existing?.name || 'file')} file` : 'the earlier words'} for ${year}. ${j.ask.newFile && j.ask.now === 'file' ? `With ${fileTitle(j.ask.newFile)} it’s a new version: if what they agree to changed, they sign it.`
+            : j.ask.now === 'file' ? 'With the words taken out, the board reads its file again: if that’s not what they signed, they sign it.'
+            : 'If what they agreed to has changed, they sign the new words. A typo or a heading fixed doesn’t need it.'}`,
+          yes: 'Ask them to sign again', no: 'Keep their signatures', dismiss: null, careful: true,
+        });
+        if (choice === null) { back(); return; }
+        save({ askAgain: choice, base });
+        return;
+      }
+      // Newer words saved meanwhile (someone else, or this admin in another tab): theirs or these, chosen
+      if (j.conflict) {
+        const c = j.conflict;
+        const self = !!c.by && c.by === data.me;
+        const mine = await ask({
+          title: self ? 'You changed these words in another tab' : `${c.by ? firstOf(c.by) : 'Someone'} changed these words`,
+          text: `${self ? 'Wording' : 'They saved wording'} ${c.version}${self ? ' was saved' : ''}${c.at ? ` ${ago(c.at)}` : ''}, while ${self ? 'this one was' : 'you had the paper'} open. Save these words over it (it’s kept under Earlier wordings), or load it to work from.`,
+          yes: 'Save these', no: self ? 'Load that one' : 'Load theirs', dismiss: null,
+        });
+        if (mine === true) save({ askAgain, base: c.version });
+        else if (mine === false) {
+          setDraft((x) => (x ? { ...x, body: c.body, version: c.version } : x));
+          opened.current = snap({ ...draft, body: c.body });
+          setRead(null);
+          setWordsKey((k) => k + 1);
+          call().then((r) => { if (r.ok) setData(r); });
+        } else back();
+        return;
+      }
+      addToast(j.error, 'error');
+      if (j.deleted) call().then((r) => { if (r.ok) setData(r); });
+      return;
+    }
     let d = j.doc;
     if (file) {
       const up = await upload(file, { ownerType: 'doc', ownerId: d.id });
-      if (up.ok) d = { ...d, file: up.file }; else addToast(`Saved, but the file didn’t upload: ${up.error}`, 'error');
+      if (up.ok) {
+        d = { ...d, file: up.file };
+        // Its words read from this file: where they came from, so the file isn't "newer than its words"
+        if (words?.from === 'new') { const k = await call({ action: 'save-doc', doc: { ...d, body: undefined, wordsFile: up.file.id } }); if (k.ok) d = k.doc; }
+      } else if (!doc.id) {
+        // A new paper whose file didn't go: not left on the board page without it
+        await call({ action: 'delete-doc', id: d.id });
+        setSaving(false);
+        addToast(`${file.name} didn’t upload: ${up.error}. Nothing was added.`, 'error');
+        return;
+      } else addToast(`Saved, but the new file didn’t upload: ${up.error}`, 'error');
     }
     setSaving(false);
     putDoc(d);
+    opened.current = snap(null);
     setDraft(null);
-    setFromFile(false);
-    if (askAgain) addToast(`Saved. The board signs the new words for ${year}.`, 'info');
+    setRead(null);
+    refocus(d.id);
+    addToast(askAgain === true ? `Saved. The board signs the new version for ${year}.` : `Saved: ${d.title}`, 'info');
   };
   const remove = async (d) => {
-    if (!(await ask({ title: `Delete ${d.title}?`, text: 'Its file and this year’s signatures go with it.', yes: 'Delete', danger: true }))) return;
+    if (!(await ask({ title: `Delete ${d.title}?`, text: 'Its file, its earlier wordings, and every signature and signed copy on it go with it.', yes: 'Delete', danger: true }))) return;
     const j = await call({ action: 'delete-doc', id: d.id });
     if (!j.ok) { addToast(j.error, 'error'); return; }
     setData((x) => ({ ...x, docs: x.docs.filter((y) => y.id !== d.id) }));
+    refocus(null);
   };
   const toggle = async (d, patch) => {
-    const j = await call({ action: 'save-doc', doc: { ...d, ...patch } });
-    if (!j.ok) { addToast(j.error, 'error'); return; }
+    const j = await call({ action: 'save-doc', doc: { ...d, ...patch, body: undefined }, base: d.version || 0 });
+    if (!j.ok) { addToast(j.error, 'error'); if (j.deleted) call().then((r) => { if (r.ok) setData(r); }); return; }
     putDoc(j.doc);
   };
   const signable = data.docs.filter((d) => d.sign);
+  // The file to read words from: one just chosen, else the paper's own
+  const source = draft && readable(draft.file) ? draft.file : draft && readable(draft.existing) ? draft.existing : null;
+  const sourceFrom = draft && readable(draft.file) ? 'new' : 'existing';
+  // Its file newer than its words, and not the one they were read from (next year's PDF from Drive, say)
+  const newerOf = (d, f) => !!(d.body && f && d.wordsAt && f.id !== d.wordsFile && f.at > d.wordsAt);
+  const fileLink = (f, label) => html`<a class="link" ...${viewerLink(viewerFiles([f]), 0)}>${label}</a>`;
   return html`
     ${draft ? html`<div class="card">
       <div class="bd-card-head"><h3>${draft.id ? 'Edit the document' : 'Add a document'}</h3></div>
@@ -718,49 +869,61 @@ function DocumentsTab({ ctx }) {
         <div class="form-group span-2 bd-words">
           <div class="bd-words__head">
             <span class="form-label" id="bd-doc-words-l">The words <span class="form-optional">${hasWords ? 'the board reads these on the board page' : 'write it here, or add a file below'}</span></span>
-            ${readable(draft.existing) && !hasWords ? html`<button class="btn btn-ghost btn-sm" disabled=${reading} onClick=${() => bringWords()}>${reading ? `Reading ${formatWord(draft.existing)}…` : `Start from the ${formatWord(draft.existing)}’s words`}</button>` : null}
+            ${source && hasWords && !(asRead && asRead.from === sourceFrom) && !(sourceFrom === 'existing' && draft.wordsFile === source.id && !newerOf(draft, draft.existing)) ? html`<button class="btn btn-ghost btn-sm" disabled=${!!reading} onClick=${() => bringFrom(source, sourceFrom)}>${reading ? `Reading ${formatWord(source)}…` : `Bring in the words from ${fileTitle(source.name)}`}</button>` : null}
           </div>
-          ${reading ? html`<p class="form-hint" role="status">Reading the words in ${fileTitle(draft.existing.name)}…</p>` : null}
-          <${ReportEditor} value=${draft.body || ''} resetKey=${wordsKey} label=${`The words of ${draft.title || 'the document'}`} minHeight=${280}
+          ${!hasWords && source ? html`<div class="bd-words__start">
+            <p>${draft.sign && draft.existing && !draft.file ? 'The board reads it as its file now. ' : ''}Write its words here and the board reads them on the board page${draft.sign ? ', then signs at the end' : ''}. Start from what ${fileTitle(source.name)} says, and read it over before you save.</p>
+            <button class="btn btn-primary btn-sm" disabled=${!!reading} onClick=${() => bringFrom(source, sourceFrom)}>${reading ? `Reading ${formatWord(source)}…` : `Start from the ${formatWord(source)}’s words`}</button>
+          </div>` : null}
+          ${reading ? html`<p class="form-hint" role="status">Reading the words in ${fileTitle(reading)}…</p>` : null}
+          ${newerOf(draft, draft.existing) && !read ? html`<p class="form-hint bd-words__newer">${fileLink(draft.existing, fileTitle(draft.existing.name))} came in on ${dayOf(draft.existing.at)}, after these words were last changed${dayOf(draft.wordsAt) === dayOf(draft.existing.at) ? '' : ` (${dayOf(draft.wordsAt)})`}. If it’s a new version, bring its words in above.</p>` : null}
+          <${ReportEditor} value=${draft.body || ''} resetKey=${wordsKey} label=${`The words of ${draft.title || 'the document'}`} minHeight=${hasWords ? 280 : 160} timed="read"
             placeholder="What the board reads and agrees to. Headings, points and bold are in the bar above; text pasted from Word or Google Docs keeps its shape."
             onChange=${(md) => setDraft((x) => (x ? { ...x, body: md } : x))} />
-          ${draft.id && draft.version > 1 ? html`<${Wordings} id=${draft.id} current=${draft.version} addToast=${addToast}
-            onUse=${(body) => { setDraft((x) => (x ? { ...x, body } : x)); setWordsKey((k) => k + 1); addToast('Those words are in the editor. Save to make them the paper’s again.', 'info'); }} />` : null}
-          ${fromFile && hasWords ? html`<p class="form-hint">These are the words from ${fileTitle(draft.existing?.name || '')}. Read them over and fix anything, then save: the board page shows these words in place of the file.</p>` : null}
+          ${draft.id && draft.version > 1 ? html`<${Wordings} id=${draft.id} current=${draft.version} signFrom=${draft.signFrom} addToast=${addToast}
+            onUse=${async (body) => {
+              if (dirty && (draft.body || '').trim() !== (data.docs.find((x) => x.id === draft.id)?.body || '').trim() && !(await ask({ title: 'Put those words in the editor?', text: 'They take the place of the changes there now, which aren’t saved.', yes: 'Put them in', no: 'Keep my changes' }))) return;
+              setDraft((x) => (x ? { ...x, body } : x)); setRead(null); setWordsKey((k) => k + 1); addToast('Those words are in the editor. Save to make them the paper’s again.', 'info');
+            }} />` : null}
+          ${asRead ? html`<p class="form-hint">These are the words from ${asRead.from === 'new' ? fileTitle(asRead.name) : draft.existing ? fileLink(draft.existing, fileTitle(draft.existing.name)) : fileTitle(asRead.name)}. Read them over beside it and fix anything, then save: the board page shows these words in place of the file.
+            ${!data.docs.find((x) => x.id === draft.id)?.body ? html` <button type="button" class="bd-linkbtn" onClick=${() => { setDraft((x) => ({ ...x, body: '' })); setRead(null); setWordsKey((k) => k + 1); requestAnimationFrame(() => document.querySelector('.bd-words__start button')?.focus()); }}>Keep the file instead</button>` : null}</p>` : null}
         </div>
         <div class="form-group span-2">
-          <label class="form-label" for="bd-doc-file">${draft.existing ? `The file: ${fileTitle(draft.existing.name)}` : 'The file'} <span class="form-optional">${hasWords ? 'kept, but the board reads the words' : 'optional when the words are written here'}</span></label>
+          <label class="form-label" for="bd-doc-file">${draft.existing ? html`The file: ${fileLink(draft.existing, fileTitle(draft.existing.name))}` : 'The file'} <span class="form-optional">${hasWords ? 'kept, but the board reads the words' : 'optional when the words are written here'}</span></label>
           <input id="bd-doc-file" type="file" accept=".pdf,.jpg,.jpeg,.png,.docx,.xlsx,.pptx,.doc,.xls" onChange=${(e) => setDraft({ ...draft, file: e.target.files[0] || null })} />
           ${draft.existing ? html`<p class="form-hint">Choose another to replace it.</p>` : null}
         </div>
-        <div class="form-group span-2"><label class="bd-check"><input type="checkbox" checked=${draft.sign && hasFile} disabled=${!hasFile} onChange=${(e) => setDraft({ ...draft, sign: e.target.checked })} /> Required: every board member reads and signs it each year (the board expectations, the conflict of interest policy)</label>
-          ${hasFile ? null : html`<p class="form-hint">Write the words or add the file first: the board signs what they can read.</p>`}</div>
+        <div class="form-group span-2"><label class="bd-check"><input type="checkbox" checked=${!!draft.sign} disabled=${!hasFile && !draft.sign} onChange=${(e) => setDraft({ ...draft, sign: e.target.checked })} /> Required: every board member reads and signs it each year (the board expectations, the conflict of interest policy)</label>
+          ${hasFile ? null : html`<p class="form-hint">${draft.sign ? 'Nothing to read yet: write the words or add the file, or untick Required.' : 'Write the words or add the file first: the board signs what they can read.'}</p>`}</div>
       </div>
       <div class="bd-actions" style="margin-top:1rem">
-        <button class="btn btn-primary" disabled=${saving} onClick=${save}>${saving ? 'Saving…' : 'Save'}</button>
-        <button class="btn btn-ghost" onClick=${() => setDraft(null)}>Cancel</button>
+        <button class="btn btn-primary" data-save-doc disabled=${saving || !!reading} onClick=${() => save()}>${saving ? 'Saving…' : 'Save'}</button>
+        <button class="btn btn-ghost" onClick=${close}>Cancel</button>
       </div>
-    </div>` : html`<div class="bd-actions"><button class="btn btn-primary btn-sm" onClick=${() => setDraft({ title: '', kind: 'governance', note: '', sign: false, file: null, existing: null })}>Add a document</button></div>`}
+    </div>` : html`<div class="bd-actions"><button class="btn btn-primary btn-sm" data-add-doc onClick=${() => { const next = { title: '', kind: 'governance', note: '', sign: false, file: null, existing: null }; opened.current = snap(next); setRead(null); setDraft(next); focusTitle(); }}>Add a document</button></div>`}
     <div class="card" style="padding:0">
       <div class="sec-head"><h3>On the board page <span class="count">${data.docs.length}</span></h3><span class="sec-head__hint">Signatures are for ${year}</span></div>
       ${data.docs.length ? html`<ul class="bd-row-list">${data.docs.map((d) => {
         // Who's on the board now, signed or not (a signature from someone who has since left isn't counted)
         const signed = data.members.filter((p) => d.signed[p.slug]);
         const left = data.members.filter((p) => !d.signed[p.slug]);
+        const earlier = left.filter((p) => d.before?.[p.slug]).length;
         const all = boardCount && !left.length;
         return html`<li class="bd-row" key=${d.id}>
           <div class="bd-row__main">
             ${d.body ? html`<a class="bd-row__title" href=${`/admin/board/#/documents/${d.id}`} target="_blank" rel="noopener">${d.title}</a>`
               : d.file ? html`<a class="bd-row__title" ...${viewerLink(viewerFiles([d.file]), 0)}>${d.title}</a>` : html`<span class="bd-row__title">${d.title}</span>`}
             <div class="bd-row__meta">${[DOC_KINDS.find((k) => k.id === d.kind)?.label, d.note,
-              d.body ? `Written here${d.wordsAt ? `, last changed ${shortDate(d.wordsAt.slice(0, 10))}` : ''}` : d.file ? `${fileTitle(d.file.name)} · ${sizeText(d.file.size)}` : 'No words or file yet'].filter(Boolean).join(' · ')}</div>
-            ${d.sign ? html`<div class="bd-row__meta">${all ? `Every board member has signed it for ${year}` : !signed.length ? `No one has signed it for ${year} yet` : `Still to sign: ${left.map((p) => p.name).join(', ')}`}</div>` : null}
+              d.body ? `Written here${d.wordsAt ? `, last changed ${dayOf(d.wordsAt)}` : ''}` : d.file ? `${fileTitle(d.file.name)} · ${sizeText(d.file.size)}` : 'No words or file yet'].filter(Boolean).join(' · ')}${d.body && d.file ? html` · its ${formatWord(d.file)}: ${fileLink(d.file, fileTitle(d.file.name))}` : null}</div>
+            ${newerOf(d, d.file) ? html`<div class="bd-row__meta bd-row__newer">A newer ${formatWord(d.file)} came in on ${dayOf(d.file.at)}, after these words were last changed. If it’s a new version, Edit to bring its words in.</div>` : null}
+            ${d.sign && !d.shared ? html`<div class="bd-row__meta">Off the board page: the board can’t read or sign it until it’s back on.</div>` : null}
+            ${d.sign ? html`<div class="bd-row__meta">${all ? `Every board member has signed it for ${year}` : !signed.length ? `No one has signed ${earlier ? 'the new version' : 'it'} for ${year} yet${earlier ? ` (${plural(earlier, 'member')} signed the earlier one)` : ''}` : `Still to sign: ${left.map((p) => (d.before?.[p.slug] ? `${p.name} (signed the earlier version)` : p.name)).join(', ')}`}</div>` : null}
           </div>
           <div class="bd-tags">
             ${d.sign ? html`<span class="tag">Required</span><span class=${`tag ${all ? 'tag--success' : ''}`}>${signed.length} of ${boardCount} signed</span>
               <button class="btn btn-ghost btn-sm" aria-expanded=${open === d.id ? 'true' : 'false'} onClick=${() => setOpen(open === d.id ? '' : d.id)}>${open === d.id ? 'Hide who’s signed' : 'Who’s signed'}</button>` : null}
             <${Switch} checked=${d.shared} label="On the board page" onChange=${(v) => toggle(d, { shared: v })} />
-            <button class="btn btn-ghost btn-sm" onClick=${() => edit(d)}>Edit</button>
+            <button class="btn btn-ghost btn-sm" data-edit=${d.id} onClick=${() => edit(d)}>Edit</button>
             <button class="btn btn-ghost btn-sm btn-row-danger" onClick=${() => remove(d)}>Delete</button>
           </div>
           ${d.sign && open === d.id ? html`<${Signers} d=${d} ctx=${ctx} onDoc=${putDoc} />` : null}
@@ -1094,7 +1257,7 @@ function SettingsTab({ ctx }) {
   const [newAdmin, setNewAdmin] = useState('');
   const [saving, setSaving] = useState(false);
   const dirty = JSON.stringify(s) !== JSON.stringify(pick(data.settings));
-  useEffect(() => { ctx.markDirty(dirty); return () => ctx.markDirty(false); }, [dirty]);
+  useEffect(() => { ctx.markDirty(dirty, 'the settings'); return () => ctx.markDirty(false); }, [dirty]);
   const setDef = (patch) => setS({ ...s, defaults: { ...s.defaults, ...patch } });
   const save = async () => {
     setSaving(true);

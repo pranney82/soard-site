@@ -792,14 +792,29 @@ try {
   await jane.evaluate(() => [...document.querySelectorAll('.bd-check input')].at(-1).click());
   await clickText(jane, 'button', /^Save$/);
   ok(await waitText(jane, /Board Member Expectations[\s\S]*No one has signed it for \d{4} yet[\s\S]*Required\s*0 of 3 signed/), 'the expectations: required, and no one has signed yet');
-  // Their words, written here: Edit starts from the PDF's own, its headings and points, without the blanks to sign
-  const editRow = (title) => jane.evaluate((t) => [...document.querySelectorAll('.bd-row')].find((r) => r.querySelector('.bd-row__title')?.textContent === t).querySelectorAll('.bd-tags button').forEach((b) => { if (b.textContent.trim() === 'Edit') b.click(); }), title);
+  // Their words, written here, starting from the PDF's own (asked for: opening it to change a line about it, or
+  // Cancel, changes nothing): its headings and points, without the blanks to sign
+  // (Edit opens with the focus on the title, as a person sees before typing: waited for here)
+  const editRow = async (title) => {
+    await jane.evaluate((t) => [...document.querySelectorAll('.bd-row')].find((r) => r.querySelector('.bd-row__title')?.textContent === t).querySelectorAll('.bd-tags button').forEach((b) => { if (b.textContent.trim() === 'Edit') b.click(); }), title);
+    await jane.waitForFunction(() => document.activeElement?.id === 'bd-doc-title', { timeout: 5000 }).catch(() => {});
+  };
   await editRow('Board Member Expectations');
-  ok(await jane.waitForFunction(() => /Attendance[\s\S]*Attend at least three of four board meetings[\s\S]*Giving and asking[\s\S]*Open one door for a sponsor/.test(document.querySelector('.rp-edit')?.innerText || ''), { timeout: 8000 }).then(() => true, () => false), 'Edit starts from the PDF’s words');
+  ok(await waitText(jane, /The board reads it as its file now\. Write its words here and the board reads them on the board page, then signs at the end\./) && !(await editorText(jane)).trim(), 'Edit offers to write its words here, and puts none in by itself');
+  const leaveAsked = [];
+  await answerAsks(jane, { onAsk: (t) => leaveAsked.push(t) });
+  await clickText(jane, 'button', /^Cancel$/);
+  ok(await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 3000 }).then(() => true, () => false) && !leaveAsked.length, 'Cancel straight away closes it without asking (nothing changed)');
+  await answerAsks(jane);
+  await editRow('Board Member Expectations');
+  await jane.waitForSelector('.bd-words__start button');
+  await clickText(jane, '.bd-words__start button', /^Start from the PDF’s words$/);
+  ok(await jane.waitForFunction(() => /Attendance[\s\S]*Attend at least three of four board meetings[\s\S]*Giving and asking[\s\S]*Open one door for a sponsor/.test(document.querySelector('.rp-edit')?.innerText || ''), { timeout: 8000 }).then(() => true, () => false), 'Start from the PDF’s words: the editor has them');
   const fromPdf = await editorText(jane);
   ok(!/Signature|SUNSHINE ON A RANNEY DAY|^Board Member Expectations/m.test(fromPdf) && /Each member of the board agrees to the following for the year\. We ask every member to read them/.test(fromPdf)
     && await jane.evaluate(() => document.querySelectorAll('.rp-edit h3').length === 2 && document.querySelectorAll('.rp-edit ul li').length === 2 && document.querySelectorAll('.rp-edit ol li').length === 2), `its two headings, its points and its numbered list; one paragraph again; no letterhead, title or blanks (${JSON.stringify(fromPdf.slice(0, 160))})`);
-  ok(await waitText(jane, /These are the words from Board Expectations\. Read them over and fix anything, then save/), 'it says where the words came from, to read over before saving');
+  ok(await waitText(jane, /These are the words from Board Expectations\. Read them over beside it and fix anything, then save[\s\S]*Keep the file instead/), 'it says where the words came from, to read over beside it before saving (or keep the file)');
+  ok(await jane.evaluate(() => [...document.querySelectorAll('.bd-words .form-hint a, label[for="bd-doc-file"] a')].filter((a) => /Board Expectations/.test(a.textContent)).length === 2), 'the PDF opens from beside the words, to compare');
   await clickText(jane, 'button', /^Save$/);
   ok(await waitText(jane, /Board Member Expectations[\s\S]*Written here, last changed [A-Z][a-z]{2} \d+/), 'written here now');
   // A paper to read, not to sign: on the board page it goes on its shelf
@@ -1105,8 +1120,8 @@ try {
     }
     if (width === 1440) {
       await clickText(alex, 'button', /^I’ve read it and agree$/);
-      ok(await waitText(alex, /Type your full name, the way you sign it/), 'signing with no name says what to do');
-      ok(await alex.$eval('.bp-sign input', (i) => i.placeholder) === 'Alex Rivera', 'the name field shows the name to sign with');
+      ok(await waitText(alex, /Type your full name, first and last, the way you sign it/), 'signing with no name says what to do');
+      ok(await alex.$eval('.bp-sign input', (i) => i.placeholder) === 'Your full name', 'the name box is empty until they type (their name in grey read as filled in)');
       await alex.type('.bp-sign input', 'Mickey Mouse');
       await clickText(alex, 'button', /^I’ve read it and agree$/);
       ok(await waitText(alex, /Sign with your own name, as the board has it: Alex Rivera/) && !(await waitText(alex, /Signed\s*by Mickey/, 600)), 'someone else’s name isn’t a signature');
@@ -1285,7 +1300,7 @@ try {
   ok(await waitText(jane, /Conflict of interest policy[\s\S]*Still to sign: Sam Ortiz, Kim Park[\s\S]*1 of 3 signed/), 'and who has still to sign each paper');
   // Who's signed, and how: typed, or the copy Alex added (which the founder opens); Kim's paper copy added for her, then taken off
   await jane.evaluate(() => [...document.querySelectorAll('.bd-row')].find((r) => /Conflict of interest policy/.test(r.textContent)).querySelector('button[aria-expanded]').click());
-  ok(await waitText(jane, /Alex Rivera\s*Typed their name, [A-Z][a-z]{2} \d+[\s\S]*Sam Ortiz\s*Not signed yet/), 'who’s signed, and how: Alex typed it');
+  ok(await waitText(jane, /Alex Rivera\s*Typed “Alex Rivera”, [A-Z][a-z]{2} \d+[\s\S]*Sam Ortiz\s*Not signed yet/), 'who’s signed, and how: Alex typed his name, as he typed it');
   const kimInput = await jane.$('.bd-signers input[type="file"]');
   await jane.evaluate(() => [...document.querySelectorAll('.bd-signer')].find((r) => /Kim Park/.test(r.textContent)).querySelector('button').click());
   await kimInput.uploadFile(pdf);
@@ -1303,7 +1318,7 @@ try {
   await jane.keyboard.type('Come to the gala each spring.');
   ok(/Come to the gala each spring/.test(await editorText(jane)), 'the words changed in the editor');
   await clickText(jane, 'button', /^Save$/);
-  ok(await waitText(jane, /Saved\. The board signs the new words for \d{4}\./) && await waitText(jane, /Board Member Expectations[\s\S]*No one has signed it for \d{4} yet[\s\S]*0 of 3 signed/), 'asked (and answered: sign again), the new words start at nobody signed');
+  ok(await waitText(jane, /Saved\. The board signs the new version for \d{4}\./) && await waitText(jane, /Board Member Expectations[\s\S]*No one has signed the new version for \d{4} yet \(1 member signed the earlier one\)[\s\S]*0 of 3 signed/), 'asked (and answered: sign again), the new words start at nobody signed, saying Alex signed the earlier ones');
   const exp = (await listDocs(DB)).find((d) => d.title === 'Board Member Expectations');
   ok(exp.version === 2 && exp.signFrom === 2 && exp.earlier.includes('alex-rivera') && /Come to the gala each spring/.test(exp.body), `the second wording, kept, Alex’s signature on an earlier one (v${exp.version}, from ${exp.signFrom})`);
   const alexAgain = await tab(MEMBER, 1440);
@@ -1319,10 +1334,107 @@ try {
   await clickText(jane, '.bd-words button', /^Earlier wordings \(1\)$/);
   await button('Read it');
   await clickText(jane, '.bd-wordings button', /^Read it$/);
-  ok(await waitText(jane, /Wording 1 · [A-Z][a-z]{2} \d+, \d{4} · Jane[\s\S]*Attend at least three of four board meetings/), 'the earlier wording, by whom and when, to read');
+  ok(await waitText(jane, /Wording 1 · [A-Z][a-z]{2} \d+, \d{4}, \d{1,2}:\d{2} [AP]M · Jane · From Board Expectations · 1 signature on it this year, before the board was asked to sign again[\s\S]*Attend at least three of four board meetings/), 'the earlier wording: when to the minute, by whom, from which file, who signed it, to read');
   await clickText(jane, 'button', /^Use these words$/);
   ok(await jane.waitForFunction(() => !/Come to the gala/.test(document.querySelector('.rp-edit')?.innerText || '') && /Attend at least three/.test(document.querySelector('.rp-edit')?.innerText || ''), { timeout: 3000 }).then(() => true, () => false), 'and its words back in the editor');
+  const asked = [];
+  await answerAsks(jane, { onAsk: (t) => asked.push(t) });
   await clickText(jane, 'button', /^Cancel$/);
+  ok(await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 3000 }).then(() => true, () => false) && asked.some((t) => /^Leave without saving\?/.test(t)), 'Cancel with words changed asks first (here: leave)');
+
+  // A member reading wording 2 when wording 3 is saved can't sign words they never saw: told, and the page takes them
+  const words = async (add, { save = true } = {}) => {
+    await editRow('Board Member Expectations');
+    await jane.waitForSelector('.rp-edit');
+    await toEnd(jane);
+    await jane.keyboard.press('Enter');
+    await jane.keyboard.type(add);
+    if (save) await clickText(jane, 'button', /^Save$/);
+  };
+  const reader = await tab(MEMBER, 390);
+  await reader.goto(`${SITE}/admin/board/#/documents/${exp.id}`, { waitUntil: 'networkidle0' });
+  await reader.waitForSelector('.bp-docpage .bp-sign input');
+  await words('Sponsor one family a year.');
+  ok(await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 5000 }).then(() => true, () => false) && (await listDocs(DB)).find((d) => d.id === exp.id).version === 3, 'saved straight away: nobody had signed wording 2 to ask about');
+  await reader.type('.bp-docpage .bp-sign input', 'Alex Rivera');
+  await clickText(reader, 'button', /^I’ve read it and agree$/);
+  ok(await waitText(reader, /Its words changed while you were reading them\. Read the new words, then sign\./) && await waitText(reader, /Sponsor one family a year/) && !(await listDocs(DB)).find((d) => d.id === exp.id).signed['alex-rivera'], 'signing words that changed meanwhile: refused, said, and the new words are on the page');
+  await clickText(reader, 'button', /^I’ve read it and agree$/);
+  ok(await waitText(reader, /Signed for \d{4}/) && (await listDocs(DB)).find((d) => d.id === exp.id).signed['alex-rivera']?.version === 3, 'read, then signed: wording 3');
+  await reader.close();
+  // New words over Alex's signature: the question names him; Escape goes back to the words, nothing saved
+  asked.length = 0;
+  await answerAsks(jane, { accept: null, onAsk: (t) => asked.push(t) });
+  await words('Bring a guest to one reveal.');
+  ok(await jane.waitForFunction(() => /Ask Alex to sign again\?/.test(document.querySelector('.ask h2')?.textContent || '') && /Alex Rivera signed the earlier words/.test(document.querySelector('.ask__text')?.textContent || ''), { timeout: 5000 }).then(() => true, () => false), 'the question names who signed');
+  await jane.keyboard.press('Escape');
+  ok(await jane.waitForFunction(() => !document.querySelector('.ask') && /Bring a guest to one reveal/.test(document.querySelector('.rp-edit')?.innerText || ''), { timeout: 3000 }).then(() => true, () => false) && (await listDocs(DB)).find((d) => d.id === exp.id).version === 3, 'Escape: back to the words, nothing saved (not “keep their signatures”)');
+  await answerAsks(jane, { accept: false, onAsk: (t) => asked.push(t) });
+  await clickText(jane, 'button', /^Save$/);
+  ok(await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 5000 }).then(() => true, () => false) && (await listDocs(DB)).find((d) => d.id === exp.id).signed['alex-rivera'], 'kept their signatures, chosen: a small change');
+  // Two tabs on the same words: the second save is stopped and offered theirs or its own
+  const janeB = await tab(FOUNDER, 1440);
+  await janeB.goto(`${SITE}/admin/#board/documents`, { waitUntil: 'networkidle0' });
+  await janeB.reload({ waitUntil: 'networkidle0' });
+  await janeB.waitForFunction(() => [...document.querySelectorAll('.bd-row')].some((r) => /Board Member Expectations/.test(r.textContent)), { timeout: 8000 });
+  await janeB.evaluate(() => [...document.querySelectorAll('.bd-row')].find((r) => /Board Member Expectations/.test(r.textContent)).querySelectorAll('button').forEach((b) => { if (b.textContent.trim() === 'Edit') b.click(); }));
+  await janeB.waitForSelector('.rp-edit');
+  await answerAsks(jane, { accept: false });
+  await words('TAB A LINE');
+  await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 5000 }).catch(() => {});
+  const bAsked = [];
+  await answerAsks(janeB, { accept: false, onAsk: (t) => bAsked.push(t) });
+  await toEnd(janeB);
+  await janeB.keyboard.press('Enter');
+  await janeB.keyboard.type('TAB B LINE');
+  await clickText(janeB, 'button', /^Save$/);
+  ok(await janeB.waitForFunction(() => /TAB A LINE/.test(document.querySelector('.rp-edit')?.innerText || '') && !/TAB B LINE/.test(document.querySelector('.rp-edit')?.innerText || ''), { timeout: 5000 }).then(() => true, () => false)
+    && bAsked.some((t) => /^You changed these words in another tab/.test(t)) && /TAB A LINE/.test((await listDocs(DB)).find((d) => d.id === exp.id).body) && !/TAB B LINE/.test((await listDocs(DB)).find((d) => d.id === exp.id).body), 'the second tab is stopped, told the words changed in another tab, and loads them (nothing overwritten)');
+  await janeB.close();
+  // Words changed and the tab closed or reloaded: the browser asks first
+  await words('A line not saved yet.', { save: false });
+  ok(await jane.evaluate(() => { const e = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(e); return e.defaultPrevented; }), 'closing the tab with words changed asks first');
+  await answerAsks(jane);
+  await clickText(jane, 'button', /^Cancel$/);
+  await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 3000 }).catch(() => {});
+  // A new file on a paper someone signed (the conflict of interest policy, a PDF Alex signed): asked first, naming him
+  const coiAsked = [];
+  await answerAsks(jane, { accept: false, onAsk: (t) => coiAsked.push(t) });
+  await editRow('Conflict of interest policy');
+  await jane.waitForSelector('#bd-doc-file');
+  const coi2 = join(OUT, 'Conflict of Interest 2027.pdf');
+  writeFileSync(coi2, await expectationsPdf());
+  await (await jane.$('#bd-doc-file')).uploadFile(coi2);
+  await clickText(jane, 'button', /^Save$/);
+  await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 8000 }).catch(() => {});
+  const coiDoc = (await listDocs(DB)).find((d) => /conflict of interest/i.test(d.title));
+  ok(coiAsked.some((t) => /^Ask Alex to sign again\?.*Alex Rivera signed the .* file for \d{4}\. With Conflict of Interest 2027 it’s a new version/.test(t)) && coiDoc.file.name === 'Conflict of Interest 2027.pdf' && coiDoc.signed['alex-rivera'] && coiDoc.version === 1,
+    `a new file on a signed paper asks first, naming who signed (kept here: still signed, the new file a version of its own) (${JSON.stringify(coiAsked)})`);
+  await answerAsks(jane);
+  // Sam about to sign the policy's PDF when its words are written in Board: told it didn't go, where the form was
+  const samDocs = await tab(OTHER, 1440);
+  await samDocs.goto(`${SITE}/admin/board/#/documents`, { waitUntil: 'networkidle0' });
+  const samInput = `#doc-${coiDoc.id} .bp-sign input:not([type="file"])`;
+  await samDocs.waitForSelector(samInput);
+  await samDocs.type(samInput, 'Sam Ortiz');
+  await editRow('Conflict of interest policy');
+  await jane.waitForSelector('.bd-words__start button');
+  await clickText(jane, '.bd-words__start button', /^Start from the PDF’s words$/);
+  await jane.waitForFunction(() => (document.querySelector('.rp-edit')?.innerText || '').length > 40, { timeout: 8000 }).catch(() => {});
+  await clickText(jane, 'button', /^Save$/);
+  await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 8000 }).catch(() => {});
+  await samDocs.evaluate((id) => [...document.querySelectorAll(`#doc-${id} button`)].find((b) => /I’ve read it and agree/.test(b.textContent))?.click(), coiDoc.id);
+  ok(await waitText(samDocs, /Conflict of interest policy[\s\S]*Not signed yet: Its words changed while you were reading them\. Read the new words, then sign\.[\s\S]*Read and sign/) && !(await listDocs(DB)).find((d) => d.id === coiDoc.id).signed['sam-ortiz'],
+    'a signature that didn’t go (its PDF written in Board meanwhile) says so where the paper is now, with Read and sign');
+  await samDocs.close();
+  // A member who signed prints the paper with their signature on it, not blank lines
+  const signedPrint = await tab(MEMBER, 1280);
+  await signedPrint.goto(`${SITE}/admin/board/#/documents/${exp.id}`, { waitUntil: 'networkidle0' });
+  await signedPrint.waitForSelector('.bp-docpage');
+  await signedPrint.emulateMediaType('print');
+  ok(/Signed for \d{4} by Alex Rivera, [A-Z][a-z]{2} \d+, \d{4}, typed on the board page/.test(await signedPrint.evaluate(() => document.querySelector('.bp-docpage__paper')?.innerText || '')) && await signedPrint.evaluate(() => !document.querySelector('.bp-docpage__lines')),
+    'printed by a member who signed: their signature and how, not lines to sign');
+  await signedPrint.close();
   // Their People headshot on their account button, as a board member's is (the picture served here, not by Cloudflare;
   // the CSP set aside, since headshots are same-origin on sunshineonaranneyday.com but not on localhost)
   const servePhoto = (req) => (/\/cdn-cgi\/imagedelivery\//.test(req.url()) ? req.respond({ status: 200, contentType: 'image/png', body: PNG }) : req.continue());
@@ -1335,7 +1447,11 @@ try {
   await jane.setRequestInterception(false);
   await jane.setBypassCSP(false);
   ok(await jane.waitForSelector('#makeovers .bk-col', { timeout: 8000 }).then(() => true, () => false) && /From JobTread/.test(await text(jane)) && !/the way board members do/.test(await text(jane)), 'the founder sees the board page as the board does, with no banner saying so');
-  ok(await jane.evaluate(() => !document.querySelector('.bp-choice') && !document.querySelector('.bp-sign')), 'with nothing to answer or sign for anyone');
+  ok(await jane.evaluate(() => !document.querySelector('.bp-choice') && !document.querySelector('.bp-sign')) && !/Read and sign/.test(await text(jane)), 'with nothing to answer or sign for anyone (no “Read and sign” on Home)');
+  await jane.goto(`${SITE}/admin/board/#/documents`, { waitUntil: 'networkidle0' });
+  ok(await waitText(jane, /What the board signs\s*Each board member signs these once a year\.[\s\S]*Board Member Expectations[\s\S]*board members ha(?:s|ve) signed/) && !/You’ve signed/.test(await text(jane)), 'the founders see the papers the board signs, with how many have, and no “you’ve signed”');
+  await jane.goto(`${SITE}/admin/board/`, { waitUntil: 'networkidle0' });
+  await jane.waitForSelector('.bp-me__btn');
   await jane.click('.bp-me__btn');
   ok(await jane.evaluate(() => [...document.querySelectorAll('.bp-menu a')].some((a) => a.getAttribute('href') === '/admin/#board' && /Back to the Board area/.test(a.textContent))), 'the account menu has the way back to the Board area');
 
