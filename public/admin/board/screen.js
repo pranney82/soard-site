@@ -25,7 +25,7 @@ import { openDoc, layoutOf, areaOf, areasOf, headingsArea, partsOf, docKind, pag
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, liveOfStop, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
-  hasReport, isNothingNew, NOTHING_NEW, slidesOfItem,
+  hasReport, isNothingNew, NOTHING_NEW, slidesOfItem, slideHeadsOfItem,
 } from '../board-shared.js';
 import { useCover, usePages } from '../board-present.js';
 import { Report } from '../board-report.js';
@@ -393,7 +393,7 @@ function ReportPoints({ text }) {
  * heading, and only then a line says the whole report is on the board page. The columns are measured (`cols`, from
  * before, is no longer a choice)
  */
-function ReportFit({ text, more = false, part = false }) {
+function ReportFit({ text, more = false, part = false, cont = '' }) {
   const ref = useRef(null);
   const [cut, setCut] = useState(false);
   const short = !part && mdWords(text) < 40;
@@ -432,7 +432,7 @@ function ReportFit({ text, more = false, part = false }) {
     return () => ro?.disconnect();
   }, [text]);
   return html`<div class=${`bs-report ${short ? 'is-short' : ''}`}>
-    <div class="bs-report__body" ref=${ref}><${Report} text=${text} level=${3} /></div>
+    <div class="bs-report__body" ref=${ref}>${cont ? html`<p class="bs-report__cont" dir="auto">${cont}<span>, continued</span></p>` : null}<${Report} text=${text} level=${3} /></div>
     ${cut ? html`<p class="bs-report__more">The whole report is on the board page</p>` : more ? html`<p class="bs-report__more">Continued on the next slide</p>` : null}
   </div>`;
 }
@@ -440,7 +440,7 @@ function ReportFit({ text, more = false, part = false }) {
 /** A report on its own slide (a 'report' stop): as large as it fits, its columns measured */
 /** A report's slide (one of reportSlides'): its points as cards when that's all it is, else the words as they fit.
  *  `more`: it goes on, on the next slide; `part`: one of several, never set large as a short one would be */
-const ReportBody = ({ report, more = false, part = false }) => (mdPoints(report) ? html`<${ReportPoints} text=${report} />` : html`<${ReportFit} text=${report} more=${more} part=${part} />`);
+const ReportBody = ({ report, more = false, part = false, cont = '' }) => (mdPoints(report) && !cont ? html`<${ReportPoints} text=${report} />` : html`<${ReportFit} text=${report} more=${more} part=${part} cont=${cont} />`);
 
 /**
  * The presenter's notes beside an item, at a size a room reads: smaller only as far as it must be to fit the slide (to
@@ -1251,10 +1251,13 @@ export function Screen({ id, data, d, onBack = null }) {
     // The report on an item that shows live facts (./board-shared.js deckOf): the part, the item and who presents it
     // along the top, the report filling the rest (its motion is the decision's slide, after all the item shows)
     const slides = slidesOfItem(item);
-    const chunk = slides[Math.min(stop.page || 0, slides.length - 1)] || item.report;
+    const shownPage = Math.min(stop.page || 0, slides.length - 1);
+    const chunk = slides[shownPage] || item.report;
+    // (partway into one of its headings' parts: that heading, "continued", over it)
+    const cont = slideHeadsOfItem(item)[shownPage] || '';
     stage = html`<div class=${`bs-item bs-item--report ${mdPoints(chunk) ? 'bs-item--points' : ''}`}>
       <div class="bs-item__bar"><div><p class="bs-eyebrow">${where}${slides.length > 1 ? html`<span class="bs-eyebrow__of">Report, ${(stop.page || 0) + 1} of ${slides.length}</span>` : null}</p><${Title} text=${itemTitle} cls="bs-item__title" /></div></div>
-      <${ReportBody} report=${chunk} more=${(stop.page || 0) < slides.length - 1} part=${slides.length > 1} />
+      <${ReportBody} report=${chunk} more=${shownPage < slides.length - 1} part=${slides.length > 1} cont=${cont} />
       ${motionHere}
     </div>`;
   } else if (stop.kind === 'decision') {

@@ -7,7 +7,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { reportSlides, slidesOfItem, cleanMeeting, deckOf, stopIndex, liveOfStop, cleanLive } from '../public/admin/board-shared.js';
+import { reportSlides, reportSlideHeads, slidesOfItem, cleanMeeting, deckOf, stopIndex, liveOfStop, cleanLive } from '../public/admin/board-shared.js';
 import { mdBlocks, mdPlain } from '../public/admin/board-md.js';
 
 let seed = 11;
@@ -115,4 +115,20 @@ test('the deck: a stop for each slide after the first, after the item that shows
   const at = stopIndex(deck, cleanLive({ itemId: 'i_fin', fileId: 'report', page: 40 }));
   assert.equal(deck[at].itemId, 'i_fin');
   assert.equal(deck[at].kind, 'report');
+});
+
+test('a slide that begins partway into a heading’s part has that heading over it ("continued"); never after a "---"', () => {
+  const md = `### What we need from the board\n\n${Array.from({ length: 6 }, () => para(70)).join('\n\n')}\n\n### Next quarter\n\n- ${para(10)}`;
+  const slides = reportSlides(md, { title: 'Governance' });
+  const heads = reportSlideHeads(md, { title: 'Governance' });
+  assert.equal(heads.length, slides.length);
+  assert.ok(slides.length > 1);
+  assert.equal(heads[0], '');
+  for (let i = 1; i < slides.length; i++) {
+    const first = mdBlocks(slides[i])[0];
+    assert.equal(heads[i], first.t === 'h' ? '' : first.t === 'p' && i < slides.length ? heads[i] : heads[i]);
+    if (first.t !== 'h') assert.equal(heads[i], 'What we need from the board');
+  }
+  assert.deepEqual(reportSlideHeads('### A\n\nOne.\n\n---\n\nTwo.'), ['', '']);
+  assert.deepEqual(reportSlideHeads('Short one.'), ['']);
 });

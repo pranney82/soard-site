@@ -1722,6 +1722,11 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-report .rp { --rp-ink: var(--bs-ink); --rp-ink-2: var(--bs-ink); --rp-muted: var(--bs-soft); --rp-line: var(--bs-line); --rp-wash: var(--bs-panel); font-size: inherit; line-height: 1.42; color: var(--bs-ink); }
 .bs-report .rp li::marker { color: var(--yellow); }
 .bs-report .rp .rp-h { margin-top: 0.75em; font-size: 1.1em; color: var(--yellow); break-after: avoid; }
+/* A slide's first heading at its top, level with the other column's first line */
+.bs-report .rp > .rp-h:first-child { margin-top: 0; }
+/* A slide that goes on with a heading's part: that heading over it, ", continued" quieter */
+.bs-report__cont { margin: 0 0 0.44em; font-size: 1.1em; font-weight: 700; line-height: 1.35; color: var(--yellow); break-after: avoid; }
+.bs-report__cont span { color: var(--bs-soft); font-weight: 600; }
 .bs-report .rp li { break-inside: avoid; }
 .bs-report .rp p { orphans: 2; widows: 2; }
 .bs-report .rp a { color: var(--bs-ink); }

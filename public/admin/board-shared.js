@@ -987,13 +987,18 @@ function sentenceStarts(text) {
  * slide, or a slide would be left mostly empty); never a heading last on a slide; the slides as even as the same
  * number of them allows. A line of "---" starts a new slide there. `title`: the item's, its lines taking room above
  */
-export function reportSlides(md, { title = '', confidential = false } = {}) {
+export const reportSlides = (md, opts) => cutReport(md, opts).slides;
+/** The heading each slide goes on under, when it begins partway into that heading's part: "…, continued" over it (the
+ *  screen draws it; reportSlides leaves room for it) → one per slide, '' where a slide starts its own */
+export const reportSlideHeads = (md, opts) => cutReport(md, opts).heads;
+function cutReport(md, { title = '', confidential = false } = {}) {
   const text = String(md || '').trim();
-  if (!text) return [''];
+  if (!text) return { slides: [''], heads: [''] };
   const key = `${title}\u0000${confidential ? 1 : 0}\u0000${text}`;
   const hit = SLIDES_SEEN.get(key);
   if (hit) return hit;
-  const out = reportSlidesFrom(text, title, confidential);
+  const pages = reportSlidesFrom(text, title, confidential);
+  const out = { slides: pages.map(pageMd), heads: pages.map((pg) => (pg[0]?.kind === 'cont' ? pg[0].b.text : '')) };
   if (SLIDES_SEEN.size > 200) SLIDES_SEEN.delete(SLIDES_SEEN.keys().next().value);
   SLIDES_SEEN.set(key, out);
   return out;
@@ -1004,7 +1009,7 @@ function reportSlidesFrom(text, title, confidential) {
   const blocks = mdBlocks(text);
   const forced = blocks.some((b) => b.t === 'hr');
   // A short one is set large on one slide (screen.js ReportFit), as written
-  if (!forced && mdWords(text) < 40) return [text];
+  if (!forced && mdWords(text) < 40) return [[{ kind: 'raw', md: text }]];
   const titleLines = Math.min(3, linesIn(title, SLIDE.titleWidth / SLIDE.titleSize, 't'));
   // Each column's height, a little kept back for what can't be known here (a font's own rounding, a long word)
   const H = (SLIDE.height - (titleLines - 1) * SLIDE.titleLine - (confidential ? 2.2 : 0)) * 0.94;
@@ -1019,15 +1024,18 @@ function reportSlidesFrom(text, title, confidential) {
     units.push(unitOf(b));
   }
   const pages = paginate(units, H);
+  // One slide: as written
+  if (pages.length === 1 && !forced) return [[{ kind: 'raw', md: text }]];
   // As even as the same number of slides allows: the least each slide can hold and still need no more of them
   if (pages.length > 1 && !forced) {
     let lo = 0.5;
     let hi = 1;
     for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (paginate(units, H * mid).length <= pages.length) hi = mid; else lo = mid; }
     const even = paginate(units, H * hi);
-    if (even.length === pages.length) return even.map(pageMd);
+    if (even.length === pages.length) return even;
   }
-  return pages.map(pageMd).filter((x, i, all) => x || all.length === 1);
+  const kept = pages.filter((pg) => pg.some((u) => u.kind !== 'cont'));
+  return kept.length ? kept : [[{ kind: 'raw', md: '' }]];
 }
 const unitOf = (b) => ({ ...(b.t === 'p' ? { kind: 'p', after: SLIDE.pAfter, lines: linesIn(b.text, COL) } : b.t === 'h' ? { kind: 'h', after: SLIDE.hAfter } : { kind: 'quote', after: SLIDE.quoteAround / 2 }), b, h: heightOf(b, COL), h1: heightOf(b, SLIDE.width) });
 
@@ -1068,12 +1076,17 @@ function fitsSlide(units, H) {
 function paginate(units, H) {
   const pages = [];
   let cur = [];
-  const close = () => { if (cur.length) pages.push(cur); cur = []; };
+  // The heading whose part this is (none after a "---": a slide the writer began is theirs)
+  let under = null;
+  const close = () => { if (cur.some((u) => u.kind !== 'cont')) pages.push(cur); cur = []; };
+  const begin = (u) => { if (!cur.length && under && u.kind !== 'h') cur.push({ kind: 'cont', b: under.b, h: under.h, h1: under.h1, after: under.after }); };
   const fill = (xs) => xs.reduce((n, u) => n + u.h, 0) / (2 * H);
   const queue = [...units];
   while (queue.length) {
     const u = queue.shift();
-    if (u.kind === 'break') { close(); continue; }
+    if (u.kind === 'break') { close(); under = null; continue; }
+    begin(u);
+    if (u.kind === 'h') under = u;
     if (fitsSlide([...cur, u], H)) { cur.push(u); continue; }
     // A paragraph between its sentences: when it's longer than a slide, or would leave this one mostly empty
     if (u.kind === 'p') {
@@ -1098,7 +1111,8 @@ function paginate(units, H) {
     while (cur.length && cur.at(-1).kind === 'h') carry.unshift(cur.pop());
     close();
     // (too long for a slide even on its own, one point or one sentence: it has one, as large as it fits: ReportFit)
-    cur = [...carry, u];
+    if (!carry.length) begin(u);
+    cur = [...cur, ...carry, u];
   }
   close();
   return pages;
@@ -1109,6 +1123,8 @@ function pageMd(units) {
   const parts = [];
   for (let i = 0; i < units.length; i++) {
     const u = units[i];
+    if (u.kind === 'cont') continue;
+    if (u.kind === 'raw') { parts.push(u.md); continue; }
     if (u.kind === 'li') {
       const pts = [pointMd(u.list, u.it, u.n)];
       while (units[i + 1]?.kind === 'li' && units[i + 1].list === u.list) pts.push(pointMd(units[i + 1].list, units[i + 1].it, units[++i].n));
@@ -1120,7 +1136,10 @@ function pageMd(units) {
   return parts.join('\n\n');
 }
 /** An item's report, slide by slide (reportSlides, with its title as the screen shows it) */
-export const slidesOfItem = (it) => (hasReport(it) ? reportSlides(it.report, { title: it.title || LIVE_TITLES[it.live] || '', confidential: !!it.confidential }) : []);
+const slideOpts = (it) => ({ title: it.title || LIVE_TITLES[it.live] || '', confidential: !!it.confidential });
+export const slidesOfItem = (it) => (hasReport(it) ? reportSlides(it.report, slideOpts(it)) : []);
+/** …and the heading each of those slides goes on under (reportSlideHeads) */
+export const slideHeadsOfItem = (it) => (hasReport(it) ? reportSlideHeads(it.report, slideOpts(it)) : []);
 
 /** A report with something in it: written, and not "nothing new this time" */
 export const hasReport = (it) => !!String(it?.report || '').trim() && !isNothingNew(it.report);
