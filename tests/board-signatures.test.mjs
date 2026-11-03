@@ -451,3 +451,19 @@ test('a copy replaced across a kept small change replaces it (taking it off leav
   d = await saveDoc(env.DB, { ...d, sign: true, body: undefined }, { by: FOUNDER, base: 3, askAgain: true });
   assert.deepEqual([d.version, d.signFrom, d.signed], [3, 3, {}]);
 });
+
+test('new words and Required ticked again in one save asks; a save that doesn’t say keeps the board page switch as it is; a page opened by someone else can’t sign as the one signed in now', async () => {
+  let d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, body: '- Come to three of four meetings' }, { by: FOUNDER });
+  await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera', { version: 1 });
+  d = await saveDoc(env.DB, { ...d, sign: false, body: undefined }, { by: FOUNDER, base: 1 });
+  await assert.rejects(saveDoc(env.DB, { ...d, sign: true, body: '- Come to three of four meetings\n- Bring two names a year' }, { by: FOUNDER, base: 1 }),
+    (err) => err.status === 409 && err.extra.ask.names.join() === 'Alex Rivera' && err.extra.ask.paused === false);
+  // Switched off the board page meanwhile: an editor's save (no `shared` in it) leaves it off
+  await saveDoc(env.DB, { ...d, shared: false, body: undefined }, { by: FOUNDER });
+  const { shared, ...edited } = d;
+  d = await saveDoc(env.DB, { ...edited, note: 'Revised', body: undefined }, { by: FOUNDER, base: 1 });
+  assert.equal(d.shared, false);
+  // The board page sent as Alex, the browser now signed in as Sam: stopped
+  const r = await call(OTHER, '/api/board-portal', { method: 'POST', body: { action: 'sign', docId: d.id, name: 'Sam Ortiz', as: 'alex-rivera' }, handler: portal.onRequestPost });
+  assert.deepEqual([r.status, r.body.who], [409, true]);
+});

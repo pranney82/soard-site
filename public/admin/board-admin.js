@@ -539,15 +539,15 @@ function Signers({ d, ctx, onDoc }) {
     fd.append('file', file);
     const j = await call(null, { form: fd });
     setBusy('');
-    if (!j.ok) { addToast(j.error, 'error'); return; }
+    if (!j.ok) { addToast(j.error, 'error'); requestAnimationFrame(() => document.querySelector(`[data-signer="${slug}"] button`)?.focus()); return; }
     onDoc(j.doc);
     addToast(`${j.signed.name}’s signed copy is in: signed for ${year}`, 'info');
     // The focus stays on their row (its button is "Take it off" now)
     requestAnimationFrame(() => document.querySelector(`[data-signer="${slug}"] button`)?.focus());
   };
   const off = async (p) => {
-    const s = d.signed[p.slug];
-    if (!(await ask({ title: `Take off ${p.name}’s signature?`, text: `${p.name.split(/\s+/)[0]} shows as still to sign the ${d.title} for ${year}${s.copy ? ', and the copy added for it is deleted' : ''}.`, yes: 'Take it off', danger: true }))) return;
+    const s = d.signed[p.slug] || d.before?.[p.slug];
+    if (!(await ask({ title: `Take off ${p.name}’s signature${d.signed[p.slug] ? '' : ' on the earlier version'}?`, text: `${p.name.split(/\s+/)[0]} is asked to sign the ${d.title} for ${year}${s?.copy ? ', and the copy added for it is deleted' : ''}.`, yes: 'Take it off', danger: true }))) return;
     setBusy(p.slug);
     const j = await call({ action: 'unsign', docId: d.id, slug: p.slug });
     setBusy('');
@@ -565,7 +565,7 @@ function Signers({ d, ctx, onDoc }) {
         <span class=${`bd-signer__dot ${s ? 'is-on' : ''}`} aria-hidden="true"></span>
         <span class="bd-signer__name">${p.name}</span>
         <span class="bd-signer__how">${s ? signedHow(s) : was ? `Signed the earlier version (${dayOf(was.at)}): to sign the new one` : 'Not signed yet'}${was?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...was.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}</span>
-        <span class="bd-signer__act">${s
+        <span class="bd-signer__act">${s || was
           ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => off(p)}>Take it off</button>`
           : html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their signed copy'}</button>`}</span>
       </li>`;
@@ -777,7 +777,8 @@ function DocumentsTab({ ctx }) {
     setSaving(true);
     const payload = {
       action: 'save-doc', askAgain, base: doc.id ? base ?? doc.version ?? 0 : undefined,
-      doc: { ...doc, body, ...(words?.from === 'existing' && existing ? { wordsFile: existing.id } : {}) },
+      // (On the board page is its switch's: an editor opened before it was flipped never flips it back)
+      doc: { ...doc, shared: doc.id ? undefined : doc.shared, body, ...(words?.from === 'existing' && existing ? { wordsFile: existing.id } : {}) },
       fromFile: words?.from === 'existing', wordsFrom: words ? fileTitle(words.name) : '',
     };
     let j;
@@ -799,6 +800,7 @@ function DocumentsTab({ ctx }) {
           title: n.length === 1 ? `Ask ${first} to sign again?` : `Ask the ${n.length} who signed to sign again?`,
           text: `${who} signed the earlier version for ${year}. ${j.ask.newFile && j.ask.now === 'file' ? `With ${fileTitle(j.ask.newFile)} it’s a new version: if what they agree to changed, they sign it.`
             : j.ask.newFile ? `With the words from ${fileTitle(j.ask.newFile)} it’s a new version: if what they agree to changed, they sign it.`
+            : j.ask.paused ? 'Its words changed while it wasn’t required: if what they agree to changed, they sign the new version.'
             : j.ask.now === 'file' ? 'With the words taken out, the board reads its file again: if that’s not what they signed, they sign it.'
             : j.ask.since === 'file' ? 'Its words written here are what the board reads now: if they say something the file didn’t, they sign them.'
             : 'If what they agreed to has changed, they sign the new words. A typo or a heading fixed doesn’t need it.'}`,
@@ -847,7 +849,7 @@ function DocumentsTab({ ctx }) {
     addToast(askAgain === true ? `Saved. The board signs the new version for ${year}.` : `Saved: ${d.title}`, 'info');
   };
   const remove = async (d) => {
-    if (!(await ask({ title: `Delete ${d.title}?`, text: 'Its file, its earlier wordings, and every signature and signed copy on it go with it.', yes: 'Delete', danger: true }))) return;
+    if (!(await ask({ title: `Delete ${d.title}?`, text: (() => { const l = [d.file ? 'its file' : '', d.version ? 'its earlier wordings' : '', 'every signature and signed copy on it'].filter(Boolean); const t = l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0]; return `${t.charAt(0).toUpperCase()}${t.slice(1)} go with it.`; })(), yes: 'Delete', danger: true }))) return;
     const j = await call({ action: 'delete-doc', id: d.id });
     if (!j.ok) { addToast(j.error, 'error'); return; }
     setData((x) => ({ ...x, docs: x.docs.filter((y) => y.id !== d.id) }));

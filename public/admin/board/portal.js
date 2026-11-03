@@ -3223,7 +3223,7 @@ const troubleFor = (id, doc) => {
  * A copy of a paper they signed on paper, sent as their signature this year (a later one replaces it), with the
  * wording on their page (`version`: a newer one is read first) → the answer
  */
-async function sendCopy(docId, picked, version = null) {
+async function sendCopy(docId, picked, version = null, as = '') {
   if (picked.size > 50 * 1024 * 1024) return { ok: false, error: 'That file is over 50 MB. A PDF or a photo of the signed page is plenty.' };
   // An iPhone photo (HEIC) goes as a JPEG, which any browser shows
   let file = picked;
@@ -3231,6 +3231,7 @@ async function sendCopy(docId, picked, version = null) {
   const fd = new FormData();
   fd.append('file', file);
   if (version != null) fd.append('version', String(version));
+  if (as) fd.append('as', as);
   try {
     const r = await fetch(`${API}?signed=${encodeURIComponent(docId)}`, { method: 'POST', body: fd });
     return await r.json().catch(() => ({ ok: false, error: /cloudflareaccess/i.test(r.url || '') ? 'Your sign-in expired. Reload the page to sign in again.' : `Something went wrong (${r.status})` }));
@@ -3250,7 +3251,7 @@ function Signed({ doc, ctx }) {
     if (!file) return;
     setProblem('');
     setBusy(true);
-    const j = await sendCopy(doc.id, file, doc.version);
+    const j = await sendCopy(doc.id, file, doc.version, ctx.data.me.slug);
     setBusy(false);
     if (!j.ok) {
       if (j.changed || j.gone) {
@@ -3300,9 +3301,9 @@ function SignForm({ d: doc, ctx }) {
     if (wrong) { setProblem(wrong); document.getElementById(id)?.focus(); return; }
     setProblem('');
     setBusy('sign');
-    const j = await call({ action: 'sign', docId: doc.id, name: typed, version: doc.version });
+    const j = await call({ action: 'sign', docId: doc.id, name: typed, version: doc.version, as: data.me.slug });
     setBusy('');
-    if (!j.ok) { setProblem(j.error); if (j.changed || j.gone) { signTrouble.set(doc.id, { msg: j.error, kind: j.gone ? 'gone' : 'changed', title: doc.title }); ctx.load().then(() => focusTrouble(doc.id)); } document.getElementById(id)?.focus(); return; }
+    if (!j.ok) { setProblem(j.error); if (j.changed) setName(''); if (j.changed || j.gone) { signTrouble.set(doc.id, { msg: j.error, kind: j.gone ? 'gone' : 'changed', title: doc.title }); ctx.load().then(() => focusTrouble(doc.id)); } document.getElementById(id)?.focus(); return; }
     signTrouble.delete(doc.id);
     done(j, `Signed: ${doc.title}. Thank you.`);
   };
@@ -3312,7 +3313,7 @@ function SignForm({ d: doc, ctx }) {
     if (!file) return;
     setProblem('');
     setBusy('copy');
-    const j = await sendCopy(doc.id, file, doc.version);
+    const j = await sendCopy(doc.id, file, doc.version, data.me.slug);
     setBusy('');
     if (!j.ok) { setProblem(j.error); if (j.changed || j.gone) { signTrouble.set(doc.id, { msg: j.error, kind: j.gone ? 'gone' : 'changed', title: doc.title }); ctx.load().then(() => focusTrouble(doc.id)); } return; }
     signTrouble.delete(doc.id);
@@ -3506,9 +3507,11 @@ function DocPage({ id, ctx }) {
   const me = doc.signedByMe;
   const trouble = troubleFor(doc.id, doc);
   const changes = doc.signedBody && written ? (() => {
-    const lines = (md) => mdPlain(md).split('\n').map((l) => l.replace(/^\s*(?:•|\d+\.)\s+/, '').trim()).filter(Boolean);
+    // Each line of the Markdown as it reads (a heading marked, a point's bullet or number aside)
+    const lines = (md) => String(md).split('\n').map((l) => ({ h: /^\s*#{1,6}\s/.test(l), t: mdPlain(l.replace(/^\s*(?:#{1,6}|[-*+]|\d+[.)])\s+/, '')).trim() })).filter((l) => l.t);
     const was = lines(doc.signedBody); const now = lines(doc.body);
-    const added = now.filter((l) => !was.includes(l)); const removed = was.filter((l) => !now.includes(l));
+    const has = (list, l) => list.some((x) => x.t === l.t);
+    const added = now.filter((l) => !has(was, l)); const removed = was.filter((l) => !has(now, l));
     return added.length || removed.length ? { added, removed } : null;
   })() : null;
   const HOW = { typed: 'typed on the board page', copy: 'with the copy signed on paper', staff: 'with a signed copy SOARD added', drive: 'with a signed copy in SOARD’s files' };
@@ -3523,9 +3526,9 @@ function DocPage({ id, ctx }) {
       </div>
       ${written ? html`<p class="bp-btns bp-noprint"><button type="button" class="bp-btn bp-btn--sm" onClick=${() => window.print()}><${Icon} name="print" size=${16} />Print it</button></p>` : null}
     </header>
-    ${doc.sign && doc.signedEarlier && !me && !trouble ? html`<div class="bp-doc__changed bp-noprint"><p>It changed since you signed: read it, then sign again.</p>${changes ? html`<details class="bp-whatchanged"><summary>What changed</summary>
-      ${changes.added.length ? html`<p class="bp-whatchanged__h">New</p><ul>${changes.added.slice(0, 20).map((t, i) => html`<li key=${i}>${t}</li>`)}</ul>${changes.added.length > 20 ? html`<p class="bp-whatchanged__more">and ${changes.added.length - 20} more new lines</p>` : null}` : null}
-      ${changes.removed.length ? html`<p class="bp-whatchanged__h">Taken out</p><ul>${changes.removed.slice(0, 20).map((t, i) => html`<li key=${i}><s>${t}</s></li>`)}</ul>${changes.removed.length > 20 ? html`<p class="bp-whatchanged__more">and ${changes.removed.length - 20} more lines taken out</p>` : null}` : null}
+    ${doc.sign && doc.signedEarlier && !me ? html`<div class="bp-doc__changed bp-noprint"><p>It changed since you signed: read it, then sign again.</p>${changes ? html`<details class="bp-whatchanged"><summary>What changed</summary>
+      ${changes.added.length ? html`<p class="bp-whatchanged__h">New</p><ul>${changes.added.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${l.h ? html`<strong>${l.t}</strong>` : l.t}</li>`)}</ul>${changes.added.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.added.length - 20, 'more new line')}</p>` : null}` : null}
+      ${changes.removed.length ? html`<p class="bp-whatchanged__h">Taken out</p><ul>${changes.removed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}><s>${l.h ? html`<strong>${l.t}</strong>` : l.t}</s></li>`)}</ul>${changes.removed.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.removed.length - 20, 'more line')} taken out</p>` : null}` : null}
     </details>` : null}</div>` : null}
     ${written ? html`<article class="bp-card bp-docpage__words bp-rise" style=${rise(1)}><${Report} text=${doc.body} level=${2} /></article>`
       : html`<div class="bp-card bp-docpage__file bp-rise" style=${rise(1)}>

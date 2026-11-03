@@ -172,7 +172,7 @@ export function wordsFromLines(lines, { title = '' } = {}) {
     const next = kept[i + 1];
     const prev = kept[i - 1];
     if (prev && /:$/.test(prev.text) && !l.bold && !sized(l)) return false;
-    if (t.length > 50 || t.split(' ').length > 6 || !/^[A-Z]/.test(t) || /:$/.test(t) || !next || !short(l) || /\b(19|20)\d{2}\b/.test(t)) return false;
+    if (t.length > 50 || t.split(' ').length > 6 || !/^[A-Z]/.test(t) || /:$/.test(t) || /[.?!]\s/.test(t) || !next || !short(l) || /\b(19|20)\d{2}\b/.test(t)) return false;
     if ((!/^[A-Z0-9“"•]/.test(next.text) && !MARKER.test(next.text)) || NAME_TITLE.test(next.text) || /^(approved|adopted|ratified|accepted)\s+by\b/i.test(t)) return false;
     return !prev || l.own || prev.page !== l.page || prev.y - l.y > paraGap || ENDED.test(prev.text) || headingLike(prev, i - 1);
   };

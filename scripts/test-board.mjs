@@ -1359,6 +1359,9 @@ try {
   await reader.type('.bp-docpage .bp-sign input', 'Alex Rivera');
   await clickText(reader, 'button', /^I’ve read it and agree$/);
   ok(await waitText(reader, /It changed while you had it open\. Read it again, then sign\./) && await waitText(reader, /Sponsor one family a year/) && !(await listDocs(DB)).find((d) => d.id === exp.id).signed['alex-rivera'], 'signing words that changed meanwhile: refused, said, and the new words are on the page');
+  // (the name box emptied with the refusal: read again, then typed again)
+  ok(await reader.$eval('.bp-docpage .bp-sign input:not([type="file"])', (i) => i.value === ''), 'the name box is emptied, to read it again first');
+  await reader.type('.bp-docpage .bp-sign input:not([type="file"])', 'Alex Rivera');
   await clickText(reader, 'button', /^I’ve read it and agree$/);
   ok(await waitText(reader, /Signed for \d{4}/) && (await listDocs(DB)).find((d) => d.id === exp.id).signed['alex-rivera']?.version === 3, 'read, then signed: wording 3');
   await reader.close();

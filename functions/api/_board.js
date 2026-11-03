@@ -611,6 +611,9 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
   const body = raw.body === undefined ? was?.body || '' : d.body;
   const changed = body !== (was?.body || '');
   if (raw.wordsFile === undefined) d.wordsFile = was?.wordsFile || '';
+  // On the board page or not is its switch's: a save that doesn't say keeps it as it is (an editor opened before the
+  // switch was flipped never flips it back)
+  if (raw.shared === undefined && was) d.shared = was.shared;
   if (was && changed && base != null && Number(base) !== was.version) {
     throw Object.assign(new Error('These words changed while you had them open'), { status: 409, extra: { conflict: { version: was.version, by: was.wordsBy, at: was.wordsAt, body: was.body } } });
   }
@@ -620,22 +623,24 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
   }
   // A new file changes what the board reads only when it reads the paper as its file (written here, it reads the words)
   const newRead = !!newFile && !body;
-  // Required again, its words changed while it wasn't: whoever signed an earlier version is asked about too
-  const reRequired = was && !was.sign && d.sign && !changed && !newRead;
-  if (was && (((changed || newRead) && was.sign) || reRequired) && d.sign && askAgain == null && !(fromFile && !newFile && !was.body)) {
+  // Required after this save, and what the board reads changes now (new words, a new file) or changed while it wasn't
+  // required (made required again): whoever's signature would count on it is asked about
+  const reRequired = !!was && !was.sign && d.sign;
+  const changesNow = changed || newRead;
+  if (was && d.sign && (changesNow || reRequired) && askAgain == null && !(fromFile && !newFile && !was.body)) {
     const current = (await listDocs(DB)).find((x) => x.id === d.id);
     const board = await activeBoard(DB);
-    const names = board.filter((p) => current?.signed[p.slug] && (!reRequired || current.signed[p.slug].version < was.version)).map((p) => p.name);
-    // since: what they signed (the earlier words, or the file); `newFile`: what they'd sign now is a new file
-    // (now: what the board will read, its words or its file)
-    if (names.length) throw Object.assign(new Error('Do they sign the new version?'), { status: 409, extra: { ask: { names, since: was.body ? 'words' : 'file', now: body ? 'words' : 'file', newFile: newFile ? String(newFile) : '' } } });
+    const names = board.filter((p) => current?.signed[p.slug] && (changesNow || current.signed[p.slug].version < was.version)).map((p) => p.name);
+    // since: what they signed (the earlier words, or the file); now: what the board will read; newFile: a new file;
+    // paused: its words changed while it wasn't required
+    if (names.length) throw Object.assign(new Error('Do they sign the new version?'), { status: 409, extra: { ask: { names, since: was.body ? 'words' : 'file', now: body ? 'words' : 'file', newFile: newFile ? String(newFile) : '', paused: reRequired && !changesNow } } });
   }
   // The wording's number, and who wrote it when, are the server's
   const next = { ...d, body, version: was?.version || 0, signFrom: was?.signFrom || 0, readFrom: was?.readFrom || 0, wordsAt: was?.wordsAt || '', wordsBy: was?.wordsBy || '', createdAt: row ? parse(row.data).createdAt : nowIso(), updatedAt: nowIso() };
   // A new version: new words, or a new file for a paper read as its file (whether or not the board signs it again:
   // a page still showing the old file can't sign the new one unread)
   // (required again, the board asked to sign again: from the version it is)
-  if (reRequired && askAgain === true) { next.signFrom = next.version; next.readFrom = next.version; }
+  if (reRequired && !changesNow && askAgain === true) { next.signFrom = next.version; next.readFrom = next.version; }
   if (changed || (was && newRead)) {
     next.version += 1;
     if (changed) { next.wordsAt = nowIso(); next.wordsBy = String(by || '').slice(0, 200); }

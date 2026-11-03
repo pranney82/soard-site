@@ -1093,6 +1093,7 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-whatchanged__h { margin: 0.5rem 0 0.15rem; font-size: 0.8rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
 .bp-whatchanged ul { margin: 0; padding-inline-start: 1.2em; }
 .bp-whatchanged li { margin: 0.15rem 0; }
+.bp-whatchanged li.is-h { list-style: none; margin-top: 0.4rem; }
 .bp-whatchanged__more { margin: 0.2rem 0 0; font-size: 0.85rem; color: var(--muted); }
 .bp-doc__changed { margin: 0.6rem 0 0; padding: 0.55rem 0.8rem; border-radius: var(--r-sm); background: var(--yellow-soft); color: var(--gold); font-size: 0.92rem; font-weight: 600; }
 .bp-badge--words { place-items: center; padding: 0; background: var(--yellow-soft); color: var(--gold); }
@@ -1156,7 +1157,7 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-tosign__head .bp-progress__track { max-width: 22rem; }
 .bp-signlist { list-style: none; margin: 0.75rem 0 0; padding: 0; display: grid; gap: 1.25rem; }
 .bp-signlist > li { display: grid; grid-template-columns: 7.5rem minmax(0, 1fr); gap: 1.25rem; align-items: start; padding: 0; }
-.bp-signlist > li + li { padding-top: 1.25rem; border-top: 1px solid var(--line); }
+.bp-signlist > li + li { padding-top: 1.25rem; border-top: 1px solid var(--line); border-radius: 0; }
 .bp-signlist__cover { display: block; text-decoration: none; border-radius: 12px; }
 .bp-signlist__cover .bp-cover { padding: 0.85rem 0.75rem 0.75rem; }
 .bp-signlist__cover .bp-cover__word { font-size: 0.98rem; }

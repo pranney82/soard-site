@@ -152,6 +152,7 @@ async function post(context) {
       if (!ID.test(String(q.get('signed') || ''))) return fail('Which document?');
       let form = null;
       try { form = await request.formData(); } catch { return fail('Send your signed copy as a file'); }
+      if (form.get('as') && String(form.get('as')) !== w.member.slug) return fail(`This browser is signed in as ${w.member.name} now. Reload the page to sign as yourself.`, 409, { who: true });
       // The wording on their page when they added it (a newer one is read first)
       const version = form.get('version');
       return Response.json({ ok: true, ...(await signWithCopy(env, q.get('signed'), form.get('file'), { member: w.member, by: w.member.email, version: version == null ? null : Number(version) })) });
@@ -211,6 +212,8 @@ async function post(context) {
         return Response.json({ ok: true, ...(await setActionDone(env.DB, String(body.actionId || ''), !!body.done, { by: member.email, slug: member.slug })) });
       case 'sign':
         if (!ID.test(String(body.docId || ''))) return fail('Which document?');
+        // (the page was opened by someone else: another sign-in in this browser since)
+        if (body.as && body.as !== member.slug) return fail(`This browser is signed in as ${member.name} now. Reload the page to sign as yourself.`, 409, { who: true });
         return Response.json({ ok: true, ...(await signDoc(env.DB, body.docId, member, body.name, { version: Number.isInteger(body.version) ? body.version : null })) });
       default:
         return fail('Unknown action');
