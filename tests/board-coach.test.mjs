@@ -15,9 +15,9 @@ const PART = { name: 'Committee reports', minutes: 20, reports: 4 };
 const LONG_P = 'We met twice this quarter and read every application that came in. Eleven families applied, and the committee approved four of them for spring makeovers. Two families were asked for more about their child’s diagnosis before a decision.';
 
 test('the fit line: one slide, or how many and how long, and the part’s time (only parts have one)', () => {
-  assert.equal(reportFitLine({ slides: 1, words: 80, part: PART }), 'Fits on one slide. Committee reports has 20 minutes for 4 reports.');
-  assert.equal(reportFitLine({ slides: 3, words: 420, part: null }), '3 slides in the meeting, about 3 minutes to present.');
-  assert.equal(reportFitLine({ slides: 1, words: 30, part: { name: 'Financial', minutes: 15, reports: 1 } }), 'Fits on one slide. Financial has 15 minutes.');
+  assert.equal(reportFitLine({ slides: 1, words: 80, part: PART }), 'Your report fits on one slide. Committee reports has 20 minutes for 4 reports.');
+  assert.equal(reportFitLine({ slides: 3, words: 420, part: null }), 'Your report: 3 slides, about 3 minutes to present.');
+  assert.equal(reportFitLine({ slides: 1, words: 30, part: { name: 'Financial', minutes: 15, reports: 1 } }), 'Your report fits on one slide. Financial has 15 minutes.');
   assert.equal(reportFitLine({ slides: 1, words: 0, part: PART }), '', 'nothing written: nothing said');
   assert.equal(speakTime(40), 'under a minute to present');
 });

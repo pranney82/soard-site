@@ -9,7 +9,9 @@
  * suggestion's `run(md)` gives the new Markdown, and the page puts it in only
  * when the person presses its button.
  *
- *   reportFitLine({ slides, words, part }) → "Fits on one slide. Committee reports has 20 minutes for 4 reports."
+ *   reportFitLine({ slides, words, part }) → "Your report fits on one slide. Committee reports has 20 minutes for 4 reports."
+ *   reportLooks(md, look)                 → { options, on, best, offered }: the ways it can show (cards, bullet points…)
+ *   asBullets(md)                         → its paragraphs made bullet points, every word kept
  *   reportAdvice(md, { slides, part })     → [{ id, text, action: { label, run(md) | shorter: true } }], best first
  *   partFor(m, itemId)                     → { name, minutes, reports }: the part the item is in, for the line above
  *   sentencesOf(text)                      → a paragraph's sentences (never at "1.5", "Dr." or "U.S.")
@@ -17,8 +19,8 @@
  * No imports from the page: the tests read it as it is.
  */
 
-import { mdBlocks, mdToDoc, docToMd, mdWords, mdPlain } from './board-md.js';
-import { sectionPlan, agendaItems, reportsOn, isNothingNew } from './board-shared.js';
+import { mdBlocks, mdToDoc, docToMd, mdWords, mdPlain, mdPoints, mdNumber } from './board-md.js';
+import { sectionPlan, agendaItems, reportsOn, isNothingNew, shownLook, CARDS_PER_SLIDE } from './board-shared.js';
 
 /** "about 2 minutes to present" (read aloud, about 130 words a minute) */
 export const speakTime = (words) => {
@@ -39,7 +41,7 @@ export function partFor(m, itemId) {
 /** How it will show: its slides, how long to present them, and the part's time (only parts have one) */
 export function reportFitLine({ slides = 1, words = 0, part = null } = {}) {
   if (!words) return '';
-  const fit = slides > 1 ? `${slides} slides in the meeting, ${speakTime(words)}.` : 'Fits on one slide.';
+  const fit = slides > 1 ? `Your report: ${slides} slides, ${speakTime(words)}.` : 'Your report fits on one slide.';
   const share = part?.minutes && part.reports > 1 ? ` ${part.name} has ${part.minutes} minutes for ${part.reports} reports.`
     : part?.minutes ? ` ${part.name} has ${part.minutes} minutes.` : '';
   return fit + share;
@@ -152,15 +154,111 @@ function longParagraph(blocks) {
   return null;
 }
 
+// ─── How it shows ───────────────────────────────────────────────────
+
+const isList = (b) => b?.t === 'ul' || b?.t === 'ol';
+/** A paragraph that is only what leads into the list after it: a report's points' first line (mdPoints' lead), or
+ *  one sentence ending in a colon ("Two changes come to the board in February:") */
+const leadsIn = (blocks, i) => isList(blocks[i + 1]) && ((i === 0 && blocks.length === 2) || (/:\s*$/.test(blocks[i].text) && sentencesOf(blocks[i].text).length === 1));
+/** A paragraph that isn't only what leads into a list */
+const hasProse = (blocks) => blocks.some((b, i) => b.t === 'p' && !leadsIn(blocks, i));
+/** A paragraph's sentences, when every word of it is in them, each a paragraph of its own; else null */
+const wholeSentences = (text) => {
+  const said = sentencesOf(text);
+  const ok = said.every((s) => { const x = mdBlocks(s); return x.length === 1 && x[0].t === 'p'; }) && said.reduce((n, s) => n + mdWords(s), 0) === mdWords(text);
+  return ok ? said : null;
+};
+
+/**
+ * The report with its paragraphs made bullet points, each sentence one (a paragraph that can't be cut into whole
+ * sentences, one point), joined to a list of points beside them; what leads into a list stays a line over it ("Two
+ * changes come to the board in February:"); headings, callouts and numbered lists as they were. Every word kept, else
+ * null
+ */
+export function asBullets(md) {
+  const p = parts(md);
+  const out = [];
+  const push = (n) => { const prev = out.at(-1); if (n.type === 'bulletList' && prev?.type === 'bulletList') out[out.length - 1] = { ...prev, content: [...prev.content, ...n.content] }; else out.push(n); };
+  const points = (nodes) => { if (nodes.length) push({ type: 'bulletList', content: nodes.map((x) => ({ type: 'listItem', content: [x] })) }); };
+  p.blocks.forEach((b, i) => {
+    if (b.t !== 'p' || leadsIn(p.blocks, i)) { push(p.nodes[i]); return; }
+    const said = wholeSentences(b.text);
+    if (!said || said.length < 2) { points([p.nodes[i]]); return; }
+    // (its last sentence leading into the list after it: that stays the line over the list)
+    const intro = isList(p.blocks[i + 1]) && /:\s*$/.test(said.at(-1)) ? said.pop() : null;
+    points(said.map((s) => mdToDoc(s).content[0]));
+    if (intro) out.push(mdToDoc(intro).content[0]);
+  });
+  const next = withNodes(p.doc, out);
+  return mdWords(next) === mdWords(md) ? next : null;
+}
+
+/** Why a report (its paragraphs made points) can't be cards: '' when it can */
+function cardsWhy(md) {
+  if (!md) return 'Cards are for a report of points only.';
+  if (mdPoints(md, { all: true })) return '';
+  const blocks = mdBlocks(md);
+  const lists = blocks.filter(isList);
+  if (blocks.some((b) => b.t === 'h' || b.t === 'quote' || b.t === 'hr') || lists.length !== 1) return 'Cards are for a report of points only, without headings or callouts.';
+  const items = lists[0].items;
+  if (items.length < 2) return 'Cards need two points or more.';
+  if (items.some((it) => it.length !== 1 || it[0].t !== 'p')) return 'Cards are for points with nothing under them.';
+  return 'Each card holds a line or two, and a point here is longer. Shorter points can be cards.';
+}
+
+/**
+ * The ways a report can show on the meeting's screen, for the choice beside the editor → { options, on, best, offered },
+ * or null when it has no words. Each option { id, look, md, ok, why }: `id` cards | points | text | numbers (Cards,
+ * Bullet points, Paragraphs, Big numbers); `look` the item's reportLook it saves (./board-shared.js shownLook); `md`
+ * the report as it has to be written for it (its paragraphs made points: asBullets), or null when it stays as it is;
+ * `ok` whether this report can show that way, `why` not, when it can't. `on`: the one showing now, with the item's
+ * `look`; `best`: the one that reads best (big numbers for a few points that each start or end with one; cards for a
+ * few short points, or a paragraph of a few short sentences; bullet points for a long paragraph; else as written);
+ * `offered`: more than one way to choose from
+ */
+export function reportLooks(md, look = '') {
+  const text = String(md || '').trim();
+  if (!text || isNothingNew(text) || !/[\p{L}\p{N}]/u.test(mdPlain(text))) return null;
+  const blocks = mdBlocks(text);
+  const prose = hasProse(blocks);
+  const bullets = prose ? asBullets(text) : text;
+  const change = prose ? bullets : null;
+  const pts = bullets ? mdPoints(bullets, { all: true }) : null;
+  const nums = pts ? pts.points.map((t) => mdNumber(t)) : [];
+  const numbers = !!pts && nums.every(Boolean);
+  // Bullet points, from paragraphs: when they'd be two or more (one sentence as a point is the sentence)
+  const listed = !!bullets && (!prose || mdBlocks(bullets).some((b) => b.t === 'ul' && b.items.length >= 2));
+  const cards = pts ? '' : cardsWhy(bullets);
+  const options = [
+    { id: 'cards', look: 'cards', md: change, ok: !!pts, why: cards },
+    { id: 'points', look: 'list', md: change, ok: listed, why: listed ? '' : 'One sentence makes one point. Write a few to show them as points.' },
+    { id: 'text', look: 'list', md: null, ok: prose, why: prose ? '' : 'It’s all points. A paragraph written in it shows as one.' },
+    { id: 'numbers', look: 'numbers', md: change, ok: numbers, why: numbers ? '' : pts ? 'Big numbers need a number in every point.' : cards },
+  ];
+  const shown = shownLook(text, look);
+  const on = shown === 'cards' ? 'cards' : shown === 'numbers' ? 'numbers' : prose ? 'text' : 'points';
+  const few = !!pts && pts.points.length <= CARDS_PER_SLIDE;
+  const sentences = blocks.filter((b) => b.t === 'p').reduce((n, b) => n + sentencesOf(b.text).length, 0);
+  const best = numbers && few && nums.every((x) => x.alone) ? 'numbers'
+    : !prose ? (mdPoints(text) ? 'cards' : 'points')
+    : pts && mdPoints(bullets) && sentences >= 3 ? 'cards'
+    : listed && blocks.some((b) => b.t === 'p' && (mdWords(b.text) > 60 || sentencesOf(b.text).length >= 3)) ? 'points'
+    : 'text';
+  return { options, on, best: options.some((o) => o.id === best && o.ok) ? best : on, offered: options.filter((o) => o.ok).length > 1 };
+}
+
 /** A heading with nothing under it (the next is a heading, a new slide, or the end) → its index */
 const emptyHeading = (blocks) => blocks.findIndex((b, i) => b.t === 'h' && (!blocks[i + 1] || blocks[i + 1].t === 'h' || blocks[i + 1].t === 'hr'));
 
 /**
  * What would make the report read better on the screen, best first: a shorter version when it runs long (the page
- * asks for one: `action.shorter`), the board's ask moved to the top, a long paragraph made points, a heading with
- * nothing under it taken off. Each `action.run(md)` gives the report with it done
+ * asks for one: `action.shorter`), the board's ask moved to the top, how it shows (cards for a few short sentences,
+ * big numbers for points that each start or end with one: `action.look`, the reportLook it sets, where the page `picks`
+ * one and none is chosen), a long paragraph made points (none once a way is chosen: it's theirs), a heading with nothing
+ * under it taken off. Each `action.run(md)` gives the report
+ * with it done
  */
-export function reportAdvice(md, { slides = 1, part = null } = {}) {
+export function reportAdvice(md, { slides = 1, part = null, look = '', picks = false } = {}) {
   const text = String(md || '');
   if (!text.trim() || isNothingNew(text)) return [];
   const out = [];
@@ -168,7 +266,8 @@ export function reportAdvice(md, { slides = 1, part = null } = {}) {
   const { blocks } = parts(text);
   // Long for the meeting: more than one slide, or more than its share of the part's time
   const share = part?.minutes && part.reports ? part.minutes / part.reports : 0;
-  if (slides >= 2 || (share && words / 130 > share * 1.1 && words > 120)) {
+  // (cards or big numbers across slides were chosen as that: their slides are the points, not too many words)
+  if ((slides >= 2 && shownLook(text, look) === 'words') || (share && words / 130 > share * 1.1 && words > 120)) {
     out.push({
       id: 'shorter',
       text: slides >= 2 ? `It runs to ${slides} slides. A shorter version keeps every fact and figure.` : `It’s long for its share of ${part.name}’s time. A shorter version keeps every fact and figure.`,
@@ -192,7 +291,19 @@ export function reportAdvice(md, { slides = 1, part = null } = {}) {
       },
     });
   }
-  const long = longParagraph(blocks);
+  // How it shows, while its writer hasn't chosen: what reads best when it isn't what shows (reportLooks)
+  const looks = !picks || look ? null : reportLooks(text);
+  if (looks && looks.best !== looks.on && (looks.best === 'cards' || looks.best === 'numbers')) {
+    const best = looks.best;
+    const o = looks.options.find((x) => x.id === best);
+    const n = mdPoints(o.md || text, { all: true })?.points.length || 0;
+    out.push({
+      id: `look:${best}`,
+      text: best === 'numbers' ? 'Each point starts or ends with a number. Show the numbers big, one to a card?' : `These sentences read as ${n} short points. Show each on a card?`,
+      action: { label: best === 'numbers' ? 'Show the numbers big' : 'Show as cards', look: o.look, run: o.md ? (cur) => reportLooks(cur)?.options.find((x) => x.id === best)?.md || cur : null },
+    });
+  }
+  const long = look ? null : longParagraph(blocks);
   if (long) {
     out.push({
       id: `points:${long.points[0].slice(0, 40)}`,

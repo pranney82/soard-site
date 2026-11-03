@@ -19,7 +19,7 @@
 import { h, htm, useState, useEffect, useRef, useMemo, Editor, StarterKit, TiptapLink, Placeholder, CharacterCount, DOMPurify } from './vendor.js';
 import { mdBlocks, mdInline, mdToDoc, docToMd, mdWords, safeHref } from './board-md.js';
 import { LIMITS, NOTHING_NEW, isNothingNew, reportSlides } from './board-shared.js';
-import { reportAdvice, reportFitLine, speakTime } from './board-coach.js';
+import { reportAdvice, reportFitLine, reportLooks, speakTime } from './board-coach.js';
 
 const html = htm.bind(h);
 
@@ -481,26 +481,49 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
  * version is written only when asked, shown in full, and goes in only with "Use this". `part`: ./board-coach.js
  * partFor. `admin`: Board's agenda (asks /api/board-admin), else the board page
  */
-export function ReportCoach({ value, onChange, part = null, admin = false, id = '', itemId = '', title = '', confidential = false }) {
+export function ReportCoach({ value, onChange, part = null, admin = false, id = '', itemId = '', title = '', confidential = false, look = '', onLook = null }) {
   const text = String(value || '');
   // What it says is worked out a moment after typing stops (cutting a long report into slides is real work), once
   // for each wording
   const [settled, setSettled] = useState(text);
   useEffect(() => { if (text === settled) return undefined; const t = setTimeout(() => setSettled(text), 300); return () => clearTimeout(t); }, [text]);
   const words = useMemo(() => (isNothingNew(settled) ? 0 : mdWords(settled)), [settled]);
-  const slides = useMemo(() => (words ? reportSlides(settled, { title, confidential }).filter((x) => String(x).trim()).length || 1 : 0), [settled, words, title, confidential]);
+  const slides = useMemo(() => (words ? reportSlides(settled, { title, confidential, look }).filter((x) => String(x).trim()).length || 1 : 0), [settled, words, title, confidential, look]);
   const [off, setOff] = useState(() => new Set());
   const [alt, setAlt] = useState(null); // { text, for: the report it shortens } | { busy } | { error }
   // A shorter version is for the words it was written from: typing on puts it away
   const stale = alt?.for !== undefined && alt.for !== text;
   useEffect(() => { if (stale) setAlt(null); }, [stale]);
-  const advice = useMemo(() => reportAdvice(settled, { slides, part }), [settled, slides, part?.name, part?.minutes, part?.reports]);
+  const advice = useMemo(() => reportAdvice(settled, { slides, part, look, picks: !!onLook }), [settled, slides, part?.name, part?.minutes, part?.reports, look, !!onLook]);
   const tips = advice.filter((x) => !off.has(x.id));
   const tip = alt ? null : tips[0];
   const fit = reportFitLine({ slides, words, part });
-  if (!fit && !tip && !alt) return null;
+  // How it shows (where it can be chosen): its ways, the one showing, the one that reads best; a choice that wrote its
+  // paragraphs as points can be taken back with Paragraphs while nothing's changed since
+  const looks = useMemo(() => (onLook && words ? reportLooks(settled, look) : null), [settled, look, words, !!onLook]);
+  const [was, setWas] = useState(null); // { from, to }: the words before a choice made them points, and after
+  const [why, setWhy] = useState(null); // { id, text }: why a way it can't show isn't one
+  useEffect(() => setWhy(null), [settled]);
+  const back = !!was && was.to === text;
+  const choosing = !!looks && (looks.offered || !!look || back);
+  if (!fit && !tip && !alt && !choosing) return null;
   const notNow = (x) => setOff(new Set([...off, x.id]));
+  // A new wording at once (not a moment later), so what's chosen shows chosen
+  const put = (md) => { onChange(md); setSettled(md); };
+  const choose = (o) => {
+    if (o.id === 'text' && back) { put(was.from); setWas(null); setWhy(null); onLook('list'); return; }
+    if (!o.ok) { setWhy({ id: o.id, text: o.why }); return; }
+    setWhy(null);
+    if (o.md && o.md !== text) { setWas({ from: text, to: o.md }); put(o.md); }
+    onLook(o.look);
+  };
   const act = async (x) => {
+    if (x.action.look && onLook) {
+      const md = x.action.run ? x.action.run(text) : text;
+      if (md !== text) { setWas({ from: text, to: md }); put(md); }
+      onLook(x.action.look);
+      return;
+    }
     if (x.action.run) { onChange(x.action.run(text)); return; }
     setAlt({ busy: true, for: text });
     const r = await shorterVersion({ admin, id, itemId, text, title });
@@ -508,6 +531,18 @@ export function ReportCoach({ value, onChange, part = null, admin = false, id = 
   };
   return html`<div class="rp-coach">
     ${fit ? html`<p class="rp-coach__fit">${fit}</p>` : null}
+    ${choosing ? html`<div class="rp-looks" role="group" aria-label="How your report shows in the meeting">
+      <p class="rp-looks__h" aria-hidden="true">How it shows in the meeting</p>
+      <div class="rp-looks__opts">${looks.options.map((o) => {
+        const ok = o.ok || (o.id === 'text' && back);
+        const on = looks.on === o.id;
+        return html`<button type="button" key=${o.id} class=${`rp-look ${on ? 'is-on' : ''} ${ok ? '' : 'is-off'}`} aria-pressed=${on ? 'true' : 'false'} aria-disabled=${ok ? null : 'true'}
+          aria-describedby=${why?.id === o.id ? `rp-looks-why-${itemId}` : null} onClick=${() => choose(o)}>
+          ${LOOK_ICON[o.id]}<span class="rp-look__name">${LOOK_NAME[o.id]}</span>${looks.best === o.id && ok ? html`<span class="rp-look__best">Suggested</span>` : null}
+        </button>`;
+      })}</div>
+      ${why ? html`<p class="rp-looks__why" id=${`rp-looks-why-${itemId}`} role="status">${why.text}</p>` : null}
+    </div>` : null}
     ${tip ? html`<div class="rp-coach__tip" role="status">
       <p>${tip.text}</p>
       <span class="rp-coach__acts">
@@ -527,6 +562,16 @@ export function ReportCoach({ value, onChange, part = null, admin = false, id = 
     </div>` : null}
   </div>`;
 }
+
+/** The ways a report shows (./board-coach.js reportLooks), by name and as a picture of each */
+const LOOK_NAME = { cards: 'Cards', points: 'Bullet points', text: 'Paragraphs', numbers: 'Big numbers' };
+const lookSvg = (d) => html`<svg class="rp-look__pic" viewBox="0 0 36 22" width="36" height="22" aria-hidden="true">${d}</svg>`;
+const LOOK_ICON = {
+  cards: lookSvg(html`<rect x="1" y="3" width="10" height="16" rx="2.2" /><rect x="13" y="3" width="10" height="16" rx="2.2" /><rect x="25" y="3" width="10" height="16" rx="2.2" />`),
+  points: lookSvg(html`<circle cx="4" cy="5" r="2" /><circle cx="4" cy="11" r="2" /><circle cx="4" cy="17" r="2" /><rect x="9" y="4" width="24" height="2.4" rx="1.2" /><rect x="9" y="10" width="20" height="2.4" rx="1.2" /><rect x="9" y="16" width="23" height="2.4" rx="1.2" />`),
+  text: lookSvg(html`<rect x="2" y="3" width="32" height="2.4" rx="1.2" /><rect x="2" y="8" width="30" height="2.4" rx="1.2" /><rect x="2" y="13" width="32" height="2.4" rx="1.2" /><rect x="2" y="18" width="18" height="2.4" rx="1.2" />`),
+  numbers: lookSvg(html`<rect x="3" y="2" width="30" height="18" rx="2.5" class="rp-look__fill" /><text x="18" y="16" text-anchor="middle" class="rp-look__fig">42</text>`),
+};
 
 // ─── How it looks (both pages; each page's own colors where it has them) ───
 
@@ -573,6 +618,24 @@ const CSS = `
 .rp-coach__btn:focus-visible { outline: 2px solid var(--ink, var(--color-text, #2D2F2C)); outline-offset: 2px; }
 .rp-coach__alt { display: grid; gap: 0.6rem; padding: 0.8rem 0.95rem; border: 1px solid var(--line, var(--color-border, #E7E5DE)); border-radius: 12px; background: var(--warm, var(--color-bg-subtle, #FAF9F5)); }
 .rp-coach__alt-h { margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; color: var(--muted, var(--color-text-secondary, #5F615A)); }
+/* How it shows: four ways side by side (two by two on a phone), each a picture and its name; the one showing in ink,
+   the one that reads best marked; one this report can't take is pale, and says why when it's pressed */
+.rp-looks { display: grid; gap: 0.4rem; }
+.rp-looks__h { margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; color: var(--muted, var(--color-text-secondary, #5F615A)); }
+.rp-looks__opts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4rem; }
+@media (max-width: 520px) { .rp-looks__opts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.rp-look { position: relative; display: grid; justify-items: center; align-content: start; gap: 0.3rem; min-height: 72px; padding: 0.6rem 0.35rem 0.5rem; border: 1px solid var(--line-2, var(--color-border-strong, #D3D0C7)); border-radius: 12px; background: var(--card, var(--color-bg-card, #fff)); color: var(--ink, var(--color-text, #2D2F2C)); font: inherit; font-size: 0.82rem; font-weight: 650; line-height: 1.2; text-align: center; cursor: pointer; }
+.rp-look:hover { border-color: var(--ink, var(--color-text, #2D2F2C)); }
+.rp-look:focus-visible { outline: 2px solid var(--ink, var(--color-text, #2D2F2C)); outline-offset: 2px; }
+.rp-look.is-on { border-color: var(--ink, var(--color-text, #2D2F2C)); box-shadow: inset 0 0 0 1px var(--ink, var(--color-text, #2D2F2C)); background: var(--yellow-wash, #FFFAE0); }
+.rp-look.is-off { color: var(--muted, var(--color-text-secondary, #5F615A)); border-style: dashed; }
+.rp-look.is-off .rp-look__pic { opacity: 0.45; }
+.rp-look__pic { fill: currentColor; }
+.rp-look__pic .rp-look__fill { fill: none; stroke: currentColor; stroke-width: 1.4; }
+.rp-look__fig { font: 700 13px/1 Georgia, 'Times New Roman', serif; fill: currentColor; }
+.rp-look.is-on .rp-look__pic { color: var(--ink, var(--color-text, #2D2F2C)); }
+.rp-look__best { font-size: 0.68rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold, #8A6A00); }
+.rp-looks__why { margin: 0; padding: 0.45rem 0.7rem; border-radius: 10px; background: var(--warm, var(--color-bg-subtle, #FAF9F5)); color: var(--ink-2, var(--color-text, #4E504C)); font-size: 0.85rem; line-height: 1.4; }
 .rp-foot__btn:hover { border-color: var(--ink, var(--color-text, #2D2F2C)); color: var(--ink, var(--color-text, #2D2F2C)); }
 
 .rp-editor { --rp-line: var(--line, var(--color-border, #E7E5DE)); position: relative; border: 1px solid var(--line-2, var(--color-border-strong, #D3D0C7)); border-radius: 14px; background: var(--card, var(--color-bg-card, #fff)); }

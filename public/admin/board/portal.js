@@ -32,9 +32,9 @@ import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
   isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
   reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
-  NOTHING_NEW, isNothingNew, LIMITS, slidesOfItem, reportAlone,
+  NOTHING_NEW, isNothingNew, LIMITS, slidesOfItem, reportAlone, decidesAlone, facesOf, hasReport, LIVE_TITLES,
 } from '../board-shared.js';
-import { YearCompare } from './books.js';
+import { YearCompare, booksTitle } from './books.js';
 import { FinanceReview, NoteLine, notesByKey, lineKeysOf, withLineNotes, dueText } from './review.js';
 import { ChairReview, reviewTodo, ChairNoteLine } from './chair.js';
 import { Report, ReportEditor, readTime, Motion } from '../board-report.js';
@@ -511,7 +511,7 @@ function App() {
       const msg = e.data || {};
       if (msg.type === 'board-preview' && msg.meeting?.id) setData((dd) => (dd ? withDraft(dd, msg.meeting) : dd));
       // The report page's own preview: one item's report and motion as they're typed (nothing else of the meeting)
-      if (msg.type === 'board-preview-item' && msg.meetingId && msg.itemId) setData((dd) => (dd ? withItem(dd, msg.meetingId, msg.itemId, { report: String(msg.report ?? ''), motion: String(msg.motion ?? ''), ...(msg.reportBy ? { reportBy: String(msg.reportBy) } : {}) }) : dd));
+      if (msg.type === 'board-preview-item' && msg.meetingId && msg.itemId) setData((dd) => (dd ? withItem(dd, msg.meetingId, msg.itemId, { report: String(msg.report ?? ''), motion: String(msg.motion ?? ''), reportLook: String(msg.reportLook ?? ''), ...(msg.reportBy ? { reportBy: String(msg.reportBy) } : {}) }) : dd));
       if (msg.type === 'board-preview-focus' && msg.itemId) previewFocus(msg.itemId);
     };
     addEventListener('message', on);
@@ -572,8 +572,11 @@ function App() {
       here = { ...place };
       ui = kept().ui;
       clearTimeout(saving);
-      // A page to type on (a report) opens at once: keys typed while a view transition runs are lost or drawn wrong
-      transition(() => setRoute(now), { kind, morphTo, instant: now.sub === 'report', after: () => scrollBack(place.y, place.a, place.o) });
+      // A page to type on (a report) opens at once: keys typed while a view transition runs are lost or drawn wrong.
+      // A transition puts its page in a frame later: by then a quicker step may have come (Back, then a report opened at
+      // once), so it puts in the page the address has then, and its place only while the address is still its own
+      const to = location.hash;
+      transition(() => setRoute(readRoute()), { kind, morphTo, instant: now.sub === 'report', after: () => { if (location.hash === to) scrollBack(place.y, place.a, place.o); } });
     };
     const noteUi = () => { ui = kept().ui; };
     addEventListener('hashchange', on);
@@ -1523,7 +1526,7 @@ const withItem = (data, meetingId, itemId, patch) => {
   return { ...data, meetings: data.meetings.map(put), ...(data.previews ? { previews: data.previews.map(put) } : {}), ...(data.presenting ? { presenting: data.presenting.map(put) } : {}) };
 };
 /** A report just saved */
-const withReport = (data, meetingId, itemId, r) => withItem(data, meetingId, itemId, { report: r.report, reportBy: r.reportBy, reportAt: r.reportAt });
+const withReport = (data, meetingId, itemId, r) => withItem(data, meetingId, itemId, { report: r.report, reportBy: r.reportBy, reportAt: r.reportAt, ...(r.reportLook !== undefined ? { reportLook: r.reportLook } : {}) });
 
 /** A document put with an item (or taken off): the item's documents as the server has them, the file added or gone */
 const withDocs = (data, meetingId, itemId, docs, { add = null, gone = '' } = {}) => {
@@ -1676,108 +1679,177 @@ function MotionBox({ m, it, ctx, onDraft, handle }) {
 }
 
 /**
- * The screen as the room will see it: the real presentation (./screen.js, ?preview&report) in a frame at its own
- * 1280 × 720, scaled to the column, sent the report and the motion a moment after typing stops; it says back whether
- * they fit on the slide. Hidden (a phone's Write), it stays loaded
+ * One slide of the item as the room will see it: the real presentation (./screen.js, ?preview&report) in a frame at
+ * its own 1280 × 720, scaled to the column and held on the slide `at` (a stop's key), sent what's typed (`draft`) as it
+ * changes; it says back the deck (`onDeck`, from the first), whether the report's words fit their slide (`onFit`) and
+ * the motion its (`onMotion`). The item's own slide, the report's first three and the vote load at once (`first`,
+ * `eager`: what they write is there the moment they look); the rest once they come near the column's view. Hidden (a
+ * phone's Write), they stay loaded
  */
-function ScreenFrame({ m, it, report, motion, by }) {
+function SlideFrame({ m, it, at, draft, scale, first = false, eager = false, onDeck, onFit, onMotion }) {
   const frame = useRef(null);
+  const box = useRef(null);
   const ready = useRef(false);
+  const [near, setNear] = useState(first || eager);
+  const said = useRef({});
+  said.current = { onDeck, onFit, onMotion };
+  const now = useRef(draft);
+  now.current = draft;
+  const post = (msg) => frame.current?.contentWindow?.postMessage(msg, location.origin);
+  const send = () => { post({ type: 'board-preview-item', meetingId: m.id, itemId: it.id, ...now.current }); post({ type: 'board-preview-at', key: at, itemId: it.id }); };
+  useEffect(() => {
+    if (near || typeof IntersectionObserver !== 'function') { setNear(true); return undefined; }
+    const el = box.current;
+    // (the column scrolls on its own beside the writing; on a phone, the page does)
+    const col = el?.closest('.bp-rp__preview');
+    const root = col && getComputedStyle(col).overflowY === 'auto' ? col : null;
+    const io = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) { setNear(true); io.disconnect(); } }, { root, rootMargin: '700px 0px' });
+    if (el) io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  useEffect(() => {
+    const on = (e) => {
+      if (e.origin !== location.origin || !frame.current || e.source !== frame.current.contentWindow) return;
+      const x = e.data || {};
+      if (x.type === 'board-preview-ready') { ready.current = true; send(); }
+      if (x.type === 'board-preview-deck' && x.id === m.id && Array.isArray(x.stops)) said.current.onDeck?.(x.stops);
+      if (x.type === 'board-preview-fit') said.current.onFit?.(at, !!x.cut);
+      if (x.type === 'board-preview-motion') said.current.onMotion?.(at, !!x.cut);
+    };
+    addEventListener('message', on);
+    return () => removeEventListener('message', on);
+  }, [at]);
+  useEffect(() => { if (ready.current) send(); }, [draft, at]);
+  const src = `${location.pathname}?preview&report#/meetings/${encodeURIComponent(m.id)}/screen`;
+  return html`<div class="bp-rp__screen" ref=${box} style=${scale ? `height:${Math.round(720 * scale)}px` : null}>
+    ${scale && near ? html`<iframe ref=${frame} src=${src} title="A slide, as the room will see it" tabindex="-1" aria-hidden="true" inert=${true} style=${`width:1280px;height:720px;transform:scale(${scale})`}></iframe>` : null}
+  </div>`;
+}
+
+/** A slide of the item, by what's on it: the report's, the vote, QuickBooks', a live list's, or the item's own (what
+ *  fills it: its live facts, the board's faces, the report's first slide, its notes, or its title) */
+function slideName(s, it) {
+  if (s.kind === 'report') return s.of > 1 ? `Your report, ${(s.page || 0) + 1} of ${s.of}` : 'Your report';
+  if (s.kind === 'decision') return 'The vote on your motion';
+  if (s.kind === 'books') return booksTitle(s) || 'From QuickBooks';
+  if (s.kind === 'live') return LIVE_TITLES[String(s.fileId).slice(5)] || 'Live facts';
+  const faces = facesOf(it);
+  if (faces) return faces === 'roll' ? 'Who’s here' : 'Around the room';
+  if (it.live) return LIVE_TITLES[it.live] || it.title;
+  if (hasReport(it) && !reportAlone(it)) { const n = slidesOfItem(it).length; return n > 1 ? `Your report, 1 of ${n}` : 'Your report'; }
+  return String(it.notes || '').trim() ? 'The item, with its notes' : 'The item’s title';
+}
+/** Who makes a slide: their words (the report, the motion), or the meeting itself (live facts, the agenda) */
+function slideBy(s, it) {
+  if (s.kind === 'report' || (s.kind === 'item' && hasReport(it) && !reportAlone(it) && !it.live && !facesOf(it))) return { text: 'Your words', mine: true };
+  if (s.kind === 'decision') return { text: 'Your motion', mine: true };
+  if (s.kind === 'books') return { text: 'From QuickBooks, by itself', mine: false };
+  if (s.kind === 'live' || it.live || facesOf(it)) return { text: 'Fills in by itself', mine: false };
+  return { text: 'From the agenda', mine: false };
+}
+
+/**
+ * The item in the meeting, slide by slide: every slide it puts on the screen, in order, one under another to scroll
+ * through (each a SlideFrame), named over it (the money, "Your report, 2 of 3", the vote) with whether it's theirs to
+ * write or fills in by itself; its documents in their place, by name and pages. What's typed reaches every slide a
+ * moment after typing stops, and the slide it changed is marked and brought into view
+ */
+function SlideStack({ m, it, files, draft }) {
   const holder = useRef(null);
   const [w, setW] = useState(0);
-  const [fit, setFit] = useState(null);
+  const [stops, setStops] = useState(null); // the item's stops, as the first frame's deck has them
+  const [cuts, setCuts] = useState({}); // a slide's key → its report's words don't fit at their size
   const [motionCut, setMotionCut] = useState(false);
-  const [deck, setDeck] = useState(null); // the screen's stops and where it is: { stops, at }
-  // The report's slides (./board-shared.js reportSlides, as the screen cuts it) and the one shown
-  const slides = slidesOfItem({ ...it, report });
-  const [page, setPage] = useState(0);
-  const pageRef = useRef(0);
-  pageRef.current = Math.min(page, Math.max(0, slides.length - 1));
-  // Each slide's stop: the first on the item's own slide unless the report has a stop of its own
-  const keyOf = (p) => (p ? `${it.id}:report:${p}` : reportAlone({ ...it, report }) ? `${it.id}:report` : it.id);
-  const showPage = (p) => { setPage(p); post({ type: 'board-preview-at', key: keyOf(p), itemId: it.id }); };
-  const now = useRef(null);
-  now.current = { report, motion, reportBy: by };
-  const src = `${location.pathname}?preview&report#/meetings/${encodeURIComponent(m.id)}/screen`;
-  const post = (msg) => frame.current?.contentWindow?.postMessage(msg, location.origin);
-  const send = () => post({ type: 'board-preview-item', meetingId: m.id, itemId: it.id, ...now.current });
+  const [mark, setMark] = useState(''); // the slide the last words changed
+  // What's typed, a moment after typing stops: every slide is laid out again only then, never on every key
+  const [sent, setSent] = useState(draft);
+  useEffect(() => { const t = setTimeout(() => setSent(draft), 300); return () => clearTimeout(t); }, [draft.report, draft.motion, draft.reportBy, draft.reportLook]);
   useEffect(() => {
     const el = holder.current;
     if (!el) return undefined;
-    // Its last width while hidden (0 then): the frame stays as it was, never loaded again
+    // Its last width while hidden (0 then): the frames stay as they were, never loaded again
     const measure = () => { const cw = el.clientWidth; if (cw) setW(cw); };
     measure();
     const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null;
     ro?.observe(el);
     return () => ro?.disconnect();
   }, []);
+  const withDraft = (d) => ({ ...it, report: d.report, motion: d.motion, reportLook: d.reportLook });
+  const cur = withDraft(sent);
+  // The report's slide p: on the item's own slide (the first, when nothing else fills it), else one of its own
+  const keyOf = (p, x) => (p > 0 ? `${it.id}:report:${p}` : reportAlone(x) ? `${it.id}:report` : it.id);
+  // The slide the last change was on: the first of the report's that's different, or the vote for the motion
+  const was = useRef(sent);
   useEffect(() => {
-    const on = (e) => {
-      if (e.origin !== location.origin || e.source !== frame.current?.contentWindow) return;
-      const x = e.data || {};
-      // Ready: the words, then the slide they're on (an item that shows live facts has its report on the next one)
-      if (x.type === 'board-preview-ready') { ready.current = true; send(); post({ type: 'board-preview-at', key: keyOf(pageRef.current), itemId: it.id }); }
-      if (x.type === 'board-preview-fit') setFit(x);
-      if (x.type === 'board-preview-deck' && x.id === m.id && Array.isArray(x.stops)) setDeck({ stops: x.stops, at: x.at || 0 });
-      if (x.type === 'board-preview-motion') setMotionCut(!!x.cut);
-    };
-    addEventListener('message', on);
-    return () => removeEventListener('message', on);
-  }, []);
-  // A moment after typing stops: the slide is laid out again only then, never on every key. The slide it shows follows
-  // what was typed: the motion, its own slide when it has one ("The decision", else the item's); the report, its slide
-  const typed = useRef({ report, motion });
+    const a = was.current;
+    was.current = sent;
+    if (a === sent) return;
+    let key = '';
+    if (a.report !== sent.report || a.reportLook !== sent.reportLook) {
+      const before = slidesOfItem(withDraft(a));
+      const after = slidesOfItem(cur);
+      const p = after.findIndex((x, i) => x !== before[i]);
+      key = after.length ? keyOf(p < 0 ? after.length - 1 : p, cur) : it.id;
+    } else if (a.motion !== sent.motion) key = decidesAlone(cur) ? `${it.id}:decision` : it.id;
+    if (key) setMark(key);
+  }, [sent]);
+  // …brought into view in the column (or on a phone's In the meeting), when it isn't
   useEffect(() => {
-    if (!ready.current) return undefined;
-    const t = setTimeout(() => {
-      send();
-      const to = motion !== typed.current.motion && String(motion || '').trim() ? 'decision' : report !== typed.current.report || motion !== typed.current.motion ? 'report' : '';
-      typed.current = { report, motion };
-      // (the report: the slide being looked at, or its last when it has fewer now)
-      if (to) post({ type: 'board-preview-at', key: to === 'decision' ? `${it.id}:decision` : keyOf(pageRef.current), itemId: it.id });
-    }, 300);
-    return () => clearTimeout(t);
-  }, [report, motion, by]);
+    const el = mark && holder.current?.querySelector(`[data-stop="${CSS.escape(mark)}"]`);
+    if (!el || !el.offsetParent) return;
+    const col = holder.current.closest('.bp-rp__preview');
+    const scroller = col && getComputedStyle(col).overflowY === 'auto' ? col : null;
+    const r = el.getBoundingClientRect();
+    const view = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+    if (r.top >= view.top && r.bottom <= view.bottom) return;
+    const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (scroller) scroller.scrollTo({ top: scroller.scrollTop + (r.top - view.top) - 12, behavior: smooth ? 'smooth' : 'auto' });
+    else el.scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' });
+  }, [mark, stops]);
   const scale = w ? w / 1280 : 0;
-  const words = String(report || '').trim() && !isNothingNew(report);
-  // Where the slide sits: after the live facts its report follows, or what comes next on its item; and the motion's
-  // own slide at the end of the item, when it has one (./board-shared.js deckOf)
-  const here = deck?.stops?.[deck.at];
-  const nx = deck?.stops?.[deck.at + 1];
-  const where = here?.kind === 'decision' && here.itemId === it.id ? 'The last slide of your item, when the board votes.' : [
-    here?.itemId !== it.id ? ''
-      : here.kind === 'report' ? (here.page ? '' : `After ${AFTER_LIVE[showsOf(it)[0]] || (String(it.notes || '').trim() ? 'the item’s own slide, with its notes' : 'the item’s own slide')}.`)
-      : here.kind === 'item' && showsOf(it).length && words ? 'Your report gets a slide of its own, after this one.'
-      : nx?.itemId === it.id && nx.kind === 'doc' ? 'Then its documents.' : '',
-    deck?.stops?.some((s) => s.kind === 'decision' && s.itemId === it.id) ? 'Your motion gets a slide of its own at the end of your item, for the vote.' : '',
-  ].filter(Boolean).join(' ');
-  // (how many slides, and their time, is the coach's line under the editor; here only what it can't say)
+  const list = stops || [{ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0 }];
+  // Its documents, one line in their place: each file once, with how many of its pages show
+  const rows = [];
+  for (const s of list) {
+    if (s.kind !== 'doc') { rows.push(s); continue; }
+    const last = rows.at(-1);
+    const row = last?.kind === 'docs' ? last : (rows.push({ kind: 'docs', key: `docs:${s.key}`, files: new Map(), from: 0, to: 0 }), rows.at(-1));
+    row.files.set(s.fileId, (row.files.get(s.fileId) || new Set()).add(s.page));
+  }
+  let n = 0;
+  for (const r of rows) { if (r.kind === 'docs') { const k = [...r.files.values()].reduce((x, p) => x + p.size, 0); r.from = n + 1; r.to = n + k; n += k; } else r.n = ++n; }
+  const nameOfFile = (id) => docTitle(files.find((f) => f.id === id)?.name || 'A document');
+  const cut = Object.entries(cuts).some(([k, v]) => v && list.some((s) => s.key === k));
   const fitLine = [
-    words && fit?.cut && here?.kind !== 'decision' ? 'One point is too long for a slide, so the screen sets it smaller. Breaking it up reads better.' : '',
-    String(motion || '').trim() && motionCut ? 'The screen cuts the motion short; a shorter one fits.' : '',
+    cut && hasReport(cur) ? 'One point is too long for a slide, so the screen sets it smaller. Breaking it up reads better.' : '',
+    String(sent.motion || '').trim() && motionCut ? 'The screen cuts the motion short; a shorter one fits.' : '',
   ].filter(Boolean).join(' ');
-  const n = words ? slides.length : 0;
-  const shown = here?.itemId === it.id && here.kind === 'report' ? here.page || 0 : here?.itemId === it.id && here.kind === 'item' && !reportAlone({ ...it, report }) ? 0 : pageRef.current;
-  return html`<div class="bp-rp__screen" ref=${holder} style=${scale ? `height:${Math.round(720 * scale)}px` : null}>
-      ${scale ? html`<iframe ref=${frame} src=${src} title="The screen, as the room will see it" tabindex="-1" aria-hidden="true" inert=${true} style=${`width:1280px;height:720px;transform:scale(${scale})`}></iframe>` : null}
-    </div>
-    ${n > 1 ? html`<div class="bp-rp__pager" role="group" aria-label="Your report’s slides">
-      <button type="button" class="bp-rp__step" disabled=${shown <= 0} onClick=${() => showPage(shown - 1)} aria-label="The slide before">‹</button>
-      ${n <= 8 ? html`<span class="bp-rp__pages">${slides.map((_, p) => html`<button type="button" key=${p} class=${`bp-rp__dot ${p === shown ? 'is-on' : ''}`} aria-label=${`Slide ${p + 1} of ${n}`} aria-current=${p === shown ? 'true' : null} onClick=${() => showPage(p)}></button>`)}</span>` : null}
-      <span class="bp-rp__of">Slide ${shown + 1} of ${n}</span>
-      <button type="button" class="bp-rp__step" disabled=${shown >= n - 1} onClick=${() => showPage(shown + 1)} aria-label="The next slide">›</button>
-    </div>` : null}
-    ${where ? html`<p class="bp-rp__where">${where}</p>` : null}
-    ${fitLine ? html`<p class=${`bp-rp__fit ${(fit?.cut && words) || motionCut ? 'is-cut' : ''}`}>${fitLine}</p>` : null}`;
+  return html`<div class="bp-rp__stack" ref=${holder}>
+    ${stops ? html`<p class="bp-rp__count">${list.length === 1 ? 'One slide' : `${list.length} slides`} in the meeting, in this order</p>` : null}
+    <ol class="bp-rp__slides">${rows.map((s) => {
+      if (s.kind === 'docs') {
+        return html`<li key=${s.key} class="bp-rp__slide bp-rp__slide--docs">
+          <p class="bp-rp__slide-h"><span class="bp-rp__slide-n">${s.from === s.to ? s.from : `${s.from}–${s.to}`}</span><span class="bp-rp__slide-name">${s.files.size === 1 ? 'Its document' : 'Its documents'}, page by page</span><span class="bp-rp__slide-tag">As the file is</span></p>
+          <ul class="bp-rp__slide-files">${[...s.files].map(([id, pages]) => html`<li key=${id}>${nameOfFile(id)}<span class="bp-muted">${pages.size === 1 ? 'one page' : `${pages.size} pages`}</span></li>`)}</ul>
+        </li>`;
+      }
+      const by = slideBy(s, cur);
+      return html`<li key=${s.key} class=${`bp-rp__slide ${mark === s.key ? 'is-mark' : ''}`} data-stop=${s.key}>
+        <p class="bp-rp__slide-h"><span class="bp-rp__slide-n">${s.n}</span><span class="bp-rp__slide-name">${slideName(s, cur)}</span><span class=${`bp-rp__slide-tag ${by.mine ? 'is-mine' : ''}`}>${by.text}</span></p>
+        <${SlideFrame} m=${m} it=${it} at=${s.key} draft=${sent} scale=${scale} first=${s.key === it.id} eager=${s.kind === 'decision' || (s.kind === 'report' && (s.page || 0) < 3)}
+          onDeck=${s.key === it.id ? (all) => setStops(all.filter((x) => x.itemId === it.id)) : null}
+          onFit=${(k, c) => setCuts((x) => (x[k] === c ? x : { ...x, [k]: c }))} onMotion=${(k, c) => setMotionCut(c)} />
+      </li>`;
+    })}</ol>
+    ${fitLine ? html`<p class="bp-rp__fit is-cut">${fitLine}</p>` : null}
+  </div>`;
 }
-/** What an item's live slide is, after "After" */
-const AFTER_LIVE = { projects: 'the makeovers board', cash: 'the money', reveals: 'the reveals ahead', events: 'the events ahead', meetings: 'the board meetings ahead' };
 
-/** Beside the report as it's written: its slide, as the meeting's screen will show it */
-function ReportPreview({ m, it, draft }) {
+/** Beside the report as it's written: the item's slides, as the meeting's screen will show them */
+function ReportPreview({ m, it, files, draft }) {
   return html`<div class="bp-rp__pv">
     <h2 class="bp-mini-h bp-rp__pv-h" id="rp-pv-h">In the meeting</h2>
-    <${ScreenFrame} m=${m} it=${it} report=${draft.report} motion=${draft.motion} by=${draft.reportBy} />
+    <${SlideStack} m=${m} it=${it} files=${files} draft=${draft} />
   </div>`;
 }
 
@@ -1798,7 +1870,7 @@ function ReportPage({ id, itemId, ctx }) {
   const it = at ? m.sections[at.si].items[at.ii] : null;
   const draftKey = `bp-report:${id}/${itemId}`;
   // What this device kept and the server doesn't have yet (offline, a closed tab): back, from where it was written
-  const kept0 = useMemo(() => { try { const k = JSON.parse(localStorage.getItem(draftKey) || 'null'); return k && typeof k.text === 'string' && k.text !== (it?.report || '') ? k : null; } catch { return null; } }, []);
+  const kept0 = useMemo(() => { try { const k = JSON.parse(localStorage.getItem(draftKey) || 'null'); return k && typeof k.text === 'string' && (k.text !== (it?.report || '') || (typeof k.look === 'string' && k.look !== (it?.reportLook || ''))) ? k : null; } catch { return null; } }, []);
   const [text, setText] = useState(kept0 ? kept0.text : it?.report || '');
   // saved | waiting | saving | error (it tries again) | stuck (it can't: the item's gone, they don't present it now) | choose
   const [st, setSt] = useState({ s: kept0 ? 'waiting' : 'saved', at: it?.reportAt || '' });
@@ -1819,6 +1891,10 @@ function ReportPage({ id, itemId, ctx }) {
   stuckRef.current = stuck;
   const failing = useRef(false); // the last save didn't go through
   const [motion, setMotion] = useState(it?.motion || ''); // what it asks the board to vote on, as it's typed (the preview's)
+  // How the screen draws it (board-shared.js REPORT_LOOKS), as chosen beside the editor: saved with the words
+  const [look, setLook] = useState(kept0?.look ?? it?.reportLook ?? '');
+  const lookNow = useRef(look);
+  const lookSent = useRef(it?.reportLook || '');
   const [view, setView] = useState('write'); // a phone's switch: write | preview (in the meeting)
   const [asking, setAsking] = useState(false); // "Swap your report for Nothing new…?" open
   // The words a "Nothing to report" took the place of, back with "Write a report instead" (kept on this device)
@@ -1834,23 +1910,24 @@ function ReportPage({ id, itemId, ctx }) {
   const [adding, setAdding] = useState(''); // the file being put with it
   const [offering, setOffering] = useState(''); // the file asking "take it off for good?"
   const [dropping, setDropping] = useState(false);
-  const keep = (t) => { try { if (t === sent.current || (inserted.current !== null && t === inserted.current)) localStorage.removeItem(draftKey); else localStorage.setItem(draftKey, JSON.stringify({ text: t, base: base.current, at: Date.now() })); } catch { /* private browsing */ } };
+  const keep = (t) => { try { if ((t === sent.current && lookNow.current === lookSent.current) || (inserted.current !== null && t === inserted.current)) localStorage.removeItem(draftKey); else localStorage.setItem(draftKey, JSON.stringify({ text: t, look: lookNow.current, base: base.current, at: Date.now() })); } catch { /* private browsing */ } };
 
   const save = async () => {
     clearTimeout(timer.current);
     if (busy.current) { again.current = true; return busy.current; }
     if (clashRef.current || stuckRef.current) return null; // they choose first
     const words = latest.current;
-    if (words === sent.current) { keep(words); setSt((x) => (x.s === 'waiting' ? { ...x, s: 'saved' } : x)); return null; }
-    if (untouched()) { keep(words); setSt((x) => ({ ...x, s: 'start' })); return null; }
+    const lk = lookNow.current;
+    if (words === sent.current && lk === lookSent.current) { keep(words); setSt((x) => (x.s === 'waiting' ? { ...x, s: 'saved' } : x)); return null; }
+    if (untouched() && lk === lookSent.current) { keep(words); setSt((x) => ({ ...x, s: 'start' })); return null; }
     setSt((x) => ({ ...x, s: 'saving' }));
     sentByMe(draftKey, words);
     busy.current = (async () => {
-      let j = await call({ action: 'report', meetingId: id, itemId, text: words, base: base.current });
+      let j = await call({ action: 'report', meetingId: id, itemId, text: words, look: lk, base: base.current });
       // The newer one is this page's own (sent as it was hidden or left, or a save that hadn't come back): built on
       if (j.status === 409 && j.current && wasMine(draftKey, j.current.report)) {
         base.current = j.current.reportAt || '';
-        j = await call({ action: 'report', meetingId: id, itemId, text: words, base: base.current });
+        j = await call({ action: 'report', meetingId: id, itemId, text: words, look: lk, base: base.current });
       }
       busy.current = null;
       if (j.status === 409 && j.current) { clashRef.current = j.current; setClash(j.current); setSt((x) => ({ ...x, s: 'choose' })); return null; }
@@ -1865,11 +1942,13 @@ function ReportPage({ id, itemId, ctx }) {
       failing.current = false;
       // Their words are what's saved (the server only trims; a report past the limit is cut, and that's said)
       sent.current = words;
+      lookSent.current = j.reportLook ?? lk;
       base.current = j.reportAt || '';
       keep(latest.current);
       setData((dd) => withReport(dd, id, itemId, j));
-      setSt({ s: latest.current === words ? 'saved' : 'waiting', at: j.reportAt || new Date().toISOString(), cut: (j.report || '').length < words.trim().length });
-      if (again.current || latest.current !== words) { again.current = false; timer.current = setTimeout(save, 400); }
+      const behind = latest.current !== words || lookNow.current !== lk;
+      setSt({ s: behind ? 'waiting' : 'saved', at: j.reportAt || new Date().toISOString(), cut: (j.report || '').length < words.trim().length });
+      if (again.current || behind) { again.current = false; timer.current = setTimeout(save, 400); }
       return j;
     })();
     return busy.current;
@@ -1879,10 +1958,10 @@ function ReportPage({ id, itemId, ctx }) {
     for (let i = 0; i < 4; i++) {
       await save();
       while (busy.current) await busy.current;
-      if (latest.current === sent.current || untouched()) return true;
+      if ((latest.current === sent.current || untouched()) && lookNow.current === lookSent.current) return true;
       if (failing.current || clashRef.current || stuckRef.current) return false;
     }
-    return latest.current === sent.current || untouched();
+    return (latest.current === sent.current || untouched()) && lookNow.current === lookSent.current;
   };
   // `meta.inserted`: a head start put in (nothing of theirs yet)
   const changed = (md, meta = null) => {
@@ -1894,15 +1973,24 @@ function ReportPage({ id, itemId, ctx }) {
     clearTimeout(timer.current);
     timer.current = setTimeout(save, 900);
   };
+  // How it shows, chosen: saved a moment after, as the words are
+  const lookChosen = (k) => {
+    lookNow.current = k;
+    setLook(k);
+    keep(latest.current);
+    setSt((x) => (x.s === 'saving' || x.s === 'stuck' || x.s === 'choose' ? x : { ...x, s: 'waiting' }));
+    clearTimeout(timer.current);
+    timer.current = setTimeout(save, 400);
+  };
   // Back from a closed tab or offline: kept words go to the server at once (theirs since is a choice, as always)
   useEffect(() => { if (kept0) save(); }, []);
   // Leaving the page (Done, Back, another tab, closing it): what's typed is saved first
   useEffect(() => {
     // Only a page that's really going sends it blind (and remembers it, so its own save is never a clash later)
     const flush = () => {
-      if (latest.current === sent.current || untouched() || clashRef.current || stuckRef.current) return;
+      if (((latest.current === sent.current || untouched()) && lookNow.current === lookSent.current) || clashRef.current || stuckRef.current) return;
       sentByMe(draftKey, latest.current);
-      try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', meetingId: id, itemId, text: latest.current, base: base.current }) }); } catch { /* the page is going */ }
+      try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', meetingId: id, itemId, text: latest.current, look: lookNow.current, base: base.current }) }); } catch { /* the page is going */ }
     };
     // Another tab or app: saved now, the usual way
     const hidden = () => { if (document.visibilityState === 'hidden') save(); };
@@ -1988,7 +2076,7 @@ function ReportPage({ id, itemId, ctx }) {
   const startFrom = () => { putIn(last.it.report, { inserted: true }); toEditor(); };
   const myName = d.me?.name || (data.me.as ? d.bySlug.get(data.me.as)?.name : '') || '';
   // Its slide with what's typed (saved or not), said by who's writing it now
-  const draft = { report: text, motion, reportBy: myName || it.reportBy };
+  const draft = { report: text, motion, reportBy: myName || it.reportBy, reportLook: look };
   const standing = reportStanding(m, it, data);
   const copy = async () => {
     try { await navigator.clipboard.writeText(latest.current); ctx.say('Your words are copied'); } catch { ctx.say('Select the words and copy them', 'warn'); }
@@ -2076,7 +2164,7 @@ function ReportPage({ id, itemId, ctx }) {
       <h2 class="sr-only" id="rp-write-h">Your report</h2>
       <${ReportEditor} value=${text} onChange=${changed} resetKey=${reset} label=${`Your report on ${it.title}`} autofocus=${!it.report} stickyTop="calc(var(--head) + env(safe-area-inset-top))" minHeight=${300}
         placeholder="What the committee did, what the board needs to decide, and what’s next" status=${status} starter=${true} onNothing=${askNothing}
-        coach=${{ part: partFor(m, it.id), id: m.id, itemId: it.id, title: it.title, confidential: !!it.confidential }} />`}
+        coach=${{ part: partFor(m, it.id), id: m.id, itemId: it.id, title: it.title, confidential: !!it.confidential, look, onLook: lookChosen }} />`}
       <${MotionBox} m=${m} it=${it} ctx=${ctx} onDraft=${setMotion} handle=${motionBox} />
       <section class="bp-rp__docs" aria-labelledby="rp-docs-h">
         <h2 class="bp-mini-h" id="rp-docs-h">Documents with it</h2>
@@ -2097,7 +2185,7 @@ function ReportPage({ id, itemId, ctx }) {
         <a class=${`bp-btn bp-btn--primary ${leaving ? 'is-busy' : ''}`} href=${back} aria-disabled=${leaving ? 'true' : null} onClick=${leave}>${leaving ? 'Saving…' : 'Done'}</a>
       </div>
     </div>
-    <aside class="bp-rp__preview" aria-labelledby="rp-pv-h"><${ReportPreview} m=${m} it=${it} draft=${draft} /></aside>
+    <aside class="bp-rp__preview" aria-labelledby="rp-pv-h" tabindex="0"><${ReportPreview} m=${m} it=${it} files=${files} draft=${draft} /></aside>
   </div>`}
   </div>`;
 }

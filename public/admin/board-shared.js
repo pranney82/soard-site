@@ -41,7 +41,7 @@
  * deeper for each level under it.
  */
 
-import { mdBlocks, mdInline, mdWords, mdPlain } from './board-md.js';
+import { mdBlocks, mdInline, mdWords, mdPlain, mdPoints, mdNumber, POINTS_WORDS } from './board-md.js';
 
 export const ATTEND = [
   { id: 'present', label: 'Present' },
@@ -333,6 +333,8 @@ function cleanItem(raw) {
     report: str(raw?.report, LIMITS.report),
     reportBy: one(raw?.reportBy, 120),
     reportAt: /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(raw?.reportAt || '')) ? raw.reportAt : '',
+    // How the screen draws it, as its writer chose ('' as it fits: REPORT_LOOKS, shownLook)
+    reportLook: REPORT_LOOKS.includes(raw?.reportLook) ? raw.reportLook : '',
     // What its presenter asks the board to vote on ("Move to approve the 2027 budget as presented."), written ahead:
     // on the agenda, the screen and the minutes template, where the secretary records who moved it and how it went
     motion: one(raw?.motion, LIMITS.motion),
@@ -1049,19 +1051,70 @@ export const reportSlides = (md, opts) => cutReport(md, opts).slides;
 /** The heading each slide goes on under, when it begins partway into that heading's part: "…, continued" over it (the
  *  screen draws it; reportSlides leaves room for it) → one per slide, '' where a slide starts its own */
 export const reportSlideHeads = (md, opts) => cutReport(md, opts).heads;
-function cutReport(md, { title = '', confidential = false } = {}) {
+function cutReport(md, { title = '', confidential = false, look = '' } = {}) {
   const text = String(md || '').trim();
   if (!text) return { slides: [''], heads: [''] };
-  const key = `${title}\u0000${confidential ? 1 : 0}\u0000${text}`;
+  const shown = shownLook(text, look);
+  const key = `${title}\u0000${confidential ? 1 : 0}\u0000${shown}\u0000${text}`;
   const hit = SLIDES_SEEN.get(key);
   if (hit) return hit;
-  const pages = reportSlidesFrom(text, title, confidential);
+  const pages = shown === 'words' ? reportSlidesFrom(text, title, confidential) : pointSlides(text);
   const out = { slides: pages.map(pageMd), heads: pages.map((pg) => (pg[0]?.kind === 'cont' ? pg[0].b.text : '')) };
   if (SLIDES_SEEN.size > 200) SLIDES_SEEN.delete(SLIDES_SEEN.keys().next().value);
   SLIDES_SEEN.set(key, out);
   return out;
 }
 const SLIDES_SEEN = new Map();
+
+/**
+ * How a report is drawn on the meeting's screen: its item's `reportLook`, chosen beside the editor (./board-coach.js
+ * reportLooks). '' as it fits: a few short points as cards (mdPoints), anything else its words in columns, on as many
+ * slides as they take; 'list' its words always, never cards; 'cards' each point a card; 'numbers' each point's figure
+ * large over its words. Cards and numbers are for a report that is all points (a line before them at most), each a line
+ * or two (mdPoints `all`), up to six a slide; one that isn't any more shows as it fits, so nothing written is left off
+ */
+export const REPORT_LOOKS = ['list', 'cards', 'numbers'];
+/** The most cards (or numbers) one slide holds */
+export const CARDS_PER_SLIDE = 6;
+/** How the screen draws a report with this look → 'cards' | 'numbers' | 'words' (once for each wording: the screen asks
+ *  on every slide) */
+export function shownLook(md, look = '') {
+  if (look === 'list') return 'words';
+  const text = String(md || '');
+  const key = `${look}\u0000${text}`;
+  const hit = LOOKS_SEEN.get(key);
+  if (hit) return hit;
+  let out = '';
+  if (look === 'cards' || look === 'numbers') {
+    const p = mdPoints(text, { all: true });
+    if (p && (look === 'cards' || p.points.every((t) => mdNumber(t)))) out = look;
+  }
+  out ||= mdPoints(text) ? 'cards' : 'words';
+  if (LOOKS_SEEN.size > 200) LOOKS_SEEN.delete(LOOKS_SEEN.keys().next().value);
+  LOOKS_SEEN.set(key, out);
+  return out;
+}
+const LOOKS_SEEN = new Map();
+/** Points as cards or numbers, slide by slide: as few slides as hold them (six a slide, and about as many words as a
+ *  slide of cards reads), as even as that many allows, two at least on each; the line before them on the first */
+function pointSlides(text) {
+  const blocks = mdBlocks(text);
+  const lead = blocks.length === 2 ? blocks[0] : null;
+  const list = blocks.at(-1);
+  const n = list.items.length;
+  const k = Math.max(1, Math.min(Math.floor(n / 2), Math.max(Math.ceil(n / CARDS_PER_SLIDE), Math.ceil(mdWords(text) / POINTS_WORDS))));
+  if (k === 1) return [[{ kind: 'raw', md: text }]];
+  const pages = [];
+  let at = 0;
+  for (let s = 0; s < k; s++) {
+    const take = Math.floor(n / k) + (s < n % k ? 1 : 0);
+    const pg = list.items.slice(at, at + take).map((it, j) => ({ kind: 'li', list, it, n: list.start + at + j }));
+    if (!s && lead) pg.unshift({ kind: 'p', b: lead });
+    pages.push(pg);
+    at += take;
+  }
+  return pages;
+}
 
 function reportSlidesFrom(text, title, confidential) {
   const blocks = mdBlocks(text);
@@ -1207,7 +1260,7 @@ function pageMd(units) {
   return parts.join('\n\n');
 }
 /** An item's report, slide by slide (reportSlides, with its title as the screen shows it) */
-const slideOpts = (it) => ({ title: it.title || LIVE_TITLES[it.live] || '', confidential: !!it.confidential });
+const slideOpts = (it) => ({ title: it.title || LIVE_TITLES[it.live] || '', confidential: !!it.confidential, look: it.reportLook || '' });
 export const slidesOfItem = (it) => (hasReport(it) ? reportSlides(it.report, slideOpts(it)) : []);
 /** …and the heading each of those slides goes on under (reportSlideHeads) */
 export const slideHeadsOfItem = (it) => (hasReport(it) ? reportSlideHeads(it.report, slideOpts(it)) : []);

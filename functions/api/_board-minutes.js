@@ -517,7 +517,7 @@ function pairItems(agenda, minutes) {
  * The agenda's own (what the minutes never say): who presents, its documents, live numbers, board-only, private
  * notes, and a committee's written report (who wrote it, when)
  */
-const carried = (it) => ({ id: it.id, docs: it.docs || [], who: it.who || [], live: it.live || '', also: it.also || [], about: it.about || '', confidential: !!it.confidential, staffNote: it.staffNote || '', report: it.report || '', reportBy: it.reportBy || '', reportAt: it.reportAt || '', motion: it.motion || '' });
+const carried = (it) => ({ id: it.id, docs: it.docs || [], who: it.who || [], live: it.live || '', also: it.also || [], about: it.about || '', confidential: !!it.confidential, staffNote: it.staffNote || '', report: it.report || '', reportBy: it.reportBy || '', reportAt: it.reportAt || '', reportLook: it.reportLook || '', motion: it.motion || '' });
 const carriesSomething = (it) => (it.docs || []).length > 0 || !!it.staffNote || !!it.report || !!it.motion;
 
 function mergeSections(cur, read, shape) {

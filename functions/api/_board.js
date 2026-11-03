@@ -40,7 +40,7 @@ import {
   agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
   isFilled, LIVE_TITLES, presentersOf, reportsOn, namesText,
 } from '../../public/admin/board-shared.js';
-import { welcomeHad } from '../../public/admin/board-shared.js';
+import { welcomeHad, REPORT_LOOKS } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
 import { peopleRows, privateEmails, activeBoard, boardAdmins, readState, writeState, readSettings, normEmail, BOARD_PAGE } from './_board-roles.js';
@@ -456,25 +456,32 @@ export async function detachFromItem(env, id, itemId, fileId, { member = null, a
  * A report on an agenda item, written on the board page: by a board member who presents the item (picked, or named
  * in its presenter line) on a meeting the board can see, until its minutes are approved; or by one of Board's
  * admins, any time. `base` is the reportAt the writer started from: a report someone else saved since is refused
- * (409, with theirs as `current`), never written over. → { itemId, report, reportBy, reportAt }
+ * (409, with theirs as `current`), never written over. `look`: how the screen draws it (board-shared.js REPORT_LOOKS,
+ * '' as it fits), chosen beside it; left as it was when not sent, and never a clash: it changes no words
+ * → { itemId, report, reportBy, reportAt, reportLook }
  */
-export async function saveReport(env, id, itemId, text, { member = null, admin = false, adminEmail = '', base = null } = {}) {
+export async function saveReport(env, id, itemId, text, { member = null, admin = false, adminEmail = '', base = null, look = undefined } = {}) {
   await ensureSchema(env.DB);
   if (typeof text !== 'string') throw err('What does the report say?', 400);
   const { m, it } = await presenterGate(env, id, itemId, { member, admin });
   const itemOf = (x) => x.sections.flatMap((s) => s.items).find((y) => y.id === itemId);
   const report = text.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '').trim().slice(0, LIMITS.report);
-  const theirs = (x) => ({ itemId, report: x.report, reportBy: x.reportBy, reportAt: x.reportAt });
-  if (report === it.report) return theirs(it);
+  const theirs = (x) => ({ itemId, report: x.report, reportBy: x.reportBy, reportAt: x.reportAt, reportLook: x.reportLook || '' });
+  const reportLook = look === undefined ? undefined : REPORT_LOOKS.includes(look) ? look : '';
+  const lookNow = reportLook !== undefined && reportLook !== (it.reportLook || '');
+  if (report === it.report && !lookNow) return theirs(it);
   const by = member ? member.name : (await adminVoter(env.DB, adminEmail)).name;
   const at = nowIso();
   const saved = await patchMeeting(env.DB, id, (cur) => {
     const now = itemOf(cur);
     if (!now) throw err('That item isn’t on the agenda any more', 404);
-    if (base !== null && String(base) !== (now.reportAt || '') && now.report !== report) {
+    // (only how it shows: its words, who wrote them and when stay as they are)
+    const words = now.report !== report;
+    if (words && base !== null && String(base) !== (now.reportAt || '')) {
       throw Object.assign(err(`${now.reportBy || 'Someone'} changed this report since you opened it`, 409), { current: theirs(now) });
     }
-    return { ...cur, sections: cur.sections.map((s) => ({ ...s, items: s.items.map((x) => (x.id === itemId ? { ...x, report, reportBy: report ? by : '', reportAt: report ? at : '' } : x)) })) };
+    const patch = { ...(words ? { report, reportBy: report ? by : '', reportAt: report ? at : '' } : {}), ...(reportLook !== undefined ? { reportLook } : {}) };
+    return { ...cur, sections: cur.sections.map((s) => ({ ...s, items: s.items.map((x) => (x.id === itemId ? { ...x, ...patch } : x)) })) };
   }, { by: member?.name || adminEmail });
   return theirs(itemOf(saved));
 }
@@ -1980,7 +1987,7 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const sections = seen.sections.map((sec) => ({
     id: sec.id, title: sec.title, minutes: sec.minutes || 0,
     items: sec.items.filter(isFilled).map((it) => ({ id: it.id, title: it.title, motion: it.motion || '', presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, also: it.also, about: it.about, docs: it.docs,
-      report: it.report, reportBy: it.reportBy, reportAt: it.reportAt })),
+      report: it.report, reportBy: it.reportBy, reportAt: it.reportAt, reportLook: it.reportLook || '' })),
   }));
   // The last meeting's minutes, for an item that asks the board to approve them (only from a meeting the board can see)
   const prior = [];

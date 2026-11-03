@@ -1239,7 +1239,7 @@ try {
       await sam.evaluate(() => dispatchEvent(new Event('online')));
       ok(await samSaved(sam) && /and offline$/.test((await finOf()).report), 'back online, they save by themselves');
       // Under the editor, how it shows in the meeting; then one suggestion at a time that does what it says
-      ok(await waitText(sam, /Fits on one slide\./), `under the editor: how it shows in the meeting (${await sam.evaluate(() => document.querySelector('.rp-coach__fit')?.textContent)})`);
+      ok(await waitText(sam, /Your report fits on one slide\./), `under the editor: how it shows in the meeting (${await sam.evaluate(() => document.querySelector('.rp-coach__fit')?.textContent)})`);
       await toEnd(sam);
       await sam.keyboard.press('Enter');
       await sam.keyboard.press('Enter');

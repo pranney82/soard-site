@@ -387,18 +387,19 @@ export const POINTS_WORDS = 110;
 /**
  * A report that is only a few points (2 to 6, each a line or two, nothing under them, no heading), with at most a
  * line before them → { lead, points, numbered, start } for the screen to draw each point as a card; else null (it's
- * drawn as the report it is)
+ * drawn as the report it is). `all`: however many points and words in all (each still a line or two), for a report
+ * whose presenter chose cards or numbers: the screen gives them as many slides as they take (board-shared.js)
  */
-export function mdPoints(md) {
+export function mdPoints(md, { all = false } = {}) {
   const blocks = mdBlocks(md);
   const lead = blocks.length === 2 && blocks[0].t === 'p' ? blocks[0] : null;
   const list = blocks[lead ? 1 : 0];
   if (blocks.length !== (lead ? 2 : 1) || !list || (list.t !== 'ul' && list.t !== 'ol')) return null;
   const { items } = list;
-  if (items.length < 2 || items.length > POINTS_MAX) return null;
+  if (items.length < 2 || (!all && items.length > POINTS_MAX)) return null;
   if (!items.every((it) => it.length === 1 && it[0].t === 'p' && it[0].text.trim())) return null;
   const words = (t) => mdWords(t);
-  if (items.some((it) => words(it[0].text) > POINT_WORDS) || (lead && words(lead.text) > POINT_WORDS) || words(md) > POINTS_WORDS) return null;
+  if (items.some((it) => words(it[0].text) > POINT_WORDS) || (lead && words(lead.text) > POINT_WORDS) || (!all && words(md) > POINTS_WORDS)) return null;
   return { lead: lead ? lead.text : '', points: items.map((it) => it[0].text), numbered: list.t === 'ol', start: list.t === 'ol' ? list.start || 1 : 1 };
 }
 
@@ -436,4 +437,32 @@ export function mdFigures(text) {
     if (at < r.text.length) out.push({ ...r, text: r.text.slice(at) });
     return out;
   });
+}
+
+/**
+ * A point drawn as a big number: its first figure, large, and its words to go under it → { fig, runs, alone }
+ * (mdFigures' runs), or null when it has no figure. A figure that starts or ends the point ("38 volunteers built
+ * porches", "The gala brought in $412,000.") is said once, large, its words under it without it (`alone`); one in the
+ * middle stays in its words too, so they read whole ("We raised $412,000 at the gala")
+ */
+export function mdNumber(text) {
+  const runs = mdFigures(text);
+  const k = runs.findIndex((r) => r.fig);
+  if (k < 0) return null;
+  const fig = runs[k].text;
+  const empty = (xs) => xs.every((r) => !r.br && !/[\p{L}\p{N}]/u.test(r.text));
+  // The words either side, trimmed where the figure was (and the stop at its end): two words at least, else all of it
+  const trim = (xs, at) => {
+    const out = xs.map((r) => ({ ...r }));
+    if (at === 'start') { while (out.length && !out[0].br && !out[0].text.trim()) out.shift(); if (out[0]?.text) out[0].text = out[0].text.trimStart(); }
+    while (out.length && !out.at(-1).br && !out.at(-1).text.trim()) out.pop();
+    if (out.length && out.at(-1).text) out.at(-1).text = out.at(-1).text.replace(/[\s,:;–—-]+$/, '').replace(/(?<![.])\.$/, '');
+    return out.filter((r) => r.br || r.text);
+  };
+  const words = (xs) => (xs.map((r) => r.text || ' ').join('').match(/[\p{L}\p{N}]+/gu) || []).length;
+  const before = runs.slice(0, k);
+  const after = runs.slice(k + 1);
+  if (empty(before)) { const rest = trim(after, 'start'); if (words(rest) >= 2) return { fig, runs: rest, alone: true }; }
+  if (empty(after)) { const rest = trim(before, 'end'); if (words(rest) >= 2) return { fig, runs: rest, alone: true }; }
+  return { fig, runs, alone: false };
 }

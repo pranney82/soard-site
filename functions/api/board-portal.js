@@ -191,7 +191,8 @@ async function post(context) {
     if (body.action === 'report') {
       try {
         const base = typeof body.base === 'string' ? body.base : null;
-        return Response.json({ ok: true, ...(await saveReport(env, String(body.meetingId || ''), String(body.itemId || ''), body.text, { ...w, base })) });
+        const look = typeof body.look === 'string' ? body.look : undefined;
+        return Response.json({ ok: true, ...(await saveReport(env, String(body.meetingId || ''), String(body.itemId || ''), body.text, { ...w, base, look })) });
       } catch (err) {
         if (err.status === 409 && err.current) return Response.json({ ok: false, error: err.message, current: err.current }, { status: 409 });
         throw err;

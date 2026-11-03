@@ -753,7 +753,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
                   refocus(it.id, '.agx-report__head button, .agx-item__title');
                 }}
                 status=${html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { write(it.id, false); refocus(it.id, '.agx-report__head button, .agx-item__title'); }}>Done</button>`}
-                coach=${{ part: partFor(m, it.id), admin: true, id: m.id, itemId: it.id, title: it.title, confidential: !!it.confidential }} />
+                coach=${{ part: partFor(m, it.id), admin: true, id: m.id, itemId: it.id, title: it.title, confidential: !!it.confidential, look: it.reportLook || '', onLook: (k) => setItem(si, ii, { reportLook: k }) }} />
             </div>`
             : it.report ? html`<div class="agx-report">
               <div class="agx-report__head"><span class="agx-report__label">Report</span><span class="agx-report__by">${[it.reportBy, it.reportAt ? ago(it.reportAt) : ''].filter(Boolean).join(' · ')}</span>

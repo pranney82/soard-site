@@ -25,12 +25,12 @@ import { openDoc, layoutOf, areaOf, areasOf, headingsArea, partsOf, docKind, pag
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, liveOfStop, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
-  hasReport, isNothingNew, NOTHING_NEW, slidesOfItem, slideHeadsOfItem,
+  hasReport, isNothingNew, NOTHING_NEW, slidesOfItem, slideHeadsOfItem, shownLook,
 } from '../board-shared.js';
 import { useCover, usePages } from '../board-present.js';
 import { Report } from '../board-report.js';
 import { BooksSlide, booksTitle } from './books.js';
-import { mdWords, mdPoints, mdFigures, mdPlain } from '../board-md.js';
+import { mdWords, mdPoints, mdFigures, mdNumber, mdPlain } from '../board-md.js';
 import { Pipeline, sized, nameFit } from './kanban.js';
 import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, readChangeAs, keepChangeAs, Both } from './money.js';
 
@@ -343,14 +343,25 @@ function useBox() {
 /** Largest and smallest a point's words go on a card, against the report's own size */
 const POINT_FIT_MAX = 1.2;
 const POINT_FIT_MIN = 0.85;
+/** A point's runs (board-md.js mdFigures), each figure in yellow: a link breaks anywhere it must; a short hyphenated
+ *  word (W-9, 20-second) stays on one line */
+const figRuns = (rs) => rs.map((r, k) => {
+  if (r.br) return html`<br key=${k} />`;
+  let out = r.fig || r.href ? r.text : r.text.split(/([\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)+)/u).map((w, j) => (j % 2 && w.length <= 20 ? html`<span class="bs-pt__w">${w}</span>` : w));
+  if (r.fig) out = html`<b class="bs-pt__fig">${out}</b>`;
+  if (r.i) out = html`<em>${out}</em>`;
+  if (r.b) out = html`<strong>${out}</strong>`;
+  if (r.href) out = html`<span class="bs-pt__a">${out}</span>`;
+  return out;
+});
 /**
  * A short report that is only its points (board-md.js mdPoints): each point a card of its own, two or three across,
  * the words as large as the slide holds them, each figure in yellow, the cards coming up one after another. Where the
  * cards can't fit at a size the room still reads (a short window, a motion and notes under them), it's drawn whole
  * instead (ReportFit), and tried as cards again once there's more room.
  */
-function ReportPoints({ text }) {
-  const p = mdPoints(text);
+function ReportPoints({ text, all = false }) {
+  const p = mdPoints(text, { all });
   const ref = useRef(null);
   // The stage's size when the cards didn't fit in it, else null
   const [whole, setWhole] = useState(null);
@@ -399,16 +410,7 @@ function ReportPoints({ text }) {
   if (!p) return null;
   if (whole) return html`<${ReportFit} text=${text} cols=${mdWords(text) > 110 ? 2 : 1} />`;
   const n = p.points.length;
-  const runs = (t) => mdFigures(t).map((r, k) => {
-    if (r.br) return html`<br key=${k} />`;
-    // A link breaks anywhere it must; a short hyphenated word (W-9, 20-second) stays on one line
-    let out = r.fig || r.href ? r.text : r.text.split(/([\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)+)/u).map((w, j) => (j % 2 && w.length <= 20 ? html`<span class="bs-pt__w">${w}</span>` : w));
-    if (r.fig) out = html`<b class="bs-pt__fig">${out}</b>`;
-    if (r.i) out = html`<em>${out}</em>`;
-    if (r.b) out = html`<strong>${out}</strong>`;
-    if (r.href) out = html`<span class="bs-pt__a">${out}</span>`;
-    return out;
-  });
+  const runs = (t) => figRuns(mdFigures(t));
   return html`<div class=${`bs-pts is-${n}`} ref=${ref}>
     ${p.lead ? html`<p class="bs-pts__lead" dir="auto">${runs(p.lead)}</p>` : null}
     <ol class="bs-pts__list" start=${p.start}>${p.points.map((t, k) => html`<li class="bs-pt" key=${k} style=${`--i:${k}`}>
@@ -470,13 +472,57 @@ function ReportFit({ text, more = false, part = false, cont = '' }) {
   </div>`;
 }
 
-/** A report on its own slide (a 'report' stop): as large as it fits, its columns measured */
-/** A report's slide (one of reportSlides'): its points as cards when that's all it is, else the words as they fit.
- *  `more`: it goes on, on the next slide; `part`: one of several, never set large as a short one would be */
-const ReportBody = ({ report, more = false, part = false, cont = '' }) => (asCards(report, part) ? html`<${ReportPoints} text=${report} />` : html`<${ReportFit} text=${report} more=${more} part=${part} cont=${cont} />`);
-/** A report drawn as its points' cards: one that is only a few short points, on a slide of its own (one of several reads
- *  as words, the same on each, "continued" between them) */
-const asCards = (md, part) => !part && !!mdPoints(md);
+/**
+ * A report whose presenter chose big numbers (board-shared.js shownLook): each point's figure large, its words under
+ * it (board-md.js mdNumber), on a card of its own, two or three across, coming up one after another. Where they can't
+ * fit at a size the room reads, its points as cards instead (ReportPoints)
+ */
+function ReportNumbers({ text }) {
+  const p = mdPoints(text, { all: true });
+  const ref = useRef(null);
+  const [whole, setWhole] = useState(false);
+  useEffect(() => setWhole(false), [text]);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || whole) return undefined;
+    const phone = () => window.matchMedia('(max-width: 900px)').matches;
+    const over = () => {
+      const list = el.querySelector('.bs-stats__list');
+      return !!list && (list.offsetTop + list.offsetHeight > el.clientHeight + 1 || [...el.querySelectorAll('.bs-stat__fig, .bs-stat__t')].some((t) => t.scrollWidth > t.clientWidth + 1));
+    };
+    const fit = () => {
+      let s = phone() ? 1 : POINT_FIT_MAX;
+      el.style.setProperty('--fit', String(s));
+      while (!phone() && s > POINT_FIT_MIN && over()) { s = Math.round((s - 0.05) * 100) / 100; el.style.setProperty('--fit', String(s)); }
+      if (!phone() && over()) { setWhole(true); return; }
+      if (PREVIEW) { const words = mdWords(text); window.parent?.postMessage({ type: 'board-preview-fit', cut: false, shown: words, total: words }, location.origin); }
+    };
+    fit();
+    const ro = typeof ResizeObserver === 'function' ? new ResizeObserver(() => fit()) : null;
+    ro?.observe(el.parentElement);
+    document.fonts?.ready.then(fit);
+    return () => ro?.disconnect();
+  }, [text, whole]);
+  if (!p) return null;
+  if (whole) return html`<${ReportPoints} text=${text} all />`;
+  return html`<div class=${`bs-stats is-${p.points.length}`} ref=${ref}>
+    ${p.lead ? html`<p class="bs-pts__lead" dir="auto">${figRuns(mdFigures(p.lead))}</p>` : null}
+    <ul class="bs-stats__list">${p.points.map((t, k) => { const x = mdNumber(t); return html`<li class="bs-stat" key=${k} style=${`--i:${k}`}>
+      ${x ? html`<span class="bs-stat__fig">${x.fig}</span>` : null}
+      <p class="bs-stat__t" dir="auto">${figRuns(x ? x.runs : mdFigures(t))}</p>
+    </li>`; })}</ul>
+  </div>`;
+}
+
+/** A report's slide (one of reportSlides'), drawn as its presenter chose (board-shared.js shownLook): its points as
+ *  cards, its numbers large, else its words as they fit. `more`: it goes on, on the next slide; `part`: one of several,
+ *  never set large as a short one would be */
+const ReportBody = ({ report, look = 'words', more = false, part = false, cont = '' }) => (look === 'cards' ? html`<${ReportPoints} text=${report} all />`
+  : look === 'numbers' ? html`<${ReportNumbers} text=${report} />`
+  : html`<${ReportFit} text=${report} more=${more} part=${part} cont=${cont} />`);
+/** How an item's report is drawn: as cards, its numbers, or its words (cards and numbers fill a slide the same way) */
+const lookOfItem = (it) => shownLook(it.report, it.reportLook);
+const asPoints = (look) => look === 'cards' || look === 'numbers';
 
 /**
  * The presenter's notes beside an item, at a size a room reads: smaller only as far as it must be to fit the slide (to
@@ -756,15 +802,31 @@ function RollCount({ v, started }) {
 function PartList({ sec, items, current, people }) {
   const at = sec.items.findIndex((x) => x.id === current.id);
   const labels = sec.items.map((it) => items.find((x) => x.id === it.id)?.label || '');
-  return html`<ol class=${`bs-part ${labels.some((l) => l.length > 3) ? 'is-wide' : ''}`}>${sec.items.map((it, i) => {
-    const ws = presentersOf(it, people);
-    return html`<li key=${it.id} class=${i < at ? 'is-done' : i === at ? 'is-now' : ''}>
-      <span class="bs-part__label">${i < at ? CHECK : labels[i]}</span>
-      <span class="bs-part__t">${it.title || LIVE_TITLES[it.live] || ''}</span>
-      ${ws.length ? html`<span class="bs-part__who">${ws.length > 3 ? whoWords(ws) : namesText(ws.map((p) => firstName(p.name)))}</span>` : null}
-    </li>`;
-  })}</ol>`;
+  // A long part, PART_ROWS rows at most: the item now, the two before it and the ones after, a row each saying how many
+  // more are before and after (a 19-item part would run off the screen)
+  const n = sec.items.length;
+  let from = 0;
+  let to = n;
+  if (n > PART_ROWS) {
+    from = Math.max(0, at - 2);
+    to = from + PART_ROWS - (from ? 2 : 1);
+    if (to >= n) { to = n; from = n - (PART_ROWS - 1); }
+  }
+  return html`<ol class=${`bs-part ${labels.some((l) => l.length > 3) ? 'is-wide' : ''}`}>
+    ${from ? html`<li class="bs-part__more" key="before">${from} earlier</li>` : null}
+    ${sec.items.slice(from, to).map((it, k) => {
+      const i = from + k;
+      const ws = presentersOf(it, people);
+      return html`<li key=${it.id} class=${i < at ? 'is-done' : i === at ? 'is-now' : ''}>
+        <span class="bs-part__label">${i < at ? CHECK : labels[i]}</span>
+        <span class="bs-part__t">${it.title || LIVE_TITLES[it.live] || ''}</span>
+        ${ws.length ? html`<span class="bs-part__who">${ws.length > 3 ? whoWords(ws) : namesText(ws.map((p) => firstName(p.name)))}</span>` : null}
+      </li>`;
+    })}
+    ${to < n ? html`<li class="bs-part__more" key="after">and ${n - to} more</li>` : null}
+  </ol>`;
 }
+const PART_ROWS = 9;
 
 /** When a part's time is: "6:40 PM to 6:55 PM · 15 minutes" */
 const partWhen = (t) => (t ? [t.start ? `${clock(t.start)} to ${clock(t.end)}` : '', `${t.minutes} minutes`].filter(Boolean).join(' · ') : '');
@@ -1355,9 +1417,10 @@ export function Screen({ id, data, d, onBack = null }) {
     const chunk = slides[shownPage] || item.report;
     // (partway into one of its headings' parts: that heading, "continued", over it)
     const cont = slideHeadsOfItem(item)[shownPage] || '';
-    stage = html`<div class=${`bs-item bs-item--report ${asCards(chunk, slides.length > 1) ? 'bs-item--points' : ''}`}>
+    const look = lookOfItem(item);
+    stage = html`<div class=${`bs-item bs-item--report ${asPoints(look) ? 'bs-item--points' : ''}`}>
       <div class="bs-item__bar"><div><p class="bs-eyebrow">${where}${slides.length > 1 ? html`<span class="bs-eyebrow__of">Report, ${(stop.page || 0) + 1} of ${slides.length}</span>` : null}</p><${Title} text=${itemTitle} cls="bs-item__title" /></div></div>
-      <${ReportBody} report=${chunk} more=${shownPage < slides.length - 1} part=${slides.length > 1} cont=${cont} />
+      <${ReportBody} report=${chunk} look=${look} more=${shownPage < slides.length - 1} part=${slides.length > 1} cont=${cont} />
       ${motionHere}
     </div>`;
   } else if (stop.kind === 'decision') {
@@ -1416,9 +1479,10 @@ export function Screen({ id, data, d, onBack = null }) {
       // A report: the item and who presents it along the top, the report filling the rest (a motion beside a report is
       // the decision's slide, after the report); a short one is its points as cards (ReportBody)
       const first = firstSlides[0] || item.report;
-      stage = html`<div class=${`bs-item bs-item--report ${asCards(first, firstSlides.length > 1) ? 'bs-item--points' : ''}`}>
+      const look = lookOfItem(item);
+      stage = html`<div class=${`bs-item bs-item--report ${asPoints(look) ? 'bs-item--points' : ''}`}>
         <div class="bs-item__bar"><div>${head}</div></div>
-        <${ReportBody} report=${first} more=${firstSlides.length > 1} part=${firstSlides.length > 1} />
+        <${ReportBody} report=${first} look=${look} more=${firstSlides.length > 1} part=${firstSlides.length > 1} />
         ${motionHere}
       </div>`;
     } else {
