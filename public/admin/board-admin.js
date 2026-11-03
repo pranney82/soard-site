@@ -553,7 +553,7 @@ function keptLinks(d, p) {
   const files = viewerFiles(list.map((f) => ({ ...f, name: `${d.title}, ${f.originalOf ? 'the original photo' : 'an earlier copy'} from ${p.name}` })));
   const earlier = list.map((f, i) => ({ f, i })).filter(({ f }) => f.supersededAt && !f.originalOf);
   const originals = list.map((f, i) => ({ f, i })).filter(({ f }) => f.originalOf);
-  return html`${earlier.length ? html`Earlier copies: ${earlier.map(({ f, i }, k) => html`${k ? ', ' : ''}<a ...${viewerLink(files, i)}>${dayOf(f.at)}</a>`)}` : null}${earlier.length && originals.length ? ' · ' : ''}${originals.length ? html`<a ...${viewerLink(files, originals[0].i)}>The original photo</a>${originals.length > 1 ? ` (and ${originals.length - 1} more)` : ''}` : null}`;
+  return html`${earlier.length ? html`Earlier copies: ${earlier.map(({ f, i }, k) => html`${k ? ', ' : ''}<a ...${viewerLink(files, i)}>${dayOf(f.at)}${earlier.some((x, j) => j !== k && dayOf(x.f.at) === dayOf(f.at)) ? `, ${new Date(f.at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}` : ''}</a>`)}` : null}${earlier.length && originals.length ? ' · ' : ''}${originals.length ? html`<a ...${viewerLink(files, originals[0].i)}>The original photo</a>${originals.length > 1 ? ` (and ${originals.length - 1} more)` : ''}` : null}`;
 }
 
 function Signers({ d, ctx, onDoc }) {
@@ -948,7 +948,7 @@ function DocumentsTab({ ctx }) {
             ${newerOf(d, d.file) ? html`<div class="bd-row__meta bd-row__newer">A newer ${formatWord(d.file)} came in on ${dayOf(d.file.at)}, after these words were last changed. If it’s a new version, Edit to bring its words in.</div>` : null}
             ${d.sign && !d.shared ? html`<div class="bd-row__meta">Off the board page: the board can’t read or sign it until it’s back on.</div>` : null}
             ${d.sign && d.due ? html`<div class="bd-row__meta">Due ${dueWords(dueOn(d, year))} each year</div>` : null}
-            ${d.sign ? html`<div class="bd-row__meta">${all ? `Every board member has signed it for ${year}` : !signed.length ? `No one has signed ${earlier ? 'the new version' : 'it'} for ${year} yet${earlier ? ` (${plural(earlier, 'member')} signed the earlier one)` : ''}` : `Still to sign: ${left.map((p) => (d.before?.[p.slug] ? `${p.name} (signed the earlier version)` : p.name)).join(', ')}`}</div>` : null}
+            ${d.sign ? html`<div class="bd-row__meta">${all ? `Every board member has signed it for ${year}` : !signed.length ? `No one has signed ${earlier ? 'the new version' : 'it'} for ${year} yet${earlier ? ` (${plural(earlier, 'member')} signed the earlier one)` : ''}` : `Still to sign: ${left.map((p) => (d.declined?.[p.slug] ? `${p.name} (declined)` : d.before?.[p.slug] ? `${p.name} (signed the earlier version)` : p.name)).join(', ')}`}</div>` : null}
           </div>
           <div class="bd-tags">
             ${d.sign ? html`<span class="tag">Required</span><span class=${`tag ${all ? 'tag--success' : ''}`}>${signed.length} of ${boardCount} signed</span>
@@ -1398,13 +1398,14 @@ function MembersTab({ ctx }) {
   const remind = async (value, el) => {
     const was = data.settings?.remind || 'off';
     if (value === was) return;
+    if (working === 'remind') { if (el) el.value = was; return; }
     if (value !== 'off') {
       const often = value === '3' ? 'every 3 days' : 'weekly';
       // (who'd be emailed: not signed, not declined, an email on file, fewer than 4 reminders this year)
       const due = data.members.filter((p) => usableEmail(p.email) && (Number(p.asked?.reminders) || 0) < 4 && signDocs.some((d) => !d.signed[p.slug] && !d.declined?.[p.slug]));
       const ok = await ask({
         title: !due.length ? 'Turn reminders on?' : due.length === 1 ? `Remind ${due[0].name}, ${often}?` : `Remind the ${due.length} who haven’t signed, ${often}?`,
-        text: `${!due.length ? `Nobody is emailed now: everyone who can be has signed or told SOARD why not.` : `${due.length === 1 ? 'They get' : 'Each gets'} an email listing what’s left to sign, on the next weekday (8 AM to 7 PM Eastern), then ${often}, up to 4 times a year.`} Signing, or telling SOARD they can’t sign as written, stops it. Each January it asks the whole board again.`,
+        text: `${!due.length ? `Nobody is emailed now: everyone who can be has signed or told SOARD why not.` : `${due.length === 1 ? 'They get' : 'Each gets'} an email listing what’s left to sign once ${often === 'weekly' ? 'a week has' : '3 days have'} passed since they were last asked (anyone never asked, on the next weekday), between 8 AM and 7 PM Eastern, up to 4 times a year.`} Signing, or telling SOARD they can’t sign as written, stops it. Each January it asks the whole board again.`,
         yes: 'Turn reminders on', no: 'Cancel',
       });
       if (!ok) { if (el) el.value = was; return; }

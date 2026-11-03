@@ -71,8 +71,18 @@ export async function rename(env, { collection, from, to } = {}, userEmail = 'un
   if (await DB.prepare(`SELECT slug FROM ${table} WHERE slug = ?`).bind(to).first()) {
     return { status: 409, body: { success: false, error: `Someone already has the address “${to}”. Pick another.` } };
   }
-  // A former board member's board records are kept under their address (signatures, sign-ins): never someone else's
+  // A former board member's board records are kept under their address (signatures, sign-ins): never someone else's.
+  // Their own earlier address, nobody's since, is theirs to go back to (a rename undone)
+  let back = false;
   if (table === 'team') {
+    try {
+      const { slugsOf } = await import('./_board-sign.js');
+      const mine = (await slugsOf(DB, from)).find((x) => x.slug === to && x.before);
+      const since = mine ? await DB.prepare('SELECT seq FROM board_sign_events WHERE slug = ? AND seq > ? LIMIT 1').bind(to, mine.before).first() : null;
+      back = !!mine && !since;
+    } catch { /* no signing record yet */ }
+  }
+  if (table === 'team' && !back) {
     for (const t of ['board_signatures', 'board_signins', 'board_activity', 'board_sign_events']) {
       const had = await DB.prepare(`SELECT slug FROM ${t} WHERE slug = ? LIMIT 1`).bind(to).first().catch(() => null);
       if (had) return { status: 409, body: { success: false, error: `“${to}” was a board member’s address, and their board records are kept under it. Pick another.` } };

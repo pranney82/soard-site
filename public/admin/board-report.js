@@ -720,7 +720,7 @@ const CSS = `
 .rp-hint kbd { display: inline-block; padding: 0 0.3em; border: 1px solid var(--rp-line); border-radius: 5px; background: var(--warm, #F5F4F0); font: inherit; font-size: 0.95em; line-height: 1.5; }
 .rp-foot__status { margin-left: auto; }
 /* A phone: the tools in one row, a finger's size (its own undo is the phone's: shake, or three fingers) */
-@media (max-width: 640px) { .rp-bar { flex-wrap: nowrap; gap: 0; overflow-x: auto; scrollbar-width: none; } .rp-bar::-webkit-scrollbar { display: none; } .rp-tool { width: 40px; height: 40px; flex: none; } .rp-tool.rp-tool--text { width: auto; padding: 0 0.5rem; } .rp-tool__more { display: none; } .rp-sep { margin: 0 2px; } .rp-bar__end { display: none; } .rp-link { flex-wrap: wrap; } .rp-bar:has(.rp-link) { flex-wrap: wrap; } .rp-page { padding: 0.85rem 0.9rem 0.5rem; } .rp-foot { padding: 0.45rem 0.9rem 0.6rem; } }
+@media (max-width: 640px) { .rp-bar { flex-wrap: nowrap; gap: 0; } .rp-bar:has(.rp-tool--text) { flex-wrap: wrap; } .rp-tool { width: 40px; height: 40px; flex: none; } .rp-tool.rp-tool--text { width: auto; padding: 0 0.5rem; } .rp-tool__more { display: none; } .rp-sep { margin: 0 2px; } .rp-bar__end { display: none; } .rp-link { flex-wrap: wrap; } .rp-bar:has(.rp-link) { flex-wrap: wrap; } .rp-page { padding: 0.85rem 0.9rem 0.5rem; } .rp-foot { padding: 0.45rem 0.9rem 0.6rem; } }
 @media print { .rp a { text-decoration: none; } .rp .rp-callout, .rp-motion { background: none; } }
 `;
 if (typeof document !== 'undefined' && !document.getElementById('board-report-css')) {

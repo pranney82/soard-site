@@ -862,7 +862,8 @@ async function writeSignature(DB, sig, { keep = false, same = null } = {}) {
     const row = {
       doc_id: docId, slug, year, version: sig.version || 0, name: sig.name, at, how: sig.how, file_id: sig.fileId || null,
       drive_id: sig.driveId || null, drive_name: sig.driveName || null, added_by: sig.by || '',
-      ip: e.ip || null, device: e.device || null, signin_at: e.signinAt || null, signer_email: e.signerEmail || null,
+      // (the signer's own: a copy SOARD added or Drive's has none; the admin adding it is in its event)
+      ...(sig.how === 'staff' || sig.how === 'drive' ? { ip: null, device: null, signin_at: null, signer_email: null } : { ip: e.ip || null, device: e.device || null, signin_at: e.signinAt || null, signer_email: e.signerEmail || null }),
       hash: sig.hash || null, fields: sig.fields ? JSON.stringify(sig.fields) : null, mark: sig.mark ? JSON.stringify(sig.mark) : null,
       consent_hash: sig.consentHash || null, process_v: sig.processV ?? null, record_id: null, record_hash: null, record_claim_at: null, record_tries: 0,
     };
@@ -981,8 +982,9 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
   const on = member ? signedOn(doc, version) : doc.version;
   const hash = await versionHash(storeOf(env), doc, on);
   // (the copy it replaces is marked superseded inside writeSignature: kept, never deleted)
+  const replaced = theirs && (onPage(theirs.how) || theirs.how === 'copy') ? theirs : null;
   await writeSignature(env.DB, { docId, slug: who.slug, year, name: who.name, how: member ? 'copy' : 'staff', fileId: copy.id, by: by || who.email || '', at, version: on, signFrom: doc.signFrom, evidence, hash, detail: { copySha256: copy.sha256, original: kept ? { id: kept.id, sha256: kept.sha256 } : null } });
-  return { docId, year, name: who.name, at, how: member ? 'copy' : 'staff', version: on, copy, drive: null };
+  return { docId, year, name: who.name, at, how: member ? 'copy' : 'staff', version: on, copy, drive: null, ...(replaced ? { replaced: { how: replaced.how, at: replaced.at, slug: who.slug, email: who.email || '' } } : {}) };
 }
 
 /**
@@ -1139,6 +1141,7 @@ export async function fileFor(DB, id, { admin = false, member = null } = {}) {
   if (admin) return row;
   if (row.owner_type === 'signed' || row.owner_type === 'record') {
     if (!member?.slug) return null;
+    if (row.superseded_at) return null;
     if (row.slug) return row.slug === member.slug ? row : null;
     // (a copy from before files said whose: the signature it was added for, this year's or an earlier wording's)
     const sig = await DB.prepare('SELECT slug FROM board_signatures WHERE file_id = ?1 UNION SELECT slug FROM board_signatures_earlier WHERE file_id = ?1').bind(id).first();
@@ -1928,11 +1931,11 @@ export function signAskEmail({ name = '', email = '', papers = [], from = '', fi
   const heading = `${reminder ? 'A reminder: ' : ''}${first ? `${first}, please` : 'Please'} sign ${what} for ${year}`;
   const it = one ? 'it' : 'them';
   // (by when: the earliest due date among them)
-  const due = papers.map((x) => x.due).filter(Boolean).sort()[0] || '';
+  const due = one ? one.due || '' : '';
   // (a date gone by is said as one: "It was due January 31.", never "by January 31" as though it were ahead)
   const past = !!due && due < todayEastern();
   const by = due && !past ? ` by ${dueWords(due)}` : '';
-  const intro = `Every board member reads and signs ${it} once a year${by}.${past ? ` ${one ? 'It was' : 'They were'} due ${dueWords(due)}.` : ''} On the board page it takes a few minutes: read ${one ? 'it' : 'each one'}, then sign at the end.`;
+  const intro = `Every board member reads and signs ${it} once a year${by}.${past ? ` It was due ${dueWords(due)}.` : ''} On the board page it takes a few minutes: read ${one ? 'it' : 'each one'}, then sign at the end.`;
   const paper = `Signed ${it} on paper already? Add a photo or PDF of the signed page there instead.`;
   const signIn = `The board page opens with your email address${email ? `, ${email}` : ''}: Cloudflare emails you a six-digit code to type in. No password.`;
   const reply = 'Questions? Reply to this email.';

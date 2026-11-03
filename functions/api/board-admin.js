@@ -182,6 +182,14 @@ export async function onRequestPost(context) {
         const original = form.get('original');
         const signed = await signWithCopy(env, docId, form.get('file'), { slug: String(form.get('slug') || ''), by: me, replace: form.get('replace') === '1', evidence: evidence(context), original: original && typeof original.arrayBuffer === 'function' ? original : null });
         await audit(env, me, 'updated', `Board signature added for ${signed.name}`);
+        // (one they gave themselves, replaced by a copy SOARD added: they're told, as a signature taken off is)
+        if (signed.replaced?.email) {
+          context.waitUntil?.((async () => {
+            const doc = (await listDocs(env.DB)).find((d) => d.id === docId);
+            const r = await sendEmailOne(env, { to: signed.replaced.email, from: EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board '), replyTo: (await getSettings(env.DB)).admins, tags: [{ name: 'kind', value: 'board-void' }], idempotencyKey: `void:${docId}:${signed.replaced.slug}:${signed.year}:${signed.replaced.at}`, ...voidEmail({ doc, year: signed.year, reason: 'SOARD put a signed copy it was given in its place', replacedByCopy: true }) });
+            if (r.sent || r.already) await appendEvents(env.DB, async () => ({ events: [{ kind: 'void-sent', docId, slug: signed.replaced.slug, year: signed.year, by: me, detail: { to: signed.replaced.email, replacedByCopy: true } }] }));
+          })().catch(() => {}));
+        }
         return Response.json({ ok: true, signed, doc: (await listDocs(env.DB)).find((d) => d.id === docId) });
       }
       // A paper saved with its new file, in one: the file checked first, so nothing changes (no new version, nobody

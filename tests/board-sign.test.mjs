@@ -660,8 +660,75 @@ test('a copy signed on paper: its signed copy is that copy as it came in, then t
   const file = await env.DB.prepare('SELECT r2_key FROM board_files WHERE id = ?').bind(made.id).first();
   const pdfDoc = await PDFDocument.load(env.FILES.map.get(file.r2_key).bytes);
   assert.equal(pdfDoc.getPageCount(), 4, 'its 3 pages, then the record');
-  assert.deepEqual(Object.keys(attachmentsOf(pdfDoc)).sort(), ['Board Manual - Kim Park.pdf', 'evidence.json', 'words.md'], 'the copy itself inside, untouched');
+  assert.deepEqual(Object.keys(attachmentsOf(pdfDoc)).sort(), ['Board Manual - Kim Park.pdf', 'evidence.json'], 'the copy itself inside, untouched (never Board’s words, as though they were what was signed)');
+  // The admin who added it is who added it: never the member's sign-in
+  const row = await env.DB.prepare("SELECT ip, device, signer_email, signin_at FROM board_signatures WHERE slug = 'kim-park'").first();
+  assert.deepEqual(row, { ip: null, device: null, signer_email: null, signin_at: null });
+  assert.ok(!/Signed in as|Added by them/.test(html) && !/Its SHA-256<\/th>/.test(html), 'no sign-in of theirs, no Board words’ fingerprint as though signed');
   sent = [];
   await sb.sendReceipt(env, { docId: d.id, slug: 'kim-park', year: YEAR });
   assert.equal(sent.length, 0, 'and nobody is emailed');
+});
+
+
+test('round two: a copy that keeps failing is tried again later, never given up; a copy taken off is SOARD’s, not the member’s to open', async () => {
+  const d = await written();
+  await signAs(MEMBER, { docId: d.id, version: 1, mark: typedMark(), consent: true });
+  const broken = async () => { throw new Error('the browser is down'); };
+  const key = { docId: d.id, slug: 'alex-rivera', year: YEAR };
+  for (let i = 0; i < 3; i++) {
+    await env.DB.prepare('UPDATE board_signatures SET record_claim_at = NULL').run();
+    await sb.buildRecord(env, key, { render: broken });
+  }
+  // (three tries counted as they began; the heartbeat waits 6 hours, then tries again)
+  assert.equal((await env.DB.prepare("SELECT record_tries FROM board_signatures WHERE slug = 'alex-rivera'").first()).record_tries, 3);
+  await env.DB.prepare("UPDATE board_signatures SET record_claim_at = ? WHERE slug = 'alex-rivera'").bind(new Date(Date.now() - 60_000).toISOString()).run();
+  await sb.maybeRunSigning(env, { render: fakeRender });
+  assert.equal((await env.DB.prepare("SELECT record_id FROM board_signatures WHERE slug = 'alex-rivera'").first()).record_id, null, 'not within 6 hours');
+  await env.DB.prepare("UPDATE board_signatures SET record_claim_at = ? WHERE slug = 'alex-rivera'").bind(new Date(Date.now() - 7 * 60 * 60_000).toISOString()).run();
+  await sb.maybeRunSigning(env, { render: fakeRender });
+  const made = await env.DB.prepare("SELECT record_id FROM board_signatures WHERE slug = 'alex-rivera'").first();
+  assert.ok(made.record_id, 'made once the browser is back');
+  // Kim's packet, filed under Sam by mistake, then taken off: Sam can't open it, nor its signed copy
+  await signWithCopy(env, d.id, pdf('Kim.pdf', 'Kim private'), { slug: 'sam-ortiz', by: FOUNDER });
+  await sb.buildRecord(env, { docId: d.id, slug: 'sam-ortiz', year: YEAR }, { render: fakeRender });
+  const wrong = await env.DB.prepare("SELECT file_id, record_id FROM board_signatures WHERE slug = 'sam-ortiz'").first();
+  assert.equal((await call(OTHER, `/api/board-file?id=${wrong.file_id}`, { handler: fileRoute.onRequestGet })).status, 200, 'theirs while it stands');
+  await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'unsign', docId: d.id, slug: 'sam-ortiz' }, handler: admin.onRequestPost });
+  for (const id of [wrong.file_id, wrong.record_id]) assert.equal((await call(OTHER, `/api/board-file?id=${id}`, { handler: fileRoute.onRequestGet })).status, 404, 'taken off: SOARD’s record only');
+  assert.equal((await call(FOUNDER, `/api/board-file?id=${wrong.file_id}`, { handler: fileRoute.onRequestGet })).status, 200, 'kept for the admins');
+});
+
+test('round two: an advisor’s email changed tells nobody; a signature on a wording the board signs again from isn’t "Signed" in the year’s record', async () => {
+  await env.DB.prepare('INSERT INTO team (slug, name, "group", data) VALUES (?, ?, ?, ?)').bind('ada-lane', 'Ada Lane', 'advisory', JSON.stringify({ name: 'Ada Lane', group: 'advisory' })).run();
+  const { setBoardEmail } = await import('../functions/api/_reveal-invites.js');
+  await setBoardEmail(env.DB, 'ada-lane', 'ada@example.net');
+  await setBoardEmail(env.DB, 'ada-lane', 'ada.new@example.net');
+  sent = [];
+  await sb.maybeRunSigning(env, { render: fakeRender });
+  assert.equal(sent.filter((m) => /no longer signs in/.test(m.subject)).length, 0);
+  assert.equal((await eventsAll()).filter((e) => e.kind === 'email-changed').length, 0, 'not in the board’s record either');
+  // Alex signed wording 1; the board is asked to sign wording 2
+  const d = await written();
+  await signAs(MEMBER, { docId: d.id, version: 1, mark: typedMark(), consent: true });
+  await saveDoc(env.DB, { ...(await listDocs(env.DB)).find((x) => x.id === d.id), body: `${d.body}\n- And one more thing` }, { by: FOUNDER, askAgain: true, base: 1 });
+  const got = await call(FOUNDER, `/api/board-admin?record=${d.id}&year=${YEAR}`, { handler: admin.onRequestGet });
+  const text = Buffer.from(got.body).toString('utf8');
+  assert.ok(/Alex Rivera,"?Not signed \(signed wording 1, before the board was asked to sign again\)/.test(text), 'not counted, and said why');
+  assert.ok(!/Alex Rivera,Signed,/.test(text));
+});
+
+test('round two: renaming a member back to their own earlier address is fine; someone else can’t take it', async () => {
+  const d = await written();
+  await signAs(MEMBER, { docId: d.id, version: 1, mark: typedMark(), consent: true });
+  const { rename } = await import('../functions/api/rename-content.js');
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS content_versions (id INTEGER PRIMARY KEY, collection TEXT, slug TEXT, data TEXT, created_at TEXT, user_email TEXT)');
+  const there = await rename({ ...env, CF_IMAGES_TOKEN: '' }, { collection: 'team', from: 'alex-rivera', to: 'alex-riviera' }, FOUNDER);
+  assert.notEqual(there?.status, 409, JSON.stringify(there?.body));
+  const back = await rename({ ...env, CF_IMAGES_TOKEN: '' }, { collection: 'team', from: 'alex-riviera', to: 'alex-rivera' }, FOUNDER);
+  assert.notEqual(back?.status, 409, `renamed back (${JSON.stringify(back?.body)})`);
+  assert.equal((await env.DB.prepare('SELECT slug FROM board_signatures WHERE doc_id = ?').bind(d.id).first()).slug, 'alex-rivera');
+  // Kim can't be given an address Alex's records are under
+  const taken = await rename({ ...env, CF_IMAGES_TOKEN: '' }, { collection: 'team', from: 'kim-park', to: 'alex-riviera' }, FOUNDER);
+  assert.equal(taken?.status, 409);
 });

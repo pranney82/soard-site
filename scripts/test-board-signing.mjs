@@ -192,7 +192,7 @@ try {
   await alex.goto(`${SITE}/admin/board/#/documents/${exp.id}`, { waitUntil: 'networkidle0' });
   await alex.waitForSelector('.bp-sign', { timeout: 8000 });
   // (due January 31: ahead in January, gone by the rest of the year, and said as such)
-  ok(await waitText(alex, day(0) <= `${YEAR}-01-31` ? /By choosing Sign, I sign the Board Member Expectations for \d{4}\. SOARD asks for it by January 31\./ : /By choosing Sign, I sign the Board Member Expectations for \d{4}\. It was due January 31\./), 'the paper says when it’s due, or that it was');
+  ok(await waitText(alex, day(0) <= `${YEAR}-01-31` ? /Sign by January 31\s+By choosing Sign, I sign the Board Member Expectations for \d{4}\./ : /Was due January 31\s+By choosing Sign, I sign the Board Member Expectations for \d{4}\./), 'the paper says when it’s due, or that it was, apart from what they agree to');
   // How signing works: there to open, in plain words
   await alex.evaluate(() => document.querySelector('.bp-sign__how summary')?.click());
   ok(await alex.evaluate(() => document.querySelector('.bp-sign__how')?.open && /a code emailed to you/.test(document.querySelector('.bp-sign__how p')?.textContent || '')), 'How signing works opens');

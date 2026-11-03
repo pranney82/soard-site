@@ -2674,6 +2674,12 @@ p.bp-rp__motion-st { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--muted
 .bp-field__input { width: min(100%, 22rem); min-height: 44px; padding: 0.5rem 0.75rem; border: 1px dashed var(--gold); border-radius: 10px; background: var(--yellow-wash); font: inherit; color: var(--ink); }
 .bp-field__input:focus { outline: 2px solid var(--ink); outline-offset: 1px; border-style: solid; background: #fff; }
 .bp-field__print { display: none; }
+.bp-sign__due { margin: 0.75rem 0 0; color: var(--ink-2); font-size: 0.93rem; }
+/* On a phone the signing bar sits above the tab bar: the page's foot and its notes clear it */
+@media (max-width: 640px) {
+  body:has(.bp-signbar) .bp-foot__in { padding-bottom: calc(6.5rem + var(--tabbar)); }
+  body:has(.bp-signbar) .bp-toast { bottom: calc(5.4rem + var(--tabbar)); }
+}
 /* What's left to fill in: in view while they read (above the phone's tab bar) */
 .bp-signbar { position: sticky; top: 76px; z-index: 30; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; margin: 0 0 1rem; padding: 0.6rem 0.6rem 0.6rem 1rem; border: 1px solid var(--line); border-radius: 16px; background: rgba(255, 255, 255, 0.97); box-shadow: 0 6px 18px rgba(45, 47, 44, 0.08); }
 .bp-signbar__count { margin: 0; font-weight: 650; color: var(--ink); }
@@ -2708,6 +2714,8 @@ p.bp-rp__motion-st { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--muted
 @media print {
   .bp-signbar, .bp-field__btn, .bp-field__input, .bp-field__ask .bp-linkbtn { display: none !important; }
   .bp-field__print { display: inline; }
+  /* (the paper printed to sign by hand: blanks, not what's on the screen) */
+  .bp-field__done:not(.is-signed) > :not(.bp-field__print), .bp-field__answer > :not(.bp-field__print) { display: none !important; }
 }
 .bp-signed__copy { margin: 0.4rem 0 0; }
 .bp-copies { margin: 1rem 0 0; padding: 0.75rem 0 0; border-top: 1px solid var(--line); }

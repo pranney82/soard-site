@@ -358,7 +358,9 @@ export async function setBoardEmail(DB, slug, email) {
     : await DB.prepare('DELETE FROM reveal_board_emails WHERE slug = ?').bind(slug).run();
   // A changed or cleared address (the one a board member signs in, and signs, with): in the signing record, and the
   // old address is told by the heartbeat, without the new one (./_board-sign.js maybeRunSigning)
-  if (was?.email && normEmail(was.email) !== e) {
+  const person = (was?.email && normEmail(was.email) !== e) ? await DB.prepare('SELECT data FROM team WHERE slug = ?').bind(slug).first().catch(() => null) : null;
+  const onBoard = (() => { try { return JSON.parse(person?.data || '{}').group === 'board'; } catch { return false; } })();
+  if (was?.email && normEmail(was.email) !== e && onBoard) {
     try {
       const { appendEvents } = await import('./_board-sign.js');
       const name = (await DB.prepare('SELECT name FROM team WHERE slug = ?').bind(slug).first().catch(() => null))?.name || '';

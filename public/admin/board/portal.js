@@ -1222,7 +1222,7 @@ function HomePage({ ctx }) {
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
         ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href=${`#/documents/${x.id}`}>
           <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
-          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">${x.signedEarlier ? 'It changed since you signed: read it, then sign again' : x.declinedByMe ? 'You told SOARD you can’t sign it as written' : dueOn(x, todayEastern().slice(0, 4)) ? `${dueOn(x, todayEastern().slice(0, 4)) < todayEastern() ? 'It was due' : 'Sign by'} ${dueWords(dueOn(x, todayEastern().slice(0, 4)))}` : 'Every board member signs it once a year'}</span></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">${x.signedEarlier ? 'It changed since you signed: read it, then sign again' : x.declinedByMe ? 'You told SOARD you can’t sign it as written' : dueOn(x, todayEastern().slice(0, 4)) ? `${dueOn(x, todayEastern().slice(0, 4)) < todayEastern() ? 'Was due' : 'Sign by'} ${dueWords(dueOn(x, todayEastern().slice(0, 4)))}` : 'Every board member signs it once a year'}</span></span>
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
       </ul>
@@ -3727,11 +3727,14 @@ function Signed({ doc, ctx }) {
       if (j.changed || j.gone) {
         signTrouble.set(doc.id, { msg: `Your new copy wasn’t added: ${String(j.error).replace(/\.?$/, '.')}`, kind: j.gone ? 'gone' : 'changed', title: doc.title });
         ctx.load().then(() => focusTrouble(doc.id));
-      } else setProblem(`${String(j.error).replace(/\.?$/, '.')} Your copy from before is kept.`);
+      } else { setProblem(`${String(j.error).replace(/\.?$/, '.')} Your copy from before is kept.`); requestAnimationFrame(() => document.getElementById(`signed-${doc.id}-p`)?.focus()); }
       return;
     }
-    ctx.setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, signedByMe: { name: j.name, at: j.at || new Date().toISOString(), how: j.how, copy: j.copy || null, drive: false } } : y)) }));
+    // (this year's signed copy of the one replaced isn't theirs to open as this year's: the new one's comes with the next look)
+    const yr = Number(todayEastern().slice(0, 4));
+    ctx.setData((x) => ({ ...x, docs: x.docs.map((y) => (y.id === doc.id ? { ...y, myCopies: (y.myCopies || []).filter((c) => c.year !== yr), signedByMe: { name: j.name, at: j.at || new Date().toISOString(), how: j.how, copy: j.copy || null, drive: false } } : y)) }));
     ctx.say('Your signed copy is replaced');
+    requestAnimationFrame(() => document.getElementById(`signed-${doc.id}`)?.focus({ preventScroll: true }));
   };
   const said = me.how === 'drive' ? html`Your signed copy is in SOARD’s files`
     : me.how === 'staff' ? html`<span>SOARD added your signed copy${when ? `, ${when}` : ''}</span>${copy ? html`<span class="bp-signed__acts"><a class="bp-link" ...${copy}>See it</a></span>` : null}`
@@ -3742,7 +3745,7 @@ function Signed({ doc, ctx }) {
   return html`<p class="bp-signed" id=${`signed-${doc.id}`} tabindex="-1"><span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Signed</span> ${said}</p>
     ${me.mark ? html`<div class="bp-signed__mark"><${Mark} mark=${me.mark} /></div>` : null}
     ${me.record?.id ? html`<p class="bp-signed__copy bp-noprint"><a class="bp-link" ...${viewerLink(asViewer([{ id: me.record.id, name: `${doc.title}, signed by you.pdf`, type: 'application/pdf' }]), 0)}>Your signed copy (PDF)</a></p>` : null}
-    ${problem ? html`<p class="bp-sign__problem" role="alert">${problem}</p>` : null}`;
+    ${problem ? html`<p class="bp-sign__problem" role="alert" tabindex="-1" id=${`signed-${doc.id}-p`}>${problem}</p>` : null}`;
 }
 
 // ─── Signing: a signature adopted once, the paper's initials and answers, consent, intent ───────────
@@ -3853,21 +3856,23 @@ function FieldBox({ b, doc, me, vals, setVal, mark, needMark, onward = () => {} 
   const said = (all.find((f) => f.n === n)?.text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
   const name = `${b.field === 'initials' ? 'Initial' : 'Answer'} point ${n} of ${total}${said ? `: ${said}` : ''}`;
   const signedF = doc.signedByMe?.fields?.find((x) => x.n === n);
-  if (doc.signedByMe) return signedF ? html`<p class="bp-field__done">${b.field === 'initials' ? html`<span class="bp-field__stamp" style=${`font-family:'${styleFont(doc.signedByMe.mark?.style)}', cursive`}>${signedF.value}</span><span class="bp-muted">Initialed</span>` : html`<span class="bp-muted">Your answer:</span> <strong>${signedF.value}</strong>`}</p>` : null;
+  if (doc.signedByMe) return signedF ? html`<p class="bp-field__done is-signed">${b.field === 'initials' ? html`<span class="bp-field__stamp" style=${`font-family:'${styleFont(doc.signedByMe.mark?.style)}', cursive`}>${signedF.value}</span><span class="bp-muted">Initialed</span>` : html`<span class="bp-muted">Your answer:</span> <strong>${signedF.value}</strong>`}</p>` : null;
   if (!me) return html`<p class="bp-field__ask bp-muted">${b.field === 'initials' ? 'Each member initials this point as they sign' : 'Each member answers this as they sign'}</p>`;
   const v = vals[n] || '';
+  // (printed to sign on paper: a blank to fill in by hand, whatever's on the screen)
+  const blank = html`<span class="bp-field__print" aria-hidden="true">${b.field === 'initials' ? 'Initials ______' : 'Answer ________________________________'}</span>`;
   if (b.field === 'answer') {
     return html`<p class="bp-field__answer"><label class="sr-only" for=${`bp-f-${doc.id}-${n}`}>${name}</label>
-      <input id=${`bp-f-${doc.id}-${n}`} data-field-input=${n} class="bp-field__input" value=${v} maxlength="500" placeholder="Your answer" autocomplete="off" onInput=${(e) => setVal(n, e.target.value)} /></p>`;
+      <input id=${`bp-f-${doc.id}-${n}`} data-field-input=${n} class="bp-field__input" value=${v} maxlength="500" placeholder="Your answer" autocomplete="off" onInput=${(e) => setVal(n, e.target.value)} />${blank}</p>`;
   }
   if (v) {
-    return html`<p class="bp-field__done"><span class="bp-field__stamp" style=${`font-family:'${styleFont(mark?.style)}', cursive`} aria-label=${`Initialed ${v}`}>${v}</span><span class="bp-muted">Initialed</span>
+    return html`<p class="bp-field__done">${blank}<span class="bp-field__stamp" style=${`font-family:'${styleFont(mark?.style)}', cursive`} aria-label=${`Initialed ${v}`}>${v}</span><span class="bp-muted">Initialed</span>
       <button type="button" class="bp-linkbtn" aria-label=${`Undo your initials on point ${n}`} onClick=${() => { setVal(n, ''); requestAnimationFrame(() => document.querySelector(`[data-field-input="${n}"]`)?.focus()); }}>Undo</button></p>`;
   }
   // (stamped: on to the next one left, or to signing)
   const stamp = (m) => { setVal(n, marksInitials(m)); requestAnimationFrame(() => onward(n)); };
   return html`<p class="bp-field__ask"><button type="button" class="bp-btn bp-btn--sm bp-field__btn" data-field-input=${n} aria-label=${name} onClick=${() => (mark ? stamp(mark) : needMark(stamp))}>Initial</button>
-    <span class="bp-field__print" aria-hidden="true">Initials ______</span></p>`;
+    ${blank}</p>`;
 }
 
 /** What's left to fill in before signing, and the way to the next one (a paper that asks for initials or answers) */
@@ -3927,7 +3932,7 @@ function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, nee
     // Every point it marks first (Sign takes them there), then how they sign (chosen, it carries on), then agreeing
     // to sign electronically
     const blank = fields.find((f) => !String(vals[f.n] || '').trim());
-    if (blank) { setProblem(''); say(`${blank.kind === 'initials' ? 'Initial' : 'Answer'} point ${blank.n} first.`); toField(blank.n); return; }
+    if (blank) { setProblem(''); say(`${blank.kind === 'initials' ? 'Initial' : 'Answer'} point ${blank.n} first.`, 'warn'); toField(blank.n); return; }
     if (!m) { needMark((picked) => sign(null, picked)); return; }
     if (!consented && !agree) { setProblem('Tick that you agree to sign electronically, then sign.'); document.getElementById(`${id}-agree`)?.focus(); return; }
     setProblem('');
@@ -3982,7 +3987,8 @@ function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, nee
     </div>
     ${doc.declinedByMe ? html`<p class="bp-sign__declined" id=${`${id}-declined`} tabindex="-1">You told SOARD on ${shortDate(todayEastern(Date.parse(doc.declinedByMe.at)))} that you can’t sign it as written: “${doc.declinedByMe.reason}” They’ll answer you by email, and you can still sign it here.</p>` : null}
     ${consented ? null : html`<label class="bp-sign__agree"><input type="checkbox" id=${`${id}-agree`} checked=${agree} onChange=${(e) => { setAgree(e.target.checked); if (problem) setProblem(''); }} /><span>${CONSENT_TEXT}</span></label>`}
-    <p class="bp-sign__intent">By choosing Sign, I sign the ${doc.title} for ${year}.${dueOn(doc, year) ? (dueOn(doc, year) < todayEastern() ? ` It was due ${dueWords(dueOn(doc, year))}.` : ` SOARD asks for it by ${dueWords(dueOn(doc, year))}.`) : ''}</p>
+    ${dueOn(doc, year) ? html`<p class="bp-sign__due">${dueOn(doc, year) < todayEastern() ? `Was due ${dueWords(dueOn(doc, year))}` : `Sign by ${dueWords(dueOn(doc, year))}`}</p>` : null}
+    <p class="bp-sign__intent">By choosing Sign, I sign the ${doc.title} for ${year}.</p>
     <p class="bp-btns bp-btns--tight"><button class="bp-btn bp-btn--primary" type="submit" disabled=${!!busy}>${busy === 'sign' ? 'Signing…' : 'Sign'}</button></p>
     <p class="bp-sign__or">Signed it on paper already?
       <button type="button" class="bp-linkbtn" disabled=${!!busy} onClick=${() => pick.current?.click()}>${busy === 'copy' ? 'Adding your copy…' : 'Add your signed copy'}</button>
