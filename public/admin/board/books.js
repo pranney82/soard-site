@@ -16,7 +16,7 @@
 
 import { h, htm, useState, useEffect, useRef } from '../vendor.js';
 import { money, shortDate, mainLines, statementBreaks, linePlaces } from '../board-shared.js';
-import { compact, storeOf, storeChange, budgetMonthsText, spentOf, marginText, changeIn, overIn } from './money.js';
+import { compact, storeOf, storeChange, budgetMonthsText, spentOf, marginText, changeIn, overIn, Both } from './money.js';
 import { lineKeysOf, notesByKey, NoteLine } from './review.js';
 
 const html = htm.bind(h);
@@ -173,7 +173,7 @@ function YearLines({ id, title, now, then, year, lastYear, upTo, ax, sameDays = 
     ${read ? html`<div class="by-tip" ref=${place} aria-hidden="true">
       <strong>${read.month}</strong>
       ${read.a !== null ? html`<span><i class="by-key by-key--now"></i>${year} ${sm(read.a)}</span>` : html`<span class="by-tip__soft">${year}: not yet</span>`}
-      ${read.b !== null ? html`<span><i class="by-key by-key--then"></i>${lastYear}${cur ? ` by ${dayMonth(through)}` : ''} ${sm(read.b)}${read.a !== null ? html` <b>${changeIn(read.a, read.b, as)}</b>` : null}</span>` : null}
+      ${read.b !== null ? html`<span><i class="by-key by-key--then"></i>${lastYear}${cur ? ` by ${dayMonth(through)}` : ''} ${sm(read.b)}${read.a !== null ? html` <b><${Both} as=${as} pct=${changeIn(read.a, read.b, 'pct')} usd=${changeIn(read.a, read.b, 'usd')} /></b>` : null}</span>` : null}
       ${read.whole !== null ? html`<span class="by-tip__soft">${lastYear}, all of ${MONTH[at]}: ${sm(read.whole)}</span>` : null}
     </div>` : null}
   </div>`;
@@ -204,7 +204,7 @@ export function YearCompare({ books, idp = 'by', tall = false, as = 'pct' }) {
   const figs = (m, same) => {
     const nowEnd = m.now[s.upTo];
     const by = typeof same === 'number' && through ? same : m.then?.[s.upTo] ?? null;
-    return html`<span class="by-cap__figs"><span class="by-cap__now">${s.year} so far <b>${compact(nowEnd)}</b></span>${m.then ? html`<span class="by-cap__then">${s.lastYear} ${typeof same === 'number' && through ? `by ${dayMonth(through)}` : `by the end of ${MONTH[s.upTo]}`} <b>${compact(by)}</b>${changeIn(nowEnd, by, as, { short: true }) ? html` <em>${changeIn(nowEnd, by, as, { short: true })}</em>` : null} · ${compact(m.then[11])} in all</span>` : null}</span>`;
+    return html`<span class="by-cap__figs"><span class="by-cap__now">${s.year} so far <b>${compact(nowEnd)}</b></span>${m.then ? html`<span class="by-cap__then">${s.lastYear} ${typeof same === 'number' && through ? `by ${dayMonth(through)}` : `by the end of ${MONTH[s.upTo]}`} <b>${compact(by)}</b>${changeIn(nowEnd, by, as, { short: true }) ? html` <em><${Both} as=${as} pct=${changeIn(nowEnd, by, 'pct', { short: true })} usd=${changeIn(nowEnd, by, 'usd', { short: true })} /></em>` : null} · ${compact(m.then[11])} in all</span>` : null}</span>`;
   };
   return html`<section class="by" aria-label=${`${s.year} against ${s.lastYear}, month by month`}>
     <p class="by-legend" aria-hidden="true"><span><i class="by-key by-key--now"></i>${s.year} so far</span>${s.revenue.then ? html`<span><i class="by-key by-key--then"></i>${s.lastYear}</span>` : null}<span class="by-legend__how">Added up month by month, from QuickBooks</span></p>
@@ -259,11 +259,14 @@ export function StatementLines({ rows, asOf, priorAsOf, all = false, cls = '', h
   // chosen over the whole statement, so its continued slides never change unit from the first
   const nums = whole.filter((r) => typeof r.a === 'number' && typeof r.p === 'number' && Math.round(r.a) !== Math.round(r.p));
   const unit = as !== 'usd' && nums.every((r) => r.p > 0) ? 'pct' : 'usd';
+  // Each change both ways in its cell, the column as wide as the longer (money.js Both), so % | $ moves no column
+  const pctUnit = nums.every((r) => r.p > 0) ? 'pct' : 'usd';
+  const chgCell = (r, u) => (heads ? overIn(r.a, r.p, u) : changeIn(r.a, r.p, u) || '–');
   return html`<table class=${`by-stmt ${cls}`}>
     <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${heads ? heads[0] : shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${heads ? heads[1] : shortDate(priorAsOf)}</th><th scope="col" class="num">${heads ? heads[2] : 'Change'}</th>` : null}</tr></thead>
     <tbody>${shown.map((r, i) => (r.k === 'head'
       ? html`<tr class="by-stmt__h" key=${i} data-d=${r.d}><th scope="colgroup" colspan=${cols}>${r.label}</th></tr>`
-      : [html`<tr class=${`by-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`} data-d=${r.k === 'sum' ? -1 : r.d} data-a=${Math.abs(Number(r.a) || 0)}><th scope="row">${r.label}</th><td class="num">${signed(r.a)}</td>${prior ? html`<td class="num by-stmt__prior">${signed(r.p)}</td><td class="num by-stmt__chg">${heads ? overIn(r.a, r.p, unit) : changeIn(r.a, r.p, unit) || '–'}</td>` : null}</tr>`,
+      : [html`<tr class=${`by-stmt__${r.k}`} key=${i} style=${`--d:${r.d}`} data-d=${r.k === 'sum' ? -1 : r.d} data-a=${Math.abs(Number(r.a) || 0)}><th scope="row">${r.label}</th><td class="num">${signed(r.a)}</td>${prior ? html`<td class="num by-stmt__prior">${signed(r.p)}</td><td class="num by-stmt__chg"><${Both} as=${unit} pct=${chgCell(r, pctUnit)} usd=${chgCell(r, 'usd')} /></td>` : null}</tr>`,
         noteOf(r) ? html`<tr class="by-stmt__note" key=${`${i}-n`} style=${`--d:${r.d}`} data-d=${r.k === 'sum' ? -1 : r.d}><td colspan=${cols}><${NoteLine} note=${noteOf(r)} /></td></tr>` : null]))}</tbody>
   </table>`;
 }
@@ -324,7 +327,7 @@ export function BooksSlide({ books, kind, page = 0, notes = null, as = 'pct' }) 
       <p class="bs-eyebrow">From QuickBooks${books.through ? `, January 1 to ${dayMonth(books.through)}` : ''}</p>
       <h1 class="bs-display by-slide__title">The store, ${st?.lastYear ? `${books.year} against ${st.lastYear}` : `${books.year} so far`}</h1>
       ${st ? html`<ul class="bs-figs" style="--n:3">${st.lines.map((x) => html`<li key=${x.k}>
-        <span class="bs-figs__label">${x.name}</span><span class="bs-figs__value">${compact(x.amount)}</span><span class="bs-figs__sub">${x.last != null ? `${st.lastYear} by now: ${compact(x.last)} · ${storeChange(x, as)}` : `${books.year} so far`}</span>${x.k === 'profit' && st.margin != null ? html`<span class="bs-figs__sub">${marginText(st)}</span>` : null}
+        <span class="bs-figs__label">${x.name}</span><span class="bs-figs__value">${compact(x.amount)}</span><span class="bs-figs__sub">${x.last != null ? html`${st.lastYear} by now: ${compact(x.last)} · <${Both} as=${as} pct=${storeChange(x, 'pct')} usd=${storeChange(x, 'usd')} />` : `${books.year} so far`}</span>${x.k === 'profit' && st.margin != null ? html`<span class="bs-figs__sub">${marginText(st)}</span>` : null}
       </li>`)}</ul>` : null}
     </div>`;
   }

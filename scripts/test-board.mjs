@@ -1479,13 +1479,16 @@ try {
   let hops = 0;
   // Nothing moves from stop to stop: the screen's stage and its rail (whatever the words in them), and who has the floor
   // (said along the top on every slide it's anyone's, an item's or a document's, never drawn in the slide again)
-  const spots = { stage: new Set(), rail: new Set(), floor: new Set(), floorOn: 0, inSlide: [] };
+  // and a slide's big title that fits its lines is drawn whole, its last line's g, y and p never cut by the clamp
+  // (screen.js useFit data-whole; Peter: "the g and y are cut off!")
+  const spots = { stage: new Set(), rail: new Set(), floor: new Set(), floorOn: 0, inSlide: [], titles: 0, cut: [] };
   let roll = null;
   const note = async () => {
-    const at = await scr.evaluate(() => { const f = document.querySelector('.bs-top > .bs-floor')?.getBoundingClientRect(); return { stage: JSON.stringify(document.querySelector('.bs-stage')?.getBoundingClientRect()), rail: document.querySelector('.bs-rail__parts li:last-child')?.getBoundingClientRect().right, faces: document.querySelectorAll('.bs-faces__one').length, title: document.querySelector('.bs-item__title')?.textContent || '', count: document.querySelector('.bs-roll')?.textContent || '', floor: f ? `${Math.round(f.left)},${Math.round(f.top)}` : '', kind: [...document.querySelector('.bs').classList].find((c) => c.startsWith('bs--')) || '', inSlide: document.querySelectorAll('.bs-stage .bs-who, .bs-stage .bs-item__aside .bs-face, .bs-stage .bs-item__lead .bs-face, .bs-stage .bs-chapter__by').length }; });
+    const at = await scr.evaluate(() => { const f = document.querySelector('.bs-top > .bs-floor')?.getBoundingClientRect(); return { stage: JSON.stringify(document.querySelector('.bs-stage')?.getBoundingClientRect()), rail: document.querySelector('.bs-rail__parts li:last-child')?.getBoundingClientRect().right, faces: document.querySelectorAll('.bs-faces__one').length, title: document.querySelector('.bs-item__title')?.textContent || '', count: document.querySelector('.bs-roll')?.textContent || '', floor: f ? `${Math.round(f.left)},${Math.round(f.top)}` : '', kind: [...document.querySelector('.bs').classList].find((c) => c.startsWith('bs--')) || '', inSlide: document.querySelectorAll('.bs-stage .bs-who, .bs-stage .bs-item__aside .bs-face, .bs-stage .bs-item__lead .bs-face, .bs-stage .bs-chapter__by').length, titles: document.querySelectorAll('.bs-stage .bs-fit').length, cut: [...document.querySelectorAll('.bs-stage .bs-fit')].filter((t) => getComputedStyle(t).overflow !== 'visible').map((t) => t.textContent.trim().slice(0, 40)) }; });
     spots.stage.add(at.stage); spots.rail.add(at.rail);
     if (at.floor) { spots.floor.add(at.floor); spots.floorOn += 1; }
     if (at.inSlide) spots.inSlide.push(`${at.kind} ${at.title}`);
+    spots.titles += at.titles; spots.cut.push(...at.cut);
     if (at.title === 'Roll call') roll = at;
   };
   // An item with a report shows it, fitted to the screen (screen.js ReportFit): Governance's, and Sam's under the money
@@ -1500,6 +1503,7 @@ try {
   const finShown = reportStops.get('Financial');
   ok(/^Highlights Insurance renewal/.test(govShown?.text || '') && govShown.fits && /^Cash is up 12%/.test(finShown?.text || '') && finShown.fits, `the screen shows an item’s report, all of it fitting (${JSON.stringify([...reportStops.values()])})`);
   ok(spots.stage.size === 1 && spots.rail.size === 1, `the screen’s stage and rail keep their size and place on every slide (${spots.stage.size} stages, ${spots.rail.size} rails)`);
+  ok(spots.titles >= 5 && !spots.cut.length, `every slide's title is drawn whole, a g's or a y's tail never cut by its clamp (${spots.titles} titles${spots.cut.length ? `; cut: ${spots.cut.join(' | ')}` : ''})`);
   ok(spots.floorOn >= 3 && spots.floor.size === 1 && !spots.inSlide.length, `who has the floor sits in one place along the top on every slide it shows on, and no slide draws its presenters again (${spots.floorOn} slides, spots ${[...spots.floor].join(' | ')}${spots.inSlide.length ? `; in the slide on ${spots.inSlide.join(', ')}` : ''})`);
   ok(roll && roll.faces === 3 && /3\s*on the board/.test(roll.count), `the roll call shows the board’s faces, everyone on the meeting’s list (${JSON.stringify(roll)})`);
   ok(await scr.waitForFunction(() => /Financial.*Balance sheet financials.*Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), '→ steps the screen through the items to the Financial item’s statement, page 1 of 2');
@@ -1827,6 +1831,18 @@ try {
       ok(inDollars && await money.evaluate(() => [...document.querySelectorAll('.bp-chgas')].every((g) => g.querySelector('[aria-pressed="true"]')?.textContent.includes('$'))), 'Financials: $ says the changes in dollars, in the statements and the year so far at once');
       await money.evaluate(() => [...document.querySelectorAll('.bp-chgas button')].find((x) => x.textContent.includes('%'))?.click());
       ok(await money.waitForFunction(() => /Total Income\$1,884,217\$1,666,667\+13%/.test(document.querySelector('.bp-latest .bp-stmt')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'and % back to percentages');
+      {
+        // and either way nothing on the page moves: the statements' columns and the year's table hold their places
+        const places = () => money.evaluate(() => [...document.querySelectorAll('main *')].filter((e) => !e.closest('.by-both > span') && !e.closest('svg') && !e.closest('.bp-chgas')).map((e) => { const r = e.getBoundingClientRect(); return `${e.tagName}.${e.className}@${[r.left, r.top + scrollY, r.width, r.height].map(Math.round)}`; }));
+        const a = await places();
+        await money.evaluate(() => [...document.querySelectorAll('.bp-chgas button')].find((x) => x.textContent.includes('$'))?.click());
+        await sleep(400);
+        const b = await places();
+        await money.evaluate(() => [...document.querySelectorAll('.bp-chgas button')].find((x) => x.textContent.includes('%'))?.click());
+        await sleep(300);
+        const off = a.length !== b.length ? [`${a.length} boxes, then ${b.length}`] : a.filter((x, i) => x !== b[i]);
+        ok(!off.length, `Financials: % | $ changes the figures in place, nothing on the page moves${off.length ? ` (${off.slice(0, 3).join(' | ')})` : ''}`);
+      }
       const rows = await money.$$eval('.bp-mixtable tbody tr', (r) => r.map((x) => x.textContent));
       ok(rows.length === 6 && rows[1] === 'Store salesStore Income, Store Discounts$415,00022%$830,000▼ 50%' && /^Everything elseGolf Classic, Rent, Interest, Makeover\$51,0453%\$0/.test(rows[5]) && rows[4] === 'GrantsGrant Revenue$90,0005%$0–', `Financials: each category with its accounts, beside last year’s same days (${JSON.stringify(rows)})`);
       await money.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
@@ -1930,6 +1946,27 @@ try {
         await shot(pres, '28d-presenting-dollars');
         await pres.keyboard.press('%');
         ok(await pres.waitForFunction(() => [...document.querySelectorAll('.by-stmt .by-stmt__chg')].some((x) => /%/.test(x.textContent)), { timeout: 3000 }).then(() => true, () => false), '% back to percentages');
+        // % | $ moves nothing on any money slide (money.js Both: each change holds the room of its longer way; Peter: "the
+        // numbers move position!"): every box on the slide, settled, in the same place and size both ways
+        {
+          const places = () => pres.evaluate(() => [...document.querySelectorAll('.bs-stage *')].filter((e) => !e.closest('.by-both > span') && !e.closest('svg')).map((e) => { const r = e.getBoundingClientRect(); return `${e.tagName}.${e.className}@${[r.left, r.top, r.width, r.height].map(Math.round)}`; }));
+          const moved = [];
+          for (const k of ['year', 'store', 'act', 'budget', 'pos']) {
+            await pres.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`${fin.id}:books:${k}`)}#/meetings/${meetingId}/screen`, { waitUntil: 'networkidle0' });
+            await pres.waitForSelector('.by-slide', { timeout: 10000 }).catch(() => {});
+            await sleep(900);
+            const a = await places();
+            await pres.keyboard.press('c');
+            await sleep(700);
+            const b = await places();
+            const both = await pres.evaluate(() => document.querySelectorAll('.bs-stage .by-both[data-alt]').length);
+            await pres.keyboard.press('c');
+            await sleep(300);
+            const off = a.length !== b.length ? [`${a.length} boxes, then ${b.length}`] : a.filter((x, i) => x !== b[i]);
+            if (off.length || !both) moved.push(`${k}: ${both} changes both ways${off.length ? `, moved ${off.slice(0, 3).join(' | ')}` : ''}`);
+          }
+          ok(!moved.length, `% | $ on the year, the store, the statements and the budget: the figures change in place, nothing on the slide moves${moved.length ? ` (${moved.join('; ')})` : ''}`);
+        }
         // The year against last year on a 720p screen
         await pres.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`${fin.id}:books:year`)}#/meetings/${meetingId}/screen`, { waitUntil: 'networkidle0' });
         await pres.waitForSelector('.by-slide .by-chart svg', { timeout: 10000 }).catch(() => {});

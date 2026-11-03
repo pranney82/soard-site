@@ -42,7 +42,7 @@ import { partFor } from '../board-coach.js';
 import { mdPlain, mdWords } from '../board-md.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
-import { useCashNow, useBudget, liveCash, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsPhrase, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue, budgetMonthsText as budgetMonths, stepText, useChangeAs, changeIn, overIn } from './money.js';
+import { useCashNow, useBudget, liveCash, Both, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsPhrase, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue, budgetMonthsText as budgetMonths, stepText, useChangeAs, changeIn, overIn } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -2862,7 +2862,7 @@ function Statement({ id, title, rows, asOf, priorAsOf, heads = null, which = '',
         <thead><tr><th scope="col"><span class="sr-only">Line</span></th><th scope="col" class="num">${heads ? heads[0] : shortDate(asOf)}</th>${prior ? html`<th scope="col" class="num">${heads ? heads[1] : shortDate(priorAsOf)}</th><th scope="col" class="num bp-stmt__chg">${heads ? heads[2] : 'Change'}</th>` : null}</tr></thead>
         <tbody>${shown.map((r, i) => (r.k === 'head'
           ? html`<tr class="bp-stmt__h" key=${i}><th scope="colgroup" colspan=${cols} style=${`--d:${r.d}`}>${r.label}</th></tr>`
-          : [html`<tr class=${`bp-stmt__${r.k} ${noteOf(r) ? 'bp-stmt__noted' : ''}`} key=${i} style=${`--d:${r.d}`}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num bp-stmt__prior" data-label=${heads ? heads[1] : shortDate(priorAsOf)}>${signedMoney(r.p)}</td><td class="num bp-stmt__chg" data-label=${heads ? heads[2] : null}>${heads ? overIn(r.a, r.p, as) : changeIn(r.a, r.p, as) || '–'}</td>` : null}</tr>`,
+          : [html`<tr class=${`bp-stmt__${r.k} ${noteOf(r) ? 'bp-stmt__noted' : ''}`} key=${i} style=${`--d:${r.d}`}><th scope="row" style=${`--d:${r.d}`}>${r.label}</th><td class="num">${signedMoney(r.a)}</td>${prior ? html`<td class="num bp-stmt__prior" data-label=${heads ? heads[1] : shortDate(priorAsOf)}>${signedMoney(r.p)}</td><td class="num bp-stmt__chg" data-label=${heads ? heads[2] : null}><${Both} as=${as} pct=${heads ? overIn(r.a, r.p, 'pct') : changeIn(r.a, r.p, 'pct') || '–'} usd=${heads ? overIn(r.a, r.p, 'usd') : changeIn(r.a, r.p, 'usd') || '–'} /></td>` : null}</tr>`,
             noteOf(r) ? html`<tr class="bp-stmt__note" key=${`${i}-n`} style=${`--d:${r.d}`}><td colspan=${cols}><${NoteLine} note=${noteOf(r)} /></td></tr>` : null]))}</tbody>
       </table>
     </div>
@@ -2935,7 +2935,7 @@ function BooksYear({ b }) {
     <${SecHead} id="by-h" title="The year so far" sub=${`From QuickBooks, January 1 to ${dayMonth(b.through)}`}>${ly ? html`<${ChangeAs} as=${as} setAs=${setAs} />` : null}</${SecHead}>
     <table class="bp-table bp-cmp">
       <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${b.year} so far</th>${ly ? html`<th scope="col" class="num">${ly.year}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
-      <tbody>${rows.map(([label, a, p, kind]) => html`<tr class=${`bp-row--${kind}`} key=${label}><th scope="row">${label}</th><td class="num">${signedMoney(a)}</td>${ly ? html`<td class="num bp-cmp__ly" data-label=${`${ly.year}, same days`}>${signedMoney(p)}</td><td class="num bp-cmp__chg">${changeIn(a, p, kind === 'net' ? 'usd' : as) || '–'}</td>` : null}</tr>`)}</tbody>
+      <tbody>${rows.map(([label, a, p, kind]) => html`<tr class=${`bp-row--${kind}`} key=${label}><th scope="row">${label}</th><td class="num">${signedMoney(a)}</td>${ly ? html`<td class="num bp-cmp__ly" data-label=${`${ly.year}, same days`}>${signedMoney(p)}</td><td class="num bp-cmp__chg"><${Both} as=${as} pct=${changeIn(a, p, kind === 'net' ? 'usd' : 'pct') || '–'} usd=${changeIn(a, p, 'usd') || '–'} /></td>` : null}</tr>`)}</tbody>
     </table>
     ${ly?.full?.revenue > 0 ? html`<p class="bp-note">${nbw(`By this day last year, ${Math.round((ly.revenue / ly.full.revenue) * 100)}% of ${ly.year}’s revenue (${compact(ly.full.revenue)}) had come in${lySpent?.[1] > 0 ? `, and ${Math.round((lySpent[0] / lySpent[1]) * 100)}% of its spending had gone out` : ''}.`)}</p>` : null}
     <div class="bp-meters">

@@ -1398,6 +1398,12 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .by-cap__then { color: var(--by-muted); }
 .by-cap__then b { color: var(--by-ink); font-weight: 650; }
 .by-cap__then em { font-style: normal; font-weight: 650; color: var(--by-ink); }
+/* A change both ways in one place (money.js Both): as wide as the longer, the pick seen, so % | $ moves nothing */
+.by-both { display: inline-grid; }
+.by-both > span, .by-both::after { grid-area: 1 / 1; }
+.by-both::after { content: attr(data-alt); visibility: hidden; }
+.by-both:not([data-alt])::after { content: none; }
+.num .by-both { justify-items: end; }
 .by-chart { position: relative; }
 .by-chart svg { display: block; width: 100%; height: auto; overflow: visible; border-radius: 8px; touch-action: pan-y; }
 .by-chart svg:focus-visible { outline: 2px solid var(--by-ink); outline-offset: 4px; }
@@ -1694,6 +1700,8 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-display { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--bs-fs, var(--bs-display)); line-height: 1.06; letter-spacing: -0.022em; text-wrap: balance; overflow-wrap: break-word; hyphens: auto; }
 /* A title fitted to its lines (screen.js Title): stepped down to 60% of its size, then cut with … on its last line */
 .bs-fit { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: calc(var(--bs-fs, var(--bs-display)) * var(--tfit, 1)); }
+/* One that fits its lines (screen.js useFit) is drawn whole: the clamp's edge sits above a g's or a y's tail */
+.bs-fit[data-whole] { overflow: visible; }
 .bs-h1 { font-family: var(--display); font-size: var(--bs-lead); margin: 0.5rem 0; }
 .bs-quiet { margin: 0.5em 0 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.8); }
 
@@ -2090,6 +2098,8 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-pipe__photo img, .bs-when__photo img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 40%; }
 .bs-pipe__initials, .bs-when__initials { display: grid; place-items: center; width: 100%; height: 100%; background: hsl(var(--hue, 42) 22% 30%); color: hsl(var(--hue, 42) 45% 86%); font-family: var(--display); font-weight: 700; font-size: min(calc(var(--bs-u) * 3.6), 52cqh, 42cqw); }
 .bs-pipe__name, .bs-when__name { font-family: var(--display); font-size: min(calc(var(--bs-u) * 2.03), calc(100cqi / (var(--c2, 4) * 0.66))); font-weight: 700; line-height: 1.08; color: var(--bs-ink); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+/* Whole when it fits its lines (screen.js wholeIfFits): the clamp's edge sits above a y's tail */
+.bs-pipe__name[data-whole], .bs-when__name[data-whole] { overflow: visible; }
 /* A long name ("Perfect Harmony Health") no bigger than its card holds in its lines, so it reads whole */
 .bs-when[data-rows="2"] .bs-when__name { font-size: min(calc(var(--bs-u) * 1.75), calc(100cqi / (var(--c2, 4) * 0.66))); }
 /* A makeover's name one size for its row count, in as many lines as it takes; only a word wider than its card (a long

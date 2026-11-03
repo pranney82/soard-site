@@ -32,7 +32,7 @@ import { Report } from '../board-report.js';
 import { BooksSlide, booksTitle } from './books.js';
 import { mdWords, mdPoints, mdFigures, mdPlain } from '../board-md.js';
 import { Pipeline, sized, nameFit } from './kanban.js';
-import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, readChangeAs, keepChangeAs } from './money.js';
+import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, readChangeAs, keepChangeAs, Both } from './money.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -99,7 +99,8 @@ const partName = (s, si) => s?.title || (s?.items?.length === 1 ? s.items[0].tit
 /**
  * Fitted to the stage. A slide: set smaller in steps (its --fit, down to `min`) until it all fits above the rail (a
  * phone scrolls it instead). A title (`lines` given): stepped down (--tfit, to `min`) until it's at most that many
- * lines, and past that its line clamp ends it with …
+ * lines, and past that its line clamp ends it with …; one that fits is drawn whole (data-whole), since the clamp's
+ * edge would cut its last line's g, y and p (Peter: "the g and y are cut off!")
  */
 function useFit(deps, { min = 0.6, lines = 0 } = {}) {
   const ref = useRef(null);
@@ -119,6 +120,7 @@ function useFit(deps, { min = 0.6, lines = 0 } = {}) {
       if (!lines && getComputedStyle(stage).overflowY === 'auto') return;
       let f = 1;
       while (f > min && over()) { f = Math.max(min, Math.round((f - 0.05) * 100) / 100); el.style.setProperty(prop, String(f)); }
+      if (lines) el.toggleAttribute('data-whole', !over());
     };
     fit();
     // Again when the stage changes (the window, full screen) and once the fonts are in; never on its own size (no loop)
@@ -129,6 +131,15 @@ function useFit(deps, { min = 0.6, lines = 0 } = {}) {
   }, deps);
   return ref;
 }
+/**
+ * A makeover family's name and a reveal's (kanban.js, the dates' line), each clamped to its lines like a title: drawn
+ * whole (data-whole) when it fits them, so the clamp's edge never cuts a y's tail ("Maya", "1 family")
+ */
+const wholeIfFits = () => document.querySelectorAll('.bs-stage .bs-pipe__name, .bs-stage .bs-when__name').forEach((el) => {
+  el.removeAttribute('data-whole');
+  // (a line more than it shows is a whole line over; the letters' own tails are a few pixels)
+  if (el.scrollHeight < el.clientHeight + parseFloat(getComputedStyle(el).lineHeight) / 2) el.setAttribute('data-whole', '');
+});
 /** A slide's title at its role's size (portal.css .bs-fit, --bs-fs), never more than three lines */
 function Title({ text, cls = '' }) {
   const ref = useFit([text], { lines: 3 });
@@ -540,7 +551,11 @@ const CALENDAR = html`<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" 
  */
 function CashSlide({ n, data, date, as = 'pct' }) {
   const upTo = date && date < todayEastern() ? date : '';
-  const tiles = moneyTiles({ cash: useCashNow(data, upTo, n), budget: useBudget(data, upTo, n), n, due: budgetDue(data, upTo), as });
+  const cash = useCashNow(data, upTo, n);
+  const budget = useBudget(data, upTo, n);
+  const tiles = moneyTiles({ cash, budget, n, due: budgetDue(data, upTo), as });
+  // The same lines the other way, each said both ways in its place (money.js Both), so % | $ moves nothing
+  const other = new Map(moneyTiles({ cash, budget, n, due: budgetDue(data, upTo), as: as === 'usd' ? 'pct' : 'usd' }).map((t) => [t.k, t.sub]));
   const books = upTo ? n?.books : data.numbers.books;
   // Closer together (their room around the figures, never the words) while the slide runs past the bottom; past that,
   // the row of documents coming under them goes (they're the next slides, the rail says so)
@@ -578,7 +593,7 @@ function CashSlide({ n, data, date, as = 'pct' }) {
   if (!tiles.length) return html`<${Empty} mark="$" title="No figures yet" line="The money shows here once QuickBooks or a bank is connected." />`;
   const mix = mixOf(books) ? html`<div class="bs-mix"><p class="bs-figs__label">Where ${books.year}’s revenue came from</p><${RevenueMix} books=${books} /></div>` : null;
   // (an account below zero is a plain tile, never the yellow one)
-  return html`<div class="bs-money" ref=${ref}><ul class="bs-figs" style=${`--n:${tiles.length}`}>${tiles.map((t) => html`<li key=${t.k} class=${t.quiet ? 'is-quiet' : null}><span class="bs-figs__label">${t.label}</span><span class=${`bs-figs__value ${/[a-z]{2,}/i.test(t.value) ? 'is-words' : ''}`}>${t.value}</span>${t.pct != null ? html`<span class="bs-figs__bar" role="img" aria-label=${`${t.pct}% of the budget`}><i style=${`--p:${Math.min(100, t.pct)}%`}></i></span>` : null}${t.sub ? html`<span class="bs-figs__sub">${t.sub}</span>` : null}</li>`)}</ul>${mix}</div>`;
+  return html`<div class="bs-money" ref=${ref}><ul class="bs-figs" style=${`--n:${tiles.length}`}>${tiles.map((t) => html`<li key=${t.k} class=${t.quiet ? 'is-quiet' : null}><span class="bs-figs__label">${t.label}</span><span class=${`bs-figs__value ${/[a-z]{2,}/i.test(t.value) ? 'is-words' : ''}`}>${t.value}</span>${t.pct != null ? html`<span class="bs-figs__bar" role="img" aria-label=${`${t.pct}% of the budget`}><i style=${`--p:${Math.min(100, t.pct)}%`}></i></span>` : null}${t.sub ? html`<span class="bs-figs__sub"><${Both} as=${as} pct=${as === 'usd' ? other.get(t.k) : t.sub} usd=${as === 'usd' ? t.sub : other.get(t.k)} /></span>` : null}</li>`)}</ul>${mix}</div>`;
 }
 /** Reveals ahead: each kid's photo and the day */
 /**
@@ -1034,6 +1049,14 @@ export function Screen({ id, data, d, onBack = null }) {
     const on = (e) => { if (e.key === 'bd-change-as') setChgNow(readChangeAs()); };
     addEventListener('storage', on);
     return () => removeEventListener('storage', on);
+  }, []);
+  // The makeovers' family names and the reveals' whole when they fit their lines (after every render, as the window
+  // changes and once the fonts are in)
+  useEffect(wholeIfFits);
+  useEffect(() => {
+    addEventListener('resize', wholeIfFits);
+    document.fonts?.ready.then(wholeIfFits);
+    return () => removeEventListener('resize', wholeIfFits);
   }, []);
   const [, setTick] = useState(0);
   const ch = useRef(null);

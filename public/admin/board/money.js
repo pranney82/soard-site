@@ -389,6 +389,34 @@ export function overIn(a, b, as = 'usd', { short = false } = {}) {
   if (as === 'pct' && b > 0) { const c = Math.round(((a - b) / b) * 100); return c === 0 ? 'Even' : `${c > 0 ? '+' : '−'}${Math.abs(c)}%`; }
   return `${a > b ? '+' : '−'}${(short ? compact : money)(Math.abs(a - b))}`;
 }
+/**
+ * A change both ways, `as` showing its pick and the other kept in its place unseen (portal.css .by-both, drawn from
+ * data-alt, so it's never in the page's words): the place is the size of the longer, so choosing % or $ moves nothing
+ * on the slide or the page (Peter: "the numbers move position!"). Given two whole lines ("As of Nov 2 · ▲ 12% on a
+ * year"), only where they differ is doubled, the arrow with its figure, so the words around it stay as they are and the
+ * line breaks in the same place either way. Said the same both ways ("▼ $285K", a profit's), its arrow still stays
+ * with its figure
+ */
+export function Both({ as, pct, usd }) {
+  const a = String(pct ?? '');
+  const b = String(usd ?? '');
+  if (a === b) {
+    const m = /[▲▼] \S+/.exec(a);
+    return m ? html`${a.slice(0, m.index)}<span class="by-both"><span>${m[0]}</span></span>${a.slice(m.index + m[0].length)}` : a;
+  }
+  let p = 0;
+  while (p < a.length && p < b.length && a[p] === b[p]) p += 1;
+  p = a.lastIndexOf(' ', p - 1) + 1;
+  if (/[▲▼] $/.test(a.slice(0, p))) p -= 2;
+  let s = 0;
+  while (s < a.length - p && s < b.length - p && a[a.length - 1 - s] === b[b.length - 1 - s]) s += 1;
+  // (the same end from a word's start: "…K on a year" of $450K and $45K is the whole figure's)
+  let q = a.length - s;
+  if (q < a.length && a[q] !== ' ') { const sp = a.indexOf(' ', q); q = sp === -1 ? a.length : sp; }
+  s = a.length - q;
+  const [on, off] = as === 'usd' ? [b.slice(p, b.length - s), a.slice(p, q)] : [a.slice(p, q), b.slice(p, b.length - s)];
+  return html`${a.slice(0, p)}<span class="by-both" data-alt=${off}><span>${on}</span></span>${a.slice(q)}`;
+}
 
 /**
  * The revenue as one bar, a part per category, and a key giving each its amount and share; over a part, its exact

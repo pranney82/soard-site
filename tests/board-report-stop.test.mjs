@@ -143,8 +143,8 @@ test('no statement slide holds more than a slide’s lines, "continued" line and
 });
 
 test('a statement’s change column is one unit on all its slides: percents only when every line has a base to take one of', () => {
-  // The words a slide's table says, its cells apart
-  const text = (v) => (v == null || typeof v === 'boolean' ? '' : typeof v !== 'object' ? String(v) : Array.isArray(v) ? v.map(text).join('|') : text(v.props?.children));
+  // The words a slide's table says, its cells apart (a component drawn as it would be: a change's money.js Both)
+  const text = (v) => (v == null || typeof v === 'boolean' ? '' : typeof v !== 'object' ? String(v) : Array.isArray(v) ? v.map(text).join('|') : typeof v.type === 'function' ? text(v.type(v.props)) : text(v.props?.children));
   const units = (rows) => statementBreaks(rows).map((_, page) => {
     const changes = text(StatementLines({ rows, asOf: '2026-10-31', priorAsOf: '2025-10-31', page, as: 'pct' })).match(/[▲▼] [^|]+/g) || [];
     return [...new Set(changes.map((c) => (c.endsWith('%') ? '%' : '$')))].join('');
