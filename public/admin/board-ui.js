@@ -1000,6 +1000,13 @@ export const STYLES = `
   .agx-slide__t { flex: 1 1 auto; min-width: 0; display: flex; align-items: baseline; gap: 0.45rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .agx-slide__t small { color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
   .agx-slide__k { flex: none; font-size: var(--fs-2xs); font-weight: 600; letter-spacing: 0.02em; color: var(--color-text-muted); }
+  /* An item's slide pieces move by their first slide's arrows, there on a pointer or a key on the row */
+  .agx-slides__row { position: relative; display: flex; align-items: center; }
+  .agx-slides__row > .agx-slide { flex: 1 1 auto; min-width: 0; }
+  .agx-slide__move { flex: none; display: inline-flex; gap: 0.1rem; opacity: 0; }
+  .agx-slides__row:hover .agx-slide__move, .agx-slide__move:focus-within { opacity: 1; }
+  .agx-slide__move .bd-icon-btn { width: 1.75rem; height: 1.75rem; font-size: var(--fs-sm); }
+  @media (hover: none) { .agx-slide__move { opacity: 1; } }
   .agx-slide.is-section { font-weight: 650; }
   .agx-slide.is-doc .agx-slide__t, .agx-slide.is-live .agx-slide__t, .agx-slide.is-books .agx-slide__t { padding-left: 1.2rem; font-weight: 400; color: var(--color-text-secondary); }
   .agx-slide.is-doc.is-on .agx-slide__t, .agx-slide.is-live.is-on .agx-slide__t, .agx-slide.is-books.is-on .agx-slide__t { color: var(--color-text); }

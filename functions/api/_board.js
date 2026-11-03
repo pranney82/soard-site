@@ -40,7 +40,7 @@ import {
   agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
   isFilled, LIVE_TITLES, presentersOf, reportsOn, namesText,
 } from '../../public/admin/board-shared.js';
-import { welcomeHad, REPORT_LOOKS } from '../../public/admin/board-shared.js';
+import { welcomeHad, REPORT_LOOKS, SLIDE_PIECE } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
 import { peopleRows, privateEmails, activeBoard, boardAdmins, readState, writeState, readSettings, normEmail, BOARD_PAGE } from './_board-roles.js';
@@ -456,6 +456,23 @@ export async function detachFromItem(env, id, itemId, fileId, { member = null, a
   const saved = await patchMeeting(env.DB, id, (cur) => ({ ...cur, sections: cur.sections.map((s) => ({ ...s, items: s.items.map((x) => (x.id === itemId ? { ...x, docs: (x.docs || []).filter((d) => d !== fileId) } : x)) })) }), { by: member?.name || adminEmail });
   if (member && !saved.sections.some((s) => s.items.some((x) => (x.docs || []).includes(fileId)))) await deleteFile(env, fileId);
   return { docs: saved.sections.flatMap((s) => s.items).find((x) => x.id === itemId)?.docs || [] };
+}
+
+/**
+ * The order of an item's slides on the screen (board-shared.js orderUnits), set on the board page by who presents it
+ * (presenterGate, as their report), or by one of Board's admins: never a clash, nothing else about the item changes
+ * → { itemId, slideOrder }
+ */
+export async function saveSlideOrder(env, id, itemId, order, { member = null, admin = false, adminEmail = '' } = {}) {
+  await ensureSchema(env.DB);
+  if (!Array.isArray(order)) throw err('What order should its slides go in?', 400);
+  await presenterGate(env, id, itemId, { member, admin });
+  const slideOrder = [...new Set(order.map(String).filter((x) => SLIDE_PIECE.test(x)))].slice(0, 40);
+  const saved = await patchMeeting(env.DB, id, (cur) => {
+    if (!cur.sections.some((s) => s.items.some((x) => x.id === itemId))) throw err('That item isn’t on the agenda any more', 404);
+    return { ...cur, sections: cur.sections.map((s) => ({ ...s, items: s.items.map((x) => (x.id === itemId ? { ...x, slideOrder } : x)) })) };
+  }, { by: member?.name || adminEmail });
+  return { itemId, slideOrder: saved.sections.flatMap((s) => s.items).find((x) => x.id === itemId)?.slideOrder || [] };
 }
 
 /**
@@ -1994,7 +2011,7 @@ export async function liveView(env, id, { member = null, admin = false, adminEma
   const sections = seen.sections.map((sec) => ({
     id: sec.id, title: sec.title, minutes: sec.minutes || 0,
     items: sec.items.filter(isFilled).map((it) => ({ id: it.id, title: it.title, motion: it.motion || '', presenter: it.presenter, who: it.who, notes: it.notes, confidential: it.confidential, live: it.live, also: it.also, about: it.about, docs: it.docs,
-      report: it.report, reportBy: it.reportBy, reportAt: it.reportAt, reportLook: it.reportLook || '' })),
+      report: it.report, reportBy: it.reportBy, reportAt: it.reportAt, reportLook: it.reportLook || '', slideOrder: it.slideOrder || [] })),
   }));
   // The last meeting's minutes, for an item that asks the board to approve them (only from a meeting the board can see)
   const prior = [];

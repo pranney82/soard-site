@@ -297,7 +297,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   };
   const work = html`<div class="bm-work" id="bm-work">
     <${AgendaEditor} ...${p} />
-    <${AgendaStage} m=${m} focusId=${focusId} meetings=${data.meetings} />
+    <${AgendaStage} m=${m} focusId=${focusId} meetings=${data.meetings} onOrder=${(id, order) => set(withItem(id, () => ({ slideOrder: order })))} />
   </div>`;
   return html`
     <div class="bm-top" data-meeting=${m.id}>
@@ -791,7 +791,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
  */
 const STAGE_AS = [['screen', 'Presentation'], ['page', 'Board page'], ['phone', 'Phone']];
 const SLIDE_KIND = { cover: 'Cover', since: 'Since we met', section: 'Part', item: 'Item', report: 'Report', decision: 'Vote', doc: 'Page', live: 'Live', books: 'QuickBooks', end: 'Close' };
-function AgendaStage({ m, focusId, meetings }) {
+function AgendaStage({ m, focusId, meetings, onOrder = null }) {
   const [as, setAs] = useState(() => { try { const k = localStorage.getItem('bd-stage-as'); return STAGE_AS.some(([x]) => x === k) ? k : 'screen'; } catch { return 'screen'; } });
   const pick = (k) => { setAs(k); try { localStorage.setItem('bd-stage-as', k); } catch { /* private browsing */ } };
   const frame = useRef(null);
@@ -883,11 +883,20 @@ function AgendaStage({ m, focusId, meetings }) {
       <ol class="agx-slides" ref=${list} aria-label="Every slide, in order">
         ${stops.map((s, i) => {
           const w = words(s);
-          return html`<li key=${s.key}><button type="button" class=${`agx-slide is-${s.kind} ${i === at ? 'is-on' : ''}`} aria-current=${i === at ? 'step' : null} onClick=${() => goTo(s)}>
+          // An item's slides move in pieces (board-shared.js orderUnits): one earlier or later, by the first slide's arrows
+          const first = s.itemId && s.unit && !(stops[i - 1]?.itemId === s.itemId && stops[i - 1]?.unit === s.unit);
+          const pieces = first ? [...new Set(stops.filter((x) => x.itemId === s.itemId && x.unit).map((x) => x.unit))] : [];
+          const k = pieces.indexOf(s.unit);
+          const move = (to) => { const ids = [...pieces]; ids.splice(k, 1); ids.splice(to, 0, s.unit); onOrder(s.itemId, ids); };
+          const what = s.kind === 'item' ? 'its own slide' : s.kind === 'report' ? 'the report' : s.kind === 'decision' ? 'the vote' : `“${w.title}”`;
+          return html`<li key=${s.key} class="agx-slides__row"><button type="button" class=${`agx-slide is-${s.kind} ${i === at ? 'is-on' : ''}`} aria-current=${i === at ? 'step' : null} onClick=${() => goTo(s)}>
             <span class="agx-slide__n">${i + 1}</span>
             <span class="agx-slide__t">${w.label && s.kind !== 'doc' && s.kind !== 'live' && s.kind !== 'books' ? html`<b>${w.label}</b>` : null}${w.title}${s.kind === 'doc' && w.sub ? html`<small>${w.sub.split(' · ').slice(1).join(' · ')}</small>` : null}</span>
             <span class="agx-slide__k">${SLIDE_KIND[s.kind] || ''}</span>
-          </button></li>`;
+          </button>${onOrder && pieces.length > 1 ? html`<span class="agx-slide__move">
+            <button type="button" class="bd-icon-btn" disabled=${k === 0} aria-label=${`Move ${what} earlier in the item`} title="Earlier in its item" onClick=${() => move(k - 1)}>↑</button>
+            <button type="button" class="bd-icon-btn" disabled=${k === pieces.length - 1} aria-label=${`Move ${what} later in the item`} title="Later in its item" onClick=${() => move(k + 1)}>↓</button>
+          </span>` : null}</li>`;
         })}
       </ol>` : null}
   </aside>`;

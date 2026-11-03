@@ -32,7 +32,7 @@ import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
   isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
   reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
-  NOTHING_NEW, isNothingNew, LIMITS, slidesOfItem, reportAlone, decidesAlone, facesOf, hasReport, LIVE_TITLES,
+  NOTHING_NEW, isNothingNew, LIMITS, slidesOfItem, reportAlone, decidesAlone, facesOf, hasReport, LIVE_TITLES, orderUnits,
 } from '../board-shared.js';
 import { YearCompare, booksTitle } from './books.js';
 import { FinanceReview, NoteLine, notesByKey, lineKeysOf, withLineNotes, dueText } from './review.js';
@@ -547,7 +547,7 @@ function App() {
       if (msg.type === 'board-preview-item' && msg.meetingId && msg.itemId) {
         setData((dd) => {
           if (!dd) return dd;
-          const next = withItem(dd, msg.meetingId, msg.itemId, { report: String(msg.report ?? ''), motion: String(msg.motion ?? ''), reportLook: String(msg.reportLook ?? ''), ...(msg.reportBy ? { reportBy: String(msg.reportBy) } : {}) });
+          const next = withItem(dd, msg.meetingId, msg.itemId, { report: String(msg.report ?? ''), motion: String(msg.motion ?? ''), reportLook: String(msg.reportLook ?? ''), ...(msg.reportBy ? { reportBy: String(msg.reportBy) } : {}), ...(Array.isArray(msg.slideOrder) ? { slideOrder: msg.slideOrder.map(String) } : {}) });
           if (!Array.isArray(msg.docs) || !Array.isArray(msg.files)) return next;
           const files = msg.files.filter((f) => f && typeof f.id === 'string');
           const put = (m) => (m.id !== msg.meetingId ? m : { ...m, files: [...m.files.filter((f) => !files.some((g) => g.id === f.id)), ...files], sections: m.sections.map((x) => ({ ...x, items: x.items.map((it) => (it.id === msg.itemId ? { ...it, docs: msg.docs.map(String) } : it)) })) });
@@ -1802,7 +1802,7 @@ function slideBy(s, it) {
  * write or fills in by itself; its documents in their place, by name and pages. What's typed reaches every slide a
  * moment after typing stops, and the slide it changed is marked and brought into view
  */
-function SlideStack({ m, it, files, draft }) {
+function SlideStack({ m, it, files, draft, onOrder = null }) {
   const holder = useRef(null);
   const [w, setW] = useState(0);
   const [stops, setStops] = useState(null); // the item's stops, as the first frame's deck has them
@@ -1813,7 +1813,7 @@ function SlideStack({ m, it, files, draft }) {
   const toShow = useRef('');
   // What's typed, a moment after typing stops: every slide is laid out again only then, never on every key
   const [sent, setSent] = useState(draft);
-  useEffect(() => { const t = setTimeout(() => setSent(draft), 300); return () => clearTimeout(t); }, [draft.report, draft.motion, draft.reportBy, draft.reportLook, draft.docs.join('|')]);
+  useEffect(() => { const t = setTimeout(() => setSent(draft), 300); return () => clearTimeout(t); }, [draft.report, draft.motion, draft.reportBy, draft.reportLook, draft.docs.join('|'), (draft.slideOrder || []).join('|')]);
   useEffect(() => {
     const el = holder.current;
     if (!el) return undefined;
@@ -1860,53 +1860,80 @@ function SlideStack({ m, it, files, draft }) {
     else el.scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' });
   }, [marked, stops]);
   const scale = w ? w / 1280 : 0;
-  const list = stops || [{ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0 }];
-  // Its documents, one line in their place: each file once, with how many of its pages show (two to a slide, an open
-  // book, so the slides they take are counted apart: ./board-shared.js deckOf)
-  const rows = [];
-  for (const s of list) {
-    if (s.kind !== 'doc') { rows.push(s); continue; }
-    const last = rows.at(-1);
-    const row = last?.kind === 'docs' ? last : (rows.push({ kind: 'docs', key: `docs:${s.key}`, files: new Map(), slides: 0, from: 0, to: 0 }), rows.at(-1));
-    row.slides += 1;
-    const seen = row.files.get(s.fileId) || new Set();
-    for (const q of s.pages?.length ? s.pages : [s.page]) seen.add(q);
-    row.files.set(s.fileId, seen);
-  }
+  const list = stops || [{ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, unit: 'item' }];
+  // In pieces that move together (./board-shared.js deckOf: its own slide, the report, a statement, a document, the
+  // vote), in the order set here: a move shows at once, the frames' deck catching up a moment later
+  const groups = [];
+  for (const s of list) { const id = s.unit || s.key; const g = groups.at(-1); if (g?.id === id) g.stops.push(s); else groups.push({ id, stops: [s] }); }
+  const units = orderUnits(groups, draft.slideOrder);
   let n = 0;
-  for (const r of rows) { if (r.kind === 'docs') { r.from = n + 1; r.to = n + r.slides; n += r.slides; } else r.n = ++n; }
+  for (const u of units) { u.from = n + 1; n += u.stops.length; u.to = n; }
   const nameOfFile = (id) => docTitle(files.find((f) => f.id === id)?.name || 'A document');
+  const pagesOf = (u) => new Set(u.stops.flatMap((s) => (s.pages?.length ? s.pages : [s.page]))).size;
+  const unitName = (u) => (u.stops[0].kind === 'doc' ? nameOfFile(u.stops[0].fileId) : slideName(u.stops[0], cur).replace(/, 1 of \d+$/, ''));
+  const movable = !!onOrder && !!stops && units.length > 1;
+  // A piece moved: one earlier or later (its arrows), or dropped where it's dragged; said for a screen reader
+  const moveTo = (id, to) => {
+    const ids = units.map((u) => u.id);
+    const from = ids.indexOf(id);
+    if (from < 0 || to === from || to < 0 || to >= ids.length) return;
+    ids.splice(from, 1);
+    ids.splice(to, 0, id);
+    onOrder(ids);
+    const at = ids.slice(0, to).reduce((k, x) => k + (units.find((v) => v.id === x)?.stops.length || 0), 1);
+    setSaid(`${unitName(units[from])} is slide ${at} now.`);
+  };
+  const [said, setSaid] = useState('');
+  const [drag, setDrag] = useState(null); // { id, over, after } while a piece is dragged
   const cut = Object.entries(cuts).some(([k, v]) => v && list.some((s) => s.key === k));
   const fitLine = [
     cut && hasReport(cur) ? 'One point is too long for a slide, so the screen sets it smaller. Breaking it up reads better.' : '',
     String(sent.motion || '').trim() && motionCut ? 'The screen cuts the motion short; a shorter one fits.' : '',
   ].filter(Boolean).join(' ');
   return html`<div class="bp-rp__stack" ref=${holder}>
-    ${stops ? html`<p class="bp-rp__count">${list.length === 1 ? 'One slide' : `${list.length} slides`} in the meeting, in this order</p>` : null}
-    <ol class="bp-rp__slides">${rows.map((s) => {
-      if (s.kind === 'docs') {
-        return html`<li key=${s.key} class="bp-rp__slide bp-rp__slide--docs">
-          <p class="bp-rp__slide-h"><span class="bp-rp__slide-n">${s.from === s.to ? s.from : `${s.from}–${s.to}`}</span><span class="bp-rp__slide-name">${s.files.size === 1 ? 'Its document' : 'Its documents'}</span><span class="bp-rp__slide-tag">As the file is</span></p>
-          <ul class="bp-rp__slide-files">${[...s.files].map(([id, pages]) => html`<li key=${id}>${nameOfFile(id)}<span class="bp-muted">${pages.size === 1 ? 'one page' : `${pages.size} pages`}</span></li>`)}</ul>
-        </li>`;
-      }
-      const by = slideBy(s, cur);
-      return html`<li key=${s.key} class=${`bp-rp__slide ${mark === s.key ? 'is-mark' : ''}`} data-stop=${s.key}>
-        <p class="bp-rp__slide-h"><span class="bp-rp__slide-n">${s.n}</span><span class="bp-rp__slide-name">${slideName(s, cur)}</span><span class=${`bp-rp__slide-tag ${by.mine ? 'is-mine' : ''}`}>${by.text}</span></p>
-        <${SlideFrame} m=${m} it=${it} at=${s.key} draft=${sent} scale=${scale} first=${s.key === it.id} eager=${s.kind === 'decision' || (s.kind === 'report' && (s.page || 0) < 3)}
-          onDeck=${s.key === it.id ? (all) => setStops(all.filter((x) => x.itemId === it.id)) : null}
-          onFit=${(k, c) => setCuts((x) => (x[k] === c ? x : { ...x, [k]: c }))} onMotion=${(k, c) => setMotionCut(c)} />
+    ${stops ? html`<p class="bp-rp__count">${list.length === 1 ? 'One slide' : `${list.length} slides`} in the meeting, in this order${movable ? html`<span class="bp-rp__count-how">Drag one to move it, or use its arrows</span>` : null}</p>` : null}
+    <ol class="bp-rp__slides">${units.map((u, i) => {
+      const ctl = movable ? html`<span class="bp-rp__move">
+        <span class="bp-rp__grip" aria-hidden="true">${GRIP}</span>
+        <button type="button" class="bp-rp__mv" disabled=${i === 0} aria-label=${`Move ${unitName(u)} earlier`} title="Earlier" onClick=${() => moveTo(u.id, i - 1)}>${ARROW_UP}</button>
+        <button type="button" class="bp-rp__mv" disabled=${i === units.length - 1} aria-label=${`Move ${unitName(u)} later`} title="Later" onClick=${() => moveTo(u.id, i + 1)}>${ARROW_DOWN}</button>
+      </span>` : null;
+      const drop = drag && drag.id !== u.id && drag.over === u.id ? (drag.after ? 'is-drop-after' : 'is-drop-before') : '';
+      const doc = u.stops[0].kind === 'doc';
+      return html`<li key=${u.id} class=${`bp-rp__unit ${u.stops.length > 1 && !doc ? 'is-many' : ''} ${drag?.id === u.id ? 'is-dragged' : ''} ${drop}`} data-unit=${u.id}
+        draggable=${movable ? 'true' : null}
+        onDragStart=${movable ? (e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', u.id); setDrag({ id: u.id, over: '', after: false }); } : null}
+        onDragOver=${movable && drag ? (e) => { e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); const after = e.clientY > r.top + r.height / 2; if (drag.over !== u.id || drag.after !== after) setDrag({ ...drag, over: u.id, after }); } : null}
+        onDrop=${movable && drag ? (e) => { e.preventDefault(); const from = units.findIndex((x) => x.id === drag.id); const at = i + (drag.after ? 1 : 0); setDrag(null); moveTo(drag.id, at > from ? at - 1 : at); } : null}
+        onDragEnd=${movable ? () => setDrag(null) : null}>
+        ${doc ? html`<div class="bp-rp__slide bp-rp__slide--docs">
+            <p class="bp-rp__slide-h"><span class="bp-rp__slide-n">${u.from === u.to ? u.from : `${u.from}–${u.to}`}</span><span class="bp-rp__slide-name">${nameOfFile(u.stops[0].fileId)}</span><span class="bp-rp__slide-tag">${pagesOf(u) === 1 ? 'One page' : `${pagesOf(u)} pages`}, as the file is</span>${ctl}</p>
+          </div>`
+        : u.stops.map((s, k) => {
+          const by = slideBy(s, cur);
+          return html`<div key=${s.key} class=${`bp-rp__slide ${mark === s.key ? 'is-mark' : ''}`} data-stop=${s.key}>
+            <p class="bp-rp__slide-h"><span class="bp-rp__slide-n">${u.from + k}</span><span class="bp-rp__slide-name">${slideName(s, cur)}</span><span class=${`bp-rp__slide-tag ${by.mine ? 'is-mine' : ''}`}>${by.text}</span>${k === 0 ? ctl : null}</p>
+            <${SlideFrame} m=${m} it=${it} at=${s.key} draft=${sent} scale=${scale} first=${s.key === it.id} eager=${s.kind === 'decision' || (s.kind === 'report' && (s.page || 0) < 3)}
+              onDeck=${s.key === it.id ? (all) => setStops(all.filter((x) => x.itemId === it.id)) : null}
+              onFit=${(key, c) => setCuts((x) => (x[key] === c ? x : { ...x, [key]: c }))} onMotion=${(key, c) => setMotionCut(c)} />
+          </div>`;
+        })}
       </li>`;
     })}</ol>
+    <p class="sr-only" role="status">${said}</p>
     ${fitLine ? html`<p class="bp-rp__fit is-cut">${fitLine}</p>` : null}
   </div>`;
 }
+/** A piece's handle and arrows (SlideStack) */
+const GRIP = html`<svg viewBox="0 0 12 18" width="10" height="16" aria-hidden="true"><g fill="currentColor"><circle cx="3" cy="3" r="1.6" /><circle cx="9" cy="3" r="1.6" /><circle cx="3" cy="9" r="1.6" /><circle cx="9" cy="9" r="1.6" /><circle cx="3" cy="15" r="1.6" /><circle cx="9" cy="15" r="1.6" /></g></svg>`;
+const ARROW_UP = html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 15.5V4.5M5 9.5l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
+const ARROW_DOWN = html`<svg viewBox="0 0 20 20" width="16" height="16" aria-hidden="true"><path d="M10 4.5v11M5 10.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
 
 /** Beside the report as it's written: the item's slides, as the meeting's screen will show them */
-function ReportPreview({ m, it, files, draft }) {
+function ReportPreview({ m, it, files, draft, onOrder }) {
   return html`<div class="bp-rp__pv">
     <h2 class="bp-mini-h bp-rp__pv-h" id="rp-pv-h">In the meeting</h2>
-    <${SlideStack} m=${m} it=${it} files=${files} draft=${draft} />
+    <${SlideStack} m=${m} it=${it} files=${files} draft=${draft} onOrder=${onOrder} />
   </div>`;
 }
 
@@ -1952,6 +1979,7 @@ function ReportPage({ id, itemId, ctx }) {
   const [look, setLook] = useState(kept0?.look ?? it?.reportLook ?? '');
   const lookNow = useRef(look);
   const lookSent = useRef(it?.reportLook || '');
+  const [order, setOrder] = useState(it?.slideOrder || []);
   const [view, setView] = useState('write'); // a phone's switch: write | preview (in the meeting)
   const [asking, setAsking] = useState(false); // "Swap your report for Nothing new…?" open
   // The words a "Nothing to report" took the place of, back with "Write a report instead" (kept on this device)
@@ -2151,7 +2179,14 @@ function ReportPage({ id, itemId, ctx }) {
   const startFrom = () => { putIn(last.it.report, { inserted: true }); toEditor(); };
   const myName = d.me?.name || (data.me.as ? d.bySlug.get(data.me.as)?.name : '') || '';
   // Its slide with what's typed (saved or not), said by who's writing it now
-  const draft = { report: text, motion, reportBy: myName || it.reportBy, reportLook: look, docs: it.docs || [], files: (m.files || []).filter((f) => (it.docs || []).includes(f.id)) };
+  const draft = { report: text, motion, reportBy: myName || it.reportBy, reportLook: look, slideOrder: order, docs: it.docs || [], files: (m.files || []).filter((f) => (it.docs || []).includes(f.id)) };
+  // The order of its slides on the screen (board-shared.js orderUnits), as they set it beside the writing: saved at once
+  const reorder = async (next) => {
+    setOrder(next);
+    const j = await call({ action: 'slide-order', meetingId: id, itemId, order: next });
+    if (!j.ok) { ctx.say(j.error || 'The new order couldn’t be saved. Try again.', 'warn'); return; }
+    setData((dd) => withItem(dd, id, itemId, { slideOrder: j.slideOrder }));
+  };
   const standing = reportStanding(m, it, data);
   const copy = async () => {
     try { await navigator.clipboard.writeText(latest.current); ctx.say('Your words are copied'); } catch { ctx.say('Select the words and copy them', 'warn'); }
@@ -2260,7 +2295,7 @@ function ReportPage({ id, itemId, ctx }) {
         <a class=${`bp-btn bp-btn--primary ${leaving ? 'is-busy' : ''}`} href=${back} aria-disabled=${leaving ? 'true' : null} onClick=${leave}>${leaving ? 'Saving…' : 'Done'}</a>
       </div>
     </div>
-    <aside class="bp-rp__preview" aria-labelledby="rp-pv-h" tabindex="0"><${ReportPreview} m=${m} it=${it} files=${files} draft=${draft} /></aside>
+    <aside class="bp-rp__preview" aria-labelledby="rp-pv-h" tabindex="0"><${ReportPreview} m=${m} it=${it} files=${files} draft=${draft} onOrder=${reorder} /></aside>
   </div>`}
   </div>`;
 }

@@ -1353,7 +1353,7 @@ export function Screen({ id, data, d, onBack = null }) {
   // Board's preview is told the deck and where it is, for its list of slides and its "4 of 31"
   useEffect(() => {
     if (!PREVIEW || !deck.length) return;
-    window.parent?.postMessage({ type: 'board-preview-deck', id, at: ownAt, pages, shows, words: Object.fromEntries(docFiles.map((f) => [f.id, pageWordOf(f)])), stops: deck.map(({ key, kind, itemId, fileId, page, pages: spread, part, of, n, sectionId }) => ({ key, kind, itemId, fileId, page, ...(spread ? { pages: spread } : {}), part: part || 0, of: of || 0, n, sectionId })) }, location.origin);
+    window.parent?.postMessage({ type: 'board-preview-deck', id, at: ownAt, pages, shows, words: Object.fromEntries(docFiles.map((f) => [f.id, pageWordOf(f)])), stops: deck.map(({ key, kind, itemId, fileId, page, pages: spread, part, of, n, sectionId, unit }) => ({ key, kind, itemId, fileId, page, unit: unit || '', ...(spread ? { pages: spread } : {}), part: part || 0, of: of || 0, n, sectionId })) }, location.origin);
   }, [deck, ownAt, pages, shows]);
   // Presenting: the slide kept for a reload
   // (never while the slide asked for is still being counted: a reload then would lose it)
@@ -1501,7 +1501,8 @@ export function Screen({ id, data, d, onBack = null }) {
     const notes = reportHere ? '' : item.notes;
     const notesRow = notes ? html`<div class="bs-item__body"><${Points} text=${notes} /></div>` : null;
     // Under the money's tiles there's room for a row: each document small, its title beside it
-    const coming = docs.length && !reportHere && !notes ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document' : 'Its documents'}${deck[at + 1]?.kind === 'report' ? ', after the report' : ', next'}</p><${Shelf} docs=${docs} pages=${pages} row=${!!facts && !faces} max=${item.notes && (item.live === 'minutes' || item.report) ? 2 : item.notes || item.live === 'minutes' ? 3 : 6} /></div>` : null;
+    // (only while they're still to come: its presenter may have put them before this slide)
+    const coming = docs.length && !reportHere && !notes && deck.slice(at + 1).some((x) => x.itemId === item.id && x.kind === 'doc') ? html`<div class="bs-coming"><p class="bs-eyebrow">${docs.length === 1 ? 'Its document' : 'Its documents'}${deck[at + 1]?.kind === 'doc' && deck[at + 1]?.itemId === item.id ? ', next' : deck[at + 1]?.kind === 'report' && deck.slice(at + 1).find((x) => x.itemId === item.id && x.kind !== 'report')?.kind === 'doc' ? ', after the report' : ', later'}</p><${Shelf} docs=${docs} pages=${pages} row=${!!facts && !faces} max=${item.notes && (item.live === 'minutes' || item.report) ? 2 : item.notes || item.live === 'minutes' ? 3 : 6} /></div>` : null;
     if (faces) {
       stage = html`<div class="bs-item bs-item--board bs-item--faces">
         <div class="bs-item__bar"><div>${head}</div>${faces === 'roll' ? html`<div class="bs-item__aside"><${RollCount} v=${v} started=${started} /></div>` : null}</div>

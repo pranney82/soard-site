@@ -339,6 +339,8 @@ function cleanItem(raw) {
     reportAt: /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/.test(String(raw?.reportAt || '')) ? raw.reportAt : '',
     // How the screen draws it, as its writer chose ('' as it fits: REPORT_LOOKS, shownLook)
     reportLook: REPORT_LOOKS.includes(raw?.reportLook) ? raw.reportLook : '',
+    // Its slides' order on the screen, as its presenter or Board set it (deckOf orderUnits): [] as they come
+    slideOrder: [...new Set((Array.isArray(raw?.slideOrder) ? raw.slideOrder : []).map(String).filter((x) => SLIDE_PIECE.test(x)))].slice(0, 40),
     // What its presenter asks the board to vote on ("Move to approve the 2027 budget as presented."), written ahead:
     // on the agenda, the screen and the minutes template, where the secretary records who moved it and how it went
     motion: one(raw?.motion, LIMITS.motion),
@@ -1317,18 +1319,24 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null 
   // QuickBooks' slides once, after the first item that shows the money (a second one shows the figures, not them again)
   let booked = false;
   const add = (it, files, n, sectionId) => {
-    out.push({ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n, sectionId });
+    // Its slides in pieces that move together (slideOrder, as its presenter or Board set them): its own slide, the
+    // report (on its own slide's first when nothing else fills that: then one piece), each live list or QuickBooks'
+    // statement, each document, the vote
+    const units = [];
+    const piece = (id) => { let u = units.find((x) => x.id === id); if (!u) { u = { id, stops: [] }; units.push(u); } return u; };
+    const push = (id, stop) => piece(id).stops.push({ ...stop, unit: id });
+    push('item', { key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n, sectionId });
     // An item that shows live facts (the makeovers, the money…) or the board's faces fills its own slide with them, and
     // one with notes keeps them there: its report is a slide of its own, right after (nothing new to report needs none)
     // A report longer than a slide goes on to as many as it needs (reportSlides): after its item's own slide (which
     // shows the first, when the report is there), each a 'report' stop, page by page
     const slides = slidesOfItem(it);
-    for (let p = reportAlone(it) ? 0 : 1; p < slides.length; p++) out.push({ key: `${it.id}:report${p ? `:${p}` : ''}`, kind: 'report', itemId: it.id, fileId: 'report', page: p, of: slides.length, n, sectionId });
+    for (let p = reportAlone(it) ? 0 : 1; p < slides.length; p++) push(reportAlone(it) ? 'report' : 'item', { key: `${it.id}:report${p ? `:${p}` : ''}`, kind: 'report', itemId: it.id, fileId: 'report', page: p, of: slides.length, n, sectionId });
     // Each live list after the first, a slide of its own; after the money, QuickBooks' slides (the year against last
     // year, then each statement, as many slides as its lines take at a size a room reads)
     for (const x of slidesOf(it, booked ? null : books)) {
       const pages = x.kind === 'books' && ['act', 'budget', 'pos'].includes(x.k) ? statementBreaks(statementRows(books, x.k)).length : 1;
-      for (let p = 0; p < pages; p++) out.push({ key: `${it.id}:${x.id}${p ? `:${p}` : ''}`, kind: x.kind, itemId: it.id, fileId: x.id, page: p, n, sectionId });
+      for (let p = 0; p < pages; p++) push(x.id, { key: `${it.id}:${x.id}${p ? `:${p}` : ''}`, kind: x.kind, itemId: it.id, fileId: x.id, page: p, n, sectionId });
     }
     if (showsOf(it).includes('cash')) booked = true;
     for (const f of files) {
@@ -1338,12 +1346,13 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null 
       const of = (p) => { const x = parts[f.id]?.[p]; return x === undefined || x === null ? 1 : Number(x); };
       for (const sp of spreadsOf(count, of)) {
         const [p, k] = sp[0];
-        out.push({ key: `${it.id}:${f.id}:${p}${k === 1 ? ':b' : k > 1 ? `:p${k}` : ''}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, part: k, pages: [...new Set(sp.map(([q]) => q))], sheets: sp, n, sectionId });
+        push(`file:${f.id}`, { key: `${it.id}:${f.id}:${p}${k === 1 ? ':b' : k > 1 ? `:p${k}` : ''}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, part: k, pages: [...new Set(sp.map(([q]) => q))], sheets: sp, n, sectionId });
       }
     }
     // Its motion, after all it shows (the vote follows what was presented), on a slide of its own when there's more
     // than the motion to show: never squeezed beside a report, the notes or the facts
-    if (decidesAlone(it)) out.push({ key: `${it.id}:decision`, kind: 'decision', itemId: it.id, fileId: 'decision', page: 0, n, sectionId });
+    if (decidesAlone(it)) push('decision', { key: `${it.id}:decision`, kind: 'decision', itemId: it.id, fileId: 'decision', page: 0, n, sectionId });
+    for (const u of orderUnits(units, it.slideOrder)) out.push(...u.stops);
   };
   let n = 0;
   for (const s of m.sections) {
@@ -1358,6 +1367,24 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null 
   out.push({ key: 'end', kind: 'end', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' });
   return out;
 }
+/**
+ * An item's pieces of slides (deckOf) in the order its presenter or Board set (`order`, piece ids: item | report |
+ * live:<kind> | books:<kind> | file:<id> | decision), else as they come. A piece not in the order (a document attached
+ * since) goes where it comes, after the piece it follows; one in it that isn't there any more is passed over
+ */
+export function orderUnits(units, order) {
+  if (!Array.isArray(order) || !order.length) return units;
+  const out = [...new Set(order)].map((id) => units.find((u) => u.id === id)).filter(Boolean);
+  units.forEach((u, i) => {
+    if (out.includes(u)) return;
+    const before = units.slice(0, i).reverse().find((x) => out.includes(x));
+    out.splice(before ? out.indexOf(before) + 1 : 0, 0, u);
+  });
+  return out;
+}
+/** A slide piece's id as an item's slideOrder keeps it */
+export const SLIDE_PIECE = /^(?:item|report|decision|live:[a-z]+|books:[a-z]+|file:[A-Za-z0-9_-]{1,64})$/;
+
 /** Where the meeting's live state is in a deck: that page, else that file's last known page, else the item, else a part's card, else the cover */
 export function stopIndex(deck, live) {
   if (live?.screen === 'end') return deck.length - 1;

@@ -36,7 +36,7 @@
  * (theirs alone, simulated members) they check in and vote as themselves.
  */
 
-import { portalData, setActionDone, signDoc, signWithCopy, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, saveMotion, attachToItem, detachFromItem, listMeetings } from './_board.js';
+import { portalData, setActionDone, signDoc, signWithCopy, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, saveSlideOrder, saveMotion, attachToItem, detachFromItem, listMeetings } from './_board.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
 import { noteGet, noteLook, noteAnswer, noteEvents, answerOf } from './_board-activity.js';
@@ -201,6 +201,8 @@ async function post(context) {
         throw err;
       }
     }
+    // The order of an item's slides: who presents it, or an admin
+    if (body.action === 'slide-order') return Response.json({ ok: true, ...(await saveSlideOrder(env, String(body.meetingId || ''), String(body.itemId || ''), body.order, w)) });
     // A shorter version of a report, offered beside it (nothing saved): who presents the item, or an admin
     if (body.action === 'report-shorter') {
       const ask = { id: String(body.meetingId || body.id || ''), itemId: String(body.itemId || ''), text: body.text, title: String(body.title || '') };

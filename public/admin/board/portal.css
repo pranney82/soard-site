@@ -2510,8 +2510,22 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bp-rp__slide.is-mark .bp-rp__screen { box-shadow: 0 0 0 3px var(--yellow), var(--shadow-2); }
 .bp-rp__slide--docs { padding: 0.75rem 0.95rem 0.8rem; border: 1px dashed var(--line-2); border-radius: 14px; }
 .bp-rp__slide--docs .bp-rp__slide-h { margin: 0 0 0.3rem; }
-.bp-rp__slide-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; font-size: 0.9rem; color: var(--ink-2); }
-.bp-rp__slide-files li { display: flex; flex-wrap: wrap; gap: 0 0.5rem; }
+/* Its pieces move: dragged, or one earlier or later by its arrows (a piece of several slides moves whole, a line down
+   its side); where it would go a yellow line, the one dragged faint */
+.bp-rp__count-how { display: block; margin-top: 0.15rem; color: var(--muted); font-size: 0.82rem; font-weight: 500; }
+.bp-rp__unit { position: relative; border-radius: 16px; }
+.bp-rp__unit.is-many { display: grid; gap: 1.15rem; padding-left: 0.75rem; border-left: 3px solid var(--line); }
+.bp-rp__unit[draggable='true'] .bp-rp__slide-h { cursor: grab; }
+.bp-rp__unit.is-dragged { opacity: 0.45; }
+.bp-rp__unit.is-drop-before::before, .bp-rp__unit.is-drop-after::after { content: ''; position: absolute; left: 0; right: 0; height: 4px; border-radius: 2px; background: var(--yellow); }
+.bp-rp__unit.is-drop-before::before { top: -0.7rem; }
+.bp-rp__unit.is-drop-after::after { bottom: -0.7rem; }
+.bp-rp__move { display: inline-flex; align-items: center; gap: 0.2rem; margin-left: 0.35rem; }
+.bp-rp__grip { display: inline-grid; place-items: center; width: 20px; height: 32px; color: var(--muted); cursor: grab; }
+.bp-rp__mv { display: inline-grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 1px solid var(--line-2); border-radius: 999px; background: var(--card); color: var(--ink); cursor: pointer; }
+.bp-rp__mv:hover:not(:disabled) { border-color: var(--ink); }
+.bp-rp__mv:disabled { opacity: 0.35; cursor: default; }
+.bp-rp__mv:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
 @media (prefers-reduced-motion: reduce) { .bp-rp__slide .bp-rp__screen { transition: none; } }
 .bp-rp__fit { min-height: 1.4em; margin: 0.6rem 0 0; color: var(--muted); font-size: 0.88rem; }
 .bp-rp__fit.is-cut { color: var(--warn); font-weight: 600; }
