@@ -1549,52 +1549,66 @@ export function splitOf(blocks, size) {
   const ruled = rulesOf(inked, ink);
   const rows = inked.filter((b) => !ruled(b));
   const mid = (ink.y0 + ink.y1) / 2;
-  // The widest blank close to the middle (the taller part sets the file's zoom, so a cut much off the middle makes
-  // every word smaller), else the nearest one a little farther out
-  let best = null;
-  let near = null;
-  let lines = 1;
-  let end = -1;
-  const tall = [];
-  const blanks = [];
-  let from = rows[0]?.y0 ?? 0;
+  // The page's blocks of lines (a paragraph, a heading, a table's row), apart where a blank runs across
+  const spans = [];
   for (const b of rows) {
-    if (end >= 0 && b.y0 - end > 0.002) {
-      blanks.push([end, b.y0]);
-      tall.push(end - from);
-      from = b.y0;
-      lines += 1;
-      const off = Math.abs((end + b.y0) / 2 - mid);
-      const wide = b.y0 - end;
-      if (off <= span * 0.08 && (!best || wide > best.wide + 0.002 || (Math.abs(wide - best.wide) <= 0.002 && off < best.off))) best = { gap: [end, b.y0], wide, off };
-      if (off <= span * 0.2 && (!near || off < near.off)) near = { gap: [end, b.y0], off };
-    }
-    end = Math.max(end, b.y1);
+    const last = spans.at(-1);
+    if (last && b.y0 - last.y1 <= 0.002) last.y1 = Math.max(last.y1, b.y1);
+    else spans.push({ y0: b.y0, y1: b.y1 });
   }
-  if (end >= 0) tall.push(end - from);
   // A landscape page is cut only when it's rows and rows (a table: each half then fills the screen's width); a slide
-  // stays whole. (A letter page's text is cut whatever its shape, so a binder's pages all come up the same size.) And
-  // with nowhere blank to cut (a photo, a page set solid), whole: never through a line
-  if (size.w > size.h * 1.05 && (lines < 16 || span < 0.5)) return whole;
-  if (!best && !near) return whole;
+  // stays whole. (A letter page's text is cut whatever its shape, so a binder's pages all come up the same size.)
+  if (size.w > size.h * 1.05 && (spans.length < 16 || span < 0.5)) return whole;
   // Words already big (a "2027 GOALS" page): whole, nothing gained by cutting. A drawn page's lines are its runs of
-  // rows; a laid-out page's are its words' boxes (a paragraph's lines touch, so runs would be whole paragraphs)
-  const lineH = (rows[0]?.xs ? tall : rows.map((b) => b.y1 - b.y0)).filter((h) => h > 0.004).sort((a, b) => a - b);
-  if (lineH.length && lineH[Math.floor(lineH.length / 2)] > 0.028) return whole;
+  // rows apart by any blank row (a memo's small type set close is one row apart where the page is measured, so a
+  // paragraph would read as one tall line); a laid-out page's are its words' boxes (a paragraph's lines touch)
+  const runs = [];
+  if (rows[0]?.xs) {
+    const step = (rows[0].y1 - rows[0].y0) / 2;
+    let from = rows[0].y0;
+    let to = -1;
+    for (const b of rows) {
+      if (to >= 0 && b.y0 - to > step) { runs.push(to - from); from = b.y0; }
+      to = Math.max(to, b.y1);
+    }
+    runs.push(to - from);
+  }
+  const lineH = (rows[0]?.xs ? runs : rows.map((b) => b.y1 - b.y0)).filter((h) => h > 0.004).sort((a, b) => a - b);
+  const line = lineH.length ? lineH[Math.floor(lineH.length / 2)] : 0;
+  if (line > 0.028) return whole;
+  // Where it can be cut: between blocks, never right under a heading (one line nearer the words under it than the ones
+  // over it), which goes with its words
+  const all = spans.slice(1).map((b, k) => [spans[k].y1, b.y0]);
+  const heads = all.filter((g, k) => {
+    const over = spans[k];
+    return line && over.y1 - over.y0 <= line * 1.4 && (k ? over.y0 - spans[k - 1].y1 : Infinity) > (g[1] - g[0]) * 1.5;
+  });
+  const free = all.filter((g) => !heads.includes(g));
+  // The widest blank close to the place (the tallest part sets the file's zoom, so a cut much off it makes every word
+  // smaller), or a break between sections (a line tall at least, three times as wide) a little farther out; else the
+  // nearest one farther out still
+  const wideOf = (g) => g[1] - g[0];
+  const pickOf = (blanks, after, at, seg) => {
+    const open = blanks.filter((g) => (g[0] + g[1]) / 2 > after);
+    const offOf = (g) => Math.abs((g[0] + g[1]) / 2 - at);
+    let best = null;
+    for (const g of open) if (offOf(g) <= seg * 0.16 && (!best || wideOf(g) > wideOf(best) + 0.002 || (Math.abs(wideOf(g) - wideOf(best)) <= 0.002 && offOf(g) < offOf(best)))) best = g;
+    const section = best && open.filter((g) => offOf(g) <= seg * 0.2 && wideOf(g) >= Math.max(line, wideOf(best) * 3)).sort((a, b) => wideOf(b) - wideOf(a) || offOf(a) - offOf(b))[0];
+    return section || best || open.filter((g) => offOf(g) <= seg * 0.4).sort((a, b) => offOf(a) - offOf(b))[0] || null;
+  };
+  const cutOf = (after, at, seg) => pickOf(free, after, at, seg) || pickOf(all, after, at, seg);
+  // With nowhere blank to cut (a photo, a page set solid), whole: never through a line
+  const first = cutOf(-Infinity, mid, span / 2);
+  if (!first) return whole;
   // A page much taller than it is wide (a long statement) in as many parts as keep its words readable, up to 8, each cut
   // the same way at its own place down the page; a letter page in two
   const want = Math.max(2, Math.min(8, Math.round((span * size.h) / ((ink.x1 - ink.x0) * size.w * 0.75))));
-  let gaps = [(best || near).gap];
+  let gaps = [first];
   for (let n = want; n > 2; n--) {
     const seg = span / n;
     const cuts = [];
     for (let k = 1; k < n; k++) {
-      const at = ink.y0 + seg * k;
-      const after = cuts.length ? cuts.at(-1)[1] + seg * 0.3 : ink.y0 + seg * 0.3;
-      const open = blanks.filter((g) => (g[0] + g[1]) / 2 > after);
-      const offOf = (g) => Math.abs((g[0] + g[1]) / 2 - at);
-      const close = open.filter((g) => offOf(g) <= seg * 0.16).sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]) || offOf(a) - offOf(b))[0];
-      const pick = close || open.filter((g) => offOf(g) <= seg * 0.4).sort((a, b) => offOf(a) - offOf(b))[0];
+      const pick = cutOf(cuts.length ? cuts.at(-1)[1] + seg * 0.3 : ink.y0 + seg * 0.3, ink.y0 + seg * k, seg);
       if (!pick) break;
       cuts.push(pick);
     }
@@ -1729,7 +1743,7 @@ export function halfOf(lay, k = 0) {
 const layouts = new Map();
 // Kept on this device too (a file never changes under its id), so a meeting opened again knows its halves at once
 // and its stops don't change count as they're worked out. The version goes up when how a page is read changes
-const keptKey = (f, i) => `bdoc-lay12:${f.id}:${f.size || 0}:${i}`;
+const keptKey = (f, i) => `bdoc-lay13:${f.id}:${f.size || 0}:${i}`;
 const countKey = (f) => `bdoc-count:${f.id}:${f.size || 0}`;
 const kept = (f, i) => { try { const x = JSON.parse(localStorage.getItem(keptKey(f, i)) || 'null'); return x && typeof x.n === 'number' ? x : null; } catch { return null; } };
 // The last version's, read another way, go (once a page load)
@@ -1737,7 +1751,7 @@ let swept = false;
 function sweepKept() {
   if (swept) return;
   swept = true;
-  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay([2-9]|1[01]):/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
+  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay([2-9]|1[0-2]):/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
 }
 const PROBE = 400;
 /**

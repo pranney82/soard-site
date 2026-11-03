@@ -401,6 +401,43 @@ test('a page of words already big (a goals page) is never cut', () => {
   assert.equal(splitOf(rows, size).n, 1);
 });
 
+// A drawn page as inkOf reads it at 400px across (517 rows down a letter page): a row of ink per pixel row, each line
+// of type 8 rows tall, a block's lines one blank row apart, `after` the blank rows under each block
+function memo(blocks) {
+  const R = 1 / 517;
+  const rows = [];
+  const at = [];
+  let y = 48;
+  for (const b of blocks) {
+    at.push(y);
+    for (let l = 0; l < b.lines; l++) {
+      for (let k = 0; k < 8; k++) rows.push({ y0: (y + k) * R, y1: (y + k + 1) * R, x0: 0.12, x1: 0.88, xs: [[0.12, 0.88]], fill: k > 1 && k < 6 ? 0.7 : 0.1 });
+      y += l < b.lines - 1 ? 9 : 8;
+    }
+    y += b.after;
+  }
+  return { rows, at: at.map((r) => r * R), R };
+}
+
+test('a memo of small type set close is cut (its paragraphs were read as lines of big words)', () => {
+  const { rows } = memo(Array.from({ length: 12 }, () => ({ lines: 3, after: 3 })));
+  const lay = splitOf(rows, { w: 816, h: 1056 });
+  assert.equal(lay.n, 2);
+  assert.ok(lay.gap[1] - lay.gap[0] > 0.004, 'between paragraphs, not between two lines of one');
+});
+
+test('a page is never cut right under a heading: a section break a little off the middle wins', () => {
+  // A section of a heading and six two-line points, a wide blank, then a heading and nine more (Holly's report: the
+  // blank under "Gala" sat nearest the middle)
+  const head = { lines: 1, after: 4 };
+  const point = { lines: 2, after: 2 };
+  const { rows, at, R } = memo([head, ...Array(5).fill(point), { ...point, after: 11 }, head, ...Array(8).fill(point), { ...point, after: 0 }]);
+  const lay = splitOf(rows, { w: 816, h: 1056 });
+  assert.equal(lay.n, 2);
+  const second = at[7];
+  assert.ok(Math.abs(lay.gap[1] - second) < R / 2 && Math.abs(lay.gap[0] - (second - 11 * R)) < R / 2, `cut over the second heading (${lay.gap.map((g) => Math.round(g / R))}, heading at ${Math.round(second / R)})`);
+});
+
 test('a page of one short line and a page number keeps the line (it was read as nothing)', () => {
   const size = { w: 816, h: 1056 };
   const lay = splitOf([{ y0: 0.1, y1: 0.115, x0: 0.1, x1: 0.6 }, { y0: 0.95, y1: 0.96, x0: 0.48, x1: 0.52 }], size);
