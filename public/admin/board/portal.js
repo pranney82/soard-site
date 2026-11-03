@@ -534,7 +534,17 @@ function App() {
       const msg = e.data || {};
       if (msg.type === 'board-preview' && msg.meeting?.id) setData((dd) => (dd ? withDraft(dd, msg.meeting) : dd));
       // The report page's own preview: one item's report and motion as they're typed (nothing else of the meeting)
-      if (msg.type === 'board-preview-item' && msg.meetingId && msg.itemId) setData((dd) => (dd ? withItem(dd, msg.meetingId, msg.itemId, { report: String(msg.report ?? ''), motion: String(msg.motion ?? ''), reportLook: String(msg.reportLook ?? ''), ...(msg.reportBy ? { reportBy: String(msg.reportBy) } : {}) }) : dd));
+      // …and its documents as they are now (one just attached is a slide at once), with their files
+      if (msg.type === 'board-preview-item' && msg.meetingId && msg.itemId) {
+        setData((dd) => {
+          if (!dd) return dd;
+          const next = withItem(dd, msg.meetingId, msg.itemId, { report: String(msg.report ?? ''), motion: String(msg.motion ?? ''), reportLook: String(msg.reportLook ?? ''), ...(msg.reportBy ? { reportBy: String(msg.reportBy) } : {}) });
+          if (!Array.isArray(msg.docs) || !Array.isArray(msg.files)) return next;
+          const files = msg.files.filter((f) => f && typeof f.id === 'string');
+          const put = (m) => (m.id !== msg.meetingId ? m : { ...m, files: [...m.files.filter((f) => !files.some((g) => g.id === f.id)), ...files], sections: m.sections.map((x) => ({ ...x, items: x.items.map((it) => (it.id === msg.itemId ? { ...it, docs: msg.docs.map(String) } : it)) })) });
+          return { ...next, meetings: next.meetings.map(put), ...(next.previews ? { previews: next.previews.map(put) } : {}), ...(next.presenting ? { presenting: next.presenting.map(put) } : {}) };
+        });
+      }
       if (msg.type === 'board-preview-focus' && msg.itemId) previewFocus(msg.itemId);
     };
     addEventListener('message', on);
@@ -1558,7 +1568,7 @@ const withDocs = (data, meetingId, itemId, docs, { add = null, gone = '' } = {})
     files: [...m.files.filter((f) => f.id !== gone && f.id !== add?.id), ...(add ? [add] : [])],
     sections: m.sections.map((s) => ({ ...s, items: s.items.map((it) => (it.id === itemId ? { ...it, docs } : it)) })),
   });
-  return { ...data, meetings: data.meetings.map(put), ...(data.previews ? { previews: data.previews.map(put) } : {}) };
+  return { ...data, meetings: data.meetings.map(put), ...(data.previews ? { previews: data.previews.map(put) } : {}), ...(data.presenting ? { presenting: data.presenting.map(put) } : {}) };
 };
 const ACCEPT = '.pdf,.jpg,.jpeg,.png,.webp,.heic,.docx,.xlsx,.pptx,.doc,.xls,.ppt';
 
@@ -1786,7 +1796,7 @@ function SlideStack({ m, it, files, draft }) {
   const [mark, setMark] = useState(''); // the slide the last words changed
   // What's typed, a moment after typing stops: every slide is laid out again only then, never on every key
   const [sent, setSent] = useState(draft);
-  useEffect(() => { const t = setTimeout(() => setSent(draft), 300); return () => clearTimeout(t); }, [draft.report, draft.motion, draft.reportBy, draft.reportLook]);
+  useEffect(() => { const t = setTimeout(() => setSent(draft), 300); return () => clearTimeout(t); }, [draft.report, draft.motion, draft.reportBy, draft.reportLook, draft.docs.join('|')]);
   useEffect(() => {
     const el = holder.current;
     if (!el) return undefined;
@@ -1831,16 +1841,20 @@ function SlideStack({ m, it, files, draft }) {
   }, [mark, stops]);
   const scale = w ? w / 1280 : 0;
   const list = stops || [{ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0 }];
-  // Its documents, one line in their place: each file once, with how many of its pages show
+  // Its documents, one line in their place: each file once, with how many of its pages show (two to a slide, an open
+  // book, so the slides they take are counted apart: ./board-shared.js deckOf)
   const rows = [];
   for (const s of list) {
     if (s.kind !== 'doc') { rows.push(s); continue; }
     const last = rows.at(-1);
-    const row = last?.kind === 'docs' ? last : (rows.push({ kind: 'docs', key: `docs:${s.key}`, files: new Map(), from: 0, to: 0 }), rows.at(-1));
-    row.files.set(s.fileId, (row.files.get(s.fileId) || new Set()).add(s.page));
+    const row = last?.kind === 'docs' ? last : (rows.push({ kind: 'docs', key: `docs:${s.key}`, files: new Map(), slides: 0, from: 0, to: 0 }), rows.at(-1));
+    row.slides += 1;
+    const seen = row.files.get(s.fileId) || new Set();
+    for (const q of s.pages?.length ? s.pages : [s.page]) seen.add(q);
+    row.files.set(s.fileId, seen);
   }
   let n = 0;
-  for (const r of rows) { if (r.kind === 'docs') { const k = [...r.files.values()].reduce((x, p) => x + p.size, 0); r.from = n + 1; r.to = n + k; n += k; } else r.n = ++n; }
+  for (const r of rows) { if (r.kind === 'docs') { r.from = n + 1; r.to = n + r.slides; n += r.slides; } else r.n = ++n; }
   const nameOfFile = (id) => docTitle(files.find((f) => f.id === id)?.name || 'A document');
   const cut = Object.entries(cuts).some(([k, v]) => v && list.some((s) => s.key === k));
   const fitLine = [
@@ -1852,7 +1866,7 @@ function SlideStack({ m, it, files, draft }) {
     <ol class="bp-rp__slides">${rows.map((s) => {
       if (s.kind === 'docs') {
         return html`<li key=${s.key} class="bp-rp__slide bp-rp__slide--docs">
-          <p class="bp-rp__slide-h"><span class="bp-rp__slide-n">${s.from === s.to ? s.from : `${s.from}–${s.to}`}</span><span class="bp-rp__slide-name">${s.files.size === 1 ? 'Its document' : 'Its documents'}, page by page</span><span class="bp-rp__slide-tag">As the file is</span></p>
+          <p class="bp-rp__slide-h"><span class="bp-rp__slide-n">${s.from === s.to ? s.from : `${s.from}–${s.to}`}</span><span class="bp-rp__slide-name">${s.files.size === 1 ? 'Its document' : 'Its documents'}</span><span class="bp-rp__slide-tag">As the file is</span></p>
           <ul class="bp-rp__slide-files">${[...s.files].map(([id, pages]) => html`<li key=${id}>${nameOfFile(id)}<span class="bp-muted">${pages.size === 1 ? 'one page' : `${pages.size} pages`}</span></li>`)}</ul>
         </li>`;
       }
@@ -2099,7 +2113,7 @@ function ReportPage({ id, itemId, ctx }) {
   const startFrom = () => { putIn(last.it.report, { inserted: true }); toEditor(); };
   const myName = d.me?.name || (data.me.as ? d.bySlug.get(data.me.as)?.name : '') || '';
   // Its slide with what's typed (saved or not), said by who's writing it now
-  const draft = { report: text, motion, reportBy: myName || it.reportBy, reportLook: look };
+  const draft = { report: text, motion, reportBy: myName || it.reportBy, reportLook: look, docs: it.docs || [], files: (m.files || []).filter((f) => (it.docs || []).includes(f.id)) };
   const standing = reportStanding(m, it, data);
   const copy = async () => {
     try { await navigator.clipboard.writeText(latest.current); ctx.say('Your words are copied'); } catch { ctx.say('Select the words and copy them', 'warn'); }
