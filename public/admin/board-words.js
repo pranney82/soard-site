@@ -84,9 +84,22 @@ const words = (s) => String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').t
 const median = (list) => { const s = [...list].sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : 0; };
 // A sentence that ended (a closing quote or bracket after its stop too)
 const ENDED = /[.!?:;]["”’)\]]?$/;
-const COMPOUND = /\b(one|two|three|four|five|six|seven|eight|nine|ten|half|self|well|non|co|ex|full|part|long|short|year|day|first|second|third|board|decision|follow|record|vice|re)-$/i;
-/** A line carried onto the next: a hyphen at its end joins a word broken there, or stays in a word that has one */
-const joinLines = (a, b) => (/[a-z]-$/.test(a) && /^[a-z]/.test(b) ? (COMPOUND.test(a) ? `${a}${b}` : `${a.slice(0, -1)}${b}`) : `${a} ${b}`);
+// The end of a word broken over a line ("commu-nity", "high-est", "organi-zation"): what follows the hyphen is a suffix
+const SUFFIX = /^(?:tions?|sions?|(?:i?z|c)?ations?|ments?|ness|ings?|ity|ities|nity|ed|ers?|est|ly|ally|ous|ive|able|ible|ances?|ences?|tures?|ship|ful|less|i[sz]es?|ism|ists?|ary|ory)$/;
+// The paper's own words, to tell a broken word ("member" written elsewhere) from one with a hyphen ("in-person")
+let VOCAB = new Set();
+/**
+ * A line carried onto the next. A hyphen at its end: a word broken there is one word again (the rest a suffix, or the
+ * whole word written elsewhere in the paper); a word with its own hyphen keeps it ("in-person", "twenty-five", "two-thirds"),
+ * as Word breaks lines at hyphens and seldom hyphenates
+ */
+const joinLines = (a, b) => {
+  if (!(/[a-z]-$/.test(a) && /^[a-z]/.test(b))) return `${a} ${b}`;
+  const left = (a.match(/([a-z]+)-$/i) || [])[1] || '';
+  const right = (b.match(/^[a-z]+/) || [''])[0];
+  const broken = VOCAB.has(`${left}${right}`.toLowerCase()) || (SUFFIX.test(right) && !VOCAB.has(`${left}-${right}`.toLowerCase()) && left.length > 2);
+  return broken ? `${a.slice(0, -1)}${b}` : `${a}${b}`;
+};
 
 /**
  * Lines of a paper → Markdown. Each line: `{ text, x, y, size, page }` (y growing up the page as PDFs measure it),
@@ -130,6 +143,8 @@ export function wordsFromLines(lines, { title = '' } = {}) {
     || SIGN_LABEL.test(l.text.replace(BLANK, '').replace(/[_.\s]+$/, '').trim()) || signLabels(l.text)
     // (blanks to sign beside their labels go; a line to fill in, "My giving commitment: $_____", keeps its words)
     || (BLANK.test(l.text) && signLabels(l.text.replace(/_{2,}|\.{4,}/g, ' ').replace(/\s+/g, ' ').trim() || 'signature'));
+  // The words the paper uses, whole (a broken word's whole form written elsewhere joins it again)
+  VOCAB = new Set(clean.flatMap((l) => l.text.toLowerCase().match(/[a-z]+(?:-[a-z]+)*/g) || []).filter((w) => !/-$/.test(w)));
   const kept = clean.map((l, i) => (margin(l, i) && footnote(l.text) && l.h && allBody && l.size < allBody * 0.92 ? { ...l, foot: true } : l)).filter((l, i) => !paperOnly(l, i));
   // The body's letters (the size most of the words are), the space between its lines, and how wide a full line runs
   const sizes = kept.flatMap((l) => Array(Math.min(20, Math.ceil(l.text.length / 10))).fill(l.size || 0));
@@ -262,7 +277,7 @@ export function wordsFromLines(lines, { title = '' } = {}) {
   const titleLike = (b) => b && (b.t === 'h' || (b.t === 'p' && plain(b.text).length <= 90 && !ENDED.test(plain(b.text))));
   // (the title's words most of the heading's: "Section 3. Committees at a glance" isn't the title "Committees")
   const sig = (b) => words(plain(b.text)).split(' ').filter((w) => w.length > 3);
-  const drop = tw.length ? blocks.slice(0, 2).findIndex((b) => titleLike(b) && words(plain(b.text)).split(' ').length <= tw.length + 5
+  const drop = tw.length ? blocks.slice(0, 2).findIndex((b) => titleLike(b) && !(/\b(19|20)\d{2}\b/.test(plain(b.text)) && !/\b(19|20)\d{2}\b/.test(title)) && words(plain(b.text)).split(' ').length <= tw.length + 5
     && tw.filter((w) => sig(b).includes(w)).length >= Math.ceil(tw.length * 0.6) && sig(b).filter((w) => tw.includes(w)).length >= sig(b).length * 0.5) : -1;
   if (drop >= 0) blocks.splice(drop, 1);
 

@@ -1323,9 +1323,9 @@ try {
   ok(exp.version === 2 && exp.signFrom === 2 && exp.earlier.includes('alex-rivera') && /Come to the gala each spring/.test(exp.body), `the second wording, kept, Alex’s signature on an earlier one (v${exp.version}, from ${exp.signFrom})`);
   const alexAgain = await tab(MEMBER, 1440);
   await alexAgain.goto(`${SITE}/admin/board/#/documents/${exp.id}`, { waitUntil: 'networkidle0' });
-  ok(await waitText(alexAgain, /Come to the gala each spring[\s\S]*Sign it for \d{4}[\s\S]*Its words changed since you signed\. Read them over and sign again\./), 'Alex reads the new words and is asked to sign again');
+  ok(await waitText(alexAgain, /It changed since you signed: read it, then sign again at the end\.[\s\S]*Come to the gala each spring[\s\S]*Sign it for \d{4}/), 'Alex is told at the top it changed, reads the new words and signs again at the end');
   await alexAgain.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
-  ok(await waitText(alexAgain, /Read and sign: Board Member Expectations\s*Its words changed since you signed: sign the new ones/), 'Home says so too');
+  ok(await waitText(alexAgain, /Read and sign: Board Member Expectations\s*It changed since you signed: read it and sign again/), 'Home says so too');
   await alexAgain.close();
   // The earlier wording: read again, and back in the editor (left unsaved)
   await editRow('Board Member Expectations');
@@ -1408,7 +1408,7 @@ try {
   await clickText(jane, 'button', /^Save$/);
   await jane.waitForFunction(() => !document.querySelector('.rp-edit'), { timeout: 8000 }).catch(() => {});
   const coiDoc = (await listDocs(DB)).find((d) => /conflict of interest/i.test(d.title));
-  ok(coiAsked.some((t) => /^Ask Alex to sign again\?.*Alex Rivera signed the .* file for \d{4}\. With Conflict of Interest 2027 it’s a new version/.test(t)) && coiDoc.file.name === 'Conflict of Interest 2027.pdf' && coiDoc.signed['alex-rivera'] && coiDoc.version === 1,
+  ok(coiAsked.some((t) => /^Ask Alex to sign again\?.*Alex Rivera signed it as its file for \d{4}\. With Conflict of Interest 2027 it’s a new version/.test(t)) && coiDoc.file.name === 'Conflict of Interest 2027.pdf' && coiDoc.signed['alex-rivera'] && coiDoc.version === 1,
     `a new file on a signed paper asks first, naming who signed (kept here: still signed, the new file a version of its own) (${JSON.stringify(coiAsked)})`);
   await answerAsks(jane);
   // Sam about to sign the policy's PDF when its words are written in Board: told it didn't go, where the form was

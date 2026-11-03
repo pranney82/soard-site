@@ -69,7 +69,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
   }, [route]);
   const go = (r) => { const next = { tab: 'meetings', meetingId: null, step: null, practice: false, ...r }; if (hashFor(next) !== location.hash) location.hash = hashFor(next); else setRoute(next); };
   // `where`: what's being edited, as the question to leave names it ("this meeting", "this document")
-  const markDirty = (d, where = 'this meeting') => { dirty.current = d; if (d) dirtyWhere.current = where; setGlobalDirty?.(d, d ? `the board ${where.replace(/^(this|the) /, '')}` : ''); };
+  const markDirty = (d, where = 'this meeting') => { dirty.current = d; if (d) dirtyWhere.current = where; setGlobalDirty?.(d, d ? where : ''); };
   const putMeeting = (m) => setData((d) => ({ ...d, meetings: [m, ...d.meetings.filter((x) => x.id !== m.id)].sort((a, b) => String(b.date).localeCompare(String(a.date))) }));
   const setStep = (step) => setRoute((r) => ({ ...r, step }));
   const ctx = { data, setData, load, addToast, go, putMeeting, markDirty, setStep };
@@ -632,7 +632,7 @@ function Wordings({ id, current, signFrom = 0, onUse, addToast }) {
     <button type="button" class="btn btn-ghost btn-sm" aria-expanded=${list ? 'true' : 'false'} onClick=${load}>${list ? 'Hide the earlier wordings' : `Earlier wordings (${current - 1})`}</button>
     ${list ? html`<ol class="bd-wordings__list">${list.map((v) => html`<li key=${v.version}>
       <div class="bd-wordings__row">
-        <span><strong>Wording ${v.version}</strong> · ${[when(v.at), v.by ? firstOf(v.by) : '', v.note.replace(/^(From |A new file: )(.+)$/, (_, a, n) => a + fileTitle(n)), v.signed ? `${plural(v.signed, 'signature')} on it this year${v.version < signFrom ? ', before the board was asked to sign again' : ''}` : ''].filter(Boolean).join(' · ')}</span>
+        <span><strong>Wording ${v.version}</strong>${v.version === signFrom ? html` <span class="tag">Signing again started here</span>` : null} · ${[when(v.at), v.by ? firstOf(v.by) : '', v.note.replace(/^(From |A new file: )(.+)$/, (_, a, n) => a + fileTitle(n)), v.signed ? `${plural(v.signed, 'signature')} on it this year${v.version < signFrom ? ', before the board was asked to sign again' : ''}` : ''].filter(Boolean).join(' · ')}</span>
         <span class="bd-actions">
           <button type="button" class="btn btn-ghost btn-sm" aria-expanded=${shown === v.version ? 'true' : 'false'} onClick=${() => setShown(shown === v.version ? 0 : v.version)}>${shown === v.version ? 'Hide' : 'Read it'}</button>
           ${v.body && !/^A new file:/.test(v.note) ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => onUse(v.body)}>Use these words</button>` : null}
@@ -792,12 +792,15 @@ function DocumentsTab({ ctx }) {
       if (j.ask) {
         const n = j.ask.names;
         const who = n.length > 2 ? `${n.slice(0, -1).join(', ')} and ${n.at(-1)}` : n.join(' and ');
+        const first = n[0].split(/\s+/)[0];
         const choice = await ask({
-          title: n.length === 1 ? `Ask ${n[0].split(/\s+/)[0]} to sign again?` : `Ask the ${n.length} who signed to sign again?`,
-          text: `${who} signed ${j.ask.since === 'file' ? `the ${fileTitle(existing?.name || 'file')} file` : 'the earlier words'} for ${year}. ${j.ask.newFile && j.ask.now === 'file' ? `With ${fileTitle(j.ask.newFile)} it’s a new version: if what they agree to changed, they sign it.`
+          title: n.length === 1 ? `Ask ${first} to sign again?` : `Ask the ${n.length} who signed to sign again?`,
+          text: `${who} signed ${j.ask.since === 'file' ? 'it as its file' : 'the earlier words'} for ${year}. ${j.ask.newFile && j.ask.now === 'file' ? `With ${fileTitle(j.ask.newFile)} it’s a new version: if what they agree to changed, they sign it.`
+            : j.ask.newFile ? `With the words from ${fileTitle(j.ask.newFile)} it’s a new version: if what they agree to changed, they sign it.`
             : j.ask.now === 'file' ? 'With the words taken out, the board reads its file again: if that’s not what they signed, they sign it.'
+            : j.ask.since === 'file' ? 'Its words written here are what the board reads now: if they say something the file didn’t, they sign them.'
             : 'If what they agreed to has changed, they sign the new words. A typo or a heading fixed doesn’t need it.'}`,
-          yes: 'Ask them to sign again', no: 'Keep their signatures', dismiss: null, careful: true,
+          yes: n.length === 1 ? `Ask ${first} to sign again` : 'Ask them to sign again', no: n.length === 1 ? `Keep ${first}’s signature` : 'Keep their signatures', dismiss: null, careful: true,
         });
         if (choice === null) { back(); return; }
         save({ askAgain: choice, base });
@@ -873,7 +876,7 @@ function DocumentsTab({ ctx }) {
             ${source && hasWords && !(asRead && asRead.from === sourceFrom) && !(sourceFrom === 'existing' && draft.wordsFile === source.id && !newerOf(draft, draft.existing)) ? html`<button class="btn btn-ghost btn-sm" disabled=${!!reading} onClick=${() => bringFrom(source, sourceFrom)}>${reading ? `Reading ${formatWord(source)}…` : `Bring in the words from ${fileTitle(source.name)}`}</button>` : null}
           </div>
           ${!hasWords && source ? html`<div class="bd-words__start">
-            <p>${draft.sign && draft.existing && !draft.file ? 'The board reads it as its file now. ' : ''}Write its words here and the board reads them on the board page${draft.sign ? ', then signs at the end' : ''}. Start from what ${fileTitle(source.name)} says, and read it over before you save.</p>
+            <p>${draft.sign && draft.existing && !draft.file && !data.docs.find((x) => x.id === draft.id)?.body ? 'The board reads it as its file now. ' : ''}Write its words here and the board reads them on the board page${draft.sign ? ', then signs at the end' : ''}. Start from what ${fileTitle(source.name)} says, and read it over before you save.</p>
             <button class="btn btn-primary btn-sm" disabled=${!!reading} onClick=${() => bringFrom(source, sourceFrom)}>${reading ? `Reading ${formatWord(source)}…` : `Start from the ${formatWord(source)}’s words`}</button>
           </div>` : null}
           ${reading ? html`<p class="form-hint" role="status">Reading the words in ${fileTitle(reading)}…</p>` : null}
@@ -886,7 +889,7 @@ function DocumentsTab({ ctx }) {
               if (dirty && (draft.body || '').trim() !== (data.docs.find((x) => x.id === draft.id)?.body || '').trim() && !(await ask({ title: 'Put those words in the editor?', text: 'They take the place of the changes there now, which aren’t saved.', yes: 'Put them in', no: 'Keep my changes' }))) return;
               setDraft((x) => (x ? { ...x, body } : x)); setRead(null); setWordsKey((k) => k + 1); addToast('Those words are in the editor. Save to make them the paper’s again.', 'info');
             }} />` : null}
-          ${asRead ? html`<p class="form-hint">These are the words from ${asRead.from === 'new' ? fileTitle(asRead.name) : draft.existing ? fileLink(draft.existing, fileTitle(draft.existing.name)) : fileTitle(asRead.name)}. Read them over beside it and fix anything, then save: the board page shows these words in place of the file.
+          ${asRead ? html`<p class="form-hint">These are the words from ${asRead.from === 'new' ? fileTitle(asRead.name) : draft.existing ? fileLink(draft.existing, fileTitle(draft.existing.name)) : fileTitle(asRead.name)}. Read them over beside it and fix anything, then save: ${data.docs.find((x) => x.id === draft.id)?.body ? 'they take the place of the words the board reads now' : 'the board page shows these words in place of the file'}.
             ${!data.docs.find((x) => x.id === draft.id)?.body ? html` <button type="button" class="bd-linkbtn" onClick=${() => { setDraft((x) => ({ ...x, body: '' })); setRead(null); setWordsKey((k) => k + 1); requestAnimationFrame(() => document.querySelector('.bd-words__start button')?.focus()); }}>Keep the file instead</button>` : null}</p>` : null}
         </div>
         <div class="form-group span-2">
@@ -915,7 +918,7 @@ function DocumentsTab({ ctx }) {
             ${d.body ? html`<a class="bd-row__title" href=${`/admin/board/#/documents/${d.id}`} target="_blank" rel="noopener">${d.title}</a>`
               : d.file ? html`<a class="bd-row__title" ...${viewerLink(viewerFiles([d.file]), 0)}>${d.title}</a>` : html`<span class="bd-row__title">${d.title}</span>`}
             <div class="bd-row__meta">${[DOC_KINDS.find((k) => k.id === d.kind)?.label, d.note,
-              d.body ? `Written here${d.wordsAt ? `, last changed ${dayOf(d.wordsAt)}` : ''}` : d.file ? `${fileTitle(d.file.name)} · ${sizeText(d.file.size)}` : 'No words or file yet'].filter(Boolean).join(' · ')}${d.body && d.file ? html` · its ${formatWord(d.file)}: ${fileLink(d.file, fileTitle(d.file.name))}` : null}</div>
+              d.body ? `Written here${d.wordsAt ? `, last changed ${dayOf(d.wordsAt)}` : ''}` : d.file ? `${fileTitle(d.file.name)} · ${sizeText(d.file.size).replace(' ', '\u00a0')}` : 'No words or file yet'].filter(Boolean).join(' · ')}${d.body && d.file ? html` · its ${formatWord(d.file)}: ${fileLink(d.file, fileTitle(d.file.name))}` : null}</div>
             ${newerOf(d, d.file) ? html`<div class="bd-row__meta bd-row__newer">A newer ${formatWord(d.file)} came in on ${dayOf(d.file.at)}, after these words were last changed. If it’s a new version, Edit to bring its words in.</div>` : null}
             ${d.sign && !d.shared ? html`<div class="bd-row__meta">Off the board page: the board can’t read or sign it until it’s back on.</div>` : null}
             ${d.sign ? html`<div class="bd-row__meta">${all ? `Every board member has signed it for ${year}` : !signed.length ? `No one has signed ${earlier ? 'the new version' : 'it'} for ${year} yet${earlier ? ` (${plural(earlier, 'member')} signed the earlier one)` : ''}` : `Still to sign: ${left.map((p) => (d.before?.[p.slug] ? `${p.name} (signed the earlier version)` : p.name)).join(', ')}`}</div>` : null}

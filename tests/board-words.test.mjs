@@ -153,3 +153,10 @@ test('a Word file’s points styled as a list (List Bullet, List Number: the num
   const docx = zip({ 'word/document.xml': `<w:document><w:body><w:p><w:r><w:t>Board members are expected to:</w:t></w:r></w:p>${p('Attend three of four meetings', 'ListBullet')}${p('Serve on one committee', 'ListBullet')}${p('Read the packet', 'ListNumber')}${p('Vote', 'ListNumber')}</w:body></w:document>` });
   assert.equal(wordsFromLines(docxLines(await docxText(docx, { paragraphs: true }))), 'Board members are expected to:\n\n- Attend three of four meetings\n- Serve on one committee\n\n1. Read the packet\n2. Vote');
 });
+
+test('a hyphen at a line’s end: kept in a word that has one (in-person, twenty-five), gone where a word was broken (commu-nity, mem-ber when “member” is written elsewhere)', () => {
+  const md = wordsFromLines(page([
+    ['Every member meets in-', 11], ['person twice a year and gives twenty-', 11], ['five hours to the commu-', 11], ['nity, as each mem-', 11], ['ber has since the start.', 11],
+  ]));
+  assert.equal(md, 'Every member meets in-person twice a year and gives twenty-five hours to the community, as each member has since the start.');
+});

@@ -19,6 +19,8 @@
  *                       year: typed on the board page, their signed copy (a
  *                       board file owned 'signed', staff-only), or their copy
  *                       in Drive (./_board-drive.js), and the wording signed
+ *   board_signatures_earlier  a member's signature on an earlier wording, kept
+ *                       (its copy too) once they sign the next one
  *   board_doc_versions  each wording of a paper written in Board, kept: what
  *                       each signature was on
  *   board_seen         a member's last visit to the board page
@@ -70,6 +72,8 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS board_rsvp_links (hash TEXT PRIMARY KEY, meeting_id TEXT NOT NULL, slug TEXT NOT NULL, expires TEXT NOT NULL)',
   'CREATE TABLE IF NOT EXISTS board_docs (id TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
   'CREATE TABLE IF NOT EXISTS board_signatures (doc_id TEXT NOT NULL, slug TEXT NOT NULL, year INTEGER NOT NULL, name TEXT, at TEXT, PRIMARY KEY (doc_id, slug, year))',
+  // A signature on an earlier version, kept (with its copy) when its member signs the next one
+  'CREATE TABLE IF NOT EXISTS board_signatures_earlier (doc_id TEXT NOT NULL, slug TEXT NOT NULL, year INTEGER NOT NULL, version INTEGER NOT NULL, name TEXT, at TEXT, how TEXT, file_id TEXT, drive_id TEXT, drive_name TEXT, added_by TEXT, PRIMARY KEY (doc_id, slug, year, version))',
   'CREATE TABLE IF NOT EXISTS board_doc_versions (doc_id TEXT NOT NULL, version INTEGER NOT NULL, body TEXT, at TEXT, by TEXT, PRIMARY KEY (doc_id, version))',
   'CREATE TABLE IF NOT EXISTS board_seen (slug TEXT PRIMARY KEY, at TEXT)',
   'CREATE TABLE IF NOT EXISTS board_cash (month TEXT PRIMARY KEY, total REAL, accounts TEXT, at TEXT)',
@@ -613,7 +617,7 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
   }
   // A new file changes what the board reads only when it reads the paper as its file (written here, it reads the words)
   const newRead = !!newFile && !body;
-  if (was && (changed || newRead) && was.sign && askAgain == null && !(fromFile && !newFile && !was.body)) {
+  if (was && (changed || newRead) && was.sign && d.sign && askAgain == null && !(fromFile && !newFile && !was.body)) {
     const current = (await listDocs(DB)).find((x) => x.id === d.id);
     const board = await activeBoard(DB);
     const names = board.filter((p) => current?.signed[p.slug]).map((p) => p.name);
@@ -642,7 +646,7 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
  */
 export async function docVersions(DB, id, year = thisYear()) {
   await ensureSchema(DB);
-  const counts = Object.fromEntries((((await DB.prepare('SELECT version, count(*) AS n FROM board_signatures WHERE doc_id = ? AND year = ? GROUP BY version').bind(id, year).all()).results) || []).map((r) => [Number(r.version) || 0, Number(r.n)]));
+  const counts = Object.fromEntries((((await DB.prepare('SELECT version, count(*) AS n FROM (SELECT version FROM board_signatures WHERE doc_id = ?1 AND year = ?2 UNION ALL SELECT version FROM board_signatures_earlier WHERE doc_id = ?1 AND year = ?2) GROUP BY version').bind(id, year).all()).results) || []).map((r) => [Number(r.version) || 0, Number(r.n)]));
   return ((await DB.prepare('SELECT version, body, at, by, note FROM board_doc_versions WHERE doc_id = ? ORDER BY version DESC LIMIT 50').bind(id).all()).results || [])
     .map((r) => ({ version: Number(r.version), body: r.body || '', at: r.at || '', by: r.by || '', note: r.note || '', signed: counts[Number(r.version)] || 0 }));
 }
@@ -653,6 +657,7 @@ export async function deleteDoc(env, id) {
   const files = (await env.DB.prepare("SELECT id FROM board_files WHERE owner_type IN ('doc', 'signed') AND owner_id = ?").bind(id).all()).results || [];
   for (const f of files) await deleteFile(env, f.id);
   await env.DB.prepare('DELETE FROM board_signatures WHERE doc_id = ?').bind(id).run();
+  await env.DB.prepare('DELETE FROM board_signatures_earlier WHERE doc_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM board_doc_versions WHERE doc_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM board_docs WHERE id = ?').bind(id).run();
 }
@@ -664,9 +669,17 @@ const notWhatTheyRead = (doc, version) => {
   if (version == null || version === '' || Number(version) === doc.version) return null;
   return Object.assign(new Error(doc.body ? 'Its words changed while you were reading them. Read the new words, then sign.' : 'A new version of it came in while you had it open. Read it, then sign.'), { status: 409, extra: { changed: true } });
 };
-const writeSignature = (DB, { docId, slug, year, name, how, fileId = null, driveId = null, driveName = null, by = '', at = nowIso(), version = 0 }, { keep = false } = {}) =>
-  DB.prepare(`INSERT OR ${keep ? 'IGNORE' : 'REPLACE'} INTO board_signatures (doc_id, slug, year, name, at, how, file_id, drive_id, drive_name, added_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+async function writeSignature(DB, { docId, slug, year, name, how, fileId = null, driveId = null, driveName = null, by = '', at = nowIso(), version = 0 }, { keep = false } = {}) {
+  if (!keep) {
+    const was = await DB.prepare('SELECT * FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).first();
+    if (was && (Number(was.version) || 0) !== version) {
+      await DB.prepare('INSERT OR REPLACE INTO board_signatures_earlier (doc_id, slug, year, version, name, at, how, file_id, drive_id, drive_name, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(docId, slug, year, Number(was.version) || 0, was.name, was.at, was.how, was.file_id, was.drive_id, was.drive_name, was.added_by).run();
+    }
+  }
+  return DB.prepare(`INSERT OR ${keep ? 'IGNORE' : 'REPLACE'} INTO board_signatures (doc_id, slug, year, name, at, how, file_id, drive_id, drive_name, added_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .bind(docId, slug, year, name, at, how, fileId, driveId, driveName, by, version).run();
+}
 
 /**
  * A member's signature for this year, with their own name typed (../../public/admin/board-shared.js signsAs).
@@ -708,11 +721,11 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
     if (!type || !(type === 'application/pdf' || type.startsWith('image/'))) throw Object.assign(new Error('A signed copy is a PDF, or a photo of the signed page'), { status: 415 });
   }
   const year = thisYear();
-  const before = await env.DB.prepare('SELECT file_id FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, who.slug, year).first();
+  const before = await env.DB.prepare('SELECT file_id, version FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, who.slug, year).first();
   const copy = await putFile(env, { ownerType: 'signed', ownerId: docId, file, staffOnly: true, by: by || who.email || '' });
   const at = nowIso();
   await writeSignature(env.DB, { docId, slug: who.slug, year, name: who.name, how: member ? 'copy' : 'staff', fileId: copy.id, by: by || who.email || '', at, version: doc.version });
-  if (before?.file_id && before.file_id !== copy.id) await deleteFile(env, before.file_id);
+  if (before?.file_id && before.file_id !== copy.id && (Number(before.version) || 0) === doc.version) await deleteFile(env, before.file_id);
   return { docId, year, name: who.name, at, how: member ? 'copy' : 'staff', version: doc.version, copy, drive: null };
 }
 

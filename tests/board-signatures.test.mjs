@@ -393,3 +393,21 @@ test('a paper saved with a new file goes in one: a file that can’t go up chang
   const photo = await signWithCopy(env, d.id, new File([jpeg('x.jpg').slice ? await jpeg('x.jpg').arrayBuffer() : new Uint8Array()], 'Signed copy.pdf'), { member: memberOf('kim-park') });
   assert.equal(photo.copy.name, 'Signed copy.jpg');
 });
+
+test('signing the new version keeps the signature on the earlier one, its copy too; Required unticked asks nobody to sign again', async () => {
+  const { docVersions, fileFor } = await import('../functions/api/_board.js');
+  let d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, body: '- Come to three of four meetings' }, { by: FOUNDER });
+  const kimCopy = await signWithCopy(env, d.id, pdf('Kim signed.pdf'), { slug: 'kim-park', by: FOUNDER });
+  d = await saveDoc(env.DB, { ...d, body: '- Come to every meeting' }, { by: FOUNDER, base: 1, askAgain: true });
+  const again = await signWithCopy(env, d.id, pdf('Kim signed again.pdf'), { slug: 'kim-park', by: FOUNDER });
+  assert.notEqual(again.copy.id, kimCopy.copy.id);
+  assert.ok(await fileFor(env.DB, kimCopy.copy.id, { admin: true }), 'the copy on the earlier version is still there');
+  assert.deepEqual((await docVersions(env.DB, d.id)).map((v) => [v.version, v.signed]), [[2, 1], [1, 1]], 'both wordings keep who signed them');
+  // A copy replaced on the same version is the one before gone
+  const third = await signWithCopy(env, d.id, pdf('Kim third.pdf'), { slug: 'kim-park', by: FOUNDER });
+  assert.equal(await fileFor(env.DB, again.copy.id, { admin: true }), null);
+  assert.ok(await fileFor(env.DB, third.copy.id, { admin: true }));
+  // New words and Required unticked in the same save: nobody to ask
+  d = await saveDoc(env.DB, { ...d, body: '- Come to every meeting, and the retreat', sign: false }, { by: FOUNDER, base: 2 });
+  assert.deepEqual([d.version, d.sign], [3, false]);
+});

@@ -523,7 +523,7 @@ function App() {
     load();
     // Back to a tab left open: what changed meanwhile (an RSVP count, a new file), quietly
     let at = Date.now();
-    const back = () => { if (document.visibilityState === 'visible' && Date.now() - at > 5 * 60 * 1000) { at = Date.now(); call().then((j) => { if (j.ok) setData(j); }); } };
+    const back = () => { if (document.visibilityState === 'visible' && Date.now() - at > 60 * 1000) { at = Date.now(); call().then((j) => { if (j.ok) setData(j); }); } };
     document.addEventListener('visibilitychange', back);
     return () => document.removeEventListener('visibilitychange', back);
   }, []);
@@ -1125,7 +1125,7 @@ function HomePage({ ctx }) {
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
         ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href=${x.body ? `#/documents/${x.id}` : '#/documents'} onClick=${() => { if (!x.body) focusNext = `doc-${x.id}`; }}>
           <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
-          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">${x.signedEarlier ? (x.body ? 'Its words changed since you signed: sign the new ones' : 'A new version came in since you signed: sign it') : 'Every board member signs it once a year'}</span></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">${x.signedEarlier ? 'It changed since you signed: read it and sign again' : 'Every board member signs it once a year'}</span></span>
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
       </ul>
@@ -1327,14 +1327,15 @@ const hits = (text, terms) => { const sp = spaced(text); const sq = squashed(tex
 const notesLine = (t) => String(t || '').split('\n').map((l) => l.replace(/^\s*[-•*]\s+/, '').trim()).filter(Boolean).join(' · ');
 /** "…designate funds into a [money market] fund…" around the first term */
 function Snippet({ text, terms }) {
-  const flat = String(text || '').replace(/\s+/g, ' ').trim();
+  // (each line of a paper its own: "…reveals · Conflicts of interest", its bullets and numbers aside)
+  const flat = String(text || '').split('\n').map((l) => l.replace(/^\s*(?:•|\d+\.)\s+/, '').trim()).filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim();
   const low = norm(flat);
   // Where every term is, within a sentence or two of each other (the first such place), else the rarest one's first
   const finds = terms.map((t) => [...low.matchAll(new RegExp(termRe(t), 'g'))].map((m) => m.index));
   const near = (finds[0] || []).find((p) => finds.every((list) => list.some((q) => q >= p - 120 && q <= p + 200)));
   const rare = finds.filter((l) => l.length).sort((a, b) => a.length - b.length)[0];
   const at = Math.max(0, near ?? rare?.[0] ?? 0);
-  const from = Math.max(0, at - 50);
+  const from = at > 50 ? flat.lastIndexOf(' ', at - 40) + 1 : 0;
   const piece = `${from ? '…' : ''}${flat.slice(from, at + 90)}${at + 90 < flat.length ? '…' : ''}`;
   const re = new RegExp(`(${terms.map(termRe).join('|')})`, 'ig');
   return piece.split(re).map((part, i) => (i % 2 ? html`<mark>${part}</mark>` : part));
@@ -3206,7 +3207,14 @@ function PeoplePage({ ctx }) {
 // ─── Documents ──────────────────────────────────────────────────────
 // Why a signature didn't go through (the paper changed while they signed), by paper, said until they sign it: the
 // form that was there may be gone (a PDF written in Board meanwhile has "Read and sign" in its place)
-const signTrouble = new Map();
+const signTrouble = new Map(); // id → { msg, kind: 'changed' | 'gone', title }
+/** The reason a signature didn't go through, while it's still the case: the paper changed (until they sign), or it went (until it's back) */
+const troubleFor = (id, doc) => {
+  const t = signTrouble.get(id);
+  if (!t) return null;
+  if (t.kind === 'gone' ? doc?.sign && doc?.shared !== false : doc?.signedByMe) { signTrouble.delete(id); return null; }
+  return t;
+};
 /**
  * A copy of a paper they signed on paper, sent as their signature this year (a later one replaces it), with the
  * wording on their page (`version`: a newer one is read first) → the answer
@@ -3280,7 +3288,7 @@ function SignForm({ d: doc, ctx }) {
     setBusy('sign');
     const j = await call({ action: 'sign', docId: doc.id, name: typed, version: doc.version });
     setBusy('');
-    if (!j.ok) { setProblem(j.error); if (j.changed || j.gone) { signTrouble.set(doc.id, j.error); ctx.load(); } document.getElementById(id)?.focus(); return; }
+    if (!j.ok) { setProblem(j.error); if (j.changed || j.gone) { signTrouble.set(doc.id, { msg: j.error, kind: j.gone ? 'gone' : 'changed', title: doc.title }); ctx.load(); } document.getElementById(id)?.focus(); return; }
     signTrouble.delete(doc.id);
     done(j, `Signed: ${doc.title}. Thank you.`);
   };
@@ -3292,7 +3300,7 @@ function SignForm({ d: doc, ctx }) {
     setBusy('copy');
     const j = await sendCopy(doc.id, file, doc.version);
     setBusy('');
-    if (!j.ok) { setProblem(j.error); if (j.changed || j.gone) { signTrouble.set(doc.id, j.error); ctx.load(); } return; }
+    if (!j.ok) { setProblem(j.error); if (j.changed || j.gone) { signTrouble.set(doc.id, { msg: j.error, kind: j.gone ? 'gone' : 'changed', title: doc.title }); ctx.load(); } return; }
     signTrouble.delete(doc.id);
     done(j, 'Your signed copy is in. Thank you.');
   };
@@ -3404,7 +3412,10 @@ function DocumentsPage({ ctx }) {
     data.meetings.some((m) => m.files.length) ? 'every file from every meeting' : '',
   ].filter(Boolean);
   const lede = said.length ? `${said.length > 2 ? `${said.slice(0, -1).join(', ')}, and ${said.at(-1)}` : said.join(' and ')}.`.replace(/^\w/, (c) => c.toUpperCase()) : 'SOARD’s papers, and every file from every meeting.';
+  // A signature that didn't go through on a paper no longer here (taken off, deleted)
+  const lost = [...signTrouble.entries()].filter(([id, t]) => t.kind === 'gone' && !docs.some((x) => x.id === id && x.sign)).map(([id, t]) => ({ id, ...t }));
   return html`
+    ${lost.map((t) => html`<p class="bp-doc__changed bp-rise" role="alert" key=${t.id}>Not signed: ${t.title} was taken off the board page while you were signing it. <button type="button" class="bp-linkbtn" onClick=${() => { signTrouble.delete(t.id); ctx.setData((x) => ({ ...x })); }}>OK</button></p>`)}
     <header class="bp-pagehead bp-rise" style=${rise(0)}>
       <div><h1 class="bp-h1">Documents</h1><p class="bp-lede">${lede}</p></div>
       <label class="bp-filter">
@@ -3425,9 +3436,9 @@ function DocumentsPage({ ctx }) {
           ${foundIn(x)}
           ${x.body ? html`
             ${x.signedByMe ? html`<p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p><${Signed} doc=${x} ctx=${ctx} />`
-              : html`${signTrouble.has(x.id) ? html`<p class="bp-doc__changed" role="alert">Not signed yet: ${signTrouble.get(x.id)}</p>` : x.signedEarlier ? html`<p class="bp-doc__changed">Its words changed since you signed. Read them and sign again.</p>` : null}
+              : html`${troubleFor(x.id, x) ? html`<p class="bp-doc__changed" role="alert">Not signed yet: ${troubleFor(x.id, x).msg}</p>` : x.signedEarlier ? html`<p class="bp-doc__changed">It changed since you signed. Read it and sign again.</p>` : null}
                 <p class="bp-btns bp-btns--tight"><a class=${`bp-btn bp-btn--sm ${data.me.slug ? 'bp-btn--primary' : ''}`} ...${open(x)}>${data.me.slug ? 'Read and sign' : 'Read it'}</a></p>`}`
-            : html`${!x.signedByMe && x.signedEarlier && !signTrouble.has(x.id) ? html`<p class="bp-doc__changed">A new version came in since you signed. Read it and sign again.</p>` : null}
+            : html`${!x.signedByMe && x.signedEarlier && !troubleFor(x.id, x) ? html`<p class="bp-doc__changed">A new version came in since you signed. Read it and sign again.</p>` : null}
           <p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p>
           <${SignForm} d=${x} ctx=${ctx} />`}
         </div>
@@ -3467,9 +3478,10 @@ function DocPage({ id, ctx }) {
   // A paper that's a file (a link to it from an email, from before its words were written or after they were taken
   // out): its page is the file to open, and signing
   if (!doc || (!doc.body && !doc.file)) {
+    const t = signTrouble.get(id);
     return html`<a class="bp-back" href="#/documents"><${Icon} name="back" size=${18} />Documents</a>
       <div class="bp-card bp-empty bp-empty--row bp-gap"><span class="bp-empty__icon"><${Icon} name="documents" size=${24} /></span>
-        <div><h1 class="bp-h2">That document isn’t here</h1><p class="bp-muted">It may have been taken off the board page. Everything that’s on it is in <a class="bp-link" href="#/documents">Documents</a>.</p></div></div>`;
+        <div><h1 class="bp-h2">${t ? 'Your signature didn’t go through' : 'That document isn’t here'}</h1><p class="bp-muted">${t ? `${t.title} was taken off the board page while you were signing it.` : 'It may have been taken off the board page.'} Everything that’s on it is in <a class="bp-link" href="#/documents">Documents</a>.</p></div></div>`;
   }
   const written = !!doc.body;
   const changed = doc.wordsAt ? shortDate(todayEastern(Date.parse(doc.wordsAt))) : '';
@@ -3477,7 +3489,7 @@ function DocPage({ id, ctx }) {
   // The paper's own last line already agrees ("I have read and understand…"): printed, it isn't said twice
   const agrees = written && /^(i have read|i acknowledge|i agree|by signing)/i.test(mdPlain(doc.body).trim().split('\n').at(-1).replace(/^[•\d.\s-]+/, ''));
   const me = doc.signedByMe;
-  const trouble = !doc.sign && signTrouble.get(doc.id);
+  const trouble = troubleFor(doc.id, doc);
   const HOW = { typed: 'typed on the board page', copy: 'with the copy signed on paper', staff: 'with a signed copy SOARD added', drive: 'with a signed copy in SOARD’s files' };
   return html`<div class="bp-docpage">
     <a class="bp-back" href="#/documents"><${Icon} name="back" size=${18} />Documents</a>
@@ -3490,8 +3502,8 @@ function DocPage({ id, ctx }) {
       </div>
       ${written ? html`<p class="bp-btns bp-noprint"><button type="button" class="bp-btn bp-btn--sm" onClick=${() => window.print()}><${Icon} name="print" size=${16} />Print it</button></p>` : null}
     </header>
-    ${trouble ? html`<p class="bp-doc__changed bp-noprint" role="alert">Not signed: ${trouble}</p>` : null}
-    ${doc.sign && doc.signedEarlier && !me ? html`<p class="bp-doc__changed bp-noprint">${written ? 'Its words changed since you signed: read them, then sign again at the end.' : 'A new version came in since you signed: read it, then sign again below.'}</p>` : null}
+    ${trouble && !doc.sign ? html`<p class="bp-doc__changed bp-noprint" role="alert">Not signed: ${trouble.msg}</p>` : null}
+    ${doc.sign && doc.signedEarlier && !me && !trouble ? html`<p class="bp-doc__changed bp-noprint">It changed since you signed: read it, then sign again ${written ? 'at the end' : 'below'}.</p>` : null}
     ${written ? html`<article class="bp-card bp-docpage__words bp-rise" style=${rise(1)}><${Report} text=${doc.body} level=${2} /></article>`
       : html`<div class="bp-card bp-docpage__file bp-rise" style=${rise(1)}>
         <p class="bp-muted">${doc.title} is ${({ PDF: 'a PDF', Word: 'a Word file', Excel: 'a spreadsheet', Slides: 'a slide deck', Photo: 'a photo' })[formatOf(doc.file)] || 'a file'}: open it to read it${doc.sign ? ', then sign here' : ''}.</p>
@@ -3499,7 +3511,6 @@ function DocPage({ id, ctx }) {
       </div>`}
     ${doc.sign ? html`<section class="bp-card bp-docpage__sign bp-rise" style=${rise(2)} aria-labelledby="docsign-h" id=${`doc-${doc.id}`}>
       <h2 class="bp-h2" id="docsign-h">${me ? `Signed for ${year}` : `Sign it for ${year}`}</h2>
-      ${doc.signedEarlier && !me ? html`<p class="bp-doc__changed">${written ? 'Its words changed since you signed. Read them over and sign again.' : 'A new version came in since you signed. Read it and sign again.'}</p>` : null}
       <p class="bp-muted">${doc.signedCount} of ${data.people.board.length} board members ${doc.signedCount === 1 ? 'has' : 'have'} signed for ${year}.${data.me.slug ? '' : ' Board members sign here.'}</p>
       <${SignForm} d=${doc} ctx=${ctx} />
       ${written ? html`<div class="bp-printonly bp-docpage__paper" aria-hidden="true">
