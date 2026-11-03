@@ -235,8 +235,11 @@ async function drawSpread(f, sheets, box, { stack = false } = {}) {
       if (a && parts.length) {
         const pw = Math.max(...parts.map((x) => x.w));
         const ph = Math.max(...parts.map((x) => x.h));
-        const W = Math.floor(stack ? box.w / pw : Math.min(box.w / across / pw, box.h / (ph * tall)));
+        // (a page's own margin round the words, so none runs to the sheet's edge or the spine)
+        const M = 0.04;
+        const W = Math.floor(stack ? box.w / (pw + 2 * M) : Math.min(box.w / across / (pw + 2 * M), box.h / (ph * tall + 2 * M)));
         const H = Math.round(W * tall);
+        const m = Math.round(W * M);
         const drawn = await doc.draw(i, { width: W });
         drawn.style.marginLeft = `${-Math.round(a.x * W)}px`;
         drawn.style.marginTop = `${-Math.round(a.y * H)}px`;
@@ -245,7 +248,8 @@ async function drawSpread(f, sheets, box, { stack = false } = {}) {
         crop.className = 'bs-sheet__part';
         crop.style.height = `${Math.round(a.h * H)}px`;
         crop.append(drawn);
-        const sh = sheetOf(Math.round(pw * W), Math.round(ph * H));
+        const sh = sheetOf(Math.round(pw * W) + 2 * m, Math.round(ph * H) + 2 * m);
+        sh.style.padding = `${m}px`;
         sh.append(crop);
         return sh;
       }
@@ -255,44 +259,74 @@ async function drawSpread(f, sheets, box, { stack = false } = {}) {
     sh.append(await doc.draw(i, { width: w }));
     return sh;
   })));
+  // A picture decoded before it's shown (else a white sheet comes up first, then the picture)
+  await Promise.all([...el.querySelectorAll('img')].map((im) => im.decode?.().catch(() => {})));
   // The spread after this one worked out now, so it turns at once
   const last = list.at(-1)[0];
   for (const q of [last + 1, last + 2]) if (q < doc.count) layoutOf(f, doc, q).catch(() => {});
   return { el, count: doc.count, shows };
 }
 
+// A document stop's key ("item:file:2"; ":b", ":p2" a very tall page's later parts) → { itemId, fileId, page, part } | null
+const docKeyOf = (key) => {
+  const m = /^([^:]+):([^:]+):(\d+)(?::(b|p\d+))?$/.exec(String(key || ''));
+  return m ? { itemId: m[1], fileId: m[2], page: Number(m[3]), part: m[4] === 'b' ? 1 : m[4] ? Number(m[4].slice(1)) : 0 } : null;
+};
+// A phone (or a window held upright) stacks a spread's pages and scrolls down them; a TV, a laptop or a narrow window
+// on its side keeps them side by side
+const stackOf = (box) => matchMedia('(max-width: 900px)').matches && box.w < box.h;
+// The spreads drawn ahead (the next stop's, the one before), by what they show and the room they fit: Next shows one at once
+const ahead = new Map();
+const aheadKey = (f, sheets, box) => `${f.id}|${sheets.join(';')}|${box.w}x${box.h}|${typeof devicePixelRatio === 'number' ? devicePixelRatio : 1}|${stackOf(box)}`;
+function drawAhead(f, sheets, box) {
+  const k = aheadKey(f, sheets, box);
+  if (ahead.has(k)) return;
+  ahead.set(k, drawSpread(f, sheets, box, { stack: stackOf(box) }).catch(() => null));
+  while (ahead.size > 4) ahead.delete(ahead.keys().next().value);
+}
+async function spreadOf(f, sheets, box) {
+  const k = aheadKey(f, sheets, box);
+  const p = ahead.get(k);
+  ahead.delete(k);
+  return (p && await p) || drawSpread(f, sheets, box, { stack: stackOf(box) });
+}
+
 /**
- * A spread on the screen, kept up until the next is drawn (no flash between), turning the way the meeting went (in
- * from the right going on, from the left going back); `onPages` hears the counts
+ * A spread on the screen, kept up until the next is drawn (never a blank or a flash between, from page to page or
+ * document to document); `onPages` hears the counts
  */
 function DocPage({ f, sheets, box, onPages }) {
   const ref = useRef(null);
-  const was = useRef(null);
-  const learned = useRef(false);
+  const learned = useRef(new Set());
   const [state, setState] = useState('opening');
+  // The screen's pixels: a window moved to a sharper TV at the same size draws its pages again, as sharp as that one
+  const [dpr, setDpr] = useState(() => (typeof devicePixelRatio === 'number' ? devicePixelRatio : 1));
+  useEffect(() => {
+    const mq = matchMedia(`(resolution: ${dpr}dppx)`);
+    const on = () => setDpr(devicePixelRatio || 1);
+    mq.addEventListener?.('change', on);
+    return () => mq.removeEventListener?.('change', on);
+  }, [dpr]);
   const at = sheets.join();
   useEffect(() => {
     if (!f || !box.w || !box.h) return undefined;
     let gone = false;
-    drawSpread(f, sheets, box, { stack: matchMedia('(max-width: 900px)').matches }).then(({ el, count, shows }) => {
+    spreadOf(f, sheets, box).then(({ el, count, shows }) => {
       if (gone || !ref.current) return;
       sheets.forEach(([p], k) => onPages?.(f.id, count, p, shows[k]));
-      const old = ref.current.firstElementChild;
-      const from = was.current;
-      // (where the spread is in the file: its first sheet, a page and a part)
-      const here = sheets[0][0] * 10 + (sheets[0][1] || 0);
-      was.current = here;
+      // (a phone scrolled down the last spread starts this one at its top)
+      const stage = ref.current.closest('.bs-stage');
+      if (stage?.scrollTop) stage.scrollTop = 0;
+      // The last spread up until this one is drawn, then this one in its place at once: paper to paper, only the words
+      // change (a fade dipped the room to black on every press, a cross-fade showed both pages at once)
       ref.current.replaceChildren(el);
-      if (old && from !== null && from !== here && el.animate && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
-        el.animate([{ opacity: 0, transform: `translateX(${here > from ? 28 : -28}px)` }, { opacity: 1, transform: 'none' }], { duration: 300, easing: 'cubic-bezier(0.2, 0.7, 0.2, 1)' });
-      }
       setState('');
       // How every page shows, once a file: a screen on its own then pairs the pages as the chair does, a blank page
       // left out of "Next" before it's reached
-      if (!learned.current) { learned.current = true; partsOf(f).then((ns) => { if (ref.current) ns.forEach((n, j) => onPages?.(f.id, count, j, n)); }).catch(() => {}); }
-    }).catch(() => { if (!gone) setState('failed'); });
+      if (!learned.current.has(f.id)) { learned.current.add(f.id); partsOf(f).then((ns) => { if (ref.current) ns.forEach((n, j) => onPages?.(f.id, count, j, n)); }).catch(() => {}); }
+    }).catch(() => { if (!gone) { ref.current?.replaceChildren(); setState('failed'); } });
     return () => { gone = true; };
-  }, [f?.id, at, box.w, box.h]);
+  }, [f?.id, at, box.w, box.h, dpr]);
   return html`<div class="bs-page">
     <div class="bs-page__sheet" ref=${ref}></div>
     ${state === 'opening' ? html`<p class="bs-quiet bs-page__wait">Opening ${docTitle(f?.name)}…</p>` : state === 'failed' ? html`<p class="bs-quiet">${docTitle(f?.name)} didn’t open here. It’s on the board page.</p>` : null}
@@ -1132,8 +1166,11 @@ export function Screen({ id, data, d, onBack = null }) {
   // that won't open is never counted); steps pressed meanwhile are taken one by one after
   const countedRef = useRef(() => true);
   const countRef = useRef(() => {});
+  const askedRef = useRef(null);
   const held = useRef({ dir: 0, timer: 0 });
   const waits = (dir) => {
+    // (a reload on a document's later pages: nothing moves until that document is counted and the slide is its own)
+    if (askedRef.current) { countRef.current(askedRef.current.fileId); return true; }
     const ids = [deckRef.current[atRef.current], deckRef.current[atRef.current + dir]].filter((s) => s?.kind === 'doc' && !countedRef.current(s.fileId)).map((s) => s.fileId);
     ids.forEach((fileId) => countRef.current(fileId));
     return ids.length > 0;
@@ -1207,6 +1244,7 @@ export function Screen({ id, data, d, onBack = null }) {
       // Shift with an arrow: the next item, or back to the start of this one (then the one before), past a document's pages
       if (PRESENT && e.shiftKey && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
         e.preventDefault();
+        if (askedRef.current) { countRef.current(askedRef.current.fileId); return; }
         const deck = deckRef.current;
         const at = atRef.current;
         const of = (i) => deck[i]?.itemId || deck[i]?.key || '';
@@ -1275,19 +1313,30 @@ export function Screen({ id, data, d, onBack = null }) {
     });
     setShows((x) => (x[fileId]?.[page] === n ? x : { ...x, [fileId]: Object.assign([...(x[fileId] || [])], { [page]: n }) }));
   };
-  // Moving itself: the stop with its key; else (a page still being counted) its item's card; else the cover
+  // Counted: its pages, and each page's parts (a step waiting on one counts it then and there, ahead of the rest)
+  const counted = (fileId) => pages[fileId] > 0 && Array.from({ length: pages[fileId] }, (_, i) => shows[fileId]?.[i]).every((n) => n !== undefined && n !== null);
+  // Moving itself: the stop with its key; a document's page counted since (a spread from before, paired another way):
+  // the spread it's on; else (a page still being counted) its item's card; else the cover
   const ownAt = useMemo(() => {
     if (!OWN || !deck.length) return 0;
     const k = here.key ? deck.findIndex((s) => s.key === here.key) : -1;
     if (k >= 0) return k;
+    const d = docKeyOf(here.key);
+    if (d && counted(d.fileId)) { const i = stopIndex(deck, d); if (deck[i]?.kind === 'doc' && deck[i].fileId === d.fileId) return i; }
     const item = here.itemId || (here.key && !/^(section|cover|since|end)/.test(here.key) ? here.key.split(':')[0] : '');
     const i = item ? deck.findIndex((s) => s.itemId === item) : -1;
     return i >= 0 ? i : 0;
-  }, [deck, here]);
+  }, [deck, here, pages, shows]);
   deckRef.current = deck;
   if (OWN) atRef.current = ownAt;
-  // Counted: its pages, and each page's parts (a step waiting on one counts it then and there, ahead of the rest)
-  countedRef.current = (fileId) => pages[fileId] > 0 && Array.from({ length: pages[fileId] }, (_, i) => shows[fileId]?.[i]).every((n) => n !== undefined && n !== null);
+  countedRef.current = counted;
+  // A reload or Play from here on a document's later pages before that document is counted: those pages as its key
+  // names them (never its item's card for a second), and a press from there waits for the count
+  const askedDoc = OWN && here.key && deck[ownAt]?.key !== here.key ? docKeyOf(here.key) : null;
+  const asked = askedDoc && !counted(askedDoc.fileId) && docFiles.some((f) => f.id === askedDoc.fileId)
+    ? { key: here.key, kind: 'doc', itemId: askedDoc.itemId, fileId: askedDoc.fileId, page: askedDoc.page, part: askedDoc.part, pages: [askedDoc.page], sheets: [[askedDoc.page, askedDoc.part]], n: deck[ownAt]?.n ?? -1, sectionId: deck[ownAt]?.sectionId || '' }
+    : null;
+  askedRef.current = asked;
   const counting = useRef(new Set());
   countRef.current = (fileId) => {
     const f = docFiles.find((x) => x.id === fileId);
@@ -1304,12 +1353,22 @@ export function Screen({ id, data, d, onBack = null }) {
   // Board's preview is told the deck and where it is, for its list of slides and its "4 of 31"
   useEffect(() => {
     if (!PREVIEW || !deck.length) return;
-    window.parent?.postMessage({ type: 'board-preview-deck', id, at: ownAt, pages, stops: deck.map(({ key, kind, itemId, fileId, page, pages: spread, part, of, n, sectionId }) => ({ key, kind, itemId, fileId, page, ...(spread ? { pages: spread } : {}), part: part || 0, of: of || 0, n, sectionId })) }, location.origin);
-  }, [deck, ownAt, pages]);
+    window.parent?.postMessage({ type: 'board-preview-deck', id, at: ownAt, pages, shows, words: Object.fromEntries(docFiles.map((f) => [f.id, pageWordOf(f)])), stops: deck.map(({ key, kind, itemId, fileId, page, pages: spread, part, of, n, sectionId }) => ({ key, kind, itemId, fileId, page, ...(spread ? { pages: spread } : {}), part: part || 0, of: of || 0, n, sectionId })) }, location.origin);
+  }, [deck, ownAt, pages, shows]);
   // Presenting: the slide kept for a reload
   // (never while the slide asked for is still being counted: a reload then would lose it)
   useEffect(() => { if (PRESENT && deck[ownAt] && (!here.key || deck[ownAt].key === here.key)) { try { sessionStorage.setItem(`bs-at:${id}`, deck[ownAt].key); } catch { /* private browsing */ } } }, [ownAt, deck]);
 
+  // The stops either side drawn ahead when they're a document's spread, so a press shows it at once (a screenshot
+  // after a screenshot never comes up blank first)
+  useEffect(() => {
+    if (!OWN || !meeting || !box.w || !box.h) return;
+    const all = [...meeting.files, ...(v?.prior || []).flatMap((x) => x.files || [])];
+    for (const s of [deck[ownAt + 1], deck[ownAt - 1]]) {
+      const f = s?.kind === 'doc' ? all.find((x) => x.id === s.fileId) : null;
+      if (f) drawAhead(f, s.sheets || [[s.page, s.part || 0]], box);
+    }
+  }, [ownAt, deck, box.w, box.h]);
   // The next meeting, on the calendar with no agenda yet: there's nothing to show until there is
   const waitingAgenda = data.nextPending?.id === id;
   if (fail && !v) return html`<div class="bs bs--center"><div class="bs-cover__lead"><img src=${LOGO} alt="" width="96" height="96" /><h1 class="bs-h1">${waitingAgenda ? 'The agenda isn’t posted yet' : fail}</h1><p class="bs-quiet">${waitingAgenda ? 'The screen opens once it is.' : data.me.admin ? 'Share the meeting in Board, and this screen opens it.' : 'It may not be shared yet.'}</p>${MIRROR ? null : html`<p><a class="bs-back bs-back--text" href=${waitingAgenda ? '#/' : '#/meetings'}>${waitingAgenda ? 'Home' : 'All meetings'}</a></p>`}</div></div>`;
@@ -1324,7 +1383,7 @@ export function Screen({ id, data, d, onBack = null }) {
   const started = OWN ? PRESENT && meeting.date === todayEastern() : !!v.live.startedAt || (fresh && !!told.live.startedAt);
   const ended = OWN ? deck[ownAt]?.kind === 'end' : live.screen === 'end' || (!fresh && !!v.live.endedAt);
   const at = OWN ? ownAt : ended ? deck.length - 1 : stopIndex(deck, live);
-  const stop = deck[at] || deck[0];
+  const stop = (OWN && asked) || deck[at] || deck[0];
   // Each item's number as the agenda has it (a meeting ahead its presenter writes on carries it: this copy is only their items)
   const items = agendaItems(meeting).map((x) => { const it = meeting.sections[x.si]?.items[x.ii]; return typeof it?.n === 'string' && it.n ? { ...x, label: it.n } : x; });
   const onItem = ['item', 'doc', 'live', 'books', 'report', 'decision'].includes(stop.kind);
@@ -1495,7 +1554,7 @@ export function Screen({ id, data, d, onBack = null }) {
       </div>` : html`<${TitleCard} big=${big} over=${over} title=${title} confidential=${!!item.confidential} calm=${calmLine} motion=${motionHere} fits=${[title, over, motionText, calm].join('|')} />`;
     }
   } else {
-    stage = html`<${DocPage} f=${file} sheets=${stop.sheets || [[stop.page, stop.part || 0]]} box=${box} onPages=${notePages} key=${file?.id} />`;
+    stage = html`<${DocPage} f=${file} sheets=${stop.sheets || [[stop.page, stop.part || 0]]} box=${box} onPages=${notePages} />`;
   }
   // The pages that are stops (a blank one isn't), counted to the last of them: a blank page at the end isn't "of 2"
   const shownPages = stop.kind === 'doc' ? Array.from({ length: pages[stop.fileId] || 0 }, (_, i) => i).filter((i) => shows[stop.fileId]?.[i] !== 0) : [];
@@ -1511,7 +1570,7 @@ export function Screen({ id, data, d, onBack = null }) {
   // The line under the stage and the rail are there on every stop, so the stage keeps its size from one to the next
   return html`<div class=${`bs bs--${stop.kind} ${awake ? 'is-awake' : ''} ${vote ? 'has-vote' : ''} ${MIRROR ? 'is-mirror' : ''}`}>
     ${top}
-    <main class="bs-stage" ref=${stageRef} tabindex="0" aria-label="The meeting on the screen"><div class="bs-stage__in" key=${stop.kind === 'doc' ? `doc:${stop.fileId}` : stop.key}>${stage}</div></main>
+    <main class="bs-stage" ref=${stageRef} tabindex="0" aria-label="The meeting on the screen"><div class="bs-stage__in" key=${stop.kind === 'doc' ? 'doc' : stop.key}>${stage}</div></main>
     ${vote ? html`<aside class="bs-vote" aria-live="polite">
       <p class="bs-eyebrow">The board is voting</p>
       <h2 class="bs-vote__what">${vote.text || 'A motion'}</h2>
@@ -1575,7 +1634,8 @@ export function ScreenPeek({ v, onOpen }) {
   useEffect(() => {
     if (!f || !ref.current) return undefined;
     let gone = false;
-    const w = Math.min(560, ref.current.parentElement?.clientWidth || 320);
+    // (inside the frame's 1px border)
+    const w = Math.min(558, (ref.current.parentElement?.clientWidth || 320) - 2);
     // The spread the screen has up: its pages paired the way the screen pairs them
     partsOf(f).then((ns) => {
       const all = spreadsOf(ns.length, (p) => ns[p] ?? 1);
@@ -1583,7 +1643,7 @@ export function ScreenPeek({ v, onOpen }) {
       return drawSpread(f, sp, { w, h: Math.round(w * 0.62) }).then(({ el }) => {
         if (gone || !ref.current) return;
         // (counted to its last page with anything on it, as the screen counts: a blank last page isn't "of 4")
-        setN({ count: all.at(-1).at(-1)[0] + 1, on: [...new Set(sp.map(([p]) => p))] });
+        setN({ count: all.at(-1).at(-1)[0] + 1, on: [...new Set(sp.map(([p]) => p))], more: (sp[0][1] || 0) > 0 });
         ref.current.replaceChildren(el);
       });
     }).catch(() => {});
@@ -1592,7 +1652,7 @@ export function ScreenPeek({ v, onOpen }) {
   if (!f) return null;
   return html`<figure class="bp-peek">
     <div class="bp-peek__page" ref=${ref}></div>
-    <figcaption><span><strong>On the screen:</strong> ${[docTitle(f.name), n.count > 1 && n.on.length ? `${pagesText(n.on, pageWordOf(f))} of ${n.count}` : ''].filter(Boolean).join(', ')}</span>
+    <figcaption><span><strong>On the screen:</strong> ${[docTitle(f.name), n.count > 1 && n.on.length ? `${pagesText(n.on, pageWordOf(f))} of ${n.count}` : '', n.more ? 'continued' : ''].filter(Boolean).join(', ')}</span>
       <a class="bp-btn bp-btn--sm" href=${`#/meetings/${v.id}/screen`} onClick=${onOpen}>Follow the screen</a></figcaption>
   </figure>`;
 }

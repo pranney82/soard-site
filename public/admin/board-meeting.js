@@ -44,6 +44,7 @@ import { ReportEditor, Report } from './board-report.js';
 import { partFor } from './board-coach.js';
 import { mdWords } from './board-md.js';
 import { booksTitle } from './board/books.js';
+import { pageWordOf } from './board/docs.js';
 
 // What a person edits (the server keeps files, the packet's numbers and sent records, and done ticks)
 const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'inviteNote', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
@@ -802,7 +803,7 @@ function AgendaStage({ m, focusId, meetings }) {
   const [box, setBox] = useState({ w: 560, h: 640 });
   const holder = useRef(null);
   const list = useRef(null);
-  // The screen in the frame tells its slides and where it is: { stops, at, pages }
+  // The screen in the frame tells its slides and where it is: { stops, at, pages, shows, words } (a page's or a slide's)
   const [deck, setDeck] = useState(null);
   const src = `${PAGE}?preview#/meetings/${encodeURIComponent(m.id)}${as === 'screen' ? '/screen' : ''}`;
   const post = (msg) => frame.current?.contentWindow?.postMessage(msg, location.origin);
@@ -839,7 +840,7 @@ function AgendaStage({ m, focusId, meetings }) {
   const at = Math.min(deck?.at || 0, Math.max(0, stops.length - 1));
   const items = useMemo(() => agendaItems(m), [m.sections]);
   const files = useMemo(() => [...m.files, ...(meetings || []).flatMap((x) => x.files || [])], [m.files, meetings]);
-  const words = (s) => stopWords(s, m, items, deck?.pages || {}, files);
+  const words = (s) => stopWords(s, m, items, deck?.pages || {}, files, deck?.shows || {}, deck?.words || {});
   const step = (dir) => post({ type: 'board-preview-step', dir });
   // A slide picked: on the screen here, and its item brought into view in the agenda
   const goTo = (s) => { post({ type: 'board-preview-stop', key: s.key }); if (s.itemId) dispatchEvent(new CustomEvent('agx-go', { detail: { id: s.itemId } })); };
@@ -1313,7 +1314,7 @@ function Quorum({ m, ctx, coming }) {
 // ─── The presentation's slides, in words ──────────────────────────
 
 /** What a stop is, in words: { label: '3.2' | '', title, sub } */
-function stopWords(stop, m, items, pages, files) {
+function stopWords(stop, m, items, pages, files, shows = {}, words = {}) {
   if (!stop || stop.kind === 'cover') return { label: '', title: 'The cover', sub: `${meetingName(m)} and the agenda` };
   if (stop.kind === 'end') return { label: '', title: 'The close', sub: 'What the board decided, and the next meeting' };
   if (stop.kind === 'since') return { label: '', title: 'Since we last met', sub: 'The reveals and events since, and the action items' };
@@ -1330,9 +1331,12 @@ function stopWords(stop, m, items, pages, files) {
   // Its motion, a slide of its own after all it shows
   if (stop.kind === 'decision') return { label: it.label, title: `The decision · ${it.title}`, sub: it.presenter || '' };
   const f = files.find((x) => x.id === stop.fileId);
-  const n = pages[stop.fileId];
-  // Its pages on, two side by side as an open book (or one; the rest of a very tall one, continued)
-  return { label: it.label, title: f ? docTitle(f.name) : 'A document', sub: `${it.title} · ${pagesText(stop.pages || [stop.page])}${n ? ` of ${n}` : ''}${stop.part ? ', continued' : ''}` };
+  // Its pages on, two side by side as an open book (or one; the rest of a very tall one, continued), in the screen's
+  // words: counted to its last page with anything on it, a deck's slides as slides, nothing for a file of one page
+  const ns = shows[stop.fileId];
+  const n = Array.isArray(ns) && ns.length ? ns.reduce((last, x, i) => (x !== 0 ? i + 1 : last), 0) || ns.length : pages[stop.fileId] || 0;
+  const on = n > 1 ? `${pagesText(stop.pages || [stop.page], words[stop.fileId] || (f ? pageWordOf(f) : 'page'))} of ${n}` : '';
+  return { label: it.label, title: f ? docTitle(f.name) : 'A document', sub: [it.title, [on, stop.part ? 'continued' : ''].filter(Boolean).join(', ')].filter(Boolean).join(' · ') };
 }
 
 
