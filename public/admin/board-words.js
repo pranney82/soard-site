@@ -142,7 +142,7 @@ export function wordsFromLines(lines, { title = '' } = {}) {
     || (margin(l, i) && (repeated(l) || PAGE_REF.test(l.text) || (l.h && allBody && l.size && l.size < allBody * 0.92 && !footnote(l.text))))
     || SIGN_LABEL.test(l.text.replace(BLANK, '').replace(/[_.\s]+$/, '').trim()) || signLabels(l.text)
     // (blanks to sign beside their labels go; a line to fill in, "My giving commitment: $_____", keeps its words)
-    || (BLANK.test(l.text) && signLabels(l.text.replace(/_{2,}|\.{4,}/g, ' ').replace(/\s+/g, ' ').trim() || 'signature'));
+    || (BLANK.test(l.text) && (() => { const t = l.text.replace(/_{2,}|\.{4,}/g, ' ').replace(/\s+/g, ' ').trim(); return !t || signLabels(t) || SIGN_WORDS.test(t.replace(/[()]/g, ' ( ').replace(/\s+/g, ' ')); })());
   // The words the paper uses, whole (a broken word's whole form written elsewhere joins it again)
   VOCAB = new Set(clean.flatMap((l) => l.text.toLowerCase().match(/[a-z]+(?:-[a-z]+)*/g) || []).filter((w) => !/-$/.test(w)));
   const kept = clean.map((l, i) => (margin(l, i) && footnote(l.text) && l.h && allBody && l.size < allBody * 0.92 ? { ...l, foot: true } : l)).filter((l, i) => !paperOnly(l, i));
@@ -430,7 +430,10 @@ export async function pdfLines(bytes) {
     const [x0, y0, x1, y1] = page.view;
     const items = content.items.filter((it) => it.str?.trim()).map((it) => {
       const size = Math.abs(it.transform[3]) || it.height || 0;
-      return { s: it.str, x0: it.transform[4] - x0, x1: it.transform[4] - x0 + (it.width || 0), y: it.transform[5] - y0, size, bold: !!bold[it.fontName] };
+      // (a run set in with spaces starts where its words do: "   governing board" under a point's words)
+      const lead = it.str.length - it.str.trimStart().length;
+      const at = it.transform[4] - x0 + (lead && it.width ? (it.width / it.str.length) * lead : 0);
+      return { s: it.str.trimStart(), x0: at, x1: it.transform[4] - x0 + (it.width || 0), y: it.transform[5] - y0, size, bold: !!bold[it.fontName] };
     });
     for (const l of linesOfItems(items, { width: x1 - x0, height: y1 - y0 })) out.push({ ...l, page: p });
   }

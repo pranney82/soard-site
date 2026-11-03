@@ -467,3 +467,19 @@ test('new words and Required ticked again in one save asks; a save that doesn’
   const r = await call(OTHER, '/api/board-portal', { method: 'POST', body: { action: 'sign', docId: d.id, name: 'Sam Ortiz', as: 'alex-rivera' }, handler: portal.onRequestPost });
   assert.deepEqual([r.status, r.body.who], [409, true]);
 });
+
+test('taking off a signature on an earlier version takes off that one only; Board’s admins get a paper off the board page to open (marked), members never', async () => {
+  let d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, body: '- One' }, { by: FOUNDER });
+  await signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz', { version: 1 });
+  d = await saveDoc(env.DB, { ...d, body: '- Two' }, { by: FOUNDER, base: 1, askAgain: true });
+  await signDoc(env.DB, d.id, memberOf('sam-ortiz'), 'Sam Ortiz', { version: 2 });
+  d = await saveDoc(env.DB, { ...d, body: '- Three' }, { by: FOUNDER, base: 2, askAgain: true });
+  assert.equal((await listDocs(env.DB)).find((x) => x.id === d.id).before['sam-ortiz'].version, 2);
+  assert.ok(await unsignDoc(env, d.id, 'sam-ortiz'));
+  const x = (await listDocs(env.DB)).find((y) => y.id === d.id);
+  assert.deepEqual([x.signed['sam-ortiz'], x.before['sam-ortiz']], [undefined, undefined], 'one click: the earlier signature gone, no older one back in its place');
+  await saveDoc(env.DB, { ...d, shared: false, body: undefined }, { by: FOUNDER });
+  const admin = (await portalData(env, { admin: true })).docs.find((y) => y.id === d.id);
+  assert.equal(admin?.hidden, true);
+  assert.equal((await portalData(env, { member: { ...memberOf('sam-ortiz'), title: '' } })).docs.some((y) => y.id === d.id), false);
+});

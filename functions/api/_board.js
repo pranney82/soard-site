@@ -759,6 +759,7 @@ export async function signFromDrive(DB, { docId, slug, year, name, driveId, driv
   await writeSignature(DB, { docId, slug, year, name, how: 'drive', driveId, driveName, by, at: at || nowIso(), version }, { keep: !replace });
 }
 
+const DB_doc = async (DB, id) => { const r = await DB.prepare('SELECT data FROM board_docs WHERE id = ?').bind(id).first(); return r ? cleanDoc(parse(r.data)) : null; };
 /** A signature taken off (a copy added for the wrong member, say): its copy goes with it; one from Drive isn't placed again */
 export async function unsignDoc(env, docId, slug, year = thisYear()) {
   await ensureSchema(env.DB);
@@ -766,7 +767,9 @@ export async function unsignDoc(env, docId, slug, year = thisYear()) {
   if (!row) return false;
   await env.DB.prepare('DELETE FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).run();
   if (row.file_id) await deleteFile(env, row.file_id);
-  const earlier = await env.DB.prepare('SELECT * FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? ORDER BY version DESC LIMIT 1').bind(docId, slug, year).first();
+  const doc = await DB_doc(env.DB, docId);
+  const counted = (Number(row.version) || 0) >= (doc?.signFrom || 0);
+  const earlier = counted ? await env.DB.prepare('SELECT * FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? ORDER BY version DESC LIMIT 1').bind(docId, slug, year).first() : null;
   if (earlier) {
     await env.DB.prepare('INSERT OR REPLACE INTO board_signatures (doc_id, slug, year, name, at, how, file_id, drive_id, drive_name, added_by, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
       .bind(docId, slug, year, earlier.name, earlier.at, earlier.how, earlier.file_id, earlier.drive_id, earlier.drive_name, earlier.added_by, earlier.version).run();
@@ -1692,7 +1695,8 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     actions: openActions(shared).map((a) => ({ ...a, mine: !!mine && a.owner === mine })),
     // Who has signed is Board's to see: a member sees how many of the board have, and their own (its copy, if one's in)
     // (and whether they signed an earlier wording, before the board was asked to sign again)
-    docs: docs.filter((d) => d.shared).map(({ signed, earlier, before, wordsBy, ...d }) => ({
+    docs: docs.filter((d) => d.shared || !member).map(({ signed, earlier, before, wordsBy, ...d }) => ({
+      ...(d.shared ? {} : { hidden: true }),
       ...d, file: d.file && !d.file.staffOnly ? d.file : null,
       signedByMe: mine && signed[mine] ? { ...signed[mine], drive: !!signed[mine].drive } : null,
       signedEarlier: !!mine && !signed[mine] && earlier.includes(mine),

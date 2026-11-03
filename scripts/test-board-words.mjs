@@ -261,6 +261,16 @@ for (const [k, foot] of [['dash', (n) => `- ${n} -`], ['pipe', (n) => `${n} | P 
   papers.labels2 = { title: 'Amended Bylaws', ...(await pdf([r2])) };
 }
 
+{
+  // A numbered point whose next line is set in with spaces (a typed indent, not Word's hanging one)
+  papers.spaced = { title: 'Conflict of Interest Policy', ...(await pdf([flow([
+    ['Definitions:'],
+    ['1. Interested Person. Any director, officer or member of a committee with'],
+    ['   governing board delegated powers, who has a financial interest, is one.'],
+    ['2. Financial Interest. An interest in a business SOARD deals with.'],
+  ])])) };
+}
+
 // ── Read them in the browser ──
 const server = http.createServer((req, res) => {
   const f = join(ROOT, 'public', decodeURIComponent(req.url.split('?')[0]));
@@ -347,6 +357,8 @@ ok(/^### Bylaws of Sunshine on a Ranney Day, Inc\.$/m.test(md.labels2), `a title
 ok(/^\*\*Attendance:\*\* three of four meetings a year\.\n\n\*\*Giving:\*\* a gift that is meaningful to you\.\n\n\*\*Committees:\*\* at least one, of your choosing\.$/m.test(md.labels2), 'lines each starting with a bold label are each their own');
 ok(/Vacancies\.\*\* A vacancy is filled/.test(md.labels2) || /Vacancies\. A vacancy is filled/.test(md.labels2), `a bold lead-in and its sentence keep their space (${JSON.stringify((md.labels2.match(/.*Vacanc.*/) || [''])[0])})`);
 ok(/- Finance · Reviews the budget and the annual audit · Monthly\n- Events · Plans the Gala · Quarterly/.test(md.labels2), `a table cell over two lines is one cell, the rows after it rows (${JSON.stringify((md.labels2.match(/\*\*Committee[\s\S]*/) || [''])[0])})`);
+
+ok(/^1\. Interested Person\. Any director, officer or member of a committee with governing board delegated powers, who has a financial interest, is one\.\n2\. Financial Interest\./m.test(md.spaced), `a numbered point’s next line set in with spaces stays the point’s (${JSON.stringify(md.spaced)})`);
 
 ok(!errors.length, `no errors in the page${errors.length ? `: ${errors.join(' | ')}` : ''}`);
 if (failures.length) { console.log(`\n${failures.length} failed`); process.exit(1); }

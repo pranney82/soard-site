@@ -160,3 +160,9 @@ test('a hyphen at a line’s end: kept in a word that has one (in-person, twenty
   ]));
   assert.equal(md, 'Every member meets in-person twice a year and gives twenty-five hours to the community, as each member has since the start.');
 });
+
+test('a date in a file’s name reads as a date', async () => {
+  const { fileTitle } = await import('../public/admin/board-shared.js');
+  assert.equal(fileTitle('Board Expectations Updated 01_01_26.pdf'), 'Board Expectations Updated 01/01/26');
+  assert.equal(fileTitle('2024_990_return.pdf'), '2024 990 return');
+});

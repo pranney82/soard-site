@@ -547,7 +547,8 @@ function Signers({ d, ctx, onDoc }) {
   };
   const off = async (p) => {
     const s = d.signed[p.slug] || d.before?.[p.slug];
-    if (!(await ask({ title: `Take off ${p.name}’s signature${d.signed[p.slug] ? '' : ' on the earlier version'}?`, text: `${p.name.split(/\s+/)[0]} is asked to sign the ${d.title} for ${year}${s?.copy ? ', and the copy added for it is deleted' : ''}.`, yes: 'Take it off', danger: true }))) return;
+    const first = p.name.split(/\s+/)[0];
+    if (!(await ask({ title: `Take off ${p.name}’s signature${d.signed[p.slug] ? '' : ' on the earlier version'}?`, text: d.signed[p.slug] ? `${first} is asked to sign the ${d.title} for ${year}${s?.copy ? ', and the copy added for it is deleted' : ''}.` : `It goes from the record${s?.copy ? ' with the copy added for it' : ''}. ${first} is still to sign the new version.`, yes: 'Take it off', danger: true }))) return;
     setBusy(p.slug);
     const j = await call({ action: 'unsign', docId: d.id, slug: p.slug });
     setBusy('');
@@ -565,8 +566,8 @@ function Signers({ d, ctx, onDoc }) {
         <span class=${`bd-signer__dot ${s ? 'is-on' : ''}`} aria-hidden="true"></span>
         <span class="bd-signer__name">${p.name}</span>
         <span class="bd-signer__how">${s ? signedHow(s) : was ? `Signed the earlier version (${dayOf(was.at)}): to sign the new one` : 'Not signed yet'}${was?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...was.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.copy ? html` · <a ...${viewerLink(viewerFiles([{ ...s.copy, name: `${d.title}, signed by ${p.name}` }]), 0)}>See it</a>` : null}${s?.drive ? html` · <a href=${driveLink(s.drive.id)} target="_blank" rel="noopener">Open it in Drive</a>` : null}</span>
-        <span class="bd-signer__act">${s || was
-          ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => off(p)}>Take it off</button>`
+        <span class="bd-signer__act">${was ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their new signed copy'}</button>` : null}${s || was
+          ? html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => off(p)}>${was ? 'Take the earlier one off' : 'Take it off'}</button>`
           : html`<button class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => { forWho.current = p.slug; pick.current?.click(); }}>${busy === p.slug ? 'Adding…' : 'Add their signed copy'}</button>`}</span>
       </li>`;
     })}</ul>
@@ -849,7 +850,7 @@ function DocumentsTab({ ctx }) {
     addToast(askAgain === true ? `Saved. The board signs the new version for ${year}.` : `Saved: ${d.title}`, 'info');
   };
   const remove = async (d) => {
-    if (!(await ask({ title: `Delete ${d.title}?`, text: (() => { const l = [d.file ? 'its file' : '', d.version ? 'its earlier wordings' : '', 'every signature and signed copy on it'].filter(Boolean); const t = l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0]; return `${t.charAt(0).toUpperCase()}${t.slice(1)} go with it.`; })(), yes: 'Delete', danger: true }))) return;
+    if (!(await ask({ title: `Delete ${d.title}?`, text: (() => { const l = [d.file ? 'its file' : '', d.version > 1 ? 'its earlier wordings' : '', 'every signature and signed copy on it'].filter(Boolean); const t = l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0]; return `${t.charAt(0).toUpperCase()}${t.slice(1)} go with it.`; })(), yes: 'Delete', danger: true }))) return;
     const j = await call({ action: 'delete-doc', id: d.id });
     if (!j.ok) { addToast(j.error, 'error'); return; }
     setData((x) => ({ ...x, docs: x.docs.filter((y) => y.id !== d.id) }));

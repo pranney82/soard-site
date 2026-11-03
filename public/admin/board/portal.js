@@ -1124,7 +1124,7 @@ function HomePage({ ctx }) {
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
-        ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href=${x.body ? `#/documents/${x.id}` : '#/documents'} onClick=${() => { if (!x.body) focusNext = `doc-${x.id}`; }}>
+        ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href=${`#/documents/${x.id}`}>
           <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
           <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">${x.signedEarlier ? 'It changed since you signed: read it, then sign again' : 'Every board member signs it once a year'}</span></span>
           <${Icon} name="arrow" size=${18} cls="bp-go" />
@@ -3059,7 +3059,7 @@ function FinancialsPage({ ctx }) {
   const withStatements = [...data.meetings].filter((m) => m.files.some((x) => x.kind === 'financials')).sort((a, b) => b.date.localeCompare(a.date));
   const latest = withStatements[0] || null;
   const earlier = withStatements.slice(1);
-  const budgets = data.docs.filter((x) => x.kind === 'financial' && x.file);
+  const budgets = data.docs.filter((x) => !x.hidden && x.kind === 'financial' && x.file);
   const spent = (p) => (p.makeovers || 0) + (p.store || 0) + (p.operating || 0);
   const signed = (n) => (typeof n === 'number' ? `${n < 0 ? '−' : ''}${money(Math.abs(n))}` : '');
   const monthShort = (ym) => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
@@ -3211,6 +3211,20 @@ function PeoplePage({ ctx }) {
 // form that was there may be gone (a PDF written in Board meanwhile has "Read and sign" in its place)
 const signTrouble = new Map(); // id → { msg, kind: 'changed' | 'gone', title }
 /** The reason a signature didn't go through, while it's still the case: the paper changed (until they sign), or it went (until it's back) */
+/** Two lines' words, the old against the new: [{ w, op: '' (both), '+' (new), '-' (gone) }] (the longest run they share kept) */
+function wordDiff(a, b) {
+  const x = a.split(/\s+/); const y = b.split(/\s+/);
+  const L = Array.from({ length: x.length + 1 }, () => new Array(y.length + 1).fill(0));
+  for (let i = x.length - 1; i >= 0; i--) for (let j = y.length - 1; j >= 0; j--) L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+  const out = [];
+  let i = 0; let j = 0;
+  while (i < x.length && j < y.length) {
+    if (x[i] === y[j]) { out.push({ w: y[j], op: '' }); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) out.push({ w: x[i++], op: '-' }); else out.push({ w: y[j++], op: '+' });
+  }
+  while (i < x.length) out.push({ w: x[i++], op: '-' });
+  while (j < y.length) out.push({ w: y[j++], op: '+' });
+  return out;
+}
 /** The focus (and the eyes) to where a signature's trouble is said, once the page has the paper as it is now */
 const focusTrouble = (id) => requestAnimationFrame(() => { const t = signTrouble.get(id); if (t) t.loaded = true; const el = document.getElementById(`trouble-${id}`) || document.getElementById(`sign-${id}-p`); if (el) { el.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' }); el.focus({ preventScroll: true }); } });
 const troubleFor = (id, doc) => {
@@ -3279,6 +3293,16 @@ function SignForm({ d: doc, ctx }) {
   const [busy, setBusy] = useState('');
   const [problem, setProblem] = useState('');
   const pick = useRef(null);
+  // The version on the page when the form came up: a newer one brought in while it's open (the page catching up when
+  // its tab comes back) is said, and the name typed for the old one taken out
+  const seen = useRef(doc.version);
+  useEffect(() => {
+    if (seen.current === doc.version) return;
+    seen.current = doc.version;
+    if (doc.signedByMe) return;
+    setName('');
+    setProblem('It changed while you had it open. Read it again, then sign.');
+  }, [doc.version]);
   if (doc.signedByMe) return html`<${Signed} doc=${doc} ctx=${ctx} />`;
   if (!data.me.slug) return null;
   const trouble = troubleFor(doc.id, doc);
@@ -3402,7 +3426,7 @@ function Cover({ x, shelf }) {
 
 function DocumentsPage({ ctx }) {
   const { data } = ctx;
-  const { docs } = data;
+  const docs = data.docs.filter((x) => !x.hidden);
   const [q, setQ] = useKept('q', '');
   const terms = termsOf(q);
   const year = todayEastern().slice(0, 4);
@@ -3429,9 +3453,9 @@ function DocumentsPage({ ctx }) {
   ].filter(Boolean);
   const lede = said.length ? `${said.length > 2 ? `${said.slice(0, -1).join(', ')}, and ${said.at(-1)}` : said.join(' and ')}.`.replace(/^\w/, (c) => c.toUpperCase()) : 'SOARD’s papers, and every file from every meeting.';
   // A signature that didn't go through on a paper no longer here (taken off, deleted)
-  const lost = [...signTrouble.entries()].filter(([id, t]) => t.kind === 'gone' && !docs.some((x) => x.id === id && x.sign)).map(([id, t]) => ({ id, ...t }));
+  const lost = [...signTrouble.entries()].filter(([id, t]) => t.kind === 'gone' && !docs.some((x) => x.id === id && x.sign)).map(([id, t]) => ({ id, ...t, still: docs.some((x) => x.id === id) }));
   return html`
-    ${lost.map((t) => html`<p class="bp-doc__changed bp-rise" role="alert" tabindex="-1" id=${`trouble-${t.id}`} key=${t.id}>Not signed: ${t.title} was taken off the board page while you were signing it. <button type="button" class="bp-linkbtn" onClick=${() => { signTrouble.delete(t.id); ctx.setData((x) => ({ ...x })); }}>OK</button></p>`)}
+    ${lost.map((t) => html`<p class="bp-doc__changed bp-rise" role="alert" tabindex="-1" id=${`trouble-${t.id}`} key=${t.id}>Not signed: ${t.still ? `${t.title} stopped asking for a signature while you were signing it.` : `${t.title} was taken off the board page while you were signing it.`} <button type="button" class="bp-linkbtn" onClick=${() => { signTrouble.delete(t.id); ctx.setData((x) => ({ ...x })); }}>OK</button></p>`)}
     <header class="bp-pagehead bp-rise" style=${rise(0)}>
       <div><h1 class="bp-h1">Documents</h1><p class="bp-lede">${lede}</p></div>
       <label class="bp-filter">
@@ -3511,12 +3535,22 @@ function DocPage({ id, ctx }) {
     const lines = (md) => String(md).split('\n').map((l) => ({ h: /^\s*#{1,6}\s/.test(l), t: mdPlain(l.replace(/^\s*(?:#{1,6}|[-*+]|\d+[.)])\s+/, '')).trim() })).filter((l) => l.t);
     const was = lines(doc.signedBody); const now = lines(doc.body);
     const has = (list, l) => list.some((x) => x.t === l.t);
-    const added = now.filter((l) => !has(was, l)); const removed = was.filter((l) => !has(now, l));
-    return added.length || removed.length ? { added, removed } : null;
+    let added = now.filter((l) => !has(was, l)); let removed = was.filter((l) => !has(now, l));
+    // A line changed (most of its words the same): the new line with its changes marked, its old one not listed again
+    const wordsOf = (t) => t.split(/\s+/);
+    const alike = (a, b) => { const x = new Set(wordsOf(a)); const y = wordsOf(b); return y.filter((w) => x.has(w)).length / Math.max(x.size, y.length) >= 0.5; };
+    const changed = [];
+    for (const l of added) {
+      const k = removed.findIndex((r) => r.h === l.h && alike(r.t, l.t));
+      if (k >= 0) { changed.push({ ...l, diff: wordDiff(removed[k].t, l.t) }); removed = removed.filter((_, j) => j !== k); }
+    }
+    added = added.filter((l) => !changed.some((c) => c.t === l.t));
+    return added.length || removed.length || changed.length ? { added, removed, changed } : null;
   })() : null;
   const HOW = { typed: 'typed on the board page', copy: 'with the copy signed on paper', staff: 'with a signed copy SOARD added', drive: 'with a signed copy in SOARD’s files' };
   return html`<div class="bp-docpage">
-    <a class="bp-back" href="#/documents"><${Icon} name="back" size=${18} />Documents</a>
+    <a class="bp-back" href="#/documents" onClick=${() => { focusNext = `doc-${doc.id}`; }}><${Icon} name="back" size=${18} />Documents</a>
+    ${doc.hidden ? html`<p class="bp-doc__changed bp-noprint">Off the board page: the board doesn’t see it now. You’re seeing it as one of Board’s admins.</p>` : null}
     <header class="bp-pagehead bp-docpage__head bp-rise" style=${rise(0)}>
       <div>
         <p class="bp-printonly bp-docpage__org" aria-hidden="true">Sunshine on a Ranney Day</p>
@@ -3527,6 +3561,7 @@ function DocPage({ id, ctx }) {
       ${written ? html`<p class="bp-btns bp-noprint"><button type="button" class="bp-btn bp-btn--sm" onClick=${() => window.print()}><${Icon} name="print" size=${16} />Print it</button></p>` : null}
     </header>
     ${doc.sign && doc.signedEarlier && !me ? html`<div class="bp-doc__changed bp-noprint"><p>It changed since you signed: read it, then sign again.</p>${changes ? html`<details class="bp-whatchanged"><summary>What changed</summary>
+      ${changes.changed.length ? html`<p class="bp-whatchanged__h">Changed</p><ul>${changes.changed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${l.diff.map((p, j) => (p.op === '+' ? html`<ins key=${j}>${p.w}</ins> ` : p.op === '-' ? html`<del key=${j}>${p.w}</del> ` : `${p.w} `))}</li>`)}</ul>` : null}
       ${changes.added.length ? html`<p class="bp-whatchanged__h">New</p><ul>${changes.added.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${l.h ? html`<strong>${l.t}</strong>` : l.t}</li>`)}</ul>${changes.added.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.added.length - 20, 'more new line')}</p>` : null}` : null}
       ${changes.removed.length ? html`<p class="bp-whatchanged__h">Taken out</p><ul>${changes.removed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}><s>${l.h ? html`<strong>${l.t}</strong>` : l.t}</s></li>`)}</ul>${changes.removed.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.removed.length - 20, 'more line')} taken out</p>` : null}` : null}
     </details>` : null}</div>` : null}
@@ -3574,7 +3609,7 @@ function searchIndex(data, d) {
   const withFile = data.docs.filter((x) => x.file && !x.body);
   const dv = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
   // A paper written here opens on its own page, and its words are searched too
-  for (const x of data.docs) out.push({ group: 'Documents', title: x.title, sub: DOC_KINDS.find((k) => k.id === x.kind)?.label || '', hay: norm([x.title, x.note, x.body ? mdPlain(x.body) : ''].join(' ')), body: x.body ? mdPlain(x.body) : '', ...(x.body ? { href: `#/documents/${x.id}` } : x.file ? { file: [dv, withFile.indexOf(x)] } : { href: '#/documents' }), icon: 'documents' });
+  for (const x of data.docs.filter((y) => !y.hidden)) out.push({ group: 'Documents', title: x.title, sub: DOC_KINDS.find((k) => k.id === x.kind)?.label || '', hay: norm([x.title, x.note, x.body ? mdPlain(x.body) : ''].join(' ')), body: x.body ? mdPlain(x.body) : '', ...(x.body ? { href: `#/documents/${x.id}` } : x.file ? { file: [dv, withFile.indexOf(x)] } : { href: '#/documents' }), icon: 'documents' });
   const fv = data.filings.map((x) => ({ name: `${x.title}.pdf`, type: 'application/pdf', url: x.url }));
   data.filings.forEach((x, i) => out.push({ group: 'Files', title: x.title, sub: 'Tax return or audit', hay: norm(`${x.title} ${x.year} tax return form 990 audit`), file: [fv, i], icon: 'financials' }));
   // The money: where the year's revenue came from, and each major gift (who, the campaign)

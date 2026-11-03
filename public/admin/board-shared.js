@@ -77,7 +77,7 @@ export function repliesOf(m) {
 export const inviteOut = (m) => !!m?.invite?.eventId;
 /** "Balance-sheet_financials v2.pdf" → "Balance sheet financials v2" (the file keeps its own name for saving) */
 export function fileTitle(name) {
-  const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\b(\d{1,2})_(\d{1,2})_(\d{2,4})\b/g, '$1/$2/$3').replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
   return base ? base[0].toUpperCase() + base.slice(1) : 'File';
 }
 /** A file's format in a word: PDF, Excel, Word, Slides, Photo or File */
