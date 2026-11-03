@@ -51,7 +51,6 @@ import { emailShell, button, esc, facts, link, panel, SANS, SERIF } from './_ema
 import { sniffType } from './upload-file.js';
 import { maybeSyncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
-import { pdfText } from './_vendor-read.js';
 import { maybeReadBoardMail, mailStatus } from './_board-mail.js';
 import { mercury } from './_mercury.js';
 import { bankBalances, plaidConfigured, bankFacts } from './_plaid.js';
@@ -101,6 +100,8 @@ export async function ensureSchema(DB) {
   try { await DB.prepare('ALTER TABLE board_doc_versions ADD COLUMN note TEXT').run(); } catch { /* already there */ }
   // A paper's PDF's words, read once, for finding it by them on the board page ('' when it has none: a scan)
   try { await DB.prepare('ALTER TABLE board_files ADD COLUMN words TEXT').run(); } catch { /* already there */ }
+  // …and every meeting file's, read by the reader words_v names (./_board-file-words.js)
+  try { await DB.prepare('ALTER TABLE board_files ADD COLUMN words_v INTEGER').run(); } catch { /* already there */ }
   _ready.add(DB);
 }
 
@@ -695,24 +696,9 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
   return (await listDocs(DB)).find((x) => x.id === d.id);
 }
 
-/** Papers' PDFs not read yet, a few at a time: their words kept for finding them (Workers AI's reader; '' for a scan) */
+/** Board files not read yet, a few at a time: their words kept for finding them (./_board-file-words.js) */
 export async function fillDocWords(env, { limit = 3 } = {}) {
-  try {
-    await ensureSchema(env.DB);
-    const bucket = boardFiles(env);
-    if (!bucket || !env.AI?.toMarkdown) return 0;
-    const rows = (await env.DB.prepare("SELECT id, r2_key, name FROM board_files WHERE owner_type = 'doc' AND type = 'application/pdf' AND words IS NULL ORDER BY at DESC LIMIT ?").bind(limit).all()).results || [];
-    for (const r of rows) {
-      const obj = await bucket.get(r.r2_key);
-      const bytes = obj ? new Uint8Array(await new Response(obj.body).arrayBuffer()) : null;
-      const words = bytes ? await pdfText(env, { bytes, name: r.name }) : '';
-      await env.DB.prepare('UPDATE board_files SET words = ? WHERE id = ?').bind(String(words || '').replace(/\s+/g, ' ').trim().slice(0, 60000), r.id).run();
-    }
-    return rows.length;
-  } catch (err) {
-    console.error('[board] doc words', err.message);
-    return 0;
-  }
+  return (await import('./_board-file-words.js')).readBoardWords(env, { limit, budgetMs: 15000 });
 }
 
 /**
@@ -1827,6 +1813,25 @@ export async function askToSign(env, { slugs = null, by = '', replyTo = [], to =
 async function siteDoc(DB, key) {
   try { return parse((await DB.prepare('SELECT data FROM site_config WHERE key = ?').bind(key).first())?.data, null); } catch { return null; }
 }
+/** SOARD's public tax returns and audits (Site → Financials), through the site's own /files/ route so the page's viewer opens them */
+export const filingsOf = (doc) => (doc?.documents || []).map((d) => ({ title: d.title, year: d.year, type: d.type, url: String(d.url || '').replace(/^https:\/\/files\.sunshineonaranneyday\.com\/financials\//, '/files/financials/') }))
+  .filter((d) => /^(https:\/\/|\/files\/financials\/)/.test(d.url));
+
+/**
+ * The words inside the files this board page has (`?words`), for its search: the shared meetings' files the board
+ * sees (never a staff-only one), SOARD's papers on the page, and its public tax returns and audits
+ * → { files: { [file id]: words }, filings: { [the filing's url on the page]: words }, reading: files still to read }
+ */
+export async function portalWords(env, { member = null } = {}) {
+  await ensureSchema(env.DB);
+  const [meetings, docs, financials] = await Promise.all([listMeetings(env.DB), listDocs(env.DB), siteDoc(env.DB, 'financials')]);
+  const ids = [
+    ...meetings.map(forBoard).filter(Boolean).flatMap((m) => m.files.map((f) => f.id)),
+    ...docs.filter((d) => (d.shared || !member) && d.file && !d.file.staffOnly).map((d) => d.file.id),
+  ];
+  const { wordsFor, filingWordsFor, stillToRead } = await import('./_board-file-words.js');
+  return { files: await wordsFor(env.DB, ids), filings: await filingWordsFor(env.DB, filingsOf(financials).map((f) => f.url)), reading: await stillToRead(env.DB) };
+}
 
 /** Everything the board page shows, for a member (`member`) or an admin looking (`admin`) */
 export async function portalData(env, { member = null, admin = false, adminEmail = '', now = Date.now() } = {}) {
@@ -1847,8 +1852,8 @@ export async function portalData(env, { member = null, admin = false, adminEmail
   const mine = member?.slug || null;
   // A paper read as its PDF: its words, as read, to find it by them
   const fileWords = {};
-  const pdfIds = docs.filter((d) => d.shared && !d.body && d.file?.type === 'application/pdf').map((d) => d.file.id);
-  if (pdfIds.length) for (const r of ((await env.DB.prepare(`SELECT id, words FROM board_files WHERE id IN (${pdfIds.map(() => '?').join(',')})`).bind(...pdfIds).all()).results || [])) if (r.words) fileWords[r.id] = r.words.slice(0, 20000);
+  const pdfIds = docs.filter((d) => d.shared && !d.body && d.file).map((d) => d.file.id);
+  if (pdfIds.length) for (const r of ((await env.DB.prepare(`SELECT id, words FROM board_files WHERE id IN (${pdfIds.map(() => '?').join(',')})`).bind(...pdfIds).all()).results || [])) if (r.words) fileWords[r.id] = r.words.slice(0, 60000);
   // The words a member signed, for each paper they're asked to sign again: what changed, shown beside the new (from the
   // last version their signature counted on: a typo kept since isn't a change to them)
   const signedBodies = {};
@@ -1918,8 +1923,7 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     // Cash at each month's end: QuickBooks' own month-ends once it's connected (13 of them, the books'), else the banks' history
     cashHistory: numbers.books?.months?.length > 1 ? [...numbers.books.months].reverse().map((r) => ({ month: r.month, total: r.total, at: r.end })) : history,
     // The public copies, through the site's own /files/ route so the page's viewer can open them
-    filings: (filings?.documents || []).map((d) => ({ title: d.title, year: d.year, type: d.type, url: String(d.url || '').replace(/^https:\/\/files\.sunshineonaranneyday\.com\/financials\//, '/files/financials/') }))
-      .filter((d) => /^(https:\/\/|\/files\/financials\/)/.test(d.url)),
+    filings: filingsOf(filings),
     snapshot: snapshot || null,
     // This year's gifts of $1,000 or more, from Zeffy (./_board-gifts.js)
     gifts,
@@ -2329,6 +2333,7 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *     Workers AI read again for their motions and action items (./_board-minutes.js maybeFinishMinutes)
  *   - hourly, QuickBooks' revenue and expenses for the year so far (./_quickbooks.js)
  *   - every 15 minutes, the year's major gifts from Zeffy (./_board-gifts.js)
+ *   - each minute until all are read, a few board files' words, for the board page's search (./_board-file-words.js)
  *   - once a day, the month's bank balance for the board page's history
  * Never throws.
  */
@@ -2357,6 +2362,8 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await (await import('./_quickbooks.js')).maybeReadBooks(env, { fetchImpl, now });
     // The year's gifts of $1,000 or more, from Zeffy every 15 minutes
     await (await import('./_board-gifts.js')).maybeReadGifts(env, { fetchImpl, now });
+    // Board files' words, a few each minute until every one is read, for finding them on the board page
+    await (await import('./_board-file-words.js')).readBoardWords(env, { limit: 6, budgetMs: 12000 });
     if (!String(env.MERCURY_API_TOKEN || '').trim() && !plaidConfigured(env)) return;
     const runs = await readState(env.DB, 'runs');
     if (runs.cashAt && now - Date.parse(runs.cashAt) < 20 * 60 * 60 * 1000) return;

@@ -833,6 +833,18 @@ const MAP = { t: 'SOARD', children: [
             if (!m.checkedAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
             return ON(m.waiting ? `${plural(m.waiting, 'email')} still to read.` : `Up to date: ${plural(m.meetings, 'meeting')} with ${plural(m.files, 'file')} from email${m.skipped ? `, ${m.skipped} left out` : ''}.`, m.checkedAt);
           } },
+        { t: 'Board files → the board page’s search', s: 'live', k: 'schedule',
+          when: 'Every minute on the live hub’s heartbeat until each file is read (a few at a time: SOARD’s papers first, then the newest meetings’), and as someone searches the board page.',
+          does: 'Reads the words inside every board file once, the way each is written: a PDF page by page with Workers AI’s converter, a scanned PDF and a picture by Workers AI’s vision model, and Word, Excel and PowerPoint by the readers the board page draws them with. The board page’s search, the Meetings filter and Documents then find a file by what it says, show the words around the match with the page they’re on, and open the PDF at them. A board member gets the words of only the files their page shows.',
+          touches: ['Workers AI', 'D1', 'R2'], where: 'functions/api/_board-file-words.js (via _board.js maybeRunBoard and board-portal.js ?words)',
+          live: (f) => {
+            const w = f.boardWords;
+            if (!w) return null;
+            if (!w.files) return ON('No board files yet.');
+            if (w.toRead) return ON(`${plural(w.toRead, 'file')} still to read; ${plural(w.withWords, 'file')} found by their words so far.`);
+            if (w.failed) return ATTN(`${plural(w.failed, 'file')} Workers AI couldn’t read after three tries; they’re found by their names only.`);
+            return ON(`Every file read: ${plural(w.withWords, 'file')} found by their words${w.files - w.withWords ? `, ${w.files - w.withWords} with none to read (a photo, an old .doc)` : ''}.`);
+          } },
         { t: 'The next agenda, drafted from the last', s: 'live', k: 'schedule',
           when: 'Every ten minutes on the live hub’s heartbeat.',
           does: 'Each meeting ahead whose agenda nobody has written (SOARD’s usual outline, or a draft) gets the last written or emailed agenda as a draft: its sections and items in order, who presents, the live numbers, the last minutes up for approval; new business starts empty and nothing written under an item comes along. A newer agenda redrafts it; an agenda emailed for the meeting replaces it; Use this agenda, or any change, makes it the meeting’s own.',

@@ -8,6 +8,8 @@
  * GET                                   → everything the page shows (see _board.js portalData), and `org`: SOARD's
  *                                         facts for Documents (_org-facts.js orgFacts)
  * GET ?live=<id>                        → the meeting as it's held (_board.js liveView): every few seconds while it runs
+ * GET ?words                            → the words inside every file the page has, for its search (_board.js portalWords);
+ *                                         a few files not read yet are read after it (_board-file-words.js)
  * POST { action: 'rsvp' }                           → 410: the calendar invite is the only answer (Peter, Nov 2 2026)
  * POST { action: 'action-done', actionId, done }    one of their own action items
  * POST { action: 'sign', docId, name, version }      "I've read it", this year, with their own name typed (409 { changed }: the words changed since)
@@ -36,7 +38,8 @@
  * (theirs alone, simulated members) they check in and vote as themselves.
  */
 
-import { portalData, setActionDone, signDoc, signWithCopy, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, saveSlideOrder, saveMotion, attachToItem, detachFromItem, listMeetings } from './_board.js';
+import { portalData, portalWords, setActionDone, signDoc, signWithCopy, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, saveSlideOrder, saveMotion, attachToItem, detachFromItem, listMeetings } from './_board.js';
+import { readBoardWords } from './_board-file-words.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
 import { noteGet, noteLook, noteAnswer, noteEvents, answerOf } from './_board-activity.js';
@@ -63,6 +66,11 @@ export async function onRequestGet(context) {
     if (!w) return fail('The board page is for SOARD’s board members', 403);
     if (w.member) await later(context, noteGet(context.env, w.member, context.request));
     const q = new URL(context.request.url).searchParams;
+    if (q.has('words')) {
+      const words = await portalWords(context.env, w);
+      context.waitUntil?.(readBoardWords(context.env, { limit: 3, budgetMs: 15000 }));
+      return Response.json({ ok: true, ...words }, { headers: { 'Cache-Control': 'private, no-store' } });
+    }
     if (q.has('live')) {
       const view = await liveView(context.env, q.get('live'), w);
       // Following it counts only while it's being held

@@ -28,7 +28,8 @@
  *   - a board member opening /admin/ lands on /admin/board/; Home (the next
  *     meeting with its place, Google Meet, already on their calendar, the
  *     makeovers by stage, coming up), answering whether they'll come, ticking
- *     off their action, search (⌘K) landing on a point in the minutes, the
+ *     off their action, search (⌘K) landing on a point in the minutes and opening
+ *     a file at the words it was found by, the
  *     meeting (never the private note or a staff-only file), the file viewer,
  *     Financials, People, Documents (signing, every meeting's files), the
  *     phone's tab bar; the founders see it as the board does
@@ -52,6 +53,7 @@ import * as boardPortal from '../functions/api/board-portal.js';
 import * as boardFile from '../functions/api/board-file.js';
 import { provideBoardFinance, maybeLockNumbers, takeSnapshot, saveMeeting, getMeeting, patchMeeting, listDocs } from '../functions/api/_board.js';
 import { maybeReadGifts } from '../functions/api/_board-gifts.js';
+import { readBoardWords } from '../functions/api/_board-file-words.js';
 import { maybeRefreshInvites, maybeCheckInvites } from '../functions/api/_board-invite.js';
 import { syncBoardGroup } from '../functions/api/_board-group.js';
 import { syncBoardCalendar } from '../functions/api/_board-calendar.js';
@@ -1085,6 +1087,22 @@ try {
       await alex.keyboard.press('Enter');
       ok(await alex.waitForFunction((id) => location.hash === `#/meetings/${id}`, { timeout: 4000 }, meetingId).then(() => true, () => false), 'Enter opens the meeting');
       ok(await alex.waitForSelector('.bp-item.is-found', { timeout: 4000 }).then(() => true, () => false), 'and marks the point it found');
+      // A file found by what it says: its words read once (Workers AI's converter, faked for the statement only), the
+      // page they're on beside them, and Enter opens the PDF at them, its find box on the words
+      env.AI.toMarkdown = async (doc) => ({ name: doc.name, format: 'markdown', data: /balance.?sheet/i.test(doc.name) ? '# s.pdf\n## Metadata\n- PDFFormatVersion=1.7\n## Contents\n### Page 1\nStatement of Financial Position\n### Page 2\nUnrestricted net assets grew with the spring appeal' : '' });
+      while (await readBoardWords(env, { limit: 20, budgetMs: 60000 })) { /* each file once */ }
+      delete env.AI.toMarkdown;
+      await alex.goto(`${SITE}/admin/board/`, { waitUntil: 'domcontentloaded' });
+      await alex.waitForSelector('.bp-find', { timeout: 8000 });
+      await alex.click('.bp-find');
+      await alex.waitForSelector('dialog.bp-finder[open] input', { timeout: 4000 });
+      await alex.keyboard.type('spring apeal');
+      ok(await alex.waitForFunction(() => /Showing results for spring appeal[\s\S]*Files[\s\S]*Balance sheet financials[\s\S]*Page 2[\s\S]*spring appeal/i.test(document.querySelector('.bp-finder__list')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), 'search finds a file by what it says (a word misspelt read as the one there), with the page it’s on');
+      await alex.keyboard.press('Enter');
+      ok(await alex.waitForFunction(() => /^spring appeal$/i.test(document.querySelector('.fv-find-input')?.value || ''), { timeout: 10000 }).then(() => true, () => false), 'Enter opens the PDF at those words, its find box on them');
+      await alex.keyboard.press('Escape');
+      await alex.keyboard.press('Escape');
+      await sleep(400);
     }
 
     await alex.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });

@@ -40,6 +40,7 @@ import { ChairReview, reviewTodo, ChairNoteLine } from './chair.js';
 import { Report, ReportEditor, readTime, Motion } from '../board-report.js';
 import { partFor } from '../board-coach.js';
 import { mdPlain, mdWords } from '../board-md.js';
+import { prep, termsOf, termIn as wordIn, stemIn, ENDINGS, planOf, matches, howIn, termAt, scoreOf, marksOf, pageAt, norm as findNorm } from './find.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
 import { useCashNow, useBudget, liveCash, Both, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsPhrase, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue, budgetMonthsText as budgetMonths, stepText, useChangeAs, changeIn, overIn } from './money.js';
@@ -172,7 +173,8 @@ const OFFICE_WORD = { Excel: 'Excel', Word: 'Word', Slides: 'PowerPoint' };
 const asViewer = (files) => files.map((f) => {
   const office = OFFICE_WORD[formatOf(f)] || '';
   return {
-    name: f.name ? docTitle(f.name) : 'File', filename: f.name, type: f.type || EXT_TYPES[String(f.name || '').toLowerCase().split('.').pop()] || '', size: f.size, at: f.at, url: f.url || fileUrl(f),
+    // (a paper shown under its own title keeps it as written: "W-9", never a file name's "W 9")
+    name: f.titled ? f.name : f.name ? docTitle(f.name) : 'File', filename: f.titled ? f.file || f.name : f.name, type: f.type || EXT_TYPES[String(f.name || '').toLowerCase().split('.').pop()] || '', size: f.size, at: f.at, url: f.url || fileUrl(f),
     thumb: (f.id && (pageKept(f, 200) || pageKept(f, 48))) || undefined,
     ...(office ? { kindLabel: office } : {}),
     // (not the old .doc, .xls and .ppt kind, which only Office opens)
@@ -306,7 +308,7 @@ function FileBadge({ f }) {
 }
 
 /** A set of files, by kind, each opening in the viewer (the PDFs step through with ← →) */
-function FileList({ files, order, labels = true, kinds = false, lead = null }) {
+function FileList({ files, order, labels = true, kinds = false, lead = null, found = null }) {
   const sorted = fileRows(files, order, lead);
   // Without headings the kinds run together as one list
   const groups = labels || sorted.length < 2 ? sorted : [{ kind: 'all', label: '', rows: sorted.flatMap((g) => g.rows) }];
@@ -314,13 +316,19 @@ function FileList({ files, order, labels = true, kinds = false, lead = null }) {
   const vf = asViewer(primary);
   return html`<div class="bp-files">${groups.map((g) => html`<div class="bp-files__group" key=${g.kind}>
     ${labels && groups.length > 1 ? html`<h3 class="bp-files__label">${g.label}</h3>` : null}
-    <ul class="bp-files__list">${g.rows.map((r) => html`<li class="bp-file" key=${r.key} id=${`f-${r.file.id}`}>
-      <a class="bp-file__main" ...${viewerLink(vf, primary.indexOf(r.file))}>
+    <ul class="bp-files__list">${g.rows.map((r) => {
+      // (searched: the words it was found by, when its name doesn't say them, and a PDF opens at them)
+      const fw = found && !hits(r.title, found.terms) ? wordsOfRow(r, found.words) : '';
+      const said = saysAny(fw, found?.terms || []);
+      const at = said && r.file.type === 'application/pdf' ? whereIn({ pages: found.words[r.file.id] || '' }, planFor(found.terms), found.terms) : null;
+      return html`<li class="bp-file" key=${r.key} id=${`f-${r.file.id}`}>
+      <a class="bp-file__main" ...${viewerLink(vf, primary.indexOf(r.file), at ? { find: at.find } : landedFind?.id === r.file.id ? { find: landedFind.find } : {})}>
         <${FileBadge} f=${r.file} />
-        <span class="bp-file__text"><span class="bp-file__title">${r.title}</span><span class="bp-file__meta">${[kinds ? kindLabel(r.file.kind) : '', formatOf(r.file), nb(sizeText(r.file.size))].filter(Boolean).join(' · ')}</span></span>
+        <span class="bp-file__text"><span class="bp-file__title">${r.title}</span>${said ? html`<span class="bp-file__found"><${Snippet} text=${fw} terms=${found.terms} /></span>` : null}<span class="bp-file__meta">${[kinds ? kindLabel(r.file.kind) : '', formatOf(r.file), nb(sizeText(r.file.size))].filter(Boolean).join(' · ')}</span></span>
       </a>
       ${r.more.length ? html`<span class="bp-file__more">${r.more.map((x) => html`<a ...${viewerLink(asViewer([x.file]), 0)}>${x.label}</a>`)}</span>` : null}
-    </li>`)}</ul>
+    </li>`;
+    })}</ul>
   </div>`)}</div>`;
 }
 
@@ -439,6 +447,36 @@ function goBack(hash) {
 
 // What to bring into view once a page opens (a search hit inside a meeting, a person)
 let focusNext = null;
+// …and the words that were searched for, marked there for a few seconds (the CSS Highlight API: the page's own
+// text isn't touched). Where a browser hasn't the API, the place is marked as before, the words not
+let foundTerms = null;
+let foundClear = 0;
+// A file a search landed on (the Meetings filter, by its words): opened from there, its PDF opens at them too
+let landedFind = null;
+function markFound(el) {
+  const terms = foundTerms;
+  foundTerms = null;
+  if (!terms?.length || !window.CSS?.highlights || typeof Highlight === 'undefined') return;
+  const pats = markRes(terms);
+  if (!pats.length) return;
+  const re = new RegExp(pats.join('|'), 'gi');
+  const ranges = [];
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n && ranges.length < 80; n = walk.nextNode()) {
+    if (!n.nodeValue.trim()) continue;
+    for (const m of n.nodeValue.matchAll(re)) {
+      if (!m[0]) continue;
+      const r = new Range();
+      r.setStart(n, m.index);
+      r.setEnd(n, m.index + m[0].length);
+      ranges.push(r);
+    }
+  }
+  if (!ranges.length) return;
+  CSS.highlights.set('bp-found', new Highlight(...ranges));
+  clearTimeout(foundClear);
+  foundClear = setTimeout(() => CSS.highlights.delete('bp-found'), 8000);
+}
 function useFocusTarget() {
   useEffect(() => {
     if (!focusNext) return;
@@ -460,13 +498,20 @@ function useFocusTarget() {
       const behavior = reduceMotion() ? 'auto' : 'smooth';
       // (`inline` too: a card on the makeovers board is brought in from the side)
       el.scrollIntoView({ block: 'center', inline: 'center', behavior });
+      // (one place marked at a time: the last search's comes off)
+      document.querySelectorAll('.is-found').forEach((x) => { if (x !== el) x.classList.remove('is-found'); });
       el.classList.remove('is-found');
       void el.offsetWidth;
       el.classList.add('is-found');
+      markFound(el);
+      // (the agenda's rail marks the part it landed in, not the one whose heading is still above)
+      const part = el.closest('[id^="s-"]');
+      if (part) window.dispatchEvent(new CustomEvent('bp-landed', { detail: part.id }));
       // A report cut short opens whole, so what was searched for shows
       el.querySelectorAll('.rp-more[aria-expanded="false"]').forEach((b) => b.click());
       // The focus goes there too: a field waiting for them (the name to sign with), else the thing itself
-      const field = matchMedia('(pointer: coarse)').matches ? null : (el.classList.contains('bp-doc') && el.querySelector('a.bp-btn')) || el.querySelector('[data-autofocus]');
+      // (a file: its link, so Enter opens it)
+      const field = (/^f-/.test(el.id) && el.querySelector('a[href]')) || (matchMedia('(pointer: coarse)').matches ? null : (el.classList.contains('bp-doc') && el.querySelector('a.bp-btn')) || el.querySelector('[data-autofocus]'));
       if (field) field.focus({ preventScroll: true });
       else { if (!el.matches('a, button, input, select, textarea, [tabindex]')) el.setAttribute('tabindex', '-1'); el.focus({ preventScroll: true }); }
       // What arrives above it a moment later (a budget read, photos) doesn't push it away: the jump is aimed again
@@ -521,6 +566,8 @@ function App() {
   const [route, setRoute] = useState(readRoute);
   const [note, setNote] = useState(null);
   const [finding, setFinding] = useState(false);
+  // (the search made ready ahead on a wide screen, a moment after the page opens)
+  useEffect(() => { if (!data || !warmAhead()) return undefined; const t = setTimeout(warmFind, matchMedia('(min-width: 900px)').matches ? 2500 : 5000); return () => clearTimeout(t); }, [!!data]);
   const load = async () => {
     // A slide on the report page is a frame of that page: its data from there, never fetched again for each slide
     if (PREVIEW) {
@@ -690,6 +737,7 @@ function App() {
   if (!data) return html`<div class="bp-boot"><img src=${LOGO} alt="" width="56" height="56" /><p>Opening the board page…</p></div>`;
   const say = (text, tone = '', act = null) => setNote({ text, tone, act, at: Date.now() });
   const ctx = { data, d, setData, load, say, find: () => setFinding(true) };
+  findCtx = { data, d };
   // The meeting on the screen fills the window: no header, tabs or footer
   if (route.sub === 'screen') return html`<${Screen} id=${route.id} data=${data} d=${d} key=${route.id} onBack=${goBack} />`;
   const page = route.sub === 'report' ? html`<${ReportPage} id=${route.id} itemId=${route.item} ctx=${ctx} key=${`${route.id}/${route.item}`} />`
@@ -1073,7 +1121,9 @@ function ImpactYears({ years, what, setWhat, sel, setSel, thisYear, word }) {
 
 /** Home's makeovers: the kanban (./kanban.js), from JobTread. The count is the figure above; each column has its own */
 // ─── Major gifts, from Zeffy (functions/api/_board-gifts.js) ───
-const giftDay = (s) => new Date(s * 1000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+// (one formatter for every gift: making one a call is slow, and the search lists them all)
+const GIFT_DAY = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' });
+const giftDay = (s) => GIFT_DAY.format(new Date(s * 1000));
 const giftWho = (g) => g.company || g.name || (g.anonymous ? 'Anonymous' : 'No name given');
 // The person who gave for a company, the campaign, monthly (unless the campaign says so), in kind
 const giftAbout = (g) => [g.company && g.name ? g.name : '', g.campaign, g.every && !String(g.campaign || '').toLowerCase().includes(g.every) ? g.every : '', g.inKind ? 'in kind' : ''].filter(Boolean).join(' · ');
@@ -1340,52 +1390,220 @@ function MyAction({ a, ctx }) {
  * Everything a meeting says, for finding it: [{ where, text, body, id }]. `text` is what's searched; `body` what a
  * match shows under where it is (an agenda point's notes, not its name again); `id` where opening it lands
  */
-function meetingTexts(m) {
+const textsKept = new WeakMap();
+function meetingTexts(m, words = null) {
+  // (kept for the meeting and the words it was made with: a file's words are long, and every key typed asks again)
+  const was = textsKept.get(m);
+  if (was && was.words === words) return was.texts;
+  const texts = meetingTextsNow(m, words);
+  textsKept.set(m, { words, texts });
+  return texts;
+}
+function meetingTextsNow(m, words) {
   return [
-    { where: '', text: [meetingName(m), longDate(m.date), m.location].join(' ') },
-    ...m.sections.flatMap((s) => [{ where: s.title, text: s.title, body: '', id: `s-${s.id}` }, ...s.items.map((it) => ({ where: it.title || s.title, text: [it.title, it.presenter, it.notes, mdPlain(it.report), it.motion].join(' '), body: [it.presenter, notesLine(it.notes) || notesLine(mdPlain(it.report))].filter(Boolean).join(' · '), id: `i-${it.id}` }))]),
+    { where: '', text: [meetingName(m), longDate(m.date), m.location, findCtx?.data ? meetingTags(m, findCtx.data, findCtx.d) : ''].join(' ') },
+    ...m.sections.flatMap((s) => [{ where: s.title, text: s.title, body: '', id: `s-${s.id}` }, ...s.items.map((it) => ({ where: it.title || s.title, text: [it.title, it.presenter, findCtx?.d ? presentersOf(it, findCtx.d.people).map((p) => p.name).join(' ') : '', it.notes, mdPlain(it.report), it.motion].join(' '), body: [it.presenter, notesLine(it.notes) || notesLine(mdPlain(it.report))].filter(Boolean).join(' · '), id: `i-${it.id}` }))]),
     // A decision by its words and by who moved and seconded it
     ...m.motions.map((x, k) => ({ where: 'Decision', text: [x.text, x.by, x.second].join(' '), body: [x.text, x.by && `moved by ${x.by}`, x.second && `seconded by ${x.second}`].filter(Boolean).join(' · '), id: `mo-${x.id || k}` })),
     ...m.actions.map((a) => ({ where: 'Action item', text: [a.text, a.ownerName].join(' '), body: [a.text, a.ownerName].filter(Boolean).join(' · '), id: 'actions' })),
-    // A file lands on its own tile, wherever on the page it is
-    ...fileRows(m.files).flatMap((g) => g.rows).map((r) => ({ where: 'File', text: r.title, body: r.title, id: `f-${r.file.id}` })),
+    // A file lands on its own tile, wherever on the page it is; found by its words too (its other copies' with it)
+    ...rowsOf(m).map((r) => {
+      const fw = wordsOfRow(r, words);
+      const [text, key] = rowHay(m, r, words);
+      return { where: fw ? r.title : 'File', text, body: fw || r.title, id: `f-${r.file.id}`, key };
+    }),
   ];
+}
+/** A file row's words (a PDF and its Excel copy: both), pages apart; kept, so it's the same text each time it's asked */
+const rowWords = new Map();
+function wordsOfRow(r, words) {
+  if (!words) return '';
+  const key = [r.file, ...r.more.map((x) => x.file)].map((f) => f.id).join('+');
+  const was = rowWords.get(key);
+  if (was && was[0] === words) return was[1];
+  const text = [r.file, ...r.more.map((x) => x.file)].map((f) => words[f.id] || '').filter(Boolean).join('\f');
+  rowWords.set(key, [words, text]);
+  return text;
+}
+/** A meeting's files as rows (a title a row: a PDF and its copies), kept for the meeting */
+const rowsKept = new WeakMap();
+const rowsOf = (m) => { let r = rowsKept.get(m); if (!r) { r = fileRows(m.files).flatMap((g) => g.rows); rowsKept.set(m, r); } return r; };
+/**
+ * What a meeting's file is found by, the same text for the search, Meetings and Documents (its title, kind, meeting
+ * and words, its copies' too), readied once: → [text, key]. `f`: the file or its row
+ */
+const rowHays = new Map();
+function rowHay(m, f, words) {
+  const r = f.file ? f : rowsOf(m).find((x) => x.file.id === f.id || x.more.some((y) => y.file.id === f.id));
+  if (!r) return [`${titleOf(f.name)} ${kindLabel(f.kind)} ${meetingName(m)}`, ''];
+  // (its words or not yet: two texts, each readied once)
+  const key = `${words ? 'row' : 'row0'}:${r.file.id}`;
+  const was = rowHays.get(key);
+  if (was && was[0] === words && was[1] === m) return [was[2], key];
+  const text = `${r.title} ${kindLabel(r.file.kind)} ${meetingName(m)} ${longDate(m.date)} ${wordsOfRow(r, words)}`;
+  rowHays.set(key, [words, m, text]);
+  return [text, key];
+}
+const fileHit = (m, f, words, terms) => { const [text, key] = rowHay(m, f, words); return hits(text, terms, key); };
+/** Whether a file's own words say any of what was searched (its name aside), for showing them: one look, no readying */
+const saysAny = (text, terms) => { const pats = markRes(terms); return !!text && pats.length > 0 && new RegExp(pats.join('|'), 'i').test(text); };
+/**
+ * What's typed, a beat behind while typing goes on: what it finds follows each pause and never holds a key up.
+ * → [settled, settle now]
+ */
+function useSettled(v, ms = 60) {
+  const [now, setNow] = useState(v);
+  useEffect(() => {
+    if (v === now) return undefined;
+    // (emptied, or the first letter: at once)
+    const t = setTimeout(() => setNow(v), !String(v).trim() || !String(now).trim() ? 0 : ms);
+    return () => clearTimeout(t);
+  }, [v]);
+  return [now, () => setNow(v)];
 }
 /** "Budget" with the words found marked */
 /**
- * A term as it may be written, at a word's start: a number with its commas, points or slash ("7500" is "7,500", "73"
- * is "7.3", "23" is "2/3"), a word with its hyphens ("twothirds" is "two-thirds")
+ * A term as it may be written, at a word's start: a number whole with its commas ("7500" is "7,500", never the start
+ * of 12,401 or the end of 41,605), a decimal with its point and a time with its colon ("1d2" is 1.2, "6h05" 6:05), a
+ * fraction with its slash ("1 2" is "1/2"), a date or an abbreviation its parts apart ("2024 04 25" is 2024.04.25 and
+ * 4/25, "p l" is P&L), a word with its hyphens ("twothirds" is "two-thirds")
  */
-const termRe = (t) => (/^\d+ \d+$/.test(t) ? `(?<![a-z0-9])${t.replace(' ', '[/\u2044]')}(?![0-9])` : `(?<![a-z0-9])${[...t].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join(/^\d+$/.test(t) ? '[,./]?' : "[-'’.]?")}`);
-const Marked = ({ text, terms }) => { const re = new RegExp(`(${terms.map(termRe).join('|')})`, 'ig'); return String(text || '').split(re).map((part, i) => (i % 2 ? html`<mark>${part}</mark>` : part)); };
+const reEsc = (c) => c.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const termRe = (t) => (/^\d+ \d+$/.test(t) ? `(?<![a-z0-9])${t.replace(' ', '[/\u2044]')}(?![0-9])`
+  : t.includes(' ') ? `(?<![a-z0-9])${t.split(' ').map((x) => (/^\d+[dh]\d+$/.test(x) ? x.replace(/[dh]/, (c) => (c === 'd' ? '\\.' : ':')) : reEsc(x))).join('[^a-z0-9]{1,3}')}(?![a-z0-9])`
+    // (a decimal with its point, a time with its colon: "1d2" is 1.2, "6h05" is 6:05)
+    : /^\d+[dh]\d+$/.test(t) ? `(?<![a-z0-9]|\\d[,.:])${t.replace(/[dh]/, (c) => (c === 'd' ? '\\.' : ':'))}(?![0-9]|[,.:]\\d)`
+      : /^\d+$/.test(t) ? `(?<![a-z0-9]|\\d[,.:])${[...t].join(',?')}(?![0-9]|[,.:]\\d)`
+        : `(?<![a-z0-9])${[...t].map(reEsc).join("[-'’.]?")}`);
+const Marked = ({ text, terms }) => { const marks = markRes(terms); if (!marks.length) return text; const re = new RegExp(`(${marks.join('|')})`, 'ig'); return String(text || '').split(re).map((part, i) => (i % 2 ? html`<mark>${part}</mark>` : part)); };
 /**
- * Finding words the way a person types them: each word at the start of a word ("bud" finds Budget, "aug 6" August 6
- * but not 2026), whatever the punctuation ("w9" finds W-9, "501c3" 501(c)(3)); a long word or one with a number in
- * it anywhere ("obrien" in O’Brien)
+ * Finding words the way a person types them (./find.js): each word at the start of a word ("bud" finds Budget,
+ * "aug 6" August 6 but not 2026), whatever the punctuation ("w9" finds W-9, "501c3" 501(c)(3)), a plural or
+ * another ending ("budgets" Budget), a misspelt word as the nearest word the page has ("bugdet" budget); the
+ * small words ("vs", "of") never have to be there
  */
 // (a word joined by punctuation counts as itself too: "D&O" is "d o" and "do", "W-9" is "w 9" and "w9")
-const spaced = (s) => { const t = norm(s); return ` ${t.replace(/[^a-z0-9]+/g, ' ').trim()} ${t.replace(/(\d),(?=\d{3}\b)/g, '$1').replace(/([a-z0-9])[&.'’\-/()]+(?=[a-z0-9])/g, '$1').replace(/[^a-z0-9]+/g, ' ').trim()} `; };
+const spaced = prep;
 const squashed = (s) => norm(s).replace(/[^a-z0-9]+/g, '');
-// (a fraction, "1/2" or "½", is its two numbers apart: " 1 2 " in the words, never "12")
-const termsOf = (q) => norm(q).split(/\s+/).map((w) => (/^\d+\/\d+$/.test(w) ? w.replace('/', ' ') : w.replace(/[^a-z0-9]+/g, ''))).filter(Boolean);
-const termIn = (sp, sq, w) => (w.includes(' ') ? sp.includes(` ${w} `) : false) || (!w.includes(' ') && sp.includes(` ${w}`)) || ((/\d/.test(w) && /[a-z]/.test(w)) || w.length >= 5 ? sq.includes(w) : false);
-const hits = (text, terms) => { const sp = spaced(text); const sq = squashed(text); return terms.every((w) => termIn(sp, sq, w)); };
+const termIn = (sp, sq, w) => wordIn(sp, w);
+// Every word the page has, files' words too, once something's been searched: { count, has }, for a misspelt word
+let VOCAB = null;
+const plans = new Map();
+/** What's typed, ready to find with (./find.js planOf), read against the page's words as they are now */
+// A role's words and who has it, from People ("treasurer" → Thomas Wilson), so a role finds what its person presented
+let rolesFrom = null;
+let roles = null;
+const ROLE_SKIP = new Set(['board', 'member', 'members', 'advisory', 'committee', 'team', 'staff', 'senior', 'manager', 'owner', 'partner']);
+function rolesNow() {
+  const people = findCtx?.d?.people;
+  if (!people || people === rolesFrom) return roles;
+  rolesFrom = people;
+  roles = new Map();
+  for (const p of people) {
+    if (!p?.name || !p.title) continue;
+    const name = findNorm(p.name).replace(/[^a-z0-9]+/g, ' ').trim();
+    for (const w of new Set(findNorm(p.title).split(/[^a-z]+/).filter((x) => x.length >= 4 && !ROLE_SKIP.has(x)))) roles.set(w, [...(roles.get(w) || []), name]);
+  }
+  return roles;
+}
+// Everyone's first and last names, for reading a misspelt name as theirs
+let namesFrom = null;
+let names = null;
+function namesNow() {
+  const people = findCtx?.d?.people;
+  if (!people || people === namesFrom) return names;
+  namesFrom = people;
+  names = new Set(people.flatMap((p) => findNorm(p?.name || '').split(/[^a-z]+/).filter((w) => w.length >= 3)));
+  return names;
+}
+function planFor(terms, asTyped = false) {
+  const k = `${asTyped ? '=' : ''}${terms.join(' ')}`;
+  const was = plans.get(k);
+  const who = rolesNow();
+  if (was && was.vocab === VOCAB && was.who === who) return was.plan;
+  const plan = planOf(terms, VOCAB && !asTyped ? { vocab: VOCAB.count, has: VOCAB.has, roles: who, names: namesNow() } : { roles: who, ...(VOCAB ? { has: VOCAB.has } : {}) });
+  plans.set(k, { vocab: VOCAB, who, plan });
+  if (plans.size > 200) plans.delete(plans.keys().next().value);
+  return plan;
+}
+/** The words to mark: what was typed, and the endings and spelling it was found by */
+const marksFor = (terms) => marksOf(planFor(terms));
+// (as patterns: a stem with the endings it takes, "elect" in Elected and Election, never Electric; a long word typed
+// run together as two too, "moneymarket" in money market)
+const altRe = (a) => (a.kind === 'stem' ? `(?<![a-z0-9])${a.w}${ENDINGS}(?![a-z0-9])` : termRe(a.w));
+const termRes = (t) => [termRe(t.w), ...(/^[a-z]{6,}$/.test(t.w) ? [`(?<![a-z0-9])${[...t.w].join("[-'’. ]?")}`] : []), ...t.alts.map(altRe)];
+/** Each term's patterns (term i's, with the words it's half of: "laws" in Bylaws) */
+const termResAt = (plan, i) => [...termRes(plan.terms[i]), ...(plan.joins || []).filter((j) => j.a === i || j.b === i).map((j) => termRe(j.w))];
+// (the small words marked only when there's nothing else)
+const markRes = (terms) => {
+  const plan = planFor(terms);
+  const any = plan.terms.some((t) => !t.small);
+  return plan.terms.flatMap((t, i) => ((any && t.small) || (t.w.length < 2 && !/\d/.test(t.w)) ? [] : termResAt(plan, i)));
+};
+// Text ready for finding in, kept by what it is (a file's words are long: they're readied once)
+const prepped = new Map();
+function prepOf(text, key) {
+  if (!key) return prep(text);
+  const was = prepped.get(key);
+  if (was && was[0] === text) return was[1];
+  const sp = prep(text);
+  prepped.set(key, [text, sp]);
+  return sp;
+}
+const hits = (text, terms, key) => matches(prepOf(text, key), planFor(terms));
+/**
+ * Every term that has to be there is in one of these texts, the first (the meeting's name, date and place) counting
+ * with each: "golf 2024" is a file about golf in a 2024 meeting; "reserve fund" is never "reserve" in one point and
+ * "fund" in another
+ */
+const hitsAcross = (texts, terms) => {
+  const plan = planFor(terms);
+  if (!plan.terms.length) return false;
+  const head = texts[0] ? prepOf(texts[0].text, texts[0].key) : ' ';
+  return texts.slice(1).some((x) => { const sp = prepOf(x.text, x.key); return plan.terms.every((t, i) => t.small || termAt(sp, plan, i) || termAt(head, plan, i)); })
+    || plan.terms.every((t, i) => t.small || termAt(head, plan, i));
+};
+/** How many of the terms a text has */
+const termsHit = (text, terms, key) => { const sp = prepOf(text, key); const plan = planFor(terms); return plan.terms.filter((t, i) => !t.small && termAt(sp, plan, i)).length; };
+/** "Showing results for “budget”": what was typed, each misspelt word as it was read */
+// (a person's name as People writes it: "Wierson")
+const asRead = (q, terms, titles = []) => {
+  const fixed = new Map(planFor(terms).fixed);
+  if (!fixed.size) return '';
+  const cased = (w) => { for (const t of titles) { const m = String(t).match(new RegExp(`(?<![A-Za-z])${w}(?![A-Za-z])`, 'i')); if (m && /^[A-Z]/.test(m[0])) return m[0]; } return w; };
+  return q.trim().split(/\s+/).map((w) => (fixed.has(termsOf(w)[0]) ? cased(fixed.get(termsOf(w)[0])) : w)).join(' ');
+};
 /** Notes as one line ("Recommending … · $300k revenue from golf"), their bullets gone */
 const notesLine = (t) => String(t || '').split('\n').map((l) => l.replace(/^\s*[-•*]\s+/, '').trim()).filter(Boolean).join(' · ');
 /** "…designate funds into a [money market] fund…" around the first term */
+/**
+ * Where in a text (normed) the search is, the same for a result's words and the page a PDF opens at: all of it side
+ * by side (each misspelt word as read), else every word within a sentence or two of the others, else the rarest
+ * one's first; a word the text hasn't is left out of that (it was found by the title or the meeting). → index, -1 if none
+ */
+function placeOf(low, plan) {
+  const any = plan.terms.some((t) => !t.small);
+  const read = plan.terms.map((t) => t.alts.find((a) => a.kind === 'near')?.w || t.w);
+  if (read.length > 1) { const m = new RegExp(read.map(termRe).join('[^a-z0-9]+')).exec(low); if (m) return m.index; }
+  const finds = plan.terms.map((t, i) => (any && t.small ? null : [...low.matchAll(new RegExp(termResAt(plan, i).join('|'), 'g'))].map((m) => m.index))).filter((l) => l?.length);
+  if (!finds.length) return -1;
+  const near = finds[0].find((p) => finds.every((list) => list.some((q) => q >= p - 120 && q <= p + 200)));
+  return near ?? finds.sort((a, b) => a.length - b.length)[0][0];
+}
 function Snippet({ text, terms }) {
+  const plan = planFor(terms);
+  let src = String(text || '');
+  // (a long file's words: only around where they're found, so a page of results never reads whole files)
+  if (src.length > 3000) {
+    const p = Math.max(0, placeOf(src.toLowerCase(), plan));
+    src = `${p > 700 ? ' ' : ''}${src.slice(Math.max(0, p - 700), p + 700)}`;
+  }
   // (each line of a paper its own: "…reveals · Conflicts of interest", its bullets and numbers aside)
-  const flat = String(text || '').split('\n').map((l) => l.replace(/^\s*(?:•|\d+\.)\s+/, '').trim()).filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim();
-  const low = norm(flat);
-  // Where every term is, within a sentence or two of each other (the first such place), else the rarest one's first
-  const phrase = terms.length > 1 ? low.search(new RegExp(terms.map(termRe).join('[^a-z0-9]+'))) : -1;
-  const finds = terms.map((t) => [...low.matchAll(new RegExp(termRe(t), 'g'))].map((m) => m.index));
-  const near = (finds[0] || []).find((p) => finds.every((list) => list.some((q) => q >= p - 120 && q <= p + 200)));
-  const rare = finds.filter((l) => l.length).sort((a, b) => a.length - b.length)[0];
-  const at = Math.max(0, phrase >= 0 ? phrase : near ?? rare?.[0] ?? 0);
+  const flat = src.replace(/\f/g, '\n').split('\n').map((l) => l.replace(/^\s*(?:•|\d+\.)\s+/, '').trim()).filter(Boolean).join(' · ').replace(/\s+/g, ' ').trim();
+  const at = Math.max(0, placeOf(norm(flat), plan));
   const from = at > 50 ? flat.lastIndexOf(' ', at - 40) + 1 : 0;
   const piece = `${from ? '…' : ''}${flat.slice(from, at + 90)}${at + 90 < flat.length ? '…' : ''}`;
-  const re = new RegExp(`(${terms.map(termRe).join('|')})`, 'ig');
+  const re = new RegExp(`(${markRes(terms).join('|')})`, 'ig');
   return piece.split(re).map((part, i) => (i % 2 ? html`<mark>${part}</mark>` : part));
 }
 
@@ -1393,16 +1611,31 @@ function Snippet({ text, terms }) {
  * A meeting in the list: its date on the tile and the weekday, time and place beside it; who was there and its files
  * as quiet words. Only what's out of the ordinary is a chip: one ahead, or minutes still in draft
  */
-function MeetingRow({ m, data, terms = [] }) {
+function MeetingRow({ m, data, terms = [], words = null }) {
   const c = attendanceCounts(m);
   const ahead = m.date >= data.today && !heldEarly(m, data.today);
-  const hit = terms.length ? meetingTexts(m).find((x, i) => i > 0 && hits(x.text, terms)) : null;
+  // Where it says the most of what was searched (all of it, first): a point, a decision, a file's words
+  // (the words its name and date don't say count most: "van Aug 6" is the point about the van, not one about August)
+  const texts = terms.length ? meetingTexts(m, words) : [];
+  const plan = terms.length ? planFor(terms) : null;
+  const head = texts[0] ? prepOf(texts[0].text, texts[0].key) : ' ';
+  const own = plan ? plan.terms.map((t, i) => !t.small && !termAt(head, plan, i)) : [];
+  const hit = terms.length ? texts.slice(1).map((x) => { const sp = prepOf(x.text, x.key); const n = plan.terms.reduce((k, t, i) => k + (t.small || !termAt(sp, plan, i) ? 0 : own[i] ? 10 : 1), 0); return { x, n }; }).filter((y) => y.n).sort((a, b) => b.n - a.n)[0]?.x || null : null;
   // The words that matched, once: where they are, then the point's own words when the match is in them
-  const inBody = hit && hit.body && terms.some((w) => norm(hit.body).includes(w)) && norm(hit.body) !== norm(hit.where);
+  const inBody = hit && hit.body && saysAny(hit.body, terms) && norm(hit.body) !== norm(hit.where);
   const files = fileRows(m.files).reduce((n, g) => n + g.rows.length, 0);
   const side = nbw([!ahead && c.boardHere ? `${c.boardHere} of ${c.board} there` : '', files ? plural(files, 'file') : ''].filter(Boolean).join(' · '));
   // Opened from a search, the meeting opens at the match, marked
-  const open = (e) => { claimMorph(e); if (hit?.id) focusNext = hit.id; };
+  const open = (e) => {
+    claimMorph(e);
+    if (!hit?.id) return;
+    focusNext = hit.id;
+    foundTerms = terms;
+    // (a file found by its words: its PDF, opened from the meeting, opens at them)
+    const file = /^f-/.test(hit.id) && m.files.find((f) => `f-${f.id}` === hit.id);
+    const at = file && file.type === 'application/pdf' && words?.[file.id] ? whereIn({ pages: words[file.id] }, planFor(terms), terms) : null;
+    landedFind = at ? { id: file.id, find: at.find } : null;
+  };
   return html`<li key=${m.id} id=${`mr-${m.id}`}><a class="bp-mrow" href=${`#/meetings/${m.id}`} onClick=${open}>
     <${DateTile} d=${m.date} mid=${m.id} />
     <span class="bp-mrow__main">
@@ -1420,15 +1653,46 @@ function MeetingsPage({ ctx }) {
   // The search and the years opened stay with this step in the history: Back from a meeting finds them as they were
   const [q, setQ] = useKept('q', '');
   const [opened, setOpened] = useKept('years', []);
-  const terms = termsOf(q);
-  const said = (m) => meetingTexts(m).some((x) => hits(x.text, terms));
+  const [qs] = useSettled(q, 160);
+  const terms = termsOf(qs);
+  // (the files' words, from the first letter typed: a meeting is found by what its minutes say)
+  const { words, loading: wordsComing, failed: wordsTrouble, retry: wordsAgain } = useFindWords(data, terms.length > 0);
+  useVocab(ctx, words, terms.length > 0);
   const upcoming = d.byDate.filter((m) => m.date >= data.today && !heldEarly(m, data.today) && m.id !== d.featured?.id);
-  // A search looks in every meeting, the ones ahead too (the next one's agenda and packet first)
-  const ahead = terms.length ? [...(d.featured?.pending ? [d.featured] : []), ...d.byDate.filter((m) => m.date >= data.today && !heldEarly(m, data.today))].filter(said) : [];
-  const past = d.past.filter((m) => !terms.length || said(m));
-  const found = ahead.length + past.length;
-  const years = [...new Set(past.map((m) => m.date.slice(0, 4)))];
   const fold = (y, open) => setOpened((was) => (open ? [...new Set([...was, y])] : was.filter((x) => x !== y)));
+  // The meetings found, and the list of them, drawn again only when what's searched has settled (never on each key)
+  const archive = useMemo(() => {
+    const said = (m) => hitsAcross(meetingTexts(m, words), terms);
+    // A search looks in every meeting, the ones ahead too (the next one's agenda and packet first)
+    const ahead = terms.length ? [...(d.featured?.pending ? [d.featured] : []), ...d.byDate.filter((m) => m.date >= data.today && !heldEarly(m, data.today))].filter(said) : [];
+    const past = d.past.filter((m) => !terms.length || said(m));
+    const found = ahead.length + past.length;
+    const years = [...new Set(past.map((m) => m.date.slice(0, 4)))];
+    return html`<section class="bp-archive bp-rise" style=${rise(3)} aria-labelledby="past-h">
+      <h2 class="sr-only" id="past-h">Past meetings</h2>
+      ${!terms.length && qs.trim() ? html`<p class="bp-found" role="status">Type a word, a name or a number to find.</p>` : null}
+      ${terms.length ? html`<p class="bp-found" role="status">${asRead(qs, terms) ? `Showing results for “${asRead(qs, terms)}”: ` : ''}${found ? `${plural(found, 'meeting')} ${found === 1 ? 'mentions' : 'mention'} “${asRead(qs, terms) || qs.trim()}”` : `No meeting mentions “${qs.trim()}”.`}${wordsTrouble ? html` The files’ words didn’t load, so only the agendas and file names were searched. <button type="button" class="bp-linkbtn" onClick=${wordsAgain}>Try again</button>` : wordsComing ? ' Looking in the files too…' : ''}</p>` : null}
+      ${ahead.length ? html`<div class="bp-year">
+        <h3 class="bp-year__label">Ahead</h3>
+        <ol class="bp-mlist">${ahead.map((m) => html`<${MeetingRow} m=${m} data=${data} terms=${terms} words=${words} key=${m.id} />`)}</ol>
+      </div>` : null}
+      ${(terms.length ? years : years.slice(0, 2)).map((y) => html`<div class="bp-year" key=${y}>
+        <h3 class="bp-year__label">${y}</h3>
+        <ol class="bp-mlist">${past.filter((m) => m.date.startsWith(y)).map((m) => html`<${MeetingRow} m=${m} data=${data} terms=${terms} words=${words} key=${m.id} />`)}</ol>
+      </div>`)}
+      ${!terms.length && years.length > 2 ? html`<div class="bp-year">
+        <h3 class="bp-year__label bp-year__label--small">Earlier</h3>
+        <div class="bp-yearfolds">${years.slice(2).map((y) => {
+          const list = past.filter((m) => m.date.startsWith(y));
+          return html`<details class="bp-yearfold" key=${y} open=${opened.includes(y)} onToggle=${(e) => { if (e.currentTarget.open !== opened.includes(y)) fold(y, e.currentTarget.open); }}>
+            <summary><span class="bp-yearfold__y">${y}</span><span class="bp-yearfold__n">${nbw(plural(list.length, 'meeting'))}</span>${list.some((m) => m.minutes !== 'approved') ? html`<span class="bp-chip">${nbw(plural(list.filter((m) => m.minutes !== 'approved').length, 'draft'))}</span>` : null}<${Icon} name="chevron" size=${18} cls="bp-yearfold__chev" /></summary>
+            <ol class="bp-mlist">${list.map((m) => html`<${MeetingRow} m=${m} data=${data} key=${m.id} />`)}</ol>
+          </details>`;
+        })}</div>
+      </div>` : null}
+      ${!d.past.length ? html`<div class="bp-card"><p class="bp-muted">Past meetings show here once they’re added.</p></div>` : null}
+    </section>`;
+  }, [qs, words, data, d, opened.join(), wordsTrouble, wordsComing]);
   return html`
     <header class="bp-pagehead bp-rise" style=${rise(0)}>
       <div>
@@ -1443,29 +1707,7 @@ function MeetingsPage({ ctx }) {
     </header>
     ${d.featured && !terms.length ? html`<div class="bp-rise bp-gap" style=${rise(1)}><${NextUp} m=${d.featured} ctx=${ctx} /></div>` : null}
     ${upcoming.length && !terms.length ? html`<section class="bp-card bp-gap bp-rise" style=${rise(2)} aria-labelledby="up-h"><h2 class="bp-h2" id="up-h">Also ahead</h2><ol class="bp-mlist">${upcoming.map((m) => html`<${MeetingRow} m=${m} data=${data} key=${m.id} />`)}</ol></section>` : null}
-    <section class="bp-archive bp-rise" style=${rise(3)} aria-labelledby="past-h">
-      <h2 class="sr-only" id="past-h">Past meetings</h2>
-      ${terms.length ? html`<p class="bp-found" role="status">${found ? `${plural(found, 'meeting')} ${found === 1 ? 'mentions' : 'mention'} “${q.trim()}”` : `No meeting mentions “${q.trim()}”.`}</p>` : null}
-      ${ahead.length ? html`<div class="bp-year">
-        <h3 class="bp-year__label">Ahead</h3>
-        <ol class="bp-mlist">${ahead.map((m) => html`<${MeetingRow} m=${m} data=${data} terms=${terms} key=${m.id} />`)}</ol>
-      </div>` : null}
-      ${(terms.length ? years : years.slice(0, 2)).map((y) => html`<div class="bp-year" key=${y}>
-        <h3 class="bp-year__label">${y}</h3>
-        <ol class="bp-mlist">${past.filter((m) => m.date.startsWith(y)).map((m) => html`<${MeetingRow} m=${m} data=${data} terms=${terms} key=${m.id} />`)}</ol>
-      </div>`)}
-      ${!terms.length && years.length > 2 ? html`<div class="bp-year">
-        <h3 class="bp-year__label bp-year__label--small">Earlier</h3>
-        <div class="bp-yearfolds">${years.slice(2).map((y) => {
-          const list = past.filter((m) => m.date.startsWith(y));
-          return html`<details class="bp-yearfold" key=${y} open=${opened.includes(y)} onToggle=${(e) => { if (e.currentTarget.open !== opened.includes(y)) fold(y, e.currentTarget.open); }}>
-            <summary><span class="bp-yearfold__y">${y}</span><span class="bp-yearfold__n">${nbw(plural(list.length, 'meeting'))}</span>${list.some((m) => m.minutes !== 'approved') ? html`<span class="bp-chip">${nbw(plural(list.filter((m) => m.minutes !== 'approved').length, 'draft'))}</span>` : null}<${Icon} name="chevron" size=${18} cls="bp-yearfold__chev" /></summary>
-            <ol class="bp-mlist">${list.map((m) => html`<${MeetingRow} m=${m} data=${data} key=${m.id} />`)}</ol>
-          </details>`;
-        })}</div>
-      </div>` : null}
-      ${!d.past.length ? html`<div class="bp-card"><p class="bp-muted">Past meetings show here once they’re added.</p></div>` : null}
-    </section>`;
+    ${archive}`;
 }
 
 function Notes({ text }) {
@@ -2721,7 +2963,7 @@ function DocTiles({ files }) {
   if (!rows.length) return null;
   const primary = rows.map((r) => r.file);
   const vf = asViewer(primary);
-  return html`<ul class="bp-doctiles">${rows.map((r, i) => html`<li key=${r.key} id=${`f-${r.file.id}`}><${DocTile} f=${r.file} link=${viewerLink(vf, i)} />
+  return html`<ul class="bp-doctiles">${rows.map((r, i) => html`<li key=${r.key} id=${`f-${r.file.id}`}><${DocTile} f=${r.file} link=${viewerLink(vf, i, landedFind?.id === r.file.id ? { find: landedFind.find } : {})} />
     ${r.more.length ? html`<span class="bp-doctile__more">${r.more.map((x) => html`<a ...${viewerLink(asViewer([x.file]), 0)}>${x.label}</a>`)}</span>` : null}</li>`)}</ul>`;
 }
 
@@ -2836,11 +3078,14 @@ function AgendaRail({ sections, labels, extra, plan = null }) {
     const soon = () => { if (!raf) raf = requestAnimationFrame(spy); };
     // A jump has landed: from there, moving the page decides again
     const landed = () => { if (chosen.current.id && chosen.current.at == null) chosen.current.at = scrollY; soon(); };
+    // A search result opened inside a part: that part is the one marked, as a jump to it would be
+    const searched = (e) => { if (!ids.includes(e.detail)) return; chosen.current = { id: e.detail, until: Date.now() + 1200, at: null }; setAt(e.detail.replace(/^s-/, '')); };
     spy();
     addEventListener('scroll', soon, { passive: true });
     addEventListener('resize', soon);
     addEventListener('scrollend', landed);
-    return () => { cancelAnimationFrame(raf); removeEventListener('scroll', soon); removeEventListener('resize', soon); removeEventListener('scrollend', landed); };
+    addEventListener('bp-landed', searched);
+    return () => { cancelAnimationFrame(raf); removeEventListener('scroll', soon); removeEventListener('resize', soon); removeEventListener('scrollend', landed); removeEventListener('bp-landed', searched); };
   }, [sections.map((s) => s.id).join(), extra.map((x) => x.id).join()]);
   const go = (e, id) => {
     e.preventDefault();
@@ -3569,19 +3814,21 @@ function SignForm({ d: doc, ctx }) {
 }
 
 /** Every file from every meeting, by kind, newest meeting first */
-function Library({ data, q = '' }) {
+function Library({ data, q = '', words = null }) {
   const [kind, setKind] = useKept('lib-kind', 'all');
   const terms = termsOf(q);
+  // (a file found by its words too, its copies' words with it)
   const meetings = [...data.meetings].filter((m) => m.files.length).sort((a, b) => b.date.localeCompare(a.date));
   const kinds = FILE_KINDS.filter((k) => meetings.some((m) => m.files.some((f) => f.kind === k.id)));
-  const pick = (m) => m.files.filter((f) => (kind === 'all' || f.kind === kind) && (!terms.length || hits(`${titleOf(f.name)} ${meetingName(m)} ${kindLabel(f.kind)}`, terms)));
+  const pick = (m) => m.files.filter((f) => (kind === 'all' || f.kind === kind) && (!terms.length || fileHit(m, f, words, terms)));
   const shown = meetings.map((m) => ({ m, files: pick(m) })).filter((x) => x.files.length);
   // A search inside one kind that only finds others: how many, a tap away (the pill never hides matches without saying)
-  const elsewhere = terms.length && kind !== 'all' ? meetings.reduce((t, m) => t + m.files.filter((f) => hits(`${titleOf(f.name)} ${meetingName(m)} ${kindLabel(f.kind)}`, terms)).length, 0) : 0;
+  const elsewhere = terms.length && kind !== 'all' ? meetings.reduce((t, m) => t + m.files.filter((f) => fileHit(m, f, words, terms)).length, 0) : 0;
   // The newest four meetings' files; the earlier ones a tap away, and every one when searching
   const [all, setAll] = useKept('lib-all', false);
-  const cut = !terms.length && !all && shown.length > 5;
-  const list = cut ? shown.slice(0, 4) : shown;
+  // (searching, the newest six meetings with what's found, the rest a tap away: a word in every file never draws them all)
+  const cut = !all && shown.length > (terms.length ? 7 : 5);
+  const list = cut ? shown.slice(0, terms.length ? 6 : 4) : shown;
   if (!meetings.length) return null;
   // A search that finds nothing here at all is said once, at the top of the page
   if (terms.length && !list.length && !elsewhere) return null;
@@ -3593,9 +3840,9 @@ function Library({ data, q = '' }) {
     ${!list.length && terms.length && kind !== 'all' && elsewhere ? html`<p class="bp-muted">No ${kindLabel(kind).toLowerCase()} match “${q.trim()}”. <button type="button" class="bp-linkbtn" onClick=${() => setKind('all')}>Show the ${plural(elsewhere, 'file')} that do</button></p>` : null}
     ${list.length ? list.map(({ m, files }) => html`<div class="bp-libmeet" key=${m.id}>
       <a class="bp-libmeet__head" href=${`#/meetings/${m.id}`} onClick=${claimMorph}><${DateTile} d=${m.date} mid=${m.id} /><span><span class="bp-row__title">${meetingName(m)}</span><span class="bp-row__meta">${longDate(m.date)}</span></span></a>
-      <${FileList} files=${files} labels=${false} kinds=${kind === 'all'} />
+      <${FileList} files=${files} labels=${false} kinds=${kind === 'all'} found=${terms.length && words ? { terms, words } : null} />
     </div>`) : terms.length && kind !== 'all' && elsewhere ? null : html`<p class="bp-muted">No file matches.</p>`}
-    ${cut ? html`<button type="button" class="bp-more-btn" onClick=${() => setAll(true)}>${nbw(`Show ${plural(shown.length - 4, 'earlier meeting')}`)}</button>` : null}
+    ${cut ? html`<button type="button" class="bp-more-btn" onClick=${() => setAll(true)}>${nbw(`Show ${plural(shown.length - list.length, 'earlier meeting')}`)}</button>` : null}
   </section>`;
 }
 
@@ -3755,7 +4002,12 @@ function DocumentsPage({ ctx }) {
   const { data } = ctx;
   const docs = data.docs.filter((x) => !x.hidden);
   const [q, setQ] = useKept('q', '');
-  const terms = termsOf(q);
+  const [qs] = useSettled(q, 160);
+  const terms = termsOf(qs);
+  const { words, loading: wordsComing, failed: wordsTrouble, retry: wordsAgain } = useFindWords(data, terms.length > 0);
+  useVocab(ctx, words, terms.length > 0);
+  // (every meeting's files, drawn again only when what's searched has settled: never on each key)
+  const library = useMemo(() => html`<div class="bp-rise" style=${rise(6)}><${Library} data=${data} q=${qs} words=${words} /></div>`, [data, qs, words]);
   const year = todayEastern().slice(0, 4);
   useFocusTarget();
   const readable = (x) => x.body || x.file;
@@ -3766,14 +4018,16 @@ function DocumentsPage({ ctx }) {
   const order = useRef(null);
   if (order.current === null) order.current = !!data.me.slug && done < toSign.length;
   const signFirst = order.current;
-  const found = (x) => !terms.length || hits(`${x.title} ${x.note} ${coverWord(x.title)} ${x.body ? mdPlain(x.body) : x.fileWords || ''}`, terms);
+  const found = (x) => !terms.length || hits(`${x.title} ${x.note} ${coverWord(x.title)} ${x.body ? mdPlain(x.body) : x.fileWords || ''}`, terms, `doc:${x.id}`);
   const onShelves = docs.filter((x) => !(x.sign && readable(x)) && found(x));
   const shelves = [...SHELVES, ...MORE_SHELVES].map((sh) => ({ ...sh, list: onShelves.filter((x) => shelfOf(x) === sh.id) })).filter((sh) => sh.list.length);
   // A paper written here opens on its own page (its words, then signing); a file in the viewer
   const withFile = docs.filter((x) => x.file && !x.body);
-  const vf = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
-  const inTitle = (x) => terms.every((w) => termIn(spaced(`${x.title} ${x.note}`), squashed(`${x.title} ${x.note}`), w));
-  const open = (x) => (x.body ? { href: `#/documents/${x.id}`, onClick: () => { if (terms.length && !inTitle(x)) focusNext = `words:${terms.join(' ')}`; } } : x.file ? viewerLink(vf, withFile.indexOf(x)) : { href: null });
+  const vf = asViewer(withFile.map((x) => ({ ...x.file, name: x.title, titled: true, file: x.file.name })));
+  const inTitle = (x) => hits(`${x.title} ${x.note}`, terms);
+  // (a PDF paper found by its words opens at them)
+  const atWords = (x) => (terms.length && x.fileWords && !inTitle(x) ? whereIn({ pages: x.fileWords }, planFor(terms), terms) : null);
+  const open = (x) => (x.body ? { href: `#/documents/${x.id}`, onClick: () => { if (terms.length && !inTitle(x)) { focusNext = `words:${terms.join(' ')}`; foundTerms = terms; } } } : x.file ? viewerLink(vf, withFile.indexOf(x), atWords(x) ? { find: atWords(x).find } : {}) : { href: null });
   // The words a search found in a paper, when its title doesn't say it
   const foundIn = (x) => (terms.length && (x.body || x.fileWords) && !inTitle(x) ? html`<span class="bp-doc__found"><${Snippet} text=${x.body ? mdPlain(x.body) : x.fileWords} terms=${terms} /></span>` : null);
   // Signed in an earlier year, not yet this one (a new year's first weeks): said, and when it changed since, that too
@@ -3804,6 +4058,10 @@ function DocumentsPage({ ctx }) {
       </label>
     </header>
     ${signFirst ? null : html`<${OrgFacts} ctx=${ctx} terms=${terms} />`}
+    ${!terms.length && qs.trim() ? html`<p class="bp-found" role="status">Type a word, a name or a number to find.</p>` : null}
+    ${terms.length && onShelves.length + toSign.filter(found).length ? html`<p class="sr-only" role="status">${plural(onShelves.length + toSign.filter(found).length, 'paper')} match “${qs.trim()}”</p>` : null}
+    ${terms.length && data.filings.some((f) => hits(`${f.title} ${f.year} tax return form 990 audit`, terms)) ? html`<p class="bp-found">${(() => { const n = data.filings.filter((f) => hits(`${f.title} ${f.year} tax return form 990 audit`, terms)).length; return html`${plural(n, 'tax return or audit', 'tax returns and audits')} ${n === 1 ? 'matches' : 'match'} too, on <a href="#/financials">Financials</a>.`; })()}</p>` : null}
+    ${terms.length && (asRead(qs, terms) || wordsTrouble || wordsComing) ? html`<p class="bp-found" role="status">${asRead(qs, terms) ? `Showing results for “${asRead(qs, terms)}”.` : ''}${wordsTrouble ? html` The meeting files’ words didn’t load, so those were found by their names only. <button type="button" class="bp-linkbtn" onClick=${wordsAgain}>Try again</button>` : wordsComing ? ' Looking in the files too…' : ''}</p>` : null}
     ${toSign.length && toSign.some(found) ? html`<section class="bp-card bp-gap bp-tosign bp-rise" style=${rise(1)} aria-labelledby="sign-h">
       <div class="bp-tosign__head">
         <${SecHead} id="sign-h" title=${data.me.slug ? 'To read and sign' : 'What the board signs'} sub=${`Each board member signs these once a year.${!data.me.slug ? '' : done === toSign.length ? ` You’ve signed them all for ${year}. Thank you.` : ` You’ve signed ${done}\u00A0of\u00A0${toSign.length}\u00A0for\u00A0${year}.`}`} />
@@ -3833,7 +4091,7 @@ function DocumentsPage({ ctx }) {
         ${sh.sub ? html`<p class="bp-papers__sub">${sh.sub}</p>` : null}
         <ul class="bp-files__list bp-papers__list" aria-labelledby=${`sh-${sh.id}`}>${sh.list.map((x) => html`<li key=${x.id} id=${`doc-${x.id}`} class="bp-file bp-doc">
           ${x.body ? html`<a class="bp-file__main" ...${open(x)}><span class="bp-badge bp-badge--words" aria-hidden="true"><${Icon} name="documents" size=${16} /></span><span class="bp-file__text"><span class="bp-file__title">${x.title}</span><span class="bp-file__meta">${[x.note, readTime(mdWords(x.body))].filter(Boolean).join(' · ')}</span>${foundIn(x)}</span></a>`
-            : x.file ? html`<a class="bp-file__main" ...${open(x)}><${FileBadge} f=${x.file} /><span class="bp-file__text"><span class="bp-file__title">${x.title}</span><span class="bp-file__meta">${[x.note, formatOf(x.file), nb(sizeText(x.file.size))].filter(Boolean).join(' · ')}</span></span></a>`
+            : x.file ? html`<a class="bp-file__main" ...${open(x)}><${FileBadge} f=${x.file} /><span class="bp-file__text"><span class="bp-file__title">${x.title}</span><span class="bp-file__meta">${[x.note, formatOf(x.file), nb(sizeText(x.file.size))].filter(Boolean).join(' · ')}</span>${foundIn(x)}</span></a>`
             : html`<div class="bp-file__main"><span class="bp-badge" aria-hidden="true"></span><span class="bp-file__text"><span class="bp-file__title">${x.title}</span><span class="bp-file__meta">${[x.note, 'On its way'].filter(Boolean).join(' · ')}</span></span></div>`}
         </li>`)}</ul>
       </div>`)}</div>
@@ -3844,8 +4102,8 @@ function DocumentsPage({ ctx }) {
       <div><h2 class="bp-h2">Bylaws and policies show here</h2>
       <p class="bp-muted">${data.contact ? `Once ${firstName(data.contact.name)} adds them, they’re here to read.` : 'They’re here to read once they’re added.'} Anything to read and sign shows on Home too.</p></div>
     </div>`}
-    ${terms.length && !onShelves.length && !toSign.some(found) && !factsOf(data.org, data.numbers).some((x) => hits(factHay(x), terms)) && !data.meetings.some((m) => m.files.some((f) => hits(`${titleOf(f.name)} ${meetingName(m)} ${kindLabel(f.kind)}`, terms))) ? html`<p class="bp-found" role="status">No document or file matches “${q.trim()}”.</p>` : null}
-    <div class="bp-rise" style=${rise(6)}><${Library} data=${data} q=${q} /></div>`;
+    ${terms.length && !onShelves.length && !toSign.some(found) && !factsOf(data.org, data.numbers).some((x) => hits(factHay(x), terms)) && !data.meetings.some((m) => m.files.some((f) => fileHit(m, f, words, terms))) ? html`<p class="bp-found" role="status">No document or file matches “${qs.trim()}”.</p>` : null}
+    ${library}`;
 }
 
 /**
@@ -3940,50 +4198,185 @@ function DocPage({ id, ctx }) {
 }
 
 // ─── Search ─────────────────────────────────────────────────────────
+/**
+ * The words inside every file the page has ({ [file id]: words }, pages apart by a form feed), asked for once
+ * something's searched and kept for the visit: again when the files change, or ten minutes on (a minute on while
+ * the server is still reading some: a file just put in is read within a minute or two,
+ * ../../../functions/api/_board-file-words.js)
+ */
+let wordsNow = null;
+let wordsAsk = null;
+let wordsFor = '';
+let wordsAt = 0;
+let wordsKeep = 10 * 60 * 1000;
+let wordsFailed = false;
+function loadWords(ids, again = false) {
+  if (!again && wordsAsk && wordsFor === ids && Date.now() - wordsAt < wordsKeep) return wordsAsk;
+  wordsFor = ids;
+  wordsAt = Date.now();
+  const ask = wordsAsk = fetch(`${API}?words`, { cache: 'no-store' }).then((r) => (r.ok ? r.json() : null))
+    // (a public filing's words by its address: "filing:/files/financials/…")
+    .then((j) => {
+      if (j?.ok && wordsAsk === ask) { wordsNow = { ...(j.files || {}), ...Object.fromEntries(Object.entries(j.filings || {}).map(([u, w]) => [`filing:${u}`, w])) }; wordsKeep = j.reading ? 60 * 1000 : 10 * 60 * 1000; wordsFailed = false; }
+      else if (wordsAsk === ask) { wordsAsk = null; wordsFailed = true; }
+      return wordsNow;
+    })
+    .catch(() => { if (wordsAsk === ask) { wordsAsk = null; wordsFailed = true; } return wordsNow; });
+  return ask;
+}
+const idsOf = (data) => data.meetings.flatMap((m) => m.files.map((f) => f.id)).sort().join(',');
+/**
+ * { words, loading, failed, retry }: the files' words once `on` (something's being searched); what's kept already,
+ * before. `failed`: they didn't come (the search says only titles were searched, and Try again asks again)
+ */
+function useWords(data, on) {
+  const ids = useMemo(() => idsOf(data), [data]);
+  const [w, setW] = useState(wordsNow);
+  const [loading, setLoading] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const [asked, setAsked] = useState(0);
+  useEffect(() => {
+    if (!on) return undefined;
+    let live = true;
+    setLoading(!wordsNow);
+    loadWords(ids, asked > 0).then((x) => { if (!live) return; if (x) setW(x); setLoading(false); setFailed(wordsFailed && !x); });
+    return () => { live = false; };
+  }, [on, ids, asked]);
+  return { words: w || wordsNow, loading: on && loading, failed: on && failed, retry: () => setAsked((n) => n + 1) };
+}
+
+// The search made ready ahead: the files' words asked for, and everything readied a little at a time (while the
+// page is idle a few seconds after it opens, unless the connection saves data; at once as a search box is touched
+// or something's typed), so ⌘K and the first letter in a filter answer at once. Until the files' words are readied,
+// the search finds by everything else, and says it's still looking in the files
+let findCtx = null;
+let warmedWords = null;
+let warming = null;
+const warmSubs = new Set();
+const idle = (f) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 2000 }) : setTimeout(() => f(null), 40));
+function warmFind(soon = false) {
+  const c = findCtx;
+  if (!c?.data) return;
+  loadWords(idsOf(c.data)).then((words) => {
+    if (!words || warmedWords === words) return;
+    if (warming?.words === words) { if (soon) warming.soon = true; return; }
+    const run = warming = { words, soon };
+    const list = searchIndex(c.data, c.d, words);
+    let i = 0;
+    const step = (deadline) => {
+      if (warming !== run) return;
+      const until = performance.now() + (deadline ? Math.max(4, deadline.timeRemaining() - 2) : 10);
+      while (i < list.length && performance.now() < until) { const x = list[i++]; prepOf(x.hay, x.prepKey || x.key); }
+      if (i < list.length) { if (run.soon) setTimeout(step, 0); else idle(step); return; }
+      warmedWords = words;
+      warming = null;
+      warmSubs.forEach((f) => f());
+      // (and the whole index made, so ⌘K opens on it)
+      idle(() => { if (findCtx?.data === c.data) indexFor(c.data, c.d, words); });
+    };
+    if (soon) setTimeout(step, 0); else idle(step);
+  });
+}
+/** The files' words for a search, once they're readied (`loading` until then: it finds by everything else meanwhile) */
+function useFindWords(data, on) {
+  const w = useWords(data, on);
+  const [, tick] = useState(0);
+  useEffect(() => { const f = () => tick((n) => n + 1); warmSubs.add(f); return () => warmSubs.delete(f); }, []);
+  useEffect(() => { if (on && w.words) warmFind(true); }, [on, w.words]);
+  const ready = !!w.words && warmedWords === w.words;
+  return { ...w, words: ready ? w.words : null, loading: w.loading || (on && !!w.words && !ready) };
+}
+const warmAhead = () => !navigator.connection?.saveData && !/(^|-)2g$/.test(navigator.connection?.effectiveType || '');
+document.addEventListener('pointerdown', (e) => { if (e.target.closest?.('.bp-find, .bp-filter')) warmFind(true); }, true);
+document.addEventListener('focusin', (e) => { if (e.target.closest?.('.bp-filter')) warmFind(true); });
+
+/** Every word the page has, once something's searched (Meetings, Documents): a misspelt word is read as the nearest */
+function useVocab(ctx, words, on) {
+  return useMemo(() => {
+    if (on && words) VOCAB = vocabFor(indexFor(ctx.data, ctx.d, words));
+    return VOCAB;
+  }, [ctx.data, words, on]);
+}
+
 const GROUPS = ['Meetings', 'Decisions', 'In agendas and minutes', 'Files', 'People', 'Documents', 'Money', 'Makeovers', 'Coming up'];
-function searchIndex(data, d) {
+/**
+ * A meeting's own words, for finding it by what it is and has: "meeting", "agenda", "minutes", "packet", and the next
+ * one ahead as next and upcoming, the last one held as last and latest ("Q3 2026 agenda", "next meeting")
+ */
+function meetingTags(m, data, d) {
+  const files = m.files || [];
+  const next = d?.featured?.id || data.next;
+  const last = [...data.meetings].filter((x) => x.date < data.today).sort((a, b) => b.date.localeCompare(a.date))[0];
+  return ['meeting board', (m.sections || []).some((s) => s.items?.length) || files.some((f) => f.kind === 'agenda') || m.pending ? 'agenda' : '', files.some((f) => f.kind === 'minutes' || f.kind === 'signed') || m.minutes === 'approved' ? 'minutes' : '',
+    files.some((f) => f.kind === 'packet') ? 'packet' : '', files.some((f) => f.kind === 'financials') ? 'financials financial statements' : '',
+    m.id === next ? 'next upcoming coming' : '', m.id === last?.id ? 'last latest previous recent' : ''].filter(Boolean).join(' ');
+}
+// A part's name where a result says where it is, cut at a word when it runs on ("Committee reports Introduced new
+// scorecard platform…": a part named with its first note, as some minutes read in)
+const partName = (t) => { const x = String(t).trim(); if (x.length <= 44) return x; const at = x.lastIndexOf(' ', 40); return `${x.slice(0, at > 16 ? at : 40)}…`; };
+/**
+ * Everything the search finds, each { group, key, title, sub, hay (what's searched), body? (the words a match shows
+ * from), date?, href | file, focus?, icon }. `key` names it across visits (what was opened lately)
+ */
+function searchIndex(data, d, words = null) {
   const out = [];
-  for (const m of [...data.meetings].sort((a, b) => b.date.localeCompare(a.date))) {
+  const byDate = [...data.meetings].sort((a, b) => b.date.localeCompare(a.date));
+  for (const m of byDate) {
     const sub = `${meetingName(m)} · ${shortDate(m.date)}`;
-    out.push({ group: 'Meetings', title: meetingName(m), sub: [longDate(m.date), m.location].filter(Boolean).join(' · '), hay: norm([meetingName(m), longDate(m.date), m.date, m.location].join(' ')), href: `#/meetings/${m.id}`, icon: 'meetings' });
+    const has = meetingTags(m, data, d);
+    out.push({ group: 'Meetings', key: `m:${m.id}`, title: meetingName(m), sub: [longDate(m.date), m.location].filter(Boolean).join(' · '), tags: has, hay: norm([meetingName(m), longDate(m.date), m.date, m.location, has].join(' ')), date: m.date, href: `#/meetings/${m.id}`, icon: 'meetings' });
     for (const s of m.sections) {
       const said = notesLine;
       // A part with nothing under it (Open forum, New business) is found by its name
-      if (!s.items.length && s.title) out.push({ group: 'In agendas and minutes', title: s.title, sub, hay: norm(s.title), href: `#/meetings/${m.id}`, focus: `s-${s.id}`, icon: 'list' });
+      if (!s.items.length && s.title) out.push({ group: 'In agendas and minutes', key: `s:${s.id}`, title: s.title, sub, hay: norm(`${s.title} ${meetingName(m)} ${longDate(m.date)}`), date: m.date, href: `#/meetings/${m.id}`, focus: `s-${s.id}`, icon: 'list' });
       // The part it's under says where it is ("2027 budget · Q4 2026 Board Meeting · Nov 5, 2026"), so a point found by its part's name says why
-      for (const it of s.items) out.push({ group: 'In agendas and minutes', title: it.title || s.title, sub: s.title && it.title && norm(s.title) !== norm(it.title) && !/^agenda$/i.test(s.title.trim()) ? `${s.title} · ${sub}` : sub, body: said(it.notes) || said(mdPlain(it.report)) || it.title, hay: norm([s.title, it.title, it.presenter, it.notes, mdPlain(it.report)].join(' ')), href: `#/meetings/${m.id}`, focus: `i-${it.id}`, icon: 'list' });
+      // (the meeting's name with it: "golf 2024" finds the points about golf in 2024's meetings)
+      for (const it of s.items) out.push({ group: 'In agendas and minutes', key: `i:${it.id}`, title: it.title || s.title, sub: s.title && it.title && norm(s.title) !== norm(it.title) && !/^agenda$/i.test(s.title.trim()) ? `${partName(s.title)} · ${sub}` : sub, body: said(it.notes) || said(mdPlain(it.report)) || it.title, hay: norm([s.title, it.title, it.presenter, presentersOf(it, d.people).map((p) => `${p.name} ${p.title || ''}`).join(' '), it.notes, mdPlain(it.report), it.motion, meetingName(m), longDate(m.date)].join(' ')), date: m.date, href: `#/meetings/${m.id}`, focus: `i-${it.id}`, icon: 'list' });
     }
-    m.motions.forEach((x, k) => out.push({ group: 'Decisions', title: x.text, sub: [x.by && `Moved by ${x.by}`, sub].filter(Boolean).join(' · '), hay: norm([x.text, x.by, x.second].join(' ')), href: `#/meetings/${m.id}`, focus: `mo-${x.id || k}`, icon: 'gavel' }));
-    const vf = asViewer(m.files);
-    m.files.forEach((f, i) => out.push({ group: 'Files', title: titleOf(f.name), sub: `${kindLabel(f.kind)} · ${sub}`, hay: norm(`${titleOf(f.name)} ${kindLabel(f.kind)} ${meetingName(m)}`), file: [vf, i], icon: 'documents' }));
+    m.motions.forEach((x, k) => out.push({ group: 'Decisions', key: `mo:${m.id}:${x.id || k}`, title: x.text, sub: [x.by && `Moved by ${x.by}`, sub].filter(Boolean).join(' · '), hay: norm([x.text, x.by, x.second, meetingName(m), longDate(m.date)].join(' ')), date: m.date, href: `#/meetings/${m.id}`, focus: `mo-${x.id || k}`, icon: 'gavel' }));
+    // What someone said they'd do, under the meeting it came from
+    m.actions.forEach((a, k) => a.text && out.push({ group: 'In agendas and minutes', key: `a:${m.id}:${a.id || k}`, title: a.text, sub: ['Action item', a.ownerName, sub].filter(Boolean).join(' · '), hay: norm([a.text, a.ownerName, 'action item', meetingName(m), longDate(m.date)].join(' ')), date: m.date, href: `#/meetings/${m.id}`, focus: 'actions', icon: 'list' }));
+    // A meeting's files, a row a title (a PDF and its Excel copy are one), found by what they say too
+    const rows = rowsOf(m);
+    const vf = asViewer(rows.map((r) => r.file));
+    rows.forEach((r, i) => {
+      const [hay, prepKey] = rowHay(m, r, words);
+      out.push({ group: 'Files', key: `f:${r.file.id}`, prepKey, kind: `${kindLabel(r.file.kind)} ${meetingName(m)}`, title: r.title, sub: [kindLabel(r.file.kind), formatOf(r.file) !== 'PDF' ? formatOf(r.file) : '', sub].filter(Boolean).join(' · '), hay, body: wordsOfRow(r, words), pages: r.file.type === 'application/pdf' ? words?.[r.file.id] || '' : '', date: m.date, file: [vf, i], icon: 'documents' });
+    });
   }
   // The next meeting, on the calendar before its agenda is posted
   const pend = d.featured?.pending ? d.featured : null;
-  if (pend) out.unshift({ group: 'Meetings', title: meetingName(pend), sub: [longDate(pend.date), pend.location, 'Agenda to come'].filter(Boolean).join(' · '), hay: norm([meetingName(pend), longDate(pend.date), pend.date, pend.location].join(' ')), href: `#/meetings/${pend.id}`, icon: 'meetings' });
-  for (const p of d.people) out.push({ group: 'People', title: p.name, sub: [p.group === 'board' ? p.title || 'Board member' : p.group === 'advisory' ? 'Advisory Board' : p.title, p.organization].filter(Boolean).join(' · '), hay: norm([p.name, p.title, p.organization, ...(p.committees || [])].join(' ')), href: '#/people', focus: `p-${p.slug}`, person: p });
+  if (pend) out.unshift({ group: 'Meetings', key: `m:${pend.id}`, title: meetingName(pend), sub: [longDate(pend.date), pend.location, 'Agenda to come'].filter(Boolean).join(' · '), tags: meetingTags(pend, data, d), hay: norm([meetingName(pend), longDate(pend.date), pend.date, pend.location, meetingTags(pend, data, d)].join(' ')), date: pend.date, href: `#/meetings/${pend.id}`, icon: 'meetings' });
+  for (const p of d.people) out.push({ group: 'People', key: `p:${p.slug}`, title: p.name, sub: [p.group === 'board' ? p.title || 'Board member' : p.group === 'advisory' ? 'Advisory Board' : p.title, p.organization].filter(Boolean).join(' · '), hay: norm([p.name, p.title, p.organization, ...(p.committees || [])].join(' ')), href: '#/people', focus: `p-${p.slug}`, person: p });
   const withFile = data.docs.filter((x) => x.file && !x.body);
-  const dv = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
+  const dv = asViewer(withFile.map((x) => ({ ...x.file, name: x.title, titled: true, file: x.file.name })));
   // A paper written here opens on its own page, and its words are searched too
-  for (const x of data.docs.filter((y) => !y.hidden)) out.push({ group: 'Documents', title: x.title, sub: DOC_KINDS.find((k) => k.id === x.kind)?.label || '', hay: norm([x.title, x.note, x.body ? mdPlain(x.body) : x.fileWords || ''].join(' ')), body: x.body ? mdPlain(x.body) : x.fileWords || '', ...(x.body ? { href: `#/documents/${x.id}` } : x.file ? { file: [dv, withFile.indexOf(x)] } : { href: '#/documents' }), icon: 'documents' });
+  for (const x of data.docs.filter((y) => !y.hidden)) {
+    const fw = x.body ? mdPlain(x.body) : x.fileWords || '';
+    out.push({ group: 'Documents', key: `d:${x.id}`, title: x.title, sub: [...SHELVES, ...MORE_SHELVES].find((sh) => sh.id === shelfOf(x))?.label || DOC_KINDS.find((k) => k.id === x.kind)?.label || '', date: data.today, hay: norm([x.title, x.note, fw].join(' ')), body: fw, pages: !x.body && x.file?.type === 'application/pdf' ? fw : '', ...(x.body ? { href: `#/documents/${x.id}` } : x.file ? { file: [dv, withFile.indexOf(x)] } : { href: '#/documents' }), icon: 'documents' });
+  }
   const fv = data.filings.map((x) => ({ name: `${x.title}.pdf`, type: 'application/pdf', url: x.url }));
-  data.filings.forEach((x, i) => out.push({ group: 'Files', title: x.title, sub: 'Tax return or audit', hay: norm(`${x.title} ${x.year} tax return form 990 audit`), file: [fv, i], icon: 'financials' }));
+  data.filings.forEach((x, i) => {
+    const fw = words?.[`filing:${x.url}`] || '';
+    out.push({ group: 'Files', key: `fl:${x.url}`, title: x.title, sub: 'Tax return or audit', hay: `${norm(`${x.title} ${x.year} tax return form 990 audit`)} ${fw}`, body: fw, pages: fw, date: x.year ? `${x.year}-12-31` : '', file: [fv, i], icon: 'financials' });
+  });
   // The money: where the year's revenue came from, and each major gift (who, the campaign)
   const mix = mixOf(data.numbers.books);
-  for (const x of mix?.parts || []) out.push({ group: 'Money', title: x.name, sub: `${money(x.amount)} of ${mix.year}’s revenue so far`, hay: norm([x.name, ...(x.key === 'rest' ? [] : x.accounts || []), 'revenue'].join(' ')), href: '#/financials', focus: `mix-${x.key}`, icon: 'financials' });
+  for (const x of mix?.parts || []) out.push({ group: 'Money', key: `mix:${x.key}`, title: x.name, sub: `${money(x.amount)} of ${mix.year}’s revenue so far`, hay: norm([x.name, money(x.amount), ...(x.key === 'rest' ? [] : x.accounts || []), 'revenue raised income money'].join(' ')), href: '#/financials', focus: `mix-${x.key}`, icon: 'financials' });
   // The smaller accounts inside "Everything else", each by its own name and amount
   const named = new Set((mix?.parts || []).filter((x) => x.key !== 'rest').map((x) => x.key));
-  if (mix) for (const src of (data.numbers.books?.sources || []).filter((x) => !named.has(x.key) && x.amount > 0)) out.push({ group: 'Money', title: src.name, sub: `${money(src.amount)} of ${mix.year}’s revenue so far, in Everything else`, hay: norm([src.name, ...(src.accounts || []), 'revenue'].join(' ')), href: '#/financials', focus: 'mix-rest', icon: 'financials' });
+  if (mix) for (const src of (data.numbers.books?.sources || []).filter((x) => !named.has(x.key) && x.amount > 0)) out.push({ group: 'Money', key: `src:${src.key}`, title: src.name, sub: `${money(src.amount)} of ${mix.year}’s revenue so far, in Everything else`, hay: norm([src.name, money(src.amount), ...(src.accounts || []), 'revenue'].join(' ')), href: '#/financials', focus: 'mix-rest', icon: 'financials' });
   const store = storeOf(data.numbers.books);
-  if (store) out.push({ group: 'Money', title: 'The store', sub: `${money(store.lines[0].amount)} in sales, ${money(store.lines[2].amount)} profit before staff and rent, ${store.year} so far`, hay: norm(['store shop sales profit cost of goods', ...store.lines.flatMap((x) => x.accounts)].join(' ')), href: '#/financials', focus: 'store', icon: 'financials' });
-  for (const g of data.gifts?.list || []) out.push({ group: 'Money', title: `${money(g.cents / 100)} from ${giftWho(g)}`, sub: [giftAbout(g), giftDay(g.at)].filter(Boolean).join(' · '), hay: norm([giftWho(g), g.name, g.company, g.campaign, 'gift'].join(' ')), href: '#/financials/gifts', focus: `gift-${g.id}`, icon: 'financials' });
+  if (store) out.push({ group: 'Money', key: 'store', title: 'The store', sub: `${money(store.lines[0].amount)} in sales, ${money(store.lines[2].amount)} profit before staff and rent, ${store.year} so far`, hay: norm(['store shop sales profit cost of goods', ...store.lines.flatMap((x) => [...x.accounts, money(x.amount)])].join(' ')), href: '#/financials', focus: 'store', icon: 'financials' });
+  for (const g of data.gifts?.list || []) out.push({ group: 'Money', key: `g:${g.id}`, title: `${money(g.cents / 100)} from ${giftWho(g)}`, sub: [giftAbout(g), giftDay(g.at)].filter(Boolean).join(' · '), hay: norm([giftWho(g), g.name, g.company, g.campaign, 'gift', money(g.cents / 100)].join(' ')), date: g.at ? new Date(g.at * 1000).toISOString().slice(0, 10) : '', href: '#/financials/gifts', focus: `gift-${g.id}`, icon: 'financials' });
   // The makeovers under way, each to its page
   for (const b of [...(data.numbers.projects?.waiting || []), ...(data.numbers.projects?.building || [])].filter((x) => x.name)) {
     const href = hrefOf(b);
     // A makeover without a page of its own lands on its card on Home's board
-    out.push({ group: 'Makeovers', title: b.name, sub: b.kind === 'community' ? `Community project · ${b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status}` : b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status, hay: norm([b.name, b.status, b.kind === 'community' ? 'community project' : 'makeover kid'].join(' ')), ...(href ? { href, ext: true } : { href: '#/', focus: cardId(b) }), icon: 'home' });
+    out.push({ group: 'Makeovers', key: `b:${b.kind || ''}:${b.name}`, title: b.name, sub: b.kind === 'community' ? `Community project · ${b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status}` : b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status, hay: norm([b.name, b.status, b.kind === 'community' ? 'community project' : 'makeover kid'].join(' ')), ...(href ? { href, ext: true } : { href: '#/', focus: cardId(b) }), icon: 'home' });
   }
-  for (const r of data.numbers.reveals) out.push({ group: 'Coming up', title: `${r.name}’s reveal`, sub: r.confirmed && r.date ? dayOf(r.date) : r.window?.label || 'Day not set yet', hay: norm(`${r.name} reveal`), href: r.kidUrl, ext: true, icon: 'home' });
-  for (const e of data.numbers.events) out.push({ group: 'Coming up', title: e.title, sub: dayOf(e.date), hay: norm(`${e.title} event ${e.location}`), href: e.url, ext: true, icon: 'meetings' });
+  for (const r of data.numbers.reveals) out.push({ group: 'Coming up', key: `r:${r.name}`, title: `${r.name}’s reveal`, sub: r.confirmed && r.date ? dayOf(r.date) : r.window?.label || 'Day not set yet', hay: norm(`${r.name} reveal`), href: r.kidUrl, ext: true, icon: 'home' });
+  for (const e of data.numbers.events) out.push({ group: 'Coming up', key: `e:${e.title}:${e.date}`, title: e.title, sub: dayOf(e.date), hay: norm(`${e.title} event ${e.location}`), date: e.date, href: e.url, ext: true, icon: 'meetings' });
   out.push(...orgEntries(data));
   return out;
 }
@@ -3994,29 +4387,120 @@ function orgEntries(data) {
   return facts.length ? [...facts, { key: 'org:brand', group: 'Documents', title: 'SOARD’s logos, colors and fonts', sub: 'The brand guide, on the website', hay: norm('brand logo logos colors colours color hex pms fonts typeface kit soard'), href: '/branding/', ext: true, icon: 'documents' }] : facts;
 }
 
+/** Every word the search has, with how many things have it, for reading a misspelt word as the nearest one */
+const wordSets = new Map();
+function wordsOf1(key, sp) {
+  let c = wordSets.get(key);
+  if (!c || c[0] !== sp) { c = [sp, new Set(sp.split(' ').filter((w) => w.length >= 3 && /^[a-z]+$/.test(w)))]; wordSets.set(key, c); }
+  return c[1];
+}
+const vocabs = new WeakMap();
+function vocabFor(index) {
+  if (vocabs.has(index)) return vocabs.get(index);
+  // (counted the first time a word needs it: a misspelling, or a word only starting a rare one)
+  let count = null;
+  const counted = () => {
+    if (count) return count;
+    count = new Map();
+    for (const x of index) for (const w of wordsOf1(x.key, x.sp)) count.set(w, (count.get(w) || 0) + 1);
+    return count;
+  };
+  const v = { count: counted, has: (w, how = '') => index.some((x) => (how === 'one' ? x.sp.includes(` ${w}`) : how ? stemIn(x.sp, w) : wordIn(x.sp, w))) };
+  vocabs.set(index, v);
+  return v;
+}
+/**
+ * The search's index, readied (each with `sp`, everything it's found by, and `tp`, what counts as its title: a
+ * meeting's date and place too, so "nov 5" is that meeting), kept for the page's data and words as they are.
+ * `lazy`: the list alone, for readying a little at a time
+ */
+let indexKept = null;
+function indexFor(data, d, words, { lazy = false } = {}) {
+  if (indexKept && indexKept.data === data && indexKept.words === words) return indexKept.index;
+  const list = searchIndex(data, d, words);
+  if (lazy) return list;
+  // (what counts as its title: a meeting's date and place, a person's role, a file's kind and meeting)
+  const titled = (x) => (x.group === 'Meetings' ? `${x.title} ${x.sub} ${x.date} ${x.tags || ''}` : x.group === 'People' ? `${x.title} ${x.person?.title || ''}` : x.title);
+  const index = list.map((x) => ({ ...x, sp: prepOf(x.hay, x.prepKey || x.key), tp: prep(titled(x)), np: x.group === 'Files' && x.kind ? prep(x.kind) : '' }));
+  indexKept = { data, words, index };
+  return index;
+}
+
+// What was opened from the search lately (this browser's own: a key each, the newest first)
+const RECENT = 'bp-search-recent';
+const recentKeys = () => { try { const v = JSON.parse(localStorage.getItem(RECENT) || '[]'); return Array.isArray(v) ? v.filter((k) => typeof k === 'string').slice(0, 5) : []; } catch { return []; } };
+const keepRecent = (key) => { if (!key) return; try { localStorage.setItem(RECENT, JSON.stringify([key, ...recentKeys().filter((k) => k !== key)].slice(0, 5))); } catch { /* storage off */ } };
+
+/**
+ * Where in a file's words the search is: the page (for a PDF) and the words to find on it, as they're written there
+ * ("By-laws amendment" for "bylaws amendment", "1.2 million" for "$1.2 million"), so the viewer finds them
+ */
+function whereIn(x, plan, terms) {
+  const low = findNorm(x.pages || '');
+  if (!low) return null;
+  const at = placeOf(low, plan);
+  if (at < 0) return null;
+  // (the words there, as written: the whole of it when it's side by side, else the word found)
+  const read = plan.terms.map((t) => t.alts.find((a) => a.kind === 'near')?.w || t.w);
+  const side = read.length > 1 ? new RegExp(`${read.map(termRe).join('[^a-z0-9]+')}[a-z0-9]*`, 'y') : null;
+  if (side) { side.lastIndex = at; const m = side.exec(low); if (m) return { page: pageAt(low, at), find: m[0].replace(/\s+/g, ' ') }; }
+  for (const [i] of plan.terms.entries()) {
+    for (const pat of termResAt(plan, i)) {
+      const re = new RegExp(`${pat}[a-z0-9]*`, 'y');
+      re.lastIndex = at;
+      const m = re.exec(low);
+      if (m) return { page: pageAt(low, at), find: m[0].replace(/\s+/g, ' ') };
+    }
+  }
+  return { page: pageAt(low, at), find: read.find((w) => w.length > 2) || read[0] };
+}
+
 function Finder({ ctx, onClose }) {
   const { data, d } = ctx;
   const [q, setQ] = useState('');
   const [at, setAt] = useState(0);
   const ref = useRef(null);
   const listRef = useRef(null);
-  const index = useMemo(() => searchIndex(data, d).map((x) => ({ ...x, sp: spaced(x.hay), sq: squashed(x.hay) })), [data]);
-  const terms = termsOf(q);
+  const { words, loading, failed, retry } = useFindWords(data, true);
+  const index = useMemo(() => indexFor(data, d, words), [data, words]);
+  // (every word here, so a misspelt one is read as the nearest)
+  const vocab = useMemo(() => { VOCAB = vocabFor(index); return VOCAB; }, [index]);
+  // What's found follows what's typed a beat behind, so a key is never held up (Enter settles it first): on a slower
+  // device, where a search takes longer, it waits for a pause in the typing that much longer
+  const took = useRef(0);
+  const [qs, settle] = useSettled(q, took.current > 30 ? Math.min(320, 60 + 2 * took.current) : 60);
+  const terms = termsOf(qs);
+  // (a misspelling read as the word it's nearest, unless asked to search for it as typed)
+  const [asTyped, setAsTyped] = useState('');
+  // (and as typed while the files' words are still coming: a word only they have isn't misspelt)
+  const plan = planFor(terms, (asTyped === qs && !!qs) || loading);
+  // All of what has to be there is in its title (its words then aren't shown, and a paper opens at its top)
+  const inTitle = (x) => matches(x.tp, plan);
   // A group shows its first few; "All 43" opens the rest of it
-  const [wide, setWide] = useState([]);
+  // (how far each group is opened: "All 43" shows 60 more at a time, so a word in every file never buries the rest)
+  const [wide, setWide] = useState({});
   const found = useMemo(() => {
     if (!terms.length) return [];
-    const all = index.filter((x) => terms.every((w) => termIn(x.sp, x.sq, w)));
-    // Whole words in the title first ("Sam" is Sam Rivers before Sample Builders), then words starting there, then the rest
-    const score = (x) => { const t = spaced(x.title); return (terms.every((w) => t.includes(` ${w} `)) ? 0 : terms.every((w) => t.includes(` ${w}`)) ? 2 : 4) + (t.startsWith(` ${terms[0]}`) ? 0 : 1); };
+    const t0 = performance.now();
+    // Ranked (./find.js scoreOf): the words in the title, as typed, side by side, often, and the newer first
+    // (a person by their name first: what they're looked up by)
+    // (and a meeting asked for by its date, typed with slashes or dashes, before the files that name it)
+    const onDate = plan.terms.map((t) => t.w.match(/^(\d{4}) (\d{2}) (\d{2})$/)).find(Boolean);
+    const onDay = plan.terms.map((t) => t.w.match(/^md (\d{1,2}) (\d{1,2})$/)).find(Boolean);
+    const day = onDate ? `${onDate[1]}-${onDate[2]}-${onDate[3]}` : onDay ? `-${String(onDay[1]).padStart(2, '0')}-${String(onDay[2]).padStart(2, '0')}` : '';
+    const all = index.filter((x) => matches(x.sp, plan)).map((x) => ({ x, s: scoreOf({ title: x.tp, near: x.np, sp: x.sp, date: x.date }, plan, { today: data.today }) + (x.group === 'People' && inTitle(x) ? 3 : 0) + (day && x.group === 'Meetings' && x.date?.endsWith(day) ? 6 : 0) }));
     // Groups in the order of their best match (a person's whole name before the decisions they moved), else as listed
-    return GROUPS.map((g) => ({ g, all: all.filter((x) => x.group === g).sort((a, b) => score(a) - score(b)) })).filter((x) => x.all.length)
-      .map((x, i) => ({ ...x, best: score(x.all[0]), i })).sort((a, b) => a.best - b.best || a.i - b.i);
-  }, [q, index]);
-  const cap = (g) => (wide.includes(g) ? Infinity : g === 'In agendas and minutes' ? 6 : 5);
-  const results = found.flatMap(({ g, all }) => all.slice(0, cap(g)));
+    const out = GROUPS.map((g, i) => { const list = all.filter((y) => y.x.group === g).sort((a, b) => b.s - a.s); return { g, i, all: list.map((y) => y.x), best: list[0]?.s || 0 }; })
+      .filter((x) => x.all.length).sort((a, b) => b.best - a.best || a.i - b.i);
+    took.current = performance.now() - t0;
+    return out;
+  }, [qs, index, vocab, asTyped]);
+  const cap = (g) => wide[g] || (g === 'In agendas and minutes' || g === 'Files' ? 6 : 5);
+  // Nothing typed: what was opened lately, still here
+  const recent = useMemo(() => (terms.length || q.trim() ? [] : recentKeys().map((k) => index.find((x) => x.key === k)).filter(Boolean)), [index, !terms.length, !q.trim()]);
+  const results = terms.length ? found.flatMap(({ g, all }) => all.slice(0, cap(g))) : recent;
   // The words to try are ones that find something here
-  const tries = useMemo(() => ['budget', 'minutes', 'insurance', 'bylaws', firstName(data.people.board[0]?.name)].filter((t) => t && index.some((x) => termIn(x.sp, x.sq, termsOf(t)[0] || ''))).slice(0, 4), [index]);
+  const tries = useMemo(() => ['budget', 'minutes', 'insurance', 'bylaws', firstName(data.people.board[0]?.name)].filter((t) => t && index.some((x) => termIn(x.sp, null, termsOf(t)[0] || ''))).slice(0, 4), [index]);
   useEffect(() => {
     const dlg = ref.current;
     if (!dlg) return undefined;
@@ -4024,11 +4508,13 @@ function Finder({ ctx, onClose }) {
     document.documentElement.classList.add('is-finding');
     return () => document.documentElement.classList.remove('is-finding');
   }, []);
-  useEffect(() => { setAt(0); setWide([]); }, [q]);
-  // A group opened to all of it keeps the chosen result chosen, wherever it now sits
+  useEffect(() => { setAt(0); setWide({}); }, [qs]);
+  // A group opened to all of it keeps the chosen result chosen, wherever it now sits (and the files' words
+  // arriving while one is chosen keep it so): the one chosen is remembered as it's chosen, never as the list redraws
   const chosen = useRef(null);
-  chosen.current = results[at] || chosen.current;
-  useEffect(() => { const i = results.indexOf(chosen.current); if (i >= 0 && i !== at) setAt(i); }, [wide.join()]);
+  const pick = (i) => { setAt(i); chosen.current = results[i]?.key || null; };
+  useEffect(() => { chosen.current = null; }, [qs]);
+  useEffect(() => { const i = chosen.current ? results.findIndex((x) => x.key === chosen.current) : -1; if (i >= 0 && i !== at) setAt(i); }, [JSON.stringify(wide), index]);
   useEffect(() => { listRef.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest' }); }, [at]);
   const close = () => {
     const dlg = ref.current;
@@ -4039,23 +4525,36 @@ function Finder({ ctx, onClose }) {
   };
   const choose = (x) => {
     if (!x) return;
+    keepRecent(x.key);
     close();
     // The viewer gives the focus back to what had it: the search button, since the result it came from is gone
-    if (x.file) { setTimeout(() => { document.querySelector('.bp-find')?.focus({ preventScroll: true }); openViewer(x.file[0], x.file[1]); }, 160); return; }
+    // (a PDF found by its words opens at them, found and marked on its pages)
+    const where = x.file && terms.length && !inTitle(x) ? whereIn(x, plan, terms) : null;
+    if (x.file) { setTimeout(() => { document.querySelector('.bp-find')?.focus({ preventScroll: true }); openViewer(x.file[0], x.file[1], where ? { find: where.find } : {}); }, 160); return; }
     if (x.ext) { window.open(x.href, '_blank', 'noopener'); return; }
     // A paper found by its words opens on them
-    focusNext = x.focus || (x.group === 'Documents' && x.body && !terms.every((w) => termIn(spaced(x.title), squashed(x.title), w)) ? `words:${terms.join(' ')}` : null);
+    focusNext = x.focus || (x.group === 'Documents' && x.body && terms.length && !inTitle(x) ? `words:${terms.join(' ')}` : null);
+    foundTerms = focusNext && terms.length ? terms : null;
     if (location.hash === x.href) { window.dispatchEvent(new HashChangeEvent('hashchange')); return; }
     location.hash = x.href;
   };
   const keys = (e) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setAt((i) => Math.min(results.length - 1, i + 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setAt((i) => Math.max(0, i - 1)); }
+    if (e.key === 'ArrowDown') { e.preventDefault(); pick(Math.min(results.length - 1, at + 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); pick(Math.max(0, at - 1)); }
+    // (typed faster than it found: what's typed is found first, then its first result opens)
+    // (and while the files' words are still coming: once they're in)
+    else if (e.key === 'Enter' && (q !== qs || loading)) { e.preventDefault(); enter.current = true; settle(); }
     else if (e.key === 'Enter' && results[at]) { e.preventDefault(); choose(results[at]); }
     // A search field's own Escape only empties it; here Escape closes, the way every search box like this does
     else if (e.key === 'Escape') { e.preventDefault(); close(); }
   };
-  const grouped = found.map(({ g, all }) => ({ g, total: all.length, list: results.map((x, i) => ({ x, i })).filter(({ x }) => x.group === g) }));
+  const enter = useRef(false);
+  useEffect(() => { if (enter.current && qs === q && !loading) { enter.current = false; if (results[0]) choose(results[0]); } }, [qs, loading]);
+  const grouped = terms.length
+    ? found.map(({ g, all }) => ({ g, total: all.length, list: results.map((x, i) => ({ x, i })).filter(({ x }) => x.group === g) }))
+    : recent.length ? [{ g: 'Recent', total: recent.length, list: recent.map((x, i) => ({ x, i })) }] : [];
+  const fixedTo = terms.length && results.length ? asRead(qs, terms, results.filter((x) => x.group === 'People').map((x) => x.title)) : '';
+  const gid = (g) => `bp-g-${g === 'Recent' ? 'r' : GROUPS.indexOf(g)}`;
   return html`<dialog class="bp-finder" ref=${ref} aria-label="Search the board page" onClose=${onClose} onCancel=${(e) => { e.preventDefault(); close(); }} onClick=${(e) => { if (e.target === ref.current) close(); }}>
     <div class="bp-finder__box">
       <div class="bp-finder__field">
@@ -4064,23 +4563,32 @@ function Finder({ ctx, onClose }) {
         <button type="button" class="bp-finder__x" onClick=${close} aria-label="Close search"><span class="bp-kbd bp-finder__esc">esc</span><span class="bp-finder__cancel">Cancel</span></button>
       </div>
       <div class="bp-finder__list" ref=${listRef}>
-        ${!terms.length ? html`<div class="bp-finder__hint">
+        ${fixedTo && asTyped !== qs ? html`<p class="bp-finder__fixed" role="status">Showing results for <strong>${fixedTo}</strong> <button type="button" class="bp-linkbtn" onClick=${() => { setAsTyped(qs); ref.current?.querySelector('input')?.focus(); }}>Search for “${qs.trim()}” instead</button></p>` : null}
+        ${terms.length && results.length && loading && !failed ? html`<p class="bp-finder__fixed" role="status">Looking in the files too…</p>` : null}
+        ${terms.length && failed ? html`<p class="bp-finder__fixed" role="status">The files’ words didn’t load, so only names and agendas were searched. <button type="button" class="bp-linkbtn" onClick=${() => { retry(); ref.current?.querySelector('input')?.focus(); }}>Try again</button></p>` : null}
+        ${terms.length && !results.length ? html`<p class="bp-finder__none" role="status">${loading ? 'Looking in the files…' : `Nothing found for “${qs.trim()}”.`}</p>` : null}
+        ${!terms.length && q.trim() ? html`<p class="bp-finder__none" role="status">Type a word, a name or a number to search for.</p>` : null}
+        ${terms.length && results.length ? html`<p class="sr-only" role="status">${plural(found.reduce((n, g) => n + g.all.length, 0), 'result')}</p>` : null}
+        ${grouped.length ? html`<div role="listbox" id="bp-finder-list" aria-label=${terms.length ? 'Results' : 'Opened lately'}>${grouped.map(({ g, list, total }) => html`<div role="group" aria-labelledby=${gid(g)} key=${g}>
+          <p class="bp-finder__group"><span id=${gid(g)}>${g}${total > list.length ? html`<span class="sr-only">, ${list.length} of ${total}</span>` : null}</span>${total > list.length ? html`<button type="button" class="bp-finder__all" onClick=${() => { setWide((w) => ({ ...w, [g]: cap(g) + 60 })); ref.current?.querySelector('input')?.focus(); }}>${wide[g] ? `${Math.min(60, total - list.length)} more` : `All ${total}`}</button>` : null}</p>
+          ${list.map(({ x, i }) => html`<div class="bp-finder__item" id=${`bp-r-${i}`} role="option" aria-selected=${i === at} onPointerMove=${() => at !== i && pick(i)} onClick=${() => choose(x)} key=${x.key || i}>
+            ${x.person ? html`<${Avatar} p=${x.person} size=${32} />` : html`<span class="bp-finder__icon"><${Icon} name=${x.icon || 'documents'} size=${18} /></span>`}
+            <span class="bp-finder__text"><span class="bp-finder__title">${terms.length ? html`<${Marked} text=${x.title} terms=${terms} />` : x.title}</span><span class="sr-only">, </span>${(() => {
+              if (!terms.length) return html`<span class="bp-finder__sub">${x.sub}</span>`;
+              // A point's words where they matched; none when the match is its own name (it would only say it twice)
+              // …and a paper's or a file's words where they matched, when its title doesn't say it (a PDF's page with them)
+              const said = x.body && ((x.group === 'In agendas and minutes' && norm(x.body).trim() !== norm(x.title).trim()) || ((x.group === 'Documents' || x.group === 'Files') && !inTitle(x) && saysAny(x.body, terms)));
+              const page = said && x.pages ? whereIn(x, plan, terms)?.page : 0;
+              return html`${said ? html`<span class="bp-finder__sub">${page > 1 ? html`<span class="bp-finder__page">Page ${page}</span>` : null}<${Snippet} text=${x.body} terms=${terms} /></span>` : null}<span class="bp-finder__sub">${x.sub}</span>`;
+            })()}</span>
+            ${x.ext ? html`<${Icon} name="external" size=${16} cls="bp-go bp-go--ext" /><span class="sr-only"> (opens in a new tab)</span>` : html`<${Icon} name="arrow" size=${16} cls="bp-go" />`}
+          </div>`)}
+          ${total > list.length && list.length > 12 ? html`<p class="bp-finder__group bp-finder__group--end"><span></span><button type="button" class="bp-finder__all" onClick=${() => { setWide((w) => ({ ...w, [g]: cap(g) + 60 })); ref.current?.querySelector('input')?.focus(); }}>${Math.min(60, total - list.length)} more ${g === 'In agendas and minutes' ? 'points' : g.toLowerCase()}</button></p>` : null}
+        </div>`)}</div>` : null}
+        ${!terms.length && !q.trim() ? html`<div class="bp-finder__hint">
           <p>Try a name, a month, or a word from the minutes.</p>
           ${tries.length ? html`<p class="bp-finder__tries">${tries.map((t) => html`<button type="button" class="bp-pill" onClick=${() => { setQ(t); ref.current?.querySelector('input')?.focus(); }} key=${t}>${t}</button>`)}</p>` : null}
-        </div>` : !results.length ? html`<p class="bp-finder__none" role="status">Nothing found for “${q.trim()}”.</p>`
-        : html`<div role="listbox" id="bp-finder-list" aria-label="Results">${grouped.map(({ g, list, total }) => html`<div role="group" aria-labelledby=${`bp-g-${GROUPS.indexOf(g)}`} key=${g}>
-          <p class="bp-finder__group"><span id=${`bp-g-${GROUPS.indexOf(g)}`}>${g}${total > list.length ? html`<span class="sr-only">, ${list.length} of ${total}</span>` : null}</span>${total > list.length ? html`<button type="button" class="bp-finder__all" onClick=${() => { setWide((w) => [...w, g]); ref.current?.querySelector('input')?.focus(); }}>All ${total}</button>` : null}</p>
-          ${list.map(({ x, i }) => html`<div class="bp-finder__item" id=${`bp-r-${i}`} role="option" aria-selected=${i === at} onPointerMove=${() => at !== i && setAt(i)} onClick=${() => choose(x)} key=${i}>
-            ${x.person ? html`<${Avatar} p=${x.person} size=${32} />` : html`<span class="bp-finder__icon"><${Icon} name=${x.icon || 'documents'} size=${18} /></span>`}
-            <span class="bp-finder__text"><span class="bp-finder__title">${x.title}</span>${(() => {
-              // A point's words where they matched; none when the match is its own name (it would only say it twice)
-              // …and a paper's words where they matched, when its title doesn't say it
-              const said = x.body && ((x.group === 'In agendas and minutes' && norm(x.body).trim() !== norm(x.title).trim()) || (x.group === 'Documents' && !terms.every((w) => termIn(spaced(x.title), squashed(x.title), w))));
-              return html`${said ? html`<span class="bp-finder__sub"><${Snippet} text=${x.body} terms=${terms} /></span>` : null}<span class="bp-finder__sub">${x.sub}</span>`;
-            })()}</span>
-            ${x.ext ? html`<${Icon} name="external" size=${16} cls="bp-go" />` : html`<${Icon} name="arrow" size=${16} cls="bp-go" />`}
-          </div>`)}
-        </div>`)}</div>`}
+        </div>` : null}
       </div>
       <p class="bp-finder__foot" aria-hidden="true"><span><span class="bp-kbd">↑</span><span class="bp-kbd">↓</span> to move</span><span><span class="bp-kbd">enter</span> to open</span><span><span class="bp-kbd">esc</span> to close</span></p>
     </div>

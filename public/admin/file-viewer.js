@@ -78,8 +78,11 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 let host = null;
 let backPending = null; // the history.back() a close started, until its popstate lands
 
-/** Show files[index], with the rest of `files` a step away */
-export function openViewer(files, index = 0) {
+/**
+ * Show files[index], with the rest of `files` a step away. `find`: words to find in it as it opens (a PDF found by
+ * a search: its find box open on them, at the first, every one marked)
+ */
+export function openViewer(files, index = 0, { find = '' } = {}) {
   const list = (files || []).filter((f) => f?.url);
   if (!list.length) return;
   const start = Math.max(0, list.indexOf(files[index]));
@@ -90,7 +93,7 @@ export function openViewer(files, index = 0) {
     host.className = 'fv-host';
     document.body.appendChild(host);
   }
-  render(html`<${Viewer} key=${Date.now()} files=${list} start=${start} onClosed=${() => render(null, host)} />`, host);
+  render(html`<${Viewer} key=${Date.now()} files=${list} start=${start} find=${find} onClosed=${() => render(null, host)} />`, host);
 }
 
 /** Load pdf.js (and start its worker) ahead of a PDF being opened, so the first one opens at once */
@@ -98,8 +101,8 @@ export function warmFiles(files) {
   if ((files || []).some((f) => f && kindOf(f) === 'pdf')) loadPdf().then((m) => { pdfWorker ||= new m.pdfjsLib.PDFWorker(); }).catch(() => {});
 }
 
-/** Props for an <a> that opens the viewer on a plain click and a new tab on ⌘/Ctrl/middle click */
-export function viewerLink(files, i) {
+/** Props for an <a> that opens the viewer on a plain click and a new tab on ⌘/Ctrl/middle click (`opts`: openViewer's) */
+export function viewerLink(files, i, opts = {}) {
   const warm = () => warmFiles([files[i]]);
   return {
     href: files[i]?.url,
@@ -110,7 +113,7 @@ export function viewerLink(files, i) {
     onClick: (e) => {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
       e.preventDefault();
-      openViewer(files, i);
+      openViewer(files, i, opts);
     },
   };
 }
@@ -160,7 +163,7 @@ async function saveFile(f, onProgress) {
 
 const FOCUSABLE = 'button:not([disabled]), a[href], video[controls], audio[controls], [tabindex]:not([tabindex="-1"])';
 
-function Viewer({ files, start, onClosed }) {
+function Viewer({ files, start, find = '', onClosed }) {
   const [i, setI] = useState(start);
   // What the open photo or PDF reports, each stamped with its file: a photo already left (its <img>
   // still firing) can't put its zoom or "Shown as a preview" on the file after it
@@ -309,6 +312,16 @@ function Viewer({ files, start, onClosed }) {
     if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeFind(); }
     else if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); findStep(e.shiftKey); }
   };
+  // Opened from a search: the PDF's find box on what was searched, once its first page is drawn (pdf.js finds
+  // nothing asked of it before then)
+  const findFirst = useRef(find ? files[start]?.url : null);
+  const onDrawn = useCallback((url) => {
+    if (!findFirst.current || findFirst.current !== url || !ctl.current?.find) return;
+    findFirst.current = null;
+    setFindQ(find);
+    setFindOpen(true);
+    ctl.current.find(find);
+  }, [find]);
   const print = async () => {
     if (!ctl.current?.print || printing) return;
     const report = stamp(setPrint);
@@ -356,13 +369,13 @@ function Viewer({ files, start, onClosed }) {
   const fail = (msg) => html`<${Card} f=${f} title=${msg.title} text=${msg.text} onSave=${download} saving=${saving !== false} />`;
   let media;
   if (kind === 'image') media = html`<${ImageView} key=${f.url} f=${f} ctl=${ctl} onZoom=${stamp(setZoom)} onNote=${stamp(setNote)} onStep=${onStep} fail=${fail} />`;
-  else if (kind === 'pdf') media = html`<${PdfView} key=${f.url} f=${f} ctl=${ctl} onZoom=${stamp(setZoom)} onPage=${stamp(setPage)} onFound=${stamp(setFound)} fail=${fail} />`;
+  else if (kind === 'pdf') media = html`<${PdfView} key=${f.url} f=${f} ctl=${ctl} onZoom=${stamp(setZoom)} onPage=${stamp(setPage)} onFound=${stamp(setFound)} onDrawn=${onDrawn} fail=${fail} />`;
   else if (kind === 'video') media = html`<${VideoView} key=${f.url} f=${f} player=${player} fail=${fail} />`;
   else if (kind === 'audio') media = html`<div class="fv-audio"><span aria-hidden="true">${EMOJI.audio}</span><audio key=${f.url} src=${f.url} controls autoplay preload="metadata"></audio></div>`;
   else if (kind === 'pages') media = html`<${PagesView} key=${f.url} f=${f} ctl=${ctl} onZoom=${stamp(setZoom)} onPage=${stamp(setPage)} fail=${fail} />`;
   else media = fail({ title: 'This file can’t be shown here', text: `Download it to open it${OFFICE.some(([, l]) => l === kindName(f)) ? ` in ${kindName(f)}` : ''}.` });
 
-  return html`<div class="fv" role="dialog" aria-modal="true" aria-label=${n > 1 ? `${f.name} (${i + 1} of ${n})` : f.name} tabindex="-1" ref=${attach}>
+  return html`<div class=${`fv${kind === 'pdf' && findOpen ? ' is-finding' : ''}`} role="dialog" aria-modal="true" aria-label=${n > 1 ? `${f.name} (${i + 1} of ${n})` : f.name} tabindex="-1" ref=${attach}>
     <header class="fv-bar">
       <div class="fv-title">
         <span class="fv-title-kind" aria-hidden="true">${kindEmoji(f, kind)}</span>
@@ -674,7 +687,7 @@ const loadPdf = () => (pdfModule ||= import('./vendor-pdf.js').then((m) => {
   return m;
 }).catch((e) => { pdfModule = null; throw e; }));
 
-function PdfView({ f, ctl, onZoom, onPage, onFound, fail }) {
+function PdfView({ f, ctl, onZoom, onPage, onFound, onDrawn = () => {}, fail }) {
   const wrap = useRef(null);
   const [state, setState] = useState('loading'); // loading | ready | failed | locked
   const [got, setGot] = useState(null); // how much of a big PDF has arrived: { loaded, total? }
@@ -716,11 +729,25 @@ function PdfView({ f, ctl, onZoom, onPage, onFound, fail }) {
         });
         linkService.setViewer(viewer);
         eventBus.on('pagesinit', () => { viewer.currentScaleValue = 'auto'; });
-        eventBus.on('pagerendered', () => setState('ready')); // page 1 drawn: the picture of it gives way
+        eventBus.on('pagerendered', () => { setState('ready'); setTimeout(() => !dead && onDrawn(f.url), 0); }); // page 1 drawn: the picture of it gives way
         eventBus.on('pagechanging', (e) => onPage({ n: e.pageNumber, of: viewer.pagesCount }));
         // Find: how many matches, and which one is showing
         eventBus.on('updatefindmatchescount', ({ matchesCount: m }) => onFound({ current: m?.current || 0, total: m?.total || 0 }));
         eventBus.on('updatefindcontrolstate', ({ state, matchesCount: m }) => { if (state !== 3) onFound({ current: m?.current || 0, total: m?.total || 0, state }); });
+        // The match being shown never sits under the find box floating over the page (a phone's is over the whole width):
+        // pdf.js brings it in at the top; it's moved down clear of the box
+        const clear = () => requestAnimationFrame(() => {
+          const sel = container.querySelector('.textLayer .highlight.selected');
+          const bar = container.closest('.fv')?.querySelector('.fv-find');
+          if (!sel || !bar) return;
+          const h = sel.getBoundingClientRect();
+          const b = bar.getBoundingClientRect();
+          if (h.top < b.bottom + 8 && h.bottom > b.top - 8 && h.left < b.right && h.right > b.left) container.scrollTop -= b.bottom + 24 - h.top;
+        });
+        // (and again a moment on: the page's words may still be drawing when pdf.js has scrolled to them)
+        const clearSoon = () => { clear(); setTimeout(clear, 160); setTimeout(clear, 450); };
+        eventBus.on('updatetextlayermatches', clearSoon);
+        eventBus.on('updatefindcontrolstate', clearSoon);
         eventBus.on('scalechanging', (e) => onZoom({ pct: Math.round(e.scale * 100), canIn: e.scale < 4, canOut: e.scale > 0.3 }));
         const base = new URL('./pdf/', import.meta.url).href;
         pdfWorker ||= new pdfjsLib.PDFWorker();
@@ -990,6 +1017,7 @@ body.fv-open .toast-pinned { display: none; } /* the update notice waits until t
 
 .fv-pdf { position: absolute; inset: 0; overflow: auto; touch-action: pan-x pan-y; outline: none; overscroll-behavior: contain; }
 .fv-pdf .pdfViewer { padding: 4px 0 28px; }
+.fv.is-finding .fv-pdf .pdfViewer { padding-top: 60px; }
 .fv-pdf .pdfViewer .page { margin: 0 auto 14px; box-shadow: 0 1px 3px rgba(0, 0, 0, .5), 0 10px 30px rgba(0, 0, 0, .35); }
 .fv-pages { position: absolute; inset: 0; overflow: auto; overscroll-behavior: contain; outline: none; display: flex; flex-direction: column; align-items: flex-start; gap: 14px; padding: 4px 16px 28px; }
 .fv-pages > .fv-sheet { margin-inline: auto; }
@@ -1039,6 +1067,7 @@ body.fv-open .toast-pinned { display: none; } /* the update notice waits until t
 }
 .fv-find { position: absolute; top: 8px; right: 16px; z-index: 3; display: flex; align-items: center; gap: .15rem; padding: 4px 4px 4px 10px; border-radius: 12px; background: #1F2024; box-shadow: 0 8px 24px rgba(0, 0, 0, .45), inset 0 0 0 1px rgba(255, 255, 255, .08); }
 .fv-find-input { width: 220px; min-width: 0; height: 36px; border: 0; outline: none; background: transparent; color: #F2F2F3; font: inherit; font-size: var(--fs-sm); }
+.fv-find-input::selection { background: #3A5A8C; color: #FFFFFF; }
 .fv-find-input::placeholder { color: #8E8F95; }
 .fv-find-count { min-width: 70px; text-align: right; padding-right: .3rem; font-size: var(--fs-xs); color: #A8A9AF; font-variant-numeric: tabular-nums; white-space: nowrap; }
 #fv-print { display: none; }
