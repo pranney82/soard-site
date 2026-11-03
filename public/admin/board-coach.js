@@ -19,7 +19,7 @@
  * No imports from the page: the tests read it as it is.
  */
 
-import { mdBlocks, mdToDoc, docToMd, mdWords, mdPlain, mdPoints, mdNumber } from './board-md.js';
+import { mdBlocks, mdToDoc, docToMd, mdWords, mdPlain, mdPoints, mdNumber, POINT_WORDS } from './board-md.js';
 import { sectionPlan, agendaItems, reportsOn, isNothingNew, shownLook, CARDS_PER_SLIDE } from './board-shared.js';
 
 /** "about 2 minutes to present" (read aloud, about 130 words a minute) */
@@ -77,7 +77,7 @@ export function sentencesOf(text) {
   for (let m = END.exec(t); m; m = END.exec(t)) {
     const end = m.index + m[0].trimEnd().length;
     const next = t[m.index + m[0].length];
-    if (!next || !/[\p{Lu}\p{N}"“‘([*_$]/u.test(next)) continue;
+    if (!next || !/[\p{Lu}\p{Lo}\p{N}"“‘([*_$¿¡]/u.test(next)) continue;
     const word = t.slice(start, end).match(/(\S+)$/)?.[1] || '';
     if (m[0][0] === '.' && isAbbr(word.replace(/[”’"')\]*_]+$/, ''))) continue;
     // Never inside a quotation: She said "We love it. Thank you." is one sentence
@@ -159,12 +159,13 @@ function longParagraph(blocks) {
 const isList = (b) => b?.t === 'ul' || b?.t === 'ol';
 /** A paragraph that is only what leads into the list after it: a report's points' first line (mdPoints' lead), or
  *  one sentence ending in a colon ("Two changes come to the board in February:") */
-const leadsIn = (blocks, i) => isList(blocks[i + 1]) && ((i === 0 && blocks.length === 2) || (/:\s*$/.test(blocks[i].text) && sentencesOf(blocks[i].text).length === 1));
+const leadsIn = (blocks, i) => isList(blocks[i + 1]) && ((i === 0 && blocks.length === 2 && mdWords(blocks[0].text) <= POINT_WORDS) || (/:\s*$/.test(blocks[i].text) && sentencesOf(blocks[i].text).length === 1));
 /** A paragraph that isn't only what leads into a list */
 const hasProse = (blocks) => blocks.some((b, i) => b.t === 'p' && !leadsIn(blocks, i));
-/** A paragraph's sentences, when every word of it is in them, each a paragraph of its own; else null */
+/** A paragraph's sentences, when every word of it is in them, each a paragraph of its own; else null. A line it breaks
+ *  onto (Shift+Enter, a pasted list) starts a sentence of its own: lines are never run together */
 const wholeSentences = (text) => {
-  const said = sentencesOf(text);
+  const said = String(text).split('\n').map((l) => l.trim()).filter(Boolean).flatMap((l) => sentencesOf(l));
   const ok = said.every((s) => { const x = mdBlocks(s); return x.length === 1 && x[0].t === 'p'; }) && said.reduce((n, s) => n + mdWords(s), 0) === mdWords(text);
   return ok ? said : null;
 };
@@ -201,6 +202,7 @@ function cardsWhy(md) {
   const lists = blocks.filter(isList);
   if (blocks.some((b) => b.t === 'h' || b.t === 'quote' || b.t === 'hr') || lists.length !== 1) return 'Cards are for a report of points only, without headings or callouts.';
   const items = lists[0].items;
+  if (blocks[0].t === 'p' && blocks.length === 2 && mdWords(blocks[0].text) > POINT_WORDS) return 'Cards have room for a line or two above them. A shorter opening, or that paragraph as points, can be cards.';
   if (items.length < 2) return 'Cards need two points or more.';
   if (items.some((it) => it.length !== 1 || it[0].t !== 'p')) return 'Cards are for points with nothing under them.';
   return 'Each card holds a line or two, and a point here is longer. Shorter points can be cards.';

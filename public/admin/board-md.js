@@ -403,17 +403,24 @@ export function mdPoints(md, { all = false } = {}) {
   return { lead: lead ? lead.text : '', points: items.map((it) => it[0].text), numbered: list.t === 'ol', start: list.t === 'ol' ? list.start || 1 : 1 };
 }
 
-// A quantity: 22, 1,000+, $12,500.50, 40%, $1.2M, 3x, the 15th, 2026–27 (a year's span), 3–5
-const NUMBER = /\$?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:(?<=\b\d{4})[–-]\d{2}(?!\d)|–\d+)?(?:%|\+|[KMB](?![\p{L}\p{N}])|x(?![\p{L}\p{N}])|st|nd|rd|th)?/gu;
-const MONTH_BEFORE = /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+$/i;
+// A quantity: 22, 1,000+, $12,500.50, 40%, $1.2M, $5k, 3x, the 15th, 2026–27 (a year's span), 3–5
+const NUMBER = /\$?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?:(?<=\b\d{4})[–-]\d{2}(?!\d)|–\d+)?(?:%|\+|[KMBk](?![\p{L}\p{N}])|x(?![\p{L}\p{N}])|st|nd|rd|th)?/gu;
+const MONTH = '(?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\\.?';
+const MONTH_BEFORE = new RegExp(`\\b${MONTH}\\s+$`, 'i');
+// What goes with a figure, said with it: a sign or a currency just before it (−8%, <5, €2,500, +12, ~40, #1), and a
+// scale word after it ($1.2 million)
+const SIGN = /(?:^|(?<=[\s(]))[+−\-<>~≈#€£¥]+$/u;
+const SCALE = /^\s(?:million|billion|thousand|trillion)\b/i;
 /** Whether a number found at [i, j) of `t` is a figure, not part of a name, a time, a date or a phone number */
 function isFigure(t, i, j) {
   const before = t[i - 1] || '';
   const after = t[j] || '';
   if (/[\p{L}\p{N}\-–/.,:$]/u.test(before)) return false; // W-9, Q4, 1099, 5:30's 30
-  if (/[\p{L}\p{N}\-–/:]/u.test(after) || (/[.,]/.test(after) && /\d/.test(t[j + 1] || ''))) return false; // 20-second, 5:30, Form 1099-NEC
+  if (/[\p{L}\p{N}\-–/]/u.test(after) || (/[.,:]/.test(after) && /\d/.test(t[j + 1] || ''))) return false; // 20-second, 5:30, Form 1099-NEC
   if (before === '(' && after === ')') return false; // (770) 555-1234
   if (MONTH_BEFORE.test(t.slice(Math.max(0, i - 12), i))) return false; // Nov 5
+  if (new RegExp(`^\\s+${MONTH}(?![\\p{L}])`, 'iu').test(t.slice(j, j + 14))) return false; // 5 November
+  if (/^\s*(?:a\.?m\.?|p\.?m\.?)(?![\p{L}])/iu.test(t.slice(j, j + 6))) return false; // 6 pm
   return true;
 }
 
@@ -428,10 +435,15 @@ export function mdFigures(text) {
     const out = [];
     let at = 0;
     for (const m of r.text.matchAll(NUMBER)) {
-      const j = m.index + m[0].length;
-      if (!isFigure(r.text, m.index, j)) continue;
-      if (m.index > at) out.push({ ...r, text: r.text.slice(at, m.index) });
-      out.push({ ...r, text: m[0], fig: true });
+      if (m.index < at) continue;
+      // (its sign or currency with it, then whether it's a figure from there)
+      const sign = r.text.slice(at, m.index).match(SIGN)?.[0] || '';
+      const i = m.index - sign.length;
+      let j = m.index + m[0].length;
+      if (!isFigure(r.text, i, j)) continue;
+      j += r.text.slice(j).match(SCALE)?.[0].length || 0;
+      if (i > at) out.push({ ...r, text: r.text.slice(at, i) });
+      out.push({ ...r, text: r.text.slice(i, j), fig: true });
       at = j;
     }
     if (at < r.text.length) out.push({ ...r, text: r.text.slice(at) });
@@ -447,14 +459,16 @@ export function mdFigures(text) {
  */
 export function mdNumber(text) {
   const runs = mdFigures(text);
-  const k = runs.findIndex((r) => r.fig);
+  // (a year is the big one only when it's the only figure: "In 2026 we built 40 porches" is about the 40)
+  const year = (r) => /^(?:19|20)\d{2}$/.test(r.text);
+  const k = runs.findIndex((r) => r.fig && !year(r)) >= 0 ? runs.findIndex((r) => r.fig && !year(r)) : runs.findIndex((r) => r.fig);
   if (k < 0) return null;
   const fig = runs[k].text;
   const empty = (xs) => xs.every((r) => !r.br && !/[\p{L}\p{N}]/u.test(r.text));
   // The words either side, trimmed where the figure was (and the stop at its end): two words at least, else all of it
   const trim = (xs, at) => {
     const out = xs.map((r) => ({ ...r }));
-    if (at === 'start') { while (out.length && !out[0].br && !out[0].text.trim()) out.shift(); if (out[0]?.text) out[0].text = out[0].text.trimStart(); }
+    if (at === 'start') { while (out.length && !out[0].br && !/[\p{L}\p{N}]/u.test(out[0].text)) out.shift(); if (out[0]?.text) out[0].text = out[0].text.replace(/^[\s:;,–—-]+/, ''); }
     while (out.length && !out.at(-1).br && !out.at(-1).text.trim()) out.pop();
     if (out.length && out.at(-1).text) out.at(-1).text = out.at(-1).text.replace(/[\s,:;–—-]+$/, '').replace(/(?<![.])\.$/, '');
     return out.filter((r) => r.br || r.text);

@@ -347,7 +347,7 @@ const figRuns = (rs) => rs.map((r, k) => {
  * cards can't fit at a size the room still reads (a short window, a motion and notes under them), it's drawn whole
  * instead (ReportFit), and tried as cards again once there's more room.
  */
-function ReportPoints({ text, all = false }) {
+function ReportPoints({ text, all = false, more = false }) {
   const p = mdPoints(text, { all });
   const ref = useRef(null);
   // The stage's size when the cards didn't fit in it, else null
@@ -361,7 +361,8 @@ function ReportPoints({ text, all = false }) {
     // By the cards' layout, not where they're drawn: they come up from 14px lower, which would read as too tall
     const over = () => {
       const list = el.querySelector('.bs-pts__list');
-      return !!list && (list.offsetTop + list.offsetHeight > el.clientHeight + 1 || [...el.querySelectorAll('.bs-pt__t')].some((t) => t.scrollWidth > t.clientWidth + 1));
+      const last = el.querySelector('.bs-pts__more') || list;
+      return !!list && (last.offsetTop + last.offsetHeight > el.clientHeight + 1 || [...el.querySelectorAll('.bs-pt__t')].some((t) => t.scrollWidth > t.clientWidth + 1));
     };
     const fit = () => {
       let s = phone() ? 1 : POINT_FIT_MAX;
@@ -395,7 +396,7 @@ function ReportPoints({ text, all = false }) {
     return () => ro.disconnect();
   }, [whole]);
   if (!p) return null;
-  if (whole) return html`<${ReportFit} text=${text} cols=${mdWords(text) > 110 ? 2 : 1} />`;
+  if (whole) return html`<${ReportFit} text=${text} cols=${mdWords(text) > 110 ? 2 : 1} more=${more} />`;
   const n = p.points.length;
   const runs = (t) => figRuns(mdFigures(t));
   return html`<div class=${`bs-pts is-${n}`} ref=${ref}>
@@ -404,6 +405,7 @@ function ReportPoints({ text, all = false }) {
       <span class=${`bs-pt__n ${p.numbered ? '' : 'is-mark'}`} aria-hidden="true">${p.numbered ? p.start + k : ''}</span>
       <p class="bs-pt__t" dir="auto">${runs(t)}</p>
     </li>`)}</ol>
+    ${more ? html`<p class="bs-report__more bs-pts__more">Continued on the next slide</p>` : null}
   </div>`;
 }
 
@@ -464,7 +466,7 @@ function ReportFit({ text, more = false, part = false, cont = '' }) {
  * it (board-md.js mdNumber), on a card of its own, two or three across, coming up one after another. Where they can't
  * fit at a size the room reads, its points as cards instead (ReportPoints)
  */
-function ReportNumbers({ text }) {
+function ReportNumbers({ text, more = false }) {
   const p = mdPoints(text, { all: true });
   const ref = useRef(null);
   const [whole, setWhole] = useState(false);
@@ -475,7 +477,8 @@ function ReportNumbers({ text }) {
     const phone = () => window.matchMedia('(max-width: 900px)').matches;
     const over = () => {
       const list = el.querySelector('.bs-stats__list');
-      return !!list && (list.offsetTop + list.offsetHeight > el.clientHeight + 1 || [...el.querySelectorAll('.bs-stat__fig, .bs-stat__t')].some((t) => t.scrollWidth > t.clientWidth + 1));
+      const last = el.querySelector('.bs-pts__more') || list;
+      return !!list && (last.offsetTop + last.offsetHeight > el.clientHeight + 1 || [...el.querySelectorAll('.bs-stat__fig, .bs-stat__t')].some((t) => t.scrollWidth > t.clientWidth + 1));
     };
     const fit = () => {
       let s = phone() ? 1 : POINT_FIT_MAX;
@@ -491,21 +494,22 @@ function ReportNumbers({ text }) {
     return () => ro?.disconnect();
   }, [text, whole]);
   if (!p) return null;
-  if (whole) return html`<${ReportPoints} text=${text} all />`;
+  if (whole) return html`<${ReportPoints} text=${text} all more=${more} />`;
   return html`<div class=${`bs-stats is-${p.points.length}`} ref=${ref}>
     ${p.lead ? html`<p class="bs-pts__lead" dir="auto">${figRuns(mdFigures(p.lead))}</p>` : null}
     <ul class="bs-stats__list">${p.points.map((t, k) => { const x = mdNumber(t); return html`<li class="bs-stat" key=${k} style=${`--i:${k}`}>
       ${x ? html`<span class="bs-stat__fig">${x.fig}</span>` : null}
       <p class="bs-stat__t" dir="auto">${figRuns(x ? x.runs : mdFigures(t))}</p>
     </li>`; })}</ul>
+    ${more ? html`<p class="bs-report__more bs-pts__more">Continued on the next slide</p>` : null}
   </div>`;
 }
 
 /** A report's slide (one of reportSlides'), drawn as its presenter chose (board-shared.js shownLook): its points as
  *  cards, its numbers large, else its words as they fit. `more`: it goes on, on the next slide; `part`: one of several,
  *  never set large as a short one would be */
-const ReportBody = ({ report, look = 'words', more = false, part = false, cont = '' }) => (look === 'cards' ? html`<${ReportPoints} text=${report} all />`
-  : look === 'numbers' ? html`<${ReportNumbers} text=${report} />`
+const ReportBody = ({ report, look = 'words', more = false, part = false, cont = '' }) => (look === 'cards' ? html`<${ReportPoints} text=${report} all more=${more} />`
+  : look === 'numbers' ? html`<${ReportNumbers} text=${report} more=${more} />`
   : html`<${ReportFit} text=${report} more=${more} part=${part} cont=${cont} />`);
 /** How an item's report is drawn: as cards, its numbers, or its words (cards and numbers fill a slide the same way) */
 const lookOfItem = (it) => shownLook(it.report, it.reportLook);
@@ -795,9 +799,11 @@ function PartList({ sec, items, current, people }) {
   let from = 0;
   let to = n;
   if (n > PART_ROWS) {
+    // (one left out is shown instead: its row, not a line saying "1 earlier" or "and 1 more")
     from = Math.max(0, at - 2);
+    if (from === 1) from = 0;
     to = from + PART_ROWS - (from ? 2 : 1);
-    if (to >= n) { to = n; from = n - (PART_ROWS - 1); }
+    if (to >= n - 1) { to = n; from = n - (PART_ROWS - 1); }
   }
   return html`<ol class=${`bs-part ${labels.some((l) => l.length > 3) ? 'is-wide' : ''}`}>
     ${from ? html`<li class="bs-part__more" key="before">${from} earlier</li>` : null}

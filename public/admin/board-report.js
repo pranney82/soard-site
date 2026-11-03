@@ -510,9 +510,13 @@ export function ReportCoach({ value, onChange, part = null, admin = false, id = 
   const notNow = (x) => setOff(new Set([...off, x.id]));
   // A new wording at once (not a moment later), so what's chosen shows chosen
   const put = (md) => { onChange(md); setSettled(md); };
-  const choose = (o) => {
-    if (o.id === 'text' && back) { put(was.from); setWas(null); setWhy(null); onLook('list'); return; }
-    if (!o.ok) { setWhy({ id: o.id, text: o.why }); return; }
+  // A way chosen is worked out from the words as they are this moment, never the ones the panel was last drawn from
+  // (typed a moment ago, they'd be lost)
+  const choose = (picked) => {
+    if (picked.id === 'text' && back) { put(was.from); setWas(null); setWhy(null); onLook('list'); return; }
+    const o = reportLooks(text, look)?.options.find((x) => x.id === picked.id) || picked;
+    // (said again when pressed again: cleared first, so a screen reader hears it each time)
+    if (!o.ok) { setWhy(null); requestAnimationFrame(() => setWhy({ id: o.id, text: o.why })); return; }
     setWhy(null);
     if (o.md && o.md !== text) { setWas({ from: text, to: o.md }); put(o.md); }
     onLook(o.look);
@@ -541,7 +545,7 @@ export function ReportCoach({ value, onChange, part = null, admin = false, id = 
           ${LOOK_ICON[o.id]}<span class="rp-look__name">${LOOK_NAME[o.id]}</span>${looks.best === o.id && ok ? html`<span class="rp-look__best">Suggested</span>` : null}
         </button>`;
       })}</div>
-      ${why ? html`<p class="rp-looks__why" id=${`rp-looks-why-${itemId}`} role="status">${why.text}</p>` : null}
+      <p class="rp-looks__why" id=${`rp-looks-why-${itemId}`} role="status">${why ? why.text : ''}</p>
     </div>` : null}
     ${tip ? html`<div class="rp-coach__tip" role="status">
       <p>${tip.text}</p>
@@ -635,6 +639,7 @@ const CSS = `
 .rp-look__fig { font: 700 13px/1 Georgia, 'Times New Roman', serif; fill: currentColor; }
 .rp-look.is-on .rp-look__pic { color: var(--ink, var(--color-text, #2D2F2C)); }
 .rp-look__best { font-size: 0.68rem; font-weight: 750; letter-spacing: 0.06em; text-transform: uppercase; color: var(--gold, #8A6A00); }
+.rp-looks__why:empty { display: block; height: 0; margin-top: -0.4rem; padding: 0; overflow: hidden; }
 .rp-looks__why { margin: 0; padding: 0.45rem 0.7rem; border-radius: 10px; background: var(--warm, var(--color-bg-subtle, #FAF9F5)); color: var(--ink-2, var(--color-text, #4E504C)); font-size: 0.85rem; line-height: 1.4; }
 .rp-foot__btn:hover { border-color: var(--ink, var(--color-text, #2D2F2C)); color: var(--ink, var(--color-text, #2D2F2C)); }
 

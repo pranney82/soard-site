@@ -522,9 +522,18 @@ function App() {
   const [note, setNote] = useState(null);
   const [finding, setFinding] = useState(false);
   const load = async () => {
+    // A slide on the report page is a frame of that page: its data from there, never fetched again for each slide
+    if (PREVIEW) {
+      let share = null;
+      try { share = window.parent !== window ? window.parent.__bpShare?.() : null; } catch { /* a frame of another page */ }
+      if (share?.ok) { setData(structuredClone(share)); setFail(null); return; }
+    }
     const j = await call();
     if (j.ok) { setData(j); setFail(null); } else setFail(j);
   };
+  const dataRef = useRef(null);
+  dataRef.current = data;
+  useEffect(() => { if (PREVIEW) return undefined; window.__bpShare = () => dataRef.current; return () => { delete window.__bpShare; }; }, []);
   // Board's preview: the meeting as it's being written (never saved from here), and the item being worked on
   useEffect(() => {
     if (!PREVIEW) return undefined;
@@ -1558,6 +1567,8 @@ const withItem = (data, meetingId, itemId, patch) => {
   const put = (m) => (m.id !== meetingId ? m : { ...m, sections: m.sections.map((s) => ({ ...s, items: s.items.map((it) => (it.id === itemId ? { ...it, ...patch } : it)) })) });
   return { ...data, meetings: data.meetings.map(put), ...(data.previews ? { previews: data.previews.map(put) } : {}), ...(data.presenting ? { presenting: data.presenting.map(put) } : {}) };
 };
+/** Two wordings with the same words in the same order (a paragraph and its sentences made points, say) */
+const sameWords = (a, b) => { const w = (x) => mdPlain(String(x || '')).replace(/^\s*(?:•|\d+\.)\s/gm, '').split(/\s+/).filter(Boolean).join(' '); return w(a) === w(b); };
 /** A report just saved */
 const withReport = (data, meetingId, itemId, r) => withItem(data, meetingId, itemId, { report: r.report, reportBy: r.reportBy, reportAt: r.reportAt, ...(r.reportLook !== undefined ? { reportLook: r.reportLook } : {}) });
 
@@ -1770,6 +1781,8 @@ function slideName(s, it) {
   if (faces) return faces === 'roll' ? 'Who’s here' : 'Around the room';
   if (it.live) return LIVE_TITLES[it.live] || it.title;
   if (hasReport(it) && !reportAlone(it)) { const n = slidesOfItem(it).length; return n > 1 ? `Your report, 1 of ${n}` : 'Your report'; }
+  if (isNothingNew(it.report)) return 'Nothing new to report';
+  if (String(it.motion || '').trim() && !decidesAlone(it)) return 'Your motion, for the vote';
   return String(it.notes || '').trim() ? 'The item, with its notes' : 'The item’s title';
 }
 /** Who makes a slide: their words (the report, the motion), or the meeting itself (live facts, the agenda) */
@@ -1778,6 +1791,8 @@ function slideBy(s, it) {
   if (s.kind === 'decision') return { text: 'Your motion', mine: true };
   if (s.kind === 'books') return { text: 'From QuickBooks, by itself', mine: false };
   if (s.kind === 'live' || it.live || facesOf(it)) return { text: 'Fills in by itself', mine: false };
+  if (isNothingNew(it.report)) return { text: 'Your words', mine: true };
+  if (String(it.motion || '').trim() && !decidesAlone(it)) return { text: 'Your motion', mine: true };
   return { text: 'From the agenda', mine: false };
 }
 
@@ -1794,6 +1809,8 @@ function SlideStack({ m, it, files, draft }) {
   const [cuts, setCuts] = useState({}); // a slide's key → its report's words don't fit at their size
   const [motionCut, setMotionCut] = useState(false);
   const [mark, setMark] = useState(''); // the slide the last words changed
+  const [marked, setMarked] = useState(0); // …each time they do: it's brought into view then, once (never again later)
+  const toShow = useRef('');
   // What's typed, a moment after typing stops: every slide is laid out again only then, never on every key
   const [sent, setSent] = useState(draft);
   useEffect(() => { const t = setTimeout(() => setSent(draft), 300); return () => clearTimeout(t); }, [draft.report, draft.motion, draft.reportBy, draft.reportLook, draft.docs.join('|')]);
@@ -1824,12 +1841,15 @@ function SlideStack({ m, it, files, draft }) {
       const p = after.findIndex((x, i) => x !== before[i]);
       key = after.length ? keyOf(p < 0 ? after.length - 1 : p, cur) : it.id;
     } else if (a.motion !== sent.motion) key = decidesAlone(cur) ? `${it.id}:decision` : it.id;
-    if (key) setMark(key);
+    if (key) { setMark(key); toShow.current = key; setMarked((n) => n + 1); }
   }, [sent]);
   // …brought into view in the column (or on a phone's In the meeting), when it isn't
   useEffect(() => {
-    const el = mark && holder.current?.querySelector(`[data-stop="${CSS.escape(mark)}"]`);
+    // (waiting, when it's a new slide, for the deck to bring it; a document's count arriving later moves nothing)
+    const key = toShow.current;
+    const el = key && holder.current?.querySelector(`[data-stop="${CSS.escape(key)}"]`);
     if (!el || !el.offsetParent) return;
+    toShow.current = '';
     const col = holder.current.closest('.bp-rp__preview');
     const scroller = col && getComputedStyle(col).overflowY === 'auto' ? col : null;
     const r = el.getBoundingClientRect();
@@ -1838,7 +1858,7 @@ function SlideStack({ m, it, files, draft }) {
     const smooth = !matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (scroller) scroller.scrollTo({ top: scroller.scrollTop + (r.top - view.top) - 12, behavior: smooth ? 'smooth' : 'auto' });
     else el.scrollIntoView({ block: 'nearest', behavior: smooth ? 'smooth' : 'auto' });
-  }, [mark, stops]);
+  }, [marked, stops]);
   const scale = w ? w / 1280 : 0;
   const list = stops || [{ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0 }];
   // Its documents, one line in their place: each file once, with how many of its pages show (two to a slide, an open
@@ -1942,6 +1962,8 @@ function ReportPage({ id, itemId, ctx }) {
   // A head start put in (last time's report, the outline) and not changed since: not saved, so it never counts as in
   const inserted = useRef(null);
   const untouched = () => inserted.current !== null && latest.current === inserted.current;
+  // Something of theirs the server doesn't have yet: words, or how it shows (chosen here)
+  const pending = () => !untouched() && (latest.current !== sent.current || lookNow.current !== lookSent.current);
   const motionBox = useRef(null);
   const last = useMemo(() => (m && it ? lastTime(data, m, it) : null), [m?.id, it?.id]);
   const [adding, setAdding] = useState(''); // the file being put with it
@@ -1955,16 +1977,20 @@ function ReportPage({ id, itemId, ctx }) {
     if (clashRef.current || stuckRef.current) return null; // they choose first
     const words = latest.current;
     const lk = lookNow.current;
-    if (words === sent.current && lk === lookSent.current) { keep(words); setSt((x) => (x.s === 'waiting' ? { ...x, s: 'saved' } : x)); return null; }
-    if (untouched() && lk === lookSent.current) { keep(words); setSt((x) => ({ ...x, s: 'start' })); return null; }
+    // A head start not changed yet (how it shows chosen on it too) waits for their own words
+    if (untouched()) { keep(words); setSt((x) => ({ ...x, s: 'start' })); return null; }
+    if (!pending()) { keep(words); setSt((x) => (x.s === 'waiting' ? { ...x, s: 'saved' } : x)); return null; }
     setSt((x) => ({ ...x, s: 'saving' }));
     sentByMe(draftKey, words);
+    // How it shows goes only when it was chosen here: another page's (a co-presenter's, Board's) is never put back
+    const chose = lk !== lookSent.current;
+    const body = () => ({ action: 'report', meetingId: id, itemId, text: words, ...(chose ? { look: lk } : {}), base: base.current });
     busy.current = (async () => {
-      let j = await call({ action: 'report', meetingId: id, itemId, text: words, look: lk, base: base.current });
+      let j = await call(body());
       // The newer one is this page's own (sent as it was hidden or left, or a save that hadn't come back): built on
       if (j.status === 409 && j.current && wasMine(draftKey, j.current.report)) {
         base.current = j.current.reportAt || '';
-        j = await call({ action: 'report', meetingId: id, itemId, text: words, look: lk, base: base.current });
+        j = await call(body());
       }
       busy.current = null;
       if (j.status === 409 && j.current) { clashRef.current = j.current; setClash(j.current); setSt((x) => ({ ...x, s: 'choose' })); return null; }
@@ -1979,7 +2005,11 @@ function ReportPage({ id, itemId, ctx }) {
       failing.current = false;
       // Their words are what's saved (the server only trims; a report past the limit is cut, and that's said)
       sent.current = words;
-      lookSent.current = j.reportLook ?? lk;
+      // …and one chosen elsewhere meanwhile is the one shown here now, unless another was chosen here since
+      if (typeof j.reportLook === 'string') {
+        if (!chose && lookNow.current === lk && j.reportLook !== lk) { lookNow.current = j.reportLook; setLook(j.reportLook); }
+        lookSent.current = j.reportLook;
+      } else lookSent.current = lk;
       base.current = j.reportAt || '';
       keep(latest.current);
       setData((dd) => withReport(dd, id, itemId, j));
@@ -1995,14 +2025,16 @@ function ReportPage({ id, itemId, ctx }) {
     for (let i = 0; i < 4; i++) {
       await save();
       while (busy.current) await busy.current;
-      if ((latest.current === sent.current || untouched()) && lookNow.current === lookSent.current) return true;
+      if (!pending()) return true;
       if (failing.current || clashRef.current || stuckRef.current) return false;
     }
-    return (latest.current === sent.current || untouched()) && lookNow.current === lookSent.current;
+    return !pending();
   };
-  // `meta.inserted`: a head start put in (nothing of theirs yet)
+  // `meta.inserted`: a head start put in (nothing of theirs yet). One only set out another way (made points, put back as
+  // paragraphs: every word as it was) is still a head start, not theirs yet
   const changed = (md, meta = null) => {
     if (meta?.inserted) inserted.current = md;
+    else if (untouched() && sameWords(md, inserted.current)) inserted.current = md;
     setText(md);
     latest.current = md;
     keep(md);
@@ -2025,15 +2057,15 @@ function ReportPage({ id, itemId, ctx }) {
   useEffect(() => {
     // Only a page that's really going sends it blind (and remembers it, so its own save is never a clash later)
     const flush = () => {
-      if (((latest.current === sent.current || untouched()) && lookNow.current === lookSent.current) || clashRef.current || stuckRef.current) return;
+      if (!pending() || clashRef.current || stuckRef.current) return;
       sentByMe(draftKey, latest.current);
-      try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', meetingId: id, itemId, text: latest.current, look: lookNow.current, base: base.current }) }); } catch { /* the page is going */ }
+      try { fetch(API, { method: 'POST', keepalive: true, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'report', meetingId: id, itemId, text: latest.current, ...(lookNow.current !== lookSent.current ? { look: lookNow.current } : {}), base: base.current }) }); } catch { /* the page is going */ }
     };
     // Another tab or app: saved now, the usual way
     const hidden = () => { if (document.visibilityState === 'hidden') save(); };
     // Closing the tab: the browser asks first only when the words can't go (offline, a save failing, a choice open);
     // they're kept on this device either way
-    const closing = (e) => { if (latest.current !== sent.current && (clashRef.current || stuckRef.current || failing.current || !navigator.onLine)) { e.preventDefault(); e.returnValue = ''; } };
+    const closing = (e) => { if (pending() && (clashRef.current || stuckRef.current || failing.current || !navigator.onLine)) { e.preventDefault(); e.returnValue = ''; } };
     // The connection back: a failed save goes again; and while one's failing, every 15 seconds
     const online = () => { if (failing.current && !stuckRef.current) save(); };
     const retry = setInterval(online, 15000);
@@ -2041,7 +2073,7 @@ function ReportPage({ id, itemId, ctx }) {
     addEventListener('online', online);
     document.addEventListener('visibilitychange', hidden);
     addEventListener('beforeunload', closing);
-    return () => { clearInterval(retry); removeEventListener('pagehide', flush); removeEventListener('online', online); document.removeEventListener('visibilitychange', hidden); removeEventListener('beforeunload', closing); clearTimeout(timer.current); if (latest.current !== sent.current && !clashRef.current && !stuckRef.current) save(); };
+    return () => { clearInterval(retry); removeEventListener('pagehide', flush); removeEventListener('online', online); document.removeEventListener('visibilitychange', hidden); removeEventListener('beforeunload', closing); clearTimeout(timer.current); if (pending() && !clashRef.current && !stuckRef.current) save(); };
   }, []);
   // ⌘S saves now
   useEffect(() => {
@@ -2067,6 +2099,12 @@ function ReportPage({ id, itemId, ctx }) {
     setClash(null);
     base.current = theirs.reportAt || '';
     sent.current = theirs.report;
+    // How it shows: theirs, unless one was chosen here and they keep their own
+    const picked = lookNow.current !== lookSent.current;
+    if (typeof theirs.reportLook === 'string') {
+      lookSent.current = theirs.reportLook;
+      if (!(mineToo && picked)) { lookNow.current = theirs.reportLook; setLook(theirs.reportLook); }
+    }
     if (mineToo) { save(); toEditor(); return; }
     latest.current = theirs.report;
     setText(theirs.report);

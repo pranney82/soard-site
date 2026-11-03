@@ -166,3 +166,36 @@ test('the look is saved with the report; changing only the look keeps who wrote 
   const v = await liveView(env, 'm_look1', { admin: true, adminEmail: 'jane@soardcharity.com' }).catch(() => null);
   if (v) assert.equal(v.sections[0].items[0].reportLook, 'numbers');
 });
+
+// ─── From a fresh reviewer (Nov 3): what a busy presenter would hit ───
+
+test('a big number keeps its sign, currency and scale; a date, a time or a year beside a real figure is never the one', () => {
+  const big = (t) => mdNumber(t)?.fig ?? null;
+  assert.equal(big('−8% in building costs'), '−8%', 'a fall stays a fall');
+  assert.equal(big('-8% in building costs'), '-8%');
+  assert.equal(big('<5 complaints all year'), '<5');
+  assert.equal(big('€2,500 from our partners in Lyon'), '€2,500');
+  assert.equal(big('+12 new families since June'), '+12');
+  assert.equal(big('#1 in the county'), '#1');
+  assert.equal(big('The gala raised $1.2 million'), '$1.2 million');
+  assert.equal(big('Raised $5k at the run'), '$5k');
+  assert.deepEqual(mdNumber('2026: our best year'), { fig: '2026', runs: [{ text: 'our best year' }], alone: true });
+  assert.equal(big('In 2026 we built 40 porches'), '40');
+  assert.equal(big('Meeting on 5 November at 6 pm'), null, 'a date and a time are no figures');
+  assert.equal(big('W-9 forms and Q4 1099s'), null);
+  assert.equal(big('The 5:30 meeting'), null);
+  // …and the coach suggests big numbers only now that they read right
+  const md = '- −8% in building costs\n- <5 complaints all year\n- €2,500 from our partners';
+  assert.deepEqual(mdBlocks(md)[0].items.map((it) => mdNumber(it[0].text).fig), ['−8%', '<5', '€2,500']);
+  assert.equal(reportLooks(md).best, 'numbers');
+});
+
+test('lines a paragraph breaks onto stay apart as points; Spanish ¿ and ¡ start sentences; a long opening is a paragraph', () => {
+  assert.equal(asBullets('Three asks for the board.\nApprove the budget\nApprove the audit\nThank the auditor. That is all.'), '- Three asks for the board.\n- Approve the budget\n- Approve the audit\n- Thank the auditor.\n- That is all.');
+  const es = reportLooks('Construimos 12 casas este otoño. ¿Qué sigue? ¡Más casas en primavera!');
+  assert.ok(es.options.find((o) => o.id === 'cards').ok && es.options.find((o) => o.id === 'points').ok, 'three sentences, three points');
+  const long = 'Our committee met three times this quarter and read every report with the staff before this meeting so the board can see where things stand and what we need from it before the end of the year here.';
+  const l = reportLooks(`${long}\n\n- Approve the budget\n- Approve the audit\n- Thank the auditor`, 'cards');
+  assert.equal(l.on, 'text', 'a 40-word opening is a paragraph, not a line over the points');
+  assert.ok(l.options.find((o) => o.id === 'text').ok);
+});
