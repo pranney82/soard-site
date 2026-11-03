@@ -21,7 +21,7 @@ import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes, without
 import * as rsvpPage from '../functions/api/board-rsvp.js';
 import { answerLink } from '../functions/api/_board-rsvp.js';
 import { generateKeyPairSync } from 'node:crypto';
-import { repliesOf, parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText, docTitle, docsOf, itemDocs, orgName, signsAs, isFilled, agendaItems } from '../public/admin/board-shared.js';
+import { repliesOf, parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, pagesText, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText, docTitle, docsOf, itemDocs, orgName, signsAs, isFilled, agendaItems } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
 const TEAM = 'soard';
@@ -373,7 +373,7 @@ test('documents go with agenda items: the board sees only theirs, on the page an
   assert.deepEqual(draft.docs, []);
 });
 
-test('the screen’s stops: the cover, since we last met, each part’s card, each item then every page of its documents, the files on no item, the close', () => {
+test('the screen’s stops: the cover, since we last met, each part’s card, each item then its documents two pages at a time, the files on no item, the close', () => {
   const m = cleanMeeting({
     id: 'm_deck0001', date: '2026-11-05',
     sections: [
@@ -389,32 +389,31 @@ test('the screen’s stops: the cover, since we last met, each part’s card, ea
   const prev = { id: 'm_prev0001', files: [{ id: 'f_old1', name: 'Q3 minutes.docx', kind: 'minutes' }, { id: 'f_old2', name: 'Q3 minutes.pdf', type: 'application/pdf', kind: 'minutes' }] };
   const deck = deckOf(m, { pages: { f_bud1: 3 }, meetings: [prev] });
   assert.deepEqual(deck.map((s) => s.key), [
-    'cover', 'since', 'i_min1', 'i_min1:f_old2:0', 'section:s_two2', 'i_fin1', 'i_fin1:f_sfp1:0', 'i_fin1:f_bud1:0', 'i_fin1:f_bud1:1', 'i_fin1:f_bud1:2', 'i_gov1', 'section:s_thr3', 'i_more', 'i_more:f_rep1:0', 'end',
+    'cover', 'since', 'i_min1', 'i_min1:f_old2:0', 'section:s_two2', 'i_fin1', 'i_fin1:f_sfp1:0', 'i_fin1:f_bud1:0', 'i_fin1:f_bud1:2', 'i_gov1', 'section:s_thr3', 'i_more', 'i_more:f_rep1:0', 'end',
   ], 'a part of one item goes straight to it, one with none still has its card; the last meeting’s minutes as the PDF; the signed copy never');
   assert.ok(!deckOf({ ...m, sections: m.sections.slice(1) }).some((s) => s.kind === 'since'), 'since we last met only when the agenda approves the last minutes');
   assert.deepEqual(looseFiles(m).map((f) => f.id), ['f_rep1']);
   // Where the chair is, from the live state, and back
   assert.equal(stopIndex(deck, {}), 0);
-  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_bud1', page: 2 }), 9);
+  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_bud1', page: 2 }), 8);
   assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_sfp1', page: 4 }), 6, 'a page past what’s known: that document’s last known page');
   assert.equal(stopIndex(deck, { screen: 'end' }), deck.length - 1);
   assert.equal(stopIndex(deck, { screen: 'since' }), 1);
-  assert.equal(stopIndex(deck, cleanLive({ screen: 'section', sectionId: 's_thr3' })), 11);
-  assert.deepEqual(liveOfStop(deck[8]), { itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 0, screen: '', sectionId: '' });
+  assert.equal(stopIndex(deck, cleanLive({ screen: 'section', sectionId: 's_thr3' })), 10);
+  assert.deepEqual(liveOfStop(deck[8]), { itemId: 'i_fin1', fileId: 'f_bud1', page: 2, part: 0, screen: '', sectionId: '' });
   assert.deepEqual(liveOfStop(deck[4]), { itemId: '', fileId: '', page: 0, part: 0, screen: 'section', sectionId: 's_two2' });
   assert.deepEqual(cleanMeeting({ live: { itemId: 'i_fin1', fileId: 'f_bud1', page: 1.7, screen: 'end' } }).live, { startedAt: '', endedAt: '', itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 0, screen: 'end', sectionId: '', vote: null, sectionAt: '', floor: '' });
-  // A tall page in two halves (./board/docs.js partsOf): its top, then its bottom, each a stop the live state names
-  const halves = deckOf(m, { pages: { f_bud1: 3 }, parts: { f_bud1: [1, 2, 1] }, meetings: [prev] });
-  assert.deepEqual(halves.filter((x) => x.fileId === 'f_bud1').map((x) => `${x.page}${x.part ? ' bottom' : ''}`), ['0', '1', '1 bottom', '2']);
-  const bottom = halves.findIndex((x) => x.fileId === 'f_bud1' && x.part === 1);
-  assert.equal(stopIndex(halves, liveOfStop(halves[bottom])), bottom);
-  assert.equal(stopIndex(halves, liveOfStop(halves[bottom - 1])), bottom - 1, 'the top half is the page’s first stop');
-  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 1 }), 8, 'a bottom half this deck hasn’t split yet: that page');
-  // A blank page (docs.js: 0 parts) is no stop; a file blank throughout shows as it is
-  const pagesOf = (parts) => deckOf(m, { pages: { f_bud1: 3 }, parts: { f_bud1: parts }, meetings: [prev] }).filter((x) => x.fileId === 'f_bud1').map((x) => `${x.page}${x.part ? ' bottom' : ''}`);
-  assert.deepEqual(pagesOf([1, 0, 2]), ['0', '2', '2 bottom']);
-  assert.deepEqual(pagesOf([2, 0]), ['0', '0 bottom', '2'], 'a page not worked out yet is a stop');
-  assert.deepEqual(pagesOf([0, 0, 0]), ['0', '1', '2']);
+  // An open book (spreadsOf): two pages side by side a stop, a wide page (docs.js showOf 2) alone, a blank one (0) none
+  const spreads = (parts, n = 3) => deckOf(m, { pages: { f_bud1: n }, parts: { f_bud1: parts }, meetings: [prev] }).filter((x) => x.fileId === 'f_bud1').map((x) => x.pages.join('+'));
+  assert.deepEqual(spreads([1, 1, 1]), ['0+1', '2'], 'the last page on its own');
+  assert.deepEqual([[0, 1], [0, 2], [4]].map((p) => pagesText(p)), ['pages 1–2', 'pages 1 and 3', 'page 5'], 'a spread past a blank page says so');
+  assert.deepEqual(spreads([1, 1, 1, 1, 1], 5), ['0+1', '2+3', '4']);
+  assert.deepEqual(spreads([1, 2, 1]), ['0', '1', '2'], 'a wide page alone, and the pages either side of it');
+  assert.deepEqual(spreads([1, 0, 1]), ['0+2'], 'a blank page left out');
+  assert.deepEqual(spreads([2, 1]), ['0', '1+2'], 'a page not worked out yet pairs');
+  assert.deepEqual(spreads([0, 0, 0]), ['0+1', '2'], 'a file blank throughout shows as it is');
+  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_bud1', page: 1 }), 7, 'a spread’s second page: its spread');
+  assert.equal(stopIndex(deck, { itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 1 }), 7, 'a part from a screen that cut its pages: that page’s spread');
   const blankAt = deckOf(m, { pages: { f_bud1: 3 }, parts: { f_bud1: [1, 0, 1] }, meetings: [prev] });
   assert.equal(blankAt[stopIndex(blankAt, { itemId: 'i_fin1', fileId: 'f_bud1', page: 1 })].fileId, 'f_bud1', 'the screen left on a page that turned out blank stays in its document');
   assert.equal(cleanLive({ itemId: 'i_fin1', fileId: 'f_bud1', page: 1, part: 1 }).part, 1);

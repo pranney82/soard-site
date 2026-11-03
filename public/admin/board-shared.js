@@ -768,13 +768,14 @@ export function guessItem(m, f, today = todayEastern()) {
 /**
  * The meeting as the screen shows it, one stop at a time: the cover; "since we last met" when the agenda asks to
  * approve the last meeting's minutes; then each part of the agenda, opened by its own card when it has no items or
- * more than one (a part of one item goes straight to it), each item's card and every page of each of its documents
- * (itemDocs: a statement and its PDF printout are one, shown once);
+ * more than one (a part of one item goes straight to it), each item's card and the pages of each of its documents as
+ * an open book, two side by side a stop (spreadsOf; itemDocs: a statement and its PDF printout are one, shown once);
  * the files on no item; the close. `pages`: { fileId: page count } as far as known (1 until then); `parts`:
- * { fileId: [halves of each page] } (./board/docs.js partsOf: 2 for a tall page, shown top then bottom); `meetings`
+ * { fileId: [how each page shows] } (./board/docs.js partsOf: 0 not at all, 1 beside the next, 2 alone); `meetings`
  * finds the last meeting's minutes.
- * → [{ key, kind: cover | since | section | item | doc | end, itemId, fileId, page, part, n, sectionId }] where n is the
- * item's place in agendaItems (-1 for the cover, a part's card, the loose files and the close)
+ * → [{ key, kind: cover | since | section | item | doc | end, itemId, fileId, page, part, pages, sheets, n, sectionId }]
+ * where a document's `page` and `part` are its spread's first sheet, `pages` the pages on it and `sheets` its
+ * [page, part]s, and n is the item's place in agendaItems (-1 for the cover, a part's card, the loose files and the close)
  */
 /** The live lists an item can show, beside the vote on the last minutes ('minutes', only ever its first) */
 export const SHOW_KINDS = ['projects', 'reveals', 'events', 'cash', 'meetings'];
@@ -1281,8 +1282,28 @@ export const reportAlone = (it) => hasReport(it) && (showsOf(it).length > 0 || !
 /** A financial statement as a file (a balance sheet, a P&L): QuickBooks draws them once it's connected. A budget isn't one */
 export const isStatement = (f) => f?.kind === 'financials' && !/budget/i.test(String(f.name || ''));
 
-/** The most stops one tall page is cut into (deckOf; ./board/docs.js partsOf measures how many it takes) */
+/** A spread's pages in words ([0, 1] → "pages 1–2", [0, 2] past a blank one → "pages 1 and 3", [4] → "page 5") */
+export const pagesText = (pages, word = 'page') => (pages.length > 1 ? `${word}s ${pages[0] + 1}${pages[1] === pages[0] + 1 ? '–' : ' and '}${pages[1] + 1}` : `${word} ${(pages[0] || 0) + 1}`);
+/** The most parts a very tall page is shown in (./board/docs.js showOf), each like a page of its own */
 export const PAGE_PARTS = 8;
+/**
+ * A document's pages as the screen shows them, an open book: two sheets side by side a stop, each sheet a page
+ * ([page, 0]) or, of a very tall one (a long screenshot, a scroll: `of` −n), one of its n parts top to bottom
+ * ([page, part]); a wide page (a slide, a landscape sheet: 2) a stop of its own; a blank one (0) none unless every
+ * page is → [[[0, 0], [1, 0]], [[2, 0]], …]
+ */
+export function spreadsOf(count, of) {
+  const all = Array.from({ length: Math.max(1, count) }, (_, p) => p);
+  const shown = all.some((p) => of(p) !== 0) ? all.filter((p) => of(p) !== 0) : all;
+  const sheets = shown.flatMap((p) => (of(p) < 0 ? Array.from({ length: Math.min(PAGE_PARTS, Math.round(-of(p))) }, (_, k) => [p, k]) : [[p, 0]]));
+  const out = [];
+  for (let i = 0; i < sheets.length;) {
+    const two = i + 1 < sheets.length && of(sheets[i][0]) !== 2 && of(sheets[i + 1][0]) !== 2;
+    out.push(two ? [sheets[i], sheets[i + 1]] : [sheets[i]]);
+    i += two ? 2 : 1;
+  }
+  return out;
+}
 export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null } = {}) {
   const drawn = booksDraw(books);
   // A statement as a file stays off the screen only once QuickBooks draws the statements themselves
@@ -1308,15 +1329,12 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null 
     if (showsOf(it).includes('cash')) booked = true;
     for (const f of files) {
       const count = Math.max(1, Math.round(Number(pages[f.id]) || 1));
-      // A tall page (a statement, a report) is as many stops as it takes for its words to read (./board/docs.js
-      // partsOf: 2 to 8), top to bottom, each as big as the screen allows; a blank page none (unless every page is:
-      // then the file as it is). Keys: the page, then ":b" for its second part (as ever), ":p2" on for the rest
+      // Its pages whole, two side by side a stop like an open book (a wide page alone, a blank one left out, a very
+      // tall one in parts), each keyed by the spread's first page (":b", ":p2" on for a tall page's later parts)
       const of = (p) => { const x = parts[f.id]?.[p]; return x === undefined || x === null ? 1 : Number(x); };
-      const blank = (p) => of(p) === 0 && Array.from({ length: count }, (_, q) => q).some((q) => of(q) !== 0);
-      for (let p = 0; p < count; p++) {
-        if (blank(p)) continue;
-        const cuts = of(p) >= 2 ? Math.min(PAGE_PARTS, Math.floor(of(p))) : 1;
-        for (let k = 0; k < cuts; k++) out.push({ key: `${it.id}:${f.id}:${p}${k === 1 ? ':b' : k > 1 ? `:p${k}` : ''}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, part: k, parts: cuts, n, sectionId });
+      for (const sp of spreadsOf(count, of)) {
+        const [p, k] = sp[0];
+        out.push({ key: `${it.id}:${f.id}:${p}${k === 1 ? ':b' : k > 1 ? `:p${k}` : ''}`, kind: 'doc', itemId: it.id, fileId: f.id, page: p, part: k, pages: [...new Set(sp.map(([q]) => q))], sheets: sp, n, sectionId });
       }
     }
     // Its motion, after all it shows (the vote follows what was presented), on a slide of its own when there's more
@@ -1342,10 +1360,13 @@ export function stopIndex(deck, live) {
   if (live?.screen === 'since') return Math.max(0, deck.findIndex((s) => s.kind === 'since'));
   if (live?.screen === 'section' && live.sectionId) { const i = deck.findIndex((s) => s.kind === 'section' && s.sectionId === live.sectionId); if (i >= 0) return i; }
   if (!live?.itemId) return 0;
-  const at = (s) => s.itemId === live.itemId && s.fileId === (live.fileId || '') && s.page === (live.page || 0);
+  // (a document's page: the spreads it's on)
+  const lp = live.page || 0;
+  const at = (s) => s.itemId === live.itemId && s.fileId === (live.fileId || '') && (s.sheets ? s.sheets.some(([p]) => p === lp) : s.page === lp);
+  const partOn = (s) => (s.sheets ? Math.min(...s.sheets.filter(([p]) => p === lp).map(([, k]) => k)) : s.part || 0);
   // That part of the page; a part further down than this deck has cut it (yet, or into fewer): the nearest above it
   const onPage = deck.map((s, i) => [s, i]).filter(([s]) => at(s));
-  if (onPage.length) return (onPage.filter(([s]) => (s.part || 0) <= (live.part || 0)).at(-1) || onPage[0])[1];
+  if (onPage.length) return (onPage.filter(([s]) => partOn(s) <= (live.part || 0)).at(-1) || onPage[0])[1];
   const pages = deck.map((s, i) => [s, i]).filter(([s]) => s.itemId === live.itemId && s.fileId && s.fileId === live.fileId);
   // A report's slide: the nearest at or before it (it was cut into fewer), else the item's own slide (the report on it)
   if (live.fileId === 'report') { const near = pages.filter(([s]) => (s.page || 0) <= (live.page || 0)).at(-1); if (near) return near[1]; }

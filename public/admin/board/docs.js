@@ -23,9 +23,8 @@
  *   const doc = await openDoc(file)          cached by file, the last 8
  *   doc.count, doc.size(i)                   pages, and page i's box at 1x
  *   await doc.draw(i, { width })             an element exactly that wide
- *   await layoutOf(f, doc, i)                where its words are, and for a tall page where to cut it in two
- *   await partsOf(f)                         [1 | 2] a page: the halves the screen shows it in
- *   await areasOf(f, doc, i)                 every part shown on pages page i's size: drawn at one zoom
+ *   await layoutOf(f, doc, i)                where its words are, whether it's blank, whether it's wide
+ *   await partsOf(f)                         [0 | 1 | 2 | −n] a page: how the screen shows it (showOf)
  *   await coverOf(f, width)                  its first page, small (a copy each call), for a list of documents
  */
 
@@ -1766,7 +1765,7 @@ export function halfOf(lay, k = 0) {
 const layouts = new Map();
 // Kept on this device too (a file never changes under its id), so a meeting opened again knows its halves at once
 // and its stops don't change count as they're worked out. The version goes up when how a page is read changes
-const keptKey = (f, i) => `bdoc-lay14:${f.id}:${f.size || 0}:${i}`;
+const keptKey = (f, i) => `bdoc-lay15:${f.id}:${f.size || 0}:${i}`;
 const countKey = (f) => `bdoc-count:${f.id}:${f.size || 0}`;
 const kept = (f, i) => { try { const x = JSON.parse(localStorage.getItem(keptKey(f, i)) || 'null'); return x && typeof x.n === 'number' ? x : null; } catch { return null; } };
 // The last version's, read another way, go (once a page load)
@@ -1774,7 +1773,7 @@ let swept = false;
 function sweepKept() {
   if (swept) return;
   swept = true;
-  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay([2-9]|1[0-3]):/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
+  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay([2-9]|1[0-4]):/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
 }
 const PROBE = 400;
 /**
@@ -1801,7 +1800,7 @@ function sameInk(a, b, box) {
   return inked > 0 && diff / (da.length / 4) / 3 < 10;
 }
 /**
- * Page i's content and halves (splitOf), from the page drawn small: once a file and page, and the same everywhere.
+ * Page i's content (splitOf) and whether it's wide, from the page drawn small: once a file and page, the same everywhere.
  * A page with nothing on it, or nothing but what the page before it has in the same place (the letterhead on a last
  * page that ran on by a line break), is n 0: no stop on the screen
  */
@@ -1810,6 +1809,11 @@ export function layoutOf(f, doc, i) {
   if (!layouts.has(key)) {
     sweepKept();
     const was = f?.id ? kept(f, i) : null;
+    // (wider than tall: a slide, a landscape sheet, a screenshot, shown on a spread of its own; far taller than any
+    // paper, a long screenshot or a scroll, shown in its parts as pages)
+    let wide = false;
+    let tall = false;
+    try { const s = doc.size(i); wide = s.w > s.h * 1.05; tall = s.h > s.w * 2.5; } catch { /* no size: a page */ }
     layouts.set(key, was ? Promise.resolve(was) : (async () => {
       const probe = await doc.draw(i, { width: PROBE, dpr: 1 });
       const tray = measureBox();
@@ -1817,7 +1821,7 @@ export function layoutOf(f, doc, i) {
       const blocks = inkOf(probe);
       tray.replaceChildren();
       // Not measured (a laid-out page with no size): shown whole, as it is
-      if (!blocks) return { part: null, ink: null, cut: 0, gap: null, n: 1 };
+      if (!blocks) return { part: null, ink: null, cut: 0, gap: null, n: 1, wide, tall: false };
       let lay = splitOf(blocks, doc.size(i));
       // A picture is seen whole (a phone's screenshot, far taller than wide, is read like a page)
       if (doc.kind === 'image' && lay.n >= 2 && doc.size(i).h / doc.size(i).w < 1.7) lay = { ...lay, cut: 0, gap: null, gaps: null, n: 1 };
@@ -1831,29 +1835,12 @@ export function layoutOf(f, doc, i) {
         const b = doc.size(j);
         if (Math.abs(a.w - b.w) <= 1 && Math.abs(a.h - b.h) <= 1 && sameInk(probe, await doc.draw(j, { width: PROBE, dpr: 1 }), ink)) lay = { part: null, ink: null, cut: 0, gap: null, n: 0 };
       }
+      lay = { ...lay, wide, tall };
       if (f?.id) { try { localStorage.setItem(keptKey(f, i), JSON.stringify(lay)); } catch { /* full: worked out again next time */ } }
       return lay;
-    })().catch(() => ({ part: null, ink: null, cut: 0, gap: null, n: 1 })));
+    })().catch(() => ({ part: null, ink: null, cut: 0, gap: null, n: 1, wide, tall: false })));
   }
   return layouts.get(key);
-}
-/**
- * Every part of a file the screen shows on pages the size of page i (areaOf: each page's content, or its two
- * halves, each with its page's `n` and the height of the headings it carries, `extra`), so the screen draws them all
- * at one zoom on one sheet: the words stay one size and in one place from stop to stop. A long file (over 80 pages)
- * by 40 or so of its pages, the same ones from every page
- */
-export async function areasOf(f, doc, i) {
-  const size = doc.size(i);
-  const out = [];
-  const step = doc.count > 80 ? Math.ceil(doc.count / 40) : 1;
-  for (let j = 0; j < doc.count; j += step) {
-    const s = doc.size(j);
-    if (Math.abs(s.w - size.w) > 1 || Math.abs(s.h - size.h) > 1) continue;
-    const lay = await layoutOf(f, doc, j);
-    for (let k = 0; k < lay.n; k++) { const a = areaOf(lay, k); const hd = headingsArea(lay, k); if (a) out.push({ ...a, n: lay.n, extra: hd ? hd.h + hd.gap : 0 }); }
-  }
-  return out;
 }
 const covers = new Map();
 /**
@@ -1890,22 +1877,27 @@ export function coverOf(f, width) {
   return covers.get(key).then((page) => page && page.cloneNode(true));
 }
 /**
- * A file's page count and halves as this device last worked them out, before it opens → { count, parts } (parts
- * null until every page is known), or null
+ * How a page shows on the screen (deckOf's spreads): 0 not at all (blank), 1 beside the next, 2 alone (wide), −n a very
+ * tall page in its n parts (splitOf, cut at blank bands), each beside the next like a page
+ */
+export const showOf = (lay) => (lay.n === 0 ? 0 : lay.wide ? 2 : lay.tall && lay.n >= 2 ? -Math.min(8, lay.n) : 1);
+/**
+ * A file's page count and how each page shows, as this device last worked them out, before it opens → { count,
+ * parts } (parts null until every page is known), or null
  */
 export function keptOf(f) {
   try {
     const count = Number(localStorage.getItem(countKey(f)));
     if (!f?.id || !(count > 0)) return null;
     const parts = [];
-    for (let i = 0; i < count; i++) { const lay = kept(f, i); if (!lay) return { count, parts: null }; parts.push(lay.n); }
+    for (let i = 0; i < count; i++) { const lay = kept(f, i); if (!lay) return { count, parts: null }; parts.push(showOf(lay)); }
     return { count, parts };
   } catch { return null; }
 }
-/** How many halves each page of a file has ([1, 2, 2, …]), worked out a page at a time */
+/** How each page of a file shows ([1, 1, 2, 0, …], showOf), worked out a page at a time */
 export async function partsOf(f) {
   const doc = await openDoc(f);
   const out = [];
-  for (let i = 0; i < doc.count; i++) out.push((await layoutOf(f, doc, i)).n);
+  for (let i = 0; i < doc.count; i++) out.push(showOf(await layoutOf(f, doc, i)));
   return out;
 }

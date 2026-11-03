@@ -1506,14 +1506,17 @@ try {
   ok(spots.titles >= 5 && !spots.cut.length, `every slide's title is drawn whole, a g's or a y's tail never cut by its clamp (${spots.titles} titles${spots.cut.length ? `; cut: ${spots.cut.join(' | ')}` : ''})`);
   ok(spots.floorOn >= 3 && spots.floor.size === 1 && !spots.inSlide.length, `who has the floor sits in one place along the top on every slide it shows on, and no slide draws its presenters again (${spots.floorOn} slides, spots ${[...spots.floor].join(' | ')}${spots.inSlide.length ? `; in the slide on ${spots.inSlide.join(', ')}` : ''})`);
   ok(roll && roll.faces === 3 && /3\s*on the board/.test(roll.count), `the roll call shows the board’s faces, everyone on the meeting’s list (${JSON.stringify(roll)})`);
-  ok(await scr.waitForFunction(() => /Financial.*Balance sheet financials.*Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), '→ steps the screen through the items to the Financial item’s statement, page 1 of 2');
-  ok(await scr.waitForFunction(() => document.querySelector('.bs-page__sheet canvas')?.width > 0, { timeout: 8000 }).then(() => true, () => false), 'the page is drawn, as big as the screen allows');
+  ok(await scr.waitForFunction(() => /Financial.*Balance sheet financials.*Pages 1–2 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), '→ steps the screen through the items to the Financial item’s statement, its two pages on one stop');
+  ok(await scr.waitForFunction(() => {
+    const sheets = [...document.querySelectorAll('.bs-page__sheet .bs-book.is-open > .bs-sheet')].map((e) => e.getBoundingClientRect());
+    return sheets.length === 2 && [...document.querySelectorAll('.bs-page__sheet canvas')].every((c) => c.width > 0) && Math.abs(sheets[0].height - sheets[1].height) < 2 && Math.abs(sheets[0].right - sheets[1].left) < 2 && sheets[0].height > innerHeight * 0.6;
+  }, { timeout: 8000 }).then(() => true, () => false), 'the pages drawn whole, side by side as an open book, the same size, as tall as the stage allows');
   ok(await scr.evaluate(() => /Sam Ortiz has the floor/.test(document.querySelector('.bs-floor')?.innerText || '')), 'with who presents it, along the top');
   await shot(scr, '21-screen-document');
   await scr.keyboard.press('PageDown');
-  ok(await scr.waitForFunction(() => /Page 2 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'a clicker’s Page Down: page 2');
+  ok(await scr.waitForFunction(() => !/Pages 1–2 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'a clicker’s Page Down: on past the statement (both its pages were up)');
   await scr.keyboard.press('PageUp');
-  ok(await scr.waitForFunction(() => /Page 1 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'Page Up: back to page 1');
+  ok(await scr.waitForFunction(() => /Pages 1–2 of 2/.test(document.querySelector('.bs-foot__what')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'Page Up: back to its two pages');
   await scr.keyboard.press('ArrowLeft');
   // The money fills its own slide, so the treasurer's report is a slide of its own after it (./board-shared.js deckOf)
   const back = await scr.waitForSelector('.bs.bs--report', { timeout: 3000 }).then(() => scr.evaluate(() => ({ title: document.querySelector('.bs-item__title')?.textContent || '', who: document.querySelector('.bs-top > .bs-floor')?.innerText || '', report: !!document.querySelector('.bs-stage .bs-report'), foot: document.querySelector('.bs-foot__what')?.textContent || '' })), () => null);

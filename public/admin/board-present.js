@@ -86,11 +86,11 @@ export function useScreen(id, on) {
 }
 
 /**
- * How many pages each document has, as the screen draws them ({ fileId: pages }), and then which pages are tall
- * enough to show in two halves ({ fileId: [1 | 2 a page] }, ./board/docs.js partsOf), worked out one file at a
- * time in the background while `on` (the deck steps through every page and half). What this device worked out
- * before is there at once (./board/docs.js keptOf). The screen's own counts come in too.
- * → [pages, addPages, parts, ready (every file's pages and halves known)]
+ * How many pages each document has, as the screen draws them ({ fileId: pages }), and then how each page shows
+ * ({ fileId: [0 | 1 | 2 a page] }, ./board/docs.js partsOf: blank, beside the next, alone), worked out one file at a
+ * time in the background while `on` (the deck steps through every spread). What this device worked out before is
+ * there at once (./board/docs.js keptOf). The screen's own counts come in too.
+ * → [pages, addPages, parts, ready (every file's pages and how they show known)]
  */
 export function usePages(files, on) {
   const [pages, setPages] = useState({});
@@ -114,7 +114,7 @@ export function usePages(files, on) {
           if (!stop && doc?.count) setPages((p) => (p[f.id] === doc.count ? p : { ...p, [f.id]: doc.count }));
         } catch { /* a file that won't open is one page on the screen */ }
       }
-      // The counts first (every page in the deck), then the halves
+      // The counts first (every page in the deck), then how each page shows
       for (const f of files) {
         if (stop) return;
         if (parts[f.id] || keptOf(f)?.parts) continue;

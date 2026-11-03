@@ -177,22 +177,28 @@ test('the deck gives each statement its slides, keys kept for the first, the sam
 
 // ─── A very tall page in as many parts as it takes ─────────────────
 
-test('a very tall page is as many stops as its parts, each one the live state names and finds again', () => {
+test('a document is an open book: two pages a stop, a wide page alone, each spread the live state names and finds again', () => {
   const m = meeting();
-  const deck = deckOf(m, { pages: { f_plan1: 2 }, parts: { f_plan1: [4, 2] }, books: BOOKS });
+  const deck = deckOf(m, { pages: { f_plan1: 5 }, parts: { f_plan1: [1, 1, 2, 1, 1] }, books: BOOKS });
   const plan = deck.filter((s) => s.fileId === 'f_plan1');
-  assert.deepEqual(plan.map((s) => s.key), ['i_pro1:f_plan1:0', 'i_pro1:f_plan1:0:b', 'i_pro1:f_plan1:0:p2', 'i_pro1:f_plan1:0:p3', 'i_pro1:f_plan1:1', 'i_pro1:f_plan1:1:b'], 'the keys there were stay as they were');
-  assert.deepEqual(plan.map((s) => [s.page, s.part, s.parts]), [[0, 0, 4], [0, 1, 4], [0, 2, 4], [0, 3, 4], [1, 0, 2], [1, 1, 2]]);
+  assert.deepEqual(plan.map((s) => s.key), ['i_pro1:f_plan1:0', 'i_pro1:f_plan1:2', 'i_pro1:f_plan1:3'], 'each keyed by its first page');
+  assert.deepEqual(plan.map((s) => s.pages), [[0, 1], [2], [3, 4]]);
   for (const s of plan) {
     const live = cleanLive({ ...liveOfStop(s), startedAt: '2099-11-05T13:00:00.000Z' });
-    assert.equal(live.part, s.part);
+    assert.equal(live.part, 0);
     assert.equal(deck[stopIndex(deck, live)].key, s.key);
   }
-  // A deck that cut the page into fewer: the nearest part above
-  const fewer = deckOf(m, { pages: { f_plan1: 2 }, parts: { f_plan1: [2, 1] }, books: BOOKS });
-  assert.equal(fewer[stopIndex(fewer, { itemId: 'i_pro1', fileId: 'f_plan1', page: 0, part: 3 })].key, 'i_pro1:f_plan1:0:b');
-  // Never more than eight, never a part the live state can't hold
-  assert.equal(deckOf(m, { pages: { f_plan1: 1 }, parts: { f_plan1: [30] } }).filter((s) => s.fileId === 'f_plan1').length, 8);
+  // A spread's second page (a screen that paired them differently), a part of a page (one from before pages showed whole)
+  assert.equal(deck[stopIndex(deck, { itemId: 'i_pro1', fileId: 'f_plan1', page: 4 })].key, 'i_pro1:f_plan1:3');
+  assert.equal(deck[stopIndex(deck, { itemId: 'i_pro1', fileId: 'f_plan1', page: 1, part: 3 })].key, 'i_pro1:f_plan1:0');
+  // A very tall page (a long screenshot: docs.js showOf −n) in its parts, each a sheet beside the next like a page
+  const tall = deckOf(m, { pages: { f_plan1: 2 }, parts: { f_plan1: [-3, 1] }, books: BOOKS }).filter((s) => s.fileId === 'f_plan1');
+  assert.deepEqual(tall.map((s) => [s.key, JSON.stringify(s.sheets), s.pages.join('+')]), [['i_pro1:f_plan1:0', '[[0,0],[0,1]]', '0'], ['i_pro1:f_plan1:0:p2', '[[0,2],[1,0]]', '0+1']]);
+  const tallDeck = deckOf(m, { pages: { f_plan1: 2 }, parts: { f_plan1: [-3, 1] }, books: BOOKS });
+  for (const [live, key] of [[{ page: 0, part: 1 }, 'i_pro1:f_plan1:0'], [{ page: 0, part: 2 }, 'i_pro1:f_plan1:0:p2'], [{ page: 1 }, 'i_pro1:f_plan1:0:p2']]) {
+    assert.equal(tallDeck[stopIndex(tallDeck, { itemId: 'i_pro1', fileId: 'f_plan1', ...live })].key, key, JSON.stringify(live));
+  }
+  assert.equal(cleanLive(liveOfStop(tall[1])).part, 2, 'the live state names the part');
   assert.equal(cleanLive({ itemId: 'i_pro1', fileId: 'f_plan1', part: 9 }).part, 0);
   assert.equal(cleanLive({ itemId: 'i_pro1', fileId: 'f_plan1', part: 2.5 }).part, 0);
 });

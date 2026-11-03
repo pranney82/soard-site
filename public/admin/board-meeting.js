@@ -35,7 +35,7 @@ import {
 import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
-  isLive, agendaItems, isFilled, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, MORE,
+  isLive, agendaItems, isFilled, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, pagesText, MORE,
   sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew,
 } from './board-shared.js';
 import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
@@ -802,7 +802,7 @@ function AgendaStage({ m, focusId, meetings }) {
   const [box, setBox] = useState({ w: 560, h: 640 });
   const holder = useRef(null);
   const list = useRef(null);
-  // The screen in the frame tells its slides and where it is: { stops, at, pages, halves }
+  // The screen in the frame tells its slides and where it is: { stops, at, pages }
   const [deck, setDeck] = useState(null);
   const src = `${PAGE}?preview#/meetings/${encodeURIComponent(m.id)}${as === 'screen' ? '/screen' : ''}`;
   const post = (msg) => frame.current?.contentWindow?.postMessage(msg, location.origin);
@@ -839,7 +839,7 @@ function AgendaStage({ m, focusId, meetings }) {
   const at = Math.min(deck?.at || 0, Math.max(0, stops.length - 1));
   const items = useMemo(() => agendaItems(m), [m.sections]);
   const files = useMemo(() => [...m.files, ...(meetings || []).flatMap((x) => x.files || [])], [m.files, meetings]);
-  const words = (s) => stopWords(s, m, items, deck?.pages || {}, files, deck?.halves || {});
+  const words = (s) => stopWords(s, m, items, deck?.pages || {}, files);
   const step = (dir) => post({ type: 'board-preview-step', dir });
   // A slide picked: on the screen here, and its item brought into view in the agenda
   const goTo = (s) => { post({ type: 'board-preview-stop', key: s.key }); if (s.itemId) dispatchEvent(new CustomEvent('agx-go', { detail: { id: s.itemId } })); };
@@ -1236,7 +1236,7 @@ function Coming({ m, ctx, act }) {
 // ─── The presentation's slides, in words ──────────────────────────
 
 /** What a stop is, in words: { label: '3.2' | '', title, sub } */
-function stopWords(stop, m, items, pages, files, parts = {}) {
+function stopWords(stop, m, items, pages, files) {
   if (!stop || stop.kind === 'cover') return { label: '', title: 'The cover', sub: `${meetingName(m)} and the agenda` };
   if (stop.kind === 'end') return { label: '', title: 'The close', sub: 'What the board decided, and the next meeting' };
   if (stop.kind === 'since') return { label: '', title: 'Since we last met', sub: 'The reveals and events since, and the action items' };
@@ -1254,9 +1254,8 @@ function stopWords(stop, m, items, pages, files, parts = {}) {
   if (stop.kind === 'decision') return { label: it.label, title: `The decision · ${it.title}`, sub: it.presenter || '' };
   const f = files.find((x) => x.id === stop.fileId);
   const n = pages[stop.fileId];
-  // A tall page cut in parts (the stop says how many, else the screen's count of them)
-  const cuts = stop.parts || Math.min(8, Math.floor(Number(parts[stop.fileId]?.[stop.page]) || 1));
-  return { label: it.label, title: f ? docTitle(f.name) : 'A document', sub: `${it.title} · page ${stop.page + 1}${n ? ` of ${n}` : ''}${cuts === 2 ? `, ${stop.part ? 'bottom' : 'top'} half` : cuts > 2 ? `, part ${(stop.part || 0) + 1} of ${cuts}` : ''}` };
+  // Its pages on, two side by side as an open book (or one; the rest of a very tall one, continued)
+  return { label: it.label, title: f ? docTitle(f.name) : 'A document', sub: `${it.title} · ${pagesText(stop.pages || [stop.page])}${n ? ` of ${n}` : ''}${stop.part ? ', continued' : ''}` };
 }
 
 
