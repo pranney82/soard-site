@@ -569,6 +569,26 @@ test('a reading with a date written the form’s way, or none, still counts for 
   assert.equal(judgeCoiReads([{ text: null, pictures: goodCoi({ policies: [gl({ expires: '03/01/2027' }), { ...wc, expires: '3/1/27' }] }) }], req, { now: NOW }).accepted, true);
 });
 
+test('a certificate read with no policies, or none it could date, waits for a person rather than being called missing', () => {
+  const req = { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000 };
+  const [gl, wc] = goodCoi().policies;
+  const auto = { kind: 'auto', insurer: 'Example Auto Co', expires: '2027-03-01' };
+  // Live, Nov 3: two certificates from Ramp read with no policy at all, and were kept as "isn't on this certificate"
+  assert.deepEqual(judgeCoiReads([{ text: goodCoi({ policies: [] }), pictures: goodCoi({ policies: [] }) }], req, { now: NOW }), { unreadable: true });
+  assert.deepEqual(judgeCoiReads([{ text: null, pictures: goodCoi({ policies: [] }) }], req, { now: NOW }), { unreadable: true });
+  // Liability seen, its end date read by neither
+  assert.deepEqual(judgeCoiReads([{ text: goodCoi({ policies: [{ ...gl, expires: 'see attached' }, wc] }), pictures: goodCoi({ policies: [{ ...gl, expires: null }, wc] }) }], req, { now: NOW }), { unreadable: true });
+  // Workers' comp seen undated: a person when it's required, and left out of it when it isn't
+  assert.deepEqual(judgeCoiReads([{ text: null, pictures: goodCoi({ policies: [gl, { ...wc, expires: '' }] }) }], req, { now: NOW }), { unreadable: true });
+  assert.equal(judgeCoiReads([{ text: null, pictures: goodCoi({ policies: [gl, { ...wc, expires: '' }] }) }], { ...req, workersComp: false }, { now: NOW }).accepted, true);
+  // A certificate that really has no liability on it (auto only, dated) still says so
+  const autoOnly = judgeCoiReads([{ text: goodCoi({ policies: [auto] }), pictures: goodCoi({ policies: [auto] }) }], req, { now: NOW });
+  assert.equal(autoOnly.accepted, false);
+  assert.equal(autoOnly.problems[0], 'General liability isn’t on this certificate.');
+  // Something that isn't a certificate is still called that
+  assert.match(judgeCoiReads([{ text: null, pictures: goodCoi({ isCertificate: false, policies: [] }) }], req, { now: NOW }).problems[0], /doesn’t look like a certificate/);
+});
+
 test('certificates on separate files are paired file by file', () => {
   const req = { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000 };
   const [gl, wc] = goodCoi().policies;

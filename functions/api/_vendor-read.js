@@ -390,10 +390,15 @@ export function judgeCoi(x, req, { vendorName = '', now = Date.now() } = {}) {
  * Fails even at the most generous → only the problems that hold either way go back to the vendor, with the dates of
  * the least generous reading (a failing certificate that's kept still moves only what it surely shows).
  * Otherwise one misread number decides it, so a person does: { unreadable, unsure: what one reading found }.
+ * A certificate read with no policy on it at all, or with liability (or required workers' comp) whose end date
+ * neither reading made out, wasn't read: a person looks, rather than its being called missing from the certificate.
  */
 export function judgeCoiReads(reads, req, opts = {}) {
   const files = reads.map((r) => [mergeCoi([r?.text || r?.pictures]), mergeCoi([r?.pictures || r?.text])]).filter(([a]) => a);
   if (!files.length) return { unreadable: true };
+  const seen = files.flatMap(([a, b]) => [...a.policies, ...b.policies]);
+  const undated = (kind) => seen.some((p) => p.kind === kind) && !seen.some((p) => p.kind === kind && isDate(p.expires));
+  if (files.some(([a, b]) => a.isCertificate || b.isCertificate) && (!seen.length || undated('general liability') || (req.workersComp && undated('workers compensation')))) return { unreadable: true };
   const pick = (a, b, kind, worse) => {
     const p = latest(a.policies, kind);
     const q = latest(b.policies, kind);
