@@ -1223,6 +1223,27 @@ try {
       await sam.setOfflineMode(false);
       await sam.evaluate(() => dispatchEvent(new Event('online')));
       ok(await samSaved(sam) && /and offline$/.test((await finOf()).report), 'back online, they save by themselves');
+      // Under the editor, how it shows in the meeting; then one suggestion at a time that does what it says
+      ok(await waitText(sam, /Fits on one slide\./), `under the editor: how it shows in the meeting (${await sam.evaluate(() => document.querySelector('.rp-coach__fit')?.textContent)})`);
+      await toEnd(sam);
+      await sam.keyboard.press('Enter');
+      await sam.keyboard.press('Enter');
+      await sam.keyboard.type('We met twice this quarter and read every statement. The audit firm sent its letter on time. Cash is up and spending is under the budget.');
+      ok(await samSaved(sam), 'a long paragraph saves');
+      ok(await waitText(sam, /This paragraph is long for a screen\. Make it points\?/), 'a long paragraph: the coach offers to make it points');
+      await shot(sam, 'report-coach');
+      await clickText(sam, '.rp-coach__btn', /^Make it points$/);
+      ok(await sam.waitForFunction(() => document.querySelectorAll('.bp-rp .rp-edit ul > li').length === 3, { timeout: 4000 }).then(() => true, () => false), 'Make it points: one point a sentence, in the editor');
+      ok(await samSaved(sam) && /\n\n- We met twice this quarter and read every statement\.\n- The audit firm sent its letter on time\.\n- Cash is up and spending is under the budget\.$/.test((await finOf()).report), `and saved that way, every word kept (${JSON.stringify((await finOf()).report)})`);
+      ok(!(await text(sam)).includes('Make it points?'), 'done, it isn’t offered again');
+      // "New slide here": a break where the caret is, kept as ---; Undo takes it back
+      await sam.evaluate(() => { const ed = document.querySelector('.bp-rp .rp-edit'); ed.focus(); const r = document.createRange(); r.selectNodeContents(ed.querySelector(':scope > p')); r.collapse(false); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); });
+      await sleep(150);
+      await sam.click('.rp-tool[aria-label="New slide here"]');
+      ok(await sam.waitForFunction(() => !!document.querySelector('.bp-rp .rp-edit hr'), { timeout: 3000 }).then(() => true, () => false), 'New slide here puts a break in the editor');
+      ok(await samSaved(sam) && /^Cash is \*\*up\*\* 12% on last year\n\n---\n\n> /.test((await finOf()).report), `kept as a line of --- after the first paragraph (${JSON.stringify((await finOf()).report.slice(0, 60))})`);
+      await sam.click('.rp-tool[aria-label="Undo"]');
+      ok(await samSaved(sam) && !/---/.test((await finOf()).report), 'Undo takes it back');
       await clickText(sam, '.bp-rp__foot a', /^Done$/);
       // His own report says when; the item already names him, so not "by Sam" again
       ok(await sam.waitForFunction((id) => { const by = document.querySelector(`#i-${id} .bp-report__by`)?.textContent.trim() || ''; return /^Report\s*\w{3} \d+/.test(by) && !/\bby\b/.test(by) && /Sam Ortiz/.test(document.querySelector(`#i-${id} .bp-pres`)?.textContent || ''); }, { timeout: 8000 }, finId).then(() => true, () => false), 'Done: back on the meeting, the report under its item, with its day (Sam is named on the item)');

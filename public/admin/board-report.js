@@ -18,7 +18,8 @@
 
 import { h, htm, useState, useEffect, useRef, Editor, StarterKit, TiptapLink, Placeholder, CharacterCount, DOMPurify } from './vendor.js';
 import { mdBlocks, mdInline, mdToDoc, docToMd, mdWords, safeHref } from './board-md.js';
-import { LIMITS, NOTHING_NEW, isNothingNew } from './board-shared.js';
+import { LIMITS, NOTHING_NEW, isNothingNew, reportSlides } from './board-shared.js';
+import { reportAdvice, reportFitLine, speakTime } from './board-coach.js';
 
 const html = htm.bind(h);
 
@@ -35,7 +36,7 @@ function Runs({ text, runs = null }) {
     return node;
   });
 }
-const wordsIn = (b) => (b.t === 'p' || b.t === 'h' ? b.text.split(/\s+/).filter(Boolean).length : b.t === 'quote' ? b.blocks.reduce((n, x) => n + wordsIn(x), 0) : b.items.reduce((n, it) => n + it.reduce((m, x) => m + wordsIn(x), 0), 0));
+const wordsIn = (b) => (b.t === 'hr' ? 0 : b.t === 'p' || b.t === 'h' ? b.text.split(/\s+/).filter(Boolean).length : b.t === 'quote' ? b.blocks.reduce((n, x) => n + wordsIn(x), 0) : b.items.reduce((n, it) => n + it.reduce((m, x) => m + wordsIn(x), 0), 0));
 function Blocks({ blocks, level }) {
   const H = `h${Math.min(6, level)}`;
   return blocks.map((b, k) => {
@@ -43,6 +44,8 @@ function Blocks({ blocks, level }) {
     if (b.t === 'p') return html`<p key=${k} dir="auto"><${Runs} text=${b.text} runs=${b.runs} />${b.cut ? '…' : null}</p>`;
     if (b.t === 'h') return h(H, { key: k, class: 'rp-h', dir: 'auto' }, html`<${Runs} text=${b.text} />`);
     if (b.t === 'quote') return html`<blockquote key=${k} class="rp-callout" dir="auto"><${Blocks} blocks=${b.blocks} level=${level} /></blockquote>`;
+    // Where the presenter started a new slide: read as one report here, a quiet rule
+    if (b.t === 'hr') return html`<hr key=${k} class="rp-break" />`;
     const items = b.items.map((it, j) => html`<li key=${j} dir="auto"><${Blocks} blocks=${it} level=${level} /></li>`);
     // (a start only when it isn't 1: Preact writes a null start as the property, which the browser reads as 0)
     return b.t === 'ol' ? html`<ol key=${k} dir="auto" ...${b.start === 1 ? {} : { start: b.start }}>${items}</ol>` : html`<ul key=${k} dir="auto">${items}</ul>`;
@@ -60,6 +63,7 @@ function clip(blocks, max) {
     if (left <= 0) break;
     const n = wordsIn(b);
     if (n <= left) { out.push(b); left -= n; continue; }
+    if (b.t === 'hr') continue;
     if (b.t === 'p' || b.t === 'h') {
       // Cut on the words themselves (never inside **…**): the runs up to the word that's over
       const runs = [];
@@ -113,11 +117,7 @@ export function Report({ text, level = 4, clamp = 0, cls = '' }) {
 
 /** "2 min read" (200 words a minute, at least 1) */
 export const readTime = (words) => `${Math.max(1, Math.round(words / 200))} min read`;
-/** "about 2 minutes to present" (read aloud, about 130 words a minute) */
-export const speakTime = (words) => {
-  const n = Math.round(words / 130);
-  return n < 1 ? 'under a minute to present' : `about ${n} ${n === 1 ? 'minute' : 'minutes'} to present`;
-};
+export { speakTime };
 
 /** What the presenter asks the board to vote on (item.motion), as a callout under the report */
 export function Motion({ text, cls = '' }) {
@@ -161,6 +161,7 @@ export function reportDom(text, { level = 4 } = {}) {
     for (const b of list) {
       if (b.t === 'p' || b.t === 'h') { const e = el(b.t === 'p' ? 'p' : `h${level}`, b.t === 'h' ? 'rp-h' : ''); runs(e, b.text); parent.append(e); continue; }
       if (b.t === 'quote') { const e = el('blockquote', 'rp-callout'); draw(e, b.blocks); parent.append(e); continue; }
+      if (b.t === 'hr') { parent.append(el('hr', 'rp-break')); continue; }
       const e = el(b.t);
       if (b.t === 'ol' && b.start !== 1) e.start = b.start;
       for (const it of b.items) { const li = el('li'); draw(li, it); e.append(li); }
@@ -185,6 +186,7 @@ const ICON = {
   link: svg(html`<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />`),
   undo: svg(html`<path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" />`),
   redo: svg(html`<path d="m15 14 5-5-5-5" /><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5A5.5 5.5 0 0 0 9.5 20H13" />`),
+  slide: svg(html`<rect x="3" y="3" width="18" height="7" rx="1.5" /><rect x="3" y="14" width="18" height="7" rx="1.5" />`),
 };
 const MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = MAC ? '⌘' : 'Ctrl+';
@@ -271,7 +273,7 @@ const LOOKS_MD = /(^|\n)\s{0,3}(#{1,6}\s|[-*+•]\s|\d{1,3}[.)]\s|>\s)|\*\*[^*\n
  * this time" at the foot (the page decides what happens, asking first when there are words)
  */
 export const OUTLINE = ['What we did', 'What the board needs to decide', 'What’s next'];
-export function ReportEditor({ value, onChange, label = 'The report', placeholder = 'What happened, what the board needs to decide, and what’s next', autofocus = false, resetKey = 0, status = null, stickyTop = '0px', minHeight = 220, onBlur, starter = false, onNothing = null }) {
+export function ReportEditor({ value, onChange, label = 'The report', placeholder = 'What happened, what the board needs to decide, and what’s next', autofocus = false, resetKey = 0, status = null, stickyTop = '0px', minHeight = 220, onBlur, starter = false, onNothing = null, coach = null }) {
   const ed = useRef(null);
   const last = useRef(value || '');
   const change = useRef(onChange);
@@ -311,7 +313,7 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
     const editor = new Editor({
       element: el,
       extensions: [
-        StarterKit.configure({ heading: { levels: [3] }, code: false, codeBlock: false, strike: false, horizontalRule: false }),
+        StarterKit.configure({ heading: { levels: [3] }, code: false, codeBlock: false, strike: false }),
         TiptapLink.configure({ openOnClick: false, autolink: true, linkOnPaste: true, defaultProtocol: 'https', HTMLAttributes: LINK, validate: (href) => !!safeHref(href) }),
         Placeholder.configure({ placeholder }),
         CharacterCount.configure({ limit: REPORT_LETTERS }),
@@ -413,6 +415,9 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
     e.chain().focus().setTextSelection(e.state.doc.child(0).nodeSize + 1).run();
   };
   const nothing = isNothingNew(last.current);
+  // A suggestion taken (ReportCoach): in through the editor itself, so it shows whatever has the focus, Undo takes it
+  // back, and the page hears it as it hears typing
+  const put = (md) => { e?.chain().setContent(mdToDoc(md), true).run(); };
   return html`<div class="rp-editor" style=${`--rp-sticky:${stickyTop}`}>
     <div class="rp-bar" role="toolbar" aria-label=${`Formatting for ${label.toLowerCase()}`} onKeyDown=${roveKeys} onFocusIn=${roveFocus}>
       ${btn('heading', `Heading (${MOD}Alt+3, or ### then a space)`, on('heading'), (c) => c.toggleHeading({ level: 3 }))}
@@ -422,6 +427,7 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
       ${btn('bullets', 'Points (- then a space)', on('bulletList'), (c) => c.toggleBulletList())}
       ${btn('numbers', 'Numbered list (1. then a space)', on('orderedList'), (c) => c.toggleOrderedList())}
       ${btn('callout', 'Callout, for what the board needs to decide (> then a space)', on('blockquote'), (c) => c.toggleBlockquote())}
+      ${btn('slide', 'New slide here (the meeting’s screen starts one; --- on a line of its own)', false, (c) => c.setHorizontalRule())}
       <span class="rp-sep" aria-hidden="true"></span>
       <button type="button" class=${`rp-tool ${on('link') ? 'is-on' : ''}`} tabIndex="-1" title=${`Link (${MOD}K)`} aria-label="Link" aria-pressed=${on('link') ? 'true' : 'false'} aria-expanded=${linking !== null} onMouseDown=${(ev) => ev.preventDefault()} onClick=${openLink}>${ICON.link}</button>
       <span class="rp-bar__end">
@@ -445,6 +451,57 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
       </span>` : null}
       ${status ? html`<span class="rp-foot__status">${status}</span>` : null}
     </div>
+  </div>
+  ${coach ? html`<${ReportCoach} ...${coach} value=${last.current} onChange=${put} />` : null}`;
+}
+
+// ─── A word beside it as it's written ───────────────────────────────
+
+/**
+ * Under the editor: how the report will show in the meeting (its slides, how long to present, the part's time), then
+ * at most one suggestion (./board-coach.js reportAdvice), each with a button that does it and "Not now". A shorter
+ * version is written only when asked, shown in full, and goes in only with "Use this". `part`: ./board-coach.js
+ * partFor. `admin`: Board's agenda (asks /api/board-admin), else the board page
+ */
+export function ReportCoach({ value, onChange, part = null, admin = false, id = '', itemId = '', title = '', confidential = false }) {
+  const text = String(value || '');
+  const words = isNothingNew(text) ? 0 : mdWords(text);
+  const slides = words ? reportSlides(text, { title, confidential }).filter((x) => String(x).trim()).length || 1 : 0;
+  const [off, setOff] = useState(() => new Set());
+  const [alt, setAlt] = useState(null); // { text, for: the report it shortens } | { busy } | { error }
+  // A shorter version is for the words it was written from: typing on puts it away
+  const stale = alt?.for !== undefined && alt.for !== text;
+  useEffect(() => { if (stale) setAlt(null); }, [stale]);
+  const tips = reportAdvice(text, { slides, part }).filter((x) => !off.has(x.id));
+  const tip = alt ? null : tips[0];
+  const fit = reportFitLine({ slides, words, part });
+  if (!fit && !tip && !alt) return null;
+  const notNow = (x) => setOff(new Set([...off, x.id]));
+  const act = async (x) => {
+    if (x.action.run) { onChange(x.action.run(text)); return; }
+    setAlt({ busy: true, for: text });
+    const r = await shorterVersion({ admin, id, itemId, text, title });
+    setAlt(r.ok && r.text ? { text: r.text, for: text } : { error: r.error || 'A shorter version couldn’t be written just now.', for: text });
+  };
+  return html`<div class="rp-coach">
+    ${fit ? html`<p class="rp-coach__fit">${fit}</p>` : null}
+    ${tip ? html`<div class="rp-coach__tip" role="status">
+      <p>${tip.text}</p>
+      <span class="rp-coach__acts">
+        <button type="button" class="rp-coach__btn is-go" onClick=${() => act(tip)}>${tip.action.label}</button>
+        <button type="button" class="rp-coach__btn" onClick=${() => notNow(tip)}>Not now</button>
+      </span>
+    </div>` : null}
+    ${alt?.busy ? html`<p class="rp-coach__tip" role="status">Writing a shorter version…</p>` : null}
+    ${alt?.error ? html`<div class="rp-coach__tip" role="alert"><p>${alt.error}</p><span class="rp-coach__acts"><button type="button" class="rp-coach__btn" onClick=${() => { setAlt(null); setOff(new Set([...off, 'shorter'])); }}>OK</button></span></div>` : null}
+    ${alt?.text ? html`<div class="rp-coach__alt">
+      <p class="rp-coach__alt-h">A shorter version · ${mdWords(alt.text)} words, ${speakTime(mdWords(alt.text))}</p>
+      <${Report} text=${alt.text} />
+      <span class="rp-coach__acts">
+        <button type="button" class="rp-coach__btn is-go" onClick=${() => { const t = alt.text; setAlt(null); setOff(new Set([...off, 'shorter'])); onChange(t); }}>Use this</button>
+        <button type="button" class="rp-coach__btn" onClick=${() => { setAlt(null); setOff(new Set([...off, 'shorter'])); }}>Keep mine</button>
+      </span>
+    </div>` : null}
   </div>`;
 }
 
@@ -481,6 +538,17 @@ const CSS = `
 .rp-motion__text { margin: 0; color: var(--ink, var(--color-text, #2D2F2C)); font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
 .rp-foot__acts { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; }
 .rp-foot__btn { min-height: 32px; padding: 0 0.75rem; border: 1px solid var(--line-2, var(--color-border-strong, #D3D0C7)); border-radius: 999px; background: var(--card, #fff); color: var(--ink-2, var(--color-text, #4E504C)); font: inherit; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
+.rp-coach { display: grid; gap: 0.5rem; margin-top: 0.6rem; font-size: 0.9rem; color: var(--ink-2, var(--color-text, #4E504C)); }
+.rp-coach__fit { margin: 0; color: var(--muted, var(--color-text-secondary, #5F615A)); font-variant-numeric: tabular-nums; }
+.rp-coach__tip { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; margin: 0; padding: 0.6rem 0.8rem; border: 1px solid var(--line, var(--color-border, #E7E5DE)); border-left: 4px solid var(--yellow, #FFDA24); border-radius: 10px; background: var(--card, var(--color-bg-card, #fff)); }
+.rp-coach__tip > p { flex: 1 1 18rem; margin: 0; line-height: 1.45; }
+.rp-coach__acts { display: inline-flex; flex-wrap: wrap; gap: 0.4rem; }
+.rp-coach__btn { min-height: 34px; padding: 0 0.85rem; border: 1px solid var(--line-2, var(--color-border-strong, #D3D0C7)); border-radius: 999px; background: var(--card, #fff); color: var(--ink, var(--color-text, #2D2F2C)); font: inherit; font-size: 0.85rem; font-weight: 650; cursor: pointer; }
+.rp-coach__btn:hover { border-color: var(--ink, var(--color-text, #2D2F2C)); }
+.rp-coach__btn.is-go { border-color: var(--ink, var(--color-text, #2D2F2C)); background: var(--ink, var(--color-text, #2D2F2C)); color: #fff; }
+.rp-coach__btn:focus-visible { outline: 2px solid var(--ink, var(--color-text, #2D2F2C)); outline-offset: 2px; }
+.rp-coach__alt { display: grid; gap: 0.6rem; padding: 0.8rem 0.95rem; border: 1px solid var(--line, var(--color-border, #E7E5DE)); border-radius: 12px; background: var(--warm, var(--color-bg-subtle, #FAF9F5)); }
+.rp-coach__alt-h { margin: 0; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; color: var(--muted, var(--color-text-secondary, #5F615A)); }
 .rp-foot__btn:hover { border-color: var(--ink, var(--color-text, #2D2F2C)); color: var(--ink, var(--color-text, #2D2F2C)); }
 
 .rp-editor { --rp-line: var(--line, var(--color-border, #E7E5DE)); position: relative; border: 1px solid var(--line-2, var(--color-border-strong, #D3D0C7)); border-radius: 14px; background: var(--card, var(--color-bg-card, #fff)); }
@@ -505,6 +573,11 @@ const CSS = `
 .rp-page .ProseMirror { min-height: inherit; }
 .rp-edit p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; height: 0; color: var(--quiet, var(--color-text-muted, #8C8E86)); pointer-events: none; }
 .rp-edit .ProseMirror-selectednode { outline: 2px solid var(--yellow, #FFDA24); }
+/* "New slide here": a dashed line, said; read elsewhere, a quiet rule */
+.rp .rp-break { height: 0; margin: 1.3em 0; border: none; border-top: 1px solid var(--rp-line); }
+.rp-edit hr { position: relative; height: 0; margin: 1.6em 0; border: none; border-top: 2px dashed var(--line-2, var(--color-border-strong, #D3D0C7)); overflow: visible; cursor: default; }
+.rp-edit hr::after { content: 'New slide'; position: absolute; top: 0; left: 50%; transform: translate(-50%, -55%); padding: 0 0.6em; background: var(--card, var(--color-bg-card, #fff)); color: var(--muted, var(--color-text-secondary, #5F615A)); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; line-height: 1.4; }
+.rp-edit hr.ProseMirror-selectednode { outline-offset: 6px; }
 .rp-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.25rem 1rem; padding: 0.45rem 1.15rem 0.6rem; font-size: 0.8rem; color: var(--muted, var(--color-text-secondary, #5F615A)); font-variant-numeric: tabular-nums; }
 .rp-hint kbd { display: inline-block; padding: 0 0.3em; border: 1px solid var(--rp-line); border-radius: 5px; background: var(--warm, #F5F4F0); font: inherit; font-size: 0.95em; line-height: 1.5; }
 .rp-foot__status { margin-left: auto; }
@@ -517,4 +590,26 @@ if (typeof document !== 'undefined' && !document.getElementById('board-report-cs
   s.id = 'board-report-css';
   s.textContent = CSS;
   document.head.append(s);
+}
+
+/**
+ * A shorter version of a report, written by the site's model and checked to say the same things (nothing saved): from
+ * Board's agenda (admin) or the board page. → { ok: true, text, words: [before, after] } | { ok: false, error }
+ */
+export async function shorterVersion({ admin = false, id = '', itemId = '', text = '', title = '' } = {}) {
+  let r;
+  try {
+    r = await fetch(admin ? '/api/board-admin' : '/api/board-portal', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'report-shorter', id, meetingId: id, itemId, text, title }),
+    });
+  } catch {
+    return { ok: false, error: 'No connection. Check your internet and try again.' };
+  }
+  try {
+    const j = await r.json();
+    return r.ok ? j : { ...j, ok: false, error: j.error || 'A shorter version couldn’t be written just now.' };
+  } catch {
+    return { ok: false, error: /cloudflareaccess/i.test(r.url || '') ? 'Your session expired. Reload the page and sign in again.' : 'A shorter version couldn’t be written just now.' };
+  }
 }

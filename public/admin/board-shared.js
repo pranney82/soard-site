@@ -41,6 +41,8 @@
  * deeper for each level under it.
  */
 
+import { mdBlocks, mdInline, mdWords } from './board-md.js';
+
 export const ATTEND = [
   { id: 'present', label: 'Present' },
   { id: 'remote', label: 'By video' },
@@ -879,6 +881,247 @@ export function statementBreaks(rows, max = SLIDE_LINES) {
 /** A statement 'books' slide's rows: the statement of activities, of financial position, or QuickBooks' budget */
 export const statementRows = (books, kind) => (kind === 'act' ? books?.statements?.activity : kind === 'pos' ? books?.statements?.position : kind === 'budget' ? books?.budget?.rows : null) || [];
 
+// ─── A report on the meeting's screen, slide by slide ───────────────
+
+// Every size on the screen is on one unit (portal.css --bs-u), so a report's slide is the same box on every screen, in
+// its words' own size (em): measured at 1280×720 and 1920×1080, Nov 2 2026 (a taller screen, 4:3, holds more; a phone
+// scrolls). The report's box under a one-line title, two columns and the gap between them, the spacing of .rp
+const SLIDE = { width: 42.6, gap: 1.957, height: 17.56, line: 1.42, pAfter: 0.75, hSize: 1.1, hLine: 1.485, hBefore: 0.825, hAfter: 0.44, indent: 1.35, listAfter: 0.8, itemGap: 0.2, quoteIndent: 1.164, quotePad: 1.4, quoteAround: 1.3, titleSize: 1.913, titleLine: 2.028, titleWidth: 34 };
+const COL = (SLIDE.width - SLIDE.gap) / 2;
+// How wide each character is (Outfit for the words, bold; Libre Baskerville for the title), per 100 of its size: ASCII
+// 32 to 126, then a few others; anything else as an average letter (a CJK one as a square)
+const ADV = Object.fromEntries(Object.entries({
+  r: '21,26,40,64,59,66,66,24,30,30,49,54,27,46,29,39,66,35,54,54,58,54,56,51,55,56,27,27,54,54,54,51,75,66,62,66,74,59,57,78,71,26,45,65,55,84,71,80,60,82,62,54,58,68,66,96,65,63,56,34,39,34,45,50,28,58,58,48,58,54,33,58,55,22,29,50,22,86,55,57,58,58,40,43,33,52,49,73,48,50,45,32,28,32,54',
+  b: '19,29,46,66,60,68,69,25,31,31,49,56,28,46,30,38,67,38,56,56,60,56,57,52,56,57,29,28,56,56,56,50,76,69,64,66,75,61,59,79,73,29,49,69,56,86,74,82,62,82,64,57,62,70,68,98,67,65,58,35,38,35,47,51,32,60,60,49,60,55,36,58,57,26,33,55,26,87,57,58,60,60,42,46,35,54,52,76,51,52,48,34,30,34,56',
+  t: '26,30,38,69,63,70,88,20,32,32,48,55,25,45,25,32,74,43,64,63,65,58,66,51,62,66,27,28,58,61,58,39,105,80,79,81,90,75,68,87,93,42,40,81,74,113,93,93,71,94,80,65,82,87,79,122,84,75,79,38,47,38,48,72,31,56,66,55,68,57,43,60,70,35,38,65,34,110,72,65,69,66,49,46,37,70,61,88,64,64,56,34,28,34,55',
+}).map(([k, v]) => [k, v.split(',').map(Number)]));
+const ADV_MORE = { '’': [25, 26, 23], '‘': [25, 26, 24], '“': [43, 49, 44], '”': [43, 49, 44], '–': [55, 57, 72], '—': [85, 87, 113], '…': [75, 84, 74], '•': [33, 35, 46] };
+const KIND = { r: 0, b: 1, t: 2 };
+function advance(ch, kind) {
+  const c = ch.codePointAt(0);
+  // (a little under each letter's own width: the browser kerns pairs, "To", "av")
+  if (c >= 32 && c < 127) return ADV[kind][c - 32] / 101.5;
+  if (ADV_MORE[ch]) return ADV_MORE[ch][KIND[kind]] / 101.5;
+  return c >= 0x2e80 ? 1 : kind === 't' ? 0.68 : 0.58;
+}
+/** How many lines words take in a box `width` em wide (their size), wrapped as the browser does: at spaces, a word too
+ *  long for a line broken inside it, a line break kept */
+function linesIn(text, width, kind = 'r') {
+  const runs = kind === 't' ? [{ text: String(text || '') }] : mdInline(String(text || ''));
+  let lines = 1;
+  let at = 0;
+  let word = 0;
+  let wordBold = false;
+  const space = (k) => advance(' ', k);
+  const place = () => {
+    if (!word) return;
+    const gap = at ? space(wordBold ? 'b' : kind) : 0;
+    if (at + gap + word <= width) at += gap + word;
+    else if (word <= width) { lines++; at = word; } else { lines += at ? 1 : 0; lines += Math.ceil(word / width) - 1; at = word % width || width; }
+    word = 0;
+  };
+  for (const r of runs) {
+    if (r.br) { place(); lines++; at = 0; continue; }
+    const k = kind === 't' ? 't' : r.b ? 'b' : kind;
+    for (const ch of String(r.text || '')) {
+      if (ch === ' ' || ch === '\n') { place(); continue; }
+      word += advance(ch, k);
+      wordBold = k === 'b';
+    }
+  }
+  place();
+  return lines;
+}
+/** A block's height in a column `width` em wide; in a list item a paragraph has no space after it */
+function heightOf(b, width, inItem = false) {
+  if (b.t === 'p') return linesIn(b.text, width) * SLIDE.line + (inItem ? 0 : SLIDE.pAfter);
+  if (b.t === 'h') return SLIDE.hBefore + linesIn(b.text, width / SLIDE.hSize, 'b') * SLIDE.hLine + SLIDE.hAfter;
+  if (b.t === 'quote') return SLIDE.quoteAround + SLIDE.quotePad + b.blocks.reduce((n, x) => n + heightOf(x, width - SLIDE.quoteIndent), 0);
+  if (b.t === 'ul' || b.t === 'ol') return b.items.reduce((n, it) => n + itemHeight(it, width - SLIDE.indent), 0) + (inItem ? 0 : SLIDE.listAfter);
+  return 0;
+}
+const itemHeight = (blocks, width) => SLIDE.itemGap + blocks.reduce((n, x) => n + heightOf(x, width, true), 0);
+
+/** Blocks back into Markdown (the text of each is the Markdown it was written in), indented under a list's point */
+function mdOf(blocks, pad = '') {
+  return blocks.map((b) => {
+    if (b.t === 'p') return b.text.split('\n').map((l) => pad + l).join('\n');
+    if (b.t === 'h') return `${pad}### ${b.text}`;
+    if (b.t === 'hr') return `${pad}---`;
+    if (b.t === 'quote') return mdOf(b.blocks).split('\n').map((l) => `${pad}> ${l}`.trimEnd()).join('\n');
+    return b.items.map((it, k) => pointMd(b, it, b.start + k, pad)).join('\n');
+  }).join('\n\n');
+}
+/** One point of a list as Markdown: its mark ("-", "4.") and its words, what's under it indented below */
+function pointMd(list, it, n, pad = '') {
+  const mark = list.t === 'ol' ? `${n}.` : '-';
+  const [first, ...rest] = it;
+  const head = first?.t === 'p' ? first.text.split('\n').join(`\n${pad}${' '.repeat(mark.length + 1)}`) : '';
+  const under = mdOf(first?.t === 'p' ? rest : it, `${pad}${' '.repeat(mark.length + 1)}`);
+  return `${pad}${mark}${head ? ` ${head}` : ''}${under ? `\n${under}` : ''}`;
+}
+
+/** Where a paragraph's sentences end: after . ! ? (and a closing quote), never in "1.5", "Dr." or "U.S.", nor inside
+ *  bold, italic or a link → the indexes its later sentences start at */
+const ABBR = /(?:\b(?:Mr|Mrs|Ms|Dr|St|Jr|Sr|vs|etc|Inc|Co|No|approx|e\.g|i\.e|U\.S|a\.m|p\.m)|\b[A-Z])\.$/;
+function sentenceStarts(text) {
+  const out = [];
+  const re = /[.!?]["”’)]*\s+(?=["“(]?[\p{Lu}\p{N}*_[])/gu;
+  let m;
+  while ((m = re.exec(text))) {
+    const end = m.index + m[0].trimEnd().length;
+    const before = text.slice(0, end);
+    if (ABBR.test(before.replace(/["”’)]+$/, ''))) continue;
+    // Not inside ** or * or a link: an even count of each before it
+    if (((before.match(/\*\*/g) || []).length % 2) || ((before.replace(/\*\*/g, '').match(/\*/g) || []).length % 2) || (before.split('[').length !== before.split(']').length)) continue;
+    out.push(m.index + m[0].length);
+  }
+  return out;
+}
+
+/**
+ * A report as the meeting's screen shows it, slide by slide: each slide's Markdown, in order (at least one). One that
+ * fits is one slide, as written. A longer one goes on to as many slides as it needs, every one at the size the room
+ * reads (never smaller to fit more): each fills its two columns, a new heading starting a slide where it can, a list
+ * going on (its numbers too) between its points, a paragraph between its sentences only when it must (longer than a
+ * slide, or a slide would be left mostly empty); never a heading last on a slide; the slides as even as the same
+ * number of them allows. A line of "---" starts a new slide there. `title`: the item's, its lines taking room above
+ */
+export function reportSlides(md, { title = '', confidential = false } = {}) {
+  const text = String(md || '').trim();
+  if (!text) return [''];
+  const key = `${title}\u0000${confidential ? 1 : 0}\u0000${text}`;
+  const hit = SLIDES_SEEN.get(key);
+  if (hit) return hit;
+  const out = reportSlidesFrom(text, title, confidential);
+  if (SLIDES_SEEN.size > 200) SLIDES_SEEN.delete(SLIDES_SEEN.keys().next().value);
+  SLIDES_SEEN.set(key, out);
+  return out;
+}
+const SLIDES_SEEN = new Map();
+
+function reportSlidesFrom(text, title, confidential) {
+  const blocks = mdBlocks(text);
+  const forced = blocks.some((b) => b.t === 'hr');
+  // A short one is set large on one slide (screen.js ReportFit), as written
+  if (!forced && mdWords(text) < 40) return [text];
+  const titleLines = Math.min(3, linesIn(title, SLIDE.titleWidth / SLIDE.titleSize, 't'));
+  // Each column's height, a little kept back for what can't be known here (a font's own rounding, a long word)
+  const H = (SLIDE.height - (titleLines - 1) * SLIDE.titleLine - (confidential ? 2.2 : 0)) * 0.94;
+  // What a slide is made of, in order: a heading, a paragraph, a point of a list, a callout; "---" a new slide
+  const units = [];
+  for (const b of blocks) {
+    if (b.t === 'hr') { units.push({ kind: 'break' }); continue; }
+    if (b.t === 'ul' || b.t === 'ol') {
+      b.items.forEach((it, k) => { const after = k === b.items.length - 1 ? SLIDE.listAfter : 0; units.push({ kind: 'li', list: b, it, n: b.start + k, h: itemHeight(it, COL - SLIDE.indent) + after, h1: itemHeight(it, SLIDE.width - SLIDE.indent) + after, after }); });
+      continue;
+    }
+    units.push(unitOf(b));
+  }
+  const pages = paginate(units, H);
+  // As even as the same number of slides allows: the least each slide can hold and still need no more of them
+  if (pages.length > 1 && !forced) {
+    let lo = 0.5;
+    let hi = 1;
+    for (let i = 0; i < 12; i++) { const mid = (lo + hi) / 2; if (paginate(units, H * mid).length <= pages.length) hi = mid; else lo = mid; }
+    const even = paginate(units, H * hi);
+    if (even.length === pages.length) return even.map(pageMd);
+  }
+  return pages.map(pageMd).filter((x, i, all) => x || all.length === 1);
+}
+const unitOf = (b) => ({ ...(b.t === 'p' ? { kind: 'p', after: SLIDE.pAfter, lines: linesIn(b.text, COL) } : b.t === 'h' ? { kind: 'h', after: SLIDE.hAfter } : { kind: 'quote', after: SLIDE.quoteAround / 2 }), b, h: heightOf(b, COL), h1: heightOf(b, SLIDE.width) });
+
+/** Whether these fill no more than a slide's two columns `H` high: a paragraph runs on into the next column (two lines
+ *  at least on each side), a point or a callout moves whole, a heading goes with the start of what follows it */
+function fitsSlide(units, H) {
+  // One column the slide's width, as the screen tries first
+  if (units.length && units.reduce((n, u) => n + u.h1, 0) - units.at(-1).after <= H + 1e-6) return true;
+  let col = 0;
+  let used = 0;
+  const next = () => { col++; used = 0; return col < 2; };
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    const lead = u.kind === 'h' && units[i + 1] ? Math.min(units[i + 1].h - units[i + 1].after, 2 * SLIDE.line) : 0;
+    if (used + u.h - u.after + lead <= H + 1e-6) { used += u.h; continue; }
+    if (u.kind === 'p') {
+      // Its lines, as many as the column holds (two at least, two left for the next), the rest on
+      let left = u.lines;
+      let room = Math.floor((H - used) / SLIDE.line + 1e-6);
+      while (left > 0) {
+        if (room >= left) { used += left * SLIDE.line + u.after; left = 0; break; }
+        const take = room >= 2 && left - room >= 2 ? room : 0;
+        left -= take;
+        if (!next()) return false;
+        room = Math.floor(H / SLIDE.line + 1e-6);
+      }
+      continue;
+    }
+    // An empty column takes it (without what follows a heading, when that won't fit with it); too tall for one, no
+    if (!used) { if (u.h - u.after <= H + 1e-6) { used += u.h; continue; } return false; }
+    if (!next()) return false;
+    i--;
+  }
+  return true;
+}
+
+/** The units into slides of two columns `H` high (see reportSlides) */
+function paginate(units, H) {
+  const pages = [];
+  let cur = [];
+  const close = () => { if (cur.length) pages.push(cur); cur = []; };
+  const fill = (xs) => xs.reduce((n, u) => n + u.h, 0) / (2 * H);
+  const queue = [...units];
+  while (queue.length) {
+    const u = queue.shift();
+    if (u.kind === 'break') { close(); continue; }
+    if (fitsSlide([...cur, u], H)) { cur.push(u); continue; }
+    // A paragraph between its sentences: when it's longer than a slide, or would leave this one mostly empty
+    if (u.kind === 'p') {
+      const alone = !fitsSlide([u], H);
+      if (alone || fill(cur) < 0.6) {
+        const cuts = sentenceStarts(u.b.text);
+        let best = -1;
+        for (let k = cuts.length - 1; k >= 0; k--) {
+          const head = unitOf({ t: 'p', text: u.b.text.slice(0, cuts[k]).trimEnd() });
+          if (fitsSlide([...cur, head], H)) { best = k; break; }
+        }
+        if (best >= 0) {
+          cur.push(unitOf({ t: 'p', text: u.b.text.slice(0, cuts[best]).trimEnd() }));
+          queue.unshift(unitOf({ t: 'p', text: u.b.text.slice(cuts[best]) }));
+          close();
+          continue;
+        }
+      }
+    }
+    // Never a heading last on a slide: it goes on with what follows it
+    const carry = [];
+    while (cur.length && cur.at(-1).kind === 'h') carry.unshift(cur.pop());
+    close();
+    // (too long for a slide even on its own, one point or one sentence: it has one, as large as it fits: ReportFit)
+    cur = [...carry, u];
+  }
+  close();
+  return pages;
+}
+
+/** A slide's units as Markdown: a list's points that follow on from each other as one list, numbered as they were */
+function pageMd(units) {
+  const parts = [];
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i];
+    if (u.kind === 'li') {
+      const pts = [pointMd(u.list, u.it, u.n)];
+      while (units[i + 1]?.kind === 'li' && units[i + 1].list === u.list) pts.push(pointMd(units[i + 1].list, units[i + 1].it, units[++i].n));
+      parts.push(pts.join('\n'));
+      continue;
+    }
+    parts.push(mdOf([u.b]));
+  }
+  return parts.join('\n\n');
+}
+/** An item's report, slide by slide (reportSlides, with its title as the screen shows it) */
+export const slidesOfItem = (it) => (hasReport(it) ? reportSlides(it.report, { title: it.title || LIVE_TITLES[it.live] || '', confidential: !!it.confidential }) : []);
+
 /** A report with something in it: written, and not "nothing new this time" */
 export const hasReport = (it) => !!String(it?.report || '').trim() && !isNothingNew(it.report);
 /**
@@ -909,7 +1152,10 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null 
     out.push({ key: it.id, kind: 'item', itemId: it.id, fileId: '', page: 0, n, sectionId });
     // An item that shows live facts (the makeovers, the money…) or the board's faces fills its own slide with them, and
     // one with notes keeps them there: its report is a slide of its own, right after (nothing new to report needs none)
-    if (reportAlone(it)) out.push({ key: `${it.id}:report`, kind: 'report', itemId: it.id, fileId: 'report', page: 0, n, sectionId });
+    // A report longer than a slide goes on to as many as it needs (reportSlides): after its item's own slide (which
+    // shows the first, when the report is there), each a 'report' stop, page by page
+    const slides = slidesOfItem(it);
+    for (let p = reportAlone(it) ? 0 : 1; p < slides.length; p++) out.push({ key: `${it.id}:report${p ? `:${p}` : ''}`, kind: 'report', itemId: it.id, fileId: 'report', page: p, of: slides.length, n, sectionId });
     // Each live list after the first, a slide of its own; after the money, QuickBooks' slides (the year against last
     // year, then each statement, as many slides as its lines take at a size a room reads)
     for (const x of slidesOf(it, booked ? null : books)) {

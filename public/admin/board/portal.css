@@ -2358,6 +2358,15 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bp-rp__screen { position: relative; overflow: hidden; border-radius: 14px; background: #1C1D1A; box-shadow: var(--shadow-2); }
 .bp-rp__screen iframe { position: absolute; left: 0; top: 0; border: 0; transform-origin: 0 0; pointer-events: none; }
 .bp-rp__where { margin: 0.6rem 0 0; color: var(--ink-2); font-size: 0.88rem; font-weight: 600; }
+/* A report longer than a slide: its slides, one at a time in the frame, ‹ › and a dot each */
+.bp-rp__pager { display: flex; align-items: center; gap: 0.4rem; margin: 0.6rem 0 0; }
+.bp-rp__step { flex: none; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border-radius: 999px; border: 1px solid var(--line-2); background: var(--card); color: var(--ink); font: inherit; font-size: 1.25rem; line-height: 1; cursor: pointer; }
+.bp-rp__step:disabled { opacity: 0.4; cursor: default; }
+.bp-rp__pages { display: flex; }
+.bp-rp__dot { display: grid; place-items: center; width: 28px; height: 40px; padding: 0; border: none; background: none; cursor: pointer; }
+.bp-rp__dot::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--line-2); }
+.bp-rp__dot.is-on::before { background: var(--ink); }
+.bp-rp__of { margin-right: auto; padding-left: 0.3rem; color: var(--ink-2); font-size: 0.88rem; font-weight: 600; font-variant-numeric: tabular-nums; }
 .bp-rp__where + .bp-rp__fit { margin-top: 0.2rem; }
 .bp-rp__fit { min-height: 1.4em; margin: 0.6rem 0 0; color: var(--muted); font-size: 0.88rem; }
 .bp-rp__fit.is-cut { color: var(--warn); font-weight: 600; }

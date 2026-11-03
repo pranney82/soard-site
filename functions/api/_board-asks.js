@@ -40,6 +40,7 @@ import { header, bytesOf, partsOf } from './_mailbox.js';
 import { booksNow } from './_quickbooks.js';
 import {
   presentersOf, reportsOn, agendaIsDraft, meetingName, sectionPlan, isFilled, forBoard, todayEastern, isDate, LIMITS, showsOf, timeRange, isNothingNew,
+  reportSlides,
 } from '../../public/admin/board-shared.js';
 import { mdToDoc, docToMd, mdPlain } from '../../public/admin/board-md.js';
 
@@ -307,12 +308,21 @@ export function lateEmail({ m, it, person, due, from, chair = null, now = Date.n
   ]);
 }
 
-/** Thanks, to the presenter alone: it's on the agenda */
-export function thanksEmail({ m, it, person, from, answer = false }) {
+/** How a report shows on the meeting's screen, in a sentence: one slide, or how many (board-shared.js reportSlides) */
+export function slidesLine(report, { answer = false } = {}) {
+  if (!String(report || '').trim() || isNothingNew(report)) return '';
+  const n = reportSlides(report).length;
+  if (answer) return n > 1 ? `With it, the report is ${n} slides in the meeting.` : 'With it, the report still fits on one slide in the meeting.';
+  return n > 1 ? `In the meeting it’s ${n} slides.` : 'In the meeting it fits on one slide.';
+}
+
+/** Thanks, to the presenter alone: it's on the agenda, and how it shows in the meeting (`report`: as it now reads) */
+export function thanksEmail({ m, it, person, from, answer = false, report = it.report }) {
+  const slides = slidesLine(report, { answer });
   return body([
     answer
-      ? `Thanks, ${firstName(person.name)}. Your answer is on the agenda under ${yourReport(it)} for ${weekdayOf(m.date)}’s meeting:`
-      : `Thanks, ${firstName(person.name)}. ${YourReport(it)} is on the agenda for ${weekdayOf(m.date)}’s meeting. You can read it or change it on the board page until then:`,
+      ? `Thanks, ${firstName(person.name)}. Your answer is on the agenda under ${yourReport(it)} for ${weekdayOf(m.date)}’s meeting.${slides ? ` ${slides}` : ''} Here it is:`
+      : `Thanks, ${firstName(person.name)}. ${YourReport(it)} is on the agenda for ${weekdayOf(m.date)}’s meeting.${slides ? ` ${slides}` : ''} You can see it or change it on the board page until then:`,
     { url: reportUrl(m, it.id), label: 'Your report' },
     `${firstName(from.name) || 'SOARD'}`,
   ]);
@@ -1176,14 +1186,16 @@ async function takeReply(ctx, m, a, msg) {
   // Only files, and none could be kept: not in, not thanked (it waits in the inbox for a person)
   if (!text) return { outcome: 'files-failed', detail: files.map((f) => f.name).join(', ') };
   const heading = q ? `Answer to ${q.by_name}’s question` : '';
-  if (text) await postReport(env.DB, { meetingId: m.id, itemId: it.id, words: q ? `> ${mdPlain(q.text).replace(/\n+/g, ' ')}\n\n${text}` : text, name: a.name, heading, now });
+  const posted = text ? await postReport(env.DB, { meetingId: m.id, itemId: it.id, words: q ? `> ${mdPlain(q.text).replace(/\n+/g, ' ')}\n\n${text}` : text, name: a.name, heading, now }) : null;
   if (q) await env.DB.prepare('UPDATE board_ask_questions SET answered_at = ? WHERE id = ?').bind(nowIso(now), q.id).run();
   // A question's own conversation stays one (its report was never asked for by email)
   await setAsk(env.DB, a.id, { status: a.status === 'question' ? 'question' : 'in', inAt: nowIso(now), files: [...kept] });
   // Thanks at once, whatever the hour: they just wrote (an answer: whoever asked is copied, so they know it came)
   const person = { name: a.name, email: a.email };
   const asker = q?.by_slug ? ctx.people.board.find((p) => p.slug === q.by_slug && p.email) : null;
-  const back = thanksEmail({ m: cur, it, person, from: ctx.senders.from, answer: !!q });
+  // How it now shows in the meeting: the report as posted (with what was there before)
+  const report = posted?.sections?.flatMap((s) => s.items).find((x) => x.id === it.id)?.report ?? it.report;
+  const back = thanksEmail({ m: cur, it, person, from: ctx.senders.from, answer: !!q, report });
   try {
     ctx.sendToken ||= await accessToken(env, ctx.senders.from.email, { fetchImpl, now, scope: GMAIL_SEND_SCOPE });
     const theirs = header(msg.payload?.headers, 'Message-ID');

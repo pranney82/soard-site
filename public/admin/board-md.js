@@ -7,7 +7,8 @@
  * links. The same text is what the board page, the screen, Print it all,
  * search and the server read, so it stays readable as plain text too.
  *
- *   mdBlocks(md)   → the blocks, to draw: [{ t: 'p'|'h', text } | { t: 'quote', blocks } | { t: 'ul'|'ol', start, items: [blocks] }]
+ *   mdBlocks(md)   → the blocks, to draw: [{ t: 'p'|'h', text } | { t: 'quote', blocks } | { t: 'ul'|'ol', start, items: [blocks] } | { t: 'hr' }]
+ *                    ("---" alone on a line: a new slide here, on the meeting's screen)
  *   mdInline(text) → a block's words as runs: [{ text, b, i, href } | { br: true }]
  *   mdToDoc(md)    → the editor's document (ProseMirror JSON)
  *   docToMd(doc)   → Markdown from the editor's document
@@ -22,6 +23,8 @@
 const LIST = /^( *)([-*+•]|\d{1,9}[.)])(?:[ \t]+(.*))?$/;
 const HEADING = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?[ \t]*#*[ \t]*$/;
 const QUOTE = /^ {0,3}> ?(.*)$/;
+// A new slide here: three or more dashes (or * or _) alone on a line
+const RULE = /^ {0,3}(?:(?:-[ \t]*){3,}|(?:\*[ \t]*){3,}|(?:_[ \t]*){3,})$/;
 const indentOf = (line) => line.match(/^ */)[0].length;
 const isBlank = (line) => !line.trim();
 
@@ -43,6 +46,7 @@ function blocksOf(lines) {
   while (i < lines.length) {
     const line = lines[i];
     if (isBlank(line)) { i++; continue; }
+    if (RULE.test(line)) { out.push({ t: 'hr' }); i++; continue; }
     let m = line.match(HEADING);
     if (m && indentOf(line) <= 3) { out.push({ t: 'h', text: (m[2] || '').trim() }); i++; continue; }
     if (QUOTE.test(line)) {
@@ -55,7 +59,7 @@ function blocksOf(lines) {
     if (m) { i = listAt(lines, i, out); continue; }
     // A paragraph: its lines until a blank one or another block (each line break kept)
     const para = [];
-    while (i < lines.length && !isBlank(lines[i]) && !(para.length && (LIST.test(lines[i]) || QUOTE.test(lines[i]) || (HEADING.test(lines[i]) && indentOf(lines[i]) <= 3)))) para.push(lines[i++].trim());
+    while (i < lines.length && !isBlank(lines[i]) && !(para.length && (RULE.test(lines[i]) || LIST.test(lines[i]) || QUOTE.test(lines[i]) || (HEADING.test(lines[i]) && indentOf(lines[i]) <= 3)))) para.push(lines[i++].trim());
     out.push({ t: 'p', text: para.join('\n') });
   }
   return out;
@@ -68,7 +72,7 @@ function listAt(lines, i, out) {
   const ordered = /\d/.test(first[2]);
   const list = { t: ordered ? 'ol' : 'ul', start: ordered ? Number.parseInt(first[2], 10) || 1 : 1, items: [] };
   while (i < lines.length) {
-    const m = lines[i].match(LIST);
+    const m = RULE.test(lines[i]) ? null : lines[i].match(LIST);
     if (!m || m[1].length !== indent || /\d/.test(m[2]) !== ordered) break;
     // The item's words, then every line indented under it (a blank line inside it, when more of it follows)
     const body = [(m[3] || '').trim()];
@@ -204,6 +208,7 @@ function plainOf(blocks, depth = 0) {
   return blocks.map((b) => {
     if (b.t === 'p' || b.t === 'h') return pad + runsText(mdInline(b.text)).replace(/\n/g, `\n${pad}`);
     if (b.t === 'quote') return plainOf(b.blocks, depth);
+    if (b.t === 'hr') return '';
     return b.items.map((it, k) => {
       const [head, ...rest] = it;
       const mark = b.t === 'ol' ? `${b.start + k}.` : '•';
@@ -234,6 +239,7 @@ function pmBlocks(blocks) {
     if (b.t === 'p') { const content = pmInline(b.text); return content.length ? { type: 'paragraph', content } : { type: 'paragraph' }; }
     if (b.t === 'h') { const content = pmInline(b.text); return { type: 'heading', attrs: { level: 3 }, ...(content.length ? { content } : {}) }; }
     if (b.t === 'quote') { const content = pmBlocks(b.blocks); return { type: 'blockquote', content: content.length ? content : [{ type: 'paragraph' }] }; }
+    if (b.t === 'hr') return { type: 'horizontalRule' };
     return {
       type: b.t === 'ol' ? 'orderedList' : 'bulletList',
       ...(b.t === 'ol' ? { attrs: { start: b.start } } : {}),
@@ -333,6 +339,8 @@ function blockMd(node, pad) {
   switch (node.type) {
     case 'paragraph': return escapeLineStart(inlineMd(node.content, pad).trim());
     case 'heading': return `### ${inlineMd(node.content, pad).trim()}`;
+    // A new slide here (the screen starts one at it; ./board-shared.js reportSlides)
+    case 'horizontalRule': return '---';
     case 'blockquote': return blocksMd(node.content || [], '').split('\n').map((l) => (l ? `> ${l}` : '>')).join(`\n${pad}`);
     case 'bulletList':
     case 'orderedList': {
@@ -346,7 +354,7 @@ function blockMd(node, pad) {
         let s = `${mark} ${first}`.trimEnd();
         rest.forEach((p, j) => {
           const kind = li.content[(li.content[0]?.type === 'paragraph' ? 1 : 0) + j]?.type;
-          s += `${kind === 'paragraph' || kind === 'heading' || kind === 'blockquote' ? '\n\n' : '\n'}${inner}${p}`;
+          s += `${kind === 'paragraph' || kind === 'heading' || kind === 'blockquote' || kind === 'horizontalRule' ? '\n\n' : '\n'}${inner}${p}`;
         });
         return s;
       }).join(`\n${pad}`);

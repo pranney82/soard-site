@@ -25,7 +25,7 @@ import { openDoc, layoutOf, areaOf, areasOf, headingsArea, partsOf, docKind, pag
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, stopIndex, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, liveOfStop, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
-  hasReport, isNothingNew, NOTHING_NEW,
+  hasReport, isNothingNew, NOTHING_NEW, slidesOfItem,
 } from '../board-shared.js';
 import { useCover, usePages } from '../board-present.js';
 import { Report } from '../board-report.js';
@@ -393,10 +393,10 @@ function ReportPoints({ text }) {
  * heading, and only then a line says the whole report is on the board page. The columns are measured (`cols`, from
  * before, is no longer a choice)
  */
-function ReportFit({ text }) {
+function ReportFit({ text, more = false, part = false }) {
   const ref = useRef(null);
   const [cut, setCut] = useState(false);
-  const short = mdWords(text) < 40;
+  const short = !part && mdWords(text) < 40;
   useEffect(() => {
     const el = ref.current;
     if (!el) return undefined;
@@ -433,12 +433,14 @@ function ReportFit({ text }) {
   }, [text]);
   return html`<div class=${`bs-report ${short ? 'is-short' : ''}`}>
     <div class="bs-report__body" ref=${ref}><${Report} text=${text} level=${3} /></div>
-    ${cut ? html`<p class="bs-report__more">The whole report is on the board page</p>` : null}
+    ${cut ? html`<p class="bs-report__more">The whole report is on the board page</p>` : more ? html`<p class="bs-report__more">Continued on the next slide</p>` : null}
   </div>`;
 }
 
 /** A report on its own slide (a 'report' stop): as large as it fits, its columns measured */
-const ReportBody = ({ report }) => (mdPoints(report) ? html`<${ReportPoints} text=${report} />` : html`<${ReportFit} text=${report} />`);
+/** A report's slide (one of reportSlides'): its points as cards when that's all it is, else the words as they fit.
+ *  `more`: it goes on, on the next slide; `part`: one of several, never set large as a short one would be */
+const ReportBody = ({ report, more = false, part = false }) => (mdPoints(report) ? html`<${ReportPoints} text=${report} />` : html`<${ReportFit} text=${report} more=${more} part=${part} />`);
 
 /**
  * The presenter's notes beside an item, at a size a room reads: smaller only as far as it must be to fit the slide (to
@@ -949,7 +951,7 @@ function Rail({ meeting, items, at, deck, ended, prior = [], timer = null }) {
     : next.kind === 'section' ? html`<span>Next <b>${String(meeting.sections.findIndex((x) => x.id === next.sectionId) + 1).padStart(2, '0')}</b> ${partName(meeting.sections.find((x) => x.id === next.sectionId), meeting.sections.findIndex((x) => x.id === next.sectionId))}</span>`
     : next.kind === 'books' ? html`<span>Next: ${booksTitle(next)}</span>`
     : next.kind === 'live' ? html`<span>Next: ${LIVE_TITLES[next.fileId.slice(5)]}</span>`
-    : next.kind === 'report' ? html`<span>Next: Report</span>`
+    : next.kind === 'report' ? html`<span>Next: ${next.page ? 'the report, continued' : 'Report'}</span>`
     : next.kind === 'decision' ? html`<span>Next: The decision</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId && next.page === stop.page ? html`<span>Next: the rest of the page</span>`
     : next.kind === 'doc' && next.fileId === stop?.fileId ? html`<span>Next: ${pageWordOf(files.find((f) => f.id === next.fileId))} ${next.page + 1}</span>`
@@ -1147,7 +1149,7 @@ export function Screen({ id, data, d, onBack = null }) {
   // Board's preview is told the deck and where it is, for its list of slides and its "4 of 31"
   useEffect(() => {
     if (!PREVIEW || !deck.length) return;
-    window.parent?.postMessage({ type: 'board-preview-deck', id, at: ownAt, pages, halves, stops: deck.map(({ key, kind, itemId, fileId, page, part, n, sectionId }) => ({ key, kind, itemId, fileId, page, part: part || 0, n, sectionId })) }, location.origin);
+    window.parent?.postMessage({ type: 'board-preview-deck', id, at: ownAt, pages, halves, stops: deck.map(({ key, kind, itemId, fileId, page, part, of, n, sectionId }) => ({ key, kind, itemId, fileId, page, part: part || 0, of: of || 0, n, sectionId })) }, location.origin);
   }, [deck, ownAt, pages, halves]);
   // Presenting: the slide kept for a reload
   // (never while the slide asked for is still being counted: a reload then would lose it)
@@ -1248,9 +1250,11 @@ export function Screen({ id, data, d, onBack = null }) {
   } else if (stop.kind === 'report') {
     // The report on an item that shows live facts (./board-shared.js deckOf): the part, the item and who presents it
     // along the top, the report filling the rest (its motion is the decision's slide, after all the item shows)
-    stage = html`<div class=${`bs-item bs-item--report ${mdPoints(item.report) ? 'bs-item--points' : ''}`}>
-      <div class="bs-item__bar"><div><p class="bs-eyebrow">${where}</p><${Title} text=${itemTitle} cls="bs-item__title" /></div></div>
-      <${ReportBody} report=${item.report} />
+    const slides = slidesOfItem(item);
+    const chunk = slides[Math.min(stop.page || 0, slides.length - 1)] || item.report;
+    stage = html`<div class=${`bs-item bs-item--report ${mdPoints(chunk) ? 'bs-item--points' : ''}`}>
+      <div class="bs-item__bar"><div><p class="bs-eyebrow">${where}${slides.length > 1 ? html`<span class="bs-eyebrow__of">Report, ${(stop.page || 0) + 1} of ${slides.length}</span>` : null}</p><${Title} text=${itemTitle} cls="bs-item__title" /></div></div>
+      <${ReportBody} report=${chunk} more=${(stop.page || 0) < slides.length - 1} part=${slides.length > 1} />
       ${motionHere}
     </div>`;
   } else if (stop.kind === 'decision') {
@@ -1274,7 +1278,9 @@ export function Screen({ id, data, d, onBack = null }) {
     // nothing else, its notes and its documents on the board page (the documents next in the deck). The documents
     // coming show only on a slide with no report and no notes on it (the slide holds one thing; under live facts, a row)
     const report = hasReport(item) ? item.report : '';
-    const reportHere = report && !deck.some((s) => s.kind === 'report' && s.itemId === item.id) ? report : '';
+    const reportHere = report && !deck.some((s) => s.kind === 'report' && s.itemId === item.id && !s.page) ? report : '';
+    // (its first slide, when it goes on to more: reportSlides)
+    const firstSlides = reportHere ? slidesOfItem(item) : [];
     const calm = isNothingNew(item.report);
     const notes = reportHere ? '' : item.notes;
     const notesRow = notes ? html`<div class="bs-item__body"><${Points} text=${notes} /></div>` : null;
@@ -1306,9 +1312,10 @@ export function Screen({ id, data, d, onBack = null }) {
     } else if (reportHere) {
       // A report: the item and who presents it along the top, the report filling the rest (a motion beside a report is
       // the decision's slide, after the report); a short one is its points as cards (ReportBody)
-      stage = html`<div class=${`bs-item bs-item--report ${mdPoints(item.report) ? 'bs-item--points' : ''}`}>
+      const first = firstSlides[0] || item.report;
+      stage = html`<div class=${`bs-item bs-item--report ${mdPoints(first) ? 'bs-item--points' : ''}`}>
         <div class="bs-item__bar"><div>${head}</div></div>
-        <${ReportBody} report=${item.report} />
+        <${ReportBody} report=${first} more=${firstSlides.length > 1} part=${firstSlides.length > 1} />
         ${motionHere}
       </div>`;
     } else {
@@ -1356,7 +1363,7 @@ export function Screen({ id, data, d, onBack = null }) {
     <div class="bs-foot">${stop.kind === 'doc' ? html`
       <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}<span class="bs-foot__item">${itemTitle}</span>${docWords ? html`<span class="bs-foot__sep">·</span>${docWords}` : null}</span>
       ${shownPages.length > 1 && shownPages.length <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${shownPages.map((i) => html`<i class=${i === stop.page ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
-      : stop.kind === 'books' || stop.kind === 'live' || stop.kind === 'report' || stop.kind === 'decision' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${itemTitle}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? booksTitle(stop) : stop.kind === 'report' ? 'Report' : stop.kind === 'decision' ? 'The decision' : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
+      : stop.kind === 'books' || stop.kind === 'live' || stop.kind === 'report' || stop.kind === 'decision' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${itemTitle}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? booksTitle(stop) : stop.kind === 'report' ? (stop.of > 1 ? `Report, ${(stop.page || 0) + 1} of ${stop.of}` : 'Report') : stop.kind === 'decision' ? 'The decision' : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
       : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span><kbd>C</kbd> the money’s changes in % or $<span class="bs-foot__sep">·</span><kbd>F</kbd> full screen</span>`
       : !started && !told && !MIRROR && !OWN ? html`<span class="bs-foot__what">The screen follows the meeting once the chair starts it.</span>` : null}
       ${ctl}

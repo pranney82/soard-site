@@ -32,12 +32,13 @@ import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
   isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf,
   reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
-  NOTHING_NEW, isNothingNew, LIMITS,
+  NOTHING_NEW, isNothingNew, LIMITS, slidesOfItem, reportAlone,
 } from '../board-shared.js';
 import { YearCompare } from './books.js';
 import { FinanceReview, NoteLine, notesByKey, lineKeysOf, withLineNotes, dueText } from './review.js';
 import { ChairReview, reviewTodo, ChairNoteLine } from './chair.js';
 import { Report, ReportEditor, readTime, Motion } from '../board-report.js';
+import { partFor } from '../board-coach.js';
 import { mdPlain, mdWords } from '../board-md.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
@@ -1666,6 +1667,14 @@ function ScreenFrame({ m, it, report, motion, by }) {
   const [fit, setFit] = useState(null);
   const [motionCut, setMotionCut] = useState(false);
   const [deck, setDeck] = useState(null); // the screen's stops and where it is: { stops, at }
+  // The report's slides (./board-shared.js reportSlides, as the screen cuts it) and the one shown
+  const slides = slidesOfItem({ ...it, report });
+  const [page, setPage] = useState(0);
+  const pageRef = useRef(0);
+  pageRef.current = Math.min(page, Math.max(0, slides.length - 1));
+  // Each slide's stop: the first on the item's own slide unless the report has a stop of its own
+  const keyOf = (p) => (p ? `${it.id}:report:${p}` : reportAlone({ ...it, report }) ? `${it.id}:report` : it.id);
+  const showPage = (p) => { setPage(p); post({ type: 'board-preview-at', key: keyOf(p), itemId: it.id }); };
   const now = useRef(null);
   now.current = { report, motion, reportBy: by };
   const src = `${location.pathname}?preview&report#/meetings/${encodeURIComponent(m.id)}/screen`;
@@ -1686,7 +1695,7 @@ function ScreenFrame({ m, it, report, motion, by }) {
       if (e.origin !== location.origin || e.source !== frame.current?.contentWindow) return;
       const x = e.data || {};
       // Ready: the words, then the slide they're on (an item that shows live facts has its report on the next one)
-      if (x.type === 'board-preview-ready') { ready.current = true; send(); post({ type: 'board-preview-at', key: `${it.id}:report`, itemId: it.id }); }
+      if (x.type === 'board-preview-ready') { ready.current = true; send(); post({ type: 'board-preview-at', key: keyOf(pageRef.current), itemId: it.id }); }
       if (x.type === 'board-preview-fit') setFit(x);
       if (x.type === 'board-preview-deck' && x.id === m.id && Array.isArray(x.stops)) setDeck({ stops: x.stops, at: x.at || 0 });
       if (x.type === 'board-preview-motion') setMotionCut(!!x.cut);
@@ -1703,7 +1712,8 @@ function ScreenFrame({ m, it, report, motion, by }) {
       send();
       const to = motion !== typed.current.motion && String(motion || '').trim() ? 'decision' : report !== typed.current.report || motion !== typed.current.motion ? 'report' : '';
       typed.current = { report, motion };
-      if (to) post({ type: 'board-preview-at', key: `${it.id}:${to}`, itemId: it.id });
+      // (the report: the slide being looked at, or its last when it has fewer now)
+      if (to) post({ type: 'board-preview-at', key: to === 'decision' ? `${it.id}:decision` : keyOf(pageRef.current), itemId: it.id });
     }, 300);
     return () => clearTimeout(t);
   }, [report, motion, by]);
@@ -1715,20 +1725,29 @@ function ScreenFrame({ m, it, report, motion, by }) {
   const nx = deck?.stops?.[deck.at + 1];
   const where = here?.kind === 'decision' && here.itemId === it.id ? 'The last slide of your item, when the board votes.' : [
     here?.itemId !== it.id ? ''
-      : here.kind === 'report' ? `After ${AFTER_LIVE[showsOf(it)[0]] || 'its live slide'}.`
+      : here.kind === 'report' ? (here.page ? '' : `After ${AFTER_LIVE[showsOf(it)[0]] || (String(it.notes || '').trim() ? 'the item’s own slide, with its notes' : 'the item’s own slide')}.`)
       : here.kind === 'item' && showsOf(it).length && words ? 'Your report gets a slide of its own, after this one.'
       : nx?.itemId === it.id && nx.kind === 'doc' ? 'Then its documents.' : '',
     deck?.stops?.some((s) => s.kind === 'decision' && s.itemId === it.id) ? 'Your motion gets a slide of its own at the end of your item, for the vote.' : '',
   ].filter(Boolean).join(' ');
+  // (how many slides, and their time, is the coach's line under the editor; here only what it can't say)
   const fitLine = [
-    words && fit && here?.kind !== 'decision' && !(here?.kind === 'item' && showsOf(it).length) ? (fit.cut ? `The screen shows about the first ${fit.shown} words. The whole report is on the board page.` : 'Fits on one slide.') : '',
+    words && fit?.cut && here?.kind !== 'decision' ? 'One point is too long for a slide, so the screen sets it smaller. Breaking it up reads better.' : '',
     String(motion || '').trim() && motionCut ? 'The screen cuts the motion short; a shorter one fits.' : '',
   ].filter(Boolean).join(' ');
+  const n = words ? slides.length : 0;
+  const shown = here?.itemId === it.id && here.kind === 'report' ? here.page || 0 : here?.itemId === it.id && here.kind === 'item' && !reportAlone({ ...it, report }) ? 0 : pageRef.current;
   return html`<div class="bp-rp__screen" ref=${holder} style=${scale ? `height:${Math.round(720 * scale)}px` : null}>
       ${scale ? html`<iframe ref=${frame} src=${src} title="The screen, as the room will see it" tabindex="-1" aria-hidden="true" inert=${true} style=${`width:1280px;height:720px;transform:scale(${scale})`}></iframe>` : null}
     </div>
+    ${n > 1 ? html`<div class="bp-rp__pager" role="group" aria-label="Your report’s slides">
+      <button type="button" class="bp-rp__step" disabled=${shown <= 0} onClick=${() => showPage(shown - 1)} aria-label="The slide before">‹</button>
+      <span class="bp-rp__pages">${slides.map((_, p) => html`<button type="button" key=${p} class=${`bp-rp__dot ${p === shown ? 'is-on' : ''}`} aria-label=${`Slide ${p + 1} of ${n}`} aria-current=${p === shown ? 'true' : null} onClick=${() => showPage(p)}></button>`)}</span>
+      <span class="bp-rp__of">Slide ${shown + 1} of ${n}</span>
+      <button type="button" class="bp-rp__step" disabled=${shown >= n - 1} onClick=${() => showPage(shown + 1)} aria-label="The next slide">›</button>
+    </div>` : null}
     ${where ? html`<p class="bp-rp__where">${where}</p>` : null}
-    <p class=${`bp-rp__fit ${(fit?.cut && words) || motionCut ? 'is-cut' : ''}`}>${fitLine}</p>`;
+    ${fitLine ? html`<p class=${`bp-rp__fit ${(fit?.cut && words) || motionCut ? 'is-cut' : ''}`}>${fitLine}</p>` : null}`;
 }
 /** What an item's live slide is, after "After" */
 const AFTER_LIVE = { projects: 'the makeovers board', cash: 'the money', reveals: 'the reveals ahead', events: 'the events ahead', meetings: 'the board meetings ahead' };
@@ -2035,7 +2054,8 @@ function ReportPage({ id, itemId, ctx }) {
       </section>` : null}
       <h2 class="sr-only" id="rp-write-h">Your report</h2>
       <${ReportEditor} value=${text} onChange=${changed} resetKey=${reset} label=${`Your report on ${it.title}`} autofocus=${!it.report} stickyTop="calc(var(--head) + env(safe-area-inset-top))" minHeight=${300}
-        placeholder="What the committee did, what the board needs to decide, and what’s next" status=${status} starter=${true} onNothing=${askNothing} />`}
+        placeholder="What the committee did, what the board needs to decide, and what’s next" status=${status} starter=${true} onNothing=${askNothing}
+        coach=${{ part: partFor(m, it.id), id: m.id, itemId: it.id, title: it.title, confidential: !!it.confidential }} />`}
       <${MotionBox} m=${m} it=${it} ctx=${ctx} onDraft=${setMotion} handle=${motionBox} />
       <section class="bp-rp__docs" aria-labelledby="rp-docs-h">
         <h2 class="bp-mini-h" id="rp-docs-h">Documents with it</h2>

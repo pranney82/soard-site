@@ -69,6 +69,13 @@ test('the editor’s document → Markdown → the same document', () => {
   roundTrip(doc(p(t('A line'), { type: 'hardBreak' }, t('and the next'))));
   roundTrip(doc(ul([p(t('A point'), { type: 'hardBreak' }, t('carried on'))])));
   roundTrip(doc(ul([p(t('A point')), p(t('Its second paragraph'))])));
+  // "New slide here": a rule, at the top and inside a point
+  const HR = { type: 'horizontalRule' };
+  assert.equal(roundTrip(doc(p(t('The numbers')), HR, p(t('The ask')))), 'The numbers\n\n---\n\nThe ask');
+  roundTrip(doc(ul([p(t('One')), HR, p(t('More on one'))], [p(t('Two'))])));
+  roundTrip(doc(HR, { type: 'heading', attrs: { level: 3 }, content: [t('Next')] }, ul([p(t('a'))])));
+  // A paragraph that only reads "---" stays words
+  assert.equal(roundTrip(doc(p(t('---')))), '\\---');
   // What reads as Markdown when typed as words: kept as words
   const md = roundTrip(doc(p(t('# not a heading')), p(t('- not a point')), p(t('2026. A year')), p(t('5 * 3 = 15 and a_b and [brackets]')), p(t('> not a callout'))));
   assert.match(md, /^\\# not a heading/);
@@ -90,10 +97,13 @@ test('an editor document never loses words, whatever it holds (a random walk)', 
   const marksOf = () => [['bold'], ['italic'], ['bold', 'italic'], [], [], [link('https://x.org/a')]][rnd(6)];
   const para = () => p(...Array.from({ length: 1 + rnd(4) }, (_, k) => t(`${k ? ' ' : ''}${words[rnd(words.length)]}`, ...marksOf())));
   for (let k = 0; k < 3000; k++) {
-    const d = doc(para(), ul([para()], [para(), ul([para()])]), ol(1 + rnd(5), [para()]));
-    // Every character kept, in order (spaces at a block's edges aside)
+    const hr = () => (rnd(3) ? [] : [{ type: 'horizontalRule' }]);
+    const d = doc(para(), ...hr(), ul([para()], [para(), ...hr(), ul([para()])]), ...hr(), ol(1 + rnd(5), [para()]));
+    // Every character kept, in order (spaces at a block's edges aside), and every new slide where it was
     const text = (x) => JSON.stringify(x).match(/"text":"((?:[^"\\]|\\.)*)"/g).map((s) => JSON.parse(`{${s}}`).text).join('').replace(/\s+/g, '');
-    assert.equal(text(mdToDoc(docToMd(d))), text(d), docToMd(d));
+    const back = mdToDoc(docToMd(d));
+    assert.equal(text(back), text(d), docToMd(d));
+    assert.equal((JSON.stringify(back).match(/horizontalRule/g) || []).length, (JSON.stringify(d).match(/horizontalRule/g) || []).length, docToMd(d));
   }
 });
 

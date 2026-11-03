@@ -58,6 +58,7 @@ import { maybeReadBoardDrive, driveStatus, placeSigned, DEFAULT_DRIVE_FOLDER } f
 import { meetingName } from '../../public/admin/board-shared.js';
 import { readMinutesInto } from './_board-minutes.js';
 import { activityOverview, memberActivity } from './_board-activity.js';
+import { shorterFor } from './_board-shorter.js';
 import { emailConfigured } from './_broadcast-notify.js';
 import { logAudit } from './_audit.js';
 
@@ -345,6 +346,9 @@ export async function onRequestPost(context) {
         return Response.json({ ok: true, meeting: await resetPractice(env, id, { by: me }) });
       case 'sync-access':
         return Response.json({ ok: true, access: { ...(await syncBoardAccess(env)), ...(await accessStatus(env)) } });
+      // A shorter version of a report being written in the agenda (nothing saved; the item may not be saved yet)
+      case 'report-shorter':
+        return Response.json(await shorterFor(env, { id, itemId: String(body.itemId || ''), text: body.text, title: String(body.title || '') }, { admin: true, adminEmail: me }));
       case 'sync-group':
         await syncBoardGroup(env);
         return Response.json({ ok: true, group: await groupStatus(env) });

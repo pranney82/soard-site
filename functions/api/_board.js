@@ -386,7 +386,7 @@ export async function setActionDone(DB, actionId, done, { by, slug = null } = {}
  * named in its presenter line) on a meeting the board can see, until its minutes are approved; one of Board's admins,
  * any time. → { m, it }, else throws (404, 403, 409)
  */
-async function presenterGate(env, id, itemId, { member = null, admin = false } = {}) {
+export async function presenterGate(env, id, itemId, { member = null, admin = false } = {}) {
   if (!ID.test(String(id || '')) || !ID.test(String(itemId || ''))) throw err('Which item?', 400);
   const m = await getMeeting(env.DB, id);
   // A meeting ahead not shared yet opens to who presents in it (their report was asked for by email: _board-asks.js)

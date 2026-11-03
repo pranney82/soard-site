@@ -640,7 +640,10 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       }
       if (id === 'board-ask-reminder') return gmail(asks.reminderEmail({ m, it, person, due, from, now: due - 2 * 24 * 60 * 60 * 1000 }), { to: 'The presenter, Holly copied' });
       if (id === 'board-ask-late') return gmail(asks.lateEmail({ m, it, person, due, from, chair: { name: 'Alex Rivera' }, now: due }), { to: 'The presenter, the chair and Holly copied' });
-      if (id === 'board-ask-thanks') return gmail(asks.thanksEmail({ m, it, person, from }), { to: 'The presenter alone' });
+      if (id === 'board-ask-thanks') {
+        const report = '### Where we are\nCash in the bank is $412,000, up 12% on last year.\n\n- The audit is done and clean\n- The store had its best October';
+        return gmail(asks.thanksEmail({ m, it, person, from, report }), { to: 'The presenter alone', note: 'It says how the report shows on the meeting’s screen: one slide, or how many.' });
+      }
       if (id === 'board-ask-question') return gmail(asks.questionEmail({ m, it, person, asker: { name: 'Alex Rivera', email: 'chair@example.com' }, question: 'How much of the store’s drop is the shop that closed?', from: { name: 'Peter', email: 'peter@example.com' } }), { to: 'Who presents the item, the chair and Holly copied' });
       const review = asks.chairEmail({ m, chair: { name: 'Alex Rivera' }, from, cc: [{ name: 'Holly' }], people: [{ slug: 'sam-ortiz', name: 'Sam Ortiz' }], asks: [{ kind: 'report', itemId: it.id, status: 'late', due: new Date(due).toISOString() }] });
       return gmail(review, { to: 'The board chair and Holly, Peter copied' });

@@ -40,6 +40,7 @@ import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
 import { noteGet, noteLook, noteAnswer, noteEvents, answerOf } from './_board-activity.js';
 import { portalExtras, saveLineNote, chairApprove, chairNote, askPresenter } from './_board-asks.js';
+import { shorterFor } from './_board-shorter.js';
 
 const fail = (error, status = 400) => Response.json({ ok: false, error }, { status });
 
@@ -192,6 +193,11 @@ async function post(context) {
         if (err.status === 409 && err.current) return Response.json({ ok: false, error: err.message, current: err.current }, { status: 409 });
         throw err;
       }
+    }
+    // A shorter version of a report, offered beside it (nothing saved): who presents the item, or an admin
+    if (body.action === 'report-shorter') {
+      const ask = { id: String(body.meetingId || body.id || ''), itemId: String(body.itemId || ''), text: body.text, title: String(body.title || '') };
+      return Response.json(await shorterFor(env, ask, w));
     }
     if (!w.member) return fail('Only a board member can answer that for themselves', 403);
     const { member } = w;

@@ -41,6 +41,7 @@ import {
 import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
 import { printMinutesTemplate, downloadMinutesDocx } from './board-minutes-template.js';
 import { ReportEditor, Report } from './board-report.js';
+import { partFor } from './board-coach.js';
 import { mdWords } from './board-md.js';
 import { booksTitle } from './board/books.js';
 
@@ -751,7 +752,8 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
                   write(it.id, false);
                   refocus(it.id, '.agx-report__head button, .agx-item__title');
                 }}
-                status=${html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { write(it.id, false); refocus(it.id, '.agx-report__head button, .agx-item__title'); }}>Done</button>`} />
+                status=${html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { write(it.id, false); refocus(it.id, '.agx-report__head button, .agx-item__title'); }}>Done</button>`}
+                coach=${{ part: partFor(m, it.id), admin: true, id: m.id, itemId: it.id, title: it.title, confidential: !!it.confidential }} />
             </div>`
             : it.report ? html`<div class="agx-report">
               <div class="agx-report__head"><span class="agx-report__label">Report</span><span class="agx-report__by">${[it.reportBy, it.reportAt ? ago(it.reportAt) : ''].filter(Boolean).join(' · ')}</span>
@@ -1247,7 +1249,7 @@ function stopWords(stop, m, items, pages, files, parts = {}) {
   if (stop.kind === 'books') return { label: it.label, title: booksTitle(stop), sub: `${it.title} · from QuickBooks` };
   if (stop.kind === 'live') return { label: it.label, title: LIVE_TITLES[stop.fileId.slice(5)], sub: it.title };
   // The report on an item that shows live facts, its own slide after them
-  if (stop.kind === 'report') return { label: it.label, title: `Report · ${it.title}`, sub: it.presenter || '' };
+  if (stop.kind === 'report') return { label: it.label, title: `${stop.of > 1 ? `Report, ${(stop.page || 0) + 1} of ${stop.of}` : 'Report'} · ${it.title}`, sub: it.presenter || '' };
   // Its motion, a slide of its own after all it shows
   if (stop.kind === 'decision') return { label: it.label, title: `The decision · ${it.title}`, sub: it.presenter || '' };
   const f = files.find((x) => x.id === stop.fileId);

@@ -13,7 +13,7 @@ import { saveMeeting, getMeeting } from '../functions/api/_board.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 import {
   easternAt, dueFor, remindAt, chairAt, dueWords, htmlToMd, cutTextQuote, isAutoReply, replyFiles, mimeOf, senderOf, cutSignature, judgeByRules,
-  runAsks, maybeRunAsks, saveLineNote, portalExtras, sendersFor, askEmail, chairEmail, postReport, GMAIL_SEND_SCOPE,
+  runAsks, maybeRunAsks, saveLineNote, portalExtras, sendersFor, askEmail, chairEmail, postReport, GMAIL_SEND_SCOPE, thanksEmail, slidesLine,
   chairApprove, chairNote, askPresenter, judgeChair, asTest, replyWords, clearPracticeRun, PRACTICE_RUN, clearTestReport, TEST_REPORT,
 } from '../functions/api/_board-asks.js';
 
@@ -293,6 +293,9 @@ test('a reply becomes the report word for word, its PDF goes with the item, and 
   assert.equal(hdr(thanks, 'Cc'), '');
   assert.equal(thanks.threadId, ask.threadId);
   assert.match(thanks.text, /^Thanks, Sam\. Your Financial report is on the agenda/);
+  // How it shows in the meeting, and where to see it
+  assert.match(thanks.text, /In the meeting it fits on one slide\. You can see it or change it on the board page until then:\n/);
+  assert.match(thanks.text, /#\/meetings\/m_nov5\/report\/i_fin/);
   // Read once: the next run takes nothing more
   assert.equal((await run()).reports, 0);
   // A second reply goes under the first, never over it
@@ -511,6 +514,7 @@ test('a report sent back with a question: to its presenter in their conversation
   const thanks = gmail.sent.at(-1);
   assert.equal(hdr(thanks, 'Cc'), 'Alex Rivera <alex.board@example.com>');
   assert.match(thanks.text, /^Thanks, Sam\. Your answer is on the agenda under your Financial report/);
+  assert.match(thanks.text, /With it, the report still fits on one slide in the meeting\. Here it is:/);
   const { listMeetings } = await import('../functions/api/_board.js');
   assert.ok((await portalExtras(env, { member: ALEX, meetings: await listMeetings(env.DB), today: '2026-11-03' })).review.questions[0].answeredAt);
 });
@@ -970,4 +974,20 @@ test('the test-words clear leaves a real report alone', async () => {
   await save(env.DB, { id: TEST_REPORT.meetingId, date: '2026-11-05', sections: [{ id: 's_1', title: 'x', items: [{ id: TEST_REPORT.itemId, title: 'Projects', presenter: 'Max', report: 'Three reveals this month.' }] }] }, { by: 'jane@soardcharity.com' });
   assert.equal(await clearTestReport(env.DB), false);
   assert.equal((await getMeeting(env.DB, TEST_REPORT.meetingId)).sections[0].items[0].report, 'Three reveals this month.');
+});
+
+test('the thanks says how the report shows in the meeting: one slide, or how many (reportSlides); nothing for nothing new', async () => {
+  const m = await meeting();
+  const it = m.sections[1].items.find((x) => x.id === 'i_fin');
+  const { reportSlides } = await import('../public/admin/board-shared.js');
+  const long = Array.from({ length: 6 }, (_, k) => `### Part ${k + 1}\n\n${Array.from({ length: 6 }, (__, j) => `- Point ${j + 1} of part ${k + 1}, with enough words in it to take most of a line on the screen`).join('\n')}`).join('\n\n');
+  const n = reportSlides(long).length;
+  assert.ok(n > 1, `a long report is more than one slide (${n})`);
+  const mail = thanksEmail({ m, it, person: { name: 'Sam Ortiz' }, from: { name: 'Max' }, report: long });
+  assert.match(mail.text, new RegExp(`In the meeting it’s ${n} slides\\. You can see it or change it on the board page until then:`));
+  assert.match(mail.html, new RegExp(`In the meeting it’s ${n} slides\\.`));
+  assert.equal(slidesLine('Cash is up.'), 'In the meeting it fits on one slide.');
+  assert.equal(slidesLine(long, { answer: true }), `With it, the report is ${n} slides in the meeting.`);
+  assert.equal(slidesLine('Nothing new to report this time.'), '');
+  assert.equal(slidesLine(''), '');
 });
