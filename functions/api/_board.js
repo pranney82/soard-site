@@ -620,10 +620,12 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
   }
   // A new file changes what the board reads only when it reads the paper as its file (written here, it reads the words)
   const newRead = !!newFile && !body;
-  if (was && (changed || newRead) && was.sign && d.sign && askAgain == null && !(fromFile && !newFile && !was.body)) {
+  // Required again, its words changed while it wasn't: whoever signed an earlier version is asked about too
+  const reRequired = was && !was.sign && d.sign && !changed && !newRead;
+  if (was && (((changed || newRead) && was.sign) || reRequired) && d.sign && askAgain == null && !(fromFile && !newFile && !was.body)) {
     const current = (await listDocs(DB)).find((x) => x.id === d.id);
     const board = await activeBoard(DB);
-    const names = board.filter((p) => current?.signed[p.slug]).map((p) => p.name);
+    const names = board.filter((p) => current?.signed[p.slug] && (!reRequired || current.signed[p.slug].version < was.version)).map((p) => p.name);
     // since: what they signed (the earlier words, or the file); `newFile`: what they'd sign now is a new file
     // (now: what the board will read, its words or its file)
     if (names.length) throw Object.assign(new Error('Do they sign the new version?'), { status: 409, extra: { ask: { names, since: was.body ? 'words' : 'file', now: body ? 'words' : 'file', newFile: newFile ? String(newFile) : '' } } });
@@ -632,6 +634,8 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
   const next = { ...d, body, version: was?.version || 0, signFrom: was?.signFrom || 0, readFrom: was?.readFrom || 0, wordsAt: was?.wordsAt || '', wordsBy: was?.wordsBy || '', createdAt: row ? parse(row.data).createdAt : nowIso(), updatedAt: nowIso() };
   // A new version: new words, or a new file for a paper read as its file (whether or not the board signs it again:
   // a page still showing the old file can't sign the new one unread)
+  // (required again, the board asked to sign again: from the version it is)
+  if (reRequired && askAgain === true) { next.signFrom = next.version; next.readFrom = next.version; }
   if (changed || (was && newRead)) {
     next.version += 1;
     if (changed) { next.wordsAt = nowIso(); next.wordsBy = String(by || '').slice(0, 200); }
@@ -677,10 +681,10 @@ const notWhatTheyRead = (doc, version) => {
 };
 /** The version a signature is on: the one they read (a small change since doesn't need it read again), else the paper's */
 const signedOn = (doc, version) => (version == null || version === '' ? doc.version : Math.min(doc.version, Math.max(Number(version), doc.readFrom)));
-async function writeSignature(DB, { docId, slug, year, name, how, fileId = null, driveId = null, driveName = null, by = '', at = nowIso(), version = 0 }, { keep = false } = {}) {
+async function writeSignature(DB, { docId, slug, year, name, how, fileId = null, driveId = null, driveName = null, by = '', at = nowIso(), version = 0, signFrom = 0 }, { keep = false } = {}) {
   if (!keep) {
     const was = await DB.prepare('SELECT * FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year).first();
-    if (was && (Number(was.version) || 0) !== version) {
+    if (was && (Number(was.version) || 0) < signFrom) {
       await DB.prepare('INSERT OR REPLACE INTO board_signatures_earlier (doc_id, slug, year, version, name, at, how, file_id, drive_id, drive_name, added_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
         .bind(docId, slug, year, Number(was.version) || 0, was.name, was.at, was.how, was.file_id, was.drive_id, was.drive_name, was.added_by).run();
     }
@@ -708,7 +712,7 @@ export async function signDoc(DB, docId, member, name, { version = null } = {}) 
   const year = thisYear();
   const at = nowIso();
   const on = signedOn(doc, version);
-  await writeSignature(DB, { docId, slug: member.slug, year, name: typed, how: 'typed', by: member.email || '', at, version: on });
+  await writeSignature(DB, { docId, slug: member.slug, year, name: typed, how: 'typed', by: member.email || '', at, version: on, signFrom: doc.signFrom });
   return { docId, year, name: typed, at, how: 'typed', version: on, copy: null, drive: null };
 }
 
@@ -727,6 +731,7 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
   if (!who) throw Object.assign(new Error('Whose is it? They aren’t on People → Board'), { status: 404 });
   if (file && typeof file.arrayBuffer === 'function') {
     const type = fileTypeOf(new Uint8Array(await file.arrayBuffer()), file.name);
+    if (!type && /\.(pdf|jpe?g|png|gif|webp|hei[cf])$/i.test(file.name || '')) throw Object.assign(new Error(`${file.name} isn’t what its name says (another kind of file renamed): save the signed page again as a PDF or a photo`), { status: 415 });
     if (!type || !(type === 'application/pdf' || type.startsWith('image/'))) throw Object.assign(new Error('A signed copy is a PDF, or a photo of the signed page'), { status: 415 });
   }
   const year = thisYear();
@@ -734,8 +739,9 @@ export async function signWithCopy(env, docId, file, { member = null, slug = '',
   const copy = await putFile(env, { ownerType: 'signed', ownerId: docId, file, staffOnly: true, by: by || who.email || '' });
   const at = nowIso();
   const on = member ? signedOn(doc, version) : doc.version;
-  await writeSignature(env.DB, { docId, slug: who.slug, year, name: who.name, how: member ? 'copy' : 'staff', fileId: copy.id, by: by || who.email || '', at, version: on });
-  if (before?.file_id && before.file_id !== copy.id && (Number(before.version) || 0) === on) await deleteFile(env, before.file_id);
+  await writeSignature(env.DB, { docId, slug: who.slug, year, name: who.name, how: member ? 'copy' : 'staff', fileId: copy.id, by: by || who.email || '', at, version: on, signFrom: doc.signFrom });
+  // (the copy before it, while it still counted, is replaced: gone; one from before the board signed again is kept)
+  if (before?.file_id && before.file_id !== copy.id && (Number(before.version) || 0) >= doc.signFrom) await deleteFile(env, before.file_id);
   return { docId, year, name: who.name, at, how: member ? 'copy' : 'staff', version: on, copy, drive: null };
 }
 

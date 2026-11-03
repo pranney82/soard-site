@@ -128,7 +128,7 @@ test('typed, or the copy signed on paper: each is the year’s signature, a copy
   assert.deepEqual([x.signed['sam-ortiz'].copy.id, x.signed['sam-ortiz'].copy.type], [photo.copy.id, 'image/jpeg']);
   // Not a PDF or a picture (a Word file, or words named .pdf): refused, saying what a signed copy is, nothing kept
   await assert.rejects(signWithCopy(env, d.id, new File([new TextEncoder().encode('just words')], 'note.txt'), { member: memberOf('kim-park') }), /A signed copy is a PDF, or a photo of the signed page/);
-  await assert.rejects(signWithCopy(env, d.id, new File([new TextEncoder().encode('just words')], 'fake.pdf'), { member: memberOf('kim-park') }), /A signed copy is a PDF/);
+  await assert.rejects(signWithCopy(env, d.id, new File([new TextEncoder().encode('just words')], 'fake.pdf'), { member: memberOf('kim-park') }), /fake\.pdf isn’t what its name says/);
   assert.equal((await listDocs(env.DB)).find((y) => y.id === d.id).signed['kim-park'], undefined);
   // A paper nobody signs, or one not on the board page: no signature from a member
   const bylaws = await saveDoc(env.DB, { title: 'Bylaws' });
@@ -431,4 +431,23 @@ test('a small change kept (no signing again): a page on the version before still
   assert.ok(await unsignDoc(env, d.id, 'sam-ortiz'));
   const after = (await listDocs(env.DB)).find((x) => x.id === d.id);
   assert.deepEqual([after.signed['sam-ortiz'], after.earlier.includes('sam-ortiz'), after.before['sam-ortiz']?.version], [undefined, true, 1]);
+});
+
+test('a copy replaced across a kept small change replaces it (taking it off leaves them unsigned); a paper made required again after its words changed asks about who signed before', async () => {
+  const { fileFor } = await import('../functions/api/_board.js');
+  let d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, body: '- Come to three of four meetings' }, { by: FOUNDER });
+  const wrong = await signWithCopy(env, d.id, pdf('wrong.pdf'), { member: memberOf('sam-ortiz'), version: 1 });
+  d = await saveDoc(env.DB, { ...d, body: '- Come to three of the four meetings' }, { by: FOUNDER, base: 1, askAgain: false });
+  const right = await signWithCopy(env, d.id, pdf('right.pdf'), { member: memberOf('sam-ortiz'), version: 2 });
+  assert.equal(await fileFor(env.DB, wrong.copy.id, { admin: true }), null, 'the wrong copy is gone, replaced');
+  assert.ok(await unsignDoc(env, d.id, 'sam-ortiz'));
+  let x = (await listDocs(env.DB)).find((y) => y.id === d.id);
+  assert.deepEqual([x.signed['sam-ortiz'], x.before['sam-ortiz']], [undefined, undefined], 'taken off: unsigned, nothing coming back');
+  assert.equal(await fileFor(env.DB, right.copy.id, { admin: true }), null);
+  // Paused (not required), its words changed, required again: Alex, who signed before, is asked about
+  await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera', { version: 2 });
+  d = await saveDoc(env.DB, { ...x, sign: false, body: '- Come to every meeting and give $1,000' }, { by: FOUNDER, base: 2 });
+  await assert.rejects(saveDoc(env.DB, { ...d, sign: true, body: undefined }, { by: FOUNDER, base: 3 }), (err) => err.status === 409 && err.extra.ask.names.join() === 'Alex Rivera');
+  d = await saveDoc(env.DB, { ...d, sign: true, body: undefined }, { by: FOUNDER, base: 3, askAgain: true });
+  assert.deepEqual([d.version, d.signFrom, d.signed], [3, 3, {}]);
 });

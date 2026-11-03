@@ -616,7 +616,8 @@ function App() {
   useEffect(() => {
     if (route.sub === 'screen' || route.sub === 'report') return; // (each names its own window)
     const m = route.page === 'meetings' && route.id && data && [...data.meetings, data.nextPending, ...(data.previews || [])].find((x) => x?.id === route.id);
-    document.title = m ? `${meetingName(m)} · SOARD Board` : `${NAV.find(([p]) => p === route.page)?.[1] || 'Home'} · SOARD Board`;
+    const paper = route.page === 'documents' && route.id ? data?.docs.find((x) => x.id === route.id) : null;
+    document.title = m ? `${meetingName(m)} · SOARD Board` : paper ? `${paper.title} · SOARD Board` : `${NAV.find(([p]) => p === route.page)?.[1] || 'Home'} · SOARD Board`;
   }, [route, data]);
   // The first visit rises in; later pages arrive by transition
   useEffect(() => {
@@ -3211,11 +3212,11 @@ function PeoplePage({ ctx }) {
 const signTrouble = new Map(); // id → { msg, kind: 'changed' | 'gone', title }
 /** The reason a signature didn't go through, while it's still the case: the paper changed (until they sign), or it went (until it's back) */
 /** The focus (and the eyes) to where a signature's trouble is said, once the page has the paper as it is now */
-const focusTrouble = (id) => requestAnimationFrame(() => { const el = document.getElementById(`trouble-${id}`); if (el) { el.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' }); el.focus({ preventScroll: true }); } });
+const focusTrouble = (id) => requestAnimationFrame(() => { const t = signTrouble.get(id); if (t) t.loaded = true; const el = document.getElementById(`trouble-${id}`) || document.getElementById(`sign-${id}-p`); if (el) { el.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' }); el.focus({ preventScroll: true }); } });
 const troubleFor = (id, doc) => {
   const t = signTrouble.get(id);
   if (!t) return null;
-  if (t.kind === 'gone' ? doc?.sign && doc?.shared !== false : doc?.signedByMe) { signTrouble.delete(id); return null; }
+  if (t.loaded && (t.kind === 'gone' ? doc?.sign && doc?.shared !== false : doc?.signedByMe)) { signTrouble.delete(id); return null; }
   return t;
 };
 /**
@@ -3329,7 +3330,7 @@ function SignForm({ d: doc, ctx }) {
       <button type="button" class="bp-linkbtn" disabled=${!!busy} onClick=${() => pick.current?.click()}>${busy === 'copy' ? 'Adding your copy…' : 'Add your signed copy'}</button>
       <input ref=${pick} type="file" class="sr-only" tabindex="-1" aria-hidden="true" accept=".pdf,image/*" onChange=${(e) => addCopy(e.target.files[0])} />
     </p>
-    ${problem ? html`<p class="bp-sign__problem" id=${`${id}-p`} role="alert">${problem}</p>` : null}
+    ${problem ? html`<p class="bp-sign__problem" id=${`${id}-p`} role="alert" tabindex="-1">${problem}</p>` : null}
   </form>`;
 }
 
@@ -3429,7 +3430,7 @@ function DocumentsPage({ ctx }) {
   // A signature that didn't go through on a paper no longer here (taken off, deleted)
   const lost = [...signTrouble.entries()].filter(([id, t]) => t.kind === 'gone' && !docs.some((x) => x.id === id && x.sign)).map(([id, t]) => ({ id, ...t }));
   return html`
-    ${lost.map((t) => html`<p class="bp-doc__changed bp-rise" role="alert" key=${t.id}>Not signed: ${t.title} was taken off the board page while you were signing it. <button type="button" class="bp-linkbtn" onClick=${() => { signTrouble.delete(t.id); ctx.setData((x) => ({ ...x })); }}>OK</button></p>`)}
+    ${lost.map((t) => html`<p class="bp-doc__changed bp-rise" role="alert" tabindex="-1" id=${`trouble-${t.id}`} key=${t.id}>Not signed: ${t.title} was taken off the board page while you were signing it. <button type="button" class="bp-linkbtn" onClick=${() => { signTrouble.delete(t.id); ctx.setData((x) => ({ ...x })); }}>OK</button></p>`)}
     <header class="bp-pagehead bp-rise" style=${rise(0)}>
       <div><h1 class="bp-h1">Documents</h1><p class="bp-lede">${lede}</p></div>
       <label class="bp-filter">
@@ -3443,7 +3444,7 @@ function DocumentsPage({ ctx }) {
         ${toSign.length > 1 && data.me.slug ? html`<div class="bp-progress__track" role="progressbar" aria-valuemin="0" aria-valuemax=${toSign.length} aria-valuenow=${done} aria-label=${`Signed for ${year}`}><span style=${`--p:${(done / toSign.length) * 100}%`}></span></div>` : null}
       </div>
       <ul class="bp-signlist">${toSign.filter(found).map((x) => html`<li key=${x.id} class="bp-doc" id=${`doc-${x.id}`}>
-        <a class="bp-signlist__cover" ...${open(x)} aria-label=${`Read ${x.title}`}><${Cover} x=${x} shelf=${shelfOf(x)} /></a>
+        <a class="bp-signlist__cover" ...${open(x)} aria-label=${`Read ${x.title}`} tabindex="-1"><${Cover} x=${x} shelf=${shelfOf(x)} /></a>
         <div class="bp-signlist__body">
           <p class="bp-doc__title">${x.title}</p>
           <p class="bp-doc__meta">${[x.note, nbw(`${x.signedCount} of ${data.people.board.length} board members ${x.signedCount === 1 ? 'has' : 'have'} signed for ${year}`)].filter(Boolean).join(' · ')}</p>
@@ -3495,7 +3496,7 @@ function DocPage({ id, ctx }) {
     const t = signTrouble.get(id);
     return html`<a class="bp-back" href="#/documents"><${Icon} name="back" size=${18} />Documents</a>
       <div class="bp-card bp-empty bp-empty--row bp-gap"><span class="bp-empty__icon"><${Icon} name="documents" size=${24} /></span>
-        <div><h1 class="bp-h2">${t ? 'Your signature didn’t go through' : 'That document isn’t here'}</h1><p class="bp-muted">${t ? `${t.title} was taken off the board page while you were signing it.` : 'It may have been taken off the board page.'} Everything that’s on it is in <a class="bp-link" href="#/documents">Documents</a>.</p></div></div>`;
+        <div><h1 class="bp-h2" tabindex="-1" id=${t ? `trouble-${id}` : null}>${t ? 'Your signature didn’t go through' : 'That document isn’t here'}</h1><p class="bp-muted">${t ? `${t.title} ${/deleted|isn’t on the board page/.test(t.msg) ? 'was taken off the board page' : 'changed'} while you were signing it.` : 'It may have been taken off the board page.'} Everything that’s on it is in <a class="bp-link" href="#/documents">Documents</a>.</p></div></div>`;
   }
   const written = !!doc.body;
   const changed = doc.wordsAt ? shortDate(todayEastern(Date.parse(doc.wordsAt))) : '';
@@ -3508,7 +3509,7 @@ function DocPage({ id, ctx }) {
     const lines = (md) => mdPlain(md).split('\n').map((l) => l.replace(/^\s*(?:•|\d+\.)\s+/, '').trim()).filter(Boolean);
     const was = lines(doc.signedBody); const now = lines(doc.body);
     const added = now.filter((l) => !was.includes(l)); const removed = was.filter((l) => !now.includes(l));
-    return added.length || removed.length ? { added: added.slice(0, 12), removed: removed.slice(0, 12) } : null;
+    return added.length || removed.length ? { added, removed } : null;
   })() : null;
   const HOW = { typed: 'typed on the board page', copy: 'with the copy signed on paper', staff: 'with a signed copy SOARD added', drive: 'with a signed copy in SOARD’s files' };
   return html`<div class="bp-docpage">
@@ -3523,8 +3524,8 @@ function DocPage({ id, ctx }) {
       ${written ? html`<p class="bp-btns bp-noprint"><button type="button" class="bp-btn bp-btn--sm" onClick=${() => window.print()}><${Icon} name="print" size=${16} />Print it</button></p>` : null}
     </header>
     ${doc.sign && doc.signedEarlier && !me && !trouble ? html`<div class="bp-doc__changed bp-noprint"><p>It changed since you signed: read it, then sign again.</p>${changes ? html`<details class="bp-whatchanged"><summary>What changed</summary>
-      ${changes.added.length ? html`<p class="bp-whatchanged__h">New</p><ul>${changes.added.map((t, i) => html`<li key=${i}>${t}</li>`)}</ul>` : null}
-      ${changes.removed.length ? html`<p class="bp-whatchanged__h">Taken out</p><ul>${changes.removed.map((t, i) => html`<li key=${i}><s>${t}</s></li>`)}</ul>` : null}
+      ${changes.added.length ? html`<p class="bp-whatchanged__h">New</p><ul>${changes.added.slice(0, 20).map((t, i) => html`<li key=${i}>${t}</li>`)}</ul>${changes.added.length > 20 ? html`<p class="bp-whatchanged__more">and ${changes.added.length - 20} more new lines</p>` : null}` : null}
+      ${changes.removed.length ? html`<p class="bp-whatchanged__h">Taken out</p><ul>${changes.removed.slice(0, 20).map((t, i) => html`<li key=${i}><s>${t}</s></li>`)}</ul>${changes.removed.length > 20 ? html`<p class="bp-whatchanged__more">and ${changes.removed.length - 20} more lines taken out</p>` : null}` : null}
     </details>` : null}</div>` : null}
     ${written ? html`<article class="bp-card bp-docpage__words bp-rise" style=${rise(1)}><${Report} text=${doc.body} level=${2} /></article>`
       : html`<div class="bp-card bp-docpage__file bp-rise" style=${rise(1)}>
@@ -3533,7 +3534,7 @@ function DocPage({ id, ctx }) {
       </div>`}
     ${!doc.sign && trouble ? html`<section class="bp-card bp-docpage__sign bp-noprint"><p class="bp-sign__problem" role="alert" tabindex="-1" id=${`trouble-${doc.id}`}>Not signed: ${trouble.msg}</p></section>` : null}
     ${doc.sign ? html`<section class="bp-card bp-docpage__sign bp-rise" style=${rise(2)} aria-labelledby="docsign-h" id=${`doc-${doc.id}`}>
-      <h2 class="bp-h2" id="docsign-h">${me ? `Signed for ${year}` : `Sign it for ${year}`}</h2>
+      <h2 class="bp-h2" id="docsign-h">${!data.me.slug ? `Signatures for ${year}` : me ? `Signed for ${year}` : `Sign it for ${year}`}</h2>
       <p class="bp-muted">${doc.signedCount} of ${data.people.board.length} board members ${doc.signedCount === 1 ? 'has' : 'have'} signed for ${year}.${data.me.slug ? '' : ' Board members sign here.'}</p>
       <${SignForm} d=${doc} ctx=${ctx} />
       ${written ? html`<div class="bp-printonly bp-docpage__paper" aria-hidden="true">

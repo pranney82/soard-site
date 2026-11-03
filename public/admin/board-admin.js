@@ -542,6 +542,8 @@ function Signers({ d, ctx, onDoc }) {
     if (!j.ok) { addToast(j.error, 'error'); return; }
     onDoc(j.doc);
     addToast(`${j.signed.name}’s signed copy is in: signed for ${year}`, 'info');
+    // The focus stays on their row (its button is "Take it off" now)
+    requestAnimationFrame(() => document.querySelector(`[data-signer="${slug}"] button`)?.focus());
   };
   const off = async (p) => {
     const s = d.signed[p.slug];
@@ -906,7 +908,7 @@ function DocumentsTab({ ctx }) {
       </div>
     </div>` : html`<div class="bd-actions"><button class="btn btn-primary btn-sm" data-add-doc onClick=${() => { const next = { title: '', kind: 'governance', note: '', sign: false, file: null, existing: null }; opened.current = snap(next); setRead(null); setDraft(next); focusTitle(); }}>Add a document</button></div>`}
     <div class="card" style="padding:0">
-      <div class="sec-head"><h3>On the board page <span class="count">${data.docs.length}</span></h3><span class="sec-head__hint">Signatures are for ${year}</span></div>
+      <div class="sec-head"><h3>Papers <span class="count">${data.docs.length}</span></h3><span class="sec-head__hint">Signatures are for ${year}</span></div>
       ${data.docs.length ? html`<ul class="bd-row-list">${data.docs.map((d) => {
         // Who's on the board now, signed or not (a signature from someone who has since left isn't counted)
         const signed = data.members.filter((p) => d.signed[p.slug]);

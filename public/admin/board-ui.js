@@ -616,6 +616,7 @@ export const STYLES = `
   .bd-wordings__list { list-style: none; margin: 0.5rem 0 0; padding: 0; border-top: 1px solid var(--color-border); }
   .bd-wordings__list > li { padding: 0.5rem 0; border-bottom: 1px solid var(--color-border); font-size: var(--fs-sm); }
   .bd-wordings__row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.35rem 0.75rem; }
+  .bd-wordings__row > .bd-actions { margin-left: auto; }
   .bd-wordings__words { margin-top: 0.5rem; padding: 0.75rem 1rem; border-radius: 8px; background: var(--color-bg-subtle, #F7F7F5); max-height: 22rem; overflow: auto; }
   .bd-back { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--color-text-secondary); font-size: var(--fs-sm); text-decoration: none; margin-bottom: 0.25rem; }
   .bd-back:hover { color: var(--color-text); }
