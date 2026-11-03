@@ -186,13 +186,15 @@ async function drawFitted(f, page, box, { ahead = false, part = 0 } = {}) {
     // The sheet: as wide and as tall as the file's parts cut in two need, and its pages shown whole that are little
     // taller; a page bigger than that (a photo filling it, a scan) comes up smaller on the same sheet instead of making
     // every other page small
-    const split = all.filter((a) => a.n === 2);
+    const split = all.filter((a) => a.n >= 2);
     const tallest = Math.max(0, ...split.map((a) => a.h + (a.extra || 0)));
-    const typical = split.length ? all.filter((a) => a.n === 2 || a.h <= tallest * 1.25) : all;
+    const typical = split.length ? all.filter((a) => a.n >= 2 || a.h <= tallest * 1.25) : all;
     const x0 = Math.min(...typical.map((a) => a.x));
     const x1 = Math.max(...typical.map((a) => a.x + a.w));
     const hi = Math.max(...typical.map((a) => a.h + (a.extra || 0)));
-    const W = Math.floor(Math.min(fit * 3, box.w / (x1 - x0 + 2 * MARGIN), box.h / (hi * tall + 2 * MARGIN)));
+    // (up to three times the whole page's size, more for a page cut in more parts: a long statement's eighth is small)
+    const most = Math.max(2, ...all.map((a) => a.n || 1));
+    const W = Math.floor(Math.min(fit * Math.max(3, most * 1.6), box.w / (x1 - x0 + 2 * MARGIN), box.h / (hi * tall + 2 * MARGIN)));
     // Close up when it's bigger, and always for a file shown in parts (on a phone each part would else be the whole
     // page again)
     if (W > fit * 1.12 || split.length) {
@@ -559,8 +561,11 @@ function RevealsSlide({ n }) {
   const set = (r) => !!(r.confirmed && r.date);
   const all = [...(n?.reveals || [])].map((r) => ({ ...r, at: set(r) ? r.date : windowStart(r.window) || '9999' })).sort((a, b) => a.at.localeCompare(b.at));
   if (!all.length) return html`<p class="bs-quiet bs-pipe__none">No reveals on the calendar yet.</p>`;
-  // As many as fit across the screen at a readable size (about 135px a stop), the rest counted after them
-  const room = Math.max(4, Math.floor(((typeof innerWidth === 'number' ? innerWidth : 1600) * 0.8) / 135));
+  // As many as fit across the screen at a readable size (about 8.5 of the screen's units a stop, 135px at 1080p), the
+  // rest counted after them
+  const vw = typeof innerWidth === 'number' ? innerWidth : 1600;
+  const unit = Math.min((typeof innerHeight === 'number' ? innerHeight : 900) * 0.0148, vw * 0.0083);
+  const room = Math.max(4, Math.floor((vw * 0.8) / (unit * 8.5)));
   let list = all.slice(0, 10);
   const stopsOf = (l) => new Set(l.map((r) => (set(r) ? `d:${r.date}` : `w:${r.window?.month || ''}:${r.window?.part || ''}`))).size;
   while (list.length > 1 && stopsOf(list) > room - (list.length < all.length ? 1 : 0)) list = list.slice(0, -1);
@@ -1189,7 +1194,7 @@ export function Screen({ id, data, d, onBack = null }) {
   const docs = item ? (stop.n >= 0 ? itemDocs(meeting, item, v.prior || []).filter((d) => deck.some((s) => s.fileId === d.file.id)) : docsOf(meeting.files.filter((f) => deck.some((s) => s.fileId === f.id && s.n === -1)))) : [];
   const file = stop.fileId ? [...meeting.files, ...(v.prior || []).flatMap((x) => x.files)].find((f) => f.id === stop.fileId) : null;
   // The half of a tall page on: the chair's word for this page (this deck may not have split it yet), else the stop's
-  const half = stop.kind === 'doc' && stop.fileId === live.fileId && stop.page === (live.page || 0) ? (live.part ? 1 : 0) : stop.part || 0;
+  const half = stop.kind === 'doc' && stop.fileId === live.fileId && stop.page === (live.page || 0) ? (live.part || 0) : stop.part || 0;
   const numbers = v.snapshot || data.numbers;
   const vote = v.vote && started && !ended && !(fresh && told.rehearsal) ? v.vote : null;
   const place = [m?.location, m?.address].filter(Boolean).join(', ');
@@ -1417,7 +1422,7 @@ export function ScreenPeek({ v, onOpen }) {
   if (!f) return null;
   return html`<figure class="bp-peek">
     <div class="bp-peek__page" ref=${ref}></div>
-    <figcaption><span><strong>On the screen:</strong> ${[docTitle(f.name), n.count > 1 ? `${docKind(f) === 'slides' ? 'slide' : 'page'} ${v.live.page + 1} of ${n.count}` : '', n.halves === 2 && v.live.part ? 'continued' : ''].filter(Boolean).join(', ')}</span>
+    <figcaption><span><strong>On the screen:</strong> ${[docTitle(f.name), n.count > 1 ? `${docKind(f) === 'slides' ? 'slide' : 'page'} ${v.live.page + 1} of ${n.count}` : '', n.halves >= 2 && v.live.part ? 'continued' : ''].filter(Boolean).join(', ')}</span>
       <a class="bp-btn bp-btn--sm" href=${`#/meetings/${v.id}/screen`} onClick=${onOpen}>Follow the screen</a></figcaption>
   </figure>`;
 }

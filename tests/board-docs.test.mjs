@@ -377,6 +377,24 @@ test('a ruled table (its borders down every row) is cut between its rows; a phot
   assert.ok(p2.n === 1 || p2.cut >= 0.6, `not through the photo (${p2.n}, ${p2.cut})`);
 });
 
+test('a page far taller than a letter (a long statement) is cut in as many parts as its words need, each between lines', () => {
+  const size = { w: 612 * (96 / 72), h: 2600 * (96 / 72) };
+  // 150 lines of a statement, a blank row before every 10th (its sections)
+  const rows = [];
+  let y = 0.03;
+  for (let i = 0; i < 150; i++) { rows.push({ y0: y, y1: y + 0.0035, x0: 0.1, x1: 0.9 }); y += i % 10 === 9 ? 0.0095 : 0.006; }
+  const lay = splitOf(rows, size);
+  assert.ok(lay.n >= 4 && lay.n <= 8, `${lay.n} parts`);
+  assert.equal(lay.gaps.length, lay.n - 1);
+  const areas = Array.from({ length: lay.n }, (_, k) => areaOf(lay, k));
+  for (let k = 1; k < areas.length; k++) assert.ok(areas[k].y >= areas[k - 1].y + areas[k - 1].h - 1e-9, `part ${k} starts after part ${k - 1}`);
+  for (const a of areas) assert.ok(!rows.some((r) => (r.y0 < a.y && r.y1 > a.y) || (r.y0 < a.y + a.h && r.y1 > a.y + a.h)), 'no line cut through');
+  assert.ok(Math.max(...areas.map((a) => a.h)) < (lay.ink.y1 - lay.ink.y0) / lay.n * 1.5, 'parts near the same height');
+  assert.ok(Math.abs(areas[0].y - (lay.ink.y0 - 0.006)) < 1e-9 && Math.abs(areas.at(-1).y + areas.at(-1).h - (lay.ink.y1 + 0.006)) < 1e-9, 'all of it shown');
+  // A letter page of the same lines stays in two
+  assert.equal(splitOf(rows.slice(0, 40).map((r) => ({ ...r, y0: r.y0 * 3.2, y1: r.y1 * 3.2 })), { w: 816, h: 1056 }).n, 2);
+});
+
 test('a page of words already big (a goals page) is never cut', () => {
   const size = { w: 816, h: 1056 };
   const rows = Array.from({ length: 9 }, (_, i) => ({ y0: 0.1 + i * 0.09, y1: 0.16 + i * 0.09, x0: 0.1, x1: 0.85 }));

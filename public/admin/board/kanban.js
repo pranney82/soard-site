@@ -122,7 +122,7 @@ export function Pipeline({ projects, reveals = [] }) {
   if (!total) return html`<p class="bs-quiet bs-pipe__none">No makeovers in progress right now.</p>`;
   const rows = total <= 6 ? 1 : total <= 14 ? 2 : 3;
   const across = (c) => Math.max(1, Math.ceil(c.cards / rows));
-  const template = cols.map((c) => (c.cards ? `minmax(0, ${across(c)}fr)` : 'minmax(8.5rem, 0.45fr)')).join(' ');
+  const template = cols.map((c) => (c.cards ? `minmax(0, ${across(c)}fr)` : 'minmax(calc(var(--bs-u) * 8.5), 0.45fr)')).join(' ');
   const revealOf = (b) => (b.slug ? reveals.find((r) => r.slug === b.slug) : null);
   // The reveal's tag: in full on a big card ("Reveal mid November"), short on a small one ("Mid Nov", "Nov 6 · 1 PM")
   const roomy = rows === 1;

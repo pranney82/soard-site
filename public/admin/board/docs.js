@@ -1556,9 +1556,11 @@ export function splitOf(blocks, size) {
   let lines = 1;
   let end = -1;
   const tall = [];
+  const blanks = [];
   let from = rows[0]?.y0 ?? 0;
   for (const b of rows) {
     if (end >= 0 && b.y0 - end > 0.002) {
+      blanks.push([end, b.y0]);
       tall.push(end - from);
       from = b.y0;
       lines += 1;
@@ -1579,9 +1581,28 @@ export function splitOf(blocks, size) {
   // rows; a laid-out page's are its words' boxes (a paragraph's lines touch, so runs would be whole paragraphs)
   const lineH = (rows[0]?.xs ? tall : rows.map((b) => b.y1 - b.y0)).filter((h) => h > 0.004).sort((a, b) => a - b);
   if (lineH.length && lineH[Math.floor(lineH.length / 2)] > 0.028) return whole;
-  const { gap } = best || near;
+  // A page much taller than it is wide (a long statement) in as many parts as keep its words readable, up to 8, each cut
+  // the same way at its own place down the page; a letter page in two
+  const want = Math.max(2, Math.min(8, Math.round((span * size.h) / ((ink.x1 - ink.x0) * size.w * 0.75))));
+  let gaps = [(best || near).gap];
+  for (let n = want; n > 2; n--) {
+    const seg = span / n;
+    const cuts = [];
+    for (let k = 1; k < n; k++) {
+      const at = ink.y0 + seg * k;
+      const after = cuts.length ? cuts.at(-1)[1] + seg * 0.3 : ink.y0 + seg * 0.3;
+      const open = blanks.filter((g) => (g[0] + g[1]) / 2 > after);
+      const offOf = (g) => Math.abs((g[0] + g[1]) / 2 - at);
+      const close = open.filter((g) => offOf(g) <= seg * 0.16).sort((a, b) => (b[1] - b[0]) - (a[1] - a[0]) || offOf(a) - offOf(b))[0];
+      const pick = close || open.filter((g) => offOf(g) <= seg * 0.4).sort((a, b) => offOf(a) - offOf(b))[0];
+      if (!pick) break;
+      cuts.push(pick);
+    }
+    if (cuts.length === n - 1) { gaps = cuts; break; }
+  }
+  const [gap] = gaps;
   const head = headingsOf(inked, ink);
-  return { part, ink, cut: (gap[0] + gap[1]) / 2, gap, n: 2, head: head && head[1] < gap[0] ? head : null };
+  return { part, ink, cut: (gap[0] + gap[1]) / 2, gap, gaps, n: gaps.length + 1, head: head && head[1] < gap[0] ? head : null };
 }
 /**
  * Which rows of a drawn page are only a table's ruled lines (`xs`, each row's runs of ink, from inkOf): its borders,
@@ -1675,7 +1696,7 @@ export function headingsOf(rows, ink) {
 const HEAD_GAP = 0.014;
 /** Where the headings a page's part `k` carries are ({ y, h, gap }), or null: only a second part has them */
 export function headingsArea(lay, k = 0) {
-  if (!k || lay?.n !== 2 || !lay.head) return null;
+  if (!k || !(lay?.n >= 2) || !lay.head) return null;
   return { y: lay.head[0], h: lay.head[1] - lay.head[0], gap: HEAD_GAP };
 }
 /**
@@ -1691,10 +1712,11 @@ export function areaOf(lay, k = 0) {
   const x1 = Math.min(1, ink.x1 + s);
   let y0 = Math.max(0, ink.y0 - s);
   let y1 = Math.min(1, ink.y1 + s);
-  if (lay.n === 2 && lay.gap) {
-    const [g0, g1] = lay.gap;
-    if (k) y0 = Math.max((g0 + g1) / 2, g1 - s);
-    else y1 = Math.min((g0 + g1) / 2, g0 + s);
+  const gaps = lay.gaps || (lay.gap ? [lay.gap] : []);
+  if (lay.n >= 2 && gaps.length) {
+    const i = Math.max(0, Math.min(k, gaps.length));
+    if (i > 0) { const [g0, g1] = gaps[i - 1]; y0 = Math.max((g0 + g1) / 2, g1 - s); }
+    if (i < gaps.length) { const [g0, g1] = gaps[i]; y1 = Math.min((g0 + g1) / 2, g0 + s); }
   }
   return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
@@ -1707,7 +1729,7 @@ export function halfOf(lay, k = 0) {
 const layouts = new Map();
 // Kept on this device too (a file never changes under its id), so a meeting opened again knows its halves at once
 // and its stops don't change count as they're worked out. The version goes up when how a page is read changes
-const keptKey = (f, i) => `bdoc-lay11:${f.id}:${f.size || 0}:${i}`;
+const keptKey = (f, i) => `bdoc-lay12:${f.id}:${f.size || 0}:${i}`;
 const countKey = (f) => `bdoc-count:${f.id}:${f.size || 0}`;
 const kept = (f, i) => { try { const x = JSON.parse(localStorage.getItem(keptKey(f, i)) || 'null'); return x && typeof x.n === 'number' ? x : null; } catch { return null; } };
 // The last version's, read another way, go (once a page load)
@@ -1715,7 +1737,7 @@ let swept = false;
 function sweepKept() {
   if (swept) return;
   swept = true;
-  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay([2-9]|10):/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
+  try { for (let k = localStorage.length - 1; k >= 0; k--) { const key = localStorage.key(k); if (/^bdoc-lay([2-9]|1[01]):/.test(key || '')) localStorage.removeItem(key); } } catch { /* storage off */ }
 }
 const PROBE = 400;
 /**
@@ -1761,7 +1783,7 @@ export function layoutOf(f, doc, i) {
       if (!blocks) return { part: null, ink: null, cut: 0, gap: null, n: 1 };
       let lay = splitOf(blocks, doc.size(i));
       // A picture is seen whole (a phone's screenshot, far taller than wide, is read like a page)
-      if (doc.kind === 'image' && lay.n === 2 && doc.size(i).h / doc.size(i).w < 1.7) lay = { ...lay, cut: 0, gap: null, n: 1 };
+      if (doc.kind === 'image' && lay.n >= 2 && doc.size(i).h / doc.size(i).w < 1.7) lay = { ...lay, cut: 0, gap: null, gaps: null, n: 1 };
       const ink = lay.ink;
       const inkArea = ink ? (ink.x1 - ink.x0) * (ink.y1 - ink.y0) : 0;
       // A page with nothing but its number at its foot or head
