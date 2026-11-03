@@ -1683,6 +1683,9 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-item--facts { grid-template-rows: auto auto auto; align-content: center; }
 /* The makeovers or the board's faces with the presenter's notes under them: the notes their height, the rest theirs */
 .bs-item--board:has(> .bs-item__body) { grid-template-rows: auto minmax(0, 1fr) auto; }
+.bs-item--board > .bs-item__body .bs-points { max-height: calc(var(--bs-u) * 16); overflow: hidden; }
+/* (a phone scrolls the slide: all of them there) */
+@media (max-width: 900px) { .bs-item--board > .bs-item__body .bs-points { max-height: none; overflow: visible; } }
 /* The title takes the room; who presents it at most 45% of the bar, their names ending in … when they must */
 .bs-item__bar { display: flex; align-items: flex-end; justify-content: space-between; gap: calc(var(--bs-u) * 1.2) calc(var(--bs-u) * 3); min-width: 0; }
 .bs-item__bar > :first-child { flex: 1 1 auto; min-width: 0; }

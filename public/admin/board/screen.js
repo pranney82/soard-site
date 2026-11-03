@@ -1288,7 +1288,7 @@ export function Screen({ id, data, d, onBack = null }) {
         ${notesRow}${motionHere}
       </div>`;
     // A report with a slide of its own next (deckOf's 'report' stop) isn't this slide's: the reveals keep the whole screen
-    } else if (facts && (item.live === 'projects' || (item.live === 'reveals' && (!item.report || deck[at + 1]?.kind === 'report') && !item.notes && !coming))) {
+    } else if (facts && (item.live === 'projects' || (item.live === 'reveals' && (!item.report || deck[at + 1]?.kind === 'report') && !coming))) {
       // The makeovers and the reveals: the item's name and who presents it along the top, the rest of the screen theirs
       stage = html`<div class="bs-item bs-item--board">
         <div class="bs-item__bar"><div>${head}</div>${whoList ? html`<div class="bs-item__aside">${whoList}</div>` : null}</div>
