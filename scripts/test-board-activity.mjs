@@ -297,7 +297,7 @@ try {
       await jane.evaluate(() => document.querySelector('.ba-name[data-slug="sam-ortiz"]').closest('tr').querySelector('.ba-ask').click());
       ok(await waitText(jane, /Emailed Sam Ortiz, asking them to sign/), 'Sam’s row: emailed, said so');
       const toSam = mail.slice(sent0).find((m) => m.to[0] === OTHER);
-      ok(toSam && /^Please sign the Board Member Expectations for \d{4}$/.test(toSam.subject) && /#\/documents\/d_/.test(toSam.text) && /Jane Doe via SOARD Board/.test(toSam.from), `the email to Sam: straight to the paper, from the founder (${toSam?.subject})`);
+      ok(toSam && /^Please sign the Board Member Expectations for \d{4}$/.test(toSam.subject) && /\/board\/d_/.test(toSam.text) && /Jane Doe via SOARD Board/.test(toSam.from), `the email to Sam: straight to the paper, from the founder (${toSam?.subject})`);
       ok(/Asked [A-Z][a-z]{2} \d+ Ask again/.test(await rowOf('sam-ortiz')), 'his row says when, and Ask again');
       const asked = [];
       await answerAsks(jane, { onAsk: (t) => asked.push(t) });

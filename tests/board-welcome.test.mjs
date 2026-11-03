@@ -281,3 +281,76 @@ test('recorded before it goes: a send cut off midway counts as sent; a sure no f
   await sendWelcome(env, { by: 'jane@soardcharity.com' });
   assert.ok(seen?.members?.['alex-rivera'] && seen.members['sam-ortiz'], 'already counted while it goes');
 });
+
+test('one who signed in without the email needs none: the rest having it counts the board as told, and agendas can go', async () => {
+  const { boardTold, ensureSchema } = await import('../functions/api/_board.js');
+  await ensureSchema(env.DB);
+  await env.DB.prepare('INSERT INTO board_seen (slug, at) VALUES (?, ?)').bind('alex-rivera', new Date().toISOString()).run();
+  assert.equal(await boardTold(env.DB), false, 'Sam hasn’t had it and hasn’t signed in');
+  await sendWelcome(env, { slugs: ['sam-ortiz'], due: true, by: 'jane@soardcharity.com' });
+  assert.ok((await readState(env.DB, 'welcome')).sentAt, 'everyone still to sign in has it now');
+  assert.equal(await boardTold(env.DB), true);
+});
+
+test('a board that has all signed in is told, with no sign-in email sent at all', async () => {
+  const { boardTold, ensureSchema } = await import('../functions/api/_board.js');
+  await ensureSchema(env.DB);
+  for (const slug of ['alex-rivera', 'sam-ortiz']) await env.DB.prepare('INSERT INTO board_seen (slug, at) VALUES (?, ?)').bind(slug, new Date().toISOString()).run();
+  assert.equal(await boardTold(env.DB), true);
+  assert.equal(sent.length, 0);
+});
+
+test('no agenda while a sign-in email is still going out: Resend may yet say no and put the record back', async () => {
+  const { boardTold } = await import('../functions/api/_board.js');
+  let mid = null;
+  globalThis.fetch = async () => {
+    mid = await boardTold(env.DB); // the record says both have it, but Resend hasn't answered
+    return Response.json({ name: 'validation_error', message: 'Invalid from' }, { status: 422 });
+  };
+  await sendWelcome(env, { by: 'jane@soardcharity.com' }).catch(() => {});
+  assert.equal(mid, false, 'not told while it goes');
+  assert.equal(await boardTold(env.DB), false, 'Resend said no: still not told');
+});
+
+test('a send cut off long ago leaves no one "going out now" on the next send', async () => {
+  await readState(env.DB, 'welcome'); // (makes the table)
+  await env.DB.prepare("INSERT INTO board_state (key, data, updated_at) VALUES ('welcome-sending', ?, ?)").bind(JSON.stringify({ to: ['alex-rivera'] }), new Date(Date.now() - 5 * 60 * 1000).toISOString()).run();
+  let during = null;
+  await sendWelcome(env, { by: 'jane@soardcharity.com', slugs: ['sam-ortiz'], due: true, check: async () => { during = (await env.DB.prepare("SELECT data FROM board_state WHERE key = 'welcome-sending'").first()).data; } });
+  assert.equal(during, '{}');
+});
+
+test('one who has signed in is never sent it, whatever a page left open asks: left out, and named', async () => {
+  const { ensureSchema } = await import('../functions/api/_board.js');
+  await ensureSchema(env.DB);
+  await env.DB.prepare('INSERT INTO board_seen (slug, at) VALUES (?, ?)').bind('alex-rivera', new Date().toISOString()).run();
+  const r = await sendWelcome(env, { slugs: ['alex-rivera', 'sam-ortiz'], again: true, by: 'jane@soardcharity.com' });
+  assert.deepEqual(sent.map((x) => [x.to].flat()[0]), ['sam.board@example.org']);
+  assert.deepEqual(r.signedIn, ['Alex Rivera']);
+  sent = [];
+  const only = await sendWelcome(env, { slugs: ['alex-rivera'], by: 'jane@soardcharity.com' });
+  assert.equal(sent.length, 0);
+  assert.deepEqual([only.sent, only.signedIn], [0, ['Alex Rivera']]);
+});
+
+test('a board already told stays told while one member is sent it again; each send keeps the click it was for', async () => {
+  const { boardTold } = await import('../functions/api/_board.js');
+  await sendWelcome(env, { by: 'jane@soardcharity.com', click: 'first-click-1' });
+  assert.equal(await boardTold(env.DB), true);
+  assert.equal((await readState(env.DB, 'welcome')).lastClick, 'first-click-1');
+  // (sent a while ago, so Sam's can go again)
+  const { writeState } = await import('../functions/api/_board-roles.js');
+  const was = await readState(env.DB, 'welcome');
+  const old = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+  await writeState(env.DB, 'welcome', { ...was, members: Object.fromEntries(Object.keys(was.members).map((k) => [k, old])) });
+  let mid = null;
+  globalThis.fetch = async (input, init = {}) => {
+    mid = await boardTold(env.DB);
+    const b = JSON.parse(init.body);
+    sent.push(...b);
+    return Response.json({ data: b.map((_, i) => ({ id: `em_${i}` })) });
+  };
+  await sendWelcome(env, { slugs: ['sam-ortiz'], by: 'jane@soardcharity.com', click: 'second-click' });
+  assert.equal(mid, true, 'an agenda approved meanwhile needn’t wait');
+  assert.equal((await readState(env.DB, 'welcome')).lastClick, 'second-click');
+});

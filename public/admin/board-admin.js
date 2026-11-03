@@ -50,7 +50,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
     const j = await call();
     if (n !== looks.current) return j;
     // ...and never an older sign-in email record than a quick look already showed (welcomeAt)
-    if (j.ok) { setData((d) => (d?.welcomeAt > j.welcomeAt ? { ...j, welcome: d.welcome, welcomeSending: d.welcomeSending, welcomeAt: d.welcomeAt } : j)); setError(null); } else setError({ text: j.error || 'Couldn’t load the board', refused: j.status === 403 });
+    if (j.ok) { setData((d) => (d?.welcomeAt > j.welcomeAt ? { ...j, welcome: d.welcome, welcomeSending: d.welcomeSending, welcomeSendingTo: d.welcomeSendingTo, welcomeAt: d.welcomeAt } : j)); setError(null); } else setError({ text: j.error || 'Couldn’t load the board', refused: j.status === 403 });
     return j;
   };
   useEffect(() => { load(); }, []);
@@ -922,13 +922,18 @@ function DocumentsTab({ ctx }) {
  * amber is waiting on you ("Needs you", with what to do and its button after the steps). A passing outage is grey
  * for half an hour, then amber. Every line says only what's true now; how soon it follows People → Board is said once.
  */
-function AccessPanel({ ctx, ready, working, welcome }) {
+function AccessPanel({ ctx, ready, working, welcome, now }) {
   const { data, setData, addToast } = ctx;
   const a = data.access;
   const g = data.group;
   const board = data.members;
   const [trying, setTrying] = useState('');
   const [sending, setSending] = useState(false);
+  // This page's own send, from the click until its answer: a look that comes back before the server has taken it isn't
+  // "nothing going out"
+  const ownSend = useRef(false);
+  const workingNow = useRef(working);
+  workingNow.current = working;
   const [copied, setCopied] = useState(false);
   const [, setTick] = useState(0);
   const looking = useRef(false);
@@ -947,7 +952,7 @@ function AccessPanel({ ctx, ready, working, welcome }) {
   // After any action, focus stays on its button, or on its line when the button went away
   const refocus = (btn, row) => requestAnimationFrame(() => {
     const at = document.activeElement;
-    if (at && at !== document.body && at !== btn && !at.closest?.('.bd-access')) return; // moved on meanwhile: left there
+    if (at && at !== document.body && at !== btn) return; // moved on meanwhile (even within the panel): left there
     (btn?.isConnected ? btn : document.getElementById(`bd-access-${row}`))?.focus();
   });
 
@@ -989,14 +994,16 @@ function AccessPanel({ ctx, ready, working, welcome }) {
     if (busy) return;
     setSending(true);
     if (!body.test) {
+      ownSend.current = true;
       setData((d) => ({ ...d, welcomeSending: true }));
       requestAnimationFrame(() => document.getElementById('bd-access-email')?.focus());
     }
     try {
       const looked = await welcome(body, label);
+      ownSend.current = false;
       // Never reached the server and no look since (signed out, offline): not going out after all
       if (!body.test && !looked?.ok) setData((d) => ({ ...d, welcomeSending: false }));
-    } finally { setSending(false); }
+    } finally { ownSend.current = false; setSending(false); }
     refocus(btn, 'email');
   };
   const copy = async () => {
@@ -1074,55 +1081,75 @@ function AccessPanel({ ctx, ready, working, welcome }) {
           : !a.attached ? 'the step above is done' : 'the sign-in list is updated';
   // Who has had it: the same rule as the server's send and each member's row (board-shared.js)
   const hadIt = (p) => welcomeHad(w, p, board.map((x) => x.slug));
-  const told = board.filter((p) => usableEmail(p.email) && hadIt(p));
-  const notYet = board.filter((p) => usableEmail(p.email) && !hadIt(p));
-  const latest = told.map(hadIt).sort().at(-1) || null;
-  // Sends Resend didn't confirm (it may not have gone): said beside them
+  // The email is for signing in: it's still for whoever hasn't signed in yet, at an address it can reach
+  const waiting = board.filter((p) => usableEmail(p.email) && !p.lastSeen);
+  const told = waiting.filter((p) => hadIt(p));
+  const notYet = waiting.filter((p) => !hadIt(p));
+  // Nobody on the board has had it or signed in: the first send, to the whole board
+  const first = !board.some((p) => p.lastSeen || hadIt(p));
+  // Resend didn't confirm these (it may not have gone): each one's row sends it again. Who has had it is the rest
   const unconfirmed = told.filter((p) => (w.unconfirmed || []).includes(p.slug));
-  const who = (list) => (list.length <= 3 ? names(list.map((p) => p.name)) : `the ${list.length} board members${told.length ? ' who haven’t had it' : ''}`);
-  const confirm = async (e, list) => {
-    if (busy) return;
-    const btn = e.currentTarget;
-    if (await ask({ title: `Email ${who(list)} how to sign in?`, text: WELCOME_ASK, yes: list.length === 1 ? `Email ${list[0].name}` : 'Email them' })) {
-      // Exactly who the question named, and only those who still haven't had it when it goes (a stale page can't double anyone)
-      send(btn, { slugs: list.map((p) => p.slug), due: true }, told.length ? 'some' : 'all');
-    }
-  };
+  const sure = told.filter((p) => !unconfirmed.includes(p));
+  const latest = sure.map(hadIt).sort().at(-1) || null;
   // Everyone again (a rebuilt email), but not who had it in the last ten minutes (the server skips them too)
-  const justSent = told.filter((p) => Date.now() - Date.parse(hadIt(p)) < 10 * 60 * 1000);
+  const justSent = told.filter((p) => now - Date.parse(hadIt(p)) < 10 * 60 * 1000);
   const againTo = told.filter((p) => !justSent.includes(p));
   const resend = async (e) => {
     if (busy) return;
     const btn = e.currentTarget;
     const skip = justSent.length ? ` Not ${names(justSent.map((p) => p.name))}: had it in the last ten minutes.` : '';
-    if (await ask({ title: `Email ${againTo.length <= 3 ? names(againTo.map((p) => p.name)) : `${againTo.length === told.length ? 'all ' : ''}${againTo.length} board members`} again?`, text: `${WELCOME_ASK}${skip}`, yes: 'Email them again' })) send(btn, { slugs: againTo.map((p) => p.slug), again: true }, 'again');
+    const whole = board.some((p) => !p.lastSeen && !usableEmail(p.email)) ? ' with a working address' : '';
+    if (await ask({ title: `Email it again to ${againTo.length <= 3 ? names(againTo.map((p) => p.name)) : justSent.length ? `${againTo.length} of the ${told.length}${whole} who haven’t signed in` : `the ${againTo.length}${whole} who haven’t signed in`}?`, text: `${WELCOME_ASK}${skip}`, yes: 'Email them again' })) send(btn, { slugs: againTo.map((p) => p.slug), again: true }, 'again');
+  };
+  const who = (list) => (list.length <= 3 ? names(list.map((p) => p.name)) : `the ${list.length} board members${first ? '' : ' who haven’t had it'}`);
+  const confirm = async (e, list) => {
+    if (busy) return;
+    const btn = e.currentTarget;
+    if (await ask({ title: `Email ${who(list)} how to sign in?`, text: WELCOME_ASK, yes: list.length === 1 ? `Email ${list[0].name}` : 'Email them' })) {
+      // Exactly who the question named, and only those who still haven't had it when it goes (a stale page can't double anyone)
+      send(btn, { slugs: list.map((p) => p.slug), due: true }, first ? 'all' : 'some');
+    }
   };
   const preview = html`<button key="preview" class="btn btn-ghost btn-sm" aria-disabled=${busy ? 'true' : null} onKeyDown=${once} onClick=${(e) => send(e.currentTarget, { test: true }, 'preview')}>${working === 'preview' ? 'Sending…' : 'Send it to me'}</button>`;
   const noKey = html`The site can’t send email yet: add <span class="bd-code">RESEND_API_KEY</span> in Cloudflare (Workers & Pages → soard-site → Settings → Variables and Secrets).`;
-  const has = (list) => `${some(list.map((p) => p.name))} ${list.length === 1 ? 'has' : 'have'} it`;
-  const doubt = unconfirmed.length ? ` Resend didn’t confirm the email to ${some(unconfirmed.map((p) => p.name))}; Emails & invites → What went out shows whether it was delivered.` : '';
-  const email = !board.length || (!latest && !notYet.length) ? null
+  const isAre = (list, one, many) => (list.length === 1 ? one : many);
+  const toldText = !sure.length ? '' : sure.length === waiting.length && sure.length > 3
+    ? `All ${sure.length}${board.some((p) => !p.lastSeen && !usableEmail(p.email)) ? ' with a working address' : ''} who haven’t signed in yet have had it (last sent ${ago(latest)}).`
+    : `${some(sure.map((p) => p.name))} ${isAre(sure, 'has', 'have')} had it (last sent ${ago(latest)}) and ${isAre(sure, 'hasn’t', 'haven’t')} signed in yet.`;
+  // What their rows offer: it again ten minutes after it went, once it can go (the rows' own rule)
+  const soon = unconfirmed.filter((p) => now - Date.parse(hadIt(p)) < 10 * 60 * 1000);
+  const rows = isAre(unconfirmed, 'their row', 'their rows');
+  const later = !soon.length ? '' : soon.length === unconfirmed.length ? ' ten minutes after it went' : `, ${soon.length <= 2 ? `${names(soon.map((p) => p.name))}’s` : `${soon.length} of them`} ten minutes after it went`;
+  const doubt = unconfirmed.length ? ` Resend didn’t confirm the email to ${some(unconfirmed.map((p) => p.name))}, so it may not have gone; ${!ready ? `${rows} can send it once ${waitFor}` : `${rows} can send it again${later}`}.` : '';
+  const due = notYet.length ? `${some(notYet.map((p) => p.name))} ${isAre(notYet, 'hasn’t', 'haven’t')} had it.` : '';
+  const signedIn = board.filter((p) => p.lastSeen).length;
+  const email = !board.length || (!waiting.length && !signedIn) ? null
     // This page's send, another admin's or another tab's, going out right now
-    : data.welcomeSending || (working && working !== 'preview') ? { meta: 'Going out now.' }
-    // Everyone with an email has it
-    : !notYet.length ? { on: true, meta: `${told.length === 1 ? `${told[0].name} has` : `All ${told.length}${board.some((p) => !usableEmail(p.email)) ? ' with an email' : ''} have`} it (last sent ${ago(latest)}).${doubt}`,
-      actions: data.setup.email ? html`${preview}${canSend && againTo.length ? html`<button key="again" class="btn btn-ghost btn-sm" aria-disabled=${busy ? 'true' : null} onKeyDown=${once} onClick=${(e) => resend(e)}>${working === 'again' ? 'Sending…' : 'Email them again'}</button>` : null}` : null }
-    : !data.setup.email ? { warn: true, meta: noKey }
-    : !told.length ? (canSend
-      ? { warn: true, meta: 'Not sent yet.', actions: html`${preview}<button key="all" class="btn btn-primary btn-sm" aria-disabled=${busy ? 'true' : null} onKeyDown=${once} onClick=${(e) => confirm(e, notYet)}>${working === 'all' ? 'Sending…' : 'Email the board how to sign in'}</button>` }
-      : { meta: `Not sent yet. It can go once ${waitFor}.`, actions: preview })
-    : canSend
-      ? { warn: true, meta: `${has(told)}. ${some(notYet.map((p) => p.name))} ${notYet.length === 1 ? 'hasn’t' : 'haven’t'} yet.${doubt}`,
-        actions: html`${preview}<button key="some" class="btn btn-primary btn-sm" aria-disabled=${busy ? 'true' : null} onKeyDown=${once} onClick=${(e) => confirm(e, notYet)}>${working === 'some' ? 'Sending…' : notYet.length <= 2 ? `Email ${names(notYet.map((p) => p.name))}` : `Email the ${notYet.length} who haven’t had it`}</button>` }
-      : { meta: `${has(told)}. ${some(notYet.map((p) => p.name))} ${notYet.length === 1 ? 'hasn’t' : 'haven’t'} yet; it can go once ${waitFor}.${doubt}`, actions: preview };
+    // (asking the board to sign is its own email: not this one)
+    : data.welcomeSending || (working && working !== 'preview' && !working.startsWith('ask:')) ? { meta: 'Going out now.' }
+    // Nobody left to sign in: the email has done its job
+    : !waiting.length ? { on: true, meta: signedIn === board.length ? 'Everyone on the board has signed in.' : 'Everyone with a working address has signed in.' }
+    : notYet.length && !data.setup.email ? { warn: true, meta: noKey }
+    // Some haven't had it: one button sends it to just them (the server skips anyone who has it by then)
+    : notYet.length ? (canSend
+      ? { warn: true, meta: `${first ? 'Not sent yet.' : due}${toldText ? ` ${toldText}` : ''}${doubt}`,
+        actions: html`${preview}<button key="due" class="btn btn-primary btn-sm" aria-disabled=${busy ? 'true' : null} onKeyDown=${once} onClick=${(e) => confirm(e, notYet)}>${working === 'all' || working === 'some' ? 'Sending…' : first ? 'Email the board how to sign in' : notYet.length <= 2 ? `Email ${names(notYet.map((p) => p.name))}` : `Email the ${notYet.length} who haven’t had it`}</button>` }
+      : { meta: `${first ? 'Not sent yet.' : due} It can go once ${waitFor}.${toldText ? ` ${toldText}` : ''}${doubt}`, actions: preview })
+    // Everyone still to sign in has had it
+    // (amber only while a row can send it again now: waiting out the ten minutes, or Cloudflare, is grey)
+    // (and with the site unable to send email, adding its key is the founder's to do now)
+    : { on: !unconfirmed.length, warn: (ready && soon.length < unconfirmed.length) || (!!unconfirmed.length && !data.setup.email), meta: unconfirmed.length && !data.setup.email ? html`${`${toldText}${doubt}`.trim()} ${noKey}` : `${toldText}${doubt}`.trim(),
+      actions: html`${data.setup.email ? preview : null}${canSend && againTo.length ? html`<button key="again" class="btn btn-ghost btn-sm" aria-disabled=${busy ? 'true' : null} onKeyDown=${once} onClick=${(e) => resend(e)}>${working === 'again' ? 'Sending…' : 'Email them again'}</button>` : null}` };
 
   // An open page keeps up: a fresh look on coming back to the tab, and each minute while anything is on its way or waiting.
   // Focus that was on a button the fresh look took away goes to its line.
-  const settled = [signIn, group, email].every((r) => !r || r.on);
+  // (and while anyone hasn't signed in: who has, since, is never asked about or emailed it)
+  const settled = [signIn, group, email].every((r) => !r || r.on) && !waiting.length;
   useEffect(() => {
     const look = async () => {
       // One look at a time: a slow one is never overtaken by the next (whose answer would then be the only one kept)
-      if (looking.current || document.visibilityState !== 'visible' || document.querySelector('.modal-overlay') || busy || trying) return;
+      // (it waits out a question being asked, never a member's sheet: that catches up too)
+      if (looking.current || document.visibilityState !== 'visible' || document.querySelector('.ask-overlay') || busy || trying) return;
       looking.current = true;
       const row = document.activeElement?.closest?.('.bd-access')?.id;
       try { await ctx.load(); } finally { looking.current = false; }
@@ -1139,9 +1166,13 @@ function AccessPanel({ ctx, ready, working, welcome }) {
     const quick = async () => {
       const q = await Promise.race([call(null, { query: '?welcome=1' }), new Promise((r) => setTimeout(() => r({ ok: false }), 5000))]);
       if (stop) return;
-      if (q.ok) { misses = 0; setData((d) => (d.welcomeAt > q.welcomeAt ? d : { ...d, welcome: q.welcome, welcomeSending: q.welcomeSending, welcomeAt: q.welcomeAt })); }
+      // (this page's own send not taken yet: still going out, and asked again until it is, so its rows say who it's to)
+      // (a row's send, or one this page started before a tab switch, counts too)
+      const mineGoing = ownSend.current || (!!workingNow.current && !/^(preview|waiting|ask:)/.test(workingNow.current));
+      const early = mineGoing && !q.welcomeSending;
+      if (q.ok) { misses = 0; setData((d) => (d.welcomeAt > q.welcomeAt ? d : { ...d, welcome: q.welcome, welcomeSending: q.welcomeSending || early, welcomeSendingTo: early ? d.welcomeSendingTo : q.welcomeSendingTo, welcomeAt: q.welcomeAt })); }
       else if (++misses >= 5) { setData((d) => ({ ...d, welcomeSending: false })); return; } // can't check: the minute's look takes over
-      if (q.ok ? q.welcomeSending : data.welcomeSending) next = setTimeout(quick, 2000);
+      if (q.ok ? q.welcomeSending || early : data.welcomeSending) next = setTimeout(quick, 2000);
     };
     quick();
     return () => { stop = true; clearTimeout(next); };
@@ -1172,28 +1203,58 @@ const gWhy = (e) => (/aborted|timed? ?out/i.test(String(e)) ? 'no answer in time
 /** Cloudflare refusing the key itself: only a new token fixes that, so Try again isn't offered as the fix */
 const badKey = (e) => /Authentication error|Unauthorized|Invalid API Token|not authorized|permission|HTTP 40[13]/i.test(String(e || ''));
 
+// The email this page is sending (its button's label), kept past Board's tabs: a tab switched away from and back to in the
+// middle of a send still holds every button and says it's going out, and the send clears it when it's done
+let sendingNow = '';
+const sendingSeen = new Set();
+const setSendingNow = (label) => { sendingNow = label; sendingSeen.forEach((f) => f(label)); };
+
 function MembersTab({ ctx }) {
   const { data, addToast } = ctx;
-  const [working, setWorking] = useState('');
+  const [working, setWorkingHere] = useState(sendingNow);
+  useEffect(() => { sendingSeen.add(setWorkingHere); setWorkingHere(sendingNow); return () => { sendingSeen.delete(setWorkingHere); }; }, []);
+  const setWorking = setSendingNow;
   // The papers each member signs this year: written in Board, or a file the board can open (as the sign-in email counts them)
   const signDocs = data.docs.filter((d) => d.sign && d.shared && (d.body || (d.file && !d.file.staffOnly)));
   // When the sign-in email can go, for Board access and every row alike (the server's own rule): email set up, and the list
   // kept and on the admin's application, or the key gone with the list still matching the board
   const a = data.access;
   const ready = !!data.setup.email && (a.configured ? a.ok && a.attached : !!a.groupId && a.current);
+  // One clock for Board access and every row: at a member's ten minutes (when "Send it again" comes back) both move together
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const ids = data.members.map((x) => x.slug);
+    const at = Date.now();
+    const ends = data.members.map((p) => Date.parse(welcomeHad(data.welcome, p, ids)) + 10 * 60 * 1000).filter((t) => t > at);
+    const t = setTimeout(() => setNow(Date.now()), Math.min(60 * 1000, ...ends.map((e) => e - at + 50)));
+    return () => clearTimeout(t);
+  }, [now, data.welcome, data.members]);
   const welcome = async (body, label) => {
     setWorking(label);
-    const j = await call({ action: 'send-welcome', ...body });
+    // This click, kept on the record with its send: the browser posting it again finds its own send there
+    const click = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    // Who had it before this click: "has it now" only for a send that reached them since
+    const ids = data.members.map((x) => x.slug);
+    const before = Object.fromEntries(data.members.map((p) => [p.slug, welcomeHad(data.welcome, p, ids)]));
+    // (a send since the click: newer than it, give or take a minute between the server's clock and this one)
+    const clicked = Date.now() - 60 * 1000;
+    const since = (w, p) => { const at = welcomeHad(w, p, ids); return !!at && at !== before[p.slug] && Date.parse(at) >= clicked; };
+    const j = await call({ action: 'send-welcome', ...body, ...(body.test ? {} : { click }) });
     let looked = null;
     // Every send button (here and on each row) stays held until the page knows who has it (the server never sends anyone
     // a second copy either way). Who has it usually comes with the answer; without it (turned away while another send went
     // out, or no answer at all) the page looks first, waiting out the other send
-    if (!body.test && j.welcome) ctx.setData((d) => ({ ...d, welcome: j.welcome, welcomeSending: j.welcomeSending, welcomeAt: j.welcomeAt }));
+    if (!body.test && j.welcome) ctx.setData((d) => ({ ...d, welcome: j.welcome, welcomeSending: j.welcomeSending, welcomeSendingTo: j.welcomeSendingTo, welcomeAt: j.welcomeAt }));
     else if (!body.test) {
-      if (j.status === 409) {
+      // (turned away while another send went out, or no answer to this one, which may still be going out: wait for it, so
+      // what's said after is how it ended)
+      if (j.status === 409 || typeof j.sent !== 'number') {
         for (let i = 0; i < 30; i++) {
           const q = await call(null, { query: '?welcome=1' });
+          // Each look shows the other send as it goes (its rows "Going out now"), every button held, none "Sending…"
+          if (q.ok) ctx.setData((d) => (d.welcomeAt > q.welcomeAt ? d : { ...d, welcome: q.welcome, welcomeSending: q.welcomeSending, welcomeSendingTo: q.welcomeSendingTo, welcomeAt: q.welcomeAt }));
           if (!q.ok || !q.welcomeSending) break;
+          setWorking('waiting');
           await new Promise((r) => setTimeout(r, 2000));
         }
       }
@@ -1202,26 +1263,54 @@ function MembersTab({ ctx }) {
     setWorking('');
     // One batch: it all went or none of it did, so after a failure sending again never doubles anyone's
     const one = body.slugs?.length === 1 ? data.members.find((p) => p.slug === body.slugs[0])?.name : '';
+    // An address the mailer can't use (kim@gmail.c) is named, so it gets fixed on People → Board; who signed in since the
+    // page last looked is left out, and said
+    // (with no answer, from the look taken after: those asked about who'd signed in, or whose address isn't whole)
+    const askedNow = looked?.members ? looked.members.filter((p) => !body.slugs || body.slugs.includes(p.slug)) : [];
+    const unusable = j.unusable || askedNow.filter((p) => p.email && !usableEmail(p.email)).map((p) => p.name);
+    const signedIn = j.signedIn || askedNow.filter((p) => p.lastSeen && usableEmail(p.email)).map((p) => p.name);
+    const bad = unusable.length ? ` The email on People → Board for ${unusable.join(', ')} isn’t a whole address.` : '';
+    const inAlready = signedIn.length ? ` ${signedIn.length > 1 ? `${signedIn.slice(0, -1).join(', ')} and ${signedIn.at(-1)} have` : `${signedIn[0]} has`} signed in already, so ${signedIn.length > 1 ? 'they weren’t' : 'wasn’t'} emailed.` : '';
+    // (Resend's own words end their sentence before anything is said after them)
+    const ended = (t) => (/[.!?]$/.test(String(t).trim()) ? String(t).trim() : `${String(t).trim()}.`);
+    const unsureText = 'Resend didn’t confirm it went, so it may have gone. It’s counted as sent; Emails & invites → What went out shows whether it was delivered.';
+    // This click's own send, found on the record by its id (the answer lost, cut off, or the browser posting it again):
+    // said as sent, or as Resend not confirming it
+    const ownToast = (w) => {
+      // (exactly who that send went to, as the server kept it: never another send's since this page last looked)
+      const mine = w?.lastClick === click ? data.members.filter((p) => (w.lastTo || []).includes(p.slug)) : [];
+      if (!mine.length) return false;
+      const doubted = mine.some((p) => (w.unconfirmed || []).includes(p.slug));
+      addToast(`${doubted ? unsureText : mine.length === 1 ? `Emailed ${mine[0].name}.` : `Emailed ${plural(mine.length, 'board member')}.`}${inAlready}${bad}`, doubted || bad ? 'error' : 'info');
+      return true;
+    };
     // Only the server's own answer says who got it: no answer at all says nothing either way, a refusal (sent: 0, nothing
     // failed) sent nobody, and Resend not answering may still have sent it (the server counts it as sent)
     if (body.test) addToast(j.ok ? `Sent to ${j.to?.[0] || 'you'}` : j.error, j.ok ? 'info' : 'error');
-    else if (typeof j.sent !== 'number') addToast(`Couldn’t tell whether it went (${j.status === 200 ? 'the answer was cut off' : j.error}). ${looked?.ok ? 'Board access now shows who has it.' : 'Reload the page to see who has it; sending again never gives anyone a second copy.'}`, 'error');
-    else if (j.unsure) addToast('Resend didn’t confirm it went, so it may have gone. It’s counted as sent; Emails & invites → What went out shows whether it was delivered.', 'error');
+    else if (typeof j.sent !== 'number') {
+      const expired = /session expired/i.test(j.error || '');
+      // (an answer that was an error says the server's words; no answer at all says that)
+      const why = expired ? 'Your admin session expired' : j.status === 200 ? 'The answer was cut off' : j.status ? `The site answered “${String(j.error || `HTTP ${j.status}`).replace(/[.\s]+$/, '')}”` : 'No answer came back';
+      if (!ownToast(looked?.welcome)) addToast(`${why}, so it isn’t known whether it went. ${looked?.ok ? 'Board access now shows who has it.' : expired ? 'Reload the page and sign in again to see who has it; sending again never gives anyone a second copy.' : 'Reload the page to see who has it; sending again never gives anyone a second copy.'}`, 'error');
+    }
+    else if (j.unsure) addToast(`${unsureText}${inAlready}${bad}`, 'error');
     else if (j.status === 409 && /going out at the same moment/.test(j.error || '')) {
       // Another send went at the same moment (another tab, or the browser posting this one again): say who has it now
       const asked = data.members.filter((p) => usableEmail(p.email) && (!body.slugs || body.slugs.includes(p.slug)));
-      const have = looked?.welcome && asked.length && asked.every((p) => welcomeHad(looked.welcome, p, data.members.map((x) => x.slug)));
-      addToast(have ? `${asked.length === 1 ? `${asked[0].name} has` : 'They have'} it now: another send went out at the same moment.` : j.error, have ? 'info' : 'error');
+      // ...or this click's own, its first answer lost and the browser posting it again while it went: said as sent
+      const have = looked?.welcome && asked.length && asked.every((p) => since(looked.welcome, p) && !(looked.welcome.unconfirmed || []).includes(p.slug));
+      if (!ownToast(looked?.welcome)) addToast(have ? `${asked.length === 1 ? `${asked[0].name} has` : 'They have'} it now: another send went out at the same moment.` : j.error, have ? 'info' : 'error');
     }
-    else if (!j.ok) addToast(j.failed ? (j.sent ? `Emailed ${j.sent}; ${plural(j.failed, 'email')} didn’t go (${j.error})` : `Nobody got it, so sending again is safe. ${j.error}`) : `Not sent: ${j.error}`, 'error');
+    else if (!j.ok) addToast(`${ended(j.failed ? (j.sent ? `Emailed ${j.sent}; ${plural(j.failed, 'email')} didn’t go (${j.error})` : `Nobody got it, so sending again is safe. ${j.error}`) : `Not sent: ${j.error}`)}${inAlready}${bad}`, 'error');
     else {
-      // An address the mailer can't use (kim@gmail.c) is named, so it gets fixed on People → Board
-      const bad = j.unusable?.length ? ` The email on People → Board for ${j.unusable.join(', ')} isn’t a whole address.` : '';
-      if (!j.sent && j.already) addToast(`${body.again ? 'Nobody was emailed again: everyone had it in the last ten minutes' : one ? `${one} already has it` : 'They already have it'}.${bad}`, bad ? 'error' : 'info');
-      else addToast(`${one && j.sent === 1 ? `Emailed ${one}` : `Emailed ${plural(j.reached || j.sent, 'board member')}`}.${bad}`, bad ? 'error' : 'info');
+      // (nothing sent by this answer: the browser posted the request again, and its first try sent it)
+      if (!j.sent && ownToast(j.welcome)) { /* said */ }
+      else if (!j.sent && !j.already && inAlready) addToast(`${inAlready.trim()}${bad}`, bad ? 'error' : 'info');
+      else if (!j.sent && j.already) addToast(`${body.again ? 'Nobody was emailed again: everyone had it in the last ten minutes' : one && body.slugs && !body.due ? `${one} had it in the last ten minutes; it can go again after that` : one ? `${one} already has it` : 'They already have it'}.${inAlready}${bad}`, bad ? 'error' : 'info');
+      else addToast(`${one && j.sent === 1 ? `Emailed ${one}` : `Emailed ${plural(j.reached || j.sent, 'board member')}`}.${inAlready}${bad}`, bad ? 'error' : 'info');
     }
-    // The full look, after the answer is shown
-    if (!body.test && j.welcome) looked = await ctx.load();
+    // The full look follows the answer, without holding the buttons (the answer already said who has it)
+    if (!body.test && j.welcome) { ctx.load(); return { ok: true }; }
     return looked;
   };
   const rowHad = (slug) => { const p = data.members.find((x) => x.slug === slug); return !!(p && welcomeHad(data.welcome, p, data.members.map((x) => x.slug))); };
@@ -1258,8 +1347,8 @@ function MembersTab({ ctx }) {
     await askSign({}, 'ask:all');
   };
   return html`
-    <${AccessPanel} ctx=${ctx} ready=${ready} working=${working} welcome=${welcome} />
-    <${BoardActivity} data=${data} signDocs=${signDocs} ready=${ready} working=${working} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy}
+    <${AccessPanel} ctx=${ctx} ready=${ready} working=${working} welcome=${welcome} now=${now} />
+    <${BoardActivity} data=${data} signDocs=${signDocs} ready=${ready} working=${working} now=${now} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy}
       onAsk=${(slug) => askSign({ slugs: [slug] }, `ask:${slug}`)} onAskAll=${askAll} onAskPreview=${() => askSign({ test: true }, 'ask:me')} />
     <${RunsBoard} ctx=${ctx} />`;
 }

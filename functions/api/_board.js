@@ -1338,10 +1338,32 @@ export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) 
  * to open it; the heartbeat sends it then (maybeSendApprovedAgendas).
  * → { sent, failed, … } | { waiting: 'sign-in' } | null (nothing to send: sent already, not ahead, a practice)
  */
+/**
+ * The board knows how to sign in: the whole board's send told them (sentAt), or each board member with an address it can
+ * go to has had the email or has signed in already (one who signed in without it needs no email to open an agenda).
+ * Once told, someone added later doesn't hold up the board's agendas: Board access names them, with their send.
+ */
+export async function boardTold(DB) {
+  await readState(DB, 'welcome'); // (makes the table)
+  // The record and the claim in one read: not while a send is going out (its record is written before Resend answers,
+  // and goes back if Resend says no), and never a record a send has just put back
+  const rows = (await DB.prepare("SELECT key, data, updated_at FROM board_state WHERE key IN ('welcome', 'welcome-sending')").all()).results || [];
+  const claim = rows.find((r) => r.key === 'welcome-sending');
+  let claimed = {};
+  try { claimed = JSON.parse(claim?.data || '{}') || {}; } catch { /* none */ }
+  if (claim && !claimed.told && Date.now() - Date.parse(claim.updated_at) < 2 * 60 * 1000) return false;
+  let w = {};
+  try { w = JSON.parse(rows.find((r) => r.key === 'welcome')?.data || '{}') || {}; } catch { /* none */ }
+  if (w.sentAt) return true;
+  const [board, seen] = await Promise.all([activeBoard(DB), DB.prepare('SELECT slug FROM board_seen').all().then((r) => new Set((r.results || []).map((x) => x.slug)))]);
+  const usable = board.filter((p) => isEmail(p.email));
+  return usable.length > 0 && usable.every((p) => seen.has(p.slug) || welcomeHad(w, p, board.map((x) => x.slug)));
+}
+
 export async function sendApprovedAgenda(env, id, { now = Date.now() } = {}) {
   const m = await getMeeting(env.DB, id);
   if (!m || m.practice || m.notBoard || m.packetSentAt || !isDate(m.date) || m.date < todayEastern(now) || !emailConfigured(env)) return null;
-  if (!(await readState(env.DB, 'welcome')).sentAt) return { waiting: 'sign-in' };
+  if (!(await boardTold(env.DB))) return { waiting: 'sign-in' };
   // Once, even when the approval and the heartbeat reach it together
   const key = `agenda-email:${m.id}`;
   const at = new Date(now).toISOString();
@@ -1362,7 +1384,7 @@ export async function sendApprovedAgenda(env, id, { now = Date.now() } = {}) {
 /** Each agenda approved before the board had the sign-in email (or that didn't go): sent once it can be. Never throws */
 export async function maybeSendApprovedAgendas(env, { now = Date.now() } = {}) {
   try {
-    if (!(await readState(env.DB, 'welcome')).sentAt) return;
+    if (!(await boardTold(env.DB))) return;
     const since = new Date(now - 60 * 86400000).toISOString();
     const rows = (await env.DB.prepare("SELECT meeting_id FROM board_asks WHERE kind = 'chair' AND status = 'approved' AND in_at >= ?").bind(since).all()).results || [];
     for (const { meeting_id: id } of rows) await sendApprovedAgenda(env, id, { now }).catch((err) => console.error('[board] approved agenda', id, err.message));
@@ -1615,7 +1637,7 @@ export async function sendWelcome(env, opts = {}) {
   // the next finds who already has it. The claim lapses after two minutes if a send never finishes.
   await readState(env.DB, 'welcome');
   const now = nowIso();
-  const got = await env.DB.prepare("INSERT INTO board_state (key, data, updated_at) VALUES ('welcome-sending', '{}', ?) ON CONFLICT(key) DO UPDATE SET updated_at = excluded.updated_at WHERE board_state.updated_at < ?")
+  const got = await env.DB.prepare("INSERT INTO board_state (key, data, updated_at) VALUES ('welcome-sending', '{}', ?) ON CONFLICT(key) DO UPDATE SET data = '{}', updated_at = excluded.updated_at WHERE board_state.updated_at < ?")
     .bind(now, new Date(Date.parse(now) - 2 * 60 * 1000).toISOString()).run();
   if (!got?.meta?.changes) throw Object.assign(new Error('Another sign-in email was going out at the same moment, so this one wasn’t sent. Board access shows who has it now.'), { status: 409 });
   try {
@@ -1626,7 +1648,7 @@ export async function sendWelcome(env, opts = {}) {
   }
 }
 
-async function sendWelcomeNow(env, { to = null, slugs = null, due = false, again = false, replyTo = [], by = '' } = {}) {
+async function sendWelcomeNow(env, { to = null, slugs = null, due = false, again = false, replyTo = [], by = '', click = '' } = {}) {
   if (!emailConfigured(env)) throw Object.assign(new Error('Email isn’t set up (RESEND_API_KEY)'), { status: 503 });
   const test = Array.isArray(to);
   const [list, people, settings, meetings, docs] = await Promise.all([packetList(env.DB), roster(env.DB), getSettings(env.DB), listMeetings(env.DB), listDocs(env.DB)]);
@@ -1640,15 +1662,23 @@ async function sendWelcomeNow(env, { to = null, slugs = null, due = false, again
   const hasIt = (p) => !!welcomeHad(was, p, people.board.map((x) => x.slug));
   const justNow = (p) => Date.now() - Date.parse((was.members || {})[p.slug]) < 10 * 60 * 1000;
   const asked = test ? [] : list.filter((p) => !slugs || slugs.includes(p.slug));
-  const usable = asked.filter((p) => isEmail(p.email));
+  // One who has signed in already knows how: never sent it (whatever a page left open still shows)
+  const seen = test ? new Set() : new Set(((await env.DB.prepare('SELECT slug FROM board_seen').all()).results || []).map((x) => x.slug));
+  const signedIn = asked.filter((p) => isEmail(p.email) && seen.has(p.slug)).map((p) => p.name);
+  const usable = asked.filter((p) => isEmail(p.email) && !seen.has(p.slug));
   const unusable = asked.filter((p) => !isEmail(p.email)).map((p) => p.name);
   // A preview greets the admin by name, as a member's copy greets them
   const recipients = test ? to.map((email) => ({ email, name: staffFor(people, email)?.name || '', slug: '' })) : usable.filter((p) => !hasIt(p) || (((slugs && !due) || again) && !justNow(p)));
   if (!test && !recipients.length) {
     if (!asked.length) throw Object.assign(new Error(slugs ? 'They aren’t on People → Board with an email now' : 'No board member has an email on file (People → Board)'), { status: 409 });
-    if (!usable.length) throw Object.assign(new Error(`The email on People → Board for ${unusable.join(', ')} isn’t a whole address`), { status: 409 });
-    return { sent: 0, failed: 0, errors: [], already: usable.length, ...(unusable.length ? { unusable } : {}) };
+    if (!usable.length && !signedIn.length) throw Object.assign(new Error(`The email on People → Board for ${unusable.join(', ')} isn’t a whole address`), { status: 409 });
+    return { sent: 0, failed: 0, errors: [], already: usable.length, ...(unusable.length ? { unusable } : {}), ...(signedIn.length ? { signedIn } : {}) };
   }
+  // Who this send goes to, kept on its claim: only their rows say it's going out
+  // and whether the board was told before it (an agenda approved meanwhile needn't wait for this one)
+  const onBoard = people.board.map((x) => x.slug);
+  const toldBefore = !!was.sentAt || (list.some((p) => isEmail(p.email)) && list.filter((p) => isEmail(p.email)).every((p) => seen.has(p.slug) || welcomeHad(was, p, onBoard)));
+  if (!test) await env.DB.prepare("UPDATE board_state SET data = ? WHERE key = 'welcome-sending'").bind(JSON.stringify({ to: recipients.map((p) => p.slug), told: toldBefore })).run();
   // Who it's from: the admin sending it, else the one the invites come from
   const sender = staffFor(people, by) || staffFor(people, settings.invitesFrom);
   const inviter = sender ? { name: sender.name, title: sender.title, photo: sender.photo } : null;
@@ -1666,10 +1696,14 @@ async function sendWelcomeNow(env, { to = null, slugs = null, due = false, again
     const at = nowIso();
     const members = { ...(was.members || {}), ...Object.fromEntries(recipients.map((p) => [p.slug, at])) };
     const addresses = { ...(was.addresses || {}), ...Object.fromEntries(recipients.map((p) => [p.slug, p.email])) };
-    const everyone = list.filter((p) => isEmail(p.email)).every((p) => welcomeHad({ members, addresses }, p, people.board.map((x) => x.slug)));
+    // (one who has signed in already knows how)
+    const everyone = list.filter((p) => isEmail(p.email) && !seen.has(p.slug)).every((p) => welcomeHad({ members, addresses }, p, people.board.map((x) => x.slug)));
     // Unconfirmed until Resend says it took them (a send cut off midway stays unconfirmed, and Board access says so)
     const unconfirmed = [...new Set([...(was.unconfirmed || []), ...recipients.map((p) => p.slug)])];
-    await writeState(env.DB, 'welcome', slugs && !(everyone && !was.sentAt) ? { ...was, members, addresses, unconfirmed } : { ...was, sentAt: at, sent: recipients.length, members, addresses, unconfirmed });
+    // (and the click it's for: the page tells its own send, posted again by the browser, from another one)
+    const lastClick = /^[\w-]{6,40}$/.test(String(click)) ? String(click) : undefined;
+    const lastTo = lastClick ? recipients.map((p) => p.slug) : undefined; // (who that click's send went to)
+    await writeState(env.DB, 'welcome', slugs && !(everyone && !was.sentAt) ? { ...was, members, addresses, unconfirmed, lastClick, lastTo } : { ...was, sentAt: at, sent: recipients.length, members, addresses, unconfirmed, lastClick, lastTo });
   }
   // One batch: every member's email goes, or none does, so sending again never gives anyone a second copy
   const r = await sendEmailItems(env, items, { from: items[0].from, tags: [{ name: 'kind', value: test ? 'board-welcome-preview' : 'board-welcome' }], replyTo });
@@ -1685,7 +1719,7 @@ async function sendWelcomeNow(env, { to = null, slugs = null, due = false, again
     const unconfirmed = (now.unconfirmed || []).filter((k) => !sentTo.has(k));
     await writeState(env.DB, 'welcome', { ...now, unconfirmed: unconfirmed.length ? unconfirmed : undefined });
   }
-  return { sent: r.sent, ...(!test && r.sent && recipients.length !== items.length ? { reached: recipients.length } : {}), failed: r.failed, errors: r.errors, unsure: unsure || undefined, ...(unusable.length ? { unusable } : {}), to: test ? to : undefined };
+  return { sent: r.sent, ...(!test && r.sent && recipients.length !== items.length ? { reached: recipients.length } : {}), failed: r.failed, errors: r.errors, unsure: unsure || undefined, ...(unusable.length ? { unusable } : {}), ...(signedIn.length ? { signedIn } : {}), to: test ? to : undefined };
 }
 
 // ─── Asking a member to sign ────────────────────────────────────────

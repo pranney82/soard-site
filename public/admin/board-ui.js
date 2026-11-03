@@ -596,6 +596,8 @@ export const STYLES = `
   .bd-access__after { flex: 1 1 100%; }
   /* The line takes focus when its button goes away: an inset ring, since the card clips anything outside */
   li.bd-access[tabindex]:focus-visible { box-shadow: inset 0 0 0 2px var(--color-primary); border-radius: 0; }
+  /* A button held while a send goes out looks it (aria-disabled keeps it focusable, as disabled wouldn't) */
+  .bd-access .btn[aria-disabled="true"], .ba-card .btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; box-shadow: none; }
   .bd-next { margin-top: 0.2rem; font-size: var(--fs-sm); font-weight: 600; color: var(--tone-info-fg); }
   .bd-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
   .bd-year { padding: 0.55rem 1.25rem; background: var(--color-bg-subtle, #F7F7F5); border-bottom: 1px solid var(--color-border); font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }

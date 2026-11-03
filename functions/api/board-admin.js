@@ -74,7 +74,10 @@ async function welcomeNow(DB) {
   const c = rows.find((r) => r.key === 'welcome-sending');
   let welcome = {};
   try { welcome = w ? JSON.parse(w.data) || {} : {}; } catch { /* a broken record reads as none */ }
-  return { welcome, welcomeSending: !!c && Date.now() - Date.parse(c.updated_at) < 2 * 60 * 1000, welcomeAt: Date.now() };
+  let sendingTo = [];
+  try { sendingTo = c ? JSON.parse(c.data || '{}').to || [] : []; } catch { /* a claim without its list */ }
+  const sending = !!c && Date.now() - Date.parse(c.updated_at) < 2 * 60 * 1000;
+  return { welcome, welcomeSending: sending, welcomeSendingTo: sending ? sendingTo : [], welcomeAt: Date.now() };
 }
 
 /** save-doc's options from what the page sent (its words' source, the wording it started from, its answer to "sign again?") */
@@ -364,7 +367,7 @@ export async function onRequestPost(context) {
         };
         let r;
         try {
-          const going = sendWelcome(env, { to: body.test ? [me] : null, slugs: Array.isArray(body.slugs) ? body.slugs.map(String) : null, due: body.due === true, again: body.again === true, check, replyTo: admins, by: me });
+          const going = sendWelcome(env, { to: body.test ? [me] : null, slugs: Array.isArray(body.slugs) ? body.slugs.map(String) : null, due: body.due === true, again: body.again === true, check, replyTo: admins, by: me, click: typeof body.click === 'string' ? body.click : '' });
           // Finished even if the page goes away mid-send, so the emails and the record always match
           context.waitUntil?.(going.catch(() => {}));
           r = await going;

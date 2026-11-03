@@ -15,7 +15,10 @@ import { useState, useEffect, useRef } from './vendor.js';
 import { html, call, ago, Face, viewerFiles, driveLink, dayOf, signedHow } from './board-ui.js';
 import { viewerLink } from './file-viewer.js';
 import { meetingName, todayEastern, fileTitle, docsOf, itemFiles, looseFiles } from './board-shared.js';
-import { welcomeHad } from './board-shared.js';
+import { welcomeHad, usableEmail } from './board-shared.js';
+
+// A held Enter or Space presses a button once, not again with every repeat
+const once = (e) => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); };
 
 const GAP_MS = 30 * 60_000; // one sitting: no gap longer than this (VISIT_GAP_MS on the server)
 
@@ -184,8 +187,12 @@ function Dialog({ title, sub = '', children, onClose }) {
       if (e.key !== 'Tab') return;
       const f = [...(ref.current?.querySelectorAll('button:not([disabled]), [href], input:not([disabled]):not([tabindex="-1"]), [tabindex="0"]') || [])].filter((el) => el.getClientRects().length);
       if (!f.length) return;
-      const inside = ref.current.contains(document.activeElement);
-      if (e.shiftKey && (!inside || document.activeElement === f[0])) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && (!inside || document.activeElement === f[f.length - 1])) { e.preventDefault(); f[0].focus(); }
+      const at = document.activeElement;
+      const inside = ref.current.contains(at);
+      // From anywhere inside (a line given focus too), the way round stays in the sheet: past its last stop to its first
+      const ahead = f.some((el) => at.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING);
+      const behind = f.some((el) => at.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_PRECEDING);
+      if (e.shiftKey && (!inside || !behind)) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && (!inside || !ahead)) { e.preventDefault(); f[0].focus(); }
     };
     window.addEventListener('keydown', onKey, true);
     requestAnimationFrame(() => (ref.current?.querySelector('.kd-dialog__body') || ref.current)?.focus());
@@ -257,17 +264,17 @@ function SignedEachYear({ p, signDocs, onCopy }) {
  * One member: when they last signed in (or the sign-in email to send), asking them by email to sign this year's papers
  * while they haven't, then the papers they signed, each year
  */
-function MemberSheet({ p, sentAt, onWelcome, working, onClose, signDocs = [], onCopy = null, onAsk = null }) {
+function MemberSheet({ p, sentAt, going = false, unconfirmed = false, tooSoon = false, held = false, onWelcome, working, onClose, signDocs = [], onCopy = null, onAsk = null }) {
   const last = p.lastSeen || null;
   const first = String(p.name).split(/\s+/)[0];
   const due = signDocs.some((d) => !d.signed[p.slug]);
   return html`<${Dialog} title=${p.name} sub=${[p.title && p.title !== 'Board Member' ? p.title : '', p.email].filter(Boolean).join(' · ')} onClose=${onClose}>
     <div class="ba-sheet">
       <div class="ba-facts">
-        <div class="ba-fact"><span class="ba-fact__k">Last signed in</span><span class="ba-fact__v">${last ? ago(last) : 'Never'}</span>
-          <span class="ba-fact__s">${last ? fullTime(last) : sentAt ? `Sign-in email sent ${dateOnly(sentAt)}` : p.email ? 'No sign-in email yet' : 'No email on file'}</span></div>
+        <div class="ba-fact ba-fact--in" tabindex="-1"><span class="ba-fact__k">Last signed in</span><span class="ba-fact__v">${last ? ago(last) : 'Never'}</span>
+          <span class="ba-fact__s">${last ? fullTime(last) : going ? 'Sign-in email going out now' : sentAt ? `Sign-in email sent ${dateOnly(sentAt)}${unconfirmed ? ' (not confirmed)' : ''}` : !p.email ? 'No email on file' : usableEmail(p.email) ? 'No sign-in email yet' : 'The email on People → Board isn’t a whole address'}</span></div>
       </div>
-      ${!last && p.email && onWelcome ? html`<p class="ba-sheet__ask"><button class="btn btn-ghost btn-sm" disabled=${!!working} aria-label=${`${sentAt ? 'Send the sign-in email again' : 'Send the sign-in email'} to ${p.name}`} onClick=${() => onWelcome(p.slug)}>${working === p.slug ? 'Sending…' : sentAt ? 'Send the sign-in email again' : 'Send the sign-in email'}</button></p>` : null}
+      ${!last && usableEmail(p.email) && onWelcome && !going && !tooSoon ? html`<p class="ba-sheet__ask"><button class="btn btn-ghost btn-sm" aria-disabled=${held ? 'true' : null} onKeyDown=${once} onClick=${() => { if (!held) onWelcome(p.slug); }}>${working === p.slug ? 'Sending…' : sentAt ? 'Send the sign-in email again' : 'Send the sign-in email'}</button></p>` : null}
       ${due && p.email && onAsk ? html`<p class="ba-sheet__ask">${p.asked ? html`<span class="ba-muted">${askedWords(p.asked)}. </span>` : null}<button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => onAsk(p.slug)}>${working === `ask:${p.slug}` ? 'Emailing…' : p.asked ? `Ask ${first} again` : `Ask ${first} to sign`}</button></p>` : null}
       <${SignedEachYear} p=${p} signDocs=${signDocs} onCopy=${onCopy} />
     </div>
@@ -285,7 +292,7 @@ function askedWords(a) {
  * A row opens their papers year by year
  */
 let styled = false;
-export function BoardActivity({ data, signDocs, ready, working, onWelcome, onCopy = null, onAsk = null, onAskAll = null, onAskPreview = null }) {
+export function BoardActivity({ data, signDocs, ready, working, now = Date.now(), onWelcome, onCopy = null, onAsk = null, onAskAll = null, onAskPreview = null }) {
   if (!styled && typeof document !== 'undefined') {
     styled = true;
     const el = document.createElement('style');
@@ -297,6 +304,50 @@ export function BoardActivity({ data, signDocs, ready, working, onWelcome, onCop
   // Who has had the sign-in email: one rule with Board access and the server's send (board-shared.js welcomeHad)
   const onBoard = data.members.map((x) => x.slug);
   const sent = Object.fromEntries(data.members.map((p) => [p.slug, welcomeHad(data.welcome, p, onBoard)]).filter(([, at]) => at));
+  // A send going out to them now, and one Resend didn't confirm (as Board access says)
+  const unconfirmed = data.welcome?.unconfirmed || [];
+  const going = (p) => !!data.welcomeSending && (data.welcomeSendingTo || []).includes(p.slug);
+  // "Send it again" only once it would send (the server skips anyone emailed in the last ten minutes), on Board access's clock
+  const tooSoon = (p) => !!sent[p.slug] && now - Date.parse(sent[p.slug]) < 10 * 60 * 1000;
+  // Every sign-in email button is held while any send is going out (this page's, another tab's, or one from before
+  // switching Board tabs)
+  const held = !!working || !!data.welcomeSending;
+  // The button can go while it's sent ("Going out now") or after (held ten minutes): focus moves to the member's name, or
+  // the sheet's Last signed in line, never the page
+  const pressed = useRef(null);
+  const refocus = (slug) => {
+    const el = document.activeElement;
+    if (el && el !== document.body && el.isConnected) return;
+    (document.querySelector('.ba-sheet .ba-fact--in') || document.querySelector(`.ba-name[data-slug="${CSS.escape(slug)}"]`))?.focus();
+  };
+  // ...and when a fresh look takes away a button that had focus (another admin's send), the same
+  const lastIn = useRef(null);
+  const onFocusIn = (e) => {
+    const tr = e.target.closest?.('.ba-tr');
+    const slug = tr ? tr.querySelector('.ba-name')?.dataset.slug : e.target.closest?.('.ba-sheet') ? open : null;
+    lastIn.current = slug ? { el: e.target, slug } : null;
+  };
+  // (focus taken elsewhere on purpose, the control still there, is forgotten: only a control taken away brings it back)
+  const onFocusOut = (e) => {
+    const el = e.target;
+    requestAnimationFrame(() => {
+      if (lastIn.current?.el === el && el.isConnected) lastIn.current = null;
+      if (pressed.current?.el === el && el.isConnected && document.activeElement !== el) pressed.current = null;
+    });
+  };
+  useEffect(() => {
+    const l = lastIn.current;
+    // (once: the name or line it went to is then the one followed, so a click elsewhere after keeps its place)
+    if (pressed.current && !pressed.current.el?.isConnected) { refocus(pressed.current.slug); pressed.current = { ...pressed.current, el: document.activeElement }; }
+    else if (l && !l.el.isConnected) refocus(l.slug);
+  });
+  const sendTo = async (slug) => {
+    // (the button pressed: focus taken off it on purpose meanwhile, a click elsewhere, stays where it went)
+    pressed.current = { slug, el: document.activeElement };
+    try { await onWelcome(slug); } finally {
+      requestAnimationFrame(() => { if (pressed.current) refocus(pressed.current.slug); pressed.current = null; });
+    }
+  };
   const faces = new Map([...(data.people?.board || [])].map((p) => [p.slug, p]));
   const year = todayEastern().slice(0, 4);
   const current = (p) => signDocs.every((d) => d.signed[p.slug]);
@@ -306,7 +357,7 @@ export function BoardActivity({ data, signDocs, ready, working, onWelcome, onCop
   const unsigned = data.members.filter((p) => !current(p) && p.email);
   const papersWord = signDocs.length === 1 ? `the ${signDocs[0].title.replace(/^the\s+/i, '')}` : 'the papers to sign';
   const person = open && data.members.find((p) => p.slug === open);
-  return html`<div class="card ba-card" style="padding:0">
+  return html`<div class="card ba-card" style="padding:0" onFocusIn=${onFocusIn} onFocusOut=${onFocusOut}>
     <div class="sec-head ba-head"><h3>The board <span class="count">${data.members.length}</span></h3>
       ${signDocs.length && data.members.length ? html`<div class="ba-asks"><span class="sec-head__hint">${done === data.members.length ? `Everyone has signed for ${year}` : `${done} of ${data.members.length} signed for ${year}`}</span>
         ${asking && unsigned.length ? html`<button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => onAskPreview?.()}>${working === 'ask:me' ? 'Sending…' : 'Send it to me'}</button>
@@ -317,12 +368,12 @@ export function BoardActivity({ data, signDocs, ready, working, onWelcome, onCop
         const last = p.lastSeen || null;
         const openRow = () => setOpen(p.slug);
         return html`<tr key=${p.slug} class="ba-tr" onClick=${(e) => { if (!e.target.closest('button, a')) openRow(); }}>
-          <td><span class="ba-who"><${Face} p=${faces.get(p.slug) || p} size=${32} /><span class="ba-who__text"><button type="button" class="ba-name" data-slug=${p.slug} onClick=${openRow}>${p.name}</button>
-            <span class="bd-row__meta ba-email">${p.email ? emailParts(p.email) : html`<span class="tag tag--warn">No email on file</span>`}</span></span></span></td>
+          <td><span class="ba-who"><${Face} p=${faces.get(p.slug) || p} size=${32} /><span class="ba-who__text"><button type="button" class="ba-name" data-slug=${p.slug} onKeyDown=${once} onClick=${openRow}>${p.name}</button>
+            <span class="bd-row__meta ba-email">${p.email ? html`${emailParts(p.email)}${usableEmail(p.email) ? null : html` <span class="tag tag--warn">Not a whole address</span>`}` : html`<span class="tag tag--warn">No email on file</span>`}</span></span></span></td>
           <td data-label="Last signed in">${last
             ? html`<span class="ba-line" title=${fullTime(last)}>${ago(last)}</span>`
-            : html`<span class="ba-not"><span class="ba-line ba-muted">Never</span>${sent[p.slug] ? html`<span class="bd-row__meta">Sign-in email sent ${dateOnly(sent[p.slug])}</span>` : null}
-              ${ready && p.email ? html`<button class="btn btn-ghost btn-sm" disabled=${!!working} aria-label=${`${sent[p.slug] ? 'Send the sign-in email again' : 'Send the sign-in email'} to ${p.name}`} onClick=${() => onWelcome(p.slug)}>${working === p.slug ? 'Sending…' : sent[p.slug] ? 'Send it again' : 'Send the sign-in email'}</button>` : null}</span>`}</td>
+            : html`<span class="ba-not"><span class="ba-line ba-muted">Never</span>${going(p) ? html`<span class="bd-row__meta">Sign-in email going out now</span>` : sent[p.slug] ? html`<span class="bd-row__meta">Sign-in email sent ${dateOnly(sent[p.slug])}${unconfirmed.includes(p.slug) ? ' (not confirmed)' : ''}</span>` : null}
+              ${ready && usableEmail(p.email) && !going(p) && !tooSoon(p) ? html`<button class="btn btn-ghost btn-sm" aria-disabled=${held ? 'true' : null} aria-label=${`${working === p.slug ? 'Sending…' : sent[p.slug] ? 'Send it again' : 'Send the sign-in email'}, ${p.name}`} onKeyDown=${once} onClick=${() => { if (!held) sendTo(p.slug); }}>${working === p.slug ? 'Sending…' : sent[p.slug] ? 'Send it again' : 'Send the sign-in email'}</button>` : null}</span>`}</td>
           ${signDocs.map((d, k) => {
             const s = d.signed[p.slug];
             const was = !s && d.before?.[p.slug];
@@ -339,7 +390,7 @@ export function BoardActivity({ data, signDocs, ready, working, onWelcome, onCop
         </tr>`;
       })}</tbody>
     </table>`}
-    ${person ? html`<${MemberSheet} p=${person} sentAt=${sent[person.slug]} onWelcome=${ready ? onWelcome : null} working=${working} signDocs=${signDocs} onCopy=${onCopy} onAsk=${asking ? onAsk : null} onClose=${() => { const slug = open; setOpen(null); requestAnimationFrame(() => document.querySelector(`.ba-name[data-slug="${CSS.escape(slug)}"]`)?.focus()); }} />` : null}
+    ${person ? html`<${MemberSheet} p=${person} sentAt=${sent[person.slug]} going=${going(person)} unconfirmed=${unconfirmed.includes(person.slug)} tooSoon=${tooSoon(person)} held=${held} onWelcome=${ready ? sendTo : null} working=${working} signDocs=${signDocs} onCopy=${onCopy} onAsk=${asking ? onAsk : null} onClose=${() => { const slug = open; setOpen(null); requestAnimationFrame(() => document.querySelector(`.ba-name[data-slug="${CSS.escape(slug)}"]`)?.focus()); }} />` : null}
   </div>`;
 }
 
@@ -368,6 +419,8 @@ export const ACTIVITY_STYLES = `
   .ba-name { all: unset; cursor: pointer; font-weight: 600; color: var(--color-text); overflow-wrap: anywhere; }
   .ba-name:hover { text-decoration: underline; text-underline-offset: 3px; }
   .ba-name:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 4px; }
+  .ba-fact--in:focus { outline: none; }
+  .ba-fact--in:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; }
   .ba-not { display: flex; flex-direction: column; align-items: flex-start; gap: 0.35rem; }
   .ba-asks { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 0.5rem 0.75rem; }
   .ba-ask { display: block; margin-top: 0.4rem; }
