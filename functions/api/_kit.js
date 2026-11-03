@@ -20,15 +20,19 @@
 const KIT_API = 'https://api.kit.com/v4';
 
 /**
- * Newsletter signups confirm by email once KIT_FORM_ID is set: a new address
- * starts 'inactive' and Kit holds it until its owner clicks the confirmation
- * email that form sends (the form's incentive email, on in Kit). That stops
- * bots and typos ever reaching the list. Without KIT_FORM_ID, signups are on
- * the list at once. The applications waitlist is always 'active': its one
+ * Newsletter signups confirm by email: a new address starts 'inactive' and Kit
+ * holds it until its owner clicks the confirmation email CONFIRM_FORM_ID sends
+ * (Kit → Landing pages & forms → "SOARD website signup (confirm by email)",
+ * Settings → Confirmation email). That stops bots and typos ever reaching the
+ * list. The id is public (it's in Kit's embed code), so it lives here rather
+ * than in a setting that can be lost; KIT_FORM_ID overrides it. The
+ * applications waitlist is always 'active' and never joins that form: its one
  * email goes out whether or not Kit can reach them (_application-waitlist.js).
  */
+export const CONFIRM_FORM_ID = '10139417';
+export const confirmFormId = (env) => String(env?.KIT_FORM_ID || CONFIRM_FORM_ID);
 export function signupState(env, source) {
-  return cleanSource(source) === 'newsletter' && env?.KIT_FORM_ID ? 'inactive' : 'active';
+  return cleanSource(source) === 'newsletter' ? 'inactive' : 'active';
 }
 
 export function kitConfigured(env) {
@@ -76,15 +80,17 @@ export async function kitSubscribe(env, email, opts = {}) {
     // Someone already on the list who signs up again isn't asked to confirm
     const confirm = state === 'inactive' && (sub.state || 'inactive') === 'inactive';
 
-    if (env.KIT_FORM_ID) {
-      const formRes = await kitFetch(env, `/forms/${env.KIT_FORM_ID}/subscribers`, {
+    // Joining the confirmation form is what makes Kit send "confirm your
+    // subscription". If that fails for someone Kit is holding, they'd wait for
+    // an email that never comes: say so, so they try again.
+    if (state === 'inactive') {
+      const formRes = await kitFetch(env, `/forms/${confirmFormId(env)}/subscribers`, {
         method: 'POST',
         body: JSON.stringify({ email_address: email }),
       });
       if (!formRes.ok) {
-        // Subscriber exists in Kit even if the form add failed — still a
-        // successful signup, just log so a bad KIT_FORM_ID gets noticed.
         console.error(`Kit add-to-form error ${formRes.status}: ${await formRes.text()}`);
+        if (confirm) return { configured: true, ok: false };
       }
     }
 

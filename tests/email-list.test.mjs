@@ -24,7 +24,7 @@ beforeEach(() => {
     const json = (obj, status = 200) => new Response(JSON.stringify(obj), { status, headers: { 'content-type': 'application/json' } });
     if (url === 'https://challenges.cloudflare.com/turnstile/v0/siteverify') return json({ success: body.get('response') === 'good-token' });
     if (url === 'https://api.kit.com/v4/subscribers') return json({ subscriber: { id: 1, state: kit.existingState || body.state } }, kit.existingState ? 200 : kit.subscribeStatus);
-    if (/^https:\/\/api\.kit\.com\/v4\/forms\/\d+\/subscribers$/.test(url)) return json({ subscriber: { id: 1 } }, 201);
+    if (/^https:\/\/api\.kit\.com\/v4\/forms\/\d+\/subscribers$/.test(url)) return json(kit.formStatus ? { errors: ['down'] } : { subscriber: { id: 1 } }, kit.formStatus || 201);
     if (url.startsWith('https://api.kit.com/v4/tags')) return json({ tags: kit.tags, tag: { id: 99 } });
     if (url === 'https://api.resend.com/emails/batch') return json(resend.status < 300 ? { data: body.map((_, i) => ({ id: `em${i}` })) } : { message: 'down' }, resend.status);
     throw new Error(`no fake for ${url}`);
@@ -45,17 +45,18 @@ const noResend = () => assert.equal(calls.filter(c => c.url.includes('resend.com
 
 // ─── Newsletter signup ───────────────────────────────────────────────
 
-test('a signup lands in Kit only, tagged by its source', async () => {
+test('a signup lands in Kit only, tagged by its source, held until its owner confirms', async () => {
   const res = await newsletterPost(ctx('/api/newsletter', { email: ' Fan@Example.com ', source: 'newsletter' }, { ...KIT, ...RESEND }));
   assert.equal(res.status, 200);
-  assert.deepEqual(await res.json(), { ok: true });
+  assert.deepEqual(await res.json(), { ok: true, confirm: true });
   const sub = calls.find(c => c.url === 'https://api.kit.com/v4/subscribers');
-  assert.deepEqual(sub.body, { email_address: 'fan@example.com', state: 'active' });
+  assert.deepEqual(sub.body, { email_address: 'fan@example.com', state: 'inactive' });
+  assert.ok(calls.some(c => c.url === 'https://api.kit.com/v4/forms/10139417/subscribers'), 'joins the form whose email asks them to confirm');
   assert.ok(calls.some(c => c.url.includes('/v4/tags')), 'tagged');
   noResend();
 });
 
-test('with the confirmation form set, a newsletter signup waits for its owner to confirm; the waitlist never does', async () => {
+test('KIT_FORM_ID can point at another form; the waitlist never joins one and never waits; a failed form add says try again', async () => {
   const env = { ...KIT, ...RESEND, KIT_FORM_ID: '55' };
   const res = await newsletterPost(ctx('/api/newsletter', { email: 'fan@example.com', source: 'newsletter' }, env));
   assert.deepEqual(await res.json(), { ok: true, confirm: true });
@@ -76,8 +77,12 @@ test('with the confirmation form set, a newsletter signup waits for its owner to
   calls.length = 0;
   await kitSubscribe(env, 'family@example.com', { source: 'application-waitlist' });
   assert.equal(calls.find(c => c.url === 'https://api.kit.com/v4/subscribers').body.state, 'active');
-  // Without the form, nothing changes: on the list at once
-  assert.equal(signupState({ ...KIT }, 'newsletter'), 'active');
+  assert.ok(!calls.some(c => c.url.includes('/v4/forms/')), 'a waitlist family never gets a confirm-your-subscription email');
+  // Kit takes the address but not the form: they'd wait for an email that never comes, so the page says try again
+  calls.length = 0; kit.formStatus = 500;
+  const broken = await newsletterPost(ctx('/api/newsletter', { email: 'fan3@example.com', source: 'newsletter' }, env));
+  assert.equal(broken.status, 503);
+  kit.formStatus = null;
   noResend();
 });
 
@@ -119,7 +124,7 @@ test('a plain form post (no JavaScript) gets a one-tap confirm page, then redire
   const ft = await issueTicket(KIT, 'fan@example.com', 'newsletter', Date.now() - MIN_FILL_MS - 500);
   const ok = await newsletterPost(ctx('/api/newsletter', { ...fields, ft }, KIT, { form: true }));
   assert.equal(ok.status, 302);
-  assert.equal(ok.headers.get('Location'), 'https://sunshineonaranneyday.com/about/?subscribed=1#newsletter-form');
+  assert.equal(ok.headers.get('Location'), 'https://sunshineonaranneyday.com/about/?subscribed=1&confirm=1#newsletter-form', 'and the footer says to check their email');
   assert.ok(calls.some(c => c.url === 'https://api.kit.com/v4/subscribers'));
 
   // A ticket is for one address and source, and can't be made up

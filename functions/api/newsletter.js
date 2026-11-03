@@ -2,7 +2,7 @@
  * POST /api/newsletter
  *
  * Adds an email to the newsletter list in Kit (formerly ConvertKit), the
- * site's only list tool. See _kit.js (optional KIT_FORM_ID).
+ * site's only list tool. See _kit.js (newsletter signups confirm by email).
  *
  * Cloudflare Pages env vars:
  *   KIT_API_KEY — Kit subscriber write

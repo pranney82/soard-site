@@ -1083,7 +1083,7 @@ const MAP = { t: 'SOARD', children: [
       { t: 'Signups', children: [
         { t: 'Newsletter signup', s: 'live', k: 'visitor',
           when: 'A visitor signs up in the footer or a form.',
-          does: 'Adds them to Kit, tagged by where they signed up. Once a confirmation form is set (KIT_FORM_ID), a newsletter signup waits until its owner taps the link in Kit’s confirmation email; the applications waitlist never waits.',
+          does: 'Adds them to Kit, tagged by where they signed up. A newsletter signup waits until its owner taps the link in Kit’s confirmation email (the “SOARD website signup (confirm by email)” form in Kit); the applications waitlist never waits.',
           touches: ['Kit'], where: 'functions/api/newsletter.js · _kit.js', live: needsKey('kit', 'KIT_API_KEY is missing, so signups fail.') },
         { t: 'Quiet subscribers check-in', s: 'off', k: 'schedule',
           when: 'Once a day after 10am, while it’s on in Site Config → Newsletter.',
