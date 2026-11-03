@@ -594,7 +594,7 @@ export function cleanDoc(raw = {}) {
     // The file its words were read from (a board file's id): a newer file than that is one to bring the words in from
     wordsFile: one(raw.wordsFile, 40),
     // When the board signs it by each year ('MM-DD', so it rolls forward): on the board page and in the asks, and
-    // Remind by email stops a week after it
+    // a date gone by is said as one
     due: validDue(raw.due),
     createdAt: one(raw.createdAt, 40),
     updatedAt: one(raw.updatedAt, 40),
@@ -821,10 +821,26 @@ const storeOf = (env) => ({ DB: env.DB, bucket: boardFiles(env) });
 export async function versionHash(store, doc, version) {
   if (Number(version) !== Number(doc.version)) {
     const row = await store.DB.prepare('SELECT hash, body, file_id FROM board_doc_versions WHERE doc_id = ? AND version = ?').bind(doc.id, Number(version) || 0).first();
-    if (row?.file_id && !row.body) return contentHash(store, { ...doc, body: '', file: { id: row.file_id } });
     if (row?.body) return row.hash || sha256Hex(row.body);
+    // (a paper read as its file: that wording's file, never a later one)
+    const fileId = row?.file_id || await fileOfVersion(store.DB, doc.id, version);
+    if (fileId) return contentHash(store, { ...doc, body: '', file: { id: fileId } });
   }
   return contentHash(store, doc);
+}
+
+/**
+ * The file a wording of a paper read as its file was: its row's, else (from before rows kept it: a paper's first
+ * file) the newest file the paper had before its next wording was made; null when it can't be told
+ */
+export async function fileOfVersion(DB, docId, version) {
+  const row = await DB.prepare('SELECT file_id FROM board_doc_versions WHERE doc_id = ? AND version = ?').bind(docId, Number(version) || 0).first();
+  if (row?.file_id) return row.file_id;
+  const next = await DB.prepare('SELECT MIN(at) AS at FROM board_doc_versions WHERE doc_id = ? AND version > ?').bind(docId, Number(version) || 0).first();
+  const f = next?.at
+    ? await DB.prepare("SELECT id FROM board_files WHERE owner_type = 'doc' AND owner_id = ? AND at < ? ORDER BY at DESC LIMIT 1").bind(docId, next.at).first()
+    : await DB.prepare("SELECT id FROM board_files WHERE owner_type = 'doc' AND owner_id = ? ORDER BY at DESC LIMIT 1").bind(docId).first();
+  return f?.id || null;
 }
 
 /**
@@ -862,6 +878,8 @@ async function writeSignature(DB, sig, { keep = false, same = null } = {}) {
       } else {
         events.push({ kind: 'superseded', docId, slug, year, version: wasV, at, by: row.added_by, detail: { row: was } });
         if (was.file_id && was.file_id !== row.file_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL').bind(at, was.file_id));
+        // (its signed copy too: kept, as an earlier signature's)
+        if (was.record_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL').bind(at, was.record_id));
       }
     }
     stmts.push(putSignature(DB, 'board_signatures', row));
@@ -908,7 +926,8 @@ export async function signDoc(DB, docId, member, name, { version = null, evidenc
   if (blank.length) throw Object.assign(new Error(`${blank[0].kind === 'initials' ? 'Initial' : 'Answer'} point ${blank[0].n} first${blank.length > 1 ? ` (${blank.length} left)` : ''}`), { status: 400, extra: { missing: blank.map((f) => f.n) } });
   // Agreeing to sign electronically, once, kept with when and where from
   const marks = mark ? await DB.prepare('SELECT * FROM board_member_marks WHERE slug = ?').bind(member.slug).first() : null;
-  const consentHash = mark ? await sha256Hex(CONSENT_TEXT) : null;
+  // (the words they agreed to, the first time: kept, so a later wording of the consent never stands in for theirs)
+  const consentHash = mark ? marks?.consent_hash || await sha256Hex(CONSENT_TEXT) : null;
   if (mark && !marks?.consent_at && !consent) throw Object.assign(new Error('Tick that you agree to sign electronically, then sign'), { status: 409, extra: { consent: true } });
   const at = nowIso();
   const on = signedOn(doc, version);
@@ -992,6 +1011,7 @@ export async function unsignDoc(env, docId, slug, year = thisYear(), { by = '', 
     const at = nowIso();
     const stmts = [DB.prepare('DELETE FROM board_signatures WHERE doc_id = ? AND slug = ? AND year = ?').bind(docId, slug, year)];
     if (row.file_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL').bind(at, row.file_id));
+    if (row.record_id) stmts.push(DB.prepare('UPDATE board_files SET superseded_at = ? WHERE id = ? AND superseded_at IS NULL').bind(at, row.record_id));
     if (earlier) {
       stmts.push(putSignature(DB, 'board_signatures', earlier));
       stmts.push(DB.prepare('DELETE FROM board_signatures_earlier WHERE doc_id = ? AND slug = ? AND year = ? AND version = ?').bind(docId, slug, year, earlier.version));
@@ -1909,8 +1929,10 @@ export function signAskEmail({ name = '', email = '', papers = [], from = '', fi
   const it = one ? 'it' : 'them';
   // (by when: the earliest due date among them)
   const due = papers.map((x) => x.due).filter(Boolean).sort()[0] || '';
-  const by = due ? ` by ${dueWords(due)}` : '';
-  const intro = `Every board member reads and signs ${it} once a year${by}. On the board page it takes a few minutes: read ${one ? 'it' : 'each one'}, then sign at the end.`;
+  // (a date gone by is said as one: "It was due January 31.", never "by January 31" as though it were ahead)
+  const past = !!due && due < todayEastern();
+  const by = due && !past ? ` by ${dueWords(due)}` : '';
+  const intro = `Every board member reads and signs ${it} once a year${by}.${past ? ` ${one ? 'It was' : 'They were'} due ${dueWords(due)}.` : ''} On the board page it takes a few minutes: read ${one ? 'it' : 'each one'}, then sign at the end.`;
   const paper = `Signed ${it} on paper already? Add a photo or PDF of the signed page there instead.`;
   const signIn = `The board page opens with your email address${email ? `, ${email}` : ''}: Cloudflare emails you a six-digit code to type in. No password.`;
   const reply = 'Questions? Reply to this email.';
@@ -1922,7 +1944,7 @@ export function signAskEmail({ name = '', email = '', papers = [], from = '', fi
       preheader: `${one ? one.title : `${papers.length} papers`}: read and sign on the board page. A few minutes.`,
       heading,
       intro: esc(intro),
-      bodyHtml: (one ? '' : panel(kicker(`To sign for ${year}`) + para(papers.map((x) => `${esc(x.title)}${x.due ? ` (by ${esc(dueWords(x.due))})` : ''}`).join('<br>'), { top: 0 }), { accent: true }))
+      bodyHtml: (one ? '' : panel(kicker(`To sign for ${year}`) + para(papers.map((x) => `${esc(x.title)}${x.due ? ` (${x.due < todayEastern() ? 'was due' : 'by'} ${esc(dueWords(x.due))})` : ''}`).join('<br>'), { top: 0 }), { accent: true }))
         + `<div style="margin:${one ? 4 : 18}px 0 0;">${button(one ? 'Read and sign it' : 'Read and sign them', url)}</div>`
         + small(esc(paper))
         + (firstTime ? ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">The first time</p><p class="ink" style="margin:0;">${esc(signIn).replace(esc(email), `<strong style="word-break:break-all;">${esc(email)}</strong>`)}</p>`) : '')
@@ -1932,7 +1954,7 @@ export function signAskEmail({ name = '', email = '', papers = [], from = '', fi
     text: [
       heading,
       intro,
-      one ? '' : `To sign for ${year}:\n${papers.map((x) => `- ${x.title}${x.due ? ` (by ${dueWords(x.due)})` : ''}`).join('\n')}`,
+      one ? '' : `To sign for ${year}:\n${papers.map((x) => `- ${x.title}${x.due ? ` (${x.due < todayEastern() ? 'was due' : 'by'} ${dueWords(x.due)})` : ''}`).join('\n')}`,
       `${one ? 'Read and sign it' : 'Read and sign them'}: ${url}`,
       paper,
       firstTime ? `The first time: ${signIn}` : '',

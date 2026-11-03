@@ -39,7 +39,7 @@ export const viewerFiles = (files) => files.map((f) => ({ name: f.name, type: f.
 /** A file in SOARD's Drive, opened there */
 export const driveLink = (id) => `https://drive.google.com/file/d/${encodeURIComponent(id)}/view`;
 // How a signature came (_board.js SIGNED_BY)
-const SIGNED_HOW = { typed: 'Typed their name', copy: 'Added their signed copy', staff: 'Signed copy added here', drive: 'Their signed copy in Drive' };
+const SIGNED_HOW = { typed: 'Typed their name', drawn: 'Drew their signature', copy: 'Added their signed copy', staff: 'Signed copy added here', drive: 'Their signed copy in Drive' };
 /** A day as Atlanta has it (a time saved after 8pm there is the next day in UTC) */
 export const dayOf = (iso) => (iso ? shortDate(todayEastern(Date.parse(iso))) : '');
 /** How a signature came, and when: "Typed “Alex Rivera”, Nov 2, 2026" (Documents → Who's signed, a member on Members) */

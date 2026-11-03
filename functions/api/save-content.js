@@ -90,6 +90,15 @@ export async function onRequestPost(context) {
       );
     }
 
+    // A new person at an address a former board member's board records are kept under (their signatures, sign-ins,
+    // signing record): never someone else's (rename-content.js refuses renaming to one the same way)
+    if (isCreate && parsed.table === 'team') {
+      for (const t of ['board_signatures', 'board_signins', 'board_activity', 'board_sign_events']) {
+        const had = await DB.prepare(`SELECT slug FROM ${t} WHERE slug = ? LIMIT 1`).bind(parsed.slug).first().catch(() => null);
+        if (had) return Response.json({ success: false, error: `“${parsed.slug}” was a former board member’s address, and their board records are kept under it. Give this person another address.` }, { status: 409 });
+      }
+    }
+
     if (clientSha && oldRaw !== null) {
       const currentSha = await generateSha(oldRaw);
       if (currentSha !== clientSha) {

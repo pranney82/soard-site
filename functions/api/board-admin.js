@@ -196,6 +196,8 @@ export async function onRequestPost(context) {
         let put;
         try { put = await putFile(env, { ownerType: 'doc', ownerId: d.id, file: upload, by: me }); } catch (err) { if (!req.doc?.id) await deleteDoc(env, d.id); throw err; }
         // (a new version that's this file: which file it was, for what a signature on it signed)
+        // (a paper's first file, version 0, gets its row too: what a signature on it signed is never a later file)
+        if (!d.body) await env.DB.prepare("INSERT OR IGNORE INTO board_doc_versions (doc_id, version, body, at, by, note) VALUES (?, ?, '', ?, ?, ?)").bind(d.id, d.version, new Date().toISOString(), me, `Its file: ${String(upload.name || 'file').slice(0, 200)}`).run();
         await env.DB.prepare("UPDATE board_doc_versions SET file_id = ? WHERE doc_id = ? AND version = ? AND (body IS NULL OR body = '')").bind(put.id, d.id, d.version).run();
         let doc = (await listDocs(env.DB)).find((x) => x.id === d.id);
         // Its words read from this file: where they came from

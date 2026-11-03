@@ -344,7 +344,7 @@ test('a paper that came as a PDF, written in Board from its own words: who signe
   // Over the API: the question and the conflict come back as data the page acts on
   const r = await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'save-doc', doc: { ...x, body: 'newer' }, base: 0 }, handler: admin.onRequestPost });
   assert.deepEqual([r.status, r.body.conflict?.version], [409, 1]);
-  const typed = await call(MEMBER, '/api/board-portal', { method: 'POST', body: { action: 'sign', docId: x.id, name: 'Alex Rivera', version: 0 }, handler: portal.onRequestPost });
+  const typed = await call(MEMBER, '/api/board-portal', { method: 'POST', body: { action: 'sign', docId: x.id, name: 'Alex Rivera', version: 0, mark: { type: 'typed', style: 'caveat', text: 'Alex Rivera', initials: 'AR' }, consent: true }, handler: portal.onRequestPost });
   assert.deepEqual([typed.status, typed.body.changed], [409, true]);
 });
 
@@ -479,7 +479,7 @@ test('new words and Required ticked again in one save asks; a save that doesn’
   d = await saveDoc(env.DB, { ...edited, note: 'Revised', body: undefined }, { by: FOUNDER, base: 1 });
   assert.equal(d.shared, false);
   // The board page sent as Alex, the browser now signed in as Sam: stopped
-  const r = await call(OTHER, '/api/board-portal', { method: 'POST', body: { action: 'sign', docId: d.id, name: 'Sam Ortiz', as: 'alex-rivera' }, handler: portal.onRequestPost });
+  const r = await call(OTHER, '/api/board-portal', { method: 'POST', body: { action: 'sign', docId: d.id, name: 'Sam Ortiz', as: 'alex-rivera', mark: { type: 'typed', style: 'caveat', text: 'Sam Ortiz', initials: 'AR' }, consent: true }, handler: portal.onRequestPost });
   assert.deepEqual([r.status, r.body.who], [409, true]);
 });
 

@@ -238,7 +238,9 @@ async function post(context) {
         if (!ID.test(String(body.docId || ''))) return fail('Which document?');
         // (the page was opened by someone else: another sign-in in this browser since)
         if (body.as && body.as !== member.slug) return fail(`This browser is signed in as ${member.name} now. Reload the page to sign as yourself.`, 409, { who: true });
-        // (today's page: their adopted mark, each initial and answer, agreeing to sign electronically, the year it says)
+        // (today's page: their adopted mark, each initial and answer, agreeing to sign electronically, the year it says;
+        // a page from before those, a name alone, reloads: nobody signs here without agreeing to sign electronically)
+        if (!body.mark || typeof body.mark !== 'object') return fail('The board page was updated. Reload it to sign.', 409, { reload: true });
         {
           const signed = await signDoc(env.DB, body.docId, member, body.name, {
             version: Number.isInteger(body.version) ? body.version : null, evidence: evidence(context), bucket: boardFiles(env),

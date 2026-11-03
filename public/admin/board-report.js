@@ -487,7 +487,7 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
           const here = on('paragraph', { field: f });
           const title = f === 'initials' ? 'Initials here: each member initials this point as they sign' : 'Answer here: each member fills this in as they sign';
           return html`<button type="button" key=${f} class=${`rp-tool rp-tool--text ${here ? 'is-on' : ''}`} tabIndex="-1" title=${title} aria-label=${f === 'initials' ? 'Initials here' : 'Answer here'} aria-pressed=${here ? 'true' : 'false'} disabled=${on('heading')}
-            onMouseDown=${(ev) => ev.preventDefault()} onClick=${run((c) => c.updateAttributes('paragraph', { field: here ? null : f }))}>${f === 'initials' ? 'Initials here' : 'Answer here'}</button>`;
+            onMouseDown=${(ev) => ev.preventDefault()} onClick=${run((c) => c.updateAttributes('paragraph', { field: here ? null : f }))}>${f === 'initials' ? 'Initials' : 'Answer'}<span class="rp-tool__more"> here</span></button>`;
         })}` : null}
       <span class="rp-sep" aria-hidden="true"></span>
       <button type="button" class=${`rp-tool ${on('link') ? 'is-on' : ''}`} tabIndex="-1" title=${`Link (${MOD}K)`} aria-label="Link" aria-pressed=${on('link') ? 'true' : 'false'} aria-expanded=${linking !== null} onMouseDown=${(ev) => ev.preventDefault()} onClick=${openLink}>${ICON.link}</button>
@@ -694,7 +694,7 @@ const CSS = `
 .rp-tool.is-on { background: var(--yellow-soft, #FFF5C2); color: var(--ink, var(--color-text, #2D2F2C)); }
 .rp-tool:disabled { opacity: 0.35; cursor: default; }
 .rp-tool:focus-visible { outline: 2px solid var(--ink, var(--color-text, #2D2F2C)); outline-offset: 1px; }
-.rp-tool--text { width: auto; padding: 0 0.6rem; font: 600 0.8rem/1 inherit; font-family: inherit; white-space: nowrap; }
+.rp-tool--text { width: auto; padding: 0 0.6rem; font-family: inherit; font-weight: 600; font-size: 0.8rem; line-height: 1; white-space: nowrap; }
 .rp-edit p[data-field]::after { content: 'Initials'; display: inline-block; margin-left: 0.5em; padding: 0.1em 0.45em; border: 1px solid var(--line-2, #D3D0C7); border-radius: 5px; background: var(--yellow-soft, #FFF5C2); color: var(--ink, #2D2F2C); font-size: 0.72em; font-weight: 650; line-height: 1.5; vertical-align: 0.1em; }
 .rp-edit p[data-field="answer"]::after { content: 'Answer'; }
 .rp-sep { width: 1px; height: 20px; margin: 0 4px; background: var(--rp-line); }
@@ -720,7 +720,7 @@ const CSS = `
 .rp-hint kbd { display: inline-block; padding: 0 0.3em; border: 1px solid var(--rp-line); border-radius: 5px; background: var(--warm, #F5F4F0); font: inherit; font-size: 0.95em; line-height: 1.5; }
 .rp-foot__status { margin-left: auto; }
 /* A phone: the tools in one row, a finger's size (its own undo is the phone's: shake, or three fingers) */
-@media (max-width: 640px) { .rp-bar { flex-wrap: nowrap; gap: 0; } .rp-tool { width: 40px; height: 40px; flex: none; } .rp-sep { margin: 0 2px; } .rp-bar__end { display: none; } .rp-link { flex-wrap: wrap; } .rp-bar:has(.rp-link) { flex-wrap: wrap; } .rp-page { padding: 0.85rem 0.9rem 0.5rem; } .rp-foot { padding: 0.45rem 0.9rem 0.6rem; } }
+@media (max-width: 640px) { .rp-bar { flex-wrap: nowrap; gap: 0; overflow-x: auto; scrollbar-width: none; } .rp-bar::-webkit-scrollbar { display: none; } .rp-tool { width: 40px; height: 40px; flex: none; } .rp-tool.rp-tool--text { width: auto; padding: 0 0.5rem; } .rp-tool__more { display: none; } .rp-sep { margin: 0 2px; } .rp-bar__end { display: none; } .rp-link { flex-wrap: wrap; } .rp-bar:has(.rp-link) { flex-wrap: wrap; } .rp-page { padding: 0.85rem 0.9rem 0.5rem; } .rp-foot { padding: 0.45rem 0.9rem 0.6rem; } }
 @media print { .rp a { text-decoration: none; } .rp .rp-callout, .rp-motion { background: none; } }
 `;
 if (typeof document !== 'undefined' && !document.getElementById('board-report-css')) {

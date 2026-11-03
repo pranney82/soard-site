@@ -924,7 +924,7 @@ function DocumentsTab({ ctx }) {
           ${hasFile ? null : html`<p class="form-hint">${draft.sign ? 'Nothing to read yet: write the words or add the file, or untick Required.' : 'To make it required, write its words or add its file first: the board signs what they can read.'}</p>`}
           ${draft.sign ? html`<div class="bd-due"><label class="form-label" for="bd-doc-due">Due each year <span class="form-optional">optional</span></label>
             <input id="bd-doc-due" class="form-input bd-due__input" type="date" value=${draft.due ? `${year}-${draft.due}` : ''} onChange=${(e) => setDraft({ ...draft, due: /^\d{4}-\d{2}-\d{2}$/.test(e.target.value) ? e.target.value.slice(5) : '' })} />
-            <p class="form-hint">On the board page and in the emails asking them to sign. Remind by email stops a week after it.</p></div>` : null}</div>
+            <p class="form-hint">The same day each year, on the board page and in the emails asking them to sign. Once it’s passed, they read that it was due.</p></div>` : null}</div>
       </div>
       <div class="bd-actions" style="margin-top:1rem">
         <button class="btn btn-primary" data-save-doc disabled=${saving || !!reading} onClick=${() => save()}>${saving ? 'Saving…' : 'Save'}</button>
@@ -1399,11 +1399,12 @@ function MembersTab({ ctx }) {
     const was = data.settings?.remind || 'off';
     if (value === was) return;
     if (value !== 'off') {
-      const days = value === '3' ? 3 : 7;
-      const n = data.members.filter((p) => usableEmail(p.email) && signDocs.some((d) => !d.signed[p.slug] && !d.declined?.[p.slug])).length;
+      const often = value === '3' ? 'every 3 days' : 'weekly';
+      // (who'd be emailed: not signed, not declined, an email on file, fewer than 4 reminders this year)
+      const due = data.members.filter((p) => usableEmail(p.email) && (Number(p.asked?.reminders) || 0) < 4 && signDocs.some((d) => !d.signed[p.slug] && !d.declined?.[p.slug]));
       const ok = await ask({
-        title: `Remind ${n === 1 ? 'the one' : `the ${n}`} who haven’t signed, ${days === 3 ? 'every 3 days' : 'weekly'}?`,
-        text: `Each gets an email naming the papers they haven’t signed, ${days} days after they were last asked (anyone not asked yet, on the next weekday), between 8 AM and 7 PM Eastern on weekdays that aren’t holidays. At most 4 a year; signing, or telling SOARD they can’t sign it as written, stops them, and so does a week past a paper’s due date. Each January it asks the whole board again by itself.`,
+        title: !due.length ? 'Turn reminders on?' : due.length === 1 ? `Remind ${due[0].name}, ${often}?` : `Remind the ${due.length} who haven’t signed, ${often}?`,
+        text: `${!due.length ? `Nobody is emailed now: everyone who can be has signed or told SOARD why not.` : `${due.length === 1 ? 'They get' : 'Each gets'} an email listing what’s left to sign, on the next weekday (8 AM to 7 PM Eastern), then ${often}, up to 4 times a year.`} Signing, or telling SOARD they can’t sign as written, stops it. Each January it asks the whole board again.`,
         yes: 'Turn reminders on', no: 'Cancel',
       });
       if (!ok) { if (el) el.value = was; return; }

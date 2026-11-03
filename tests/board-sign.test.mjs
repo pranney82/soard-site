@@ -110,16 +110,16 @@ const written = async (title = 'Board Member Expectations', body = '### Attendan
 
 test('a signature on the board page keeps its evidence: the address Access checked, IP, device, the sign-in, the wording’s SHA-256, in the chain', async () => {
   const d = await written();
-  const got = await call(MEMBER, '/api/board-portal', { method: 'POST', body: { action: 'sign', docId: d.id, name: 'Alex Rivera', version: 1, as: 'alex-rivera' }, handler: portal.onRequestPost });
+  const got = await call(MEMBER, '/api/board-portal', { method: 'POST', body: { action: 'sign', docId: d.id, version: 1, as: 'alex-rivera', year: YEAR, mark: typedMark(), consent: true }, handler: portal.onRequestPost });
   assert.equal(got.status, 200, JSON.stringify(got.body));
   const row = await env.DB.prepare("SELECT * FROM board_signatures WHERE slug = 'alex-rivera'").first();
   assert.deepEqual([row.signer_email, row.ip, row.device, !!row.signin_at, row.hash], [MEMBER, '203.0.113.7', 'iPhone · Safari', true, await sha256Hex(d.body)]);
   const version = await env.DB.prepare('SELECT hash FROM board_doc_versions WHERE doc_id = ? AND version = 1').bind(d.id).first();
   assert.equal(version.hash, row.hash, 'the signature’s hash is its wording’s');
   const ev = await eventsAll();
-  assert.deepEqual(ev.map((e) => [e.kind, e.slug, e.ip]), [['signed', 'alex-rivera', '203.0.113.7']]);
-  assert.deepEqual([JSON.parse(ev[0].detail).signerEmail, ev[0].prev], [MEMBER, 'genesis']);
-  assert.deepEqual(await checkChain(env.DB), { ok: true, count: 1, broken: null });
+  assert.deepEqual(ev.map((e) => [e.kind, e.slug, e.ip]), [['signed', 'alex-rivera', '203.0.113.7'], ['consented', 'alex-rivera', '203.0.113.7']]);
+  assert.deepEqual([JSON.parse(ev[0].detail).signerEmail, ev[0].prev, ev[1].prev], [MEMBER, 'genesis', ev[0].hash]);
+  assert.deepEqual(await checkChain(env.DB), { ok: true, count: 2, broken: null });
   // Opened, once a year: the first time only
   for (let i = 0; i < 2; i++) await call(OTHER, '/api/board-portal', { method: 'POST', body: { action: 'opened', docId: d.id }, handler: portal.onRequestPost, ip: '198.51.100.2' });
   const opened = (await eventsAll()).filter((e) => e.kind === 'opened');
@@ -221,7 +221,7 @@ test('a copy is its member’s by the file itself: theirs to open, a renamed mem
   const moved = await env.DB.prepare("SELECT slug FROM board_signatures WHERE doc_id = ?").bind(d.id).first();
   if (moved?.slug === 'samuel-ortiz') {
     assert.equal((await env.DB.prepare('SELECT slug FROM board_files WHERE id = ?').bind(view.id).first()).slug, 'samuel-ortiz');
-    assert.deepEqual(await slugsOf(env.DB, 'samuel-ortiz'), ['samuel-ortiz', 'sam-ortiz']);
+    assert.deepEqual((await slugsOf(env.DB, 'samuel-ortiz')).map((x) => x.slug), ['samuel-ortiz', 'sam-ortiz']);
     assert.ok((await eventsOf(env.DB, { slug: 'samuel-ortiz' })).some((e) => e.kind === 'signed'), 'their events before the rename are theirs still');
     assert.deepEqual(await checkChain(env.DB), { ok: true, count: 2, broken: null });
   } else assert.fail(`rename didn't move the signature (${JSON.stringify(moved)})`);
@@ -284,7 +284,7 @@ test('signing a paper that asks for initials and an answer: every one required, 
   assert.equal((await eventsAll()).filter((e) => e.kind === 'signed').length, 1);
 });
 
-test('a drawn signature is a path, checked; a paper with no marked points signs from an old page too', async () => {
+test('a drawn signature is a path, checked; a page from before (a name alone) reloads: nobody signs without agreeing to sign electronically', async () => {
   const d = await written();
   const drawn = { type: 'drawn', style: 'caveat', text: 'Sam Ortiz', initials: 'SO', path: 'M10 100 L40 80 L80 120 L120 60 L160 110' };
   let r = await signAs(OTHER, { docId: d.id, version: 1, mark: { ...drawn, path: '<script>' }, consent: true });
@@ -292,9 +292,10 @@ test('a drawn signature is a path, checked; a paper with no marked points signs 
   r = await signAs(OTHER, { docId: d.id, version: 1, mark: drawn, consent: true });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   assert.deepEqual([r.body.how, r.body.mark.path], ['drawn', drawn.path]);
-  // Kim's page from before marks (her name only): nothing else asked, so it signs
+  // Kim's page from before marks (her name only): it reloads, and nothing is signed
   r = await call('kim.board@example.com', '/api/board-portal', { method: 'POST', body: { action: 'sign', docId: d.id, name: 'Kim Park', version: 1 }, handler: portal.onRequestPost });
-  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.deepEqual([r.status, r.body.reload], [409, true]);
+  assert.equal(await env.DB.prepare("SELECT COUNT(*) AS n FROM board_signatures WHERE slug = 'kim-park'").first().then((x) => x.n), 0);
 });
 
 test('marking a point for initials makes a page from before read it again, and the sign-again question says what keeping means', async () => {
@@ -450,8 +451,14 @@ test('taking off a member’s own signature tells them; a changed email tells th
   sent = [];
   await sb.maybeRunSigning(env, { render: fakeRender });
   await sb.maybeRunSigning(env, { render: fakeRender });
-  const told = sent.filter((m) => /The email SOARD has for you changed/.test(m.subject));
-  assert.deepEqual([told.length, told[0]?.to[0], /sam\.new@example\.org/.test(told[0]?.text || '')], [1, OTHER, true]);
+  const told = sent.filter((m) => /Your board page no longer signs in with this email/.test(m.subject));
+  assert.deepEqual([told.length, told[0]?.to[0], /sam\.new@example\.org|Sam/.test(`${told[0]?.text}${told[0]?.html}`)], [1, OTHER, false], 'the old address told, never the new one or whose');
+  // Cleared, then set again: the address it had is told too
+  await setBoardEmail(env.DB, 'kim-park', '');
+  await setBoardEmail(env.DB, 'kim-park', 'kim.later@example.com');
+  sent = [];
+  await sb.maybeRunSigning(env, { render: fakeRender });
+  assert.deepEqual(sent.filter((m) => /no longer signs in with this email/.test(m.subject)).map((m) => m.to[0]), ['kim.board@example.com']);
 });
 
 // ── Step 4: due dates, declining, reminders, the whole board signed, the year's record
@@ -480,13 +487,23 @@ test('a due date: a real day, kept as month and day so it rolls forward; on the 
   const { cleanDoc } = await import('../functions/api/_board.js');
   assert.deepEqual(['01-31', '02-29', '02-30', '13-01', 'Jan 31', ''].map((due) => cleanDoc({ title: 'x', due }).due), ['01-31', '02-29', '', '', '', '']);
   assert.equal(sb.dueOn({ due: '02-29' }, 2027), '2027-02-28');
-  const d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, due: '01-31', body: '### Attendance\n\n- Come to three of four meetings' }, { by: FOUNDER });
+  // (a due date still ahead this year, and one gone by: Jan 1 is never ahead, Dec 31 always is but on Dec 31)
+  const ahead = todayEastern() < `${YEAR}-12-31` ? '12-31' : null;
+  const d = await saveDoc(env.DB, { title: 'Board Member Expectations', kind: 'policy', sign: true, due: ahead || '01-01', body: '### Attendance\n\n- Come to three of four meetings' }, { by: FOUNDER });
   const page = await call(MEMBER, '/api/board-portal', { handler: portal.onRequestGet });
-  assert.equal(page.body.docs.find((x) => x.id === d.id).due, '01-31');
+  assert.equal(page.body.docs.find((x) => x.id === d.id).due, ahead || '01-01');
   sent = [];
   await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'ask-to-sign', slugs: ['alex-rivera'] }, handler: admin.onRequestPost });
-  assert.match(sent[0]?.subject || '', /^Please sign the Board Member Expectations for \d{4} by January 31$/);
-  assert.match(sent[0].text, /once a year by January 31\. On the board page it takes a few minutes: read it, then sign at the end\./);
+  if (ahead) {
+    assert.match(sent[0]?.subject || '', /^Please sign the Board Member Expectations for \d{4} by December 31$/);
+    assert.match(sent[0].text, /once a year by December 31\. On the board page it takes a few minutes: read it, then sign at the end\./);
+  }
+  // Gone by: said as a date gone by, never "by January 1" as though it were ahead
+  await saveDoc(env.DB, { ...(await listDocs(env.DB)).find((x) => x.id === d.id), due: '01-01' }, { by: FOUNDER });
+  sent = [];
+  await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'ask-to-sign', slugs: ['sam-ortiz'] }, handler: admin.onRequestPost });
+  assert.match(sent[0]?.subject || '', /^Please sign the Board Member Expectations for \d{4}$/);
+  assert.match(sent[0].text, /once a year\. It was due January 1\. On the board page/);
 });
 
 test('can’t sign it as written: why is kept and the admins told once; Declined until they sign, which they still can', async () => {
@@ -501,7 +518,12 @@ test('can’t sign it as written: why is kept and the admins told once; Declined
   const told = sent.filter((m) => /Alex Rivera can’t sign the Board Member Expectations as written/.test(m.subject));
   assert.ok(told.length >= 1 && told.every((m) => m.to[0].endsWith('@soardcharity.com')) && told[0].reply_to?.includes?.(MEMBER) !== false, `the admins (${sent.map((m) => m.subject)})`);
   assert.ok(told[0].html.includes('&lt;b&gt;at all&lt;/b&gt;') && !told[0].html.includes('<b>at all'), 'their words, never markup');
-  // Pressed again with a better reason: kept, nobody emailed again
+  // What they said, changed: the admins hear the new words; Send pressed again with the same words: nobody emailed
+  sent = [];
+  await call(MEMBER, '/api/board-portal', { method: 'POST', body: { action: 'decline', docId: d.id, reason: 'The giving minimum, this year', as: 'alex-rivera', year: YEAR }, handler: portal.onRequestPost });
+  await settle();
+  assert.ok(sent.length >= 1 && sent.every((m) => /The giving minimum, this year/.test(m.text)), 'the new words go to the admins');
+  assert.ok(sent.every((m) => m.html.includes('/admin/#board/documents')), 'their button opens Board → Documents');
   sent = [];
   await call(MEMBER, '/api/board-portal', { method: 'POST', body: { action: 'decline', docId: d.id, reason: 'The giving minimum, this year', as: 'alex-rivera', year: YEAR }, handler: portal.onRequestPost });
   await settle();
@@ -555,12 +577,14 @@ test('Remind by email: off until turned on; then each unsigned member once a cla
   assert.equal((await eventsAll()).filter((e) => e.kind === 'reminded').length, 4);
 });
 
-test('reminders: a week past the due date they stop; a sign-in email counts as the ask; a failed send is tried again', async () => {
-  const d = await saveDoc(env.DB, { title: 'Conflict of Interest Policy', kind: 'policy', sign: true, due: '01-02', body: '### Interests\n\n- I disclose them' }, { by: FOUNDER });
+test('reminders: a paper past its due date is still asked for, as overdue; a sign-in email counts as the ask; a failed send is tried again', async () => {
+  const d = await saveDoc(env.DB, { title: 'Conflict of Interest Policy', kind: 'policy', sign: true, due: '01-01', body: '### Interests\n\n- I disclose them' }, { by: FOUNDER });
   await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'save-settings', settings: { remind: '7' } }, handler: admin.onRequestPost });
   sent = [];
   await sb.maybeRemindSigners(env, { now: workday(10 * DAYMS) });
-  assert.equal(sent.length, 0, 'Jan 16 is two weeks past Jan 2');
+  assert.equal(sent.length, 3, 'two weeks past it, all three are asked');
+  assert.ok(sent.every((m) => /It was due January 1\./.test(m.text) && !/by January 1/.test(m.subject)), 'as a date gone by');
+  await env.DB.prepare('DELETE FROM board_sign_asks').run();
   await saveDoc(env.DB, { ...(await listDocs(env.DB)).find((x) => x.id === d.id), due: '' }, { by: FOUNDER });
   // Alex had the sign-in email two days ago: it was the ask
   const t = workday();
@@ -610,7 +634,7 @@ test('the year’s record: one ZIP with the copies, the words, a spreadsheet tha
   }
   const names = Object.keys(entries);
   assert.ok(['README.txt', 'signatures.csv', 'summary.html', 'wordings/wording 1.md', 'events.json'].every((x) => names.includes(x)), names.join(' | '));
-  assert.ok(names.some((x) => /^signed-copies\/Alex Rivera - .*\.pdf$/.test(x)), 'Alex’s signed copy');
+  assert.ok(names.some((x) => /^signed-copies\/Alex Rivera - .*\.pdf$/.test(x)), `Alex’s signed copy (${names.join(' | ')})`);
   const at = (name) => { const e = entries[name]; const start = e.offset + 30 + buf.readUInt16LE(e.offset + 26) + buf.readUInt16LE(e.offset + 28); return buf.subarray(start, start + e.size).toString('utf8'); };
   assert.equal(at('wordings/wording 1.md'), d.body, 'the exact words');
   const csv = at('signatures.csv');
@@ -618,4 +642,26 @@ test('the year’s record: one ZIP with the copies, the words, a spreadsheet tha
   assert.ok(/Sam Ortiz,Declined,/.test(csv) && csv.includes("'+1 for later"), 'a decline, and its reason, read as words');
   assert.ok(/Kim Park,Not signed/.test(csv));
   assert.equal(JSON.parse(at('events.json')).chain.ok, true);
+});
+
+test('a copy signed on paper: its signed copy is that copy as it came in, then the record; never the words with their name as though signed here', async () => {
+  printedHtml = [];
+  const d = await written();
+  const packet = await PDFDocument.create();
+  const font = await packet.embedFont(StandardFonts.Helvetica);
+  for (const t of ['Commitment Form, page 1', 'page 2', 'Signature: Kim Park']) packet.addPage([612, 792]).drawText(t, { x: 72, y: 700, size: 12, font });
+  await signWithCopy(env, d.id, new File([await packet.save()], 'Board Manual - Kim Park.pdf', { type: 'application/pdf' }), { slug: 'kim-park', by: FOUNDER });
+  const made = await sb.buildRecord(env, { docId: d.id, slug: 'kim-park', year: YEAR }, { render: fakeRender });
+  assert.ok(made.built, made.error);
+  const html = printedHtml.at(-1);
+  assert.ok(/Their signed copy/.test(html) && html.includes('Board Manual - Kim Park.pdf') && /the pages before this one, as it came in/.test(html));
+  assert.ok(!/class="sign"/.test(html) && !html.includes('Come to three of four meetings'), 'no words signed in their name here');
+  assert.ok(/<th>Added<\/th><td>[^<]+ by jane@soardcharity\.com/.test(html), 'when and by whom it was added');
+  const file = await env.DB.prepare('SELECT r2_key FROM board_files WHERE id = ?').bind(made.id).first();
+  const pdfDoc = await PDFDocument.load(env.FILES.map.get(file.r2_key).bytes);
+  assert.equal(pdfDoc.getPageCount(), 4, 'its 3 pages, then the record');
+  assert.deepEqual(Object.keys(attachmentsOf(pdfDoc)).sort(), ['Board Manual - Kim Park.pdf', 'evidence.json', 'words.md'], 'the copy itself inside, untouched');
+  sent = [];
+  await sb.sendReceipt(env, { docId: d.id, slug: 'kim-park', year: YEAR });
+  assert.equal(sent.length, 0, 'and nobody is emailed');
 });

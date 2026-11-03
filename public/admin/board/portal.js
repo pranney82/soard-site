@@ -30,7 +30,7 @@ import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
-  isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf, CONSENT_TEXT, SIGN_STYLES, styleFont, PROCESS_TEXT, dueOn, dueWords,
+  isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf, CONSENT_TEXT, SIGN_STYLES, styleFont, MEMBER_HOW, dueOn, dueWords,
   reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
   NOTHING_NEW, isNothingNew, LIMITS, slidesOfItem, reportAlone, decidesAlone, facesOf, hasReport, LIVE_TITLES, orderUnits,
 } from '../board-shared.js';
@@ -1222,7 +1222,7 @@ function HomePage({ ctx }) {
         ${mine.map((a) => html`<${MyAction} a=${a} ctx=${ctx} key=${a.id} />`)}
         ${toSign.map((x) => html`<li class="bp-todo-card" key=${x.id}><a class="bp-todo bp-todo--link" href=${`#/documents/${x.id}`}>
           <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
-          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">${x.signedEarlier ? 'It changed since you signed: read it, then sign again' : x.declinedByMe ? 'You told SOARD you can’t sign it as written' : dueOn(x, todayEastern().slice(0, 4)) ? `Sign by ${dueWords(dueOn(x, todayEastern().slice(0, 4)))}` : 'Every board member signs it once a year'}</span></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Read and sign: ${x.title}</span><span class="bp-todo__meta">${x.signedEarlier ? 'It changed since you signed: read it, then sign again' : x.declinedByMe ? 'You told SOARD you can’t sign it as written' : dueOn(x, todayEastern().slice(0, 4)) ? `${dueOn(x, todayEastern().slice(0, 4)) < todayEastern() ? 'It was due' : 'Sign by'} ${dueWords(dueOn(x, todayEastern().slice(0, 4)))}` : 'Every board member signs it once a year'}</span></span>
           <${Icon} name="arrow" size=${18} cls="bp-go" />
         </a></li>`)}
       </ul>
@@ -3825,7 +3825,7 @@ function AdoptDialog({ own, start = null, onAdopt, onClose }) {
       </div>
       ${tab === 'type' ? html`<fieldset class="bp-adopt__styles"><legend class="sr-only">A style</legend>
         ${SIGN_STYLES.map((st) => html`<label key=${st.id} class=${`bp-adopt__style ${style === st.id ? 'is-on' : ''}`}>
-          <input type="radio" name="bp-style" value=${st.id} checked=${style === st.id} onChange=${() => setStyle(st.id)} />
+          <input type="radio" name="bp-style" value=${st.id} checked=${style === st.id} aria-label=${`${st.label} handwriting`} onChange=${() => setStyle(st.id)} />
           <span class="bp-mark" style=${`font-family:'${st.font}', cursive`}>${shown || 'Your name'}</span>
           <span class="bp-adopt__ini" style=${`font-family:'${st.font}', cursive`} aria-hidden="true">${ini || 'AB'}</span>
         </label>`)}
@@ -3845,10 +3845,13 @@ function AdoptDialog({ own, start = null, onAdopt, onClose }) {
  * A point that asks each signer for something, on the paper itself: an Initial box (their adopted initials, the
  * time, Undo) or a short answer. Once signed, what they gave; for an admin looking, what members are asked for
  */
-function FieldBox({ b, doc, me, vals, setVal, mark, needMark }) {
+function FieldBox({ b, doc, me, vals, setVal, mark, needMark, onward = () => {} }) {
   const n = b.n;
-  const total = paperFields(doc.body).length;
-  const name = `${b.field === 'initials' ? 'Initial' : 'Answer'} point ${n} of ${total}`;
+  const all = paperFields(doc.body);
+  const total = all.length;
+  // (named with the point itself, so a screen reader says what's being initialed or answered)
+  const said = (all.find((f) => f.n === n)?.text || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  const name = `${b.field === 'initials' ? 'Initial' : 'Answer'} point ${n} of ${total}${said ? `: ${said}` : ''}`;
   const signedF = doc.signedByMe?.fields?.find((x) => x.n === n);
   if (doc.signedByMe) return signedF ? html`<p class="bp-field__done">${b.field === 'initials' ? html`<span class="bp-field__stamp" style=${`font-family:'${styleFont(doc.signedByMe.mark?.style)}', cursive`}>${signedF.value}</span><span class="bp-muted">Initialed</span>` : html`<span class="bp-muted">Your answer:</span> <strong>${signedF.value}</strong>`}</p>` : null;
   if (!me) return html`<p class="bp-field__ask bp-muted">${b.field === 'initials' ? 'Each member initials this point as they sign' : 'Each member answers this as they sign'}</p>`;
@@ -3861,7 +3864,8 @@ function FieldBox({ b, doc, me, vals, setVal, mark, needMark }) {
     return html`<p class="bp-field__done"><span class="bp-field__stamp" style=${`font-family:'${styleFont(mark?.style)}', cursive`} aria-label=${`Initialed ${v}`}>${v}</span><span class="bp-muted">Initialed</span>
       <button type="button" class="bp-linkbtn" aria-label=${`Undo your initials on point ${n}`} onClick=${() => { setVal(n, ''); requestAnimationFrame(() => document.querySelector(`[data-field-input="${n}"]`)?.focus()); }}>Undo</button></p>`;
   }
-  const stamp = (m) => setVal(n, marksInitials(m));
+  // (stamped: on to the next one left, or to signing)
+  const stamp = (m) => { setVal(n, marksInitials(m)); requestAnimationFrame(() => onward(n)); };
   return html`<p class="bp-field__ask"><button type="button" class="bp-btn bp-btn--sm bp-field__btn" data-field-input=${n} aria-label=${name} onClick=${() => (mark ? stamp(mark) : needMark(stamp))}>Initial</button>
     <span class="bp-field__print" aria-hidden="true">Initials ______</span></p>`;
 }
@@ -3876,7 +3880,7 @@ function SignBar({ fields, vals, next }) {
   </div>`;
 }
 
-function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, needMark = null, clearVals = () => {} }) {
+function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, needMark = null, clearVals = () => {}, onward = () => {} }) {
   const { data, setData, say } = ctx;
   const [busy, setBusy] = useState('');
   const [problem, setProblem] = useState('');
@@ -3923,7 +3927,7 @@ function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, nee
     // Every point it marks first (Sign takes them there), then how they sign (chosen, it carries on), then agreeing
     // to sign electronically
     const blank = fields.find((f) => !String(vals[f.n] || '').trim());
-    if (blank) { setProblem(`${blank.kind === 'initials' ? 'Initial' : 'Answer'} point ${blank.n} first.`); toField(blank.n); return; }
+    if (blank) { setProblem(''); say(`${blank.kind === 'initials' ? 'Initial' : 'Answer'} point ${blank.n} first.`); toField(blank.n); return; }
     if (!m) { needMark((picked) => sign(null, picked)); return; }
     if (!consented && !agree) { setProblem('Tick that you agree to sign electronically, then sign.'); document.getElementById(`${id}-agree`)?.focus(); return; }
     setProblem('');
@@ -3935,7 +3939,7 @@ function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, nee
       if (j.missing?.length) toField(j.missing[0]);
       if (j.newYear || j.reload) ctx.load();
       if (j.changed || j.gone) { signTrouble.set(doc.id, { msg: j.error, kind: j.gone ? 'gone' : 'changed', title: doc.title }); ctx.load().then(() => focusTrouble(doc.id)); }
-      document.getElementById(`${id}-p`)?.focus();
+      requestAnimationFrame(() => document.getElementById(`${id}-p`)?.focus());
       return;
     }
     signTrouble.delete(doc.id);
@@ -3973,12 +3977,12 @@ function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, nee
   return html`<form class="bp-sign" id=${id} onSubmit=${sign} noValidate>
     ${trouble && !problem ? html`<p class="bp-sign__problem" role="alert" tabindex="-1" id=${`trouble-${doc.id}`}>${trouble.msg}</p>` : null}
     <div class="bp-sign__mark">
-      ${mark ? html`<div class="bp-sign__adopted"><${Mark} mark=${mark} /><p class="bp-muted bp-sign__who">${mark.text} · initials ${mark.initials} · <button type="button" class="bp-linkbtn" onClick=${() => needMark(() => {})}>Change</button></p></div>`
-        : html`<button type="button" class="bp-btn bp-btn--primary" data-autofocus onClick=${() => needMark(() => {})}>Choose how you sign</button>`}
+      ${mark ? html`<div class="bp-sign__adopted"><${Mark} mark=${mark} /><p class="bp-muted bp-sign__who">${mark.text} · initials ${mark.initials} · <button type="button" class="bp-linkbtn" onClick=${() => needMark(() => requestAnimationFrame(() => onward(0)))}>Change</button></p></div>`
+        : html`<button type="button" class="bp-btn bp-btn--primary" data-autofocus onClick=${() => needMark(() => requestAnimationFrame(() => onward(0)))}>Choose how you sign</button>`}
     </div>
     ${doc.declinedByMe ? html`<p class="bp-sign__declined" id=${`${id}-declined`} tabindex="-1">You told SOARD on ${shortDate(todayEastern(Date.parse(doc.declinedByMe.at)))} that you can’t sign it as written: “${doc.declinedByMe.reason}” They’ll answer you by email, and you can still sign it here.</p>` : null}
     ${consented ? null : html`<label class="bp-sign__agree"><input type="checkbox" id=${`${id}-agree`} checked=${agree} onChange=${(e) => { setAgree(e.target.checked); if (problem) setProblem(''); }} /><span>${CONSENT_TEXT}</span></label>`}
-    <p class="bp-sign__intent">By choosing Sign, I sign the ${doc.title} for ${year}.${dueOn(doc, year) ? ` SOARD asks for it by ${dueWords(dueOn(doc, year))}.` : ''}</p>
+    <p class="bp-sign__intent">By choosing Sign, I sign the ${doc.title} for ${year}.${dueOn(doc, year) ? (dueOn(doc, year) < todayEastern() ? ` It was due ${dueWords(dueOn(doc, year))}.` : ` SOARD asks for it by ${dueWords(dueOn(doc, year))}.`) : ''}</p>
     <p class="bp-btns bp-btns--tight"><button class="bp-btn bp-btn--primary" type="submit" disabled=${!!busy}>${busy === 'sign' ? 'Signing…' : 'Sign'}</button></p>
     <p class="bp-sign__or">Signed it on paper already?
       <button type="button" class="bp-linkbtn" disabled=${!!busy} onClick=${() => pick.current?.click()}>${busy === 'copy' ? 'Adding your copy…' : 'Add your signed copy'}</button>
@@ -3989,11 +3993,11 @@ function SignForm({ d: doc, ctx, vals = {}, mark = null, setMark = () => {}, nee
         <label class="bp-sign__decline-l" for=${`${id}-why`}>What can’t you agree to? SOARD reads it and answers you by email.</label>
         <textarea id=${`${id}-why`} rows="3" maxlength="1000" value=${why} onInput=${(e) => setWhy(e.target.value)}></textarea>
         <p class="bp-btns bp-btns--tight"><button type="button" class="bp-btn" disabled=${!!busy} onClick=${decline}>${busy === 'decline' ? 'Sending…' : 'Send to SOARD'}</button>
-          <button type="button" class="bp-linkbtn" onClick=${() => { setDeclining(false); setProblem(''); }}>Cancel</button></p>
+          <button type="button" class="bp-linkbtn" onClick=${() => { setDeclining(false); setProblem(''); requestAnimationFrame(() => document.getElementById(`${id}-decline`)?.focus()); }}>Cancel</button></p>
       </div>`
-      : html`<p class="bp-sign__or">Can’t sign it as written? <button type="button" class="bp-linkbtn" disabled=${!!busy} onClick=${() => { setDeclining(true); setWhy(doc.declinedByMe?.reason || ''); requestAnimationFrame(() => document.getElementById(`${id}-why`)?.focus()); }}>${doc.declinedByMe ? 'Change what you told SOARD' : 'Tell SOARD why'}</button></p>`}
+      : html`<p class="bp-sign__or">Can’t sign it as written? <button type="button" class="bp-linkbtn" id=${`${id}-decline`} disabled=${!!busy} onClick=${() => { setDeclining(true); setWhy(doc.declinedByMe?.reason || ''); requestAnimationFrame(() => document.getElementById(`${id}-why`)?.focus()); }}>${doc.declinedByMe ? 'Change what you told SOARD' : 'Tell SOARD why'}</button></p>`}
     ${problem ? html`<p class="bp-sign__problem" id=${`${id}-p`} role="alert" tabindex="-1">${problem}</p>` : null}
-    <details class="bp-sign__how"><summary>How signing works</summary><p>${PROCESS_TEXT}</p></details>
+    <details class="bp-sign__how"><summary>How signing works</summary><p>${MEMBER_HOW}</p></details>
   </form>`;
 }
 
@@ -4255,7 +4259,7 @@ function DocumentsPage({ ctx }) {
         <a class="bp-signlist__cover" ...${x.body ? open(x) : { href: `#/documents/${x.id}` }} aria-label=${`Read ${x.title}`} tabindex="-1"><${Cover} x=${x} shelf=${shelfOf(x)} /></a>
         <div class="bp-signlist__body">
           <p class="bp-doc__title">${x.title}</p>
-          <p class="bp-doc__meta">${[x.note, !x.signedByMe && dueOn(x, year) ? nbw(`Sign by ${dueWords(dueOn(x, year))}`) : '', nbw(`${x.signedCount} of ${data.people.board.length} board members ${x.signedCount === 1 ? 'has' : 'have'} signed for ${year}`)].filter(Boolean).join(' · ')}</p>
+          <p class="bp-doc__meta">${[x.note, !x.signedByMe && x.declinedByMe ? 'You told SOARD you can’t sign it as written' : '', !x.signedByMe && dueOn(x, year) ? nbw(`${dueOn(x, year) < todayEastern() ? 'Was due' : 'Sign by'} ${dueWords(dueOn(x, year))}`) : '', nbw(`${x.signedCount} of ${data.people.board.length} board members ${x.signedCount === 1 ? 'has' : 'have'} signed for ${year}`)].filter(Boolean).join(' · ')}</p>
           ${foundIn(x)}
           ${x.body ? html`
             ${x.signedByMe ? html`<p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--sm" ...${open(x)}>Read it</a></p><${Signed} doc=${x} ctx=${ctx} />`
@@ -4319,7 +4323,15 @@ function DocPage({ id, ctx }) {
   const mk = data.me.slug ? `bp-mark:${data.me.slug}` : '';
   const [mark, setMarkState] = useState(() => (mk ? readFields(mk).type ? readFields(mk) : null : null) || (data.me.mark?.type ? data.me.mark : null));
   useEffect(() => { if (data.me.mark?.type && !mark) setMarkState(data.me.mark); }, [data.me.mark]);
-  const adopt = (m) => { setMarkState(m); if (mk) keepFields(mk, m); };
+  // A signature adopted again with other initials: the points already initialed take the new ones (never a stamp the
+  // server would refuse, and no Initial button left to press)
+  const adopt = (m) => {
+    const was = mark?.initials ? marksInitials(mark) : '';
+    const now = marksInitials(m);
+    if (was && now !== was) setVals((x) => { const next = { ...x }; for (const f of (doc?.body ? paperFields(doc.body) : [])) if (f.kind === 'initials' && next[f.n] === was) next[f.n] = now; if (fk) keepFields(fk, next); return next; });
+    setMarkState(m);
+    if (mk) keepFields(mk, m);
+  };
   const [adopting, setAdopting] = useState(null);
   const needMark = (then) => setAdopting({ then });
   const year = todayEastern().slice(0, 4);
@@ -4333,6 +4345,17 @@ function DocPage({ id, ctx }) {
   }
   const written = !!doc.body;
   const fieldsOf = written ? paperFields(doc.body) : [];
+  // On from point `after` (0: from the start): the next one left to fill in, else the signing itself (agreeing to sign
+  // electronically when that's still to tick, else Sign)
+  const onward = (after = 0) => {
+    const left = fieldsOf.filter((f) => f.n !== after && !String(vals[f.n] || '').trim());
+    const blank = left.find((f) => f.n > after) || left[0];
+    const sign = document.getElementById(`sign-${doc.id}`);
+    const el = blank ? document.querySelector(`[data-field-input="${blank.n}"]`)
+      : sign?.querySelector('.bp-sign__agree input:not(:checked)') || sign?.querySelector('button[type="submit"]') || sign;
+    el?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+    el?.focus({ preventScroll: true });
+  };
   const changed = doc.wordsAt ? shortDate(todayEastern(Date.parse(doc.wordsAt))) : '';
   const fileLink = !written ? viewerLink(asViewer([{ ...doc.file, name: doc.title }]), 0) : null;
   const fileOpen = fileLink ? { ...fileLink, onClick: (e) => { sayOpened(); fileLink.onClick(e); } } : null;
@@ -4363,7 +4386,7 @@ function DocPage({ id, ctx }) {
     added = added.filter((l) => !changed.some((c) => c.t === l.t));
     return added.length || removed.length || changed.length ? { added, removed, changed } : null;
   })() : null;
-  const HOW = { typed: 'typed on the board page', copy: 'with the copy signed on paper', staff: 'with a signed copy SOARD added', drive: 'with a signed copy in SOARD’s files' };
+  const HOW = { typed: 'typed on the board page', drawn: 'drawn on the board page', copy: 'with the copy signed on paper', staff: 'with a signed copy SOARD added', drive: 'with a signed copy in SOARD’s files' };
   return html`<div class="bp-docpage">
     <a class="bp-back" href="#/documents" onClick=${() => { focusNext = `doc-${doc.id}`; }}><${Icon} name="back" size=${18} />Documents</a>
     ${doc.hidden ? html`<p class="bp-doc__changed bp-noprint">Off the board page: the board doesn’t see it now. You’re seeing it as one of Board’s admins.</p>` : null}
@@ -4381,13 +4404,8 @@ function DocPage({ id, ctx }) {
       ${changes.added.length ? html`<p class="bp-whatchanged__h">New</p><ul>${changes.added.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}>${l.h ? html`<strong>${l.t}</strong>` : l.t}</li>`)}</ul>${changes.added.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.added.length - 20, 'more new line')}</p>` : null}` : null}
       ${changes.removed.length ? html`<p class="bp-whatchanged__h">Taken out</p><ul>${changes.removed.slice(0, 20).map((l, i) => html`<li key=${i} class=${l.h ? 'is-h' : null}><s>${l.h ? html`<strong>${l.t}</strong>` : l.t}</s></li>`)}</ul>${changes.removed.length > 20 ? html`<p class="bp-whatchanged__more">and ${plural(changes.removed.length - 20, 'more line')} taken out</p>` : null}` : null}
     </details>` : null}</div>` : null}
-    ${written && doc.sign && fieldsOf.length && data.me.slug && !me ? html`<${SignBar} fields=${fieldsOf} vals=${vals} next=${() => {
-      const blank = fieldsOf.find((f) => !String(vals[f.n] || '').trim());
-      const el = blank ? document.querySelector(`[data-field-input="${blank.n}"]`) : document.getElementById(`doc-${doc.id}`);
-      el?.scrollIntoView({ block: 'center', behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
-      (blank ? el : el?.querySelector('button, input'))?.focus({ preventScroll: true });
-    }} />` : null}
-    ${written ? html`<article class="bp-card bp-docpage__words bp-rise" style=${rise(1)}><${Report} text=${doc.body} level=${2} slot=${doc.sign ? (b) => html`<${FieldBox} b=${b} doc=${doc} me=${!!data.me.slug} vals=${vals} setVal=${setVal} mark=${mark} needMark=${needMark} />` : null} /></article>`
+    ${written && doc.sign && fieldsOf.length && data.me.slug && !me ? html`<${SignBar} fields=${fieldsOf} vals=${vals} next=${() => onward(0)} />` : null}
+    ${written ? html`<article class="bp-card bp-docpage__words bp-rise" style=${rise(1)}><${Report} text=${doc.body} level=${2} slot=${doc.sign ? (b) => html`<${FieldBox} b=${b} doc=${doc} me=${!!data.me.slug} vals=${vals} setVal=${setVal} mark=${mark} needMark=${needMark} onward=${onward} />` : null} /></article>`
       : html`<div class="bp-card bp-docpage__file bp-rise" style=${rise(1)}>
         <p class="bp-muted">${doc.title} is ${({ PDF: 'a PDF', Word: 'a Word file', Excel: 'a spreadsheet', Slides: 'a slide deck', Photo: 'a photo' })[formatOf(doc.file)] || 'a file'}: open it to read it${doc.sign ? ', then sign here' : ''}.</p>
         <p class="bp-btns bp-btns--tight"><a class="bp-btn bp-btn--primary" ...${fileOpen}>Read it</a></p>
@@ -4397,8 +4415,8 @@ function DocPage({ id, ctx }) {
       <h2 class="bp-h2" id="docsign-h">${!data.me.slug ? `Signatures for ${year}` : me ? `Signed for ${year}` : `Sign it for ${year}`}</h2>
       <p class="bp-muted">${doc.signedCount} of ${data.people.board.length} board members ${doc.signedCount === 1 ? 'has' : 'have'} signed for ${year}.${data.me.slug ? '' : ' Board members sign here.'}</p>
       ${last && !sinceLast ? html`<p class="bp-muted bp-noprint">You signed it for ${last.year}${lastOn ? ` on ${lastOn}` : ''}.${last.version && doc.version === last.version ? ' It hasn’t changed since.' : ''} Each year it’s signed again.</p>` : null}
-      <${SignForm} d=${doc} ctx=${ctx} vals=${vals} mark=${mark} needMark=${needMark} clearVals=${clearVals} />
-      ${(doc.myCopies || []).filter((c) => !(me?.record?.id === c.id)).length ? html`<div class="bp-copies bp-noprint"><p class="bp-copies__h">Your signed copies</p><ul>${doc.myCopies.filter((c) => !(me?.record?.id === c.id)).map((c) => html`<li key=${c.id}><a class="bp-link" ...${viewerLink(asViewer([{ id: c.id, name: `${doc.title}, signed ${c.year}.pdf`, type: 'application/pdf' }]), 0)}>${c.year}</a><span class="bp-muted"> · signed ${shortDate(todayEastern(Date.parse(c.at)))}${c.version ? `, wording ${c.version}` : ''}</span></li>`)}</ul></div>` : null}
+      <${SignForm} d=${doc} ctx=${ctx} vals=${vals} mark=${mark} needMark=${needMark} clearVals=${clearVals} onward=${onward} />
+      ${(doc.myCopies || []).filter((c) => !(me?.record?.id === c.id)).length ? html`<div class="bp-copies bp-noprint"><p class="bp-copies__h">Your signed copies</p><ul>${doc.myCopies.filter((c) => !(me?.record?.id === c.id)).map((c) => html`<li key=${c.id}><a class="bp-link" ...${viewerLink(asViewer([{ id: c.id, name: `${doc.title}, signed ${c.year}.pdf`, type: 'application/pdf' }]), 0)}>Your ${c.year} signed copy</a><span class="bp-muted"> · signed ${shortDate(todayEastern(Date.parse(c.at)))}</span></li>`)}</ul></div>` : null}
       ${adopting ? html`<${AdoptDialog} own=${data.me.name || ''} start=${mark} onClose=${() => setAdopting(null)} onAdopt=${(m) => { adopt(m); const then = adopting.then; setAdopting(null); then?.(m); }} />` : null}
       ${me && nextToSign ? html`<p class="bp-docpage__next bp-noprint"><a class="bp-btn bp-btn--sm bp-btn--primary" href=${`#/documents/${nextToSign.id}`}>Next to sign: ${nextToSign.title}</a></p>` : null}
       ${written ? html`<div class="bp-printonly bp-docpage__paper" aria-hidden="true">

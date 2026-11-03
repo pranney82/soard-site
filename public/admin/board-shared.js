@@ -234,8 +234,10 @@ export const PROCESS_TEXT = [
   'A board member signs on SOARD’s board page, which opens only after Cloudflare Access emails a one-time code to the address SOARD has for them.',
   'They read the paper there, initial and answer each point it marks, agree once to sign electronically, and sign with their name typed in a style they choose or drawn. Nobody else can sign for them: an admin can add a copy they signed on paper, recorded as added by that admin.',
   'Each signature keeps the address Access checked, the IP address and device it came from, when that sign-in began, and the SHA-256 of the exact words or file they signed. Every step (asked, opened, signed, replaced, taken off) is an event in one chain, each hashed over the one before, so a change afterwards shows.',
-  'Nothing a signature rests on is deleted. Each signer gets their signed copy, with this record, by email.',
+  'Nothing a signature rests on is deleted. Each signature gets its signed copy with this record (one added by an admin is the copy as it came in), and a member who signs on the board page gets theirs by email.',
 ].join(' ');
+/** How signing works, for a board member, in plain words (PROCESS_TEXT is the record's own) */
+export const MEMBER_HOW = 'The board page opens only with a code emailed to you, so only you can sign as you, and nobody can sign for you. When you sign, SOARD keeps your name, when you signed, the exact words you signed and where you signed from, in a record that shows any change made to it later. You get your signed copy by email, and it’s here on the board page too.';
 /** A paper's due date in a year ('MM-DD' kept on the paper, so it rolls forward each year; Feb 29 is Feb 28 in other years) → 'YYYY-MM-DD' | '' */
 export const dueOn = (doc, year) => {
   const m = String(doc?.due || '').match(/^(\d{2})-(\d{2})$/);

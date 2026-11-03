@@ -819,7 +819,7 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'Remind by email', s: 'off', k: 'schedule',
           when: 'On the live hub’s heartbeat, weekdays 8 AM to 7 PM Eastern that aren’t holidays, once an admin turns it on in Board → Members (every 3 days or weekly).',
-          does: 'Emails each board member who hasn’t signed this year’s papers, naming every one they haven’t, that many days after they were last asked or had the board page’s sign-in email. At most 4 a year; signing, or telling SOARD they can’t sign a paper as written, stops them, and so does a week past a paper’s due date. Each January it asks the whole board again by itself, on the first weekday after New Year’s Day.',
+          does: 'Emails each board member who hasn’t signed this year’s papers, naming every one they haven’t, that many days after they were last asked or had the board page’s sign-in email. At most 4 a year; signing, or telling SOARD they can’t sign a paper as written, stops them. A paper past its due date is asked for as overdue. Each January it asks the whole board again by itself, on the first weekday after New Year’s Day.',
           touches: ['Resend', 'D1'], where: 'functions/api/_board-sign.js maybeRemindSigners (via _board.js maybeRunBoard)',
           info: 'Off until an admin turns it on. Ask to sign on Board → Members emails whoever an admin chooses, any time.',
           live: (f) => {

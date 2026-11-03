@@ -351,12 +351,13 @@ export async function boardRoster(DB, group = 'board') {
 export async function setBoardEmail(DB, slug, email) {
   await ensureSchema(DB);
   const e = normEmail(email);
-  if (!e) return DB.prepare('DELETE FROM reveal_board_emails WHERE slug = ?').bind(slug).run();
-  if (!isEmail(e)) throw new Error('That email doesn\'t look right');
+  if (e && !isEmail(e)) throw new Error('That email doesn\'t look right');
   const was = await DB.prepare('SELECT email FROM reveal_board_emails WHERE slug = ?').bind(slug).first().catch(() => null);
-  const r = await DB.prepare('INSERT OR REPLACE INTO reveal_board_emails (slug, email, updated_at) VALUES (?, ?, ?)').bind(slug, e, new Date().toISOString()).run();
-  // A changed address (the one a board member signs in, and signs, with): in the signing record, and the old
-  // address is told by the heartbeat (./_board-sign.js maybeRunSigning)
+  const r = e
+    ? await DB.prepare('INSERT OR REPLACE INTO reveal_board_emails (slug, email, updated_at) VALUES (?, ?, ?)').bind(slug, e, new Date().toISOString()).run()
+    : await DB.prepare('DELETE FROM reveal_board_emails WHERE slug = ?').bind(slug).run();
+  // A changed or cleared address (the one a board member signs in, and signs, with): in the signing record, and the
+  // old address is told by the heartbeat, without the new one (./_board-sign.js maybeRunSigning)
   if (was?.email && normEmail(was.email) !== e) {
     try {
       const { appendEvents } = await import('./_board-sign.js');

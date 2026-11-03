@@ -73,7 +73,7 @@ export async function rename(env, { collection, from, to } = {}, userEmail = 'un
   }
   // A former board member's board records are kept under their address (signatures, sign-ins): never someone else's
   if (table === 'team') {
-    for (const t of ['board_signatures', 'board_signins', 'board_activity']) {
+    for (const t of ['board_signatures', 'board_signins', 'board_activity', 'board_sign_events']) {
       const had = await DB.prepare(`SELECT slug FROM ${t} WHERE slug = ? LIMIT 1`).bind(to).first().catch(() => null);
       if (had) return { status: 409, body: { success: false, error: `“${to}” was a board member’s address, and their board records are kept under it. Pick another.` } };
     }

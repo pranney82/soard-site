@@ -270,17 +270,17 @@ test('a member answers for themselves: their own action items, their signature (
 
   const doc = (await adminApi(FOUNDER, { action: 'save-doc', doc: { title: 'Conflict of interest policy', kind: 'policy', sign: true } })).body.doc;
   const plain = (await adminApi(FOUNDER, { action: 'save-doc', doc: { title: 'Bylaws', kind: 'governance' } })).body.doc;
-  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: plain.id, name: 'Alex Rivera' })).status, 404);
-  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'A' })).status, 400);
+  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: plain.id, name: 'Alex Rivera', mark: { type: 'typed', style: 'caveat', text: 'Alex Rivera', initials: 'AR' }, consent: true })).status, 404);
+  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'A', mark: { type: 'typed', style: 'caveat', text: 'A', initials: 'AR' }, consent: true })).status, 400);
   // Someone else's name, or theirs mistyped, isn't a signature (QA signed "Mickey Mouse", Oct 31 2026)
-  const wrong = await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'Mickey Mouse' });
+  const wrong = await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'Mickey Mouse', mark: { type: 'typed', style: 'caveat', text: 'Mickey Mouse', initials: 'AR' }, consent: true });
   assert.equal(wrong.status, 400);
   assert.match(wrong.body.error, /own name.*Alex Rivera/);
-  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'Alex Rivers' })).status, 400);
-  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'Mickey Rivera' })).status, 400, 'their last name after someone else’s first name isn’t theirs');
+  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'Alex Rivers', mark: { type: 'typed', style: 'caveat', text: 'Alex Rivers', initials: 'AR' }, consent: true })).status, 400);
+  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: 'Mickey Rivera', mark: { type: 'typed', style: 'caveat', text: 'Mickey Rivera', initials: 'AR' }, consent: true })).status, 400, 'their last name after someone else’s first name isn’t theirs');
   assert.equal((await portalApi(MEMBER)).body.docs.find((d) => d.id === doc.id).signedByMe, null, 'nothing was signed');
   // Their own, typed in a hurry: kept the way People spells it
-  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: '  alex   rivera ' })).status, 200);
+  assert.equal((await portalApi(MEMBER, { action: 'sign', docId: doc.id, name: '  alex   rivera ', mark: { type: 'typed', style: 'caveat', text: '  alex   rivera ', initials: 'AR' }, consent: true })).status, 200);
   const page = (await portalApi(MEMBER)).body;
   assert.equal(page.docs.find((d) => d.id === doc.id).signedByMe.name, 'Alex Rivera');
   assert.equal((await adminApi(FOUNDER)).body.docs.find((d) => d.id === doc.id).signed['alex-rivera'].name, 'Alex Rivera');

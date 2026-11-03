@@ -191,10 +191,11 @@ try {
   const alex = await tab(MEMBER, 390);
   await alex.goto(`${SITE}/admin/board/#/documents/${exp.id}`, { waitUntil: 'networkidle0' });
   await alex.waitForSelector('.bp-sign', { timeout: 8000 });
-  ok(await waitText(alex, /By choosing Sign, I sign the Board Member Expectations for \d{4}\. SOARD asks for it by January 31\./), 'the paper says when it’s due');
+  // (due January 31: ahead in January, gone by the rest of the year, and said as such)
+  ok(await waitText(alex, day(0) <= `${YEAR}-01-31` ? /By choosing Sign, I sign the Board Member Expectations for \d{4}\. SOARD asks for it by January 31\./ : /By choosing Sign, I sign the Board Member Expectations for \d{4}\. It was due January 31\./), 'the paper says when it’s due, or that it was');
   // How signing works: there to open, in plain words
   await alex.evaluate(() => document.querySelector('.bp-sign__how summary')?.click());
-  ok(await alex.evaluate(() => document.querySelector('.bp-sign__how')?.open && /one-time code/.test(document.querySelector('.bp-sign__how p')?.textContent || '')), 'How signing works opens');
+  ok(await alex.evaluate(() => document.querySelector('.bp-sign__how')?.open && /a code emailed to you/.test(document.querySelector('.bp-sign__how p')?.textContent || '')), 'How signing works opens');
   // Can't sign it as written
   ok(await clickText(alex, '.bp-sign__or button', /^Tell SOARD why$/), 'Can’t sign it as written? Tell SOARD why');
   await alex.waitForSelector('.bp-sign__decline textarea', { timeout: 3000 });
@@ -218,7 +219,11 @@ try {
   await alex.type('#bp-adopt-name', 'Alex Rivera');
   await alex.click('.bp-adopt button[type="submit"]');
   await sleep(300);
+  await sleep(200);
+  ok(await alex.evaluate(() => document.activeElement?.matches?.('.bp-field__btn')), 'once adopted, the first point is initialed and the focus is on the next one to initial');
   for (const b of await alex.$$('.bp-field__btn')) await b.click();
+  await sleep(200);
+  ok(await alex.evaluate(() => document.activeElement?.matches?.('input.bp-field__input')), 'then on the answer');
   await alex.type('input.bp-field__input', '$6,000 as a Reveal Day sponsor');
   await alex.click('.bp-sign__agree input');
   await clickText(alex, '.bp-sign button[type="submit"]', /^Sign$/);
@@ -235,7 +240,7 @@ try {
   await alex.reload({ waitUntil: 'networkidle0' });
   await alex.waitForSelector('.bp-signed', { timeout: 8000 });
   ok(await waitText(alex, /Your signed copy \(PDF\)/), 'Your signed copy (PDF) to open');
-  ok(await waitText(alex, new RegExp(`Your signed copies\\s+${YEAR - 1} · signed Mar 2, ${YEAR - 1}`)), `their signed copies from other years, this year’s in its card (${(await alex.evaluate(() => document.querySelector('.bp-copies')?.innerText || document.querySelector('.bp-docpage__sign')?.innerText || '')).replace(/\s+/g, ' ').slice(0, 300)})`);
+  ok(await waitText(alex, new RegExp(`Your signed copies\\s+Your ${YEAR - 1} signed copy · signed Mar 2, ${YEAR - 1}`)), `their signed copies from other years, this year’s in its card (${(await alex.evaluate(() => document.querySelector('.bp-copies')?.innerText || document.querySelector('.bp-docpage__sign')?.innerText || '')).replace(/\s+/g, ' ').slice(0, 300)})`);
   ok((await overflow(alex)) <= 0, 'nothing past the edge at 390, signed');
   await shot(alex, 'member-signed-390');
 
