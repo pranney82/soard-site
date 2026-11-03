@@ -316,7 +316,9 @@ const figRuns = (rs) => rs.map((r, k) => {
   if (r.fig) out = html`<b class="bs-pt__fig">${out}</b>`;
   if (r.i) out = html`<em>${out}</em>`;
   if (r.b) out = html`<strong>${out}</strong>`;
-  if (r.href) out = html`<span class="bs-pt__a">${out}</span>`;
+  // A link opens in a tab of its own, so the presenter can show the page itself (the board page, the live page) and
+  // come back to the slide; it lets go of the focus, so a clicker's Enter doesn't open it again
+  if (r.href) out = html`<a class="bs-pt__a" href=${r.href} target="_blank" rel="noopener noreferrer" onClick=${(e) => e.currentTarget.blur()}>${out}</a>`;
   return out;
 });
 /**

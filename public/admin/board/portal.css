@@ -1558,6 +1558,8 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bp-doctile__page { position: relative; display: grid; place-items: center; aspect-ratio: 8.5 / 11; overflow: hidden; border-radius: 10px; background: var(--warm); border: 1px solid var(--line); box-shadow: var(--shadow-1); color: var(--faint); font-weight: 800; font-size: 0.86rem; letter-spacing: 0.08em; transition: transform 0.35s var(--ease), box-shadow 0.35s var(--ease); }
 .bp-doctile__page.has-page { background: #fff; }
 .bp-doctile__page img { width: 100%; height: 100%; object-fit: cover; object-position: top; }
+.bp-doctile__page[data-format="Photo"].is-wide { aspect-ratio: auto; }
+.bp-doctile__page[data-format="Photo"].is-wide img { height: auto; }
 .bp-doctile__page[data-format="Excel"]:not(.has-page) { background: #E8F1EA; color: #2B6B45; }
 .bp-doctile__page[data-format="Word"]:not(.has-page) { background: var(--info-bg); color: var(--info); }
 .bp-doctile__page[data-format="Slides"]:not(.has-page) { background: var(--warn-bg); color: var(--warn); }
@@ -1819,7 +1821,7 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-pt__t strong { font-weight: 750; }
 .bs-pt__fig { color: var(--yellow); font-weight: 750; font-variant-numeric: tabular-nums; }
 .bs-pt__w { white-space: nowrap; }
-.bs-pt__a { overflow-wrap: anywhere; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.15em; }
+.bs-pt__a { color: inherit; overflow-wrap: anywhere; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 0.15em; }
 .bs-eyebrow__of { display: inline-block; white-space: nowrap; margin-left: 0.85em; padding-left: 0.85em; border-left: 1px solid var(--bs-line); color: var(--bs-soft); font-variant-numeric: tabular-nums; }
 @keyframes bs-pt-in { from { opacity: 0; transform: translateY(14px); } }
 /* A report's points as their numbers (screen.js ReportNumbers, chosen beside the editor): a card each, two or three

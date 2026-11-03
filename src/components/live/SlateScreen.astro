@@ -98,7 +98,6 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
 </head>
 <body data-o="landscape" data-state="soon" data-partners={partners.length ? 'yes' : 'no'} data-kid={kid?.slug || ''} data-music={MUSIC_URL}>
   <div class="canvas" id="canvas">
-    <div class="glow" aria-hidden="true"></div>
 
     <div class="logo" role="img" aria-label="Sunshine on a Ranney Day, Dreams Built Here"><img src={LOGO} alt="" /></div>
 
@@ -392,13 +391,6 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     }
     body[data-o='portrait'] .canvas { width: 1080px; height: 1920px; }
 
-    .glow {
-      position: absolute; width: 1400px; height: 1400px; right: -380px; top: -300px; border-radius: 50%;
-      background: radial-gradient(circle, rgba(255, 218, 36, 0.22) 0%, rgba(255, 218, 36, 0.08) 40%, transparent 68%);
-      animation: drift 26s ease-in-out infinite alternate;
-    }
-    body[data-o='portrait'] .glow { right: -520px; top: 80px; }
-    @keyframes drift { to { transform: translate(-160px, 120px) scale(1.08); } }
 
     /* Logo: the CF asset is a padded 600×600 square; crop to its 396×371 content box */
     .logo { position: absolute; left: 112px; top: 80px; width: 190px; height: calc(190px * 371 / 396); overflow: hidden; animation: up 0.9s var(--ease) both; }
@@ -542,8 +534,6 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     .partners-label { flex-shrink: 0; font-size: 18px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--c-text-muted); width: 170px; line-height: 1.35; }
     .marquee {
       flex: 1; overflow: hidden; height: 100%; display: flex; align-items: center;
-      -webkit-mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
-      mask-image: linear-gradient(90deg, transparent, #000 6%, #000 94%, transparent);
     }
     .marquee-track { display: flex; gap: 22px; width: max-content; animation: marquee calc(var(--n) * 5s) linear infinite; }
     @keyframes marquee { to { transform: translateX(calc(-50% - 11px)); } }
@@ -562,7 +552,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     body.still .photo img { animation: none; transform: scale(1.02); }
     body.still .marquee-track { animation: none; }
     @media (prefers-reduced-motion: reduce) {
-      .glow, .photo img, .marquee-track { animation: none; }
+      .photo img, .marquee-track { animation: none; }
     }
   </style>
 </body>

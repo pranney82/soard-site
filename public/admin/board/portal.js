@@ -256,10 +256,31 @@ async function firstPage(f, width) {
     task.destroy();
   }
 }
-/** [ref, src]: the first page of a PDF (up to 8 MB) once its element has been on screen */
+/** A photo's first page is the photo itself, drawn small (a screenshot, a picture of a page); one the browser can't
+ * read (HEIC in Chrome) throws, so it keeps its badge */
+async function firstPhoto(f, width) {
+  const res = await fetch(fileUrl(f), { credentials: 'same-origin' });
+  if (!res.ok) throw new Error(`photo ${res.status}`);
+  const bmp = await createImageBitmap(await res.blob());
+  try {
+    const w = Math.min(bmp.width, Math.round(width * Math.min(2, window.devicePixelRatio || 1)));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = Math.max(1, Math.round((bmp.height * w) / bmp.width));
+    const g = canvas.getContext('2d');
+    g.fillStyle = '#fff';
+    g.fillRect(0, 0, canvas.width, canvas.height);
+    g.drawImage(bmp, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.82);
+  } finally {
+    bmp.close?.();
+  }
+}
+/** [ref, src]: the first page of a PDF, or a photo, (up to 8 MB) once its element has been on screen */
 function useFirstPage(f, width) {
   const ref = useRef(null);
-  const can = !!f?.id && formatOf(f) === 'PDF' && (f.size || 0) <= 8 * 1048576;
+  const fmt = formatOf(f);
+  const can = !!f?.id && (fmt === 'PDF' || fmt === 'Photo') && (f.size || 0) <= 8 * 1048576;
   const [src, setSrc] = useState(() => (can ? pageKept(f, width) : ''));
   useEffect(() => {
     if (!can || src || !ref.current || !('IntersectionObserver' in window)) return undefined;
@@ -267,7 +288,7 @@ function useFirstPage(f, width) {
     const io = new IntersectionObserver((seen) => {
       if (!seen.some((e) => e.isIntersecting)) return;
       io.disconnect();
-      drawSoon(() => firstPage(f, width)).then((data) => {
+      drawSoon(() => (fmt === 'Photo' ? firstPhoto : firstPage)(f, width)).then((data) => {
         if (!live) return;
         try { localStorage.setItem(pageKey(f, width), data); } catch { /* full: drawn again next time */ }
         setSrc(data);
@@ -2597,12 +2618,14 @@ function Presenters({ people }) {
   </li>`)}</ul>`;
 }
 
+/** A wide photo (a screenshot) shows whole in a tile of its own shape, not cut to a page's */
+const wideTile = (e) => { const i = e.currentTarget; i.parentElement?.classList.toggle('is-wide', i.naturalWidth > i.naturalHeight * 1.05); };
 /** An item's documents as their first pages, each opening in the viewer */
 function DocTile({ f, link }) {
   const [ref, src] = useFirstPage(f, 200);
   const fmt = formatOf(f);
   return html`<a class="bp-doctile" ...${link}>
-    <span class=${`bp-doctile__page ${src ? 'has-page' : ''}`} data-format=${fmt} ref=${ref} aria-hidden="true">${src ? html`<img src=${src} alt="" />` : html`<span>${{ PDF: 'PDF', Excel: 'XLS', Word: 'DOC', Slides: 'PPT', Photo: 'IMG' }[fmt] || 'FILE'}</span>`}</span>
+    <span class=${`bp-doctile__page ${src ? 'has-page' : ''}`} data-format=${fmt} ref=${ref} aria-hidden="true">${src ? html`<img src=${src} alt="" onLoad=${wideTile} />` : html`<span>${{ PDF: 'PDF', Excel: 'XLS', Word: 'DOC', Slides: 'PPT', Photo: 'IMG' }[fmt] || 'FILE'}</span>`}</span>
     <span class="bp-doctile__text"><span class="bp-doctile__title" title=${titleOf(f.name)}>${titleOf(f.name)}</span><span class="bp-doctile__meta">${[fmt, nb(sizeText(f.size))].filter(Boolean).join(' · ')}</span></span>
   </a>`;
 }

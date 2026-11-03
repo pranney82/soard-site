@@ -166,8 +166,8 @@ const breadcrumbs = [
             </span>
             <span class="af-top-actions">
               <span class="af-lang af-lang--top" data-lang-switch role="group" aria-label="Language" data-af-t-aria="language" hidden>
-                <button type="button" class="af-lang-btn" data-lang="en" lang="en" aria-pressed="true">English</button>
-                <button type="button" class="af-lang-btn" data-lang="es" lang="es" aria-pressed="false">Español</button>
+                <button type="button" class="af-lang-btn" data-lang="en" lang="en" aria-pressed="true"><span class="af-lang-long">English</span><span class="af-lang-short" aria-hidden="true">EN</span></button>
+                <button type="button" class="af-lang-btn" data-lang="es" lang="es" aria-pressed="false"><span class="af-lang-long">Español</span><span class="af-lang-short" aria-hidden="true">ES</span></button>
               </span>
               <button type="button" class="af-top-exit" data-exit>
                 <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
@@ -1254,6 +1254,7 @@ const breadcrumbs = [
   .af-top-save { min-height: 17px; font-size: 12.5px; line-height: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .af-top-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
   .af-lang--top .af-lang-btn { min-height: 44px; font-size: 13.5px; padding: 0 12px; }
+  .af-lang-short { display: none; }
   .af-top-exit {
     display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 16px 0 13px; border-radius: 999px; cursor: pointer;
     font: inherit; font-size: 14.5px; font-weight: 600; color: var(--c-dark); background: #fff; border: 1.5px solid var(--af-line);
@@ -1584,10 +1585,12 @@ const breadcrumbs = [
     .af-top-title { font-size: 14px; }
     .af-top-save { font-size: 12px; }
     .af-top-actions { gap: 6px; }
-    /* The language switch becomes one button: the other language */
-    .af-lang--top { padding: 0; background: none; }
-    .af-lang--top .af-lang-btn[aria-pressed="true"] { display: none; }
-    .af-lang--top .af-lang-btn { min-height: 44px; padding: 0 12px; background: #F4F2EC; color: var(--c-dark); }
+    /* Both languages stay, the one in use lit, as two letters each (the buttons are still named English and
+       Español): a lone "English" on the Spanish form read as the form being in English */
+    .af-lang--top { padding: 2px; gap: 0; }
+    .af-lang--top .af-lang-btn { min-width: 36px; padding: 0 8px; font-size: 13px; letter-spacing: 0.04em; }
+    .af-lang--top .af-lang-long { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    .af-lang--top .af-lang-short { display: inline; }
     .af-top-exit { width: 44px; padding: 0; justify-content: center; }
     .af-top-exit span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .af-top-exit svg { width: 16px; height: 16px; }
