@@ -19,7 +19,7 @@
  * marks it 🧪, the admin tags it, and it never counts as New.
  */
 
-import { ADVISORY_FIELDS, checkAnswers, answerSections, JOTFORM_FIELDS, OVERVIEW_PDF, EMAIL_RE } from './_advisory-form.js';
+import { ADVISORY_FIELDS, checkAnswers, answerSections, JOTFORM_FIELDS, OVERVIEW_PDF, EMAIL_RE, greetName } from './_advisory-form.js';
 import { sendEmails, SITE_ORIGIN, slackPost } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import * as mail from './_email-shell.js';
@@ -40,7 +40,7 @@ const newId = () => `adv-${Date.now().toString(36)}-${crypto.randomUUID().slice(
 /** A test application: the full name starts with TEST, like the makeover form's test families */
 export const isTestApplication = (nameOrAnswers) => /^\s*test\b/i.test(typeof nameOrAnswers === 'string' ? nameOrAnswers : nameOrAnswers?.fullName || '');
 const TEST_LABEL = 'Test application · not a real applicant';
-const firstName = (a) => String(a?.preferredName || a?.fullName || '').trim().split(/\s+/)[0] || '';
+const firstName = greetName;
 const normalizeName = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 // ─── D1 ─────────────────────────────────────────────────────────────

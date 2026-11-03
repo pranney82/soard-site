@@ -96,6 +96,7 @@ let videoBytes = 0;
 let failSaves = 0; // a status every save gets while set (a save that doesn't go through)
 let holdSubmit = 0; // ms a submit takes to reach the server while set (a slow connection)
 let failPhotos = false; // every photo upload gets a 500 while set
+let failArea = false; // every service-area check gets a 500 while set (our server, the connection)
 
 /** A tab with the console watched and Stream + the address lookup faked */
 async function newTab({ context = browser, phone = true, reduced = true, bypassCsp = false } = {}) {
@@ -133,6 +134,7 @@ async function newTab({ context = browser, phone = true, reduced = true, bypassC
     }
     if (url.startsWith(`${SITE}/api/apply`) && req.method() === 'POST' && (req.headers()['content-type'] || '').includes('json')) {
       const body = JSON.parse(req.postData() || '{}');
+      if (failArea && body.action === 'area') return req.respond({ status: 500, contentType: 'text/html', body: '<h1>Error</h1>' });
       if (failSaves && body.action === 'save') return req.respond({ status: failSaves, contentType: 'application/json', body: JSON.stringify({ ok: false, error: 'Something went wrong' }) });
       if (holdSubmit && body.action === 'submit') { setTimeout(() => req.continue(), holdSubmit); return; }
       if (body.action === 'video-url') {
@@ -436,6 +438,25 @@ try {
   await next();
   ok((await stepTitle()) === AREA && await visible('#af-address-line1') && await page.$eval('#af-address-city', (e) => e.value) === 'Macon', 'Continue: the address again, as it was');
 
+  console.log('Service area: a check that didn’t go is asked again (its "Check again", and once the connection is back)');
+  failArea = true;
+  await clear('#af-address-zip');
+  await page.type('#af-address-zip', '31206');
+  await waitArea('error');
+  ok(await areaState() === 'error' && /Check again/.test(await page.$eval('[data-area-result]', (e) => e.textContent)), 'a check that didn’t go says so, with "Check again"');
+  failArea = false;
+  await page.$eval('[data-act="area-again"]', (b) => b.click());
+  await page.waitForFunction(() => document.querySelector('[data-area]')?.dataset.area !== 'error', { timeout: 15000 }).catch(() => {});
+  ok(await areaState() !== 'error', `"Check again" asks again (${await areaState()})`);
+  failArea = true;
+  await clear('#af-address-zip');
+  await page.type('#af-address-zip', '31201');
+  await waitArea('error');
+  failArea = false;
+  await page.evaluate(() => window.dispatchEvent(new Event('online')));
+  await waitArea('far');
+  ok(await areaState() === 'far', `and once the connection is back it's asked again by itself: Macon, far outside (${await areaState()})`);
+
   console.log('Service area: an address the Census can’t find');
   await clear('#af-address-line1');
   await page.type('#af-address-line1', '1 Nowhere Lane');
@@ -615,6 +636,14 @@ try {
   await tap('[data-more="parent2"] [data-more-open]');
   await sleep(150);
   ok(await visible('#af-parent2Email') && await page.evaluate(() => document.activeElement?.id === 'af-parent2Name-first'), 'the button opens it, with the cursor in the first name');
+  // Opened, nothing in it yet: a language switch keeps it open
+  await tap('[data-lang-switch] [data-lang="es"]');
+  await sleep(300);
+  ok(await visible('#af-parent2Email'), 'Español with nothing in it yet: the second parent stays open');
+  await tap('[data-lang-switch] [data-lang="en"]');
+  await sleep(300);
+  ok(await visible('#af-parent2Email'), 'and back in English');
+  await page.focus('#af-parent2Name-first');
   await page.type('#af-parent2Name-first', 'Sam');
   await type('#af-parent2Email', 'sam@example.com');
   await next();

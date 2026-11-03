@@ -82,7 +82,7 @@ export const UI = {
     uploading: 'Uploading… {pct}%', added: 'Added: {name}', tryAgain: '{msg}. Please try again.', uploadFailed: 'Upload failed', videoFailed: "Your video didn't upload", uploadOffline: "The upload stopped when the connection dropped. It picks up again by itself once you're back online, or press Try again.", notImage: "That file isn't a photo we can use. Please choose a JPEG, PNG or HEIC photo.",
     dropPhoto: 'Drop the photo here', dropVideo: 'Drop the video here', orDrag: 'or drag one here', orDragVideo: 'or drag one here', undo: 'Undo', uploadWait: 'Please wait for this upload to finish.', uploadRetrying: 'The connection dropped. Trying again ({pct}% sent)…', photoRemoved: 'Photo removed.', videoRemoved: 'Video removed.', groupRemoved: 'Answers removed.',
     noVideo: 'No video yet', chooseVideo: 'Choose or record a video', chooseVideoDesk: 'Choose a video file', chooseOther: 'Choose a different video', starting: 'Starting upload…',
-    uploadingPct: 'Uploading your video… {pct}%', finishing: 'Finishing up…', videoDone: 'Video uploaded: {name}', videoGone: 'Your video did not finish uploading. Please choose it again.',
+    uploadingPct: 'Uploading your video… {pct}%', finishing: 'Finishing up…', videoDone: 'Video uploaded: {name}', videoGone: 'Your video did not finish uploading. Please choose it again.', cancelUpload: 'Cancel upload', videoCanceled: 'Upload canceled.', videoKept: 'Upload canceled. Your video is still here: {name}',
     notVideo: "That file isn't a video. Please choose a video file.", uploadStartFail: 'We could not start the upload',
     empty: 'That file is empty. If it is in iCloud or Google Drive, download it to your device first.', videoHint: 'Up to 10 minutes. Please keep this page open while it uploads.',
     record: 'Record with my camera', recordStart: 'Start recording', recordStop: 'Stop and use this video', recordCancel: 'Cancel', recording: 'Recording {time}',
@@ -100,7 +100,7 @@ export const UI = {
     areaPrompt: "Enter the address, and we'll show it on the map.", areaChecking: 'Checking the address…',
     areaInside: 'Inside our service area', areaNear: 'Close to our service area', areaFar: 'Outside our service area',
     areaUnknown: "We couldn't find this address on the map", areaUnknownBody: "Please check the address. If it's right, just tell us where the home is.",
-    areaError: "We couldn't check the address just now", areaErrorBody: 'Please tell us where the home is instead.',
+    areaError: "We couldn't check the address just now", areaErrorBody: 'Please tell us where the home is instead.', areaAgain: 'Check again',
     areaFound: 'We found {address}.', areaFoundCounty: 'We found {address}, in {county} County.', areaFix: 'Not right? Change the address', areaChoose: 'Please choose the answer that fits.',
     areaMapLabel: 'Map of our service area in metro Atlanta, with county lines and nearby towns.', areaMapHome: ' The home you entered is marked on it.',
     areaHome: 'Home', areaLegend: 'Our service area', areaLegendHome: 'The home you entered', areaAway: 'Home, {miles} mi away',
@@ -204,7 +204,7 @@ export const UI = {
     uploading: 'Subiendo… {pct}%', added: 'Agregada: {name}', tryAgain: '{msg}. Intente de nuevo.', uploadFailed: 'No se pudo subir', videoFailed: 'Su video no se subió', uploadOffline: 'La carga se detuvo cuando se perdió la conexión. Continúa sola cuando vuelva a tener conexión, o presione Intentar de nuevo.', notImage: 'Ese archivo no es una foto que podamos usar. Elija una foto JPEG, PNG o HEIC.',
     dropPhoto: 'Suelte la foto aquí', dropVideo: 'Suelte el video aquí', orDrag: 'o arrástrela aquí', orDragVideo: 'o arrástrelo aquí', undo: 'Deshacer', uploadWait: 'Espere a que termine esta carga.', uploadRetrying: 'Se cortó la conexión. Intentando de nuevo ({pct}% enviado)…', photoRemoved: 'Se quitó la foto.', videoRemoved: 'Se quitó el video.', groupRemoved: 'Se quitaron las respuestas.',
     noVideo: 'Todavía no hay video', chooseVideo: 'Elegir o grabar un video', chooseVideoDesk: 'Elegir un archivo de video', chooseOther: 'Elegir otro video', starting: 'Comenzando a subir…',
-    uploadingPct: 'Subiendo su video… {pct}%', finishing: 'Terminando…', videoDone: 'Video subido: {name}', videoGone: 'Su video no terminó de subirse. Elíjalo de nuevo.',
+    uploadingPct: 'Subiendo su video… {pct}%', finishing: 'Terminando…', videoDone: 'Video subido: {name}', videoGone: 'Su video no terminó de subirse. Elíjalo de nuevo.', cancelUpload: 'Cancelar la carga', videoCanceled: 'Se canceló la carga.', videoKept: 'Se canceló la carga. Su video sigue aquí: {name}',
     notVideo: 'Ese archivo no es un video. Elija un archivo de video.', uploadStartFail: 'No pudimos comenzar a subir el archivo',
     empty: 'Ese archivo está vacío. Si está en iCloud o Google Drive, descárguelo primero a su dispositivo.', videoHint: 'Hasta 10 minutos. Mantenga esta página abierta mientras se sube.',
     record: 'Grabar con mi cámara', recordStart: 'Comenzar a grabar', recordStop: 'Detener y usar este video', recordCancel: 'Cancelar', recording: 'Grabando {time}',
@@ -220,7 +220,7 @@ export const UI = {
     areaPrompt: 'Escriba la dirección y la mostraremos en el mapa.', areaChecking: 'Revisando la dirección…',
     areaInside: 'Dentro de nuestra área de servicio', areaNear: 'Cerca de nuestra área de servicio', areaFar: 'Fuera de nuestra área de servicio',
     areaUnknown: 'No encontramos esta dirección en el mapa', areaUnknownBody: 'Revise la dirección. Si está bien, solo díganos dónde está la casa.',
-    areaError: 'No pudimos revisar la dirección en este momento', areaErrorBody: 'Por favor, díganos dónde está la casa.',
+    areaError: 'No pudimos revisar la dirección en este momento', areaErrorBody: 'Por favor, díganos dónde está la casa.', areaAgain: 'Revisar de nuevo',
     areaFound: 'Encontramos {address}.', areaFoundCounty: 'Encontramos {address}, en el condado de {county}.', areaFix: '¿No es correcta? Cambiar la dirección', areaChoose: 'Elija la respuesta que corresponda.',
     areaMapLabel: 'Mapa de nuestra área de servicio en el área metropolitana de Atlanta, con los límites de los condados y las ciudades cercanas.', areaMapHome: ' La casa que escribió está marcada.',
     areaHome: 'Casa', areaLegend: 'Nuestra área de servicio', areaLegendHome: 'La casa que escribió', areaAway: 'Casa, a {miles} mi',
@@ -469,7 +469,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip"${req} inputm
       case 'number': control = `<input type="text" inputmode="${f.rules?.integer ? 'numeric' : 'decimal'}" id="${id}" maxlength="20" enterkeyhint="next" ${desc}>`; break; // whole numbers: no decimal point on the keypad
       // A likely typo in the address ("gmial.com") gets a one-tap fix under it (the script fills this in)
       case 'email': control = `<input type="email" id="${id}" maxlength="160" autocomplete="${f.id === 'parentEmail' || f.id === 'contactEmail' ? 'email' : 'off'}" inputmode="email" spellcheck="false" enterkeyhint="next" ${desc}><p class="af-mailfix" data-mailfix aria-live="polite" hidden></p>`; break;
-      case 'phone': control = `<input type="tel" id="${id}" maxlength="24" autocomplete="${f.id === 'parentPhone' || f.id === 'contactPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" enterkeyhint="next" ${desc}>`; break;
+      case 'phone': control = `<input type="tel" id="${id}" maxlength="32" autocomplete="${f.id === 'parentPhone' || f.id === 'contactPhone' ? 'tel' : 'off'}" inputmode="tel" placeholder="(404) 555-0123" enterkeyhint="next" ${desc}>`; break;
       case 'date': control = `<input type="date" id="${id}" max="${new Date().toISOString().slice(0, 10)}" min="${DATE_MIN}" ${desc}>`; break;
       case 'textarea': control = `<textarea id="${id}" rows="${Number(f.rows) || 5}" maxlength="${f.rules?.maxLength || TEXTAREA_MAX}" ${desc}></textarea><p class="af-count" data-count aria-live="polite" hidden></p>`; break;
       case 'signature': control = `<input type="text" id="${id}" class="af-signature" maxlength="120" autocomplete="name" placeholder="${esc(T('signature'))}" enterkeyhint="done" ${desc}>`; break;
@@ -487,7 +487,7 @@ ${part(T('zip'), `<input type="text" id="${id}-zip" data-part="zip"${req} inputm
 <input type="file" id="${id}" accept="video/*" class="af-file" tabindex="-1" ${desc}>
 <div class="af-upload-preview af-upload-preview--video" aria-hidden="true">${RING}<span class="af-pct"></span></div>
 <div class="af-upload-body"><p class="af-upload-status" aria-live="polite">${T('noVideo')}</p>
-<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" aria-describedby="${id}-label ${errId}" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose" aria-describedby="${id}-label ${errId}">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" aria-describedby="${id}-label ${errId}" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDragVideo')}</span><button type="button" class="af-btn af-btn--link" data-act="remove" aria-describedby="${id}-label ${errId}" hidden>${T('remove')}</button><button type="button" class="af-btn af-btn--link" data-act="undo" aria-describedby="${id}-label ${errId}" hidden>${T('undo')}</button></div>
+<div class="af-upload-actions"><button type="button" class="af-btn af-btn--upload af-btn--retry" data-act="retry" aria-describedby="${id}-label ${errId}" hidden>${T('retryUpload')}</button><button type="button" class="af-btn af-btn--upload" data-act="choose" aria-describedby="${id}-label ${errId}">${T('chooseVideo')}</button><button type="button" class="af-btn af-btn--ghost af-btn--sm" data-act="record" aria-describedby="${id}-label ${errId}" hidden>${T('record')}</button><span class="af-drag-hint">${T('orDragVideo')}</span><button type="button" class="af-btn af-btn--link" data-act="cancel" aria-describedby="${id}-label ${errId}" hidden>${T('cancelUpload')}</button><button type="button" class="af-btn af-btn--link" data-act="remove" aria-describedby="${id}-label ${errId}" hidden>${T('remove')}</button><button type="button" class="af-btn af-btn--link" data-act="undo" aria-describedby="${id}-label ${errId}" hidden>${T('undo')}</button></div>
 <p class="af-hint">${T('videoHint')}</p></div>
 <div class="af-drop-veil" aria-hidden="true"><span>${T('dropVideo')}</span></div></div>
 <div class="af-recorder" hidden>

@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { fieldError, DATE_MIN } from '../functions/api/_application-form.js';
+import { fieldError, DATE_MIN, answerText } from '../functions/api/_application-form.js';
 import { mailFix } from '../src/components/apply/mail-fix.js';
 
 test('a birth year typed wrong ("0201", 1950) is caught; a real one passes; the box takes the same earliest date', () => {
@@ -80,4 +80,13 @@ test('an email that can\'t get mail (a comma or period left on the end, "..") is
   for (const v of ['ana.qa@example.com,', 'ana.qa@example.com.', 'ana.qa@example..com']) assert.equal(mailFix(v), 'ana.qa@example.com', v);
   assert.equal(mailFix('ana@gmial.com,'), 'ana@gmail.com');
   for (const v of ["o'brien@example.com", 'jordan+apply@example.com', 'contact@school.k12.ga.us']) assert.equal(fieldError(f, v, 'en'), null, v);
+});
+
+test('a work phone\'s extension stays with it on the review and the copy ("(404) 555-0123 ext. 12")', () => {
+  const f = { id: 'parentPhone', type: 'phone' };
+  assert.equal(answerText(f, '404-555-0123 x12'), '(404) 555-0123 ext. 12');
+  assert.equal(answerText(f, '(404) 555-0199 ext 205'), '(404) 555-0199 ext. 205');
+  assert.equal(answerText(f, '+1 (404) 555-0123 extension 7'), '(404) 555-0123 ext. 7');
+  assert.equal(answerText(f, '404.555.0123'), '(404) 555-0123');
+  assert.equal(fieldError(f, '404-555-0123 x12'), null);
 });

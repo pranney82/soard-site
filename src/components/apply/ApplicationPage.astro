@@ -805,6 +805,7 @@ const breadcrumbs = [
   .af-more-body { display: grid; gap: 28px; padding: 22px 0 4px 20px; border-left: 3px solid var(--c-yellow-soft); }
   .af-more-body[hidden] { display: none; }
   .af-more-remove { justify-self: start; margin-top: -12px; }
+  .af-error-remove { justify-self: start; align-self: start; padding-left: 0; }
   /* Removed with answers in it: an Undo for a moment, under its button */
   .af-more-undo { display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; margin: 6px 0 0; font-size: 14.5px; color: var(--c-text-muted); }
 
@@ -1189,7 +1190,9 @@ const breadcrumbs = [
   .af-area-title { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.35; color: var(--c-dark); }
   .af-area-desc, .af-area-desc-wrap p { margin: 4px 0 0; font-size: 15.5px; line-height: 1.6; color: var(--c-text); }
   .af-area-found { margin: 10px 0 0; font-size: 14px; line-height: 1.5; color: var(--c-text-muted); overflow-wrap: anywhere; }
-  .af-area-fix, .af-area-apt { padding-left: 0; font-size: 14.5px; text-align: left; justify-content: flex-start; }
+  .af-area-fix, .af-area-apt, .af-area-again { padding-left: 0; font-size: 14.5px; text-align: left; justify-content: flex-start; }
+  .af-area-again { display: flex; gap: 8px; align-items: center; }
+  .af-area-again[aria-disabled="true"] { cursor: default; text-decoration: none; }
   .af-map-labels .is-crowded { visibility: hidden; }
   .af-area-ask { border: 0; padding: 0; margin: 0; min-width: 0; display: grid; gap: 12px; }
   .af-stop-map { margin: 8px 0 4px; }

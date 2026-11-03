@@ -100,6 +100,17 @@ export function isShown(field, answers) {
   return Object.entries(field.showIf).every(([id, values]) => values.includes(answers?.[id]));
 }
 
+// A title before the name ("Dr. Jordan Smith"): not what to call them on its own
+const TITLE = /^(?:dr|mr|mrs|ms|mx|miss|rev|prof|fr|hon|judge|sir|dame|capt|col|maj|gen|lt|sgt)\.?$/i;
+/** What a thank-you calls them: the name they go by, else their first name past a title ("Mrs. Lee", alone, stays so) */
+export function greetName(a) {
+  const pref = String(a?.preferredName || '').trim().replace(/\s+/g, ' ');
+  if (pref) return pref.slice(0, 60);
+  const words = String(a?.fullName || '').trim().split(/\s+/).filter(Boolean);
+  let i = 0;
+  while (i < words.length - 1 && TITLE.test(words[i])) i++;
+  return (i && i === words.length - 1 ? words.slice(i - 1) : words.slice(i, i + 1)).join(' ').replace(/[,;:]+$/, '');
+}
 export const EMAIL_RE = /^[^\s@<>",;]+@[^\s@<>"',;]+\.[a-z]{2,}$/i; // (an apostrophe is fine before the @: o'brien@)
 
 /** A link people typed without https:// still works */

@@ -474,6 +474,14 @@ async function handleRemoveFile(context, draft, body) {
   const fieldId = String(body.field || '');
   const f = draft.files?.[fieldId];
   if (!f) return json({ ok: true });
+  // A replacement video stopped on its way: only it goes, the video already in stays theirs
+  if (fieldId === 'video' && body.next) {
+    if (!f.next) return json({ ok: true });
+    const { next, ...kept } = f;
+    if (next.uid) context.waitUntil(deleteVideo(env, next.uid));
+    await setDraftFile(env.DB, draft.id, 'video', kept);
+    return json({ ok: true });
+  }
   if (fieldId === 'video') { for (const uid of [f.uid, f.next?.uid].filter(Boolean)) context.waitUntil(deleteVideo(env, uid)); }
   else if (applicantFiles(env)) for (const key of [f.key, f.thumbKey].filter(Boolean)) await applicantFiles(env).delete(key).catch(() => {});
   await setDraftFile(env.DB, draft.id, fieldId, null);

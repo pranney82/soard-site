@@ -319,6 +319,8 @@ function init(root, cfg, mode) {
     if (form && merge) answers = { ...answers, ...readAnswers() };
     // An address being searched for keeps what's typed in its line, one entered by hand its parts (neither is an answer yet)
     const addrWas = form ? [...ui.pages.querySelectorAll('[data-field] .af-address')].map(b => ({ id: b.closest('[data-field]').dataset.field, mode: b.dataset.mode, line: b.querySelector('[data-search]').value })) : [];
+    // A group they've opened ("Add another parent or guardian") stays open, nothing in it yet or not
+    const openWas = form ? [...ui.pages.querySelectorAll('[data-more]')].filter(b => !b.querySelector('.af-more-body')?.hidden).map(b => b.querySelector('[data-field]')?.dataset.field).filter(Boolean) : [];
     closeRecorder({ keep: true, why: 'recKeptLang' }); // a language switch mid-recording keeps it
     closeSuggest();
     form = resolve(lang);
@@ -338,6 +340,7 @@ function init(root, cfg, mode) {
     }
     for (const f of fields) if (isUpload(f)) paintUpload(f.id);
     openAnsweredTucked();
+    for (const id of openWas) openTucked(fieldEl(id), { animate: false });
     paintArea();
     if (!furthestId || order(furthestId) < 0) furthestId = form.pages[0]?.id || 'review';
     if (countyNote && answers[countyNote.field] === countyNote.value) showCountyNote();
@@ -1119,6 +1122,7 @@ function init(root, cfg, mode) {
       if (was) { p.textContent = ''; undo.push(() => { p.textContent = was; }); }
     }
     if (el.hasAttribute('data-snug')) { el.removeAttribute('data-snug'); undo.push(() => el.setAttribute('data-snug', '')); }
+    for (const b of el.querySelectorAll('.af-error-remove:not([hidden])')) { b.hidden = true; undo.push(() => { b.hidden = false; }); }
     for (const k of el.querySelectorAll('[data-field][hidden]')) {
       const lead = byId[k.dataset.field]?.showIf?.field;
       if (lead && pageOf(lead) === pid) { k.hidden = false; undo.push(() => { k.hidden = true; }); }
@@ -1385,6 +1389,7 @@ function init(root, cfg, mode) {
     const holders = new Set();
     for (const k of all) for (let p = k.parentElement; p && p !== page; p = p.parentElement) if (!all.includes(p)) holders.add(p);
     for (const c of holders) c.toggleAttribute('data-off', ![...on].some(k => c.contains(k)));
+    page?.querySelectorAll('.af-more').forEach(paintGroupRemove);
     fitScreen();
   }
   /** The questions on a screen of a page (the whole page before it's been worked out) */
@@ -1478,7 +1483,7 @@ function init(root, cfg, mode) {
       if (pageChanged || dir) {
         ui.steps.open = false;
         if (!lastNav?.reason) navNote(null);
-        if (lastNotice?.kind === 'success') notice(null); // "Welcome back" has done its job once they move on
+        if (lastNotice?.kind === 'success' || lastNotice?.m === 'remindersOff') notice(null); // "Welcome back" has done its job once they move on
       }
       // A screen that can't fit with a note at the top (one question that can't be split, like the makeover tiles):
       // the note goes sooner, so nothing waits under Back / Continue for long
@@ -1537,6 +1542,15 @@ function init(root, cfg, mode) {
     }
     takeExactMatch();
     if (due) reopenSuggest();
+    // A check that didn't go (the connection, our server): asked again before its question's answer is taken, a
+    // home it places outside the area stops here (on later screens it's asked again on its way, said at Continue)
+    if (areaFailed() && !area.want) {
+      if (pageOf(areaField().id) === currentId) {
+        setBusy(true);
+        try { await Promise.race([areaAgain(), wait(9000)]); } finally { setBusy(false); }
+        if (moved()) return;
+      } else areaAgain();
+    }
     // An address check still on its way decides this page's answer: wait for it (briefly),
     // unless the address itself needs fixing first (then there's nothing to wait for)
     const home = homeAddressId() && byId[homeAddressId()];
@@ -1599,6 +1613,9 @@ function init(root, cfg, mode) {
     }
     const last = !screenAhead();
     const stop = stopFor(form, a);
+    // An answer on a screen before this one that means we can't help (the check, asked again once the connection
+    // was back, placed the home outside the area): said now, not after the photos and the video
+    if (stop && order(stop.page) < order(currentId) && !previewing) { showStop(stop); pushLoc({ stop: true }); return; }
     // The address decides the service-area answer, so its screen stops too (a phone has the map on the next)
     const decides = stop && byId[stop.field]?.type === 'area' && here.has(homeAddressId());
     if (stop && stop.page === currentId && (here.has(stop.field) || decides || last)) { showStop(stop); pushLoc({ stop: true }); return; }
@@ -1748,6 +1765,8 @@ function init(root, cfg, mode) {
     const p = el.querySelector('.af-error');
     el.classList.toggle('af-field--error', !!msg);
     if (p && p.textContent !== (msg || '')) p.textContent = msg || '';
+    const box = el.closest('.af-more');
+    if (box) paintGroupRemove(box);
     if (sug.el === el) suggestNote();
     // The boxes the note is about: an address's parts still empty, or the one that's wrong (a ZIP short a
     // digit, a PO box for the street); never the optional apartment
@@ -2501,6 +2520,10 @@ function init(root, cfg, mode) {
 
   // ── Uploads: the box's look ──────────────────────────────────────
   const retryFiles = {}; // fieldId → the file that didn't go (its "Try again")
+  // A video on its way can be stopped (a wrong or huge file): its Cancel, or another video dropped on its box.
+  // Not once it's all sent (Stream has it then, and it's the video)
+  const stopping = {}; // fieldId → { canceled, late, upload, reject, finished } while a video uploads
+  const stoppable = (id) => !!stopping[id] && !stopping[id].late && !stopping[id].canceled;
   // An upload the connection dropped goes again by itself once it's back (a video from where it stopped), as it
   // says: at the browser's "online", or a few times over a minute when the drop was a hiccup the browser didn't notice
   const autoTries = {};
@@ -2562,6 +2585,21 @@ function init(root, cfg, mode) {
     if (pct) pct.textContent = s.state === 'busy' && s.pct != null ? `${s.pct}%` : '';
     const rec = box.querySelector('[data-act="record"]');
     if (rec) rec.hidden = !(canRecord() && s.state !== 'busy' && recorder?.id !== id);
+    const cancel = box.querySelector('[data-act="cancel"]');
+    if (cancel) {
+      const had = document.activeElement === cancel;
+      cancel.hidden = !(s.state === 'busy' && stoppable(id));
+      if (had && cancel.hidden) box.querySelector('[data-act="choose"]')?.focus({ preventScroll: true });
+    }
+  }
+  /** Stop the video on its way: what was there before it (or nothing) is what's there */
+  function cancelVideo(id) {
+    const c = stopping[id];
+    if (!stoppable(id)) return null;
+    c.canceled = true;
+    try { c.upload?.abort(); } catch { /* stopped either way */ }
+    c.reject?.(Object.assign(new Error('canceled'), { canceled: true }));
+    return c.finished;
   }
   function uploadsChanged() {
     paintHeader(); // the steps' "Done" too: a photo gone (an expired draft's) undoes its step
@@ -2727,6 +2765,9 @@ function init(root, cfg, mode) {
     touched.add(f.id);
     setFieldError(f.id, null);
     uploads.add(f.id);
+    let finish;
+    const ctl = stopping[f.id] = { canceled: false, late: false, upload: null, reject: null, finished: new Promise(r => { finish = r; }) };
+    const halt = () => { if (ctl.canceled) throw Object.assign(new Error('canceled'), { canceled: true }); };
     // A video already in stays theirs till this one is (the server keeps it too): put back if this one doesn't go
     const before = files[f.id]?.uploaded ? { file: files[f.id], ui: { ...uploadUi[f.id] }, token } : null;
     files[f.id] = { uid: true, uploaded: false, name: file.name };
@@ -2741,13 +2782,16 @@ function init(root, cfg, mode) {
         let url = !fresh && goingOn[f.id]?.sig === sig && goingOn[f.id].token === token ? goingOn[f.id].url : null;
         if (!url) {
           const r = await api({ action: 'video-url', token, size: file.size, name: file.name, lang });
+          halt();
           if (!r.ok) throw said(uploadGone(r, was) || r.error || T('uploadStartFail'));
           url = r.uploadUrl;
           goingOn[f.id] = { sig, url, token };
         }
         try {
+          halt();
           await new Promise((resolve, reject) => {
-            const upload = new tus.Upload(file, {
+            ctl.reject = reject;
+            const upload = ctl.upload = new tus.Upload(file, {
               uploadUrl: url,
               chunkSize: CHUNK,
               retryDelays: [0, 2000, 5000, 10000, 20000, 40000, 60000],
@@ -2772,10 +2816,12 @@ function init(root, cfg, mode) {
           break;
         } catch (e) {
           // Its upload link ran out or was let go (Stream keeps one for a while): a new one, once, from the start
-          if (!fresh && [404, 410].includes(e?.originalResponse?.getStatus?.())) { delete goingOn[f.id]; setUpload(f.id, { pct: 0, msg: 'starting' }); continue; }
+          if (!fresh && !ctl.canceled && [404, 410].includes(e?.originalResponse?.getStatus?.())) { delete goingOn[f.id]; setUpload(f.id, { pct: 0, msg: 'starting' }); continue; }
           throw e;
         }
       }
+      halt();
+      ctl.late = true;
       setUpload(f.id, { pct: 100, msg: 'finishing' });
       let uploaded = false;
       for (let i = 0; i < 20 && !uploaded; i++) {
@@ -2791,14 +2837,27 @@ function init(root, cfg, mode) {
       delete goingOn[f.id];
       setUpload(f.id, { state: 'done', msg: ['videoDone', { name: file.name }], pct: null });
     } catch (e) {
+      if (e?.canceled) {
+        // Stopped: the server lets go of what came of it (the one before it stays the video)
+        delete goingOn[f.id];
+        delete retryFiles[f.id];
+        delete autoTries[f.id];
+        const keep = before && before.token === token;
+        if (keep) { files[f.id] = before.file; setUpload(f.id, { ...before.ui, msg: ['videoKept', { name: before.file.name }], pct: null }); }
+        else { delete files[f.id]; setUpload(f.id, { state: 'empty', msg: 'videoCanceled', pct: null, thumb: null }); }
+        if (token && !previewing) api({ action: 'remove-file', token, field: f.id, ...(keep ? { next: true } : {}) }).catch(() => {});
+        return; // (its status line says so)
+      }
       if (e?.unusable) { delete retryFiles[f.id]; delete goingOn[f.id]; } else retryFiles[f.id] = file;
       if (before && before.token === token) { files[f.id] = before.file; setUpload(f.id, { ...before.ui, msg: failText(e, true), pct: null }); } // (not an application that expired meanwhile)
       else { delete files[f.id]; setUpload(f.id, { state: 'failed', msg: failText(e, true), pct: null }); }
       whenBack(f.id);
     } finally {
+      if (stopping[f.id] === ctl) delete stopping[f.id];
       uploads.delete(f.id);
       uploadsChanged();
       retireNotices({ videoDone: true });
+      finish();
     }
   }
 
@@ -2857,6 +2916,8 @@ function init(root, cfg, mode) {
     // A file chosen while the camera's on (or recording): the file is the video; the camera stops, its clip let go
     // (kept, it would replace the file the moment they went on)
     if (recorder?.id === f.id) closeRecorder();
+    // Another video while one's on its way: that one stops, this one goes
+    if (uploads.has(f.id) && stoppable(f.id)) { cancelVideo(f.id).then(() => takeFile(f, file)); return; }
     if (uploads.has(f.id)) return;
     // The one just removed goes from the server first, so the new one is what stays
     if (removing[f.id]) { dropRemoved(f.id).then(() => takeFile(f, file)); return; }
@@ -3364,7 +3425,7 @@ function init(root, cfg, mode) {
   }
 
   // ── The service-area check (the home address, placed on the map) ──
-  const area = { timer: 0, showTimer: 0, want: null, pending: null };
+  const area = { timer: 0, showTimer: 0, want: null, pending: null, again: 0, tries: 0, retrying: false };
   const areaField = () => fields.find(f => f.type === 'area') || null;
   const homeAddressNow = () => { const id = homeAddressId(); return id && byId[id] ? readField(byId[id]) : null; };
   /** The check, if it placed the address now on screen: { ...check, answer } */
@@ -3388,6 +3449,14 @@ function init(root, cfg, mode) {
     clearTimeout(area.timer);
     return runArea(addr, key);
   }
+  /** The check of the address on screen didn't go (not "no such address", nor the allowance used up) */
+  const areaFailed = () => !!areaNow && ['error', 'busy'].includes(areaNow.reason) && areaNow.key === addressKey(homeAddressNow()) && checkable(homeAddressNow());
+  /** That check again (once, with nothing else on its way) */
+  function areaAgain() {
+    if (!areaFailed() || area.want || doneShown || !token && !previewing) return null;
+    return runArea(homeAddressNow(), areaNow.key, { again: true });
+  }
+  window.addEventListener('online', () => { clearTimeout(area.again); areaAgain(); }, { signal });
   /** Check the address after a pause in typing (at once after picking a suggestion) */
   function scheduleArea(now = false) {
     if (!areaField()) return;
@@ -3425,11 +3494,13 @@ function init(root, cfg, mode) {
     const apt = status === 'unit' && !unitGiven ? `<button type="button" class="af-btn af-btn--link af-area-apt" data-act="area-apt">${esc(T('addApt'))}</button>` : '';
     return words ? `<p class="af-usps" data-status="${status}"><span>${esc(T(words))}</span> <span class="af-usps-by" translate="no">Google Maps</span></p>${apt}` : '';
   }
-  function runArea(addr, key) {
-    runUsps(addr, key);
+  function runArea(addr, key, { again = false } = {}) {
+    if (!again) runUsps(addr, key);
     area.want = key;
     clearTimeout(area.showTimer);
-    area.showTimer = setTimeout(() => { if (area.want === key) paintArea('checking'); }, 180);
+    clearTimeout(area.again);
+    // (asked again after it didn't go: the card and their answer stay until there's word, nothing flickers)
+    if (!again) area.showTimer = setTimeout(() => { if (area.want === key) paintArea('checking'); }, 180);
     area.pending = (async () => {
       let r;
       try { r = await api({ action: 'area', kind, ...(token && !previewing ? { token } : {}), address: addr }); } catch { r = { ok: false }; }
@@ -3437,7 +3508,13 @@ function init(root, cfg, mode) {
       clearTimeout(area.showTimer);
       area.want = null;
       area.pending = null;
+      const was = areaNow;
       areaNow = r.ok && r.area ? { ...r.area, key } : { key, band: 'unknown', reason: 'error' };
+      // Not checked just now (the connection, our server, the map service busy): asked again by itself, at once
+      // when the connection's back, else a few times over a minute (and at Continue, and its "Check again")
+      area.tries = areaFailed() ? (again && was?.key === key ? area.tries + 1 : 1) : 0;
+      if (areaFailed() && navigator.onLine && area.tries <= 3) area.again = setTimeout(areaAgain, 5000 * 3 ** (area.tries - 1));
+      area.retrying = false;
       // The Census's county is the one JobTread should get: fill it unless the family picked one themselves
       if (areaNow.county && homeAddressId()) {
         const county = readAnswers().county;
@@ -3484,8 +3561,11 @@ function init(root, cfg, mode) {
     if (st === 'empty') return `<p class="af-area-prompt">${esc(T('areaPrompt'))}</p>`;
     if (st === 'checking') return `<p class="af-area-checking"><span class="af-area-spin" aria-hidden="true"></span>${esc(T('areaChecking'))}</p>`;
     if (st === 'unknown' || st === 'error') {
-      // The Postal Service's word helps most here: a number that doesn't exist is often why
-      return `<div class="af-area-card" data-band="ask">${AREA_ICONS.ask}<div class="af-area-text"><p class="af-area-title">${esc(T(st === 'unknown' ? 'areaUnknown' : 'areaError'))}</p><p class="af-area-desc">${esc(T(st === 'unknown' ? 'areaUnknownBody' : 'areaErrorBody'))}</p>${uspsHtml()}<button type="button" class="af-btn af-btn--link af-area-fix" data-act="area-fix">${esc(T('areaFix'))}</button></div></div>`;
+      // The Postal Service's word helps most here: a number that doesn't exist is often why. A check that didn't go
+      // can be asked again (it is by itself too)
+      const again = st === 'error' && areaFailed()
+        ? `<button type="button" class="af-btn af-btn--link af-area-again" data-act="area-again"${area.retrying ? ' aria-disabled="true"' : ''}>${area.retrying ? `<span class="af-area-spin" aria-hidden="true"></span>${esc(T('areaChecking'))}` : esc(T('areaAgain'))}</button>` : '';
+      return `<div class="af-area-card" data-band="ask">${AREA_ICONS.ask}<div class="af-area-text"><p class="af-area-title">${esc(T(st === 'unknown' ? 'areaUnknown' : 'areaError'))}</p><p class="af-area-desc">${esc(T(st === 'unknown' ? 'areaUnknownBody' : 'areaErrorBody'))}</p>${uspsHtml()}${again}<button type="button" class="af-btn af-btn--link af-area-fix" data-act="area-fix">${esc(T('areaFix'))}</button></div></div>`;
     }
     const value = AREA_VALUES[st];
     const stopping = st === 'far' && af.stops?.[value] && form.stops?.[af.stops[value]];
@@ -4000,6 +4080,27 @@ function init(root, cfg, mode) {
     paintScreen();
     paintHeader();
     btn().focus({ preventScroll: true });
+  }
+  /**
+   * A group cut across screens (a small phone) has its Remove with its last question: a problem note on one of
+   * its screens before that has a Remove of its own, the way on when they've changed their mind
+   */
+  function paintGroupRemove(box) {
+    const body = box.querySelector(':scope > .af-more-body');
+    const away = !!body && !body.hidden && !!body.querySelector(':scope > [data-more-close]')?.hasAttribute('data-off');
+    for (const p of box.querySelectorAll('.af-error')) {
+      const here = p.nextElementSibling?.matches('.af-error-remove') ? p.nextElementSibling : null;
+      const want = away && !!p.textContent.trim();
+      if (want && !here) {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'af-btn af-btn--link af-error-remove';
+        b.setAttribute('data-more-close', '');
+        b.textContent = T('remove');
+        p.after(b);
+      } else if (!want && here) here.remove();
+      else if (here) here.textContent = T('remove'); // (a language switch)
+    }
   }
   /** After a redraw: a group with an answer in it stays open */
   function openAnsweredTucked() {
@@ -4592,7 +4693,8 @@ function init(root, cfg, mode) {
     const otherSaid = other && !keptBack;
     // (a brother's or sister's this device also has: offered each time they come back, and on the overview)
     const m = remindersOff ? (otherSaid ? 'remindersOffOther' : 'remindersOff') : keptBack ? 'keptHere' : otherSaid ? 'otherApplication' : otherHere() ? 'welcomeBackOther' : 'welcomeBack';
-    notice(m, otherSaid ? 'info' : 'success', /Other$|^otherApplication$/.test(m) ? 'openOther' : null);
+    // ("No more reminder emails" is what their press was for: there till they move on, the screen fitted with it)
+    notice(m, otherSaid || remindersOff ? 'info' : 'success', /Other$|^otherApplication$/.test(m) ? 'openOther' : null);
     if (keptBack) save();
     // A reload on a "can't help" screen: that screen again while the answer that led to it stands (its place in
     // the browser's history is the stop's, so Back from it is the question's, as before the reload)
@@ -4812,7 +4914,7 @@ function init(root, cfg, mode) {
     if (more) {
       if (more.matches('[data-more-undo]')) undoGroup(more.closest('[data-more]'));
       else if (more.matches('[data-more-open]')) { dropGroupUndo(more.closest('[data-more]')); openTucked(more.closest('[data-more]').querySelector('[data-field]'), { focus: true }); makeRoom(more.closest('[data-more]')); }
-      else { closeTucked(more.closest('[data-more]')); closeRoom(more.closest('[data-more]')); }
+      else { const box = more.closest('[data-more]'); closeTucked(box); closeRoom(box); } // (a note's own Remove goes with the note)
       return;
     }
     const fixMail = e.target.closest('[data-mailfix-use]');
@@ -4844,6 +4946,7 @@ function init(root, cfg, mode) {
           el.querySelector('input[type=file]').click();
           break;
         case 'remove': removeFile(f); break;
+        case 'cancel': cancelVideo(f.id); break;
         case 'undo': undoRemove(f); break;
         case 'retry':
           el.querySelector('[data-act="choose"]')?.focus({ preventScroll: true }); // "Try again" steps aside while it goes
@@ -4857,6 +4960,18 @@ function init(root, cfg, mode) {
           if (!homeAddressId()) break;
           focusOn(homeAddressId());
           document.activeElement?.select?.();
+          break;
+        }
+        case 'area-again': {
+          // Its "Checking the address…" in its place until there's word, then the card (and the key on what's there)
+          if (area.retrying || !areaFailed()) break;
+          area.retrying = true;
+          paintArea();
+          fieldEl(areaField().id)?.querySelector('[data-act="area-again"]')?.focus({ preventScroll: true });
+          areaAgain()?.then(() => {
+            const box = fieldEl(areaField()?.id)?.querySelector('[data-area-result]');
+            if (box && !box.contains(document.activeElement) && document.activeElement === document.body) (box.querySelector('[data-act="area-again"]') || box.querySelector('button'))?.focus({ preventScroll: true });
+          });
           break;
         }
         case 'area-apt': {
@@ -5019,7 +5134,7 @@ function init(root, cfg, mode) {
     const zone = dropZone(e);
     if (!zone || !hasFiles(e)) return;
     e.preventDefault(); // (a box still uploading too: a file let fall on it never opens in the browser, off the application)
-    if (zone.dataset.state === 'busy') { e.dataTransfer.dropEffect = 'none'; return; }
+    if (zone.dataset.state === 'busy' && !stoppable(zone.closest('[data-field]')?.dataset.field)) { e.dataTransfer.dropEffect = 'none'; return; }
     e.dataTransfer.dropEffect = 'copy';
     zone.dataset.drag = '1';
   };
@@ -5036,7 +5151,7 @@ function init(root, cfg, mode) {
     delete zone.dataset.drag;
     const f = byId[zone.closest('[data-field]')?.dataset.field];
     const file = e.dataTransfer?.files?.[0];
-    if (f && file && zone.dataset.state === 'busy') announce(T('uploadWait')); // said, not dropped without a word
+    if (f && file && zone.dataset.state === 'busy' && !stoppable(f.id)) announce(T('uploadWait')); // said, not dropped without a word
     else if (f && file) takeFile(f, file);
   });
   window.addEventListener('dragover', (e) => { if (hasFiles(e) && !dropZone(e)) { e.preventDefault(); e.dataTransfer.dropEffect = 'none'; } }, { signal });
@@ -5077,7 +5192,10 @@ function init(root, cfg, mode) {
   window.addEventListener('beforeunload', (e) => {
     // An upload or a recording would be cut off; changes not saved yet (offline, the server failing) are
     // kept on this device, but a family on someone else's phone wouldn't be back to it
-    if (uploads.size || recorder?.rec || (token && !doneShown && unsaved())) { e.preventDefault(); e.returnValue = ''; }
+    if (uploads.size || recorder?.rec || (token && !doneShown && unsaved())) { e.preventDefault(); e.returnValue = ''; return; }
+    // A browser that won't keep their place (every cookie blocked): leaving with answers and no emailed link asks
+    // first, as "Before you leave, use Save and finish later" said
+    if (!canKeep && !testRun && token && !doneShown && !laterEmail && !previewing && Object.values(readAnswers()).some(v => !blank(v))) { e.preventDefault(); e.returnValue = ''; }
   }, { signal });
   // Leaving through a site link doesn't fire beforeunload; ask before an upload is cut off. Asked on the link's own
   // click, before the site's router: a "no" given to the router it turns into a full page load (and the browser

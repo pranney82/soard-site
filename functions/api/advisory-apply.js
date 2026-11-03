@@ -16,7 +16,7 @@
  */
 
 import { submitApplication, notifyNew } from './_advisory-applications.js';
-import { checkAnswers } from './_advisory-form.js';
+import { checkAnswers, greetName } from './_advisory-form.js';
 import { turnstileOn, turnstileSiteKey, verifyTurnstile, clientIp } from './_secure.js';
 import { limit } from './_rate-limit.js';
 
@@ -72,6 +72,6 @@ export async function onRequestPost(context) {
     const send = notifyNew(env, app, { now });
     if (context.waitUntil) context.waitUntil(send); else await send;
   }
-  const first = String(app.answers.preferredName || app.answers.fullName || '').trim().split(/\s+/)[0] || '';
+  const first = greetName(app.answers);
   return json({ ok: true, first });
 }

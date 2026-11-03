@@ -7,7 +7,7 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { checkAnswers, ADVISORY_FIELDS, ADVISORY_STEPS, normalizeLink, answerSections } from '../functions/api/_advisory-form.js';
+import { checkAnswers, ADVISORY_FIELDS, ADVISORY_STEPS, normalizeLink, answerSections, greetName } from '../functions/api/_advisory-form.js';
 import { applicantEmail, staffEmail, staffSlack, fromJotform, importJotformApplications, listAdvisoryApplications, getAdvisorySettings } from '../functions/api/_advisory-applications.js';
 import * as publicApi from '../functions/api/advisory-apply.js';
 import * as adminApi from '../functions/api/advisory-applications-admin.js';
@@ -287,4 +287,16 @@ test('the emails read well without the site: plain text and the staff list defau
   assert.deepEqual((await getAdvisorySettings(env.DB)).staffEmails, ['info@soardcharity.com']);
   assert.deepEqual(answerSections({}), []);
   assert.deepEqual(fromJotform({}), {});
+});
+
+test('the thank-you calls them by their name, never a title ("Dr. Jordan Smith" is Jordan; "Mrs. Lee", alone, stays so)', () => {
+  assert.equal(greetName({ fullName: 'Dr. Jordan Smith' }), 'Jordan');
+  assert.equal(greetName({ fullName: 'Prof. Dr. Ana Ruiz' }), 'Ana');
+  assert.equal(greetName({ fullName: 'Mrs. Lee' }), 'Mrs. Lee');
+  assert.equal(greetName({ fullName: 'Jordan Avery' }), 'Jordan');
+  assert.equal(greetName({ fullName: 'Smith, John' }), 'Smith');
+  assert.equal(greetName({ fullName: 'Dr. Jordan Smith', preferredName: 'Mary Beth' }), 'Mary Beth');
+  assert.equal(greetName({}), '');
+  const mail = applicantEmail({ id: 'x', answers: { ...GOOD, preferredName: '', fullName: 'Dr. Jordan Smith' } });
+  assert.match(String(mail.text), /^Thank you, Jordan\./);
 });

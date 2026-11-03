@@ -1404,7 +1404,9 @@ export function answerText(field, value, en = false) {
     case 'phone': {
       const e = toE164(value);
       const m = e && e.match(/^\+1(\d{3})(\d{3})(\d{4})$/);
-      return m ? `(${m[1]}) ${m[2]}-${m[3]}` : String(value);
+      // (a work line's extension stays with it: "(404) 555-0123 ext. 12")
+      const ext = String(value).match(/(?:x|ext\.?|extension)\s*(\d{1,6})\s*$/i);
+      return m ? `(${m[1]}) ${m[2]}-${m[3]}${ext ? ` ext. ${ext[1]}` : ''}` : String(value);
     }
     default: return String(value);
   }

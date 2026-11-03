@@ -98,7 +98,7 @@ export function initAdvisoryForm() {
   let restored = false;
   let typedHere = false; // something typed or picked on this visit (not the browser filling boxes from its history)
 
-  $('adv-today').textContent = new Date().toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' });
+  $('adv-today').textContent = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
 
   // ── Answers in and out of the page ──
   const fieldEl = (id) => form.querySelector(`[data-field="${id}"]`);
@@ -303,7 +303,8 @@ export function initAdvisoryForm() {
     const el = fieldEl(id);
     if (!el) return;
     if (packs[step] && el.closest('[data-off]')) { screenNo = screenOf(step, id); paintScreen(); paint(); }
-    const input = el.querySelector('input:not([type="hidden"]), textarea');
+    // (a choice: the one picked, as a screen reader and Space find it, else the first)
+    const input = el.querySelector('input[type="radio"]:checked') || el.querySelector('input:not([type="hidden"]), textarea');
     // In view already, between the bar across the top and Back / Continue: left where it is (the step's line stays
     // in sight), else brought just into view
     const r = el.getBoundingClientRect();
@@ -1170,7 +1171,7 @@ export function initAdvisoryForm() {
     ui.saved.textContent = '';
     session.set(false);
     form.hidden = true;
-    $('adv-done-name').textContent = first ? `, ${first}` : '';
+    $('adv-done-name').textContent = first ? `, ${String(first).replace(/\.+$/, '')}` : ''; // ("J." ends the sentence once)
     $('adv-done-elsewhere').hidden = !elsewhere;
     ui.exit.querySelector('span').textContent = 'Close';
     ui.done.hidden = false;
