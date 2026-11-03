@@ -1705,8 +1705,9 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-display { margin: 0; font-family: var(--display); font-weight: 700; font-size: var(--bs-fs, var(--bs-display)); line-height: 1.06; letter-spacing: -0.022em; text-wrap: balance; overflow-wrap: break-word; hyphens: auto; }
 /* A title fitted to its lines (screen.js Title): stepped down to 60% of its size, then cut with … on its last line */
 .bs-fit { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; font-size: calc(var(--bs-fs, var(--bs-display)) * var(--tfit, 1)); }
-/* One that fits its lines (screen.js useFit) is drawn whole: the clamp's edge sits above a g's or a y's tail */
-.bs-fit[data-whole] { overflow: visible; }
+/* One that fits its lines (screen.js useFit) is drawn whole: the clamp's edge sits above a g's or a y's tail; on a
+   phone, whose stage scrolls, every line of it */
+.bs-fit[data-whole] { overflow: visible; -webkit-line-clamp: none; }
 .bs-h1 { font-family: var(--display); font-size: var(--bs-lead); margin: 0.5rem 0; }
 .bs-quiet { margin: 0.5em 0 0; color: var(--bs-soft); font-size: calc(var(--bs-u) * 1.8); }
 
@@ -2320,7 +2321,7 @@ html:has(body .bs) { scrollbar-gutter: auto; }
   .bs-top > .bs-floor { grid-area: 2 / 1 / auto / -1; justify-self: start; max-width: 100%; margin: 0; }
 }
 /* A phone: under a document its page and whether it's continued, never cut off (the number says which item); a long word in a title wraps */
-@media (max-width: 520px) { .bs-brand > span { display: none; } .bs-cover__faces > .bs-face:nth-child(n+7) { display: none; } .bs-eyebrow__of { display: block; margin: 0.2em 0 0; padding: 0; border: 0; } .bs-figs { grid-template-columns: minmax(0, 1fr); } .bs--doc .bs-foot__item:has(+ .bs-foot__sep), .bs--doc .bs-foot__item + .bs-foot__sep, .bs--doc .bs-foot__name:has(+ .bs-foot__sep--name), .bs--doc .bs-foot__sep--name { display: none; } .bs-display { overflow-wrap: anywhere; } .bs-item__bar > div { min-width: 0; max-width: 100%; } .bs-item__bar .bs-item__title { font-size: clamp(1.7rem, 9.5vw, 2.6rem); } }
+@media (max-width: 520px) { .bs-brand > span { display: none; } .bs-cover__faces > .bs-face:nth-child(n+7) { display: none; } .bs-eyebrow__of { display: block; margin: 0.2em 0 0; padding: 0; border: 0; } .bs-figs { grid-template-columns: minmax(0, 1fr); } .bs--doc .bs-foot__item:has(+ .bs-foot__sep), .bs--doc .bs-foot__item + .bs-foot__sep, .bs--doc .bs-foot__name:has(+ .bs-foot__sep--name), .bs--doc .bs-foot__sep--name { display: none; } .bs-display { overflow-wrap: anywhere; } .bs-item__bar > div { min-width: 0; max-width: 100%; } .bs-item__bar .bs-item__title { font-size: max(1.35rem, calc(clamp(1.7rem, 9.5vw, 2.6rem) * var(--tfit, 1))); } }
 @media (prefers-reduced-motion: reduce) { .bs-stage__in, .bs-vote, .bs-timer.is-over, .bs-figs__bar i, .bs-faces__mark { animation: none !important; } .bs-vote__counts i::after, .bs-rail__bar i, .bs-faces__one, .bs-faces__pic, .bs-roll__q { transition: none; } }
 
 /* A phone: the header's tools at its right edge; the meeting's facts one to a line on the narrowest, where a place's

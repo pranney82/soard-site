@@ -100,7 +100,8 @@ const partName = (s, si) => s?.title || (s?.items?.length === 1 ? s.items[0].tit
  * Fitted to the stage. A slide: set smaller in steps (its --fit, down to `min`) until it all fits above the rail (a
  * phone scrolls it instead). A title (`lines` given): stepped down (--tfit, to `min`) until it's at most that many
  * lines, and past that its line clamp ends it with …; one that fits is drawn whole (data-whole), since the clamp's
- * edge would cut its last line's g, y and p (Peter: "the g and y are cut off!")
+ * edge would cut its last line's g, y and p (Peter: "the g and y are cut off!"), and so is any on a phone, whose stage
+ * scrolls (a long title read to its end there, never cut short with …)
  */
 function useFit(deps, { min = 0.6, lines = 0 } = {}) {
   const ref = useRef(null);
@@ -120,7 +121,7 @@ function useFit(deps, { min = 0.6, lines = 0 } = {}) {
       if (!lines && getComputedStyle(stage).overflowY === 'auto') return;
       let f = 1;
       while (f > min && over()) { f = Math.max(min, Math.round((f - 0.05) * 100) / 100); el.style.setProperty(prop, String(f)); }
-      if (lines) el.toggleAttribute('data-whole', !over());
+      if (lines) el.toggleAttribute('data-whole', !over() || getComputedStyle(stage).overflowY === 'auto');
     };
     fit();
     // Again when the stage changes (the window, full screen) and once the fonts are in; never on its own size (no loop)

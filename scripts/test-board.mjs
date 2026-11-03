@@ -1659,11 +1659,13 @@ try {
         { title: 'Three committees', who: ['jane-doe', 'pat-lee', 'alex-rivera'], report: '- Governance met twice\n- Finance closed the year' },
         { title: 'Every committee at once', presenter: 'Alex Rivera, Sam Ortiz, Kim Park, Tom Reedington & Nia Fordham', report: '- One thing\n- Another thing' },
         { title: 'Two long names', presenter: 'Christopher Montgomery & Alexandra Whitfield', report: '- One thing\n- Another thing' },
+        // (and a title past three lines on a phone: read whole there, its stage scrolls; never cut short with …)
+        { title: 'Personal Best/Business Best/Sunshine Bragging Rights (What have you done since the last meeting)', who: ['jane-doe'], report: '- One thing\n- Another thing' },
       ] },
     ] }), { by: FOUNDER });
     const look = await tab(FOUNDER, 1280);
-    const want = [/^Jane & 2 more( have the floor)?$/, /^Alex & 4 more( have the floor)?$/, /^Christopher & Alexandra( have the floor)?$/];
-    const all = [/Alex Rivera/, /Nia Fordham/, /Alexandra Whitfield/];
+    const want = [/^Jane & 2 more( have the floor)?$/, /^Alex & 4 more( have the floor)?$/, /^Christopher & Alexandra( have the floor)?$/, /^Jane Doe( has the floor)?$/];
+    const all = [/Alex Rivera/, /Nia Fordham/, /Alexandra Whitfield/, /Jane Doe/];
     const seen = [];
     for (const [w, h] of [[1920, 1080], [1280, 720], [1024, 768], [768, 1024], [600, 960], [390, 844], [360, 740], [320, 568]]) {
       await look.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: w < 600, hasTouch: w < 600 });
@@ -1691,12 +1693,13 @@ try {
           // The wording before this one didn't fit: it never steps down further than it has to
           let needed = true;
           if (fit > 0) { c.dataset.fit = String(fit - 1); needed = over(); c.dataset.fit = String(fit); }
-          return { words: t.innerText.replace(/\s+/g, ' ').trim(), all: t.title, fit, cut, needed, split, clear, clock: !!document.querySelector('.bs-top .bs-timer'), stage: Math.round(document.querySelector('.bs-stage').getBoundingClientRect().top) };
+          const h1 = document.querySelector('.bs-stage .bs-fit');
+          return { words: t.innerText.replace(/\s+/g, ' ').trim(), all: t.title, fit, cut, needed, split, clear, clock: !!document.querySelector('.bs-top .bs-timer'), stage: Math.round(document.querySelector('.bs-stage').getBoundingClientRect().top), titleWhole: !h1 || getComputedStyle(h1).overflow === 'visible' };
         });
-        if (!(f && f.clock && want[k].test(f.words) && all[k].test(f.all) && !f.cut && f.needed && !f.split.length && f.clear && f.stage === cover.top)) seen.push(`${w}×${h} ${it.title}: ${JSON.stringify({ ...f, coverTop: cover.top })}`);
+        if (!(f && f.clock && want[k].test(f.words) && all[k].test(f.all) && !f.cut && f.needed && !f.split.length && f.clear && f.stage === cover.top && f.titleWhole)) seen.push(`${w}×${h} ${it.title}: ${JSON.stringify({ ...f, coverTop: cover.top })}`);
       }
     }
-    ok(!seen.length, `many presenting, the clock running: the top bar says “Jane & 2 more”, “Alex & 4 more”, “Christopher & Alexandra”, never cut or broken mid-word, clear of the clock, the stage in its place, on eight screens${seen.length ? ` (${seen.join('; ')})` : ''}`);
+    ok(!seen.length, `many presenting, the clock running: the top bar says “Jane & 2 more”, “Alex & 4 more”, “Christopher & Alexandra”, never cut or broken mid-word, clear of the clock, the stage in its place, a long title whole, on eight screens${seen.length ? ` (${seen.join('; ')})` : ''}`);
     await look.close();
     await DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(many.id).run();
   }
@@ -1843,8 +1846,10 @@ try {
       await money.evaluate(() => [...document.querySelectorAll('.bp-chgas button')].find((x) => x.textContent.includes('%'))?.click());
       ok(await money.waitForFunction(() => /Total Income\$1,884,217\$1,666,667\+13%/.test(document.querySelector('.bp-latest .bp-stmt')?.textContent || ''), { timeout: 3000 }).then(() => true, () => false), 'and % back to percentages');
       {
-        // and either way nothing on the page moves: the statements' columns and the year's table hold their places
-        const places = () => money.evaluate(() => [...document.querySelectorAll('main *')].filter((e) => !e.closest('.by-both > span') && !e.closest('svg') && !e.closest('.bp-chgas')).map((e) => { const r = e.getBoundingClientRect(); return `${e.tagName}.${e.className}@${[r.left, r.top + scrollY, r.width, r.height].map(Math.round)}`; }));
+        // and either way nothing on the page moves: the statements' columns and the year's table hold their places (each
+        // look once the page's own entrances, a card's rise or a bar's growth, have ended)
+        const settled = (pg) => pg.evaluate(() => Promise.race([Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming?.().iterations !== Infinity).map((a) => a.finished.catch(() => {}))), new Promise((r) => setTimeout(r, 3000))]));
+        const places = async () => { await settled(money); return money.evaluate(() => [...document.querySelectorAll('main *')].filter((e) => !e.closest('.by-both > span') && !e.closest('svg') && !e.closest('.bp-chgas')).map((e) => { const r = e.getBoundingClientRect(); return `${e.tagName}.${e.className}@${[r.left, r.top + scrollY, r.width, r.height].map(Math.round)}`; })); };
         const a = await places();
         await money.evaluate(() => [...document.querySelectorAll('.bp-chgas button')].find((x) => x.textContent.includes('$'))?.click());
         await sleep(400);
@@ -1960,7 +1965,8 @@ try {
         // % | $ moves nothing on any money slide (money.js Both: each change holds the room of its longer way; Peter: "the
         // numbers move position!"): every box on the slide, settled, in the same place and size both ways
         {
-          const places = () => pres.evaluate(() => [...document.querySelectorAll('.bs-stage *')].filter((e) => !e.closest('.by-both > span') && !e.closest('svg')).map((e) => { const r = e.getBoundingClientRect(); return `${e.tagName}.${e.className}@${[r.left, r.top, r.width, r.height].map(Math.round)}`; }));
+          const settled = (pg) => pg.evaluate(() => Promise.race([Promise.all(document.getAnimations().filter((a) => a.effect?.getTiming?.().iterations !== Infinity).map((a) => a.finished.catch(() => {}))), new Promise((r) => setTimeout(r, 3000))]));
+          const places = async () => { await settled(pres); return pres.evaluate(() => [...document.querySelectorAll('.bs-stage *')].filter((e) => !e.closest('.by-both > span') && !e.closest('svg')).map((e) => { const r = e.getBoundingClientRect(); return `${e.tagName}.${e.className}@${[r.left, r.top, r.width, r.height].map(Math.round)}`; })); };
           const moved = [];
           for (const k of ['year', 'store', 'act', 'budget', 'pos']) {
             await pres.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(`${fin.id}:books:${k}`)}#/meetings/${meetingId}/screen`, { waitUntil: 'networkidle0' });
