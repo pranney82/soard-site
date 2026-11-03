@@ -271,7 +271,7 @@ function AgendaPreview({ m, ctx }) {
   const src = agendaSource(m);
   return html`<div class="card">
     <div class="bd-card-head--row">
-      <div class="bd-card-head" style="margin:0"><h3>Agenda for ${shortDate(m.date)} <span class=${`tag ${src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
+      <div class="bd-card-head" style="margin:0"><h3>Agenda for ${shortDate(m.date)} <span class=${`tag ${src.empty ? '' : src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
       <button class="btn btn-ghost btn-sm" onClick=${() => ctx.go({ meetingId: m.id })}>Change the agenda</button>
     </div>
     <ol class="bh-agenda">${m.sections.map((s, si) => {

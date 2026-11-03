@@ -271,17 +271,28 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   }, [practice]);
   useEffect(showNext, [nextStep]);
   // The status line's steps go to the card that does them
-  // (a second step a moment later lights its card the whole time, not cut short by the first one's timer)
+  // (lit once the page stops there: a long way on a phone scrolls longer than the light lasts. A second step a moment
+  // later lights its card the whole time, not cut short by the first one's timer)
   const lit = useRef({});
   const toCard = (id) => {
     const el = document.getElementById(id);
     if (!el) return;
     el.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'start' });
     clearTimeout(lit.current.t);
+    cancelAnimationFrame(lit.current.f);
     lit.current.el?.classList.remove('is-found');
     el.classList.remove('is-found');
-    requestAnimationFrame(() => el.classList.add('is-found'));
-    lit.current = { el, t: setTimeout(() => el.classList.remove('is-found'), 1600) };
+    let y = NaN;
+    let still = 0;
+    let frames = 0;
+    const there = () => {
+      still = scrollY === y ? still + 1 : 0;
+      y = scrollY;
+      if (still < 3 && ++frames < 180) { lit.current.f = requestAnimationFrame(there); return; }
+      el.classList.add('is-found');
+      lit.current.t = setTimeout(() => el.classList.remove('is-found'), 1600);
+    };
+    lit.current = { el, f: requestAnimationFrame(there) };
   };
   const work = html`<div class="bm-work" id="bm-work">
     <${AgendaEditor} ...${p} />
@@ -433,6 +444,8 @@ const LOCK = html`<svg viewBox="0 0 24 24" width="14" height="14" fill="none" st
 /** Where the agenda came from, in words (and whether it's still a draft) */
 export function agendaSource(m) {
   const f = m.agendaFrom;
+  // Nothing on it (every part taken out): never "Ready", as the status line says
+  if (!agendaItems(m).length) return { draft: false, empty: true, label: 'Empty', text: 'Nothing on it yet.' };
   if (agendaIsDraft(m)) {
     const from = f?.kind === 'last-meeting' ? `Built from the ${f.name} agenda: the last minutes up for approval, the makeovers and the money filled in live.` : 'SOARD’s usual outline, with the makeovers and the money filled in live.';
     return { draft: true, label: 'Ready', text: `${from} It’s ready as it is. Change anything and it saves as you type.` };
@@ -685,7 +698,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
   const itemCount = agendaItems(m).length;
   return html`<div class="card agx">
     <div class="agx-head">
-      <div class="bd-card-head"><h3>Agenda <span class=${`tag ${src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
+      <div class="bd-card-head"><h3>Agenda <span class=${`tag ${src.empty ? '' : src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
     </div>
     <nav class="agx-run" aria-label="The run of show">
       ${m.sections.map((s, si) => html`<a class=${`agx-run__part ${s.minutes ? 'is-own' : ''}`} key=${s.id} href=${`#agx-${s.id}`} style=${`flex:${plan.get(s.id)?.minutes || 5} 1 0`} title=${`${s.title || 'A part'}: ${plan.get(s.id)?.minutes} min`}

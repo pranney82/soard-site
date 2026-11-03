@@ -742,6 +742,13 @@ try {
     await sleep(1200);
     const land = await jane.evaluate(() => ({ card: Math.round(document.getElementById('bm-ready').getBoundingClientRect().top), line: Math.round(document.querySelector('.bm-path').getBoundingClientRect().bottom), end: scrollY >= document.scrollingElement.scrollHeight - innerHeight - 2 }));
     ok(land.card >= land.line && (land.card <= land.line + 40 || land.end), `a step on the line goes to its card, just below the line or as far as the page goes (${JSON.stringify(land)})`);
+    // From the bottom of the page: the agenda is lit once the page stops there, not before
+    await jane.evaluate(() => scrollTo(0, document.scrollingElement.scrollHeight));
+    await sleep(200);
+    await jane.evaluate(() => [...document.querySelectorAll('.bm-path__btn')].find((b) => /Agenda/.test(b.textContent)).click());
+    await sleep(120);
+    await jane.waitForFunction(() => new Promise((r) => { const y = scrollY; setTimeout(() => r(scrollY === y), 100); }), { timeout: 8000, polling: 120 }).catch(() => {});
+    ok(await jane.evaluate(() => document.getElementById('bm-work').classList.contains('is-found')), 'a step lights its card once the page has stopped there');
     await jane.evaluate(() => scrollTo(0, 0));
   }
   await shot(jane, '04-one-page');
