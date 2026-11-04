@@ -117,6 +117,8 @@ await applicant('acctOmar01', 'Omar Example', 'Denied', '2026', ['Ramp'], { deni
 await applicant('acctTest01', 'TEST Applicant', 'Applied', '2026', ['Bedroom'], {});
 // A newer season with only a community project in it (the page opens on the newest season with a family)
 await applicant('acctOak001', 'Oak Academy Example', 'Approved', '2027', [], {});
+// Older seasons, so the season switch is as long as the real one (2027 back to 2021, and Every season)
+for (const [i, y] of ['2025', '2024', '2023', '2022', '2021'].entries()) await applicant(`acctOld${i}0`, `Older Example ${i}`, 'Denied', y, ['Bedroom'], {});
 const keys = criteriaOf(SHEET_RUBRIC).map((c) => c.key);
 const card = (n, odd = null) => Object.fromEntries(keys.map((k, i) => [k, odd != null && i === 0 ? odd : n]));
 await saveScorecard(DB, 'acctIris01', { evaluator: 'lin.smith@soardcharity.com', name: 'Lin Smith', scores: card(4), notes: 'A scorer’s private note' });
@@ -205,7 +207,16 @@ async function tab(email, width = 1440, height = 1000) {
 }
 // (counts and amounts are kept with their words by no-break spaces: read as plain ones)
 const textOf = (page, sel) => page.$eval(sel, (e) => e.innerText.replace(/\u00a0/g, ' ')).catch(() => '');
-const overflow = (page) => page.evaluate(() => document.scrollingElement.scrollWidth - window.innerWidth);
+// How far anything on the page reaches past the screen's edge (a phone zooms out to fit what's too wide, so the page's
+// own width can't be trusted: each element's right edge, against the width the page lays out to)
+const overflow = (page) => page.evaluate(() => {
+  const w = document.documentElement.clientWidth;
+  let worst = document.scrollingElement.scrollWidth - w;
+  // (a box that scrolls or clips sideways on purpose, the makeovers board's columns, holds what's past its edge)
+  const held = (e) => { for (let p = e.parentElement; p && p !== document.body; p = p.parentElement) if (/auto|scroll|hidden|clip/.test(getComputedStyle(p).overflowX)) return true; return false; };
+  for (const e of document.querySelectorAll('main *')) { const r = e.getBoundingClientRect(); if (r.width && r.right - w > worst && getComputedStyle(e).position !== 'fixed' && !held(e)) worst = r.right - w; }
+  return Math.round(worst);
+});
 async function shotOf(page, sel, name) {
   const el = await page.$(sel);
   if (!el) return;
@@ -225,6 +236,13 @@ try {
   const kim = await tab(MEMBER);
   await kim.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
   await kim.waitForSelector('#costs', { timeout: 10000 });
+  // The space over this card, against the space over the makeovers board (Home's own rhythm)
+  const gaps = await kim.evaluate(() => {
+    const top = (id) => document.getElementById(id).getBoundingClientRect().top;
+    const above = (el) => { const prev = el.closest('.bp-rise').previousElementSibling; return el.getBoundingClientRect().top - prev.getBoundingClientRect().bottom; };
+    return { costs: Math.round(top('costs') - document.getElementById('makeovers').getBoundingClientRect().bottom), makeovers: Math.round(above(document.getElementById('makeovers'))) };
+  });
+  ok(gaps.costs > 0 && Math.abs(gaps.costs - gaps.makeovers) <= 1, `the same space over this card as over the makeovers board (${gaps.costs}px and ${gaps.makeovers}px)`);
   const card = await textOf(kim, '#costs');
   ok(/For makeovers now\s*\$169,602/.test(card), 'For makeovers now: $669,602 in the bank less the $500,000 operating balance');
   ok(/\$669,602 in the bank, less \$500,000 kept to run SOARD/.test(card), 'it says where the number comes from');
@@ -307,7 +325,7 @@ try {
   await kim.waitForSelector('.bf-cards', { timeout: 8000 });
   const fam = await textOf(kim, '.bf');
   ok(/Iris Example/.test(fam) && /Example diagnosis, for the test/.test(fam) && /A therapist/.test(fam), 'the facts their score rests on');
-  ok(/Lin Smith/i.test(fam) && /Max Ruiz/i.test(fam) && /Total, of 50\s+38\.5\s+40\s+37/.test(fam), 'each scorer’s card, and the average of their totals');
+  ok(/Lin/i.test(fam) && /Max/i.test(fam) && /Total, of 50\s+38\.5\s+40\s+37/.test(fam), 'each scorer’s card, and the average of their totals');
   ok(/Worth talking about/.test(fam), 'a criterion the scorers are far apart on is marked');
   ok(!/private note|parent@example\.com|5555550100|12 Elm St|lin\.smith@/.test(fam), 'never a scorer’s notes or the family’s contact details');
   ok(await kim.waitForFunction(() => document.title === 'Iris Example · SOARD Board', { timeout: 4000 }).then(() => true, () => false), `the tab names the family (${await kim.title()})`);

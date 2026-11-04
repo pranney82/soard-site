@@ -149,7 +149,7 @@ export function FamilyPage({ id }) {
         ${!cards.length ? html`<p class="bp-muted">Nobody has scored ${f.kind === 'organization' ? 'this application' : 'this family'} yet.</p>` : html`
           <p class="bf-score-line">${nbw(f.score?.ranked ? `${plural(f.score.count, 'scorer')} finished: the score is the average of their totals.` : `${f.score?.count || 0} of ${f.score?.of || cards.length} scorers finished. It’s ranked once everyone scoring ${f.season || 'the season'} has.`)}</p>
           <div class="bf-cards-wrap"><table class="bp-table bf-cards">
-            <thead><tr><th scope="col">Criterion</th>${f.score?.count ? html`<th scope="col" class="num">Average</th>` : null}${cards.map((c, i) => html`<th scope="col" class="num" key=${i}>${c.name}${c.complete ? '' : html`<small> partway</small>`}</th>`)}</tr></thead>
+            <thead><tr><th scope="col">Criterion</th>${f.score?.count ? html`<th scope="col" class="num">Average</th>` : null}${cards.map((c, i) => html`<th scope="col" class="num" key=${i} title=${c.name}>${String(c.name || '').split(/\s+/)[0]}${c.complete ? '' : html`<small> partway</small>`}</th>`)}</tr></thead>
             <tbody>${crit.map((c) => html`<tr key=${c.key} class=${talk.has(c.key) ? 'is-talk' : ''}>
               <th scope="row">${c.label}${talk.has(c.key) ? html`<span class="bf-talk">Worth talking about</span>` : null}</th>
               ${f.score?.count ? html`<td class="num"><b>${fmtScore(avg[c.key])}</b></td>` : null}

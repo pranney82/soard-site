@@ -502,6 +502,8 @@ a.bk-card:hover .bk-card__photo img { transform: scale(1.04); }
 /* Major gifts, Home and Financials: a row a gift, the amount first (right-aligned, so the digits line up). On Home
    the newest six in two columns, down the first and then the second */
 .bp-home .bp-gifts { margin-bottom: 1.25rem; }
+/* What makeovers cost, under the makeovers board: the same space as between Home's other sections */
+.bp-home #costs { margin-top: 1.25rem; }
 .bp-gifts__sum { margin: -0.2rem 0 0.55rem; color: var(--muted); }
 .bp-gifts__list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0 2.5rem; }
 .bp-gifts:not(.bp-gifts--year) .bp-gifts__list { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: repeat(var(--rows, 3), auto); grid-auto-flow: column; }
@@ -2872,6 +2874,8 @@ a.bc-fam__name:hover { text-decoration: underline; text-underline-offset: 3px; }
 .bf { display: grid; gap: 1rem; }
 .bf-err { margin: 0; color: var(--warn); font-weight: 600; }
 .bf-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 1rem; }
+/* Many seasons on a phone: the switch wraps onto a second line inside its own shape, never past the page's edge */
+.bf-filters .bc-seg { flex: 0 1 auto; max-width: 100%; border-radius: 18px; }
 .bf-chips { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .bf-chips button { min-height: 36px; padding: 0.3rem 0.85rem; border-radius: 999px; border: 1px solid var(--line); background: #fff; font: inherit; font-size: 0.9rem; font-weight: 600; color: var(--ink-2); cursor: pointer; }
 .bf-chips button span { color: var(--muted); font-variant-numeric: tabular-nums; margin-left: 0.15rem; }
