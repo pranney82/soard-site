@@ -109,7 +109,12 @@ export function pipelineText(pipe, plan) {
   const pace = pipe.planned
     ? `Applicants plans ${pipe.planned} makeovers for ${pipe.next}.`
     : `SOARD builds about ${pipe.pace} makeovers a year: ${pipe.done} revealed in ${pipe.year} so far${pipe.scheduled ? ` and ${pipe.scheduled} more set by ${dayName(pipe.lastDay)}` : ''}.`;
-  const inLine = pipe.carry.length ? ` ${carryText(pipe.carry, plan?.jobs, plan?.families)} ${pipe.carry.length === 1 ? 'is' : 'are'} already in line for ${pipe.next}, so` : ' So';
+  // This season's makeovers still underway or waiting are this season's, not next's (Peter, Nov 4 2026: "we are
+  // finishing the 4 this year")
+  const ours = (plan?.jobs?.length || 0) + (plan?.families?.length || 0) - pipe.carry.length;
+  const inLine = pipe.carry.length
+    ? ` ${carryText(pipe.carry, plan?.jobs, plan?.families)} ${pipe.carry.length === 1 ? 'is' : 'are'} already in line for ${pipe.next}, so`
+    : ours > 0 ? ` The ${plural(ours, 'makeover')} underway or waiting ${ours === 1 ? 'is' : 'are'} ${pipe.year}’s, so` : ' So';
   return `${pace}${inLine} there’s room for about ${plural(pipe.room, 'new family', 'new families')}. Funding follows as the reserve builds.`;
 }
 
@@ -286,7 +291,7 @@ function Pipeline({ pipe, plan }) {
     <div class="bc-answer__money">
       <span class="bc-fig__label">${nbw(`Recommended pipeline, ${pipe.next}`)}</span>
       <span class="bc-answer__value">${nbw(`About ${plural(pipe.room, 'new family', 'new families')}`)}</span>
-      <span class="bc-fig__sub">${nbw(`${pipe.capacity} makeovers${pipe.planned ? ` planned for ${pipe.next}` : ' a year'}, less the ${pipe.carry.length} already in line`)}</span>
+      <span class="bc-fig__sub">${nbw(`${pipe.capacity} makeovers${pipe.planned ? ` planned for ${pipe.next}` : ' a year'}${pipe.carry.length ? `, less the ${pipe.carry.length} already in line` : ''}`)}</span>
     </div>
     <p class="bc-answer__says">${nbw(pipelineText(pipe, plan))}</p>
   </div>`;
@@ -444,7 +449,7 @@ export function CostsSlide({ n, data, date }) {
       ${pipe ? html`<div class="bc-fig">
         <span class="bc-fig__label">${nbw(`Recommended pipeline, ${pipe.next}`)}</span>
         <span class="bc-fig__value">${nbw(`About ${plural(pipe.room, 'new family', 'new families')}`)}</span>
-        <span class="bc-fig__sub">${nbw(`${pipe.capacity} makeovers${pipe.planned ? ` planned for ${pipe.next}` : ' a year'}, less ${pipe.carry.length} already in line: ${carryText(pipe.carry, plan?.jobs, plan?.families)}`)}</span>
+        <span class="bc-fig__sub">${nbw(`${pipe.capacity} makeovers${pipe.planned ? ` planned for ${pipe.next}` : ' a year'}${pipe.carry.length ? `, less ${pipe.carry.length} already in line: ${carryText(pipe.carry, plan?.jobs, plan?.families)}` : `; this year’s finish in ${pipe.year}`}`)}</span>
       </div>` : null}
       <div class="bc-fig">
         <span class="bc-fig__label">For makeovers now</span>

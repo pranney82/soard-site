@@ -135,10 +135,12 @@ test('the recommended pipeline: how many SOARD builds, less what’s already in 
   const underway = [
     { name: 'Lia', kind: 'kid', status: 'Mobilization', revealOn: '2026-11-20' },
     { name: 'Pat', kind: 'kid', status: 'Mobilization', revealOn: '2026-12-12' },
-    { name: 'Abe', kind: 'kid', status: 'Design', revealOn: '2026-10-09' },  // its date passed: carries over
-    { name: 'Oak School', kind: 'community', status: 'Design', revealOn: null },
+    { name: 'Abe', kind: 'kid', status: 'Design', revealOn: '2026-10-09' },  // no season, its date passed: carries over
+    { name: 'Oak School', kind: 'community', status: 'Design', revealOn: null, season: 2027 },  // next season's
+    { name: 'Kai', kind: 'kid', status: 'Design', revealOn: null, buildYear: 2026 },  // this season's, finishing late: not next's
+    { name: 'Elm School', kind: 'community', status: 'Design', revealOn: null, season: 2027, buildYear: 2026 },  // JobTread builds it this year
   ];
-  const waiting = [{ name: 'Jon' }];
+  const waiting = [{ name: 'Jon' }, { name: 'Bo', season: 2026 }];
   const p = pipelineOf({ reveals, underway, waiting, plan: { season: '2027', capacity: {} }, today });
   assert.deepEqual([p.year, p.done, p.scheduled, p.pace, p.lastDay, p.next, p.planned, p.capacity, p.room], [2026, 3, 2, 5, '2026-12-12', 2027, null, 5, 2]);
   assert.deepEqual(p.carry.map((c) => c.name), ['Abe', 'Oak School', 'Jon']);
@@ -236,6 +238,14 @@ test('costs from the jobs: finished makeovers by page, two jobs for one kid add 
   // Open jobs being built: what's been paid and the budget, furthest along first
   assert.deepEqual(out.underway.map((u) => [u.name, u.status, u.paid, u.budget, u.kind]), [['Ava', 'Build', 9000, null, 'kid'], ['Pine Academy', 'Design', 0, 12000, 'community']]);
   assert.ok(!out.makeovers.some((x) => x.name === 'Ava' && x.cost === 9000 + 26000), 'a job still being built is never a completed makeover’s cost');
+});
+
+test('the season a job is built for is JobTread’s: a page from the next application round, built this year, is this year’s', () => {
+  const records = [{ kind: 'community', slug: 'elm-school', name: 'Elm School', year: '2027', status: 'in-progress', rooms: [], sponsors: [], url: null }];
+  const out = costsFrom([job({ id: 'je', name: 'Elm School (2026)', account: 'Elm School', status: 'Design', createdAt: '2026-09-15T00:00:00Z' })], records);
+  assert.deepEqual(out.underway.map((u) => [u.name, u.buildYear]), [['Elm School', 2026]]);
+  const p = pipelineOf({ reveals: [{ on: '2026-03-01', done: true }], underway: out.underway, waiting: [], plan: { season: '2027', capacity: { 2027: 15 } }, today: '2026-11-04' });
+  assert.deepEqual([p.capacity, p.carry.length, p.room], [15, 0, 15]);
 });
 
 // ─── D1: pledges, waiting order, the board's copy ───────────────────
