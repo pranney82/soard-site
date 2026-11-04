@@ -246,6 +246,9 @@ test('a scan whose pages aren’t photos (a black-and-white fax-style scan) is d
   assert.match(r.words, /conflict of interest policy/);
   // Nothing to draw it with (no browser): kept as having no words, never an error to try again
   assert.deepEqual(await wordsOf(env, { name: 'fax.pdf', type: 'application/pdf', bytes: pdf() }, { draw: async () => [] }), { words: '', how: 'none' });
+  // The browser there but not to be had just then (the site's other work has it): tried again later
+  const busy = { launch: async () => { throw new Error('Browser limit reached'); } };
+  assert.deepEqual(await wordsOf(env, { name: 'W-9.pdf', type: 'application/pdf', bytes: pdf() }, { ctx: busy }), { words: '', how: 'error' });
 });
 
 test('a long scan is read a few pages a run (a dense page takes the vision model ~20 s, a run has ~27), kept as it goes, and goes on first until every page is read', async () => {

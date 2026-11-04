@@ -39,9 +39,10 @@ import { readSheets, readSlides } from '../../public/admin/board/docs.js';
 
 /**
  * This reader: 1 was the papers-only PDF reader (a scan came back empty); 2 read every kind, a scan's first pages by
- * Llama 4 Scout (51 s over a dense page, so a long scan never finished); 3 reads a scan's every page, a few a run
+ * Llama 4 Scout (51 s over a dense page, so a long scan never finished); 3 read a scan's every page, a few a run,
+ * but kept one Cloudflare's browser couldn't draw just then as having no words (the W-9); 4 tries that one again
  */
-export const READER = 3;
+export const READER = 4;
 // Of Workers AI's vision models, the quickest to copy out a page word for word (18 s over a dense page, as
 // GLM 5.3 Flash; Qwen 3.8 23 s; Llama 4 Scout 51 s; Gemma 4 thinks and says nothing)
 const VISION_MODEL = '@cf/mistralai/mistral-small-3.1-24b-instruct';
@@ -155,7 +156,12 @@ export async function wordsOf(env, { name = '', type = '', bytes }, { ctx = {}, 
       }
       // A scan: its pages' pictures, a group at a time (drawn, when they aren't photos inside it)
       let shots = scannedPages(bytes, { max: SCAN_PAGES });
-      if (!shots.length) shots = await (draw ? draw(bytes) : drawPages(env, ctx, bytes, { max: DRAW_PAGES }));
+      if (!shots.length) {
+        shots = await (draw ? draw(bytes) : drawPages(env, ctx, bytes, { max: DRAW_PAGES }));
+        // (Cloudflare's browser couldn't draw it just then, as when the site's other work has it: tried again
+        // later, never kept as having no words)
+        if (!shots.length && !draw && (env.BROWSER || ctx.launch)) return { words: '', how: 'error' };
+      }
       if (!shots.length) return { words, how: words ? 'text' : 'none' };
       const start = from || 0;
       const pages = String(prior || '').split('\f').slice(0, start);
