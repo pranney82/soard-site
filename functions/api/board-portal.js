@@ -8,6 +8,10 @@
  * GET                                   → everything the page shows (see _board.js portalData), and `org`: SOARD's
  *                                         facts for Documents (_org-facts.js orgFacts)
  * GET ?live=<id>                        → the meeting as it's held (_board.js liveView): every few seconds while it runs
+ * GET ?families                         → every family who applied, read-only: name, season, status, what they asked for,
+ *                                         county, score (_board-families.js familiesList)
+ * GET ?family=<account>                  → one of them, with the facts their score rests on and each scorer's card
+ *                                         (never contact details, messages, files or a scorer's notes)
  * GET ?words                            → the words inside every file the page has, for its search (_board.js portalWords);
  *                                         a few files not read yet are read after it (_board-file-words.js)
  * POST { action: 'rsvp' }                           → 410: the calendar invite is the only answer (Peter, Nov 2 2026)
@@ -27,6 +31,8 @@
  *                                                    any); empty takes it off. base: the motion the page last saw (409 + current)
  * POST { action: 'line-note', meetingId, itemId, key, line, text }  a note on one line of the money's statements by who
  *                                                    presents the item (an admin's, any); empty text takes it off (_board-asks.js)
+ * POST { action: 'operating-balance', amount }       a Board admin's: what SOARD keeps for running itself; the money over it
+ *                                                    is what makeovers can use ("What makeovers cost")
  * POST { action: 'chair-approve', meetingId }        the chair approves the agenda ahead (or an admin)
  * POST { action: 'chair-note', meetingId, itemId, text }  the chair's own note on an item (the chair's and the admins' only)
  * POST { action: 'ask-presenter', meetingId, itemId, question }  the chair sends a report back to who presents it with a
@@ -40,7 +46,7 @@
  * (theirs alone, simulated members) they check in and vote as themselves.
  */
 
-import { portalData, portalWords, setActionDone, signDoc, signWithCopy, noteOpened, boardFiles, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, saveSlideOrder, saveMotion, attachToItem, detachFromItem, listMeetings } from './_board.js';
+import { portalData, portalWords, setActionDone, signDoc, signWithCopy, noteOpened, boardFiles, ensureSchema, boardIcs, ID, liveView, liveCheckIn, liveVote, saveReport, saveSlideOrder, saveMotion, attachToItem, detachFromItem, listMeetings, saveSettings } from './_board.js';
 import { readBoardWords } from './_board-file-words.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
@@ -51,6 +57,7 @@ const evidence = (context) => evidenceOf(context, { deviceOf, accessIat });
 import { portalExtras, saveLineNote, chairApprove, chairNote, askPresenter } from './_board-asks.js';
 import { shorterFor } from './_board-shorter.js';
 import { orgFacts } from './_org-facts.js';
+import { familiesList, familyOne } from './_board-families.js';
 
 const fail = (error, status = 400, extra = {}) => Response.json({ ok: false, error, ...extra }, { status });
 
@@ -75,6 +82,15 @@ export async function onRequestGet(context) {
       const words = await portalWords(context.env, w);
       context.waitUntil?.(readBoardWords(context.env, { limit: 3, budgetMs: 15000 }));
       return Response.json({ ok: true, ...words }, { headers: { 'Cache-Control': 'private, no-store' } });
+    }
+    // The families who applied, to read (Applicants is where they're decided)
+    if (q.has('families')) {
+      return Response.json({ ok: true, ...(await familiesList(context.env)) }, { headers: { 'Cache-Control': 'private, no-store' } });
+    }
+    if (q.has('family')) {
+      const id = String(q.get('family') || '');
+      if (!/^[A-Za-z0-9]{6,32}$/.test(id)) return fail('Which family?');
+      return Response.json({ ok: true, ...(await familyOne(context.env, id)) }, { headers: { 'Cache-Control': 'private, no-store' } });
     }
     if (q.has('live')) {
       const view = await liveView(context.env, q.get('live'), w);
@@ -191,6 +207,11 @@ async function post(context) {
     if (body.action === 'vote') return Response.json({ ok: true, ...(await liveVote(env, String(body.meetingId || ''), String(body.motionId || ''), String(body.vote || ''), w)) });
     if (body.action === 'detach') return Response.json({ ok: true, ...(await detachFromItem(env, String(body.meetingId || ''), String(body.itemId || ''), String(body.fileId || ''), w)) });
     // The chair's review (the chair's seat, or an admin: _board-asks.js chairGate checks)
+    if (body.action === 'operating-balance') {
+      if (!w.admin) return fail('Only a Board admin changes the operating balance', 403);
+      const s = await saveSettings(env.DB, { operatingBalance: body.amount }, w.adminEmail);
+      return Response.json({ ok: true, operatingBalance: s.operatingBalance });
+    }
     if (body.action === 'chair-approve') return Response.json({ ok: true, ...(await chairApprove(env, { meetingId: String(body.meetingId || '') }, w)) });
     if (body.action === 'chair-note') return Response.json({ ok: true, ...(await chairNote(env, { meetingId: String(body.meetingId || ''), itemId: String(body.itemId || ''), text: String(body.text ?? '') }, w)) });
     if (body.action === 'ask-presenter') return Response.json({ ok: true, ...(await askPresenter(env, { meetingId: String(body.meetingId || ''), itemId: String(body.itemId || ''), question: String(body.question ?? '') }, w)) });

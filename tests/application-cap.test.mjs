@@ -287,7 +287,8 @@ async function call(method, query = '', body) {
 
 test('Settings shows where the season stands, and a limit at or under it closes at once', async () => {
   await addApps(6);
-  await addDrafts(2);
+  // (the admin's Settings counts on the real clock: drafts dated by the test's NOW fell out of its 14 days on Nov 4 2026)
+  await addDrafts(2, { updated: Date.now() - HOUR });
   const got = await call('GET', '?settings=1');
   assert.equal(got.json.settings.maxApplications, 10);
   assert.deepEqual(

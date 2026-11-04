@@ -15,7 +15,7 @@
  *                  up to 3, so their faces show), notes, staffNote (Peter and
  *                  Holly only), confidential (never emailed), docs (this
  *                  meeting's file ids that go with the item, in order),
- *                  live: '' | projects | reveals | events | cash | meetings }] }]
+ *                  live: '' | projects | reveals | events | cash | meetings | costs }] }]
  *   motions      [{ id, text, by, second, result: passed|failed|tabled }]
  *   actions      [{ id, text, owner (a People slug), ownerName, due, done, doneOn }]
  *   files        [{ id, name, type, size, kind, staffOnly, at }]
@@ -43,6 +43,7 @@
  */
 
 import { mdBlocks, mdInline, mdWords, mdPlain, mdPoints, mdNumber, POINTS_WORDS } from './board-md.js';
+import { typicalLately, rowsOf, planOf, typeById, cashOf, operatingOf, statsOf } from './makeover-costs-shared.js';
 
 export const ATTEND = [
   { id: 'present', label: 'Present' },
@@ -218,9 +219,10 @@ export const LIVE = [
   { id: 'events', label: 'Upcoming events' },
   { id: 'cash', label: 'Money: the bank balances and the finance summary' },
   { id: 'meetings', label: 'Next board meetings' },
+  { id: 'costs', label: 'What finished makeovers cost (JobTread), and the money for more' },
 ];
 /** What a live list with no title of its own is called for the board: what it shows, never its part's name */
-export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings', minutes: 'The last meeting’s minutes' };
+export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings', minutes: 'The last meeting’s minutes', costs: 'What makeovers cost' };
 // (paper: a paper written in Board, its Markdown: long bylaws run past 70,000 letters; ./board-report.js PAPER_LETTERS)
 /**
  * Signing a paper electronically (../../functions/api/_board-sign.js): what a member agrees to, once, before they
@@ -261,7 +263,7 @@ export const DEFAULT_TEMPLATE = [
   { title: 'Call to order', items: [{ title: 'Roll call' }, { title: 'Welcome and introductions' }, { title: 'Personal Best, Business Best, Sunshine Bragging Rights' }] },
   { title: 'Approve meeting minutes', items: [{ title: 'Minutes of the last meeting', live: 'minutes' }] },
   { title: 'Committee reports', items: [
-    { title: 'Governance' }, { title: 'Financial', live: 'cash' }, { title: 'Qualification Committee' },
+    { title: 'Governance' }, { title: 'Financial', live: 'cash' }, { title: 'Qualification Committee', live: 'costs' },
     { title: 'Events and Marketing' }, { title: 'Project updates and upcoming reveals', live: 'projects' },
     { title: 'Mission Advancement' }, { title: 'Store update' },
   ] },
@@ -354,7 +356,7 @@ export const todayEastern = (now = Date.now()) => new Intl.DateTimeFormat('en-CA
 // ─── A clean meeting ────────────────────────────────────────────────
 
 function cleanItem(raw) {
-  const live = ['projects', 'reveals', 'events', 'cash', 'meetings', 'minutes'].includes(raw?.live) ? raw.live : '';
+  const live = ['projects', 'reveals', 'events', 'cash', 'meetings', 'costs', 'minutes'].includes(raw?.live) ? raw.live : '';
   // The live lists it shows after its first (`live`): the makeovers and the reveals under one item, say
   const also = [...new Set((Array.isArray(raw?.also) ? raw.also : []).filter((k) => SHOW_KINDS.includes(k) && k !== live))];
   return {
@@ -630,6 +632,8 @@ const minutesItemTitle = (prev) => `Minutes of the ${meetingName(prev)} (${short
  */
 export function liveOfTitle(title, section = '') {
   const t = String(title || '').toLowerCase();
+  // The Qualification Committee's report: what makeovers cost and what the money can start (Travis, Nov 4 2026)
+  if (/\bqualification\b|\bselection committee\b/.test(t)) return 'costs';
   if (/\b(projects?|makeovers?|builds?)\b/.test(t)) return 'projects';
   if (/\b(financ\w*|treasur\w*|cash|budget)\b/.test(t) && !/committee report/.test(t)) return 'cash';
   if (/\b(board meetings?|meeting dates|next meetings?)\b/.test(t)) return 'meetings';
@@ -816,14 +820,14 @@ export function guessItem(m, f, today = todayEastern()) {
  * [page, part]s, and n is the item's place in agendaItems (-1 for the cover, a part's card, the loose files and the close)
  */
 /** The live lists an item can show, beside the vote on the last minutes ('minutes', only ever its first) */
-export const SHOW_KINDS = ['projects', 'reveals', 'events', 'cash', 'meetings'];
+export const SHOW_KINDS = ['projects', 'reveals', 'events', 'cash', 'meetings', 'costs'];
 /** Everything an item shows live, in order: its first (`live`), then the others (`also`) */
 export const showsOf = (it) => [...new Set([it?.live, ...(it?.also || [])].filter((k) => SHOW_KINDS.includes(k)))];
 /**
  * A stop that's no file: the report on an item that shows live facts, its motion on a slide of its own ("The
  * decision"), one of its other live lists, or one of QuickBooks' slides
  */
-const PSEUDO_STOP = /^(report|decision|live:(projects|reveals|events|cash|meetings)|books:(year|store|act|budget|pos))$/;
+const PSEUDO_STOP = /^(report|decision|live:(projects|reveals|events|cash|meetings|costs)|books:(year|store|act|budget|pos))$/;
 /**
  * QuickBooks' slides after the money, as the books have them: the year against last year (by month, else the year so
  * far against the same days), the store (its own accounts, ./board/money.js storeOf), the statement of activities,
@@ -1858,7 +1862,27 @@ export function liveLines(kind, n, { meetingId = null } = {}) {
   }
   if (kind === 'events') return (n.events || []).slice(0, 6).map((e) => `${e.title}: ${dayOf(e.date)}${e.location ? `, ${e.location}` : ''}`);
   if (kind === 'meetings') return (n.meetings || []).filter((m) => m.id !== meetingId).slice(0, 4).map((m) => `${m.name}: ${dayOf(m.date)}${m.start ? `, ${clock(m.start)}` : ''}`);
+  if (kind === 'costs') return costLines(n);
   return [];
+}
+/** What makeovers cost, in words: the typical one lately and by room, then the money over the operating balance and who it starts */
+export function costLines(n) {
+  const c = n?.costs;
+  if (!c?.makeovers?.length) return [];
+  const out = [];
+  const t = typicalLately(c.makeovers);
+  const st = statsOf(t?.seasons ? c.makeovers.filter((x) => t.seasons.includes(Number(x.season))) : c.makeovers);
+  if (t && st) out.push(`Completed makeovers${t.seasons ? `, ${t.seasons.slice().reverse().join(' and ')}` : ''} (${st.count}): median ${money(Math.round(st.median))}, average ${money(Math.round(st.average))}, low ${money(Math.round(st.low))}, high ${money(Math.round(st.high))}, what SOARD paid (donated work not counted)`);
+  const rows = rowsOf(c.makeovers);
+  if (rows.length) out.push(`Median by type, every year: ${rows.map((r) => `${r.short} ${money(Math.round(r.typical))} (${r.count})`).join(' · ')}`);
+  const plan = planOf({ cash: cashOf(n), operating: operatingOf(n), makeovers: c.makeovers, waiting: c.waiting || [] });
+  if (plan) {
+    out.push(plan.free >= 0 ? `${money(Math.round(plan.free))} over the ${money(plan.operating)} operating balance, for makeovers` : `${money(Math.round(plan.short))} under the ${money(plan.operating)} operating balance: nothing over it for makeovers yet`);
+    for (const f of plan.families) out.push(`${f.name} (${typeById(f.type).label.toLowerCase()}): about ${money(Math.round(f.estimate?.cost || 0))}${f.pledged ? `, ${money(f.pledged)} pledged` : ''}${f.covered ? ', covered' : ''}`);
+    if (plan.need != null) out.push(`${money(Math.round(plan.need))} more starts the next family`);
+    else if (plan.more > 0) out.push(`Then room for about ${plural(plan.more, 'more makeover')} at the median cost`);
+  }
+  return out;
 }
 
 // ─── Two people editing at once ─────────────────────────────────────

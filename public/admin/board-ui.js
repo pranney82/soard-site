@@ -467,7 +467,7 @@ function PeopleList({ people, value, chosen, max, onChange, close }) {
 }
 
 /** What each live list draws from, under its name in the Shows list */
-const SHOW_FROM = { projects: 'The makeovers board, from JobTread', reveals: 'Reveals ahead, from JobTread', events: 'Events ahead, from the website', cash: 'The bank, the budget and QuickBooks, beside last year', meetings: 'This year’s board meetings' };
+const SHOW_FROM = { projects: 'The makeovers board, from JobTread', reveals: 'Reveals ahead, from JobTread', events: 'Events ahead, from the website', cash: 'The bank, the budget and QuickBooks, beside last year', meetings: 'This year’s board meetings', costs: 'What finished makeovers cost (JobTread), the money over the operating balance, and who it starts' };
 /**
  * What an item shows live, in order: the lists as chips (the button), and a checklist to add or take off each one.
  * Order is the order they're picked in: the first on the item's own card on the screen, each next a slide of its own.

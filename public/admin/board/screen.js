@@ -32,6 +32,7 @@ import { Report } from '../board-report.js';
 import { BooksSlide, booksTitle } from './books.js';
 import { mdWords, mdPoints, mdFigures, mdNumber, mdPlain } from '../board-md.js';
 import { Pipeline, sized, nameFit } from './kanban.js';
+import { CostsSlide } from './costs.js';
 import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, readChangeAs, keepChangeAs, Both } from './money.js';
 
 const html = htm.bind(h);
@@ -1010,6 +1011,8 @@ function liveSlide(kind, n, id, data, date, as = 'pct') {
   if (kind === 'projects') return html`<${Pipeline} projects=${n.projects} reveals=${n.reveals || []} />`;
   if (kind === 'cash') return html`<${CashSlide} n=${n} data=${data} date=${date} as=${as} />`;
   if (kind === 'reveals') return html`<${RevealsSlide} n=${n} />`;
+  // What makeovers cost and who the money starts (the Qualification Committee's item): ./costs.js
+  if (kind === 'costs') return html`<${CostsSlide} n=${n} data=${data} date=${date} />`;
   if (kind === 'events') {
     // Nothing ahead: the ones held lately, so the slide still says what's happened
     const ahead = (n.events || []).slice(0, 24);
@@ -1519,7 +1522,7 @@ export function Screen({ id, data, d, onBack = null }) {
         ${notesRow}${motionHere}
       </div>`;
     // A report with a slide of its own next (deckOf's 'report' stop) isn't this slide's: the reveals keep the whole screen
-    } else if (facts && (item.live === 'projects' || (item.live === 'reveals' && (!item.report || deck[at + 1]?.kind === 'report') && !coming))) {
+    } else if (facts && (item.live === 'projects' || item.live === 'costs' || (item.live === 'reveals' && (!item.report || deck[at + 1]?.kind === 'report') && !coming))) {
       // The makeovers and the reveals: the item's name and who presents it along the top, the rest of the screen theirs
       stage = html`<div class="bs-item bs-item--board">
         <div class="bs-item__bar"><div>${head}</div></div>

@@ -3,17 +3,21 @@
  * =====================================================================
  * Behind Cloudflare Access (not in the middleware's public list).
  *
- * GET ?kid=<slug>&job=<jobId>                 → { sponsors, jobtread } (job optional; nothing written)
+ * GET ?kid=<slug>&job=<jobId>                 → { sponsors, jobtread, pledges } (job optional; nothing written).
+ *                                               pledges: { [partner]: { pledged, received, updatedAt, by } }
  * GET ?partners=<slug>,<slug>                 → { contacts: { [slug]: people } }
  * POST { contacts: { partner, people } }      → saves a sponsor's people (private, D1 only), then gives
  *                                               them Sponsor access on their kids' open jobs
  * POST { sync: { kid, job, previous } }       → after a kid save: JobTread's Monetary Sponsor field and
  *                                               the contacts' Sponsor access follow the website
+ * POST { pledge: { kid, partner, pledged, received } } → what that sponsor pledged toward the kid's makeover and
+ *                                               what's come in (D1 only, ./_sponsor-pledges.js); both empty clears it
  *
  * See ./_sponsors.js.
  */
 import { kidSponsorView, readContacts, saveContacts, syncKidSponsor, grantForPartner } from './_sponsors.js';
 import { logAudit } from './_audit.js';
+import { pledgesFor, savePledge } from './_sponsor-pledges.js';
 
 const ok = (body = {}) => Response.json({ success: true, ...body }, { headers: { 'Cache-Control': 'no-store' } });
 const fail = (error, status = 400) => Response.json({ success: false, error }, { status });
@@ -28,7 +32,8 @@ export async function onRequestGet({ env, request }) {
   if (kid) {
     if (!SLUG_RE.test(kid) || (job && !JOB_RE.test(job))) return fail('Bad kid or job');
     try {
-      return ok(await kidSponsorView(env, kid, job));
+      const [view, pledges] = await Promise.all([kidSponsorView(env, kid, job), pledgesFor(env.DB, [kid]).catch(() => ({}))]);
+      return ok({ ...view, pledges: pledges[kid] || {} });
     } catch (e) {
       // Never 502: Cloudflare swaps a 502 body for its own error page
       return fail(e.message, /No kid/.test(e.message) ? 404 : 500);
@@ -57,6 +62,21 @@ export async function onRequestPost(context) {
     await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'partner-contacts', entitySlug: partner, entityName: 'Sponsor contacts', changes: { people: saved.map((p) => p.name || 'unnamed') } });
     const access = await grantForPartner(env, partner).catch((e) => ({ granted: [], problems: [e.message] }));
     return ok({ contacts: saved, ...access });
+  }
+
+  if (body?.pledge) {
+    const { kid, partner, pledged, received } = body.pledge;
+    if (!SLUG_RE.test(kid || '') || !SLUG_RE.test(partner || '')) return fail('Bad pledge');
+    const row = await env.DB.prepare('SELECT data FROM kids WHERE slug = ?').bind(kid).first();
+    if (!row) return fail('No kid with that page', 404);
+    let sponsors = [];
+    try { sponsors = JSON.parse(row.data || '{}').sponsors || []; } catch { /* none */ }
+    // Only a sponsor the kid's saved page names (a pledge for one still being picked waits for the save)
+    if (!sponsors.includes(partner)) return fail('Save the kid with this sponsor first', 409);
+    let saved;
+    try { saved = await savePledge(env.DB, { kid, partner, pledged, received }, { by }); } catch (e) { return fail(e.message, e.status || 500); }
+    await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'sponsor-pledge', entitySlug: kid, entityName: `Pledge from ${partner}`, changes: { pledged: saved?.pledged ?? null, received: saved?.received ?? null } });
+    return ok({ pledge: saved });
   }
 
   if (body?.sync) {

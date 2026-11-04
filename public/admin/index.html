@@ -3165,6 +3165,12 @@
     .kd-sponsor__suggest p { margin: 0; }
     .kd-sponsor__suggest li.kd-sponsor__suggest-note { padding: 0; border: none; background: none; color: var(--color-text-secondary); }
     .kd-sponsor__jtline .kd-sponsor__mark { margin-right: 0.3rem; }
+    .kd-pledge { display: grid; gap: 0.35rem; padding-top: 0.55rem; border-top: 1px solid var(--color-border); }
+    .kd-pledge__row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+    .kd-pledge__field { display: grid; gap: 0.2rem; font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); }
+    .kd-pledge__field .form-input { font-variant-numeric: tabular-nums; }
+    .kd-pledge__note { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+    .kd-pledge__note svg { width: 13px; height: 13px; color: var(--color-success); }
     .kd-sponsor__jtline a { display: inline-flex; align-items: center; gap: 0.2rem; margin-left: 0.2rem; white-space: nowrap; }
     .kd-people { display: grid; gap: 0.75rem; }
     .kd-people__row { position: relative; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; padding-right: 2.6rem; }
@@ -10689,12 +10695,15 @@
       const [error, setError] = useState(null);
       const [contacts, setContacts] = useState({}); // partner slug → people
       const [syncing, setSyncing] = useState(false);
+      // What each sponsor pledged toward this kid's makeover and what's come in (private, D1 only: ./_sponsor-pledges.js)
+      const [pledges, setPledges] = useState({});
       const load = useCallback(async () => {
         if (!slug) return;
         const r = await kdSponsorGet(`kid=${encodeURIComponent(slug)}${jobId ? `&job=${encodeURIComponent(jobId)}` : ''}`);
         if (!r.success) { setError(r.error); return; }
         setError(null);
         setView(r);
+        setPledges(r.pledges || {});
         setContacts((c) => ({ ...c, ...Object.fromEntries((r.sponsors || []).map((s) => [s.slug, s.contacts || []])) }));
       }, [slug, jobId]);
       useEffect(() => { load(); }, [load]);
@@ -10716,7 +10725,51 @@
         }
         return r;
       };
-      return { view, error, contacts, setContacts, syncing, sync, reload: load };
+      const savePledge = async (partner, amounts) => {
+        const r = await kdSponsorPost({ pledge: { kid: slug, partner, ...amounts } });
+        if (r.success) setPledges((all) => Object.fromEntries([...Object.entries(all).filter(([k]) => k !== partner), ...(r.pledge ? [[partner, r.pledge]] : [])]));
+        return r;
+      };
+      return { view, error, contacts, setContacts, syncing, sync, reload: load, pledges, savePledge };
+    }
+
+    /** "$25,000" from 25000; '' from nothing */
+    const kdDollars = (n) => (typeof n === 'number' && n > 0 ? `$${n.toLocaleString('en-US', { maximumFractionDigits: 2 })}` : '');
+    const kdAmount = (v) => Number(String(v || '').replace(/[$,\s]/g, '')) || 0;
+    /**
+     * A sponsor's pledge toward the kid's makeover, and what's come in: typed as dollars, saved when you leave the box
+     * (or press Enter), never with the page. Only for a sponsor the saved page names
+     */
+    function KdPledge({ partner, name, saved, onSave, kidName }) {
+      const [vals, setVals] = useState({ pledged: kdDollars(saved?.pledged), received: kdDollars(saved?.received) });
+      const [state, setState] = useState(''); // '' | saving | saved | error text
+      const last = useRef(vals);
+      useEffect(() => { const v = { pledged: kdDollars(saved?.pledged), received: kdDollars(saved?.received) }; setVals(v); last.current = v; }, [saved?.pledged, saved?.received]);
+      const commit = async () => {
+        if (vals.pledged === last.current.pledged && vals.received === last.current.received) return;
+        setState('saving');
+        const r = await onSave(partner, { pledged: vals.pledged, received: vals.received });
+        if (!r.success) { setState(r.error || 'Not saved'); return; }
+        last.current = vals;
+        setState('saved');
+      };
+      const field = (k, label) => html`<label class="kd-pledge__field">
+        <span>${label}</span>
+        <input class="form-input" type="text" inputmode="decimal" autocomplete="off" placeholder="$0" value=${vals[k]}
+          aria-label=${`${label} by ${name} toward ${kidName}’s makeover`}
+          onInput=${(e) => { setVals((v) => ({ ...v, [k]: e.target.value })); setState(''); }}
+          onBlur=${commit} onKeyDown=${(e) => { if (e.key === 'Enter') { e.preventDefault(); commit(); } }} />
+      </label>`;
+      const p = kdAmount(vals.pledged);
+      const r = kdAmount(vals.received);
+      const toCome = p > r && r > 0 ? `${kdDollars(p - r)} still to come.` : '';
+      return html`<div class="kd-pledge">
+        <div class="kd-pledge__row">${field('pledged', 'Pledged')}${field('received', 'Received')}</div>
+        <p class="kd-card__note kd-pledge__note" aria-live="polite">${state === 'saving' ? 'Saving…'
+          : state === 'saved' ? html`${kdIcon.check} Saved. ${toCome}`
+          : state ? html`<span class="kd-bad">${state}</span>`
+          : `${toCome ? `${toCome} ` : ''}Staff and the board page see this; the website never does.`}</p>
+      </div>`;
     }
     /** What a sync did, in one line for a toast */
     function kdSponsorSyncSaid(r) {
@@ -10797,7 +10850,7 @@
      * profile is saved, and offers what JobTread names when nothing is picked.
      */
     // used: partner slug → how many other kids it sponsors (those come first)
-    function KdSponsorCard({ name, status, chosen, saved, partners, used = new Map(), contacts, view, viewError, slug, jobId, syncing, onPick, onRemove, onAddNew, onContacts }) {
+    function KdSponsorCard({ name, status, chosen, saved, partners, used = new Map(), contacts, view, viewError, slug, jobId, syncing, onPick, onRemove, onAddNew, onContacts, pledges = {}, onPledge = null }) {
       const [q, setQ] = useState('');
       const [open, setOpen] = useState(false);
       const [act, setAct] = useState(0);
@@ -10863,6 +10916,9 @@
                 </li>`)}
               </ul>` : html`<p class="kd-card__note">No contact on file.</p>`}
               <button type="button" class="btn btn-ghost btn-sm kd-sponsor__contacts" onClick=${() => onContacts(p)} disabled=${p.gone}>${people.length ? kdIcon.edit : kdIcon.plus} ${people.length ? 'Edit contacts' : 'Add a contact'}</button>
+              ${slug && onPledge && saved.includes(p.slug) && !p.gone
+                ? html`<${KdPledge} key=${`pl-${p.slug}`} partner=${p.slug} name=${p.name} kidName=${first} saved=${pledges[p.slug]} onSave=${onPledge} />`
+                : slug && onPledge && !p.gone ? html`<p class="kd-card__note">Save the page, then add what ${p.name} pledged.</p>` : null}
               ${v ? html`<ul class="kd-sponsor__jt" aria-label=${`${p.name} in JobTread`}>
                 ${v.onJob.length ? html`<li>${icon(true)}<span><strong>${kdNames(v.onJob.map((x) => x.name || x.email))}</strong> ${v.onJob.length === 1 ? 'is' : 'are'} on the job, so Demo Day and reveal invites reach them.</span></li>` : null}
                 ${v.otherRole.map((x) => html`<li key=${x.email}>${icon(false)}<span><strong>${x.name || x.email}</strong> is on the job as ${x.role ? `a ${x.role}` : 'staff'}, so gets ${x.role ? `${x.role.toLowerCase()}` : 'staff'} invites, not the sponsor’s. <a href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Change it in JobTread</a></span></li>`)}
@@ -11675,7 +11731,7 @@
           <${KdSponsorCard} name=${data.name} status=${data.status} chosen=${record.sponsors} saved=${savedSponsors} partners=${allPartners} used=${sponsorUse}
             contacts=${sponsor.contacts} view=${sponsor.view} viewError=${sponsor.error} slug=${slug} jobId=${jobId} syncing=${sponsor.syncing}
             onPick=${pickSponsor} onRemove=${removeSponsor} onAddNew=${(prefill) => setSponsorDialog({ create: prefill })}
-            onContacts=${(p) => setSponsorDialog({ contacts: p })} />
+            onContacts=${(p) => setSponsorDialog({ contacts: p })} pledges=${sponsor.pledges} onPledge=${sponsor.savePledge} />
           <section class="kd-card kd-card--health" aria-labelledby="kd-health-h">
             <h3 id="kd-health-h">Profile health <span class="kd-card__count">${checksDone} of ${checks.length}</span></h3>
             <div class="kd-meter" aria-hidden="true"><span style=${`width:${checks.length ? Math.round((checksDone / checks.length) * 100) : 0}%`}></span></div>

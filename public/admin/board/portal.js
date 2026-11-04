@@ -43,6 +43,8 @@ import { mdPlain, mdWords, paperFields } from '../board-md.js';
 import { prep, termsOf, termIn as wordIn, stemIn, ENDINGS, planOf, matches, howIn, termAt, scoreOf, marksOf, pageAt, norm as findNorm } from './find.js';
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
+import { CostsCard } from './costs.js';
+import { FamiliesPage, FamilyPage } from './families.js';
 import { useCashNow, useBudget, liveCash, Both, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsPhrase, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue, budgetMonthsText as budgetMonths, stepText, useChangeAs, changeIn, overIn } from './money.js';
 
 const html = htm.bind(h);
@@ -112,7 +114,8 @@ const readRoute = () => {
   // A meeting's screen (#/meetings/<id>/screen), or the page to write an item's report on (#/meetings/<id>/report/<item>)
   // …or the chair's review of the agenda ahead (#/meetings/<id>/review, ./chair.js)
   const deeper = page === 'meetings' && id ? (sub === 'screen' ? 'screen' : sub === 'report' && item ? 'report' : sub === 'review' ? 'review' : '') : '';
-  return { page: PAGES.includes(page) ? page : '', id: id || null, sub: deeper, item: deeper === 'report' ? item : '' };
+  // The families who applied (#/families, #/families/<account>, ./families.js): reached from Home, Home lit in the menu
+  return { page: PAGES.includes(page) || page === 'families' ? page : '', id: id || null, sub: deeper, item: deeper === 'report' ? item : '' };
 };
 
 // ─── Words and dates ────────────────────────────────────────────────
@@ -710,7 +713,8 @@ function App() {
     if (route.sub === 'screen' || route.sub === 'report') return; // (each names its own window)
     const m = route.page === 'meetings' && route.id && data && [...data.meetings, data.nextPending, ...(data.previews || [])].find((x) => x?.id === route.id);
     const paper = route.page === 'documents' && route.id ? data?.docs.find((x) => x.id === route.id) : null;
-    document.title = m ? `${meetingName(m)} · SOARD Board` : paper ? `${paper.title} · SOARD Board` : `${NAV.find(([p]) => p === route.page)?.[1] || 'Home'} · SOARD Board`;
+    if (route.page === 'families' && route.id) return; // (the family's page names it once it's read)
+    document.title = m ? `${meetingName(m)} · SOARD Board` : paper ? `${paper.title} · SOARD Board` : route.page === 'families' ? 'Families · SOARD Board' : `${NAV.find(([p]) => p === route.page)?.[1] || 'Home'} · SOARD Board`;
   }, [route, data]);
   // The first visit rises in; later pages arrive by transition
   useEffect(() => {
@@ -748,13 +752,15 @@ function App() {
     : route.page === 'people' ? html`<${PeoplePage} ctx=${ctx} />`
     : route.page === 'documents' && route.id ? html`<${DocPage} id=${route.id} ctx=${ctx} key=${route.id} />`
     : route.page === 'documents' ? html`<${DocumentsPage} ctx=${ctx} />`
+    : route.page === 'families' && route.id ? html`<${FamilyPage} id=${route.id} key=${route.id} />`
+    : route.page === 'families' ? html`<${FamiliesPage} />`
     : html`<${HomePage} ctx=${ctx} />`;
   return html`
     <a class="bp-skip" href="#main" onClick=${(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to the page</a>
     <header class="bp-top">
       <div class="bp-bar">
         <a class="bp-brand" href="#/"><img src=${LOGO} alt="SOARD board home" width="44" height="44" /><span class="bp-brand__words"><strong>Sunshine on a Ranney Day</strong> <small>Board of Directors</small></span></a>
-        <${Nav} page=${route.page} toSign=${data?.me?.slug ? data.docs.filter((x) => x.sign && !x.hidden && (x.body || x.file) && !x.signedByMe).length : 0} />
+        <${Nav} page=${route.page === 'families' ? '' : route.page} toSign=${data?.me?.slug ? data.docs.filter((x) => x.sign && !x.hidden && (x.body || x.file) && !x.signedByMe).length : 0} />
         <div class="bp-tools">
           <button type="button" class="bp-find" onClick=${() => setFinding(true)} aria-keyshortcuts="Meta+K Control+K /">
             <${Icon} name="search" size=${18} /><span class="bp-find__label">Search</span><kbd class="bp-kbd" aria-hidden="true">${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘K' : 'Ctrl K'}</kbd>
@@ -1244,6 +1250,8 @@ function HomePage({ ctx }) {
     </div>
     ${data.gifts ? html`<div class="bp-rise" style=${rise(4)}><${Gifts} g=${data.gifts} since=${data.me.lastSeen} /></div>` : null}
     <div class="bp-rise" style=${rise(5)}><${Builds} n=${data.numbers} /></div>
+    <div class="bp-rise" style=${rise(6)}><${CostsCard} data=${data} n=${data.numbers} admin=${!!data.me.admin && !AS_BOARD && !PREVIEW}
+      onBalance=${(balance) => ctx.setData((x) => ({ ...x, numbers: { ...x.numbers, operating: { balance } } }))} /></div>
   </div>`;
 }
 
@@ -3027,6 +3035,7 @@ function LiveBlock({ kind, n, m, data, asFiles = [], notes = null, again = false
   if (kind === 'projects') body = html`<${Kanban} projects=${n.projects} reveals=${n.reveals} variant="agenda" />`;
   else if (kind === 'cash') body = html`<${CashBlock} n=${n} data=${data} m=${m} asFiles=${asFiles} notes=${notes} again=${again} />`;
   else if (kind === 'reveals') body = html`<${RevealsBlock} n=${n} />`;
+  else if (kind === 'costs') body = html`<${CostsCard} data=${data} n=${n} m=${m} variant="agenda" />`;
   else if (kind === 'events') body = html`<${DatesBlock} rows=${(n.events || []).slice(0, 6).map((e) => ({ key: e.title + e.date, date: e.date, title: e.title, sub: [dayOf(e.date), e.time, e.location].filter(Boolean).join(' · ') }))} />`;
   else if (kind === 'meetings') body = html`<${DatesBlock} rows=${(n.meetings || []).filter((x) => x.id !== m.id).slice(0, 4).map((x) => ({ key: x.id || x.date, date: x.date, title: x.name, sub: [dayOf(x.date), x.start ? clock(x.start) : ''].filter(Boolean).join(' · ') }))} />`;
   if (!body) {
@@ -4617,6 +4626,8 @@ function searchIndex(data, d, words = null) {
     // A makeover without a page of its own lands on its card on Home's board
     out.push({ group: 'Makeovers', key: `b:${b.kind || ''}:${b.name}`, title: b.name, sub: b.kind === 'community' ? `Community project · ${b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status}` : b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status, hay: norm([b.name, b.status, b.kind === 'community' ? 'community project' : 'makeover kid'].join(' ')), ...(href ? { href, ext: true } : { href: '#/', focus: cardId(b) }), icon: 'home' });
   }
+  if (data.numbers.costs) out.push({ group: 'Makeovers', key: 'costs', title: 'What makeovers cost', sub: 'Each finished makeover, the money over the operating balance, and who it starts', hay: norm('what makeovers cost price paid budget money waiting funding pipeline qualification committee operating balance typical'), href: '#/', focus: 'costs', icon: 'financials' });
+  out.push({ group: 'Makeovers', key: 'families', title: 'Families', sub: 'Every family’s application and score, to read', hay: norm('families applications applicants scores scoring ranked qualification committee approved denied in review'), href: '#/families', icon: 'people' });
   for (const r of data.numbers.reveals) out.push({ group: 'Coming up', key: `r:${r.name}`, title: `${r.name}’s reveal`, sub: r.confirmed && r.date ? dayOf(r.date) : r.window?.label || 'Day not set yet', hay: norm(`${r.name} reveal`), href: r.kidUrl, ext: true, icon: 'home' });
   for (const e of data.numbers.events) out.push({ group: 'Coming up', key: `e:${e.title}:${e.date}`, title: e.title, sub: dayOf(e.date), hay: norm(`${e.title} event ${e.location}`), date: e.date, href: e.url, ext: true, icon: 'meetings' });
   out.push(...orgEntries(data));

@@ -56,6 +56,8 @@ import { mercury } from './_mercury.js';
 import { bankBalances, plaidConfigured, bankFacts } from './_plaid.js';
 import { booksNow, booksFacts } from './_quickbooks.js';
 import { giftsNow } from './_board-gifts.js';
+import { makeoverCostsNow } from './_makeover-costs.js';
+import { OPERATING_BALANCE } from '../../public/admin/makeover-costs-shared.js';
 import { limit } from './_rate-limit.js';
 import { SIG_EVIDENCE, putSignature, addColumns, appendEvents, sha256Hex, cleanMark, CONSENT_TEXT, PROCESS_V, declinedOf, dueOn, dueWords } from './_board-sign.js';
 import { paperFields } from '../../public/admin/board-md.js';
@@ -138,6 +140,8 @@ export async function getSettings(DB) {
     // Remind by email (Board → Members): those who haven't signed this year's papers asked again by themselves, every
     // 3 days or weekly; off until an admin turns it on (./_board-sign.js maybeRemindSigners)
     remind: ['3', '7'].includes(String(s.remind)) ? String(s.remind) : 'off',
+    // What SOARD keeps for running itself; what's over it can go to makeovers (Peter, Nov 4 2026: $500K, "its arbitrary")
+    operatingBalance: Number(s.operatingBalance) > 0 ? Math.round(Number(s.operatingBalance)) : OPERATING_BALANCE,
   };
 }
 
@@ -154,6 +158,11 @@ export async function saveSettings(DB, patch, by) {
   if (patch.asks !== undefined) next.asks = ['on', 'off', 'test'].includes(patch.asks) ? patch.asks : 'test';
   if (patch.remind !== undefined) next.remind = ['3', '7'].includes(String(patch.remind)) ? String(patch.remind) : 'off';
   if (patch.quorum !== undefined) next.quorum = Math.max(0, Math.min(50, Math.round(Number(patch.quorum) || 0)));
+  if (patch.operatingBalance !== undefined) {
+    const v = Math.round(Number(String(patch.operatingBalance).replace(/[$,\s]/g, '')));
+    if (!Number.isFinite(v) || v < 0 || v > 100_000_000) throw Object.assign(new Error('The operating balance is dollars, from $0 to $100,000,000'), { status: 400 });
+    next.operatingBalance = v;
+  }
   if (patch.defaults) {
     const clean = cleanMeeting({ ...patch.defaults, date: '2026-01-01' });
     next.defaults = { start: clean.start, end: clean.end, location: clean.location, address: clean.address, video: clean.video };
@@ -1312,7 +1321,7 @@ export async function boardFinanceNow(env, { now = Date.now(), fresh = false } =
 /** Everything an agenda's live items show, as of now */
 export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const today = todayEastern(now);
-  const [cash, projects, reveals, events, meetings, kids, finance, pages, books] = await Promise.all([
+  const [cash, projects, reveals, events, meetings, kids, finance, pages, books, costs, settings] = await Promise.all([
     cachedCash(env, { fetchImpl, now }),
     projectsNow(env, { fetchImpl, now }),
     cachedReveals(env, now).catch(() => ({ upcoming: [], past: [] })),
@@ -1323,6 +1332,9 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
     loadKids(env.DB).catch(() => []),
     // The year's revenue and expenses so far, as QuickBooks last answered (Settings → QuickBooks)
     booksNow(env.DB, { now }).catch(() => null),
+    // What finished makeovers cost, and the families waiting on the money (./_makeover-costs.js)
+    makeoverCostsNow(env, { fetchImpl, now }).catch((err) => { console.error('[board] costs', err.message); return null; }),
+    readSettings(env.DB).catch(() => ({})),
   ]);
   // Each reveal's kid by their published page's photo (a draft page's kid has none)
   const photos = Object.fromEntries(pages.map((k) => [k.slug, photoOf(k.heroImage)]).filter(([, p]) => p));
@@ -1345,6 +1357,8 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
     // The year's board meetings, held and ahead (the screen's "2026 board meetings"), never another organization's
     thisYear: meetings.filter((m) => isDate(m.date) && m.date.slice(0, 4) === today.slice(0, 4) && !m.notBoard).sort((a, b) => a.date.localeCompare(b.date)).map((m) => ({ id: m.id, name: meetingName(m), date: m.date, start: m.start, shared: m.shared })),
     impact: kids,
+    costs,
+    operating: { balance: Number(settings?.operatingBalance) > 0 ? Math.round(Number(settings.operatingBalance)) : OPERATING_BALANCE },
   };
 }
 
@@ -1366,7 +1380,7 @@ export async function takeSnapshot(env, id, { by, fetchImpl = fetch, now = Date.
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
   const n = await liveNumbers(env, { fetchImpl, now });
-  const snapshot = { at: n.at, by: by || '', cash: n.cash, mercury: n.mercury, finance: n.finance, books: n.books, projects: n.projects, reveals: n.reveals, pastReveals: n.pastReveals, events: n.events, recentEvents: n.recentEvents, meetings: n.meetings.filter((x) => x.id !== id), thisYear: n.thisYear || [], impact: n.impact };
+  const snapshot = { at: n.at, by: by || '', cash: n.cash, mercury: n.mercury, finance: n.finance, books: n.books, projects: n.projects, reveals: n.reveals, pastReveals: n.pastReveals, events: n.events, recentEvents: n.recentEvents, meetings: n.meetings.filter((x) => x.id !== id), thisYear: n.thisYear || [], impact: n.impact, costs: n.costs, operating: n.operating };
   await writeMeeting(env.DB, { ...m, snapshot, updatedAt: nowIso(), updatedBy: by || m.updatedBy });
   return getMeeting(env.DB, id);
 }

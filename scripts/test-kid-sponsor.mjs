@@ -15,6 +15,8 @@
  *   - searching Partners by keyboard, "Add “…” as a new sponsor" with a logo
  *     and a private contact (never in the saved partner record)
  *   - editing contacts, taking the sponsor off (Undo), History naming them
+ *   - what each sponsor pledged and what's come in: only once the page is saved with them, saved as you leave the
+ *     box (private: /api/sponsors-admin, never the kid's record), "$15,000 still to come"
  *   - a bad email is refused; phone: no sideways scroll, 44px targets; axe
  * Screenshots land in test-results/kid-sponsor/. Exits non-zero on any failure.
  *
@@ -68,7 +70,7 @@ const JOB = '22PJOBSPONS1';
 
 function makeApi() {
   const st = {
-    kids: structuredClone(KIDS0), partners: structuredClone(PARTNERS0), contacts: {}, calls: [], versions: {}, syncs: [],
+    kids: structuredClone(KIDS0), partners: structuredClone(PARTNERS0), contacts: {}, calls: [], versions: {}, syncs: [], pledges: {},
     jobs: { [JOB]: { id: JOB, name: `${KID.name} (${KID.year})`, closedOn: null, field: 'Voila Foundation',
       people: [{ membershipId: 'm1', name: 'Dana Reed', email: 'dana@voilafdn.org', role: 'Sponsor', company: 'The Voila Foundation' }] } },
   };
@@ -119,12 +121,24 @@ function makeApi() {
     }
     if (p === '/api/sponsors-admin') {
       const q = url.searchParams;
-      if (!isPost && q.get('kid')) return json({ success: true, ...view(q.get('kid')) });
+      if (!isPost && q.get('kid')) return json({ success: true, ...view(q.get('kid')), pledges: st.pledges[q.get('kid')] || {} });
       if (!isPost) return json({ success: true, contacts: Object.fromEntries(q.get('partners').split(',').map((s) => [s, st.contacts[s] || []])) });
       const b = body();
       if (b.contacts) {
         try { st.contacts[b.contacts.partner] = cleanPeople(b.contacts.people); } catch (e) { return json({ success: false, error: e.message }, 400); }
         return json({ success: true, contacts: st.contacts[b.contacts.partner], granted: [], problems: [] });
+      }
+      if (b.pledge) {
+        // As sponsors-admin.js does it: only a sponsor the saved page names; dollars; both empty clears it
+        const { kid, partner, pledged, received } = b.pledge;
+        if (!(st.kids[kid]?.sponsors || []).includes(partner)) return json({ success: false, error: 'Save the kid with this sponsor first' }, 409);
+        const amt = (v) => (v === '' || v == null ? null : Number(String(v).replace(/[$,\s]/g, '')));
+        const [pl, rc] = [amt(pledged), amt(received)];
+        if ([pl, rc].some((x) => x != null && !(x >= 0))) return json({ success: false, error: 'An amount is dollars, from $0 to $10,000,000' }, 400);
+        const row = pl == null && rc == null ? null : { pledged: pl ?? 0, received: rc ?? 0, updatedAt: new Date().toISOString(), by: 'staff@soardcharity.com' };
+        st.pledges[kid] = { ...(st.pledges[kid] || {}) };
+        if (row) st.pledges[kid][partner] = row; else delete st.pledges[kid][partner];
+        return json({ success: true, pledge: row });
       }
       if (b.sync) {
         // As _sponsors.js does it: job access first (taken off, then added), then the field mirrors it
@@ -230,10 +244,11 @@ try {
     await clickText(page, '#kd-sec-sponsor button', 'Use The Voila Foundation');
     await sleep(400);
     text = await card(page);
-    ok(/The Voila Foundation/.test(text) && /Saving gives The Voila Foundation access to the job in JobTread as a Sponsor\. JobTread’s Monetary Sponsor then shows who has that access/.test(text), 'picked, and the card says Save gives them job access, then the field follows');
+    ok(/The Voila Foundation/.test(text) && /Saving gives The Voila Foundation access to the job in JobTread\. JobTread’s Monetary Sponsor then shows who has that access/.test(text), 'picked, and the card says Save gives them job access, then the field follows');
     const firstLogo = await page.$eval('.kd-logos li input', (el) => el.value).catch(() => '');
     ok(firstLogo === VOILA.name, `their logo leads the Partners logos (first: “${firstLogo}”)`);
     ok(await page.$eval('#kd-sec-sponsor', (el) => !el.classList.contains('is-needed')), 'no longer marked as needed');
+    ok(/Save the page, then add what The Voila Foundation pledged\./.test(await card(page)) && !(await page.$('.kd-pledge')), 'a pledge waits for the page to be saved with the sponsor');
 
     // Their contact, before saving
     await clickText(page, '#kd-sec-sponsor button', 'Add a contact');
@@ -266,11 +281,30 @@ try {
     ok(sync?.kid === KID.slug && sync.job === JOB && Array.isArray(sync.previous) && !sync.previous.length, 'Save sends the JobTread sync for this kid’s job');
     ok(api.st.jobs[JOB].field === 'The Voila Foundation', 'JobTread’s Monetary Sponsor now mirrors who has Sponsor access: The Voila Foundation');
     text = await card(page);
-    ok(/Dana Reed is on the job as a Sponsor/.test(text), 'the card shows Dana on the job as a Sponsor');
+    ok(/Dana Reed is on the job, so Demo Day and reveal invites reach them/.test(text), 'the card shows Dana on the job, so the invites reach her');
     const said = (await toasts(page)).join(' | ');
     ok(/JobTread: .*Monetary Sponsor now says “The Voila Foundation”/.test(said), `a toast says what JobTread got (${said.slice(0, 200)})`);
     ok(/says “The Voila Foundation”, from who has Sponsor access/.test(await card(page)), 'the card says the field comes from who has Sponsor access');
     await shot(page, 'desktop-2-saved');
+
+    // What they pledged, and what's come in: saved on its own as you leave the box, never with the page
+    ok(!!(await page.$('.kd-pledge input[aria-label^="Pledged by The Voila Foundation"]')), 'once saved, the sponsor takes a pledge');
+    ok(/Staff and the board page see this; the website never does\./.test(await card(page)), 'it says who sees it');
+    await page.type('.kd-pledge input[aria-label^="Pledged by"]', '$25,000');
+    await page.type('.kd-pledge input[aria-label^="Received by"]', '10000');
+    await page.keyboard.press('Enter');
+    await page.waitForFunction(() => /Saved\. \$15,000 still to come\./.test(document.querySelector('#kd-sec-sponsor')?.innerText || ''), { timeout: 5000 }).catch(() => {});
+    const pl = lastCall(api, '/api/sponsors-admin', (c) => c.body?.pledge)?.body?.pledge;
+    ok(pl?.kid === KID.slug && pl.partner === 'the-voila-foundation' && pl.pledged === '$25,000' && pl.received === '10000', `the pledge goes to the private API (${JSON.stringify(pl)})`);
+    ok(/Saved\. \$15,000 still to come\./.test(await card(page)), 'the card says it’s saved and what’s still to come');
+    ok(!JSON.stringify(api.st.kids[KID.slug]).includes('25000') && !JSON.stringify(api.st.kids[KID.slug]).includes('25,000'), 'the kid’s record never has it');
+    ok(api.st.pledges[KID.slug]?.['the-voila-foundation']?.pledged === 25000, 'kept: $25,000 pledged');
+    const pledgeCalls = api.st.calls.filter((c) => c.body?.pledge).length;
+    await page.click('.kd-pledge input[aria-label^="Pledged by"]');
+    await page.keyboard.press('Tab');
+    await sleep(300);
+    ok(api.st.calls.filter((c) => c.body?.pledge).length === pledgeCalls, 'leaving the box unchanged sends nothing');
+    await shot(page, 'desktop-2b-pledge');
 
     // Another contact: not on the job yet → said; Save adds them
     await clickText(page, '#kd-sec-sponsor button', 'Edit contacts');
@@ -280,7 +314,7 @@ try {
     await page.type('#kd-sp-contact-email-1', 'ray@voilafdn.org');
     await clickText(page, '.kd-dialog__foot button', 'Save');
     await page.waitForFunction(() => /Ray Cole isn’t on the job yet/.test(document.querySelector('#kd-sec-sponsor')?.innerText || ''), { timeout: 5000 }).catch(() => {});
-    ok(/Ray Cole isn’t on the job yet\. Saving adds them as a Sponsor/.test(await card(page)), 'a contact not on the job: “Saving adds them as a Sponsor”');
+    ok(/Ray Cole isn’t on the job yet\. Saving adds them\./.test(await card(page)), 'a contact not on the job: “Saving adds them”');
     // Nothing else changed, but JobTread is behind: Save still syncs
     await page.evaluate(() => { const el = document.querySelector('#kd-diagnosis'); el.value += ' '; el.dispatchEvent(new Event('input', { bubbles: true })); });
     await page.click('.kd-save');
@@ -313,7 +347,7 @@ try {
     ok(added && !JSON.stringify(added).includes('jordan@'), 'its record has no contact in it');
     ok(api.st.contacts['kind-neighbors-fund']?.[0]?.email === 'jordan@kindneighbors.org', 'its contact went to the private store');
     text = await card(page);
-    ok(/Kind Neighbors Fund/.test(text) && /jordan@kindneighbors\.org/.test(text) && /Saving gives Kind Neighbors Fund access to the job in JobTread as a Sponsor/.test(text), 'the card lists both sponsors and what Save will do');
+    ok(/Kind Neighbors Fund/.test(text) && /jordan@kindneighbors\.org/.test(text) && /Saving gives Kind Neighbors Fund access to the job in JobTread/.test(text), 'the card lists both sponsors and what Save will do');
     await page.click('.kd-save');
     await page.waitForFunction(() => /Monetary Sponsor says “The Voila Foundation & Kind Neighbors Fund”/.test(document.querySelector('#kd-sec-sponsor')?.innerText || ''), { timeout: 8000 }).catch(() => {});
     ok(api.st.jobs[JOB].people.some((x) => x.email === 'jordan@kindneighbors.org' && x.role === 'Sponsor'), 'Jordan got Sponsor access first');
