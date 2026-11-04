@@ -105,9 +105,9 @@ export async function ensureSchema(DB) {
   // What a wording was (words read from a file, a new file), and its SHA-256
   await addColumns(DB, 'board_doc_versions', { note: 'TEXT', hash: 'TEXT', file_id: 'TEXT' });
   // A paper's PDF's words (for finding it by them; and every meeting file's, read by the reader words_v names,
-  // a scan's page to go on from, who's reading it and when it was last read: ./_board-file-words.js); whose a signed copy or record is (`slug`: access never rests on
+  // a scan's page to go on from, who's reading it, when it was last read, the reader that gave up on it: ./_board-file-words.js); whose a signed copy or record is (`slug`: access never rests on
   // the signature row); its SHA-256; when it stopped counting (never deleted); an iPhone photo's original
-  await addColumns(DB, 'board_files', { words: 'TEXT', words_v: 'INTEGER', words_next: 'INTEGER', words_try: 'INTEGER', words_at: 'TEXT', slug: 'TEXT', sha256: 'TEXT', superseded_at: 'TEXT', original_id: 'TEXT' });
+  await addColumns(DB, 'board_files', { words: 'TEXT', words_v: 'INTEGER', words_next: 'INTEGER', words_try: 'INTEGER', words_at: 'TEXT', words_fail: 'INTEGER', slug: 'TEXT', sha256: 'TEXT', superseded_at: 'TEXT', original_id: 'TEXT' });
   // How many of a member's asks this year Remind by email sent itself (at most MAX_REMINDERS)
   await addColumns(DB, 'board_sign_asks', { reminders: 'INTEGER' });
   // (copies from before `slug`: whose each is, from the signature it was added for)

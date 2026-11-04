@@ -389,12 +389,12 @@ export async function wordsOf(env, { name = '', type = '', bytes }, { ctx = {}, 
   return { words: '', how: 'none' };
 }
 
-const FILINGS = 'CREATE TABLE IF NOT EXISTS board_filing_words (key TEXT PRIMARY KEY, words TEXT, words_v INTEGER, at TEXT, words_next INTEGER, words_try INTEGER, words_at TEXT)';
+const FILINGS = 'CREATE TABLE IF NOT EXISTS board_filing_words (key TEXT PRIMARY KEY, words TEXT, words_v INTEGER, at TEXT, words_next INTEGER, words_try INTEGER, words_at TEXT, words_fail INTEGER)';
 const filingsReady = new WeakSet();
 async function ensureFilings(DB) {
   if (filingsReady.has(DB)) return;
   await DB.prepare(FILINGS).run();
-  await addColumns(DB, 'board_filing_words', { words_next: 'INTEGER', words_try: 'INTEGER', words_at: 'TEXT' });
+  await addColumns(DB, 'board_filing_words', { words_next: 'INTEGER', words_try: 'INTEGER', words_at: 'TEXT', words_fail: 'INTEGER' });
   filingsReady.add(DB);
 }
 /** A filing's url on the board page ("/files/financials/2025%20990.pdf") → its key in the site's bucket */
@@ -406,9 +406,9 @@ async function filingsToRead(DB, heldBefore = 0) {
   const keys = [...new Set((doc?.documents || []).map((d) => filingKey(String(d.url || '').replace(/^https:\/\/files\.sunshineonaranneyday\.com\/financials\//, '/files/financials/'))).filter(Boolean))];
   if (!keys.length) return [];
   await ensureFilings(DB);
-  const had = new Map(((await DB.prepare('SELECT key, words, words_v, words_next, words_try FROM board_filing_words').all()).results || []).map((r) => [r.key, r]));
+  const had = new Map(((await DB.prepare('SELECT key, words, words_v, words_next, words_try, words_fail FROM board_filing_words').all()).results || []).map((r) => [r.key, r]));
   return keys.map((key) => ({ key, words: null, words_v: 0, words_next: null, words_try: null, ...had.get(key) }))
-    .filter((f) => (f.words_v || 0) < READER && (f.words_v || 0) > -3 && !(f.words_try >= heldBefore && heldBefore))
+    .filter((f) => (f.words_v || 0) < READER && ((f.words_v || 0) > -3 || (f.words_fail || 0) < READER) && !(f.words_try >= heldBefore && heldBefore))
     .sort((a, b) => (a.words_next == null) - (b.words_next == null) || ((a.words_v || 0) < 0) - ((b.words_v || 0) < 0));
 }
 
@@ -418,7 +418,8 @@ async function filingsToRead(DB, heldBefore = 0) {
  */
 async function readOne(env, item, { table, keyCol, bucket, deadline, now, ctx, draw, cut }) {
   const DB = env.DB;
-  const v0 = item.words_v || 0;
+  // (one an older reader gave up on is tried afresh: three times by this one)
+  const v0 = (item.words_v || 0) <= -3 ? 0 : item.words_v || 0;
   const scanning = item.words_next !== null && item.words_next !== undefined;
   // (a scan's page that couldn't be read twice is left out, and the count starts again)
   const skip = scanning && v0 <= -2;
@@ -438,7 +439,7 @@ async function readOne(env, item, { table, keyCol, bucket, deadline, now, ctx, d
     const bytes = obj && (obj.size || 0) <= MAX_BYTES ? new Uint8Array(await new Response(obj.body).arrayBuffer()) : null;
     if (bytes) read = await wordsOf(env, { name: item.name, type: item.type, bytes }, { ctx, draw, cut, from: scanning ? item.words_next : null, prior: item.words || '', skip, tries: skip ? 0 : -v0, deadline, now, onPart });
   }
-  if (read.how === 'error') await set(`words_try = NULL, words_v = ?`, fair ? tryV : v0);
+  if (read.how === 'error') await set('words_try = NULL, words_v = ?, words_fail = ?', fair ? tryV : v0, READER);
   else if (read.how === 'later') await set('words_try = NULL, words_v = ?', v0);
   else if (read.how === 'part') await set(`words = ?, words_next = ?, words_try = NULL, words_v = ?${read.read ? ', words_at = ?' : ''}`, String(read.words || '').slice(0, KEEP), read.next, read.read ? 0 : v0, ...(read.read ? [at()] : []));
   else await set('words = ?, words_v = ?, words_next = NULL, words_try = NULL, words_at = ?', String(read.words || '').slice(0, KEEP), READER, at());
@@ -463,8 +464,8 @@ export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = D
     const start = now();
     const deadline = start + windowMs;
     const rows = (await env.DB.prepare(`SELECT id AS key, r2_key, name, type, size, words, words_v, words_next FROM board_files
-      WHERE COALESCE(words_v, 0) < ? AND COALESCE(words_v, 0) > -3 AND owner_type IN ('meeting', 'doc') AND (words_try IS NULL OR words_try < ?)
-      ORDER BY (words_next IS NULL), (COALESCE(words_v, 0) < 0), (words IS NOT NULL AND words != ''), (owner_type = 'doc') DESC, at DESC LIMIT ?`).bind(READER, start - HOLD_MS, limit).all()).results || [];
+      WHERE COALESCE(words_v, 0) < ? AND (COALESCE(words_v, 0) > -3 OR COALESCE(words_fail, 0) < ?) AND owner_type IN ('meeting', 'doc') AND (words_try IS NULL OR words_try < ?)
+      ORDER BY (words_next IS NULL), (COALESCE(words_v, 0) < 0), (words IS NOT NULL AND words != ''), (owner_type = 'doc') DESC, at DESC LIMIT ?`).bind(READER, READER, start - HOLD_MS, limit).all()).results || [];
     let done = 0;
     // (a file is started only with the time a page takes left, after the first only within budgetMs, and one that
     // couldn't be read before only first, so it has a run's whole time)
@@ -499,7 +500,7 @@ export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = D
 export async function wordsStatus(DB) {
   await ensureSchema(DB);
   const r = await DB.prepare(`SELECT COUNT(*) AS files, SUM(CASE WHEN COALESCE(words_v, 0) >= ? THEN 1 ELSE 0 END) AS read, SUM(CASE WHEN words IS NOT NULL AND words != '' THEN 1 ELSE 0 END) AS with_words,
-    SUM(CASE WHEN COALESCE(words_v, 0) <= -3 THEN 1 ELSE 0 END) AS failed, MAX(words_at) AS last_at FROM board_files WHERE owner_type IN ('meeting', 'doc')`).bind(READER).first();
+    SUM(CASE WHEN COALESCE(words_v, 0) <= -3 AND COALESCE(words_fail, 0) >= ? THEN 1 ELSE 0 END) AS failed, MAX(words_at) AS last_at FROM board_files WHERE owner_type IN ('meeting', 'doc')`).bind(READER, READER).first();
   const files = r?.files || 0;
   // (and the public filings still to read)
   const filings = await filingsToRead(DB).catch(() => []);
@@ -519,7 +520,7 @@ export async function filingWordsFor(DB, urls) {
 
 /** How many board files are still to be read (the page asks for the words again sooner while there are some) */
 export async function stillToRead(DB) {
-  const r = await DB.prepare("SELECT COUNT(*) AS n FROM board_files WHERE COALESCE(words_v, 0) < ? AND COALESCE(words_v, 0) > -3 AND owner_type IN ('meeting', 'doc')").bind(READER).first();
+  const r = await DB.prepare("SELECT COUNT(*) AS n FROM board_files WHERE COALESCE(words_v, 0) < ? AND (COALESCE(words_v, 0) > -3 OR COALESCE(words_fail, 0) < ?) AND owner_type IN ('meeting', 'doc')").bind(READER, READER).first();
   return r?.n || 0;
 }
 

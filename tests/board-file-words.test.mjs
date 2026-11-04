@@ -446,3 +446,25 @@ test('while the board’s files are only being read again by a newer reader, a f
   assert.equal(await readBoardWords(env, { limit: 1 }), 2, 'the filing, then the board’s file');
   assert.match((await filingWordsFor(env.DB, ['/files/financials/2024%20990.pdf']))['/files/financials/2024%20990.pdf'], /Exempt From Income Tax/);
 });
+
+test('a file an older reader gave up on is tried afresh by a newer one, three times, then let be until the next', async () => {
+  env.AI = { async toMarkdown() { throw new Error('converter down'); } };
+  const m = await meeting('2024-04-25');
+  const f = await put(m, 'Q3 Totals.pdf', pdf());
+  await env.DB.prepare('UPDATE board_files SET words_v = -3, words_fail = ? WHERE id = ?').bind(READER - 1, f.id).run();
+  const row = () => env.DB.prepare('SELECT words, words_v, words_fail FROM board_files WHERE id = ?').bind(f.id).first();
+  assert.equal((await wordsStatus(env.DB)).failed, 0, 'not this reader’s to give up on');
+  assert.equal((await wordsStatus(env.DB)).toRead, 1);
+  await readBoardWords(env);
+  assert.deepEqual({ ...(await row()) }, { words: null, words_v: -1, words_fail: READER }, 'its count started again');
+  await readBoardWords(env);
+  await readBoardWords(env);
+  assert.equal((await row()).words_v, -3);
+  assert.equal(await readBoardWords(env), 0, 'then let be');
+  assert.equal((await wordsStatus(env.DB)).failed, 1);
+  // Read by this reader once Workers AI is back? Only by a newer one; a file given up on by an older one with words read now
+  await env.DB.prepare('UPDATE board_files SET words_fail = NULL WHERE id = ?').bind(f.id).run();
+  env.AI = ai({ 'Q3 Totals.pdf': ['Q3 totals for both stores'] });
+  assert.equal(await readBoardWords(env), 1);
+  assert.equal((await row()).words, 'Q3 totals for both stores');
+});
