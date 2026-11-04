@@ -51,6 +51,7 @@ globalThis.fetch = async (input, init = {}) => {
     for (const e of body) emails.push(e);
     return Response.json({ data: body.map((_, i) => ({ id: `re_${emails.length}_${i}` })) });
   }
+  if (/slack/.test(url)) throw new Error(`Slack was called (${url}): the reviewer hears by email only`);
   throw new Error(`unexpected fetch ${url}`);
 };
 after(() => { globalThis.fetch = realFetch; });
@@ -61,7 +62,7 @@ beforeEach(async () => {
   emails = [];
   const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
   await DB.prepare('INSERT INTO kids (slug, name, year, status, data) VALUES (?, ?, ?, ?, ?)').bind(KID.slug, KID.name, 2027, 'in-progress', JSON.stringify(KID)).run();
-  env = { DB, KIT_API_KEY: 'kit_test', RESEND_API_KEY: 're_test' };
+  env = { DB, KIT_API_KEY: 'kit_test', RESEND_API_KEY: 're_test', SLACK_WEBHOOK_URL: 'https://hooks.slack.example/never', SLACK_BOT_TOKEN: 'xoxb-never' };
 });
 
 const sync = (p = plan(), extra = {}) => syncKitInvite(env, { jobId: '22PTestJob001', plan: p, who: WHO, room: 'Bathroom', config: { enabled: true }, alertTo: ['peter@soardcharity.com'], ...extra });
@@ -202,4 +203,19 @@ test('drafted early from the admin: the date JobTread has now, the time to be co
   assert.equal(kit.broadcasts.size, 1);
   assert.match([...kit.broadcasts.values()][0].content, /Saturday, March 13, 2027 · 4:00 PM/);
   assert.equal(emails.at(-1).subject, 'Rowan’s reveal invite draft changed');
+});
+
+test('Linzi hears by email only: never a Slack post, even with Slack connected', async () => {
+  const slackCalls = [];
+  const inner = globalThis.fetch;
+  globalThis.fetch = async (input, init) => { const url = typeof input === 'string' ? input : input.url; if (/slack/.test(url)) slackCalls.push(url); return inner(input, init); };
+  try {
+    await sync();
+    await sync(plan({ start: '17:00' }));
+    kit.groups = { tags: [], segments: [] };
+    await env.DB.prepare('DELETE FROM reveal_invite_kit').run();
+    await sync();
+  } finally { globalThis.fetch = inner; }
+  assert.deepEqual(slackCalls, []);
+  assert.ok(emails.length >= 3, 'emails instead');
 });

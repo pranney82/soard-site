@@ -8,8 +8,8 @@
  * - Addressed to Kit's "Reveal Emails" group (a segment, else a tag, by that
  *   name). It carries the family's address, so with no such group there is no
  *   draft: Kit's default audience is every subscriber.
- * - Never sent by the site. The reviewer (Linzi by default) gets an email and
- *   Slack hears about it, with a link to the draft.
+ * - Never sent by the site. The reviewer (Linzi by default) gets an email with
+ *   a link to the draft. Only an email: no Slack (Peter, Nov 4 2026).
  * - The reveal changes (day, time, address, notes) while it's a draft: the
  *   draft is rewritten and the reviewer told. Changed after it went out: the
  *   reviewer is told so an update can go out. Deleted in Kit: left alone.
@@ -19,8 +19,7 @@
  */
 
 import { kitConfigured, kitCreateBroadcast, kitUpdateDraft, kitListAudiences } from './_kit.js';
-import { sendEmails, slackPost, emailConfigured } from './_broadcast-notify.js';
-import { slackCard } from './_slack-cards.js';
+import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
 import { revealInviteEmail, revealWhen, SITE_URL } from './_reveal-invite-email.js';
 
@@ -85,7 +84,7 @@ export function inviteFacts(plan, who, room = '') {
 
 /**
  * The reviewer's note: a new draft, a draft rewritten, or a reveal that moved
- * after the email went out. Email to the reviewer, and a Slack card.
+ * after the email went out. An email to the reviewer.
  */
 export function reviewNote(kind, { name, f, id, audienceName, count }) {
   const when = revealWhen(f.date, f.start);
@@ -96,29 +95,21 @@ export function reviewNote(kind, { name, f, id, audienceName, count }) {
       subject: `Review ${name}’s reveal invite in Kit`,
       heading: `${name}’s reveal invite is ready to review`,
       intro: `JobTread confirmed ${name}’s reveal, so the invite email is drafted in Kit. Look it over, then send it from Kit. Nothing goes out until you do.`,
-      slack: `JobTread confirmed the reveal. The invite email is drafted in Kit, addressed to ${goesTo}. Nothing goes out until someone sends it.`,
-      icon: '✉️',
     },
     early: {
       subject: `Review ${name}\u2019s reveal invite in Kit`,
       heading: `${name}\u2019s reveal invite is ready to review`,
       intro: `It\u2019s drafted in Kit ahead of JobTread\u2019s confirmation, with the date JobTread has now and the time still to be confirmed. When JobTread confirms the reveal, the draft fills in the time by itself and you\u2019ll hear again. Nothing goes out until you send it.`,
-      slack: `The invite email is drafted in Kit ahead of JobTread\u2019s confirmation, addressed to ${goesTo}. It fills in the time once JobTread confirms. Nothing goes out until someone sends it.`,
-      icon: '✉️',
     },
     updated: {
       subject: `${name}’s reveal invite draft changed`,
       heading: `${name}’s reveal changed, so the draft did too`,
       intro: `JobTread changed ${name}’s reveal. The draft in Kit now says what JobTread says. Look it over before you send it.`,
-      slack: `The reveal changed in JobTread, and the Kit draft was rewritten to match.`,
-      icon: '✏️',
     },
     'after-send': {
       subject: `${name}’s reveal changed after the invite went out`,
       heading: `${name}’s reveal changed after the invite email went out`,
       intro: `The invite email already went out from Kit, and JobTread now says something different. Send the Reveal Emails group a short update from Kit.`,
-      slack: `The reveal changed in JobTread after the invite email went out. The group needs a short update from Kit.`,
-      icon: '⚠️',
     },
   }[kind];
   const rows = [
@@ -133,22 +124,15 @@ export function reviewNote(kind, { name, f, id, audienceName, count }) {
     + `<p class="muted" style="margin:14px 0 0;font-size:13px;line-height:1.55;">It has the family’s address, so it only goes to the ${esc(audienceName || 'Reveal Emails')} group. Check the photo, the story and the partners. Fix anything on ${esc(name)}’s page in the admin, or edit the draft in Kit.</p>`;
   const html = emailShell({ preheader: t.intro, eyebrow: 'Reveal invite', heading: t.heading, intro: esc(t.intro), bodyHtml, footerHtml: `Sent by the website when JobTread confirms a reveal. <a href="${esc(ADMIN_URL)}" style="color:inherit;">Reveals in the admin</a>` });
   const text = [t.heading, '', t.intro, '', `When: ${when}`, `Where: ${f.address || 'No address in JobTread yet'}`, f.room && `Room: ${f.room}`, f.details && `Notes: ${f.details}`, `Goes to: ${goesTo}`, '', url && `Kit: ${url}`].filter(Boolean).join('\n');
-  const card = slackCard({
-    icon: t.icon, title: t.heading, lead: t.slack,
-    facts: [['When', when], ['Where', f.address || '—'], ['Goes to', goesTo]].filter(([, v]) => v),
-    buttons: url ? [{ label: kind === 'after-send' ? 'Open Kit' : 'Review the draft', url }] : [],
-    footer: 'Reveal invite email',
-  });
-  return { subject: t.subject, html, text, card };
+  return { subject: t.subject, html, text };
 }
 
 async function notify(env, kind, settings, ctx) {
+  // An email to the reviewer, and nothing else (Peter, Nov 4 2026: "an email to linzi ... not slack")
   const note = reviewNote(kind, ctx);
   const to = [settings.reviewer].filter(isEmail);
-  await Promise.allSettled([
-    emailConfigured(env) && to.length ? sendEmails(env, { to, subject: note.subject, html: note.html, text: note.text, tags: [{ name: 'category', value: 'reveal-invite-review' }] }) : null,
-    slackPost(env, note.card, { kind: kind === 'after-send' ? 'attention' : 'info', area: 'reveals' }),
-  ]);
+  if (!emailConfigured(env) || !to.length) return;
+  await sendEmails(env, { to, subject: note.subject, html: note.html, text: note.text, tags: [{ name: 'category', value: 'reveal-invite-review' }] }).catch(() => null);
 }
 
 async function problem(env, alertTo, row, { jobId, name, error }) {
@@ -157,15 +141,13 @@ async function problem(env, alertTo, row, { jobId, name, error }) {
   const fix = /group/i.test(error)
     ? 'In Kit, make sure a segment or tag is named “Reveal Emails” (the people who get reveal invites). The site tries again within minutes.'
     : 'The site tries again within minutes. If this keeps happening, check Kit under Reveals → Settings in the admin.';
-  await Promise.allSettled([
-    slackPost(env, slackCard({ icon: '⚠️', title, lead: error, fix, buttons: [{ label: 'Open Reveals', url: ADMIN_URL }], footer: 'Reveal invite email' }), { kind: 'attention', area: 'reveals' }),
-    emailConfigured(env) && alertTo.length ? sendEmails(env, {
-      to: alertTo, subject: `[SOARD] ${title}`,
-      html: `<p><strong>${esc(title)}</strong></p><p>${esc(error)}</p><p>${esc(fix)}</p><p><a href="${esc(ADMIN_URL)}">Open Reveals in the admin</a></p>`,
-      text: `${title}\n\n${error}\n\n${fix}\n\n${ADMIN_URL}`,
-      tags: [{ name: 'category', value: 'reveal-invite-alert' }],
-    }) : null,
-  ]);
+  if (!emailConfigured(env) || !alertTo.length) return;
+  await sendEmails(env, {
+    to: alertTo, subject: `[SOARD] ${title}`,
+    html: `<p><strong>${esc(title)}</strong></p><p>${esc(error)}</p><p>${esc(fix)}</p><p><a href="${esc(ADMIN_URL)}">Open Reveals in the admin</a></p>`,
+    text: `${title}\n\n${error}\n\n${fix}\n\n${ADMIN_URL}`,
+    tags: [{ name: 'category', value: 'reveal-invite-alert' }],
+  }).catch(() => null);
 }
 
 /**
