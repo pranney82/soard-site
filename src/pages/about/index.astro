@@ -694,11 +694,11 @@ const jsonLd = getFAQSchema(aboutFaqs);
   /* ── Connector ── */
   .tl-connector {
     position: absolute;
-    top: 35px;
+    top: 34px;
     height: 2px;
     background: rgba(255, 218, 36, 0.25);
     transition: background 0.5s ease, width 0.6s cubic-bezier(0.16, 1, 0.3, 1);
-    width: 30px;
+    width: calc(var(--tl-gutter) / 2);
   }
 
   .tl-ready .tl-connector {
@@ -711,7 +711,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
 
   .tl-item.is-active .tl-connector {
     background: rgba(255, 218, 36, 0.25);
-    width: 30px;
+    width: calc(var(--tl-gutter) / 2);
   }
 
   /* ── Card ── */
@@ -759,7 +759,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
   .tl-image {
     position: relative;
     overflow: hidden;
-    aspect-ratio: 16 / 9;
+    aspect-ratio: 480 / 280; /* the shape Cloudflare crops to, so the photo isn't cropped twice */
   }
 
   .tl-image img {
@@ -870,7 +870,11 @@ const jsonLd = getFAQSchema(aboutFaqs);
     flex-shrink: 0;
     transition: transform 0.45s cubic-bezier(0.16, 1, 0.3, 1), background 0.3s ease, color 0.3s ease, border-color 0.3s ease;
   }
-  .tl-toggle:hover .tl-chevron { border-color: rgba(255, 218, 36, 0.5); color: var(--c-yellow); }
+  @media (hover: hover) {
+    .tl-toggle:hover .tl-chevron { border-color: rgba(255, 218, 36, 0.5); color: var(--c-yellow); }
+  }
+  /* Restoring opened cards on Back happens at once, with no animation */
+  .tl-instant .tl-panel, .tl-instant .tl-panel-inner, .tl-instant .tl-chevron { transition: none !important; }
   .tl-card.is-open .tl-chevron {
     transform: rotate(180deg);
     background: var(--c-yellow);
@@ -938,11 +942,14 @@ const jsonLd = getFAQSchema(aboutFaqs);
   }
 
   .tl-cap-year {
+    position: relative;
     font-family: var(--font-display);
     font-size: 1.1rem;
     font-weight: 700;
     color: var(--c-yellow);
     letter-spacing: 0.05em;
+    background: var(--c-dark);
+    padding: 2px 10px;
   }
 
   .tl-cap-icon {
@@ -1090,7 +1097,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
   .tl-seal {
     margin: 2px 14px 0;
     border-radius: 12px;
-    aspect-ratio: 16 / 9;
+    aspect-ratio: 480 / 280;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1132,7 +1139,15 @@ const jsonLd = getFAQSchema(aboutFaqs);
       transform: translateX(-50%);
     }
 
-    .tl-cursor { left: calc(var(--tl-gutter) / 2); }
+    .tl-cursor { left: 50%; }
+
+    .tl-cap {
+      flex-direction: row;
+      justify-content: flex-start;
+      gap: 12px;
+      margin-left: calc(var(--tl-gutter) / 2 - 24px);
+    }
+    .tl-cap-icon { order: -1; flex-shrink: 0; }
 
     .tl-item {
       grid-template-columns: var(--tl-gutter) 1fr;
@@ -1153,8 +1168,9 @@ const jsonLd = getFAQSchema(aboutFaqs);
       grid-row: 1;
     }
 
+    /* One column: every connector runs right from the dot to its card */
     .tl-item--left .tl-connector,
-    .tl-item--right .tl-connector { display: none; }
+    .tl-item--right .tl-connector { grid-column: 1 / 2; left: 50%; right: auto; }
 
     .tl-ready .tl-item--left .tl-card,
     .tl-ready .tl-item--right .tl-card {
@@ -1201,6 +1217,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     }
 
     .tl-dot { padding-top: 20px; }
+    .tl-connector { top: 24px; }
 
     .tl-dot-core { width: 10px; height: 10px; }
 
@@ -1235,13 +1252,10 @@ const jsonLd = getFAQSchema(aboutFaqs);
       contain-intrinsic-size: auto 120px;
     }
 
-    .tl-image {
-      aspect-ratio: 16 / 10;
-    }
-
     .tl-cap { padding-top: var(--space-2xl); }
 
     .tl-cap-icon { width: 40px; height: 40px; }
+    .tl-cap { margin-left: calc(var(--tl-gutter) / 2 - 20px); }
 
     .tl-cap-icon svg { width: 18px; height: 18px; }
   }
@@ -1392,6 +1406,9 @@ const jsonLd = getFAQSchema(aboutFaqs);
   }
 
   .mascot-photo {
+    /* Full column width, like the other photos: sized by its image, it was 0px until the photo
+       loaded, and everything below jumped ~230px when it arrived */
+    width: 100%;
     border-radius: var(--border-radius-lg);
     overflow: hidden;
     box-shadow: var(--shadow-xl);
@@ -1598,7 +1615,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     .tl-dot-ring, .tl-cursor { display: none !important; }
     .tl-cap { opacity: 1 !important; transform: none !important; }
     .tl-cap-icon { animation: none !important; }
-    .tl-connector { width: 30px !important; }
+    .tl-connector { width: calc(var(--tl-gutter) / 2) !important; }
     .tl-medal { animation: none !important; }
     .tl-burst { display: none !important; }
     .tl-seal-wreath { animation: none !important; }
@@ -1627,17 +1644,38 @@ const jsonLd = getFAQSchema(aboutFaqs);
       card.classList.toggle('is-open', open);
       card.querySelector<HTMLButtonElement>('.tl-toggle')?.setAttribute('aria-expanded', String(open));
     };
-    /* The cards a visitor opened stay open when they come back with Back or Forward (this tab only);
-     * a reload or a fresh visit starts with just the first one open */
-    const KEY = 'soard-about-open';
+    /* The cards a visitor opened, and where they were on the page, come back with Back or Forward.
+     * Kept per history entry (this tab only); a reload or a fresh visit starts with just the first one open. */
+    /* This visit's history entry, read now: by the time a Back or Forward away from here runs, history.state is already the next page's */
+    const myKey = `soard-about-open:${(history.state && history.state.index) ?? 'page'}`;
+    const entryKey = () => myKey;
     const remember = () => {
-      try { sessionStorage.setItem(KEY, JSON.stringify(cards.map(c => c.classList.contains('is-open')))); } catch { /* private mode */ }
+      try { sessionStorage.setItem(entryKey(), JSON.stringify({ open: cards.map(c => c.classList.contains('is-open')), y: Math.round(window.scrollY) })); } catch { /* private mode */ }
     };
     try {
-      const saved = JSON.parse(sessionStorage.getItem(KEY) || 'null');
-      if (cameBack() && Array.isArray(saved) && saved.length === cards.length) cards.forEach((c, i) => setOpen(c, !!saved[i]));
-      else sessionStorage.removeItem(KEY);
+      const saved = cameBack() ? JSON.parse(sessionStorage.getItem(entryKey()) || 'null') : null;
+      if (saved && Array.isArray(saved.open) && saved.open.length === cards.length) {
+        /* Open them at once (no animation), then put the page back where it was: the browser's own
+         * restore ran while they were still closed, so it landed too far down */
+        timeline.classList.add('tl-instant');
+        cards.forEach((c, i) => setOpen(c, !!saved.open[i]));
+        void timeline.offsetHeight;
+        const back = () => window.scrollTo({ top: saved.y, behavior: 'instant' as ScrollBehavior });
+        back();
+        requestAnimationFrame(() => { back(); timeline.classList.remove('tl-instant'); });
+        setTimeout(back, 60);
+      } else {
+        sessionStorage.removeItem(entryKey());
+      }
     } catch { /* nothing saved */ }
+    /* Leaving the page: note what's open and where the visitor was, for Back */
+    const onLeave = () => remember();
+    document.addEventListener('astro:before-preparation', onLeave);
+    window.addEventListener('pagehide', onLeave);
+    document.addEventListener('astro:before-swap', () => {
+      document.removeEventListener('astro:before-preparation', onLeave);
+      window.removeEventListener('pagehide', onLeave);
+    }, { once: true });
     const syncExpandAll = () => {
       if (!expandAll) return;
       const allOpen = cards.length > 0 && cards.every(c => c.classList.contains('is-open'));
@@ -1658,6 +1696,21 @@ const jsonLd = getFAQSchema(aboutFaqs);
       remember();
     });
     syncExpandAll();
+    expandAll?.setAttribute('aria-controls', cards.map(c => c.querySelector('.tl-panel')?.id).filter(Boolean).join(' '));
+
+    /* The line ends at the end marker's icon instead of running past it */
+    const track = timeline.querySelector<HTMLElement>('.tl-track');
+    const capIcon = cap?.querySelector<HTMLElement>('.tl-cap-icon');
+    const placeTrackEnd = () => {
+      if (!track || !cap || !capIcon) return;
+      const iconCenter = cap.offsetTop + capIcon.offsetTop + capIcon.offsetHeight / 2;
+      track.style.bottom = `${Math.max(0, timeline.clientHeight - iconCenter)}px`;
+    };
+    placeTrackEnd();
+    let resizeFrame = 0;
+    const onResize = () => { cancelAnimationFrame(resizeFrame); resizeFrame = requestAnimationFrame(placeTrackEnd); };
+    window.addEventListener('resize', onResize, { passive: true });
+    document.addEventListener('astro:before-swap', () => window.removeEventListener('resize', onResize), { once: true });
 
     if (prefersReduced) {
       items.forEach(el => el.classList.add('is-active'));
