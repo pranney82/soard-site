@@ -43,7 +43,7 @@
  */
 
 import { mdBlocks, mdInline, mdWords, mdPlain, mdPoints, mdNumber, POINTS_WORDS } from './board-md.js';
-import { typicalLately, rowsOf, planOf, typeById, cashOf, operatingOf, statsOf } from './makeover-costs-shared.js';
+import { typicalLately, rowsOf, planOf, pipelineOf, typeById, cashOf, operatingOf, statsOf } from './makeover-costs-shared.js';
 
 export const ATTEND = [
   { id: 'present', label: 'Present' },
@@ -1876,11 +1876,14 @@ export function costLines(n) {
   const rows = rowsOf(c.makeovers);
   if (rows.length) out.push(`Median by type, every year: ${rows.map((r) => `${r.short} ${money(Math.round(r.typical))} (${r.count})`).join(' · ')}`);
   const plan = planOf({ cash: cashOf(n), operating: operatingOf(n), makeovers: c.makeovers, waiting: c.waiting || [], underway: c.underway || [] });
+  const pipe = pipelineOf({ reveals: c.reveals || [], underway: plan?.jobs || c.underway || [], waiting: plan?.families || c.waiting || [], plan: c.plan, today: String(n.at || '').slice(0, 10) || todayEastern() });
+  if (pipe) out.unshift(`Recommended pipeline, ${pipe.next}: room for about ${plural(pipe.room, 'new family', 'new families')} (${pipe.capacity} makeovers${pipe.planned ? ' planned' : ' a year'}: ${pipe.done} revealed in ${pipe.year}, ${pipe.scheduled} more set; ${pipe.carry.length} already in line)`);
   if (plan) {
     if (plan.jobs.length) out.push(`Underway: ${plural(plan.jobs.length, 'makeover')}, ${money(Math.round(plan.paid))} paid so far, about ${money(Math.round(plan.committed))} still to come (their budgets, or their rooms' median with none)`);
     out.push(plan.free >= 0 ? `${money(Math.round(plan.free))} free for new makeovers: the cash over the ${money(plan.operating)} operating balance, less what's still to come underway` : `Nothing free for new makeovers: ${money(Math.round(plan.short))} short once the ${money(plan.operating)} operating balance and what's still to come underway are counted`);
     for (const f of plan.families) out.push(`${f.name} (${typeById(f.type).label.toLowerCase()}): about ${money(Math.round(f.estimate?.cost || 0))}${f.pledged ? `, ${money(f.pledged)} pledged` : ''}${f.covered ? ', covered' : ''}`);
-    if (plan.need != null) out.push(`${money(Math.round(plan.need))} more starts the next family`);
+    if (plan.free < 0 && plan.families.length) out.push(`Next, once what's underway is paid for: ${plan.families[0].name}, about ${money(Math.round(plan.families[0].net || 0))}`);
+    else if (plan.need != null) out.push(`${money(Math.round(plan.need))} more starts the next family`);
     else if (plan.more > 0) out.push(`Then room for about ${plural(plan.more, 'more makeover')} at the median cost`);
   }
   return out;

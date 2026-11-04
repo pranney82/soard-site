@@ -7,7 +7,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import {
-  TYPES, roomList, typeOf, median, middleHalf, rowsOf, estimateFor, typicalLately, planOf, recentSeasons, cashOf, operatingOf, OPERATING_BALANCE,
+  TYPES, roomList, typeOf, median, middleHalf, rowsOf, estimateFor, typicalLately, planOf, pipelineOf, recentSeasons, cashOf, operatingOf, OPERATING_BALANCE,
 } from '../public/admin/makeover-costs-shared.js';
 import { costsFrom, looseMatch, recordFromJob, isFinished, makeoverCostsNow, orderWaiting, PAGE_MAX_AGE_MS } from '../functions/api/_makeover-costs.js';
 import { savePledge, pledgesFor, cleanAmount } from '../functions/api/_sponsor-pledges.js';
@@ -122,6 +122,33 @@ test('the open jobs come first: what each has still to come (its budget, else it
   const r = planOf({ cash: 600000, makeovers: [], underway: [{ key: 'u', name: 'Zed', type: 'bathroom', paid: 0, budget: null }] });
   assert.equal(r.unknown, 1);
   assert.equal(r.committed, 0);
+});
+
+test('the recommended pipeline: how many SOARD builds, less what’s already in line, never what the money allows', () => {
+  const today = '2026-11-04';
+  const reveals = [
+    { on: '2026-02-20', done: true }, { on: '2026-05-08', done: true }, { on: '2026-09-25', done: true },
+    { on: '2026-10-09', done: false },                                   // a date passed, not done: not this year's pace
+    { on: '2026-11-20', done: false }, { on: '2026-12-12', done: false }, // set for the rest of the year
+    { on: '2025-11-20', done: true },                                    // last year's
+  ];
+  const underway = [
+    { name: 'Lia', kind: 'kid', status: 'Mobilization', revealOn: '2026-11-20' },
+    { name: 'Pat', kind: 'kid', status: 'Mobilization', revealOn: '2026-12-12' },
+    { name: 'Abe', kind: 'kid', status: 'Design', revealOn: '2026-10-09' },  // its date passed: carries over
+    { name: 'Oak School', kind: 'community', status: 'Design', revealOn: null },
+  ];
+  const waiting = [{ name: 'Jon' }];
+  const p = pipelineOf({ reveals, underway, waiting, plan: { season: '2027', capacity: {} }, today });
+  assert.deepEqual([p.year, p.done, p.scheduled, p.pace, p.lastDay, p.next, p.planned, p.capacity, p.room], [2026, 3, 2, 5, '2026-12-12', 2027, null, 5, 2]);
+  assert.deepEqual(p.carry.map((c) => c.name), ['Abe', 'Oak School', 'Jon']);
+  // Staff's plan for next season (Applicants → Scores) wins over the pace
+  const q = pipelineOf({ reveals, underway, waiting, plan: { season: '2027', capacity: { 2027: 12 } }, today });
+  assert.equal(q.capacity, 12);
+  assert.equal(q.room, 9);
+  // A plan with no reveal on record yet still counts; nothing at all is no pipeline
+  assert.equal(pipelineOf({ reveals: [], plan: { capacity: { 2027: 4 } }, today }).room, 4);
+  assert.equal(pipelineOf({ reveals: [], today }), null);
 });
 
 test('the cash a set of numbers carries, and its operating balance', () => {

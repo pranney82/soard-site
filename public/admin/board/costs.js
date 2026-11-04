@@ -24,7 +24,7 @@
 
 import { h, htm, useState, useMemo, useRef, useEffect } from '../vendor.js';
 import { money, plural, initialsOf, todayEastern } from '../board-shared.js';
-import { rowsOf, recentSeasons, typicalLately, planOf, operatingOf, typeById, statsOf, TYPES } from '../makeover-costs-shared.js';
+import { rowsOf, recentSeasons, typicalLately, planOf, pipelineOf, operatingOf, typeById, statsOf, TYPES } from '../makeover-costs-shared.js';
 import { useCashNow, compact } from './money.js';
 import { sized } from './kanban.js';
 
@@ -66,9 +66,11 @@ export function answerText(plan, typical) {
   const first = fam.find((f) => !f.covered);
   const jobs = plan.jobs?.length || 0;
   if (plan.free < 0) {
-    const then = fam.length && plan.need != null ? ` ${fam.length === 1 ? `${fam[0].name} needs` : `${fam[0].name}, first in line, needs`} about ${dollars(plan.need)} more to start.` : fam.length ? ` ${fam.length === 1 ? `${fam[0].name} waits` : `${fam.length} families wait`} on the money.` : '';
+    // (never the shortfall added to a family's cost: what's underway is short, the family costs what it costs. Peter,
+    // Nov 4 2026, of a family's $18K therapy room shown as needing $77K: "why the hell…")
+    const then = fam.length ? ` ${cap(famWords(fam[0]))}, comes next${fam.length > 1 ? `, then ${plural(fam.length - 1, 'more family', 'more families')}` : ''}.` : '';
     if (plan.over < 0) return `Cash in the bank is ${dollars(-plan.over)} under the ${dollars(plan.operating)} kept to run SOARD, so nothing is free for new makeovers.${then}`;
-    return `Finishing the ${plural(jobs, 'makeover')} underway takes about ${dollars(plan.committed)} more: ${dollars(plan.short)} more than the ${dollars(plan.over)} over the ${dollars(plan.operating)} kept to run SOARD. Nothing is free for new makeovers yet.${then}`;
+    return `Finishing the ${plural(jobs, 'makeover')} underway takes about ${dollars(plan.committed)} more, ${dollars(plan.short)} more than the ${dollars(plan.over)} over the ${dollars(plan.operating)} kept to run SOARD, so nothing is free for new makeovers yet.${then}`;
   }
   if (!fam.length) {
     const n = median ? Math.floor(plan.free / median) : 0;
@@ -89,13 +91,35 @@ export function answerText(plan, typical) {
     : `Enough for ${coveredText}, with ${dollars(plan.left)} left.`;
 }
 
+const dayName = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', day: 'numeric', timeZone: 'UTC' });
+/** Who's already in line for next season, by name: "Ava, Ben and 2 community projects" */
+function carryText(carry, jobs = [], families = []) {
+  const kinds = new Map([...jobs, ...families].map((x) => [x.name, x.kind]));
+  const kids = carry.filter((c) => kinds.get(c.name) !== 'community').map((c) => c.name);
+  const orgs = carry.length - kids.length;
+  return and([...kids, ...(orgs ? [plural(orgs, 'community project')] : [])]);
+}
+/**
+ * The recommended pipeline, in a sentence: how many SOARD builds a year, who's already in line, and the room left
+ * (Peter, Nov 4 2026: "recommended pipeline is related to how many we can actually produce since we will get all
+ * projects funded as we build our cash reserves")
+ */
+export function pipelineText(pipe, plan) {
+  if (!pipe) return '';
+  const pace = pipe.planned
+    ? `Applicants plans ${pipe.planned} makeovers for ${pipe.next}.`
+    : `SOARD builds about ${pipe.pace} makeovers a year: ${pipe.done} revealed in ${pipe.year} so far${pipe.scheduled ? ` and ${pipe.scheduled} more set by ${dayName(pipe.lastDay)}` : ''}.`;
+  const inLine = pipe.carry.length ? ` ${carryText(pipe.carry, plan?.jobs, plan?.families)} ${pipe.carry.length === 1 ? 'is' : 'are'} already in line for ${pipe.next}, so` : ' So';
+  return `${pace}${inLine} there’s room for about ${plural(pipe.room, 'new family', 'new families')}. Funding follows as the reserve builds.`;
+}
+
 /** The answer for the meeting's screen: the same, in a line the room reads at a glance */
 export function screenText(plan, typical) {
   if (!plan) return '';
   const first = plan.families.find((f) => !f.covered);
   if (plan.free < 0) {
     const why = plan.over < 0 ? `Under the ${dollars(plan.operating)} kept to run SOARD.` : 'Finishing what’s underway takes it all.';
-    return `${why}${first && plan.need != null ? ` ${first.name} needs about ${dollars(plan.need)} more to start.` : ''}`;
+    return `${why}${first ? ` ${cap(famWords(first))}, comes next.` : ''}`;
   }
   return answerText(plan, typical);
 }
@@ -250,13 +274,28 @@ export function useCosts(data, n, m = null) {
   const plan = useMemo(() => (c ? planOf({ cash: cash?.total, operating, makeovers, waiting: c.waiting || [], underway: c.underway || [] }) : null), [c, cash?.total, operating]);
   const typical = typicalLately(makeovers);
   const stats = statsOf(typical?.seasons ? makeovers.filter((x) => typical.seasons.includes(Number(x.season))) : makeovers);
-  return { c, cash, operating, makeovers, plan, recent: recentSeasons(makeovers), typical, stats };
+  // How many SOARD can build next season, as of the meeting's day (today's for one today or ahead)
+  const pipe = c ? pipelineOf({ reveals: c.reveals || [], underway: plan?.jobs || c.underway || [], waiting: plan?.families || c.waiting || [], plan: c.plan, today: upTo || data.today || todayEastern() }) : null;
+  return { c, cash, operating, makeovers, plan, pipe, recent: recentSeasons(makeovers), typical, stats };
 }
 
-/** The answer: what's over the operating balance, large, and in a sentence who and how many makeovers it starts */
+/** The recommended pipeline, first: how many new families next season has room for, and why */
+function Pipeline({ pipe, plan }) {
+  if (!pipe) return null;
+  return html`<div class="bc-answer bc-answer--pipe">
+    <div class="bc-answer__money">
+      <span class="bc-fig__label">${nbw(`Recommended pipeline, ${pipe.next}`)}</span>
+      <span class="bc-answer__value">${nbw(`About ${plural(pipe.room, 'new family', 'new families')}`)}</span>
+      <span class="bc-fig__sub">${nbw(`${pipe.capacity} makeovers${pipe.planned ? ` planned for ${pipe.next}` : ' a year'}, less the ${pipe.carry.length} already in line`)}</span>
+    </div>
+    <p class="bc-answer__says">${nbw(pipelineText(pipe, plan))}</p>
+  </div>`;
+}
+
+/** The money: what's over the operating balance and what's underway, large, and what it means in a sentence */
 function Answer({ cash, operating, plan, typical, admin, onBalance }) {
   const free = plan ? plan.free : null;
-  return html`<div class=${`bc-answer ${free != null && free < 0 ? 'is-short' : ''}`}>
+  return html`<div class=${`bc-answer bc-answer--money ${free != null && free < 0 ? 'is-short' : ''}`}>
     <div class="bc-answer__money">
       <span class="bc-fig__label">For makeovers now</span>
       <span class="bc-answer__value">${free == null ? '–' : free < 0 ? html`${dollars(0)}<small>${nbw(`${dollars(-free)} short`)}</small>` : dollars(free)}</span>
@@ -302,7 +341,7 @@ function Waiting({ plan, big = false, links = true }) {
           <strong>${f.estimate ? nbw(`About ${dollars(f.net)}`) : 'Not known yet'}</strong>
           <span>${nbw(f.estimate ? (f.pledged ? `${dollars(f.estimate.cost)}, less ${dollars(f.pledged)} pledged by ${and(f.sponsors.filter((s) => s.pledged).map((s) => s.name))}; ${basisText(f.estimate)}` : cap(basisText(f.estimate))) : 'No completed makeover with its bills in JobTread to go by yet')}</span>
         </div>
-        <span class=${`bc-chip ${f.covered ? 'is-ok' : ''}`}>${f.covered ? 'Covered' : i === firstShort ? (plan.need == null ? 'Not known yet' : nbw(`Needs ${dollars(plan.need)} more`)) : 'After that'}</span>
+        <span class=${`bc-chip ${f.covered ? 'is-ok' : ''}`}>${f.covered ? 'Covered' : plan.free < 0 ? 'After what’s underway' : i === firstShort ? (plan.need == null ? 'Not known yet' : nbw(`Needs ${dollars(plan.need)} more`)) : 'After that'}</span>
       </li>`;
     })}</ol>
   </div>`;
@@ -312,10 +351,11 @@ function Waiting({ plan, big = false, links = true }) {
 function Underway({ plan }) {
   if (!plan?.jobs?.length) return null;
   const total = plan.paid + plan.committed;
+  const guessed = plan.jobs.filter((j) => j.basis === 'median').reduce((s, j) => s + (j.left || 0), 0);
   return html`<div class="bc-under">
     <div class="bc-under__head">
       <h3 class="bc-h3">${nbw(`Underway: ${plural(plan.jobs.length, 'makeover')}`)}</h3>
-      <p class="bc-under__sum">${nbw(`${dollars(plan.paid)} paid so far · about ${dollars(plan.committed)} still to come${total ? ` · about ${dollars(total)} in all` : ''}`)}</p>
+      <p class="bc-under__sum">${nbw(`${dollars(plan.paid)} paid so far · about ${dollars(plan.committed)} still to come${guessed ? `, ${dollars(guessed)} of it estimated (no budget yet)` : ''}${total ? ` · about ${dollars(total)} in all` : ''}`)}</p>
     </div>
     <div class="bc-under__wrap"><table class="bp-table bc-under__table">
       <thead><tr><th scope="col">Makeover</th><th scope="col">Stage</th><th scope="col" class="num">Paid so far</th><th scope="col" class="num">Still to come</th><th scope="col">From</th></tr></thead>
@@ -353,7 +393,7 @@ function Table({ makeovers }) {
  * admin, not looking as the board) may change the operating balance; `onBalance(amount)` puts the new one in place
  */
 export function CostsCard({ data, n, m = null, variant = 'home', admin = false, onBalance = null }) {
-  const { c, cash, operating, makeovers, plan, recent, typical, stats } = useCosts(data, n, m);
+  const { c, cash, operating, makeovers, plan, pipe, recent, typical, stats } = useCosts(data, n, m);
   const [range, setRange] = useState('recent');
   if (!c) return variant === 'home' ? null : html`<p class="bp-muted">What makeovers cost isn’t available from JobTread right now.</p>`;
   const seasons = range === 'recent' ? recent : null;
@@ -362,6 +402,7 @@ export function CostsCard({ data, n, m = null, variant = 'home', admin = false, 
   const noBills = (c.noBills || []).filter((x) => !seasons || seasons.includes(Number(x.season)));
   const shownStats = statsOf(shown);
   const body = html`
+    <${Pipeline} pipe=${pipe} plan=${plan} />
     <${Answer} cash=${cash} operating=${operating} plan=${plan} typical=${typical} admin=${admin} onBalance=${onBalance} />
     <${Underway} plan=${plan} />
     <div class="bc-split">
@@ -395,21 +436,21 @@ export function CostsCard({ data, n, m = null, variant = 'home', admin = false, 
 /** The meeting on the screen: the money and its sentence, the median, and the dots, at the size of a room */
 export function CostsSlide({ n, data, date }) {
   const m = date ? { date } : null;
-  const { c, cash, operating, makeovers, plan, recent, typical, stats } = useCosts(data, n, m);
+  const { c, cash, operating, makeovers, plan, pipe, recent, typical } = useCosts(data, n, m);
   if (!c) return null;
   const free = plan ? plan.free : null;
   return html`<div class="bc bc--screen">
     <div class="bc-figs">
+      ${pipe ? html`<div class="bc-fig">
+        <span class="bc-fig__label">${nbw(`Recommended pipeline, ${pipe.next}`)}</span>
+        <span class="bc-fig__value">${nbw(`About ${plural(pipe.room, 'new family', 'new families')}`)}</span>
+        <span class="bc-fig__sub">${nbw(`${pipe.capacity} makeovers${pipe.planned ? ` planned for ${pipe.next}` : ' a year'}, less ${pipe.carry.length} already in line: ${carryText(pipe.carry, plan?.jobs, plan?.families)}`)}</span>
+      </div>` : null}
       <div class="bc-fig">
         <span class="bc-fig__label">For makeovers now</span>
         <span class="bc-fig__value">${free == null ? '–' : free < 0 ? nbw(`${dollars(-free)} short`) : dollars(free)}</span>
         <span class="bc-fig__sub">${nbw(free == null ? '' : `${dollars(cash.total)} in the bank, less ${dollars(operating)} kept${plan.committed > 0 ? ` and ${dollars(plan.committed)} still to come underway` : ''}`)}</span>
         ${plan ? html`<p class="bc-fig__says">${nbw(screenText(plan, typical))}</p>` : null}
-      </div>
-      <div class="bc-fig">
-        <span class="bc-fig__label">${nbw(typical?.seasons ? `Median makeover, ${seasonsText(typical.seasons)}` : 'Median makeover')}</span>
-        <span class="bc-fig__value">${typical ? dollars(typical.cost) : '–'}</span>
-        <span class="bc-fig__sub">${nbw(stats ? `Average ${dollars(stats.average)} · low ${dollars(stats.low)} · high ${dollars(stats.high)}, of ${plural(stats.count, 'completed makeover')}` : '')}</span>
       </div>
     </div>
     <div class="bc-what"><h3 class="bc-h3">${nbw(`Completed makeovers by room, ${seasonsText(recent)}`)}</h3><${CostChart} makeovers=${makeovers} seasons=${recent} big=${true} /></div>

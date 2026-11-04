@@ -14,6 +14,11 @@
  *   waiting     families approved and waiting on the money (Awaiting
  *               Funding), best score first, each with its rooms, type, and
  *               its sponsors' pledges (./_sponsor-pledges.js)
+ *   reveals     each makeover's Reveal task (its date, and whether it's done), for
+ *               how many SOARD builds a year: the recommended pipeline is what it
+ *               can produce, funding following as the reserve builds (Peter, Nov
+ *               4 2026: "recommended pipeline is related to how many we can actually
+ *               produce"); with `plan` (staff's "Makeovers in <year>" in Applicants)
  *   underway    every open job being built (Design to Build), kids' and
  *               community projects': what's been paid (its bills) and its
  *               JobTread budget, for what's still to come (Peter, Nov 4 2026:
@@ -45,6 +50,7 @@ import { readState, writeState } from './_board-roles.js';
 import { roomList, typeOf } from '../../public/admin/makeover-costs-shared.js';
 import { scoreSummaries } from './_applicant-scores.js';
 import { pledgesFor } from './_sponsor-pledges.js';
+import { REVEAL_TASK_TYPE } from './_kid-status.js';
 
 const MAX_PAGES = 10;
 const FRESH_MS = 15 * 60 * 1000;
@@ -82,6 +88,8 @@ export async function fetchCostJobs(grantKey, fetchImpl = fetch) {
                 id: {}, name: {}, description: {}, createdAt: {}, closedOn: {}, actualCost: {},
                 // The job's budget: its own cost lines (those on no document), summed
                 budgetCost: { _: 'costItems', $: { where: [['document', 'id'], null] }, sum: { $: 'cost' } },
+                // Its Reveal task: when it's set for, and whether it's done (one a job)
+                revealTask: { _: 'tasks', $: { where: [['taskType', 'id'], REVEAL_TASK_TYPE], size: 1 }, nodes: { endDate: {}, completed: {} } },
                 location: { account: { name: {} } },
                 customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_JOB_STATUS] }, nodes: { value: {} } },
               },
@@ -188,17 +196,22 @@ const seasonOf = (r, job) => {
 };
 const roomsFor = (r, job) => (r.rooms?.length ? r.rooms : roomList(job.description));
 
-/** From the jobs and the pages: { makeovers, noBills, waiting (jobs, before scores and pledges), underway, skipped } */
+/** From the jobs and the pages: { makeovers, noBills, waiting (jobs, before scores and pledges), underway, reveals, skipped } */
 export function costsFrom(jobs, records) {
   const done = new Map();
   const waiting = [];
   const underway = [];
+  const reveals = [];
   let skipped = 0;
   for (const job of jobs) {
     if (isRehearsalJob(job)) continue;
     const status = statusOf(job);
     const finished = isFinished(job);
     const awaiting = !job.closedOn && status === AWAITING;
+    // Its reveal, for the pace: done (the task, or the makeover finished), or set for a day
+    const task = job.revealTask?.nodes?.[0] || null;
+    const revealOn = /^\d{4}-\d{2}-\d{2}$/.test(String(task?.endDate || '')) ? task.endDate : null;
+    if (revealOn && (finished || (!job.closedOn && BUILDING_STATUSES.has(status)))) reveals.push({ on: revealOn, done: finished || Number(task.completed) === 1 });
     // Being built: what's been paid, and its budget for what's still to come
     if (!job.closedOn && BUILDING_STATUSES.has(status)) {
       const r = pageForJob(job, records);
@@ -208,6 +221,7 @@ export function costsFrom(jobs, records) {
       // (never a job's own name: JobTread's are internal, "Not Published Yet"; a page's name, an organization's, or
       // Applicants' in nameUnderway)
       underway.push({
+        revealOn,
         key: `u:${job.id}`, name: r?.name || (community ? String(job.location?.account?.name || '').trim() : ''), jobId: r ? null : job.id, kind: community ? 'community' : 'kid', status,
         rooms, type: typeOf(rooms, { community }), paid: cents(job.actualCost), budget: budget > 0 ? cents(budget) : null,
         ...(r?.photo ? { photo: r.photo } : {}), ...(r?.url ? { url: r.url } : {}),
@@ -252,6 +266,7 @@ export function costsFrom(jobs, records) {
     makeovers: all.filter((m) => m.cost > 0).sort(byName),
     noBills: all.filter((m) => !(m.cost > 0)).map(({ key, name, season, type, kind }) => ({ key, name, season, type, kind })).sort(byName),
     waiting,
+    reveals: reveals.sort((a, b) => a.on.localeCompare(b.on)),
     // Furthest along first (Build, then Mobilization … Design)
     underway: underway.sort((a, b) => STAGE.indexOf(b.status) - STAGE.indexOf(a.status) || a.name.localeCompare(b.name)),
     skipped,
@@ -302,6 +317,13 @@ export async function orderWaiting(DB, waiting) {
   return out.sort((a, b) => ranked(a) - ranked(b) || (b.score?.ranked ? b.score.total : 0) - (a.score?.ranked ? a.score.total : 0) || String(a.since || '').localeCompare(String(b.since || '')) || a.name.localeCompare(b.name));
 }
 
+/** The season applications are for, and how many makeovers staff plan for each (Applicants → Scores): { season, capacity: { [year]: n } } */
+export async function seasonPlan(DB) {
+  const [{ applicationSettings, cleanYear }, { capacities }] = await Promise.all([import('./_applications.js'), import('./_applicant-scores.js')]);
+  const [settings, caps] = await Promise.all([applicationSettings(DB).catch(() => ({})), capacities(DB).catch(() => ({}))]);
+  return { season: settings?.year ? cleanYear(settings.year) : null, capacity: Object.fromEntries(Object.entries(caps || {}).map(([y, c]) => [y, Number(c?.count) || 0]).filter(([, n]) => n > 0)) };
+}
+
 /** Open jobs with no page: the family's name from Applicants (the account linked to the job), else "A family"; never the job's id */
 export async function nameUnderway(DB, underway) {
   const ids = underway.filter((u) => !u.name && u.jobId).map((u) => u.jobId);
@@ -332,7 +354,7 @@ export async function makeoverCostsNow(env, { fetchImpl = fetch, now = Date.now(
   const cached = await readState(env.DB, 'costs');
   let value = cached.value || null;
   // (a copy from before the open jobs were read is read again at once)
-  const stale = !cached.at || now - Date.parse(cached.at) >= maxAge || !Array.isArray(cached.value?.underway);
+  const stale = !cached.at || now - Date.parse(cached.at) >= maxAge || !Array.isArray(cached.value?.underway) || !Array.isArray(cached.value?.reveals);
   if ((fresh || stale) && env.JOBTREAD_GRANT_KEY) {
     try {
       const [jobs, records] = await Promise.all([fetchCostJobs(env.JOBTREAD_GRANT_KEY, fetchImpl), loadCostRecords(env.DB)]);
@@ -343,6 +365,6 @@ export async function makeoverCostsNow(env, { fetchImpl = fetch, now = Date.now(
     }
   }
   if (!value) return null;
-  const [waiting, underway] = await Promise.all([orderWaiting(env.DB, value.waiting || []), nameUnderway(env.DB, value.underway || [])]);
-  return { ...value, waiting, underway };
+  const [waiting, underway, plan] = await Promise.all([orderWaiting(env.DB, value.waiting || []), nameUnderway(env.DB, value.underway || []), seasonPlan(env.DB)]);
+  return { ...value, waiting, underway, plan };
 }

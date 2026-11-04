@@ -28,7 +28,7 @@ import * as boardPortal from '../functions/api/board-portal.js';
 import { saveMeeting, ensureSchema, patchMeeting } from '../functions/api/_board.js';
 import { writeState } from '../functions/api/_board-roles.js';
 import { ensureApplicantSchema } from '../functions/api/_applicants.js';
-import { saveScorecard } from '../functions/api/_applicant-scores.js';
+import { saveScorecard, setCapacity } from '../functions/api/_applicant-scores.js';
 import { savePledge } from '../functions/api/_sponsor-pledges.js';
 import { cleanMeeting } from '../public/admin/board-shared.js';
 import { criteriaOf, SHEET_RUBRIC } from '../public/admin/scoring-shared.js';
@@ -42,6 +42,7 @@ const ok = (cond, msg) => { if (!cond) failures.push(msg); console.log(`${cond ?
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const day = (n) => new Date(Date.now() + n * 86400000).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
 const STATUS = '22P52qfFub9b';
+const YEAR = Number(day(0).slice(0, 4));
 
 const FOUNDER = 'jane@soardcharity.com';
 const MEMBER = 'kim.board@example.com';
@@ -63,9 +64,9 @@ const KIDS = {
   'iris-2026': { name: 'Iris', year: 2026, roomTypes: ['Therapy Room'], status: 'needs-funding', publishStatus: 'draft', sponsors: ['acme-builders'], heroImage: img('kids/iris') },
   'jay-2026': { name: 'Jay', year: 2026, roomTypes: ['Accessible Bathroom'], status: 'needs-funding' },
 };
-const job = (id, name, status, cost, extra = {}) => ({ id, name, description: extra.description ?? null, createdAt: extra.createdAt || '2025-03-05T17:20:00Z', closedOn: extra.closedOn ?? null, actualCost: cost, budgetCost: { sum: extra.budget ?? null }, location: { account: { name: extra.account || name.replace(/ \(\d{4}\)$/, '') } }, customFieldValues: { nodes: status ? [{ value: status, customField: { id: STATUS } }] : [] } });
+const job = (id, name, status, cost, extra = {}) => ({ id, name, description: extra.description ?? null, createdAt: extra.createdAt || '2025-03-05T17:20:00Z', closedOn: extra.closedOn ?? null, actualCost: cost, budgetCost: { sum: extra.budget ?? null }, revealTask: { nodes: extra.reveal ? [{ endDate: extra.reveal, completed: extra.revealed ? 1 : 0 }] : [] }, location: { account: { name: extra.account || name.replace(/ \(\d{4}\)$/, '') } }, customFieldValues: { nodes: status ? [{ value: status, customField: { id: STATUS } }] : [] } });
 const JOBS = [
-  job('jAva', 'Ava Example (2026)', 'Closed Done', 26000),
+  job('jAva', 'Ava Example (2026)', 'Closed Done', 26000, { reveal: `${YEAR}-01-02`, revealed: true }),
   job('jBen', 'Ben Example (2026)', 'Closed Done', 18000),
   job('jCleo', 'Cleo Example (2025)', 'Closed Done', 42000, { closedOn: '2026-03-10' }),
   job('jDan', 'Dan Example (2025)', 'Closed Done', 6500, { closedOn: '2026-03-10' }),
@@ -78,7 +79,7 @@ const JOBS = [
   job('jIris', 'Iris Example (2026)', 'Awaiting Funding', null),
   job('jJay', 'Jay Example (2026)', 'Awaiting Funding', null),
   // Underway: $12,500 paid of a $30,000 budget, so $17,500 still to come
-  job('jMax', 'Max Example (2026)', 'Build', 12500, { budget: 30000 }),
+  job('jMax', 'Max Example (2026)', 'Build', 12500, { budget: 30000, reveal: day(1) }),
   job('jTest', 'TEST Ava Example (2026)', 'Closed Done', 99999),
 ];
 
@@ -128,6 +129,8 @@ await saveScorecard(DB, 'acctJay001', { evaluator: 'lin.smith@soardcharity.com',
 await saveScorecard(DB, 'acctJay001', { evaluator: 'max.ruiz@soardcharity.com', name: 'Max Ruiz', scores: card(3) });
 await saveScorecard(DB, 'acctNora01', { evaluator: 'lin.smith@soardcharity.com', name: 'Lin Smith', scores: card(3) });
 await savePledge(DB, { kid: 'iris-2026', partner: 'acme-builders', pledged: 10000, received: 2500 });
+// Staff plan 8 makeovers for next season (Applicants → Scores)
+await setCapacity(DB, YEAR + 1, 8, { user: FOUNDER });
 // The bank, as Plaid last read Chase: $669,602
 const now = new Date().toISOString();
 await writeState(DB, 'cash', { at: now, value: { total: 669602, mercuryTotal: null, accounts: [{ bank: 'Chase', name: 'Checking', kind: 'checking', balance: 569602 }, { bank: 'Chase', name: 'CD', kind: 'cd', balance: 100000 }], owed: [], banksAt: now, stale: [], at: now } });
@@ -255,9 +258,11 @@ try {
   const under = await textOf(kim, '#costs .bc-under');
   ok(/Underway: 1 makeover/.test(under) && /\$12,500 paid so far · about \$17,500 still to come · about \$30,000 in all/.test(under) && /A family\s+[\s\S]*Build\s+\$12,500\s+\$17,500\s+Its JobTread budget/.test(under), `the makeover underway: its stage, paid so far, still to come, from its budget (${under.replace(/\s+/g, ' ').slice(0, 160)})`);
   ok(/\$669,602 in the bank, less \$500,000 kept to run SOARD/.test(card), 'it says where the number comes from');
-  ok(/Enough for Iris and Jay, about \$30,500 together, then about 5 more makeovers at the median cost, \$22,500\./.test(await textOf(kim, '#costs .bc-answer__says')), `the answer, in a sentence (${await textOf(kim, '#costs .bc-answer__says')})`);
-  const parts = await kim.$$eval('#costs > *', (els) => els.map((e) => e.className.split(' ')[0]));
-  ok(parts.indexOf('bc-answer') === 1 && parts.indexOf('bc-under') === 2 && parts.indexOf('bc-split') === 3, `the answer first, then who’s waiting beside the median (${parts.join(', ')})`);
+  ok(/Enough for Iris and Jay, about \$30,500 together, then about 5 more makeovers at the median cost, \$22,500\./.test(await textOf(kim, '#costs .bc-answer--money .bc-answer__says')), `the answer, in a sentence (${await textOf(kim, '#costs .bc-answer--money .bc-answer__says')})`);
+  const pipeline = await textOf(kim, '#costs .bc-answer--pipe');
+  ok(new RegExp(`Recommended pipeline, ${YEAR + 1}\\s*About 6 new families`).test(pipeline) && new RegExp(`Applicants plans 8 makeovers for ${YEAR + 1}\\. Iris and Jay are already in line for ${YEAR + 1}, so there’s room for about 6 new families\\. Funding follows as the reserve builds\\.`).test(pipeline), `the pipeline first: what SOARD can build next season, less who’s in line (${pipeline.replace(/\s+/g, ' ')})`);
+  const parts = await kim.$$eval('#costs > *', (els) => els.map((e) => e.className.split(' ').slice(0, 2).join(' ')));
+  ok(parts[1] === 'bc-answer bc-answer--pipe' && parts[2] === 'bc-answer bc-answer--money' && parts[3].startsWith('bc-under') && parts[4].startsWith('bc-split'), `the answer first, then who’s waiting beside the median (${parts.join(', ')})`);
   const homeCash = await kim.$eval('.bp-fig .bp-fig__value', (e) => e.textContent).catch(() => '');
   ok(/\$670K/.test(homeCash), `Home’s cash figure is the same money (${homeCash})`);
   ok(/Median makeover, 2025 and 2026\s*\$22,500/.test(card), 'the median makeover of the last two seasons');
@@ -371,9 +376,10 @@ try {
   await jane.waitForFunction(() => /\$7,898\s*short/.test((document.querySelector('#costs')?.innerText || '').replace(/\u00a0/g, ' ')), { timeout: 8000 }).catch(() => {});
   const after = await textOf(jane, '#costs');
   ok(/For makeovers now\s*\$0\s*\$7,898 short/.test(after), 'at $660,000 kept, what’s still to come underway leaves the money $7,898 short');
-  ok(/Finishing the 1 makeover underway takes about \$17,500 more: \$7,898 more than the \$9,602 over the \$660,000 kept to run SOARD\. Nothing is free for new makeovers yet\. Iris, first in line, needs about \$15,898 more to start\./.test(after), `the sentence says why, and what Iris needs (${(after.match(/Finishing[^\n]*/) || [''])[0]})`);
+  ok(/Finishing the 1 makeover underway takes about \$17,500 more, \$7,898 more than the \$9,602 over the \$660,000 kept to run SOARD, so nothing is free for new makeovers yet\. Iris’s therapy room, about \$8,000, comes next, then 1 more family\./.test(after), `the shortfall is what’s underway’s; Iris at her own cost (${(after.match(/Finishing[^\n]*/) || [''])[0]})`);
+  ok(!/\$15,898/.test(after), 'never her cost and the shortfall added together');
   const chips = await jane.$$eval('#costs .bc-fam .bc-chip', (els) => els.map((e) => e.textContent.replace(/\u00a0/g, ' ')));
-  ok(chips.join('|') === 'Needs $15,898 more|After that', `each family says where it stands (${chips.join(', ')})`);
+  ok(chips.join('|') === 'After what’s underway|After what’s underway', `each family says where it stands (${chips.join(', ')})`);
   await shotOf(jane, '#costs', 'home-costs-short-1440');
   await jane.reload({ waitUntil: 'networkidle0' });
   await jane.waitForSelector('#costs', { timeout: 10000 });
@@ -385,7 +391,7 @@ try {
     await scr.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(QUAL)}#/meetings/${meeting.id}/screen`, { waitUntil: 'networkidle0' });
     await scr.waitForSelector('.bc--screen', { timeout: 10000 }).catch(() => {});
     const slide = await textOf(scr, '.bc--screen');
-    ok(/For makeovers now\s*\$7,898 short/.test(slide) && /Finishing what’s underway takes it all\. Iris needs about \$15,898 more to start\./.test(slide) && /Completed makeovers by room, 2025 and 2026/.test(slide), `${w}x${hh}: the slide shows the money, its sentence and the dots`);
+    ok(/For makeovers now\s*\$7,898 short/.test(slide) && /Finishing what’s underway takes it all\. Iris’s therapy room, about \$8,000, comes next\./.test(slide) && /Completed makeovers by room, 2025 and 2026/.test(slide), `${w}x${hh}: the slide shows the money, its sentence and the dots`);
     const fits = await scr.evaluate(() => { const s = document.querySelector('.bc--screen'); if (!s) return false; const r = s.getBoundingClientRect(); return r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1; });
     ok(fits, `${w}x${hh}: it fits the screen`);
     await scr.screenshot({ path: join(OUT, `screen-${w}.png`) });
@@ -402,7 +408,7 @@ try {
   await shotOf(phone, '#costs', 'home-costs-390');
   const phoneUnder = await phone.$eval('#costs .bc-under tbody tr', (tr) => { const w = document.documentElement.clientWidth; const cells = [...tr.children].map((c) => c.getBoundingClientRect()); const still = tr.querySelector('td[data-label="Still to come"]'); return { inside: cells.every((r) => r.right <= w + 1), still: still?.innerText, label: still ? getComputedStyle(still, '::before').content : '' }; });
   ok(phoneUnder.inside && phoneUnder.still === '$17,500' && /Still to come/.test(phoneUnder.label), `on a phone, each job underway shows its still to come on screen, labeled (${JSON.stringify(phoneUnder)})`);
-  const saysShown = await phone.$$eval('#costs .bc-answer__says', (ps) => ps.filter((p) => getComputedStyle(p).display !== 'none').map((p) => p.innerText));
+  const saysShown = await phone.$$eval('#costs .bc-answer--money .bc-answer__says', (ps) => ps.filter((p) => getComputedStyle(p).display !== 'none').map((p) => p.innerText));
   ok(saysShown.length === 1, `on a phone, the answer once, in its short words (${saysShown.join(' | ')})`);
   await phone.goto(`${SITE}/admin/board/#/families`, { waitUntil: 'networkidle0' });
   await phone.waitForSelector('.bf-list', { timeout: 8000 });

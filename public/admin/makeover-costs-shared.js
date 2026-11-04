@@ -29,6 +29,33 @@ export const typeById = (id) => TYPES.find((t) => t.id === id) || TYPES[4];
 
 /** The operating balance SOARD keeps; what's over it can go to makeovers (Peter, Nov 4 2026: "its arbitrary") */
 export const OPERATING_BALANCE = 500000;
+/**
+ * The recommended pipeline: how many makeovers SOARD can build, not what the money allows today (funding follows as
+ * the reserve builds). The pace: this year's reveals, done and still set for a day this year. The next season's
+ * room: staff's plan for it (Applicants → Scores, "Makeovers in <year>") or else that pace, less what already carries
+ * into it: open jobs with no reveal set for the rest of this year, and families approved and waiting.
+ * → { year, done, scheduled, pace, lastDay (the last reveal set this year), next, planned (staff's, or null), capacity,
+ *     carry: [{ name, why }], room } or null with no reveal to go by
+ */
+export function pipelineOf({ reveals = [], underway = [], waiting = [], plan = null, today }) {
+  const year = Number(String(today).slice(0, 4));
+  if (!year) return null;
+  const thisYear = reveals.filter((r) => Number(r.on.slice(0, 4)) === year);
+  const done = thisYear.filter((r) => r.done).length;
+  const ahead = thisYear.filter((r) => !r.done && r.on >= today);
+  const pace = done + ahead.length;
+  const next = Math.max(year + 1, Number(plan?.season) || 0);
+  const planned = Number(plan?.capacity?.[next]) > 0 ? Number(plan.capacity[next]) : null;
+  if (!pace && !planned) return null;
+  const capacity = planned || pace;
+  // Already in line for next season: open jobs not set to reveal by the end of this year, then the families waiting
+  const carry = [
+    ...underway.filter((u) => !(u.revealOn && u.revealOn >= today && Number(u.revealOn.slice(0, 4)) === year)).map((u) => ({ name: u.name, why: u.status })),
+    ...waiting.map((w) => ({ name: w.name, why: 'Approved, waiting' })),
+  ];
+  return { year, done, scheduled: ahead.length, pace, lastDay: ahead.map((r) => r.on).sort().at(-1) || null, next, planned, capacity, carry, room: Math.max(0, capacity - carry.length) };
+}
+
 /** The operating balance a meeting's numbers carry (Board settings), else the usual */
 export const operatingOf = (n) => (Number(n?.operating?.balance) > 0 ? Number(n.operating.balance) : OPERATING_BALANCE);
 /**
