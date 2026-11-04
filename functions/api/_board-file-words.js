@@ -319,7 +319,8 @@ export async function wordsOf(env, { name = '', type = '', bytes }, { ctx = {}, 
       // pages as photos and the rest otherwise is drawn, every page)
       const photos = scannedPages(bytes, { max: SCAN_PAGES });
       const counted = photos.length ? pageCount(bytes) : 0;
-      const asPhotos = photos.length > 0 && (!counted || photos.length >= counted);
+      // (a scan of more than 40 photos is its photos too: 40 of them are what's read)
+      const asPhotos = photos.length > 0 && (!counted || photos.length >= Math.min(counted, SCAN_PAGES));
       const groupAt = async (at) => {
         if (asPhotos) return { at, pics: photos.slice(at, at + GROUP), total: photos.length };
         const max = Math.min(GROUP, SCAN_PAGES - at);
@@ -388,12 +389,12 @@ export async function wordsOf(env, { name = '', type = '', bytes }, { ctx = {}, 
   return { words: '', how: 'none' };
 }
 
-const FILINGS = 'CREATE TABLE IF NOT EXISTS board_filing_words (key TEXT PRIMARY KEY, words TEXT, words_v INTEGER, at TEXT, words_next INTEGER, words_try INTEGER, words_at TEXT, words_fail INTEGER)';
+const FILINGS = 'CREATE TABLE IF NOT EXISTS board_filing_words (key TEXT PRIMARY KEY, words TEXT, words_v INTEGER, at TEXT, words_next INTEGER, words_try INTEGER, words_at TEXT, words_fail INTEGER, words_part TEXT)';
 const filingsReady = new WeakSet();
 async function ensureFilings(DB) {
   if (filingsReady.has(DB)) return;
   await DB.prepare(FILINGS).run();
-  await addColumns(DB, 'board_filing_words', { words_next: 'INTEGER', words_try: 'INTEGER', words_at: 'TEXT', words_fail: 'INTEGER' });
+  await addColumns(DB, 'board_filing_words', { words_next: 'INTEGER', words_try: 'INTEGER', words_at: 'TEXT', words_fail: 'INTEGER', words_part: 'TEXT' });
   filingsReady.add(DB);
 }
 /** A filing's url on the board page ("/files/financials/2025%20990.pdf") → its key in the site's bucket */
@@ -405,8 +406,8 @@ async function filingsToRead(DB, heldBefore = 0) {
   const keys = [...new Set((doc?.documents || []).map((d) => filingKey(String(d.url || '').replace(/^https:\/\/files\.sunshineonaranneyday\.com\/financials\//, '/files/financials/'))).filter(Boolean))];
   if (!keys.length) return [];
   await ensureFilings(DB);
-  const had = new Map(((await DB.prepare('SELECT key, words, words_v, words_next, words_try, words_fail FROM board_filing_words').all()).results || []).map((r) => [r.key, r]));
-  return keys.map((key) => ({ key, words: null, words_v: 0, words_next: null, words_try: null, ...had.get(key) }))
+  const had = new Map(((await DB.prepare('SELECT key, words, words_part, words_v, words_next, words_try, words_fail FROM board_filing_words').all()).results || []).map((r) => [r.key, r]));
+  return keys.map((key) => ({ key, words: null, words_part: null, words_v: 0, words_next: null, words_try: null, ...had.get(key) }))
     .filter((f) => (f.words_v || 0) < READER && ((f.words_v || 0) > -3 || (f.words_fail || 0) < RETRY) && !(f.words_try >= heldBefore && heldBefore))
     .sort((a, b) => (a.words_next == null) - (b.words_next == null) || ((a.words_v || 0) < 0) - ((b.words_v || 0) < 0));
 }
@@ -419,7 +420,9 @@ async function readOne(env, item, { table, keyCol, bucket, deadline, now, ctx, d
   const DB = env.DB;
   // (one given up on before RETRY is tried afresh: three times more)
   const v0 = (item.words_v || 0) <= -3 ? 0 : item.words_v || 0;
-  const scanning = item.words_next !== null && item.words_next !== undefined;
+  // (a scan under way keeps its pages so far in words_part, the file's words as they were until it's done; one
+  // under way from before that, its pages in words, starts again)
+  const scanning = item.words_next !== null && item.words_next !== undefined && item.words_part !== null && item.words_part !== undefined;
   // (a scan's page that couldn't be read twice is left out, and the count starts again)
   const skip = scanning && v0 <= -2;
   const tryV = skip ? -1 : Math.min(0, v0) - 1;
@@ -430,18 +433,24 @@ async function readOne(env, item, { table, keyCol, bucket, deadline, now, ctx, d
   const fair = deadline - t >= FAIR_MS;
   const set = (cols, ...args) => DB.prepare(`UPDATE ${table} SET ${cols} WHERE ${keyCol} = ?`).bind(...args, item.key).run();
   const at = () => new Date(now()).toISOString();
-  const onPart = (words, next, read) => (words === null ? set('words_next = ?, words_try = ?', next, now())
-    : set(`words = ?, words_next = ?, words_try = ?${read ? ', words_v = 0, words_at = ?' : ''}`, String(words).slice(0, KEEP), next, now(), ...(read ? [at()] : [])));
+  const onPart = (words, next, read) => (words === null ? set("words_next = ?, words_part = COALESCE(words_part, ''), words_try = ?", next, now())
+    : set(`words_part = ?, words_next = ?, words_try = ?${read ? ', words_v = 0, words_at = ?' : ''}`, String(words).slice(0, KEEP), next, now(), ...(read ? [at()] : [])));
+  // A newer reader's words, unless they're a quarter of what an older one found or less (a scan drawn blank): those kept
+  const better = (words) => {
+    const old = String(item.words || '');
+    if (old.length >= 2000 && words.length * 4 <= old.length) { console.error('[board-words] kept the older words of', item.name, old.length, '>', words.length); return old; }
+    return words;
+  };
   let read = { words: '', how: 'none' };
   if ((item.size || 0) <= MAX_BYTES) {
     const obj = await bucket.get(item.r2_key);
     const bytes = obj && (obj.size || 0) <= MAX_BYTES ? new Uint8Array(await new Response(obj.body).arrayBuffer()) : null;
-    if (bytes) read = await wordsOf(env, { name: item.name, type: item.type, bytes }, { ctx, draw, cut, from: scanning ? item.words_next : null, prior: item.words || '', skip, tries: skip ? 0 : -v0, deadline, now, onPart });
+    if (bytes) read = await wordsOf(env, { name: item.name, type: item.type, bytes }, { ctx, draw, cut, from: scanning ? item.words_next : null, prior: scanning ? item.words_part : '', skip, tries: skip ? 0 : -v0, deadline, now, onPart });
   }
   if (read.how === 'error') await set('words_try = NULL, words_v = ?, words_fail = ?', fair ? tryV : v0, RETRY);
   else if (read.how === 'later') await set('words_try = NULL, words_v = ?', v0);
-  else if (read.how === 'part') await set(`words = ?, words_next = ?, words_try = NULL, words_v = ?${read.read ? ', words_at = ?' : ''}`, String(read.words || '').slice(0, KEEP), read.next, read.read ? 0 : v0, ...(read.read ? [at()] : []));
-  else await set('words = ?, words_v = ?, words_next = NULL, words_try = NULL, words_at = ?', String(read.words || '').slice(0, KEEP), READER, at());
+  else if (read.how === 'part') await set(`words_part = ?, words_next = ?, words_try = NULL, words_v = ?${read.read ? ', words_at = ?' : ''}`, String(read.words || '').slice(0, KEEP), read.next, read.read ? 0 : v0, ...(read.read ? [at()] : []));
+  else await set('words = ?, words_v = ?, words_next = NULL, words_part = NULL, words_try = NULL, words_at = ?', better(String(read.words || '').slice(0, KEEP)), READER, at());
   return true;
 }
 
@@ -462,7 +471,7 @@ export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = D
     if (!bucket || !env.AI?.toMarkdown) return 0;
     const start = now();
     const deadline = start + windowMs;
-    const rows = (await env.DB.prepare(`SELECT id AS key, r2_key, name, type, size, words, words_v, words_next FROM board_files
+    const rows = (await env.DB.prepare(`SELECT id AS key, r2_key, name, type, size, words, words_part, words_v, words_next FROM board_files
       WHERE COALESCE(words_v, 0) < ? AND (COALESCE(words_v, 0) > -3 OR COALESCE(words_fail, 0) < ?) AND owner_type IN ('meeting', 'doc') AND (words_try IS NULL OR words_try < ?)
       ORDER BY (words_next IS NULL), (COALESCE(words_v, 0) < 0), (words IS NOT NULL AND words != ''), (owner_type = 'doc') DESC, at DESC LIMIT ?`).bind(READER, RETRY, start - HOLD_MS, limit).all()).results || [];
     let done = 0;
@@ -511,7 +520,8 @@ export async function filingWordsFor(DB, urls) {
   const keyed = urls.map((u) => [u, filingKey(u)]).filter(([, k]) => k);
   if (!keyed.length) return {};
   await ensureFilings(DB);
-  const rows = new Map(((await DB.prepare("SELECT key, words FROM board_filing_words WHERE words IS NOT NULL AND words != ''").all()).results || []).map((r) => [r.key, r.words]));
+  // (a filing being read for the first time: its pages so far)
+  const rows = new Map(((await DB.prepare("SELECT key, COALESCE(NULLIF(words, ''), words_part) AS words FROM board_filing_words WHERE (words IS NOT NULL AND words != '') OR (words_part IS NOT NULL AND words_part != '')").all()).results || []).map((r) => [r.key, r.words]));
   const out = {};
   for (const [u, k] of keyed) if (rows.has(k)) out[u] = rows.get(k).slice(0, SERVE);
   return out;
@@ -529,7 +539,8 @@ export async function wordsFor(DB, ids) {
   const list = [...new Set(ids.filter(Boolean))];
   for (let i = 0; i < list.length; i += 90) {
     const part = list.slice(i, i + 90);
-    const rows = (await DB.prepare(`SELECT id, words FROM board_files WHERE id IN (${part.map(() => '?').join(',')}) AND words IS NOT NULL AND words != ''`).bind(...part).all()).results || [];
+    // (a file being read for the first time: its pages so far; one read again: its words as they were till it's done)
+    const rows = (await DB.prepare(`SELECT id, COALESCE(NULLIF(words, ''), words_part) AS words FROM board_files WHERE id IN (${part.map(() => '?').join(',')}) AND ((words IS NOT NULL AND words != '') OR (words_part IS NOT NULL AND words_part != ''))`).bind(...part).all()).results || [];
     for (const r of rows) out[r.id] = r.words.length > SERVE ? r.words.slice(0, SERVE) : r.words;
   }
   return out;

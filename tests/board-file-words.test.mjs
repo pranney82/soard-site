@@ -278,12 +278,14 @@ test('a long scan is read a few pages a run (a dense page takes the vision model
   };
   const m = await meeting('2024-04-25');
   const f = await put(m, 'Signed Amended Bylaws.pdf', scanOf(10));
-  const row = (id = f.id) => env.DB.prepare('SELECT words, words_v, words_next, words_try FROM board_files WHERE id = ?').bind(id).first();
+  const row = (id = f.id) => env.DB.prepare('SELECT words, words_part, words_v, words_next, words_try FROM board_files WHERE id = ?').bind(id).first();
   assert.equal(await readBoardWords(env, { now }), 1);
   let r = await row();
   assert.equal(r.words_next, 4, 'a group of four pages, then no time for another');
-  assert.equal(r.words.split('\f').length, 4);
-  assert.match(r.words.split('\f')[3], /page 4/);
+  assert.equal(r.words_part.split('\f').length, 4, 'its pages so far kept apart');
+  assert.match(r.words_part.split('\f')[3], /page 4/);
+  const { wordsFor } = await import('../functions/api/_board-file-words.js');
+  assert.match((await wordsFor(env.DB, [f.id]))[f.id], /page 4/, 'a first read found by its pages so far');
   assert.equal(r.words_v, 0, 'read in part: not a try that failed');
   assert.equal(r.words_try, null, 'let go');
   // A newer file comes in: the scan under way goes on first
@@ -298,6 +300,7 @@ test('a long scan is read a few pages a run (a dense page takes the vision model
   r = await row();
   assert.equal(r.words_v, READER);
   assert.equal(r.words_next, null);
+  assert.equal(r.words_part, null);
   const pages = r.words.split('\f');
   assert.equal(pages.length, 10, 'every page, each its own');
   assert.match(pages[6], /page 7/);
@@ -495,4 +498,51 @@ test('a file read by this reader is never read again when RETRY is raised; one g
   assert.equal(await readBoardWords(env), 1);
   assert.equal(env.AI.calls.markdown, 1, 'only the one given up on');
   assert.equal((await env.DB.prepare('SELECT words FROM board_files WHERE id = ?').bind(b.id).first()).words, 'Scan words, read now');
+});
+
+test('a file read again keeps the words it had until the new reading’s done, and keeps them when the new one finds a quarter of them or less', async () => {
+  let clock = 3_000_000;
+  const now = () => clock;
+  env.AI = { async toMarkdown() { return { format: 'markdown', data: '### Page 1\n' }; }, async run(model, input) { clock += 5000; return { response: `Return page ${pageOf(input)} Part VII compensation of officers and directors` }; } };
+  const m = await meeting('2021-07-15');
+  const f = await put(m, '2021 Returns.pdf', scanOf(6));
+  const older = Array.from({ length: 6 }, (_, i) => `Older reading of page ${i + 1}`).join('\f');
+  await env.DB.prepare('UPDATE board_files SET words = ?, words_v = ? WHERE id = ?').bind(older, READER - 1, f.id).run();
+  const { wordsFor } = await import('../functions/api/_board-file-words.js');
+  await readBoardWords(env, { now });
+  assert.equal((await wordsFor(env.DB, [f.id]))[f.id], older, 'mid-way: found by the words it had');
+  clock += 60000;
+  await readBoardWords(env, { now });
+  assert.match((await wordsFor(env.DB, [f.id]))[f.id], /Return page 6 Part VII/, 'done: the new words');
+  // A newer reading that comes back nearly empty (a scan drawn blank) never takes the place of a full one
+  const full = Array.from({ length: 40 }, (_, i) => `Page ${i + 1} of the return: revenue, expenses, officers, compensation, program services`).join('\f');
+  await env.DB.prepare('UPDATE board_files SET words = ?, words_v = ?, words_next = NULL, words_part = NULL WHERE id = ?').bind(full, READER - 1, f.id).run();
+  env.AI = { async toMarkdown() { return { format: 'markdown', data: '### Page 1\n' }; }, async run() { return { response: '' }; } };
+  clock += 60000;
+  await readBoardWords(env, { now });
+  const r = await env.DB.prepare('SELECT words, words_v FROM board_files WHERE id = ?').bind(f.id).first();
+  assert.equal(r.words_v, READER);
+  assert.equal(r.words, full);
+});
+
+test('a scan of more than 40 page photos is read by its photos (40 of them), never drawn; one under way from before starts again', async () => {
+  const parts = [Buffer.from('%PDF-1.4\n1 0 obj << /Type /Pages /Count 45 >> endobj\n', 'latin1')];
+  for (let i = 1; i <= 45; i++) {
+    const jpeg = Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, i]), Buffer.alloc(64, 7), Buffer.from([0xFF, 0xD9])]);
+    parts.push(Buffer.from(`${i + 1} 0 obj << /Type /Page /Parent 1 0 R >> endobj\n${i + 100} 0 obj\n<< /Type /XObject /Subtype /Image /Width 1700 /Height 2200 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`, 'latin1'), jpeg, Buffer.from('\nendstream\nendobj\n', 'latin1'));
+  }
+  const bytes = new Uint8Array(Buffer.concat([...parts, Buffer.from('%%EOF', 'latin1')]));
+  let drawn = 0;
+  env.AI = { async toMarkdown() { return { format: 'markdown', data: '### Page 1\n' }; }, async run(model, input) { return { response: `Page ${pageOf(input)}` }; } };
+  const r = await wordsOf(env, { name: '2021 Returns.pdf', type: 'application/pdf', bytes }, { draw: async () => { drawn++; return []; } });
+  assert.equal(drawn, 0);
+  assert.equal(r.words.split('\f').length, 40);
+  // Under way from before (its pages so far in words, none kept apart): read again from its first page
+  const m = await meeting('2021-07-15');
+  const f = await put(m, '2021 Returns (1).pdf', bytes);
+  await env.DB.prepare("UPDATE board_files SET words = 'x', words_v = -1, words_next = 9 WHERE id = ?").bind(f.id).run();
+  const seen = [];
+  env.AI = { async toMarkdown() { return { format: 'markdown', data: '### Page 1\n' }; }, async run(model, input) { seen.push(pageOf(input)); return { response: `Page ${pageOf(input)}` }; } };
+  await readBoardWords(env, { limit: 1 });
+  assert.equal(seen[0], 1, 'from page 1');
 });
