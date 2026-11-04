@@ -9,7 +9,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
 import { createD1 } from './lib/d1-shim.mjs';
-import { wordsOf, pdfPages, readBoardWords, wordsStatus, filingWordsFor, READER } from '../functions/api/_board-file-words.js';
+import { wordsOf, pdfPages, readBoardWords, wordsStatus, filingWordsFor, joinStrips, READER } from '../functions/api/_board-file-words.js';
 import { saveMeeting, putFile, portalWords, saveDoc, ensureSchema, maybeRunBoard } from '../functions/api/_board.js';
 import { newMeeting, todayEastern } from '../public/admin/board-shared.js';
 
@@ -388,4 +388,61 @@ test('nothing is started that can’t end in the run’s time, and a file not gi
   const pic = await put(m, 'chart.png', new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13]), { type: 'image/png', kind: 'other' });
   assert.equal(await readBoardWords(env, { now, windowMs: 5000 }), 0, 'started with too little time: nothing');
   assert.equal((await env.DB.prepare('SELECT words_v FROM board_files WHERE id = ?').bind(pic.id).first()).words_v, null);
+});
+
+// A JPEG whose fifth byte is its page and sixth its strip (the fake vision model reads them)
+const jpegOf = (page, strip = 0) => new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0, page, strip, 0xFF, 0xD9]);
+const stripOf = (input) => Buffer.from(input.messages[1].content[1].image_url.url.split(',')[1], 'base64')[5];
+
+test('a scan that’s only partly photos (a 990 with two of its pages as photos) is drawn, every page, a group at a time', async () => {
+  // Six pages; one of them a photo
+  const photo = Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, 9]), Buffer.alloc(64, 7), Buffer.from([0xFF, 0xD9])]);
+  const pdfBytes = new Uint8Array(Buffer.concat([Buffer.from('%PDF-1.4\n1 0 obj << /Type /Pages /Count 6 >> endobj\n' + [2, 3, 4, 5, 6, 7].map((i) => `${i} 0 obj << /Type /Page /Parent 1 0 R >> endobj\n`).join('') + '8 0 obj\n<< /Type /XObject /Subtype /Image /Width 1700 /Height 2200 /Filter /DCTDecode /Length 71 >>\nstream\n', 'latin1'), photo, Buffer.from('\nendstream\nendobj\n%%EOF', 'latin1')]));
+  const drawn = [];
+  const draw = async (bytes, { from, max }) => { drawn.push([from, max]); return { pics: Array.from({ length: Math.min(max, 6 - from) }, (_, i) => ({ bytes: jpegOf(from + i + 1), type: 'image/jpeg' })), total: 6 }; };
+  env.AI = { async toMarkdown() { return { format: 'markdown', data: '### Page 1\n' }; }, async run(model, input) { return { response: `Form 990 page ${pageOf(input)}` }; } };
+  const r = await wordsOf(env, { name: '2025 990.pdf', type: 'application/pdf', bytes: pdfBytes }, { draw });
+  assert.equal(r.how, 'pictures');
+  assert.deepEqual(r.words.split('\f'), [1, 2, 3, 4, 5, 6].map((p) => `Form 990 page ${p}`), 'every page, in order, never the one photo alone');
+  assert.deepEqual(drawn, [[0, 4], [4, 4]]);
+});
+
+test('a page dense with words is read in strips at once (a scan’s every page in two; a big screenshot in two, then three, then four), joined where they meet', async () => {
+  const cuts = [];
+  const cut = async (image, n) => { cuts.push(n); return Array.from({ length: n }, (_, k) => ({ bytes: jpegOf(image.bytes[4], k), type: 'image/jpeg' })); };
+  // Each strip has its own lines and the next strip's first (where they run into each other)
+  env.AI = { async toMarkdown() { return { format: 'markdown', data: '### Page 1\n' }; }, async run(model, input) { const p = pageOf(input); const k = stripOf(input); return { response: `Page ${p} row ${k * 2 + 1}\nPage ${p} row ${k * 2 + 2}\nPage ${p} row ${k * 2 + 3}` }; } };
+  const scan = await wordsOf(env, { name: 'minutes scan.pdf', type: 'application/pdf', bytes: scanOf(2) }, { cut });
+  assert.deepEqual(cuts, [2, 2], 'each page in two');
+  assert.equal(scan.words, 'Page 1 row 1\nPage 1 row 2\nPage 1 row 3\nPage 1 row 4\nPage 1 row 5\fPage 2 row 1\nPage 2 row 2\nPage 2 row 3\nPage 2 row 4\nPage 2 row 5', 'the row both strips have kept once');
+  // A screenshot of a store's sales (a big PNG): in two; once it couldn't be read, three, then four
+  const big = new Uint8Array(400 * 1024);
+  big.set([0x89, 0x50, 0x4E, 0x47, 4, 0]);
+  cuts.length = 0;
+  for (const tries of [0, 1, 2]) await wordsOf(env, { name: 'Stores TY YTD.png', type: 'image/png', bytes: big }, { cut, tries });
+  assert.deepEqual(cuts, [2, 3, 4]);
+  // A small picture whole
+  cuts.length = 0;
+  await wordsOf(env, { name: 'chart.png', type: 'image/png', bytes: new Uint8Array([0x89, 0x50, 0x4E, 0x47, 5, 0]) }, { cut });
+  assert.deepEqual(cuts, []);
+  // No browser to cut with: read whole
+  assert.match((await wordsOf(env, { name: 'Stores LY.png', type: 'image/png', bytes: big })).words, /Page 4 row 1/);
+});
+
+test('strips joined: a line two strips both have where they meet is kept once, and nothing else is lost', () => {
+  assert.equal(joinStrips(['Total sales\nStore 1 $4,200\nStore 2 $3,100', 'Store 2 $3,100\nStore 3 $2,900\nTotal $10,200']), 'Total sales\nStore 1 $4,200\nStore 2 $3,100\nStore 3 $2,900\nTotal $10,200');
+  assert.equal(joinStrips(['A', '', 'B']), 'A\nB');
+  assert.equal(joinStrips(['Store 1 $4,200', 'Store 1 $4,200 (returns)']), 'Store 1 $4,200\nStore 1 $4,200 (returns)', 'a line only like one kept');
+});
+
+test('while the board’s files are only being read again by a newer reader, a filing nobody can find yet is read each run too', async () => {
+  env.AI = ai({ 'minutes.pdf': ['Minutes words'], '2024 990.pdf': ['Return of Organization Exempt From Income Tax'] });
+  await env.FILES.put('financials/2024 990.pdf', pdf(), {});
+  await env.DB.prepare("INSERT INTO site_config (key, data) VALUES ('financials', ?)").bind(JSON.stringify({ documents: [{ title: '2024 990', url: 'https://files.sunshineonaranneyday.com/financials/2024%20990.pdf' }] })).run();
+  const m = await meeting('2025-07-24');
+  const f = await put(m, 'minutes.pdf', pdf());
+  // Read by an older reader: words there, being read again
+  await env.DB.prepare("UPDATE board_files SET words = 'Minutes words', words_v = ? WHERE id = ?").bind(READER - 1, f.id).run();
+  assert.equal(await readBoardWords(env, { limit: 1 }), 2, 'the filing, then the board’s file');
+  assert.match((await filingWordsFor(env.DB, ['/files/financials/2024%20990.pdf']))['/files/financials/2024%20990.pdf'], /Exempt From Income Tax/);
 });

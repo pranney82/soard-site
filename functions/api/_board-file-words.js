@@ -33,7 +33,8 @@
 import { boardFiles, ensureSchema } from './_board.js';
 import { addColumns } from './_board-sign.js';
 import { pageText, scannedPages } from './_vendor-read.js';
-import { drawPages, closeBrowser } from './_coi-backfill.js';
+import { closeBrowser } from './_coi-backfill.js';
+import { SITE_ORIGIN } from './_broadcast-notify.js';
 import { docxText } from '../../public/admin/board-shared.js';
 import { readSheets, readSlides } from '../../public/admin/board/docs.js';
 
@@ -41,9 +42,11 @@ import { readSheets, readSlides } from '../../public/admin/board/docs.js';
  * This reader: 1 was the papers-only PDF reader (a scan came back empty); 2 read every kind, a scan's first pages by
  * Llama 4 Scout (51 s over a dense page, so a long scan never finished); 3 read a scan's every page, a few a run,
  * but kept one Cloudflare's browser couldn't draw just then as having no words; 4 tried that again, but Mistral saw
- * no words on the W-9's pictures; 5 has Llama 4 Scout look at a page Mistral sees nothing on
+ * no words on the W-9's pictures; 5 had Llama 4 Scout look at a page Mistral sees nothing on, but read a 990 whose
+ * pages were partly photos by those two pages only, and a screenshot of a table never in the time; 6 draws every page
+ * of a scan that isn't all photos, and reads a page dense with words in strips at once
  */
-export const READER = 5;
+export const READER = 6;
 // Of Workers AI's vision models, the quickest to copy out a page word for word (18 s over a dense page, as
 // GLM 5.3 Flash; Qwen 3.8 23 s; Llama 4 Scout 51 s; Gemma 4 thinks and says nothing)
 const VISION_MODEL = '@cf/mistralai/mistral-small-3.1-24b-instruct';
@@ -53,11 +56,15 @@ const SECOND_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
 export const KEEP = 120000;
 export const SERVE = 60000;
 const MAX_BYTES = 30 * 1024 * 1024;
-// A scan's pages cut out as photos (all of a 990's); drawn ones are drawn again each run, so only the first few
+// A scan's pages read (all of a 990's), a group at a time; drawn as pdf.js draws them on the trade-partner page
 const SCAN_PAGES = 40;
-const DRAW_PAGES = 6;
-// Pages the vision model reads at once
 const GROUP = 4;
+const PDF_BASE = '/trade-partners/pdf/';
+const PAGE_SIDE = 2000;
+// A picture this big (a screenshot of a table) is read in two strips at once, as every scan's page is: the vision
+// model takes about a second a line, and a dense page has more lines than a run has seconds. One that still
+// couldn't be read is read in three, then four
+const BIG_PICTURE = 300 * 1024;
 const AI_TIMEOUT_MS = 40000;
 // A run's time (Cloudflare's 30 s, less a margin); what a page needs left to be started (a dense one takes ~20 s)
 export const WINDOW_MS = 27000;
@@ -76,6 +83,7 @@ const toBase64 = (bytes) => {
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
 };
+const fromBase64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
 /** Lines kept, spaces in them tidied; pages apart by a form feed */
 export const tidy = (pages) => pages.map((p) => String(p || '').split('\n').map((l) => l.replace(/[ \t ]+/g, ' ').trim()).filter(Boolean).join('\n')).join('\f').replace(/^\f+|\f+$/g, '');
 
@@ -139,19 +147,159 @@ export async function pictureWords(env, image, { timeout = AI_TIMEOUT_MS } = {})
   }
 }
 
+// ─── Cloudflare's browser: a scan's pages drawn, a dense page cut in strips ──────────
+
+/** The run's browser (ctx.launch: a local Puppeteer, for scripts and tests), opened once and let go at the end (closeBrowser) */
+async function browserOf(env, ctx) {
+  if (ctx.browser) return ctx.browser;
+  if (!env.BROWSER && !ctx.launch) return null;
+  const { default: puppeteer } = ctx.launch ? { default: null } : await import('@cloudflare/puppeteer');
+  ctx.browser = ctx.launch ? await ctx.launch() : await puppeteer.launch(env.BROWSER, { keep_alive: 60000 });
+  return ctx.browser;
+}
+
+/**
+ * Pages `from` to `from + n - 1` (from 0) of a PDF as JPEGs, drawn by pdf.js on the site's own address as
+ * ./_coi-backfill.js drawPages draws a W-9 → { pics, total } (total: its pages); null without a browser;
+ * { failed } when the browser couldn't be had or draw it just then
+ */
+export async function drawRange(env, ctx, bytes, from, n) {
+  let page = null;
+  try {
+    const browser = await browserOf(env, ctx);
+    if (!browser) return null;
+    page = await browser.newPage();
+    // Only pdf.js runs here, on the site's own address
+    await page.setBypassCSP(true).catch(() => {});
+    await page.goto(`${SITE_ORIGIN}${PDF_BASE}pdf.js`, { waitUntil: 'domcontentloaded', timeout: 15000 });
+    const got = await page.evaluate(async (data, base, first, count, side) => {
+      const lib = await import(`${location.origin}${base}pdf.js`);
+      lib.GlobalWorkerOptions.workerSrc = `${location.origin}${base}pdf.worker.js`;
+      const task = lib.getDocument({ data: Uint8Array.from(atob(data), (c) => c.charCodeAt(0)), standardFontDataUrl: `${base}standard_fonts/`, wasmUrl: `${base}wasm/`, useWasm: false, enableXfa: false });
+      const pics = [];
+      try {
+        const doc = await task.promise;
+        for (let i = first + 1; i <= Math.min(first + count, doc.numPages); i++) {
+          const p = await doc.getPage(i);
+          const one = p.getViewport({ scale: 1 });
+          const viewport = p.getViewport({ scale: side / Math.max(one.width, one.height) });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(viewport.width);
+          canvas.height = Math.round(viewport.height);
+          await p.render({ canvas, viewport, background: 'white', annotationMode: lib.AnnotationMode.ENABLE_STORAGE }).promise;
+          pics.push(canvas.toDataURL('image/jpeg', 0.85).split(',')[1]);
+        }
+        return { pics, total: doc.numPages };
+      } finally {
+        task.destroy();
+      }
+    }, toBase64(bytes), PDF_BASE, from, n, PAGE_SIDE);
+    return { pics: (got?.pics || []).map((p) => ({ bytes: fromBase64(p), type: 'image/jpeg' })), total: got?.total || 0 };
+  } catch (err) {
+    console.error('[board-words] drawing', err.message);
+    return { pics: [], total: 0, failed: true };
+  } finally {
+    if (page) await page.close().catch(() => {});
+  }
+}
+
+/**
+ * A picture as `n` strips, top to bottom, each running a little into the next (a line one cuts is whole in the
+ * other) → [{ bytes, type }]; null when there's no browser or it couldn't cut it
+ */
+export async function stripsOf(env, ctx, image, n) {
+  let page = null;
+  try {
+    const browser = await browserOf(env, ctx);
+    if (!browser) return null;
+    page = await browser.newPage();
+    const strips = await page.evaluate(async (url, count, over) => {
+      const img = new Image();
+      img.src = url;
+      await img.decode();
+      const w = img.naturalWidth;
+      const h = img.naturalHeight;
+      const scale = Math.min(1, 2000 / w);
+      const out = [];
+      for (let i = 0; i < count; i++) {
+        const y0 = Math.max(0, Math.round((i * h) / count - h * over));
+        const y1 = Math.min(h, Math.round(((i + 1) * h) / count + h * over));
+        const c = document.createElement('canvas');
+        c.width = Math.round(w * scale);
+        c.height = Math.round((y1 - y0) * scale);
+        const g = c.getContext('2d');
+        g.fillStyle = '#fff';
+        g.fillRect(0, 0, c.width, c.height);
+        g.drawImage(img, 0, y0, w, y1 - y0, 0, 0, c.width, c.height);
+        out.push(c.toDataURL('image/jpeg', 0.88).split(',')[1]);
+      }
+      return out;
+    }, `data:${image.type};base64,${toBase64(image.bytes)}`, n, 0.05);
+    return strips.map((p) => ({ bytes: fromBase64(p), type: 'image/jpeg' }));
+  } catch (err) {
+    console.error('[board-words] cutting', err.message);
+    return null;
+  } finally {
+    if (page) await page.close().catch(() => {});
+  }
+}
+
+/** Strips' words as one page: a line both have where they meet kept once */
+export function joinStrips(parts) {
+  let all = [];
+  for (const part of parts) {
+    const lines = String(part || '').split('\n');
+    const tail = new Set(all.slice(-8).map((l) => l.trim()).filter(Boolean));
+    let k = 0;
+    while (k < Math.min(8, lines.length) && (!lines[k].trim() || tail.has(lines[k].trim()))) k++;
+    all = all.concat(lines.slice(k));
+  }
+  return all.join('\n').trim();
+}
+
+/** A PDF's pages, by its page objects (0 when they're packed where they can't be counted) */
+function pageCount(bytes) {
+  let n = 0;
+  const find = /\/Type\s*\/Page\b/g;
+  for (let i = 0; i < bytes.length; i += 0x100000) {
+    // (a megabyte at a time, a little over so a word on the edge is seen once)
+    const s = String.fromCharCode.apply(null, bytes.subarray(i, Math.min(bytes.length, i + 0x100000 + 16)));
+    const cut = i + 0x100000 >= bytes.length ? s.length : 0x100000;
+    for (let m; (m = find.exec(s));) if (m.index < cut) n++;
+    find.lastIndex = 0;
+  }
+  return n;
+}
+
+/**
+ * One page or picture read, in `split` strips at once when it's dense (`cut` stands in for the browser in
+ * tests) → its words, '' when it has none, null when it couldn't be read in the time
+ */
+async function readPicture(env, ctx, image, { split = 1, left, cut = null }) {
+  if (split > 1) {
+    const strips = await (cut ? cut(image, split) : stripsOf(env, ctx, image, split));
+    if (strips?.length) {
+      const seen = await Promise.all(strips.map((s) => pictureWords(env, s, { timeout: left() })));
+      return seen.some((x) => x === null) ? null : joinStrips(seen);
+    }
+    // (no browser to cut it with: read whole)
+  }
+  return pictureWords(env, image, { timeout: left() });
+}
+
 /**
  * One file's words → { words, how }: how 'text' (read as written), 'pictures' (a scan or a picture, by the vision
  * model), 'none' (nothing to read: a photo, an old .doc), 'error' (it couldn't be read just then: try again later),
- * 'part' (a scan read up to page `next`, its pages so far in `words`, `read` true when this run read any of them)
+ * 'later' (not started: too little of the run left), 'part' (a scan read up to page `next`, its pages so far in
+ * `words`, `read` true when this run read any of them).
+ * A scan's pages are its photos when every page is one, else drawn in Cloudflare's browser a group at a time
+ * (`draw(bytes, { from, max })` stands in for it in tests: { pics, total }, or every page). A scan under way:
+ * `from` the page to go on from (0: known to be a scan, none read yet), `prior` its pages so far, `skip` to leave out
+ * the page at `from` (it couldn't be read twice); `tries` how many times it couldn't be read (its next page, or a
+ * picture, is cut in more strips); `deadline` (by `now`) when this run's time ends; `onPart(words, next)` keeps
+ * each group of pages as it's read (words null: known as a scan, nothing read yet).
  */
-/**
- * `draw(bytes)`: a scan's pages as pictures when they aren't photos to cut out (by default Browser Rendering's,
- * `ctx` holding its browser for the run: ./_coi-backfill.js drawPages).
- * A scan under way: `from` the page to go on from (0: known to be a scan, none read yet), `prior` its pages so far,
- * `skip` to leave out the page at `from` (it couldn't be read twice); `deadline` (by `now`) when this run's time
- * ends, and `onPart(words, next)` keeps each group of pages as it's read.
- */
-export async function wordsOf(env, { name = '', type = '', bytes }, { ctx = {}, draw = null, from = null, prior = '', skip = false, deadline = Infinity, now = Date.now, onPart = null } = {}) {
+export async function wordsOf(env, { name = '', type = '', bytes }, { ctx = {}, draw = null, cut = null, from = null, prior = '', skip = false, tries = 0, deadline = Infinity, now = Date.now, onPart = null } = {}) {
   const n = String(name).toLowerCase();
   const kind = /\.pdf$/.test(n) || type === 'application/pdf' ? 'pdf'
     : /\.docx$/.test(n) ? 'word' : /\.(xlsx|xlsm)$/.test(n) ? 'excel' : /\.pptx$/.test(n) ? 'slides'
@@ -168,28 +316,42 @@ export async function wordsOf(env, { name = '', type = '', bytes }, { ctx = {}, 
         words = tidy(pdfPages(one?.data));
         if (words.replace(/\s+/g, '').length >= 40) return { words, how: 'text' };
       }
-      // A scan: its pages' pictures, a group at a time (drawn, when they aren't photos inside it)
-      let shots = scannedPages(bytes, { max: SCAN_PAGES });
-      if (!shots.length) {
-        shots = await (draw ? draw(bytes) : drawPages(env, ctx, bytes, { max: DRAW_PAGES }));
-        // (Cloudflare's browser couldn't draw it just then, as when the site's other work has it: tried again
-        // later, never kept as having no words)
-        if (!shots.length && !draw && (env.BROWSER || ctx.launch)) return { words: '', how: 'error' };
-      }
-      if (!shots.length) return { words, how: words ? 'text' : 'none' };
+      // A scan: its pages' pictures, a group at a time. Its photos only when every page is one (a 990 with two
+      // pages as photos and the rest otherwise is drawn, every page)
+      const photos = scannedPages(bytes, { max: SCAN_PAGES });
+      const counted = photos.length ? pageCount(bytes) : 0;
+      const asPhotos = photos.length > 0 && (!counted || photos.length >= counted);
+      const groupAt = async (at) => {
+        if (asPhotos) return { at, pics: photos.slice(at, at + GROUP), total: photos.length };
+        const max = Math.min(GROUP, SCAN_PAGES - at);
+        const d = draw ? await draw(bytes, { from: at, max }) : await drawRange(env, ctx, bytes, at, max);
+        if (!d) return null;
+        return Array.isArray(d) ? { at, pics: d.slice(at, at + max), total: d.length } : { at, ...d };
+      };
       const start = from || 0;
+      let group = await groupAt(start);
+      // (Cloudflare's browser couldn't be had or draw it just then, as when the site's other work has it: tried
+      // again later, never kept as having no words)
+      if (group?.failed) return { words: '', how: 'error' };
+      const total = Math.min(group?.total || 0, SCAN_PAGES);
+      if (!total) return { words, how: words ? 'text' : 'none' };
       const pages = String(prior || '').split('\f').slice(0, start);
       while (pages.length < start) pages.push('');
       let at = start;
       let read = false;
       // (a page that couldn't be read twice is left out)
-      if (skip && at < shots.length) { pages.push(''); at++; read = true; }
+      if (skip && at < total) { pages.push(''); at++; read = true; }
       const kept = () => pages.map((p) => tidy([p])).join('\f');
       // (known now to be a scan: a run cut short goes on from its pictures, never converted again)
-      if (from === null && onPart) await onPart('', 0, false);
-      while (at < shots.length && left() >= PAGE_MIN_MS) {
+      if (from === null && onPart) await onPart(null, 0, false);
+      while (at < total && left() >= PAGE_MIN_MS) {
+        if (group.at !== at) {
+          group = await groupAt(at);
+          if (!group || group.failed || !group.pics.length) { if (!read) return { words: kept(), how: 'error', next: at }; break; }
+        }
         const had = left();
-        const seen = await Promise.all(shots.slice(at, at + GROUP).map((p) => pictureWords(env, p, { timeout: had })));
+        // (every page in two strips at once; the one that couldn't be read last time in three)
+        const seen = await Promise.all(group.pics.slice(0, total - at).map((p, i) => readPicture(env, ctx, p, { split: i === 0 && tries > 0 && !skip ? 3 : 2, left, cut })));
         // The pages read, up to the first that couldn't be (it's first next time)
         const ok = seen.findIndex((x) => x === null);
         const got = ok < 0 ? seen : seen.slice(0, ok);
@@ -201,9 +363,9 @@ export async function wordsOf(env, { name = '', type = '', bytes }, { ctx = {}, 
           if (!read) return had >= FAIR_MS ? { words: kept(), how: 'error', next: at } : { words: kept(), how: 'part', next: at, read: false };
           break;
         }
-        if (at < shots.length && onPart) await onPart(kept(), at, true);
+        if (at < total && onPart) await onPart(kept(), at, true);
       }
-      if (at < shots.length) return { words: kept(), how: 'part', next: at, read };
+      if (at < total) return { words: kept(), how: 'part', next: at, read };
       const all = tidy(pages);
       return all ? { words: all, how: 'pictures' } : { words: words || '', how: words ? 'text' : 'none' };
     }
@@ -214,7 +376,8 @@ export async function wordsOf(env, { name = '', type = '', bytes }, { ctx = {}, 
     if (kind === 'picture') {
       // (not started without the time a page takes)
       if (left() < PAGE_MIN_MS) return { words: '', how: 'later' };
-      const seen = await pictureWords(env, { bytes, type: type || (/\.png$/.test(n) ? 'image/png' : 'image/jpeg') }, { timeout: left() });
+      const split = tries > 0 ? Math.min(4, 2 + tries) : bytes.length > BIG_PICTURE ? 2 : 1;
+      const seen = await readPicture(env, ctx, { bytes, type: type || (/\.png$/.test(n) ? 'image/png' : 'image/jpeg') }, { split, left, cut });
       if (seen === null) return { words: '', how: 'error' };
       const words = tidy([seen]);
       return { words, how: words ? 'pictures' : 'none' };
@@ -253,7 +416,7 @@ async function filingsToRead(DB, heldBefore = 0) {
  * One file read, as much of it as this run's time allows (`item.key` its id in `table`): held while it's read, its
  * try counted as it starts, a scan's pages kept as they're read → false when another run holds it
  */
-async function readOne(env, item, { table, keyCol, bucket, deadline, now, ctx, draw }) {
+async function readOne(env, item, { table, keyCol, bucket, deadline, now, ctx, draw, cut }) {
   const DB = env.DB;
   const v0 = item.words_v || 0;
   const scanning = item.words_next !== null && item.words_next !== undefined;
@@ -267,12 +430,13 @@ async function readOne(env, item, { table, keyCol, bucket, deadline, now, ctx, d
   const fair = deadline - t >= FAIR_MS;
   const set = (cols, ...args) => DB.prepare(`UPDATE ${table} SET ${cols} WHERE ${keyCol} = ?`).bind(...args, item.key).run();
   const at = () => new Date(now()).toISOString();
-  const onPart = (words, next, read) => set(`words = ?, words_next = ?, words_try = ?${read ? ', words_v = 0, words_at = ?' : ''}`, String(words).slice(0, KEEP), next, now(), ...(read ? [at()] : []));
+  const onPart = (words, next, read) => (words === null ? set('words_next = ?, words_try = ?', next, now())
+    : set(`words = ?, words_next = ?, words_try = ?${read ? ', words_v = 0, words_at = ?' : ''}`, String(words).slice(0, KEEP), next, now(), ...(read ? [at()] : [])));
   let read = { words: '', how: 'none' };
   if ((item.size || 0) <= MAX_BYTES) {
     const obj = await bucket.get(item.r2_key);
     const bytes = obj && (obj.size || 0) <= MAX_BYTES ? new Uint8Array(await new Response(obj.body).arrayBuffer()) : null;
-    if (bytes) read = await wordsOf(env, { name: item.name, type: item.type, bytes }, { ctx, draw, from: scanning ? item.words_next : null, prior: item.words || '', skip, deadline, now, onPart });
+    if (bytes) read = await wordsOf(env, { name: item.name, type: item.type, bytes }, { ctx, draw, cut, from: scanning ? item.words_next : null, prior: item.words || '', skip, tries: skip ? 0 : -v0, deadline, now, onPart });
   }
   if (read.how === 'error') await set(`words_try = NULL, words_v = ?`, fair ? tryV : v0);
   else if (read.how === 'later') await set('words_try = NULL, words_v = ?', v0);
@@ -282,11 +446,13 @@ async function readOne(env, item, { table, keyCol, bucket, deadline, now, ctx, d
 }
 
 /**
- * Files not read yet by this reader, a few at a time: a scan under way first, then SOARD's papers, then the newest
- * meetings' files, then the public tax returns and audits. Stops taking more after `budgetMs`, and starts nothing
- * that can't end within `windowMs` (Cloudflare's time for it) → how many were read (a scan read in part counts)
+ * Files not read yet by this reader, a few at a time: a scan under way first, then a file nobody can find by its
+ * words yet before one read again by a newer reader, SOARD's papers before the newest meetings' files; the public
+ * tax returns and audits after them, or one each run while the board's files are only being read again. Stops
+ * taking more after `budgetMs`, and starts nothing that can't end within `windowMs` (Cloudflare's time for it)
+ * → how many were read (a scan read in part counts)
  */
-export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = Date.now, draw = null, windowMs = WINDOW_MS } = {}) {
+export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = Date.now, draw = null, cut = null, windowMs = WINDOW_MS } = {}) {
   const ctx = {};
   try {
     if (!env?.DB) return 0;
@@ -298,23 +464,28 @@ export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = D
     const deadline = start + windowMs;
     const rows = (await env.DB.prepare(`SELECT id AS key, r2_key, name, type, size, words, words_v, words_next FROM board_files
       WHERE COALESCE(words_v, 0) < ? AND COALESCE(words_v, 0) > -3 AND owner_type IN ('meeting', 'doc') AND (words_try IS NULL OR words_try < ?)
-      ORDER BY (words_next IS NULL), (COALESCE(words_v, 0) < 0), (owner_type = 'doc') DESC, at DESC LIMIT ?`).bind(READER, start - HOLD_MS, limit).all()).results || [];
+      ORDER BY (words_next IS NULL), (COALESCE(words_v, 0) < 0), (words IS NOT NULL AND words != ''), (owner_type = 'doc') DESC, at DESC LIMIT ?`).bind(READER, start - HOLD_MS, limit).all()).results || [];
     let done = 0;
     // (a file is started only with the time a page takes left, after the first only within budgetMs, and one that
     // couldn't be read before only first, so it has a run's whole time)
     const more = (v) => deadline - now() >= PAGE_MIN_MS && !(done && (now() - start > budgetMs || (v || 0) < 0));
-    for (const r of rows) {
-      if (!more(r.words_v)) break;
-      if (await readOne(env, r, { table: 'board_files', keyCol: 'id', bucket, deadline, now, ctx, draw })) done++;
-    }
-    // Then the public filings, once every board file's read
-    if (rows.length < limit && env.FILES) {
-      for (const f of (await filingsToRead(env.DB, now() - HOLD_MS)).slice(0, limit - rows.length)) {
+    const filings = async (n) => {
+      if (!env.FILES || n < 1) return;
+      for (const f of (await filingsToRead(env.DB, now() - HOLD_MS)).slice(0, n)) {
         if (!more(f.words_v)) break;
         await env.DB.prepare('INSERT OR IGNORE INTO board_filing_words (key, words_v, at) VALUES (?, 0, ?)').bind(f.key, new Date(now()).toISOString()).run();
-        if (await readOne(env, { ...f, r2_key: f.key, name: f.key.split('/').pop(), type: 'application/pdf', size: 0 }, { table: 'board_filing_words', keyCol: 'key', bucket: env.FILES, deadline, now, ctx, draw })) done++;
+        if (await readOne(env, { ...f, r2_key: f.key, name: f.key.split('/').pop(), type: 'application/pdf', size: 0 }, { table: 'board_filing_words', keyCol: 'key', bucket: env.FILES, deadline, now, ctx, draw, cut })) done++;
       }
+    };
+    // (the board's files only being read again, by a newer reader: a filing first, so they aren't kept waiting)
+    const again = !rows.length || (rows[0].words && rows[0].words_next == null);
+    if (again) await filings(1);
+    for (const r of rows) {
+      if (!more(r.words_v)) break;
+      if (await readOne(env, r, { table: 'board_files', keyCol: 'id', bucket, deadline, now, ctx, draw, cut })) done++;
     }
+    // Then the public filings, once every board file's read
+    if (rows.length < limit) await filings(limit - rows.length);
     return done;
   } catch (err) {
     console.error('[board-words]', err.message);
