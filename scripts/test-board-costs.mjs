@@ -63,7 +63,7 @@ const KIDS = {
   'iris-2026': { name: 'Iris', year: 2026, roomTypes: ['Therapy Room'], status: 'needs-funding', publishStatus: 'draft', sponsors: ['acme-builders'], heroImage: img('kids/iris') },
   'jay-2026': { name: 'Jay', year: 2026, roomTypes: ['Accessible Bathroom'], status: 'needs-funding' },
 };
-const job = (id, name, status, cost, extra = {}) => ({ id, name, description: extra.description ?? null, createdAt: extra.createdAt || '2025-03-05T17:20:00Z', closedOn: extra.closedOn ?? null, actualCost: cost, location: { account: { name: extra.account || name.replace(/ \(\d{4}\)$/, '') } }, customFieldValues: { nodes: status ? [{ value: status, customField: { id: STATUS } }] : [] } });
+const job = (id, name, status, cost, extra = {}) => ({ id, name, description: extra.description ?? null, createdAt: extra.createdAt || '2025-03-05T17:20:00Z', closedOn: extra.closedOn ?? null, actualCost: cost, budgetCost: { sum: extra.budget ?? null }, location: { account: { name: extra.account || name.replace(/ \(\d{4}\)$/, '') } }, customFieldValues: { nodes: status ? [{ value: status, customField: { id: STATUS } }] : [] } });
 const JOBS = [
   job('jAva', 'Ava Example (2026)', 'Closed Done', 26000),
   job('jBen', 'Ben Example (2026)', 'Closed Done', 18000),
@@ -77,7 +77,8 @@ const JOBS = [
   job('jLou', 'Lou Example (2023)', null, 19000, { description: 'Accessible Bathroom,Dream Bedroom', createdAt: '2023-05-01T15:00:00Z', closedOn: '2025-02-03' }),
   job('jIris', 'Iris Example (2026)', 'Awaiting Funding', null),
   job('jJay', 'Jay Example (2026)', 'Awaiting Funding', null),
-  job('jMax', 'Max Example (2026)', 'Build', 12500),
+  // Underway: $12,500 paid of a $30,000 budget, so $17,500 still to come
+  job('jMax', 'Max Example (2026)', 'Build', 12500, { budget: 30000 }),
   job('jTest', 'TEST Ava Example (2026)', 'Closed Done', 99999),
 ];
 
@@ -249,11 +250,14 @@ try {
   });
   ok(gaps.costs > 0 && Math.abs(gaps.costs - gaps.makeovers) <= 1, `the same space over this card as over the makeovers board (${gaps.costs}px and ${gaps.makeovers}px)`);
   const card = await textOf(kim, '#costs');
-  ok(/For makeovers now\s*\$169,602/.test(card), 'For makeovers now: $669,602 in the bank less the $500,000 operating balance');
+  ok(/For makeovers now\s*\$152,102/.test(card), 'For makeovers now: $669,602 in the bank, less the $500,000 operating balance and the $17,500 still to come underway');
+  ok(/\$669,602 in the bank, less \$500,000 kept to run SOARD and \$17,500 still to come on the 1 makeover underway/.test(card), 'the math, in words');
+  const under = await textOf(kim, '#costs .bc-under');
+  ok(/Underway: 1 makeover/.test(under) && /\$12,500 paid so far · about \$17,500 still to come · about \$30,000 in all/.test(under) && /A family\s+[\s\S]*Build\s+\$12,500\s+\$17,500\s+Its JobTread budget/.test(under), `the makeover underway: its stage, paid so far, still to come, from its budget (${under.replace(/\s+/g, ' ').slice(0, 160)})`);
   ok(/\$669,602 in the bank, less \$500,000 kept to run SOARD/.test(card), 'it says where the number comes from');
-  ok(/Enough for Iris and Jay, about \$30,500 together, then about 6 more makeovers at the median cost, \$22,500\./.test(await textOf(kim, '#costs .bc-answer__says')), `the answer, in a sentence (${await textOf(kim, '#costs .bc-answer__says')})`);
+  ok(/Enough for Iris and Jay, about \$30,500 together, then about 5 more makeovers at the median cost, \$22,500\./.test(await textOf(kim, '#costs .bc-answer__says')), `the answer, in a sentence (${await textOf(kim, '#costs .bc-answer__says')})`);
   const parts = await kim.$$eval('#costs > *', (els) => els.map((e) => e.className.split(' ')[0]));
-  ok(parts.indexOf('bc-answer') === 1 && parts.indexOf('bc-split') === 2, `the answer first, then who’s waiting beside the median (${parts.join(', ')})`);
+  ok(parts.indexOf('bc-answer') === 1 && parts.indexOf('bc-under') === 2 && parts.indexOf('bc-split') === 3, `the answer first, then who’s waiting beside the median (${parts.join(', ')})`);
   const homeCash = await kim.$eval('.bp-fig .bp-fig__value', (e) => e.textContent).catch(() => '');
   ok(/\$670K/.test(homeCash), `Home’s cash figure is the same money (${homeCash})`);
   ok(/Median makeover, 2025 and 2026\s*\$22,500/.test(card), 'the median makeover of the last two seasons');
@@ -269,6 +273,7 @@ try {
 
   ok(!(await kim.$('.bc-link')), 'a board member can’t change the operating balance');
   ok(!/99,999/.test(card), 'a TEST job never counts');
+  ok(!/Max Example/.test(card), 'a job with no page is never named by its JobTread name');
   const rows = await kim.$$eval('#costs .bc-row__label strong', (els) => els.map((e) => e.textContent));
   ok(rows.join('|') === 'Accessible bathroom|Dream bedroom|Therapy room|Bathroom and bedroom', `rows by what was built, lately (${rows.join(', ')})`);
   ok((await kim.$$('#costs .bc-dot')).length === 7, 'a dot each for the 7 lately');
@@ -314,7 +319,8 @@ try {
   await kim.click('#costs .bc-families a');
   await kim.waitForSelector('.bf-list', { timeout: 8000 });
   const list = await textOf(kim, '.bf');
-  ok(await kim.$eval('.bc-seg button[aria-pressed="true"]', (b) => b.textContent.trim()).then((t) => t === '2026', () => false), 'it opens on 2026, the newest season with a family (2027 has only a school)');
+  await kim.waitForSelector('.bf .bc-seg button[aria-pressed="true"]', { timeout: 4000 }).catch(() => {});
+  ok(await kim.$eval('.bf .bc-seg button[aria-pressed="true"]', (b) => b.textContent.trim()).then((t) => t === '2026', () => false), 'it opens on 2026, the newest season with a family (2027 has only a school)');
   ok(/^4 families · 2 ranked · 2 Strong Candidate$/.test(await textOf(kim, '.bf-sum')), `families counted as families (${await textOf(kim, '.bf-sum')})`);
   const order = await kim.$$eval('.bf-row__who strong', (els) => els.map((e) => e.textContent));
   ok(order.join('|') === 'Iris Example|Jay Example|Nora Example|Omar Example', `ranked best first, then partway, then the rest; no TEST (${order.join(', ')})`);
@@ -345,14 +351,14 @@ try {
   await kim.waitForSelector('.bp-aglive--costs', { timeout: 10000 });
   await sleep(1200); // (the page's own transition settles before the picture)
   const ag = await textOf(kim, '.bp-aglive--costs');
-  ok(/For makeovers now\s*\$169,602/.test(ag) && /Iris/.test(ag), 'the item shows the costs and who the money starts');
+  ok(/For makeovers now\s*\$152,102/.test(ag) && /Iris/.test(ag), 'the item shows the costs and who the money starts');
   ok(!/Every family’s application/.test(ag), 'without Home’s link out');
   await shotOf(kim, '.bp-aglive--costs', 'agenda-costs-1440');
   await kim.goto(`${SITE}/admin/board/#/meetings/${locked.id}`, { waitUntil: 'networkidle0' });
   await kim.waitForSelector('.bp-aglive--costs', { timeout: 10000 });
   await sleep(800);
   const tomorrow = await textOf(kim, '.bp-aglive--costs');
-  ok(/For makeovers now\s*\$169,602/.test(tomorrow) && /As of today/.test(tomorrow) && !/locked for this meeting/i.test(tomorrow), 'tomorrow’s meeting, locked before this card: today’s costs, said as today’s');
+  ok(/For makeovers now\s*\$152,102/.test(tomorrow) && /As of today/.test(tomorrow) && !/locked for this meeting/i.test(tomorrow), 'tomorrow’s meeting, locked before this card: today’s costs, said as today’s');
 
   console.log('A Board admin changes the operating balance where it shows');
   const jane = await tab(FOUNDER);
@@ -362,12 +368,12 @@ try {
   await jane.click('.bc-balance__input', { clickCount: 3 });
   await jane.keyboard.type('660,000');
   await jane.click('.bc-balance button[type="submit"]');
-  await jane.waitForFunction(() => /For makeovers now\s*\$9,602/.test(document.querySelector('#costs')?.innerText || ''), { timeout: 8000 }).catch(() => {});
+  await jane.waitForFunction(() => /\$7,898\s*short/.test((document.querySelector('#costs')?.innerText || '').replace(/\u00a0/g, ' ')), { timeout: 8000 }).catch(() => {});
   const after = await textOf(jane, '#costs');
-  ok(/For makeovers now\s*\$9,602/.test(after), 'at $660,000 kept, $9,602 is over it');
-  ok(/Enough for Iris’s therapy room, about \$8,000\. Jay needs \$20,898 more\./.test(after), 'Iris is covered; Jay needs $20,898 more');
+  ok(/For makeovers now\s*\$0\s*\$7,898 short/.test(after), 'at $660,000 kept, what’s still to come underway leaves the money $7,898 short');
+  ok(/Finishing the 1 makeover underway takes about \$17,500 more: \$7,898 more than the \$9,602 over the \$660,000 kept to run SOARD\. Nothing is free for new makeovers yet\. Iris, first in line, needs about \$15,898 more to start\./.test(after), `the sentence says why, and what Iris needs (${(after.match(/Finishing[^\n]*/) || [''])[0]})`);
   const chips = await jane.$$eval('#costs .bc-fam .bc-chip', (els) => els.map((e) => e.textContent.replace(/\u00a0/g, ' ')));
-  ok(chips.join('|') === 'Covered|Needs $20,898 more', `each family says where it stands (${chips.join(', ')})`);
+  ok(chips.join('|') === 'Needs $15,898 more|After that', `each family says where it stands (${chips.join(', ')})`);
   await shotOf(jane, '#costs', 'home-costs-short-1440');
   await jane.reload({ waitUntil: 'networkidle0' });
   await jane.waitForSelector('#costs', { timeout: 10000 });
@@ -379,7 +385,7 @@ try {
     await scr.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(QUAL)}#/meetings/${meeting.id}/screen`, { waitUntil: 'networkidle0' });
     await scr.waitForSelector('.bc--screen', { timeout: 10000 }).catch(() => {});
     const slide = await textOf(scr, '.bc--screen');
-    ok(/For makeovers now/.test(slide) && /Enough for Iris’s therapy room/.test(slide) && /Completed makeovers by room, 2025 and 2026/.test(slide), `${w}x${hh}: the slide shows the money, its sentence and the dots`);
+    ok(/For makeovers now\s*\$7,898 short/.test(slide) && /Finishing what’s underway takes it all\. Iris needs about \$15,898 more to start\./.test(slide) && /Completed makeovers by room, 2025 and 2026/.test(slide), `${w}x${hh}: the slide shows the money, its sentence and the dots`);
     const fits = await scr.evaluate(() => { const s = document.querySelector('.bc--screen'); if (!s) return false; const r = s.getBoundingClientRect(); return r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1; });
     ok(fits, `${w}x${hh}: it fits the screen`);
     await scr.screenshot({ path: join(OUT, `screen-${w}.png`) });

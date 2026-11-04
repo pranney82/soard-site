@@ -1875,9 +1875,10 @@ export function costLines(n) {
   if (t && st) out.push(`Completed makeovers${t.seasons ? `, ${t.seasons.slice().reverse().join(' and ')}` : ''} (${st.count}): median ${money(Math.round(st.median))}, average ${money(Math.round(st.average))}, low ${money(Math.round(st.low))}, high ${money(Math.round(st.high))}, what SOARD paid (donated work not counted)`);
   const rows = rowsOf(c.makeovers);
   if (rows.length) out.push(`Median by type, every year: ${rows.map((r) => `${r.short} ${money(Math.round(r.typical))} (${r.count})`).join(' · ')}`);
-  const plan = planOf({ cash: cashOf(n), operating: operatingOf(n), makeovers: c.makeovers, waiting: c.waiting || [] });
+  const plan = planOf({ cash: cashOf(n), operating: operatingOf(n), makeovers: c.makeovers, waiting: c.waiting || [], underway: c.underway || [] });
   if (plan) {
-    out.push(plan.free >= 0 ? `${money(Math.round(plan.free))} over the ${money(plan.operating)} operating balance, for makeovers` : `${money(Math.round(plan.short))} under the ${money(plan.operating)} operating balance: nothing over it for makeovers yet`);
+    if (plan.jobs.length) out.push(`Underway: ${plural(plan.jobs.length, 'makeover')}, ${money(Math.round(plan.paid))} paid so far, about ${money(Math.round(plan.committed))} still to come (their budgets, or their rooms' median with none)`);
+    out.push(plan.free >= 0 ? `${money(Math.round(plan.free))} free for new makeovers: the cash over the ${money(plan.operating)} operating balance, less what's still to come underway` : `Nothing free for new makeovers: ${money(Math.round(plan.short))} short once the ${money(plan.operating)} operating balance and what's still to come underway are counted`);
     for (const f of plan.families) out.push(`${f.name} (${typeById(f.type).label.toLowerCase()}): about ${money(Math.round(f.estimate?.cost || 0))}${f.pledged ? `, ${money(f.pledged)} pledged` : ''}${f.covered ? ', covered' : ''}`);
     if (plan.need != null) out.push(`${money(Math.round(plan.need))} more starts the next family`);
     else if (plan.more > 0) out.push(`Then room for about ${plural(plan.more, 'more makeover')} at the median cost`);

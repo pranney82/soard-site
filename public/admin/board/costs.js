@@ -64,8 +64,11 @@ export function answerText(plan, typical) {
   const median = typical?.cost > 0 ? typical.cost : null;
   const covered = fam.filter((f) => f.covered);
   const first = fam.find((f) => !f.covered);
+  const jobs = plan.jobs?.length || 0;
   if (plan.free < 0) {
-    return `Cash in the bank is ${dollars(plan.short)} under the ${dollars(plan.operating)} kept to run SOARD, so nothing is free for new makeovers yet.${fam.length ? ` ${fam.length === 1 ? `${fam[0].name} waits` : `${fam.length} families wait`} on the money.` : ''}`;
+    const then = fam.length && plan.need != null ? ` ${fam.length === 1 ? `${fam[0].name} needs` : `${fam[0].name}, first in line, needs`} about ${dollars(plan.need)} more to start.` : fam.length ? ` ${fam.length === 1 ? `${fam[0].name} waits` : `${fam.length} families wait`} on the money.` : '';
+    if (plan.over < 0) return `Cash in the bank is ${dollars(-plan.over)} under the ${dollars(plan.operating)} kept to run SOARD, so nothing is free for new makeovers.${then}`;
+    return `Finishing the ${plural(jobs, 'makeover')} underway takes about ${dollars(plan.committed)} more: ${dollars(plan.short)} more than the ${dollars(plan.over)} over the ${dollars(plan.operating)} kept to run SOARD. Nothing is free for new makeovers yet.${then}`;
   }
   if (!fam.length) {
     const n = median ? Math.floor(plan.free / median) : 0;
@@ -84,6 +87,17 @@ export function answerText(plan, typical) {
   return plan.more > 0 && median
     ? `Enough for ${coveredText}, then about ${plural(plan.more, 'more makeover')} at the median cost, ${dollars(median)}.`
     : `Enough for ${coveredText}, with ${dollars(plan.left)} left.`;
+}
+
+/** The answer for the meeting's screen: the same, in a line the room reads at a glance */
+export function screenText(plan, typical) {
+  if (!plan) return '';
+  const first = plan.families.find((f) => !f.covered);
+  if (plan.free < 0) {
+    const why = plan.over < 0 ? `Under the ${dollars(plan.operating)} kept to run SOARD.` : 'Finishing what’s underway takes it all.';
+    return `${why}${first && plan.need != null ? ` ${first.name} needs about ${dollars(plan.need)} more to start.` : ''}`;
+  }
+  return answerText(plan, typical);
 }
 
 /** The scale under the dots: rounded up to the next $10,000, a line every $10K or $20K */
@@ -233,7 +247,7 @@ export function useCosts(data, n, m = null) {
   const c = src?.costs || null;
   const operating = operatingOf(src);
   const makeovers = c?.makeovers || [];
-  const plan = useMemo(() => (c ? planOf({ cash: cash?.total, operating, makeovers, waiting: c.waiting || [] }) : null), [c, cash?.total, operating]);
+  const plan = useMemo(() => (c ? planOf({ cash: cash?.total, operating, makeovers, waiting: c.waiting || [], underway: c.underway || [] }) : null), [c, cash?.total, operating]);
   const typical = typicalLately(makeovers);
   const stats = statsOf(typical?.seasons ? makeovers.filter((x) => typical.seasons.includes(Number(x.season))) : makeovers);
   return { c, cash, operating, makeovers, plan, recent: recentSeasons(makeovers), typical, stats };
@@ -245,8 +259,8 @@ function Answer({ cash, operating, plan, typical, admin, onBalance }) {
   return html`<div class=${`bc-answer ${free != null && free < 0 ? 'is-short' : ''}`}>
     <div class="bc-answer__money">
       <span class="bc-fig__label">For makeovers now</span>
-      <span class="bc-answer__value">${free == null ? '–' : dollars(Math.max(0, free))}</span>
-      <span class="bc-fig__sub">${nbw(free == null ? 'The cash in the bank isn’t in yet' : `${dollars(cash.total)} in the bank, less ${dollars(operating)} kept to run SOARD`)}</span>
+      <span class="bc-answer__value">${free == null ? '–' : free < 0 ? html`${dollars(0)}<small>${nbw(`${dollars(-free)} short`)}</small>` : dollars(free)}</span>
+      <span class="bc-fig__sub">${nbw(free == null ? 'The cash in the bank isn’t in yet' : `${dollars(cash.total)} in the bank, less ${dollars(operating)} kept to run SOARD${plan.committed > 0 ? ` and ${dollars(plan.committed)} still to come on the ${plural(plan.jobs.length, 'makeover')} underway` : ''}`)}</span>
       ${admin && onBalance ? html`<${BalanceEdit} value=${operating} onSaved=${onBalance} />` : null}
     </div>
     ${plan ? html`<p class="bc-answer__says">${nbw(answerText(plan, typical))}</p>` : null}
@@ -293,6 +307,28 @@ function Waiting({ plan, big = false, links = true }) {
   </div>`;
 }
 
+/** The makeovers underway: each one's stage, what's been paid and what's still to come (its budget, or its rooms' median) */
+function Underway({ plan }) {
+  if (!plan?.jobs?.length) return null;
+  const total = plan.paid + plan.committed;
+  return html`<div class="bc-under">
+    <div class="bc-under__head">
+      <h3 class="bc-h3">${nbw(`Underway: ${plural(plan.jobs.length, 'makeover')}`)}</h3>
+      <p class="bc-under__sum">${nbw(`${dollars(plan.paid)} paid so far · about ${dollars(plan.committed)} still to come${total ? ` · about ${dollars(total)} in all` : ''}`)}</p>
+    </div>
+    <div class="bc-under__wrap"><table class="bp-table bc-under__table">
+      <thead><tr><th scope="col">Makeover</th><th scope="col">Stage</th><th scope="col" class="num">Paid so far</th><th scope="col" class="num">Still to come</th><th scope="col">From</th></tr></thead>
+      <tbody>${plan.jobs.map((j) => html`<tr key=${j.key}>
+        <th scope="row"><span class="bc-under__who"><${Face} f=${j} size=${32} /><span><b>${j.url ? html`<a class="bp-link" href=${j.url} target="_blank" rel="noopener">${j.name}</a>` : j.name}</b><small>${roomsText(j)}</small></span></span></th>
+        <td>${j.status}</td>
+        <td class="num">${dollars(j.paid)}</td>
+        <td class="num"><b>${j.left == null ? '–' : dollars(j.left)}</b></td>
+        <td class="bc-under__from">${j.basis === 'budget' ? 'Its JobTread budget' : j.basis === 'median' ? nbw(cap(`${basisText(j.estimate)}, no budget yet`)) : 'Not known yet'}</td>
+      </tr>`)}</tbody>
+    </table></div>
+  </div>`;
+}
+
 /** Every completed makeover in a table: the chart's dots, readable without hovering */
 function Table({ makeovers }) {
   const [by, setBy] = useState('season');
@@ -326,6 +362,7 @@ export function CostsCard({ data, n, m = null, variant = 'home', admin = false, 
   const shownStats = statsOf(shown);
   const body = html`
     <${Answer} cash=${cash} operating=${operating} plan=${plan} typical=${typical} admin=${admin} onBalance=${onBalance} />
+    <${Underway} plan=${plan} />
     <div class="bc-split">
       <${Waiting} plan=${plan} />
       <${Median} typical=${typical} stats=${stats} />
@@ -364,9 +401,9 @@ export function CostsSlide({ n, data, date }) {
     <div class="bc-figs">
       <div class="bc-fig">
         <span class="bc-fig__label">For makeovers now</span>
-        <span class="bc-fig__value">${free == null ? '–' : dollars(Math.max(0, free))}</span>
-        <span class="bc-fig__sub">${nbw(free == null ? '' : `${dollars(cash.total)} in the bank, less ${dollars(operating)} kept to run SOARD`)}</span>
-        ${plan ? html`<p class="bc-fig__says">${nbw(answerText(plan, typical))}</p>` : null}
+        <span class="bc-fig__value">${free == null ? '–' : free < 0 ? nbw(`${dollars(-free)} short`) : dollars(free)}</span>
+        <span class="bc-fig__sub">${nbw(free == null ? '' : `${dollars(cash.total)} in the bank, less ${dollars(operating)} kept${plan.committed > 0 ? ` and ${dollars(plan.committed)} still to come underway` : ''}`)}</span>
+        ${plan ? html`<p class="bc-fig__says">${nbw(screenText(plan, typical))}</p>` : null}
       </div>
       <div class="bc-fig">
         <span class="bc-fig__label">${nbw(typical?.seasons ? `Median makeover, ${seasonsText(typical.seasons)}` : 'Median makeover')}</span>

@@ -2752,7 +2752,23 @@ p.bp-rp__motion-st { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--muted
 .bc-answer.is-short { background: var(--warm); border-color: var(--line); }
 .bc-answer__money { display: grid; gap: 0.15rem; justify-items: start; min-width: 0; }
 .bc-answer__value { font-size: 2.6rem; font-weight: 750; letter-spacing: -0.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.bc-answer__value small { margin-left: 0.6rem; font-size: 1rem; font-weight: 700; letter-spacing: 0; color: var(--warn); vertical-align: middle; }
 .bc-answer__says { margin: 0; font-family: var(--display); font-size: 1.22rem; line-height: 1.5; color: var(--ink); text-wrap: pretty; }
+/* The makeovers underway: each one's stage, paid so far and still to come */
+.bc-under { display: grid; gap: 0.5rem; }
+.bc-under__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.25rem 1rem; }
+.bc-under__sum { margin: 0; color: var(--ink-2); font-size: 0.9rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bc-under__wrap { overflow-x: auto; }
+.bc-under__table { min-width: 38rem; }
+.bc-under__table th[scope="row"] { font-weight: 600; }
+.bc-under__who { display: flex; align-items: center; gap: 0.6rem; min-width: 0; }
+.bc-under__who > span { display: grid; gap: 0; min-width: 0; }
+.bc-under__who small { color: var(--muted); font-size: 0.78rem; font-weight: 500; }
+.bc-under__who .bc-face { width: 32px; height: 32px; }
+.bc-under__from { color: var(--muted); font-size: 0.82rem; }
+/* (the board's tables pad only their number columns: these words need room on both sides) */
+.bc-under__table th:not(:first-child), .bc-under__table td { padding-left: 1.25rem; }
+.bc-under__table th:last-child, .bc-under__table td:last-child { width: 30%; }
 /* Who's waiting, beside the median makeover */
 .bc-split { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 1rem 1.5rem; align-items: start; }
 .bc-median { display: grid; gap: 0.2rem; padding: 0.95rem 1.15rem 1rem; border: 1px solid var(--line); border-radius: var(--r); }
@@ -2837,7 +2853,7 @@ a.bc-fam__name:hover { text-decoration: underline; text-underline-offset: 3px; }
 
 /* The meeting on the screen (./screen.js CostsSlide): the screen's own dark colors, the figures down the left (the
    families waiting a line each in the third), the dots across the right, all of it inside the stage at 720p */
-.bc--screen { grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.7fr); align-items: start; gap: calc(var(--bs-u) * 2.4); color: var(--bs-ink); }
+.bc--screen { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.6fr); align-items: start; gap: calc(var(--bs-u) * 2.4); color: var(--bs-ink); }
 .bc--screen .bc-h3 { color: var(--bs-soft); font-size: var(--bs-label); font-weight: 650; letter-spacing: 0.02em; }
 .bc--screen .bc-figs { grid-template-columns: minmax(0, 1fr); border-color: var(--bs-line); background: var(--bs-panel); border-radius: calc(var(--bs-u) * 1.7); }
 .bc--screen .bc-fig { gap: calc(var(--bs-u) * 0.25); padding: calc(var(--bs-u) * 1.2) calc(var(--bs-u) * 1.7); }

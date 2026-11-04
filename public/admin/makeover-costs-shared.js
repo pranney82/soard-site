@@ -140,16 +140,35 @@ export function typicalLately(makeovers) {
 }
 
 /**
- * The money for more makeovers, and who it starts. `cash`: the board's cash in the bank (the figure on Home);
- * `operating`: the balance kept for running SOARD; `waiting`: families approved and waiting on the money, in order
- * (best score first), each { type, pledged? }. Each family's cost is its type's typical, less what a sponsor pledged.
- * → { free, short, typical, more (how many typical makeovers the money left after the waiting families covers),
- *     families: [{ ...family, estimate, net, total (running), covered }], covered (how many), left (money after them),
- *     need (what the first family not covered still needs) }
+ * What's still to come on an open job: its JobTread budget less what's been paid; with no budget yet, the median of
+ * completed makeovers with the same rooms (estimateFor) less what's been paid. Never below nothing (a job over its
+ * budget has nothing more expected of it here). → { left, basis: 'budget' | 'median', estimate } or null (no way to tell)
  */
-export function planOf({ cash, operating = OPERATING_BALANCE, makeovers = [], waiting = [] }) {
+export function stillToCome(job, makeovers) {
+  const paid = Math.max(0, Number(job.paid) || 0);
+  if (Number(job.budget) > 0) return { left: Math.max(0, job.budget - paid), basis: 'budget', estimate: null };
+  const e = estimateFor(job.type, makeovers);
+  return e ? { left: Math.max(0, e.cost - paid), basis: 'median', estimate: e } : null;
+}
+
+/**
+ * The money for more makeovers, and who it starts. `cash`: the board's cash in the bank (the figure on Home);
+ * `operating`: the balance kept for running SOARD; `underway`: the open jobs being built, each { paid, budget, type },
+ * whose still to come is spoken for first (stillToCome); `waiting`: families approved and waiting on the money, in
+ * order (best score first), each { type, pledged? }. Each family's cost is its rooms' median, less what a sponsor pledged.
+ * → { over (cash less the operating balance), committed (still to come on the open jobs), paid (on them so far),
+ *     free (over less committed), short, typical, more (how many median makeovers what's left after the waiting
+ *     families starts), jobs: [{ ...job, left, basis, estimate }], families: [{ ...family, estimate, net, total
+ *     (running), covered }], covered (how many), left (money after them), need (what the first family not covered
+ *     still needs: its cost and what the money is short) }
+ */
+export function planOf({ cash, operating = OPERATING_BALANCE, makeovers = [], waiting = [], underway = [] }) {
   if (typeof cash !== 'number' || !Number.isFinite(cash)) return null;
-  const free = cash - operating;
+  const over = cash - operating;
+  const jobs = underway.map((j) => ({ ...j, ...(stillToCome(j, makeovers) || { left: null, basis: null, estimate: null }) }));
+  const committed = jobs.reduce((s, j) => s + (j.left || 0), 0);
+  const paidSoFar = jobs.reduce((s, j) => s + (Number(j.paid) || 0), 0);
+  const free = over - committed;
   const typical = typicalLately(makeovers);
   let total = 0;
   let covered = 0;
@@ -161,12 +180,14 @@ export function planOf({ cash, operating = OPERATING_BALANCE, makeovers = [], wa
     total += net || 0;
     const ok = net != null && free >= total && need == null;
     if (ok) covered += 1;
-    else if (need == null && net != null) need = total - Math.max(0, free);
+    // (what it takes to start them: their cost, and whatever the money is short of what's spoken for)
+    else if (need == null && net != null) need = total - free;
     return { ...f, estimate, pledged, net, total, covered: ok };
   });
   const spent = families.filter((f) => f.covered).reduce((s, f) => s + (f.net || 0), 0);
   const left = free - spent;
   return {
+    over, committed, paid: paidSoFar, jobs, unknown: jobs.filter((j) => j.left == null).length,
     free, short: free < 0 ? -free : 0, operating, cash, typical,
     families, covered, left: Math.max(0, left), need,
     more: typical?.cost > 0 && need == null && left > 0 ? Math.floor(left / typical.cost) : 0,

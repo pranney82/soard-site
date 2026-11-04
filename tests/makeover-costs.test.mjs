@@ -83,11 +83,11 @@ test('the plan: what’s over the operating balance covers families in order, an
   assert.equal(p.covered, 2);
   assert.equal(p.need, 10000, 'Cy needs what the money doesn’t cover');
   assert.equal(p.more, 0, 'no room for more while a family waits');
-  // Under the operating balance: nothing over it, and the first family needs its whole cost
+  // Under the operating balance: nothing over it, and the first family needs its cost and what the money is short
   const short = planOf({ cash: 480000, makeovers: list, waiting: [fam('Ann')] });
   assert.equal(short.short, 20000);
   assert.equal(short.covered, 0);
-  assert.equal(short.need, 20000);
+  assert.equal(short.need, 40000);
   // Nobody waiting: how many typical makeovers the money starts
   assert.equal(planOf({ cash: 600000, makeovers: list, waiting: [] }).more, 5);
   assert.equal(planOf({ cash: null, makeovers: list }), null);
@@ -98,6 +98,30 @@ test('the plan: what’s over the operating balance covers families in order, an
   assert.equal(unknown.need, null);
   assert.equal(unknown.more, 0);
   assert.equal(planOf({ cash: 600000, operating: 550000, makeovers: list }).free, 50000);
+});
+
+test('the open jobs come first: what each has still to come (its budget, else its rooms’ median) is spoken for', () => {
+  const list = [m('a', 'therapy', 2026, 20000), m('b', 'therapy', 2025, 20000), m('c', 'therapy', 2026, 20000)];
+  const underway = [
+    { key: 'u1', name: 'Kim', type: 'therapy', paid: 8000, budget: 30000 },   // budget: 22,000 to come
+    { key: 'u2', name: 'Lee', type: 'therapy', paid: 5000, budget: null },    // no budget: the median, 20,000, less 5,000
+    { key: 'u3', name: 'Mo', type: 'therapy', paid: 35000, budget: 30000 },   // over its budget: nothing more expected here
+  ];
+  const p = planOf({ cash: 560000, makeovers: list, underway, waiting: [{ key: 'w', name: 'Ann', type: 'therapy' }] });
+  assert.deepEqual(p.jobs.map((j) => [j.name, j.left, j.basis]), [['Kim', 22000, 'budget'], ['Lee', 15000, 'median'], ['Mo', 0, 'budget']]);
+  assert.equal(p.over, 60000);
+  assert.equal(p.committed, 37000);
+  assert.equal(p.paid, 48000);
+  assert.equal(p.free, 23000, 'over the operating balance, less what’s still to come');
+  assert.equal(p.families[0].covered, true);
+  // Less in the bank: the open jobs take it all, and Ann needs her 20,000 and the 7,000 the money is short
+  const q = planOf({ cash: 530000, makeovers: list, underway, waiting: [{ key: 'w', name: 'Ann', type: 'therapy' }] });
+  assert.equal(q.free, -7000);
+  assert.equal(q.need, 27000);
+  // No way to tell (no budget, no completed makeover to go by): counted as unknown, never as $0 spoken for
+  const r = planOf({ cash: 600000, makeovers: [], underway: [{ key: 'u', name: 'Zed', type: 'bathroom', paid: 0, budget: null }] });
+  assert.equal(r.unknown, 1);
+  assert.equal(r.committed, 0);
 });
 
 test('the cash a set of numbers carries, and its operating balance', () => {
@@ -161,6 +185,7 @@ test('costs from the jobs: finished makeovers by page, two jobs for one kid add 
     job({ id: 'j6', name: 'Hana Example (2026)', status: 'Awaiting Funding' }),
     job({ id: 'j7', name: 'Ivy Example (2026)', status: 'Awaiting Funding', description: null }),
     job({ id: 'j8', name: 'Ava Example (2026)', status: 'Build', cost: 9000 }),
+    { ...job({ id: 'j12', name: 'Pine School (2026)', account: 'Pine Academy', status: 'Design' }), budgetCost: { sum: 12000 } },
     job({ id: 'j9', name: 'TEST Ava Example (2026)', status: 'Closed Done', cost: 99999 }),
     job({ id: '22P3HTX9cXn4', name: 'Sunshine Office 2025', status: 'Closed Done', cost: 845 }),
     job({ id: 'j10', name: 'Warranty', description: 'Previous projects that require additional work', closedOn: '2025-03-12', cost: 1500 }),
@@ -181,6 +206,9 @@ test('costs from the jobs: finished makeovers by page, two jobs for one kid add 
   assert.equal(out.skipped, 1, 'the warranty job: finished, with bills, not a makeover');
   assert.deepEqual(out.waiting.map((w) => [w.name, w.type]), [['Hana', 'therapy'], ['', 'mixed']]);
   assert.ok(!JSON.stringify(out).includes('99999'), 'a TEST job never counts');
+  // Open jobs being built: what's been paid and the budget, furthest along first
+  assert.deepEqual(out.underway.map((u) => [u.name, u.status, u.paid, u.budget, u.kind]), [['Ava', 'Build', 9000, null, 'kid'], ['Pine Academy', 'Design', 0, 12000, 'community']]);
+  assert.ok(!out.makeovers.some((x) => x.name === 'Ava' && x.cost === 9000 + 26000), 'a job still being built is never a completed makeover’s cost');
 });
 
 // ─── D1: pledges, waiting order, the board's copy ───────────────────
@@ -306,7 +334,7 @@ test('the Qualification Committee’s item shows what makeovers cost, as a new m
     cash: { total: 530000, accounts: [{ bank: 'Chase' }] }, operating: { balance: 500000 },
   });
   assert.match(lines[0], /^Completed makeovers, 2025 and 2026 \(3\): median \$20,000, average \$20,000, low \$20,000, high \$20,000/);
-  assert.ok(lines.includes('$30,000 over the $500,000 operating balance, for makeovers'));
+  assert.ok(lines.includes('$30,000 free for new makeovers: the cash over the $500,000 operating balance, less what\'s still to come underway'), lines.join(' | '));
   assert.ok(lines.some((l) => /^Hana \(therapy room\): about \$20,000, covered$/.test(l)));
   assert.ok(lines.every((l) => !/—/.test(l)), 'no em dashes');
 });

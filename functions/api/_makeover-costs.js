@@ -14,6 +14,12 @@
  *   waiting     families approved and waiting on the money (Awaiting
  *               Funding), best score first, each with its rooms, type, and
  *               its sponsors' pledges (./_sponsor-pledges.js)
+ *   underway    every open job being built (Design to Build), kids' and
+ *               community projects': what's been paid (its bills) and its
+ *               JobTread budget, for what's still to come (Peter, Nov 4 2026:
+ *               "we should take into account the open jobs and what has been
+ *               spent and what is anticipated of being spent still";
+ *               ../../public/admin/makeover-costs-shared.js planOf)
  *
  * Finished = Status Closed Done or Warranty, or closed in JobTread before jobs
  * had a Status. Never "the job is closed": nine finished makeovers were still
@@ -34,7 +40,7 @@
  * fresh from D1.
  */
 
-import { JT_URL, SOARD_ORG_ID, FIELD_JOB_STATUS, isRehearsalJob, matchProject, normalizeName, yearsOf, isProject } from './_reveals.js';
+import { JT_URL, SOARD_ORG_ID, FIELD_JOB_STATUS, BUILDING_STATUSES, isRehearsalJob, matchProject, normalizeName, yearsOf, isProject } from './_reveals.js';
 import { readState, writeState } from './_board-roles.js';
 import { roomList, typeOf } from '../../public/admin/makeover-costs-shared.js';
 import { scoreSummaries } from './_applicant-scores.js';
@@ -74,6 +80,8 @@ export async function fetchCostJobs(grantKey, fetchImpl = fetch) {
               nextPage: {},
               nodes: {
                 id: {}, name: {}, description: {}, createdAt: {}, closedOn: {}, actualCost: {},
+                // The job's budget: its own cost lines (those on no document), summed
+                budgetCost: { _: 'costItems', $: { where: [['document', 'id'], null] }, sum: { $: 'cost' } },
                 location: { account: { name: {} } },
                 customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_JOB_STATUS] }, nodes: { value: {} } },
               },
@@ -180,16 +188,32 @@ const seasonOf = (r, job) => {
 };
 const roomsFor = (r, job) => (r.rooms?.length ? r.rooms : roomList(job.description));
 
-/** From the jobs and the pages: { makeovers, noBills, waiting (jobs, before scores and pledges), skipped } */
+/** From the jobs and the pages: { makeovers, noBills, waiting (jobs, before scores and pledges), underway, skipped } */
 export function costsFrom(jobs, records) {
   const done = new Map();
   const waiting = [];
+  const underway = [];
   let skipped = 0;
   for (const job of jobs) {
     if (isRehearsalJob(job)) continue;
     const status = statusOf(job);
     const finished = isFinished(job);
     const awaiting = !job.closedOn && status === AWAITING;
+    // Being built: what's been paid, and its budget for what's still to come
+    if (!job.closedOn && BUILDING_STATUSES.has(status)) {
+      const r = pageForJob(job, records);
+      const rooms = r ? roomsFor(r, job) : roomList(job.description);
+      const community = r ? isProject(r) : ORG.test(String(job.location?.account?.name || ''));
+      const budget = Number(job.budgetCost?.sum);
+      // (never a job's own name: JobTread's are internal, "Not Published Yet"; a page's name, an organization's, or
+      // Applicants' in nameUnderway)
+      underway.push({
+        key: `u:${job.id}`, name: r?.name || (community ? String(job.location?.account?.name || '').trim() : ''), jobId: r ? null : job.id, kind: community ? 'community' : 'kid', status,
+        rooms, type: typeOf(rooms, { community }), paid: cents(job.actualCost), budget: budget > 0 ? cents(budget) : null,
+        ...(r?.photo ? { photo: r.photo } : {}), ...(r?.url ? { url: r.url } : {}),
+      });
+      continue;
+    }
     if (!finished && !awaiting) continue;
     const r = pageForJob(job, records);
     // A family approved with no page yet still waits: named from Applicants (orderWaiting)
@@ -228,9 +252,12 @@ export function costsFrom(jobs, records) {
     makeovers: all.filter((m) => m.cost > 0).sort(byName),
     noBills: all.filter((m) => !(m.cost > 0)).map(({ key, name, season, type, kind }) => ({ key, name, season, type, kind })).sort(byName),
     waiting,
+    // Furthest along first (Build, then Mobilization … Design)
+    underway: underway.sort((a, b) => STAGE.indexOf(b.status) - STAGE.indexOf(a.status) || a.name.localeCompare(b.name)),
     skipped,
   };
 }
+const STAGE = ['Design', 'Finalization', 'Approval', 'Mobilization', 'Build'];
 
 /**
  * The waiting families, in the order they'd be funded: the Qualification Committee's score (ranked ones, best
@@ -275,6 +302,19 @@ export async function orderWaiting(DB, waiting) {
   return out.sort((a, b) => ranked(a) - ranked(b) || (b.score?.ranked ? b.score.total : 0) - (a.score?.ranked ? a.score.total : 0) || String(a.since || '').localeCompare(String(b.since || '')) || a.name.localeCompare(b.name));
 }
 
+/** Open jobs with no page: the family's name from Applicants (the account linked to the job), else "A family"; never the job's id */
+export async function nameUnderway(DB, underway) {
+  const ids = underway.filter((u) => !u.name && u.jobId).map((u) => u.jobId);
+  let names = new Map();
+  if (ids.length) {
+    try {
+      const rows = (await DB.prepare(`SELECT job_id, name FROM applicants WHERE job_id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all()).results || [];
+      names = new Map(rows.map((r) => [r.job_id, String(r.name || '').trim()]));
+    } catch { /* no Applicants mirror (tests) */ }
+  }
+  return underway.map(({ jobId, ...u }) => ({ ...u, name: u.name || names.get(jobId) || 'A family' }));
+}
+
 async function partnerNames(DB, slugs) {
   if (!slugs.length) return {};
   try {
@@ -291,7 +331,8 @@ async function partnerNames(DB, slugs) {
 export async function makeoverCostsNow(env, { fetchImpl = fetch, now = Date.now(), fresh = false, maxAge = FRESH_MS } = {}) {
   const cached = await readState(env.DB, 'costs');
   let value = cached.value || null;
-  const stale = !cached.at || now - Date.parse(cached.at) >= maxAge;
+  // (a copy from before the open jobs were read is read again at once)
+  const stale = !cached.at || now - Date.parse(cached.at) >= maxAge || !Array.isArray(cached.value?.underway);
   if ((fresh || stale) && env.JOBTREAD_GRANT_KEY) {
     try {
       const [jobs, records] = await Promise.all([fetchCostJobs(env.JOBTREAD_GRANT_KEY, fetchImpl), loadCostRecords(env.DB)]);
@@ -302,5 +343,6 @@ export async function makeoverCostsNow(env, { fetchImpl = fetch, now = Date.now(
     }
   }
   if (!value) return null;
-  return { ...value, waiting: await orderWaiting(env.DB, value.waiting || []) };
+  const [waiting, underway] = await Promise.all([orderWaiting(env.DB, value.waiting || []), nameUnderway(env.DB, value.underway || [])]);
+  return { ...value, waiting, underway };
 }
