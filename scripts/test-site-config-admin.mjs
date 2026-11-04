@@ -496,6 +496,25 @@ try {
     ok(/<em class="highlight">/.test((await stored('our-story')).founders.heading), 'the heading keeps its highlight markup');
   });
 
+  await section('Our Story: a milestone can be an award', async () => {
+    await goPage(page, 'about');
+    const miles = () => page.$$('#sc-timeline .sc-mile');
+    const n = (await miles()).length;
+    ok(n === seedDocs['our-story'].milestones.length, `every milestone has its editor (${n})`);
+    const last = (await miles())[n - 1];
+    const awardInput = async () => (await (await fieldSel(page, /^Award from/, '#sc-timeline .sc-row:last-of-type .sc-mile')).$('input'));
+    ok(!!last && !!(await fieldSel(page, /^Award from/, '#sc-timeline .sc-row:last-of-type .sc-mile')), 'each milestone has an Award from box');
+    const was = seedDocs['our-story'].milestones.at(-1).award || '';
+    ok((await (await awardInput()).evaluate((el) => el.value)) === was, `it shows what's saved (${JSON.stringify(was)})`);
+    await typeField(page, /^Award from/, 'NARI Atlanta', '#sc-timeline .sc-row:last-of-type .sc-mile');
+    await saveNow(page);
+    ok((await stored('our-story')).milestones.at(-1).award === 'NARI Atlanta', 'a typed award saves on that milestone');
+    await typeField(page, /^Award from/, '', '#sc-timeline .sc-row:last-of-type .sc-mile');
+    await saveNow(page);
+    ok(!('award' in (await stored('our-story')).milestones.at(-1)), 'emptying it takes the award off');
+    ok((await stored('our-story')).milestones.length === n, 'and no milestone is lost');
+  });
+
   await section('A document that fails to load can’t be edited', async () => {
     state.failDoc = 'media';
     await goPage(page, 'media');

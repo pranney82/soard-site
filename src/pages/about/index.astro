@@ -32,7 +32,30 @@ const founderPhotoId = page.images.founder;
 const storePhotoId = page.images.store;
 const graciePhotoId = page.images.gracie;
 const trippPhotoId = page.images.tripp;
-const milestones = page.milestones;
+/* A milestone with `award` (who gave it, set in Admin → Site Config → Our Story → Timeline) is an honor:
+   it gets a medal on the spine, a laurel on its square and, with no photo, a laurel seal where the photo goes */
+const milestones = (page.milestones as Array<{ year: string; title: string; desc: string; detail?: string; image?: string; award?: string }>)
+  .map((m) => ({ ...m, award: String(m.award || '').trim() }));
+/* People headshots are framed tight, so the wide photo anchors a little above the face to keep the whole head */
+const wideGravity = (id: string) => (/^team\//.test(id) ? '0.5x0.3' : 'face') as 'face' | `${number}x${number}`;
+/* The laurel: two branches on a circle of radius 24 in a 64×64 box, a pair of pointed leaves
+   at each step (one leaning out, one in) and a leaf at each tip; drawn once at build time */
+const LAUREL_STEM = 'M26.19 55.29A24 24 0 0 1 20 11.22M37.81 55.29A24 24 0 0 0 44 11.22';
+const LAUREL_LEAF = 'M0 0C2.4-2.5 6.2-2.6 8.6 0C6.2 2.6 2.4 2.5 0 0Z';
+const LAUREL_LEAVES = (() => {
+  const leaves: string[] = [];
+  const put = (deg: number, turn: number, len = 1) => {
+    const a = (deg * Math.PI) / 180;
+    const x = 32 + 24 * Math.cos(a);
+    const y = 32 + 24 * Math.sin(a);
+    const dir = deg + 90 + turn; /* along the branch toward its tip, leaning by `turn` */
+    leaves.push(`translate(${x.toFixed(2)} ${y.toFixed(2)}) rotate(${dir}) scale(${len})`);
+    leaves.push(`translate(${(64 - x).toFixed(2)} ${y.toFixed(2)}) rotate(${180 - dir}) scale(${len})`);
+  };
+  for (let deg = 116; deg <= 221; deg += 15) { put(deg, -38, 0.92); put(deg, 38, 0.82); }
+  put(238, 0, 1);
+  return leaves;
+})();
 /* The anniversary book (Admin → Site Config → Anniversary book), after the milestones once it's on the site */
 const book = getBook();
 const bookOn = !!book?.live;
@@ -129,9 +152,9 @@ const jsonLd = getFAQSchema(aboutFaqs);
       <div class="section-label section-label--yellow">Milestones</div>
       <h2 id="timeline-heading">{stats.years} years of building <em>dreams</em>.</h2>
       <p class="timeline-subtitle">Every room starts with a story. Here's ours.</p>
-      <button class="tl-expand-all" type="button" data-tl-expand-all aria-pressed="false">Expand all</button>
+      <button class="tl-expand-all" type="button" data-tl-expand-all>Expand all</button>
     </div>
-    <noscript><style>.tl-panel{grid-template-rows:1fr !important}.tl-panel-inner{opacity:1 !important;transform:none !important}.tl-expand-all{display:none}</style></noscript>
+    <noscript><style>.tl-panel{grid-template-rows:1fr !important}.tl-panel-inner{opacity:1 !important;transform:none !important;visibility:visible !important}.tl-expand-all,.tl-chevron{display:none !important}.tl-toggle{cursor:default !important}</style></noscript>
     <div class="timeline" id="timeline">
       <!-- Spine -->
       <div class="tl-track" aria-hidden="true">
@@ -139,17 +162,24 @@ const jsonLd = getFAQSchema(aboutFaqs);
         <div class="tl-cursor"></div>
       </div>
       {milestones.map((m, i) => (
-        <div class={`tl-item ${i % 2 === 0 ? 'tl-item--left' : 'tl-item--right'}`} data-tl-item>
+        <div class={`tl-item ${i % 2 === 0 ? 'tl-item--left' : 'tl-item--right'}${m.award ? ' tl-item--award' : ''}`} data-tl-item>
           <div class="tl-dot" aria-hidden="true">
             <span class="tl-dot-ring"></span>
-            <span class="tl-dot-core"></span>
+            {m.award ? (
+              <span class="tl-medal">
+                <span class="tl-burst">{[0, 1, 2, 3, 4, 5, 6, 7].map((n) => <i style={`--n:${n}`}></i>)}</span>
+                <svg width="14" height="14" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.5l-5.87 3.08 1.12-6.54L2.5 9.41l6.56-.95z"/></svg>
+              </span>
+            ) : (
+              <span class="tl-dot-core"></span>
+            )}
           </div>
           <div class="tl-connector" aria-hidden="true"></div>
           <article class={`tl-card ${i === 0 ? 'is-open' : ''}`} data-tl-card>
             <h3 class="tl-heading">
-              <button class="tl-toggle" type="button" id={`tl-toggle-${i}`} aria-expanded={i === 0 ? 'true' : 'false'} aria-controls={`tl-panel-${i}`}>
+              <button class="tl-toggle" type="button" id={`tl-toggle-${i}`} aria-expanded={i === 0 ? 'true' : 'false'} aria-controls={`tl-panel-${i}`} aria-label={`${m.year} ${m.title}${m.award ? `, awarded by ${m.award}` : ''}`}>
                 {m.image ? (
-                  <span class="tl-thumb">
+                  <span class={`tl-thumb${m.award ? ' tl-thumb--award' : ''}`}>
                     <img
                       src={cfUrl(m.image, { w: 160, h: 160, fit: 'cover', gravity: 'face', q: 75 })}
                       srcset={cfSrcset(m.image, [96, 160, 240], { fit: 'cover', gravity: 'face', quality: 75, aspectRatio: 1 })}
@@ -159,6 +189,19 @@ const jsonLd = getFAQSchema(aboutFaqs);
                       loading={i === 0 ? 'eager' : 'lazy'}
                       decoding="async"
                     />
+                    {m.award && (
+                      <span class="tl-thumb-medal" aria-hidden="true">
+                        <svg width="11" height="11" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.5l-5.87 3.08 1.12-6.54L2.5 9.41l6.56-.95z"/></svg>
+                      </span>
+                    )}
+                  </span>
+                ) : m.award ? (
+                  <span class="tl-thumb tl-thumb--laurel" aria-hidden="true">
+                    <svg class="tl-laurel" viewBox="0 0 64 64" width="56" height="56">
+                      <path d={LAUREL_STEM} fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" />
+                      {LAUREL_LEAVES.map((t) => <path d={LAUREL_LEAF} transform={t} fill="currentColor" />)}
+                    </svg>
+                    <svg class="tl-laurel-star" width="16" height="16" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.5l-5.87 3.08 1.12-6.54L2.5 9.41l6.56-.95z"/></svg>
                   </span>
                 ) : (
                   <span class="tl-thumb tl-thumb--empty" aria-hidden="true">{String(m.year).slice(-2)}</span>
@@ -166,27 +209,44 @@ const jsonLd = getFAQSchema(aboutFaqs);
                 <span class="tl-head">
                   <span class="tl-year">{m.year}</span>
                   <span class="tl-title">{m.title}</span>
+                  {m.award && (
+                    <span class="tl-award-by">
+                      <svg width="12" height="12" viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.5l-5.87 3.08 1.12-6.54L2.5 9.41l6.56-.95z"/></svg>
+                      {m.award}
+                    </span>
+                  )}
                 </span>
                 <span class="tl-chevron" aria-hidden="true">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
                 </span>
               </button>
             </h3>
-            <div class="tl-panel" id={`tl-panel-${i}`} role="region" aria-labelledby={`tl-toggle-${i}`}>
+            <div class="tl-panel" id={`tl-panel-${i}`}>
               <div class="tl-panel-inner">
                 {m.image && (
                   <div class="tl-image">
                     <img
-                      src={cfUrl(m.image, { w: 480, h: 280, fit: 'cover', gravity: 'face', q: 75 })}
-                      srcset={cfSrcset(m.image, [320, 480, 640], { fit: 'cover', gravity: 'face', quality: 75, aspectRatio: 280/480 })}
+                      src={cfUrl(m.image, { w: 480, h: 280, fit: 'cover', gravity: wideGravity(m.image), q: 75 })}
+                      srcset={cfSrcset(m.image, [320, 480, 640, 960, 1400], { fit: 'cover', gravity: wideGravity(m.image), quality: 75, aspectRatio: 280/480 })}
                       sizes="(max-width:640px) calc(100vw - 72px), (max-width:960px) calc(100vw - 100px), 420px"
-                      alt={m.title}
+                      alt=""
                       width="480"
                       height="280"
                       loading={i === 0 ? 'eager' : 'lazy'}
                       decoding="async"
                       class="lqip-img"
                     />
+                  </div>
+                )}
+                {!m.image && m.award && (
+                  <div class="tl-seal" aria-hidden="true">
+                    <span class="tl-seal-wreath">
+                      <svg class="tl-laurel" viewBox="0 0 64 64" width="148" height="148">
+                        <path d={LAUREL_STEM} fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" />
+                        {LAUREL_LEAVES.map((t) => <path d={LAUREL_LEAF} transform={t} fill="currentColor" />)}
+                      </svg>
+                      <svg class="tl-laurel-star" width="44" height="44" viewBox="0 0 24 24"><path fill="currentColor" d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.5l-5.87 3.08 1.12-6.54L2.5 9.41l6.56-.95z"/></svg>
+                    </span>
                   </div>
                 )}
                 <div class="tl-content">
@@ -412,18 +472,8 @@ const jsonLd = getFAQSchema(aboutFaqs);
     color: var(--c-white);
     padding-block: var(--space-5xl) 0;
     overflow: hidden;
+    overflow: clip; /* hidden still lets scrollIntoView scroll the section inside itself */
     position: relative;
-  }
-
-  /* Subtle gradient overlay at top for seamless section transition */
-  .timeline-section::before {
-    content: '';
-    position: absolute;
-    inset: 0 0 auto;
-    height: 120px;
-    background: linear-gradient(180deg, rgba(45,46,51,0.6), transparent);
-    pointer-events: none;
-    z-index: 1;
   }
 
   .timeline-header {
@@ -447,7 +497,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
   .timeline-subtitle {
     margin-top: var(--space-md);
     font-size: 1.1rem;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.72);
     line-height: 1.6;
   }
 
@@ -475,7 +525,8 @@ const jsonLd = getFAQSchema(aboutFaqs);
   .tl-track-fill {
     position: absolute;
     inset: 0;
-    background: linear-gradient(180deg, var(--c-yellow) 0%, rgba(255, 218, 36, 0.6) 60%, rgba(255, 218, 36, 0.15) 100%);
+    background: var(--c-yellow);
+    opacity: 0.7;
     transform-origin: top;
   }
 
@@ -546,7 +597,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     border-radius: 50%;
     background: var(--c-yellow);
     transform: translate(-50%, -50%);
-    box-shadow: 0 0 12px 4px rgba(255, 218, 36, 0.5), 0 0 40px 8px rgba(255, 218, 36, 0.15);
+    box-shadow: 0 0 0 3px rgba(255, 218, 36, 0.25);
   }
 
   .tl-cursor.is-visible {
@@ -569,10 +620,12 @@ const jsonLd = getFAQSchema(aboutFaqs);
   /* Alternating sides */
   .tl-item--left .tl-card      { grid-column: 1; grid-row: 1; justify-self: end; }
   .tl-item--left .tl-dot       { grid-column: 2; grid-row: 1; }
-  .tl-item--left .tl-connector { grid-column: 2; grid-row: 1; }
+  /* An absolutely placed grid child with only a start line runs to the container's edge,
+     so the connector names both lines to sit in the gutter between its card and the dot */
+  .tl-item--left .tl-connector { grid-column: 2 / 3; grid-row: 1; }
   .tl-item--right .tl-card     { grid-column: 3; grid-row: 1; justify-self: start; }
   .tl-item--right .tl-dot      { grid-column: 2; grid-row: 1; }
-  .tl-item--right .tl-connector{ grid-column: 2; grid-row: 1; }
+  .tl-item--right .tl-connector{ grid-column: 2 / 3; grid-row: 1; }
 
   /* ── Dot ── */
   .tl-dot {
@@ -590,7 +643,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     height: 32px;
     border-radius: 50%;
     border: 2px solid rgba(255, 218, 36, 0.15);
-    top: 20px;
+    top: 19px;
     left: 50%;
     transform: translateX(-50%) scale(1);
     opacity: 1;
@@ -614,15 +667,15 @@ const jsonLd = getFAQSchema(aboutFaqs);
   }
 
   .tl-ready .tl-dot-core {
-    background: rgba(255, 255, 255, 0.08);
-    border-color: rgba(255, 255, 255, 0.12);
+    background: #424541;
+    border-color: #4c4f4b;
   }
 
   /* Active dot */
   .tl-item.is-active .tl-dot-core {
     background: var(--c-yellow);
     border-color: var(--c-yellow);
-    box-shadow: 0 0 20px rgba(255, 218, 36, 0.6), 0 0 60px rgba(255, 218, 36, 0.15);
+    box-shadow: 0 0 0 4px rgba(255, 218, 36, 0.2);
     transform: scale(1.1);
   }
 
@@ -689,7 +742,8 @@ const jsonLd = getFAQSchema(aboutFaqs);
     transform: translateY(0) translateX(0);
   }
 
-  /* Hover — lift + border glow + shadow */
+  /* Hover (mouse only): lift + border + shadow */
+  @media (hover: hover) {
   .tl-card:hover {
     border-color: rgba(255, 218, 36, 0.25);
     background: rgba(255, 255, 255, 0.06);
@@ -697,7 +751,8 @@ const jsonLd = getFAQSchema(aboutFaqs);
       0 12px 40px rgba(0, 0, 0, 0.4),
       0 0 0 1px rgba(255, 218, 36, 0.1),
       inset 0 1px 0 rgba(255, 255, 255, 0.05);
-    transform: translateY(-6px) !important;
+    transform: translateY(-3px) !important;
+  }
   }
 
   /* ── Card image ── */
@@ -705,15 +760,6 @@ const jsonLd = getFAQSchema(aboutFaqs);
     position: relative;
     overflow: hidden;
     aspect-ratio: 16 / 9;
-  }
-
-  /* Gradient overlay on image for text readability / polish */
-  .tl-image::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, transparent 40%, rgba(45, 46, 51, 0.5) 100%);
-    pointer-events: none;
   }
 
   .tl-image img {
@@ -724,8 +770,8 @@ const jsonLd = getFAQSchema(aboutFaqs);
     transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
   }
 
-  .tl-card:hover .tl-image img {
-    transform: scale(1.06);
+  @media (hover: hover) {
+    .tl-card:hover .tl-image img { transform: scale(1.04); }
   }
 
   /* ── Card content ── */
@@ -758,7 +804,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
   .tl-desc {
     font-size: 0.93rem;
     line-height: 1.7;
-    color: rgba(255, 255, 255, 0.55);
+    color: rgba(255, 255, 255, 0.76);
   }
 
   .tl-detail {
@@ -840,11 +886,12 @@ const jsonLd = getFAQSchema(aboutFaqs);
     overflow: hidden;
     min-height: 0;
     opacity: 0;
+    visibility: hidden;
     transform: translateY(-6px);
-    transition: opacity 0.35s ease, transform 0.35s ease;
+    transition: opacity 0.35s ease, transform 0.35s ease, visibility 0s linear 0.5s;
   }
   .tl-card.is-open .tl-panel { grid-template-rows: 1fr; }
-  .tl-card.is-open .tl-panel-inner { opacity: 1; transform: none; transition-delay: 0.08s; }
+  .tl-card.is-open .tl-panel-inner { opacity: 1; visibility: visible; transform: none; transition-delay: 0.08s, 0.08s, 0s; }
   .tl-panel .tl-image { margin: 2px 14px 0; border-radius: 12px; }
   .tl-panel .tl-content { padding: 16px 18px 20px; }
   .tl-expand-all {
@@ -862,7 +909,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease, transform 0.25s ease;
   }
   .tl-expand-all:hover { transform: translateY(-1px); border-color: var(--c-yellow); color: var(--c-yellow); }
-  .tl-expand-all[aria-pressed="true"] { background: var(--c-yellow); color: var(--c-dark); border-color: var(--c-yellow); }
+  .tl-expand-all[data-all-open] { background: var(--c-yellow); color: var(--c-dark); border-color: var(--c-yellow); }
   .tl-expand-all:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 3px; }
   @media (prefers-reduced-motion: reduce) {
     .tl-panel, .tl-panel-inner, .tl-chevron, .tl-expand-all { transition: none; }
@@ -885,7 +932,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     transform: translateY(20px);
   }
 
-  .tl-cap.is-active {
+  .tl-ready .tl-cap.is-active {
     opacity: 1;
     transform: translateY(0);
   }
@@ -907,7 +954,7 @@ const jsonLd = getFAQSchema(aboutFaqs);
     border-radius: 50%;
     background: var(--c-yellow);
     color: var(--c-dark);
-    box-shadow: 0 0 28px rgba(255, 218, 36, 0.35), 0 4px 20px rgba(0, 0, 0, 0.25);
+    box-shadow: 0 0 0 6px rgba(255, 218, 36, 0.16), 0 4px 14px rgba(0, 0, 0, 0.25);
   }
 
   .tl-cap.is-active .tl-cap-icon {
@@ -924,21 +971,149 @@ const jsonLd = getFAQSchema(aboutFaqs);
     font-weight: 600;
     letter-spacing: 0.1em;
     text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.4);
+    color: rgba(255, 255, 255, 0.68);
   }
 
-  /* ── Ambient glow ── */
-  .timeline::after {
-    content: '';
+  /* ══════ AWARDS — a milestone with `award` is an honor ══════
+   * Spine: a yellow medal that stamps in with a burst when its card arrives.
+   * Card: a yellow edge, a star on its square and who gave it under the title.
+   * No photo: a laurel seal with the year where the photo would be. Flat fills only. */
+  .tl-medal {
+    position: relative;
+    z-index: 1;
+    width: 30px;
+    height: 30px;
+    margin-top: -8px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    border: 2px solid var(--c-dark);
+    box-shadow: 0 0 0 2px var(--c-yellow), 0 0 0 7px rgba(255, 218, 36, 0.16);
+    transition: background 0.5s ease, color 0.5s ease, box-shadow 0.5s ease;
+  }
+  .tl-item--award .tl-dot-ring { width: 48px; height: 48px; top: 11px; }
+
+  .tl-ready .tl-medal {
+    background: #424541;
+    color: #7a7c78;
+    box-shadow: 0 0 0 2px #4c4f4b;
+  }
+  .tl-ready .tl-item--award.is-active .tl-medal {
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    box-shadow: 0 0 0 2px var(--c-yellow), 0 0 0 7px rgba(255, 218, 36, 0.16);
+    animation: tl-stamp 0.75s cubic-bezier(0.22, 1.5, 0.36, 1) both;
+  }
+  @keyframes tl-stamp {
+    0%   { transform: scale(2.4) rotate(-30deg); opacity: 0; }
+    55%  { transform: scale(0.88) rotate(4deg); opacity: 1; }
+    100% { transform: scale(1) rotate(0); opacity: 1; }
+  }
+
+  /* The burst: eight short rays fly out once as the medal lands */
+  .tl-burst { position: absolute; inset: 0; pointer-events: none; }
+  .tl-burst i {
     position: absolute;
     left: 50%;
-    top: 5%;
-    bottom: 5%;
-    width: 300px;
-    transform: translateX(-50%);
-    background: radial-gradient(ellipse at center, rgba(255, 218, 36, 0.035) 0%, transparent 70%);
-    pointer-events: none;
-    z-index: 0;
+    top: 50%;
+    width: 3px;
+    height: 9px;
+    margin: -4.5px 0 0 -1.5px;
+    border-radius: 2px;
+    background: var(--c-yellow);
+    opacity: 0;
+    transform: rotate(calc(var(--n) * 45deg)) translateY(0);
+  }
+  .tl-ready .tl-item--award.is-active .tl-burst i {
+    animation: tl-ray 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.32s both;
+  }
+  @keyframes tl-ray {
+    0%   { opacity: 0; transform: rotate(calc(var(--n) * 45deg)) translateY(-10px) scaleY(0.4); }
+    25%  { opacity: 1; }
+    100% { opacity: 0; transform: rotate(calc(var(--n) * 45deg)) translateY(-34px) scaleY(1); }
+  }
+
+  .tl-item--award .tl-card {
+    border-color: rgba(255, 218, 36, 0.32);
+    background: rgba(255, 218, 36, 0.05);
+  }
+  @media (hover: hover) {
+    .tl-item--award .tl-card:hover {
+      border-color: rgba(255, 218, 36, 0.6);
+      background: rgba(255, 218, 36, 0.08);
+    }
+  }
+  .tl-item--award .tl-year { background: var(--c-yellow); color: var(--c-dark); }
+
+  .tl-award-by {
+    display: inline-flex;
+    align-items: flex-start;
+    gap: 6px;
+    font-family: var(--font-display);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--c-yellow);
+    line-height: 1.3;
+  }
+  .tl-award-by svg { flex-shrink: 0; margin-top: 0.1em; }
+
+  .tl-thumb--award { position: relative; overflow: visible; }
+  .tl-thumb--award img { border-radius: 12px; }
+  .tl-thumb-medal {
+    position: absolute;
+    right: -5px;
+    bottom: -5px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--c-yellow);
+    color: var(--c-dark);
+    border: 2px solid var(--c-dark);
+  }
+
+  .tl-thumb--laurel {
+    position: relative;
+    background: rgba(255, 218, 36, 0.12);
+    color: var(--c-yellow);
+  }
+  .tl-thumb--laurel .tl-laurel { position: absolute; inset: 4px; }
+
+
+  .tl-seal {
+    margin: 2px 14px 0;
+    border-radius: 12px;
+    aspect-ratio: 16 / 9;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    background: rgba(255, 218, 36, 0.08);
+    border: 1px solid rgba(255, 218, 36, 0.22);
+    color: var(--c-yellow);
+  }
+  .tl-seal-wreath {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 148px;
+    height: 148px;
+  }
+  .tl-seal-wreath .tl-laurel { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .tl-laurel-star { position: relative; }
+  .tl-card.is-open .tl-seal-wreath { animation: tl-seal-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.1s both; }
+  @keyframes tl-seal-in {
+    from { transform: scale(0.85) rotate(-8deg); opacity: 0; }
+    to   { transform: none; opacity: 1; }
   }
 
   /* ══════ TIMELINE — Tablet (≤960px) ══════ */
@@ -951,18 +1126,13 @@ const jsonLd = getFAQSchema(aboutFaqs);
       margin-left: var(--space-lg);
     }
 
+    /* The spine runs down the middle of the dot column, so each dot sits on it */
     .tl-track {
-      left: 0;
-      transform: none;
+      left: calc(var(--tl-gutter) / 2);
+      transform: translateX(-50%);
     }
 
-    .tl-cursor { left: 0; }
-
-    .timeline::after {
-      left: 0;
-      width: 160px;
-      transform: none;
-    }
+    .tl-cursor { left: calc(var(--tl-gutter) / 2); }
 
     .tl-item {
       grid-template-columns: var(--tl-gutter) 1fr;
@@ -996,6 +1166,20 @@ const jsonLd = getFAQSchema(aboutFaqs);
     }
   }
 
+  /* ══════ TIMELINE — Narrow phones (≤400px): a smaller square leaves the words room ══════ */
+  @media (max-width: 400px) {
+    .tl-toggle { grid-template-columns: 48px 1fr auto; gap: 12px; padding: 12px 12px 12px 10px; }
+    .tl-thumb { width: 48px; height: 48px; border-radius: 10px; }
+    .tl-thumb--award img { border-radius: 10px; }
+    .tl-thumb--laurel .tl-laurel { inset: 2px; width: 44px; height: 44px; }
+    .tl-chevron { width: 30px; height: 30px; }
+    .tl-award-by { font-size: 0.68rem; letter-spacing: 0.06em; }
+  }
+  @media (max-width: 360px) {
+    .tl-toggle { grid-template-columns: 1fr auto; padding-left: 14px; }
+    .tl-thumb { display: none; }
+  }
+
   /* ══════ TIMELINE — Mobile (≤640px) ══════ */
   @media (max-width: 640px) {
     .timeline-section {
@@ -1020,7 +1204,15 @@ const jsonLd = getFAQSchema(aboutFaqs);
 
     .tl-dot-core { width: 10px; height: 10px; }
 
-    .tl-dot-ring { width: 24px; height: 24px; top: 15px; }
+    .tl-dot-ring { width: 24px; height: 24px; top: 13px; }
+
+    .tl-medal { width: 24px; height: 24px; margin-top: -7px; }
+    .tl-medal svg { width: 11px; height: 11px; }
+    .tl-item--award .tl-dot-ring { width: 38px; height: 38px; top: 6px; }
+
+    .tl-seal { margin: 2px 12px 0; }
+    .tl-seal-wreath { width: 124px; height: 124px; }
+    .tl-seal-wreath .tl-laurel-star { width: 36px; height: 36px; }
 
     .tl-content { padding: 16px 18px 20px; }
 
@@ -1407,6 +1599,11 @@ const jsonLd = getFAQSchema(aboutFaqs);
     .tl-cap { opacity: 1 !important; transform: none !important; }
     .tl-cap-icon { animation: none !important; }
     .tl-connector { width: 30px !important; }
+    .tl-medal { animation: none !important; }
+    .tl-burst { display: none !important; }
+    .tl-seal-wreath { animation: none !important; }
+    .tl-card:hover { transform: none !important; }
+    .tl-card:hover .tl-image img { transform: none !important; }
   }
 </style>
 
@@ -1430,22 +1627,35 @@ const jsonLd = getFAQSchema(aboutFaqs);
       card.classList.toggle('is-open', open);
       card.querySelector<HTMLButtonElement>('.tl-toggle')?.setAttribute('aria-expanded', String(open));
     };
+    /* The cards a visitor opened stay open when they come back with Back or Forward (this tab only);
+     * a reload or a fresh visit starts with just the first one open */
+    const KEY = 'soard-about-open';
+    const remember = () => {
+      try { sessionStorage.setItem(KEY, JSON.stringify(cards.map(c => c.classList.contains('is-open')))); } catch { /* private mode */ }
+    };
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+      if (cameBack() && Array.isArray(saved) && saved.length === cards.length) cards.forEach((c, i) => setOpen(c, !!saved[i]));
+      else sessionStorage.removeItem(KEY);
+    } catch { /* nothing saved */ }
     const syncExpandAll = () => {
       if (!expandAll) return;
       const allOpen = cards.length > 0 && cards.every(c => c.classList.contains('is-open'));
-      expandAll.setAttribute('aria-pressed', String(allOpen));
+      expandAll.toggleAttribute('data-all-open', allOpen);
       expandAll.textContent = allOpen ? 'Collapse all' : 'Expand all';
     };
     cards.forEach(card => {
       card.querySelector<HTMLButtonElement>('.tl-toggle')?.addEventListener('click', () => {
         setOpen(card, !card.classList.contains('is-open'));
         syncExpandAll();
+        remember();
       });
     });
     expandAll?.addEventListener('click', () => {
-      const open = expandAll.getAttribute('aria-pressed') !== 'true';
+      const open = !expandAll.hasAttribute('data-all-open');
       cards.forEach(c => setOpen(c, open));
       syncExpandAll();
+      remember();
     });
     syncExpandAll();
 
@@ -1540,15 +1750,17 @@ const jsonLd = getFAQSchema(aboutFaqs);
       capObserver.observe(cap);
     }
 
-    /* ── Safety net — force-reveal if observer misses items ── */
+    /* ── Safety net: reveal anything the observer missed that's already on or above the screen.
+     * Items further down wait for the visitor, so their medals still land when they arrive. */
     const safety = setTimeout(() => {
+      const fold = window.innerHeight;
       items.forEach(el => {
-        if (!el.classList.contains('is-active')) {
+        if (!el.classList.contains('is-active') && el.getBoundingClientRect().top < fold) {
           el.classList.add('is-active');
           itemObserver.unobserve(el);
         }
       });
-      if (cap && !cap.classList.contains('is-active')) cap.classList.add('is-active');
+      if (cap && !cap.classList.contains('is-active') && cap.getBoundingClientRect().top < fold) cap.classList.add('is-active');
     }, 4000);
 
     /* ── Cleanup for Astro View Transitions ── */
@@ -1558,6 +1770,15 @@ const jsonLd = getFAQSchema(aboutFaqs);
       capObserver?.disconnect();
       clearTimeout(safety);
     }, { once: true });
+  }
+
+  /* How this page was reached: Back/Forward inside the site (the router's 'traverse'), or a browser-level back_forward load */
+  let lastNav = '';
+  document.addEventListener('astro:before-preparation', (e) => { lastNav = (e as Event & { navigationType?: string }).navigationType || ''; });
+  function cameBack() {
+    if (lastNav) return lastNav === 'traverse';
+    const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+    return nav?.type === 'back_forward';
   }
 
   document.addEventListener('astro:page-load', initTimeline);

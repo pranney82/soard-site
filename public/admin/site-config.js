@@ -1221,6 +1221,7 @@ function AboutPage({ c }) {
               </div>
               <${AreaField} label="What happened" value=${m.desc} onChange=${(v) => up({ desc: v })} rows=${2} max=${320} />
               <${AreaField} label="More detail" value=${m.detail} onChange=${(v) => up({ detail: v || undefined })} rows=${2} max=${600} optional hint="Under the description when the milestone is open." />
+              <${TextField} label="Award from" value=${m.award} onChange=${(v) => up({ award: v.trim() ? v : undefined })} max=${48} optional placeholder="NARI Atlanta" hint="For an honor: who gave it. It gets a medal on the timeline, and a laurel with the year when it has no photo." />
             </div>
           </div>`} />
     <//>
