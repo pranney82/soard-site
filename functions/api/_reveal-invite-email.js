@@ -27,6 +27,13 @@ const SERIF = "'Libre Baskerville',Georgia,'Times New Roman',serif";
 const SANS = "'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 const LOGO = `${CF}/brand-logo-dark-bg-tagline-display/w=400,q=85`;
 
+export const LOGO_TRANSFORM = 'w=400,h=160,fit=pad,background=white,q=88';
+/** A partner name a person would write, not an uploaded file's ("Screenshot 2026-08-31 at 15.46.42", "IMG_123.png") */
+export const realPartnerName = (name) => !!String(name || '').trim() && !/^(screenshot|screen shot|img[_ -]?\d|image\s*\d|dsc|photo)\b|\.(png|jpe?g|gif|webp|svg)$/i.test(String(name).trim());
+
+/** Every partner logo URL the email would load, in its email size */
+export const partnerLogoUrls = (kid) => (kid?.partnerLogos || []).filter((l) => l && l.url).map((l) => cfImg(l.url, LOGO_TRANSFORM));
+
 export function escapeHtml(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -104,7 +111,7 @@ export function calendarLinks(slug, site = SITE_URL) {
  * @param {string} [p.subjectPrefix]  "TEST · " for a rehearsal
  * @returns {{ subject: string, preview: string, html: string, text: string }}
  */
-export function revealInviteEmail({ kid = {}, date, time, address = '', notes = '', room = '', subjectPrefix = '', site = SITE_URL } = {}) {
+export function revealInviteEmail({ kid = {}, date, time, address = '', notes = '', room = '', subjectPrefix = '', site = SITE_URL, brokenLogos = new Set() } = {}) {
   const name = curly(kid.name || 'our next kid');
   const slug = kid.slug || '';
   const kidUrl = slug ? `${site}/kids/${slug}/` : `${site}/kids/`;
@@ -186,13 +193,19 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     if (seenLogo.has(key)) return false;
     seenLogo.add(key);
     return true;
+  }).flatMap((l) => {
+    if (!brokenLogos.has(cfImg(l.url, LOGO_TRANSFORM))) return [l];
+    // Broken: the name in text, unless the "name" is only a file's (a screenshot upload)
+    return realPartnerName(l.name) ? [{ ...l, text: true }] : [];
   });
   const logoRows = [];
   for (let i = 0; i < logos.length; i += 3) {
     const cells = [0, 1, 2].map((c) => {
       const l = logos[i + c];
       if (!l) return '<td width="33.33%" style="padding:5px;">&nbsp;</td>';
-      return `<td width="33.33%" valign="middle" style="padding:5px;"><div style="background:#FFFFFF;border-radius:10px;padding:8px 10px;text-align:center;"><img src="${escapeHtml(cfImg(l.url, 'w=400,h=160,fit=pad,background=white,q=88'))}" width="140" alt="${escapeHtml(l.name || '')}" class="fl" style="width:100%;max-width:150px;height:auto;display:inline-block;vertical-align:middle;" /></div></td>`;
+      // A logo that doesn't load reads as the partner's name instead of a broken picture
+      if (l.text) return `<td width="33.33%" valign="middle" style="padding:5px;"><div style="background:#FFFFFF;border-radius:10px;padding:8px 10px;text-align:center;height:40px;line-height:20px;display:table;width:100%;box-sizing:border-box;"><span style="display:table-cell;vertical-align:middle;font-family:${SANS};font-size:13px;font-weight:700;color:${D};">${escapeHtml(l.name)}</span></div></td>`;
+      return `<td width="33.33%" valign="middle" style="padding:5px;"><div style="background:#FFFFFF;border-radius:10px;padding:8px 10px;text-align:center;"><img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="140" alt="${escapeHtml(l.name || '')}" class="fl" style="width:100%;max-width:150px;height:auto;display:inline-block;vertical-align:middle;" /></div></td>`;
     });
     logoRows.push(`<tr>${cells.join('')}</tr>`);
   }

@@ -21,7 +21,7 @@
 import { kitConfigured, kitCreateBroadcast, kitUpdateDraft, kitListAudiences } from './_kit.js';
 import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
-import { revealInviteEmail, revealWhen, SITE_URL } from './_reveal-invite-email.js';
+import { revealInviteEmail, revealWhen, partnerLogoUrls, SITE_URL } from './_reveal-invite-email.js';
 
 export const KIT_INVITE_DEFAULTS = Object.freeze({ enabled: true, reviewer: 'linzi@soardcharity.com', audience: 'Reveal Emails' });
 export const kitInviteSettings = (config) => ({ ...KIT_INVITE_DEFAULTS, ...(config?.kitInvite || {}) });
@@ -71,6 +71,27 @@ export async function findAudience(env, name) {
   if (seg) return { type: 'segment', id: seg.id, name: seg.name, count: tag?.count ?? null };
   if (tag) return { type: 'tag', id: tag.id, name: tag.name, count: tag.count ?? null };
   return null;
+}
+
+/**
+ * Partner logos that don't load (a deleted image, a bad upload), by their
+ * email-size URL, so the email shows the partner's name instead of a broken
+ * picture. A logo that can't be checked in time counts as loading.
+ */
+export async function brokenLogos(kid, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
+  const urls = [...new Set(partnerLogoUrls(kid))];
+  const broken = new Set();
+  await Promise.all(urls.map(async (url) => {
+    try {
+      const res = await fetchImpl(url, { method: 'GET', signal: AbortSignal.timeout(timeoutMs) });
+      const type = res.headers.get('content-type') || '';
+      if (!res.ok || !/^image\//i.test(type)) broken.add(url);
+      res.body?.cancel?.();
+    } catch (err) {
+      if (err?.name !== 'TimeoutError') broken.add(url);
+    }
+  }));
+  return broken;
 }
 
 /** What the email says, as facts: a change to any of these rewrites the draft */
@@ -157,7 +178,7 @@ async function problem(env, alertTo, row, { jobId, name, error }) {
  *
  * @returns {Promise<{kit: string, reason?: string, id?: string, error?: string}>}
  */
-export async function syncKitInvite(env, { jobId, plan, who, room = '', config = {}, sandbox = false, alertTo = [], dryRun = false, early = false }) {
+export async function syncKitInvite(env, { jobId, plan, who, room = '', config = {}, sandbox = false, alertTo = [], dryRun = false, early = false, fetchImpl = fetch }) {
   const s = kitInviteSettings(config);
   if (!s.enabled) return { kit: 'off' };
   if (sandbox) return { kit: 'skip', reason: 'a rehearsal leaves Kit alone' };
@@ -180,7 +201,7 @@ export async function syncKitInvite(env, { jobId, plan, who, room = '', config =
     let kid = null;
     try { kid = kidRow ? JSON.parse(kidRow.data) : null; } catch { /* unreadable */ }
     if (!kid || (kid.publishStatus && kid.publishStatus !== 'published')) return { kit: 'skip', reason: 'the kid page isn’t published' };
-    const email = revealInviteEmail({ kid: { ...kid, slug: who.slug }, date: f.date, time: f.start, address: f.address, notes: f.details, room: f.room });
+    const email = revealInviteEmail({ kid: { ...kid, slug: who.slug }, date: f.date, time: f.start, address: f.address, notes: f.details, room: f.room, brokenLogos: await brokenLogos(kid, { fetchImpl }) });
     const description = `[auto] ${who.name} reveal invite`;
     if (dryRun) return { kit: row?.broadcast_id ? 'would-update' : 'would-draft', subject: email.subject };
     const base = { job_id: jobId, slug: who.slug, reveal_date: f.date, reviewer: s.reviewer };
