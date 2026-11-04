@@ -9,7 +9,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
 import { createD1 } from './lib/d1-shim.mjs';
-import { wordsOf, pdfPages, readBoardWords, wordsStatus, filingWordsFor, joinStrips, READER } from '../functions/api/_board-file-words.js';
+import { wordsOf, pdfPages, readBoardWords, wordsStatus, filingWordsFor, joinStrips, READER, RETRY } from '../functions/api/_board-file-words.js';
 import { saveMeeting, putFile, portalWords, saveDoc, ensureSchema, maybeRunBoard } from '../functions/api/_board.js';
 import { newMeeting, todayEastern } from '../public/admin/board-shared.js';
 
@@ -447,24 +447,52 @@ test('while the board’s files are only being read again by a newer reader, a f
   assert.match((await filingWordsFor(env.DB, ['/files/financials/2024%20990.pdf']))['/files/financials/2024%20990.pdf'], /Exempt From Income Tax/);
 });
 
-test('a file an older reader gave up on is tried afresh by a newer one, three times, then let be until the next', async () => {
+test('a file given up on before RETRY is tried afresh, three times, then let be until the next', async () => {
   env.AI = { async toMarkdown() { throw new Error('converter down'); } };
   const m = await meeting('2024-04-25');
   const f = await put(m, 'Q3 Totals.pdf', pdf());
-  await env.DB.prepare('UPDATE board_files SET words_v = -3, words_fail = ? WHERE id = ?').bind(READER - 1, f.id).run();
+  await env.DB.prepare('UPDATE board_files SET words_v = -3, words_fail = ? WHERE id = ?').bind(RETRY - 1, f.id).run();
   const row = () => env.DB.prepare('SELECT words, words_v, words_fail FROM board_files WHERE id = ?').bind(f.id).first();
   assert.equal((await wordsStatus(env.DB)).failed, 0, 'not this reader’s to give up on');
   assert.equal((await wordsStatus(env.DB)).toRead, 1);
   await readBoardWords(env);
-  assert.deepEqual({ ...(await row()) }, { words: null, words_v: -1, words_fail: READER }, 'its count started again');
+  assert.deepEqual({ ...(await row()) }, { words: null, words_v: -1, words_fail: RETRY }, 'its count started again');
   await readBoardWords(env);
   await readBoardWords(env);
   assert.equal((await row()).words_v, -3);
   assert.equal(await readBoardWords(env), 0, 'then let be');
   assert.equal((await wordsStatus(env.DB)).failed, 1);
-  // Read by this reader once Workers AI is back? Only by a newer one; a file given up on by an older one with words read now
+  // Given up on before RETRY was raised: read now, Workers AI back
   await env.DB.prepare('UPDATE board_files SET words_fail = NULL WHERE id = ?').bind(f.id).run();
   env.AI = ai({ 'Q3 Totals.pdf': ['Q3 totals for both stores'] });
   assert.equal(await readBoardWords(env), 1);
   assert.equal((await row()).words, 'Q3 totals for both stores');
+});
+
+test('a full-size scan (megabytes of page photos) is read: never too big to count its pages', async () => {
+  // Twelve pages, each a 200 KB photo, each its own page object
+  const parts = [Buffer.from('%PDF-1.4\n1 0 obj << /Type /Pages /Count 12 >> endobj\n', 'latin1')];
+  for (let i = 1; i <= 12; i++) {
+    const jpeg = Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, i]), Buffer.alloc(200 * 1024, 7), Buffer.from([0xFF, 0xD9])]);
+    parts.push(Buffer.from(`${i + 1} 0 obj << /Type /Page /Parent 1 0 R >> endobj\n${i + 20} 0 obj\n<< /Type /XObject /Subtype /Image /Width 1700 /Height 2200 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`, 'latin1'), jpeg, Buffer.from('\nendstream\nendobj\n', 'latin1'));
+  }
+  const bytes = new Uint8Array(Buffer.concat([...parts, Buffer.from('%%EOF', 'latin1')]));
+  assert.ok(bytes.length > 2 * 1024 * 1024);
+  env.AI = { async toMarkdown() { return { format: 'markdown', data: '### Page 1\n' }; }, async run(model, input) { return { response: `Audit page ${pageOf(input)}` }; } };
+  const r = await wordsOf(env, { name: '2019 Audit.pdf', type: 'application/pdf', bytes });
+  assert.equal(r.how, 'pictures');
+  assert.equal(r.words.split('\f').length, 12);
+  assert.match(r.words.split('\f')[11], /Audit page 12/);
+});
+
+test('a file read by this reader is never read again when RETRY is raised; one given up on with older words keeps them until it’s read', async () => {
+  env.AI = ai({ 'read.pdf': ['Read words'], 'scan.pdf': ['Scan words, read now'] });
+  const m = await meeting('2024-04-25');
+  const a = await put(m, 'read.pdf', pdf());
+  const b = await put(m, 'scan.pdf', pdf());
+  await env.DB.prepare("UPDATE board_files SET words = 'Read words', words_v = ? WHERE id = ?").bind(READER, a.id).run();
+  await env.DB.prepare("UPDATE board_files SET words = 'Older words', words_v = -3, words_fail = ? WHERE id = ?").bind(RETRY - 1, b.id).run();
+  assert.equal(await readBoardWords(env), 1);
+  assert.equal(env.AI.calls.markdown, 1, 'only the one given up on');
+  assert.equal((await env.DB.prepare('SELECT words FROM board_files WHERE id = ?').bind(b.id).first()).words, 'Scan words, read now');
 });
