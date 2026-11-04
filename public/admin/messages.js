@@ -35,7 +35,7 @@ import { SentView } from './messages-sent.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'October 28, 2026';
+const WRITTEN_ON = 'November 4, 2026';
 const API = '/api/messages-admin';
 
 // ─── Live check helpers ───────────────────
@@ -298,6 +298,14 @@ const MAP = { t: 'Everything we send', children: [
           does: 'Google’s “Updated invitation” email with the new details. Wording edits alone never re-send.',
           touches: ['Google Calendar', 'JobTread', 'D1'], where: 'functions/api/_reveal-invites.js (reconcile, the 5-minute guest check)',
           live: inviteLive('updated') },
+        { t: 'Invite email (Kit draft)', s: 'live', k: 'kit', by: 'auto', preview: 'kit-invite', change: CHANGE.invites,
+          who: 'Kit’s “Reveal Emails” group, once staff send the draft. Nobody before that.',
+          when: 'Reveal Date Confirmed turns Yes in JobTread with a time, and the kid’s page is published. A new day, time, address or notes rewrites the draft while it’s still a draft.',
+          subject: 'You’re Invited to {kid}’s Reveal Day!',
+          does: 'The Remi & Nico invite design, filled in from the kid’s page and JobTread: photo, story, room, the day and time, the family’s address and notes, Google, Apple and Outlook buttons, the live link and the partners. The site never sends it.',
+          touches: ['Kit', 'JobTread', 'D1'], where: 'functions/api/_reveal-invite-kit.js (syncKitInvite) · _reveal-invite-email.js',
+          info: 'It has the family’s address, so with no “Reveal Emails” segment or tag in Kit there is no draft (Kit’s default audience is everyone). Rehearsals on TEST jobs leave Kit alone.',
+          live: first(needs('kit', NO_KIT), () => ON()) },
         { t: 'Test invite taken back', s: 'live', k: 'invite', by: 'auto', key: 'invite-cancel',
           who: 'Whoever was on a TEST invite: the office sandbox job, or a Send it to me copy.',
           when: 'The site takes a test invite back. A real reveal’s invite is never cancelled by the site: staff do that in Google Calendar, after the “Invite still out” email.',
@@ -590,6 +598,12 @@ const MAP = { t: 'Everything we send', children: [
           does: 'What Google or JobTread said, and the fix.',
           touches: ['Resend', 'Slack'], where: 'functions/api/_reveal-invites.js (inviteAlert)',
           live: (f) => (!f.invites ? null : f.invites.problems ? ATTN(`${plural(f.invites.problems, 'invite has', 'invites have')} a problem right now. Reveals → Now shows which.`) : ON('No invite has a problem right now.')) },
+        { t: 'Review the invite email', s: 'live', k: 'email', also: ['slack'], by: 'auto', preview: 'staff-invite-review', change: CHANGE.invites,
+          who: 'Linzi (the reviewer), and Slack. When it can’t be drafted: the invite alert list.',
+          when: 'The invite email is drafted in Kit, the draft is rewritten, or the reveal changes after the email went out.',
+          subject: 'Review {kid}’s reveal invite in Kit',
+          does: 'The day, the place and who it goes to, with a button straight to the draft in Kit.',
+          touches: ['Resend', 'Slack'], where: 'functions/api/_reveal-invite-kit.js (reviewNote)' },
         { t: 'Invite still out', s: 'live', k: 'email', by: 'auto', preview: 'staff-invite-held', change: CHANGE.invites,
           who: 'The invite alert list, the organizer, and Peter.',
           when: 'JobTread says a reveal may be off (job closed, denied, awaiting funding, no date) while its invite is out.',

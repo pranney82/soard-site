@@ -58,6 +58,8 @@ import { organizerFor } from './_board-invite.js';
 import { newMeeting, meetingName } from '../../public/admin/board-shared.js';
 import { checkAnswers as advisoryAnswers } from './_advisory-form.js';
 import { planDemo, demoAlert, sendTestDemo, readConfig as readDemoConfig, listPeople as demoPeople } from './_demo-invites.js';
+import { revealInviteEmail } from './_reveal-invite-email.js';
+import { reviewNote, KIT_INVITE_DEFAULTS } from './_reveal-invite-kit.js';
 
 const { SITE_ORIGIN, EMAIL_FROM } = notify;
 const DAY = 864e5;
@@ -673,6 +675,21 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
         note: 'Workers AI writes it from the diagnosis the family typed (here, “Cerebral palsy”). When it can’t, the family’s own words go up with a note to look the condition up.',
         send: null,
       };
+    }
+    case 'kit-invite':
+    case 'staff-invite-review': {
+      // The next kid still being built, as their page reads now, at a sample day, time and address
+      const row = await env.DB.prepare("SELECT data FROM kids WHERE status = 'in-progress' ORDER BY year DESC, name LIMIT 1").first().catch(() => null);
+      let kid = null;
+      try { kid = row ? JSON.parse(row.data) : null; } catch { /* sample below */ }
+      kid = kid || { name: SAMPLE.childFirst, slug: '', roomTypes: ['Accessible Bathroom'] };
+      const day = new Date(now + 14 * 86400e3).toISOString().slice(0, 10);
+      const facts = { name: kid.name, slug: kid.slug, date: day, start: '16:00', address: SAMPLE.address, details: 'Park along the street. We’ll have signs out front.', room: (kid.roomTypes || []).join(' + ') };
+      if (id === 'staff-invite-review') {
+        return email(reviewNote('created', { name: kid.name, f: facts, id: '0', audienceName: KIT_INVITE_DEFAULTS.audience }), { to: `${KIT_INVITE_DEFAULTS.reviewer} (the reviewer in Reveals → Invites)` });
+      }
+      const m = revealInviteEmail({ kid, date: day, time: '16:00', address: SAMPLE.address, notes: facts.details });
+      return { channel: 'kit', from: KIT_FROM, to: `Kit’s “${KIT_INVITE_DEFAULTS.audience}” group, once staff send the draft`, subject: m.subject, html: m.html, text: m.text, note: `${kid.name}’s page as it reads now, with a sample day, time and address. Kit adds its own unsubscribe link and mailing address under it.`, send: 'email' };
     }
     case 'staff-invite-problem':
       return email(inviteAlert('problem', { jobId: 'sample', name: SAMPLE.childFirst, error: 'Google Calendar returned 503 (backend error)', taskId: null }), { to: 'The invite alert list, the organizer, and peter@soardcharity.com' });

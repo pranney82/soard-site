@@ -164,6 +164,33 @@ test('a rehearsal (a TEST job) resolves from the broadcast’s plan, marked TEST
   await refused('reveal=drafty');
 });
 
+test('&app=google / &app=outlook open the same reveal in that calendar; nothing else redirects', async () => {
+  const g = await get('reveal=rowan-test&app=google');
+  assert.equal(g.status, 302);
+  const gu = new URL(g.headers.get('Location'));
+  assert.equal(gu.origin + gu.pathname, 'https://calendar.google.com/calendar/render');
+  assert.equal(gu.searchParams.get('action'), 'TEMPLATE');
+  assert.equal(gu.searchParams.get('text'), "Rowan's Reveal Day");
+  assert.equal(gu.searchParams.get('dates'), '20270312T200000Z/20270312T220000Z');
+  assert.match(gu.searchParams.get('details'), /\/kids\/rowan-test\//);
+  assert.equal(gu.searchParams.get('location'), null, 'never an address');
+
+  const o = await get('reveal=rowan-test&app=outlook');
+  assert.equal(o.status, 302);
+  const ou = new URL(o.headers.get('Location'));
+  assert.equal(ou.origin + ou.pathname, 'https://outlook.live.com/calendar/0/deeplink/compose');
+  assert.equal(ou.searchParams.get('subject'), "Rowan's Reveal Day");
+  assert.equal(ou.searchParams.get('startdt'), '2027-03-12T20:00:00Z');
+  assert.equal(ou.searchParams.get('enddt'), '2027-03-12T22:00:00Z');
+  assert.equal(ou.searchParams.get('allday'), 'false');
+
+  // An event keeps its address; an unknown app is just the file; an unknown kid is still a 404
+  const ev = new URL((await get('event=test-gala&app=google')).headers.get('Location'));
+  assert.match(ev.searchParams.get('location'), /Example Hall/);
+  assert.equal((await ics('reveal=rowan-test&app=evil.example')).field('SUMMARY'), "Rowan's Reveal Day");
+  await refused('reveal=nope&app=google');
+});
+
 test('signed links carry staff’s own words; a changed field loses them', async () => {
   const fields = { title: 'Rowan’s big day', start: '20270312T200000Z', end: '20270312T220000Z', location: "Rowan's Home, 12 Example Ln", details: 'Park on the street.', url: `${SITE}/kids/rowan-test`, uid: 'reveal-rowan-test-20270312@sunshineonaranneyday.com', reveal: 'rowan-test' };
   const href = calendarIcsUrl(fields, { secret: SECRET });

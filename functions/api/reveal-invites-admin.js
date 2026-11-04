@@ -21,13 +21,14 @@
  * POST { enabled, organizer } → turn sending on/off, change the organizer (one of
  *                               allowedOrganizers: the site sends as that person)
  *
+ * GET ?kit-draft=<jobId> → draft that reveal's invite email in Kit now (before JobTread confirms); the reviewer is emailed
  * Test links are GETs on purpose: open them in a browser signed in to Access.
  */
 
 import {
   ensureSchema, readConfig, writeConfig, reconcileJob, reconcileAll, sendTestInvite,
   listUpcoming, maybeSweep, maybeCheckGuests, boardRoster, setBoardEmail, refreshForBoardChange, DEFAULT_TEMPLATE, TEMPLATE_LIMITS,
-  allowedOrganizers,
+  allowedOrganizers, draftInviteEmailNow,
 } from './_reveal-invites.js';
 import { readNudgeConfig, writeNudgeConfig, runNudges, maybeNudge, summarize, SANDBOX_JOB_ID } from './_reveal-nudges.js';
 import { logAudit } from './_audit.js';
@@ -117,6 +118,19 @@ export async function onRequestGet(context) {
       if (!ID.test(jobId)) return fail('A JobTread job id is required');
       const result = await reconcileJob(env, jobId);
       return Response.json({ ok: result.action !== 'error', ...result, ...(result.event ? { event: undefined } : {}) });
+    }
+
+    // Draft this reveal's invite email in Kit now, before JobTread confirms
+    // it (the reviewer is emailed; the time fills in once it's confirmed)
+    if (q.has('kit-draft')) {
+      const jobId = q.get('kit-draft');
+      if (!ID.test(jobId)) return fail('A JobTread job id is required');
+      if (!me.includes('@')) return fail('Could not tell who you are from Access', 403);
+      const result = await draftInviteEmailNow(env, jobId);
+      if (result.id) {
+        await logAudit(env.DB, { userEmail: me, action: 'created', entityType: 'newsletter', entitySlug: String(result.id), entityName: `Kit reveal invite draft: ${result.name || jobId}`, gitStatus: 'ok' }).catch(() => {});
+      }
+      return Response.json({ ok: !['error', 'skip', 'off'].includes(result.kit), ...result, ...(result.id ? { url: `https://app.kit.com/campaigns/${result.id}` } : {}) });
     }
 
     if (q.has('preview')) {

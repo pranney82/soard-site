@@ -23,6 +23,10 @@
  *                       itself is used, so it can't put words on our domain.
  * Anything else is a plain 404 page.
  *
+ * Add &app=google or &app=outlook to any of these to open the same invite in
+ * Google Calendar or Outlook.com instead of downloading a file (the Kit
+ * reveal-invite template's three calendar buttons).
+ *
  *   start  compact UTC ("20260615T190000Z") for a timed event, or YYYYMMDD
  *          for an all-day event (allday=1)
  *   end    same format; for all-day, the EXCLUSIVE end (the day after)
@@ -273,7 +277,35 @@ export async function onRequestGet(context) {
     ev = null;
   }
   if (!ev) return notFound();
+  const app = q.get('app');
+  if (app === 'google' || app === 'outlook') return appRedirect(app, ev);
   return icsResponse(ev);
+}
+
+/** Compact UTC ("20270312T200000Z") or a day ("20270312") → ISO for Outlook */
+function isoFromCompact(s) {
+  if (isCompactDate(s)) return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}T${s.slice(9, 11)}:${s.slice(11, 13)}:${s.slice(13, 15)}Z`;
+}
+
+/**
+ * ?app=google | ?app=outlook: the same invite, opened in that calendar's own
+ * "add event" screen, so a Gmail or Outlook.com reader adds it in one click
+ * (an .ics file downloads instead on the web). Only these two fixed hosts,
+ * and only from what the site resolved above, so it can't redirect elsewhere.
+ */
+function appRedirect(app, { title, start, end, allDay, location, details }) {
+  let to;
+  if (app === 'google') {
+    const p = new URLSearchParams({ action: 'TEMPLATE', text: title, dates: `${start}/${end}`, details: details || '', ctz: 'America/New_York' });
+    if (location) p.set('location', location);
+    to = `https://calendar.google.com/calendar/render?${p}`;
+  } else {
+    const p = new URLSearchParams({ path: '/calendar/action/compose', rru: 'addevent', subject: title, startdt: isoFromCompact(start), enddt: isoFromCompact(end), body: details || '', allday: allDay ? 'true' : 'false' });
+    if (location) p.set('location', location);
+    to = `https://outlook.live.com/calendar/0/deeplink/compose?${p}`;
+  }
+  return new Response(null, { status: 302, headers: { Location: to, 'Cache-Control': 'public, max-age=300', 'X-Robots-Tag': 'noindex' } });
 }
 
 function icsResponse({ uid, title, start, end, allDay, location, details, url: eventUrl }) {

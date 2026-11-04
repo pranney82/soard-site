@@ -134,7 +134,8 @@ const BY_TAG = {
 export function entryFor(type, subject = '') {
   const s = String(subject || '');
   if (/^\[(preview|test|test run|rehearsal)\]\s|^TEST · |^\[SOARD Live\] TEST · |^\[SOARD\] TEST · /i.test(s)) return 'preview';
-  if (type === 'reveal-invite-alert') return /still out/i.test(s) ? 'staff-invite-held' : 'staff-invite-problem';
+  if (type === 'reveal-invite-alert') return /still out/i.test(s) ? 'staff-invite-held' : /wasn.t drafted/i.test(s) ? 'staff-invite-review' : 'staff-invite-problem';
+  if (type === 'reveal-invite-review') return 'staff-invite-review';
   if (type === 'demo-invite-alert') return /still out|is waiting/i.test(s) ? 'staff-demo-heads-up' : 'staff-demo-problem';
   // Every staff alert (alertAdmins) shares one tag: its title says which it is
   if (type === 'live-alert' || /^\[SOARD Live\] /.test(s)) return alertEntry(s.replace(/^\[SOARD Live\] /, ''));

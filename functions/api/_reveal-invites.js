@@ -64,6 +64,7 @@ import { slackCard } from './_slack-cards.js';
 import { personStatus, personName } from './_team.js';
 import { limit } from './_rate-limit.js';
 import { syncKidStatuses } from './_kid-status.js';
+import { syncKitInvite } from './_reveal-invite-kit.js';
 import { LEVEL_ROLES, TRADE_ROLE } from './_partner-roles.js';
 
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
@@ -758,6 +759,14 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   const sent = !!(row?.event_id && row.state !== 'cancelled');
   const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null, template: config.template, sent });
   if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
+  // The invite email, drafted in Kit for staff to send, follows the same look
+  // at JobTread: confirmed with a time drafts it, a change rewrites the draft
+  // (./_reveal-invite-kit.js). Its own problems never stop the calendar invite.
+  if (!dryRun && config.enabled && plan.action === 'upsert') {
+    const who = displayName(job, kids);
+    const room = fieldValues(job.customFieldValues?.nodes)[FIELD_MAKEOVER_TYPE] || '';
+    await syncKitInvite(env, { jobId, plan, who, room, config, sandbox, alertTo: alertList(env, config) }).catch(() => null);
+  }
   const live = !dryRun && (config.enabled || force || sandbox);
   const guestCount = () => (row?.guests ? JSON.parse(row.guests).length : null);
 
@@ -886,6 +895,30 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   } catch (err) {
     return failed(row, err);
   }
+}
+
+/**
+ * Draft the invite email in Kit now, before JobTread confirms the reveal
+ * (Reveals → Invites, for the next kid up). It has the date JobTread has now;
+ * the time fills in by itself once the reveal is confirmed.
+ */
+export async function draftInviteEmailNow(env, jobId, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  await ensureSchema(DB);
+  const config = await readConfig(DB);
+  const [job, staff, kids, board] = await Promise.all([
+    fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
+    fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
+    loadKidsAndProjects(DB).catch(() => []),
+    fetchBoard(env, fetchImpl),
+  ]);
+  const row = await readRow(DB, jobId);
+  const sent = !!(row?.event_id && row.state !== 'cancelled');
+  const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, template: config.template, sent });
+  const who = job ? displayName(job, kids) : null;
+  const room = job ? fieldValues(job.customFieldValues?.nodes)[FIELD_MAKEOVER_TYPE] || '' : '';
+  const result = await syncKitInvite(env, { jobId, plan, who, room, config, sandbox: jobId === SANDBOX_JOB_ID || isTestJob(job), alertTo: alertList(env, config), early: true });
+  return { jobId, name: who?.name || null, date: plan.date || null, ...result };
 }
 
 /** This job gets a look once the current minute is out (the earliest note stands) */
