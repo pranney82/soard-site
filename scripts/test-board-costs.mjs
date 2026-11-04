@@ -25,7 +25,7 @@ import { answerAsks } from './lib/ask.mjs';
 import { onRequest as middleware, _resetKeyCacheForTests } from '../functions/api/_middleware.js';
 import * as boardAdmin from '../functions/api/board-admin.js';
 import * as boardPortal from '../functions/api/board-portal.js';
-import { saveMeeting, ensureSchema } from '../functions/api/_board.js';
+import { saveMeeting, ensureSchema, patchMeeting } from '../functions/api/_board.js';
 import { writeState } from '../functions/api/_board-roles.js';
 import { ensureApplicantSchema } from '../functions/api/_applicants.js';
 import { saveScorecard } from '../functions/api/_applicant-scores.js';
@@ -134,6 +134,11 @@ const meeting = await saveMeeting(DB, cleanMeeting({ date: day(6), start: '08:00
   { title: 'Committee reports', items: [{ title: 'Financial', live: 'cash' }, { title: 'Qualification Committee', live: 'costs', presenter: 'Kim Park', who: ['kim-park'] }] },
 ] }), { by: FOUNDER });
 const QUAL = meeting.sections[0].items[1].id;
+// Tomorrow's meeting, its packet's numbers locked days ago, before this card (no costs in them): it shows today's
+const locked = await saveMeeting(DB, cleanMeeting({ date: day(1), start: '08:00', end: '10:00', shared: true, sections: [
+  { title: 'Committee reports', items: [{ title: 'Qualification Committee', live: 'costs' }] },
+] }), { by: FOUNDER });
+await patchMeeting(DB, locked.id, (cur) => ({ ...cur, snapshot: { at: new Date(Date.now() - 5 * 86400000).toISOString(), by: FOUNDER, cash: null, books: null, projects: null, reveals: [], events: [], meetings: [] } }));
 
 const env = { DB, CF_ACCESS_TEAM_DOMAIN: 'soard', CF_ACCESS_AUD: 'aud-tag', RESEND_API_KEY: 're_test', JOBTREAD_GRANT_KEY: 'jt-test' };
 const realFetch = globalThis.fetch;
@@ -343,6 +348,11 @@ try {
   ok(/For makeovers now\s*\$169,602/.test(ag) && /Iris/.test(ag), 'the item shows the costs and who the money starts');
   ok(!/Every family’s application/.test(ag), 'without Home’s link out');
   await shotOf(kim, '.bp-aglive--costs', 'agenda-costs-1440');
+  await kim.goto(`${SITE}/admin/board/#/meetings/${locked.id}`, { waitUntil: 'networkidle0' });
+  await kim.waitForSelector('.bp-aglive--costs', { timeout: 10000 });
+  await sleep(800);
+  const tomorrow = await textOf(kim, '.bp-aglive--costs');
+  ok(/For makeovers now\s*\$169,602/.test(tomorrow) && /As of today/.test(tomorrow) && !/locked for this meeting/i.test(tomorrow), 'tomorrow’s meeting, locked before this card: today’s costs, said as today’s');
 
   console.log('A Board admin changes the operating balance where it shows');
   const jane = await tab(FOUNDER);

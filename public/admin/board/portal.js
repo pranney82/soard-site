@@ -3030,7 +3030,8 @@ function DatesBlock({ rows }) {
 /** An item's live facts, drawn for what they are ([] of lines only when the shape isn't known) */
 function LiveBlock({ kind, n, m, data, asFiles = [], notes = null, again = false }) {
   if (!n || !kind || kind === 'minutes') return null;
-  const stamp = kind === 'cash' ? null : html`<p class="bp-aglive__when">${m.snapshot ? `As of ${shortDate(m.snapshot.at.slice(0, 10))}, locked for this meeting` : 'As of today'}</p>`;
+  // (the money and what makeovers cost say their own date: today's for a meeting today or ahead)
+  const stamp = kind === 'cash' || kind === 'costs' ? null : html`<p class="bp-aglive__when">${m.snapshot ? `As of ${shortDate(m.snapshot.at.slice(0, 10))}, locked for this meeting` : 'As of today'}</p>`;
   let body = null;
   if (kind === 'projects') body = html`<${Kanban} projects=${n.projects} reveals=${n.reveals} variant="agenda" />`;
   else if (kind === 'cash') body = html`<${CashBlock} n=${n} data=${data} m=${m} asFiles=${asFiles} notes=${notes} again=${again} />`;

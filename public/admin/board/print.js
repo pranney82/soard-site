@@ -238,7 +238,7 @@ function liveBox(kind, n, m, money, notes = null, books = n?.books) {
 }
 
 /** The agenda as the first pages: the meeting, then each part with its time, and each item */
-function agendaPages(m, { people, numbers, meetings, money, lineNotes = {}, books = numbers?.books }) {
+function agendaPages(m, { people, numbers, meetings, money, lineNotes = {}, books = numbers?.books, costsNumbers = numbers }) {
   let booked = false;
   // The statements QuickBooks draws on the money item aren't printed again as files
   const drawsSt = booksDraw(books).some((b) => b === 'act' || b === 'pos');
@@ -287,7 +287,7 @@ function agendaPages(m, { people, numbers, meetings, money, lineNotes = {}, book
       // QuickBooks' year and statements under the first item showing the money; another shows its figures (as the screen)
       const bk = booked ? null : books;
       if (showsOf(it).includes('cash')) booked = true;
-      for (const k of showsOf(it)) { const facts = liveBox(k, numbers, m, money, k === 'cash' ? lineNotes[it.id] : null, bk); if (facts) row.append(facts); }
+      for (const k of showsOf(it)) { const facts = liveBox(k, k === 'costs' ? costsNumbers : numbers, m, money, k === 'cash' ? lineNotes[it.id] : null, bk); if (facts) row.append(facts); }
       const files = docFiles(it);
       if (files.length) row.append(el('p', 'bpp-docs', `With it: ${files.map((f) => fileTitle(f.name)).join(', ')}`));
       li.append(row);
@@ -318,7 +318,10 @@ export async function printAll(m, { people = [], numbers = null, meetings = [], 
   root.setAttribute('aria-hidden', 'true');
   // The money the Financial item shows: the balance sheet and budget as of this meeting (a past one keeps its own)
   const money = data && m.sections.some((sec) => sec.items.some((it) => showsOf(it).includes('cash'))) ? await moneyFor(data, m.date < data.today ? m.date : '', numbers).catch(() => null) : null;
-  root.append(agendaPages(m, { people, numbers, meetings, money, lineNotes: data?.lineNotes?.[m.id] || {}, books }));
+  // What makeovers cost follows the money's date rule too: today's for a meeting today or ahead (./costs.js useCosts)
+  const live = data && m.date >= data.today ? data.numbers : null;
+  const costsNumbers = live ? { ...numbers, costs: live.costs ?? numbers?.costs, operating: live.operating ?? numbers?.operating, cash: live.cash ?? numbers?.cash, books: live.books ?? numbers?.books } : numbers;
+  root.append(agendaPages(m, { people, numbers, meetings, money, lineNotes: data?.lineNotes?.[m.id] || {}, books, costsNumbers }));
   // How many pages, so the progress can say "12 of 40"
   const docs = [];
   for (const g of groups) for (const f of g.files) {

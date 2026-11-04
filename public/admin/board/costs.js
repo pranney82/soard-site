@@ -221,12 +221,17 @@ function BalanceEdit({ value, onSaved }) {
   </form>`;
 }
 
-/** The model: the money, the plan for the families waiting, and the seasons that count as lately */
+/**
+ * The model: the money, the plan for the families waiting, and the seasons that count as lately. The money's date
+ * rule, as the cash's: a meeting today or ahead shows today's (a packet locked before the day, or before this card,
+ * never hides it); a past meeting, what it locked
+ */
 export function useCosts(data, n, m = null) {
   const upTo = m && m.date < (data.today || todayEastern()) ? m.date : '';
   const cash = useCashNow(data, upTo, n);
-  const c = n?.costs || null;
-  const operating = operatingOf(n);
+  const src = upTo ? n : data.numbers || n;
+  const c = src?.costs || null;
+  const operating = operatingOf(src);
   const makeovers = c?.makeovers || [];
   const plan = useMemo(() => (c ? planOf({ cash: cash?.total, operating, makeovers, waiting: c.waiting || [] }) : null), [c, cash?.total, operating]);
   const typical = typicalLately(makeovers);
@@ -339,7 +344,10 @@ export function CostsCard({ data, n, m = null, variant = 'home', admin = false, 
       <${Table} makeovers=${shown} />
     </div>
     ${variant === 'home' ? html`<p class="bc-families"><a class="bp-cardhead__go" href="#/families">Every family’s application and score <span aria-hidden="true">→</span></a></p>` : null}`;
-  if (variant !== 'home') return html`<div class="bc bc--agenda">${body}</div>`;
+  if (variant !== 'home') {
+    const past = m && m.date < (data.today || todayEastern());
+    return html`<div class="bc bc--agenda">${body}<p class="bp-aglive__when">${past ? `Locked for this meeting${n?.at ? ` on ${new Date(n.at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' })}` : ''}` : 'As of today'}</p></div>`;
+  }
   return html`<section class="bp-card bc" aria-labelledby="costs-h" id="costs">
     <div class="bp-cardhead"><h2 class="bp-h2" id="costs-h">What makeovers cost</h2><span class="bp-muted">From JobTread and the bank</span></div>
     ${body}
