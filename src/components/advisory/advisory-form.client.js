@@ -1424,6 +1424,8 @@ export function initAdvisoryForm() {
   window.addEventListener('online', () => {
     if (keyState === 'failed') loadKey();
     if (turnstileScript === 'failed' && step === REVIEW) loadTurnstile();
+    // "You seem to be offline" isn't so now: Send goes again (as the family form's note goes)
+    if (!ui.sendError.hidden && /seem to be offline/.test(ui.sendError.textContent)) ui.sendError.hidden = true;
   }, { signal });
 
   // ── Picking up where they left off ──

@@ -548,6 +548,14 @@ const logo = 'brand-logo-light-bg-display';
     .adv-choice:active { transform: none; }
     .adv-error, .adv-choice input:checked + .adv-choice-box, .adv-review-section[data-open] .adv-review-body { animation: none; }
   }
+  /* Windows High Contrast (forced colors): a filled button keeps its outline, and the steps along the top stay */
+  @media (forced-colors: active) {
+    html:root .btn { border: 1px solid ButtonText; } /* (over the page's scoped .btn) */
+    html:root .btn-primary:not(:disabled, [aria-disabled="true"]) { border-width: 2px; }
+    html:root .btn:is(:disabled, [aria-disabled="true"]) { border-color: GrayText; color: GrayText; }
+    .adv-seg { forced-color-adjust: none; background: Canvas; box-shadow: inset 0 0 0 1px CanvasText; }
+    .adv-seg span, .adv-seg[data-state="done"] span { forced-color-adjust: none; background: Highlight; }
+  }
 </style>
 
 <!-- Back while the application has the screen goes a step back (advisory-form.client.js sets

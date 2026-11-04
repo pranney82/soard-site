@@ -236,7 +236,7 @@ const breadcrumbs = [
           <div class="af-stage" data-stage>
             <header class="af-head">
               <div class="af-head-top">
-                <p class="af-step-text"><span data-step-text>Step 1 of {steps}</span><span class="af-part" id="af-part-text" data-part-text></span></p>
+                <p class="af-step-text"><span id="af-step-text" data-step-text>Step 1 of {steps}</span><span class="af-part" id="af-part-text" data-part-text></span></p>
                 <!-- A phone has no room beside the form: every step is behind this -->
                 <details class="af-steps" data-steps>
                   <summary class="af-steps-toggle">
@@ -246,7 +246,7 @@ const breadcrumbs = [
                   <ol class="af-steps-list" data-steps-list></ol>
                 </details>
               </div>
-              <h2 class="af-step-title" data-step-title tabindex="-1" aria-describedby="af-part-text">{form.pages[0].title}</h2>
+              <h2 class="af-step-title" data-step-title tabindex="-1" aria-describedby="af-step-text af-part-text">{form.pages[0].title}</h2>
             </header>
 
             <div class="af-pages" data-pages aria-busy="true">
@@ -1748,6 +1748,18 @@ const breadcrumbs = [
   }
   @media (max-height: 450px) and (orientation: landscape) and (max-width: 640px) {
     html.af-focus .af-nav-row .af-btn--back { width: 44px; min-width: 44px; }
+  }
+
+  /* Windows High Contrast (forced colors): its colors for everything, so what a fill showed is drawn another way.
+     A filled button keeps its outline, the language in use is lit, and the steps along the top stay */
+  @media (forced-colors: active) {
+    .af-btn:not(.af-btn--link), .af-lang-btn { border: 1px solid ButtonText; }
+    :is(.af-btn--primary, .af-btn--submit):not(:disabled, [aria-disabled="true"]) { border-width: 2px; }
+    .af-btn:is(:disabled, [aria-disabled="true"]) { border-color: GrayText; color: GrayText; }
+    .af-lang-btn[aria-pressed="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; border-color: Highlight; }
+    .af-segs, .af-seg { forced-color-adjust: none; background: Canvas; }
+    .af-seg { box-shadow: inset 0 0 0 1px CanvasText; }
+    .af-seg-fill, .af-seg[data-state="done"] .af-seg-fill { forced-color-adjust: none; background: Highlight; }
   }
 
   @media (prefers-reduced-motion: reduce) {

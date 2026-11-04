@@ -1140,6 +1140,26 @@ function init(root, cfg, mode) {
     if (!problems || !focused || !currentId || currentId === 'review' || ui.form.hidden || moving) return;
     settle();
     if (document.documentElement.scrollHeight > innerHeight) pageEl(currentId)?.setAttribute('data-snug', '');
+    // Still more than the screen: a box for words gives up its spare lines first
+    settle();
+    if (document.documentElement.scrollHeight > innerHeight) capBoxes(pageEl(currentId));
+  }
+  /**
+   * Every problem note in view when it can be: the screen goes up just enough for the last one to clear Back /
+   * Continue, never taking the first problem's question under the bar across the top (a note seen faintly
+   * through the bar, to be scrolled to, was easy to miss)
+   */
+  function notesInView() {
+    if (!focused || !currentId || currentId === 'review' || ui.form.hidden) return;
+    const notes = [...(pageEl(currentId)?.querySelectorAll('.af-error') || [])].filter(n => n.textContent.trim() && n.getClientRects().length && !n.closest('[data-off], [hidden]'));
+    if (!notes.length) return;
+    const navTop = ui.form.querySelector('[data-nav]')?.getBoundingClientRect().top ?? innerHeight;
+    const over = notes[notes.length - 1].getBoundingClientRect().bottom + 8 - navTop;
+    if (over <= 0) return;
+    const first = notes[0].closest('[data-field]') || notes[0];
+    const room = first.getBoundingClientRect().top - (ui.top?.getBoundingClientRect().bottom || 0) - 8;
+    const by = Math.min(over, Math.max(0, room));
+    if (by > 0) window.scrollBy({ top: by, behavior: 'auto' });
   }
   /**
    * For measuring: the page as it will look once answered (undone straight after, in the same task).
@@ -1848,6 +1868,7 @@ function init(root, cfg, mode) {
     announce(ids.length === 1 ? T('attentionOne') : T('attentionMany', { n: ids.length }));
     refitScreen(ids); // the notes take room: the questions close up a little
     focusOn(ids[0]);
+    notesInView();
   }
   /** Scroll a question to just under the header and put the cursor in it */
   function focusOn(id) {
@@ -3291,7 +3312,13 @@ function init(root, cfg, mode) {
    * A typed address line into the parts it names: "1 Nowhere Lane, Apt 2, Faketown, GA 30999". With no
    * commas it's all the street (with a ZIP at its end taken off); "GA" or "Georgia" is the state already chosen
    */
-  const STREET_WORDS = /^(st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|pkwy|parkway|hwy|highway|trl|trail|ter|terrace|run|pass|xing|crossing|sq|square|loop|row|path|walk|pt|point|ridge|trce|trace|cv|cove|bnd|bend|holw|hollow|ne|nw|se|sw)\.?$/i;
+  const STREET_WORDS = /^(st|street|ave|avenue|rd|road|dr|drive|ln|lane|ct|court|blvd|boulevard|way|pl|place|cir|circle|pkwy|parkway|hwy|highway|trl|trail|ter|terrace|run|pass|xing|crossing|sq|square|loop|row|path|walk|pt|point|ridge|trce|trace|cv|cove|bnd|bend|holw|hollow|ne|nw|se|sw|n|s|e|w)\.?$/i;
+  // An apartment, suite, unit, lot or building, as people write one: "Apt 2", "Unit 5", "#12", "Suite 300", "Apto 4", "Lot 7"
+  const LINE_APT_WORD = '(?:apt|apartment|apto|unit|unidad|suite|ste|lot|bldg|building|fl|floor|rm|room|spc|space|trlr|trailer|dept|depto|dpto)';
+  const LINE_APT_ID = '(?:[a-z0-9-]*\\d[a-z0-9-]*|[a-z])';
+  const LINE_APT_HEAD = `(?:#\\s*|${LINE_APT_WORD}(?:\\.\\s*|\\s+|(?=\\d))#?\\s*)`;
+  const LINE_APT_ALONE = new RegExp(`^${LINE_APT_HEAD}${LINE_APT_ID}$`, 'i');
+  const LINE_APT_IN = new RegExp(`\\s(${LINE_APT_HEAD}${LINE_APT_ID})(?=\\s|$)`, 'i');
   function splitAddressLine(v) {
     let s = String(v || '').trim();
     const out = {};
@@ -3299,6 +3326,17 @@ function init(root, cfg, mode) {
     if (zip) { out.zip = zip[1]; s = s.slice(0, zip.index).trim(); }
     s = s.replace(/[\s,]+(GA|Georgia)\.?\s*$/i, '').trim();
     const parts = s.split(',').map(x => x.trim()).filter(Boolean);
+    // The apartment, said between commas ("100 Main St, Apt 2, Roswell") or after the street ("55 Elm St Apt 2 Roswell"):
+    // its own box, never the city's
+    let unit = '';
+    for (let i = 1; i < parts.length && !unit; i++) if (LINE_APT_ALONE.test(parts[i])) unit = parts.splice(i, 1)[0];
+    const m = !unit && parts[0] ? parts[0].match(LINE_APT_IN) : null;
+    if (m && parts[0].slice(0, m.index).trim().split(/\s+/).length >= 2) {
+      const after = parts[0].slice(m.index + m[0].length).trim();
+      unit = m[1].trim();
+      parts[0] = parts[0].slice(0, m.index).trim();
+      if (after) parts.splice(1, 0, after);
+    }
     // No commas: the city is what follows the street's last word that names a street ("456 Oak Ave Marietta")
     if (parts.length === 1) {
       const words = parts[0].split(/\s+/);
@@ -3307,7 +3345,8 @@ function init(root, cfg, mode) {
     }
     out.line1 = parts.shift() || '';
     if (parts.length) out.city = parts.pop();
-    if (parts.length) out.line2 = parts.join(', ');
+    const apt = [unit, ...parts].filter(Boolean);
+    if (apt.length) out.line2 = apt.join(', ');
     return out;
   }
   function setAddressMode(el, mode, { force = false } = {}) {
@@ -3332,12 +3371,13 @@ function init(root, cfg, mode) {
     if (mode === 'line') {
       const line = addressLineOf(readField(byId[el.dataset.field]) || {});
       if (line) { search.value = line; box.dataset.picked = line; } else {
-        // Begun by hand but not finished: its street goes back in the line to search for, the rest let go
-        if (line1.value.trim()) search.value = line1.value.trim();
+        // Begun by hand but not finished: what they typed goes back in the line to search for (street, city, ZIP),
+        // the apartment staying in its own box (it's beside the line too)
+        const val = (k) => box.querySelector(`[data-part="${k}"]`)?.value.trim() || '';
+        const again = [val('line1'), val('city'), [val('city') || val('zip') ? val('state') : '', val('zip')].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+        if (again) search.value = again;
         for (const k of ['line1', 'city', 'zip']) box.querySelector(`[data-part="${k}"]`).value = '';
-        const apt = box.querySelector('[data-part="line2"]');
-        if (box.dataset.splitApt && apt.value === box.dataset.splitApt) apt.value = '';
-        delete box.dataset.splitApt;
+        delete box.dataset.splitApt; // theirs now, in its box
         delete box.dataset.picked;
       }
     }
