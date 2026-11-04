@@ -1760,6 +1760,12 @@ const breadcrumbs = [
     .af-segs, .af-seg { forced-color-adjust: none; background: Canvas; }
     .af-seg { box-shadow: inset 0 0 0 1px CanvasText; }
     .af-seg-fill, .af-seg[data-state="done"] .af-seg-fill { forced-color-adjust: none; background: Highlight; }
+    /* A chosen answer: its box filled in the theme's highlight with the check drawn over it, and its tile outlined
+       (the yellow fill and the dark check were all it had, and a dark theme lost both) */
+    .af-choice:has(input:checked) { border-color: Highlight; }
+    .af-choice:has(input:checked):not(:has(input:focus-visible)) { outline: 2px solid Highlight; outline-offset: -2px; }
+    .af-choice input:checked + .af-choice-box { forced-color-adjust: none; background: Highlight; border-color: Highlight; }
+    .af-choice input:checked + .af-choice-box .af-check-draw { stroke: HighlightText; }
   }
 
   @media (prefers-reduced-motion: reduce) {

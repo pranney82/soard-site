@@ -555,6 +555,9 @@ const logo = 'brand-logo-light-bg-display';
     html:root .btn:is(:disabled, [aria-disabled="true"]) { border-color: GrayText; color: GrayText; }
     .adv-seg { forced-color-adjust: none; background: Canvas; box-shadow: inset 0 0 0 1px CanvasText; }
     .adv-seg span, .adv-seg[data-state="done"] span { forced-color-adjust: none; background: Highlight; }
+    /* A chosen answer: its ring filled in the theme's highlight (a yellow fill and an inset ring were all it had) */
+    html:root .adv-choice input:checked + .adv-choice-box { forced-color-adjust: none; background: Highlight; border-color: Highlight; box-shadow: inset 0 0 0 4px Canvas; }
+    html:root .adv-choice:has(input:checked):not(:has(input:focus-visible)) { outline: 2px solid Highlight; outline-offset: -2px; }
   }
 </style>
 

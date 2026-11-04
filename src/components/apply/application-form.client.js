@@ -668,7 +668,8 @@ function init(root, cfg, mode) {
   const reviewMark = () => (fromReview && currentId !== 'review' ? { fromReview } : {});
   function pushLoc(extra = {}) {
     if (!histOk()) return;
-    const at = { ...whereNow(), ...reviewMark(), ...extra };
+    // (over a "can't help" screen it's the stop's, as replaceLoc says: back in from the overview, a reload shows it again)
+    const at = { ...whereNow(), ...reviewMark(), ...(stopShown && !ui.stop.hidden ? { stop: true } : {}), ...extra };
     try {
       history.pushState({ ...(history.state || {}), afFocus: 1, afDepth: depth + 1, afAt: at }, '');
       depth++;
@@ -2830,6 +2831,7 @@ function init(root, cfg, mode) {
       body.append('file', main || file, name);
       if (thumb) body.append('thumb', thumb, 'thumb.jpg');
       setUpload(f.id, { msg: ['uploading', { pct: 0 }], thumb: thumb || main ? URL.createObjectURL(thumb || main) : null });
+      photoGoing(f.id, name);
       const r = await postWithProgress(body, (p) => {
         const pct = Math.min(99, Math.round(p * 100));
         setUpload(f.id, { pct, msg: ['uploading', { pct }] });
@@ -2845,9 +2847,12 @@ function init(root, cfg, mode) {
       setUpload(f.id, { state: 'done', msg: ['added', { name }], pct: null });
     } catch (e) {
       if (e?.unusable) delete retryFiles[f.id]; else retryFiles[f.id] = file;
-      setUpload(f.id, files[f.id] ? { ...before, msg: failText(e), pct: null } : { state: 'failed', msg: failText(e), pct: null });
+      // Not a photo after all, over one already here: said as a file the page turns away is ("…Your photo is still here")
+      const msg = e?.key === 'notImage' && files[f.id] ? ['photoStill', { name: files[f.id].name }] : failText(e);
+      setUpload(f.id, files[f.id] ? { ...before, msg, pct: null } : { state: 'failed', msg, pct: null });
       whenBack(f.id);
     } finally {
+      photoGoing(f.id, null);
       uploads.delete(f.id);
       uploadsChanged();
     }
@@ -2908,6 +2913,14 @@ function init(root, cfg, mode) {
   // ...kept on the device too: a reload (a phone that closed the tab while they were in another app) and the same
   // video chosen again carries on from where it stopped, as Try again does, not from 0%
   const videoGoing = local(keyed('soard-application-video'));
+  // Photos on their way ({ token, f: { field: name } }): one cut off by the page going is said when they come back
+  const photosGoing = local(keyed('soard-application-photos'));
+  const photoGoing = (id, name) => {
+    const g = photosGoing.get();
+    const f = { ...(g?.token === token ? g.f : {}) };
+    if (name) f[id] = name; else delete f[id];
+    if (Object.keys(f).length) photosGoing.set({ token, f }); else photosGoing.clear();
+  };
   const forgetGoing = (id) => { delete goingOn[id]; if (videoGoing.get()?.field === id) videoGoing.clear(); };
   async function uploadVideo(f, file) {
     if (!isVideoFile(file)) { setUpload(f.id, { msg: stillHere(f, 'notVideo') }); return; }
@@ -3237,7 +3250,7 @@ function init(root, cfg, mode) {
     const btn = [...(el?.querySelectorAll('.af-upload-actions button') || [])].find(b => !b.hidden && !b.disabled && b.getClientRects().length);
     const to = btn || el?.querySelector('.af-upload-status');
     if (!to) return;
-    if (!btn) to.tabIndex = -1;
+    if (!btn) { to.tabIndex = -1; to.removeAttribute('aria-hidden'); } // (its words, read where the keys are)
     to.focus({ preventScroll: true });
   }
 
@@ -5005,6 +5018,17 @@ function init(root, cfg, mode) {
       // One chosen over a video already there: said that the new one didn't finish (the earlier one is what's kept)
       else if (name && had.name !== name) uploadUi[going.field] = { ...uploadUi[going.field], state: 'done', msg: ['videoNewResume', { name, was: had.name || '' }] };
     }
+    // A photo cut off by the page going: said, so it isn't a box that's quietly empty (or quietly the earlier one)
+    const cut = photosGoing.get();
+    if (cut?.token === candidate && !r.submitted) {
+      for (const [id, name] of Object.entries(cut.f || {})) {
+        if (!byId[id]) continue;
+        const had = r.files?.[id];
+        if (!had) uploadUi[id] = { state: 'empty', msg: ['photoCutOff', { name }] };
+        else if (had.name !== name) uploadUi[id] = { ...uploadUi[id], msg: ['photoNewCutOff', { name, was: had.name || '' }] };
+      }
+    }
+    photosGoing.clear();
     draw({ merge: false });
     synced = readAnswers();
     // What was typed here last time and never reached the server (offline, the tab closed): back on top
