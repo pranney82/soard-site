@@ -56,7 +56,7 @@ import { mercury } from './_mercury.js';
 import { bankBalances, plaidConfigured, bankFacts } from './_plaid.js';
 import { booksNow, booksFacts } from './_quickbooks.js';
 import { giftsNow } from './_board-gifts.js';
-import { makeoverCostsNow } from './_makeover-costs.js';
+import { makeoverCostsNow, PAGE_MAX_AGE_MS } from './_makeover-costs.js';
 import { OPERATING_BALANCE } from '../../public/admin/makeover-costs-shared.js';
 import { limit } from './_rate-limit.js';
 import { SIG_EVIDENCE, putSignature, addColumns, appendEvents, sha256Hex, cleanMark, CONSENT_TEXT, PROCESS_V, declinedOf, dueOn, dueWords } from './_board-sign.js';
@@ -1333,7 +1333,8 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
     // The year's revenue and expenses so far, as QuickBooks last answered (Settings → QuickBooks)
     booksNow(env.DB, { now }).catch(() => null),
     // What finished makeovers cost, and the families waiting on the money (./_makeover-costs.js)
-    makeoverCostsNow(env, { fetchImpl, now }).catch((err) => { console.error('[board] costs', err.message); return null; }),
+    // (the heartbeat's copy: a page never waits on JobTread for it)
+    makeoverCostsNow(env, { fetchImpl, now, maxAge: PAGE_MAX_AGE_MS }).catch((err) => { console.error('[board] costs', err.message); return null; }),
     readSettings(env.DB).catch(() => ({})),
   ]);
   // Each reveal's kid by their published page's photo (a draft page's kid has none)
@@ -2584,7 +2585,8 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *   - last, board mail (./_board-mail.js): every minute while there's a backlog, hourly after; then minutes read without
  *     Workers AI read again for their motions and action items (./_board-minutes.js maybeFinishMinutes)
  *   - hourly, QuickBooks' revenue and expenses for the year so far (./_quickbooks.js)
- *   - every 15 minutes, the year's major gifts from Zeffy (./_board-gifts.js)
+ *   - every 15 minutes, the year's major gifts from Zeffy (./_board-gifts.js), and what completed makeovers cost from
+ *     JobTread (./_makeover-costs.js), so the board page reads it without waiting
  *   - first, alongside the rest: each minute until all are read, a few board files' words, for the board page's search (./_board-file-words.js)
  *   - once a day, the month's bank balance for the board page's history
  * Never throws.
@@ -2620,6 +2622,8 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await (await import('./_quickbooks.js')).maybeReadBooks(env, { fetchImpl, now });
     // The year's gifts of $1,000 or more, from Zeffy every 15 minutes
     await (await import('./_board-gifts.js')).maybeReadGifts(env, { fetchImpl, now });
+    // What completed makeovers cost, from JobTread every 15 minutes (its own try: JobTread down holds up nothing)
+    try { await makeoverCostsNow(env, { fetchImpl, now }); } catch (err) { console.error('[board] costs', err?.message || err); }
     if (!String(env.MERCURY_API_TOKEN || '').trim() && !plaidConfigured(env)) return;
     const runs = await readState(env.DB, 'runs');
     if (runs.cashAt && now - Date.parse(runs.cashAt) < 20 * 60 * 60 * 1000) return;

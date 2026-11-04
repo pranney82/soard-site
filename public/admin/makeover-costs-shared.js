@@ -21,7 +21,7 @@ export const TYPES = [
   { id: 'bathroom', label: 'Accessible bathroom', short: 'Bathroom' },
   { id: 'bedroom', label: 'Dream bedroom', short: 'Bedroom' },
   { id: 'therapy', label: 'Therapy room', short: 'Therapy room' },
-  { id: 'bath-bed', label: 'Bathroom and bedroom', short: 'Bathroom + bedroom' },
+  { id: 'bath-bed', label: 'Bathroom and bedroom', short: 'Bath + bedroom' },
   { id: 'mixed', label: 'Other mixes of rooms', short: 'Other mixes' },
   { id: 'community', label: 'Community project', short: 'Community' },
 ];

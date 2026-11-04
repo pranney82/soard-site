@@ -24,7 +24,8 @@ import { listApplicants, getApplicantRow } from './_applicants.js';
 import { scoreSummaries, familyScores } from './_applicant-scores.js';
 
 const isTest = (a) => !!a.isTest || /^\s*test\b/i.test(String(a.name || ''));
-const photoOf = (url) => (/^(https:\/\/imagedelivery\.net\/|\/cdn-cgi\/imagedelivery\/)[\w/=,.-]+$/.test(String(url || '')) ? String(url) : null);
+// Cloudflare Images only: imagedelivery.net, or through the site (the way People's photos are kept: a crop's trim=a;b;c;d)
+const photoOf = (url) => (/^(https:\/\/imagedelivery\.net\/|(https:\/\/sunshineonaranneyday\.com)?\/cdn-cgi\/imagedelivery\/)[\w/=,.;-]+$/.test(String(url || '')) ? String(url) : null);
 
 /** Whole years from a birthday ("2017-03-04") to today, or null */
 export function ageFrom(birthday, now = Date.now()) {

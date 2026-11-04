@@ -9,7 +9,7 @@ import { createD1 } from './lib/d1-shim.mjs';
 import {
   TYPES, roomList, typeOf, median, middleHalf, rowsOf, estimateFor, typicalLately, planOf, recentSeasons, cashOf, operatingOf, OPERATING_BALANCE,
 } from '../public/admin/makeover-costs-shared.js';
-import { costsFrom, looseMatch, recordFromJob, isFinished, makeoverCostsNow, orderWaiting } from '../functions/api/_makeover-costs.js';
+import { costsFrom, looseMatch, recordFromJob, isFinished, makeoverCostsNow, orderWaiting, PAGE_MAX_AGE_MS } from '../functions/api/_makeover-costs.js';
 import { savePledge, pledgesFor, cleanAmount } from '../functions/api/_sponsor-pledges.js';
 import { familiesList, familyOne, ageFrom, nameFromEmail } from '../functions/api/_board-families.js';
 import { ensureApplicantSchema } from '../functions/api/_applicants.js';
@@ -281,8 +281,13 @@ test('the board’s copy: JobTread at most every 15 minutes, the last good copy 
   assert.deepEqual(jt.calls[0].organization.jobs.nodes.customFieldValues.$.where, [['customField', 'id'], '=', STATUS], 'only the Status field (JobTread’s size limit)');
   await makeoverCostsNow(env, { fetchImpl: jt.fetchImpl, now: t0 + 5 * 60000 });
   assert.equal(jt.calls.length, 1, 'a copy under 15 minutes old');
+  // A board page reads the heartbeat's copy, never waiting on JobTread, until it's six hours old
+  await makeoverCostsNow(env, { fetchImpl: jt.fetchImpl, now: t0 + 3 * 3600000, maxAge: PAGE_MAX_AGE_MS });
+  assert.equal(jt.calls.length, 1, 'a page three hours on: the copy, no JobTread');
+  await makeoverCostsNow(env, { fetchImpl: jt.fetchImpl, now: t0 + 7 * 3600000, maxAge: PAGE_MAX_AGE_MS });
+  assert.equal(jt.calls.length, 2, 'seven hours on (the heartbeat stopped): JobTread');
   const down = async () => ({ ok: false, status: 500, json: async () => ({}) });
-  const c = await makeoverCostsNow(env, { fetchImpl: down, now: t0 + 20 * 60000 });
+  const c = await makeoverCostsNow(env, { fetchImpl: down, now: t0 + 8 * 3600000 });
   assert.equal(c.makeovers.length, 1, 'JobTread down: the last good copy');
   assert.equal(await makeoverCostsNow({ DB: await db() }, { fetchImpl: down }), null);
 });

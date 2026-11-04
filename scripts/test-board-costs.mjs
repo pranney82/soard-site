@@ -115,6 +115,8 @@ await applicant('acctJay001', 'Jay Example', 'Approved', '2026', ['Bathroom'], {
 await applicant('acctNora01', 'Nora Example', 'In Review', '2026', ['Bedroom'], { diagnosis: 'Example', birthday: '2019-01-01' });
 await applicant('acctOmar01', 'Omar Example', 'Denied', '2026', ['Ramp'], { denialReason: 'Outside the service area (an example)' });
 await applicant('acctTest01', 'TEST Applicant', 'Applied', '2026', ['Bedroom'], {});
+// A newer season with only a community project in it (the page opens on the newest season with a family)
+await applicant('acctOak001', 'Oak Academy Example', 'Approved', '2027', [], {});
 const keys = criteriaOf(SHEET_RUBRIC).map((c) => c.key);
 const card = (n, odd = null) => Object.fromEntries(keys.map((k, i) => [k, odd != null && i === 0 ? odd : n]));
 await saveScorecard(DB, 'acctIris01', { evaluator: 'lin.smith@soardcharity.com', name: 'Lin Smith', scores: card(4), notes: 'A scorer’s private note' });
@@ -225,20 +227,23 @@ try {
   await kim.waitForSelector('#costs', { timeout: 10000 });
   const card = await textOf(kim, '#costs');
   ok(/For makeovers now\s*\$169,602/.test(card), 'For makeovers now: $669,602 in the bank less the $500,000 operating balance');
-  ok(/Cash in the bank, \$669,602, less \$500,000 kept to run SOARD/.test(card), 'it says where the number comes from');
+  ok(/\$669,602 in the bank, less \$500,000 kept to run SOARD/.test(card), 'it says where the number comes from');
+  ok(/Enough for Iris and Jay, about \$30,500 together, then about 6 more makeovers at the median cost, \$22,500\./.test(await textOf(kim, '#costs .bc-answer__says')), `the answer, in a sentence (${await textOf(kim, '#costs .bc-answer__says')})`);
+  const parts = await kim.$$eval('#costs > *', (els) => els.map((e) => e.className.split(' ')[0]));
+  ok(parts.indexOf('bc-answer') === 1 && parts.indexOf('bc-split') === 2, `the answer first, then who’s waiting beside the median (${parts.join(', ')})`);
   const homeCash = await kim.$eval('.bp-fig .bp-fig__value', (e) => e.textContent).catch(() => '');
   ok(/\$670K/.test(homeCash), `Home’s cash figure is the same money (${homeCash})`);
   ok(/Median makeover, 2025 and 2026\s*\$22,500/.test(card), 'the median makeover of the last two seasons');
-  ok(/Average \$24,143 · low \$3,000 · high \$51,000, of 7 completed makeovers/.test(card), 'with the average, the low and the high, of the 7 (Kai, with no bills, left out)');
-  ok(/7 completed makeovers: average \$24,143, median \$22,500, low \$3,000 \(Eve, 2025\), high \$51,000 \(Gia & Rosa, 2026\)/.test(card), 'the four numbers over the chart, with who each end is');
-  ok(/Waiting on the money\s*2 families/.test(card), 'two families waiting');
+  ok(/Average\s*\$24,143\s*Low\s*\$3,000\s*High\s*\$51,000\s*Of 7 completed makeovers/.test(await textOf(kim, '#costs .bc-median')), 'with the average, the low and the high, of the 7 (Kai, with no bills, left out)');
+  ok(/7 completed makeovers: median \$22,500, average \$24,143, low \$3,000 \(Eve, 2025\), high \$51,000 \(Gia & Rosa, 2026\)/.test(card), 'the four numbers over the chart, with who each end is');
+  ok(/Waiting on the money, best score first/.test(card), 'two families waiting');
   const fams = await kim.$$eval('.bc-fam', (els) => els.map((e) => e.innerText.replace(/[\s\u00a0]+/g, ' ')));
   ok(fams.length === 2 && /Iris/.test(fams[0]) && /Score 38\.5/.test(fams[0]) && /Jay/.test(fams[1]), `best score first: Iris 38.5, then Jay (${fams.map((f) => f.slice(0, 40)).join(' | ')})`);
   ok(/About \$8,000/.test(fams[0]) && /\$18,000, less \$10,000 pledged by Acme Builders/.test(fams[0]), 'Iris: the therapy rooms’ typical, less Acme’s pledge');
   ok(/the median of 3 therapy rooms in 2025 and 2026/.test(fams[0]), 'what her estimate rests on');
   ok(/Covered/.test(fams[0]) && /Covered/.test(fams[1]), 'both covered');
-  ok(/About \$22,500/.test(fams[1]) && /The median of 7 finished makeovers in 2025 and 2026/.test(fams[1]), 'Jay: too few bathrooms alone, so every makeover lately');
-  ok(/That leaves \$139,102: room for about 6 more makeovers at the median \$22,500\./.test(card), 'and what’s left after them');
+  ok(/About \$22,500/.test(fams[1]) && /The median of 7 completed makeovers in 2025 and 2026/.test(fams[1]), 'Jay: too few bathrooms alone, so every makeover lately');
+
   ok(!(await kim.$('.bc-link')), 'a board member can’t change the operating balance');
   ok(!/99,999/.test(card), 'a TEST job never counts');
   const rows = await kim.$$eval('#costs .bc-row__label strong', (els) => els.map((e) => e.textContent));
@@ -251,8 +256,9 @@ try {
   await sleep(200);
   const tipText = await textOf(kim, '#costs .bc-tip');
   ok(/\$51,000/.test(tipText) && /Gia & Rosa · 2026/.test(tipText) && /Accessible Bathroom \+ Dream Bedroom/.test(tipText), `hovering a dot says who and what (${tipText.replace(/\n/g, ' · ')})`);
-  const byRoom = await kim.$$eval('#costs .bc-byroom tbody tr', (trs) => trs.map((tr) => tr.innerText.replace(/\s+/g, ' ').trim()));
-  ok(byRoom.join(' | ') === 'Accessible bathroom 1 $26,000 $26,000 $26,000 $26,000 | Dream bedroom 1 $6,500 $6,500 $6,500 $6,500 | Therapy room 3 $14,500 $18,000 $3,000 $22,500 | Bathroom and bedroom 2 $46,500 $46,500 $42,000 $51,000', `by room: count, average, median, low, high (${byRoom.join(' | ')})`);
+  // (the row's name and its numbers: a dot's readout may still be open over it)
+  const byRoom = await kim.$$eval('#costs .bc-row', (rs) => rs.map((r) => [...r.querySelectorAll('.bc-row__label, .bc-row__nums')].map((e) => e.innerText).join(' ').replace(/[\s\u00a0]+/g, ' ').trim()));
+  ok(byRoom.join(' | ') === 'Accessible bathroom 1 makeover Paid $26,000 | Dream bedroom 1 makeover Paid $6,500 | Therapy room 3 makeovers Median $18,000 Average $14,500 Range $3,000 to $22,500 | Bathroom and bedroom 2 makeovers Median $46,500 Average $46,500 Range $42,000 to $51,000', `by room, at each row’s end: how many, median, average, low to high (${byRoom.join(' | ')})`);
   await shotOf(kim, '#costs', 'home-costs-1440');
   // The keyboard: one stop, arrows along and between rows
   await kim.focus('#costs .bc-dot[tabindex="0"]');
@@ -268,9 +274,9 @@ try {
   await kim.evaluate(() => [...document.querySelectorAll('#costs .bc-seg button')].find((b) => /Every year/.test(b.textContent)).click());
   await sleep(200);
   ok((await kim.$$('#costs .bc-dot')).length === 9, 'every year: 9 dots');
-  ok(/^Accessible bathroom 2 \$20,250 \$20,250 \$14,500 \$26,000$/.test(await kim.$eval('#costs .bc-byroom tbody tr', (tr) => tr.innerText.replace(/\s+/g, ' ').trim())), 'by room follows the switch (Finn’s 2024 bathroom joins)');
+  ok(/^Accessible bathroom 2 makeovers Median \$20,250 Average \$20,250 Range \$14,500 to \$26,000$/.test(await kim.$eval('#costs .bc-row', (r) => [...r.querySelectorAll('.bc-row__label, .bc-row__nums')].map((e) => e.innerText).join(' ').replace(/[\s\u00a0]+/g, ' ').trim())), 'by room follows the switch (Finn’s 2024 bathroom joins)');
   ok(/Every year since 2023/.test(await textOf(kim, '#costs .bc-seg')), 'since the first season with bills');
-  ok(/9 completed makeovers: average \$22,500, median \$19,000, low \$3,000 \(Eve, 2025\), high \$51,000 \(Gia & Rosa, 2026\)/.test(await textOf(kim, '#costs .bc-stats')), `the four numbers follow the switch (${await textOf(kim, '#costs .bc-stats')})`);
+  ok(/9 completed makeovers: median \$19,000, average \$22,500, low \$3,000 \(Eve, 2025\), high \$51,000 \(Gia & Rosa, 2026\)/.test(await textOf(kim, '#costs .bc-stats')), `the four numbers follow the switch (${await textOf(kim, '#costs .bc-stats')})`);
   // (after the season switch has laid the chart out again: a click aimed before it lands where the summary was)
   await sleep(400);
   await kim.click('#costs .bc-table summary');
@@ -285,6 +291,8 @@ try {
   await kim.click('#costs .bc-families a');
   await kim.waitForSelector('.bf-list', { timeout: 8000 });
   const list = await textOf(kim, '.bf');
+  ok(await kim.$eval('.bc-seg button[aria-pressed="true"]', (b) => b.textContent.trim()).then((t) => t === '2026', () => false), 'it opens on 2026, the newest season with a family (2027 has only a school)');
+  ok(/^4 families · 2 ranked · 2 Strong Candidate$/.test(await textOf(kim, '.bf-sum')), `families counted as families (${await textOf(kim, '.bf-sum')})`);
   const order = await kim.$$eval('.bf-row__who strong', (els) => els.map((e) => e.textContent));
   ok(order.join('|') === 'Iris Example|Jay Example|Nora Example|Omar Example', `ranked best first, then partway, then the rest; no TEST (${order.join(', ')})`);
   ok(/38\.5\s*Strong Candidate/.test(list) && /33\.5\s*Strong Candidate/.test(list), 'scores with their tiers');
@@ -329,7 +337,7 @@ try {
   await jane.waitForFunction(() => /For makeovers now\s*\$9,602/.test(document.querySelector('#costs')?.innerText || ''), { timeout: 8000 }).catch(() => {});
   const after = await textOf(jane, '#costs');
   ok(/For makeovers now\s*\$9,602/.test(after), 'at $660,000 kept, $9,602 is over it');
-  ok(/1 covered; \$20,898 more starts Jay/.test(after), 'Iris is covered; Jay needs $20,898 more');
+  ok(/Enough for Iris’s therapy room, about \$8,000\. Jay needs \$20,898 more\./.test(after), 'Iris is covered; Jay needs $20,898 more');
   const chips = await jane.$$eval('#costs .bc-fam .bc-chip', (els) => els.map((e) => e.textContent.replace(/\u00a0/g, ' ')));
   ok(chips.join('|') === 'Covered|Needs $20,898 more', `each family says where it stands (${chips.join(', ')})`);
   await shotOf(jane, '#costs', 'home-costs-short-1440');
@@ -343,7 +351,7 @@ try {
     await scr.goto(`${SITE}/admin/board/?present&at=${encodeURIComponent(QUAL)}#/meetings/${meeting.id}/screen`, { waitUntil: 'networkidle0' });
     await scr.waitForSelector('.bc--screen', { timeout: 10000 }).catch(() => {});
     const slide = await textOf(scr, '.bc--screen');
-    ok(/For makeovers now/.test(slide) && /Finished makeovers, 2025 and 2026/.test(slide), `${w}x${hh}: the slide shows the money and the dots`);
+    ok(/For makeovers now/.test(slide) && /Enough for Iris’s therapy room/.test(slide) && /Completed makeovers by room, 2025 and 2026/.test(slide), `${w}x${hh}: the slide shows the money, its sentence and the dots`);
     const fits = await scr.evaluate(() => { const s = document.querySelector('.bc--screen'); if (!s) return false; const r = s.getBoundingClientRect(); return r.bottom <= innerHeight + 1 && r.right <= innerWidth + 1; });
     ok(fits, `${w}x${hh}: it fits the screen`);
     await scr.screenshot({ path: join(OUT, `screen-${w}.png`) });
@@ -355,7 +363,7 @@ try {
   await phone.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
   await phone.waitForSelector('#costs', { timeout: 10000 });
   ok((await overflow(phone)) <= 0, 'Home: nothing past the right edge');
-  const loose = await phone.$$eval('#costs .bc-fig__sub, #costs .bc-fig__value, #costs .bc-fam span, #costs .bc-lead', (els) => els.filter((e) => /\d[KMB%]? \p{L}/u.test(e.textContent)).map((e) => e.textContent.slice(0, 40)));
+  const loose = await phone.$$eval('#costs .bc-fig__sub, #costs .bc-fig__value, #costs .bc-fam span, #costs .bc-lead, #costs .bc-answer__says, #costs .bc-row__nums dd, #costs .bc-mini dd, #costs .bc-stats', (els) => els.filter((e) => /\d[KMB%]? \p{L}/u.test(e.textContent)).map((e) => e.textContent.slice(0, 40)));
   ok(!loose.length, `every count and amount kept with its word (${loose.join(' | ')})`);
   await shotOf(phone, '#costs', 'home-costs-390');
   await phone.goto(`${SITE}/admin/board/#/families`, { waitUntil: 'networkidle0' });

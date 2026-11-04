@@ -58,6 +58,8 @@ export function FamiliesPage() {
   const [data, setData] = useState(cache.list);
   const [err, setErr] = useState('');
   const seasons = useMemo(() => [...new Set((data?.families || []).map((f) => f.season).filter(Boolean))].sort().reverse(), [data]);
+  // It opens on the newest season with a family in it (a season of one community project alone isn't the place to start)
+  const opening = useMemo(() => seasons.find((y) => (data?.families || []).some((f) => f.season === y && f.kind !== 'organization')) || seasons[0], [seasons.join(','), data]);
   const [season, setSeason] = useState('');
   const [status, setStatus] = useState('');
   useEffect(() => {
@@ -65,7 +67,7 @@ export function FamiliesPage() {
     read('families').then((j) => { if (!live) return; if (!j.ok) { setErr(j.error); return; } cache.list = j; setData(j); });
     return () => { live = false; };
   }, []);
-  useEffect(() => { if (!season && seasons.length) setSeason(seasons[0]); }, [seasons.join(',')]);
+  useEffect(() => { if (!season && opening) setSeason(opening); }, [opening]);
   const inSeason = (data?.families || []).filter((f) => !season || season === 'all' || f.season === season);
   const shown = inSeason.filter((f) => !status || f.status === status)
     .sort((a, b) => (b.score?.ranked ? 1 : 0) - (a.score?.ranked ? 1 : 0) || (b.score?.ranked ? b.score.total : -1) - (a.score?.ranked ? a.score.total : -1) || (b.score?.count || 0) - (a.score?.count || 0) || String(b.applied || '').localeCompare(String(a.applied || '')));
@@ -87,7 +89,7 @@ export function FamiliesPage() {
           ${STATUSES.filter(count).map((s) => html`<button type="button" key=${s} aria-pressed=${status === s} onClick=${() => setStatus(status === s ? '' : s)}>${s} <span>${count(s)}</span></button>`)}
         </div>
       </div>
-      <p class="bf-sum">${nbw([plural(inSeason.length, 'family', 'families'), ranked.length ? `${ranked.length} ranked` : '', ...TIERS.map((t) => { const k = ranked.filter((f) => f.score.tier === t.id).length; return k ? `${k} ${t.label}` : ''; })].filter(Boolean).join(' · '))}</p>
+      <p class="bf-sum">${nbw([...(() => { const orgs = inSeason.filter((f) => f.kind === 'organization').length; const fams = inSeason.length - orgs; return [fams ? plural(fams, 'family', 'families') : '', orgs ? plural(orgs, 'community project') : '']; })(), ranked.length ? `${ranked.length} ranked` : '', ...TIERS.map((t) => { const k = ranked.filter((f) => f.score.tier === t.id).length; return k ? `${k} ${t.label}` : ''; })].filter(Boolean).join(' · '))}</p>
       ${shown.length ? html`<ul class="bf-list">${shown.map((f) => html`<li key=${f.id}><a class="bf-row" href=${`#/families/${encodeURIComponent(f.id)}`}>
         <${Face} f=${f} size=${44} />
         <span class="bf-row__who"><strong>${f.name}</strong><span>${[asked(f), place(f)].filter(Boolean).join(' · ')}</span></span>

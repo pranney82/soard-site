@@ -27,8 +27,11 @@
  * bedroom with no page, under the child's first name), or a school or clinic as its customer
  * (a community project).
  *
- * One JobTread read (every job, about one page) every 15 minutes at most, kept
- * in board_state 'costs'; the scores and pledges are read fresh from D1.
+ * One JobTread read (every job, about one page) every 15 minutes, by the board's
+ * heartbeat (./_board.js maybeRunBoard), kept in board_state 'costs'; a board
+ * page reads that copy and never waits on JobTread for it (only with no copy,
+ * or one six hours old: the heartbeat stopped). The scores and pledges are read
+ * fresh from D1.
  */
 
 import { JT_URL, SOARD_ORG_ID, FIELD_JOB_STATUS, isRehearsalJob, matchProject, normalizeName, yearsOf, isProject } from './_reveals.js';
@@ -39,6 +42,8 @@ import { pledgesFor } from './_sponsor-pledges.js';
 
 const MAX_PAGES = 10;
 const FRESH_MS = 15 * 60 * 1000;
+/** A page reads the heartbeat's copy up to this old before it reads JobTread itself */
+export const PAGE_MAX_AGE_MS = 6 * 60 * 60 * 1000;
 export const FINISHED = new Set(['Closed Done', 'Warranty']);
 export const AWAITING = 'Awaiting Funding';
 // Words a job's name carries that aren't anyone's name ("Ava- Bedroom", "Ben-Bedroom/Bathroom")
@@ -279,13 +284,14 @@ async function partnerNames(DB, slugs) {
 }
 
 /**
- * The board's copy: { at, makeovers, noBills, waiting, skipped }. JobTread at most every 15 minutes (the last good
- * copy when it doesn't answer); the waiting families' scores and pledges as they are now. null with neither
+ * The board's copy: { at, makeovers, noBills, waiting, skipped }. JobTread once the copy is `maxAge` old (15 minutes:
+ * the heartbeat; a page passes PAGE_MAX_AGE_MS), the last good copy when it doesn't answer; the waiting families'
+ * scores and pledges as they are now. null with neither
  */
-export async function makeoverCostsNow(env, { fetchImpl = fetch, now = Date.now(), fresh = false } = {}) {
+export async function makeoverCostsNow(env, { fetchImpl = fetch, now = Date.now(), fresh = false, maxAge = FRESH_MS } = {}) {
   const cached = await readState(env.DB, 'costs');
   let value = cached.value || null;
-  const stale = !cached.at || now - Date.parse(cached.at) >= FRESH_MS;
+  const stale = !cached.at || now - Date.parse(cached.at) >= maxAge;
   if ((fresh || stale) && env.JOBTREAD_GRANT_KEY) {
     try {
       const [jobs, records] = await Promise.all([fetchCostJobs(env.JOBTREAD_GRANT_KEY, fetchImpl), loadCostRecords(env.DB)]);
