@@ -105,9 +105,9 @@ export async function ensureSchema(DB) {
   // What a wording was (words read from a file, a new file), and its SHA-256
   await addColumns(DB, 'board_doc_versions', { note: 'TEXT', hash: 'TEXT', file_id: 'TEXT' });
   // A paper's PDF's words (for finding it by them; and every meeting file's, read by the reader words_v names,
-  // ./_board-file-words.js); whose a signed copy or record is (`slug`: access never rests on
+  // a scan's page to go on from, who's reading it and when it was last read: ./_board-file-words.js); whose a signed copy or record is (`slug`: access never rests on
   // the signature row); its SHA-256; when it stopped counting (never deleted); an iPhone photo's original
-  await addColumns(DB, 'board_files', { words: 'TEXT', words_v: 'INTEGER', slug: 'TEXT', sha256: 'TEXT', superseded_at: 'TEXT', original_id: 'TEXT' });
+  await addColumns(DB, 'board_files', { words: 'TEXT', words_v: 'INTEGER', words_next: 'INTEGER', words_try: 'INTEGER', words_at: 'TEXT', slug: 'TEXT', sha256: 'TEXT', superseded_at: 'TEXT', original_id: 'TEXT' });
   // How many of a member's asks this year Remind by email sent itself (at most MAX_REMINDERS)
   await addColumns(DB, 'board_sign_asks', { reminders: 'INTEGER' });
   // (copies from before `slug`: whose each is, from the signature it was added for)
@@ -748,7 +748,7 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
 
 /** Board files not read yet, a few at a time: their words kept for finding them (./_board-file-words.js) */
 export async function fillDocWords(env, { limit = 3 } = {}) {
-  return (await import('./_board-file-words.js')).readBoardWords(env, { limit, budgetMs: 15000 });
+  return (await import('./_board-file-words.js')).readBoardWords(env, { limit });
 }
 
 /**
@@ -2571,14 +2571,18 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *     Workers AI read again for their motions and action items (./_board-minutes.js maybeFinishMinutes)
  *   - hourly, QuickBooks' revenue and expenses for the year so far (./_quickbooks.js)
  *   - every 15 minutes, the year's major gifts from Zeffy (./_board-gifts.js)
- *   - each minute until all are read, a few board files' words, for the board page's search (./_board-file-words.js)
+ *   - first, alongside the rest: each minute until all are read, a few board files' words, for the board page's search (./_board-file-words.js)
  *   - once a day, the month's bank balance for the board page's history
  * Never throws.
  */
 export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  let reading = null;
   try {
     if (!env.DB) return;
     await ensureSchema(env.DB);
+    // Board files' words, a few each minute until every one is read, for finding them on the board page: first,
+    // alongside the rest, since a scan's page takes the vision model up to 20 s and this work has about 30
+    reading = import('./_board-file-words.js').then((m) => m.readBoardWords(env, { limit: 6 })).catch(() => 0);
     await maybeSyncBoardAccess(env, { fetchImpl, now });
     await (await import('./_board-group.js')).maybeSyncBoardGroup(env, { fetchImpl, now });
     await maybeSyncBoardCalendar(env, { fetchImpl, now });
@@ -2602,8 +2606,6 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await (await import('./_quickbooks.js')).maybeReadBooks(env, { fetchImpl, now });
     // The year's gifts of $1,000 or more, from Zeffy every 15 minutes
     await (await import('./_board-gifts.js')).maybeReadGifts(env, { fetchImpl, now });
-    // Board files' words, a few each minute until every one is read, for finding them on the board page
-    await (await import('./_board-file-words.js')).readBoardWords(env, { limit: 6, budgetMs: 12000 });
     if (!String(env.MERCURY_API_TOKEN || '').trim() && !plaidConfigured(env)) return;
     const runs = await readState(env.DB, 'runs');
     if (runs.cashAt && now - Date.parse(runs.cashAt) < 20 * 60 * 60 * 1000) return;
@@ -2617,6 +2619,8 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
       .bind(todayEastern(now).slice(0, 7), cash.total, JSON.stringify(cash.accounts), new Date(now).toISOString()).run();
   } catch (err) {
     console.error('[board] heartbeat', err.message);
+  } finally {
+    await reading;
   }
 }
 

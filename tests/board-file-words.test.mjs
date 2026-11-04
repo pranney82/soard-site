@@ -56,6 +56,17 @@ function scanPdf() {
   return new Uint8Array(Buffer.concat([Buffer.from('%PDF-1.4\n1 0 obj\n<< /Type /XObject /Subtype /Image /Width 1700 /Height 2200 /Filter /DCTDecode /Length 70 >>\nstream\n', 'latin1'), jpeg, Buffer.from('\nendstream\nendobj\n%%EOF', 'latin1')]));
 }
 const pdf = (text = '') => new TextEncoder().encode(`%PDF-1.4 ${text}`);
+// A scan of `n` pages, each a JPEG whose fifth byte is its page number (the fake vision model reads it from that)
+function scanOf(n) {
+  const parts = [Buffer.from('%PDF-1.4\n', 'latin1')];
+  for (let i = 1; i <= n; i++) {
+    const jpeg = Buffer.concat([Buffer.from([0xFF, 0xD8, 0xFF, 0xE0, i]), Buffer.alloc(64, 7), Buffer.from([0xFF, 0xD9])]);
+    parts.push(Buffer.from(`${i} 0 obj\n<< /Type /XObject /Subtype /Image /Width 1700 /Height 2200 /Filter /DCTDecode /Length ${jpeg.length} >>\nstream\n`, 'latin1'), jpeg, Buffer.from('\nendstream\nendobj\n', 'latin1'));
+  }
+  parts.push(Buffer.from('%%EOF', 'latin1'));
+  return new Uint8Array(Buffer.concat(parts));
+}
+const pageOf = (input) => Buffer.from(input.messages[1].content[1].image_url.url.split(',')[1], 'base64')[4];
 
 class FakeR2 {
   constructor() { this.map = new Map(); }
@@ -67,7 +78,7 @@ class FakeR2 {
 const ai = (pages = {}) => ({
   calls: { markdown: 0, vision: 0 },
   async toMarkdown(doc) { this.calls.markdown++; const p = pages[doc.name]; return { name: doc.name, format: 'markdown', data: p ? `# ${doc.name}\n## Metadata\n- PDFFormatVersion=1.4\n## Contents\n${p.map((t, i) => `### Page ${i + 1}\n${t}`).join('\n')}` : `# ${doc.name}\n## Metadata\n- Creator=Scanner\n## Contents\n### Page 1\n` }; },
-  async run(model, input) { this.calls.vision++; assert.match(model, /vision|llama-4-scout/); assert.match(input.messages[1].content[1].image_url.url, /^data:image\/(jpeg|png);base64,/); return { response: 'MINUTES OF THE BOARD\nThe board approved the conflict of interest policy.' }; },
+  async run(model, input) { this.calls.vision++; assert.match(model, /mistral-small/); assert.match(input.messages[1].content[1].image_url.url, /^data:image\/(jpeg|png);base64,/); return { response: 'MINUTES OF THE BOARD\nThe board approved the conflict of interest policy.' }; },
 });
 
 let env;
@@ -136,7 +147,9 @@ test('read once, a few at a time: SOARD’s papers first, then the newest meetin
   assert.equal(await readBoardWords(env), 0, 'each read once');
   assert.equal(got.f_signed01.words, null);
   assert.equal(env.AI.calls.markdown, 3);
-  assert.deepEqual(await wordsStatus(env.DB), { files: 3, read: 3, withWords: 3, failed: 0, toRead: 0 });
+  const st = await wordsStatus(env.DB);
+  assert.deepEqual({ ...st, lastAt: undefined }, { files: 3, read: 3, withWords: 3, failed: 0, toRead: 0, lastAt: undefined });
+  assert.ok(Date.now() - Date.parse(st.lastAt) < 60000, 'when the last was read (Automations says when reading stops)');
   // A paper read by the old reader (PDFs only, a scan left empty) is read again by this one
   await env.DB.prepare("UPDATE board_files SET words = '', words_v = NULL WHERE id = ?").bind(paper.id).run();
   assert.equal(await readBoardWords(env), 1);
@@ -152,11 +165,12 @@ test('the heartbeat reads them by itself; one Workers AI couldn’t read just th
   const row = async (id) => env.DB.prepare('SELECT words, words_v FROM board_files WHERE id = ?').bind(id).first();
   assert.deepEqual({ ...(await row(f.id)) }, { words: null, words_v: -1 }, 'not read: tried again');
   assert.deepEqual({ ...(await row(g.id)) }, { words: null, words_v: -1 });
-  await readBoardWords(env);
-  await readBoardWords(env);
+  // (one that couldn't be read is tried at the start of a run of its own: one a run)
+  for (let i = 0; i < 4; i++) await readBoardWords(env);
   assert.equal((await row(f.id)).words_v, -3);
+  assert.equal((await row(g.id)).words_v, -3);
   assert.equal(await readBoardWords(env), 0, 'then let be');
-  assert.deepEqual(await wordsStatus(env.DB), { files: 2, read: 0, withWords: 0, failed: 2, toRead: 0 });
+  assert.deepEqual(await wordsStatus(env.DB), { files: 2, read: 0, withWords: 0, failed: 2, toRead: 0, lastAt: null });
   // Back up: a file put in now is read at once, ahead of the ones that failed
   env.AI = ai({ 'agenda.pdf': ['Agenda for the meeting, every item.'] });
   const h = await put(m, 'agenda.pdf', pdf(), { kind: 'agenda' });
@@ -232,4 +246,126 @@ test('a scan whose pages aren’t photos (a black-and-white fax-style scan) is d
   assert.match(r.words, /conflict of interest policy/);
   // Nothing to draw it with (no browser): kept as having no words, never an error to try again
   assert.deepEqual(await wordsOf(env, { name: 'fax.pdf', type: 'application/pdf', bytes: pdf() }, { draw: async () => [] }), { words: '', how: 'none' });
+});
+
+test('a long scan is read a few pages a run (a dense page takes the vision model ~20 s, a run has ~27), kept as it goes, and goes on first until every page is read', async () => {
+  let clock = 1_000_000;
+  const now = () => clock;
+  const seen = [];
+  env.AI = {
+    async toMarkdown(doc) { return { format: 'markdown', data: doc.name === 'Agenda.pdf' ? '### Page 1\nAgenda for the annual meeting of the board, every item in order.' : '### Page 1\n' }; },
+    async run(model, input) { assert.match(model, /mistral-small/); const p = pageOf(input); seen.push(p); clock += 5000; return { response: `Bylaws page ${p}: Article ${p} of the Board` }; },
+  };
+  const m = await meeting('2024-04-25');
+  const f = await put(m, 'Signed Amended Bylaws.pdf', scanOf(10));
+  const row = (id = f.id) => env.DB.prepare('SELECT words, words_v, words_next, words_try FROM board_files WHERE id = ?').bind(id).first();
+  assert.equal(await readBoardWords(env, { now }), 1);
+  let r = await row();
+  assert.equal(r.words_next, 4, 'a group of four pages, then no time for another');
+  assert.equal(r.words.split('\f').length, 4);
+  assert.match(r.words.split('\f')[3], /page 4/);
+  assert.equal(r.words_v, 0, 'read in part: not a try that failed');
+  assert.equal(r.words_try, null, 'let go');
+  // A newer file comes in: the scan under way goes on first
+  await new Promise((res) => setTimeout(res, 5));
+  const g = await put(m, 'Agenda.pdf', pdf());
+  clock += 60000;
+  assert.equal(await readBoardWords(env, { now, limit: 1 }), 1);
+  assert.equal((await row()).words_next, 8);
+  assert.equal((await row(g.id)).words_v, null, 'the agenda waits for the scan');
+  clock += 60000;
+  await readBoardWords(env, { now, limit: 1 });
+  r = await row();
+  assert.equal(r.words_v, READER);
+  assert.equal(r.words_next, null);
+  const pages = r.words.split('\f');
+  assert.equal(pages.length, 10, 'every page, each its own');
+  assert.match(pages[6], /page 7/);
+  assert.deepEqual(seen, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 'each page read once, never converted again');
+  assert.equal(await readBoardWords(env, { now }), 1);
+  assert.match((await row(g.id)).words, /Agenda for the annual meeting/);
+});
+
+test('a try counts as it starts: a run Cloudflare cuts short leaves its file held a minute, then it’s tried again; two runs at once never read one file', async () => {
+  let clock = 5_000_000;
+  const now = () => clock;
+  env.AI = ai({ 'minutes.pdf': ['Minutes of the annual meeting'], 'agenda.pdf': ['Agenda of the annual meeting'] });
+  const m = await meeting('2025-07-24');
+  const a = await put(m, 'minutes.pdf', pdf());
+  await new Promise((res) => setTimeout(res, 5));
+  const b = await put(m, 'agenda.pdf', pdf());
+  // Cut short while reading the agenda (the newest): nothing after its try is written
+  const real = env.FILES.get;
+  env.FILES.get = async () => { throw new Error('cut short'); };
+  await readBoardWords(env, { now });
+  env.FILES.get = real;
+  const row = (id) => env.DB.prepare('SELECT words_v, words_try FROM board_files WHERE id = ?').bind(id).first();
+  assert.deepEqual({ ...(await row(b.id)) }, { words_v: -1, words_try: clock }, 'its try counted, and held');
+  clock += 30000;
+  assert.equal(await readBoardWords(env, { now }), 1, 'within the minute: the other one');
+  assert.equal((await row(a.id)).words_v, READER);
+  assert.equal((await row(b.id)).words_v, -1);
+  clock += 31000;
+  assert.equal(await readBoardWords(env, { now }), 1);
+  assert.equal((await row(b.id)).words_v, READER);
+  // The heartbeat and a visit at once: each file read by one of them
+  const c = await put(m, 'c.pdf', pdf());
+  const d = await put(m, 'd.pdf', pdf());
+  env.AI = ai({ 'c.pdf': ['Treasurer report for the quarter'], 'd.pdf': ['Chair report for the quarter'] });
+  const [x, y] = await Promise.all([readBoardWords(env, { now }), readBoardWords(env, { now })]);
+  assert.equal(x + y, 2);
+  assert.equal(env.AI.calls.markdown, 2, 'never twice');
+  for (const id of [c.id, d.id]) assert.equal((await row(id)).words_v, READER);
+});
+
+test('a scan’s page the vision model can’t read twice is left out, the rest read, and each page keeps its number', async () => {
+  env.AI = {
+    async toMarkdown() { return { format: 'markdown', data: '### Page 1\n' }; },
+    async run(model, input) { const p = pageOf(input); if (p === 2) throw new Error('busy'); return { response: `Page ${p} words` }; },
+  };
+  const m = await meeting('2016-03-01');
+  const f = await put(m, 'old minutes.pdf', scanOf(3));
+  for (let i = 0; i < 4; i++) await readBoardWords(env);
+  const r = await env.DB.prepare('SELECT words, words_v, words_next FROM board_files WHERE id = ?').bind(f.id).first();
+  assert.equal(r.words_v, READER);
+  assert.equal(r.words_next, null);
+  assert.deepEqual(r.words.split('\f'), ['Page 1 words', '', 'Page 3 words']);
+});
+
+test('nothing is started that can’t end in the run’s time, and a file not given the time isn’t a try', async () => {
+  let clock = 7_000_000;
+  const now = () => clock;
+  env.AI = {
+    async toMarkdown() { clock += 20000; return { format: 'markdown', data: '### Page 1\n' }; },
+    async run() { clock += 5000; return { response: 'A page' }; },
+  };
+  const m = await meeting('2017-05-01');
+  const f = await put(m, 'scan.pdf', scanOf(2));
+  // Its converter took 20 s of the run's 27: known as a scan, its pages left for the next run, no try counted
+  assert.equal(await readBoardWords(env, { now }), 1);
+  let r = await env.DB.prepare('SELECT words_v, words_next, words_try FROM board_files WHERE id = ?').bind(f.id).first();
+  assert.deepEqual({ ...r }, { words_v: 0, words_next: 0, words_try: null });
+  clock += 60000;
+  await readBoardWords(env, { now });
+  r = await env.DB.prepare('SELECT words, words_v FROM board_files WHERE id = ?').bind(f.id).first();
+  assert.equal(r.words_v, READER);
+  assert.equal(r.words, 'A page\fA page');
+  // A page that couldn't be read when it started late in a run isn't a try; with the run's whole time, it is
+  env.AI = {
+    async toMarkdown() { clock += 12000; return { format: 'markdown', data: '### Page 1\n' }; },
+    async run() { throw new Error('timeout'); },
+  };
+  const late = await put(m, 'late scan.pdf', scanOf(1));
+  const lateRow = () => env.DB.prepare('SELECT words_v, words_next FROM board_files WHERE id = ?').bind(late.id).first();
+  await readBoardWords(env, { now });
+  assert.deepEqual({ ...(await lateRow()) }, { words_v: 0, words_next: 0 }, 'started with 15 s left: not a try');
+  clock += 60000;
+  await readBoardWords(env, { now });
+  assert.deepEqual({ ...(await lateRow()) }, { words_v: -1, words_next: 0 }, 'the whole run: a try');
+  await env.DB.prepare('DELETE FROM board_files WHERE id = ?').bind(late.id).run();
+  // A picture with too little of the run left waits, untried
+  env.AI = { async toMarkdown() { return { format: 'markdown', data: '' }; }, async run() { return { response: 'Chart words' }; } };
+  const pic = await put(m, 'chart.png', new Uint8Array([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13]), { type: 'image/png', kind: 'other' });
+  assert.equal(await readBoardWords(env, { now, windowMs: 5000 }), 0, 'started with too little time: nothing');
+  assert.equal((await env.DB.prepare('SELECT words_v FROM board_files WHERE id = ?').bind(pic.id).first()).words_v, null);
 });
