@@ -400,6 +400,10 @@ try {
   const loose = await phone.$$eval('#costs .bc-fig__sub, #costs .bc-fig__value, #costs .bc-fam span, #costs .bc-lead, #costs .bc-answer__says, #costs .bc-row__nums dd, #costs .bc-mini dd, #costs .bc-stats', (els) => els.filter((e) => /\d[KMB%]? \p{L}/u.test(e.textContent)).map((e) => e.textContent.slice(0, 40)));
   ok(!loose.length, `every count and amount kept with its word (${loose.join(' | ')})`);
   await shotOf(phone, '#costs', 'home-costs-390');
+  const phoneUnder = await phone.$eval('#costs .bc-under tbody tr', (tr) => { const w = document.documentElement.clientWidth; const cells = [...tr.children].map((c) => c.getBoundingClientRect()); const still = tr.querySelector('td[data-label="Still to come"]'); return { inside: cells.every((r) => r.right <= w + 1), still: still?.innerText, label: still ? getComputedStyle(still, '::before').content : '' }; });
+  ok(phoneUnder.inside && phoneUnder.still === '$17,500' && /Still to come/.test(phoneUnder.label), `on a phone, each job underway shows its still to come on screen, labeled (${JSON.stringify(phoneUnder)})`);
+  const saysShown = await phone.$$eval('#costs .bc-answer__says', (ps) => ps.filter((p) => getComputedStyle(p).display !== 'none').map((p) => p.innerText));
+  ok(saysShown.length === 1, `on a phone, the answer once, in its short words (${saysShown.join(' | ')})`);
   await phone.goto(`${SITE}/admin/board/#/families`, { waitUntil: 'networkidle0' });
   await phone.waitForSelector('.bf-list', { timeout: 8000 });
   ok((await overflow(phone)) <= 0, 'Families: nothing past the right edge');

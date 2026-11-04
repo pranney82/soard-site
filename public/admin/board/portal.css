@@ -2769,6 +2769,22 @@ p.bp-rp__motion-st { margin: 0.35rem 0 0; font-size: 0.85rem; color: var(--muted
 /* (the board's tables pad only their number columns: these words need room on both sides) */
 .bc-under__table th:not(:first-child), .bc-under__table td { padding-left: 1.25rem; }
 .bc-under__table th:last-child, .bc-under__table td:last-child { width: 30%; }
+.bc-answer__says--short { display: none; }
+@media (max-width: 640px) {
+  /* On a phone the answer in its short words, and each job underway a block: its name, then stage, paid and still to come */
+  .bc-answer__says:not(.bc-answer__says--short):has(+ .bc-answer__says--short) { display: none; }
+  .bc-answer__says--short { display: block; }
+  .bc-under__wrap { overflow: visible; }
+  .bc-under__table { min-width: 0; }
+  .bc-under__table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .bc-under__table, .bc-under__table tbody { display: block; }
+  .bc-under__table tr { display: grid; grid-template-columns: repeat(3, minmax(0, auto)); justify-content: start; gap: 0.35rem 1.25rem; padding: 0.7rem 0; border-bottom: 1px solid var(--line); }
+  .bc-under__table tr:last-child { border-bottom: none; }
+  .bc-under__table th[scope="row"], .bc-under__table td.bc-under__from { grid-column: 1 / -1; }
+  .bc-under__table th, .bc-under__table td, .bc-under__table td:last-child { padding: 0; border: none; text-align: left; width: auto; }
+  .bc-under__table td[data-label] { display: grid; gap: 0; font-size: 0.9rem; }
+  .bc-under__table td[data-label]::before { content: attr(data-label); color: var(--muted); font-size: 0.72rem; font-weight: 650; }
+}
 /* Who's waiting, beside the median makeover */
 .bc-split { display: grid; grid-template-columns: minmax(0, 1.75fr) minmax(0, 1fr); gap: 1rem 1.5rem; align-items: start; }
 .bc-median { display: grid; gap: 0.2rem; padding: 0.95rem 1.15rem 1rem; border: 1px solid var(--line); border-radius: var(--r); }

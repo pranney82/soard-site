@@ -264,6 +264,7 @@ function Answer({ cash, operating, plan, typical, admin, onBalance }) {
       ${admin && onBalance ? html`<${BalanceEdit} value=${operating} onSaved=${onBalance} />` : null}
     </div>
     ${plan ? html`<p class="bc-answer__says">${nbw(answerText(plan, typical))}</p>` : null}
+    ${plan && screenText(plan, typical) !== answerText(plan, typical) ? html`<p class="bc-answer__says bc-answer__says--short">${nbw(screenText(plan, typical))}</p>` : null}
   </div>`;
 }
 
@@ -320,9 +321,9 @@ function Underway({ plan }) {
       <thead><tr><th scope="col">Makeover</th><th scope="col">Stage</th><th scope="col" class="num">Paid so far</th><th scope="col" class="num">Still to come</th><th scope="col">From</th></tr></thead>
       <tbody>${plan.jobs.map((j) => html`<tr key=${j.key}>
         <th scope="row"><span class="bc-under__who"><${Face} f=${j} size=${32} /><span><b>${j.url ? html`<a class="bp-link" href=${j.url} target="_blank" rel="noopener">${j.name}</a>` : j.name}</b><small>${roomsText(j)}</small></span></span></th>
-        <td>${j.status}</td>
-        <td class="num">${dollars(j.paid)}</td>
-        <td class="num"><b>${j.left == null ? '–' : dollars(j.left)}</b></td>
+        <td data-label="Stage">${j.status}</td>
+        <td class="num" data-label="Paid so far">${dollars(j.paid)}</td>
+        <td class="num" data-label="Still to come"><b>${j.left == null ? '–' : dollars(j.left)}</b></td>
         <td class="bc-under__from">${j.basis === 'budget' ? 'Its JobTread budget' : j.basis === 'median' ? nbw(cap(`${basisText(j.estimate)}, no budget yet`)) : 'Not known yet'}</td>
       </tr>`)}</tbody>
     </table></div>
