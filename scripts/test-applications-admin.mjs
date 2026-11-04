@@ -19,6 +19,9 @@
  *     { any: [...] }, answer rules, the JobTread picker, the image picker,
  *     problems that block Put live, the live preview contract (postMessage)
  *     and its fallback
+ *   - the thank-you screen: picked under "After they submit", shown in the phone
+ *     preview while picked, every part edited (heading, steps added, removed and
+ *     moved, the closing line left off, the button's link checked), its Spanish
  *   - two editors: the conflict banner, "Keep mine" and "Load their version"
  *   - Spanish: counts, filters, editing, out of date, placeholders, AI fill
  *   - Emails: one at a time from the list, its timing, English and Spanish,
@@ -625,6 +628,87 @@ try {
       await waitSaved(page);
     }
     ok(fieldIn(await draftDef(), 'childName').label === "Child's Name" && /Child's Name/.test(await text(page, '.afe-col')), 'the first tab shows the other tab\'s saved changes when it comes back');
+  });
+
+  await section('Thank-you screen', async () => {
+    // What a family sees once Submit goes through: picked in the outline, edited beside the phone preview
+    const pickDone = () => page.evaluate(() => [...document.querySelectorAll('.afe-col .afe-row')].find(b => b.querySelector('.afe-type')?.textContent === 'Thank you')?.click());
+    const was = clone((await draftDef() || (await getLiveForm(DB, { fresh: true })).definition).done);
+    ok(was?.title === 'Thank you. Your application is in!' && was.steps.length === 3, 'the form carries the built-in thank-you');
+    await pickDone();
+    await sleep(200);
+    ok(await text(page, '.afe-inspector h3') === 'Thank-you screen', 'it is under "After they submit" in the outline, and opens beside it');
+    ok(await page.$eval('#afe-done-title', (e) => e.value) === was.title && await count(page, '.afe-inspector input[aria-label$=" title"][aria-label^="Step"]') === 3, 'with its heading and three steps');
+    if (!(await page.$('.afe-phone iframe'))) await clickText(page, '.afe-bar button', /^Preview$/);
+    await page.waitForSelector('.afe-preview[data-ready="true"]', { timeout: 25000 }).catch(() => {});
+    const frame = async () => (await page.$('.afe-phone iframe')).contentFrame();
+    const inFrame = async () => (await frame()).evaluate(() => {
+      const d = document.querySelector('[data-done]');
+      return { shown: !!d && !d.hidden, form: !document.querySelector('[data-form]')?.hidden, title: d?.querySelector('[data-done-title]')?.textContent, email: d?.querySelector('[data-done-email]')?.textContent,
+        steps: [...(d?.querySelectorAll('[data-done-steps] li') || [])].map(li => li.querySelector('strong').textContent), note: d?.querySelector('[data-done-note]')?.hidden ? null : d?.querySelector('[data-done-note]')?.textContent,
+        link: d?.querySelector('[data-done-link]')?.textContent, href: d?.querySelector('[data-done-link]')?.getAttribute('href') };
+    }).catch(() => ({}));
+    const waitFrame = async (fn) => { for (let i = 0; i < 30; i++) { const f = await inFrame(); if (fn(f)) return f; await sleep(200); } return inFrame(); };
+    let f = await waitFrame((x) => x.shown);
+    ok(f.shown && !f.form, 'the phone preview shows the thank-you while it is picked');
+    ok(f.title === was.title && f.steps.length === 3 && /parent@example\.com/.test(f.email || ''), `as a family gets it, {email} filled with a sample (${f.email})`);
+
+    await typeInto(page, '#afe-done-title', 'Thank you! We have your application.');
+    f = await waitFrame((x) => x.title === 'Thank you! We have your application.');
+    ok(f.title === 'Thank you! We have your application.', 'the heading changes in the preview as it is typed');
+    await page.click('.afe-inspector button[aria-label="Remove step 2"]');
+    f = await waitFrame((x) => x.steps.length === 2);
+    ok(JSON.stringify(f.steps) === JSON.stringify(['We read every application', 'A visit to your home']), 'a step taken off goes from the preview');
+    ok(await clickText(page, '.afe-inspector button', /Add a step/), 'Add a step');
+    await page.type('.afe-inspector input[aria-label="Step 3 title"]', 'We let you know');
+    await page.type('.afe-inspector textarea[aria-label="Step 3 text"]', 'Every family hears back from us by email.');
+    f = await waitFrame((x) => x.steps[2] === 'We let you know');
+    ok(f.steps[2] === 'We let you know', 'and a new one shows at the end');
+    await page.click('.afe-inspector button[aria-label="Move step 3 up"]');
+    f = await waitFrame((x) => x.steps[1] === 'We let you know');
+    ok(f.steps[1] === 'We let you know', 'steps move up and down');
+    await typeInto(page, '#afe-done-note', ' ');
+    f = await waitFrame((x) => x.note === null);
+    ok(f.note === null, 'a closing line left empty is left off');
+    await typeInto(page, '#afe-done-href', 'javascript:alert(1)');
+    await waitSaved(page);
+    ok(/Thank-you screen: The thank-you screen's button should go to a page on this site/.test(await text(page, '.afe-problems')), 'a link that is not a page on the site or https:// is a problem, named plainly');
+    ok(await page.$eval('.afe-bar .btn-primary', (b) => b.disabled), 'and Put live waits for it');
+    ok(await page.$eval('.afe-col .afe-row.has-problem .afe-type', (e) => e.textContent).catch(() => '') === 'Thank you', 'the outline marks the thank-you');
+    await typeInto(page, '#afe-done-href', '/stories/');
+    await waitSaved(page);
+    ok(!(await page.$('.afe-problems')), 'fixed: no problems');
+    f = await waitFrame((x) => x.href === '/stories/');
+    ok(f.href === '/stories/', 'the button goes where it says');
+    const saved = (await draftDef()).done;
+    ok(saved.title === 'Thank you! We have your application.' && saved.steps.length === 3 && saved.steps[1].title === 'We let you know' && saved.note === '' && saved.href === '/stories/', 'all of it saved in the draft');
+    await shot(page, '06b-thank-you.png', { maxH: 1300 });
+    await page.evaluate(() => [...document.querySelectorAll('.afe-title')].find(b => /Before You/.test(b.textContent))?.click());
+    f = await waitFrame((x) => !x.shown);
+    ok(!f.shown && f.form, 'picking a page puts the preview back on the form');
+
+    // Its Spanish sits with the rest, under its own heading
+    await page.click('.afe-subnav [data-view="spanish"]');
+    await page.waitForSelector('.afe-tr[data-path="done:title"]', { timeout: 8000 }).catch(() => {});
+    ok(await page.$eval('.afe-tr[data-path="done:title"]', (e) => e.closest('.afe-tr-group').querySelector('h4').textContent).catch(() => '') === 'Thank-you screen', 'Spanish: the thank-you has its own group');
+    ok(/It used to say: “Thank you\. Your application is in!”/.test(await text(page, '.afe-tr[data-path="done:title"]')), 'and the reworded heading shows as out of date');
+    await page.click('.afe-subnav [data-view="questions"]');
+    await page.waitForSelector('.afe-col .afe-row', { timeout: 8000 });
+
+    // Tidy: the thank-you as it was (later sections expect the built-in one)
+    await pickDone();
+    await sleep(200);
+    await typeInto(page, '#afe-done-title', was.title);
+    await typeInto(page, '.afe-inspector input[aria-label="Step 2 title"]', was.steps[1].title);
+    await typeInto(page, '.afe-inspector textarea[aria-label="Step 2 text"]', was.steps[1].text);
+    await typeInto(page, '.afe-inspector input[aria-label="Step 3 title"]', was.steps[2].title);
+    await typeInto(page, '.afe-inspector textarea[aria-label="Step 3 text"]', was.steps[2].text);
+    await typeInto(page, '#afe-done-note', was.note);
+    await typeInto(page, '#afe-done-href', was.href);
+    await waitSaved(page);
+    ok(JSON.stringify((await draftDef()).done) === JSON.stringify(was), 'put back as it was');
+    await page.evaluate(() => [...document.querySelectorAll('.afe-title')].find(b => /Before You/.test(b.textContent))?.click());
+    await sleep(200);
   });
 
   await section('Two editors at once', async () => {

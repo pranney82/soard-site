@@ -372,6 +372,7 @@ function init(root, cfg, mode) {
     document.querySelectorAll('[data-af-t-placeholder]').forEach(el => el.setAttribute('placeholder', T(el.dataset.afTPlaceholder)));
     paintNotify();
     paintHeroNote();
+    paintDoneWords();
     const later = ui.dialog.querySelector('[data-later-email]');
     if (later) later.textContent = laterEmail;
     const langs = form.languages || ['en'];
@@ -2643,8 +2644,66 @@ function init(root, cfg, mode) {
     // Nothing left to save: the way out of the bar just closes it
     const out = ui.exit?.querySelector('[data-af-t]');
     if (out) { out.dataset.afT = 'close'; out.textContent = T('close'); }
+    paintDoneEmail();
+  }
+  /** The line under the heading: where the copy went (the form's words, {email} filled), or why there's nothing to do */
+  function paintDoneEmail() {
     const line = ui.done.querySelector('[data-done-email]');
-    line.textContent = doneShown.elsewhere ? T('doneElsewhere') : doneShown.already ? T('doneAgain') : doneShown.email ? T('doneEmail', { email: doneShown.email }) : '';
+    if (!line || !doneShown) return;
+    const said = form?.done?.email || '';
+    const mail = !said ? '' : said.includes('{email}') ? (doneShown.email ? said.replace(/\{email\}/g, doneShown.email) : '') : said;
+    const text = doneShown.elsewhere ? T('doneElsewhere') : doneShown.already ? T('doneAgain') : mail;
+    if (line.textContent !== text) line.textContent = text;
+  }
+  /**
+   * The thank-you's words, from the form (Admin → Applications → Form, "Thank-you screen"): the heading, the
+   * steps (changed in place, so an edit in the live preview doesn't replay their rise), the closing line and the
+   * button. Whatever was left empty isn't shown.
+   */
+  function paintDoneWords() {
+    const dn = form?.done;
+    if (!dn || !ui.done) return;
+    const put = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+    const q = (sel) => ui.done.querySelector(sel);
+    put(q('[data-done-title]'), dn.title || '');
+    const steps = (dn.steps || []).filter(it => it.title || it.text);
+    const list = q('[data-done-steps]');
+    if (list) {
+      const items = [...list.children];
+      steps.forEach((it, n) => {
+        let li = items[n];
+        if (!li) {
+          li = document.createElement('li');
+          li.className = 'af-next-step';
+          li.style.setProperty('--i', String(n + 1));
+          li.innerHTML = `<span class="af-next-num" aria-hidden="true">${n + 1}</span><span class="af-next-text"><strong></strong></span>`;
+          list.append(li);
+        }
+        const body = li.querySelector('.af-next-text');
+        put(body.querySelector('strong'), it.title || '');
+        let more = body.querySelector(':scope > span');
+        if (!more) { more = document.createElement('span'); body.append(more); }
+        put(more, it.text || '');
+        more.hidden = !it.text;
+      });
+      items.slice(steps.length).forEach(li => li.remove());
+      list.hidden = !steps.length;
+    }
+    const head = q('[data-done-next-title]');
+    put(head, dn.nextTitle || '');
+    if (head) head.hidden = !steps.length;
+    const note = q('[data-done-note]');
+    put(note, dn.note || '');
+    if (note) note.hidden = !dn.note;
+    const box = q('[data-done-next]');
+    if (box) box.hidden = !steps.length && !dn.note;
+    const link = q('[data-done-link]');
+    if (link) {
+      put(link, dn.link || '');
+      link.hidden = !dn.link;
+      if (dn.href && link.getAttribute('href') !== dn.href) link.setAttribute('href', dn.href);
+    }
+    paintDoneEmail();
   }
 
   // ── Uploads: the box's look ──────────────────────────────────────
@@ -5094,6 +5153,23 @@ function init(root, cfg, mode) {
   }
 
   // ── Live preview for the form editor (?preview=live) ─────────────
+  /** The editor's "Thank-you screen" picked: the screen a family gets after Submit, nothing sent */
+  const DONE_FOCUS = '#done';
+  function showDonePreview() {
+    const fresh = !doneShown;
+    doneShown = { already: false, elsewhere: false, email: readAnswers()[emailId] || (org ? 'contact@example.org' : 'parent@example.com') };
+    if (stopShown) stopShown = null;
+    ui.stop.hidden = true;
+    ui.form.hidden = true;
+    ui.done.hidden = false;
+    root.classList.add('is-done');
+    paintDoneEmail();
+    if (!fresh) return;
+    ui.done.classList.remove('is-in');
+    void ui.done.offsetWidth;
+    ui.done.classList.add('is-in');
+    scrollToForm(true);
+  }
   function onPreview(e) {
     if (e.origin !== location.origin || e.data?.type !== 'afe-preview') return;
     const d = e.data;
@@ -5104,8 +5180,10 @@ function init(root, cfg, mode) {
       furthestId = 'review';
       applyWords();
       const focusPage = d.focus ? (form.pages.some(p => p.id === d.focus) ? d.focus : pageOf(d.focus)) : null;
+      if (d.focus === DONE_FOCUS) { showDonePreview(); return; }
       if (focusPage && stopShown) { stopShown = null; ui.stop.hidden = true; ui.form.hidden = false; }
-      if (focusPage && doneShown) { doneShown = null; ui.done.hidden = true; ui.form.hidden = false; root.classList.remove('is-done'); }
+      // (the thank-you shows here only while it's picked in the editor: a preview sends nothing)
+      if (doneShown) { doneShown = null; ui.done.hidden = true; ui.done.classList.remove('is-in'); ui.form.hidden = false; root.classList.remove('is-done'); }
       const target = focusPage || (pageEl(currentId) ? currentId : stepIds()[0]);
       const anchor = d.focus && byId[d.focus] ? d.focus : (target === currentId && currentId !== 'review' ? [...screenFieldIds()][0] : null);
       currentId = null;

@@ -491,6 +491,85 @@ test('the page config carries the live form and nothing internal; drafts are for
   assert.equal(field(preview.form, 'interests').label, 'Live wording');
 });
 
+test('the thank-you screen: staff reword it, it goes live on Put live, its Spanish follows, and a version saved before it was editable reads as it showed', async () => {
+  const post = async (body) => (await adminApi.onRequestPost({ env, request: new Request('https://x/api/applications-admin', { method: 'POST', body: JSON.stringify(body) }), data: { userEmail: 'linzi@soardcharity.com' } })).json();
+  env.AI.run = async (model, { messages }) => {
+    env.AI.prompts.push(messages.at(-1).content);
+    const batch = JSON.parse(messages.at(-1).content);
+    return { response: JSON.stringify(Object.fromEntries(Object.entries(batch).map(([p, t]) => [p, `ES ${t}`]))) };
+  };
+
+  // The live version as it was stored before: no thank-you, and no Spanish for one
+  await saveDraftForm(env.DB, clone(DEFAULT_DEFINITION));
+  const v0 = (await putDraftLive(env.DB)).version;
+  const old = clone(DEFAULT_DEFINITION);
+  delete old.done;
+  for (const p of Object.keys(old.i18n.es.strings)) if (p.startsWith('done:')) { delete old.i18n.es.strings[p]; delete old.i18n.es.sources[p]; }
+  await env.DB.prepare('UPDATE application_form_versions SET definition = ? WHERE version = ?').bind(JSON.stringify(old), v0).run();
+  clearFormCache();
+  const live0 = (await getLiveForm(env.DB, { fresh: true })).definition;
+  assert.deepEqual(live0.done, DEFAULT_DEFINITION.done, 'it reads as the built-in thank-you it showed');
+  assert.deepEqual(Object.keys(spanishToDo(live0)).filter(p => p.startsWith('done:')), [], 'its built-in Spanish comes along: nothing to translate again');
+  const es0 = resolveForm(live0, { year: YEAR, lang: 'es' }).done;
+  assert.equal(es0.title, '¡Gracias! Recibimos su solicitud.');
+  assert.equal(es0.steps.length, 3);
+  assert.equal(es0.href, '/kids/');
+  const cfg0 = await (await applyApi.onRequestGet({ env, request: new Request('https://x/api/apply?config') })).json();
+  assert.equal(cfg0.form.done.title, 'Thank you. Your application is in!', 'the page gets it');
+  assert.equal(cfg0.definition.done.steps[1].title, 'A short Zoom interview');
+  assert.equal(cfg0.definition.i18n.es.strings['done:title'], '¡Gracias! Recibimos su solicitud.', 'and its Spanish');
+
+  // Problems: no heading, a step with no title, a button going nowhere safe
+  const bad = clone(live0);
+  bad.done.title = '';
+  bad.done.steps.push({ title: '', text: 'More to come' });
+  bad.done.href = 'javascript:alert(1)';
+  assert.match(problems(bad), /thank-you screen needs a heading/);
+  assert.match(problems(bad), /Step 4 on the thank-you screen needs a title/);
+  assert.match(problems(bad), /should go to a page on this site/);
+  const offsite = clone(live0);
+  offsite.done.href = 'https://www.soardcharity.com/stories';
+  assert.equal(problems(offsite), '', 'a full https:// address is fine');
+
+  // Reworded in the editor: a new heading, the Zoom step gone, a step of their own, no closing line, a new button
+  const v = clone(live0);
+  v.done.title = 'Thank you! Your {year} application is in.';
+  v.done.steps.splice(1, 1);
+  v.done.steps.push({ title: 'We let you know', text: 'Every family hears back from us by email.' });
+  v.done.note = '';
+  v.done.link = 'Read our families’ stories';
+  v.done.href = '/stories/';
+  const saved = await post({ formSave: v });
+  assert.equal(saved.success, true);
+  assert.deepEqual(saved.problems, []);
+  assert.equal((await getLiveForm(env.DB, { fresh: true })).definition.done.title, 'Thank you. Your application is in!', 'a draft changes nothing for families');
+  const changes = (await diffForm(env.DB, 'draft')).filter(c => c.area === 'Thank-you screen').map(c => c.text);
+  assert.ok(changes.some(t => /^Heading: /.test(t)), changes.join(' | '));
+  assert.ok(changes.includes('The closing line was taken off'));
+  assert.ok(changes.includes('The button now goes to /stories/'));
+  assert.equal((await diffForm(env.DB, 'draft')).some(c => c.area === 'Spanish'), false, 'the Spanish brought along for the old version is no change');
+
+  const live = await post({ formPutLive: true });
+  assert.equal(live.success, true);
+  const def = (await getLiveForm(env.DB, { fresh: true })).definition;
+  const en = resolveForm(def, { year: YEAR }).done;
+  assert.equal(en.title, 'Thank you! Your 2027 application is in.');
+  assert.deepEqual(en.steps.map(st => st.title), ['We read every application', 'A visit to your home', 'We let you know']);
+  assert.equal(en.note, '');
+  assert.deepEqual([en.link, en.href], ['Read our families’ stories', '/stories/']);
+  const es = resolveForm(def, { year: YEAR, lang: 'es' }).done;
+  assert.equal(es.title, 'ES Thank you! Your 2027 application is in.', 'Put live translated what changed');
+  assert.equal(es.steps[0].title, 'Leemos cada solicitud', 'Spanish for unchanged English stays');
+  assert.equal(es.steps[2].text, 'ES Every family hears back from us by email.');
+  assert.equal(es.note, '', 'a line taken off in English is off in Spanish too');
+  assert.deepEqual(spanishToDo(def), {});
+
+  // The organization application has its own, in English
+  const org = resolveForm(normalizeDefinition({ kind: 'organization' }), { year: YEAR }).done;
+  assert.equal(org.href, '/community/');
+  assert.equal(org.steps[1].title, 'A conversation with our team');
+});
+
 test('admin endpoints: save, problems, put live, restore', async () => {
   const post = async (body) => (await adminApi.onRequestPost({ env, request: new Request('https://x/api/applications-admin', { method: 'POST', body: JSON.stringify(body) }), data: { userEmail: 'peter@soardcharity.com' } })).json();
   const get = async () => (await adminApi.onRequestGet({ env, request: new Request('https://x/api/applications-admin?form=1'), data: {} })).json();

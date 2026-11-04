@@ -34,7 +34,7 @@
  * (application_form_rules_kinds).
  */
 
-import { DEFAULT_DEFINITION, normalizeDefinition, validateDefinition, resolveForm, diffDefinitions, kindOf, defaultDefinitionFor, englishStrings, translationStatus } from './_application-form.js';
+import { DEFAULT_DEFINITION, normalizeDefinition, validateDefinition, resolveForm, diffDefinitions, kindOf, defaultDefinitionFor, englishStrings, translationStatus, withDoneScreen } from './_application-form.js';
 
 const SCHEMA = [
   `CREATE TABLE IF NOT EXISTS application_form_versions (
@@ -71,6 +71,12 @@ export async function ensureFormSchema(DB) {
 
 const iso = (t = Date.now()) => new Date(t).toISOString();
 const parse = (s) => { try { return JSON.parse(s); } catch { return null; } };
+/** A stored definition as the site reads it: one saved before the thank-you screen was editable gets the built-in one */
+const readDefinition = (s, kind) => {
+  const def = parse(s);
+  if (!def || typeof def !== 'object') return def;
+  return withDoneScreen(kindOf(kind) === 'organization' && !def.kind ? { ...def, kind: 'organization' } : def);
+};
 
 // The live form is read on every page view and API call; a short per-isolate
 // cache keeps that off D1. Putting a version live clears it here, and other
@@ -116,7 +122,7 @@ const rulesOrNull = async (DB, kind = 'family') => {
 function row(r) {
   if (!r) return null;
   return {
-    version: r.version, state: r.state, kind: kindOf(r.kind), definition: parse(r.definition), note: r.note || '',
+    version: r.version, state: r.state, kind: kindOf(r.kind), definition: readDefinition(r.definition, r.kind), note: r.note || '',
     createdAt: r.created_at, createdBy: r.created_by, updatedAt: r.updated_at, updatedBy: r.updated_by,
     liveAt: r.live_at, liveBy: r.live_by,
   };
@@ -234,7 +240,7 @@ export async function putDraftLive(DB, { user = 'admin', now = Date.now(), kind 
 async function editVersion(DB, version, edit) {
   await ensureFormSchema(DB);
   const r = await DB.prepare('SELECT state, kind, definition FROM application_form_versions WHERE version = ?').bind(version).first();
-  const def = parse(r?.definition);
+  const def = readDefinition(r?.definition, r?.kind);
   if (!def) return 0;
   const n = edit(def);
   if (!n) return 0;

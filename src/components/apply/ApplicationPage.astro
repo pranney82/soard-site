@@ -316,21 +316,23 @@ const breadcrumbs = [
               <circle class="af-sun-core" cx="60" cy="60" r="24" />
             </svg>
           </div>
-          <h2 data-done-title tabindex="-1" data-af-t="doneTitle">{w('doneTitle')}</h2>
+          <!-- The thank-you's words are the live form's (Admin → Applications → Form, "Thank-you screen"): the script
+               paints them from it; the built-in ones here only fill the first paint -->
+          <h2 data-done-title tabindex="-1">{form.done.title}</h2>
           <p class="af-done-email" data-done-email></p>
-          <div class="af-next-up">
-            <h3 class="af-next-title" data-af-t="doneNext">{w('doneNext')}</h3>
-            <ol class="af-next-list">
-              {[1, 2, 3].map((i) => (
-                <li class="af-next-step" style={`--i:${i}`}>
-                  <span class="af-next-num" aria-hidden="true">{i}</span>
-                  <span class="af-next-text"><strong data-af-t={`doneStep${i}`}>{w(`doneStep${i}`)}</strong><span data-af-t={`doneStep${i}Text`}>{w(`doneStep${i}Text`)}</span></span>
+          <div class="af-next-up" data-done-next hidden={!form.done.steps.length && !form.done.note}>
+            <h3 class="af-next-title" data-done-next-title hidden={!form.done.steps.length}>{form.done.nextTitle}</h3>
+            <ol class="af-next-list" data-done-steps hidden={!form.done.steps.length}>
+              {form.done.steps.map((s, n) => (
+                <li class="af-next-step" style={`--i:${n + 1}`}>
+                  <span class="af-next-num" aria-hidden="true">{n + 1}</span>
+                  <span class="af-next-text"><strong>{s.title}</strong>{s.text && <span>{s.text}</span>}</span>
                 </li>
               ))}
             </ol>
-            <p class="af-next-note" data-af-t="doneNote">{w('doneNote')}</p>
+            <p class="af-next-note" data-done-note hidden={!form.done.note}>{form.done.note}</p>
           </div>
-          <a href={org ? '/community/' : '/kids/'} class="af-btn af-btn--primary" data-af-t="doneLink">{w('doneLink')}</a>
+          <a href={form.done.href} class="af-btn af-btn--primary" data-done-link hidden={!form.done.link}>{form.done.link}</a>
 
           <!-- A staff test run: what the real intake does with it, step by step as it happens -->
           <section class="af-trace" data-trace aria-labelledby="af-trace-title" lang="en" hidden>
@@ -1075,6 +1077,8 @@ const breadcrumbs = [
   .af-next-text { display: grid; gap: 2px; padding-top: 4px; font-size: 15px; line-height: 1.55; color: var(--c-text); }
   .af-next-text strong { font-size: 16px; color: var(--c-dark); }
   .af-done p.af-next-note { margin: 18px 0 0; padding-top: 14px; border-top: 1px solid #E6E1D2; font-size: 14.5px; color: var(--c-text-muted); max-width: none; }
+  /* A thank-you with no steps (Admin → Applications → Form): its closing line alone in the box, no rule above it */
+  .af-done .af-next-list[hidden] + p.af-next-note { margin-top: 0; padding-top: 0; border-top: 0; }
   .af-done.is-in .af-next-step { animation: afRise .5s var(--af-ease) both; animation-delay: calc(.45s + var(--i) * .12s); }
 
   /* margin: auto puts it back in the middle; the site's reset zeroes dialog margins. A modal dialog sits in the top layer, over the header. */

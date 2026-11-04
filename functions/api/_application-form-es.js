@@ -159,6 +159,18 @@ export const DEFAULT_ES = {
   'stop:rental:title': 'Muchas gracias por su interés en Sunshine on a Ranney Day.',
   'stop:rental:body': '<p>Las familias deben ser dueñas de su casa para calificar para una remodelación.</p>',
 
+  'done:title': '¡Gracias! Recibimos su solicitud.',
+  'done:email': 'Le acabamos de enviar un mensaje a {email} de nuestro Comité de Calificación con una copia de su solicitud.',
+  'done:nextTitle': 'Qué sigue',
+  'done:steps:0:title': 'Leemos cada solicitud',
+  'done:steps:0:text': 'Una persona de nuestro equipo lee la suya de principio a fin.',
+  'done:steps:1:title': 'Una entrevista corta por Zoom',
+  'done:steps:1:text': 'Las familias que avanzan reciben una invitación a una videollamada con nosotros.',
+  'done:steps:2:title': 'Una visita a su casa',
+  'done:steps:2:text': `Vamos a ver el espacio juntos y a hablar de lo que ${kid} necesita.`,
+  'done:note': 'Esto puede tomar algo de tiempo, y nos comunicaremos con usted en cualquier caso.',
+  'done:link': 'Conozca a algunos de los niños que hemos ayudado',
+
   'message:welcome': `{parent}
 
 La solicitud de *{child}* está en revisión.{copyNote}

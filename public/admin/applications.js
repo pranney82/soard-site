@@ -205,6 +205,10 @@ function englishStrings(def) {
     }
   }
   for (const [k, s] of Object.entries(def.stops || {})) { put(`stop:${k}:title`, s.title); put(`stop:${k}:body`, s.body); }
+  const done = def.done || {};
+  for (const k of ['title', 'email', 'nextTitle']) put(`done:${k}`, done[k]);
+  (done.steps || []).forEach((it, i) => { put(`done:steps:${i}:title`, it?.title); put(`done:steps:${i}:text`, it?.text); });
+  for (const k of ['note', 'link']) put(`done:${k}`, done[k]);
   for (const k of MESSAGE_KEYS) put(`message:${k}`, def.messages?.[k]);
   const rem = { ...DEFAULT_REMINDERS, ...(def.reminders || {}) };
   put('reminder:subject', rem.subject);
@@ -2183,7 +2187,7 @@ function Problems({ problems, onJump }) {
   return html`
     <div class="afe-problems" role="alert">
       <strong>${problems.length === 1 ? '1 thing to fix' : `${problems.length} things to fix`} before this can go live</strong>
-      <ul>${problems.map(p => html`<li>${p.where && onJump ? html`<button onClick=${() => onJump(p.where)}>${p.where}</button>: ` : ''}${p.message}</li>`)}</ul>
+      <ul>${problems.map(p => html`<li>${p.where && onJump ? html`<button onClick=${() => onJump(p.where)}>${p.where === 'done' ? 'Thank-you screen' : p.where}</button>: ` : ''}${p.message}</li>`)}</ul>
     </div>`;
 }
 
@@ -2263,9 +2267,11 @@ function FormEditor({ d, RichTextEditor, addToast, initialSel = null, lead = nul
   };
   const selectPage = (pi, opts) => select({ kind: 'page', id: work.pages[pi]?.id, at: pi }, opts);
   const selectField = (id, opts) => select({ kind: 'field', id }, opts);
-  const focus = sel.kind === 'field' ? sel.id : sel.kind === 'page' ? work.pages[pageAt]?.id : null;
+  // (the preview shows the thank-you while it's picked: '#done' is no page's or question's id)
+  const focus = sel.kind === 'field' ? sel.id : sel.kind === 'page' ? work.pages[pageAt]?.id : sel.kind === 'done' ? '#done' : null;
 
   const jump = (where) => {
+    if (where === 'done') { select({ kind: 'done' }, { scroll: true }); return; }
     if (where.startsWith('stops/')) { select({ kind: 'stop', key: where.slice(6) }, { scroll: true }); return; }
     if (where.startsWith('messages/') || where === 'reminders') { go('emails'); return; }
     if (where === 'staffEmails' || where === 'serviceArea') { go('settings'); return; }
@@ -2466,6 +2472,15 @@ function FormEditor({ d, RichTextEditor, addToast, initialSel = null, lead = nul
           </div>
 
           <section class="afe-panel">
+            <div class="afe-page-head"><strong style="padding: .3rem .4rem;">After they submit</strong></div>
+            <div class="afe-rows">
+              <button class="afe-row ${sel.kind === 'done' ? 'is-sel' : ''} ${problemFor('done') ? 'has-problem' : ''}" style="padding-left: .55rem;" aria-current=${sel.kind === 'done' ? 'true' : undefined} onClick=${() => select({ kind: 'done' }, { scroll: true })}>
+                <span class="afe-type">Thank you</span><span class="afe-row-label">${fill(work.done?.title, year) || html`<em class="text-muted">No heading yet</em>`}</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="afe-panel">
             <div class="afe-page-head"><strong style="padding: .3rem .4rem;">Stop screens</strong></div>
             <p class="afe-hint" style="margin: 0 0 .5rem;">What a family sees when an answer means we can't help this time. Pick them on a question's choices.</p>
             <div class="afe-rows">
@@ -2490,6 +2505,7 @@ function FormEditor({ d, RichTextEditor, addToast, initialSel = null, lead = nul
             ${sel.kind === 'field' && found && html`<${FieldInspector} key=${found.f.id} d=${d} pi=${found.pi} fi=${found.fi} f=${found.f} locked=${locked[found.f.id]} types=${types} RichTextEditor=${RichTextEditor} onSelect=${select} onDuplicate=${() => dupField(found.f.id)} addToast=${addToast} />`}
             ${sel.kind === 'page' && work.pages[pageAt] && html`<${PageInspector} key=${`p${work.pages[pageAt].id}`} d=${d} pi=${pageAt} locked=${locked} onSelect=${select} onDuplicate=${() => dupPage(pageAt)} />`}
             ${sel.kind === 'stop' && work.stops?.[sel.key] && html`<${StopInspector} key=${`s${sel.key}`} d=${d} k=${sel.key} RichTextEditor=${RichTextEditor} onSelect=${select} />`}
+            ${sel.kind === 'done' && html`<${DoneInspector} key="done" d=${d} />`}
             ${((sel.kind === 'field' && !found) || (sel.kind === 'page' && !work.pages[pageAt]) || (sel.kind === 'stop' && !work.stops?.[sel.key])) && html`<p class="afe-empty">Pick a page or question on the left.</p>`}
           </div>
         </div>
@@ -3071,6 +3087,58 @@ function StopInspector({ d, k, RichTextEditor, onSelect }) {
       onClick=${async () => { if (!(await ask({ title: 'Delete this stop screen?', yes: 'Delete', danger: true }))) return; d.update((w) => { delete w.stops[k]; }); onSelect({ kind: 'page', id: d.work.pages[0]?.id, at: 0 }); }}><${Icon} name="trash" size=${14} /> Delete this stop screen</button>`;
 }
 
+/** The most steps the thank-you lists (mirrors DONE_STEPS_MAX) */
+const DONE_STEPS_MAX = 6;
+
+/**
+ * The thank-you screen a family (or an organization) sees the moment Submit goes through. Saved with the
+ * draft and live on Put live, like the questions; its Spanish is in the Spanish tab.
+ */
+function DoneInspector({ d }) {
+  const dn = d.work.done || {};
+  const steps = dn.steps || [];
+  const who = isOrgForm() ? 'an organization' : 'a family';
+  const set = (patch) => d.update((w) => { w.done = Object.assign(w.done || { steps: [] }, patch); });
+  const step = (fn) => d.update((w) => { w.done = w.done || { steps: [] }; w.done.steps = w.done.steps || []; return fn(w.done.steps); });
+  const move = (i, dir) => step((list) => { const to = i + dir; if (to < 0 || to >= list.length) return false; [list[i], list[to]] = [list[to], list[i]]; });
+  const noEmail = !!dn.email && !dn.email.includes('{email}');
+  return html`
+    <div class="afe-insp-head"><div><span class="afe-crumb">After they submit</span><h3>Thank-you screen</h3></div></div>
+    <p class="afe-hint" style="margin: 0 0 .85rem;">What ${who} sees the moment their application is sent. The preview shows it while it's picked here.</p>
+    <${Field} label="Heading" id="afe-done-title"><input id="afe-done-title" class="form-input" value=${dn.title || ''} onInput=${(e) => set({ title: e.target.value })} /><//>
+    <${Field} label="Line about the email" id="afe-done-email" hint=${noEmail ? 'Without {email} it won’t say which address got the copy.' : '{email} becomes the address the copy went to. Leave it empty to say nothing here.'}>
+      <textarea id="afe-done-email" class="form-input" rows="3" value=${dn.email || ''} onInput=${(e) => set({ email: e.target.value })}></textarea>
+    <//>
+    <${Field} label="Heading above the steps" id="afe-done-next"><input id="afe-done-next" class="form-input" value=${dn.nextTitle || ''} onInput=${(e) => set({ nextTitle: e.target.value })} /><//>
+    <div class="afe-field">
+      <span class="afe-label">Steps</span>
+      ${steps.map((it, i) => html`
+        <div class="afe-choice" style="grid-template-columns: 1fr auto; padding-left: .45rem; margin-bottom: .4rem;">
+          <div class="afe-choice-main">
+            <input class="form-input" aria-label=${`Step ${i + 1} title`} placeholder="Title" value=${it.title || ''} onInput=${(e) => step((list) => { list[i] = { ...list[i], title: e.target.value }; })} />
+            <textarea class="form-input" rows="2" aria-label=${`Step ${i + 1} text`} placeholder="A sentence or two (optional)" value=${it.text || ''} onInput=${(e) => step((list) => { list[i] = { ...list[i], text: e.target.value }; })}></textarea>
+          </div>
+          <span class="afe-mini">
+            <button aria-label=${`Move step ${i + 1} up`} title="Move up" disabled=${i === 0} onClick=${() => move(i, -1)}><${Icon} name="up" size=${14} /></button>
+            <button aria-label=${`Move step ${i + 1} down`} title="Move down" disabled=${i === steps.length - 1} onClick=${() => move(i, 1)}><${Icon} name="down" size=${14} /></button>
+            <button aria-label=${`Remove step ${i + 1}`} title="Remove" onClick=${() => step((list) => { list.splice(i, 1); })}><${Icon} name="close" size=${14} /></button>
+          </span>
+        </div>`)}
+      ${!steps.length && html`<p class="afe-hint" style="margin: 0 0 .4rem;">No steps: the screen goes from the heading to the closing line.</p>`}
+      <button class="btn btn-ghost btn-sm" style="justify-self: start;" disabled=${steps.length >= DONE_STEPS_MAX} title=${steps.length >= DONE_STEPS_MAX ? `Up to ${DONE_STEPS_MAX} steps` : ''}
+        onClick=${() => step((list) => { list.push({ title: '', text: '' }); })}><${Icon} name="plus" size=${14} /> Add a step</button>
+    </div>
+    <${Field} label="Closing line" id="afe-done-note" hint="Under the steps. Leave it empty to leave it off.">
+      <textarea id="afe-done-note" class="form-input" rows="2" value=${dn.note || ''} onInput=${(e) => set({ note: e.target.value })}></textarea>
+    <//>
+    <${Field} label="Button" id="afe-done-link" hint="Leave it empty for no button.">
+      <input id="afe-done-link" class="form-input" value=${dn.link || ''} onInput=${(e) => set({ link: e.target.value })} />
+    <//>
+    <${Field} label="Button goes to" id="afe-done-href" hint=${`A page on this site, like ${isOrgForm() ? '/community/' : '/kids/'}, or a full address that starts with https://.`}>
+      <input id="afe-done-href" class="form-input" value=${dn.href || ''} placeholder=${isOrgForm() ? '/community/' : '/kids/'} onInput=${(e) => set({ href: e.target.value.trim() })} />
+    <//>`;
+}
+
 // ─── Spanish ───────────────────────────────────────────────────────
 const TR_FILTERS = [['all', 'All'], ['missing', 'Missing'], ['stale', 'Out of date'], ['done', 'Done']];
 const TR_BADGE = { missing: ['badge-yellow', 'Missing'], stale: ['badge-blue', 'Out of date'], done: ['badge-green', 'Done'] };
@@ -3102,6 +3170,10 @@ function stringPlace(path, def, year, types, index) {
     return { group, item, part };
   }
   if (kind === 'stop') return { group: 'Stop screens', item: short(def.stops?.[rest[0]]?.title || rest[0], 60), part: rest[1] === 'body' ? 'Message' : 'Heading' };
+  if (kind === 'done') {
+    if (rest[0] === 'steps') return { group: 'Thank-you screen', item: `Step ${Number(rest[1]) + 1}: ${short(def.done?.steps?.[Number(rest[1])]?.title || '', 50)}`, part: rest[2] === 'title' ? 'Title' : 'Text' };
+    return { group: 'Thank-you screen', item: { title: 'Heading', email: 'Line about the email', nextTitle: 'Heading above the steps', note: 'Closing line', link: 'Button' }[rest[0]] || rest[0], part: '' };
+  }
   if (kind === 'message') return { group: 'Messages to families', item: MESSAGE_NAMES[rest[0]] || rest[0], part: '' };
   if (kind === 'reminder') return { group: 'Reminder email', item: rest[0] === 'subject' ? 'Subject' : 'Message', part: '' };
   return { group: 'Other', item: path, part: '' };

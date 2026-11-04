@@ -89,7 +89,7 @@ const maskEmail = (e) => String(e).replace(/^(.)[^@]*(@.*)$/, (m, a, b) => `${a}
 
 /** What the page needs to draw the form: no messages or staff addresses */
 export function publicForm(form) {
-  return { kind: form.kind || 'family', title: form.title, year: form.year, version: form.version, lang: form.lang, languages: form.languages, pages: form.pages, stops: form.stops, serviceArea: form.serviceArea };
+  return { kind: form.kind || 'family', title: form.title, year: form.year, version: form.version, lang: form.lang, languages: form.languages, pages: form.pages, stops: form.stops, done: form.done, serviceArea: form.serviceArea };
 }
 
 /** Is this form taking applications? The family form follows the season; the organization one its own switch */
@@ -111,7 +111,7 @@ export function publicDefinition(def) {
   }
   const sa = def?.serviceArea;
   return {
-    schema: def?.schema || 2, ...(isOrganizationKind(def) ? { kind: 'organization' } : {}), title: def?.title, pages: def?.pages || [], stops: def?.stops || {}, i18n,
+    schema: def?.schema || 2, ...(isOrganizationKind(def) ? { kind: 'organization' } : {}), title: def?.title, pages: def?.pages || [], stops: def?.stops || {}, ...(def?.done ? { done: def.done } : {}), i18n,
     ...(sa ? { serviceArea: { polygon: sa.polygon, nearMiles: sa.nearMiles, beyond: sa.beyond } } : {}),
   };
 }

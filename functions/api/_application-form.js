@@ -13,8 +13,13 @@
  * Application" as updated for 2027 (copy 262924738674168), word for word.
  *
  * Stored definition: { schema, title, pages: [{ id, title, fields }], stops,
- * messages, staffEmails }. Any text may say {year}; resolveForm() fills in the
+ * done, messages, staffEmails }. Any text may say {year}; resolveForm() fills in the
  * season from Admin → Applications → Settings.
+ *
+ * done is the thank-you screen a family sees once they press Submit:
+ * { title, email ({email} = where the copy went), nextTitle, steps: [{ title,
+ * text }], note, link (the button's words), href (where it goes) }. A version
+ * saved before it was editable reads as the built-in one (withDoneScreen).
  *
  * Field types:
  *   text, textarea, email, phone, date, select, radio, checkbox (max = most
@@ -208,6 +213,23 @@ export const DEFAULT_SERVICE_AREA = {
   nearMiles: NEAR_MILES,
   beyond: 'warn',
 };
+
+/** The thank-you screen after Submit (Admin → Applications → Form, "Thank-you screen") */
+export const DEFAULT_DONE = {
+  title: 'Thank you. Your application is in!',
+  email: 'We just sent a message to {email} from our Qualification Committee with a copy of your application.',
+  nextTitle: 'What happens next',
+  steps: [
+    { title: 'We read every application', text: 'A real person on our team reads yours from start to finish.' },
+    { title: 'A short Zoom interview', text: 'Families who move forward are invited to a video call with us.' },
+    { title: 'A visit to your home', text: 'We come see the space together and talk about what your child needs.' },
+  ],
+  note: 'This can take some time, and we will reach out either way.',
+  link: "Meet some of the kids we've served",
+  href: '/kids/',
+};
+/** The most steps the thank-you screen lists */
+export const DONE_STEPS_MAX = 6;
 
 /** Version 0: the Jotform form as it stood for the 2027 season */
 export const DEFAULT_DEFINITION = {
@@ -416,6 +438,7 @@ export const DEFAULT_DEFINITION = {
       body: '<p>Families must own their home to qualify for a makeover.</p>',
     },
   },
+  done: DEFAULT_DONE,
   messages: DEFAULT_MESSAGES,
   staffEmails: DEFAULT_STAFF_EMAILS,
   reminders: DEFAULT_REMINDERS,
@@ -441,6 +464,10 @@ export const lockedFieldsFor = (kind) => (isOrganizationKind(kind) ? ORG_LOCKED_
 export const defaultDefinitionFor = (kind) => (isOrganizationKind(kind) ? ORG_DEFAULT_DEFINITION : DEFAULT_DEFINITION);
 export const defaultMessagesFor = (kind) => (isOrganizationKind(kind) ? ORG_DEFAULT_MESSAGES : DEFAULT_MESSAGES);
 export const defaultRemindersFor = (kind) => (isOrganizationKind(kind) ? ORG_DEFAULT_REMINDERS : DEFAULT_REMINDERS);
+/** A definition's thank-you screen; the built-in one for a version saved before it was editable */
+export const doneOf = (def) => (def?.done && typeof def.done === 'object' ? def.done : defaultDefinitionFor(def).done);
+/** Where the thank-you button may go: a page on this site ("/kids/") or a full https:// address */
+export const isDoneHref = (v) => /^\/(?!\/)[^\s"'<>\\]*$/.test(String(v || '')) || (/^https:\/\//i.test(String(v || '')) && isWebAddress(v));
 /** The token every status message must have: the child's name, or the organization's */
 export const nameTokenFor = (kind) => (isOrganizationKind(kind) ? '{organization}' : '{child}');
 
@@ -473,6 +500,7 @@ export const LANGS = { en: 'English', es: 'Español' };
  * title, page:<id>, field:<id>:label|help|html|alt|title|doTitle|dontTitle,
  * field:<id>:doItems:<n>:title|text, field:<id>:dontItems:<n>,
  * field:<id>:option:<value>, field:<id>:desc:<value>, stop:<key>:title|body,
+ * done:title|email|nextTitle|note|link, done:steps:<n>:title|text,
  * message:<key>, reminder:subject|body. Translations are keyed the same way.
  */
 export function englishStrings(def) {
@@ -493,6 +521,10 @@ export function englishStrings(def) {
     }
   }
   for (const [k, s] of Object.entries(def.stops || {})) { put(`stop:${k}:title`, s.title); put(`stop:${k}:body`, s.body); }
+  const done = doneOf(def);
+  for (const k of ['title', 'email', 'nextTitle']) put(`done:${k}`, done[k]);
+  (done.steps || []).forEach((it, i) => { put(`done:steps:${i}:title`, it?.title); put(`done:steps:${i}:text`, it?.text); });
+  for (const k of ['note', 'link']) put(`done:${k}`, done[k]);
   const msgs = { ...defaultMessagesFor(def), ...(def.messages || {}) };
   for (const k of MESSAGE_KEYS) put(`message:${k}`, msgs[k]);
   const rem = { ...defaultRemindersFor(def), ...(def.reminders || {}) };
@@ -539,6 +571,30 @@ export function builtInSpanishBehind(def) {
   return Object.fromEntries(Object.keys(en).filter(p => es[p] && es[p] === DEFAULT_ES[p] && from[p] != null && en[p] !== from[p] && kept[p] !== en[p]).map(p => [p, from[p]]));
 }
 
+/**
+ * A stored definition with its thank-you screen: one saved before the screen
+ * was editable gets the built-in wording it showed then, and its built-in
+ * Spanish too (marked as made from that English), so nothing reads as
+ * missing and nothing is sent off to be translated again.
+ */
+export function withDoneScreen(def) {
+  if (!def || typeof def !== 'object' || (def.done && typeof def.done === 'object')) return def;
+  const out = { ...def, done: JSON.parse(JSON.stringify(defaultDefinitionFor(def).done)) };
+  const es = def.i18n?.es;
+  if (!isOrganizationKind(def) && es && Object.keys(es.strings || {}).length) {
+    const from = DEFAULT_DEFINITION.i18n.es.sources;
+    const strings = { ...es.strings };
+    const sources = { ...(es.sources || {}) };
+    for (const [path, text] of Object.entries(DEFAULT_ES)) {
+      if (!path.startsWith('done:') || strings[path]) continue;
+      strings[path] = text;
+      if (from[path] != null) sources[path] = from[path];
+    }
+    out.i18n = { ...def.i18n, es: { ...es, strings, sources } };
+  }
+  return out;
+}
+
 // ─── Resolving a stored definition for one season ──────────────────
 
 const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -557,8 +613,8 @@ export function choice(o) {
  * The form families see for `year` in `lang`: {year} filled in, translations
  * laid over the English (missing ones stay English), each field's options as
  * a list of values plus optionLabels / descriptions maps.
- * Returns { title, year, version, lang, languages, pages, stops, messages,
- * reminders, staffEmails, serviceArea }.
+ * Returns { title, year, version, lang, languages, pages, stops, done,
+ * messages, reminders, staffEmails, serviceArea }.
  */
 export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', version = 0, lang = 'en' } = {}) {
   const def = clone(definition || DEFAULT_DEFINITION);
@@ -596,6 +652,18 @@ export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', ve
     }),
   }));
   const stops = Object.fromEntries(Object.entries(def.stops || {}).map(([k, s]) => [k, { ...s, title: t(`stop:${k}:title`, s.title), body: t(`stop:${k}:body`, s.body) }]));
+  // The thank-you: a line left empty in English stays empty (its old Spanish isn't shown either)
+  const ds = doneOf(def);
+  const tn = (path, en) => (String(en || '').trim() ? t(path, en) : '');
+  const done = {
+    title: tn('done:title', ds.title),
+    email: tn('done:email', ds.email),
+    nextTitle: tn('done:nextTitle', ds.nextTitle),
+    steps: (Array.isArray(ds.steps) ? ds.steps : []).map((it, n) => ({ title: tn(`done:steps:${n}:title`, it?.title), text: tn(`done:steps:${n}:text`, it?.text) })).filter(it => it.title || it.text),
+    note: tn('done:note', ds.note),
+    link: tn('done:link', ds.link),
+    href: isDoneHref(ds.href) ? ds.href : defaultDefinitionFor(kind).done.href,
+  };
   const baseMessages = { ...defaultMessagesFor(kind), ...(def.messages || {}) };
   const messages = Object.fromEntries(MESSAGE_KEYS.map(k => [k, tr[`message:${k}`] || baseMessages[k]]));
   const rem = { ...defaultRemindersFor(kind), ...(def.reminders || {}) };
@@ -608,6 +676,7 @@ export function resolveForm(definition = DEFAULT_DEFINITION, { year = '2027', ve
     languages,
     pages,
     stops,
+    done,
     messages,
     reminders: { ...rem, subject: fillYear(tr['reminder:subject'] || rem.subject, y), body: fillYear(tr['reminder:body'] || rem.body, y) },
     staffEmails: Array.isArray(def.staffEmails) && def.staffEmails.length ? def.staffEmails : DEFAULT_STAFF_EMAILS,
@@ -741,7 +810,7 @@ function normalizeRule(r, depth = 0) {
 
 /** A definition reduced to known keys, trimmed, HTML cleaned (doesn't judge it; see validateDefinition) */
 export function normalizeDefinition(input) {
-  const d = input && typeof input === 'object' ? input : {};
+  const d = withDoneScreen(input && typeof input === 'object' ? input : {});
   const kind = kindOf(d);
   const pages = (Array.isArray(d.pages) ? d.pages : []).slice(0, 40).map(p => {
     const page = { id: str(p?.id, 40), title: str(p?.title, 160), fields: (Array.isArray(p?.fields) ? p.fields : []).slice(0, 80).map(normalizeField) };
@@ -753,6 +822,17 @@ export function normalizeDefinition(input) {
   for (const [k, s] of Object.entries(d.stops && typeof d.stops === 'object' ? d.stops : {}).slice(0, 12)) {
     stops[str(k, 30)] = { title: str(s?.title, 240), body: sanitizeHtml(s?.body), ...(s?.image ? { image: str(s.image, 200) } : {}) };
   }
+  const baseDone = defaultDefinitionFor(kind).done;
+  const dn = d.done && typeof d.done === 'object' ? d.done : baseDone;
+  const done = {
+    title: str(dn.title ?? baseDone.title, 200),
+    email: str(dn.email ?? baseDone.email, 400),
+    nextTitle: str(dn.nextTitle ?? baseDone.nextTitle, 120),
+    steps: (Array.isArray(dn.steps) ? dn.steps : baseDone.steps).slice(0, DONE_STEPS_MAX).map(it => ({ title: str(it?.title, 160), text: str(it?.text, 600) })),
+    note: str(dn.note ?? baseDone.note, 600),
+    link: str(dn.link ?? baseDone.link, 120),
+    href: str(dn.href ?? baseDone.href, 300),
+  };
   const messages = {};
   for (const k of MESSAGE_KEYS) messages[k] = str(d.messages?.[k] ?? defaultMessagesFor(kind)[k], k === 'copyNote' ? 400 : MESSAGE_MAX);
   const staffEmails = (Array.isArray(d.staffEmails) ? d.staffEmails : []).map(e => str(e, 160)).filter(Boolean).slice(0, 10);
@@ -785,7 +865,7 @@ export function normalizeDefinition(input) {
     for (const [path, text] of Object.entries(tr?.kept || {}).slice(0, 2000)) if (strings[path]) kept[str(path, 400)] = String(text ?? '').slice(0, HTML_MAX);
     i18n[lang] = { strings, sources, ...(Object.keys(kept).length ? { kept } : {}) };
   }
-  return { schema: 2, ...(kind === 'organization' ? { kind } : {}), title: str(d.title || defaultDefinitionFor(kind).title, 200), pages, stops, messages, staffEmails, reminders, notify: notifySettings(d.notify), serviceArea, i18n };
+  return { schema: 2, ...(kind === 'organization' ? { kind } : {}), title: str(d.title || defaultDefinitionFor(kind).title, 200), pages, stops, done, messages, staffEmails, reminders, notify: notifySettings(d.notify), serviceArea, i18n };
 }
 
 const JT_TYPES_FOR = {
@@ -852,7 +932,7 @@ function normalizeField(f) {
 
 /**
  * Problems that would stop a definition going live: [{ where, message }].
- * `where` is a page id, "pageId/fieldId", "stops/<key>", "messages/<key>",
+ * `where` is a page id, "pageId/fieldId", "stops/<key>", "done", "messages/<key>",
  * "reminders", "serviceArea" or "staffEmails".
  */
 export function validateDefinition(def) {
@@ -958,6 +1038,14 @@ export function validateDefinition(def) {
     if (!/^[a-z0-9-]{1,30}$/.test(k)) err(`stops/${k}`, 'A stop screen has an invalid id.');
     if (!s.title) err(`stops/${k}`, 'This stop screen needs a title.');
   }
+  if (def.done) {
+    const dn = def.done;
+    if (!dn.title) err('done', 'The thank-you screen needs a heading.');
+    (dn.steps || []).forEach((it, i) => { if (!it?.title) err('done', `Step ${i + 1} on the thank-you screen needs a title.`); });
+    if ((dn.steps || []).length && !dn.nextTitle) err('done', 'The thank-you screen\'s steps need a heading above them (like "What happens next").');
+    if (dn.link && !dn.href) err('done', 'The thank-you screen\'s button needs a page to go to.');
+    else if (dn.href && !isDoneHref(dn.href)) err('done', 'The thank-you screen\'s button should go to a page on this site (like /kids/) or a full address that starts with https://.');
+  }
   for (const k of ['welcome', 'inReview', 'approved', 'denied', 'correction']) {
     const m = def.messages?.[k];
     if (!m) err(`messages/${k}`, 'This message is empty.');
@@ -994,8 +1082,9 @@ const short = (s, n = 80) => { const t = String(s || '').replace(/<[^>]+>/g, ' '
 export function diffDefinitions(before, after) {
   const out = [];
   const add = (kind, area, text) => out.push({ kind, area, text });
-  const a = before || { pages: [] };
-  const b = after || { pages: [] };
+  // (a version saved before the thank-you screen was editable reads as it showed: the built-in one)
+  const a = withDoneScreen(before || { pages: [] });
+  const b = withDoneScreen(after || { pages: [] });
   const fieldsOf = (d) => new Map(d.pages.flatMap((p, pi) => p.fields.map((f, fi) => [f.id, { f, page: p.id, pageTitle: p.title, pi, fi }])));
   const fa = fieldsOf(a);
   const fb = fieldsOf(b);
@@ -1057,6 +1146,21 @@ export function diffDefinitions(before, after) {
   for (const k of Object.keys(sb)) if (!sa[k]) add('added', 'Stop screens', `New stop screen "${short(sb[k].title)}"`);
   for (const k of Object.keys(sa)) if (!sb[k]) add('removed', 'Stop screens', `Removed stop screen "${short(sa[k].title)}"`);
   for (const k of Object.keys(sb)) if (sa[k] && JSON.stringify(sa[k]) !== JSON.stringify(sb[k])) add('changed', 'Stop screens', `Stop screen "${short(sb[k].title)}" changed`);
+
+  const da = doneOf(a);
+  const db = doneOf(b);
+  if ((da.title || '') !== (db.title || '')) add('changed', 'Thank-you screen', `Heading: "${short(da.title)}" → "${short(db.title)}"`);
+  for (const [k, nm] of [['email', 'The email line'], ['nextTitle', 'The steps\' heading'], ['note', 'The closing line'], ['link', 'The button\'s wording']]) {
+    if ((da[k] || '') !== (db[k] || '')) add('changed', 'Thank-you screen', db[k] ? `${nm} changed` : `${nm} was taken off`);
+  }
+  if ((da.href || '') !== (db.href || '')) add('changed', 'Thank-you screen', `The button now goes to ${db.href || 'nowhere'}`);
+  const stA = da.steps || [];
+  const stB = db.steps || [];
+  for (let i = 0; i < Math.max(stA.length, stB.length); i++) {
+    if (!stA[i]) add('added', 'Thank-you screen', `New step "${short(stB[i].title, 60)}"`);
+    else if (!stB[i]) add('removed', 'Thank-you screen', `Removed step "${short(stA[i].title, 60)}"`);
+    else if (stA[i].title !== stB[i].title || stA[i].text !== stB[i].text) add('changed', 'Thank-you screen', `Step ${i + 1} reworded: "${short(stB[i].title, 60)}"`);
+  }
 
   const ma = { ...defaultMessagesFor(a), ...(a.messages || {}) };
   const mb = { ...defaultMessagesFor(b), ...(b.messages || {}) };

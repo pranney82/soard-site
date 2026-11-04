@@ -42,13 +42,8 @@ export const UI = {
     submitNeeds: 'Submit opens once every required answer is in.',
     edit: 'Edit', editSection: 'Edit {name}', change: 'Change', fix: 'Answer it', photoAdded: 'Photo added', videoUploaded: 'Video uploaded', notAnswered: 'Not answered yet',
     attentionOne: '1 answer on this page needs attention.', attentionMany: '{n} answers on this page need attention.',
-    doneTitle: 'Thank you. Your application is in!', doneEmail: 'We just sent a message to {email} from our Qualification Committee with a copy of your application.',
-    doneNext: 'What happens next',
-    doneStep1: 'We read every application', doneStep1Text: 'A real person on our team reads yours from start to finish.',
-    doneStep2: 'A short Zoom interview', doneStep2Text: 'Families who move forward are invited to a video call with us.',
-    doneStep3: 'A visit to your home', doneStep3Text: 'We come see the space together and talk about what your child needs.',
-    doneNote: 'This can take some time, and we will reach out either way.',
-    doneAgain: "This application was sent earlier, so there's nothing more to do.", doneElsewhere: "It was sent from another device or tab, so changes made here after that weren't added.", doneLink: "Meet some of the kids we've served",
+    // (The thank-you's own words are the form's: Admin → Applications → Form, "Thank-you screen")
+    doneAgain: "This application was sent earlier, so there's nothing more to do.", doneElsewhere: "It was sent from another device or tab, so changes made here after that weren't added.",
     stopBack: 'I need to change my answer', stopApply: 'Back to the Apply page',
     laterTitle: 'Save and finish later', laterIntro: "Your answers are already saved. We'll email you a link to pick up where you left off, on this device or any other.",
     laterUploading: 'Your upload is still going. Keep this page open until it finishes, or it will need to be added again.',
@@ -168,13 +163,7 @@ export const UI = {
     submitNeeds: 'Podrá enviar la solicitud cuando estén todas las respuestas obligatorias.',
     edit: 'Editar', editSection: 'Editar {name}', change: 'Cambiar', fix: 'Responder', photoAdded: 'Foto agregada', videoUploaded: 'Video subido', notAnswered: 'Sin responder todavía',
     attentionOne: '1 respuesta en esta página necesita atención.', attentionMany: '{n} respuestas en esta página necesitan atención.',
-    doneTitle: '¡Gracias! Recibimos su solicitud.', doneEmail: 'Le acabamos de enviar un mensaje a {email} de nuestro Comité de Calificación con una copia de su solicitud.',
-    doneNext: 'Qué sigue',
-    doneStep1: 'Leemos cada solicitud', doneStep1Text: 'Una persona de nuestro equipo lee la suya de principio a fin.',
-    doneStep2: 'Una entrevista corta por Zoom', doneStep2Text: 'Las familias que avanzan reciben una invitación a una videollamada con nosotros.',
-    doneStep3: 'Una visita a su casa', doneStep3Text: 'Vamos a ver el espacio juntos y a hablar de lo que su hijo o hija necesita.',
-    doneNote: 'Esto puede tomar algo de tiempo, y nos comunicaremos con usted en cualquier caso.',
-    doneAgain: 'Esta solicitud se envió antes, así que no hay nada más que hacer.', doneElsewhere: 'Se envió desde otro dispositivo o pestaña, así que los cambios hechos aquí después no se agregaron.', doneLink: 'Conozca a algunos de los niños que hemos ayudado',
+    doneAgain: 'Esta solicitud se envió antes, así que no hay nada más que hacer.', doneElsewhere: 'Se envió desde otro dispositivo o pestaña, así que los cambios hechos aquí después no se agregaron.',
     stopBack: 'Necesito cambiar mi respuesta', stopApply: 'Volver a la página de solicitud',
     laterTitle: 'Guardar y terminar más tarde', laterIntro: 'Sus respuestas ya están guardadas. Le enviaremos un enlace por correo para continuar donde se quedó, en este dispositivo o en cualquier otro.',
     laterUploading: 'Su archivo se sigue subiendo. Deje esta página abierta hasta que termine, o tendrá que agregarlo de nuevo.',
@@ -279,9 +268,6 @@ export const UI = {
  * the ones above that speak of a child, a family or a home.
  */
 export const UI_ORG = {
-  doneStep2: 'A conversation with our team', doneStep2Text: 'Organizations that move forward hear from us to talk through the project.',
-  doneStep3: 'A visit to see the space', doneStep3Text: 'We come see the space together and talk about what the children need.',
-  doneLink: 'See the community projects we have built',
   stopApply: 'Back to community projects',
   // A space's suite, building or room (its box says so), not an apartment
   uspsUnit: "If there's a suite, building or room number, add it to the address.", uspsUnitLead: "If there's a suite, building or room number,", uspsUnitDo: 'add it to the address.',

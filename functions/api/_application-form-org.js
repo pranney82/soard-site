@@ -10,7 +10,7 @@
  * organization, and on approval its job and a Community project draft
  * (./_applicant-approved.js).
  *
- * The definition has the family form's shape (pages, stops, messages,
+ * The definition has the family form's shape (pages, stops, done, messages,
  * reminders) plus kind: 'organization'. Messages say {contact} (the people
  * it goes to) and {organization} (its name). English only.
  */
@@ -231,6 +231,20 @@ export const ORG_DEFAULT_DEFINITION = {
       title: 'Thank you so much for your interest in Sunshine on a Ranney Day.',
       body: '<p>Our community projects are only for organizations inside our service area, and this address is outside it. Please check back in the future to see if our service area has grown.</p>',
     },
+  },
+  // The thank-you after an organization submits (Admin → Applications → Form, "Thank-you screen")
+  done: {
+    title: 'Thank you. Your application is in!',
+    email: 'We just sent a message to {email} from our Qualification Committee with a copy of your application.',
+    nextTitle: 'What happens next',
+    steps: [
+      { title: 'We read every application', text: 'A real person on our team reads yours from start to finish.' },
+      { title: 'A conversation with our team', text: 'Organizations that move forward hear from us to talk through the project.' },
+      { title: 'A visit to see the space', text: 'We come see the space together and talk about what the children need.' },
+    ],
+    note: 'This can take some time, and we will reach out either way.',
+    link: 'See the community projects we have built',
+    href: '/community/',
   },
   messages: ORG_DEFAULT_MESSAGES,
   reminders: ORG_DEFAULT_REMINDERS,
