@@ -40,12 +40,15 @@ import { readSheets, readSlides } from '../../public/admin/board/docs.js';
 /**
  * This reader: 1 was the papers-only PDF reader (a scan came back empty); 2 read every kind, a scan's first pages by
  * Llama 4 Scout (51 s over a dense page, so a long scan never finished); 3 read a scan's every page, a few a run,
- * but kept one Cloudflare's browser couldn't draw just then as having no words (the W-9); 4 tries that one again
+ * but kept one Cloudflare's browser couldn't draw just then as having no words; 4 tried that again, but Mistral saw
+ * no words on the W-9's pictures; 5 has Llama 4 Scout look at a page Mistral sees nothing on
  */
-export const READER = 4;
+export const READER = 5;
 // Of Workers AI's vision models, the quickest to copy out a page word for word (18 s over a dense page, as
 // GLM 5.3 Flash; Qwen 3.8 23 s; Llama 4 Scout 51 s; Gemma 4 thinks and says nothing)
 const VISION_MODEL = '@cf/mistralai/mistral-small-3.1-24b-instruct';
+// A second look at a page Mistral sees no words on
+const SECOND_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
 // What's kept of one file (a 990 runs to 40 pages); what the board page gets of it to find in
 export const KEEP = 120000;
 export const SERVE = 60000;
@@ -104,21 +107,32 @@ const linesOf = (node) => textsOf(node).join(' ').replace(/ ?\n ?/g, '\n');
  */
 export async function pictureWords(env, image, { timeout = AI_TIMEOUT_MS } = {}) {
   if (!env.AI?.run) return '';
-  try {
-    const out = await withTimeout(env.AI.run(VISION_MODEL, {
+  const url = `data:${image.type};base64,${toBase64(image.bytes)}`;
+  const ask = async (model, ms) => {
+    const out = await withTimeout(env.AI.run(model, {
       messages: [
         { role: 'system', content: 'You copy out the words on a page exactly as they are written, line by line, in reading order: headings, paragraphs, lists, each table row on its own line with its cells apart, numbers and dates as written, names spelled as they are. Copy only what is written; never describe the page, sum it up or add anything. A page with no words: answer with nothing.' },
         { role: 'user', content: [
           { type: 'text', text: 'Copy out the words on this page.' },
-          { type: 'image_url', image_url: { url: `data:${image.type};base64,${toBase64(image.bytes)}` } },
+          { type: 'image_url', image_url: { url } },
         ] },
       ],
       max_tokens: 2500, temperature: 0,
-    }), Math.min(AI_TIMEOUT_MS, timeout));
+    }), ms);
     const r = out?.response ?? out?.choices?.[0]?.message?.content ?? '';
-    const text = typeof r === 'string' ? r : '';
+    // (Workers AI hands back a reply that reads as JSON already parsed)
+    const text = typeof r === 'string' ? r : r && typeof r === 'object' ? JSON.stringify(r) : '';
     // (a model that answers about the page instead of with it: nothing kept)
     return /^(i('m| am) (sorry|unable)|there (is|are) no (words|text)|the (image|page) (shows|contains|is))/i.test(text.trim()) ? '' : text.replace(/```[a-z]*\n?|```/g, '').trim();
+  };
+  const ends = Date.now() + Math.min(AI_TIMEOUT_MS, timeout);
+  try {
+    const seen = await ask(VISION_MODEL, ends - Date.now());
+    if (seen) return seen;
+    // Nothing on it, Mistral says: Llama 4 Scout looks too (it read the 2026 W-9's pictures, where Mistral saw no
+    // words), and a page that's really blank is blank to both. Without the time for that look, it's read again later
+    if (ends - Date.now() < 3000) return null;
+    return await ask(SECOND_MODEL, ends - Date.now());
   } catch (err) {
     console.error('[board-words] picture', err.message);
     return null;

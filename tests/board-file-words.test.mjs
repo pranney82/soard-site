@@ -117,6 +117,23 @@ test('each kind of file read the way it’s written: a PDF’s pages, a scan by 
   assert.deepEqual(await wordsOf(env, { name: 'Old.doc', type: 'application/msword', bytes: new Uint8Array([0xD0, 0xCF]) }), { words: '', how: 'none' });
 });
 
+test('a page Mistral sees no words on gets a second look by Llama 4 Scout; a blank one is blank to both', async () => {
+  const asked = [];
+  env.AI = { async run(model) { asked.push(model.split('/').pop()); return { response: /scout/.test(model) ? 'Form W-9 Request for Taxpayer Identification Number' : '' }; } };
+  const r = await wordsOf(env, { name: 'w9 page.jpg', type: 'image/jpeg', bytes: new Uint8Array([0xFF, 0xD8, 0xFF]) });
+  assert.equal(r.how, 'pictures');
+  assert.match(r.words, /Form W-9/);
+  assert.deepEqual(asked, ['mistral-small-3.1-24b-instruct', 'llama-4-scout-17b-16e-instruct']);
+  // One Mistral reads: never asked twice
+  asked.length = 0;
+  env.AI = { async run(model) { asked.push(model); return { response: 'Treasurer report' }; } };
+  await wordsOf(env, { name: 'chart.jpg', type: 'image/jpeg', bytes: new Uint8Array([0xFF, 0xD8, 0xFF]) });
+  assert.equal(asked.length, 1);
+  // Blank to both
+  env.AI = { async run() { return { response: '' }; } };
+  assert.deepEqual(await wordsOf(env, { name: 'photo.jpg', type: 'image/jpeg', bytes: new Uint8Array([0xFF, 0xD8, 0xFF]) }), { words: '', how: 'none' });
+});
+
 test('a model that answers about the page instead of with it keeps nothing', async () => {
   env.AI = { async run() { return { response: 'The image shows a blurry page with a logo.' }; } };
   assert.deepEqual(await wordsOf(env, { name: 'photo.jpg', type: 'image/jpeg', bytes: new Uint8Array([0xFF, 0xD8, 0xFF]) }), { words: '', how: 'none' });
