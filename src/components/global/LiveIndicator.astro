@@ -310,8 +310,6 @@
     const photo = el.querySelector('.live-pill__photo') as HTMLImageElement;
 
     el.dataset.state = stage === 'live' || stage === 'replay' ? stage : 'upcoming';
-    const href = status.url || status.liveUrl || '/live/';
-    if (link.getAttribute('href') !== href) link.href = href;
     if (status.image) {
       const src = cfRaw(status.image, 'w=96,h=96,fit=cover,q=85');
       if (photo.getAttribute('src') !== src) photo.src = src;
@@ -320,6 +318,8 @@
 
     const next = stage === 'live' ? [] : revealsAfter(status, reveals || []);
     const words = bannerWords(status, stage, next, { remindersOn });
+    const href = `${status.url || status.liveUrl || '/live/'}${words.anchor}`;
+    if (link.getAttribute('href') !== href) link.href = href;
     put(label, words.label);
     put(msg, words.msg);
     put(nextEl, words.next);

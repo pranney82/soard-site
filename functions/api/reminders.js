@@ -27,6 +27,7 @@
 
 import { ensureSchema, readConfig, readState, visibleState, liveUrlFor, recordEvent } from './_broadcast.js';
 import * as notify from './_broadcast-notify.js';
+import { notePage, NOTE_PAGE_CSP } from './_note-page.js';
 import { crossSiteChange } from './_origin-guard.js';
 import { clientIp, shownAddress, turnstileOn, turnstileSiteKey, verifyTurnstile } from './_secure.js';
 import { limit, limitAll, tooMany } from './_rate-limit.js';
@@ -34,8 +35,7 @@ import { limit, limitAll, tooMany } from './_rate-limit.js';
 const SITE = notify.SITE_ORIGIN;
 const NO_STORE = { 'Cache-Control': 'no-store' };
 // Token pages: never cached or indexed, and the token never leaves in a Referer
-const PAGE_CSP = "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'";
-const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE, 'Content-Security-Policy': PAGE_CSP, 'Referrer-Policy': 'strict-origin', 'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff' };
+const HTML_HEADERS = { 'Content-Type': 'text/html; charset=utf-8', ...NO_STORE, 'Content-Security-Policy': NOTE_PAGE_CSP, 'Referrer-Policy': 'strict-origin', 'X-Robots-Tag': 'noindex', 'X-Content-Type-Options': 'nosniff' };
 
 export const CONFIRM_TTL_MS = 3 * 24 * 3600e3;
 export const LIMITS = {
@@ -44,12 +44,10 @@ export const LIMITS = {
 };
 
 function page(title, body, { status = 200, button = null } = {}) {
-  const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${notify.escapeHtml(title)} | Sunshine on a Ranney Day</title>
-<style>body{margin:0;font-family:Outfit,Helvetica,Arial,sans-serif;background:#FEFCF5;color:#2D2E33;display:grid;place-items:center;min-height:100vh;padding:24px;box-sizing:border-box}main{max-width:480px;text-align:center}h1{font-family:'Libre Baskerville',Georgia,serif;font-size:1.75rem}.btn{display:inline-block;margin-top:16px;background:#FFDA24;color:#2D2E33;font:inherit;font-weight:700;text-decoration:none;padding:12px 22px;border-radius:10px;border:0;cursor:pointer}.btn:focus-visible{outline:3px solid #2D2E33;outline-offset:2px}.quiet{display:block;margin-top:20px;color:#6B6C72;font-size:14px}p{line-height:1.6}</style></head>
-<body><main><h1>${notify.escapeHtml(title)}</h1>${body}${button
+  const action = button
     ? `<form method="post" action="${notify.escapeHtml(button.action)}"><button class="btn" type="submit">${notify.escapeHtml(button.label)}</button></form><a class="quiet" href="${SITE}/">Back to the site</a>`
-    : `<a class="btn" href="${SITE}/">Back to the site</a>`}</main></body></html>`;
-  return new Response(html, { status, headers: HTML_HEADERS });
+    : `<a class="btn" href="${SITE}/">Back to the site</a>`;
+  return new Response(notePage({ title, inner: `${body}${action}` }), { status, headers: HTML_HEADERS });
 }
 
 function token(bytes = 18) {
@@ -137,7 +135,7 @@ export async function onRequestGet(context) {
     if (url.searchParams.has('unsubscribe')) {
       const t = String(url.searchParams.get('unsubscribe') || '').slice(0, 64);
       const row = t ? await env.DB.prepare('SELECT id, unsubscribed_at FROM broadcast_reminders WHERE token = ?').bind(t).first() : null;
-      if (!row) return page('That link has already been used', '<p>You are not on the reminder list, or this link expired.</p>', { status: 404 });
+      if (!row) return page('This link has expired', "<p>You won't get reminders from this link. Still getting them? Tap Stop these reminders in the newest email.</p>", { status: 404 });
       if (row.unsubscribed_at) return page("You're off the list", '<p>You will not get any more reveal reminders. You can sign up again any time from a reveal page.</p>');
       return page('Stop reveal reminders?', '<p>Tap the button and we will stop sending you reminders about live room reveals.</p>', { button: { action: `/api/reminders?unsubscribe=${encodeURIComponent(t)}`, label: 'Stop reminders' } });
     }
@@ -151,7 +149,7 @@ export async function onRequestGet(context) {
       const signedUpFor = await env.DB.prepare('SELECT kid_slug, unsubscribed_at FROM broadcast_reminders WHERE channel = ? AND address = ?').bind(row.channel, row.address).first();
       const widens = signedUpFor && !signedUpFor.unsubscribed_at && signedUpFor.kid_slug !== row.kid_slug;
       const kid = widens ? null : await knownKid(env.DB, row.kid_slug);
-      return page('Confirm your reminders', `<p>Tap the button and we'll email <strong>${shownAddress(notify.escapeHtml(row.address))}</strong> ${whatTheyHear(kid, config, await readState(env.DB))}.</p>`,
+      return page('Confirm your reminders', `<p>Tap the button and we'll email <strong>${shownAddress(notify.escapeHtml(row.address))}</strong> ${whatTheyHear(kid, config, await revealTiming(env.DB, kid))}.</p>`,
         { button: { action: `/api/reminders?confirm=${encodeURIComponent(t)}`, label: 'Yes, remind me' } });
     }
 
@@ -190,11 +188,19 @@ function pausedPage() {
 /** "about Max's room reveal: when it gets a date, the day before…", as Settings has the notes */
 const hoursOf = (config) => (Array.isArray(config.reminders?.hoursBefore) ? config.reminders.hoursBefore : [24, 1]);
 
-/** Their reveal is already on the countdown, so no save-the-date is coming */
-const dated = (kid, state) => !!kid && state.kidSlug === kid.slug && !!state.scheduledAt;
+/** When their reveal is, on the countdown or in JobTread's list: { dated, left } for reminderPlan, so nothing past or already said is promised */
+async function revealTiming(DB, kid) {
+  if (!kid) return { dated: false, left: Infinity };
+  const state = await readState(DB);
+  const row = state.kidSlug === kid.slug ? null : await DB.prepare("SELECT data FROM site_config WHERE key = 'reveals'").first().catch(() => null);
+  let reveal = null;
+  try { reveal = (JSON.parse(row?.data || '{}').reveals || []).find((r) => r.slug === kid.slug && r.date); } catch { /* no list: nothing known */ }
+  const at = state.kidSlug === kid.slug ? state.scheduledAt : reveal?.startsAt || reveal?.date;
+  return at ? { dated: true, left: Date.parse(at) - Date.now() } : { dated: false, left: Infinity };
+}
 
-function whatTheyHear(kid, config, state) {
-  return `about ${kid?.name ? `${notify.escapeHtml(kid.name)}'s room reveal` : 'every reveal'}: ${notify.reminderPlan(hoursOf(config), { dated: dated(kid, state) })}`;
+function whatTheyHear(kid, config, timing) {
+  return `about ${kid?.name ? `${notify.escapeHtml(kid.name)}'s room reveal` : 'every reveal'}: ${notify.reminderPlan(hoursOf(config), timing)}`;
 }
 
 function expiredPage() {
@@ -334,7 +340,7 @@ async function emailSignup(context, { address, kid, source, config }) {
   const id = crypto.randomUUID();
   await env.DB.prepare(`INSERT INTO broadcast_reminder_pending (id, channel, address, kid_slug, source, secret_hash, attempts, expires_at, created_at) VALUES (?, 'email', ?, ?, ?, ?, 0, ?, ?)`)
     .bind(id, address, kid?.slug || null, source, await notify.sha256Hex(t), new Date(Date.now() + CONFIRM_TTL_MS).toISOString(), nowIso()).run();
-  const mail = notify.confirmEmail({ confirmUrl: `${SITE}/api/reminders?confirm=${t}`, kidName: kid?.name || null, hours: hoursOf(config), dated: dated(kid, await readState(env.DB)) });
+  const mail = notify.confirmEmail({ confirmUrl: `${SITE}/api/reminders?confirm=${t}`, kidName: kid?.name || null, hours: hoursOf(config), ...(await revealTiming(env.DB, kid)) });
   const sent = await notify.sendEmailItems(env, [{ to: address, ...mail }], { replyTo: notify.REVEAL_REPLY_TO, tags: [{ name: 'category', value: 'reminder-confirm' }] });
   if (!sent.sent) {
     await env.DB.prepare('DELETE FROM broadcast_reminder_pending WHERE id = ?').bind(id).run();
@@ -372,7 +378,8 @@ async function confirm(context, url) {
     later(context, signedUp(env, 'email', row));
     // What they're really on the list for: a different reveal than before means every reveal
     const now = await env.DB.prepare('SELECT kid_slug FROM broadcast_reminders WHERE channel = ? AND address = ?').bind(row.channel, row.address).first();
-    return page("You're on the list", `<p>We'll email you ${whatTheyHear(await knownKid(env.DB, now?.kid_slug), config, await readState(env.DB))}. Nothing else, ever.</p>`);
+    const kid = await knownKid(env.DB, now?.kid_slug);
+    return page("You're on the list", `<p>We'll email you ${whatTheyHear(kid, config, await revealTiming(env.DB, kid))}. Nothing else, ever.</p>`);
   } catch {
     return page('Something went wrong', '<p>Please open the link from your email again in a minute.</p>', { status: 500 });
   }
@@ -384,7 +391,7 @@ async function unsubscribe(env, url) {
     await ensureSchema(env.DB);
     const t = String(url.searchParams.get('unsubscribe') || '').slice(0, 64);
     const row = t ? await env.DB.prepare('SELECT id, unsubscribed_at FROM broadcast_reminders WHERE token = ?').bind(t).first() : null;
-    if (!row) return page('That link has already been used', '<p>You are not on the reminder list, or this link expired.</p>', { status: 404 });
+    if (!row) return page('This link has expired', "<p>You won't get reminders from this link. Still getting them? Tap Stop these reminders in the newest email.</p>", { status: 404 });
     if (!row.unsubscribed_at) await env.DB.prepare('UPDATE broadcast_reminders SET unsubscribed_at = ? WHERE id = ?').bind(nowIso(), row.id).run();
     return page('Reminders stopped', '<p>You will not get any more reveal reminders. You can sign up again any time from a reveal page.</p>');
   } catch {

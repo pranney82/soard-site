@@ -206,6 +206,7 @@ const ICON = {
   .bar__live[hidden], .bar__replay[hidden] { display: none; }
   .bar__status { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-text); white-space: nowrap; }
   .bar__status span:last-child { overflow: hidden; text-overflow: ellipsis; }
+  @media (max-width: 360px) { .bar__status { font-size: 11px; letter-spacing: 0.04em; } .stage__bar { padding-left: 12px; } }
   .bar__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--c-text-light); position: relative; flex-shrink: 0; }
   .stage[data-onair] .bar__dot { background: var(--c-yellow); }
   .stage[data-onair][data-mode='live'] .bar__dot::after {

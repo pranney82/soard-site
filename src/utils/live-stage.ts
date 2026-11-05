@@ -24,6 +24,7 @@ export interface StageView {
   orientation: 'portrait' | 'landscape';
   /** Badge on the photo before the watch party ('' hides it) */
   badge: string;
+  late?: boolean; // past the start by a while: "starting soon" has stopped being true
 }
 export interface Stage {
   update(view: StageView): void;
@@ -151,7 +152,7 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
         const src = next.slate;
         const f = document.createElement('iframe');
         f.src = src;
-        f.title = 'Starting soon';
+        f.title = next.late ? 'Running late' : 'Starting soon';
         f.loading = 'eager';
         f.tabIndex = -1;
         // Same origin, so an unreadable document (or one without the canvas) means it didn't load
@@ -264,7 +265,7 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     const onAir = starting || (live && (!isVideo || showing || pstatus === 'blocked'));
     flag('data-onair', onAir);
     const status = $('status');
-    if (status) status.textContent = starting ? 'Starting soon' : live ? (onAir ? 'Live' : STATUS[pstatus as PlayerStatus] || 'Connecting') : kind === 'replay' ? 'Replay' : '';
+    if (status) status.textContent = starting ? (view.late ? 'Running late' : 'Starting soon') : live ? (onAir ? 'Live' : STATUS[pstatus as PlayerStatus] || 'Connecting') : kind === 'replay' ? 'Replay' : '';
     const count = (live && onAir || starting) && viewers >= VIEWERS_MIN;
     setHidden($('count'), !count);
     const ct = $('count-text'); if (ct && count) ct.textContent = `${viewers.toLocaleString()} ${starting ? 'waiting' : 'watching'}`;
@@ -443,7 +444,7 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
       const bar = document.querySelector<HTMLElement>('.auction-bar');
       const off = bar && bar.offsetHeight && getComputedStyle(bar).display !== 'none' ? bar.offsetHeight : 0;
       picture.style.setProperty('--dock-bottom', `${off}px`);
-      const label = $('dock-label'); if (label) label.textContent = view.mode === 'replay' ? 'Replay' : view.mode === 'starting' ? 'Starting soon' : 'Live';
+      const label = $('dock-label'); if (label) label.textContent = view.mode === 'replay' ? 'Replay' : view.mode === 'starting' ? (view.late ? 'Running late' : 'Starting soon') : 'Live';
     }
     picture.classList.toggle('is-docked', on);
     setHidden($('dockbar'), !on);

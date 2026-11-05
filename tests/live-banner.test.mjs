@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 
 const code = transformSync(readFileSync('src/utils/live-banner.ts', 'utf8'), { loader: 'ts', format: 'esm' }).code;
-const { bannerStage, bannerWords, revealsAfter, dismissValue, sitsOn, pageShowsIt, revealIsToday, replayOverdue, easternDay, remindersUsable, remindLead, MAIN_CONTROLS, PICTURES, BANNER_LEAD_DAYS } = await import(`data:text/javascript,${encodeURIComponent(code)}`);
+const { bannerStage, bannerWords, revealsAfter, dismissValue, sitsOn, pageShowsIt, revealIsToday, replayOverdue, easternDay, remindersUsable, remindLead, runningLate, MAIN_CONTROLS, PICTURES, BANNER_LEAD_DAYS } = await import(`data:text/javascript,${encodeURIComponent(code)}`);
 
 const H = 3600e3, D = 24 * H, M = 60e3;
 // Wednesday, November 4, 2026, 3:00 PM on the viewer's own clock
@@ -41,13 +41,13 @@ test('"Reveal day" only on the day itself', () => {
   assert.equal(say(planned({ scheduledAt: local(5) })).label, 'Coming up');
   const day = say(planned({ scheduledAt: local(4, 18) }));
   assert.equal(day.label, 'Reveal day');
-  assert.match(day.msg, /^Dylan’s room reveal goes live today at 6:00\sPM\.$/, 'no ticking count: this is read aloud');
+  assert.match(day.msg, /^Dylan’s room reveal goes live today at 6:00\sPM \S+\.$/, 'no ticking count: this is read aloud');
 });
 
 test('the day reads short inside the week and says the date a week off', () => {
-  assert.match(say(planned({ scheduledAt: local(9) })).msg, /goes live Monday at 4:00\sPM\.$/);
-  assert.match(say(planned({ scheduledAt: local(5) })).msg, /goes live tomorrow at 4:00\sPM\.$/);
-  assert.match(say(planned({ scheduledAt: local(10) })).msg, /goes live Tuesday, November 10 at 4:00\sPM\.$/);
+  assert.match(say(planned({ scheduledAt: local(9) })).msg, /goes live Monday at 4:00\sPM \S+\.$/);
+  assert.match(say(planned({ scheduledAt: local(5) })).msg, /goes live tomorrow at 4:00\sPM \S+\.$/);
+  assert.match(say(planned({ scheduledAt: local(10) })).msg, /goes live Tuesday, November 10 at 4:00\sPM \S+\.$/);
 });
 
 test('reveals close together are all named, soonest first', () => {
@@ -70,7 +70,7 @@ test('reveals close together are all named, soonest first', () => {
 
 test('the second reveal on the same day or the next day reads right', () => {
   const dylan = planned({ scheduledAt: local(4, 16) });
-  assert.match(say(dylan, [reveal('max', 'Max', local(4, 18))]).next, /^Then Max’s at 6:00\sPM\.$/);
+  assert.match(say(dylan, [reveal('max', 'Max', local(4, 18))]).next, /^Then Max’s at 6:00\sPM \S+\.$/);
   assert.equal(say(dylan, [reveal('max', 'Max', local(5))]).next, 'Then Max’s tomorrow.');
 });
 
@@ -78,8 +78,8 @@ test('a replay points at the next reveal; live points at nothing else', () => {
   const replay = planned({ replay: true, upcoming: false, player: { kind: 'replay' } });
   const max = reveal('max', 'Max', local(6));
   assert.equal(say(replay).msg, 'Missed Dylan’s reveal? Watch it any time.');
-  assert.match(say(replay, [max]).next, /^Next: Max’s on Friday at 4:00\sPM\.$/);
-  assert.match(say(replay, [max, reveal('colin', 'Colin', local(7))]).next, /^Next: Max’s on Friday at 4:00\sPM and 1 more\.$/);
+  assert.match(say(replay, [max]).next, /^Next: Max’s on Friday at 4:00\sPM \S+\.$/);
+  assert.match(say(replay, [max, reveal('colin', 'Colin', local(7))]).next, /^Next: Max’s on Friday at 4:00\sPM \S+ and 1 more\.$/);
   assert.deepEqual(revealsAfter(replay, [max], now).map((r) => r.slug), ['max'], 'a replay looks ahead from now, not from its own past date');
   const live = say(planned({ live: true, upcoming: false, message: "Watch Dylan's room reveal live" }), [max]);
   assert.equal(live.label, 'Live now');
@@ -103,7 +103,7 @@ test('two reveals at the same moment are both named', () => {
   const dylan = planned({ scheduledAt: local(6) });
   const max = reveal('max', 'Max', local(6));
   assert.deepEqual(revealsAfter(dylan, [max], now).map((r) => r.slug), ['max']);
-  assert.match(say(dylan, [max]).next, /^Also Max’s at 4:00\sPM\.$/);
+  assert.match(say(dylan, [max]).next, /^Also Max’s at 4:00\sPM \S+\.$/);
 });
 
 test('a name ending in s, and the sentences stay English whatever the browser language', () => {
@@ -114,13 +114,13 @@ test('a name ending in s, and the sentences stay English whatever the browser la
 });
 
 test('past its start time it says starting soon, not a time gone by', () => {
-  const late = planned({ scheduledAt: new Date(now - 2.5 * H).toISOString() });
+  const late = planned({ scheduledAt: new Date(now - 0.25 * H).toISOString() });
   assert.equal(bannerStage(late, now), 'today');
   assert.equal(say(late).msg, 'Dylan’s room reveal is starting soon.');
   assert.equal(say(late).cta, 'Watch →');
   // Still waiting past midnight: never reads as next week
   const overnight = new Date(2026, 10, 5, 0, 20).getTime();
-  const s = planned({ scheduledAt: local(4, 23, 30) });
+  const s = planned({ scheduledAt: local(4, 23, 55) });
   assert.equal(bannerStage(s, overnight), 'today');
   assert.equal(bannerWords(s, 'today', [], { now: overnight }).msg, 'Dylan’s room reveal is starting soon.');
 });
@@ -234,4 +234,55 @@ test('the control list covers anything you can press, not just .btn', () => {
 
 test('none of it uses an em dash', () => {
   assert.doesNotMatch(readFileSync('src/utils/live-banner.ts', 'utf8').replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, ''), /—/);
+});
+
+test('a button that promises reminders or a calendar lands on them, not the top of a long page', () => {
+  const now = Date.parse('2026-11-13T12:00:00Z');
+  const coming = { id: 'a', upcoming: true, kidSlug: 'max', kidName: 'Max', scheduledAt: '2026-11-18T21:00:00.000Z' };
+  assert.equal(bannerWords(coming, 'upcoming', [], { now, remindersOn: true }).anchor, '#remind');
+  assert.equal(bannerWords(coming, 'upcoming', [], { now, remindersOn: false }).anchor, '#remind');
+  const soon = { ...coming, scheduledAt: new Date(now + 10 * 60e3).toISOString() };
+  assert.equal(bannerWords(soon, 'today', [], { now, remindersOn: true }).cta, 'Watch →');
+  assert.equal(bannerWords(soon, 'today', [], { now, remindersOn: true }).anchor, '');
+  assert.equal(bannerWords({ ...coming, live: true }, 'live', [], { now }).anchor, '');
+  assert.equal(bannerWords({ ...coming, upcoming: false, replay: true }, 'replay', [], { now }).anchor, '');
+});
+
+test('the form only promises what can still be sent', () => {
+  const H = 3600e3;
+  assert.match(remindLead([24, 1], { dated: true, left: 5 * 24 * H }), /^Tell us how to reach you and we'll send one note the day before, one an hour before, one when we go live, and one when the replay is up\./);
+  assert.match(remindLead([24, 1], { dated: true, left: 5 * H }), /send one note an hour before, one when we go live, and/);
+  assert.doesNotMatch(remindLead([24, 1], { dated: true, left: 5 * H }), /day before/);
+  assert.match(remindLead([24, 1], { dated: true, left: 10 * 60e3 }), /send one note when we go live, and one when the replay is up\./);
+  assert.match(remindLead([24, 1], { dated: true, left: -60e3 }), /send one note when we go live/);
+  assert.match(remindLead(), /when a reveal gets its date/);
+});
+
+test('a kid\'s story reads as words: no markup, no cut-off sentence', async () => {
+  const src = readFileSync(new URL('../src/utils/story-lead.ts', import.meta.url), 'utf8');
+  const { storyLead } = await import(`data:text/javascript;base64,${Buffer.from(transformSync(src, { loader: 'ts', format: 'esm' }).code).toString('base64')}`);
+  const long = `${'Dylan loves his teachers. '.repeat(30)}`;
+  assert.equal(storyLead('<p>Meet Dylan, a teenager.</p><p>Dylan lives with a rare condition.</p>'), 'Meet Dylan, a teenager.');
+  assert.equal(storyLead('Plain story.\n\nSecond paragraph.'), 'Plain story.');
+  assert.equal(storyLead('<p>Tom &amp; Jerry&#39;s <strong>big</strong>&nbsp;day.</p>'), "Tom & Jerry's big day.");
+  assert.equal(storyLead('<p>   </p><p>Second one holds the words.</p>'), 'Second one holds the words.');
+  assert.equal(storyLead(null), '');
+  const cut = storyLead(`<p>${long}</p>`);
+  assert.ok(cut.length <= 420);
+  assert.match(cut, /teachers\.$/);
+  const noStops = storyLead(`<p>${'word '.repeat(200)}</p>`);
+  assert.match(noStops, /word…$/);
+  assert.doesNotMatch(cut + noStops, /<|&lt;/);
+  const title = storyLead(`<p>${'She raised a family here over many long years. '.repeat(7)}She has 13 great grandchildren, Ms. Glass said with a smile on her face today.</p>`, 372);
+  assert.match(title, /here over many long years\.$/, 'a title is not the end of a sentence');
+});
+
+test('late is one rule: 30 minutes past the start, the words stop saying any moment', () => {
+  const start = Date.parse('2026-11-18T21:00:00.000Z');
+  const dylan = { id: 'a', upcoming: true, kidSlug: 'dylan', kidName: 'Dylan', scheduledAt: new Date(start).toISOString() };
+  assert.equal(bannerWords(dylan, 'today', [], { now: start + 10 * 60e3 }).msg, 'Dylan’s room reveal is starting soon.');
+  assert.equal(bannerWords(dylan, 'today', [], { now: start + 31 * 60e3 }).msg, 'Dylan’s room reveal is running a little late.');
+  assert.equal(runningLate(dylan.scheduledAt, start + 29 * 60e3), false);
+  assert.equal(runningLate(dylan.scheduledAt, start + 31 * 60e3), true);
+  assert.equal(runningLate(null, start), false);
 });

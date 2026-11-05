@@ -13,6 +13,8 @@ export const BANNER_LEAD_DAYS = 7;
 const DAY = 86_400_000;
 const ENDED_MS = 6 * 3600e3;     // a recording that hasn't come by now isn't "on its way" (REPLAY_WORK_MAX_MS)
 const STARTING_MS = 30 * 60_000; // this close, the live page is the starting-soon screen (ARM_WINDOW_MS)
+export const RUNNING_LATE_MS = 30 * 60_000; // past the start with no stream for this long, "any moment" has stopped being true
+export const runningLate = (iso: string | null | undefined, now = Date.now()) => !!iso && now - Date.parse(iso) > RUNNING_LATE_MS;
 const LOCALE = 'en-US';          // the sentences around the dates are English, whatever the browser's language
 
 export type BannerStage = 'upcoming' | 'today' | 'live' | 'ended' | 'replay';
@@ -22,7 +24,7 @@ type Status = Pick<LiveState, 'id' | 'live' | 'upcoming' | 'replay' | 'kidSlug' 
 const midnight = (t: number | string) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
 /** Calendar days away, in the viewer's own time zone */
 const daysAway = (iso: string, now: number) => Math.round((midnight(iso) - midnight(now)) / DAY);
-const clock = (iso: string) => new Intl.DateTimeFormat(LOCALE, { hour: 'numeric', minute: '2-digit' }).format(new Date(iso));
+const clock = (iso: string) => new Intl.DateTimeFormat(LOCALE, { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(new Date(iso));
 /** Same rule as reveals-client: "Max’s", "James’" */
 const possessive = (name: string) => (/s$/i.test(name) ? `${name}’` : `${name}’s`);
 
@@ -94,10 +96,11 @@ function nextLine(next: NextReveal[], now: number): string {
   return `Next: ${possessive(r.name)} ${onDay(dayIso(r), now)}${r.time ? ` at ${clock(r.startsAt)}` : ''}${more}.`;
 }
 
-export interface BannerWords { label: string; msg: string; next: string; cta: string; aria: string }
+/** anchor: where on the page the button's words are kept, so "Remind me" lands on the form */
+export interface BannerWords { label: string; msg: string; next: string; cta: string; aria: string; anchor: string }
 
-const words = (label: string, msg: string, next: string, cta: string): BannerWords => ({
-  label, msg, next, cta,
+const words = (label: string, msg: string, next: string, cta: string, anchor = ''): BannerWords => ({
+  label, msg, next, cta, anchor,
   // Starts with what's on screen, so voice control can match it
   aria: [`${label}.`, msg, next, `${cta.replace(' →', '')}.`].filter(Boolean).join(' '),
 });
@@ -110,10 +113,11 @@ export function bannerWords(s: Status, stage: BannerStage, next: NextReveal[], {
   const at = s.scheduledAt ? Date.parse(s.scheduledAt) : NaN;
   const when = s.scheduledAt && Number.isFinite(at) ? ` goes live ${dayWords(s.scheduledAt, now)} at ${clock(s.scheduledAt)}` : '';
   // Past its start and still waiting on the stream: a time in the past reads as a mistake
-  const msg = at <= now ? `${who} is starting soon.` : `${who}${when}.`;
+  const msg = !(at <= now) ? `${who}${when}.` : runningLate(s.scheduledAt, now) ? `${who} is running a little late.` : `${who} is starting soon.`;
   // The button says what the page it opens really offers; this close, that page is the starting-soon screen
-  const cta = at - now <= STARTING_MS ? 'Watch →' : remindersOn ? 'Remind me →' : 'Add to calendar →';
-  return words(stage === 'today' ? 'Reveal day' : 'Coming up', msg, thenLine(s, next, now), cta);
+  const starting = at - now <= STARTING_MS;
+  const cta = starting ? 'Watch →' : remindersOn ? 'Remind me →' : 'Add to calendar →';
+  return words(stage === 'today' ? 'Reveal day' : 'Coming up', msg, thenLine(s, next, now), cta, starting ? '' : '#remind');
 }
 
 /** Reminders only count as on when there's a way to sign up for them */
@@ -124,10 +128,11 @@ export const browserCanPush = () => typeof window !== 'undefined' && 'PushManage
   && typeof Notification !== 'undefined' && Notification.permission !== 'denied';
 
 /** The reminder block's promise, as Settings has the notes */
-export function remindLead(hours: number[] = [24, 1]): string {
-  const notes = [hours.includes(24) && 'the day before', hours.includes(1) && 'an hour before', 'when we go live'].filter(Boolean) as string[];
+export function remindLead(hours: number[] = [24, 1], { dated = false, left = Infinity } = {}): string {
+  const notes = [left > 24 * 3600_000 && hours.includes(24) && 'the day before', left > 3600_000 && hours.includes(1) && 'an hour before', 'when we go live'].filter(Boolean) as string[];
   const [first, ...rest] = notes;
-  return `Tell us how to reach you and we'll let you know when a reveal gets its date, then send one note ${first}, ${rest.map((n) => `one ${n}, `).join('')}and one when the replay is up. Nothing else, ever.`;
+  const open = dated ? "Tell us how to reach you and we'll send" : "Tell us how to reach you and we'll let you know when a reveal gets its date, then send";
+  return `${open} one note ${first}, ${rest.map((n) => `one ${n}, `).join('')}and one when the replay is up. Nothing else, ever.`;
 }
 
 /** Today in Eastern, as the schedule's dates are written */

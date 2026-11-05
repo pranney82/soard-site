@@ -102,7 +102,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     <div class="logo" role="img" aria-label="Sunshine on a Ranney Day, Dreams Built Here"><img src={LOGO} alt="" /></div>
 
     <div class="copy">
-      <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Live room reveal <span class="eyebrow-sep" aria-hidden="true">·</span> Starting soon</p>
+      <p class="eyebrow"><span class="dot" aria-hidden="true"></span>Live room reveal <span class="eyebrow-sep" aria-hidden="true">·</span> <span data-when="line">Starting soon</span></p>
       <h1 class={`title title--${titleSize}`}>{possessive || 'Our next'} <em>room reveal</em></h1>
       <p class="sub">{possessive
         ? `Stay right here. ${possessive} family is about to see the finished room for the first time.`
@@ -229,7 +229,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     }
 
     const el = (k: string) => document.querySelector<HTMLElement>(`[data-when="${k}"]`)!;
-    const fmtClock = (d: Date) => new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit' }).format(d);
+    const fmtClock = (d: Date) => new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(d);
     function renderWhen() {
       const label = el('label'), time = el('time'), rel = el('rel');
       const set = (state: string, l: string, t: string, r: string) => {
@@ -241,7 +241,11 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
       };
       if (!startAt) return set('soon', 'Starting', 'In just a few minutes', '');
       const left = startAt - Date.now();
-      if (left <= 0) return set('now', 'Starting', 'Any moment now', '');
+      // RUNNING_LATE_MS in live-banner: past this, "any moment" stops being true
+      const late = left < -30 * 60e3;
+      const line = late ? 'Running late' : 'Starting soon';
+      if (el('line').textContent !== line) el('line').textContent = line;
+      if (left <= 0) return late ? set('now', 'Stay right here', 'Running a little late', '') : set('now', 'Starting', 'Any moment now', '');
       const d = new Date(startAt);
       if (left <= 3600e3) {
         // Final hour: a running clock, with the wall-clock time underneath

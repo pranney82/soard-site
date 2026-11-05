@@ -58,7 +58,7 @@ function rewrite(res, { kid, party, messages }) {
   let rw = new HTMLRewriter();
   if (kid) {
     const title = `${kid.name}'s Reveal, Live | Sunshine on a Ranney Day`;
-    const description = `Watch ${kid.name}'s room reveal live from Sunshine on a Ranney Day. Get a reminder and see the moment ${kid.name} sees the new room for the first time.`;
+    const description = `Watch ${kid.name}'s room reveal from Sunshine on a Ranney Day, the moment the new room is seen for the first time.`;
     const content = (value) => setAttrs({ content: value });
     rw = rw
       .on('title', { element(e) { e.setInnerContent(title); } })

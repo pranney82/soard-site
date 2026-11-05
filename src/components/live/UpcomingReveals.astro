@@ -45,7 +45,6 @@ const {
 ---
 
 <section class="upn" id={id} data-invite-where={where} data-upnext data-exclude={exclude || ''} hidden aria-labelledby={`${id}-title`}>
-  <div class="upn__bg" aria-hidden="true"><div class="upn__glow"></div></div>
   <div class="container upn__grid">
     <div class="upn__side">
       <div class="upn__intro">
@@ -92,12 +91,6 @@ const {
     scroll-margin-top: -1rem;
   }
   .upn[hidden] { display: none; }
-  .upn__bg { position: absolute; inset: 0; z-index: -1; overflow: hidden; pointer-events: none; }
-  .upn__glow {
-    position: absolute; width: 900px; height: 900px; left: -320px; top: -360px; border-radius: 50%;
-    background: radial-gradient(circle, rgba(255, 218, 36, 0.12) 0%, rgba(255, 218, 36, 0.04) 42%, transparent 68%);
-    pointer-events: none;
-  }
   .upn__grid {
     display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
     gap: clamp(40px, 6vw, 96px); align-items: start;
@@ -146,7 +139,7 @@ const {
   .upn__list::before {
     content: ''; position: absolute; left: calc(var(--upn-when) + var(--upn-node) / 2 - 1px); width: 2px;
     top: var(--upn-line-top, 40px); bottom: var(--upn-line-bottom, 40px);
-    background: linear-gradient(var(--upn-line), var(--upn-line) 85%, transparent);
+    background: var(--upn-line);
     transform-origin: top; transform: scaleY(0); transition: transform 1.2s var(--ease) 0.15s;
   }
   .upn.is-in .upn__list::before { transform: scaleY(1); }
@@ -201,7 +194,7 @@ const {
   :global(.upn-card__photo--blank) {
     display: grid; place-items: center; color: var(--c-yellow);
     font-family: var(--font-display); font-weight: 700; font-size: 38px; line-height: 1;
-    background: radial-gradient(circle at 30% 25%, rgba(255, 218, 36, 0.16), rgba(255, 255, 255, 0.04) 70%);
+    background: rgba(255, 218, 36, 0.16);
   }
   :global(.upn-card__body) { min-width: 0; flex: 1; }
   :global(.upn-card__name) { margin: 0; font-size: clamp(1.25rem, 2vw, 1.5rem); letter-spacing: -0.02em; line-height: 1.2; color: var(--upn-ink); }

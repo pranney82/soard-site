@@ -14,9 +14,10 @@
  *                       plan, which also knows rehearsals from a "TEST …" job
  *                       (marked TEST). The day and time, never an address.
  *                       Add &watch=1 for someone watching from home (the
- *                       reminder emails): the live page and an hour's warning,
- *                       not the guests' "be there", and it also knows a reveal
- *                       scheduled by hand in the admin.
+ *                       reminder emails): the live page and the same short
+ *                       warning as the page's own calendar feed, the same
+ *                       entry as that feed, not the guests' "be there"; it
+ *                       also knows a reveal scheduled by hand in the admin.
  *   signed fields       title, start, end, allday, location, details, url, uid
  *                       and sig = HMAC-SHA256 with CALENDAR_LINK_SECRET: the
  *                       email's own words, exactly as staff wrote them
@@ -43,11 +44,10 @@ import { easternParts, easternToUtcIso, normalizeName, getReveals, todayEastern 
 import { limit } from './_rate-limit.js';
 import { ical, fold } from './_ics.js';
 import { readState } from './_broadcast.js';
+import { ALERT_MINUTES, MINUTES as WATCH_MINUTES } from './reveals.ics.js';
 
 const PRODID = '-//Sunshine on a Ranney Day//Reveal Invite//EN';
 const REVEAL_MINUTES = 120;              // the reveal email's own default length
-const WATCH_MINUTES = 60;                // watching from home
-const WATCH_ALERT_MINUTES = 60;
 const REVEAL_CACHE_FRESH_MS = 15 * 60 * 1000;
 
 function isCompactDateTime(s) { return /^\d{8}T\d{6}Z$/.test(s); }
@@ -196,13 +196,13 @@ function revealEvent(r, { watch = false } = {}) {
   if (watch) {
     const liveUrl = `${SITE_URL}/live/${r.slug}/`;
     return {
-      uid: `reveal-watch-${r.slug}-${ymd(day)}@sunshineonaranneyday.com`,
-      title: `${r.test ? 'TEST · ' : ''}${r.name}'s room reveal, live`,
+      uid: `live-reveal-${r.slug}@sunshineonaranneyday.com`, // the feed's, so both buttons are one entry
+      title: `${r.test ? 'TEST · ' : ''}${r.name}'s Room Reveal (watch live)`,
       start, end, allDay,
       location: liveUrl,
       details: `Watch it live: ${liveUrl}\n\nThe page turns into the live video the moment we start.`,
       url: liveUrl,
-      alertMinutes: WATCH_ALERT_MINUTES,
+      alertMinutes: ALERT_MINUTES,
     };
   }
   return {

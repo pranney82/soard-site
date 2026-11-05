@@ -114,14 +114,14 @@ test('?reveal=<kid slug>: the confirmed reveal, and never an address', async () 
   assert.equal(jobtreadCalls, 0, 'answered from the reveal cache');
 });
 
-test('&watch=1: someone watching from home gets the live page and an hour’s warning, and a guest’s invite stays as it was', async () => {
+test('&watch=1: someone watching from home gets the live page and the feed’s own entry and alert, and a guest’s invite stays as it was', async () => {
   const { field, text } = await ics(`reveal=${REVEAL.slug}&watch=1`);
-  assert.equal(field('SUMMARY'), `${REVEAL.name}'s room reveal, live`);
+  assert.equal(field('SUMMARY'), `${REVEAL.name}'s Room Reveal (watch live)`);
   assert.equal(field('LOCATION'), `${SITE}/live/${REVEAL.slug}/`);
   assert.equal(field('URL'), `${SITE}/live/${REVEAL.slug}/`);
   assert.match(field('DESCRIPTION'), /^Watch it live: https:/);
-  assert.match(text, /BEGIN:VALARM\r?\nACTION:DISPLAY\r?\nTRIGGER:-PT60M/);
-  assert.match(field('UID'), /^reveal-watch-/);
+  assert.match(text, /BEGIN:VALARM\r?\nACTION:DISPLAY\r?\nTRIGGER:-PT15M/);
+  assert.equal(field('UID'), `live-reveal-${REVEAL.slug}@sunshineonaranneyday.com`, 'the page’s calendar feed uses this entry too');
   const guest = await ics(`reveal=${REVEAL.slug}`);
   assert.equal(guest.field('SUMMARY'), `${REVEAL.name}'s Reveal Day`);
   assert.doesNotMatch(guest.text, /VALARM/);
@@ -134,7 +134,7 @@ test('&watch=1 also knows a reveal scheduled by hand in the admin; nobody else�
   await refused('reveal=hand-made&watch=1');
   await writeState(env.DB, { ...(await readState(env.DB)), kidSlug: 'hand-made', kidName: 'Sage', scheduledAt: '2027-03-12T20:00:00.000Z' });
   const { field } = await ics('reveal=hand-made&watch=1');
-  assert.equal(field('SUMMARY'), "Sage's room reveal, live");
+  assert.equal(field('SUMMARY'), "Sage's Room Reveal (watch live)");
   assert.match(field('DTSTART'), /^20270312T200000Z/);
   await refused('reveal=hand-made'); // a guest's link only ever comes from JobTread
   await refused('reveal=someone-else&watch=1');

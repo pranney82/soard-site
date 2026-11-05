@@ -459,14 +459,16 @@ export function buildIcs({ uid, title, description, start, durationMin = 60, url
 /** Where a reply to a reveal email goes: the sending address is no one's inbox */
 export const REVEAL_REPLY_TO = 'info@soardcharity.com';
 
-/** What someone who signed up hears, in order. dated: their reveal has a day, so it can't "get a date" */
-export function reminderPlan(hours = [24, 1], { dated = false } = {}) {
-  const notes = [!dated && 'when it gets a date', hours.includes(24) && 'the day before', hours.includes(1) && 'an hour before', 'when we go live'].filter(Boolean);
+const HOUR = 3600e3;
+
+/** What someone who signed up hears, in order. dated: their reveal has a day, so it can't "get a date". left: ms until it, so a note already past isn't promised. */
+export function reminderPlan(hours = [24, 1], { dated = false, left = Infinity } = {}) {
+  const notes = [!dated && 'when it gets a date', left > 24 * HOUR && hours.includes(24) && 'the day before', left > HOUR && hours.includes(1) && 'an hour before', 'when we go live'].filter(Boolean);
   return `${notes.join(', ')}, and when the replay is up`;
 }
 
-const nextNote = (hours) => {
-  const when = [hours.includes(24) && 'the day before', hours.includes(1) && 'an hour before we go live'].filter(Boolean).join(' and ');
+const nextNote = (hours, left) => {
+  const when = [left > 24 * HOUR && hours.includes(24) && 'the day before', left > HOUR && hours.includes(1) && 'an hour before we go live'].filter(Boolean).join(' and ');
   return when ? `We’ll email you again ${when}.` : '';
 };
 
@@ -509,7 +511,8 @@ export function reminderEmail({ kind, kidName, kidSlug = null, scheduledAt, live
   // A countdown that goes up on the day itself sends its "day before" reminder the same day
   const today = isRevealToday(scheduledAt, tz, now);
   const cal = kidSlug ? calendarLinks(kidSlug, site, { watch: true }) : null;
-  const ahead = list ? (signUpOpen ? 'Want a reminder before it starts? Sign up on the reveal page.' : '') : nextNote(hours);
+  const left = scheduledAt ? Date.parse(scheduledAt) - now : Infinity;
+  const ahead = list ? (signUpOpen ? 'Want a reminder before it starts? Sign up on the reveal page.' : '') : nextNote(hours, left);
   const map = {
     scheduled: {
       subject: `Save the date: ${who} room reveal`,
@@ -619,14 +622,14 @@ export function reminderPush({ kind, kidName, scheduledAt, tz, liveUrl, replayUr
 // ─── Sign-up confirmations ──────────────────────────────────────────
 
 /** The one email a new address gets before any reminder: a link that confirms it */
-export function confirmEmail({ confirmUrl, kidName, hours = [24, 1], dated = false, site = SITE_ORIGIN }) {
+export function confirmEmail({ confirmUrl, kidName, hours = [24, 1], dated = false, left = Infinity, site = SITE_ORIGIN }) {
   const name = kidName ? curly(kidName) : '';
   const what = name ? `${name}’s room reveal` : 'our live room reveals';
   const t = {
     subject: name ? `Confirm your reminders for ${name}’s reveal` : 'Confirm your reveal reminders',
     preheader: 'Tap below, then once more on the page that opens.',
     heading: 'Confirm your reminders',
-    intro: `We’ll email you about ${what}: ${reminderPlan(hours, { dated })}. Tap below, then once more on the page that opens.`,
+    intro: `We’ll email you about ${what}: ${reminderPlan(hours, { dated, left })}. Tap below, then once more on the page that opens.`,
     ignore: 'Didn’t ask for this? Ignore this email and you won’t hear from us again.',
     cta: 'Yes, remind me',
   };

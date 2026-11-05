@@ -214,7 +214,8 @@ export function formatWhen(iso: string | null): string {
   const today = new Date();
   const sameDay = d.toDateString() === today.toDateString();
   const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-  const time = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(d); // English sentences, whatever the browser's language
+  // English sentences, whatever the browser's language. The zone says these are the viewer's own hours; the emails are in Eastern.
+  const time = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZoneName: 'short' }).format(d);
   if (sameDay) return `today at ${time}`;
   if (d.toDateString() === tomorrow.toDateString()) return `tomorrow at ${time}`;
   const day = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(d);

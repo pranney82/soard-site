@@ -25,7 +25,7 @@ const TL = '#6D6E74';
 const BD = '#E5E4E0';
 const SERIF = "'Libre Baskerville',Georgia,'Times New Roman',serif";
 const SANS = "'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
-const LOGO = `${CF}/brand-logo-dark-bg-tagline-display/w=400,q=85`;
+export const LOGO = `${CF}/brand-logo-dark-bg-tagline-display/w=400,q=85`;
 /** Side padding in step with the width, so a phone that drops the style block still fits; Outlook takes the alt */
 export const SIDE = 'padding-left:8%;padding-right:8%;mso-padding-left-alt:48px;mso-padding-right-alt:48px;';
 /** The team as plushies, in the signature (Cloudflare Images) */
