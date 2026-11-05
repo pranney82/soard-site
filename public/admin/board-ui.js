@@ -905,6 +905,15 @@ export const STYLES = `
   .agx-end { min-height: 34px; border-radius: 10px; }
   .agx-add.ag-add { margin-left: 0.15rem; }
   .agx-addsec.ag-add { margin: 0.9rem 0 0; }
+  .agx-more { margin-top: 1.1rem; padding-bottom: 0.85rem; }
+  .agx-more__head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.25rem 0.45rem; margin-bottom: 0.6rem; }
+  .agx-more__title { margin: 0; font-size: var(--fs-lg, 1.15rem); font-weight: 750; letter-spacing: -0.01em; line-height: 1.25; }
+  .agx-more .bf-list { background: var(--color-bg-card); }
+  .agx-more .bf-file { flex-wrap: wrap; }
+  .agx-more .bf-file__main { flex: 1 1 100%; }
+  .agx-more .bf-file .bd-goes { flex: 0 1 auto; min-width: 0; margin-right: auto; }
+  .agx-more .bf-seen { width: 10.5rem; }
+  .agx-more .bf-seen__t { white-space: nowrap; }
   /* Dragging: the one moving fades, a bar shows where it would land */
   .agx-item.is-dragging, .agx-sec.is-dragging { opacity: 0.4; }
   .agx-item.drop-before::before, .agx-item.drop-after::after, .agx-end.drop-before::before, .agx-sec.drop-before::before, .agx-sec.drop-after::after { content: ''; position: absolute; left: 0.4rem; right: 0.4rem; height: 3px; border-radius: 3px; background: var(--color-text); pointer-events: none; }
@@ -968,7 +977,7 @@ export const STYLES = `
   /* A short window (a phone on its side): the names only, so the line takes less of it */
   @media (max-height: 500px) { .bm-path__s { display: none; } }
   /* A card the line or a slide sent you to, lit a moment */
-  .bm-row__main.is-found > .card:first-child, .bm-row__side.is-found > .card:first-child, .bm-row.is-found .card, .bm-work.is-found > .agx, .agx-item.is-found { animation: bm-found 1.4s var(--ease-out); }
+  .bm-row__main.is-found > .card:first-child, .bm-row__side.is-found > .card:first-child, .bm-row.is-found .card, .bm-work.is-found > .agx, .agx-item.is-found, .agx-more.is-found { animation: bm-found 1.4s var(--ease-out); }
   @keyframes bm-found { 0%, 35% { box-shadow: 0 0 0 3px var(--color-primary); } 100% { box-shadow: 0 0 0 3px transparent; } }
 
   /* The page: the agenda beside its presentation, then the rows of cards */

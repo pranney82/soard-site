@@ -526,6 +526,24 @@ try {
   { const top = await onTop(jane); ok(top === true, `the packet’s Goes with list draws over everything, all of it in view (${top})`); }
   await shot(jane, 'packet-goes-with');
   await jane.keyboard.press('Escape');
+  // A file on no item has its card under the agenda (the presentation's "Also for this meeting"), changed there like any item
+  await jane.evaluate(() => [...document.querySelectorAll('#bm-packet .bf-file')].find((li) => /Balance sheet financials/.test(li.textContent))?.querySelector('.bd-goes .bd-pop__btn')?.click());
+  await jane.waitForSelector('.bd-pop__panel .bd-picker__find', { timeout: 3000 }).catch(() => {});
+  await clickText(jane, '.bd-picker__opt', /^Not on an item/);
+  ok(await jane.waitForSelector('.agx-edit #agx-more[data-item="i_more"] [data-file]', { timeout: 3000 }).then(() => true, () => false), 'a file on no item shows on the Also for this meeting card, under the agenda');
+  ok(/Also for this meeting/.test(await jane.$eval('#agx-more', (el) => el.textContent)), 'the card says what it is');
+  const moreRow = () => jane.waitForFunction(() => [...document.querySelectorAll('.agx-slides__row')].some((r) => /Also for this meeting/.test(r.textContent)), { timeout: 8000 }).then(() => true, () => false);
+  ok(await moreRow(), 'and its slide is in the presentation’s list');
+  ok(await jane.evaluate(() => { const r = [...document.querySelectorAll('.agx-slides__row')].find((x) => /Also for this meeting/.test(x.textContent)); r.querySelector('.agx-slide').click(); return !r.querySelector('.agx-slide__move'); }), 'with no arrows that would move nothing');
+  ok(await jane.waitForSelector('#agx-more.is-found', { timeout: 2000 }).then(() => true, () => false), 'picking that slide brings the card into view and lights it');
+  await shot(jane, 'also-for-this-meeting');
+  await jane.evaluate(() => document.querySelector('#agx-more .bd-goes .bd-pop__btn').click());
+  await jane.waitForSelector('.bd-pop__panel .bd-picker__find', { timeout: 3000 }).catch(() => {});
+  await jane.keyboard.type('financial');
+  await jane.keyboard.press('Enter');
+  await jane.keyboard.press('Escape');
+  ok(await jane.waitForFunction(() => !document.querySelector('#agx-more'), { timeout: 3000 }).then(() => true, () => false) && /Balance sheet financials/.test(await finRow()), 'an item chosen on the card takes the file there, and the empty card goes');
+  ok(await waitText(jane, /Balance sheet financials goes with .*Financial/), 'and says where it went');
   // Who presents: People, with their faces, searched by name
   await jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((li) => li.querySelector('.agx-item__title')?.value === 'Financial').querySelector('.bd-who .bd-pop__btn').click());
   ok(await jane.waitForSelector('.bd-pop__panel .bd-picker__find', { timeout: 3000 }).then(() => true, () => false), 'Who presents opens a list of the board and staff');
@@ -1381,7 +1399,28 @@ try {
   ok(await waitText(alexR, /Only Sam can write this one/) && !(await alexR.$('.bp-rp [contenteditable="true"]')), 'someone who doesn’t present it reads it, with no editor');
   const refused = await alexR.evaluate(async (b) => (await fetch('/api/board-portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).status, { action: 'report', meetingId, itemId: finId, text: 'Not mine', base: '' });
   ok(refused === 403, `and the server refuses him (${refused})`);
+  await alexR.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'domcontentloaded' });
+  await alexR.waitForSelector('.bp-aghero__actions', { timeout: 8000 }).catch(() => {});
+  ok(!(await text(alexR)).includes('Edit the agenda') && !(await alexR.$(`#i-${finId} .bp-report__edit`)), 'a board member has no way to edit the agenda or someone else’s report');
   await alexR.close();
+
+  // Board's admins see and edit every item on the board page, not only what they present
+  const adminR = await tab(FOUNDER);
+  await adminR.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'domcontentloaded' });
+  ok(await adminR.waitForSelector(`#i-${finId} .bp-report__edit`, { timeout: 8000 }).then(() => true, () => false), 'a founder gets Edit on a report someone else presents');
+  ok(await adminR.evaluate((id) => [...document.querySelectorAll('.bp-aghero__actions a')].some((a) => /Edit the agenda/.test(a.textContent) && a.getAttribute('href') === `/admin/#board/meeting/${id}`), meetingId), 'and Edit the agenda goes to the whole agenda in Board');
+  await adminR.close();
+  const adminW = await tab(FOUNDER);
+  await adminW.goto(`${SITE}/admin/board/#/meetings/${meetingId}/report/${finId}`, { waitUntil: 'domcontentloaded' });
+  ok(await adminW.waitForSelector('.bp-rp [contenteditable="true"]', { timeout: 8000 }).then(() => true, () => false) && !(await text(adminW)).includes('can write this one'), 'and the editor on it, beside the slides');
+  ok(!!(await adminW.$('#rp-pv-h')), 'with how it shows in the meeting');
+  await adminW.close();
+  const adminH = await tab(FOUNDER);
+  await adminH.goto(`${SITE}/admin/board/`, { waitUntil: 'domcontentloaded' });
+  await adminH.waitForSelector('.bp-h1, h1', { timeout: 8000 }).catch(() => {});
+  await sleep(500);
+  ok(!/Write your report: Financial/.test(await text(adminH)), 'Home never asks them for a report they don’t present');
+  await adminH.close();
 
   // ─── The founder sees what the board did, and sees the board page as they do ───
   console.log('Back to the founder');

@@ -779,6 +779,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
       })}
     </ol>
     <button type="button" class="ag-add ag-add--sec agx-addsec" onClick=${() => { const id = uid('s_'); withMotion(() => set((x) => ({ sections: [...x.sections, { id, title: '', minutes: 0, items: [blankItem()] }] }))); setTimeout(() => document.querySelector(`#agx-${id} .agx-sec__title`)?.focus(), 140); }}>+ Add a part</button>
+    <${MoreCard} m=${m} set=${set} ctx=${ctx} keepSaved=${keepSaved} />
     </div>
   </div>`;
 }
@@ -894,7 +895,7 @@ function AgendaStage({ m, focusId, meetings, onOrder = null, onSince = null }) {
             <span class="agx-slide__n">${i + 1}</span>
             <span class="agx-slide__t">${w.label && s.kind !== 'doc' && s.kind !== 'live' && s.kind !== 'books' ? html`<b>${w.label}</b>` : null}${w.title}${s.kind === 'doc' && w.sub ? html`<small>${w.sub.split(' · ').slice(1).join(' · ')}</small>` : null}</span>
             <span class="agx-slide__k">${SLIDE_KIND[s.kind] || ''}</span>
-          </button>${s.kind === 'since' && onSince ? html`<span class="agx-slide__off"><button type="button" class="bd-linkbtn" title="Take this slide out of this meeting’s presentation" aria-label="Remove Since we last met from this meeting’s presentation" onClick=${() => onSince(true)}>Remove</button></span>` : null}${onOrder && pieces.length > 1 ? html`<span class="agx-slide__move">
+          </button>${s.kind === 'since' && onSince ? html`<span class="agx-slide__off"><button type="button" class="bd-linkbtn" title="Take this slide out of this meeting’s presentation" aria-label="Remove Since we last met from this meeting’s presentation" onClick=${() => onSince(true)}>Remove</button></span>` : null}${onOrder && pieces.length > 1 && s.itemId !== MORE.id ? html`<span class="agx-slide__move">
             <button type="button" class="bd-icon-btn" disabled=${k === 0} aria-label=${`Move ${what} earlier in the item`} title="Earlier in its item" onClick=${() => move(k - 1)}>↑</button>
             <button type="button" class="bd-icon-btn" disabled=${k === pieces.length - 1} aria-label=${`Move ${what} later in the item`} title="Later in its item" onClick=${() => move(k + 1)}>↓</button>
           </span>` : null}</li>`;
@@ -927,15 +928,96 @@ const placeFile = (fileId, itemId) => (x) => ({ sections: x.sections.map((s) => 
 /** What a board file can be (as the server takes it): PDFs, pictures, Word, Excel and PowerPoint */
 const FILE_OK = /\.(pdf|jpe?g|png|webp|heic|docx?|xlsx?|pptx)$/i;
 const extOf = (name) => (String(name).match(/\.[a-z0-9]{2,5}$/i) || [''])[0];
+/** What a file in the packet can be filed as: nothing that's this meeting's own minutes */
+const PACKET_KINDS = FILE_KINDS.filter((x) => ['financials', 'agenda', 'side', 'other'].includes(x.id));
+
+/**
+ * One of the meeting's files, as a row: its name (renamed in place), the agenda item it goes with when `goes`, whether
+ * the board sees it, what it's filed under, and deleting it. `vf`, `i`: the viewer's list and its place there; `n`: its
+ * place among the card's rows, where the focus goes after a delete; `cardId`: the card it's in
+ */
+function FileRow({ f, i, n, vf, kinds, cardId, goes, m, set, ctx, keepSaved }) {
+  const { addToast, data } = ctx;
+  const [renaming, setRenaming] = useState('');
+  const renamed = useRef(''); // a rename saves once: Enter, or the box losing the focus, whichever comes first
+  const items = agendaItems(m);
+  const whereOf = (x) => items.find((it) => m.sections[it.si].items[it.ii].docs?.includes(x.id))?.id || '';
+  const name = docTitle(f.name);
+  const update = async (f, patch, said = '', undo = null) => {
+    const j = await call({ action: 'update-file', id: f.id, ...patch });
+    if (!j.ok) { addToast(j.error, 'error'); return false; }
+    keepSaved((x) => ({ ...x, files: x.files.map((y) => (y.id === f.id ? { ...y, ...j.file } : y)) }));
+    if (said) addToast(said, 'info', undo ? { label: 'Undo', fn: () => update({ ...f, ...j.file }, undo) } : undefined);
+    return true;
+  };
+  const remove = async (f, at) => {
+    if (!(await ask({ title: `Delete ${docTitle(f.name)}?`, text: 'It goes for good, from the board page too.', yes: 'Delete', danger: true }))) return;
+    const j = await call({ action: 'delete-file', id: f.id });
+    if (!j.ok) { addToast(j.error, 'error'); return; }
+    keepSaved((x) => ({ ...x, files: x.files.filter((y) => y.id !== f.id) }));
+    set(placeFile(f.id, ''));
+    // The focus goes to the file that took its place, else to adding one
+    requestAnimationFrame(() => (document.querySelectorAll(`#${cardId} .bd-file-name`)[at] || document.querySelector(`#${cardId} .bd-drop .btn`))?.focus());
+  };
+  const rename = async (f, typed) => {
+    if (renamed.current === f.id) return;
+    renamed.current = f.id;
+    const name = typed.trim();
+    setRenaming('');
+    if (name && name !== docTitle(f.name)) await update(f, { name: `${name}${extOf(f.name)}` }, `Renamed ${name}`, { name: f.name });
+    requestAnimationFrame(() => document.querySelector(`#${cardId} [data-file="${f.id}"]`)?.focus());
+  };
+  // Which item it goes with, said (a file leaves "Also for this meeting" for its item), and undone from there
+  const place = (id) => {
+    const was = whereOf(f);
+    set(placeFile(f.id, id));
+    const to = items.find((it) => it.id === id);
+    addToast(to ? `${name} goes with ${to.label} ${to.title}` : `${name} is on no item: it comes after the agenda`, 'info', { label: 'Undo', fn: () => set(placeFile(f.id, was)) });
+  };
+  return html`<li class="bf-file" key=${f.id}>
+    <div class="bf-file__main">${renaming === f.id
+      ? html`<input class="form-input bf-rename" aria-label=${`New name for ${name}`} value=${name} ref=${(el) => { if (el && !el.dataset.on) { el.dataset.on = '1'; renamed.current = ''; el.focus(); el.select(); } }}
+          onKeyDown=${(e) => { if (e.key === 'Enter') { e.preventDefault(); rename(f, e.target.value); } if (e.key === 'Escape') { e.preventDefault(); setRenaming(''); } }} onBlur=${(e) => rename(f, e.target.value)} />`
+      : html`<a class="bd-file-name" data-file=${f.id} ...${viewerLink(vf, i)}>${name}</a>`}<div class="bd-row__meta">${[sizeText(f.size), f.at ? `added ${shortDate(f.at.slice(0, 10))}` : ''].filter(Boolean).join(' · ')}</div></div>
+    ${goes && f.kind !== 'signed' ? html`<${ItemChooser} items=${items} value=${whereOf(f)} label=${`Which agenda item ${name} goes with`} onChange=${place} />` : null}
+    <button type="button" role="switch" class=${`bf-seen ${f.staffOnly ? 'is-staff' : ''}`} aria-checked=${!f.staffOnly} aria-label=${`The board sees ${name}`}
+      onClick=${() => update(f, { staffOnly: !f.staffOnly }, f.staffOnly ? `The board sees ${name}` : `${name} is staff only: only ${youAnd(data.settings.admins, data.me)} see it`, { staffOnly: !!f.staffOnly })}>
+      <span class="bf-seen__track" aria-hidden="true"><span class="bf-seen__dot"></span></span><span class="bf-seen__t">${f.staffOnly ? 'Staff only' : 'Board sees it'}</span></button>
+    <${Menu} label=${`More for ${name}`} items=${[
+      { icon: 'rename', label: 'Rename', run: () => setRenaming(f.id) },
+      { divider: true },
+      { heading: 'File it under' },
+      ...kinds.filter((x) => x.id !== 'side' || /^image\//i.test(f.type || '')).map((x) => ({ label: x.label, chosen: x.id === f.kind, run: () => { if (x.id !== f.kind) update(f, { kind: x.id }, `${name} is under ${x.label}`, { kind: f.kind }); } })),
+      { divider: true },
+      { icon: 'trash', label: 'Delete the file', danger: true, run: () => remove(f, n) },
+    ]} />
+  </li>`;
+}
+
+/**
+ * The meeting's files on no item, as a card under the agenda: what the presentation shows after the last part as
+ * "Also for this meeting" (MORE) is seen and changed here like any item, and a slide of it picked beside the agenda
+ * comes here. Only when there are some: no files, no such slides
+ */
+function MoreCard({ m, set, ctx, keepSaved }) {
+  const files = looseFiles(m);
+  if (!files.length) return null;
+  const vf = viewerFiles(files);
+  return html`<section class="agx-sec agx-more" id="agx-more" data-item=${MORE.id} aria-labelledby="agx-more-h">
+    <div class="agx-more__head">
+      <span class="agx-sec__n" aria-hidden="true">+</span>
+      <h3 class="agx-more__title" id="agx-more-h">${MORE.title}</h3>
+      <span class="bd-muted">${plural(files.length, 'document')}, after the agenda</span>
+    </div>
+    <ul class="bf-list">${files.map((f, i) => html`<${FileRow} key=${f.id} f=${f} i=${i} n=${i} vf=${vf} kinds=${PACKET_KINDS} cardId="agx-more" goes m=${m} set=${set} ctx=${ctx} keepSaved=${keepSaved} />`)}</ul>
+  </section>`;
+}
 
 function FilesCard({ m, set, ctx, keepSaved, title, sub, goes = false }) {
   const { addToast } = ctx;
   const [uploading, setUploading] = useState([]); // the names on their way up
-  const [renaming, setRenaming] = useState('');
-  const renamed = useRef(''); // a rename saves once: Enter, or the box losing the focus, whichever comes first
   const [over, setOver] = useState(false);
   const items = agendaItems(m);
-  const whereOf = (f) => items.find((it) => m.sections[it.si].items[it.ii].docs?.includes(f.id))?.id || '';
   const add = async (list) => {
     const all = [...(list || [])];
     const bad = all.filter((f) => !FILE_OK.test(f.name));
@@ -964,30 +1046,6 @@ function FilesCard({ m, set, ctx, keepSaved, title, sub, goes = false }) {
     ].filter(Boolean);
     if (said.length) addToast(`${said.join('. ')}.`, 'info');
   };
-  const update = async (f, patch, said = '', undo = null) => {
-    const j = await call({ action: 'update-file', id: f.id, ...patch });
-    if (!j.ok) { addToast(j.error, 'error'); return false; }
-    keepSaved((x) => ({ ...x, files: x.files.map((y) => (y.id === f.id ? { ...y, ...j.file } : y)) }));
-    if (said) addToast(said, 'info', undo ? { label: 'Undo', fn: () => update({ ...f, ...j.file }, undo) } : undefined);
-    return true;
-  };
-  const remove = async (f, at) => {
-    if (!(await ask({ title: `Delete ${docTitle(f.name)}?`, text: 'It goes for good, from the board page too.', yes: 'Delete', danger: true }))) return;
-    const j = await call({ action: 'delete-file', id: f.id });
-    if (!j.ok) { addToast(j.error, 'error'); return; }
-    keepSaved((x) => ({ ...x, files: x.files.filter((y) => y.id !== f.id) }));
-    set(placeFile(f.id, ''));
-    // The focus goes to the file that took its place, else to adding one
-    requestAnimationFrame(() => (document.querySelectorAll(`#${cardId} .bd-file-name`)[at] || document.querySelector(`#${cardId} .bd-drop .btn`))?.focus());
-  };
-  const rename = async (f, typed) => {
-    if (renamed.current === f.id) return;
-    renamed.current = f.id;
-    const name = typed.trim();
-    setRenaming('');
-    if (name && name !== docTitle(f.name)) await update(f, { name: `${name}${extOf(f.name)}` }, `Renamed ${name}`, { name: f.name });
-    requestAnimationFrame(() => document.querySelector(`#${cardId} [data-file="${f.id}"]`)?.focus());
-  };
   // A file dropped anywhere on Before goes in the packet (an agenda item dragged never carries files)
   useEffect(() => {
     if (!goes) return undefined;
@@ -1007,7 +1065,7 @@ function FilesCard({ m, set, ctx, keepSaved, title, sub, goes = false }) {
   const groups = goes ? [[null, files.map((f, i) => ({ f, i }))]].filter(([, l]) => l.length)
     : FILE_KINDS.map((k) => [k, files.map((f, i) => ({ f, i })).filter(({ f }) => (FILE_KINDS.some((x) => x.id === f.kind) ? f.kind : 'other') === k.id)]).filter(([, l]) => l.length);
   // What a file can be filed as: before the meeting, nothing that's this meeting's own minutes
-  const kinds = goes ? FILE_KINDS.filter((x) => ['financials', 'agenda', 'side', 'other'].includes(x.id)) : FILE_KINDS;
+  const kinds = goes ? PACKET_KINDS : FILE_KINDS;
   const cardId = goes ? 'bm-packet' : 'bm-files';
   let at = -1;
   return html`<div class=${`card bm-files ${over ? 'is-over' : ''}`} id=${cardId}>
@@ -1016,25 +1074,7 @@ function FilesCard({ m, set, ctx, keepSaved, title, sub, goes = false }) {
       ${k && groups.length > 1 ? html`<p class="bm-group">${k.label}</p>` : null}
       <ul class="bf-list">${list.map(({ f, i }) => {
         const n = (at += 1);
-        const name = docTitle(f.name);
-        return html`<li class="bf-file" key=${f.id}>
-        <div class="bf-file__main">${renaming === f.id
-          ? html`<input class="form-input bf-rename" aria-label=${`New name for ${name}`} value=${name} ref=${(el) => { if (el && !el.dataset.on) { el.dataset.on = '1'; renamed.current = ''; el.focus(); el.select(); } }}
-              onKeyDown=${(e) => { if (e.key === 'Enter') { e.preventDefault(); rename(f, e.target.value); } if (e.key === 'Escape') { e.preventDefault(); setRenaming(''); } }} onBlur=${(e) => rename(f, e.target.value)} />`
-          : html`<a class="bd-file-name" data-file=${f.id} ...${viewerLink(vf, i)}>${name}</a>`}<div class="bd-row__meta">${[sizeText(f.size), f.at ? `added ${shortDate(f.at.slice(0, 10))}` : ''].filter(Boolean).join(' · ')}</div></div>
-        ${goes && f.kind !== 'signed' ? html`<${ItemChooser} items=${items} value=${whereOf(f)} label=${`Which agenda item ${name} goes with`} onChange=${(id) => set(placeFile(f.id, id))} />` : null}
-        <button type="button" role="switch" class=${`bf-seen ${f.staffOnly ? 'is-staff' : ''}`} aria-checked=${!f.staffOnly} aria-label=${`The board sees ${name}`}
-          onClick=${() => update(f, { staffOnly: !f.staffOnly }, f.staffOnly ? `The board sees ${name}` : `${name} is staff only: only ${youAnd(ctx.data.settings.admins, ctx.data.me)} see it`, { staffOnly: !!f.staffOnly })}>
-          <span class="bf-seen__track" aria-hidden="true"><span class="bf-seen__dot"></span></span><span class="bf-seen__t">${f.staffOnly ? 'Staff only' : 'Board sees it'}</span></button>
-        <${Menu} label=${`More for ${name}`} items=${[
-          { icon: 'rename', label: 'Rename', run: () => setRenaming(f.id) },
-          { divider: true },
-          { heading: 'File it under' },
-          ...kinds.filter((x) => x.id !== 'side' || /^image\//i.test(f.type || '')).map((x) => ({ label: x.label, chosen: x.id === f.kind, run: () => { if (x.id !== f.kind) update(f, { kind: x.id }, `${name} is under ${x.label}`, { kind: f.kind }); } })),
-          { divider: true },
-          { icon: 'trash', label: 'Delete the file', danger: true, run: () => remove(f, n) },
-        ]} />
-      </li>`;
+        return html`<${FileRow} key=${f.id} f=${f} i=${i} n=${n} vf=${vf} kinds=${kinds} cardId=${cardId} goes=${goes} m=${m} set=${set} ctx=${ctx} keepSaved=${keepSaved} />`;
       })}</ul>
     </div>`)}
     ${uploading.length ? html`<ul class="bf-list bf-up" aria-live="polite">${uploading.map((name, i) => html`<li class="bf-file is-up" key=${`${name}-${i}`}><span class="spinner" aria-hidden="true"></span><div class="bf-file__main"><span class="bd-file-name">${docTitle(name)}</span><div class="bd-row__meta">Uploading…</div></div></li>`)}</ul>` : null}

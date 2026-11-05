@@ -1755,8 +1755,12 @@ export const PREVIEW = new URLSearchParams(location.search).has('preview');
 const meSlug = (data) => data.me.slug || (AS_BOARD || PREVIEW ? null : data.me.as) || null;
 /** Do I present this item */
 const presents = (it, ctx) => { const me = meSlug(ctx.data); return !!me && presentersOf(it, ctx.d.people).some((p) => p.slug === me); };
-/** Can I write its report here: its presenter, until the minutes are approved */
-const canWrite = (m, it, ctx) => !!it && m.minutes !== 'approved' && presents(it, ctx);
+/** One of Board's admins, here as themselves (never looking as the board, or in Board's preview) */
+const adminHere = (ctx) => !!ctx.data.me.admin && !AS_BOARD && !PREVIEW;
+/** Do I still owe this item's report: I present it, until the minutes are approved */
+const owes = (m, it, ctx) => !!it && m.minutes !== 'approved' && presents(it, ctx);
+/** Can I write its report here: whoever owes it, and Board's admins on any item, any time (as saveReport allows) */
+const canWrite = (m, it, ctx) => !!it && (adminHere(ctx) || owes(m, it, ctx));
 const reportHref = (m, it) => `#/meetings/${encodeURIComponent(m.id)}/report/${encodeURIComponent(it.id)}`;
 /** "Nov 3" (Atlanta's day) */
 const dayShort = (iso) => { const t = Date.parse(iso || ''); return Number.isFinite(t) ? new Date(t).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/New_York' }) : ''; };
@@ -1764,7 +1768,7 @@ const dayShort = (iso) => { const t = Date.parse(iso || ''); return Number.isFin
 function reportsToWrite(ctx) {
   const { data } = ctx;
   return data.meetings.filter((m) => m.date >= data.today && !m.live?.endedAt)
-    .flatMap((m) => m.sections.flatMap((s) => s.items).filter((it) => reportsOn(it) && !it.report && canWrite(m, it, ctx)).map((it) => ({ m, it })));
+    .flatMap((m) => m.sections.flatMap((s) => s.items).filter((it) => reportsOn(it) && !it.report && owes(m, it, ctx)).map((it) => ({ m, it })));
 }
 
 /**
@@ -1776,12 +1780,12 @@ function ItemReport({ m, it, ctx, upcoming, preview = false }) {
   const mine = !preview && canWrite(m, it, ctx);
   const motion = it.motion ? html`<${Motion} text=${it.motion} cls="bp-report__motion" />` : null;
   if (!it.report) {
-    const ask = mine && upcoming && reportsOn(it) ? html`<a class="bp-report-ask" href=${reportHref(m, it)}><${Icon} name="edit" size=${18} /><span>Write your report<small>The board reads it here before the meeting</small></span></a>` : null;
+    const ask = mine && upcoming && reportsOn(it) ? html`<a class="bp-report-ask" href=${reportHref(m, it)}><${Icon} name="edit" size=${18} /><span>Write ${presents(it, ctx) ? 'your' : 'the'} report<small>The board reads it here before the meeting</small></span></a>` : null;
     return ask || motion ? html`${ask}${motion}` : null;
   }
   return html`<section class=${`bp-report ${isNothingNew(it.report) ? 'is-nothing' : ''}`} aria-label=${`The report on ${it.title}`}>
     <p class="bp-report__by"><span class="bp-report__label">Report</span>${it.reportBy ? html`<span>${presentersOf(it, ctx.d.people).some((p) => p.name === it.reportBy) ? (it.reportAt ? dayShort(it.reportAt) : '') : `by ${it.reportBy}${it.reportAt ? `, ${dayShort(it.reportAt)}` : ''}`}</span>` : null}
-      ${mine ? html`<a class="bp-report__edit" href=${reportHref(m, it)} aria-label=${`Edit your report on ${it.title}`}><${Icon} name="edit" size=${15} />Edit</a>` : null}</p>
+      ${mine ? html`<a class="bp-report__edit" href=${reportHref(m, it)} aria-label=${`Edit ${presents(it, ctx) ? 'your' : 'the'} report on ${it.title}`}><${Icon} name="edit" size=${15} />Edit</a>` : null}</p>
     <${Report} text=${it.report} clamp=${upcoming ? 160 : 90} />
     ${motion}
   </section>`;
@@ -2531,7 +2535,7 @@ function ReportPage({ id, itemId, ctx }) {
         <button type="button" class="bp-btn bp-btn--sm" onClick=${startFrom}>Start from it</button>
       </section>` : null}
       <h2 class="sr-only" id="rp-write-h">Your report</h2>
-      <${ReportEditor} value=${text} onChange=${changed} resetKey=${reset} label=${`Your report on ${it.title}`} autofocus=${!it.report} stickyTop="calc(var(--head) + env(safe-area-inset-top))" minHeight=${300}
+      <${ReportEditor} value=${text} onChange=${changed} resetKey=${reset} label=${`${presents(it, ctx) ? 'Your' : 'The'} report on ${it.title}`} autofocus=${!it.report} stickyTop="calc(var(--head) + env(safe-area-inset-top))" minHeight=${300}
         placeholder="What the committee did, what the board needs to decide, and what’s next" status=${status} starter=${true} onNothing=${askNothing}
         coach=${{ part: partFor(m, it.id), id: m.id, itemId: it.id, title: it.title, confidential: !!it.confidential, look, onLook: lookChosen }} />`}
       <${MotionBox} m=${m} it=${it} ctx=${ctx} onDraft=${setMotion} handle=${motionBox} />
@@ -3257,6 +3261,7 @@ function MeetingDetail({ m, ctx, notes = null }) {
         <div class="bp-aghero__actions bp-noprint">
           ${video && m.date === data.today ? html`<a class="bp-btn bp-btn--primary" href=${video} target="_blank" rel="noopener"><${Icon} name="video" />${joinLabel(video)}</a>` : null}
           ${data.me.admin && !AS_BOARD && !PREVIEW && upcoming && hasAgenda ? html`<a class="bp-btn bp-btn--primary" href=${`/admin/board/?present#/meetings/${encodeURIComponent(m.id)}/screen`} target=${`soard-screen-${m.id}`} rel="noopener" title="The presentation in its own window: → and ← or a clicker move it"><${Icon} name="present" />Present</a>` : null}
+          ${adminHere(ctx) && !m.practice ? html`<a class="bp-btn" href=${`/admin/#board/meeting/${encodeURIComponent(m.id)}`}><${Icon} name="edit" />Edit the agenda</a>` : null}
           ${printable ? html`<${PrintAll} m=${m} ctx=${ctx} />` : null}
           ${upcoming && (!m.pending || m.onCalendar) ? html`<${OnCalendar} m=${m} data=${data} />` : null}
         </div>
