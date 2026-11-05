@@ -16,6 +16,7 @@ import { html, call, ago, Face, viewerFiles, driveLink, dayOf, signedHow } from 
 import { viewerLink } from './file-viewer.js';
 import { meetingName, todayEastern, fileTitle, docsOf, itemFiles, looseFiles } from './board-shared.js';
 import { welcomeHad, usableEmail } from './board-shared.js';
+import { andText } from './board/money.js';
 
 // A held Enter or Space presses a button once, not again with every repeat
 const once = (e) => { if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault(); };
@@ -172,20 +173,21 @@ export function docsLine(reads, printed = false) {
 
 let dlgSeq = 0;
 /** The admin's shared dialog (its kd-dialog classes, as ./advisory-applications.js draws it) */
-function Dialog({ title, sub = '', children, onClose }) {
+function Dialog({ title, sub = '', children, onClose, size = 'lg', first = '.kd-dialog__body', foot = null }) {
   const ref = useRef(null);
   const idRef = useRef(`ba-dlg-${++dlgSeq}`);
   const live = useRef(onClose);
   live.current = onClose;
+  const downOn = useRef(false);
   useEffect(() => {
     const prev = document.activeElement;
     document.body.classList.add('modal-open');
     const onKey = (e) => {
       // A question asked over it (ask.js) or a file opened from it has the keys until it closes
-      if (document.querySelector('.ask-overlay') || document.querySelector('.fv-host')?.firstElementChild) return;
+      if (document.querySelector('.ask-overlay') || document.querySelector('.fv-host')?.firstElementChild || document.querySelector('.cmd-palette-overlay')) return;
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); live.current(); return; }
       if (e.key !== 'Tab') return;
-      const f = [...(ref.current?.querySelectorAll('button:not([disabled]), [href], input:not([disabled]):not([tabindex="-1"]), [tabindex="0"]') || [])].filter((el) => el.getClientRects().length);
+      const f = [...(ref.current?.querySelectorAll('button:not([disabled]), [href], input:not([disabled]):not([tabindex="-1"]), textarea:not([disabled]), [tabindex="0"]') || [])].filter((el) => el.getClientRects().length);
       if (!f.length) return;
       const at = document.activeElement;
       const inside = ref.current.contains(at);
@@ -195,22 +197,154 @@ function Dialog({ title, sub = '', children, onClose }) {
       if (e.shiftKey && (!inside || !behind)) { e.preventDefault(); f[f.length - 1].focus(); } else if (!e.shiftKey && (!inside || !ahead)) { e.preventDefault(); f[0].focus(); }
     };
     window.addEventListener('keydown', onKey, true);
-    requestAnimationFrame(() => (ref.current?.querySelector('.kd-dialog__body') || ref.current)?.focus());
+    requestAnimationFrame(() => (ref.current?.querySelector(first) || ref.current)?.focus());
     return () => {
       window.removeEventListener('keydown', onKey, true);
       if (document.querySelectorAll('.modal-overlay').length <= 1) document.body.classList.remove('modal-open');
       if (prev?.isConnected) prev.focus?.();
     };
   }, []);
-  return html`<div class="modal-overlay kd-overlay" onClick=${(e) => { if (e.target === e.currentTarget) onClose(); }}>
-    <div class="modal kd-dialog kd-dialog--lg ba-dialog" role="dialog" aria-modal="true" aria-labelledby=${idRef.current} ref=${ref} tabindex="-1">
+  // (a press that began inside, a drag out of a box, isn't a click on the backdrop)
+  return html`<div class="modal-overlay kd-overlay" onMouseDown=${(e) => { downOn.current = e.target === e.currentTarget; }} onClick=${(e) => { if (e.target === e.currentTarget && downOn.current) onClose(); }}>
+    <div class=${`modal kd-dialog kd-dialog--${size} ba-dialog`} role="dialog" aria-modal="true" aria-labelledby=${idRef.current} ref=${ref} tabindex="-1">
       <header class="kd-dialog__head">
         <div class="kd-dialog__titles"><h2 id=${idRef.current}>${title}</h2>${sub ? html`<p class="kd-dialog__sub">${sub}</p>` : null}</div>
         <button type="button" class="kd-x" aria-label="Close" onClick=${onClose}><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
       </header>
       <div class="kd-dialog__body" tabindex="0" role="region" aria-labelledby=${idRef.current}>${children}</div>
+      ${foot ? html`<footer class="kd-dialog__foot">${foot}</footer>` : null}
     </div>
   </div>`;
+}
+
+// A note to the board keeps its words until it's sent: closing the sheet, another Board tab or a reload loses nothing.
+// Each browser tab keeps its own, so two notes can't overwrite each other; a tab that's gone (`closed`, or untouched for
+// a day) leaves its note to the next one opened. Once a note is sent it leaves every tab. `unsaved`: one the browser
+// wouldn't store, kept for this visit
+const DRAFTS = 'board-email-all';
+const TAB = 'board-email-all-tab';
+let unsaved = null;
+const tabId = () => {
+  try {
+    let id = sessionStorage.getItem(TAB);
+    if (!id) { id = Math.random().toString(36).slice(2, 12); sessionStorage.setItem(TAB, id); }
+    return id;
+  } catch { return 'here'; }
+};
+const drafts = () => { try { return JSON.parse(localStorage.getItem(DRAFTS) || '{}') || {}; } catch { return {}; } };
+const storeDrafts = (all) => { localStorage.setItem(DRAFTS, JSON.stringify(all)); };
+const draftOf = () => {
+  if (unsaved) return unsaved;
+  const all = drafts();
+  const gone = ([, x]) => x.closed || Date.now() - Date.parse(x.at) > 24 * 60 * 60 * 1000;
+  let d = all[tabId()];
+  // (a gone tab's note moves here, so it has one home and clearing or sending it is the end of it)
+  const [from, left] = d ? [] : Object.entries(all).filter(gone).sort(([, x], [, y]) => String(y.at).localeCompare(String(x.at)))[0] || [];
+  if (from) { d = left; delete all[from]; }
+  if (d?.closed || from) {
+    all[tabId()] = { subject: d.subject, message: d.message, at: d.at };
+    try { storeDrafts(all); } catch { /* it stays where it was */ }
+  }
+  return { subject: String(d?.subject || ''), message: String(d?.message || '') };
+};
+// (a reload says this too: the same tab finds its own note first and takes the mark off)
+globalThis.addEventListener?.('pagehide', () => {
+  const all = drafts();
+  if (!all[tabId()]) return;
+  all[tabId()].closed = true;
+  try { storeDrafts(all); } catch { /* a day's wait instead */ }
+});
+const keepDraft = (d) => {
+  const all = drafts();
+  if (d.subject || d.message) all[tabId()] = { ...d, at: new Date().toISOString() }; else delete all[tabId()];
+  try { storeDrafts(all); unsaved = null; } catch { unsaved = d; }
+};
+const dropDraft = (d) => {
+  unsaved = null;
+  const all = drafts();
+  for (const [id, x] of Object.entries(all)) if (x.subject === d.subject && x.message === d.message) delete all[id];
+  try { storeDrafts(all); } catch { /* nothing kept to clear */ }
+};
+// As the server allows (../../functions/api/_board-email-all.js)
+const SUBJECT_MAX = 200;
+const MESSAGE_MAX = 20000;
+// (a mail link that long may not open: past this the mail app gets the subject and the addresses)
+const MAILTO_MAX = 1800;
+/** A mail link to these addresses, with the words typed so far when they fit */
+export function mailLink(emails, { subject = '', message = '' } = {}) {
+  const to = `mailto:${emails.join(',')}`;
+  const titled = subject.trim() ? `${to}?subject=${encodeURIComponent(subject.trim())}` : to;
+  const withSubject = titled.length <= MAILTO_MAX ? titled : to;
+  if (!message.trim()) return withSubject;
+  const whole = `${withSubject}${withSubject === to ? '?' : '&'}body=${encodeURIComponent(message.trim())}`;
+  return whole.length <= MAILTO_MAX ? whole : withSubject;
+}
+// Characters that show nothing: a subject or message of only these is empty
+const seen = (s) => s.replace(/[\u200B-\u200D\u2060\uFEFF]/g, '').trim();
+const howMany = (n, one) => `${n.toLocaleString()} ${one}${n === 1 ? '' : 's'}`;
+
+/** Email all: the note written here and sent from the writer's own Gmail (../../functions/api/_board-email-all.js) */
+function EmailAll({ data, onSay, onClose }) {
+  const me = String(data.me || '').toLowerCase();
+  const to = (data.group?.everyone || []).filter((p) => p.email !== me).sort((a, b) => a.name.localeCompare(b.name));
+  const left = (data.group?.missing || []).map((p) => p.name);
+  const emails = to.map((p) => p.email);
+  const [d, setD] = useState(draftOf);
+  const [busy, setBusy] = useState('');
+  // The one line above the buttons, where it can't fall below the fold: what went wrong, or that the test went
+  const [line, setLine] = useState(null);
+  const change = (k, v) => { const next = { ...d, [k]: v }; setD(next); keepDraft(next); setLine(null); };
+  const subjectOver = d.subject.trim().length - SUBJECT_MAX;
+  const messageOver = d.message.trim().length - MESSAGE_MAX;
+  const tooLong = subjectOver > 0 ? `The subject is ${howMany(subjectOver, 'character')} too long.`
+    : messageOver > 0 ? `This is ${howMany(messageOver, 'character')} too long to send from here. Open it in your mail app instead.` : '';
+  const can = !!seen(d.subject) && !!seen(d.message) && !tooLong;
+  // (pressed, then the page moved on: what comes back is still said)
+  const here = useRef(true);
+  useEffect(() => { here.current = true; return () => { here.current = false; }; }, []);
+  const say = (x) => { if (here.current) setLine(x); else onSay(x.text, x.bad ? 'error' : 'info'); };
+  const send = async (test) => {
+    if (busy || !can || (!test && !to.length)) return;
+    setBusy(test ? 'test' : 'all');
+    setLine(null);
+    const j = await call({ action: 'email-all', subject: d.subject, message: d.message, ...(test ? { test: true } : {}) });
+    setBusy('');
+    if (!j.ok) {
+      // No words from the server (no connection, a bad gateway): it may have gone. Pressing Send again checks first
+      const unknown = !j.status || j.unknown || /^HTTP \d+$/.test(j.error || '');
+      say({ bad: true, text: !unknown ? j.error || 'That didn’t send. Try again.'
+        : test ? 'The connection dropped, so this page can’t tell whether the test went. Look in your inbox. Nothing went to the board.'
+          : 'The connection dropped, so this page can’t tell whether it went. Press Send again and the site will check first. If this keeps happening, copy your words and reload the page.' });
+      return;
+    }
+    if (test) { say({ text: `Sent to you at ${me}. Nothing went to the board.` }); return; }
+    dropDraft(d);
+    onSay(j.already ? `That note already went to the board ${ago(j.at)}, so it wasn’t sent twice.` : `Sent to ${j.sent === 1 ? to[0]?.name || '1 person' : `all ${j.sent}`}. It’s in your Sent folder.`, 'info');
+    onClose();
+  };
+  const copyOut = async (words, said, sorry) => {
+    try { await navigator.clipboard.writeText(words); say({ text: said }); } catch { say({ bad: true, text: sorry }); }
+  };
+  // Too long for a mail link: the link opens with the addresses and subject, and the message comes by the clipboard
+  const link = mailLink(emails, d);
+  const leftBehind = [!link.includes('subject=') && d.subject.trim(), !link.includes('body=') && d.message.trim()].filter(Boolean).join('\n\n');
+  // (what a press just did comes first; a change to the words clears it)
+  const says = line || (tooLong ? { bad: true, text: tooLong } : null);
+  const pressed = (name) => (busy === name ? 'true' : null);
+  return html`<${Dialog} title="Email the board" sub=${`From your Gmail, ${me}`} size="md" first=${d.subject.trim() ? '#ba-mail-message' : '#ba-mail-subject'} onClose=${() => { if (!busy) onClose(); }}
+    foot=${html`${says ? html`<p key=${says.text} class=${`ba-mail__line ${says.bad ? 'form-error' : 'form-hint'}`} role=${says.bad ? 'alert' : 'status'}>${says.text}</p>` : null}
+      <button type="button" class="btn btn-ghost" disabled=${!can} aria-disabled=${pressed('all')} onKeyDown=${once} onClick=${() => send(true)}>${busy === 'test' ? 'Sending…' : 'Send it to me'}</button>
+      <button type="button" class="btn btn-primary" disabled=${!can || !to.length} aria-disabled=${pressed('test')} onKeyDown=${once} onClick=${() => send(false)}>${busy === 'all' ? 'Sending…' : !to.length ? 'Send' : to.length === 1 ? `Send to ${to[0].name.split(/\s+/)[0]}` : `Send to all ${to.length}`}</button>`}>
+    <div class="ba-mail">
+      <dl class="ba-mail__to"><dt>To</dt><dd>${to.length ? andText(to.map((p) => p.name)) : 'Nobody else on the board has an email on file.'}</dd></dl>
+      ${left.length ? html`<p class="ba-mail__left"><span class="tag tag--warn">No email on file</span> ${andText(left)} won’t get this.</p>` : null}
+      <div class="form-group"><label class="form-label" for="ba-mail-subject">Subject</label>
+        <input id="ba-mail-subject" class="form-input" autocomplete="off" value=${d.subject} readonly=${!!busy} aria-invalid=${subjectOver > 0 ? 'true' : null} onKeyDown=${once} onInput=${(e) => change('subject', e.target.value)} /></div>
+      <div class="form-group"><label class="form-label" for="ba-mail-message">Message</label>
+        <textarea id="ba-mail-message" class="form-textarea ba-mail__words" rows="9" value=${d.message} readonly=${!!busy} aria-invalid=${messageOver > 0 ? 'true' : null} onKeyDown=${once} onInput=${(e) => change('message', e.target.value)}></textarea></div>
+      ${emails.length ? html`<p class="form-hint ba-mail__alt">Need to attach a file? <a class="link" href=${link} onClick=${() => { if (leftBehind) copyOut(leftBehind, 'Your words are copied. Paste them into the email.', 'Those words are too long to carry over. Copy them from here into the email.'); }}>Open it in your mail app</a> or <button type="button" class="ba-mail__copy" onClick=${() => copyOut(emails.join(', '), `Copied ${emails.length === 1 ? 'the address' : `${emails.length} addresses`}`, 'Couldn’t copy them here. Open it in your mail app instead.')}>copy the addresses</button>.</p>` : null}
+    </div>
+  <//>`;
 }
 
 /**
@@ -320,7 +454,7 @@ function askedWords(a) {
  * A row opens their papers year by year
  */
 let styled = false;
-export function BoardActivity({ data, signDocs, ready, working, now = Date.now(), onWelcome, onCopy = null, onAsk = null, onAskAll = null, onAskPreview = null, onRemind = null }) {
+export function BoardActivity({ data, signDocs, ready, working, now = Date.now(), onWelcome, onSay = () => {}, onCopy = null, onAsk = null, onAskAll = null, onAskPreview = null, onRemind = null }) {
   if (!styled && typeof document !== 'undefined') {
     styled = true;
     const el = document.createElement('style');
@@ -329,6 +463,7 @@ export function BoardActivity({ data, signDocs, ready, working, now = Date.now()
     document.head.appendChild(el);
   }
   const [open, setOpen] = useState(null);
+  const [writing, setWriting] = useState(false);
   // Who has had the sign-in email: one rule with Board access and the server's send (board-shared.js welcomeHad)
   const onBoard = data.members.map((x) => x.slug);
   const sent = Object.fromEntries(data.members.map((p) => [p.slug, welcomeHad(data.welcome, p, onBoard)]).filter(([, at]) => at));
@@ -386,7 +521,8 @@ export function BoardActivity({ data, signDocs, ready, working, now = Date.now()
   const papersWord = signDocs.length === 1 ? `the ${signDocs[0].title.replace(/^the\s+/i, '')}` : 'the papers to sign';
   const person = open && data.members.find((p) => p.slug === open);
   return html`<div class="card ba-card" style="padding:0" onFocusIn=${onFocusIn} onFocusOut=${onFocusOut}>
-    <div class="sec-head ba-head"><h3>The board <span class="count">${data.members.length}</span></h3>
+    <div class="sec-head ba-head"><div class="ba-title"><h3>The board <span class="count">${data.members.length}</span></h3>
+      ${data.members.length && data.group?.everyone ? html`<button type="button" class="btn btn-ghost btn-sm" onKeyDown=${once} onClick=${() => setWriting(true)}>Email all</button>` : null}</div>
       ${signDocs.length && data.members.length ? html`<div class="ba-asks"><span class="sec-head__hint">${done === data.members.length ? `Everyone has signed for ${year}` : `${done} of ${data.members.length} signed for ${year}`}</span>
         ${asking && unsigned.length ? html`<button class="btn btn-ghost btn-sm" disabled=${!!working} onClick=${() => onAskPreview?.()}>${working === 'ask:me' ? 'Sending…' : 'Send it to me'}</button>
           <button class="btn btn-primary btn-sm" disabled=${!!working} onClick=${() => onAskAll?.(unsigned, papersWord)}>${working === 'ask:all' ? 'Emailing…' : unsigned.length === 1 ? `Ask ${unsigned[0].name.split(/\s+/)[0]} to sign` : `Ask the ${unsigned.length} who haven’t signed`}</button>` : null}
@@ -421,6 +557,7 @@ export function BoardActivity({ data, signDocs, ready, working, now = Date.now()
         </tr>`;
       })}</tbody>
     </table>`}
+    ${writing ? html`<${EmailAll} data=${data} onSay=${onSay} onClose=${() => setWriting(false)} />` : null}
     ${person ? html`<${MemberSheet} p=${person} sentAt=${sent[person.slug]} going=${going(person)} unconfirmed=${unconfirmed.includes(person.slug)} tooSoon=${tooSoon(person)} held=${held} onWelcome=${ready ? sendTo : null} working=${working} signDocs=${signDocs} onCopy=${onCopy} onAsk=${asking ? onAsk : null} onClose=${() => { const slug = open; setOpen(null); requestAnimationFrame(() => document.querySelector(`.ba-name[data-slug="${CSS.escape(slug)}"]`)?.focus()); }} />` : null}
   </div>`;
 }
@@ -428,6 +565,18 @@ export function BoardActivity({ data, signDocs, ready, working, now = Date.now()
 export const ACTIVITY_STYLES = `
   .ba-card { container-type: inline-size; }
   .ba-head { flex-wrap: wrap; gap: 0.75rem; }
+  .ba-title { display: flex; align-items: center; gap: 0.75rem; }
+  .ba-mail { display: grid; gap: 0.9rem; }
+  .ba-mail .form-group { margin: 0; }
+  .ba-mail__to { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.75rem; margin: 0; padding-bottom: 0.9rem; border-bottom: 1px solid var(--color-border); font-size: var(--fs-sm); line-height: 1.5; }
+  .ba-mail__to dt { color: var(--color-text-secondary); }
+  .ba-mail__to dd { margin: 0; color: var(--color-text); }
+  .ba-mail__left { margin: -0.3rem 0 0; font-size: var(--fs-sm); line-height: 1.5; color: var(--color-text-secondary); }
+  .ba-mail__words { resize: vertical; min-height: 11rem; }
+  .ba-mail__line { flex-basis: 100%; margin: 0; font-size: var(--fs-sm); line-height: 1.45; text-align: right; }
+  .ba-mail__alt { margin: 0; }
+  .ba-mail__copy { all: unset; cursor: pointer; text-decoration: underline; text-underline-offset: 2px; }
+  .ba-mail__copy:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 2px; border-radius: 3px; }
   .ba-none { padding: 1.5rem 1.25rem; }
   .ba-table td { vertical-align: top; }
   .ba-line { display: block; }

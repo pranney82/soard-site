@@ -1421,7 +1421,7 @@ function MembersTab({ ctx }) {
   };
   return html`
     <${AccessPanel} ctx=${ctx} ready=${ready} working=${working} welcome=${welcome} now=${now} />
-    <${BoardActivity} data=${data} signDocs=${signDocs} ready=${ready} working=${working} now=${now} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy}
+    <${BoardActivity} data=${data} signDocs=${signDocs} ready=${ready} working=${working} now=${now} onSay=${addToast} onWelcome=${(slug) => welcome({ slugs: [slug], ...(rowHad(slug) ? {} : { due: true }) }, slug)} onCopy=${onCopy}
       onAsk=${(slug) => askSign({ slugs: [slug] }, `ask:${slug}`)} onAskAll=${askAll} onAskPreview=${() => askSign({ test: true }, 'ask:me')} onRemind=${remind} />
     <${RunsBoard} ctx=${ctx} />`;
 }

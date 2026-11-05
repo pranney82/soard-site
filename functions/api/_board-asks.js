@@ -200,8 +200,8 @@ const chairOf = (people) => people.board.find((p) => p.seat === 'chair' && p.ema
 
 // ─── The emails (plain, as a person writes them) ───────────────────
 
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const P = 'margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#2D2E33;';
+export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+export const P = 'margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#2D2E33;';
 /** An email's text as both parts: paragraphs of plain words, a link on a line of its own drawn as one */
 function body(paras) {
   const text = paras.filter(Boolean).map((p) => (typeof p === 'string' ? p : `${p.lead ? `${p.lead}\n` : ''}${p.url}`)).join('\n\n');
@@ -409,7 +409,7 @@ const wrap76 = (s) => s.replace(/.{1,76}/g, '$&\r\n');
  * 75 characters at most, folded onto lines of their own
  */
 export function word(s) {
-  if (/^[\x20-\x7E]*$/.test(s)) return s;
+  if (/^[\x20-\x7E]*$/.test(s) && !s.includes('=?')) return s;
   const pieces = [];
   let cur = '';
   for (const ch of s) {
@@ -422,7 +422,7 @@ export function word(s) {
 const addr = (p) => (p.name ? `${word(/[",.<>@;:]/.test(p.name) ? `"${p.name.replace(/"/g, '')}"` : p.name)} <${p.email}>` : p.email);
 
 /** An email as Gmail's API takes it (RFC 2822, both parts, base64url) */
-export function mimeOf({ from, to, cc = [], subject, text, html, inReplyTo = '', references = '' }) {
+export function mimeOf({ from, to, cc = [], subject, text, html, inReplyTo = '', references = '', tag = 'report-asks' }) {
   const boundary = `b_${crypto.randomUUID().replace(/-/g, '')}`;
   const lines = [
     `From: ${addr(from)}`,
@@ -430,7 +430,7 @@ export function mimeOf({ from, to, cc = [], subject, text, html, inReplyTo = '',
     ...(cc.length ? [`Cc: ${cc.map(addr).join(', ')}`] : []),
     `Subject: ${word(subject)}`,
     'MIME-Version: 1.0',
-    'X-SOARD-Board: report-asks',
+    `X-SOARD-Board: ${tag}`,
     ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${[references, inReplyTo].filter(Boolean).join(' ')}`] : []),
     `Content-Type: multipart/alternative; boundary="${boundary}"`,
     '',
@@ -450,7 +450,7 @@ export function mimeOf({ from, to, cc = [], subject, text, html, inReplyTo = '',
   return b64(utf8(lines.join('\r\n'))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-async function gmailCall(token, path, { method = 'GET', body = null, fetchImpl = fetch } = {}) {
+export async function gmailCall(token, path, { method = 'GET', body = null, fetchImpl = fetch } = {}) {
   const res = await fetchImpl(`${GMAIL}${path}`, {
     method,
     headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },

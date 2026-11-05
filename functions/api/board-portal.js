@@ -63,6 +63,8 @@ const evidence = (context) => evidenceOf(context, { deviceOf, accessIat });
 import { portalExtras, saveLineNote, chairApprove, chairNote, askPresenter } from './_board-asks.js';
 import { shorterFor } from './_board-shorter.js';
 import { orgFacts } from './_org-facts.js';
+import { groupWanted } from './_board-group.js';
+import { normEmail } from './_board-roles.js';
 import { familiesList, familyOne } from './_board-families.js';
 
 const fail = (error, status = 400, extra = {}) => Response.json({ ok: false, error, ...extra }, { status });
@@ -119,10 +121,13 @@ export async function onRequestGet(context) {
     // Beside it: the notes on the money's lines, a member's own report asks (when each is due), and a meeting ahead
     // not shared yet that they present in (their items only), so the ask's link opens (_board-asks.js)
     // and SOARD's facts for Documents, as the site has them saved (_org-facts.js)
-    const [data, extras, org] = await Promise.all([portalData(context.env, w), listMeetings(context.env.DB).then((meetings) => portalExtras(context.env, { ...w, meetings })), orgFacts(context.env)]);
+    const [data, extras, org, group] = await Promise.all([portalData(context.env, w), listMeetings(context.env.DB).then((meetings) => portalExtras(context.env, { ...w, meetings })), orgFacts(context.env), groupWanted(context.env.DB)]);
     // Notes typed that never went on their meeting: only theirs to know, and how they stay reachable once it's approved
     const waiting = w.admin || w.member?.seat === 'secretary' ? await notesWaiting(context.env.DB) : [];
-    return Response.json({ ok: true, ...data, ...extras, org, notesWaiting: waiting }, { headers: { 'Cache-Control': 'private, no-store' } });
+    // People's Email all: the same people Board → Members writes to, each by their own address, less whoever's looking
+    const viewer = normEmail(context.data?.userEmail);
+    const emailAll = { to: group.members.map((p) => p.email).filter((e) => e !== viewer), missing: group.missing.map((p) => p.name) };
+    return Response.json({ ok: true, ...data, ...extras, org, notesWaiting: waiting, emailAll }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err) {
     return fromError(err);
   }

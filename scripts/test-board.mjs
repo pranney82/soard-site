@@ -181,6 +181,8 @@ const mail = [];
 // board@soardcharity.com in Google: its owner, and someone who left the board long ago. The group permission comes later
 let boardGroup = [{ email: FOUNDER, role: 'OWNER', type: 'USER' }, { email: 'gone.member@example.com', role: 'MEMBER', type: 'USER' }];
 let groupScope = false;
+const gmailSent = []; // what the site sent from someone's Gmail (Email all), as Gmail got it
+let gmailRefuses = false;
 // Board keeps the board's papers itself (Nov 3 2026): it never reads Google Drive
 let driveCalls = 0;
 const realFetch = globalThis.fetch;
@@ -206,6 +208,11 @@ globalThis.fetch = async (input, init = {}) => {
     if (method === 'GET') return Response.json({ members: boardGroup });
     if (method === 'POST') { const b = JSON.parse(init.body); boardGroup.push({ email: b.email, role: b.role, type: 'USER' }); return Response.json(b); }
     if (method === 'DELETE') { boardGroup = boardGroup.filter((x) => x.email !== decodeURIComponent(groupCall[1])); return new Response(null, { status: 204 }); }
+  }
+  if (/^https:\/\/gmail\.googleapis\.com\/gmail\/v1\/users\/me\/messages\/send/.test(url)) {
+    if (gmailRefuses) return Response.json({ error: { message: 'Daily sending limit exceeded' } }, { status: 429 });
+    gmailSent.push(Buffer.from(JSON.parse(init.body).raw, 'base64url').toString('utf8'));
+    return Response.json({ id: `sent-${gmailSent.length}`, threadId: `t-${gmailSent.length}` });
   }
   if (url.startsWith('https://gmail.googleapis.com/')) return Response.json({ messages: [], resultSizeEstimate: 0 });
   if (url.startsWith('https://www.googleapis.com/drive/v3/')) { driveCalls += 1; return Response.json({ files: [] }); }
@@ -903,6 +910,87 @@ try {
   await clickText(jane, 'button', /^Check now$/);
   ok(await waitText(jane, /board@soardcharity\.com\s*Has the 2 board members with an email and you\./), 'Members: once allowed, Check now brings the group up to the board');
   ok(/took out gone\.member@example\.com; 2 people added/.test(await text(jane)), 'Members: the group’s last change, by name');
+  // Email all: written here, from the writer's own Gmail, to everyone but them
+  {
+    const sheet = () => jane.$eval('.ba-dialog', (d) => d.innerText).catch(() => '');
+    await clickText(jane, '.ba-head button', /^Email all$/);
+    await jane.waitForSelector('#ba-mail-subject');
+    await sleep(100);
+    const opened = await sheet();
+    ok(/From your Gmail, jane@soardcharity\.com/.test(opened) && /Alex Rivera and Sam Ortiz/.test(opened) && !/To\s+[^\n]*Jane Doe/.test(opened), 'Email all: says who it’s from and names who gets it, never the writer');
+    ok(/Kim Park won’t get this/.test(opened), 'Email all: names who it can’t reach');
+    ok(await jane.evaluate(() => document.activeElement?.id === 'ba-mail-subject'), 'Email all: ready to type the subject');
+    const off = () => jane.$$eval('.ba-dialog .kd-dialog__foot button', (l) => l.map((b) => b.disabled));
+    ok((await off()).every(Boolean), 'Email all: nothing can go until it has a subject and a message');
+    await jane.type('#ba-mail-subject', 'Thank you & see you soon');
+    await jane.type('#ba-mail-message', 'First line <b>\n\nMore at https://soardcharity.org/events/.');
+    await jane.keyboard.press('Escape');
+    await sleep(200);
+    ok(!(await jane.$('.ba-dialog')), 'Escape closes it');
+    await clickText(jane, '.ba-head button', /^Email all$/);
+    await jane.waitForSelector('#ba-mail-subject');
+    ok(await jane.$eval('#ba-mail-message', (t) => /^First line/.test(t.value)), 'Email all: the words are still there when it’s opened again');
+    await shot(jane, '06d-email-all');
+    gmailSent.length = 0;
+    await clickText(jane, '.ba-dialog button', /^Send it to me$/);
+    ok(await waitText(jane, /Sent to you at jane@soardcharity\.com/) && gmailSent.length === 1 && /^To: Jane Doe <jane@soardcharity\.com>\r?$/m.test(gmailSent[0]) && Buffer.from(gmailSent[0].match(/^Subject: =\?UTF-8\?B\?([^?]+)/m)?.[1] || '', 'base64').toString().startsWith('[Test'), 'Send it to me reaches only the writer, marked as a test');
+    ok(await waitText(jane, /Sent to you at jane@soardcharity\.com\. Nothing went to the board\./) && await jane.$('.ba-dialog') !== null, 'and the note stays open to send');
+    gmailRefuses = true;
+    await clickText(jane, '.ba-dialog button', /^Send to all 2$/);
+    ok(await waitText(jane, /Gmail didn’t send it \(Daily sending limit exceeded\)\. Nothing went out\./) && gmailSent.length === 1, 'Gmail refusing it says so, in the sheet, and the words stay');
+    ok(await jane.$eval('.kd-dialog__foot .form-error', (p) => getComputedStyle(p).color !== getComputedStyle(document.querySelector('.ba-mail__alt')).color), 'the failure sits above the buttons and reads as an error');
+    gmailRefuses = false;
+    gmailSent.length = 0;
+    await clickText(jane, '.ba-dialog button', /^Send to all 2$/);
+    ok(await waitText(jane, /Sent to all 2\. It’s in your Sent folder\./), 'Send to all says it went');
+    const mailOut = gmailSent[0] || '';
+    ok(gmailSent.length === 1 && /^From: Jane Doe <jane@soardcharity\.com>/m.test(mailOut) && mailOut.includes(MEMBER) && mailOut.includes(OTHER) && !/^To:.*jane@/m.test(mailOut) && !/board@soardcharity/.test(mailOut), 'one email, from the writer’s Gmail, to everyone else by their own address');
+    await sleep(200);
+    ok(!(await jane.$('.ba-dialog')), 'it closes once sent');
+    {
+      // The same words from a tab that still has them: nothing goes twice
+      await clickText(jane, '.ba-head button', /^Email all$/);
+      await jane.waitForSelector('#ba-mail-subject');
+      await jane.type('#ba-mail-subject', 'Thank you & see you soon');
+      await jane.type('#ba-mail-message', 'First line <b>\n\nMore at https://soardcharity.org/events/.');
+      gmailSent.length = 0;
+      await clickText(jane, '.ba-dialog button', /^Send to all 2$/);
+      ok(await waitText(jane, /already went to the board/) && gmailSent.length === 0, 'the same words again go nowhere, and it says so');
+      await sleep(200);
+    }
+    await clickText(jane, '.ba-head button', /^Email all$/);
+    await jane.waitForSelector('#ba-mail-subject');
+    ok(await jane.$eval('#ba-mail-subject', (t) => t.value === ''), 'the next one starts empty');
+    // The search palette over it: Esc closes the palette alone, and the window closing lets the page scroll again
+    await jane.keyboard.down('Meta'); await jane.keyboard.press('KeyK'); await jane.keyboard.up('Meta');
+    await jane.waitForSelector('.cmd-palette-overlay');
+    await jane.keyboard.press('Escape');
+    await sleep(200);
+    ok(!(await jane.$('.cmd-palette-overlay')) && !!(await jane.$('.ba-dialog')) && await jane.evaluate(() => document.body.classList.contains('modal-open')), 'Esc closes the search palette, not the window behind it');
+    await jane.keyboard.press('Escape');
+    await sleep(200);
+    ok(!(await jane.$('.ba-dialog')) && await jane.evaluate(() => !document.body.classList.contains('modal-open')), 'Esc again closes the window, and the page scrolls');
+    {
+      // Two tabs, two notes: neither takes the other's words, and a reload keeps its own
+      const say = async (p, words) => { await clickText(p, '.ba-head button', /^Email all$/); await p.waitForSelector('#ba-mail-subject'); await sleep(150); if (words) { await p.type('#ba-mail-subject', words); await p.type('#ba-mail-message', 'Words'); } return p.$eval('#ba-mail-subject', (t) => t.value); };
+      await say(jane, 'Note for this tab');
+      const second = await tab(FOUNDER);
+      await second.goto(`${SITE}/admin/#board/members`, { waitUntil: 'networkidle0' });
+      await second.waitForSelector('.ba-head button');
+      ok(await say(second, '') === '', 'a second tab starts its own note');
+      await second.type('#ba-mail-subject', 'Note for the other tab');
+      await second.type('#ba-mail-message', 'Words');
+      await jane.reload({ waitUntil: 'networkidle0' });
+      await jane.waitForSelector('.ba-head button');
+      ok(await say(jane, '') === 'Note for this tab', 'a reload keeps this tab’s note');
+      await second.close();
+      await sleep(200);
+      await jane.evaluate(() => { for (const id of ['#ba-mail-subject']) document.querySelector(id)?.blur(); });
+      await jane.keyboard.press('Escape');
+      await sleep(200);
+      await jane.evaluate(() => localStorage.removeItem('board-email-all'));
+    }
+  }
   ok(JSON.stringify(boardGroup.map((x) => x.email).sort()) === JSON.stringify([MEMBER, FOUNDER, OTHER].sort()) && boardGroup.find((x) => x.email === FOUNDER).role === 'OWNER', 'Google’s group holds the board and the founder, who stays its owner');
   await shot(jane, '06b-members-group');
   // Who runs Board, on Members: Board has no Settings, and an old link to it opens here
@@ -925,6 +1013,11 @@ try {
   // On a phone: nothing past the edge, every button whole
   await jane.setViewport({ width: 390, height: 900, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
   await sleep(300);
+  ok(await jane.evaluate(() => {
+    const a = [...document.querySelectorAll('.ba-head button')].find((x) => x.textContent.trim() === 'Email all')?.getBoundingClientRect();
+    return !!a && a.left >= 0 && a.right <= innerWidth && a.height >= 32;
+  }), 'Members: on a phone Email all stays on the screen');
+  await shot(jane, '06c-members-phone');
   ok(await overflow(jane) <= 0 && await jane.$$eval('.bd-runs button, .bd-runs__add button', (bs) => bs.every((b) => b.getBoundingClientRect().right <= innerWidth && b.scrollWidth <= b.clientWidth + 1)), 'Who runs Board fits a phone');
   await jane.evaluate(() => document.querySelector('.bd-runs')?.scrollIntoView({ block: 'start' }));
   await jane.screenshot({ path: join(OUT, '07-runs-board-390.png') });
@@ -1193,6 +1286,14 @@ try {
       // People: a directory, a row a person, email and copy as two small buttons named for them
       await alex.goto(`${SITE}/admin/board/#/people`, { waitUntil: 'networkidle0' });
       await alex.waitForSelector('.bp-dir .bp-person', { timeout: 6000 }).catch(() => {});
+      {
+        // Email all on the board's own page: from the member's own mail, to everyone else on the board and the admins
+        const link = await alex.$eval('.bp-emailall a', (a) => a.getAttribute('href')).catch(() => '');
+        ok(/Kim Park has no email on file, so Email all won’t reach them/.test(await text(alex)), 'People: says who Email all can’t reach');
+        const to = link.replace(/^mailto:/, '').split(',');
+        ok(to.includes(OTHER) && to.includes(FOUNDER) && !to.includes(MEMBER) && !/board@soardcharity/.test(link), `People: Email all writes to the others by their own address (${to.length})`);
+        ok(!!(await alex.$('.bp-emailall button[aria-label="Copy everyone’s email address"]')), 'People: the addresses can be copied, for anyone without a mail app set up');
+      }
       const dir = await alex.evaluate(() => ({ rows: document.querySelectorAll('.bp-dir .bp-person').length, mail: !!document.querySelector('.bp-person a.bp-iconbtn[aria-label^="Email "][href^="mailto:"]'), copy: !!document.querySelector('.bp-person button.bp-iconbtn[aria-label$="email address"]'), words: /\bCopy\b/.test(document.querySelector('.bp-dir')?.innerText || '') }));
       ok(dir.rows >= 2 && dir.mail && dir.copy && !dir.words, `People: a directory with email and copy as icon buttons (${JSON.stringify(dir)})`);
       // Documents: SOARD's papers in one panel, the shelves side by side, each paper a row that opens it

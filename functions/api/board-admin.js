@@ -19,6 +19,7 @@
  *   snapshot { id }                           lock today's numbers into the packet
  *   approve-agenda { id }                     approve the agenda: it goes on the board page and the board is emailed, once
  *   send-packet { id, test }                  email the board, once its agenda is approved (test: only you)
+ *   email-all { subject, message, test }      a note to the whole board from your own Gmail (test: only you)
  *   action-done { actionId, done }
  *   save-doc { doc, askAgain, base, fromFile, wordsFrom, newFile }, delete-doc { id }   doc.body: its words, written here (a change is the next wording;
  *                                             409 { conflict } or { ask }: see saveDoc);
@@ -56,6 +57,7 @@ import { chairApprove } from './_board-asks.js';
 import { isBoardAdmin, isStaffEmail, readState, activeBoard } from './_board-roles.js';
 import { accessStatus, syncBoardAccess, accessConfigured } from './_board-access.js';
 import { groupStatus, syncBoardGroup } from './_board-group.js';
+import { emailAll } from './_board-email-all.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
 import { maybeReadBoardMail, mailStatus, mailLog, clientIdOf } from './_board-mail.js';
 import { sendInvite, cancelInvite, noteInviteChange, projectOf, inviteCheck, maybeCheckInvites } from './_board-invite.js';
@@ -415,6 +417,21 @@ export async function onRequestPost(context) {
         }
         if (!body.test && r.sent) await audit(env, me, 'updated', `Board asked ${r.sent === 1 ? 'a board member' : `${r.sent} board members`} by email to sign this year’s papers`);
         return Response.json({ ok: r.failed === 0, ...r, ...(body.test ? {} : { members: await memberStatus(env.DB) }), ...(r.failed ? { error: r.errors[0] || 'Some emails didn’t go' } : {}) });
+      }
+      case 'email-all': {
+        let r;
+        try {
+          const going = emailAll(env, { me, subject: body.subject, message: body.message, test: body.test === true });
+          // Finished even if the page goes away mid-send, so the email and the record always match
+          context.waitUntil?.(going.catch(() => {}));
+          r = await going;
+        } catch (err) {
+          if (err.status) return Response.json({ ok: false, error: err.message }, { status: err.status });
+          console.error('email-all', err);
+          return Response.json({ ok: false, unknown: true }, { status: 500 });
+        }
+        if (!r.test && !r.already) await audit(env, me, 'updated', `Board emailed (${r.sent}): ${String(body.subject).replace(/\s+/g, ' ').trim().slice(0, 120)}`);
+        return Response.json({ ok: true, ...r });
       }
       case 'send-welcome': {
         const admins = (await getSettings(env.DB)).admins;

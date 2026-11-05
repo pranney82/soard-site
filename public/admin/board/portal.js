@@ -3720,13 +3720,23 @@ function Person({ p, email = false, ctx }) {
 function PeoplePage({ ctx }) {
   const { people } = ctx.data;
   useFocusTarget();
+  // Email all: the people Board → Members writes to, each by their own address, from the mail this member already uses
+  const { to: everyone = [], missing = [] } = ctx.data.emailAll || {};
+  const copyAll = async () => {
+    try { await navigator.clipboard.writeText(everyone.join(', ')); ctx.say(`Copied ${everyone.length === 1 ? 'the address' : `${everyone.length} addresses`}`); } catch { ctx.say('Couldn’t copy them here. Try Email all instead.', 'warn'); }
+  };
   const officers = people.board.filter((p) => OFFICERS.includes(p.seat)).sort((a, b) => OFFICERS.indexOf(a.seat) - OFFICERS.indexOf(b.seat));
   const members = people.board.filter((p) => !officers.includes(p));
   const committees = [...new Set(people.board.flatMap((p) => p.committees || []))].sort();
   return html`
-    <header class="bp-pagehead bp-rise" style=${rise(0)}><div><h1 class="bp-h1">People</h1><p class="bp-lede">${people.advisory.length ? 'The board, the team and the Advisory Board.' : 'The board and the team.'} Write to a board member from their row.</p></div></header>
+    <header class="bp-pagehead bp-rise" style=${rise(0)}><div><h1 class="bp-h1">People</h1><p class="bp-lede">${people.advisory.length ? 'The board, the team and the Advisory Board.' : 'The board and the team.'} Write to a board member from their row, or to everyone with Email all.</p></div></header>
     <section class="bp-card bp-gap bp-rise" style=${rise(1)} aria-labelledby="bd-h">
-      <${SecHead} id="bd-h" title="Board of Directors" count=${people.board.length} />
+      <${SecHead} id="bd-h" title="Board of Directors" count=${people.board.length} sub=${everyone.length && missing.length ? `${andText(missing)} ${missing.length === 1 ? 'has' : 'have'} no email on file, so Email all won’t reach ${missing.length === 1 ? 'them' : 'those members'}.` : ''}>
+        ${everyone.length ? html`<p class="bp-person__acts bp-emailall">
+          <a class="bp-btn bp-btn--quiet bp-btn--sm" href=${`mailto:${everyone.join(',')}`}><${Icon} name="mail" size=${17} />Email all</a>
+          <button type="button" class="bp-iconbtn" onClick=${copyAll} aria-label="Copy everyone’s email address" title="Copy the addresses"><${Icon} name="copy" size=${17} /></button>
+        </p>` : null}
+      <//>
       <ul class="bp-dir">${[...officers, ...members].map((p) => html`<${Person} p=${p} email=${p.slug !== ctx.data.me.slug} ctx=${ctx} key=${p.slug} />`)}</ul>
     </section>
     ${committees.length ? html`<section class="bp-card bp-gap bp-rise" style=${rise(2)} aria-labelledby="cm-h"><h2 class="bp-h2" id="cm-h">Committees</h2><ul class="bp-rows">${committees.map((c) => html`<li key=${c}><div class="bp-row bp-row--static"><span class="bp-row__main"><span class="bp-row__title">${c}</span><span class="bp-row__meta">${people.board.filter((p) => (p.committees || []).includes(c)).map((p) => p.name).join(', ')}</span></span></div></li>`)}</ul></section>` : null}

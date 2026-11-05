@@ -1042,6 +1042,7 @@
     }
     .modal h3 { font-weight: 700; font-size: var(--fs-lg); letter-spacing: -0.02em; margin-bottom: 0.5rem; }
     .modal p { color: var(--color-text-secondary); font-size: var(--fs-sm); line-height: 1.55; margin-bottom: 1.4rem; }
+    .modal p.form-error { color: var(--color-danger); }
     .modal-buttons { display: flex; gap: 0.6rem; justify-content: flex-end; }
 
     /* ─── Search ──────────────────────────── */
@@ -22659,14 +22660,16 @@ ${sections || '<p>No one yet.</p>'}
       const inputRef = useRef();
 
       useEffect(() => {
-        if (open) {
-          setQuery(''); setActiveIdx(0);
-          document.body.classList.add('modal-open');
-          setTimeout(() => inputRef.current?.focus(), 50);
-        } else {
-          document.body.classList.remove('modal-open');
-        }
-        return () => document.body.classList.remove('modal-open');
+        if (!open) return undefined;
+        setQuery(''); setActiveIdx(0);
+        // (the page goes back as it found it: a window this opened over keeps it held still)
+        const held = document.body.classList.contains('modal-open');
+        document.body.classList.add('modal-open');
+        setTimeout(() => inputRef.current?.focus(), 50);
+        // Esc closes this, never a window behind it (window capture comes before every dialog's own handler)
+        const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopImmediatePropagation(); onClose(); } };
+        window.addEventListener('keydown', esc, true);
+        return () => { window.removeEventListener('keydown', esc, true); if (!held) document.body.classList.remove('modal-open'); };
       }, [open]);
 
       const allItems = useMemo(() => {

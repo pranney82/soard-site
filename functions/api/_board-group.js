@@ -212,7 +212,7 @@ export async function groupStatus(env) {
     ok: !!state.ok, syncedAt: state.syncedAt || null, failedAt: state.failedAt || null, failingSince: state.ok ? null : state.failingSince || state.failedAt || null,
     error: state.ok ? null : state.error || null, needs: state.ok ? null : state.needs || null,
     current: state.hash === hash, members: state.members ?? null, owners: state.owners ?? 0,
-    wanted: want.members.length, board: want.board, missing: want.missing,
+    wanted: want.members.length, board: want.board, missing: want.missing, everyone: want.members,
     failing: (state.failing || []).map((f) => ({ name: f.name || f.email, error: f.error, removing: !!f.removing })),
     changes: (state.changes || []).slice(0, 5).map((c) => ({ at: c.at, added: c.added.map((m) => m.name || m.email), removed: c.removed.map((m) => m.name || m.email) })),
   };
