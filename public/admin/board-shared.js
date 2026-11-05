@@ -297,6 +297,16 @@ const idOr = (v, prefix) => (ID.test(String(v || '')) ? String(v) : uid(prefix))
 const bool = (v) => v === true;
 const httpUrl = (v) => { const s = one(v, 500); return /^https:\/\/[^\s]+$/i.test(s) ? s : ''; };
 
+/** The months the board meets: the first of each quarter, on its second Thursday (Peter, Nov 5 2026) */
+export const BOARD_MONTHS = [1, 4, 7, 10];
+/** The second Thursday of a month (1 to 12), as YYYY-MM-DD */
+export function secondThursday(year, month) {
+  const first = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  return `${year}-${String(month).padStart(2, '0')}-${String(1 + ((4 - first + 7) % 7) + 7).padStart(2, '0')}`;
+}
+/** A year's four board meetings */
+export const boardDays = (year) => BOARD_MONTHS.map((month) => secondThursday(year, month));
+
 /** "Q2 2026" for a meeting on April 30, 2026 */
 export function quarterOf(d) {
   if (!isDate(d)) return '';

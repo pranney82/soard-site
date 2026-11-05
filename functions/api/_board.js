@@ -387,7 +387,7 @@ async function savePractice(DB, current, raw, { by, base = null } = {}) {
  * A new meeting from the agenda template, saved (not shared yet). Its time and place are the last meeting's (the one
  * before its day, else the next one), so the usual ones need no setting: a meeting moved somewhere new carries on there
  */
-export async function createMeeting(env, { date, by }) {
+export async function createMeeting(env, { date, by, usual = false }) {
   await ensureSchema(env.DB);
   if (!isDate(date)) throw Object.assign(new Error('Pick the meeting’s date'), { status: 400 });
   const [settings, meetings, people] = await Promise.all([getSettings(env.DB), listMeetings(env.DB), roster(env.DB)]);
@@ -397,7 +397,8 @@ export async function createMeeting(env, { date, by }) {
   const timed = nearest.find((x) => x.start && x.end);
   // A real place only: an older meeting's "place" that's a call (Teams, Zoom, a link) or TBD isn't one (Meet is the call)
   const placed = nearest.find((x) => x.location && !/\b(teams|zoom|webex|google meet|tbd|to be determined)\b|https?:\/\//i.test(`${x.location} ${x.address || ''}`));
-  const defaults = { ...settings.defaults, ...(timed ? { start: timed.start, end: timed.end } : {}), ...(placed ? { location: placed.location, address: placed.address || '' } : {}) };
+  // `usual`: Board's usual time and no place yet (the year's meetings, ./_board-schedule.js), never one meeting's own
+  const defaults = usual ? settings.defaults : { ...settings.defaults, ...(timed ? { start: timed.start, end: timed.end } : {}), ...(placed ? { location: placed.location, address: placed.address || '' } : {}) };
   const m = newMeeting({
     date, template: settings.template, meetings, defaults,
     board: people.board.map((p) => ({ slug: p.slug, name: p.name, org: p.organization })),
@@ -2638,6 +2639,7 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *     and so is the board's Google Group, board@soardcharity.com (./_board-group.js)
  *   - hourly, the board meetings on Peter and Holly's calendars (./_board-calendar.js)
  *   - every 5 minutes at most, the invites and attendance lists ahead kept in step with People → Board (./_board-invite.js)
+ *   - once a year, next year's meetings added and invited (./_board-schedule.js)
  *   - each minute, a new place onto an invite that's out once it has settled; hourly until it
  *     passes, the check that Calendar, Meet and attendance work (./_board-invite.js)
  *   - once a newer agenda reader ships, emailed agendas it reads better (maybeRereadEmailAgendas); then
@@ -2667,6 +2669,7 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     const invites = await import('./_board-invite.js');
     await invites.maybeRefreshInvites(env, { fetchImpl, now });
     await invites.maybeFollowBoard(env, { fetchImpl, now });
+    await (await import('./_board-schedule.js')).maybeScheduleNextYear(env, { fetchImpl, now });
     await invites.maybeCheckInvites(env, { fetchImpl, now });
     await maybeSendApprovedAgendas(env, { now });
     await maybeRereadEmailAgendas(env, { now });
@@ -2738,6 +2741,7 @@ export async function boardFacts(env) {
     // QuickBooks' year so far for the board page (./_quickbooks.js): on/off, the company and times only
     books,
     lastPacketAt: packet,
+    nextYear: await (await import('./_board-schedule.js')).scheduleStatus(env.DB),
     invite: {
       ahead: invites.length,
       follow: await readState(env.DB, 'invite-follow').then((f) => ({ at: f.at || null, lastChangeAt: f.lastChangeAt || null, added: f.lastAdded || 0, removed: f.lastRemoved || 0, held: f.held || 0, error: f.error ? String(f.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null })),

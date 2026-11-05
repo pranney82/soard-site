@@ -936,6 +936,17 @@ const MAP = { t: 'SOARD', children: [
             const checked = i.check?.calendar === 'ok' && i.check?.meet === 'ok' ? ' Calendar and Meet checked.' : '';
             return ON(`${i.ahead ? `${plural(i.ahead, 'invite')} out for meetings ahead${i.waiting ? `, ${plural(i.waiting, 'change')} going on in a moment` : ''}.` : 'No invites out for meetings ahead.'}${checked}`, i.lastAt || i.check?.checkedAt);
           } },
+        { t: 'Next year’s meetings', s: 'live', k: 'schedule',
+          when: 'Once a year with no end date: the day after the second Thursday of July, from 8 AM Eastern.',
+          does: 'Adds next year’s four board meetings, the second Thursday of January, April, July and October, 8 to 10 AM on the agenda template with no place yet, and sends each one’s calendar invite with Google Meet. A quarter that already has a meeting keeps it. Once a year’s are out, a meeting moved or deleted stays that way. If Google fails, it tries again each hour until all four have gone.',
+          touches: ['Google Calendar', 'D1'], where: 'functions/api/_board-schedule.js (maybeScheduleNextYear) · board-shared.js (boardDays)',
+          live: (f) => {
+            const y = f.board?.nextYear;
+            if (!y) return null;
+            if (y.error) return ATTN(`${y.next}’s invites haven’t all gone: ${y.error}`, y.errorAt);
+            const on = new Date(`${y.on}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' });
+            return ON(`${y.last ? `${y.last}’s went out. ` : ''}${y.next}’s go out ${on}.`, y.lastAt);
+          } },
         { t: 'Invites follow the board', s: 'live', k: 'schedule',
           when: 'Every five minutes on the live hub’s heartbeat, for every meeting ahead that hasn’t started.',
           does: 'Someone added to People → Board with an email goes on every invite ahead, and Google sends them each one. Someone who leaves the board comes off them, and a new address replaces the old one. Guests added by hand in Google stay. The same people go on each meeting’s attendance list, so the roll call and quorum are right. A list that reads empty, or that would take over half of an invite’s board off at once, changes nothing and says so here.',
