@@ -619,10 +619,9 @@ const isOutline = (sections, template = DEFAULT_TEMPLATE) => sections.length ===
   && s.items.length === (template[i].items || []).length
   && s.items.every((it, j) => (it.live === 'minutes' || it.title === template[i].items[j].title) && !it.presenter && !it.notes && !it.staffNote && !it.docs?.length));
 /**
- * An agenda nobody has written: SOARD's usual outline or one drafted from
- * the last meeting (the drafts follow a newer last meeting until someone
- * writes in it or uses it). A meeting from before agendaFrom counts by its look. One with a report written in it is
- * never a draft again: drafting it anew would lose the report.
+ * An agenda nobody has written: the template (or a draft from the last meeting, made before every agenda began on the
+ * template), until someone writes in it or uses it. A meeting from before agendaFrom counts by its look. One with a
+ * report written in it is never a draft again: starting it over would lose the report.
  */
 export const agendaIsDraft = (m, template = DEFAULT_TEMPLATE) => !m?.sections?.some((s) => s.items.some((it) => it.report || it.motion))
   && (!m?.sections?.some((s) => s.items.length)
@@ -663,10 +662,22 @@ export function facesOf(it) {
  * minutes. Its presenter is asked for a report on the board page; Board counts the ones in.
  */
 export const reportsOn = (it) => isFilled(it) && !!(it.who?.length || String(it.presenter || '').trim()) && it.live !== 'minutes' && !facesOf(it);
-/** The draft reader's version (agendaFrom.v on a last-meeting draft): a draft an older one made is drafted again */
-export const DRAFTER = 2;
 /**
- * The next agenda, drafted from the last one: its sections and items in
+ * The agenda a meeting ahead starts on and stays on until someone writes in it: SOARD's template, with the last
+ * meeting's minutes up for approval and the live facts where its items have them. Nothing comes from the last agenda
+ * (Peter, Nov 5 2026: "the agendas should be the template, not copying things" like a new member's welcome).
+ */
+export function templateAgenda(prev, { template = DEFAULT_TEMPLATE } = {}) {
+  return (template?.length ? template : DEFAULT_TEMPLATE).map((s) => ({
+    id: uid('s_'), title: s.title,
+    items: (s.items || []).map((it) => ({
+      ...cleanItem({ title: it.live === 'minutes' && prev ? minutesItemTitle(prev) : it.title, presenter: it.presenter, who: it.who, live: it.live || liveOfTitle(it.title, s.title), about: it.live === 'minutes' && prev ? prev.id : '' }),
+      id: uid('i_'),
+    })),
+  }));
+}
+/**
+ * A practice meeting's agenda when none is ahead, drafted from the last one: its sections and items in
  * order, who presents each, the live numbers where the usual outline has
  * them (or the item's name says, see liveOfTitle), its minutes up for
  * approval: the item in an "approve the minutes" section, whatever it was
@@ -696,11 +707,7 @@ export function draftAgenda(prev, { template = DEFAULT_TEMPLATE } = {}) {
     };
   });
 }
-/** The last meeting before this one with an agenda someone wrote or emailed: the one the next draft follows */
-export const draftSource = (m, meetings, template = DEFAULT_TEMPLATE) => [...(meetings || [])]
-  .filter((x) => x.id !== m.id && isDate(x.date) && x.date < m.date && x.sections.some((s) => s.items.length) && !agendaIsDraft(x, template))
-  .sort((a, b) => b.date.localeCompare(a.date))[0] || null;
-/** What a draft from that meeting is called (agendaFrom.name), so a newer source is noticed */
+/** The meeting an agenda's minutes item follows (agendaFrom.name), so one added or moved before it is noticed */
 export const draftName = (prev) => `${meetingName(prev)} (${shortDate(prev.date)})`;
 
 /**
@@ -1522,13 +1529,6 @@ export function attendanceCounts(m) {
  */
 export function newMeeting({ date: d = '', template = DEFAULT_TEMPLATE, board = [], staff = [], meetings = [], defaults = {} } = {}) {
   const prev = previousMeeting({ date: d || '9999-12-31' }, meetings);
-  const sections = (template?.length ? template : DEFAULT_TEMPLATE).map((s) => ({
-    id: uid('s_'), title: s.title,
-    items: (s.items || []).map((it) => ({
-      ...cleanItem({ title: it.live === 'minutes' && prev ? `Minutes of the ${meetingName(prev)} (${shortDate(prev.date)})` : it.title, presenter: it.presenter, who: it.who, live: it.live, about: it.live === 'minutes' && prev ? prev.id : '' }),
-      id: uid('i_'),
-    })),
-  }));
   return cleanMeeting({
     id: uid('m_'),
     date: d,
@@ -1540,9 +1540,9 @@ export function newMeeting({ date: d = '', template = DEFAULT_TEMPLATE, board = 
       ...board.map((p) => ({ slug: p.slug, name: p.name, org: p.org || '', kind: 'board' })),
       ...staff.map((p) => ({ slug: p.slug, name: p.name, org: 'SOARD', kind: 'staff' })),
     ],
-    sections,
+    sections: templateAgenda(prev, { template }),
     actions: openActions(meetings).map((a) => ({ ...a, id: a.id })),
-    agendaFrom: { kind: 'template', name: '', at: '' },
+    agendaFrom: { kind: 'template', name: prev ? draftName(prev) : '', at: '' },
   });
 }
 

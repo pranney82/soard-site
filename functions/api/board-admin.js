@@ -17,7 +17,8 @@
  *   save-meeting { meeting, base }            base = the updatedAt the editor loaded (409 when someone saved since)
  *   delete-meeting { id }
  *   snapshot { id }                           lock today's numbers into the packet
- *   send-packet { id, test }                  email the board (test: only you)
+ *   approve-agenda { id }                     approve the agenda: it goes on the board page and the board is emailed, once
+ *   send-packet { id, test }                  email the board, once its agenda is approved (test: only you)
  *   action-done { actionId, done }
  *   save-doc { doc, askAgain, base, fromFile, wordsFrom, newFile }, delete-doc { id }   doc.body: its words, written here (a change is the next wording;
  *                                             409 { conflict } or { ask }: see saveDoc);
@@ -49,8 +50,9 @@ import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
   setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, fillDocWords, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, fileLocked, liveNumbers, takeSnapshot, sendPacket,
   memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, askToSign, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
-  chairLive, createPractice, resetPractice,
+  chairLive, createPractice, resetPractice, agendaApprovals, holdSharing,
 } from './_board.js';
+import { chairApprove } from './_board-asks.js';
 import { isBoardAdmin, isStaffEmail, readState, activeBoard } from './_board-roles.js';
 import { accessStatus, syncBoardAccess, accessConfigured } from './_board-access.js';
 import { groupStatus, syncBoardGroup } from './_board-group.js';
@@ -151,6 +153,8 @@ export async function onRequestGet(context) {
     const [mail, mailRecent, welcome, check, group] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome'), inviteCheck(env.DB), groupStatus(env)]);
     return Response.json({
       ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome, notesWaiting: await notesWaiting(env.DB),
+      // Whose approval each agenda has: nothing reaches the board before it (_board.js holdUntilApproved)
+      approvals: await agendaApprovals(env.DB),
       // board@soardcharity.com following the board (_board-group.js)
       group,
       // Who has had the sign-in email and whether one is going out right now (its claim, _board.js sendWelcome), from one
@@ -245,6 +249,8 @@ export async function onRequestPost(context) {
       case 'save-meeting': {
         // What only the server sets never comes from the editor (where the agenda came from, who joined by Meet)
         const { agendaFrom, fromMeet, ...mine } = body.meeting || {};
+        // Only an approved agenda goes on the board page
+        await holdSharing(env.DB, mine);
         const m = await saveMeeting(env.DB, mine, { by: me, base: typeof body.base === 'string' ? body.base : null });
         // Typed minutes corrected here: the Word file kept with them says the same. (Never in the way of the save)
         if (m.minutesFrom?.typed) await refreshMinutesFile(env, m.id).catch(() => {});
@@ -274,6 +280,14 @@ export async function onRequestPost(context) {
       case 'snapshot': {
         needId();
         return Response.json({ ok: true, meeting: await takeSnapshot(env, id, { by: me }) });
+      }
+      case 'approve-agenda': {
+        // Board's own way to approve, the same as on the chair's review: it's what sends the agenda to the board
+        needId();
+        const r = await chairApprove(env, { meetingId: id }, { admin: true, adminEmail: me }, { always: true });
+        const m = await getMeeting(env.DB, id);
+        if (!r.already) await audit(env, me, 'updated', `Board agenda approved: ${meetingName(m)}`);
+        return Response.json({ ok: true, ...r, meeting: m, approvals: await agendaApprovals(env.DB) });
       }
       case 'send-packet': {
         needId();

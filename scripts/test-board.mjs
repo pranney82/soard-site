@@ -748,9 +748,13 @@ try {
   await maybeRefreshInvites(env, { now: Date.now() + 3 * 60 * 1000 });
   ok(google.slice(beforeTime).filter((c) => c.url.includes('/calendar/v3/') && c.method === 'PATCH').length === 2, 'and onto the invite again');
 
-  // Getting ready 2-3: the board page, the documents by email
-  await clickText(jane, 'button', /^Share with the board$/);
-  ok(await waitText(jane, /Board members see the agenda and files/), 'Share with the board puts it on the board page');
+  // Getting ready 2-3: nothing reaches the board until the agenda is approved, and approving sends it
+  const toBoard = await jane.evaluate(() => [...document.querySelectorAll('.bm-ready button')].map((b) => b.textContent.trim()));
+  ok(!toBoard.some((t) => /^(Share with the board|Email the board|Email again)$/.test(t)) && toBoard.includes('Approve the agenda'), `before approval, no button sends anything to the board (${JSON.stringify(toBoard)})`);
+  ok(/The board sees none of it until it’s approved/.test(await text(jane)), 'and Getting ready says why');
+  const forced = await jane.evaluate(async () => { const m = (await (await fetch('/api/board-admin')).json()).meetings.find((x) => x.invite); return (await fetch('/api/board-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'send-packet', id: m.id }) })).status; });
+  ok(forced === 409, `the email is refused on the server too (${forced})`);
+  await DB.prepare("INSERT OR REPLACE INTO board_state (key, data, updated_at) VALUES ('welcome', ?, ?)").bind(JSON.stringify({ sentAt: new Date().toISOString() }), new Date().toISOString()).run();
   mail.length = 0;
   await clickText(jane, 'button', /^Send me the email$/);
   await waitText(jane, /Sent to jane@soardcharity\.com/);
@@ -758,8 +762,9 @@ try {
   ok(!mail[0]?.attachments && /Balance sheet financials/.test(mail[0]?.html || '') && /Open the agenda and documents/.test(mail[0]?.html || ''), 'the link to the agenda and documents, the documents by name, nothing attached');
   ok(!/ask counsel|Governance/.test(mail[0]?.html || ''), 'the email has no private note and no board-only item');
   ok(/Park in the back lot\. The side door is open\./.test(mail[0]?.html || '') && /Notes: Park in the back lot/.test(mail[0]?.text || ''), 'the email carries the notes for the invite');
-  await clickText(jane, 'button', /^Email the board$/);
-  ok(await waitText(jane, /Emailed 2 board members/), 'Email the board reaches the two members with emails');
+  await clickText(jane, 'button', /^Approve the agenda$/);
+  ok(await waitText(jane, /Approved, and on its way to the board/), 'Approve the agenda asks, then sends it');
+  ok(await waitText(jane, /Agenda approved by /) && await waitText(jane, /2 board members emailed the link/) && await waitText(jane, /Board members see the agenda and files/), 'approving puts it on the board page and emails the two members with emails');
   ok(mail.slice(1).map((m) => m.to[0]).sort().join() === [MEMBER, OTHER].sort().join() && mail.slice(1).every((m) => !m.attachments), 'each board member got their own, with nothing attached');
   await shot(jane, '03-before');
 
@@ -797,7 +802,8 @@ try {
   await jane.reload({ waitUntil: 'networkidle0' });
   ok(await jane.evaluate(() => !document.querySelector('.bm-stages, .bm-run, .bm-order, .bd-line--vote, [role="tablist"]')), 'one page: no Before / During / After, no run of show to drive, no votes to take');
   const line = await jane.$$eval('.bm-path__step', (l) => l.map((x) => `${x.querySelector('.bm-path__t').textContent}:${x.className.match(/is-(\w+)/)[1]}`));
-  ok(line.length === 6 && line.filter((x) => /:next$/.test(x)).length <= 1, `the line under its name says where it stands (${line.join(' | ')})`);
+  const pathRows = await jane.$$eval('.bm-path__step', (l) => new Set(l.map((x) => Math.round(x.getBoundingClientRect().top))).size);
+  ok(line.length === 7 && pathRows === 1 && line.filter((x) => /:next$/.test(x)).length <= 1, `the line under its name says where it stands (${line.join(' | ')})`);
   // The line stays at the top as the page scrolls, Tab along it never moves the page, and a step's card lands below it
   {
     await jane.evaluate(() => scrollTo(0, Math.round((document.scrollingElement.scrollHeight - innerHeight) / 2)));

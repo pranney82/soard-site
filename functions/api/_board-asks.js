@@ -1295,10 +1295,11 @@ export async function askPresenter(env, { meetingId, itemId, question }, w, { fe
 }
 
 /** The chair approves the agenda: kept, and said in the review's conversation so the founders see it → { approvedAt, approvedBy } */
-export async function chairApprove(env, { meetingId }, w, { fetchImpl = fetch, now = Date.now() } = {}) {
+export async function chairApprove(env, { meetingId }, w, { fetchImpl = fetch, now = Date.now(), always = false } = {}) {
   const { m, asker } = await chairGate(env, meetingId, w);
-  // Test or off: the note as it'd go (test), nothing kept, so the real review still goes once it's On
-  if (asksMode(await readSettings(env.DB)) !== 'on') {
+  // Test or off: the note as it'd go (test), nothing kept, so the real review still goes once it's On. Approving in
+  // Board itself (always) is real either way: nothing else lets a meeting's agenda reach the board
+  if (!always && asksMode(await readSettings(env.DB)) !== 'on') {
     try {
       const ctx = await mailer(env, { fetchImpl, now });
       await send(ctx, { to: [asker.email ? asker : ctx.senders.from], cc: ctx.senders.cc, subject: `Re: Agenda for your review: ${meetingName(m)}, ${shortDay(m.date)}`, ...body([`Thanks, ${firstName(asker.name)}. The agenda for the ${meetingName(m)} on ${longDay(m.date)} is approved.`, `${firstName(ctx.senders.from.name) || 'SOARD'}`]) });

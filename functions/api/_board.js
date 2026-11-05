@@ -37,7 +37,7 @@
 import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf, inviteOut,
-  agendaIsDraft, draftAgenda, draftSource, draftName, DRAFTER, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
+  agendaIsDraft, draftAgenda, templateAgenda, previousMeeting, draftName, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
   isFilled, LIVE_TITLES, presentersOf, reportsOn, namesText,
 } from '../../public/admin/board-shared.js';
 import { welcomeHad, REPORT_LOOKS, SLIDE_PIECE } from '../../public/admin/board-shared.js';
@@ -1526,12 +1526,42 @@ export function packetDocs(m) {
 /** Each email on its own: each member's has their own answer links */
 const sendEach = (env, items, { tags, replyTo }) => sendEmailItems(env, items, { from: fromBoard(), tags, replyTo });
 
+/** Who approved each agenda and when, by meeting: on the chair's review, by a reply to it, or a Board admin (./_board-asks.js chairApprove) */
+export async function agendaApprovals(DB) {
+  try {
+    const rows = (await DB.prepare("SELECT meeting_id, name, in_at FROM board_asks WHERE kind = 'chair' AND status = 'approved'").all()).results || [];
+    return Object.fromEntries(rows.map((r) => [r.meeting_id, { by: r.name || '', at: r.in_at || '' }]));
+  } catch (err) {
+    if (/no such table/i.test(err.message)) return {};
+    throw err;
+  }
+}
+/**
+ * Nothing of a meeting still to be held reaches the board before its agenda is approved (Peter, Nov 5 2026: "no agenda
+ * should go to the group until the agena is approved, and then the agenda can be sent out to the board"): not the board
+ * page, not the email. The approval sends it by itself (sendApprovedAgenda). A meeting that's been held isn't held
+ * back: it goes on the board page with its minutes. A practice meeting is the admins' alone. Throws a 409.
+ */
+export async function holdUntilApproved(DB, m) {
+  if (m?.practice || m?.notBoard || !isDate(m?.date) || m.date < todayEastern() || m.live?.endedAt) return;
+  if (!(await agendaApprovals(DB))[m.id]) throw Object.assign(new Error('The agenda goes to the board once it’s approved'), { status: 409 });
+}
+/** The same for a save that would put a meeting on the board page: one already there stays */
+export async function holdSharing(DB, raw) {
+  if (raw?.shared !== true) return;
+  const id = cleanMeeting(raw).id;
+  if (await getPractice(DB, id)) return;
+  const was = await getMeeting(DB, id);
+  if (!was?.shared) await holdUntilApproved(DB, was || raw);
+}
+
 /** Email the board the link to the agenda and documents, what the documents are, and (to who hasn't answered it) the calendar invite to answer (test: only `to`) */
 export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) {
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
   if (!emailConfigured(env)) throw Object.assign(new Error('Email isn’t set up (RESEND_API_KEY)'), { status: 503 });
   const test = Array.isArray(to);
+  if (!test) await holdUntilApproved(env.DB, m);
   if (!test && !m.shared) throw Object.assign(new Error('Share the meeting with the board first, so the button has something to open'), { status: 409 });
   const people = test ? to.map((email) => ({ email, name: '' })) : await packetList(env.DB);
   if (!people.length) throw Object.assign(new Error('No board member has an email on file (People → Board)'), { status: 409 });
@@ -2500,14 +2530,7 @@ export async function memberStatus(DB) {
 
 // ─── The heartbeat ──────────────────────────────────────────────────
 
-/**
- * Each meeting ahead whose agenda nobody has written (SOARD's usual outline,
- * or a draft) follows the last agenda someone wrote or emailed: drafted from
- * it (draftAgenda), and drafted again when a newer one comes in. An agenda
- * emailed for the meeting itself replaces the draft (./_board-mail.js); a
- * person's change makes it theirs. Every ten minutes at most. → ids drafted
- */
-/** A fresh draft keeps the documents already put with its items (by item name), so drafting again never strands a file */
+/** A fresh agenda keeps the documents already put with its items (by item name), so starting it again never strands a file */
 function keepDocs(was, draft) {
   const docsOf = new Map(was.flatMap((s) => s.items).filter((it) => it.docs?.length).map((it) => [it.title.toLowerCase(), it.docs]));
   return draft.map((s) => ({ ...s, items: s.items.map((it) => (docsOf.has(it.title.toLowerCase()) ? { ...it, docs: docsOf.get(it.title.toLowerCase()) } : it)) }));
@@ -2531,30 +2554,32 @@ export async function maybeLockNumbers(env, { fetchImpl = fetch, now = Date.now(
   return locked;
 }
 
-export async function maybeDraftAgendas(env, { now = Date.now() } = {}) {
+/**
+ * Each meeting ahead that nobody has written an agenda for is on the template (templateAgenda): one drafted from the
+ * last agenda goes back to it, and when a meeting is added or moved before it, its minutes item follows. A person's
+ * change makes the agenda theirs and it's left alone. Every ten minutes at most. → ids changed
+ */
+export async function maybeTemplateAgendas(env, { now = Date.now() } = {}) {
   try {
     const runs = await readState(env.DB, 'runs');
     if (runs.draftAt && now - Date.parse(runs.draftAt) < 10 * 60 * 1000) return [];
     await writeState(env.DB, 'runs', { ...runs, draftAt: new Date(now).toISOString() });
     const [meetings, settings] = await Promise.all([listMeetings(env.DB), getSettings(env.DB)]);
     const today = todayEastern(now);
-    const drafted = [];
+    const changed = [];
     const real = meetings.filter((x) => !x.notBoard);
     for (const m of real.filter((x) => x.date >= today && agendaIsDraft(x, settings.template))) {
-      const prev = draftSource(m, real, settings.template);
-      // Already drafted from it, unless that agenda was read again (from email) since
-      const since = prev?.agendaFrom?.at && m.agendaFrom?.at && prev.agendaFrom.at > m.agendaFrom.at;
-      // A draft an older drafter made is drafted again (DRAFTER: the minutes item and the live facts are found better now)
-      const current = m.agendaFrom?.kind === 'last-meeting' && m.agendaFrom.name === draftName(prev) && (m.agendaFrom.v || 1) >= DRAFTER;
-      if (!prev || (current && !since)) continue;
+      const prev = previousMeeting(m, real);
+      const name = prev ? draftName(prev) : '';
+      if (m.agendaFrom?.kind === 'template' && m.agendaFrom.name === name) continue;
       const done = await patchMeeting(env.DB, m.id, (cur) => (agendaIsDraft(cur, settings.template)
-        ? { ...cur, sections: keepDocs(cur.sections, draftAgenda(prev, { template: settings.template })), agendaFrom: { kind: 'last-meeting', name: draftName(prev), at: new Date(now).toISOString(), v: DRAFTER } }
+        ? { ...cur, sections: keepDocs(cur.sections, templateAgenda(prev, { template: settings.template })), agendaFrom: { kind: 'template', name, at: new Date(now).toISOString() } }
         : cur));
-      if (done) drafted.push(m.id);
+      if (done) changed.push(m.id);
     }
-    return drafted;
+    return changed;
   } catch (err) {
-    console.error('[board] agenda drafts', err.message);
+    console.error('[board] agendas on the template', err.message);
     return [];
   }
 }
@@ -2592,7 +2617,7 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *   - each minute, a new place onto an invite that's out once it has settled; hourly until it
  *     passes, the check that Calendar, Meet and attendance work (./_board-invite.js)
  *   - once a newer agenda reader ships, emailed agendas it reads better (maybeRereadEmailAgendas); then
- *   - every ten minutes, agendas nobody wrote drafted from the last one (maybeDraftAgendas), a meeting's
+ *   - every ten minutes, agendas nobody wrote kept on the template (maybeTemplateAgendas), a meeting's
  *     numbers locked on its day (maybeLockNumbers), and
  *     who joined a Google Meet that ended (./_board-attendance.js)
  *   - last, board mail (./_board-mail.js): every minute while there's a backlog, hourly after; then minutes read without
@@ -2620,7 +2645,7 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await invites.maybeCheckInvites(env, { fetchImpl, now });
     await maybeSendApprovedAgendas(env, { now });
     await maybeRereadEmailAgendas(env, { now });
-    await maybeDraftAgendas(env, { now });
+    await maybeTemplateAgendas(env, { now });
     await maybeLockNumbers(env, { fetchImpl, now });
     await (await import('./_board-attendance.js')).maybeFillAttendance(env, { fetchImpl, now });
     // Remind by email, when it's on: its own try, so a failure there never holds up mail or the banks
@@ -2693,8 +2718,8 @@ export async function boardFacts(env) {
       waiting: Object.keys(pending || {}).length, lastAt: stored.map((m) => m.invite?.updatedAt).filter(Boolean).sort().at(-1) || null,
       check: check ? { ok: !!check.ok, attendance: check.attendance || '', checkedAt: check.checkedAt || null, error: check.error ? String(check.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null } : null,
     },
-    // The agendas drafted from the last one, and who joined by Meet, for the meetings that had it
-    drafts: { ahead: stored.filter((m) => m.date >= today && m.agendaFrom?.kind === 'last-meeting').length, lastAt: stored.map((m) => (m.agendaFrom?.kind === 'last-meeting' ? m.agendaFrom.at : '')).filter(Boolean).sort().at(-1) || null },
+    // The agendas still on the template, and who joined by Meet, for the meetings that had it
+    drafts: { ahead: stored.filter((m) => m.date >= today && m.agendaFrom?.kind === 'template').length, lastAt: stored.map((m) => (m.agendaFrom?.kind === 'template' ? m.agendaFrom.at : '')).filter(Boolean).sort().at(-1) || null },
     attendance: {
       read: stored.filter((m) => m.fromMeet?.status === 'ok').length, needsSetup: stored.filter((m) => m.fromMeet?.status === 'needs-setup').length,
       failing: stored.filter((m) => m.fromMeet?.status === 'error').length, lastAt: stored.map((m) => m.fromMeet?.at).filter(Boolean).sort().at(-1) || null,

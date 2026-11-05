@@ -944,7 +944,7 @@ export const STYLES = `
   @container scroll-state(stuck: top) { .bm-path ol { box-shadow: 0 10px 24px -14px rgba(26,27,31,0.4); } }
   .bd:has(> .bm-path) :is(#bm-work, #bm-ready, #bm-minutes, #bm-after, #bm-where) { scroll-margin-top: calc(var(--bm-stick) + var(--bm-path-h, 5rem) + 0.75rem); }
   @media (min-width: 1281px) { .bd:has(> .bm-path) .agx-stage { top: calc(var(--bm-stick) + var(--bm-path-h, 5rem) + 0.5rem); max-height: calc(100vh - var(--bm-stick) - var(--bm-path-h, 5rem) - 1.5rem); } }
-  .bm-path ol { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); overflow: hidden; }
+  .bm-path ol { list-style: none; margin: 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); overflow: hidden; }
   .bm-path__step { position: relative; min-width: 0; border-left: 1px solid var(--color-border); }
   .bm-path__step:first-child { border-left: none; }
   .bm-path__btn { display: flex; align-items: flex-start; gap: 0.6rem; width: 100%; height: 100%; padding: 0.7rem 0.8rem; border: none; background: none; font: inherit; text-align: left; color: var(--color-text); cursor: pointer; }

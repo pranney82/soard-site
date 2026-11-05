@@ -21,6 +21,7 @@ import { maybeRefreshInvites, maybeCheckInvites, inviteCheck, withNotes, without
 import * as rsvpPage from '../functions/api/board-rsvp.js';
 import { answerLink } from '../functions/api/_board-rsvp.js';
 import { generateKeyPairSync } from 'node:crypto';
+import { agendaApproved } from './lib/agenda-approved.mjs';
 import { repliesOf, parseAgendaText, cleanMeeting, forBoard, newMeeting, openActions, quarterOf, meetingName, noteBlocks, emailOutline, timeRange, liveLines, shortDate, agendaIsDraft, docHtmlText, readAgain, AGENDA_READER, deckOf, stopIndex, liveOfStop, pagesText, guessItem, presentersOf, draftAgenda, itemFiles, looseFiles, liveOfTitle, sectionPlan, sectionOf, sectionClock, clockText, docTitle, docsOf, itemDocs, orgName, signsAs, isFilled, agendaItems } from '../public/admin/board-shared.js';
 
 // ── A real RS256 key served as Access's certs (as tests/admin-security does)
@@ -205,6 +206,7 @@ async function sharedMeetingWithFiles() {
   const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: '2026-11-19' })).body.meeting;
   m.sections[2].items[0] = { ...m.sections[2].items[0], notes: '- Insurance is looking into it', staffNote: 'Ask counsel before the meeting', confidential: true, title: 'Legal update' };
   m.actions = [{ text: 'Call the venue', owner: 'alex-rivera', ownerName: 'Alex Rivera' }, { text: 'Draft the budget', owner: 'sam-ortiz', ownerName: 'Sam Ortiz' }];
+  await agendaApproved(env.DB, m.id);
   const saved = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...m, shared: true }, base: m.updatedAt })).body.meeting;
   const upload = async (name, bytes, staffOnly) => {
     const form = new FormData();
@@ -1418,47 +1420,122 @@ test('attendance waits until half an hour after the meeting ends, and says so wh
   assert.deepEqual([st.calendar, st.meet, st.attendance, st.ok], ['ok', 'ok', 'needs-setup', false]);
 });
 
-// ─── The next agenda, drafted from the last one ─────────────────────
+// ─── The next agenda: the template ──────────────────────────────────
 
-test('an agenda nobody wrote follows the last one someone wrote or emailed, and stops once someone changes it', async () => {
-  const { maybeDraftAgendas } = await import('../functions/api/_board.js');
+test('an agenda nobody wrote is the template, with nothing copied from the last one, until someone changes it', async () => {
+  const { maybeTemplateAgendas } = await import('../functions/api/_board.js');
+  const { draftName, DEFAULT_TEMPLATE } = await import('../public/admin/board-shared.js');
   const past = (await adminApi(FOUNDER, { action: 'import-meeting', meeting: {
     date: inDays(-60), sections: [
-      { title: 'Call to order', items: [{ title: 'Roll call', presenter: 'Alex' }] },
-      { title: 'Approval of minutes', items: [{ title: 'Minutes of the last meeting' }] },
-      { title: 'Committee reports', items: [{ title: 'Financial', presenter: 'Sam', notes: '- Reserves grew' }, { title: 'Events and Marketing' }] },
+      { title: 'Call to order', items: [{ title: 'Roll Call', presenter: 'Scott' }, { title: 'Welcoming new board member Ryan Williams', presenter: 'Scott' }] },
+      { title: 'Automation and technology update', items: [{ title: 'The board page', presenter: 'Peter' }] },
       { title: 'New business', items: [{ title: 'Buy a trailer' }] },
     ],
   } })).body.meeting;
+  const titles = (m) => m.sections.map((x) => [x.title, x.items.map((it) => it.title)]);
+  const minutes = `Minutes of the ${meetingName(past)} (${shortDate(past.date)})`;
+  const asTemplate = DEFAULT_TEMPLATE.map((x) => [x.title, (x.items || []).map((it) => (it.live === 'minutes' ? minutes : it.title))]);
+
+  // A new meeting is the template: the last minutes up for approval, and nothing of the last agenda
   let next = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(20) })).body.meeting;
-  assert.equal(next.agendaFrom.kind, 'template', 'a new meeting starts from the usual outline');
-  assert.deepEqual(await maybeDraftAgendas(env), [next.id]);
+  assert.deepEqual(titles(next), asTemplate);
+  assert.equal(next.sections[1].items[0].about, past.id);
+  assert.deepEqual([next.agendaFrom.kind, next.agendaFrom.name], ['template', draftName(past)]);
+  assert.ok(!JSON.stringify(next.sections).includes('Ryan'), 'a one-time line stays on its own meeting');
+  assert.ok(next.sections.flatMap((x) => x.items).every((it) => !it.presenter), 'the template has no presenters');
+  assert.deepEqual(await maybeTemplateAgendas(env), [], 'and stays as it is');
+  const unchanged = await getMeeting(env.DB, next.id);
+  assert.equal(unchanged.sections[0].id, next.sections[0].id);
+
+  // A draft copied from the last agenda (made before this rule) goes back to the template by itself, keeping its documents
+  const copied = await saveMeeting(env.DB, cleanMeeting({ date: inDays(30), agendaFrom: { kind: 'last-meeting', name: draftName(past), at: '2026-11-05T00:00:00Z', v: 2 }, sections: [
+    { title: 'Call to order', items: [{ title: 'Roll call', docs: ['f_kept1'] }, { title: 'Welcoming new board member Ryan Williams', presenter: 'Scott' }] },
+    { title: 'Automation and technology update', items: [{ title: 'The board page', presenter: 'Peter' }] },
+  ] }), { by: 'Board' });
+  const later = 11 * 60 * 1000;
+  assert.deepEqual(await maybeTemplateAgendas(env, { now: Date.now() + later }), [copied.id]);
+  const back = await getMeeting(env.DB, copied.id);
+  assert.equal(back.agendaFrom.kind, 'template');
+  assert.ok(!JSON.stringify(back.sections).includes('Ryan'));
+  assert.deepEqual(back.sections.map((x) => x.title), DEFAULT_TEMPLATE.map((x) => x.title));
+  assert.deepEqual(back.sections[0].items[0].docs, ['f_kept1'], 'a document stays with its item');
+  assert.equal(back.sections[1].items[0].about, next.id, 'the meeting before it is the next one, so those are the minutes it approves');
+  assert.deepEqual(await maybeTemplateAgendas(env, { now: Date.now() + 2 * later }), [], 'once');
+
+  // A meeting added before one on the template: its minutes item follows
+  const between = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(25) })).body.meeting;
+  assert.deepEqual(await maybeTemplateAgendas(env, { now: Date.now() + 3 * later }), [copied.id]);
+  assert.equal((await getMeeting(env.DB, copied.id)).sections[1].items[0].about, between.id);
+
+  // Someone changes it: theirs from now on
   next = await getMeeting(env.DB, next.id);
-  assert.deepEqual(next.sections.map((s) => [s.title, s.items.map((it) => [it.title, it.presenter, it.live, it.notes])]), [
-    ['Call to order', [['Roll call', 'Alex', '', '']]],
-    ['Approval of minutes', [[`Minutes of the ${meetingName(past)} (${shortDate(past.date)})`, '', 'minutes', '']]],
-    ['Committee reports', [['Financial', 'Sam', 'cash', ''], ['Events and Marketing', '', '', '']]],
-    ['New business', []],
-  ], 'its sections and items, who presents, the live numbers; new business and notes start empty');
-  assert.equal(next.sections[1].items[0].about, past.id, 'the last minutes are up for approval');
-  assert.deepEqual([next.agendaFrom.kind, next.agendaFrom.name], ['last-meeting', `${meetingName(past)} (${shortDate(past.date)})`]);
-  // Not again from the same meeting
-  assert.deepEqual(await maybeDraftAgendas(env, { now: Date.now() + 11 * 60 * 1000 }), []);
-  // Someone changes it: theirs from now on, even when a newer agenda comes in
   const edited = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...next, sections: [...next.sections, { title: 'Closing', items: [{ title: 'Adjourn' }] }] }, base: next.updatedAt })).body.meeting;
   assert.equal(edited.agendaFrom.kind, 'typed');
-  await adminApi(FOUNDER, { action: 'import-meeting', meeting: { date: inDays(-5), sections: [{ title: 'Opening', items: [{ title: 'Welcome' }] }] } });
-  assert.deepEqual(await maybeDraftAgendas(env, { now: Date.now() + 22 * 60 * 1000 }), []);
+  assert.deepEqual(await maybeTemplateAgendas(env, { now: Date.now() + 4 * later }), []);
   assert.equal((await getMeeting(env.DB, next.id)).sections.at(-1).title, 'Closing');
-  // A meeting from before agendaFrom with the untouched outline is a draft too: it follows the closest agenda
-  // someone wrote before it (here the one just changed), with that meeting's minutes up for approval
-  let later = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(40) })).body.meeting;
-  later = await saveMeeting(env.DB, { ...later, agendaFrom: null }, { by: 'the calendar' });
-  assert.ok(agendaIsDraft(later));
-  await maybeDraftAgendas(env, { now: Date.now() + 33 * 60 * 1000 });
-  later = await getMeeting(env.DB, later.id);
-  assert.deepEqual(later.sections.map((s) => s.title), ['Call to order', 'Approval of minutes', 'Committee reports', 'New business', 'Closing']);
-  assert.equal(later.sections[1].items[0].about, next.id);
+
+  // A meeting from before agendaFrom with the untouched outline counts as nobody's too
+  let old = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(40) })).body.meeting;
+  old = await saveMeeting(env.DB, { ...old, agendaFrom: null }, { by: 'the calendar' });
+  assert.ok(agendaIsDraft(old));
+  await maybeTemplateAgendas(env, { now: Date.now() + 5 * later });
+  assert.equal((await getMeeting(env.DB, old.id)).agendaFrom.kind, 'template');
+});
+
+test('the template’s items keep their live facts, even from a saved template that doesn’t name them', () => {
+  const m = newMeeting({ date: '2027-01-14', template: [{ title: 'Committee reports', items: [{ title: 'Qualification Committee' }, { title: 'Financial', live: 'cash' }, { title: 'Governance' }] }] });
+  assert.deepEqual(m.sections[0].items.map((it) => [it.title, it.live]), [['Qualification Committee', 'costs'], ['Financial', 'cash'], ['Governance', '']]);
+});
+
+test('nothing of a meeting ahead reaches the board until its agenda is approved; approving sends it, once', async () => {
+  const { portalData } = await import('../functions/api/_board.js');
+  const sends = () => outside.filter((c) => c.url === 'https://api.resend.com/emails/batch').flatMap((c) => c.body);
+  const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(10) })).body.meeting;
+  await env.DB.prepare("INSERT OR REPLACE INTO board_state (key, data, updated_at) VALUES ('welcome', ?, ?)").bind(JSON.stringify({ sentAt: '2026-11-01T00:00:00Z' }), '2026-11-01T00:00:00Z').run();
+  assert.deepEqual((await adminApi(FOUNDER)).body.approvals, {});
+
+  // The board page: refused, and the meeting stays off it
+  const share = await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...m, shared: true }, base: m.updatedAt });
+  assert.equal(share.status, 409);
+  assert.match(share.body.error, /once it’s approved/);
+  assert.equal((await getMeeting(env.DB, m.id)).shared, false);
+  assert.ok(!(await portalData(env, { admin: false, slug: 'alex-rivera' }).catch(() => ({ meetings: [] }))).meetings?.some((x) => x.id === m.id));
+
+  // The email: refused, nobody gets it. A preview to the admin still goes; so does a save that doesn't share it
+  outside = [];
+  const email = await adminApi(FOUNDER, { action: 'send-packet', id: m.id });
+  assert.equal(email.status, 409);
+  assert.match(email.body.error, /once it’s approved/);
+  assert.deepEqual(sends(), []);
+  assert.equal((await adminApi(FOUNDER, { action: 'send-packet', id: m.id, test: true })).body.sent, 1);
+  assert.deepEqual(sends().map((c) => c.to[0]), [FOUNDER]);
+  assert.equal((await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...m, title: 'A name' }, base: m.updatedAt })).status, 200);
+
+  // Approved in Board: on the board page and emailed, whoever's switch says what
+  await env.DB.prepare("INSERT OR REPLACE INTO board_state (key, data, updated_at) VALUES ('settings', ?, ?)").bind(JSON.stringify({ asks: 'off' }), '2026-11-01T00:00:00Z').run();
+  outside = [];
+  const ok = await adminApi(FOUNDER, { action: 'approve-agenda', id: m.id });
+  assert.equal(ok.status, 200, JSON.stringify(ok.body));
+  assert.equal(ok.body.agenda, 'sent');
+  assert.equal(ok.body.meeting.shared, true);
+  assert.ok(ok.body.meeting.packetSentAt);
+  assert.deepEqual(sends().map((c) => c.to[0]).sort(), [MEMBER, OTHER_MEMBER].sort());
+  assert.ok(ok.body.approvals[m.id].at);
+  assert.deepEqual(Object.keys((await adminApi(FOUNDER)).body.approvals), [m.id]);
+
+  // Once: approving again sends nothing more; after that the board page and Email again are free
+  outside = [];
+  const again = await adminApi(FOUNDER, { action: 'approve-agenda', id: m.id });
+  assert.equal(again.body.already, true);
+  assert.deepEqual(sends(), []);
+  assert.equal((await adminApi(FOUNDER, { action: 'send-packet', id: m.id })).status, 200);
+  const taken = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...(await getMeeting(env.DB, m.id)), shared: false } })).body.meeting;
+  assert.equal(taken.shared, false);
+  assert.equal((await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...taken, shared: true } })).status, 200, 'approved stays approved');
+
+  // Held: goes on the board page with its minutes, no approval asked
+  const held = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(-30) })).body.meeting;
+  assert.equal((await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...held, shared: true }, base: held.updatedAt })).status, 200);
 });
 
 // ─── Board mail: past agendas, minutes and financials (more in board-mail.test.mjs) ───
@@ -1872,8 +1949,8 @@ test('the board page’s makeovers and reveals carry their published page’s ph
   assert.deepEqual(n.reveals.map((r) => [r.name, r.photo]), [['Max', img('max')], ['Zoe', 'https://imagedelivery.net/abc123/kids/zoe/photo-2/w=400']]);
 });
 
-test('an emailed agenda an older reader filled is read again once from the copy Board keeps, and the next meeting’s draft follows it', async () => {
-  const { putFile, maybeRereadEmailAgendas, maybeDraftAgendas } = await import('../functions/api/_board.js');
+test('an emailed agenda an older reader filled is read again once from the copy Board keeps, and the next meeting stays on the template', async () => {
+  const { putFile, maybeRereadEmailAgendas, maybeTemplateAgendas } = await import('../functions/api/_board.js');
   const { draftName } = await import('../public/admin/board-shared.js');
   const past = await saveMeeting(env.DB, cleanMeeting({ date: '2026-04-30', sections: [{ title: 'Call to order', items: ['Roll Call', 'Welcome', 'Video for new members'].map((title) => ({ title })) }], agendaFrom: { kind: 'email', name: 'Board Agenda.docx', at: '2026-05-01T00:00:00Z' } }), { by: 'board email' });
   await putFile(env, { ownerType: 'meeting', ownerId: past.id, file: new File([agendaDocx()], 'Board Agenda.docx'), kind: 'agenda', by: 'board email' });
@@ -1885,9 +1962,11 @@ test('an emailed agenda an older reader filled is read again once from the copy 
   assert.equal(read.sections[0].items[1].presenter, 'Jane');
   assert.equal(read.agendaFrom.v, AGENDA_READER);
   assert.deepEqual(await maybeRereadEmailAgendas(env), [], 'once');
-  assert.deepEqual(await maybeDraftAgendas(env), [draft.id], 'the draft follows the agenda read again');
-  assert.deepEqual((await getMeeting(env.DB, draft.id)).sections.map((s) => s.title), ['Call to order', 'Committee reports', 'Open forum']);
-  assert.deepEqual(await maybeDraftAgendas(env, { now: Date.now() + 11 * 60 * 1000 }), [], 'and only once');
+  assert.deepEqual(await maybeTemplateAgendas(env), [draft.id], 'a draft goes back to the template');
+  const titles = (await getMeeting(env.DB, draft.id)).sections.map((s) => s.title);
+  assert.equal(titles[0], 'Call to order');
+  assert.ok(!titles.includes('Open forum'), 'nothing from the agenda read again');
+  assert.deepEqual(await maybeTemplateAgendas(env, { now: Date.now() + 11 * 60 * 1000 }), [], 'and only once');
 });
 
 // ─── A meeting as it's held, and the admins' practice meeting ───────
@@ -1901,6 +1980,7 @@ async function heldToday({ shared = true } = {}) {
   const r = (await adminApi(FOUNDER, { action: 'new-meeting', date: todayET() })).body;
   // A second one the same day only as older data has it (New meeting opens the first)
   const made = r.existing ? await saveMeeting(env.DB, cleanMeeting({ date: todayET() }), { by: FOUNDER }) : r.meeting;
+  if (shared) await agendaApproved(env.DB, made.id);
   const m = { ...made, shared, title: 'Fall board meeting',
     sections: [{ id: 's_one', title: 'Reports', items: [{ id: 'i_fin', title: 'Finance', notes: '- On budget', staffNote: 'PRIVATE: ask counsel' }, { id: 'i_prog', title: 'Programs' }] }],
     motions: [{ id: 'v_budget', text: 'Approve the 2027 budget', by: 'Alex Rivera', second: 'Sam Ortiz', result: 'passed' }] };
@@ -1979,6 +2059,7 @@ test('a meeting is held live: the chair starts it and moves item by item; member
 
 test('checking in opens on the meeting’s day (or while it’s held); the chair’s live state merges without a question', async () => {
   const made = (await adminApi(FOUNDER, { action: 'new-meeting', date: '2099-01-01' })).body.meeting;
+  await agendaApproved(env.DB, made.id);
   const m = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...made, shared: true }, base: made.updatedAt })).body.meeting;
   assert.equal((await portalApi(MEMBER, { action: 'checkin', meetingId: m.id, how: 'present' })).status, 409);
   const base = cleanMeeting(m);
@@ -2084,6 +2165,7 @@ test('a practice meeting shows the next meeting’s documents on the same items,
   const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10);
   const made = async (date, fn = (m) => m) => {
     const m = (await adminApi(FOUNDER, { action: 'new-meeting', date })).body.meeting;
+    await agendaApproved(env.DB, m.id);
     return (await adminApi(FOUNDER, { action: 'save-meeting', meeting: fn({ ...m, shared: true }), base: m.updatedAt })).body.meeting;
   };
   const last = await made(day(-60));

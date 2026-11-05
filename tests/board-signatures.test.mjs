@@ -6,6 +6,7 @@
  * Made-up people only (the repo is public).
  * Run: node --test tests/board-signatures.test.mjs
  */
+import { agendaApproved } from './lib/agenda-approved.mjs';
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
@@ -260,6 +261,7 @@ test('the documents email tells each member what they have still to sign this ye
   await signDoc(env.DB, d.id, memberOf('alex-rivera'), 'Alex Rivera');
   await saveMeeting(env.DB, m, { by: FOUNDER });
   const id = (await listMeetings(env.DB))[0].id;
+  await agendaApproved(env.DB, id);
   const r = await call(FOUNDER, '/api/board-admin', { method: 'POST', body: { action: 'send-packet', id }, handler: admin.onRequestPost });
   assert.equal(r.status, 200, JSON.stringify(r.body));
   const to = (who) => sent.find((e) => [].concat(e.to).includes(who));

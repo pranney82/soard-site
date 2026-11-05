@@ -884,14 +884,14 @@ const MAP = { t: 'SOARD', children: [
             if (w.failed) return ATTN(`${plural(w.failed, 'file')} Workers AI couldn’t read after three tries; they’re found by their names only.`);
             return ON(`Every file read: ${plural(w.withWords, 'file')} found by their words${w.files - w.withWords ? `, ${w.files - w.withWords} with none to read (a photo, an old .doc)` : ''}.`);
           } },
-        { t: 'The next agenda, drafted from the last', s: 'live', k: 'schedule',
+        { t: 'The next agenda, from the template', s: 'live', k: 'schedule',
           when: 'Every ten minutes on the live hub’s heartbeat.',
-          does: 'Each meeting ahead whose agenda nobody has written (SOARD’s usual outline, or a draft) gets the last written or emailed agenda as a draft: its sections and items in order, who presents, the live numbers, the last minutes up for approval; new business starts empty and nothing written under an item comes along. A newer agenda redrafts it; an agenda emailed for the meeting replaces it; Use this agenda, or any change, makes it the meeting’s own.',
-          touches: ['D1'], where: 'functions/api/_board.js (maybeDraftAgendas) · board-shared.js (draftAgenda)',
+          does: 'Each meeting ahead starts on SOARD’s agenda template and stays on it until someone writes in it: the last minutes up for approval and the live numbers, and nothing copied from the last agenda. A meeting added or moved before it changes which minutes it approves; Use this agenda, or any change, makes it the meeting’s own.',
+          touches: ['D1'], where: 'functions/api/_board.js (maybeTemplateAgendas) · board-shared.js (templateAgenda)',
           live: (f) => {
             const d = f.board?.drafts;
             if (!d) return null;
-            return ON(d.ahead ? `${plural(d.ahead, 'meeting')} ahead with a drafted agenda.` : 'No drafted agendas ahead.', d.lastAt);
+            return ON(d.ahead ? `${plural(d.ahead, 'meeting')} ahead still on the template.` : 'No meetings ahead on the template.', d.lastAt);
           } },
         { t: 'Reports asked for, and the chair’s review', s: 'live', k: 'schedule',
           when: 'Every five minutes on the live hub’s heartbeat, for the next meeting once its agenda isn’t a draft: two weeks ahead, or at once when it’s nearer. Emails go between 8 AM and 7 PM Eastern.',
@@ -937,7 +937,7 @@ const MAP = { t: 'SOARD', children: [
             return ON(`${i.ahead ? `${plural(i.ahead, 'invite')} out for meetings ahead${i.waiting ? `, ${plural(i.waiting, 'change')} going on in a moment` : ''}.` : 'No invites out for meetings ahead.'}${checked}`, i.lastAt || i.check?.checkedAt);
           } },
         { t: 'The packet email', s: 'live', k: 'admin',
-          when: 'Peter or Holly presses Email the board on a shared meeting in Board (Send it to me first sends them a preview). The minutes and the reminder to answer the calendar invite go the same way.',
+          when: 'The agenda is approved: on the chair’s review, by the chair’s reply to it, or by Peter or Holly in Board. Nothing of a meeting ahead reaches the board before that. Send me the email sends them a preview; Email again resends it. The minutes and the reminder to answer the calendar invite go by hand.',
           does: 'Emails each active board member on their own: when, where and the video call, the documents by name (nothing attached; staff-only ones never named), and a button to the meeting on the board page. Whoever is on the calendar invite and hasn’t answered it is asked to (the invite is the only answer). Never notes or numbers; a board-only item shows only as “A board-only item (on the board page)”.',
           touches: ['Resend', 'D1'], where: 'functions/api/_board.js (sendPacket, packetEmail, remindRsvp)',
           live: (f) => {

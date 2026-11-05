@@ -7,14 +7,14 @@
  * the day, and the minutes, dropped in after, fill in who was there, the
  * notes, the motions and the action items. Nothing is run from here during
  * the meeting: the presentation moves itself (./board/screen.js PRESENT).
- *   The line under its name: the agenda, the invite, the board page, the
- *            email, the day, the minutes; done, next, or to come
+ *   The line under its name: the agenda, the invite, the approval, the board page,
+ *            the email, the day, the minutes; done, next, or to come
  *   The agenda beside the presentation as it's written (AgendaStage: the
  *            slide for the item being worked on, every slide in order, Play
  *            from here), the board page or a phone; never the board's until
  *            the meeting is shared
- *   Ahead    then getting it to the board (the invite, the board page, the
- *            email, the reports), who's coming, the minutes template
+ *   Ahead    then getting it to the board (the invite, the approval, then the board
+ *            page and the email, the reports), who's coming, the minutes template
  *            (./board-minutes-template.js), the packet
  *   On the day  Present: the presentation in its own window, shared or not
  *   Held     drop the minutes in (PDF or Word) first: Board reads them into
@@ -362,7 +362,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
 const nowEastern = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
 
 /**
- * Where a meeting stands, step by step, for the line under its name: the agenda, the invite, the board page, the
+ * Where a meeting stands, step by step, for the line under its name: the agenda, the invite, the approval, the board page, the
  * email, the day, the minutes. Each step is done, the next one, or still to come; `card` is where it's done (none once
  * the meeting is held and its card is gone: the invite and the email were before; the board page is After the meeting's,
  * beside the minutes)
@@ -374,16 +374,18 @@ function pathOf(m, data, phase) {
   const inv = m.invite;
   const held = phase === 'held';
   const ready = held ? '' : 'bm-ready';
+  const approval = data.approvals?.[m.id];
   const steps = [
     { id: 'agenda', card: 'bm-work', title: 'Agenda', done: items.length > 0 && reportsIn === asked.length, sub: !items.length ? 'Nothing on it yet' : asked.length ? `${plural(items.length, 'item')} · ${reportsIn} of ${asked.length} reports in` : plural(items.length, 'item') },
     { id: 'invite', card: ready, title: 'Invite', done: !!inv, sub: inv ? `On ${firstOf(inv.organizer)}’s calendar` : m.inviteGone ? 'Deleted in Google Calendar' : 'Not sent' },
+    ...(held ? [] : [{ id: 'approved', card: ready, title: 'Approved', done: !!approval, sub: approval ? `${String(approval.by).split(' ')[0]}, ${shortDate(String(approval.at).slice(0, 10))}` : 'Not yet' }]),
     { id: 'shared', card: held ? 'bm-after' : 'bm-ready', title: 'Board page', done: !!m.shared, sub: m.shared ? 'The board can see it' : 'Only you can see it' },
     { id: 'emailed', card: ready, title: 'Board emailed', done: !!m.packetSentAt, sub: m.packetSentAt ? `${plural(m.packetSentTo || 0, 'member')}, ${shortDate(m.packetSentAt.slice(0, 10))}` : 'Not yet' },
     { id: 'day', card: 'bm-work', title: phase === 'today' ? 'Today' : held ? 'Held' : 'The meeting', done: held, sub: [m.date ? shortDate(m.date) : 'No date yet', m.start ? clock(m.start) : ''].filter(Boolean).join(' · ') },
     { id: 'minutes', card: phase === 'ahead' ? 'bm-work' : 'bm-minutes', title: 'Minutes', done: m.minutes === 'approved', sub: m.minutes === 'approved' ? `Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}` : m.minutesFrom ? 'Read in, to approve next time' : held ? 'Drop them in' : 'After the meeting' },
   ];
   // The next step: the first one not done (before the day, the agenda's reports count only once the rest is out)
-  const order = held ? ['minutes'] : phase === 'today' ? ['invite', 'shared', 'emailed', 'day'] : ['invite', 'shared', 'emailed', 'agenda'];
+  const order = held ? ['minutes'] : phase === 'today' ? ['invite', 'approved', 'shared', 'emailed', 'day'] : ['invite', 'approved', 'shared', 'emailed', 'agenda'];
   const next = order.find((id) => !steps.find((s) => s.id === id).done) || (held ? '' : 'day');
   return steps.map((s) => ({ ...s, state: s.done ? 'done' : s.id === next ? 'next' : 'todo' }));
 }
@@ -1154,7 +1156,9 @@ function GettingReady({ m, set, ctx, act, save }) {
   const senderName = (e) => (/@soardcharity\.com$/i.test(e) ? firstOf(e) : data.members.find((x) => x.email === e)?.name || e);
   // What the board gets: the packet, as they see it (never this meeting's own minutes, nor a staff-only file)
   const docs = m.files.filter((f) => !f.staffOnly && f.kind !== 'minutes' && f.kind !== 'signed');
-  const [sInvite, sShared, sSent] = statesOf([!!inv && !missing.length, m.shared, !!m.packetSentAt]);
+  // Nothing reaches the board before the agenda is approved, and approving sends it: the board page and the email follow
+  const approval = data.approvals?.[m.id];
+  const [sInvite, sApproved, sShared, sSent] = statesOf([!!inv && !missing.length, !!approval, m.shared, !!m.packetSentAt]);
   // The reports: each presenter writes theirs on the board page (it asks them there); here, which are in
   const people = useMemo(() => pickable(data.people), [data.people]);
   const asked = agendaItems(m).map((x) => ({ x, it: m.sections[x.si].items[x.ii] })).filter(({ it }) => reportsOn(it));
@@ -1163,6 +1167,11 @@ function GettingReady({ m, set, ctx, act, save }) {
   const signsIn = (p) => !!p.slug && (data.members.some((x) => x.slug === p.slug && x.email) || data.people.staff.some((x) => x.slug === p.slug && admins.some((e) => e.startsWith(`${String(x.name).split(/\s+/)[0].toLowerCase()}@`))));
   const here = (it) => !presentersOf(it, people).some(signsIn);
   const inCount = asked.filter(({ it }) => it.report).length;
+  const approve = async () => {
+    if (!(await ask({ title: 'Approve the agenda?', text: `It goes on the board page, and ${plural(data.packetTo, 'board member')} get the link by email.`, yes: 'Approve and send' }))) return;
+    const j = await run('approve', { action: 'approve-agenda', id: m.id }, (r) => (r.already ? `${r.approvedBy} already approved it` : r.agenda === 'sent' ? 'Approved, and on its way to the board' : r.agenda === 'waiting' ? 'Approved. It goes to the board as soon as they’ve had the email on how to sign in' : 'Approved'));
+    if (j?.approvals) ctx.setData((d) => ({ ...d, approvals: j.approvals }));
+  };
   // Emailing the link puts the meeting on the board page first: one press, not two
   const email = async () => {
     const to = data.members.filter((x) => x.email).map((x) => x.name);
@@ -1195,7 +1204,7 @@ function GettingReady({ m, set, ctx, act, save }) {
     </div>`;
   }
   return html`<div class="card bm-check bm-ready">
-    <div class="bd-card-head"><h3 tabindex="-1">Getting ready</h3><p>${[sInvite, sShared, sSent].every((x) => x === 'done') ? 'The invite, the board page and the email are done. The numbers lock on the meeting day.' : 'The agenda is ready, and the numbers lock on the meeting day. What’s left:'}</p></div>
+    <div class="bd-card-head"><h3 tabindex="-1">Getting ready</h3><p>${[sInvite, sApproved, sShared, sSent].every((x) => x === 'done') ? 'The invite, the approval, the board page and the email are done. The numbers lock on the meeting day.' : 'The agenda is ready, and the numbers lock on the meeting day. What’s left:'}</p></div>
     <${NoEmail} ctx=${ctx} what="no invite or email, and can’t check in on the board page" />
     <ol class="bm-tasks">
       <${Task} state=${sInvite} title=${inv ? `Invite sent from ${whoseOf(inv.organizer)} calendar` : m.inviteGone ? 'The invite was deleted' : 'Send the invite'}
@@ -1209,15 +1218,20 @@ function GettingReady({ m, set, ctx, act, save }) {
           <button class="btn btn-sm btn-primary" disabled=${!!working} onClick=${() => run('invite', { action: 'send-invite', id: m.id }, 'Board’s day, time and place are back on the invite')}>${working === 'invite' ? 'Sending…' : 'Send Board’s again'}</button></div>` : null}
         ${others.length ? html`<p class="bm-note is-warn" role="note">${others.length === 1 ? 'Another invite for this meeting is' : `${others.length} other invites for this meeting are`} on ${andList([...new Set(others.map((o) => whoseOf(o.on)))])} calendar: ${andList(others.map((o) => `“${o.title}”`))}${senders.length && !mineOnly ? `, sent by ${andList(senders.map(senderName))}` : ''}. ${mineOnly ? `Cancel ${others.length === 1 ? 'it' : 'them'}` : `Ask ${senders.length ? (senders.length === 1 ? 'them' : 'each') : 'whoever sent it'} to cancel ${others.length === 1 ? 'it' : 'theirs'}`}, so the board has one invite and one call.</p>` : null}
       </${Task}>
-      <${Task} state=${sShared} title=${m.shared ? 'On the board page' : 'Put it on the board page'} sub=${m.shared ? 'Board members see the agenda and files (never a private note or a staff-only file).' : 'Board members see nothing of this meeting until then. Emailing the board puts it there too.'}>
+      <${Task} state=${sApproved} title=${approval ? `Agenda approved by ${approval.by}` : 'Approve the agenda'}
+        sub=${approval ? ago(approval.at) : `The board sees none of it until it’s approved. ${agendaSource(m).draft ? 'Once it’s written, the chair reviews it' : 'The chair reviews it'} 6 days before the meeting, or approve it here: that puts it on the board page and emails them the link, once.`}>
+        ${approval ? null : html`<button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => run('preview', { action: 'send-packet', id: m.id, test: true }, (j) => `Sent to ${j.to?.[0] || 'you'}`)}>${working === 'preview' ? 'Sending…' : 'Send me the email'}</button>`}
+        ${approval ? null : html`<button class=${btn(sApproved)} disabled=${!!working || !agendaItems(m).length} onClick=${approve}>${working === 'approve' ? 'Approving…' : 'Approve the agenda'}</button>`}
+      </${Task}>
+      ${approval || m.shared ? html`<${Task} state=${sShared} title=${m.shared ? 'On the board page' : 'Put it on the board page'} sub=${m.shared ? 'Board members see the agenda and files (never a private note or a staff-only file).' : 'Board members see nothing of this meeting until then. Emailing the board puts it there too.'}>
         ${m.shared ? html`<button class="btn btn-ghost btn-sm" onClick=${() => share(false)}>Take it off</button>` : html`<button class=${btn(sShared)} onClick=${() => share(true)}>Share with the board</button>`}
       </${Task}>
       <${Task} state=${sSent} title=${m.packetSentAt ? `${plural(m.packetSentTo, 'board member')} emailed the link` : 'Email the board the link'}
-        sub=${m.packetSentAt ? ago(m.packetSentAt) : `It goes by itself when the agenda is approved on the chair’s review (on the board page, where you can approve it too), or now from here. The link to the agenda and ${docs.length ? `the ${plural(docs.length, 'document')} by name` : 'the documents by name'} (nothing attached), and a nudge to answer the calendar invite for anyone who hasn’t. It goes to ${plural(data.packetTo, 'board member')}.`}>
+        sub=${m.packetSentAt ? ago(m.packetSentAt) : `It goes by itself as soon as it can, or now from here. The link to the agenda and ${docs.length ? `the ${plural(docs.length, 'document')} by name` : 'the documents by name'} (nothing attached), and a nudge to answer the calendar invite for anyone who hasn’t. It goes to ${plural(data.packetTo, 'board member')}.`}>
         <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => run('preview', { action: 'send-packet', id: m.id, test: true }, (j) => `Sent to ${j.to?.[0] || 'you'}`)}>${working === 'preview' ? 'Sending…' : 'Send me the email'}</button>
         <button class=${btn(sSent)} disabled=${!!working || !data.packetTo || !data.setup.email} onClick=${email}>${working === 'send' ? 'Sending…' : m.packetSentAt ? 'Email again' : 'Email the board'}</button>
         ${!data.setup.email ? html`<span class="bd-muted">Email isn’t set up yet (Site → Automations says what’s missing).</span>` : null}
-      </${Task}>
+      </${Task}>` : null}
     </ol>
     <div class="bm-reports">
       <p class="bm-reports__h"><strong>Reports</strong>${asked.length ? html`<span class=${inCount === asked.length ? 'is-all' : ''}>${inCount} of ${asked.length} in</span>` : null}</p>
