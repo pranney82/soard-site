@@ -69,6 +69,14 @@ export async function verifyTurnstile(env, token, ip, { fetchImpl = fetch } = {}
 }
 
 /** The caller's address for limits: IPv4 as is, IPv6 folded to its /64 */
+/**
+ * Someone's own address, shown back to them on a page with no scripts (the
+ * confirm pages). Cloudflare hides addresses in HTML and restores them with a
+ * script; these pages block every script, so the reader would see
+ * "[email protected]". Takes the address already escaped.
+ */
+export const shownAddress = (escaped) => `<!--email_off-->${escaped}<!--/email_off-->`;
+
 export function clientIp(request) {
   const ip = String(request.headers.get('CF-Connecting-IP') || '').trim();
   if (!ip) return 'unknown';

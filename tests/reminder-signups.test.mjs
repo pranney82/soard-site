@@ -126,6 +126,7 @@ test('an email sign-up waits for its link; opening the link only asks; the butto
   assert.equal(page.status, 200);
   const html = await page.text();
   assert.match(html, /Yes, remind me/);
+  assert.match(html, /<strong><!--email_off-->ana@example\.com<!--\/email_off--><\/strong>/, 'Cloudflare leaves it alone: this page has no script to restore a hidden address');
   assert.match(html, /<form method="post" action="\/api\/reminders\?confirm=/);
   assert.match(page.headers.get('Content-Security-Policy'), /frame-ancestors 'none'/);
   assert.equal(page.headers.get('Referrer-Policy'), 'strict-origin');

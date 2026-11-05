@@ -110,7 +110,7 @@ async function confirmFields(res) {
 test('a plain form post (no JavaScript) gets a one-tap confirm page, then redirects back once it has been open a moment', async () => {
   const first = await newsletterPost(ctx('/api/newsletter', { email: 'fan@example.com', source: 'newsletter' }, KIT, { form: true }));
   const { html, fields } = await confirmFields(first);
-  assert.match(html, /Tap the button to get the Sunshine newsletter at <strong>fan@example\.com<\/strong>\./);
+  assert.match(html, /Tap the button to get the Sunshine newsletter at <strong><!--email_off-->fan@example\.com<!--\/email_off--><\/strong>\./, 'Cloudflare leaves it alone: this page has no script to restore a hidden address');
   assert.equal(fields.back, '/about/', 'it goes back to the page they were on');
   assert.match(fields.ft, /^\d{13}\.[0-9a-f]{40}$/);
   assert.equal(calls.length, 0, 'nobody is signed up by the first post');

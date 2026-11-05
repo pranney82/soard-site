@@ -28,7 +28,7 @@
 import { ensureSchema, readConfig, readState, visibleState, liveUrlFor, recordEvent } from './_broadcast.js';
 import * as notify from './_broadcast-notify.js';
 import { crossSiteChange } from './_origin-guard.js';
-import { clientIp, turnstileOn, turnstileSiteKey, verifyTurnstile } from './_secure.js';
+import { clientIp, shownAddress, turnstileOn, turnstileSiteKey, verifyTurnstile } from './_secure.js';
 import { limit, limitAll, tooMany } from './_rate-limit.js';
 
 const SITE = notify.SITE_ORIGIN;
@@ -151,7 +151,7 @@ export async function onRequestGet(context) {
       const signedUpFor = await env.DB.prepare('SELECT kid_slug, unsubscribed_at FROM broadcast_reminders WHERE channel = ? AND address = ?').bind(row.channel, row.address).first();
       const widens = signedUpFor && !signedUpFor.unsubscribed_at && signedUpFor.kid_slug !== row.kid_slug;
       const kid = widens ? null : await knownKid(env.DB, row.kid_slug);
-      return page('Confirm your reminders', `<p>Tap the button and we'll email <strong>${notify.escapeHtml(row.address)}</strong> ${whatTheyHear(kid, config, await readState(env.DB))}.</p>`,
+      return page('Confirm your reminders', `<p>Tap the button and we'll email <strong>${shownAddress(notify.escapeHtml(row.address))}</strong> ${whatTheyHear(kid, config, await readState(env.DB))}.</p>`,
         { button: { action: `/api/reminders?confirm=${encodeURIComponent(t)}`, label: 'Yes, remind me' } });
     }
 

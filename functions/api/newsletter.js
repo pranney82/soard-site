@@ -36,7 +36,7 @@
 
 import { kitSubscribe, cleanSource } from './_kit.js';
 import { recordSignup } from './_application-waitlist.js';
-import { turnstileOn, turnstileSiteKey, verifyTurnstile, clientIp } from './_secure.js';
+import { turnstileOn, turnstileSiteKey, verifyTurnstile, clientIp, shownAddress } from './_secure.js';
 import { limitAll } from './_rate-limit.js';
 
 const SITE_ORIGIN = 'https://sunshineonaranneyday.com';
@@ -130,7 +130,7 @@ function confirmPage({ email, source, lang, page, back, ticket, early }) {
   const fields = Object.entries(hidden).map(([k, v]) => `<input type="hidden" name="${k}" value="${esc(v)}">`).join('');
   const html = `<!doctype html><html lang="${lang === 'es' ? 'es' : 'en'}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(w.title)} | Sunshine on a Ranney Day</title>
 <style>body{margin:0;font-family:Outfit,Helvetica,Arial,sans-serif;background:#FEFCF5;color:#2D2E33;display:grid;place-items:center;min-height:100vh;padding:24px;box-sizing:border-box}main{max-width:460px;text-align:center}h1{font-family:'Libre Baskerville',Georgia,serif;font-size:1.75rem}p{line-height:1.6;overflow-wrap:anywhere}button{font:inherit;margin-top:8px;background:#FFDA24;color:#2D2E33;font-weight:700;border:0;padding:12px 26px;border-radius:10px;cursor:pointer}a{color:#2D2E33}.hp{position:absolute;left:-9999px;top:-9999px}</style></head>
-<body><main><h1>${esc(w.title)}</h1><p>${w.lead(`<strong>${esc(email)}</strong>`).replace(/'/g, '&#39;')}</p>${early ? `<p>${esc(w.wait)}</p>` : ''}
+<body><main><h1>${esc(w.title)}</h1><p>${w.lead(`<strong>${shownAddress(esc(email))}</strong>`).replace(/'/g, '&#39;')}</p>${early ? `<p>${esc(w.wait)}</p>` : ''}
 <form method="POST" action="/api/newsletter">${fields}<div class="hp" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div><button type="submit">${esc(w.button)}</button></form>
 <p><a href="${esc(back)}">${esc(w.back)}</a></p></main></body></html>`;
   return new Response(html, {
