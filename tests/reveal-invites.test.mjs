@@ -303,7 +303,7 @@ const BASE_MEMBERS = [
   { isInternal: true, role: { name: 'Admin' }, user: { name: 'Christian Nielsen', emailAddress: 'cnielsen@soardcharity.com' } },
   { isInternal: true, role: { name: 'Admin' }, user: { name: 'Qualification Committee', emailAddress: 'selection@soardcharity.com' } },
   { isInternal: true, role: { name: 'Admin' }, user: { name: 'DATAx', emailAddress: 'hello@contractorcto.com' } },
-  { isInternal: true, role: { name: 'Admin' }, user: { name: 'SOARD Website', emailAddress: 'peter+website@soardcharity.com' } },
+  { isInternal: true, role: { name: 'Admin' }, user: { name: 'SOARD Website', emailAddress: 'peter+automation@soardcharity.com' } },
   { isInternal: false, role: { name: 'Makeover Family' }, user: { name: 'Someone Else', emailAddress: 'other@family.com' } },
   { isInternal: false, role: { name: 'Vendor' }, user: { name: 'Real Floors', emailAddress: 'vendor@floors.com' } },
 ];
@@ -519,7 +519,7 @@ test('staff come from a staff-only read, so new staff are never cut off by famil
   assert.deepEqual(staffQuery.where, ['isInternal', '=', true]);
   const ev = events.get(eventIdFor('soardreveal', jt.id));
   assert.ok(!ev.attendees.some((a) => a.email === 'hello@contractorcto.com'), 'the DATAx integration login is not a guest');
-  assert.ok(!ev.attendees.some((a) => a.email === 'peter+website@soardcharity.com'), 'nor is the website’s own JobTread login');
+  assert.ok(!ev.attendees.some((a) => a.email === 'peter+automation@soardcharity.com'), 'nor is the website’s own JobTread login');
 });
 
 test('staff guest list changes update quietly; family changes email everyone', async () => {
