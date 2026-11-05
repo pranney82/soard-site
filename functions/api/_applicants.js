@@ -31,7 +31,7 @@
 import { pave, SOARD_ORG_ID, matchProject, isProject, loadProjects, normalizeName } from './_reveals.js';
 import { bestPhotoOf, photoUrl } from './_job-covers.js';
 import {
-  readApplicant, statusMessagePreview, postAccountComment, SITE_GRANT_ID, STATUS_RANK,
+  readApplicant, statusMessagePreview, postAccountComment, isSiteEvent, STATUS_RANK,
   FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE, familyRecipients, greetingNames, accountKindFor, formKindOf,
 } from './_applicant-comms.js';
 import { noteStatus, changeInfo, dontSend, sendNow as sendNowNotify, whenWouldSend, notifyMap, notifyFor, ensureNotifySchema } from './_applicant-notify.js';
@@ -340,7 +340,7 @@ const BACKFILL_FROM = '2025-01-01T00:00:00Z';
 /** Who did it, in words: the person, and where (JobTread, the website, DataX, Zapier) */
 function sourceOf(ev) {
   const grant = String(ev.createdByGrantName || '');
-  if (ev.createdByGrantId === SITE_GRANT_ID) return 'website';
+  if (isSiteEvent(ev)) return 'website';
   if (/zapier/i.test(grant)) return 'zapier';
   if (/datax/i.test(grant)) return 'datax';
   if (/link access/i.test(grant)) return 'family';
@@ -463,7 +463,7 @@ export async function syncEvents(env, { fetchImpl = fetch, now = Date.now(), max
     for (const ev of nodes) {
       if (ev.account?.type === 'customer') touched.add(ev.account.id);
       if (ev.createdAt > last) last = ev.createdAt;
-      if (ev.type === 'accountUpdated' && ev.account?.type === 'customer' && ev.data?.next?.custom && 'Status' in ev.data.next.custom && ev.createdByGrantId !== SITE_GRANT_ID) statusEvents.set(ev.account.id, ev);
+      if (ev.type === 'accountUpdated' && ev.account?.type === 'customer' && ev.data?.next?.custom && 'Status' in ev.data.next.custom && !isSiteEvent(ev)) statusEvents.set(ev.account.id, ev);
     }
     page = conn.nextPage || null;
     if (!page) break;

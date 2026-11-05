@@ -214,6 +214,35 @@ test('"Move and email now" skips the wait; "don\'t email" holds even when JobTre
   assert.equal(a.comments.filter(c => c.name === 'Application Decision').length, 0, 'they already know');
 });
 
+test('“don’t email” holds when JobTread’s workflow wakes for the website’s own status change, before or after the site’s own note', async () => {
+  let n = 0;
+  const wake = (a, at) => {
+    const id = `evtSite${++n}`;
+    w.world.events.push({ id, createdAt: new Date(at).toISOString(), type: 'accountUpdated', createdByGrantId: 'theNewKey', createdByGrantName: 'soard website', createdByUser: { name: 'SOARD Website', emailAddress: 'peter+automation@soardcharity.com' },
+      data: { next: { custom: { Status: 'Approved' } }, previous: { custom: { Status: 'In Review' } } }, account: { id: a.id, type: 'customer' } });
+    return handleWorkflowCall(env, { eventId: id, accountId: a.id }, { fetchImpl: w.fetchImpl, now: at });
+  };
+  const after = addAccount({ name: 'Rowan Hale', fields: { [F.status]: 'In Review' }, contact: { name: 'Sky', email: 'sky@example.com' } });
+  const before = addAccount({ name: 'Quinn Hale', fields: { [F.status]: 'In Review' }, contact: { name: 'Lee', email: 'lee@example.com' } });
+  await syncAllApplicants(env, opts());
+
+  assert.equal((await setApplicantStatus(env, after.id, 'Approved', { notify: false, ...opts(), now: T0 })).email, 'not sent');
+  await wake(after, T0 + 5000);
+
+  // The wake-up lands between JobTread saving the status and the site noting it
+  let fired = false;
+  const racing = async (url, init) => {
+    const res = await w.fetchImpl(url, init);
+    if (!fired && /updateAccount/.test(String(init?.body))) { fired = true; await wake(before, T0 + 1000); }
+    return res;
+  };
+  assert.equal((await setApplicantStatus(env, before.id, 'Approved', { notify: false, fetchImpl: racing, now: T0 + 1000 })).email, 'not sent');
+  assert.ok(fired);
+
+  await tick(T0 + 300 * MIN);
+  for (const a of [after, before]) assert.equal(a.comments.filter(c => c.name === 'Application Decision').length, 0, a.name);
+});
+
 test('a move backwards leaves a staff note once it settles, and Denied records the reason', async () => {
   const a = addAccount({ name: 'Avery Stone', fields: { [F.status]: 'In Review' }, contact: { name: 'Jordan', email: 'jordan@example.com' } });
   await syncAllApplicants(env, opts());

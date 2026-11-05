@@ -27,6 +27,10 @@
 
 export const JT_URL = 'https://api.jobtread.com/pave';
 export const SOARD_ORG_ID = '22NJw42j5GLg';
+// The website's JobTread key, and the login that key belongs to once it moves off Peter's. A change made with either is the site's own
+export const SITE_GRANT_ID = '22PgGhFHkmbz'; // "soard-site-CF"
+export const SITE_LOGIN = 'peter+automation@soardcharity.com';
+export const isSiteEvent = (ev) => ev?.createdByGrantId === SITE_GRANT_ID || Boolean(ev?.createdByGrantId && String(ev?.createdByUser?.emailAddress || '').toLowerCase() === SITE_LOGIN);
 export const FIELD_REVEAL_DATE = '22PgGhcE8jte';
 export const FIELD_REVEAL_CONFIRMED = '22PgGhWscUgE';
 /** The job's Status (Design, Build, Awaiting Funding, …) */

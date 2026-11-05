@@ -44,7 +44,8 @@ export const FIELD_BIRTHDAY = '22P46syd4j6E';    // customer: Birthday
 export const FIELD_CONTACT_EMAIL = '22NJw43QvHeJ';
 export const FIELD_CONTACT_PHONE = '22NJw43UauSc';
 export const QC_USER_ID = '22P5r2x8FPiK';        // "Qualification Committee"
-export const SITE_GRANT_ID = '22PgGhFHkmbz';     // "soard-site-CF", skipped by the workflow
+// The workflow skips the website's key by its id. When that key changes the workflow wakes for the site's own moves too, which does nothing: noteStatus has already seen the status
+export { isSiteEvent } from './_reveals.js';
 // First-contact messages (welcome, medical note) only for accounts created after
 // the site took over from the Zaps; older accounts keep what the Zaps posted.
 // Status messages go to any account, checked against what it already has.

@@ -40,7 +40,7 @@ import { pave, SOARD_ORG_ID, easternParts, easternToUtcIso } from './_reveals.js
 import {
   readApplicant, sendStatusMessage, sentKinds, madeByForm, postAccountComment, handleApplicantEvent, applicationLang,
   familyMessage, cleanStatus, COMMENT_NAMES, COMMENT_NAMES_ES,
-  SITE_GRANT_ID, STATUS_RANK, INTAKE_SINCE, FIELD_STATUS, familyRecipients, greetingNames, looksLikeOrganization,
+  isSiteEvent, STATUS_RANK, INTAKE_SINCE, FIELD_STATUS, familyRecipients, greetingNames, looksLikeOrganization,
 } from './_applicant-comms.js';
 
 /** "Jordan Stone (jordan@…) and Sam Stone (sam@…)" for the history */
@@ -308,7 +308,7 @@ export async function verifiedChange(env, { eventId = null, accountId }, { fetch
   return {
     id: ev.id,
     at: ev.createdAt,
-    via: ev.createdByGrantId === SITE_GRANT_ID ? 'website'
+    via: isSiteEvent(ev) ? 'website'
       : /zapier|datax/i.test(grant) || ev.createdByUser?.name === 'JobTread' ? 'integration' : 'jobtread',
     by: ev.createdByUser ? { name: ev.createdByUser.name || null, email: ev.createdByUser.emailAddress || null } : null,
     statusChanged: created || touches(ev, 'Status'),

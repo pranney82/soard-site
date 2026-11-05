@@ -28,12 +28,11 @@
 
 import {
   SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED,
-  easternParts, easternToUtcIso, longDay, clockTime, pave,
+  easternParts, easternToUtcIso, longDay, clockTime, pave, isSiteEvent,
 } from './_reveals.js';
 import { limitAll } from './_rate-limit.js';
 
 const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
-const SITE_GRANT_ID = '22PgGhFHkmbz'; // "soard-site-CF", the grant this writes with
 const COMMENT_TITLE = 'Reveal date sync (automatic)';
 // A wake-up counts only for a change JobTread logged this recently (a little clock skew allowed)
 export const EVENT_FRESH_MS = 15 * 60 * 1000;
@@ -185,13 +184,13 @@ export async function verifiedSyncEvent(grantKey, { jobId, eventId }, { fetchImp
   const ev = (await pave(grantKey, {
     event: {
       $: { id: eventId },
-      id: {}, type: {}, createdAt: {}, createdByGrantId: {}, organization: { id: {} },
+      id: {}, type: {}, createdAt: {}, createdByGrantId: {}, createdByUser: { emailAddress: {} }, organization: { id: {} },
       job: { _on_job: { id: {} } }, task: { _on_task: { id: {}, taskType: { id: {} } } },
     },
   }, fetchImpl))?.event;
   const t = Date.parse(ev?.createdAt || '');
   if (!ev || ev.organization?.id !== SOARD_ORG_ID || ev.job?.id !== jobId || !(t > now - EVENT_FRESH_MS && t <= now + CLOCK_SKEW_MS)) return null;
-  const bySite = ev.createdByGrantId === SITE_GRANT_ID;
+  const bySite = isSiteEvent(ev);
   if (TASK_EVENTS.includes(ev.type) && ev.task?.taskType?.id === REVEAL_TASK_TYPE) return { id: ev.id, source: 'task', bySite };
   if (JOB_EVENTS.includes(ev.type)) return { id: ev.id, source: 'field', bySite };
   return null;
