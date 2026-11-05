@@ -14,6 +14,7 @@ import { FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_CONTACT_EMAIL, BY_HAND, writeC
 import * as wakeRoute from '../functions/api/reveal-invites.js';
 import * as admin from '../functions/api/demo-invites-admin.js';
 import { eventIdFor, clearTokenCache } from '../functions/api/_google-calendar.js';
+import { ensureProjectSchema, readProjectRow } from '../functions/api/_project-emails.js';
 
 // Thursday Oct 22 2026, 10:00 AM Eastern
 const NOW = Date.parse('2026-10-22T14:00:00Z');
@@ -555,4 +556,116 @@ test('the default wording, exactly', () => {
     title: "{name}'s Demo Day",
     message: "{name}'s {space} makeover starts with demo day on {when}.\n\nIt's the first day of construction. Please accept or decline so we know who to expect.",
   });
+});
+
+// ─── The kickoff email's moment (functions/api/_project-emails.js) ───────────────
+const kickoffRow = async () => readProjectRow(env.DB, 'max', 'kickoff');
+const addKid = (slug, name, data = {}) => env.DB.prepare('INSERT OR REPLACE INTO kids (slug, name, year, status, data) VALUES (?, ?, ?, ?, ?)')
+  .bind(slug, name, 2026, data.status || 'in-progress', JSON.stringify({ name, slug, year: 2026, status: 'in-progress', publishStatus: 'published', heroSummary: 'A story.', roomTypes: ['Bathroom'], ...data })).run();
+// Kit is faked just far enough to take a draft
+async function withKit(fn) {
+  const real = globalThis.fetch;
+  const posts = [];
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input?.url || input);
+    if (url.startsWith('https://api.kit.com/v4/')) {
+      if (url.includes('/broadcasts?')) return Response.json({ broadcasts: [] });
+      if (url.includes('/tags')) return Response.json({ tags: [] });
+      if ((init.method || 'GET') === 'POST') { posts.push(JSON.parse(init.body)); return Response.json({ broadcast: { id: 700 + posts.length } }, { status: 201 }); }
+      return Response.json({ broadcast: {} });
+    }
+    if (url.startsWith('https://imagedelivery.net/')) return new Response('img', { headers: { 'Content-Type': 'image/jpeg' } });
+    return fakeFetch(url, init);
+  };
+  Object.assign(env, { KIT_API_KEY: 'kit_test' });
+  await writeInviteConfig(env.DB, { enabled: true });
+  try { await fn(); } finally { globalThis.fetch = real; }
+  return posts;
+}
+
+test('Set Start Date checked off with a Demo date ahead: the kickoff is drafted, after the calendar', async () => {
+  await addKid('max', 'Max');
+  jt = job();
+  let r;
+  const posts = await withKit(async () => { r = await run(); });
+  assert.match(r.action, /create/, 'the calendar goes first');
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].subject, 'Meet Max, Our Next Dream Room Project');
+  assert.equal((await kickoffRow()).state, 'drafted');
+});
+
+test('no Demo date, or one gone by: no kickoff, so kids under way are never swept up', async () => {
+  await addKid('max', 'Max');
+  for (const j of [job({ demoDate: null }), job({ demoTask: false }), job({ demoDate: '2026-10-01' }), job({ demoDone: true })]) {
+    jt = j;
+    const posts = await withKit(async () => { await run(); });
+    assert.equal(posts.length, 0);
+  }
+  await ensureProjectSchema(env.DB);
+  assert.equal(await kickoffRow(), null);
+});
+
+test('no kickoff before Set Start Date, for a job with no kid, for a rehearsal or for a finished kid', async () => {
+  await ensureProjectSchema(env.DB);
+  jt = { ...job(), name: 'Somebody Else (2026)' };
+  let posts = await withKit(async () => { await run(); });
+  assert.equal(posts.length, 0, 'no kid page matches');
+  await addKid('max', 'Max');
+  jt = job({ startSet: false });
+  posts = await withKit(async () => { await run(); });
+  assert.equal(posts.length, 0);
+  jt = { ...job(), name: 'TEST Max Sample (2026)' };
+  posts = await withKit(async () => { await run(); });
+  assert.equal(posts.length, 0);
+  await addKid('max', 'Max', { status: 'completed' });
+  jt = job();
+  posts = await withKit(async () => { await run(); });
+  assert.equal(posts.length, 0);
+  assert.equal(await kickoffRow(), null);
+});
+
+test('a hidden page waits with nothing kept, and drafts on a look once it’s published', async () => {
+  await addKid('max', 'Max', { publishStatus: 'draft' });
+  jt = job();
+  let posts = await withKit(async () => { await run(); });
+  assert.equal(posts.length, 0);
+  assert.equal(await kickoffRow(), null);
+  await addKid('max', 'Max');
+  posts = await withKit(async () => { await run(); });
+  assert.equal(posts.length, 1);
+});
+
+test('two kids of the same name, one hidden: the job lands on neither, never the wrong one', async () => {
+  await addKid('max', 'Max');
+  await addKid('max-2', 'Max', { publishStatus: 'draft' });
+  jt = job();
+  const posts = await withKit(async () => { await run(); });
+  assert.equal(posts.length, 0);
+});
+
+test('a look a second later drafts nothing more', async () => {
+  await addKid('max', 'Max');
+  jt = job();
+  const posts = await withKit(async () => { await run(); await run(); await run(); });
+  assert.equal(posts.length, 1);
+});
+
+test('the sweep of many jobs holds kickoffs to the end', async () => {
+  await addKid('max', 'Max');
+  jt = job();
+  const kickoffs = [];
+  await run({ kickoffs });
+  assert.equal(kickoffs.length, 1, 'held, not run');
+  await ensureProjectSchema(env.DB);
+  assert.equal(await kickoffRow(), null);
+});
+
+test('trouble with the kickoff never touches the calendar invite', async () => {
+  await addKid('max', 'Max');
+  jt = job();
+  const realPrepare = env.DB.prepare.bind(env.DB);
+  env.DB.prepare = (sql) => { if (/project_emails/.test(sql)) throw new Error('D1 is down'); return realPrepare(sql); };
+  const r = await run();
+  env.DB.prepare = realPrepare;
+  assert.match(r.action, /create/);
 });

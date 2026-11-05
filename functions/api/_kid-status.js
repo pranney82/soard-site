@@ -39,6 +39,7 @@ import { recordVersion } from './_content-history.js';
 import { sendEmails, slackPost, emailConfigured } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { syncJobCovers } from './_job-covers.js';
+import { runProjectEmails } from './_project-emails.js';
 
 export const FIELD_STATUS = '22P52qfFub9b';
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
@@ -383,7 +384,9 @@ export async function maybeSyncKidStatuses(env, { fetchImpl = fetch, now = Date.
     if (!due && !deployDue) return null;
     // Claim the slot first so overlapping wake-ups don't double up
     if (due) await writeState(env.DB, { lastSweepAt: new Date(now).toISOString() });
-    return await syncKidStatuses(env, { fetchImpl, now });
+    const changed = await syncKidStatuses(env, { fetchImpl, now });
+    if (due) await runProjectEmails(env, { now, fetchImpl });
+    return changed;
   } catch {
     return null;
   }

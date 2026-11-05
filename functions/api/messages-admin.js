@@ -58,8 +58,10 @@ import { organizerFor } from './_board-invite.js';
 import { newMeeting, meetingName } from '../../public/admin/board-shared.js';
 import { checkAnswers as advisoryAnswers } from './_advisory-form.js';
 import { planDemo, demoAlert, sendTestDemo, readConfig as readDemoConfig, listPeople as demoPeople } from './_demo-invites.js';
-import { revealInviteEmail } from './_reveal-invite-email.js';
-import { reviewNote, KIT_INVITE_DEFAULTS } from './_reveal-invite-kit.js';
+import { revealInviteEmail, TEAM_PICTURE } from './_reveal-invite-email.js';
+import { reviewNote, brokenLogos, KIT_INVITE_DEFAULTS } from './_reveal-invite-kit.js';
+import { projectKickoffEmail, projectRevealEmail, beforeAfterUrls } from './_project-email.js';
+import { projectNote } from './_project-emails.js';
 
 const { SITE_ORIGIN, EMAIL_FROM } = notify;
 const DAY = 864e5;
@@ -691,6 +693,21 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       const m = revealInviteEmail({ kid, date: day, time: '16:00', address: SAMPLE.address, notes: facts.details });
       return { channel: 'kit', from: KIT_FROM, to: `Kit’s “${KIT_INVITE_DEFAULTS.audience}” group, once staff send the draft`, subject: m.subject, html: m.html, text: m.text, note: `${kid.name}’s page as it reads now, with a sample day, time and address. Kit adds its own unsubscribe link and mailing address under it.`, send: 'email' };
     }
+    case 'kit-kickoff':
+    case 'kit-project-reveal': {
+      // The next kid still being built, or the last one finished, as their page reads now
+      const done = id === 'kit-project-reveal';
+      const row = await env.DB.prepare(`SELECT slug, data FROM kids WHERE status = ? ORDER BY year DESC, name LIMIT 1`).bind(done ? 'completed' : 'in-progress').first().catch(() => null);
+      let kid = null;
+      try { kid = row ? { ...JSON.parse(row.data), slug: row.slug } : null; } catch { /* sample below */ }
+      kid = kid || { name: SAMPLE.childFirst, slug: '', roomTypes: ['Accessible Bathroom'], heroSummary: 'A sample story for the preview.' };
+      // The same image check a real draft gets, so the preview never shows what Kit wouldn't
+      const broken = await brokenLogos(kid, { extra: beforeAfterUrls(kid) });
+      const m = (done ? projectRevealEmail : projectKickoffEmail)({ kid, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) });
+      return { channel: 'kit', from: KIT_FROM, to: 'The newsletter list, once staff send the draft', subject: m.subject, html: m.html, text: m.text, note: `${kid.name}’s page as it reads now. Kit adds its own unsubscribe link and mailing address under it.`, send: 'email' };
+    }
+    case 'staff-project-review':
+      return email(projectNote('ready', { kind: 'kickoff', name: SAMPLE.childFirst, id: '0', subject: `Meet ${SAMPLE.childFirst}, Our Next Dream Room Project` }), { to: `${KIT_INVITE_DEFAULTS.reviewer} (the invite email’s reviewer)` });
     case 'staff-invite-problem':
       return email(inviteAlert('problem', { jobId: 'sample', name: SAMPLE.childFirst, error: 'Google Calendar returned 503 (backend error)', taskId: null }), { to: 'The invite alert list, the organizer, and peter@soardcharity.com' });
     case 'staff-invite-held':

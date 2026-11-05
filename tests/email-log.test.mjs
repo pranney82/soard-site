@@ -112,6 +112,8 @@ test('which message an email is, even where two share a tag', () => {
     ['application-waitlist-staff', 'Applications are open: the waitlist email goes out at 3:10 PM', 'staff-waitlist'],
     ['application-waitlist', 'The applications-open email was sent to 14 families', 'staff-waitlist'],
     ['reveal-invite-alert', '[SOARD] Avery’s reveal invite is still out', 'staff-invite-held'],
+    ['project-email-review', 'Review Avery’s kickoff email in Kit', 'staff-project-review'],
+    ['project-email-alert', '[SOARD] Avery’s kickoff email wasn’t drafted', 'staff-project-review'],
     ['reveal-invite-alert', '[SOARD] Reveal invite problem: Avery', 'staff-invite-problem'],
     ['live-alert', '[SOARD Live] Countdown is up: Avery Stone’s reveal', 'staff-countdown'],
     ['live-alert', '[SOARD Live] Live now: Avery’s room reveal', 'staff-good-news'],

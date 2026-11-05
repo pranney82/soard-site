@@ -1159,7 +1159,8 @@ test('Save it to your calendar is the main action, and See the story sits with t
   const { html } = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
   const calendarButton = /<a [^>]*calendar\.ics[^>]*>/.exec(html)[0];
   assert.match(calendarButton, /background:#FFDA24/);
-  assert.ok(html.indexOf('See Rowan’s Story') < html.indexOf('Made possible by'));
+  assert.ok(html.indexOf('See Rowan’s Story') < html.indexOf('Our partners'));
+  assert.ok(html.indexOf('Our partners') > 0, 'the label doesn’t repeat the headline under it');
   assert.ok(!/<a [^>]*kids\/rowan-test\/"[^>]*background:#FFDA24/.test(html), 'one main action');
 });
 

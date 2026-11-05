@@ -62,6 +62,8 @@ import {
 import { accessToken, eventIdFor, upsertEvent, cancelEvent, getEvent, listEvents } from './_google-calendar.js';
 import { sendEmails, slackPost, slackIssue, slackResolved, emailConfigured } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
+import { kickoffNow } from './_project-emails.js';
+import { linkJobs, loadAllKids, loadAllProjects } from './_kid-status.js';
 
 export const FIELD_MONETARY_SPONSOR = '22PZJHV29WFw';
 export const DEMO_TASK = 'Demo';
@@ -374,13 +376,21 @@ export async function reconcileDemo(env, jobId, opts = {}) {
   const key = `demo:${jobId}`;
   if (!(await lockJob(DB, key, opts.wait ?? true))) return { jobId, action: 'busy', reason: 'another update to this invite is running' };
   try {
-    return await reconcileLocked(env, jobId, opts);
+    const later = {};
+    const result = await reconcileLocked(env, jobId, { ...opts, later });
+    // The calendar first, so trouble in Kit can't delay an invite. A sweep of
+    // many jobs holds them to the end, so it can't delay the next job's either.
+    if (later.kickoff) {
+      if (opts.kickoffs) opts.kickoffs.push(later.kickoff);
+      else await later.kickoff().catch(() => null);
+    }
+    return result;
   } finally {
     await unlockJob(DB, key);
   }
 }
 
-async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, rewrite = false, dryRun = false, verify = false, preloaded = null } = {}) {
+async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, rewrite = false, dryRun = false, verify = false, preloaded = null, later = null } = {}) {
   const { DB } = env;
   const [config, inviteConfig] = await Promise.all([readConfig(DB), readInviteConfig(DB)]);
   const organizer = inviteConfig.organizer || DEFAULT_ORGANIZER;
@@ -396,6 +406,19 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   const sent = !!(row?.event_id && row.state === 'sent');
   const plan = planDemo(job, staff, { kids, people, organizer, now, config, sent, isSponsor, onlyGuests: sandbox ? (inviteConfig.testGuests || DEFAULT_TEST_GUESTS) : null });
   if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
+  // Set Start Date checked off with a Demo date still ahead: the kickoff email's
+  // moment. No date, or a date gone by, is a kid already under way or not ready.
+  if (later && job && !sandbox) {
+    const { demo, startSet } = demoTasks(job);
+    if (startSet && demo?.startDate && !demoHappened(demo, DEFAULT_START, now)) {
+      later.kickoff = async () => {
+        // Hidden kids and projects count here, so a job can't land on the wrong kid of the same name
+        const records = [...await loadAllKids(DB), ...await loadAllProjects(DB)];
+        const key = [...linkJobs([job], records).keys()][0];
+        return key && !key.startsWith('community/') ? kickoffNow(env, { slug: key, jobId, now, fetchImpl }) : null;
+      };
+    }
+  }
   const live = !dryRun && (config.enabled || force || sandbox);
   const name = job ? displayName(job, kids).name : null;
   const taskId = demoTasks(job).demo?.id;
@@ -641,11 +664,13 @@ export async function checkAll(env, { fetchImpl = fetch, now = Date.now(), verif
     sponsorMatch(env.DB),
   ]);
   const out = [];
+  const kickoffs = [];
   for (const id of ids) {
     // One job JobTread can't read doesn't hold up the rest
-    out.push(await reconcileDemo(env, id, { fetchImpl, now, verify, rewrite, wait: false, preloaded: { staff, kids, people, isSponsor } })
+    out.push(await reconcileDemo(env, id, { fetchImpl, now, verify, rewrite, wait: false, kickoffs, preloaded: { staff, kids, people, isSponsor } })
       .catch((err) => ({ jobId: id, action: 'error', error: err.message })));
   }
+  for (const kickoff of kickoffs) await kickoff().catch(() => null);
   return out;
 }
 

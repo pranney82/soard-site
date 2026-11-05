@@ -257,3 +257,10 @@ test('a JobTread failure is remembered for Site → Automations, and the next su
   s = await state();
   assert.equal(s.lastRun.at, '2026-10-20T17:54:47.000Z', 'the next run is recorded after the error, so the map shows it working again');
 });
+
+test('the hourly sweep also looks at the project emails', async () => {
+  const DB = await world([{ slug: 'old', name: 'Old', year: 2015, status: 'completed', publishStatus: 'published' }]);
+  await maybeSyncKidStatuses({ DB, JOBTREAD_GRANT_KEY: 'k' }, { fetchImpl: jtFetch([]), now: Date.parse('2026-10-20T15:00:00Z') });
+  const rows = (await DB.prepare("SELECT slug, state FROM project_emails ORDER BY slug").all()).results;
+  assert.deepEqual(rows, [{ slug: '__seeded__', state: 'done' }, { slug: 'old', state: 'skipped' }]);
+});

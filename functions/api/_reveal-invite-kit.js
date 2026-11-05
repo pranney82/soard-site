@@ -95,8 +95,8 @@ export async function findAudience(env, name) {
  * URL: a partner's logo becomes its name, a kid's photo gives way to the next,
  * and the team picture is left out, never a broken picture. One that can't be checked in time counts as loading.
  */
-export async function brokenLogos(kid, { fetchImpl = fetch, timeoutMs = 5000 } = {}) {
-  const urls = [...new Set([...partnerLogoUrls(kid), ...kidPhotoUrls(kid), TEAM_PICTURE])];
+export async function brokenLogos(kid, { fetchImpl = fetch, timeoutMs = 5000, extra = [] } = {}) {
+  const urls = [...new Set([...partnerLogoUrls(kid), ...kidPhotoUrls(kid), TEAM_PICTURE, ...extra])];
   const broken = new Set();
   await Promise.all(urls.map(async (url) => {
     try {
