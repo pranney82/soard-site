@@ -312,12 +312,19 @@ export async function fetchJob(grantKey, jobId, fetchImpl = fetch) {
     },
   }, fetchImpl);
   const job = body?.job || null;
+  // A job past one page of access: the rest of it, or those people would never be invited
+  for (let page = job?.aces?.nextPage; page;) {
+    const more = (await pave(grantKey, { job: { $: { id: jobId }, id: {}, aces: { ...JOB_ACCESS, $: { size: 50, page } } } }, fetchImpl))?.job?.aces;
+    if (!more) throw new Error(`JobTread sent no access list for job ${jobId}`);
+    job.aces = { ...job.aces, nodes: [...job.aces.nodes, ...(more.nodes || [])] };
+    page = more.nextPage || null;
+  }
   await borrowRealAddress(grantKey, job, fetchImpl);
   return job;
 }
 
 /** Who has been given access to a job in JobTread (family, vendors, sponsors…), for the guest list */
-export const JOB_ACCESS = { $: { size: 50 }, nodes: { membership: { isInternal: {}, role: { name: {} }, account: { name: {} }, user: { name: {}, emailAddress: {} } } } };
+export const JOB_ACCESS = { $: { size: 50 }, nextPage: {}, nodes: { membership: { isInternal: {}, role: { name: {} }, account: { name: {} }, user: { name: {}, emailAddress: {} } } } };
 
 export const normEmail = (e) => {
   const x = String(e || '').trim().toLowerCase();

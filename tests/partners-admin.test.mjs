@@ -9,7 +9,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createD1 } from './lib/d1-shim.mjs';
-import { updatePartners, swapLogo } from '../functions/api/partners-batch.js';
+import { updatePartners, swapLogo, pageLogosOff, pageLogosOn } from '../functions/api/partners-batch.js';
 import { reorder } from '../functions/api/reorder-content.js';
 import {
   categoriesOf, categoryUnset, normalizeWebsite, domainOf, partnerRecord, sections, nextOrder, logoQuality, issuesOf,
@@ -416,4 +416,41 @@ test('partners, community partners and media logos can be reordered in one reque
   const m = await reorder({ DB }, { collection: 'medialogos', items: [{ slug: 'ajc', order: 0 }] });
   assert.equal(m.status, 200);
   assert.equal((await rowOf(DB, 'medialogos', 'ajc')).data.order, 0);
+});
+
+test('Taken off one makeover: every logo of theirs on that page, nothing elsewhere, and Undo puts them back where they were', async () => {
+  const bell = { slug: 'bell', name: 'Bell Cabinetry', logo: img('partners/bell/1') };
+  const other = img('partners/other/1');
+  const kids = [
+    { slug: 'k1', name: 'K1', sponsors: [], partnerLogos: [{ url: other, name: 'Other' }, { url: img('partners/bell/1'), name: 'Bell Cabinetry' }, { url: img('kids/k1/scan'), name: 'Bell Cabinetry' }, { url: img('partners/z/1'), name: 'Z' }] },
+    { slug: 'k2', name: 'K2', sponsors: [], partnerLogos: [{ url: img('partners/bell/1'), name: 'Bell Cabinetry' }] },
+  ];
+  const DB = await db({ kids, partners: [bell] });
+  const r = await pageLogosOff({ DB }, { table: 'kids', slug: 'k1', partner: 'bell' }, 'p@x.com');
+  assert.deepEqual(r.removed.map((l) => l.at), [1, 2]);
+  assert.deepEqual((await rowOf(DB, 'kids', 'k1')).data.partnerLogos.map((l) => l.name), ['Other', 'Z']);
+  assert.equal((await rowOf(DB, 'kids', 'k2')).data.partnerLogos.length, 1, 'their other jobs aren’t touched');
+  await pageLogosOn({ DB }, { table: 'kids', slug: 'k1', logos: r.removed }, 'p@x.com');
+  assert.deepEqual((await rowOf(DB, 'kids', 'k1')).data.partnerLogos.map((l) => l.url), kids[0].partnerLogos.map((l) => l.url), 'back in the same places');
+  assert.deepEqual(await pageLogosOn({ DB }, { table: 'kids', slug: 'k1', logos: r.removed }, 'p@x.com'), {}, 'twice is once');
+  const files = await pageLogosOff({ DB }, { table: 'kids', slug: 'k1', urls: [other] }, 'p@x.com');
+  assert.deepEqual(files.removed.map((l) => l.url), [other], 'or just the file a person picked');
+});
+
+test('The page’s version comes back only when the editor had the current one, so a Save can’t overwrite someone else', async () => {
+  const bell = { slug: 'bell', name: 'Bell Cabinetry', logo: img('partners/bell/1') };
+  const DB = await db({ kids: [{ slug: 'k1', name: 'K1', partnerLogos: [{ url: img('partners/bell/1'), name: 'Bell Cabinetry' }, { url: img('partners/z/1'), name: 'Z' }] }], partners: [bell] });
+  const { generateSha } = await import('../functions/api/_collections.js');
+  const raw = (await DB.prepare('SELECT data FROM kids WHERE slug = ?').bind('k1').first()).data;
+  const fits = await pageLogosOff({ DB }, { table: 'kids', slug: 'k1', urls: [img('partners/bell/1')], sha: await generateSha(raw) }, 'p@x.com');
+  assert.ok(fits.sha);
+  const stale = await pageLogosOff({ DB }, { table: 'kids', slug: 'k1', urls: [img('partners/z/1')], sha: 'old' }, 'p@x.com');
+  assert.equal(stale.sha, undefined);
+});
+
+test('Nothing to take off, a page gone, or bad logos to put back', async () => {
+  const DB = await db({ kids: [{ slug: 'k1', name: 'K1', partnerLogos: [] }], partners: [] });
+  assert.deepEqual((await pageLogosOff({ DB }, { table: 'kids', slug: 'k1', urls: [img('partners/x/1')] })).removed, []);
+  await assert.rejects(pageLogosOff({ DB }, { table: 'kids', slug: 'gone', urls: [] }), /isn’t there/);
+  await assert.rejects(pageLogosOn({ DB }, { table: 'kids', slug: 'k1', logos: [{ url: 'javascript:alert(1)' }] }), /Nothing to put back/);
 });

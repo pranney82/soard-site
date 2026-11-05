@@ -4190,6 +4190,20 @@
 
     /* Kid pages that show the logo */
     .pt-kids { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 0.5rem; list-style: none; }
+    .pt-kids li { display: grid; gap: 0.25rem; align-content: start; }
+    .pt-kid__off { justify-self: start; }
+    .kd-vendors { display: grid; gap: 0.6rem; margin-bottom: 1rem; padding-bottom: 1rem; border-bottom: 1px solid var(--color-border); }
+    .kd-vendors h4 { margin: 0; font-size: var(--fs-sm); }
+    .kd-vendors__list { display: grid; gap: 0.4rem; list-style: none; margin: 0; padding: 0; }
+    .kd-vendor { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35rem 0.75rem; padding: 0.5rem 0.65rem; border: 1px solid var(--color-border); border-radius: 12px; }
+    .kd-vendor__who { flex: 1 1 12rem; min-width: 0; display: flex; flex-direction: column; }
+    .kd-vendor__who strong { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+    .kd-vendor__who small { font-size: var(--fs-2xs); color: var(--color-text-muted); }
+    .kd-vendor__sides { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+    .kd-vendor__add { display: grid; gap: 0.35rem; }
+    .kd-vendor__add ul { display: flex; flex-wrap: wrap; gap: 0.35rem; list-style: none; margin: 0; padding: 0; }
+    .kd-vendors__log { font-size: var(--fs-2xs); color: var(--color-text-muted); }
+    .kd-vendors__log ul { margin: 0.35rem 0 0; padding: 0; list-style: none; display: grid; gap: 0.2rem; }
     .pt-kid { display: flex; align-items: center; gap: 0.65rem; width: 100%; padding: 0.45rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-card); text-align: left; color: var(--color-text); }
     .pt-kid:hover { border-color: var(--color-border-strong); background: var(--color-bg-hover); }
     .pt-kid__img { flex-shrink: 0; width: 44px; height: 44px; border-radius: 9px; object-fit: cover; background: var(--seg-bg); }
@@ -11207,6 +11221,7 @@
         // The card says what Save does; the logo moving is the part it doesn't show
         if (p.logo) addToast(`${p.name}’s logo now leads Partners.`, 'info');
       };
+      const offAtSave = useRef(new Map()); // a sponsor deleted by its logo: slug → name
       const removeSponsor = (p) => {
         const prev = dataRef.current.sponsors || [];
         set((d) => ({ sponsors: (d.sponsors || []).filter((x) => x !== p.slug) }));
@@ -11383,8 +11398,12 @@
         return partners.filter((p) => p.logo && p.name.toLowerCase().includes(q))
           .sort((a, b) => (a.name.toLowerCase().startsWith(q) ? 0 : 1) - (b.name.toLowerCase().startsWith(q) ? 0 : 1) || a.name.localeCompare(b.name)).slice(0, 8);
       }, [partnerQuery, partners]);
+      // Logos a person added here: only those go on the job at Save. One that returns with a restored draft or History isn't an add
+      const addedHere = useRef(new Set());
       const addPartner = (p) => {
         if (!p || linked.has(p.logo)) return;
+        addedHere.current.add(p.logo);
+        offAtSave.current.delete(p.slug);
         set((d) => ({ partnerLogos: [...d.partnerLogos, { url: p.logo, name: p.name, _key: p.logo }] }));
         setPartnerQuery('');
         setPartnerOpen(false);
@@ -11401,15 +11420,38 @@
         const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
         await kdUploadAll([{ file, key }], {
           idFor: (x) => `kids/${folder}/partner-${Date.now()}-${x.name.replace(/[^a-z0-9.]/gi, '-')}`,
-          onDone: (_, url) => set((d) => ({ partnerLogos: d.partnerLogos.map((l) => (l._key === key ? { url, name: l.name, _key: key } : l)) })),
+          onDone: (_, url) => { addedHere.current.add(url); set((d) => ({ partnerLogos: d.partnerLogos.map((l) => (l._key === key ? { url, name: l.name, _key: key } : l)) })); },
           onFail: (_, err) => { addToast(`Upload failed: ${err}`, 'error'); set((d) => ({ partnerLogos: d.partnerLogos.filter((l) => l._key !== key) })); },
         });
         URL.revokeObjectURL(local);
         setUploads((u) => { const n = { ...u }; delete n[key]; return n; });
         addToast(named ? `${named}’s logo added. Save to put it on the page.` : 'Logo added. Check the name: screen readers read it.', 'success');
       };
-      const removeLogo = (key) => {
+      // A logo deleted here is the company off the page and the job, both, now, in one request
+      const [vendorsStamp, setVendorsStamp] = useState(0);
+      const shaRef = useRef(sha);
+      shaRef.current = sha;
+      const takeOffEd = () => ({ record: slug, sha: () => shaRef.current, setSha, setBase, set, addToast, reload: () => { history.reload(); setVendorsStamp((n) => n + 1); } });
+      const removeLogo = async (key) => {
         const prev = dataRef.current.partnerLogos;
+        const logo = prev.find((l) => l._key === key);
+        const inSaved = () => JSON.parse(base || '{}').partnerLogos || [];
+        const company = kdLogoPartner(logo?.url, partners);
+        const who = logo?.name?.trim() || company?.name || '';
+        // The monetary sponsor's own lane: deleted here it's off as the sponsor too, and Save takes them off the job, bill or not
+        const sponsors = dataRef.current.sponsors || [];
+        const sponsorOff = allPartners.find((p) => sponsors.includes(p.slug) && (p.slug === company?.slug || PS.nameKey(p.name) === PS.nameKey(who)));
+        if (sponsorOff) {
+          offAtSave.current.set(sponsorOff.slug, who);
+          set((d) => ({ sponsors: d.sponsors.filter((x) => x !== sponsorOff.slug), partnerLogos: d.partnerLogos.filter((l) => l._key !== key) }));
+          addToast(`${who} taken off. Saving takes them off the job in JobTread.`, 'info', { label: 'Undo', fn: () => { offAtSave.current.delete(sponsorOff.slug); set({ sponsors, partnerLogos: prev }); } });
+          return;
+        }
+        if (who && slug && inSaved().some((l) => l.url === logo.url)) {
+          if (await ask({ title: `Take ${who} off this makeover?`, yes: 'Take them off', danger: true,
+            text: 'Their logo comes off this page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there.' })) await kdTakeOffNow(takeOffEd(), { logos: [{ url: logo.url, name: who }] }, who);
+          return;
+        }
         set((d) => ({ partnerLogos: d.partnerLogos.filter((l) => l._key !== key) }));
         addToast('Logo removed.', 'info', { label: 'Undo', fn: () => set({ partnerLogos: prev }) });
       };
@@ -11476,22 +11518,40 @@
           return;
         }
         const sponsorsBefore = JSON.parse(base || '{}').sponsors || [];
+        const newLogos = (out.partnerLogos || []).filter((l) => addedHere.current.has(l.url) && !(JSON.parse(base || '{}').partnerLogos || []).some((x) => x.url === l.url));
+        addedHere.current.clear();
         setSha(res.sha);
         setBase(JSON.stringify(out));
         set({ slug: slugToSave });
         history.reload();
+        if (!wasNew) kdAddToJob(slugToSave, newLogos, addToast, () => setVendorsStamp((n) => n + 1));
         // JobTread follows the website: the Monetary Sponsor field and each contact's Sponsor access
         const sv = sponsor.view;
         const behind = !sv?.jobtread || !sv.jobtread.fieldOk || (sv.sponsors || []).some((x) => x.missing?.length);
+        // After the sync, so it finds whoever the sponsor sync didn't take off, and they stay off
+        const leaving = [...offAtSave.current].filter(([p, who]) => !out.sponsors.includes(p) && !(out.partnerLogos || []).some((l) => kdLogoPartner(l.url, partners)?.slug === p || PS.nameKey(l.name) === PS.nameKey(who)));
+        offAtSave.current.clear();
+        // The sponsor toasts have said what happened; this only makes it stick
+        const sponsorsOff = () => {
+          if (wasNew) return;
+          for (const [partner, who] of leaving) {
+            ptAccessPost({ takeOff: { record: slugToSave, partner, sha: shaRef.current } }).catch((e) => ({ success: false, error: e.message })).then((r) => {
+              if (!r.success) { addToast(`Couldn’t take ${who} off the job: ${r.error}. Check this page’s Vendors list.`, 'error'); return; }
+              if (r.result?.sha) setSha(r.result.sha);
+              setVendorsStamp((n) => n + 1);
+            });
+          }
+        };
         if (!wasNew && jobId && (out.sponsors.join(',') !== sponsorsBefore.join(',') || (out.sponsors.length && behind))) {
           sponsor.sync(sponsorsBefore).then((r) => {
+            sponsorsOff();
             if (!r.success) { addToast(`Saved, but JobTread wasn’t updated: ${r.error}`, 'error'); return; }
             const said = kdSponsorSyncSaid(r);
             // JobTread changes straight away, so no "when you publish" here
             if (said) addToast(said, 'success', { label: 'Open the job', fn: () => window.open(JT_JOB_URL(jobId), '_blank', 'noopener') });
             if (r.problems?.length) addToast(r.problems.join(' '), 'error');
           });
-        }
+        } else sponsorsOff();
         try { localStorage.removeItem(draftKey); } catch {}
         setDraft(null);
         addToast(out.publishStatus === 'draft' ? `${out.name} saved. Hidden from the site until you switch on “Show on Meet the Kids”.` : `${out.name} saved. The site shows it after you publish.`, 'success');
@@ -12071,6 +12131,7 @@
             <button type="button" class="btn btn-ghost btn-sm" onClick=${() => { logoFor.current = null; logoInput.current?.click(); }}>${kdIcon.upload} Upload a logo</button>
             <input type="file" accept="image/*" hidden ref=${logoInput} onChange=${(e) => { addLogo([...e.target.files], logoFor.current); logoFor.current = null; e.target.value = ''; }} />`,
           html`
+          ${slug ? html`<${KdVendors} record=${slug} stamp=${vendorsStamp} ed=${takeOffEd()} addToast=${addToast} />` : null}
           <${KdLogoWaiting} record=${slug} logos=${data.partnerLogos} onUpload=${(name) => { logoFor.current = name; logoInput.current?.click(); }} />
           <div class="kd-combobox ppl-combobox">
             <label class="sr-only" for="kd-partner-q">Add a partner from the directory</label>
@@ -12515,6 +12576,130 @@
       const b = Math.max(...ys);
       return a === b ? `${a}` : `${a}–${b}`;
     };
+    /** After a company is taken off a makeover: what JobTread did, and anyone still on the job */
+    const kdSayTakenOff = (res, lead, addToast, undo = null) => {
+      const off = (res.taken || []).flatMap((t) => t.people || []);
+      const unknown = (res.skipped || []).filter((s) => s.why === 'unknown').map((s) => s.name);
+      const sponsor = (res.skipped || []).filter((s) => s.why === 'sponsor').map((s) => s.name);
+      const job = !res.job ? 'Their job isn’t open in JobTread, so nothing changes there.'
+        : off.length ? `${kdNames(off)} ${off.length === 1 ? 'is' : 'are'} off the job and won’t get the reveal invite.`
+        : res.pending?.length || res.left?.length || unknown.length ? ''
+        : 'Nobody from them was on the job.';
+      // Only the sponsor was asked about, and nothing moved
+      if (!(sponsor.length && !res.taken?.length && !res.removed?.length)) addToast(`${lead} ${job}`.trim(), 'success', undo);
+      for (const l of res.left || []) addToast(`${kdNames(l.people)} ${l.people.length === 1 ? 'is' : 'are'} still on the job: the site can’t be sure they’re with ${l.name}. Take them off in JobTread if they are.`, 'error');
+      if (res.pending?.length) addToast(`JobTread didn’t answer for ${kdNames(res.pending)}. The site keeps trying, so they’ll come off the job on their own.`, 'info');
+      if (unknown.length) addToast(`The site can’t tell who ${kdNames(unknown)} is, so nobody came off the job. If they’re on it, take them off in JobTread.`, 'info');
+      if (sponsor.length) addToast(`${kdNames(sponsor)} is this kid’s monetary sponsor. Change that in the Monetary sponsor card.`, 'info');
+    };
+    /**
+     * Take a company off this makeover from its page in the admin. It happens now, in one request (the
+     * logo and the job), so the editor is put in step: nothing is left for Save to do. Undo and the list's Put back
+     * are one action on the server, from what it wrote down. ed: { record, sha(), setSha, setBase, set, reload, addToast }.
+     * body: { logos } or { partner } or { account, name }.
+     */
+    async function kdTakeOffNow(ed, body, who) {
+      const r = await ptAccessPost({ takeOff: { record: ed.record, ...body, sha: ed.sha() } }).catch((e) => ({ success: false, error: e.message }));
+      if (!r.success) { ed.addToast(`Couldn’t take ${who} off: ${r.error}${r.unchanged ? ' Nothing changed.' : ' Check the Vendors list in a minute.'}`, 'error'); return false; }
+      const res = r.result || {};
+      const removed = res.removed || [];
+      // A logo the server left alone (a sponsor's) stays; one a stale tab still shows goes
+      const gone = new Set([...removed.map((l) => l.url), ...(res.skipped?.some((x) => x.why === 'sponsor') ? [] : (body.logos || []).map((l) => l.url))]);
+      ed.set((d) => ({ partnerLogos: d.partnerLogos.filter((l) => !gone.has(l.url)) }));
+      ed.setBase((b) => { const d = JSON.parse(b || '{}'); return JSON.stringify({ ...d, partnerLogos: (d.partnerLogos || []).filter((l) => !gone.has(l.url)) }); });
+      if (res.sha) ed.setSha(res.sha);
+      ed.reload();
+      kdSayTakenOff(res, removed.length ? `${who} is off this page. Publish to update the site.` : `${who} is off this makeover.`, ed.addToast, res.who?.length || removed.length ? { label: 'Undo', fn: () => kdPutBackNow(ed, res.who || [], who, res.who?.length ? [] : removed, true) } : null);
+      return true;
+    }
+    /** Undo, or Put back in the Vendors list: the logos go back where they were, and whoever came off goes back on the job */
+    async function kdPutBackNow(ed, whoKeys, who, loose = [], undo = false) {
+      const r = await ptAccessPost({ putBack: { record: ed.record, who: whoKeys, logos: loose, sha: ed.sha(), undo } }).catch((e) => ({ success: false, error: e.message }));
+      if (!r.success) { ed.addToast(`Couldn’t put ${who} back: ${r.error}`, 'error'); return false; }
+      const res = r.result || {};
+      const logos = res.logos || [];
+      const into = (list) => { const out = [...(list || [])]; for (const l of [...logos].sort((a, b) => a.at - b.at)) if (!out.some((x) => x.url === l.url)) out.splice(Math.min(l.at, out.length), 0, { url: l.url, name: l.name }); return out; };
+      ed.set((d) => ({ partnerLogos: into(d.partnerLogos).map((l) => (l._key ? l : { ...l, _key: l.url })) }));
+      ed.setBase((b) => { const d = JSON.parse(b || '{}'); return JSON.stringify({ ...d, partnerLogos: into(d.partnerLogos) }); });
+      if (res.sha) ed.setSha(res.sha);
+      ed.reload();
+      const said = res.back?.length ? `${kdNames(res.back)} ${res.back.length === 1 ? 'is' : 'are'} back on the job${logos.length ? ', and the logo’s back on the page' : ''}.` : logos.length ? 'The logo’s back on the page.' : '';
+      if (said) ed.addToast(said, 'success');
+      if (res.pending?.length) ed.addToast(`JobTread didn’t take all of ${kdNames(res.pending)}. The site keeps trying.`, 'info');
+      if (!said && !res.pending?.length) ed.addToast(`Nobody to put back: ${who} had nobody on the job.`, 'info');
+      return true;
+    }
+    /** Logos just saved on a page go on the job now; the sweep would get there within 15 minutes */
+    const kdAddToJob = (record, logos, addToast, reload) => {
+      if (!logos.length) return;
+      ptAccessPost({ addToJob: { record, logos: logos.map(({ url, name }) => ({ url, name })) } }).catch((e) => ({ success: false, error: e.message })).then((r) => {
+        if (!r.success) { addToast(`Saved, but JobTread wasn’t told (${r.error}). Check this page’s Vendors list.`, 'error'); reload(); return; }
+        const { added = [] } = r.result || {};
+        if (added.length) addToast(`${kdNames(added)} ${added.length === 1 ? 'is' : 'are'} on the JobTread job now.`, 'success');
+        reload();
+      });
+    };
+    /** One makeover's vendors, read from JobTread as it's opened: who's on the page, the job and the reveal invite, and the way to change it */
+    function KdVendors({ record, stamp, ed, addToast }) {
+      const [view, setView] = useState(null);
+      const [failed, setFailed] = useState(null);
+      const [q, setQ] = useState('');
+      const [busy, setBusy] = useState(null);
+      const read = () => fetch(`${PT_ACCESS_API}?record=${encodeURIComponent(record)}`, { cache: 'no-store' }).then((r) => r.json())
+        .then((j) => { if (!j.success) throw new Error(j.error || 'Couldn’t load'); setView(j); setFailed(null); }).catch((e) => setFailed(e.message));
+      useEffect(() => { read(); }, [record, stamp]);
+      if (failed && !view) return html`<p class="form-hint kd-vendors">Couldn’t read this job from JobTread just now, so the vendors list isn’t showing. Logos below still work.</p>`;
+      if (!view?.job) return null;
+      const off = async (row) => {
+        const who = row.name;
+        if (!(await ask({ title: `Take ${who} off this makeover?`, yes: 'Take them off', danger: true,
+          text: 'Their logo comes off this page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there. Nothing changes on their other makeovers.' }))) return;
+        setBusy(row.who);
+        await kdTakeOffNow(ed, row.partner ? { partner: row.partner } : { account: row.account, name: row.name }, who);
+        setBusy(null);
+        read();
+      };
+      const putBack = async (row) => {
+        setBusy(row.who);
+        await kdPutBackNow(ed, [row.who], row.name);
+        setBusy(null);
+        read();
+      };
+      const add = async (t) => {
+        setBusy(t.id);
+        const r = await ptAccessPost({ addToJob: { record, account: t.id, name: t.name } }).catch((e) => ({ success: false, error: e.message }));
+        setBusy(null);
+        setQ('');
+        if (!r.success) { addToast(`Couldn’t add ${t.name}: ${r.error}`, 'error'); return; }
+        const { added = [], waiting = [] } = r.result || {};
+        if (added.length) addToast(`${kdNames(added)} ${added.length === 1 ? 'is' : 'are'} on the JobTread job now.`, 'success');
+        if (waiting.length) addToast(`${t.name} has no contact with an email in JobTread, so nobody could be added.`, 'error');
+        read();
+      };
+      const words = q.trim().toLowerCase();
+      const matches = words ? (view.trade || []).filter((t) => t.name.toLowerCase().includes(words)).slice(0, 5) : [];
+      const side = (on, yes, no) => html`<span class=${`tag ${on ? '' : 'text-muted'}`}>${on ? yes : no}</span>`;
+      return html`<div class="kd-vendors">
+        <h4>Vendors on this makeover</h4>
+        ${view.rows.length ? html`<ul class="kd-vendors__list">${view.rows.map((r) => html`<li key=${r.who} class="kd-vendor">
+          <span class="kd-vendor__who"><strong>${r.name}</strong>
+            <small>${r.off ? `Taken off this makeover${r.onPage ? ', but their logo is on the page' : ''}${r.people.length ? `. ${r.people.map((p) => p.name).join(', ')} still on the job` : ''}` : r.gone ? `Left the job in JobTread${r.onPage ? ': their logo stays until the site’s sure' : ''}` : r.people.length ? r.people.map((p) => `${p.name}${p.role ? `, ${p.role}` : ''}`).join(' · ') : r.noEmail ? 'No contact with an email yet' : 'Nobody on the job yet'}</small></span>
+          ${r.off ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} aria-label=${`Put ${r.name} back on this makeover`} onClick=${() => putBack(r)}>
+            ${busy === r.who ? html`<span class="spinner spinner-14" />` : null} Put back</button>` : html`<span class="kd-vendor__sides">
+            ${side(r.onPage, 'On the page', 'No logo')}${side(r.onJob, 'On the job', 'Not on the job')}${r.onInvite === null ? null : side(r.onInvite, 'On the invite', 'Not on the invite')}</span>
+          ${r.partner || r.account ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} aria-label=${`Take ${r.name} off this makeover`} onClick=${() => off(r)}>
+            ${busy === r.who ? html`<span class="spinner spinner-14" />` : null} Take off</button>` : html`<small class="text-muted">Take them off in JobTread</small>`}`}
+        </li>`)}</ul>` : html`<p class="form-hint">No vendors on this job yet.</p>`}
+        ${view.trade?.length ? html`<div class="kd-vendor__add">
+          <label class="sr-only" for=${`kd-trade-${record}`}>Add a trade partner to this job</label>
+          <input id=${`kd-trade-${record}`} class="form-input" type="search" placeholder="Add a trade partner to this job" value=${q} onInput=${(e) => setQ(e.target.value)} />
+          ${matches.length ? html`<ul>${matches.map((t) => html`<li key=${t.id}><button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => add(t)}>
+            ${busy === t.id ? html`<span class="spinner spinner-14" />` : null} Add ${t.name}</button></li>`)}</ul>` : null}
+        </div>` : null}
+        ${view.history?.length ? html`<details class="kd-vendors__log"><summary>Recent changes</summary><ul>${view.history.map((h, i) => html`<li key=${i}>
+          ${h.name} ${h.action === 'added' ? 'added' : h.action === 'would-remove' ? 'left the job, logo would come off' : 'taken off'} ${h.side === 'jobtread' ? 'in JobTread' : h.side === 'bill' ? 'for a bill or purchase order' : 'on the website'}${h.by ? ` by ${h.by}` : ''} · ${kdWhen(h.at)}</li>`)}</ul></details>` : null}
+      </div>`;
+    }
     const ptKidsLine = (list) => (list?.length ? `On ${kdPlural(list.length, 'kid page')}${ptYears(list) ? ` (${ptYears(list)})` : ''}` : '');
     const ptWebShown = (url) => { const w = PS.normalizeWebsite(url); return w.ok && w.url ? PS.domainOf(w.url) : ''; };
 
@@ -13470,7 +13655,7 @@
       if (view.failed) return html`<${KdDialog} title=${title} size="lg" onClose=${onClose}>
         <p class="kd-bad pt-wait__error">Couldn’t load the list: ${view.failed}</p>
         <button type="button" class="btn btn-sm" onClick=${() => onChange(null)} data-autofocus>Try again</button><//>`;
-      const { waiting = [], near = [], added = [], setAside: aside = [], matched = [], loose = [], billedOnly = [], twins = [], combined = [], jtOnly = [] } = view;
+      const { waiting = [], near = [], added = [], takenOff = [], watch = {}, held = [], setAside: aside = [], matched = [], loose = [], billedOnly = [], twins = [], combined = [], jtOnly = [] } = view;
       const roles = view.roles || { on: false, pending: [], unplaced: [], recent: [] };
       const toggle = (k) => setShowRoles((v) => (v === k ? null : k));
       const PT_ROLE_WHY = { level: 'their level', trade: 'SOARD pays them', staff: 'staff said', 'set back': 'set back: changed in JobTread' };
@@ -13499,7 +13684,7 @@
         </span>`}
       </li>`;
       return html`<${KdDialog} title=${title}
-        sub=${`Each open job lists its vendors in JobTread: companies with a logo on the page, and trade partners with a bill or purchase order there (never a card purchase or a materials supplier). They’re added without JobTread’s email, with their Partners level as their role (Trade Partner when SOARD pays them), and their contacts kept the same in Partners and JobTread.`}
+        sub=${`Each open job lists its vendors in JobTread: companies with a logo on the page, and trade partners with a bill or purchase order there (never a card purchase or a materials supplier). They’re added without JobTread’s email, with their Partners level as their role (Trade Partner when SOARD pays them), and their contacts kept the same in Partners and JobTread. To add or take off a company on one makeover, use that makeover’s Vendors list in Kids, or the job in JobTread. The other side follows.`}
         size="lg" onClose=${onClose} busy=${!!busy}>
         ${view.lastError ? html`<p class="kd-bad pt-wait__error">The last check ${kdWhen(view.lastError.at)} hit a problem: ${view.lastError.error}. It tries again every 15 minutes.</p>` : null}
         ${near.length ? html`<section class="pt-access" aria-labelledby="pt-access-near">
@@ -13605,6 +13790,29 @@
             ${kdPlural(added.length, 'person', 'people')} put on jobs lately</button>
           ${showAdded ? html`<ul>${added.map((a) => html`<li key=${`${a.jobId}-${a.company}`}><span>${a.person || a.name}${a.person && a.person !== a.name ? ` for ${a.name}` : ''} <small>on the job for ${a.page} · ${a.kept && a.role ? `kept their ${a.role} role` : `as ${ptA(a.role || 'Vendor')}`} · ${kdWhen(a.at)}</small></span>
             <a class="btn btn-ghost btn-sm" href=${ptJobUrl(a.jobId)} target="_blank" rel="noopener">Open the job</a></li>`)}</ul>` : null}
+        </div>` : null}
+        <div class="pt-loose__dismissed">
+          <p class="form-hint">${watch.on ? 'Taken off a job in JobTread, a company’s logo comes off the page.' : 'Watching: a company taken off a job in JobTread stays off it, but its logo stays on the page until this is turned on.'}</p>
+          <button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => act('watch', { watch: { on: !watch.on } }, () => addToast(watch.on ? 'Back to watching: logos stay on their pages' : 'On: JobTread removals now take logos off pages', 'info'))}>${watch.on ? 'Go back to watching' : 'Turn on'}</button>
+          ${watch.list?.length ? html`<button type="button" class="ppl-link" aria-expanded=${showRoles === 'watch'} onClick=${() => toggle('watch')}>${kdPlural(watch.list.length, 'logo')} would have come off</button>
+          ${showRoles === 'watch' ? html`<ul>${watch.list.map((w) => html`<li key=${`${w.record}-${w.name}`}><span>${w.name} <small>left the job for ${w.page} in JobTread · ${kdWhen(w.at)}</small></span>
+            <a class="btn btn-ghost btn-sm" href=${ptRecordHash(w.record)}>Open the page</a></li>`)}</ul>` : null}` : null}
+        </div>
+        ${held.length ? html`<div class="pt-loose__dismissed">
+          <button type="button" class="ppl-link" aria-expanded=${showRoles === 'held'} onClick=${() => toggle('held')}>
+            ${kdPlural(held.length, 'company', 'companies')} left jobs in JobTread at once</button>
+          ${showRoles === 'held' ? html`<p class="form-hint">Their logos stay on the page until someone looks. If it’s real, open the page and use Take off in its Vendors list. If it isn’t, add them back in JobTread.</p>
+            <ul>${held.map((h) => html`<li key=${`${h.record}-${h.name}`}><span>${h.name} <small>${h.page} · ${kdWhen(h.at)}</small></span>
+              <a class="btn btn-ghost btn-sm" href=${ptRecordHash(h.record)}>Open the page</a></li>`)}</ul>` : null}
+        </div>` : null}
+        ${takenOff.length ? html`<div class="pt-loose__dismissed">
+          <button type="button" class="ppl-link" aria-expanded=${showRoles === 'taken'} onClick=${() => toggle('taken')}>
+            ${kdPlural(takenOff.length, 'company', 'companies')} taken off lately</button>
+          ${showRoles === 'taken' ? html`<p class="form-hint">Put them back on the page or the job and the other follows.</p>
+            <ul>${takenOff.map((t) => html`<li key=${`${t.at}-${t.record}-${t.name}`}><span>${t.name} <small>${t.how === 'page'
+              ? `taken off ${t.page}${t.people?.length ? `, so ${kdNames(t.people)} came off the job` : ''}`
+              : t.kept ? `taken off the job for ${t.page} in JobTread` : `taken off the job in JobTread, so the logo came off ${t.page}`} · ${kdWhen(t.at)}</small></span>
+              <a class="btn btn-ghost btn-sm" href=${ptRecordHash(t.record)}>Open the page</a></li>`)}</ul>` : null}
         </div>` : null}
         ${matched.length ? html`<div class="pt-loose__dismissed pt-access__matched">
           <button type="button" class="ppl-link" aria-expanded=${showMatched} onClick=${() => setShowMatched((v) => !v)}>
@@ -14309,8 +14517,11 @@
       const d = PS.withDefaults(data);
       const level = PS.levelOf(d.level);
       const usageAll = useMemo(() => PS.kidUsage(kids, base ? [...others, base] : others), [kids, others, base]);
+      const [takingOff, setTakingOff] = useState(null);
       const kidsOn = usageAll.byPartner.get(slug) || [];
       const kidBySlug = useMemo(() => new Map(kids.map((k) => [k.slug, k])), [kids]);
+      // Every makeover but their sponsorship (that's changed on the kid's page)
+      const canTakeOff = (k) => { const kid = kidBySlug.get(k.slug); return !!kid && !(kid.sponsors || []).includes(slug); };
       const olderLogos = base?.logo ? [...new Set(kidsOn.filter((k) => PS.cfId(k.url) !== PS.cfId(base.logo)).map((k) => k.url))] : [];
       const olderCount = base?.logo ? kidsOn.filter((k) => PS.cfId(k.url) !== PS.cfId(base.logo)).length : 0;
       const logoState = usePtLogoState(data.logo && !kdLocal(data.logo) ? [data.logo] : []);
@@ -14413,6 +14624,25 @@
           }
         } catch (e) { addToast(`Couldn’t crop it: ${e.message}`, 'error'); }
         setUploading(false);
+      };
+      // One makeover: one request takes their logo off that page and them off the job, bill or not; the reveal invite follows the job
+      const takeOffJob = async (k) => {
+        const who = base?.name || data.name;
+        const kidName = ptPoss(k.name);
+        if (!(await ask({ title: `Take ${who} off ${kidName} makeover?`, danger: true, yes: 'Take them off',
+          text: `Their logo comes off ${kidName} page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there. Nothing changes on their other makeovers.` }))) return;
+        setTakingOff(k.slug);
+        const r = await ptAccessPost({ takeOff: { record: k.slug, partner: slug } }).catch((e) => ({ success: false, error: e.message }));
+        setTakingOff(null);
+        if (!r.success) { addToast(`Couldn’t take ${who} off: ${r.error}${r.unchanged ? ' Nothing changed.' : ' Check that makeover’s Vendors list in a minute.'}`, 'error'); return; }
+        const res = r.result || {};
+        const undo = res.who?.length || res.removed?.length ? { label: 'Undo', fn: async () => {
+          const back = await ptAccessPost({ putBack: { record: k.slug, who: res.who || [], logos: res.who?.length ? [] : res.removed, undo: true } }).catch((e) => ({ success: false, error: e.message }));
+          addToast(!back.success ? `Couldn’t put them back: ${back.error}` : back.result?.pending?.length ? `${who} is back on ${kidName} page. JobTread didn’t take everyone, and the site keeps trying.` : `${who} is back on ${kidName} page and the job`, back.success ? 'success' : 'error');
+          onReload?.();
+        } } : null;
+        kdSayTakenOff(res, `${who} is off ${kidName} page. Publish to update the site.`, addToast, undo);
+        onReload?.();
       };
       const switchKidPages = async (froms, to) => {
         setSwapping(true);
@@ -14676,7 +14906,7 @@
               </div>
             </div>
           `)}
-          ${sec('kids', 'Kid pages', kidsOn.length ? `Builds that show their logo, newest first. Open one to edit that kid’s page.` : null, html`
+          ${sec('kids', 'Kid pages', kidsOn.length ? `Builds that show their logo, newest first. Open one to edit that kid’s page.${kidsOn.some((k) => canTakeOff(k)) ? ' To take them off one makeover, use Take off this job: they leave the page, the JobTread job and the reveal invite together. Removing them from the job in JobTread does the same.' : ''}` : null, html`
             ${olderCount ? html`<div class="kd-note pt-older">
               <span>${ptIcon.swap}</span>
               <p><strong>${kdPlural(olderCount, 'page')} ${olderCount === 1 ? 'shows' : 'show'} an older logo of theirs.</strong> Switch ${olderCount === 1 ? 'it' : 'them'} to the current one so every page matches.</p>
@@ -14693,6 +14923,8 @@
                       : html`<span class="pt-kid__img kd-thumb--empty" aria-hidden="true">${ptIcon.kids}</span>`}
                     <span class="pt-kid__text"><strong>${k.name}</strong><small>${[k.year, old ? 'older logo' : null].filter(Boolean).join(' · ')}</small></span>
                   </button>
+                  ${canTakeOff(k) ? html`<button type="button" class="btn btn-ghost btn-sm pt-kid__off" disabled=${!!takingOff} aria-label=${`Take ${base?.name || data.name} off ${ptPoss(k.name)} job`} onClick=${() => takeOffJob(k)}>
+                    ${takingOff === k.slug ? html`<span class="spinner spinner-14" />` : null} Take off this job</button>` : null}
                 </li>`;
               })}
             </ul>
@@ -19371,8 +19603,11 @@ ${sections || '<p>No one yet.</p>'}
         return partners.filter((p) => p.logo && p.name.toLowerCase().includes(q))
           .sort((a, b) => (a.name.toLowerCase().startsWith(q) ? 0 : 1) - (b.name.toLowerCase().startsWith(q) ? 0 : 1) || a.name.localeCompare(b.name)).slice(0, 8);
       }, [partnerQuery, partners]);
+      // Logos a person added here: only those go on the job at Save. One that returns with a restored draft or History isn't an add
+      const addedHere = useRef(new Set());
       const addPartner = (p) => {
         if (!p || linked.has(p.logo)) return;
+        addedHere.current.add(p.logo);
         set((d) => ({ partnerLogos: [...d.partnerLogos, { url: p.logo, name: p.name, _key: p.logo }] }));
         setPartnerQuery('');
         setPartnerOpen(false);
@@ -19389,15 +19624,29 @@ ${sections || '<p>No one yet.</p>'}
         const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
         await kdUploadAll([{ file, key }], {
           idFor: (x) => `community/${folder}/partner-${Date.now()}-${x.name.replace(/[^a-z0-9.]/gi, '-')}`,
-          onDone: (_, url) => set((d) => ({ partnerLogos: d.partnerLogos.map((l) => (l._key === key ? { url, name: l.name, _key: key } : l)) })),
+          onDone: (_, url) => { addedHere.current.add(url); set((d) => ({ partnerLogos: d.partnerLogos.map((l) => (l._key === key ? { url, name: l.name, _key: key } : l)) })); },
           onFail: (_, err) => { addToast(`Upload failed: ${err}`, 'error'); set((d) => ({ partnerLogos: d.partnerLogos.filter((l) => l._key !== key) })); },
         });
         URL.revokeObjectURL(local);
         setUploads((u) => { const n = { ...u }; delete n[key]; return n; });
         addToast(named ? `${named}’s logo added. Save to put it on the page.` : 'Logo added. Check the name: screen readers read it.', 'success');
       };
-      const removeLogo = (key) => {
+      // A logo deleted here is the company off the page and the job, both, now, in one request
+      const [vendorsStamp, setVendorsStamp] = useState(0);
+      const shaRef = useRef(sha);
+      shaRef.current = sha;
+      const takeOffEd = () => ({ record: `community/${slug}`, sha: () => shaRef.current, setSha, setBase, set, addToast, reload: () => { history.reload(); setVendorsStamp((n) => n + 1); } });
+      const removeLogo = async (key) => {
         const prev = dataRef.current.partnerLogos;
+        const logo = prev.find((l) => l._key === key);
+        const inSaved = () => JSON.parse(base || '{}').partnerLogos || [];
+        const company = kdLogoPartner(logo?.url, partners);
+        const who = logo?.name?.trim() || company?.name || '';
+        if (who && slug && inSaved().some((l) => l.url === logo.url) && !(dataRef.current.sponsors || []).includes(company?.slug)) {
+          if (await ask({ title: `Take ${who} off this makeover?`, yes: 'Take them off', danger: true,
+            text: 'Their logo comes off this page, and they come off the JobTread job and the reveal invite, even with a bill or purchase order there.' })) await kdTakeOffNow(takeOffEd(), { logos: [{ url: logo.url, name: who }] }, who);
+          return;
+        }
         set((d) => ({ partnerLogos: d.partnerLogos.filter((l) => l._key !== key) }));
         addToast('Logo removed.', 'info', { label: 'Undo', fn: () => set({ partnerLogos: prev }) });
       };
@@ -19463,10 +19712,13 @@ ${sections || '<p>No one yet.</p>'}
           } else addToast(`Couldn’t save: ${res.error}`, 'error');
           return;
         }
+        const newLogos = (out.partnerLogos || []).filter((l) => addedHere.current.has(l.url) && !(JSON.parse(base || '{}').partnerLogos || []).some((x) => x.url === l.url));
+        addedHere.current.clear();
         setSha(res.sha);
         setBase(JSON.stringify(out));
         set({ slug: slugToSave });
         history.reload();
+        if (!wasNew) kdAddToJob(`community/${slugToSave}`, newLogos, addToast, () => setVendorsStamp((n) => n + 1));
         try { localStorage.removeItem(draftKey); } catch {}
         setDraft(null);
         addToast(out.publishStatus === 'draft' ? `${out.name} saved. Hidden from the site until you switch on “Show on the Community page”.` : `${out.name} saved. The site shows it after you publish.`, 'success');
@@ -19968,6 +20220,7 @@ ${sections || '<p>No one yet.</p>'}
             <button type="button" class="btn btn-ghost btn-sm" onClick=${() => { logoFor.current = null; logoInput.current?.click(); }}>${kdIcon.upload} Upload a logo</button>
             <input type="file" accept="image/*" hidden ref=${logoInput} onChange=${(e) => { addLogo([...e.target.files], logoFor.current); logoFor.current = null; e.target.value = ''; }} />`,
           html`
+          ${slug ? html`<${KdVendors} record=${`community/${slug}`} stamp=${vendorsStamp} ed=${takeOffEd()} addToast=${addToast} />` : null}
           <${KdLogoWaiting} record=${slug ? `community/${slug}` : null} logos=${data.partnerLogos} onUpload=${(name) => { logoFor.current = name; logoInput.current?.click(); }} />
           <div class="kd-combobox ppl-combobox">
             <label class="sr-only" for="cm-partner-q">Add a partner from the directory</label>

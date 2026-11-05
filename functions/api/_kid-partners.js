@@ -11,7 +11,15 @@
  *     person's email domain), else one already on another page under that
  *     name
  *   - a logo the page already shows (same image, upload folder or name) is
- *     left as it is, and one staff take off is never put back
+ *     left as it is
+ *   - on the job means on the page (Peter, Nov 5 2026: "if its added its
+ *     added, if its deleted its deleted"): a logo gone from the page while the
+ *     company is on the job goes back at the next check. Deleting a logo on the
+ *     website takes the company off the job too (./_vendor-access.js), so the
+ *     logo only ever stays away with the company, and comes back with it. A
+ *     delete that couldn't move anyone ('off': someone the site can't be sure
+ *     is theirs, a logo nobody can name, or no open job) stays deleted until
+ *     they're gone from the job or a person adds them
  * When there's no logo anywhere, the staff in Partners → Waiting for a logo
  * (Linzi to start with) get one email per company per page: the company, the
  * person's name and email, their role, and the kid. Once a logo is in
@@ -48,7 +56,8 @@ const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '');
 
 const SCHEMA = [
   // One row per company per page. state: 'added' (the sync put the logo on), 'there'
-  // (the page had it already), 'waiting' (no logo anywhere yet) or 'dismissed' (no logo needed)
+  // (the page had it already), 'waiting' (no logo anywhere yet), 'dismissed' (no logo needed)
+  // or 'off' (deleted on the website, with nobody the site could move off the job)
   `CREATE TABLE IF NOT EXISTS kid_partner_logos (
     record TEXT NOT NULL, company TEXT NOT NULL, name TEXT, people TEXT, job_id TEXT,
     state TEXT NOT NULL, partner TEXT, logo TEXT, hint TEXT,
@@ -102,6 +111,41 @@ export async function readLinks(DB) {
   const v = parse(row?.value || '{}', {});
   return v && typeof v === 'object' && !Array.isArray(v) ? v : {};
 }
+/**
+ * A company has left this page and its job: the rows that said it was done with go, so it's new
+ * again if it comes back. Found by partner or name, or by anyone in it when it has no partner (two
+ * partners can share someone); "No logo needed" stands.
+ */
+export async function forgetCompany(DB, record, { partner = null, names = [], emails = [] } = {}) {
+  await ensureSchema(DB);
+  const keys = new Set(names.map(nameKey).filter(Boolean));
+  const mail = new Set(emails.map((e) => String(e || '').trim().toLowerCase()).filter(Boolean));
+  const rows = (await DB.prepare("SELECT company, partner, people FROM kid_partner_logos WHERE record = ? AND state IN ('added', 'there', 'off')").bind(record).all()).results || [];
+  for (const r of rows) {
+    const theirs = (partner && r.partner === partner) || keys.has(r.company) || (!r.partner && (parse(r.people || '[]', []) || []).some((p) => p?.email && mail.has(p.email)));
+    if (theirs) await DB.prepare('DELETE FROM kid_partner_logos WHERE record = ? AND company = ?').bind(record, r.company).run();
+  }
+}
+
+async function sawOnJob(DB, { jobId, partner, record, name, people, at, again = false }) {
+  await DB.prepare(`INSERT INTO vendor_job_seen (job_id, who, record, name, partner, people, logos, took, left_on, updated_at) VALUES (?, ?, ?, ?, ?, ?, '[]', '[]', '[]', ?)
+    ON CONFLICT (job_id, who) DO UPDATE SET people = excluded.people WHERE vendor_job_seen.people = '[]' AND vendor_job_seen.off IS NULL`).bind(jobId, `p:${partner}`, record, name, partner, JSON.stringify(people), at).run().catch(() => {});
+  // A logo going back isn't news of someone joining: they were on the job already
+  if (!again) await DB.prepare("INSERT INTO vendor_job_log (record, at, action, side, name, people) VALUES (?, ?, 'added', 'jobtread', ?, ?)").bind(record, at, name, JSON.stringify(people.map((p) => p.email))).run().catch(() => {});
+}
+
+/**
+ * Who's off a job right now, on either side (./_vendor-access.js): job id → [{ partner, company }]. Read after
+ * the jobs are, so a take-off under way is seen. Their logo waits: the vendor sweep says when they're back.
+ */
+async function offJobs(DB) {
+  const byJob = new Map();
+  let rows = [];
+  try { rows = (await DB.prepare('SELECT job_id, name, partner FROM vendor_job_seen WHERE off IS NOT NULL').all()).results || []; } catch { /* no table until that feature's first run */ }
+  for (const r of rows) byJob.set(r.job_id, [...(byJob.get(r.job_id) || []), { partner: r.partner, company: nameKey(r.name) }]);
+  return byJob;
+}
+
 /** "Same as": this company is that partner, here and on every job after. partner null unlinks it. */
 export async function setLink(DB, { company, partner }) {
   const links = await readLinks(DB);
@@ -138,7 +182,8 @@ export async function saveSettings(DB, { emails }, by = null, now = Date.now()) 
 // access only for the jobs with a page, three jobs a request, each the size
 // the reveal invites read one job with. Three × 50 passes even the limit
 // JobTread holds a request with no key to (four didn't, Oct 28 2026).
-const ACCESS = { $: { size: 50 }, nodes: { membership: { isInternal: {}, role: { name: {} }, account: { id: {}, name: {} }, user: { name: {}, emailAddress: {} } } } };
+const ACCESS_PAGE = 50;
+const ACCESS = { $: { size: ACCESS_PAGE }, nextPage: {}, nodes: { membership: { id: {}, isInternal: {}, role: { name: {} }, account: { id: {}, name: {} }, user: { name: {}, emailAddress: {} } } } };
 const ACCESS_PER_REQUEST = 3;
 async function pave(grantKey, query, fetchImpl) {
   const res = await fetchImpl(JT_URL, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: { $: { grantKey }, ...query } }) });
@@ -174,6 +219,18 @@ export async function fetchAccess(grantKey, ids, fetchImpl = fetch) {
       if (!aces) throw new Error(`JobTread sent no access list for job ${id}`);
       out.set(id, aces);
     });
+    // A job past one page: the rest of it, so nobody past the first 50 looks gone
+    for (const id of chunk) {
+      const aces = out.get(id);
+      const nodes = [...(aces.nodes || [])];
+      for (let page = aces.nextPage; page;) {
+        const more = (await pave(grantKey, { job: { $: { id }, id: {}, aces: { ...ACCESS, $: { size: ACCESS_PAGE, page } } } }, fetchImpl))?.job?.aces;
+        if (!more) throw new Error(`JobTread sent no access list for job ${id}`);
+        nodes.push(...(more.nodes || []));
+        page = more.nextPage || null;
+      }
+      out.set(id, { ...aces, nodes });
+    }
   }
   return out;
 }
@@ -196,6 +253,7 @@ export function jobCompanies(job, who = new Map()) {
     if (!company) continue;
     const c = out.get(company) || { company, name, people: [], ...(known?.partner ? { partner: known.partner } : {}) };
     if (!c.people.some((p) => p.email === email && p.role === role)) c.people.push({ name: String(m.user?.name || '').trim() || null, email: isEmail(email) ? email : null, role });
+    if (m.id) c.seen = [...(c.seen || []), { id: m.id, email }];
     out.set(company, c);
   }
   return [...out.values()];
@@ -389,7 +447,7 @@ export async function syncKidPartners(env, { fetchImpl = fetch, now = Date.now()
       for (const [key, job] of links) {
         // Someone on the job for a bill alone (./_vendor-access.js) doesn't bring a logo with them
         const companies = jobCompanies({ aces: access.get(job.id) }, who).filter((c) => !c.people.every((p) => p.email && quiet.has(`${job.id} ${p.email}`)));
-        work.set(key, { rec: byKey.get(key), jobId: job.id, companies, seen: true });
+        work.set(key, { rec: byKey.get(key), jobId: job.id, companies, seen: true, listed: !!access.get(job.id)?.nodes?.length });
       }
     } else {
       for (const r of rows.values()) {
@@ -400,6 +458,7 @@ export async function syncKidPartners(env, { fetchImpl = fetch, now = Date.now()
       }
     }
 
+    const off = await offJobs(env.DB);
     const out = [];
     const toEmail = [];
     for (const [key, w] of work) {
@@ -408,17 +467,19 @@ export async function syncKidPartners(env, { fetchImpl = fetch, now = Date.now()
       const logos = [];
       for (const c of w.companies) {
         const was = rows.get(rowKey(key, c.company));
-        // Done with: on the page by us or by staff, or set aside. One taken off stays off.
-        if (was && was.state !== 'waiting') {
+        const done = !!was && was.state !== 'waiting';
+        const { logo, hint } = findLogo(c, index);
+        // Done with: on the page, or set aside. On the job and gone from the page, it goes back
+        if (done && (was.state === 'dismissed' || was.state === 'off' || pageHas(w.rec.data, c, logo, partners))) {
           if (JSON.stringify(was.people) !== JSON.stringify(c.people) && fromJobTread) await putRow(env.DB, { ...was, people: c.people, updated_at: iso });
           continue;
         }
-        const { logo, hint } = findLogo(c, index);
+        if ((off.get(w.jobId) || []).some((o) => (o.partner && o.partner === logo?.partner) || o.company === c.company)) continue;
         const base = { record: key, company: c.company, name: c.name, people: c.people, job_id: w.jobId, first_seen: was?.first_seen || iso, updated_at: iso, emailed_at: was?.emailed_at || null };
         if (pageHas(w.rec.data, c, logo, partners)) {
           await putRow(env.DB, { ...base, state: 'there', partner: logo?.partner, logo: logo?.url });
         } else if (logo) {
-          logos.push({ c, logo, url: logo.url, name: logo.name || c.name, row: { ...base, state: 'added', partner: logo.partner, logo: logo.url } });
+          logos.push({ c, logo, again: done, url: logo.url, name: logo.name || c.name, row: { ...base, state: 'added', partner: logo.partner, logo: logo.url } });
         } else {
           const row = { ...base, state: 'waiting', hint };
           // Still waiting, nothing new to say: no write every 10 minutes
@@ -429,10 +490,10 @@ export async function syncKidPartners(env, { fetchImpl = fetch, now = Date.now()
           if (!row.emailed_at) toEmail.push({ rec: w.rec, c, jobId: w.jobId, hint, row });
         }
       }
-      // Gone from the job before anyone found a logo: nothing to wait for
+      // Gone from the job: no logo to wait for, and nothing to keep off when they're added back
       if (w.seen) {
         for (const r of rows.values()) {
-          if (r.record === key && r.state === 'waiting' && !w.companies.some((c) => c.company === r.company)) {
+          if (r.record === key && (r.state === 'waiting' || (r.state === 'off' && w.listed)) && !w.companies.some((c) => c.company === r.company)) {
             await env.DB.prepare('DELETE FROM kid_partner_logos WHERE record = ? AND company = ?').bind(r.record, r.company).run();
           }
         }
@@ -452,6 +513,8 @@ export async function syncKidPartners(env, { fetchImpl = fetch, now = Date.now()
             added.push(...names);
           }
           for (const l of logos) await putRow(env.DB, adding.includes(l) ? l.row : { ...l.row, state: 'there' });
+          // Who brought the logo: taken off the job before the vendor sweep looks, it still knows they were here
+          for (const l of adding) if (l.logo.partner && l.c.seen?.length) await sawOnJob(env.DB, { jobId: w.jobId, partner: l.logo.partner, record: key, name: l.name, people: l.c.seen, at: iso, again: l.again });
         }
       }
       if (added.length || waiting.length) out.push({ record: key, name: w.rec.name, added, waiting });

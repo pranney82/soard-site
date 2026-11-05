@@ -15,6 +15,39 @@
  * until roles follow levels). With no email anywhere it waits in Partners →
  * JobTread access, and goes on once someone adds one.
  *
+ * Taking a company off a job (Peter, Nov 4 2026: "if one is removed they
+ * come off the other", and the admin needs one place to do it; Nov 5: "if its
+ * added its added, if its deleted its deleted", finished makeovers too):
+ *   - On the website it's something a person does, never something worked out
+ *     from a page: Take off this job (Partners → a company → Kid pages), or
+ *     the X on a logo on a kid's page. takeOffJob() does it all at
+ *     once in one request: the intent is written first, then the logo leaves
+ *     the page and their people leave the job, bill or not, and they stay off;
+ *     a run that dies is finished by the sweep. Only someone surely theirs
+ *     (a login under its JobTread account or a linked one, or its contact) in
+ *     a partner role comes off, never staff, a family or someone also on the
+ *     job for another company; anyone it can't be sure of is named back to
+ *     staff. A save, a restored draft or History changing a page's logos
+ *     moves nobody.
+ *   - In JobTread, everyone from a company taken off the job is seen on two
+ *     looks in a row, then its logo comes off the page (saved and published
+ *     like any other sync), and they aren't put back. More than
+ *     MAX_LEAVING_ON_JOB leaving one job in a day, or MAX_LEAVING_IN_RUN at
+ *     once, moves nothing: it's said once in Slack, and each stays where it
+ *     is, not put back, until someone takes it off or it comes back.
+ *   - Off is off until a person says otherwise: Put back on the website, a
+ *     logo added on the page by hand, or someone of theirs added in JobTread.
+ *     A logo that merely reappears (a draft, History) puts nobody back; the
+ *     Vendors list shows it. The first look at a job changes nothing.
+ *   - The JobTread side starts watching: what it would take off is noted and
+ *     nothing moves until staff turn it on in Partners → JobTread access,
+ *     where it can be turned off again.
+ * The reveal invite is built from who's on the job, so it follows by itself
+ * (./_reveal-invites.js). A removal the site does for its own reasons says so
+ * first (noteSiteRevoke, the sponsor sync too), so it's never read as a person
+ * doing it in JobTread. The kid's monetary sponsor has its own lane
+ * (./_sponsors.js).
+ *
  * A JobTread vendor that isn't a partner goes on a job only when SOARD pays
  * it for work (isTradeVendor: JobTread's Trades, W-9 and Documents fields, or
  * a purchase order). A store bought from by card, or a materials supplier,
@@ -55,14 +88,17 @@
  * (partner ↔ JobTread vendor account, and both contact lists as last synced),
  * vendor_access_state.
  */
-import { SOARD_ORG_ID } from './_reveals.js';
-import { loadAllKids, loadAllProjects, linkJobs, keyOf, SYNC_USER } from './_kid-status.js';
-import { fetchOpenJobs, fetchAccess, readLinks, setLink, takeLock, freeLock, FREE_MAIL } from './_kid-partners.js';
-import { pave, grantJobAccess, revokeJobAccess } from './_jt-access.js';
-import { readContacts, saveContacts, isEmail } from './_sponsors.js';
+import { SOARD_ORG_ID, isProject } from './_reveals.js';
+import { loadAllKids, loadAllProjects, linkJobs, keyOf, saveRecord, requestDeploy, SYNC_USER } from './_kid-status.js';
+import { fetchOpenJobs, fetchAccess, readLinks, setLink, takeLock, freeLock, forgetCompany, FREE_MAIL, ensureSchema as ensureLogoSchema } from './_kid-partners.js';
+import { pageLogosOff, pageLogosOn } from './partners-batch.js';
+import { pave, grantJobAccess, revokeJobAccess, noteSiteRevoke } from './_jt-access.js';
+import { slackPost } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
+import { readContacts, saveContacts, isEmail, dismissSponsor } from './_sponsors.js';
 import { logAudit } from './_audit.js';
-import { roleMode, reconcileRoles, rolesView, readMemberships } from './_partner-roles.js';
-import { nameKey, wordsKey, domainOf, isSocial, kidUsage, nearPartners } from '../../public/admin/partners-shared.js';
+import { roleMode, reconcileRoles, rolesView, readMemberships, isPartnerRole } from './_partner-roles.js';
+import { nameKey, wordsKey, domainOf, isSocial, kidUsage, nearPartners, cfId } from '../../public/admin/partners-shared.js';
 
 const RUN_EVERY_MS = 15 * 60 * 1000;
 const WRITE_BUDGET_MS = 20 * 1000;
@@ -74,6 +110,13 @@ const MAX_PEOPLE = 5; // what Partners keeps per partner
 const ACCOUNTS_PAGE = 25; // 50 × 5 contacts passed JobTread's no-key size check, 100 didn't (Oct 28 2026)
 const MAX_ACCOUNT_PAGES = 40;
 const LOCK = 'vendor-access';
+const MAX_LEAVING_ON_JOB = 3; // more logos leaving one job in a day than this moves nothing: a person looks
+const MAX_LEAVING_IN_RUN = 5; // and more than this across every job
+const SECOND_LOOK_MS = 10 * 60 * 1000; // gone on two runs at least this far apart before a logo moves
+const GOING_RETRY_MS = 2 * 60 * 1000; // a takeOffJob this old that didn't finish is finished by the sweep
+const STALE_LOOK_MS = 3 * 24 * 60 * 60 * 1000; // a job not looked at for this long (closed, reopened): today is a fresh start
+const TAKEN_OFF_KEPT = 30;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 const SCHEMA = [
   // state: 'there' (someone from the company was on it), 'added' (the sweep added person),
@@ -88,6 +131,19 @@ const SCHEMA = [
     partner TEXT PRIMARY KEY, account_id TEXT NOT NULL, account_name TEXT, how TEXT,
     jt_seen TEXT, site_seen TEXT, synced_at TEXT, made_at TEXT)`,
   'CREATE TABLE IF NOT EXISTS vendor_access_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)',
+  // Per company per job. who: "p:<partner>" or "a:<JobTread account>", so a rename isn't a removal. people:
+  // [{ id, email }] surely theirs, as last seen on the job (a membership's id, so a changed email isn't someone
+  // leaving); logos: the images on the page when they left or came off; gone_at: first seen gone, waiting on a
+  // second look; off: see changeOnJob; took: who came off and gone_logos: the logos that left, so Put back restores
+  // exactly that; left_on: membership ids still on the job when they came off (someone the site couldn't be
+  // sure of), who don't count as them back; before_off: how the row stood before a take-off, so Undo goes back to it
+  `CREATE TABLE IF NOT EXISTS vendor_job_seen (
+    job_id TEXT NOT NULL, who TEXT NOT NULL, record TEXT, name TEXT, partner TEXT, account_id TEXT,
+    people TEXT, logos TEXT, off TEXT, gone_at TEXT, took TEXT, left_on TEXT, gone_logos TEXT, before_off TEXT, updated_at TEXT,
+    PRIMARY KEY (job_id, who))`,
+  // Who came and went on each makeover, and from which side: 'website', 'jobtread' or 'bill'
+  `CREATE TABLE IF NOT EXISTS vendor_job_log (id INTEGER PRIMARY KEY AUTOINCREMENT, record TEXT, at TEXT, action TEXT, side TEXT, name TEXT, people TEXT, by TEXT)`,
+  'CREATE TABLE IF NOT EXISTS vendor_site_revokes (job_id TEXT NOT NULL, email TEXT NOT NULL, at TEXT, PRIMARY KEY (job_id, email))',
 ];
 export async function ensureSchema(DB) {
   for (const sql of SCHEMA) await DB.prepare(sql).run();
@@ -377,10 +433,10 @@ export function jobVendors(rec, { partners, pairs, accounts, bills = [], trade =
   const bySlug = new Map(partners.map((p) => [p.slug, p]));
   const accountOf = new Map([...pairs].map(([slug, a]) => [a.id, slug]));
   const out = new Map();
-  const add = (v, why) => {
+  const add = (v, why, logos = []) => {
     const was = out.get(v.company);
-    if (was) { was.why.add(why); was.account ||= v.account; return; }
-    out.set(v.company, { ...v, why: new Set([why]) });
+    if (was) { was.why.add(why); was.account ||= v.account; was.logos.push(...logos); return; }
+    out.set(v.company, { ...v, why: new Set([why]), logos: [...logos] });
   };
   const usage = kidUsage([{ ...data, slug: '_', publishStatus: 'published' }], partners).byPartner;
   const matched = new Set();
@@ -388,16 +444,16 @@ export function jobVendors(rec, { partners, pairs, accounts, bills = [], trade =
     const p = bySlug.get(slug);
     for (const row of usage.get(slug)) matched.add(row.url);
     if (!p || sponsors.has(slug)) continue;
-    add({ company: nameKey(p.name), name: p.name, partner: slug, account: pairs.get(slug) || null }, 'page');
+    add({ company: nameKey(p.name), name: p.name, partner: slug, account: pairs.get(slug) || null }, 'page', usage.get(slug).map((row) => row.url));
   }
   // A named logo that isn't a partner's file: the partner by that name, else JobTread's vendor by it
   for (const l of data.partnerLogos || []) {
     if (!l?.url || matched.has(l.url) || !nameKey(l.name)) continue;
     const p = partners.find((x) => sameName(x.name, l.name));
-    if (p) { if (!sponsors.has(p.slug)) add({ company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null }, 'page'); continue; }
+    if (p) { if (!sponsors.has(p.slug)) add({ company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null }, 'page', [l.url]); continue; }
     const a = accounts.find((x) => !x.archived && sameName(x.name, l.name));
     if (!a) { loose?.push(String(l.name).trim()); continue; }
-    add({ company: nameKey(String(l.name).trim()), name: String(l.name).trim(), partner: null, account: a }, 'page');
+    add({ company: nameKey(String(l.name).trim()), name: String(l.name).trim(), partner: null, account: a }, 'page', [l.url]);
   }
   const byId = new Map(accounts.map((a) => [a.id, a]));
   for (const id of bills) {
@@ -412,19 +468,34 @@ export function jobVendors(rec, { partners, pairs, accounts, bills = [], trade =
   return [...out.values()].filter((v) => v.company);
 }
 
-/** Someone from the company has access already (any role) */
-export function onJob(v, aces, { people = [], website = '' } = {}) {
+/** Everyone from the company with access (any role): [membership] */
+export function peopleOnJob(v, aces, { people = [], website = '', links = {} } = {}) {
   const emails = new Set([...(v.account?.contacts || []), ...people].map((p) => lower(p.email)).filter(Boolean));
   const site = website && !isSocial(website) ? domainOf(website) : '';
-  return (aces?.nodes || []).some(({ membership: m } = {}) => {
+  return (aces?.nodes || []).map((a) => a?.membership).filter((m) => {
     if (!m || m.isInternal) return false;
     const email = lower(m.user?.emailAddress);
     if (v.account && m.account?.id === v.account.id) return true;
     if (m.account?.name && (nameKey(m.account.name) === v.company || sameName(m.account.name, v.name))) return true;
+    if (v.partner && m.account?.name && links[nameKey(m.account.name)] === v.partner) return true;
     if (email && emails.has(email)) return true;
     const d = domainOfEmail(email);
     return !!site && !FREE_MAIL.has(d) && sameSite(d, site);
   });
+}
+/** Someone from the company has access already (any role) */
+export const onJob = (v, aces, opts) => peopleOnJob(v, aces, opts).length > 0;
+/**
+ * Theirs beyond doubt: a login under its JobTread account, one by its name or linked to it ("Same as"), or
+ * with no account at all its contact. A website's domain alone can be another company's: it counts as them being here,
+ * never as a reason to take someone off a job or a logo off a page.
+ */
+export function surelyTheirs(v, m, { people = [], links = {} } = {}) {
+  if (!m || m.isInternal) return false;
+  if (m.account?.id) return (!!v.account && m.account.id === v.account.id) || (!!m.account.name && (nameKey(m.account.name) === v.company || sameName(m.account.name, v.name)))
+    || (!!v.partner && !!m.account.name && links[nameKey(m.account.name)] === v.partner);
+  const email = lower(m.user?.emailAddress);
+  return !!email && [...(v.account?.contacts || []), ...people].some((c) => lower(c.email) === email);
 }
 
 // A trade partner's insurance agent and billing contact (./_trade-partners.js) are never put on a job or copied into Partners
@@ -600,6 +671,781 @@ async function combineTwin(env, { keep, drop, partner, staff = [] }, { accountRo
 }
 const holdsOut = (a, h) => ({ id: a.id, name: a.name, holds: { contacts: h?.contacts || 0, documents: h?.documents || 0, files: h?.files || 0, access: (h?.aces || 0) + (h?.logins || 0), bills: h?.bills || 0 } });
 
+// ── Taken off a job ──────────────────────────────────────────────────
+/** A company's key in vendor_job_seen: its partner, or its JobTread account when it's no partner */
+const whoOf = (v) => (v.partner ? `p:${v.partner}` : `a:${v.account?.id}`);
+const logoId = (url) => cfId(url) || url;
+const personOf = (m) => ({ id: m.id, email: lower(m.user?.emailAddress), name: m.user?.name || null });
+const outsidersOn = (aces) => (aces?.nodes || []).map((a) => a?.membership).filter((m) => m && !m.isInternal);
+
+/**
+ * What a company's last look and JobTread now call for. was: { people, logos, off, goneAt } or null for a
+ * first look; now: { people (surely theirs), present (anyone of theirs, a website match too), back (anyone of
+ * theirs who wasn't left behind when they came off), logos (ids on the page) } → { act, next }. act:
+ *   null        nothing to do but remember
+ *   'wait'      everyone of theirs has left, not seen on two looks yet: nothing moves, nobody is put back
+ *   'off-page'  left on two looks: their logos come off the page, and they stay off
+ *   'stay-off'  left on two looks, with no logo to move: they stay off
+ *   'finish'    a takeOffJob that didn't finish
+ *   'return'    a Put back JobTread didn't take for everyone: the rest go back on
+ *   'back'      someone of theirs is on the job again after coming off: the logo sync brings the logo
+ * off: 'going' (takeOffJob is under way), 'returning' (Put back, with people still to go back on), 'site' (a
+ * person took them off on the website) or 'jobtread' (in JobTread). Off is off until someone of theirs is back on the job or a person puts them back (putBackJob,
+ * addToJob). A logo that reappears isn't a person saying so: a restored draft or History does that too.
+ */
+export function changeOnJob(was, now, at) {
+  const { people, present, back = present, logos } = now;
+  const fresh = { people, logos: [], off: null, goneAt: null };
+  if (!was) return { act: null, next: fresh };
+  if (was.off === 'going') return { act: 'finish', next: was };
+  if (was.off === 'returning') return { act: 'return', next: was };
+  if (was.off) {
+    if (back) return { act: 'back', next: fresh };
+    return { act: null, next: was };
+  }
+  // Someone a website match ties to them is here, and that's all: they count, but only the sure ones are remembered
+  if (present) return { act: null, next: { ...fresh, people: people.length ? people : was.people } };
+  if (!was.people.length) return { act: null, next: fresh };
+  if (!was.goneAt) return { act: 'wait', next: { people: was.people, logos, off: null, goneAt: at } };
+  if (Date.parse(at) - Date.parse(was.goneAt) < SECOND_LOOK_MS) return { act: 'wait', next: { ...was, logos: was.logos } };
+  // Who left is kept, so they can go back with the logo even with no contact on file
+  const off = { people: [], off: 'jobtread', goneAt: null, took: was.people.map((p) => ({ email: p.email, name: p.name })) };
+  // A logo that wasn't there when they left isn't theirs to lose
+  const pull = was.logos.length ? logos : [];
+  return pull.length ? { act: 'off-page', pull, next: { ...off, logos: [] } } : { act: 'stay-off', next: { ...off, logos } };
+}
+
+/** Everyone's last look: Map("job who" → row) */
+async function readSeen(DB) {
+  const rows = (await DB.prepare('SELECT * FROM vendor_job_seen').all()).results || [];
+  return new Map(rows.map((r) => [`${r.job_id} ${r.who}`, {
+    ...r, people: parse(r.people, []), logos: parse(r.logos, []), took: parse(r.took, []), leftOn: parse(r.left_on, []), goneLogos: parse(r.gone_logos, []), beforeOff: parse(r.before_off, null), goneAt: r.gone_at || null, off: r.off || null,
+  }]));
+}
+const seenStatement = (DB, r, at) => DB.prepare(`INSERT OR REPLACE INTO vendor_job_seen (job_id, who, record, name, partner, account_id, people, logos, off, gone_at, took, left_on, gone_logos, before_off, updated_at)
+  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(r.job_id, r.who, r.record || null, r.name || null, r.partner || null, r.account_id || null,
+  JSON.stringify(r.people || []), JSON.stringify(r.logos || []), r.off || null, r.goneAt || null, JSON.stringify(r.took || []), JSON.stringify(r.leftOn || []), JSON.stringify(r.goneLogos || []), r.beforeOff ? JSON.stringify(r.beforeOff) : null, at);
+const forgetSeen = (DB, jobId, who) => DB.prepare('DELETE FROM vendor_job_seen WHERE job_id = ? AND who = ?').bind(jobId, who).run();
+const noLongerAdded = (DB, jobId, company) => DB.prepare('DELETE FROM vendor_access WHERE job_id = ? AND company = ?').bind(jobId, company).run();
+/** The sweep's write of what it found: applied only if nobody's changed the row since it was read, in the database itself, so a take-off landing now can't be overwritten */
+const rememberStatement = (DB, r, at, was) => (was && was.who === r.who
+  ? DB.prepare(`UPDATE vendor_job_seen SET record = ?, name = ?, partner = ?, account_id = ?, people = ?, logos = ?, off = ?, gone_at = ?, took = ?, left_on = ?, gone_logos = ?, before_off = ?, updated_at = ?
+      WHERE job_id = ? AND who = ? AND updated_at IS ?`).bind(r.record || null, r.name || null, r.partner || null, r.account_id || null, JSON.stringify(r.people || []), JSON.stringify(r.logos || []), r.off || null, r.goneAt || null,
+    JSON.stringify(r.took || []), JSON.stringify(r.leftOn || []), JSON.stringify(r.goneLogos || []), r.beforeOff ? JSON.stringify(r.beforeOff) : null, at, r.job_id, r.who, was.updated_at || null)
+  : DB.prepare(`INSERT OR IGNORE INTO vendor_job_seen (job_id, who, record, name, partner, account_id, people, logos, off, gone_at, took, left_on, gone_logos, before_off, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(r.job_id, r.who, r.record || null, r.name || null, r.partner || null, r.account_id || null, JSON.stringify(r.people || []), JSON.stringify(r.logos || []), r.off || null, r.goneAt || null,
+    JSON.stringify(r.took || []), JSON.stringify(r.leftOn || []), JSON.stringify(r.goneLogos || []), r.beforeOff ? JSON.stringify(r.beforeOff) : null, at));
+
+/** Someone this run put on a job is as good as read: taken off before the next look, they aren't put back */
+async function sawPutOn(DB, row, person, at) {
+  const r = await DB.prepare('SELECT people, off FROM vendor_job_seen WHERE job_id = ? AND who = ?').bind(row.job_id, row.who).first();
+  if (r?.off) return r.off; // a take-off got there first: it stands, and the caller takes them back off
+  const people = [...parse(r?.people, []).filter((p) => p.id !== person.id), person];
+  await seenStatement(DB, { ...row, people }, at).run();
+  return null;
+}
+
+const logMakeover = (DB, { record, at, action, side, name, people = [], by = null }) => DB.prepare('INSERT INTO vendor_job_log (record, at, action, side, name, people, by) VALUES (?, ?, ?, ?, ?, ?, ?)')
+  .bind(record, at, action, side, name, JSON.stringify(people), by).run();
+
+/** Who was taken off lately: written before the change, so nothing happens without a trace */
+async function noteTaken(DB, entry, by = SYNC_USER) {
+  await logMakeover(DB, { record: entry.record, at: entry.at, action: 'removed', side: entry.how === 'page' ? 'website' : 'jobtread', name: entry.name, people: entry.people || [], by });
+  const had = await readKey(DB, 'taken-off');
+  await writeKey(DB, 'taken-off', { list: [entry, ...(Array.isArray(had.list) ? had.list : [])].slice(0, TAKEN_OFF_KEPT) });
+  await logAudit(DB, { userEmail: by, action: 'updated', entityType: 'jobtread-access', entityName: 'Vendors on jobs',
+    changes: { removed: [`${entry.name}: ${entry.how === 'page' ? `off the job, ${(entry.people || []).join(', ') || 'nobody on it'}` : entry.kept ? 'off the job in JobTread, stays off' : 'logo off the page'} (${entry.page})`] } });
+}
+/** Put back: they're not "taken off lately" any more. The makeover's history keeps both */
+async function dropTaken(DB, record, name) {
+  const had = await readKey(DB, 'taken-off');
+  const list = Array.isArray(had.list) ? had.list : [];
+  const i = list.findIndex((e) => e.record === record && e.name === name);
+  if (i >= 0) await writeKey(DB, 'taken-off', { list: list.filter((_, n) => n !== i) });
+}
+async function nameTaken(DB, entry, people) {
+  await DB.prepare("UPDATE vendor_job_log SET people = ? WHERE record = ? AND at = ? AND name = ? AND action = 'removed'").bind(JSON.stringify(people), entry.record, entry.at, entry.name).run();
+  const had = await readKey(DB, 'taken-off');
+  await writeKey(DB, 'taken-off', { list: (Array.isArray(had.list) ? had.list : []).map((e) => (e.at === entry.at && e.record === entry.record && e.name === entry.name ? { ...e, people } : e)) });
+}
+async function unnoteTaken(DB, entry) {
+  await DB.prepare("DELETE FROM vendor_job_log WHERE record = ? AND at = ? AND name = ? AND action = 'removed'").bind(entry.record, entry.at, entry.name).run();
+  const had = await readKey(DB, 'taken-off');
+  await writeKey(DB, 'taken-off', { list: (Array.isArray(had.list) ? had.list : []).filter((e) => !(e.at === entry.at && e.record === entry.record && e.name === entry.name)) });
+}
+
+/** Logos off a page, read fresh under the kid-record lock so an edit made meanwhile is kept. → what left ([{ url, name, at }]), or false when the page was busy: next run */
+async function takeLogosOff(env, rec, drops, at) {
+  const { DB } = env;
+  if (!(await takeLock(DB, false, 'sync'))) return false;
+  try {
+    const fresh = (isProject(rec) ? await loadAllProjects(DB) : await loadAllKids(DB)).find((r) => r.slug === rec.slug);
+    if (!fresh) return [];
+    const before = fresh.data;
+    const ids = new Set(drops.flatMap((d) => d.pull));
+    const partnerLogos = (before.partnerLogos || []).filter((l) => !ids.has(logoId(l?.url)));
+    const left = (before.partnerLogos || []).map((l, i) => ({ url: l?.url, name: l?.name || '', at: i })).filter((l) => ids.has(logoId(l.url)));
+    if (!left.length) return [];
+    await saveRecord(env, isProject(rec) ? 'community' : 'kids', rec.slug, before, { ...before, partnerLogos }, `Partner logos from JobTread: ${rec.name} − ${drops.map((d) => d.name).join(', ')}`, at);
+    return left;
+  } finally { await freeLock(DB, 'sync'); }
+}
+
+/** Who a company's removal takes off a job, and who stays: partner roles only, and nobody also here for someone else */
+function goingFrom(v, aces, others, contactsOf, seenPeople = [], billAccounts = []) {
+  const opts = contactsOf(v);
+  const outsiders = outsidersOn(aces);
+  const staying = new Set(others.flatMap((o) => peopleOnJob(o, aces, contactsOf(o))).map((m) => m.id));
+  const sure = outsiders.filter((m) => surelyTheirs(v, m, opts) || seenPeople.some((p) => p.id === m.id));
+  const anothersBill = (m) => !!m.account?.id && m.account.id !== v.account?.id && billAccounts.includes(m.account.id);
+  const going = sure.filter((m) => isPartnerRole(m.role?.name) && !staying.has(m.id) && !anothersBill(m) && lower(m.user?.emailAddress));
+  const gone = new Set(going.map((m) => m.id));
+  return { going, left: peopleOnJob(v, aces, opts).filter((m) => !gone.has(m.id)) };
+}
+/** Put back: an earlier "the site took them off" no longer explains them leaving */
+const forgetSiteRevokes = async (DB, jobId, emails) => {
+  for (const e of emails) await DB.prepare('DELETE FROM vendor_site_revokes WHERE job_id = ? AND email = ?').bind(jobId, lower(e)).run();
+};
+/** Said first, then done: a run that dies between the two is read right next time */
+async function revokePeople(env, jobId, going, at, fetchImpl) {
+  if (!going.length) return;
+  for (const m of going) await noteSiteRevoke(env.DB, jobId, m.user.emailAddress, at);
+  const ids = await jobAces(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl);
+  for (const m of going) {
+    const ace = ids.find((a) => a.member === m.id);
+    if (ace) await revokeJobAccess(env, ace.id, { fetchImpl });
+  }
+}
+/**
+ * A logo deleted with nobody moved off the job: the logo sweep isn't to put it back. Under the company's name and
+ * the person's, never the account of someone left on the job: that's another company, and its logo is its own.
+ */
+const keepLogoOff = async (DB, record, jobId, left, name, partner, at) => {
+  await ensureLogoSchema(DB);
+  for (const m of left) {
+    for (const label of new Set([name, m.user?.name].filter(Boolean))) {
+      await DB.prepare(`INSERT INTO kid_partner_logos (record, company, name, partner, job_id, state, first_seen, updated_at) VALUES (?, ?, ?, ?, ?, 'off', ?, ?)
+        ON CONFLICT (record, company) DO UPDATE SET state = 'off', updated_at = excluded.updated_at WHERE kid_partner_logos.state <> 'dismissed'`).bind(record, nameKey(label), label, partner, jobId, at, at).run();
+    }
+  }
+  // And however the logo sweep already knows them, when JobTread names them differently
+  const rows = (await DB.prepare("SELECT company, name, partner FROM kid_partner_logos WHERE record = ? AND state IN ('added', 'there', 'waiting')").bind(record).all()).results || [];
+  for (const r of rows) {
+    if ((partner && r.partner === partner) || sameName(r.name, name)) await DB.prepare("UPDATE kid_partner_logos SET state = 'off', updated_at = ? WHERE record = ? AND company = ?").bind(at, record, r.company).run();
+  }
+};
+const othersOn = (rec, vendors, who, bySlug, pairs) => [...vendors.filter((o) => whoOf(o) !== who),
+  ...(Array.isArray(rec.data?.sponsors) ? rec.data.sponsors : []).map((s) => bySlug.get(s)).filter(Boolean).map((p) => ({ company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null }))];
+const tableOf = (rec) => (isProject(rec) ? 'community' : 'kids');
+/** Off the job, the rest of the way: the row, and what the sweeps keep about them */
+const tookFrom = (v, going, had = []) => [...new Map([...had, ...going.map((m) => ({ name: m.user?.name || v.name, email: lower(m.user?.emailAddress) }))].map((t) => [t.email, t])).values()];
+async function offForGood(DB, { job, record, who, v, same = null, going, left, removed = null, at }) {
+  const took = tookFrom(v, going, same?.took || []);
+  await seenStatement(DB, { job_id: job.id, who, record, name: v.name, partner: v.partner, account_id: v.account?.id || same?.account_id || null, people: [], logos: [], off: 'site', goneAt: null, took, leftOn: left.map((m) => m.id), goneLogos: removed?.length ? removed : same?.goneLogos || [], beforeOff: same?.beforeOff || null }, at).run();
+  await noLongerAdded(DB, job.id, v.company);
+  if (left.length) await keepLogoOff(DB, record, job.id, left, v.name, v.partner, at);
+  else await forgetCompany(DB, record, { partner: v.partner, names: [v.name], emails: going.map((m) => lower(m.user?.emailAddress)) });
+}
+
+/**
+ * A person took a company off this makeover, on the website: one request does all of it. partner, or
+ * account + name for a trade partner (no logo), or logos: [{ url, name }] for the logos they picked; sha: the editor's, so its next Save fits. The intent is written
+ * before anything moves, so a request that dies is finished by the sweep. → { job (an open one?), who, removed:
+ * [{ url, name, at }], sha?, taken: [{ name, people }], left: [{ name, people }] (someone it can't be sure of, still
+ * on the job), pending: [names] (JobTread didn't answer: the sweep finishes it), skipped: [{ name, why: 'sponsor' |
+ * 'unknown' }] }. Throws with nothing changed when it can't start.
+ */
+export async function takeOffJob(env, { record, partner = null, account = null, name = '', logos = [], sha = null }, by = null, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  const key = env.JOBTREAD_GRANT_KEY;
+  await ensureSchema(DB);
+  const at = iso(now);
+  const [kids, projects, partners, contactsAll, accountRows, seen, links, looked, { byJob: bills }] = await Promise.all([
+    loadAllKids(DB), loadAllProjects(DB), readPartners(DB), readContacts(DB), readAccountRows(DB), readSeen(DB), readLinks(DB), readKey(DB, 'looked'), billsByJob(DB),
+  ]);
+  const records = [...kids, ...projects];
+  const rec = records.find((r) => keyOf(r) === record);
+  if (!rec) throw Object.assign(new Error('That page isn’t there any more. Reload and try again.'), { status: 409, unchanged: true });
+  const pairs = new Map([...accountRows].map(([slug, r]) => [slug, { id: r.account_id, name: r.account_name, contacts: r.jt_seen || [] }]));
+  const bySlug = new Map(partners.map((p) => [p.slug, p]));
+  const contactsOf = (v) => ({ people: v.partner ? contactsAll[v.partner] || [] : [], website: bySlug.get(v.partner)?.website, links });
+
+  // The job: JobTread's say, or the last look's while it isn't answering
+  let job = null;
+  let down = false;
+  try { job = linkJobs(await fetchOpenJobs(key, fetchImpl), records).get(record) || null; } catch {
+    down = true;
+    const id = Object.keys(looked).filter((j) => looked[j]?.record === record).sort((a, b) => String(looked[b].at).localeCompare(String(looked[a].at)))[0];
+    if (!id) throw Object.assign(new Error('JobTread isn’t answering. Try again in a minute.'), { status: 503, unchanged: true });
+    job = { id };
+  }
+
+  // Which companies: the partner asked for, or who those logos are (a partner's file or name, else a last look's by that name)
+  const shown = Array.isArray(rec.data?.partnerLogos) ? rec.data.partnerLogos : [];
+  const usage = kidUsage([{ partnerLogos: shown.concat(logos), slug: '_', publishStatus: 'published' }], partners).byPartner;
+  const companies = new Map();
+  const out = { job: !!job, jobId: job?.id || null, who: [], taken: [], left: [], pending: [], skipped: [], removed: [] };
+  const company = (p) => ({ company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null });
+  if (partner) { const p = bySlug.get(partner); if (!p) throw Object.assign(new Error('That company isn’t in Partners any more. Reload and try again.'), { status: 409, unchanged: true }); companies.set(`p:${p.slug}`, company(p)); }
+  if (account) companies.set(`a:${account}`, { company: nameKey(name), name, partner: null, account: { id: account, contacts: [] } });
+  const whose = new Map();
+  for (const l of logos) {
+    const p = partners.find((x) => usage.get(x.slug)?.some((row) => logoId(row.url) === logoId(l.url))) || partners.find((x) => sameName(x.name, l.name));
+    if (p) { whose.set(l.url, p.slug); companies.set(`p:${p.slug}`, company(p)); continue; }
+    const row = job && [...seen.values()].find((r) => r.job_id === job.id && !r.partner && sameName(r.name, l.name));
+    if (row) companies.set(row.who, { company: nameKey(row.name), name: row.name, partner: null, account: { id: row.account_id, contacts: [] } });
+    else out.skipped.push({ name: l.name || 'That logo', why: 'unknown' });
+  }
+  // A trade partner's contacts aren't kept here, and someone may be on the job only by being one
+  if (account && !down) {
+    const a = (await fetchVendorAccounts(key, fetchImpl).catch(() => [])).find((x) => x.id === account);
+    if (a) companies.get(`a:${account}`).account = a;
+  }
+  const sponsors = new Set(Array.isArray(rec.data?.sponsors) ? rec.data.sponsors : []);
+  for (const [who, v] of companies) if (sponsors.has(v.partner)) { companies.delete(who); out.skipped.push({ name: v.name, why: 'sponsor' }); }
+  if (partner && !companies.size) return out;
+  // Every logo of theirs on the page, however it got there; X on one of two is the company leaving
+  const urls = [...new Set([
+    ...logos.map((l) => l.url).filter((u) => !sponsors.has(whose.get(u))),
+    ...[...companies.values()].flatMap((v) => [
+      ...(v.partner ? (usage.get(v.partner) || []).map((row) => row.url).filter((u) => shown.some((l) => logoId(l?.url) === logoId(u))) : []),
+      ...shown.filter((l) => l?.url && (nameKey(l.name) === v.company || sameName(l.name, v.name))).map((l) => l.url),
+    ]),
+  ])];
+
+  // Said first: a row and a trace, so nothing can happen without them, and a request that dies is finished by the sweep
+  const entries = [];
+  const planned = shown.map((l, i) => ({ url: l?.url, name: l?.name || '', at: i })).filter((l) => urls.some((u) => logoId(u) === logoId(l.url)));
+  for (const [who, v] of companies) {
+    if (!job) break;
+    const last = seen.get(`${job.id} ${who}`);
+    const entry = { at, how: 'page', name: v.name, page: pageName(rec), record, people: [] };
+    // Someone already gone from the job, waiting on a second look, still counts as who left: Put back brings them
+    const hadTook = [...(last?.took || []), ...(last?.goneAt ? (last.people || []).map((p) => ({ email: p.email, name: p.name })) : [])];
+    const beforeOff = last ? { people: last.people, logos: last.logos, off: last.off, goneAt: last.goneAt, took: hadTook, leftOn: last.leftOn, goneLogos: last.goneLogos } : {};
+    await seenStatement(DB, { job_id: job.id, who, record, name: v.name, partner: v.partner, account_id: v.account?.id || null, people: last?.people || [], logos: [...new Set(urls.map(logoId))], off: 'going', goneAt: null, took: hadTook, leftOn: [], goneLogos: planned.length ? planned : last?.goneLogos || [], beforeOff }, at).run();
+    await noteTaken(DB, entry, by);
+    entries.push(entry);
+    out.who.push(who);
+  }
+  // The page, under the kid-record lock (a trade partner has none)
+  // Refused: everything goes back to what it was, not to nothing (someone may be waiting on a second look)
+  const undoAll = async () => {
+    for (const who of out.who) {
+      const last = seen.get(`${job.id} ${who}`);
+      if (last) await seenStatement(DB, last, last.updated_at || at).run(); else await forgetSeen(DB, job.id, who);
+    }
+    for (const e of entries) await unnoteTaken(DB, e);
+  };
+  if (partner || urls.length) {
+    if (!(await takeLock(DB, true, 'sync'))) { await undoAll(); throw Object.assign(new Error('That page is busy. Try again in a moment.'), { status: 503, unchanged: true }); }
+    try {
+      const page = await pageLogosOff(env, { table: tableOf(rec), slug: rec.slug, partner, urls, sha }, by || SYNC_USER);
+      out.removed = page.removed;
+      if (page.sha) out.sha = page.sha;
+    } catch (e) { await undoAll(); e.unchanged = true; throw e; } finally { await freeLock(DB, 'sync'); }
+    for (const who of out.who) {
+      const row = (await readSeen(DB)).get(`${job.id} ${who}`);
+      if (row && out.removed.length) await seenStatement(DB, { ...row, goneLogos: out.removed }, at).run();
+    }
+  }
+  // Deleted is deleted, even with nobody to move: no open job, or a logo nobody can name. A sponsor's left the page at Save
+  if (partner) await dismissSponsor(DB, record, partner);
+  if (out.removed.length || partner) {
+    const noOne = [...out.skipped.filter((s) => s.why === 'unknown').map((s) => ({ name: s.name, partner: null })), ...(job ? [] : [...companies.values()])];
+    for (const v of noOne) await keepLogoOff(DB, record, job?.id || null, [{}], v.name, v.partner, at);
+  }
+  if (!job) return out;
+  if (down) { out.pending = [...companies.values()].map((v) => v.name); return out; }
+
+  // The job
+  let aces;
+  try { aces = (await fetchAccess(key, [job.id], fetchImpl)).get(job.id); } catch { out.pending = [...companies.values()].map((v) => v.name); return out; }
+  // JobTread listing nobody settles nothing: the sweep finishes it from a real list
+  if (!aces?.nodes?.length) { out.pending = [...companies.values()].map((v) => v.name); return out; }
+  const fresh = (await loadAllKidsOrProjects(DB, rec)) || rec;
+  const pageVendors = jobVendors(fresh, { partners, pairs, accounts: [], bills: [] });
+  for (const [who, v] of companies) {
+    const last = seen.get(`${job.id} ${who}`);
+    const { going, left } = goingFrom(v, aces, othersOn(fresh, pageVendors, who, bySlug, pairs), contactsOf, last?.people || [], bills.get(job.id) || []);
+    const names = going.map((m) => m.user?.name || m.user?.emailAddress);
+    // Who's coming off is written down before they do, so Undo can bring back all of them
+    const now2 = (await readSeen(DB)).get(`${job.id} ${who}`);
+    const took = tookFrom(v, going, now2?.took || last?.took || []);
+    if (now2) await seenStatement(DB, { ...now2, took }, at).run();
+    try { await revokePeople(env, job.id, going, at, fetchImpl); } catch { out.pending.push(v.name); continue; }
+    await offForGood(DB, { job, record, who, v, same: { ...last, took, beforeOff: now2?.beforeOff }, going, left, removed: out.removed, at });
+    const entry = entries.find((e) => e.name === v.name);
+    if (entry && names.length) await nameTaken(DB, entry, names);
+    out.taken.push({ name: v.name, people: names });
+    if (left.length) out.left.push({ name: v.name, people: left.map((m) => m.user?.name || m.user?.emailAddress) });
+  }
+  return out;
+}
+const loadAllKidsOrProjects = async (DB, rec) => (isProject(rec) ? await loadAllProjects(DB) : await loadAllKids(DB)).find((r) => r.slug === rec.slug);
+
+/**
+ * Who and what came off goes back, now, from what the site wrote down at the time (not what a tab remembers).
+ * who: their keys, from takeOffJob or the Vendors list. undo: reverse that one take-off and no more, so someone who
+ * had already left the job in JobTread stays off; without it (Put back) everyone who came off goes back on.
+ * keepLogos: only the people, for a logo a person has just put on the page themselves.
+ * → { jobId, back: [people], logos: [{ url, name, at }], pending: [names], sha? }
+ */
+export async function putBackJob(env, { record, who = [], logos: loose = [], sha = null, undo = false, keepLogos = false }, by = null, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  await ensureSchema(DB);
+  const at = iso(now);
+  const [kids, projects, partners, seen] = await Promise.all([loadAllKids(DB), loadAllProjects(DB), readPartners(DB), readSeen(DB)]);
+  const rec = [...kids, ...projects].find((r) => keyOf(r) === record);
+  if (!rec) throw Object.assign(new Error('That page isn’t there any more. Reload and try again.'), { status: 409, unchanged: true });
+  const rows = [...seen.values()].filter((r) => r.record === record && who.includes(r.who) && (r.off || r.goneAt));
+  const out = { jobId: rows[0]?.job_id || null, back: [], logos: [], pending: [] };
+  // loose: logos with no company behind them (no open job, or nobody knows whose), which only the page holds.
+  // Undo brings back only what that take-off removed, not a logo from before it
+  const ownLogos = (r) => (undo && r.beforeOff ? (r.goneLogos || []).filter((l) => !(r.beforeOff.goneLogos || []).some((x) => x.url === l.url)) : r.goneLogos || []);
+  const logos = keepLogos ? loose : [...rows.flatMap(ownLogos), ...loose];
+  if (loose.length) await forgetCompany(DB, record, { names: loose.map((l) => l.name) });
+  if (logos.length) {
+    if (!(await takeLock(DB, true, 'sync'))) throw Object.assign(new Error('That page is busy. Try again in a moment.'), { status: 503, unchanged: true });
+    try {
+      const done = await pageLogosOn(env, { table: tableOf(rec), slug: rec.slug, logos, sha }, by || SYNC_USER);
+      if (done.sha) out.sha = done.sha;
+      out.logos = logos;
+    } catch (e) { e.unchanged = true; throw e; } finally { await freeLock(DB, 'sync'); }
+  }
+  let mode = null;
+  if (rows.length) mode = await roleMode(env, { fetchImpl }).catch(() => null);
+  const bySlug = new Map(partners.map((p) => [p.slug, p]));
+  for (const row of rows) {
+    // Undo: only who this take-off took off, and the row as it stood before it
+    const before = (undo && row.beforeOff) || {};
+    const hadTaken = new Set((before.took || []).map((t) => t.email));
+    const owed = (row.took || []).filter((t) => !hadTaken.has(t.email));
+    await forgetSiteRevokes(DB, row.job_id, owed.map((t) => t.email));
+    const { people, failed } = await grantBack(env, row, owed, mode, bySlug, { fetchImpl, now });
+    out.back.push(...people.map((p) => p.name));
+    if (failed.length) out.pending.push(row.name);
+    // On the job means on the page, so whatever was keeping their logo away goes
+    await forgetCompany(DB, record, { partner: row.partner, names: [row.name], emails: owed.map((t) => t.email) });
+    const stood = before.off || before.goneAt;
+    await seenStatement(DB, { ...row, off: failed.length ? 'returning' : before.off && before.off !== 'going' ? before.off : null, goneAt: stood && !failed.length ? before.goneAt || null : null,
+      people: [...(stood ? before.people || [] : []), ...people.map(({ id, email, name }) => ({ id, email, name }))], logos: stood ? before.logos || [] : [], leftOn: stood ? before.leftOn || [] : [], goneLogos: stood ? before.goneLogos || [] : [], took: failed.length ? failed : stood ? before.took || [] : [], beforeOff: null }, at).run();
+    await logMakeover(DB, { record, at, action: 'added', side: 'website', name: row.name, people: owed.map((t) => t.name || t.email), by });
+    await dropTaken(DB, record, row.name);
+  }
+  return out;
+}
+
+/** Those people back on the job → { people: [{ id, email, name }], failed: those JobTread didn't take } */
+async function grantBack(env, row, owed, mode, bySlug, { fetchImpl, now }) {
+  const people = [];
+  const failed = [];
+  for (const t of owed) {
+    try {
+      if (!mode) throw new Error('JobTread isn’t answering');
+      const g = await grantJobAccess(env, row.job_id, { name: t.name || row.name, email: t.email }, row.partner && bySlug.has(row.partner) ? mode.partner(bySlug.get(row.partner)) : mode.trade, { notify: false, fetchImpl, now });
+      if (g.membership && !g.internal) people.push({ id: g.membership, email: t.email, name: t.name || row.name });
+    } catch { failed.push(t); }
+  }
+  return { people, failed };
+}
+
+/**
+ * A person added a company on the website, and it goes on the job now, not at the next sweep. logos: the
+ * ones just saved on the page; account + name: a trade partner, who has no logo. → { jobId, added: [names], waiting: [names] }
+ */
+export async function addToJob(env, { record, logos = [], account = null, name = '' }, by = null, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const { DB } = env;
+  const key = env.JOBTREAD_GRANT_KEY;
+  await ensureSchema(DB);
+  const at = iso(now);
+  const [kids, projects, partners, seen] = await Promise.all([loadAllKids(DB), loadAllProjects(DB), readPartners(DB), readSeen(DB)]);
+  const records = [...kids, ...projects];
+  const rec = records.find((r) => keyOf(r) === record);
+  if (!rec) throw Object.assign(new Error('That page isn’t there any more. Reload and try again.'), { status: 409, unchanged: true });
+  // Which companies: the person's say comes first and needs no JobTread, so a hand add stands even while it's down
+  const usage = kidUsage([{ partnerLogos: logos, slug: '_', publishStatus: 'published' }], partners).byPartner;
+  const named = logos.map((l) => partners.find((x) => usage.get(x.slug)?.some((row) => logoId(row.url) === logoId(l.url))) || partners.find((x) => sameName(x.name, l.name)) || null);
+  const here = [...seen.values()].filter((r) => r.record === record);
+  const theirs = here.filter((r) => (account && r.who === `a:${account}`) || named.some((p) => p && r.who === `p:${p.slug}`) || logos.some((l) => !r.partner && sameName(r.name, l.name)));
+  // Added back: the same people who came off, not just whoever the company's main contact is. Only a row that was off
+  // or waiting; one standing as normal keeps who it knows, so a removal right after still registers
+  const out = { jobId: here[0]?.job_id || null, added: [], waiting: [] };
+  // Whatever was keeping this logo off the page goes: a person has just put it there
+  await forgetCompany(DB, record, { names: [...logos.map((l) => l.name), ...named.filter(Boolean).map((p) => p.name), name].filter(Boolean) });
+  const offNow = theirs.filter((r) => r.off || r.goneAt);
+  if (offNow.length) out.added.push(...(await putBackJob(env, { record, who: offNow.map((r) => r.who), keepLogos: true }, by, { fetchImpl, now })).back);
+  const job = linkJobs(await fetchOpenJobs(key, fetchImpl), records).get(record) || null;
+  out.jobId = job?.id || null;
+  if (!job) return out;
+  // Someone the last look had, gone from the job now: a person is adding them, so that look no longer stands in the way
+  const onNow = new Set(outsidersOn((await fetchAccess(key, [job.id], fetchImpl)).get(job.id)).map((m) => m.id));
+  for (const row of theirs) {
+    const fresh = (await readSeen(DB)).get(`${row.job_id} ${row.who}`);
+    if (fresh?.people.length && !fresh.people.some((p) => onNow.has(p.id))) await seenStatement(DB, { ...fresh, people: [] }, at).run();
+  }
+  if (account) {
+    if (out.added.length) return out;
+    const a = (await fetchVendorAccounts(key, fetchImpl)).find((x) => x.id === account);
+    const last = seen.get(`${job.id} a:${account}`);
+    const person = a && (personFor({ account: a, name }, []) || (last?.took?.[0] ? { ...last.took[0], name: last.took[0].name || name } : null));
+    if (!person) { out.waiting.push(name); return out; }
+    const mode = await roleMode(env, { fetchImpl });
+    const g = await grantJobAccess(env, job.id, person, mode.trade, { notify: false, fetchImpl, now });
+    await logMakeover(DB, { record, at, action: 'added', side: 'website', name, people: [person.name], by });
+    if (g.membership && !g.internal) await sawPutOn(DB, { job_id: job.id, who: `a:${account}`, record, name, partner: null, account_id: account, logos: [], off: null }, { id: g.membership, email: person.email, name: person.name }, at);
+    out.added.push(person.name);
+    return out;
+  }
+  // A few now; the sweep gets to any more within 15 minutes
+  for (const p of [...new Set(named.filter(Boolean))].slice(0, 3)) {
+    const r = await syncVendorAccess(env, { only: nameKey(p.name), fetchImpl, now });
+    const people = (r.added || []).filter((x) => nameKey(x.name) === nameKey(p.name)).map((x) => x.person);
+    // Already on the job: remembered now, so a removal right after still registers
+    const row = (await readSeen(DB)).get(`${job.id} p:${p.slug}`);
+    if (row && !row.people.length && !row.off) {
+      const contacts = (await readContacts(DB))[p.slug] || [];
+      const aces = (await fetchAccess(key, [job.id], fetchImpl)).get(job.id);
+      const sure = outsidersOn(aces).filter((m) => surelyTheirs({ company: nameKey(p.name), name: p.name, partner: p.slug, account: row.account_id ? { id: row.account_id, contacts: [] } : null }, m, { people: contacts })).map(personOf);
+      if (sure.length) await seenStatement(DB, { ...row, people: sure }, at).run();
+    }
+    if (people.length) { out.added.push(...people); await logMakeover(DB, { record, at, action: 'added', side: 'website', name: p.name, people, by }); } else if (r.waiting) out.waiting.push(p.name);
+  }
+  return out;
+}
+
+/**
+ * One makeover's vendors, for its page in the admin: JobTread read now, so it says how things really are.
+ * → { job, rows: [{ who, name, partner, account, people: [{ name, role }], role, onPage, onJob, onInvite (null: no invite
+ * out yet), off, bill, noEmail }], trade: [{ id, name }] to add, history: [{ at, action, side, name, people, by }] }
+ */
+export async function makeoverView(env, record, { fetchImpl = fetch } = {}) {
+  const { DB } = env;
+  const key = env.JOBTREAD_GRANT_KEY;
+  await ensureSchema(DB);
+  const [kids, projects, partners, contactsAll, accountRows, seen, links, { byJob: bills }, jtOnly, accessRows, history] = await Promise.all([
+    loadAllKids(DB), loadAllProjects(DB), readPartners(DB), readContacts(DB), readAccountRows(DB), readSeen(DB), readLinks(DB), billsByJob(DB), readKey(DB, 'jt-only'),
+    DB.prepare('SELECT company, state, reason FROM vendor_access').all().then((r) => r.results || []),
+    DB.prepare('SELECT at, action, side, name, people, by FROM vendor_job_log WHERE record = ? ORDER BY id DESC LIMIT 20').bind(record).all().then((r) => r.results || []),
+  ]);
+  const records = [...kids, ...projects];
+  const rec = records.find((r) => keyOf(r) === record);
+  if (!rec) throw Object.assign(new Error('That page isn’t there any more.'), { status: 409 });
+  const job = key ? linkJobs(await fetchOpenJobs(key, fetchImpl), records).get(record) || null : null;
+  const aces = job ? (await fetchAccess(key, [job.id], fetchImpl)).get(job.id) : null;
+  const invite = job ? await DB.prepare('SELECT guests, event_id, state FROM reveal_invites WHERE job_id = ?').bind(job.id).first().catch(() => null) : null;
+  const guests = invite?.event_id && invite.state !== 'cancelled' ? parse(invite.guests, []).map(lower) : null;
+  const pairs = new Map([...accountRows].map(([slug, r]) => [slug, { id: r.account_id, name: r.account_name, contacts: r.jt_seen || [] }]));
+  const bySlug = new Map(partners.map((p) => [p.slug, p]));
+  const contactsOf = (v) => ({ people: v.partner ? contactsAll[v.partner] || [] : [], website: bySlug.get(v.partner)?.website, links });
+  const rows = new Map();
+  const put = (who, v, patch = {}) => {
+    const r = rows.get(who) || { who, name: v.name, partner: v.partner || null, account: v.account?.id || null, v, people: [], onPage: false, bill: false, off: null };
+    rows.set(who, Object.assign(r, patch));
+    return r;
+  };
+  // JobTread-only companies with a logo: the last looks know their accounts, so a full read of vendors isn't needed
+  const known = [...seen.values()].filter((r) => r.job_id === job?.id && !r.partner && r.account_id).map((r) => ({ id: r.account_id, name: r.name, contacts: [] }));
+  for (const v of jobVendors(rec, { partners, pairs, accounts: known, bills: [] })) put(whoOf(v), v, { onPage: true });
+  const names = new Map(((await DB.prepare('SELECT jt_id, name FROM vendors WHERE jt_id IS NOT NULL').all().catch(() => ({ results: [] }))).results || []).map((r) => [r.jt_id, r.name]));
+  for (const id of job ? bills.get(job.id) || [] : []) {
+    const slug = [...pairs].find(([, a]) => a.id === id)?.[0];
+    const p = slug && bySlug.get(slug);
+    const v = p ? { company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) } : { company: nameKey(names.get(id)), name: names.get(id) || 'A vendor', partner: null, account: { id, contacts: [] } };
+    if (!(rec.data?.sponsors || []).includes(v.partner)) put(whoOf(v), v, { bill: true });
+  }
+  for (const row of seen.values()) {
+    if (row.job_id !== job?.id || row.record !== record) continue;
+    if (row.off || row.goneAt || rows.has(row.who)) put(row.who, { name: row.name, partner: row.partner, account: row.account_id ? { id: row.account_id, contacts: [] } : null, company: nameKey(row.name) }, { off: row.off, gone: !!row.goneAt });
+  }
+  const sponsors = new Set(rec.data?.sponsors || []);
+  const unclaimed = [];
+  for (const m of outsidersOn(aces)) {
+    const one = { nodes: [{ membership: m }] };
+    const mine = (r) => seen.get(`${job.id} ${r.who}`)?.people.some((p) => p.id === m.id) || surelyTheirs(r.v, m, contactsOf(r.v));
+    // Theirs for certain first; a website match can be another company's
+    const hit = [...rows.values()].find(mine) || [...rows.values()].find((r) => peopleOnJob(r.v, one, contactsOf(r.v)).length);
+    const sponsor = [...sponsors].some((s) => { const p = bySlug.get(s); return p && peopleOnJob({ company: nameKey(p.name), name: p.name, partner: s, account: pairs.get(s) || null }, one, contactsOf({ partner: s })).length; });
+    if (hit) hit.people.push(m);
+    else if (!sponsor && isPartnerRole(m.role?.name)) unclaimed.push(m);
+  }
+  for (const m of unclaimed) {
+    const name = m.account?.name || m.user?.name || m.user?.emailAddress;
+    const r = put(`a:${m.account?.id || `n-${nameKey(name)}`}`, { name, partner: null, account: m.account?.id ? { id: m.account.id, contacts: [] } : null, company: nameKey(name) });
+    r.people.push(m);
+  }
+  const noEmail = new Set(accessRows.filter((r) => r.state === 'waiting' && r.reason === 'no-email').map((r) => r.company));
+  const out = [...rows.values()].map((r) => ({
+    who: r.who, name: r.name, partner: r.partner, account: r.account, people: r.people.map((m) => ({ name: m.user?.name || m.user?.emailAddress, role: m.role?.name || null })),
+    role: r.people[0]?.role?.name || null, onPage: r.onPage, onJob: r.people.length > 0, bill: r.bill, off: r.off, gone: !!r.gone,
+    onInvite: guests ? r.people.some((m) => guests.includes(lower(m.user?.emailAddress))) : null, noEmail: !r.people.length && noEmail.has(nameKey(r.name)),
+  })).sort((a, b) => a.name.localeCompare(b.name));
+  return {
+    job: job ? { id: job.id } : null, rows: out,
+    trade: (Array.isArray(jtOnly) ? jtOnly : []).filter((v) => v.kind === 'trade' && !rows.has(`a:${v.id}`)).map((v) => ({ id: v.id, name: v.name })).sort((a, b) => a.name.localeCompare(b.name)),
+    history: history.map((h) => ({ ...h, people: parse(h.people, []) })),
+  };
+}
+
+/** A company's last look on a job, by its key or, for one that's become a partner since, by its JobTread account */
+const lookFor = (seen, jobId, who, v) => seen.get(`${jobId} ${who}`) || (v.account?.id ? [...seen.values()].find((r) => r.job_id === jobId && r.account_id === v.account.id) : null) || null;
+
+/** Each job's changes since the last look, worked out before anything is touched */
+function planJob({ k, job, rec, aces, seen, last, tookBySite, vendors, ctx, at, now }) {
+  const { bySlug, pairs, accounts, contactsAll, setAside, links, early } = ctx;
+  const data = rec.data || {};
+  const fresh = !last || last.record !== k || now - Date.parse(last.at) > STALE_LOOK_MS;
+  const outsiders = outsidersOn(aces);
+  const onJobIds = new Set(outsiders.map((m) => m.id));
+  const sponsors = new Set(Array.isArray(data.sponsors) ? data.sponsors : []);
+  const contactsOf = (v) => ({ people: v.partner ? contactsAll[v.partner] || [] : [], website: bySlug.get(v.partner)?.website, links });
+  const stale = [];
+
+  const entries = new Map();
+  for (const v of vendors) entries.set(whoOf(v), v);
+  for (const row of seen.values()) {
+    if (row.job_id !== job.id || entries.has(row.who)) continue;
+    // Someone listed under another key now: they've become a partner, and lookFor finds this row for them
+    if (row.account_id && [...entries.values()].some((v) => v.account?.id === row.account_id)) continue;
+    const p = row.partner ? bySlug.get(row.partner) : null;
+    // Merged or deleted in Partners, their sponsor now, set aside, or another page's since the job was relinked: none of it is someone leaving
+    if (row.record !== k || (row.partner && !p) || sponsors.has(row.partner) || (setAside[nameKey(p?.name || row.name)] && !row.off)) { stale.push(row.who); continue; }
+    const a = accounts.find((x) => x.id === row.account_id) || null;
+    entries.set(row.who, p ? { company: nameKey(p.name), name: p.name, partner: p.slug, account: pairs.get(p.slug) || null, why: new Set(), logos: [] }
+      : { company: nameKey(a?.name || row.name), name: a?.name || row.name, partner: null, account: a, why: new Set(), logos: [] });
+  }
+
+  const plans = [];
+  for (const [who, v] of entries) {
+    const row = lookFor(seen, job.id, who, v);
+    // A person changed this row after this run began: the access list is older than that, so it waits for the next
+    if (row?.updated_at > at) continue;
+    if (row && early.get(`${row.job_id} ${row.who}`)?.updated_at !== row.updated_at) continue;
+    const same = row && row.record === k ? row : null;
+    // Someone the site took off isn't someone a person took off. Still here, and the site never got that far
+    const was = same && { ...same, people: same.people.filter((p) => onJobIds.has(p.id) || !tookBySite.has(`${job.id} ${p.email}`)) };
+    const opts = contactsOf(v);
+    const sure = outsiders.filter((m) => surelyTheirs(v, m, opts)).map(personOf);
+    const stillHere = (was?.people || []).filter((p) => onJobIds.has(p.id));
+    // Someone who came off with them and is on the job again is them back, however they're known
+    const took = new Set(same?.off ? (same.took || []).map((p) => lower(p.email)) : []);
+    const returned = outsiders.filter((m) => took.has(lower(m.user?.emailAddress))).map(personOf);
+    const people = [...new Map([...sure, ...stillHere, ...returned].map((p) => [p.id, p])).values()];
+    const everyone = [...new Set([...peopleOnJob(v, aces, opts).map((m) => m.id), ...people.map((p) => p.id)])];
+    const present = everyone.length > 0;
+    // Someone left behind who's gone since no longer counts as left behind: if they return, that's them back
+    const leftOn = aces.nodes.length ? (same?.leftOn || []).filter((id) => onJobIds.has(id)) : same?.leftOn || [];
+    const back = everyone.some((id) => !leftOn.includes(id));
+    const logos = v.why.has('page') ? [...new Set(v.logos.map(logoId))] : [];
+    // A long gap starts afresh, but someone a person took off stays off
+    const step = changeOnJob(fresh && !same?.off && !same?.goneAt ? null : was, { people, present, back, logos }, at);
+    plans.push({ who, v, was, same, raw: row, present, leftOn, ...step });
+  }
+  return { k, job, rec, aces, vendors, plans, stale, contactsOf, looked: { at, record: k } };
+}
+
+/** Turn the JobTread side on, or back to only noting what it would do: the launch switch, and the off switch */
+export async function setWatch(env, { on }, by = null, { now = Date.now() } = {}) {
+  await ensureSchema(env.DB);
+  await writeKey(env.DB, 'watch', { on: !!on, by, at: iso(now) });
+  await logAudit(env.DB, { userEmail: by, action: 'updated', entityType: 'jobtread-access', entityName: on ? 'JobTread removals turned on' : 'JobTread removals back to only noted' });
+}
+
+/** Slack hears once, when it's new: what's waiting and what to do about it. → whether it went */
+async function tellLeaving(env, list) {
+  const names = [...new Set(list.map((h) => h.name))];
+  return slackPost(env, slackCard({
+    icon: '⚠️', title: `${names.length} ${names.length === 1 ? 'company' : 'companies'} left jobs in JobTread all at once`,
+    lead: `That many at once is more often a mistake than a real change, so their logos stay on the page: ${names.slice(0, 8).join(', ')}${names.length > 8 ? ` and ${names.length - 8} more` : ''}. If it’s real, take them off on each makeover’s page in the admin.`,
+    buttons: [{ label: 'Open Kids', url: 'https://sunshineonaranneyday.com/admin/#kids' }],
+  })).then((r) => r?.ok !== false, () => false);
+}
+
+/**
+ * Every open job, since the last look: anyone taken off in JobTread, and any takeOffJob a dying
+ * run left unfinished. seen is kept up to date for the puts-on after it. access holds every linked job's aces.
+ */
+async function settleRemovals(env, ctx) {
+  const { linked, byKey, vendorsOn, access, seen, bySlug, pairs, bills, fetchImpl, now, at, report } = ctx;
+  const { DB } = env;
+  const started = Date.now();
+  const room = () => Date.now() - started < WRITE_BUDGET_MS;
+  const looked = await readKey(DB, 'looked');
+  const siteRows = (await DB.prepare('SELECT job_id, email FROM vendor_site_revokes').all()).results || [];
+  const tookBySite = new Set(siteRows.map((r) => `${r.job_id} ${r.email}`));
+  // A run that died after a logo came off and before it asked for the publish
+  if ((await readKey(DB, 'publish-due')).at) {
+    await requestDeploy(env, now, 'Partner logos from JobTread');
+    await writeKey(DB, 'publish-due', {});
+  }
+
+  const jobs = [];
+  for (const [k, job] of linked) {
+    const rec = byKey.get(k);
+    const aces = access.get(job.id);
+    // Nothing to go on: an unreadable record. Nobody is put back meanwhile (staysOffJob)
+    if (!aces?.nodes || !Array.isArray(rec.data?.partnerLogos)) continue;
+    jobs.push(planJob({ k, job, rec, aces, seen, last: looked[job.id], tookBySite, vendors: vendorsOn.get(job.id) || [], ctx, at, now }));
+  }
+
+  // Too many at once, or in a day on one job, looks like a wrong read or the end of a build: nothing moves, a person
+  // hears once, and each stays that way until someone takes it off or it comes back, never because the count fell
+  // Until staff turn it on, what would come off is only noted, so it can be checked against what really happened
+  const watching = !(await readKey(DB, 'watch')).on;
+  const noted = await readKey(DB, 'watched');
+  // Too many at once, or in a day on one job, looks like a wrong read or the end of a build: nothing moves, a person
+  // hears once, and each stays that way until someone takes it off or it comes back, never because the count fell
+  const told = await readKey(DB, 'leaving-told');
+  const said = await readKey(DB, 'taken-off');
+  const pulledToday = (k) => (said.list || []).filter((e) => e.how === 'jobtread' && !e.kept && e.record === k && now - Date.parse(e.at) < DAY_MS).length;
+  const isLeaving = (x) => x.act === 'off-page' || (x.act === 'wait' && x.next.logos.length > 0);
+  const leaving = jobs.flatMap((j) => j.plans.filter(isLeaving).map((x) => ({ j, x })));
+  const tooMany = leaving.length >= MAX_LEAVING_IN_RUN;
+  const overOn = (j) => j.plans.filter(isLeaving).length + pulledToday(j.k) > MAX_LEAVING_ON_JOB;
+  // A job JobTread lists nobody on could be the only person coming off, or a fault: a person looks either way
+  const toldOf = (j, x) => told[`${j.job.id} ${x.who}`] || (x.same ? told[`${j.job.id} ${x.same.who}`] : null);
+  const held = new Map(leaving.filter(({ j, x }) => tooMany || overOn(j) || !j.aces.nodes.length || toldOf(j, x)).map(({ j, x }) => [`${j.job.id} ${x.who}`, x]));
+  const untold = leaving.filter(({ j, x }) => held.has(`${j.job.id} ${x.who}`) && !toldOf(j, x)?.said);
+  const readJobs = new Set(jobs.map((j) => j.job.id));
+  const openJobs = new Set(linked.map(([, job]) => job.id));
+  // A job that couldn't be read this run keeps what was said about it; one that's closed has nothing left to say
+  const stillSaid = Object.fromEntries([...Object.entries(told).filter(([k]) => !readJobs.has(k.split(' ')[0]) && openJobs.has(k.split(' ')[0])), ...[...held].map(([k, x]) => { const { j } = leaving.find((l) => l.x === x); const was = toldOf(j, x); return [k, { at: was?.at || at, said: !!was?.said, name: x.v.name, page: pageName(j.rec), record: j.k }]; })]);
+  if (held.size) {
+    report.problems.push(`${held.size} ${held.size === 1 ? 'company' : 'companies'} left jobs in JobTread at once, so their logos stay on the page until someone looks. If it’s real, take them off on each makeover’s page.`);
+    if (untold.length && await tellLeaving(env, [...held.values()].map((x) => ({ name: x.v.name })))) for (const [k] of held) stillSaid[k].said = true;
+  }
+  await writeKey(DB, 'leaving-told', stillSaid);
+
+  let published = false;
+  const watched = {};
+  for (const j of jobs) {
+    const { k, job, rec, plans } = j;
+    for (const who of j.stale) { await forgetSeen(DB, job.id, who); seen.delete(`${job.id} ${who}`); }
+
+    const remember = []; // what only needs remembering goes in one write: the first look at a job is every company on it
+    const drops = [];
+    const rowOf = (x, next) => ({ ...next, job_id: job.id, who: x.who, record: k, name: x.v.name, partner: x.v.partner, account_id: x.v.account?.id || x.same?.account_id || null, took: next.off || !x.present ? (next.took?.length ? next.took : x.same?.took || []) : [], leftOn: next.off ? x.leftOn : [], goneLogos: next.off ? x.same?.goneLogos || [] : [], beforeOff: next.off ? x.same?.beforeOff || null : null });
+    const unchanged = (a, b) => !!a && a.who === b.who && JSON.stringify([a.people, a.logos, a.off || null, a.goneAt || null, a.leftOn || []]) === JSON.stringify([b.people, b.logos, b.off || null, b.goneAt || null, b.leftOn || []]);
+    for (const x of plans) {
+      const { who, v, same, next } = x;
+      if (x.act === 'return') {
+        const onJobNow = new Set(outsidersOn(j.aces).map((m) => lower(m.user?.emailAddress)));
+        const owed = (same.took || []).filter((t) => !onJobNow.has(t.email));
+        const mode = await roleMode(env, { fetchImpl }).catch(() => null);
+        const { people, failed } = await grantBack(env, same, owed, mode, bySlug, { fetchImpl, now });
+        const row = { ...same, off: failed.length ? 'returning' : null, took: failed, people: [...same.people, ...people.map(({ id, email, name }) => ({ id, email, name }))] };
+        await seenStatement(DB, row, at).run();
+        seen.set(`${job.id} ${who}`, row);
+        if (failed.length) report.problems.push(`Couldn’t put ${v.name} back on ${pageName(rec)}’s job yet. The site keeps trying.`);
+        continue;
+      }
+      if (x.act === 'finish') {
+        if (now - Date.parse(same.updated_at || 0) < GOING_RETRY_MS || !j.aces.nodes.length) continue; // still under way, or nothing to go on
+        try {
+          if (same.logos.length) {
+            const left = await takeLogosOff(env, rec, [{ pull: same.logos, name: v.name }], at);
+            if (!left) continue; // busy: next run
+            if (left.length) { same.goneLogos = left; await writeKey(DB, 'publish-due', { at }); }
+          }
+          const { going, left } = goingFrom(v, j.aces, othersOn(rec, j.vendors, who, bySlug, pairs), j.contactsOf, same.people, bills.get(job.id) || []);
+          same.took = tookFrom(v, going, same.took || []);
+          await seenStatement(DB, same, at).run();
+          await revokePeople(env, job.id, going, at, fetchImpl);
+          await offForGood(DB, { job, record: k, who, v, same, going, left, at });
+          const list = (await readKey(DB, 'taken-off')).list || [];
+          const entry = list.find((e) => e.record === k && e.name === v.name && e.how === 'page');
+          if (!entry) await noteTaken(DB, { at, how: 'page', name: v.name, page: pageName(rec), record: k, people: going.map((m) => m.user?.name || m.user?.emailAddress) });
+          else if (!entry.people?.length && going.length) await nameTaken(DB, entry, going.map((m) => m.user?.name || m.user?.emailAddress));
+          seen.set(`${job.id} ${who}`, { ...same, people: [], logos: [], off: 'site', leftOn: left.map((m) => m.id) });
+        } catch (e) { report.problems.push(`Couldn’t take ${v.name} off ${pageName(rec)}’s job: ${e.message}`); }
+        continue;
+      }
+      if (x.act === 'off-page') {
+        if (watching && !held.has(`${job.id} ${who}`)) {
+          const key = `${job.id} ${who}`;
+          watched[key] = noted[key] || { at, name: v.name, page: pageName(rec), record: k };
+          if (!noted[key]) await logMakeover(DB, { record: k, at, action: 'would-remove', side: 'jobtread', name: v.name });
+          continue;
+        }
+        if (held.has(`${job.id} ${who}`) || !room()) { if (!held.has(`${job.id} ${who}`)) report.more = true; continue; } // the last look stands
+        drops.push({ x, name: v.name, pull: x.pull });
+        continue;
+      }
+      if (x.act === 'stay-off') {
+        if (!j.aces.nodes.length) continue; // JobTread lists nobody: nothing is settled on that
+        await forgetCompany(DB, k, { partner: v.partner, names: [v.name], emails: (same?.people || []).map((p) => p.email) });
+        await noLongerAdded(DB, job.id, v.company);
+        const entry = { at, how: 'jobtread', name: v.name, page: pageName(rec), record: k, kept: true };
+        await noteTaken(DB, entry);
+        (report.taken ||= []).push(entry);
+      } else if (x.act === 'back') {
+        // Added again in JobTread: the very logo that left goes back, unless one's there already. Busy: next run, nothing lost
+        if ((same?.goneLogos || []).length && !v.why.has('page')) {
+          if (!(await takeLock(DB, false, 'sync'))) continue;
+          try { await pageLogosOn(env, { table: tableOf(rec), slug: rec.slug, logos: same.goneLogos }, SYNC_USER); published = true; await writeKey(DB, 'publish-due', { at }); } catch (e) {
+            report.problems.push(`Couldn’t put ${v.name}’s logo back on ${pageName(rec)}: ${e.message}`);
+            continue;
+          } finally { await freeLock(DB, 'sync'); }
+        }
+        await forgetCompany(DB, k, { partner: v.partner, names: [v.name], emails: (x.next.people || []).map((p) => p.email) });
+      }
+      const row = rowOf(x, next);
+      seen.set(`${job.id} ${who}`, row);
+      if (!unchanged(same, row)) remember.push(rememberStatement(DB, row, at, x.raw));
+    }
+    for (let i = 0; i < remember.length; i += 50) await DB.batch(remember.slice(i, i + 50));
+    // One that's become a partner since moves to its new key, once that's written; one held or watched stays where it is
+    const moved = () => plans.filter((x) => x.same && x.same.who !== x.who && seen.has(`${job.id} ${x.who}`));
+    for (const x of moved()) { await forgetSeen(DB, job.id, x.same.who); seen.delete(`${job.id} ${x.same.who}`); }
+
+    if (drops.length) {
+      const entries = drops.map((d) => ({ at, how: 'jobtread', name: d.name, page: pageName(rec), record: k }));
+      try {
+        for (const e of entries) await noteTaken(DB, e);
+        await writeKey(DB, 'publish-due', { at });
+        // What's about to leave is written down first, so a run dying here doesn't lose it for Put back
+        const shown = (rec.data?.partnerLogos || []).map((l, i) => ({ url: l?.url, name: l?.name || '', at: i }));
+        for (const d of drops) await DB.prepare('UPDATE vendor_job_seen SET gone_logos = ? WHERE job_id = ? AND who = ?').bind(JSON.stringify(shown.filter((l) => d.pull.includes(logoId(l.url)))), job.id, d.x.same?.who || d.x.who).run();
+        const left = await takeLogosOff(env, rec, drops, at);
+        if (!left) { for (const e of entries) await unnoteTaken(DB, e); continue; } // busy: next run
+        published = true;
+        for (const d of drops) {
+          await forgetCompany(DB, k, { partner: d.x.v.partner, names: [d.name], emails: (d.x.same?.people || []).map((p) => p.email) });
+          await noLongerAdded(DB, job.id, d.x.v.company);
+          const row = { ...rowOf(d.x, d.x.next), goneLogos: left.filter((l) => d.pull.includes(logoId(l.url))), updated_at: at };
+          seen.set(`${job.id} ${d.x.who}`, row);
+          await seenStatement(DB, row, at).run();
+        }
+        (report.taken ||= []).push(...entries);
+        await slackPost(env, slackCard({ icon: 'ℹ️', title: `${drops.map((d) => d.name).join(', ')} left ${pageName(rec)}’s job`, lead: `Taken off in JobTread, so ${drops.length === 1 ? 'the logo' : 'their logos'} came off the page. Put them back from the page’s Vendors list if that was a mistake.`,
+          buttons: [{ label: 'Open the page', url: `https://sunshineonaranneyday.com/admin/#kids/${k}` }] })).catch(() => {});
+      } catch (e) {
+        for (const t of entries) await unnoteTaken(DB, t).catch(() => {});
+        report.problems.push(`Couldn’t take ${drops.map((d) => d.name).join(', ')} off ${pageName(rec)}: ${e.message}`);
+      }
+    }
+    looked[job.id] = j.looked;
+  }
+
+  await writeKey(DB, 'looked', looked);
+  await writeKey(DB, 'watched', watched);
+  if ((await readKey(DB, 'publish-due')).at) published = true;
+  // The site's own removals have been read by now; the rows of a job not looked at wait for it
+  for (const r of siteRows) if (jobs.some((j) => j.job.id === r.job_id)) await DB.prepare('DELETE FROM vendor_site_revokes WHERE job_id = ? AND email = ?').bind(r.job_id, r.email).run();
+  if (published) {
+    await requestDeploy(env, now, 'Partner logos from JobTread');
+    await writeKey(DB, 'publish-due', {});
+  }
+}
+
+/** Not to put on the job now: a person took them off, or they've left and that isn't settled (or JobTread listed nobody) */
+function staysOffJob(row, aces) {
+  if (!row) return false;
+  if (row.off || row.goneAt) return true;
+  const ids = new Set((aces?.nodes || []).map((a) => a?.membership?.id));
+  return row.people.length > 0 && !row.people.some((p) => ids.has(p.id));
+}
+
 // ── The sweep ────────────────────────────────────────────────────────
 async function readPartners(DB) {
   const rows = (await DB.prepare('SELECT slug, data FROM partners').all()).results || [];
@@ -739,6 +1585,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
     // Each open job with a page, and the vendors that belong on it
     const linked = [...linkJobs(jobs, records)].filter(([k]) => byKey.has(k));
     const want = [];
+    const vendorsOn = new Map(); // job id → its vendors, for who's left since the last look
     const loose = []; // logos nobody goes by: [{ name, record, page }]
     for (const [k, job] of linked) {
       const rec = byKey.get(k);
@@ -747,6 +1594,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
         if (only && v.company !== only) continue;
         if (setAside[v.company]) continue;
         want.push({ k, rec, job, v });
+        vendorsOn.set(job.id, [...(vendorsOn.get(job.id) || []), v]);
       }
       for (const name of new Set(names)) loose.push({ name, record: k, page: pageName(rec) });
     }
@@ -808,13 +1656,22 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       }));
     }
 
-    // Who's on each job already, then the ones who aren't
-    const access = want.length ? await fetchAccess(key, [...new Set(want.map((w) => w.job.id))], fetchImpl) : new Map();
+    // Who's on each job already. A job whose last logo just came off still has to be looked at
+    // What's written down from here on is newer than the access read below, so those rows wait for the next run
+    const early = await readSeen(DB);
+    const toRead = only ? want.map((w) => w.job.id) : linked.map(([, job]) => job.id);
+    const access = toRead.length ? await fetchAccess(key, [...new Set(toRead)], fetchImpl) : new Map();
+    // Who's left a job since the last look, and they aren't put back below
+    const seen = await readSeen(DB);
+    if (!only) await settleRemovals(env, { linked, byKey, bySlug, pairs, accounts, contactsAll, setAside, links, bills, vendorsOn, access, seen, early, fetchImpl, now, at, report });
+    // Then the ones who belong on a job and aren't
     const grants = new Map(); // job id → [{ email, role }] for grantJobAccess
     const keep = new Set();
     for (const { k, rec, job, v } of want) {
       const rowKey = `${job.id} ${v.company}`;
       keep.add(rowKey);
+      const lastLook = lookFor(seen, job.id, whoOf(v), v);
+      if (staysOffJob(lastLook, access.get(job.id))) continue;
       const was = rows.get(rowKey);
       const people = v.partner ? contactsAll[v.partner] || [] : [];
       const base = {
@@ -822,12 +1679,15 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
         why: whyOf(v), first_seen: was?.first_seen || at, updated_at: at, person: was?.person || null,
       };
       const aces = access.get(job.id);
-      if (onJob(v, aces, { people, website: bySlug.get(v.partner)?.website })) {
+      // Someone a last look knew stays theirs when their email changes, so a second login isn't made
+      const knownHere = lastLook?.people.some((p) => (aces?.nodes || []).some((n) => n?.membership?.id === p.id));
+      if (knownHere || onJob(v, aces, { people, website: bySlug.get(v.partner)?.website, links })) {
         const next = { ...base, state: was?.state === 'added' ? 'added' : 'there', reason: null };
         if (!was || was.state !== next.state || was.why !== next.why || was.page !== next.page || was.name !== next.name) await putRow(DB, next);
         continue;
       }
-      const person = personFor(v, people);
+      // Someone the site took off goes back when the logo does, even with no contact on file
+      const person = personFor(v, people) || (lastLook?.took?.[0] ? { ...lastLook.took[0], name: lastLook.took[0].name || v.name } : null);
       if (!person) {
         report.waiting++;
         if (!was || was.state !== 'waiting' || was.reason !== 'no-email' || was.why !== base.why || was.name !== base.name) await putRow(DB, { ...base, state: 'waiting', reason: 'no-email', person: null });
@@ -840,9 +1700,16 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
         const role = v.partner ? mode.partner(bySlug.get(v.partner)) : mode.trade;
         const g = await grantJobAccess(env, job.id, person, role, { notify: false, access: grants.get(job.id), fetchImpl, now });
         grants.get(job.id).push({ email: person.email, role: g.role });
+        if (g.state === 'added' && !g.internal && g.membership) {
+          const stopped = await sawPutOn(DB, { job_id: job.id, who: whoOf(v), record: k, name: v.name, partner: v.partner, account_id: v.account?.id || null, logos: [], off: null }, { id: g.membership, email: person.email }, at);
+          if (stopped) { await revokePeople(env, job.id, [{ id: g.membership, user: { emailAddress: person.email } }], at, fetchImpl); continue; }
+        }
         const row = { ...base, state: g.state === 'there' ? 'there' : 'added', reason: null, person: { ...person, role: g.role || null, kept: !!g.kept, at } };
         await putRow(DB, row);
-        if (row.state === 'added') report.added.push({ job: job.id, page: base.page, name: v.name, person: person.name, role: g.role, kept: !!g.kept });
+        if (row.state === 'added') {
+          report.added.push({ job: job.id, page: base.page, name: v.name, person: person.name, role: g.role, kept: !!g.kept });
+          if (!only) await logMakeover(DB, { record: k, at, action: 'added', side: v.why.has('page') ? 'website' : 'bill', name: v.name, people: [person.name] });
+        }
       } catch (e) {
         report.waiting++;
         await putRow(DB, { ...base, state: 'waiting', reason: 'error', person: { ...person, error: String(e.message || e).slice(0, 200) } });
@@ -930,7 +1797,7 @@ export async function syncVendorAccess(env, { fetchImpl = fetch, now = Date.now(
       await writeKey(DB, 'loose', loose);
       await patchKey(DB, 'state', {
         lastRunAt: at, lastError: report.problems.length ? { at, error: report.problems.slice(0, 3).join(' · ').slice(0, 300) } : null,
-        lastRun: { at, added: report.added.length, made: report.made.length, combined: report.combined.length, contacts: report.contacts.length, waiting: waitingNow, near: Object.keys(near).length, more: report.more,
+        lastRun: { at, added: report.added.length, taken: report.taken?.length || 0, made: report.made.length, combined: report.combined.length, contacts: report.contacts.length, waiting: waitingNow, near: Object.keys(near).length, more: report.more,
           ...(report.roles ? { roles: report.roles } : {}) },
       });
     }
@@ -970,14 +1837,18 @@ export async function maybeSyncVendorAccess(env, { fetchImpl = fetch, now = Date
  * combined: [{ key, keep, drop, partner, name, at }] (the empty twin the site archived, newest 30),
  * jtOnly: [{ id, name, kind, jobs, asked? }] (JobTread's vendors that aren't partners, by name;
  * asked: { near: partner } or { twin: other account }, when a question above is about it),
+ * takenOff: [{ at, how: 'page' | 'jobtread', name, page, record, people?, kept? }] (newest 30: a company
+ * taken off a job), kept tells one that stayed off with no logo to move, watch: { on, list: [{ at, name, page, record }] }
+ * (on false: logos a JobTread removal would take off are only noted, until staff turn it on), held: [{ name, page,
+ * record, at }] (left a job in JobTread with too many others: waiting for someone to look),
  * roles (./_partner-roles.js rolesView) }
  */
 export async function adminView(DB) {
   await ensureSchema(DB);
-  const [rows, st, near, setAside, accountRows, partners, loose, twins, combined, roles, jtOnly] = await Promise.all([
+  const [rows, st, near, setAside, accountRows, partners, loose, twins, combined, roles, jtOnly, takenOff, watch, watched, held] = await Promise.all([
     DB.prepare('SELECT * FROM vendor_access ORDER BY updated_at DESC').all().then((r) => r.results || []),
     readKey(DB, 'state'), readKey(DB, 'near'), readKey(DB, 'set-aside'), readAccountRows(DB), readPartners(DB), readKey(DB, 'loose'),
-    readKey(DB, 'twins'), readKey(DB, 'combined'), rolesView(DB).catch(() => null), readKey(DB, 'jt-only'),
+    readKey(DB, 'twins'), readKey(DB, 'combined'), rolesView(DB).catch(() => null), readKey(DB, 'jt-only'), readKey(DB, 'taken-off'), readKey(DB, 'watch'), readKey(DB, 'watched'), readKey(DB, 'leaving-told'),
   ]);
   const asked = new Map();
   for (const n of Object.values(near)) for (const x of n.near || []) asked.set(x.id, { near: n.name });
@@ -1011,6 +1882,9 @@ export async function adminView(DB) {
     setAside: Object.entries(setAside).map(([company, s]) => ({ company, ...s })).sort((a, b) => String(a.name).localeCompare(String(b.name))),
     matched, paired: matched.length, lastRunAt: st.lastRunAt || null, lastRun: st.lastRun || null, lastError: st.lastError || null,
     loose: Array.isArray(loose) ? loose : [], billedOnly, roles,
+    takenOff: Array.isArray(takenOff.list) ? takenOff.list : [],
+    watch: { on: !!watch.on, by: watch.by || null, at: watch.at || null, list: Object.values(watched) },
+    held: Object.values(held).filter((h) => h.name),
     twins: Array.isArray(twins) ? twins : [],
     combined: Object.entries(combined).map(([key, c]) => ({ key, ...c, name: c.partner ? nameOf.get(c.partner) || null : null }))
       .sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 30),
@@ -1172,8 +2046,14 @@ export async function settleTwins(env, { a, b, same }, by = null, { fetchImpl = 
 
 /** Who's on a job, with each entry's id (to take one off) */
 async function jobAces(grantKey, jobId, fetchImpl) {
-  const body = await pave(grantKey, { job: { $: { id: jobId }, id: {}, aces: { $: { size: 50 }, nodes: { id: {}, membership: { user: { emailAddress: {} } } } } } }, fetchImpl);
-  return (body?.job?.aces?.nodes || []).map((a) => ({ id: a.id, email: lower(a.membership?.user?.emailAddress) }));
+  const out = [];
+  let page = null;
+  do {
+    const body = await pave(grantKey, { job: { $: { id: jobId }, id: {}, aces: { $: { size: 50, ...(page ? { page } : {}) }, nextPage: {}, nodes: { id: {}, membership: { id: {}, user: { emailAddress: {} } } } } } }, fetchImpl);
+    out.push(...(body?.job?.aces?.nodes || []).map((a) => ({ id: a.id, member: a.membership?.id, email: lower(a.membership?.user?.emailAddress) })));
+    page = body?.job?.aces?.nextPage || null;
+  } while (page);
+  return out;
 }
 
 /**
@@ -1201,11 +2081,14 @@ export async function unmatchAccount(env, { partner }, by = null, { fetchImpl = 
   const theirs = new Set([...(row.jt_seen || []).map((p) => lower(p.email)), ...[...fromJt].filter((k) => !k.startsWith('n:'))].filter((e) => e && !own.has(e)));
   const out = { partner, account: row.account_id, accountName: row.account_name || '', how: row.how || 'name', offJobs: [], fromPartners: [], fromJobTread: [], untracked: !copied && !!row.synced_at };
 
+  // Nobody leaving here is a company being taken off a job: the next look starts afresh
+  await DB.prepare('DELETE FROM vendor_job_seen WHERE partner = ? AND off IS NULL').bind(partner).run();
   // Off the jobs the site put them on through this match
   const added = ((await DB.prepare("SELECT * FROM vendor_access WHERE partner = ? AND state = 'added'").bind(partner).all()).results || [])
     .map((r) => ({ ...r, person: parse(r.person, {}) }));
   for (const r of added.filter((x) => theirs.has(lower(x.person?.email)))) {
     const ace = (await jobAces(key, r.job_id, fetchImpl)).find((a) => a.email === lower(r.person.email));
+    await noteSiteRevoke(DB, r.job_id, r.person.email, iso(now));
     if (ace) await revokeJobAccess(env, ace.id, { fetchImpl });
     await DB.prepare('DELETE FROM vendor_access WHERE job_id = ? AND company = ?').bind(r.job_id, r.company).run();
     out.offJobs.push({ page: r.page, person: r.person.name || r.person.email });

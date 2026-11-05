@@ -155,17 +155,17 @@ test('a sweep puts logos on the page, saved like an admin save and published; no
   assert.equal(sent.emails.length, 1, 'staff hear once');
   assert.equal(sent.hooks.length, 1);
 
-  // Staff take Randall Brothers off Isla's page: it stays off
+  // Randall Brothers's logo goes missing from Isla's page while they're on the job: on the job means on the page
   await saveKid(DB, { ...isla, partnerLogos: isla.partnerLogos.slice(0, 1) });
   await syncKidPartners(env, { fetchImpl: jtFetch(() => jobs), now: now + 22 * 60e3 });
-  assert.equal((await kidOf(DB, 'isla')).partnerLogos.length, 1, 'a logo staff took off is never put back');
+  assert.equal((await kidOf(DB, 'isla')).partnerLogos.length, 2, 'it goes back at the next check');
 
   // Brand New Co's logo goes into Partners: the save re-checks what's waiting and it goes on
   await addPartner(DB, { slug: 'brand-new-co', name: 'Brand New Co', logo: img('partners/brand-new-co/1') });
   const back = await recheckWaiting(env, { now: now + 40 * 60e3 });
   assert.deepEqual(back, [{ record: 'isla', name: 'Isla', added: ['Brand New Co'], waiting: [] }]);
   assert.equal((await kidOf(DB, 'isla')).partnerLogos.at(-1).url, img('partners/brand-new-co/1'));
-  assert.equal(sent.hooks.length, 2, 'published (the cooldown had passed)');
+  assert.equal(sent.hooks.length, 3, 'published each time (the cooldown had passed)');
   assert.equal((await adminView(DB)).waiting.length, 0);
 });
 

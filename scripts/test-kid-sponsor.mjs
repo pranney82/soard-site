@@ -381,6 +381,25 @@ try {
 
     const ax = await axeScan(page, '#kd-sec-sponsor');
     ok(!ax.length, `axe: the sponsor card has no WCAG A/AA violations ${axeText(ax)}`);
+
+    // Deleted by its logo: the same as taking them off, and Save takes them off the job for good, bill or not
+    const logoX = '.kd-logos .kd-x[aria-label="Remove The Voila Foundation"]';
+    const takeOff = () => lastCall(api, '/api/vendor-access-admin', (c) => c.body?.takeOff)?.body?.takeOff;
+    await page.$eval(logoX, (el) => el.click());
+    await sleep(300);
+    ok(/The Voila Foundation taken off\. Saving takes them off the job in JobTread\./.test((await toasts(page)).join(' ')), 'the X on a sponsor’s logo says what Save does');
+    await page.evaluate(() => [...document.querySelectorAll('.toast-undo')].reverse().find((b) => b.textContent.trim() === 'Undo')?.click());
+    await sleep(300);
+    ok(!!(await page.$(logoX)) && /Voila/.test(await card(page)), 'Undo puts the logo and the sponsor back');
+    ok(!(await page.$('.kd-save')) && !takeOff(), 'with nothing left to save, and nobody moved');
+    await page.$eval(logoX, (el) => el.click());
+    await sleep(300);
+    await page.click('.kd-save');
+    await page.waitForFunction(() => !/The Voila Foundation/.test(document.querySelector('#kd-sec-sponsor')?.innerText || ''), { timeout: 8000 }).catch(() => {});
+    await sleep(600);
+    ok(JSON.stringify(api.st.kids[KID.slug].sponsors) === '[]' && !api.st.kids[KID.slug].partnerLogos.some((l) => l.name === VOILA.name), 'Save: off as the sponsor, and the logo gone');
+    ok(takeOff()?.partner === 'the-voila-foundation' && takeOff()?.record === KID.slug, 'then they come off the job and stay off');
+    ok(!/Nobody from them was on the job/.test((await toasts(page)).join(' ')), 'without a second, confusing toast');
     ok(!errors.length, `no console errors (${errors.join(' | ').slice(0, 300)})`);
     await page.close();
   }

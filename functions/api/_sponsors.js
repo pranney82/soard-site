@@ -33,7 +33,7 @@
  * JobTread, no logo), their email is one of its contacts, or their email is
  * on its website's domain.
  */
-import { pave, grantJobAccess, revokeJobAccess } from './_jt-access.js';
+import { pave, grantJobAccess, revokeJobAccess, noteSiteRevoke } from './_jt-access.js';
 import { FIELD_MONETARY_SPONSOR } from './_demo-invites.js';
 import { matchProject } from './_reveals.js';
 import { readLinks, fetchOpenJobs } from './_kid-partners.js';
@@ -46,6 +46,13 @@ import { isPartnerRole, isSponsorRole, roleMode, OLD_SPONSOR_ROLE } from './_par
 export const SPONSOR_ROLE = OLD_SPONSOR_ROLE;
 const MAX_PEOPLE = 5;
 const SWEEP_EVERY_MS = 10 * 60 * 1000;
+
+/** Taken off this kid by a person: JobTread's Monetary Sponsor field doesn't bring them back, even if a sync couldn't clear it */
+export async function dismissSponsor(DB, record, slug) {
+  const row = await DB.prepare('SELECT dismissed FROM sponsor_jobs WHERE record = ?').bind(record).first().catch(() => null);
+  if (!row) return;
+  await DB.prepare('UPDATE sponsor_jobs SET dismissed = ? WHERE record = ?').bind(JSON.stringify([...new Set([...parse(row.dismissed || '[]', []), slug])]), record).run();
+}
 
 const SCHEMA = [
   // people: JSON [{ name, email, phone, title }]; source: 'admin' or 'jobtread' (taken from the job's Sponsor users)
@@ -305,6 +312,7 @@ async function reconcile(env, { kid, job, chosen, partners, contacts, links, row
       if (onPage(p)) continue;
       for (const x of theirs(job, p, contacts, links).filter((y) => !keeps(y))) {
         try {
+          await noteSiteRevoke(DB, job.id, x.email, nowIso(now));
           await revokeJobAccess(env, x.aceId, { fetchImpl });
           done.removed.push({ slug: p.slug, name: x.name || x.email, email: x.email });
           touched = true;

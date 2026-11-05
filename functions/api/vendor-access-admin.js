@@ -22,7 +22,8 @@
  *
  * See ./_vendor-access.js.
  */
-import { adminView, setCompanyAside, settleAccount, linkAccount, syncVendorAccess, unmatchAccount, renameAccount, settleTwins } from './_vendor-access.js';
+import { adminView, setCompanyAside, settleAccount, linkAccount, syncVendorAccess, unmatchAccount, renameAccount, settleTwins, takeOffJob, putBackJob, addToJob, makeoverView, setWatch } from './_vendor-access.js';
+import { reconcileJob } from './_reveal-invites.js';
 import { pickRole } from './_partner-roles.js';
 import { saveContacts, grantForPartner } from './_sponsors.js';
 import { logAudit } from './_audit.js';
@@ -33,11 +34,15 @@ const ok = (body = {}) => Response.json({ success: true, ...body }, { headers: {
 const fail = (error, status = 400) => Response.json({ success: false, error }, { status });
 const COMPANY_RE = /^[a-z0-9]{1,200}$/;
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
+const RECORD_RE = /^(community\/)?[a-z0-9][a-z0-9-]{0,120}$/;
 const ACCOUNT_RE = /^[A-Za-z0-9]{6,40}$/;
 
-export async function onRequestGet({ env }) {
+export async function onRequestGet({ env, request }) {
   if (!env.DB) return fail('DB not bound', 500);
-  return ok(await adminView(env.DB));
+  const record = request ? new URL(request.url).searchParams.get('record') : null;
+  if (record === null) return ok(await adminView(env.DB));
+  if (!RECORD_RE.test(record)) return fail('Bad page');
+  try { return ok(await makeoverView(env, record)); } catch (e) { return fail(e.message || 'Couldn’t read that makeover', e.status === 409 ? 409 : 503); }
 }
 
 async function partnerName(DB, slug) {
@@ -57,6 +62,34 @@ export async function onRequestPost(context) {
     return { report, view: await adminView(env.DB) };
   };
   const run = async (company) => ok(await sync(company));
+
+  // The JobTread side: only noting what it would do, or doing it
+  if (body?.watch) {
+    await setWatch(env, { on: body.watch.on === true }, by);
+    return ok({ view: await adminView(env.DB) });
+  }
+
+  // A person took a company off this makeover, put them back, or added one: the page and the job, now, and the reveal invite right behind
+  if (body?.takeOff || body?.putBack || body?.addToJob) {
+    const { record, logos = [], partner = null, account = null, name = '', sha = null, who = [], undo = false } = body.takeOff || body.putBack || body.addToJob;
+    if (!RECORD_RE.test(record || '')) return fail('Bad page');
+    if (partner !== null && !SLUG_RE.test(partner)) return fail('Bad company');
+    if (account !== null && !ACCOUNT_RE.test(account)) return fail('Bad company');
+    if (!Array.isArray(logos) || logos.length > 20 || !logos.every((l) => typeof l?.url === 'string')) return fail('Bad logos');
+    if ((body.takeOff || body.addToJob) && !partner && !account && !logos.length) return fail('Nothing to do');
+    if (!Array.isArray(who) || who.length > 20 || !who.every((w) => typeof w === 'string')) return fail('Bad company');
+    if (body.putBack && !who.length && !logos.length) return fail('Nothing to put back');
+    const list = logos.map((l) => ({ url: l.url.slice(0, 500), name: String(l.name || '').slice(0, 200), at: Number(l.at) || 0 }));
+    const label = String(name || '').slice(0, 200);
+    try {
+      const result = body.putBack ? await putBackJob(env, { record, who, logos: list, sha: sha || null, undo: undo === true }, by)
+        : body.addToJob ? await addToJob(env, { record, logos: list, account, name: label }, by)
+          : await takeOffJob(env, { record, partner, account, name: label, logos: list, sha: sha || null }, by);
+      // The sweep's 5-minute check is the backstop
+      if (result.jobId) context.waitUntil?.(reconcileJob(env, result.jobId, { wait: false }).catch(() => {}));
+      return ok({ result });
+    } catch (e) { return Response.json({ success: false, error: e.message || 'Couldn’t change that', unchanged: !!e.unchanged }, { status: e.status === 409 ? 409 : 503 }); }
+  }
 
   if (body?.setAside) {
     const { company, undo = false, name = null } = body.setAside;

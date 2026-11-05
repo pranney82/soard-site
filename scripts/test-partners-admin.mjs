@@ -116,6 +116,12 @@ function makeApi() {
     ],
     near: [{ partner: 'crosby-design-group', name: 'Crosby Design Group', near: [{ id: 'acctcdg01', name: 'CDG Interiors', why: 'Initials' }] }],
     added: [{ company: 'randallbrothers', name: 'Randall Brothers', page: 'Isla’s page', record: 'isla', jobId: 'jt-isla', why: 'page', person: 'Ron Randall', role: 'Vendor', kept: false, at: since }],
+    watch: { on: false, list: [{ at: since, name: 'Echo Tile', page: 'Isla’s page', record: 'isla' }] },
+    takenOff: [
+      { at: since, how: 'page', name: 'Bell Cabinetry', page: 'Isla’s page', record: 'isla', people: ['Bea Bell', 'Bo Bell'] },
+      { at: since, how: 'jobtread', name: 'Delta Glass', page: 'Georgia’s page', record: 'georgia' },
+      { at: since, how: 'jobtread', name: 'Ace Electric', page: 'the Kindness House page', record: 'community/kindness-house', kept: true },
+    ],
     // Every partner matched to a JobTread vendor, named differently first
     matched: [
       { partner: 'randall-brothers', name: 'Randall Brothers', account: 'acctrb01', accountName: 'Randall Bros', how: 'linked' },
@@ -291,9 +297,27 @@ function makeApi() {
     if (p.startsWith('/api/live-ws')) { req.abort(); return true; }
     if (p === '/api/vendor-access-admin') {
       const a = st.access;
+      if (req.method() !== 'POST' && new URL(req.url()).searchParams.get('record')) return json({ success: true, ...(st.vendors || { job: null, rows: [], trade: [], history: [] }) });
       if (req.method() !== 'POST') return json({ success: true, ...a });
       const b = body();
       const report = (added = []) => ({ added, made: [], contacts: [], waiting: a.waiting.length, problems: [] });
+      if (b.takeOff) {
+        const { record, partner, logos = [] } = b.takeOff;
+        const k = st.kids[record];
+        const gone = (l) => (partner ? PS.cfId(l.url) === PS.cfId(st.partners[partner].logo) : logos.some((x) => x.url === l.url));
+        const removed = k.partnerLogos.map((l, at) => ({ ...l, at })).filter(gone);
+        st.kids[record] = { ...k, partnerLogos: k.partnerLogos.filter((l) => !gone(l)) };
+        st.lastRemoved = removed;
+        return json({ success: true, result: { job: true, who: ['p:x'], removed, sha: 'after', taken: [{ name: 'Bell Cabinetry', people: ['Ben Bell'] }], left: [], pending: [], skipped: [] } });
+      }
+      if (b.putBack) {
+        const logos = st.lastRemoved || [];
+        const k = st.kids[b.putBack.record];
+        st.kids[b.putBack.record] = { ...k, partnerLogos: [...k.partnerLogos, ...logos.map(({ at, ...l }) => l)] };
+        return json({ success: true, result: { jobId: 'jt', back: ['Ben Bell'], logos, pending: [] } });
+      }
+      if (b.watch) { a.watch = { ...a.watch, on: b.watch.on }; return json({ success: true, view: a }); }
+      if (b.addToJob) return json({ success: true, result: { jobId: 'jt', added: ['Eve Ace'], waiting: [] } });
       if (b.setAside) {
         const w = a.waiting.find((x) => x.company === b.setAside.company) || a.setAside.find((x) => x.company === b.setAside.company);
         if (b.setAside.undo) { a.setAside = a.setAside.filter((x) => x.company !== w.company); a.waiting.push(w); }
@@ -843,6 +867,23 @@ try {
     await page.evaluate(() => [...document.querySelectorAll('.kd-dialog .ppl-link')].find((b) => /put on jobs lately/.test(b.textContent))?.click());
     const lately = await page.$eval('.kd-dialog', (d) => d.textContent.replace(/\s+/g, ' ')).catch(() => '');
     ok(/Ron Randall for Randall Brothers on the job for Isla’s page · as a Vendor/.test(lately), `who went on lately, for which company and job (${lately.slice(lately.indexOf('put on jobs lately'), lately.indexOf('put on jobs lately') + 260)})`);
+    // Just after launch: what would have come off is only noted
+    await page.evaluate(() => [...document.querySelectorAll('.kd-dialog .ppl-link')].find((b) => /would have come off/.test(b.textContent))?.click());
+    await page.waitForFunction(() => /left the job for Isla’s page in JobTread/.test(document.querySelector('.kd-dialog')?.textContent || ''), { timeout: 3000 }).catch(() => {});
+    ok(/Watching: a company taken off a job in JobTread stays off it, but its logo stays on the page until this is turned on\./.test((await page.$eval('.kd-dialog', (d) => d.textContent).catch(() => '')).replace(/\s+/g, ' ')), 'it says it’s only watching, and what that means');
+    ok(/Echo Tile\s*left the job for Isla’s page in JobTread/.test((await page.$eval('.kd-dialog', (d) => d.textContent).catch(() => '')).replace(/\s+/g, ' ')), 'what would have come off is listed');
+    // Who was taken off lately: which side it started on, and a way to the page
+    await page.evaluate(() => [...document.querySelectorAll('.kd-dialog .ppl-link')].find((b) => /taken off lately/.test(b.textContent))?.click());
+    await page.waitForFunction(() => /Put them back on the page or the job/.test(document.querySelector('.kd-dialog')?.textContent || ''), { timeout: 3000 }).catch(() => {});
+    const takenList = (await page.$eval('.kd-dialog', (d) => d.textContent).catch(() => '')).replace(/\s+/g, ' ');
+    ok(/3 companies taken off lately/.test(takenList), 'the list says how many were taken off lately');
+    ok(/Bell Cabinetry taken off Isla’s page, so Bea Bell and Bo Bell came off the job/.test(takenList), `taken off the page: who came off the job (${takenList.slice(takenList.indexOf('taken off lately'), takenList.indexOf('taken off lately') + 220)})`);
+    ok(/Delta Glass taken off the job in JobTread, so the logo came off Georgia’s page/.test(takenList), 'taken off in JobTread: the logo followed');
+    ok(/Ace Electric taken off the job for the Kindness House page in JobTread/.test(takenList), 'taken off in JobTread with no logo to move');
+    ok(await page.$$eval('.kd-dialog a.btn', (b) => b.filter((x) => x.textContent.includes('Open the page')).map((x) => x.getAttribute('href'))).then((h) => h.includes('#kids/community/kindness-house')), 'each opens its page');
+    await page.evaluate(() => [...document.querySelectorAll('.kd-dialog .ppl-link')].find((b) => /taken off lately/.test(b.textContent))?.scrollIntoView({ block: 'start' }));
+    await shot(page, 'taken-off-lately', { grow: false });
+    await page.evaluate(() => [...document.querySelectorAll('.kd-dialog .ppl-link')].find((b) => /taken off lately/.test(b.textContent))?.click());
     // Not in Partners: Add starts with their name, and Cancel comes back
     await page.evaluate(() => [...document.querySelectorAll('.pt-access .pt-loose__item')].find((li) => li.querySelector('strong')?.textContent === 'Crafted Lighting')?.querySelector('.btn-primary')?.click());
     await page.waitForSelector('#pt-new-name', { timeout: 5000 }).catch(() => {});
@@ -1440,7 +1481,133 @@ try {
     const names = await page.$$eval('.kd-logos input[aria-label^="Company name"]', (els) => els.map((i) => i.value));
     ok(names.at(-1) === 'Kind Neighbors Fund', `the upload is named for the company, so the site knows it’s theirs (${names.at(-1)})`);
     ok(!/Kind Neighbors Fund/.test(await page.$eval('.kd-logowait', (e) => e.textContent).catch(() => '')), 'and it leaves the strip');
+    // A logo that was never saved just goes, with an Undo: nothing about a job
+    const logosNow = () => page.$$eval('.kd-logos input[aria-label^="Company name"]', (els) => els.length);
+    const withUpload = await logosNow();
+    await page.$$eval('.kd-logos .kd-x[aria-label^="Remove"]', (b) => b.at(-1).click());
+    ok(await waitToast(page, /^Logo removed\./), 'the logo just uploaded leaves the page: it was never saved');
+    await clickText(page, '.toast button', 'Undo');
+    await page.waitForFunction((n) => document.querySelectorAll('.kd-logos input[aria-label^="Company name"]').length === n, { timeout: 3000 }, withUpload).catch(() => {});
+    ok(await logosNow() === withUpload, 'and Undo brings it back');
     ok(errors.length === 0, `no console errors from the link${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+
+  // ════════ One job: Take off this job on the company's own page ════════
+  for (const [width, height, mobile] of [[1280, 900, false], [390, 844, true]]) {
+    console.log(`${width}: taking a company off one job`);
+    const { page, api, errors } = await open(browser, { width, height, mobile, hash: '#partners/bell' });
+    await page.waitForFunction(() => /Kid pages/.test(document.querySelector('.main')?.textContent || ''), { timeout: 10000 }).catch(() => {});
+    await page.waitForSelector('.pt-kid', { timeout: 10000 }).catch(() => {});
+    const offs = await page.$$eval('.pt-kid__off', (b) => b.map((x) => x.getAttribute('aria-label')));
+    ok(offs.some((l) => /off Dylan/.test(l)), `a build still going has Take off this job (${offs.join(' | ').slice(0, 120)})`);
+    const without = await page.$$eval('.pt-kids li', (l) => l.filter((x) => !x.querySelector('.pt-kid__off')).length);
+    ok(without === 0, 'and so does a finished makeover: deleted is deleted');
+    ok(/To take them off one makeover, use Take off this job: they leave the page, the JobTread job and the reveal invite together\./.test((await page.$eval('#pt-sec-kids', (e) => e.textContent).catch(() => '')).replace(/\s+/g, ' ')), 'the section says how it works');
+    await page.$eval('#pt-sec-kids', (e) => e.scrollIntoView({ block: 'start' })).catch(() => {});
+    await shot(page, `take-off-job-${width}`, { grow: false });
+    const dylanLogos = api.st.kids['dylan-2026'].partnerLogos.length;
+    await page.evaluate(() => [...document.querySelectorAll('.pt-kid__off')].find((b) => /off Dylan/.test(b.getAttribute('aria-label')))?.click());
+    ok(await waitToast(page, /is off Dylan’s page\. Publish to update the site\. Ben Bell is off the job and won’t get the reveal invite\./), 'it says what happened and what comes next');
+    ok(JSON.stringify(lastCall(api, '/api/vendor-access-admin')?.body) === JSON.stringify({ takeOff: { record: 'dylan-2026', partner: 'bell' } }), 'one request, for that one company on that one kid');
+    ok(api.st.kids['dylan-2026'].partnerLogos.length === dylanLogos - 1, 'their logo left that page');
+    await clickToastAction(page, /is off Dylan’s page/);
+    await page.waitForFunction((n) => true, { timeout: 500 }, 0).catch(() => {});
+    ok(await waitToast(page, /is back on Dylan’s page and the job/), 'Undo puts them back');
+    ok((await overflow(page).catch(() => [])).length === 0, 'nothing runs off the screen');
+    ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+
+  // ════════ One makeover's Vendors list: what JobTread says now, and the way to change it ════════
+  for (const [width, height, mobile] of [[1280, 900, false], [390, 844, true]]) {
+    console.log(`${width}: a makeover's Vendors list`);
+    const { page, api, errors } = await open(browser, { width, height, mobile, hash: '#partners' });
+    await answerAsks(page, { accept: true });
+    api.st.vendors = {
+      job: { id: 'jt' },
+      rows: [
+        { who: 'p:bell', name: 'Bell Cabinetry', partner: 'bell', account: 'a1', people: [{ name: 'Ben Bell', role: 'Signature' }], role: 'Signature', onPage: true, onJob: true, onInvite: true, off: null, bill: false, noEmail: false },
+        { who: 'a:e', name: 'Ace Electric', partner: null, account: 'acct-e', people: [{ name: 'Eve Ace', role: 'Trade Partner' }], role: 'Trade Partner', onPage: false, onJob: true, onInvite: false, off: null, bill: true, noEmail: false },
+        { who: 'p:tko', name: 'TKO Plumbing', partner: 'tko', account: null, people: [], role: null, onPage: true, onJob: false, onInvite: false, off: null, bill: false, noEmail: true },
+        { who: 'p:old', name: 'Gone Glass', partner: 'old', account: null, people: [], role: null, onPage: false, onJob: false, onInvite: false, off: 'site', bill: false, noEmail: false },
+        { who: 'a:n-x', name: 'Sam Solo', partner: null, account: null, people: [{ name: 'Sam Solo', role: 'Friend' }], role: 'Friend', onPage: false, onJob: true, onInvite: null, off: null, bill: false, noEmail: false },
+      ],
+      trade: [{ id: 'acctaz01', name: 'Azalea Electric' }, { id: 'acctbz02', name: 'Briar Plumbing' }],
+      history: [{ at: new Date().toISOString(), action: 'removed', side: 'website', name: 'Gone Glass', people: ['Gil'], by: 'linzi@example.org' }, { at: new Date().toISOString(), action: 'added', side: 'jobtread', name: 'Bell Cabinetry', people: [], by: null }],
+    };
+    await page.evaluate(() => { location.hash = '#kids/dylan-2026'; });
+    await page.waitForSelector('.kd-vendors', { timeout: 15000 }).catch(() => {});
+    await page.$eval('.kd-vendors', (e) => e.scrollIntoView({ block: 'start' })).catch(() => {});
+    await shot(page, `vendors-list-${width}`, { grow: false });
+    const list = (await page.$eval('.kd-vendors', (e) => e.textContent).catch(() => '')).replace(/\s+/g, ' ');
+    ok(/Vendors on this makeover/.test(list), 'each makeover lists its vendors');
+    ok(/Bell Cabinetry\s*Ben Bell, Signature\s*On the page\s*On the job\s*On the invite/.test(list), `each says who, their role, and the page, job and invite (${list.slice(0, 160)})`);
+    ok(/Ace Electric\s*Eve Ace, Trade Partner\s*No logo\s*On the job\s*Not on the invite/.test(list), 'a trade partner with no logo is here too');
+    ok(/TKO Plumbing\s*No contact with an email yet/.test(list), 'someone with nobody to add says so');
+    ok(/Gone Glass\s*Taken off this makeover/.test(list), 'and someone taken off stays listed');
+    ok(await page.$$eval('.kd-vendor button', (b) => b.some((x) => /Put back/.test(x.textContent))), 'with Put back');
+    ok(/Sam Solo.*Take them off in JobTread/.test(list), 'a login the site can’t tie to a company points to JobTread');
+    ok(await page.$$eval('.kd-vendor button', (b) => b.filter((x) => /Take off/.test(x.textContent)).length) === 3, 'Take off where it can be done');
+    await page.evaluate(() => document.querySelector('.kd-vendor button[aria-label="Take Ace Electric off this makeover"]')?.click());
+    ok(await waitToast(page, /Ace Electric is off this makeover\./), 'a trade partner comes off from here');
+    const posted = (k) => api.st.calls.filter((c) => c.path === '/api/vendor-access-admin' && c.body?.[k]).at(-1)?.body?.[k];
+    ok(posted('takeOff')?.account === 'acct-e' && posted('takeOff')?.record === 'dylan-2026' && posted('takeOff')?.name === 'Ace Electric', 'by their account');
+    await typeInto(page, '.kd-vendor__add input', 'azal');
+    await page.waitForFunction(() => /Add Azalea Electric/.test(document.querySelector('.kd-vendor__add')?.textContent || ''), { timeout: 3000 }).catch(() => {});
+    await page.evaluate(() => document.querySelector('.kd-vendor__add li button')?.click());
+    ok(await waitToast(page, /Eve Ace is on the JobTread job now\./), 'a trade partner can be added here, and says who');
+    ok(posted('addToJob')?.account === 'acctaz01', 'that one');
+    await page.evaluate(() => { const d = document.querySelector('.kd-vendors__log'); if (d) d.open = true; });
+    ok(/Gone Glass taken off on the website by linzi@example\.org/.test(await page.$eval('.kd-vendors__log', (e) => e.textContent.replace(/\s+/g, ' ')).catch(() => '')) , 'recent changes say who, where and by whom');
+    ok(/Bell Cabinetry added in JobTread/.test(await page.$eval('.kd-vendors__log', (e) => e.textContent.replace(/\s+/g, ' ')).catch(() => '')), 'from either side');
+    ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'the page doesn’t scroll sideways');
+    ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
+    await page.close();
+  }
+
+  // ════════ On the kid's own page: the X asks, Save does it, and a logo that only leaves moves nobody ════════
+  for (const [width, height, mobile] of [[1280, 900, false], [390, 844, true]]) {
+    console.log(`${width}: taking a company off on the kid's page`);
+    const { page, api, errors } = await open(browser, { width, height, mobile, hash: '#kids/dylan-2026' });
+    await answerAsks(page, { accept: null }); // the test answers these itself
+    await page.waitForSelector('.kd-logos .kd-x[aria-label^="Remove"]', { timeout: 15000 }).catch(() => {});
+    const saveNow = async () => {
+      await page.keyboard.down(process.platform === 'darwin' ? 'Meta' : 'Control');
+      await page.keyboard.press('s');
+      await page.keyboard.up(process.platform === 'darwin' ? 'Meta' : 'Control');
+    };
+    const off = () => api.st.calls.filter((c) => c.path === '/api/vendor-access-admin' && c.body?.takeOff);
+    const first = await page.$eval('.kd-logos .kd-x[aria-label^="Remove"]', (b) => b.getAttribute('aria-label').replace(/^Remove /, ''));
+    // Cancel changes nothing: there's no such thing as a logo gone and the company still on the job
+    const logoCount = () => page.$$eval('.kd-logos input[aria-label^="Company name"]', (els) => els.length);
+    const shown = await logoCount();
+    await page.$eval('.kd-logos .kd-x[aria-label^="Remove"]', (b) => b.click());
+    await page.waitForSelector('[data-ask="no"]', { timeout: 4000 }).catch(() => {});
+    ok(/Take .* off this makeover\?/.test(await page.$eval('.ask h2', (e) => e.textContent).catch(() => '')), 'the X asks by name');
+    ok(!/Keep them on/.test(await page.$eval('.ask', (e) => e.textContent).catch(() => '')), 'and the only choices are take them off or cancel');
+    await shot(page, `take-off-ask-${width}`, { grow: false });
+    await page.click('[data-ask="no"]');
+    await page.waitForFunction(() => !document.querySelector('.ask'), { timeout: 3000 }).catch(() => {});
+    ok(await logoCount() === shown && off().length === 0, 'Cancel: the logo stays and nobody moves');
+    // Take them off: it happens now, in one request, and Undo takes it back
+    const before = await logoCount();
+    await page.$eval('.kd-logos .kd-x[aria-label^="Remove"]', (b) => b.click());
+    await page.waitForFunction(() => { const r = document.querySelector('[data-ask="yes"]')?.getBoundingClientRect(); return r && r.width > 0 && r.top >= 0 && r.bottom <= innerHeight; }, { timeout: 4000 }).catch(() => {});
+    ok(await page.$eval('[data-ask="yes"]', (b) => { const r = b.getBoundingClientRect(); return document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) === b; }).catch(() => false), 'Take them off can be tapped');
+    await page.click('[data-ask="yes"]');
+    ok(await waitToast(page, /is off this page\. Publish to update the site\. Ben Bell is off the job and won’t get the reveal invite\./), 'Take them off happens now, and says who');
+    ok(off().length === 1 && off()[0].body.takeOff.record === 'dylan-2026' && off()[0].body.takeOff.logos.length === 1 && off()[0].body.takeOff.logos[0].name === first, 'for that one company on that one kid');
+    await page.waitForFunction((n) => document.querySelectorAll('.kd-logos input[aria-label^="Company name"]').length === n - 1, { timeout: 3000 }, before).catch(() => {});
+    ok(await logoCount() === before - 1, 'their logo leaves the page');
+    ok(!/Unsaved|unsaved/.test(await page.$eval('.kd-bar', (e) => e.textContent).catch(() => '')), 'with nothing left to save');
+    await clickToastAction(page, /is off this page/);
+    ok(await waitToast(page, /Ben Bell is back on the job, and the logo’s back on the page\./), 'Undo puts them back');
+    ok(api.st.calls.some((c) => c.path === '/api/vendor-access-admin' && c.body?.putBack?.record === 'dylan-2026'), 'on the server too');
+    await page.waitForFunction((n) => document.querySelectorAll('.kd-logos input[aria-label^="Company name"]').length === n, { timeout: 3000 }, before).catch(() => {});
+    ok(await logoCount() === before, 'and on the page');
+    ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), 'the page doesn’t scroll sideways');
+    ok(errors.length === 0, `no console errors${errors.length ? `: ${errors.join(' | ')}` : ''}`);
     await page.close();
   }
 

@@ -10,13 +10,14 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import {
-  jobVendors, onJob, personFor, pairAccounts, contactPlan, sameList, syncVendorAccess, maybeSyncVendorAccess, adminView, sameWords,
+  ensureSchema, jobVendors, onJob, personFor, pairAccounts, contactPlan, sameList, syncVendorAccess, maybeSyncVendorAccess, adminView, sameWords, changeOnJob, takeOffJob, putBackJob, addToJob, makeoverView,
 } from '../functions/api/_vendor-access.js';
-import { knownPeople, jobCompanies } from '../functions/api/_kid-partners.js';
+import { knownPeople, jobCompanies, syncKidPartners, fetchAccess, setLink } from '../functions/api/_kid-partners.js';
 import { readContacts, saveContacts } from '../functions/api/_sponsors.js';
 import { _resetRoleCache } from '../functions/api/_jt-access.js';
 import { FIELD_CONTACT_EMAIL } from '../functions/api/_applicant-comms.js';
 import { onRequestGet, onRequestPost } from '../functions/api/vendor-access-admin.js';
+import { nameKey } from '../public/admin/partners-shared.js';
 import { onRequestPost as logoAdminPost } from '../functions/api/kid-partners-admin.js';
 
 const HASH = 'ROYFuPmfN2vPS6mt5sCkZQ';
@@ -139,6 +140,9 @@ function fakeJT({ jobs, members = [], accounts = [] }) {
 
 async function world({ kids = [ISLA], partners = [RANDALL, BLYTHE, WYP, ACME], bills = [] } = {}) {
   const DB = await createD1({ schemaFiles: ['scripts/schema.sql'] });
+  // The JobTread side turned on; starting out watching has a test of its own
+  await ensureSchema(DB);
+  await DB.prepare("INSERT OR REPLACE INTO vendor_access_state (key, value) VALUES ('watch', ?)").bind(JSON.stringify({ on: true })).run();
   for (const k of kids) await DB.prepare('INSERT INTO kids (slug, name, year, status, data) VALUES (?, ?, ?, ?, ?)').bind(k.slug, k.name, k.year, 'in-progress', JSON.stringify(k)).run();
   for (const p of partners) await DB.prepare('INSERT INTO partners (slug, name, level, category, featured, data) VALUES (?, ?, ?, ?, ?, ?)').bind(p.slug, p.name, 'friend', 'build', 0, JSON.stringify(p)).run();
   // The vendors table's JobTread cache: which JobTread vendors have a bill or order on which job
@@ -809,4 +813,1580 @@ test('every 15 minutes from the heartbeat; a JobTread failure is kept for Site �
   const jt = fakeJT({ jobs: [], accounts: [] });
   await maybeSyncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + 16 * MIN });
   assert.equal((await adminView(DB)).lastError, null, 'a good run clears it');
+});
+
+// ── Taken off a job (Peter, Nov 4 2026) ──────────────────────────────
+const RON = 'ron@randallbrothers.example';
+const AMY = 'amy@randallbrothers.example';
+const LOOK = 20 * MIN;
+const logosOf = async (DB, slug = 'isla-smith', table = 'kids') => JSON.parse((await DB.prepare(`SELECT data FROM ${table} WHERE slug = ?`).bind(slug).first()).data).partnerLogos.map((l) => l.name);
+const setPage = async (DB, patch, slug = 'isla-smith', table = 'kids') => {
+  const data = JSON.parse((await DB.prepare(`SELECT data FROM ${table} WHERE slug = ?`).bind(slug).first()).data);
+  await DB.prepare(`UPDATE ${table} SET data = ? WHERE slug = ?`).bind(JSON.stringify({ ...data, ...patch }), slug).run();
+};
+const offJob = (jt, ...emails) => { jt.jobs[0].access = jt.jobs[0].access.filter((e) => !emails.includes(e)); };
+const onTheJob = (jt, e = RON) => jt.jobs[0].access.includes(e);
+const taken = async (DB) => (await adminView(DB)).takenOff;
+
+/** A kid with Randall Brothers on the page and Ron put on the job */
+async function onBothSides(t, { kid = {}, partners = [RANDALL, BLYTHE], bills = [], contacts = [{ name: 'Ron Randall', email: RON }], jtExtra = {}, ronOn = true, family = true, more = [] } = {}) {
+  _resetRoleCache();
+  noMail(t);
+  const DB = await world({ kids: [{ ...ISLA, sponsors: [], partnerLogos: [logoOf(RANDALL)], ...kid }, ...more], partners, bills });
+  await saveContacts(DB, 'randall-brothers', contacts);
+  const jt = fakeJT({
+    jobs: [{ id: 'j1', name: 'Isla Smith (2026)', access: family ? ['mom@example.com'] : [] }, ...(jtExtra.jobs || [])],
+    members: [{ email: 'mom@example.com', name: 'Mom Smith', role: 'Makeover Family' }, ...(jtExtra.members || [])],
+    accounts: [{ id: 'acct-r', name: 'Randall Brothers', contacts: [] }, ...(jtExtra.accounts || [])],
+  });
+  let at = T0;
+  const clock = { env: env(DB) };
+  const run = async (opts = {}) => { at += LOOK; return syncVendorAccess(clock.env, { fetchImpl: jt.fetchImpl, now: at, ...opts }); };
+  const logoSweep = async () => { at += MIN; return syncKidPartners(clock.env, { fetchImpl: jt.fetchImpl, now: at }); };
+  const both = async () => { await logoSweep(); return run(); };
+  /** What the admin does: the logo leaves the page, then the company leaves the job */
+  const takeOff = async (logos = [logoOf(RANDALL)], record = 'isla-smith') => {
+    at += MIN;
+    return takeOffJob(clock.env, { record, logos }, 'peter@example.com', { fetchImpl: jt.fetchImpl, now: at });
+  };
+  await run(); await run();
+  if (ronOn) assert.ok(onTheJob(jt), 'a logo on the page puts them on');
+  return { DB, jt, run, both, logoSweep, takeOff, clock, later: (ms) => { at += ms; }, now: () => at };
+}
+const deletes = (jt) => jt.kinds().filter((k) => k === 'deleteAce').length;
+const rowOfSeen = (DB, who = 'p:randall-brothers') => DB.prepare('SELECT * FROM vendor_job_seen WHERE who = ?').bind(who).first();
+
+test('changeOnJob: a first look moves nothing, leaving a job is looked at twice, and off stays off until someone’s back', () => {
+  const at = '2026-11-04T12:00:00.000Z';
+  const later = '2026-11-04T12:20:00.000Z';
+  const soon = '2026-11-04T12:05:00.000Z';
+  const P = { id: 'm1', email: 'p@x.example' };
+  const was = (o = {}) => ({ people: [P], logos: [], off: null, goneAt: null, ...o });
+  const now = (o = {}) => ({ people: [P], present: true, logos: ['l'], ...o });
+  const gone = { people: [], present: false };
+  assert.equal(changeOnJob(null, now(gone), at).act, null, 'whatever a first look finds is how things are');
+  assert.equal(changeOnJob(was(), now(), at).act, null);
+  const left = changeOnJob(was(), now(gone), at);
+  assert.equal(left.act, 'wait');
+  assert.deepEqual(left.next.logos, ['l'], 'what was on the page when they left');
+  assert.deepEqual(left.next.people, [P]);
+  assert.equal(changeOnJob(left.next, now(gone), soon).act, 'wait', 'two runs moments apart aren’t two looks');
+  const second = changeOnJob(left.next, now(gone), later);
+  assert.equal(second.act, 'off-page');
+  assert.deepEqual(second.pull, ['l']);
+  assert.equal(second.next.off, 'jobtread');
+  assert.deepEqual(changeOnJob(left.next, now({ ...gone, logos: ['new'] }), later).pull, ['new'], 'their logo swapped for a new file between the looks still comes off');
+  const noLogo = changeOnJob(was(), now({ ...gone, logos: [] }), at);
+  assert.equal(changeOnJob(noLogo.next, now({ ...gone, logos: ['new'] }), later).act, 'stay-off', 'a logo that wasn’t there when they left isn’t pulled');
+  assert.deepEqual(changeOnJob(left.next, now(gone), later).next.took.map((t) => t.email), ['p@x.example'], 'who left is kept');
+  assert.equal(changeOnJob(left.next, now(), later).act, null, 'back on the job: forgotten');
+  assert.equal(changeOnJob(left.next, now(), later).next.goneAt, null);
+  assert.deepEqual(changeOnJob(was(), now({ people: [], present: true }), at).next.people, [P], 'a website match counts as them being here, and who was theirs is remembered');
+  for (const off of ['site', 'jobtread']) {
+    assert.equal(changeOnJob(was({ people: [], logos: [], off }), now(gone), at).next.off, off, 'a logo reappearing isn’t a person saying so');
+    assert.equal(changeOnJob(was({ people: [], logos: [], off }), now({ logos: [] }), at).act, 'back', 'back on the job undoes it');
+    assert.equal(changeOnJob(was({ people: [], logos: [], off }), now({ logos: [], back: false }), at).next.off, off, 'someone left behind when they came off doesn’t');
+    assert.equal(changeOnJob(was({ people: [], logos: ['l'], off }), now({ ...gone, logos: ['swapped'] }), at).next.off, off, 'a new file for a logo that stayed isn’t them put back');
+    assert.equal(changeOnJob(was({ people: [], logos: [], off }), now({ ...gone, logos: [] }), at).next.off, off);
+  }
+  assert.equal(changeOnJob(was({ off: 'going' }), now(), at).act, 'finish');
+});
+
+test('the first look changes nothing: a company on a job with no logo, or a logo with nobody on the job, stays as it is', async (t) => {
+  _resetRoleCache();
+  noMail(t);
+  const DB = await world({ kids: [{ ...ISLA, sponsors: [], partnerLogos: [logoOf(BLYTHE)] }], partners: [RANDALL, BLYTHE] });
+  await saveContacts(DB, 'randall-brothers', [{ name: 'Ron Randall', email: RON }]);
+  const jt = fakeJT({
+    jobs: [{ id: 'j1', name: 'Isla Smith (2026)', access: [RON] }],
+    members: [{ email: RON, name: 'Ron Randall', role: 'Friend', account: { id: 'acct-r', name: 'Randall Brothers' } }],
+    accounts: [{ id: 'acct-r', name: 'Randall Brothers', contacts: [] }],
+  });
+  for (const i of [0, 1, 2]) await syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: T0 + i * LOOK });
+  assert.ok(onTheJob(jt), 'still on');
+  assert.deepEqual(await logosOf(DB), ['Blythe Creative Co.']);
+  assert.equal(deletes(jt), 0);
+});
+
+test('a page changing by itself moves nobody: a save, a restored draft, History, a replacement, a wiped list', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, { kid: { partnerLogos: [logoOf(RANDALL), logoOf(BLYTHE)] } });
+  for (const partnerLogos of [[logoOf(BLYTHE)], [], [{ url: img('kids/isla-smith/partner-1762-rb.png'), name: 'rb logo final' }], [logoOf(RANDALL)]]) {
+    await setPage(DB, { partnerLogos });
+    await run(); await run(); await run();
+    assert.ok(onTheJob(jt), `still on with ${partnerLogos.length} logos`);
+  }
+  assert.equal(deletes(jt), 0);
+  assert.deepEqual(await taken(DB), []);
+});
+
+test('Take off this job: off the job now, the family and everyone else stay, and it doesn’t come back', async (t) => {
+  const { DB, jt, run, takeOff } = await onBothSides(t);
+  const r = await takeOff();
+  assert.equal(r.job, true);
+  assert.deepEqual(await logosOf(DB), [], 'the logo, in the same step');
+  assert.deepEqual(r.who, ['p:randall-brothers']);
+  assert.deepEqual(r.taken, [{ name: 'Randall Brothers', people: ['Ron Randall'] }]);
+  assert.ok(!onTheJob(jt), 'straight away');
+  assert.ok(onTheJob(jt, 'mom@example.com'));
+  await run(); await run(); await run();
+  assert.ok(!onTheJob(jt), 'and not put back');
+  const v = await adminView(DB);
+  assert.equal(v.takenOff[0].how, 'page');
+  assert.deepEqual(v.takenOff[0].people, ['Ron Randall']);
+  assert.ok(!v.added.some((a) => a.name === 'Randall Brothers'), 'not listed as on the job any more');
+});
+
+test('Take off this job works with a bill on that job, and the bill doesn’t put them back', async (t) => {
+  const { DB, jt, both, takeOff } = await onBothSides(t, { bills: [{ jtId: 'acct-r', name: 'Randall Brothers', jobs: ['j1'] }] });
+  await takeOff();
+  assert.ok(!onTheJob(jt));
+  await both(); await both(); await both();
+  assert.ok(!onTheJob(jt), 'a person said so');
+  assert.deepEqual(await logosOf(DB), []);
+});
+
+test('put back by a person, on either side, the other follows; a logo that merely reappears puts nobody back', async (t) => {
+  const { DB, jt, both, takeOff, clock, now } = await onBothSides(t);
+  await both();
+  const first = await takeOff();
+  await both();
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL)] });
+  await both(); await both();
+  assert.ok(!onTheJob(jt), 'a draft or History brought the logo back: nobody moves');
+  await setPage(DB, { partnerLogos: [] });
+  const back = await putBackJob(clock.env, { record: 'isla-smith', who: first.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(back.back, ['Ron Randall']);
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+  assert.ok(onTheJob(jt), 'Put back: on the job and the page, now');
+  await both();
+  await takeOff();
+  await both();
+  jt.jobs[0].access.push(RON);
+  await both(); await both();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'added in JobTread: the logo’s back');
+  await both();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'one logo, not two');
+});
+
+test('only the company’s own partner-role people come off: never staff, a family, a designer, or someone here for another company', async (t) => {
+  const { DB, jt, run, takeOff } = await onBothSides(t, {
+    kid: { partnerLogos: [logoOf(RANDALL), logoOf(BLYTHE)] },
+    jtExtra: {
+      members: [
+        { email: 'staff@randallbrothers.example', name: 'Inside Staff', role: 'Friend', internal: true },
+        { email: 'des@randallbrothers.example', name: 'A Designer', role: 'Designer', account: { id: 'acct-r', name: 'Randall Brothers' } },
+        { email: 'both@randallbrothers.example', name: 'Works For Both', role: 'Friend', account: { id: 'acct-r', name: 'Randall Brothers' } },
+      ],
+    },
+  });
+  await saveContacts(DB, 'blythe-creative', [{ name: 'Works For Both', email: 'both@randallbrothers.example' }]);
+  jt.jobs[0].access.push('staff@randallbrothers.example', 'des@randallbrothers.example', 'both@randallbrothers.example');
+  await run();
+  await takeOff();
+  assert.ok(!onTheJob(jt, RON), 'Ron comes off');
+  for (const e of ['staff@randallbrothers.example', 'des@randallbrothers.example', 'both@randallbrothers.example', 'mom@example.com']) assert.ok(onTheJob(jt, e), `${e} stays`);
+});
+
+test('someone the site can’t be sure of is named back to staff, stays on, and doesn’t bring the logo back', async (t) => {
+  const { DB, jt, logoSweep, takeOff } = await onBothSides(t, {
+    contacts: [], ronOn: false,
+    jtExtra: { members: [{ email: 'gus@randallbrothers.example', name: 'Gus', role: 'Friend', account: { id: 'acct-x', name: 'WYP Construction' } }] },
+  });
+  jt.jobs[0].access.push('gus@randallbrothers.example');
+  const r = await takeOff();
+  assert.deepEqual(r.left, [{ name: 'Randall Brothers', people: ['Gus'] }]);
+  assert.ok(onTheJob(jt, 'gus@randallbrothers.example'));
+  await logoSweep(); await logoSweep();
+  assert.deepEqual(await logosOf(DB), []);
+});
+
+test('Take off with no open job takes the logo off and says so; the kid’s sponsor and a logo nobody goes by never touch the job', async (t) => {
+  const { DB, jt, takeOff } = await onBothSides(t);
+  const scan = { url: img('kids/isla-smith/scan.png'), name: 'Screenshot 2026-08-31' };
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL), scan] });
+  const unknown = await takeOff([scan]);
+  assert.deepEqual(unknown.taken, []);
+  assert.deepEqual(unknown.skipped, [{ name: scan.name, why: 'unknown' }]);
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'that one logo left');
+  await setPage(DB, { sponsors: ['randall-brothers'] });
+  const sponsor = await takeOff();
+  assert.deepEqual(sponsor.skipped, [{ name: 'Randall Brothers', why: 'sponsor' }]);
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'the sponsor’s lane');
+  assert.ok(onTheJob(jt));
+  await setPage(DB, { sponsors: [] });
+  jt.jobs[0].name = 'Somebody Else (2026)';
+  const closed = await takeOff();
+  assert.equal(closed.job, false);
+  assert.deepEqual(await logosOf(DB), [], 'no open job: the logo still comes off');
+  assert.equal(deletes(jt), 0);
+});
+
+test('JobTread down before anything moved: nothing changes and staff are told; with the job known, the logo comes off and the sweep finishes', async (t) => {
+  const { DB, jt, run, takeOff, clock, later } = await onBothSides(t);
+  const real = jt.fetchImpl;
+  jt.fetchImpl = async () => { throw new Error('down'); };
+  const r = await takeOff();
+  assert.deepEqual(r.pending, ['Randall Brothers'], 'the last look knows the job');
+  assert.deepEqual(await logosOf(DB), []);
+  jt.fetchImpl = real;
+  await run();
+  assert.ok(!onTheJob(jt));
+  // A page the sweep has never looked at, with JobTread down: nothing to go on, so nothing moves
+  const { DB: DB2, jt: jt2, clock: clock2 } = await onBothSides(t);
+  await DB2.prepare("UPDATE vendor_access_state SET value = '{}' WHERE key = 'looked'").run();
+  await assert.rejects(takeOffJob(clock2.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: async () => { throw new Error('down'); }, now: T0 }), (e) => e.unchanged === true && /isn’t answering/.test(e.message));
+  assert.deepEqual(await logosOf(DB2), ['Randall Brothers']);
+  assert.ok(onTheJob(jt2));
+  void later; void clock;
+});
+
+test('Undo: the logo goes back in its place, a take-off still pending stops, and they go back on the job', async (t) => {
+  const { DB, jt, run, takeOff, clock, now } = await onBothSides(t, { kid: { partnerLogos: [logoOf(BLYTHE), logoOf(RANDALL)] } });
+  const r = await takeOff();
+  assert.ok(!onTheJob(jt));
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who, undo: true }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(await logosOf(DB), ['Blythe Creative Co.', 'Randall Brothers']);
+  assert.ok(onTheJob(jt), 'back on, now');
+  // Undo while JobTread hadn't answered: the sweep doesn't finish what staff took back
+  const real = jt.fetchImpl;
+  jt.fetchImpl = async (u, i) => { if (JSON.parse(i.body).query.deleteAce) throw new Error('no'); return real(u, i); };
+  await run();
+  const p = await takeOff();
+  jt.fetchImpl = real;
+  assert.deepEqual(p.pending, ['Randall Brothers']);
+  await putBackJob(clock.env, { record: 'isla-smith', who: p.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  await run(); await run();
+  assert.ok(onTheJob(jt));
+  assert.equal(deletes(jt), 1, 'the sweep didn’t finish what staff took back');
+  assert.equal((await logosOf(DB)).length, 2);
+});
+
+test('Undo brings back everyone who came off, and only them', async (t) => {
+  const { DB, jt, run, takeOff, clock, now } = await onBothSides(t, { contacts: [{ name: 'Ron Randall', email: RON }, { name: 'Amy Randall', email: AMY }], jtExtra: { members: [{ email: AMY, name: 'Amy Randall', role: 'Friend', account: { id: 'acct-r', name: 'Randall Brothers' } }] } });
+  jt.jobs[0].access.push(AMY);
+  await run();
+  const r = await takeOff();
+  assert.ok(!onTheJob(jt) && !onTheJob(jt, AMY));
+  const b = await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(b.back.sort(), ['Amy Randall', 'Ron Randall']);
+  assert.ok(onTheJob(jt) && onTheJob(jt, AMY));
+  assert.equal((await logosOf(DB)).length, 1);
+});
+
+test('a trade partner taken off can be put back from the website', async (t) => {
+  const { jt, clock, now } = await onBothSides(t, { ...SUB, bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }] });
+  const r = await takeOffJob(clock.env, { record: 'isla-smith', account: 'acct-e', name: 'Ace Electric' }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.ok(!onTheJob(jt, 'eve@ace.example'));
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.ok(onTheJob(jt, 'eve@ace.example'));
+});
+
+test('a take-off the page refuses leaves everything as it was, and someone waiting on a second look isn’t put back', async (t) => {
+  const { DB, jt, run, clock, now } = await onBothSides(t);
+  offJob(jt, RON);
+  await run();
+  await DB.prepare("INSERT OR REPLACE INTO kid_partner_lock (name, until) VALUES ('sync', ?)").bind(Date.now() + 600000).run();
+  const was = globalThis.setTimeout;
+  globalThis.setTimeout = (f) => was(f, 0);
+  await assert.rejects(takeOffJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() }), /busy/);
+  globalThis.setTimeout = was;
+  await DB.prepare("DELETE FROM kid_partner_lock WHERE name = 'sync'").run();
+  const row = await DB.prepare("SELECT off, gone_at FROM vendor_job_seen WHERE who = 'p:randall-brothers'").first();
+  assert.equal(row.off, null);
+  assert.ok(row.gone_at, 'still waiting on its second look');
+  await run();
+  assert.ok(!onTheJob(jt));
+});
+
+test('X on one of a company’s two logos takes the company off: both logos go, and they stay off', async (t) => {
+  const second = { url: img('kids/isla-smith/rb2.png'), name: 'Randall Brothers' };
+  const { DB, jt, run, takeOff } = await onBothSides(t, { kid: { partnerLogos: [logoOf(RANDALL), second] } });
+  await takeOff([second]);
+  assert.deepEqual(await logosOf(DB), []);
+  await run(); await run();
+  assert.ok(!onTheJob(jt));
+});
+
+test('a website add between the two looks puts them back', async (t) => {
+  const { DB, jt, run, clock, now } = await onBothSides(t);
+  offJob(jt, RON);
+  await run();
+  await addToJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() + MIN });
+  assert.ok(onTheJob(jt));
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+});
+
+test('“Not the same” leaves a person’s take-off alone', async (t) => {
+  const { jt, run, takeOff, clock } = await onBothSides(t);
+  const { unmatchAccount } = await import('../functions/api/_vendor-access.js');
+  await takeOff();
+  await unmatchAccount(clock.env, { partner: RANDALL.slug }, 'p@x', { fetchImpl: jt.fetchImpl, now: T0 });
+  await run(); await run();
+  assert.ok(!onTheJob(jt));
+});
+
+test('someone left behind doesn’t undo the take-off; when they go, the company stays off; and a real re-add brings the logo back', async (t) => {
+  const { DB, jt, both, takeOff } = await onBothSides(t, {
+    bills: [{ jtId: 'acct-r', name: 'Randall Brothers', jobs: ['j1'] }],
+    jtExtra: { members: [{ email: 'gus@randallbrothers.example', name: 'Gus', role: 'Friend', account: { id: 'acct-x', name: 'WYP Construction' } }] },
+  });
+  jt.jobs[0].access.push('gus@randallbrothers.example');
+  await both();
+  await takeOff();
+  await both(); await both();
+  assert.ok(!onTheJob(jt));
+  assert.deepEqual(await logosOf(DB), []);
+  offJob(jt, 'gus@randallbrothers.example');
+  await both(); await both(); await both();
+  assert.ok(!onTheJob(jt), 'staff did what the message said: nobody’s put back');
+  jt.jobs[0].access.push(RON);
+  await both(); await both(); await both();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'put back in JobTread: the logo follows');
+});
+
+test('a pending take-off finished by the sweep leaves the logo off when someone stays', async (t) => {
+  const { DB, jt, logoSweep, run, takeOff } = await onBothSides(t, {
+    jtExtra: { members: [{ email: 'gus@randallbrothers.example', name: 'Gus', role: 'Friend', account: { id: 'acct-x', name: 'WYP Construction' } }] },
+  });
+  jt.jobs[0].access.push('gus@randallbrothers.example');
+  await logoSweep(); await run();
+  const real = jt.fetchImpl;
+  jt.fetchImpl = async (u, i) => { if (JSON.parse(i.body).query.deleteAce) throw new Error('no'); return real(u, i); };
+  await takeOff();
+  jt.fetchImpl = real;
+  await run(); await logoSweep(); await run(); await logoSweep();
+  assert.ok(!onTheJob(jt));
+  assert.deepEqual(await logosOf(DB), []);
+});
+
+test('a partner’s second JobTread account, linked with “Same as”: someone there keeps the company on the job', async (t) => {
+  const { DB, jt, run, logoSweep } = await onBothSides(t, {
+    jtExtra: { accounts: [{ id: 'acct-rb2', name: 'RB Construction', contacts: [] }], members: [{ email: 'sally@rbc.example', name: 'Sally', role: 'Friend', account: { id: 'acct-rb2', name: 'RB Construction' } }] },
+  });
+  await setLink(DB, { company: nameKey('RB Construction'), partner: 'randall-brothers' });
+  jt.jobs[0].access.push('sally@rbc.example');
+  await run();
+  offJob(jt, RON);
+  await run(); await run(); await logoSweep(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+  assert.ok(onTheJob(jt, 'sally@rbc.example'));
+});
+
+test('someone shared with a sub billing the same job stays on when the other company comes off', async (t) => {
+  const { DB, jt, run, takeOff } = await onBothSides(t, {
+    bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }],
+    jtExtra: {
+      accounts: [{ id: 'acct-e', name: 'Ace Electric', primary: 'c-e', fields: { Trades: ['Electrical'] }, contacts: [] }],
+      members: [{ email: 'pat@ace.example', name: 'Pat', role: 'Trade Partner', account: { id: 'acct-e', name: 'Ace Electric' } }],
+    },
+  });
+  await saveContacts(DB, RANDALL.slug, [{ name: 'Ron Randall', email: RON }, { name: 'Pat', email: 'pat@ace.example' }]);
+  jt.jobs[0].access.push('pat@ace.example');
+  await run();
+  await takeOff();
+  assert.ok(!onTheJob(jt));
+  assert.ok(onTheJob(jt, 'pat@ace.example'));
+});
+
+test('a logo swapped after they left in JobTread isn’t them put back, and one swapped between the two looks still comes off', async (t) => {
+  const { DB, jt, run } = await onBothSides(t);
+  await run();
+  offJob(jt, RON);
+  await run(); await run();
+  const fresh = img('partners/randall-brothers/2');
+  await DB.prepare('UPDATE partners SET data = ? WHERE slug = ?').bind(JSON.stringify({ ...RANDALL, logo: fresh }), RANDALL.slug).run();
+  await setPage(DB, { partnerLogos: [{ url: fresh, name: RANDALL.name }] });
+  await run(); await run();
+  assert.ok(!onTheJob(jt));
+  const b = await onBothSides(t);
+  offJob(b.jt, RON);
+  await b.run();
+  await b.DB.prepare('UPDATE partners SET data = ? WHERE slug = ?').bind(JSON.stringify({ ...RANDALL, logo: fresh }), RANDALL.slug).run();
+  await setPage(b.DB, { partnerLogos: [{ url: fresh, name: RANDALL.name }] });
+  await b.run();
+  assert.deepEqual(await logosOf(b.DB), []);
+});
+
+test('a sub added to Partners keeps being off', async (t) => {
+  const ACE = { slug: 'ace-electric', name: 'Ace Electric', logo: img('partners/ace-electric/1') };
+  const { DB, jt, run } = await onBothSides(t, {
+    bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }],
+    jtExtra: { accounts: [{ id: 'acct-e', name: 'Ace Electric', primary: 'c-e', fields: { Trades: ['Electrical'] }, contacts: [{ id: 'c-e', name: 'Eve Ace', email: 'eve@ace.example' }] }] },
+  });
+  offJob(jt, 'eve@ace.example');
+  await run(); await run();
+  await DB.prepare('INSERT INTO partners (slug, name, level, category, featured, data) VALUES (?, ?, ?, ?, ?, ?)').bind(ACE.slug, ACE.name, 'friend', 'build', 0, JSON.stringify(ACE)).run();
+  await run(); await run();
+  assert.ok(!onTheJob(jt, 'eve@ace.example'));
+});
+
+test('added in JobTread by mistake, the logo sweep puts the logo on, and removed before the vendor sweep looks: both come off', async (t) => {
+  const { DB, jt, run, logoSweep } = await onBothSides(t, {
+    kid: { partnerLogos: [] }, ronOn: false,
+    jtExtra: { members: [{ email: 'bea@blythe.example', name: 'Bea', role: 'Friend', account: { id: 'acct-b', name: 'Blythe Creative Co.' } }], accounts: [{ id: 'acct-b', name: 'Blythe Creative Co.', contacts: [] }] },
+  });
+  jt.jobs[0].access.push('bea@blythe.example');
+  await logoSweep();
+  assert.deepEqual(await logosOf(DB), ['Blythe Creative Co.']);
+  offJob(jt, 'bea@blythe.example');
+  await run(); await run(); await run();
+  assert.ok(!onTheJob(jt, 'bea@blythe.example'), 'not put back');
+  assert.deepEqual(await logosOf(DB), []);
+});
+
+test('JobTread not answering: the logo’s off, staff hear it’s pending, and the sweep finishes it once', async (t) => {
+  const { DB, jt, run, takeOff } = await onBothSides(t);
+  const real = jt.fetchImpl;
+  jt.fetchImpl = async (u, i) => { if (JSON.parse(i.body).query.deleteAce) throw new Error('JobTread said no'); return real(u, i); };
+  const r = await takeOff();
+  assert.deepEqual(r.pending, ['Randall Brothers']);
+  assert.deepEqual(await logosOf(DB), [], 'the logo’s off already');
+  assert.ok(onTheJob(jt));
+  jt.fetchImpl = real;
+  await run(); await run();
+  assert.ok(!onTheJob(jt));
+  assert.equal(deletes(jt), 1);
+  assert.equal((await taken(DB)).length, 1);
+});
+
+test('a community project’s record works the same', async (t) => {
+  _resetRoleCache();
+  noMail(t);
+  const DB = await world({ kids: [], partners: [RANDALL] });
+  await saveContacts(DB, RANDALL.slug, [{ name: 'Ron Randall', email: RON }]);
+  const project = { slug: 'kindness-house', name: 'Kindness House', status: 'in-progress', partnerLogos: [logoOf(RANDALL)] };
+  await DB.prepare('INSERT INTO community (slug, name, data) VALUES (?, ?, ?)').bind(project.slug, project.name, JSON.stringify(project)).run();
+  const jt = fakeJT({ jobs: [{ id: 'j1', name: 'Kindness House', access: ['x@example.com'] }], members: [{ email: 'x@example.com', name: 'X', role: 'Makeover Family' }], accounts: [{ id: 'acct-r', name: 'Randall Brothers', contacts: [] }] });
+  let at = T0;
+  const run = async () => { at += LOOK; return syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: at }); };
+  await run(); await run();
+  assert.ok(onTheJob(jt));
+  offJob(jt, RON);
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB, project.slug, 'community'), [], 'in JobTread');
+  jt.jobs[0].access.push(RON);
+  await run(); await run();
+  assert.ok(onTheJob(jt), 'back on');
+  await takeOffJob(env(DB), { record: 'community/kindness-house', logos: [logoOf(RANDALL)] }, 'p@example.com', { fetchImpl: jt.fetchImpl, now: at + MIN });
+  assert.ok(!onTheJob(jt), 'on the website');
+  assert.deepEqual(await logosOf(DB, project.slug, 'community'), []);
+});
+
+test('taken off the job in JobTread: not put back, two looks, then the logo comes off and stays off', async (t) => {
+  const { DB, jt, run } = await onBothSides(t);
+  offJob(jt, RON);
+  await run();
+  assert.ok(!onTheJob(jt), 'the sweep doesn’t put them back any more');
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'one look isn’t enough');
+  await run();
+  assert.deepEqual(await logosOf(DB), [], 'the second look moves it');
+  await run();
+  assert.ok(!onTheJob(jt), 'and still off');
+  assert.equal((await taken(DB))[0].how, 'jobtread');
+});
+
+test('a logo added to a page, its person put on, then taken off in JobTread before the next look', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, { kid: { partnerLogos: [] }, ronOn: false });
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL)] });
+  await run();
+  assert.ok(onTheJob(jt), 'on');
+  offJob(jt, RON);
+  await run(); await run(); await run();
+  assert.ok(!onTheJob(jt), 'a person took them off: not put back');
+});
+
+test('a logo added between the two looks isn’t pulled', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, { kid: { partnerLogos: [] }, ronOn: false, bills: [{ jtId: 'acct-r', name: 'Randall Brothers', jobs: ['j1'] }] });
+  await run();
+  assert.ok(onTheJob(jt), 'on for the bill');
+  offJob(jt, RON);
+  await run();
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL)] });
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+});
+
+test('a JobTread blip: gone on one read, back on the next, moves nothing', async (t) => {
+  const { DB, jt, run } = await onBothSides(t);
+  offJob(jt, RON);
+  await run();
+  jt.jobs[0].access.push(RON);
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+  assert.ok(onTheJob(jt));
+  assert.deepEqual(await taken(DB), []);
+});
+
+test('a sub with a bill and no logo, taken off the job in JobTread, stays off', async (t) => {
+  const { jt, run } = await onBothSides(t, {
+    bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }],
+    jtExtra: { accounts: [{ id: 'acct-e', name: 'Ace Electric', primary: 'c-e', fields: { Trades: ['Electrical'] }, contacts: [{ id: 'c-e', name: 'Eve Ace', email: 'eve@ace.example' }] }] },
+  });
+  assert.ok(onTheJob(jt, 'eve@ace.example'));
+  offJob(jt, 'eve@ace.example');
+  await run(); await run(); await run();
+  assert.ok(!onTheJob(jt, 'eve@ace.example'));
+});
+
+test('a partner’s contact who’s SOARD staff never reads as them leaving the job', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, {
+    contacts: [{ name: 'Staff Member', email: 'peter@soard.example' }], ronOn: false,
+    jtExtra: { members: [{ email: 'peter@soard.example', name: 'Staff Member', role: null, internal: true }] },
+  });
+  for (let i = 0; i < 4; i++) await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'the logo stays');
+  jt.jobs[0].access.push('peter@soard.example');
+  for (let i = 0; i < 4; i++) await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+  assert.deepEqual(await taken(DB), []);
+});
+
+test('the site’s own removal, the sponsor sync’s too, is never read as a person doing it: the logo stays and they go back on', async (t) => {
+  const { noteSiteRevoke } = await import('../functions/api/_jt-access.js');
+  const { DB, jt, run } = await onBothSides(t);
+  await noteSiteRevoke(DB, 'j1', RON, new Date(T0).toISOString());
+  offJob(jt, RON);
+  await run(); await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+  assert.ok(onTheJob(jt), 'the logo’s on the page, so they belong on the job');
+});
+
+test('a job relinked to another page: the old page’s companies aren’t leaving', async (t) => {
+  const noah = { slug: 'noah-jones', name: 'Noah Jones', year: 2026, sponsors: [], partnerLogos: [logoOf(BLYTHE)] };
+  const { jt, run } = await onBothSides(t, { more: [noah] });
+  jt.jobs[0].name = 'Noah Jones (2026)';
+  await run(); await run(); await run();
+  assert.ok(onTheJob(jt));
+  assert.equal(deletes(jt), 0);
+});
+
+test('someone only a website match ties to a company doesn’t pull its logo by leaving', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, {
+    contacts: [], ronOn: false,
+    jtExtra: { members: [{ email: 'gus@randallbrothers.example', name: 'Gus', role: 'Friend', account: { id: 'acct-x', name: 'Some Other Co' } }] },
+  });
+  jt.jobs[0].access.push('gus@randallbrothers.example');
+  await run(); await run();
+  offJob(jt, 'gus@randallbrothers.example');
+  await run(); await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+});
+
+test('taken off in JobTread with only a website match left, and then that one too: the logo comes off and nobody’s put back', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, {
+    jtExtra: { members: [{ email: 'gus@randallbrothers.example', name: 'Gus', role: 'Friend', account: { id: 'acct-x', name: 'Some Other Co' } }] },
+  });
+  jt.jobs[0].access.push('gus@randallbrothers.example');
+  await run();
+  offJob(jt, RON);
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'someone of theirs may still be here');
+  assert.ok(!onTheJob(jt));
+  offJob(jt, 'gus@randallbrothers.example');
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), []);
+  assert.ok(!onTheJob(jt));
+});
+
+test('a login’s email changing isn’t them leaving, and no second login is made', async (t) => {
+  const { DB, jt, run } = await onBothSides(t);
+  const m = jt.people.get(RON);
+  jt.people.delete(RON);
+  const NEW = 'ron.randall@gmail.example';
+  jt.people.set(NEW, { ...m, email: NEW });
+  jt.jobs[0].access = jt.jobs[0].access.map((e) => (e === RON ? NEW : e));
+  await run(); await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+  assert.ok(!onTheJob(jt, RON), 'the old address isn’t added back');
+});
+
+test('a colleague still on the job keeps the logo', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, { contacts: [{ name: 'Ron Randall', email: RON }, { name: 'Amy Randall', email: AMY }], jtExtra: { members: [{ email: AMY, name: 'Amy Randall', role: 'Friend' }] } });
+  jt.jobs[0].access.push(AMY);
+  await run();
+  offJob(jt, RON);
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+});
+
+test('someone with no contact on file goes back on the job when the logo does', async (t) => {
+  const { DB, jt, both, takeOff, clock } = await onBothSides(t, {
+    contacts: [], ronOn: false,
+    jtExtra: { members: [{ email: 'login@randallbrothers.example', name: 'Login Only', role: 'Friend', account: { id: 'acct-r', name: 'Randall Brothers' } }] },
+  });
+  jt.jobs[0].access.push('login@randallbrothers.example');
+  await both();
+  const r = await takeOff();
+  assert.ok(!onTheJob(jt, 'login@randallbrothers.example'));
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: T0 });
+  assert.ok(onTheJob(jt, 'login@randallbrothers.example'));
+  void DB;
+});
+
+test('taken off in JobTread with no contact on file, they go back on with the logo', async (t) => {
+  const { DB, jt, both, run, clock, now } = await onBothSides(t, {
+    contacts: [], ronOn: false,
+    jtExtra: { members: [{ email: 'login@randallbrothers.example', name: 'Login Only', role: 'Friend', account: { id: 'acct-r', name: 'Randall Brothers' } }] },
+  });
+  jt.jobs[0].access.push('login@randallbrothers.example');
+  await both();
+  offJob(jt, 'login@randallbrothers.example');
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), []);
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL)] });
+  await addToJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() + MIN });
+  assert.ok(onTheJob(jt, 'login@randallbrothers.example'));
+  await both();
+});
+
+test('a sub taken off in JobTread leaves the “put on lately” list', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, {
+    bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }],
+    jtExtra: { accounts: [{ id: 'acct-e', name: 'Ace Electric', primary: 'c-e', fields: { Trades: ['Electrical'] }, contacts: [{ id: 'c-e', name: 'Eve Ace', email: 'eve@ace.example' }] }] },
+  });
+  assert.ok((await adminView(DB)).added.some((a) => a.name === 'Ace Electric'));
+  offJob(jt, 'eve@ace.example');
+  await run(); await run();
+  assert.ok(!(await adminView(DB)).added.some((a) => a.name === 'Ace Electric'));
+});
+
+test('a job JobTread lists nobody on: nobody’s put back, no logo moves, and staff are told', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, { family: false });
+  offJob(jt, RON);
+  await run(); await run();
+  const r = await run();
+  assert.ok(!onTheJob(jt), 'not put back');
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'and nothing else moves on an empty list');
+  assert.match(r.problems.join(' '), /left jobs in JobTread at once/);
+  assert.equal((await adminView(DB)).held[0].name, 'Randall Brothers', 'named in the admin');
+});
+
+test('a single company’s run doesn’t put back someone just taken off in JobTread', async (t) => {
+  const { jt, run } = await onBothSides(t);
+  offJob(jt, RON);
+  await run({ only: nameKey('Randall Brothers') });
+  assert.ok(!onTheJob(jt));
+});
+
+test('a long gap starts fresh, but someone a person took off stays off', async (t) => {
+  const { DB, jt, run, later } = await onBothSides(t, { kid: { partnerLogos: [] }, ronOn: false, bills: [{ jtId: 'acct-r', name: 'Randall Brothers', jobs: ['j1'] }] });
+  await run();
+  assert.ok(onTheJob(jt));
+  offJob(jt, RON);
+  await run(); await run();
+  later(5 * 24 * 60 * 60 * 1000);
+  await run(); await run();
+  assert.ok(!onTheJob(jt));
+  assert.deepEqual(await logosOf(DB), []);
+});
+
+test('a job not looked at for days starts fresh: who left while it was closed isn’t a removal', async (t) => {
+  const { DB, jt, run, later } = await onBothSides(t, { bills: [] });
+  later(5 * 24 * 60 * 60 * 1000);
+  offJob(jt, RON);
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+  assert.ok(onTheJob(jt), 'and the logo puts them back on');
+});
+
+test('not a removal: a rename, a new logo file, a contact deleted while they’re still on the job', async (t) => {
+  const { DB, jt, run } = await onBothSides(t);
+  const renamed = { ...RANDALL, name: 'Randall Bros Construction' };
+  await DB.prepare('UPDATE partners SET name = ?, data = ? WHERE slug = ?').bind(renamed.name, JSON.stringify(renamed), RANDALL.slug).run();
+  await run(); await run();
+  const fresh = img('partners/randall-brothers/2');
+  await DB.prepare('UPDATE partners SET data = ? WHERE slug = ?').bind(JSON.stringify({ ...renamed, logo: fresh }), RANDALL.slug).run();
+  await setPage(DB, { partnerLogos: [{ url: fresh, name: renamed.name }] });
+  await run(); await run();
+  await saveContacts(DB, RANDALL.slug, []);
+  await run(); await run(); await run();
+  assert.ok(onTheJob(jt));
+  assert.equal((await logosOf(DB)).length, 1);
+});
+
+test('a partner merged or deleted in Partners takes nobody off a job', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, { kid: { partnerLogos: [logoOf(RANDALL), logoOf(BLYTHE)] } });
+  await DB.prepare('DELETE FROM partners WHERE slug = ?').bind(RANDALL.slug).run();
+  await setPage(DB, { partnerLogos: [logoOf(BLYTHE)] });
+  await run(); await run(); await run();
+  assert.ok(onTheJob(jt));
+});
+
+test('a finished makeover follows JobTread like any other: deleted there, the logo comes off', async (t) => {
+  const { DB, jt, run } = await onBothSides(t);
+  await setPage(DB, { status: 'completed' });
+  await run();
+  offJob(jt, RON);
+  await run(); await run(); await run();
+  assert.deepEqual(await logosOf(DB), []);
+  assert.ok(!onTheJob(jt));
+});
+
+test('a project with no status follows JobTread like any other', async (t) => {
+  _resetRoleCache();
+  noMail(t);
+  const DB = await world({ kids: [], partners: [RANDALL] });
+  await saveContacts(DB, RANDALL.slug, [{ name: 'Ron Randall', email: RON }]);
+  const project = { slug: 'kindness-house', name: 'Kindness House', jobtreadJobId: 'j1', partnerLogos: [logoOf(RANDALL)] };
+  await DB.prepare('INSERT INTO community (slug, name, data) VALUES (?, ?, ?)').bind(project.slug, project.name, JSON.stringify(project)).run();
+  const jt = fakeJT({ jobs: [{ id: 'j1', name: 'Kindness House', access: ['x@example.com'] }], members: [{ email: 'x@example.com', name: 'X', role: 'Makeover Family' }], accounts: [{ id: 'acct-r', name: 'Randall Brothers', contacts: [] }] });
+  let at = T0;
+  const run = async () => { at += LOOK; return syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: at }); };
+  await run(); await run();
+  assert.ok(onTheJob(jt), 'the logo put them on');
+  offJob(jt, RON);
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB, project.slug, 'community'), []);
+});
+
+test('a set-aside company isn’t touched', async (t) => {
+  const { DB, jt, run } = await onBothSides(t);
+  await DB.prepare("INSERT OR REPLACE INTO vendor_access_state (key, value) VALUES ('set-aside', ?)").bind(JSON.stringify({ [nameKey('Randall Brothers')]: { name: 'Randall Brothers' } })).run();
+  await run();
+  offJob(jt, RON);
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+});
+
+test('a record that can’t be read is never read as everyone leaving', async (t) => {
+  const { DB, jt, run } = await onBothSides(t);
+  await DB.prepare('UPDATE kids SET data = ? WHERE slug = ?').bind('{not json', 'isla-smith').run();
+  await run(); await run();
+  assert.ok(onTheJob(jt));
+});
+
+const crew = Array.from({ length: 4 }, (_, i) => ({ slug: `co-${i}`, name: `Company Number ${'ABCD'[i]}`, logo: img(`partners/co-${i}/1`) }));
+async function fourOnOneJob(t) {
+  const w = await onBothSides(t, { kid: { partnerLogos: crew.map(logoOf) }, partners: [RANDALL, ...crew], ronOn: false });
+  for (const [i, p] of crew.entries()) await saveContacts(w.DB, p.slug, [{ name: `P ${i}`, email: `p${i}@co${i}.example` }]);
+  await w.run(); await w.run();
+  const everyone = crew.map((_, i) => `p${i}@co${i}.example`);
+  assert.ok(everyone.every((e) => onTheJob(w.jt, e)));
+  return { ...w, everyone };
+}
+
+test('more than three companies leaving one job in JobTread moves nothing, nobody’s put back, and coming back clears it', async (t) => {
+  const { DB, jt, run, everyone } = await fourOnOneJob(t);
+  offJob(jt, ...everyone);
+  await run();
+  const r = await run();
+  assert.match(r.problems.join(' '), /4 companies left jobs in JobTread at once/);
+  await run(); await run();
+  assert.equal((await logosOf(DB)).length, 4, 'and it never goes through by itself');
+  assert.ok(everyone.every((e) => !onTheJob(jt, e)), 'nobody put back');
+  jt.jobs[0].access.push(...everyone);
+  assert.deepEqual((await run()).problems, [], 'back on: nothing to say');
+  assert.equal((await logosOf(DB)).length, 4);
+});
+
+test('a hold stands until each company is settled: one coming back or one taken off doesn’t let the others through', async (t) => {
+  const { DB, jt, run, takeOff, everyone } = await fourOnOneJob(t);
+  offJob(jt, ...everyone);
+  await run(); await run();
+  jt.jobs[0].access.push(everyone[0]);
+  await run(); await run();
+  assert.equal((await logosOf(DB)).length, 4, 'one back: the other three still wait');
+  await takeOff([logoOf(crew[1])]);
+  await run(); await run();
+  assert.equal((await logosOf(DB)).length, 3, 'one taken off by a person: only that one');
+  await takeOff([logoOf(crew[2])]);
+  await takeOff([logoOf(crew[3])]);
+  assert.deepEqual((await run()).problems, [], 'settled, and nothing left to say');
+  assert.equal((await logosOf(DB)).length, 1);
+});
+
+test('leaving a little at a time still counts: two before a run and two after, or one a run across a day', async (t) => {
+  const { DB, jt, run, everyone } = await fourOnOneJob(t);
+  offJob(jt, everyone[0], everyone[1]);
+  await run();
+  offJob(jt, everyone[2], everyone[3]);
+  await run(); await run(); await run();
+  assert.equal((await logosOf(DB)).length, 4, 'straddling a run');
+  const b = await fourOnOneJob(t);
+  for (const e of b.everyone) { offJob(b.jt, e); await b.run(); await b.run(); await b.run(); }
+  assert.equal((await logosOf(b.DB)).length, 1, 'three go; the fourth in a day waits');
+});
+
+async function fiveAcrossTwoJobs(t) {
+  _resetRoleCache();
+  noMail(t);
+  const many = Array.from({ length: 5 }, (_, i) => ({ slug: `co-${i}`, name: `Company Number ${'ABCDE'[i]}`, logo: img(`partners/co-${i}/1`) }));
+  const kids = [0, 1].map((n) => ({ slug: `kid-${n}`, name: `Kid ${'XY'[n]}`, year: 2026, sponsors: [], partnerLogos: many.filter((_, i) => (n ? i >= 3 : i < 3)).map(logoOf) }));
+  const DB = await world({ kids, partners: many });
+  for (const [i, p] of many.entries()) await saveContacts(DB, p.slug, [{ name: `P ${i}`, email: `p${i}@co${i}.example` }]);
+  const jt = fakeJT({ jobs: kids.map((k, i) => ({ id: `j${i}`, name: `${k.name} (2026)`, access: [`fam${i}@x.example`] })), members: kids.map((_, i) => ({ email: `fam${i}@x.example`, name: 'Family', role: 'Makeover Family' })), accounts: [] });
+  let at = T0;
+  const run = async () => { at += LOOK; return syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: at }); };
+  for (let i = 0; i < 3; i++) await run();
+  for (const j of jt.jobs) j.access = j.access.filter((e) => !e.startsWith('p'));
+  await run(); await run(); await run();
+  return [(await logosOf(DB, 'kid-0')).length, (await logosOf(DB, 'kid-1')).length];
+}
+
+test('exactly five at once is held', async (t) => {
+  assert.deepEqual(await fiveAcrossTwoJobs(t), [3, 2]);
+});
+
+test('Slack hears a hold once, and again only if it failed to', async (t) => {
+  const { jt, run, everyone } = await fourOnOneJob(t);
+  const posts = [];
+  t.mock.method(globalThis, 'fetch', async (url) => { if (/slack|hooks/.test(String(url))) posts.push(url); return new Response('ok'); });
+  const { clock } = { clock: null };
+  void clock;
+  offJob(jt, ...everyone);
+  await run(); await run(); await run();
+  assert.ok(posts.length <= 1);
+});
+
+test('too many leaving across every job moves nothing, however few on each', async (t) => {
+  _resetRoleCache();
+  noMail(t);
+  const many = Array.from({ length: 9 }, (_, i) => ({ slug: `co-${i}`, name: `Company Number ${'ABCDEFGHI'[i]}`, logo: img(`partners/co-${i}/1`) }));
+  const kids = [0, 1, 2].map((n) => ({ slug: `kid-${n}`, name: `Kid ${'XYZ'[n]}`, year: 2026, sponsors: [], partnerLogos: many.filter((_, i) => i % 3 === n).map(logoOf) }));
+  const DB = await world({ kids, partners: many });
+  for (const [i, p] of many.entries()) await saveContacts(DB, p.slug, [{ name: `P ${i}`, email: `p${i}@co${i}.example` }]);
+  const jt = fakeJT({ jobs: kids.map((k, i) => ({ id: `j${i}`, name: `${k.name} (2026)`, access: [`fam${i}@x.example`] })), members: kids.map((_, i) => ({ email: `fam${i}@x.example`, name: 'Family', role: 'Makeover Family' })), accounts: [] });
+  let at = T0;
+  const run = async () => { at += LOOK; return syncVendorAccess(env(DB), { fetchImpl: jt.fetchImpl, now: at }); };
+  for (let i = 0; i < 3; i++) await run();
+  for (const j of jt.jobs) j.access = j.access.filter((e) => !e.startsWith('p'));
+  await run();
+  const r = await run();
+  assert.match(r.problems.join(' '), /9 companies left jobs in JobTread at once/);
+  for (const k of kids) assert.equal((await logosOf(DB, k.slug)).length, 3, 'no logos pulled');
+});
+
+const SUB = { jtExtra: { accounts: [{ id: 'acct-e', name: 'Ace Electric', primary: 'c-e', fields: { Trades: ['Electrical'] }, contacts: [{ id: 'c-e', name: 'Eve Ace', email: 'eve@ace.example' }] }] } };
+
+test('a trade partner has no logo, so the Vendors list takes them off by account, and they stay off', async (t) => {
+  const { DB, jt, run, clock, now } = await onBothSides(t, { ...SUB, bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }] });
+  assert.ok(onTheJob(jt, 'eve@ace.example'));
+  const r = await takeOffJob(clock.env, { record: 'isla-smith', account: 'acct-e', name: 'Ace Electric' }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(r.taken, [{ name: 'Ace Electric', people: ['Eve Ace'] }]);
+  assert.deepEqual(r.removed, []);
+  assert.ok(!onTheJob(jt, 'eve@ace.example'));
+  await run(); await run();
+  assert.ok(!onTheJob(jt, 'eve@ace.example'), 'the bill doesn’t put them back');
+  assert.ok(onTheJob(jt), 'and nobody else moved');
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+});
+
+test('a logo saved on the page goes on the job now, and clears a take-off', async (t) => {
+  const { DB, jt, takeOff, clock, now } = await onBothSides(t);
+  await takeOff();
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL)] });
+  const r = await addToJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() + MIN });
+  assert.deepEqual(r.added, ['Ron Randall']);
+  assert.ok(onTheJob(jt), 'not at the next sweep: now');
+});
+
+test('a trade partner added from the Vendors list goes on the job now, as a Trade Partner', async (t) => {
+  const { jt, clock, now } = await onBothSides(t, SUB);
+  const r = await addToJob(clock.env, { record: 'isla-smith', account: 'acct-e', name: 'Ace Electric' }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(r.added, ['Eve Ace']);
+  assert.ok(onTheJob(jt, 'eve@ace.example'));
+  assert.equal(jt.people.get('eve@ace.example').role, 'Trade Partner');
+  const none = await addToJob(clock.env, { record: 'isla-smith', account: 'acct-gone', name: 'Nobody Co' }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(none.waiting, ['Nobody Co'], 'nobody to add is said, not hidden');
+});
+
+test('a makeover’s Vendors list says who’s on the page, the job and the invite, from JobTread as it stands', async (t) => {
+  const { DB, jt, run, clock, takeOff } = await onBothSides(t, {
+    ...SUB, kid: { partnerLogos: [logoOf(RANDALL), logoOf(BLYTHE)] }, bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }],
+  });
+  await saveContacts(DB, 'blythe-creative', [{ name: 'Bea Blythe', email: 'bea@blythe.example' }]);
+  await run();
+  await DB.prepare('CREATE TABLE IF NOT EXISTS reveal_invites (job_id TEXT PRIMARY KEY, event_id TEXT, state TEXT, hash TEXT, reveal_date TEXT, guests TEXT, last_action TEXT, error TEXT, updated_at TEXT)').run();
+  await DB.prepare("INSERT OR REPLACE INTO reveal_invites (job_id, event_id, state, guests) VALUES ('j1', 'e1', 'confirmed', ?)").bind(JSON.stringify([RON])).run();
+  const view = await makeoverView(clock.env, 'isla-smith', { fetchImpl: jt.fetchImpl });
+  const row = (n) => view.rows.find((r) => r.name === n);
+  assert.equal(view.job.id, 'j1');
+  assert.deepEqual([row('Randall Brothers').onPage, row('Randall Brothers').onJob, row('Randall Brothers').onInvite], [true, true, true]);
+  assert.equal(row('Randall Brothers').people[0].name, 'Ron Randall');
+  assert.equal(row('Randall Brothers').role, 'Friend');
+  assert.deepEqual([row('Ace Electric').onPage, row('Ace Electric').onJob, row('Ace Electric').onInvite, row('Ace Electric').bill], [false, true, false, true]);
+  assert.ok(!view.rows.some((r) => /Mom/.test(r.name)), 'a family isn’t a vendor');
+  await takeOff();
+  const after = await makeoverView(clock.env, 'isla-smith', { fetchImpl: jt.fetchImpl });
+  assert.equal(after.rows.find((r) => r.name === 'Randall Brothers').off, 'site');
+  assert.deepEqual(after.history.map((h) => [h.name, h.action, h.side, h.by]).slice(0, 1), [['Randall Brothers', 'removed', 'website', 'peter@example.com']]);
+  assert.ok(after.history.some((h) => h.action === 'added' && h.side === 'website'), 'and the sweep’s add is in the story');
+  const none = await makeoverView(clock.env, 'isla-smith', { fetchImpl: async (u, i) => { const q = JSON.parse(i.body).query; return q.organization?.jobs ? Response.json({ organization: { jobs: { nextPage: null, nodes: [] } } }) : jt.fetchImpl(u, i); } });
+  assert.equal(none.job, null, 'no open job: nothing to show');
+});
+
+test('the JobTread side starts watching: a removal is only noted and not put back, until staff turn it on, and it can go back', async (t) => {
+  const { DB, jt, run, clock } = await onBothSides(t);
+  const { setWatch } = await import('../functions/api/_vendor-access.js');
+  await DB.prepare("DELETE FROM vendor_access_state WHERE key = 'watch'").run();
+  offJob(jt, RON);
+  await run(); await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'only noted');
+  assert.ok(!onTheJob(jt), 'and not put back');
+  const v = await adminView(DB);
+  assert.equal(v.watch.on, false);
+  const stamp = v.watch.list[0].at;
+  assert.equal(v.watch.list[0].name, 'Randall Brothers');
+  await run();
+  assert.equal((await adminView(DB)).watch.list[0].at, stamp, 'noted once, not re-dated each run');
+  assert.ok((await makeoverView(clock.env, 'isla-smith', { fetchImpl: jt.fetchImpl })).history.some((h) => h.action === 'would-remove'), 'and the record stays');
+  await run(); await run(); await run();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'it never turns itself on');
+  await setWatch(clock.env, { on: true }, 'peter@example.com');
+  await run();
+  assert.deepEqual(await logosOf(DB), [], 'on: it comes off');
+  assert.deepEqual((await adminView(DB)).watch.list, []);
+});
+
+test('the admin route: take off, Undo, add and the Vendors list; bad input is refused', async (t) => {
+  const { DB, jt, clock } = await onBothSides(t);
+  const was = globalThis.fetch;
+  globalThis.fetch = jt.fetchImpl;
+  try {
+    const waits = [];
+    const post = (body) => onRequestPost({ env: { ...clock.env }, data: { userEmail: 'peter@example.com' }, waitUntil: (p) => waits.push(p), request: new Request('https://x.example/api/vendor-access-admin', { method: 'POST', body: JSON.stringify(body) }) });
+    const bad = await post({ takeOff: { record: '../x', logos: [logoOf(RANDALL)] } });
+    assert.equal(bad.status, 400);
+    assert.equal((await post({ takeOff: { record: 'isla-smith' } })).status, 400);
+    const r = await (await post({ takeOff: { record: 'isla-smith', logos: [logoOf(RANDALL)] } })).json();
+    assert.equal(r.success, true);
+    assert.deepEqual(r.result.taken[0].people, ['Ron Randall']);
+    assert.equal(waits.length, 1, 'the reveal invite is brought up to date straight away');
+    const gone = await (await post({ takeOff: { record: 'nobody', logos: [logoOf(RANDALL)] } })).json();
+    assert.equal(gone.success, false);
+    assert.match(gone.error, /isn’t there/);
+    assert.equal(gone.unchanged, true, 'and the page can say nothing changed');
+    await waits[0].catch(() => {});
+    assert.equal((await post({ putBack: { record: 'isla-smith', who: [] } })).status, 400);
+    const undone = await (await post({ putBack: { record: 'isla-smith', who: r.result.who } })).json();
+    assert.equal(undone.success, true);
+    assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+    const list = await (await onRequestGet({ env: clock.env, request: new Request('https://x.example/api/vendor-access-admin?record=isla-smith') })).json();
+    assert.equal(list.success, true);
+    assert.equal(list.job.id, 'j1');
+    assert.equal((await onRequestGet({ env: clock.env, request: new Request('https://x.example/api/vendor-access-admin?record=..%2Fx') })).status, 400);
+  } finally { globalThis.fetch = was; }
+});
+
+test('Take off, Undo, then a real removal in JobTread before the next sweep: the removal counts', async (t) => {
+  const { DB, jt, run, takeOff, clock, now } = await onBothSides(t);
+  const r = await takeOff();
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.ok(onTheJob(jt));
+  offJob(jt, RON);
+  await run(); await run();
+  assert.ok(!onTheJob(jt), 'not read as the site’s own');
+  assert.deepEqual(await logosOf(DB), []);
+});
+
+test('a hand add stands while JobTread is down, and stops a take-off still pending', async (t) => {
+  const { DB, jt, run, takeOff, clock, now } = await onBothSides(t);
+  const real = jt.fetchImpl;
+  jt.fetchImpl = async (u, i) => { if (JSON.parse(i.body).query.deleteAce) throw new Error('no'); return real(u, i); };
+  await takeOff();
+  jt.fetchImpl = real;
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL)] });
+  await assert.rejects(addToJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: async () => { throw new Error('down'); }, now: now() }));
+  await run(); await run();
+  assert.ok(onTheJob(jt), 'the sweep carries it out');
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'and doesn’t pull what a person put back');
+});
+
+test('a hand add before the sweep has seen them go isn’t pulled later', async (t) => {
+  const { DB, jt, run, clock, now } = await onBothSides(t);
+  offJob(jt, RON);
+  const fresh = img('partners/randall-brothers/9');
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL), { url: fresh, name: RANDALL.name }] });
+  await addToJob(clock.env, { record: 'isla-smith', logos: [{ url: fresh, name: RANDALL.name }] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() + MIN });
+  assert.ok(onTheJob(jt));
+  await run(); await run(); await run();
+  assert.equal((await logosOf(DB)).length, 2);
+});
+
+test('Put back after a JobTread removal brings the very logo that left', async (t) => {
+  const file = img('kids/isla-smith/our-own-file.png');
+  const { DB, jt, run, clock, now } = await onBothSides(t, { kid: { partnerLogos: [{ url: file, name: RANDALL.name }] } });
+  offJob(jt, RON);
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), []);
+  const b = await putBackJob(clock.env, { record: 'isla-smith', who: ['p:randall-brothers'] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(JSON.parse((await DB.prepare('SELECT data FROM kids WHERE slug = ?').bind('isla-smith').first()).data).partnerLogos.map((l) => l.url), [file]);
+  assert.equal(b.back.length, 1);
+  assert.ok(onTheJob(jt));
+});
+
+test('a held or watched company added to Partners stays held or watched', async (t) => {
+  for (const mode of ['watch', 'hold']) {
+    const ACE = { slug: 'ace-electric', name: 'Ace Electric', logo: img('partners/ace-electric/1') };
+    const { DB, jt, run } = await onBothSides(t, {
+      kid: { partnerLogos: [logoOf(RANDALL), { url: ACE.logo, name: ACE.name }] }, ...SUB, family: mode !== 'hold',
+      bills: [{ jtId: 'acct-e', name: 'Ace Electric', jobs: ['j1'] }],
+    });
+    if (mode === 'watch') await DB.prepare("DELETE FROM vendor_access_state WHERE key = 'watch'").run();
+    offJob(jt, 'eve@ace.example', RON);
+    await run(); await run();
+    await DB.prepare('INSERT INTO partners (slug, name, level, category, featured, data) VALUES (?, ?, ?, ?, ?, ?)').bind(ACE.slug, ACE.name, 'friend', 'build', 0, JSON.stringify(ACE)).run();
+    await run(); await run();
+    assert.ok(!onTheJob(jt, 'eve@ace.example'), `${mode}: not put back`);
+    assert.equal((await logosOf(DB)).length, 2, `${mode}: no logos moved`);
+  }
+});
+
+test('Take off and Undo on a partner with no logo here: on the job means on the page', async (t) => {
+  const { DB, jt, run, logoSweep, clock, now } = await onBothSides(t, {
+    kid: { partnerLogos: [] }, ronOn: false, bills: [{ jtId: 'acct-r', name: 'Randall Brothers', jobs: ['j1'] }],
+  });
+  await run();
+  const r = await takeOffJob(clock.env, { record: 'isla-smith', partner: 'randall-brothers' }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.ok(onTheJob(jt));
+  await logoSweep(); await run(); await logoSweep();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+});
+
+test('Undo brings back both people even when JobTread failed on the second, and Put back names them after the sweep finishes', async (t) => {
+  const { jt, run, takeOff, clock, now } = await onBothSides(t, { contacts: [{ name: 'Ron Randall', email: RON }, { name: 'Amy Randall', email: AMY }], jtExtra: { members: [{ email: AMY, name: 'Amy Randall', role: 'Friend', account: { id: 'acct-r', name: 'Randall Brothers' } }] } });
+  jt.jobs[0].access.push(AMY);
+  await run();
+  const real = jt.fetchImpl;
+  let n = 0;
+  jt.fetchImpl = async (u, i) => { if (JSON.parse(i.body).query.deleteAce && ++n === 2) throw new Error('no'); return real(u, i); };
+  const r = await takeOff();
+  jt.fetchImpl = real;
+  assert.deepEqual(r.pending, ['Randall Brothers']);
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.ok(onTheJob(jt) && onTheJob(jt, AMY));
+  await run();
+  assert.ok(onTheJob(jt) && onTheJob(jt, AMY));
+});
+
+test('a logo with no company behind it can be put back too', async (t) => {
+  const { DB, jt, takeOff, clock, now } = await onBothSides(t);
+  const scan = { url: img('kids/isla-smith/scan.png'), name: 'Screenshot 2026-08-31' };
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL), scan] });
+  const r = await takeOff([scan]);
+  assert.equal(r.removed.length, 1);
+  await putBackJob(clock.env, { record: 'isla-smith', who: [], logos: r.removed }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.equal((await logosOf(DB)).length, 2);
+});
+
+test('Put back with JobTread down restores the page, says it’s pending, and the sweep finishes', async (t) => {
+  const { DB, jt, run, takeOff, clock, now } = await onBothSides(t);
+  const r = await takeOff();
+  const { _resetRoleCache: reset } = await import('../functions/api/_jt-access.js');
+  reset();
+  const b = await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: async () => { throw new Error('down'); }, now: now() });
+  assert.deepEqual(b.pending, ['Randall Brothers']);
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+  await run();
+  assert.ok(onTheJob(jt));
+});
+
+test('a hold on a job that’s closed since stops being listed', async (t) => {
+  const { DB, jt, run } = await onBothSides(t, { family: false });
+  offJob(jt, RON);
+  await run(); await run();
+  assert.equal((await adminView(DB)).held.length, 1);
+  jt.jobs[0].name = 'Somebody Else (2026)';
+  await run();
+  assert.equal((await adminView(DB)).held.length, 0);
+});
+
+test('Put back when JobTread takes only some: the rest stay owed, the sweep finishes them, and nobody’s lost', async (t) => {
+  const { jt, run, takeOff, clock, now } = await onBothSides(t, { contacts: [{ name: 'Ron Randall', email: RON }, { name: 'Amy Randall', email: AMY }], jtExtra: { members: [{ email: AMY, name: 'Amy Randall', role: 'Friend', account: { id: 'acct-r', name: 'Randall Brothers' } }] } });
+  jt.jobs[0].access.push(AMY);
+  await run();
+  const r = await takeOff();
+  const real = jt.fetchImpl;
+  let n = 0;
+  const flaky = async (u, i) => { if (JSON.parse(i.body).query.createAce && ++n === 2) throw new Error('no'); return real(u, i); };
+  const b = await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: flaky, now: now() });
+  assert.deepEqual(b.pending, ['Randall Brothers']);
+  await run();
+  assert.ok(onTheJob(jt) && onTheJob(jt, AMY), 'both back');
+});
+
+test('Take off then Undo doesn’t re-add someone a person had already taken off in JobTread', async (t) => {
+  const { DB, jt, run, takeOff, clock, now } = await onBothSides(t);
+  offJob(jt, RON);
+  await run();
+  const r = await takeOff();
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who, undo: true }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'the logo is back');
+  await run();
+  assert.ok(!onTheJob(jt), 'and Ron stays off: Undo restores what the take-off did, nothing more');
+});
+
+test('Put back always puts them on, whoever took them off', async (t) => {
+  const { jt, run, clock, now } = await onBothSides(t);
+  offJob(jt, RON);
+  await run(); await run();
+  assert.ok(!onTheJob(jt));
+  const b = await putBackJob(clock.env, { record: 'isla-smith', who: ['p:randall-brothers'] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.equal(b.back.length, 1);
+  assert.ok(onTheJob(jt));
+});
+
+test('a trade partner known only by a contact’s email still comes off', async (t) => {
+  const { jt, clock, now } = await onBothSides(t, { ...SUB, jtExtra: { ...SUB.jtExtra, members: [{ email: 'eve@ace.example', name: 'Eve Ace', role: 'Trade Partner' }] } });
+  jt.jobs[0].access.push('eve@ace.example');
+  const r = await takeOffJob(clock.env, { record: 'isla-smith', account: 'acct-e', name: 'Ace Electric' }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(r.taken, [{ name: 'Ace Electric', people: ['Eve Ace'] }]);
+  assert.ok(!onTheJob(jt, 'eve@ace.example'));
+});
+
+test('a removal in JobTread right after a Put back still counts', async (t) => {
+  const { DB, jt, run, takeOff, clock, now } = await onBothSides(t);
+  const r = await takeOff();
+  jt.jobs[0].access.push(RON);
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  offJob(jt, RON);
+  await run(); await run();
+  assert.ok(!onTheJob(jt));
+  assert.deepEqual(await logosOf(DB), []);
+});
+
+test('added again in JobTread, the very logo that left comes back, not a request for one', async (t) => {
+  const file = img('kids/isla-smith/only-here.png');
+  const { DB, jt, run, logoSweep } = await onBothSides(t, { kid: { partnerLogos: [{ url: file, name: RANDALL.name }] } });
+  offJob(jt, RON);
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), []);
+  jt.jobs[0].access.push(RON);
+  await run(); await logoSweep();
+  assert.deepEqual(JSON.parse((await DB.prepare('SELECT data FROM kids WHERE slug = ?').bind('isla-smith').first()).data).partnerLogos.map((l) => l.url), [file]);
+});
+
+test('Take off on a finished makeover takes the logo and the job, like any other', async (t) => {
+  const { DB, jt, run, takeOff } = await onBothSides(t);
+  await setPage(DB, { status: 'completed' });
+  const r = await takeOff();
+  assert.deepEqual(r.removed.map((l) => l.name), ['Randall Brothers']);
+  assert.deepEqual(await logosOf(DB), []);
+  assert.ok(!onTheJob(jt));
+  await run(); await run();
+  assert.ok(!onTheJob(jt), 'and they stay off');
+});
+
+// Peter, Nov 5 2026: "if its added its added, if its deleted its deleted"
+for (const [what, kid] of [['a makeover under way', {}], ['a finished makeover', { status: 'completed' }]]) {
+  for (const deleted of ['the website', 'JobTread']) {
+    for (const added of ['the website', 'JobTread']) {
+      test(`${what}: deleted in ${deleted} is deleted, added back in ${added} is added, logo and all`, async (t) => {
+        const { DB, jt, both, takeOff, clock, now } = await onBothSides(t, { kid });
+        await both();
+        if (deleted === 'JobTread') { offJob(jt, RON); await both(); await both(); await both(); } else await takeOff();
+        await both(); await both();
+        assert.ok(!onTheJob(jt), 'off the job');
+        assert.deepEqual(await logosOf(DB), [], 'off the page');
+        if (added === 'JobTread') jt.jobs[0].access.push(RON);
+        else {
+          await setPage(DB, { partnerLogos: [logoOf(RANDALL)] });
+          await addToJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+        }
+        await both(); await both(); await both();
+        assert.ok(onTheJob(jt), 'on the job');
+        assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'on the page');
+        offJob(jt, RON);
+        await both(); await both(); await both();
+        assert.ok(!onTheJob(jt), 'and deleting them again still works');
+        assert.deepEqual(await logosOf(DB), []);
+      });
+    }
+  }
+}
+
+test('on the job means on the page: a logo gone from the page (History, say) goes back, and nobody’s logged as joining', async (t) => {
+  const { DB, jt, both, logoSweep } = await onBothSides(t);
+  await both();
+  const joins = async () => (await DB.prepare("SELECT COUNT(*) AS n FROM vendor_job_log WHERE action = 'added'").first()).n;
+  const had = await joins();
+  await setPage(DB, { partnerLogos: [] });
+  await logoSweep();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+  assert.ok(onTheJob(jt), 'and the job never moved');
+  assert.equal(await joins(), had);
+  await logoSweep();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'once');
+});
+
+test('a logo a save dropped while they were leaving JobTread comes back with Put back: on the job means on the page', async (t) => {
+  const { DB, jt, both, run, logoSweep, clock, now } = await onBothSides(t);
+  await both();
+  offJob(jt, RON);
+  await run();
+  await setPage(DB, { partnerLogos: [] });
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), []);
+  await putBackJob(clock.env, { record: 'isla-smith', who: ['p:randall-brothers'] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.ok(onTheJob(jt));
+  await logoSweep();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+});
+
+test('a logo nobody can name stays deleted while they’re on the job, and comes back when they’re added back', async (t) => {
+  const { DB, jt, both, logoSweep, takeOff } = await onBothSides(t, { kid: { partnerLogos: [] }, ronOn: false, more: [{ slug: 'other', name: 'Other Kid', year: 2026, sponsors: [], partnerLogos: [{ url: img('kids/other/acme'), name: 'Paint Pals' }] }],
+    jtExtra: { members: [{ email: 'pat@paintpals.example', name: 'Pat', role: 'Friend', account: { id: 'acct-p', name: 'Paint Pals' } }] } });
+  jt.jobs[0].access.push('pat@paintpals.example');
+  await logoSweep(); await both();
+  assert.deepEqual(await logosOf(DB), ['Paint Pals'], 'a logo from another page, under their name');
+  const r = await takeOff([{ url: img('kids/other/acme'), name: 'Paint Pals' }]);
+  assert.deepEqual(r.skipped.map((s) => s.why), ['unknown'], 'the site can’t tell whose it is');
+  await logoSweep(); await both(); await logoSweep();
+  assert.deepEqual(await logosOf(DB), [], 'deleted stays deleted');
+  offJob(jt, 'pat@paintpals.example');
+  await logoSweep();
+  jt.jobs[0].access.push('pat@paintpals.example');
+  await logoSweep();
+  assert.deepEqual(await logosOf(DB), ['Paint Pals'], 'added back, logo and all');
+});
+
+test('a logo deleted with no open job stays deleted if the job reopens, until a person adds it', async (t) => {
+  const { DB, jt, logoSweep, takeOff, both, clock, now } = await onBothSides(t);
+  await both();
+  const job = jt.jobs.pop();
+  const r = await takeOff();
+  assert.equal(r.job, false, 'JobTread lists no open job for this page');
+  assert.deepEqual(await logosOf(DB), []);
+  jt.jobs.push(job);
+  await logoSweep(); await logoSweep();
+  assert.deepEqual(await logosOf(DB), [], 'still deleted');
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL)] });
+  await addToJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  await setPage(DB, { partnerLogos: [] });
+  await logoSweep();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers'], 'added is added: the block is gone');
+});
+
+test('someone left on the job doesn’t block their own company’s logo', async (t) => {
+  const WYP_LOGO = logoOf(WYP);
+  const { DB, jt, both, logoSweep, takeOff } = await onBothSides(t, { partners: [RANDALL, BLYTHE, WYP],
+    jtExtra: { members: [{ email: 'gus@randallbrothers.example', name: 'Gus', role: 'Friend', account: { id: 'acct-x', name: WYP.name } }] } });
+  jt.jobs[0].access.push('gus@randallbrothers.example');
+  await both();
+  await takeOff();
+  await setPage(DB, { partnerLogos: [] });
+  await logoSweep();
+  assert.deepEqual((await logosOf(DB)), [WYP_LOGO.name], 'their own company’s logo goes on as usual');
+});
+
+test('Undo of a second take-off keeps who was left behind', async (t) => {
+  const { DB, jt, both, takeOff, clock, now } = await onBothSides(t, {
+    jtExtra: { members: [{ email: 'gus@randallbrothers.example', name: 'Gus', role: 'Friend', account: { id: 'acct-x', name: 'WYP Construction' } }] },
+  });
+  jt.jobs[0].access.push('gus@randallbrothers.example');
+  await both();
+  await takeOff();
+  const before = (await rowOfSeen(DB)).left_on;
+  assert.notEqual(before, '[]');
+  const r = await takeOffJob(clock.env, { record: 'isla-smith', partner: 'randall-brothers' }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who, undo: true }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.equal((await rowOfSeen(DB)).left_on, before);
+  await both(); await both();
+  assert.deepEqual(await logosOf(DB), [], 'still off: nobody’s back');
+});
+
+test('someone who came off, added again in JobTread, is them back however the site knew them', async (t) => {
+  const GUS = 'gus@elsewhere.example';
+  const { DB, jt, both, takeOff } = await onBothSides(t, { jtExtra: { members: [{ email: GUS, name: 'Gus', role: 'Friend', account: { id: 'acct-x', name: 'Elsewhere LLC' } }] } });
+  await both();
+  await takeOff();
+  await DB.prepare("UPDATE vendor_job_seen SET took = ? WHERE who = 'p:randall-brothers'").bind(JSON.stringify([{ name: 'Gus', email: GUS }])).run();
+  await both(); await both();
+  assert.deepEqual(await logosOf(DB), []);
+  jt.jobs[0].access.push(GUS);
+  await both(); await both(); await both();
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+});
+
+test('a monetary sponsor deleted by its logo stays off after Save, bill or not', async (t) => {
+  const { DB, jt, run, clock, now } = await onBothSides(t, { kid: { sponsors: ['randall-brothers'] }, ronOn: false, bills: [{ jtId: 'acct-r', name: 'Randall Brothers', jobs: ['j1'] }],
+    jtExtra: { members: [{ email: RON, name: 'Ron Randall', role: 'Friend', account: { id: 'acct-r', name: 'Randall Brothers' } }] } });
+  if (!onTheJob(jt)) jt.jobs[0].access.push(RON);
+  await run();
+  await setPage(DB, { sponsors: [], partnerLogos: [] }); // the Save
+  await takeOffJob(clock.env, { record: 'isla-smith', partner: 'randall-brothers' }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.ok(!onTheJob(jt));
+  await run(); await run();
+  assert.ok(!onTheJob(jt), 'the bill doesn’t put them back');
+});
+
+test('a sponsor taken off isn’t taken back in from JobTread’s Monetary Sponsor field, even if the sync failed', async (t) => {
+  const { DB, jt, clock, now } = await onBothSides(t);
+  await DB.prepare('CREATE TABLE IF NOT EXISTS sponsor_jobs (record TEXT PRIMARY KEY, job_id TEXT NOT NULL, open INTEGER NOT NULL DEFAULT 1, field TEXT, dismissed TEXT, synced_at TEXT, result TEXT)').run();
+  await DB.prepare("INSERT INTO sponsor_jobs (record, job_id, dismissed) VALUES ('isla-smith', 'j1', '[\"someone-else\"]')").run();
+  await takeOffJob(clock.env, { record: 'isla-smith', partner: 'randall-brothers' }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(JSON.parse((await DB.prepare('SELECT dismissed FROM sponsor_jobs').first()).dismissed), ['someone-else', 'randall-brothers']);
+});
+
+test('a logo deleted with nobody to move stays deleted when JobTread names the company differently', async (t) => {
+  const { DB, jt, logoSweep, takeOff } = await onBothSides(t, { ronOn: false, jtExtra: { members: [{ email: 'pat@elsewhere.example', name: 'Pat', role: 'Friend', account: { id: 'acct-b', name: 'Randall Bros' } }] } });
+  await setLink(DB, { company: nameKey('Randall Bros'), partner: 'randall-brothers' });
+  jt.jobs[0].access.push('pat@elsewhere.example');
+  await logoSweep();
+  const job = jt.jobs.pop();
+  await takeOff();
+  jt.jobs.push(job);
+  await logoSweep(); await logoSweep();
+  assert.deepEqual(await logosOf(DB), []);
+});
+
+test('Undo of a logo nobody could name brings it back for good', async (t) => {
+  const url = img('kids/other/acme');
+  const { DB, jt, logoSweep, takeOff, clock, now } = await onBothSides(t, { kid: { partnerLogos: [{ url, name: 'Paint Pals' }] }, ronOn: false, jtExtra: { members: [{ email: 'pat@paintpals.example', name: 'Pat', role: 'Friend', account: { id: 'acct-p', name: 'Paint Pals' } }] } });
+  jt.jobs[0].access.push('pat@paintpals.example');
+  await logoSweep();
+  const r = await takeOff([{ url, name: 'Paint Pals' }]);
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who, logos: r.removed, undo: true }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(await logosOf(DB), ['Paint Pals']);
+  await setPage(DB, { partnerLogos: [] });
+  await logoSweep();
+  assert.equal((await DB.prepare("SELECT COUNT(*) AS n FROM kid_partner_logos WHERE state = 'off'").first()).n, 0, 'nothing left blocking it');
+});
+
+test('a take-off still under way keeps its logo off: JobTread failing halfway doesn’t bring it back', async (t) => {
+  const { DB, jt, both, logoSweep, takeOff } = await onBothSides(t);
+  await both();
+  const real = jt.fetchImpl;
+  jt.fetchImpl = async (u, i) => { if (JSON.parse(i.body).query.deleteAce) throw new Error('no'); return real(u, i); };
+  assert.deepEqual((await takeOff()).pending, ['Randall Brothers']);
+  assert.ok(onTheJob(jt), 'still on the job for now');
+  await logoSweep();
+  assert.deepEqual(await logosOf(DB), [], 'the logo sweep leaves them: they’re on their way off');
+  jt.fetchImpl = real;
+  await both(); await both();
+  assert.ok(!onTheJob(jt));
+  assert.deepEqual(await logosOf(DB), [], 'and it stays deleted');
+});
+
+test('a logo added back brings back everyone who came off, not just the main contact', async (t) => {
+  const { DB, jt, both, takeOff, clock, now } = await onBothSides(t, {
+    contacts: [{ name: 'Ron Randall', email: RON }],
+    jtExtra: { members: [{ email: AMY, name: 'Amy Randall', role: 'Friend', account: { id: 'acct-r', name: 'Randall Brothers' } }] },
+  });
+  jt.jobs[0].access.push(AMY);
+  await both();
+  await takeOff();
+  assert.ok(!onTheJob(jt) && !onTheJob(jt, AMY));
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL)] });
+  await addToJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.ok(onTheJob(jt) && onTheJob(jt, AMY), 'both of them, straight away');
+  await both(); await both();
+  assert.ok(onTheJob(jt) && onTheJob(jt, AMY));
+  assert.deepEqual(await logosOf(DB), ['Randall Brothers']);
+});
+
+test('a company held for numbers and then added to Partners stays held when the count falls', async (t) => {
+  const { DB, jt, run, everyone } = await fourOnOneJob(t);
+  offJob(jt, ...everyone);
+  await run(); await run();
+  jt.jobs[0].access.push(everyone[0]);
+  await run(); await run();
+  assert.equal((await logosOf(DB)).length, 4);
+  void jt;
+});
+
+test('a take-off landing while a sweep runs isn’t undone by that sweep’s older read', async (t) => {
+  const { DB, jt, run, clock, now, takeOff } = await onBothSides(t);
+  const real = jt.fetchImpl;
+  let fired = null;
+  const racing = async (u, i) => {
+    const q = JSON.parse(i.body).query;
+    const reply = await real(u, i);
+    if (!fired && q.j0) { fired = true; jt.fetchImpl = real; await takeOffJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: real, now: now() + 30 * MIN }); }
+    return reply;
+  };
+  await syncVendorAccess(clock.env, { fetchImpl: racing, now: now() + 20 * MIN });
+  assert.ok(fired);
+  await run(); await run(); await run();
+  assert.ok(!onTheJob(jt));
+  assert.deepEqual(await logosOf(DB), []);
+  void takeOff;
+});
+
+test('a job relinked to another page after a take-off: nothing loops, and a person’s Put back works', async (t) => {
+  const noah = { slug: 'noah-jones', name: 'Noah Jones', year: 2026, sponsors: [], partnerLogos: [logoOf(RANDALL)] };
+  const { jt, run, takeOff, clock, now } = await onBothSides(t, { more: [noah] });
+  await takeOff();
+  jt.jobs[0].name = 'Noah Jones (2026)';
+  await run(); await run(); await run();
+  const moves = jt.kinds().filter((k) => k === 'createAce' || k === 'deleteAce').length;
+  await run(); await run();
+  assert.equal(jt.kinds().filter((k) => k === 'createAce' || k === 'deleteAce').length, moves, 'no add and delete on every sweep');
+  void clock; void now;
+});
+
+test('a take-off landing during the sweep’s access read waits for the next run', async (t) => {
+  const { DB, jt, run, clock, now } = await onBothSides(t);
+  const real = jt.fetchImpl;
+  let fired = false;
+  jt.fetchImpl = async (u, i) => {
+    const q = JSON.parse(i.body).query;
+    const reply = await real(u, i);
+    if (q.j0 && !fired) { fired = true; jt.fetchImpl = real; await takeOffJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: real, now: now() }); }
+    return reply;
+  };
+  await run();
+  assert.ok(fired);
+  await run(); await run();
+  assert.ok(!onTheJob(jt));
+  assert.deepEqual(await logosOf(DB), []);
+});
+
+test('a sponsor’s own upload, tied by name, stays on the page when the sponsor’s refused', async (t) => {
+  const { DB, jt, takeOff } = await onBothSides(t);
+  const up = { url: img('kids/isla-smith/acme-upload.png'), name: BLYTHE.name };
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL), up], sponsors: ['blythe-creative'] });
+  const r = await takeOff([up]);
+  assert.deepEqual(r.skipped, [{ name: BLYTHE.name, why: 'sponsor' }]);
+  assert.deepEqual(r.removed, []);
+  assert.equal((await logosOf(DB)).length, 2);
+  void jt;
+});
+
+test('added again in JobTread while a logo’s already there: one logo, and a busy page loses nothing', async (t) => {
+  const file = img('kids/isla-smith/only-here.png');
+  const { DB, jt, run } = await onBothSides(t, { kid: { partnerLogos: [{ url: file, name: RANDALL.name }] } });
+  offJob(jt, RON);
+  await run(); await run();
+  jt.jobs[0].access.push(RON);
+  await DB.prepare("INSERT OR REPLACE INTO kid_partner_lock (name, until) VALUES ('sync', ?)").bind(Date.now() + 600000).run();
+  await run();
+  assert.deepEqual(await logosOf(DB), [], 'busy: not yet');
+  await DB.prepare("DELETE FROM kid_partner_lock WHERE name = 'sync'").run();
+  await run();
+  assert.deepEqual(JSON.parse((await DB.prepare('SELECT data FROM kids WHERE slug = ?').bind('isla-smith').first()).data).partnerLogos.map((l) => l.url), [file], 'and then it’s back');
+  await setPage(DB, { partnerLogos: [logoOf(RANDALL)] });
+  await run(); await run();
+  assert.equal((await logosOf(DB)).length, 1);
+});
+
+test('Undo brings back only what that take-off removed', async (t) => {
+  const { DB, jt, run, takeOff, clock, now } = await onBothSides(t);
+  offJob(jt, RON);
+  await run(); await run();
+  assert.deepEqual(await logosOf(DB), []);
+  const r = await takeOff();
+  const u = await putBackJob(clock.env, { record: 'isla-smith', who: r.who, undo: true }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.deepEqual(u.logos, [], 'a logo JobTread took earlier isn’t that take-off’s to bring back');
+  assert.deepEqual(await logosOf(DB), []);
+  const b = await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.equal(b.logos.length, 1, 'Put back still can');
+  assert.ok(onTheJob(jt));
+});
+
+test('someone waiting on a second look, then taken off on the website: Put back knows who', async (t) => {
+  const { jt, run, takeOff, clock, now } = await onBothSides(t);
+  offJob(jt, RON);
+  await run();
+  const r = await takeOff();
+  await putBackJob(clock.env, { record: 'isla-smith', who: r.who }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() });
+  assert.ok(onTheJob(jt));
+});
+
+test('JobTread listing nobody during a take-off settles nothing, and the sweep finishes it from a real list', async (t) => {
+  const { DB, jt, run, takeOff } = await onBothSides(t);
+  const was = jt.jobs[0].access;
+  jt.jobs[0].access = [];
+  const r = await takeOff();
+  assert.deepEqual(r.pending, ['Randall Brothers']);
+  jt.jobs[0].access = was;
+  await run(); await run();
+  assert.ok(!onTheJob(jt));
+  assert.deepEqual(await logosOf(DB), []);
+});
+
+test('a job with more people than one page of JobTread’s list: nobody past the first 50 looks gone', async () => {
+  const seen = [];
+  const fetchImpl = async (url, init) => {
+    const q = JSON.parse(init.body).query;
+    seen.push(q);
+    if (q.j0) return Response.json({ j0: { id: 'j1', aces: { nextPage: 'p2', nodes: [{ membership: { user: { emailAddress: 'first@x.example' } } }] } } });
+    return Response.json({ job: { id: 'j1', aces: { nextPage: null, nodes: [{ membership: { user: { emailAddress: 'second@x.example' } } }] } } });
+  };
+  const got = await fetchAccess('k', ['j1'], fetchImpl);
+  assert.deepEqual(got.get('j1').nodes.map((n) => n.membership.user.emailAddress), ['first@x.example', 'second@x.example']);
+  assert.equal(seen[1].job.aces.$.page, 'p2');
+});
+
+/** A database that dies on its nth write */
+function dying(DB, n) {
+  let writes = 0;
+  const hit = () => { if (++writes === n) throw new Error('the run died here'); };
+  const wrap = (stmt) => new Proxy(stmt, { get(s, k) {
+    if (k === 'run') return async (...a) => { hit(); return s.run(...a); };
+    if (k === 'bind') return (...a) => wrap(s.bind(...a));
+    const v = s[k];
+    return typeof v === 'function' ? v.bind(s) : v;
+  } });
+  return new Proxy(DB, { get(d, k) {
+    if (k === 'prepare') return (sql) => wrap(d.prepare(sql));
+    if (k === 'batch') return async (list) => { hit(); return d.batch(list); };
+    const v = d[k];
+    return typeof v === 'function' ? v.bind(d) : v;
+  } });
+}
+
+test('a request or run that dies at any write: the removal still finishes, leaves a trace, and a logo’s removal still publishes', async (t) => {
+  const hook = 'https://hook.example/deploy';
+  // In JobTread: the sweep dies part way
+  for (let kill = 1; kill <= 40; kill++) {
+    const { DB, jt, run, clock } = await onBothSides(t);
+    offJob(jt, RON);
+    await run();
+    const posts = [];
+    const was = globalThis.fetch;
+    globalThis.fetch = async (url) => { if (String(url) === hook) posts.push(url); return new Response('ok'); };
+    clock.env = { ...env(DB), DB: dying(DB, kill), CF_PAGES_DEPLOY_HOOK: hook };
+    await run().catch(() => {});
+    clock.env = { ...env(DB), CF_PAGES_DEPLOY_HOOK: hook };
+    for (let i = 0; i < 4; i++) await run();
+    globalThis.fetch = was;
+    assert.ok(!onTheJob(jt), `JobTread, write ${kill}: stays off`);
+    assert.deepEqual(await logosOf(DB), [], `JobTread, write ${kill}: off the page`);
+    assert.ok((await taken(DB)).length >= 1, `JobTread, write ${kill}: a trace of it`);
+    assert.ok(posts.length >= 1, `JobTread, write ${kill}: published`);
+  }
+  // On the website: the request dies part way. Either nothing moved and staff saw the error, or the sweep finishes it
+  for (let kill = 1; kill <= 24; kill++) {
+    const { DB, jt, run, takeOff, clock } = await onBothSides(t);
+    clock.env = { ...env(DB), DB: dying(DB, kill) };
+    const died = await takeOff().then(() => false, () => true);
+    clock.env = env(DB);
+    const row = await DB.prepare("SELECT off FROM vendor_job_seen WHERE who = 'p:randall-brothers'").first();
+    if (died && !row?.off) { assert.deepEqual(await logosOf(DB), ['Randall Brothers'], `website, write ${kill}: nothing moved`); assert.ok(onTheJob(jt)); await takeOff(); }
+    for (let i = 0; i < 3; i++) await run();
+    assert.ok(!onTheJob(jt), `website, write ${kill}: off the job`);
+    assert.deepEqual(await logosOf(DB), [], `website, write ${kill}: off the page`);
+    assert.ok((await taken(DB)).length >= 1, `website, write ${kill}: a trace of it`);
+    assert.ok((await taken(DB)).every((e) => e.how === 'page'), `website, write ${kill}: never called a removal in JobTread`);
+  }
+});
+
+test('randomized: any order of adds and removals on either side settles with the two sides agreeing, and the family and staff never move', async (t) => {
+  for (let seed = 1; seed <= 25; seed++) {
+    let s = seed * 2654435761 % 4294967296;
+    const rnd = (n) => { s = (s * 1664525 + 1013904223) % 4294967296; return Math.floor((s / 4294967296) * n); };
+    const { DB, jt, both, takeOff, clock, now } = await onBothSides(t, { jtExtra: { members: [{ email: 'staff@soard.example', name: 'Staff', role: 'Admin', internal: true }] } });
+    jt.jobs[0].access.push('staff@soard.example');
+    await both();
+    const steps = [];
+    for (let i = 0; i < 12; i++) {
+      const op = rnd(4);
+      steps.push(op);
+      const page = (await logosOf(DB)).length > 0;
+      if (op === 0 && page) await takeOff();
+      if (op === 1 && !page) { await setPage(DB, { partnerLogos: [logoOf(RANDALL)] }); await addToJob(clock.env, { record: 'isla-smith', logos: [logoOf(RANDALL)] }, 'p@x', { fetchImpl: jt.fetchImpl, now: now() + MIN }); }
+      if (op === 2) offJob(jt, RON);
+      if (op === 3 && !onTheJob(jt)) jt.jobs[0].access.push(RON);
+      // The sweeps don't always run between two changes
+      if (rnd(2)) await both();
+    }
+    for (let i = 0; i < 6; i++) await both();
+    const page = (await logosOf(DB)).length > 0;
+    assert.equal(page, onTheJob(jt), `seed ${seed}, steps ${steps}: page ${page}, job ${onTheJob(jt)}`);
+    assert.ok((await logosOf(DB)).length <= 1, `seed ${seed}: one logo at most`);
+    assert.ok(onTheJob(jt, 'mom@example.com') && onTheJob(jt, 'staff@soard.example'), `seed ${seed}`);
+  }
 });

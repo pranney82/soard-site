@@ -207,6 +207,7 @@ test('taking a sponsor off removes their Sponsor access, then clears the field; 
   const r = await syncKidSponsor(env(DB), { slug: 'max', jobId: 'job1', previous: ['acme-foundation'] }, { fetchImpl: jt.fetchImpl });
   assert.deepEqual(r.removed.map((x) => x.email), ['jo@acmefdn.org']);
   assert.deepEqual(jt.jobs[0].access, ['mom@family.org'], 'the family stays');
+  assert.deepEqual((await DB.prepare('SELECT job_id, email FROM vendor_site_revokes').all()).results, [{ job_id: 'job1', email: 'jo@acmefdn.org' }], 'said first, so the vendor sync never reads it as someone doing it in JobTread');
   assert.deepEqual(r.wrote, { from: 'Acme Foundation', to: '' });
   const k = jt.kinds();
   assert.ok(k.indexOf('deleteAce') < k.indexOf('updateJob'), 'access first, then the field');

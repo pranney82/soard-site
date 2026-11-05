@@ -59,6 +59,15 @@ export async function revokeJobAccess(env, aceId, { fetchImpl = fetch } = {}) {
 }
 
 /**
+ * The site is about to take someone off a job: said first, so ./_vendor-access.js never reads
+ * it as a person doing that in JobTread.
+ */
+export async function noteSiteRevoke(DB, jobId, email, at) {
+  await DB.prepare('CREATE TABLE IF NOT EXISTS vendor_site_revokes (job_id TEXT NOT NULL, email TEXT NOT NULL, at TEXT, PRIMARY KEY (job_id, email))').run();
+  await DB.prepare('INSERT OR REPLACE INTO vendor_site_revokes (job_id, email, at) VALUES (?, ?, ?)').bind(jobId, normEmail(email), at).run();
+}
+
+/**
  * Give one person access to a job with a role. Returns
  *   { state: 'there' }                     already on the job
  *   { state: 'added', role }               given access (role: what they have now)
@@ -71,7 +80,7 @@ export async function grantJobAccess(env, jobId, person, roleName, { notify = fa
   const email = normEmail(person?.email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new Error('No email to give access to');
   const on = (access || await jobAccess(key, jobId, fetchImpl)).find((m) => m.email === email);
-  if (on) return { state: 'there', role: on.role };
+  if (on) return { state: 'there', role: on.role, membership: on.membershipId };
 
   // Someone already in SOARD's JobTread (on another job) is added by their membership
   const found = await pave(key, {
@@ -83,11 +92,11 @@ export async function grantJobAccess(env, jobId, person, roleName, { notify = fa
   const m = made?.createAce?.createdAce?.membership || existing;
   if (!m?.id) throw new Error('JobTread didn’t say who it added');
   const had = m.role?.name || null;
-  if (m.isInternal) return { state: 'added', role: had, kept: true };
+  if (m.isInternal) return { state: 'added', role: had, kept: true, internal: true, membership: m.id };
   // Only a membership with no role, or one JobTread just made, takes the role
   const fresh = !existing && (!m.createdAt || now - Date.parse(m.createdAt) < 10 * 60 * 1000);
-  if (had && had.toLowerCase() === String(roleName).toLowerCase()) return { state: 'added', role: had };
-  if (had && !fresh) return { state: 'added', role: had, kept: true };
+  if (had && had.toLowerCase() === String(roleName).toLowerCase()) return { state: 'added', role: had, membership: m.id };
+  if (had && !fresh) return { state: 'added', role: had, kept: true, membership: m.id };
   await pave(key, { updateMembership: { $: { id: m.id, roleId: await roleId(key, roleName, fetchImpl) } } }, fetchImpl);
-  return { state: 'added', role: roleName };
+  return { state: 'added', role: roleName, membership: m.id };
 }

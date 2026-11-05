@@ -1243,3 +1243,17 @@ test('Kit being down never stops the calendar invite', async () => {
   assert.equal(r.action, 'created');
   assert.ok(events.has(eventIdFor('soardreveal', jt.id)));
 });
+
+test('a job with more than one page of access: everyone’s on the guest list', async () => {
+  const { fetchJob } = await import('../functions/api/_reveal-invites.js');
+  const calls = [];
+  const person = (email) => ({ membership: { isInternal: false, role: { name: 'Friend' }, account: { name: 'X' }, user: { name: email, emailAddress: email } } });
+  const fetchImpl = async (url, init) => {
+    const q = JSON.parse(init.body).query;
+    calls.push(q);
+    if (q.job?.aces?.$?.page) return Response.json({ job: { id: 'j1', aces: { nextPage: null, nodes: [person('second@x.example')] } } });
+    return Response.json({ job: { id: 'j1', name: 'Isla (2026)', location: {}, aces: { nextPage: 'p2', nodes: [person('first@x.example')] } } });
+  };
+  const job = await fetchJob('k', 'j1', fetchImpl);
+  assert.deepEqual(job.aces.nodes.map((n) => n.membership.user.emailAddress), ['first@x.example', 'second@x.example']);
+});

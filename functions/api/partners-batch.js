@@ -32,7 +32,7 @@ import { EXTRACTORS, generateSha } from './_collections.js';
 import { commitFile } from './_github.js';
 import { logAudit, diffJson, getEntityName } from './_audit.js';
 import { recordVersion } from './_content-history.js';
-import { applyPartnerChange, LEVELS, CATEGORIES, cfId, LOGO_FOLDER_RE } from '../../public/admin/partners-shared.js';
+import { applyPartnerChange, LEVELS, CATEGORIES, cfId, LOGO_FOLDER_RE, kidUsage, nameKey, wordsKey } from '../../public/admin/partners-shared.js';
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,120}$/;
 const MAX = 100;
@@ -49,7 +49,7 @@ const SET = {
   order: (v) => Number.isInteger(v) && v >= 0 && v < 100000,
 };
 const IMAGE_RE = /^https:\/\/(imagedelivery\.net|[a-z0-9.-]+\/cdn-cgi\/imagedelivery)\/[^\s]+$/;
-const DIR = { partners: 'src/content/partners/', kids: 'src/content/kids/' };
+const DIR = { partners: 'src/content/partners/', kids: 'src/content/kids/', community: 'src/content/community/' };
 
 const read = async (DB, table, slugs) => {
   const out = new Map();
@@ -188,6 +188,63 @@ export async function swapLogo(env, { from, to, name } = {}, userEmail = 'unknow
   const { done, conflicts } = await writeChecked(DB, 'kids', rows, change, now);
   const shas = await record(env, 'kids', done, userEmail, now, 'Partner logo');
   return { status: 200, body: { success: true, changed: done.map((c) => c.slug), conflicts, shas } };
+}
+
+/**
+ * Logos off one page, for "take off this makeover" (./_vendor-access.js takeOffJob): every logo of a partner, or
+ * these files. sha: what the editor has; when it's still right, the page's new one comes back so its next Save fits.
+ * → { removed: [{ url, name, at }], sha? }. A page that changed under it is read again (writeChecked).
+ */
+export async function pageLogosOff(env, { table, slug, partner = null, urls = [], sha = null }, userEmail = 'unknown') {
+  const { DB } = env;
+  const raw = (await read(DB, table, [slug])).get(slug);
+  const before = raw && parse(raw);
+  if (!before) throw Object.assign(new Error('That page isn’t there any more. Reload and try again.'), { status: 409 });
+  const partners = partner ? ((await DB.prepare('SELECT slug, data FROM partners').all()).results || []).map((r) => ({ ...(parse(r.data) || {}), slug: r.slug })) : [];
+  const company = partners.find((p) => p.slug === partner);
+  const files = new Set(urls.map(cfId));
+  let removed = [];
+  const change = (s, data) => {
+    const logos = Array.isArray(data.partnerLogos) ? data.partnerLogos : [];
+    const ids = new Set(company ? (kidUsage([{ ...data, slug: s, publishStatus: 'published' }], partners).byPartner.get(partner) || []).map((row) => cfId(row.url)) : []);
+    const named = (l) => !!company && ((!!nameKey(l?.name) && nameKey(l.name) === nameKey(company.name)) || (!!wordsKey(l?.name) && wordsKey(l.name) === wordsKey(company.name)));
+    const theirs = (l) => files.has(cfId(l?.url)) || ids.has(cfId(l?.url)) || named(l);
+    removed = logos.map((l, at) => ({ url: l?.url, name: l?.name || '', at })).filter((l) => theirs(l));
+    return removed.length ? { ...data, partnerLogos: logos.filter((l) => !theirs(l)) } : null;
+  };
+  const after = change(slug, before);
+  if (!after) return { removed: [] };
+  const now = new Date().toISOString();
+  const { done } = await writeChecked(DB, table, [{ slug, raw, before, after }], change, now);
+  if (!done.length) throw Object.assign(new Error('Someone saved that page just now. Reload and try again.'), { status: 409 });
+  const had = await generateSha(raw);
+  const shas = await record(env, table, done, userEmail, now, 'Taken off the makeover');
+  return { removed, ...(sha && sha === had ? { sha: shas[slug] } : {}) };
+}
+
+/** Undo: those logos back where they were → { sha? } */
+export async function pageLogosOn(env, { table, slug, logos, sha = null }, userEmail = 'unknown') {
+  if (!Array.isArray(logos) || !logos.length || logos.length > 20 || !logos.every((l) => IMAGE_RE.test(l?.url || ''))) throw Object.assign(new Error('Nothing to put back'), { status: 400 });
+  const { DB } = env;
+  const raw = (await read(DB, table, [slug])).get(slug);
+  const before = raw && parse(raw);
+  if (!before) throw Object.assign(new Error('That page isn’t there any more. Reload and try again.'), { status: 409 });
+  const change = (s, data) => {
+    const list = [...(Array.isArray(data.partnerLogos) ? data.partnerLogos : [])];
+    for (const l of [...logos].sort((a, b) => (a.at || 0) - (b.at || 0))) {
+      if (list.some((x) => cfId(x?.url) === cfId(l.url))) continue;
+      list.splice(Math.min(Number(l.at) || 0, list.length), 0, { url: l.url, name: String(l.name || '').trim().slice(0, 200) });
+    }
+    return list.length === (data.partnerLogos || []).length ? null : { ...data, partnerLogos: list };
+  };
+  const after = change(slug, before);
+  if (!after) return {};
+  const now = new Date().toISOString();
+  const { done } = await writeChecked(DB, table, [{ slug, raw, before, after }], change, now);
+  if (!done.length) throw Object.assign(new Error('Someone saved that page just now. Reload and try again.'), { status: 409 });
+  const had = await generateSha(raw);
+  const shas = await record(env, table, done, userEmail, now, 'Put back on the makeover');
+  return sha && sha === had ? { sha: shas[slug] } : {};
 }
 
 export async function onRequestPost(context) {
