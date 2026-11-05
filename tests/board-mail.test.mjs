@@ -376,3 +376,56 @@ test('the same email in both inboxes is read once, and Gmail errors are reported
   const good = await readBoardMail(env);
   assert.deepEqual([good.ok, good.backlog], [true, 0]);
 });
+
+test('an email that can’t be brought in rests, is tried a few times and left with what went wrong: it never repeats every minute for good', async () => {
+  const past = day(-20);
+  await record(past);
+  g.inboxes[FOUNDER] = [msg('s1', 'Board agenda', `${day(-22)}T12:00:00Z`, [{ name: 'Agenda.pdf' }])];
+  const working = globalThis.fetch;
+  let gets = 0;
+  globalThis.fetch = async (input, init) => {
+    if (!/messages\/s1$/.test(new URL(String(input)).pathname)) return working(input, init);
+    gets += 1;
+    return Response.json({ error: { message: 'Bad request' } }, { status: 400 });
+  };
+  let now = Date.now();
+  const first = await readBoardMail(env, { now });
+  assert.deepEqual([first.ok, first.backlog, gets], [false, 1, 1]);
+  const soon = await readBoardMail(env, { now: now + 60e3 });
+  assert.deepEqual([soon.backlog, gets], [0, 1], 'a minute later it rests, and the backlog doesn’t keep the look going');
+  for (let k = 2; k <= 8; k++) { now += 16 * 60e3; await readBoardMail(env, { now }); assert.equal(gets, k); }
+  const row = await env.DB.prepare('SELECT outcome, result FROM board_mail WHERE id = ?').bind(`${FOUNDER}:s1`).first();
+  assert.equal(row.outcome, 'failed');
+  assert.match(row.result, /^Couldn’t be brought in/);
+  now += 16 * 60e3;
+  const after = await readBoardMail(env, { now });
+  assert.deepEqual([after.backlog, gets], [0, 8], 'and it’s left');
+  assert.equal((await mailLog(env.DB)).find((m) => m.outcome === 'failed').result.slice(0, 22), 'Couldn’t be brought in', 'and the log shows it, though Gmail never gave its date');
+  globalThis.fetch = working;
+});
+const CAP = "2045: Spend limit exceeded: rule 'site-day' (cost limit 5 per 86400s, sliding) for internal-workers-ai @cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
+test('a cap reached: a board email is never sorted by the rules’ guess; it waits, no try spent, the look rests, and it’s filed when it lifts', async () => {
+  const past = day(-20);
+  await record(past);
+  // "Board Packet" is one the rules alone call not board material, for good
+  g.inboxes[FOUNDER] = [msg('p1', 'Q3 board meeting', `${day(-22)}T12:00:00Z`, [{ name: 'Board Packet Q3.pdf' }])];
+  const answers = env.AI.run;
+  let refused = 0;
+  env.AI.run = async () => { refused++; throw new Error(CAP); };
+  const now = Date.now();
+  const s = await maybeReadBoardMail(env, { now });
+  assert.equal(refused, 1);
+  assert.equal(s.ok, false);
+  assert.match(s.errors[0], /^Waiting: Workers AI reached its spending cap/);
+  const row = await env.DB.prepare('SELECT outcome, tries FROM board_mail WHERE id = ?').bind(`${FOUNDER}:p1`).first();
+  assert.deepEqual({ ...row }, { outcome: 'retry', tries: 0 }, 'not “not board”, and no try spent');
+  assert.equal(await maybeReadBoardMail(env, { now: now + 5 * 60e3 }), null, 'it rests');
+  assert.equal(refused, 1);
+  env.AI.run = answers;
+  g.answers['Board Packet Q3.pdf'] = { kind: 'financials', meetingDate: past, reason: 'the packet' };
+  const later = await maybeReadBoardMail(env, { now: now + 16 * 60e3 });
+  assert.equal(later.ok, true);
+  assert.equal(by(await listMeetings(env.DB), past).files.length, 1, 'filed after all');
+  assert.equal((await env.DB.prepare('SELECT outcome FROM board_mail WHERE id = ?').bind(`${FOUNDER}:p1`).first()).outcome, 'filed');
+});

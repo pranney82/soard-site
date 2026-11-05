@@ -59,6 +59,7 @@ import { SITE_ORIGIN } from './_broadcast-notify.js';
 import { readDocument, readW9Text, pdfText, documentType, judgeW9, mergeCoi, longDate, askModel, scannedPages, money, TEXT_MODEL } from './_vendor-read.js';
 import { jt, jtSetup, readVendor, writePapers, relabel, settleWaiting, vendorNote, readDocSettings, FOLDER, CONTACT_VALUES, contactEmail, contactFields, isSiteVendor } from './_vendors.js';
 import { keepFile } from './_vendor-files.js';
+import { aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
 
 export const STATE_KEY = 'coi-backfill';
 const REREAD = 4;            // raised when files already read need reading again (2: matching a W-9 to the JobTread account it's on; 3: Ramp's emails given as text; 4: scans passed by as text)
@@ -851,6 +852,12 @@ async function handle(env, ctx, row) {
     if (r.state === 'filed') ctx.out.filed++;
     return r;
   } catch (err) {
+    // A cap reached: nothing's wrong with this file, so it goes back as it was with no try spent, and the run stops
+    if (aiCapped(err)) {
+      ctx.capped = true;
+      await env.DB.prepare('UPDATE coi_found SET state = ?, detail = ?, updated_at = ? WHERE id = ?').bind(row.state, AI_WAIT_NOTE, iso(), row.id).run();
+      return { state: 'waiting' };
+    }
     const tries = (row.tries || 0) + 1;
     await env.DB.prepare('UPDATE coi_found SET state = ?, tries = ?, detail = ?, updated_at = ? WHERE id = ?')
       .bind(tries >= MAX_TRIES ? 'given-up' : 'failed', tries, clean(err.message, 300), iso(), row.id).run();
@@ -1013,12 +1020,14 @@ export async function runBackfill(env, st, { now = Date.now(), fetchImpl = fetch
           ORDER BY CASE item WHEN 'message' THEN 0 ELSE 1 END, sent_at DESC LIMIT 1`).bind(new Date(now - RETRY_MS).toISOString()).first();
       if (!row) break;
       const r = await handle(env, ctx, row);
+      if (ctx.capped) break;
       if (row.item === 'message' && r.state === 'opened') ctx.out.opened++;
       if (row.item === 'file' && r.state !== 'failed') ctx.out.read++;
     }
   } finally {
     await closeBrowser(ctx);
   }
+  if (ctx.capped) { st.aiRestUntil = now + AI_REST_MS; ctx.errors.push(AI_WAIT_NOTE); }
   const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM coi_found WHERE state IN ('queued', 'failed')").first();
   // Still finding: a pass under way, or one that's due (every few hours)
   const pending = (s) => due(s, now) || Boolean(s?.page || s?.next || s?.pageToken);
@@ -1038,6 +1047,7 @@ export async function maybeRunBackfill(env, { now = Date.now(), fetchImpl = fetc
     const fresh = (st.search || 1) < SEARCH || (st.reread || 0) < REREAD;
     if (!force && !fresh && now - (st.lastRunAt || 0) < (st.busy === false ? IDLE_MS : BUSY_MS)) return null;
     if (!force && (st.runningUntil || 0) > now) return null;
+    if (!force && (st.aiRestUntil || 0) > now) return null;
     await writeState(env.DB, STATE_KEY, { runningUntil: now + LOCK_MS });
     st = await runBackfill(env, st, { now, fetchImpl, draw });
     await writeState(env.DB, STATE_KEY, { ...st, runningUntil: 0 });

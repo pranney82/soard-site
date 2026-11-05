@@ -41,7 +41,9 @@ import { boardAdmins, readState, writeState, peopleRows, activeBoard, normEmail 
 import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster } from './_board.js';
 import { readMinutes, applyMinutes, minutesNewer } from './_board-minutes.js';
 import { parseAgendaText, isDate, todayEastern, meetingName, docxText, unzip, cleanMeeting, agendaIsDraft, shortDate, AGENDA_READER } from '../../public/admin/board-shared.js';
-import { viaGateway } from './_ai.js';
+import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
+import { slackPost } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
 
 export { docxText, unzip };
 
@@ -56,6 +58,10 @@ const KEY = 'mail';
 const MAIL_VERSION = 2;
 const EVERY_MS = 60 * 60 * 1000;
 const BACKLOG_MS = 60 * 1000;
+// An email that couldn't be brought in rests, then is tried again a few times and left with what went wrong: each
+// look can spend AI, so one that fails the same way every time must not stay in the backlog, read every minute for good
+const MAIL_TRIES = 8;
+const MAIL_RETRY_MS = 15 * 60 * 1000;
 // The heartbeat runs Board after its reply, where a Worker has about 30 seconds in all: email gets twelve of them
 const BUDGET_MS = 12 * 1000;
 const MODEL_FILES = 6; // documents per email Workers AI reads; any more are sorted by the rules
@@ -73,7 +79,7 @@ const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS idx_board_mail_msgid ON board_mail(msgid)',
 ];
 // What each email came to (filed | not-board | no-files | duplicate | waiting), the files it left out and whether it brought a meeting in
-const COLUMNS = ['outcome TEXT', 'skipped INTEGER DEFAULT 0', 'made INTEGER DEFAULT 0'];
+const COLUMNS = ['outcome TEXT', 'skipped INTEGER DEFAULT 0', 'made INTEGER DEFAULT 0', 'tries INTEGER DEFAULT 0'];
 const _ready = new WeakSet();
 async function ensureMail(DB) {
   if (_ready.has(DB)) return;
@@ -259,6 +265,8 @@ export async function classifyFile(env, { name, subject = '', sender = '', sentA
         const sorted = readSort(out);
         if (sorted) return { ...sorted, by: 'ai' };
       } catch (err) {
+        // (a cap reached: never the rules' guess, which keeps a board packet out for good; the email waits)
+        if (aiCapped(err)) throw err;
         console.error('[board-mail] sorting', name, err.message);
       } finally {
         clearTimeout(timer);
@@ -545,7 +553,9 @@ export async function readBoardMail(env, { fetchImpl = fetch, now = Date.now(), 
     let needsScope = false;
     let backlog = 0;
     let read = 0;
+    let capped = false;
     for (const admin of admins) {
+      if (capped) break;
       let token;
       try { token = await accessToken(env, admin, { fetchImpl, now, scope: GMAIL_READ_SCOPE }); } catch (err) {
         if (/unauthorized_client|access_denied|not authorized/i.test(err.message)) needsScope = true;
@@ -554,19 +564,40 @@ export async function readBoardMail(env, { fetchImpl = fetch, now = Date.now(), 
       }
       try {
         const ids = await searchIds(token, fetchImpl);
-        const rows = (await env.DB.prepare('SELECT id, outcome, at FROM board_mail WHERE admin = ?').bind(admin).all()).results || [];
+        const rows = (await env.DB.prepare('SELECT id, outcome, at, tries FROM board_mail WHERE admin = ?').bind(admin).all()).results || [];
         const key = (r) => r.id.slice(admin.length + 1);
-        // Read already, except an email waiting for a meeting when one has been added since, and one a look was cut off in
-        const seen = new Set(rows.filter((r) => !(r.outcome === 'waiting' && r.at < newest) && r.outcome !== 'started').map(key));
+        // Read already, except an email waiting for a meeting when one has been added since, one a look was cut off in,
+        // and one that failed and has rested
+        const rested = (r) => r.outcome === 'retry' && now - Date.parse(r.at) >= MAIL_RETRY_MS;
+        const seen = new Set(rows.filter((r) => !(r.outcome === 'waiting' && r.at < newest) && r.outcome !== 'started' && !rested(r)).map(key));
         const cutOff = new Set(rows.filter((r) => r.outcome === 'started').map(key));
+        const tried = new Map(rows.filter((r) => r.outcome === 'started' || r.outcome === 'retry').map((r) => [key(r), r.tries || 0]));
         const fresh = ids.filter((x) => !seen.has(x));
         backlog += fresh.length;
         for (const id of fresh) {
           if (read > 0 && Date.now() - started > budgetMs) break; // at least one each look, so a backlog always moves
+          const tries = (tried.get(id) || 0) + 1;
+          // Cut off every time: left, as one that failed is
+          if (tries > MAIL_TRIES) {
+            await env.DB.prepare("UPDATE board_mail SET outcome = 'failed', result = 'Couldn’t be read: every look at it was cut off' WHERE id = ?").bind(`${admin}:${id}`).run();
+            await tellLeftOut(env, admin, id, 'every look at it was cut off');
+            backlog -= 1;
+            continue;
+          }
           // Marked first: if the Worker's time runs out in the middle of it, the next look knows
-          await env.DB.prepare("INSERT OR REPLACE INTO board_mail (id, admin, result, outcome, at) VALUES (?, ?, 'being read', 'started', ?)").bind(`${admin}:${id}`, admin, new Date(now).toISOString()).run();
+          await env.DB.prepare("INSERT OR REPLACE INTO board_mail (id, admin, result, outcome, at, tries) VALUES (?, ?, 'being read', 'started', ?, ?)").bind(`${admin}:${id}`, admin, new Date(now).toISOString(), tries).run();
           try { await bringIn(env, { token, admin, id, fetchImpl, people, boardEmails, now, quick: cutOff.has(id) }); } catch (err) {
-            await env.DB.prepare("DELETE FROM board_mail WHERE id = ? AND outcome = 'started'").bind(`${admin}:${id}`).run();
+            // A cap reached: nothing's wrong with the email. It goes back with no try spent and this look stops (sorting
+            // comes before filing, and filing skips what's already there, so reading it again is safe)
+            if (aiCapped(err)) {
+              capped = true;
+              await env.DB.prepare("UPDATE board_mail SET outcome = 'retry', tries = ? WHERE id = ? AND outcome = 'started'").bind(tries - 1, `${admin}:${id}`).run();
+              errors.push(AI_WAIT_NOTE);
+              break;
+            }
+            const last = tries >= MAIL_TRIES;
+            await env.DB.prepare("UPDATE board_mail SET outcome = ?, result = ? WHERE id = ? AND outcome = 'started'").bind(last ? 'failed' : 'retry', last ? `Couldn’t be brought in: ${String(err.message).slice(0, 200)}` : 'being read', `${admin}:${id}`).run();
+            if (last) { backlog -= 1; await tellLeftOut(env, admin, id, err.message); }
             errors.push(`${admin.split('@')[0]}’s email: ${String(err.message).slice(0, 200)}`);
             if (err.status === 429 || err.status >= 500) break; // Gmail is busy: the next look carries on
             continue;
@@ -579,13 +610,25 @@ export async function readBoardMail(env, { fetchImpl = fetch, now = Date.now(), 
       }
     }
     return await writeState(env.DB, KEY, {
-      version: MAIL_VERSION, ok: !errors.length && !needsScope, configured: true, needsScope, clientId: needsScope ? clientIdOf(env) : '',
+      version: MAIL_VERSION, ok: !errors.length && !needsScope, configured: true, needsScope, clientId: needsScope ? clientIdOf(env) : '', aiRestUntil: capped ? now + AI_REST_MS : 0,
       checkedAt: new Date(now).toISOString(), read, backlog, waiting: backlog, brought: read,
       tidied: tidied || last.tidied || 0, totals: await totals(env.DB), errors: errors.slice(0, 10),
     });
   } finally {
     await env.DB.prepare("DELETE FROM board_state WHERE key = 'mail-lock'").run().catch(() => {});
   }
+}
+
+/** Left out for good is said out loud: nothing else would ever show this email to anyone */
+function tellLeftOut(env, admin, id, why) {
+  return slackPost(env, slackCard({
+    icon: '⚠️', title: 'A board email couldn’t be brought in',
+    lead: `After ${MAIL_TRIES} tries over several hours, an email in ${admin.split('@')[0]}’s inbox still couldn’t be read, so its files aren’t in Board.`,
+    facts: [`*What went wrong:* ${String(why).slice(0, 200)}`],
+    fix: 'Open the email and add its files to the meeting in Board by hand.',
+    buttons: [{ label: 'Open in Gmail', url: `https://mail.google.com/mail/?authuser=${encodeURIComponent(admin)}#all/${id}` }],
+    footer: 'Board email',
+  })).catch((err) => console.error('[board-mail] telling', err.message));
 }
 
 export const mailStatus = (DB) => readState(DB, KEY);
@@ -599,7 +642,7 @@ export async function mailLog(DB, limit = 12, { outcome = '' } = {}) {
   const meetings = Object.fromEntries((await listMeetings(DB)).map((m) => [m.id, m]));
   const rows = outcome
     ? (await DB.prepare('SELECT * FROM board_mail WHERE outcome = ? ORDER BY sent_at DESC LIMIT ?').bind(outcome, limit).all()).results || []
-    : (await DB.prepare("SELECT * FROM board_mail WHERE COALESCE(outcome, '') NOT IN ('duplicate', 'started') ORDER BY sent_at DESC LIMIT ?").bind(limit).all()).results || [];
+    : (await DB.prepare("SELECT * FROM board_mail WHERE COALESCE(outcome, '') NOT IN ('duplicate', 'started', 'retry') ORDER BY COALESCE(sent_at, at) DESC LIMIT ?").bind(limit).all()).results || [];
   return rows.map((r) => ({
     subject: r.subject, sender: r.sender, sentAt: r.sent_at, result: r.result, outcome: r.outcome || '', files: r.files || 0, skipped: r.skipped || 0,
     meetingId: r.meeting_id, meeting: meetings[r.meeting_id] ? meetingName(meetings[r.meeting_id]) : null,
@@ -611,6 +654,7 @@ export async function maybeReadBoardMail(env, { fetchImpl = fetch, now = Date.no
   try {
     if (!env.DB || !env.GOOGLE_CALENDAR_KEY) return null;
     const s = await readState(env.DB, KEY);
+    if ((s.aiRestUntil || 0) > now) return null;
     const due = s.version !== MAIL_VERSION ? 0 : s.backlog > 0 ? BACKLOG_MS : minAgeMs;
     if (s.checkedAt && now - Date.parse(s.checkedAt) < due) return null;
     return await readBoardMail(env, { fetchImpl, now });

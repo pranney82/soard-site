@@ -270,10 +270,11 @@ export async function addTranslations(DB, version, made, { lang = 'es' } = {}) {
     const status = translationStatus(def, lang);
     const t = translationsOf(def, lang);
     let n = 0;
-    for (const [path, { text, from }] of Object.entries(made)) {
+    for (const [path, { text, from, keep }] of Object.entries(made)) {
       if (en[path] !== from || status[path] === 'done') continue;
       t.strings[path] = text;
       t.sources[path] = from;
+      if (keep) t.kept = { ...t.kept, [path]: from };
       n++;
     }
     return n;

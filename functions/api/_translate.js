@@ -14,7 +14,7 @@
 
 import { englishStrings, translationStatus, builtInSpanishBehind } from './_application-form.js';
 import { getFormVersion, addTranslations, reopenTranslations } from './_application-forms.js';
-import { viaGateway } from './_ai.js';
+import { viaGateway, aiCapped } from './_ai.js';
 
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const BATCH = 12;
@@ -76,7 +76,7 @@ export function readModelJson(text) {
 }
 
 // One try: what it doesn't bring back goes one string at a time (translateOne), which is quicker than asking again
-async function translateBatch(env, batch) {
+async function translateBatch(env, batch, seen) {
   try {
     const res = await env.AI.run(MODEL, {
       messages: [{ role: 'system', content: PROMPT }, { role: 'user', content: JSON.stringify(batch) }],
@@ -85,12 +85,13 @@ async function translateBatch(env, batch) {
     }, viaGateway('translate'));
     const r = typeof res === 'string' ? res : (res?.response ?? res);
     return r && typeof r === 'object' ? r : readModelJson(r);
-  } catch {
+  } catch (err) {
+    if (aiCapped(err)) seen.capped = true;
     return null;
   }
 }
 
-async function translateOne(env, en) {
+async function translateOne(env, en, seen) {
   try {
     const res = await env.AI.run(MODEL, {
       messages: [{ role: 'system', content: ONE_PROMPT }, { role: 'user', content: en }],
@@ -99,7 +100,8 @@ async function translateOne(env, en) {
     }, viaGateway('translate'));
     const r = typeof res === 'string' ? res : res?.response;
     return typeof r === 'string' ? r.trim() : null;
-  } catch {
+  } catch (err) {
+    if (aiCapped(err)) seen.capped = true;
     return null;
   }
 }
@@ -109,7 +111,7 @@ async function translateOne(env, en) {
  * model mangled. `into` fills as each batch comes back, for a caller that
  * stops waiting.
  */
-export async function translateStrings(env, strings, { lang = 'es', into = {} } = {}) {
+export async function translateStrings(env, strings, { lang = 'es', into = {}, seen = {} } = {}) {
   if (lang !== 'es') throw new Error('Only Spanish is set up');
   if (!env.AI) throw new Error('Workers AI isn’t bound to the site');
   const queue = batches(Object.entries(strings).filter(([, v]) => String(v || '').trim()).map(([p, v]) => [p, String(v)]));
@@ -118,11 +120,12 @@ export async function translateStrings(env, strings, { lang = 'es', into = {} } 
   const worker = async () => {
     for (let b = queue.shift(); b; b = queue.shift()) {
       const batch = Object.fromEntries(b);
-      const parsed = await translateBatch(env, batch);
+      const parsed = await translateBatch(env, batch, seen);
       const good = (es, en) => typeof es === 'string' && es.trim() && keeps(es, en);
       await Promise.all(b.map(async ([path, en]) => {
         let es = parsed?.[path];
-        if (!good(es, en)) es = await translateOne(env, en);
+        // (at a cap nothing more is asked: every string would be turned away one at a time)
+        if (!good(es, en) && !seen.capped) es = await translateOne(env, en, seen);
         if (good(es, en)) out[path] = es.trim();
         else failed.push(path);
       }));
@@ -158,13 +161,16 @@ export async function catchUpSpanish(env, version, { budgetMs = 25000 } = {}) {
   const paths = Object.keys(todo);
   if (!paths.length) return { filled: 0, failed: [] };
   const got = {};
+  const seen = {};
   let timer;
   await Promise.race([
-    translateStrings(env, todo, { into: got }).catch(() => null),
+    translateStrings(env, todo, { into: got, seen }).catch(() => null),
     new Promise((resolve) => { timer = setTimeout(resolve, budgetMs); }),
   ]);
   clearTimeout(timer);
   const strings = { ...got };
-  const filled = await addTranslations(env.DB, version, Object.fromEntries(Object.entries(strings).map(([p, text]) => [p, { text, from: todo[p] }])));
-  return { filled, failed: paths.filter(p => !strings[p]) };
+  // (the model's Spanish for the new English is the built-in Spanish, word for word: it's right, so it's kept as right.
+  // Left at that it reads as behind again on the next sweep, and is translated and rewritten every 2 minutes for good)
+  const filled = await addTranslations(env.DB, version, Object.fromEntries(Object.entries(strings).map(([p, text]) => [p, { text, from: todo[p], keep: behind[p] != null && text === es[p] }])));
+  return { filled, failed: paths.filter(p => !strings[p]), ...(seen.capped ? { capped: true } : {}) };
 }

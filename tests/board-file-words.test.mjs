@@ -546,3 +546,72 @@ test('a scan of more than 40 page photos is read by its photos (40 of them), nev
   await readBoardWords(env, { limit: 1 });
   assert.equal(seen[0], 1, 'from page 1');
 });
+const CAP = "2045: Spend limit exceeded: rule 'site-day' (cost limit 5 per 86400s, sliding) for internal-workers-ai @cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
+test('a cap reached: no try spent and no page left out, the run stops and rests, and the file is read when it lifts', async () => {
+  let clock = 1_000;
+  const now = () => clock;
+  const m = await meeting('2025-07-24');
+  const a = await put(m, 'photo.jpg', new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0]), { type: 'image/jpeg', kind: 'other' });
+  await new Promise((res) => setTimeout(res, 5));
+  const b = await put(m, 'other.jpg', new Uint8Array([0xFF, 0xD8, 0xFF, 0xE1]), { type: 'image/jpeg', kind: 'other' });
+  let refused = 0;
+  env.AI = { toMarkdown: async () => ({ format: 'text', data: '' }), run: async () => { refused++; throw new Error(CAP); } };
+  await readBoardWords(env, { now });
+  assert.equal(refused, 1, 'the first refusal stops the run');
+  const row = (id) => env.DB.prepare('SELECT words, words_v, words_try FROM board_files WHERE id = ?').bind(id).first();
+  for (const id of [a.id, b.id]) {
+    const r = await row(id);
+    assert.deepEqual([r.words, r.words_v || 0, r.words_try], [null, 0, null], 'no try counted');
+  }
+  clock += 60_000;
+  assert.equal(await readBoardWords(env, { now }), 0);
+  assert.equal(refused, 1, 'it rests, so no browser is opened to draw pages for a refused call');
+  clock += 16 * 60_000;
+  env.AI = { toMarkdown: async () => ({ format: 'text', data: '' }), run: async () => ({ response: 'Words on the page' }) };
+  assert.equal(await readBoardWords(env, { now, limit: 2 }), 2);
+  assert.equal((await row(a.id)).words_v, READER);
+});
+
+test('a run killed outright on every try stops at three: its third try never starts over at the first for good', async () => {
+  let clock = 5_000_000;
+  const now = () => clock;
+  env.AI = ai({ 'minutes.pdf': ['Minutes of the annual meeting'] });
+  const m = await meeting('2025-07-24');
+  const f = await put(m, 'minutes.pdf', pdf());
+  const real = env.FILES.get;
+  env.FILES.get = async () => { throw new Error('killed'); };
+  for (let i = 0; i < 3; i++) { await readBoardWords(env, { now }); clock += 61_000; }
+  env.FILES.get = real;
+  const r = await env.DB.prepare('SELECT words_v, words_fail FROM board_files WHERE id = ?').bind(f.id).first();
+  assert.deepEqual({ ...r }, { words_v: -3, words_fail: RETRY });
+  assert.equal(await readBoardWords(env, { now }), 0, 'then let be');
+});
+
+test('a cap after a page was read leaves the count at nothing: the next run doesn’t skip a page that never failed', async () => {
+  const m = await meeting('2025-07-24');
+  const f = await put(m, 'scan.pdf', scanOf(8));
+  // Two tries failed on its first page, so this run leaves that page out and reads on
+  await env.DB.prepare("UPDATE board_files SET words_v = -2, words_next = 0, words_part = '' WHERE id = ?").bind(f.id).run();
+  let calls = 0;
+  env.AI = { toMarkdown: async () => ({ format: 'text', data: '' }), run: async () => { if (++calls > 4) throw new Error(CAP); return { response: `Page words ${calls}` }; } };
+  let clock = 2_000;
+  await readBoardWords(env, { now: () => clock });
+  const r = await env.DB.prepare('SELECT words_v, words_next FROM board_files WHERE id = ?').bind(f.id).first();
+  assert.equal(r.words_v, 0, 'not back to two failures');
+  assert.equal(r.words_next, 5, 'the left-out page and the four read after it');
+});
+
+test('a cap’s rest holds on any isolate: it’s kept in the database', async () => {
+  const m = await meeting('2025-07-24');
+  await put(m, 'photo.jpg', new Uint8Array([0xFF, 0xD8, 0xFF, 0xE0]), { type: 'image/jpeg', kind: 'other' });
+  let clock = 3_000;
+  let refused = 0;
+  env.AI = { toMarkdown: async () => ({ format: 'text', data: '' }), run: async () => { refused++; throw new Error(CAP); } };
+  await readBoardWords(env, { now: () => clock });
+  const rest = await env.DB.prepare("SELECT data FROM spend_state WHERE key = 'board-words-rest'").first();
+  assert.equal(JSON.parse(rest.data).until, clock + 15 * 60 * 1000);
+  clock += 60_000;
+  await readBoardWords(env, { now: () => clock });
+  assert.equal(refused, 1);
+});

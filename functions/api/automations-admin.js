@@ -35,6 +35,7 @@
  *  - applicationLimit: the season's limit, how many are in, the last heads-up or close (counts only)
  *  - eventRecap: event pages turning into their recap (last check, last rebuild, a rebuild still waiting)
  *  - orgFacts:  SOARD's facts against the IRS's list, its W-9 and its Board Manual (when, the list's date, what doesn't match)
+ *  - aiWatch:   what each site's AI cost in the last 24 hours and what's jumped (dollars and feature names)
  *  - jotform:   the one-time Jotform copy (submissions copied, left, families and files added; counts only)
  *  - advisory:  Advisory Board applications (how many, New, the last one and who heard; counts only)
  *  - demoInvites: demo day invites (the switch, the last 5-minute check, invites out; counts only)
@@ -54,6 +55,7 @@ import { backfillFacts } from './_jotform-backfill.js';
 import { advisoryFacts } from './_advisory-applications.js';
 import { eventRecapState } from './_event-recap.js';
 import { orgCheckFacts } from './_org-facts.js';
+import { aiWatchFacts } from './_ai-watch.js';
 import { companycamFacts } from './_companycam-sync.js';
 import { jobsFacts } from './_companycam-jobs.js';
 import { applicationSettings, pickApplication } from './_applications.js';
@@ -446,6 +448,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     eventRecap: await settle(() => eventRecapFacts(DB)),
     // SOARD's facts checked against the IRS's list, its W-9 and its Board Manual: times and what doesn't match (_org-facts.js)
     orgFacts: await settle(() => orgCheckFacts(DB)),
+    // What each site's AI cost in the last 24 hours, and whether anything's open: dollars and feature names only (_ai-watch.js)
+    aiWatch: await settle(() => aiWatchFacts(env)),
     jotform: await settle(() => backfillFacts(DB)),
     advisory: await settle(() => advisoryFacts(DB)),
     demoInvites: await settle(() => demoFacts(DB)),

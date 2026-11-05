@@ -842,3 +842,15 @@ test('a PDF’s text without the converter’s framing: a scan has none, and a d
   assert.equal(pageText('# W9.pdf\n## Metadata\n- PDFFormatVersion=1.4\n## Contents\n### Page 1\nForm W-9 Request for Taxpayer\n### Page 2\nPart II'), 'Form W-9 Request for Taxpayer\n\nPart II');
   assert.equal(pageText('CERTIFICATE OF LIABILITY INSURANCE\nTable of Contents'), 'CERTIFICATE OF LIABILITY INSURANCE\nTable of Contents', 'no framing: as it was');
 });
+const CAP = "2045: Spend limit exceeded: rule 'site-day' (cost limit 5 per 86400s, sliding) for internal-workers-ai @cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
+test('a cap reached while a certificate is read: it’s kept for a person, never an error on the vendor’s page', async () => {
+  await setFields({ w9: true });
+  world.pdfText = `CERTIFICATE OF LIABILITY INSURANCE ${'line '.repeat(40)}`;
+  env.AI.run = async () => { throw new Error(CAP); };
+  const link = await createLink(env.DB, VENDOR, { now: NOW });
+  const r = await fileUpload(env, (await findLink(env.DB, link.token, NOW)).link, { doc: 'coi', files: [pdfFile()] }, { now: NOW });
+  assert.equal(r.look, true);
+  assert.equal((await kept()).length, 1);
+  assert.equal(world.vendors[VENDOR].values[fieldId('Documents')], 'Needs a look');
+});

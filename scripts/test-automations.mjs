@@ -181,6 +181,7 @@ try {
   // the application limit's notices, Resend's own reports on each email, the board packet, a vendor or sponsor with no logo, and
   // the insurance audits' asks
   const RESEND = ['Invite problem alerts', 'Save and finish later', 'Tell me when applications open', 'Applications-open email', 'Staff heads-up', 'Application sweep',
+    'Invite email drafted in Kit', 'Project emails drafted in Kit', 'Signed copies and receipts', 'Remind by email', 'AI spending watch',
     'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Resend', 'Gift alerts in Slack', 'Kid and project status follow JobTread', 'Text delivery reports',
     'Application limit', 'Email delivery reports', 'Advisory Board application', 'A family replied → staff alert', 'The packet email',
     'Receipts both ways', 'Receipts from inboxes', 'Trade partners', 'Vendor and sponsor logos on kid pages', 'Insurance audits'];
@@ -404,6 +405,40 @@ try {
   const broken = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...ccFacts, companycamJobs: { ...ccFacts.companycamJobs, audit: { ...audit, errors: [{ job: 'Ava Stone (2026)', detail: 'JobTread returned 500' }] } } } });
   ok(await statusOf(broken.page, 'CompanyCam photos on every job') === 'Needs attention', 'a job it couldn’t check needs attention');
   await broken.page.close();
+
+  console.log('Desktop, AI spending watch');
+  const entry = 'AI spending watch';
+  const watched = { token: true, at: iso(20 * 60e3), error: null, open: [], sites: [
+    { id: 'soard-site', name: 'SOARD', hour: 0.02, day: 0.41, usual: 0.2, top: [{ name: 'the inbox sweep', day: 0.31 }, { name: 'W-9s and insurance', day: 0.1 }] },
+    { id: 'sunnyandranney-site', name: 'the store', hour: 0, day: 0.002, usual: 0.01, top: [] },
+  ] };
+  const panelFor = async (aiWatch) => {
+    const v = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, aiWatch } });
+    const status = await statusOf(v.page, entry);
+    await v.page.type('#am-search', 'AI spending');
+    await pause(500);
+    await clickNode(v.page, entry);
+    await pause(300);
+    const text = await v.page.$eval('.am-panel', (e) => e.textContent);
+    return { v, status, text };
+  };
+  const on = await panelFor(watched);
+  ok(on.status === 'Live', `a check within the hour reads Live (${on.status})`);
+  ok(on.text.includes('Last 24 hours: SOARD $0.41 (the inbox sweep $0.31, W-9s and insurance $0.10); the store under a cent.'), 'it says what each site spent, in dollars, by feature');
+  await on.v.page.screenshot({ path: join(OUT, 'desktop-ai-watch.png'), fullPage: false });
+  ok(on.v.errors.length === 0, `no console errors${on.v.errors.length ? ': ' + on.v.errors.slice(0, 3).join(' | ') : ''}`);
+  await on.v.page.close();
+  const waiting = await panelFor({ token: false, at: null, error: null, open: [], sites: [] });
+  ok(waiting.status === 'Off', `without its key it’s Off, not a problem (${waiting.status})`);
+  ok(waiting.text.includes('The daily caps are on without it'), 'and it says the caps work anyway');
+  await waiting.v.page.close();
+  const jumped = await panelFor({ ...watched, open: ['the store’s product sync (the store)'] });
+  ok(jumped.status === 'Needs attention', `a jump needs attention (${jumped.status})`);
+  ok(jumped.text.includes('Over the line: the store’s product sync (the store).'), 'and it names what jumped');
+  await jumped.v.page.close();
+  const refused = await panelFor({ ...watched, error: 'not authorized for that account' });
+  ok(refused.status === 'Needs attention' && refused.text.includes('not authorized for that account'), 'Cloudflare refusing needs attention, and says why');
+  await refused.v.page.close();
 
   console.log('Phone');
   const phone = await open(browser, base, { width: 390, height: 844, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });

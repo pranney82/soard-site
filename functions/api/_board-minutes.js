@@ -28,7 +28,7 @@ import { fileText, attendanceIn, dateIn } from './_board-mail.js';
 import { getMeeting, patchMeeting, listMeetings, roster, boardFiles, updateFile, approveMinutes, putFile, MAX_FILE, ID } from './_board.js';
 import { readState, writeState } from './_board-roles.js';
 import { parseAgendaText, agendaIsDraft, meetingName, shortDate, isDate, uid, LIVE_TITLES, todayEastern } from '../../public/admin/board-shared.js';
-import { viaGateway } from './_ai.js';
+import { viaGateway, aiCapped, AI_REST_MS } from './_ai.js';
 
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 // How long the model may take. Read by hand (the person is waiting, Cloudflare allows 100 seconds): up to 70 seconds
@@ -278,7 +278,7 @@ export function excerpt(text, max = MAX_TEXT) {
 }
 
 /** Workers AI's reading of the minutes, or null (no model, no answer in time, nothing usable) */
-async function askMinutes(env, { text, meeting, prev, people, topics, quick, attendance = true }) {
+async function askMinutes(env, { text, meeting, prev, people, topics, quick, attendance = true, capThrows = false }) {
   if (!env?.AI?.run) return null;
   const agenda = (meeting?.sections || []).flatMap((s) => s.items.map((it) => `${s.title ? `${s.title}: ` : ''}${it.title}`)).filter(Boolean);
   const input = [
@@ -303,6 +303,7 @@ async function askMinutes(env, { text, meeting, prev, people, topics, quick, att
       const a = answerOf(out);
       if (a && (Array.isArray(a.motions) || Array.isArray(a.attendance) || Array.isArray(a.actions) || Array.isArray(a.topics))) return a;
     } catch (err) {
+      if (capThrows && aiCapped(err)) throw err;
       console.error('[board-minutes]', err.message);
       // Out of time: another try won't fit what's left
       if (err.message === 'timeout') break;
@@ -334,7 +335,7 @@ function sectionsFrom(topics) {
  * (Board's own readers, on the heartbeat): one try of the model, sooner given up on.
  * → { attendance, sections, motions, actions, approvedPrev, said: { by: 'ai' | 'rules', chars, date, start, end, location } }
  */
-export async function readMinutes(env, { name = '', bytes = null, text = null, meeting = null, people = [], prev = null, quick = false, paragraphs = /\.docx$/i.test(name) } = {}) {
+export async function readMinutes(env, { name = '', bytes = null, text = null, meeting = null, people = [], prev = null, quick = false, paragraphs = /\.docx$/i.test(name), capThrows = false } = {}) {
   const words = text != null ? String(text) : bytes ? await fileText(env, { name, bytes }) : '';
   if (!words.trim()) return { attendance: [], sections: [], motions: [], actions: [], approvedPrev: false, said: { by: 'rules', chars: 0, date: '', start: '', end: '', location: '' } };
   const parsed = parseAgendaText(words, people, { paragraphs });
@@ -354,7 +355,7 @@ export async function readMinutes(env, { name = '', bytes = null, text = null, m
   let by = 'rules';
   // The outline read by the rules is kept as it is; the model fills in the outline only when the rules found none
   const topics = !sections.some((s) => s.items.length);
-  const ai = await askMinutes(env, { text: words, meeting, prev, people, topics, quick, attendance: !attendance.length });
+  const ai = await askMinutes(env, { text: words, meeting, prev, people, topics, quick, attendance: !attendance.length, capThrows });
   if (ai) {
     by = 'ai';
     if (!attendance.length) attendance = attendanceFrom(ai.attendance, people);
@@ -640,27 +641,37 @@ export function minutesNewer(cur, { name = '', at = '' } = {}) {
  * three tries each, so their motions and action items still come in. Nothing a person marked is changed. → id | null
  */
 export async function maybeFinishMinutes(env, { now = Date.now() } = {}) {
+  let m = null;
   try {
     const runs = await readState(env.DB, 'runs');
     if (runs.minutesAt && now - Date.parse(runs.minutesAt) < 2 * 60 * 1000) return null;
     const meetings = await listMeetings(env.DB);
-    const m = meetings.filter((x) => x.minutesFrom?.name && !x.minutesFrom.ai && (x.minutesFrom.tries || 0) < 3).sort((a, b) => b.date.localeCompare(a.date))[0];
+    m = meetings.filter((x) => x.minutesFrom?.name && !x.minutesFrom.ai && (x.minutesFrom.tries || 0) < 3).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
     if (!m) return null;
     await writeState(env.DB, 'runs', { ...runs, minutesAt: new Date(now).toISOString() });
+    // The try is counted before the read: a run cut off during the model's long answer would otherwise never count one, and read again every 2 minutes for good
+    await patchMeeting(env.DB, m.id, (cur) => (cur.minutesFrom?.name === m.minutesFrom.name ? { ...cur, minutesFrom: { ...cur.minutesFrom, tries: (cur.minutesFrom.tries || 0) + 1 } } : cur));
     const f = m.files.find((x) => x.name === m.minutesFrom.name) || m.files.filter((x) => x.kind === 'minutes').at(-1);
     const row = f && await env.DB.prepare('SELECT r2_key FROM board_files WHERE id = ?').bind(f.id).first();
     const obj = row && await boardFiles(env)?.get(row.r2_key);
     const people = await minutesPeople(env.DB);
     const prev = meetings.filter((x) => x.id !== m.id && !x.notBoard && isDate(x.date) && x.date < m.date).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
-    const read = obj ? await readMinutes(env, { name: f.name, bytes: new Uint8Array(await new Response(obj.body).arrayBuffer()), meeting: m, people, prev, quick: true }) : null;
+    const read = obj ? await readMinutes(env, { name: f.name, bytes: new Uint8Array(await new Response(obj.body).arrayBuffer()), meeting: m, people, prev, quick: true, capThrows: true }) : null;
     await patchMeeting(env.DB, m.id, (cur) => {
-      if (cur.minutesFrom?.name !== m.minutesFrom.name || cur.minutesFrom.ai) return cur;
-      if (!read || read.said.by !== 'ai') return { ...cur, minutesFrom: { ...cur.minutesFrom, tries: (cur.minutesFrom.tries || 0) + 1 } };
+      if (cur.minutesFrom?.name !== m.minutesFrom.name || cur.minutesFrom.ai || !read || read.said.by !== 'ai') return cur;
       // Only what the model adds: the motions and action items (the outline and attendance stay as they were read)
       return applyMinutes(cur, { ...read, attendance: [], sections: [] }, { fileName: cur.minutesFrom.name, now, keepMarked: true });
     });
     return m.id;
   } catch (err) {
+    // A cap reached: the try is given back and it waits, or its three would go in six minutes and it's never read again
+    if (m && aiCapped(err)) {
+      const name = m.minutesFrom.name;
+      await patchMeeting(env.DB, m.id, (cur) => (cur.minutesFrom?.name === name ? { ...cur, minutesFrom: { ...cur.minutesFrom, tries: Math.max(0, (cur.minutesFrom.tries || 0) - 1) } } : cur)).catch(() => {});
+      const runs = await readState(env.DB, 'runs').catch(() => ({}));
+      await writeState(env.DB, 'runs', { ...runs, minutesAt: new Date(now + AI_REST_MS).toISOString() }).catch(() => {});
+      return null;
+    }
     console.error('[board-minutes] finishing', err.message);
     return null;
   }

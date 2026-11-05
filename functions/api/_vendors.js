@@ -51,6 +51,7 @@ import { slackCard } from './_slack-cards.js';
 import { emailShell, paragraphs, button, panel, esc } from './_email-shell.js';
 import { readState, writeState } from './_mercury.js';
 import { vendorKey, dollars } from './_spend-match.js';
+import { aiCapped } from './_ai.js';
 import { readDocument, judgeCoiReads, settleDisputes, judgeW9, documentType, requirementLines, longDate } from './_vendor-read.js';
 import { releaseVendorHolds } from './_bill-pay.js';
 import { maybeRunRamp, rampConfigured } from './_ramp.js';
@@ -694,13 +695,15 @@ async function takeParts(doc, files, pages = []) {
 
 /** The check, as on the company's own page → { verdict, reads } */
 async function checkParts(env, doc, parts, v, req, now) {
-  const reads = await Promise.all(parts.map((p) => readDocument(env, doc, p)));
+  // (a cap reached reads as unread here: a person looks, as with any paper the model can't read)
+  const notCapped = (fallback) => (err) => { if (aiCapped(err)) return fallback; throw err; };
+  const reads = await Promise.all(parts.map((p) => readDocument(env, doc, p).catch(notCapped({ text: null, pictures: null }))));
   let verdict = doc === 'w9' ? judgeW9(reads[0].pictures, { vendorName: v.name }) : judgeCoiReads(reads, req, { vendorName: v.name, now });
   // The two readings split on a number: it's asked once more, on its own, before a person has to (and what's kept
   // is the reading the verdict came from)
   if (verdict.unsure) {
     const pictures = parts.map((p) => (p.type === 'application/pdf' ? p.pages : [p]));
-    const settled = await settleDisputes(env, reads, pictures);
+    const settled = await settleDisputes(env, reads, pictures).catch(notCapped(reads));
     return { verdict: judgeCoiReads(settled, req, { vendorName: v.name, now }), reads: settled };
   }
   return { verdict, reads };

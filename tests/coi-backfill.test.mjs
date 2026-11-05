@@ -666,3 +666,21 @@ test('a certificate under the minimums found by the search never settles the ven
   const after = (await filesOf(env.DB, 'VSAMPLE', { removed: true })).find((f) => f.id === mine.file.id);
   assert.equal(after.status, 'look', `settled by a $300k certificate that proves nothing (now "${after.status}")`);
 });
+const CAP = "2045: Spend limit exceeded: rule 'site-day' (cost limit 5 per 86400s, sliding) for internal-workers-ai @cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
+test('a cap reached: the file waits with no try spent, the run stops and rests, and it’s read and filed when it lifts', async () => {
+  mail({ box: PAT, at: NOW - DAY, from: 'Tiler <t@tiles.example>', subject: 'COI', files: [{ name: 'tile coi.pdf', type: 'application/pdf', data: pdfOf('close-coi') }] });
+  const answers = env.AI;
+  let refused = 0;
+  env.AI = { ...AI, run: async () => { refused++; throw new Error(CAP); } };
+  let t = NOW;
+  for (let i = 0; i < 12; i++) { await maybeRunBackfill(env, { now: t, fetchImpl: pretendFetch, draw: world.draw }); t += 60e3; }
+  const r = await env.DB.prepare("SELECT state, tries, detail FROM coi_found WHERE item = 'file'").first();
+  assert.deepEqual([r.state, r.tries], ['queued', 0], 'never “couldn’t be read”');
+  assert.match(r.detail, /^Waiting: Workers AI reached its spending cap/);
+  assert.equal(refused, 1, 'it rests: the file isn’t fetched and asked about every minute');
+  env.AI = answers;
+  world.matchAnswer = (u) => ({ pick: u.split('\n').filter((l) => /^\d+\. /.test(l)).findIndex((l) => /Tile/.test(l)) + 1, sure: true });
+  await runAll();
+  assert.equal((await rowsByName())['tile coi.pdf'].state, 'filed');
+});

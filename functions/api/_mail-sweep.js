@@ -53,7 +53,7 @@ import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
 import { DEFAULT_RECEIPT_INBOX } from './_spend-receipts.js';
 import { FREE_MAIL } from './_kid-partners.js';
-import { viaGateway } from './_ai.js';
+import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
 
 const EVERY_MS = 3 * 60 * 1000;
 const BUSY_MS = 60 * 1000;          // while there's a backlog
@@ -298,8 +298,12 @@ export function receiptText(payload) {
   return AMOUNT.test(fromHtml) ? fromHtml : text;
 }
 
-/** Workers AI's verdict on one email; the rules when it can't answer → { type, vendor, total, date, personal, reason, by } */
-export async function judgeReceipt(env, { subject, from, owner, text, files }) {
+/**
+ * Workers AI's verdict on one email → { type, vendor, total, date, personal, reason, by }. It throws when the model
+ * didn't answer, so the email is tried again, and goes by the rules only on its last try: they pass over any receipt
+ * that doesn't say so in its subject, and that's for good. A cap reached always throws (the sweep waits, no try spent).
+ */
+export async function judgeReceipt(env, { subject, from, owner, text, files, lastTry = true }) {
   if (env.AI?.run) {
     // Links and the invisible padding stores put after the preview line go: either can fill the model's whole share of the email before the order does
     const words = String(text).replace(/[(<]?\s*https?:\/\/[^\s>)]+\s*[)>]?/g, ' ').replace(INVISIBLE, ' ').replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, '\n');
@@ -316,10 +320,12 @@ export async function judgeReceipt(env, { subject, from, owner, text, files }) {
       const v = readVerdict(out);
       if (v) return { ...v, by: 'ai' };
     } catch (err) {
+      if (aiCapped(err)) throw err;
       console.error('[mail-sweep] judging', err.message);
     } finally {
       clearTimeout(timer);
     }
+    if (!lastTry) throw new Error('Workers AI didn’t answer about this receipt');
   }
   // No model: only a plain receipt or invoice with an amount in it
   const amount = String(text).match(/\$\s?\d[\d,]*(\.\d{2})?/)?.[0] || '';
@@ -420,7 +426,7 @@ async function handleReceipt(env, ctx, row, msg) {
   }
   const text = receiptText(msg.payload);
   const files = filesWorth(msg.payload);
-  const v = await judgeReceipt(env, { subject, from, owner: ctx.ownerName, text, files });
+  const v = await judgeReceipt(env, { subject, from, owner: ctx.ownerName, text, files, lastTry: (row.tries || 0) + 1 >= MAX_TRIES });
   if (v.type === 'not_receipt') return { state: 'skipped', detail: `not a receipt: ${v.reason || 'the model said so'}` };
   if (v.personal) return { state: 'skipped', detail: `personal: ${v.reason || 'the model said so'}` };
   const what = `${v.vendor || 'a vendor'}${v.total ? ` ${v.total}` : ''}`;
@@ -505,9 +511,10 @@ async function handleFamily(env, ctx, row, msg) {
 
   const bytes = [];
   for (const f of files) bytes.push({ name: f.name, type: f.type, bytes: await fileBytes(ctx.token, msg, f, ctx.fetchImpl) });
-  const ids = {};
-  const own = {};
+  const ids = json(row.comment_ids, {});
+  const own = json(row.posted_ids, {});
   for (const accountId of accounts) {
+    if (own[accountId]) continue; // (posted on an earlier try of this email)
     const uploads = [];
     for (const b of bytes) uploads.push({ name: b.name, id: await uploadToJobTread(env, b, ctx.fetchImpl) });
     const parent = roots[accountId] || null;
@@ -519,6 +526,8 @@ async function handleFamily(env, ctx, row, msg) {
     if (!id) throw new Error('JobTread didn’t make the comment');
     ids[accountId] = parent || id;
     own[accountId] = id;
+    // Kept as it's made: a try that fails on the next account, or is cut off here, must not post on this one again
+    await env.DB.prepare('UPDATE mail_sweep SET comment_ids = ?, posted_ids = ? WHERE mailbox = ? AND id = ?').bind(JSON.stringify(ids), JSON.stringify(own), row.mailbox, row.id).run();
   }
   return { state: 'posted', detail: `added to ${familyNames}${files.length ? ` with ${files.length === 1 ? 'a file' : `${files.length} files`}` : ''}`, commentIds: ids, postedIds: own, fileKeys };
 }
@@ -559,6 +568,12 @@ async function handle(env, ctx, row) {
     const out = row.kind === 'receipt' ? await handleReceipt(env, c, row, msg) : await handleFamily(env, c, { ...row, accounts: JSON.stringify(t.accounts) }, msg);
     await finish(env.DB, row, out, ctx.now);
   } catch (err) {
+    // A cap reached: nothing's wrong with this email, so it goes back as it was with no try spent, and the sweep rests
+    if (aiCapped(err)) {
+      ctx.capped = true;
+      await env.DB.prepare('UPDATE mail_sweep SET state = ?, detail = ?, updated_at = ? WHERE mailbox = ? AND id = ?').bind(row.state, AI_WAIT_NOTE, iso, row.mailbox, row.id).run();
+      return;
+    }
     console.error('[mail-sweep]', row.kind, err.message);
     await env.DB.prepare("UPDATE mail_sweep SET state = 'failed', tries = COALESCE(tries, 0) + 1, detail = ?, updated_at = ? WHERE mailbox = ? AND id = ?")
       .bind(String(err.message).slice(0, 300), iso, row.mailbox, row.id).run();
@@ -714,13 +729,15 @@ async function sweep(env, st, { fetchImpl, now }) {
   }
   // One a heartbeat dropped halfway: tried again like a failure
   await env.DB.prepare("UPDATE mail_sweep SET state = 'failed', tries = COALESCE(tries, 0) + 1 WHERE state = 'working' AND updated_at < ?").bind(retryBefore).run();
-  while (Date.now() - started < HANDLE_MS) {
+  // (the mail is still read and queued while the AI rests; only the judging waits)
+  while (Date.now() - started < HANDLE_MS && (st.aiRestUntil || 0) <= now && !ctx.capped) {
     const row = await env.DB.prepare(`SELECT * FROM mail_sweep WHERE (state = 'queued' OR (state = 'failed' AND tries < ? AND updated_at < ?))
         ${backfillDone ? '' : "AND kind = 'receipt'"} ORDER BY at LIMIT 1`).bind(MAX_TRIES, retryBefore).first();
     if (!row) break;
     await handle(env, ctx, row);
   }
   const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
+  if (ctx.capped) { st.aiRestUntil = now + AI_REST_MS; errors.push(AI_WAIT_NOTE); }
   Object.assign(st, { busy: Boolean(waiting?.n) || !backfillDone, backfillDone, lastSweptAt: now, error: errors.length ? errors.join(' · ').slice(0, 500) : null, runningUntil: 0 });
   return st;
 }

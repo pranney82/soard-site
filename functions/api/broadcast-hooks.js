@@ -48,6 +48,7 @@ import { maybeSweepMail } from './_mail-sweep.js';
 import { maybeRunQuiet } from './_kit-quiet.js';
 import { maybeRunBackfill } from './_coi-backfill.js';
 import { maybeCheckOrgFacts } from './_org-facts.js';
+import { maybeRunAiWatch } from './_ai-watch.js';
 
 // The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
 const HUB_ANSWER_MS = 10 * 1000;
@@ -137,6 +138,8 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRefreshProcess(env));
     // Every 6 hours: SOARD's own facts against the IRS's list, its W-9 and its Board Manual (see _org-facts.js)
     context.waitUntil(maybeCheckOrgFacts(env));
+    // Hourly: what each site's AI cost, by feature, and a post when one jumps or reaches a cap (see _ai-watch.js)
+    context.waitUntil(maybeRunAiWatch(env));
     // The hub passes `reason` to every open page and keeps `work` in its status, so both go
     // as kinds only ('email', 'kid', 'auto-start'), never kid slugs or send counts
     if (!r) return Response.json({ ok: true, state: (await publicPayload(env)).state, reason: 'tick', work: [], changed: false, cached: false, busy: true });

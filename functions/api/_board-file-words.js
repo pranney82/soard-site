@@ -37,7 +37,8 @@ import { closeBrowser } from './_coi-backfill.js';
 import { SITE_ORIGIN } from './_broadcast-notify.js';
 import { docxText } from '../../public/admin/board-shared.js';
 import { readSheets, readSlides } from '../../public/admin/board/docs.js';
-import { viaGateway } from './_ai.js';
+import { viaGateway, aiCapped, AI_REST_MS } from './_ai.js';
+import { readState, writeState } from './_mercury.js';
 
 /**
  * This reader: 1 was the papers-only PDF reader (a scan came back empty); 2 read every kind, a scan's first pages by
@@ -148,6 +149,7 @@ export async function pictureWords(env, image, { timeout = AI_TIMEOUT_MS } = {})
     if (ends - Date.now() < 3000) return null;
     return await ask(SECOND_MODEL, ends - Date.now());
   } catch (err) {
+    if (aiCapped(err)) throw err;
     console.error('[board-words] picture', err.message);
     return null;
   }
@@ -384,6 +386,8 @@ export async function wordsOf(env, { name = '', type = '', bytes }, { ctx = {}, 
       return { words, how: words ? 'pictures' : 'none' };
     }
   } catch (err) {
+    // (a cap reached: not a try and no page left out, and the run stops; the pages kept so far stay kept)
+    if (aiCapped(err)) { ctx.capped = true; return { words: '', how: 'later' }; }
     console.error('[board-words] reading', name, err.message);
     return { words: '', how: 'error' };
   }
@@ -428,7 +432,8 @@ async function readOne(env, item, { table, keyCol, bucket, deadline, now, ctx, d
   const skip = scanning && v0 <= -2;
   const tryV = skip ? -1 : Math.min(0, v0) - 1;
   const t = now();
-  const claimed = await DB.prepare(`UPDATE ${table} SET words_v = ?, words_try = ? WHERE ${keyCol} = ? AND (words_try IS NULL OR words_try < ?)`).bind(tryV, t, item.key, t - HOLD_MS).run();
+  // (words_fail goes on with the try, not after it: a run killed outright says nothing, and its third try would start over at the first for good)
+  const claimed = await DB.prepare(`UPDATE ${table} SET words_v = ?, words_try = ?, words_fail = ? WHERE ${keyCol} = ? AND (words_try IS NULL OR words_try < ?)`).bind(tryV, t, RETRY, item.key, t - HOLD_MS).run();
   if (!claimed?.meta?.changes) return false;
   // (cut short without the time a page takes: not a try)
   const fair = deadline - t >= FAIR_MS;
@@ -449,11 +454,15 @@ async function readOne(env, item, { table, keyCol, bucket, deadline, now, ctx, d
     if (bytes) read = await wordsOf(env, { name: item.name, type: item.type, bytes }, { ctx, draw, cut, from: scanning ? item.words_next : null, prior: scanning ? item.words_part : '', skip, tries: skip ? 0 : -v0, deadline, now, onPart });
   }
   if (read.how === 'error') await set('words_try = NULL, words_v = ?, words_fail = ?', fair ? tryV : v0, RETRY);
-  else if (read.how === 'later') await set('words_try = NULL, words_v = ?', v0);
+  // (a page read this run set words_v to 0: put back to the old count, a page that never failed would be left out next run)
+  else if (read.how === 'later') await set('words_try = NULL, words_v = CASE WHEN words_v = 0 THEN 0 ELSE ? END', v0);
   else if (read.how === 'part') await set(`words_part = ?, words_next = ?, words_try = NULL, words_v = ?${read.read ? ', words_at = ?' : ''}`, String(read.words || '').slice(0, KEEP), read.next, read.read ? 0 : v0, ...(read.read ? [at()] : []));
   else await set('words = ?, words_v = ?, words_next = NULL, words_part = NULL, words_try = NULL, words_at = ?', better(String(read.words || '').slice(0, KEEP)), READER, at());
   return true;
 }
+
+// A cap turned a run away: no reading (and no browser opened to draw pages for it) until then, on any isolate
+const REST_KEY = 'board-words-rest';
 
 /**
  * Files not read yet by this reader, a few at a time: a scan under way first, then a file nobody can find by its
@@ -471,6 +480,7 @@ export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = D
     // (without Workers AI's converter a PDF can't be read: it waits, never kept as having no words)
     if (!bucket || !env.AI?.toMarkdown) return 0;
     const start = now();
+    if (start < ((await readState(env.DB, REST_KEY)).until || 0)) return 0;
     const deadline = start + windowMs;
     const rows = (await env.DB.prepare(`SELECT id AS key, r2_key, name, type, size, words, words_part, words_v, words_next FROM board_files
       WHERE COALESCE(words_v, 0) < ? AND (COALESCE(words_v, 0) > -3 OR COALESCE(words_fail, 0) < ?) AND owner_type IN ('meeting', 'doc') AND (words_try IS NULL OR words_try < ?)
@@ -478,7 +488,7 @@ export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = D
     let done = 0;
     // (a file is started only with the time a page takes left, after the first only within budgetMs, and one that
     // couldn't be read before only first, so it has a run's whole time)
-    const more = (v) => deadline - now() >= PAGE_MIN_MS && !(done && (now() - start > budgetMs || (v || 0) < 0));
+    const more = (v) => !ctx.capped && deadline - now() >= PAGE_MIN_MS && !(done && (now() - start > budgetMs || (v || 0) < 0));
     const filings = async (n) => {
       if (!env.FILES || n < 1) return;
       for (const f of (await filingsToRead(env.DB, now() - HOLD_MS)).slice(0, n)) {
@@ -496,6 +506,7 @@ export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = D
     }
     // Then the public filings, once every board file's read
     if (rows.length < limit) await filings(limit - rows.length);
+    if (ctx.capped) await writeState(env.DB, REST_KEY, { until: now() + AI_REST_MS });
     return done;
   } catch (err) {
     console.error('[board-words]', err.message);

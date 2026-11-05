@@ -369,7 +369,16 @@ test('the Spanish: still behind after four tries, Slack hears once, and the post
   env.AI.run = async () => { throw new Error('AI unavailable'); };
   await putDraftLive(env.DB);
   let t = Date.parse('2026-10-29T15:00:00Z');
-  for (let i = 0; i < 6; i++) { await maybeSweepApplications(env, { force: true, now: t }); t += 16 * 60000; }
+  // (15 minutes, then twice that each time: a string the AI can't do isn't asked for every 15 minutes for good)
+  let asked = 0;
+  env.AI.run = async () => { asked++; throw new Error('AI unavailable'); };
+  for (const wait of [16, 31, 61, 121, 241]) {
+    await maybeSweepApplications(env, { force: true, now: t });
+    const tried = asked;
+    await maybeSweepApplications(env, { force: true, now: t + 14 * 60000 });
+    assert.equal(asked, tried, 'not before its time');
+    t += wait * 60000;
+  }
   const posts = w.world.slack.filter(p => /Spanish application is behind/.test(p.text));
   assert.equal(posts.length, 1, 'once, on the fourth try');
   const card = renderSlack(posts[0]);
@@ -693,4 +702,39 @@ test('settings endpoints: Settings reads them, saving logs Recent changes, the m
   const audit = await env.DB.prepare("SELECT entity_type FROM audit_log WHERE entity_slug = 'rules'").all();
   assert.equal(audit.results.length, 2);
   assert.ok(audit.results.every(r => r.entity_type === 'application-settings'), 'a runtime change: never waits for a Publish');
+});
+
+test('the Spanish: the model giving back the built-in Spanish for new English settles it, and it isn’t translated again', async () => {
+  const v = clone(DEFAULT_DEFINITION);
+  v.messages = { ...v.messages, denied: `${v.messages.denied} Thank you.` };
+  await saveDraftForm(env.DB, v);
+  const { version } = await getDraftForm(env.DB);
+  const builtIn = DEFAULT_DEFINITION.i18n.es.strings['message:denied'];
+  let asked = 0;
+  env.AI.run = async (model, { messages }) => { asked++; return { response: Object.fromEntries(Object.keys(JSON.parse(messages.at(-1).content)).map(p => [p, builtIn])) }; };
+  assert.deepEqual(await catchUpSpanish(env, version), { filled: 1, failed: [] });
+  const def = (await getDraftForm(env.DB)).definition;
+  assert.equal(def.i18n.es.kept['message:denied'], v.messages.denied, 'kept as right for today’s English');
+  const after = asked;
+  assert.deepEqual(await catchUpSpanish(env, version), { filled: 0, failed: [] });
+  assert.equal(asked, after, 'not asked again');
+});
+
+test('the Spanish at a cap: no tries counted, no Slack post, and it catches up when the cap lifts', async () => {
+  env.SLACK_BOT_TOKEN = 'xoxb-test';
+  delete env.SLACK_WEBHOOK_URL;
+  await writeSlackConfig(env.DB, { channel: { id: 'C0ALERTS', name: 'website-alerts' } });
+  const v = clone(DEFAULT_DEFINITION);
+  v.messages = { ...v.messages, denied: 'Hi {parent}, we are unable to move forward with {child}’s application.' };
+  await saveDraftForm(env.DB, v);
+  let refused = 0;
+  env.AI.run = async () => { refused++; throw new Error('2045: Spend limit exceeded: rule'); };
+  await putDraftLive(env.DB);
+  let t = Date.parse('2026-10-29T15:00:00Z');
+  for (let i = 0; i < 8; i++) { await maybeSweepApplications(env, { force: true, now: t }); t += 16 * 60000; }
+  assert.equal(w.world.slack.filter(p => /Spanish application/.test(p.text)).length, 0, 'two hours at a cap isn’t the Spanish being behind for good');
+  assert.ok(refused <= 10, `one refused batch a try, not every string (${refused})`);
+  env.AI.run = async (model, { messages }) => ({ response: Object.fromEntries(Object.entries(JSON.parse(messages.at(-1).content)).map(([p, x]) => [p, `ES ${x}`])) });
+  await maybeSweepApplications(env, { force: true, now: t });
+  assert.equal(await familyMessage(env, 'denied', { parent: 'Ana', child: 'Sofía', lang: 'es' }), 'ES Hi Ana, we are unable to move forward with Sofía’s application.');
 });

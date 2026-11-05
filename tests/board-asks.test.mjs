@@ -998,3 +998,15 @@ test('the thanks says how the report shows in the meeting: one slide, or how man
   assert.equal(slidesLine('Nothing new to report this time.'), '');
   assert.equal(slidesLine(''), '');
 });
+
+test('a cap reached: a reply and the chair’s answer wait for the model, never the rules’ guess', async () => {
+  const CAP = '2045: Spend limit exceeded: rule';
+  const env = { AI: { run: async () => { throw new Error(CAP); } } };
+  const { judgeReply: reply, judgeChair: chair } = await import('../functions/api/_board-asks.js');
+  await assert.rejects(() => reply(env, { words: 'Membership grew by four.', title: 'Membership', meeting: 'Q3', person: 'Sam' }), /^Error: 2045/);
+  await assert.rejects(() => chair(env, 'Please move item 3'), /^Error: 2045/);
+  const down = { AI: { run: async () => { throw new Error('model unavailable'); } } };
+  assert.equal((await reply(down, { words: 'Membership grew by four.', title: 'Membership', meeting: 'Q3', person: 'Sam' })).by, 'rules', 'any other failure still goes by the rules');
+  assert.equal(await chair(down, 'Looks good'), 'approve');
+});
+

@@ -36,7 +36,7 @@
 
 import { vendorLikeness } from './_spend-match.js';
 import { TZ } from './_reveals.js';
-import { viaGateway } from './_ai.js';
+import { viaGateway, aiCapped } from './_ai.js';
 
 export const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const VISION_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
@@ -176,6 +176,7 @@ export function answerOf(out) {
   try { return m ? JSON.parse(m[0]) : null; } catch { return null; }
 }
 
+/** The model's answer, or null when it couldn't give one. A cap reached throws: "couldn't read it" would be recorded as true of the file */
 export async function askModel(env, model, messages, schema) {
   for (const json of [true, false]) {
     try {
@@ -186,6 +187,7 @@ export async function askModel(env, model, messages, schema) {
       const a = answerOf(out);
       if (a) return a;
     } catch (err) {
+      if (aiCapped(err)) throw err;
       console.error('[vendor-read]', model, err.message);
     }
   }

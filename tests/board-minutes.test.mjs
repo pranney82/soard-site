@@ -642,3 +642,51 @@ test('the secretary sending another meeting’s minutes: nothing kept, and “se
   assert.equal((await send(true)).status, 200);
   assert.deepEqual((await getMeeting(env.DB, m.id)).files.map((f) => f.name), ['Minutes 2026-08-06.pdf']);
 });
+
+test('the minutes finisher counts its try before the read: a run cut off during the model’s long answer can’t repeat every 2 minutes for good', async () => {
+  const { maybeFinishMinutes } = await import('../functions/api/_board-minutes.js');
+  const { createD1 } = await import('./lib/d1-shim.mjs');
+  const { saveMeeting, getMeeting, ensureSchema, putFile } = await import('../functions/api/_board.js');
+  class R2 { constructor() { this.map = new Map(); } async put(k, b) { this.map.set(k, new Uint8Array(b)); } async get(k) { const b = this.map.get(k); return b ? { body: b, size: b.length } : null; } async delete(k) { this.map.delete(k); } }
+  const env = { DB: await createD1(), FILES: new R2(), AI: { toMarkdown: async (doc) => ({ name: doc.name, format: 'text', data: SOARD_MINUTES }), run: async () => { throw new Error('no answer'); } } };
+  await env.DB.exec('CREATE TABLE team (slug TEXT PRIMARY KEY, name TEXT, "group" TEXT, order_num INTEGER, data TEXT NOT NULL, updated_at TEXT)');
+  await ensureSchema(env.DB);
+  const m = await saveMeeting(env.DB, { id: 'm_fin00002', date: '2026-08-06', sections: [{ title: 'Call to order', items: [{ title: 'Roll call' }] }] }, { by: 'test' });
+  const f = await putFile(env, { ownerType: 'meeting', ownerId: m.id, file: new File([new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n')], 'Q3 minutes.pdf', { type: 'application/pdf' }), kind: 'minutes', by: 'test' });
+  await saveMeeting(env.DB, { ...(await getMeeting(env.DB, m.id)), minutesFrom: { name: f.name, at: '2026-08-07T12:00:00.000Z', ai: false, tries: 0 } }, { by: 'test' });
+  // Cut off where the long model call is: nothing after this point runs
+  env.FILES.get = async () => { throw new Error('killed'); };
+  let now = Date.parse('2026-08-08T12:00:00Z');
+  for (let k = 1; k <= 3; k++) {
+    await maybeFinishMinutes(env, { now });
+    assert.equal((await getMeeting(env.DB, m.id)).minutesFrom.tries, k);
+    now += 3 * 60 * 1000;
+  }
+  assert.equal(await maybeFinishMinutes(env, { now }), null, 'three tries, then let be');
+});
+const CAP = "2045: Spend limit exceeded: rule 'site-day' (cost limit 5 per 86400s, sliding) for internal-workers-ai @cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
+test('a cap reached: the minutes finisher gives its try back and rests, so motions still come in when it lifts', async () => {
+  const { maybeFinishMinutes } = await import('../functions/api/_board-minutes.js');
+  const { createD1 } = await import('./lib/d1-shim.mjs');
+  const { saveMeeting, getMeeting, ensureSchema, putFile } = await import('../functions/api/_board.js');
+  class R2 { constructor() { this.map = new Map(); } async put(k, b) { this.map.set(k, new Uint8Array(b)); } async get(k) { const b = this.map.get(k); return b ? { body: b, size: b.length } : null; } async delete(k) { this.map.delete(k); } }
+  let refused = 0;
+  let answer = null;
+  const env = { DB: await createD1(), FILES: new R2(), AI: { toMarkdown: async (doc) => ({ name: doc.name, format: 'text', data: SOARD_MINUTES }), run: async () => { if (!answer) { refused++; throw new Error(CAP); } return { response: answer }; } } };
+  await env.DB.exec('CREATE TABLE team (slug TEXT PRIMARY KEY, name TEXT, "group" TEXT, order_num INTEGER, data TEXT NOT NULL, updated_at TEXT)');
+  await ensureSchema(env.DB);
+  const m = await saveMeeting(env.DB, { id: 'm_fin00003', date: '2026-08-06', sections: [{ title: 'Call to order', items: [{ title: 'Roll call' }] }] }, { by: 'test' });
+  const f = await putFile(env, { ownerType: 'meeting', ownerId: m.id, file: new File([new TextEncoder().encode('%PDF-1.4\n1 0 obj\n<<>>\nendobj\ntrailer\n<<>>\n%%EOF\n')], 'Q3 minutes.pdf', { type: 'application/pdf' }), kind: 'minutes', by: 'test' });
+  await saveMeeting(env.DB, { ...(await getMeeting(env.DB, m.id)), minutesFrom: { name: f.name, at: '2026-08-07T12:00:00.000Z', ai: false, tries: 0 } }, { by: 'test' });
+  let now = Date.parse('2026-08-08T12:00:00Z');
+  for (let k = 0; k < 6; k++) { await maybeFinishMinutes(env, { now }); now += 3 * 60 * 1000; }
+  assert.equal(refused, 1, 'one refusal, then it rests');
+  assert.equal((await getMeeting(env.DB, m.id)).minutesFrom.tries || 0, 0, 'no try spent');
+  answer = { motions: [{ text: 'Approve the 2027 budget', by: 'Alex Rivera', second: 'Sam Ortiz', result: 'passed' }], actions: [], attendance: [], topics: [] };
+  now += 20 * 60 * 1000;
+  await maybeFinishMinutes(env, { now });
+  const done = await getMeeting(env.DB, m.id);
+  assert.equal(done.minutesFrom.ai, true);
+  assert.ok(done.motions.some((x) => x.text === 'Approve the 2027 budget'), 'the motions come in after all');
+});

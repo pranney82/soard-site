@@ -43,7 +43,7 @@ import {
   reportSlides, slidesOfItem,
 } from '../../public/admin/board-shared.js';
 import { mdToDoc, docToMd, mdPlain } from '../../public/admin/board-md.js';
-import { viaGateway } from './_ai.js';
+import { viaGateway, aiCapped } from './_ai.js';
 
 export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -674,6 +674,8 @@ export async function judgeReply(env, { words, files = [], title, meeting, perso
       const a = typeof out?.response === 'string' ? parse(out.response, null) : out?.response;
       if (a && ['report', 'other'].includes(a.kind)) return { kind: a.kind, signature: String(a.signature || ''), by: 'ai' };
     } catch (e) {
+      // (a cap reached: the reply stays unread and is judged when it lifts; the rules take a short report for a note)
+      if (aiCapped(e)) throw e;
       console.error('[board-asks] judge', e.message);
     }
   }
@@ -1376,6 +1378,7 @@ export async function judgeChair(env, words) {
       const a = typeof out?.response === 'string' ? parse(out.response, null) : out?.response;
       if (a && ['approve', 'changes', 'other'].includes(a.kind)) return a.kind;
     } catch (e) {
+      if (aiCapped(e)) throw e;
       console.error('[board-asks] chair judge', e.message);
     }
   }

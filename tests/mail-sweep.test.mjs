@@ -466,3 +466,74 @@ test('the heartbeat: every 3 minutes when there’s nothing waiting, never witho
   assert.ok(await maybeSweepMail(env, { now: T0 + 4 * MIN }));
   assert.equal(await maybeSweepMail({ ...env, GOOGLE_CALENDAR_KEY: '' }, { now: T0 + 10 * MIN }), null);
 });
+const row = (id) => env.DB.prepare('SELECT state, tries, detail FROM mail_sweep WHERE id = ?').bind(id).first();
+const CAP = "2045: Spend limit exceeded: rule 'site-day' (cost limit 5 per 86400s, sliding) for internal-workers-ai @cf/meta/llama-3.3-70b-instruct-fp8-fast";
+
+test('a cap reached: a receipt and a family email wait with no try spent, the judging rests, and both go through when it lifts', async () => {
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  // Its subject doesn't say receipt: the rules alone would pass it over for good
+  const receipt = mail({ box: PAT, at, from: 'Studio <billing@studio.example>', to: PAT, subject: 'Thanks for your order #77', text: 'Total $44.00' });
+  const family = mail({ box: PAT, at: at + 1000, from: 'Ana Rivera <parent@example.com>', to: PAT, subject: 'Paint colors', text: 'Blue?' });
+  const answers = env.AI.run;
+  let refused = 0;
+  env.AI.run = async () => { refused++; throw new Error(CAP); };
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
+  assert.equal(refused, 1, 'one refusal stops the run');
+  const r = await row(receipt.id);
+  assert.deepEqual([r.state, r.tries], ['queued', 0], 'no try spent, nothing recorded about the email');
+  assert.match(r.detail, /^Waiting: Workers AI reached its spending cap/);
+  assert.equal((await byId(family.id))[0].state, 'queued');
+  assert.match((await mailSweepStatus(env)).error || '', /spending cap/);
+  await maybeSweepMail(env, { now: at + 6 * MIN, force: true });
+  assert.equal(refused, 1, 'it rests: the AI isn’t asked again every minute');
+
+  env.AI.run = answers;
+  aiVerdicts['Thanks for your order #77'] = { type: 'receipt', vendor: 'Studio', total: '$44.00', date: '', personal: false, reason: 'an order' };
+  await maybeSweepMail(env, { now: at + 25 * MIN, force: true });
+  assert.equal((await byId(receipt.id))[0].state, 'sent', 'read after all, and sent on');
+  assert.equal((await byId(family.id))[0].state, 'posted');
+  assert.equal(of('comment').length, 1);
+});
+
+test('a family email is never spent at a cap: three sweeps at the cap leave it with no tries used', async () => {
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  const m = mail({ box: PAT, at, from: 'Ana Rivera <parent@example.com>', to: PAT, subject: 'Paint colors', text: 'Blue?' });
+  env.AI.run = async () => { throw new Error('2003: Rate limited'); };
+  for (let k = 1; k <= 3; k++) await maybeSweepMail(env, { now: at + k * 20 * MIN, force: true });
+  const r = await row(m.id);
+  assert.deepEqual([r.state, r.tries], ['queued', 0]);
+});
+
+test('Workers AI not answering about a receipt: tried again, and only its last try goes by the rules', async () => {
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  const m = mail({ box: PAT, at, from: 'Studio <billing@studio.example>', to: PAT, subject: 'Thanks for your order #78', text: 'Total $44.00' });
+  env.AI.run = async () => { throw new Error('timeout'); };
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
+  assert.deepEqual((({ state, tries }) => [state, tries])(await row(m.id)), ['failed', 1]);
+  await maybeSweepMail(env, { now: at + 16 * MIN, force: true });
+  assert.deepEqual((({ state, tries }) => [state, tries])(await row(m.id)), ['failed', 2]);
+  await maybeSweepMail(env, { now: at + 27 * MIN, force: true });
+  assert.equal((await byId(m.id))[0].state, 'skipped');
+});
+
+test('a family email on two accounts: when the second fails, the try after it doesn’t post on the first again', async () => {
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  const m = mail({ box: PAT, at, from: `Pat <${PAT}>`, to: 'parent@example.com, kim@example.com', subject: 'Both families', text: 'Hello both', labels: ['SENT'] });
+  // The second account's comment fails once
+  const real = globalThis.fetch;
+  let posts = 0;
+  globalThis.fetch = async function (input, init = {}) {
+    if (String(input).includes('jobtread') && String(init.body || '').includes('createComment') && ++posts === 2) return Response.json({ errors: [{ message: 'JobTread is busy' }] }, { status: 500 });
+    return real(input, init);
+  };
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
+  assert.equal((await row(m.id)).state, 'failed');
+  globalThis.fetch = real;
+  await maybeSweepMail(env, { now: at + 16 * MIN, force: true });
+  assert.equal((await row(m.id)).state, 'posted');
+  assert.deepEqual(of('comment').map((c) => c.input.targetId).sort(), ['acctKim0002', 'acctRivera1'], 'one comment on each');
+});

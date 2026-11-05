@@ -29,6 +29,7 @@
 import { slackIssue, slackResolved, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { askModel, scannedPages, documentType } from './_vendor-read.js';
+import { aiCapped } from './_ai.js';
 import { drawPages, closeBrowser } from './_coi-backfill.js';
 import { boardFiles } from './_board.js';
 import {
@@ -182,7 +183,7 @@ const b64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x80
 const askW9 = (env, prompt, page) => askModel(env, VISION, [
   { role: 'system', content: prompt },
   { role: 'user', content: [{ type: 'text', text: 'Read this form.' }, { type: 'image_url', image_url: { url: `data:${page.type};base64,${b64(page.bytes)}` } }] },
-], W9_SCHEMA);
+], W9_SCHEMA).catch((err) => { if (aiCapped(err)) return null; throw err; }); // (a cap reached: unread, and checked again in a day)
 
 const zipOf = (s) => (String(s || '').match(/\b(\d{5})(?:-\d{4})?\s*$/) || [])[1] || '';
 const same = (a, b, key) => key(a) && key(a) === key(b);

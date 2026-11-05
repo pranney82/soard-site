@@ -32,7 +32,7 @@ import { reviewOf } from './process-shared.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'November 3, 2026';
+const WRITTEN_ON = 'November 5, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -1113,6 +1113,23 @@ const MAP = { t: 'SOARD', children: [
             if (o.problems?.length) return ATTN(`${plural(o.problems.length, 'thing doesn’t', 'things don’t')} match: ${o.problems.join('; ')}. Fix them in Site Config → Organization & contact.${w9}`, o.at);
             const matched = [`the IRS’s list${o.irsDate ? ` of ${o.irsDate}` : ''}`, o.w9 === 'read' && 'SOARD’s W-9', o.manual && 'the Board Manual'].filter(Boolean);
             return ON(`Everything matches ${matched.length > 1 ? `${matched.slice(0, -1).join(', ')} and ${matched.at(-1)}` : matched[0]}.${w9}`, o.at);
+          } },
+        { t: 'AI spending watch', s: 'live', k: 'schedule',
+          when: 'Hourly on the live hub’s heartbeat.',
+          does: 'Reads what SOARD’s site and the store spent on AI from Cloudflare, by feature. Posts in Needs attention and emails the alert list when a site or feature jumps, when a cap turns calls away, or when AI runs outside the gateways; replies if it doubles; turns ✅ when it settles.',
+          touches: ['Cloudflare', 'Slack', 'Resend', 'D1'], where: 'functions/api/_ai-watch.js (broadcast-hooks.js) · functions/api/_ai.js · Cloudflare → AI → AI Gateway',
+          info: 'The caps themselves live on the gateways (soard-site, sunnyandranney-site) and work without this: dollars a day for the site and for each feature, so one job running away can’t stop the others. A job that meets a cap waits, with no try spent. Reads counts and dollars only, never what was asked. Needs CF_ANALYTICS_TOKEN (Account Analytics: Read). Kept in D1 spend_state ‘ai-watch’.',
+          live: (f) => {
+            const w = f.aiWatch;
+            if (!w) return null;
+            if (!w.token) return OFF('Waiting for CF_ANALYTICS_TOKEN in Cloudflare Pages. The daily caps are on without it; only this warning waits.');
+            if (!w.at) return { why: 'The first check runs within the hour.' };
+            if (w.error) return ATTN(`Cloudflare’s numbers didn’t answer: ${w.error}`, w.at);
+            if (stale(w.at, 3 * HOUR)) return ATTN(`Hasn’t checked since ${stamp(w.at)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, w.at);
+            if (w.open?.length) return ATTN(`Over the line: ${w.open.join('; ')}.`, w.at);
+            const money = (n) => (n > 0 && n < 0.005 ? 'under a cent' : `$${(n || 0).toFixed(2)}`);
+            const lines = (w.sites || []).map((s) => `${s.name} ${money(s.day)}${s.top?.length ? ` (${s.top.map((x) => `${x.name} ${money(x.day)}`).join(', ')})` : ''}`);
+            return ON(`Last 24 hours: ${lines.join('; ') || 'no AI used'}.`, w.at);
           } },
         { t: 'Audit log', s: 'live', k: 'event',
           when: 'Any admin save and any automatic action.',
