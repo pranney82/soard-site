@@ -1718,6 +1718,7 @@ export async function publicPayload(env) {
     state: publicState(state, config),
     reminders: {
       enabled: !!config.reminders?.enabled,
+      hours: Array.isArray(config.reminders?.hoursBefore) ? config.reminders.hoursBefore : [24, 1],
       email: notify.emailConfigured(env),
       push: !!config.reminders?.push && !!config.vapid?.publicKey,
       pushKey: config.reminders?.push ? (config.vapid?.publicKey || null) : null,

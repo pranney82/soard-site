@@ -30,7 +30,7 @@ export interface LiveState {
   orientation: 'landscape' | 'portrait';
   source: string | null; updatedAt: string | null;
 }
-export interface ReminderOptions { enabled: boolean; email: boolean; sms: boolean; push: boolean; pushKey: string | null }
+export interface ReminderOptions { enabled: boolean; hours?: number[]; email: boolean; sms: boolean; push: boolean; pushKey: string | null }
 type Listener = (state: LiveState | null, meta: { reminders: ReminderOptions | null; timezone: string | null }) => void;
 export type ReactionKind = 'heart' | 'sun' | 'clap' | 'wow';
 export interface LiveMessage { id: string; name: string; body: string; at: string }
@@ -197,8 +197,15 @@ export function relativeUntil(iso: string | null, now = Date.now()): string {
   if (min < 60) return `in ${min} minute${min === 1 ? '' : 's'}`;
   const hrs = Math.round(ms / 3_600_000);
   if (hrs < 36) return `in ${hrs} hour${hrs === 1 ? '' : 's'}`;
-  const days = Math.round(ms / 86_400_000);
+  // Calendar days, so it agrees with the day named beside it
+  const midnight = (t: number) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+  const days = Math.round((midnight(Date.parse(iso)) - midnight(now)) / 86_400_000);
   return `in ${days} day${days === 1 ? '' : 's'}`;
+}
+
+/** The heading over a planned reveal: "Reveal day" only on the day itself */
+export function revealLabel(iso: string | null): string {
+  return iso && new Date(iso).toDateString() === new Date().toDateString() ? 'Reveal day' : 'Coming up';
 }
 
 export function formatWhen(iso: string | null): string {
@@ -207,9 +214,9 @@ export function formatWhen(iso: string | null): string {
   const today = new Date();
   const sameDay = d.toDateString() === today.toDateString();
   const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
-  const time = new Intl.DateTimeFormat(undefined, { hour: 'numeric', minute: '2-digit' }).format(d);
+  const time = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit' }).format(d); // English sentences, whatever the browser's language
   if (sameDay) return `today at ${time}`;
   if (d.toDateString() === tomorrow.toDateString()) return `tomorrow at ${time}`;
-  const day = new Intl.DateTimeFormat(undefined, { weekday: 'long', month: 'long', day: 'numeric' }).format(d);
+  const day = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric' }).format(d);
   return `${day} at ${time}`;
 }

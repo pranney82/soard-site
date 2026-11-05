@@ -186,6 +186,57 @@ test('sync: a confirmed reveal puts the countdown up, as JobTread, with a save-t
   assert.equal((await syncBroadcastSchedule(env, { fetchImpl: jtFetch })).action, 'skipped', 'the heartbeat checks at most every 5 minutes');
 });
 
+test('two reveals two days apart: the first holds the countdown, its replay hands over the day before, and the second still gets its reminders', async () => {
+  const realNow = Date.now;
+  let clock = realNow();
+  Date.now = () => clock;
+  try {
+    const first = at(5), second = at(7);
+    jobs = [job('jobMax0001', 'Max Sample (2026)', { startsAt: first }), job('jobLizzie01', 'Lizzie Sample (2026)', { startsAt: second })];
+
+    assert.equal((await sync()).action, 'schedule');
+    let st = await b.readState(env.DB);
+    assert.equal(st.kidSlug, 'max', 'the sooner reveal holds the countdown');
+    assert.equal(st.scheduledAt, first);
+    assert.equal((await sync()).action, 'none', 'the later one waits its turn, nothing flips');
+
+    // Max's reveal runs and ends; its replay is saved
+    clock = Date.parse(first) + H;
+    await b.writeState(env.DB, { ...st, phase: 'replay', source: 'stream', liveAt: first, endedAt: new Date(clock).toISOString(), replayUid: 'v1', replayUntil: new Date(clock + 72 * H).toISOString() });
+    await env.DB.prepare('UPDATE broadcasts SET live_at = ?, ended_at = ?, phase = ? WHERE id = ?').bind(first, new Date(clock).toISOString(), 'replay', st.broadcastId).run();
+    assert.equal((await sync()).action, 'none', "the replay stays up");
+    assert.equal((await b.readState(env.DB)).phase, 'replay');
+
+    clock = Date.parse(second) - 25 * H;
+    assert.equal((await sync()).action, 'none', 'still the replay, 25 hours before the next reveal');
+
+    // The day before: the next reveal takes over, with no save-the-date this close to it
+    clock = Date.parse(second) - 23 * H;
+    emails.length = 0;
+    assert.equal((await sync()).action, 'schedule');
+    st = await b.readState(env.DB);
+    assert.equal(st.kidSlug, 'lizzie');
+    assert.equal(st.phase, 'scheduled');
+    assert.equal(st.scheduledAt, second);
+    assert.equal(emails.filter((e) => /Save the date/.test(e.subject)).length, 0, 'inside 26 hours the day-before note covers it');
+    assert.notEqual(st.broadcastId, undefined);
+
+    // The next tick sends the second reveal its day-before reminder
+    await b.runTick(env, { force: true });
+    const dayBefore = emails.filter((e) => /Lizzie/.test(e.subject));
+    assert.equal(dayBefore.length, 1, 'one day-before email, about the second reveal');
+    assert.equal(emails.filter((e) => /Max/.test(e.subject)).length, 0, 'nothing more about the first');
+
+    // And a real stream for it picks up the planned reveal, kid and all
+    clock = Date.parse(second);
+    const live = b.tStartLive(await b.readState(env.DB), { videoUid: 'v2', source: 'stream' }, b.defaultConfig());
+    assert.equal(live.kidSlug, 'lizzie');
+    assert.equal(live.kidName, 'Lizzie');
+  } finally {
+    Date.now = realNow;
+  }
+});
+
 test('sync: a new time the same day moves it quietly; a new day re-arms reminders and tells subscribers', async () => {
   await sync();
   const first = await b.readState(env.DB);

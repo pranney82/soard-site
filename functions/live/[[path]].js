@@ -91,7 +91,7 @@ function rewrite(res, { kid, party, messages }) {
   if (party) {
     const shape = { 'data-party': '', 'data-orientation': party.orientation };
     rw = rw
-      .on('.live-page', setAttrs({ 'data-view': party.mode }))
+      .on('.live-page', setAttrs({ 'data-view': party.mode, 'data-next': null }))
       .on('#live-hero', setAttrs({ 'data-phase': party.mode, ...shape }))
       .on('#live-hero [data-stage]', setAttrs({ 'data-mode': party.mode, ...shape }))
       .on('#live-hero [data-s="bar"]', setAttrs({ hidden: null }))

@@ -415,11 +415,11 @@ const {
     const list = section.querySelector<HTMLElement>('[data-upn-list]');
     if (!list) return;
 
-    const all = await loadUpcoming();
+    let all = await loadUpcoming();
     if (!section.isConnected) return;
     // Left out: the page's own kid (data-exclude) and, on /live/, the reveal the page is
     // showing right now (data-current, set by LivePage, which fires upnext:current)
-    let drawn = '';
+    let drawn: string | null = '';
     const draw = () => {
       const skip = new Set([section.dataset.exclude, section.dataset.current].filter(Boolean));
       const shown = all.filter((r) => !skip.has(r.slug));
@@ -432,6 +432,8 @@ const {
     };
     draw();
     section.addEventListener('upnext:current', draw);
+    // LivePage read a changed schedule: a reveal cancelled or moved
+    section.addEventListener('upnext:refresh', async () => { all = await loadUpcoming(); drawn = null; draw(); });
     const ro = new ResizeObserver(() => placeLine(list));
     ro.observe(list);
     document.addEventListener('astro:before-swap', () => ro.disconnect(), { once: true });

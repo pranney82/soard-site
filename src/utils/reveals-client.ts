@@ -29,7 +29,7 @@ export type UpcomingReveal =
   | (Reveal & { confirmed: true; rooms: string[] })
   | { slug: string; name: string; confirmed: false; window: RevealWindow; image: string | null; kidUrl: string; liveUrl: string; rooms: string[] };
 
-interface Schedule { reveals: Reveal[]; upcoming: UpcomingReveal[] }
+interface Schedule { reveals: Reveal[]; upcoming: UpcomingReveal[]; failed?: boolean }
 
 const TZ = 'America/New_York';
 let pending: Promise<Schedule> | null = null;
@@ -40,16 +40,21 @@ function loadSchedule(): Promise<Schedule> {
   if (!pending || Date.now() - pendingAt > 60_000) {
     pendingAt = Date.now();
     pending = fetch('/api/reveals', { headers: { Accept: 'application/json' } })
-      .then(r => (r.ok ? r.json() : {}))
-      .then((body: { reveals?: unknown; upcoming?: unknown }) => {
+      .then(r => (r.ok ? r.json() : null))
+      .then((body: { reveals?: unknown; upcoming?: unknown } | null) => {
+        if (!body) { pendingAt = 0; return { reveals: [], upcoming: [], failed: true }; } // the next ask tries again
         const reveals = Array.isArray(body?.reveals) ? body.reveals as Reveal[] : [];
         const upcoming = Array.isArray(body?.upcoming) ? body.upcoming as UpcomingReveal[] : reveals.map(r => ({ ...r, confirmed: true as const, rooms: [] }));
         return { reveals, upcoming };
       })
-      .catch(() => ({ reveals: [], upcoming: [] }));
+      .catch(() => { pendingAt = 0; return { reveals: [], upcoming: [], failed: true }; });
   }
   return pending;
 }
+
+/** The schedule, or null when it couldn't be read: not knowing isn't the same as nothing planned */
+export const readReveals = (): Promise<Reveal[] | null> => loadSchedule().then(s => (s.failed ? null : s.reveals));
+export const readUpcoming = (): Promise<UpcomingReveal[] | null> => loadSchedule().then(s => (s.failed ? null : s.upcoming));
 
 /** Confirmed reveals only, soonest first */
 export function loadReveals(): Promise<Reveal[]> {

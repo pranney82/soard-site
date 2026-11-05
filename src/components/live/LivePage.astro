@@ -45,7 +45,7 @@ interface KidLite {
 interface Props { kid?: KidLite | null; fallbackImage: string }
 const { kid = null, fallbackImage } = Astro.props;
 
-const GENERIC_LEAD = 'Room reveals stream live right here. Get a reminder, then watch the moment a child sees their new room for the first time.';
+const GENERIC_LEAD = 'Room reveals stream live right here. Watch the moment a child sees their new room for the first time.';
 const photo = kid?.heroImage || fallbackImage;
 const name = kid?.name || null;
 const summary = kid?.heroSummary || kid?.shortDescription || null;
@@ -93,11 +93,11 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 <section class="section section--cream live-body">
   <div class="container live-grid">
     <div class="live-main">
-      <div class="live-block" id="remind">
-        <p class="section-label">Reminders</p>
+      <div class="live-block" id="remind" data-live="remind-block" hidden>
+        <p class="section-label" data-live="remind-label">Reminders</p>
         <h2 data-live="remind-heading">Never miss a reveal</h2>
-        <p class="live-block__lead">Tell us how to reach you and we'll let you know when a reveal gets its date, then send one note the day before, one an hour before, one when we go live, and one when the replay is up. Nothing else, ever.</p>
-        <form class="remind-form" data-live="form-email" novalidate>
+        <p class="live-block__lead" data-live="remind-lead" hidden>Tell us how to reach you and we'll let you know when a reveal gets its date, then send one note the day before, one an hour before, one when we go live, and one when the replay is up. Nothing else, ever.</p>
+        <form class="remind-form" data-live="form-email" novalidate hidden>
           <div class="remind-row">
             <label class="sr-only" for="remind-email">Email address</label>
             <input class="remind-input" id="remind-email" type="email" name="email" placeholder="you@example.com" autocomplete="email" required />
@@ -345,12 +345,13 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 </style>
 
 <script>
-  import { getLiveClient, formatWhen, relativeUntil, type LiveState, type ReminderOptions } from '../../utils/live-client';
+  import { getLiveClient, formatWhen, relativeUntil, revealLabel, type LiveState, type ReminderOptions } from '../../utils/live-client';
+  import { remindersUsable, browserCanPush, remindLead, revealIsToday, replayOverdue } from '../../utils/live-banner';
   import { createStage } from '../../utils/live-stage';
   import { createMessages } from '../../utils/live-messages';
   import { createGive } from '../../utils/live-give';
   import { cfRaw } from '../../utils/cf-image';
-  import { loadUpcoming, revealWhen, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
+  import { readUpcoming, revealWhen, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
   import { heroRowsHtml, rowsSignature } from '../../utils/upcoming-rows';
 
   /** The crew may start streaming up to 30 minutes early (runbook), so the starting-soon screen fills that window here too. */
@@ -387,6 +388,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     const setAttr = (el: HTMLElement, name: string, on: boolean) => { if (on) el.setAttribute(name, ''); else el.removeAttribute(name); };
     let last: LiveState | null = null;
     let lastMeta: { reminders: ReminderOptions | null } = { reminders: null };
+    let remindKid = ''; // who a sign-up here is for; empty means every reveal
+    const upNextBand = () => document.getElementById('up-next');
     let display = 'loading';
     let shownKid = pageKid || followKid;
     let viewed = false;
@@ -472,7 +475,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     function render(state: LiveState | null, meta: { reminders: ReminderOptions | null }) {
       last = state; lastMeta = meta;
       const s = state || ({ phase: 'idle' } as LiveState);
-      const forThisKid = !pageKid || !s.kidSlug || s.kidSlug === pageKid;
+      // A stream with no kid known yet only counts as this kid's on the day of this kid's reveal
+      const forThisKid = !pageKid || s.kidSlug === pageKid || (!s.kidSlug && revealIsToday(pageKid, upcoming.filter((r) => r.confirmed)));
       const phase = forThisKid ? s.phase : 'idle';
       const view = phase === 'live' || phase === 'ending' ? 'live' : phase === 'replay' ? 'replay' : phase === 'scheduled' || phase === 'armed' ? 'upcoming' : 'idle';
       const kidSlug = pageKid || (view !== 'idle' ? s.kidSlug || '' : '');
@@ -485,7 +489,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       if (page) page.dataset.view = display;
       follow(s, view);
       // "Coming up" leaves out the reveal this page is showing
-      const upNext = document.getElementById('up-next');
+      const upNext = upNextBand();
       const showing = view !== 'idle' ? kidSlug : '';
       if (upNext && (upNext.dataset.current || '') !== showing) {
         upNext.dataset.current = showing;
@@ -494,36 +498,40 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
       const eyebrow = q<HTMLElement>('eyebrow');
       const status = q<HTMLElement>('status');
+      // Written only when it changes, and a ticking countdown isn't read aloud every minute
+      const setStatus = (text: string) => { if (status && status.textContent !== text) status.textContent = text; };
+      status?.setAttribute('aria-live', view === 'upcoming' ? 'off' : 'polite');
       let badge = '';
       if (view === 'live') {
         if (eyebrow) eyebrow.textContent = 'Live now';
         // The video says it all; without one (a Facebook-only broadcast) point people there
-        if (status) status.textContent = hasPlayer ? '' : 'We are live on Facebook right now.';
+        setStatus(hasPlayer ? '' : 'We are live on Facebook right now.');
         badge = 'Live';
       } else if (view === 'replay') {
         if (eyebrow) eyebrow.textContent = 'Replay';
-        if (status) status.textContent = hasPlayer ? '' : 'The reveal just ended. The replay will appear here in a minute or two.';
+        setStatus(hasPlayer ? '' : replayOverdue(s.endedAt) ? 'This reveal has ended.' : 'The reveal just ended. The replay will appear here in a minute or two.');
         badge = 'Processing';
       } else if (view === 'upcoming') {
         const rel = relativeUntil(s.scheduledAt);
         if (slate) {
           if (eyebrow) eyebrow.textContent = 'Starting soon';
-          if (status) status.textContent = s.scheduledAt && Date.parse(s.scheduledAt) > Date.now() ? `We go live ${formatWhen(s.scheduledAt)}. Stay right here.` : 'Any moment now. Stay right here.';
+          setStatus(s.scheduledAt && Date.parse(s.scheduledAt) > Date.now() ? `We go live ${formatWhen(s.scheduledAt)}. Stay right here.` : 'Any moment now. Stay right here.');
         } else {
-          if (eyebrow) eyebrow.textContent = 'Reveal day';
-          if (status) status.textContent = s.scheduledAt ? `We go live ${formatWhen(s.scheduledAt)}${rel ? `, ${rel}` : ''}.` : 'A reveal is on the calendar.';
+          if (eyebrow) eyebrow.textContent = revealLabel(s.scheduledAt);
+          setStatus(!s.scheduledAt ? 'A reveal is on the calendar.' : Date.parse(s.scheduledAt) > Date.now() ? `We go live ${formatWhen(s.scheduledAt)}${rel ? `, ${rel}` : ''}.` : 'Any moment now. Stay right here.');
         }
         badge = rel ? `Live ${rel}` : 'Coming up';
       } else {
         if (eyebrow) eyebrow.textContent = 'Live reveal';
-        if (status) status.textContent = idleStatus();
+        setStatus(idleStatus());
       }
 
       // What's coming up fills the frame on /live/ between reveals (as the build had it until the live list arrives)
       if (page && !pageKid) setAttr(page, 'data-next', display === 'idle' && (upcomingLoaded ? upcoming.length > 0 : page.hasAttribute('data-next')));
 
       // CTAs: reminders stop making sense once the starting-soon screen is up
-      setHidden(q('cta-remind'), !(display === 'upcoming' || display === 'idle') || !meta.reminders?.enabled);
+      const startedAlready = view === 'upcoming' && !!s.scheduledAt && Date.parse(s.scheduledAt) <= Date.now();
+      setHidden(q('cta-remind'), !(display === 'upcoming' || display === 'idle') || startedAlready || !remindersUsable(meta.reminders, browserCanPush()));
       // Calendar: this child's own invite (the live link only), whether or not the day is set yet;
       // the broadcast's own file when a scheduled reveal isn't in the list
       const inviteFor = kidSlug ? upcoming.find((r) => r.slug === kidSlug) : undefined;
@@ -554,15 +562,34 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       messages?.update({ active: forThisKid && !!s.id && view !== 'idle', broadcastId: s.id, kidName: s.kidName, party });
       if (!party) give?.close();
 
-      // Reminder form availability
+      // Reminder form availability: it only shows while reminders really go out
+      const remindersOn = remindersUsable(meta.reminders, browserCanPush());
       const emailForm = bq<HTMLFormElement>('form-email');
-      if (emailForm) emailForm.hidden = meta.reminders ? !meta.reminders.email : false;
+      if (emailForm) emailForm.hidden = !(remindersOn && meta.reminders?.email);
+      const lead = bq<HTMLElement>('remind-lead');
+      if (lead) { lead.hidden = !remindersOn; lead.textContent = remindLead(meta.reminders?.hours); }
       const pushBtn = bq<HTMLButtonElement>('push-btn');
-      if (pushBtn) pushBtn.hidden = !(meta.reminders?.push && meta.reminders.pushKey && 'PushManager' in window && 'serviceWorker' in navigator && Notification.permission !== 'denied');
+      if (pushBtn) pushBtn.hidden = !(remindersOn && meta.reminders?.push && meta.reminders.pushKey && browserCanPush());
       const cal = bq<HTMLElement>('calendar-link');
       if (cal) cal.hidden = !(view === 'upcoming' || (view === 'idle' && !!pageKid && !!inviteFor));
+      // Reminders off: the block is just the calendar link, or nothing when there's no date to add
+      setHidden(bq('remind-block'), !remindersOn && (!cal || cal.hidden));
+      const rl = bq<HTMLElement>('remind-label');
+      if (rl) rl.textContent = remindersOn ? 'Reminders' : 'Calendar';
       const rh = bq<HTMLElement>('remind-heading');
-      if (rh) rh.textContent = view === 'upcoming' && s.kidName ? `Don't miss ${s.kidName}'s reveal` : view === 'replay' ? 'Hear about the next reveal' : 'Never miss a reveal';
+      // A sign-up is for the reveal the heading names, and otherwise for every reveal
+      const remindName = view === 'upcoming' ? s.kidName : view === 'idle' && pageKid ? inviteFor?.name : '';
+      const nextKid = !remindName ? '' : view === 'upcoming' ? s.kidSlug || '' : pageKid;
+      // A finished sign-up was for the reveal it named: a new one opens the form again
+      if (nextKid !== remindKid && emailForm?.classList.contains('is-done')) {
+        emailForm.classList.remove('is-done');
+        (emailForm.querySelector('button[type="submit"]') as HTMLButtonElement).disabled = false;
+        (emailForm.querySelector('.remind-note') as HTMLElement).textContent = '';
+      }
+      remindKid = nextKid;
+      if (rh) rh.textContent = remindName
+        ? (remindersOn ? `Don't miss ${remindName}'s reveal` : `Save the date for ${remindName}'s reveal`)
+        : !remindersOn ? 'Save the date' : view === 'replay' ? 'Hear about the next reveal' : 'Never miss a reveal';
 
       rendered = true;
       if (!viewed) {
@@ -583,13 +610,18 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
           : `${mine.name}'s reveal is planned for ${mine.window.label}. The exact day and time go up here as soon as they're set.`;
       }
       const next = upcoming[0];
-      if (!next) return 'No reveal is scheduled right now. Get a reminder for the next one, and watch the last few while you wait.';
+      if (!next) return !upcomingLoaded ? '' : remindersUsable(lastMeta.reminders, browserCanPush())
+        ? 'No reveal is scheduled right now. Get a reminder for the next one, and watch the last few while you wait.'
+        : 'No reveal is scheduled right now. Watch the last few while you wait.';
       return `Next up: ${next.name}'s reveal, ${next.confirmed ? revealWhen(next) : next.window.label}.`;
     }
-    loadUpcoming().then((list) => {
-      if (!alive) return;
+    const refreshUpcoming = () => readUpcoming().then((list) => {
+      // A read that failed keeps what's on the page: not knowing isn't the same as nothing planned
+      if (!alive || !list) return;
+      const changed = JSON.stringify(list) !== JSON.stringify(upcoming);
       upcoming = list;
       upcomingLoaded = true;
+      if (changed) upNextBand()?.dispatchEvent(new Event('upnext:refresh'));
       // The hero's rows as JobTread has them now (the build wrote the last copy's)
       const box = hero.querySelector<HTMLElement>('[data-hero-next]');
       const rows = box?.querySelector<HTMLElement>('[data-hnx-list]');
@@ -598,6 +630,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       if (rendered && last) render(last, lastMeta);
       else if (page && !pageKid) setAttr(page, 'data-next', list.length > 0);
     });
+    refreshUpcoming();
+    // A reveal cancelled or moved shows up here without a reload
+    const upcomingTimer = setInterval(refreshUpcoming, 60_000);
 
     // Beacons on the primary actions
     q('cta-facebook')?.addEventListener('click', () => client.beacon('click_facebook'));
@@ -615,6 +650,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     let checkOn: Promise<boolean> | null = null;
     let checkFrame: HTMLIFrameElement | null = null;
     let checkToken = '';
+    let checkBlocked = false; // the check itself couldn't load: a blocker, or the network
     const checkWaiters: ((token: string) => void)[] = [];
     // Out of sight is out of the tab order and the screen reader too, until Cloudflare wants a click
     const showCheck = (on: boolean) => {
@@ -639,11 +675,14 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       if (d.expired) checkToken = '';
       if (d.token) { checkToken = String(d.token); showCheck(false); for (const w of checkWaiters.splice(0)) w(checkToken); }
       if (d.error) { showCheck(true); for (const w of checkWaiters.splice(0)) w(''); }
+      if (d.blocked) { checkBlocked = true; showCheck(false); for (const w of checkWaiters.splice(0)) w(''); }
     }
     window.addEventListener('message', onCheckMessage);
     /** A fresh token, '' when none came (the person sees the check), or null when no check is on */
     async function checkTokenFor(note: HTMLElement): Promise<string | null> {
       if (!(await checkNeeded())) return null;
+      // Trying again after it couldn't load starts it fresh
+      if (checkBlocked) { checkBlocked = false; checkFrame?.remove(); checkFrame = null; }
       await warmCheck();
       let token = checkToken;
       if (!token) {
@@ -671,10 +710,10 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     };
     /** POST to /api/reminders → [ok, data, status]; adds the kid, the source and (when needed) the check's token */
     async function sendReminder(form: HTMLFormElement, payload: Record<string, string>, { check = true, again = false } = {}): Promise<[boolean, Record<string, any>, number]> {
-      const body: Record<string, unknown> = { ...payload, kidSlug: pageKid || last?.kidSlug || undefined, source: pageKid ? 'live-kid' : 'live' };
+      const body: Record<string, unknown> = { ...payload, kidSlug: remindKid || undefined, source: pageKid ? 'live-kid' : 'live' };
       if (check) {
         const token = await checkTokenFor(form.querySelector('.remind-note') as HTMLElement);
-        if (token === '') return [false, { error: 'Please finish the quick check below, then try again.' }, 403];
+        if (token === '') return [false, { error: checkBlocked ? "The quick check couldn't load here. Turn off any blocker or try another browser, then try again." : 'Please finish the quick check below, then try again.' }, 403];
         if (token) body.turnstileToken = token;
       }
       try {
@@ -731,7 +770,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
         const pad = raw.length % 4 ? '='.repeat(4 - (raw.length % 4)) : '';
         const appKey = Uint8Array.from(atob(raw + pad), c => c.charCodeAt(0));
         const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: appKey });
-        const res = await fetch('/api/reminders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'push', subscription: sub.toJSON(), kidSlug: pageKid || undefined, source: 'push' }) });
+        const res = await fetch('/api/reminders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ channel: 'push', subscription: sub.toJSON(), kidSlug: remindKid || undefined, source: 'push' }) });
         if (label) label.textContent = res.ok ? 'Browser alerts are on' : 'Could not save. Try again.';
         if (!res.ok) pushBtn.disabled = false;
       } catch {
@@ -759,6 +798,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     const countdown = setInterval(() => { if (last?.upcoming) render(last, { reminders: client.reminders }); }, 15_000);
     return () => {
       alive = false;
+      clearInterval(upcomingTimer);
       unsubscribe();
       window.removeEventListener('message', onCheckMessage);
       clearInterval(countdown);

@@ -20,7 +20,8 @@ export const SLATE_LEAD_MS = 30 * 60 * 1000;
  */
 export function watchParty(pub, { pageKid = '', kidPublished = false, now = Date.now() } = {}) {
   if (!pub) return null;
-  const forThisKid = !pageKid || !pub.kidSlug || pub.kidSlug === pageKid;
+  // A stream with no kid named yet is decided in the browser, which has the schedule
+  const forThisKid = !pageKid || pub.kidSlug === pageKid;
   if (!forThisKid) return null;
   const phase = pub.phase;
   const view = phase === 'live' || phase === 'ending' ? 'live' : phase === 'replay' ? 'replay' : phase === 'scheduled' || phase === 'armed' ? 'upcoming' : 'idle';

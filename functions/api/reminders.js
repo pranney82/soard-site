@@ -99,19 +99,27 @@ async function pendingByToken(DB, t) {
   return row && row.expires_at > nowIso() ? row : null;
 }
 
+/** One reveal stays one reveal; a different one while still on the list means all of them (NULL) */
+const WIDEN_KID = `CASE WHEN broadcast_reminders.unsubscribed_at IS NULL AND broadcast_reminders.kid_slug IS NOT excluded.kid_slug THEN NULL ELSE excluded.kid_slug END`;
+
 /**
  * The address proved it's theirs: on the list (again), for the reveal the
- * confirmed request named. A confirmation is the one thing that may undo an
- * unsubscribe. Existing rows keep their token, so older emails' stop links work.
+ * confirmed request named. Someone already on the list who asks about a
+ * different reveal goes on for all of them: each address has one row, and a
+ * second sign-up must never cancel the first reveal's reminders. A confirmation
+ * is the one thing that may undo an unsubscribe. Existing rows keep their
+ * token, so older emails' stop links work.
  */
 export async function activate(DB, { channel, address, kid_slug, source }) {
   await DB.prepare(`INSERT INTO broadcast_reminders (id, channel, address, subscription, kid_slug, token, source, created_at, unsubscribed_at, last_sent_at, fails)
     VALUES (?, ?, ?, NULL, ?, ?, ?, ?, NULL, NULL, 0)
     ON CONFLICT(channel, address) DO UPDATE SET
       last_sent_at = CASE WHEN broadcast_reminders.unsubscribed_at IS NULL THEN broadcast_reminders.last_sent_at ELSE NULL END,
-      unsubscribed_at = NULL, kid_slug = excluded.kid_slug, source = excluded.source, fails = 0`)
+      kid_slug = ${WIDEN_KID},
+      unsubscribed_at = NULL, source = excluded.source, fails = 0`)
     .bind(crypto.randomUUID(), channel, address, kid_slug || null, token(), source || null, nowIso()).run();
-  await DB.prepare('DELETE FROM broadcast_reminder_pending WHERE channel = ? AND address = ?').bind(channel, address).run();
+  // This reveal's links are spent; a link for a different reveal still works, and widens the sign-up when tapped
+  await DB.prepare('DELETE FROM broadcast_reminder_pending WHERE channel = ? AND address = ? AND kid_slug IS ?').bind(channel, address, kid_slug || null).run();
 }
 
 export async function onRequestGet(context) {
@@ -138,10 +146,12 @@ export async function onRequestGet(context) {
       const t = String(url.searchParams.get('confirm') || '');
       const row = await pendingByToken(env.DB, t);
       if (!row) return expiredPage();
-      const kid = await knownKid(env.DB, row.kid_slug);
-      return page('Confirm your reminders', `<p>Tap the button and we'll email <strong>${notify.escapeHtml(row.address)}</strong> ${kid?.name
-        ? `about ${notify.escapeHtml(kid.name)}'s room reveal: when it gets a date, the day before, an hour before, when we go live, and when the replay is up.`
-        : 'when a reveal gets its date, then the day before, an hour before, when we go live, and when the replay is up.'}</p>`,
+      const config = await readConfig(env.DB);
+      if (!config.reminders?.enabled) return pausedPage();
+      const signedUpFor = await env.DB.prepare('SELECT kid_slug, unsubscribed_at FROM broadcast_reminders WHERE channel = ? AND address = ?').bind(row.channel, row.address).first();
+      const widens = signedUpFor && !signedUpFor.unsubscribed_at && signedUpFor.kid_slug !== row.kid_slug;
+      const kid = widens ? null : await knownKid(env.DB, row.kid_slug);
+      return page('Confirm your reminders', `<p>Tap the button and we'll email <strong>${notify.escapeHtml(row.address)}</strong> ${whatTheyHear(kid, config)}.</p>`,
         { button: { action: `/api/reminders?confirm=${encodeURIComponent(t)}`, label: 'Yes, remind me' } });
     }
 
@@ -172,8 +182,20 @@ export async function onRequestGet(context) {
   }
 }
 
+/** Reminders were switched off after this link went out: nothing would ever arrive, so nothing changes */
+function pausedPage() {
+  return page('Reveal reminders are paused', '<p>We are not sending reveal reminders right now, so nothing was changed. You can sign up again from any reveal page once they are back.</p>', { status: 503 });
+}
+
+/** "about Max's room reveal: when it gets a date, the day before…", as Settings has the notes */
+function whatTheyHear(kid, config) {
+  const hours = Array.isArray(config.reminders?.hoursBefore) ? config.reminders.hoursBefore : [24, 1];
+  const notes = ['when it gets a date', hours.includes(24) && 'the day before', hours.includes(1) && 'an hour before', 'when we go live', 'and when the replay is up'].filter(Boolean).join(', ');
+  return `about ${kid?.name ? `${notify.escapeHtml(kid.name)}'s room reveal` : 'every reveal'}: ${notes}`;
+}
+
 function expiredPage() {
-  return page('This link has expired', '<p>Confirmation links work for 3 days. Sign up again from any reveal page and we will send a fresh one.</p>', { status: 410 });
+  return page('This link has already been used or expired', '<p>If you already tapped it, you are on the list and there is nothing more to do. If not, sign up again from any reveal page and we will send a fresh link. Links work for 3 days.</p>', { status: 410 });
 }
 
 /**
@@ -204,7 +226,12 @@ addEventListener('message', (e) => {
   if (e.origin === location.origin && e.source === parent && e.data && e.data.type === 'soard-check-reset' && id !== null) turnstile.reset(id);
 });
 </script>
-<script nonce="${nonce}" src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onSoardCheck&render=explicit" async defer></script>
+<script nonce="${nonce}" id="cf" src="https://challenges.cloudflare.com/turnstile/v0/api.js?onload=onSoardCheck&render=explicit" async defer></script>
+<script nonce="${nonce}">
+// The check itself can be blocked: the page says so quickly rather than waiting on it
+document.getElementById('cf').addEventListener('error', () => up({ blocked: true }));
+setTimeout(() => { if (typeof turnstile === 'undefined') up({ blocked: true }); }, 5500);
+</script>
 </head><body><div id="check"></div></body></html>`;
   return new Response(html, {
     headers: {
@@ -252,6 +279,8 @@ export async function onRequestPost(context) {
     const ip = clientIp(request);
 
     let address, subscription = null;
+    // Reminders off: nothing would ever be sent, so nobody gets signed up for it
+    if (!config.reminders?.enabled) return json({ ok: false, error: 'Reveal reminders are not available right now' }, 503);
     if (channel === 'email') {
       address = String(body.email || '').trim().toLowerCase();
       if (!notify.isEmail(address) || address.length > 254) return json({ ok: false, error: 'Enter a valid email address' }, 400);
@@ -320,7 +349,7 @@ async function pushSignup(context, { address, subscription, kid, source }) {
   const { env } = context;
   await env.DB.prepare(`INSERT INTO broadcast_reminders (id, channel, address, subscription, kid_slug, token, source, created_at, unsubscribed_at, last_sent_at, fails)
     VALUES (?, 'push', ?, ?, ?, ?, ?, ?, NULL, NULL, 0)
-    ON CONFLICT(channel, address) DO UPDATE SET unsubscribed_at = NULL, kid_slug = excluded.kid_slug, subscription = excluded.subscription, source = excluded.source, fails = 0`)
+    ON CONFLICT(channel, address) DO UPDATE SET kid_slug = ${WIDEN_KID}, unsubscribed_at = NULL, subscription = excluded.subscription, source = excluded.source, fails = 0`)
     .bind(crypto.randomUUID(), address, subscription, kid?.slug || null, token(), source, nowIso()).run();
   later(context, signedUp(env, 'push', { kid_slug: kid?.slug || null, source }));
   return json({ ok: true, channel: 'push' });
@@ -334,12 +363,13 @@ async function confirm(context, url) {
     const t = String(url.searchParams.get('confirm') || '');
     const row = await pendingByToken(env.DB, t);
     if (!row) return expiredPage();
+    const config = await readConfig(env.DB);
+    if (!config.reminders?.enabled) return pausedPage();
     await activate(env.DB, row);
     later(context, signedUp(env, 'email', row));
-    const kid = await knownKid(env.DB, row.kid_slug);
-    return page("You're on the list", kid?.name
-      ? `<p>We'll email you about ${notify.escapeHtml(kid.name)}'s room reveal: when it gets a date, the day before, an hour before, when we go live, and when the replay is up. Nothing else, ever.</p>`
-      : "<p>We'll email you when a reveal gets its date, then the day before, an hour before, when we go live, and when the replay is up. Nothing else, ever.</p>");
+    // What they're really on the list for: a different reveal than before means every reveal
+    const now = await env.DB.prepare('SELECT kid_slug FROM broadcast_reminders WHERE channel = ? AND address = ?').bind(row.channel, row.address).first();
+    return page("You're on the list", `<p>We'll email you ${whatTheyHear(await knownKid(env.DB, now?.kid_slug), config)}. Nothing else, ever.</p>`);
   } catch {
     return page('Something went wrong', '<p>Please open the link from your email again in a minute.</p>', { status: 500 });
   }
