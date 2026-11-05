@@ -190,8 +190,8 @@ export function looseMatch(job, records) {
 /** The page a job belongs to: linked by id, by name and season, then loosely (above) */
 export const pageForJob = (job, records) => matchProject(job.name, records, job.id) || looseMatch(job, records);
 
-/** The year JobTread builds a job for, from its name ("Ava Example (2026)"), or null */
-const buildYearOf = (job) => Number((String(job.name || '').match(/\((\d{4})\)\s*$/) || [])[1]) || null;
+/** The year in a job's name ("Ava Example (2026)"), or null */
+const namedYearOf = (job) => Number((String(job.name || '').match(/\((\d{4})\)\s*$/) || [])[1]) || null;
 const seasonOf = (r, job) => {
   const ys = yearsOf(r);
   return ys.length ? ys[ys.length - 1] : yearOf(job.closedOn) || yearOf(job.createdAt);
@@ -224,10 +224,9 @@ export function costsFrom(jobs, records) {
       // Applicants' in nameUnderway)
       underway.push({
         revealOn,
-        // The season it's built for: JobTread's (the year in the job's name), else its page's, else when the job was
-        // made. A 2026 makeover counts against 2026 even when it finishes late, and a page can carry the year of the
-        // application round it came in on (a school approved for 2027 that's built in 2026)
-        buildYear: buildYearOf(job) || (r ? seasonOf(r, job) : yearOf(job.createdAt)),
+        // Its season: the page's year (staff's word for it, even when the job's name says otherwise), else the year in
+        // the job's name, else when the job was made. A makeover counts against its own season even when it finishes late
+        season: r ? seasonOf(r, job) : namedYearOf(job) || yearOf(job.createdAt),
         key: `u:${job.id}`, name: r?.name || (community ? String(job.location?.account?.name || '').trim() : ''), jobId: r ? null : job.id, kind: community ? 'community' : 'kid', status,
         rooms, type: typeOf(rooms, { community }), paid: cents(job.actualCost), budget: budget > 0 ? cents(budget) : null,
         ...(r?.photo ? { photo: r.photo } : {}), ...(r?.url ? { url: r.url } : {}),
@@ -239,7 +238,7 @@ export function costsFrom(jobs, records) {
     // A family approved with no page yet still waits: named from Applicants (orderWaiting)
     if (!r && awaiting) {
       const rooms = roomList(job.description);
-      waiting.push({ key: `j:${job.id}`, name: '', slug: null, kind: 'kid', season: yearOf(job.createdAt), buildYear: buildYearOf(job) || yearOf(job.createdAt), rooms, type: typeOf(rooms), jobId: job.id, sponsors: [], since: job.createdAt || null });
+      waiting.push({ key: `j:${job.id}`, name: '', slug: null, kind: 'kid', season: namedYearOf(job) || yearOf(job.createdAt), rooms, type: typeOf(rooms), jobId: job.id, sponsors: [], since: job.createdAt || null });
       continue;
     }
     const own = !r && finished ? recordFromJob(job) : null;
@@ -257,7 +256,7 @@ export function costsFrom(jobs, records) {
       ...(r.photo ? { photo: r.photo } : {}), ...(r.url ? { url: r.url } : {}),
     };
     if (awaiting) {
-      waiting.push({ ...base, buildYear: buildYearOf(job) || base.season, jobId: job.id, sponsors: r.sponsors || [], since: job.createdAt || null });
+      waiting.push({ ...base, jobId: job.id, sponsors: r.sponsors || [], since: job.createdAt || null });
       continue;
     }
     const prev = done.get(base.key);
@@ -361,8 +360,8 @@ export async function makeoverCostsNow(env, { fetchImpl = fetch, now = Date.now(
   let value = cached.value || null;
   // (a copy from before the open jobs were read is read again at once)
   const stale = !cached.at || now - Date.parse(cached.at) >= maxAge || !Array.isArray(cached.value?.underway) || !Array.isArray(cached.value?.reveals)
-    // (a copy saved before each job carried the season it's built for)
-    || cached.value.underway.some((u) => !('buildYear' in u));
+    // (a copy saved before each job carried its season)
+    || cached.value.underway.some((u) => !('season' in u));
   if ((fresh || stale) && env.JOBTREAD_GRANT_KEY) {
     try {
       const [jobs, records] = await Promise.all([fetchCostJobs(env.JOBTREAD_GRANT_KEY, fetchImpl), loadCostRecords(env.DB)]);

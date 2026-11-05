@@ -96,8 +96,8 @@ const dayName = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { 
 function carryText(carry, jobs = [], families = []) {
   const kinds = new Map([...jobs, ...families].map((x) => [x.name, x.kind]));
   const kids = carry.filter((c) => kinds.get(c.name) !== 'community').map((c) => c.name);
-  const orgs = carry.length - kids.length;
-  return and([...kids, ...(orgs ? [plural(orgs, 'community project')] : [])]);
+  const orgs = carry.filter((c) => kinds.get(c.name) === 'community').map((c) => c.name);
+  return and([...kids, ...(orgs.length > 1 ? [plural(orgs.length, 'community project')] : orgs)]);
 }
 /**
  * The recommended pipeline, in a sentence: how many SOARD builds a year, who's already in line, and the room left
@@ -109,8 +109,7 @@ export function pipelineText(pipe, plan) {
   const pace = pipe.planned
     ? `Applicants plans ${pipe.planned} makeovers for ${pipe.next}.`
     : `SOARD builds about ${pipe.pace} makeovers a year: ${pipe.done} revealed in ${pipe.year} so far${pipe.scheduled ? ` and ${pipe.scheduled} more set by ${dayName(pipe.lastDay)}` : ''}.`;
-  // This season's makeovers still underway or waiting are this season's, not next's (Peter, Nov 4 2026: "we are
-  // finishing the 4 this year")
+  // This season's makeovers still underway or waiting are this season's, not next's
   const ours = (plan?.jobs?.length || 0) + (plan?.families?.length || 0) - pipe.carry.length;
   const inLine = pipe.carry.length
     ? ` ${carryText(pipe.carry, plan?.jobs, plan?.families)} ${pipe.carry.length === 1 ? 'is' : 'are'} already in line for ${pipe.next}, so`

@@ -51,7 +51,7 @@ export function pipelineOf({ reveals = [], underway = [], waiting = [], plan = n
   // Already in line for next season: open jobs and families waiting that are next season's makeovers (a 2026
   // makeover finishing late is still 2026's: Peter, Nov 4 2026, "we are finishing the 4 this year"); one with no season,
   // an open job not set to reveal by the end of this year, or a family waiting
-  const nextSeason = (x) => { const y = Number(x.buildYear) || Number(x.season) || 0; return y > 0 ? y >= next : null; };
+  const nextSeason = (x) => (Number(x.season) > 0 ? Number(x.season) >= next : null);
   const carry = [
     ...underway.filter((u) => nextSeason(u) ?? !(u.revealOn && u.revealOn >= today && Number(u.revealOn.slice(0, 4)) === year)).map((u) => ({ name: u.name, why: u.status })),
     ...waiting.filter((w) => nextSeason(w) ?? true).map((w) => ({ name: w.name, why: 'Approved, waiting' })),
