@@ -545,7 +545,8 @@ export function ReportCoach({ value, onChange, part = null, admin = false, id = 
   const advice = useMemo(() => reportAdvice(settled, { slides, part, look, picks: !!onLook }), [settled, slides, part?.name, part?.minutes, part?.reports, look, !!onLook]);
   const tips = advice.filter((x) => !off.has(x.id));
   const tip = alt ? null : tips[0];
-  const fit = reportFitLine({ slides, words, part });
+  // (Board's are often someone else's)
+  const fit = reportFitLine({ slides, words, part, whose: admin ? 'This' : 'Your' });
   // How it shows (where it can be chosen): its ways, the one showing, the one that reads best; a choice that wrote its
   // paragraphs as points can be taken back with Paragraphs while nothing's changed since
   const looks = useMemo(() => (onLook && words ? reportLooks(settled, look) : null), [settled, look, words, !!onLook]);
@@ -583,7 +584,7 @@ export function ReportCoach({ value, onChange, part = null, admin = false, id = 
   };
   return html`<div class="rp-coach">
     ${fit ? html`<p class="rp-coach__fit">${fit}</p>` : null}
-    ${choosing ? html`<div class="rp-looks" role="group" aria-label="How your report shows in the meeting">
+    ${choosing ? html`<div class="rp-looks" role="group" aria-label=${`How ${admin ? 'this' : 'your'} report shows in the meeting`}>
       <p class="rp-looks__h" aria-hidden="true">How it shows in the meeting</p>
       <div class="rp-looks__opts">${looks.options.map((o) => {
         const ok = o.ok || (o.id === 'text' && back);

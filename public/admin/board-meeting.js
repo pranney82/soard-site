@@ -36,11 +36,11 @@ import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, majority, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
   isLive, agendaItems, isFilled, hasSince, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, pagesText, MORE,
-  sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew,
+  sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew, copyOfItem,
 } from './board-shared.js';
 import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
 import { printMinutesTemplate, downloadMinutesDocx } from './board-minutes-template.js';
-import { ReportEditor, Report } from './board-report.js';
+import { ReportEditor, ReportCoach, Report } from './board-report.js';
 import { partFor } from './board-coach.js';
 import { mdWords } from './board-md.js';
 import { booksTitle } from './board/books.js';
@@ -609,6 +609,14 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
   const grip = (kind, id, label) => html`<button type="button" class="agx-grip" draggable="true" aria-label=${label} title="Drag to move"
     onDragStart=${(e) => { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData(kind === 'item' ? DRAG_ITEM : DRAG_PART, id); const row = e.currentTarget.closest(kind === 'item' ? '.agx-item' : '.agx-sec'); if (row) e.dataTransfer.setDragImage(row, 24, 20); setDrag({ kind, id }); }}
     onDragEnd=${endDrag}><svg viewBox="0 0 10 16" width="10" height="16" aria-hidden="true"><circle cx="2.5" cy="3" r="1.4" /><circle cx="7.5" cy="3" r="1.4" /><circle cx="2.5" cy="8" r="1.4" /><circle cx="7.5" cy="8" r="1.4" /><circle cx="2.5" cy="13" r="1.4" /><circle cx="7.5" cy="13" r="1.4" /></svg></button>`;
+  // A report's word beside it (./board-report.js ReportCoach), under it as it reads and as it's written
+  const coachFor = (si, ii, it) => ({ part: partFor(m, it.id), admin: true, id: m.id, itemId: it.id, title: it.title, confidential: !!it.confidential, look: it.reportLook || '', onLook: (k) => setItem(si, ii, { reportLook: k }) });
+  // A copy of an item right under it, with all it has, its name selected to type over
+  const duplicate = (s, si, it) => {
+    const copy = copyOfItem(it, uid('i_'));
+    keepClear(withMotion(() => setSection(si, { items: s.items.flatMap((x) => (x.id === it.id ? [x, copy] : [x])) })), `[data-item="${copy.id}"]`);
+    setTimeout(() => { const name = document.querySelector(`[data-item="${copy.id}"] .agx-item__title`); name?.focus(); name?.select(); }, 140);
+  };
   // An item's ⋯: what it can have and doesn't yet; who sees it; moving it; taking things off it
   const itemMenu = (s, si, it, ii) => {
     const named = it.title || LIVE_TITLES[it.live] || 'this item';
@@ -636,6 +644,8 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
         { icon: 'up', label: 'Move up', disabled: first, title: 'Move up (Alt ↑ in its name does it too)', run: () => { keepClear(ii > 0 ? withMotion(() => setSection(si, { items: move(s.items, ii, -1) })) : moveItem(it.id, m.sections[si - 1].id, ''), `[data-item="${it.id}"]`); refocus(it.id, '.bd-menu > summary'); } },
         { icon: 'down', label: 'Move down', disabled: last, title: 'Move down (Alt ↓ in its name does it too)', run: () => { keepClear(ii < s.items.length - 1 ? withMotion(() => setSection(si, { items: move(s.items, ii, 1) })) : moveItem(it.id, m.sections[si + 1].id, m.sections[si + 1].items[0]?.id || ''), `[data-item="${it.id}"]`); refocus(it.id, '.bd-menu > summary'); } },
       ] },
+      // (the minutes come up for approval once)
+      it.live !== 'minutes' && { icon: 'copy', label: 'Duplicate', run: () => duplicate(s, si, it) },
       { divider: true },
       (it.notes || it.showNotes) && { icon: 'remove', label: 'Remove the background', run: () => clear('the background', it.notes, { notes: '', showNotes: false }) },
       (it.motion || it.showMotion) && { icon: 'remove', label: 'Remove the motion', run: () => clear('the motion', it.motion, { motion: '', showMotion: false }) },
@@ -756,12 +766,13 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
                   refocus(it.id, '.agx-report__head button, .agx-item__title');
                 }}
                 status=${html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => { write(it.id, false); refocus(it.id, '.agx-report__head button, .agx-item__title'); }}>Done</button>`}
-                coach=${{ part: partFor(m, it.id), admin: true, id: m.id, itemId: it.id, title: it.title, confidential: !!it.confidential, look: it.reportLook || '', onLook: (k) => setItem(si, ii, { reportLook: k }) }} />
+                coach=${coachFor(si, ii, it)} />
             </div>`
             : it.report ? html`<div class="agx-report">
               <div class="agx-report__head"><span class="agx-report__label">Report</span><span class="agx-report__by">${[it.reportBy, it.reportAt ? ago(it.reportAt) : ''].filter(Boolean).join(' · ')}</span>
                 <button type="button" class="btn btn-ghost btn-sm" aria-label=${`Edit the report on ${it.title || 'this item'}`} onClick=${() => write(it.id, true)}>Edit</button></div>
               <${Report} text=${it.report} clamp=${50} />
+              <${ReportCoach} ...${coachFor(si, ii, it)} value=${it.report} onChange=${(md) => setItem(si, ii, { report: md })} />
             </div>` : null}
             ${it.motion || it.showMotion ? html`<div class="agx-motion">
               <label class="agx-motion__label" for=${`agx-mo-${it.id}`}>The board votes on</label>

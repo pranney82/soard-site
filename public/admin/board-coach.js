@@ -39,9 +39,9 @@ export function partFor(m, itemId) {
 }
 
 /** How it will show: its slides, how long to present them, and the part's time (only parts have one) */
-export function reportFitLine({ slides = 1, words = 0, part = null } = {}) {
+export function reportFitLine({ slides = 1, words = 0, part = null, whose = 'Your' } = {}) {
   if (!words) return '';
-  const fit = slides > 1 ? `Your report: ${slides} slides, ${speakTime(words)}.` : 'Your report fits on one slide.';
+  const fit = slides > 1 ? `${whose} report: ${slides} slides, ${speakTime(words)}.` : `${whose} report fits on one slide.`;
   const share = part?.minutes && part.reports > 1 ? ` ${part.name} has ${part.minutes} minutes for ${part.reports} reports.`
     : part?.minutes ? ` ${part.name} has ${part.minutes} minutes.` : '';
   return fit + share;

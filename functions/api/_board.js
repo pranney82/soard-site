@@ -60,7 +60,7 @@ import { makeoverCostsNow, PAGE_MAX_AGE_MS } from './_makeover-costs.js';
 import { OPERATING_BALANCE } from '../../public/admin/makeover-costs-shared.js';
 import { limit } from './_rate-limit.js';
 import { SIG_EVIDENCE, putSignature, addColumns, appendEvents, sha256Hex, cleanMark, CONSENT_TEXT, PROCESS_V, declinedOf, dueOn, dueWords } from './_board-sign.js';
-import { paperFields } from '../../public/admin/board-md.js';
+import { paperFields, sameWords } from '../../public/admin/board-md.js';
 
 export const SITE = 'https://sunshineonaranneyday.com';
 export const boardFiles = (env) => env?.BOARD_FILES || env?.FILES || null;
@@ -343,13 +343,22 @@ export async function saveMeeting(DB, raw, { by, base = null } = {}) {
  * name), one that didn't change keeps who wrote it (a presenter on the board page, ./saveReport)
  */
 async function stampReports(DB, next, current, { by, at }) {
-  const was = new Map((current?.sections || []).flatMap((s) => s.items).map((it) => [it.id, it]));
+  const items = (current?.sections || []).flatMap((s) => s.items);
+  const was = new Map(items.map((it) => [it.id, it]));
+  // A copy of an item (its ⋯ Duplicate) is a new id with the same report: whoever wrote it still did
+  const wrote = new Map(items.filter((it) => it.report).map((it) => [it.report, it]));
   let name = null;
   for (const it of next.sections.flatMap((s) => s.items)) {
-    const before = was.get(it.id);
+    const before = was.get(it.id) || wrote.get(it.report);
     if ((it.report || '') === (before?.report || '')) {
       it.reportBy = before?.reportBy || (it.report ? it.reportBy : '');
       it.reportAt = before?.reportAt || (it.report ? it.reportAt : '');
+      continue;
+    }
+    // The same words made points (How it shows, in Board): still its writer's, changed now (so a page open on it hears)
+    if (it.report && before?.reportBy && sameWords(it.report, before.report)) {
+      it.reportBy = before.reportBy;
+      it.reportAt = at;
       continue;
     }
     if (it.report && name === null) name = (await adminVoter(DB, by)).name;

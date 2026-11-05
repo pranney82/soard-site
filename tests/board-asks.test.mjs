@@ -1010,3 +1010,10 @@ test('a cap reached: a reply and the chair’s answer wait for the model, never 
   assert.equal(await chair(down, 'Looks good'), 'approve');
 });
 
+test('nobody is asked for a report on a copy still called one', async () => {
+  const { wanted } = await import('../functions/api/_board-asks.js');
+  const sam = { slug: 'sam-ortiz', name: 'Sam Ortiz', email: 'sam@example.org' };
+  const item = (id, title) => ({ id, title, who: ['sam-ortiz'], presenter: 'Sam Ortiz', report: '', live: '', also: [], docs: [] });
+  const m = { sections: [{ id: 's', title: 'Reports', items: [item('i_a', 'Governance'), item('i_b', 'Governance (copy)'), item('i_c', 'Governance, part two')] }] };
+  assert.deepEqual(wanted(m, { board: [sam], staff: [] }).map((w) => w.it.id), ['i_a', 'i_c']);
+});

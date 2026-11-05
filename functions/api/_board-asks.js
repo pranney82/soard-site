@@ -40,7 +40,7 @@ import { header, bytesOf, partsOf } from './_mailbox.js';
 import { booksNow } from './_quickbooks.js';
 import {
   presentersOf, reportsOn, agendaIsDraft, meetingName, sectionPlan, isFilled, forBoard, todayEastern, isDate, LIMITS, showsOf, timeRange, isNothingNew,
-  reportSlides, slidesOfItem,
+  reportSlides, slidesOfItem, isCopyName,
 } from '../../public/admin/board-shared.js';
 import { mdToDoc, docToMd, mdPlain } from '../../public/admin/board-md.js';
 import { viaGateway, aiCapped } from './_ai.js';
@@ -726,7 +726,8 @@ export const heldOn = (m) => !!m?.live?.endedAt && todayEastern(Date.parse(m.liv
 export function wanted(m, people) {
   const everyone = [...people.board, ...people.staff];
   const reach = new Map(everyone.filter((p) => p.slug && p.email).map((p) => [p.slug, p]));
-  return m.sections.flatMap((s) => s.items).filter((it) => reportsOn(it))
+  // (a copy still called one is being worked on: no email about it until it has a name of its own)
+  return m.sections.flatMap((s) => s.items).filter((it) => reportsOn(it) && !isCopyName(it.title))
     .flatMap((it) => presentersOf(it, everyone).filter((p) => p.slug && reach.has(p.slug)).map((p) => ({ it, person: reach.get(p.slug) })));
 }
 

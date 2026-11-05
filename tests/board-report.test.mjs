@@ -6,7 +6,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mdBlocks, mdInline, mdToDoc, docToMd, mdPlain, mdWords, safeHref } from '../public/admin/board-md.js';
+import { mdBlocks, mdInline, mdToDoc, docToMd, mdPlain, mdWords, safeHref, sameWords } from '../public/admin/board-md.js';
 
 const p = (...content) => ({ type: 'paragraph', content });
 const t = (text, ...marks) => ({ type: 'text', text, ...(marks.length ? { marks: marks.map((m) => (typeof m === 'string' ? { type: m } : m)) } : {}) });
@@ -110,8 +110,9 @@ test('an editor document never loses words, whatever it holds (a random walk)', 
 // ─── Writing one: who may, conflicts, who and when ──────────────────
 
 import { createD1 } from './lib/d1-shim.mjs';
-import { saveMeeting, saveReport, getMeeting, liveView, portalData } from '../functions/api/_board.js';
-import { cleanMeeting, forBoard, isFilled } from '../public/admin/board-shared.js';
+import { saveMeeting, saveReport, getMeeting, liveView, portalData, patchMeeting } from '../functions/api/_board.js';
+import { cleanMeeting, forBoard, isFilled, copyOfItem, isCopyName, LIMITS } from '../public/admin/board-shared.js';
+import { asBullets } from '../public/admin/board-coach.js';
 
 const PEOPLE = [
   ['jane-doe', { name: 'Jane Doe', group: 'team', title: 'Co-Founder/President' }],
@@ -298,4 +299,45 @@ test('marks right against each other, no spaces, never lose or gain a mark (a ra
     const merged = nodes.reduce((acc, n) => { const last = acc.at(-1); if (last && JSON.stringify(last.marks || []) === JSON.stringify(n.marks || [])) last.text += n.text; else acc.push({ ...n }); return acc; }, []);
     roundTrip(doc(p(...merged)));
   }
+});
+
+test('Duplicate: all an item has under a new id, called a copy once, without what the editor had open', () => {
+  const it = { id: 'i_a', title: 'Governance', who: ['sam-ortiz'], presenter: 'Sam Ortiz', notes: 'Why', staffNote: 'Private', report: 'Words', reportLook: 'cards', motion: 'Move to approve', confidential: true, live: 'cash', also: ['reveals'], docs: ['f_1'], slideOrder: ['report', 'item'], showWho: true, showDocs: true, showMotion: true, showShows: true, showNotes: true, showStaff: true };
+  const copy = copyOfItem(it, 'i_b');
+  assert.deepEqual(copy, { id: 'i_b', title: 'Governance (copy)', who: ['sam-ortiz'], presenter: 'Sam Ortiz', notes: 'Why', staffNote: 'Private', report: 'Words', reportLook: 'cards', motion: 'Move to approve', confidential: true, live: 'cash', also: ['reveals'], docs: ['f_1'], slideOrder: ['report', 'item'] });
+  assert.equal(it.id, 'i_a', 'the one copied stays as it was');
+  assert.equal(copyOfItem(copy, 'i_c').title, 'Governance (copy)', 'a copy of a copy isn’t called one twice');
+  assert.equal(copyOfItem({ id: 'i_d', title: '', live: 'cash' }, 'i_e').title, '', 'an item named by what it shows stays so');
+  const long = copyOfItem({ id: 'i_f', title: 'x'.repeat(LIMITS.title) }, 'i_g').title;
+  assert.ok(long.length <= LIMITS.title && isCopyName(long), 'a long name keeps "(copy)" within the limit');
+  assert.equal(cleanMeeting({ sections: [{ title: 'x', items: [copyOfItem(it, 'i_b')] }] }).sections[0].items[0].title, 'Governance (copy)');
+});
+
+test('sameWords: a paragraph made points is the same words; a word changed isn’t', () => {
+  const para = 'The roof is done. The audit starts Monday. We need a vote on the policy.';
+  assert.ok(sameWords(para, asBullets(para)), asBullets(para));
+  assert.ok(sameWords('- one\n- two', 'one two'));
+  assert.ok(!sameWords(para, para.replace('Monday', 'Tuesday')));
+});
+
+test('Board keeps who wrote a report: on a copy of its item, and when its words are only made points', async () => {
+  const { env } = await world();
+  const words = 'The roof is done. The audit starts Monday. We need a vote on the policy.';
+  const alex = await saveReport(env, 'm_rep1', 'i_gov1', words, { member: ALEX, base: '' });
+  const m = await getMeeting(env.DB, 'm_rep1');
+  const edit = (x, fn) => ({ ...x, sections: x.sections.map((s) => ({ ...s, items: s.items.flatMap(fn) })) });
+  const by = { by: 'jane@soardcharity.com' };
+  // The copy: a new id, the same words, its writer and when they wrote it
+  const one = await saveMeeting(env.DB, edit(m, (it) => (it.id === 'i_gov1' ? [it, copyOfItem(it, 'i_copy1')] : [it])), { ...by, base: m.updatedAt });
+  assert.deepEqual([itemIn(one, 'i_copy1').report, itemIn(one, 'i_copy1').reportBy, itemIn(one, 'i_copy1').reportAt], [words, 'Alex Rivera', alex.reportAt]);
+  // Show as cards made the sentences points: still Alex's, changed now (from a report written long ago: a save can land
+  // in the very millisecond of the one before it)
+  const LONG_AGO = '2001-01-01T00:00:00.000Z';
+  const aged = await patchMeeting(env.DB, 'm_rep1', (cur) => edit(cur, (it) => [it.id === 'i_gov1' ? { ...it, reportAt: LONG_AGO } : it]));
+  const two = await saveMeeting(env.DB, edit(aged, (it) => [it.id === 'i_gov1' ? { ...it, report: asBullets(words), reportLook: 'cards' } : it]), { ...by, base: aged.updatedAt });
+  assert.deepEqual([itemIn(two, 'i_gov1').report, itemIn(two, 'i_gov1').reportBy], [asBullets(words), 'Alex Rivera']);
+  assert.notEqual(itemIn(two, 'i_gov1').reportAt, LONG_AGO);
+  // New words are Board's
+  const three = await saveMeeting(env.DB, edit(two, (it) => [it.id === 'i_copy1' ? { ...it, report: 'Different words altogether' } : it]), { ...by, base: two.updatedAt });
+  assert.equal(itemIn(three, 'i_copy1').reportBy, 'Jane Doe');
 });

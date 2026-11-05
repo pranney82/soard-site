@@ -253,6 +253,10 @@ export const mdPlain = (md) => plainOf(mdBlocks(md));
 /** How many words (a list's numbers and points aren't words) */
 export const mdWords = (md) => (mdPlain(md).replace(/^\s*(?:•|\d+\.)\s/gm, '').match(/[\p{L}\p{N}][\p{L}\p{N}'’.,-]*/gu) || []).length;
 
+/** The same words, laid out the same or not (a paragraph made points): lists' marks, spacing and emphasis don't count */
+const wordsOnly = (md) => mdPlain(md).replace(/^\s*(?:•|\d+\.)\s/gm, '').replace(/\s+/g, ' ').trim();
+export const sameWords = (a, b) => wordsOnly(a) === wordsOnly(b);
+
 // ─── The editor's document ──────────────────────────────────────────
 
 const LINK_ATTRS = { target: '_blank', rel: 'noopener noreferrer nofollow' };

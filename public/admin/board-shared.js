@@ -772,6 +772,18 @@ export function minutesFileOf(prev) {
   const from = list.filter((f) => f.name === prev?.minutesFrom?.name).sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0];
   return from || list.find((f) => /pdf/i.test(f.type) || /\.pdf$/i.test(f.name)) || list[0] || null;
 }
+/** A copy of an item, called so until it has a name of its own (nobody's asked for a report on one: _board-asks.js wanted) */
+const COPY_MARK = ' (copy)';
+export const isCopyName = (title) => String(title || '').trim().endsWith(COPY_MARK);
+/** An item's ⋯ Duplicate: all it has under a new id, without what the editor had open on the one copied (show*) */
+export function copyOfItem(it, id) {
+  const title = String(it?.title || '').trim();
+  return {
+    ...Object.fromEntries(Object.entries(it || {}).filter(([k]) => !/^show[A-Z]/.test(k))),
+    id,
+    title: !title || isCopyName(title) ? title : `${title.slice(0, LIMITS.title - COPY_MARK.length).trim()}${COPY_MARK}`,
+  };
+}
 /** An item's files, in order: its documents, and for "approve the minutes" the last meeting's minutes (from `meetings`) */
 export function itemFiles(m, it, meetings = []) {
   const out = (it?.docs || []).map((id) => m.files.find((f) => f.id === id)).filter(Boolean);

@@ -620,6 +620,52 @@ try {
   await clickText(jane, '.agx-report button', /^Done$/);
   ok(await jane.waitForSelector('.agx-report:not(.is-writing) .rp h4', { timeout: 3000 }).then(() => true, () => false) && /Report\s*Jane Doe/.test(await jane.$eval('.agx-report__head', (e) => e.textContent)), 'Done: the report reads in place, with who wrote it, and Edit');
   ok(/Reports\s*0 of \d in/.test(await jane.$eval('.bm-reports', (e) => e.innerText).catch(() => '')) && /Financial[\s\S]*Sam Ortiz[\s\S]*Not yet/.test(await jane.$eval('.bm-reports', (e) => e.innerText).catch(() => '')), 'Getting ready says whose reports are in: Sam’s Financial isn’t yet');
+  // A report on the agenda has its word beside it as it reads, as a presenter's page does: how it shows and what's
+  // suggested, each a press away, with no Edit first
+  ok(await itemMenu(jane, 'Events and Marketing', /^Write the report$/), 'another item’s report, written');
+  await jane.waitForSelector('[aria-label="The report on Events and Marketing"][contenteditable="true"]', { timeout: 4000 });
+  await sleep(150);
+  const evWords = 'The gala sold out. The golf outing is set for May. We need a vote on the new sponsor levels.';
+  await jane.keyboard.type(evWords);
+  await saved(jane);
+  await clickText(jane, '.agx-report.is-writing button', /^Done$/);
+  await jane.waitForFunction(() => !document.querySelector('.agx-report.is-writing'), { timeout: 3000 });
+  const evCard = () => jane.evaluate(() => { const li = [...document.querySelectorAll('.ag-item')].find((x) => x.querySelector('.agx-item__title')?.value === 'Events and Marketing'); return { fit: li?.querySelector('.rp-coach__fit')?.textContent || '', looks: [...(li?.querySelectorAll('.rp-look') || [])].map((b) => b.textContent.trim()), on: li?.querySelector('.rp-look.is-on .rp-look__name')?.textContent || '', tip: li?.querySelector('.rp-coach__tip p')?.textContent || '' }; });
+  await jane.waitForFunction(() => document.querySelectorAll('.agx-report:not(.is-writing) .rp-looks').length > 0, { timeout: 3000 }).catch(() => {});
+  { const c = await evCard(); ok(/^This report fits on one slide/.test(c.fit) && c.looks.join() === 'CardsSuggested,Bullet points,Paragraphs,42Big numbers' && /Show each on a card/.test(c.tip), `a report at rest shows how it shows and what’s suggested, without Edit (${JSON.stringify(c)})`); }
+  await shot(jane, 'report-coach-at-rest');
+  await jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((x) => x.querySelector('.agx-item__title')?.value === 'Events and Marketing').querySelector('.rp-coach__btn.is-go').click());
+  await sleep(100);
+  await saved(jane);
+  const evNow = async () => (await meetingNow(jane, meetingId)).sections.flatMap((x) => x.items).find((it) => it.title === 'Events and Marketing');
+  { const e = await evNow(); const c = await evCard(); ok(e.reportLook === 'cards' && (e.report.match(/^- /gm) || []).length === 3 && /gala sold out[\s\S]*golf outing[\s\S]*sponsor levels/.test(e.report) && c.on === 'Cards' && !c.tip, `Show as cards, pressed: saved as cards, every word kept, the suggestion gone (${JSON.stringify([e.reportLook, e.report])})`); }
+  await jane.evaluate(() => [...document.querySelectorAll('.ag-item')].find((x) => x.querySelector('.agx-item__title')?.value === 'Events and Marketing').querySelectorAll('.rp-look')[3].click());
+  await sleep(100);
+  ok(await waitText(jane, /Big numbers need a number in every point/), 'a way it can’t show says why, there too');
+  // ⋯ Duplicate: a card just like it right under it, the focus in its name to type over
+  const orderNow = () => jane.evaluate(() => [...document.querySelectorAll('.agx-item__title')].map((t) => t.value));
+  const agendaWas = await orderNow();
+  const evAt = agendaWas.indexOf('Events and Marketing');
+  ok(await itemMenu(jane, 'Events and Marketing', /^Duplicate$/), 'an item’s menu has Duplicate');
+  ok(await jane.waitForFunction(() => document.activeElement?.value === 'Events and Marketing (copy)' && document.activeElement.selectionEnd - document.activeElement.selectionStart === 'Events and Marketing (copy)'.length, { timeout: 3000 }).then(() => true, () => false), 'the copy’s name has the focus, all selected, ready to type over');
+  { const now = await orderNow(); ok(now.length === agendaWas.length + 1 && now[evAt + 1] === 'Events and Marketing (copy)', `the copy sits right under the one copied (${now[evAt + 1]})`); }
+  await shot(jane, 'duplicate');
+  await jane.keyboard.type('Golf outing');
+  await sleep(100);
+  await saved(jane);
+  { const all = (await meetingNow(jane, meetingId)).sections.flatMap((x) => x.items);
+    const a = all.find((it) => it.title === 'Events and Marketing');
+    const b = all.find((it) => it.title === 'Golf outing');
+    ok(b && a.id !== b.id && b.report === a.report && b.reportLook === 'cards' && b.reportBy === 'Jane Doe', `saved as its own item with the same report and look (${JSON.stringify(b && [b.id !== a.id, b.reportLook, b.reportBy])})`); }
+  ok(!(await itemMenu(jane, 'Minutes of the', /^Duplicate$/)), 'the minutes’ item, up for approval once, has no Duplicate');
+  await jane.keyboard.press('Escape');
+  await sleep(200);
+  ok(await itemMenu(jane, 'Golf outing', /^Delete the item$/), 'and a copy goes like any item');
+  await jane.waitForFunction(() => ![...document.querySelectorAll('.agx-item__title')].some((t) => t.value === 'Golf outing'), { timeout: 4000 }).catch(() => {});
+  await itemMenu(jane, 'Events and Marketing', /^Delete the report$/);
+  await jane.waitForFunction(() => ![...document.querySelectorAll('.ag-item')].some((x) => x.querySelector('.agx-item__title')?.value === 'Events and Marketing' && x.querySelector('.agx-report')), { timeout: 4000 }).catch(() => {});
+  await sleep(100);
+  await saved(jane);
   // An item's name wraps rather than being cut off, and an empty Who presents is there to see on every item
   await clickText(jane, '.agx-add', /^\+ Add an item$/);
   await sleep(300);
