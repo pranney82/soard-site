@@ -202,7 +202,7 @@ test('GET: facts, or one preview', async (t) => {
   assert.equal(r.headers.get('Cache-Control'), 'private, no-store');
   const p = await r.json();
   assert.equal(p.success, true);
-  assert.equal(p.subject, "We're live: Avery's room reveal");
+  assert.equal(p.subject, 'We’re live: Avery’s room reveal');
   assert.equal((await get('?preview=nope')).status, 404);
 });
 

@@ -94,6 +94,9 @@ export function stripHtml(html) {
     .trim();
 }
 
+/** "Remi & Nico" and "Remi and Nico" take "arrive", not "arrives" */
+export const twoKids = (name) => /\s(&|and)\s/.test(String(name || ''));
+
 /** Typographic apostrophes, so names and copy read like the rest of the email */
 export const curly = (s) => String(s || '').replace(/(\w)'(\w)/g, '$1’$2');
 
@@ -132,9 +135,9 @@ export function pill(text, url, main = false) {
   return `<a href="${href(url)}" target="_blank" style="display:inline-block;padding:${main ? '13px 24px' : '11px 20px'};background:${main ? Y : '#FFFFFF'};border:1.5px solid ${main ? Y : BD};border-radius:100px;font-family:${SANS};font-size:13px;font-weight:600;color:${D};text-decoration:none;margin:0 3px 8px;">${escapeHtml(text)}</a>`;
 }
 
-/** The site's own calendar links for this kid's reveal: they follow JobTread if the date moves */
-export function calendarLinks(slug, site = SITE_URL) {
-  const base = `${site}/api/calendar.ics?reveal=${encodeURIComponent(slug)}`;
+/** The site's own calendar links for this kid's reveal: they follow JobTread if the date moves. watch: for someone watching from home, not a guest. */
+export function calendarLinks(slug, site = SITE_URL, { watch = false } = {}) {
+  const base = `${site}/api/calendar.ics?reveal=${encodeURIComponent(slug)}${watch ? '&watch=1' : ''}`;
   return { google: `${base}&app=google`, apple: base, outlook: `${base}&app=outlook` };
 }
 
@@ -161,9 +164,9 @@ ${rows}
 </center>`;
 }
 
-export function emailHeader(site = SITE_URL) {
-  return `<tr><td style="background:${DD};padding:20px 48px;text-align:center;" class="pd">
-    <a href="${href(site)}" target="_blank" style="display:inline-block;"><img src="${escapeHtml(LOGO)}" width="124" alt="Sunshine on a Ranney Day" style="width:124px;height:auto;" /></a>
+export function emailHeader(site = SITE_URL, { rounded = false, logoWidth = 124, pad = 20 } = {}) {
+  return `<tr><td bgcolor="${DD}" style="background:${DD};padding:${pad}px 48px;text-align:center;${rounded ? 'border-radius:16px 16px 0 0;' : ''}" class="pd${rounded ? ' band' : ''}">
+    <a href="${href(site)}" target="_blank" style="display:inline-block;color:#FFFFFF;text-decoration:none;"><img src="${escapeHtml(LOGO)}" width="${logoWidth}" alt="Sunshine on a Ranney Day" style="display:block;width:${logoWidth}px;height:auto;font-family:${SANS};font-size:13px;line-height:18px;color:#FFFFFF;" /></a>
   </td></tr>`;
 }
 
@@ -300,7 +303,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   ].filter(Boolean);
   const noteLines = String(notes || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
   // The team's own arrival note stands in for ours, so it isn't said twice
-  const arrive = /\barriv|\bearly\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${/\s(&|and)\s/.test(name) ? 'arrive' : 'arrives'}.`;
+  const arrive = /\barriv|\bearly\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${twoKids(name) ? 'arrive' : 'arrives'}.`;
   const before = `
         <tr><td style="padding:16px 0 0;">
           <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#FFF6CC;border-radius:12px;">

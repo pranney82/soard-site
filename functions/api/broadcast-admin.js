@@ -476,7 +476,7 @@ export async function onRequestPost(context) {
         const email = String(body.email || userEmail).trim().toLowerCase();
         if (!notify.isEmail(email)) return fail('email is invalid');
         const state = await b.readState(env.DB);
-        const tpl = notify.reminderEmail({ kind, kidName: state.kidName || 'Sample', scheduledAt: state.scheduledAt || new Date(Date.now() + 86400e3).toISOString(), liveUrl: b.liveUrlFor(state), replayUrl: b.liveUrlFor(state), unsubscribeUrl: `${b.SITE_ORIGIN}/api/reminders?unsubscribe=test`, tz: config.timezone });
+        const tpl = notify.reminderEmail({ ...b.reminderArgs({ ...state, kidName: state.kidName || 'Sample', scheduledAt: state.scheduledAt || new Date(Date.now() + 86400e3).toISOString() }, kind, config), unsubscribeUrl: `${b.SITE_ORIGIN}/api/reminders?unsubscribe=test` });
         const r = await notify.sendEmails(env, { to: [email], subject: `[TEST] ${tpl.subject}`, html: tpl.html, text: tpl.text });
         return Response.json({ success: r.sent > 0, result: r });
       }

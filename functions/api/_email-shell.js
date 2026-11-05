@@ -14,7 +14,7 @@
  */
 
 const Y = '#FFDA24';
-const INK = '#2D2E33';
+export const INK = '#2D2E33';
 const CREAM = '#FEFCF5';
 const PAGE = '#F5F4F0';
 export const MUTED = '#5A5B61';
@@ -40,14 +40,23 @@ export function pill(text, color = STATUS_COLORS[text] || TONES.gray) {
 
 /**
  * A pill button that survives Outlook. kind: 'primary' (yellow), 'dark',
- * 'outline'. Several in a row wrap on a phone.
+ * 'outline'. Several in a row wrap on a phone. big: the one thing the email is
+ * for, an easy thumb target that fills the width on a phone.
  */
-export function button(label, href, kind = 'primary') {
+export function button(label, href, kind = 'primary', { big = false } = {}) {
   const [bg, fg, border] = { primary: [Y, INK, Y], dark: [INK, '#FFFFFF', INK], outline: ['#FFFFFF', INK, '#D4D2CB'] }[kind] || [Y, INK, Y];
-  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="display:inline-table;margin:0 6px 8px 0;border-collapse:separate;"><tr>`
-    + `<td class="btn-${kind}" bgcolor="${bg}" style="border-radius:999px;background:${bg};border:1px solid ${border};mso-padding-alt:11px 20px;">`
-    + `<a href="${esc(href)}" target="_blank" style="display:inline-block;padding:11px 20px;font-family:${SANS};font-size:14px;font-weight:700;line-height:18px;color:${fg};text-decoration:none;border-radius:999px;white-space:nowrap;">${esc(label)}</a>`
+  const pad = big ? '15px 30px' : '11px 20px';
+  const type = big ? 'font-size:16px;font-weight:700;line-height:20px' : 'font-size:14px;font-weight:700;line-height:18px';
+  return `<table role="presentation"${big ? ' class="btn-big"' : ''} cellspacing="0" cellpadding="0" border="0" style="display:inline-table;margin:0 6px 8px 0;border-collapse:separate;"><tr>`
+    + `<td class="btn-${kind}" align="center" bgcolor="${bg}" style="border-radius:999px;background:${bg};border:1px solid ${border};mso-padding-alt:${pad};">`
+    + `<a href="${esc(href)}" target="_blank" style="display:inline-block;padding:${pad};font-family:${SANS};${type};color:${fg};text-decoration:none;border-radius:999px;white-space:nowrap;">${esc(label)}</a>`
     + '</td></tr></table>';
+}
+
+/** Buttons side by side, wrapping on a phone. Outlook can't do either, so it gets a real row. */
+export function buttonRow(buttons) {
+  const gap = '<!--[if mso]></td><td style="padding-left:6px;"><![endif]-->';
+  return `<!--[if mso]><table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td><![endif]-->${buttons.join(gap)}<!--[if mso]></td></tr></table><![endif]-->`;
 }
 
 /** A quiet text link */
@@ -57,6 +66,15 @@ export const link = (label, href) => `<a class="lnk" href="${esc(href)}" target=
 export function paragraphs(text, style = '') {
   return String(text || '').split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
     .map(p => `<p class="ink" style="margin:0 0 14px;${style}">${esc(p).replace(/\n/g, '<br>')}</p>`).join('');
+}
+
+/**
+ * A photo across the card, linked when href is given. Words never sit on it,
+ * so an inbox that blocks pictures loses nothing but the picture.
+ */
+export function heroImage({ src, alt = '', href = '' }) {
+  const img = `<img src="${esc(src)}" width="536" alt="${esc(alt)}" class="muted" style="display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:14px;font-family:${SANS};font-size:14px;line-height:20px;color:${MUTED};" />`;
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="width:100%;margin:0 0 18px;"><tr><td style="font-size:0;line-height:0;">${href ? `<a href="${esc(href)}" target="_blank" style="display:block;text-decoration:none;">${img}</a>` : img}</td></tr></table>`;
 }
 
 /** A white panel inside the card (one family, one fact list) */
@@ -83,21 +101,24 @@ export function facts(rows) {
 
 /**
  * The whole email. heading is plain text; intro and bodyHtml are HTML;
- * footerHtml is the small print under a rule.
+ * footerHtml is the small print under a rule; banner is a table row across the
+ * top of the card (the logo, on an email for the public).
  */
-export function emailShell({ lang = 'en', preheader = '', eyebrow = 'Sunshine on a Ranney Day', heading, intro = '', bodyHtml = '', footerHtml = '' }) {
+export function emailShell({ lang = 'en', preheader = '', eyebrow = 'Sunshine on a Ranney Day', heading, intro = '', bodyHtml = '', footerHtml = '', banner = '' }) {
   return `<!doctype html>
 <html lang="${esc(lang)}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light dark"><meta name="supported-color-schemes" content="light dark">
 <title>${esc(heading)}</title>
+<style>@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@400;600;700&display=swap');</style>
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Libre+Baskerville:wght@400;700&family=Outfit:wght@400;600;700&display=swap');
 body{margin:0;padding:0;-webkit-text-size-adjust:100%}
 table,td{border-collapse:collapse}
-@media (max-width:620px){.card{border-radius:0!important}.pad{padding-left:20px!important;padding-right:20px!important}.h1{font-size:23px!important}}
+a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;font:inherit!important}
+@media (max-width:620px){.card,.band{border-radius:0!important}.wrap{padding-top:0!important}.pad{padding-left:20px!important;padding-right:20px!important}.h1{font-size:23px!important}
+.btn-big{display:table!important;width:100%!important;margin-right:0!important}.btn-big a{display:block!important;text-align:center!important}}
 @media (prefers-color-scheme:dark){
 body,.page{background:#141518!important}.card{background:#1F2024!important}
-.ink,.ink a{color:#ECECEA!important}.muted{color:#ABACB2!important}.eyebrow{color:#E6C744!important}
+.ink,.ink a{color:#ECECEA!important}.muted,a.muted{color:#ABACB2!important}.eyebrow{color:#E6C744!important}
 .panel{background:#26272C!important;border-color:#3A3B41!important}.panel--accent{border-left-color:${Y}!important}.quote{background:#1A1B1F!important}
 .rule{border-color:#3A3B41!important}.btn-outline{background:#26272C!important;border-color:#56575D!important}.btn-outline a{color:#ECECEA!important}
 .btn-primary a{color:${INK}!important}.btn-dark{background:#ECECEA!important;border-color:#ECECEA!important}.btn-dark a{color:#1F2024!important}
@@ -111,9 +132,10 @@ a.lnk{color:#8DB8EC!important}
 </head>
 <body class="page" style="margin:0;padding:0;background:${PAGE};">
 <div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;">${esc(preheader)}${'&#8199;&#65279;&#847;'.repeat(60)}</div>
-<center class="page" style="width:100%;background:${PAGE};padding:28px 0 20px;">
+<center class="page${banner ? ' wrap' : ''}" style="width:100%;background:${PAGE};padding:28px 0 20px;">
+<!--[if mso]><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" align="center"><tr><td><![endif]-->
 <table role="presentation" class="card" cellspacing="0" cellpadding="0" border="0" width="600" style="margin:0 auto;width:100%;max-width:600px;background:${CREAM};border-radius:16px;border-collapse:separate;">
-<tr><td class="pad" style="padding:30px 32px 6px;">
+${banner}<tr><td class="pad" style="padding:30px 32px 6px;">
 <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
 <td valign="middle" style="width:28px;vertical-align:middle;"><div style="width:28px;height:2px;line-height:2px;font-size:0;background:${Y};">&nbsp;</div></td>
 <td class="eyebrow" style="padding-left:10px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">${esc(eyebrow)}</td>
@@ -124,6 +146,7 @@ ${intro ? `<p class="muted" style="margin:0 0 6px;font-family:${SANS};font-size:
 <tr><td class="pad ink" style="padding:14px 32px 22px;font-family:${SANS};font-size:15px;line-height:1.55;color:${INK};">${bodyHtml}</td></tr>
 ${footerHtml ? `<tr><td class="pad rule muted" style="padding:16px 32px 26px;border-top:1px solid ${BORDER};font-family:${SANS};font-size:12px;line-height:1.6;color:#6B6C72;">${footerHtml}</td></tr>` : ''}
 </table>
+<!--[if mso]></td></tr></table><![endif]-->
 <p class="muted" style="margin:16px 0 0;font-family:${SANS};font-size:11px;line-height:1.5;color:#8A8B91;">Sunshine on a Ranney Day &middot; Roswell, Georgia</p>
 </center>
 </body></html>`;

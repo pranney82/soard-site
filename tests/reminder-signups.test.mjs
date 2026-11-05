@@ -113,7 +113,7 @@ test('an email sign-up waits for its link; opening the link only asks; the butto
   assert.equal((await rows()).length, 0, 'not on the list yet');
   const mail = emails.at(-1);
   assert.equal(mail.to[0], 'ana@example.com');
-  assert.match(mail.subject, /Confirm your reminders for Remi's reveal/);
+  assert.match(mail.subject, /Confirm your reminders for Remi’s reveal/);
   const link = confirmLink('ana@example.com');
   const tokenInLink = link.split('confirm=')[1];
   const stored = await DB.prepare('SELECT * FROM broadcast_reminder_pending').all();

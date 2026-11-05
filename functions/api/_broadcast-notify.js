@@ -21,6 +21,8 @@
 
 import { slackCard } from './_slack-cards.js';
 import { logSent, batchIds } from './_email-log.js';
+import { button, buttonRow, emailShell, esc, heroImage, INK, MUTED, panel, SANS, SERIF } from './_email-shell.js';
+import { calendarLinks, curly, emailHeader, twoKids } from './_reveal-invite-email.js';
 
 const RESEND_API = 'https://api.resend.com';
 export const EMAIL_FROM = 'Sunshine on a Ranney Day <sunshine@comms.sunshineonaranneyday.com>';
@@ -131,12 +133,21 @@ export function listUnsubscribeHeaders(url) {
   return { 'List-Unsubscribe': `<${url}>`, 'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click' };
 }
 
+/** "Wednesday, November 18", "Wed, Nov 18" and "4:00 PM EST", apart */
+export function whenParts(iso, tz = 'America/New_York') {
+  if (!iso) return { day: '', short: '', time: '' };
+  const d = new Date(iso);
+  return {
+    day: new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz }).format(d),
+    short: new Intl.DateTimeFormat('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: tz }).format(d),
+    time: new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz, timeZoneName: 'short' }).format(d),
+  };
+}
+
 export function formatWhen(iso, tz = 'America/New_York') {
   if (!iso) return '';
-  const d = new Date(iso);
-  const date = new Intl.DateTimeFormat('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: tz }).format(d);
-  const time = new Intl.DateTimeFormat('en-US', { hour: 'numeric', minute: '2-digit', timeZone: tz, timeZoneName: 'short' }).format(d);
-  return `${date} at ${time}`;
+  const { day, time } = whenParts(iso, tz);
+  return `${day} at ${time}`;
 }
 
 /** The reveal is later today (in the broadcast's time zone): the "day before" reminder says today, not tomorrow */
@@ -441,95 +452,151 @@ export function buildIcs({ uid, title, description, start, durationMin = 60, url
 }
 
 // ─── Reminder copy ──────────────────────────────────────────────────
+// One look for everything a reveal sends: the site's email shell, the official
+// logo, the kid's face, and the day and time in words, never inside a picture.
+// Each email has one job, so the closer the reveal, the shorter it gets.
 
-const Y = '#FFDA24';
-const D = '#2D2E33';
-const CREAM = '#FEFCF5';
+/** Where a reply to a reveal email goes: the sending address is no one's inbox */
+export const REVEAL_REPLY_TO = 'info@soardcharity.com';
 
-function emailShell({ preheader, heading, body, cta, ctaUrl, image, unsubscribeUrl, list = false, footer = null }) {
-  const img = image
-    ? `<tr><td style="padding:0;"><img src="${escapeHtml(image)}" width="600" alt="" style="display:block;width:100%;max-width:600px;height:auto;border-radius:16px 16px 0 0;" /></td></tr>`
-    : '';
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>${escapeHtml(heading)}</title></head>
-<body style="margin:0;padding:0;background:#F5F4F0;font-family:Outfit,Helvetica,Arial,sans-serif;color:${D};">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;">${escapeHtml(preheader || '')}</div>
-<center style="width:100%;background:#F5F4F0;padding:32px 0;">
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" style="margin:0 auto;max-width:600px;background:${CREAM};border-radius:16px;overflow:hidden;">
-${img}
-<tr><td style="padding:32px 32px 8px;">
-  <div style="font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#8A7200;">Sunshine on a Ranney Day</div>
-  <h1 style="font-family:'Libre Baskerville',Georgia,serif;font-size:28px;line-height:1.2;margin:12px 0 16px;">${escapeHtml(heading)}</h1>
-  <div style="font-size:16px;line-height:1.6;">${body}</div>
-</td></tr>
-<tr><td style="padding:8px 32px 32px;">
-  <a href="${escapeHtml(ctaUrl)}" style="display:inline-block;background:${Y};color:${D};font-weight:700;text-decoration:none;padding:14px 24px;border-radius:10px;font-size:16px;">${escapeHtml(cta)}</a>
-</td></tr>
-<tr><td style="padding:16px 32px 28px;font-size:12px;color:#6B6C72;border-top:1px solid #E5E4E0;">
-  ${footer != null ? footer : list
-    ? `You're getting this because you subscribed to updates from Sunshine on a Ranney Day. <a href="${escapeHtml(unsubscribeUrl)}" style="color:#6B6C72;">Unsubscribe</a>.`
-    : `You asked us to remind you about live room reveals. <a href="${escapeHtml(unsubscribeUrl)}" style="color:#6B6C72;">Stop these reminders</a>.`}
-</td></tr>
-</table></center></body></html>`;
+/** What someone who signed up hears, in order. dated: their reveal has a day, so it can't "get a date" */
+export function reminderPlan(hours = [24, 1], { dated = false } = {}) {
+  const notes = [!dated && 'when it gets a date', hours.includes(24) && 'the day before', hours.includes(1) && 'an hour before', 'when we go live'].filter(Boolean);
+  return `${notes.join(', ')}, and when the replay is up`;
+}
+
+const nextNote = (hours) => {
+  const when = [hours.includes(24) && 'the day before', hours.includes(1) && 'an hour before we go live'].filter(Boolean).join(' and ');
+  return when ? `We’ll email you again ${when}.` : '';
+};
+
+/** "Save it to your calendar" and its three buttons: the same links as the reveal invite */
+function calendarBlock(cal, title, main) {
+  const kind = main ? 'primary' : 'outline';
+  return `<p class="ink" style="margin:6px 0 10px;font-family:${SANS};font-size:15px;font-weight:700;line-height:1.4;color:${INK};">${esc(title)}</p>`
+    + buttonRow([['Google', cal.google], ['Apple', cal.apple], ['Outlook', cal.outlook]].map(([l, u]) => button(l, u, kind)));
+}
+
+/** The official logo on its dark band, small: on a phone the reveal comes first */
+const logoBand = (site) => emailHeader(site, { rounded: true, logoWidth: 84, pad: 14 });
+
+const quiet = (text) => `<p class="muted" style="margin:8px 0 0;font-family:${SANS};font-size:14px;line-height:1.55;color:${MUTED};">${text}</p>`;
+
+const SIGNATURE = `<p class="ink" style="margin:22px 0 0;font-family:${SERIF};font-size:15px;font-style:italic;line-height:1.5;color:${INK};">The SOARD Team</p>`;
+
+/** The day and time, the one thing a reader has to be able to find */
+function whenPanel(day, time) {
+  return panel(`<p class="ink" style="margin:0;font-family:${SERIF};font-size:19px;font-weight:700;line-height:1.35;color:${INK};">${esc(day)}</p>`
+    + `<p class="ink" style="margin:3px 0 0;font-family:${SANS};font-size:16px;font-weight:600;line-height:1.4;color:${INK};">${esc(time)}</p>`
+    + `<p class="muted" style="margin:5px 0 0;font-family:${SANS};font-size:13px;line-height:1.5;color:${MUTED};">Live on our website and Facebook</p>`, { accent: true });
 }
 
 /**
  * kind: 'scheduled' | 'moved' | 'day' | 'hour' | 'live' | 'replay'
  * list: true for newsletter-list sends (Kit), which get list footer copy
- *       instead of "you asked for reminders".
+ *       instead of "you asked for reminders", and no promise of notes they
+ *       didn't ask for.
+ * Fill it from reminderArgs (_broadcast.js), so a test can't differ from the real thing.
  */
-export function reminderEmail({ kind, kidName, scheduledAt, liveUrl, replayUrl, image, unsubscribeUrl, tz, list = false }) {
-  const who = kidName ? `${kidName}'s` : 'the next';
-  const when = formatWhen(scheduledAt, tz);
+export function reminderEmail({ kind, kidName, kidSlug = null, scheduledAt, liveUrl, replayUrl, image, unsubscribeUrl, tz, hours = [24, 1], signUpOpen = true, list = false, site = SITE_ORIGIN, now = Date.now() }) {
+  const name = kidName ? curly(kidName) : '';
+  // With no kid named: "the next" until it starts, then "the", because it isn't next any more
+  const over = kind === 'live' || kind === 'replay';
+  const who = name ? `${name}’s` : over ? 'the' : 'the next';
+  const Who = name ? `${name}’s` : over ? 'The' : 'The next';
+  const { day, short, time } = whenParts(scheduledAt, tz);
+  const when = `${day} at ${time}`;
   // A countdown that goes up on the day itself sends its "day before" reminder the same day
-  const today = isRevealToday(scheduledAt, tz);
+  const today = isRevealToday(scheduledAt, tz, now);
+  const cal = kidSlug ? calendarLinks(kidSlug, site, { watch: true }) : null;
+  const ahead = list ? (signUpOpen ? 'Want a reminder before it starts? Sign up on the reveal page.' : '') : nextNote(hours);
   const map = {
     scheduled: {
       subject: `Save the date: ${who} room reveal`,
       preheader: `We go live ${when}.`,
-      heading: `${who.charAt(0).toUpperCase() + who.slice(1)} reveal is coming`,
-      body: `<p>We're building something wonderful, and you're invited to watch the moment it's unveiled.</p><p><strong>${escapeHtml(when)}</strong></p><p>We'll remind you the day before and again an hour before we go live. The stream plays right on our site, and on Facebook.</p>`,
+      eyebrow: `Save the date · ${short}`,
+      heading: `${Who} reveal is coming`,
+      intro: `We’re building something wonderful${name ? ` for ${name}` : ''}, and you’re invited to watch the moment it’s unveiled.`,
+      showWhen: true, calendar: 'Save it to your calendar', calendarFirst: true, signed: true,
+      note: ahead,
       cta: 'See the reveal page', ctaUrl: liveUrl,
     },
     moved: {
       subject: `New date: ${who} room reveal`,
       preheader: `We now go live ${when}.`,
-      heading: `${who.charAt(0).toUpperCase() + who.slice(1)} reveal has a new date`,
-      body: `<p>The reveal moved. Here's the new time:</p><p><strong>${escapeHtml(when)}</strong></p><p>We'll remind you the day before and again an hour before we go live.</p>`,
+      eyebrow: `New date · ${short}`,
+      heading: `${Who} reveal has a new date`,
+      intro: 'The reveal moved. Here’s the new day and time.',
+      showWhen: true, calendar: 'Save the new date', calendarFirst: true, signed: true,
+      note: `Already saved the old date? Delete that one from your calendar. ${ahead}`.trim(),
       cta: 'See the reveal page', ctaUrl: liveUrl,
     },
     day: {
       subject: `${today ? 'Today' : 'Tomorrow'}: ${who} room reveal, live`,
       preheader: `We go live ${when}.`,
-      heading: `${today ? 'Today' : 'Tomorrow'} is reveal day`,
-      body: `<p>${escapeHtml(who.charAt(0).toUpperCase() + who.slice(1))} reveal streams live <strong>${escapeHtml(when)}</strong>.</p><p>Bookmark the page below. It flips to the live video the moment we start.</p>`,
+      eyebrow: `${today ? 'Today' : 'Tomorrow'} · ${short}`,
+      heading: `${today ? 'Today' : 'Tomorrow'} is ${name ? `${name}’s reveal day` : 'reveal day'}`,
+      intro: `Come watch the moment ${name || 'the family'} first ${twoKids(name) ? 'see' : 'sees'} the finished room.`,
+      showWhen: true, calendar: 'Not on your calendar yet?', signed: true,
+      note: 'The page turns into the live video the moment we start.',
       cta: 'Open the reveal page', ctaUrl: liveUrl,
     },
     hour: {
       subject: `One hour to go: ${who} reveal`,
-      preheader: `Live at ${when}.`,
-      heading: `We go live in about an hour`,
-      body: `<p>${escapeHtml(who.charAt(0).toUpperCase() + who.slice(1))} reveal starts <strong>${escapeHtml(when)}</strong>. Get comfortable and keep this page open.</p>`,
-      cta: 'Watch when we go live', ctaUrl: liveUrl,
+      preheader: `We go live at ${time}.`,
+      eyebrow: 'One hour to go',
+      heading: `We go live at ${time}`,
+      intro: `${Who} reveal starts in about an hour. Tap below when it’s time.`,
+      cta: 'Watch the reveal', ctaUrl: liveUrl,
     },
     live: {
-      subject: `We're live: ${who} room reveal`,
+      subject: `We’re live: ${who} room reveal`,
       preheader: 'Watch the reveal happening right now.',
-      heading: `We're live right now`,
-      body: `<p>${escapeHtml(who.charAt(0).toUpperCase() + who.slice(1))} reveal is happening this minute. Come watch.</p>`,
+      eyebrow: 'Live now',
+      heading: `${Who} reveal is live`,
+      intro: 'It’s happening this minute. Come watch.',
       cta: 'Watch live', ctaUrl: liveUrl,
     },
     replay: {
       subject: `Watch the replay: ${who} room reveal`,
       preheader: 'Missed it live? The full reveal is ready to watch.',
-      heading: `The reveal, ready to watch`,
-      body: `<p>Thank you for cheering along. The full recording of ${escapeHtml(who)} reveal is up now.</p><p>If it moved you, the fastest way to help the next family is a gift toward the next room.</p>`,
+      eyebrow: 'Replay',
+      heading: `Watch ${who} reveal`,
+      intro: 'Thank you for cheering along. The full recording is up now, ready any time you are.',
+      signed: true,
       cta: 'Watch the replay', ctaUrl: replayUrl || liveUrl,
+      extra: { label: 'Donate', url: `${site}/donate/`, kind: 'outline' },
     },
   };
   const t = map[kind] || map.live;
-  const html = emailShell({ ...t, image, unsubscribeUrl, list });
-  const text = `${t.heading}\n\n${t.body.replace(/<[^>]+>/g, '')}\n\n${t.cta}: ${t.ctaUrl}\n\nStop these reminders: ${unsubscribeUrl}`;
-  return { subject: t.subject, html, text };
+  const lead = button(t.cta, t.ctaUrl, 'primary', { big: true });
+  const second = button(t.cta, t.ctaUrl, 'outline');
+  const calendar = cal && t.calendar ? calendarBlock(cal, t.calendar, !!t.calendarFirst) : '';
+  const bodyHtml = [
+    image && heroImage({ src: image, alt: name ? `${name}’s reveal` : 'A room reveal', href: t.ctaUrl }),
+    t.showWhen && `${whenPanel(day, time)}<div style="height:4px;line-height:4px;font-size:0;">&nbsp;</div>`,
+    // A save-the-date's job is the calendar; every other email's is the page
+    calendar && t.calendarFirst ? `${calendar}<div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>${second}` : lead,
+    t.extra && button(t.extra.label, t.extra.url, t.extra.kind),
+    t.note && quiet(esc(t.note)),
+    calendar && !t.calendarFirst && `<div style="height:14px;line-height:14px;font-size:0;">&nbsp;</div>${calendar}`,
+    t.signed && SIGNATURE,
+  ].filter(Boolean).join('');
+  const stop = list ? 'Unsubscribe' : 'Stop these reminders';
+  const footerHtml = `${list ? 'You’re getting this because you subscribed to updates from Sunshine on a Ranney Day.' : 'You asked us to remind you about live room reveals.'} <a class="muted" href="${esc(unsubscribeUrl)}" target="_blank" style="color:#6B6C72;text-decoration:underline;">${stop}</a>.`;
+  const html = emailShell({ preheader: t.preheader, eyebrow: t.eyebrow, heading: t.heading, intro: esc(t.intro), bodyHtml, footerHtml, banner: logoBand(site) });
+  const text = [
+    t.heading, '',
+    t.intro, '',
+    t.showWhen && `${when}\nLive on our website and Facebook\n`,
+    cal && t.calendar && `${t.calendar}\nGoogle: ${cal.google}\nApple: ${cal.apple}\nOutlook: ${cal.outlook}\n`,
+    `${t.cta}: ${t.ctaUrl}`,
+    t.extra && `${t.extra.label}: ${t.extra.url}`,
+    t.note && `\n${t.note}`,
+    t.signed && '\nThe SOARD Team\nSunshine on a Ranney Day',
+    `\n${stop}: ${unsubscribeUrl}`,
+  ].filter((l) => l !== false && l !== null && l !== undefined && (l === '' || l)).join('\n');
+  return { subject: t.subject, preheader: t.preheader, html, text };
 }
 
 export function reminderPush({ kind, kidName, scheduledAt, tz, liveUrl, replayUrl, image }) {
@@ -552,19 +619,25 @@ export function reminderPush({ kind, kidName, scheduledAt, tz, liveUrl, replayUr
 // ─── Sign-up confirmations ──────────────────────────────────────────
 
 /** The one email a new address gets before any reminder: a link that confirms it */
-export function confirmEmail({ confirmUrl, kidName }) {
-  const what = kidName ? `${kidName}'s room reveal` : 'our live room reveals';
+export function confirmEmail({ confirmUrl, kidName, hours = [24, 1], dated = false, site = SITE_ORIGIN }) {
+  const name = kidName ? curly(kidName) : '';
+  const what = name ? `${name}’s room reveal` : 'our live room reveals';
   const t = {
-    subject: kidName ? `Confirm your reminders for ${kidName}'s reveal` : 'Confirm your reveal reminders',
-    preheader: "One tap and you're on the list.",
-    heading: 'One tap to confirm',
-    body: `<p>Someone asked us to email this address about ${escapeHtml(what)}. If that was you, tap the button and you're on the list.</p><p>If it wasn't you, ignore this email. We won't send anything else.</p>`,
-    cta: 'Yes, remind me', ctaUrl: confirmUrl,
+    subject: name ? `Confirm your reminders for ${name}’s reveal` : 'Confirm your reveal reminders',
+    preheader: 'Tap below, then once more on the page that opens.',
+    heading: 'Confirm your reminders',
+    intro: `We’ll email you about ${what}: ${reminderPlan(hours, { dated })}. Tap below, then once more on the page that opens.`,
+    ignore: 'Didn’t ask for this? Ignore this email and you won’t hear from us again.',
+    cta: 'Yes, remind me',
   };
   const footer = 'You got this one email because someone entered this address on a reveal page at sunshineonaranneyday.com. The link works for 3 days.';
-  const html = emailShell({ ...t, footer: escapeHtml(footer) });
-  const text = `${t.heading}\n\nSomeone asked us to email this address about ${what}. If that was you, open this link and you're on the list:\n${confirmUrl}\n\nIf it wasn't you, ignore this email. We won't send anything else.`;
-  return { subject: t.subject, html, text };
+  const html = emailShell({
+    preheader: t.preheader, eyebrow: 'Reveal reminders', heading: t.heading, intro: esc(t.intro),
+    bodyHtml: button(t.cta, confirmUrl, 'primary', { big: true }) + quiet(esc(t.ignore)),
+    footerHtml: esc(footer), banner: logoBand(site),
+  });
+  const text = `${t.heading}\n\n${t.intro}\n\n${t.cta}: ${confirmUrl}\n\n${t.ignore}`;
+  return { subject: t.subject, preheader: t.preheader, html, text };
 }
 
 // ─── Staff alert texts ──────────────────────────────────────────────

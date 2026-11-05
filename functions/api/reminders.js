@@ -151,7 +151,7 @@ export async function onRequestGet(context) {
       const signedUpFor = await env.DB.prepare('SELECT kid_slug, unsubscribed_at FROM broadcast_reminders WHERE channel = ? AND address = ?').bind(row.channel, row.address).first();
       const widens = signedUpFor && !signedUpFor.unsubscribed_at && signedUpFor.kid_slug !== row.kid_slug;
       const kid = widens ? null : await knownKid(env.DB, row.kid_slug);
-      return page('Confirm your reminders', `<p>Tap the button and we'll email <strong>${notify.escapeHtml(row.address)}</strong> ${whatTheyHear(kid, config)}.</p>`,
+      return page('Confirm your reminders', `<p>Tap the button and we'll email <strong>${notify.escapeHtml(row.address)}</strong> ${whatTheyHear(kid, config, await readState(env.DB))}.</p>`,
         { button: { action: `/api/reminders?confirm=${encodeURIComponent(t)}`, label: 'Yes, remind me' } });
     }
 
@@ -188,10 +188,13 @@ function pausedPage() {
 }
 
 /** "about Max's room reveal: when it gets a date, the day before…", as Settings has the notes */
-function whatTheyHear(kid, config) {
-  const hours = Array.isArray(config.reminders?.hoursBefore) ? config.reminders.hoursBefore : [24, 1];
-  const notes = ['when it gets a date', hours.includes(24) && 'the day before', hours.includes(1) && 'an hour before', 'when we go live', 'and when the replay is up'].filter(Boolean).join(', ');
-  return `about ${kid?.name ? `${notify.escapeHtml(kid.name)}'s room reveal` : 'every reveal'}: ${notes}`;
+const hoursOf = (config) => (Array.isArray(config.reminders?.hoursBefore) ? config.reminders.hoursBefore : [24, 1]);
+
+/** Their reveal is already on the countdown, so no save-the-date is coming */
+const dated = (kid, state) => !!kid && state.kidSlug === kid.slug && !!state.scheduledAt;
+
+function whatTheyHear(kid, config, state) {
+  return `about ${kid?.name ? `${notify.escapeHtml(kid.name)}'s room reveal` : 'every reveal'}: ${notify.reminderPlan(hoursOf(config), { dated: dated(kid, state) })}`;
 }
 
 function expiredPage() {
@@ -318,21 +321,21 @@ export async function onRequestPost(context) {
     }
     // Links nobody used
     await env.DB.prepare('DELETE FROM broadcast_reminder_pending WHERE expires_at < ?').bind(nowIso()).run();
-    return await emailSignup(context, { address, kid, source });
+    return await emailSignup(context, { address, kid, source, config });
   } catch (err) {
     return json({ ok: false, error: 'Something went wrong. Please try again.', detail: err.message }, 500);
   }
 }
 
 /** Email: hold the sign-up and send the link that confirms it */
-async function emailSignup(context, { address, kid, source }) {
+async function emailSignup(context, { address, kid, source, config }) {
   const { env } = context;
   const t = token(32);
   const id = crypto.randomUUID();
   await env.DB.prepare(`INSERT INTO broadcast_reminder_pending (id, channel, address, kid_slug, source, secret_hash, attempts, expires_at, created_at) VALUES (?, 'email', ?, ?, ?, ?, 0, ?, ?)`)
     .bind(id, address, kid?.slug || null, source, await notify.sha256Hex(t), new Date(Date.now() + CONFIRM_TTL_MS).toISOString(), nowIso()).run();
-  const mail = notify.confirmEmail({ confirmUrl: `${SITE}/api/reminders?confirm=${t}`, kidName: kid?.name || null });
-  const sent = await notify.sendEmailItems(env, [{ to: address, ...mail }], { tags: [{ name: 'category', value: 'reminder-confirm' }] });
+  const mail = notify.confirmEmail({ confirmUrl: `${SITE}/api/reminders?confirm=${t}`, kidName: kid?.name || null, hours: hoursOf(config), dated: dated(kid, await readState(env.DB)) });
+  const sent = await notify.sendEmailItems(env, [{ to: address, ...mail }], { replyTo: notify.REVEAL_REPLY_TO, tags: [{ name: 'category', value: 'reminder-confirm' }] });
   if (!sent.sent) {
     await env.DB.prepare('DELETE FROM broadcast_reminder_pending WHERE id = ?').bind(id).run();
     return json({ ok: false, error: "We couldn't send the email just now. Please try again in a minute." }, 500);
@@ -369,7 +372,7 @@ async function confirm(context, url) {
     later(context, signedUp(env, 'email', row));
     // What they're really on the list for: a different reveal than before means every reveal
     const now = await env.DB.prepare('SELECT kid_slug FROM broadcast_reminders WHERE channel = ? AND address = ?').bind(row.channel, row.address).first();
-    return page("You're on the list", `<p>We'll email you ${whatTheyHear(await knownKid(env.DB, now?.kid_slug), config)}. Nothing else, ever.</p>`);
+    return page("You're on the list", `<p>We'll email you ${whatTheyHear(await knownKid(env.DB, now?.kid_slug), config, await readState(env.DB))}. Nothing else, ever.</p>`);
   } catch {
     return page('Something went wrong', '<p>Please open the link from your email again in a minute.</p>', { status: 500 });
   }

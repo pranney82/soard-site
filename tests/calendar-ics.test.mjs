@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import { onRequestGet, parseEventTime } from '../functions/api/calendar.ics.js';
+import { readState, writeState } from '../functions/api/_broadcast.js';
 import { calendarIcsUrl, hmacSha256Hex, signCalendarParams } from '../functions/api/_calendar-links.js';
 
 const SITE = 'https://sunshineonaranneyday.com';
@@ -111,6 +112,33 @@ test('?reveal=<kid slug>: the confirmed reveal, and never an address', async () 
   assert.equal(field('URL'), `${SITE}/kids/rowan-test/`);
   assert.equal(field('UID'), 'reveal-rowan-test-20270312@sunshineonaranneyday.com', 'the same uid as the email, so calendars update it');
   assert.equal(jobtreadCalls, 0, 'answered from the reveal cache');
+});
+
+test('&watch=1: someone watching from home gets the live page and an hour’s warning, and a guest’s invite stays as it was', async () => {
+  const { field, text } = await ics(`reveal=${REVEAL.slug}&watch=1`);
+  assert.equal(field('SUMMARY'), `${REVEAL.name}'s room reveal, live`);
+  assert.equal(field('LOCATION'), `${SITE}/live/${REVEAL.slug}/`);
+  assert.equal(field('URL'), `${SITE}/live/${REVEAL.slug}/`);
+  assert.match(field('DESCRIPTION'), /^Watch it live: https:/);
+  assert.match(text, /BEGIN:VALARM\r?\nACTION:DISPLAY\r?\nTRIGGER:-PT60M/);
+  assert.match(field('UID'), /^reveal-watch-/);
+  const guest = await ics(`reveal=${REVEAL.slug}`);
+  assert.equal(guest.field('SUMMARY'), `${REVEAL.name}'s Reveal Day`);
+  assert.doesNotMatch(guest.text, /VALARM/);
+  const google = await get(`reveal=${REVEAL.slug}&watch=1&app=google`);
+  assert.equal(google.status, 302);
+  assert.match(decodeURIComponent(google.headers.get('Location')), /live\//);
+});
+
+test('&watch=1 also knows a reveal scheduled by hand in the admin; nobody else’s name gets a calendar', async () => {
+  await refused('reveal=hand-made&watch=1');
+  await writeState(env.DB, { ...(await readState(env.DB)), kidSlug: 'hand-made', kidName: 'Sage', scheduledAt: '2027-03-12T20:00:00.000Z' });
+  const { field } = await ics('reveal=hand-made&watch=1');
+  assert.equal(field('SUMMARY'), "Sage's room reveal, live");
+  assert.match(field('DTSTART'), /^20270312T200000Z/);
+  await refused('reveal=hand-made'); // a guest's link only ever comes from JobTread
+  await refused('reveal=someone-else&watch=1');
+  await writeState(env.DB, { ...(await readState(env.DB)), kidSlug: null, kidName: null, scheduledAt: null });
 });
 
 test('old email links are served as the reveal they name, as it is now; nothing from the link is used', async () => {

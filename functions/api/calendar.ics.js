@@ -13,6 +13,10 @@
  *                       reveal cache (./_reveals.js), else the live broadcast's
  *                       plan, which also knows rehearsals from a "TEST …" job
  *                       (marked TEST). The day and time, never an address.
+ *                       Add &watch=1 for someone watching from home (the
+ *                       reminder emails): the live page and an hour's warning,
+ *                       not the guests' "be there", and it also knows a reveal
+ *                       scheduled by hand in the admin.
  *   signed fields       title, start, end, allday, location, details, url, uid
  *                       and sig = HMAC-SHA256 with CALENDAR_LINK_SECRET: the
  *                       email's own words, exactly as staff wrote them
@@ -38,9 +42,12 @@ import { verifyCalendarParams, SITE_URL } from './_calendar-links.js';
 import { easternParts, easternToUtcIso, normalizeName, getReveals, todayEastern } from './_reveals.js';
 import { limit } from './_rate-limit.js';
 import { ical, fold } from './_ics.js';
+import { readState } from './_broadcast.js';
 
 const PRODID = '-//Sunshine on a Ranney Day//Reveal Invite//EN';
 const REVEAL_MINUTES = 120;              // the reveal email's own default length
+const WATCH_MINUTES = 60;                // watching from home
+const WATCH_ALERT_MINUTES = 60;
 const REVEAL_CACHE_FRESH_MS = 15 * 60 * 1000;
 
 function isCompactDateTime(s) { return /^\d{8}T\d{6}Z$/.test(s); }
@@ -173,19 +180,31 @@ async function currentReveal(env, slug) {
   return all.find((r) => !r.test) || all[0] || null;
 }
 
-function revealEvent(r) {
+function revealEvent(r, { watch = false } = {}) {
   const day = r.date;
   let start, end, allDay = false;
   if (r.time) {
     const s = new Date(r.startsAt || easternToUtcIso(day, r.time));
     start = compactUtc(s);
-    end = compactUtc(new Date(s.getTime() + REVEAL_MINUTES * 60e3));
+    end = compactUtc(new Date(s.getTime() + (watch ? WATCH_MINUTES : REVEAL_MINUTES) * 60e3));
   } else {
     allDay = true;
     start = ymd(day);
     end = nextDay(start);
   }
   const kidUrl = `${SITE_URL}/kids/${r.slug}/`;
+  if (watch) {
+    const liveUrl = `${SITE_URL}/live/${r.slug}/`;
+    return {
+      uid: `reveal-watch-${r.slug}-${ymd(day)}@sunshineonaranneyday.com`,
+      title: `${r.test ? 'TEST · ' : ''}${r.name}'s room reveal, live`,
+      start, end, allDay,
+      location: liveUrl,
+      details: `Watch it live: ${liveUrl}\n\nThe page turns into the live video the moment we start.`,
+      url: liveUrl,
+      alertMinutes: WATCH_ALERT_MINUTES,
+    };
+  }
   return {
     uid: `reveal-${r.slug}-${ymd(day)}@sunshineonaranneyday.com`,
     title: `${r.test ? 'TEST · ' : ''}${r.name}'s Reveal Day`,
@@ -201,6 +220,15 @@ function revealEvent(r) {
 async function revealInvite(env, slug) {
   const r = await currentReveal(env, slug);
   return r ? revealEvent(r) : null;
+}
+
+/** The kid's reveal for someone watching from home, including one scheduled by hand, which JobTread's list doesn't have */
+async function watchInvite(env, slug) {
+  const r = await currentReveal(env, slug);
+  if (r) return revealEvent(r, { watch: true });
+  const s = await readState(env.DB).catch(() => null);
+  const when = s?.kidSlug === slug && s.kidName && s.scheduledAt ? easternParts(s.scheduledAt) : null;
+  return when ? revealEvent({ slug, name: s.kidName, ...when, startsAt: s.scheduledAt, test: !!s.test }, { watch: true }) : null;
 }
 
 /** Signed by the site: the fields as given */
@@ -266,7 +294,7 @@ export async function onRequestGet(context) {
   let ev = null;
   try {
     if (q.has('event')) ev = await eventInvite(env, q.get('event'));
-    else if (q.has('reveal')) ev = await revealInvite(env, q.get('reveal'));
+    else if (q.has('reveal')) ev = q.get('watch') === '1' ? await watchInvite(env, q.get('reveal')) : await revealInvite(env, q.get('reveal'));
     else if (q.has('start')) {
       // Signed by the site: as written. A signature that can't be checked (the
       // secret changed or was removed) falls back to matching, like an old link.
@@ -308,7 +336,7 @@ function appRedirect(app, { title, start, end, allDay, location, details }) {
   return new Response(null, { status: 302, headers: { Location: to, 'Cache-Control': 'public, max-age=300', 'X-Robots-Tag': 'noindex' } });
 }
 
-function icsResponse({ uid, title, start, end, allDay, location, details, url: eventUrl }) {
+function icsResponse({ uid, title, start, end, allDay, location, details, url: eventUrl, alertMinutes = 0 }) {
   const dtstamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '');
 
   const lines = [
@@ -327,6 +355,7 @@ function icsResponse({ uid, title, start, end, allDay, location, details, url: e
   if (location) lines.push(`LOCATION:${ical(location)}`);
   if (details) lines.push(`DESCRIPTION:${ical(details)}`);
   if (eventUrl) lines.push(`URL:${ical(eventUrl)}`);
+  if (alertMinutes) lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', `TRIGGER:-PT${alertMinutes}M`, `DESCRIPTION:${ical(title)}`, 'END:VALARM');
   lines.push('END:VEVENT', 'END:VCALENDAR');
 
   const body = lines.map(fold).join('\r\n') + '\r\n';

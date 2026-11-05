@@ -91,7 +91,7 @@ test('scheduled reveal going live emails the whole Kit list once', async () => {
   const sends = liveKitPosts();
   assert.equal(sends.length, 1);
   const k = sends[0];
-  assert.match(k.subject, /We're live: Remi's room reveal/);
+  assert.match(k.subject, /We’re live: Remi’s room reveal/);
   assert.ok(Date.parse(k.send_at) > Date.now(), 'scheduled a moment ahead so Kit accepts it');
   assert.equal(k.subscriber_filter, undefined, 'no filter = every subscriber');
   assert.match(k.content, /\{\{ unsubscribe_url \}\}/);
@@ -180,7 +180,7 @@ test('unscheduled: the Facebook live post names the kid', async () => {
   assert.ok(t.work.includes('kid:marilyn:facebook-live'), t.work.join(','));
   assert.ok(t.work.includes('kit-live'), t.work.join(','));
   const k = liveKitPosts()[0];
-  assert.match(k.subject, /Marilyn's room reveal/);
+  assert.match(k.subject, /Marilyn’s room reveal/);
   assert.match(k.content, /live\/marilyn\//);
   const st = await b.readState(env.DB);
   assert.equal(st.kidSlug, 'marilyn');
@@ -197,7 +197,7 @@ test('unscheduled: a recent Page post names the kid', async () => {
   kitPosts.length = 0;
   const t = await goLiveSteady();
   assert.ok(t.work.includes('kid:remi:facebook-post'), t.work.join(','));
-  assert.match(liveKitPosts()[0].subject, /Remi's room reveal/);
+  assert.match(liveKitPosts()[0].subject, /Remi’s room reveal/);
   await endAndReset();
 });
 
@@ -212,7 +212,7 @@ test('unscheduled with no clue waits for the kid; picking one sends right away',
   const u = await b.adminAction(env, 'update', { kidSlug: 'remi' }, 'peter@test');
   assert.equal(u.success, true, u.error);
   assert.equal(liveKitPosts().length, 1);
-  assert.match(liveKitPosts()[0].subject, /Remi's room reveal/);
+  assert.match(liveKitPosts()[0].subject, /Remi’s room reveal/);
   await endAndReset();
 });
 

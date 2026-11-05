@@ -301,6 +301,9 @@ const STATUS_KINDS = { 'app-welcome': 'welcome', 'app-in-review': 'inReview', 'a
 // The same emails to an organization (the community project application), in its own wording
 const ORG_STATUS_KINDS = { 'org-welcome': 'welcome', 'org-in-review': 'inReview', 'org-approved': 'approved', 'org-denied': 'denied' };
 const ORG_SAMPLE = { parent: 'Jordan Lee', child: 'Sunnyside Academy' };
+/** A reveal for the previews, with a picture and calendar buttons, because the real emails have them */
+const REMINDER_SAMPLE = (scheduledAt, liveUrl) => ({ kidName: SAMPLE.childFirst, kidSlug: 'avery', scheduledAt, liveUrl, image: TEAM_PICTURE, unsubscribeUrl: '#', tz: TZ });
+
 const REMINDER_KINDS = { 'rem-scheduled': 'scheduled', 'rem-moved': 'moved', 'rem-day': 'day', 'rem-hour': 'hour', 'rem-live': 'live', 'rem-replay': 'replay' };
 const sampleApplicationUrl = `${SITE_ORIGIN}/apply/form/?resume=sample`;
 
@@ -476,7 +479,7 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
   if (ORG_STATUS_KINDS[id]) return jobtreadPreview(env, ORG_STATUS_KINDS[id], 'en', { formKind: 'organization' });
   if (REMINDER_KINDS[id]) {
     const kind = REMINDER_KINDS[id];
-    const args = { kind, kidName: SAMPLE.childFirst, scheduledAt, liveUrl: live, replayUrl: live, unsubscribeUrl: '#', tz: TZ };
+    const args = { ...REMINDER_SAMPLE(scheduledAt, live), kind, replayUrl: live };
     return email(notify.reminderEmail(args), {
       to: 'Everyone who asked for reveal reminders on the website',
       push: notify.reminderPush(args),
@@ -519,11 +522,11 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
     case 'rem-confirm':
       return email(notify.confirmEmail({ confirmUrl: '#', kidName: SAMPLE.childFirst }), { to: 'A new address signed up on a reveal page' });
     case 'kit-live': {
-      const m = notify.reminderEmail({ kind: 'live', kidName: SAMPLE.childFirst, scheduledAt, liveUrl: live, unsubscribeUrl: '#', tz: TZ, list: true });
+      const m = notify.reminderEmail({ ...REMINDER_SAMPLE(scheduledAt, live), kind: 'live', list: true });
       return { channel: 'kit', from: KIT_FROM, to: 'The whole newsletter list (not waitlist-only families)', subject: m.subject, html: m.html, text: m.text, send: 'email' };
     }
     case 'kit-drafts': {
-      const m = notify.reminderEmail({ kind: 'scheduled', kidName: SAMPLE.childFirst, scheduledAt, liveUrl: live, unsubscribeUrl: '#', tz: TZ, list: true });
+      const m = notify.reminderEmail({ ...REMINDER_SAMPLE(scheduledAt, live), kind: 'scheduled', list: true });
       return { channel: 'kit', from: KIT_FROM, to: 'Nobody until staff send it from Kit', subject: m.subject, html: m.html, text: m.text, note: 'This is the “Save the date” draft. “New date” and “Watch the replay” drafts follow the same design.', send: 'email' };
     }
     case 'staff-new-app': {

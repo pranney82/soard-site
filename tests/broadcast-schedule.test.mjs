@@ -178,7 +178,7 @@ test('sync: a confirmed reveal puts the countdown up, as JobTread, with a save-t
   assert.equal(st.scheduledAt, at(5));
   assert.equal(st.updatedBy, 'JobTread');
   assert.equal(emails.length, 1);
-  assert.match(emails[0].subject, /Save the date: Max's room reveal/);
+  assert.match(emails[0].subject, /Save the date: Max’s room reveal/);
   const row = await env.DB.prepare('SELECT data FROM broadcasts WHERE id = ?').bind(st.broadcastId).first();
   assert.equal(JSON.parse(row.data).jobId, 'jobMax0001', 'History rows know their job (the tracker matches sends by it)');
   assert.equal(r.record.next.jobId, 'jobMax0001');
@@ -253,7 +253,7 @@ test('sync: a new time the same day moves it quietly; a new day re-arms reminder
   st = await b.readState(env.DB);
   assert.equal(st.scheduledAt, at(9));
   assert.equal(emails.length, 2);
-  assert.match(emails[1].subject, /New date: Max's room reveal/);
+  assert.match(emails[1].subject, /New date: Max’s room reveal/);
   const kinds = (await env.DB.prepare('SELECT kind FROM broadcast_sends WHERE broadcast_id = ?').bind(st.broadcastId).all()).results.map((x) => x.kind).sort();
   assert.deepEqual(kinds, ['moved', 'scheduled'], 'the day-before reminder goes out again for the new date');
   const ev = await env.DB.prepare("SELECT meta FROM broadcast_events WHERE broadcast_id = ? AND type = 'moved'").bind(st.broadcastId).first();
@@ -387,7 +387,7 @@ test('a new day rewrites the Kit save-the-date draft while it is a draft, or mak
   await sync();
   const posts = kit.calls.filter((c) => c.method === 'POST');
   assert.equal(posts.length, 2, 'the old one went out already: a new-date draft instead');
-  assert.match(posts[1].body.subject, /New date: Max's room reveal/);
+  assert.match(posts[1].body.subject, /New date: Max’s room reveal/);
   assert.equal(kit.calls.filter((c) => c.method === 'PUT').length, 1, 'a sent broadcast is never edited');
   assert.equal((await b.readState(env.DB)).kit.scheduledDraftId, 102);
 });
@@ -398,7 +398,7 @@ test('a countdown that goes up on the day itself says today, not tomorrow', () =
   const tomorrow = at(1);
   if (isRevealToday(later, tz)) {
     const common = { kind: 'day', kidName: 'Max', scheduledAt: later, tz, liveUrl: 'https://x/live/max/', unsubscribeUrl: 'u' };
-    assert.match(reminderEmail(common).subject, /^Today: Max's room reveal/);
+    assert.match(reminderEmail(common).subject, /^Today: Max’s room reveal/);
     assert.equal(reminderPush(common).title, 'Today is reveal day');
   }
   assert.equal(isRevealToday(tomorrow, tz), false);
@@ -437,7 +437,7 @@ test('rehearsal end to end: the real path runs, the public sees nothing, reminde
   // Reminders: the test address only, marked TEST
   const toOf = (e) => [].concat(e.to).join(',');
   assert.deepEqual(emails.map(toOf), ['peter@soardcharity.com'], 'the subscriber gets nothing');
-  assert.match(emails[0].subject, /^TEST · Save the date: Isla's room reveal/);
+  assert.match(emails[0].subject, /^TEST · Save the date: Isla’s room reveal/);
   assert.equal(kit.calls.length, 0, 'no Kit drafts for a rehearsal');
   assert.ok(slack.some((t) => t.includes("Countdown is up: Isla's reveal") && t.includes('Test reveal · not a real family') && t.includes('rehearsal')), slack.join('\n'));
   // Moves and take-down follow JobTread the same way

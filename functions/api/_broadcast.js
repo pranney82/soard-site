@@ -49,6 +49,7 @@ import * as reels from './_broadcast-reel.js';
 import * as monitor from './_broadcast-monitor.js';
 import * as preflight from './_broadcast-preflight.js';
 import { testGuests } from './_reveal-invites.js';
+import { cfImg, HERO_TRANSFORM } from './_reveal-invite-email.js';
 
 export const STATE_KEY = 'broadcast';
 export const CONFIG_KEY = 'broadcast-config';
@@ -692,11 +693,11 @@ export function tClear(state, note, by) {
  * test address (the reveal invites' test guests), marked TEST. Nobody who
  * signed up gets anything, and no texts or browser alerts go out.
  */
-async function sendTestReminder(env, state, kind, work, summary) {
+async function sendTestReminder(env, state, kind, config, work, summary) {
   const { DB } = env;
   if (!notify.emailConfigured(env) || !(await claimSend(DB, state.broadcastId, kind, 'email'))) return summary;
   const to = await testGuests(DB).catch(() => []);
-  const tpl = notify.reminderEmail({ kind, kidName: state.kidName, scheduledAt: state.scheduledAt, tz: 'America/New_York', liveUrl: liveUrlFor(state), replayUrl: liveUrlFor(state), unsubscribeUrl: `${SITE_ORIGIN}/admin/#broadcast`, image: null });
+  const tpl = notify.reminderEmail({ ...reminderArgs(state, kind, config), unsubscribeUrl: `${SITE_ORIGIN}/admin/#broadcast` });
   const res = to.length
     ? await notify.sendEmailItems(env, to.map((addr) => ({ to: addr, subject: `TEST · ${tpl.subject}`, html: tpl.html, text: tpl.text })), { tags: [{ name: 'category', value: `reveal-${kind}-test` }] })
     : { sent: 0, failed: 0, errors: [] };
@@ -829,7 +830,7 @@ export async function sendReminders(env, config, state, kind, work, { budgetMs =
   const summary = { kind, email: null, push: null };
   if (!config.reminders?.enabled || !state.broadcastId) return summary;
   // A rehearsal follows the same switches as a real reveal, but only the test address hears it
-  if (state.test) return sendTestReminder(env, state, kind, work, summary);
+  if (state.test) return sendTestReminder(env, state, kind, config, work, summary);
   let open;
   try {
     await ensureReminderTables(DB);
@@ -838,12 +839,7 @@ export async function sendReminders(env, config, state, kind, work, { budgetMs =
     work.push(`reminders:${kind}:error`);
     return summary;
   }
-  const common = {
-    kind, kidName: state.kidName, scheduledAt: state.scheduledAt, tz: config.timezone,
-    liveUrl: liveUrlFor(state),
-    replayUrl: state.replayUid ? liveUrlFor(state) : liveUrlFor(state),
-    image: state.image ? `${SITE_ORIGIN}/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/${state.image}/w=1200,h=630,fit=cover,q=82` : null,
-  };
+  const common = reminderArgs(state, kind, config);
   const news = reminderStillNews(kind, state);
   const deadline = Date.now() + budgetMs;
 
@@ -881,7 +877,7 @@ export async function sendReminders(env, config, state, kind, work, { budgetMs =
         const tpl = notify.reminderEmail({ ...common, unsubscribeUrl: url });
         return { to: r.address, subject: tpl.subject, html: tpl.html, text: tpl.text, headers: notify.listUnsubscribeHeaders(url) };
       });
-      const res = await notify.sendEmailItems(env, items, { tags: [{ name: 'category', value: `reveal-${kind}` }] });
+      const res = await notify.sendEmailItems(env, items, { replyTo: notify.REVEAL_REPLY_TO, tags: [{ name: 'category', value: `reveal-${kind}` }] });
       return { sent: res.sent, failed: res.failed, error: res.errors.slice(0, 3).join('; ') || null };
     }),
     // Push: a dead subscription (404/410, or not a browser push service) is dropped
@@ -926,8 +922,8 @@ async function dueReminderKinds(DB, state, config) {
 async function draftKit(env, state, kind) {
   if (!kitConfigured(env) || state.test) return null; // a rehearsal leaves Kit alone
   try {
-    const tpl = notify.reminderEmail({ kind, kidName: state.kidName, scheduledAt: state.scheduledAt, liveUrl: liveUrlFor(state), replayUrl: liveUrlFor(state), unsubscribeUrl: '{{ unsubscribe_url }}', image: null, list: true });
-    const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: '', description: `[auto] ${state.kidName || 'Reveal'} ${kind}`, html: tpl.html });
+    const tpl = notify.reminderEmail({ ...reminderArgs(state, kind, await readConfig(env.DB)), unsubscribeUrl: '{{ unsubscribe_url }}', list: true });
+    const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: tpl.preheader, description: `[auto] ${state.kidName || 'Reveal'} ${kind}`, html: tpl.html });
     return r.ok ? (r.broadcast?.id || true) : null;
   } catch {
     return null;
@@ -943,8 +939,8 @@ async function refreshKitDraft(env, state) {
   if (!kitConfigured(env)) return null;
   const id = state.kit?.scheduledDraftId;
   if (Number.isFinite(Number(id)) && id !== true) {
-    const tpl = notify.reminderEmail({ kind: 'scheduled', kidName: state.kidName, scheduledAt: state.scheduledAt, liveUrl: liveUrlFor(state), replayUrl: liveUrlFor(state), unsubscribeUrl: '{{ unsubscribe_url }}', image: null, list: true });
-    const r = await kitUpdateDraft(env, id, { subject: tpl.subject, previewText: '', description: `[auto] ${state.kidName || 'Reveal'} scheduled`, html: tpl.html });
+    const tpl = notify.reminderEmail({ ...reminderArgs(state, 'scheduled', await readConfig(env.DB)), unsubscribeUrl: '{{ unsubscribe_url }}', list: true });
+    const r = await kitUpdateDraft(env, id, { subject: tpl.subject, previewText: tpl.preheader, description: `[auto] ${state.kidName || 'Reveal'} scheduled`, html: tpl.html });
     if (r.ok) return id;
     if (!r.status) return id; // Kit unreachable: keep the draft we know about rather than make a duplicate
   }
@@ -955,10 +951,22 @@ export function kitLiveWanted(state, config) {
   return typeof state.kitLiveEmail === 'boolean' ? state.kitLiveEmail : config.kitLive?.enabled !== false;
 }
 
-function emailImage(state) {
-  if (!state.image) return null;
-  if (/^https:\/\//.test(state.image)) return state.image;
-  return `${SITE_ORIGIN}/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/${state.image}/w=1200,h=630,fit=cover,q=82`;
+/**
+ * What every reveal email is filled in from: the real send, a rehearsal, the
+ * admin's test and Kit's copies all come through here, so a test shows exactly
+ * what the real thing will. A kid's photo arrives as a Cloudflare id or a full
+ * address, and comes out cropped to the face either way.
+ */
+export function reminderArgs(state, kind, config = {}) {
+  const url = liveUrlFor(state);
+  return {
+    kind, kidName: state.kidName, kidSlug: state.kidSlug || null, scheduledAt: state.scheduledAt,
+    tz: config.timezone || 'America/New_York',
+    liveUrl: url, replayUrl: url,
+    image: state.image ? cfImg(state.image, HERO_TRANSFORM) : null,
+    hours: Array.isArray(config.reminders?.hoursBefore) ? config.reminders.hoursBefore : [24, 1],
+    signUpOpen: !!config.reminders?.enabled,
+  };
 }
 
 /**
@@ -972,9 +980,9 @@ export async function sendKitLive(env, config, state, work, { by = 'live-broadca
   const audience = config.kitLive?.audience?.type && config.kitLive.audience.type !== 'all' ? config.kitLive.audience : { type: 'all', id: null, name: 'All subscribers' };
   const s = { ...state, kit: { ...(state.kit || {}) } };
   try {
-    const tpl = notify.reminderEmail({ kind: 'live', kidName: s.kidName, scheduledAt: s.scheduledAt, liveUrl: liveUrlFor(s), unsubscribeUrl: '{{ unsubscribe_url }}', image: emailImage(s), tz: config.timezone, list: true });
+    const tpl = notify.reminderEmail({ ...reminderArgs(s, 'live', config), unsubscribeUrl: '{{ unsubscribe_url }}', list: true });
     const sendAt = new Date(Date.now() + KIT_SEND_DELAY_MS).toISOString();
-    const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: "Watch the reveal happening right now.", description: `[auto] ${s.kidName || 'Reveal'} live`, html: tpl.html, sendAt, audience });
+    const r = await kitCreateBroadcast(env, { subject: tpl.subject, previewText: tpl.preheader, description: `[auto] ${s.kidName || 'Reveal'} live`, html: tpl.html, sendAt, audience });
     if (r.ok) {
       s.kit.live = { id: r.broadcast?.id || null, audience: audience.name || audience.type, sendAt, by, error: null };
       await finishSend(env.DB, s.broadcastId, 'live', 'kit', { recipients: 0, sent: 1, failed: 0, error: null });
