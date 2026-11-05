@@ -28,6 +28,7 @@ import { fileText, attendanceIn, dateIn } from './_board-mail.js';
 import { getMeeting, patchMeeting, listMeetings, roster, boardFiles, updateFile, approveMinutes, putFile, MAX_FILE, ID } from './_board.js';
 import { readState, writeState } from './_board-roles.js';
 import { parseAgendaText, agendaIsDraft, meetingName, shortDate, isDate, uid, LIVE_TITLES, todayEastern } from '../../public/admin/board-shared.js';
+import { viaGateway } from './_ai.js';
 
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 // How long the model may take. Read by hand (the person is waiting, Cloudflare allows 100 seconds): up to 70 seconds
@@ -298,7 +299,7 @@ async function askMinutes(env, { text, meeting, prev, people, topics, quick, att
       const out = await withTimeout(env.AI.run(MODEL, {
         messages, max_tokens: topics ? 3000 : attendance ? 1500 : 1000, temperature: 0,
         ...(json ? { response_format: { type: 'json_schema', json_schema: schemaFor(topics, attendance) } } : {}),
-      }), ms);
+      }, viaGateway('board-minutes')), ms);
       const a = answerOf(out);
       if (a && (Array.isArray(a.motions) || Array.isArray(a.attendance) || Array.isArray(a.actions) || Array.isArray(a.topics))) return a;
     } catch (err) {

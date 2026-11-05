@@ -11,6 +11,7 @@
 import { mdBlocks, mdPlain, mdWords } from '../../public/admin/board-md.js';
 import { presenterGate } from './_board.js';
 import { limitAll } from './_rate-limit.js';
+import { viaGateway } from './_ai.js';
 
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 /** About 3,000 words: more than a screen's report ever is, and what the model reads well in one go */
@@ -115,7 +116,7 @@ export async function shorterReport(env, md, { title = '' } = {}) {
       env.AI.run(MODEL, {
         messages: [{ role: 'system', content: SYSTEM }, { role: 'user', content: `${title ? `The agenda item: ${title}\n\n` : ''}The report:\n\n${text}` }],
         max_tokens: Math.min(4096, Math.ceil(before * 2) + 200), temperature: 0.2,
-      }),
+      }, viaGateway('board-shorter')),
       new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 45000)),
     ]);
     raw = typeof out?.response === 'string' ? out.response : typeof out === 'string' ? out : '';

@@ -41,6 +41,7 @@ import { boardAdmins, readState, writeState, peopleRows, activeBoard, normEmail 
 import { ensureSchema, listMeetings, getMeeting, saveMeeting, patchMeeting, putFile, deleteFile, roster } from './_board.js';
 import { readMinutes, applyMinutes, minutesNewer } from './_board-minutes.js';
 import { parseAgendaText, isDate, todayEastern, meetingName, docxText, unzip, cleanMeeting, agendaIsDraft, shortDate, AGENDA_READER } from '../../public/admin/board-shared.js';
+import { viaGateway } from './_ai.js';
 
 export { docxText, unzip };
 
@@ -252,7 +253,7 @@ export async function classifyFile(env, { name, subject = '', sender = '', sentA
             messages: [{ role: 'system', content: SORT_PROMPT }, { role: 'user', content: input }],
             max_tokens: 200, temperature: 0,
             ...(json ? { response_format: { type: 'json_schema', json_schema: SORT_SCHEMA } } : {}),
-          }),
+          }, viaGateway('board-mail')),
           new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), AI_TIMEOUT_MS); }),
         ]);
         const sorted = readSort(out);

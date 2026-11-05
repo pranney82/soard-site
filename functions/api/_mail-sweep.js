@@ -53,6 +53,7 @@ import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
 import { DEFAULT_RECEIPT_INBOX } from './_spend-receipts.js';
 import { FREE_MAIL } from './_kid-partners.js';
+import { viaGateway } from './_ai.js';
 
 const EVERY_MS = 3 * 60 * 1000;
 const BUSY_MS = 60 * 1000;          // while there's a backlog
@@ -309,7 +310,7 @@ export async function judgeReceipt(env, { subject, from, owner, text, files }) {
         env.AI.run(AI_MODEL, {
           messages: [{ role: 'system', content: RECEIPT_PROMPT }, { role: 'user', content: input }],
           max_tokens: 200, temperature: 0, response_format: { type: 'json_schema', json_schema: RECEIPT_SCHEMA },
-        }),
+        }, viaGateway('mail-sweep')),
         new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), AI_TIMEOUT_MS); }),
       ]);
       const v = readVerdict(out);
@@ -363,7 +364,7 @@ export async function judgeFamily(env, { records, owner, from, to, subject, text
       env.AI.run(AI_MODEL, {
         messages: [{ role: 'system', content: FAMILY_PROMPT }, { role: 'user', content: input }],
         max_tokens: 120, temperature: 0, response_format: { type: 'json_schema', json_schema: FAMILY_SCHEMA },
-      }),
+      }, viaGateway('mail-sweep')),
       new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Workers AI took too long')), AI_TIMEOUT_MS); }),
     ]);
     const v = readFamilyVerdict(out);

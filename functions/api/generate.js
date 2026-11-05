@@ -18,6 +18,8 @@
  * Written copy follows the site's style: no em dashes, no stock phrases.
  */
 
+import { viaGateway } from './_ai.js';
+
 const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
 const VISION_FALLBACK = '@cf/llava-hf/llava-1.5-7b-hf';
 const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
@@ -32,7 +34,7 @@ const tidy = (s) => String(s || '').trim().replace(/^["'“”]+|["'“”]+$/g,
 const statusWords = (s) => (s === 'completed' ? 'SOARD built' : s === 'in-progress' ? 'SOARD is building' : 'SOARD is raising money to build');
 
 async function runText(ai, prompt, maxTokens = 400) {
-  const r = await ai.run(TEXT_MODEL, { messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens });
+  const r = await ai.run(TEXT_MODEL, { messages: [{ role: 'user', content: prompt }], max_tokens: maxTokens }, viaGateway('content-helper'));
   return typeof r?.response === 'string' ? r.response : JSON.stringify(r?.response ?? '');
 }
 
@@ -167,15 +169,15 @@ export async function onRequestPost(context) {
                   prompt,
                   image: base64,
                   max_tokens: 120,
-                });
+                }, viaGateway('content-helper'));
                 text = (visionResult?.response || '').trim();
               } catch (visionErr) {
                 // Meta requires a one-time license acknowledgement per account;
                 // send it once and retry if the model asks for it.
                 if (/agree|license|acceptable use/i.test(visionErr.message || '')) {
                   try {
-                    await ai.run(VISION_MODEL, { prompt: 'agree' });
-                    const retry = await ai.run(VISION_MODEL, { prompt, image: base64, max_tokens: 120 });
+                    await ai.run(VISION_MODEL, { prompt: 'agree' }, viaGateway('content-helper'));
+                    const retry = await ai.run(VISION_MODEL, { prompt, image: base64, max_tokens: 120 }, viaGateway('content-helper'));
                     text = (retry?.response || '').trim();
                   } catch {
                     visionModelOk = false;
@@ -199,7 +201,7 @@ export async function onRequestPost(context) {
                   },
                 ],
                 max_tokens: 80,
-              });
+              }, viaGateway('content-helper'));
               text = (llavaResult?.response || '').trim();
             }
 

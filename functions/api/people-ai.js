@@ -10,6 +10,8 @@
  * them), no em or en dashes, no stock phrases. A draft that breaks those gets
  * one corrected pass, checked by bioProblems().
  */
+import { viaGateway } from './_ai.js';
+
 const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 
 export const STYLE_RULES = [
@@ -106,7 +108,7 @@ export async function onRequestPost(context) {
     if (bio.length > 4000) return Response.json({ success: false, error: 'That’s too long to tidy. Trim it first.' }, { status: 400 });
     if (!context.env.AI) return Response.json({ success: false, error: 'The writing helper isn’t available here.' }, { status: 503 });
     const ask = async (content) => {
-      const r = await context.env.AI.run(TEXT_MODEL, { messages: [{ role: 'user', content }], max_tokens: 500, temperature: 0.4 });
+      const r = await context.env.AI.run(TEXT_MODEL, { messages: [{ role: 'user', content }], max_tokens: 500, temperature: 0.4 }, viaGateway('people-bios'));
       return tidyBio(typeof r?.response === 'string' ? r.response : '');
     };
     const check = (t) => bioProblems(t, { name: body.name, original: bio });

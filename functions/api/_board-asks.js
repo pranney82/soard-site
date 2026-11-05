@@ -43,6 +43,7 @@ import {
   reportSlides, slidesOfItem,
 } from '../../public/admin/board-shared.js';
 import { mdToDoc, docToMd, mdPlain } from '../../public/admin/board-md.js';
+import { viaGateway } from './_ai.js';
 
 export const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send';
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -667,7 +668,7 @@ export async function judgeReply(env, { words, files = [], title, meeting, perso
         env.AI.run(MODEL, {
           messages: [{ role: 'system', content: question ? `${JUDGE}\nThe board chair asked them a question about their report: an answer to it is a "report".` : JUDGE }, { role: 'user', content: `The agenda item: ${title}\nThe meeting: ${meeting}\nThe board member: ${person}\n${question ? `The chair's question: ${question}\n` : ''}Files attached: ${files.map((f) => f.name).join(', ') || 'none'}\n\nThe reply:\n\n${words.slice(0, 6000)}` }],
           max_tokens: 200, temperature: 0, response_format: { type: 'json_schema', json_schema: JUDGE_SCHEMA },
-        }),
+        }, viaGateway('board-asks')),
         new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 25000)),
       ]);
       const a = typeof out?.response === 'string' ? parse(out.response, null) : out?.response;
@@ -1368,7 +1369,7 @@ export async function judgeChair(env, words) {
   if (env?.AI?.run) {
     try {
       const out = await Promise.race([
-        env.AI.run(MODEL, { messages: [{ role: 'system', content: JUDGE_CHAIR }, { role: 'user', content: words.slice(0, 6000) }], max_tokens: 50, temperature: 0, response_format: { type: 'json_schema', json_schema: CHAIR_SCHEMA } }),
+        env.AI.run(MODEL, { messages: [{ role: 'system', content: JUDGE_CHAIR }, { role: 'user', content: words.slice(0, 6000) }], max_tokens: 50, temperature: 0, response_format: { type: 'json_schema', json_schema: CHAIR_SCHEMA } }, viaGateway('board-asks')),
         new Promise((_, no) => setTimeout(() => no(new Error('timeout')), 25000)),
       ]);
       const a = typeof out?.response === 'string' ? parse(out.response, null) : out?.response;

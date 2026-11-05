@@ -37,6 +37,7 @@ import { closeBrowser } from './_coi-backfill.js';
 import { SITE_ORIGIN } from './_broadcast-notify.js';
 import { docxText } from '../../public/admin/board-shared.js';
 import { readSheets, readSlides } from '../../public/admin/board/docs.js';
+import { viaGateway } from './_ai.js';
 
 /**
  * This reader: 1 was the papers-only PDF reader (a scan came back empty); 2 read every kind, a scan's first pages by
@@ -131,7 +132,7 @@ export async function pictureWords(env, image, { timeout = AI_TIMEOUT_MS } = {})
         ] },
       ],
       max_tokens: 2500, temperature: 0,
-    }), ms);
+    }, viaGateway('board-file-reading')), ms);
     const r = out?.response ?? out?.choices?.[0]?.message?.content ?? '';
     // (Workers AI hands back a reply that reads as JSON already parsed)
     const text = typeof r === 'string' ? r : r && typeof r === 'object' ? JSON.stringify(r) : '';

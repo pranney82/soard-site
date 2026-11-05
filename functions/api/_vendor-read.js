@@ -36,6 +36,7 @@
 
 import { vendorLikeness } from './_spend-match.js';
 import { TZ } from './_reveals.js';
+import { viaGateway } from './_ai.js';
 
 export const TEXT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const VISION_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
@@ -181,7 +182,7 @@ export async function askModel(env, model, messages, schema) {
       const out = await withTimeout(env.AI.run(model, {
         messages, max_tokens: 900, temperature: 0,
         ...(json ? { response_format: { type: 'json_schema', json_schema: schema } } : {}),
-      }), AI_TIMEOUT_MS);
+      }, viaGateway('vendor-papers')), AI_TIMEOUT_MS);
       const a = answerOf(out);
       if (a) return a;
     } catch (err) {

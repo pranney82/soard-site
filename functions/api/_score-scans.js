@@ -48,6 +48,7 @@ import { ensureScoreSchema, cleanEvaluator, saveScannedCard, restoreScannedCard,
 import { normalizeName } from './_reveals.js';
 import { staffDirectory } from './_staff-access.js';
 import { isTestFamily } from './_applicant-approved.js';
+import { viaGateway } from './_ai.js';
 
 /**
  * Two vision models from different makers, so one's habits can't fool both,
@@ -183,7 +184,7 @@ export async function readWith(env, model, { image, text = '' }) {
       const out = await withTimeout(env.AI.run(model, {
         messages, max_tokens: 4000, temperature: 0, ...opts,
         ...(json ? { response_format: { type: 'json_schema', json_schema: READ_SCHEMA } } : {}),
-      }), AI_TIMEOUT_MS);
+      }, viaGateway('score-scans')), AI_TIMEOUT_MS);
       const a = answerOf(out);
       if (a && Array.isArray(a.sheets)) return { sheets: cleanSheets(a.sheets), labels: cleanLabels(a.labels) };
     } catch (e) {

@@ -26,6 +26,7 @@
  */
 
 import * as stream from './_stream-live.js';
+import { viaGateway } from './_ai.js';
 
 const FB_GRAPH = 'https://graph.facebook.com/v25.0';
 export const REEL_MAX_SECONDS = 895;        // Instagram's API ceiling is 15:00; keep a margin
@@ -123,7 +124,7 @@ export async function detectByAi(env, cues, duration) {
       ],
       max_tokens: 60,
       temperature: 0,
-    });
+    }, viaGateway('broadcast-reel'));
     const text = typeof out === 'string' ? out : (out?.response ?? JSON.stringify(out));
     const m = String(text).match(/\{[^}]*\}/);
     if (!m) return null;

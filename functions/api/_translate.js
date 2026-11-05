@@ -14,6 +14,7 @@
 
 import { englishStrings, translationStatus, builtInSpanishBehind } from './_application-form.js';
 import { getFormVersion, addTranslations, reopenTranslations } from './_application-forms.js';
+import { viaGateway } from './_ai.js';
 
 const MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const BATCH = 12;
@@ -81,7 +82,7 @@ async function translateBatch(env, batch) {
       messages: [{ role: 'system', content: PROMPT }, { role: 'user', content: JSON.stringify(batch) }],
       max_tokens: 4000,
       temperature: 0.2,
-    });
+    }, viaGateway('translate'));
     const r = typeof res === 'string' ? res : (res?.response ?? res);
     return r && typeof r === 'object' ? r : readModelJson(r);
   } catch {
@@ -95,7 +96,7 @@ async function translateOne(env, en) {
       messages: [{ role: 'system', content: ONE_PROMPT }, { role: 'user', content: en }],
       max_tokens: 4000,
       temperature: 0.2,
-    });
+    }, viaGateway('translate'));
     const r = typeof res === 'string' ? res : res?.response;
     return typeof r === 'string' ? r.trim() : null;
   } catch {

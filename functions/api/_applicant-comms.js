@@ -37,6 +37,7 @@
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { DEFAULT_MESSAGES, renderMessage, resolveForm, kindOf } from './_application-form.js';
 import { getLiveForm } from './_application-forms.js';
+import { viaGateway } from './_ai.js';
 
 export const FIELD_STATUS = '22P46wDp3NLd';      // customer: Applied / In Review / Approved / Denied
 export const FIELD_DIAGNOSIS = '22P46st8HNPY';   // customer: text
@@ -334,7 +335,7 @@ export async function writeMedicalNote(env, diagnosis) {
           max_tokens: 900,
           temperature: 0.2,
           ...(json ? { response_format: { type: 'json_schema', json_schema: NOTE_SCHEMA } } : {}),
-        }),
+        }, viaGateway('applicant-messages')),
         new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), AI_TIMEOUT_MS); }),
       ]);
       const j = readNote(out);

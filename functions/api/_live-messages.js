@@ -34,6 +34,7 @@
 
 import { ensureSchema, readConfig, readState as readFullState, visibleState, recordEvent } from './_broadcast.js';
 import { limit } from './_rate-limit.js';
+import { viaGateway } from './_ai.js';
 
 // Viewers only ever talk to a public broadcast: a rehearsal (JobTread TEST job) reads as nothing scheduled
 const readState = (DB) => readFullState(DB).then(visibleState);
@@ -277,7 +278,7 @@ export async function screenAi(env, name, body, kidName) {
       response_format: { type: 'json_schema', json_schema: VERDICT_SCHEMA },
       max_tokens: 60,
       temperature: 0,
-    }), AI_TIMEOUT_MS);
+    }, viaGateway('live-messages')), AI_TIMEOUT_MS);
     return parseVerdict(replyOf(out));
   } catch {
     return null;
@@ -312,7 +313,7 @@ export async function screenGuard(env, name, body) {
       response_format: { type: 'json_object' },
       max_tokens: 40,
       temperature: 0,
-    }), AI_TIMEOUT_MS);
+    }, viaGateway('live-messages')), AI_TIMEOUT_MS);
     return parseGuard(replyOf(out));
   } catch {
     return null;

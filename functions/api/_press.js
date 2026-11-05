@@ -39,6 +39,7 @@ import * as P from '../../public/admin/press-shared.js';
 import { googleNews, decodeGoogleLink, findOnSite, bingNews, youTubeChannel, youTubeSearch, UA } from './_press-sources.js';
 import { readPage, checkLink, archiveLookup, archiveSave, archiveRaw, saveImage, safeUrl } from './_press-page.js';
 import { browserGet, hasBrowser } from './_press-browser.js';
+import { viaGateway } from './_ai.js';
 
 export const PRESS_USER = 'Press monitor (automatic)';
 const PASSING = 'SOARD only comes up in passing';
@@ -263,7 +264,7 @@ ${body || '(the outlet would not show the text)'}
       messages: [{ role: 'system', content: system }, { role: 'user', content: user }],
       response_format: { type: 'json_schema', json_schema: JUDGE_SCHEMA },
       max_tokens: 450,
-    });
+    }, viaGateway('press-monitor'));
     const j = judgeReply(r?.response);
     if (!j) return null;
     const kidSet = new Set(kids.map((k) => k.slug));
