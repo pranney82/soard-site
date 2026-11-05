@@ -349,7 +349,7 @@ function sourceOf(ev) {
   return 'jobtread';
 }
 
-const show = (v) => (Array.isArray(v) ? v.join(', ') : v == null || v === '' ? 'blank' : String(v));
+const show = (v) => { const t = Array.isArray(v) ? v.join(', ') : v; return t == null || t === '' ? 'blank' : String(t); };
 
 /**
  * One JobTread event as a history row, or null when it isn't worth showing
@@ -856,17 +856,22 @@ async function logSite(DB, accountId, { kind, title, body = null, data = null, u
 }
 
 /** The value JobTread takes for one field from what the admin typed or chose */
-export function fieldInput(key, value) {
+/** How much text a detail keeps: the admin's boxes stop there, and the history shows what was kept */
+export const fieldMax = (f) => (f.type === 'text' ? (f.long ? 4000 : 300) : null);
+
+export function fieldInput(key, value, had = null) {
   const f = FIELDS[key];
   if (!f) throw new Error(`Unknown field: ${key}`);
   if (value == null || value === '' || (Array.isArray(value) && !value.length)) return null;
   if (f.type === 'multi') {
-    const list = (Array.isArray(value) ? value : [value]).map(String).filter(v => f.options.includes(v));
+    // A choice JobTread already held for them stays, even one that isn't in our list
+    const held = [].concat(had ?? []).map(String);
+    const list = (Array.isArray(value) ? value : [value]).map(String).filter(v => f.options.includes(v) || held.includes(v));
     return list.length ? list : null;
   }
   if (f.type === 'option' && !f.free && !f.options.includes(String(value))) throw new Error(`${f.label} must be one of: ${f.options.join(', ')}`);
   if (f.type === 'date' && !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) throw new Error(`${f.label} must be a date`);
-  return String(value).slice(0, f.long ? 4000 : 300);
+  return String(value).slice(0, fieldMax(f) ?? 300);
 }
 
 async function updateAccountFields(env, accountId, customFieldValues, fetchImpl) {
@@ -882,10 +887,16 @@ export async function updateApplicantFields(env, accountId, changes, { user = 'a
   if (!entries.length) throw new Error('Nothing to change');
   const before = await getApplicantRow(env.DB, accountId);
   const input = {};
-  for (const [k, v] of entries) input[FIELDS[k].id] = fieldInput(k, v);
+  for (const [k, v] of entries) input[FIELDS[k].id] = fieldInput(k, v, before?.fields?.[k]);
   await updateAccountFields(env, accountId, input, fetchImpl);
-  await refreshApplicants(env, [accountId], { fetchImpl, now });
-  const lines = entries.map(([k, v]) => `${FIELDS[k].label}: ${show(Array.isArray(v) ? v : v || null)}`);
+  // JobTread has it now. If reading it back fails, the site's copy takes the change, so a saved change isn't reported as lost.
+  const readBack = await refreshApplicants(env, [accountId], { fetchImpl, now }).then(() => true, (e) => { console.error('Reading a family back after a save failed:', e?.message); return false; });
+  if (!readBack && before) {
+    const fields = { ...before.fields };
+    for (const [k] of entries) { if (input[FIELDS[k].id] == null) delete fields[k]; else fields[k] = input[FIELDS[k].id]; }
+    await env.DB.prepare('UPDATE applicants SET fields = ?, year = ?, types = ? WHERE account_id = ?').bind(JSON.stringify(fields), fields.year || null, JSON.stringify(fields.types || []), accountId).run();
+  }
+  const lines = entries.map(([k]) => `${FIELDS[k].label}: ${show(input[FIELDS[k].id])}`); // what was kept
   await logSite(env.DB, accountId, { kind: 'fields', title: entries.length === 1 ? `${FIELDS[entries[0][0]].label} changed` : `${entries.length} details changed`, body: lines.join('\n'), data: { changes: entries.map(([k, v]) => ({ field: k, from: before?.fields?.[k] ?? null, to: v ?? null })) }, user, now });
   return getApplicantRow(env.DB, accountId);
 }

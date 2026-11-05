@@ -169,23 +169,49 @@ const server = createServer((req, res) => {
 await new Promise(r => server.listen(0, '127.0.0.1', r));
 const SITE = `http://127.0.0.1:${server.address().port}`;
 
+let slowFields = 0, failFields = false, fieldSaves = 0;
+const slowQueue = []; // per-save delays, first save first
+let slowReads = 0; // a family's reload taking its time
+const listDelays = []; // a list answer read now and delivered late, first request first
+let failPreview = false; // the status sheet's "what would be sent" can't be read
+let slowMessages = 0, dropMessages = false, messagesPosted = 0; // a family message taking its time, or the network dropping it
+let slowMoves = 0; // a status move taking its time
+let slowDrafts = 0; // a ready-made correction taking its time to arrive
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
 async function answer(req) {
   const url = new URL(req.url());
   if (url.host === 'cdn.fake' && url.pathname.startsWith(`/${harper.id}-`)) return req.respond({ status: 404, body: 'gone' });
   if (url.host === 'cdn.fake' || url.pathname.startsWith('/cdn-cgi/imagedelivery/')) return req.respond({ status: 200, contentType: 'image/png', body: PNG });
   if (url.pathname === '/api/applicants-admin' || url.pathname === '/api/applications-admin') {
+    // A detail's save can be made slow (JobTread taking its time) or fail outright
+    if (req.method() === 'POST' && /^\{"fields"/.test(req.postData() || '')) {
+      fieldSaves++;
+      const wait = slowQueue.length ? slowQueue.shift() : slowFields;
+      if (wait) await sleep(wait);
+      if (failFields) return req.respond({ status: 502, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'JobTread didn’t answer' }) });
+    }
+    if (req.method() === 'POST' && /^\{"(status|pause)"/.test(req.postData() || '') && slowMoves) await sleep(slowMoves);
+    if (req.method() === 'GET' && url.searchParams.get('correction') && slowDrafts) await sleep(slowDrafts);
+    if (req.method() === 'POST' && /^\{"(message|correction)"/.test(req.postData() || '')) {
+      if (dropMessages) return req.abort('failed');
+      messagesPosted++;
+      if (slowMessages) await sleep(slowMessages);
+    }
+    if (req.method() === 'GET' && url.searchParams.get('preview') && failPreview) return req.respond({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'JobTread didn’t answer' }) });
     clearFormCache();
     const request = new Request(`https://admin.test${url.pathname}${url.search}`, { method: req.method(), body: req.method() === 'POST' ? req.postData() : undefined, headers: { 'content-type': 'application/json' } });
     const ctx = { env, request, data: { userEmail: 'linzi@soardcharity.com' }, waitUntil: () => {} };
     const mod = url.pathname === '/api/applicants-admin' ? api : formsApi;
+    if (req.method() === 'GET' && slowReads && url.searchParams.get('id')) await sleep(slowReads);
     const res = req.method() === 'POST' ? await mod.onRequestPost(ctx) : await mod.onRequestGet(ctx);
-    return req.respond({ status: res.status, contentType: 'application/json', body: Buffer.from(await res.arrayBuffer()) });
+    const answerBody = Buffer.from(await res.arrayBuffer());
+    if (req.method() === 'GET' && url.searchParams.get('list') && listDelays.length) await sleep(listDelays.shift());
+    return req.respond({ status: res.status, contentType: 'application/json', body: answerBody });
   }
   return false;
 }
 
-const browser = await puppeteer.launch({ headless: true, args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
+const browser = await puppeteer.launch({ headless: 'shell', args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
 const consoleErrors = [];
 async function open(width, height, harnessPage = '__applicants.html') {
   const page = await browser.newPage();
@@ -352,14 +378,456 @@ const typesBtn = await page.$$('.apl-type-picks button');
 await typesBtn[3].click(); // Ramp
 await page.waitForFunction(() => [...document.querySelectorAll('.apl-type-picks button')].find(b => /Ramp/.test(b.textContent))?.getAttribute('aria-pressed') === 'true', { timeout: 8000 }).catch(() => null);
 ok(JSON.stringify(acct('Avery Stone').fields[F.types]) === JSON.stringify(['Bedroom', 'Bathroom', 'Ramp']), 'Makeover type edited in place, saved to JobTread as a list');
+// The picks: the admin's toggle pills, each kind's icon beside its word (not touching it) and centered on it
+const pillGeo = await page.$$eval('.apl-type-picks button', els => els.map(b => {
+  const ic = b.querySelector('svg').getBoundingClientRect();
+  const r = document.createRange(); r.selectNodeContents(b); const t = [...r.getClientRects()].filter(x => x.width > 0).pop();
+  const words = [...b.childNodes].find(n => n.nodeType === 3); const wr = document.createRange(); wr.selectNodeContents(words); const w = wr.getBoundingClientRect();
+  return { name: b.textContent.trim(), gap: w.left - ic.right, iconMid: ic.top + ic.height / 2, wordMid: w.top + w.height / 2, iconW: ic.width, pill: b.classList.contains('pill') };
+}));
+ok(pillGeo.length === 4 && pillGeo.every(g => g.pill), 'the Makeover type picks are the admin’s shared toggle pills');
+ok(pillGeo.length === 4 && pillGeo.every(g => g.gap >= 4 && g.gap <= 9), `each Makeover type's icon stands apart from its word (${pillGeo.map(g => `${g.name} ${g.gap.toFixed(1)}px`).join(', ')})`);
+ok(pillGeo.every(g => Math.abs(g.iconMid - g.wordMid) <= 1.5 && g.iconW >= 13), `and sits centered on the word at the pills' 14px (${pillGeo.map(g => `${g.name} ${(g.iconMid - g.wordMid).toFixed(1)}px`).join(', ')})`);
+// Each label on its value's first line; every value's first letter on one line down the card
+const kv = await page.$$eval('.apl-side .apl-kv dt', dts => dts.map(dt => {
+  const dd = dt.nextElementSibling;
+  const line = (el) => { const r = document.createRange(); r.selectNodeContents(el); return [...r.getClientRects()].find(x => x.width > 0); };
+  const l = line(dt);
+  const sel = dd.querySelector('select'), pill = dd.querySelector('.apl-type-picks button'), btn = dd.querySelector('.apl-edit');
+  let mid, left;
+  if (pill) { const p = pill.getBoundingClientRect(); mid = p.top + p.height / 2; left = p.left; }
+  else if (sel) { const p = sel.getBoundingClientRect(), cs = getComputedStyle(sel); mid = p.top + p.height / 2; left = p.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft); }
+  else if (btn) { const t = line(btn); mid = t.top + t.height / 2; left = t.left; }
+  return { label: dt.textContent.trim(), off: (l.top + l.height / 2) - mid, left };
+}));
+ok(kv.length >= 8 && kv.every(r => Math.abs(r.off) <= 3), `each detail's label sits on its value's first line (${kv.filter(r => Math.abs(r.off) > 3).map(r => `${r.label} ${r.off.toFixed(1)}px`).join(', ') || 'all within 3px'})`);
+ok(Math.max(...kv.map(r => r.left)) - Math.min(...kv.map(r => r.left)) < 0.5, `every value starts at the same spot, picks, choices and typed text alike (${[...new Set(kv.map(r => r.left.toFixed(1)))].join(' / ')})`);
+// A pick shows the moment it's clicked, before JobTread answers; picking and unpicking quickly leaves it unpicked in JobTread too
+const pressedOf = (name) => page.$$eval('.apl-type-picks button', (els, n) => els.find(b => b.textContent.trim() === n)?.getAttribute('aria-pressed'), name);
+const pickPill = (name) => page.$$eval('.apl-type-picks button', (els, n) => els.find(b => b.textContent.trim() === n).click(), name);
+slowFields = 700; fieldSaves = 0;
+await pickPill('Therapy Room');
+await sleep(120);
+ok(await pressedOf('Therapy Room') === 'true', 'a Makeover type shows picked at once, while JobTread is still saving it');
+await pickPill('Therapy Room');
+await sleep(120);
+ok(await pressedOf('Therapy Room') === 'false', 'and unpicking it straight away shows at once too');
+await page.waitForFunction(() => !document.querySelector('.apl-type-picks.is-saving'), { timeout: 8000 }).catch(() => null);
+await sleep(300);
+ok(fieldSaves === 2 && JSON.stringify(acct('Avery Stone').fields[F.types]) === JSON.stringify(['Bedroom', 'Bathroom', 'Ramp']) && await pressedOf('Therapy Room') === 'false', `quick pick and unpick: both saved in turn, JobTread ends without it (${fieldSaves} saves, ${JSON.stringify(acct('Avery Stone').fields[F.types])})`);
+slowFields = 0; failFields = true;
+await pickPill('Ramp');
+await page.waitForFunction(() => !document.querySelector('.apl-type-picks.is-saving'), { timeout: 8000 }).catch(() => null);
+await sleep(300);
+ok(await pressedOf('Ramp') === 'true' && await page.evaluate(() => window.__toasts.some(t => /JobTread didn’t answer/.test(t.msg))), 'a pick JobTread doesn’t save goes back, and says why');
+failFields = false;
+// Moving on to the next family while a pick is still saving: the drawer stays on the next family
+slowFields = 900;
+await pickPill('Therapy Room');
+await page.click('.apl-icon-btn[aria-label^="Next family"]');
+await sleep(150);
+const nextName = await text(page, '.apl-dtitle h2');
+await sleep(1800);
+const stayedOn = await text(page, '.apl-dtitle h2');
+ok(nextName !== 'Avery Stone' && stayedOn === nextName && acct('Avery Stone').fields[F.types].includes('Therapy Room'), `a pick still saving when you move on is saved to its family, and the drawer stays on the next one (${nextName} → ${stayedOn})`);
+slowFields = 0;
+await page.click('.apl-icon-btn[aria-label^="Previous family"]');
+await page.waitForFunction(() => document.querySelector('.apl-dtitle h2')?.textContent.trim() === 'Avery Stone' && document.querySelector('.apl-type-picks'), { timeout: 8000 }).catch(() => null);
+await pickPill('Therapy Room');
+await page.waitForFunction(() => !document.querySelector('.apl-type-picks.is-saving'), { timeout: 8000 }).catch(() => null);
+await sleep(300);
+ok(JSON.stringify(acct('Avery Stone').fields[F.types]) === JSON.stringify(['Bedroom', 'Bathroom', 'Ramp']), 'back on Avery, unpicked again');
+// Left mid-save and opened again: the family shows the pick still saving, and a new pick waits for it (the older save can't land last)
+const idle = () => page.waitForFunction(() => !document.querySelector('.apl-type-picks.is-saving'), { timeout: 10000 }).catch(() => null);
+const onFamily = (name) => page.waitForFunction((n) => document.querySelector('.apl-dtitle h2')?.textContent.trim() === n && document.querySelector('.apl-type-picks'), { timeout: 8000 }, name).catch(() => null);
+await page.click('.apl-icon-btn[aria-label^="Next family"]');
+const second = await page.evaluate(() => new Promise(r => setTimeout(() => r(document.querySelector('.apl-dtitle h2')?.textContent.trim()), 900)));
+await onFamily(second);
+const secondTypes = [...acct(second).fields[F.types]];
+const extra = ['Bedroom', 'Bathroom', 'Therapy Room', 'Ramp'].find(t => !secondTypes.includes(t));
+fieldSaves = 0; slowQueue.push(2500, 100);
+await pickPill(extra);
+await page.click('.apl-icon-btn[aria-label^="Previous family"]');
+await onFamily('Avery Stone');
+await page.click('.apl-icon-btn[aria-label^="Next family"]');
+await onFamily(second);
+await sleep(300);
+const mid = { picked: await pressedOf(extra), saving: !!(await page.$('.apl-type-picks.is-saving')) };
+ok(mid.picked === 'true' && mid.saving, `opened again mid-save, ${second} shows ${extra} picked and still saving (${JSON.stringify(mid)})`);
+await pickPill(secondTypes[0]);
+await idle(); await sleep(600);
+const want = [...secondTypes.slice(1), extra];
+ok(fieldSaves === 2 && JSON.stringify(acct(second).fields[F.types]) === JSON.stringify(want) && await pressedOf(secondTypes[0]) === 'false' && await pressedOf(extra) === 'true', `the newer pick waits for the older save, so JobTread ends with both (${JSON.stringify(acct(second).fields[F.types])}, want ${JSON.stringify(want)})`);
+await pickPill(extra); await idle();
+await pickPill(secondTypes[0]); await idle(); await sleep(300);
+ok(JSON.stringify(acct(second).fields[F.types].slice().sort()) === JSON.stringify(secondTypes.slice().sort()), `${second} put back as it was`);
+await page.click('.apl-icon-btn[aria-label^="Previous family"]');
+await onFamily('Avery Stone');
+// Makeover year changed past the season filter: the family leaves the list, Previous and Next still work
+const yearSel = '.apl-kv select[aria-label="Makeover year"]';
+const navOn = () => page.$$eval('.apl-icon-btn[aria-label$="family (K)"], .apl-icon-btn[aria-label$="family (J)"]', els => els.map(e => !e.disabled));
+const navBefore = await navOn();
+await page.select(yearSel, '2026');
+await page.waitForFunction(() => !document.querySelector('.apl-kv select[aria-label="Makeover year"].is-saving'), { timeout: 8000 }).catch(() => null);
+await sleep(600);
+const navAfter = await navOn();
+ok(acct('Avery Stone').fields[F.year] === '2026' && navAfter.some(Boolean) && JSON.stringify(navAfter) === JSON.stringify(navBefore), `a family moved to another year keeps Previous and Next (${JSON.stringify(navBefore)} → ${JSON.stringify(navAfter)})`);
+await page.select(yearSel, '2027');
+await page.waitForFunction(() => !document.querySelector('.apl-kv select[aria-label="Makeover year"].is-saving'), { timeout: 8000 }).catch(() => null);
+await sleep(600);
+ok(acct('Avery Stone').fields[F.year] === '2027', 'and moved back');
 const dxBtn = await page.$('.apl-kv button.apl-edit');
+const textLeft = (el) => el.evaluate(e => { const cs = getComputedStyle(e); return e.getBoundingClientRect().left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft); });
+const shownAt = await textLeft(dxBtn);
 await dxBtn.click();
 const input = await page.$('.apl-kv input.form-input, .apl-kv textarea.form-input');
-await input.click({ clickCount: 3 });
-await page.keyboard.type('2016-05-20');
+ok(Math.abs(await textLeft(input) - shownAt) <= 1, `opening a detail to type in keeps its text where it was (moved ${(await textLeft(input) - shownAt).toFixed(1)}px)`);
+await page.keyboard.type('05202016');
 await page.keyboard.press('Enter');
 await sleep(600);
-ok(acct('Avery Stone').fields[F.birthday] === '2016-05-20' || /2016/.test(JSON.stringify(acct('Avery Stone').fields)), 'a text/date detail edits in place');
+ok(acct('Avery Stone').fields[F.birthday] === '2016-05-20', `a date detail edits in place (${acct('Avery Stone').fields[F.birthday]})`);
+const editBtn = (label) => page.$(`.apl-kv button.apl-edit[aria-label="Edit ${label}"]`);
+const kvInput = '.apl-kv input.form-input, .apl-kv textarea.form-input';
+const refWas = acct('Avery Stone').fields[F.referredBy];
+// Escape puts back what was there: nothing saved
+fieldSaves = 0;
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(kvInput);
+await page.keyboard.type(' WRONG');
+await page.keyboard.press('Escape');
+await sleep(700);
+ok(fieldSaves === 0 && acct('Avery Stone').fields[F.referredBy] === refWas && (await text(page, '.apl-kv button.apl-edit[aria-label="Edit Referred by"]')) === refWas && !!(await page.$('.apl-drawer')), `Escape cancels a typed detail: nothing saved, the drawer stays (${fieldSaves} saves)`);
+// Enter saves once
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(kvInput);
+await page.$eval(kvInput, el => el.select());
+await page.keyboard.type('Dr. Patel');
+await page.keyboard.press('Enter');
+await sleep(800);
+ok(fieldSaves === 1 && acct('Avery Stone').fields[F.referredBy] === 'Dr. Patel', `Enter saves a typed detail once (${fieldSaves} saves)`);
+// Spaces only are nothing: the detail is cleared and says Add
+fieldSaves = 0;
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(kvInput);
+await page.$eval(kvInput, el => el.select());
+await page.keyboard.type('   ');
+await page.keyboard.press('Enter');
+await sleep(800);
+ok(fieldSaves === 1 && !acct('Avery Stone').fields[F.referredBy] && (await text(page, '.apl-kv button.apl-edit[aria-label="Edit Referred by"]')) === 'Add', `spaces alone clear a detail, which then says Add (${JSON.stringify(acct('Avery Stone').fields[F.referredBy])})`);
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(kvInput);
+await page.keyboard.type(refWas);
+await page.keyboard.press('Enter');
+await sleep(800);
+// A birthday left half-typed keeps the one it had
+const bdWas = acct('Avery Stone').fields[F.birthday];
+fieldSaves = 0;
+await (await editBtn('Birthday')).click();
+await page.waitForSelector('.apl-kv input[type="date"]');
+await page.keyboard.press('Backspace');
+await page.click('.apl-panel h3');
+await sleep(800);
+ok(fieldSaves === 0 && acct('Avery Stone').fields[F.birthday] === bdWas && /\(\d+\)$/.test(await text(page, '.apl-kv button.apl-edit[aria-label="Edit Birthday"]')), `a birthday left half-typed keeps the one it had (${fieldSaves} saves, ${acct('Avery Stone').fields[F.birthday]})`);
+// A year cut short is a real date to the browser (0020), and a future birthday can't be right: the old one stays, and it says why
+for (const [what, keysTyped] of [['a year cut short', '061220'], ['a future date', '06122030']]) {
+  fieldSaves = 0;
+  await page.evaluate(() => { window.__toasts.length = 0; });
+  await (await editBtn('Birthday')).click();
+  await page.waitForSelector('.apl-kv input[type="date"]');
+  await page.keyboard.type(keysTyped);
+  await page.click('.apl-panel h3');
+  await sleep(600);
+  ok(fieldSaves === 0 && acct('Avery Stone').fields[F.birthday] === bdWas && await page.evaluate(() => window.__toasts.some(t => /Birthday not changed/.test(t.msg))), `${what} keeps the birthday it had, and says so (${fieldSaves} saves, ${acct('Avery Stone').fields[F.birthday]})`);
+}
+// Opening a typed detail doesn't move the card
+const rowTops = () => page.$$eval('.apl-side .apl-kv dt', els => els.map(e => Math.round(e.getBoundingClientRect().top)));
+const topsShut = await rowTops();
+await (await editBtn('Birthday')).click();
+await page.waitForSelector('.apl-kv input[type="date"]');
+const topsOpen = await rowTops();
+await page.keyboard.press('Escape');
+await sleep(150);
+ok(JSON.stringify(topsShut) === JSON.stringify(topsOpen), `opening a typed detail leaves the rows where they are (${topsOpen.map((t, i) => t - topsShut[i]).join(',')})`);
+// Enter and Escape hand the focus back to the detail
+const focused = () => page.evaluate(() => document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName);
+for (const key of ['Enter', 'Escape']) {
+  await page.focus('.apl-kv button.apl-edit[aria-label="Edit Referred by"]');
+  await page.keyboard.press('Enter');
+  await page.waitForSelector(kvInput);
+  await page.keyboard.press(key);
+  await sleep(200);
+  ok(await focused() === 'Edit Referred by', `${key} in a typed detail puts the focus back on it (${await focused()})`);
+}
+// A save that fails keeps what was typed, in its box, to try again; the message says whose and what
+const dxWas = acct('Avery Stone').fields[F.diagnosis];
+failFields = true;
+await page.evaluate(() => { window.__toasts.length = 0; });
+await (await editBtn('Diagnosis')).click();
+await page.waitForSelector('.apl-kv textarea');
+await page.$eval('.apl-kv textarea', el => el.select());
+await page.keyboard.type('A long paragraph worth keeping');
+await page.click('.apl-panel h3');
+await page.waitForFunction(() => document.querySelector('.apl-kv textarea'), { timeout: 8000 }).catch(() => null);
+await sleep(300);
+ok(await page.$eval('.apl-kv textarea', el => el.value).catch(() => '') === 'A long paragraph worth keeping' && await page.evaluate(() => window.__toasts.some(t => /^Avery Stone: Diagnosis not saved\. JobTread didn’t answer/.test(t.msg))), `a failed save keeps the typed text in its box and names the family and detail (${JSON.stringify(await page.evaluate(() => window.__toasts.map(t => t.msg)))})`);
+failFields = false;
+await page.click('.apl-panel h3');
+await sleep(700);
+ok(acct('Avery Stone').fields[F.diagnosis] === 'A long paragraph worth keeping', 'leaving the box tries again, and it saves');
+await (await editBtn('Diagnosis')).click();
+await page.waitForSelector('.apl-kv textarea');
+await page.$eval('.apl-kv textarea', el => el.select());
+await page.keyboard.type(dxWas);
+await page.keyboard.down('Control'); await page.keyboard.press('Enter'); await page.keyboard.up('Control');
+await sleep(700);
+// Failing after you've moved on: the message says whose it was, and the text waits in that family's box
+slowFields = 700; failFields = true;
+await page.evaluate(() => { window.__toasts.length = 0; });
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(kvInput);
+await page.$eval(kvInput, el => el.select());
+await page.keyboard.type('Typed before moving on');
+await page.keyboard.press('Enter');
+await page.click('.apl-icon-btn[aria-label^="Next family"]');
+await sleep(1300);
+ok(await text(page, '.apl-dtitle h2') !== 'Avery Stone' && await page.evaluate(() => window.__toasts.some(t => /^Avery Stone: Referred by not saved/.test(t.msg))), `a save failing after you moved on names its family (${JSON.stringify(await page.evaluate(() => window.__toasts.map(t => t.msg)))})`);
+slowFields = 0; failFields = false;
+await page.click('.apl-icon-btn[aria-label^="Previous family"]');
+await page.waitForFunction(() => document.querySelector('.apl-dtitle h2')?.textContent.trim() === 'Avery Stone' && document.querySelector('.apl-kv input.form-input'), { timeout: 8000 }).catch(() => null);
+ok(await page.$eval('.apl-kv input.form-input', el => el.value).catch(() => '') === 'Typed before moving on', 'and coming back, the text is waiting in its box');
+await page.$eval('.apl-kv input.form-input', el => el.focus());
+await page.keyboard.press('Escape');
+await sleep(300);
+ok(acct('Avery Stone').fields[F.referredBy] === refWas && (await text(page, '.apl-kv button.apl-edit[aria-label="Edit Referred by"]')) === refWas, 'Escape lets it go');
+// J and K keep the focus inside the drawer
+await page.focus('.apl-type-picks button');
+await page.keyboard.press('j');
+await sleep(700);
+const heldFocus = await page.evaluate(() => { const el = document.activeElement; return { inDrawer: !!el?.closest('.apl-drawer'), ring: getComputedStyle(document.querySelector('.apl-drawer')).boxShadow }; });
+ok(heldFocus.inDrawer && !/0px 0px 0px 4px/.test(heldFocus.ring), `J keeps the focus in the drawer, with no ring round it (${JSON.stringify(heldFocus)})`);
+await page.keyboard.press('k');
+await page.waitForFunction(() => document.querySelector('.apl-dtitle h2')?.textContent.trim() === 'Avery Stone' && document.querySelector('.apl-type-picks'), { timeout: 8000 }).catch(() => null);
+// A finished save counts at once, however slow the reload behind it
+const typedBox = '.apl-kv input.form-input[aria-label="Referred by"]';
+slowReads = 1500; fieldSaves = 0;
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(typedBox);
+await page.$eval(typedBox, el => el.select());
+await page.keyboard.type('Dr. Patel');
+await page.keyboard.press('Enter');
+await sleep(400);
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(typedBox);
+ok(await page.$eval(typedBox, el => el.value) === 'Dr. Patel', 'opened again before the reload lands, the box shows what was just saved');
+await page.click('.apl-panel h3');
+await sleep(500);
+ok(fieldSaves === 1 && acct('Avery Stone').fields[F.referredBy] === 'Dr. Patel', `and leaving it untouched saves nothing, so the old value can't come back (${fieldSaves} saves, ${acct('Avery Stone').fields[F.referredBy]})`);
+fieldSaves = 0;
+await pickPill('Ramp'); await sleep(250);
+await pickPill('Ramp'); await sleep(400);
+ok(fieldSaves === 2 && JSON.stringify(acct('Avery Stone').fields[F.types]) === JSON.stringify(['Bedroom', 'Bathroom', 'Ramp']), `unpicking and picking again before the reload lands saves both (${fieldSaves} saves, ${JSON.stringify(acct('Avery Stone').fields[F.types])})`);
+await sleep(1800);
+ok(await pressedOf('Ramp') === 'true', 'and the reload leaves it picked');
+slowReads = 0;
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(typedBox);
+await page.$eval(typedBox, el => el.select());
+await page.keyboard.type(refWas);
+await page.keyboard.press('Enter');
+await sleep(700);
+// Closing the drawer mid-save and opening the family again
+const closeDrawer = '.apl-dhead button[aria-label^="Close"]';
+const openAvery = async () => { await page.click('.apl-card[data-id="acct00000001"]'); await page.waitForSelector('.apl-type-picks', { timeout: 8000 }); };
+fieldSaves = 0; slowQueue.push(1800);
+await pickPill('Ramp');
+await page.click(closeDrawer);
+await sleep(350);
+await openAvery();
+await sleep(250);
+ok(await pressedOf('Ramp') === 'false' && !!(await page.$('.apl-type-picks.is-saving')), 'closed and reopened mid-save, the family shows the pick still saving');
+await pickPill('Ramp');
+await idle(); await sleep(500);
+ok(fieldSaves === 2 && JSON.stringify(acct('Avery Stone').fields[F.types]) === JSON.stringify(['Bedroom', 'Bathroom', 'Ramp']) && await pressedOf('Ramp') === 'true', `and a pick made then is saved after it (${fieldSaves} saves, ${JSON.stringify(acct('Avery Stone').fields[F.types])})`);
+slowQueue.push(1200);
+await pickPill('Ramp');
+await page.click(closeDrawer);
+await sleep(300);
+await openAvery();
+await page.waitForFunction(() => !document.querySelector('.apl-type-picks.is-saving') && (document.querySelector('.apl-thread')?.textContent || '').includes('Makeover type: Bedroom, Bathroom'), { timeout: 5000 }).catch(() => null);
+ok((await text(page, '.apl-thread')).includes('Makeover type: Bedroom, Bathroom'), 'with nothing more done, the history catches up as soon as the save lands, not at the next refresh');
+await pickPill('Ramp'); await idle(); await sleep(400);
+// A save failing while you've gone back in to type more leaves the newer text alone
+slowFields = 900; failFields = true;
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(typedBox);
+await page.$eval(typedBox, el => el.select());
+await page.keyboard.type('First');
+await page.keyboard.press('Enter');
+await sleep(150);
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(typedBox);
+await page.keyboard.type(' and more');
+await sleep(1200);
+ok(/First and more$/.test(await page.$eval(typedBox, el => el.value)), `a failed save leaves text typed since alone (${await page.$eval(typedBox, el => el.value)})`);
+slowFields = 0; failFields = false;
+await page.keyboard.press('Escape');
+await sleep(250);
+// What a box can hold: it stops there and says so, and JobTread, the box and the history agree
+await page.evaluate(() => { window.__toasts.length = 0; });
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(typedBox);
+await page.$eval(typedBox, el => el.select());
+await page.keyboard.sendCharacter('x'.repeat(450));
+await sleep(200);
+ok((await page.$eval(typedBox, el => el.value.length)) === 300 && await page.evaluate(() => window.__toasts.some(t => /Referred by holds 300 characters/.test(t.msg))), `a box stops at what JobTread keeps, and says so (${await page.$eval(typedBox, el => el.value.length)} characters)`);
+await page.keyboard.press('Escape');
+await sleep(250);
+// The click that closes an open box lands on what's under it
+await (await editBtn('Diagnosis')).click();
+await page.waitForSelector('.apl-kv textarea');
+ok(await page.$eval('.apl-kv textarea', el => getComputedStyle(el).resize) === 'vertical', 'the Diagnosis box drags taller, never past the card');
+const belowBox = await page.$eval('.apl-kv button.apl-edit[aria-label="Edit Referred by"]', el => { const r = el.getBoundingClientRect(); return { x: r.x + 40, y: r.y + r.height / 2 }; });
+await page.mouse.click(belowBox.x, belowBox.y, { delay: 60 });
+await sleep(350);
+ok(!!(await page.$(typedBox)) && !(await page.$('.apl-kv textarea')), 'clicking a detail below an open Diagnosis box opens it the first time');
+await page.keyboard.press('Escape');
+await sleep(250);
+// Opening a detail and leaving it unchanged writes nothing, whatever spaces JobTread holds
+fieldSaves = 0;
+acct('Avery Stone').fields[F.referredBy] = `${refWas}  `;
+await page.click('.apl-icon-btn[aria-label^="Next family"]');
+await sleep(500);
+await page.click('.apl-icon-btn[aria-label^="Previous family"]');
+await page.waitForSelector('.apl-kv button.apl-edit[aria-label="Edit Referred by"]', { timeout: 8000 });
+await page.waitForFunction(() => document.querySelector('.apl-dtitle h2')?.textContent.trim() === 'Avery Stone', { timeout: 8000 }).catch(() => null);
+await sleep(300);
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(typedBox);
+await page.click('.apl-panel h3');
+await sleep(500);
+ok(fieldSaves === 0, `opening a detail and leaving it unchanged saves nothing (${fieldSaves} saves)`);
+acct('Avery Stone').fields[F.referredBy] = refWas;
+// Ctrl+K and Ctrl+J aren't K and J
+const heldOn = await text(page, '.apl-dtitle h2');
+await page.$eval('.apl-drawer', el => el.focus());
+for (const key of ['k', 'j']) { await page.keyboard.down('Control'); await page.keyboard.press(key); await page.keyboard.up('Control'); await sleep(250); }
+ok(await text(page, '.apl-dtitle h2') === heldOn, 'Ctrl+K and Ctrl+J leave the family alone');
+// Tab stays in the drawer
+const stops = () => page.$eval('.apl-drawer', el => [...el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent).length);
+ok(await stops() > 5, 'the drawer has controls to Tab through');
+const inDrawer = () => page.evaluate(() => !!document.activeElement?.closest('.apl-drawer'));
+await page.$eval('.apl-drawer', el => { const all = [...el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(x => x.offsetParent); all[all.length - 1].focus(); });
+await page.keyboard.press('Tab');
+const wrapped = await inDrawer();
+await page.keyboard.down('Shift'); await page.keyboard.press('Tab'); await page.keyboard.up('Shift');
+ok(wrapped && await inDrawer(), 'Tab and Shift+Tab stay in the drawer at both ends');
+// The green "saved" flash plays once
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(typedBox);
+await page.$eval(typedBox, el => el.select());
+await page.keyboard.type('Flash check');
+await page.keyboard.press('Enter');
+await sleep(1700);
+ok(!(await page.$('.apl-kv .apl-edit.is-saved')), 'the saved flash plays once and goes');
+await (await editBtn('Referred by')).click();
+await page.waitForSelector(typedBox);
+await page.$eval(typedBox, el => el.select());
+await page.keyboard.type(refWas);
+await page.keyboard.press('Enter');
+await sleep(1600);
+// A slower, older list can't undo a newer one
+listDelays.push(1500, 0);
+await pickPill('Ramp'); await idle(); await sleep(200);
+await pickPill('Ramp'); await idle();
+await sleep(2200);
+ok(await page.$eval('.apl-card[data-id="acct00000001"]', el => /Ramp/.test(el.textContent)), 'an older list landing late doesn’t undo a newer one');
+// J and K belong to the drawer on a focused choice too: K never picks Korean
+fieldSaves = 0;
+await page.focus('.apl-kv select[aria-label="Primary language"]');
+await page.keyboard.press('k');
+await sleep(600);
+ok(fieldSaves === 0 && acct('Avery Stone').fields[F.language] !== 'Korean', `K on a focused choice doesn't pick from it (${fieldSaves} saves, ${acct('Avery Stone').fields[F.language]})`);
+const fromChoice = await text(page, '.apl-dtitle h2');
+if (fromChoice !== 'Avery Stone') { await page.keyboard.press('j'); await sleep(600); }
+await page.waitForFunction(() => document.querySelector('.apl-dtitle h2')?.textContent.trim() === 'Avery Stone' && document.querySelector('.apl-type-picks'), { timeout: 8000 }).catch(() => null);
+await sleep(200);
+// A saved detail leaves the conversation where you're reading it
+await page.$eval('.apl-thread', el => { el.scrollTop = 0; });
+await sleep(150);
+await pickPill('Ramp'); await idle(); await sleep(500);
+ok((await page.$eval('.apl-thread', el => el.scrollTop)) < 20, `saving a detail leaves the conversation where you were reading (${await page.$eval('.apl-thread', el => el.scrollTop)})`);
+await pickPill('Ramp'); await idle(); await sleep(400);
+// A message started and not sent waits for you
+await page.click('.apl-composer textarea');
+await page.keyboard.type('A draft for Jordan');
+await page.keyboard.press('Escape');
+await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 5000 }).catch(() => null);
+await openAvery();
+await page.waitForSelector('.apl-composer textarea', { timeout: 8000 });
+ok(await page.$eval('.apl-composer textarea', el => el.value) === 'A draft for Jordan', 'a message started and not sent is there when the family is opened again');
+await page.click('.apl-icon-btn[aria-label^="Next family"]');
+await sleep(500);
+const draftOther = await page.$eval('.apl-composer textarea', el => el.value).catch(() => null);
+await page.click('.apl-icon-btn[aria-label^="Previous family"]');
+await onFamily('Avery Stone');
+await page.waitForSelector('.apl-composer textarea', { timeout: 8000 });
+ok(!draftOther && await page.$eval('.apl-composer textarea', el => el.value) === 'A draft for Jordan', 'it stays with its own family, moving between families');
+await page.click('.apl-composer textarea');
+await page.$eval('.apl-composer textarea', el => el.select());
+await page.keyboard.press('Backspace');
+await sleep(150);
+// A date JobTread holds in another form shows as it is, and opening it changes nothing
+const bdKept = acct('Avery Stone').fields[F.birthday];
+fieldSaves = 0;
+acct('Avery Stone').fields[F.birthday] = '4/12/2016';
+await page.click('.apl-icon-btn[aria-label^="Next family"]');
+await sleep(500);
+await page.click('.apl-icon-btn[aria-label^="Previous family"]');
+await onFamily('Avery Stone');
+await page.waitForSelector('.apl-kv button.apl-edit[aria-label="Edit Birthday"]', { timeout: 8000 });
+await sleep(300);
+ok((await text(page, '.apl-kv button.apl-edit[aria-label="Edit Birthday"]')) === '4/12/2016', 'a date in another form shows as it is, not “Invalid Date”');
+await (await editBtn('Birthday')).click();
+await page.waitForSelector('.apl-kv input[type="date"]');
+await page.click('.apl-panel h3');
+await sleep(500);
+ok(fieldSaves === 0 && acct('Avery Stone').fields[F.birthday] === '4/12/2016', `and opening and leaving it doesn't erase it (${fieldSaves} saves, ${acct('Avery Stone').fields[F.birthday]})`);
+acct('Avery Stone').fields[F.birthday] = bdKept;
+await page.click('.apl-icon-btn[aria-label^="Next family"]');
+await sleep(500);
+await page.click('.apl-icon-btn[aria-label^="Previous family"]');
+await onFamily('Avery Stone');
+await sleep(300);
+// A choice shows the new value while JobTread saves it
+slowFields = 1200;
+await page.select('.apl-kv select[aria-label="Gender"]', 'Male');
+await sleep(250);
+ok(await page.$eval('.apl-kv select[aria-label="Gender"]', el => el.value) === 'Male', 'a choice shows its new value while it saves');
+ok(await page.$eval('.apl-kv select[aria-label="Gender"]', el => Number(getComputedStyle(el).opacity) < 1), 'and shows that it’s saving');
+await page.waitForFunction(() => !document.querySelector('.apl-kv select[aria-label="Gender"].is-saving'), { timeout: 8000 }).catch(() => null);
+slowFields = 0;
+await sleep(500);
+ok(acct('Avery Stone').fields[F.gender] === 'Male' && await page.$eval('.apl-kv select[aria-label="Gender"]', el => el.value) === 'Male', 'and keeps it once saved');
+await page.select('.apl-kv select[aria-label="Gender"]', 'Female');
+await page.waitForFunction(() => !document.querySelector('.apl-kv select[aria-label="Gender"].is-saving'), { timeout: 8000 }).catch(() => null);
+await sleep(500);
+// A choice reached with Tab shows the focus ring
+await page.focus('.apl-kv button.apl-edit[aria-label="Edit Birthday"]');
+await page.keyboard.press('Tab');
+await sleep(400); // the ring fades in
+const ring = await page.evaluate(() => { const el = document.activeElement; return { tag: el.tagName, shadow: getComputedStyle(el).boxShadow }; });
+ok(ring.tag === 'SELECT' && /4px/.test(ring.shadow), `a choice reached with Tab shows the focus ring (${ring.tag} ${ring.shadow})`);
+// An open Diagnosis box keeps its label on the first line
+await (await editBtn('Diagnosis')).click();
+await page.waitForSelector('.apl-kv textarea');
+const dxAlign = await page.$eval('.apl-kv textarea', ta => {
+  const dt = ta.closest('dd').previousElementSibling; const r = document.createRange(); r.selectNodeContents(dt);
+  const l = [...r.getClientRects()][0]; const cs = getComputedStyle(ta); const t = ta.getBoundingClientRect();
+  const firstLine = t.top + parseFloat(cs.borderTopWidth) + parseFloat(cs.paddingTop);
+  return (l.top + l.height / 2) - (firstLine + (parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.4) / 2);
+});
+await page.keyboard.press('Escape');
+ok(Math.abs(dxAlign) <= 3, `an open Diagnosis box keeps its label on its first line (${dxAlign.toFixed(1)}px)`);
 await shot(page, 'desktop-family-after');
 // The home on a small map in the Home card, inside the area: centered on the pin, the area drawn
 await page.waitForSelector('.apl-homemap .apl-pin', { timeout: 15000 }).catch(() => null);
@@ -988,8 +1456,963 @@ console.log('An organization');
   ok(/^Address/.test(await p.evaluate(() => [...document.querySelectorAll('.apl-side .apl-panel h3')].map((h) => h.textContent.trim()).find((t) => /^(Home|Address)/.test(t)) || '')), 'where it is: its Address, not a Home');
   ok(/Message the organization/.test(await text(p, '.apl-composer-head b')), 'and the message box writes to the organization');
   ok(!(await p.$('.apl-dtabs [data-tab="score"]')), 'a community project has no Score tab (the rubric is for makeovers)');
+  // Its history names its own details: "Type of space changed", never "Makeover type"
+  await p.$$eval('.apl-type-picks button', (els) => els.find((b) => b.getAttribute('aria-pressed') !== 'true')?.click());
+  await p.waitForFunction(() => /Type of space changed/.test(document.querySelector('.apl-thread')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  const orgThread = await text(p, '.apl-thread');
+  ok(/Type of space changed/.test(orgThread) && !/Makeover (type|year)/.test(orgThread), 'its history says “Type of space changed”, not “Makeover type”');
+  // Every type unpicked: the history says blank, not a label with nothing after it
+  for (let i = 0; i < 4; i++) {
+    const had = await p.$$eval('.apl-type-picks button', (els) => { const b = els.find((x) => x.getAttribute('aria-pressed') === 'true'); b?.click(); return !!b; });
+    if (!had) break;
+    await p.waitForFunction(() => !document.querySelector('.apl-type-picks.is-saving'), { timeout: 8000 }).catch(() => null);
+    await sleep(250);
+  }
+  await p.waitForFunction(() => /Type of space: blank/.test(document.querySelector('.apl-thread')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  ok(/Type of space: blank/.test(await text(p, '.apl-thread')), 'every type unpicked: its history says “Type of space: blank”');
   await shot(p, 'organization-drawer');
+  // A family with no status whose year is cleared has left Applicants: the drawer closes on it and says so
+  const gone = acct('Harper Lee');
+  delete gone.fields[F.status];
+  await DB.prepare('UPDATE applicants SET status = NULL WHERE account_id = ?').bind(gone.id).run();
+  const lp = await open(1440, 1000);
+  await lp.goto(`${SITE}/admin/__applicants.html#applications/applicants/${gone.id}`, { waitUntil: 'domcontentloaded' });
+  await lp.waitForSelector('.apl-kv select[aria-label="Makeover year"]', { timeout: 8000 }).catch(() => null);
+  await sleep(400);
+  await lp.select('.apl-kv select[aria-label="Makeover year"]', '');
+  await lp.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 8000 }).catch(() => null);
+  ok(!(await lp.$('.apl-drawer')) && await lp.evaluate(() => window.__toasts.some(t => /Harper Lee has no status or year now/.test(t.msg))), 'a family left with no status or year: the drawer closes and says where they went');
+  await lp.close();
+  // On a touch screen too: a tap on a detail below an open box lands
+  const tp = await open(768, 1000, '__shell.html');
+  await tp.evaluate(() => localStorage.removeItem('apl-view'));
+  await tp.setViewport({ width: 768, height: 1000, deviceScaleFactor: 1, hasTouch: true });
+  await tp.reload({ waitUntil: 'domcontentloaded' });
+  await tp.waitForSelector('.apl-card', { timeout: 20000 }).catch(() => {});
+  await sleep(400);
+  await clickText(tp, '.apl-card', /Avery Stone/);
+  await tp.waitForSelector('.apl-kv', { timeout: 8000 }).catch(() => {});
+  await sleep(500);
+  const dTab = await tp.$('.apl-dtabs [data-tab="details"]');
+  if (dTab && await dTab.evaluate((e) => !!e.offsetParent)) { await dTab.click(); await sleep(300); }
+  await tp.$eval('.apl-kv button.apl-edit[aria-label="Edit Diagnosis"]', (b) => b.click());
+  await tp.waitForSelector('.apl-kv textarea');
+  await sleep(150);
+  const tapAt = await tp.$eval('.apl-kv button.apl-edit[aria-label="Edit Referred by"]', (el) => { el.scrollIntoView({ block: 'center' }); const r = el.getBoundingClientRect(); return { x: r.x + 40, y: r.y + r.height / 2 }; });
+  await sleep(200);
+  await tp.touchscreen.tap(tapAt.x, tapAt.y);
+  await sleep(450);
+  ok(!!(await tp.$('.apl-kv input.form-input[aria-label="Referred by"]')) && !(await tp.$('.apl-kv textarea')), 'on a touch screen, tapping a detail below an open box opens it the first time');
+  const tSize = await tp.evaluate(() => ({ edit: getComputedStyle(document.querySelector('.apl-kv .apl-edit')).fontSize, choice: getComputedStyle(document.querySelector('.apl-kv select')).fontSize, arrow: document.querySelector('.apl-icon-btn').getBoundingClientRect().height, status: document.querySelector('.apl-status-select select').getBoundingClientRect().height }));
+  ok(tSize.edit === tSize.choice && tSize.arrow >= 44 && tSize.status >= 44, `touch screens: typed values and choices read the same size, arrows and status are 44px (${JSON.stringify(tSize)})`);
+  await tp.close();
+  // Previous and Next follow the order on screen: the board's columns, the list as sorted
+  const op = await open(1440, 1000);
+  await op.evaluate(() => localStorage.removeItem('apl-view'));
+  await op.reload({ waitUntil: 'domcontentloaded' });
+  await op.waitForSelector('.apl-card', { timeout: 20000 }).catch(() => {});
+  await sleep(400);
+  const firstCol = await op.$$eval('.apl-col', (cols) => [...cols].map((c) => [...c.querySelectorAll('.apl-card-name')].map((e) => e.textContent.trim())).find((names) => names.length >= 2));
+  await clickText(op, '.apl-card', new RegExp(firstCol[0]));
+  await op.waitForSelector('.apl-drawer .apl-dtitle h2', { timeout: 8000 });
+  await sleep(500);
+  await op.click('.apl-icon-btn[aria-label^="Next family"]');
+  await sleep(600);
+  ok(await text(op, '.apl-dtitle h2') === firstCol[1], `on the board, Next is the card below (${firstCol[0]} → ${await text(op, '.apl-dtitle h2')}, want ${firstCol[1]})`);
+  await op.keyboard.press('Escape');
+  await sleep(300);
+  await op.evaluate(() => localStorage.setItem('apl-view', 'list'));
+  await op.reload({ waitUntil: 'domcontentloaded' });
+  await op.waitForSelector('.apl-table tbody tr', { timeout: 20000 }).catch(() => {});
+  await sleep(300);
+  await op.$$eval('.apl-table thead th button', (bs) => { const b = bs.find((x) => /Name/.test(x.textContent)); b.click(); });
+  await sleep(200);
+  await op.$$eval('.apl-table thead th button', (bs) => { const b = bs.find((x) => /Name/.test(x.textContent)); b.click(); });
+  await sleep(250);
+  const rowNames = await op.$$eval('.apl-table tbody tr', (rs) => rs.map((r) => r.querySelector('td')?.textContent.trim().split(/\s{2,}|\n/)[0]));
+  await op.$eval('.apl-table tbody tr', (r) => r.click());
+  await op.waitForSelector('.apl-drawer .apl-dtitle h2', { timeout: 8000 });
+  await sleep(500);
+  const listFirst = await text(op, '.apl-dtitle h2');
+  await op.click('.apl-icon-btn[aria-label^="Next family"]');
+  await sleep(600);
+  const listNext = await text(op, '.apl-dtitle h2');
+  const rowsText = await op.$$eval('.apl-table tbody tr', (rs) => rs.map((r) => r.textContent));
+  const at1 = rowsText.findIndex((t) => t.includes(listFirst));
+  ok(at1 === 0 && rowsText[1].includes(listNext), `in the list, Next is the row below as sorted (${listFirst} → ${listNext}, ${JSON.stringify(rowNames.slice(0, 3))})`);
+  // A status move confirmed in its sheet shows in the drawer at once; J and K wait behind it
+  await op.keyboard.press('Escape');
+  await sleep(300);
+  await op.evaluate(() => localStorage.removeItem('apl-view'));
+  await op.reload({ waitUntil: 'domcontentloaded' });
+  await op.waitForSelector('.apl-card', { timeout: 20000 }).catch(() => {});
+  await sleep(400);
+  await clickText(op, '.apl-card', /Mateo García/);
+  await op.waitForSelector('.apl-status-select select', { timeout: 8000 });
+  await sleep(500);
+  const mateoWas = await op.$eval('.apl-status-select select', (el) => el.value);
+  const mateoTo = mateoWas === 'In Review' ? 'Applied' : 'In Review';
+  await op.select('.apl-status-select select', mateoTo);
+  await op.waitForSelector('.apl-sheet', { timeout: 8000 });
+  await sleep(300);
+  const behindSheet = await text(op, '.apl-dtitle h2');
+  await op.keyboard.press('j');
+  await sleep(300);
+  ok(await text(op, '.apl-dtitle h2') === behindSheet, 'J and K don’t move the drawer behind a confirmation');
+  await op.click('.apl-sheet-foot .btn-primary');
+  await op.waitForFunction(() => !document.querySelector('.apl-sheet'), { timeout: 8000 }).catch(() => null);
+  await sleep(500);
+  ok(await op.$eval('.apl-status-select select', (el) => el.value) === mateoTo, `a status move shows in the open drawer at once (${await op.$eval('.apl-status-select select', (el) => el.value)})`);
+  await op.close();
   await p.close();
+}
+
+// The rest of the drawer, as a fresh tester went at it
+const openFamily = async (pg, name) => {
+  await pg.goto(`${SITE}/admin/__applicants.html#applications/applicants/${acct(name).id}`, { waitUntil: 'domcontentloaded' });
+  await pg.waitForFunction((n) => document.querySelector('.apl-drawer h2')?.textContent === n && document.querySelector('.apl-convo'), { timeout: 10000 }, name);
+  await sleep(300);
+};
+const shutDrawer = async (pg) => {
+  await pg.keyboard.press('Escape');
+  await pg.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 8000 }).catch(() => null);
+  await sleep(150);
+};
+const toldOf = (pg, re) => pg.evaluate((src) => window.__toasts.filter(t => new RegExp(src).test(t.msg)).length, re.source);
+
+// What the family gets is seen before anything moves: a preview that fails can't approve them with no email
+{
+  const sp = await open(1440, 1000);
+  await openFamily(sp, 'Isla Example');
+  await sp.focus('.apl-status-select select');
+  failPreview = true;
+  const stood = await sp.$eval('.apl-status-select select', el => el.value);
+  await sp.select('.apl-status-select select', stood === 'Approved' ? 'Denied' : 'Approved');
+  await sp.waitForSelector('.apl-sheet .apl-callout.is-warn', { timeout: 8000 }).catch(() => null);
+  await shot(sp, 'status-preview-failed');
+  ok(await sp.$eval('.apl-sheet-foot .btn-primary', el => el.disabled).catch(() => false), 'a preview that fails holds the move, so no family loses their email');
+  failPreview = false;
+  ok(await clickText(sp, '.apl-sheet .apl-more', /Try again/), 'and it can be tried again');
+  await sp.waitForFunction(() => { const b = document.querySelector('.apl-sheet-foot .btn-primary'); return b && !b.disabled; }, { timeout: 8000 }).catch(() => null);
+  ok(!(await sp.$eval('.apl-sheet-foot .btn-primary', el => el.disabled).catch(() => true)), 'and once it reads, the move is open again');
+  await sleep(200);
+  // The sheet keeps the keyboard
+  const inside = [];
+  for (let i = 0; i < 14; i++) { await sp.keyboard.press('Tab'); inside.push(await sp.evaluate(() => !!document.activeElement?.closest('.apl-sheet'))); }
+  ok(inside.every(Boolean), `Tab stays in the status sheet (${inside.filter(Boolean).length} of ${inside.length})`);
+  await sp.keyboard.press('Escape');
+  await sleep(250);
+  ok(!(await sp.$('.apl-sheet')) && await sp.evaluate(() => document.activeElement?.matches('.apl-status-select select')), 'Esc puts the focus back on the status it came from');
+  await sp.close();
+}
+
+// A message keeps where it was going, whatever happens around it
+{
+  const cp = await open(1440, 1000);
+  await openFamily(cp, 'Avery Stone');
+  await clickText(cp, '.apl-thread .apl-more', /Reply/);
+  await sleep(200);
+  const title = await text(cp, '.apl-thread-to b');
+  await cp.click('.apl-composer textarea');
+  await cp.keyboard.type('An answer to the older conversation');
+  await shutDrawer(cp);
+  await openFamily(cp, 'Avery Stone');
+  ok(await cp.$eval('.apl-composer textarea', el => el.value) === 'An answer to the older conversation' && !!title && await text(cp, '.apl-thread-to b') === title, `a reply left and come back to is still that reply (${title})`);
+  await clickText(cp, '.apl-thread-to .apl-more', /New message/);
+  await sleep(150);
+  await cp.$eval('.apl-subject input', el => el.select());
+  await cp.keyboard.type('About the visit');
+  await shutDrawer(cp);
+  await openFamily(cp, 'Avery Stone');
+  ok(!!(await cp.$('.apl-subject input')) && await cp.$eval('.apl-subject input', el => el.value).catch(() => '') === 'About the visit', 'a new message left and come back to is still new, with its subject');
+  // A family's reply coming in doesn't turn it into an answer
+  const stone = acct('Avery Stone');
+  stone.comments.push({ id: `${stone.id}-late`, name: 'RE: Application Status', message: 'One more thing from us', by: 'Jordan Stone', fromEmail: true, createdAt: new Date().toISOString(), parentCommentId: `${stone.id}-m0` });
+  await cp.click('.apl-kv button[aria-label="Edit Referred by"]');
+  await cp.waitForSelector('.apl-kv input.form-input', { timeout: 8000 });
+  await cp.$eval('.apl-kv input.form-input', el => el.select());
+  await cp.keyboard.type('Their neighbor');
+  await cp.keyboard.press('Enter');
+  await cp.waitForFunction(() => /One more thing from us/.test(document.querySelector('.apl-thread')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  ok(/One more thing from us/.test(await text(cp, '.apl-thread')) && !!(await cp.$('.apl-subject input')) && !(await cp.$('.apl-thread-to')), 'a reply arriving leaves the new message as it was');
+  await shutDrawer(cp);
+  await openFamily(cp, 'Avery Stone');
+  ok(!!(await cp.$('.apl-subject input')) && !(await cp.$('.apl-thread-to')) && await cp.$eval('.apl-subject input', el => el.value).catch(() => '') === 'About the visit', 'and left and come back to with the family waiting, it is still new');
+  await cp.close();
+
+  // Sent, left and come back to before it's in: there's nothing to send twice
+  const dp = await open(1440, 1000);
+  await openFamily(dp, 'Avery Stone');
+  const sentBefore = messagesPosted;
+  slowMessages = 1800;
+  await dp.click('.apl-composer textarea');
+  await dp.keyboard.type('Only once, please');
+  await clickText(dp, '.apl-composer-foot .btn-primary', /Send/);
+  await sleep(120);
+  await shutDrawer(dp);
+  await openFamily(dp, 'Avery Stone');
+  ok(await dp.$eval('.apl-composer-foot .btn-primary', el => el.disabled && /Sending/.test(el.textContent)).catch(() => false), 'a message still on its way shows as sending when you come back');
+  await dp.click('.apl-composer-foot .btn-primary').catch(() => null);
+  await dp.waitForFunction(() => !document.querySelector('.apl-composer textarea')?.value, { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  slowMessages = 0;
+  ok(messagesPosted === sentBefore + 1 && await dp.$eval('.apl-composer textarea', el => el.value) === '', `and it goes once (${messagesPosted - sentBefore})`);
+  // The network dropping it brings Send back, with the words still there
+  dropMessages = true;
+  await dp.click('.apl-composer textarea');
+  await dp.keyboard.type('Try me again');
+  await clickText(dp, '.apl-composer-foot .btn-primary', /Send/);
+  await sleep(500);
+  dropMessages = false;
+  ok(await dp.$eval('.apl-composer-foot .btn-primary', el => !el.disabled).catch(() => false) && await dp.$eval('.apl-composer textarea', el => el.value) === 'Try me again' && await toldOf(dp, /Avery Stone: not sent/) === 1, 'a dropped connection says so and leaves the message to send again');
+  await dp.close();
+
+  // A correction keeps its edits like any other message
+  const isla = acct('Isla Example');
+  isla.fields[F.status] = 'In Review';
+  await DB.prepare('UPDATE applicants SET status = ? WHERE account_id = ?').bind('In Review', isla.id).run();
+  const when = new Date().toISOString();
+  await DB.prepare('INSERT OR REPLACE INTO applicant_notify (account_id, name, told, told_at, status, updated_at) VALUES (?, ?, ?, ?, ?, ?)').bind(isla.id, isla.name, 'Approved', when, 'In Review', when).run();
+  const fp = await open(1440, 1000);
+  await openFamily(fp, 'Isla Example');
+  ok(await clickText(fp, '.apl-thread-banner button', /orrection/), 'a family told the wrong thing can be sent a correction');
+  await fp.waitForFunction(() => document.querySelector('.apl-composer textarea')?.value, { timeout: 8000 }).catch(() => null);
+  await fp.click('.apl-composer textarea');
+  await fp.keyboard.type(' My edit.');
+  await shutDrawer(fp);
+  await openFamily(fp, 'Isla Example');
+  ok(/My edit\./.test(await fp.$eval('.apl-composer textarea', el => el.value)) && /Writing a correction/.test(await text(fp, '.apl-composer')), 'a correction left and come back to keeps its edits, and is still a correction');
+  await fp.close();
+}
+
+// Previous and Next follow the screen, from the first press, and hold still while you work
+{
+  const bp = await open(1440, 1000);
+  await bp.click('.apl-views [data-view="board"]');
+  await bp.waitForSelector('.apl-card', { timeout: 10000 });
+  const cards = await bp.$$eval('.apl-card', els => els.map(e => e.dataset.id));
+  const wrong = [];
+  for (const id of cards.slice(0, 5)) {
+    const i = cards.indexOf(id);
+    if (!cards[i + 1]) continue;
+    await bp.goto(`${SITE}/admin/__applicants.html#applications/applicants/${id}`, { waitUntil: 'domcontentloaded' });
+    await bp.reload({ waitUntil: 'domcontentloaded' });
+    await bp.waitForSelector('.apl-drawer .apl-convo', { timeout: 10000 }).catch(() => null);
+    await sleep(400);
+    await bp.click('.apl-drawer button[aria-label="Next family (J)"]').catch(() => null);
+    await sleep(350);
+    const at = await bp.evaluate(() => location.hash.split('/').pop());
+    if (at !== cards[i + 1]) wrong.push(`${id}→${at}, not ${cards[i + 1]}`);
+  }
+  ok(!wrong.length, `the first Next after a link is the next card on the board (${wrong.join('; ')})`);
+  await bp.close();
+
+  const lp = await open(1440, 1000);
+  await lp.click('.apl-views [data-view="list"]');
+  await lp.waitForSelector('.apl-table tbody tr', { timeout: 10000 });
+  await sleep(300);
+  const rows = await lp.$$eval('.apl-table tbody tr strong', els => els.map(e => e.textContent));
+  const third = rows[2];
+  await lp.click('.apl-table tbody tr:nth-child(3) td');
+  await lp.waitForSelector('.apl-kv button[aria-label="Edit Referred by"]', { timeout: 8000 });
+  await sleep(300);
+  await lp.click('.apl-kv button[aria-label="Edit Referred by"]');
+  await lp.waitForSelector('.apl-kv input.form-input', { timeout: 8000 });
+  await lp.$eval('.apl-kv input.form-input', el => el.select());
+  await lp.keyboard.type('A row that moves');
+  await lp.keyboard.press('Enter');
+  await sleep(900);
+  await lp.click('.apl-drawer button[aria-label="Next family (J)"]');
+  await lp.waitForFunction((n) => { const t = document.querySelector('.apl-drawer h2')?.textContent; return t && t !== n; }, { timeout: 8000 }, third).catch(() => null);
+  ok(await text(lp, '.apl-drawer h2') === rows[3], `after a save moves a row, Next is still the one below it (${third} → ${await text(lp, '.apl-drawer h2')}, wanted ${rows[3]})`);
+  await lp.close();
+
+  // Coming to a family with the conversation behind another tab: it opens on the latest, not the oldest
+  const vp = await open(1440, 560);
+  await openFamily(vp, 'Avery Stone');
+  await vp.click('.apl-drawer button[aria-label="Next family (J)"]');
+  await vp.waitForFunction(() => document.querySelector('.apl-drawer h2')?.textContent !== 'Avery Stone' && document.querySelector('.apl-convo'), { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  await vp.click('.apl-dtabs [data-tab="score"]').catch(() => null);
+  await sleep(200);
+  await vp.click('.apl-drawer button[aria-label="Previous family (K)"]');
+  await vp.waitForFunction(() => document.querySelector('.apl-drawer h2')?.textContent === 'Avery Stone' && document.querySelector('.apl-convo'), { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  await vp.click('.apl-dtabs [data-tab="convo"]').catch(() => null);
+  await sleep(300);
+  const end = await vp.$eval('.apl-thread', el => ({ left: el.scrollHeight - el.scrollTop - el.clientHeight, tall: el.scrollHeight > el.clientHeight }));
+  ok(end.tall && end.left < 5, `the conversation opens on its latest line behind a tab too (${JSON.stringify(end)})`);
+  await vp.close();
+}
+
+// Sizes and sheets on a phone and an iPad
+{
+  const phone2 = await open(390, 844);
+  const applied = Object.values(w.world.accounts).find(a => a.fields[F.status] === 'Applied' && (a.contacts || []).length && a.name !== 'Harper Lee');
+  await openFamily(phone2, applied.name);
+  await phone2.select('.apl-status-select select', 'In Review');
+  await phone2.waitForSelector('.apl-sheet-foot .btn-primary:not([disabled])', { timeout: 8000 }).catch(() => null);
+  await sleep(200);
+  const cut = await phone2.$$eval('.apl-sheet .apl-card-sub', els => els.filter(e => e.scrollWidth > e.clientWidth + 1).map(e => e.textContent.slice(0, 50)));
+  ok(!cut.length && /Goes out at/.test(await text(phone2, '.apl-sheet')), `the status sheet's sentences show whole on a phone (${JSON.stringify(cut)})`);
+  await phone2.keyboard.press('Escape');
+  await sleep(200);
+  const tabs = await phone2.$$eval('.apl-dtabs button', els => els.filter(e => e.offsetParent).map(e => e.getBoundingClientRect().height));
+  await phone2.click('.apl-dtabs [data-tab="details"]');
+  await sleep(200);
+  const links = await phone2.$$eval('.apl-contact a', els => els.map(e => e.getBoundingClientRect().height));
+  ok(tabs.length && tabs.every(t => t >= 44) && links.length && links.every(t => t >= 44), `tabs and contact links are full tap size (${tabs.join()}; ${links.join()})`);
+  // A family link that goes nowhere still has a way out, with no header to hold a Close
+  await phone2.goto(`${SITE}/admin/__applicants.html#applications/applicants/nosuchfamily`, { waitUntil: 'domcontentloaded' });
+  await phone2.waitForFunction(() => document.querySelector('.apl-drawer')?.textContent.includes('Try again') || document.querySelector('.apl-drawer')?.textContent.includes('any more'), { timeout: 8000 }).catch(() => null);
+  ok(await clickText(phone2, '.apl-drawer .apl-more', /^Close$/) && await phone2.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).then(() => true, () => false), 'a dead family link can be closed on a phone');
+  await phone2.close();
+
+  const ip = await open(768, 1000, '__shell.html');
+  await ip.setViewport({ width: 768, height: 1000, deviceScaleFactor: 1, hasTouch: true });
+  await ip.reload({ waitUntil: 'domcontentloaded' });
+  await ip.waitForSelector('.apl-card, .apl-table', { timeout: 20000 }).catch(() => null);
+  await ip.evaluate((id) => { location.hash = `#applications/applicants/${id}`; }, acct('Avery Stone').id);
+  await ip.waitForSelector('.apl-dtabs [data-tab="details"]', { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  await ip.click('.apl-dtabs [data-tab="details"]');
+  await sleep(200);
+  await ip.setViewport({ width: 1024, height: 768, deviceScaleFactor: 1, hasTouch: true });
+  await sleep(400);
+  ok(await ip.evaluate(() => { const t = document.querySelector('.apl-dtabs [aria-selected="true"]'); return !!t && t.offsetParent !== null; }), 'an iPad turned on its side while on Details still shows which tab is open');
+  await ip.close();
+}
+
+// Details: the limit speaks only when something was cut, typing since a failure stays, and a late answer closes nobody else
+{
+  const mp = await open(1440, 1000);
+  await openFamily(mp, 'Eliza Franklin');
+  await mp.click('.apl-kv button[aria-label="Edit Referred by"]');
+  await mp.waitForSelector('.apl-kv input.form-input', { timeout: 8000 });
+  await mp.$eval('.apl-kv input.form-input', el => el.select());
+  await mp.keyboard.sendCharacter('x'.repeat(300));
+  await sleep(150);
+  ok(await toldOf(mp, /holds 300 characters/) === 0, 'exactly as many characters as fit: no warning');
+  await mp.keyboard.type('y');
+  await sleep(150);
+  ok(await toldOf(mp, /holds 300 characters/) === 1 && (await mp.$eval('.apl-kv input.form-input', el => el.value)).length === 300, 'one past the limit: the warning, once');
+  await mp.keyboard.press('Escape');
+  await sleep(200);
+  await mp.close();
+
+  const tp = await open(1440, 1000);
+  await openFamily(tp, 'Eliza Franklin');
+  failFields = true;
+  slowQueue.length = 0;
+  slowQueue.push(9000); // long enough to go away, come back and type on a busy machine
+  await tp.click('.apl-kv button[aria-label="Edit Referred by"]');
+  await tp.waitForSelector('.apl-kv input.form-input', { timeout: 8000 });
+  await tp.$eval('.apl-kv input.form-input', el => el.select());
+  await tp.keyboard.type('First try');
+  await tp.keyboard.press('Enter');
+  await sleep(100);
+  // Whichever neighbour there is: this family can be last in the order
+  const lastInOrder = await tp.$eval('.apl-drawer button[aria-label="Next family (J)"]', b => b.disabled);
+  await tp.keyboard.press(lastInOrder ? 'k' : 'j');
+  await tp.waitForFunction(() => document.querySelector('.apl-drawer h2')?.textContent !== 'Eliza Franklin' && document.querySelector('.apl-kv'), { timeout: 8000 }).catch(() => null);
+  await sleep(200);
+  await tp.keyboard.press(lastInOrder ? 'j' : 'k');
+  await tp.waitForFunction(() => document.querySelector('.apl-drawer h2')?.textContent === 'Eliza Franklin' && document.querySelector('.apl-kv button[aria-label="Edit Referred by"]'), { timeout: 8000 }).catch(() => null);
+  await sleep(200);
+  await tp.click('.apl-kv button[aria-label="Edit Referred by"]');
+  await tp.waitForSelector('.apl-kv input.form-input', { timeout: 8000 });
+  await tp.$eval('.apl-kv input.form-input', el => el.select());
+  await tp.keyboard.type('Second try');
+  ok(await toldOf(tp, /Referred by not saved/) === 0, 'the box is being typed in while the first save is still going');
+  await tp.waitForFunction(() => window.__toasts.some(t => /Referred by not saved/.test(t.msg)), { timeout: 15000 }).catch(() => null);
+  ok(await toldOf(tp, /Referred by not saved/) === 1, 'and that save fails');
+  await sleep(350);
+  failFields = false;
+  ok(await tp.$eval('.apl-kv input.form-input', el => el.value).catch(() => '') === 'Second try', 'what you typed after an earlier save stays when that save fails');
+  await tp.keyboard.press('Escape');
+  await sleep(150);
+  await tp.close();
+
+  const zp = await open(1440, 1000);
+  await openFamily(zp, 'Owen Lindgren');
+  const gone = acct('Owen Lindgren');
+  delete gone.fields[F.status];
+  await DB.prepare('UPDATE applicants SET status = NULL WHERE account_id = ?').bind(gone.id).run();
+  slowQueue.push(1300);
+  await zp.select('.apl-kv select[aria-label="Makeover year"]', '');
+  await sleep(100);
+  await shutDrawer(zp);
+  await openFamily(zp, 'Kenna Thomason');
+  await zp.waitForFunction(() => window.__toasts.some(t => /Owen Lindgren has no status or year now/.test(t.msg)), { timeout: 8000 }).catch(() => null);
+  await sleep(500);
+  ok(await text(zp, '.apl-drawer h2') === 'Kenna Thomason', 'a family leaving after the drawer closed leaves the family open now alone');
+  await zp.close();
+
+  // Show on map finds a family whatever the filters say
+  const np = await open(1440, 1000);
+  await openFamily(np, 'Avery Stone');
+  const yearNow = await np.$eval('.apl-kv select[aria-label="Makeover year"]', el => el.value);
+  const moveTo = yearNow === '2026' ? '2025' : '2026';
+  await np.select('.apl-kv select[aria-label="Makeover year"]', moveTo);
+  await sleep(700);
+  await clickText(np, '.apl-side .apl-more', /Show on map/);
+  await np.waitForSelector('.apl-homemap .apl-pin', { timeout: 15000 }).catch(() => null);
+  await np.waitForFunction(() => /Avery Stone/.test(document.querySelector('.leaflet-popup-content')?.textContent || ''), { timeout: 6000 }).catch(() => null);
+  ok(/Avery Stone/.test(await text(np, '.leaflet-popup-content')), 'Show on map finds a family the season filter would have hidden');
+  await np.evaluate((id, year) => fetch('/api/applicants-admin', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fields: { id, changes: { year } } }) }), acct('Avery Stone').id, yearNow);
+  await np.close();
+}
+
+// Round two of the same: a correction and a draft, a move under way, and sizes changing
+{
+  const rp = await open(1440, 800);
+  await openFamily(rp, 'Isla Example');
+  await rp.click('.apl-composer textarea');
+  await rp.keyboard.type('Words of my own');
+  await clickText(rp, '.apl-thread-banner button', /orrection/);
+  await rp.waitForFunction(() => /Writing a correction/.test(document.querySelector('.apl-composer')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  const under = await rp.$eval('.apl-thread', el => el.scrollHeight - el.scrollTop - el.clientHeight);
+  ok(under < 5, `starting a correction keeps the latest line in view (${under}px under)`);
+  await rp.keyboard.type(' Hand edit.');
+  await clickText(rp, '.apl-thread-banner button', /orrection/);
+  await sleep(500);
+  ok(/Hand edit\./.test(await rp.$eval('.apl-composer textarea', el => el.value)), 'pressing Write a correction again leaves your edits alone');
+  await clickText(rp, '.apl-composer .apl-callout .apl-more', /^Cancel$/);
+  await sleep(250);
+  ok(await rp.$eval('.apl-composer textarea', el => el.value) === 'Words of my own', 'cancelling a correction brings back what you were writing');
+  await rp.close();
+
+  const vp = await open(1440, 1000);
+  await openFamily(vp, 'Kenna Thomason');
+  await vp.select('.apl-status-select select', 'Denied');
+  await vp.waitForSelector('.apl-sheet-foot .btn-primary:not([disabled])', { timeout: 8000 }).catch(() => null);
+  slowMoves = 1500;
+  await vp.click('.apl-sheet-foot .btn-primary');
+  await sleep(150);
+  const offWhileMoving = await vp.$eval('.apl-sheet-foot .btn-ghost', el => el.disabled).catch(() => false);
+  await vp.keyboard.press('Escape');
+  await sleep(150);
+  ok(offWhileMoving && !!(await vp.$('.apl-sheet')), 'a move under way can’t look cancelled: Cancel is off and Esc waits for it');
+  await vp.waitForFunction(() => !document.querySelector('.apl-sheet'), { timeout: 8000 }).catch(() => null);
+  slowMoves = 0;
+  await vp.close();
+
+  const ip = await open(768, 1000, '__shell.html');
+  await ip.setViewport({ width: 768, height: 1000, deviceScaleFactor: 1, hasTouch: true });
+  await ip.reload({ waitUntil: 'domcontentloaded' });
+  await ip.waitForSelector('.apl-card, .apl-table', { timeout: 20000 }).catch(() => null);
+  await ip.evaluate((id) => { location.hash = `#applications/applicants/${id}`; }, acct('Avery Stone').id);
+  await ip.waitForSelector('.apl-thread', { timeout: 8000 }).catch(() => null);
+  await sleep(500);
+  // Reply and its neighbours keep their look and take a full-size tap
+  const tap = await ip.evaluate(async () => {
+    const el = [...document.querySelectorAll('.apl-msg-actions .apl-more')].at(-1);
+    el.scrollIntoView({ block: 'center' });
+    await new Promise(res => setTimeout(res, 100));
+    const r = el.getBoundingClientRect();
+    const x = r.left + r.width / 2, y = r.top + r.height / 2;
+    return [-20, 20].every(d => document.elementFromPoint(x, y + d)?.closest('.apl-more') === el);
+  }).catch(() => false);
+  ok(tap, 'a small link in the conversation takes a 44px tap on touch');
+  await ip.$eval('.apl-thread', el => { el.scrollTop = el.scrollHeight; });
+  await sleep(150);
+  await ip.setViewport({ width: 1024, height: 768, deviceScaleFactor: 1, hasTouch: true });
+  await sleep(500);
+  const turned = await ip.$eval('.apl-thread', el => ({ left: el.scrollHeight - el.scrollTop - el.clientHeight, tall: el.scrollHeight > el.clientHeight }));
+  ok(turned.tall && turned.left < 5, `turning an iPad stays on the latest line (${JSON.stringify(turned)})`);
+  await ip.close();
+
+  // A phone on its side: too short for it all at once, and nothing out of reach
+  const sidePhone = await open(1440, 1000);
+  await sidePhone.setViewport({ width: 844, height: 390, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await sidePhone.reload({ waitUntil: 'domcontentloaded' });
+  await sidePhone.waitForSelector('.apl-card, .apl-table', { timeout: 20000 }).catch(() => null);
+  await sidePhone.evaluate((id) => { location.hash = `#applications/applicants/${id}`; }, acct('Avery Stone').id);
+  await sidePhone.waitForSelector('.apl-composer-foot .btn-primary', { timeout: 8000 }).catch(() => null);
+  await sleep(500);
+  const sideways = await sidePhone.evaluate(() => {
+    const pane = document.querySelector('.apl-convo');
+    pane.scrollTop = pane.scrollHeight;
+    const b = document.querySelector('.apl-composer-foot .btn-primary').getBoundingClientRect();
+    return { thread: Math.round(document.querySelector('.apl-thread').getBoundingClientRect().height), sendShows: b.bottom <= innerHeight && b.top >= 0 };
+  });
+  ok(sideways.thread >= 190 && sideways.sendShows, `a phone on its side can read the conversation and reach Send (${JSON.stringify(sideways)})`);
+  await sidePhone.close();
+
+  // The map: fresh on its tab, and Show on map always answers
+  const mp = await open(1440, 1000);
+  const popup = () => text(mp, '.leaflet-popup-content');
+  const showOnMap = async (name) => {
+    await openFamily(mp, name);
+    await clickText(mp, '.apl-side .apl-more', /Show on map/);
+    await mp.waitForFunction((n) => (document.querySelector('.leaflet-popup-content')?.textContent || '').includes(n), { timeout: 8000 }, name).catch(() => null);
+  };
+  await showOnMap('Eliza Franklin');
+  await mp.click('.apl-views [data-view="list"]');
+  await sleep(200);
+  await mp.click('.apl-views [data-view="map"]');
+  await mp.waitForSelector('.apl-homemap .apl-pin', { timeout: 15000 }).catch(() => null);
+  await sleep(600);
+  ok(!(await mp.$('.leaflet-popup-content')), 'the Map tab opens on the whole area, not the last family shown');
+  await clickText(mp, '.apl-legend button', /Approved/);
+  await sleep(300);
+  await showOnMap('Eliza Franklin');
+  ok(/Eliza Franklin/.test(await popup()), 'Show on map switches their status back on');
+  await mp.evaluate(() => document.querySelector('.leaflet-popup-close-button')?.click());
+  await sleep(400);
+  await showOnMap('Eliza Franklin');
+  ok(/Eliza Franklin/.test(await popup()), 'Show on map answers for the same family twice');
+  await mp.close();
+
+  // The keyboard in the other sheets
+  const hp = await open(1280, 900);
+  await hp.click('.apl-views [data-view="scores"]');
+  await sleep(400);
+  await clickText(hp, 'button', /How scoring works/);
+  await hp.waitForSelector('.apl-how', { timeout: 8000 }).catch(() => null);
+  await sleep(200);
+  const reached = [];
+  for (let i = 0; i < 4; i++) { await hp.keyboard.press('Tab'); reached.push(await hp.evaluate(() => document.activeElement?.tagName)); }
+  ok(reached.includes('SUMMARY'), `Tab reaches the criteria in How scoring works (${reached.join()})`);
+  await hp.keyboard.press('Escape');
+  await sleep(200);
+  await hp.click('.apl-views [data-view="board"]');
+  await hp.waitForSelector('.apl-more-btn', { timeout: 8000 }).catch(() => null);
+  await hp.click('.apl-more-btn');
+  await sleep(150);
+  await clickText(hp, '.apl-menu button', /Pause family emails/);
+  await hp.waitForSelector('.apl-sheet', { timeout: 8000 }).catch(() => null);
+  await sleep(150);
+  await hp.keyboard.press('Escape');
+  await sleep(250);
+  ok(await hp.evaluate(() => document.activeElement?.matches('.apl-more-btn')), 'closing Pause family emails puts the focus back on ⋯');
+  await openFamily(hp, 'Eliza Franklin');
+  failPreview = true;
+  await hp.select('.apl-status-select select', 'Denied');
+  await hp.waitForSelector('.apl-sheet .apl-callout.is-warn', { timeout: 8000 }).catch(() => null);
+  failPreview = false;
+  await hp.evaluate(() => [...document.querySelectorAll('.apl-sheet .apl-more')].find(b => /Try again/.test(b.textContent))?.focus());
+  await hp.keyboard.press('Enter');
+  await hp.waitForSelector('.apl-sheet-foot .btn-primary:not([disabled])', { timeout: 8000 }).catch(() => null);
+  await sleep(200);
+  ok(await hp.evaluate(() => document.activeElement?.matches('.apl-sheet-foot .btn-primary')), 'Try again by keyboard lands on Move once the preview is in');
+  await hp.keyboard.press('Escape');
+  await hp.close();
+
+  // Where a message is going, the last few ways it could go stale
+  const stone = acct('Avery Stone');
+  stone.comments.push({ id: `${stone.id}-v0`, name: 'Visit day', message: 'Does Thursday work?', by: 'Qualification Committee', createdAt: new Date(Date.now() + 1000).toISOString(), assignees: [{ name: 'Jordan Stone', emailAddress: 'jordan@example.com', accountType: 'customer' }] });
+  stone.comments.push({ id: `${stone.id}-v1`, name: 'RE: Visit day', message: 'Thursday is great', by: 'Jordan Stone', fromEmail: true, createdAt: new Date(Date.now() + 2000).toISOString(), parentCommentId: `${stone.id}-v0` });
+  const yp = await open(1440, 1000);
+  await openFamily(yp, 'Avery Stone');
+  await clickText(yp, '.apl-thread-to .apl-more', /New message/);
+  await sleep(150);
+  await yp.$eval('.apl-subject input', el => el.select());
+  await yp.keyboard.type('Only a subject');
+  await shutDrawer(yp);
+  await openFamily(yp, 'Avery Stone');
+  ok(await yp.$eval('.apl-subject input', el => el.value).catch(() => '') === 'Only a subject', 'a subject typed with no message waits for you too');
+  await yp.close();
+  const zp = await open(1440, 1000);
+  await openFamily(zp, 'Avery Stone');
+  await clickText(zp, '.apl-thread-to .apl-more', /New message/);
+  await sleep(150);
+  await zp.click('.apl-composer textarea');
+  await zp.keyboard.type('Changed my mind');
+  await shutDrawer(zp);
+  await openFamily(zp, 'Avery Stone');
+  await zp.$eval('.apl-composer textarea', el => el.select());
+  await zp.keyboard.press('Backspace');
+  await sleep(200);
+  ok(!!(await zp.$('.apl-subject input')) && !(await zp.$('.apl-thread-to')), 'a new message emptied after coming back stays new, so it still reaches everyone');
+  await zp.close();
+  const zq = await open(1440, 1000);
+  await openFamily(zq, 'Avery Stone');
+  await clickText(zq, '.apl-msg-actions .apl-more', /Reply/);
+  await sleep(150);
+  await zq.click('.apl-composer textarea');
+  await zq.keyboard.type('In the older conversation');
+  await shutDrawer(zq);
+  await openFamily(zq, 'Avery Stone');
+  const older = await text(zq, '.apl-thread-to b');
+  await zq.$eval('.apl-composer textarea', el => el.select());
+  await zq.keyboard.press('Backspace');
+  await sleep(200);
+  ok(older === 'Application Status' && await text(zq, '.apl-thread-to b') === 'Application Status', `a conversation you chose stays chosen when its draft is emptied after coming back (${older} → ${await text(zq, '.apl-thread-to b')})`);
+  await zq.close();
+  const lp = await open(1440, 1000);
+  await lp.click('.apl-views [data-view="list"]');
+  await lp.waitForSelector('.apl-table tbody tr', { timeout: 10000 });
+  await lp.evaluate((id) => { location.hash = `#applications/applicants/${id}/reply/${id}-m0`; }, stone.id);
+  await lp.waitForSelector('.apl-thread-to', { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  const linked = await text(lp, '.apl-thread-to b');
+  await shutDrawer(lp);
+  await lp.evaluate((id) => document.querySelector(`.apl-table tbody tr td`) && [...document.querySelectorAll('.apl-table tbody tr')].find(r => /Avery Stone/.test(r.textContent))?.click(), stone.id);
+  await lp.waitForSelector('.apl-thread-to', { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  ok(linked === 'Application Status' && await text(lp, '.apl-thread-to b') === 'Visit day', `a reply link lasts its one visit (${linked} → ${await text(lp, '.apl-thread-to b')})`);
+  await lp.close();
+
+  // A send that failed leaves you where you were reading
+  const fp = await open(1440, 620);
+  await openFamily(fp, 'Avery Stone');
+  await fp.$eval('.apl-thread', el => { el.scrollTop = 0; });
+  await sleep(150);
+  dropMessages = true;
+  await fp.click('.apl-composer textarea');
+  await fp.keyboard.type('This one fails');
+  await clickText(fp, '.apl-composer-foot .btn-primary', /Send/);
+  await sleep(400);
+  dropMessages = false;
+  stone.comments.push({ id: `${stone.id}-v2`, name: 'RE: Visit day', message: 'And Friday too', by: 'Jordan Stone', fromEmail: true, createdAt: new Date(Date.now() + 3000).toISOString(), parentCommentId: `${stone.id}-v0` });
+  await fp.click('.apl-kv button[aria-label="Edit Referred by"]');
+  await fp.waitForSelector('.apl-kv input.form-input', { timeout: 8000 });
+  await fp.$eval('.apl-kv input.form-input', el => el.select());
+  await fp.keyboard.type('Their aunt');
+  await fp.keyboard.press('Enter');
+  await fp.waitForFunction(() => /And Friday too/.test(document.querySelector('.apl-thread')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  ok(/And Friday too/.test(await text(fp, '.apl-thread')) && await fp.$eval('.apl-thread', el => el.scrollTop < 40), 'a send that failed leaves you where you were reading when a reply comes in');
+  await fp.close();
+
+  // A very long email address wraps instead of pushing things off a phone
+  const lengthy = Object.values(w.world.accounts).find(a => a.fields[F.status] === 'Applied' && (a.contacts || []).length && a.name !== 'Harper Lee');
+  lengthy.contacts[0].fields[EMAIL] = `${'long.name.'.repeat(9)}x@example.com`;
+  const op = await open(390, 844);
+  await op.evaluate((id) => fetch('/api/applicants-admin', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fields: { id, changes: { referredBy: 'A friend' } } }) }), lengthy.id);
+  await openFamily(op, lengthy.name);
+  await op.select('.apl-status-select select', 'In Review');
+  await op.waitForSelector('.apl-sheet-foot .btn-primary:not([disabled])', { timeout: 8000 }).catch(() => null);
+  await sleep(250);
+  const sheetFits = await op.$eval('.apl-sheet', (el) => {
+    const edge = el.getBoundingClientRect().right;
+    return el.scrollWidth <= el.clientWidth + 1 && [...el.querySelectorAll('.apl-sheet-foot button')].every(b => b.getBoundingClientRect().right <= edge + 1);
+  });
+  ok(sheetFits, 'the status sheet fits a phone with a very long email');
+  await op.keyboard.press('Escape');
+  await sleep(200);
+  await op.click('.apl-dtabs [data-tab="details"]');
+  await sleep(250);
+  ok(await op.$$eval('.apl-contact a', els => els.length > 0 && els.every(a => a.getBoundingClientRect().right <= innerWidth)), 'Details fits a phone with a very long email');
+  await op.close();
+}
+
+// Round three: what's under way holds still, small screens, and the words for a community project
+{
+  const gp = await open(1440, 1000);
+  await openFamily(gp, 'Isla Example');
+  slowMessages = 1500;
+  await gp.click('.apl-composer textarea');
+  await gp.keyboard.type('On its way');
+  await clickText(gp, '.apl-composer-foot .btn-primary', /Send/);
+  await sleep(150);
+  ok(await gp.$$eval('.apl-thread-banner button', els => els.some(b => /orrection/.test(b.textContent)) && els.filter(b => /orrection/.test(b.textContent)).every(b => b.disabled)), 'Write a correction waits while a message is on its way');
+  await gp.waitForFunction(() => !document.querySelector('.apl-composer textarea')?.value, { timeout: 8000 }).catch(() => null);
+  await sleep(250);
+  await clickText(gp, '.apl-thread-banner button', /orrection/);
+  await gp.waitForFunction(() => /Writing a correction/.test(document.querySelector('.apl-composer')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  await sleep(200);
+  await clickText(gp, '.apl-composer-foot .btn-primary', /Send correction/);
+  await sleep(150);
+  ok(await gp.$$eval('.apl-composer .apl-callout .apl-more', els => els.some(b => /^Cancel$/.test(b.textContent)) && els.filter(b => /^Cancel$/.test(b.textContent)).every(b => b.disabled)), 'a correction on its way can’t look cancelled');
+  await gp.waitForFunction(() => !/Writing a correction/.test(document.querySelector('.apl-composer')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  slowMessages = 0;
+  await gp.close();
+
+  const hp = await open(1440, 1000);
+  await openFamily(hp, 'Eliza Franklin');
+  await clickText(hp, '.apl-thread-to .apl-more', /New message/);
+  await sleep(150);
+  await hp.$eval('.apl-subject input', el => el.select());
+  await hp.keyboard.type('Just this once');
+  await hp.click('.apl-composer textarea');
+  await hp.keyboard.type('A one-off');
+  await clickText(hp, '.apl-composer-foot .btn-primary', /Send/);
+  await hp.waitForFunction(() => !document.querySelector('.apl-composer textarea')?.value, { timeout: 8000 }).catch(() => null);
+  await sleep(250);
+  ok(await hp.$eval('.apl-subject input', el => el.value).catch(() => 'Just this once') !== 'Just this once', 'a subject typed for one message goes with it');
+  await hp.close();
+
+  // A phone on its side
+  const sideways = await open(1440, 1000);
+  await sideways.setViewport({ width: 844, height: 390, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await sideways.reload({ waitUntil: 'domcontentloaded' });
+  await sideways.waitForSelector('.apl-card, .apl-table', { timeout: 20000 }).catch(() => null);
+  await sideways.evaluate((id) => { location.hash = `#applications/applicants/${id}`; }, acct('Avery Stone').id);
+  await sideways.waitForSelector('.apl-composer-foot .btn-primary', { timeout: 8000 }).catch(() => null);
+  await sleep(500);
+  ok(await sideways.$eval('.apl-thread', el => getComputedStyle(el).overscrollBehaviorY === 'auto'), 'on a phone on its side, a swipe at the end of the conversation carries on to Send');
+  await sideways.click('.apl-dtabs [data-tab="score"]');
+  await sleep(300);
+  ok(await sideways.$eval('.apl-dbody .apl-score', el => el.clientHeight >= 150 && el.scrollHeight > el.clientHeight && getComputedStyle(el).overscrollBehaviorY === 'auto').catch(() => false) && await sideways.$eval('.apl-drawer button[aria-label="Close (Esc)"]', el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.bottom <= innerHeight; }), 'and the scorecard scrolls, with Close still on screen');
+  await sideways.click('.apl-dtabs [data-tab="convo"]');
+  await sleep(200);
+  const moveTo = await sideways.$eval('.apl-status-select select', el => (el.value === 'In Review' ? 'Applied' : 'In Review'));
+  await sideways.select('.apl-status-select select', moveTo);
+  await sideways.waitForSelector('.apl-sheet-foot .btn-primary:not([disabled])', { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  ok(await sideways.$eval('.apl-sheet', el => el.scrollTop) === 0, 'the status sheet opens at its title on a short screen');
+  await sideways.keyboard.press('Escape');
+  await sleep(200);
+  await sideways.close();
+
+  // A small phone with a banner, and one family no one can email
+  const when = new Date().toISOString();
+  const evan = acct('Evan Burkett');
+  const logan = acct('Logan Logan');
+  await DB.prepare('INSERT OR REPLACE INTO applicant_notify (account_id, name, told, told_at, status, updated_at) VALUES (?, ?, ?, ?, ?, ?)').bind(evan.id, evan.name, 'Approved', when, 'In Review', when).run();
+  await DB.prepare('INSERT OR REPLACE INTO applicant_notify (account_id, name, told, told_at, status, updated_at) VALUES (?, ?, ?, ?, ?, ?)').bind(logan.id, logan.name, 'Approved', when, 'In Review', when).run();
+  for (const c of logan.contacts) delete c.fields[EMAIL];
+  const sm = await open(375, 667);
+  await sm.evaluate((id) => fetch('/api/applicants-admin', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fields: { id, changes: { referredBy: 'A neighbor' } } }) }), logan.id);
+  await openFamily(sm, 'Evan Burkett');
+  await sm.waitForSelector('.apl-thread-banner', { timeout: 8000 }).catch(() => null);
+  const small = await sm.$eval('.apl-thread', el => ({ wider: el.scrollWidth - el.clientWidth, banner: getComputedStyle(el.querySelector('.apl-thread-banner')).position }));
+  ok(small.wider <= 0 && small.banner === 'static', `a small phone keeps the conversation with a banner showing (${JSON.stringify(small)})`);
+  await openFamily(sm, 'Logan Logan');
+  await sm.waitForSelector('.apl-thread-banner', { timeout: 8000 }).catch(() => null);
+  ok(!(await sm.$('.apl-thread-banner button')) && /Add an email address in JobTread/.test(await text(sm, '.apl-thread-banner')), 'no email address: it says what to do, with no button that does nothing');
+  await sm.close();
+
+  // The conversation fits any screen: a readable thread, and Send always reachable, at sizes no rule names
+  const short = [];
+  for (const [width, height] of [[375, 600], [360, 640], [375, 667], [390, 664], [640, 360], [500, 620]]) {
+    const q = await open(1440, 1000);
+    await q.setViewport({ width, height, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+    await q.reload({ waitUntil: 'domcontentloaded' });
+    await q.waitForSelector('.apl-card, .apl-table', { timeout: 20000 }).catch(() => null);
+    await q.evaluate((id) => { location.hash = `#applications/applicants/${id}`; }, acct('Avery Stone').id);
+    await q.waitForSelector('.apl-msg-actions .apl-more', { timeout: 8000 }).catch(() => null);
+    await sleep(350);
+    await clickText(q, '.apl-msg-actions .apl-more', /Reply/); // the tallest box there is: To, the note, the message
+    await sleep(250);
+    const fit = await q.evaluate(() => {
+      const pane = document.querySelector('.apl-convo');
+      pane.scrollTop = pane.scrollHeight;
+      const b = document.querySelector('.apl-composer-foot .btn-primary').getBoundingClientRect();
+      return { thread: Math.round(document.querySelector('.apl-thread').getBoundingClientRect().height), reach: b.bottom <= innerHeight && b.top >= 0 };
+    });
+    if (fit.thread < Math.min(240, height / 2) - 1 || !fit.reach) short.push(`${width}x${height} ${JSON.stringify(fit)}`);
+    await q.close();
+  }
+  ok(!short.length, `every short screen keeps a readable thread and reaches Send (${short.join('; ')})`);
+
+  // Words typed while a correction is on its way to the box aren't lost
+  const eliza = acct('Eliza Franklin');
+  await DB.prepare('INSERT OR REPLACE INTO applicant_notify (account_id, name, told, told_at, status, updated_at) VALUES (?, ?, ?, ?, ?, ?)').bind(eliza.id, eliza.name, 'Approved', when, 'In Review', when).run();
+  const wr = await open(1440, 1000);
+  await openFamily(wr, 'Eliza Franklin');
+  await wr.waitForSelector('.apl-thread-banner', { timeout: 8000 }).catch(() => null);
+  slowDrafts = 900;
+  await wr.click('.apl-composer textarea');
+  await clickText(wr, '.apl-thread-banner button', /orrection/);
+  await sleep(100);
+  await wr.focus('.apl-composer textarea');
+  await wr.keyboard.type('Typed in the meantime');
+  await wr.waitForFunction(() => /Writing a correction/.test(document.querySelector('.apl-composer')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  slowDrafts = 0;
+  await sleep(200);
+  await clickText(wr, '.apl-composer .apl-callout .apl-more', /^Cancel$/);
+  await sleep(250);
+  ok(await wr.$eval('.apl-composer textarea', el => el.value) === 'Typed in the meantime', 'words typed while a correction was being written come back on Cancel');
+  await wr.close();
+
+  // A Reply you chose stays chosen, before a word is written and through a correction
+  const ch = await open(1280, 800);
+  await openFamily(ch, 'Eliza Franklin');
+  await ch.waitForSelector('.apl-thread-banner', { timeout: 8000 }).catch(() => null);
+  await clickText(ch, '.apl-msg-actions .apl-more', /Reply/);
+  await ch.waitForSelector('.apl-thread-to', { timeout: 8000 }).catch(() => null);
+  await sleep(200);
+  const chosen = await text(ch, '.apl-thread-to b');
+  await shutDrawer(ch);
+  await openFamily(ch, 'Eliza Franklin');
+  await sleep(200);
+  ok(!!chosen && await text(ch, '.apl-thread-to b') === chosen, `a Reply chosen with an empty box is still chosen after Esc and back (${chosen})`);
+  await clickText(ch, '.apl-thread-banner button', /orrection/);
+  await ch.waitForFunction(() => /Writing a correction/.test(document.querySelector('.apl-composer')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  await sleep(200);
+  await clickText(ch, '.apl-composer .apl-callout .apl-more', /^Cancel$/);
+  await sleep(250);
+  ok(await text(ch, '.apl-thread-to b') === chosen, 'and after a correction started and cancelled');
+  await ch.close();
+
+  // Small things on small and short screens
+  const dt = await open(360, 640);
+  await openFamily(dt, 'Avery Stone');
+  await dt.click('.apl-dtabs [data-tab="details"]');
+  await sleep(250);
+  ok(await dt.$eval('.apl-side', el => el.scrollWidth <= el.clientWidth), 'Details fits a 360px phone, with nothing to swipe sideways');
+  await dt.close();
+  const sn = await open(1440, 1000);
+  await sn.setViewport({ width: 667, height: 375, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await sn.reload({ waitUntil: 'domcontentloaded' });
+  await sn.waitForSelector('.apl-card, .apl-table', { timeout: 20000 }).catch(() => null);
+  await sn.evaluate((id) => { location.hash = `#applications/applicants/${id}`; }, acct('Avery Stone').id);
+  await sn.waitForSelector('.apl-composer textarea', { timeout: 8000 }).catch(() => null);
+  await sleep(400);
+  await sn.focus('.apl-composer textarea');
+  await sn.keyboard.type('Seen once sent');
+  await sn.$eval('.apl-convo', el => { el.scrollTop = el.scrollHeight; });
+  await clickText(sn, '.apl-composer-foot .btn-primary', /Send/);
+  await sn.waitForFunction(() => !document.querySelector('.apl-composer textarea')?.value, { timeout: 8000 }).catch(() => null);
+  await sleep(500);
+  ok(await sn.$eval('.apl-convo', el => el.scrollTop === 0) && /Seen once sent/.test(await text(sn, '.apl-thread')), 'on a short screen, Send goes back up to what was sent');
+  await sn.close();
+  const ek = await open(1280, 600);
+  await openFamily(ek, 'Avery Stone');
+  await ek.focus('.apl-email-sum');
+  await ek.keyboard.press('Enter');
+  await sleep(200);
+  ok(await ek.evaluate(() => !!document.activeElement?.closest('.apl-email-row')), 'Edit by keyboard lands in the To and Subject row');
+  await ek.close();
+
+  // On touch, a link inside a sentence leaves its lines even
+  const it = await open(390, 844);
+  await openFamily(it, 'Avery Stone');
+  await sleep(200);
+  await it.evaluate(() => [...document.querySelectorAll('.apl-msg-actions .apl-more')].find(b => /Reply/.test(b.textContent))?.click());
+  await sleep(250);
+  const inSentence = await it.$$eval('.apl-callout .apl-more', els => els.map(e => getComputedStyle(e).display));
+  ok(inSentence.every(d => d === 'inline'), `links inside a sentence stay in line on touch (${inSentence.join()})`);
+  await it.close();
+
+  // The map keeps its popup through a refresh, and on a phone it's what you see
+  const lp = await open(1440, 1000);
+  await openFamily(lp, 'Eliza Franklin');
+  await clickText(lp, '.apl-side .apl-more', /Show on map/);
+  await lp.waitForSelector('.leaflet-popup-content', { timeout: 8000 }).catch(() => null);
+  await lp.evaluate(() => window.dispatchEvent(new Event('soard-replies-changed')));
+  await sleep(900);
+  ok(/Eliza Franklin/.test(await text(lp, '.leaflet-popup-content')), 'an open popup stays through a refresh');
+  // Moved away from it, the map stays where you put it
+  const box = await (await lp.$('.apl-map')).boundingBox();
+  await lp.mouse.move(box.x + box.width * .6, box.y + box.height * .7);
+  await lp.mouse.down();
+  await lp.mouse.move(box.x + box.width * .2, box.y + box.height * .2, { steps: 8 });
+  await lp.mouse.up();
+  const pane = () => lp.$eval('.leaflet-map-pane', el => el.style.transform);
+  let panned = ''; // a drag's momentum runs on for a few seconds: this waits for the map to stop
+  for (let i = 0; i < 40; i++) { const now = await pane(); if (now === panned) break; panned = now; await sleep(500); }
+  await lp.evaluate(() => window.dispatchEvent(new Event('soard-replies-changed')));
+  await sleep(900);
+  ok(await pane() === panned, 'a refresh leaves the map where you moved it');
+  // Zooming and leaving at once throws nothing (the last check on this page counts the console)
+  await lp.click('.leaflet-control-zoom-in').catch(() => null);
+  await lp.click('.apl-views [data-view="list"]');
+  await sleep(500);
+  await lp.close();
+  const pm = await open(390, 844);
+  await openFamily(pm, 'Eliza Franklin');
+  await clickText(pm, '.apl-side .apl-more', /Show on map/);
+  await pm.waitForSelector('.leaflet-popup-content', { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  ok(await pm.$eval('.apl-legend', el => getComputedStyle(el).display === 'none').catch(() => false), 'on a phone the legend makes way for the family’s name');
+  await pm.close();
+  const lm = await open(1440, 1000);
+  await lm.setViewport({ width: 844, height: 390, deviceScaleFactor: 1, isMobile: true, hasTouch: true });
+  await lm.reload({ waitUntil: 'domcontentloaded' });
+  await lm.waitForSelector('.apl-card, .apl-table', { timeout: 20000 }).catch(() => null);
+  await lm.evaluate((id) => { location.hash = `#applications/applicants/${id}`; }, acct('Eliza Franklin').id);
+  await lm.waitForSelector('.apl-side', { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  await clickText(lm, '.apl-side .apl-more', /Show on map/);
+  await lm.waitForSelector('.leaflet-popup-content', { timeout: 8000 }).catch(() => null);
+  await sleep(300);
+  ok(await lm.$eval('.apl-map', el => { const r = el.getBoundingClientRect(); return r.top < innerHeight && r.bottom > 0 && r.height < innerHeight * .8; }).catch(() => false), 'on a phone on its side, Show on map brings the map on screen, with room to scroll past it');
+  await lm.close();
+
+  // A move or a pause under way keeps what was decided
+  const mv = await open(1280, 900);
+  const applied = Object.values(w.world.accounts).find(a => a.fields[F.status] === 'Applied' && (a.contacts || []).length && a.name !== 'Harper Lee');
+  await openFamily(mv, applied.name);
+  await mv.select('.apl-status-select select', 'In Review');
+  await mv.waitForSelector('.apl-sheet-foot .btn-primary:not([disabled])', { timeout: 8000 }).catch(() => null);
+  slowMoves = 1500;
+  await mv.click('.apl-sheet-foot .btn-primary');
+  await sleep(150);
+  ok(await mv.$eval('.apl-check input', el => el.disabled).catch(() => false), 'the email can’t be unticked once the move is under way');
+  await mv.waitForFunction(() => !document.querySelector('.apl-sheet'), { timeout: 8000 }).catch(() => null);
+  await mv.select('.apl-status-select select', 'Denied');
+  await mv.waitForSelector('.apl-sheet-foot .btn-primary:not([disabled])', { timeout: 8000 }).catch(() => null);
+  await mv.click('.apl-sheet-foot .btn-primary');
+  await sleep(150);
+  ok(await mv.$eval('.apl-sheet textarea', el => el.readOnly).catch(() => false), 'the denial reason holds still once the move is under way');
+  await mv.waitForFunction(() => !document.querySelector('.apl-sheet'), { timeout: 8000 }).catch(() => null);
+  await shutDrawer(mv);
+  await mv.click('.apl-more-btn');
+  await sleep(150);
+  await clickText(mv, '.apl-menu button', /Pause family emails/);
+  await mv.waitForSelector('.apl-sheet', { timeout: 8000 }).catch(() => null);
+  await sleep(150);
+  await mv.click('.apl-sheet-foot .btn-primary');
+  await sleep(150);
+  const offPausing = await mv.$eval('.apl-sheet-foot .btn-ghost', el => el.disabled).catch(() => false);
+  await mv.keyboard.press('Escape');
+  await sleep(150);
+  ok(offPausing && !!(await mv.$('.apl-sheet')), 'a pause under way can’t look cancelled');
+  await mv.waitForFunction(() => !document.querySelector('.apl-sheet'), { timeout: 8000 }).catch(() => null);
+  slowMoves = 0;
+  await mv.evaluate(() => fetch('/api/applicants-admin', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ resume: true }) }));
+  await mv.close();
+
+  // A community project is not a family
+  const sunny = acct('Sunnyside Academy');
+  sunny.comments.push({ id: `${sunny.id}-r1`, name: 'RE: Hello', message: 'Thanks from all of us', by: 'Erin Pence', fromEmail: true, createdAt: new Date().toISOString() });
+  const op = await open(1440, 1000);
+  await openFamily(op, 'Sunnyside Academy');
+  await sleep(200);
+  const said = await text(op, '.apl-thread');
+  ok(/Thanks from all of us/.test(said) && !/reply from the family/i.test(said), 'a community project’s reply isn’t called the family’s');
+  await op.close();
+}
+
+// Every line of a change stays in the history, however many lines a note runs to
+{
+  const hp = await open(1440, 1000);
+  const family = acct('Avery Stone');
+  await hp.goto(`${SITE}/admin/__applicants.html#applications/applicants/${family.id}`, { waitUntil: 'domcontentloaded' });
+  await hp.waitForSelector('.apl-kv button[aria-label="Edit Diagnosis"]', { timeout: 8000 });
+  await sleep(400);
+  await hp.click('.apl-kv button[aria-label="Edit Diagnosis"]');
+  await hp.waitForSelector('.apl-kv textarea', { timeout: 8000 });
+  await hp.$eval('.apl-kv textarea', el => el.select());
+  await hp.keyboard.press('Backspace');
+  await hp.keyboard.type('First line\nSecond line\nThird line\nFourth line\nFifth line');
+  await hp.$eval('.apl-kv textarea', el => el.blur());
+  await hp.waitForFunction(() => /Fifth line/.test(document.querySelector('.apl-thread')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  const thread = await text(hp, '.apl-thread');
+  ok(/Second line/.test(thread) && /Fourth line/.test(thread) && /Fifth line/.test(thread) && /Fifth line/.test(family.fields[F.diagnosis]), 'a detail of five lines shows all five in the history');
+  await hp.close();
+}
+
+// A family leaving after you've moved on: the drawer stays with the family you're reading, and says who left
+{
+  const mp = await open(1440, 1000);
+  await mp.evaluate(() => localStorage.setItem('apl-view', 'list'));
+  await mp.reload({ waitUntil: 'domcontentloaded' });
+  await mp.waitForSelector('.apl-table tbody tr', { timeout: 20000 });
+  await sleep(300);
+  await mp.evaluate(() => [...document.querySelectorAll('.apl-table tbody tr')].slice(0, -1).find(r => !/Sunnyside/.test(r.textContent)).click());
+  await mp.waitForSelector('.apl-kv select[aria-label="Makeover year"]', { timeout: 8000 });
+  await sleep(400);
+  const leaver = await text(mp, '.apl-drawer h2');
+  const gone = acct(leaver);
+  delete gone.fields[F.status];
+  await DB.prepare('UPDATE applicants SET status = NULL WHERE account_id = ?').bind(gone.id).run();
+  slowQueue.push(1200);
+  await mp.select('.apl-kv select[aria-label="Makeover year"]', '');
+  await sleep(100);
+  await mp.click('.apl-drawer button[aria-label="Next family (J)"]');
+  await mp.waitForFunction((n) => { const t = document.querySelector('.apl-drawer h2')?.textContent; return t && t !== n; }, { timeout: 8000 }, leaver).catch(() => null);
+  const reading = await text(mp, '.apl-drawer h2');
+  const told = (n) => window.__toasts.some(t => t.msg.startsWith(`${n} has no status or year now`));
+  await mp.waitForFunction(told, { timeout: 8000 }, leaver).catch(() => null);
+  await sleep(500);
+  ok(reading && reading !== leaver && await text(mp, '.apl-drawer h2') === reading && await mp.evaluate(told, leaver), `a family leaving after you've moved on keeps the drawer on the next family (${leaver} → ${reading})`);
+  await mp.close();
 }
 
 ok(consoleErrors.length === 0, `no console errors${consoleErrors.length ? `: ${consoleErrors.slice(0, 3).join(' | ')}` : ''}`);

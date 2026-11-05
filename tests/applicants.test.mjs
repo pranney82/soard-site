@@ -268,8 +268,21 @@ test('details: options are checked, Makeover type is a list, empty clears', asyn
   assert.equal(a.fields[F.gender], undefined);
   assert.deepEqual(row.types, ['Ramp', 'Bedroom']);
   await assert.rejects(() => updateApplicantFields(env, a.id, { year: '1999' }, opts()), /Makeover year must be one of/);
+  // JobTread took the change but reading it back failed: the change stands, it isn't reported as lost
+  let calls = 0;
+  const readBackFails = (...args) => { if (++calls > 1) throw new Error('read failed'); return opts().fetchImpl(...args); };
+  const kept = await updateApplicantFields(env, a.id, { gender: 'Male', types: ['Ramp'] }, { ...opts(), fetchImpl: readBackFails });
+  assert.equal(a.fields[F.gender], 'Male');
+  assert.equal(kept.fields.gender, 'Male');
+  assert.deepEqual(kept.types, ['Ramp']);
   assert.equal(fieldInput('birthday', '2018-05-01'), '2018-05-01');
   assert.throws(() => fieldInput('birthday', 'May 1'), /must be a date/);
+  // Picks: only the real choices, plus one JobTread already held for them
+  assert.deepEqual(fieldInput('types', ['Bedroom', 'Sauna']), ['Bedroom']);
+  assert.deepEqual(fieldInput('types', ['Bedroom', 'Sauna'], ['Sauna']), ['Bedroom', 'Sauna']);
+  // Text keeps what the admin's box allows
+  assert.equal(fieldInput('referredBy', 'x'.repeat(450)).length, 300);
+  assert.equal(fieldInput('diagnosis', 'x'.repeat(4500)).length, 4000);
   assert.equal(adminName('linzi.ranney@soardcharity.com'), 'Linzi');
 });
 

@@ -222,7 +222,7 @@ async function answer(req, user) {
 const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==', 'base64');
 const PNG_FILE = join(OUT, 'upload-sample.png');
 writeFileSync(PNG_FILE, PNG);
-const browser = await puppeteer.launch({ headless: true, args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
+const browser = await puppeteer.launch({ headless: 'shell', args: ['--disable-gpu', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows'] });
 
 async function open(width, height, hash, { user = PETER, previewProbe = false } = {}) {
   const page = await browser.newPage();
@@ -1127,6 +1127,19 @@ try {
       await cdp.detach();
     }
     ok(!left, `Esc closes it${left ? ` (still open: ${JSON.stringify(left)})` : ''}`);
+    if (left) { await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => {}); }
+    // Esc the moment a link opens a family, before the link's own step has run: it doesn't bring them back
+    const reopened = await page.evaluate(async () => {
+      history.replaceState(null, '', '#applications/applicants/22PgaFvDKQ9L');
+      window.dispatchEvent(new HashChangeEvent('hashchange'));
+      for (let i = 0; i < 50 && !document.querySelector('.apl-drawer'); i++) await Promise.resolve();
+      const opened = !!document.querySelector('.apl-drawer');
+      window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+      await new Promise(r => setTimeout(r, 500));
+      return { opened, still: !!document.querySelector('.apl-drawer') };
+    });
+    ok(reopened.opened && !reopened.still, `Esc right as a link opens a family stays closed (${JSON.stringify(reopened)})`);
+    if (reopened.still) { await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 4000 }).catch(() => {}); }
   });
 
   await section('Settings: open or closed, season, schedule', async () => {
@@ -1659,7 +1672,9 @@ try {
     await page.waitForSelector('.afe-appkind', { timeout: 8000 });
     await page.click('.afe-appkind [data-kind="family"]');
     await page.waitForFunction(() => /apply\/form\//.test(document.querySelector('.afe-head .page-sub')?.textContent || ''), { timeout: 8000 }).catch(() => {});
-    ok((await page.$$('.afe-panel[aria-label^="Page"]')).length === 9 && /#applications\/form$/.test(await page.evaluate(() => location.hash)), 'Makeovers again: its nine pages');
+    await page.waitForFunction(() => document.querySelectorAll('.afe-panel[aria-label^="Page"]').length === 9, { timeout: 8000 }).catch(() => {});
+    const makeovers = { pages: (await page.$$('.afe-panel[aria-label^="Page"]')).length, hash: await page.evaluate(() => location.hash) };
+    ok(makeovers.pages === 9 && /#applications\/form$/.test(makeovers.hash), `Makeovers again: its nine pages (${JSON.stringify(makeovers)})`);
   });
 
   await section('Dark (on the admin tokens)', async () => {

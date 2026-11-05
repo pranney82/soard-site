@@ -38,7 +38,7 @@
 import {
   ensureApplicantSchema, listApplicants, applicantDetail, recentActivity, previewStatus, setApplicantStatus,
   updateApplicantFields, messageFamily, archiveApplicant, markReplyHandled, maybeSyncApplicants, syncState,
-  isAccountId, STATUSES, FIELDS, replaceBoundary,
+  isAccountId, STATUSES, FIELDS, fieldMax, replaceBoundary,
 } from './_applicants.js';
 import { applicationSettings, cleanYear } from './_applications.js';
 import { getLiveForm, getFormRules, saveFormRules } from './_application-forms.js';
@@ -110,7 +110,7 @@ export async function onRequestGet(context) {
     return ok({
       applicants, sync: state, statuses: STATUSES,
       emails: { ...(await pauseState(env.DB)), overdue },
-      fields: Object.fromEntries(Object.entries(FIELDS).map(([k, f]) => [k, { label: f.label, type: f.type, options: f.options || null, long: !!f.long }])),
+      fields: Object.fromEntries(Object.entries(FIELDS).map(([k, f]) => [k, { label: f.label, type: f.type, options: f.options || null, long: !!f.long, max: fieldMax(f) }])),
       boundary: {
         live: live.definition?.serviceArea?.polygon || DEFAULT_SERVICE_AREA.polygon,
         // How far out counts as close (drawn as a dashed ring), and what families farther out get

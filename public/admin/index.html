@@ -1115,6 +1115,7 @@
     .pill:is([aria-pressed="true"], [aria-checked="true"], .is-on) > .count { background: rgba(255,255,255,0.18); color: #fff; }
     .pill:disabled { opacity: 0.55; cursor: default; }
     .pill svg { width: 14px; height: 14px; flex-shrink: 0; }
+    .pill--sm { min-height: 30px; padding: 0.2rem 0.75rem; font-size: var(--fs-xs); }
     .pill-row { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.4rem; }
     .pill-row__label { font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-muted); margin: 0 0.1rem 0 0.35rem; }
 
@@ -4436,6 +4437,7 @@
     import { AfterEventPanel, SponsorsList, EventBasics } from './event-recap-admin.js';
     // Every "are you sure?" in the admin: an in-app dialog, never the browser's confirm()
     import { ask, askToLeave } from './ask.js';
+    import { useDialog as usePplDialog } from './dialog.js';
     const html = htm.bind(h);
 
     // ─── Constants ────────────────────────────
@@ -16405,40 +16407,6 @@ ${sections || '<p>No one yet.</p>'}
       `;
     }
 
-    /**
-     * A modal dialog's keyboard contract: Tab stays inside, Escape closes
-     * (unless busy), the page behind doesn't scroll, and focus goes back to
-     * whatever opened it.
-     */
-    function usePplDialog(ref, onClose, busy = false) {
-      const closeRef = useRef(onClose);
-      closeRef.current = onClose;
-      const busyRef = useRef(busy);
-      busyRef.current = busy;
-      useEffect(() => {
-        const opener = document.activeElement;
-        document.body.classList.add('modal-open');
-        const focusables = () => [...(ref.current?.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])') || [])]
-          .filter((el) => el.getClientRects().length);
-        const onKey = (e) => {
-          // A field marked data-escape="local" uses Escape itself (cancelling an inline edit)
-          if (e.key === 'Escape' && e.target?.closest?.('[data-escape="local"]')) return;
-          if (e.key === 'Escape') { if (!busyRef.current) { e.preventDefault(); e.stopPropagation(); closeRef.current(); } return; }
-          if (e.key !== 'Tab') return;
-          const f = focusables();
-          if (!f.length) return;
-          const inside = ref.current?.contains(document.activeElement);
-          if (e.shiftKey && (!inside || document.activeElement === f[0])) { e.preventDefault(); f[f.length - 1].focus(); }
-          else if (!e.shiftKey && (!inside || document.activeElement === f[f.length - 1])) { e.preventDefault(); f[0].focus(); }
-        };
-        document.addEventListener('keydown', onKey, true);
-        return () => {
-          document.removeEventListener('keydown', onKey, true);
-          document.body.classList.remove('modal-open');
-          if (opener?.isConnected && typeof opener.focus === 'function') opener.focus();
-        };
-      }, []);
-    }
 
     // ═══════════════════════════════════════════
     // PHOTO CROP: drag to frame, zoom, keyboard too
