@@ -886,7 +886,7 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'The next agenda, from the template', s: 'live', k: 'schedule',
           when: 'Every ten minutes on the live hub’s heartbeat.',
-          does: 'Each meeting ahead starts on SOARD’s agenda template and stays on it until someone writes in it: the last minutes up for approval and the live numbers, and nothing copied from the last agenda. A meeting added or moved before it changes which minutes it approves; Use this agenda, or any change, makes it the meeting’s own.',
+          does: 'Each meeting ahead starts on SOARD’s agenda template and stays on it until someone writes in it: the last minutes up for approval and the live numbers, and nothing copied from the last agenda. A saved template reaches them at once (Board → Agenda template, where each committee’s presenter is set), and a meeting added or moved before it changes which minutes it approves. Any change makes the agenda the meeting’s own, and so do two weeks to go, so its presenters are asked for their reports.',
           touches: ['D1'], where: 'functions/api/_board.js (maybeTemplateAgendas) · board-shared.js (templateAgenda)',
           live: (f) => {
             const d = f.board?.drafts;
@@ -894,7 +894,7 @@ const MAP = { t: 'SOARD', children: [
             return ON(d.ahead ? `${plural(d.ahead, 'meeting')} ahead still on the template.` : 'No meetings ahead on the template.', d.lastAt);
           } },
         { t: 'Reports asked for, and the chair’s review', s: 'live', k: 'schedule',
-          when: 'Every five minutes on the live hub’s heartbeat, for the next meeting once its agenda isn’t a draft: two weeks ahead, or at once when it’s nearer. Emails go between 8 AM and 7 PM Eastern.',
+          when: 'Every five minutes on the live hub’s heartbeat, for the next meeting: two weeks ahead, or at once when it’s nearer, on whatever its agenda says then. Emails go between 8 AM and 7 PM Eastern.',
           does: 'Each board member presenting an agenda item gets an email from Peter’s Gmail, Holly copied, asking for their report by a deadline: a week before the meeting at 5 PM (a nearer meeting, noon a day later). A reminder two days before it’s due; past due, a note with the chair copied. Six days before the meeting, the chair and Holly get the whole agenda to review on the board page, Peter copied: whichever of them approves it first emails it to the board (once; the others see who did), and the chair can keep their own notes or send a report back to its presenter with a question. Replies are read: a report goes on the agenda word for word with its files and the presenter is thanked; an answer goes under the report it was asked about; a question, an out-of-office or “I’ll send it Friday” stays in the inbox for a person.',
           touches: ['Gmail', 'Workers AI', 'D1', 'R2'], where: 'functions/api/_board-asks.js (broadcast-hooks.js, board-portal.js)',
           note: 'Needs https://www.googleapis.com/auth/gmail.send on the site’s domain-wide delegation (added Nov 2, 2026), beside gmail.readonly.',
@@ -935,6 +935,17 @@ const MAP = { t: 'SOARD', children: [
             if (i.check && i.check.error && !i.check.ok && i.check.attendance !== 'needs-setup') return ATTN(`The check didn’t pass: ${i.check.error}`, i.check.checkedAt);
             const checked = i.check?.calendar === 'ok' && i.check?.meet === 'ok' ? ' Calendar and Meet checked.' : '';
             return ON(`${i.ahead ? `${plural(i.ahead, 'invite')} out for meetings ahead${i.waiting ? `, ${plural(i.waiting, 'change')} going on in a moment` : ''}.` : 'No invites out for meetings ahead.'}${checked}`, i.lastAt || i.check?.checkedAt);
+          } },
+        { t: 'Invites follow the board', s: 'live', k: 'schedule',
+          when: 'Every five minutes on the live hub’s heartbeat, for every meeting ahead that hasn’t started.',
+          does: 'Someone added to People → Board with an email goes on every invite ahead, and Google sends them each one. Someone who leaves the board comes off them, and a new address replaces the old one. Guests added by hand in Google stay. The same people go on each meeting’s attendance list, so the roll call and quorum are right. A list that reads empty, or that would take over half of an invite’s board off at once, changes nothing and says so here.',
+          touches: ['Google Calendar', 'D1'], where: 'functions/api/_board-invite.js (maybeFollowBoard)',
+          live: (f) => {
+            const n = f.board?.invite?.follow;
+            if (!n) return null;
+            if (n.error) return ATTN(`An invite couldn’t be changed: ${n.error}`, n.at);
+            if (n.held) return ATTN(`${plural(n.held, 'invite')} left as it is: over half of its board would come off at once. Check People → Board.`, n.at);
+            return ON(n.lastChangeAt ? `Last change: ${plural(n.added, 'guest')} added, ${plural(n.removed, 'guest')} taken off.` : 'Every invite ahead matches the board.', n.lastChangeAt || n.at);
           } },
         { t: 'The packet email', s: 'live', k: 'admin',
           when: 'The agenda is approved: on the chair’s review, by the chair’s reply to it, or by Peter or Holly in Board. Nothing of a meeting ahead reaches the board before that. Send me the email sends them a preview; Email again resends it. The minutes and the reminder to answer the calendar invite go by hand.',

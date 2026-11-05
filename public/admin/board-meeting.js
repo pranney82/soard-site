@@ -426,8 +426,8 @@ export function agendaSource(m) {
   // Nothing on it (every part taken out): never "Ready", as the status line says
   if (!agendaItems(m).length) return { draft: false, empty: true, label: 'Empty', text: 'Nothing on it yet.' };
   if (agendaIsDraft(m)) {
-    const from = f?.kind === 'last-meeting' ? `Built from the ${f.name} agenda: the last minutes up for approval, the makeovers and the money filled in live.` : 'SOARD’s usual outline, with the makeovers and the money filled in live.';
-    return { draft: true, label: 'Ready', text: `${from} It’s ready as it is. Change anything and it saves as you type.` };
+    const from = f?.kind === 'last-meeting' ? `Built from the ${f.name} agenda: the last minutes up for approval, the makeovers and the money filled in live.` : 'SOARD’s agenda template, with the makeovers and the money filled in live.';
+    return { draft: true, label: 'Ready', text: `${from} It’s ready as it is: two weeks before the meeting, whoever presents is asked for a report. Change anything and it saves as you type.` };
   }
   if (f?.kind === 'email') return { draft: false, label: 'From email', text: `From ${fileTitle(f.name)}, emailed${f.at ? ` ${shortDate(f.at.slice(0, 10))}` : ''}.` };
   if (f?.kind === 'drive') return { draft: false, label: 'From the minutes', text: `Read from ${fileTitle(f.name)} in Google Drive.` };
@@ -471,7 +471,7 @@ const dragKind = (e) => { const t = [...(e.dataTransfer?.types || [])]; return t
  * parts move by dragging their grip (or ⋯ → Move, or Alt ↑ ↓ in an item's name), and slide to their new places.
  * A file dropped on an item is uploaded and goes with it.
  */
-function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
+function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {}, template = false }) {
   const { data, addToast } = ctx;
   const setSection = (si, patch) => set((x) => ({ sections: x.sections.map((s, i) => (i === si ? { ...s, ...patch } : s)) }));
   const setItem = (si, ii, patch) => set((x) => ({ sections: x.sections.map((s, i) => (i === si ? { ...s, items: s.items.map((it, j) => (j === ii ? { ...it, ...patch } : it)) } : s)) }));
@@ -566,7 +566,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
   const itemTarget = (s, it) => ({
     onDragOver: (e) => {
       const k = dragKind(e);
-      if (k === 'files') { e.preventDefault(); setOver(it.id); return; }
+      if (k === 'files') { if (template) return; e.preventDefault(); setOver(it.id); return; }
       if (k !== 'item' || drag?.id === it.id) return;
       e.preventDefault();
       const after = half(e);
@@ -576,7 +576,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
     onDrop: (e) => {
       const k = dragKind(e);
       e.preventDefault();
-      if (k === 'files') { setOver(''); attach(it.id, e.dataTransfer.files); return; }
+      if (k === 'files') { setOver(''); if (!template) attach(it.id, e.dataTransfer.files); return; }
       if (k !== 'item' || !drag) return;
       const after = half(e);
       const i = s.items.findIndex((x) => x.id === it.id);
@@ -630,16 +630,16 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
     };
     return html`<${Menu} label=${`More for ${named}`} items=${[
       !it.presenter && !it.who?.length && !it.showWho && { icon: 'person', label: 'Add who presents', run: () => setItem(si, ii, { showWho: true }) },
-      { icon: 'doc', label: 'Add a document', run: () => setItem(si, ii, { showDocs: true }) },
-      !it.report && !writing.has(it.id) && { icon: 'report', label: 'Write the report', run: () => write(it.id, true) },
+      !template && { icon: 'doc', label: 'Add a document', run: () => setItem(si, ii, { showDocs: true }) },
+      !template && !it.report && !writing.has(it.id) && { icon: 'report', label: 'Write the report', run: () => write(it.id, true) },
       // What the presenter asks the board to vote on: one line, on the board page, the screen, paper and the minutes template
-      !it.motion && !it.showMotion && { icon: 'report', label: 'Ask the board to vote', run: () => setItem(si, ii, { showMotion: true }) },
+      !template && !it.motion && !it.showMotion && { icon: 'report', label: 'Ask the board to vote', run: () => setItem(si, ii, { showMotion: true }) },
       // The live lists are on the item itself (Shows); here only the way in for an item that shows none yet
-      it.live !== 'minutes' && !showsOf(it).length && !it.showShows && { icon: 'live', label: 'Show live numbers…', run: () => setItem(si, ii, { showShows: true }) },
+      !template && it.live !== 'minutes' && !showsOf(it).length && !it.showShows && { icon: 'live', label: 'Show live numbers…', run: () => setItem(si, ii, { showShows: true }) },
       { divider: true },
-      { icon: 'lock', label: 'Board only', hint: 'Never emailed', checked: !!it.confidential, run: () => setItem(si, ii, { confidential: !it.confidential }) },
-      !(it.staffNote || it.showStaff) && { icon: 'private', label: 'Private note', hint: `Only ${others}`, run: () => setItem(si, ii, { showStaff: true }) },
-      { divider: true },
+      !template && { icon: 'lock', label: 'Board only', hint: 'Never emailed', checked: !!it.confidential, run: () => setItem(si, ii, { confidential: !it.confidential }) },
+      !template && !(it.staffNote || it.showStaff) && { icon: 'private', label: 'Private note', hint: `Only ${others}`, run: () => setItem(si, ii, { showStaff: true }) },
+      !template && { divider: true },
       { pair: [
         { icon: 'up', label: 'Move up', disabled: first, title: 'Move up (Alt ↑ in its name does it too)', run: () => { keepClear(ii > 0 ? withMotion(() => setSection(si, { items: move(s.items, ii, -1) })) : moveItem(it.id, m.sections[si - 1].id, ''), `[data-item="${it.id}"]`); refocus(it.id, '.bd-menu > summary'); } },
         { icon: 'down', label: 'Move down', disabled: last, title: 'Move down (Alt ↓ in its name does it too)', run: () => { keepClear(ii < s.items.length - 1 ? withMotion(() => setSection(si, { items: move(s.items, ii, 1) })) : moveItem(it.id, m.sections[si + 1].id, m.sections[si + 1].items[0]?.id || ''), `[data-item="${it.id}"]`); refocus(it.id, '.bd-menu > summary'); } },
@@ -686,7 +686,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
   // Items with something in them, as the board page and the slides count them (a blank row isn't one)
   const itemCount = agendaItems(m).length;
   return html`<div class="card agx">
-    <div class="agx-head">
+    ${template ? null : html`    <div class="agx-head">
       <div class="bd-card-head"><h3>Agenda <span class=${`tag ${src.empty ? '' : src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
     </div>
     <nav class="agx-run" aria-label="The run of show">
@@ -699,7 +699,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
       <span>${s0 ? `Starts ${clock(s0)}` : 'Two hours'}</span>
       <span>${plural(m.sections.length, 'part')} · ${plural(itemCount, 'item')}</span>
       <span class=${overBy > 0 ? 'is-over' : ''}>${overBy > 0 ? `${overBy} min over the meeting’s ${length}` : lastEnd ? `Ends ${clock(lastEnd)}` : `${total} min`}</span>
-    </p>
+    </p>`}
     <div class="agx-edit" onFocusIn=${(e) => { const li = e.target.closest?.('[data-item]'); if (li) onFocusItem(li.dataset.item); }} onPointerDown=${(e) => { const li = e.target.closest?.('[data-item]'); if (li) onFocusItem(li.dataset.item); }}>
     <ol class="agx-secs">
       ${m.sections.map((s, si) => {
@@ -710,11 +710,11 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
           <span class="agx-sec__n" aria-hidden="true">${String(si + 1).padStart(2, '0')}</span>
           <textarea class="ag-input ag-input--sec agx-sec__title" rows="1" aria-label=${`Section ${si + 1}`} value=${s.title} placeholder="Name this part" ref=${grow}
             onInput=${(e) => { grow(e.target); setSection(si, { title: e.target.value.replace(/\s*\n\s*/g, ' ') }); }} onKeyDown=${(e) => { if (e.key === 'Enter') e.preventDefault(); }} />
-          <label class="ag-mins" title=${s.minutes ? 'The time this part has. Empty shares out the meeting’s time by itself.' : 'Shared out from the meeting’s time by itself. Type minutes to give it its own.'}>
+          ${template ? null : html`<label class="ag-mins" title=${s.minutes ? 'The time this part has. Empty shares out the meeting’s time by itself.' : 'Shared out from the meeting’s time by itself. Type minutes to give it its own.'}>
             ${t?.start ? html`<span class="ag-mins__at">${clock(t.start)}</span>` : null}
             <input type="number" min="1" max="600" inputmode="numeric" aria-label=${`Minutes for ${s.title || `section ${si + 1}`}`} value=${s.minutes || ''} placeholder=${String(t?.minutes || '')} onInput=${(e) => setSection(si, { minutes: Math.max(0, Math.min(600, Math.round(Number(e.target.value) || 0))) })} />
             <span>min</span>
-          </label>
+          </label>`}
           <${Menu} label=${`More for the part ${s.title || si + 1}`} items=${[
             { pair: [
               { icon: 'up', label: 'Move up', disabled: si === 0, run: () => keepClear(withMotion(() => set((x) => ({ sections: move(x.sections, si, -1) }))), `#agx-${s.id}`) },
@@ -792,8 +792,65 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
       })}
     </ol>
     <button type="button" class="ag-add ag-add--sec agx-addsec" onClick=${() => { const id = uid('s_'); withMotion(() => set((x) => ({ sections: [...x.sections, { id, title: '', minutes: 0, items: [blankItem()] }] }))); setTimeout(() => document.querySelector(`#agx-${id} .agx-sec__title`)?.focus(), 140); }}>+ Add a part</button>
-    <${MoreCard} m=${m} set=${set} ctx=${ctx} keepSaved=${keepSaved} />
+    ${template ? null : html`<${MoreCard} m=${m} set=${set} ctx=${ctx} keepSaved=${keepSaved} />`}
     </div>
+  </div>`;
+}
+
+/**
+ * The agenda every meeting ahead starts from, in the editor a meeting's agenda has (AgendaEditor): its parts and items,
+ * and who presents each committee. Saves by itself, and the meetings nobody has written an agenda for follow at once
+ * (functions/api/_board.js maybeTemplateAgendas).
+ */
+export function AgendaTemplate({ ctx }) {
+  const { data, setData, addToast, go, load } = ctx;
+  const [m, setM] = useState(() => ({ ...cleanMeeting({ sections: data.settings.template }), start: '08:00', end: '10:00', files: [] }));
+  const [state, setState] = useState({ s: 'saved', n: 0 });
+  const set = (patch) => setM((x) => ({ ...x, ...(typeof patch === 'function' ? patch(x) : patch) }));
+  const latest = useRef(m);
+  latest.current = m;
+  const timer = useRef(null);
+  const busy = useRef(false);
+  const again = useRef(false);
+  const moved = useRef(false);
+  const first = useRef(true);
+  const save = async () => {
+    clearTimeout(timer.current);
+    timer.current = null;
+    if (busy.current) { again.current = true; return; }
+    busy.current = true;
+    setState((x) => ({ ...x, s: 'saving' }));
+    const j = await call({ action: 'save-settings', settings: { template: latest.current.sections } });
+    busy.current = false;
+    if (!j.ok) { setState((x) => ({ ...x, s: 'error' })); addToast(j.error, 'error'); return; }
+    setData((d) => ({ ...d, settings: j.settings }));
+    if (j.followed) moved.current = true;
+    setState((x) => ({ s: 'saved', n: j.followed || x.n }));
+    if (again.current) { again.current = false; save(); }
+  };
+  useEffect(() => {
+    if (first.current) { first.current = false; return undefined; }
+    setState((x) => ({ ...x, s: 'unsaved' }));
+    clearTimeout(timer.current);
+    timer.current = setTimeout(save, 800);
+    return undefined;
+  }, [m.sections]);
+  // Leaving: what's typed goes first, and the meetings it changed come back for the list
+  useEffect(() => () => {
+    if (timer.current) save().then(load);
+    else if (moved.current) load();
+  }, []);
+  const said = { unsaved: 'Saving…', saving: 'Saving…', error: 'Not saved', saved: state.n ? `Saved, and on ${plural(state.n, 'meeting')} ahead` : 'Saved' }[state.s];
+  return html`<div class="bd-template">
+    <a class="bd-back" href="#board" onClick=${(e) => { e.preventDefault(); go({}); }}>← All meetings</a>
+    <div class="page-header">
+      <div>
+        <h2>Agenda template</h2>
+        <p class="page-sub">Every meeting ahead starts from this until someone writes in its agenda. Set who presents each committee here: two weeks before a meeting, they’re asked for their report.</p>
+      </div>
+      <span class="bd-muted" role="status">${said}</span>
+    </div>
+    <${AgendaEditor} m=${m} set=${set} ctx=${ctx} keepSaved=${() => {}} template />
   </div>`;
 }
 
@@ -1230,7 +1287,7 @@ function GettingReady({ m, set, ctx, act, save }) {
         ${others.length ? html`<p class="bm-note is-warn" role="note">${others.length === 1 ? 'Another invite for this meeting is' : `${others.length} other invites for this meeting are`} on ${andList([...new Set(others.map((o) => whoseOf(o.on)))])} calendar: ${andList(others.map((o) => `“${o.title}”`))}${senders.length && !mineOnly ? `, sent by ${andList(senders.map(senderName))}` : ''}. ${mineOnly ? `Cancel ${others.length === 1 ? 'it' : 'them'}` : `Ask ${senders.length ? (senders.length === 1 ? 'them' : 'each') : 'whoever sent it'} to cancel ${others.length === 1 ? 'it' : 'theirs'}`}, so the board has one invite and one call.</p>` : null}
       </${Task}>
       <${Task} state=${sApproved} title=${approval ? `Agenda approved by ${approval.by}` : 'Approve the agenda'}
-        sub=${approval ? ago(approval.at) : `The board sees none of it until it’s approved. ${agendaSource(m).draft ? 'Once it’s written, the chair reviews it' : 'The chair reviews it'} 6 days before the meeting, or approve it here: that puts it on the board page and emails them the link, once.`}>
+        sub=${approval ? ago(approval.at) : 'The board sees none of it until it’s approved. The chair reviews it 6 days before the meeting, or approve it here: that puts it on the board page and emails them the link, once.'}>
         ${approval ? null : html`<button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => run('preview', { action: 'send-packet', id: m.id, test: true }, (j) => `Sent to ${j.to?.[0] || 'you'}`)}>${working === 'preview' ? 'Sending…' : 'Send me the email'}</button>`}
         ${approval ? null : html`<button class=${btn(sApproved)} disabled=${!!working || !agendaItems(m).length} onClick=${approve}>${working === 'approve' ? 'Approving…' : 'Approve the agenda'}</button>`}
       </${Task}>

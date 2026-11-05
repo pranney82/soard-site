@@ -1100,6 +1100,27 @@ try {
   await jane.reload({ waitUntil: 'networkidle0' }); // a new hash alone doesn't load the page again
   ok(await waitText(jane, /Past meetings’ agendas and minutes also come in from your email by themselves/) && !/Google Drive|Meetings come from/.test(await text(jane)), 'Meetings says where past meetings’ papers come from (email, never Drive), and nothing about meetings coming from a calendar');
   ok(await waitText(jane, /Ready\. The board was emailed the link/), 'the next meeting: everything done says Ready');
+
+  // The agenda template: the agenda's own editor, for who presents each committee; a meeting still on it follows
+  await clickText(jane, 'button', /^Agenda template$/);
+  ok(await waitText(jane, /Set who presents each committee here/), 'Agenda template opens from Meetings');
+  const onTemplate = (await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings)).find((m) => m.agendaFrom?.kind === 'template' && m.date >= new Date().toISOString().slice(0, 10));
+  const look = await jane.evaluate(() => ({ items: document.querySelectorAll('.bd-template .agx-item').length, whos: document.querySelectorAll('.bd-template .bd-who .bd-pop__btn').length, mins: document.querySelectorAll('.bd-template .ag-mins').length, run: document.querySelectorAll('.bd-template .agx-run').length, tabs: document.querySelectorAll('.hub-tabs').length, more: document.querySelectorAll('.bd-template .bm-more, .bd-template .agx-more').length }));
+  ok(look.items >= 10 && look.whos === look.items && !look.mins && !look.run && !look.tabs, `the template is the agenda’s editor, without a meeting’s times (${JSON.stringify(look)})`);
+  await shot(jane, '08-agenda-template');
+  await jane.evaluate(() => [...document.querySelectorAll('.bd-template .agx-item')].find((li) => li.querySelector('.agx-item__title')?.value === 'Governance').querySelector('.bd-who .bd-pop__btn').click());
+  await jane.waitForSelector('.bd-pop__panel .bd-picker__find', { timeout: 3000 });
+  await jane.keyboard.type('sam');
+  await jane.keyboard.press('Enter');
+  await jane.keyboard.press('Escape');
+  ok(await waitText(jane, /Saving…|Saved, and on \d+ meeting/, 6000), 'the template saves by itself');
+  await jane.waitForFunction(async () => ((await (await fetch('/api/board-admin')).json()).settings.template.flatMap((x) => x.items).find((it) => it.title === 'Governance')?.who || []).length > 0, { timeout: 8000, polling: 500 }).catch(() => {});
+  const savedTemplate = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()));
+  const onGov = savedTemplate.settings.template.flatMap((x) => x.items).find((it) => it.title === 'Governance');
+  ok(onGov?.who?.includes('sam-ortiz'), `who presents is kept on the template (${JSON.stringify(onGov)})`);
+  if (onTemplate) ok(savedTemplate.meetings.find((m) => m.id === onTemplate.id).sections.flatMap((x) => x.items).find((it) => it.title === 'Governance')?.who?.includes('sam-ortiz'), 'and a meeting on the template has it at once');
+  await clickText(jane, 'a.bd-back', /All meetings/);
+  ok(await waitText(jane, /Board meetings/), 'back to Meetings');
   const all = await jane.evaluate(async () => (await (await fetch('/api/board-admin')).json()).meetings);
   ok(!all.some((m) => m.date === calDay), `the event on the calendar isn’t a meeting (${all.map((m) => m.date).join(', ')})`);
   ok(await waitText(jane, /A board meeting on the calendar isn’t in Board\./) && /Board\. Meetings are added here/.test(await text(jane)) && /“SOARD Q4 Board Meeting”, \w+day, [A-Z][a-z]+ \d+, \d{4}, on your calendar/.test(await text(jane)), 'Meetings names the board meeting on the calendar that isn’t in Board');

@@ -844,6 +844,13 @@ export async function runAsks(env, { fetchImpl = fetch, now = Date.now() } = {})
   const did = { asked: 0, reminded: 0, late: 0, chair: 0, replies: 0, reports: 0 };
   const mode = asksMode(await readSettings(env.DB));
   if (!senders || mode === 'off') return did;
+  // Two weeks out, the agenda is what's on it: the template as it stands becomes the meeting's own, so whoever presents
+  // is asked for a report and the chair reviews it, with nobody having to touch it first
+  const due = nextUp(meetings, today);
+  if (due && agendaIsDraft(due, settings.template) && due.sections.some((s) => s.items.length) && daysUntil(today, due.date) <= ASK_DAYS) {
+    due.agendaFrom = { kind: 'typed', name: '', at: nowIso(now) };
+    await patchMeeting(env.DB, due.id, (cur) => (agendaIsDraft(cur, settings.template) ? { ...cur, agendaFrom: due.agendaFrom } : cur), { by: 'Board' });
+  }
   const ctx = { env, fetchImpl, now, senders, people, today };
   ctx.readToken = await accessToken(env, senders.from.email, { fetchImpl, now, scope: GMAIL_READ_SCOPE });
   // Test: each email the next meeting will have, once, to the asker alone; nothing to the board and nothing kept as asked

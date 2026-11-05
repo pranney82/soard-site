@@ -21,7 +21,7 @@ import { useState, useEffect, useRef, useMemo } from './vendor.js';
 import { ask, askToLeave } from './ask.js';
 import { viewerLink, sizeText } from './file-viewer.js';
 import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords, driveLink, dayOf, signedHow, Face } from './board-ui.js';
-import { MeetingEditor, agendaSource } from './board-meeting.js';
+import { MeetingEditor, AgendaTemplate, agendaSource } from './board-meeting.js';
 import { ReportEditor, Report, PAPER_LETTERS } from './board-report.js';
 import { mdPlain, paperFields } from './board-md.js';
 import { pdfLines, docxLines, wordsFromLines } from './board-words.js';
@@ -67,7 +67,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
     window.addEventListener('hashchange', on);
     return () => window.removeEventListener('hashchange', on);
   }, [route]);
-  const go = (r) => { const next = { tab: 'meetings', meetingId: null, step: null, practice: false, ...r }; if (hashFor(next) !== location.hash) location.hash = hashFor(next); else setRoute(next); };
+  const go = (r) => { const next = { tab: 'meetings', meetingId: null, step: null, practice: false, template: false, ...r }; if (hashFor(next) !== location.hash) location.hash = hashFor(next); else setRoute(next); };
   // `where`: what's being edited, as the question to leave names it ("this meeting", "this document")
   const markDirty = (d, where = 'this meeting') => { dirty.current = d; if (d) dirtyWhere.current = where; setGlobalDirty?.(d, d ? where : ''); };
   const putMeeting = (m) => setData((d) => ({ ...d, meetings: [m, ...d.meetings.filter((x) => x.id !== m.id)].sort((a, b) => String(b.date).localeCompare(String(a.date))) }));
@@ -81,7 +81,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
   const meeting = route.meetingId ? data.meetings.find((m) => m.id === route.meetingId) : null;
 
   return html`<div class="bd">
-    ${route.meetingId || route.practice ? null : html`
+    ${route.meetingId || route.practice || route.template ? null : html`
       <div class="hub-tabs" role="tablist" aria-label="Board">
         ${TABS.map(([id, label]) => html`<button type="button" role="tab" aria-selected=${route.tab === id} class=${`hub-tab ${route.tab === id ? 'active' : ''}`} onClick=${() => go({ tab: id })}>${label}</button>`)}
       </div>
@@ -94,9 +94,13 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
             members: 'Who’s on the board, how they get in, when each last signed in and who has signed this year’s papers. Then the staff who run Board.',
           }[route.tab]}</p>
         </div>
-        <a class="btn btn-ghost btn-sm" href=${PAGE} target="_blank" rel="noopener">Open the board page</a>
+        <div class="bd-actions">
+          ${route.tab === 'meetings' ? html`<button class="btn btn-ghost btn-sm" onClick=${() => go({ template: true })}>Agenda template</button>` : null}
+          <a class="btn btn-ghost btn-sm" href=${PAGE} target="_blank" rel="noopener">Open the board page</a>
+        </div>
       </div>`}
     ${route.practice ? html`<${PracticeMeeting} ctx=${ctx} />`
+      : route.template ? html`<${AgendaTemplate} ctx=${ctx} />`
       : route.meetingId
       ? (meeting ? html`<${MeetingEditor} key=${meeting.id} meeting=${meeting} step=${route.step} ctx=${ctx} />` : html`<div class="card empty"><p class="empty__title">That meeting isn’t here</p><div class="empty__actions"><button class="btn btn-ghost btn-sm" onClick=${() => go({})}>All meetings</button></div></div>`)
       : route.tab === 'documents' ? html`<${DocumentsTab} ctx=${ctx} />`
@@ -379,7 +383,7 @@ function MeetingsTab({ ctx }) {
     <${GoogleSetup} data=${data} />
     <${NotInBoard} ctx=${ctx} />
     ${next ? html`<${NextCard} m=${next} ctx=${ctx} /><${AgendaPreview} m=${next} ctx=${ctx} />`
-      : html`<div class="card empty"><p class="empty__title">No meeting coming up</p><p class="empty__text">Add the next one. Its agenda is drafted from the last one, with open action items carried over, and its invite goes from here.</p><div class="empty__actions">${adder}</div></div>`}
+      : html`<div class="card empty"><p class="empty__title">No meeting coming up</p><p class="empty__text">Add the next one. Its agenda starts from the agenda template, with open action items carried over, and its invite goes from here.</p><div class="empty__actions">${adder}</div></div>`}
     ${ahead.length ? html`<div class="card" style="padding:0">
       <div class="sec-head"><h3>Also coming up <span class="count">${ahead.length}</span></h3></div>
       <ul class="bd-row-list">${ahead.map((m) => html`<${MeetingRow} m=${m} go=${go} />`)}</ul>

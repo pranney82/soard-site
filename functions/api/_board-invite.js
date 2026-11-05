@@ -29,7 +29,8 @@
 import { accessToken, eventIdFor, parseServiceAccount } from './_google-calendar.js';
 import { boardAdmins, activeBoard, peopleRows, readSettings, readState, writeState, normEmail } from './_board-roles.js';
 import { getMeeting, listMeetings, patchMeeting, inviteNotes, inviteTitle, NOTES_START, OLD_NOTES_STARTS } from './_board.js';
-import { meetingName, timeRange, longDate, todayEastern } from '../../public/admin/board-shared.js';
+import { meetingName, timeRange, longDate, todayEastern, isDate } from '../../public/admin/board-shared.js';
+import { isEmail } from './_broadcast-notify.js';
 import { easternParts } from './_reveals.js';
 
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
@@ -215,10 +216,12 @@ export async function sendInvite(env, id, { fetchImpl = fetch, now = Date.now(),
     const slug = bySlug[normEmail(a.email)];
     if (slug) replies[slug] = ['accepted', 'declined', 'tentative'].includes(a.responseStatus) ? a.responseStatus : 'invited';
   }
+  const on = new Set((ev.attendees || attendees).map((a) => normEmail(a.email)));
+  const who = Object.fromEntries(Object.entries(bySlug).filter(([e]) => on.has(e)).map(([e, slug]) => [slug, e]));
   const invite = {
     eventId: ev.id || eventId, organizer, sentAt: prior?.sentAt || at, updatedAt: at, meet, guests: (ev.attendees || attendees).length,
     emails: (ev.attendees || attendees).map((a) => normEmail(a.email)), place: place || ev.location || '', location: ev.location || '', when: whenOf(m), notes: notesKey(m),
-    replies,
+    replies, who,
   };
   // Google Meet is the meeting's video call from now on (onto the meeting as it is now: a save made meanwhile stays)
   return patchMeeting(env.DB, id, (cur) => ({ ...cur, invite, inviteGone: '', video: meet || cur.video }));
@@ -301,6 +304,117 @@ export async function maybeRefreshInvites(env, { fetchImpl = fetch, now = Date.n
   } catch (err) {
     console.error('[board-invite] refresh', err.message);
     return [];
+  }
+}
+
+const FOLLOW = 'invite-follow';
+const FOLLOW_MS = 5 * 60 * 1000;
+
+/**
+ * Who an invite needs now, for the board with an address on file ([{ slug, email }], lower case): `add`, and `drop`.
+ * invite.who is who Board put on it, so only they ever come off: a guest added by hand in Google stays. And someone
+ * Board put on who was taken off by hand isn't put back.
+ */
+export function followOf(invite, board) {
+  const had = invite?.who || {};
+  const on = new Set((invite?.emails || []).map(normEmail));
+  const wanted = new Set(board.map((p) => p.email));
+  return {
+    add: board.filter((p) => !on.has(p.email) && had[p.slug] !== p.email && p.email !== normEmail(invite?.organizer)).map((p) => p.email),
+    drop: [...new Set(Object.values(had))].filter((e) => !wanted.has(e) && on.has(e)),
+  };
+}
+/** Who of the board an invite has now (slug → email), keeping anyone taken off it by hand so they aren't put back */
+const whoOf = (invite, board, emails) => {
+  const on = new Set(emails);
+  return Object.fromEntries(board.filter((p) => on.has(p.email) || invite?.who?.[p.slug] === p.email).map((p) => [p.slug, p.email]));
+};
+/** A meeting's attendance list for the board as it is now, or null when it already is: anyone marked or from an old agenda stays */
+export function followRoll(attendance, board) {
+  const here = new Set(board.map((p) => p.slug));
+  const had = new Set((attendance || []).map((a) => a.slug).filter(Boolean));
+  const stays = (a) => a.kind !== 'board' || !a.slug || here.has(a.slug) || !!a.status;
+  const fresh = board.filter((p) => !had.has(p.slug)).map((p) => ({ slug: p.slug, name: p.name, org: p.organization || '', kind: 'board' }));
+  if (!fresh.length && (attendance || []).every(stays)) return null;
+  const list = (attendance || []).filter(stays);
+  return [...list.filter((a) => a.kind === 'board'), ...fresh, ...list.filter((a) => a.kind !== 'board')];
+}
+
+/**
+ * The guest list alone, on an invite that's there: a change to the list is all Google sees, so only who came on or went
+ * off hears about it (adding proven Oct 19 2026, see the guest-add note). Nothing else on the invite is touched, and an
+ * invite deleted in Google isn't brought back. → the guest list as Google has it, or null when the invite is gone
+ */
+async function changeGuests(env, m, { add, drop }, { fetchImpl, now }) {
+  const { organizer, eventId } = m.invite;
+  const token = await accessToken(env, organizer, { fetchImpl, now });
+  const path = `/calendars/${encodeURIComponent(organizer)}/events/${encodeURIComponent(eventId)}`;
+  let ev;
+  try { ev = await gcal(token, 'GET', path, null, fetchImpl); } catch (err) { if (err.status === 404 || err.status === 410) return null; throw err; }
+  if (!ev || ev.status === 'cancelled') return null;
+  const gone = new Set(drop);
+  const kept = (ev.attendees || []).filter((a) => !gone.has(normEmail(a.email)));
+  const have = new Set(kept.map((a) => normEmail(a.email)));
+  const attendees = [...kept, ...add.filter((e) => !have.has(e)).map((email) => ({ email }))];
+  const out = await gcal(token, 'PATCH', `${path}?sendUpdates=all`, { attendees }, fetchImpl);
+  return (out.attendees || attendees).map((a) => normEmail(a.email));
+}
+
+/**
+ * The invites ahead follow People → Board (Peter, Nov 5 2026), now that they go out a year early: someone new goes on
+ * every one and Google sends it to them, someone who left comes off them, and a new address replaces the old one. The
+ * attendance lists follow too, or a new member would be missing from the roll call and the quorum. A meeting under way
+ * is left as it is. A list that reads empty, or that would take over half of an invite's board off at once, is taken
+ * for a bad read: nothing comes off, and Site → Automations says so. Every 5 minutes at most. Never throws.
+ */
+export async function maybeFollowBoard(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  try {
+    if (!env.DB) return null;
+    const state = await readState(env.DB, FOLLOW);
+    if (state.at && now - Date.parse(state.at) < FOLLOW_MS) return null;
+    const at = new Date(now).toISOString();
+    await writeState(env.DB, FOLLOW, { ...state, at });
+    const everyone = await activeBoard(env.DB);
+    if (!everyone.length) return null;
+    const board = everyone.filter((p) => isEmail(normEmail(p.email))).map((p) => ({ slug: p.slug, email: normEmail(p.email) }));
+    const today = todayEastern(now);
+    const ahead = (await listMeetings(env.DB)).filter((m) => isDate(m.date) && m.date >= today && !m.notBoard && !m.practice && !m.live?.startedAt && !m.live?.endedAt);
+    const did = { added: 0, removed: 0, held: 0, failed: 0 };
+    let error = '';
+    for (const m of ahead) {
+      if (followRoll(m.attendance, everyone)) await patchMeeting(env.DB, m.id, (cur) => ({ ...cur, attendance: followRoll(cur.attendance, everyone) || cur.attendance }), { by: 'Board' });
+      if (!m.invite?.eventId || !env.GOOGLE_CALENDAR_KEY) continue;
+      const plan = followOf(m.invite, board);
+      if (plan.drop.length > Object.keys(m.invite.who || {}).length / 2) { did.held += 1; continue; }
+      if (!plan.add.length && !plan.drop.length) {
+        const who = whoOf(m.invite, board, m.invite.emails || []);
+        if (JSON.stringify(who) !== JSON.stringify(m.invite.who || {})) await patchMeeting(env.DB, m.id, (cur) => (cur.invite?.eventId === m.invite.eventId ? { ...cur, invite: { ...cur.invite, who } } : cur), { by: 'Board' });
+        continue;
+      }
+      try {
+        const emails = await changeGuests(env, m, plan, { fetchImpl, now });
+        if (!emails) continue;
+        const bySlug = new Map(board.map((p) => [p.slug, p.email]));
+        await patchMeeting(env.DB, m.id, (cur) => {
+          if (cur.invite?.eventId !== m.invite.eventId) return cur;
+          const replies = Object.fromEntries(Object.entries(cur.invite.replies || {}).filter(([slug]) => bySlug.has(slug)));
+          for (const p of board) if (emails.includes(p.email) && !replies[p.slug]) replies[p.slug] = 'invited';
+          return { ...cur, invite: { ...cur.invite, emails, guests: emails.length, replies, who: whoOf(cur.invite, board, emails), updatedAt: at } };
+        }, { by: 'Board' });
+        did.added += plan.add.length;
+        did.removed += plan.drop.length;
+      } catch (err) {
+        did.failed += 1;
+        error = String(err.message).slice(0, 200);
+        console.error('[board-invite] follow', m.id, err.message);
+      }
+    }
+    const moved = did.added || did.removed;
+    await writeState(env.DB, FOLLOW, { ...(await readState(env.DB, FOLLOW)), at, held: did.held, error, ...(moved ? { lastChangeAt: at, lastAdded: did.added, lastRemoved: did.removed } : {}) });
+    return did;
+  } catch (err) {
+    console.error('[board-invite] follow', err.message);
+    return null;
   }
 }
 

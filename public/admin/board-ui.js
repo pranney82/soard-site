@@ -77,11 +77,12 @@ export function readHash() {
   const [a, b, c] = decodeURIComponent(m[1] || '').split('/');
   if (a === 'meeting' && b) return { tab: 'meetings', meetingId: b, step: STEPS.includes(c) ? c : null };
   if (a === 'practice') return { tab: 'meetings', meetingId: null, step: null, practice: true };
+  if (a === 'template') return { tab: 'meetings', meetingId: null, step: null, template: true };
   // Settings went into the pages they set (Nov 3 2026): who runs Board and whose calendar invites come from are on Members
   if (a === 'settings') return { tab: 'members', meetingId: null, step: null };
   return { tab: TABS.some(([id]) => id === a) ? a : 'meetings', meetingId: null, step: null };
 }
-export const hashFor = (r) => (r.practice ? '#board/practice' : r.meetingId ? `#board/meeting/${encodeURIComponent(r.meetingId)}${r.step ? `/${r.step}` : ''}` : r.tab === 'meetings' ? '#board' : `#board/${r.tab}`);
+export const hashFor = (r) => (r.practice ? '#board/practice' : r.template ? '#board/template' : r.meetingId ? `#board/meeting/${encodeURIComponent(r.meetingId)}${r.step ? `/${r.step}` : ''}` : r.tab === 'meetings' ? '#board' : `#board/${r.tab}`);
 
 // ─── Small controls ─────────────────────────────────────────────────
 export function Switch({ checked, onChange, label, disabled = false }) {
@@ -603,6 +604,7 @@ export const STYLES = `
   .bd-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center; }
   .bd-year { padding: 0.55rem 1.25rem; background: var(--color-bg-subtle, #F7F7F5); border-bottom: 1px solid var(--color-border); font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--color-text-secondary); }
   .bd-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+  .bd-template { max-width: 52rem; }
   .bd-inline { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
   .bd-inline .form-input { width: auto; }
   .bd-check { display: inline-flex; align-items: center; gap: 0.45rem; font-size: var(--fs-sm); cursor: pointer; }

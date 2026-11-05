@@ -1482,6 +1482,32 @@ test('an agenda nobody wrote is the template, with nothing copied from the last 
   assert.equal((await getMeeting(env.DB, old.id)).agendaFrom.kind, 'template');
 });
 
+test('the template keeps who presents, and a saved template reaches the meetings still on it, never one someone wrote', async () => {
+  const { maybeTemplateAgendas, getSettings } = await import('../functions/api/_board.js');
+  let m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(30) })).body.meeting;
+  let written = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(60) })).body.meeting;
+  written = (await adminApi(FOUNDER, { action: 'save-meeting', meeting: { ...written, sections: [{ title: 'Ours', items: [{ title: 'Our own item' }] }] }, base: written.updatedAt })).body.meeting;
+  const template = [
+    { title: 'Approve meeting minutes', items: [{ title: 'Minutes of the last meeting', live: 'minutes' }] },
+    { title: 'Committee reports', items: [{ title: 'Governance', who: ['alex-rivera'], presenter: 'Alex Rivera' }, { title: 'Financial', who: ['sam-ortiz'], presenter: 'Sam Ortiz', live: 'cash' }, { title: '' }] },
+    { title: '', items: [] },
+  ];
+  const r = await adminApi(FOUNDER, { action: 'save-settings', settings: { template } });
+  assert.equal(r.status, 200, JSON.stringify(r.body));
+  assert.equal(r.body.followed, 1, 'the one meeting on the template, at once');
+  assert.deepEqual((await getSettings(env.DB)).template[1].items.map((it) => [it.title, it.who, it.presenter]), [['Governance', ['alex-rivera'], 'Alex Rivera'], ['Financial', ['sam-ortiz'], 'Sam Ortiz']], 'blank rows don’t stay, and who presents does');
+  m = await getMeeting(env.DB, m.id);
+  assert.equal(m.agendaFrom.kind, 'template');
+  assert.deepEqual(m.sections[1].items.map((it) => [it.title, it.who, it.presenter, it.live]), [['Governance', ['alex-rivera'], 'Alex Rivera', ''], ['Financial', ['sam-ortiz'], 'Sam Ortiz', 'cash']]);
+  assert.equal((await getMeeting(env.DB, written.id)).sections[0].title, 'Ours', 'an agenda someone wrote is left alone');
+  // Saving the same template again changes nothing: ids stay, so an open editor isn't disturbed
+  assert.deepEqual(await maybeTemplateAgendas(env, { force: true }), []);
+  assert.equal((await getMeeting(env.DB, m.id)).sections[0].id, m.sections[0].id);
+  // A new meeting starts with them
+  const next = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(90) })).body.meeting;
+  assert.deepEqual(next.sections[1].items[0].who, ['alex-rivera']);
+});
+
 test('the template’s items keep their live facts, even from a saved template that doesn’t name them', () => {
   const m = newMeeting({ date: '2027-01-14', template: [{ title: 'Committee reports', items: [{ title: 'Qualification Committee' }, { title: 'Financial', live: 'cash' }, { title: 'Governance' }] }] });
   assert.deepEqual(m.sections[0].items.map((it) => [it.title, it.live]), [['Qualification Committee', 'costs'], ['Financial', 'cash'], ['Governance', '']]);

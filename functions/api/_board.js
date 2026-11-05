@@ -171,7 +171,7 @@ export async function saveSettings(DB, patch, by) {
   }
   if (Array.isArray(patch.template)) {
     next.template = cleanMeeting({ sections: patch.template }).sections
-      .map((sec) => ({ title: sec.title, items: sec.items.filter((it) => it.title).map((it) => ({ title: it.title, ...(it.presenter ? { presenter: it.presenter } : {}), ...(it.live ? { live: it.live } : {}) })) }))
+      .map((sec) => ({ title: sec.title, items: sec.items.filter((it) => it.title).map((it) => ({ title: it.title, ...(it.presenter ? { presenter: it.presenter } : {}), ...(it.who?.length ? { who: it.who } : {}), ...(it.live ? { live: it.live } : {}) })) }))
       .filter((sec) => sec.title);
   }
   await writeState(DB, 'settings', next);
@@ -2565,13 +2565,14 @@ export async function maybeLockNumbers(env, { fetchImpl = fetch, now = Date.now(
 
 /**
  * Each meeting ahead that nobody has written an agenda for is on the template (templateAgenda): one drafted from the
- * last agenda goes back to it, and when a meeting is added or moved before it, its minutes item follows. A person's
- * change makes the agenda theirs and it's left alone. Every ten minutes at most. → ids changed
+ * last agenda goes back to it, a changed template reaches it, and when a meeting is added or moved before it, its
+ * minutes item follows. A person's change makes the agenda theirs and it's left alone. Every ten minutes at most, or
+ * now (force: the template was just saved). → ids changed
  */
-export async function maybeTemplateAgendas(env, { now = Date.now() } = {}) {
+export async function maybeTemplateAgendas(env, { now = Date.now(), force = false } = {}) {
   try {
     const runs = await readState(env.DB, 'runs');
-    if (runs.draftAt && now - Date.parse(runs.draftAt) < 10 * 60 * 1000) return [];
+    if (!force && runs.draftAt && now - Date.parse(runs.draftAt) < 10 * 60 * 1000) return [];
     await writeState(env.DB, 'runs', { ...runs, draftAt: new Date(now).toISOString() });
     const [meetings, settings] = await Promise.all([listMeetings(env.DB), getSettings(env.DB)]);
     const today = todayEastern(now);
@@ -2580,7 +2581,8 @@ export async function maybeTemplateAgendas(env, { now = Date.now() } = {}) {
     for (const m of real.filter((x) => x.date >= today && agendaIsDraft(x, settings.template))) {
       const prev = previousMeeting(m, real);
       const name = prev ? draftName(prev) : '';
-      if (m.agendaFrom?.kind === 'template' && m.agendaFrom.name === name) continue;
+      const fresh = keepDocs(m.sections, templateAgenda(prev, { template: settings.template }));
+      if (m.agendaFrom?.kind === 'template' && m.agendaFrom.name === name && agendaSkeleton({ sections: fresh }) === agendaSkeleton(m)) continue;
       const done = await patchMeeting(env.DB, m.id, (cur) => (agendaIsDraft(cur, settings.template)
         ? { ...cur, sections: keepDocs(cur.sections, templateAgenda(prev, { template: settings.template })), agendaFrom: { kind: 'template', name, at: new Date(now).toISOString() } }
         : cur));
@@ -2623,6 +2625,7 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *   - every 5 minutes at most, Access's board list kept in step with People → Board (./_board-access.js),
  *     and so is the board's Google Group, board@soardcharity.com (./_board-group.js)
  *   - hourly, the board meetings on Peter and Holly's calendars (./_board-calendar.js)
+ *   - every 5 minutes at most, the invites and attendance lists ahead kept in step with People → Board (./_board-invite.js)
  *   - each minute, a new place onto an invite that's out once it has settled; hourly until it
  *     passes, the check that Calendar, Meet and attendance work (./_board-invite.js)
  *   - once a newer agenda reader ships, emailed agendas it reads better (maybeRereadEmailAgendas); then
@@ -2651,6 +2654,7 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await maybeSyncBoardCalendar(env, { fetchImpl, now });
     const invites = await import('./_board-invite.js');
     await invites.maybeRefreshInvites(env, { fetchImpl, now });
+    await invites.maybeFollowBoard(env, { fetchImpl, now });
     await invites.maybeCheckInvites(env, { fetchImpl, now });
     await maybeSendApprovedAgendas(env, { now });
     await maybeRereadEmailAgendas(env, { now });
@@ -2724,6 +2728,7 @@ export async function boardFacts(env) {
     lastPacketAt: packet,
     invite: {
       ahead: invites.length,
+      follow: await readState(env.DB, 'invite-follow').then((f) => ({ at: f.at || null, lastChangeAt: f.lastChangeAt || null, added: f.lastAdded || 0, removed: f.lastRemoved || 0, held: f.held || 0, error: f.error ? String(f.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null })),
       waiting: Object.keys(pending || {}).length, lastAt: stored.map((m) => m.invite?.updatedAt).filter(Boolean).sort().at(-1) || null,
       check: check ? { ok: !!check.ok, attendance: check.attendance || '', checkedAt: check.checkedAt || null, error: check.error ? String(check.error).replace(/\S+@\S+/g, '…').slice(0, 200) : null } : null,
     },

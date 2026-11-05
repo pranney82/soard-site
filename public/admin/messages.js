@@ -765,7 +765,7 @@ const MAP = { t: 'Everything we send', children: [
           live: needs('resend', NO_RESEND) },
         { t: 'Board meeting invite', s: 'live', k: 'invite', by: 'staff', preview: 'board-meeting-invite', change: CHANGE.boardArea,
           who: 'Every active board member with an email on People → Board, plus Peter and Holly.',
-          when: 'Peter or Holly presses Send the invite in a meeting’s Getting ready list. Meetings are added in Board only (New meeting).',
+          when: 'Peter or Holly presses Send the invite in a meeting’s Getting ready list. Meetings are added in Board only (New meeting). Someone added to the board later gets every invite ahead by themselves.',
           subject: 'Invitation: {meeting}',
           does: 'From the organizer’s Google Calendar with Google Meet: the meeting’s name, day, time and place, a link to the meeting on the board page, and the notes typed for the invite. A new day, time or place sends Google’s update email; a new name or notes update it without emailing anyone. Deleting the meeting in Board cancels the invite, and Google tells the guests.',
           touches: ['Google Calendar', 'D1'], where: 'functions/api/_board-invite.js (sendInvite), functions/api/_board.js (inviteNotes)',

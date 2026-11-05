@@ -259,9 +259,26 @@ test('asks go to each board member presenting, never staff, once, due Wednesday 
   assert.equal(gmail.sent.length, 2);
 });
 
-test('nothing while the agenda is a draft, outside 8 to 7 Eastern, or further out than two weeks', async () => {
-  await meeting({ agendaFrom: { kind: 'last-meeting', name: 'x', at: '2026-11-01T00:00:00Z' } });
+test('two weeks out, an agenda nobody wrote is the meeting’s: its presenters are asked and the chair reviews it', async () => {
+  // Further out: nobody is asked, and it stays on the template
+  await meeting({ date: '2026-11-30', agendaFrom: { kind: 'template', name: '', at: '' } });
+  clock = NOV3_9AM;
   assert.equal((await run()).asked, 0);
+  assert.equal((await getMeeting(env.DB, 'm_nov5')).agendaFrom.kind, 'template');
+  // Two days out: the template as it stands is the agenda
+  await meeting({ agendaFrom: { kind: 'template', name: '', at: '' } });
+  assert.equal((await run()).asked > 0, true);
+  assert.equal((await getMeeting(env.DB, 'm_nov5')).agendaFrom.kind, 'typed');
+  // The chair reviews it, and it's never drafted over again
+  clock = Date.parse('2026-11-04T17:06:00Z');
+  await run();
+  assert.equal(gmail.sent.filter((m) => hdr(m, 'Subject').startsWith('Agenda for your review')).length, 1);
+});
+
+test('nothing for an agenda with nothing on it, outside 8 to 7 Eastern, or further out than two weeks', async () => {
+  await meeting({ sections: [], agendaFrom: { kind: 'template', name: '', at: '' } });
+  assert.equal((await run()).asked, 0);
+  assert.equal((await getMeeting(env.DB, 'm_nov5')).agendaFrom.kind, 'template', 'nothing to ask about: it stays as it is');
   await meeting();
   clock = Date.parse('2026-11-03T03:00:00Z'); // 10 PM Monday Eastern
   assert.equal((await run()).asked, 0);

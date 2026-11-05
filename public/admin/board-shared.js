@@ -477,6 +477,8 @@ export function cleanMeeting(raw = {}) {
       // Board's day, time and place put back on it after someone changed them in Google Calendar (functions/api/_board-calendar.js)
       putBackAt: one(raw.invite.putBackAt, 40), putBackFor: one(raw.invite.putBackFor, 200), differs: one(raw.invite.differs, 200), emails: (Array.isArray(raw.invite.emails) ? raw.invite.emails : []).map((e) => one(e, 200)).filter(Boolean).slice(0, 100),
       replies: cleanReplies(raw.invite.replies),
+      // The board members Board put on it, slug → email: only they ever come off it (functions/api/_board-invite.js maybeFollowBoard)
+      who: Object.fromEntries(Object.entries(raw.invite.who && typeof raw.invite.who === 'object' ? raw.invite.who : {}).slice(0, 100).map(([slug, e]) => [one(slug, 100), one(e, 200)]).filter(([slug, e]) => slug && e)),
     } : null,
     // When the invite was deleted in Google Calendar (functions/api/_board-calendar.js): server-set
     inviteGone: one(raw.inviteGone, 40),

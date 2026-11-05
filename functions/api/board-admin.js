@@ -51,7 +51,7 @@ import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
   setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, fillDocWords, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, fileLocked, liveNumbers, takeSnapshot, sendPacket,
   memberStatus, roster, packetList, ID, readFileAsAgenda, sendWelcome, askToSign, approveMinutes, remindRsvp, sendMinutesNotice, patchMeeting,
-  chairLive, createPractice, resetPractice, agendaApprovals, holdSharing,
+  chairLive, createPractice, resetPractice, agendaApprovals, holdSharing, maybeTemplateAgendas,
 } from './_board.js';
 import { chairApprove } from './_board-asks.js';
 import { isBoardAdmin, isStaffEmail, readState, activeBoard } from './_board-roles.js';
@@ -349,7 +349,9 @@ export async function onRequestPost(context) {
       case 'save-settings': {
         const s = await saveSettings(env.DB, body.settings || {}, me);
         await audit(env, me, 'updated', 'Board settings saved');
-        return Response.json({ ok: true, settings: s });
+        // The template changed: the meetings still on it follow now, not at the next heartbeat
+        const followed = Array.isArray(body.settings?.template) ? (await maybeTemplateAgendas(env, { force: true })).length : 0;
+        return Response.json({ ok: true, settings: s, followed });
       }
       case 'read-file': {
         // The minutes (or an old agenda) uploaded to a meeting, read for the admin to look over before it fills the meeting
