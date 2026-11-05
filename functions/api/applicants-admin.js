@@ -46,6 +46,7 @@ import { DEFAULT_SERVICE_AREA } from './_application-form.js';
 import { logAudit } from './_audit.js';
 import { JT_URL } from './_reveals.js';
 import { familyScores, scoreSummaries, saveScorecard, clearScorecard, capacities, setCapacity, importScores } from './_applicant-scores.js';
+import { applyHeld } from './_score-scans.js';
 import {
   sendNow, dontSend, moveBack, pauseEmails, resumeEmails, pauseState, resolveHeld, correctionDraft, sendCorrection,
   runNotifications, overdueCount,
@@ -92,6 +93,8 @@ export async function onRequestGet(context) {
       await maybeSyncApplicants(env, { force: true });
       state = await syncState(env.DB);
     }
+    // Readiness read off a scanned sheet before the home visit goes onto its card once the visit has happened
+    await applyHeld(env.DB).catch(() => 0);
     const [applicants, settings, live, rules, scores, capacity] = await Promise.all([
       listApplicants(env.DB, { archived: url.searchParams.get('archived') === '1' }),
       applicationSettings(env.DB),

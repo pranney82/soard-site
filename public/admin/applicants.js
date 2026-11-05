@@ -46,6 +46,7 @@ import { nearRing, bandChanges } from './area-shared.js';
 import { openViewer, viewerLink, warmFiles, kindOf, kindIcon, sizeText, extOf } from './file-viewer.js';
 import { ask } from './ask.js';
 import { RUBRIC_VERSION, SHEET_RUBRIC, TIERS, TOTAL_MAX, criteriaOf, keysOf, rubricOfSeason, fmtScore, tierById, tierOf, totalOf, scoredCount } from './scoring-shared.js';
+import { ScanBar, ScanFamilyButton, scanLink } from './score-scans.js';
 
 const html = htm.bind(h);
 const API = '/api/applicants-admin';
@@ -727,6 +728,8 @@ const SCORE_CSS = `
 .apl-rank-by { display: inline-flex; align-items: center; gap: 2px; }
 .apl-rank-by .apl-card-sub { margin-left: .3rem; }
 .apl-talk-tag { margin-top: .3rem; }
+.apl-score-scan { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem .75rem; margin-top: 1rem; padding-top: .9rem; border-top: 1px solid var(--color-border); }
+.apl-score-scanned { margin: .5rem 0 0; }
 @container apl-rank (max-width: 1180px) { .apl-rank .apl-rank-crits { display: none; } }
 @container apl-rank (max-width: 640px) {
   .apl-rank thead { display: none; }
@@ -1011,6 +1014,10 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
     load(true);
   };
   // A scorecard saved in the drawer: the family's new score on the board, list and Scores view at once
+  // Scores read from scanned sheets: each family's new score at once (who's scoring the season can change, so the list catches up)
+  const onSummaries = (map) => {
+    setData(d => d && { ...d, applicants: d.applicants.map(x => (map[x.id] ? { ...x, score: map[x.id] } : x)) });
+  };
   const onScored = (id, summary) => {
     const was = data?.applicants.find(x => x.id === id)?.score;
     setData(d => d && { ...d, applicants: d.applicants.map(x => (x.id === id ? { ...x, score: summary } : x)) });
@@ -1164,7 +1171,8 @@ export function ApplicantsArea({ addToast, extraViews = [], notice = null, menuI
 
     ${view === 'board' && html`<${Board} list=${shown} onOpen=${open} onMove=${askStatus} />`}
     ${view === 'list' && html`<${ListView} list=${shown} onOpen=${open} />`}
-    ${view === 'scores' && html`<${ScoresView} list=${shown} year=${year} capacity=${data.capacity || {}} onOpen=${open} addToast=${addToast} onCapacity=${(capacity) => setData(d => d && { ...d, capacity })} />`}
+    ${view === 'scores' && html`<${ScoresView} list=${shown} year=${year} me=${data.me} capacity=${data.capacity || {}} onOpen=${open} addToast=${addToast} onCapacity=${(capacity) => setData(d => d && { ...d, capacity })}
+      onSummaries=${onSummaries} onChanged=${() => load(true)} />`}
     ${view === 'map' && html`<${MapView} list=${shown} boundary=${data.boundary} focus=${focusPin} startEditing=${editBoundary} onEditDone=${() => setEditBoundary(false)} onOpen=${open} addToast=${addToast} onSaved=${() => load(true)} />`}
     ${view === 'activity' && html`<${ActivityView} onOpen=${open} />`}
     ${extra && extra.render()}
@@ -2405,6 +2413,13 @@ function ScorePane({ a, onScored, addToast }) {
     setOpenK(nextOpen(j, mine?.scores || {}));
   }, [a.id]);
   useEffect(() => { load(); }, [load]);
+  // The family's score changed from elsewhere (a scanned sheet saved into it): the cards here catch up, so a pick never lands on a card this tab hasn't seen
+  const seenScore = JSON.stringify([a.score?.total ?? null, a.score?.count ?? 0, a.score?.by || [], a.score?.started || []]);
+  useEffect(() => {
+    if (!d) return;
+    const here = JSON.stringify([d.summary?.total ?? null, d.summary?.count ?? 0, d.summary?.by || [], d.summary?.started || []]);
+    if (here !== seenScore && !Object.keys(pending.current).length) load();
+  }, [seenScore]);
 
   const flush = useCallback(async () => {
     clearTimeout(timer.current);
@@ -2546,7 +2561,8 @@ function ScorePane({ a, onScored, addToast }) {
       <label class="apl-score-notes"><span><b>Notes and rationale</b> <span class="apl-card-sub">Staff only</span></span>
         <textarea class="form-input" rows="3" value=${notes} onInput=${e => { setNotes(e.target.value); queue({ notes: e.target.value }, 900); }} onBlur=${flush} placeholder="What stood out, and why you scored it this way"></textarea>
       </label>
-      ${mine && html`<div class="apl-score-foot"><span class="apl-card-sub">${mine.source === 'sheet' ? 'Brought over from the scoring spreadsheet' : `Started ${fullDate(mine.createdAt)}`}</span><button class="apl-more" onClick=${startOver}>Start over</button></div>`}
+      ${mine && html`<div class="apl-score-foot"><span class="apl-card-sub">${mine.source === 'sheet' ? 'Brought over from the scoring spreadsheet'
+        : mine.source === 'scan' ? html`Read from your scanned scoresheet · <a href=${scanLink(mine)} target="_blank" rel="noopener">See the page</a>` : `Started ${fullDate(mine.createdAt)}`}</span><button class="apl-more" onClick=${startOver}>Start over</button></div>`}
     </div>`}
 
     ${mode === 'all' && html`<div class="apl-score-body">
@@ -2568,10 +2584,13 @@ function ScorePane({ a, onScored, addToast }) {
           </tr>`)}</tbody>
           <tfoot><tr><th scope="row">Total</th>${finished.map(x => html`<td key=${x.evaluator}><b>${x.total}</b></td>`)}<td class="apl-avg"><b>${fmtScore(s.total)}</b></td></tr></tfoot>
         </table></div>
+        ${finished.some(c => c.source === 'scan') && html`<p class="apl-card-sub apl-score-scanned">Read from scanned scoresheets: ${finished.filter(c => c.source === 'scan').map((c, i, l) => html`${i ? (i === l.length - 1 ? ' and ' : ', ') : ''}<a href=${scanLink(c)} target="_blank" rel="noopener">${c.evaluator === me ? 'yours' : `${who(c.evaluator).first}’s`}</a>`)}.</p>`}
         ${finished.some(c => c.notes) && html`<div class="apl-score-notes-list">${finished.filter(c => c.notes).map(c => html`<div class="apl-score-note" key=${c.evaluator}><${Who} email=${c.evaluator} size=${26} /><div><b>${c.evaluator === me ? 'You' : who(c.evaluator).name}</b><p>${c.notes}</p></div></div>`)}</div>`}
       `}
       ${d.cards.filter(c => !c.complete && c.done > 0).map(c => html`<p class="apl-card-sub apl-score-partial" key=${c.evaluator}>${c.evaluator === me ? 'You have' : `${who(c.evaluator).first} has`} scored ${c.done} of ${all} so far.</p>`)}
     </div>`}
+    <div class="apl-score-scan"><span class="apl-card-sub">Scored on paper?</span>
+      <${ScanFamilyButton} a=${a} me=${d.me} addToast=${addToast} onSummaries=${(map) => { if (map[a.id]) scoredRef.current(map[a.id]); }} onDone=${load} /></div>
     ${how && html`<${HowScoring} version=${d.rubric} onClose=${() => setHow(false)} />`}
   </section>`;
 }
@@ -2611,7 +2630,7 @@ function HowScoring({ version = RUBRIC_VERSION, onClose }) {
  * once everyone scoring the season has scored them; the rest are listed after,
  * with who they're waiting on. Opening one goes to its Score tab.
  */
-function ScoresView({ list, year, capacity, onOpen, addToast, onCapacity }) {
+function ScoresView({ list, year, me = null, capacity, onOpen, addToast, onCapacity, onSummaries, onChanged }) {
   const [how, setHow] = useState(false);
   const [editing, setEditing] = useState(false);
   const [capText, setCapText] = useState('');
@@ -2677,6 +2696,7 @@ function ScoresView({ list, year, capacity, onOpen, addToast, onCapacity }) {
         : 'Each person scores on their own; a family’s score is the average of their totals.'}</p>
       <button class="btn btn-ghost btn-sm" onClick=${() => setHow(true)}>How scoring works</button>
     </div>
+    ${year && html`<${ScanBar} year=${year} me=${me} onSummaries=${onSummaries} onChanged=${onChanged} addToast=${addToast} />`}
     <div class="apl-score-tiles">
       <div class="apl-score-tile"><span>Ranked</span><b>${scored.length}</b><small>${fams.length ? `of ${plural(fams.length, 'family', 'families')}` : 'no families'}</small></div>
       ${TIERS.map(t => html`<div class=${`apl-score-tile is-${t.id}`} key=${t.id} title=${t.hint}><span><i class="apl-tier-dot" aria-hidden="true"></i>${t.label}</span><b>${byTier[t.id]}</b><small>${t.range}</small></div>`)}

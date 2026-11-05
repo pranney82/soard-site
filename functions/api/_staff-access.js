@@ -225,6 +225,12 @@ export function refusedText(standing) {
   return `This sign-in’s SOARD account ${what}, so it can’t open the admin. If that’s a mistake, a Google Workspace admin can put the account back, and the admin opens again within 5 minutes.`;
 }
 
+/** SOARD's Google accounts as last read: [{ email, aliases, name, active }] (who a scanned scoresheet's "Scored by" is) */
+export async function staffDirectory(DB) {
+  const dir = await readState(DB, 'directory');
+  return (dir.accounts || []).filter((a) => isStaffEmail(a.email));
+}
+
 /** For Site → Automations: counts, times and on/off; names only of who was signed out */
 export async function staffStatus(env) {
   const dir = await readState(env.DB, 'directory');

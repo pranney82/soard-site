@@ -33,6 +33,12 @@
  * The 2026 scorecards came over from the spreadsheet once, by name
  * (importScores, source 'sheet'); the names were matched to that season's
  * families and never written to this repository.
+ *
+ * A scorecard can also come from a scanned or photographed scoresheet
+ * (./_score-scans.js reads it; saveScannedCard writes it, source 'scan', with
+ * source_ref naming the page it came from). A scan never replaces a card its
+ * scorer filled in on the site, and keeps the card it replaced so the upload
+ * can be undone.
  */
 
 import { SHEET_RUBRIC, criteriaOf, keysOf, rubricOfSeason, cleanScores, combine, isComplete, scoredCount, totalOf, tierOf } from '../../public/admin/scoring-shared.js';
@@ -57,6 +63,8 @@ const _ready = new WeakSet();
 export async function ensureScoreSchema(DB) {
   if (_ready.has(DB)) return;
   await DB.batch(SCHEMA.map((sql) => DB.prepare(sql)));
+  // Where a scanned card came from (scan:page:sheet); added after the table was
+  await DB.prepare('ALTER TABLE applicant_scores ADD COLUMN source_ref TEXT').run().catch(() => {});
   _ready.add(DB);
 }
 
@@ -71,7 +79,7 @@ function cardFromRow(r) {
   return {
     evaluator: r.evaluator, name: r.evaluator_name || null, scores, notes: r.notes || '',
     done: scoredCount(scores, rubric), complete: isComplete(scores, rubric), total: totalOf(scores, rubric),
-    rubric, source: r.source, createdAt: r.created_at, updatedAt: r.updated_at, completedAt: r.completed_at || null,
+    rubric, source: r.source, ref: r.source_ref || null, createdAt: r.created_at, updatedAt: r.updated_at, completedAt: r.completed_at || null,
   };
 }
 
@@ -203,7 +211,8 @@ export async function saveScorecard(DB, accountId, { evaluator, name = null, sco
   await DB.prepare(`INSERT INTO applicant_scores (account_id, evaluator, evaluator_name, scores, notes, rubric, source, created_at, updated_at, completed_at)
     VALUES (?, ?, ?, ?, ?, ?, 'site', ?, ?, ?)
     ON CONFLICT(account_id, evaluator) DO UPDATE SET evaluator_name = COALESCE(excluded.evaluator_name, evaluator_name), scores = excluded.scores,
-      notes = excluded.notes, rubric = excluded.rubric, updated_at = excluded.updated_at, completed_at = excluded.completed_at`)
+      notes = excluded.notes, rubric = excluded.rubric, updated_at = excluded.updated_at, completed_at = excluded.completed_at,
+      source = CASE WHEN excluded.scores = scores THEN source ELSE 'site' END, source_ref = CASE WHEN excluded.scores = scores THEN source_ref ELSE NULL END`)
     .bind(accountId, who, name, JSON.stringify(next), text, rubric, iso(now), iso(now), completedAt).run();
   const cards = await scorecardsFor(DB, accountId);
   return { card: cards.find((c) => c.evaluator === who), summary: summaryOf(cards, await panelFor(DB, accountId, cards, fam)), finished };
@@ -217,6 +226,115 @@ export async function clearScorecard(DB, accountId, { evaluator } = {}) {
   await DB.prepare('DELETE FROM applicant_scores WHERE account_id = ? AND evaluator = ?').bind(accountId, who).run();
   const cards = await scorecardsFor(DB, accountId);
   return { summary: summaryOf(cards, await panelFor(DB, accountId, cards)) };
+}
+
+/** The family's score as the board shows it, against who's scoring its season */
+export async function familySummary(DB, accountId) {
+  const cards = await scorecardsFor(DB, accountId);
+  return summaryOf(cards, await panelFor(DB, accountId, cards));
+}
+
+const scanOf = (ref) => String(ref || '').split(':')[0];
+
+/**
+ * A scorecard read from a scanned scoresheet, as that scorer's card for the
+ * family. ref names the sheet (scan:page:sheet). A scan only ever fills an
+ * empty place: when the scorer already has a card for the family (filled in on
+ * the site, brought over from the spreadsheet, or from another scan) that says
+ * the same, nothing changes (same: true); when it says something else, it's
+ * refused with 409 (code 'has-card', or 'twice' when it came from another sheet
+ * of the same upload) until a person picks the scan's (override).
+ * A criterion scored after the home visit is held back before the visit
+ * (dropped: { key: score }) and goes onto the card once the visit has happened.
+ * Handwritten notes go on a card that has none.
+ * alsoRun({ replaced, dropped, same }) → [prepared statements] run in one batch
+ * with the card's write, so the card and the record of where it came from are
+ * saved together or not at all.
+ * → { card, summary, replaced (the row it replaced, for undo, or null), dropped, same }
+ */
+export async function saveScannedCard(DB, accountId, { evaluator, name = null, scores = {}, notes = '', ref, override = false, alsoRun = null, now = Date.now() } = {}) {
+  await ensureScoreSchema(DB);
+  const who = cleanEvaluator(evaluator);
+  if (!who) throw Object.assign(new Error('Whose scores are these?'), { status: 400 });
+  const before = await DB.prepare('SELECT * FROM applicant_scores WHERE account_id = ? AND evaluator = ?').bind(accountId, who).first();
+  // Read strictly: a read that failed must fail the save, never fall back to a guessed rubric
+  const fam = await DB.prepare('SELECT name, status, year FROM applicants WHERE account_id = ?').bind(accountId).first();
+  if (!fam) throw Object.assign(new Error('That family isn’t on the Applicants board any more.'), { status: 404 });
+  const rubric = Number(before?.rubric) || rubricFor(await scorecardsFor(DB, accountId), fam);
+  const next = cleanScores(scores, rubric);
+  const dropped = {};
+  const visited = await homeVisited(DB, accountId, fam);
+  for (const c of criteriaOf(rubric)) if (c.after === 'visit' && next[c.key] != null && !visited) { dropped[c.key] = next[c.key]; delete next[c.key]; }
+  if (before && before.source_ref !== ref) {
+    const had = cardFromRow(before);
+    const same = had.done > 0 && keysOf(rubric).every((k) => had.scores[k] === next[k] || (next[k] == null && k in dropped));
+    if (same) {
+      const extra = alsoRun?.({ replaced: null, dropped, same: true }) || [];
+      if (extra.length) await DB.batch(extra);
+      return { card: had, summary: await familySummary(DB, accountId), replaced: null, dropped, same: true };
+    }
+    if (had.done > 0 && !override) {
+      const twice = before.source === 'scan' && scanOf(before.source_ref) === scanOf(ref);
+      throw Object.assign(new Error(twice ? 'This upload already has their scores for this family.' : 'They already have scores for this family.'), { status: 409, code: twice ? 'twice' : 'has-card', card: had });
+    }
+  }
+  const complete = isComplete(next, rubric);
+  const text = String(notes || '').trim().slice(0, NOTES_MAX) || null;
+  const replaced = before && before.source_ref === ref ? null : before || null;
+  const write = DB.prepare(`INSERT INTO applicant_scores (account_id, evaluator, evaluator_name, scores, notes, rubric, source, source_ref, created_at, updated_at, completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'scan', ?, ?, ?, ?)
+    ON CONFLICT(account_id, evaluator) DO UPDATE SET evaluator_name = COALESCE(excluded.evaluator_name, evaluator_name), scores = excluded.scores,
+      notes = COALESCE(notes, excluded.notes), rubric = excluded.rubric, source = 'scan', source_ref = excluded.source_ref,
+      updated_at = excluded.updated_at, completed_at = excluded.completed_at`)
+    .bind(accountId, who, name, JSON.stringify(next), text, rubric, ref, iso(now), iso(now), complete ? iso(now) : null);
+  await DB.batch([write, ...(alsoRun?.({ replaced, dropped, same: false }) || [])]);
+  const cards = await scorecardsFor(DB, accountId);
+  return { card: cards.find((c) => c.evaluator === who), summary: summaryOf(cards, await panelFor(DB, accountId, cards, fam)), replaced, dropped, same: false };
+}
+
+/**
+ * Scores held back from a scanned card until the home visit (readiness, from
+ * 2027): onto that card (ref) once the family has had it, unless the scorer
+ * has scored that criterion since or the card isn't the scan's any more.
+ * → true when the card took them
+ */
+export async function applyHeldScores(DB, accountId, { evaluator, ref, held = {}, now = Date.now() } = {}) {
+  await ensureScoreSchema(DB);
+  const row = await DB.prepare('SELECT * FROM applicant_scores WHERE account_id = ? AND evaluator = ?').bind(accountId, evaluator).first();
+  // Only onto the card the scan saved: not one typed on the site, started over, or from another upload
+  if (!row || row.source_ref !== ref || !(await homeVisited(DB, accountId))) return false;
+  const rubric = Number(row.rubric) || SHEET_RUBRIC;
+  const scores = cleanScores(parse(row.scores, {}), rubric);
+  const add = Object.fromEntries(Object.entries(cleanScores(held, rubric)).filter(([k]) => scores[k] == null));
+  if (!Object.keys(add).length) return false;
+  const next = { ...scores, ...add };
+  // Only onto the card as it was read (it hasn't changed in between)
+  const r = await DB.prepare('UPDATE applicant_scores SET scores = ?, updated_at = ?, completed_at = COALESCE(completed_at, ?) WHERE account_id = ? AND evaluator = ? AND scores = ?')
+    .bind(JSON.stringify(next), iso(now), isComplete(next, rubric) ? iso(now) : null, accountId, evaluator, row.scores).run();
+  return !!r.meta?.changes;
+}
+
+/**
+ * Undo a scanned card: the card it replaced back (or none), unless the card
+ * has changed since the scan wrote it (then it's left as it is).
+ * → { restored, summary }
+ */
+export async function restoreScannedCard(DB, accountId, { evaluator, ref, replaced = null, alsoRun = null } = {}) {
+  await ensureScoreSchema(DB);
+  const now = await DB.prepare('SELECT * FROM applicant_scores WHERE account_id = ? AND evaluator = ?').bind(accountId, evaluator).first();
+  if (!now || now.source_ref !== ref) {
+    // Put back already (an undo tried again after it was cut off): that's restored, not changed
+    const already = replaced ? now && now.scores === replaced.scores && (now.source_ref ?? null) === (replaced.source_ref ?? null) : !now;
+    return { restored: !!already, missing: !now && !already, already: !!already, summary: await familySummary(DB, accountId) };
+  }
+  const write = replaced
+    ? DB.prepare(`INSERT OR REPLACE INTO applicant_scores (account_id, evaluator, evaluator_name, scores, notes, rubric, source, source_ref, created_at, updated_at, completed_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(accountId, evaluator, replaced.evaluator_name ?? null, replaced.scores, replaced.notes ?? null, Number(replaced.rubric) || SHEET_RUBRIC, replaced.source || 'site',
+        replaced.source_ref ?? null, replaced.created_at, replaced.updated_at, replaced.completed_at ?? null)
+    : DB.prepare('DELETE FROM applicant_scores WHERE account_id = ? AND evaluator = ? AND source_ref = ?').bind(accountId, evaluator, ref);
+  await DB.batch([write, ...(alsoRun?.() || [])]);
+  return { restored: true, summary: await familySummary(DB, accountId) };
 }
 
 // ─── How many makeovers a season can take ─────────────────────────────
