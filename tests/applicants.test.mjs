@@ -218,7 +218,7 @@ test('“don’t email” holds when JobTread’s workflow wakes for the website
   let n = 0;
   const wake = (a, at) => {
     const id = `evtSite${++n}`;
-    w.world.events.push({ id, createdAt: new Date(at).toISOString(), type: 'accountUpdated', createdByGrantId: 'theNewKey', createdByGrantName: 'soard website', createdByUser: { name: 'SOARD Website', emailAddress: 'peter+automation@soardcharity.com' },
+    w.world.events.push({ id, createdAt: new Date(at).toISOString(), type: 'accountUpdated', createdByGrantId: 'theNewKey', createdByGrantName: 'soard website', createdByUser: { name: 'Gracie Bot', emailAddress: 'automation@soardcharity.com' },
       data: { next: { custom: { Status: 'Approved' } }, previous: { custom: { Status: 'In Review' } } }, account: { id: a.id, type: 'customer' } });
     return handleWorkflowCall(env, { eventId: id, accountId: a.id }, { fetchImpl: w.fetchImpl, now: at });
   };

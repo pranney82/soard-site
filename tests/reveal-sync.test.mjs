@@ -240,11 +240,11 @@ test('a write by the website’s own login is an echo whatever its key, and the 
   const s = await setup({ field: '2026-11-18T20:00:00.000Z' });
   await s.wake(s.log('task'));
   const before = s.writes();
-  const r = await s.wake(s.log('field', { by: 'theNewKey', createdByUser: { emailAddress: 'peter+automation@soardcharity.com' }, at: NOW + 20_000 }), NOW + 20_000);
+  const r = await s.wake(s.log('field', { by: 'theNewKey', createdByUser: { emailAddress: 'automation@soardcharity.com' }, at: NOW + 20_000 }), NOW + 20_000);
   assert.deepEqual([r.action, r.ran], ['echo', false]);
   assert.equal(s.writes(), before, 'no writes for an echo');
   s.job.fields[FIELD_REVEAL_DATE] = '2026-11-20T21:00:00.000Z';
-  assert.equal((await s.wake(s.log('field', { by: null, createdByUser: { emailAddress: 'peter+automation@soardcharity.com' }, at: NOW + MIN }), NOW + MIN)).action, 'field-to-task', 'signed in to JobTread itself, no key: a person');
+  assert.equal((await s.wake(s.log('field', { by: null, createdByUser: { emailAddress: 'automation@soardcharity.com' }, at: NOW + MIN }), NOW + MIN)).action, 'field-to-task', 'signed in to JobTread itself, no key: a person');
 });
 
 test('the same event twice (JobTread retrying, or a replay) is handled once', async () => {

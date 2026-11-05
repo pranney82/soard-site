@@ -161,7 +161,7 @@ const CONFIRMED_ROLES = {
 const BOARD_ROLE = 'Board Member';
 export const BOARD_ROLE_ID = '22PgGdtxTATR';
 // Logins with staff roles that aren't people: the Qualification Committee, the DATAx integration and the website's own JobTread login
-export const NOT_STAFF = new Set(['selection@soardcharity.com', 'hello@contractorcto.com', 'peter+automation@soardcharity.com']);
+export const NOT_STAFF = new Set(['selection@soardcharity.com', 'hello@contractorcto.com', 'automation@soardcharity.com', 'peter+automation@soardcharity.com']);
 // JobTread logins that aren't where that person wants reveal invites
 export const EMAIL_ALIASES = { 'peter@ranneyblair.com': 'peter@soardcharity.com' };
 export const STAFF_DOMAIN = '@soardcharity.com';
