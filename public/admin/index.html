@@ -6770,6 +6770,31 @@
         : `${String(inv.lastAction || '').replace(/^cancelled: /, 'Cancelled because: ')} (${rtWhen(inv.updatedAt)})` });
       else if (/^kept: /.test(inv?.lastAction || '')) steps.push({ key: 'invite-kept', label: 'Invite still out', state: 'warn', text: `JobTread says ${inv.lastAction.slice(6)}. The site never cancels an invite: if the reveal is off, delete it in Google Calendar.` });
 
+      // The invite email in Kit, which drafts itself when JobTread confirms, or from here sooner
+      const ki = r.kitInvite;
+      const inKit = ki?.id ? { href: `https://app.kit.com/campaigns/${encodeURIComponent(ki.id)}`, label: 'Open in Kit ↗' } : null;
+      steps.push({ key: 'kit-invite', label: 'Invite email in Kit', ...(r.test ? { state: 'off', text: 'Never for a rehearsal' }
+        : r.kidUrl && !r.slug ? { state: 'off', text: 'Only for kids\' reveals' }
+        : ki?.state === 'check' ? { state: 'warn', text: 'Check who it goes to before anyone sends it: Reveal Emails only, and off the Newsletter site', link: inKit }
+        : ki?.state === 'sent' && ki.error ? { state: 'warn', text: ki.error, link: inKit }
+        : ki?.held ? { state: 'warn', text: ki.state === 'sent' ? `Already sent, and JobTread says ${ki.held}` : `Hold it: JobTread says ${ki.held}`, link: inKit }
+        : ki?.state === 'sent' ? { state: 'done', text: ki.at ? `Sent from Kit ${rtWhen(ki.at)}` : 'Sent from Kit', link: inKit }
+        : ki?.state === 'scheduled' ? { state: 'done', text: ki.at ? `Scheduled in Kit for ${rtWhen(ki.at)}` : 'Scheduled in Kit', link: inKit }
+        : ki?.state === 'draft' ? (ki.error ? { state: 'warn', text: ki.error, link: inKit }
+          : ki.edited ? { state: 'wait', text: 'Edited in Kit, so JobTread changes won\'t rewrite it: Linzi is emailed them instead. Waiting for staff to send it', link: inKit }
+          : r.confirmed && r.time ? { state: 'wait', text: 'Drafted. Waiting for staff to review it and send it from Kit', link: inKit }
+          : { state: 'wait', text: `Drafted early. Hold it until ${r.confirmed ? 'the Reveal task has a time' : 'the reveal is confirmed'}: that fills in the time and calendar buttons`, link: inKit })
+        : live.kit && !live.kit.configured ? { state: 'off', text: 'Kit isn\'t connected' }
+        : !r.preview ? { state: 'off', text: `No invite while the job is ${r.status || 'in this status'}` }
+        : !invites.enabled ? { state: 'wait', text: 'Waits for reveal invites to be turned on (Reveals → Invites)' }
+        : inv?.state === 'cancelled' && inv.lastAction === 'cancelled in Google Calendar' ? { state: 'off', text: 'Not while its calendar invite is deleted' }
+        : !r.slug ? { state: 'warn', text: 'No kid page matches this job, so there\'s nothing to fill it from' }
+        : !r.pageReady ? { state: 'warn', text: `Waiting for ${r.name}'s kid page to be published` }
+        : ki?.state === 'deleted' ? { state: 'off', text: 'Deleted in Kit', draft: 'Draft it again' }
+        : ki?.error ? { state: 'warn', text: ki.error, draft: 'Try again' }
+        : { state: 'wait', text: r.confirmed && r.time ? 'Drafts itself within 5 minutes, or draft it now'
+          : `Drafts itself once ${r.confirmed ? 'the Reveal task has a time' : 'JobTread confirms the reveal'}, or draft it now. The time stays “to be confirmed” until then`, draft: 'Draft invite email' }) });
+
       // 4. The countdown on the site
       const ahead = live.jobId && live.jobId !== r.jobId && ['scheduled', 'armed', 'live', 'ending'].includes(live.phase) ? all.find((x) => x.jobId === live.jobId) : null;
       steps.push({ key: 'countdown', label: 'Countdown and reminder signup on the site', ...(current && (live.phase === 'live' || live.phase === 'ending') ? { state: 'done', text: 'Live now' }
@@ -6849,6 +6874,21 @@
         setBusy(null);
       };
 
+      // Draft this kid's invite email in Kit now, ahead of JobTread's confirmation if need be
+      const draftInvite = async (r) => {
+        setBusy(`kit-${r.jobId}`);
+        try {
+          const res = await fetch('/api/reveal-invites-admin', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kitDraft: r.jobId }) });
+          const d = await res.json().catch(() => ({}));
+          if (!d.ok) throw new Error(d.error || d.reason || `Couldn't draft it (${res.status})`);
+          if (d.kit === 'check') addToast(`${r.name}'s invite is in Kit. Check who it goes to before anyone sends it`, 'error');
+          else if (d.kit === 'drafted') addToast(`${r.name}'s invite email is in Kit${d.told === false ? '. The email to Linzi hasn\'t gone yet; the site keeps trying' : ', and Linzi was emailed to review it'}`, 'success');
+          else addToast(`${r.name}'s invite email is already in Kit`, 'info');
+          await load();
+        } catch (e) { addToast(e.message, 'error'); }
+        setBusy(null);
+      };
+
       const head = html`<div class="bc-card-head">
         <h3>Upcoming reveals</h3>
         <span class="text-sm text-muted">From JobTread, soonest first. Dates, times and notes change there.</span>
@@ -6900,6 +6940,7 @@
                         <span class="rt-label">${x.label}</span>
                         <span class="rt-text"><span class="bc-sr">${{ done: 'Done: ', wait: 'Not yet: ', warn: 'Needs attention: ', error: 'Problem: ', off: 'Off: ', info: '' }[x.state]}</span>${x.text}${x.link ? html` <a href=${x.link.href} target="_blank" rel="noopener">${x.link.label}</a>` : null}</span>
                         ${x.retry ? html`<button class="btn btn-ghost btn-sm" type="button" disabled=${busy === r.jobId} onClick=${() => retry(r)}>${busy === r.jobId ? html`<span class="spinner" /> Retrying…` : 'Retry'}</button>` : null}
+                        ${x.draft ? html`<button class="btn btn-ghost btn-sm" type="button" disabled=${busy === `kit-${r.jobId}`} onClick=${() => draftInvite(r)}>${busy === `kit-${r.jobId}` ? html`<span class="spinner" /> Drafting…` : x.draft}</button>` : null}
                         ${x.more ? html`<details class="bc-more"><summary>Read the comment</summary><p class="ri-nudge__msg">${x.more}</p></details>` : null}
                       </div>
                     </li>`)}

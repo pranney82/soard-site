@@ -21,7 +21,6 @@
  * POST { enabled, organizer } → turn sending on/off, change the organizer (one of
  *                               allowedOrganizers: the site sends as that person)
  *
- * GET ?kit-draft=<jobId> → draft that reveal's invite email in Kit now (before JobTread confirms); the reviewer is emailed
  * Test links are GETs on purpose: open them in a browser signed in to Access.
  */
 
@@ -35,6 +34,7 @@ import { logAudit } from './_audit.js';
 import { readState, readConfig as readBroadcastConfig, ensureSchema as ensureBroadcastSchema } from './_broadcast.js';
 import { readScheduleRecord } from './_broadcast-schedule.js';
 import { kitConfigured } from './_kit.js';
+import { kitInviteStatus, kidPageReady } from './_reveal-invite-kit.js';
 
 const ID = /^[A-Za-z0-9]{6,32}$/;
 const fail = (error, status = 400) => Response.json({ ok: false, error }, { status });
@@ -43,7 +43,8 @@ const fail = (error, status = 400) => Response.json({ ok: false, error }, { stat
  * Everything that went out for each upcoming reveal besides its invite, for the
  * tracker on Reveals → Now: its live broadcast (countdown) with the reminder
  * sends and the Kit email, how many people asked for reminders, and the last
- * reveal-check comment. Adds r.broadcast, r.reminderSignups and r.checkComment.
+ * reveal-check comment, and where its invite email stands in Kit. Adds
+ * r.broadcast, r.reminderSignups, r.checkComment, r.kitInvite and r.pageReady.
  */
 export async function addTracking(env, upcoming) {
   const DB = env.DB;
@@ -83,6 +84,20 @@ export async function addTracking(env, upcoming) {
     const n = nudgeBy[r.jobId];
     r.checkComment = n?.posted_at ? { at: new Date(Number(n.posted_at)).toISOString(), message: n.message } : null;
   }
+  // Last, so trouble here can't cost a reveal the rest of its tracking
+  const invites = await kitInviteStatus(env, ids).catch(() => ({}));
+  const slugs = upcoming.map((r) => r.slug).filter(Boolean);
+  const pages = slugs.length
+    ? await DB.prepare(`SELECT slug, data FROM kids WHERE slug IN (${slugs.map(() => '?').join(', ')})`).bind(...slugs).all().catch(() => ({ results: [] }))
+    : { results: [] };
+  const ready = {};
+  for (const p of pages.results || []) {
+    try { ready[p.slug] = kidPageReady(JSON.parse(p.data)); } catch { ready[p.slug] = false; }
+  }
+  for (const r of upcoming) {
+    r.kitInvite = invites[r.jobId] || null;
+    r.pageReady = !!ready[r.slug];
+  }
 }
 
 export async function onRequestGet(context) {
@@ -118,19 +133,6 @@ export async function onRequestGet(context) {
       if (!ID.test(jobId)) return fail('A JobTread job id is required');
       const result = await reconcileJob(env, jobId);
       return Response.json({ ok: result.action !== 'error', ...result, ...(result.event ? { event: undefined } : {}) });
-    }
-
-    // Draft this reveal's invite email in Kit now, before JobTread confirms
-    // it (the reviewer is emailed; the time fills in once it's confirmed)
-    if (q.has('kit-draft')) {
-      const jobId = q.get('kit-draft');
-      if (!ID.test(jobId)) return fail('A JobTread job id is required');
-      if (!me.includes('@')) return fail('Could not tell who you are from Access', 403);
-      const result = await draftInviteEmailNow(env, jobId);
-      if (result.id) {
-        await logAudit(env.DB, { userEmail: me, action: 'created', entityType: 'newsletter', entitySlug: String(result.id), entityName: `Kit reveal invite draft: ${result.name || jobId}`, gitStatus: 'ok' }).catch(() => {});
-      }
-      return Response.json({ ok: !['error', 'skip', 'off'].includes(result.kit), ...result, ...(result.id ? { url: `https://app.kit.com/campaigns/${result.id}` } : {}) });
     }
 
     if (q.has('preview')) {
@@ -228,6 +230,7 @@ export async function onRequestGet(context) {
 }
 
 /**
+ * POST { kitDraft: jobId, rewrite? } → that reveal's invite email drafted in Kit
  * POST { enabled?, organizer?, template?, updateExisting? } → settings
  * (A reveal's notes are edited only in JobTread, "Reveal Invite Details".)
  */
@@ -239,6 +242,21 @@ export async function onRequestPost(context) {
 
   try {
     await ensureSchema(env.DB);
+
+    // Draft this reveal's invite email in Kit now (the button on Reveals → Now).
+    // The reviewer is emailed, and a draft made early fills in once JobTread
+    // confirms it. rewrite: a draft already made gets the email's current design,
+    // and nobody is emailed.
+    if (body.kitDraft !== undefined) {
+      const jobId = String(body.kitDraft);
+      if (!ID.test(jobId)) return fail('A JobTread job id is required');
+      if (!me.includes('@')) return fail('Could not tell who you are from Access', 403);
+      const result = await draftInviteEmailNow(env, jobId, { rewrite: body.rewrite === true });
+      if (['drafted', 'redesigned', 'check'].includes(result.kit)) {
+        await logAudit(env.DB, { userEmail: me, action: 'created', entityType: 'newsletter', entitySlug: String(result.id), entityName: `Kit reveal invite draft: ${result.name || jobId}`, gitStatus: 'ok' }).catch(() => {});
+      }
+      return Response.json({ ok: !['error', 'skip', 'off'].includes(result.kit), ...result, ...(result.id ? { url: `https://app.kit.com/campaigns/${result.id}` } : {}) });
+    }
 
     // A board member's or advisor's private reveal email (People → Board, Advisory): open invites follow right away
     if (body.boardEmail && typeof body.boardEmail === 'object') {

@@ -6,7 +6,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, createVerify } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { guestGroups, fetchBoard, boardRoster, setBoardEmail, planInvite, reconcileJob, reconcileAll, sendTestInvite, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, maybeCheckGuests, realJobFor, BY_HAND, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL, admitWake, runOwedWakes, allowedOrganizers, DEFAULT_ORGANIZER } from '../functions/api/_reveal-invites.js';
+import { guestGroups, fetchBoard, boardRoster, setBoardEmail, planInvite, reconcileJob, reconcileAll, sendTestInvite, draftInviteEmailNow, displayName, writeConfig, readConfig, renderTemplate, listUpcoming, maybeSweep, maybeCheckGuests, realJobFor, BY_HAND, DEFAULT_TEMPLATE, REVEAL_TASK_TYPE, FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_INVITE_DETAILS, FIELD_CONTACT_EMAIL, admitWake, runOwedWakes, allowedOrganizers, DEFAULT_ORGANIZER } from '../functions/api/_reveal-invites.js';
 import * as wakeRoute from '../functions/api/reveal-invites.js';
 import * as inviteAdmin from '../functions/api/reveal-invites-admin.js';
 import { serviceAccountJwt, eventIdFor, clearTokenCache, parseServiceAccount } from '../functions/api/_google-calendar.js';
@@ -1073,4 +1073,171 @@ test('the invite organizer is one of the mailboxes set aside for it, never any s
   assert.equal((await post({ organizer: 'CCunningham@soardcharity.com' })).status, 200);
   assert.equal((await post({ organizer: 'reveals@soardcharity.com' }, { REVEAL_INVITE_ORGANIZERS: 'reveals@soardcharity.com' })).status, 200);
   assert.equal((await readConfig(env.DB)).organizer, 'reveals@soardcharity.com');
+});
+
+// ─── JobTread confirms → the invite email in Kit (./_reveal-invite-kit.js) ──
+async function withKit(fn, { kitDown = false } = {}) {
+  const posts = []; const mail = []; const drafts = new Map();
+  const real = globalThis.fetch;
+  globalThis.fetch = async (input, init = {}) => {
+    const url = String(input?.url || input);
+    const method = init.method || 'GET';
+    if (url.startsWith('https://api.kit.com/v4/')) {
+      if (kitDown) return new Response('down', { status: 500 });
+      if (url.includes('/tags')) return Response.json({ tags: [] });
+      if (url.includes('/segments')) return Response.json({ segments: [{ id: 587253, name: 'Reveal Emails' }] });
+      if (method === 'POST') { const b = JSON.parse(init.body); posts.push(b); drafts.set('501', { id: 501, status: 'draft', ...b }); return Response.json({ broadcast: { id: 501 } }, { status: 201 }); }
+      return Response.json({ broadcast: drafts.get('501') });
+    }
+    if (url.startsWith('https://api.resend.com/')) { mail.push(...JSON.parse(init.body)); return Response.json({ data: [{ id: 're_1' }] }); }
+    return fakeFetch(url, init);
+  };
+  try { await fn({ ...env, KIT_API_KEY: 'kit_test', RESEND_API_KEY: 're_test' }); } finally { globalThis.fetch = real; }
+  return { posts, mail };
+}
+
+test('JobTread confirms a reveal: the same look drafts the Kit email to Reveal Emails and asks Linzi to review it', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  jt = job({ confirmed: true, time: '16:00:00.000', details: 'Park on the street.' });
+  let r;
+  const { posts, mail } = await withKit(async (e) => { r = await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); });
+  assert.equal(r.action, 'created', 'the calendar invite goes out as ever');
+  assert.equal(posts.length, 1);
+  assert.equal(posts[0].subject, 'You’re Invited to Max’s Reveal Day!');
+  assert.equal(posts[0].public, false);
+  assert.equal(posts[0].send_at, null);
+  assert.deepEqual(posts[0].subscriber_filter, [{ all: [{ type: 'segment', ids: [587253] }], any: null, none: null }]);
+  assert.match(posts[0].content, /Tuesday, October 27, 2026 · 4:00 PM/);
+  assert.match(posts[0].content, /100 Example Way, Atlanta, GA 30301/);
+  assert.match(posts[0].content, /Park on the street/);
+  assert.deepEqual(mail.map((m) => m.to[0]), ['linzi@soardcharity.com']);
+  assert.equal(mail[0].subject, 'Review Max’s reveal invite in Kit');
+});
+
+test('a save-the-date (not confirmed) drafts nothing in Kit', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  jt = job();
+  const { posts, mail } = await withKit(async (e) => { await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); });
+  assert.equal(posts.length, 0);
+  assert.equal(mail.length, 0);
+});
+
+test('confirmed, drafted, then the job is closed: the same look tells Linzi to hold it', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  jt = job({ confirmed: true, time: '16:00:00.000' });
+  const { mail } = await withKit(async (e) => {
+    await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
+    jt = { ...jt, closedOn: '2026-10-20' };
+    await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
+    await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  });
+  const toLinzi = mail.filter((m) => !/^\[SOARD\]/.test(m.subject)); // staff's own "still out" alert is separate
+  assert.deepEqual(toLinzi.map((m) => m.subject), ['Review Max’s reveal invite in Kit', 'Hold Max’s reveal invite']);
+  assert.match(toLinzi[1].html, /job closed/);
+});
+
+test('the calendar invite deleted by hand: nothing new is drafted, and a waiting draft is held', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  jt = job({ confirmed: true, time: '16:00:00.000' });
+  const { posts, mail } = await withKit(async (e) => {
+    await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
+    events.delete(eventIdFor('soardreveal', jt.id));
+    await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW, verify: true });
+  });
+  assert.equal(posts.length, 1);
+  assert.equal(mail.at(-1).subject, 'Hold Max’s reveal invite');
+  assert.match(mail.at(-1).html, /calendar invite was deleted/);
+});
+
+test('Kit runs after the calendar, so a slow Kit can’t hold up the invite', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  jt = job({ confirmed: true, time: '16:00:00.000' });
+  let eventFirst = null;
+  const { posts } = await withKit(async (e) => {
+    const inner = globalThis.fetch;
+    globalThis.fetch = async (input, init = {}) => {
+      if (String(input?.url || input).startsWith('https://api.kit.com/') && eventFirst === null) eventFirst = events.has(eventIdFor('soardreveal', jt.id));
+      return inner(input, init);
+    };
+    await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  });
+  assert.equal(posts.length, 1);
+  assert.equal(eventFirst, true);
+});
+
+test('the button drafts for any kid with a Reveal date, even before construction starts', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  jt = job({ demo: false });
+  let r;
+  const { posts, mail } = await withKit(async (e) => { r = await draftInviteEmailNow(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); });
+  assert.equal(r.kit, 'drafted');
+  assert.equal(posts.length, 1);
+  assert.match(posts[0].content, /Time to be confirmed/);
+  assert.equal(mail[0].subject, 'Review Max’s reveal invite in Kit');
+  assert.match(mail[0].html, /hold it until JobTread confirms/);
+});
+
+test('an early draft follows the date before construction starts, and nothing is drafted on its own', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  jt = job({ demo: false });
+  const quiet = await withKit(async (e) => { await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); });
+  assert.equal(quiet.posts.length, 0, 'no draft of its own');
+  const { posts, mail } = await withKit(async (e) => {
+    await draftInviteEmailNow(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
+    jt = job({ demo: false, date: '2026-10-28' });
+    await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  });
+  assert.equal(posts.length, 1);
+  assert.equal(mail.at(-1).subject, 'Max’s reveal invite draft changed');
+});
+
+test('the button won’t draft while invites are paused (nothing would follow JobTread) or for a reveal called off', async () => {
+  await writeConfig(env.DB, { enabled: false });
+  jt = job({ confirmed: true, time: '16:00:00.000' });
+  let r;
+  const off = await withKit(async (e) => { r = await draftInviteEmailNow(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); });
+  assert.equal(r.kit, 'skip');
+  assert.match(r.reason, /paused/);
+  assert.equal(off.posts.length, 0);
+  await writeConfig(env.DB, { enabled: true });
+  const gone = await withKit(async (e) => {
+    await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
+    events.delete(eventIdFor('soardreveal', jt.id));
+    await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW, verify: true });
+    await env.DB.prepare('DELETE FROM reveal_invite_kit').run();
+    r = await draftInviteEmailNow(e, jt.id, { fetchImpl: fakeFetch, now: NOW });
+  });
+  assert.equal(r.kit, 'skip');
+  assert.match(r.reason, /called off/);
+  assert.equal(gone.posts.length, 1, 'only the draft made before it was called off');
+});
+
+test('the button goes through the admin’s POST: a job id, a known person, and the draft’s link back', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  jt = job({ date: '2099-10-27', confirmed: true, time: '16:00:00.000' }); // the admin runs on today's clock
+  const press = (e, body, userEmail = 'staff@soardcharity.com') => inviteAdmin.onRequestPost({ env: e, data: { userEmail }, request: new Request('https://sunshineonaranneyday.com/api/reveal-invites-admin', { method: 'POST', body: JSON.stringify(body) }) });
+  let out;
+  await withKit(async (e) => {
+    assert.equal((await press(e, { kitDraft: 'bad id!' })).status, 400);
+    assert.equal((await press(e, { kitDraft: jt.id }, 'unknown')).status, 403);
+    const res = await press(e, { kitDraft: jt.id });
+    out = await res.json();
+  });
+  assert.equal(out.ok, true);
+  assert.equal(out.kit, 'drafted');
+  assert.equal(out.url, 'https://app.kit.com/campaigns/501');
+});
+
+test('a community project stays out of it, with or without its page', () => {
+  assert.equal(displayName({ id: 'j1', name: 'The Boys Club (2026)' }, []).project, true);
+  assert.equal(displayName({ id: 'j2', name: 'Rowan Test (2026)' }, []).project, undefined);
+});
+
+test('Kit being down never stops the calendar invite', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  jt = job({ confirmed: true, time: '16:00:00.000' });
+  let r;
+  await withKit(async (e) => { r = await reconcileJob(e, jt.id, { fetchImpl: fakeFetch, now: NOW }); }, { kitDown: true });
+  assert.equal(r.action, 'created');
+  assert.ok(events.has(eventIdFor('soardreveal', jt.id)));
 });

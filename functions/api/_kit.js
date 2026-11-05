@@ -466,19 +466,58 @@ export async function kitCreateBroadcast(env, { subject, previewText, descriptio
  * @returns {Promise<{ok: boolean, status?: string, error?: string}>} status is
  *   Kit's (draft | scheduled | sending | completed | aborted) when not a draft
  */
-export async function kitUpdateDraft(env, id, { subject, previewText, description, html }) {
+export async function kitUpdateDraft(env, id, { subject, previewText, description, html, audience = null }) {
   if (!kitConfigured(env) || !Number.isFinite(Number(id))) return { ok: false, error: 'no draft' };
   try {
     const cur = await kitFetch(env, `/broadcasts/${id}`);
     const got = await cur.json().catch(() => ({}));
     if (!cur.ok) return { ok: false, error: `HTTP ${cur.status}` };
     const b = got.broadcast || got;
-    if (b.status !== 'draft' || b.send_at || b.published_at) return { ok: false, status: b.status || 'sent' };
+    if ((b.status && b.status !== 'draft') || b.send_at || b.published_at) return { ok: false, status: b.status || 'sent' };
+    // Kit's PUT fills in what's left out ("If nothing is provided, will default
+    // to all of your subscribers"), so a draft with its own audience says it again
+    const filter = kitSubscriberFilter(audience);
     const res = await kitFetch(env, `/broadcasts/${id}`, {
       method: 'PUT',
-      body: JSON.stringify({ subject, preview_text: previewText || '', description, content: html }),
+      body: JSON.stringify({
+        subject, preview_text: previewText || '', description, content: html,
+        ...(filter ? { subscriber_filter: filter, public: false, send_at: null, ...(b.email_address ? { email_address: b.email_address } : {}), ...(b.email_template?.id ? { email_template_id: b.email_template.id } : {}) } : {}),
+      }),
     });
     return res.ok ? { ok: true } : { ok: false, error: `HTTP ${res.status}` };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * A broadcast as Kit has it now: who it goes to, and whether it's public. Never throws.
+ * @returns {Promise<{ok: boolean, broadcast?: object, error?: string}>}
+ */
+export async function kitReadBroadcast(env, id) {
+  if (!kitConfigured(env) || !Number.isFinite(Number(id))) return { ok: false, error: 'no broadcast' };
+  try {
+    const res = await kitFetch(env, `/broadcasts/${id}`);
+    const got = await res.json().catch(() => ({}));
+    return res.ok ? { ok: true, broadcast: got.broadcast || got } : { ok: false, error: `HTTP ${res.status}` };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+/**
+ * A draft by words in its description, for when Kit took one but its answer
+ * never arrived. Never throws.
+ *
+ * @returns {Promise<{ok: boolean, error?: string, broadcast?: object|null}>}
+ */
+export async function kitFindDraft(env, words) {
+  if (!kitConfigured(env)) return { ok: false, error: 'KIT_API_KEY is not set' };
+  try {
+    const res = await kitFetch(env, '/broadcasts?status=draft&slim=true&per_page=1000');
+    const got = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
+    return { ok: true, broadcast: (got.broadcasts || []).find((b) => String(b.description || '').includes(words)) || null };
   } catch (e) {
     return { ok: false, error: e.message };
   }
@@ -509,6 +548,7 @@ export async function kitListAudiences(env) {
     ok: true,
     tags: (tags.tags || []).map(t => ({ id: t.id, name: t.name, count: t.subscriber_count ?? null })),
     segments: segRes.ok ? (segs.segments || []).map(x => ({ id: x.id, name: x.name })) : [],
+    ...(segRes.ok ? {} : { segmentsFailed: true }),
   };
 }
 

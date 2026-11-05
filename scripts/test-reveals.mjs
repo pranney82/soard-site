@@ -7,6 +7,8 @@
  * says where the countdown came from and links to JobTread, confirmed reveals
  * that can't have a countdown say why, and the upcoming reveals tracker shows
  * what went out for each reveal (invites, countdown, reminders, Kit email).
+ * Each kid's reveal has its invite email step: Draft invite email posts for
+ * that kid, a draft links to Kit, and a page that isn't published says so.
  * Also: Customize, the Kit switch and "Check now" post the right actions,
  * the Invites tab keeps its switches and wording without the list, and the
  * page fits a phone. Screenshots land in test-results/reveals/. Exits
@@ -83,14 +85,16 @@ function invitesData(phase) {
     upcoming: [
       { jobId: 'jobLiz0001', jobName: 'Lizzie Francis (2026)', name: 'Lizzie', slug: 'lizzie', space: 'Therapy Room', kidUrl: '/kids/lizzie/', jobUrl: 'https://app.jobtread.com/jobs/jobLiz0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobLiz0001/schedule', date: day(5), time: null, confirmed: true, constructionStarted: true, status: 'Finalization', details: '', preview: preview('Lizzie', 'confirmed'),
         invite: { state: 'tentative', lastAction: 'created', error: 'Google said: Calendar usage limits exceeded.', updatedAt: iso(-3 * D), guests: 6, log: [{ action: 'created', state: 'tentative', guests: 6, date: day(5), at: iso(-3 * D) }] },
+        kitInvite: null, pageReady: true,
         broadcast: null, reminderSignups: 12, checkComment: { at: iso(-D), message: 'Christian, Lizzie\'s reveal is confirmed for Thursday but has no time yet.' } },
       { jobId: 'jobMax0001', jobName: `${rehearsal ? 'TEST ' : ''}Max Sample (2026)`, name: 'Max', slug: 'max', ...(rehearsal ? { test: true } : {}), kidUrl: '/kids/max/', jobUrl: 'https://app.jobtread.com/jobs/jobMax0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobMax0001/schedule', date: day(10), time: '16:00', confirmed: true, constructionStarted: true, status: 'Build', details: 'Park on the street.', preview: preview('Max', 'confirmed'),
         invite: { state: 'confirmed', lastAction: 'updated', error: null, updatedAt: iso(-D), guests: 5, log: [{ action: 'created', state: 'tentative', guests: 5, date: day(10), at: iso(-6 * D) }, { action: 'updated', state: 'confirmed', guests: 5, date: day(10), at: iso(-D) }] },
+        kitInvite: { state: 'draft', id: '26802207' }, pageReady: true,
         broadcast: sched ? { id: 'live-1', phase: 'scheduled', scheduledAt: maxAt, createdAt: iso(-D), kitLiveEmail: null, kit: { scheduledDraft: true, live: null }, sends: [{ kind: 'scheduled', channel: 'email', recipients: 12, sent: 12, failed: 0, created_at: iso(-D) }, { kind: 'scheduled', channel: 'push', recipients: 3, sent: 3, failed: 0, created_at: iso(-D) }] } : null,
         reminderSignups: 15, checkComment: null },
       { jobId: 'jobCol0001', jobName: 'Colin Lindsay (2026)', name: 'Colin', slug: 'colin', kidUrl: '/kids/colin/', jobUrl: 'https://app.jobtread.com/jobs/jobCol0001', scheduleUrl: 'https://app.jobtread.com/jobs/jobCol0001/schedule', date: day(25), time: null, confirmed: false, constructionStarted: false, status: 'Build', details: '',
         preview: { ...preview('Colin', 'tentative'), addsOnConfirm: [{ email: 'jacey@x.com', name: 'Jacey Verhoef', kind: 'vendor' }, { email: 'niki@x.com', name: 'Niki Murphy', kind: 'photographer' }] },
-        invite: null, broadcast: null, reminderSignups: 12, checkComment: null },
+        invite: null, kitInvite: null, pageReady: false, broadcast: null, reminderSignups: 12, checkComment: null },
     ],
     board: [{ slug: 'scott-wierson', name: 'Scott Wierson', hasEmail: true }, { slug: 'mary-atchley', name: 'Mary Atchley', hasEmail: false }],
     advisory: [{ slug: 'ada-advisor', name: 'Ada Advisor', hasEmail: true }, { slug: 'al-advisor', name: 'Al Advisor', hasEmail: false }],
@@ -139,7 +143,10 @@ async function open(browser, base, viewport, phase, hash = '#broadcast', waitSel
     }
     if (url.pathname === '/api/broadcast') return json({ success: true, state: adminData(phase).public });
     if (url.pathname === '/api/reveal-invites-admin' && url.searchParams.get('board') === '1') return json({ ok: true, board: [{ slug: 'scott-wierson', name: 'Scott Wierson', email: null, memorial: false }] });
-    if (url.pathname === '/api/reveal-invites-admin' && req.method() === 'POST') return json({ ok: true, board: [] });
+    if (url.pathname === '/api/reveal-invites-admin' && req.method() === 'POST') {
+      if (JSON.parse(req.postData() || '{}').kitDraft) return json({ ok: true, kit: 'drafted', id: '777', told: true, name: 'Lizzie', url: 'https://app.kit.com/campaigns/777' });
+      return json({ ok: true, board: [] });
+    }
     if (url.pathname === '/api/reveal-invites-admin') return json(invitesData(phase));
     if (url.pathname === '/api/list-content' && (url.searchParams.get('dir') || '').includes('team')) return json({ success: true, items: TEAM.map((t) => ({ name: `${t.slug}.json`, path: `src/content/team/${t.slug}.json`, sha: t.slug, content: t })), total: TEAM.length, hasMore: false });
     if (url.pathname === '/api/read-content' && (url.searchParams.get('path') || '').includes('src/content/team/')) { const t = TEAM.find((x) => url.searchParams.get('path').endsWith(`${x.slug}.json`)); return json({ success: true, content: JSON.stringify(t), sha: t.slug }); }
@@ -191,11 +198,24 @@ try {
   ok(liz.some((s) => s.label === 'Reveal check comment in JobTread'), 'the reveal-check comment for the PM is listed');
   ok((await text(page, `.rt-item:first-child .rt-chips`)).includes('Invite failed'), 'the row is flagged without opening it');
 
+  // The invite email, one step on each kid's reveal
+  const inKit = liz.find((s) => s.label === 'Invite email in Kit');
+  ok(inKit?.state === 'wait', `no draft yet: ${inKit?.text}`);
+  ok(await page.evaluate(`[...${rowOf('Lizzie')}.querySelectorAll('.rt-step')].find((s) => s.querySelector('.rt-label').textContent === 'Invite email in Kit')?.querySelector('button')?.textContent.trim() === 'Draft invite email'`), 'Lizzie has a Draft invite email button');
+  await page.screenshot({ path: `${OUT}invite-step.png` });
+  await page.evaluate(`[...${rowOf('Lizzie')}.querySelectorAll('.rt-step')].find((s) => s.querySelector('.rt-label').textContent === 'Invite email in Kit').querySelector('button').click()`);
+  await pause(300);
+  ok(posts.some((x) => x.path === '/api/reveal-invites-admin' && x.body?.kitDraft === 'jobLiz0001'), 'pressing it drafts for Lizzie, nobody else');
+  ok((await text(page, 'body')).includes("Lizzie's invite email is in Kit, and Linzi was emailed to review it"), 'and says what happened');
+
   await clickToggle(page, 'Max');
   await pause(150);
   ok(await page.evaluate(`${rowOf('Max')}.classList.contains('is-open') && !${rowOf('Lizzie')}.classList.contains('is-open')`), 'opening another reveal closes the first');
   const max = await stepsOf(page, 'Max');
   const step = (label) => max.find((s) => s.label === label) || {};
+  ok(step('Invite email in Kit').text?.startsWith('Drafted'), `a drafted kid says so: ${step('Invite email in Kit').text}`);
+  ok(await page.evaluate(`[...${rowOf('Max')}.querySelectorAll('.rt-step a')].some((a) => a.href === 'https://app.kit.com/campaigns/26802207' && a.textContent.includes('Open in Kit'))`), 'with a link straight to that kid’s draft');
+  ok(!(await page.evaluate(`[...${rowOf('Max')}.querySelectorAll('.rt-step')].find((s) => s.querySelector('.rt-label').textContent === 'Invite email in Kit').querySelector('button')`)), 'and no second Draft button');
   ok(step('Tentative calendar invite').state === 'done' && step('Tentative calendar invite').text.startsWith('Sent ') && step('Tentative calendar invite').text.endsWith('to 5 people'), `tentative invite: ${step('Tentative calendar invite').text}`);
   ok(step('Confirmed calendar invite').state === 'done', `confirmed invite: ${step('Confirmed calendar invite').text}`);
   ok(step('Countdown and reminder signup on the site').text.startsWith('On the site since'), 'countdown: on the site');
@@ -339,7 +359,7 @@ try {
   const [tent, conf] = cards;
   ok(/\(tentative\)/.test(tent) && /All day/.test(tent), 'the tentative preview is a name-first, all-day save-the-date');
   ok(/Lizzie's therapy room reveal is penciled in/.test(tent) && /sees the new therapy room/.test(conf), "{space} names what was built, from the job's Makeover Type");
-  ok(/Where\s*2060 Example Way/.test(tent) && /Where\s*2060 Example Way/.test(conf), 'both stages show the full address');
+  ok(/Where\s*100 Example Way/.test(tent) && /Where\s*100 Example Way/.test(conf), 'both stages show the full address');
   ok(/Shows as\s*Free/.test(tent) && /Shows as\s*Busy/.test(conf), 'free until there is a confirmed time, then busy');
   ok(/^Meet \w+: https:\/\/sunshineonaranneyday\.com\/kids\//m.test(tent) && /^Watch live from anywhere: /m.test(tent) && /^Questions\? Email Clareece Cunningham at ccunningham@soardcharity\.com\.$/m.test(tent) && /^Sunshine on a Ranney Day$/m.test(tent), 'labeled links and who to ask, as the server writes them');
   const testUrls = [];

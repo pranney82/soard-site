@@ -175,6 +175,12 @@ const MAP = { t: 'SOARD', children: [
             if (i.errors > 0) return ATTN(`The last sweep hit ${plural(i.errors, 'error')}. Open Reveals → Now to retry.`, i.lastSweepAt);
             return ON(`Sending is on. ${plural(i.rows ?? 0, 'reveal has', 'reveals have')} an invite.`, i.lastSweepAt);
           } },
+        { t: 'Invite email drafted in Kit', s: 'live', k: 'event',
+          when: 'The invite engine looks at a job (the four workflows below, the 5-minute check, the sweep) and Reveal Date Confirmed is Yes with a time.',
+          does: 'Drafts the invite email in Kit to the “Reveal Emails” group, filled in from the kid’s page and JobTread, and emails Linzi to review it. Nothing goes out until staff send it from Kit. JobTread changes follow the draft unless someone edited it in Kit, and Linzi hears when the reveal changes or may be off. Kit’s copy is read on every look to confirm who it goes to. Staff can also draft it sooner: Draft invite email on each kid’s reveal in Reveals → Now.',
+          touches: ['JobTread', 'Kit', 'Resend', 'D1'], where: 'functions/api/_reveal-invite-kit.js · _reveal-invite-email.js · _reveal-invites.js',
+          info: 'Emails to Linzi only, never Slack. With no “Reveal Emails” group in Kit there is no draft, because the email has the family’s address.',
+          live: (f) => (!env(f) ? null : !f.env.kit ? ATTN('KIT_API_KEY is missing, so invite emails can’t be drafted.') : ON()) },
         { t: 'Reveal task moved', s: 'live', k: 'event',
           when: 'A Reveal task’s date or time changes.',
           does: 'Wakes the invite engine for that job.', touches: ['JobTread'], where: JT_INVITE_HOOK, live: wf('22PgPECxg6UP') },

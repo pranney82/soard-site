@@ -64,7 +64,7 @@ import { slackCard } from './_slack-cards.js';
 import { personStatus, personName } from './_team.js';
 import { limit } from './_rate-limit.js';
 import { syncKidStatuses } from './_kid-status.js';
-import { syncKitInvite } from './_reveal-invite-kit.js';
+import { syncKitInvite, holdKitInvite } from './_reveal-invite-kit.js';
 import { LEVEL_ROLES, TRADE_ROLE } from './_partner-roles.js';
 
 export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
@@ -169,6 +169,7 @@ export const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
 const SITE = 'https://sunshineonaranneyday.com';
 // How an invite deleted by hand in Google Calendar is recorded (last_action and the log)
 export const BY_HAND = 'cancelled in Google Calendar';
+const NOT_STARTED = 'construction not started yet';
 /** The job's schedule in JobTread, opened on the Reveal task when we know it */
 export const scheduleUrl = (jobId, taskId) => `https://app.jobtread.com/jobs/${jobId}/schedule${taskId ? `?taskId=${taskId}` : ''}`;
 const ADMIN_URL = `${SITE}/admin/#broadcast`; // Reveals → Now, where each reveal's Retry is
@@ -466,11 +467,11 @@ function longDate(date) {
  */
 export function displayName(job, kids) {
   const hit = matchProject(job.name, kids, job.id);
-  if (isProject(hit)) return { name: hit.name, slug: null, url: hit.page || null };
+  if (isProject(hit)) return { name: hit.name, slug: null, url: hit.page || null, project: true };
   if (hit) return { name: hit.name, slug: hit.slug, url: `/kids/${hit.slug}/` };
   const base = String(job.name || '').replace(/\(\d{4}\)\s*$/, '').trim();
   // A kid's job starts with their first name; "The …" is an organization's whole name
-  return { name: (/^the\s/i.test(base) ? base : base.split(/\s+/)[0]) || 'The', slug: null, url: null };
+  return /^the\s/i.test(base) ? { name: base, slug: null, url: null, project: true } : { name: base.split(/\s+/)[0] || 'The', slug: null, url: null };
 }
 
 /**
@@ -512,7 +513,7 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
   const confirmed = String(values[FIELD_REVEAL_CONFIRMED] || '').trim().toLowerCase().startsWith('yes');
   // Construction starting sends the first invite. Once it's out it follows the
   // reveal, so a task un-checked by mistake never takes it back.
-  if (!confirmed && !sent && !constructionStarted(job)) return { action: 'skip', reason: 'construction not started yet' };
+  if (!confirmed && !sent && !constructionStarted(job)) return { action: 'skip', reason: NOT_STARTED };
 
   const who = displayName(job, kids);
   const date = reveal.startDate;
@@ -731,13 +732,17 @@ export async function reconcileJob(env, jobId, opts = {}) {
   if (opts.dryRun) return reconcileLocked(env, jobId, opts);
   if (!(await lockJob(DB, jobId, opts.wait ?? true))) return { jobId, action: 'busy', reason: 'another update to this invite is running' };
   try {
-    return await reconcileLocked(env, jobId, opts);
+    const later = {};
+    const result = await reconcileLocked(env, jobId, { ...opts, later });
+    // The calendar first, so trouble in Kit can't delay an invite; still under the job's lock
+    if (later.kit) await later.kit().catch(() => null);
+    return result;
   } finally {
     await unlockJob(DB, jobId);
   }
 }
 
-async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, rewrite = false, dryRun = false, verify = false, preloaded = null } = {}) {
+async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now(), force = false, rewrite = false, dryRun = false, verify = false, preloaded = null, later = null } = {}) {
   const { DB } = env;
   const config = await readConfig(DB);
 
@@ -760,12 +765,20 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, onlyGuests: sandbox ? (config.testGuests || DEFAULT_TEST_GUESTS) : null, template: config.template, sent });
   if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
   // The invite email, drafted in Kit for staff to send, follows the same look
-  // at JobTread: confirmed with a time drafts it, a change rewrites the draft
-  // (./_reveal-invite-kit.js). Its own problems never stop the calendar invite.
-  if (!dryRun && config.enabled && plan.action === 'upsert') {
-    const who = displayName(job, kids);
-    const room = fieldValues(job.customFieldValues?.nodes)[FIELD_MAKEOVER_TYPE] || '';
-    await syncKitInvite(env, { jobId, plan, who, room, config, sandbox, alertTo: alertList(env, config) }).catch(() => null);
+  // at JobTread: confirmed with a time drafts it, a change rewrites the draft,
+  // and a reveal that may be off tells the reviewer (./_reveal-invite-kit.js).
+  // Its own problems never stop the calendar invite.
+  if (later && !dryRun && config.enabled && (plan.action === 'upsert' || plan.action === 'hold' || plan.reason === NOT_STARTED)) {
+    later.kit = async () => {
+      const who = displayName(job, kids);
+      const room = fieldValues(job.customFieldValues?.nodes)[FIELD_MAKEOVER_TYPE] || '';
+      const after = await readRow(DB, jobId);
+      const calledOff = after?.state === 'cancelled' && after.last_action === BY_HAND;
+      if (plan.action === 'hold' || calledOff) return holdKitInvite(env, { jobId, reason: calledOff ? 'its calendar invite was deleted' : plan.reason, name: who.name, config, sandbox, alertTo: alertList(env, config) });
+      // A draft made early follows the date even before construction starts (nothing is drafted here on its own)
+      const kitPlan = plan.action === 'upsert' ? plan : planInvite(job, staff, { kids, board, organizer: config.organizer, now, template: config.template, sent: true });
+      return syncKitInvite(env, { jobId, plan: kitPlan, who, room, config, sandbox, alertTo: alertList(env, config) });
+    };
   }
   const live = !dryRun && (config.enabled || force || sandbox);
   const guestCount = () => (row?.guests ? JSON.parse(row.guests).length : null);
@@ -902,23 +915,32 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
  * (Reveals → Invites, for the next kid up). It has the date JobTread has now;
  * the time fills in by itself once the reveal is confirmed.
  */
-export async function draftInviteEmailNow(env, jobId, { fetchImpl = fetch, now = Date.now() } = {}) {
+export async function draftInviteEmailNow(env, jobId, { fetchImpl = fetch, now = Date.now(), rewrite = false } = {}) {
   const { DB } = env;
   await ensureSchema(DB);
-  const config = await readConfig(DB);
-  const [job, staff, kids, board] = await Promise.all([
-    fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
-    fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
-    loadKidsAndProjects(DB).catch(() => []),
-    fetchBoard(env, fetchImpl),
-  ]);
-  const row = await readRow(DB, jobId);
-  const sent = !!(row?.event_id && row.state !== 'cancelled');
-  const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, template: config.template, sent });
-  const who = job ? displayName(job, kids) : null;
-  const room = job ? fieldValues(job.customFieldValues?.nodes)[FIELD_MAKEOVER_TYPE] || '' : '';
-  const result = await syncKitInvite(env, { jobId, plan, who, room, config, sandbox: jobId === SANDBOX_JOB_ID || isTestJob(job), alertTo: alertList(env, config), early: true });
-  return { jobId, name: who?.name || null, date: plan.date || null, ...result };
+  // One look at a job at a time, so this can't race JobTread's own wake-up into a second draft
+  if (!(await lockJob(DB, jobId, true))) return { jobId, kit: 'skip', reason: 'another update to this reveal is running; try again in a minute' };
+  try {
+    const config = await readConfig(DB);
+    // Nothing would follow JobTread for it, or the reveal was called off
+    if (!config.enabled) return { jobId, kit: 'skip', reason: 'reveal invites are paused in Reveals → Invites' };
+    const row = await readRow(DB, jobId);
+    if (row?.state === 'cancelled' && row.last_action === BY_HAND) return { jobId, kit: 'skip', reason: 'its calendar invite was deleted, so the reveal looks called off' };
+    const [job, staff, kids, board] = await Promise.all([
+      fetchJob(env.JOBTREAD_GRANT_KEY, jobId, fetchImpl),
+      fetchStaff(env.JOBTREAD_GRANT_KEY, fetchImpl),
+      loadKidsAndProjects(DB).catch(() => []),
+      fetchBoard(env, fetchImpl),
+    ]);
+    // Asked for by hand, so it needn't wait for construction to start (`sent` lifts that)
+    const plan = planInvite(job, staff, { kids, board, organizer: config.organizer, now, template: config.template, sent: true });
+    const who = job ? displayName(job, kids) : null;
+    const room = job ? fieldValues(job.customFieldValues?.nodes)[FIELD_MAKEOVER_TYPE] || '' : '';
+    const result = await syncKitInvite(env, { jobId, plan, who, room, config, sandbox: jobId === SANDBOX_JOB_ID || isTestJob(job), alertTo: alertList(env, config), early: true, rewrite });
+    return { jobId, name: who?.name || null, date: plan.date || null, ...result };
+  } finally {
+    await unlockJob(DB, jobId);
+  }
 }
 
 /** This job gets a look once the current minute is out (the earliest note stands) */
