@@ -9,7 +9,7 @@ import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
 import { createD1 } from './lib/d1-shim.mjs';
-import { wordsOf, pdfPages, readBoardWords, wordsStatus, filingWordsFor, joinStrips, READER, RETRY } from '../functions/api/_board-file-words.js';
+import { wordsOf, pdfPages, readBoardWords, wordsStatus, filingWordsFor, joinStrips, READER, RETRY, STANDS } from '../functions/api/_board-file-words.js';
 import { saveMeeting, putFile, portalWords, saveDoc, ensureSchema, maybeRunBoard } from '../functions/api/_board.js';
 import { newMeeting, todayEastern } from '../public/admin/board-shared.js';
 
@@ -445,7 +445,7 @@ test('while the board’s files are only being read again by a newer reader, a f
   const m = await meeting('2025-07-24');
   const f = await put(m, 'minutes.pdf', pdf());
   // Read by an older reader: words there, being read again
-  await env.DB.prepare("UPDATE board_files SET words = 'Minutes words', words_v = ? WHERE id = ?").bind(READER - 1, f.id).run();
+  await env.DB.prepare("UPDATE board_files SET words = 'Minutes words', words_v = ? WHERE id = ?").bind(STANDS - 1, f.id).run();
   assert.equal(await readBoardWords(env, { limit: 1 }), 2, 'the filing, then the board’s file');
   assert.match((await filingWordsFor(env.DB, ['/files/financials/2024%20990.pdf']))['/files/financials/2024%20990.pdf'], /Exempt From Income Tax/);
 });
@@ -507,7 +507,7 @@ test('a file read again keeps the words it had until the new reading’s done, a
   const m = await meeting('2021-07-15');
   const f = await put(m, '2021 Returns.pdf', scanOf(6));
   const older = Array.from({ length: 6 }, (_, i) => `Older reading of page ${i + 1}`).join('\f');
-  await env.DB.prepare('UPDATE board_files SET words = ?, words_v = ? WHERE id = ?').bind(older, READER - 1, f.id).run();
+  await env.DB.prepare('UPDATE board_files SET words = ?, words_v = ? WHERE id = ?').bind(older, STANDS - 1, f.id).run();
   const { wordsFor } = await import('../functions/api/_board-file-words.js');
   await readBoardWords(env, { now });
   assert.equal((await wordsFor(env.DB, [f.id]))[f.id], older, 'mid-way: found by the words it had');
@@ -516,7 +516,7 @@ test('a file read again keeps the words it had until the new reading’s done, a
   assert.match((await wordsFor(env.DB, [f.id]))[f.id], /Return page 6 Part VII/, 'done: the new words');
   // A newer reading that comes back nearly empty (a scan drawn blank) never takes the place of a full one
   const full = Array.from({ length: 40 }, (_, i) => `Page ${i + 1} of the return: revenue, expenses, officers, compensation, program services`).join('\f');
-  await env.DB.prepare('UPDATE board_files SET words = ?, words_v = ?, words_next = NULL, words_part = NULL WHERE id = ?').bind(full, READER - 1, f.id).run();
+  await env.DB.prepare('UPDATE board_files SET words = ?, words_v = ?, words_next = NULL, words_part = NULL WHERE id = ?').bind(full, STANDS - 1, f.id).run();
   env.AI = { async toMarkdown() { return { format: 'markdown', data: '### Page 1\n' }; }, async run() { return { response: '' }; } };
   clock += 60000;
   await readBoardWords(env, { now });
@@ -614,4 +614,24 @@ test('a cap’s rest holds on any isolate: it’s kept in the database', async (
   clock += 60_000;
   await readBoardWords(env, { now: () => clock });
   assert.equal(refused, 1);
+});
+
+test('a PDF that came out thin for its size is read once more, by its photos; one with its words, or a thin one read by this reader, is left be', async () => {
+  env.AI = { async toMarkdown() { return { format: 'markdown', data: '### Page 1\n' }; }, async run(model, input) { return { response: `Return page ${pageOf(input)} revenue expenses officers` }; } };
+  const m = await meeting('2021-07-15');
+  const thin = await put(m, '2021 Returns (1).pdf', scanOf(2));
+  const full = await put(m, 'Audit.pdf', scanOf(2));
+  const flyer = await put(m, 'Flyer.pdf', scanOf(2));
+  const set = (id, words, v, size) => env.DB.prepare('UPDATE board_files SET words = ?, words_v = ?, size = ? WHERE id = ?').bind(words, v, size, id).run();
+  await set(thin.id, 'x'.repeat(1071), STANDS, 17 * 1024 * 1024);
+  await set(full.id, 'x'.repeat(100000), STANDS, 17 * 1024 * 1024);
+  await set(flyer.id, 'Gala', READER, 3 * 1024 * 1024);
+  assert.equal((await wordsStatus(env.DB)).toRead, 1, 'only the thin one, by reader 6');
+  assert.equal(await readBoardWords(env), 1);
+  const row = (id) => env.DB.prepare('SELECT words, words_v FROM board_files WHERE id = ?').bind(id).first();
+  assert.match((await row(thin.id)).words, /Return page 2/);
+  assert.equal((await row(thin.id)).words_v, READER);
+  assert.equal((await row(full.id)).words_v, STANDS, 'its words stand');
+  assert.equal(await readBoardWords(env), 0, 'once');
+  assert.equal((await wordsStatus(env.DB)).toRead, 0);
 });

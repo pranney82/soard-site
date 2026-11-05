@@ -48,7 +48,15 @@ import { readState, writeState } from './_mercury.js';
  * pages were partly photos by those two pages only, and a screenshot of a table never in the time; 6 draws every page
  * of a scan that isn't all photos, and reads a page dense with words in strips at once
  */
-export const READER = 6;
+export const READER = 7;
+/**
+ * Reader 6's words stand, all but a PDF's that came out thin for its size (under 1,000 characters a megabyte): read
+ * once more by 7, which reads a scan of more than 40 photos by them (6 drew the 2021 return's pages blank). A design
+ * piece thin by nature is read once more for nothing, and that's all
+ */
+export const STANDS = 6;
+const THIN = "(COALESCE(type, '') = 'application/pdf' AND COALESCE(size, 0) > 500000 AND LENGTH(COALESCE(words, '')) * 1048576 < COALESCE(size, 0) * 1000)";
+const READ_OK = `(COALESCE(words_v, 0) >= ${READER} OR (COALESCE(words_v, 0) = ${STANDS} AND NOT ${THIN}))`;
 /**
  * A file given up on (three tries) before this is tried afresh, without every file read again: 7, since reader 6
  * gave up on every scan of photos over about 100 KB (counting its pages ran out of stack), keeping their older words
@@ -413,7 +421,7 @@ async function filingsToRead(DB, heldBefore = 0) {
   await ensureFilings(DB);
   const had = new Map(((await DB.prepare('SELECT key, words, words_part, words_v, words_next, words_try, words_fail FROM board_filing_words').all()).results || []).map((r) => [r.key, r]));
   return keys.map((key) => ({ key, words: null, words_part: null, words_v: 0, words_next: null, words_try: null, ...had.get(key) }))
-    .filter((f) => (f.words_v || 0) < READER && ((f.words_v || 0) > -3 || (f.words_fail || 0) < RETRY) && !(f.words_try >= heldBefore && heldBefore))
+    .filter((f) => (f.words_v || 0) < STANDS && ((f.words_v || 0) > -3 || (f.words_fail || 0) < RETRY) && !(f.words_try >= heldBefore && heldBefore))
     .sort((a, b) => (a.words_next == null) - (b.words_next == null) || ((a.words_v || 0) < 0) - ((b.words_v || 0) < 0));
 }
 
@@ -483,8 +491,8 @@ export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = D
     if (start < ((await readState(env.DB, REST_KEY)).until || 0)) return 0;
     const deadline = start + windowMs;
     const rows = (await env.DB.prepare(`SELECT id AS key, r2_key, name, type, size, words, words_part, words_v, words_next FROM board_files
-      WHERE COALESCE(words_v, 0) < ? AND (COALESCE(words_v, 0) > -3 OR COALESCE(words_fail, 0) < ?) AND owner_type IN ('meeting', 'doc') AND (words_try IS NULL OR words_try < ?)
-      ORDER BY (words_next IS NULL), (COALESCE(words_v, 0) < 0), (words IS NOT NULL AND words != ''), (owner_type = 'doc') DESC, at DESC LIMIT ?`).bind(READER, RETRY, start - HOLD_MS, limit).all()).results || [];
+      WHERE NOT ${READ_OK} AND (COALESCE(words_v, 0) > -3 OR COALESCE(words_fail, 0) < ?) AND owner_type IN ('meeting', 'doc') AND (words_try IS NULL OR words_try < ?)
+      ORDER BY (words_next IS NULL), (COALESCE(words_v, 0) < 0), (words IS NOT NULL AND words != ''), (owner_type = 'doc') DESC, at DESC LIMIT ?`).bind(RETRY, start - HOLD_MS, limit).all()).results || [];
     let done = 0;
     // (a file is started only with the time a page takes left, after the first only within budgetMs, and one that
     // couldn't be read before only first, so it has a run's whole time)
@@ -519,8 +527,8 @@ export async function readBoardWords(env, { limit = 6, budgetMs = 12000, now = D
 /** How far the reading is: { files, read, withWords, failed, toRead, lastAt } (Site → Automations, and the tests) */
 export async function wordsStatus(DB) {
   await ensureSchema(DB);
-  const r = await DB.prepare(`SELECT COUNT(*) AS files, SUM(CASE WHEN COALESCE(words_v, 0) >= ? THEN 1 ELSE 0 END) AS read, SUM(CASE WHEN words IS NOT NULL AND words != '' THEN 1 ELSE 0 END) AS with_words,
-    SUM(CASE WHEN COALESCE(words_v, 0) <= -3 AND COALESCE(words_fail, 0) >= ? THEN 1 ELSE 0 END) AS failed, MAX(words_at) AS last_at FROM board_files WHERE owner_type IN ('meeting', 'doc')`).bind(READER, RETRY).first();
+  const r = await DB.prepare(`SELECT COUNT(*) AS files, SUM(CASE WHEN ${READ_OK} THEN 1 ELSE 0 END) AS read, SUM(CASE WHEN words IS NOT NULL AND words != '' THEN 1 ELSE 0 END) AS with_words,
+    SUM(CASE WHEN COALESCE(words_v, 0) <= -3 AND COALESCE(words_fail, 0) >= ? THEN 1 ELSE 0 END) AS failed, MAX(words_at) AS last_at FROM board_files WHERE owner_type IN ('meeting', 'doc')`).bind(RETRY).first();
   const files = r?.files || 0;
   // (and the public filings still to read)
   const filings = await filingsToRead(DB).catch(() => []);
@@ -541,7 +549,7 @@ export async function filingWordsFor(DB, urls) {
 
 /** How many board files are still to be read (the page asks for the words again sooner while there are some) */
 export async function stillToRead(DB) {
-  const r = await DB.prepare("SELECT COUNT(*) AS n FROM board_files WHERE COALESCE(words_v, 0) < ? AND (COALESCE(words_v, 0) > -3 OR COALESCE(words_fail, 0) < ?) AND owner_type IN ('meeting', 'doc')").bind(READER, RETRY).first();
+  const r = await DB.prepare(`SELECT COUNT(*) AS n FROM board_files WHERE NOT ${READ_OK} AND (COALESCE(words_v, 0) > -3 OR COALESCE(words_fail, 0) < ?) AND owner_type IN ('meeting', 'doc')`).bind(RETRY).first();
   return r?.n || 0;
 }
 
