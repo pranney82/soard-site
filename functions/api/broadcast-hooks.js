@@ -45,31 +45,9 @@ import { maybeRunSigning } from './_board-sign.js';
 import { maybeRunAsks } from './_board-asks.js';
 import { maybeSyncStaff } from './_staff-access.js';
 import { maybeSweepMail } from './_mail-sweep.js';
-import { pave } from './_reveals.js';
-import { postAccountComment } from './_applicant-comms.js';
 import { maybeRunQuiet } from './_kit-quiet.js';
 import { maybeRunBackfill } from './_coi-backfill.js';
 import { maybeCheckOrgFacts } from './_org-facts.js';
-
-// One-time check, Nov 5 2026: a staff-only note on TEST Applicant with the website's JobTread key, and who JobTread says made it. Comes straight back out
-async function gracieCheck(env) {
-  try {
-    if (!env?.DB?.prepare || !env.JOBTREAD_GRANT_KEY) return;
-    const claim = await env.DB.prepare("INSERT OR IGNORE INTO mail_sweep_state (key, data, updated_at) VALUES ('gracie_check', '{}', ?)").bind(new Date().toISOString()).run();
-    if (!claim?.meta?.changes) return;
-    const accountId = '22PgaFvDKQ9L';
-    const out = {};
-    try {
-      out.key = (await pave(env.JOBTREAD_GRANT_KEY, { currentGrant: { user: { name: {}, emailAddress: {} } } }))?.currentGrant || null;
-    } catch (e) { out.keyError = e.message; }
-    try {
-      out.commentId = await postAccountComment(env, { accountId, name: 'Test note', message: 'Test note from the website, to see whose name it posts under. Nothing to do here.', grant: env.JOBTREAD_GRANT_KEY });
-      const back = await pave(env.JOBTREAD_GRANT_KEY, { account: { $: { id: accountId }, comments: { $: { size: 3, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: { id: {}, name: {}, isVisibleToCustomerRoles: {}, createdByUser: { name: {}, emailAddress: {} } } } } });
-      out.comment = (back?.account?.comments?.nodes || []).find((c) => c.id === out.commentId) || null;
-    } catch (e) { out.postError = e.message; }
-    await env.DB.prepare("UPDATE mail_sweep_state SET data = ?, updated_at = ? WHERE key = 'gracie_check'").bind(JSON.stringify(out), new Date().toISOString()).run();
-  } catch (e) { console.error('[gracie-check]', e.message); }
-}
 
 // The hub gives up on this call after 15 s: answer within 10, and let a slower tick finish after the reply
 const HUB_ANSWER_MS = 10 * 1000;
@@ -152,7 +130,7 @@ export async function onRequestPost(context) {
     // Staff sign-in follows SOARD's Google accounts: read every 5 minutes, a suspended or deleted one signed out (_staff-access.js)
     context.waitUntil(maybeSyncStaff(env));
     // Every staff inbox: receipts to the receipt inbox, family emails onto their JobTread account (see _mail-sweep.js)
-    context.waitUntil(Promise.all([maybeSweepMail(env), gracieCheck(env)]));
+    context.waitUntil(maybeSweepMail(env));
     // The certificates and W-9s SOARD already had (staff email, JobTread, Ramp): found, read and filed on their JobTread vendor (see _coi-backfill.js)
     context.waitUntil(maybeRunBackfill(env));
     // Hourly: SOARD's process Docs in Drive, so Site → Automations knows if Drive stops answering (see _process-docs.js)
