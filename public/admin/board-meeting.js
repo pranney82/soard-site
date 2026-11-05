@@ -35,7 +35,7 @@ import {
 import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, majority, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
-  isLive, agendaItems, isFilled, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, pagesText, MORE,
+  isLive, agendaItems, isFilled, hasSince, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, pagesText, MORE,
   sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew,
 } from './board-shared.js';
 import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
@@ -47,7 +47,7 @@ import { booksTitle } from './board/books.js';
 import { pageWordOf } from './board/docs.js';
 
 // What a person edits (the server keeps files, the packet's numbers and sent records, and done ticks)
-const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'inviteNote', 'video', 'shared', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
+const EDITABLE = ['date', 'start', 'end', 'title', 'location', 'address', 'inviteNote', 'video', 'shared', 'noSince', 'minutes', 'approvedOn', 'attendance', 'sections', 'motions', 'actions', 'live'];
 const editable = (m) => {
   const c = cleanMeeting(m);
   // Who wrote a report when is the server's to say (_board.js stampReports), never a change to save
@@ -297,7 +297,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   };
   const work = html`<div class="bm-work" id="bm-work">
     <${AgendaEditor} ...${p} />
-    <${AgendaStage} m=${m} focusId=${focusId} meetings=${data.meetings} onOrder=${(id, order) => set(withItem(id, () => ({ slideOrder: order })))} />
+    <${AgendaStage} m=${m} focusId=${focusId} meetings=${data.meetings} onOrder=${(id, order) => set(withItem(id, () => ({ slideOrder: order })))} onSince=${(off) => set({ noSince: off })} />
   </div>`;
   return html`
     <div class="bm-top" data-meeting=${m.id}>
@@ -791,7 +791,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
  */
 const STAGE_AS = [['screen', 'Presentation'], ['page', 'Board page'], ['phone', 'Phone']];
 const SLIDE_KIND = { cover: 'Cover', since: 'Since we met', section: 'Part', item: 'Item', report: 'Report', decision: 'Vote', doc: 'Page', live: 'Live', books: 'QuickBooks', end: 'Close' };
-function AgendaStage({ m, focusId, meetings, onOrder = null }) {
+function AgendaStage({ m, focusId, meetings, onOrder = null, onSince = null }) {
   const [as, setAs] = useState(() => { try { const k = localStorage.getItem('bd-stage-as'); return STAGE_AS.some(([x]) => x === k) ? k : 'screen'; } catch { return 'screen'; } });
   const pick = (k) => { setAs(k); try { localStorage.setItem('bd-stage-as', k); } catch { /* private browsing */ } };
   const frame = useRef(null);
@@ -880,6 +880,7 @@ function AgendaStage({ m, focusId, meetings, onOrder = null }) {
         <span class="agx-stage__now">${now ? html`${now.label ? html`<b>${now.label}</b>` : null}<span>${now.title}</span>` : null}</span>
         <button type="button" class="btn btn-primary btn-sm agx-stage__play" disabled=${!stops.length} onClick=${() => openScreen(m.id, stops[at]?.key || '')} title="The presentation in its own window, from this slide: share it on Google Meet or put it on the TV">Play from here</button>
       </div>
+      ${m.noSince && hasSince(m) && onSince ? html`<p class="agx-slides__off"><span>Since we last met is off for this meeting.</span> <button type="button" class="bd-linkbtn" onClick=${() => onSince(false)}>Put it back</button></p>` : null}
       <ol class="agx-slides" ref=${list} aria-label="Every slide, in order">
         ${stops.map((s, i) => {
           const w = words(s);
@@ -893,7 +894,7 @@ function AgendaStage({ m, focusId, meetings, onOrder = null }) {
             <span class="agx-slide__n">${i + 1}</span>
             <span class="agx-slide__t">${w.label && s.kind !== 'doc' && s.kind !== 'live' && s.kind !== 'books' ? html`<b>${w.label}</b>` : null}${w.title}${s.kind === 'doc' && w.sub ? html`<small>${w.sub.split(' · ').slice(1).join(' · ')}</small>` : null}</span>
             <span class="agx-slide__k">${SLIDE_KIND[s.kind] || ''}</span>
-          </button>${onOrder && pieces.length > 1 ? html`<span class="agx-slide__move">
+          </button>${s.kind === 'since' && onSince ? html`<span class="agx-slide__off"><button type="button" class="bd-linkbtn" title="Take this slide out of this meeting’s presentation" aria-label="Remove Since we last met from this meeting’s presentation" onClick=${() => onSince(true)}>Remove</button></span>` : null}${onOrder && pieces.length > 1 ? html`<span class="agx-slide__move">
             <button type="button" class="bd-icon-btn" disabled=${k === 0} aria-label=${`Move ${what} earlier in the item`} title="Earlier in its item" onClick=${() => move(k - 1)}>↑</button>
             <button type="button" class="bd-icon-btn" disabled=${k === pieces.length - 1} aria-label=${`Move ${what} later in the item`} title="Later in its item" onClick=${() => move(k + 1)}>↓</button>
           </span>` : null}</li>`;
@@ -1006,7 +1007,7 @@ function FilesCard({ m, set, ctx, keepSaved, title, sub, goes = false }) {
   const groups = goes ? [[null, files.map((f, i) => ({ f, i }))]].filter(([, l]) => l.length)
     : FILE_KINDS.map((k) => [k, files.map((f, i) => ({ f, i })).filter(({ f }) => (FILE_KINDS.some((x) => x.id === f.kind) ? f.kind : 'other') === k.id)]).filter(([, l]) => l.length);
   // What a file can be filed as: before the meeting, nothing that's this meeting's own minutes
-  const kinds = goes ? FILE_KINDS.filter((x) => ['financials', 'agenda', 'other'].includes(x.id)) : FILE_KINDS;
+  const kinds = goes ? FILE_KINDS.filter((x) => ['financials', 'agenda', 'side', 'other'].includes(x.id)) : FILE_KINDS;
   const cardId = goes ? 'bm-packet' : 'bm-files';
   let at = -1;
   return html`<div class=${`card bm-files ${over ? 'is-over' : ''}`} id=${cardId}>
@@ -1029,7 +1030,7 @@ function FilesCard({ m, set, ctx, keepSaved, title, sub, goes = false }) {
           { icon: 'rename', label: 'Rename', run: () => setRenaming(f.id) },
           { divider: true },
           { heading: 'File it under' },
-          ...kinds.map((x) => ({ label: x.label, chosen: x.id === f.kind, run: () => { if (x.id !== f.kind) update(f, { kind: x.id }, `${name} is under ${x.label}`, { kind: f.kind }); } })),
+          ...kinds.filter((x) => x.id !== 'side' || /^image\//i.test(f.type || '')).map((x) => ({ label: x.label, chosen: x.id === f.kind, run: () => { if (x.id !== f.kind) update(f, { kind: x.id }, `${name} is under ${x.label}`, { kind: f.kind }); } })),
           { divider: true },
           { icon: 'trash', label: 'Delete the file', danger: true, run: () => remove(f, n) },
         ]} />

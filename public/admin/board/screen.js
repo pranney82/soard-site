@@ -23,7 +23,7 @@
 import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
 import { openDoc, layoutOf, areaOf, partsOf, showOf, docKind, pageWordOf } from './docs.js';
 import {
-  meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, spreadsOf, pagesText, stopIndex, isDate, clock, todayEastern, MORE,
+  meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, sidePhoto, spreadsOf, pagesText, stopIndex, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, liveOfStop, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
   hasReport, isNothingNew, NOTHING_NEW, slidesOfItem, slideHeadsOfItem, shownLook,
 } from '../board-shared.js';
@@ -1542,10 +1542,14 @@ export function Screen({ id, data, d, onBack = null }) {
       // A report: the item and who presents it along the top, the report filling the rest (a motion beside a report is
       // the decision's slide, after the report); a short one is its points as cards (ReportBody)
       const first = firstSlides[0] || item.report;
-      const look = lookOfItem(item);
-      stage = html`<div class=${`bs-item bs-item--report ${asPoints(look) ? 'bs-item--points' : ''}`}>
+      // A photo filed beside the report: the same slide, down its left, the report in words (cards want the whole width;
+      // never a staff-only photo: as deckOf)
+      const pic = sidePhoto(item, itemDocs(meeting, item, v.prior || []).map((d) => d.file).filter((f) => !f.staffOnly));
+      const look = pic ? 'words' : lookOfItem(item);
+      stage = html`<div class=${`bs-item bs-item--report ${asPoints(look) ? 'bs-item--points' : ''} ${pic ? 'bs-item--side' : ''}`}>
+        ${pic ? html`<figure class="bs-side"><img src=${`/api/board-file?id=${encodeURIComponent(pic.id)}`} alt=${docTitle(pic.name)} /></figure>` : null}
         <div class="bs-item__bar"><div>${head}</div></div>
-        <${ReportBody} report=${first} look=${look} more=${firstSlides.length > 1} part=${firstSlides.length > 1} />
+        <${ReportBody} report=${first} look=${look} more=${firstSlides.length > 1} part=${!!pic || firstSlides.length > 1} />
         ${motionHere}
       </div>`;
     } else {

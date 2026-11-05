@@ -1845,7 +1845,17 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bs-stat__fig { min-width: 0; overflow: hidden; white-space: nowrap; font-family: var(--display); font-weight: 700; font-size: calc(max(2.1rem, var(--bs-u) * 4.87) * var(--fit, 1)); line-height: 1.05; letter-spacing: -0.02em; color: var(--yellow); font-variant-numeric: tabular-nums; }
 .bs-stat__t { margin: 0; font-size: var(--pt-size); font-weight: 560; line-height: 1.3; letter-spacing: -0.005em; color: var(--bs-ink); text-wrap: pretty; overflow-wrap: break-word; }
 .bs-stat__t strong { font-weight: 750; }
+/* A photo beside the report (a file under "Photo beside the report"): one slide, the picture down its left, the title
+   and the report's words down the right */
+.bs-item--side { grid-template-columns: minmax(0, 5fr) minmax(0, 8fr); column-gap: calc(var(--bs-u) * 3.4); grid-template-rows: auto minmax(0, 1fr); padding: 0; }
+.bs-item--side .bs-item__title { --bs-fs: calc(var(--bs-title) * 0.72); }
+.bs-side { grid-column: 1; grid-row: 1 / -1; margin: 0; min-height: 0; overflow: hidden; border-radius: max(14px, calc(var(--bs-u) * 1.7)); background: var(--bs-panel); }
+.bs-side img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: 50% 30%; }
+.bs-item--side > .bs-item__bar, .bs-item--side > .bs-report { grid-column: 2; }
+.bs-item--side .bs-report__body { font-size: calc(max(1.1rem, var(--bs-u, 1.48vh) * 2.8) * var(--fit, 1)); padding-top: calc(var(--bs-u, 1.48vh) * 1.6); }
+.bs-item--side .rp li { text-wrap: balance; }
 @media (prefers-reduced-motion: reduce) { .bs-pt, .bs-stat { animation: none; } }
+@media (max-width: 900px) { .bs-item--side { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; } .bs-side { grid-column: auto; grid-row: auto; aspect-ratio: 3 / 2; } .bs-item--side > .bs-item__bar, .bs-item--side > .bs-report { grid-column: auto; } }
 @media (max-width: 900px) { .bs-pts__list, .bs-pts.is-5 .bs-pts__list, .bs-stats__list, .bs-stats.is-5 .bs-stats__list { grid-template-columns: minmax(0, 1fr); } .bs-pts.is-5 .bs-pt, .bs-pts.is-5 .bs-pt:nth-child(n + 4), .bs-stats.is-5 .bs-stat, .bs-stats.is-5 .bs-stat:nth-child(n + 4) { grid-column: auto; } .bs-item--points { align-content: start; } }
 /* (on the one type scale, --bs-u: at 4K as at 1080p, only sharper) */
 .bs-numbers { padding: calc(var(--bs-u) * 1.6) calc(var(--bs-u) * 1.8); border-radius: calc(var(--bs-u) * 1.7); background: var(--bs-panel); border: 1px solid var(--bs-line); }

@@ -1014,6 +1014,8 @@ export const STYLES = `
   .agx-slides__row { position: relative; display: flex; align-items: center; }
   .agx-slides__row > .agx-slide { flex: 1 1 auto; min-width: 0; }
   .agx-slide__move { flex: none; display: inline-flex; gap: 0.1rem; opacity: 0; }
+  .agx-slide__off { flex: none; padding: 0 0.45rem; font-size: var(--fs-sm); }
+  .agx-slides__off { margin: 0; padding: 0.45rem 0.55rem; border-top: 1px solid var(--color-border); font-size: var(--fs-sm); color: var(--color-text-secondary); }
   .agx-slides__row:hover .agx-slide__move, .agx-slide__move:focus-within { opacity: 1; }
   .agx-slide__move .bd-icon-btn { width: 1.75rem; height: 1.75rem; font-size: var(--fs-sm); }
   @media (hover: none) { .agx-slide__move { opacity: 1; } }

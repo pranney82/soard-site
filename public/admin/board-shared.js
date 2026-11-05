@@ -203,6 +203,7 @@ export const FILE_KINDS = [
   { id: 'agenda', label: 'Agenda' },
   { id: 'minutes', label: 'Minutes' },
   { id: 'signed', label: 'Signed minutes' },
+  { id: 'side', label: 'Photo beside the report' },
   { id: 'other', label: 'Other' },
 ];
 export const DOC_KINDS = [
@@ -426,6 +427,8 @@ export function cleanMeeting(raw = {}) {
     // The calendar brought it in, but it isn't a board meeting (a coffee, a reminder, another organization's
     // board): off the board page until someone shares it (functions/api/_board-calendar.js)
     notBoard: bool(raw.notBoard),
+    // "Since we last met" taken out of this meeting's presentation (Board's list of slides)
+    noSince: bool(raw.noSince),
     // A practice meeting the admins run alone (simulated members): its own table, never the board's (functions/api/_board.js)
     practice: bool(raw.practice),
     // The meeting as it's held, from the chair's screen: started, ended, the item being discussed, the vote that's open
@@ -1320,6 +1323,11 @@ export const decidesAlone = (it) => !!(String(it?.motion || '').trim() || it?.li
  * else (live facts, the board's faces) or carries the presenter's notes, which the report would crowd off
  */
 export const reportAlone = (it) => hasReport(it) && (showsOf(it).length > 0 || !!facesOf(it) || !!String(it?.notes || '').trim());
+/**
+ * The photo on an item's report slide (a file under "Photo beside the report"): one slide, the picture and the report
+ * together, so it's no stop of its own. Null when the item's slide holds no report (the photo is a stop like any file)
+ */
+export const sidePhoto = (it, files = []) => (hasReport(it) && !reportAlone(it) ? files.find((f) => f.kind === 'side' && /^image\//i.test(String(f.type || ''))) || null : null);
 
 /** A financial statement as a file (a balance sheet, a P&L): QuickBooks draws them once it's connected. A budget isn't one */
 export const isStatement = (f) => f?.kind === 'financials' && !/budget/i.test(String(f.name || ''));
@@ -1346,12 +1354,14 @@ export function spreadsOf(count, of) {
   }
   return out;
 }
+/** The agenda asks to approve the last meeting's minutes, so the presentation can open with "Since we last met" */
+export const hasSince = (m) => m.sections.some((s) => s.items.some((it) => it.live === 'minutes' && it.about));
 export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null } = {}) {
   const drawn = booksDraw(books);
   // A statement as a file stays off the screen only once QuickBooks draws the statements themselves
   const drawsStatements = drawn.includes('act') || drawn.includes('pos');
   const out = [{ key: 'cover', kind: 'cover', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' }];
-  if (m.sections.some((s) => s.items.some((it) => it.live === 'minutes' && it.about))) out.push({ key: 'since', kind: 'since', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' });
+  if (!m.noSince && hasSince(m)) out.push({ key: 'since', kind: 'since', itemId: '', fileId: '', page: 0, n: -1, sectionId: '' });
   // QuickBooks' slides once, after the first item that shows the money (a second one shows the figures, not them again)
   let booked = false;
   const add = (it, files, n, sectionId) => {
@@ -1375,7 +1385,9 @@ export function deckOf(m, { pages = {}, parts = {}, meetings = [], books = null 
       for (let p = 0; p < pages; p++) push(x.id, { key: `${it.id}:${x.id}${p ? `:${p}` : ''}`, kind: x.kind, itemId: it.id, fileId: x.id, page: p, n, sectionId });
     }
     if (showsOf(it).includes('cash')) booked = true;
+    const side = sidePhoto(it, files);
     for (const f of files) {
+      if (f === side) continue;
       const count = Math.max(1, Math.round(Number(pages[f.id]) || 1));
       // Its pages whole, two side by side a stop like an open book (a wide page alone, a blank one left out, a very
       // tall one in parts), each keyed by the spread's first page (":b", ":p2" on for a tall page's later parts)
@@ -1932,10 +1944,10 @@ function mergeList(base = [], mine = [], theirs = [], key = (x) => x.id, label =
 export function mergeMeeting(base, mine, theirs, { prefer = 'mine' } = {}) {
   const merged = { ...theirs };
   const clashes = [];
-  for (const f of ['date', 'start', 'end', 'title', 'location', 'address', 'inviteNote', 'video', 'shared', 'minutes', 'approvedOn']) {
+  for (const f of ['date', 'start', 'end', 'title', 'location', 'address', 'inviteNote', 'video', 'shared', 'noSince', 'minutes', 'approvedOn']) {
     const r = pick3(base[f], mine[f], theirs[f], prefer);
     merged[f] = r.value;
-    if (r.clash) clashes.push({ date: 'the date', start: 'the time', end: 'the time', title: 'the name', location: 'the place', address: 'the address', inviteNote: 'the invite notes', video: 'the video link', shared: 'sharing', minutes: 'the minutes status', approvedOn: 'the minutes status' }[f]);
+    if (r.clash) clashes.push({ date: 'the date', start: 'the time', end: 'the time', title: 'the name', location: 'the place', address: 'the address', inviteNote: 'the invite notes', video: 'the video link', shared: 'sharing', noSince: 'the slide Since we last met', minutes: 'the minutes status', approvedOn: 'the minutes status' }[f]);
   }
   // The agenda: sections in my order, each section's items merged one by one
   const secs = mergeList(base.sections, mine.sections, theirs.sections, (s) => s.id, (s) => `the section “${s.title}”`, ['items'], prefer);
