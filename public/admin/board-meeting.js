@@ -709,7 +709,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
               { icon: 'down', label: 'Move down', disabled: si === m.sections.length - 1, run: () => keepClear(withMotion(() => set((x) => ({ sections: move(x.sections, si, 1) }))), `#agx-${s.id}`) },
             ] },
             { divider: true },
-            { icon: 'trash', label: 'Delete the part', danger: true, run: async () => { if (!s.items.some((it) => it.notes || it.report) || await ask({ title: `Delete “${s.title || 'this part'}”?`, text: 'Its items and their notes go with it. Their documents stay with the meeting.', yes: 'Delete', danger: true })) withMotion(() => set((x) => ({ sections: x.sections.filter((_, i) => i !== si) }))); } },
+            { icon: 'trash', label: 'Delete the part', danger: true, run: async () => { if (!(s.notes || s.items.some((it) => it.notes || it.report)) || await ask({ title: `Delete “${s.title || 'this part'}”?`, text: 'Its items and their notes go with it. Their documents stay with the meeting.', yes: 'Delete', danger: true })) withMotion(() => set((x) => ({ sections: x.sections.filter((_, i) => i !== si) }))); } },
           ]} />
         </div>
         <ul class="ag-items agx-items">
@@ -768,8 +768,8 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {} }) {
                 onKeyDown=${(e) => { if (e.key === 'Enter') e.preventDefault(); }}
                 onInput=${(e) => { grow(e.target); setItem(si, ii, { motion: e.target.value.replace(/\s*\n\s*/g, ' ') }); }} />
             </div>` : null}
-            ${it.notes || it.showNotes ? html`<${NotesBox} label=${`Background for ${it.title || 'this item'}`} value=${it.notes} placeholder="Background for the board" onChange=${(v) => setItem(si, ii, { notes: v })} />` : null}
-            ${it.staffNote || it.showStaff ? html`<p class="bd-private-label">Only ${others} see this</p><${NotesBox} tone="is-private" label="Your private note" value=${it.staffNote} placeholder="A private note" onChange=${(v) => setItem(si, ii, { staffNote: v })} />` : null}
+            ${it.notes || it.showNotes ? html`<${NotesBox} label=${`Background for ${it.title || 'this item'}`} value=${it.notes} placeholder="Background for the board" onChange=${(v) => setItem(si, ii, { notes: v, showNotes: true })} />` : null}
+            ${it.staffNote || it.showStaff ? html`<p class="bd-private-label">Only ${others} see this</p><${NotesBox} tone="is-private" label="Your private note" value=${it.staffNote} placeholder="A private note" onChange=${(v) => setItem(si, ii, { staffNote: v, showStaff: true })} />` : null}
             ${over === it.id ? html`<p class="agx-dropnote" aria-hidden="true">Drop to put it with ${it.title || 'this item'}</p>` : null}
           </li>`;
           })}
@@ -1379,8 +1379,9 @@ function MinutesDoc({ m, ctx }) {
         <div class="bm-doc__item">${it.title || names.get(it.id)}${presentersOf(it, people).length ? html`<span class="ag-item__who">${namesText(presentersOf(it, people).map((x) => x.name))}</span>` : null}${it.confidential ? html` <span class="tag tag--warn">Board only</span>` : null}</div>
         <${Notes} text=${it.notes} />
       </li>`)}</ul>` : null}
+      ${s.notes ? html`<${Notes} text=${s.notes} />` : null}
     </li>`)}</ol>
-    ${m.motions.length ? html`<h4 class="bm-doc__h">Decisions</h4><ul class="bm-doc__items">${m.motions.map((x) => html`<li key=${x.id}>${x.text} <span class="bd-muted">(${[x.by && `moved by ${x.by}`, x.second && `seconded by ${x.second}`, x.tally ? `${tallyText(x)}${quorum && x.tally.of < quorum ? ', no quorum checked in' : ''}` : RESULTS.find((r) => r.id === x.result)?.label.toLowerCase()].filter(Boolean).join(', ')})</span></li>`)}</ul>` : null}
+    ${m.motions.length ? html`<h4 class="bm-doc__h">Decisions</h4><ul class="bm-doc__items">${m.motions.map((x) => html`<li key=${x.id}>${x.text} <span class="bd-muted">(${[x.by && `moved by ${x.by}`, x.second && `seconded by ${x.second}`, x.tally ? `${tallyText(x)}${quorum && x.tally.at && x.tally.of < quorum ? ', no quorum checked in' : ''}` : RESULTS.find((r) => r.id === x.result)?.label.toLowerCase()].filter(Boolean).join(', ')})</span></li>`)}</ul>` : null}
     ${m.actions.length ? html`<h4 class="bm-doc__h">Action items</h4><ul class="bm-doc__items">${m.actions.map((a) => html`<li key=${a.id}>${a.text} <span class="bd-muted">(${[a.ownerName || 'no one yet', a.due ? `by ${shortDate(a.due)}` : '', a.done ? 'done' : ''].filter(Boolean).join(', ')})</span></li>`)}</ul>` : null}`
       : html`<div class="empty empty--inline"><p class="empty__title">Nothing here yet</p><p class="empty__text">Drop the minutes in (above): who was there, what was said under each item, the decisions and the action items fill in by themselves.</p></div>`}
   </div>`;
@@ -1530,7 +1531,7 @@ function WrapUp({ m, set, ctx, act, save, keepSaved }) {
   // Approved on the day the next meeting approved them, once it's been held; else today
   const approvedDay = next && next.date <= today ? next.date : today;
   const approve = async (v) => {
-    if (v && !(await ask({ title: 'Mark the minutes approved?', text: `As approved on ${shortDate(approvedDay)}${next && next.date <= today ? `, at the ${meetingName(next)}` : ''}. The board page shows them approved.`, yes: 'Mark them approved' }))) return;
+    if (v && !(await ask({ title: 'Mark the minutes approved?', text: `As approved on ${shortDate(approvedDay)}${next && next.date <= today ? `, at the ${meetingName(next)}` : ''}. The board page shows them approved.${data.notesWaiting?.includes(m.id) ? ' The secretary has typed notes on this meeting that were never sent: approved, they can’t be sent any more.' : ''}`, yes: 'Mark them approved' }))) return;
     set(v ? { minutes: 'approved', approvedOn: approvedDay } : { minutes: 'draft', approvedOn: '' });
     // The board was told about draft minutes: offer to tell them they're approved
     addToast(v ? `Marked approved, ${shortDate(approvedDay)}` : 'Back to draft minutes', 'info', v && m.shared && m.minutesSentAt ? { label: 'Tell the board', fn: () => send(false) } : undefined);

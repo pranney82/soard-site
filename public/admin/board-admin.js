@@ -723,7 +723,8 @@ function DocumentsTab({ ctx }) {
         setDraft((x) => (x && x.id === d.id ? { ...x, body: md } : x));
         setRead({ md, from, name: source.name });
         setWordsKey((k) => k + 1);
-        setTimeout(() => document.querySelector('.bd-words .rp-edit')?.focus({ preventScroll: true }), 60);
+        // (never out of a box they've gone on to: a timer can run late, in a tab that's behind another)
+        setTimeout(() => { if (!document.activeElement?.matches('input, textarea, select, [contenteditable="true"]')) document.querySelector('.bd-words .rp-edit')?.focus({ preventScroll: true }); }, 60);
       }
     } catch (err) {
       addToast(`Couldn’t read ${fileTitle(source.name)}: ${unread(err)}. Write the words in the box instead.`, 'error');

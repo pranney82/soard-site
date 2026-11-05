@@ -44,6 +44,7 @@
  * member, and board notes are for the board.
  */
 
+import { notesWaiting, refreshMinutesFile } from './_board-notes.js';
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
   setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, fillDocWords, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, fileLocked, liveNumbers, takeSnapshot, sendPacket,
@@ -149,7 +150,7 @@ export async function onRequestGet(context) {
     ]);
     const [mail, mailRecent, welcome, check, group] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome'), inviteCheck(env.DB), groupStatus(env)]);
     return Response.json({
-      ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome,
+      ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome, notesWaiting: await notesWaiting(env.DB),
       // board@soardcharity.com following the board (_board-group.js)
       group,
       // Who has had the sign-in email and whether one is going out right now (its claim, _board.js sendWelcome), from one
@@ -245,6 +246,8 @@ export async function onRequestPost(context) {
         // What only the server sets never comes from the editor (where the agenda came from, who joined by Meet)
         const { agendaFrom, fromMeet, ...mine } = body.meeting || {};
         const m = await saveMeeting(env.DB, mine, { by: me, base: typeof body.base === 'string' ? body.base : null });
+        // Typed minutes corrected here: the Word file kept with them says the same. (Never in the way of the save)
+        if (m.minutesFrom?.typed) await refreshMinutesFile(env, m.id).catch(() => {});
         // A practice meeting is the admins' alone: nothing for the audit log
         if (m.practice) return Response.json({ ok: true, meeting: m });
         await audit(env, me, 'updated', `Board meeting saved: ${meetingName(m)}`);

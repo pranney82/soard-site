@@ -2198,7 +2198,7 @@ try {
   await sec.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
   const card = (page) => page.evaluate(() => { const c = document.querySelector('.bp-minutes'); return c ? { text: c.innerText, send: !!c.querySelector('input[type="file"]'), buttons: [...c.querySelectorAll('button')].map((b) => b.textContent.trim()) } : null; });
   const ahead = await card(sec);
-  ok(/You take the minutes/.test(ahead?.text || '') && JSON.stringify(ahead.buttons) === '["Word file","Print the form"]' && !ahead.send, `the secretary’s meeting page: the Word file and the form to print, nothing to send before the day (${JSON.stringify(ahead)})`);
+  ok(/You take the minutes/.test(ahead?.text || '') && JSON.stringify(ahead.buttons) === '["Take notes here","Word file","Print the form"]' && !ahead.send, `the secretary’s meeting page: the Word file and the form to print, nothing to send before the day (${JSON.stringify(ahead)})`);
   await shot(sec, '27-secretary-minutes');
   await sec.evaluate(() => { window.__printing = false; window.print = () => { window.__printing = true; }; });
   await clickText(sec, '.bp-minutes button', /Print the form/);
@@ -2222,11 +2222,11 @@ try {
   await jane.goto(`${SITE}/admin/board/#/meetings/${today.id}`, { waitUntil: 'networkidle0' });
   await jane.reload({ waitUntil: 'networkidle0' });
   const founderCard = await card(jane);
-  ok(/^The minutes\n/.test(founderCard?.text || '') && /Kim Park takes them as Board Secretary, with this same card/.test(founderCard?.text || '') && founderCard.send && JSON.stringify(founderCard.buttons) === '["Word file","Print the form"]', `a founder’s board page has it too, naming the secretary (${JSON.stringify(founderCard)})`);
+  ok(/^The minutes\n/.test(founderCard?.text || '') && /Kim Park takes them as Board Secretary, with this same card/.test(founderCard?.text || '') && founderCard.send && JSON.stringify(founderCard.buttons) === '["Take notes here","Word file","Print the form"]', `a founder’s board page has it too, naming the secretary (${JSON.stringify(founderCard)})`);
   await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
   await sec.goto(`${SITE}/admin/board/#/meetings/${today.id}`, { waitUntil: 'networkidle0' });
   await sec.reload({ waitUntil: 'networkidle0' });
-  ok((await card(sec))?.send && /Send the minutes/.test((await card(sec))?.text || ''), 'on the day: Send the minutes');
+  ok((await card(sec))?.send && /Send a file/.test((await card(sec))?.text || ''), 'on the day: a file can be sent');
   const secWord = await sec.evaluate(async () => {
     const make = URL.createObjectURL;
     const click = HTMLAnchorElement.prototype.click;
@@ -2259,6 +2259,358 @@ try {
     ok(/Board has them as of /.test((await card(sec))?.text || '') && /Send a newer copy/.test((await card(sec))?.text || ''), 'and the card says Board has them, with a way to send a newer copy');
     ok(/Called to order at 8:01 AM/.test(await text(sec)) && !/PRIVATE/.test(await text(sec)), 'the note shows on the board page; the private note never does');
     await shot(sec, '27c-secretary-sent');
+  }
+
+  // ─── The notes typed beside the agenda, with nothing to download ───
+  console.log('The secretary’s notes beside the agenda');
+  {
+    const held = await saveMeeting(DB, cleanMeeting({
+      date: day(0), start: '08:00', end: '10:00', title: 'Notes meeting', shared: true, agendaFrom: { kind: 'typed', name: '', at: new Date().toISOString() },
+      attendance: ['alex-rivera', 'sam-ortiz', 'kim-park'].map((slug) => ({ slug, name: PEOPLE[slug].name, kind: 'board' })),
+      sections: [
+        { title: 'Call to order', items: [{ title: 'Roll call', staffNote: 'PRIVATE: ask counsel' }] },
+        { title: 'New business', items: [{ title: 'The budget', motion: 'Approve the 2027 budget', notes: 'Background from the treasurer' }] },
+        { title: 'Open forum', items: [] },
+      ],
+    }), { by: FOUNDER });
+    const panel = (page) => page.evaluate(() => {
+      const b = document.querySelector('.bn');
+      if (!b) return null;
+      const r = b.getBoundingClientRect();
+      const main = document.querySelector('.bp-main').getBoundingClientRect();
+      const send = b.querySelector('.bn-send');
+      return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, vw: innerWidth, vh: innerHeight, mainRight: main.right, overflow: document.documentElement.scrollWidth > innerWidth, state: b.querySelector('.bn-state')?.textContent || '', send: send?.textContent || '', disabled: !!send?.disabled };
+    });
+    const saved = (page) => page.waitForFunction(() => /^Saved/.test(document.querySelector('.bn-state')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false);
+    const box = (page, label) => page.$(`.bn textarea[aria-label="${label}"]`);
+    // Send, and yes to what it asks first (is the meeting over, who isn't marked)
+    const pressSend = async (p, re) => {
+      await clickText(p, '.bn-foot button', re);
+      for (let i = 0; i < 4; i += 1) {
+        if (!await p.waitForFunction(() => /Yes, send them|Send anyway/.test(document.querySelector('.bp-toast')?.textContent || ''), { timeout: 900 }).then(() => true, () => false)) return;
+        await clickText(p, '.bp-toast button', /Yes, send them|Send anyway/);
+        await sleep(120);
+      }
+    };
+    const saveNotesAs = async (email, id, changes) => { const q = await tab(email); await q.goto(`${SITE}/admin/board/#/meetings/${id}`, { waitUntil: 'networkidle0' }); await q.evaluate(async (id, changes) => { await fetch('/api/board-portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'notes-save', meetingId: id, changes }) }); }, id, changes); await q.close(); };
+    const notesPage = await tab(SECRETARY);
+    await notesPage.goto(`${SITE}/admin/board/#/meetings/${held.id}`, { waitUntil: 'networkidle0' });
+    await notesPage.bringToFront();
+    await clickText(notesPage, '.bp-minutes button', /Take notes here/);
+    await notesPage.waitForSelector('.bn textarea', { timeout: 8000 });
+    const docked = await panel(notesPage);
+    // (to the window's edge, or the scrollbar's when the system shows one: the page keeps a place for it)
+    ok(docked && docked.right >= docked.vw - 20 && docked.top > 0 && docked.bottom === docked.vh && docked.mainRight <= docked.left + 1 && !docked.overflow, `the notes open docked down the side, with the agenda beside them (${JSON.stringify(docked)})`);
+    ok(await notesPage.evaluate(() => { const b = document.querySelector('.bp-me__btn').getBoundingClientRect(); return !!document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2)?.closest('.bp-me__btn'); }), 'the top bar is untouched: its last button still answers');
+    ok(/Only you and the founders/.test(docked?.state || ''), `it says who sees them (${docked?.state})`);
+    await shot(notesPage, '29-notes-open');
+
+    // An agenda's background is said only over a box that has words in it, and nobody marked stops the send (the secretary
+    // showing as here by default isn't a roll)
+    ok(await notesPage.evaluate(() => !document.querySelector('.bn-had')), 'an empty box says nothing about the agenda’s background');
+    await (await box(notesPage, 'Notes on The budget')).type('A word');
+    ok(await notesPage.waitForFunction(() => /take its place/.test(document.querySelector('.bn-had')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'a box with words says they’ll take the background’s place');
+    await saved(notesPage);
+    await clickText(notesPage, '.bn-foot button', /Send the minutes/);
+    ok(await waitText(notesPage, /Is the meeting over\?/) && !(await getMeeting(DB, held.id)).minutesFrom, 'on the day, with the chair not having ended it, the send asks whether it’s over');
+    await clickText(notesPage, '.bp-toast button', /Yes, send them/);
+    ok(await waitText(notesPage, /Nobody else is marked as here yet/) && !(await getMeeting(DB, held.id)).minutesFrom, 'with nobody really marked, the send stops and asks');
+    await notesPage.evaluate(() => { const t = document.querySelector('.bn textarea[aria-label="Notes on The budget"]'); t.focus(); t.select(); });
+    await notesPage.keyboard.press('Backspace');
+    await saved(notesPage);
+
+    // A row's words are guarded through the real route, not only in the function behind it
+    {
+      const post = (changes, wasText) => notesPage.evaluate(async (id, changes, wasText) => (await fetch('/api/board-portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'notes-save', meetingId: id, changes, wasText }) })).json(), held.id, changes, wasText);
+      await post({ 'a:a_two00001': { text: 'From the laptop' } }, {});
+      await post({ 'a:a_two00001': { text: 'From the phone' } }, { 'a:a_two00001': ['From the laptop'] });
+      const clash = await post({ 'a:a_two00001': { text: 'Laptop again' } }, { 'a:a_two00001': ['From the laptop'] });
+      ok(clash.clashes?.[0]?.key === 'a:a_two00001' && clash.clashes[0].theirs === 'From the phone', `two devices rewriting an action item: nothing written over, the other shown (${JSON.stringify(clash.clashes)})`);
+      await post({ 'a:a_two00001': null }, {});
+    }
+
+    // Typing and the roll save themselves, and a reload finds them, panel still open
+    await (await box(notesPage, 'Notes on Roll call')).type('Called to order at 8:02');
+    await notesPage.evaluate(() => { const li = [...document.querySelectorAll('.bn-roll li')]; li.find((x) => /Alex Rivera/.test(x.textContent)).querySelector('button').click(); li.find((x) => /Sam Ortiz/.test(x.textContent)).querySelectorAll('button')[1].click(); });
+    ok(await saved(notesPage), 'what’s typed saves itself');
+    await notesPage.reload({ waitUntil: 'networkidle0' });
+    await notesPage.waitForSelector('.bn textarea', { timeout: 8000 });
+    ok(await notesPage.evaluate(() => document.querySelector('.bn textarea[aria-label="Notes on Roll call"]')?.value === 'Called to order at 8:02' && document.querySelectorAll('.bn-roll button[aria-pressed="true"]').length === 3), 'a reload finds it all, with the notes still open (the secretary keeping them counts as there)');
+
+    // The room's Wi-Fi goes: nothing is lost, and it saves by itself when it's back
+    await notesPage.setOfflineMode(true);
+    await (await box(notesPage, 'Notes on The budget')).type('Reserves grew');
+    ok(await notesPage.waitForFunction(() => /No connection/.test(document.querySelector('.bn-state')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), 'the Wi-Fi drops: it says so and keeps typing');
+    ok(await notesPage.evaluate((id) => /Reserves grew/.test(localStorage.getItem(`bp-notes-${id}`) || ''), held.id), 'and the words are kept on the device');
+    await notesPage.setOfflineMode(false);
+    ok(await saved(notesPage), 'back online, it saves by itself');
+    ok(await notesPage.evaluate((id) => !localStorage.getItem(`bp-notes-${id}`), held.id), 'and the device’s copy is gone once the server has it');
+
+    // Nobody else sees a word until it's sent
+    const other = await tab(MEMBER);
+    await other.goto(`${SITE}/admin/board/#/meetings/${held.id}`, { waitUntil: 'networkidle0' });
+    ok(!/Called to order at 8:02|Reserves grew/.test(await text(other)) && !(await other.$('.bn')), 'another board member sees none of it');
+    ok(await other.evaluate(async (id) => (await fetch(`/api/board-portal?notes=${id}`)).status === 403, held.id), 'and the API refuses them');
+
+    await notesPage.bringToFront();
+    // A vote with no result stops the send, says why, and takes them to it
+    await notesPage.evaluate(() => { const inputs = [...document.querySelectorAll('.bn-vote input[list]')]; inputs[0].focus(); });
+    await notesPage.keyboard.type('Alex Rivera');
+    await saved(notesPage);
+    await clickText(notesPage, '.bn-foot button', /Send the minutes/);
+    ok(await waitText(notesPage, /One vote still needs how it went/) && await notesPage.evaluate(() => /Passed, failed or tabled/.test(document.querySelector('.bn').innerText)), 'a vote left without a result stops the send and says so');
+    ok(!(await getMeeting(DB, held.id)).minutesFrom, 'and nothing has gone to the meeting');
+    await notesPage.evaluate(() => { [...document.querySelectorAll('.bn-vote button')].find((b) => b.textContent === 'Passed').click(); });
+
+    // A row added, an action item, then sent
+    await clickText(notesPage, '.bn button', /Add an action item/);
+    await notesPage.waitForFunction(() => document.activeElement?.getAttribute('aria-label') === 'What needs doing', { timeout: 4000 });
+    await notesPage.keyboard.type('Send the bylaws');
+    await notesPage.select('.bn select', 'alex-rivera');
+    await (await box(notesPage, 'Notes on Open forum')).type('A question about the gala');
+    ok(await saved(notesPage), 'the action item and the open part save');
+    await shot(notesPage, '29b-notes-filled');
+    await pressSend(notesPage, /Send the minutes/);
+    ok(await waitText(notesPage, /Board has the minutes: 3 of 3 board members there/), 'sent: the board page says what went in');
+    // The same day, with the chair never having pressed End: the board sees the minutes now, not at midnight
+    await other.goto(`${SITE}/admin/board/#/meetings/${held.id}`, { waitUntil: 'networkidle0' });
+    await other.reload({ waitUntil: 'networkidle0' });
+    {
+      const said = await text(other);
+      ok(/board meeting minutes/i.test(said) && /Approve the 2027 budget/.test(said) && !/follows it live|Will you be there/.test(said), `sent the same day, a board member sees the minutes, not the agenda (${said.slice(0, 160).replace(/\n/g, ' ')})`);
+    }
+    let m2 = await getMeeting(DB, held.id);
+    ok(m2.sections[0].items[0].notes === 'Called to order at 8:02' && m2.sections[1].items[0].notes === 'Reserves grew' && m2.motions.some((x) => /2027 budget/.test(x.text) && x.by === 'Alex Rivera' && x.result === 'passed') && m2.actions.some((a) => a.text === 'Send the bylaws' && a.owner === 'alex-rivera') && m2.files.filter((f) => f.kind === 'minutes').length === 1, `the meeting has it all, by item, with the Word file as the record (${JSON.stringify({ notes: m2.sections.map((x) => x.items.map((it) => it.notes)), motions: m2.motions.map((x) => [x.text, x.by, x.result]), actions: m2.actions.map((a) => [a.text, a.owner]), files: m2.files.map((f) => f.kind) })})`);
+    ok(await notesPage.waitForFunction(() => document.querySelector('.bn-send')?.textContent === 'Sent' && document.querySelector('.bn-send').disabled, { timeout: 5000 }).then(() => true, () => false), 'the button says Sent');
+    await (await box(notesPage, 'Notes on Roll call')).type('. Fixed.');
+    ok(await notesPage.waitForFunction(() => document.querySelector('.bn-send')?.textContent === 'Send the changes' && !document.querySelector('.bn-send').disabled, { timeout: 5000 }).then(() => true, () => false), 'a change after: Send the changes');
+    await saved(notesPage);
+    await clickText(notesPage, '.bn-foot button', /Send the changes/);
+    ok(await notesPage.waitForFunction(() => document.querySelector('.bn-send')?.textContent === 'Sent', { timeout: 8000 }).then(() => true, () => false), 'sent again');
+    m2 = await getMeeting(DB, held.id);
+    ok(m2.motions.filter((x) => /2027 budget/.test(x.text)).length === 1 && m2.actions.length === 1 && m2.files.filter((f) => f.kind === 'minutes').length === 1 && /Fixed/.test(m2.sections[0].items[0].notes), 'sent again it replaces: one vote, one action item, one file');
+    await other.reload({ waitUntil: 'networkidle0' });
+    ok(await waitText(other, /Reserves grew/) && !/PRIVATE/.test(await text(other)), 'now the board reads them on the meeting');
+    // On the meeting's day the page is still its agenda; once it's past, the Word file is there as the minutes as written
+    await patchMeeting(DB, held.id, (x) => ({ ...x, date: day(-1) }));
+    await other.reload({ waitUntil: 'networkidle0' });
+    ok(await waitText(other, /The minutes as written/), 'once the meeting’s past: The minutes as written');
+    await patchMeeting(DB, held.id, (x) => ({ ...x, date: day(0) }));
+    await other.close();
+
+    // Leaving the page with the notes open: the page gets its width back, and what was typed last is saved
+    await notesPage.reload({ waitUntil: 'networkidle0' });
+    await notesPage.waitForSelector('.bn textarea', { timeout: 8000 });
+    await (await box(notesPage, 'Notes on Open forum')).type(' and the auction');
+    await notesPage.click('.bp-back');
+    ok(await notesPage.waitForFunction(() => !document.querySelector('.bn') && !document.documentElement.classList.contains('bp-noting'), { timeout: 5000 }).then(() => true, () => false), 'leaving the meeting closes the notes and gives the page its width back');
+    ok(await notesPage.waitForFunction(async (id) => { const j = await (await fetch(`/api/board-portal?notes=${id}`)).json(); return /and the auction/.test(j.notes['n:' + Object.keys(j.notes).find((k) => /gala/.test(j.notes[k]))?.slice(2)] || ''); }, { timeout: 6000 }, held.id).then(() => true, () => false), 'and what was typed last is saved');
+    await notesPage.close();
+
+    // Board's copy of the minutes says what the board reads: the part's own notes, and no quorum warning on a typed vote
+    await patchMeeting(DB, held.id, (x) => ({ ...x, motions: x.motions.map((y) => (/2027 budget/.test(y.text) ? { ...y, tally: { for: 3, against: 0, abstain: 0, of: 0, at: '' } } : y)) }));
+    await patchMeeting(DB, held.id, (x) => ({ ...x, date: day(-1) }));
+    await jane.goto(`${SITE}/admin/#board/meeting/${encodeURIComponent(held.id)}`, { waitUntil: 'networkidle0' });
+    await jane.reload({ waitUntil: 'networkidle0' });
+    ok(await waitText(jane, /A question about the gala/) && !/no quorum checked in/.test(await text(jane)), `Board shows the part’s notes, and no false quorum warning on a typed vote (${(await text(jane)).match(/.{60}no quorum.{20}/)?.[0] || ''})`);
+    await jane.goto(`${SITE}/admin/#board`, { waitUntil: 'networkidle0' });
+    await patchMeeting(DB, held.id, (x) => ({ ...x, date: day(0) }));
+
+    // The chair starts the meeting, and ends it: the notes stay open through both, and can be opened from the live room
+    {
+      const live = await saveMeeting(DB, cleanMeeting({
+        date: day(0), start: '08:00', end: '10:00', title: 'Live notes meeting', shared: true, agendaFrom: { kind: 'typed', name: '', at: new Date().toISOString() },
+        attendance: ['alex-rivera', 'sam-ortiz', 'kim-park'].map((slug) => ({ slug, name: PEOPLE[slug].name, kind: 'board' })),
+        sections: [{ title: 'Call to order', items: [{ title: 'Roll call' }] }, { title: 'Open forum', items: [] }],
+      }), { by: FOUNDER });
+      const p = await tab(SECRETARY);
+      await p.goto(`${SITE}/admin/board/#/meetings/${live.id}`, { waitUntil: 'networkidle0' });
+      await p.bringToFront();
+      await clickText(p, '.bp-minutes button', /Take notes here|Open the notes/);
+      await p.waitForSelector('.bn textarea', { timeout: 8000 });
+      await (await box(p, 'Notes on Roll call')).type('Typed before the chair started');
+      await saved(p);
+      await patchMeeting(DB, live.id, (x) => ({ ...x, live: { ...x.live, startedAt: new Date().toISOString(), itemId: x.sections[0].items[0].id } }));
+      ok(await p.waitForSelector('.bp-room', { timeout: 8000 }).then(() => true, () => false), 'the chair starts: the page turns into the live room');
+      await sleep(600);
+      ok(await p.evaluate(() => document.querySelector('.bn textarea[aria-label="Notes on Roll call"]')?.value === 'Typed before the chair started'), 'and the notes stay open, with what was typed');
+      await (await box(p, 'Notes on Roll call')).type('. Typed during.');
+      ok(await saved(p), 'typing goes on while the chair runs it');
+      await shot(p, '29d-notes-live');
+      await p.click('.bn-close');
+      ok(await p.waitForFunction(() => !document.querySelector('.bn') && /Take notes here|Open the notes/.test(document.querySelector('.bp-room__notes .bp-minutes__open')?.textContent || ''), { timeout: 4000 }).then(() => true, () => false), 'closed, the live room has the way back');
+      await p.click('.bp-room__notes .bp-minutes__open');
+      await p.waitForSelector('.bn textarea', { timeout: 8000 });
+      await patchMeeting(DB, live.id, (x) => ({ ...x, live: { ...x.live, endedAt: new Date().toISOString() } }));
+      await sleep(4500);
+      ok(await p.evaluate(() => /Typed during/.test(document.querySelector('.bn textarea[aria-label="Notes on Roll call"]')?.value || '')), 'the chair ends it: the notes are still there');
+      await p.evaluate(() => [...document.querySelectorAll('.bn-roll li')].find((x) => /Alex Rivera/.test(x.textContent)).querySelector('button').click());
+      await saved(p);
+      await pressSend(p, /Send the minutes/);
+      ok(await waitText(p, /Board has the minutes/), 'and they can be sent after it ends');
+      ok(await p.waitForFunction(() => !/The minutes come here once they’re written/.test(document.body.innerText), { timeout: 5000 }).then(() => true, () => false), 'and the page stops saying they’re still to come');
+
+      // Another device saved different words in the same box: never written over, both shown, the person chooses
+      await saved(p);
+      await p.evaluate(async (id) => { await fetch('/api/board-portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'notes-save', meetingId: id, changes: { 'n:i_other': 'x' } }) }); }, live.id);
+      const itemId = (await getMeeting(DB, live.id)).sections[0].items[0].id;
+      await p.evaluate(async (id, itemId) => { const r = await fetch('/api/board-portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'notes-save', meetingId: id, changes: { [`n:${itemId}`]: 'From the phone' } }) }); window.__saved = r.status; }, live.id, itemId);
+      await (await box(p, 'Notes on Roll call')).type(' And from the laptop.');
+      ok(await p.waitForSelector('.bn-clash', { timeout: 8000 }).then(() => true, () => false), 'two devices on one box: it shows both instead of writing over one');
+      ok(await p.evaluate(() => /From the phone/.test(document.querySelector('.bn-clash__theirs')?.textContent || '') && /And from the laptop/.test(document.querySelector('.bn textarea[aria-label="Notes on Roll call"]').value)), 'the other words beside mine');
+      await shot(p, '29e-notes-clash');
+      await clickText(p, '.bn-foot button', /Send the changes/);
+      ok(await waitText(p, /One box has two versions/), 'no send until it’s chosen');
+      await (await box(p, 'Notes on Roll call')).type(' Still typing after it showed.');
+      await clickText(p, '.bn-clash button', /Keep mine/);
+      ok(await saved(p) && !(await p.$('.bn-clash')), 'Keep mine settles it');
+      const kept = await p.evaluate(async (id, itemId) => (await (await fetch(`/api/board-portal?notes=${id}`)).json()).notes[`n:${itemId}`], live.id, itemId);
+      ok(/Still typing after it showed/.test(kept) && !/^From the phone/.test(kept), `and everything in the box is what’s saved, what was typed after it showed too (${kept})`);
+
+      // A send pressed the moment another device's words are found: it stops, nothing goes in
+      await p.evaluate(async (id, itemId) => { await fetch('/api/board-portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'notes-save', meetingId: id, changes: { [`n:${itemId}`]: 'From the phone again' } }) }); }, live.id, itemId);
+      await (await box(p, 'Notes on Roll call')).type(' One more.');
+      await clickText(p, '.bn-foot button', /Send the changes/);
+      ok(await p.waitForSelector('.bn-clash', { timeout: 8000 }).then(() => true, () => false) && await waitText(p, /One box has two versions/), 'Send at the moment of a clash stops and says so');
+      ok(!/From the phone again/.test((await getMeeting(DB, live.id)).sections[0].items[0].notes) && !/One more/.test((await getMeeting(DB, live.id)).sections[0].items[0].notes), 'and nothing new went on the meeting');
+      await clickText(p, '.bn-clash button', /Keep mine/);
+      await saved(p);
+
+      // The agenda changes while the notes are open and the window stays in front: the panel follows by itself
+      await patchMeeting(DB, live.id, (x) => ({ ...x, sections: [...x.sections, { id: 's_added001', title: 'Added late', items: [{ id: 'i_added001', title: 'Emergency roof repair' }] }] }));
+      ok(await p.waitForSelector('.bn textarea[aria-label="Notes on Emergency roof repair"]', { timeout: 30000 }).then(() => true, () => false), 'an item added while the notes are open gets its box');
+
+      // A save that never answers says so instead of "Saving…" for good, and goes through when the line comes back
+      await p.evaluate(() => { window.__fetch = window.fetch; window.fetch = (u, o = {}) => (String(o.body || '').includes('notes-save') ? new Promise((_, no) => o.signal?.addEventListener('abort', () => no(new DOMException('gone', 'AbortError')))) : window.__fetch(u, o)); });
+      await (await box(p, 'Notes on Roll call')).type(' Into a dead line.');
+      ok(await p.waitForFunction(() => /No connection/.test(document.querySelector('.bn-state')?.textContent || ''), { timeout: 20000 }).then(() => true, () => false), `a save with no answer says so in the end (${await p.evaluate(() => JSON.stringify({ state: document.querySelector('.bn-state')?.textContent, clash: document.querySelector('.bn-clash')?.innerText }))})`);
+      await p.evaluate(() => { window.fetch = window.__fetch; dispatchEvent(new Event('online')); });
+      ok(await saved(p), 'and saves itself when the line is back');
+
+      // The time, two ways: there's a box to choose in, so Send is never stuck with nothing to choose
+      await p.evaluate(async (id) => { await fetch('/api/board-portal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'notes-save', meetingId: id, changes: { adjourned: '09:50' } }) }); }, live.id);
+      await p.$eval('.bn input[type="time"]', (el) => { el.value = '09:47'; el.dispatchEvent(new Event('input', { bubbles: true })); });
+      ok(await p.waitForFunction(() => /09:50/.test(document.querySelector('[id="bn-c-adjourned"]')?.textContent || ''), { timeout: 8000 }).then(() => true, () => false), 'two different times: both shown to choose');
+      ok(await p.evaluate(() => /two versions/.test(document.querySelector('.bn-state').textContent)), 'and the status says so rather than Saved');
+      await clickText(p, '[id="bn-c-adjourned"] button', /Keep mine/);
+      await saved(p);
+
+      // Long notes: the panel stays where it is as the box grows
+      await p.$eval('.bn textarea[aria-label="Notes on Open forum"]', (el) => { el.focus(); });
+      await p.keyboard.type('line\n'.repeat(40));
+      const stays = await p.evaluate(() => { const b = document.querySelector('.bn textarea[aria-label="Notes on Open forum"]'); const s = document.querySelector('.bn-scroll'); return b.getBoundingClientRect().bottom <= s.getBoundingClientRect().bottom + 12; });
+      ok(stays, 'a long note stays in view as it grows');
+      await saved(p);
+
+      // Closed with changes unsent: the card says so
+      await (await box(p, 'Notes on Roll call')).type(' A change.');
+      await saved(p);
+      await p.click('.bn-close');
+      ok(await p.waitForFunction(() => /Open the notes/.test(document.body.innerText) && !document.querySelector('.bn'), { timeout: 6000 }).then(() => true, () => false) || await waitText(p, /Take notes here|Open the notes/), 'closed: the way back is there');
+      await p.click('.bp-minutes__open');
+      await p.waitForSelector('.bn textarea', { timeout: 8000 });
+
+      // A half-filled row stops the send and asks; a long link doesn't push the panel sideways
+      await clickText(p, '.bn button', /Add a motion/);
+      await p.waitForSelector('.bn textarea[aria-label="What was moved"]');
+      await p.evaluate(() => { [...document.querySelectorAll('.bn-row .bn-vote button')].find((b) => b.textContent === 'Passed').click(); });
+      await saved(p);
+      await clickText(p, '.bn-foot button', /Send the changes/);
+      ok(await waitText(p, /What was moved\?/) && await waitText(p, /One row still needs its words/), 'a motion with no words stops the send and asks for them');
+      await p.focus('.bn textarea[aria-label="What was moved"]');
+      await p.keyboard.type(`Approve https://example.com/${'a'.repeat(120)}`);
+      await saved(p);
+      ok(await p.evaluate(() => { const s = document.querySelector('.bn-scroll'); return s.scrollWidth <= s.clientWidth + 1; }), 'a long link wraps in the panel');
+
+      // One count with the other left blank can't be told from a zero: it asks
+      await p.evaluate(() => { const v = [...document.querySelectorAll('.bn-row .bn-vote')].at(-1); const i = v.querySelectorAll('.bn-three input')[1]; i.focus(); });
+      await p.keyboard.type('1');
+      await saved(p);
+      await clickText(p, '.bn-foot button', /Send the changes/);
+      ok(await waitText(p, /How many for, and how many against\?/), 'Against 1 with For left blank: it asks for both');
+      await p.close();
+    }
+
+    // Opened with the Wi-Fi gone: the boxes all the same, as this device last saw them
+    {
+      const p = await tab(SECRETARY);
+      await p.goto(`${SITE}/admin/board/#/meetings/${held.id}`, { waitUntil: 'networkidle0' });
+      await p.bringToFront();
+      await clickText(p, '.bp-minutes button', /Take notes here|Open the notes/);
+      await p.waitForSelector('.bn textarea', { timeout: 8000 });
+      await (await box(p, 'Notes on Open forum')).type(' Typed just before the Wi-Fi went.');
+      await saved(p);
+      await p.click('.bn-close');
+      await p.setOfflineMode(true);
+      await clickText(p, '.bp-minutes button', /Take notes here|Open the notes/);
+      ok(await p.waitForFunction(() => /Typed just before the Wi-Fi went/.test(document.querySelector('.bn textarea[aria-label="Notes on Open forum"]')?.value || ''), { timeout: 10000 }).then(() => true, () => false), 'opened with no connection: the notes are there, up to the last word saved');
+
+      // Typed offline and closed: it goes in by itself when the connection's back, the notes still closed
+      await (await box(p, 'Notes on Open forum')).type(' Typed offline.');
+      await p.click('.bn-close');
+      await p.setOfflineMode(false);
+      await p.evaluate(() => dispatchEvent(new Event('online')));
+      ok(await p.waitForFunction(async (id) => { const j = await (await fetch(`/api/board-portal?notes=${id}`)).json(); return Object.values(j.notes).some((v) => typeof v === 'string' && /Typed offline/.test(v)); }, { timeout: 8000 }, held.id).then(() => true, () => false), 'typed offline and closed: it saves itself when the connection’s back');
+      await p.close();
+    }
+
+    // Approved with notes that never went in: they stay reachable to read, and nothing pretends they can be sent
+    {
+      await saveNotesAs(SECRETARY, held.id, { 'n:unsent': null });
+      const p = await tab(SECRETARY);
+      await p.goto(`${SITE}/admin/board/#/meetings/${held.id}`, { waitUntil: 'networkidle0' });
+      await p.bringToFront();
+      await clickText(p, '.bp-minutes button', /Take notes here|Open the notes/);
+      await p.waitForSelector('.bn textarea', { timeout: 8000 });
+      await (await box(p, 'Notes on Roll call')).type(' Never sent.');
+      await saved(p);
+      await patchMeeting(DB, held.id, (x) => ({ ...x, minutes: 'approved', approvedOn: day(0) }));
+      await p.reload({ waitUntil: 'networkidle0' });
+      ok(await p.waitForSelector('.bn textarea', { timeout: 8000 }).then(() => true, () => false), 'approved with unsent notes: they stay open to read');
+      ok(await p.evaluate(() => document.querySelector('.bn textarea[aria-label="Notes on Roll call"]').readOnly && /Never sent/.test(document.querySelector('.bn textarea[aria-label="Notes on Roll call"]').value) && !document.querySelector('.bn-send') && /can’t be sent/.test(document.querySelector('.bn-state').textContent)), 'read-only, says they can’t be sent, and offers no Send');
+      await shot(p, '29f-notes-approved');
+      await p.close();
+      await patchMeeting(DB, held.id, (x) => ({ ...x, minutes: 'draft', approvedOn: '' }));
+    }
+
+    // A phone: the sheet is the whole page, what's behind it can't be reached, and Esc or the X gives it back
+    {
+      const p = await tab(SECRETARY, 390);
+      await p.goto(`${SITE}/admin/board/#/meetings/${held.id}`, { waitUntil: 'networkidle0' });
+      await clickText(p, '.bp-minutes button', /Take notes here|Open the notes/);
+      await p.waitForSelector('.bn textarea', { timeout: 8000 });
+      ok(await p.evaluate(() => document.querySelector('.bn').getAttribute('role') === 'dialog' && document.querySelector('.bp-main').inert && document.querySelector('.bp-top').inert), 'a phone: a dialog, the page behind it out of reach');
+      await p.keyboard.press('Escape');
+      ok(await p.waitForFunction(() => !document.querySelector('.bn') && !document.querySelector('.bp-main').inert, { timeout: 4000 }).then(() => true, () => false), 'Esc closes it and gives the page back');
+      await p.close();
+    }
+
+    // Every width: nothing past the edge, nothing under the panel, a phone's over the whole page
+    for (const width of [1920, 1440, 1280, 1100, 1025, 901, 820, 390, 320]) {
+      const p = await tab(SECRETARY, width);
+      await p.goto(`${SITE}/admin/board/#/meetings/${held.id}`, { waitUntil: 'networkidle0' });
+      await clickText(p, '.bp-minutes button', /Take notes here|Open the notes/);
+      await p.waitForSelector('.bn textarea', { timeout: 8000 });
+      const at = await panel(p);
+      const inside = await p.evaluate(() => { const b = document.querySelector('.bn'); return [...b.querySelectorAll('.bn-pick, .bn-in, .bn-box, .bn-send')].every((el) => { const r = el.getBoundingClientRect(); return r.width === 0 || (r.left >= b.getBoundingClientRect().left - 0.5 && r.right <= b.getBoundingClientRect().right + 0.5); }); });
+      const fits = width <= 900 ? at.left === 0 && at.right >= width - 20 : at.mainRight <= at.left + 1;
+      ok(fits && !at.overflow && inside, `${width}px: the notes fit (${JSON.stringify({ left: at.left, right: at.right, mainRight: at.mainRight, overflow: at.overflow, inside })})`);
+      if (width > 900) {
+        // The biggest meeting there is, its money and kanban in the narrower page: nothing runs under the notes
+        await p.goto(`${SITE}/admin/board/#/meetings/${meetingId}`, { waitUntil: 'networkidle0' });
+        await p.reload({ waitUntil: 'networkidle0' });
+        await clickText(p, '.bp-minutes button', /Take notes here|Open the notes/);
+        await p.waitForSelector('.bn textarea', { timeout: 8000 });
+        const under = await p.evaluate(() => { const edge = document.querySelector('.bn').getBoundingClientRect().left; return [...document.querySelectorAll('.bp-main *')].filter((el) => { if (el.closest('.bn')) return false; const r = el.getBoundingClientRect(); const s = getComputedStyle(el); if (!r.width || s.visibility === 'hidden' || r.right <= edge + 1) return false; for (let a = el.parentElement; a && a !== document.body; a = a.parentElement) { const o = getComputedStyle(a).overflowX; if (o === 'auto' || o === 'scroll' || o === 'hidden' || o === 'clip') return false; } return true; }).slice(0, 4).map((el) => `${el.tagName}.${String(el.className).slice(0, 40)} ${Math.round(el.getBoundingClientRect().right)}`); });
+        ok(!under.length, `${width}px: nothing in a full meeting runs under the notes (${under.join(' | ')})`);
+      }
+      if ([1280, 901, 390].includes(width)) await shot(p, `29c-notes-${width}`);
+      if (width <= 900) {
+        await p.click('.bn-close');
+        ok(await p.waitForFunction(() => !document.querySelector('.bn') && !document.documentElement.classList.contains('bp-noting') && getComputedStyle(document.body).overflow !== 'hidden', { timeout: 4000 }).then(() => true, () => false), `${width}px: closing gives the page back`);
+      }
+      await p.close();
+    }
   }
   await sec.close();
 

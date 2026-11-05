@@ -245,6 +245,8 @@ const ANSWERS = {
   'line-note': (b) => idOk(b.meetingId) && { kind: str(b.text).trim() ? 'note' : 'unnote', ref: b.meetingId, sub: idOk(b.itemId) ? b.itemId : '' },
   'chair-note': (b) => idOk(b.meetingId) && { kind: str(b.text).trim() ? 'note' : 'unnote', ref: b.meetingId, sub: idOk(b.itemId) ? b.itemId : '' },
   'chair-approve': (b) => idOk(b.meetingId) && { kind: 'approve', ref: b.meetingId },
+  // The minutes typed beside the agenda, sent (saving them as they're typed is no answer)
+  'notes-send': (b) => idOk(b.meetingId) && { kind: 'minutes', ref: b.meetingId },
   'ask-presenter': (b) => idOk(b.meetingId) && { kind: 'ask', ref: b.meetingId, sub: idOk(b.itemId) ? b.itemId : '' },
 };
 export function answerOf(body, query) {

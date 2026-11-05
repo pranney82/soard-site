@@ -406,6 +406,8 @@ export function cleanMeeting(raw = {}) {
     title: one(s?.title, LIMITS.title),
     // The time it's given, in minutes; 0 shares out the meeting's time by itself (sectionPlan)
     minutes: Number(s?.minutes) > 0 ? Math.min(600, Math.round(Number(s.minutes))) : 0,
+    // What the secretary noted about the part itself, open forum above all (../../functions/api/_board-notes.js)
+    notes: str(s?.notes, LIMITS.notes),
     items: (Array.isArray(s?.items) ? s.items : []).slice(0, LIMITS.items).map(cleanItem),
   }));
   const seen = new Set();
@@ -481,7 +483,7 @@ export function cleanMeeting(raw = {}) {
     agendaFrom: raw.agendaFrom && typeof raw.agendaFrom === 'object' && AGENDA_FROM.includes(raw.agendaFrom.kind)
       ? { kind: raw.agendaFrom.kind, name: one(raw.agendaFrom.name, 200), at: one(raw.agendaFrom.at, 40), ...(Number(raw.agendaFrom.v) > 0 ? { v: Math.round(Number(raw.agendaFrom.v)) } : {}) } : null,
     // The minutes file that filled in who was there, the notes, the motions and the action items (functions/api/_board-minutes.js)
-    minutesFrom: raw.minutesFrom && typeof raw.minutesFrom === 'object' && one(raw.minutesFrom.name, 200) ? { name: one(raw.minutesFrom.name, 200), at: one(raw.minutesFrom.at, 40), ai: bool(raw.minutesFrom.ai), tries: Math.min(9, Math.max(0, Math.round(Number(raw.minutesFrom.tries) || 0))) } : null,
+    minutesFrom: raw.minutesFrom && typeof raw.minutesFrom === 'object' && one(raw.minutesFrom.name, 200) ? { name: one(raw.minutesFrom.name, 200), at: one(raw.minutesFrom.at, 40), ai: bool(raw.minutesFrom.ai), tries: Math.min(9, Math.max(0, Math.round(Number(raw.minutesFrom.tries) || 0))), typed: bool(raw.minutesFrom.typed) } : null,
     // Who Google Meet saw join (functions/api/_board-attendance.js): server-set
     fromMeet: raw.fromMeet && typeof raw.fromMeet === 'object' && one(raw.fromMeet.at, 40) ? {
       at: one(raw.fromMeet.at, 40), status: ['ok', 'none', 'needs-setup', 'error'].includes(raw.fromMeet.status) ? raw.fromMeet.status : 'error', error: one(raw.fromMeet.error, 300),
@@ -759,7 +761,9 @@ export const namesText = (names) => (names.length > 2 ? `${names.slice(0, -1).jo
 /** The meeting whose minutes an item asks the board to approve, and its minutes (the PDF before the Word copy) */
 export function minutesFileOf(prev) {
   const list = (prev?.files || []).filter((f) => f.kind === 'minutes' && !f.staffOnly);
-  return list.find((f) => /pdf/i.test(f.type) || /\.pdf$/i.test(f.name)) || list[0] || null;
+  // The latest of the file the minutes were read from or typed into, when a newer one replaced an older (never the older)
+  const from = list.filter((f) => f.name === prev?.minutesFrom?.name).sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')))[0];
+  return from || list.find((f) => /pdf/i.test(f.type) || /\.pdf$/i.test(f.name)) || list[0] || null;
 }
 /** An item's files, in order: its documents, and for "approve the minutes" the last meeting's minutes (from `meetings`) */
 export function itemFiles(m, it, meetings = []) {
@@ -1482,6 +1486,12 @@ export function previousMeeting(m, meetings) {
 
 /** Held before the day it's set for: the chair started and ended it early (a meeting moved up), so it's past */
 export const heldEarly = (m, today = todayEastern()) => !!m?.live?.endedAt && isDate(m.date) && m.date > today;
+/** When the chair ended it, "09:47" Eastern, if that was on the meeting's own day (a practice run's end isn't), else '' */
+export function endedClock(m) {
+  const t = Date.parse(m?.live?.endedAt || '');
+  if (!t || new Date(t).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) !== m.date) return '';
+  return new Date(t).toLocaleTimeString('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit' });
+}
 
 /** The next meeting from today on, else null: one held early is past, one held today is still today's */
 export function nextMeeting(meetings, today = todayEastern()) {

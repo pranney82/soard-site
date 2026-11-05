@@ -1381,6 +1381,7 @@ html[data-vt="back"]::view-transition-new(root) { animation-name: bp-vt-in-left;
 .bp-agitem__title { margin: 0; font-size: 1.12rem; font-weight: 650; line-height: 1.35; letter-spacing: -0.005em; }
 .bp-agitem__about { margin: 0.2rem 0 0; font-size: 0.92rem; }
 .bp-agitem__notes:empty { display: none; }
+.bp-agsec__notes { margin: 0.5rem 0 0; }
 /* ─── Board's live preview (?preview, in an iframe beside the agenda editor): the board's view, without the page's chrome ─── */
 .is-preview .bp-top, .is-preview .bp-foot, .is-preview .bp-skip, .is-preview .bp-back, .is-preview .bs-back, .is-preview .bs-full { display: none !important; }
 /* A preview is a still of its slide, as it is once it's up: nothing comes up or moves in it (a frame scaled down
@@ -2489,7 +2490,8 @@ html:has(body .bs) { scrollbar-gutter: auto; }
 .bp-minutes__q { margin: 0; font-weight: 650; font-size: 1.02rem; }
 .bp-minutes__said { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.92rem; line-height: 1.5; }
 .bp-minutes__do { margin-top: 0.85rem; }
-.bp-minutes__send { position: relative; width: 100%; }
+.bp-minutes__open { width: 100%; }
+.bp-minutes__send { position: relative; cursor: pointer; }
 .bp-minutes__get { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.6rem; }
 .bp-minutes__send:focus-within { outline: 2px solid var(--ink); outline-offset: 2px; }
 .bp-minutes__send.is-busy { opacity: 0.7; pointer-events: none; }
@@ -2974,3 +2976,103 @@ a.bc-fam__name:hover { text-decoration: underline; text-underline-offset: 3px; }
   .bf-head { grid-template-columns: auto minmax(0, 1fr); } .bf-head__score { grid-column: 1 / -1; }
   .bf-facts > div { grid-template-columns: minmax(0, 1fr); gap: 0.1rem; }
 }
+
+/* The notes beside the agenda (./notes.js): docked down the right of the page, which makes room for it; over the
+   whole page on a phone. Flat fills, the page's own tokens */
+:root { --bn-w: clamp(23rem, 34vw, 29rem); --bn-side: max(0px, calc((100% - var(--bn-w) - var(--wide)) / 2)); }
+/* Under the top bar, which stays as it is; the page narrows to make room, centred in what's left */
+html.bp-noting .bp-main, html.bp-noting .bp-foot__in { margin-left: var(--bn-side); margin-right: calc(var(--bn-w) + var(--bn-side)); }
+html.bp-noting .bp-livebar { right: var(--bn-w); }
+.bn { position: fixed; top: calc(var(--head) + env(safe-area-inset-top)); right: 0; bottom: 0; z-index: 25; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; width: var(--bn-w); background: var(--card); border-left: 1px solid var(--line-2); border-top: 1px solid var(--line); padding-right: env(safe-area-inset-right); outline: none; }
+.bn-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; padding: 0.8rem 1.1rem 0.7rem; border-bottom: 1px solid var(--line); }
+.bn-head__t { min-width: 0; }
+.bn-head h2 { margin: 0; font-family: var(--display); font-size: 1.15rem; line-height: 1.3; font-weight: 700; }
+.bn-state { margin: 0.15rem 0 0; font-size: 0.86rem; line-height: 1.35; color: var(--muted); }
+.bn-state > span { display: block; }
+.bn-state.is-waiting, .bn-state.is-signin, .bn-state.is-refused { color: var(--warn); font-weight: 600; }
+.bn-close { flex: none; display: grid; place-items: center; width: 40px; height: 40px; margin: -0.25rem -0.35rem 0 0; padding: 0; border: 0; border-radius: 999px; background: transparent; color: var(--ink-2); cursor: pointer; }
+.bn-close:hover { background: var(--warm); color: var(--ink); }
+.bn-scroll { min-width: 0; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; padding: 0 1.1rem 1rem; -webkit-overflow-scrolling: touch; overflow-wrap: anywhere; }
+.bn-sec { padding: 1.05rem 0; border-bottom: 1px solid var(--line); }
+.bn-sec:last-child { border-bottom: 0; }
+.bn-sec__h { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; margin: 0 0 0.6rem; }
+.bn-sec h3 { margin: 0; font-size: 0.98rem; font-weight: 700; line-height: 1.3; }
+.bn-sec__c { flex: none; font-size: 0.84rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.bn-n { margin-right: 0.5rem; color: var(--faint); font-variant-numeric: tabular-nums; font-weight: 600; }
+.bn-muted { margin: 0 0 0.6rem; font-size: 0.88rem; line-height: 1.45; color: var(--muted); }
+.bn-wait { padding: 1.25rem 0; }
+.bn-roll { list-style: none; margin: 0 0 0.75rem; padding: 0; }
+.bn-roll li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem; flex-wrap: wrap; padding: 0.4rem 0; border-bottom: 1px solid var(--line); }
+.bn-roll li:last-child { border-bottom: 0; }
+.bn-roll__n { min-width: 0; font-size: 0.95rem; line-height: 1.3; }
+.bn-roll__n small { margin-left: 0.4rem; color: var(--faint); font-size: 0.78rem; }
+.bn-pick { display: inline-flex; flex: none; max-width: 100%; border: 1px solid var(--line-2); border-radius: 10px; overflow: hidden; background: #fff; }
+.bn-pick button { min-height: 36px; padding: 0.2rem 0.65rem; border: 0; border-left: 1px solid var(--line-2); background: transparent; color: var(--ink-2); font-size: 0.86rem; font-weight: 550; cursor: pointer; }
+.bn-pick button:first-child { border-left: 0; }
+.bn-pick button:hover { background: var(--warm); }
+.bn-pick button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+.bn-pick button:focus-visible { outline-offset: -3px; }
+.bn-pick button:disabled { cursor: default; }
+.bn-roll .bn-clash { flex: 1 1 100%; }
+.bn-in[readonly], .bn-box[readonly] { background: var(--warm); }
+.bn-f { display: grid; gap: 0.2rem; min-width: 0; }
+.bn-f > span { font-size: 0.8rem; font-weight: 600; color: var(--muted); }
+.bn-f--end { max-width: 10rem; }
+.bn-in, .bn-box { display: block; width: 100%; min-width: 0; padding: 0.5rem 0.65rem; border: 1px solid var(--line-2); border-radius: 10px; background: #fff; color: var(--ink); font: inherit; font-size: 1rem; line-height: 1.45; }
+.bn-in { min-height: 42px; }
+/* (Safari's own drawing of a select ignores all of the above until it's told not to draw it) */
+select.bn-in { -webkit-appearance: none; appearance: none; padding-right: 2rem; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' fill='none' stroke='%23666' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1 1.5l5 5 5-5'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.65rem center; }
+select.bn-in:disabled { background-color: var(--warm); opacity: 1; }
+.bn-box { resize: none; overflow: hidden; }
+.bn-in:focus, .bn-box:focus { outline: 2px solid var(--ink); outline-offset: 0; border-color: var(--ink); }
+.bn-box::placeholder { color: var(--quiet); }
+.bn-item { margin-top: 0.85rem; }
+.bn-item:first-of-type { margin-top: 0; }
+.bn-item__t { display: flex; gap: 0.45rem; margin: 0 0 0.35rem; font-size: 0.94rem; font-weight: 600; line-height: 1.35; }
+.bn-item__t > span:last-child { min-width: 0; }
+.bn-item__n { flex: none; color: var(--faint); font-weight: 550; font-variant-numeric: tabular-nums; }
+.bn-item__t small { display: block; color: var(--muted); font-size: 0.82rem; font-weight: 450; }
+.bn-motion { margin: 0 0 0.45rem; padding: 0.5rem 0.65rem 0; font-size: 0.92rem; line-height: 1.4; font-weight: 600; background: var(--warm); border-radius: 10px 10px 0 0; }
+.bn-vote { display: grid; gap: 0.55rem; margin: -0.45rem 0 0.55rem; padding: 0.55rem 0.65rem 0.65rem; background: var(--warm); border-radius: 0 0 10px 10px; }
+.bn-vote .bn-pick { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bn-vote .bn-pick button { padding-inline: 0.3rem; }
+.bn-row .bn-vote { margin: 0.45rem 0 0; border-radius: 10px; }
+.bn-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; }
+.bn-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.bn-need { margin: 0; font-size: 0.86rem; font-weight: 650; color: var(--warn); }
+.bn-had { margin: 0 0 0.45rem; font-size: 0.86rem; line-height: 1.4; color: var(--muted); white-space: pre-line; }
+.bn-had span { display: block; margin-top: 0.1rem; }
+.bn-box + .bn-need { margin-top: 0.3rem; }
+.bn-taken { margin: 0; font-size: 0.9rem; font-weight: 600; color: var(--ink-2); }
+.bn-clash { margin-top: 0.4rem; padding: 0.6rem 0.7rem; border: 1px solid var(--line-2); border-radius: 10px; background: var(--warn-bg); font-size: 0.9rem; line-height: 1.45; }
+.bn-clash p { margin: 0 0 0.4rem; }
+.bn-clash__theirs { white-space: pre-wrap; padding: 0.45rem 0.55rem; border-radius: 8px; background: #fff; }
+.bn-clash__do { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.bn-row { display: grid; gap: 0.45rem; margin: 0 0 0.85rem; padding: 0 0 0.85rem; border-bottom: 1px solid var(--line); }
+.bn-left { margin: 0; white-space: pre-wrap; font-size: 0.92rem; line-height: 1.45; }
+.bn-x { justify-self: start; min-height: 32px; padding: 0.1rem 0; border: 0; background: transparent; color: var(--muted); font-size: 0.85rem; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.bn-x:hover { color: var(--ink); }
+.bn-foot { padding: 0.75rem 1.1rem calc(0.75rem + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); background: var(--card); }
+.bn-foot .bn-muted { margin: 0; }
+.bn-send { width: 100%; }
+.bn-hold { position: fixed; top: 40%; left: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; font-size: 16px; }
+/* A finger's reach, wherever a finger is what's pressing */
+@media (max-width: 900px), (pointer: coarse) {
+  .bn-pick button, .bn-x, .bn .bp-mini, .bn-in, .bn-box { min-height: 44px; }
+  .bn-close { width: 44px; height: 44px; }
+}
+.bn-on { margin: 0 0 0.75rem; padding: 0 0 0 1.1rem; font-size: 0.92rem; line-height: 1.45; color: var(--ink-2); }
+.bn-ended { margin: 0.4rem 0 0; }
+.bp-room__notes { margin: 0 0 1rem; }
+.bp-room__notes .bp-minutes__open { width: auto; }
+.bp-room__unsaved { display: block; margin-top: 0.4rem; font-size: 0.88rem; font-weight: 600; color: var(--warn); }
+/* With the page narrower than its media queries know: the agenda alone beside the notes, the meeting's card one column */
+@media (max-width: 1500px) { html.bp-noting .bp-agrail { display: none; } html.bp-noting .bp-ag { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 1320px) { html.bp-noting .bp-aghero { grid-template-columns: 1fr; } html.bp-noting .bp-aghero__card { padding: 1.1rem 0 0; border-left: none; border-top: 1px solid var(--line); } html.bp-noting .bp-aghero__card + .bp-aghero__card--minutes { margin-top: 0; } }
+@media (max-width: 900px) {
+  html.bp-noting body { overflow: hidden; }
+  html.bp-noting .bp-main, html.bp-noting .bp-foot__in { margin: 0 auto; }
+  html.bp-noting .bp-livebar { right: 0; }
+  .bn { top: 0; z-index: 45; left: 0; width: auto; height: 100dvh; bottom: auto; border: 0; padding-left: env(safe-area-inset-left); padding-top: env(safe-area-inset-top); }
+}
+@media print { html.bp-noting body { overflow: visible; } html.bp-noting .bp-main, html.bp-noting .bp-foot__in { margin: 0; } .bn { display: none; } }

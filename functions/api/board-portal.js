@@ -40,6 +40,11 @@
  * POST ?minutes=<meetingId> (multipart "file")       the secretary's typed minutes template, read into the meeting
  *                                                    (_board-minutes.js secretarySends); the secretary's seat or an admin.
  *                                                    Another meeting's minutes → 409 { error, other }; &anyway=1 sends them all the same
+ * GET ?notes=<meetingId>                            the secretary's notes typed beside the agenda, not sent yet (_board-notes.js); the
+ *                                                    secretary's seat or an admin, never another board member
+ * POST { action: 'notes-save', meetingId, changes, was }  the boxes that changed in those notes; `was`: what each box of
+ *                                                    words started from (words saved over it since come back as `clashes`)
+ * POST { action: 'notes-send', meetingId }           those notes put on the meeting, from its day on, with a Word file as the record
  * POST { action: 'activity', events, touch, now }  what a member looked at and for how long (../../public/admin/board/activity.js)
  * A member's sign-ins, looks and answers are kept for Board → Members (_board-activity.js); an admin's never are.
  * An admin looking can't answer, sign, check in or vote for anyone: they have no board seat. In a practice meeting
@@ -50,6 +55,7 @@ import { portalData, portalWords, setActionDone, signDoc, signWithCopy, noteOpen
 import { readBoardWords } from './_board-file-words.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
+import { notesFor, saveNotes, sendNotes, notesWaiting } from './_board-notes.js';
 import { noteGet, noteLook, noteAnswer, noteEvents, answerOf, deviceOf, accessIat } from './_board-activity.js';
 import { evidenceOf, afterSigning, buildRecord, declineDoc, tellDeclined } from './_board-sign.js';
 // Where a signing request came from (its IP, device, this sign-in's start, the address Access checked): its evidence
@@ -76,8 +82,11 @@ export async function onRequestGet(context) {
   try {
     const w = await who(context);
     if (!w) return fail('The board page is for SOARD’s board members', 403);
-    if (w.member) await later(context, noteGet(context.env, w.member, context.request));
     const q = new URL(context.request.url).searchParams;
+    // The secretary's notes as they stand: theirs and the admins' until they're sent (looked at every so often while
+    // they're open, so never noted as a visit)
+    if (q.has('notes')) return Response.json({ ok: true, ...(await notesFor(context.env, String(q.get('notes') || ''), w, { quick: q.has('quick') })) }, { headers: { 'Cache-Control': 'private, no-store' } });
+    if (w.member) await later(context, noteGet(context.env, w.member, context.request));
     if (q.has('words')) {
       const words = await portalWords(context.env, w);
       context.waitUntil?.(readBoardWords(context.env, { limit: 3, budgetMs: 15000 }));
@@ -111,7 +120,9 @@ export async function onRequestGet(context) {
     // not shared yet that they present in (their items only), so the ask's link opens (_board-asks.js)
     // and SOARD's facts for Documents, as the site has them saved (_org-facts.js)
     const [data, extras, org] = await Promise.all([portalData(context.env, w), listMeetings(context.env.DB).then((meetings) => portalExtras(context.env, { ...w, meetings })), orgFacts(context.env)]);
-    return Response.json({ ok: true, ...data, ...extras, org }, { headers: { 'Cache-Control': 'private, no-store' } });
+    // Notes typed that never went on their meeting: only theirs to know, and how they stay reachable once it's approved
+    const waiting = w.admin || w.member?.seat === 'secretary' ? await notesWaiting(context.env.DB) : [];
+    return Response.json({ ok: true, ...data, ...extras, org, notesWaiting: waiting }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err) {
     return fromError(err);
   }
@@ -240,6 +251,9 @@ async function post(context) {
         throw err;
       }
     }
+    // The secretary's notes beside the agenda (the seat or an admin: _board-notes.js checks)
+    if (body.action === 'notes-save') return Response.json({ ok: true, ...(await saveNotes(env, String(body.meetingId || ''), { changes: body.changes, was: body.was, wasText: body.wasText }, w)) });
+    if (body.action === 'notes-send') return Response.json({ ok: true, ...(await sendNotes(env, String(body.meetingId || ''), w)) });
     // The order of an item's slides: who presents it, or an admin
     if (body.action === 'slide-order') return Response.json({ ok: true, ...(await saveSlideOrder(env, String(body.meetingId || ''), String(body.itemId || ''), body.order, w)) });
     // A shorter version of a report, offered beside it (nothing saved): who presents the item, or an admin

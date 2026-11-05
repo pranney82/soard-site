@@ -30,7 +30,7 @@ import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
-  isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf, CONSENT_TEXT, SIGN_STYLES, styleFont, MEMBER_HOW, dueOn, dueWords,
+  isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, minutesFileOf, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf, CONSENT_TEXT, SIGN_STYLES, styleFont, MEMBER_HOW, dueOn, dueWords,
   reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
   NOTHING_NEW, isNothingNew, LIMITS, slidesOfItem, reportAlone, decidesAlone, facesOf, hasReport, LIVE_TITLES, orderUnits,
 } from '../board-shared.js';
@@ -85,6 +85,7 @@ const ICONS = {
   calendar: html`<rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4M12 13v5M9.5 15.5h5" />`,
   print: html`<path d="M7 9V3.5h10V9M7 17.5H5A1.5 1.5 0 0 1 3.5 16v-5A1.5 1.5 0 0 1 5 9.5h14a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5h-2" /><rect x="7" y="14" width="10" height="6.5" rx="1" />`,
   close: html`<path d="M6 6l12 12M18 6 6 18" />`,
+  plus: html`<path d="M12 5v14M5 12h14" />`,
   logout: html`<path d="M14 4.5h4A1.5 1.5 0 0 1 19.5 6v12a1.5 1.5 0 0 1-1.5 1.5h-4M10 16l-4-4 4-4M6 12h9" />`,
   external: html`<path d="M14 4.5h5.5V10M19.5 4.5 11 13M17 14v4.5a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1H10" />`,
   gavel: html`<path d="m13.5 4.5 6 6M11 7l6 6M12.25 5.75l-4.5 4.5M17.75 11.25l-4.5 4.5M10 12l-6.5 6.5M3.5 20.5h9" />`,
@@ -571,7 +572,8 @@ function App() {
   const [finding, setFinding] = useState(false);
   // (the search made ready ahead on a wide screen, a moment after the page opens)
   useEffect(() => { if (!data || !warmAhead()) return undefined; const t = setTimeout(warmFind, matchMedia('(min-width: 900px)').matches ? 2500 : 5000); return () => clearTimeout(t); }, [!!data]);
-  const load = async () => {
+  // `keep`: a refresh that can fail quietly, the page staying as it is
+  const load = async ({ keep = false } = {}) => {
     // A slide on the report page is a frame of that page: its data from there, never fetched again for each slide
     if (PREVIEW) {
       let share = null;
@@ -579,7 +581,7 @@ function App() {
       if (share?.ok) { setData(structuredClone(share)); setFail(null); return; }
     }
     const j = await call();
-    if (j.ok) { setData(j); setFail(null); } else setFail(j);
+    if (j.ok) { setData(j); setFail(null); } else if (!keep) setFail(j);
   };
   const dataRef = useRef(null);
   dataRef.current = data;
@@ -708,7 +710,8 @@ function App() {
   // A note with something to do about it (Undo) stays a little longer
   // (gone with the focus on its button: the focus goes to the page's own place, never to nowhere)
   const gone = () => { if (document.activeElement?.closest?.('.bp-toast')) (document.getElementById('todo-h') || document.getElementById('main'))?.focus({ preventScroll: true }); setNote(null); };
-  useEffect(() => { if (note) { const t = setTimeout(gone, note.act ? 7000 : 4500); return () => clearTimeout(t); } return undefined; }, [note]);
+  // (a question that must be answered stays a good while: nothing happens until it is)
+  useEffect(() => { if (note) { const t = setTimeout(gone, note.act?.stay ? 60000 : note.act ? 7000 : 4500); return () => clearTimeout(t); } return undefined; }, [note]);
   useEffect(() => {
     if (route.sub === 'screen' || route.sub === 'report') return; // (each names its own window)
     const m = route.page === 'meetings' && route.id && data && [...data.meetings, data.nextPending, ...(data.previews || [])].find((x) => x?.id === route.id);
@@ -1206,15 +1209,21 @@ function HomePage({ ctx }) {
   const mine = data.actions.filter((a) => a.mine);
   const toSign = data.me.slug ? data.docs.filter((x) => x.sign && (x.body || x.file) && !x.signedByMe) : [];
   const toWrite = reportsToWrite(ctx);
+  // The secretary's typed notes that never went out: the panel says Saved, so this is what says they're not done
+  const toSend = d.me?.seat === 'secretary' ? data.meetings.filter((x) => data.notesWaiting?.includes(x.id) && x.minutes !== 'approved') : [];
   // The chair's agenda to review (./chair.js), until it's approved
   const toReview = reviewTodo(data, d);
   const today = new Date(noon(data.today)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
   const who = useAdminWho(data);
   const name = data.me.name || who?.name || '';
   const m = d.featured;
-  const todos = mine.length || toSign.length || toWrite.length || toReview ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
-      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h" tabindex="-1">For you<span class="bp-count">${mine.length + toSign.length + toWrite.length + (toReview ? 1 : 0)}</span></h2></div>
+  const todos = mine.length || toSign.length || toWrite.length || toSend.length || toReview ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
+      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h" tabindex="-1">For you<span class="bp-count">${mine.length + toSign.length + toWrite.length + toSend.length + (toReview ? 1 : 0)}</span></h2></div>
       <ul class="bp-todos">
+        ${toSend.map((x) => html`<li class="bp-todo-card" key=${`n-${x.id}`}><a class="bp-todo bp-todo--link" href=${`#/meetings/${x.id}`}>
+          <span class="bp-todo__icon"><${Icon} name="edit" size=${20} /></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Send the minutes of the ${x.title}</span><span class="bp-todo__meta">Your notes are saved but not sent yet.</span></span>
+        </a></li>`)}
         ${toReview ? html`<li class="bp-todo-card" key="review"><a class="bp-todo bp-todo--link" href=${toReview.href}>
           <span class="bp-todo__icon"><${Icon} name="list" size=${20} /></span>
           <span class="bp-todo__text"><span class="bp-todo__title">${toReview.title}</span><span class="bp-todo__meta">${toReview.meta}</span></span>
@@ -1275,7 +1284,7 @@ function NextUp({ m, ctx }) {
   const [lv] = useLive(m.id, today && !m.pending, 20000);
   const running = !!lv?.live.startedAt && !lv.live.endedAt;
   const nowAt = running ? agendaItems(lv).find((it) => it.id === lv.live.itemId) : null;
-  const phase = running ? 'now' : lv?.live.endedAt ? 'after' : today ? phaseOf(m) : null;
+  const phase = running ? 'now' : lv?.live.endedAt || (today && m.minutesFrom) ? 'after' : today ? phaseOf(m) : null;
   const video = videoOf(m);
   const joinNow = today && video && phase !== 'after';
   const fileCount = fileRows(m.files || []).reduce((s, g) => s + g.rows.length, 0);
@@ -1410,7 +1419,7 @@ function meetingTexts(m, words = null) {
 function meetingTextsNow(m, words) {
   return [
     { where: '', text: [meetingName(m), longDate(m.date), m.location, findCtx?.data ? meetingTags(m, findCtx.data, findCtx.d) : ''].join(' ') },
-    ...m.sections.flatMap((s) => [{ where: s.title, text: s.title, body: '', id: `s-${s.id}` }, ...s.items.map((it) => ({ where: it.title || s.title, text: [it.title, it.presenter, findCtx?.d ? presentersOf(it, findCtx.d.people).map((p) => p.name).join(' ') : '', it.notes, mdPlain(it.report), it.motion].join(' '), body: [it.presenter, notesLine(it.notes) || notesLine(mdPlain(it.report))].filter(Boolean).join(' · '), id: `i-${it.id}` }))]),
+    ...m.sections.flatMap((s) => [{ where: s.title, text: s.title, body: s.notes || '', id: `s-${s.id}` }, ...s.items.map((it) => ({ where: it.title || s.title, text: [it.title, it.presenter, findCtx?.d ? presentersOf(it, findCtx.d.people).map((p) => p.name).join(' ') : '', it.notes, mdPlain(it.report), it.motion].join(' '), body: [it.presenter, notesLine(it.notes) || notesLine(mdPlain(it.report))].filter(Boolean).join(' · '), id: `i-${it.id}` }))]),
     // A decision by its words and by who moved and seconded it
     ...m.motions.map((x, k) => ({ where: 'Decision', text: [x.text, x.by, x.second].join(' '), body: [x.text, x.by && `moved by ${x.by}`, x.second && `seconded by ${x.second}`].filter(Boolean).join(' · '), id: `mo-${x.id || k}` })),
     ...m.actions.map((a) => ({ where: 'Action item', text: [a.text, a.ownerName].join(' '), body: [a.text, a.ownerName].filter(Boolean).join(' · '), id: 'actions' })),
@@ -2596,9 +2605,28 @@ function MeetingPage({ id, ctx }) {
   const m = data.meetings.find((x) => x.id === id) || data.previews?.find((x) => x.id === id) || (d.featured?.pending && d.featured.id === id ? d.featured : null) || null;
   const practice = !m && data.practice?.id === id;
   useFocusTarget();
-  if (practice || (m && !m.pending && (isLive(m) || m.date === data.today))) return html`<${LiveMeeting} id=${id} m=${m} ctx=${ctx} />`;
+  // The notes for the minutes belong to the meeting, not to how it's shown: they stay open while the chair runs it and after
+  const [noting, setNoting] = useKept(`noting-${id}`, false);
+  const can = takesMinutes(m, ctx);
+  const notes = { can, noting, setNoting };
+  const open = can && noting;
+  // Fetched ahead, so they open in a room where the Wi-Fi has just gone
+  useEffect(() => { if (can) notesPanel().catch(() => {}); }, [can]);
+  // Words typed with no connection and the notes closed since go in by themselves once there's a connection
+  const [, leftSaved] = useState(0);
+  useEffect(() => {
+    if (!can || open) return undefined;
+    const go = () => { if (notesOnDevice(id)) notesPanel().then((x) => x.saveLeft(id)).then(() => leftSaved((n) => n + 1), () => {}); };
+    go();
+    addEventListener('online', go);
+    // (a room's Wi-Fi with no internet says "online" all day, so that alone never comes)
+    const again = setInterval(go, 20000);
+    return () => { removeEventListener('online', go); clearInterval(again); };
+  }, [can, open, id]);
+  const panel = open ? html`<${Noting} key=${id} m=${m} ctx=${ctx} onClose=${() => { setNoting(false); ctx.load({ keep: true }); requestAnimationFrame(() => document.querySelector('.bp-minutes__open')?.focus({ preventScroll: true })); }} />` : null;
+  if (practice || (m && !m.pending && (isLive(m) || m.date === data.today))) return html`<${LiveMeeting} id=${id} m=${m} ctx=${ctx} notes=${notes} />${panel}`;
   if (!m) return html`<${NotFound} />`;
-  return html`<${MeetingDetail} m=${m} ctx=${ctx} />`;
+  return html`<${MeetingDetail} m=${m} ctx=${ctx} notes=${notes} />${panel}`;
 }
 
 // ─── A meeting as it happens ────────────────────────────────────────
@@ -2643,13 +2671,15 @@ function lasted(from, to) {
   return mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h${mins % 60 ? ` ${mins % 60} min` : ''}`;
 }
 
-function LiveMeeting({ id, m, ctx }) {
+function LiveMeeting({ id, m, ctx, notes }) {
   const [v, setV, gone] = useLive(id, true);
   const [, setTick] = useState(0);
   useEffect(() => { const t = setInterval(() => setTick(Date.now()), 30000); return () => clearInterval(t); }, []);
-  if (v?.live.startedAt) return html`<${LiveRoom} v=${v} setV=${setV} m=${m} ctx=${ctx} />`;
+  // (with its minutes in, the meeting's own page, never "the minutes come here once they're written", ended or not: a chair
+  // who never pressed End doesn't keep the board from them. A vote still open stays in the room)
+  if (v?.live.startedAt && !(m?.minutesFrom && (v.live.endedAt || !v.live.vote))) return html`<${LiveRoom} v=${v} setV=${setV} m=${m} ctx=${ctx} notes=${notes} />`;
   // On the day, before the chair starts: the meeting as usual, and it turns live by itself
-  if (m) return html`<${MeetingDetail} m=${m} ctx=${ctx} waiting=${!!v} />`;
+  if (m) return html`<${MeetingDetail} m=${m} ctx=${ctx} waiting=${!!v} notes=${notes} />`;
   if (gone) return html`<${NotFound} />`;
   if (!v) return html`<div class="bp-boot bp-boot--inline"><p>Opening the meeting…</p></div>`;
   return html`<${LiveRoom} v=${v} setV=${setV} m=${null} ctx=${ctx} />`;
@@ -2672,7 +2702,7 @@ function FloorLine({ v, nowItem, si, ctx }) {
 }
 
 const VOTES = [['for', 'For'], ['against', 'Against'], ['abstain', 'Abstain']];
-function LiveRoom({ v, setV, m, ctx }) {
+function LiveRoom({ v, setV, m, ctx, notes = null }) {
   const { say } = ctx;
   const [busy, setBusy] = useState('');
   const items = agendaItems(v);
@@ -2748,6 +2778,7 @@ function LiveRoom({ v, setV, m, ctx }) {
       </div>
       ${items.length && started ? html`<div class="bp-livehead__bar" role="progressbar" aria-label="Through the agenda" aria-valuemin="0" aria-valuemax=${items.length} aria-valuenow=${done}><span style=${`--p:${(done / items.length) * 100}%`}></span></div>` : null}
     </section>
+    ${notes?.can ? html`<p class="bp-room__notes bp-noprint"><button type="button" class="bp-btn bp-btn--primary bp-minutes__open" aria-expanded=${notes.noting} onClick=${() => notes.setNoting(!notes.noting)}><${Icon} name="edit" size=${18} />${notesButton(m, ctx.data, notes.noting)}</button>${!notes.noting && notesOnDevice(m?.id) ? html`<span class="bp-room__unsaved">Some of your notes haven’t saved yet. They’ll go in by themselves when the connection’s back.</span>` : null}</p>` : null}
     <div class="bp-room">
       <div class="bp-room__main bp-stack">
         ${v.vote && !ended ? html`<${VoteCard} v=${v} busy=${busy} act=${act} />` : null}
@@ -2878,15 +2909,18 @@ function minutesWords(r) {
  * into at the meeting; from the meeting's day, the typed file sent back here goes straight into the meeting (who was
  * there, the notes under each item, the decisions, the action items) for the founders to share
  */
-function TakeMinutes({ m, ctx }) {
+function TakeMinutes({ m, ctx, noting, setNoting }) {
   const { data, d, say, load } = ctx;
   const [busy, setBusy] = useState('');
   // The secretary sees it as theirs; a founder sees whose it is
   const mine = d.me?.seat === 'secretary';
   const secretary = mine ? null : data.people.board.find((p) => p.seat === 'secretary');
   const opts = { meetings: data.meetings, quorum: data.quorum, people: d.people };
-  const canSend = m.date <= data.today;
+  const canSend = m.date <= data.today || !!m.live?.endedAt;
   const sent = m.minutesFrom?.name ? m.minutesFrom : null;
+  const shut = m.minutes === 'approved';
+  // Typed and saved, not sent: the panel closed, this is where that's said
+  const unsent = !shut && !!data.notesWaiting?.includes(m.id);
   const print = async () => {
     setBusy('print');
     try { const { printMinutesTemplate } = await import('../board-minutes-template.js'); await printMinutesTemplate(m, opts); } catch { say('The form didn’t come together. Try again.', 'warn'); }
@@ -2917,21 +2951,59 @@ function TakeMinutes({ m, ctx }) {
   };
   return html`<div class="bp-minutes" role="group" aria-labelledby=${`tm-${m.id}`}>
     <p class="bp-minutes__q" id=${`tm-${m.id}`}>${mine ? 'You take the minutes' : 'The minutes'}</p>
-    <p class="bp-minutes__said">${sent ? `Board has them${sent.at ? ` as of ${shortDate(sent.at.slice(0, 10)).replace(/, \d{4}$/, '')}` : ''}. A newer copy replaces what they say.`
-      : !mine ? `${secretary ? `${secretary.name} takes them as Board Secretary, with this same card.` : 'The board’s secretary takes them, with this same card.'} ${canSend ? 'The Word file they were typed into can be sent from here too.' : 'The form and the Word file are here for you too.'}`
-      : canSend ? 'Send the Word file you typed them into, and they go into the meeting for the founders to share.'
-      : 'Print the form, or type into the Word file at the meeting. Send it here afterwards.'}</p>
-    ${canSend ? html`<div class="bp-minutes__do">
-      <label class=${`bp-btn ${sent ? 'bp-btn--quiet' : 'bp-btn--primary'} bp-minutes__send ${busy === 'send' ? 'is-busy' : ''}`}>
-        <${Icon} name="documents" size=${18} />${busy === 'send' ? 'Sending…' : sent ? 'Send a newer copy' : 'Send the minutes'}
-        <input type="file" class="sr-only" accept=".docx,.pdf" disabled=${!!busy} onChange=${(e) => { send(e.target.files[0]); e.target.value = ''; }} />
-      </label>
-    </div>` : null}
-    <div class="bp-minutes__get">
+    <p class="bp-minutes__said">${notesOnDevice(m.id) && !shut && !noting ? 'Some of your notes haven’t saved yet. Open them to finish. ' : unsent ? (sent ? 'Changes are saved in the notes but not sent yet. ' : 'The notes are saved but not sent yet. ') : ''}${shut ? 'These were approved, and some of the notes never went in. They’re still here to read.' : sent?.typed ? 'Board has them. Change anything in the notes and send the changes.' : sent ? `Board has them${sent.at ? ` as of ${shortDate(new Date(sent.at).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })).replace(/, \d{4}$/, '')}` : ''}. A newer copy replaces what they say.`
+      : !mine ? `${secretary ? `${secretary.name} takes them as Board Secretary, with this same card.` : 'The board’s secretary takes them, with this same card.'} They can be typed right here, or on the form or Word file.`
+      : unsent ? '' : 'Type them right here beside the agenda, or use the form or Word file.'}</p>
+    <div class="bp-minutes__do">
+      <button type="button" class="bp-btn bp-btn--primary bp-minutes__open" aria-expanded=${noting} onClick=${() => setNoting(!noting)}><${Icon} name="edit" size=${18} />${notesButton(m, data, noting)}</button>
+    </div>
+    ${shut || sent?.typed ? null : html`<div class="bp-minutes__get">
       <button type="button" class="bp-mini" onClick=${word}>Word file</button>
       <button type="button" class="bp-mini" onClick=${print} disabled=${busy === 'print'}><${Icon} name="print" size=${16} />${busy === 'print' ? 'Printing…' : 'Print the form'}</button>
-    </div>
+      ${canSend ? html`<label class=${`bp-mini bp-minutes__send ${busy === 'send' ? 'is-busy' : ''}`}>
+        ${busy === 'send' ? 'Sending…' : sent ? 'Send a newer copy' : 'Send a file'}
+        <input type="file" class="sr-only" accept=".docx,.pdf" disabled=${!!busy} onChange=${(e) => { send(e.target.files[0]); e.target.value = ''; }} />
+      </label>` : null}
+    </div>`}
   </div>`;
+}
+
+/** What the button to the notes says, on the meeting's card and in the live room alike */
+const notesButton = (m, data, noting) => (noting ? 'Close the notes' : m?.minutes === 'approved' || data.notesWaiting?.includes(m?.id) || notesOnDevice(m?.id) ? 'Open the notes' : 'Take notes here');
+/** Notes typed on this device that the server doesn't have yet (./notes.js) */
+const notesOnDevice = (id) => { try { return !!localStorage.getItem(`bp-notes-${id}`); } catch { return false; } };
+/** Whether this person takes this meeting's minutes: the secretary's seat, or one of Board's admins, until they're approved */
+function takesMinutes(m, { data, d }) {
+  if (!m || m.pending || m.practice) return false;
+  // Approved with notes that never went in: those stay reachable, to read and copy
+  if (m.minutes === 'approved' && !data.notesWaiting?.includes(m.id) && !notesOnDevice(m.id)) return false;
+  if (!m.sections.some((s) => s.title || s.items.length)) return false;
+  return d.me?.seat === 'secretary' || (data.me.admin && !AS_BOARD && !PREVIEW);
+}
+
+/** ./notes.js, once (a browser remembers a failed import, so a try after a failed one asks for it by another name) */
+let notesModule = null;
+const notesPanel = () => (notesModule ||= import('./notes.js').catch(() => import(`./notes.js?again=${Date.now()}`)).catch((err) => { notesModule = null; throw err; }));
+
+/**
+ * The notes beside the agenda (./notes.js). Drawn on the page's body, outside what the meeting swaps as the chair
+ * starts and ends it, and what a phone makes unreachable behind them
+ */
+function Noting({ m, ctx, onClose }) {
+  const [Panel, setPanel] = useState(null);
+  const host = useRef(null);
+  useEffect(() => {
+    let on = true;
+    const el = document.createElement('div');
+    document.body.append(el);
+    host.current = el;
+    notesPanel().then((x) => { if (on) setPanel(() => x.NotesPanel); }, () => { if (on) { ctx.say('The notes didn’t open. Try again.', 'warn'); onClose(); } });
+    return () => { on = false; render(null, el); el.remove(); host.current = null; };
+  }, []);
+  useEffect(() => {
+    if (Panel && host.current) render(html`<${Panel} m=${m} ctx=${ctx} Icon=${Icon} onClose=${onClose} thanks=${minutesWords} mine=${ctx.d.me?.seat === 'secretary'} />`, host.current);
+  });
+  return null;
 }
 
 // ─── A meeting's agenda ─────────────────────────────────────────────
@@ -3118,9 +3190,10 @@ function AgendaRail({ sections, labels, extra, plan = null }) {
   </nav>`;
 }
 
-function MeetingDetail({ m, ctx, waiting = false }) {
+function MeetingDetail({ m, ctx, waiting = false, notes = null }) {
   const { data, d } = ctx;
-  const upcoming = m.date >= data.today && !heldEarly(m, data.today);
+  // (minutes in: the meeting's been held, whether or not the chair pressed End)
+  const upcoming = m.date >= data.today && !heldEarly(m, data.today) && !m.minutesFrom;
   // A past meeting shows only the numbers locked into its packet; one ahead shows today's until then (one held early,
   // today's until its own are locked)
   const numbers = m.snapshot || (m.date >= data.today ? data.numbers : null);
@@ -3134,7 +3207,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
   const loose = m.files.filter((f) => f.kind !== 'signed' && !placed.has(f.id) && !(upcoming && f.kind === 'minutes'));
   const signed = m.files.find((f) => f.kind === 'signed');
   const printable = m.files.some((f) => f.kind !== 'signed') || m.sections.some((s) => s.items.length);
-  const minutesFile = m.files.find((f) => f.kind === 'minutes');
+  const minutesFile = minutesFileOf(m);
   const video = upcoming ? videoOf(m) : '';
   const isNext = upcoming && m.id === d.featured?.id;
   const sections = m.sections.filter((s) => s.title || s.items.length);
@@ -3171,7 +3244,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
     : m.minutes === 'approved' ? `Minutes approved${m.approvedOn ? ` ${shortDate(m.approvedOn).replace(/, \d{4}$/, '')}` : ''}` : 'Draft minutes';
   return html`
     <a class="bp-back bp-noprint" href="#/meetings"><${Icon} name="back" size=${18} />All meetings</a>
-    ${waiting ? html`<p class="bp-waiting" role="status"><span class="bp-live-dot" aria-hidden="true"></span>Today’s meeting. This page follows it live once the chair starts: where the board is on the agenda, who’s here, and votes.</p>` : null}
+    ${waiting && upcoming ? html`<p class="bp-waiting" role="status"><span class="bp-live-dot" aria-hidden="true"></span>Today’s meeting. This page follows it live once the chair starts: where the board is on the agenda, who’s here, and votes.</p>` : null}
     <header class=${`bp-aghero ${upcoming ? '' : 'is-past'}`}>
       <div class="bp-aghero__main">
         <p class="bp-eyebrow">${upcoming ? (m.pending ? 'Agenda coming' : 'Board meeting agenda') : 'Board meeting minutes'}<span class=${`bp-soon ${m.minutes === 'approved' && !upcoming ? 'is-ok' : ''}`}>${status}</span>${m.preview ? html`<span class="bp-soon is-preview" title="Only you see it. Share it in Board and the board sees it as it is here">Not shared yet</span>` : null}</p>
@@ -3191,7 +3264,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
       </div>
       <aside class="bp-aghero__side">
         ${upcoming && (data.me.slug || AS_BOARD || PREVIEW) ? html`<div class="bp-aghero__card"><${Rsvp} m=${m} ctx=${ctx} /></div>` : null}
-        ${hasAgenda && !m.practice && m.minutes !== 'approved' && (d.me?.seat === 'secretary' || (data.me.admin && !AS_BOARD && !PREVIEW)) ? html`<div class="bp-aghero__card bp-aghero__card--minutes bp-noprint"><${TakeMinutes} m=${m} ctx=${ctx} /></div>` : null}
+        ${notes?.can ? html`<div class="bp-aghero__card bp-aghero__card--minutes bp-noprint"><${TakeMinutes} m=${m} ctx=${ctx} noting=${notes.noting} setNoting=${notes.setNoting} /></div>` : null}
         ${!upcoming && c.boardHere ? html`<div class="bp-aghero__card bp-who" id="who">
           <p class="bp-aghero__big"><strong>${c.boardHere}</strong> of ${c.board} board members</p>
           <p class="bp-who__q">${quorum === true ? html`<span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />A quorum</span>` : quorum === false ? html`<span class="bp-chip bp-chip--warn">Short of a quorum (${need})</span>` : null}${c.remote ? html`<span class="bp-muted">${c.remote} by video</span>` : null}</p>
@@ -3215,6 +3288,7 @@ function MeetingDetail({ m, ctx, waiting = false }) {
               : s.items.length > 1 ? html`<span class="bp-agsec__meta">${s.items.length} items</span>` : null}
           </header>
           ${s.items.length ? html`<ol class="bp-agitems">${s.items.map((it) => html`<${AgendaItem} key=${it.id} m=${m} s=${s} it=${it} ctx=${ctx} label=${labels.get(it.id)} numbers=${numbers} upcoming=${upcoming} moneyFirst=${moneyFirst} named=${!!oneWho(s)} />`)}</ol>` : null}
+          ${s.notes ? html`<div class="bp-agsec__notes"><${Notes} text=${s.notes} /></div>` : null}
         </section>`) : html`<div class="bp-card bp-empty">
           <span class="bp-empty__icon"><${Icon} name="list" size=${26} /></span>
           <h2 class="bp-h2">${upcoming ? 'The agenda isn’t posted yet' : minutesFile ? 'The minutes are in the file' : 'No agenda was kept here'}</h2>
@@ -4580,7 +4654,7 @@ function searchIndex(data, d, words = null) {
     for (const s of m.sections) {
       const said = notesLine;
       // A part with nothing under it (Open forum, New business) is found by its name
-      if (!s.items.length && s.title) out.push({ group: 'In agendas and minutes', key: `s:${s.id}`, title: s.title, sub, hay: norm(`${s.title} ${meetingName(m)} ${longDate(m.date)}`), date: m.date, href: `#/meetings/${m.id}`, focus: `s-${s.id}`, icon: 'list' });
+      if ((!s.items.length || s.notes) && s.title) out.push({ group: 'In agendas and minutes', key: `s:${s.id}`, title: s.title, sub, hay: norm(`${s.title} ${s.notes || ''} ${meetingName(m)} ${longDate(m.date)}`), date: m.date, href: `#/meetings/${m.id}`, focus: `s-${s.id}`, icon: 'list' });
       // The part it's under says where it is ("2027 budget · Q4 2026 Board Meeting · Nov 5, 2026"), so a point found by its part's name says why
       // (the meeting's name with it: "golf 2024" finds the points about golf in 2024's meetings)
       for (const it of s.items) out.push({ group: 'In agendas and minutes', key: `i:${it.id}`, title: it.title || s.title, sub: s.title && it.title && norm(s.title) !== norm(it.title) && !/^agenda$/i.test(s.title.trim()) ? `${partName(s.title)} · ${sub}` : sub, body: said(it.notes) || said(mdPlain(it.report)) || it.title, hay: norm([s.title, it.title, it.presenter, presentersOf(it, d.people).map((p) => `${p.name} ${p.title || ''}`).join(' '), it.notes, mdPlain(it.report), it.motion, meetingName(m), longDate(m.date)].join(' ')), date: m.date, href: `#/meetings/${m.id}`, focus: `i-${it.id}`, icon: 'list' });

@@ -94,6 +94,8 @@ const SCHEMA = [
   // A meeting as it's held: who checked in from the board page, and how each one voted on an open motion
   "CREATE TABLE IF NOT EXISTS board_checkins (meeting_id TEXT NOT NULL, slug TEXT NOT NULL, name TEXT, how TEXT NOT NULL, at TEXT, PRIMARY KEY (meeting_id, slug))",
   "CREATE TABLE IF NOT EXISTS board_votes (meeting_id TEXT NOT NULL, motion_id TEXT NOT NULL, slug TEXT NOT NULL, name TEXT, vote TEXT NOT NULL, at TEXT, PRIMARY KEY (meeting_id, motion_id, slug))",
+  // The secretary's notes typed beside the agenda, not on the meeting until they're sent (./_board-notes.js)
+  'CREATE TABLE IF NOT EXISTS board_minutes_notes (meeting_id TEXT PRIMARY KEY, data TEXT NOT NULL, sent TEXT, updated_at TEXT, updated_by TEXT, sending TEXT, took TEXT)',
 ];
 const _ready = new WeakSet();
 export async function ensureSchema(DB) {
@@ -406,6 +408,7 @@ export async function deleteMeeting(env, id) {
   const files = (await env.DB.prepare("SELECT id FROM board_files WHERE owner_type = 'meeting' AND owner_id = ?").bind(id).all()).results || [];
   for (const f of files) await deleteFile(env, f.id);
   await env.DB.prepare('DELETE FROM board_rsvps WHERE meeting_id = ?').bind(id).run();
+  await env.DB.prepare('DELETE FROM board_minutes_notes WHERE meeting_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(id).run();
 }
 
@@ -1063,6 +1066,16 @@ const EXT_OF = { 'application/pdf': '.pdf', 'image/jpeg': '.jpg', 'image/png': '
  * Store an uploaded file for a meeting, a document, or a member's signed copy of a document (`signed`, always
  * staff-only: signWithCopy) → its row as the admin shows it
  */
+/** New bytes under a file already kept: the same file, wherever it's linked, its words to be read again */
+export async function rewriteFile(env, id, bytes) {
+  const bucket = boardFiles(env);
+  const row = await env.DB.prepare('SELECT r2_key, type FROM board_files WHERE id = ?').bind(id).first();
+  if (!bucket || !row) return false;
+  await bucket.put(row.r2_key, bytes, { httpMetadata: { contentType: row.type } });
+  await env.DB.prepare('UPDATE board_files SET size = ?, sha256 = ?, words = NULL, words_v = NULL, words_next = NULL, words_try = NULL, words_at = NULL, words_fail = NULL, words_part = NULL WHERE id = ?').bind(bytes.byteLength, await sha256Hex(new Uint8Array(bytes)), id).run();
+  return true;
+}
+
 export async function putFile(env, { ownerType, ownerId, file, kind = 'other', staffOnly = false, by = '', slug = null, originalId = null }) {
   await ensureSchema(env.DB);
   const bucket = boardFiles(env);

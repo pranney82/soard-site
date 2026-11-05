@@ -16,6 +16,9 @@
  *               each item's notes land on that item, nothing to match by hand.
  *               Nothing in it is sample wording: an example motion left in
  *               would be read as a motion the board voted on.
+ *   Filled in   the Word file again with the secretary's typed notes in it
+ *               (`filled`, ../../functions/api/_board-notes.js): the record of
+ *               minutes kept on the board page, saying what the meeting says.
  * Built from text alone (DOM nodes for the print, escaped XML for Word), so
  * nothing typed into an agenda can turn into markup.
  */
@@ -32,7 +35,7 @@ export function minutesOutline(m, { meetings = [], quorum = 0, people = [] } = {
   // Each item numbered and named the way the board page and the screen do (a live list with no title by what it shows)
   const listed = new Map(agendaItems(m).map((x) => [x.id, x]));
   const plan = sectionPlan(m);
-  const roll = [...m.attendance.filter((p) => p.kind === 'board'), ...m.attendance.filter((p) => p.kind === 'staff')].map((p) => ({ name: p.name, kind: p.kind }));
+  const roll = [...m.attendance.filter((p) => p.kind === 'board'), ...m.attendance.filter((p) => p.kind === 'staff')].map((p) => ({ key: p.key, slug: p.slug || '', name: p.name, kind: p.kind, status: p.status || '' }));
   const next = nextMeeting((meetings || []).filter((x) => x.id !== m.id && !x.practice && !x.notBoard && isDate(x.date) && x.date > (m.date || '')), m.date || undefined);
   return {
     name: meetingName(m),
@@ -45,9 +48,12 @@ export function minutesOutline(m, { meetings = [], quorum = 0, people = [] } = {
     parts: m.sections.filter((s) => s.title || s.items.some(isFilled)).map((s) => {
       const t = plan.get(s.id);
       return {
+        id: s.id,
         title: s.title || 'Agenda',
         time: t ? [t.start ? clock(t.start) : '', t.minutes ? `${t.minutes} min` : ''].filter(Boolean).join(' · ') : '',
         items: s.items.filter(isFilled).map((it) => ({
+          id: it.id,
+          notes: it.notes || '',
           label: listed.get(it.id)?.label || '',
           title: listed.get(it.id)?.title || it.title || 'Item',
           presenter: namesText(presentersOf(it, people).map((p) => p.name)),
@@ -75,49 +81,83 @@ const MUTED = '6B6B6B';
 const cell = (content, width, { head = false } = {}) => `<w:tc><w:tcPr><w:tcW w:w="${width}" w:type="dxa"/>${head ? '<w:shd w:val="clear" w:color="auto" w:fill="F2F2F2"/>' : ''}<w:vAlign w:val="center"/></w:tcPr>${content}</w:tc>`;
 const cellPara = (text, { b = false, center = false } = {}) => `<w:p><w:pPr><w:pStyle w:val="Cell"/>${center ? '<w:jc w:val="center"/>' : ''}</w:pPr>${run(text, { b })}</w:p>`;
 
+/** A note as its lines, without the list marks a person may have typed */
+export const noteLines = (s) => String(s || '').split('\n').map((l) => l.trim().replace(/^[-•*]\s+/, '').trim()).filter(Boolean);
+/** The vote every meeting takes on the last one's minutes, in words Board knows it by (approvalIn) */
+export const approveWords = (prev) => `Approve the minutes of the ${prev ? meetingName(prev) : 'last meeting'}`;
+const RESULT_WORD = { passed: 'Passed', failed: 'Failed', tabled: 'Tabled' };
+/** A vote's record as the template's line reads: "Moved by: … Seconded by: … For: 4 Against: 0 Abstain: 1 Passed" */
+const recordLine = (v) => [
+  `Moved by: ${v?.by || ''}`, `Seconded by: ${v?.second || ''}`,
+  ...(typeof v?.for === 'number' ? [`For: ${v.for}`] : []), ...(typeof v?.against === 'number' ? [`Against: ${v.against}`] : []), ...(typeof v?.abstain === 'number' ? [`Abstain: ${v.abstain}`] : []),
+  RESULT_WORD[v?.result] || '',
+].filter(Boolean).join('      ');
+
 /**
  * The roll as Word's table: "x" typed in the first column for each person there, "video" or "excused" in the last.
  * Read back one row to a line ("x Pat Sample video"), the way SOARD's attendee tables always read.
+ * `filled`: with the meeting's attendance marked in (the form to fill in is blank).
  */
-function rollTable(roll) {
+function rollTable(roll, filled = false) {
   const widths = [1100, 4300, 3960];
   const border = (side) => `<w:${side} w:val="single" w:sz="4" w:space="0" w:color="BFBFBF"/>`;
   const head = `<w:tr><w:trPr><w:tblHeader/></w:trPr>${cell(cellPara('Here (x)', { b: true, center: true }), widths[0], { head: true })}${cell(cellPara('Name', { b: true }), widths[1], { head: true })}${cell(cellPara('On video, or excused', { b: true }), widths[2], { head: true })}</w:tr>`;
-  const rows = roll.map((p) => `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(cellPara('', { center: true }), widths[0])}${cell(cellPara(p.name), widths[1])}${cell(cellPara(''), widths[2])}</w:tr>`).join('');
+  const rows = roll.map((p) => {
+    const mark = filled ? p.status : '';
+    const there = mark === 'present' || mark === 'remote';
+    return `<w:tr><w:trPr><w:cantSplit/></w:trPr>${cell(cellPara(there ? 'x' : '', { center: true }), widths[0])}${cell(cellPara(p.name), widths[1])}${cell(cellPara(mark === 'remote' ? 'video' : mark === 'excused' ? 'excused' : ''), widths[2])}</w:tr>`;
+  }).join('');
   return `<w:tbl><w:tblPr><w:tblW w:w="${widths.reduce((a, b) => a + b, 0)}" w:type="dxa"/><w:tblBorders>${['top', 'left', 'bottom', 'right', 'insideH', 'insideV'].map(border).join('')}</w:tblBorders><w:tblLayout w:type="fixed"/><w:tblCellMar><w:top w:w="60" w:type="dxa"/><w:left w:w="100" w:type="dxa"/><w:bottom w:w="60" w:type="dxa"/><w:right w:w="100" w:type="dxa"/></w:tblCellMar></w:tblPr><w:tblGrid>${widths.map((w) => `<w:gridCol w:w="${w}"/>`).join('')}</w:tblGrid>${head}${rows}</w:tbl>`;
 }
 
-function documentXml(o) {
+function documentXml(o, filled = null) {
+  const said = (id) => noteLines(filled?.words?.[id]);
   const body = [];
   body.push(para(run(`${o.name} minutes`), { style: 'Title' }));
   body.push(para(run('Sunshine on a Ranney Day · Board of Directors', { color: MUTED }), { style: 'Sub' }));
   // "Date …" and "Location …" lines: the reader passes over them (the meeting already knows both)
   if (o.date) body.push(para(`${run('Date  ', { b: true })}${run([o.date, o.time].filter(Boolean).join(', '))}`, { style: 'Fact' }));
   if (o.place) body.push(para(`${run('Location  ', { b: true })}${run(o.place)}`, { style: 'Fact' }));
-  body.push(para(run('Minutes taken by: ', { b: true }), { style: 'Fact' }));
+  body.push(para(`${run('Minutes taken by: ', { b: true })}${run(filled?.by || '')}`, { style: 'Fact' }));
   body.push(para(run('Who was there'), { style: 'Head' }));
-  body.push(rollTable(o.roll));
-  body.push(para(run('Guests: ', { b: true }), { style: 'Gap' }));
+  body.push(rollTable(o.roll, !!filled));
+  body.push(para(`${run('Guests: ', { b: true })}${run((filled?.guests || []).join(', '))}`, { style: 'Gap' }));
   if (o.board) body.push(para(run(`Quorum: ${o.quorum} of ${o.board} board members, here or on video.`, { color: MUTED }), { style: 'Fact' }));
   // The agenda: each part in capitals (how the reader knows a part from an item), each item under it, a bullet to type on
   for (const part of o.parts) {
     body.push(para(run(part.title.toUpperCase()), { style: 'Part', level: 0 }));
-    if (!part.items.length) { body.push(para('', { style: 'Item', level: 1 })); continue; }
+    if (!part.items.length) {
+      const lines = said(part.id);
+      for (const line of lines.length ? lines : ['']) body.push(para(run(line), { style: 'Item', level: 1 }));
+      continue;
+    }
     for (const it of part.items) {
       body.push(para(`${run(it.title)}${it.presenter ? run(` (${it.presenter})`, { color: MUTED }) : ''}`, { style: 'Item', level: 1 }));
-      if (it.motion) {
-        body.push(para(`${run('Motion: ', { b: true })}${run(it.motion)}`, { style: 'Note', level: 2 }));
-        body.push(para(run('Moved by:            Seconded by:            For:      Against:      Abstain:      Passed / Failed', { color: MUTED }), { style: 'Fact' }));
+      const vote = filled?.votes?.[it.id];
+      const motion = vote ? vote.text : it.minutes ? '' : it.motion;
+      if (motion) {
+        body.push(para(`${run('Motion: ', { b: true })}${run(motion)}`, { style: 'Note', level: 2 }));
+        // (the kept record of a vote nobody recorded says nothing about it: the blank line is the form's)
+        if (vote || !filled) body.push(para(run(vote ? recordLine(vote) : 'Moved by:            Seconded by:            For:      Against:      Abstain:      Passed / Failed', { color: MUTED }), { style: 'Fact' }));
       }
-      body.push(para('', { style: 'Note', level: 2 }));
+      const lines = said(it.id);
+      for (const line of lines.length ? lines : ['']) body.push(para(run(line), { style: 'Note', level: 2 }));
     }
+    for (const line of said(part.id)) body.push(para(run(line), { style: 'Item', level: 1 }));
   }
   // Read for the motions and the action items, never made into agenda parts
+  const floor = filled?.floor || [];
+  const todo = filled?.actions || [];
   body.push(para(run('MOTIONS'), { style: 'Part', level: 0 }));
-  body.push(para('', { style: 'Item', level: 1 }));
+  for (const v of floor) {
+    body.push(para(`${run('Motion: ', { b: true })}${run(v.text)}`, { style: 'Item', level: 1 }));
+    body.push(para(run(recordLine(v), { color: MUTED }), { style: 'Fact' }));
+  }
+  if (!floor.length) body.push(para('', { style: 'Item', level: 1 }));
   body.push(para(run('ACTION ITEMS'), { style: 'Part', level: 0 }));
-  body.push(para('', { style: 'Item', level: 1 }));
-  body.push(para(run('Adjourned at: ', { b: true }), { style: 'Close' }));
+  for (const v of todo) body.push(para(run([v.text, v.who ? `(${v.who})` : '', isDate(v.due) ? `by ${longDate(v.due)}` : ''].filter(Boolean).join(' ')), { style: 'Item', level: 1 }));
+  if (!todo.length) body.push(para('', { style: 'Item', level: 1 }));
+  if (!filled || filled.adjourned) body.push(para(`${run('Adjourned at: ', { b: true })}${run(filled?.adjourned ? clock(filled.adjourned) || filled.adjourned : '')}`, { style: 'Close' }));
   if (o.next) body.push(para(`${run('Next meeting: ', { b: true })}${run(`${o.next.name}, ${o.next.when}`)}`, { style: 'Fact' }));
   const sect = '<w:sectPr><w:pgSz w:w="12240" w:h="15840"/><w:pgMar w:top="1080" w:right="1080" w:bottom="1080" w:left="1080" w:header="720" w:footer="720" w:gutter="0"/></w:sectPr>';
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<w:document ${W}><w:body>${body.join('')}${sect}</w:body></w:document>`;
@@ -188,13 +228,17 @@ export function zip(files) {
   return out;
 }
 
-/** The template as a Word file (.docx bytes) */
+/**
+ * The template as a Word file (.docx bytes). `filled` { by, words, votes, floor, actions, guests, adjourned }: the
+ * minutes kept on the board page, as they went on the meeting (../../functions/api/_board-notes.js `record`), with
+ * who was there from the meeting itself.
+ */
 export function minutesDocx(m, opts = {}) {
   const o = minutesOutline(m, opts);
   return zip([
     ['[Content_Types].xml', CONTENT_TYPES],
     ['_rels/.rels', RELS],
-    ['word/document.xml', documentXml(o)],
+    ['word/document.xml', documentXml(o, opts.filled)],
     ['word/_rels/document.xml.rels', DOC_RELS],
     ['word/styles.xml', STYLES],
     ['word/numbering.xml', NUMBERING],

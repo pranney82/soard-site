@@ -208,6 +208,14 @@ export function templateMotionsIn(text, people = []) {
   return { motions, open };
 }
 
+/** An item's notes without the template's "Motion: …" and "Moved by: … Seconded by: …" lines */
+export function withoutVoteLines(notes) {
+  const lines = String(notes || '').split('\n');
+  const plain_ = (l) => l.trim().replace(LIST_MARK, '').trim();
+  const isRecord = (l) => RECORD.test(plain_(l)) && (/\bseconded\s+by\b/i.test(l) || RECORD_REST.test(l));
+  return lines.filter((l, i) => !isRecord(l) && !(TEMPLATE_MOTION.test(plain_(l)) && lines[i + 1] !== undefined && isRecord(lines[i + 1]))).join('\n');
+}
+
 /** The last meeting's minutes approved: a passed motion to approve minutes, or "approved" under the minutes part of the outline */
 export function approvalIn(sections = [], motions = []) {
   if (motions.some((x) => x.result === 'passed' && /\bminutes\b/i.test(x.text) && /\bapprov/i.test(x.text))) return true;
@@ -337,6 +345,8 @@ export async function readMinutes(env, { name = '', bytes = null, text = null, m
   // The template's own motions as the secretary recorded them first (exact), then any the minutes say the usual ways
   const fromTemplate = templateMotionsIn(words, people);
   const isTemplate = (t) => [...fromTemplate.motions.map((x) => x.text), ...fromTemplate.open].some((x) => likeness(x, t) >= 0.6);
+  // The template's vote lines are its vote, read just above: not what was said under the item
+  sections = sections.map((sec) => ({ ...sec, items: sec.items.map((it) => (it.notes ? { ...it, notes: withoutVoteLines(it.notes) } : it)) }));
   let motions = dedupe([...fromTemplate.motions, ...motionsIn(words, people).filter((x) => !isTemplate(x.text))], (x) => x.text);
   let actions = actionsIn(logs.filter((s) => ACTION_PART.test(s.title)), people, meeting?.date);
   let approvedPrev = false;
@@ -548,13 +558,20 @@ function mergeSections(cur, read, shape) {
   }) }));
   // What the minutes cover that the agenda didn't: under the agenda's part with that heading, else a part of its own
   const added = new Map();
+  // (a part with its own notes, read back from the Word file Board keeps: its lines are those notes, a word fixed or not, never new items)
+  const partLines = new Map();
   for (const m of M) {
     if (usedM.has(key(m))) continue;
     const ai = secPair.get(m.si);
+    if (ai !== undefined && String(out[ai].notes || '').trim()) {
+      partLines.set(ai, [...(partLines.get(ai) || []), m.it.title, ...String(m.it.notes || '').split('\n')].filter((l) => String(l || '').trim()));
+      continue;
+    }
     if (ai !== undefined) { out[ai].items.push(m.it); continue; }
     if (!added.has(m.si)) { const s = { id: m.sec.id || uid('s_'), title: m.sec.title, items: [] }; added.set(m.si, s); out.push(s); }
     added.get(m.si).items.push(m.it);
   }
+  for (const [ai, lines] of partLines) out[ai] = { ...out[ai], notes: lines.join('\n') };
   return out;
 }
 
@@ -564,7 +581,7 @@ function mergeSections(cur, read, shape) {
  * stays excused). Answers to "will you be there" stay. `keepMarked`: attendance someone marked is left as it
  * is (Board's own readers; the minutes then only fill a list nobody marked).
  */
-function mergeAttendance(cur, read, { keepMarked }) {
+export function mergeAttendance(cur, read, { keepMarked }) {
   const list = cur.attendance || [];
   if (!read.attendance.length || (keepMarked && list.some((p) => p.status))) return list;
   const keyOf = (p) => p.slug || `${p.kind || 'guest'}:${String(p.name || '').toLowerCase()}`;
