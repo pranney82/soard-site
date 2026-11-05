@@ -98,13 +98,14 @@ test('the email: filled in from the kid page and JobTread, the Remi & Nico desig
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way, Atlanta, GA 30301', notes: 'Park on the street.\nBring a smile.' });
   assert.equal(e.subject, 'You’re Invited to Rowan’s Reveal Day!');
   assert.equal(e.preview, 'Come celebrate Rowan as we reveal their brand-new accessible bathroom!');
-  assert.match(e.html, /Friday, March 12, 2027 · 4:00 PM/);
-  assert.match(e.html, /100 Example Way, Atlanta, GA 30301/, 'the family’s address, like the invite sent for Remi & Nico');
+  assert.match(e.html, />Friday, March 12<\/div>\s*<div[^>]*>4:00 PM</, 'the day and the time each keep a line, so a phone never breaks a date');
+  assert.match(e.text, /Friday, March 12, 2027 · 4:00 PM/);
+  assert.match(e.html, /100 Example Way, Atlanta, GA\u00A030301/, 'the family’s address, like the invite sent for Remi & Nico');
   assert.match(e.html, /Park on the street\.[\s\S]*Bring a smile\./, 'JobTread’s notes, one line each');
   const cal = calendarLinks('rowan-test');
   for (const link of [cal.google, cal.apple, cal.outlook]) assert.ok(e.html.includes(link.replace(/&/g, '&amp;')), link);
   assert.match(e.html, /\/live\/rowan-test\//, 'the live link');
-  assert.match(e.html, /kids\/rowan-test\/hero\.jpg\/w=1200,h=760,fit=cover/, 'the kid’s photo, cropped wide');
+  assert.match(e.html, /kids\/rowan-test\/hero\.jpg\/w=1200,h=880,fit=cover/, 'the kid’s photo, on the cover');
   assert.equal((e.html.match(/partners\/msi\//g) || []).length, 1, 'a partner listed twice shows once');
   assert.ok(!/—/.test(e.html + e.text + e.subject), 'no em dashes');
   assert.ok(!/gradient/i.test(e.html), 'flat colors only');
@@ -148,7 +149,7 @@ test('the reveal moves while it’s a draft: the same draft is rewritten and Lin
   const r = await sync(plan({ date: '2027-03-13', start: '10:00' }));
   assert.equal(r.kit, 'updated');
   assert.equal(kit.broadcasts.size, 1, 'never a second draft');
-  assert.match([...kit.broadcasts.values()][0].content, /Saturday, March 13, 2027 · 10:00 AM/);
+  assert.match([...kit.broadcasts.values()][0].content, /Saturday, March 13<[\s\S]*10:00 AM/);
   assert.equal(emails.length, 2);
   assert.equal(emails[1].subject, 'Rowan’s reveal invite draft changed');
 });
@@ -234,7 +235,7 @@ test('drafted early from the admin: the date JobTread has now, the time to be co
   const r = await sync(tentative, { early: true });
   assert.equal(r.kit, 'drafted');
   const b = [...kit.broadcasts.values()][0];
-  assert.match(b.content, /Friday, March 12, 2027 · Time to be confirmed/);
+  assert.match(b.content, /Friday, March 12<[\s\S]*Time to be confirmed/);
   assert.equal(emails.length, 1);
   assert.deepEqual(emails[0].to, ['linzi@soardcharity.com']);
   assert.match(emails[0].html, /ahead of JobTread’s confirmation/);
@@ -248,7 +249,7 @@ test('drafted early from the admin: the date JobTread has now, the time to be co
   const r2 = await sync(plan({ date: '2027-03-13', details: '' }));
   assert.equal(r2.kit, 'updated');
   assert.equal(kit.broadcasts.size, 1);
-  assert.match([...kit.broadcasts.values()][0].content, /Saturday, March 13, 2027 · 4:00 PM/);
+  assert.match([...kit.broadcasts.values()][0].content, /Saturday, March 13<[\s\S]*4:00 PM/);
   assert.equal(emails.at(-1).subject, 'Review Rowan’s reveal invite in Kit');
   assert.match(emails.at(-1).html, /Rowan’s reveal is confirmed/);
   assert.match(emails.at(-1).html, /now has the time and the calendar buttons/);
@@ -342,7 +343,7 @@ test('real JobTread words: the team’s own arrival note isn’t said twice, and
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '426 Example Ln, Woodstock, GA 30188, USA', notes: 'Please arrive at least 15 mins early! Parking will be tight.' });
   assert.ok(!e.html.includes('Please arrive 15 minutes early'));
   assert.match(e.html, /Please arrive at least 15 mins early/);
-  assert.match(e.html, /426 Example Ln, Woodstock, GA 30188</);
+  assert.match(e.html, /426 Example Ln, Woodstock, GA\u00A030188</);
   assert.ok(!/, USA/.test(e.html + e.text));
 });
 
@@ -666,7 +667,7 @@ test('held, moved, back on: the draft is rewritten first, and "ready" is only sa
   kit.putRefused = false;
   await sync(moved);
   assert.equal(emails.at(-1).subject, 'Rowan’s reveal invite is back on');
-  assert.match(only().content, /April 2, 2027/);
+  assert.match(only().content, /April 2</);
 });
 
 test('a renamed group: the site still knows which it is, and a sent invite’s change still reaches her', async () => {
@@ -1152,13 +1153,12 @@ test('the label over the headline gives the day, not the headline’s own words'
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
   assert.match(e.html, /Reveal Day · Fri, Mar 12/);
   assert.ok(!/>You’re invited</i.test(e.html));
-  assert.match(e.html, /You’re Invited to<br>Rowan’s Reveal Day/);
+  assert.match(e.html, />You’re Invited to<\/span>Rowan’s <em[^>]*>Reveal&nbsp;Day<\/em>\./);
 });
 
 test('Save it to your calendar is the main action, and See the story sits with the story', () => {
   const { html } = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
-  const calendarButton = /<a [^>]*calendar\.ics[^>]*>/.exec(html)[0];
-  assert.match(calendarButton, /background:#FFDA24/);
+  assert.match(html, /<td align="center" bgcolor="#FFDA24"[^>]*><a [^>]*calendar\.ics/);
   assert.ok(html.indexOf('See Rowan’s Story') < html.indexOf('Our partners'));
   assert.ok(html.indexOf('Our partners') > 0, 'the label doesn’t repeat the headline under it');
   assert.ok(!/<a [^>]*kids\/rowan-test\/"[^>]*background:#FFDA24/.test(html), 'one main action');
@@ -1180,7 +1180,7 @@ test('a kid’s photo that won’t load gives way to the next, the hero too', as
   await sync();
   const html = only().content;
   assert.ok(!/broken-/.test(html), 'no broken picture');
-  assert.match(html, /kids\/rowan-test\/a\.jpg\/w=1200,h=760/, 'the next photo leads');
+  assert.match(html, /kids\/rowan-test\/a\.jpg\/w=1200,h=880/, 'the next photo leads');
   assert.match(html, /kids\/rowan-test\/c\.jpg\/w=500/);
   assert.match(html, /kids\/rowan-test\/d\.jpg\/w=500/);
 });

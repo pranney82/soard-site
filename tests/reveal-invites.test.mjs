@@ -1109,8 +1109,8 @@ test('JobTread confirms a reveal: the same look drafts the Kit email to Reveal E
   assert.equal(posts[0].public, false);
   assert.equal(posts[0].send_at, null);
   assert.deepEqual(posts[0].subscriber_filter, [{ all: [{ type: 'segment', ids: [587253] }], any: null, none: null }]);
-  assert.match(posts[0].content, /Tuesday, October 27, 2026 · 4:00 PM/);
-  assert.match(posts[0].content, /100 Example Way, Atlanta, GA 30301/);
+  assert.match(posts[0].content, /Tuesday, October 27<[\s\S]*4:00 PM/);
+  assert.match(posts[0].content, /100 Example Way, Atlanta, GA\u00A030301/);
   assert.match(posts[0].content, /Park on the street/);
   assert.deepEqual(mail.map((m) => m.to[0]), ['linzi@soardcharity.com']);
   assert.equal(mail[0].subject, 'Review Max’s reveal invite in Kit');

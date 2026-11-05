@@ -26,12 +26,16 @@ const BD = '#E5E4E0';
 const SERIF = "'Libre Baskerville',Georgia,'Times New Roman',serif";
 const SANS = "'Outfit',-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif";
 const LOGO = `${CF}/brand-logo-dark-bg-tagline-display/w=400,q=85`;
+/** Side padding in step with the width, so a phone that drops the style block still fits; Outlook takes the alt */
+export const SIDE = 'padding-left:8%;padding-right:8%;mso-padding-left-alt:48px;mso-padding-right-alt:48px;';
 /** The team as plushies, in the signature (Cloudflare Images) */
 export const TEAM_PICTURE = `${CF}/emails/soard-team-plushie/w=1008,q=85`;
 
 // trim: many logo files are mostly white space, and would sit tiny in their cards
 export const LOGO_TRANSFORM = 'trim=border,w=400,h=160,fit=pad,background=white,q=88';
 export const HERO_TRANSFORM = 'w=1200,h=760,fit=cover,gravity=face,q=85';
+// A picture that won't load fails at every size, so the checks at HERO_TRANSFORM answer for this crop too
+export const COVER_TRANSFORM = 'w=1200,h=880,fit=cover,gravity=face,q=85';
 export const PHOTO_TRANSFORM = 'w=500,h=500,fit=cover,gravity=face,q=75';
 /** A partner name a person would write, not an uploaded file's ("Screenshot 2026-08-31 at 15.46.42", "IMG_123.png") */
 export const realPartnerName = (name) => !!String(name || '').trim() && !/^(screenshot|screen shot|img[_ -]?\d|image\s*\d|dsc|photo)\b|\.(png|jpe?g|gif|webp|svg)$/i.test(String(name).trim());
@@ -117,6 +121,12 @@ export function revealWhen(date, time) {
   return `${day} · ${((h + 11) % 12) + 1}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
+/** "Wednesday, November 18": the year would only wrap a date on a phone, and nobody's unsure which year */
+function longDay(date) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return '';
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
+}
+
 /** "Wed, Nov 18", for the label over the headline */
 function shortDay(date) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date || ''))) return '';
@@ -142,7 +152,7 @@ export function calendarLinks(slug, site = SITE_URL, { watch = false } = {}) {
 }
 
 /** The email around its rows: the width, the phone rules and the hidden preview line. Fluid, so a phone that drops the style block still fits it; Outlook's ghost table holds the width there. */
-export function emailFrame(preview, rows, phoneRules = '') {
+export function emailFrame(preview, rows) {
   return `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(preview)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
 <style>
   @media screen and (max-width:600px){
@@ -152,7 +162,11 @@ export function emailFrame(preview, rows, phoneRules = '') {
     .h1m{font-size:26px!important}
     .h2m{font-size:20px!important}
     .lt{height:50px!important;padding:0 8px!important}
-    .lc{padding:3px!important}${phoneRules}
+    .lc{padding:3px!important}
+    .dm{font-size:40px!important}
+    .dms{font-size:30px!important}
+    .h2b{font-size:26px!important}
+    .ld{font-size:18px!important}
   }
 </style>
 <center style="width:100%;background:${WG};padding:24px 0;">
@@ -165,13 +179,13 @@ ${rows}
 }
 
 export function emailHeader(site = SITE_URL, { rounded = false, logoWidth = 124, pad = 20 } = {}) {
-  return `<tr><td bgcolor="${DD}" style="background:${DD};padding:${pad}px 48px;text-align:center;${rounded ? 'border-radius:16px 16px 0 0;' : ''}" class="pd${rounded ? ' band' : ''}">
+  return `<tr><td bgcolor="${DD}" style="background:${DD};padding:${pad}px 0;${SIDE}text-align:center;${rounded ? 'border-radius:16px 16px 0 0;' : ''}" class="pd${rounded ? ' band' : ''}">
     <a href="${href(site)}" target="_blank" style="display:inline-block;color:#FFFFFF;text-decoration:none;"><img src="${escapeHtml(LOGO)}" width="${logoWidth}" alt="Sunshine on a Ranney Day" style="display:block;width:${logoWidth}px;height:auto;font-family:${SANS};font-size:13px;line-height:18px;color:#FFFFFF;" /></a>
   </td></tr>`;
 }
 
 export function emailFooter(site = SITE_URL) {
-  return `<tr><td style="background:${DD};padding:36px 48px;text-align:center;" class="pd">
+  return `<tr><td bgcolor="${DD}" style="background:${DD};padding:36px 0;${SIDE}text-align:center;" class="pd">
     <a href="${href(site)}" target="_blank" style="display:inline-block;margin-bottom:16px;"><img src="${escapeHtml(LOGO)}" width="120" alt="Sunshine on a Ranney Day" style="width:120px;height:auto;" /></a>
     <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;color:#8E8F93;">501(c)(3) Nonprofit &middot; EIN 45-4773997</p>
     <p style="margin:0 0 14px;font-family:${SANS};font-size:13px;">
@@ -183,12 +197,93 @@ export function emailFooter(site = SITE_URL) {
 
 /** The closing line, the team picture and who it's from */
 export function signOff(line, teamPicture = true) {
-  return `<tr><td style="background:${CR};padding:36px 48px 40px;" class="pd">
+  return `<tr><td bgcolor="${CR}" style="background:${CR};padding:36px 0 40px;${SIDE}" class="pd">
     <p style="margin:0 0 18px;font-family:${SERIF};font-size:17px;font-style:italic;line-height:1.7;color:${D};">${escapeHtml(line)}</p>
     ${teamPicture ? `<img src="${escapeHtml(TEAM_PICTURE)}" width="504" alt="The SOARD team" class="fl" style="width:100%;height:auto;display:block;border-radius:16px;margin:0 0 18px;" />` : ''}
     <p style="margin:0;font-family:${SANS};font-size:14px;font-weight:700;color:${D};">The SOARD Team</p>
     <p style="margin:4px 0 0;font-family:${SANS};font-size:13px;color:${TM};">Sunshine on a Ranney Day</p>
   </td></tr>`;
+}
+
+/** A button that keeps its shape in Outlook, which ignores padding on links */
+export function button(text, url, { fill = Y, ink = D, center = false, small = false } = {}) {
+  const pad = small ? '13px 24px' : '17px 38px';
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"${center ? ' align="center" style="margin:0 auto;"' : ''}><tr>
+      <td align="center" bgcolor="${fill}" style="background:${fill};border-radius:100px;mso-padding-alt:${pad};"><a href="${href(url)}" target="_blank" style="display:inline-block;padding:${pad};font-family:${SANS};font-size:${small ? 14 : 16}px;font-weight:700;line-height:1.2;color:${ink};text-decoration:none;border-radius:100px;">${escapeHtml(text)}</a></td>
+    </tr></table>`;
+}
+
+/** A plain link with its arrow, for the second thing a reader might do */
+export function textLink(text, url, color = D) {
+  return `<a href="${href(url)}" target="_blank" style="font-family:${SANS};font-size:15px;font-weight:700;color:${color};text-decoration:underline;text-underline-offset:4px;">${escapeHtml(text)}</a>`;
+}
+
+/** The dark cover all three emails open with: the kicker, the name large, the lead photo, then whatever comes first */
+export function cover({ kicker, headline, size, phone, lead, alt, url, action = '' }) {
+  return `<tr><td bgcolor="${DD}" align="center" style="background:${DD};padding:14px 0 44px;${SIDE}text-align:center;" class="pd">
+    <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;color:${Y};">${escapeHtml(kicker)}</p>
+    <h1 class="${phone}" style="margin:0 0 30px;font-family:${SERIF};font-size:${size}px;font-weight:700;line-height:1.14;letter-spacing:-0.01em;color:#FFFFFF;">${headline}</h1>
+    ${lead ? `<a href="${href(url)}" target="_blank" style="display:block;text-decoration:none;"><img src="${escapeHtml(cfImg(lead, COVER_TRANSFORM))}" width="504" alt="${escapeHtml(alt)}" class="fl" style="width:100%;height:auto;display:block;border-radius:20px;" /></a>` : ''}
+    ${action ? `<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>${action}` : ''}
+  </td></tr>`;
+}
+
+/** The first words after the cover, a size up from the rest */
+export function lede(text, after = '') {
+  return `<tr><td bgcolor="${CR}" style="background:${CR};padding:40px 0 0;${SIDE}" class="pd">
+    <p class="ld" style="margin:0;font-family:${SERIF};font-size:19px;line-height:1.65;color:${D};">${escapeHtml(text)}</p>
+    ${after}
+  </td></tr>`;
+}
+
+/**
+ * The photos left for the body of an email, spread across the gallery since
+ * neighbors are often the same moment. A kid's gallery opens with the family, which
+ * suits an email sent before the reveal; a finished gallery opens on the cover's
+ * moment, so `middle` takes the middle of each stretch instead of its start.
+ */
+export function bodyPhotos(kid, lead, broken, count, middle = false) {
+  const usable = galleryPicks(kid).filter((ph) => ph.url !== lead && !broken.has(cfImg(ph.url, PHOTO_TRANSFORM)));
+  if (usable.length <= count) return usable;
+  return Array.from({ length: count }, (_, i) => usable[Math.floor(((i + (middle ? 0.5 : 0)) * usable.length) / count)]);
+}
+
+export const photoImg = (ph, name, transform, width) => `<img src="${escapeHtml(cfImg(ph.url, transform))}" width="${width}" alt="${escapeHtml(ph.alt || name)}" class="fl" style="width:100%;height:auto;display:block;border-radius:14px;" />`;
+
+/** Two photos, side by side at every screen size */
+export function photoPair(photos, name, top = 8) {
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top:${top}px;"><tr>
+      <td width="49%" valign="top">${photoImg(photos[0], name, PHOTO_TRANSFORM, 247)}</td>
+      <td width="2%" style="font-size:0;">&nbsp;</td>
+      <td width="49%" valign="top">${photoImg(photos[1], name, PHOTO_TRANSFORM, 247)}</td>
+    </tr></table>`;
+}
+
+/** The small line that thanks whoever took the pictures, and the way to the rest of them */
+export function photoNotes(kid, link = '') {
+  const credit = kid.photographer ? `<p style="margin:${link ? 10 : 0}px 0 0;font-family:${SANS};font-size:13px;color:${TM};">Photos by ${escapeHtml(curly(kid.photographer))}</p>` : '';
+  return link || credit ? `<div style="padding-top:16px;">${link}${credit}</div>` : '';
+}
+
+/** The invite's details on the dark cover, ruled like a ticket: rows of { label, lines, sub }, then what to know before coming */
+function ticket(rows, notes) {
+  const line = 'border-top:1px solid #3A3B42;';
+  const word = `font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#A5A6A9;`;
+  const main = `font-family:${SANS};font-size:17px;font-weight:600;line-height:1.4;color:#FFFFFF;`;
+  const quiet = `font-family:${SANS};font-size:15px;line-height:1.5;color:#C9CACC;`;
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="text-align:left;">
+      ${rows.map((r) => `<tr>
+        <td valign="top" width="72" style="width:72px;padding:17px 12px 15px 0;${line}${word}">${escapeHtml(r.label)}</td>
+        <td valign="top" style="padding:14px 0;${line}">
+          ${r.lines.map((l) => `<div style="${main}">${escapeHtml(l)}</div>`).join('')}
+          ${r.sub ? `<div style="margin-top:2px;${quiet}">${escapeHtml(r.sub)}</div>` : ''}
+        </td>
+      </tr>`).join('')}
+      ${notes.length ? `<tr><td colspan="2" style="padding:16px 0;${line}">
+        <div style="${word}">Before you come</div>
+        ${notes.map((n, i) => `<div style="margin-top:${i ? 6 : 8}px;${i ? quiet : `font-family:${SANS};font-size:15px;font-weight:600;line-height:1.5;color:#FFFFFF;`}">${escapeHtml(n)}</div>`).join('')}
+      </td></tr>` : ''}
+    </table>`;
 }
 
 /** The soft card of facts: rows of { label, main, sub } */
@@ -251,8 +346,8 @@ export function partnerCards(kid, brokenLogos = new Set(), lead = 'Made possible
   return logoRows.length ? `
   <tr><td style="background:${CR};padding:36px 0 0;">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
-      <td style="padding:40px 48px 34px;" class="pd">
-        ${label('Our partners', '#5A5B61', '#A5A6A9')}
+      <td style="padding:40px 0 34px;${SIDE}" class="pd">
+        ${label('Our partners', Y, '#C9CACC')}
         <h2 class="h2m" style="margin:18px 0 20px;font-family:${SERIF};font-size:22px;font-weight:700;line-height:1.3;color:#FFFFFF;">${escapeHtml(lead)} <em style="font-style:italic;color:${Y};">incredible</em> partners.</h2>
         ${logoRows.join('\n        ')}
       </td>
@@ -287,74 +382,55 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     : `Come celebrate ${name} on reveal day!`;
 
   // A picture that won't load is passed over, never shown broken
-  const shows = (src, transform) => !brokenLogos.has(cfImg(src, transform));
-  const heroSrc = [kid.heroImage, ...galleryPicks(kid).map((ph) => ph.url)].filter(Boolean).find((src) => shows(src, HERO_TRANSFORM)) || '';
-  const hero = heroSrc ? `
-        <tr><td style="padding:0 0 28px;">
-          <a href="${href(kidUrl)}" target="_blank" style="display:block;text-decoration:none;">
-            <img src="${escapeHtml(cfImg(heroSrc, HERO_TRANSFORM))}" width="504" alt="${escapeHtml(`${name}’s reveal day`)}" class="fl" style="width:100%;height:auto;display:block;border-radius:20px;" />
-          </a>
-        </td></tr>` : '';
+  const lead = [kid.heroImage, ...galleryPicks(kid).map((ph) => ph.url)].filter(Boolean).find((src) => !brokenLogos.has(cfImg(src, HERO_TRANSFORM))) || '';
 
+  // The day and the time each keep their own line, so a phone never breaks a date in two
   const rows = [
-    when && { label: 'When', main: when },
-    { label: 'Where', main: `${name}’s Home`, sub: cleanAddress(address) },
-    roomText && { label: 'Room', main: roomText },
+    when && { label: 'When', lines: [longDay(date), when.split(' · ')[1]].filter(Boolean) },
+    { label: 'Where', lines: [`${name}’s Home`], sub: cleanAddress(address).replace(/\b([A-Z]{2}) (\d{5})/, '$1\u00A0$2') },
+    roomText && { label: 'Room', lines: [roomText] },
   ].filter(Boolean);
   const noteLines = String(notes || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
   // The team's own arrival note stands in for ours, so it isn't said twice
   const arrive = /\barriv|\bearly\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${twoKids(name) ? 'arrive' : 'arrives'}.`;
-  const before = `
-        <tr><td style="padding:16px 0 0;">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:#FFF6CC;border-radius:12px;">
-            <tr><td style="padding:14px 18px;">
-              <span style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#7A6400;display:block;margin-bottom:4px;">Before you come</span>
-              ${arrive ? `<span style="font-family:${SANS};font-size:14px;font-weight:600;color:${D};line-height:1.5;display:block;">${escapeHtml(arrive)}</span>` : ''}
-              ${noteLines.map((l, i) => `<span style="font-family:${SANS};font-size:14px;${arrive ? '' : 'font-weight:600;'}color:${D};line-height:1.5;display:block;${arrive || i ? 'margin-top:6px;' : ''}">${escapeHtml(curly(l))}</span>`).join('')}
-            </td></tr>
-          </table>
-        </td></tr>`;
 
-  const calendar = slug ? `
-        <tr><td style="padding:24px 0 0;text-align:center;">
-          <p style="margin:0 0 12px;font-family:${SANS};font-size:15px;font-weight:700;color:${D};">Save it to your calendar</p>
-          ${pill('Google', cal.google, true)}${pill('Apple', cal.apple, true)}${pill('Outlook', cal.outlook, true)}
-          <p style="margin:10px 0 0;font-family:${SANS};font-size:14px;color:${TM};line-height:1.6;">Can’t be there in person? <a href="${href(liveUrl)}" target="_blank" style="color:${D};font-weight:600;text-decoration:underline;text-underline-offset:2px;">Watch it live</a> from anywhere.</p>
-        </td></tr>` : '';
+  const calendar = slug ? `<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>
+    <p style="margin:0 0 14px;font-family:${SANS};font-size:15px;font-weight:700;color:#FFFFFF;">Save it to your calendar</p>
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;"><tr>
+      <td>${button('Google', cal.google, { small: true })}</td>
+      <td width="8" style="width:8px;font-size:0;">&nbsp;</td>
+      <td>${button('Apple', cal.apple, { small: true })}</td>
+      <td width="8" style="width:8px;font-size:0;">&nbsp;</td>
+      <td>${button('Outlook', cal.outlook, { small: true })}</td>
+    </tr></table>
+    <p style="margin:18px 0 0;font-family:${SANS};font-size:14px;color:#C9CACC;line-height:1.6;">Can’t be there in person? <a href="${href(liveUrl)}" target="_blank" style="color:#FFFFFF;font-weight:600;text-decoration:underline;text-underline-offset:2px;">Watch it live</a> from&nbsp;anywhere.</p>` : '';
 
-  const summary = kid.heroSummary ? [curly(kid.heroSummary)] : stripHtml(kid.bio).split(/\n\n+/).filter((s) => s.trim().length > 20).slice(0, 1);
-  const story = summary.length ? `
-  <tr><td style="background:${CR};padding:36px 48px 0;" class="pd">
-    ${label(`${name}’s story`, D)}
-    <div style="height:10px;line-height:10px;font-size:0;">&nbsp;</div>
-    ${summary.map((t) => `<p style="margin:0 0 16px;font-family:${SANS};font-size:16px;line-height:1.75;color:${D};">${escapeHtml(t)}</p>`).join('')}
-  </td></tr>` : '';
-
-  const photoRow = photoStrip(kid, heroSrc, brokenLogos);
-
-  const partners = partnerCards(kid, brokenLogos, 'A reveal day made possible by these');
+  const summary = kid.heroSummary ? curly(kid.heroSummary) : stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '';
+  const photos = bodyPhotos(kid, lead, brokenLogos, 2);
+  const secondLine = `${name}’s Reveal Day`;
 
   const html = emailFrame(preview, `
   ${emailHeader(site)}
-  <tr><td style="background:${CR};padding:36px 48px 0;" class="pd">
-    ${label(['Reveal Day', shortDay(date)].filter(Boolean).join(' · '))}
-    <h1 class="h1m" style="margin:18px 0 12px;font-family:${SERIF};font-size:30px;font-weight:700;line-height:1.2;color:${D};">You’re Invited to<br>${escapeHtml(name)}’s Reveal Day</h1>
-    <p style="margin:0 0 28px;font-family:${SERIF};font-size:17px;line-height:1.7;color:${D};">After months of planning and building, the day is almost here. ${escapeHtml(name)} and the family haven’t seen the finished room yet. Come be there for that first reaction.</p>
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-      ${hero}
-      <tr><td style="padding:0;">
-        ${factsCard(rows)}
-      </td></tr>
-      ${before}
-      ${calendar}
-    </table>
+  ${cover({
+    kicker: ['Reveal Day', shortDay(date)].filter(Boolean).join(' · '),
+    headline: `<span style="display:block;margin-bottom:8px;font-size:24px;font-weight:400;font-style:italic;line-height:1.3;color:#E4E4E5;">You’re Invited to</span>${escapeHtml(name)}’s <em style="font-style:italic;color:${Y};">Reveal&nbsp;Day</em>.`,
+    size: secondLine.length <= 20 ? 42 : secondLine.length <= 25 ? 36 : 30,
+    phone: 'dms',
+    lead,
+    alt: `${name}’s reveal day`,
+    url: kidUrl,
+    action: `${ticket(rows, [arrive, ...noteLines.map(curly)].filter(Boolean))}${calendar}`,
+  })}
+  ${lede(`After months of planning and building, the day is almost here. ${name} and the family haven’t seen the finished room yet. Come be there for that first reaction.`)}
+  ${summary ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:36px 0 0;${SIDE}" class="pd">
+    ${label(`${name}’s story`)}
+    <p style="margin:14px 0 0;font-family:${SERIF};font-size:17px;line-height:1.7;color:${D};">${escapeHtml(summary)}</p>
+  </td></tr>` : ''}
+  <tr><td bgcolor="${CR}" style="background:${CR};padding:28px 0 0;${SIDE}" class="pd">
+    ${photos.length >= 2 ? photoPair(photos, name, 0) : ''}
+    ${photoNotes(kid, textLink(`See ${name}’s Story →`, kidUrl))}
   </td></tr>
-  ${story}
-  ${photoRow}
-  <tr><td style="background:${CR};padding:24px 48px 0;" class="pd">
-    ${pill(`See ${name}’s Story →`, kidUrl)}
-  </td></tr>
-  ${partners}
+  ${partnerCards(kid, brokenLogos, 'A reveal day made possible by these') || `<tr><td bgcolor="${CR}" style="background:${CR};height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>`}
   ${signOff('Hope to see you there.', teamPicture)}
   ${emailFooter(site)}`);
 

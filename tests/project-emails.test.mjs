@@ -7,6 +7,7 @@
 import { test, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
+import { revealInviteEmail } from '../functions/api/_reveal-invite-email.js';
 import { projectKickoffEmail, projectRevealEmail } from '../functions/api/_project-email.js';
 import { queueProjectEmail, readProjectRow, syncProjectEmail, runProjectEmails, kickoffNow, revealMissing, projectNote } from '../functions/api/_project-emails.js';
 import { writeConfig } from '../functions/api/_reveal-invites.js';
@@ -224,7 +225,17 @@ test('a name wraps as a phrase on a phone, and a long one gets a smaller headlin
   const long = projectRevealEmail({ kid: { ...DONE, name: 'Tyrece & Maddie', roomCount: 2, roomTypes: ['Bathroom', 'Bedroom'] } });
   assert.match(long.html, /Tyrece &amp; Maddie’s Dream&nbsp;Rooms<br>Are&nbsp;/);
   assert.match(long.html, /<h1 class="dms" style="[^"]*font-size:30px/);
-  assert.match(projectRevealEmail({ kid: DONE }).html, /<h1 class="dms" style="[^"]*font-size:42px/);
+  assert.match(projectRevealEmail({ kid: DONE }).html, /<h1 class="dms" style="[^"]*font-size:40px/);
+});
+
+test('Gmail drops the style block, so nothing that has to fit a phone leans on it', () => {
+  const invite = revealInviteEmail({ kid: DONE, date: '2027-03-12', time: '16:00', address: '100 Example Way, Atlanta, GA 30301', notes: 'Park on the street.' });
+  for (const e of [projectKickoffEmail({ kid: DONE }), projectRevealEmail({ kid: DONE }), invite]) {
+    assert.ok(!/padding:\d+px 48px/.test(e.html), 'side padding moves with the width');
+    assert.match(e.html, /padding-left:8%;padding-right:8%;mso-padding-left-alt:48px/, 'Outlook keeps a fixed one');
+    assert.match(e.html, /<table role="presentation"[^>]*width="100%"[^>]*max-width:600px/, 'the width is fluid before any style block');
+    assert.match(e.html, /<h1[^>]*font-size:\d+px/, 'the headline has its own size');
+  }
 });
 
 test('neither email carries anything about where the family lives', () => {
