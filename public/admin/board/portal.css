@@ -744,7 +744,6 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 
 /* ─── A meeting as it happens ─── */
 .bp-boot--inline { padding-top: 10vh; }
-.bp-waiting { display: flex; align-items: center; gap: 0.6rem; margin: 0 0 1.1rem; padding: 0.75rem 1rem; border-radius: var(--r); background: var(--yellow-wash); border: 1px solid rgba(245, 204, 0, 0.35); color: var(--ink-2); font-size: 0.95rem; }
 /* The live bar: dark, held under the header while the agenda scrolls */
 .bp-livehead { margin: 0 0 1.25rem; padding: 1.2rem 1.4rem 1.1rem; border-radius: var(--r-lg); background: var(--ink); color: #F4F2EA; box-shadow: var(--shadow-2); }
 .bp-livehead.is-ended { position: static; background: #fff; color: var(--ink); border: 1px solid rgba(45, 47, 44, 0.08); box-shadow: var(--shadow-1); }

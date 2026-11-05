@@ -2679,7 +2679,7 @@ function LiveMeeting({ id, m, ctx, notes }) {
   // who never pressed End doesn't keep the board from them. A vote still open stays in the room)
   if (v?.live.startedAt && !(m?.minutesFrom && (v.live.endedAt || !v.live.vote))) return html`<${LiveRoom} v=${v} setV=${setV} m=${m} ctx=${ctx} notes=${notes} />`;
   // On the day, before the chair starts: the meeting as usual, and it turns live by itself
-  if (m) return html`<${MeetingDetail} m=${m} ctx=${ctx} waiting=${!!v} notes=${notes} />`;
+  if (m) return html`<${MeetingDetail} m=${m} ctx=${ctx} notes=${notes} />`;
   if (gone) return html`<${NotFound} />`;
   if (!v) return html`<div class="bp-boot bp-boot--inline"><p>Opening the meeting…</p></div>`;
   return html`<${LiveRoom} v=${v} setV=${setV} m=${null} ctx=${ctx} />`;
@@ -3190,7 +3190,7 @@ function AgendaRail({ sections, labels, extra, plan = null }) {
   </nav>`;
 }
 
-function MeetingDetail({ m, ctx, waiting = false, notes = null }) {
+function MeetingDetail({ m, ctx, notes = null }) {
   const { data, d } = ctx;
   // (minutes in: the meeting's been held, whether or not the chair pressed End)
   const upcoming = m.date >= data.today && !heldEarly(m, data.today) && !m.minutesFrom;
@@ -3244,7 +3244,6 @@ function MeetingDetail({ m, ctx, waiting = false, notes = null }) {
     : m.minutes === 'approved' ? `Minutes approved${m.approvedOn ? ` ${shortDate(m.approvedOn).replace(/, \d{4}$/, '')}` : ''}` : 'Draft minutes';
   return html`
     <a class="bp-back bp-noprint" href="#/meetings"><${Icon} name="back" size=${18} />All meetings</a>
-    ${waiting && upcoming ? html`<p class="bp-waiting" role="status"><span class="bp-live-dot" aria-hidden="true"></span>Today’s meeting. This page follows it live once the chair starts: where the board is on the agenda, who’s here, and votes.</p>` : null}
     <header class=${`bp-aghero ${upcoming ? '' : 'is-past'}`}>
       <div class="bp-aghero__main">
         <p class="bp-eyebrow">${upcoming ? (m.pending ? 'Agenda coming' : 'Board meeting agenda') : 'Board meeting minutes'}<span class=${`bp-soon ${m.minutes === 'approved' && !upcoming ? 'is-ok' : ''}`}>${status}</span>${m.preview ? html`<span class="bp-soon is-preview" title="Only you see it. Share it in Board and the board sees it as it is here">Not shared yet</span>` : null}</p>
