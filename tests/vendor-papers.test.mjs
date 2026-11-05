@@ -52,7 +52,7 @@ function account(id) {
   if (!v) return null;
   const email = { nodes: v.email ? [{ value: v.email, customField: { id: 'VC-EMAIL', type: 'emailAddress' } }] : [] };
   return {
-    id, name: v.name, type: 'vendor', archivedAt: null,
+    id, name: v.name, type: 'vendor', archivedAt: v.archivedAt || null,
     customFieldValues: { nodes: Object.entries(v.values).map(([fid, value]) => ({ value, customField: { id: fid } })) },
     primaryContact: { id: 'CON1', title: 'Owner', customFieldValues: email },
     contacts: { nodes: [{ id: 'CON1', name: 'Tom', title: 'Owner', customFieldValues: email },
@@ -632,6 +632,18 @@ test('a two-letter JobTread vendor that is also a Mercury payee does not stop th
   try { await findPayees(env, { now: NOW, force: true }); } catch (e) { err = e; }
   assert.equal(err?.message || null, null, 'findPayees threw');
   assert.deepEqual((await siteRows()).map((r) => r.name), ['Capin Crouse LLP'], 'the CPA is found; GE is the JobTread vendor');
+});
+
+test('a vendor archived in JobTread leaves the W-9 list (a search still finds it) and comes back when it’s unarchived', async () => {
+  const row = async () => (await (await adminRead()).json()).list.find((r) => r.id === VENDOR);
+  await refreshCache(env, { now: NOW });
+  assert.equal((await row()).archived, false, 'a live vendor is on the list');
+  world.vendors[VENDOR].archivedAt = '2026-11-01T00:00:00Z';
+  await refreshCache(env, { now: NOW });
+  assert.equal((await row()).archived, true, 'archived in JobTread: off the list, found only by its name');
+  world.vendors[VENDOR].archivedAt = null;
+  await refreshCache(env, { now: NOW });
+  assert.equal((await row()).archived, false, 'unarchived in JobTread: back on the list');
 });
 
 test('a site company taken off the list comes back when SOARD pays it again (what the archive dialog promises)', async () => {

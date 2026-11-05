@@ -118,7 +118,7 @@ async function listAll(env, now = Date.now()) {
       id, name: v.name || name || '(no name)', site, jobs, w9: v.w9, gl: v.glExpires, wc: v.wcExpires, docs: v.docs, paid: paid.cents, lastPaid: paid.last,
       label: shownLabel(v, state, ask), need: OVERRIDES.has(v.docs) ? v.docs : null, ok: state.ok, expiring: state.expiring, staff: state.staff,
       files: f?.n || 0, lastFile: f?.last || null, look: lookSet.has(id), asked: ask?.open ? ask.askedAt : null,
-      added: site ? p?.createdAt || null : null, archived: !!p?.archived && site,
+      added: site ? p?.createdAt || null : null, archived: !!p?.archived,
     };
   };
   const list = [];
