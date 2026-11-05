@@ -18,7 +18,23 @@
  *     nobody is assigned to, so JobTread emails no one: who wrote to whom and
  *     when, the words without the quoted history, and the files. Replies go
  *     under the first email of their conversation. The last year's family
- *     emails are brought in once, oldest first, before any newer ones.
+ *     emails are brought in once an application is approved, oldest first,
+ *     before any newer ones.
+ *
+ * Only email about a real kid or community project goes on an account
+ * (Peter, Nov 4 2026, after a staff try of the form with personal Gmail
+ * brought staff's own mail onto it). Every layer has to pass:
+ *   1. Who: never an account where staff is the customer contact (their
+ *      Google name or address), a TEST account, staff's own addresses (by
+ *      address, or by their name on an email), or an outside mass email.
+ *   2. What: Workers AI reads each email and it goes on only when it's about
+ *      that kid or project (a reply in a conversation already there is). No
+ *      answer, nothing posted: it's tried again later.
+ *   3. When: the last year's email comes in only once the application is
+ *      approved; before that, only new email.
+ *   4. Brake: a new account (under 3 days) with more than 10 emails at once
+ *      holds them until it's 3 days old, and Slack says so once.
+ *   5. Undo: every comment it makes is recorded (posted_ids).
  *
  * Each email is handled once, even when it's in several inboxes (Message-ID).
  * Receipts start from the day this was turned on: older ones were forwarded by
@@ -31,7 +47,8 @@ import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
 import { mailboxes, gmail, header, textOf, htmlText, filesOf, partsOf, bytesOf } from './_mailbox.js';
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { postAccountComment } from './_applicant-comms.js';
-import { EMAIL_FROM, emailConfigured } from './_broadcast-notify.js';
+import { EMAIL_FROM, emailConfigured, slackIssue, SITE_ORIGIN } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
 import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
 import { DEFAULT_RECEIPT_INBOX } from './_spend-receipts.js';
@@ -67,6 +84,11 @@ const CALENDAR = /^(accepted|declined|tentatively accepted|tentative|invitation|
 const AUTO_REPLY = /^\W*(out of (the )?office|automatic reply|auto(matic)?[- ]?(reply|response)|autoreply|away from)/i;
 // A contact who's family (JobTread's title): "Mom", "Stepfather", "Secondary parent", "Dylan grandparent"
 const FAMILY_TITLE = /(^|\W)(mom|moth|mama|dad|fath|papa|parent|guardian|grand|aunt|uncle|step|caregiver|foster|sister|brother|husband|wife|spouse|family)/i;
+// More people than this on an email from someone outside SOARD and the family is a mass email
+const CROWD = 10;
+// A new account getting more emails than this at once waits until it's this old (a test, most likely)
+const BRAKE_COUNT = 10;
+const BRAKE_AGE_MS = 3 * 86400e3;
 const INVITE_REPLY = /^((re|fwd?):\s*)+(updated )?invitation\b/i;
 
 const SCHEMA = [
@@ -81,7 +103,8 @@ const SCHEMA = [
 ];
 const _ready = new WeakSet();
 // Added after the first deploy: the files a family email brought (name:size), so a reply carrying them again doesn't add them twice
-const COLUMNS = ['file_keys TEXT'];
+// and every comment it made, root or reply, by account (Nov 4 2026), so a mistake can be found and removed
+const COLUMNS = ['file_keys TEXT', 'posted_ids TEXT'];
 async function ensure(DB) {
   if (_ready.has(DB)) return;
   for (const s of SCHEMA) await DB.prepare(s).run();
@@ -97,6 +120,10 @@ const writeState = (DB, st) => DB.prepare("INSERT OR REPLACE INTO mail_sweep_sta
   .bind(JSON.stringify(st), new Date().toISOString()).run();
 
 const addresses = (s) => (String(s || '').match(/[^\s<>,;"'()]+@[^\s<>,;"'()]+\.[a-z]{2,}/gi) || []).map(normEmail);
+// The people on a header with the names they go by: "Peter Ranney" <x@gmail.com> → [{ name, email }]
+const named = (s) => [...String(s || '').matchAll(/(?:"([^"]*)"|([^,<>"]*?))\s*<([^<>\s]+@[^<>\s]+)>/g)].map((m) => ({ name: (m[1] ?? m[2] ?? '').trim(), email: normEmail(m[3]) }));
+// A person's name to compare by: first and last word ("Holly K. Ranney" → "holly ranney")
+const nameKey = (name) => { const w = String(name || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean); return w.length > 1 ? `${w[0]} ${w[w.length - 1]}` : ''; };
 const firstName = (name, email) => String(name || '').trim().split(/\s+/)[0] || String(email).split('@')[0];
 const when = (ms) => new Date(ms).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
@@ -110,19 +137,46 @@ const when = (ms) => new Date(ms).toLocaleString('en-US', { timeZone: 'America/N
  * untitled contact counts on a personal address (Gmail and the like). On an
  * organization's account (a school's director) everyone on it is the
  * applicant. Staff and JobTread addresses never count.
+ *
+ * Staff's own mail never goes on an account. `staff` is the Google accounts'
+ * names: a contact with a staff member's name is staff, whatever address they
+ * gave (a personal Gmail on a try of the form). An application with staff as
+ * the family (the main contact, or a Mom or Dad) is staff's own, so nothing on
+ * it counts, and staff's addresses count on no account at all.
+ *
+ * Also → approved (account ids whose application is approved), backfill (the
+ * addresses whose last year comes in: one account's, and that one approved),
+ * created (account id → ms), kinds (account id → 'kid' | 'project': a child
+ * has a birthday, diagnosis or family on it; an organization has none) and
+ * staffNames, for triage.
  */
-export async function familyAddresses(DB) {
+export async function familyAddresses(DB, { staff = [] } = {}) {
   const byEmail = new Map();
   const names = new Map();
+  const staffNames = new Set(staff.map(nameKey).filter(Boolean));
+  const out = { byEmail, names, staffNames, approved: new Set(), backfill: new Set(), created: new Map(), kinds: new Map() };
+  const isStaff = (c) => staffNames.has(nameKey(c.name)) || addresses(c.email).some(isStaffEmail);
+  const staffOwn = new Set();
   let rows = [];
-  try { rows = (await DB.prepare('SELECT account_id, name, contact_email, contacts FROM applicants').all()).results || []; } catch { return { byEmail, names }; }
+  try { rows = (await DB.prepare('SELECT account_id, name, status, fields, created_at, contact_name, contact_email, contacts FROM applicants').all()).results || []; } catch { return out; }
   for (const r of rows) {
     // A staff test run's account carries a staff member's own address
     if (/\btest\b/i.test(r.name || '')) continue;
-    names.set(r.account_id, r.name);
     let contacts = [];
     try { contacts = (JSON.parse(r.contacts || '[]') || []).filter((c) => c && typeof c === 'object'); } catch { /* none */ }
+    if (staffNames.has(nameKey(r.contact_name)) || contacts.some((c) => isStaff(c) && FAMILY_TITLE.test(c.title || ''))) {
+      for (const e of [...contacts.flatMap((c) => addresses(c.email)), ...addresses(r.contact_email)]) staffOwn.add(e);
+      continue;
+    }
+    for (const c of contacts) if (isStaff(c)) for (const e of addresses(c.email)) staffOwn.add(e);
+    names.set(r.account_id, r.name);
+    if (r.status === 'Approved') out.approved.add(r.account_id);
+    const at = Date.parse(r.created_at || '');
+    if (at) out.created.set(r.account_id, at);
     const isFamily = contacts.some((c) => FAMILY_TITLE.test(c.title || ''));
+    let fields = {};
+    try { fields = JSON.parse(r.fields || '{}') || {}; } catch { /* none */ }
+    out.kinds.set(r.account_id, isFamily || String(fields.birthday || '').trim() || String(fields.diagnosis || '').trim() ? 'kid' : 'project');
     const counts = (c) => !isFamily || FAMILY_TITLE.test(c.title || '') || (!String(c.title || '').trim() && addresses(c.email).every((e) => FREE_MAIL.has(e.split('@')[1])));
     const theirs = contacts.flatMap((c) => addresses(c.email).map((e) => [e, counts(c)]));
     const left = new Set(theirs.filter(([, ok]) => !ok).map(([e]) => e));
@@ -132,7 +186,9 @@ export async function familyAddresses(DB) {
       byEmail.set(e, [...new Set([...(byEmail.get(e) || []), r.account_id])]);
     }
   }
-  return { byEmail, names };
+  for (const e of staffOwn) byEmail.delete(e);
+  for (const [e, ids] of byEmail) if (ids.length === 1 && out.approved.has(ids[0])) out.backfill.add(e);
+  return out;
 }
 
 /** The accounts an email's people belong to. An address on two families' accounts (a caseworker) points at neither */
@@ -150,20 +206,27 @@ function accountsOf(people, byEmail) {
  * | { kind: 'receipt' } | null. Family wins; a mailing to more than three
  * families is a newsletter, not a conversation.
  */
-export function triage(msg, { byEmail }) {
+export function triage(msg, { byEmail, staffNames = new Set() }) {
   const h = msg.payload?.headers;
   const subject = header(h, 'Subject');
-  const from = addresses(header(h, 'From'));
-  const people = [...new Set([...from, ...addresses(header(h, 'To')), ...addresses(header(h, 'Cc')), ...addresses(header(h, 'Reply-To'))])];
+  // A staff member's own address by the name on it ("Peter Ranney <…@gmail.com>"): never a family's, on any account
+  const theirOwn = new Set(['From', 'To', 'Cc', 'Reply-To'].flatMap((k) => named(header(h, k)))
+    .filter((p) => !isStaffEmail(p.email) && staffNames.has(nameKey(p.name))).map((p) => p.email));
+  const fromAll = addresses(header(h, 'From'));
+  const from = fromAll.filter((e) => !theirOwn.has(e));
+  const people = [...new Set([...fromAll, ...addresses(header(h, 'To')), ...addresses(header(h, 'Cc')), ...addresses(header(h, 'Reply-To'))])].filter((e) => !theirOwn.has(e));
   if (CALENDAR.test(subject.trim()) || AUTO_REPLY.test(subject) || /auto-replied/i.test(header(h, 'Auto-Submitted'))) return null;
   const tools = people.some((e) => OWN_TOOLS.test(e));
   const guestChatter = INVITE_REPLY.test(subject.trim()) && !from.every(isStaffEmail) && !accountsOf(from, byEmail).length;
   // A mailing list's email (a family's business newsletter); SOARD's own groups (info@) mark theirs too, and those count
   const list = `${header(h, 'List-Id')} ${header(h, 'List-Unsubscribe')}`;
   const mailing = (list.trim() || /bulk|list|junk/i.test(header(h, 'Precedence'))) && !/soardcharity\.com/i.test(list);
-  const accounts = tools || guestChatter || mailing ? [] : accountsOf(people, byEmail);
+  // A mass email from outside (a photographer's promo to 80 people, a family among them) isn't about the family's kid or project
+  const crowd = people.length > CROWD && !from.some(isStaffEmail) && !accountsOf(from, byEmail).length;
+  const accounts = tools || guestChatter || mailing || crowd ? [] : accountsOf(people, byEmail);
   if (accounts.length && accounts.length <= 3) return { kind: 'family', accounts };
-  if (!from.length || from.every(isStaffEmail) || from.some((e) => OWN_TOOLS.test(e))) return null;
+  // Receipts go by who really sent it: one forwarded from a staff member's own Gmail is still a receipt
+  if (!fromAll.length || fromAll.every(isStaffEmail) || fromAll.some((e) => OWN_TOOLS.test(e))) return null;
   if ((msg.labelIds || []).includes('SENT') || NOT_RECEIPT.test(subject)) return null;
   return RECEIPTISH.test(`${subject} ${msg.snippet || ''}`) ? { kind: 'receipt' } : null;
 }
@@ -263,6 +326,54 @@ export async function judgeReceipt(env, { subject, from, owner, text, files }) {
   return { type: sure ? (/invoice/i.test(subject) ? 'bill' : 'receipt') : 'not_receipt', vendor: from.replace(/<.*>/, '').replace(/"/g, '').trim().slice(0, 80), total: amount, date: '', personal: false, reason: sure ? 'a receipt by its subject' : 'not clearly a receipt', by: 'rules' };
 }
 
+// ─── Is it about the kid or the project? ────────────────────────────
+
+const FAMILY_PROMPT = `You sort email for Sunshine on a Ranney Day (SOARD), a children's charity that makes over bedrooms, bathrooms and therapy spaces for children with special needs. It also does community projects: spaces it makes over for organizations (schools, clinics, therapy centers) that serve those children.
+
+An email from a staff member's inbox matched the record of a child SOARD is helping, or of a community project, because someone on the email is on that record. Decide whether the email belongs on that record. Reply with JSON only:
+{"about": true | false, "reason": "<under 15 words>"}
+
+true: it's about SOARD's work with this child's family or this project. For example the application, the child and their needs, the room or space, design, measurements, products, schedule, site visits, permits, contractors and vendors, demo day, the reveal, photos and video, the child's story and the website, donations and fundraising for them, SOARD's events they're part of or asking about (the gala, fundraisers), partners who referred or support this child or project (Make-A-Wish, a caseworker, a therapist) writing about them, thank-yous, check-ins and follow-ups, and replies in those conversations.
+false: newsletters, promotions, sales and ads; an email sent to a crowd; a business's, school's or church's announcements; a staff member's own life (their own children and their school, their home, mortgage, bills, loans, cars, travel, tickets, shopping, family news); anything about a different child, family or project; anything else not about SOARD's work with them.
+Plainly personal, plainly promotional or sent to a crowd: false. Otherwise, when it's a real exchange with this family or project's people and you're unsure, true.`;
+const FAMILY_SCHEMA = { type: 'object', properties: { about: { type: 'boolean' }, reason: { type: 'string' } }, required: ['about', 'reason'] };
+
+function readFamilyVerdict(out) {
+  let j = out?.response ?? out;
+  if (typeof j === 'string') { try { j = JSON.parse(j.slice(j.indexOf('{'), j.lastIndexOf('}') + 1)); } catch { return null; } }
+  if (!j || typeof j.about !== 'boolean') return null;
+  return { about: j.about, reason: String(j.reason || '').slice(0, 120) };
+}
+
+/**
+ * Workers AI on whether one email is about the kid or project it matched →
+ * { about, reason }. It never guesses without the model: no answer throws, so
+ * the email waits and is tried again rather than going on unread.
+ */
+export async function judgeFamily(env, { records, owner, from, to, subject, text, files = [] }) {
+  if (!env.AI?.run) throw new Error('Workers AI isn’t connected, so it can’t check the email is about the family');
+  const input = [
+    ...records.map((r) => `Record: ${r.name} (${r.kind === 'project' ? 'a community project' : 'a child SOARD is helping, and their family'})`),
+    `Inbox of: ${owner}`, `From: ${from}`, `To: ${String(to).slice(0, 600)}`, `Subject: ${subject}`,
+    `Files: ${files.map((f) => f.name).join(', ') || 'none'}`, `Email:\n${String(text).slice(0, 3500)}`,
+  ].join('\n');
+  let timer;
+  try {
+    const out = await Promise.race([
+      env.AI.run(AI_MODEL, {
+        messages: [{ role: 'system', content: FAMILY_PROMPT }, { role: 'user', content: input }],
+        max_tokens: 120, temperature: 0, response_format: { type: 'json_schema', json_schema: FAMILY_SCHEMA },
+      }),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Workers AI took too long')), AI_TIMEOUT_MS); }),
+    ]);
+    const v = readFamilyVerdict(out);
+    if (!v) throw new Error('Workers AI didn’t say whether it’s about the family');
+    return v;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ─── Files ──────────────────────────────────────────────────────────
 
 /** The files worth passing on: attachments, and photos pasted into the email (not signature logos) */
@@ -352,6 +463,16 @@ async function handleFamily(env, ctx, row, msg) {
   const accounts = JSON.parse(row.accounts || '[]').filter((id) => ctx.names.has(id));
   if (!accounts.length) return { state: 'skipped', detail: 'the family isn’t in JobTread any more' };
   const familyNames = accounts.map((id) => ctx.names.get(id)).join(' and ');
+  // The brake: a new account with a pile of email at once (a test, most likely) waits until it's old enough
+  for (const id of accounts) {
+    const born = ctx.families.created.get(id);
+    if (!born || ctx.now - born >= BRAKE_AGE_MS) continue;
+    const n = (await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE kind = 'family' AND accounts LIKE ? AND state NOT IN ('skipped', 'duplicate')").bind(`%"${id}"%`).first())?.n || 0;
+    if (n > BRAKE_COUNT) {
+      await tellHeld(env, ctx, id, n, born);
+      return { state: 'held', detail: `waiting until ${ctx.names.get(id)} is ${BRAKE_AGE_MS / 86400e3} days old: a new account with ${n} emails at once` };
+    }
+  }
   const subject = header(h, 'Subject');
   // The conversation so far: its first email on each account (replies go under it), and the files already added
   const earlier = row.conv ? ((await env.DB.prepare("SELECT state, comment_ids, file_keys FROM mail_sweep WHERE conv = ? AND kind = 'family' AND state IN ('posted', 'would') ORDER BY at LIMIT 100").bind(row.conv).all()).results || []) : [];
@@ -369,12 +490,22 @@ async function handleFamily(env, ctx, row, msg) {
     '', withoutQuoted(textOf(msg.payload)) || '(no words, only files)',
     ...(files.length ? ['', `Files: ${files.map((f) => f.name).join(', ')}`] : []),
   ].join('\n').slice(0, 4096);
+  // Each email must be about the kid or project; a reply in a conversation already on the account is
+  if (accounts.some((id) => !roots[id])) {
+    const v = await judgeFamily(env, {
+      records: accounts.map((id) => ({ name: ctx.names.get(id), kind: ctx.families.kinds.get(id) })),
+      owner: ctx.ownerName, from: header(h, 'From'), to: [header(h, 'To'), header(h, 'Cc')].filter(Boolean).join(', '),
+      subject, text: textOf(msg.payload), files,
+    });
+    if (!v.about) return { state: 'skipped', detail: `not about ${familyNames}: ${v.reason || 'the check said no'}` };
+  }
   if (ctx.watching) return { state: 'would', detail: `would add to ${familyNames}${files.length ? ` with ${files.length === 1 ? 'a file' : `${files.length} files`}` : ''}`, fileKeys };
   if (!env.JOBTREAD_GRANT_KEY) throw new Error('JOBTREAD_GRANT_KEY isn’t set');
 
   const bytes = [];
   for (const f of files) bytes.push({ name: f.name, type: f.type, bytes: await fileBytes(ctx.token, msg, f, ctx.fetchImpl) });
   const ids = {};
+  const own = {};
   for (const accountId of accounts) {
     const uploads = [];
     for (const b of bytes) uploads.push({ name: b.name, id: await uploadToJobTread(env, b, ctx.fetchImpl) });
@@ -386,12 +517,29 @@ async function handleFamily(env, ctx, row, msg) {
     }, ctx.fetchImpl);
     if (!id) throw new Error('JobTread didn’t make the comment');
     ids[accountId] = parent || id;
+    own[accountId] = id;
   }
-  return { state: 'posted', detail: `added to ${familyNames}${files.length ? ` with ${files.length === 1 ? 'a file' : `${files.length} files`}` : ''}`, commentIds: ids, fileKeys };
+  return { state: 'posted', detail: `added to ${familyNames}${files.length ? ` with ${files.length === 1 ? 'a file' : `${files.length} files`}` : ''}`, commentIds: ids, postedIds: own, fileKeys };
 }
 
-const finish = (DB, row, { state, detail = null, commentIds = null, fileKeys = null }, now) => DB.prepare('UPDATE mail_sweep SET state = ?, detail = ?, comment_ids = COALESCE(?, comment_ids), file_keys = ?, updated_at = ? WHERE mailbox = ? AND id = ?')
-  .bind(state, detail ? String(detail).slice(0, 300) : null, commentIds ? JSON.stringify(commentIds) : null, fileKeys ? JSON.stringify(fileKeys) : null, new Date(now).toISOString(), row.mailbox, row.id).run();
+/** Once per account: Slack hears that a new account's emails are waiting, and why */
+async function tellHeld(env, ctx, accountId, n, born) {
+  const first = await env.DB.prepare('INSERT OR IGNORE INTO mail_sweep_state (key, data, updated_at) VALUES (?, ?, ?)')
+    .bind(`held:${accountId}`, JSON.stringify({ n }), new Date(ctx.now).toISOString()).run();
+  if (!first.meta?.changes) return;
+  const name = ctx.names.get(accountId);
+  const until = new Date(born + BRAKE_AGE_MS).toLocaleDateString('en-US', { timeZone: 'America/New_York', weekday: 'long', month: 'long', day: 'numeric' });
+  await slackIssue(env, `mail-held:${accountId}`, slackCard({
+    icon: '✋',
+    title: `${name}’s emails are waiting`,
+    lead: `${name} is a new JobTread account, and ${n} emails in staff inboxes matched it at once. That usually means a test, so none of them are on the account. If it’s a test, delete it in JobTread and they never will be. If it’s real, they go on ${until}, each one checked first.`,
+    buttons: [{ label: 'Open in JobTread', url: `https://app.jobtread.com/customers/${accountId}` }, { label: 'Open the applicant', url: `${SITE_ORIGIN}/admin/#applications/applicants/${accountId}` }],
+    footer: 'Staff inboxes sweep',
+  }), { title: `${name}’s emails waiting`, kind: 'attention', area: 'applications' }).catch((err) => console.error('[mail-sweep] held alert', err.message));
+}
+
+const finish = (DB, row, { state, detail = null, commentIds = null, postedIds = null, fileKeys = null }, now) => DB.prepare('UPDATE mail_sweep SET state = ?, detail = ?, comment_ids = COALESCE(?, comment_ids), posted_ids = COALESCE(?, posted_ids), file_keys = ?, updated_at = ? WHERE mailbox = ? AND id = ?')
+  .bind(state, detail ? String(detail).slice(0, 300) : null, commentIds ? JSON.stringify(commentIds) : null, postedIds ? JSON.stringify(postedIds) : null, fileKeys ? JSON.stringify(fileKeys) : null, new Date(now).toISOString(), row.mailbox, row.id).run();
 
 async function handle(env, ctx, row) {
   // Claimed first, so two heartbeats can't both send it
@@ -479,7 +627,8 @@ async function backfillStep(env, ctx, st, boxes) {
   const bf = st.backfill ||= { done: [] };
   if (!bf.chunk) {
     const done = new Set(bf.done);
-    const pending = [...ctx.families.byEmail.keys()].filter((e) => !done.has(e)).sort();
+    // Only an approved application's addresses: before that, a family (or a test) gets new email only
+    const pending = [...ctx.families.backfill].filter((e) => !done.has(e)).sort();
     if (!pending.length) return false;
     Object.assign(bf, { chunk: nextChunk(pending), box: 0, page: null, until: ctx.now });
   }
@@ -518,7 +667,7 @@ async function sweep(env, st, { fetchImpl, now }) {
   const people = new Map((await mailboxes(env)).map((b) => [b.email, b.name]));
   const boxes = [...people.keys()];
   if (!boxes.length) throw new Error('Google’s staff accounts haven’t been read yet (Staff sign-in follows Google)');
-  const families = await familyAddresses(env.DB);
+  const families = await familyAddresses(env.DB, { staff: [...people.values()] });
   const cfg = await readConfig(env.DB).catch(() => ({}));
   const tokens = new Map();
   const ctx = {
@@ -550,10 +699,18 @@ async function sweep(env, st, { fetchImpl, now }) {
       break;
     }
   }
-  const backfillDone = !st.backfill?.chunk && [...families.byEmail.keys()].every((e) => (st.backfill?.done || []).includes(e));
+  const backfillDone = !st.backfill?.chunk && [...families.backfill].every((e) => (st.backfill?.done || []).includes(e));
 
   // Oldest first; family emails wait until the last year's are all in, so each family's reads in order
   const retryBefore = new Date(now - RETRY_MS).toISOString();
+  // Held for a new account: back in line once the account is old enough (or gone), and sorted again then
+  for (const r of (await env.DB.prepare("SELECT mailbox, id, accounts FROM mail_sweep WHERE state = 'held' LIMIT 500").all()).results || []) {
+    let ids = [];
+    try { ids = JSON.parse(r.accounts || '[]'); } catch { /* none */ }
+    if (ids.every((id) => !families.created.has(id) || now - families.created.get(id) >= BRAKE_AGE_MS)) {
+      await env.DB.prepare("UPDATE mail_sweep SET state = 'queued', detail = NULL WHERE mailbox = ? AND id = ? AND state = 'held'").bind(r.mailbox, r.id).run();
+    }
+  }
   // One a heartbeat dropped halfway: tried again like a failure
   await env.DB.prepare("UPDATE mail_sweep SET state = 'failed', tries = COALESCE(tries, 0) + 1 WHERE state = 'working' AND updated_at < ?").bind(retryBefore).run();
   while (Date.now() - started < HANDLE_MS) {
@@ -597,7 +754,7 @@ export async function mailSweepStatus(env) {
   const rows = (await env.DB.prepare('SELECT kind, state, COUNT(*) AS n FROM mail_sweep WHERE updated_at >= ? GROUP BY kind, state').bind(since).all()).results || [];
   const counts = { receipt: {}, family: {} };
   for (const r of rows) counts[r.kind] = { ...counts[r.kind], [r.state]: r.n };
-  const recent = ((await env.DB.prepare("SELECT kind, state, detail, mailbox, updated_at FROM mail_sweep WHERE state IN ('sent', 'posted', 'would', 'failed') ORDER BY updated_at DESC LIMIT 12").all()).results || [])
+  const recent = ((await env.DB.prepare("SELECT kind, state, detail, mailbox, updated_at FROM mail_sweep WHERE state IN ('sent', 'posted', 'would', 'failed', 'held') ORDER BY updated_at DESC LIMIT 12").all()).results || [])
     .map((r) => ({ kind: r.kind, state: r.state, detail: r.detail, inbox: String(r.mailbox).split('@')[0], at: r.updated_at }));
   const queued = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
   // Did the receipt inbox take the last one? (Resend's report, through the email log)

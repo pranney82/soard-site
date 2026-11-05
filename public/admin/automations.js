@@ -76,6 +76,7 @@ const sweepLive = (kind) => (f) => {
   const ls = kind === 'receipt' ? m.lastSent : null;
   if (ls && ['bounced', 'failed', 'complained'].includes(ls.status)) return ATTN(`${ls.to} turned the last receipt away (${stamp(ls.at)})${ls.detail ? `: ${ls.detail}` : ''}. In Google Admin, the group needs to accept email from outside SOARD.`, m.lastSweptAt);
   if (m.watchUntil && Date.parse(m.watchUntil) > Date.now()) return ON(`Only watching until ${stamp(m.watchUntil)}, then it does what it found: ${plural(c.would || 0, noun)} so far.`, m.lastSweptAt);
+  if (kind === 'family' && c.held) return ATTN(`${plural(c.held, 'email')} waiting: a new JobTread account got a lot of email at once, so they wait until it’s 3 days old. If it’s a test, delete it in JobTread. Slack has the link.`, m.lastSweptAt);
   if (kind === 'family' && !m.backfillDone) return ON('Bringing in the last year’s family emails, oldest first.', m.lastSweptAt);
   const done = (kind === 'receipt' ? c.sent : c.posted) || 0;
   return ON(`Reading ${plural(m.inboxes, 'inbox', 'inboxes')}. ${plural(done, noun)} ${kind === 'receipt' ? 'sent to the receipt inbox' : 'added in JobTread'} this week.`, m.lastSweptAt);
@@ -502,9 +503,9 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'Family emails → JobTread', s: 'live', k: 'schedule',
           when: 'Every 3 minutes on the heartbeat, for every active SOARD Google account.',
-          does: 'An email to or from a family (an address on their JobTread account) that went through someone’s own inbox becomes a comment on the family’s account, so JobTread has the whole conversation: who wrote to whom and when, the words without the quoted history, and the photos and files. The family can’t see it and nobody is assigned, so JobTread emails no one. Replies go under the first email of their conversation. The last year of these emails is brought in once, oldest first.',
+          does: 'An email to or from a family (an address on their JobTread account) that went through someone’s own inbox becomes a comment on the family’s account, so JobTread has the whole conversation: who wrote to whom and when, the words without the quoted history, and the photos and files. The family can’t see it and nobody is assigned, so JobTread emails no one. Replies go under the first email of their conversation. Only email about a real kid or community project goes on: Workers AI reads each one first, and nothing goes on when it can’t answer. The last year of a family’s email comes in once their application is approved, oldest first.',
           touches: ['Gmail', 'JobTread', 'D1'], where: 'functions/api/_mail-sweep.js (broadcast-hooks.js; reads with _mailbox.js)',
-          info: 'Calendar replies, JobTread’s own emails and mailings to more than three families are left out. An address on two families’ accounts (a caseworker) points at neither. The same email in two inboxes is added once. Its first day only watches, then adds what it found.',
+          info: 'Never on an account: staff’s own email (an account where staff is the customer contact, by their Google name or address, gets none, and staff’s personal addresses count on no account), TEST accounts, outside mass emails (more than 10 people) and mailings to more than three families. Calendar replies and JobTread’s own emails are left out too. A new account (under 3 days) with more than 10 emails at once waits until it’s 3 days old, and Slack says so. An address on two families’ accounts (a caseworker) points at neither. The same email in two inboxes is added once. Every comment it makes is recorded, so a mistake can be removed.',
           live: sweepLive('family') },
         { t: 'CompanyCam for families in review', s: 'off', k: 'event',
           when: 'Would run when a family moves to In Review (the home visit). Off since Oct 21, 2026: the home visit happens at the job, where JobTread’s own CompanyCam sync (and the check below) has it.',
