@@ -1049,7 +1049,7 @@ try {
   await page.waitForSelector('[data-done]:not([hidden])', { timeout: 15000 });
   ok(/jordan\+apply@example.com/.test(await page.$eval('[data-done-email]', (e) => e.textContent)), 'thank-you names the email that gets the copy');
   ok(await page.$eval('[data-done] a[href="/kids/"]', (a) => /Meet some of the kids/.test(a.textContent)), 'and links to the kids');
-  ok(await page.$eval('[data-done]', (e) => e.classList.contains('is-in')) && await visible('.af-sun'), 'the sun mark shows');
+  ok(await page.$eval('[data-done]', (e) => e.classList.contains('is-in') && e.firstElementChild.matches('.af-done-logo')) && await visible('.af-done-logo'), 'the thank-you opens on the real logo');
   ok(await page.evaluate(() => document.activeElement?.matches('[data-done-title]')), 'focus moves to the thank-you');
   ok(await page.evaluate(() => localStorage.getItem('soard-application-draft') === null), 'the draft is forgotten on this device');
   await shot('13-done-phone');

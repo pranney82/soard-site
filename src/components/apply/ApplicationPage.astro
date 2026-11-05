@@ -307,15 +307,7 @@ const breadcrumbs = [
         </div>
 
         <div class="af-card af-done" data-done hidden>
-          <div class="af-sun" aria-hidden="true">
-            <svg viewBox="0 0 120 120">
-              <circle class="af-sun-halo" cx="60" cy="60" r="56" />
-              <g class="af-sun-rays">
-                <path d="M60 10v12M60 98v12M10 60h12M98 60h12M24.6 24.6l8.5 8.5M86.9 86.9l8.5 8.5M24.6 95.4l8.5-8.5M86.9 33.1l8.5-8.5" />
-              </g>
-              <circle class="af-sun-core" cx="60" cy="60" r="24" />
-            </svg>
-          </div>
+          <img class="af-done-logo" src={cfRaw('brand-logo-light-bg-display', 'w=160,q=85')} srcset={`${cfRaw('brand-logo-light-bg-display', 'w=160,q=85')} 1x, ${cfRaw('brand-logo-light-bg-display', 'w=320,q=85')} 2x`} alt="Sunshine on a Ranney Day" width="160" height="160" loading="eager" decoding="async" />
           <!-- The thank-you's words are the live form's (Admin → Applications → Form, "Thank-you screen"): the script
                paints them from it; the built-in ones here only fill the first paint -->
           <h2 data-done-title tabindex="-1">{form.done.title}</h2>
@@ -986,19 +978,11 @@ const breadcrumbs = [
 
   .af-done { position: relative; overflow: hidden; text-align: center; padding-top: clamp(40px, 7vw, 72px); padding-bottom: clamp(40px, 7vw, 64px); }
   .af-done > * { position: relative; }
+  .af-done-logo { display: block; width: 160px; height: 160px; object-fit: contain; margin: 0 auto 20px; }
   .af-done p { font-size: 16.5px; line-height: 1.7; color: var(--c-text); margin: 0 auto 16px; max-width: 540px; }
   .af-done .af-done-email { font-weight: 600; color: var(--c-dark); }
   .af-done .af-done-email:empty { display: none; }
   .af-done .af-btn { margin-top: 12px; }
-  .af-sun { width: 120px; height: 120px; margin: 0 auto 22px; }
-  .af-sun svg { width: 100%; height: 100%; overflow: visible; }
-  .af-sun-halo { fill: rgba(255,218,36,.28); transform-origin: 60px 60px; }
-  .af-sun-rays path { fill: none; stroke: #E6C400; stroke-width: 5; stroke-linecap: round; }
-  .af-sun-rays { transform-origin: 60px 60px; }
-  .af-sun-core { fill: var(--c-yellow); transform-origin: 60px 60px; }
-  .af-done.is-in .af-sun-core { animation: afSunRise 1s var(--af-ease) .05s both; }
-  .af-done.is-in .af-sun-rays { animation: afSunRays 1.2s var(--af-ease) .25s both; }
-  .af-done.is-in .af-sun-halo { animation: afSunGlow 2.2s ease-out .35s both; }
 
   /* ══════════ A staff test run (?test=1) ══════════
      A dark bar above the card (whose inbox, sample answers, the way back), a chip on the rail
@@ -1067,7 +1051,7 @@ const breadcrumbs = [
   .af-done .af-trace-actions .af-btn { margin-top: 0; }
   @keyframes afTrDraw { from { stroke-dashoffset: 1; } to { stroke-dashoffset: 0; } }
 
-  /* What happens next: three steps, joined, rising in after the sun */
+  /* What happens next: three steps, joined, rising in after the heading */
   .af-next-up { max-width: 540px; margin: 28px auto 8px; padding: 24px 24px 20px; border-radius: 20px; background: var(--c-cream); text-align: left; }
   .af-done .af-next-title { font-family: var(--font-body); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--c-text-muted); margin: 0 0 16px; }
   .af-next-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
@@ -1123,9 +1107,6 @@ const breadcrumbs = [
     0%, 35% { box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--c-yellow); }
     100% { box-shadow: 0 0 0 4px rgba(255,255,255,0), 0 0 0 7px rgba(255,218,36,0); }
   }
-  @keyframes afSunRise { from { opacity: 0; transform: translateY(22px) scale(.92); } to { opacity: 1; transform: none; } }
-  @keyframes afSunRays { from { opacity: 0; transform: scale(.72) rotate(-18deg); } to { opacity: 1; transform: none; } }
-  @keyframes afSunGlow { 0% { opacity: 0; transform: scale(.6); } 45% { opacity: 1; transform: scale(1.04); } 100% { opacity: .75; transform: scale(1); } }
 
   @media (max-width: 768px) {
     .af-card { border-radius: 22px; padding: 22px 18px 26px; }
@@ -1778,8 +1759,7 @@ const breadcrumbs = [
     .af-choice:active, .af-btn:active:not(:disabled) { transform: none; }
     .af-notice, .af-nav-note, .af-error, .af-county-note, .af-suggest, .af-steps[open] .af-steps-list, .af-recorder, .af-stop, .af-done, .af-dialog[open],
     .af-choice input:checked + .af-choice-box, .af-upload[data-state="done"] .af-upload-preview::after, .af-review-section[data-open] .af-review-body,
-    .af-done.is-in .af-sun-core, .af-done.is-in .af-sun-rays, .af-done.is-in .af-sun-halo, .af-recorder[data-rec="on"] .af-recorder-time::before { animation: none; }
-    .af-sun-halo { opacity: .75; }
+    .af-recorder[data-rec="on"] .af-recorder-time::before { animation: none; }
     /* The live preview's highlight holds still, then goes (the script removes it) */
     .af-flash { animation: none; box-shadow: 0 0 0 4px #fff, 0 0 0 7px var(--c-yellow); }
     .af-map-pin-head, .af-map-pin-label { animation: none; }
