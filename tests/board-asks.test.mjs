@@ -252,7 +252,7 @@ test('asks go to each board member presenting, never staff, once, due Wednesday 
   const fin = gmail.sent.find((m) => hdr(m, 'To').startsWith('Sam'));
   assert.equal(hdr(fin, 'Subject'), 'Q4 2026 Board Meeting: your Financial report, due Wed, Nov 4 at noon');
   assert.match(fin.text, /Please send your Financial report by Wednesday, November 4 at noon\./);
-  assert.match(fin.text, /note any line for the board:\nhttps:\/\/sunshineonaranneyday\.com\/admin\/board\/#\/meetings\/m_nov5\/report\/i_fin/);
+  assert.match(fin.text, /note any line for the board:\nhttps:\/\/sunshineonaranneyday\.com\/board\/m_nov5\/report\/i_fin/);
   assert.doesNotMatch(fin.text + fin.html, /—/);
   // The roll call is no report; the chair isn't asked for it. A second run sends nothing again
   assert.equal((await run()).asked, 0);
@@ -312,7 +312,7 @@ test('a reply becomes the report word for word, its PDF goes with the item, and 
   assert.match(thanks.text, /^Thanks, Sam\. Your Financial report is on the agenda/);
   // How it shows in the meeting, and where to see it
   assert.match(thanks.text, /In the meeting it fits on one slide\. You can see it or change it on the board page until then:\n/);
-  assert.match(thanks.text, /#\/meetings\/m_nov5\/report\/i_fin/);
+  assert.match(thanks.text, /\/board\/m_nov5\/report\/i_fin/);
   // Read once: the next run takes nothing more
   assert.equal((await run()).reports, 0);
   // A second reply goes under the first, never over it
@@ -440,7 +440,7 @@ test('the chair’s review email links the review page and says where a reply go
   clock = easternAt('2026-11-04', '12:06');
   await run();
   const review = gmail.sent.find((m) => hdr(m, 'Subject').startsWith('Agenda for your review'));
-  assert.match(review.text, /send a report back to its presenter with a question\. Their answer goes on the agenda under the report\.\nhttps:\/\/sunshineonaranneyday\.com\/admin\/board\/#\/meetings\/m_nov5\/review/);
+  assert.match(review.text, /send a report back to its presenter with a question\. Their answer goes on the agenda under the report\.\nhttps:\/\/sunshineonaranneyday\.com\/board\/m_nov5\/review/);
   assert.match(review.text, /For anything else, or if it all looks good, just reply\. It comes to me and Jane\./);
 });
 
@@ -934,7 +934,7 @@ test('three or more items: one email listing them, each with its link; its remin
   const list = gmail.sent.find((m) => hdr(m, 'To').startsWith('Jane'));
   assert.equal(hdr(list, 'Subject'), 'Q4 2026 Board Meeting: your 3 reports, due Wed, Nov 4 at noon');
   assert.equal(hdr(list, 'Cc'), '', 'Jane is the one copied on asks: never on her own');
-  assert.match(list.text, /- Store update: https:\/\/sunshineonaranneyday\.com\/admin\/board\/#\/meetings\/m_nov5\/report\/i_a\n- Events: .*\/report\/i_b\n- Gala: .*\/report\/i_c/);
+  assert.match(list.text, /- Store update: https:\/\/sunshineonaranneyday\.com\/board\/m_nov5\/report\/i_a\n- Events: .*\/report\/i_b\n- Gala: .*\/report\/i_c/);
   // Two written on the board page; the reminder lists the one left
   await postReport(env.DB, { meetingId: 'm_nov5', itemId: 'i_a', words: 'Steady.', name: 'Jane Doe' });
   await postReport(env.DB, { meetingId: 'm_nov5', itemId: 'i_b', words: 'Two coming up.', name: 'Jane Doe' });

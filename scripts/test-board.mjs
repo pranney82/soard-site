@@ -2602,6 +2602,43 @@ try {
     ok(await notesPage.waitForFunction(() => document.querySelector('.bn-send')?.textContent === 'Sent', { timeout: 8000 }).then(() => true, () => false), 'sent again');
     m2 = await getMeeting(DB, held.id);
     ok(m2.motions.filter((x) => /2027 budget/.test(x.text)).length === 1 && m2.actions.length === 1 && m2.files.filter((f) => f.kind === 'minutes').length === 1 && /Fixed/.test(m2.sections[0].items[0].notes), 'sent again it replaces: one vote, one action item, one file');
+    // Typed and sent, the words say so: who typed them, and nothing that reads as still waiting for a file (Peter, Nov 5 2026: "i dont see a way to get them as part of the meeting")
+    {
+      const founder = await tab(FOUNDER, 1280);
+      await founder.goto(`${SITE}/admin/board/#/meetings/${held.id}`, { waitUntil: 'networkidle0' });
+      await founder.waitForSelector('.bp-minutes', { timeout: 8000 });
+      const said = (await card(founder))?.text || '';
+      ok(/Kim Park typed these\. /.test(said) && /The board can read them now and votes on them at the next meeting/.test(said) && /Open the notes/.test(said) && !/Take notes here/.test(said), `the board page says who typed them and the button opens them (${said.replace(/\n/g, ' ').slice(0, 160)})`);
+      await shot(founder, '29c-typed-on-the-board-page');
+      await founder.goto(`${SITE}/admin/#board/meeting/${held.id}`, { waitUntil: 'domcontentloaded' });
+      await founder.reload({ waitUntil: 'domcontentloaded' });
+      ok(await waitText(founder, /Typed by Kim Park/), 'Board says who typed them');
+      const page = await text(founder);
+      ok(!/Read from the minutes|Drop the minutes in and Board|Drop them in/.test(page) && /The minutes are in/.test(page), 'and nothing reads as if a file were still wanted');
+      await shot(founder, '29d-typed-in-board');
+      // Board's home says so too: nothing presses End any more, so the day's minutes being in is what says it was held
+      {
+        const home = await tab(FOUNDER, 1280);
+        await home.goto(`${SITE}/admin/#board`, { waitUntil: 'domcontentloaded' });
+        await home.reload({ waitUntil: 'domcontentloaded' });
+        ok(await waitText(home, /The minutes are in\. The board votes on them at the next meeting/) && /held today/i.test(await text(home)) && !/Open for the meeting/.test(await text(home)), `Board’s home says the day’s meeting was held and its minutes are in (${await home.evaluate(() => [document.querySelector('.bh-eyebrow')?.innerText, document.querySelector('.bh-nextline')?.innerText].join(' / '))})`);
+        await home.close();
+      }
+      // Typed minutes change in the notes: there's nowhere to drop a file, and the link goes to the notes
+      ok(await founder.evaluate((id) => !document.querySelector('.bm-minutes-drop input') && !!document.querySelector(`.bm-minutes-drop a[href="/admin/board/#/meetings/${id}"]`), held.id), 'typed minutes take no file, and Open the notes goes there');
+      // A tab left open from before the send: the server says no, and the file doesn't stay
+      const before = await getMeeting(DB, held.id);
+      const refusedRead = await founder.evaluate(async (id) => (await (await fetch('/api/board-admin', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ action: 'read-minutes', id, fileId: 'f_none' }) })).json()), held.id);
+      ok(refusedRead.ok === false && /typed on the board page/.test(refusedRead.error || ''), `the server refuses a file over typed minutes (${refusedRead.error})`);
+      ok((await getMeeting(DB, held.id)).files.length === before.files.length, 'and nothing changed');
+      // A place inside a meeting comes through the sign-in as a query (public/_redirects), and only the two places it can be
+      for (const [at, want] of [['review', `#/meetings/${held.id}/review`], ['report/i_abc123', `#/meetings/${held.id}/report/i_abc123`], ['../../secret', `#/meetings/${held.id}`]]) {
+        await founder.goto(`${SITE}/admin/board/?meeting=${held.id}&at=${encodeURIComponent(at)}`, { waitUntil: 'domcontentloaded' });
+        const got = await founder.evaluate(() => `${location.search}${location.hash}`);
+        ok(got === want, `?meeting&at=${at} opens ${want} (${got})`);
+      }
+      await founder.close();
+    }
     await other.reload({ waitUntil: 'networkidle0' });
     ok(await waitText(other, /Reserves grew/) && !/PRIVATE/.test(await text(other)), 'now the board reads them on the meeting');
     // On the meeting's day the page is still its agenda; once it's past, the Word file is there as the minutes as written

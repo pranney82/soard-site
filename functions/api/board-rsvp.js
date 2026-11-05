@@ -55,7 +55,7 @@ a{color:var(--link)}
   });
 }
 
-const boardPage = (label = 'Open the board page', hash = '') => `<a class="btn" href="${SITE}${BOARD_PAGE}${esc(hash)}">${esc(label)}</a>`;
+const boardPage = (label = 'Open the board page', path = BOARD_PAGE) => `<a class="btn" href="${SITE}${esc(path)}">${esc(label)}</a>`;
 const INVITE = 'Answer the calendar invite for it in your email or calendar: yes, no or maybe. That’s where SOARD sees who’s coming.';
 const broken = () => page('Answer the calendar invite', `<h1>Answer the calendar invite</h1><p>This link is from an older email. ${INVITE}</p><div class="actions">${boardPage()}</div>`, { status: 404 });
 const expired = () => page('Meeting passed', `<h1>This meeting has passed</h1><p>Its minutes go on the board page once they’re up.</p><div class="actions">${boardPage()}</div>`, { status: 410 });
@@ -80,7 +80,7 @@ async function toInvite(env, tok) {
   return page('Answer the calendar invite', `<h1>${name ? `${esc(name)}, will` : 'Will'} you be at the ${esc(meetingName(m))}?</h1>${whenBlock(m)}`
     + `<p class="said">This link doesn’t save an answer any more: SOARD goes by the calendar invite now.</p>`
     + `<p>${on ? esc(INVITE) : !out ? 'Its calendar invite comes by email before the meeting. Answer it there: that’s where SOARD sees who’s coming.' : 'You’re not on its calendar invite yet. Reply to the email this link came in, and SOARD will send it to you.'}</p>`
-    + `<div class="actions">${boardPage('See the meeting', `#/meetings/${m.id}`)}</div>`);
+    + `<div class="actions">${boardPage('See the meeting', `/board/${m.id}`)}</div>`);
 }
 
 export async function onRequestGet({ request, env }) {

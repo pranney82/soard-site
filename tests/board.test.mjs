@@ -14,6 +14,7 @@ import * as admin from '../functions/api/board-admin.js';
 import * as portal from '../functions/api/board-portal.js';
 import * as fileRoute from '../functions/api/board-file.js';
 import { syncBoardAccess, accessStatus, maybeSyncBoardAccess, GROUP_NAME, POLICY_NAME, NOBODY } from '../functions/api/_board-access.js';
+import { minutesToRead, fileTitle, templateAgenda } from '../public/admin/board-shared.js';
 import { packetEmail, meetingIcs, cashNow, getMeeting, listMeetings, maybeRunBoard, cashHistory, provideBoardFinance, liveNumbers, saveMeeting, patchMeeting } from '../functions/api/_board.js';
 import { syncBoardCalendar, calendarStatus } from '../functions/api/_board-calendar.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
@@ -324,7 +325,7 @@ test('the documents email is the link: the documents by name, nothing attached, 
   const { meeting } = await sharedMeetingWithFiles();
   const mail = packetEmail(await getMeeting(env.DB, meeting.id), { files: ['Balance sheet.pdf'] });
   assert.doesNotMatch(mail.html, /Insurance is looking|Ask counsel|Legal update/);
-  assert.match(mail.html, new RegExp(`/admin/board/#/meetings/${meeting.id}`));
+  assert.match(mail.html, new RegExp(`/board/${meeting.id}`));
   assert.match(mail.html, /Open the agenda and documents/);
 
   // One batch, each member's own email; the board's documents named, never a staff-only one, and nothing attached
@@ -550,7 +551,7 @@ test('who’s coming is the calendar invite’s alone: the emails ask only who�
   const preview = outside.find((c) => c.url.startsWith('https://api.resend.com/')).body;
   const one = Array.isArray(preview) ? preview[0] : preview;
   assert.equal(one.to[0], FOUNDER);
-  assert.match(one.html, new RegExp(`/admin/board/#/meetings/${meeting.id}`));
+  assert.match(one.html, new RegExp(`/board/${meeting.id}`));
   // Everyone on it answered: nobody to ask, and Sam named
   await onCalendar({ 'alex-rivera': 'accepted' });
   const none = await adminApi(FOUNDER, { action: 'remind-rsvp', id: meeting.id });
@@ -568,7 +569,7 @@ test('who’s coming is the calendar invite’s alone: the emails ask only who�
   assert.match(page, /Alex, will you be at the /);
   assert.match(page, /doesn’t save an answer any more/);
   assert.match(page, /Answer the calendar invite for it in your email or calendar: yes, no or maybe/);
-  assert.match(page, new RegExp(`/admin/board/#/meetings/${meeting.id}`), 'See the meeting opens that meeting');
+  assert.match(page, new RegExp(`/board/${meeting.id}"`), 'See the meeting opens that meeting');
   assert.doesNotMatch(page, /<button/, 'no answer buttons');
   const pressed = await rsvpPage.onRequestPost({ request: new Request('https://sunshineonaranneyday.com/api/board-rsvp', { method: 'POST', body: new URLSearchParams({ t: tok, a: 'no' }) }), env });
   assert.match(await pressed.text(), /Answer the calendar invite/);
@@ -2384,4 +2385,84 @@ test('the meeting’s time is shared out among its parts, a part given its own m
 test('a document keeps SOARD’s name as it’s written: a title saved or read with "SunShine" reads "Sunshine"', async () => {
   const { cleanDoc } = await import('../functions/api/_board.js');
   assert.equal(cleanDoc({ title: 'SunShine on a Ranney Day, Inc. Board Manual with Policies' }).title, 'Sunshine on a Ranney Day, Inc. Board Manual with Policies');
+});
+
+
+// Peter, Nov 5 2026: "why not just send out the minutes before the next meeting for the board to review?"
+test('the agenda email sends the board to the last minutes before the vote, and says nothing when there’s nothing to read', () => {
+  const prev = { id: 'm_prev00001', date: '2027-01-14', title: 'Q1 2027 Board Meeting', shared: true, minutes: 'draft', minutesFrom: { name: 'Q1 minutes.docx', typed: true }, files: [], sections: [] };
+  const item = { id: 'i_prev', title: 'Last minutes', live: 'minutes', about: prev.id };
+  const m = { id: 'm_next00001', date: '2027-04-08', title: 'Q2 2027 Board Meeting', shared: true, sections: [{ id: 's_a', title: 'Approve', items: [item] }], files: [] };
+
+  assert.equal(minutesToRead(m, [prev, m])?.id, prev.id);
+  assert.equal(minutesToRead({ ...m, sections: [{ ...m.sections[0], items: [{ ...item, about: '' }] }] }, [prev, m])?.id, prev.id, 'an item naming no meeting: the last one the board had');
+  assert.equal(minutesToRead(m, [{ ...prev, minutes: 'approved' }, m]), null, 'already approved: nothing to vote on');
+  assert.equal(minutesToRead(m, [{ ...prev, shared: false }, m]), null, 'the board can’t open it');
+  assert.equal(minutesToRead(m, [{ ...prev, minutesFrom: null }, m]), null, 'nothing written yet');
+  assert.equal(minutesToRead(m, [{ ...prev, minutesFrom: null, files: [{ id: 'f_a', kind: 'minutes', name: 'Minutes.pdf', type: 'application/pdf' }] }, m])?.id, prev.id, 'a file is something to read');
+  assert.equal(minutesToRead({ ...m, sections: [] }, [prev, m]), null, 'no vote on the agenda');
+  const carried = { ...prev, minutesFrom: null, files: [{ id: 'f_old', kind: 'minutes', name: 'Earlier minutes.pdf', type: 'application/pdf' }], sections: [{ id: 's_b', title: 'Approve', items: [{ id: 'i_b', title: 'Earlier minutes', docs: ['f_old'] }] }] };
+  assert.equal(minutesToRead(m, [carried, m]), null, 'the meeting before’s minutes, on its agenda, aren’t its own');
+  assert.equal(minutesToRead(m, [{ ...prev, minutesFrom: null, files: [{ id: 'f_a', kind: 'minutes', name: 'Minutes.pdf', staffOnly: true }] }, m]), null, 'a staff-only file isn’t something the board can read');
+  assert.equal(minutesToRead({ ...m, sections: [{ ...m.sections[0], items: [{ ...item, confidential: true }] }] }, [prev, m]), null, 'a board-only item is never named in an email');
+
+  const mail = packetEmail(m, { minutes: prev });
+  for (const body of [mail.html, mail.text]) {
+    assert.match(body, /Read before the vote/);
+    assert.match(body, /The minutes of the Q1 2027 Board Meeting/);
+    assert.match(body, /Reply if anything needs correcting/);
+    assert.match(body, /\/board\/m_prev00001/);
+    assert.doesNotMatch(body, /#\/meetings/);
+  }
+  const none = packetEmail(m, {});
+  for (const body of [none.html, none.text]) assert.doesNotMatch(body, /Read before the vote|Reply if anything/);
+});
+
+test('from one quarter to the next: typed minutes draft onto the next agenda, reach its email, and leave it once approved', async () => {
+  const { meeting } = await sharedMeetingWithFiles();
+  const m = await getMeeting(env.DB, meeting.id);
+  await saveMeeting(env.DB, { ...m, date: '2026-01-08', minutesFrom: { name: 'Q1 minutes.docx', at: '2026-01-08T15:00:00.000Z', typed: true, ai: true, tries: 0 }, minutes: 'draft' }, { by: FOUNDER });
+  const held = await getMeeting(env.DB, meeting.id);
+  const later = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(40) })).body.meeting;
+  const sections = templateAgenda(held);
+  const asks = sections.flatMap((s) => s.items).find((it) => it.live === 'minutes');
+  assert.ok(asks, 'its next agenda asks for the vote');
+  assert.equal(asks.about, held.id);
+  await saveMeeting(env.DB, { ...(await getMeeting(env.DB, later.id)), shared: true, sections }, { by: FOUNDER });
+
+  const sent = () => outside.filter((c) => c.url === 'https://api.resend.com/emails/batch').flatMap((c) => c.body);
+  assert.equal((await adminApi(FOUNDER, { action: 'send-packet', id: later.id, test: true })).status, 200);
+  assert.match(sent().at(-1).html, /Read before the vote/);
+  assert.match(sent().at(-1).html, new RegExp(`/board/${held.id}"`), 'a link that keeps its place through the sign-in');
+  assert.doesNotMatch(sent().at(-1).html, /#\/meetings\/[^/"]+"/, 'no link to a meeting lands a signed-out member on Home');
+  assert.ok(sent().at(-1).reply_to?.length || sent().at(-1).replyTo?.length, 'Reply reaches a person');
+
+  await saveMeeting(env.DB, { ...(await getMeeting(env.DB, held.id)), minutes: 'approved', approvedOn: '2026-04-09' }, { by: FOUNDER });
+  await adminApi(FOUNDER, { action: 'send-packet', id: later.id, test: true });
+  assert.doesNotMatch(sent().at(-1).html, /Read before the vote/);
+});
+
+test('the date in the name Board gives the Word file keeps its dashes; no other name changes', () => {
+  assert.equal(fileTitle('Q4 2026 Board Meeting minutes (2026-11-05).docx'), 'Q4 2026 Board Meeting minutes (2026-11-05)');
+  assert.equal(docTitle('Q4 2026 Board Meeting minutes (2026-11-05).docx'), 'Q4 2026 Board Meeting minutes (2026-11-05)');
+  // Every other name reads as it always has
+  assert.equal(fileTitle('board-packet-final.pdf'), 'Board packet final');
+  assert.equal(fileTitle('W-9 2026-27.pdf'), 'W-9 2026 27');
+  assert.equal(docTitle('Financials 2025-11.pdf'), 'Financials 2025-11');
+  assert.equal(docTitle('Budget 2026-27.pdf'), 'Budget 2026-27');
+  assert.equal(docTitle('Minutes-2-9-26.pdf'), 'Minutes 2/9/26');
+  assert.equal(docTitle('board-packet-q4-11-05-2026.pdf'), 'Board packet q4 11/05/2026');
+  assert.equal(docTitle('Statement of Activity 1-1-2025-12-31-2025.pdf'), 'Statement of Activity 1/1/2025-12/31/2025');
+  assert.equal(docTitle('Rev2-10-26.pdf'), 'Rev2 10 26');
+});
+
+test('a place inside a meeting has its own link too, the same way through the sign-in', async () => {
+  const { readFileSync } = await import('node:fs');
+  const rules = readFileSync(new URL('../public/_redirects', import.meta.url), 'utf8');
+  assert.match(rules, /^\/board\/:id\/report\/:item\s+\/admin\/board\/\?meeting=:id&at=report\/:item\s+302$/m);
+  assert.match(rules, /^\/board\/:id\/review\s+\/admin\/board\/\?meeting=:id&at=review\s+302$/m);
+  const m = { id: 'm_next00001', date: '2027-04-08', title: 'Q2 2027 Board Meeting', sections: [], files: [] };
+  const mail = packetEmail(m, { reports: [{ title: 'Financial', url: 'https://example.com/board/m_next00001/report/i_abc', written: false }] });
+  assert.match(mail.html, /\/board\/m_next00001\/report\/i_abc/);
+  assert.doesNotMatch(`${mail.html}${mail.text}`, /#\/meetings/);
 });

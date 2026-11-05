@@ -36,7 +36,7 @@ import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, majority, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
   isLive, agendaItems, isFilled, hasSince, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, pagesText, MORE,
-  sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew, copyOfItem,
+  sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew, copyOfItem, minutesToRead, minutesFileOf, ownMinutesFile,
 } from './board-shared.js';
 import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
 import { printMinutesTemplate, downloadMinutesDocx } from './board-minutes-template.js';
@@ -200,7 +200,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
   // Where it is in its life: ahead (getting it to the board), its day (present it), held (the minutes): a meeting is
   // held once its day is over, or once its end time has passed on the day (the secretary's minutes may come that
   // afternoon), or once the chair has ended it (one moved up and held early is held, whatever its date says)
-  const over = days === 0 && /^\d{2}:\d{2}$/.test(m.end || '') && nowEastern() >= m.end;
+  const over = days === 0 && meetingOver(m);
   const ended = !!m.live?.endedAt && !isLive(m);
   const phase = practice ? 'today' : ended ? 'held' : !m.date || days > 0 ? 'ahead' : days === 0 && !over ? 'today' : 'held';
   const when = phase === 'held' ? ['Held', 'is-held'] : [whenWords(days), days === 0 ? 'is-today' : days > 0 ? 'is-ahead' : ''];
@@ -353,13 +353,15 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
       </div>` : null}
       <div class="bm-row" id="bm-ready">
         <div class="bm-row__main"><${GettingReady} ...${p} /></div>
-        <div class="bm-row__side"><${Coming} ...${p} /><${MinutesTemplate} ...${p} /></div>
+        <div class="bm-row__side"><${Coming} ...${p} />${m.minutesFrom ? null : html`<${MinutesTemplate} ...${p} />`}</div>
       </div>
       <${FilesCard} ...${p} goes title="The packet" sub="Each file goes under its agenda item, on the board page and on the screen. PDF, pictures, Word, Excel or PowerPoint, up to 50 MB." />`}`;
 }
 
 /** The time in Atlanta now, "HH:MM" */
 const nowEastern = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
+/** On its day, a meeting is over once its minutes are in or its end time has passed: Board's home and this page say the same */
+export const meetingOver = (m) => !!m.minutesFrom || (/^\d{2}:\d{2}$/.test(m.end || '') && nowEastern() >= m.end);
 
 /**
  * Where a meeting stands, step by step, for the line under its name: the agenda, the invite, the approval, the board page, the
@@ -382,7 +384,7 @@ function pathOf(m, data, phase) {
     { id: 'shared', card: held ? 'bm-after' : 'bm-ready', title: 'Board page', done: !!m.shared, sub: m.shared ? 'The board can see it' : 'Only you can see it' },
     { id: 'emailed', card: ready, title: 'Board emailed', done: !!m.packetSentAt, sub: m.packetSentAt ? `${plural(m.packetSentTo || 0, 'member')}, ${shortDate(m.packetSentAt.slice(0, 10))}` : 'Not yet' },
     { id: 'day', card: 'bm-work', title: phase === 'today' ? 'Today' : held ? 'Held' : 'The meeting', done: held, sub: [m.date ? shortDate(m.date) : 'No date yet', m.start ? clock(m.start) : ''].filter(Boolean).join(' · ') },
-    { id: 'minutes', card: phase === 'ahead' ? 'bm-work' : 'bm-minutes', title: 'Minutes', done: m.minutes === 'approved', sub: m.minutes === 'approved' ? `Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}` : m.minutesFrom ? 'Read in, to approve next time' : held ? 'Drop them in' : 'After the meeting' },
+    { id: 'minutes', card: phase === 'ahead' ? 'bm-work' : 'bm-minutes', title: 'Minutes', done: m.minutes === 'approved', sub: m.minutes === 'approved' ? `Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}` : m.minutesFrom?.typed ? `${typedWords(m, data)}, to approve next time` : m.minutesFrom ? 'Read in, to approve next time' : held ? 'Drop them in' : 'After the meeting' },
   ];
   // The next step: the first one not done (before the day, the agenda's reports count only once the rest is out)
   const order = held ? ['minutes'] : phase === 'today' ? ['invite', 'approved', 'shared', 'emailed', 'day'] : ['invite', 'approved', 'shared', 'emailed', 'agenda'];
@@ -1224,6 +1226,7 @@ function GettingReady({ m, set, ctx, act, save }) {
   const senderName = (e) => (/@soardcharity\.com$/i.test(e) ? firstOf(e) : data.members.find((x) => x.email === e)?.name || e);
   // What the board gets: the packet, as they see it (never this meeting's own minutes, nor a staff-only file)
   const docs = m.files.filter((f) => !f.staffOnly && f.kind !== 'minutes' && f.kind !== 'signed');
+  const toRead = minutesToRead(m, data.meetings);
   // Nothing reaches the board before the agenda is approved, and approving sends it: the board page and the email follow
   const approval = data.approvals?.[m.id];
   const [sInvite, sApproved, sShared, sSent] = statesOf([!!inv && !missing.length, !!approval, m.shared, !!m.packetSentAt]);
@@ -1244,7 +1247,7 @@ function GettingReady({ m, set, ctx, act, save }) {
   const email = async () => {
     const to = data.members.filter((x) => x.email).map((x) => x.name);
     const none = data.members.filter((x) => !x.email).map((x) => x.name);
-    if (!(await ask({ title: `Email ${andList(to)} the link?`, text: `${m.shared ? 'They get' : 'The meeting goes on the board page, and they get'} the link to the agenda${docs.length ? ` and ${plural(docs.length, 'document')}` : ' (no documents yet)'}, and anyone on the calendar invite who hasn’t answered it is asked to. Nothing is attached.${none.length ? ` ${andList(none)} ${none.length === 1 ? 'has' : 'have'} no email, so ${none.length === 1 ? 'gets' : 'get'} nothing.` : ''}`, yes: m.packetSentAt ? 'Email them again' : 'Email the board' }))) return;
+    if (!(await ask({ title: `Email ${andList(to)} the link?`, text: `${m.shared ? 'They get' : 'The meeting goes on the board page, and they get'} the link to the agenda${docs.length ? ` and ${plural(docs.length, 'document')}` : ' (no documents yet)'}${toRead ? `, the ${meetingName(toRead)} minutes to read before the vote` : ''}, and anyone on the calendar invite who hasn’t answered it is asked to. Nothing is attached.${none.length ? ` ${andList(none)} ${none.length === 1 ? 'has' : 'have'} no email, so ${none.length === 1 ? 'gets' : 'get'} nothing.` : ''}`, yes: m.packetSentAt ? 'Email them again' : 'Email the board' }))) return;
     if (!m.shared) { set({ shared: true }); await new Promise((r) => setTimeout(r, 0)); await save(); }
     run('send', { action: 'send-packet', id: m.id }, (j) => `Emailed ${plural(j.sent, 'board member')}`);
   };
@@ -1295,7 +1298,7 @@ function GettingReady({ m, set, ctx, act, save }) {
         ${m.shared ? html`<button class="btn btn-ghost btn-sm" onClick=${() => share(false)}>Take it off</button>` : html`<button class=${btn(sShared)} onClick=${() => share(true)}>Share with the board</button>`}
       </${Task}>
       <${Task} state=${sSent} title=${m.packetSentAt ? `${plural(m.packetSentTo, 'board member')} emailed the link` : 'Email the board the link'}
-        sub=${m.packetSentAt ? ago(m.packetSentAt) : `It goes by itself as soon as it can, or now from here. The link to the agenda and ${docs.length ? `the ${plural(docs.length, 'document')} by name` : 'the documents by name'} (nothing attached), and a nudge to answer the calendar invite for anyone who hasn’t. It goes to ${plural(data.packetTo, 'board member')}.`}>
+        sub=${m.packetSentAt ? ago(m.packetSentAt) : `It goes by itself as soon as it can, or now from here. The link to the agenda and ${docs.length ? `the ${plural(docs.length, 'document')} by name` : 'the documents by name'} (nothing attached)${toRead ? `, the ${meetingName(toRead)} minutes to read before the vote` : ''}, and a nudge to answer the calendar invite for anyone who hasn’t. It goes to ${plural(data.packetTo, 'board member')}.`}>
         <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => run('preview', { action: 'send-packet', id: m.id, test: true }, (j) => `Sent to ${j.to?.[0] || 'you'}`)}>${working === 'preview' ? 'Sending…' : 'Send me the email'}</button>
         <button class=${btn(sSent)} disabled=${!!working || !data.packetTo || !data.setup.email} onClick=${email}>${working === 'send' ? 'Sending…' : m.packetSentAt ? 'Email again' : 'Email the board'}</button>
         ${!data.setup.email ? html`<span class="bd-muted">Email isn’t set up yet (Site → Automations says what’s missing).</span>` : null}
@@ -1474,13 +1477,17 @@ function stopWords(stop, m, items, pages, files, shows = {}, words = {}) {
 
 // ─── After ──────────────────────────────────────────────────────────
 
-/** This meeting's own minutes file, if any: a minutes file on an agenda item is the last meeting's, up for approval */
-const ownMinutesFile = (m) => { const onItem = new Set(m.sections.flatMap((x) => x.items.flatMap((it) => it.docs || []))); return m.files.filter((f) => f.kind === 'minutes' && !onItem.has(f.id)).at(-1) || null; };
 /** There's something to read once the minutes are in: read in, or their file here (an approval is not minutes, nor an item's notes before the meeting) */
 const minutesIn = (m) => !!m.minutesFrom || !!ownMinutesFile(m);
 
+/** Who typed minutes sent from the notes on the board page, as the send kept it, in words: never a guess at whoever holds the seat now */
+const typedWords = (m, data) => (data.minutesTypedBy?.[m.id] ? `Typed by ${data.minutesTypedBy[m.id]}` : 'Typed on the board page');
+/** The day they were sent, as Atlanta says it: "Nov 5" */
+const sentDay = (m) => { const at = Date.parse(m.minutesFrom?.at || ''); return Number.isNaN(at) ? '' : shortDate(todayEastern(at)).replace(/, \d{4}$/, ''); };
+
 /** The minutes, as the board will read them on their page */
 function MinutesDoc({ m, ctx }) {
+  const { data } = ctx;
   // Who wasn't there is known once there's something to go by: the minutes, the meeting run here, or anyone marked
   const held = (!!m.minutesFrom || !!m.live.endedAt || m.attendance.some((x) => x.status)) && !isLive(m);
   const quorum = quorumFor(m, ctx.data.settings.quorum);
@@ -1488,12 +1495,13 @@ function MinutesDoc({ m, ctx }) {
   const groups = [['Present', 'present'], ['By video', 'remote'], ['Absent', 'absent'], ['Excused', 'excused']].map(([t, s]) => [t, m.attendance.filter((x) => x.status === s)])
     .concat(held ? [['Not there', m.attendance.filter((x) => x.kind === 'board' && !x.status)]] : []).filter(([, l]) => l.length);
   const names = new Map(agendaItems(m).map((x) => [x.id, x.title]));
-  const written = (minutesIn(m) || m.motions.length || m.actions.length) && (m.sections.some((s) => s.items.some((it) => it.notes)) || m.motions.length || m.actions.length);
-  const minutesFile = ownMinutesFile(m);
+  const written = (minutesIn(m) || m.motions.length || m.actions.length) && (m.sections.some((s) => s.notes || s.items.some((it) => it.notes)) || m.motions.length || m.actions.length);
+  // Typed: the file the send kept, whatever else has been filed since
+  const minutesFile = m.minutesFrom?.typed ? minutesFileOf(m) : ownMinutesFile(m);
   const vf = viewerFiles(minutesFile ? [minutesFile] : []);
   return html`<div class="card bm-minutes">
     <div class="bd-card-head"><h3>The minutes ${m.minutes === 'approved' ? html`<span class="tag tag--success">Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}</span>` : written ? html`<span class="tag">Draft</span>` : null}</h3>
-      <p>${m.shared ? 'This is what board members read on their page.' : 'What board members will read once you share the meeting.'}${m.minutesFrom ? ` Read from ${fileTitle(m.minutesFrom.name)}.` : minutesFile ? html` Written up in <a class="link" ...${viewerLink(vf, 0)}>${fileTitle(minutesFile.name)}</a>.` : ''}</p></div>
+      <p>${m.shared ? 'This is what board members read on their page.' : 'What board members will read once you share the meeting.'}${m.minutesFrom?.typed ? html` ${typedWords(m, data)}.${minutesFile ? html` <a class="link" ...${viewerLink(vf, 0)}>The minutes as written</a>.` : ''}` : m.minutesFrom ? ` Read from ${fileTitle(m.minutesFrom.name)}.` : minutesFile ? html` Written up in <a class="link" ...${viewerLink(vf, 0)}>${fileTitle(minutesFile.name)}</a>.` : ''}</p></div>
     ${groups.length ? html`<dl class="bm-who bm-who--doc">${groups.map(([t, l]) => html`<div><dt>${t} <b>${l.length}</b></dt><dd>${l.map((x) => x.name).join(', ')}</dd></div>`)}</dl>` : null}
     ${written ? html`<ol class="bm-doc__sections">${m.sections.map((s) => html`<li key=${s.id}>
       <h4>${s.title}</h4>
@@ -1505,7 +1513,7 @@ function MinutesDoc({ m, ctx }) {
     </li>`)}</ol>
     ${m.motions.length ? html`<h4 class="bm-doc__h">Decisions</h4><ul class="bm-doc__items">${m.motions.map((x) => html`<li key=${x.id}>${x.text} <span class="bd-muted">(${[x.by && `moved by ${x.by}`, x.second && `seconded by ${x.second}`, x.tally ? `${tallyText(x)}${quorum && x.tally.at && x.tally.of < quorum ? ', no quorum checked in' : ''}` : RESULTS.find((r) => r.id === x.result)?.label.toLowerCase()].filter(Boolean).join(', ')})</span></li>`)}</ul>` : null}
     ${m.actions.length ? html`<h4 class="bm-doc__h">Action items</h4><ul class="bm-doc__items">${m.actions.map((a) => html`<li key=${a.id}>${a.text} <span class="bd-muted">(${[a.ownerName || 'no one yet', a.due ? `by ${shortDate(a.due)}` : '', a.done ? 'done' : ''].filter(Boolean).join(', ')})</span></li>`)}</ul>` : null}`
-      : html`<div class="empty empty--inline"><p class="empty__title">Nothing here yet</p><p class="empty__text">Drop the minutes in (above): who was there, what was said under each item, the decisions and the action items fill in by themselves.</p></div>`}
+      : html`<div class="empty empty--inline"><p class="empty__title">${m.minutesFrom?.typed ? (m.minutes === 'approved' ? 'Only who was there' : 'Only who was there so far') : 'Nothing here yet'}</p><p class="empty__text">${m.minutesFrom?.typed ? (m.minutes === 'approved' ? 'These minutes are approved.' : m.shared ? 'The rest goes in from the notes on the board page.' : 'Share the meeting, then add the rest from the notes on the board page.') : 'Drop the minutes in (above): who was there, what was said under each item, the decisions and the action items fill in by themselves.'}</p></div>`}
   </div>`;
 }
 
@@ -1531,6 +1539,16 @@ function MinutesDrop({ m, set, ctx, act, keepSaved }) {
   const [over, setOver] = useState(false);
   const [lastRead, setLastRead] = useState(null);
   const c = attendanceCounts(m);
+  // Typed and sent, they change in the notes on the board page: no file goes over them (the server says the same to a tab left open)
+  if (m.minutesFrom?.typed) {
+    const day = sentDay(m);
+    return html`<div class="bm-minutes-drop bm-minutes-drop--typed is-done">
+      <span class="bm-minutes-drop__icon" aria-hidden="true">${CHECK}</span>
+      <span class="bm-minutes-drop__text"><strong>${typedWords(m, ctx.data)}</strong>
+        <span>${[day ? `Sent ${day}` : 'Sent', c.boardHere ? `${c.boardHere} of ${c.board} board members there` : ''].filter(Boolean).join(': ')}.</span></span>
+      ${m.minutes === 'approved' || !m.shared ? null : html`<a class="btn btn-ghost btn-sm bm-minutes-drop__btn" href=${`/admin/board/#/meetings/${m.id}`}>Open the board page</a>`}
+    </div>`;
+  }
   const readIn = async (file) => {
     if (!file) return;
     setBusy(true);
@@ -1546,31 +1564,42 @@ function MinutesDrop({ m, set, ctx, act, keepSaved }) {
       if (d.ok) keepSaved((x) => ({ ...x, files: x.files.filter((f) => f.id !== up.file.id) }));
       return d;
     };
-    let j = await act(body, { keep: (r) => r.status === 409 && !!r.other });
+    // A clear no from the server (not minutes, or typed minutes a tab left open couldn't know about): the file doesn't stay
+    // on the meeting, where the board would see it. A dropped connection isn't a no: that file may well have been read
+    const refused = (r) => r.status === 409 || r.status === 422;
+    const refuse = async (r) => { setBusy(false); const d = await dropHere(); addToast(`${r.error}${d.ok ? ` ${fileTitle(up.file.name)} isn’t kept.` : ''}`, 'error'); };
+    let j = await act(body, { keep: refused });
+    if (j && !j.ok && !j.other) { await refuse(j); return; }
     if (j && !j.ok) {
       setBusy(false);
       const other = ctx.data.meetings.find((x) => x.id !== m.id && (x.date === j.other.date || meetingName(x) === j.other.name)) || null;
       // Where they belong, first: that meeting, when Board has it
-      if (other && await ask({ title: `Put them on the ${meetingName(other)}?`, text: `${j.error} Board can read them into that meeting instead, and this one stays as it is.`, yes: `Put them on the ${shortDate(other.date)} meeting`, no: 'Not those' })) {
+      if (other && !other.minutesFrom?.typed && await ask({ title: `Put them on the ${meetingName(other)}?`, text: `${j.error} Board can read them into that meeting instead, and this one stays as it is.`, yes: `Put them on the ${shortDate(other.date)} meeting`, no: 'Not those' })) {
         setBusy(true);
         const there = await upload(file, { ownerType: 'meeting', ownerId: other.id, kind: 'other' });
         const k = there.ok ? await call({ action: 'read-minutes', id: other.id, fileId: there.file.id }) : there;
         setBusy(false);
-        if (!k.ok) { addToast(k.error || 'Couldn’t read them in there', 'error'); return; }
+        if (!k.ok) {
+          // A clear no: neither copy stays where the board would see it
+          if (there.ok && refused(k)) { await call({ action: 'delete-file', id: there.file.id }); await dropHere(); }
+          addToast(k.error || 'Couldn’t read them in there', 'error');
+          return;
+        }
         if (k.meeting) ctx.putMeeting(k.meeting);
         await call({ action: 'update-file', id: there.file.id, kind: 'minutes' });
         await dropHere();
         addToast(`Read into the ${meetingName(other)}: ${readWords(k.read)}`, 'info');
         return;
       }
-      if (!(await ask({ title: 'Read them into this meeting?', text: `${other ? '' : `${j.error} `}Board would fill in this meeting’s attendance, notes, decisions and action items from them.`, yes: 'Read them into this one', no: 'Remove the file', careful: true }))) {
+      if (!(await ask({ title: 'Read them into this meeting?', text: `${other && !other.minutesFrom?.typed ? '' : `${j.error} `}Board would fill in this meeting’s attendance, notes, decisions and action items from them.`, yes: 'Read them into this one', no: 'Remove the file', careful: true }))) {
         const d = await dropHere();
         addToast(d.ok ? `${fileTitle(up.file.name)} is removed. Nothing changed on this meeting.` : d.error, d.ok ? 'info' : 'error');
         requestAnimationFrame(() => document.querySelector('.bm-minutes-drop input')?.focus());
         return;
       }
       setBusy(true);
-      j = await act({ ...body, anyway: true });
+      j = await act({ ...body, anyway: true }, { keep: refused });
+      if (j && !j.ok) { await refuse(j); return; }
     }
     setBusy(false);
     if (!j) return;
@@ -1673,16 +1702,16 @@ function WrapUp({ m, set, ctx, act, save, keepSaved }) {
   const vf = viewerFiles([signed].filter(Boolean));
   const [sIn, sShared, sApproved] = statesOf([hasMinutes, m.shared, approved]);
   return html`<div class="card bm-check bm-wrap">
-    <div class="bd-card-head"><h3 tabindex="-1">After the meeting</h3><p>${approved ? 'Done: the minutes are approved.' : 'Drop the minutes in and Board does the rest. The board approves them at the next meeting.'}</p></div>
+    <div class="bd-card-head"><h3 tabindex="-1">After the meeting</h3><p>${approved ? 'Done: the minutes are approved.' : hasMinutes ? 'The board approves them at the next meeting.' : 'Drop the minutes in and Board does the rest. The board approves them at the next meeting.'}</p></div>
     <ol class="bm-tasks">
-      <${Task} state=${sIn} title=${hasMinutes ? 'The minutes are in' : 'The minutes'} sub=${m.minutesFrom ? `Read from ${fileTitle(m.minutesFrom.name)}.` : hasMinutes ? '' : ahead ? 'After the meeting, drop them in: a PDF or Word file.' : 'Drop them in: a PDF or Word file.'} />
-      <${Task} state=${sShared} title=${m.shared ? 'On the board page' : 'Share them with the board'} sub=${m.shared ? (m.minutesSentAt ? `The board was told ${ago(m.minutesSentAt)}.` : hasMinutes ? 'The board can read them now.' : 'The minutes show there once they’re in.') : 'As draft minutes until they’re approved.'}>
+      <${Task} state=${sIn} title=${hasMinutes ? 'The minutes are in' : 'The minutes'} sub=${m.minutesFrom?.typed ? `${typedWords(m, data)}.` : m.minutesFrom ? `Read from ${fileTitle(m.minutesFrom.name)}.` : hasMinutes ? '' : ahead ? 'After the meeting, drop them in: a PDF or Word file.' : 'Drop them in: a PDF or Word file.'} />
+      <${Task} state=${sShared} title=${m.shared ? 'On the board page' : 'Share them with the board'} sub=${m.shared ? (m.minutesSentAt ? `The board was told ${ago(m.minutesSentAt)}.` : hasMinutes ? (next && !next.packetSentAt && !approved && minutesToRead(next, data.meetings)?.id === m.id ? 'The board can read them now, and the next agenda email asks them to before the vote.' : 'The board can read them now.') : 'The minutes show there once they’re in.') : 'As draft minutes until they’re approved.'}>
         ${m.shared || ahead ? null : html`<button class=${btn(sShared)} onClick=${() => share(true)}>Share with the board</button>`}
         <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email || !hasMinutes} onClick=${() => send(true)}>${working === 'preview' ? 'Sending…' : 'Send me the email'}</button>
         <button class="btn btn-ghost btn-sm" disabled=${!!working || !m.shared || !data.packetTo || !data.setup.email || !hasMinutes} onClick=${() => send(false)}>${working === 'send' ? 'Sending…' : m.minutesSentAt ? 'Email the board again' : 'Email the board'}</button>
         ${ahead && !m.shared ? html`<span class="bd-muted">After the meeting.</span>` : !hasMinutes ? html`<span class="bd-muted">Once the minutes are in.</span>` : !m.shared ? html`<span class="bd-muted">Share them first, so the email has something to open.</span>` : null}
       </${Task}>
-      <${Task} state=${sApproved} title=${approved ? `Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}` : 'The board approves them'} sub=${approved ? 'Marked on the board page.' : next ? `On the agenda of the ${meetingName(next)} (${shortDate(next.date)}). Approving them there marks them here too.` : 'At the next meeting: its agenda asks for this approval.'}>
+      <${Task} state=${sApproved} title=${approved ? `Approved${m.approvedOn ? ` ${shortDate(m.approvedOn)}` : ''}` : 'The board approves them'} sub=${approved ? 'Marked on the board page.' : next ? `On the agenda of the ${meetingName(next)} (${shortDate(next.date)}). Approving them there marks them here too.` : data.meetings.some((x) => x.date > m.date) ? 'At the next meeting: its agenda asks for this approval.' : 'The next meeting isn’t in Board yet. Its agenda asks for this approval once it’s added.'}>
         ${approved ? html`<button class="btn btn-ghost btn-sm" onClick=${() => approve(false)}>Mark as draft</button>` : html`<button class="btn btn-ghost btn-sm" disabled=${ahead || !hasMinutes} onClick=${() => approve(true)}>Mark them approved</button>`}
         ${!approved && ahead ? html`<span class="bd-muted">The meeting hasn’t happened yet.</span>` : !approved && !hasMinutes ? html`<span class="bd-muted">Once the minutes are in.</span>` : null}
       </${Task}>

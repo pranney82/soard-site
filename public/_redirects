@@ -252,6 +252,8 @@
 /board  /admin/board/  302
 /board/  /admin/board/  302
 # A meeting's link on its calendar invite: the board page opens it (a query survives Cloudflare's sign-in; a #/ link doesn't)
+/board/:id/report/:item  /admin/board/?meeting=:id&at=report/:item  302
+/board/:id/review  /admin/board/?meeting=:id&at=review  302
 /board/:id  /admin/board/?meeting=:id  302
 /jack-2016  /kids/  301
 /oliver.html  /kids/  301

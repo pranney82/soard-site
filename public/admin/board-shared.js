@@ -77,10 +77,13 @@ export function repliesOf(m) {
 }
 /** Whether a meeting's calendar invite has gone out (Board's, sent from Board) */
 export const inviteOut = (m) => !!m?.invite?.eventId;
+// The date in the name Board gives the Word file it keeps ("… minutes (2026-11-05).docx"): only that form, so no other name changes
+const KEPT_DATE = /\((\d{4})-(\d{2})-(\d{2})\)/g;
 /** "Balance-sheet_financials v2.pdf" → "Balance sheet financials v2" (the file keeps its own name for saving) */
 export function fileTitle(name) {
-  // A tax form's own dash stays (W-9, I-9, W-8BEN, 1099-NEC, 990-EZ, 8822-B); every other one is a space
+  // A tax form's own dash stays (W-9, I-9, W-8BEN, 1099-NEC, 990-EZ, 8822-B), and the date Board puts in a name; every other one is a space
   const base = String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').replace(/\b(\d{1,2})_(\d{1,2})_(\d{2,4})\b/g, '$1/$2/$3')
+    .replace(KEPT_DATE, '($1\u2011$2\u2011$3)')
     .replace(/(?<![a-z0-9])([a-z])-(\d{1,4}[a-z]{0,3})(?![a-z0-9])/gi, '$1\u2011$2').replace(/(?<![a-z0-9])(\d{3,4})-([a-z]{1,3})(?![a-z0-9])/gi, '$1\u2011$2')
     .replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/\u2011/g, '-');
   return base ? base[0].toUpperCase() + base.slice(1) : 'File';
@@ -156,7 +159,7 @@ export function signsAs(typed, name) {
 export function docTitle(name) {
   // A date's dashes are kept as slashes ("2-9-26" stays a date once the other dashes are spaces)
   // and a year's month or a fiscal year ("2025-11", "2026-27") keeps its dash
-  let t = fileTitle(String(name || '').replace(/\+/g, ' ').replace(/\b(\d{1,2})-(\d{1,2})-(\d{2,4})\b/g, '$1/$2/$3').replace(/(?<!\d)((?:19|20)\d{2})-(\d{2})(?!\d)/g, '$1\u2011$2')).replace(/\u2011/g, '-');
+  let t = fileTitle(String(name || '').replace(/\+/g, ' ').replace(KEPT_DATE, '($1\u2011$2\u2011$3)').replace(/\b(\d{1,2})-(\d{1,2})-(\d{2,4})\b/g, '$1/$2/$3').replace(/(?<!\d)((?:19|20)\d{2})-(\d{2})(?!\d)/g, '$1\u2011$2')).replace(/\u2011/g, '-');
   if (/^[0-9a-f]{8}( [0-9a-f]{4}){3} [0-9a-f]{12}$/i.test(t)) return 'Document';
   // A scanner's "doc20260209130015": the day it was scanned
   const scan = /^doc(\d{4})(\d{2})(\d{2})\d{6}$/i.exec(t);
@@ -623,9 +626,10 @@ const isOutline = (sections, template = DEFAULT_TEMPLATE) => sections.length ===
 /**
  * An agenda nobody has written: the template (or a draft from the last meeting, made before every agenda began on the
  * template), until someone writes in it or uses it. A meeting from before agendaFrom counts by its look. One with a
- * report written in it is never a draft again: starting it over would lose the report.
+ * report written in it is never a draft again: starting it over would lose the report. Nor is one with typed minutes:
+ * their notes sit on its items, and nothing may start those over.
  */
-export const agendaIsDraft = (m, template = DEFAULT_TEMPLATE) => !m?.sections?.some((s) => s.items.some((it) => it.report || it.motion))
+export const agendaIsDraft = (m, template = DEFAULT_TEMPLATE) => !m?.minutesFrom?.typed && !m?.sections?.some((s) => s.items.some((it) => it.report || it.motion))
   && (!m?.sections?.some((s) => s.items.length)
     || ['template', 'last-meeting'].includes(m?.agendaFrom?.kind)
     || (!m?.agendaFrom && (isOutline(m.sections, template) || isOutline(m.sections))));
@@ -785,6 +789,26 @@ export function copyOfItem(it, id) {
     id,
     title: !title || isCopyName(title) ? title : `${title.slice(0, LIMITS.title - COPY_MARK.length).trim()}${COPY_MARK}`,
   };
+}
+/** This meeting's own minutes file, if any: a minutes file on an agenda item is the last meeting's, up for approval */
+export const ownMinutesFile = (m) => { const onItem = new Set((m.sections || []).flatMap((x) => x.items.flatMap((it) => it.docs || []))); return (m.files || []).filter((f) => f.kind === 'minutes' && !onItem.has(f.id)).at(-1) || null; };
+/** The meeting an agenda's "approve the minutes" item is about: the one it names, else the last one the board had */
+export function minutesTarget(m, meetings) {
+  const it = (m.sections || []).flatMap((s) => s.items).find((x) => x.live === 'minutes');
+  const named = it?.about ? meetings.find((x) => x.id === it.about) : null;
+  return named || meetings.filter((x) => x.id !== m.id && x.shared && !x.notBoard && !x.practice && isDate(x.date) && x.date < m.date).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
+}
+/**
+ * Peter, Nov 5 2026: "why not just send out the minutes before the next meeting for the board to review?" The meeting
+ * whose minutes this agenda puts to a vote, for the agenda email to send the board to: only while they're waiting for that
+ * vote with something there to read (read in, typed, or a file), and never named from a board-only item
+ */
+export function minutesToRead(m, meetings) {
+  const it = (m.sections || []).flatMap((s) => s.items).find((x) => x.live === 'minutes');
+  if (!it || it.confidential) return null;
+  const prev = minutesTarget(m, (meetings || []).filter((x) => !x.practice));
+  const file = prev ? ownMinutesFile(prev) : null;
+  return prev?.shared && prev.minutes !== 'approved' && (prev.minutesFrom || (file && !file.staffOnly)) ? prev : null;
 }
 /** An item's files, in order: its documents, and for "approve the minutes" the last meeting's minutes (from `meetings`) */
 export function itemFiles(m, it, meetings = []) {

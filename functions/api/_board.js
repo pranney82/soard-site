@@ -35,7 +35,7 @@
  */
 
 import {
-  cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf,
+  cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf, minutesToRead,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf, inviteOut,
   agendaIsDraft, draftAgenda, templateAgenda, previousMeeting, draftName, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
   isFilled, LIVE_TITLES, presentersOf, reportsOn, namesText,
@@ -43,7 +43,7 @@ import {
 import { welcomeHad, REPORT_LOOKS, SLIDE_PIECE } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
 import { reachedCount } from '../../public/admin/community-shared.js';
-import { peopleRows, privateEmails, activeBoard, boardAdmins, readState, writeState, readSettings, normEmail, BOARD_PAGE } from './_board-roles.js';
+import { peopleRows, privateEmails, activeBoard, boardAdmins, readState, writeState, readSettings, normEmail } from './_board-roles.js';
 import { cachedReveals, fetchJobs, loadKids, loadProjects, matchProject, isProject, isRehearsalJob, FIELD_JOB_STATUS, BUILDING_STATUSES } from './_reveals.js';
 import { sendEmails, sendEmailItems, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js';
 import { isEmail } from './_broadcast-notify.js';
@@ -1420,7 +1420,9 @@ const fromBoard = () => EMAIL_FROM.replace(/^[^<]*/, 'SOARD Board ');
 // From a person, through the board's address: "Sam Ortiz via SOARD Board", quoted (a name may have a period or a
 // comma), a phone's curly apostrophe kept as a plain one; no one, the board's own
 const viaBoard = (who) => (who ? EMAIL_FROM.replace(/^[^<]*/, `"${who.replace(/[‘’]/g, "'").replace(/["\\<>\r\n]/g, '').trim()} via SOARD Board" `) : fromBoard());
-const meetingUrl = (m) => `${SITE}${BOARD_PAGE}#/meetings/${m.id}`;
+// A meeting's link in an email or an invite: /board/<id> (public/_redirects) keeps its place through Cloudflare's sign-in,
+// where a #/ link lands a signed-out board member on Home. Places inside it: /board/<id>/report/<item> and /board/<id>/review
+const meetingUrl = (m) => `${SITE}/board/${m.id}`;
 const whenOf = (m) => [longDate(m.date), timeRange(m.start, m.end)].filter(Boolean).join(', ');
 const placeOf = (m) => [m.location, m.address].filter(Boolean).join(', ');
 // A title or an initial isn't a first name: "Dr. Lee Park" → Lee, "J. Michael Ortiz" → Michael, "Ortiz, Sam" → Sam
@@ -1474,7 +1476,7 @@ export function reportsFor(m, slug, people = []) {
     .map((it) => ({ title: it.title, url: `${meetingUrl(m)}/report/${it.id}`, written: !!it.report }));
 }
 
-export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', from = '', ask = true, reports = [], toSign = [] } = {}) {
+export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', from = '', ask = true, reports = [], toSign = [], minutes = null } = {}) {
   const name = meetingName(m);
   const first = firstName(who);
   const titles = files.map((n) => fileTitle(n));
@@ -1500,6 +1502,13 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
     + `<p class="ink" style="margin:0;">${papers.map((t) => esc(t.title)).join('<br>')}</p>` + small(esc(signHow))
     + `<p style="margin:10px 0 0;">${link(toSign.length > 1 ? 'Read and sign them' : 'Read and sign it', documentsUrl)}</p>`);
   const signText = !toSign.length ? '' : `Still to sign for ${year}: ${papers.map((t) => t.title).join(', ')}. ${signHow}\n${documentsUrl}`;
+  // The last meeting's minutes, up for a vote at this one: read first, on the board page. Replies go to Board's admins
+  const minutesName = minutes ? `The minutes of the ${meetingName(minutes)}` : '';
+  const minutesHow = 'The board votes on them at this meeting. Reply if anything needs correcting.';
+  const minutesHtml = !minutes ? '' : ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">Read before the vote</p>`
+    + `<p class="ink" style="margin:0;">${esc(minutesName)}</p>` + small(esc(minutesHow))
+    + `<p style="margin:10px 0 0;">${link('Read the minutes', meetingUrl(minutes))}</p>`);
+  const minutesText = !minutes ? '' : `Read before the vote: ${minutesName}. ${minutesHow}\n${meetingUrl(minutes)}`;
   const presentText = !reports.length ? '' : `You present ${joined(reports.map((r) => `“${r.title}”`))}. ${todo.length ? 'Write your report on the board page; the board reads it there before the meeting.' : 'Your report is in; you can change it there until the meeting.'}\n${reports.map((r) => `${r.title}: ${r.url}`).join('\n')}`;
   return {
     subject: `${test ? '[Preview] ' : ''}The agenda and documents: ${name}, ${shortDate(m.date)}`,
@@ -1511,6 +1520,7 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
       bodyHtml: meetingFacts(m, [['Documents', docsHtml]])
         + `<div style="margin:18px 0 0;">${button('Open the agenda and documents', meetingUrl(m))}</div>`
         + small(SIGN_IN)
+        + minutesHtml
         + presentHtml
         + answer
         + signHtml,
@@ -1519,6 +1529,7 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
     text: [`The agenda and documents for the ${name}.`, lead, factsText(m),
       count ? `Documents: ${[...titles, hidden ? plural(hidden, 'board-only document') : ''].filter(Boolean).join(', ')}` : '',
       `Open the agenda and documents: ${meetingUrl(m)}\n${SIGN_IN}`,
+      minutesText,
       presentText,
       ask ? `Will you be there? ${answerAsk(from)}` : '',
       signText].filter(Boolean).join('\n\n'),
@@ -1583,7 +1594,8 @@ export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) 
   // …and each member's, the papers they haven't signed this year (a preview shows them all)
   const signable = (await listDocs(env.DB)).filter((d) => d.shared && d.sign && (d.body || d.file));
   const toSign = (p) => signable.filter((d) => !(p.slug && d.signed[p.slug])).map((d) => ({ title: d.title, id: d.id, written: !!d.body }));
-  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, from, ask: test || open.includes(p.slug), reports: reportsFor(m, p.slug, everyone), toSign: toSign(p) }) }));
+  const minutes = minutesToRead(m, await listMeetings(env.DB));
+  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, from, ask: test || open.includes(p.slug), reports: reportsFor(m, p.slug, everyone), toSign: toSign(p), minutes }) }));
   const tags = [{ name: 'kind', value: test ? 'board-packet-preview' : 'board-packet' }];
   const r = await sendEach(env, items, { tags, replyTo });
   if (!test && r.sent) await writeMeeting(env.DB, { ...m, packetSentAt: nowIso(), packetSentTo: r.sent, updatedAt: m.updatedAt, updatedBy: m.updatedBy });
@@ -1776,7 +1788,7 @@ export function inviteNotes(m) {
  * A meeting's short link, for its calendar invite: /board/<id> opens the meeting (public/_redirects, then the board
  * page), even through a first sign-in, where a #/meetings/<id> link would land on Home
  */
-export const inviteUrl = (m) => `${SITE}/board/${m.id}`;
+export const inviteUrl = meetingUrl;
 /**
  * What a meeting's calendar invite is called: which meeting it is, "SOARD Q4 2026 Board Meeting" (Peter, Nov 2 2026:
  * "make that better and more descriptive", then without "(in person or Google Meet)")
@@ -2604,12 +2616,12 @@ export async function maybeTemplateAgendas(env, { now = Date.now(), force = fals
 export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
   const done = [];
   try {
-    for (const m of (await listMeetings(env.DB)).filter((x) => x.agendaFrom?.kind === 'email' && readAgain(x))) {
+    for (const m of (await listMeetings(env.DB)).filter((x) => x.agendaFrom?.kind === 'email' && readAgain(x) && !x.minutesFrom?.typed)) {
       const f = m.files.find((x) => x.name === m.agendaFrom.name);
       let parsed = null;
       if (f) { try { parsed = await readFileAsAgenda(env, f.id); } catch (err) { console.error('[board] reading again', f.name, err.message); } }
       const better = !!parsed?.sections.some((s) => s.items.length);
-      await patchMeeting(env.DB, m.id, (cur) => (cur.agendaFrom?.kind === 'email' && readAgain(cur)
+      await patchMeeting(env.DB, m.id, (cur) => (cur.agendaFrom?.kind === 'email' && readAgain(cur) && !cur.minutesFrom?.typed
         ? { ...cur, ...(better ? { sections: parsed.sections } : {}), agendaFrom: { ...cur.agendaFrom, ...(better ? { at: new Date(now).toISOString() } : {}), v: AGENDA_READER } }
         : cur));
       if (better) done.push(m.id);

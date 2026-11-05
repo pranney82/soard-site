@@ -228,7 +228,7 @@ test('the board email asks each presenter for their report, with the page to wri
   const people = PEOPLE.map(([slug, d]) => ({ slug, name: d.name }));
   const alex = reportsFor(m, 'alex-rivera', people);
   assert.deepEqual(alex.map((r) => [r.title, r.written]), [['Governance', false]]);
-  assert.match(alex[0].url, /\/admin\/board\/#\/meetings\/m_rep1\/report\/i_gov1$/);
+  assert.match(alex[0].url, /\/board\/m_rep1\/report\/i_gov1$/);
   assert.deepEqual(reportsFor(m, 'sam-ortiz', people).map((r) => r.written), [true]);
   assert.deepEqual(reportsFor(m, '', people), []);
   const mail = packetEmail(m, { name: 'Alex Rivera', reports: alex });

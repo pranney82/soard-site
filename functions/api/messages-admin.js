@@ -606,9 +606,9 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
         to: STAFF_ALERTS_TO, note: 'A staff address that bounces says which list to fix instead. A reveal-reminder address that bounces or reports spam is simply unsubscribed, with no email. Once a week per address at most.',
       });
     case 'board-packet':
-      return email(packetEmail(sampleBoardMeeting(), { name: 'Alex Rivera', files: ['Q3 financials.pdf'] }), {
+      return email(packetEmail(sampleBoardMeeting(), { name: 'Alex Rivera', files: ['Q3 financials.pdf'], minutes: { id: 'm_sample', title: 'Q2 2026 Board Meeting' } }), {
         from: BOARD_FROM, to: 'Each active board member with an email on People → Board, on their own',
-        note: 'Peter or Holly sends it from Board, after sharing the meeting. “Will you be there?” asks only those on the calendar invite who haven’t answered it: the invite is the only answer. Send it to me sends a [Preview] copy first.',
+        note: 'Peter or Holly sends it from Board, after sharing the meeting. “Read before the vote” shows while the last meeting’s minutes are waiting for the board’s vote. “Will you be there?” asks only those on the calendar invite who haven’t answered it: the invite is the only answer. Send it to me sends a [Preview] copy first.',
       });
     case 'board-reminder':
       return email(reminderEmail(sampleBoardMeeting(), { name: 'Alex Rivera', from: 'Jordan Ellis' }), {

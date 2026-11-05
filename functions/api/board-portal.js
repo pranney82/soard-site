@@ -55,7 +55,7 @@ import { portalData, portalWords, setActionDone, signDoc, signWithCopy, noteOpen
 import { readBoardWords } from './_board-file-words.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
-import { notesFor, saveNotes, sendNotes, notesWaiting } from './_board-notes.js';
+import { notesFor, saveNotes, sendNotes, notesState } from './_board-notes.js';
 import { noteGet, noteLook, noteAnswer, noteEvents, answerOf, deviceOf, accessIat } from './_board-activity.js';
 import { evidenceOf, afterSigning, buildRecord, declineDoc, tellDeclined } from './_board-sign.js';
 // Where a signing request came from (its IP, device, this sign-in's start, the address Access checked): its evidence
@@ -123,11 +123,11 @@ export async function onRequestGet(context) {
     // and SOARD's facts for Documents, as the site has them saved (_org-facts.js)
     const [data, extras, org, group] = await Promise.all([portalData(context.env, w), listMeetings(context.env.DB).then((meetings) => portalExtras(context.env, { ...w, meetings })), orgFacts(context.env), groupWanted(context.env.DB)]);
     // Notes typed that never went on their meeting: only theirs to know, and how they stay reachable once it's approved
-    const waiting = w.admin || w.member?.seat === 'secretary' ? await notesWaiting(context.env.DB) : [];
+    const typed = w.admin || w.member?.seat === 'secretary' ? await notesState(context.env.DB) : { waiting: [], typedBy: {} };
     // People's Email all: the same people Board → Members writes to, each by their own address, less whoever's looking
     const viewer = normEmail(context.data?.userEmail);
     const emailAll = { to: group.members.map((p) => p.email).filter((e) => e !== viewer), missing: group.missing.map((p) => p.name) };
-    return Response.json({ ok: true, ...data, ...extras, org, notesWaiting: waiting, emailAll }, { headers: { 'Cache-Control': 'private, no-store' } });
+    return Response.json({ ok: true, ...data, ...extras, org, notesWaiting: typed.waiting, minutesTypedBy: typed.typedBy, emailAll }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err) {
     return fromError(err);
   }

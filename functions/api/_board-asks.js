@@ -33,7 +33,7 @@
  */
 
 import { getMeeting, listMeetings, patchMeeting, roster, attachToItem, getSettings, sendApprovedAgenda, SITE } from './_board.js';
-import { peopleRows, boardAdmins, readState, writeState, readSettings, normEmail, isStaffEmail, BOARD_PAGE } from './_board-roles.js';
+import { peopleRows, boardAdmins, readState, writeState, readSettings, normEmail, isStaffEmail } from './_board-roles.js';
 import { organizerFor } from './_board-invite.js';
 import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
 import { header, bytesOf, partsOf } from './_mailbox.js';
@@ -217,7 +217,7 @@ function body(paras) {
 export const yourReport = (it) => (it.confidential ? 'your report on the board-only item you present' : `your ${it.title} report`);
 const YourReport = (it) => yourReport(it).replace(/^y/, 'Y');
 const itemTitle = (it) => (it.confidential ? 'A board-only item (on the board page)' : it.title || 'Untitled item');
-const reportUrl = (m, itemId) => `${SITE}${BOARD_PAGE}#/meetings/${m.id}/report/${itemId}`;
+const reportUrl = (m, itemId) => `${SITE}/board/${m.id}/report/${itemId}`;
 const isMoney = (it) => showsOf(it).includes('cash');
 
 /** The ask: what's due when, that a reply is all it takes, and (the money) the review waiting on the board page */
@@ -343,7 +343,7 @@ function reportState(it, asks) {
   return mine.some((a) => a.status === 'late') || due <= Date.now() ? `report late (was due ${dueWords(due, { short: true })})` : `report due ${dueWords(due, { short: true })}`;
 }
 
-const reviewUrl = (m) => `${SITE}${BOARD_PAGE}#/meetings/${m.id}/review`;
+const reviewUrl = (m) => `${SITE}/board/${m.id}/review`;
 /** "me" or "me and Holly": who a reply to the asker's email reaches */
 const replyReaches = (cc = []) => (cc.length ? `me and ${cc.map((c) => firstName(c.name) || c.email).join(' and ')}` : 'me');
 

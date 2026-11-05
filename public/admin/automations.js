@@ -949,7 +949,7 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'The packet email', s: 'live', k: 'admin',
           when: 'The agenda is approved: on the chair’s review, by the chair’s reply to it, or by Peter or Holly in Board. Nothing of a meeting ahead reaches the board before that. Send me the email sends them a preview; Email again resends it. The minutes and the reminder to answer the calendar invite go by hand.',
-          does: 'Emails each active board member on their own: when, where and the video call, the documents by name (nothing attached; staff-only ones never named), and a button to the meeting on the board page. Whoever is on the calendar invite and hasn’t answered it is asked to (the invite is the only answer). Never notes or numbers; a board-only item shows only as “A board-only item (on the board page)”.',
+          does: 'Emails each active board member on their own: when, where and the video call, the documents by name (nothing attached; staff-only ones never named), a button to the meeting on the board page, and, while they’re waiting for the board’s vote, the last meeting’s minutes to read first. Whoever is on the calendar invite and hasn’t answered it is asked to (the invite is the only answer). Never notes or numbers; a board-only item shows only as “A board-only item (on the board page)”.',
           touches: ['Resend', 'D1'], where: 'functions/api/_board.js (sendPacket, packetEmail, remindRsvp)',
           live: (f) => {
             const b = f.board;

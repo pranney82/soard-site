@@ -8,10 +8,10 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { saveMeeting, getMeeting, deleteMeeting, ensureSchema } from '../functions/api/_board.js';
-import { applyNotes, cleanChange, notesFor, saveNotes, sendNotes, notesWaiting, refreshMinutesFile } from '../functions/api/_board-notes.js';
-import { readMinutes, applyMinutes, withoutVoteLines } from '../functions/api/_board-minutes.js';
+import { applyNotes, cleanChange, notesFor, saveNotes, sendNotes, notesWaiting, notesState, refreshMinutesFile } from '../functions/api/_board-notes.js';
+import { readMinutes, applyMinutes, withoutVoteLines, minutesNewer, readMinutesInto, secretarySends } from '../functions/api/_board-minutes.js';
 import { minutesDocx } from '../public/admin/board-minutes-template.js';
-import { docxText, todayEastern, draftAgenda, agendaItems } from '../public/admin/board-shared.js';
+import { docxText, todayEastern, draftAgenda, agendaItems, agendaIsDraft } from '../public/admin/board-shared.js';
 
 const PEOPLE = [
   { slug: 'alex-rivera', name: 'Alex Rivera', org: '', kind: 'board' },
@@ -791,4 +791,82 @@ test('a meeting deleted takes its draft with it', async () => {
   await fill({ 'n:i_roll': 'Called to order' });
   await deleteMeeting(env, 'm_notes0001');
   assert.equal(await env.DB.prepare('SELECT 1 AS x FROM board_minutes_notes WHERE meeting_id = ?').bind('m_notes0001').first(), null);
+});
+
+test('who typed the minutes is who typed them: never who pressed Send, nor whoever holds the seat', async () => {
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': 'All here' } }, SECRETARY);
+  await sendNotes(env, 'm_notes0001', ADMIN);
+  assert.equal((await notesState(env.DB)).typedBy.m_notes0001, 'Kim Park', 'the secretary typed them; a founder only pressed Send');
+
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': 'All here, on time' } }, ADMIN);
+  await sendNotes(env, 'm_notes0001', ADMIN);
+  assert.equal((await notesState(env.DB)).typedBy.m_notes0001, 'Kim Park', 'a founder’s fix doesn’t change who took them');
+});
+
+test('a founder who types the minutes is named, though a secretary holds the seat and staff have no email on the roster', async () => {
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': 'All here' } }, ADMIN);
+  await sendNotes(env, 'm_notes0001', ADMIN);
+  assert.equal((await notesState(env.DB)).typedBy.m_notes0001, 'Jane Doe');
+  assert.equal((await getMeeting(env.DB, 'm_notes0001')).minutesFrom.typed, true);
+});
+
+test('nothing sent: nobody named, and the draft still waits', async () => {
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': 'All here' } }, SECRETARY);
+  const state = await notesState(env.DB);
+  assert.deepEqual(state.typedBy, {});
+  assert.deepEqual(state.waiting, ['m_notes0001']);
+  assert.deepEqual(await notesWaiting(env.DB), ['m_notes0001']);
+});
+
+test('minutes emailed in later never read over what was typed and sent', () => {
+  const typed = { minutesFrom: { name: 'Q4 minutes.docx', at: '2026-11-05T15:00:00.000Z', typed: true } };
+  assert.equal(minutesNewer(typed, { name: 'Q4 minutes.pdf', at: '2026-12-01T15:00:00.000Z' }), false);
+});
+
+test('typed minutes take no file: on the admin’s drop, or the board page’s send, whatever a tab left open thinks', async () => {
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': 'All here' } }, SECRETARY);
+  await sendNotes(env, 'm_notes0001', SECRETARY);
+  await refused(readMinutesInto(env, 'm_notes0001', 'f_anything'), 409);
+  await refused(secretarySends(env, 'm_notes0001', new File(['x'], 'minutes.pdf', { type: 'application/pdf' }), SECRETARY), 409);
+  assert.equal((await getMeeting(env.DB, 'm_notes0001')).sections[0].items[0].notes, 'All here');
+});
+
+test('taken back off, nobody took the minutes: the next to type them is named, and nobody is marked there by it', async () => {
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': 'All here' } }, SECRETARY);
+  await sendNotes(env, 'm_notes0001', SECRETARY);
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': null } }, SECRETARY);
+  await sendNotes(env, 'm_notes0001', SECRETARY);
+  assert.deepEqual((await notesState(env.DB)).typedBy, {});
+
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': 'Founder’s words', 'r:alex-rivera': 'present' } }, ADMIN);
+  await sendNotes(env, 'm_notes0001', ADMIN);
+  assert.equal((await notesState(env.DB)).typedBy.m_notes0001, 'Jane Doe');
+  const m = await getMeeting(env.DB, 'm_notes0001');
+  assert.notEqual(m.attendance.find((p) => p.slug === 'kim-park').status, 'present', 'the secretary who took them back isn’t marked there by it');
+});
+
+test('a box typed and emptied before any send leaves nobody as having taken the minutes', async () => {
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': 'Oops' } }, SECRETARY);
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': null } }, SECRETARY);
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_roll': 'Founder’s words' } }, ADMIN);
+  await sendNotes(env, 'm_notes0001', ADMIN);
+  assert.equal((await notesState(env.DB)).typedBy.m_notes0001, 'Jane Doe');
+});
+
+test('who pressed Send is never named as who typed them', async () => {
+  await env.DB.prepare("INSERT INTO board_minutes_notes (meeting_id, data, updated_at, updated_by) VALUES ('m_notes0001', ?, ?, 'office@example.com')").bind(JSON.stringify({ 'n:i_roll': 'All here' }), new Date().toISOString()).run();
+  await sendNotes(env, 'm_notes0001', ADMIN);
+  assert.deepEqual((await notesState(env.DB)).typedBy, {});
+});
+
+test('a meeting with typed minutes is never a draft to start over, whatever its agenda came from', async () => {
+  const m = { agendaFrom: { kind: 'template' }, sections: [{ id: 's_a', title: 'Call to order', items: [{ id: 'i_a', title: 'Roll call', notes: 'Typed under it' }] }] };
+  assert.equal(agendaIsDraft(m), true);
+  assert.equal(agendaIsDraft({ ...m, minutesFrom: { name: 'x.docx', typed: true } }), false);
+  assert.equal(agendaIsDraft({ ...m, minutesFrom: { name: 'x.pdf' } }), true, 'read from a file: as it was');
+});
+
+test('a file the secretary sends that isn’t minutes doesn’t stay on the meeting', async () => {
+  await assert.rejects(secretarySends(env, 'm_notes0001', new File(['nothing like minutes'], 'lunch order.pdf', { type: 'application/pdf' }), SECRETARY), (err) => !!err.status);
+  assert.equal((await getMeeting(env.DB, 'm_notes0001')).files.length, 0);
 });

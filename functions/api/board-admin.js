@@ -46,7 +46,7 @@
  * member, and board notes are for the board.
  */
 
-import { notesWaiting, refreshMinutesFile } from './_board-notes.js';
+import { notesState, refreshMinutesFile } from './_board-notes.js';
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
   setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, fillDocWords, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, fileLocked, liveNumbers, takeSnapshot, sendPacket,
@@ -154,7 +154,7 @@ export async function onRequestGet(context) {
     ]);
     const [mail, mailRecent, welcome, check, group] = await Promise.all([mailStatus(env.DB), mailLog(env.DB), readState(env.DB, 'welcome'), inviteCheck(env.DB), groupStatus(env)]);
     return Response.json({
-      ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome, notesWaiting: await notesWaiting(env.DB),
+      ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome, ...(await notesState(env.DB).then((n) => ({ notesWaiting: n.waiting, minutesTypedBy: n.typedBy }))),
       // Whose approval each agenda has: nothing reaches the board before it (_board.js holdUntilApproved)
       approvals: await agendaApprovals(env.DB),
       // board@soardcharity.com following the board (_board-group.js)

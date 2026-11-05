@@ -21,7 +21,7 @@ import { useState, useEffect, useRef, useMemo } from './vendor.js';
 import { ask, askToLeave } from './ask.js';
 import { viewerLink, sizeText } from './file-viewer.js';
 import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords, driveLink, dayOf, signedHow, Face } from './board-ui.js';
-import { MeetingEditor, AgendaTemplate, agendaSource } from './board-meeting.js';
+import { MeetingEditor, AgendaTemplate, agendaSource, meetingOver } from './board-meeting.js';
 import { ReportEditor, Report, PAPER_LETTERS } from './board-report.js';
 import { mdPlain, paperFields } from './board-md.js';
 import { pdfLines, docxLines, wordsFromLines } from './board-words.js';
@@ -269,6 +269,9 @@ function NextCard({ m, ctx }) {
   const now = isLive(m);
   const ended = !now && !!m.live?.endedAt;
   const today = days === 0 || now;
+  // Held, whoever pressed End (nothing does since the presentation runs on its own): the chair's End, or the day's minutes
+  // are in or its end time has passed, the same as the meeting page says it (meetingOver)
+  const held = ended || (today && !now && meetingOver(m));
   const place = [m.location, m.address].filter(Boolean).join(', ');
   const prep = prepOf(m);
   const up = prep.find((x) => !x.done);
@@ -287,7 +290,7 @@ function NextCard({ m, ctx }) {
     <div class="bh-next__top">
       <${DateBlock} date=${m.date} />
       <div class="bh-next__main">
-        <p class="bh-eyebrow">${now ? `Meeting now · started ${ago(m.live.startedAt)}` : ended ? `Held today · ended ${ago(m.live.endedAt)}` : `Next meeting · ${whenWords(days)}`}</p>
+        <p class="bh-eyebrow">${now ? `Meeting now · started ${ago(m.live.startedAt)}` : ended ? `Held today · ended ${ago(m.live.endedAt)}` : held ? 'Held today' : `Next meeting · ${whenWords(days)}`}</p>
         <h3 class="bh-next__title"><a href=${hashFor({ meetingId: m.id })}>${meetingName(m)}</a></h3>
         <p class="bh-facts">
           <span>${[longDate(m.date), timeRange(m.start, m.end)].filter(Boolean).join(' · ')}</span>
@@ -295,12 +298,12 @@ function NextCard({ m, ctx }) {
           ${m.video ? html`<span>${callName(m.video)}</span>` : null}
         </p>
       </div>
-      <button class="btn btn-primary" onClick=${() => go({ meetingId: m.id })}>${today && !ended ? 'Open for the meeting' : 'Open the meeting'}</button>
+      <button class="btn btn-primary" onClick=${() => go({ meetingId: m.id })}>${today && !held ? 'Open for the meeting' : 'Open the meeting'}</button>
     </div>
-    ${ended ? html`<p class="bh-nextline"><strong>Next:</strong> its minutes.</p>` : today ? html`<p class="bh-nextline">${now ? null : html`<strong>Today.</strong> `}Open it to present the agenda and its documents on the screen.</p>` : html`
+    ${held ? html`<p class="bh-nextline">${m.minutes === 'approved' ? html`<strong>The minutes are approved.</strong>` : m.minutesFrom ? html`<strong>The minutes are in.</strong> The board votes on them at the next meeting.` : html`<strong>Next:</strong> its minutes.`}</p>` : today ? html`<p class="bh-nextline">${now ? null : html`<strong>Today.</strong> `}Open it to present the agenda and its documents on the screen.</p>` : html`
       <ol class="bh-prep" aria-label="Getting ready">${prep.map((x) => html`<li class=${x.done ? 'is-done' : x === up ? 'is-next' : ''}><span class="bh-prep__mark" aria-hidden="true">${x.done ? CHECK : null}</span>${x.label}</li>`)}</ol>
       <p class="bh-nextline">${up ? html`<strong>Next:</strong> ${up.next}.` : html`<strong>Ready.</strong> The board was emailed the link ${ago(m.packetSentAt)}.`}</p>`}
-    ${ended ? html`<p class="bh-rsvp"><strong>Who was there:</strong> ${here.boardHere} of ${plural(here.board, 'board member')}</p>`
+    ${held ? (here.boardHere ? html`<p class="bh-rsvp"><strong>Who was there:</strong> ${here.boardHere} of ${plural(here.board, 'board member')}</p>` : null)
       : html`<p class="bh-rsvp"><strong>Who’s coming:</strong> ${!invited ? 'the invite hasn’t gone out yet' : [yes && `${yes} coming`, maybe && `${maybe} maybe`, no && `${no} can’t`, quiet && `${quiet} haven’t answered`, off && `${off} not on the invite`].filter(Boolean).join(' · ') || 'nobody has answered yet'}</p>`}
   </div>`;
 }

@@ -1398,6 +1398,7 @@ export const STYLES = `
   .bm-minutes-drop:focus-within { outline: 2px solid var(--color-text); outline-offset: 2px; }
   .bm-minutes-drop.is-done { border-style: solid; border-color: var(--tone-success-line, var(--color-border)); background: var(--tone-success-surface, var(--color-bg-card)); }
   .bm-minutes-drop.is-busy { cursor: progress; }
+  .bm-minutes-drop--typed, .bm-minutes-drop--typed:hover { cursor: default; border-color: var(--tone-success-line, var(--color-border)); background: var(--tone-success-surface, var(--color-bg-card)); }
   .bm-minutes-drop__icon { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--color-primary); color: #1F201C; }
   .bm-minutes-drop.is-done .bm-minutes-drop__icon { background: var(--tone-success-bg); color: var(--tone-success-fg); }
   .bm-minutes-drop__text { flex: 1 1 auto; min-width: 0; display: grid; gap: 0.15rem; }

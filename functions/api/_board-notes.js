@@ -34,7 +34,7 @@
 import { getMeeting, patchMeeting, saveMeeting, listMeetings, getSettings, approveMinutes, putFile, rewriteFile, deleteFile, roster, ID } from './_board.js';
 import { mergeAttendance, minutesPeople } from './_board-minutes.js';
 import { minutesDocx, minutesFileName, approveWords, noteLines } from '../../public/admin/board-minutes-template.js';
-import { isDate, todayEastern, endedClock } from '../../public/admin/board-shared.js';
+import { isDate, todayEastern, endedClock, minutesTarget } from '../../public/admin/board-shared.js';
 
 export const MAX_NOTE = 20000;
 export const MAX_LINE = 1000;
@@ -70,15 +70,10 @@ async function meetingFor(env, id, w) {
   if (!m || m.practice || m.notBoard || !(m.shared || w.admin)) throw no('That meeting isn’t on the board page', 404);
   return m;
 }
+/** A founder's or staff member's name from their sign-in: staff have no email on the roster, so their first name (peter@ → Peter Ranney) */
+const staffName = (staff, email) => (email ? staff.find((p) => String(email).toLowerCase().startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))?.name || '' : '');
 const rowOf = (DB, id) => DB.prepare('SELECT data, sent, updated_at, updated_by, took FROM board_minutes_notes WHERE meeting_id = ?').bind(id).first();
 const checkinsOf = async (DB, id) => Object.fromEntries(((await DB.prepare('SELECT slug, how FROM board_checkins WHERE meeting_id = ?').bind(id).all()).results || []).map((c) => [c.slug, c.how]));
-
-/** The meeting an agenda's "approve the minutes" item is about: the one it names, else the last one the board had */
-function minutesTarget(m, meetings) {
-  const it = (m.sections || []).flatMap((s) => s.items).find((x) => x.live === 'minutes');
-  const named = it?.about ? meetings.find((x) => x.id === it.about) : null;
-  return named || meetings.filter((x) => x.id !== m.id && x.shared && !x.notBoard && !x.practice && isDate(x.date) && x.date < m.date).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
-}
 
 /** One box as it's kept: a key nobody's box has is refused, and an empty box is taken off (null). A vote or an action item is the fields that changed */
 export function cleanChange(key, v) {
@@ -180,7 +175,7 @@ export async function saveNotes(env, id, { changes, was = null, wasText = null }
   // The secretary's name, the first time they type: it's who took these minutes, whoever saved last, or sits in that seat later
   const took = w.member?.seat === 'secretary' ? w.member.name || '' : '';
   const r = await env.DB.prepare(`INSERT INTO board_minutes_notes (meeting_id, data, updated_at, updated_by, took) VALUES (?1, json_patch('{}', ?2), ?3, ?4, NULLIF(?6, ''))
-    ON CONFLICT(meeting_id) DO UPDATE SET data = json_patch(data, ?2), updated_at = ?3, updated_by = ?4, took = COALESCE(took, NULLIF(?6, '')) WHERE length(data) + length(?2) < ?5`).bind(id, json, at, by, MAX_ROW, took).run();
+    ON CONFLICT(meeting_id) DO UPDATE SET data = json_patch(data, ?2), updated_at = ?3, updated_by = ?4, took = CASE WHEN json_patch(data, ?2) = '{}' THEN NULL ELSE COALESCE(took, NULLIF(?6, '')) END WHERE length(data) + length(?2) < ?5`).bind(id, json, at, by, MAX_ROW, took).run();
   if (!((r?.meta?.changes ?? r?.changes ?? 0) > 0)) throw no('These notes have grown too long to keep here. Send what you have, then keep going in a Word file.', 413);
   return { at, clashes };
 }
@@ -418,11 +413,18 @@ export const anythingIn = (notes) => Object.entries(notes).some(([k, v]) => {
 /** Anything at all typed in a box, whether or not it can go in yet */
 const typedIn = (notes) => Object.values(notes).some((v) => (v && typeof v === 'object' ? Object.values(v).some((x) => x !== null && x !== '') : !!v && v !== 'absent'));
 
-/** The meetings with notes typed that never went on them (for the secretary, the admins, and Board's approve) */
-export async function notesWaiting(DB) {
+/**
+ * What the pages say about typed notes: `waiting`, the meetings with notes typed that never went on them (for the
+ * secretary, the admins, and Board's approve); `typedBy`, who typed each meeting's sent minutes, as its last send kept it
+ */
+export async function notesState(DB) {
   const rows = (await DB.prepare('SELECT meeting_id, data, sent, updated_at FROM board_minutes_notes').all()).results || [];
-  return rows.filter((r) => { const sentAt = parse(r.sent).at; return typedIn(parse(r.data)) && (!sentAt || (r.updated_at || '') > sentAt); }).map((r) => r.meeting_id);
+  return {
+    waiting: rows.filter((r) => { const sentAt = parse(r.sent).at; return typedIn(parse(r.data)) && (!sentAt || (r.updated_at || '') > sentAt); }).map((r) => r.meeting_id),
+    typedBy: Object.fromEntries(rows.flatMap((r) => { const by = parse(r.sent).by; return by ? [[r.meeting_id, by]] : []; })),
+  };
 }
+export const notesWaiting = async (DB) => (await notesState(DB)).waiting;
 
 /**
  * POST { action: 'notes-send', meetingId }: the draft on the meeting, and a filled-in Word file kept as the minutes as
@@ -455,9 +457,9 @@ export async function sendNotes(env, id, w, { now = Date.now() } = {}) {
     let tookBy = '';
     if (anything) {
       const seen = applyNotes(m, notes, opts);
-      // The secretary, once they've typed anything; else whoever kept them, who isn't always who pressed Send
+      // The secretary, once they've typed anything; else whoever kept them, who isn't always who pressed Send (nobody known: nobody named)
       const typedBy = [...seats.board, ...seats.staff].find((p) => p.email && String(p.email).toLowerCase() === String(row.updated_by || '').toLowerCase());
-      tookBy = 'by' in lastSent ? lastSent.by : row.took || typedBy?.name || w.member?.name || '';
+      tookBy = 'by' in lastSent ? lastSent.by : row.took || typedBy?.name || staffName(seats.staff, row.updated_by) || '';
       const bytes = minutesDocx(seen.next, { meetings, quorum: settings.quorum, people, filled: { ...seen.record, by: tookBy } });
       // (a founder made the last one staff-only: this one stays that way)
       const staffOnly = !!m.files.find((f) => f.id === lastSent.fileId)?.staffOnly;
@@ -483,7 +485,8 @@ export async function sendNotes(env, id, w, { now = Date.now() } = {}) {
 
     // (what was sent, to bring the kept Word file up to a founder's fixes without what's only typed since)
     const keeps = anything ? JSON.stringify({ ...done.sent, fileId, approved, taker, by: tookBy, notes }) : null;
-    await env.DB.prepare('UPDATE board_minutes_notes SET sent = ? WHERE meeting_id = ?').bind(keeps, id).run();
+    // (taken back off, nobody took these minutes: the next to type them does)
+    await env.DB.prepare(`UPDATE board_minutes_notes SET sent = ?${anything ? '' : ', took = NULL'} WHERE meeting_id = ?`).bind(keeps, id).run();
     fileId = '';
     // The Word file the last send kept: this one takes its place
     if (lastSent.fileId) await deleteFile(env, lastSent.fileId).catch(() => {});

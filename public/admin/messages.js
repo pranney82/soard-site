@@ -774,7 +774,7 @@ const MAP = { t: 'Everything we send', children: [
           who: 'Each active board member with an email on People → Board, on their own.',
           when: 'The agenda is approved: on the chair’s review, by the chair’s reply to it, or by Peter or Holly in Board. Nothing goes to the board before that. Send me the email sends them a preview.',
           subject: 'Board packet: {meeting}, {date}',
-          does: 'When, where and the video call; the documents by name (nothing attached, never staff-only ones); a button to the meeting on the board page; whoever is on the calendar invite and hasn’t answered it is asked to (the invite is the only answer). Never notes or numbers; a board-only item shows only as “A board-only item (on the board page)”.',
+          does: 'When, where and the video call; the documents by name (nothing attached, never staff-only ones); a button to the meeting on the board page; the last meeting’s minutes to read before the vote, while they’re waiting for it; whoever is on the calendar invite and hasn’t answered it is asked to (the invite is the only answer). Never notes or numbers; a board-only item shows only as “A board-only item (on the board page)”.',
           touches: ['Resend', 'D1'], where: 'functions/api/_board.js (packetEmail, sendPacket)',
           live: needs('resend', NO_RESEND) },
         { t: 'Will you be there?', s: 'live', k: 'email', by: 'staff', preview: 'board-reminder', change: CHANGE.boardArea,

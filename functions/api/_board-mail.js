@@ -449,7 +449,8 @@ async function bringIn(env, { token, admin, id, fetchImpl, people, boardEmails, 
     if (f.kind === 'minutes' && past) {
       const later = boardOnly(meetings).filter((x) => x.date > m.date).sort((a, b) => a.date.localeCompare(b.date))[0];
       const prev = boardOnly(meetings).filter((x) => x.id !== m.id && x.date && x.date < m.date).sort((a, b) => b.date.localeCompare(a.date))[0] || null;
-      const read = f.text ? await readMinutes(env, { name: f.name, text: f.text, meeting: m, people, prev, quick: true }) : null;
+      // (typed minutes stand: nothing to read them for)
+      const read = f.text && !m.minutesFrom?.typed ? await readMinutes(env, { name: f.name, text: f.text, meeting: m, people, prev, quick: true }) : null;
       m = await patchMeeting(env.DB, m.id, (cur) => {
         let next = { ...cur };
         if (read && minutesNewer(cur, { name: f.name, at: sentAt })) {
@@ -462,12 +463,15 @@ async function bringIn(env, { token, admin, id, fetchImpl, people, boardEmails, 
     // The file itself, once (the same file by size, or one of the same kind and name already here from Google Drive)
     const have = new Set(m.files.map((x) => `${x.name}|${x.size}`));
     const sameName = (x) => x.kind === KIND_FILE[f.kind] && titleKey(x.name) === titleKey(f.name);
-    if (!have.has(`${f.name}|${f.bytes.byteLength}`) && !m.files.some(sameName)) {
-      await putFile(env, { ownerType: 'meeting', ownerId: m.id, file: new File([f.bytes], f.name, { type: f.type }), kind: KIND_FILE[f.kind], staffOnly: !toBoard, by: MAIL_BY });
+    // Minutes emailed in over typed ones: kept for staff, unread. The board reads what was typed, and the log says so
+    const overTyped = f.kind === 'minutes' && !!m.minutesFrom?.typed;
+    const fresh = !have.has(`${f.name}|${f.bytes.byteLength}`) && !m.files.some(sameName);
+    if (fresh) {
+      await putFile(env, { ownerType: 'meeting', ownerId: m.id, file: new File([f.bytes], f.name, { type: f.type }), kind: overTyped ? 'other' : KIND_FILE[f.kind], staffOnly: !toBoard || overTyped, by: MAIL_BY });
     }
     // The board had it by email: a past meeting nobody here worked on goes on the board page
     if (toBoard && past && !m.shared && untouched(m)) m = await patchMeeting(env.DB, m.id, (cur) => (untouched(cur) ? { ...cur, shared: true } : cur));
-    filed.set(m.id, [...(filed.get(m.id) || []), `${WORD[f.kind]}${agendaFilled ? ' (its agenda filled in)' : ''}`]);
+    filed.set(m.id, [...(filed.get(m.id) || []), `${WORD[f.kind]}${overTyped ? ` (${fresh ? 'kept for staff, ' : ''}not read: the typed minutes stand)` : ''}${agendaFilled ? ' (its agenda filled in)' : ''}`]);
   }
   const names = Object.fromEntries((await listMeetings(env.DB)).map((x) => [x.id, `${meetingName(x)} (${shortDate(x.date)})`]));
   const parts = [...filed].map(([mid, what]) => `${made.includes(mid) ? 'brought in' : 'filed on'} ${names[mid]}: ${what.join(', ')}`);

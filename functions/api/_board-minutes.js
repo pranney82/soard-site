@@ -25,7 +25,7 @@
  */
 
 import { fileText, attendanceIn, dateIn } from './_board-mail.js';
-import { getMeeting, patchMeeting, listMeetings, roster, boardFiles, updateFile, approveMinutes, putFile, MAX_FILE, ID } from './_board.js';
+import { getMeeting, patchMeeting, listMeetings, roster, boardFiles, updateFile, approveMinutes, putFile, deleteFile, MAX_FILE, ID } from './_board.js';
 import { readState, writeState } from './_board-roles.js';
 import { parseAgendaText, agendaIsDraft, meetingName, shortDate, isDate, uid, LIVE_TITLES, todayEastern } from '../../public/admin/board-shared.js';
 import { viaGateway, aiCapped, AI_REST_MS } from './_ai.js';
@@ -629,7 +629,10 @@ export function applyMinutes(cur, read, { fileName = '', now = Date.now(), keepM
  * Whether minutes from this file (`at`: when it was written or sent) may go onto a meeting: no minutes read into
  * it yet, the same file again, or a newer one than the minutes it has (never over ones read in by hand since).
  */
+const TYPED_WORDS = 'These minutes were typed on the board page, so a file can’t go over them. Change them in the notes there.';
 export function minutesNewer(cur, { name = '', at = '' } = {}) {
+  // What was typed and sent is the record: it changes in the notes (readMinutesInto says the same)
+  if (cur.minutesFrom?.typed) return false;
   const had = cur?.minutesFrom;
   if (!had?.name) return true;
   if (plain(had.name.replace(/\.[a-z0-9]{2,5}$/i, '')) === plain(String(name).replace(/\.[a-z0-9]{2,5}$/i, ''))) return true;
@@ -687,6 +690,9 @@ export async function maybeFinishMinutes(env, { now = Date.now() } = {}) {
 export async function readMinutesInto(env, id, fileId, { by = '', now = Date.now(), dry = false, anyway = false } = {}) {
   const m = await getMeeting(env.DB, id);
   if (!m) throw Object.assign(new Error('That meeting is gone'), { status: 404 });
+  // Typed and sent, the minutes change in the notes: a file read over them changes who was there, can take items off the
+  // agenda, and a re-send can't put that back
+  if (m.minutesFrom?.typed) throw Object.assign(new Error(TYPED_WORDS), { status: 409, typed: true });
   const f = m.files.find((x) => x.id === fileId);
   const row = f && await env.DB.prepare('SELECT r2_key FROM board_files WHERE id = ? AND owner_type = ? AND owner_id = ?').bind(fileId, 'meeting', id).first();
   if (!f || !row) throw Object.assign(new Error('That file isn’t on this meeting'), { status: 404 });
@@ -748,6 +754,7 @@ export async function secretarySends(env, id, file, w, { now = Date.now(), anywa
   const m = await getMeeting(env.DB, id);
   if (!m || m.practice || m.notBoard || !(m.shared || w.admin)) throw no('That meeting isn’t on the board page', 404);
   if (!isDate(m.date) || m.date > todayEastern(now)) throw no('The minutes come in on the day of the meeting or after', 400);
+  if (m.minutesFrom?.typed) throw no(TYPED_WORDS, 409);
   if (!file || typeof file.arrayBuffer !== 'function' || !/\.(docx|pdf)$/i.test(String(file.name || ''))) throw no('Send the minutes as the Word file (or a PDF)', 400);
   if (!file.size) throw no('That file is empty', 400);
   if (file.size > MAX_FILE) throw no('That file is over 50 MB', 413);
@@ -759,6 +766,13 @@ export async function secretarySends(env, id, file, w, { now = Date.now(), anywa
   }
   const by = w.member?.email || w.adminEmail || '';
   const f = await putFile(env, { ownerType: 'meeting', ownerId: id, file, kind: 'minutes', by });
-  const r = await readMinutesInto(env, id, f.id, { by, now, anyway: true });
+  let r;
+  try {
+    r = await readMinutesInto(env, id, f.id, { by, now, anyway: true });
+  } catch (err) {
+    // A clear no (not minutes): it doesn't stay on the meeting as its minutes, for the board or the agenda email to find
+    if (err?.status && await deleteFile(env, f.id).then(() => true, () => false)) err.message = `${err.message.replace(/\.?$/, '.')} It wasn’t kept.`;
+    throw err;
+  }
   return { read: r.read, approvedPrev: !!r.approvedPrev };
 }

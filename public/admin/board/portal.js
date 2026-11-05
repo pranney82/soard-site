@@ -58,8 +58,11 @@ const LOGO = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=1
   const q = new URLSearchParams(location.search);
   const id = q.get('meeting');
   if (id !== null) {
+    // …and a place inside the meeting (/board/<id>/report/<item>, /board/<id>/review): only those two
+    const at = /^(?:report\/[a-z0-9_]{3,40}|review)$/i.test(q.get('at') || '') ? `/${q.get('at')}` : '';
     q.delete('meeting');
-    const to = /^m_[a-z0-9]{4,24}$/.test(id) ? `#/meetings/${id}` : /^d_[a-z0-9]{4,24}$/.test(id) ? `#/documents/${id}` : id === 'documents' ? '#/documents' : location.hash;
+    q.delete('at');
+    const to = /^m_[a-z0-9]{4,24}$/.test(id) ? `#/meetings/${id}${at}` : /^d_[a-z0-9]{4,24}$/.test(id) ? `#/documents/${id}` : id === 'documents' ? '#/documents' : location.hash;
     history.replaceState(null, '', `${location.pathname}${q.size ? `?${q}` : ''}${to}`);
   }
 }
@@ -545,7 +548,7 @@ function utcStamp(date, time) {
 function googleHref(m) {
   const start = m.start || '08:00';
   const end = m.end || `${String(Math.min(23, Number(start.slice(0, 2)) + 2)).padStart(2, '0')}${start.slice(2)}`;
-  const details = `The agenda and documents: ${location.origin}/admin/board/#/meetings/${m.id}${m.inviteNote ? `\n\n${m.inviteNote}` : ''}${videoOf(m) ? `\nVideo: ${videoOf(m)}` : ''}`;
+  const details = `The agenda and documents: ${location.origin}/board/${m.id}${m.inviteNote ? `\n\n${m.inviteNote}` : ''}${videoOf(m) ? `\nVideo: ${videoOf(m)}` : ''}`;
   return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(`SOARD ${meetingName(m)}`)}&dates=${utcStamp(m.date, start)}/${utcStamp(m.date, end)}&details=${encodeURIComponent(details)}&location=${encodeURIComponent([m.location, m.address].filter(Boolean).join(', '))}`;
 }
 
@@ -2925,6 +2928,9 @@ function TakeMinutes({ m, ctx, noting, setNoting }) {
   const shut = m.minutes === 'approved';
   // Typed and saved, not sent: the panel closed, this is where that's said
   const unsent = !shut && !!data.notesWaiting?.includes(m.id);
+  // Who typed them, as the send kept it (who pressed Send may be someone else)
+  const typedName = data.minutesTypedBy?.[m.id] || '';
+  const typedWho = typedName && typedName === d.me?.name ? 'You' : typedName;
   const print = async () => {
     setBusy('print');
     try { const { printMinutesTemplate } = await import('../board-minutes-template.js'); await printMinutesTemplate(m, opts); } catch { say('The form didn’t come together. Try again.', 'warn'); }
@@ -2955,7 +2961,7 @@ function TakeMinutes({ m, ctx, noting, setNoting }) {
   };
   return html`<div class="bp-minutes" role="group" aria-labelledby=${`tm-${m.id}`}>
     <p class="bp-minutes__q" id=${`tm-${m.id}`}>${mine ? 'You take the minutes' : 'The minutes'}</p>
-    <p class="bp-minutes__said">${notesOnDevice(m.id) && !shut && !noting ? 'Some of your notes haven’t saved yet. Open them to finish. ' : unsent ? (sent ? 'Changes are saved in the notes but not sent yet. ' : 'The notes are saved but not sent yet. ') : ''}${shut ? 'These were approved, and some of the notes never went in. They’re still here to read.' : sent?.typed ? 'Board has them. Change anything in the notes and send the changes.' : sent ? `Board has them${sent.at ? ` as of ${shortDate(new Date(sent.at).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })).replace(/, \d{4}$/, '')}` : ''}. A newer copy replaces what they say.`
+    <p class="bp-minutes__said">${notesOnDevice(m.id) && !shut && !noting ? 'Some of your notes haven’t saved yet. Open them to finish. ' : unsent ? (sent ? 'Changes are saved in the notes but not sent yet. ' : 'The notes are saved but not sent yet. ') : ''}${shut ? 'These were approved, and some of the notes never went in. They’re still here to read.' : sent?.typed ? `${typedWho ? `${typedWho} typed these. ` : ''}${m.shared ? 'The board can read them now and votes on them at the next meeting.' : 'The board sees them once this meeting is shared.'} To fix anything, open the notes and send the changes.` : sent ? `Board has them${sent.at ? ` as of ${shortDate(new Date(sent.at).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })).replace(/, \d{4}$/, '')}` : ''}. A newer copy replaces what they say.`
       : !mine ? `${secretary ? `${secretary.name} takes them as Board Secretary, with this same card.` : 'The board’s secretary takes them, with this same card.'} They can be typed right here, or on the form or Word file.`
       : unsent ? '' : 'Type them right here beside the agenda, or use the form or Word file.'}</p>
     <div class="bp-minutes__do">
@@ -2973,7 +2979,7 @@ function TakeMinutes({ m, ctx, noting, setNoting }) {
 }
 
 /** What the button to the notes says, on the meeting's card and in the live room alike */
-const notesButton = (m, data, noting) => (noting ? 'Close the notes' : m?.minutes === 'approved' || data.notesWaiting?.includes(m?.id) || notesOnDevice(m?.id) ? 'Open the notes' : 'Take notes here');
+const notesButton = (m, data, noting) => (noting ? 'Close the notes' : m?.minutes === 'approved' || m?.minutesFrom?.typed || data.notesWaiting?.includes(m?.id) || notesOnDevice(m?.id) ? 'Open the notes' : 'Take notes here');
 /** Notes typed on this device that the server doesn't have yet (./notes.js) */
 const notesOnDevice = (id) => { try { return !!localStorage.getItem(`bp-notes-${id}`); } catch { return false; } };
 /** Whether this person takes this meeting's minutes: the secretary's seat, or one of Board's admins, until they're approved */
