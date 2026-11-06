@@ -20,7 +20,7 @@
  * added to it once in the dashboard, and the site checks that it is.
  */
 
-import { activeBoard, readState, writeState } from './_board-roles.js';
+import { activeBoard, activeAdvisors, readState, writeState } from './_board-roles.js';
 import { isEmail } from './_broadcast-notify.js';
 
 const API = 'https://api.cloudflare.com/client/v4';
@@ -40,6 +40,15 @@ export async function boardSignIns(DB) {
   // Only addresses that are whole (the mailer's rule): one malformed one would stop Cloudflare taking the list at all
   const emails = [...new Set(board.map((p) => p.email).filter(isEmail))].sort();
   return { emails, missing: board.filter((p) => !p.email).map((p) => ({ slug: p.slug, name: p.name })) };
+}
+
+/**
+ * Everyone Access lets sign in: the board and the Advisory Board. The site says what each can reach (_board-roles.js),
+ * so the one group serves both. boardSignIns stays the board's own count for Board → Members.
+ */
+export async function everyoneSignIns(DB) {
+  const [{ emails }, advisors] = await Promise.all([boardSignIns(DB), activeAdvisors(DB)]);
+  return { emails: [...new Set([...emails, ...advisors.map((a) => a.email).filter(isEmail)])].sort() };
 }
 
 async function hashOf(list) {
@@ -72,7 +81,7 @@ const emailsIn = (group) => (group?.include || []).map((r) => r?.email?.email).f
  */
 export async function syncBoardAccess(env, { fetchImpl = fetch, now = Date.now() } = {}) {
   const prev = await readState(env.DB, KEY);
-  const { emails } = await boardSignIns(env.DB);
+  const { emails } = await everyoneSignIns(env.DB);
   const hash = await hashOf(emails);
   if (!accessConfigured(env)) return { ...prev, ok: false, configured: false, hash };
   const o = { fetchImpl };
@@ -102,8 +111,8 @@ export async function syncBoardAccess(env, { fetchImpl = fetch, now = Date.now()
 
 /** For the admin: whether board members can sign in, and who can't yet */
 export async function accessStatus(env) {
-  const [state, { emails, missing }] = await Promise.all([readState(env.DB, KEY), boardSignIns(env.DB)]);
-  const hash = await hashOf(emails);
+  const [state, { emails, missing }, everyone] = await Promise.all([readState(env.DB, KEY), boardSignIns(env.DB), everyoneSignIns(env.DB)]);
+  const hash = await hashOf(everyone.emails);
   return {
     ...state,
     // Whether the key is there now (the saved state says only whether it was at the last sync)
@@ -122,7 +131,7 @@ export async function maybeSyncBoardAccess(env, { fetchImpl = fetch, now = Date.
     if (now - (Number(runs.lookedAt) || 0) < LOOK_MS) return null;
     await writeState(env.DB, 'access-runs', { lookedAt: now });
     const state = await readState(env.DB, KEY);
-    const { emails } = await boardSignIns(env.DB);
+    const { emails } = await everyoneSignIns(env.DB);
     const stale = !state.syncedAt || now - Date.parse(state.syncedAt) > RECHECK_MS || !state.attached;
     if (state.ok && state.hash === await hashOf(emails) && !stale) return null;
     return await syncBoardAccess(env, { fetchImpl, now });

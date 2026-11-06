@@ -13,6 +13,7 @@
  *   #board/meeting/<id>[/<step>]   one meeting (before | during | after)
  *   #board/documents               bylaws, policies, budgets; who has signed this year
  *   #board/members                 who can sign in, their last visit, the sign-in email; who runs Board and sends the invites
+ *   #board/advisory[/documents|members]   the Advisory Board's side: the switch at the top flips the same three tabs (./advisory-admin.js)
  * (There's no Settings: each setting is where it's used. Old #board/settings links open Members.)
  * Server: /api/board-admin. Rules: ./board-shared.js. Shared bits: ./board-ui.js.
  */
@@ -20,7 +21,7 @@
 import { useState, useEffect, useRef, useMemo } from './vendor.js';
 import { ask, askToLeave } from './ask.js';
 import { viewerLink, sizeText } from './file-viewer.js';
-import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords, driveLink, dayOf, signedHow, Face } from './board-ui.js';
+import { html, call, upload, ago, firstOf, youAnd, hashFor, readHash, rememberSide, lastSide, TABS, PAGE, viewerFiles, Switch, injectStyles, CHECK, callName, daysFrom, whenWords, driveLink, dayOf, signedHow, Face } from './board-ui.js';
 import { MeetingEditor, AgendaTemplate, agendaSource, meetingOver } from './board-meeting.js';
 import { ReportEditor, Report, PAPER_LETTERS } from './board-report.js';
 import { mdPlain, paperFields } from './board-md.js';
@@ -35,9 +36,14 @@ import { welcomeHad, usableEmail, PROCESS_TEXT, dueOn, dueWords } from './board-
 // ═══════════════════════════════════════════════════════════════════
 // The area
 // ═══════════════════════════════════════════════════════════════════
+// A plain #board opens on the side this device last had open
+const sideOf = (r) => (r && !r.advisory && /^#board\/?$/.test(location.hash) && lastSide() ? { ...r, advisory: true } : r);
+
 export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
   injectStyles();
-  const [route, setRoute] = useState(() => readHash() || { tab: 'meetings', meetingId: null, step: null });
+  const [route, setRoute] = useState(() => sideOf(readHash()) || { tab: 'meetings', meetingId: null, step: null });
+  // The Advisory Board's side, loaded the first time it's opened
+  const [Advisory, setAdvisory] = useState(null);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const dirty = useRef(false);
@@ -53,12 +59,13 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
     if (j.ok) { setData((d) => (d?.welcomeAt > j.welcomeAt ? { ...j, welcome: d.welcome, welcomeSending: d.welcomeSending, welcomeSendingTo: d.welcomeSendingTo, welcomeAt: d.welcomeAt } : j)); setError(null); } else setError({ text: j.error || 'Couldn’t load the board', refused: j.status === 403 });
     return j;
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => { if (!route.advisory && !data) load(); }, [route.advisory]);
+  useEffect(() => { if (route.advisory && !Advisory) import('./advisory-admin.js').then((m) => setAdvisory(() => m.AdvisoryArea)); }, [route.advisory]);
   useEffect(() => {
     const on = () => {
-      const r = readHash();
+      const r = sideOf(readHash());
       if (!r) return;
-      if (dirty.current && (r.meetingId !== route.meetingId || r.tab !== route.tab)) {
+      if (dirty.current && (r.meetingId !== route.meetingId || r.tab !== route.tab || !!r.advisory !== !!route.advisory)) {
         askToLeave(dirtyWhere.current).then((ok) => { if (ok) { dirty.current = false; setGlobalDirty?.(false); setRoute(r); } else history.replaceState(null, '', hashFor(route)); });
         return;
       }
@@ -74,6 +81,28 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
   const setStep = (step) => setRoute((r) => ({ ...r, step }));
   const ctx = { data, setData, load, addToast, go, putMeeting, markDirty, setStep };
 
+  // The Advisory Board's side: the switch and the tabs in the same place, the words in place
+  if (route.advisory) {
+    return html`<div class="bd">
+      <${SideSwitch} advisory=${true} go=${go} tab=${route.tab} />
+      <div class="hub-tabs" role="tablist" aria-label="Advisory Board">
+        ${TABS.map(([id, label]) => html`<button type="button" role="tab" aria-selected=${route.tab === id} class=${`hub-tab ${route.tab === id ? 'active' : ''}`} onClick=${() => go({ tab: id, advisory: true })}>${label}</button>`)}
+      </div>
+      <div class="page-header">
+        <div>
+          <h2>${{ meetings: 'Advisory meetings', documents: 'Advisory documents', members: 'Advisory members' }[route.tab]}</h2>
+          <p class="page-sub">${{
+            meetings: 'The next meeting and every past one, with its agenda, slides and recap. Advisors see a meeting once it’s shared.',
+            documents: 'The papers advisors read and sign, and the words on their Fundraise page.',
+            members: 'The goal and the makeover, what’s waiting on you, this month’s ask, and who’s on the Advisory Board.',
+          }[route.tab]}</p>
+        </div>
+        <div class="bd-actions"><a class="btn btn-ghost btn-sm" href="/admin/advisory/" target="_blank" rel="noopener">Open the advisory page</a></div>
+      </div>
+      ${Advisory ? html`<${Advisory} tab=${route.tab} addToast=${addToast} onDirty=${(where) => markDirty(!!where, where)} />` : html`<div class="area-loading"><span class="spinner" /></div>`}
+    </div>`;
+  }
+
   // Not one of its admins: said as that, with who to ask (nothing to try again)
   if (error && !data && error.refused) return html`<div class="card empty" role="alert"><p class="empty__title">Board is open to its admins</p><p class="empty__text">${error.text}. A founder adds people in Board → Members.</p></div>`;
   if (error && !data) return html`<div class="card empty" role="alert"><p class="empty__title">The board didn’t load</p><p class="empty__text">${error.text}</p><div class="empty__actions"><button class="btn btn-ghost btn-sm" onClick=${load}>Try again</button></div></div>`;
@@ -82,6 +111,7 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
 
   return html`<div class="bd">
     ${route.meetingId || route.practice || route.template ? null : html`
+      <${SideSwitch} advisory=${false} go=${go} tab=${route.tab} />
       <div class="hub-tabs" role="tablist" aria-label="Board">
         ${TABS.map(([id, label]) => html`<button type="button" role="tab" aria-selected=${route.tab === id} class=${`hub-tab ${route.tab === id ? 'active' : ''}`} onClick=${() => go({ tab: id })}>${label}</button>`)}
       </div>
@@ -106,6 +136,15 @@ export function BoardArea({ addToast = () => {}, setGlobalDirty = null }) {
       : route.tab === 'documents' ? html`<${DocumentsTab} ctx=${ctx} />`
       : route.tab === 'members' ? html`<${MembersTab} ctx=${ctx} />`
       : html`<${MeetingsTab} ctx=${ctx} />`}
+  </div>`;
+}
+
+/** Board | Advisory: above the tabs, which stay exactly where they are when it flips */
+function SideSwitch({ advisory, go, tab }) {
+  const pick = (a) => { if (a === advisory) return; rememberSide(a); go({ tab, advisory: a }); };
+  return html`<div class="seg bd-side" role="group" aria-label="Which board">
+    <button type="button" aria-pressed=${!advisory} onClick=${() => pick(false)}>Board</button>
+    <button type="button" aria-pressed=${advisory} onClick=${() => pick(true)}>Advisory</button>
   </div>`;
 }
 

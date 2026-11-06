@@ -18,7 +18,7 @@
 import { crossSiteChange, isLocalHost } from './_origin-guard.js';
 import { limit } from './_rate-limit.js';
 import { clientIp } from './_secure.js';
-import { isStaffEmail, boardMemberFor, BOARD_ROUTES, BOARD_PAGE } from './_board-roles.js';
+import { isStaffEmail, boardMemberFor, advisorFor, routesFor, BOARD_PAGE, ADVISORY_PAGE } from './_board-roles.js';
 import { staffStanding, refusedText } from './_staff-access.js';
 
 // Cache JWKS keys in module scope (persists across requests within same isolate)
@@ -169,6 +169,8 @@ PUBLIC_ROUTES.push('/api/spend-rules', '/api/spend-hint', '/api/spend-recode', '
 // Turnstile is on; POST stores an application. Checked inside the handler
 // (honeypot, too-fast, Turnstile, a per-day limit in D1) and rate limited below
 PUBLIC_ROUTES.push('/api/advisory-apply');
+// The buttons in the Advisory Board's monthly ask: GET shows it, a person's POST answers it (one token per ask and advisor)
+PUBLIC_ROUTES.push('/api/advisory-action');
 
 // An old "Will you be there?" link from a board email (before Nov 2 2026): each
 // carries that member's own 128-bit token for one meeting, checked inside
@@ -192,7 +194,7 @@ PUBLIC_GET_ROUTES.push('/api/books-callback');
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
-const RATE_LIMITED_POST_ROUTES = new Set(['/api/book-stats', '/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply', '/api/vendor-docs', '/api/trade-partner', '/api/board-rsvp']);
+const RATE_LIMITED_POST_ROUTES = new Set(['/api/book-stats', '/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply', '/api/advisory-action', '/api/vendor-docs', '/api/trade-partner', '/api/board-rsvp']);
 // Public GET routes that fan out to paid upstreams / build large responses.
 const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos', '/api/books-callback']);
 // The application form autosaves every step and uploads photos one by one, so
@@ -352,21 +354,27 @@ async function handle(context) {
   context.data = context.data || {};
   context.data.userEmail = payload.email || payload.sub || 'unknown';
 
-  // The same emailed code lets in staff and board members. Staff (a
+  // The same emailed code lets in staff, board members and advisors. Staff (a
   // soardcharity.com sign-in) reach the admin's APIs; a board member (People →
-  // Board, by their private email) reaches only the board page's own routes;
+  // Board, by their private email) reaches only the board page's own routes, and
+  // the advisors' if they run the group or sit on its committee (./_advisory.js
+  // whoIs); an advisor (People → Advisory) reaches only the advisors' routes;
   // anyone else Access somehow let in reaches nothing (see _board-roles.js)
   if (!isStaffEmail(context.data.userEmail)) {
     const member = await boardMemberFor(context.env.DB, context.data.userEmail).catch(() => null);
-    if (!member || !BOARD_ROUTES.includes(url.pathname)) {
+    const advisor = member ? null : await advisorFor(context.env.DB, context.data.userEmail).catch(() => null);
+    if (!routesFor({ member, advisor }).includes(url.pathname)) {
       return Response.json(
         member
           ? { success: false, error: 'This sign-in opens the board page only.', board: BOARD_PAGE }
-          : { success: false, error: 'This sign-in isn’t on SOARD’s team or board list.' },
+          : advisor
+            ? { success: false, error: 'This sign-in opens the advisory page only.', advisory: ADVISORY_PAGE }
+            : { success: false, error: 'This sign-in isn’t on SOARD’s team or board list.' },
         { status: 403, headers: cors }
       );
     }
-    context.data.boardMember = member;
+    if (member) context.data.boardMember = member;
+    if (advisor) context.data.advisor = advisor;
   } else {
     // A soardcharity.com sign-in opens the admin only while its Google account is active (_staff-access.js)
     const standing = await staffStanding(context.env, context.data.userEmail);

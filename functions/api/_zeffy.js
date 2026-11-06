@@ -315,7 +315,7 @@ export async function handleWebhook(env, request, { now = Date.now(), selfTest =
 
 // ─── The catch-up check ─────────────────────────────────────────────
 
-async function zeffyGet(env, path, params = {}, fetchImpl = fetch) {
+export async function zeffyGet(env, path, params = {}, fetchImpl = fetch) {
   const url = new URL(`${ZEFFY_API}${path}`);
   for (const [k, v] of Object.entries(params)) if (v != null) url.searchParams.set(k, String(v));
   const res = await fetchImpl(url.toString(), {

@@ -1,0 +1,149 @@
+/* The advisors' page: only what ../board/portal.css doesn't already have. No gradients, no red, no counting numbers. */
+/* Anything a person typed can be one long word: a pasted link never pushes the page sideways */
+.ad-page { animation: ad-in 0.26s var(--ease) both; overflow-wrap: anywhere; min-width: 0; }
+@keyframes ad-in { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: none; } }
+.is-entering .ad-page { animation: none; }
+@media (prefers-reduced-motion: reduce) { .ad-page { animation: none; } }
+
+/* The phone's bar holds six at most: one long word goes short there */
+.bp-nav__label--short { display: none; }
+@media (max-width: 640px) { .bp-nav__label--long { display: none; } .bp-nav__label--short { display: inline; } }
+
+.ad-kicker { margin: 0 0 0.2rem; font-size: 0.8rem; font-weight: 650; letter-spacing: 0.03em; color: var(--gold); }
+.ad-seeing { margin: 0 0 1rem; padding: 0.55rem 0.85rem; border-radius: var(--r-sm); background: var(--warm); color: var(--ink-2); font-size: 0.93rem; }
+.ad-seeing a { font-weight: 650; }
+.ad-home { display: grid; gap: 1rem; }
+.ad-home > * { min-width: 0; }
+.ad-home .bp-brief { margin-bottom: 0.15rem; }
+.ad-home .bp-meets { margin: 0; }
+.ad-home .bp-meets__col { display: grid; gap: 1rem; align-content: start; min-width: 0; }
+
+/* The ask */
+.ad-ask { background: var(--yellow-wash); border-color: rgba(118, 92, 0, 0.16); }
+.ad-ask__t { margin: 0 0 0.35rem; font-family: var(--display); font-size: 1.3rem; line-height: 1.3; letter-spacing: -0.01em; text-wrap: balance; }
+.ad-ask__b { margin: 0 0 0.5rem; color: var(--ink-2); white-space: pre-wrap; }
+.ad-answer { margin-top: 0.75rem; display: grid; gap: 0.2rem; }
+.ad-answered { margin-top: 0.75rem; display: grid; gap: 0.5rem; justify-items: start; }
+.ad-answered p { margin: 0; display: flex; align-items: center; gap: 0.4rem; font-weight: 600; }
+.ad-answered p.bp-muted { font-weight: 400; }
+
+/* Forms */
+.ad-fields { display: grid; gap: 0.8rem; }
+.ad-fields--top { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--line); }
+.ad-field { display: grid; gap: 0.25rem; min-width: 0; }
+.ad-field > span { font-size: 0.92rem; font-weight: 600; color: var(--ink-2); }
+.ad-input { width: 100%; min-height: 46px; padding: 0.55rem 0.8rem; border: 1px solid var(--line-2); border-radius: var(--r-sm); background: #fff; font: inherit; color: inherit; }
+textarea.ad-input { resize: vertical; }
+.ad-two { display: grid; gap: 0.8rem; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 520px) { .ad-two { grid-template-columns: minmax(0, 1fr); } }
+.ad-form { scroll-margin-top: calc(var(--head) + 1rem); position: sticky; top: calc(var(--head) + 0.75rem); }
+@media (max-width: 900px) { .ad-form { position: static; } }
+.ad-for { margin: 0; padding: 0.5rem 0.75rem; border-radius: var(--r-sm); background: var(--yellow-wash); font-weight: 600; }
+.ad-for__x { margin: 0 0 0 0.35rem; min-height: 0; }
+.ad-chips { margin: 0; padding: 0; border: 0; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.ad-chips legend { padding: 0; margin-bottom: 0.3rem; font-size: 0.92rem; font-weight: 600; color: var(--ink-2); }
+.ad-chips label { display: inline-flex; align-items: center; min-height: 42px; padding: 0 0.9rem; border: 1px solid var(--line-2); border-radius: 999px; background: #fff; font-weight: 550; cursor: pointer; }
+.ad-chips label.is-on { background: var(--yellow); border-color: var(--yellow); }
+.ad-chips input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.ad-chips label:focus-within { outline: 3px solid var(--ink); outline-offset: 2px; }
+
+/* Lists */
+.ad-wishes, .ad-intros, .ad-rows, .ad-files, .ad-rooms, .ad-people { list-style: none; margin: 0; padding: 0; }
+.ad-wishes li { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; flex-wrap: wrap; padding: 0.75rem 0; border-top: 1px solid var(--line); }
+.ad-wishes li:first-child { border-top: 0; padding-top: 0; }
+.ad-wishes li > div { flex: 1 1 14rem; min-width: 0; }
+.ad-wishes p { margin: 0.1rem 0 0; }
+.ad-intros li { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.4rem 1rem; flex-wrap: wrap; padding: 0.7rem 0; border-top: 1px solid var(--line); }
+.ad-intros li:first-child { border-top: 0; padding-top: 0.2rem; }
+.ad-intros li > div { display: grid; min-width: 0; }
+.ad-intros__note { flex-basis: 100%; margin: 0.15rem 0 0; padding-left: 0.65rem; border-left: 3px solid var(--line-2); color: var(--ink-2); font-size: 0.93rem; white-space: pre-wrap; }
+.ad-intros__s { justify-items: end; text-align: right; font-size: 0.9rem; flex: 1 1 10rem; }
+@media (max-width: 520px) { .ad-intros__s { justify-items: start; text-align: left; } }
+.ad-rows li + li { border-top: 1px solid var(--line); }
+.ad-rows__row { display: flex; align-items: center; gap: 0.85rem; min-height: 60px; padding: 0.55rem 0; text-decoration: none; color: inherit; }
+.ad-rows__t { display: grid; flex: 1 1 auto; min-width: 0; }
+.ad-rows__t strong { font-weight: 650; overflow-wrap: anywhere; }
+.ad-files { display: grid; gap: 0.35rem; margin-top: 0.6rem; }
+.ad-files a { display: flex; align-items: center; gap: 0.5rem; min-height: 44px; flex-wrap: wrap; font-weight: 600; overflow-wrap: anywhere; }
+
+/* The makeover */
+.ad-kid { padding: 0; overflow: hidden; }
+.ad-kid__photo { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; }
+.ad-kid__b { padding: 1rem 1.3rem 1.15rem; }
+.ad-kid--open { padding: 1.15rem 1.3rem; }
+.ad-kid--open .bp-muted { margin: 0; }
+.ad-dates { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0.1rem 0.85rem; margin: 0.6rem 0 0.5rem; }
+.ad-dates dt { color: var(--muted); }
+.ad-dates dd { margin: 0; overflow-wrap: anywhere; }
+.ad-dates--top { margin-top: 0.75rem; }
+
+/* Ways in */
+.ad-doors { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+@media (max-width: 860px) { .ad-doors { grid-template-columns: minmax(0, 1fr); gap: 0.65rem; } }
+.ad-door { display: flex; align-items: flex-start; gap: 0.8rem; }
+.ad-door > span { display: grid; gap: 0.05rem; min-width: 0; }
+.ad-door .bp-icon { color: var(--gold); margin-top: 0.1rem; }
+
+.ad-rooms { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(150px, 200px); gap: 0.75rem; overflow-x: auto; padding-bottom: 0.35rem; scrollbar-width: thin; }
+.ad-rooms a { display: grid; gap: 0.35rem; text-decoration: none; }
+.ad-rooms img, .ad-rooms__none { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: var(--r-sm); background: var(--warm); }
+
+.ad-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; margin: 0; }
+.ad-stats div { min-width: 0; }
+.ad-stats dt { color: var(--muted); font-size: 0.9rem; }
+.ad-stats dd { margin: 0; font-family: var(--display); font-size: 1.3rem; font-weight: 700; overflow-wrap: anywhere; }
+@media (max-width: 420px) { .ad-stats dd { font-size: 1.08rem; } }
+
+/* The goal */
+.ad-goal__top { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem 2rem; }
+.ad-goal__n { margin: 0; font-family: var(--display); font-size: clamp(1.8rem, 5vw, 2.4rem); line-height: 1.15; letter-spacing: -0.02em; }
+.ad-goal__n span { font-family: var(--body); font-size: 1rem; font-weight: 500; letter-spacing: 0; color: var(--muted); }
+.ad-goal__mine { text-align: right; }
+.ad-goal__mine p { margin: 0; }
+.ad-goal__me { font-family: var(--display); font-size: 1.4rem; font-weight: 700; line-height: 1.2; }
+@media (max-width: 520px) { .ad-goal__mine { text-align: left; } }
+.ad-goal--soon .bp-muted { margin: 0.35rem 0 0; }
+.ad-bar { height: 12px; margin-top: 0.85rem; border-radius: 999px; background: var(--warm-2); overflow: hidden; }
+.ad-bar i { display: block; height: 100%; border-radius: 999px; background: var(--yellow-2); }
+.ad-goal + .bp-split { margin-top: 1rem; }
+.ad-qr { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem 1.25rem; }
+.ad-qr__c { flex: none; width: 140px; height: 140px; background: #fff; }
+.ad-qr__c svg { display: block; width: 100%; height: 100%; }
+.ad-qr__t { flex: 1 1 13rem; min-width: 0; }
+.ad-url { margin: 0; font-weight: 600; overflow-wrap: anywhere; }
+.ad-qr .bp-btns { margin-top: 0.6rem; }
+.ad-copies { display: grid; gap: 1rem; }
+.ad-copy { display: grid; gap: 0.3rem; padding-top: 0.85rem; border-top: 1px solid var(--line); }
+.ad-copy:first-child { padding-top: 0; border-top: 0; }
+.ad-copy h3 { margin: 0; font-size: 1rem; }
+.ad-copy .bp-btns { margin-top: 0.4rem; }
+
+/* People */
+.ad-head { margin: 0; }
+.ad-people { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 19rem), 1fr)); gap: 1rem; }
+.ad-people > li { display: flex; align-items: flex-start; gap: 0.95rem; }
+.ad-person { min-width: 0; }
+.ad-person h2 { margin: 0; font-family: var(--display); font-size: 1.05rem; line-height: 1.3; }
+.ad-person p { margin: 0; }
+.ad-bio { margin-top: 0.35rem !important; font-size: 0.94rem; color: var(--ink-2); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 5; overflow: hidden; }
+
+/* A paper */
+.ad-paper { display: grid; gap: 0.85rem; max-width: 46rem; }
+.ad-paper .bp-back { justify-self: start; }
+.ad-under { margin: 0; }
+.ad-changed { margin: 0; padding: 0.6rem 0.85rem; border-radius: var(--r-sm); background: var(--warn-bg); color: var(--warn); font-weight: 600; }
+.ad-sign { display: grid; gap: 0.6rem; }
+.ad-sign .bp-h2 { margin: 0; }
+.ad-sign__name { font-size: 1.1rem; }
+
+/* Reload, on the note that a sign-in ended */
+.bp-toast__act { flex: none; min-height: 36px; padding: 0 0.8rem; border: 0; border-radius: 999px; background: var(--yellow); color: #1E1F1C; font: inherit; font-weight: 650; cursor: pointer; }
+
+/* A question before something can't be taken back (../ask.js): the admin's dialog, which has no stylesheet here */
+.ask-overlay { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: max(1rem, env(safe-area-inset-top)) var(--gutter); background: rgba(45, 47, 44, 0.42); }
+.ask { width: min(100%, 27rem); padding: 1.25rem 1.3rem 1.1rem; border-radius: var(--r-lg); background: #fff; box-shadow: var(--shadow-3); overflow-wrap: anywhere; }
+.ask h2 { margin: 0; font-family: var(--display); font-size: 1.2rem; line-height: 1.3; }
+.ask__text { margin: 0.45rem 0 0; color: var(--ink-2); }
+.ask .kd-dialog__foot { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 0.5rem; margin-top: 1.1rem; }
+.ask .btn { min-height: 44px; padding: 0.4rem 1rem; border: 1px solid var(--line-2); border-radius: 12px; background: #fff; font: inherit; font-weight: 650; color: var(--ink); cursor: pointer; }
+.ask .btn-primary, .ask .btn-danger { background: var(--yellow); border-color: var(--yellow); color: #1E1F1C; }

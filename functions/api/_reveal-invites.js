@@ -163,6 +163,9 @@ export const BOARD_ROLE_ID = '22PgGdtxTATR';
 // Logins with staff roles that aren't people: the Qualification Committee, the DATAx integration and the website's own JobTread login
 export const NOT_STAFF = new Set(['selection@soardcharity.com', 'hello@contractorcto.com', 'automation@soardcharity.com', 'peter+automation@soardcharity.com']);
 // JobTread logins that aren't where that person wants reveal invites
+// The Advisory Board's group address is a sponsor's login on one job, but every advisor already gets every reveal invite
+// by name, so it's left off reveals or each would get two. Demo Day uses it. (Not NOT_STAFF: Demo Day shares that list.)
+export const NO_REVEAL_INVITE = new Set(['advisory@soardcharity.com']);
 export const EMAIL_ALIASES = { 'peter@ranneyblair.com': 'peter@soardcharity.com' };
 export const STAFF_DOMAIN = '@soardcharity.com';
 export const INACTIVE_STATUSES = new Set(['Denied', 'Awaiting Funding']);
@@ -546,7 +549,7 @@ export function planInvite(job, staff, { kids = [], board = [], organizer = DEFA
 
   const guests = [];
   const people = {}; // email → { name, kind } for the admin's preview
-  const seen = new Set([organizer.toLowerCase(), ...NOT_STAFF]);
+  const seen = new Set([organizer.toLowerCase(), ...NOT_STAFF, ...NO_REVEAL_INVITE]);
   const add = (p) => {
     const e = String(p.email || '').trim().toLowerCase();
     if (!isEmail(e) || seen.has(e)) return false;

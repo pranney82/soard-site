@@ -19,6 +19,14 @@ export const STAFF_DOMAIN = 'soardcharity.com';
 /** The board page, and the routes a board member's sign-in may call */
 export const BOARD_PAGE = '/admin/board/';
 export const BOARD_ROUTES = Object.freeze(['/api/board-portal', '/api/board-file']);
+// The Advisory Board's page, and its routes: an advisor reaches these and nothing else. A board member reaches them
+// when they run the group or sit on its committee (./_advisory.js whoIs says which)
+export const ADVISORY_PAGE = '/admin/advisory/';
+export const ADVISORY_ROUTES = Object.freeze(['/api/advisory-portal', '/api/advisory-file', '/api/advisory-admin']);
+export const ADVISORY_COMMITTEE = 'Advisory Board';
+// SOARD's group inboxes: everyone in the group reads what's sent there, so a sign-in code to one opens nothing
+export const GROUP_INBOXES = Object.freeze(['board@soardcharity.com', 'advisory@soardcharity.com']);
+export const isGroupInbox = (email) => GROUP_INBOXES.includes(normEmail(email).replace(/\+[^@]*@/, '@'));
 
 export const normEmail = (e) => String(e || '').trim().toLowerCase();
 const isEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e || '');
@@ -44,6 +52,9 @@ export async function privateEmails(DB) {
   } catch { return {}; }
 }
 
+/** What a sign-in that isn't staff may reach: an advisor only the advisors' routes; a board member the board's, and the advisors' (./_advisory.js whoIs then says what they get) */
+export const routesFor = ({ member = null, advisor = null } = {}) => (member ? [...BOARD_ROUTES, ...ADVISORY_ROUTES] : advisor ? [...ADVISORY_ROUTES] : []);
+
 /** The active board, each with their private email when there is one: [{ slug, name, title, seat, organization, email }] */
 export async function activeBoard(DB) {
   const [people, emails] = await Promise.all([peopleRows(DB), privateEmails(DB)]);
@@ -62,7 +73,23 @@ export async function boardMemberFor(DB, email) {
   // (two board members on one address: neither, never a guess at which)
   const on = people.filter((x) => slugs.includes(x.slug) && x.group === 'board' && x.status === 'active');
   const p = on.length === 1 ? on[0] : null;
-  return p ? { slug: p.slug, name: p.name, title: p.title || '', seat: p.seat || '', email: e } : null;
+  return p ? { slug: p.slug, name: p.name, title: p.title || '', seat: p.seat || '', committees: Array.isArray(p.committees) ? p.committees : [], email: e } : null;
+}
+
+/** The Advisory Board who can sign in: active and published ("Add as an advisor" makes a draft, which can't yet), with their email */
+export async function activeAdvisors(DB) {
+  const [people, emails] = await Promise.all([peopleRows(DB), privateEmails(DB)]);
+  return people.filter((p) => p.group === 'advisory' && p.status === 'active' && !p.draft)
+    .map((p) => ({ ...p, email: emails[p.slug] || null }));
+}
+
+/** The advisor who signs in with this email, or null */
+export async function advisorFor(DB, email) {
+  const e = normEmail(email);
+  if (!isEmail(e) || !DB) return null;
+  const on = (await activeAdvisors(DB)).filter((p) => p.email === e);
+  const p = on.length === 1 ? on[0] : null;
+  return p ? { slug: p.slug, name: p.name, email: e } : null;
 }
 
 /** first@soardcharity.com for each founder on People → Team (how staff sign in) */

@@ -58,7 +58,7 @@ export async function guestsFor(DB) {
   return [...new Set([...board.map((p) => p.email).filter(Boolean), ...admins])];
 }
 
-async function gcal(token, method, path, body, fetchImpl) {
+export async function gcal(token, method, path, body, fetchImpl) {
   const res = await fetchImpl(`${CAL_API}${path}`, { method, headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) }, body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(20000) });
   const data = await res.json().catch(() => null);
   if (!res.ok) throw Object.assign(new Error(`Google Calendar answered ${res.status}: ${data?.error?.message || ''}`.trim()), { status: res.status });
@@ -66,12 +66,12 @@ async function gcal(token, method, path, body, fetchImpl) {
 }
 
 export const placeOf = (m) => [m.location, m.address].filter(Boolean).join(', ');
-const whenOf = (m) => `${m.date} ${m.start || ''}-${m.end || ''}`;
+export const whenOf = (m) => `${m.date} ${m.start || ''}-${m.end || ''}`;
 
 const CALL_LINK = /^https:\/\/\S*(zoom\.us|teams\.microsoft|teams\.live|webex)\S*$/i;
 const dayAfter = (date) => new Date(Date.parse(`${date}T12:00:00Z`) + 86400000).toISOString().slice(0, 10);
 
-function times(m) {
+export function times(m) {
   // An all-day event ends the day after (Google refuses one that ends the day it starts)
   if (!m.start) return { start: { date: m.date }, end: { date: dayAfter(m.date) } };
   const end = m.end || `${String(Math.min(23, Number(m.start.slice(0, 2)) + 2)).padStart(2, '0')}${m.start.slice(2)}`;
@@ -141,7 +141,7 @@ const notesKey = (m) => {
 const meetCodeOf = (ev) => ev?.conferenceData?.conferenceId || (String(ev?.hangoutLink || '').match(/meet\.google\.com\/([a-z]{3}-[a-z]{4}-[a-z]{3})/) || [])[1] || '';
 
 /** Google sometimes answers a new Meet as still being made: asked again (three times, a second apart) until it has its link */
-async function meetReady(token, path, ev, fetchImpl) {
+export async function meetReady(token, path, ev, fetchImpl) {
   for (let i = 0; i < 3 && !ev?.hangoutLink && ev?.conferenceData?.createRequest?.status?.statusCode === 'pending'; i++) {
     await new Promise((r) => setTimeout(r, 1000));
     ev = await gcal(token, 'GET', path, null, fetchImpl);
@@ -325,7 +325,7 @@ export function followOf(invite, board) {
   };
 }
 /** Who of the board an invite has now (slug → email), keeping anyone taken off it by hand so they aren't put back */
-const whoOf = (invite, board, emails) => {
+export const whoOf = (invite, board, emails) => {
   const on = new Set(emails);
   return Object.fromEntries(board.filter((p) => on.has(p.email) || invite?.who?.[p.slug] === p.email).map((p) => [p.slug, p.email]));
 };
@@ -345,7 +345,7 @@ export function followRoll(attendance, board) {
  * off hears about it (adding proven Oct 19 2026, see the guest-add note). Nothing else on the invite is touched, and an
  * invite deleted in Google isn't brought back. → the guest list as Google has it, or null when the invite is gone
  */
-async function changeGuests(env, m, { add, drop }, { fetchImpl, now }) {
+export async function changeGuests(env, m, { add, drop }, { fetchImpl, now }) {
   const { organizer, eventId } = m.invite;
   const token = await accessToken(env, organizer, { fetchImpl, now });
   const path = `/calendars/${encodeURIComponent(organizer)}/events/${encodeURIComponent(eventId)}`;

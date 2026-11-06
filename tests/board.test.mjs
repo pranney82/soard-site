@@ -143,11 +143,15 @@ test('the middleware: a board member reaches only the board page’s routes; any
     assert.equal(r.status, 403, path);
     assert.equal(r.body.board, '/admin/board/', `${path}: pointed at the board page`);
   }
-  for (const email of [ALUMNUS, 'ada@example.com', 'stranger@example.com']) {
+  for (const email of [ALUMNUS, 'stranger@example.com']) {
     const r = await call(email, '/api/board-portal');
     assert.equal(r.status, 403, email);
     assert.match(r.body.error, /team or board list/);
   }
+  // An advisor is pointed at their own page, and the board's stays shut
+  const advisor = await call('ada@example.com', '/api/board-portal');
+  assert.equal(advisor.status, 403);
+  assert.equal(advisor.body.advisory, '/admin/advisory/');
 });
 
 test('isAuthenticated (live chat staff, test applications, sweeps) is staff only', async () => {
@@ -651,7 +655,7 @@ test('Access’s board list: the site makes the group and the policy, keeps the 
   const first = await syncBoardAccess(env);
   assert.equal(first.ok, true);
   assert.equal(cf.groups[0].name, GROUP_NAME);
-  assert.deepEqual(cf.groups[0].include, [{ email: { email: MEMBER } }, { email: { email: OTHER_MEMBER } }], 'active board only, A to Z');
+  assert.deepEqual(cf.groups[0].include, [{ email: { email: 'ada@example.com' } }, { email: { email: MEMBER } }, { email: { email: OTHER_MEMBER } }], 'the active board and advisors, A to Z');
   assert.equal(cf.policies[0].name, POLICY_NAME);
   assert.deepEqual(cf.policies[0].include, [{ group: { id: 'g1' } }]);
   assert.equal(first.attached, false, 'adding the policy to the app is the one dashboard step');
@@ -665,7 +669,7 @@ test('Access’s board list: the site makes the group and the policy, keeps the 
   assert.equal((await accessStatus(env)).current, false, 'the admin can see a change waiting');
   const now = Date.now();
   await maybeSyncBoardAccess(env, { now });
-  assert.deepEqual(cf.groups[0].include.map((r) => r.email.email), ['alex.board@example.com', 'kim@example.com']);
+  assert.deepEqual(cf.groups[0].include.map((r) => r.email.email), ['ada@example.com', 'alex.board@example.com', 'kim@example.com']);
   assert.equal(cf.groups.length, 1, 'the same group, updated');
   assert.equal((await accessStatus(env)).current, true);
   const calls = outside.length;

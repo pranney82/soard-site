@@ -343,7 +343,7 @@ function Waiting({ plan, big = false, links = true }) {
         </div>
         <div class="bc-fam__cost">
           <strong>${f.estimate ? nbw(`About ${dollars(f.net)}`) : 'Not known yet'}</strong>
-          <span>${nbw(f.estimate ? (f.pledged ? `${dollars(f.estimate.cost)}, less ${dollars(f.pledged)} pledged by ${and(f.sponsors.filter((s) => s.pledged).map((s) => s.name))}; ${basisText(f.estimate)}` : cap(basisText(f.estimate))) : 'No completed makeover with its bills in JobTread to go by yet')}</span>
+          <span>${nbw(f.estimate ? (f.pledged ? `${dollars(f.estimate.cost)}, less ${dollars(f.pledged)} pledged by ${and(f.sponsors.filter((s) => s.pledged && s.slug !== 'soard-advisory-board').map((s) => s.name))}; ${basisText(f.estimate)}` : cap(basisText(f.estimate))) : 'No completed makeover with its bills in JobTread to go by yet')}</span>
         </div>
         <span class=${`bc-chip ${f.covered ? 'is-ok' : ''}`}>${f.covered ? 'Covered' : plan.free < 0 ? 'After what’s underway' : i === firstShort ? (plan.need == null ? 'Not known yet' : nbw(`Needs ${dollars(plan.need)} more`)) : 'After that'}</span>
       </li>`;

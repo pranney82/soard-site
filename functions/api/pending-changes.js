@@ -28,6 +28,8 @@ const HOOK_ENV_VARS = ['CF_PAGES_DEPLOY_HOOK', 'CF_DEPLOY_HOOK', 'DEPLOY_HOOK_UR
 
 // Read at runtime from D1 by Functions, or not site content at all
 export const RUNTIME_TYPES = ['live-status', 'email-broadcast', 'newsletter', 'instagram-reel',
+  // Running the Advisory Board (./advisory-admin.js): its own tables, nothing the build reads
+  'advisory-board',
   'live-input', 'live-message', 'stream-video', 'site-config',
   // The admin's list of board committees to pick from (records carry the names)
   'board-committees',

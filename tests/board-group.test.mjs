@@ -12,7 +12,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { syncBoardGroup, maybeSyncBoardGroup, groupStatus, groupWanted, GROUP_EMAIL, GROUP_SCOPE } from '../functions/api/_board-group.js';
+import { syncBoardGroup, maybeSyncBoardGroup, groupStatus, groupWanted, advisoryGroupWanted, syncAdvisoryGroup, advisoryGroupStatus, GROUP_EMAIL, ADVISORY_GROUP_EMAIL, GROUP_SCOPE } from '../functions/api/_board-group.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 
 const { privateKey: SA_PEM } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
@@ -240,4 +240,22 @@ test('without GOOGLE_CALENDAR_KEY nothing runs', async () => {
   assert.equal(await maybeSyncBoardGroup(env), null);
   assert.equal((await groupStatus(env)).configured, false);
   assert.equal(calls.length, 0);
+});
+
+
+test('advisory@ is kept to the advisors, whoever runs the group and the admins, in its own record', async () => {
+  await env.DB.prepare('INSERT OR REPLACE INTO board_state (key, data) VALUES (?, ?)').bind('advisory', JSON.stringify({ lead: 'alex-rivera' })).run().catch(async () => { await env.DB.exec('CREATE TABLE IF NOT EXISTS board_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)'); await env.DB.prepare('INSERT OR REPLACE INTO board_state (key, data) VALUES (?, ?)').bind('advisory', JSON.stringify({ lead: 'alex-rivera' })).run(); });
+  const want = await advisoryGroupWanted(env.DB);
+  const emails = want.members.map((m) => m.email);
+  assert.ok(emails.includes('alex@example.com'), 'whoever runs it');
+  assert.ok(emails.some((e) => e.endsWith('@soardcharity.com')), 'the admins');
+  assert.ok(!emails.includes('bo.kim@example.org'), 'not the board');
+  assert.equal(want.board, 1, 'one advisor with an email');
+  assert.equal(ADVISORY_GROUP_EMAIL, 'advisory@soardcharity.com');
+  const before = await groupStatus(env);
+  const status = await advisoryGroupStatus(env);
+  assert.equal(status.group, ADVISORY_GROUP_EMAIL);
+  assert.equal(status.wanted, want.members.length);
+  assert.equal(before.group, GROUP_EMAIL, 'board@ keeps its own');
+  assert.equal(typeof syncAdvisoryGroup, 'function');
 });

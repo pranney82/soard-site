@@ -27,6 +27,7 @@
  */
 
 import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.js';
+import { Icon, PageNav, Avatar, Faces, DateTile, WindowTile, windowStart, SecHead, More, kept, keep, useKept, hueOf, noon, partsOf, together } from './parts.js';
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
@@ -68,34 +69,6 @@ const LOGO = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=1
 }
 
 // ─── Icons (24px line drawings, in the text's color) ────────────────
-const ICONS = {
-  home: html`<path d="M3.5 10.5 12 3.5l8.5 7V20a1 1 0 0 1-1 1H15v-6H9v6H4.5a1 1 0 0 1-1-1z" />`,
-  meetings: html`<rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4" />`,
-  financials: html`<path d="M4 20.5h16M7 17v-5M12 17V7M17 17v-8" />`,
-  people: html`<circle cx="9" cy="8.5" r="3.25" /><path d="M3 20a6 6 0 0 1 12 0" /><circle cx="17" cy="9.5" r="2.5" /><path d="M16.5 14.6A4.8 4.8 0 0 1 21 19.5" />`,
-  documents: html`<path d="M14 3.5H6.5a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1V8z" /><path d="M14 3.5V8h4.5M9 12.5h6M9 16.5h6" />`,
-  clock: html`<circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" />`,
-  pin: html`<path d="M12 21s-6.5-5.8-6.5-10.5a6.5 6.5 0 0 1 13 0C18.5 15.2 12 21 12 21z" /><circle cx="12" cy="10.5" r="2.25" />`,
-  video: html`<rect x="3" y="6.5" width="12.5" height="11" rx="2" /><path d="m15.5 10.5 5.5-3v9l-5.5-3" />`,
-  check: html`<path d="m5 12.5 4.5 4.5L19 7.5" />`,
-  edit: html`<path d="M4.5 19.5h4l10.5-10.5a2.83 2.83 0 0 0-4-4L4.5 15.5z" /><path d="m13.5 6.5 4 4" />`,
-  search: html`<circle cx="11" cy="11" r="6.5" /><path d="m20 20-4.2-4.2" />`,
-  arrow: html`<path d="M5 12h14M13 6l6 6-6 6" />`,
-  back: html`<path d="M19 12H5M11 18l-6-6 6-6" />`,
-  chevron: html`<path d="m6 9 6 6 6-6" />`,
-  mail: html`<rect x="3.5" y="5.5" width="17" height="13" rx="2" /><path d="m4 7 8 6 8-6" />`,
-  copy: html`<rect x="8.5" y="8.5" width="11" height="11" rx="2" /><path d="M15.5 8.5V6A1.5 1.5 0 0 0 14 4.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5" />`,
-  calendar: html`<rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4M12 13v5M9.5 15.5h5" />`,
-  print: html`<path d="M7 9V3.5h10V9M7 17.5H5A1.5 1.5 0 0 1 3.5 16v-5A1.5 1.5 0 0 1 5 9.5h14a1.5 1.5 0 0 1 1.5 1.5v5a1.5 1.5 0 0 1-1.5 1.5h-2" /><rect x="7" y="14" width="10" height="6.5" rx="1" />`,
-  close: html`<path d="M6 6l12 12M18 6 6 18" />`,
-  plus: html`<path d="M12 5v14M5 12h14" />`,
-  logout: html`<path d="M14 4.5h4A1.5 1.5 0 0 1 19.5 6v12a1.5 1.5 0 0 1-1.5 1.5h-4M10 16l-4-4 4-4M6 12h9" />`,
-  external: html`<path d="M14 4.5h5.5V10M19.5 4.5 11 13M17 14v4.5a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1H10" />`,
-  gavel: html`<path d="m13.5 4.5 6 6M11 7l6 6M12.25 5.75l-4.5 4.5M17.75 11.25l-4.5 4.5M10 12l-6.5 6.5M3.5 20.5h9" />`,
-  present: html`<rect x="3" y="4.5" width="18" height="12" rx="1.5" /><path d="M12 16.5v3.5M8 20.5h8M10 8.5v4.5l4-2.25z" />`,
-  list: html`<path d="M9 6.5h11M9 12h11M9 17.5h11" /><circle cx="4.75" cy="6.5" r="1" /><circle cx="4.75" cy="12" r="1" /><circle cx="4.75" cy="17.5" r="1" />`,
-};
-const Icon = ({ name, size = 20, cls = '' }) => html`<svg class=${`bp-icon ${cls}`} width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
 
 const NAV = [['', 'Home', 'home'], ['meetings', 'Meetings', 'meetings'], ['financials', 'Financials', 'financials'], ['people', 'People', 'people'], ['documents', 'Documents', 'documents']];
 const PAGES = NAV.map(([p]) => p);
@@ -123,13 +96,10 @@ const readRoute = () => {
 };
 
 // ─── Words and dates ────────────────────────────────────────────────
-const noon = (d) => Date.parse(`${d}T12:00:00Z`);
 const dayOf = (d) => (isDate(d) ? new Date(noon(d)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' }) : '');
 const weekdayOf = (d) => (isDate(d) ? new Date(noon(d)).toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' }) : '');
-const partsOf = (d) => { const t = new Date(noon(d)); return { mon: t.toLocaleDateString('en-US', { month: 'short', timeZone: 'UTC' }), day: t.getUTCDate(), wk: t.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'UTC' }), year: t.getUTCFullYear() }; };
 const monthOf = (ym) => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 const firstName = (n) => String(n || '').split(/\s+/)[0];
-const together = (names) => (names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names.at(-1)}` : names[0] || '');
 const greeting = () => { const hr = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: 'America/New_York' }).format(new Date())); return hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening'; };
 const kindLabel = (k) => FILE_KINDS.find((x) => x.id === k)?.label || 'Other';
 const mapsHref = (s) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s)}`;
@@ -159,7 +129,6 @@ function phaseOf(m) {
   const now = Number(p.find((x) => x.type === 'hour')?.value || 0) * 60 + Number(p.find((x) => x.type === 'minute')?.value || 0);
   return now < s - 10 ? 'before' : now <= e ? 'now' : 'after';
 }
-const hueOf = (s) => [42, 28, 96, 152, 200, 18][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
 const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '').replace(/[’‘]/g, "'").replace(/\u2044/g, '/');
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** A time, a size or a length that never breaks before its unit on a narrow phone ("10:00 AM", "51 KB", "130 min") */
@@ -397,19 +366,6 @@ function claimMorph(e) {
 // Each step in the browser's history keeps how far down it was and what was open on it (a year's meetings, a
 // search, every account), so Back and Forward bring the page back just so. A new step starts at the top
 if ('scrollRestoration' in history) history.scrollRestoration = 'manual';
-const kept = () => (history.state && typeof history.state === 'object' ? history.state : {});
-const keep = (patch) => { try { history.replaceState({ ...kept(), ...patch }, ''); } catch { /* the browser's limit on how often: the next one saves it */ } };
-/** useState that this step in the history remembers (`key` unique on its page) */
-function useKept(key, initial) {
-  const [v, setV] = useState(() => (kept().ui && key in kept().ui ? kept().ui[key] : initial));
-  const set = (x) => setV((was) => {
-    const now = typeof x === 'function' ? x(was) : x;
-    keep({ ui: { ...(kept().ui || {}), [key]: now } });
-    dispatchEvent(new Event('bp-kept'));
-    return now;
-  });
-  return [v, set];
-}
 /** Until they scroll, tap or type: `fn` runs each frame for `ms`, and stops for good the moment they do */
 // Each page change counts here: a hold for one page never acts on the next (Back pressed twice, quickly)
 let pageSteps = 0;
@@ -584,6 +540,8 @@ function App() {
       if (share?.ok) { setData(structuredClone(share)); setFail(null); return; }
     }
     const j = await call();
+    // An advisor who landed here: their page is the advisors' (the middleware says so)
+    if (j.status === 403 && j.advisory) { location.replace(j.advisory); return; }
     if (j.ok) { setData(j); setFail(null); } else if (!keep) setFail(j);
   };
   const dataRef = useRef(null);
@@ -734,7 +692,7 @@ function App() {
   const d = useMemo(() => (data ? derive(data) : null), [data]);
 
   if (fail) {
-    const staff = fail.status === 403 && /team or board list|board page is for/i.test(fail.error || '');
+    const staff = fail.status === 403 && /team, board or Advisory Board list|team or board list|board page is for/i.test(fail.error || '');
     return html`<div class="bp-fail" role="alert">
       <img src=${LOGO} alt="" width="64" height="64" />
       <h1>${fail.status === 403 ? 'This page is for SOARD’s board' : 'The board page didn’t open'}</h1>
@@ -786,30 +744,7 @@ function App() {
     ${finding ? html`<${Finder} ctx=${ctx} onClose=${() => setFinding(false)} />` : null}`;
 }
 
-/**
- * The five pages. The yellow marker is one element that slides behind the labels to the open page (a CSS move).
- * It's never part of the page's view transition: as its own layer there it was drawn over the labels while it moved.
- */
-function Nav({ page, toSign = 0 }) {
-  const ref = useRef(null);
-  const [ink, setInk] = useState(null);
-  useEffect(() => {
-    const place = () => {
-      const a = ref.current?.querySelector('a[aria-current="page"]');
-      if (a) setInk((was) => ({ x: a.offsetLeft, y: a.offsetTop, w: a.offsetWidth, h: a.offsetHeight, moving: !!was }));
-    };
-    place();
-    document.fonts?.ready.then(place);
-    addEventListener('resize', place);
-    return () => removeEventListener('resize', place);
-  }, [page]);
-  return html`<nav class="bp-nav" aria-label="Board" ref=${ref}>
-    ${ink ? html`<span class=${`bp-nav__ink ${ink.moving ? 'is-moving' : ''}`} style=${`--x:${ink.x}px;--y:${ink.y}px;--w:${ink.w}px;--h:${ink.h}px`} aria-hidden="true"></span>` : null}
-    ${NAV.map(([p, label, icon]) => html`<a href=${`#/${p}`} aria-current=${page === p ? 'page' : null} key=${p}>
-      <${Icon} name=${icon} size=${20} /><span class="bp-nav__label">${label}</span>${p === 'documents' && toSign ? html`<span class="bp-nav__due" aria-label=${`${toSign} to sign`}>${toSign}</span>` : null}
-    </a>`)}
-  </nav>`;
-}
+const Nav = ({ page, toSign = 0 }) => html`<${PageNav} items=${NAV} page=${page} label="Board" due=${{ documents: toSign }} />`;
 
 /** Who's signed in, and the way out */
 // The founders have no seat on People → Board: their name comes from the sign-in, asked once
@@ -860,50 +795,8 @@ function Account({ data, d }) {
 }
 
 // ─── Shared pieces ──────────────────────────────────────────────────
-function Avatar({ p, size = 40, ring = false, named = false }) {
-  const [broken, setBroken] = useState('');
-  const name = p?.name || '';
-  const style = `--s:${size}px`;
-  // In a row of faces each says whose it is on hover
-  const title = named && name ? name : null;
-  return p?.photo && broken !== p.photo
-    ? html`<img class=${`bp-avatar ${ring ? 'bp-avatar--ring' : ''}`} src=${p.photo} alt="" title=${title} loading="lazy" decoding="async" width=${size} height=${size} style=${style} onError=${() => setBroken(p.photo)} />`
-    : html`<span class=${`bp-avatar bp-avatar--initials ${ring ? 'bp-avatar--ring' : ''}`} style=${`${style};--hue:${hueOf(name)}`} data-i=${initialsOf(name)} title=${title} aria-hidden="true"></span>`;
-}
-/** A row of faces, each named on hover (and all of them to a screen reader); "+3" names the rest */
-function Faces({ people, max = 6, size = 32 }) {
-  const shown = people.slice(0, max);
-  const rest = people.slice(max);
-  const names = people.map((p) => p.name).filter(Boolean);
-  return html`<span class="bp-faces" style=${`--s:${size}px`} role=${names.length ? 'img' : null} aria-label=${names.length ? together(names) : null}>${shown.map((p) => html`<${Avatar} p=${p} size=${size} ring named key=${p.slug || p.name} />`)}${rest.length ? html`<span class="bp-faces__more" title=${together(rest.map((p) => p.name).filter(Boolean)) || null}>+${rest.length}</span>` : null}</span>`;
-}
-function DateTile({ d, mid = null, big = false, head = false }) {
-  if (!isDate(d)) return null;
-  const p = partsOf(d);
-  return html`<span class=${`bp-date ${big ? 'bp-date--big' : ''}`} data-mid=${mid} style=${head ? 'view-transition-name: bp-morph' : null} aria-hidden="true">
-    <span class="bp-date__mon">${p.mon}</span><strong class="bp-date__day">${p.day}</strong>${big ? html`<span class="bp-date__wk">${p.wk}</span>` : null}
-  </span>`;
-}
-/** Where a reveal's window starts ({ part: 'mid', month: '2026-11' } → "2026-11-11"), for putting it in order */
-const windowStart = (w) => (/^\d{4}-\d{2}$/.test(String(w?.month || '')) ? `${w.month}-${{ early: '01', mid: '11', late: '21' }[w.part] || '01'}` : '');
-/** A reveal whose day isn't set: "mid" November */
-function WindowTile({ w }) {
-  const start = windowStart(w);
-  return html`<span class="bp-date bp-date--soft" aria-hidden="true"><span class="bp-date__mon">${start ? partsOf(start).mon : ''}</span><strong class="bp-date__day bp-date__day--word">${w?.part || '·'}</strong></span>`;
-}
 const MinutesChip = ({ m }) => (m.minutes === 'approved' ? html`<span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Minutes approved</span>` : html`<span class="bp-chip">Draft minutes</span>`);
-function SecHead({ title, sub = '', count = null, id, children }) {
-  return html`<div class="bp-sechead">
-    <div><h2 class="bp-h2" id=${id}>${title}${count != null ? html`<span class="bp-count">${count}</span>` : null}</h2>${sub ? html`<p class="bp-sub">${sub}</p>` : null}</div>
-    ${children || null}
-  </div>`;
-}
 const rise = (i) => `--i:${i}`;
-/** A fold that this step in the history remembers open (Back to the page finds it as it was) */
-function More({ k, summary, children }) {
-  const [open, setOpen] = useKept(`more-${k}`, false);
-  return html`<details class="bp-more" open=${open} onToggle=${(e) => { if (e.currentTarget.open !== open) setOpen(e.currentTarget.open); }}><summary>${summary}</summary>${children}</details>`;
-}
 
 
 // The cash and the year against its budget: ./money.js

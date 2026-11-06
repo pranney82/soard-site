@@ -23,7 +23,7 @@
  */
 
 import { accessToken, parseServiceAccount } from './_google-calendar.js';
-import { isStaffEmail, normEmail, peopleRows, founderEmails } from './_board-roles.js';
+import { isStaffEmail, isGroupInbox, normEmail, peopleRows, founderEmails } from './_board-roles.js';
 
 export const DIRECTORY_SCOPE = 'https://www.googleapis.com/auth/admin.directory.user.readonly';
 const USERS_API = 'https://admin.googleapis.com/admin/directory/v1/users';
@@ -199,6 +199,8 @@ async function askGoogle(env, email, dir, { fetchImpl, now }) {
 export async function staffStanding(env, email, { fetchImpl = fetch, now = Date.now() } = {}) {
   const e = normEmail(email);
   if (!isStaffEmail(e)) return { staff: false, why: 'domain' };
+  // A group's inbox is read by everyone in the group: a code sent there opens nothing, even when Google can't be read
+  if (isGroupInbox(e)) return { staff: false, why: 'group' };
   const hit = _seen.get(e);
   if (hit && now - hit.at < CACHE_MS) return hit.standing;
   let standing;

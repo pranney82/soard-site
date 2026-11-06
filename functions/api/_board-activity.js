@@ -54,7 +54,7 @@ export const VISIT_GAP_MS = 30 * 60_000;
 const iso = (ms) => new Date(ms).toISOString();
 
 /** The pages of the board page as the tracker names them (#/meetings/<id> → meeting/<id>) */
-const PAGES = ['home', 'meetings', 'financials', 'gifts', 'people', 'documents'];
+const PAGES = ['home', 'meetings', 'financials', 'gifts', 'people', 'documents', 'introductions', 'fundraise'];
 const idOk = (x) => typeof x === 'string' && ID.test(x);
 const str = (x) => (typeof x === 'string' ? x : '');
 const parse = (x) => { try { return JSON.parse(x || '{}'); } catch { return {}; } };

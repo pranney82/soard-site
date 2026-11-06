@@ -315,10 +315,11 @@ const LOOKS_MD = /(^|\n)\s{0,3}(#{1,6}\s|[-*+•]\s|\d{1,3}[.)]\s|>\s)|\*\*[^*\n
  * scrolls. `starter`: an empty report offers an outline to fill in (three headings; `onChange(md, { inserted: true })`); `onNothing`: a "Nothing to report
  * this time" at the foot (the page decides what happens, asking first when there are words). `timed`: 'read' for
  * words the board reads (a paper), not presents: "2 min read", with a paper's length (PAPER_LETTERS) and none of
- * the Markdown hint (the admin writing a paper uses the bar above)
+ * the Markdown hint (the admin writing a paper uses the bar above). `fields`: false for a paper with no signer's
+ * initials or answers to ask for, so the bar doesn't offer them
  */
 export const OUTLINE = ['What we did', 'What the board needs to decide', 'What’s next'];
-export function ReportEditor({ value, onChange, label = 'The report', placeholder = 'What happened, what the board needs to decide, and what’s next', autofocus = false, resetKey = 0, status = null, stickyTop = '0px', minHeight = 220, onBlur, starter = false, onNothing = null, coach = null, timed = 'present' }) {
+export function ReportEditor({ value, onChange, label = 'The report', placeholder = 'What happened, what the board needs to decide, and what’s next', autofocus = false, resetKey = 0, status = null, stickyTop = '0px', minHeight = 220, onBlur, starter = false, onNothing = null, coach = null, timed = 'present', fields = true }) {
   const paper = timed === 'read';
   const letters = paper ? PAPER_LETTERS : REPORT_LETTERS;
   const ed = useRef(null);
@@ -487,7 +488,7 @@ export function ReportEditor({ value, onChange, label = 'The report', placeholde
       ${btn('numbers', 'Numbered list (1. then a space)', on('orderedList'), (c) => c.toggleOrderedList())}
       ${btn('callout', 'Callout, for what the board needs to decide (> then a space)', on('blockquote'), (c) => c.toggleBlockquote())}
       ${paper ? null : btn('slide', 'New slide here (the meeting’s screen starts one; --- on a line of its own)', false, (c) => newSlide(e, c))}
-      ${paper ? html`<span class="rp-sep" aria-hidden="true"></span>
+      ${paper && fields ? html`<span class="rp-sep" aria-hidden="true"></span>
         ${['initials', 'answer'].map((f) => {
           const here = on('paragraph', { field: f });
           const title = f === 'initials' ? 'Initials here: each member initials this point as they sign' : 'Answer here: each member fills this in as they sign';

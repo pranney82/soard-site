@@ -147,6 +147,8 @@ export async function rename(env, { collection, from, to } = {}, userEmail = 'un
       try { await DB.prepare(`UPDATE OR IGNORE ${t} SET slug = ? WHERE slug = ?`).bind(to, from).run(); } catch {}
     }
     try { await DB.prepare("UPDATE board_files SET slug = ? WHERE slug = ? AND owner_type IN ('signed', 'record')").bind(to, from).run(); } catch {}
+    // An advisor's records follow them too (./_advisory.js)
+    try { await (await import('./_advisory.js')).moveSlug(DB, from, to); } catch {}
     try {
       const { appendEvents } = await import('./_board-sign.js');
       const had = await DB.prepare('SELECT COUNT(*) AS n FROM board_sign_events WHERE slug = ?').bind(from).first();

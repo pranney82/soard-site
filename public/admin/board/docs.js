@@ -32,7 +32,8 @@ import { unzip, fileTitle } from '../board-shared.js';
 
 export const PAGE = { w: 816, h: 1056 };
 const LAND = { w: 1056, h: 816 };
-const fileUrl = (f) => `/api/board-file?id=${encodeURIComponent(f.id)}`;
+// (the Advisory Board's screen, /admin/advisory/, opens its own files through its own route)
+export const fileUrl = (f) => `/api/${location.pathname.startsWith('/admin/advisory/') ? 'advisory' : 'board'}-file?id=${encodeURIComponent(f.id)}`;
 
 /** What a file is, for showing it: pdf | image | sheet | word | slides | other */
 export function docKind(f) {

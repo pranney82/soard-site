@@ -114,6 +114,16 @@ test('when there is no invite, and when one that is out is kept as it is', () =>
   for (const organization of [{ id: 'other' }, null, {}]) assert.equal(planDemo({ ...job(), organization }, STAFF, { now: NOW }).reason, 'not a SOARD job');
 });
 
+test('the emails switch keeps the Advisory Board’s group off a new invite, and never takes it off one that’s out', () => {
+  const GROUP = 'advisory@soardcharity.com';
+  const aces = [access('Sponsor', 'SOARD Advisory Board', GROUP)];
+  const people = { always: [], skip: [GROUP] };
+  const plan = (extra) => planDemo(job({ sponsor: 'SOARD Advisory Board', aces }), STAFF, { kids: KIDS, now: NOW, people, ...extra });
+  assert.ok(!plan({}).guests.includes(GROUP), 'off: a new invite leaves it out');
+  assert.ok(plan({ sentGuests: [GROUP] }).guests.includes(GROUP), 'off: one that’s out keeps it');
+  assert.ok(planDemo(job({ sponsor: 'SOARD Advisory Board', aces }), STAFF, { kids: KIDS, now: NOW, people: { always: [], skip: [] } }).guests.includes(GROUP), 'on: it’s a guest');
+});
+
 test('guests: family, internal team, the monetary sponsor (Sponsor users on the job), and the every-demo-day list; nobody else on the job', () => {
   const people = {
     always: [{ email: 'mindi@example.com', name: 'Mindi', role: 'Social media' }, { email: 'CNIELSEN@soardcharity.com', name: 'dup' }],
@@ -147,7 +157,7 @@ test('the every-demo-day list: checked, and kept out of site_config; sponsors co
   await assert.rejects(savePerson(DB, { list: 'always', email: 'not an email' }), /doesn't look right/);
   await assert.rejects(savePerson(DB, { list: 'board', email: 'a@b.co' }), /doesn't exist/);
   await assert.rejects(savePerson(DB, { list: 'sponsor:Jackson Healthcare', email: 'a@b.co' }), /doesn't exist/);
-  assert.deepEqual(await listPeople(DB), { always: [{ email: 'mindi@example.com', name: 'Mindi', role: 'Social media' }] });
+  assert.deepEqual((await listPeople(DB)).always, [{ email: 'mindi@example.com', name: 'Mindi', role: 'Social media' }]);
   await removePerson(DB, { list: 'always', email: 'MINDI@example.com' });
   assert.deepEqual((await listPeople(DB)).always, []);
   const config = await DB.prepare("SELECT data FROM site_config WHERE key = 'demo-invites'").first();

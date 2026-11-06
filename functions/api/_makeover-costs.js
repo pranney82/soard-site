@@ -52,6 +52,9 @@ import { scoreSummaries } from './_applicant-scores.js';
 import { pledgesFor } from './_sponsor-pledges.js';
 import { REVEAL_TASK_TYPE } from './_kid-status.js';
 
+/** What comes off a family's cost. The Advisory Board's is money it has already raised, so it's in the bank's cash already */
+export const countedPledges = (list) => list.filter((p) => p.slug !== 'soard-advisory-board');
+
 const MAX_PAGES = 10;
 const FRESH_MS = 15 * 60 * 1000;
 /** A page reads the heartbeat's copy up to this old before it reads JobTread itself */
@@ -314,8 +317,8 @@ export async function orderWaiting(DB, waiting) {
       ...w, account,
       score: s && s.count ? { total: s.total, tier: s.tier, ranked: !!s.ranked, count: s.count, of: s.of } : null,
       sponsors: list,
-      pledged: list.reduce((n, p) => n + (p.pledged || 0), 0),
-      received: list.reduce((n, p) => n + (p.received || 0), 0),
+      pledged: countedPledges(list).reduce((n, p) => n + (p.pledged || 0), 0),
+      received: countedPledges(list).reduce((n, p) => n + (p.received || 0), 0),
     };
   });
   const ranked = (w) => (w.score?.ranked ? 0 : 1);

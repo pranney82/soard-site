@@ -67,6 +67,8 @@ export async function onRequestPost(context) {
   if (body?.pledge) {
     const { kid, partner, pledged, received } = body.pledge;
     if (!SLUG_RE.test(kid || '') || !SLUG_RE.test(partner || '')) return fail('Bad pledge');
+    // The Advisory Board's is what it has actually raised, kept by the site (./_advisory-sponsor.js)
+    if (partner === 'soard-advisory-board') return fail('The Advisory Board’s amount follows what the group has raised in Zeffy', 409);
     const row = await env.DB.prepare('SELECT data FROM kids WHERE slug = ?').bind(kid).first();
     if (!row) return fail('No kid with that page', 404);
     let sponsors = [];

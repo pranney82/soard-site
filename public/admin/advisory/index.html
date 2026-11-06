@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="robots" content="noindex, nofollow" />
+  <meta name="theme-color" content="#FEFCF5" />
+  <meta name="color-scheme" content="light" />
+  <title>SOARD Advisory Board</title>
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+  <!-- Saved to a phone's home screen: SOARD's icon, named for the page -->
+  <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-title" content="SOARD Advisors" />
+  <link rel="preload" href="/fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="preload" href="/fonts/libre-baskerville-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
+  <link rel="modulepreload" href="/admin/vendor.js" />
+  <link rel="modulepreload" href="/admin/board-shared.js" />
+  <link rel="stylesheet" href="../board/portal.css" />
+  <link rel="stylesheet" href="./advisory.css" />
+</head>
+<body>
+  <!-- The Advisory Board's own page, signed in with the same emailed code as staff. Advisors, the
+       board member who runs the group and its committee reach /api/advisory-portal. See ./portal.js. -->
+  <div id="advisory-app"><div class="bp-boot"><img src="/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128" alt="" width="56" height="56" /><p>Opening the advisory page…</p></div></div>
+  <script type="module" src="./portal.js"></script>
+  <!-- What an advisor looks at, for Members (on its own: it only watches the page) -->
+  <script type="module" src="../board/activity.js"></script>
+</body>
+</html>

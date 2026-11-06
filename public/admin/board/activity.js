@@ -13,14 +13,15 @@
  * looking, previewing or presenting is never recorded.
  */
 
-const API = '/api/board-portal';
+// The advisors' page reports to its own route, and the server keeps it for an advisor only
+const API = typeof location !== 'undefined' && location.pathname.startsWith('/admin/advisory') ? '/api/advisory-portal' : '/api/board-portal';
 // Reading a long page can go a while without a touch
 const IDLE_MS = 3 * 60_000;
 const FLUSH_MS = 60_000;
 // This long past a look's last counted second (the tab in the background, nobody at it, the computer asleep), it's a new
 // look when they're back
 const AWAY_MS = 5 * 60_000;
-const FILE = /\/api\/board-file\?id=([A-Za-z0-9_]{3,40})/;
+const FILE = /\/api\/(?:board|advisory)-file\?id=([A-Za-z0-9_]{3,40})/;
 const ID = /^[A-Za-z0-9_]{3,40}$/;
 const CALL = /^https:\/\/(meet\.google\.com|([\w-]+\.)*zoom\.us|teams\.microsoft\.com|teams\.live\.com|([\w-]+\.)*webex\.com)\//;
 
@@ -38,8 +39,8 @@ export function pageOf(hash) {
   }
   if (page === 'financials') return sub === 'gifts' || id === 'gifts' ? 'gifts' : 'financials';
   // A paper written in Board, read on its own page
-  if (page === 'documents' && id) return ID.test(id) ? `paper/${id}` : null;
-  return ['people', 'documents'].includes(page) ? page : null;
+  if ((page === 'documents' || page === 'papers') && id) return ID.test(id) ? `paper/${id}` : null;
+  return ['people', 'documents', 'introductions', 'fundraise'].includes(page) ? page : null;
 }
 const meetingOf = (page) => (/^(meeting|screen|report|review)\//.test(page || '') ? page.split('/')[1] : '');
 const paperOf = (page) => (/^paper\//.test(page || '') ? page.split('/')[1] : '');

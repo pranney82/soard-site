@@ -26,12 +26,12 @@
 
 import { accessToken } from './_google-calendar.js';
 import { isEmail } from './_broadcast-notify.js';
-import { activeBoard, boardAdmins, founderEmails, normEmail, peopleRows, privateEmails, readState, writeState, isStaffEmail } from './_board-roles.js';
+import { activeBoard, activeAdvisors, boardAdmins, founderEmails, normEmail, peopleRows, privateEmails, readState, writeState, isStaffEmail } from './_board-roles.js';
 
 export const GROUP_EMAIL = 'board@soardcharity.com';
 export const GROUP_SCOPE = 'https://www.googleapis.com/auth/admin.directory.group.member';
-const MEMBERS_API = `https://admin.googleapis.com/admin/directory/v1/groups/${encodeURIComponent(GROUP_EMAIL)}/members`;
-const KEY = 'group';
+export const ADVISORY_GROUP_EMAIL = 'advisory@soardcharity.com';
+const membersApi = (group) => `https://admin.googleapis.com/admin/directory/v1/groups/${encodeURIComponent(group)}/members`;
 const LOOK_MS = 5 * 60 * 1000;
 const RECHECK_MS = 6 * 60 * 60 * 1000;
 const RETRY_MS = 30 * 60 * 1000; // after a failure (a Google setting nobody has made yet doesn't need asking every 5 minutes)
@@ -103,12 +103,12 @@ async function google(token, method, url, body, fetchImpl) {
 }
 
 /** Everyone in the group: [{ email, role, type }] */
-async function listMembers(token, fetchImpl) {
+async function listMembers(token, fetchImpl, api) {
   const out = [];
   let page = '';
   for (let i = 0; i < 20; i++) {
     const q = new URLSearchParams({ maxResults: '200', ...(page ? { pageToken: page } : {}) });
-    const r = await google(token, 'GET', `${MEMBERS_API}?${q}`, null, fetchImpl);
+    const r = await google(token, 'GET', `${api}?${q}`, null, fetchImpl);
     if (!r.ok) throw googleError(r.status, r.data);
     out.push(...(r.data?.members || []).map((m) => ({ email: normEmail(m.email), role: m.role || 'MEMBER', type: m.type || 'USER' })));
     page = r.data?.nextPageToken || '';
@@ -131,19 +131,37 @@ function failedText(failing) {
 /** Only plain members who are people are the site's to remove: owners, managers, groups and the domain stay */
 const keptBySite = (m) => m.email && m.role === 'MEMBER' && (m.type === 'USER' || m.type === 'EXTERNAL');
 
+/** Who belongs in advisory@soardcharity.com: the active advisors and whoever runs the group, plus the Board area's admins */
+export async function advisoryGroupWanted(DB) {
+  const [advisors, admins, people, emails, primary, state] = await Promise.all([activeAdvisors(DB), boardAdmins(DB), peopleRows(DB), privateEmails(DB), primaryOf(DB), readState(DB, 'advisory')]);
+  const byEmail = new Map();
+  for (const a of advisors) if (isEmail(a.email)) byEmail.set(primary(a.email), a.name);
+  const lead = state.lead || 'mary-atchley';
+  const leadPerson = people.find((p) => p.slug === lead);
+  if (leadPerson && isEmail(emails[lead] || '')) byEmail.set(primary(emails[lead]), leadPerson.name);
+  for (const e of admins) if (!byEmail.has(primary(e))) byEmail.set(primary(e), e);
+  const members = [...byEmail].map(([email, name]) => ({ email, name })).sort((a, b) => a.email.localeCompare(b.email));
+  return { members, board: advisors.filter((a) => isEmail(a.email)).length, missing: advisors.filter((a) => !isEmail(a.email)).map((a) => ({ slug: a.slug, name: a.name })) };
+}
+
+const BOARD = { email: GROUP_EMAIL, key: 'group', runs: 'group-runs', wanted: groupWanted, empty: 'People → Board has nobody with an email, so the group was left as it is' };
+const ADVISORY = { email: ADVISORY_GROUP_EMAIL, key: 'advisory-group', runs: 'advisory-group-runs', wanted: advisoryGroupWanted, empty: 'People → Advisory has nobody with an email, so the group was left as it is' };
+
 /**
- * Bring board@soardcharity.com up to the board. → the saved state
+ * Bring a group up to its people. → the saved state
  *   { ok, configured, subject, members, wanted, hash, triedHash, syncedAt, error, needs, failing: [{ email, name, error }], changes: [{ at, added, removed }] }
  */
-export async function syncBoardGroup(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+async function syncGroup(env, cfg, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const KEY = cfg.key;
+  const MEMBERS_API = membersApi(cfg.email);
   const prev = await readState(env.DB, KEY);
   const at = new Date(now).toISOString();
-  const want = await groupWanted(env.DB);
+  const want = await cfg.wanted(env.DB);
   const hash = await hashOf(want.members.map((m) => m.email));
   // failingSince: when this run of failures began, so a passing outage reads as one
   const fail = (err) => writeState(env.DB, KEY, { ...prev, ok: false, configured: true, triedHash: hash, error: err.message, needs: err.needs || null, failedAt: at, failingSince: prev.failingSince || at });
   if (!env.GOOGLE_CALENDAR_KEY) return { ...prev, ok: false, configured: false };
-  if (!want.board) return fail(Object.assign(new Error('People → Board has nobody with an email, so the group was left as it is'), { needs: 'empty' }));
+  if (!want.board) return fail(Object.assign(new Error(cfg.empty), { needs: 'empty' }));
 
   // The founder that worked last time, then staff sign-in's, then each founder: only "not a Workspace admin" is worth trying the next one for
   let staffSubject = '';
@@ -152,7 +170,7 @@ export async function syncBoardGroup(env, { fetchImpl = fetch, now = Date.now() 
   if (!subjects.length) return fail(Object.assign(new Error('No founder on People → Team to ask Google as'), { needs: 'founder' }));
   let token = null, subject = null, current = null, lastErr = null;
   for (const s of subjects) {
-    try { token = await groupToken(env, s, { fetchImpl, now }); current = await listMembers(token, fetchImpl); subject = s; break; } catch (err) { lastErr = err; if (err.needs !== 'admin') break; }
+    try { token = await groupToken(env, s, { fetchImpl, now }); current = await listMembers(token, fetchImpl, MEMBERS_API); subject = s; break; } catch (err) { lastErr = err; if (err.needs !== 'admin') break; }
   }
   if (!current) return fail(lastErr);
 
@@ -189,7 +207,7 @@ export async function syncBoardGroup(env, { fetchImpl = fetch, now = Date.now() 
   const outsideRefused = adds.length > 0 && adds.every((f) => f.outside);
   const changes = added.length || removed.length ? [{ at, added, removed }, ...(prev.changes || [])].slice(0, KEEP_CHANGES) : (prev.changes || []);
   return writeState(env.DB, KEY, {
-    ok: !failing.length, configured: true, subject, group: GROUP_EMAIL,
+    ok: !failing.length, configured: true, subject, group: cfg.email,
     members: current.length + added.length - removed.length, wanted: want.members.length,
     owners: current.filter((m) => m.role !== 'MEMBER').length,
     // Caught up only when everything went: anything left is tried again
@@ -202,12 +220,15 @@ export async function syncBoardGroup(env, { fetchImpl = fetch, now = Date.now() 
   });
 }
 
-/** For the admin: whether the group follows the board, and its last changes (names only) */
-export async function groupStatus(env) {
-  const [state, want] = await Promise.all([readState(env.DB, KEY), groupWanted(env.DB)]);
+export const syncBoardGroup = (env, o) => syncGroup(env, BOARD, o);
+export const syncAdvisoryGroup = (env, o) => syncGroup(env, ADVISORY, o);
+
+/** For the admin: whether the group follows its people, and its last changes (names only) */
+async function statusOf(env, cfg) {
+  const [state, want] = await Promise.all([readState(env.DB, cfg.key), cfg.wanted(env.DB)]);
   const hash = await hashOf(want.members.map((m) => m.email));
   return {
-    group: GROUP_EMAIL,
+    group: cfg.email,
     configured: Boolean(env.GOOGLE_CALENDAR_KEY),
     ok: !!state.ok, syncedAt: state.syncedAt || null, failedAt: state.failedAt || null, failingSince: state.ok ? null : state.failingSince || state.failedAt || null,
     error: state.ok ? null : state.error || null, needs: state.ok ? null : state.needs || null,
@@ -218,22 +239,27 @@ export async function groupStatus(env) {
   };
 }
 
-/** Heartbeat: when People → Board changed (checked every 5 minutes), every 6 hours anyway, and half-hourly while something fails. Never throws. */
-export async function maybeSyncBoardGroup(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+export const groupStatus = (env) => statusOf(env, BOARD);
+export const advisoryGroupStatus = (env) => statusOf(env, ADVISORY);
+
+/** Heartbeat: when the people changed (checked every 5 minutes), every 6 hours anyway, and half-hourly while something fails. Never throws. */
+async function maybeSync(env, cfg, { fetchImpl = fetch, now = Date.now() } = {}) {
   try {
     if (!env.DB || !env.GOOGLE_CALENDAR_KEY) return null;
-    const runs = await readState(env.DB, 'group-runs');
+    const runs = await readState(env.DB, cfg.runs);
     if (now - (Number(runs.lookedAt) || 0) < LOOK_MS) return null;
-    await writeState(env.DB, 'group-runs', { lookedAt: now });
-    const state = await readState(env.DB, KEY);
-    const hash = await hashOf((await groupWanted(env.DB)).members.map((m) => m.email));
+    await writeState(env.DB, cfg.runs, { lookedAt: now });
+    const state = await readState(env.DB, cfg.key);
+    const hash = await hashOf((await cfg.wanted(env.DB)).members.map((m) => m.email));
     const last = Date.parse((state.ok ? state.syncedAt : state.failedAt) || '') || 0;
     // A young outage (Google erring, nothing to set) is asked again at each look for its first half hour, as the panel says
     const young = !state.ok && !state.needs && state.failingSince && now - Date.parse(state.failingSince) < RETRY_MS;
     const due = state.triedHash !== hash || now - last >= (state.ok ? RECHECK_MS : young ? LOOK_MS : RETRY_MS);
-    return due ? await syncBoardGroup(env, { fetchImpl, now }) : null;
+    return due ? await syncGroup(env, cfg, { fetchImpl, now }) : null;
   } catch (err) {
     console.error('[board-group]', err.message);
     return null;
   }
 }
+export const maybeSyncBoardGroup = (env, o) => maybeSync(env, BOARD, o);
+export const maybeSyncAdvisoryGroup = (env, o) => maybeSync(env, ADVISORY, o);

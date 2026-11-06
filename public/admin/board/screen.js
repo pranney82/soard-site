@@ -21,7 +21,7 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
-import { openDoc, layoutOf, areaOf, partsOf, showOf, docKind, pageWordOf } from './docs.js';
+import { openDoc, layoutOf, areaOf, partsOf, showOf, docKind, pageWordOf, fileUrl } from './docs.js';
 import {
   meetingName, longDate, shortDate, timeRange, liveLines, noteBlocks, agendaItems, presentersOf, deckOf, sidePhoto, spreadsOf, pagesText, stopIndex, isDate, clock, todayEastern, MORE,
   sectionPlan, sectionClock, clockText, liveOfStop, facesOf, itemDocs, docsOf, docTitle, formatOf, plural, initialsOf, namesText, LIVE_TITLES,
@@ -38,6 +38,13 @@ import { useCashNow, useBudget, moneyTiles, mixOf, RevenueMix, budgetDue, readCh
 const html = htm.bind(h);
 const API = '/api/board-portal';
 const CHANNEL = 'soard-board-screen';
+// The Advisory Board's presentation (/admin/advisory/screen.html): drawn from the meeting the page was given. It has no
+// live view to ask for: nothing there is run by a chair, and it never asks the board's routes for anything
+const LOCAL = location.pathname.startsWith('/admin/advisory/');
+// Whose meeting it is, in the words on the slides
+const HOME = LOCAL ? 'the advisors’ page' : 'the board page';
+const GROUP = LOCAL ? 'Advisory Board' : 'Board of Directors';
+const NEXT_ONE = LOCAL ? 'Next meeting' : 'Next board meeting';
 // The chair's own copy of the screen, small in Board's During (?mirror): it follows the chair but isn't a screen
 // window (it never says hello, takes no keys and has no full-screen button)
 const MIRROR = new URLSearchParams(location.search).has('mirror');
@@ -339,7 +346,7 @@ function DocPage({ f, sheets, box, onPages }) {
   }, [f?.id, at, box.w, box.h, dpr]);
   return html`<div class="bs-page">
     <div class="bs-page__sheet" ref=${ref}></div>
-    ${state === 'opening' ? html`<p class="bs-quiet bs-page__wait">Opening ${docTitle(f?.name)}…</p>` : state === 'failed' ? html`<p class="bs-quiet">${docTitle(f?.name)} didn’t open here. It’s on the board page.</p>` : null}
+    ${state === 'opening' ? html`<p class="bs-quiet bs-page__wait">Opening ${docTitle(f?.name)}…</p>` : state === 'failed' ? html`<p class="bs-quiet">${docTitle(f?.name)} didn’t open here. It’s on ${HOME}.</p>` : null}
   </div>`;
 }
 
@@ -501,7 +508,7 @@ function ReportFit({ text, more = false, part = false, cont = '' }) {
   }, [text]);
   return html`<div class=${`bs-report ${short ? 'is-short' : ''}`}>
     <div class="bs-report__body" ref=${ref}>${cont ? html`<p class="bs-report__cont" dir="auto">${mdPlain(cont)}<span>, continued</span></p>` : null}<${Report} text=${text} level=${3} /></div>
-    ${cut ? html`<p class="bs-report__more">The whole report is on the board page</p>` : more ? html`<p class="bs-report__more">Continued on the next slide</p>` : null}
+    ${cut ? html`<p class="bs-report__more">The whole report is on ${HOME}</p>` : more ? html`<p class="bs-report__more">Continued on the next slide</p>` : null}
   </div>`;
 }
 
@@ -578,7 +585,7 @@ function Points({ text }) {
         units.forEach((u, i) => { u.hidden = i >= k; });
         el.querySelectorAll(':scope > ul').forEach((ul) => { ul.hidden = [...ul.children].every((li) => li.hidden); });
         more.hidden = k >= units.length;
-        more.textContent = `${units.length - k} more on the board page`;
+        more.textContent = `${units.length - k} more on ${HOME}`;
       };
       show(units.length);
       let k = 1;
@@ -786,7 +793,7 @@ function DatesSlide({ rows, note = '', empty = 'Nothing on the calendar yet' }) 
   return html`${note ? html`<p class="bs-dates__note">${note}</p>` : null}<ul class="bs-dates" ref=${ref}>${rows.map((r) => html`<li class=${r.state ? `is-${r.state}` : ''} key=${r.key}><${Tile} d=${r.date} /><span class="bs-dates__text"><strong dir="auto">${r.title}</strong>${r.sub ? html`<span dir="auto">${r.sub}</span>` : null}</span>${r.state ? html`<b class="bs-dates__state">${r.state === 'done' ? CHECK : null}${DATE_STATES[r.state]}</b>` : null}</li>`)}<li class="bs-dates__more" hidden></li></ul>`;
 }
 /** Under a board member's name: their officer's seat, else their company (People keeps "Company, Role") */
-const roleOf = (p) => (p.title && !/^board member$/i.test(p.title) ? p.title : String(p.organization || '').split(/,\s*/)[0] || p.title || '');
+const roleOf = (p) => (p.title && !/^(advisory )?board member$/i.test(p.title) ? p.title : String(p.organization || '').split(/,\s*/)[0] || p.title || '');
 /** A face at the size of a room: the People photo asked for big enough to stay sharp on a TV */
 const roomPhoto = (url) => String(url || '').replace(/\bw=\d+,h=\d+/, 'w=480,h=480');
 
@@ -799,10 +806,10 @@ const roomPhoto = (url) => String(url || '').replace(/\bw=\d+,h=\d+/, 'w=480,h=4
 function FacesGrid({ kind, v, people, started, year }) {
   const bySlug = new Map(people.map((p) => [p.slug, p]));
   const listed = (v.roll || []).map((r) => ({ ...(bySlug.get(r.slug) || {}), slug: r.slug, name: r.name || bySlug.get(r.slug)?.name || '', how: r.how }));
-  const all = listed.length ? listed : people.filter((p) => p.group === 'board').map((p) => ({ ...p, how: '' }));
+  const all = listed.length ? listed : people.filter((p) => p.group === (LOCAL ? 'advisory' : 'board')).map((p) => ({ ...p, how: '' }));
   const here = all.filter((p) => p.how);
   const shown = kind === 'room' && started && here.length ? here : all;
-  if (!shown.length) return html`<p class="bs-quiet">No board members on the meeting’s list.</p>`;
+  if (!shown.length) return html`<p class="bs-quiet">${LOCAL ? 'No advisors on the list yet.' : 'No board members on the meeting’s list.'}</p>`;
   const rows = shown.length <= 5 ? 1 : shown.length <= 14 ? 2 : shown.length <= 24 ? 3 : 4;
   // Greyed as not here only once someone has checked in: presenting on the day, before anyone has, everyone is as they are
   const checking = started && here.length > 0;
@@ -823,6 +830,7 @@ function FacesGrid({ kind, v, people, started, year }) {
 const CHECK = html`<svg viewBox="0 0 20 20" aria-hidden="true"><path d="M4.5 10.5l3.6 3.6 7.4-8.2" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round" /></svg>`;
 /** The roll call's count, beside its title: here of the list, and the quorum (met, or how many more) */
 function RollCount({ v, started }) {
+  if (LOCAL) return null; // (nobody checks in at an advisory meeting: the faces are the slide)
   const roll = v.roll || [];
   const n = roll.filter((p) => p.how).length;
   const q = v.here?.quorum || 0;
@@ -931,7 +939,7 @@ function Cover({ meeting, m, plan, people, place }) {
   return html`<div class=${`bs-cover ${cols ? 'is-cols' : ''}`} ref=${ref}>
     <div class="bs-cover__lead">
       <img class="bs-cover__logo" src=${LOGO} alt="" width="120" height="120" />
-      <p class="bs-eyebrow">Sunshine on a Ranney Day · Board of Directors</p>
+      <p class="bs-eyebrow">Sunshine on a Ranney Day · ${GROUP}</p>
       <${Title} text=${meetingName(meeting)} />
       <p class="bs-cover__when">${[isDate(meeting.date) ? longDate(meeting.date) : '', m ? timeRange(m.start, m.end) : ''].filter(Boolean).join(' · ')}</p>
       ${place ? html`<p class="bs-quiet">${place}</p>` : null}
@@ -1124,12 +1132,12 @@ const NEXT = html`<svg viewBox="0 0 20 20" width="18" height="18" aria-hidden="t
 /** The screen: the stop the chair is on, or (presenting, Board's preview) the one it has moved itself to */
 export function Screen({ id, data, d, onBack = null }) {
   const fast = useRef(false);
-  const [v0, fail, trouble] = useLiveView(id, fast, SOLO);
+  const [v0, fail, trouble] = useLiveView(id, fast, SOLO || LOCAL);
   // Presenting and Board's preview never show the meeting as it was held (an ended practice) or a vote: nothing
   // started, nothing ended; they go only where they're moved
   // The report page's preview of a meeting ahead its presenter writes on, not shared yet (no live view for them): the
   // meeting as the page has it
-  const pv = PREVIEW && (SOLO || fail) && !v0 ? data.meetings.find((x) => x.id === id) || data.previews?.find((x) => x.id === id) || data.presenting?.find((x) => x.id === id) || null : null;
+  const pv = (LOCAL || (PREVIEW && (SOLO || fail))) && !v0 ? data.meetings.find((x) => x.id === id) || data.previews?.find((x) => x.id === id) || data.presenting?.find((x) => x.id === id) || null : null;
   // (made once an answer, not every render: what's built from it, the meeting and its deck, holds still between answers)
   const v = useMemo(() => {
     const vb = v0 || (pv ? { ok: true, title: pv.title || '', date: pv.date, start: pv.start || '', end: pv.end || '', sections: pv.sections, files: pv.files || [], snapshot: pv.snapshot || null, prior: [], live: {} } : null);
@@ -1284,7 +1292,7 @@ export function Screen({ id, data, d, onBack = null }) {
     return () => { clearTimeout(t); clearInterval(clockTick); removeEventListener('pointermove', move); };
   }, []);
 
-  useEffect(() => { if (!MIRROR) document.title = v ? `${v.title} · ${PRESENT ? 'Presenting' : 'On the screen'}` : 'SOARD Board · On the screen'; }, [v?.title]);
+  useEffect(() => { if (!MIRROR) document.title = v ? `${v.title} · ${PRESENT ? 'Presenting' : 'On the screen'}` : `SOARD ${LOCAL ? 'Advisory Board' : 'Board'} · On the screen`; }, [v?.title]);
 
   // (A meeting not shared yet, previewed or presented by an admin, isn't in the board page's list: its name comes with the view)
   const m = data.meetings.find((x) => x.id === id) || (OWN ? data.previews?.find((x) => x.id === id) : null) || (PREVIEW ? data.presenting?.find((x) => x.id === id) : null) || null;
@@ -1452,7 +1460,7 @@ export function Screen({ id, data, d, onBack = null }) {
         <img class="bs-cover__logo" src=${LOGO} alt="" width="120" height="120" />
         <h1 class="bs-display">Thank you</h1>
         ${v.live.endedAt ? html`<p class="bs-cover__when">The meeting ended at ${new Date(v.live.endedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' })}</p>` : null}
-        ${next ? html`<p class="bs-end__next"><${Tile} d=${next.date} /><span><small>Next board meeting</small><strong>${longDate(next.date)}</strong>${next.start ? html`<span>${timeRange(next.start, next.end)}</span>` : null}</span></p>` : null}
+        ${next ? html`<p class="bs-end__next"><${Tile} d=${next.date} /><span><small>${NEXT_ONE}</small><strong>${longDate(next.date)}</strong>${next.start ? html`<span>${timeRange(next.start, next.end)}</span>` : null}</span></p>` : null}
       </div>
       ${decided.length ? html`<div class="bs-end__recap"><p class="bs-eyebrow">What the board decided today</p><ol class="bs-decided">${decided.slice(0, 5).map((x) => html`<li key=${x.id}><span dir="auto">${x.text}</span><b class=${`is-${x.result}`}>${x.tally ? `${{ passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[x.result] || 'Recorded'} ${x.tally.for}–${x.tally.against}` : { passed: 'Passed', failed: 'Did not pass', tabled: 'Tabled' }[x.result] || 'Recorded'}</b></li>`)}</ol>${decided.length > 5 ? html`<p class="bs-decided__more">and ${decided.length - 5} more decided today</p>` : null}</div>` : null}
     </div>`;
@@ -1547,7 +1555,7 @@ export function Screen({ id, data, d, onBack = null }) {
       const pic = sidePhoto(item, itemDocs(meeting, item, v.prior || []).map((d) => d.file).filter((f) => !f.staffOnly));
       const look = pic ? 'words' : lookOfItem(item);
       stage = html`<div class=${`bs-item bs-item--report ${asPoints(look) ? 'bs-item--points' : ''} ${pic ? 'bs-item--side' : ''}`}>
-        ${pic ? html`<figure class="bs-side"><img src=${`/api/board-file?id=${encodeURIComponent(pic.id)}`} alt=${docTitle(pic.name)} /></figure>` : null}
+        ${pic ? html`<figure class="bs-side"><img src=${fileUrl(pic)} alt=${docTitle(pic.name)} /></figure>` : null}
         <div class="bs-item__bar"><div>${head}</div></div>
         <${ReportBody} report=${first} look=${look} more=${firstSlides.length > 1} part=${!!pic || firstSlides.length > 1} />
         ${motionHere}
@@ -1599,7 +1607,7 @@ export function Screen({ id, data, d, onBack = null }) {
       <span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}<span class="bs-foot__item">${itemTitle}</span>${docWords ? html`<span class="bs-foot__sep">·</span>${docWords}` : null}</span>
       ${shownPages.length > 1 && shownPages.length <= 12 ? html`<span class="bs-foot__pages" aria-hidden="true">${shownPages.map((i) => html`<i class=${onPages.includes(i) ? 'is-on' : ''} key=${i}></i>`)}</span>` : null}`
       : stop.kind === 'books' || stop.kind === 'live' || stop.kind === 'report' || stop.kind === 'decision' ? html`<span class="bs-foot__what">${label ? html`<b>${label}</b>` : null}${itemTitle}<span class="bs-foot__sep">·</span>${stop.kind === 'books' ? booksTitle(stop) : stop.kind === 'report' ? (stop.of > 1 ? `Report, ${(stop.page || 0) + 1} of ${stop.of}` : 'Report') : stop.kind === 'decision' ? 'The decision' : LIVE_TITLES[stop.fileId.slice(5)]}</span>`
-      : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>⇧</kbd><kbd>→</kbd> the next item<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span><kbd>C</kbd> the money’s changes in % or $<span class="bs-foot__sep">·</span><kbd>F</kbd> full screen</span>`
+      : PRESENT ? html`<span class="bs-foot__what bs-foot__keys"><kbd>←</kbd> <kbd>→</kbd> or a clicker to move<span class="bs-foot__sep">·</span><kbd>⇧</kbd><kbd>→</kbd> the next item<span class="bs-foot__sep">·</span><kbd>B</kbd> blanks the screen<span class="bs-foot__sep">·</span>${LOCAL ? null : html`<kbd>C</kbd> the money’s changes in % or $<span class="bs-foot__sep">·</span>`}<kbd>F</kbd> full screen</span>`
       : !started && !told && !MIRROR && !OWN ? html`<span class="bs-foot__what">The screen follows the meeting once the chair starts it.</span>` : null}
       ${ctl}
     </div>

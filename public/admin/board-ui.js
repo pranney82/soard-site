@@ -71,10 +71,16 @@ export const youAnd = (admins = [], me = '') => {
 // ─── Addresses ──────────────────────────────────────────────────────
 export const TABS = [['meetings', 'Meetings'], ['documents', 'Documents'], ['members', 'Members']];
 export const STEPS = ['before', 'during', 'after'];
+// Which side of Board this device last had open: a plain #board opens there
+const SIDE_KEY = 'soard-board-side';
+export const rememberSide = (advisory) => { try { localStorage.setItem(SIDE_KEY, advisory ? 'advisory' : 'board'); } catch { /* private browsing: it just opens on Board */ } };
+export const lastSide = () => { try { return localStorage.getItem(SIDE_KEY) === 'advisory'; } catch { return false; } };
 export function readHash() {
   const m = location.hash.match(/^#board(?:\/([^?]*))?/);
   if (!m) return null;
   const [a, b, c] = decodeURIComponent(m[1] || '').split('/');
+  // The Advisory Board's side of Board, the same three tabs (./advisory-admin.js)
+  if (a === 'advisory') return { tab: TABS.some(([id]) => id === b) ? b : 'meetings', meetingId: null, step: null, advisory: true };
   if (a === 'meeting' && b) return { tab: 'meetings', meetingId: b, step: STEPS.includes(c) ? c : null };
   if (a === 'practice') return { tab: 'meetings', meetingId: null, step: null, practice: true };
   if (a === 'template') return { tab: 'meetings', meetingId: null, step: null, template: true };
@@ -82,7 +88,7 @@ export function readHash() {
   if (a === 'settings') return { tab: 'members', meetingId: null, step: null };
   return { tab: TABS.some(([id]) => id === a) ? a : 'meetings', meetingId: null, step: null };
 }
-export const hashFor = (r) => (r.practice ? '#board/practice' : r.template ? '#board/template' : r.meetingId ? `#board/meeting/${encodeURIComponent(r.meetingId)}${r.step ? `/${r.step}` : ''}` : r.tab === 'meetings' ? '#board' : `#board/${r.tab}`);
+export const hashFor = (r) => (r.advisory ? `#board/advisory${r.tab && r.tab !== 'meetings' ? `/${r.tab}` : ''}` : r.practice ? '#board/practice' : r.template ? '#board/template' : r.meetingId ? `#board/meeting/${encodeURIComponent(r.meetingId)}${r.step ? `/${r.step}` : ''}` : r.tab === 'meetings' ? '#board' : `#board/${r.tab}`);
 
 // ─── Small controls ─────────────────────────────────────────────────
 export function Switch({ checked, onChange, label, disabled = false }) {
@@ -573,6 +579,7 @@ export function DocChip({ f, link, onRemove, note = '' }) {
 
 // ─── Styles ─────────────────────────────────────────────────────────
 export const STYLES = `
+  .bd-side { display: flex; width: max-content; margin: 0 0 0.75rem; }
   .bd { display: grid; gap: 1rem; }
   .bd > .card, .bd-col > .card, .bm-pane > .card { margin-bottom: 0; }
   .bd-col, .bm-pane { display: grid; gap: 1rem; }

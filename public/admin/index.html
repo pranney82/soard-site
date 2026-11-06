@@ -10821,6 +10821,8 @@
       const p = kdAmount(vals.pledged);
       const r = kdAmount(vals.received);
       const toCome = p > r && r > 0 ? `${kdDollars(p - r)} still to come.` : '';
+      // The Advisory Board's follows what it has raised in Zeffy (functions/api/_advisory-sponsor.js)
+      if (partner === 'soard-advisory-board') return html`<p class="kd-card__note kd-pledge__note">${vals.received || '$0'} raised so far. This follows the group’s Zeffy campaign, so there’s nothing to type here.</p>`;
       return html`<div class="kd-pledge">
         <div class="kd-pledge__row">${field('pledged', 'Pledged')}${field('received', 'Received')}</div>
         <p class="kd-card__note kd-pledge__note" aria-live="polite">${state === 'saving' ? 'Saving…'

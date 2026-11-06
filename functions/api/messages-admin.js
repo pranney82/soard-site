@@ -57,6 +57,7 @@ import * as asks from './_board-asks.js';
 import { organizerFor } from './_board-invite.js';
 import { newMeeting, meetingName } from '../../public/admin/board-shared.js';
 import { checkAnswers as advisoryAnswers } from './_advisory-form.js';
+import { askEmail as advisoryAsk, welcomeMessage as advisoryWelcome } from './_advisory-mail.js';
 import { planDemo, demoAlert, sendTestDemo, readConfig as readDemoConfig, listPeople as demoPeople } from './_demo-invites.js';
 import { revealInviteEmail, TEAM_PICTURE } from './_reveal-invite-email.js';
 import { reviewNote, brokenLogos, KIT_INVITE_DEFAULTS } from './_reveal-invite-kit.js';
@@ -671,6 +672,12 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
         ? email(advisoryThanks(app), { to: 'The applicant, at the address they typed' })
         : email(advisoryStaff(app), { to: 'The list in People → Applications → “Who hears about them”', note: 'The Slack card says the same, without their email, phone or address.' });
     }
+    case 'advisory-ask':
+      return email(advisoryAsk({ title: 'Do you know a licensed plumber in Cherokee County?', body: 'We have three rooms starting soon and need a plumbing partner. An introduction is all it takes.' }, 'Alex', { yes: '#', no: '#' }), {
+        from: 'SOARD Advisory Board', to: 'Each active advisor, on their own', note: 'Goes out when whoever runs the group presses Put it out, and only with the emails switch on (Board → Advisory → Members). The buttons open a page that asks them to confirm, so a mail scanner can’t answer for them.',
+      });
+    case 'advisory-welcome':
+      return email(advisoryWelcome('Alex', 'Jordan Ellis'), { from: 'SOARD Advisory Board', to: 'Each active advisor who hasn’t had it', note: 'Sent from Board → Advisory → Members, once each, and only with the emails switch on.' });
     case 'staff-medical': {
       const diagnosis = 'Cerebral palsy';
       const note = await medicalNote(env, diagnosis).catch(() => null);

@@ -59,6 +59,7 @@ import {
   isTestJob, borrowRealAddress, NOT_STAFF, EMAIL_ALIASES, STAFF_DOMAIN, INACTIVE_STATUSES, pave, normEmail, isEmail,
   fieldValues, hhmm, displayName, hashOf, alertList, escapeHtml, lockJob, unlockJob,
 } from './_reveal-invites.js';
+import { isGroupInbox, readState as readBoardState } from './_board-roles.js';
 import { accessToken, eventIdFor, upsertEvent, cancelEvent, getEvent, listEvents } from './_google-calendar.js';
 import { sendEmails, slackPost, slackIssue, slackResolved, emailConfigured } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
@@ -133,7 +134,13 @@ const cleanList = (list = LIST_ALWAYS) => (String(list).trim() === LIST_ALWAYS ?
 export async function listPeople(DB) {
   await ensureSchema(DB);
   const { results } = await DB.prepare('SELECT email, name, role FROM demo_invite_people WHERE list = ? ORDER BY updated_at, email').bind(LIST_ALWAYS).all();
-  return { always: (results || []).map((r) => ({ email: r.email, name: r.name || null, role: r.role || null })) };
+  // The Advisory Board's group address is on a sponsored kid's job, but an invite to it reaches people outside SOARD:
+  // it waits for the emails switch (Board → Advisory → Members), like everything else to them
+  const advisory = await readBoardState(DB, 'advisory').catch(() => ({}));
+  return {
+    always: (results || []).map((r) => ({ email: r.email, name: r.name || null, role: r.role || null })),
+    skip: advisory.emails === true ? [] : ['advisory@soardcharity.com'],
+  };
 }
 
 /** Add someone to every demo day (or change their name or role). Throws a readable error. */
@@ -254,7 +261,7 @@ export function sponsorGuests(groups, slug, isSponsor = null) {
  * `sent`: the invite is out, so Set Start Date no longer gates it.
  * 'hold' + waiting: Set Start Date is checked off but there's no Demo date to invite people to.
  */
-export function planDemo(job, staff, { kids = [], people = { always: [] }, organizer = DEFAULT_ORGANIZER, now = Date.now(), config = {}, sent = false, onlyGuests = null, isSponsor = null } = {}) {
+export function planDemo(job, staff, { kids = [], people = { always: [] }, organizer = DEFAULT_ORGANIZER, now = Date.now(), config = {}, sent = false, sentGuests = [], onlyGuests = null, isSponsor = null } = {}) {
   if (!job) return { action: 'skip', reason: 'job not found' };
   if (job.organization?.id !== SOARD_ORG_ID) return { action: 'skip', reason: 'not a SOARD job' };
 
@@ -282,7 +289,8 @@ export function planDemo(job, staff, { kids = [], people = { always: [] }, organ
   const sponsor = String(values[FIELD_MONETARY_SPONSOR] || '').trim() || null;
   const guests = [];
   const byEmail = {}; // email → { name, kind, role } for the admin's preview
-  const seen = new Set([organizer.toLowerCase(), ...NOT_STAFF]);
+  // (a group already on an invite that's out stays on it: turning the switch off must never read as a cancellation)
+  const seen = new Set([organizer.toLowerCase(), ...NOT_STAFF, ...(people.skip || []).filter((e) => !sentGuests.includes(e))]);
   const add = (p, kind) => {
     const e = normEmail(p.email);
     if (!isEmail(e) || seen.has(e)) return;
@@ -404,7 +412,8 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   const sandbox = jobId === SANDBOX_JOB_ID || isTestJob(job);
   const row = await readRow(DB, jobId);
   const sent = !!(row?.event_id && row.state === 'sent');
-  const plan = planDemo(job, staff, { kids, people, organizer, now, config, sent, isSponsor, onlyGuests: sandbox ? (inviteConfig.testGuests || DEFAULT_TEST_GUESTS) : null });
+  const sentGuests = (() => { try { return JSON.parse(row?.guests || '[]'); } catch { return []; } })();
+  const plan = planDemo(job, staff, { kids, people, organizer, now, config, sent, sentGuests, isSponsor, onlyGuests: sandbox ? (inviteConfig.testGuests || DEFAULT_TEST_GUESTS) : null });
   if (sandbox && plan.event) plan.event.summary = `TEST · ${plan.event.summary}`;
   // Set Start Date checked off with a Demo date still ahead: the kickoff email's
   // moment. No date, or a date gone by, is a kid already under way or not ready.
@@ -513,7 +522,7 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
     const sameFacts = (await hashOf({ ...plan.facts, guests: before })) === oldFacts;
     const reworded = rewrite && (await hashOf({ ...plan.event, attendees: before.map((email) => ({ email })) })) !== oldEvent;
     const changed = [...plan.guests.filter((g) => !before.includes(g)), ...before.filter((g) => !plan.guests.includes(g))];
-    if (sameFacts && !reworded && changed.every((g) => g.endsWith(STAFF_DOMAIN) || EMAIL_ALIASES[g])) sendUpdates = 'none';
+    if (sameFacts && !reworded && changed.every((g) => (g.endsWith(STAFF_DOMAIN) && !isGroupInbox(g)) || EMAIL_ALIASES[g])) sendUpdates = 'none';
   }
 
   try {

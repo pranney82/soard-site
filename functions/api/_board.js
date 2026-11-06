@@ -65,6 +65,8 @@ import { paperFields, sameWords } from '../../public/admin/board-md.js';
 export const SITE = 'https://sunshineonaranneyday.com';
 export const boardFiles = (env) => env?.BOARD_FILES || env?.FILES || null;
 export const MAX_FILE = 50 * 1024 * 1024;
+// The Advisory Board's owner types for board_files, and the table each file's owner is in
+const ADVISORY_OWNERS = { 'advisory-meeting': 'advisory_meetings', 'advisory-doc': 'advisory_docs' };
 
 const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS board_meetings (id TEXT PRIMARY KEY, date TEXT, data TEXT NOT NULL, updated_at TEXT, updated_by TEXT)',
@@ -198,7 +200,7 @@ export async function roster(DB, { withEmails = false } = {}) {
 
 // ─── Meetings ───────────────────────────────────────────────────────
 
-async function filesOf(DB, type, ids = null) {
+export async function filesOf(DB, type, ids = null) {
   const rows = (await DB.prepare('SELECT * FROM board_files WHERE owner_type = ? ORDER BY at').bind(type).all()).results || [];
   const by = {};
   for (const r of rows) {
@@ -1090,7 +1092,8 @@ export async function putFile(env, { ownerType, ownerId, file, kind = 'other', s
   await ensureSchema(env.DB);
   const bucket = boardFiles(env);
   if (!bucket) throw Object.assign(new Error('File storage isn’t set up (FILES)'), { status: 503 });
-  if (!['meeting', 'doc', 'signed', 'record'].includes(ownerType) || !ID.test(String(ownerId || ''))) throw Object.assign(new Error('What is this file for?'), { status: 400 });
+  // (the Advisory Board's papers and meetings keep their files here too, under their own owner types: ./advisory-file.js serves those)
+  if (!['meeting', 'doc', 'signed', 'record', ...Object.keys(ADVISORY_OWNERS)].includes(ownerType) || !ID.test(String(ownerId || ''))) throw Object.assign(new Error('What is this file for?'), { status: 400 });
   // A signed copy or a signing record: staff-only, and always whose it is
   if (ownerType === 'signed' || ownerType === 'record') {
     staffOnly = true;
@@ -1098,8 +1101,8 @@ export async function putFile(env, { ownerType, ownerId, file, kind = 'other', s
   }
   const owner = ownerType === 'meeting'
     ? await env.DB.prepare('SELECT id FROM board_meetings WHERE id = ?').bind(ownerId).first()
-    : await env.DB.prepare('SELECT id FROM board_docs WHERE id = ?').bind(ownerId).first();
-  if (!owner) throw Object.assign(new Error(`Save the ${ownerType === 'meeting' ? 'meeting' : 'document'} first`), { status: 404 });
+    : await env.DB.prepare(`SELECT id FROM ${ADVISORY_OWNERS[ownerType] || 'board_docs'} WHERE id = ?`).bind(ownerId).first();
+  if (!owner) throw Object.assign(new Error(`Save the ${ownerType === 'meeting' || ownerType === 'advisory-meeting' ? 'meeting' : 'document'} first`), { status: 404 });
   if (!file || typeof file.arrayBuffer !== 'function') throw Object.assign(new Error('No file came with that'), { status: 400 });
   if (file.size > MAX_FILE) throw Object.assign(new Error('That file is over 50 MB'), { status: 413 });
   const bytes = await file.arrayBuffer();
@@ -1112,7 +1115,7 @@ export async function putFile(env, { ownerType, ownerId, file, kind = 'other', s
   if (ownerType === 'signed' && ext && !name.toLowerCase().endsWith(ext) && !(ext === '.jpg' && /\.jpeg$/i.test(name))) name = `${name.replace(/\.[a-z0-9]{2,5}$/i, '')}${ext}`;
   const key = `board/${ownerType}/${ownerId}/${id}-${safeName(name)}`;
   await bucket.put(key, bytes, { httpMetadata: { contentType: type } });
-  const fileKind = (ownerType === 'meeting' ? FILE_KINDS.map((k) => k.id) : ['other']).includes(kind) ? kind : 'other';
+  const fileKind = (ownerType === 'meeting' || ownerType === 'advisory-meeting' ? FILE_KINDS.map((k) => k.id) : ['other']).includes(kind) ? kind : 'other';
   const sha256 = await sha256Hex(new Uint8Array(bytes));
   await env.DB.prepare('INSERT INTO board_files (id, owner_type, owner_id, r2_key, name, type, size, kind, staff_only, at, by, slug, sha256, original_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(id, ownerType, ownerId, key, name, type, bytes.byteLength, fileKind, staffOnly ? 1 : 0, nowIso(), by, slug, sha256, originalId).run();
@@ -2118,6 +2121,41 @@ export async function askToSign(env, { slugs = null, by = '', replyTo = [], to =
   return { sent: r.sent, failed: r.failed, errors: r.errors, unsure: unsure || undefined, ...base };
 }
 
+// ─── What the Advisory Board's page shows of SOARD ──────────────────
+
+/**
+ * Public things only, for ./_advisory-portal.js: reveals (a kid's name and photo only with a published page; the rest
+ * are a date), events, this year's finished rooms, and the public filings. Nothing here reads the board's tables.
+ */
+export async function advisoryBits(env, { now = Date.now() } = {}) {
+  const today = todayEastern(now);
+  const year = today.slice(0, 4);
+  const [reveals, events, pages, filings] = await Promise.all([
+    cachedReveals(env, now).catch(() => ({ upcoming: [], past: [] })),
+    eventsList(env.DB, today),
+    loadKids(env.DB).catch(() => []),
+    siteDoc(env.DB, 'financials').catch(() => null),
+  ]);
+  const published = new Map(pages.map((k) => [k.slug, k]));
+  // This year's finished rooms, from their public pages: the reveal list only reaches back so far
+  const kidRows = ((await env.DB.prepare('SELECT slug, data FROM kids').all().catch(() => ({ results: [] }))).results || []).map((r) => ({ slug: r.slug, ...parse(r.data) }));
+  const rooms = kidRows.filter((k) => published.has(k.slug) && k.status === 'completed' && String(k.year) === year)
+    .map((k) => ({ date: '', name: k.name, slug: k.slug, url: `/kids/${k.slug}/`, ...photoField(published.get(k.slug).heroImage) }));
+  const row = (r) => {
+    const k = published.get(r.slug);
+    return { date: r.date || '', time: r.time || '', window: r.window || null, confirmed: r.confirmed !== false,
+      ...(k ? { name: r.name, slug: r.slug, url: `/kids/${r.slug}/`, ...photoField(k.heroImage) } : {}) };
+  };
+  return {
+    published,
+    reveals: (reveals.upcoming || []).map(row),
+    rooms,
+    events: events.upcoming,
+    filings: (filings?.documents || []).map((d) => ({ title: d.title, year: d.year, type: d.type, url: String(d.url || '').replace(/^https:\/\/files\.sunshineonaranneyday\.com\/financials\//, '/files/financials/') }))
+      .filter((d) => /^(https:\/\/|\/files\/financials\/)/.test(d.url)),
+  };
+}
+
 // ─── The board page ─────────────────────────────────────────────────
 
 async function siteDoc(DB, key) {
@@ -2705,6 +2743,8 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     console.error('[board] heartbeat', err.message);
   } finally {
     await reading;
+    // Last and on its own: nothing of the board's waits on the Advisory Board's group, money, invites or nudges (./_advisory-heartbeat.js)
+    try { await (await import('./_advisory-heartbeat.js')).maybeRunAdvisory(env, { fetchImpl, now }); } catch (err) { console.error('[board] advisory', err?.message || err); }
   }
 }
 
