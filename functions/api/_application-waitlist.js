@@ -42,7 +42,7 @@
  */
 
 import {
-  kitConfigured, kitTagId, kitUpsertSubscriber, kitTagSubscriberId, kitUntagSubscriber, kitBulkTag,
+  kitConfigured, kitTagId, kitUpsertSubscriber, kitTagSubscriberId, kitUntagSubscriber, kitTagMany,
   kitTagSubscribersPage, kitCreateBroadcast, kitBroadcastStats, kitListBroadcasts, kitDeleteBroadcast, kitAccount, kitListAudiences,
   WAITLIST_ONLY_TAG,
 } from './_kit.js';
@@ -69,7 +69,7 @@ const OPENING_RETRY_MS = [60e3, 2 * 60e3, 5 * 60e3, 10 * 60e3, 30 * 60e3];
 const OPENING_ALERT_AFTER = 3;
 const STATS_EVERY_MS = 2 * 60 * 1000;
 const UPSERTS_PER_TICK = 20;
-const BULK_CALLS_PER_TICK = 4;
+const TAGS_PER_TICK = 40;                         // one Kit call each; Kit allows 120 a minute
 const FORM_CHECKS = 5;                            // minutes of "the form still says closed" before staff hear
 
 export const LANGS = { en: 'English', es: 'Español' };
@@ -970,9 +970,9 @@ async function stage(env, op, { now, fetchImpl }) {
   }
   if (missing.length === UPSERTS_PER_TICK) { await saveOpening(DB, op, now); return false; } // more next time
 
-  // This opening's tag per language, then everyone into it (100 a call)
+  // This opening's tag per language, then everyone into it
   const date = day(Date.parse(op.opened_at));
-  let calls = 0;
+  let tagsLeft = TAGS_PER_TICK;
   for (const lang of Object.keys(LANGS)) {
     if (!(op.counts?.[lang] > 0)) continue;
     if (!op.tags?.[lang]) {
@@ -982,19 +982,20 @@ async function stage(env, op, { now, fetchImpl }) {
       await saveOpening(DB, op, now);
     }
     for (;;) {
-      if (calls >= BULK_CALLS_PER_TICK) { await saveOpening(DB, op, now); return false; }
       const batch = await pendingRows(DB, op, `AND lang = ? AND kit_id IS NOT NULL AND fallback = 0
-          AND (kit_snapshot IS NULL OR kit_snapshot != ?) AND (kit_state IS NULL OR kit_state = 'active') LIMIT 100`, [lang, op.id]);
+          AND (kit_snapshot IS NULL OR kit_snapshot != ?) AND (kit_state IS NULL OR kit_state = 'active') LIMIT ?`, [lang, op.id, TAGS_PER_TICK]);
       if (!batch.length) break;
-      calls++;
-      const r = await kitBulkTag(env, op.tags[lang], batch.map(x => x.kit_id));
-      if (!r.ok) { await openingProblem(env, op, r.error, now); return false; }
-      const byId = new Map(batch.map(x => [Number(x.kit_id), x.email]));
+      if (!tagsLeft) { await saveOpening(DB, op, now); return false; } // more next time
+      const round = batch.slice(0, tagsLeft);
+      tagsLeft -= round.length;
+      const r = await kitTagMany(env, op.tags[lang], round.map(x => x.kit_id));
+      const byId = new Map(round.map(x => [Number(x.kit_id), x.email]));
       const stmts = [
         ...r.tagged.map(id => DB.prepare('UPDATE waitlist_signups SET kit_snapshot = ? WHERE email = ?').bind(op.id, byId.get(id))),
         ...r.failed.map(id => DB.prepare('UPDATE waitlist_signups SET fallback = 1 WHERE email = ?').bind(byId.get(id))),
       ].filter(Boolean);
-      if (stmts.length) await DB.batch(stmts);
+      if (stmts.length) await DB.batch(stmts); // kept even if Kit stopped part way
+      if (!r.ok) { await openingProblem(env, op, r.error, now); return false; }
     }
   }
 

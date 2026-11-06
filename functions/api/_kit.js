@@ -298,30 +298,34 @@ export async function kitTagSubscriberId(env, tagId, subscriberId) {
 }
 
 /**
- * Tag up to 100 subscribers in one call (Kit's limit for an answer on the
- * spot; more would be queued without one). Never throws.
+ * Tag a list of subscribers, one call each. Kit's bulk route
+ * (/bulk/tags/subscribers) takes OAuth only and the site signs in with an API
+ * key, so Kit refuses it with "OAuth authentication required". Tagging someone
+ * twice does no harm, so a retry can repeat the list.
+ *
+ * A 404 or 422 is about that one person (they land in `failed`). Anything else
+ * is Kit itself (key refused, rate limit, outage): it stops there with
+ * ok:false, and whoever hadn't been reached is in neither list. Never throws.
  * @returns {Promise<{ok: boolean, tagged: number[], failed: number[], error?: string}>}
  */
-export async function kitBulkTag(env, tagId, subscriberIds) {
-  const ids = [...new Set((subscriberIds || []).map(Number).filter(Number.isFinite))].slice(0, 100);
-  if (!ids.length) return { ok: true, tagged: [], failed: [] };
-  if (!kitConfigured(env)) return { ok: false, tagged: [], failed: ids, error: 'KIT_API_KEY is not set' };
-  try {
-    const res = await kitFetch(env, '/bulk/tags/subscribers', {
-      method: 'POST',
-      body: JSON.stringify({ taggings: ids.map(subscriber_id => ({ tag_id: tagId, subscriber_id })) }),
-    });
-    const body = await res.json().catch(() => ({}));
-    if (!res.ok) {
+export async function kitTagMany(env, tagId, subscriberIds) {
+  const ids = [...new Set((subscriberIds || []).map(Number).filter(Number.isFinite))];
+  const out = { ok: true, tagged: [], failed: [] };
+  if (!ids.length) return out;
+  if (!kitConfigured(env)) return { ...out, ok: false, error: 'KIT_API_KEY is not set' };
+  for (const id of ids) {
+    try {
+      const res = await kitFetch(env, `/tags/${tagId}/subscribers/${id}`, { method: 'POST', body: '{}' });
+      if (res.ok) { out.tagged.push(id); continue; }
+      if (res.status === 404 || res.status === 422) { out.failed.push(id); continue; }
+      const body = await res.json().catch(() => ({}));
       const error = Array.isArray(body.errors) ? body.errors.join('; ') : (body.error || `HTTP ${res.status}`);
-      return { ok: false, tagged: [], failed: ids, error: `Kit: ${error}` };
+      return { ...out, ok: false, error: `Kit: ${error}` };
+    } catch (err) {
+      return { ...out, ok: false, error: `Kit: ${err.message}` };
     }
-    // Each failure names the tagging it was for
-    const failed = new Set((body.failures || []).map(f => Number(f.tagging?.subscriber_id ?? f.subscriber_id)).filter(Number.isFinite));
-    return { ok: true, tagged: ids.filter(id => !failed.has(id)), failed: [...failed] };
-  } catch (err) {
-    return { ok: false, tagged: [], failed: ids, error: `Kit: ${err.message}` };
   }
+  return out;
 }
 
 /**

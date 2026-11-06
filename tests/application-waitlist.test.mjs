@@ -21,7 +21,7 @@ const calls = [];
 
 // Tags stay between tests, as they do in Kit (_kit.js remembers tag ids per isolate)
 function kitReset() {
-  kit.down = false; kit.refuseBroadcast = false; kit.refuseDelete = false; kit.badKey = false; kit.bulkFail = new Set(); kit.subs = new Map();
+  kit.down = false; kit.refuseBroadcast = false; kit.refuseDelete = false; kit.badKey = false; kit.bulkFail = new Set(); kit.tagDownAfter = null; kit.tagCalls = 0; kit.subs = new Map();
   kit.tagged = new Map(); kit.broadcasts = []; kit.stats = 'completed';
   resend.length = 0; resendScheduled.clear(); calls.length = 0; formOpen = true;
 }
@@ -60,6 +60,8 @@ globalThis.fetch = async (input, init = {}) => {
     let m = path.match(/^\/tags\/(\d+)\/subscribers\/(\d+)$/);
     if (m) {
       const [tag, sub] = [Number(m[1]), Number(m[2])];
+      if (method === 'POST' && kit.tagDownAfter != null && kit.tagCalls++ >= kit.tagDownAfter) return json({ errors: ['Kit is having a moment'] }, 503);
+      if (method === 'POST' && kit.bulkFail.has(sub)) return json({ errors: ['Not Found'] }, 404);
       if (!kit.tagged.has(sub)) kit.tagged.set(sub, new Set());
       if (method === 'POST') kit.tagged.get(sub).add(tag);
       if (method === 'DELETE') kit.tagged.get(sub).delete(tag);
@@ -72,16 +74,8 @@ globalThis.fetch = async (input, init = {}) => {
       assert.equal(q.get('status'), 'all');
       return json({ subscribers: subs, pagination: { has_next_page: false } });
     }
-    if (path === '/bulk/tags/subscribers' && method === 'POST') {
-      assert.ok(body.taggings.length <= 100, 'never more than 100 taggings a call');
-      const failures = [];
-      for (const t of body.taggings) {
-        if (kit.bulkFail.has(t.subscriber_id)) { failures.push({ tagging: t, errors: ['nope'] }); continue; }
-        if (!kit.tagged.has(t.subscriber_id)) kit.tagged.set(t.subscriber_id, new Set());
-        kit.tagged.get(t.subscriber_id).add(t.tag_id);
-      }
-      return json({ subscribers: [], failures });
-    }
+    // The real Kit only takes this route with OAuth; the site signs in with an API key
+    if (path === '/bulk/tags/subscribers') return json({ errors: ['OAuth authentication required'] }, 403);
     if (path === '/broadcasts' && method === 'POST') {
       if (kit.refuseBroadcast) return json({ errors: ['Kit refused'] }, 422);
       const b = { id: kit.nextId++, ...body, status: body.send_at ? 'scheduled' : 'draft' };
@@ -473,6 +467,24 @@ test('a family Kit will not tag gets the email straight from the site', async ()
   assert.equal((await row('b@example.com')).notified_via, 'email');
   assert.equal((await row('a@example.com')).notified_via, 'kit');
   assert.equal(resend.filter(m => m.to[0] === 'b@example.com' && /Applications are open/.test(m.subject)).length, 1);
+});
+
+test('Kit going down part way through tagging keeps who was tagged, and nobody is moved to the site\'s email', async () => {
+  await threeFamilies();
+  kit.tagDownAfter = 1; // one family tagged, then Kit stops answering
+  await setOpen(true, 'schedule');
+  await tick();
+  const tagged = async () => (await Promise.all(['a@example.com', 'b@example.com', 'c@example.com'].map(row))).filter(r => r.kit_snapshot).length;
+  assert.equal(kit.broadcasts.length, 0, 'no email yet: not everyone is in the audience');
+  assert.equal(await tagged(), 1, 'the one who made it stays tagged');
+  assert.equal((await opening()).error, 'Kit: Kit is having a moment');
+  for (const e of ['a@example.com', 'b@example.com', 'c@example.com']) assert.equal((await row(e)).fallback, 0, `${e} still goes through Kit`);
+  kit.tagDownAfter = null;
+  travel(2 * M);
+  await tick();
+  assert.equal(await tagged(), 3);
+  assert.equal(live().length, 2, 'the emails went to Kit');
+  assert.equal(resend.filter(m => /Applications are open|Ya abrimos/.test(m.subject) && !/going out|was sent|isn\'t ready/.test(m.subject)).length, 0);
 });
 
 test('if Kit keeps refusing, staff are told, and after two hours the site emails the families itself', async () => {
