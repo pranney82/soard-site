@@ -104,26 +104,6 @@ export async function countReceived(DB, year, { since = null } = {}) {
   }
 }
 
-/**
- * The season's community projects, beside countReceived's makeovers: applications
- * through the community form or marked Community Project, and accounts marked
- * Community Project that staff added in JobTread (no application behind them).
- * → { community (all of them), addedInJobTread (of those) }
- */
-export async function countCommunity(DB, year) {
-  const count = async (sql) => Number((await DB.prepare(sql).bind(String(year)).first())?.n) || 0;
-  const applied = (which) => count(`SELECT COUNT(*) AS n FROM applications WHERE year = ? AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL AND ${which}`);
-  const organization = "COALESCE(kind, 'family') = 'organization'";
-  try {
-    const addedInJobTread = await count(`SELECT COUNT(*) AS n FROM applicants a WHERE a.year = ? AND a.archived_at IS NULL AND a.types LIKE '${COMMUNITY_PROJECT_LIKE}'
-      AND NOT EXISTS (SELECT 1 FROM applications p WHERE p.jt_account_id = a.account_id)`);
-    return { community: (await applied(`(${organization} OR ${COMMUNITY_ACCOUNT})`)) + addedInJobTread, addedInJobTread };
-  } catch {
-    // No applicants mirror yet: the applications alone
-    try { return { community: await applied(organization), addedInJobTread: 0 }; } catch { return { community: 0, addedInJobTread: 0 }; }
-  }
-}
-
 /** Families partway through the form for the season: not sent, not stopped, touched in the last 14 days */
 export async function countFilling(DB, year, now = Date.now()) {
   const count = async (families) => {

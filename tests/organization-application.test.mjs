@@ -298,40 +298,79 @@ test('a family-form application marked Community Project moves to community proj
   assert.deepEqual((await seasonFamilies(env.DB, YEAR)).map((f) => f.name), ['Max Sample']);
 });
 
-test('Insights says how many are makeovers and how many community projects, and a deleted application leaves the funnel', async () => {
+test('Insights: each kind’s season beside last season, Community Project deciding the kind', async () => {
   const sub = await submitDraft(env, await readyOrgDraft());
   await processApplication(env, sub.id, { fetchImpl: w.fetchImpl });
   await ensureApplicantSchema(env.DB);
-  const add = (id, year, types, archived = null) => env.DB.prepare('INSERT INTO applicants (account_id, name, year, types, fields, archived_at, synced_at) VALUES (?, ?, ?, ?, \'{}\', ?, \'2026-11-01\')').bind(id, id, year, JSON.stringify(types), archived).run();
-  const form = (id, kind, account, deletedAt = null) => env.DB.prepare(`INSERT INTO applications (id, draft_id, year, kind, child_name, status, is_test, submitted_at, updated_at, jt_account_id, deleted_at) VALUES (?, ?, ?, ?, 'x', 'done', 0, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', ?, ?)`).bind(id, `draft-${id}`, YEAR, kind, account, deletedAt).run();
+  const add = (id, year, types, { archived = null, createdAt = '2026-09-01T00:00:00.000Z', fields = '{}' } = {}) => env.DB.prepare('INSERT INTO applicants (account_id, name, year, types, fields, archived_at, created_at, synced_at) VALUES (?, ?, ?, ?, ?, ?, ?, \'2026-11-01\')').bind(id, id, year, JSON.stringify(types), fields, archived, createdAt).run();
+  const form = (id, account) => env.DB.prepare(`INSERT INTO applications (id, draft_id, year, kind, child_name, status, is_test, submitted_at, updated_at, jt_account_id) VALUES (?, ?, ?, 'family', 'x', 'done', 0, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', ?)`).bind(id, `draft-${id}`, YEAR, account).run();
   const started = (id) => env.DB.prepare(`INSERT INTO application_drafts (id, year, kind, answers, files, submitted_id, created_at, updated_at) VALUES (?, ?, 'family', '{}', '{}', ?, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')`).bind(`draft-${id}`, YEAR, id).run();
   // Two families through the form, one of them marked Community Project
   for (const id of ['app-a', 'app-b']) await started(id);
-  await form('app-a', 'family', 'acct-a');
-  await form('app-b', 'family', 'acct-b');
+  await form('app-a', 'acct-a');
+  await form('app-b', 'acct-b');
   await add('acct-a', YEAR, ['Bedroom']);
   await add('acct-b', YEAR, ['Community Project']);
-  // Added by hand: one marked this season, one marked another season, one archived, one a family
+  // Added by hand: one marked this season, one archived, one a family
   await add('acct-hand', YEAR, ['Community Project']);
-  await add('acct-old', '2026', ['Community Project']);
-  await add('acct-gone', YEAR, ['Community Project'], '2026-11-02');
+  await add('acct-gone', YEAR, ['Community Project'], { archived: '2026-11-02' });
   await add('acct-fam', YEAR, ['Bathroom']);
-  const makeovers = await insights(env.DB, { year: YEAR });
-  assert.deepEqual(makeovers.counts, { makeovers: 1, community: 3, addedInJobTread: 1 }, 'the form’s, the marked one, the hand-added one');
+  // Last season: two families (a birthday makes one a family whatever its name), a marked project, a test
+  await add('old-early', '2026', ['Bedroom'], { createdAt: '2025-10-15T15:00:00.000Z', fields: '{"birthday":"2015-01-01"}' });
+  await add('old-late', '2026', ['Bathroom'], { createdAt: '2026-02-01T15:00:00.000Z', fields: '{"birthday":"2015-01-01"}' });
+  await add('old-project', '2026', ['Community Project'], { createdAt: '2025-10-20T15:00:00.000Z' });
+  await add('TEST old', '2026', ['Bedroom'], { createdAt: '2025-10-20T15:00:00.000Z' });
+  const now = Date.parse('2026-11-06T16:00:00Z');
+  const makeovers = await insights(env.DB, { year: YEAR, now });
+  const { family, organization, lastYear } = makeovers.season;
+  assert.equal(lastYear, '2026');
+  assert.equal(family.total, 1, 'the marked one isn’t a makeover');
+  assert.equal(organization.total, 3, 'the form’s, the marked one, the one added by hand');
+  assert.deepEqual(organization.added.map((a) => a.name), ['acct-hand']);
+  assert.deepEqual([family.last.total, family.last.byNow], [2, 1], 'last season, and how many by this date');
+  assert.deepEqual([organization.last.total, organization.last.byNow], [1, 1]);
   assert.equal(makeovers.submitted, 1, 'the marked one left the makeovers’ funnel');
   assert.equal(makeovers.started, 1);
-  assert.deepEqual((await insights(env.DB, { year: YEAR, kind: 'organization' })).counts, makeovers.counts, 'the same either way the switch is set');
+  assert.deepEqual((await insights(env.DB, { year: YEAR, kind: 'organization', now })).season, makeovers.season, 'the same either way the page is set');
   // Deleted: gone from the numbers, though its emptied draft stays behind
   await deleteApplicationData(env, 'app-a', { user: 'peter@soardcharity.com', fetchImpl: w.fetchImpl });
-  const after = await insights(env.DB, { year: YEAR });
-  assert.equal(after.submitted, 0);
-  assert.equal(after.started, 0);
-  assert.equal(after.counts.makeovers, 0);
+  const after = await insights(env.DB, { year: YEAR, now });
+  assert.deepEqual([after.submitted, after.started, after.season.family.total], [0, 0, 0]);
   await deleteApplicationData(env, sub.id, { user: 'peter@soardcharity.com', fetchImpl: w.fetchImpl });
-  const org = await insights(env.DB, { year: YEAR, kind: 'organization' });
-  assert.equal(org.submitted, 0);
-  assert.equal(org.started, 0);
-  assert.equal(org.counts.community, 2, 'the marked one and the hand-added one');
+  const org = await insights(env.DB, { year: YEAR, kind: 'organization', now });
+  assert.deepEqual([org.submitted, org.started], [0, 0]);
+  assert.equal(org.season.organization.total, 2, 'the marked one and the one added by hand');
+});
+
+test('Insights: everyone who started is in one standing, on the page they reached, and the finish rate leaves out who isn’t done', async () => {
+  const now = Date.parse('2026-11-06T16:00:00Z');
+  const recent = '2026-11-06T12:00:00.000Z';
+  const old = '2026-10-01T12:00:00.000Z';
+  const draft = (id, { page = null, stop = null, at = recent, submitted = null, name = null } = {}) => env.DB.prepare(`INSERT INTO application_drafts (id, year, kind, answers, files, submitted_id, max_page_id, stop_key, created_at, updated_at) VALUES (?, ?, 'family', ?, '{}', ?, ?, ?, ?, ?)`)
+    .bind(id, YEAR, JSON.stringify(name ? { childName: { first: name, last: 'Sample' } } : {}), submitted, page, stop, at, at).run();
+  await formFor(env.DB, { year: YEAR });
+  const form = await formFor(env.DB, { year: YEAR });
+  const [first, second, third] = form.pages.map((p) => p.id);
+  await createDraft(env.DB, { year: YEAR, ipHash: 'ip', verified: true }); // makes the tables; it sits on the first page
+  await draft('still', { page: third, name: 'Max' });
+  await draft('stopped', { page: second, stop: 'outside' });
+  await draft('gone', { page: second, at: old, name: 'Lena' });
+  await draft('sent', { page: third, submitted: 'app-sent', name: 'Ava' });
+  await env.DB.prepare(`INSERT INTO applications (id, draft_id, year, kind, child_name, status, is_test, submitted_at, updated_at, answers) VALUES ('app-sent', 'sent', ?, 'family', 'Ava Sample', 'done', 0, ?, ?, ?)`).bind(YEAR, recent, recent, JSON.stringify({ referredBy: 'A neighbor' })).run();
+  const ins = await insights(env.DB, { year: YEAR, now });
+  const of = (id) => ins.people.find((p) => p.id === id);
+  assert.deepEqual(['still', 'stopped', 'gone', 'sent'].map((id) => of(id).state), ['working', 'stopped', 'left', 'submitted']);
+  assert.equal(of('still').name, 'Max Sample');
+  assert.equal(of('stopped').name, null, 'no name given yet');
+  assert.equal(of('stopped').stop, 'outside');
+  assert.equal(of('sent').referral, 'A neighbor');
+  assert.equal(of('sent').name, 'Ava Sample', 'an application’s stored name, whatever its answers hold');
+  assert.equal(ins.finishRate, 50, 'one sent of the two who are done: still working and stopped by the form aren’t counted');
+  assert.deepEqual(ins.byPage[0].id, first);
+  assert.equal(ins.byPage[1].stoppedHere, 1);
+  assert.equal(ins.byPage[1].leftHere, 1);
+  assert.equal(ins.byPage[2].hereNow, 1);
+  assert.equal(ins.season.family.partway, 2, 'Max, and the draft on the first page');
 });
 
 test('the built-in organization form: a complete set of answers has no errors', () => {

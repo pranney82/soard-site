@@ -156,7 +156,13 @@ export async function onRequestGet(context) {
   }
   if (url.searchParams.get('insights')) {
     const settings = await applicationSettings(env.DB);
-    return Response.json({ success: true, insights: await insights(env.DB, { year: url.searchParams.get('year') || cleanYear(settings.year), kind: kindOf(url.searchParams.get('formKind')) }) });
+    const year = url.searchParams.get('year') || cleanYear(settings.year);
+    const application = pickApplication(settings);
+    return Response.json({
+      success: true,
+      insights: await insights(env.DB, { year, kind: kindOf(url.searchParams.get('formKind')) }),
+      opening: String(year) === String(application.year) ? { open: !!application.open, since: settings.openChangedAt || null } : null,
+    });
   }
   if (url.searchParams.has('form-diff')) {
     return Response.json({ success: true, changes: await diffForm(env.DB, url.searchParams.get('form-diff'), { kind: kindOf(url.searchParams.get('formKind')) }) });

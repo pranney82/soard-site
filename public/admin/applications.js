@@ -497,44 +497,34 @@ const CSS = `
 
 /* Insights */
 .afe-ins { display: grid; gap: 1rem; }
-.afe-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; }
-@media (max-width: 900px) { .afe-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .afe-tile { padding: .9rem 1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); }
 .afe-tile span { display: block; color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; }
 .afe-tile strong { display: block; margin: .25rem 0 .1rem; font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -.02em; line-height: 1.1; color: var(--color-text); }
 .afe-tile small { color: var(--color-text-muted); font-size: var(--fs-2xs); }
-.afe-grid2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
-@media (max-width: 900px) { .afe-grid2 { grid-template-columns: 1fr; } }
-.afe-viz { padding: 1rem 1.1rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); min-width: 0; }
-.afe-viz h4 { margin: 0; font-size: var(--fs-sm); }
-.afe-viz > .afe-hint { display: block; margin: .15rem 0 .85rem; }
-.afe-stack { display: flex; gap: 2px; height: 14px; margin: .2rem 0 .8rem; }
-.afe-stack > span { min-width: 2px; height: 100%; }
-.afe-stack > span:first-child { border-radius: 4px 0 0 4px; }
-.afe-stack > span:last-child { border-radius: 0 4px 4px 0; }
-.afe-stack > span:only-child { border-radius: 4px; }
+.afe-viz { padding: 1.1rem 1.2rem; border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); min-width: 0; }
+.afe-viz h4 { margin: 0; font-size: var(--fs-md); letter-spacing: -.01em; }
+.afe-viz > .afe-hint { display: block; margin: .15rem 0 .9rem; }
 .afe-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: .5rem 1rem; }
 .afe-legend div { display: grid; grid-template-columns: 10px 1fr; gap: .1rem .5rem; align-items: start; align-content: start; font-size: var(--fs-xs); }
 .afe-legend i { width: 10px; height: 10px; margin-top: .3rem; border-radius: 3px; }
 .afe-legend b { grid-column: 2; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
-.afe-legend small { grid-column: 2; color: var(--color-text-muted); font-size: var(--fs-2xs); }
-.afe-hbars { display: grid; gap: .55rem; }
+.afe-hbars { display: grid; gap: .3rem; }
 .afe-hbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem .75rem; align-items: baseline; }
 .afe-hbar-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); }
-.afe-hbar-label em { margin-right: .35rem; color: var(--color-text-muted); font-style: normal; font-size: var(--fs-2xs); }
 .afe-hbar-val { font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--color-text-secondary); text-align: right; }
 .afe-hbar-val b { color: var(--color-text); }
-.afe-hbar-track { grid-column: 1 / -1; height: 10px; border-radius: 4px; background: var(--afe-track); overflow: hidden; }
-.afe-hbar-track > span { display: block; height: 100%; border-radius: 0 4px 4px 0; background: color-mix(in srgb, var(--afe-data) 55%, var(--color-bg-card)); }
-.afe-hbar.is-top .afe-hbar-track > span { background: var(--afe-data); }
+.afe-hbar-track { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--afe-track); overflow: hidden; }
+.afe-hbar-track > span { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--afe-data); transition: width .25s ease; }
 .afe-chart { position: relative; }
-.afe-chart svg { display: block; overflow: visible; }
+.afe-chart svg { display: block; overflow: visible; touch-action: pan-y; }
+.afi-chartcard { display: flex; flex-direction: column; }
+.afi-chart { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.afi-plot { flex: 1 1 262px; min-height: 240px; overflow: hidden; }
+.afi-plot svg { position: absolute; top: 0; left: 0; }
 .afe-chart .afe-axis { fill: var(--color-text-muted); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
 .afe-chart .afe-grid { stroke: var(--color-border); stroke-width: 1; shape-rendering: crispEdges; }
-.afe-chart .afe-colbar { fill: var(--afe-data); }
-.afe-chart .afe-colbar.is-dim { fill: color-mix(in srgb, var(--afe-data) 45%, var(--color-bg-card)); }
-.afe-tip { position: absolute; z-index: 5; transform: translate(-50%, -100%); padding: .35rem .55rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-card); box-shadow: var(--shadow-md); font-size: var(--fs-xs); white-space: nowrap; pointer-events: none; }
-.afe-tip b { display: block; font-size: var(--fs-sm); }
+.afe-tip { position: absolute; z-index: 5; transform: translate(-50%, -100%); padding: .35rem .55rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-card); box-shadow: var(--shadow-md); font-size: var(--fs-2xs); color: var(--color-text-secondary); white-space: nowrap; pointer-events: none; }
+.afe-tip b { display: block; font-size: var(--fs-sm); color: var(--color-text); }
 .afe-stat-pair { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
 .afe-stat-pair div { padding: .6rem .7rem; border-radius: 10px; background: var(--color-bg-secondary); }
 .afe-stat-pair b { display: block; font-size: var(--fs-xl); }
@@ -542,6 +532,96 @@ const CSS = `
 .afe-checklist { display: grid; gap: .1rem; }
 .afe-checklist div { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 44px; padding: .25rem 0; border-bottom: 1px solid var(--color-border); font-size: var(--fs-sm); }
 .afe-checklist div:last-child { border-bottom: 0; }
+
+/* Insights: the sentence, the two kinds, then everything for the kind picked */
+.afi { gap: 1.1rem; --afi-past: color-mix(in srgb, var(--color-text-muted) 55%, var(--color-bg-card)); }
+.afi > .afe-head { margin-bottom: -.35rem; align-items: center; }
+.afi-lede { margin: 0; max-width: 58ch; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.35; color: var(--color-text); text-wrap: pretty; }
+.afi-lede-sub { margin: .3rem 0 0; color: var(--color-text-muted); font-size: var(--fs-xs); }
+.afi-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 .75rem; }
+.afi-kind { position: relative; display: grid; grid-row: span 4; grid-template-rows: subgrid; gap: 0; width: 100%; padding: 1rem 1.2rem 1.05rem; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color .15s ease, background-color .15s ease; }
+.afi-kind:hover { border-color: var(--color-border-strong); }
+.afi-kind:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
+.afi-kind[aria-pressed="true"] { border-color: var(--color-text); box-shadow: inset 0 -3px 0 var(--color-primary); }
+.afi-kind .afi-kind-name { color: var(--color-text); font-size: var(--fs-sm); font-weight: 600; }
+.afi-kind strong { margin: .3rem 0 .35rem; font-size: 3.4rem; line-height: 1; letter-spacing: -.035em; }
+.afi-kind small { display: block; line-height: 1.45; color: var(--color-text-secondary); font-size: var(--fs-xs); }
+.afi-kind small.afi-kind-last { color: var(--color-text-muted); }
+.afi-body { display: grid; gap: 1rem; transition: opacity .15s ease; }
+.afi-body.is-loading { opacity: .6; }
+.afi-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); gap: 1rem; }
+.afi-pair.is-one { grid-template-columns: minmax(0, 1fr); }
+.afi-pair.is-top { align-items: start; }
+.afi-col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
+.afi-col > :last-child { flex: 1; }
+.afi-bar { display: flex; gap: 2px; height: 8px; margin: 0 0 .75rem; }
+.afi-bar > span { min-width: 8px; height: 100%; border-radius: 99px; transition: flex-grow .25s ease; }
+.afi-stands { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .25rem; margin: 0 -.55rem; }
+@media (max-width: 640px) { .afi-stands { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.afi-stand { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: .1rem .5rem; align-content: start; padding: .5rem .55rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; }
+.afi-stand:not(:disabled) { cursor: pointer; }
+.afi-stand:not(:disabled):hover { background: var(--color-bg-hover); }
+.afi-stand:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+.afi-stand i { width: 10px; height: 10px; margin-top: .22rem; border-radius: 3px; }
+.afi-stand span { min-width: 0; color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; }
+.afi-stand b { grid-column: 2; font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.afi-stand small { grid-column: 2; color: var(--color-text-muted); font-size: var(--fs-2xs); line-height: 1.35; }
+.afi-stand:disabled b { color: var(--color-text-muted); font-weight: 600; }
+.afi-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem 1.5rem; margin-top: .8rem; padding-top: .8rem; border-top: 1px solid var(--color-border); }
+@media (max-width: 640px) { .afi-facts { grid-template-columns: minmax(0, 1fr); } }
+.afi-facts div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 .6rem; align-items: baseline; }
+.afi-facts span { color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; }
+.afi-facts b { font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
+.afi-facts small { grid-column: 1 / -1; color: var(--color-text-muted); font-size: var(--fs-2xs); line-height: 1.4; }
+.afi-funnel { display: grid; gap: .15rem; margin: 0 -.45rem; }
+.afi-step { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .25rem .75rem; align-items: baseline; width: 100%; padding: .32rem .45rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; }
+.afi-step:not(:disabled) { cursor: pointer; }
+.afi-step:not(:disabled):hover { background: var(--color-bg-hover); }
+.afi-step:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+.afi-step-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); font-weight: 500; }
+.afi-step-name .afe-tag { margin-left: .4rem; }
+.afi-step-name em { display: inline-block; width: 1.2em; color: var(--color-text-muted); font-style: normal; font-variant-numeric: tabular-nums; }
+.afi-step-n { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.afi-step-track { display: block; grid-column: 1 / -1; height: 10px; border-radius: 0 4px 4px 0; background: var(--afe-track); overflow: hidden; }
+.afi-step-track > span { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--afe-data); transition: width .25s ease; }
+.afi-step-note { color: var(--color-text-muted); font-size: var(--fs-2xs); white-space: nowrap; }
+.afi-hbar { width: 100%; padding: .3rem .45rem; margin: 0 -.45rem; box-sizing: content-box; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; }
+.afi-hbar:not(:disabled) { cursor: pointer; }
+.afi-hbar:not(:disabled):hover { background: var(--color-bg-hover); }
+.afi-hbar:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+.afi-hbar.is-rest .afe-hbar-track > span { background: var(--color-border-strong); }
+.afi-note { margin: .75rem 0 0; color: var(--color-text-secondary); font-size: var(--fs-xs); line-height: 1.45; }
+.afi-quiet { margin: 0; color: var(--color-text-muted); font-size: var(--fs-xs); text-align: center; }
+.afi-none { padding: 1.6rem 1.5rem; text-align: center; }
+.afi-none p { margin: .35rem auto 0; }
+.afi-added { display: grid; }
+.afi-added a { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 44px; border-bottom: 1px solid var(--color-border); color: inherit; font-size: var(--fs-sm); font-weight: 600; text-decoration: none; }
+.afi-added a:last-child { border-bottom: 0; }
+.afi-added a:hover span { text-decoration: underline; }
+.afi-added small { flex: none; color: var(--color-text-muted); font-size: var(--fs-xs); font-weight: 500; }
+.afi-keys { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin-bottom: .35rem; color: var(--color-text-secondary); font-size: var(--fs-xs); }
+.afi-keys span { display: inline-flex; align-items: center; gap: .4rem; }
+.afi-keys i { width: 14px; height: 2px; border-radius: 2px; background: var(--afe-data); }
+.afi-keys i.is-past { background: var(--afi-past); }
+.afi-line { fill: none; stroke: var(--afe-data); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.afi-line.is-past { stroke: var(--afi-past); }
+.afi-dot { fill: var(--afe-data); stroke: var(--color-bg-card); stroke-width: 2; }
+.afi-dot.is-past { fill: var(--afi-past); }
+.afi-end { font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+.afe-chart .afi-end.is-now { fill: var(--color-text); font-size: var(--fs-xs); font-weight: 700; }
+.afe-chart .afi-end.is-past { fill: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; }
+.afi-cross { stroke: var(--color-border-strong); stroke-width: 1; shape-rendering: crispEdges; }
+.afi-tip span { display: block; font-variant-numeric: tabular-nums; }
+.afi-table { margin-top: .5rem; }
+.afi-table summary { display: inline-block; padding: .35rem 0; cursor: pointer; }
+.afi-people { display: grid; }
+.afi-person { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 52px; padding: .45rem 0; border-bottom: 1px solid var(--color-border); }
+.afi-person:last-child { border-bottom: 0; }
+.afi-person > div { min-width: 0; }
+.afi-person b { display: block; font-size: var(--fs-sm); }
+.afi-person b.is-none { color: var(--color-text-muted); font-weight: 500; }
+.afi-person span { display: block; color: var(--color-text-muted); font-size: var(--fs-xs); line-height: 1.4; }
+@media (prefers-reduced-motion: reduce) { .afi-body, .afi-bar > span, .afi-step-track > span, .afe-hbar-track > span, .afi-kind { transition: none; } }
 .afe-table { width: 100%; border-collapse: collapse; margin-top: .5rem; font-size: var(--fs-xs); }
 .afe-table th, .afe-table td { padding: .3rem .4rem; border-bottom: 1px solid var(--color-border); text-align: left; }
 .afe-table td:last-child, .afe-table th:last-child { text-align: right; }
@@ -751,9 +831,6 @@ button.afe-sub-name:focus-visible { outline: 2px solid var(--color-text); outlin
 }
 
 /* Insights: two columns that stack on their own, so cards never leave gaps */
-.afe-ins-cols { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; align-items: start; }
-.afe-ins-col { display: grid; gap: 1rem; min-width: 0; }
-@media (max-width: 900px) { .afe-ins-cols { grid-template-columns: minmax(0, 1fr); } }
 
 /* Emails: the list on the left, the editor and how it reads on the right */
 .afe-emails { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 1rem; align-items: start; }
@@ -1177,9 +1254,9 @@ export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, i
           </button>`)}
       </div>
       <div role="tabpanel" aria-label=${TABS.find(t => t[0] === tab)?.[1]}>
-        ${KIND_TABS.has(tab) && html`<${KindSwitch} kind=${formKind} onKind=${setFormKind} />`}
+        ${KIND_TABS.has(tab) && tab !== 'insights' && html`<${KindSwitch} kind=${formKind} onKind=${setFormKind} />`}
         ${tab === 'applicants' && html`<${ApplicantsTab} addToast=${addToast} route=${route} go=${go} whoOf=${whoOf} />`}
-        ${tab === 'insights' && html`<${InsightsTab} key=${formKind} seasonYear=${d.meta?.year} go=${go} />`}
+        ${tab === 'insights' && html`<${InsightsTab} kind=${formKind} onKind=${setFormKind} seasonYear=${d.meta?.year} go=${go} />`}
         ${tab === 'form' && html`<${FormArea} d=${d} view=${formView} onView=${goFormView} spanishLeft=${formKind === 'organization' ? 0 : spanishLeft} RichTextEditor=${RichTextEditor} addToast=${addToast} initialSel=${formSel} go=${go} />`}
         ${tab === 'emails' && html`<${EmailsTab} d=${d} RichTextEditor=${RichTextEditor} go=${go} addToast=${addToast} />`}
         ${tab === 'settings' && html`<${SettingsTab} addToast=${addToast} s=${settings} go=${go} />`}
@@ -1581,12 +1658,53 @@ const minutesText = (m) => {
 };
 const pct = (n, of) => (of ? Math.round((n / of) * 100) : 0);
 
-function InsightsTab({ seasonYear, go }) {
+const INSIGHT_WORDS = {
+  family: { label: 'Makeovers', one: 'makeover', many: 'makeovers', who: 'family', whoMany: 'families' },
+  organization: { label: 'Community projects', one: 'community project', many: 'community projects', who: 'organization', whoMany: 'organizations' },
+};
+// Where everyone who started stands now. Every draft is in exactly one of these.
+const STANDINGS = [
+  { key: 'submitted', label: 'Submitted', color: 'var(--afe-data)' },
+  { key: 'working', label: 'Still working on it', color: 'var(--afe-data-2)' },
+  { key: 'stopped', label: 'Stopped by the form', color: 'var(--afe-data-3)' },
+  { key: 'left', label: 'Left without finishing', color: 'var(--afe-rest)' },
+];
+const STOP_WHY = { outside: 'outside the area', rental: 'renting' };
+
+const agoText = (iso) => {
+  const m = (Date.now() - Date.parse(iso)) / 60000;
+  if (!Number.isFinite(m)) return '';
+  if (m < 1) return 'just now';
+  if (m < 60) return `${Math.round(m)} min ago`;
+  if (m < 1440) return `${plural(Math.round(m / 60), 'hour')} ago`;
+  return `${plural(Math.round(m / 1440), 'day')} ago`;
+};
+const listWords = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+
+/** The page's one sentence: what's in, and who's on the way */
+function seasonSentence({ family: f, organization: o }) {
+  const inNow = f.total || o.total ? `${plural(f.total, 'makeover')} and ${plural(o.total, 'community project')} so far` : 'No applications in yet';
+  const partway = [f.partway && plural(f.partway, 'family', 'families'), o.partway && plural(o.partway, 'organization')].filter(Boolean);
+  if (!partway.length) return `${inNow}.`;
+  return `${inNow}, and ${listWords(partway)} ${f.partway + o.partway === 1 ? 'is' : 'are'} partway through.`;
+}
+
+function openingLine(opening) {
+  const tail = 'Tests and deleted applications are left out.';
+  if (!opening) return tail;
+  if (!opening.open) return `Applications are closed. ${tail}`;
+  const d = opening.since ? new Date(opening.since) : null;
+  if (!d || Number.isNaN(d.getTime())) return `Applications are open. ${tail}`;
+  return `${d.toDateString() === new Date().toDateString() ? 'Applications opened today.' : `Open since ${d.toLocaleDateString([], { month: 'long', day: 'numeric' })}.`} ${tail}`;
+}
+
+function InsightsTab({ seasonYear, go, kind, onKind }) {
   const [years, setYears] = useState([]);
   const [year, setYear] = useState(null);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [sheet, setSheet] = useState(null);
   useEffect(() => {
     call(`${API}?limit=1`).then(j => {
       const season = j.year || seasonYear || String(new Date().getFullYear() + 1);
@@ -1601,16 +1719,17 @@ function InsightsTab({ seasonYear, go }) {
     call(`${API}?insights=1&year=${encodeURIComponent(year)}${kq()}`).then(j => {
       if (!live) return;
       setLoading(false);
-      if (j.success) { setData(j.insights); setError(null); } else setError(j.error || 'Could not load');
+      if (j.success) { setData({ ...j.insights, opening: j.opening || null }); setError(null); } else setError(j.error || 'Could not load');
     });
     return () => { live = false; };
-  }, [year]);
+  }, [year, kind]);
   const ins = data;
-  const stoppedTotal = ins ? (ins.stopped?.outside || 0) + (ins.stopped?.rental || 0) + (ins.stopped?.other || 0) : 0;
-  const who = isOrgForm() ? 'organizations' : 'families';
+  // What's on the page until the other kind's numbers arrive: nothing jumps while they load
+  const shown = ins?.kind || kind;
+  const open = (title, list) => setSheet({ title, list });
   return html`
-    <div class="afe-ins" aria-busy=${loading}>
-      <${Head} title="Insights" sub=${`How ${isOrgForm() ? 'organizations' : 'families'} move through the application: who finishes, where people stop, and how they heard about us. Tests are left out.`}>
+    <div class="afe-ins afi" aria-busy=${loading}>
+      <${Head} title="Insights">
         <label class="afe-row-actions text-sm" style="font-weight: 600;">Season
           <select class="form-input" style="width: auto;" value=${year || ''} onChange=${(e) => setYear(e.target.value)} aria-label="Season">
             ${years.map(y => html`<option value=${y}>${y}</option>`)}
@@ -1619,116 +1738,216 @@ function InsightsTab({ seasonYear, go }) {
       <//>
       ${error && html`<div class="afe-note is-warn"><${Icon} name="warn" /><span>Couldn't load insights: ${error}</span></div>`}
       ${!ins && !error && html`<${Spinner} />`}
-      ${ins && !ins.started && html`
-        <div class="card" style="text-align: center; padding: 2.5rem 1.5rem;">
-          <h4 style="margin: 0 0 .35rem;">No one has started a ${ins.year} application yet</h4>
-          <p class="afe-lede" style="margin: 0 auto;">This fills in as ${isOrgForm() ? 'organizations' : 'families'} open the application: who finishes, where people stop, and how they heard about us.</p>
-          ${isOrgForm() && ins.counts?.addedInJobTread > 0 && html`<p class="afe-hint" style="margin: .6rem 0 0;">${plural(ins.counts.addedInJobTread, 'community project')} added in JobTread for ${ins.year}, with no application to show here.</p>`}
-        </div>`}
-      ${ins && ins.started > 0 && html`
-        <div class="afe-ins" style="opacity: ${loading ? 0.6 : 1}; transition: opacity .15s;">
-          <div class="afe-tiles">
-            <div class="afe-tile"><span>Started</span><strong>${num(ins.started)}</strong><small>opened the application</small></div>
-            <div class="afe-tile"><span>Submitted</span><strong>${num(ins.submitted)}</strong><small>${plural(ins.counts?.makeovers, 'makeover')} · ${plural(ins.counts?.community, 'community project')}</small></div>
-            <div class="afe-tile"><span>Finish rate</span><strong>${ins.finishRate == null ? '–' : `${ins.finishRate}%`}</strong><small>of those who started</small></div>
-            <div class="afe-tile"><span>Typical time to finish</span><strong>${minutesText(ins.medianMinutes)}</strong><small>median, first page to submit</small></div>
-          </div>
-
-          <div class="afe-viz">
-            <h4>What happened to everyone who started</h4>
-            <span class="afe-hint">${num(ins.started)} ${ins.started === 1 ? (isOrgForm() ? 'organization' : 'family') : who} started a ${ins.year} application.</span>
-            <${StackBar} parts=${[
-              { label: 'Submitted', n: ins.submitted, color: 'var(--afe-data)' },
-              { label: 'Still working on it', n: ins.inProgress, color: 'var(--afe-data-2)', note: 'changed something in the last 14 days' },
-              { label: 'Ended by an answer', n: stoppedTotal, color: 'var(--afe-data-3)', note: [ins.stopped?.outside && `${ins.stopped.outside} outside the area`, ins.stopped?.rental && `${ins.stopped.rental} renting`, ins.stopped?.other && `${ins.stopped.other} other`].filter(Boolean).join(', ') || 'a stop screen' },
-              { label: 'Left without finishing', n: ins.leftUnfinished, color: 'var(--afe-rest)', note: 'quiet for 14 days or more' },
-            ]} total=${ins.started} />
-          </div>
-
-          <div class="afe-ins-cols">
-            <div class="afe-ins-col">
-            <div class="afe-viz">
-              <h4>Where people stop</h4>
-              <span class="afe-hint">The last page each ${isOrgForm() ? 'organization' : 'family'} reached before leaving without finishing.</span>
-              <${StopBars} byPage=${ins.byPage || []} started=${ins.started} />
-            </div>
-            ${ins.area?.checked > 0 && html`<${AreaInsight} a=${ins.area} go=${go} />`}
-            <div class="afe-viz">
-              <h4>How ${who} heard about us</h4>
-              <span class="afe-hint">From "Who referred you", on submitted applications.</span>
-              <${RankBars} rows=${ins.referral || []} />
-            </div>
-            </div>
-            <div class="afe-ins-col">
-            <div class="afe-viz">
-              <h4>Applications per week</h4>
-              <span class="afe-hint">Submitted applications, by the week they came in (weeks start Monday).</span>
-              <${WeekChart} perWeek=${ins.perWeek || []} />
-            </div>
-            <div class="afe-viz">
-              <h4>Language</h4>
-              <span class="afe-hint">The language ${who} chose when they started.</span>
-              <${StackBar} parts=${[
-                { label: 'English', n: ins.languages?.en || 0, color: 'var(--afe-data)' },
-                { label: 'Spanish', n: ins.languages?.es || 0, color: 'var(--afe-data-2)' },
-              ]} total=${(ins.languages?.en || 0) + (ins.languages?.es || 0)} />
-            </div>
-            <div class="afe-viz">
-              <h4>Reminder emails</h4>
-              <span class="afe-hint">Sent to ${who} who started and went quiet. The wording is in <a href="#applications/emails">Emails</a>.</span>
-              <div class="afe-stat-pair">
-                <div><b>${num(ins.reminders?.sent)}</b><span>${ins.reminders?.sent === 1 ? 'reminder sent' : 'reminders sent'}</span></div>
-                <div><b>${num(ins.reminders?.finishedAfter)}</b><span>finished after a reminder</span></div>
-              </div>
-            </div>
-            <div class="afe-viz">
-              <h4>Checks</h4>
-              <span class="afe-hint">Run on each submitted application, before anyone reviews it.</span>
-              <div class="afe-checklist">
-                <div><span>Outside the service area <b>${num(ins.checks?.outside)}</b></span>${ins.checks?.outside > 0 && html`<button class="btn btn-ghost btn-sm" onClick=${() => go('applicants', { view: 'submissions', show: 'outside' })}>See them</button>`}</div>
-                <div><span>Possible repeat applicants <b>${num(ins.checks?.repeat)}</b></span>${ins.checks?.repeat > 0 && html`<button class="btn btn-ghost btn-sm" onClick=${() => go('applicants', { view: 'submissions', show: 'repeat' })}>See them</button>`}</div>
-                <div><span>Address the Census couldn't find <b>${num(ins.checks?.unchecked)}</b></span></div>
-              </div>
-            </div>
-            </div>
-          </div>
-        </div>`}
+      ${ins && html`
+        <div class="afi-lead">
+          <p class="afi-lede">${seasonSentence(ins.season)}</p>
+          <p class="afi-lede-sub">${openingLine(ins.opening)}</p>
+        </div>
+        <div class="afi-kinds" role="group" aria-label="Which applications to show">
+          ${['family', 'organization'].map(k => html`<${KindCard} key=${k} k=${k} side=${ins.season[k]} lastYear=${ins.season.lastYear} on=${kind === k} onKind=${onKind} />`)}
+        </div>
+        <div class=${`afi-body ${loading ? 'is-loading' : ''}`}>
+          ${ins.started > 0 ? html`<${InsightsBody} ins=${ins} k=${shown} go=${go} open=${open} />` : html`<${InsightsEmpty} ins=${ins} k=${shown} />`}
+        </div>
+        ${sheet && html`<${PeopleSheet} sheet=${sheet} pages=${ins.byPage || []} onClose=${() => setSheet(null)} />`}`}
     </div>`;
 }
 
-/**
- * Where the families who started live, from the address check on the form:
- * inside, close, farther out, not found; how far out the outside ones are;
- * and what the families farther out did.
- */
-function AreaInsight({ a, go }) {
-  const steps = (a.steps || []).filter(st => st.count > 0 || st.close);
-  const max = Math.max(1, ...steps.map(st => st.count));
-  const span = (st) => (st.to == null ? `Over ${st.from} mi` : st.from ? `${st.from} to ${st.to} mi` : `Up to ${st.to} mi`);
+/** The two kinds, big: the numbers people came for, and the way to pick which one the page shows */
+function KindCard({ k, side, lastYear, on, onKind }) {
+  const added = side.added?.length || 0;
+  const now = added ? `${num(added)} added in JobTread` : side.recent ? `${num(side.recent)} in the last 7 days` : 'None in the last 7 days';
+  return html`
+    <button type="button" class="afe-tile afi-kind" data-kind=${k} aria-pressed=${on ? 'true' : 'false'} onClick=${() => onKind(k)}>
+      <span class="afi-kind-name">${INSIGHT_WORDS[k].label}</span>
+      <strong>${num(side.total)}</strong>
+      <small>${now}</small>
+      ${lastYear && html`<small class="afi-kind-last">${side.last.total ? `${lastYear} season: ${num(side.last.byNow)} by this date, ${num(side.last.total)} in all` : `None in the ${lastYear} season`}</small>`}
+    </button>`;
+}
+
+function InsightsBody({ ins, k, go, open }) {
+  const w = INSIGHT_WORDS[k];
+  const side = ins.season[k];
+  const people = ins.people || [];
+  const counts = { submitted: ins.submitted, working: ins.inProgress, stopped: (ins.stopped?.outside || 0) + (ins.stopped?.rental || 0) + (ins.stopped?.other || 0), left: ins.leftUnfinished };
+  const forWhom = (key) => people.filter(p => p.state === key);
+  const finishable = counts.submitted + counts.left;
+  const showChart = side.total > 0 || side.last.total > 0;
+  const es = ins.languages?.es || 0;
+  const checks = [
+    { label: 'Outside the service area', n: ins.checks?.outside, show: 'outside' },
+    { label: 'Possible repeat applicants', n: ins.checks?.repeat, show: 'repeat' },
+    { label: 'Address the Census couldn’t find', n: ins.checks?.unchecked },
+  ].filter(c => c.n > 0);
+  const given = (ins.referral || []).filter(r => r.source !== 'Not given').length;
+  const cards = [
+    ins.area?.checked > 0 && html`<${AreaCard} a=${ins.area} k=${k} started=${ins.started} go=${go} people=${people} open=${open} />`,
+    given > 0 && html`
+      <div class="afe-viz">
+        <h4>How ${w.whoMany} heard about us</h4>
+        <span class="afe-hint">From “Who referred you”, on submitted applications.</span>
+        <${RankBars} rows=${ins.referral} people=${people} open=${open} />
+      </div>`,
+    checks.length > 0 && html`
+      <div class="afe-viz">
+        <h4>Worth a look</h4>
+        <span class="afe-hint">Run on each submitted application, before anyone reviews it.</span>
+        <div class="afe-checklist">
+          ${checks.map(c => html`<div><span>${c.label} <b>${num(c.n)}</b></span>${c.show && html`<button class="btn btn-ghost btn-sm" onClick=${() => go('applicants', { view: 'submissions', show: c.show })}>See ${c.n === 1 ? 'it' : 'them'}</button>`}</div>`)}
+        </div>
+      </div>`,
+    side.added?.length > 0 && html`<${AddedCard} added=${side.added} />`,
+    es > 0 && html`
+      <div class="afe-viz">
+        <h4>Language</h4>
+        <span class="afe-hint">The language ${w.whoMany} chose when they started.</span>
+        <${StackBar} parts=${[
+          { label: 'English', n: ins.languages?.en || 0, color: 'var(--afe-data)' },
+          { label: 'Spanish', n: es, color: 'var(--afe-data-2)' },
+        ]} total=${(ins.languages?.en || 0) + es} />
+      </div>`,
+    ins.reminders?.sent > 0 && html`
+      <div class="afe-viz">
+        <h4>Reminder emails</h4>
+        <span class="afe-hint">Sent to ${w.whoMany} who started and went quiet. The wording is in <a href="#applications/emails">Emails</a>.</span>
+        <div class="afe-stat-pair">
+          <div><b>${num(ins.reminders.sent)}</b><span>${ins.reminders.sent === 1 ? 'reminder sent' : 'reminders sent'}</span></div>
+          <div><b>${num(ins.reminders.finishedAfter)}</b><span>finished after a reminder</span></div>
+        </div>
+      </div>`,
+  ].filter(Boolean);
+  const quiet = [es === 0 && 'Spanish applications', !(ins.reminders?.sent > 0) && 'reminder emails', !checks.length && 'application checks'].filter(Boolean);
+  return html`
+    <div class="afe-viz afi-standing">
+      <h4>Where everyone stands</h4>
+      <span class="afe-hint">${num(ins.started)} ${ins.started === 1 ? w.who : w.whoMany} started a ${ins.year} application. Pick a number to see who.</span>
+      <div class="afi-bar" role="img" aria-label=${STANDINGS.map(s => `${s.label}: ${counts[s.key]}`).join(', ')}>
+        ${STANDINGS.filter(s => counts[s.key] > 0).map(s => html`<span style=${`flex: ${counts[s.key]} 1 0; background: ${s.color};`} title=${`${s.label}: ${num(counts[s.key])}`}></span>`)}
+      </div>
+      <div class="afi-stands">
+        ${STANDINGS.map(s => {
+          const n = counts[s.key];
+          return html`
+            <button type="button" class="afi-stand" data-stand=${s.key} disabled=${!n} onClick=${() => open(s.label, forWhom(s.key))} aria-label=${`${s.label}: ${num(n)}${n ? '. See who.' : ''}`}>
+              <i style=${`background: ${s.color};`}></i>
+              <span>${s.label}</span>
+              <b>${num(n)}</b>
+              <small>${s.key === 'stopped' && n ? stoppedWhy(ins.stopped) : `${pct(n, ins.started)}%`}</small>
+            </button>`;
+        })}
+      </div>
+      <div class="afi-facts">
+        <div>
+          <span>Finish rate</span>
+          <b>${ins.finishRate == null ? 'Too early' : `${ins.finishRate}%`}</b>
+          <small>${finishable ? `${num(counts.submitted)} of ${num(finishable)}, leaving out the ${listWords([counts.working && `${num(counts.working)} still working`, counts.stopped && `${num(counts.stopped)} the form stopped`].filter(Boolean)) || 'none still working'}` : `No one has finished or left yet`}</small>
+        </div>
+        <div>
+          <span>Typical time to finish</span>
+          <b>${minutesText(ins.medianMinutes)}</b>
+          <small>From the first page to sending it</small>
+        </div>
+      </div>
+    </div>
+    <div class=${`afi-pair ${showChart ? '' : 'is-one'}`}>
+      <div class="afe-viz">
+        <h4>How far people get</h4>
+        <span class="afe-hint">Each page of the application, and how many reached it.</span>
+        <${PageFunnel} ins=${ins} open=${open} />
+      </div>
+      ${showChart && html`<${SeasonCard} side=${side} year=${ins.year} lastYear=${ins.season.lastYear} w=${w} />`}
+    </div>
+    ${cards.length > 0 && html`
+      <div class=${`afi-pair ${cards.length === 1 ? 'is-one' : ''}`}>
+        <div class="afi-col">${cards[0]}</div>
+        ${cards.length > 1 && html`<div class="afi-col">${cards.slice(1)}</div>`}
+      </div>`}
+    ${quiet.length > 0 && html`<p class="afi-quiet">Nothing to report yet on ${listWords(quiet)}.</p>`}`;
+}
+
+function stoppedWhy(stopped) {
+  const bits = [stopped?.outside && `${num(stopped.outside)} outside the area`, stopped?.rental && `${num(stopped.rental)} renting`, stopped?.other && `${num(stopped.other)} by another answer`].filter(Boolean);
+  return bits.join(', ');
+}
+
+/** No one has started this kind's application: what there is instead */
+function InsightsEmpty({ ins, k }) {
+  const w = INSIGHT_WORDS[k];
+  const side = ins.season[k];
+  const showChart = side.total > 0 || side.last.total > 0;
+  return html`
+    <div class="afe-viz afi-none">
+      <h4>No ${w.who} has started a ${ins.year} application yet</h4>
+      <p class="afe-lede">This fills in as ${w.whoMany} open the application: who finishes, where people stop, and how they heard about us.</p>
+    </div>
+    ${(side.added?.length > 0 || showChart) && html`
+      <div class=${`afi-pair is-top ${side.added?.length > 0 && showChart ? '' : 'is-one'}`}>
+        ${side.added?.length > 0 && html`<${AddedCard} added=${side.added} />`}
+        ${showChart && html`<${SeasonCard} side=${side} year=${ins.year} lastYear=${ins.season.lastYear} w=${w} />`}
+      </div>`}`;
+}
+
+/** Community projects staff added in JobTread: no application to measure, so they're named */
+function AddedCard({ added }) {
   return html`
     <div class="afe-viz">
-      <h4>${isOrgForm() ? 'Where organizations are' : 'Where families live'}</h4>
-      <span class="afe-hint">From the address check as ${isOrgForm() ? 'organizations type their address' : 'families type their home address'}. Close means within ${plural(a.nearMiles, 'mile')} of the area (<a href="#applications/settings" onClick=${(e) => { e.preventDefault(); go('settings'); }}>Settings</a>).</span>
-      <${StackBar} parts=${[
-        { label: 'Inside', n: a.inside, color: 'var(--afe-data)' },
-        { label: 'Close', n: a.near, color: 'var(--afe-data-2)' },
-        { label: 'Farther out', n: a.far, color: 'var(--afe-data-3)' },
-        { label: 'Address not found', n: a.notFound, color: 'var(--afe-rest)', note: 'they answered for themselves' },
-      ]} total=${a.inside + a.near + a.far + a.notFound} />
-      ${(a.near + a.far) > 0 && html`
-        <div class="afe-hbars" style="margin-top: .9rem;" aria-label="How far outside the area">
-          ${steps.map(st => html`
-            <div class="afe-hbar">
-              <span class="afe-hbar-label">${span(st)}${st.close ? html` <span class="tag afe-tag">close</span>` : ''}</span>
-              <span class="afe-hbar-val"><b>${num(st.count)}</b></span>
-              <span class="afe-hbar-track"><span style=${`width: ${(st.count / max) * 100}%;`}></span></span>
-            </div>`)}
-        </div>`}
-      ${a.far > 0 && html`
-        <div class="afe-stat-pair" style="margin-top: .9rem;">
-          <div><b>${num(a.farDid?.applied)}</b><span>farther out who applied anyway${a.beyond === 'stop' ? ' (before stopping was on)' : ''}</span></div>
-          <div><b>${num(a.farDid?.stopped)}</b><span>stopped by the form</span></div>
-        </div>`}
+      <h4>Added in JobTread</h4>
+      <span class="afe-hint">No application behind ${added.length === 1 ? 'this one' : 'these'}, so ${added.length === 1 ? 'it isn’t' : 'they aren’t'} in the numbers on how people move through the form.</span>
+      <div class="afi-added">
+        ${added.map(a => html`<a href=${`#applications/applicants/${a.id}`}><span>${a.name}</span><small>${a.status}</small></a>`)}
+      </div>
+    </div>`;
+}
+
+/** The application page by page: how many reached it, and what's going on there now */
+function PageFunnel({ ins, open }) {
+  const { byPage = [], started, people = [] } = ins;
+  if (!byPage.length) return html`<p class="afe-empty">No pages.</p>`;
+  const mostLeft = Math.max(0, ...byPage.map(p => p.leftHere || 0));
+  return html`
+    <div class="afi-funnel">
+      ${byPage.map((p, i) => {
+        const here = people.filter(x => x.state !== 'submitted' && x.page === i);
+        const notes = [p.hereNow > 0 && `${num(p.hereNow)} here now`, p.stoppedHere > 0 && `${num(p.stoppedHere)} stopped`, p.leftHere > 0 && `${num(p.leftHere)} left`].filter(Boolean);
+        return html`
+          <button type="button" class=${`afi-step ${mostLeft && p.leftHere === mostLeft ? 'is-top' : ''}`} disabled=${!here.length} onClick=${() => open(p.title, here)}>
+            <span class="afi-step-name"><em>${i + 1}</em>${p.title}${mostLeft && p.leftHere === mostLeft ? html`<span class="tag afe-tag">Most stop here</span>` : ''}</span>
+            <span class="afi-step-note">${notes.join(' · ')}</span>
+            <span class="afi-step-n"><b>${num(p.reached)}</b></span>
+            <span class="afi-step-track"><span style=${`width: ${pct(p.reached, started)}%;`}></span></span>
+          </button>`;
+      })}
+    </div>`;
+}
+
+/** Where they are, as one list from the area outward */
+function AreaCard({ a, k, started, go, people, open }) {
+  const span = (st) => (st.to == null ? `Over ${st.from} mi` : st.from ? `${st.from} to ${st.to} mi` : `Up to ${st.to} mi`);
+  const outside = (x) => x.band === 'near' || x.band === 'far';
+  const rows = [
+    { label: 'Inside the area', n: a.inside, list: people.filter(x => x.band === 'inside') },
+    ...(a.steps || []).filter(st => st.count > 0).map(st => ({
+      label: span(st), close: st.close, n: st.count,
+      list: people.filter(x => outside(x) && x.miles > st.from && (st.to == null || x.miles <= st.to)),
+    })),
+    a.notFound > 0 && { label: 'Address not found', n: a.notFound, list: people.filter(x => x.band === 'unknown'), rest: true },
+  ].filter(Boolean);
+  const max = Math.max(1, ...rows.map(r => r.n));
+  const did = [a.farDid?.stopped > 0 && `${num(a.farDid.stopped)} stopped by the form`, a.farDid?.applied > 0 && `${num(a.farDid.applied)} applied`].filter(Boolean);
+  return html`
+    <div class="afe-viz">
+      <h4>${k === 'organization' ? 'Where organizations are' : 'Where families live'}</h4>
+      <span class="afe-hint">${num(a.checked)} of ${num(started)} have reached the address check. Close means within ${plural(a.nearMiles, 'mile')} of the area (<a href="#applications/settings" onClick=${(e) => { e.preventDefault(); go('settings'); }}>Settings</a>).</span>
+      <div class="afe-hbars">
+        ${rows.map(r => html`
+          <button type="button" class=${`afe-hbar afi-hbar ${r.rest ? 'is-rest' : ''}`} disabled=${!r.list.length} onClick=${() => open(r.label, r.list)}>
+            <span class="afe-hbar-label">${r.label}${r.close ? html` <span class="tag afe-tag">close</span>` : ''}</span>
+            <span class="afe-hbar-val"><b>${num(r.n)}</b></span>
+            <span class="afe-hbar-track"><span style=${`width: ${(r.n / max) * 100}%;`}></span></span>
+          </button>`)}
+      </div>
+      ${a.far > 0 && did.length > 0 && html`<p class="afi-note">Of the ${num(a.far)} farther out, ${listWords(did)}.</p>`}
     </div>`;
 }
 
@@ -1737,110 +1956,173 @@ function StackBar({ parts, total }) {
   const shown = parts.filter(p => p.n > 0);
   return html`
     <div>
-      <div class="afe-stack" role="img" aria-label=${parts.map(p => `${p.label}: ${p.n}`).join(', ')}>
-        ${total > 0 ? shown.map(p => html`<span style=${`flex: ${p.n} 1 0; background: ${p.color};`} title=${`${p.label}: ${num(p.n)} (${pct(p.n, total)}%)`}></span>`) : html`<span style="flex: 1; background: var(--afe-track);"></span>`}
+      <div class="afi-bar" role="img" aria-label=${parts.map(p => `${p.label}: ${p.n}`).join(', ')}>
+        ${shown.map(p => html`<span style=${`flex: ${p.n} 1 0; background: ${p.color};`} title=${`${p.label}: ${num(p.n)} (${pct(p.n, total)}%)`}></span>`)}
       </div>
       <div class="afe-legend">
-        ${parts.map(p => html`<div><i style=${`background: ${p.color};`}></i><span>${p.label}</span><b>${num(p.n)} <small style="font-weight: 500;">${total ? `${pct(p.n, total)}%` : ''}</small></b>${p.note && html`<small>${p.note}</small>`}</div>`)}
+        ${parts.map(p => html`<div><i style=${`background: ${p.color};`}></i><span>${p.label}</span><b>${num(p.n)} <small style="font-weight: 500;">${total ? `${pct(p.n, total)}%` : ''}</small></b></div>`)}
       </div>
     </div>`;
 }
 
-function StopBars({ byPage, started }) {
-  const max = Math.max(0, ...byPage.map(p => p.leftHere || 0));
-  if (!byPage.length) return html`<p class="afe-empty">No pages.</p>`;
-  if (!max) return html`<p class="afe-empty">No one has left partway yet.</p>`;
+function RankBars({ rows, people, open }) {
+  const ranked = [...rows].sort((x, y) => (x.source === 'Not given') - (y.source === 'Not given') || y.count - x.count);
+  const top = ranked.slice(0, 6);
+  const more = ranked.slice(6);
+  const max = Math.max(1, ...ranked.map(r => r.count));
+  const named = (r) => people.filter(p => p.referral === r.source);
   return html`
     <div class="afe-hbars">
-      ${byPage.map((p, i) => html`
-        <div class="afe-hbar ${p.leftHere === max ? 'is-top' : ''}">
-          <span class="afe-hbar-label"><em>${i + 1}</em>${p.title}${p.leftHere === max && html`<span class="tag afe-tag">Most stop here</span>`}</span>
-          <span class="afe-hbar-val"><b>${num(p.leftHere)}</b> left · ${pct(p.reached, started)}% reached</span>
-          <span class="afe-hbar-track"><span style=${`width: ${(p.leftHere / max) * 100}%;`}></span></span>
-        </div>`)}
-    </div>`;
-}
-
-function RankBars({ rows }) {
-  if (!rows.length) return html`<p class="afe-empty">No submitted applications yet.</p>`;
-  const top = rows.slice(0, 6);
-  const rest = rows.slice(6);
-  const list = rest.length ? [...top, { source: `Other (${rest.length} more)`, count: rest.reduce((n, r) => n + r.count, 0) }] : top;
-  const max = Math.max(1, ...list.map(r => r.count));
-  return html`
-    <div class="afe-hbars">
-      ${list.map((r, i) => html`
-        <div class=${`afe-hbar ${i === 0 ? 'is-top' : ''}`}>
+      ${top.map(r => html`
+        <button type="button" class=${`afe-hbar afi-hbar ${r.source === 'Not given' ? 'is-rest' : ''}`} onClick=${() => open(r.source, named(r))}>
           <span class="afe-hbar-label" title=${r.source}>${r.source}</span>
           <span class="afe-hbar-val"><b>${num(r.count)}</b></span>
           <span class="afe-hbar-track"><span style=${`width: ${(r.count / max) * 100}%;`}></span></span>
-        </div>`)}
+        </button>`)}
+      ${more.length > 0 && html`<p class="afi-note">And ${plural(more.length, 'more source')} with ${plural(more.reduce((n, r) => n + r.count, 0), 'application')}.</p>`}
     </div>`;
 }
 
-const WEEK = 7 * 864e5;
-const niceMax = (n) => { if (n <= 5) return Math.max(1, n); const p = 10 ** Math.floor(Math.log10(n)); return [1, 2, 2.5, 5, 10].map(m => m * p).find(v => v >= n); };
-const weekLabel = (iso) => new Date(`${iso}T12:00:00Z`).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: 'UTC' });
+/** The people behind a number */
+function PeopleSheet({ sheet, pages, onClose }) {
+  const line = (p) => {
+    const page = pages[p.page]?.title;
+    const where = p.band === 'near' || p.band === 'far' ? (p.miles != null ? `${p.miles} mi outside` : 'Outside the area') : null;
+    const what = p.state === 'submitted' ? `Submitted ${agoText(p.at)}`
+      : p.state === 'stopped' ? `Stopped on ${page || 'a page'}${STOP_WHY[p.stop] ? `, ${STOP_WHY[p.stop]}` : ''}`
+      : p.state === 'working' ? `On ${page || 'a page'}, active ${agoText(p.at)}`
+      : `Left on ${page || 'a page'} ${agoText(p.at)}`;
+    return [what, where].filter(Boolean).join(' · ');
+  };
+  return html`
+    <${Dialog} title=${`${sheet.title} (${num(sheet.list.length)})`} wide onClose=${onClose}>
+      <div class="afi-people">
+        ${sheet.list.map(p => html`
+          <div class="afi-person">
+            <div><b class=${p.name ? '' : 'is-none'}>${p.name || 'No name given yet'}</b><span>${line(p)}</span></div>
+            ${p.accountId && html`<a class="btn btn-ghost btn-sm" href=${`#applications/applicants/${p.accountId}`}>Open</a>`}
+          </div>`)}
+      </div>
+    <//>`;
+}
 
-/** Columns per week, every week from the first to the last (empty weeks show as gaps) */
-function WeekChart({ perWeek }) {
+const DAY_MS_CHART = 864e5;
+const niceMax = (n) => { if (n <= 5) return Math.max(1, n); const p = 10 ** Math.floor(Math.log10(n)); return [1, 2, 2.5, 5, 10].map(m => m * p).find(v => v >= n); };
+
+/** Applications building up by date, with last season's laid over the same calendar */
+function seasonModel({ points, lastPoints, year, now }) {
+  const y = Number(year);
+  const start = Date.UTC(y - 1, 7, 1); // A season's applications run from August to July
+  const end = Date.UTC(y, 6, 31, 23, 59);
+  const inSeason = (t) => Math.max(start, Math.min(end, t));
+  const mine = points.map(t => Date.parse(t)).filter(Number.isFinite).map(inSeason).sort((a, b) => a - b);
+  const past = lastPoints.map((t) => { const d = new Date(t); d.setUTCFullYear(d.getUTCFullYear() + 1); return d.getTime(); }).filter(Number.isFinite).map(inSeason).sort((a, b) => a - b);
+  const today = Math.min(Math.max(now, start), end);
+  const first = new Date(Math.min(today, ...[...mine, ...past].filter(t => t > start)));
+  const from = Date.UTC(first.getUTCFullYear(), first.getUTCMonth(), 1);
+  const to = Math.max(today, ...mine, ...past, from + 45 * DAY_MS_CHART);
+  const countAt = (list, t) => list.reduce((n, x) => n + (x <= t ? 1 : 0), 0);
+  return { mine, past, today, from, to, countAt };
+}
+
+function SeasonCard({ side, year, lastYear, w }) {
+  const hasLast = !!lastYear && side.last.total > 0;
+  return html`
+    <div class="afe-viz afi-chartcard">
+      <h4>The season so far</h4>
+      <span class="afe-hint">${w.many[0].toUpperCase()}${w.many.slice(1)} in by date${hasLast ? `, beside the ${lastYear} season from JobTread` : ''}.</span>
+      <${SeasonChart} side=${side} year=${year} lastYear=${hasLast ? lastYear : null} />
+    </div>`;
+}
+
+function SeasonChart({ side, year, lastYear }) {
   const box = useRef(null);
-  const width = useWidth(box, 560);
+  const [{ width, H }, setSize] = useState({ width: 520, H: 262 });
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    const read = () => setSize({ width: el.clientWidth || 520, H: el.clientHeight || 262 });
+    read();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const [hi, setHi] = useState(null);
-  const weeks = useMemo(() => {
-    if (!perWeek.length) return [];
-    const by = new Map(perWeek.map(w => [w.week, w.count]));
-    const start = Date.parse(`${perWeek[0].week}T00:00:00Z`);
-    const end = Date.parse(`${perWeek[perWeek.length - 1].week}T00:00:00Z`);
-    const out = [];
-    for (let t = start; t <= end && out.length < 120; t += WEEK) { const k = new Date(t).toISOString().slice(0, 10); out.push({ week: k, count: by.get(k) || 0 }); }
-    return out;
-  }, [perWeek]);
-  const total = weeks.reduce((n, w) => n + w.count, 0);
-  if (!weeks.length) return html`<div ref=${box}><p class="afe-empty">No applications submitted yet.</p></div>`;
-  if (weeks.length === 1) return html`<div ref=${box}><p class="afe-sum">All ${num(total)} came in the week of ${weekLabel(weeks[0].week)}.</p></div>`;
-  const H = 170;
-  const pad = { l: 30, r: 6, t: 8, b: 22 };
+  const m = useMemo(() => seasonModel({ points: side.points, lastPoints: lastYear ? side.last.points : [], year, now: Date.now() }), [side, year, lastYear]);
+  const pad = { l: 26, r: 30, t: 12, b: 22 };
   const plotW = Math.max(120, width - pad.l - pad.r);
   const plotH = H - pad.t - pad.b;
-  const max = niceMax(Math.max(...weeks.map(w => w.count)));
-  const slot = plotW / weeks.length;
-  const bw = Math.max(2, Math.min(24, slot - 2));
+  const span = Math.max(1, m.to - m.from);
+  const x = (t) => pad.l + ((t - m.from) / span) * plotW;
+  const max = niceMax(Math.max(4, m.mine.length, m.past.length));
   const y = (v) => pad.t + plotH - (v / max) * plotH;
-  const ticks = max <= 1 ? [0, 1] : [0, max / 2, max].map(v => (Number.isInteger(v) ? v : null)).filter(v => v != null);
-  // A month label under the first week of each month, when there's room
-  let lastX = -99;
-  const labels = [];
-  weeks.forEach((w, i) => {
-    const d = new Date(`${w.week}T12:00:00Z`);
-    const prev = i ? new Date(`${weeks[i - 1].week}T12:00:00Z`) : null;
-    if (i === 0 || d.getUTCMonth() !== prev.getUTCMonth()) {
-      const x = pad.l + i * slot + slot / 2;
-      if (x - lastX > 34) { labels.push({ x, text: d.toLocaleDateString([], { month: 'short', timeZone: 'UTC' }) }); lastX = x; }
+  const ticks = [0, max / 2, max].filter(Number.isInteger);
+  const steps = (list, until) => {
+    let n = m.countAt(list, m.from);
+    let d = `M${x(m.from).toFixed(1)},${y(n).toFixed(1)}`;
+    for (const t of list) {
+      if (t <= m.from || t > until) continue;
+      n += 1;
+      d += `H${x(t).toFixed(1)}V${y(n).toFixed(1)}`;
     }
-  });
-  const bar = (i, v) => {
-    const x = pad.l + i * slot + (slot - bw) / 2;
-    const top = y(v);
-    const hgt = pad.t + plotH - top;
-    if (hgt <= 0) return '';
-    const r = Math.min(4, bw / 2, hgt);
-    return `M${x},${pad.t + plotH}V${top + r}Q${x},${top} ${x + r},${top}H${x + bw - r}Q${x + bw},${top} ${x + bw},${top + r}V${pad.t + plotH}Z`;
+    return `${d}H${x(until).toFixed(1)}`;
   };
-  const tip = hi != null ? weeks[hi] : null;
+  const months = [];
+  for (let d = new Date(m.from); d.getTime() <= m.to; d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1))) months.push(d.getTime());
+  const monthName = (t) => new Date(t).toLocaleDateString([], { month: 'short', timeZone: 'UTC' });
+  let lastLabel = -99;
+  const labels = months.filter((t) => { const at = x(t); if (at - lastLabel < 36 || at > pad.l + plotW - 8) return false; lastLabel = at; return true; });
+  const mineNow = m.countAt(m.mine, m.today);
+  const pastNow = m.countAt(m.past, m.today);
+  const pastEnd = m.past.length;
+  // The comparison that matters: both seasons on this date
+  const sameSpot = pastNow === mineNow;
+  const pastNowShown = !!lastYear && pastNow > 0 && !sameSpot && pastNow !== pastEnd;
+  const endClash = Math.abs(y(mineNow) - y(pastEnd)) < 14 && Math.abs(x(m.today) - x(m.to)) < 30;
+  const move = (e) => {
+    const r = box.current?.getBoundingClientRect();
+    if (!r) return;
+    const t = m.from + ((e.clientX - r.left - pad.l) / plotW) * span;
+    setHi(Math.max(m.from, Math.min(m.to, t)));
+  };
+  const day = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: 'UTC' });
+  const tipLeft = hi == null ? 0 : Math.min(width - 78, Math.max(78, x(hi)));
   return html`
-    <div class="afe-chart" ref=${box} onPointerLeave=${() => setHi(null)}>
-      <svg width=${width} height=${H} role="img" aria-label=${`Applications per week: ${num(total)} in ${weeks.length} weeks`}>
-        ${ticks.map(t => html`<line class="afe-grid" x1=${pad.l} x2=${pad.l + plotW} y1=${Math.round(y(t)) + 0.5} y2=${Math.round(y(t)) + 0.5} /><text class="afe-axis" x=${pad.l - 6} y=${y(t) + 4} text-anchor="end">${t}</text>`)}
-        ${weeks.map((w, i) => html`<path class=${`afe-colbar ${hi != null && hi !== i ? 'is-dim' : ''}`} d=${bar(i, w.count)} />`)}
-        ${weeks.map((w, i) => html`<rect x=${pad.l + i * slot} y=${pad.t} width=${slot} height=${plotH} fill="transparent" onPointerEnter=${() => setHi(i)} onPointerMove=${() => setHi(i)}><title>${`Week of ${weekLabel(w.week)}: ${w.count}`}</title></rect>`)}
-        ${labels.map(l => html`<text class="afe-axis" x=${l.x} y=${H - 6} text-anchor="middle">${l.text}</text>`)}
+    <div class="afi-chart">
+      ${lastYear && html`
+        <div class="afi-keys" aria-hidden="true">
+          <span><i class="is-now"></i>${year} season</span>
+          <span><i class="is-past"></i>${lastYear} season</span>
+        </div>`}
+      <div class="afe-chart afi-plot" ref=${box} onPointerMove=${move} onPointerLeave=${() => setHi(null)}>
+      <svg width=${width} height=${H} role="img" aria-label=${`${year} season: ${mineNow} so far.${lastYear ? ` ${lastYear} season: ${pastNow} by this date, ${pastEnd} in all.` : ''}`}>
+        ${ticks.map(t => html`<line class="afe-grid" x1=${pad.l} x2=${pad.l + plotW} y1=${Math.round(y(t)) + 0.5} y2=${Math.round(y(t)) + 0.5} /><text class="afe-axis" x=${pad.l - 7} y=${y(t) + 4} text-anchor="end">${t}</text>`)}
+        ${labels.map(t => html`<text class="afe-axis" x=${x(t)} y=${H - 5} text-anchor="middle">${monthName(t)}</text>`)}
+        ${lastYear && html`<path class="afi-line is-past" d=${steps(m.past, m.to)} />`}
+        <path class="afi-line" d=${steps(m.mine, m.today)} />
+        ${lastYear && !endClash && html`<text class="afe-axis afi-end" x=${x(m.to) + 6} y=${y(pastEnd) + 4}>${pastEnd}</text>`}
+        ${pastNowShown && html`<circle class="afi-dot is-past" cx=${x(m.today)} cy=${y(pastNow)} r="4" /><text class="afi-end is-past" x=${x(m.today) - 8} y=${y(pastNow) - 6} text-anchor="end">${pastNow}</text>`}
+        <circle class="afi-dot" cx=${x(m.today)} cy=${y(mineNow)} r="4" />
+        <text class="afi-end is-now" x=${x(m.today) + 8} y=${y(mineNow) + 4}>${mineNow}</text>
+        ${hi != null && html`<line class="afi-cross" x1=${x(hi)} x2=${x(hi)} y1=${pad.t} y2=${pad.t + plotH} />`}
       </svg>
-      ${tip && html`<div class="afe-tip" style=${`left: ${Math.min(width - 60, Math.max(60, pad.l + hi * slot + slot / 2))}px; top: ${Math.max(48, y(tip.count) - 6)}px;`}><b>${tip.count}</b>week of ${weekLabel(tip.week)}</div>`}
-      <details style="margin-top: .5rem;">
+      ${hi != null && html`
+        <div class="afe-tip afi-tip" style=${`left: ${tipLeft}px; top: ${pad.t + 6}px; transform: translateX(-50%);`}>
+          <b>${day(hi)}</b>
+          ${hi <= m.today && html`<span>${year}: ${m.countAt(m.mine, hi)}</span>`}
+          ${lastYear && html`<span>${lastYear}: ${m.countAt(m.past, hi)}</span>`}
+        </div>`}
+      </div>
+      <details class="afi-table">
         <summary class="afe-hint">Show as a table</summary>
-        <table class="afe-table"><thead><tr><th>Week of</th><th>Applications</th></tr></thead>
-          <tbody>${weeks.map(w => html`<tr><td>${weekLabel(w.week)}</td><td>${w.count}</td></tr>`)}</tbody></table>
+        <table class="afe-table">
+          <thead><tr><th>By the end of</th><th>${year}</th>${lastYear && html`<th>${lastYear}</th>`}</tr></thead>
+          <tbody>${months.map((t) => {
+            const close = Date.UTC(new Date(t).getUTCFullYear(), new Date(t).getUTCMonth() + 1, 1) - 1;
+            return html`<tr><td>${monthName(t)}</td><td>${t <= m.today ? m.countAt(m.mine, Math.min(close, m.today)) : ''}</td>${lastYear && html`<td>${m.countAt(m.past, close)}</td>`}</tr>`;
+          })}</tbody>
+        </table>
       </details>
     </div>`;
 }

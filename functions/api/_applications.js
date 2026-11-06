@@ -53,7 +53,8 @@ import { runJotformBackfill, jotformSecondLook } from './_jotform-backfill.js';
 import { runNotifications } from './_applicant-notify.js';
 import { runApprovals } from './_applicant-approved.js';
 import { logAudit } from './_audit.js';
-import { capOf, capFacts, countReceived, countCommunity, claimWarning, tellCap, fullMessageOf, wholeNumber, CAP_USER, MAX_LIMIT } from './_application-cap.js';
+import { seasonSummary } from './_application-season.js';
+import { capOf, capFacts, countReceived, claimWarning, tellCap, fullMessageOf, wholeNumber, CAP_USER, MAX_LIMIT } from './_application-cap.js';
 
 // ─── JobTread fields (SOARD org) ────────────────────────────────────
 export const JT_FIELDS = {
@@ -1935,8 +1936,8 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
   // Each form's own funnel: its pages, its drafts and applications
   const k = kindOf(kind);
   const form = await formFor(DB, { year, kind: k });
-  const drafts = ((await DB.prepare("SELECT id, created_at, updated_at, submitted_id, max_page, max_page_id, stop_key, lang, reminders_sent, cleared_at, area FROM application_drafts WHERE year = ? AND COALESCE(ip_hash, '') != 'admin' AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results) || [];
-  const apps = ((await DB.prepare("SELECT id, draft_id, submitted_at, answers, lang, is_test, jt_state, jt_account_id FROM applications WHERE year = ? AND deleted_at IS NULL AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results || []).map(applicationRow);
+  const drafts = ((await DB.prepare("SELECT id, created_at, updated_at, submitted_id, max_page, max_page_id, stop_key, lang, reminders_sent, cleared_at, area, answers FROM application_drafts WHERE year = ? AND COALESCE(ip_hash, '') != 'admin' AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results) || [];
+  const apps = ((await DB.prepare("SELECT id, draft_id, submitted_at, answers, lang, is_test, jt_state, jt_account_id, child_name FROM applications WHERE year = ? AND deleted_at IS NULL AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results || []).map(applicationRow);
   // Left out: tests, deleted applications (their drafts stay behind, emptied), and from the makeovers' funnel any marked Community Project
   const deleted = ((await DB.prepare('SELECT draft_id FROM applications WHERE year = ? AND deleted_at IS NOT NULL').bind(String(year)).all()).results || []).map(r => r.draft_id);
   const community = k === 'family' ? await communityAccounts(DB) : new Set();
@@ -1949,10 +1950,13 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
   const gone = real.filter(d => !d.submitted_id && !d.stop_key && (d.cleared_at || quietDays(d) >= 14));
   const pageIds = form.pages.map(p => p.id);
   const reachedIndex = (d) => (d.submitted_id ? pageIds.length : Math.max(0, d.max_page_id ? pageIds.indexOf(d.max_page_id) : Number(d.max_page) || 0));
+  const at = (list, i) => list.filter(d => reachedIndex(d) === i).length;
   const byPage = form.pages.map((p, i) => ({
     id: p.id, title: p.title,
     reached: real.filter(d => reachedIndex(d) >= i).length,
-    leftHere: gone.filter(d => reachedIndex(d) === i).length,
+    leftHere: at(gone, i),
+    hereNow: at(inProgress, i),
+    stoppedHere: at(stopped, i),
   }));
   const minutes = submitted.map(d => {
     const app = apps.find(a => a.draft_id === d.id);
@@ -1965,28 +1969,40 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
     const k = String(a.answers?.referredBy || '').trim() || 'Not given';
     referral[k] = (referral[k] || 0) + 1;
   }
-  const weeks = {};
-  for (const a of realApps) {
-    const d = new Date(a.submitted_at);
-    const monday = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - ((d.getUTCDay() + 6) % 7)));
-    const k = monday.toISOString().slice(0, 10);
-    weeks[k] = (weeks[k] || 0) + 1;
-  }
+  const working = new Set(inProgress.map(d => d.id));
+  const people = real.map(d => {
+    const app = apps.find(a => a.draft_id === d.id);
+    const area = parse(d.area, null);
+    return {
+      id: d.id,
+      name: app?.child_name || applicantNameOf(parse(d.answers, {}), k) || null,
+      state: d.submitted_id ? 'submitted' : d.stop_key ? 'stopped' : working.has(d.id) ? 'working' : 'left',
+      stop: d.stop_key || null,
+      page: reachedIndex(d),
+      at: d.updated_at,
+      band: area?.band || null,
+      miles: Number.isFinite(Number(area?.miles)) ? Number(area.miles) : null,
+      referral: app ? String(app.answers?.referredBy || '').trim() || 'Not given' : null,
+      accountId: app?.jt_account_id || null,
+    };
+  });
   return {
     year: String(year),
+    kind: k,
     started: real.length,
     submitted: submitted.length,
-    counts: { makeovers: await countReceived(DB, year), ...(await countCommunity(DB, year)) },
+    season: await seasonSummary(DB, year, now),
+    people,
     inProgress: inProgress.length,
     leftUnfinished: gone.length,
     stopped: { outside: stopped.filter(d => d.stop_key === 'outside').length, rental: stopped.filter(d => d.stop_key === 'rental').length, other: stopped.filter(d => !['outside', 'rental'].includes(d.stop_key)).length },
-    finishRate: real.length ? Math.round((submitted.length / real.length) * 100) : null,
+    // Of those the form could finish for, now that they're done with it: still working isn't an answer yet, and stopped by the form isn't a failure to finish
+    finishRate: submitted.length + gone.length ? Math.round((submitted.length / (submitted.length + gone.length)) * 100) : null,
     medianMinutes: median,
     byPage,
     languages: { en: real.filter(d => (d.lang || 'en') === 'en').length, es: real.filter(d => d.lang === 'es').length },
     reminders: { sent: real.reduce((n, d) => n + (Number(d.reminders_sent) || 0), 0), finishedAfter: submitted.filter(d => Number(d.reminders_sent) > 0).length },
     referral: Object.entries(referral).map(([source, count]) => ({ source, count })).sort((x, y) => y.count - x.count),
-    perWeek: Object.entries(weeks).sort().map(([week, count]) => ({ week, count })),
     area: areaInsights(form, real, gone),
     checks: {
       outside: realApps.filter(a => a.jt_state?.area?.status === 'outside').length,

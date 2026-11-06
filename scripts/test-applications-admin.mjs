@@ -1063,23 +1063,65 @@ try {
   });
 
   await section('Insights', async () => {
+    await DB.prepare("UPDATE applications SET jt_account_id = 'acct-insights' WHERE draft_id = 'd-sub-2'").run(); // an application with its account, for Open below
     await clickText(page, '.hub-tab', /^Insights$/);
     await page.waitForSelector('.afe-tile', { timeout: 8000 });
-    const tiles = await page.$$eval('.afe-tile', (els) => els.map(e => e.innerText.replace(/\s+/g, ' ')));
-    ok(/Started 34/.test(tiles[0]) && /Submitted 19/.test(tiles[1]) && /Finish rate 56%/.test(tiles[2]) && /min/.test(tiles[3]), `tiles, with the application deleted above left out: ${tiles.join(' | ')}`);
-    ok(/Submitted 19 19 makeovers · 0 community projects$/.test(tiles[1]), `the Submitted tile says how many of each (${tiles[1]})`);
-    const legend = await text(page, '.afe-legend');
-    ok(/Submitted\s*19/.test(legend) && /Still working on it\s*4/.test(legend) && /Ended by an answer\s*3/.test(legend) && /Left without finishing\s*8/.test(legend), 'what happened to everyone, in numbers');
-    ok(/Home and Space\s*Most stop here/.test(await text(page, '.afe-hbar.is-top')), 'the page most people stop on is called out');
-    ok(await count(page, '.afe-chart svg .afe-colbar') >= 6, `a column per week, empty weeks included (${await count(page, '.afe-chart svg .afe-colbar')})`);
+    await page.waitForSelector('.afi-stands', { timeout: 8000 });
+    // The sentence, then the two kinds, which are also how you pick one
+    const kinds = await page.$$eval('.afi-kind', (els) => els.map(e => e.innerText.replace(/\s+/g, ' ')));
+    ok(/^Makeovers 19\b/.test(kinds[0]) && /^Community projects 0\b/.test(kinds[1]), `both kinds, big, side by side: ${kinds.join(' | ')}`);
+    ok(/^19 makeovers and 0 community projects so far/.test(await text(page, '.afi-lede')), `the page opens on the answer (${await text(page, '.afi-lede')})`);
+    ok(!(await page.$('.afe-appkind')), 'the two cards are the switch here: no second one above them');
+    ok(await page.$eval('.afi-kind[data-kind="family"]', (b) => b.getAttribute('aria-pressed')) === 'true', 'the kind on show is marked');
+    const stands = (await text(page, '.afi-stands')).replace(/\s+/g, ' ');
+    ok(/Submitted 19/.test(stands) && /Still working on it 4/.test(stands) && /Stopped by the form 3/.test(stands) && /Left without finishing 8/.test(stands), `where everyone stands (${stands})`);
+    const facts = (await text(page, '.afi-facts')).replace(/\s+/g, ' ');
+    ok(/Finish rate 70%/.test(facts) && /19 of 27, leaving out the 4 still working and 3 the form stopped/.test(facts) && /min/.test(facts), `the finish rate counts only who's done (${facts})`);
+    ok(/Home and Space\s*Most stop here/.test(await text(page, '.afi-step.is-top')), 'the page most people stop on is called out');
+    ok(await count(page, '.afi-step') >= 6, 'every page of the application, in order');
+    ok(await count(page, '.afi-chart svg .afi-line') === 1, 'the season so far, one line with no last season to compare');
+    await page.$eval('.afi-plot', (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    const plot = await (await page.$('.afi-plot')).boundingBox();
+    await page.mouse.move(plot.x + plot.width * 0.5, plot.y + 60);
+    await page.waitForSelector('.afi-tip', { timeout: 3000 }).catch(() => {});
+    ok(!!(await page.$('.afi-tip')) && !!(await page.$('.afi-cross')), 'pointing at the chart shows that date and its count');
+    await page.mouse.move(2, 2);
+    // Every number opens the people behind it
+    await page.click('.afi-stand[data-stand="submitted"]');
+    await page.waitForSelector('.afi-people', { timeout: 5000 });
+    ok(await count(page, '.afi-person') === 19, `the people behind a number (${await count(page, '.afi-person')})`);
+    ok(/Mila Brooks/.test(await text(page, '.afi-people')), 'by name');
+    await sleep(150); // Escape reaches a dialog a moment after it opens
+    ok(/^Submitted \(19\)/.test(await text(page, '.afe-dialog h3')), 'named for what was picked');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+    ok(!(await page.$('.afi-people')), 'Escape puts them away');
+    await page.evaluate(() => [...document.querySelectorAll('.afi-step:not(:disabled)')].pop()?.click());
+    await page.waitForSelector('.afi-people', { timeout: 5000 });
+    ok(await count(page, '.afi-person') >= 1, 'a page of the application opens who stopped there');
+    await sleep(150); // Escape reaches a dialog a moment after it opens
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+    // A person opens their page, and the list doesn't stay behind
+    await sleep(300); // the last dialog finishes closing
+    await page.click('.afi-stand[data-stand="submitted"]');
+    await page.waitForSelector('.afi-person a', { timeout: 5000 });
+    await page.$eval('.afi-person a', (a) => a.click());
+    await page.waitForFunction(() => /^#applications\/applicants\//.test(location.hash), { timeout: 5000 }).catch(() => {});
+    await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 5000 }).catch(() => {});
+    ok(!(await page.$('.afi-people')) && !(await page.$('.modal-overlay')) && /^#applications\/applicants\//.test(await page.evaluate(() => location.hash)), 'Open goes to their page, and the list closes');
+    await clickText(page, '.hub-tab', /^Insights$/);
+    await page.waitForSelector('.afi-stands', { timeout: 8000 });
     ok(/Spanish\s*\d/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Language/.test(v.querySelector('h4')?.textContent))?.innerText || '')), 'languages');
     ok(/Children’s Healthcare of Atlanta/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /heard about us/.test(v.querySelector('h4')?.textContent))?.innerText || '')), 'referral sources');
     const where = await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Where families live/.test(v.querySelector('h4')?.textContent))?.innerText || '');
-    ok(/Inside\s*1[12]\b/.test(where) && /Close\s*2/.test(where) && /Farther out\s*2/.test(where) && /Address not found\s*1/.test(where), `where families live, from the address check (${where.replace(/\s+/g, ' ').slice(0, 160)})`);
+    ok(/Inside the area\s*1[12]\b/.test(where) && /Address not found\s*1/.test(where), `where families live, from the address check (${where.replace(/\s+/g, ' ').slice(0, 160)})`);
     ok(/within 15 miles/.test(where) && /Up to 5 mi\s*close\s*1/.test(where) && /10 to 15 mi\s*close\s*1/.test(where) && /Over 50 mi\s*1/.test(where), 'how far out, with the close steps marked');
-    ok(/1\s*farther out who applied anyway/.test(where) && /1\s*stopped by the form/.test(where), 'and what the families farther out did');
+    ok(/Of the 2 farther out, 1 stopped by the form and 1 applied/.test(where), 'and what the families farther out did');
+    // Nothing to say: no card
+    ok(!(await page.evaluate(() => [...document.querySelectorAll('.afe-viz h4')].some(h => /Reminder emails/.test(h.textContent)))) === (await page.evaluate(() => /reminder emails/.test(document.querySelector('.afi-quiet')?.textContent || ''))) , 'a card with nothing to say folds into one quiet line');
     await shot(page, '13-insights.png');
-    ok(await clickText(page, '.afe-checklist button', /See them/), '"See them" on a check');
+    ok(await clickText(page, '.afe-checklist button', /See (them|it)/), '"See them" on a check');
     await page.waitForSelector('.afe-sub-list, .afe-subs .afe-empty', { timeout: 8000 }).catch(() => {});
     await page.waitForSelector('.afe-chip[aria-pressed="true"]', { timeout: 5000 });
     ok(/Possible repeat|Outside area/.test(await text(page, '.afe-chip[aria-pressed="true"]')) && await page.$eval('.afe-tabs .active', (e) => e.dataset.tab) === 'applicants', 'opens Applicants → Submissions with that filter');
@@ -1556,7 +1598,7 @@ try {
       const out = new Set();
       for (let n = walk.nextNode(); n; n = walk.nextNode()) {
         const el = n.parentElement;
-        if (!el || !el.getClientRects().length || el.closest('.afe-preview, .afe-email-prev, .afe-col, textarea')) continue;
+        if (!el || !el.getClientRects().length || el.closest('.afe-preview, .afe-email-prev, .afe-col, textarea, .afi-lead')) continue; // Insights' sentence is the whole season's, both kinds
         const s = n.textContent.replace(/\s+/g, ' ').trim();
         if (/\b(famil(?:y|ies)|child|parents?|kids?)\b/i.test(s)) out.add(s.slice(0, 140));
       }
@@ -1620,7 +1662,7 @@ try {
     await clickText(page, '.hub-tab', /^Insights/);
     await page.waitForFunction(() => !!document.querySelector('.afe-ins'), { timeout: 8000 }).catch(() => {});
     await sleep(600);
-    ok(await page.$eval('.afe-appkind [data-kind="organization"]', (b) => b.getAttribute('aria-pressed')).catch(() => null) === 'true', 'Insights follows the switch');
+    ok(await page.$eval('.afi-kind[data-kind="organization"]', (b) => b.getAttribute('aria-pressed')).catch(() => null) === 'true', 'Insights follows the switch');
     said = await familyWords();
     ok(!said.length, `and never speaks of a family (${said.join(' | ')})`);
     await shot(page, '31b-org-insights.png');
