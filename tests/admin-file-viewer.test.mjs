@@ -138,9 +138,8 @@ test('the drawer never links out to Jotform', () => {
   assert.ok(!/href=\$\{a\.applicationUrl\}/.test(src), 'no link to the old Application URL (a Jotform submission for families who applied before the website form)');
 });
 
-test('a video’s tile is flat: no gradients, and the play stays off the family’s picture until it’s pointed at', () => {
+test('a video among the photos is flat: no gradients', () => {
   const viewer = readFileSync(new URL('../public/admin/file-viewer.js', import.meta.url), 'utf8');
   assert.equal(/gradient/i.test(viewer), false);
-  assert.match(viewer, /\.fv-tile-play \{[^}]*opacity: 0/);
   assert.match(viewer, /export function VideoTile/);
 });

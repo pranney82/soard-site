@@ -13,7 +13,7 @@
  *    selected, links work, − / + or a pinch zooms.
  *  - Videos play with the browser's own controls. Nothing is drawn on the
  *    picture: the arrows sit beside it (under it on a phone). <VideoTile>
- *    is a video's card on a page: its frame, its length and Watch.
+ *    is a video on a page: its frame, in its own shape, with Watch and its length.
  *  - A file whose caller can draw it as pages (`pages`: the board page's
  *    Excel, Word and PowerPoint, through ./board/docs.js) shows them, each
  *    as wide as the window, drawn as it scrolls into view.
@@ -954,8 +954,9 @@ function VideoView({ f, player, fail }) {
   </div>`;
 }
 
-// A video's card: its frame on the dark, its length, Watch. The whole card opens the viewer (a link, so ⌘/Ctrl-click
-// still opens a new tab). `files` and `index` are the set it opens in; `compact` is the small one, for a list.
+// A video on a page: its frame in its own shape, with Watch and its length, and `caption` under it. The whole thing
+// opens the viewer (a link, so ⌘/Ctrl-click still opens a new tab). `files` and `index` are the set it opens in;
+// `compact` is the small dark one, for a list.
 const lengths = new Map(); // what's been read from each video so far: { w, h, d }
 const lengthWords = (sec) => {
   const s = Math.round(sec || 0);
@@ -994,25 +995,24 @@ export function VideoTile(props) {
   return html`<${Tile} key=${props.f?.id || props.f?.url} ...${props} />`;
 }
 
-function Tile({ f, files = null, index = 0, title, sub = '', compact = false }) {
+function Tile({ f, files = null, index = 0, title, caption = '', compact = false }) {
   const m = useVideoFacts(f);
   const [pic, setPic] = useState(null); // the frame: { w, h } once it's in
   const [broken, setBroken] = useState(false);
   const w = m.w || pic?.w;
   const h = m.h || pic?.h;
   const wide = !compact && w > h;
-  const label = `${compact ? title : `Watch: ${title}`}${m.d ? `, ${lengthWords(m.d)}` : ''}`;
+  const label = `${compact ? title : `Watch ${title}`}${m.d ? `, ${lengthWords(m.d)}` : ''}`;
   return html`<a class=${`fv-tile${wide ? ' is-wide' : ''}${compact ? ' is-compact' : ''}`} ...${viewerLink(files || [f], files ? index : 0)} aria-label=${label}>
-    <span class=${`fv-tile-pic${f.thumb && !broken ? '' : ' is-empty'}`} style=${w && h ? `--ratio: ${w} / ${h}` : undefined}>
+    <span class="fv-tile-pic" style=${w && h ? `--ratio: ${w} / ${h}` : undefined}>
       ${f.thumb && !broken && html`<img class=${pic ? 'is-in' : ''} onLoad=${(e) => setPic({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} onError=${() => setBroken(true)} src=${f.thumb} alt="" decoding="async" />`}
-      <span class="fv-tile-play">${I.go(compact ? 14 : 30)}</span>
-      ${m.d && !compact ? html`<span class="fv-tile-len">${clock(m.d)}</span>` : null}
+      ${compact
+        ? html`<span class="fv-tile-play">${I.go(14)}</span>`
+        : html`<span class="fv-tile-go">${I.go(14)}Watch${m.d ? html`<b>${clock(m.d)}</b>` : null}</span>`}
     </span>
-    <span class="fv-tile-body">
-      <span class="fv-tile-title">${title}</span>
-      ${compact && m.d ? html`<span class="fv-tile-sub">${clock(m.d)}</span>` : sub && html`<span class="fv-tile-sub">${sub}</span>`}
-      ${!compact && html`<span class="fv-tile-go">${I.go(15)}Watch</span>`}
-    </span>
+    ${compact
+      ? html`<span class="fv-tile-body"><span class="fv-tile-title">${title}</span>${m.d ? html`<span class="fv-tile-sub">${clock(m.d)}</span>` : null}</span>`
+      : caption && html`<span class="fv-tile-cap">${caption}</span>`}
   </a>`;
 }
 
@@ -1098,43 +1098,31 @@ body.fv-open .toast-pinned { display: none; } /* the update notice waits until t
 .fv-time { padding: 0 .3rem; font-size: var(--fs-xs); color: #C8C9CD; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .fv-seek { flex: 1; min-width: 48px; height: 28px; margin: 0 .3rem; accent-color: #FFDA24; cursor: pointer; }
 .fv-seek:focus-visible { outline: 2px solid #FFDA24; outline-offset: 2px; }
-/* A video's front door. Near-black like the player it opens into, so the bars in a sideways phone video disappear;
-   the family's own picture and one yellow Watch are the only color. Most are phone videos, so the picture stands up
-   beside the words, and a wide one lies across the top. Nothing covers a face until you point at it: the play shows
-   then (and always when there's no picture to look at). The whole card is one link. */
-.fv-tile { --tile-h: 236px; display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1.05rem; padding: .7rem; border-radius: 18px; background: #0E0F11; color: #F2F2F3; text-decoration: none; box-shadow: var(--shadow-md); transition: box-shadow .25s var(--ease-out), transform .25s var(--ease-out); -webkit-tap-highlight-color: transparent; }
-.fv-tile-pic { position: relative; display: block; height: var(--tile-h); aspect-ratio: var(--ratio, 9 / 16); max-width: 100%; border-radius: 12px; overflow: hidden; background: #24252A; }
-.fv-tile-pic img { display: block; width: 100%; height: 100%; object-fit: cover; border: 0; border-radius: 0; opacity: 0; transition: opacity .25s ease-out, transform .45s var(--ease-out); }
+/* A video among the photos: its own frame in its own shape, so a phone video stands up and nothing is cropped, on the
+   viewer's near-black until the frame is in. One yellow Watch, low on the picture, clear of faces. */
+.fv-tile { display: grid; gap: .3rem; justify-items: start; min-width: 0; color: var(--color-text-secondary); font-size: var(--fs-2xs); text-decoration: none; -webkit-tap-highlight-color: transparent; }
+.fv-tile-pic { position: relative; display: block; height: var(--tile-h, min(264px, 62vw)); aspect-ratio: var(--ratio, 9 / 16); max-width: 100%; border-radius: 8px; overflow: hidden; background: #0E0F11; }
+.fv-tile-pic img { display: block; width: 100%; height: 100%; object-fit: cover; border: 0; border-radius: 0; opacity: 0; transition: opacity .25s ease-out, transform .2s; }
 .fv-tile-pic img.is-in { opacity: 1; }
-.fv-tile-play { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 60px; height: 60px; margin: -30px 0 0 -30px; border-radius: 999px; background: var(--color-primary); color: #141518; box-shadow: 0 8px 22px rgba(0, 0, 0, .38); opacity: 0; transform: scale(.82); transition: opacity .18s ease-out, transform .25s var(--ease-out); }
-.fv-tile-pic.is-empty .fv-tile-play, .fv-tile.is-compact .fv-tile-play, .fv-tile:focus-visible .fv-tile-play { opacity: 1; transform: none; }
-.fv-tile-len { position: absolute; right: 7px; bottom: 7px; padding: 2px 7px; border-radius: 7px; background: rgba(14, 15, 17, .84); font-size: var(--fs-xs); font-weight: 600; line-height: 1.4; font-variant-numeric: tabular-nums; }
-.fv-tile-body { display: flex; flex-direction: column; justify-content: flex-end; align-items: flex-start; min-width: 0; padding: .35rem .3rem .3rem 0; }
-.fv-tile-title { color: #F2F2F3; font-size: var(--fs-xl); font-weight: 700; line-height: 1.2; letter-spacing: -.012em; overflow-wrap: break-word; max-width: 100%; }
-.fv-tile-sub { margin-top: .3rem; font-size: var(--fs-sm); line-height: 1.35; color: #B9BABF; }
-.fv-tile-go { display: inline-flex; align-items: center; gap: .4rem; margin-top: 1rem; min-height: 40px; padding: 0 1.1rem 0 .9rem; border-radius: 999px; background: var(--color-primary); color: #141518; font-size: var(--fs-sm); font-weight: 650; line-height: 1; white-space: nowrap; transition: background-color .15s; }
-.fv-tile:focus-visible { outline: 2px solid var(--color-text); outline-offset: 3px; }
-.fv-tile:active { transform: scale(.992); }
+.fv-tile-go { position: absolute; left: 50%; bottom: .6rem; transform: translateX(-50%); display: inline-flex; align-items: center; gap: .3rem; min-height: 34px; padding: 0 .75rem 0 .55rem; border-radius: 999px; background: var(--color-primary); color: #141518; font-size: var(--fs-xs); font-weight: 650; line-height: 1; white-space: nowrap; box-shadow: 0 4px 14px rgba(0, 0, 0, .35); transition: background-color .15s; }
+.fv-tile-go b { margin-left: .1rem; font-weight: 500; font-variant-numeric: tabular-nums; }
+.fv-tile-cap { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fv-tile:focus-visible { outline: none; }
+.fv-tile:focus-visible .fv-tile-pic { outline: 2px solid var(--color-text); outline-offset: 2px; }
 @media (hover: hover) {
-  .fv-tile:hover { box-shadow: var(--shadow-lg); transform: translateY(-1px); }
-  .fv-tile:hover .fv-tile-pic img { transform: scale(1.03); }
-  .fv-tile:hover .fv-tile-play { opacity: 1; transform: none; }
+  .fv-tile:hover .fv-tile-pic img { transform: scale(1.04); }
+  .fv-tile:hover .fv-tile-go { background: var(--color-primary-hover); }
 }
-.fv-tile.is-wide { grid-template-columns: minmax(0, 1fr); gap: .7rem; }
+.fv-tile.is-wide { justify-items: stretch; }
 .fv-tile.is-wide .fv-tile-pic { width: 100%; height: auto; }
-.fv-tile.is-wide .fv-tile-body { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: .75rem; padding: 0 .3rem .15rem; }
-.fv-tile.is-wide .fv-tile-go { grid-column: 2; grid-row: 1 / span 2; margin: 0; }
-.fv-tile.is-wide .fv-tile-title { font-size: var(--fs-lg); }
-.fv-tile.is-wide .fv-tile-sub { margin-top: .1rem; }
-/* Small, inside a list of answers */
-.fv-tile.is-compact { --tile-h: 76px; gap: .7rem; padding: .35rem; align-items: center; border-radius: 12px; box-shadow: none; }
-.fv-tile.is-compact .fv-tile-pic { border-radius: 8px; max-width: 136px; }
-.fv-tile.is-compact .fv-tile-play { width: 26px; height: 26px; margin: -13px 0 0 -13px; }
-.fv-tile.is-compact .fv-tile-title { font-size: var(--fs-sm); font-weight: 650; letter-spacing: 0; }
-.fv-tile.is-compact .fv-tile-sub { margin-top: .1rem; font-size: var(--fs-xs); }
-.fv-tile.is-compact .fv-tile-body { padding: 0 .3rem 0 0; }
-@media (max-width: 520px) { .fv-tile:not(.is-compact) { --tile-h: 208px; gap: .85rem; } .fv-tile:not(.is-compact) .fv-tile-title { font-size: var(--fs-lg); } }
-@media (prefers-reduced-motion: reduce) { .fv-tile, .fv-tile-pic img, .fv-tile-play { transition: none; } .fv-tile:hover, .fv-tile:active, .fv-tile:hover .fv-tile-pic img { transform: none; } }
+/* Small and dark, inside a list of answers */
+.fv-tile.is-compact { --tile-h: 76px; grid-template-columns: auto minmax(0, 1fr); gap: .7rem; align-items: center; padding: .35rem; border-radius: 12px; background: #0E0F11; color: #F2F2F3; }
+.fv-tile.is-compact .fv-tile-pic { max-width: 136px; background: #24252A; }
+.fv-tile-play { position: absolute; left: 50%; top: 50%; display: grid; place-items: center; width: 26px; height: 26px; margin: -13px 0 0 -13px; border-radius: 999px; background: var(--color-primary); color: #141518; }
+.fv-tile-body { display: flex; flex-direction: column; min-width: 0; padding-right: .3rem; }
+.fv-tile-title { color: #F2F2F3; font-size: var(--fs-sm); font-weight: 650; line-height: 1.2; }
+.fv-tile-sub { margin-top: .1rem; font-size: var(--fs-xs); color: #B9BABF; font-variant-numeric: tabular-nums; }
+@media (prefers-reduced-motion: reduce) { .fv-tile-pic img { transition: none; } .fv-tile:hover .fv-tile-pic img { transform: none; } }
 
 .fv-audio { display: grid; gap: 1rem; justify-items: center; font-size: 3rem; }
 

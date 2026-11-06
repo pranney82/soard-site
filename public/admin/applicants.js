@@ -514,8 +514,6 @@ a.apl-file-chip:hover { border-color: var(--color-text-muted); background: var(-
 .apl-contact a:hover { text-decoration: underline; }
 .apl-files-panel { gap: .55rem; }
 .apl-files-label { margin-top: .35rem; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-muted); }
-.apl-app-row { display: flex; flex-wrap: wrap; gap: .55rem; } /* side by side when both fit, stacked when not */
-.apl-app-row > * { flex: 1 1 340px; min-width: 0; }
 .apl-app { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: .85rem; align-items: center; padding: .7rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-secondary); }
 .apl-app-cover { display: grid; place-items: center; width: 74px; height: 96px; border-radius: 6px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px var(--color-border), 0 2px 6px rgba(0, 0, 0, .06); font-size: var(--fs-2xl); text-decoration: none; transition: transform .15s, box-shadow .15s; }
 .apl-app-cover img { width: 100%; height: 100%; object-fit: cover; object-position: top; border: 0; border-radius: 0; }
@@ -531,6 +529,14 @@ a.apl-file-chip:hover { border-color: var(--color-text-muted); background: var(-
 .apl-gallery a:hover img { transform: scale(1.04); }
 .apl-gallery a:focus-visible .apl-ph { outline: 2px solid var(--color-text); outline-offset: 2px; }
 .apl-cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The video stands at the left and the first photos fill the rest, both edges level. A wide video lies across the top. */
+.apl-media { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .55rem .45rem; }
+.apl-media:has(.fv-tile.is-wide) { grid-template-columns: minmax(0, 1fr); }
+.apl-media:not(:has(.fv-tile.is-wide)) .apl-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); min-height: 0; }
+.apl-media:not(:has(.fv-tile.is-wide)) .apl-gallery.is-one { grid-template-columns: minmax(0, 1fr); }
+.apl-media:not(:has(.fv-tile.is-wide)) .apl-gallery a { grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
+.apl-media:not(:has(.fv-tile.is-wide)) .apl-ph { position: relative; aspect-ratio: auto; min-height: 0; }
+.apl-media:not(:has(.fv-tile.is-wide)) .apl-ph img { position: absolute; inset: 0; }
 .apl-doclist { display: grid; gap: .3rem; }
 .apl-doclist a { display: flex; gap: .65rem; align-items: center; font-size: var(--fs-xs); text-decoration: none; color: var(--color-text); padding: .4rem .45rem; border-radius: 8px; }
 .apl-doclist a:hover { background: var(--color-bg-hover); }
@@ -2568,8 +2574,8 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   };
   const [answersOpen, setAnswersOpen] = useState(false);
   const files = (d.files || []).map(f => (kindOf(f) === 'image' && f.thumb ? { ...f, preview: f.thumb.replace(/([?&]size=)\d+/, '$12048') } : f));
-  // The family's video leads, then the application: its PDF (JobTread's copy; for a website-form family
-  // without one, the site's). Then the photos, labeled, then the documents (onsite and Zoom notes, letters).
+  // The application leads: its PDF (JobTread's copy; for a website-form family without one, the site's). Then
+  // the video and the photos together, labeled, then the documents (onsite and Zoom notes, letters).
   let appPdf = files.find(f => kindOf(f) === 'pdf' && /application/i.test(f.name || ''));
   if (!appPdf && a.applicationId) appPdf = { name: `${a.name}_Application.pdf`, type: 'application/pdf', url: `/api/applications-admin?file=${encodeURIComponent(a.applicationId)}&field=pdf` };
   const appVideo = files.find(f => kindOf(f) === 'video' && /application/i.test(f.name || ''));
@@ -2577,8 +2583,12 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   const rank = (f) => { const l = photoLabel(f, a.name); return l === 'Child' ? 0 : l === 'Family' ? 1 : /^Space/.test(l) ? 2 + (Number(l.split(' ')[1]) || 0) : 20; };
   const photos = files.filter(f => kindOf(f) === 'image').sort((x, y) => rank(x) - rank(y) || String(x.at || '').localeCompare(String(y.at || '')));
   const docs = files.filter(f => kindOf(f) !== 'image' && f !== appPdf && f !== appVideo);
-  const shown = [appVideo, appPdf, ...photos, ...docs].filter(Boolean); // one set in the viewer, in the order it's shown here
+  const shown = [appPdf, appVideo, ...photos, ...docs].filter(Boolean); // one set in the viewer, in the order it's shown here
   const firstName = String(a.name || '').trim().split(/\s+/)[0];
+  const photoTile = (f) => html`<a ...${viewerLink(shown, shown.indexOf(f))} title=${f.name}>
+    <${PhotoTile} f=${f} />
+    <span class="apl-cap">${photoLabel(f, a.name)}</span>
+  </a>`;
   const videoTitle = org ? 'The application video' : firstName ? `${firstName}’s video` : 'The family’s video';
   const visible = SIDE_FIELDS.filter(k => fields[k] && (k !== 'denialReason' || a.status === 'Denied' || a.fields?.denialReason) && !(a.kind === 'organization' && CHILD_FIELDS.has(k)));
   return html`<section class="apl-side" aria-label="Details">
@@ -2613,8 +2623,6 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
 
     ${shown.length > 0 && html`<div class="apl-panel apl-files-panel">
       <h3>Application and files</h3>
-      ${(appVideo || appPdf) && html`<div class="apl-app-row">
-      ${appVideo && html`<${VideoTile} f=${appVideo} files=${shown} index=${shown.indexOf(appVideo)} title=${videoTitle} sub=${appVideo.at ? `Sent ${shortDate(appVideo.at)}` : ''} />`}
       ${appPdf && html`<div class="apl-app">
         <a class="apl-app-cover" ...${viewerLink(shown, shown.indexOf(appPdf))} aria-label="Read the application">
           ${appPdf.thumb ? html`<${FileThumb} f=${appPdf} />` : html`<span aria-hidden="true">${kindIcon(appPdf)}</span>`}
@@ -2628,13 +2636,16 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
           </div>
         </div>
       </div>`}
-      </div>`}
       ${a.applicationId && answersOpen && html`<${WebsiteAnswers} id=${a.applicationId} key=${a.applicationId} video=${appVideo} />`}
-      ${photos.length > 0 && html`<div class="apl-files-label">Photos</div>
-        <div class="apl-gallery">${photos.map(f => html`<a ...${viewerLink(shown, shown.indexOf(f))} title=${f.name}>
-          <${PhotoTile} f=${f} />
-          <span class="apl-cap">${photoLabel(f, a.name)}</span>
-        </a>`)}</div>`}
+      ${appVideo
+        ? html`<div class="apl-files-label">${photos.length ? 'Video and photos' : 'Video'}</div>
+          <div class="apl-media">
+            <${VideoTile} f=${appVideo} files=${shown} index=${shown.indexOf(appVideo)} title=${videoTitle} caption="Video" />
+            ${photos.length > 0 && html`<div class=${`apl-gallery${photos.length === 1 ? ' is-one' : ''}`}>${photos.slice(0, 4).map(photoTile)}</div>`}
+          </div>
+          ${photos.length > 4 && html`<div class="apl-gallery">${photos.slice(4).map(photoTile)}</div>`}`
+        : photos.length > 0 && html`<div class="apl-files-label">Photos</div>
+          <div class="apl-gallery">${photos.map(photoTile)}</div>`}
       ${docs.length > 0 && html`<div class="apl-files-label">Documents</div>
         <div class="apl-doclist">${docs.map(f => html`<a ...${viewerLink(shown, shown.indexOf(f))}>
           <${FileThumb} f=${f} />

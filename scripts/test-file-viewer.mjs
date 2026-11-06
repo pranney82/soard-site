@@ -318,7 +318,7 @@ const page = await open(1440, 900);
 await openFamily(page, avery.id);
 const sidebarBefore = await page.$eval('aside.sidebar', el => { const s = getComputedStyle(el); return [s.position, s.width, s.backgroundColor, s.display].join('|'); });
 
-// The panel: the video leads, then the application (its first page, Read, the answers), then labeled photos, then documents
+// The panel: the application leads (its first page, Read, the answers), then the video with the labeled photos, then documents
 const panel = await page.evaluate(() => ({
   card: !!document.querySelector('.apl-app .apl-app-cover img'),
   actions: [...document.querySelectorAll('.apl-app-actions button')].map(b => b.textContent.trim()),
@@ -328,7 +328,7 @@ const panel = await page.evaluate(() => ({
 }));
 ok(panel.card && JSON.stringify(panel.actions) === JSON.stringify(['Read the application', 'Answers']), `the application card: its first page, Read, the answers (${panel.actions.join(', ')})`);
 ok(JSON.stringify(panel.caps) === JSON.stringify(['Child', 'Family', 'Space 1']), `photos are labeled (${panel.caps.join(', ')})`);
-ok(JSON.stringify(panel.labels) === JSON.stringify(['Photos', 'Documents']) && panel.docs.length === 1 && /Therapist letter\s*DOCX · 22 KB · /.test(panel.docs[0]) && await page.$eval('.apl-doc-name', (el) => el.textContent) === 'Therapist letter', `documents list what each is (${panel.docs.join(' | ')})`);
+ok(JSON.stringify(panel.labels) === JSON.stringify(['Video and photos', 'Documents']) && panel.docs.length === 1 && /Therapist letter\s*DOCX · 22 KB · /.test(panel.docs[0]) && await page.$eval('.apl-doc-name', (el) => el.textContent) === 'Therapist letter', `documents list what each is (${panel.docs.join(' | ')})`);
 await page.$eval('.apl-files-panel', (el) => el.scrollIntoView({ block: 'center' }));
 await sleep(300);
 await page.screenshot({ path: join(OUT, 'desktop-panel.png'), clip: await page.$eval('.apl-files-panel', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 8, y: r.y - 8, width: r.width + 16, height: r.height + 16 }; }) });
@@ -394,7 +394,7 @@ await sleep(150);
 ok(await title(page) === 'Avery Stone.jpg', '← goes back');
 await page.click('.fv-thumb:nth-child(1)');
 await sleep(150);
-ok(await page.$eval('.fv-side .fv-nav', el => el.disabled) && await count(page) === '1 of 6', 'Previous is off on the first file (the video)');
+ok(await page.$eval('.fv-side .fv-nav', el => el.disabled) && await count(page) === '1 of 6', 'Previous is off on the first file (the application)');
 
 // The photo that's gone says so
 await page.click('.fv-thumb:nth-child(5)');
@@ -402,7 +402,7 @@ await page.waitForSelector('.fv-card', { timeout: 4000 }).catch(() => null);
 ok(/didn’t load/.test(await text(page, '.fv-card')) && !!(await page.$('.fv-card .fv-pill')), 'a photo that won’t load says so, with Download and a new tab');
 
 // The PDF: pdf.js under the admin's CSP
-await page.click('.fv-thumb:nth-child(2)');
+await page.click('.fv-thumb:nth-child(1)');
 await page.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1 && [...document.querySelectorAll('.fv-pdf .textLayer span')].some(s => /Avery Stone application/.test(s.textContent)), { timeout: 15000 }).catch(() => null);
 ok(await page.$$eval('.fv-pdf .page', els => els.length) === 2, 'the PDF’s two pages are there');
 ok(await page.$$eval('.fv-pdf .textLayer span', els => els.some(s => /Avery Stone application/.test(s.textContent))), 'its text is real text (selectable), Helvetica from the standard fonts');
@@ -461,7 +461,7 @@ ok(await page.evaluate(() => window.__prints.length) === 2, 'the Print button do
 await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
 
 // The video: plays, nothing drawn on the picture (not even the browser's control bar), the player's bar under it
-await page.keyboard.press('ArrowLeft');
+await page.keyboard.press('ArrowRight');
 await page.waitForFunction(() => { const v = document.querySelector('.fv-video'); return v && v.readyState >= 2 && !v.paused; }, { timeout: 8000 }).catch(() => null);
 const vid = await page.evaluate(() => {
   const v = document.querySelector('.fv-video');
@@ -585,13 +585,13 @@ ok(await page.evaluate(() => {
   const lum = (c) => { const [r, g, b] = c.match(/[\d.]+/g).map(Number).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
   return !!t && (lum(getComputedStyle(t.querySelector('.fv-tile-title')).color) + 0.05) / (lum(getComputedStyle(t).backgroundColor) + 0.05) >= 7;
 }), 'the small tile’s words read on the dark, whatever link color the answers set');
-ok(await clickText(page, '.apl-answers .fv-tile.is-compact', /Watch the video/), 'the answers’ video has a small tile (JobTread’s copy)');
+ok(await clickText(page, '.apl-answers .fv-tile.is-compact', /Watch the video/), 'the answers’ video has a small card (JobTread’s copy)');
 await page.waitForFunction(() => { const v = document.querySelector('.fv-video'); return v && !v.paused; }, { timeout: 6000 }).catch(() => null);
 ok(await title(page) === 'Avery Stone_Application.mp4' && await page.$eval('.fv-video', v => !v.paused).catch(() => false), 'and plays it in the viewer');
 await closeViewer(page);
 ok(await clickText(page, '.apl-app-actions button', /Read the application/), 'Read the application, on the card');
 await page.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1, { timeout: 10000 }).catch(() => null);
-ok(await title(page) === 'Avery Stone_Application.pdf' && await page.$$eval('.fv-pdf .page', els => els.length) === 2 && await count(page) === '2 of 6', 'opens the application, after the video in the family’s set');
+ok(await title(page) === 'Avery Stone_Application.pdf' && await page.$$eval('.fv-pdf .page', els => els.length) === 2 && await count(page) === '1 of 6', 'opens the application first in the family’s set');
 await closeViewer(page);
 ok(await clickText(page, '.apl-app-actions button', /Hide the answers/) && !(await page.$('.apl-answers')), 'Hide the answers folds them away');
 
@@ -612,115 +612,88 @@ await openFamily(page, remy.id);
 ok(!(await page.$$eval('.apl-drawer a', (els) => els.some((a) => /jotform/i.test(a.href)))) && !/original application/i.test(await text(page, '.apl-side')), 'a family with no application PDF in JobTread gets no link to Jotform either');
 const csp = await page.evaluate(() => window.__csp);
 ok(csp.length === 0, `no CSP violations${csp.length ? `: ${csp.slice(0, 4).join(' | ')}` : ''}`);
-// ── The video's tile: its front door on the family's panel ──
-console.log('The video’s tile');
+// ── The video among the photos ──
+console.log('The video with the photos');
 const leaveFamily = async (pg) => {
   await pg.keyboard.press('Escape');
   await pg.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 3000 }).catch(() => null);
 };
-const withVideo = async (pg, family) => {
-  await openFamily(pg, family);
-  await pg.waitForSelector('.fv-tile', { timeout: 6000 }).catch(() => null);
-  await pg.$eval('.fv-tile', (el) => el.scrollIntoView({ block: 'center' })).catch(() => null);
-  await sleep(350);
-};
-const tile = (pg) => pg.evaluate(() => {
+const media = (pg) => pg.evaluate(() => {
   const t = document.querySelector('.fv-tile');
   if (!t) return null;
   const pic = t.querySelector('.fv-tile-pic').getBoundingClientRect();
-  const body = t.querySelector('.fv-tile-body').getBoundingClientRect();
-  const play = t.querySelector('.fv-tile-play');
+  const ph = [...document.querySelectorAll('.apl-media .apl-ph')].map((e) => e.getBoundingClientRect());
+  const box = document.querySelector('.apl-media').getBoundingClientRect();
+  const panel = document.querySelector('.apl-files-panel').getBoundingClientRect();
   return {
-    tag: t.tagName, href: t.getAttribute('href'), label: t.getAttribute('aria-label'), inner: t.querySelectorAll('a, button').length,
-    wide: t.classList.contains('is-wide'), ratio: pic.width / pic.height, beside: pic.right <= body.left, above: pic.bottom <= body.top,
-    title: t.querySelector('.fv-tile-title')?.textContent, sub: t.querySelector('.fv-tile-sub')?.textContent || '',
-    go: t.querySelector('.fv-tile-go')?.textContent.trim(), len: t.querySelector('.fv-tile-len')?.textContent || '', playing: getComputedStyle(play).opacity, img: !!t.querySelector('img'), empty: t.querySelector('.fv-tile-pic').classList.contains('is-empty'),
-    first: document.querySelector('.apl-app-row')?.firstElementChild === t && document.querySelector('.apl-files-panel > h3')?.nextElementSibling === t.parentElement,
+    tag: t.tagName, href: t.getAttribute('href'), label: t.getAttribute('aria-label'), inner: t.querySelectorAll('a, button').length, wide: t.classList.contains('is-wide'),
+    ratio: pic.width / pic.height, go: t.querySelector('.fv-tile-go')?.textContent.trim(), goInside: t.querySelector('.fv-tile-go').getBoundingClientRect().bottom <= pic.bottom,
+    cap: t.querySelector('.fv-tile-cap')?.textContent, img: !!t.querySelector('img'), besideVideo: ph.length > 0 && ph.every((r) => r.left >= pic.right), under: ph.length > 0 && ph.every((r) => r.top >= pic.bottom),
+    level: ph.length ? Math.abs(Math.max(...ph.map((r) => r.bottom)) - pic.bottom) : null, photoH: ph.length ? Math.round(ph[0].height) : 0, photoW: ph.length ? Math.round(ph[0].width) : 0,
+    inside: box.right <= panel.right + 0.5 && box.left >= panel.left - 0.5, scroll: document.querySelector('.apl-side').scrollWidth <= document.querySelector('.apl-side').clientWidth,
   };
 });
 await leaveFamily(page);
-await withVideo(page, avery.id);
-let t0 = await tile(page);
-ok(t0 && t0.first, 'the family’s video leads the panel, above the application');
-ok(t0?.tag === 'A' && t0.inner === 0 && /cdn\.fake\/f-video/.test(t0.href), 'the whole card is one link to the file');
-ok(t0?.title === 'Avery’s video' && /^Sent /.test(t0.sub) && t0.go === 'Watch', `it’s named for the child, with the date and one Watch (${t0?.title} / ${t0?.sub} / ${t0?.go})`);
-ok(/^Watch: Avery’s video, \d+ second/.test(t0?.label) && !!t0.len, `its length shows, and it’s read out (${t0?.len}; ${t0?.label})`);
-ok(Math.abs(t0.ratio - 9 / 16) < 0.01 && t0.beside && !t0.wide, `a phone video stands up beside the words (${t0.ratio.toFixed(3)})`);
-ok(t0.playing === '0', 'nothing covers the family’s picture until you point at it');
-await page.hover('.fv-tile-pic');
-await sleep(350);
-ok((await tile(page)).playing === '1', 'pointing at it brings up the play');
-await page.mouse.move(5, 5);
-await sleep(300);
-await page.$eval('.apl-files-panel', (el) => { el.scrollIntoView({ block: 'start' }); });
-await sleep(150);
-await page.screenshot({ path: join(OUT, 'tile-tall.png'), clip: await page.$eval('.fv-tile', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 10, y: r.y - 10, width: r.width + 20, height: r.height + 20 }; }) });
+await openFamily(page, avery.id);
+await page.waitForSelector('.fv-tile img.is-in', { timeout: 6000 }).catch(() => null);
+await sleep(500);
+let t0 = await media(page);
+ok(t0?.tag === 'A' && t0.inner === 0 && /cdn\.fake\/f-video/.test(t0.href) && t0.cap === 'Video', 'the video is one link, labeled like the photos');
+ok(/^Watch\s*\d+:\d\d$/.test(t0?.go) && t0.goInside, `Watch and the length sit low on the picture (${t0?.go})`);
+ok(/^Watch Avery’s video, /.test(t0?.label), `it’s read out (${t0?.label})`);
+ok(Math.abs(t0.ratio - 9 / 16) < 0.01 && t0.besideVideo && t0.level < 1.5, `a phone video stands in its own shape with the photos beside it, both edges level (${t0.ratio.toFixed(3)}, ${t0.level})`);
+await page.$eval('.apl-media', (el) => el.scrollIntoView({ block: 'center' }));
+await sleep(200);
+await page.screenshot({ path: join(OUT, 'media-tall.png'), clip: await page.$eval('.apl-files-panel', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 8, y: Math.max(0, r.y - 8), width: r.width + 16, height: Math.min(r.height + 16, 880) }; }) });
 const axt = await axeScan(page, '.apl-files-panel');
-ok(axt.length === 0, `the panel with the tile: no axe violations${axt.length ? `: ${axeText(axt)}` : ''}`);
-const tileContrast = await page.evaluate(() => { const lum = (c) => { const [r, g, b] = c.match(/[\d.]+/g).map(Number).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; }; const on = lum(getComputedStyle(document.querySelector('.fv-tile')).backgroundColor); return [...document.querySelectorAll('.fv-tile-title, .fv-tile-sub')].map((e) => (lum(getComputedStyle(e).color) + 0.05) / (on + 0.05)); });
-ok(tileContrast.every((c) => c >= 7), `its words read on the dark (${tileContrast.map((c) => c.toFixed(1)).join(', ')}:1)`);
-
+ok(axt.length === 0, `the panel: no axe violations${axt.length ? `: ${axeText(axt)}` : ''}`);
+const tabsAtTile = newTabs;
 await page.click('.fv-tile');
 await page.waitForSelector('.fv[role="dialog"]', { timeout: 4000 }).catch(() => null);
-ok(await viewerOpen(page) && await title(page) === 'Avery Stone_Application.mp4' && await count(page) === '1 of 6', `the card opens the player over the drawer, first in the family’s set (${await count(page)})`);
+ok(await viewerOpen(page) && newTabs === tabsAtTile && await title(page) === 'Avery Stone_Application.mp4' && await count(page) === '2 of 6', `it opens in the player over the drawer, after the application in the family’s set (${await count(page)})`);
 await closeViewer(page);
-ok(!!(await page.$('.apl-drawer')) && await page.evaluate(() => document.activeElement === document.querySelector('.fv-tile')), 'closing leaves the drawer open, with focus back on the card');
+ok(!!(await page.$('.apl-drawer')) && await page.evaluate(() => document.activeElement === document.querySelector('.fv-tile')), 'closing leaves the drawer open, with focus back on the video');
 
 // The other shapes and the rare results
 await leaveFamily(page);
-await page.waitForFunction(() => true);
 await openFamily(page, wes.id);
-await page.waitForFunction(() => document.querySelector('.fv-tile.is-wide .fv-tile-len'), { timeout: 6000 }).catch(() => null);
-t0 = await tile(page);
-ok(t0?.wide && t0.above && Math.abs(t0.ratio - 4 / 3) < 0.02 && !!t0.len, `a wide video lies across the top, words under it, its length read from the file (${t0?.ratio?.toFixed(2)}, ${t0?.len})`);
-await page.$eval('.fv-tile', (el) => el.scrollIntoView({ block: 'center' }));
-await sleep(250);
-await page.screenshot({ path: join(OUT, 'tile-wide.png'), clip: await page.$eval('.fv-tile', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 10, y: r.y - 10, width: r.width + 20, height: r.height + 20 }; }) });
-ok(!(await page.$('.apl-app')), 'no application, no application card, and the video stands alone');
+await page.waitForFunction(() => document.querySelector('.fv-tile.is-wide .fv-tile-go b'), { timeout: 6000 }).catch(() => null);
+await sleep(300);
+t0 = await media(page);
+ok(t0?.wide && Math.abs(t0.ratio - 4 / 3) < 0.02, `a wide video lies across the top, whole (${t0?.ratio?.toFixed(2)})`);
+await page.$eval('.apl-media', (el) => el.scrollIntoView({ block: 'center' }));
+await sleep(200);
+await page.screenshot({ path: join(OUT, 'media-wide.png'), clip: await page.$eval('.apl-files-panel', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 8, y: Math.max(0, r.y - 8), width: r.width + 16, height: Math.min(r.height + 16, 880) }; }) });
+ok(await text(page, '.apl-files-label') === 'Video', 'no photos: the label says Video');
 await page.click('.apl-doclist a');
 await page.waitForSelector('.fv[role="dialog"]', { timeout: 4000 }).catch(() => null);
-ok(await title(page) === 'Walk through.mov', 'it opens in the viewer too');
+ok(await title(page) === 'Walk through.mov', 'a second video in Documents opens in the viewer too');
 await closeViewer(page);
 await leaveFamily(page);
 await openFamily(page, tess.id);
-await page.waitForFunction(() => document.querySelector('.fv-tile-pic.is-empty'), { timeout: 6000 }).catch(() => null);
-t0 = await tile(page);
-ok(t0?.empty && !t0.img && t0.playing === '1', 'a video whose frame won’t load: no broken image, the play stands in for the picture');
-await page.$eval('.fv-tile', (el) => el.scrollIntoView({ block: 'center' }));
-await sleep(250);
-await page.screenshot({ path: join(OUT, 'tile-empty.png'), clip: await page.$eval('.fv-tile', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 10, y: r.y - 10, width: r.width + 20, height: r.height + 20 }; }) });
+await page.waitForSelector('.fv-tile', { timeout: 6000 }).catch(() => null);
+await sleep(700);
+t0 = await media(page);
+ok(t0 && !t0.img && /^Watch/.test(t0.go), 'a video whose frame won’t load: no broken image, Watch on the dark');
 await openFamily(page, avery.id);
-await page.waitForFunction(() => document.querySelector('.fv-tile-title')?.textContent === 'Avery’s video', { timeout: 6000 }).catch(() => null);
 await page.waitForFunction(() => document.querySelector('.fv-tile-pic img.is-in'), { timeout: 6000 }).catch(() => null);
 ok(!!(await page.$('.fv-tile-pic img.is-in')), 'on to the next family, whose frame loads: the last one’s broken frame didn’t follow');
-
 await page.close();
 
-// Every width the drawer is used at: nothing sideways, the words never under the picture
+// Every width the drawer is used at: nothing sideways, the photos always beside the video
 const sweep = await open(1440, 900);
 await openFamily(sweep, avery.id);
-await sweep.waitForSelector('.fv-tile', { timeout: 6000 }).catch(() => null);
+await sweep.waitForSelector('.fv-tile img.is-in', { timeout: 6000 }).catch(() => null);
 for (const width of [320, 390, 768, 820, 1025, 1100, 1180, 1280, 1440]) {
   await sweep.setViewport({ width, height: 900, deviceScaleFactor: 2, isMobile: false, hasTouch: false });
   await sleep(200);
-  await sweep.evaluate(() => { [...document.querySelectorAll('.apl-dtabs button, .apl-panes button, [role="tab"]')].find((b) => /^Details$/.test(b.textContent.trim()))?.click(); });
-  await sleep(120);
-  const r = await sweep.evaluate(() => {
-    const t = document.querySelector('.fv-tile');
-    if (!t || !t.getClientRects().length) return { missing: true };
-    const box = t.getBoundingClientRect();
-    const panel = document.querySelector('.apl-files-panel').getBoundingClientRect();
-    const pic = t.querySelector('.fv-tile-pic').getBoundingClientRect();
-    const body = t.querySelector('.fv-tile-body').getBoundingClientRect();
-    const go = t.querySelector('.fv-tile-go').getBoundingClientRect();
-    const app = document.querySelector('.apl-app').getBoundingClientRect();
-    return { w: Math.round(box.width), inside: box.right <= panel.right + 0.5 && box.left >= panel.left - 0.5 && app.right <= panel.right + 0.5, beside: pic.right <= body.left, goInside: go.right <= box.right && go.bottom <= box.bottom + 0.5, scroll: document.querySelector('.apl-side').scrollWidth <= document.querySelector('.apl-side').clientWidth, room: box.width <= 460 || panel.width > 900 };
-  });
-  ok(!r.missing && r.inside && r.beside && r.goInside && r.scroll && r.room, `${width}px: the card fits, never a wide empty band (${JSON.stringify(r)})`);
-  if (width === 390) await sweep.screenshot({ path: join(OUT, 'tile-390.png') });
+  await sweep.evaluate(() => { [...document.querySelectorAll('[role="tab"], button')].find((b) => /^Details$/.test(b.textContent.trim()))?.click(); });
+  await sleep(150);
+  const r = await media(sweep);
+  ok(r && r.inside && r.scroll && r.besideVideo && r.level < 1.5 && r.photoW >= 60, `${width}px: the video and photos fit, level (${JSON.stringify({ w: r?.photoW, h: r?.photoH, level: r?.level })})`);
+  if (width === 390) await sweep.screenshot({ path: join(OUT, 'media-390.png') });
 }
 await sweep.close();
-
 
 // A tab opened before this work still runs under the old CSP: JobTread's CDN can't be fetched from it.
 // PDFs and Download come through the admin instead (images and videos never needed connect-src).
@@ -783,7 +756,7 @@ await sleep(300);
 ok(await text(phone, '.fv-pnav .fv-count') === '4 of 6', `a swipe goes to the next file (${await text(phone, '.fv-pnav .fv-count')})`);
 // Past the photo that's gone, back to the application: the PDF fits the phone's width
 await phone.evaluate(() => document.querySelectorAll('.fv-pnav .fv-nav')[1].click());
-for (let k = 0; k < 3; k++) await phone.evaluate(() => document.querySelectorAll('.fv-pnav .fv-nav')[0].click());
+for (let k = 0; k < 4; k++) await phone.evaluate(() => document.querySelectorAll('.fv-pnav .fv-nav')[0].click());
 await phone.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1, { timeout: 10000 }).catch(() => null);
 const pw = await phone.$eval('.fv-pdf .page', el => el.getBoundingClientRect().width).catch(() => 0);
 const pwide = await phone.evaluate(() => [...document.querySelectorAll('.fv, .fv-bar, .fv-stage, .fv-media, .fv-foot, .fv-foot *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => e.className).slice(0, 3));
