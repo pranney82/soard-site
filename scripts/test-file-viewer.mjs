@@ -5,7 +5,8 @@
  * admin's real Content-Security-Policy from public/_headers on every /admin/ response, the real
  * /api/applicants-admin and /api/applications-admin handlers on an in-memory D1, R2 and JobTread,
  * and real files: JPEG photos, a two-page PDF in Helvetica (pdf-lib, like our application PDF),
- * a WebM recorded in the browser, a Word file and one photo that's gone.
+ * WebMs recorded in the browser (a phone-shaped one, like most families', and a wide one), a Word
+ * file and one photo that's gone.
  *
  * Checks, at 1440px and on a 390px phone:
  *   - a photo, a PDF, a video, a message attachment and the application open over the drawer,
@@ -13,7 +14,7 @@
  *   - photos: keys, buttons, double-click zoom, drag to pan, fit; the strip and ← / →
  *   - PDFs: pdf.js draws both pages under the admin CSP (worker, fonts), selectable text,
  *     page count, zoom; its stylesheet leaves the admin's sidebar alone
- *   - videos play with nothing drawn on the picture
+ *   - videos play with nothing drawn on the picture; the card that opens them, phone-shaped or wide
  *   - a Word file and a missing photo say so, with Download; Download saves under the file's name
  *   - Esc and Back close it, the drawer stays open, focus goes back to what opened it
  *   - the website form's photos, PDF and video; a Jotform-era family's "Read the application"
@@ -81,6 +82,7 @@ const BODIES = {
   docx: { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', body: Buffer.from('PK not really a docx') },
 };
 const THUMB = await jpeg(600, 400, 'thumb', 0);
+const FRAME = { 'f-video': await jpeg(338, 600, 'Avery', 40), 'w-video': await jpeg(600, 450, 'Wes', 200), 'w-walk': await jpeg(600, 450, 'Walk', 150) };
 
 // ── JobTread (fake): Avery's account with everything, and a Jotform-era family ──
 const w = fakeApplicantWorld();
@@ -136,10 +138,26 @@ const remy = {
   contacts: [], locations: [], comments: [], jobs: [],
   files: [{ id: 'r-photo', name: 'Remy.jpg', type: 'image/jpeg', size: BODIES.child.body.length, createdAt: day(400) }],
 };
+// A wide video, with a second one that lands in Documents and no application at all
+const wes = {
+  id: 'acctwes00001', name: 'Wes Lane', type: 'customer', org: ORG, createdAt: day(300),
+  fields: { [F.status]: 'Approved', [F.year]: '2026', [F.types]: ['Bedroom'], [F.diagnosis]: 'Autism', [F.birthday]: '2013-03-03' },
+  contacts: [], locations: [], comments: [], jobs: [],
+  files: [{ id: 'w-video', name: 'Wes Lane_Application.mp4', type: 'video/mp4', size: 90000, createdAt: day(300) }, { id: 'w-walk', name: 'Walk through.mov', type: 'video/quicktime', size: 90000, createdAt: day(200) }],
+};
+// A video JobTread has no frame for
+const tess = {
+  id: 'accttess0001', name: 'Tess Moore', type: 'customer', org: ORG, createdAt: day(200),
+  fields: { [F.status]: 'Approved', [F.year]: '2026', [F.types]: ['Bedroom'], [F.diagnosis]: 'Autism', [F.birthday]: '2013-03-03' },
+  contacts: [], locations: [], comments: [], jobs: [],
+  files: [{ id: 't-video', name: 'Tess Moore_Application.mp4', type: 'video/mp4', size: 90000, createdAt: day(200) }],
+};
+w.world.accounts[wes.id] = wes;
+w.world.accounts[tess.id] = tess;
 w.world.accounts[avery.id] = avery;
 w.world.accounts[nora.id] = nora;
 w.world.accounts[remy.id] = remy;
-const FILE_BODY = { 'r-photo': 'child', 'f-child': 'child', 'f-family': 'family', 'f-pdf': 'pdf', 'f-pdf2': 'pdf', 'f-docx': 'docx', 'n-pdf': 'pdf', 'n-photo': 'space' };
+const FILE_BODY = { 'w-video': 'wide', 'w-walk': 'wide', 't-video': 'video', 'r-photo': 'child', 'f-child': 'child', 'f-family': 'family', 'f-pdf': 'pdf', 'f-pdf2': 'pdf', 'f-docx': 'docx', 'n-pdf': 'pdf', 'n-photo': 'space' };
 
 // ── D1 and R2: Avery's website application (answers, four photos, the PDF) ──
 const DB = await createD1();
@@ -201,12 +219,12 @@ const SITE = `http://127.0.0.1:${server.address().port}`;
 
 // Frames on Chrome's own clock, not the display's: with the Mac's display asleep, canvas recording and
 // requestAnimationFrame otherwise stop and the run hangs
-const browser = await puppeteer.launch({ headless: true, args: ['--disable-gpu', '--disable-gpu-vsync', '--disable-frame-rate-limit', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--autoplay-policy=no-user-gesture-required'] });
+const browser = await puppeteer.launch({ headless: 'shell', args: ['--disable-gpu', '--disable-gpu-vsync', '--disable-frame-rate-limit', '--disable-background-timer-throttling', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--autoplay-policy=no-user-gesture-required'] });
 
-// A short WebM, recorded in the browser (no ffmpeg needed): the "video" JobTread serves
+// Short WebMs, recorded in the browser (no ffmpeg needed): the "videos" JobTread serves
 const rec = await browser.newPage();
-const WEBM = Buffer.from(await rec.evaluate(async () => {
-  const c = Object.assign(document.createElement('canvas'), { width: 320, height: 240 });
+const record = (width, height, ms) => rec.evaluate(async (W, H, MS) => {
+  const c = Object.assign(document.createElement('canvas'), { width: W, height: H });
   const g = c.getContext('2d');
   const r = new MediaRecorder(c.captureStream(24), { mimeType: 'video/webm' });
   const parts = [];
@@ -214,11 +232,13 @@ const WEBM = Buffer.from(await rec.evaluate(async () => {
   r.start();
   const t0 = performance.now();
   // A timer, not requestAnimationFrame: frames stop while the Mac's display sleeps
-  await new Promise((done) => { const tick = () => { const t = performance.now() - t0; g.fillStyle = `hsl(${t / 5},60%,55%)`; g.fillRect(0, 0, 320, 240); if (t < 1500) setTimeout(tick, 40); else done(); }; tick(); });
+  await new Promise((done) => { const tick = () => { const t = performance.now() - t0; g.fillStyle = `hsl(${t / 5},60%,55%)`; g.fillRect(0, 0, W, H); if (t < MS) setTimeout(tick, 40); else done(); }; tick(); });
   r.stop();
   await new Promise((d) => { r.onstop = d; });
   return [...new Uint8Array(await new Blob(parts).arrayBuffer())];
-}));
+}, width, height, ms);
+const WEBM = Buffer.from(await record(270, 480, 1500));
+BODIES.wide = { type: 'video/webm', body: Buffer.from(await record(320, 240, 1200)) };
 await rec.close();
 BODIES.video = { type: 'video/webm', body: WEBM };
 FILE_BODY['f-video'] = 'video';
@@ -230,7 +250,7 @@ async function answer(req) {
     const id = url.pathname.slice(1);
     const kind = FILE_BODY[id];
     if (!kind) return req.respond({ status: 404, headers: CORS, body: 'gone' });
-    if (url.searchParams.get('size')) return id === 'f-docx' ? req.respond({ status: 404, headers: CORS, body: '' }) : req.respond({ status: 200, contentType: 'image/jpeg', headers: CORS, body: THUMB });
+    if (url.searchParams.get('size')) return id === 'f-docx' || id === 't-video' ? req.respond({ status: 404, headers: CORS, body: '' }) : req.respond({ status: 200, contentType: 'image/jpeg', headers: CORS, body: FRAME[id] || THUMB });
     return req.respond({ status: 200, contentType: BODIES[kind].type, headers: { ...CORS, 'Content-Disposition': 'inline' }, body: BODIES[kind].body });
   }
   if (url.pathname === '/api/applicants-admin' || url.pathname === '/api/applications-admin') {
@@ -298,7 +318,7 @@ const page = await open(1440, 900);
 await openFamily(page, avery.id);
 const sidebarBefore = await page.$eval('aside.sidebar', el => { const s = getComputedStyle(el); return [s.position, s.width, s.backgroundColor, s.display].join('|'); });
 
-// The panel: the application leads (its first page, Read, the video, the answers), then labeled photos, then documents
+// The panel: the video leads, then the application (its first page, Read, the answers), then labeled photos, then documents
 const panel = await page.evaluate(() => ({
   card: !!document.querySelector('.apl-app .apl-app-cover img'),
   actions: [...document.querySelectorAll('.apl-app-actions button')].map(b => b.textContent.trim()),
@@ -306,7 +326,7 @@ const panel = await page.evaluate(() => ({
   docs: [...document.querySelectorAll('.apl-doclist a')].map(a => a.textContent.replace(/\s+/g, ' ').trim()),
   labels: [...document.querySelectorAll('.apl-files-label')].map(l => l.textContent.trim()),
 }));
-ok(panel.card && JSON.stringify(panel.actions) === JSON.stringify(['Read the application', '▶ Watch the video', 'Answers']), `the application card: its first page, Read, the video, the answers (${panel.actions.join(', ')})`);
+ok(panel.card && JSON.stringify(panel.actions) === JSON.stringify(['Read the application', 'Answers']), `the application card: its first page, Read, the answers (${panel.actions.join(', ')})`);
 ok(JSON.stringify(panel.caps) === JSON.stringify(['Child', 'Family', 'Space 1']), `photos are labeled (${panel.caps.join(', ')})`);
 ok(JSON.stringify(panel.labels) === JSON.stringify(['Photos', 'Documents']) && panel.docs.length === 1 && /Therapist letter\s*DOCX · 22 KB · /.test(panel.docs[0]) && await page.$eval('.apl-doc-name', (el) => el.textContent) === 'Therapist letter', `documents list what each is (${panel.docs.join(' | ')})`);
 await page.$eval('.apl-files-panel', (el) => el.scrollIntoView({ block: 'center' }));
@@ -374,7 +394,7 @@ await sleep(150);
 ok(await title(page) === 'Avery Stone.jpg', '← goes back');
 await page.click('.fv-thumb:nth-child(1)');
 await sleep(150);
-ok(await page.$eval('.fv-side .fv-nav', el => el.disabled) && await count(page) === '1 of 6', 'Previous is off on the first file (the application)');
+ok(await page.$eval('.fv-side .fv-nav', el => el.disabled) && await count(page) === '1 of 6', 'Previous is off on the first file (the video)');
 
 // The photo that's gone says so
 await page.click('.fv-thumb:nth-child(5)');
@@ -382,7 +402,7 @@ await page.waitForSelector('.fv-card', { timeout: 4000 }).catch(() => null);
 ok(/didn’t load/.test(await text(page, '.fv-card')) && !!(await page.$('.fv-card .fv-pill')), 'a photo that won’t load says so, with Download and a new tab');
 
 // The PDF: pdf.js under the admin's CSP
-await page.click('.fv-thumb:nth-child(1)');
+await page.click('.fv-thumb:nth-child(2)');
 await page.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1 && [...document.querySelectorAll('.fv-pdf .textLayer span')].some(s => /Avery Stone application/.test(s.textContent)), { timeout: 15000 }).catch(() => null);
 ok(await page.$$eval('.fv-pdf .page', els => els.length) === 2, 'the PDF’s two pages are there');
 ok(await page.$$eval('.fv-pdf .textLayer span', els => els.some(s => /Avery Stone application/.test(s.textContent))), 'its text is real text (selectable), Helvetica from the standard fonts');
@@ -441,7 +461,7 @@ ok(await page.evaluate(() => window.__prints.length) === 2, 'the Print button do
 await page.evaluate(() => window.dispatchEvent(new Event('afterprint')));
 
 // The video: plays, nothing drawn on the picture (not even the browser's control bar), the player's bar under it
-await page.keyboard.press('ArrowRight');
+await page.keyboard.press('ArrowLeft');
 await page.waitForFunction(() => { const v = document.querySelector('.fv-video'); return v && v.readyState >= 2 && !v.paused; }, { timeout: 8000 }).catch(() => null);
 const vid = await page.evaluate(() => {
   const v = document.querySelector('.fv-video');
@@ -560,13 +580,18 @@ if (answerPhoto) {
   ok(saved.some(n => /^Avery Stone - .*child\.jpg$/i.test(n)), `Download names it after the family and the question (${saved.join(', ')})`);
   await closeViewer(page);
 }
-ok(await clickText(page, '.apl-answers .apl-more', /Watch the video/), 'the answers’ video has Watch the video (JobTread’s copy)');
+ok(await page.evaluate(() => {
+  const t = document.querySelector('.apl-answers .fv-tile.is-compact');
+  const lum = (c) => { const [r, g, b] = c.match(/[\d.]+/g).map(Number).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+  return !!t && (lum(getComputedStyle(t.querySelector('.fv-tile-title')).color) + 0.05) / (lum(getComputedStyle(t).backgroundColor) + 0.05) >= 7;
+}), 'the small tile’s words read on the dark, whatever link color the answers set');
+ok(await clickText(page, '.apl-answers .fv-tile.is-compact', /Watch the video/), 'the answers’ video has a small tile (JobTread’s copy)');
 await page.waitForFunction(() => { const v = document.querySelector('.fv-video'); return v && !v.paused; }, { timeout: 6000 }).catch(() => null);
 ok(await title(page) === 'Avery Stone_Application.mp4' && await page.$eval('.fv-video', v => !v.paused).catch(() => false), 'and plays it in the viewer');
 await closeViewer(page);
 ok(await clickText(page, '.apl-app-actions button', /Read the application/), 'Read the application, on the card');
 await page.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1, { timeout: 10000 }).catch(() => null);
-ok(await title(page) === 'Avery Stone_Application.pdf' && await page.$$eval('.fv-pdf .page', els => els.length) === 2 && await count(page) === '1 of 6', 'opens the application first in the family’s set');
+ok(await title(page) === 'Avery Stone_Application.pdf' && await page.$$eval('.fv-pdf .page', els => els.length) === 2 && await count(page) === '2 of 6', 'opens the application, after the video in the family’s set');
 await closeViewer(page);
 ok(await clickText(page, '.apl-app-actions button', /Hide the answers/) && !(await page.$('.apl-answers')), 'Hide the answers folds them away');
 
@@ -587,7 +612,115 @@ await openFamily(page, remy.id);
 ok(!(await page.$$eval('.apl-drawer a', (els) => els.some((a) => /jotform/i.test(a.href)))) && !/original application/i.test(await text(page, '.apl-side')), 'a family with no application PDF in JobTread gets no link to Jotform either');
 const csp = await page.evaluate(() => window.__csp);
 ok(csp.length === 0, `no CSP violations${csp.length ? `: ${csp.slice(0, 4).join(' | ')}` : ''}`);
+// ── The video's tile: its front door on the family's panel ──
+console.log('The video’s tile');
+const leaveFamily = async (pg) => {
+  await pg.keyboard.press('Escape');
+  await pg.waitForFunction(() => !document.querySelector('.apl-drawer'), { timeout: 3000 }).catch(() => null);
+};
+const withVideo = async (pg, family) => {
+  await openFamily(pg, family);
+  await pg.waitForSelector('.fv-tile', { timeout: 6000 }).catch(() => null);
+  await pg.$eval('.fv-tile', (el) => el.scrollIntoView({ block: 'center' })).catch(() => null);
+  await sleep(350);
+};
+const tile = (pg) => pg.evaluate(() => {
+  const t = document.querySelector('.fv-tile');
+  if (!t) return null;
+  const pic = t.querySelector('.fv-tile-pic').getBoundingClientRect();
+  const body = t.querySelector('.fv-tile-body').getBoundingClientRect();
+  const play = t.querySelector('.fv-tile-play');
+  return {
+    tag: t.tagName, href: t.getAttribute('href'), label: t.getAttribute('aria-label'), inner: t.querySelectorAll('a, button').length,
+    wide: t.classList.contains('is-wide'), ratio: pic.width / pic.height, beside: pic.right <= body.left, above: pic.bottom <= body.top,
+    title: t.querySelector('.fv-tile-title')?.textContent, sub: t.querySelector('.fv-tile-sub')?.textContent || '',
+    go: t.querySelector('.fv-tile-go')?.textContent.trim(), len: t.querySelector('.fv-tile-len')?.textContent || '', playing: getComputedStyle(play).opacity, img: !!t.querySelector('img'), empty: t.querySelector('.fv-tile-pic').classList.contains('is-empty'),
+    first: document.querySelector('.apl-app-row')?.firstElementChild === t && document.querySelector('.apl-files-panel > h3')?.nextElementSibling === t.parentElement,
+  };
+});
+await leaveFamily(page);
+await withVideo(page, avery.id);
+let t0 = await tile(page);
+ok(t0 && t0.first, 'the family’s video leads the panel, above the application');
+ok(t0?.tag === 'A' && t0.inner === 0 && /cdn\.fake\/f-video/.test(t0.href), 'the whole card is one link to the file');
+ok(t0?.title === 'Avery’s video' && /^Sent /.test(t0.sub) && t0.go === 'Watch', `it’s named for the child, with the date and one Watch (${t0?.title} / ${t0?.sub} / ${t0?.go})`);
+ok(/^Watch: Avery’s video, \d+ second/.test(t0?.label) && !!t0.len, `its length shows, and it’s read out (${t0?.len}; ${t0?.label})`);
+ok(Math.abs(t0.ratio - 9 / 16) < 0.01 && t0.beside && !t0.wide, `a phone video stands up beside the words (${t0.ratio.toFixed(3)})`);
+ok(t0.playing === '0', 'nothing covers the family’s picture until you point at it');
+await page.hover('.fv-tile-pic');
+await sleep(350);
+ok((await tile(page)).playing === '1', 'pointing at it brings up the play');
+await page.mouse.move(5, 5);
+await sleep(300);
+await page.$eval('.apl-files-panel', (el) => { el.scrollIntoView({ block: 'start' }); });
+await sleep(150);
+await page.screenshot({ path: join(OUT, 'tile-tall.png'), clip: await page.$eval('.fv-tile', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 10, y: r.y - 10, width: r.width + 20, height: r.height + 20 }; }) });
+const axt = await axeScan(page, '.apl-files-panel');
+ok(axt.length === 0, `the panel with the tile: no axe violations${axt.length ? `: ${axeText(axt)}` : ''}`);
+const tileContrast = await page.evaluate(() => { const lum = (c) => { const [r, g, b] = c.match(/[\d.]+/g).map(Number).map((v) => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; }; const on = lum(getComputedStyle(document.querySelector('.fv-tile')).backgroundColor); return [...document.querySelectorAll('.fv-tile-title, .fv-tile-sub')].map((e) => (lum(getComputedStyle(e).color) + 0.05) / (on + 0.05)); });
+ok(tileContrast.every((c) => c >= 7), `its words read on the dark (${tileContrast.map((c) => c.toFixed(1)).join(', ')}:1)`);
+
+await page.click('.fv-tile');
+await page.waitForSelector('.fv[role="dialog"]', { timeout: 4000 }).catch(() => null);
+ok(await viewerOpen(page) && await title(page) === 'Avery Stone_Application.mp4' && await count(page) === '1 of 6', `the card opens the player over the drawer, first in the family’s set (${await count(page)})`);
+await closeViewer(page);
+ok(!!(await page.$('.apl-drawer')) && await page.evaluate(() => document.activeElement === document.querySelector('.fv-tile')), 'closing leaves the drawer open, with focus back on the card');
+
+// The other shapes and the rare results
+await leaveFamily(page);
+await page.waitForFunction(() => true);
+await openFamily(page, wes.id);
+await page.waitForFunction(() => document.querySelector('.fv-tile.is-wide .fv-tile-len'), { timeout: 6000 }).catch(() => null);
+t0 = await tile(page);
+ok(t0?.wide && t0.above && Math.abs(t0.ratio - 4 / 3) < 0.02 && !!t0.len, `a wide video lies across the top, words under it, its length read from the file (${t0?.ratio?.toFixed(2)}, ${t0?.len})`);
+await page.$eval('.fv-tile', (el) => el.scrollIntoView({ block: 'center' }));
+await sleep(250);
+await page.screenshot({ path: join(OUT, 'tile-wide.png'), clip: await page.$eval('.fv-tile', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 10, y: r.y - 10, width: r.width + 20, height: r.height + 20 }; }) });
+ok(!(await page.$('.apl-app')), 'no application, no application card, and the video stands alone');
+await page.click('.apl-doclist a');
+await page.waitForSelector('.fv[role="dialog"]', { timeout: 4000 }).catch(() => null);
+ok(await title(page) === 'Walk through.mov', 'it opens in the viewer too');
+await closeViewer(page);
+await leaveFamily(page);
+await openFamily(page, tess.id);
+await page.waitForFunction(() => document.querySelector('.fv-tile-pic.is-empty'), { timeout: 6000 }).catch(() => null);
+t0 = await tile(page);
+ok(t0?.empty && !t0.img && t0.playing === '1', 'a video whose frame won’t load: no broken image, the play stands in for the picture');
+await page.$eval('.fv-tile', (el) => el.scrollIntoView({ block: 'center' }));
+await sleep(250);
+await page.screenshot({ path: join(OUT, 'tile-empty.png'), clip: await page.$eval('.fv-tile', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 10, y: r.y - 10, width: r.width + 20, height: r.height + 20 }; }) });
+await openFamily(page, avery.id);
+await page.waitForFunction(() => document.querySelector('.fv-tile-title')?.textContent === 'Avery’s video', { timeout: 6000 }).catch(() => null);
+await page.waitForFunction(() => document.querySelector('.fv-tile-pic img.is-in'), { timeout: 6000 }).catch(() => null);
+ok(!!(await page.$('.fv-tile-pic img.is-in')), 'on to the next family, whose frame loads: the last one’s broken frame didn’t follow');
+
 await page.close();
+
+// Every width the drawer is used at: nothing sideways, the words never under the picture
+const sweep = await open(1440, 900);
+await openFamily(sweep, avery.id);
+await sweep.waitForSelector('.fv-tile', { timeout: 6000 }).catch(() => null);
+for (const width of [320, 390, 768, 820, 1025, 1100, 1180, 1280, 1440]) {
+  await sweep.setViewport({ width, height: 900, deviceScaleFactor: 2, isMobile: false, hasTouch: false });
+  await sleep(200);
+  await sweep.evaluate(() => { [...document.querySelectorAll('.apl-dtabs button, .apl-panes button, [role="tab"]')].find((b) => /^Details$/.test(b.textContent.trim()))?.click(); });
+  await sleep(120);
+  const r = await sweep.evaluate(() => {
+    const t = document.querySelector('.fv-tile');
+    if (!t || !t.getClientRects().length) return { missing: true };
+    const box = t.getBoundingClientRect();
+    const panel = document.querySelector('.apl-files-panel').getBoundingClientRect();
+    const pic = t.querySelector('.fv-tile-pic').getBoundingClientRect();
+    const body = t.querySelector('.fv-tile-body').getBoundingClientRect();
+    const go = t.querySelector('.fv-tile-go').getBoundingClientRect();
+    const app = document.querySelector('.apl-app').getBoundingClientRect();
+    return { w: Math.round(box.width), inside: box.right <= panel.right + 0.5 && box.left >= panel.left - 0.5 && app.right <= panel.right + 0.5, beside: pic.right <= body.left, goInside: go.right <= box.right && go.bottom <= box.bottom + 0.5, scroll: document.querySelector('.apl-side').scrollWidth <= document.querySelector('.apl-side').clientWidth, room: box.width <= 460 || panel.width > 900 };
+  });
+  ok(!r.missing && r.inside && r.beside && r.goInside && r.scroll && r.room, `${width}px: the card fits, never a wide empty band (${JSON.stringify(r)})`);
+  if (width === 390) await sweep.screenshot({ path: join(OUT, 'tile-390.png') });
+}
+await sweep.close();
+
 
 // A tab opened before this work still runs under the old CSP: JobTread's CDN can't be fetched from it.
 // PDFs and Download come through the admin instead (images and videos never needed connect-src).
@@ -650,7 +783,7 @@ await sleep(300);
 ok(await text(phone, '.fv-pnav .fv-count') === '4 of 6', `a swipe goes to the next file (${await text(phone, '.fv-pnav .fv-count')})`);
 // Past the photo that's gone, back to the application: the PDF fits the phone's width
 await phone.evaluate(() => document.querySelectorAll('.fv-pnav .fv-nav')[1].click());
-for (let k = 0; k < 4; k++) await phone.evaluate(() => document.querySelectorAll('.fv-pnav .fv-nav')[0].click());
+for (let k = 0; k < 3; k++) await phone.evaluate(() => document.querySelectorAll('.fv-pnav .fv-nav')[0].click());
 await phone.waitForFunction(() => document.querySelectorAll('.fv-pdf .page canvas').length >= 1, { timeout: 10000 }).catch(() => null);
 const pw = await phone.$eval('.fv-pdf .page', el => el.getBoundingClientRect().width).catch(() => 0);
 const pwide = await phone.evaluate(() => [...document.querySelectorAll('.fv, .fv-bar, .fv-stage, .fv-media, .fv-foot, .fv-foot *')].filter(e => e.getBoundingClientRect().right > innerWidth + 1).map(e => e.className).slice(0, 3));

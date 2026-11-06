@@ -43,7 +43,7 @@
 
 import { h, htm, useState, useEffect, useRef, useMemo, useCallback, Sortable } from './vendor.js';
 import { nearRing, bandChanges } from './area-shared.js';
-import { openViewer, viewerLink, warmFiles, kindOf, kindIcon, sizeText, extOf } from './file-viewer.js';
+import { openViewer, viewerLink, warmFiles, kindOf, kindIcon, sizeText, extOf, VideoTile } from './file-viewer.js';
 import { ask } from './ask.js';
 import { useDialog, holdTab } from './dialog.js';
 import { RUBRIC_VERSION, SHEET_RUBRIC, TIERS, TOTAL_MAX, criteriaOf, keysOf, rubricOfSeason, fmtScore, tierById, tierOf, totalOf, scoredCount } from './scoring-shared.js';
@@ -514,6 +514,8 @@ a.apl-file-chip:hover { border-color: var(--color-text-muted); background: var(-
 .apl-contact a:hover { text-decoration: underline; }
 .apl-files-panel { gap: .55rem; }
 .apl-files-label { margin-top: .35rem; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: var(--color-text-muted); }
+.apl-app-row { display: flex; flex-wrap: wrap; gap: .55rem; } /* side by side when both fit, stacked when not */
+.apl-app-row > * { flex: 1 1 340px; min-width: 0; }
 .apl-app { display: grid; grid-template-columns: 74px minmax(0, 1fr); gap: .85rem; align-items: center; padding: .7rem; border: 1px solid var(--color-border); border-radius: 12px; background: var(--color-bg-secondary); }
 .apl-app-cover { display: grid; place-items: center; width: 74px; height: 96px; border-radius: 6px; overflow: hidden; background: #fff; box-shadow: 0 0 0 1px var(--color-border), 0 2px 6px rgba(0, 0, 0, .06); font-size: var(--fs-2xl); text-decoration: none; transition: transform .15s, box-shadow .15s; }
 .apl-app-cover img { width: 100%; height: 100%; object-fit: cover; object-position: top; border: 0; border-radius: 0; }
@@ -2566,8 +2568,8 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   };
   const [answersOpen, setAnswersOpen] = useState(false);
   const files = (d.files || []).map(f => (kindOf(f) === 'image' && f.thumb ? { ...f, preview: f.thumb.replace(/([?&]size=)\d+/, '$12048') } : f));
-  // The application leads: its PDF (JobTread's copy; for a website-form family without one, the site's)
-  // and its video. Then the photos, labeled, then the documents (onsite and Zoom notes, letters).
+  // The family's video leads, then the application: its PDF (JobTread's copy; for a website-form family
+  // without one, the site's). Then the photos, labeled, then the documents (onsite and Zoom notes, letters).
   let appPdf = files.find(f => kindOf(f) === 'pdf' && /application/i.test(f.name || ''));
   if (!appPdf && a.applicationId) appPdf = { name: `${a.name}_Application.pdf`, type: 'application/pdf', url: `/api/applications-admin?file=${encodeURIComponent(a.applicationId)}&field=pdf` };
   const appVideo = files.find(f => kindOf(f) === 'video' && /application/i.test(f.name || ''));
@@ -2575,7 +2577,9 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   const rank = (f) => { const l = photoLabel(f, a.name); return l === 'Child' ? 0 : l === 'Family' ? 1 : /^Space/.test(l) ? 2 + (Number(l.split(' ')[1]) || 0) : 20; };
   const photos = files.filter(f => kindOf(f) === 'image').sort((x, y) => rank(x) - rank(y) || String(x.at || '').localeCompare(String(y.at || '')));
   const docs = files.filter(f => kindOf(f) !== 'image' && f !== appPdf && f !== appVideo);
-  const shown = [appPdf, appVideo, ...photos, ...docs].filter(Boolean); // one set in the viewer, in the order it's shown here
+  const shown = [appVideo, appPdf, ...photos, ...docs].filter(Boolean); // one set in the viewer, in the order it's shown here
+  const firstName = String(a.name || '').trim().split(/\s+/)[0];
+  const videoTitle = org ? 'The application video' : firstName ? `${firstName}’s video` : 'The family’s video';
   const visible = SIDE_FIELDS.filter(k => fields[k] && (k !== 'denialReason' || a.status === 'Denied' || a.fields?.denialReason) && !(a.kind === 'organization' && CHILD_FIELDS.has(k)));
   return html`<section class="apl-side" aria-label="Details">
     <div class="apl-panel">
@@ -2609,19 +2613,21 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
 
     ${shown.length > 0 && html`<div class="apl-panel apl-files-panel">
       <h3>Application and files</h3>
-      ${(appPdf || appVideo) && html`<div class="apl-app">
-        ${appPdf && html`<a class="apl-app-cover" ...${viewerLink(shown, shown.indexOf(appPdf))} aria-label="Read the application">
+      ${(appVideo || appPdf) && html`<div class="apl-app-row">
+      ${appVideo && html`<${VideoTile} f=${appVideo} files=${shown} index=${shown.indexOf(appVideo)} title=${videoTitle} sub=${appVideo.at ? `Sent ${shortDate(appVideo.at)}` : ''} />`}
+      ${appPdf && html`<div class="apl-app">
+        <a class="apl-app-cover" ...${viewerLink(shown, shown.indexOf(appPdf))} aria-label="Read the application">
           ${appPdf.thumb ? html`<${FileThumb} f=${appPdf} />` : html`<span aria-hidden="true">${kindIcon(appPdf)}</span>`}
-        </a>`}
+        </a>
         <div class="apl-app-body">
           <strong>Application</strong>
           <span class="apl-card-sub">${[a.applicationId ? 'Sent on the website form' : 'Sent before the website form', appPdf?.at || a.createdAt ? shortDate(appPdf?.at || a.createdAt) : null].filter(Boolean).join(' · ')}</span>
           <div class="apl-app-actions">
-            ${appPdf && html`<button class="btn btn-ghost btn-sm" onPointerEnter=${() => warmFiles([appPdf])} onFocus=${() => warmFiles([appPdf])} onClick=${() => openViewer(shown, shown.indexOf(appPdf))}>Read the application</button>`}
-            ${appVideo && html`<button class="btn btn-ghost btn-sm" onClick=${() => openViewer(shown, shown.indexOf(appVideo))}>▶ Watch the video</button>`}
+            <button class="btn btn-ghost btn-sm" onPointerEnter=${() => warmFiles([appPdf])} onFocus=${() => warmFiles([appPdf])} onClick=${() => openViewer(shown, shown.indexOf(appPdf))}>Read the application</button>
             ${a.applicationId && html`<button class="btn btn-ghost btn-sm" aria-expanded=${answersOpen} onClick=${() => setAnswersOpen(o => !o)}>${answersOpen ? 'Hide the answers' : 'Answers'}</button>`}
           </div>
         </div>
+      </div>`}
       </div>`}
       ${a.applicationId && answersOpen && html`<${WebsiteAnswers} id=${a.applicationId} key=${a.applicationId} video=${appVideo} />`}
       ${photos.length > 0 && html`<div class="apl-files-label">Photos</div>
@@ -2671,7 +2677,7 @@ function WebsiteAnswers({ id, video = null }) {
             <summary>${sec.title}</summary>
             <dl>${sec.items.map(i => html`<dt>${i.label}</dt><dd>${i.upload
               ? (i.type === 'photo' ? html`<a ...${viewerLink(shots, shots.findIndex(x => x.id === i.id))}><img src=${file(i.id, i.hasThumb)} alt=${i.label} loading="lazy" /></a>`
-                : video && i.video?.uploaded ? html`<button class="apl-more" onClick=${() => openViewer([video])}>▶ Watch the video${i.video?.duration ? ` (${Math.round(i.video.duration)} s)` : ''}</button>`
+                : video && i.video?.uploaded ? html`<${VideoTile} f=${video} title="Watch the video" compact />`
                   : `Video ${i.video?.uploaded ? 'uploaded' : 'not finished'}${i.video?.duration ? ` (${Math.round(i.video.duration)} s)` : ''}`)
               : i.text}</dd>`)}</dl>
           </details>`)}
