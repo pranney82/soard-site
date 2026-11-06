@@ -35,6 +35,14 @@ export function fakeApplicantWorld() {
   const failNext = new Map();
   const loseNext = new Set();
 
+  // Like JobTread: a field with a list (world.customFields) takes only what's on it
+  const refuseChoices = (fields) => {
+    for (const f of world.customFields || []) {
+      if (!Array.isArray(f.options)) continue;
+      for (const one of [].concat(fields?.[f.id] ?? [])) if (!f.options.includes(one)) throw Object.assign(new Error(`"${one}" is not an option`), { status: 400 });
+    }
+  };
+
   const json = (body, status = 200, headers = {}) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...headers } });
 
   const values = (fields, where) => {
@@ -144,7 +152,19 @@ export function fakeApplicantWorld() {
         continue;
       }
       switch (key) {
+        case 'customField': {
+          const f = (world.customFields || []).find(x => x.id === input.id);
+          out.customField = f ? { id: f.id, options: f.options } : null;
+          break;
+        }
+        case 'updateCustomField': {
+          const f = (world.customFields || []).find(x => x.id === input.id);
+          if (!f) throw Object.assign(new Error('no custom field'), { status: 400 });
+          if (input.options) f.options = input.options; // like JobTread: the list is replaced whole
+          break;
+        }
         case 'createAccount': {
+          refuseChoices(input.customFieldValues);
           const id = nextId('acct');
           let name = input.name;
           if (input.suffixIfNecessary) {
@@ -217,6 +237,7 @@ export function fakeApplicantWorld() {
             logEvent('accountUpdated', a, { next: { archivedAt: a.archivedAt }, previous: { archivedAt: was } });
           }
           if (input.customFieldValues) {
+            refuseChoices(input.customFieldValues);
             const next = {};
             const previous = {};
             for (const [fid, val] of Object.entries(input.customFieldValues)) {

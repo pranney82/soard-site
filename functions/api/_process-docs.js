@@ -41,7 +41,6 @@ import * as mail from './_email-shell.js';
 import { JT_URL, SOARD_ORG_ID, FIELD_JOB_STATUS, loadKids, loadProjects, matchProject, isProject, isRehearsalJob, cfImageId } from './_reveals.js';
 import { jobtreadJobUrl } from './_applicants.js';
 import { accountKindFor } from './_applicant-comms.js';
-import { kindOf } from './_application-form.js';
 import { DOCS, PROJECT_TRACKS, DOC_SEARCH, DOC_LIKE, GOOGLE_DOC, TRACK_LABEL, parseProcessHtml, policySections, approvalTiers, pickDoc, docIdOf, reviewOf, retiredMentions, pinSteps, lineCounts } from '../../public/admin/process-shared.js';
 
 const DRIVE_API = 'https://www.googleapis.com/drive/v3';
@@ -411,7 +410,7 @@ export async function cycleTimes(DB, { now = Date.now() } = {}) {
     if (!a) {
       let fields = {};
       try { fields = JSON.parse(r.fields || '{}') || {}; } catch { /* none */ }
-      const kind = r.kind ? kindOf(r.kind) : accountKindFor({ birthday: fields.birthday, diagnosis: fields.diagnosis, name: r.name });
+      const kind = accountKindFor({ types: fields.types, formKind: r.kind, birthday: fields.birthday, diagnosis: fields.diagnosis, name: r.name });
       a = { track: kind === 'organization' ? 'community' : 'makeover', created: r.created_at, review: null, decision: null };
       acc.set(r.account_id, a);
     }
@@ -464,7 +463,7 @@ async function applicantsNow(DB) {
     if (r.is_test || /^\s*test\b/i.test(r.name || '')) continue;
     let fields = {};
     try { fields = JSON.parse(r.fields || '{}') || {}; } catch { /* none */ }
-    const kind = r.kind ? kindOf(r.kind) : accountKindFor({ birthday: fields.birthday, diagnosis: fields.diagnosis, name: r.name });
+    const kind = accountKindFor({ types: fields.types, formKind: r.kind, birthday: fields.birthday, diagnosis: fields.diagnosis, name: r.name });
     const since = r.stage_at || (r.status === 'Applied' ? r.created_at : null);
     const photo = jtFace(r.photo_url);
     out[kind === 'organization' ? 'community' : 'makeover'][r.status].push({ name: r.name || 'A family', href: `#applications/applicants/${r.account_id}`, ...(since ? { since } : {}), ...(photo ? { photo } : {}) });
@@ -518,7 +517,7 @@ async function jobsNow(env, { fetchImpl, now }) {
       for (const r of results || []) {
         let f = {};
         try { f = JSON.parse(r.fields || '{}') || {}; } catch { /* none */ }
-        if (accountKindFor({ birthday: f.birthday, diagnosis: f.diagnosis, name: r.name }) === 'organization') orgJobs.add(r.job_id);
+        if (accountKindFor({ types: f.types, birthday: f.birthday, diagnosis: f.diagnosis, name: r.name }) === 'organization') orgJobs.add(r.job_id);
       }
     } catch { /* no mirror yet */ }
     const value = { makeover: {}, community: {} };

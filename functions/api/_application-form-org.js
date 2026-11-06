@@ -17,7 +17,7 @@
 
 import { YES_NO, COUNTIES, AREA_VALUES } from './_application-constants.js';
 
-/** The spaces an organization can ask about; the first ones match JobTread's Makeover Type */
+/** The spaces an organization can ask about. They stay in the application: JobTread's Makeover Type is Community Project */
 export const ORG_SPACE_TYPES = ['Sensory room', 'Therapy room', 'Bathroom', 'Classroom or learning space', 'Common area or gathering space', 'Outdoor or playground space', 'Something else'];
 
 /** Questions the site reads by id (see LOCKED_FIELDS in ./_application-form.js) */
@@ -26,7 +26,7 @@ export const ORG_LOCKED_FIELDS = {
   address: { role: 'JobTread: the organization’s address', types: ['address'], required: true },
   boundary: { role: 'The service-area check (Settings → Service area)', types: ['area'], values: Object.values(AREA_VALUES), allValues: true, required: true },
   referredBy: { role: 'JobTread: Referred By', types: ['text', 'textarea', 'select', 'radio'] },
-  spaceTypes: { role: 'JobTread: Makeover Type', types: ['checkbox'], values: ORG_SPACE_TYPES },
+  spaceTypes: { role: 'Kept in the application (JobTread’s Makeover Type is always Community Project)', types: ['checkbox'], values: ORG_SPACE_TYPES },
   contactName: { role: 'JobTread: main contact', types: ['name'], required: true },
   contactEmail: { role: 'Main contact email; status emails go here', types: ['email'], required: true },
   contactPhone: { role: 'JobTread: main contact phone', types: ['phone'] },

@@ -15,6 +15,7 @@ import {
 } from '../functions/api/_applicants.js';
 import { handleWorkflowCall, runNotifications, notifyFor } from '../functions/api/_applicant-notify.js';
 import { DEFAULT_SERVICE_AREA } from '../functions/api/_application-form.js';
+import { ensureSchema as ensureApplicationsSchema } from '../functions/api/_applications.js';
 
 const F = Object.fromEntries(Object.entries(FIELDS).map(([k, f]) => [k, f.id]));
 const EMAIL = '22NJw43QvHeJ';
@@ -174,6 +175,26 @@ test('status from the site: JobTread first; the family is emailed once it settle
   assert.ok(history.some(r => r.kind === 'notify' && /^Email scheduled: In Review/.test(r.title)), 'the email has its own line');
   assert.ok(history.some(r => r.kind === 'notify' && /^Emailed the family: In Review/.test(r.title)));
   assert.equal((await getApplicantRow(env.DB, a.id)).status, 'In Review');
+});
+
+test('staff pick Community Project: JobTread takes it, and a family’s account counts as a community project from then on', async () => {
+  const rooms = ['Bedroom', 'Bathroom', 'Therapy Room', 'Ramp'];
+  w.world.customFields = [{ id: F.types, options: [...rooms] }, { id: '22P3SQTcgurh', options: [...rooms] }];
+  const a = addAccount({ name: 'Max Sample', fields: { [F.status]: 'Approved', [F.year]: '2027', [F.types]: ['Therapy Room'], [F.diagnosis]: 'Autism' } });
+  await syncAllApplicants(env, opts());
+  assert.equal((await getApplicantRow(env.DB, a.id)).kind, 'family');
+  // The family form made it, and the type still decides
+  await ensureApplicationsSchema(env.DB);
+  await env.DB.prepare("INSERT INTO applications (id, year, kind, status, jt_account_id, submitted_at, updated_at) VALUES ('app-1', '2027', 'family', 'done', ?, '2026-11-01', '2026-11-01')").bind(a.id).run();
+  const after = await updateApplicantFields(env, a.id, { types: ['Community Project'] }, { user: 'peter@soardcharity.com', ...opts() });
+  assert.deepEqual(after.types, ['Community Project']);
+  assert.equal(after.kind, 'organization');
+  assert.equal((await listApplicants(env.DB)).find(x => x.id === a.id).kind, 'organization', 'on the board too');
+  assert.deepEqual(w.world.customFields.map(f => f.options), [[...rooms, 'Community Project'], [...rooms, 'Community Project']]);
+  // Taken off again, it's what the form says
+  const back = await updateApplicantFields(env, a.id, { types: ['Therapy Room'] }, { user: 'peter@soardcharity.com', ...opts() });
+  assert.equal(back.kind, 'family');
+  assert.equal((await listApplicants(env.DB)).find(x => x.id === a.id).kind, 'family');
 });
 
 test('an organization’s status email is worded for it, and its timeline says the organization was emailed', async () => {

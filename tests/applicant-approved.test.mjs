@@ -485,6 +485,18 @@ test('the application form decides: an organization’s gets its project, a fami
   assert.equal(org.jobs[0].name, 'Sunnyside Academy (2027)');
 });
 
+test('Makeover Type Community Project: approved, it gets a community project and no kid page, whatever is on the account', async () => {
+  const rooms = ['Bedroom', 'Bathroom', 'Therapy Room', 'Ramp'];
+  w.world.customFields = [{ id: TYPES, options: [...rooms] }, { id: JOB_FIELD_TYPES, options: [...rooms] }];
+  const a = family('Max Sample', 'In Review', { fields: { [TYPES]: ['Community Project'] } }); // a birthday, a diagnosis, a person's name
+  await change(a, 'Approved', T0);
+  await sweep(...minutes(30, 40));
+  assert.equal((await kids()).length, 0);
+  assert.deepEqual((await projects()).map(p => p.slug), ['max-sample']);
+  assert.deepEqual(jt.state.jobCalls[0].input.customFieldValues[JOB_FIELD_TYPES], ['Community Project'], 'the job carries the type');
+  assert.deepEqual(w.world.customFields.map(f => f.options), [[...rooms, 'Community Project'], [...rooms, 'Community Project']], 'added to JobTread’s lists first');
+});
+
 test('an organization’s long name keeps its start in the job name', () => {
   assert.equal(jobNameFor('Boys & Girls Club of Metro Atlanta', 2027, { organization: true }), 'Boys & Girls Club (2027)');
   assert.equal(jobNameFor('Oakley Faye Xiu Ping Roberson', 2027), 'Oakley Roberson (2027)', 'a child keeps first and last');

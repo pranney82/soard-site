@@ -49,6 +49,7 @@ import { normalizeName } from './_reveals.js';
 import { staffDirectory } from './_staff-access.js';
 import { isTestFamily } from './_applicant-approved.js';
 import { viaGateway } from './_ai.js';
+import { COMMUNITY_PROJECT_LIKE } from './_application-constants.js';
 
 /**
  * Two vision models from different makers, so one's habits can't fool both,
@@ -457,6 +458,7 @@ export async function seasonFamilies(DB, year) {
   try {
     rows = (await DB.prepare(`SELECT a.account_id, a.name, a.job_name, a.status FROM applicants a
       WHERE a.year = ? AND a.archived_at IS NULL
+        AND COALESCE(a.types, '') NOT LIKE '${COMMUNITY_PROJECT_LIKE}'
         AND NOT EXISTS (SELECT 1 FROM applications p WHERE p.jt_account_id = a.account_id AND p.kind = 'organization')`).bind(year).all()).results || [];
   } catch {
     rows = (await DB.prepare('SELECT account_id, name, job_name, status FROM applicants WHERE year = ? AND archived_at IS NULL').bind(year).all().catch(() => ({ results: [] }))).results || [];

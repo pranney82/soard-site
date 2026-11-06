@@ -33,7 +33,7 @@
  * dry-run profile: worked out and logged, never saved; its Slack posts say
  * it's a test.
  *
- * An organization (no birthday or diagnosis, e.g. a school or a clinic) gets
+ * An organization (type Community Project, or no birthday or diagnosis, e.g. a school or a clinic) gets
  * a Community project instead: a hidden draft in Admin → Kids → Community
  * Projects under the organization's name, In progress, first in the page's
  * order, linked by jobtreadJobId so its status follows the job too. A project
@@ -53,7 +53,8 @@
  */
 
 import { pave, SOARD_ORG_ID, matchKid, matchProject, parseJobName, todayEastern } from './_reveals.js';
-import { FIELD_STATUS, FIELD_DIAGNOSIS, qcGrant, accountKindFor, formKindOf } from './_applicant-comms.js';
+import { FIELD_STATUS, FIELD_DIAGNOSIS, FIELD_TYPES, FIELD_JOB_TYPES as JOB_FIELD_TYPES, qcGrant, accountKindFor, formKindOf, ensureCommunityProjectType } from './_applicant-comms.js';
+import { isCommunityProject } from './_application-constants.js';
 import { ensureNotifySchema, pauseState } from './_applicant-notify.js';
 import { getLiveForm } from './_application-forms.js';
 import { notifySettings } from './_application-form.js';
@@ -70,9 +71,8 @@ import { applicationPhotoFile, coverFromFile, rememberCover } from './_job-cover
 import { familyProjectId } from './_companycam-link.js';
 
 const FIELD_YEAR = '22P52xmCz3cx';      // customer: *Makeover Year
-const FIELD_TYPES = '22P5KVgrLeXK';     // customer: *Makeover Type (multi)
 const FIELD_BIRTHDAY = '22P46syd4j6E';  // customer: Birthday
-export const JOB_FIELD_TYPES = '22P3SQTcgurh'; // job: Makeover Type (same choices)
+export { JOB_FIELD_TYPES }; // job: Makeover Type (same choices as the account's)
 export const JOB_START_STATUS = 'On Site';     // where the Zap started every job
 const JOB_NAME_MAX = 30;                // JobTread's limit for a job name
 
@@ -342,6 +342,7 @@ export async function readAccount(env, accountId, fetchImpl = fetch) {
 async function createJob(env, { locationId, name, types, companycamId = null }, fetchImpl) {
   const customFieldValues = { [JOB_FIELD_STATUS]: JOB_START_STATUS };
   if (types.length) customFieldValues[JOB_FIELD_TYPES] = types;
+  if (isCommunityProject(types)) await ensureCommunityProjectType(env, { fetchImpl });
   const input = { locationId, name, customFieldValues };
   if (companycamId) input.companycamId = companycamId; // the home-visit project, not a new one
   const query = { createJob: { $: input, createdJob: { id: {}, name: {} } } };
@@ -551,7 +552,7 @@ export async function approveFamily(env, accountId, { fetchImpl = fetch, now = D
 
   // A family's (the site's family form, or a child on the account) or an organization's (the organization form,
   // or made by hand with nothing a child's and an organization's name): ./_applicant-comms.js accountKindFor
-  const child = accountKindFor({ formKind: await formKindOf(DB, accountId), birthday: acct.birthday, diagnosis: acct.hasDiagnosis ? 'yes' : '', name: acct.name }) === 'family';
+  const child = accountKindFor({ types: acct.types, formKind: await formKindOf(DB, accountId), birthday: acct.birthday, diagnosis: acct.hasDiagnosis ? 'yes' : '', name: acct.name }) === 'family';
 
   // The job: the one saved last time, one the family already has, or a new one
   let job = (row?.job_id && acct.jobs.find(j => j.id === row.job_id)) || existingJob(acct.jobs, acct.year);

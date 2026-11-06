@@ -32,13 +32,14 @@ import { pave, SOARD_ORG_ID, matchProject, isProject, loadProjects, normalizeNam
 import { bestPhotoOf, photoUrl } from './_job-covers.js';
 import {
   readApplicant, statusMessagePreview, postAccountComment, isSiteEvent, STATUS_RANK,
-  FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE, familyRecipients, greetingNames, accountKindFor, formKindOf,
+  FIELD_CONTACT_EMAIL, FIELD_CONTACT_PHONE, familyRecipients, greetingNames, accountKindFor, formKindOf, ensureCommunityProjectType,
 } from './_applicant-comms.js';
 import { noteStatus, changeInfo, dontSend, sendNow as sendNowNotify, whenWouldSend, notifyMap, notifyFor, ensureNotifySchema } from './_applicant-notify.js';
 import { insidePolygon, milesToEdge } from './_geo.js';
 import { alertFamilyReplies, waitingReplies } from './_applicant-replies.js';
 import { getLiveForm } from './_application-forms.js';
 import { DEFAULT_SERVICE_AREA, toE164, kindOf } from './_application-form.js';
+import { COMMUNITY_PROJECT_TYPE, isCommunityProject } from './_application-constants.js';
 
 export const STATUSES = ['Applied', 'In Review', 'Approved', 'Denied'];
 
@@ -46,7 +47,7 @@ export const STATUSES = ['Applied', 'In Review', 'Approved', 'Denied'];
 export const FIELDS = {
   status: { id: '22P46wDp3NLd', label: 'Status', type: 'option', options: STATUSES },
   year: { id: '22P52xmCz3cx', label: 'Makeover year', type: 'option', options: ['2025', '2026', '2027', '2028', '2029', '2030'] },
-  types: { id: '22P5KVgrLeXK', label: 'Makeover type', type: 'multi', options: ['Bedroom', 'Bathroom', 'Therapy Room', 'Ramp'] },
+  types: { id: '22P5KVgrLeXK', label: 'Makeover type', type: 'multi', options: ['Bedroom', 'Bathroom', 'Therapy Room', 'Ramp', COMMUNITY_PROJECT_TYPE] },
   diagnosis: { id: '22P46st8HNPY', label: 'Diagnosis', type: 'text', long: true },
   birthday: { id: '22P46syd4j6E', label: 'Birthday', type: 'date' },
   gender: { id: '22P4VnkCXPSY', label: 'Gender', type: 'option', options: ['Male', 'Female'] },
@@ -636,8 +637,8 @@ function applicantFromRow(r) {
     createdAt: r.created_at, archivedAt: r.archived_at, syncedAt: r.synced_at,
     stageAt: r.stage_at || null, lastActivityAt: r.last_at || null, lastActivity: r.last_title || r.last_kind ? { kind: r.last_kind, title: r.last_title, by: r.last_by, source: r.last_source } : null,
     jobtreadUrl: jobtreadAccountUrl(r.account_id), jobUrl: r.job_id ? jobtreadJobUrl(r.job_id) : null,
-    // A family's or an organization's (made by hand; the form's kind wins in listApplicants)
-    kind: accountKindFor({ birthday: fields.birthday, diagnosis: fields.diagnosis, name: r.name }),
+    // A family's or an organization's (made by hand; the form's kind counts too, in listApplicants)
+    kind: accountKindFor({ types: parse(r.types, []), birthday: fields.birthday, diagnosis: fields.diagnosis, name: r.name }),
     // The child's photo from the application, in JobTread (a kid page's photo replaces it: pagePhotos)
     ...(r.photo_url ? { photo: r.photo_url, photoFrom: 'application' } : {}),
   };
@@ -708,7 +709,7 @@ export async function listApplicants(DB, { archived = false } = {}) {
       const app = byAccount.get(a.id);
       if (!app) continue;
       const st = parse(app.jt_state, {});
-      a.kind = kindOf(app.kind);
+      a.kind = accountKindFor({ types: a.types, formKind: kindOf(app.kind) });
       a.applicationId = app.id;
       a.lang = app.lang || 'en';
       a.isTest = !!app.is_test;
@@ -729,7 +730,7 @@ export async function getApplicantRow(DB, id) {
   const row = applicantFromRow(await DB.prepare(`${LIST_SQL} WHERE a.account_id = ?`).bind(id).first());
   if (row) {
     const kind = await formKindOf(DB, id);
-    if (kind) row.kind = kind;
+    if (kind) row.kind = accountKindFor({ types: row.types, formKind: kind });
     await pagePhotos(DB, [row]);
   }
   return row;
@@ -888,6 +889,7 @@ export async function updateApplicantFields(env, accountId, changes, { user = 'a
   const before = await getApplicantRow(env.DB, accountId);
   const input = {};
   for (const [k, v] of entries) input[FIELDS[k].id] = fieldInput(k, v, before?.fields?.[k]);
+  if (isCommunityProject(input[FIELDS.types.id])) await ensureCommunityProjectType(env, { fetchImpl });
   await updateAccountFields(env, accountId, input, fetchImpl);
   // JobTread has it now. If reading it back fails, the site's copy takes the change, so a saved change isn't reported as lost.
   const readBack = await refreshApplicants(env, [accountId], { fetchImpl, now }).then(() => true, (e) => { console.error('Reading a family back after a save failed:', e?.message); return false; });

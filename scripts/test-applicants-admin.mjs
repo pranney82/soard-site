@@ -385,8 +385,8 @@ const pillGeo = await page.$$eval('.apl-type-picks button', els => els.map(b => 
   const words = [...b.childNodes].find(n => n.nodeType === 3); const wr = document.createRange(); wr.selectNodeContents(words); const w = wr.getBoundingClientRect();
   return { name: b.textContent.trim(), gap: w.left - ic.right, iconMid: ic.top + ic.height / 2, wordMid: w.top + w.height / 2, iconW: ic.width, pill: b.classList.contains('pill') };
 }));
-ok(pillGeo.length === 4 && pillGeo.every(g => g.pill), 'the Makeover type picks are the admin’s shared toggle pills');
-ok(pillGeo.length === 4 && pillGeo.every(g => g.gap >= 4 && g.gap <= 9), `each Makeover type's icon stands apart from its word (${pillGeo.map(g => `${g.name} ${g.gap.toFixed(1)}px`).join(', ')})`);
+ok(pillGeo.length === 5 && pillGeo.every(g => g.pill), 'the Makeover type picks are the admin’s shared toggle pills');
+ok(pillGeo.length === 5 && pillGeo.every(g => g.gap >= 4 && g.gap <= 9), `each Makeover type's icon stands apart from its word (${pillGeo.map(g => `${g.name} ${g.gap.toFixed(1)}px`).join(', ')})`);
 ok(pillGeo.every(g => Math.abs(g.iconMid - g.wordMid) <= 1.5 && g.iconW >= 13), `and sits centered on the word at the pills' 14px (${pillGeo.map(g => `${g.name} ${(g.iconMid - g.wordMid).toFixed(1)}px`).join(', ')})`);
 // Each label on its value's first line; every value's first letter on one line down the card
 const kv = await page.$$eval('.apl-side .apl-kv dt', dts => dts.map(dt => {
@@ -540,14 +540,14 @@ for (const [what, keysTyped] of [['a year cut short', '061220'], ['a future date
   ok(fieldSaves === 0 && acct('Avery Stone').fields[F.birthday] === bdWas && await page.evaluate(() => window.__toasts.some(t => /Birthday not changed/.test(t.msg))), `${what} keeps the birthday it had, and says so (${fieldSaves} saves, ${acct('Avery Stone').fields[F.birthday]})`);
 }
 // Opening a typed detail doesn't move the card
-const rowTops = () => page.$$eval('.apl-side .apl-kv dt', els => els.map(e => Math.round(e.getBoundingClientRect().top)));
+const rowTops = () => page.$$eval('.apl-side .apl-kv dt', els => els.map(e => e.getBoundingClientRect().top));
 const topsShut = await rowTops();
 await (await editBtn('Birthday')).click();
 await page.waitForSelector('.apl-kv input[type="date"]');
 const topsOpen = await rowTops();
 await page.keyboard.press('Escape');
 await sleep(150);
-ok(JSON.stringify(topsShut) === JSON.stringify(topsOpen), `opening a typed detail leaves the rows where they are (${topsOpen.map((t, i) => t - topsShut[i]).join(',')})`);
+ok(topsOpen.length === topsShut.length && topsOpen.every((t, i) => Math.abs(t - topsShut[i]) < 0.5), `opening a typed detail leaves the rows where they are, to under half a pixel (${topsOpen.map((t, i) => (t - topsShut[i]).toFixed(2)).join(',')})`);
 // Enter and Escape hand the focus back to the detail
 const focused = () => page.evaluate(() => document.activeElement?.getAttribute('aria-label') || document.activeElement?.tagName);
 for (const key of ['Enter', 'Escape']) {
@@ -1207,7 +1207,7 @@ console.log('Scores');
   const all = (n) => Object.fromEntries(CRITERION_KEYS.map(k => [k, n]));
   const owenA = acct('Owen Lindgren');
   const eliza = acct('Eliza Franklin');
-  const noah = acct('Noah Pence');
+  const kenna = acct('Noah Pence');
   const isla = acct('Isla Example');
   // Clareece and Christian are scoring 2027. Both scored Owen, far apart on family readiness, and Eliza;
   // Clareece scored Isla (her home visit photos are in CompanyCam); Christian is partway through Noah (approved earlier)
@@ -1218,7 +1218,7 @@ console.log('Scores');
   await saveScorecard(DB, eliza.id, { evaluator: 'clareece@soardcharity.com', scores: all(3) }); // 30
   await saveScorecard(DB, eliza.id, { evaluator: 'christian@soardcharity.com', scores: all(3) }); // 30
   await saveScorecard(DB, isla.id, { evaluator: 'clareece@soardcharity.com', scores: all(4) }); // 40, waiting on Christian
-  await saveScorecard(DB, noah.id, { evaluator: 'christian@soardcharity.com', scores: { mobility: 4, safety: 4 } });
+  await saveScorecard(DB, kenna.id, { evaluator: 'christian@soardcharity.com', scores: { mobility: 4, safety: 4 } });
   // Owen's kid page is waiting on funding
   await DB.prepare("UPDATE kids SET data = json_set(data, '$.status', 'needs-funding') WHERE slug = 'owen'").run();
   const sp = await open(1440, 1000);
@@ -1233,7 +1233,7 @@ console.log('Scores');
   ok(/Strong Candidate/.test((await tagOf(eliza.id))?.text || '') && /tag--info/.test((await tagOf(eliza.id))?.cls || ''), 'Strong Candidate is the info blue');
   const islaTag = await tagOf(isla.id);
   ok(islaTag && islaTag.n === null && /^1 of 2 scored$/.test(islaTag.text.trim()) && /is-held/.test(islaTag.cls) && !/tag--/.test(islaTag.cls), `a family only some of the season's scorers have scored shows how many, not a score (${JSON.stringify(islaTag)})`);
-  ok(!(await tagOf(noah.id)), 'a scorecard partway done doesn’t give a family a score');
+  ok(!(await tagOf(kenna.id)), 'a scorecard partway done doesn’t give a family a score');
   ok(await sp.$eval('.apl-card[data-id] .apl-score-tag', el => !/danger/.test(el.className) && getComputedStyle(el).backgroundColor !== 'rgb(255, 0, 0)'), 'no tier is red');
   // List: a Score column, highest first
   await sp.click('.apl-views [data-view="list"]');
@@ -1451,16 +1451,16 @@ console.log('An organization');
   ok(/A community project application/.test(await text(p, '.apl-dtitle p')), 'the drawer says what it is');
   const labels = await p.$$eval('.apl-side .apl-kv dt', (els) => els.map((e) => e.textContent.trim())).catch(() => []);
   ok(labels.length > 0 && !labels.some((l) => /Birthday|Diagnosis|Gender|Verbal|walks/i.test(l)), `its details have nothing of a child’s (${labels.join(', ')})`);
-  ok(labels.includes('Project year') && labels.includes('Type of space') && !labels.some((l) => /Makeover/.test(l)), 'its project year and type of space, not a makeover’s');
+  ok(labels.includes('Project year') && labels.includes('Project type') && !labels.some((l) => /Makeover/.test(l)), 'its project year and project type, not a makeover’s');
   ok(await p.evaluate(() => [...document.querySelectorAll('.apl-side .apl-panel h3')].some((h) => h.textContent.trim() === 'Contacts')), 'its people are Contacts, not Family');
   ok(/^Address/.test(await p.evaluate(() => [...document.querySelectorAll('.apl-side .apl-panel h3')].map((h) => h.textContent.trim()).find((t) => /^(Home|Address)/.test(t)) || '')), 'where it is: its Address, not a Home');
   ok(/Message the organization/.test(await text(p, '.apl-composer-head b')), 'and the message box writes to the organization');
   ok(!(await p.$('.apl-dtabs [data-tab="score"]')), 'a community project has no Score tab (the rubric is for makeovers)');
-  // Its history names its own details: "Type of space changed", never "Makeover type"
+  // Its history names its own details: "Project type changed", never "Makeover type"
   await p.$$eval('.apl-type-picks button', (els) => els.find((b) => b.getAttribute('aria-pressed') !== 'true')?.click());
-  await p.waitForFunction(() => /Type of space changed/.test(document.querySelector('.apl-thread')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  await p.waitForFunction(() => /Project type changed/.test(document.querySelector('.apl-thread')?.textContent || ''), { timeout: 8000 }).catch(() => null);
   const orgThread = await text(p, '.apl-thread');
-  ok(/Type of space changed/.test(orgThread) && !/Makeover (type|year)/.test(orgThread), 'its history says “Type of space changed”, not “Makeover type”');
+  ok(/Project type changed/.test(orgThread) && !/Makeover (type|year)/.test(orgThread), 'its history says “Project type changed”, not “Makeover type”');
   // Every type unpicked: the history says blank, not a label with nothing after it
   for (let i = 0; i < 4; i++) {
     const had = await p.$$eval('.apl-type-picks button', (els) => { const b = els.find((x) => x.getAttribute('aria-pressed') === 'true'); b?.click(); return !!b; });
@@ -1468,9 +1468,47 @@ console.log('An organization');
     await p.waitForFunction(() => !document.querySelector('.apl-type-picks.is-saving'), { timeout: 8000 }).catch(() => null);
     await sleep(250);
   }
-  await p.waitForFunction(() => /Type of space: blank/.test(document.querySelector('.apl-thread')?.textContent || ''), { timeout: 8000 }).catch(() => null);
-  ok(/Type of space: blank/.test(await text(p, '.apl-thread')), 'every type unpicked: its history says “Type of space: blank”');
+  await p.waitForFunction(() => /Project type: blank/.test(document.querySelector('.apl-thread')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  ok(/Project type: blank/.test(await text(p, '.apl-thread')), 'every type unpicked: its history says “Project type: blank”');
   await shot(p, 'organization-drawer');
+  // Community Project: JobTread gets the new choice first, it stands alone, and a family's page becomes a community project's the moment it's picked
+  const ROOM_TYPES = ['Bedroom', 'Bathroom', 'Therapy Room', 'Ramp'];
+  w.world.customFields = [{ id: F.types, options: [...ROOM_TYPES] }, { id: '22P3SQTcgurh', options: [...ROOM_TYPES] }];
+  const kenna = acct('Kenna Thomason');
+  const kennaTypes = [...kenna.fields[F.types]];
+  const cpp = await open(1440, 1000);
+  await cpp.goto(`${SITE}/admin/__applicants.html#applications/applicants/${kenna.id}`, { waitUntil: 'domcontentloaded' });
+  await cpp.waitForSelector('.apl-type-picks', { timeout: 8000 }).catch(() => null);
+  const pills = () => cpp.$$eval('.apl-type-picks button', (els) => els.filter((b) => b.getAttribute('aria-pressed') === 'true').map((b) => b.textContent.trim()));
+  const press = async (name) => {
+    await cpp.$$eval('.apl-type-picks button', (els, n) => els.find((b) => b.textContent.trim() === n).click(), name);
+    await sleep(150);
+    await cpp.waitForFunction(() => !document.querySelector('.apl-type-picks.is-saving'), { timeout: 8000 }).catch(() => null);
+    await sleep(250);
+  };
+  ok(await cpp.$$eval('.apl-type-picks button', (els) => els.some((b) => b.textContent.trim() === 'Community Project' && b.querySelector('svg'))), 'a family’s Makeover type offers Community Project, with its icon');
+  ok(await cpp.$('.apl-dtabs [data-tab="score"]') != null && !/community project/i.test(await text(cpp, '.apl-dtitle p')), 'before it’s picked the family is a family, with its Score tab');
+  await press('Community Project');
+  await cpp.waitForFunction(() => /A community project application/.test(document.querySelector('.apl-dtitle p')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  ok(JSON.stringify(await pills()) === '["Community Project"]', `picking it clears the room types (${await pills()})`);
+  ok(JSON.stringify(kenna.fields[F.types]) === '["Community Project"]', `JobTread has only Community Project (${kenna.fields[F.types]})`);
+  ok(w.world.customFields.every((f) => JSON.stringify(f.options) === JSON.stringify([...ROOM_TYPES, 'Community Project'])), 'and it joined both JobTread lists, every other choice still there');
+  ok(/A community project application/.test(await text(cpp, '.apl-dtitle p')), 'the page says community project at once, with no reload');
+  ok(!(await cpp.$('.apl-dtabs [data-tab="score"]')), 'it leaves the scoring: no Score tab');
+  const cpLabels = await cpp.$$eval('.apl-side .apl-kv dt', (els) => els.map((e) => e.textContent.trim()));
+  ok(cpLabels.includes('Project type') && !cpLabels.some((l) => /Birthday|Diagnosis|Gender|Makeover/i.test(l)), `its details are a project’s (${cpLabels.join(', ')})`);
+  await shot(cpp, 'community-project-picked');
+  await cpp.reload({ waitUntil: 'domcontentloaded' });
+  await cpp.waitForSelector('.apl-type-picks', { timeout: 8000 }).catch(() => null);
+  ok(/A community project application/.test(await text(cpp, '.apl-dtitle p')) && JSON.stringify(await pills()) === '["Community Project"]', 'and it holds after a reload');
+  await press('Bedroom');
+  await cpp.waitForFunction(() => !/community project/i.test(document.querySelector('.apl-dtitle p')?.textContent || ''), { timeout: 8000 }).catch(() => null);
+  ok(JSON.stringify(await pills()) === '["Bedroom"]', `picking a room clears Community Project (${await pills()})`);
+  ok(await cpp.$('.apl-dtabs [data-tab="score"]') != null, 'and the family is a family again, Score tab back');
+  await cpp.evaluate((id, types) => fetch('/api/applicants-admin', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ fields: { id, changes: { types } } }) }), kenna.id, kennaTypes);
+  await sleep(300);
+  delete w.world.customFields;
+  await cpp.close();
   // A family with no status whose year is cleared has left Applicants: the drawer closes on it and says so
   const gone = acct('Harper Lee');
   delete gone.fields[F.status];

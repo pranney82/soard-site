@@ -38,11 +38,11 @@ import {
   cleanAnswers, formErrors, stopFor, nameText, addressText, toE164, allFields, isVisible, indexById, DEFAULT_STAFF_EMAILS,
 } from './_application-form.js';
 import { buildApplicationPdf } from './_application-pdf.js';
-import { COUNTIES } from './_application-constants.js';
+import { COUNTIES, COMMUNITY_PROJECT_TYPE, COMMUNITY_PROJECT_LIKE } from './_application-constants.js';
 import { sendEmails, escapeHtml, SITE_ORIGIN, slackPost, slackIssue, slackResolved } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import * as mail from './_email-shell.js';
-import { readApplicant, sendIntake, ensureCommsSchema } from './_applicant-comms.js';
+import { readApplicant, sendIntake, ensureCommsSchema, ensureCommunityProjectType } from './_applicant-comms.js';
 import { formFor, ensureFormSchema, getLiveForm } from './_application-forms.js';
 import { spanishToDo, catchUpSpanish } from './_translate.js';
 import { isUpload, isInput, answerText, progressPercent, renderMessage, choice, AREA_VALUES, kindOf, isOrganizationKind, rolesFor } from './_application-form.js';
@@ -116,13 +116,6 @@ export const MAKEOVER_TYPE_MAP = {
   'In-Home Therapy Room': 'Therapy Room',
   Ramp: 'Ramp',
 };
-/** An organization's spaces that JobTread's Makeover Type has (the rest live in the application) */
-export const ORG_SPACE_TYPE_MAP = {
-  'Sensory room': 'Therapy Room',
-  'Therapy room': 'Therapy Room',
-  Bathroom: 'Bathroom',
-};
-
 export const STAFF_EMAILS = DEFAULT_STAFF_EMAILS; // the live form's settings can change who gets them
 export const ALERT_EMAILS = ['peter@soardcharity.com'];
 
@@ -849,13 +842,12 @@ export function mappedFields(form, answers, target) {
 export function accountFields(app, form = null) {
   const a = app.answers;
   if (isOrganizationKind(app.kind)) {
-    // An organization: no child fields (Birthday, Diagnosis…), which is also how the site tells it apart later
-    const types = [...new Set((a.spaceTypes || []).map(t => ORG_SPACE_TYPE_MAP[t]).filter(Boolean))];
+    // An organization: no child fields (Birthday, Diagnosis…), and Community Project as its type. The spaces it asked for stay in the application.
     const f = {
       [JT_FIELDS.status]: 'Applied',
       [JT_FIELDS.referredBy]: a.referredBy || null,
       [JT_FIELDS.makeoverYear]: JT_YEARS.includes(String(app.year)) ? String(app.year) : null,
-      [JT_FIELDS.makeoverType]: types.length ? types : null,
+      [JT_FIELDS.makeoverType]: [COMMUNITY_PROJECT_TYPE],
       [JT_FIELDS.applicationUrl]: applicationUrl(app.id),
     };
     return { ...mappedFields(form, a, 'account'), ...Object.fromEntries(Object.entries(f).filter(([, v]) => v != null)) };
@@ -1355,6 +1347,7 @@ async function runApplication(env, id, { fetchImpl = fetch, now = Date.now() } =
       const found = await findAccountByUrl(env, app, s.accountTriedAt, jt);
       if (found) { s.account = { id: found, adopted: true }; return; }
     }
+    if (isOrganizationKind(app.kind)) await ensureCommunityProjectType(env, { fetchImpl: jt });
     s.accountTriedAt = now;
     await saveState(DB, app, {}, now);
     const out = await pave(env.JOBTREAD_GRANT_KEY, {
@@ -1792,6 +1785,18 @@ export async function stopReminders(DB, draftId) {
  * show: 'all' | 'attention' (not finished) | 'outside' | 'repeat' | 'test' |
  * 'deleted'; year: a season or '' for all.
  */
+/** Accounts whose Makeover Type is Community Project (./_application-cap.js counts them the same way) */
+async function communityAccounts(DB) {
+  try {
+    return new Set(((await DB.prepare('SELECT account_id FROM applicants WHERE types LIKE ?').bind(COMMUNITY_PROJECT_LIKE).all()).results || []).map(r => r.account_id));
+  } catch {
+    return new Set(); // no mirror yet
+  }
+}
+
+/** What an application counts as: Community Project on its account overrides the form it came through (which still decides how it reads) */
+const countsAs = (a, community) => (community.has(a.jt_account_id) ? 'organization' : kindOf(a.kind));
+
 export async function listApplications(DB, { limit = 50, offset = 0, q = '', show = 'all', year = '', kind = '' } = {}) {
   await ensureSchema(DB);
   const where = [];
@@ -1801,7 +1806,6 @@ export async function listApplications(DB, { limit = 50, offset = 0, q = '', sho
   else if (show !== 'deleted' && show !== 'all') where.push('is_test = 0');
   if (show === 'attention') where.push("status != 'done'");
   if (year) { where.push('year = ?'); binds.push(String(year)); }
-  if (kind) { where.push("COALESCE(kind, 'family') = ?"); binds.push(kindOf(kind)); }
   if (q) {
     const like = `%${String(q).trim().toLowerCase().replace(/[%_]/g, '')}%`;
     where.push('(LOWER(child_name) LIKE ? OR LOWER(parent_name) LIKE ? OR LOWER(parent_email) LIKE ?)');
@@ -1811,6 +1815,8 @@ export async function listApplications(DB, { limit = 50, offset = 0, q = '', sho
   // The area and repeat filters read the checks stored in jt_state
   const all = (await DB.prepare(`SELECT * ${sql} ORDER BY submitted_at DESC LIMIT 2000`).bind(...binds).all()).results || [];
   let rows = all.map(applicationRow);
+  const community = await communityAccounts(DB);
+  if (kind) rows = rows.filter(a => countsAs(a, community) === kindOf(kind));
   if (show === 'outside') rows = rows.filter(a => a.jt_state?.area?.status === 'outside');
   if (show === 'repeat') rows = rows.filter(a => a.jt_state?.repeat?.matches?.length);
   const total = rows.length;
@@ -1819,7 +1825,7 @@ export async function listApplications(DB, { limit = 50, offset = 0, q = '', sho
   const years = (await DB.prepare('SELECT DISTINCT year FROM applications ORDER BY year DESC').all()).results?.map(r => r.year).filter(Boolean) || [];
   return {
     applications: page.map(a => ({
-      id: a.id, year: a.year, kind: kindOf(a.kind), child: a.child_name, parent: a.parent_name, email: a.parent_email,
+      id: a.id, year: a.year, kind: countsAs(a, community), child: a.child_name, parent: a.parent_name, email: a.parent_email,
       makeoverTypes: a.makeover_types, isTest: !!a.is_test, status: a.status, attempts: a.attempts,
       lastError: a.last_error, submittedAt: a.submitted_at, accountId: a.jt_account_id,
       jobtreadUrl: a.jt_account_id ? jobtreadAccountUrl(a.jt_account_id) : null,
@@ -1861,9 +1867,10 @@ export async function exportCsv(DB, { year = '', includeTests = false } = {}) {
   const fieldOf = (a, id) => allFields(forms.get(`${a.kind || 'family'}:${a.year}:${a.form_version || 0}`)).find(f => f.id === id);
   const head = ['Submitted', 'Season', 'Application', 'Child or organization', 'Main contact', 'Email', 'Status', 'JobTread account', 'Address check', 'Possible repeat', 'Language', ...columns.values()];
   const lines = [head.map(csvCell).join(',')];
+  const community = await communityAccounts(DB);
   for (const a of rows) {
     const fl = flags(a);
-    const base = [a.submitted_at, a.year, isOrganizationKind(a.kind) ? 'Organization' : 'Family', a.child_name, a.parent_name, a.parent_email, a.status, a.jt_account_id ? jobtreadAccountUrl(a.jt_account_id) : '',
+    const base = [a.submitted_at, a.year, countsAs(a, community) === 'organization' ? 'Organization' : 'Family', a.child_name, a.parent_name, a.parent_email, a.status, a.jt_account_id ? jobtreadAccountUrl(a.jt_account_id) : '',
       fl.area?.text || '', fl.repeat.map(m => `${m.name}${m.year ? ` (${m.year})` : ''}`).join('; '), a.lang === 'es' ? 'Spanish' : 'English'];
     const answers = [...columns.keys()].map(id => { const f = fieldOf(a, id); return f ? answerText(f, a.answers?.[id], true) : ''; });
     lines.push([...base, ...answers].map(csvCell).join(','));

@@ -443,7 +443,7 @@ async function familyPreview(env, row, fetchImpl) {
     const text = await familyMessage(env, row.kind, { parent: greetingNames(to, { lang }), child: applicant.name, lang, formKind: applicant.kind });
     const snippet = previewSnippet(text);
     const titles = lang === 'es' ? COMMENT_NAMES_ES : COMMENT_NAMES;
-    return { to: greetingNames(to, { fallback: null }), many: to.length > 1, title: titles[row.kind] || COMMENT_NAMES[row.kind], snippet, lang };
+    return { to: greetingNames(to, { fallback: null }), many: to.length > 1, title: titles[row.kind] || COMMENT_NAMES[row.kind], snippet, lang, org: applicant.kind === 'organization' };
   } catch {
     return null;
   }
@@ -523,7 +523,7 @@ export function summaryEmail(rows, { now = Date.now(), staff = false, previews =
     const p = previews[r.account_id] || null;
     const when = whenText(r.due_at, now);
     // A family by the child's first name; an organization by its whole name ("Open The" read wrong)
-    const firstName = (looksLikeOrganization(r.name) ? String(r.name || '').trim() : String(r.name || '').split(/\s+/)[0]) || 'this family';
+    const firstName = ((p?.org ?? looksLikeOrganization(r.name)) ? String(r.name || '').trim() : String(r.name || '').split(/\s+/)[0]) || 'this family';
     const change = r.previous && known(r.previous)
       ? `${pill(r.previous)}<span class="muted" style="padding:0 6px;color:${MUTED};">&rarr;</span>${pill(r.status)}`
       : pill(r.status);

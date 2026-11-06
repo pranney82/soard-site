@@ -122,8 +122,11 @@ const TYPE_SVG = {
   Bedroom: '<path opacity=".3" d="M248,112v56H112V80H216A32,32,0,0,1,248,112Z"/><path d="M216,72H32V48a8,8,0,0,0-16,0V208a8,8,0,0,0,16,0V176H240v32a8,8,0,0,0,16,0V112A40,40,0,0,0,216,72ZM32,88h72v72H32Zm88,72V88h96a24,24,0,0,1,24,24v48Z"/>',
   Bathroom: '<path opacity=".3" d="M167.92,222.87A8,8,0,0,1,160,232H96a8,8,0,0,1-7.92-9.13l4.34-30.36h0a88.21,88.21,0,0,0,71.14,0h0ZM184,32H72a8,8,0,0,0-8,8v72H192V40A8,8,0,0,0,184,32Z"/><path d="M120,64a8,8,0,0,1-8,8H96a8,8,0,0,1,0-16h16A8,8,0,0,1,120,64Zm52.32,133.14,3.52,24.6A16,16,0,0,1,160,240H96a16,16,0,0,1-15.84-18.26l3.52-24.6A96.09,96.09,0,0,1,32,112a8,8,0,0,1,8-8H56V40A16,16,0,0,1,72,24H184a16,16,0,0,1,16,16v64h16a8,8,0,0,1,8,8A96.09,96.09,0,0,1,172.32,197.14ZM72,104H184V40H72Zm85.07,99.5a96.15,96.15,0,0,1-58.14,0L96,224h64ZM207.6,120H48.4a80,80,0,0,0,159.2,0Z"/>',
   'Therapy Room': '<path opacity=".3" d="M16,152H48v56H16a8,8,0,0,1-8-8V160A8,8,0,0,1,16,152ZM192.54,40A39.12,39.12,0,0,0,156,64a39.12,39.12,0,0,0-36.54-24C97.67,40,80,58.31,80,80c0,14.56,7,27.71,16.73,40H140a20,20,0,0,1,0,40h4l37.78-8.68C203.82,135.07,232,109.23,232,80,232,58.31,214.33,40,192.54,40Z"/><path d="M230.33,141.06a24.34,24.34,0,0,0-18.61-4.77C230.5,117.33,240,98.48,240,80c0-26.47-21.29-48-47.46-48A47.58,47.58,0,0,0,156,48.75,47.58,47.58,0,0,0,119.46,32C93.29,32,72,53.53,72,80c0,11,3.24,21.69,10.06,33a31.87,31.87,0,0,0-14.75,8.4L44.69,144H16A16,16,0,0,0,0,160v40a16,16,0,0,0,16,16H120a7.93,7.93,0,0,0,1.94-.24l64-16a6.94,6.94,0,0,0,1.19-.4L226,182.82l.44-.2a24.6,24.6,0,0,0,3.93-41.56ZM119.46,48A31.15,31.15,0,0,1,148.6,67a8,8,0,0,0,14.8,0,31.15,31.15,0,0,1,29.14-19C209.59,48,224,62.65,224,80c0,19.51-15.79,41.58-45.66,63.9l-11.09,2.55A28,28,0,0,0,140,112H100.68C92.05,100.36,88,90.12,88,80,88,62.65,102.41,48,119.46,48ZM16,160H40v40H16Zm203.43,8.21-38,16.18L119,200H56V155.31l22.63-22.62A15.86,15.86,0,0,1,89.94,128H140a12,12,0,0,1,0,24H112a8,8,0,0,0,0,16h32a8.32,8.32,0,0,0,1.79-.2l67-15.41.31-.08a8.6,8.6,0,0,1,6.3,15.9Z"/>',
+  'Community Project': '<path opacity=".3" d="M168,144a40,40,0,1,1-40-40A40,40,0,0,1,168,144ZM64,56A32,32,0,1,0,96,88,32,32,0,0,0,64,56Zm128,0a32,32,0,1,0,32,32A32,32,0,0,0,192,56Z"/><path d="M244.8,150.4a8,8,0,0,1-11.2-1.6A51.6,51.6,0,0,0,192,128a8,8,0,0,1,0-16,24,24,0,1,0-23.24-30,8,8,0,1,1-15.5-4A40,40,0,1,1,219,117.51a67.94,67.94,0,0,1,27.43,21.68A8,8,0,0,1,244.8,150.4ZM190.92,212a8,8,0,1,1-13.85,8,57,57,0,0,0-98.15,0,8,8,0,1,1-13.84-8,72.06,72.06,0,0,1,33.74-29.92,48,48,0,1,1,58.36,0A72.06,72.06,0,0,1,190.92,212ZM128,176a32,32,0,1,0-32-32A32,32,0,0,0,128,176ZM72,120a8,8,0,0,0-8-8A24,24,0,1,1,87.24,82a8,8,0,1,0,15.5-4A40,40,0,1,0,37,117.51,67.94,67.94,0,0,0,9.6,139.19a8,8,0,1,0,12.8,9.61A51.6,51.6,0,0,1,64,128,8,8,0,0,0,72,120Z"/>',
   Ramp: '<circle opacity=".3" cx="112" cy="160" r="60"/><path opacity=".3" d="M128,48a24,24,0,1,1-24-24A24,24,0,0,1,128,48Z"/><path d="M255.59,189.47a8,8,0,0,0-10.12-5.06l-17.42,5.81-28.9-57.8A8,8,0,0,0,192,128H112V104h56a8,8,0,0,0,0-16H112V79a32,32,0,1,0-16,0V89.81A72,72,0,0,0,112,232c33.52,0,63.69-22.71,71.75-54a8,8,0,1,0-15.5-4C162.09,198,137.91,216,112,216A56,56,0,0,1,96,106.34V136a8,8,0,0,0,8,8h83.05l29.79,59.58a8,8,0,0,0,9.69,4l24-8A8,8,0,0,0,255.59,189.47ZM88,48a16,16,0,1,1,16,16A16,16,0,0,1,88,48Z"/>',
 };
+// Marks an account as a community project: it stands alone, so picking it clears the room types and picking a room clears it
+const COMMUNITY_TYPE = 'Community Project';
 const typeIcon = (t) => (TYPE_SVG[t] ? html`<svg class="apl-type-ic" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true" dangerouslySetInnerHTML=${{ __html: TYPE_SVG[t] }}></svg>` : null);
 
 // ─── Styles (prefixed apl-, injected once) ─────────────────────────
@@ -874,7 +877,7 @@ function Flags({ a, compact = false }) {
   if (a.lang === 'es' || a.fields?.language === 'Spanish') out.push(html`<span class="tag tag--info apl-tag is-es" title="The family reads Spanish: their emails go in Spanish">Spanish</span>`);
   if (isTestFamily(a)) out.push(html`<span class="tag apl-tag is-test">Test</span>`);
   if (a.archivedAt) out.push(html`<span class="tag apl-tag">Archived</span>`);
-  if (!compact) for (const t of a.types || []) out.push(html`<span class="tag apl-tag">${typeIcon(t)}${t}</span>`);
+  if (!compact) for (const t of a.types || []) if (t !== COMMUNITY_TYPE) out.push(html`<span class="tag apl-tag">${typeIcon(t)}${t}</span>`); // the card already says Community project
   return out.length ? html`<div class="apl-tags">${out}</div>` : null;
 }
 
@@ -2363,7 +2366,7 @@ function FileThumb({ f }) {
 
 const SIDE_FIELDS = ['year', 'types', 'birthday', 'gender', 'diagnosis', 'language', 'verbal', 'mobile', 'qualified', 'referredBy', 'denialReason'];
 // An organization's project: the same JobTread fields, named for a community project
-const ORG_FIELD_LABEL = { year: 'Project year', types: 'Type of space' };
+const ORG_FIELD_LABEL = { year: 'Project year', types: 'Project type' };
 // A history line as staff read it, lines written before included: an emptied list says "blank", and a
 // community project's details go by its own names ("Makeover type changed" → "Type of space changed")
 const historyLine = (r, org) => {
@@ -2476,7 +2479,7 @@ function FieldRow({ id, k, meta, value, onSave, onApplied, addToast }) {
   const commit = (next) => { if (same(next, base())) setV(base()); else save(next); };
   if (meta.type === 'multi') {
     const list = Array.isArray(v) ? v : v ? [v] : [];
-    const pick = (o) => commit(list.includes(o) ? list.filter(x => x !== o) : [...list, o]);
+    const pick = (o) => commit(list.includes(o) ? list.filter(x => x !== o) : o === COMMUNITY_TYPE ? [o] : [...list.filter(x => x !== COMMUNITY_TYPE), o]);
     // A value JobTread holds that isn't one of the choices still shows, so it isn't dropped unseen
     return html`<div class=${`pill-row apl-type-picks ${state}`} role="group" aria-label=${meta.label}>${[...meta.options, ...list.filter(o => !meta.options.includes(o))].map(o => html`<button class="pill pill--sm" aria-pressed=${list.includes(o)} onClick=${() => pick(o)}>${typeIcon(o)}${o}</button>`)}</div>`;
   }

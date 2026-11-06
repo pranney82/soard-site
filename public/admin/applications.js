@@ -1266,7 +1266,7 @@ function FlagBadges({ a, picked = null }) {
   const cm = countyMismatch(f, picked);
   return html`
     ${a.isTest && html`<span class="badge badge-blue">Test</span>`}
-    ${a.kind === 'organization' && html`<span class="badge badge-gray" title="A community project application, from /apply/community-project/">Community project</span>`}
+    ${a.kind === 'organization' && html`<span class="badge badge-gray" title="Counts as a community project, not a makeover">Community project</span>`}
     ${a.deletedAt && html`<span class="badge badge-gray" title=${`Deleted ${dayText(a.deletedAt)}${a.deletedBy ? ` by ${a.deletedBy}` : ''}`}>Deleted</span>`}
     ${(f.lang || a.lang) === 'es' && html`<span class="badge badge-gray" title="Answered in Spanish">Spanish</span>`}
     ${f.area?.status === 'outside' && html`<span class="badge badge-yellow" title=${f.area.text || ''}>${f.area.miles != null ? `${f.area.miles} mi outside` : 'Outside area'}</span>`}

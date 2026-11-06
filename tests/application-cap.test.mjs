@@ -402,3 +402,21 @@ test('Settings says how many families on the board were added in JobTread (they 
   const enforced = await capFacts(DB, pickApplication(await stored(), NOW), { now: NOW });
   assert.equal(enforced.addedInJobTread, undefined, 'the enforcing check skips that count');
 });
+
+test('Community Project: not a family added in JobTread, and a family-form application marked so leaves the limit', async () => {
+  const { ensureApplicantSchema } = await import('../functions/api/_applicants.js');
+  await ensureApplicantSchema(DB);
+  const account = (id, types) => DB.prepare('INSERT INTO applicants (account_id, name, year, types, synced_at) VALUES (?, ?, ?, ?, ?)').bind(id, id, YEAR, JSON.stringify(types), new Date(NOW).toISOString()).run();
+  await account('acct-family', ['Bedroom']);
+  await account('acct-school', ['Community Project']);
+  await addApps(2);
+  const { results } = await DB.prepare('SELECT id FROM applications ORDER BY id').all();
+  await account('acct-marked', ['Community Project']);
+  await DB.prepare('UPDATE applications SET jt_account_id = ? WHERE id = ?').bind('acct-marked', results[0].id).run();
+  assert.equal(await countReceived(DB, YEAR), 1, 'one of the two was marked a community project');
+  const facts = await capFacts(DB, pickApplication(await stored(), NOW), { now: NOW, board: true });
+  assert.equal(facts.received, 1);
+  assert.equal(facts.addedInJobTread, 1, 'the family only: a community project isn’t a family added in JobTread');
+  await DB.prepare('UPDATE applicants SET types = ? WHERE account_id = ?').bind('["Therapy Room"]', 'acct-marked').run();
+  assert.equal(await countReceived(DB, YEAR), 2, 'unmarked, it counts again');
+});

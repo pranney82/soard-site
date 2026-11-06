@@ -37,11 +37,14 @@
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { DEFAULT_MESSAGES, renderMessage, resolveForm, kindOf } from './_application-form.js';
 import { getLiveForm } from './_application-forms.js';
+import { COMMUNITY_PROJECT_TYPE, isCommunityProject } from './_application-constants.js';
 import { viaGateway } from './_ai.js';
 
 export const FIELD_STATUS = '22P46wDp3NLd';      // customer: Applied / In Review / Approved / Denied
 export const FIELD_DIAGNOSIS = '22P46st8HNPY';   // customer: text
 export const FIELD_BIRTHDAY = '22P46syd4j6E';    // customer: Birthday
+export const FIELD_TYPES = '22P5KVgrLeXK';       // customer: *Makeover Type (several choices)
+export const FIELD_JOB_TYPES = '22P3SQTcgurh';   // job: Makeover Type (the same choices)
 export const FIELD_CONTACT_EMAIL = '22NJw43QvHeJ';
 export const FIELD_CONTACT_PHONE = '22NJw43UauSc';
 export const QC_USER_ID = '22P5r2x8FPiK';        // "Qualification Committee"
@@ -101,15 +104,32 @@ const ORG_NAME_RE = /\b(school|academy|preschool|center|centre|clinic|health|hos
 export const looksLikeOrganization = (name) => ORG_NAME_RE.test(String(name || '').replace(/[’]/g, "'"));
 
 /**
- * Whose account this is: the kind of the site's application that made it,
- * else (made by hand in JobTread) an organization only when nothing on it is
- * a child's (no Birthday, no Diagnosis) and its name reads like one. A family
- * reading an organization's wording would be worse than the other way round,
- * so a hand-made account needs all of that to count.
+ * Whose account this is. Makeover Type Community Project settles it, whatever
+ * form it came through: staff picked it, or the organization's form set it.
+ * Otherwise the kind of the site's application that made it, else (made by
+ * hand in JobTread) an organization only when nothing on it is a child's (no
+ * Birthday, no Diagnosis) and its name reads like one. A family reading an
+ * organization's wording would be worse than the other way round, so a
+ * hand-made account needs all of that to count.
  */
-export function accountKindFor({ formKind = null, birthday = null, diagnosis = null, name = '' } = {}) {
+export function accountKindFor({ types = null, formKind = null, birthday = null, diagnosis = null, name = '' } = {}) {
+  if (isCommunityProject(types)) return 'organization';
   if (formKind) return kindOf(formKind);
   return !birthday && !String(diagnosis || '').trim() && looksLikeOrganization(name) ? 'organization' : 'family';
+}
+
+/**
+ * JobTread refuses a choice its field doesn't have, so Community Project joins
+ * both Makeover Type fields (the account's and the job's) just before it's
+ * written. updateCustomField replaces the whole list, so a read that brings
+ * no list back changes nothing.
+ */
+export async function ensureCommunityProjectType(env, { fetchImpl = fetch } = {}) {
+  for (const id of [FIELD_TYPES, FIELD_JOB_TYPES]) {
+    const options = (await pave(env.JOBTREAD_GRANT_KEY, { customField: { $: { id }, options: {} } }, fetchImpl))?.customField?.options;
+    if (!Array.isArray(options) || !options.length || options.includes(COMMUNITY_PROJECT_TYPE)) continue;
+    await pave(env.JOBTREAD_GRANT_KEY, { updateCustomField: { $: { id, options: [...options, COMMUNITY_PROJECT_TYPE] } } }, fetchImpl);
+  }
 }
 
 /** The kind of the site's application that made this account, or null when staff made it in JobTread */
@@ -193,7 +213,7 @@ export async function readApplicant(env, accountId, fetchImpl = fetch) {
       $: { id: accountId },
       id: {}, name: {}, type: {}, createdAt: {},
       organization: { id: {} },
-      customFieldValues: { $: { where: [['customField', 'id'], 'in', [FIELD_STATUS, FIELD_DIAGNOSIS, FIELD_LANGUAGE, FIELD_BIRTHDAY]] }, nodes: { value: {}, customField: { id: {} } } },
+      customFieldValues: { $: { size: 12, where: [['customField', 'id'], 'in', [FIELD_STATUS, FIELD_DIAGNOSIS, FIELD_LANGUAGE, FIELD_BIRTHDAY, FIELD_TYPES]] }, nodes: { value: {}, customField: { id: {} } } },
       primaryContact: contactQuery,
       contacts: { $: { size: 10 }, nodes: contactQuery },
       comments: {
@@ -209,6 +229,7 @@ export async function readApplicant(env, accountId, fetchImpl = fetch) {
   const primary = contact(a.primaryContact) || contacts[0] || null;
   const diagnosis = fieldValue(a, FIELD_DIAGNOSIS) || '';
   const birthday = fieldValue(a, FIELD_BIRTHDAY) || null;
+  const types = (a.customFieldValues?.nodes || []).filter(v => v.customField?.id === FIELD_TYPES).flatMap(v => v.value ?? []);
   return {
     id: a.id,
     name: a.name,
@@ -217,7 +238,7 @@ export async function readApplicant(env, accountId, fetchImpl = fetch) {
     diagnosis,
     birthday,
     // A family's account or an organization's: which messages it gets
-    kind: accountKindFor({ formKind: await formKindOf(env.DB, a.id), birthday, diagnosis, name: a.name }),
+    kind: accountKindFor({ types, formKind: await formKindOf(env.DB, a.id), birthday, diagnosis, name: a.name }),
     // Families whose main language is Spanish get their messages in Spanish
     lang: fieldValue(a, FIELD_LANGUAGE) === 'Spanish' ? 'es' : 'en',
     primary,

@@ -22,7 +22,10 @@ import {
   accountFields, contactInputs, JT_FIELDS, photoKey, TEST_JPEG, testOrgAnswers, applicantNameOf, isTestAnswers, pickApplication,
 } from '../functions/api/_applications.js';
 import { countReceived } from '../functions/api/_application-cap.js';
-import { accountKindFor, looksLikeOrganization } from '../functions/api/_applicant-comms.js';
+import { accountKindFor, looksLikeOrganization, ensureCommunityProjectType, FIELD_TYPES, FIELD_JOB_TYPES } from '../functions/api/_applicant-comms.js';
+import { ensureApplicantSchema } from '../functions/api/_applicants.js';
+import { seasonFamilies } from '../functions/api/_score-scans.js';
+import { pave } from '../functions/api/_reveals.js';
 import * as applyApi from '../functions/api/apply.js';
 
 const YEAR = '2027';
@@ -158,7 +161,7 @@ test('JobTread gets an organization’s account: its name, its contacts, the spa
   const app = { id: 'app-x', year: YEAR, kind: 'organization', answers: orgAnswers(), is_test: 0 };
   const f = accountFields(app);
   assert.equal(f[JT_FIELDS.status], 'Applied');
-  assert.deepEqual(f[JT_FIELDS.makeoverType], ['Therapy Room'], 'a sensory room is a Therapy Room; a classroom has no JobTread type');
+  assert.deepEqual(f[JT_FIELDS.makeoverType], ['Community Project'], 'whichever spaces it asked for; those stay in the application');
   assert.equal(f[JT_FIELDS.makeoverYear], YEAR);
   for (const k of ['birthday', 'diagnosis', 'gender', 'language', 'verbal', 'mobile']) assert.equal(f[JT_FIELDS[k]], undefined, k);
   assert.deepEqual(contactInputs(app).map((c) => [c.name, c.title]), [['Jordan Lee', 'Executive Director'], ['Sam Park', 'Therapy Lead']]);
@@ -236,6 +239,63 @@ test('whose account it is: the form that made it, else an organization only by e
   assert.equal(accountKindFor({ name: 'Max Sample' }), 'family', 'a family not filled in yet stays a family');
   for (const n of ['Children’s Development Academy', 'Camp Twin Lakes', 'Mt. Zion UMC Preschool', 'Murphy-Harpst Children\'s Center', 'Summit Counseling Center']) assert.ok(looksLikeOrganization(n), n);
   for (const n of ['Remi & Nico Powell', 'Grace Wells', 'Declan “Dex” Noel']) assert.ok(!looksLikeOrganization(n), n);
+});
+
+test('Makeover Type Community Project settles it, over the form and every other sign', () => {
+  assert.equal(accountKindFor({ types: ['Community Project'], formKind: 'family', name: 'Max Sample', birthday: '2016-01-01', diagnosis: 'Autism' }), 'organization');
+  assert.equal(accountKindFor({ types: 'Community Project' }), 'organization', 'one value from JobTread, not a list');
+  assert.equal(accountKindFor({ types: ['Bedroom'], formKind: 'family', name: 'The Lionheart School' }), 'family', 'any other type changes nothing');
+  assert.equal(accountKindFor({ types: ['Therapy Room'], name: 'The Lionheart School' }), 'organization', 'and a hand-made organization not marked yet stays one');
+});
+
+const ROOMS = ['Bedroom', 'Bathroom', 'Therapy Room', 'Ramp'];
+const typeLists = () => { w.world.customFields = [{ id: FIELD_TYPES, options: [...ROOMS] }, { id: FIELD_JOB_TYPES, options: [...ROOMS] }]; };
+
+test('Community Project joins both JobTread lists, keeps every choice there, and only once', async () => {
+  typeLists();
+  await ensureCommunityProjectType(env);
+  for (const f of w.world.customFields) assert.deepEqual(f.options, [...ROOMS, 'Community Project']);
+  const before = JSON.stringify(w.world.customFields);
+  await ensureCommunityProjectType(env);
+  assert.equal(JSON.stringify(w.world.customFields), before, 'already there: nothing written');
+});
+
+test('a read that brings no list back leaves JobTread alone (updateCustomField replaces the whole list)', async () => {
+  w.world.customFields = [{ id: FIELD_TYPES, options: null }, { id: FIELD_JOB_TYPES, options: [] }];
+  await ensureCommunityProjectType(env);
+  assert.deepEqual(w.world.customFields.map((f) => f.options), [null, []]);
+});
+
+test('an organization applying the day the type is new: JobTread takes it, because the choice is added first', async () => {
+  typeLists();
+  const sub = await submitDraft(env, await readyOrgDraft());
+  const r = await processApplication(env, sub.id, { fetchImpl: w.fetchImpl });
+  assert.equal(r.status, 'done', JSON.stringify(r));
+  const [acct] = Object.values(w.world.accounts);
+  assert.deepEqual(acct.fields[JT_FIELDS.makeoverType], ['Community Project']);
+});
+
+test('without that step JobTread refuses the type (the fake holds it to the real rule)', async () => {
+  typeLists();
+  const create = { createAccount: { $: { organizationId: ORG, type: 'customer', name: 'X', customFieldValues: { [FIELD_TYPES]: ['Community Project'] } }, createdAccount: { id: {} } } };
+  await assert.rejects(() => pave('key', create, w.fetchImpl), /not an option/);
+});
+
+test('a family-form application marked Community Project moves to community projects in Submissions, and stays read by its own form', async () => {
+  const sub = await submitDraft(env, await readyOrgDraft());
+  await processApplication(env, sub.id, { fetchImpl: w.fetchImpl });
+  await ensureApplicantSchema(env.DB);
+  // One family-form row, on an account staff marked
+  await env.DB.prepare(`INSERT INTO applications (id, year, kind, child_name, status, is_test, submitted_at, updated_at, jt_account_id) VALUES ('app-fam', ?, 'family', 'Wrong Form School', 'done', 0, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', 'acct-marked')`).bind(YEAR).run();
+  await env.DB.prepare(`INSERT INTO applications (id, year, kind, child_name, status, is_test, submitted_at, updated_at, jt_account_id) VALUES ('app-fam2', ?, 'family', 'Max Sample', 'done', 0, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', 'acct-family')`).bind(YEAR).run();
+  await env.DB.prepare(`INSERT INTO applicants (account_id, name, year, types, fields, synced_at) VALUES ('acct-marked', 'Wrong Form School', ?, '["Community Project"]', '{}', '2026-11-01')`).bind(YEAR).run();
+  await env.DB.prepare(`INSERT INTO applicants (account_id, name, year, types, fields, synced_at) VALUES ('acct-family', 'Max Sample', ?, '["Bedroom"]', '{}', '2026-11-01')`).bind(YEAR).run();
+  const names = async (kind) => (await listApplications(env.DB, { kind })).applications.map((a) => a.child).sort();
+  assert.deepEqual(await names('family'), ['Max Sample']);
+  assert.deepEqual(await names('organization'), ['Sunnyside Academy', 'Wrong Form School']);
+  assert.equal((await getApplication(env.DB, 'app-fam')).kind, 'family', 'its answers are still the family form’s');
+  // Nor is it one of the season's families to score
+  assert.deepEqual((await seasonFamilies(env.DB, YEAR)).map((f) => f.name), ['Max Sample']);
 });
 
 test('the built-in organization form: a complete set of answers has no errors', () => {

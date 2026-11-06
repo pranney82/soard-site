@@ -71,7 +71,7 @@ export const REVEAL_TASK_TYPE = '22NZSbkR5rZw';
 export const FIELD_STATUS = '22P52qfFub9b';
 export const FIELD_INVITE_DETAILS = '22PgGhdabNcJ';
 export const FIELD_CONTACT_EMAIL = '22NJw43QvHeJ';
-export const FIELD_MAKEOVER_TYPE = '22P3SQTcgurh'; // Bedroom, Bathroom, Therapy Room, Ramp
+export const FIELD_MAKEOVER_TYPE = '22P3SQTcgurh'; // Bedroom, Bathroom, Therapy Room, Ramp, Community Project
 export const DEFAULT_ORGANIZER = 'ccunningham@soardcharity.com';
 
 /**

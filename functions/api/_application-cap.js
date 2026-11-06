@@ -33,6 +33,7 @@ import { sendEmails, emailConfigured, isEmail, slackPost, SITE_ORIGIN } from './
 import { slackCard } from './_slack-cards.js';
 import * as mail from './_email-shell.js';
 import { formFor } from './_application-forms.js';
+import { COMMUNITY_PROJECT_LIKE } from './_application-constants.js';
 
 export const CAP_USER = 'limit'; // who closed it, in the log and the "since" line
 export const MAX_LIMIT = 10000;
@@ -76,21 +77,29 @@ export function capOf(a = {}) {
 export const defaultFullMessage = (year) => `We’ve received all the applications we can take for ${year}.`;
 export const fullMessageOf = (a) => String(a?.fullMessage || '').trim() || defaultFullMessage(a?.year);
 
+/** Not an account marked Community Project (in a query over `applications`) */
+const NOT_COMMUNITY = ` AND NOT EXISTS (SELECT 1 FROM applicants x WHERE x.account_id = applications.jt_account_id AND x.types LIKE '${COMMUNITY_PROJECT_LIKE}')`;
+
 /**
  * Families' applications in for the season (not tests, not deleted), optionally only
- * those since an ISO time. Organizations' applications run outside the limit.
+ * those since an ISO time. Organizations' applications run outside the limit, and so
+ * does one that came through the family form but staff marked Community Project.
  */
 export async function countReceived(DB, year, { since = null } = {}) {
-  const count = async (families) => {
-    const sql = `SELECT COUNT(*) AS n FROM applications WHERE year = ? AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL${families ? " AND COALESCE(kind, 'family') = 'family'" : ''}${since ? ' AND submitted_at >= ?' : ''}`;
+  const count = async (families, community = false) => {
+    const sql = `SELECT COUNT(*) AS n FROM applications WHERE year = ? AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL${families ? " AND COALESCE(kind, 'family') = 'family'" : ''}${community ? NOT_COMMUNITY : ''}${since ? ' AND submitted_at >= ?' : ''}`;
     const row = await DB.prepare(sql).bind(...[String(year), ...(since ? [since] : [])]).first();
     return Number(row?.n) || 0;
   };
   try {
-    return await count(true);
+    return await count(true, true);
   } catch {
-    // Before the kind column exists, every application is a family's
-    try { return await count(false); } catch { return 0; }
+    try {
+      return await count(true); // no applicants mirror yet
+    } catch {
+      // Before the kind column exists, every application is a family's
+      try { return await count(false); } catch { return 0; }
+    }
   }
 }
 
@@ -116,6 +125,7 @@ export async function countFilling(DB, year, now = Date.now()) {
 export async function countAddedInJobTread(DB, year) {
   try {
     const row = await DB.prepare(`SELECT COUNT(*) AS n FROM applicants a WHERE a.year = ? AND a.archived_at IS NULL
+      AND COALESCE(a.types, '') NOT LIKE '${COMMUNITY_PROJECT_LIKE}'
       AND NOT EXISTS (SELECT 1 FROM applications p WHERE p.jt_account_id = a.account_id)`).bind(String(year)).first();
     return Number(row?.n) || 0;
   } catch {

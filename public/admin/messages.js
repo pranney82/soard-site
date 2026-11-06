@@ -224,7 +224,7 @@ const MAP = { t: 'Everything we send', children: [
           subject: ['Application Status'],
           does: 'Thanks them for applying on behalf of the organization, says the application is under review, and that a visit to see the space comes next.',
           touches: ['JobTread', 'D1'], where: 'functions/api/_applicant-comms.js · _application-form-org.js',
-          info: 'Worded for an organization, in Applications → Emails with Community projects picked. An account made by hand counts as an organization only with no birthday, no diagnosis and an organization’s name.' },
+          info: 'Worded for an organization, in Applications → Emails with Community projects picked. An account counts as an organization when its Makeover Type is Community Project. One made by hand also counts with no birthday, no diagnosis and an organization’s name.' },
         { t: 'In review (community project)', s: 'live', k: 'jobtread', by: 'auto', preview: 'org-in-review', change: CHANGE.appEmails,
           who: 'Everyone on the organization’s account in JobTread with an email address.',
           when: 'Once Status has stayed In Review for the wait in Settings, never in quiet hours, the same as a family’s.',

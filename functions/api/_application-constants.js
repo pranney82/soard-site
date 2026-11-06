@@ -11,6 +11,16 @@ export const YES_NO = ['Yes', 'No'];
 export const COUNTIES = ['Cherokee', 'Cobb', 'DeKalb', 'Forsyth', 'Fulton', 'Gwinnett'];
 
 /**
+ * The Makeover Type that makes an account a community project, not a family's
+ * makeover. An organization's application gets it, and staff can pick it on any
+ * account; whichever way it got there, the account counts as a community project.
+ */
+export const COMMUNITY_PROJECT_TYPE = 'Community Project';
+export const isCommunityProject = (types) => [].concat(types ?? []).includes(COMMUNITY_PROJECT_TYPE);
+/** The same test in SQL, over the applicants mirror's `types` column (a JSON list) */
+export const COMMUNITY_PROJECT_LIKE = `%"${COMMUNITY_PROJECT_TYPE}"%`;
+
+/**
  * The service-area answers, by band. Stored as these values (the Jotform
  * wording, so every application ever made reads the same way); the family
  * sees each choice's label and description.
