@@ -802,9 +802,9 @@ test('a motion is kept with its item, written by who presents it, and the chair�
   await postReport(env.DB, { meetingId: 'm_nov5', itemId: 'i_gov', words: 'Nothing new to report this time.', name: 'Kim Park' });
   const m = await getMeeting(env.DB, 'm_nov5');
   const review = chairEmail({ m, chair: { name: 'Alex Rivera' }, from: { name: 'Max Doe' }, asks: [{ kind: 'report', itemId: 'i_gov', status: 'in', due: '' }], people: [{ slug: 'sam-ortiz', name: 'Sam Ortiz' }, { slug: 'kim-park', name: 'Kim Park' }] });
-  assert.match(review.text, /Financial · Sam Ortiz\n {6}The board votes on: Move to approve the 2027 budget as presented\./);
+  assert.match(review.text, /Financial · Sam Ortiz\n/);
   assert.match(review.text, /Governance · Kim Park · nothing new this time/);
-  assert.match(review.html, /<em>The board votes on: Move to approve the 2027 budget as presented\.<\/em>/);
+  assert.doesNotMatch(review.text + review.html, /Move to approve|board votes on/, 'a motion’s words stay on the review page');
 });
 
 test('dropping the minutes in keeps a motion, and an agenda with only a motion is never a draft', async () => {

@@ -812,7 +812,7 @@ try {
   await clickText(jane, 'button', /^Send me the email$/);
   await waitText(jane, /Sent to jane@soardcharity\.com/);
   ok(mail.length === 1 && mail[0].to[0] === FOUNDER, 'Send me the email goes only to the founder');
-  ok(!mail[0]?.attachments && /Balance sheet financials/.test(mail[0]?.html || '') && /Open the agenda and documents/.test(mail[0]?.html || ''), 'the link to the agenda and documents, the documents by name, nothing attached');
+  ok(!mail[0]?.attachments && /Balance sheet financials/.test(mail[0]?.html || '') && /Open the agenda/.test(mail[0]?.html || ''), 'the link to the agenda and documents, the documents by name, nothing attached');
   ok(!/ask counsel|Governance/.test(mail[0]?.html || ''), 'the email has no private note and no board-only item');
   ok(/Park in the back lot\. The side door is open\./.test(mail[0]?.html || '') && /Notes: Park in the back lot/.test(mail[0]?.text || ''), 'the email carries the notes for the invite');
   await clickText(jane, 'button', /^Approve the agenda$/);

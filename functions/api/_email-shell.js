@@ -128,14 +128,14 @@ a.lnk{color:#8DB8EC!important}
 }
 [data-ogsc] .btn-primary a,[data-ogsc] .num{color:${INK}!important}
 </style>
-<!--[if mso]><style>body,table,td,p,a,li,span,strong{font-family:Arial,Helvetica,sans-serif!important}h1{font-family:Georgia,'Times New Roman',serif!important}</style><![endif]-->
+<!--[if mso]><style>body,table,td,p,a,li,span,strong{font-family:Arial,Helvetica,sans-serif!important}h1,h2{font-family:Georgia,'Times New Roman',serif!important}</style><![endif]-->
 </head>
 <body class="page" style="margin:0;padding:0;background:${PAGE};">
 <div style="display:none;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;">${esc(preheader)}${'&#8199;&#65279;&#847;'.repeat(60)}</div>
 <center class="page${banner ? ' wrap' : ''}" style="width:100%;background:${PAGE};padding:28px 0 20px;">
 <!--[if mso]><table role="presentation" cellspacing="0" cellpadding="0" border="0" width="600" align="center"><tr><td><![endif]-->
 <table role="presentation" class="card" cellspacing="0" cellpadding="0" border="0" width="600" style="margin:0 auto;width:100%;max-width:600px;background:${CREAM};border-radius:16px;border-collapse:separate;">
-${banner}<tr><td class="pad" style="padding:30px 32px 6px;">
+${banner}<tr><td class="pad" style="padding:30px 32px 6px;word-break:break-word;">
 <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
 <td valign="middle" style="width:28px;vertical-align:middle;"><div style="width:28px;height:2px;line-height:2px;font-size:0;background:${Y};">&nbsp;</div></td>
 <td class="eyebrow" style="padding-left:10px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${GOLD};">${esc(eyebrow)}</td>
@@ -143,7 +143,7 @@ ${banner}<tr><td class="pad" style="padding:30px 32px 6px;">
 <h1 class="ink h1" style="margin:14px 0 10px;font-family:${SERIF};font-size:27px;line-height:1.25;font-weight:700;color:${INK};">${esc(heading)}</h1>
 ${intro ? `<p class="muted" style="margin:0 0 6px;font-family:${SANS};font-size:15px;line-height:1.55;color:${MUTED};">${intro}</p>` : ''}
 </td></tr>
-<tr><td class="pad ink" style="padding:14px 32px 22px;font-family:${SANS};font-size:15px;line-height:1.55;color:${INK};">${bodyHtml}</td></tr>
+<tr><td class="pad ink" style="padding:14px 32px 22px;word-break:break-word;font-family:${SANS};font-size:15px;line-height:1.55;color:${INK};">${bodyHtml}</td></tr>
 ${footerHtml ? `<tr><td class="pad rule muted" style="padding:16px 32px 26px;border-top:1px solid ${BORDER};font-family:${SANS};font-size:12px;line-height:1.6;color:#6B6C72;">${footerHtml}</td></tr>` : ''}
 </table>
 <!--[if mso]></td></tr></table><![endif]-->

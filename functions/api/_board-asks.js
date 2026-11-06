@@ -41,6 +41,7 @@ import { booksNow } from './_quickbooks.js';
 import {
   presentersOf, reportsOn, agendaIsDraft, meetingName, sectionPlan, isFilled, forBoard, todayEastern, isDate, LIMITS, showsOf, timeRange, isNothingNew,
   reportSlides, slidesOfItem, isCopyName,
+  partName,
 } from '../../public/admin/board-shared.js';
 import { mdToDoc, docToMd, mdPlain } from '../../public/admin/board-md.js';
 import { viaGateway, aiCapped } from './_ai.js';
@@ -365,11 +366,10 @@ export function chairEmail({ m, chair, from, asks = [], people = [], cc = [] }) 
   const clock = (t) => { if (!t) return ''; const [h, mi] = t.split(':').map(Number); return `${h % 12 || 12}:${String(mi).padStart(2, '0')}`; };
   const parts = m.sections.filter((s) => s.items.some(isFilled) || s.title).map((s) => {
     const p = plan.get(s.id);
-    const head = `${p?.start ? `${clock(p.start)}  ` : ''}${s.title || 'Untitled part'}${p?.minutes ? ` (${p.minutes} min)` : ''}`;
-    const lines = s.items.filter(isFilled).flatMap((it) => {
+    const head = `${p?.start ? `${clock(p.start)}  ` : ''}${partName(s, m) || (s.title ? 'A board-only part (on the board page)' : 'Untitled part')}${p?.minutes ? ` (${p.minutes} min)` : ''}`;
+    const lines = s.items.filter(isFilled).map((it) => {
       const who = presentersOf(it, people).map((x) => x.name).join(' & ');
-      const line = [itemTitle(it), who, reportState(it, asks)].filter(Boolean).join(' · ');
-      return it.motion && !it.confidential ? [line, `  The board votes on: ${it.motion}`] : [line];
+      return [itemTitle(it), who, reportState(it, asks)].filter(Boolean).join(' · ');
     });
     return { head, lines };
   });
@@ -391,7 +391,7 @@ export function chairEmail({ m, chair, from, asks = [], people = [], cc = [] }) 
     + `<p style="${P}">Here’s the agenda for the ${esc(name)}, ${esc(when)}, for your review.</p>`
     + (status ? `<p style="${P}"><strong>${esc(status)}</strong></p>` : '')
     + parts.map((x) => `<p style="${P}margin-bottom:4px;"><strong>${esc(x.head)}</strong></p>`
-      + (x.lines.length ? `<ul style="margin:0 0 14px;padding-left:22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#2D2E33;">${x.lines.map((l) => (l.startsWith('  ') ? `<li style="list-style:none;margin:2px 0 6px;color:#5A5B61;"><em>${esc(l.trim())}</em></li>` : `<li>${esc(l)}</li>`)).join('')}</ul>` : '')).join('')
+      + (x.lines.length ? `<ul style="margin:0 0 14px;padding-left:22px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.5;color:#2D2E33;">${x.lines.map((l) => `<li>${esc(l)}</li>`).join('')}</ul>` : '')).join('')
     + `<p style="${P}">${esc(page)}</p>`
     + `<p style="${P}"><a href="${esc(reviewUrl(m))}" style="display:inline-block;padding:10px 18px;border-radius:8px;background:#FFDA24;color:#2D2E33;font-weight:700;text-decoration:none;">Review the agenda</a></p>`
     + `<p style="${P}">${esc(other)}</p>`

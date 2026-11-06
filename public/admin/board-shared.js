@@ -225,6 +225,23 @@ export const LIVE = [
   { id: 'meetings', label: 'Next board meetings' },
   { id: 'costs', label: 'What finished makeovers cost (JobTread), and the money for more' },
 ];
+/**
+ * Whether two names are of the same thing, for keeping a board-only name out of an email: every word of one is in the
+ * other, in any order, or they share two ("Copy of Smith memo", "Settlement with Smith"). Whole words, so a board-only
+ * "Rent" says nothing of "Current business". A wrong yes costs a line in an email; a wrong no would name what's board-only
+ */
+// (words that join a name, or say which copy of a file it is, not what it's about)
+const LITTLE_WORDS = new Set(['a', 'an', 'and', 'the', 'of', 'on', 'in', 'for', 'to', 'with', 's', '&', 'copy', 'final', 'signed', 'draft', 'version']);
+const wordsIn = (t, all = false) => new Set(String(t || '').normalize('NFD').replace(/\p{M}/gu, '').toLowerCase().split(/[^\p{L}\p{N}&]+/u)
+  .filter((w) => w && (all || (!LITTLE_WORDS.has(w) && !/^v\d+$/.test(w)))).map((w) => (w.length > 3 ? w.replace(/s$/, '') : w)));
+export function namesAlike(a, b) {
+  // (a name that's nothing but those words, "Final" or "Draft v2", is compared whole)
+  const whole = !wordsIn(a).size || !wordsIn(b).size;
+  const one = wordsIn(a, whole);
+  const other = wordsIn(b, whole);
+  const shared = [...one].filter((w) => other.has(w)).length;
+  return shared >= 2 || (shared > 0 && shared === Math.min(one.size, other.size));
+}
 /** What a live list with no title of its own is called for the board: what it shows, never its part's name */
 export const LIVE_TITLES = { projects: 'Makeovers in progress', reveals: 'Upcoming reveals', events: 'Upcoming events', cash: 'The money', meetings: 'Next board meetings', minutes: 'The last meeting’s minutes', costs: 'What makeovers cost' };
 // (paper: a paper written in Board, its Markdown: long bylaws run past 70,000 letters; ./board-report.js PAPER_LETTERS)
@@ -328,6 +345,8 @@ export function meetingName(m) {
   const said = Number(/\bQ([1-4])\b/i.exec(one(m?.calendar?.title))?.[1]) || held;
   return `Q${said} ${y - (said - held >= 2 ? 1 : 0) + (held - said > 2 ? 1 : 0)} Board Meeting`;
 }
+/** A meeting's video call: the one typed on it, else the Google Meet its invite made */
+export const videoOf = (m) => m?.video || m?.invite?.meet || '';
 /** "Thursday, April 30, 2026" */
 export const longDate = (d) => (isDate(d) ? new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric', timeZone: 'UTC' }) : '');
 /** "Apr 30, 2026" */
@@ -817,8 +836,9 @@ export function minutesToRead(m, meetings) {
   const it = (m.sections || []).flatMap((s) => s.items).find((x) => x.live === 'minutes');
   if (!it || it.confidential) return null;
   const prev = minutesTarget(m, (meetings || []).filter((x) => !x.practice));
-  const file = prev ? ownMinutesFile(prev) : null;
-  return prev?.shared && prev.minutes !== 'approved' && (prev.minutesFrom || (file && !file.staffOnly)) ? prev : null;
+  // (a staff-only file beside the minutes isn't theirs to read, and doesn't hide the minutes that are)
+  const file = prev ? ownMinutesFile({ ...prev, files: (prev.files || []).filter((f) => !f.staffOnly) }) : null;
+  return prev?.shared && prev.minutes !== 'approved' && (prev.minutesFrom || file) ? prev : null;
 }
 /** An item's files, in order: its documents, and for "approve the minutes" the last meeting's minutes (from `meetings`) */
 export function itemFiles(m, it, meetings = []) {
@@ -835,6 +855,40 @@ export const itemDocs = (m, it, meetings = []) => docsOf(itemFiles(m, it, meetin
 export function looseFiles(m) {
   const placed = new Set(m.sections.flatMap((s) => s.items.flatMap((it) => it.docs || [])));
   return m.files.filter((f) => !placed.has(f.id) && f.kind !== 'signed' && f.kind !== 'minutes');
+}
+/**
+ * The documents the agenda email names and counts: as the board page lists them, item by item and the loose ones after,
+ * a document kept as a PDF and a Word file being one wherever its copies sit. Anything on a board-only item is counted
+ * and never named, and neither is a copy of it under the same name anywhere else, even one that item's copy couldn't
+ * be sent as. Never a staff-only file, a signed copy, this meeting's own minutes or a photo beside a report. → { names, hidden }
+ */
+/** Every name a meeting's board-only items go by, their titles and their documents': what an email never says */
+export function boardOnlyNames(m) {
+  const shut = (m.sections || []).flatMap((s) => s.items.filter((it) => it.confidential && isFilled(it)).map((it) => ({ it, part: s.title })));
+  const ids = new Set(shut.flatMap(({ it }) => it.docs || []));
+  // (an item with no name goes by its part's on the board page, so that's its name too)
+  return [...docsOf((m.files || []).filter((f) => ids.has(f.id))).map((d) => d.title), ...shut.map(({ it, part }) => it.title || LIVE_TITLES[it.live] || part)];
+}
+/** A part's name where an email may say it: '' when its items are all board-only, or the name is, or resembles, a board-only one */
+export function partName(s, m) {
+  const items = s.items.filter(isFilled);
+  return (items.length && items.every((it) => it.confidential)) || boardOnlyNames(m).some((name) => namesAlike(name, s.title)) ? '' : s.title;
+}
+export function packetDocs(m) {
+  const all = m.files || [];
+  const files = all.filter((f) => !f.staffOnly && !['signed', 'minutes', 'side'].includes(f.kind));
+  const items = (m.sections || []).flatMap((s) => s.items);
+  // (the same name in another format is another copy; in the same one, two files that happen to share a name)
+  const copyOf = (a, b) => a.key === b.key && !a.copies.some((x) => b.copies.some((y) => formatOf(x) === formatOf(y)));
+  const listed = (list) => list.flatMap((it) => docsOf(files.filter((f) => (it.docs || []).includes(f.id))))
+    .reduce((out, d) => (out.some((x) => x.copies.some((c) => d.copies.some((e) => e.id === c.id)) || copyOf(x, d)) ? out : [...out, d]), []);
+  const shutItems = items.filter((it) => it.confidential);
+  // (never by its name, nor by "Copy of" it, nor by a file named for the item itself)
+  const shut = boardOnlyNames(m);
+  const placed = new Set(items.flatMap((it) => it.docs || []));
+  const onItems = listed(items.filter((it) => !it.confidential));
+  const loose = docsOf(files.filter((f) => !placed.has(f.id))).filter((d) => !onItems.some((x) => x.key === d.key));
+  return { names: [...onItems, ...loose].filter((d) => !shut.some((name) => namesAlike(name, d.title))).map((d) => d.file.name), hidden: listed(shutItems).length };
 }
 /** The made-up item the loose files are shown under, after the agenda */
 export const MORE = { id: 'i_more', title: 'Also for this meeting' };

@@ -607,9 +607,9 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
         to: STAFF_ALERTS_TO, note: 'A staff address that bounces says which list to fix instead. A reveal-reminder address that bounces or reports spam is simply unsubscribed, with no email. Once a week per address at most.',
       });
     case 'board-packet':
-      return email(packetEmail(sampleBoardMeeting(), { name: 'Alex Rivera', files: ['Q3 financials.pdf'], minutes: { id: 'm_sample', title: 'Q2 2026 Board Meeting' } }), {
+      return email(packetEmail(sampleBoardMeeting(), { name: 'Sam Ortiz', from: 'Jordan Ellis', files: ['Q3 financials.pdf'], reports: [{ title: 'Financial', url: `${SITE_ORIGIN}/board/m_sample/report/sample`, written: false }], minutes: { id: 'm_sample', title: 'Q3 2026 Board Meeting' }, toSign: ['Board Member Expectations'] }), {
         from: BOARD_FROM, to: 'Each active board member with an email on People → Board, on their own',
-        note: 'Peter or Holly sends it from Board, after sharing the meeting. “Read before the vote” shows while the last meeting’s minutes are waiting for the board’s vote. “Will you be there?” asks only those on the calendar invite who haven’t answered it: the invite is the only answer. Send it to me sends a [Preview] copy first.',
+        note: 'It goes by itself when the agenda is approved, once. The agenda is in the email, with a board-only item counted and never named. Before the meeting lists only what this person still owes: “Will you be there?” for those on the calendar invite who haven’t answered it (the invite is the only answer), “You present” for their own items, “Read before the vote” while the last minutes are waiting for the board’s vote, and the papers they haven’t signed this year. A preview from Board goes only to you, and says when the meeting has no place.',
       });
     case 'board-reminder':
       return email(reminderEmail(sampleBoardMeeting(), { name: 'Alex Rivera', from: 'Jordan Ellis' }), {

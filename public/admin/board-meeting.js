@@ -36,7 +36,7 @@ import {
   RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, majority, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
   isLive, agendaItems, isFilled, hasSince, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, pagesText, MORE,
-  sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew, copyOfItem, minutesToRead, minutesFileOf, ownMinutesFile,
+  sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew, copyOfItem, minutesToRead, packetDocs, minutesFileOf, ownMinutesFile,
 } from './board-shared.js';
 import { openScreen, mirrorUrl, useScreen, usePages, stepKey, useCover } from './board-present.js';
 import { printMinutesTemplate, downloadMinutesDocx } from './board-minutes-template.js';
@@ -639,7 +639,7 @@ function AgendaEditor({ m, set, ctx, keepSaved, onFocusItem = () => {}, template
       // The live lists are on the item itself (Shows); here only the way in for an item that shows none yet
       !template && it.live !== 'minutes' && !showsOf(it).length && !it.showShows && { icon: 'live', label: 'Show live numbers…', run: () => setItem(si, ii, { showShows: true }) },
       { divider: true },
-      !template && { icon: 'lock', label: 'Board only', hint: 'Never emailed', checked: !!it.confidential, run: () => setItem(si, ii, { confidential: !it.confidential }) },
+      !template && { icon: 'lock', label: 'Board only', hint: 'Its name is never emailed', checked: !!it.confidential, run: () => setItem(si, ii, { confidential: !it.confidential }) },
       !template && !(it.staffNote || it.showStaff) && { icon: 'private', label: 'Private note', hint: `Only ${others}`, run: () => setItem(si, ii, { showStaff: true }) },
       !template && { divider: true },
       { pair: [
@@ -1225,7 +1225,9 @@ function GettingReady({ m, set, ctx, act, save }) {
   const mineOnly = senders.length === 1 && senders[0] === String(data.me || '').toLowerCase();
   const senderName = (e) => (/@soardcharity\.com$/i.test(e) ? firstOf(e) : data.members.find((x) => x.email === e)?.name || e);
   // What the board gets: the packet, as they see it (never this meeting's own minutes, nor a staff-only file)
-  const docs = m.files.filter((f) => !f.staffOnly && f.kind !== 'minutes' && f.kind !== 'signed');
+  const inEmail = packetDocs(m);
+  // (a board-only document is counted in the email, never named)
+  const docs = [inEmail.names.length ? `${plural(inEmail.names.length, 'document')} by name` : '', inEmail.hidden ? `${plural(inEmail.hidden, 'board-only document')}, counted only` : ''].filter(Boolean).join(' and ');
   const toRead = minutesToRead(m, data.meetings);
   // Nothing reaches the board before the agenda is approved, and approving sends it: the board page and the email follow
   const approval = data.approvals?.[m.id];
@@ -1247,7 +1249,7 @@ function GettingReady({ m, set, ctx, act, save }) {
   const email = async () => {
     const to = data.members.filter((x) => x.email).map((x) => x.name);
     const none = data.members.filter((x) => !x.email).map((x) => x.name);
-    if (!(await ask({ title: `Email ${andList(to)} the link?`, text: `${m.shared ? 'They get' : 'The meeting goes on the board page, and they get'} the link to the agenda${docs.length ? ` and ${plural(docs.length, 'document')}` : ' (no documents yet)'}${toRead ? `, the ${meetingName(toRead)} minutes to read before the vote` : ''}, and anyone on the calendar invite who hasn’t answered it is asked to. Nothing is attached.${none.length ? ` ${andList(none)} ${none.length === 1 ? 'has' : 'have'} no email, so ${none.length === 1 ? 'gets' : 'get'} nothing.` : ''}`, yes: m.packetSentAt ? 'Email them again' : 'Email the board' }))) return;
+    if (!(await ask({ title: `Email ${andList(to)} the link?`, text: `${m.shared ? 'They get' : 'The meeting goes on the board page, and they get'} the agenda${docs ? `, ${docs}` : ' (no documents yet)'} and the link to the board page${toRead ? `, the ${meetingName(toRead)} minutes to read before the vote` : ''}, and their own list of what’s left to do: reports to write, papers to sign, and the calendar invite if they haven’t answered it. Nothing is attached.${none.length ? ` ${andList(none)} ${none.length === 1 ? 'has' : 'have'} no email, so ${none.length === 1 ? 'gets' : 'get'} nothing.` : ''}`, yes: m.packetSentAt ? 'Email them again' : 'Email the board' }))) return;
     if (!m.shared) { set({ shared: true }); await new Promise((r) => setTimeout(r, 0)); await save(); }
     run('send', { action: 'send-packet', id: m.id }, (j) => `Emailed ${plural(j.sent, 'board member')}`);
   };
@@ -1298,7 +1300,7 @@ function GettingReady({ m, set, ctx, act, save }) {
         ${m.shared ? html`<button class="btn btn-ghost btn-sm" onClick=${() => share(false)}>Take it off</button>` : html`<button class=${btn(sShared)} onClick=${() => share(true)}>Share with the board</button>`}
       </${Task}>
       <${Task} state=${sSent} title=${m.packetSentAt ? `${plural(m.packetSentTo, 'board member')} emailed the link` : 'Email the board the link'}
-        sub=${m.packetSentAt ? ago(m.packetSentAt) : `It goes by itself as soon as it can, or now from here. The link to the agenda and ${docs.length ? `the ${plural(docs.length, 'document')} by name` : 'the documents by name'} (nothing attached)${toRead ? `, the ${meetingName(toRead)} minutes to read before the vote` : ''}, and a nudge to answer the calendar invite for anyone who hasn’t. It goes to ${plural(data.packetTo, 'board member')}.`}>
+        sub=${m.packetSentAt ? ago(m.packetSentAt) : `It goes by itself as soon as it can, or now from here. The agenda itself${docs ? `, ${docs}` : ''} and the link to the board page (nothing attached)${toRead ? `, the ${meetingName(toRead)} minutes to read before the vote` : ''}, and a nudge to answer the calendar invite for anyone who hasn’t. It goes to ${plural(data.packetTo, 'board member')}.`}>
         <button class="btn btn-ghost btn-sm" disabled=${!!working || !data.setup.email} onClick=${() => run('preview', { action: 'send-packet', id: m.id, test: true }, (j) => `Sent to ${j.to?.[0] || 'you'}`)}>${working === 'preview' ? 'Sending…' : 'Send me the email'}</button>
         <button class=${btn(sSent)} disabled=${!!working || !data.packetTo || !data.setup.email} onClick=${email}>${working === 'send' ? 'Sending…' : m.packetSentAt ? 'Email again' : 'Email the board'}</button>
         ${!data.setup.email ? html`<span class="bd-muted">Email isn’t set up yet (Site → Automations says what’s missing).</span>` : null}

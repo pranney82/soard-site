@@ -31,7 +31,7 @@ import { Icon, PageNav, Avatar, Faces, DateTile, WindowTile, windowStart, SecHea
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
-  isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, minutesFileOf, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf, CONSENT_TEXT, SIGN_STYLES, styleFont, MEMBER_HOW, dueOn, dueWords,
+  videoOf, isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, minutesFileOf, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf, CONSENT_TEXT, SIGN_STYLES, styleFont, MEMBER_HOW, dueOn, dueWords,
   reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
   NOTHING_NEW, isNothingNew, LIMITS, slidesOfItem, reportAlone, decidesAlone, facesOf, hasReport, LIVE_TITLES, orderUnits,
 } from '../board-shared.js';
@@ -104,7 +104,6 @@ const greeting = () => { const hr = Number(new Intl.DateTimeFormat('en-US', { ho
 const kindLabel = (k) => FILE_KINDS.find((x) => x.id === k)?.label || 'Other';
 const mapsHref = (s) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s)}`;
 const joinLabel = (url) => (/meet\.google\.com/.test(url) ? 'Join with Google Meet' : /teams\.(microsoft|live)/.test(url) ? 'Join with Microsoft Teams' : /zoom\.us/.test(url) ? 'Join with Zoom' : 'Join by video');
-const videoOf = (m) => m.video || m.invite?.meet || '';
 /** Who the board's answers go to: "Holly and Peter" */
 const theTeam = (data) => together((data.admins || []).map(firstName)) || 'SOARD';
 const WORDS = ['No', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve'];

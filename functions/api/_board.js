@@ -38,7 +38,7 @@ import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf, minutesToRead,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf, inviteOut,
   agendaIsDraft, draftAgenda, templateAgenda, previousMeeting, draftName, callName, readAgain, AGENDA_READER, isLive, cleanLive, majority, guessItem, orgName, signsAs,
-  isFilled, LIVE_TITLES, presentersOf, reportsOn, namesText,
+  isFilled, LIVE_TITLES, agendaItems, presentersOf, reportsOn, namesText, sectionPlan, clock, docTitle, videoOf, packetDocs, partName,
 } from '../../public/admin/board-shared.js';
 import { welcomeHad, REPORT_LOOKS, SLIDE_PIECE } from '../../public/admin/board-shared.js';
 import { comparePeople, photoUrl } from '../../public/admin/team-shared.js';
@@ -47,7 +47,7 @@ import { peopleRows, privateEmails, activeBoard, boardAdmins, readState, writeSt
 import { cachedReveals, fetchJobs, loadKids, loadProjects, matchProject, isProject, isRehearsalJob, FIELD_JOB_STATUS, BUILDING_STATUSES } from './_reveals.js';
 import { sendEmails, sendEmailItems, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js';
 import { isEmail } from './_broadcast-notify.js';
-import { emailShell, button, esc, facts, link, panel, SANS, SERIF } from './_email-shell.js';
+import { emailShell, button, esc, facts, link, panel, INK, MUTED, SANS, SERIF } from './_email-shell.js';
 import { sniffType } from './upload-file.js';
 import { maybeSyncBoardAccess } from './_board-access.js';
 import { maybeSyncBoardCalendar, calendarStatus } from './_board-calendar.js';
@@ -641,6 +641,12 @@ export const SIGNED_BY = ['typed', 'drawn', 'copy', 'staff', 'drive'];
 // Signed on the board page (typed or drawn), not a copy
 const onPage = (how) => how === 'typed' || how === 'drawn';
 const thisYear = () => Number(todayEastern().slice(0, 4));
+/** The papers the board is asked to sign: shared, required, and with words or a file the board can open */
+const signablePapers = (docs) => docs.filter((d) => d.shared && d.sign && (d.body || (d.file && !d.file.staffOnly)));
+/** The year a board member signs for: today's, and in a preview the meeting's, since that's when the real one goes */
+const signYear = (m, test) => (test && isDate(m.date) ? m.date : todayEastern()).slice(0, 4);
+/** After a paper's name: " (by March 1)", or " (was due March 1)" once it has passed */
+const dueNote = (due) => (due ? ` (${due < todayEastern() ? 'was due' : 'by'} ${dueWords(due)})` : '');
 /**
  * A signature row as Board shows it: { name, at, how, copy (the file, when one was added), drive ({ id, name } in
  * Drive), mark (how they signed it: typed in a style, or drawn), fields (each initial and answer, with its point) }
@@ -1437,17 +1443,22 @@ const SIGN_IN = 'Sign in with this email address. You’ll get a one-time code b
 const small = (html) => `<p class="muted" style="margin:6px 0 0;font-size:13px;line-height:1.5;color:#5A5B61;">${html}</p>`;
 const ruled = (html) => `<div class="rule" style="margin:24px 0 0;padding:20px 0 0;border-top:1px solid #E5E4E0;">${html}</div>`;
 
-/** When, where and the video call as an email's fact rows (`more`: [label, html] rows after them) */
-function meetingFacts(m, more = []) {
+/**
+ * When, where and the video call as an email's fact rows (`more`: [label, html] rows after them; `noPlace`: what the
+ * Where row says when the meeting has no place, left out when there's nothing to say)
+ */
+function meetingFacts(m, more = [], { noPlace = '' } = {}) {
+  const video = videoOf(m);
   return facts([
-    ['When', esc(whenOf(m))],
-    ['Where', esc(placeOf(m))],
-    ['Video', m.video ? `${esc(callName(m.video))}: <a class="lnk" href="${esc(m.video)}" style="color:#2B6CB0;">${esc(bareLink(m.video))}</a>` : ''],
+    // ("10:00 AM" stays together on a phone)
+    ['When', esc(whenOf(m)).replace(/ (AM|PM)\b/g, '&nbsp;$1')],
+    ['Where', esc(placeOf(m)) || noPlace],
+    ['Video', video ? `${esc(callName(video))}: <a class="lnk" href="${esc(video)}" style="color:#2B6CB0;">${esc(bareLink(video))}</a>` : ''],
     ['Notes', m.inviteNote ? esc(m.inviteNote).replace(/\n/g, '<br>') : ''],
     ...more,
   ]);
 }
-const factsText = (m) => [`When: ${whenOf(m)}`, placeOf(m) && `Where: ${placeOf(m)}`, m.video && `Video (${callName(m.video)}): ${m.video}`, m.inviteNote && `Notes: ${m.inviteNote}`].filter(Boolean).join('\n');
+const factsText = (m) => [whenOf(m) && `When: ${whenOf(m)}`, placeOf(m) && `Where: ${placeOf(m)}`, videoOf(m) && `Video (${callName(videoOf(m))}): ${videoOf(m)}`, m.inviteNote && `Notes: ${m.inviteNote}`].filter(Boolean).join('\n');
 
 /**
  * "Will you be there?": answered on the calendar invite and nowhere else (Peter, Nov 2 2026). `from`: the name of
@@ -1467,85 +1478,147 @@ function inviteFrom(m, people, settings) {
 }
 
 /**
- * The documents email, for one board member: everything stays on the board page (nothing is attached; the board
- * reads it there, the meeting presents it from there, and Print it all is there for paper). When, where and the
- * call; what the documents are (never one on a board-only item, by name); the calendar invite to answer when they
- * haven't (`ask`), naming whose it is (`from`). `files`: the documents' names. `toSign`: this year's papers every
- * member signs that they haven't yet, each a title or { title, id, written } (one written in Board opens on its own page).
+ * The agenda as an email shows it, part by part the way the board page runs it: when each part starts, its items and who
+ * presents each. Never a motion or a vote: those are the board page's. A board-only item is counted, never named. → [{ title, at, open, hidden }]
  */
-/** The items someone presents at a meeting, each with the page to write its report on: [{ title, url, written }] */
+export function agendaParts(m, people = []) {
+  const plan = sectionPlan(m);
+  return (m.sections || []).flatMap((s) => {
+    const items = s.items.filter(isFilled);
+    const open = items.filter((it) => !it.confidential).map((it) => {
+      // Those picked by name, else the name as it was typed: "Dana Smith, CPA" and "A&M Partners" are one presenter
+      const picked = (it.who || []).map((slug) => people.find((p) => p.slug === slug)?.name).filter(Boolean);
+      return { title: it.title || LIVE_TITLES[it.live] || '', by: namesText(picked) || String(it.presenter || '').trim() };
+    }).filter((it) => it.title || it.by);
+    const hidden = items.filter((it) => it.confidential).length;
+    const title = partName(s, m);
+    return title || open.length || hidden ? [{ title, at: clock(plan.get(s.id)?.start), open, hidden }] : [];
+  });
+}
+const muted = (text) => `<span class="muted" style="color:${MUTED};">${text}</span>`;
+function partHtml(p) {
+  // (each on its own paragraph with a little air: on a phone a wrapped line must not read as the next item)
+  const row = (html) => `<p style="margin:4px 0 0;">${html}</p>`;
+  const items = p.open.map((it) => row(muted(esc([it.title, it.by].filter(Boolean).join(' · ')))));
+  return [p.title ? `<strong>${esc(p.title)}</strong>` : '', ...items, p.hidden ? row(muted(plural(p.hidden, 'board-only item'))) : ''].filter(Boolean).join('');
+}
+const partText = (p) => [[p.at, p.title].filter(Boolean).join('  '),
+  ...p.open.map((it) => `- ${[it.title, it.by && `(${it.by})`].filter(Boolean).join(' ')}`),
+  p.hidden ? `- ${plural(p.hidden, 'board-only item')}` : ''].filter(Boolean).join('\n');
+const headed = (title) => `<h2 class="ink" style="margin:28px 0 10px;font-family:${SERIF};font-size:17px;line-height:1.3;font-weight:700;color:${INK};">${esc(title)}</h2>`;
+// (one row of what's asked of them: a hairline between rows)
+const askRow = (html, i) => `<div class="rule" style="${i ? 'margin:14px 0 0;padding:14px 0 0;border-top:1px solid #E5E4E0;' : ''}">${html}</div>`;
+// (a meeting with no times has no left column to line up: its parts stacked)
+const stacked = (html) => `<div class="ink" style="margin:0 0 12px;font-size:14px;line-height:20px;">${html}</div>`;
+const rowTitle = (html) => `<p class="ink" style="margin:0 0 4px;font-weight:700;">${html}</p>`;
+
+/** The items someone presents at a meeting, each with the page to write its report on: [{ title, url, written, private }] */
 export function reportsFor(m, slug, people = []) {
   if (!slug) return [];
-  return m.sections.flatMap((s) => s.items).filter((it) => reportsOn(it) && presentersOf(it, people).some((p) => p.slug === slug))
-    .map((it) => ({ title: it.title, url: `${meetingUrl(m)}/report/${it.id}`, written: !!it.report }));
+  return m.sections.flatMap((s) => s.items.filter((it) => reportsOn(it) && presentersOf(it, people).some((p) => p.slug === slug))
+    // (a board-only item's name never leaves here: its presenter reads it on the board page)
+    .map((it) => ({ title: it.confidential ? '' : it.title || LIVE_TITLES[it.live] || partName(s, m) || 'an agenda item', url: `${meetingUrl(m)}/report/${it.id}`, written: !!it.report, private: !!it.confidential })));
 }
 
-export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', from = '', ask = true, reports = [], toSign = [], minutes = null } = {}) {
+/**
+ * The agenda email, for one board member: everything stays on the board page (nothing is attached; the board reads
+ * it there, the meeting presents it from there, and Print it all is there for paper), and what the email says is
+ * what they'd want before opening it. Say only what's true of this meeting: no "documents" when it has none. In order:
+ * when, where and the call; the one button; what this person still owes before the meeting, soonest first (the calendar
+ * invite when they haven't answered it, `ask`, naming whose it is, `from`; their reports, `reports`; the last minutes
+ * up for a vote, `minutes`; this year's papers they haven't signed, `toSign`, each a title or { title, id, written },
+ * one written in Board opening on its own page); then the agenda itself and the documents by name. A board-only item
+ * or document is counted, never named. `files`: the documents' names. `people`: who to name as presenters. `test`: a
+ * [Preview], which also says what the real email would quietly leave out.
+ */
+export function packetEmail(m, { test = false, files = [], private: hidden = 0, name: who = '', from = '', ask = true, reports = [], toSign = [], minutes = null, people = [] } = {}) {
   const name = meetingName(m);
   const first = firstName(who);
-  const titles = files.map((n) => fileTitle(n));
+  const titles = files.map((n) => docTitle(n));
   const count = titles.length + hidden;
-  const lead = `${first ? `${first}, the` : 'The'} agenda${count ? ` and ${plural(count, 'document')}` : ''} for the ${name} ${count ? 'are' : 'is'} on the board page. Read ${count ? 'them' : 'it'} there, or print it all from there if you’d like paper.`;
-  const answer = ask ? ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">Will you be there?</p><p class="ink" style="margin:0;">${esc(answerAsk(from))}</p>`) : '';
+  const docs = count === 1 ? 'the document' : `the ${count} documents`;
+  // (a meeting someone called "Q1 Board Meeting - Agenda" isn't that twice)
+  const saysAgenda = /\bagenda\b/i.test(name);
+  const heading = saysAgenda ? name : `${name} agenda`;
+  const lead = `${first ? `${first}, please` : 'Please'} read the agenda${count ? ` and ${docs}` : ''} before the meeting. ${count ? 'They’re' : 'It’s'} on the board page, and you can print it all from there.`;
   const docsHtml = [...titles.map((t) => esc(t)), hidden ? `${plural(hidden, 'board-only document')}` : ''].filter(Boolean).join('<br>');
-  // What they present: the report to write on the board page (or theirs, already in)
+  // What they present: the report to write on the board page (or theirs, already in). A board-only item is never named
   const todo = reports.filter((r) => !r.written);
   // Each item by name, bold, joined in words (a title with "and" in it stays one title)
   const joined = (list) => (list.length > 2 ? `${list.slice(0, -1).join(', ')}, and ${list.at(-1)}` : list.join(' and '));
-  const presentHtml = !reports.length ? '' : ruled(`<p class="ink" style="margin:0 0 6px;">You present ${joined(reports.map((r) => `<strong>${esc(r.title)}</strong>`))}</p>`
-    + `<p style="margin:0 0 14px;">${todo.length ? 'Write your report on the board page. The board reads it there before the meeting, and it’s on the screen when you present.' : `Your report${reports.length > 1 ? 's are' : ' is'} in. You can change ${reports.length > 1 ? 'them' : 'it'} there until the meeting.`}</p>`
-    + reports.map((r) => (r.written ? `<p style="margin:6px 0 0;">${link(`Your report on ${r.title}`, r.url)}</p>` : `<div style="margin:8px 0 0;">${button(reports.length > 1 ? `Write your ${r.title} report` : 'Write your report', r.url)}</div>`)).join(''));
-  // The papers every board member signs each year, while they haven't
-  const year = todayEastern().slice(0, 4);
+  const secret = reports.filter((r) => r.private).length;
+  const secretName = secret === 1 ? 'a board-only item' : `${secret} board-only items`;
+  const named = (mark) => [...new Set(reports.filter((r) => !r.private).map((r) => r.title))].map(mark).concat(secret ? [mark(secretName)] : []);
+  // (two that read the same are told apart by number: the link is all that says which)
+  const nth = (r, list) => (list.length > 1 ? list.indexOf(r) + 1 : 0);
+  const reportOn = (r) => {
+    const n = nth(r, reports.filter((x) => x.private === r.private && x.title === r.title));
+    return r.private ? (n ? `board-only item ${n}` : 'the board-only item') : `${r.title}${n ? ` (${n})` : ''}`;
+  };
+  const several = todo.length > 1;
+  const presentHow = todo.length
+    ? `Write your report${several ? 's' : ''} on the board page. The board reads ${several ? 'them' : 'it'} there before the meeting, and ${several ? 'they’re' : 'it’s'} on the screen when you present.`
+    : `Your report${reports.length > 1 ? 's are' : ' is'} in. You can change ${reports.length > 1 ? 'them' : 'it'} on the board page until the meeting.`;
+  const reportLink = (r) => (r.written ? `Your report on ${reportOn(r)}` : reports.length > 1 ? `Write your report on ${reportOn(r)}` : 'Write your report');
+  const presentHtml = !reports.length ? '' : `<p class="ink" style="margin:0 0 4px;">You present ${joined(named((t) => `<strong>${esc(t)}</strong>`))}</p>`
+    + `<p class="ink" style="margin:0;">${esc(presentHow)}</p>`
+    // (links, never buttons: a button can't wrap, and a long item's name would push a phone's email wide)
+    + reports.map((r) => `<p style="margin:8px 0 0;">${link(reportLink(r), r.url)}</p>`).join('');
+  // The papers every board member signs each year, while they haven't (a preview shows them for the meeting's year)
+  const year = signYear(m, test);
   const papers = toSign.map((t) => (typeof t === 'string' ? { title: t } : t));
   // One paper opens on its own page, its words (or its file) and the signing at their end; more, on Documents
   // (/board/<id>: a #/ link loses its place through Cloudflare's sign-in, public/_redirects)
   const documentsUrl = `${SITE}/board/${papers.length === 1 && papers[0].id ? papers[0].id : 'documents'}`;
-  const signHow = 'Every board member signs these once a year. Read them on the board page and sign there, or add the copy you signed on paper.';
-  const signHtml = !toSign.length ? '' : ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">Still to sign for ${year}</p>`
-    + `<p class="ink" style="margin:0;">${papers.map((t) => esc(t.title)).join('<br>')}</p>` + small(esc(signHow))
-    + `<p style="margin:10px 0 0;">${link(toSign.length > 1 ? 'Read and sign them' : 'Read and sign it', documentsUrl)}</p>`);
-  const signText = !toSign.length ? '' : `Still to sign for ${year}: ${papers.map((t) => t.title).join(', ')}. ${signHow}\n${documentsUrl}`;
+  const these = papers.length > 1 ? 'these' : 'this';
+  const signWhy = papers.length && papers.every((t) => t.changed) ? `${these === 'this' ? 'This' : 'These'} changed since you signed.` : `Every board member signs ${these} once a year.`;
+  const signHow = `${signWhy} Read ${papers.length > 1 ? 'them' : 'it'} on the board page and sign there, or add the copy you signed on paper.`;
+  const signHtml = !toSign.length ? '' : rowTitle(`Still to sign for ${year}`)
+    + `<p class="ink" style="margin:0;">${papers.map((t) => esc(`${t.title}${dueNote(t.due)}`)).join('<br>')}</p>` + small(esc(signHow))
+    + `<p style="margin:8px 0 0;">${link(toSign.length > 1 ? 'Read and sign them' : 'Read and sign it', documentsUrl)}</p>`;
+  const signText = !toSign.length ? '' : `Still to sign for ${year}: ${papers.map((t) => `${t.title}${dueNote(t.due)}`).join(', ')}. ${signHow}\n${documentsUrl}`;
   // The last meeting's minutes, up for a vote at this one: read first, on the board page. Replies go to Board's admins
-  const minutesName = minutes ? `The minutes of the ${meetingName(minutes)}` : '';
+  const minutesName = minutes ? `The minutes of the ${meetingName(minutes).replace(/^the\s+/i, '')}` : '';
   const minutesHow = 'The board votes on them at this meeting. Reply if anything needs correcting.';
-  const minutesHtml = !minutes ? '' : ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">Read before the vote</p>`
+  const minutesHtml = !minutes ? '' : rowTitle('Read before the vote')
     + `<p class="ink" style="margin:0;">${esc(minutesName)}</p>` + small(esc(minutesHow))
-    + `<p style="margin:10px 0 0;">${link('Read the minutes', meetingUrl(minutes))}</p>`);
+    + `<p style="margin:8px 0 0;">${link('Read the minutes', meetingUrl(minutes))}</p>`;
   const minutesText = !minutes ? '' : `Read before the vote: ${minutesName}. ${minutesHow}\n${meetingUrl(minutes)}`;
-  const presentText = !reports.length ? '' : `You present ${joined(reports.map((r) => `“${r.title}”`))}. ${todo.length ? 'Write your report on the board page; the board reads it there before the meeting.' : 'Your report is in; you can change it there until the meeting.'}\n${reports.map((r) => `${r.title}: ${r.url}`).join('\n')}`;
+  const presentText = !reports.length ? '' : `You present ${joined(named((t) => (t === secretName ? t : `“${t}”`)))}. ${presentHow}\n${reports.map((r) => `${reportLink(r)}: ${r.url}`).join('\n')}`;
+  const answerHtml = !ask ? '' : rowTitle('Will you be there?') + `<p class="ink" style="margin:0;">${esc(answerAsk(from))}</p>`;
+  const asks = [answerHtml, presentHtml, minutesHtml, signHtml].filter(Boolean);
+  // (a report already in is theirs to know, not something they still owe)
+  const owed = (ask ? 1 : 0) + todo.length + (minutes ? 1 : 0) + toSign.length;
+  const parts = agendaParts(m, people);
+  const asksText = [ask ? `Will you be there? ${answerAsk(from)}` : '', presentText, minutesText, signText].filter(Boolean);
+  const agendaHtml = parts.some((p) => p.at)
+    ? facts([...parts.map((p) => [p.at, partHtml(p)]), ['Documents', docsHtml]])
+    : [...parts.map((p) => stacked(partHtml(p))), docsHtml ? stacked(parts.length ? `<strong>Documents</strong><br>${docsHtml}` : docsHtml) : ''].join('');
   return {
-    subject: `${test ? '[Preview] ' : ''}The agenda and documents: ${name}, ${shortDate(m.date)}`,
+    subject: `${test ? '[Preview] ' : ''}${saysAgenda ? '' : 'Agenda: '}${[name, shortDate(m.date).replace(/, \d{4}$/, '')].filter(Boolean).join(', ')}`,
     html: emailShell({
       eyebrow: 'SOARD Board',
-      preheader: `${whenOf(m)}. The agenda${count ? ' and documents are' : ' is'} on the board page.`,
-      heading: `The agenda and documents for the ${name}`,
+      // (what the subject doesn't say comes first: an inbox shows this beside it)
+      preheader: [owed ? `${plural(owed, 'thing')} for you before the meeting.` : `Read the agenda${count ? ` and ${docs}` : ''} before the meeting.`, whenOf(m) && `${whenOf(m)}.`].filter(Boolean).join(' '),
+      heading,
       intro: esc(lead),
-      bodyHtml: meetingFacts(m, [['Documents', docsHtml]])
-        + `<div style="margin:18px 0 0;">${button('Open the agenda and documents', meetingUrl(m))}</div>`
+      bodyHtml: meetingFacts(m, [], { noPlace: test ? '<em>No place on this meeting yet. The real email leaves this row out.</em>' : '' })
+        + `<div style="margin:18px 0 0;">${button('Open the agenda', meetingUrl(m), 'primary', { big: true })}</div>`
         + small(SIGN_IN)
-        + minutesHtml
-        + presentHtml
-        + answer
-        + signHtml,
+        + (asks.length ? headed('Before the meeting') + panel(asks.map(askRow).join('')) : '')
+        + (parts.length ? headed('On the agenda') + small('The board page always has the latest.') : count ? headed('Documents') : '')
+        + (agendaHtml ? `<div style="margin:8px 0 0;">${agendaHtml}</div>` : ''),
       footerHtml: FOOTER,
     }),
-    text: [`The agenda and documents for the ${name}.`, lead, factsText(m),
-      count ? `Documents: ${[...titles, hidden ? plural(hidden, 'board-only document') : ''].filter(Boolean).join(', ')}` : '',
-      `Open the agenda and documents: ${meetingUrl(m)}\n${SIGN_IN}`,
-      minutesText,
-      presentText,
-      ask ? `Will you be there? ${answerAsk(from)}` : '',
-      signText].filter(Boolean).join('\n\n'),
+    text: [`${heading}.`, lead, factsText(m),
+      `Open the agenda: ${meetingUrl(m)}\n${SIGN_IN}`,
+      asksText.length ? ['BEFORE THE MEETING', ...asksText].join('\n\n') : '',
+      parts.length ? ['ON THE AGENDA', ...parts.map(partText)].join('\n\n') : '',
+      count ? `Documents: ${[...titles, hidden ? plural(hidden, 'board-only document') : ''].filter(Boolean).join(', ')}` : ''].filter(Boolean).join('\n\n'),
   };
 }
 
-/** The documents an email may name: the board's files, never one that goes with a board-only item → { names, hidden } */
-export function packetDocs(m) {
-  const secret = new Set(m.sections.flatMap((s) => s.items.filter((it) => it.confidential).flatMap((it) => it.docs || [])));
-  const docs = m.files.filter((f) => !f.staffOnly && f.kind !== 'signed' && f.kind !== 'minutes');
-  return { names: docs.filter((f) => !secret.has(f.id)).map((f) => f.name), hidden: docs.filter((f) => secret.has(f.id)).length };
-}
+export { packetDocs };
 
 /** Each email on its own: each member's has their own answer links */
 const sendEach = (env, items, { tags, replyTo }) => sendEmailItems(env, items, { from: fromBoard(), tags, replyTo });
@@ -1590,16 +1663,21 @@ export async function sendPacket(env, id, { by, to = null, replyTo = [] } = {}) 
   const people = test ? to.map((email) => ({ email, name: '' })) : await packetList(env.DB);
   if (!people.length) throw Object.assign(new Error('No board member has an email on file (People → Board)'), { status: 409 });
   const docs = packetDocs(m);
+  // An email saying "read the agenda" with no agenda helps no one (Send me the email still shows how it would look).
+  // The same test Board's Approve goes by, so an agenda that can be approved can always be sent
+  if (!test && !agendaItems(m).length && !agendaParts(m).length && !docs.names.length && !docs.hidden) throw Object.assign(new Error('The agenda is empty: add to it before emailing the board'), { status: 409 });
   // Only someone on the invite who hasn't answered it is asked to
   const open = test ? [] : (await notAnswered(env, m)).map((p) => p.slug);
   const from = inviteFrom(m, await roster(env.DB), await getSettings(env.DB));
-  // Each presenter's own copy asks for their report (a preview shows none: it's for no one in particular)
-  const everyone = test ? [] : await roster(env.DB).then((r) => [...r.board, ...r.staff]);
+  // Each presenter's own copy asks for their report (a preview shows none: it's for no one in particular); the agenda names them
+  const everyone = await roster(env.DB).then((r) => [...r.board, ...r.staff]);
   // …and each member's, the papers they haven't signed this year (a preview shows them all)
-  const signable = (await listDocs(env.DB)).filter((d) => d.shared && d.sign && (d.body || d.file));
-  const toSign = (p) => signable.filter((d) => !(p.slug && d.signed[p.slug])).map((d) => ({ title: d.title, id: d.id, written: !!d.body }));
+  const signable = signablePapers(await listDocs(env.DB));
+  const year = signYear(m, test);
+  const toSign = (p) => signable.filter((d) => !(p.slug && (d.signed[p.slug] || d.declined?.[p.slug])))
+    .map((d) => ({ title: d.title, id: d.id, written: !!d.body, due: dueOn(d, year), changed: !!(p.slug && d.earlier?.includes(p.slug)) }));
   const minutes = minutesToRead(m, await listMeetings(env.DB));
-  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, from, ask: test || open.includes(p.slug), reports: reportsFor(m, p.slug, everyone), toSign: toSign(p), minutes }) }));
+  const items = people.map((p) => ({ to: p.email, ...packetEmail(m, { test, files: docs.names, private: docs.hidden, name: p.name, from, ask: test || open.includes(p.slug), reports: reportsFor(m, p.slug, everyone), toSign: toSign(p), minutes, people: everyone }) }));
   const tags = [{ name: 'kind', value: test ? 'board-packet-preview' : 'board-packet' }];
   const r = await sendEach(env, items, { tags, replyTo });
   if (!test && r.sent) await writeMeeting(env.DB, { ...m, packetSentAt: nowIso(), packetSentTo: r.sent, updatedAt: m.updatedAt, updatedBy: m.updatedBy });
@@ -1703,10 +1781,10 @@ export function reminderEmail(m, { test = false, name: who = '', from = '' } = {
       intro: esc(ask),
       bodyHtml: meetingFacts(m)
         + small(`Can’t find the invite? Search your email for “${esc(called)}”, or reply to this email and we’ll send it again.`)
-        + `<div style="margin:10px 0 0;">${small(`The agenda and documents: ${link('the board page', meetingUrl(m))}. ${SIGN_IN}`)}</div>`,
+        + `<div style="margin:10px 0 0;">${small(`The agenda is on ${link('the board page', meetingUrl(m))}. ${SIGN_IN}`)}</div>`,
       footerHtml: FOOTER,
     }),
-    text: [heading, ask, factsText(m), `Can't find the invite? Search your email for "${called}", or reply to this email and we'll send it again.`, `The agenda and documents: ${meetingUrl(m)}`].join('\n\n'),
+    text: [heading, ask, factsText(m), `Can't find the invite? Search your email for "${called}", or reply to this email and we'll send it again.`, `The agenda is on the board page: ${meetingUrl(m)}`].join('\n\n'),
   };
 }
 
@@ -1962,7 +2040,7 @@ async function sendWelcomeNow(env, { to = null, slugs = null, due = false, again
   const nowHm = easternHm(Date.now());
   const next = nextMeeting(meetings.filter((m) => onBoardPage(m, today) && !m.calendar?.gone && !(m.date === today && (m.end || m.start) && (m.end || m.start) <= nowHm)), today);
   const helpers = [...new Set(replyTo.map((e) => firstName(staffFor(people, e)?.name)).filter(Boolean))];
-  const signable = docs.filter((d) => d.shared && d.sign && (d.body || (d.file && !d.file.staffOnly)));
+  const signable = signablePapers(docs);
   const items = recipients.filter((p, i) => recipients.findIndex((x) => x.email === p.email) === i).map((p) => ({ to: p.email, ...welcomeEmail({ name: p.name, email: p.email, test, inviter, next, helpers, toSign: signable.filter((d) => !(p.slug && d.signed[p.slug])).map((d) => d.title) }) }));
   if (!test) {
     // Recorded before it goes: a send cut off midway (the page closed, the Worker stopped) counts as sent, so it never
@@ -2031,7 +2109,7 @@ export function signAskEmail({ name = '', email = '', papers = [], from = '', fi
       preheader: `${one ? one.title : `${papers.length} papers`}: read and sign on the board page. A few minutes.`,
       heading,
       intro: esc(intro),
-      bodyHtml: (one ? '' : panel(kicker(`To sign for ${year}`) + para(papers.map((x) => `${esc(x.title)}${x.due ? ` (${x.due < todayEastern() ? 'was due' : 'by'} ${esc(dueWords(x.due))})` : ''}`).join('<br>'), { top: 0 }), { accent: true }))
+      bodyHtml: (one ? '' : panel(kicker(`To sign for ${year}`) + para(papers.map((x) => esc(`${x.title}${dueNote(x.due)}`)).join('<br>'), { top: 0 }), { accent: true }))
         + `<div style="margin:${one ? 4 : 18}px 0 0;">${button(one ? 'Read and sign it' : 'Read and sign them', url)}</div>`
         + small(esc(paper))
         + (firstTime ? ruled(`<p class="ink" style="margin:0 0 6px;font-weight:700;">The first time</p><p class="ink" style="margin:0;">${esc(signIn).replace(esc(email), `<strong style="word-break:break-all;">${esc(email)}</strong>`)}</p>`) : '')
@@ -2041,7 +2119,7 @@ export function signAskEmail({ name = '', email = '', papers = [], from = '', fi
     text: [
       heading,
       intro,
-      one ? '' : `To sign for ${year}:\n${papers.map((x) => `- ${x.title}${x.due ? ` (${x.due < todayEastern() ? 'was due' : 'by'} ${dueWords(x.due)})` : ''}`).join('\n')}`,
+      one ? '' : `To sign for ${year}:\n${papers.map((x) => `- ${x.title}${dueNote(x.due)}`).join('\n')}`,
       `${one ? 'Read and sign it' : 'Read and sign them'}: ${url}`,
       paper,
       firstTime ? `The first time: ${signIn}` : '',
@@ -2087,7 +2165,7 @@ export async function askToSign(env, { slugs = null, by = '', replyTo = [], to =
     activeBoard(env.DB), roster(env.DB), getSettings(env.DB), listDocs(env.DB), signAsks(env.DB, year),
     env.DB.prepare('SELECT slug FROM board_seen').all().then((r) => new Set((r.results || []).map((x) => x.slug))),
   ]);
-  const signable = docs.filter((d) => d.shared && d.sign && (d.body || (d.file && !d.file.staffOnly)));
+  const signable = signablePapers(docs);
   if (!signable.length) throw Object.assign(new Error('There’s nothing for the board to sign: tick Required on a paper in Documents, with its words or its file'), { status: 409 });
   const one = Array.isArray(slugs) && slugs.length === 1;
   const papersOf = (slug) => signable.filter((d) => !d.signed[slug] && (one || !d.declined?.[slug])).map((d) => ({ title: d.title, id: d.id, due: dueOn(d, year) }));

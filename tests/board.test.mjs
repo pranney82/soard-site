@@ -299,7 +299,7 @@ test('the agenda approved is what emails the board: once, put on the board page 
   const { readSettings, writeState } = await import('../functions/api/_board-roles.js');
   const { chairApprove } = await import('../functions/api/_board-asks.js');
   await writeState(env.DB, 'settings', { ...(await readSettings(env.DB)), asks: 'on' });
-  const agendas = () => outside.filter((c) => c.url === 'https://api.resend.com/emails/batch').flatMap((c) => c.body).filter((x) => /^The agenda and documents/.test(x.subject));
+  const agendas = () => outside.filter((c) => c.url === 'https://api.resend.com/emails/batch').flatMap((c) => c.body).filter((x) => /^Agenda: /.test(x.subject));
   const admin = { admin: true, adminEmail: FOUNDER };
   const m = (await adminApi(FOUNDER, { action: 'new-meeting', date: inDays(12) })).body.meeting;
   // Approved before the board knows how to sign in: it waits, off the board page
@@ -330,7 +330,7 @@ test('the documents email is the link: the documents by name, nothing attached, 
   const mail = packetEmail(await getMeeting(env.DB, meeting.id), { files: ['Balance sheet.pdf'] });
   assert.doesNotMatch(mail.html, /Insurance is looking|Ask counsel|Legal update/);
   assert.match(mail.html, new RegExp(`/board/${meeting.id}`));
-  assert.match(mail.html, /Open the agenda and documents/);
+  assert.match(mail.html, /Open the agenda/);
 
   // One batch, each member's own email; the board's documents named, never a staff-only one, and nothing attached
   const sends = () => outside.filter((c) => c.url === 'https://api.resend.com/emails/batch').flatMap((c) => c.body);
@@ -529,7 +529,7 @@ test('who’s coming is the calendar invite’s alone: the emails ask only who�
   assert.equal(r.body.sent, 2);
   const to = (addr) => sends().find((c) => c.to[0] === addr);
   const alex = to(MEMBER);
-  assert.match(alex.html, /Alex, the agenda and 1 document for the .+ are on the board page/);
+  assert.match(alex.html, /Alex, please read the agenda and the document before the meeting\. They’re on the board page/);
   assert.match(alex.html, /Will you be there\?/);
   assert.match(alex.html, /Answer the calendar invite from Jane Doe: yes, no or maybe/);
   assert.match(alex.text, /Will you be there\? Answer the calendar invite from Jane Doe/);
