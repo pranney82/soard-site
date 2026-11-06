@@ -152,12 +152,28 @@ const tess = {
   contacts: [], locations: [], comments: [], jobs: [],
   files: [{ id: 't-video', name: 'Tess Moore_Application.mp4', type: 'video/mp4', size: 90000, createdAt: day(200) }],
 };
+// Real families have the form's four photos, sometimes more: a wide video with four, and a tall one with six
+const someone = (id, name, video, n) => ({
+  id, name, type: 'customer', org: ORG, createdAt: day(100),
+  fields: { [F.status]: 'Approved', [F.year]: '2026', [F.types]: ['Bedroom'], [F.diagnosis]: 'Autism', [F.birthday]: '2013-03-03' },
+  contacts: [], locations: [], comments: [], jobs: [],
+  files: [
+    { id: video, name: `${name}_Application.mp4`, type: 'video/mp4', size: 90000, createdAt: day(100) },
+    ...Array.from({ length: n }, (_, i) => ({ id: `${video}-p${i}`, name: `${name} Space ${i + 1}.jpg`, type: 'image/jpeg', size: BODIES.child.body.length, createdAt: day(100) })),
+  ],
+});
+const ines = someone('acctines0001', 'Ines Vale', 'i-video', 4);
+const omar = someone('acctomar0001', 'Omar Reed', 'o-video', 6);
+FRAME['i-video'] = FRAME['w-video'];
+FRAME['o-video'] = FRAME['f-video'];
+w.world.accounts[ines.id] = ines;
+w.world.accounts[omar.id] = omar;
 w.world.accounts[wes.id] = wes;
 w.world.accounts[tess.id] = tess;
 w.world.accounts[avery.id] = avery;
 w.world.accounts[nora.id] = nora;
 w.world.accounts[remy.id] = remy;
-const FILE_BODY = { 'w-video': 'wide', 'w-walk': 'wide', 't-video': 'video', 'r-photo': 'child', 'f-child': 'child', 'f-family': 'family', 'f-pdf': 'pdf', 'f-pdf2': 'pdf', 'f-docx': 'docx', 'n-pdf': 'pdf', 'n-photo': 'space' };
+const FILE_BODY = { ...Object.fromEntries([...ines.files, ...omar.files].map((f) => [f.id, /video/.test(f.type) ? (f.id === 'i-video' ? 'wide' : 'video') : 'child'])), 'w-video': 'wide', 'w-walk': 'wide', 't-video': 'video', 'r-photo': 'child', 'f-child': 'child', 'f-family': 'family', 'f-pdf': 'pdf', 'f-pdf2': 'pdf', 'f-docx': 'docx', 'n-pdf': 'pdf', 'n-photo': 'space' };
 
 // ── D1 and R2: Avery's website application (answers, four photos, the PDF) ──
 const DB = await createD1();
@@ -675,6 +691,37 @@ await page.waitForSelector('.fv-tile', { timeout: 6000 }).catch(() => null);
 await sleep(700);
 t0 = await media(page);
 ok(t0 && !t0.img && /^Watch/.test(t0.go), 'a video whose frame won’t load: no broken image, Watch on the dark');
+
+// No row of photos ends short, at any width
+const rows = (pg) => pg.evaluate(() => {
+  const box = document.querySelector('.apl-media').getBoundingClientRect();
+  const row = (s) => {
+    const r = [...document.querySelectorAll(s)].map((e) => e.getBoundingClientRect());
+    return r.length ? { n: r.length, oneRow: r.every((x) => Math.abs(x.top - r[0].top) < 1), gap: Math.abs(Math.max(...r.map((x) => x.right)) - box.right), w: Math.round(r[0].width), h: Math.round(r[0].height) } : null;
+  };
+  return { top: row('.apl-media .apl-ph'), extra: row('.apl-gallery.is-row .apl-ph'), scroll: document.querySelector('.apl-side').scrollWidth <= document.querySelector('.apl-side').clientWidth };
+});
+const panelShot = async (pg, name) => {
+  await pg.$eval('.apl-media', (el) => el.scrollIntoView({ block: 'center' }));
+  await sleep(200);
+  await pg.screenshot({ path: join(OUT, name), clip: await pg.$eval('.apl-files-panel', (el) => { const r = el.getBoundingClientRect(); return { x: r.x - 8, y: Math.max(0, r.y - 8), width: r.width + 16, height: Math.min(r.height + 16, 880) }; }) });
+};
+await leaveFamily(page);
+await openFamily(page, ines.id);
+await page.waitForFunction(() => document.querySelector('.fv-tile.is-wide .fv-tile-go b'), { timeout: 6000 }).catch(() => null);
+await sleep(300);
+let r0 = await rows(page);
+ok(r0.top?.n === 4 && r0.top.oneRow && r0.top.gap < 1, `a wide video: all four photos in one full row under it (${r0.top?.n}, ${r0.top?.w}x${r0.top?.h})`);
+await panelShot(page, 'media-wide4.png');
+await leaveFamily(page);
+await openFamily(page, omar.id);
+await page.waitForFunction(() => document.querySelector('.fv-tile .fv-tile-go b'), { timeout: 6000 }).catch(() => null);
+await sleep(300);
+r0 = await rows(page);
+t0 = await media(page);
+ok(r0.top?.n === 4 && t0.besideVideo && t0.level < 1.5, 'a tall video: the first four photos beside it, level');
+ok(r0.extra?.n === 2 && r0.extra.oneRow && r0.extra.gap < 1, `two more photos fill their own row (${r0.extra?.w}x${r0.extra?.h})`);
+await panelShot(page, 'media-six.png');
 await openFamily(page, avery.id);
 await page.waitForFunction(() => document.querySelector('.fv-tile-pic img.is-in'), { timeout: 6000 }).catch(() => null);
 ok(!!(await page.$('.fv-tile-pic img.is-in')), 'on to the next family, whose frame loads: the last one’s broken frame didn’t follow');
@@ -692,6 +739,19 @@ for (const width of [320, 390, 768, 820, 1025, 1100, 1180, 1280, 1440]) {
   const r = await media(sweep);
   ok(r && r.inside && r.scroll && r.besideVideo && r.level < 1.5 && r.photoW >= 60, `${width}px: the video and photos fit, level (${JSON.stringify({ w: r?.photoW, h: r?.photoH, level: r?.level })})`);
   if (width === 390) await sweep.screenshot({ path: join(OUT, 'media-390.png') });
+}
+for (const who of [ines, omar]) {
+  await sweep.setViewport({ width: 1440, height: 900, deviceScaleFactor: 2, isMobile: false, hasTouch: false });
+  await openFamily(sweep, who.id);
+  await sweep.waitForSelector('.fv-tile img.is-in', { timeout: 6000 }).catch(() => null);
+  for (const width of [320, 390, 768, 1025, 1280, 1440]) {
+    await sweep.setViewport({ width, height: 900, deviceScaleFactor: 2, isMobile: false, hasTouch: false });
+    await sleep(200);
+    await sweep.evaluate(() => { [...document.querySelectorAll('[role="tab"], button')].find((b) => /^Details$/.test(b.textContent.trim()))?.click(); });
+    await sleep(150);
+    const r = await rows(sweep);
+    ok(r.scroll && r.top?.gap < 1 && r.top.w >= 50 && (who === ines ? r.top.oneRow : r.extra?.oneRow && r.extra.gap < 1), `${width}px, ${who === ines ? 'a wide video' : 'six photos'}: every row of photos full (${JSON.stringify({ top: r.top, extra: r.extra })})`);
+  }
 }
 await sweep.close();
 

@@ -529,9 +529,12 @@ a.apl-file-chip:hover { border-color: var(--color-text-muted); background: var(-
 .apl-gallery a:hover img { transform: scale(1.04); }
 .apl-gallery a:focus-visible .apl-ph { outline: 2px solid var(--color-text); outline-offset: 2px; }
 .apl-cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The video stands at the left and the first photos fill the rest, both edges level. A wide video lies across the top. */
+/* The video stands at the left and the first photos fill the rest, both edges level. A wide video lies across the top,
+   with the photos in one full row under it. Any more photos than that get a full row of their own, so a row never ends short. */
 .apl-media { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: .55rem .45rem; }
 .apl-media:has(.fv-tile.is-wide) { grid-template-columns: minmax(0, 1fr); }
+.apl-media:has(.fv-tile.is-wide) .apl-gallery, .apl-gallery.is-row { grid-template-columns: repeat(var(--cols, 4), minmax(0, 1fr)); }
+.apl-media:has(.fv-tile.is-wide) .apl-gallery.is-few .apl-ph, .apl-gallery.is-row.is-few .apl-ph { aspect-ratio: 16 / 9; }
 .apl-media:not(:has(.fv-tile.is-wide)) .apl-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: minmax(0, 1fr); min-height: 0; }
 .apl-media:not(:has(.fv-tile.is-wide)) .apl-gallery.is-one { grid-template-columns: minmax(0, 1fr); }
 .apl-media:not(:has(.fv-tile.is-wide)) .apl-gallery a { grid-template-rows: minmax(0, 1fr) auto; min-height: 0; }
@@ -2589,6 +2592,8 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
     <${PhotoTile} f=${f} />
     <span class="apl-cap">${photoLabel(f, a.name)}</span>
   </a>`;
+  const cols = (n) => `--cols: ${Math.min(n, 4)}`; // photos in a row: as many as there are, up to four
+  const few = (n) => (n < 3 ? ' is-few' : ''); // one or two across would be huge squares: they lie flatter
   const videoTitle = org ? 'The application video' : firstName ? `${firstName}’s video` : 'The family’s video';
   const visible = SIDE_FIELDS.filter(k => fields[k] && (k !== 'denialReason' || a.status === 'Denied' || a.fields?.denialReason) && !(a.kind === 'organization' && CHILD_FIELDS.has(k)));
   return html`<section class="apl-side" aria-label="Details">
@@ -2641,9 +2646,9 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
         ? html`<div class="apl-files-label">${photos.length ? 'Video and photos' : 'Video'}</div>
           <div class="apl-media">
             <${VideoTile} f=${appVideo} files=${shown} index=${shown.indexOf(appVideo)} title=${videoTitle} caption="Video" />
-            ${photos.length > 0 && html`<div class=${`apl-gallery${photos.length === 1 ? ' is-one' : ''}`}>${photos.slice(0, 4).map(photoTile)}</div>`}
+            ${photos.length > 0 && html`<div class=${`apl-gallery${photos.length === 1 ? ' is-one' : ''}${few(photos.length)}`} style=${cols(photos.length)}>${photos.slice(0, 4).map(photoTile)}</div>`}
           </div>
-          ${photos.length > 4 && html`<div class="apl-gallery">${photos.slice(4).map(photoTile)}</div>`}`
+          ${photos.length > 4 && html`<div class=${`apl-gallery is-row${few(photos.length - 4)}`} style=${cols(photos.length - 4)}>${photos.slice(4).map(photoTile)}</div>`}`
         : photos.length > 0 && html`<div class="apl-files-label">Photos</div>
           <div class="apl-gallery">${photos.map(photoTile)}</div>`}
       ${docs.length > 0 && html`<div class="apl-files-label">Documents</div>
