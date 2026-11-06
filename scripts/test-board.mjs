@@ -1010,6 +1010,8 @@ try {
     // The search palette over it: Esc closes the palette alone, and the window closing lets the page scroll again
     await jane.keyboard.down('Meta'); await jane.keyboard.press('KeyK'); await jane.keyboard.up('Meta');
     await jane.waitForSelector('.cmd-palette-overlay');
+    // It takes the focus a moment after it opens, and it hears Esc in its own box: pressed sooner, nobody's listening
+    await jane.waitForFunction(() => !!document.activeElement?.closest('.cmd-palette-overlay'), { timeout: 3000 });
     await jane.keyboard.press('Escape');
     await sleep(200);
     ok(!(await jane.$('.cmd-palette-overlay')) && !!(await jane.$('.ba-dialog')) && await jane.evaluate(() => document.body.classList.contains('modal-open')), 'Esc closes the search palette, not the window behind it');

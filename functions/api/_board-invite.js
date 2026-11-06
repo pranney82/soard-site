@@ -30,7 +30,9 @@ import { accessToken, eventIdFor, parseServiceAccount } from './_google-calendar
 import { boardAdmins, activeBoard, peopleRows, readSettings, readState, writeState, normEmail } from './_board-roles.js';
 import { getMeeting, listMeetings, patchMeeting, inviteNotes, inviteTitle, NOTES_START, OLD_NOTES_STARTS } from './_board.js';
 import { meetingName, timeRange, longDate, todayEastern, isDate } from '../../public/admin/board-shared.js';
-import { isEmail } from './_broadcast-notify.js';
+import { isEmail, alertAdmins, slackResolved } from './_broadcast-notify.js';
+import { slackCard } from './_slack-cards.js';
+import { readConfig } from './_broadcast.js';
 import { easternParts } from './_reveals.js';
 
 const CAL_API = 'https://www.googleapis.com/calendar/v3';
@@ -309,6 +311,21 @@ export async function maybeRefreshInvites(env, { fetchImpl = fetch, now = Date.n
 
 const FOLLOW = 'invite-follow';
 const FOLLOW_MS = 5 * 60 * 1000;
+const TELL_AFTER_MS = 24 * 60 * 60 * 1000;
+const BOARD_ADMIN = 'https://sunshineonaranneyday.com/admin/#board';
+
+/** A board invite job that can't do its work, once, in Needs attention and by email: nobody watches a page for years */
+export async function sayInviteProblem(env, key, { title, detail, fix }) {
+  try {
+    await alertAdmins(env, await readConfig(env.DB).catch(() => ({})), { level: 'warn', icon: '📅', title, detail, fix, url: BOARD_ADMIN, urlLabel: 'Open Board', issue: `board-invites:${key}` });
+  } catch (err) { console.error('[board-invite] telling the staff', err.message); }
+}
+/** It cleared: the same post says so */
+export async function sayInviteFixed(env, key, what) {
+  try {
+    await slackResolved(env, `board-invites:${key}`, slackCard({ icon: '✅', title: what, lead: 'Nothing left to do.' }), { summary: 'It went through.' });
+  } catch (err) { console.error('[board-invite] telling the staff', err.message); }
+}
 
 /**
  * Who an invite needs now, for the board with an address on file ([{ slug, email }], lower case): `add`, and `drop`.
@@ -375,7 +392,11 @@ export async function maybeFollowBoard(env, { fetchImpl = fetch, now = Date.now(
     const at = new Date(now).toISOString();
     await writeState(env.DB, FOLLOW, { ...state, at });
     const everyone = await activeBoard(env.DB);
-    if (!everyone.length) return null;
+    if (!everyone.length) {
+      if (state.told !== 'empty') await sayInviteProblem(env, 'follow', { title: 'People → Board reads empty', detail: 'Nobody came back as an active board member, so the board’s invites were left exactly as they are.', fix: 'Check People → Board.' });
+      await writeState(env.DB, FOLLOW, { ...state, at, told: 'empty' });
+      return null;
+    }
     const board = everyone.filter((p) => isEmail(normEmail(p.email))).map((p) => ({ slug: p.slug, email: normEmail(p.email) }));
     const today = todayEastern(now);
     const ahead = (await listMeetings(env.DB)).filter((m) => isDate(m.date) && m.date >= today && !m.notBoard && !m.practice && !m.live?.startedAt && !m.live?.endedAt);
@@ -410,7 +431,17 @@ export async function maybeFollowBoard(env, { fetchImpl = fetch, now = Date.now(
       }
     }
     const moved = did.added || did.removed;
-    await writeState(env.DB, FOLLOW, { ...(await readState(env.DB, FOLLOW)), at, held: did.held, error, ...(moved ? { lastChangeAt: at, lastAdded: did.added, lastRemoved: did.removed } : {}) });
+    // A list held back needs a person now; Google refusing can pass, so only a day of it does
+    const latest = await readState(env.DB, FOLLOW);
+    const since = did.failed ? latest.since || at : '';
+    const needsTelling = did.held > 0 || (since && now - Date.parse(since) >= TELL_AFTER_MS);
+    const trouble = did.held || did.failed ? `${did.held ? 'held' : 'failed'}` : '';
+    if (needsTelling && latest.told !== trouble) {
+      await sayInviteProblem(env, 'follow', did.held
+        ? { title: 'Board invites didn’t follow the board list', detail: `Over half of the board on ${did.held === 1 ? 'an invite' : `${did.held} invites`} would have come off at once, so nothing changed.`, fix: 'Check People → Board. If the list is right, press Send the invite on each meeting in Board.' }
+        : { title: 'Board invites can’t follow the board list', detail: `Google has refused for a day: ${error.replace(/\S+@\S+/g, '…')}`, fix: 'It keeps trying. If it doesn’t clear, use Add on the meeting in Board to see what’s wrong.' });
+    } else if (!trouble && latest.told) await sayInviteFixed(env, 'follow', 'Board invites match the board list again');
+    await writeState(env.DB, FOLLOW, { ...latest, at, held: did.held, error, since, told: !trouble ? '' : needsTelling ? trouble : latest.told || '', ...(moved ? { lastChangeAt: at, lastAdded: did.added, lastRemoved: did.removed } : {}) });
     return did;
   } catch (err) {
     console.error('[board-invite] follow', err.message);

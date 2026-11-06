@@ -1,6 +1,6 @@
 // The invites ahead follow People → Board (functions/api/_board-invite.js maybeFollowBoard): a new member goes on every
 // one, someone who left comes off, and nothing else on an invite is ever touched.
-import { test, beforeEach } from 'node:test';
+import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
@@ -19,12 +19,16 @@ const day = (n) => new Date(Date.now() + n * 86400000).toISOString().slice(0, 10
 let env;
 let events; // eventId → the event as Google has it
 let calls; // what reached Google: { method, url, body }
+let refuse; // Google answers every event with an error
+let told; // alert emails to the staff
+const realFetch = globalThis.fetch;
 const fetchImpl = async (input, init = {}) => {
   const url = String(input.url || input);
   if (url === 'https://oauth2.googleapis.com/token') return Response.json({ access_token: 'g-test', expires_in: 3600 });
   const body = init.body ? JSON.parse(init.body) : null;
   const method = init.method || 'GET';
   calls.push({ method, url, body });
+  if (refuse) return Response.json({ error: { message: 'Backend Error' } }, { status: 503 });
   const id = decodeURIComponent(new URL(url).pathname.split('/').pop());
   if (!events[id]) return Response.json({ error: { message: 'Not Found' } }, { status: 404 });
   if (method === 'PATCH') Object.assign(events[id], body);
@@ -49,11 +53,19 @@ async function invited(days, emails, { who, attendance = [], ...more } = {}) {
   return patchMeeting(env.DB, m.id, (cur) => ({ ...cur, invite: { eventId, organizer: HOLLY, sentAt: '2026-11-05T00:00:00Z', emails, guests: emails.length, replies: {}, ...(who ? { who } : {}) } }), { by: 'test' });
 }
 
+afterEach(() => { globalThis.fetch = realFetch; });
+
 beforeEach(async () => {
   clearTokenCache();
   events = {};
   calls = [];
-  env = { DB: await createD1(), GOOGLE_CALENDAR_KEY: KEY };
+  refuse = false;
+  told = [];
+  globalThis.fetch = async (input, init = {}) => {
+    if (String(input.url || input).startsWith('https://api.resend.com/')) { const b = JSON.parse(init.body); for (const e of [].concat(b)) told.push(e.subject); return Response.json(Array.isArray(b) ? { data: b.map((_, i) => ({ id: `e${i}` })) } : { id: 'e' }); }
+    throw new Error(`unexpected fetch ${input}`);
+  };
+  env = { DB: await createD1(), GOOGLE_CALENDAR_KEY: KEY, RESEND_API_KEY: 're_test', ALERT_EMAILS: 'alerts@example.com' };
   await env.DB.exec('CREATE TABLE team (slug TEXT PRIMARY KEY, name TEXT, "group" TEXT, order_num INTEGER, data TEXT NOT NULL, updated_at TEXT)');
   await env.DB.exec('CREATE TABLE reveal_board_emails (slug TEXT PRIMARY KEY, email TEXT NOT NULL, updated_at TEXT)');
   await env.DB.exec('CREATE TABLE site_config (key TEXT PRIMARY KEY, data TEXT, updated_at TEXT)');
@@ -196,4 +208,42 @@ test('sending the invite records who Board put on it', async () => {
   assert.ok(sent.invite.emails.includes(PETER), 'Peter’s on it, as an admin');
   assert.equal(sent.invite.who.peter, undefined, 'and never taken off by the board list');
   assert.equal((await listMeetings(env.DB)).length, 1);
+});
+
+test('a person hears when invites can’t follow: at once for a bad list, a day on for Google, once each, and it clears', async () => {
+  const emails = ['alex@example.com', 'sam@example.org', 'kim@example.net'];
+  const who = { alex: emails[0], sam: emails[1], kim: emails[2] };
+  await invited(30, emails, { who });
+  // Over half would come off: said at once, and only once however long it stays that way
+  await leaves('alex');
+  await leaves('sam');
+  await run();
+  assert.equal(told.length, 1);
+  assert.match(told[0], /didn’t follow the board list/);
+  await run(6);
+  await run(12);
+  assert.equal(told.length, 1, 'once');
+  // Fixed: quiet again, and a new problem can be said
+  await person('alex', 'alex@example.com');
+  await person('sam', 'sam@example.org');
+  await run(18);
+  assert.equal(told.length, 1);
+  // Google refusing: nothing for a day, in case it passes
+  await person('ryan', 'ryan@example.com');
+  refuse = true;
+  await run(24);
+  await run(60);
+  assert.equal(told.length, 1, 'not yet');
+  await run(24 + 24 * 60 + 1);
+  assert.equal(told.length, 2);
+  assert.match(told[1], /can’t follow the board list/);
+  await run(24 + 24 * 60 + 7);
+  assert.equal(told.length, 2, 'once');
+  // Nobody on the board at all reads as a bad read, and says so
+  refuse = false;
+  await leaves('alex'); await leaves('sam'); await leaves('kim'); await leaves('ryan');
+  await run(24 + 24 * 60 + 13);
+  await run(24 + 24 * 60 + 19);
+  assert.equal(told.length, 3);
+  assert.match(told[2], /reads empty/);
 });
