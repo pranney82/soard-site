@@ -21,7 +21,7 @@ const calls = [];
 
 // Tags stay between tests, as they do in Kit (_kit.js remembers tag ids per isolate)
 function kitReset() {
-  kit.down = false; kit.refuseBroadcast = false; kit.refuseDelete = false; kit.badKey = false; kit.bulkFail = new Set(); kit.tagDownAfter = null; kit.tagCalls = 0; kit.subs = new Map();
+  kit.down = false; kit.refuseBroadcast = false; kit.refuseDelete = false; kit.badKey = false; kit.bulkFail = new Set(); kit.tagDownAfter = null; kit.tagCalls = 0; kit.refuseSub = new Set(); kit.subs = new Map();
   kit.tagged = new Map(); kit.broadcasts = []; kit.stats = 'completed';
   resend.length = 0; resendScheduled.clear(); calls.length = 0; formOpen = true;
 }
@@ -33,6 +33,7 @@ const tagsOf = (email) => {
   return sub ? [...(kit.tagged.get(sub.id) || [])].map(id => kit.tags.get(id)) : [];
 };
 const subjects = () => resend.map(m => m.subject);
+const STAFF_INBOX = 'selection@soardcharity.com';
 
 const realFetch = globalThis.fetch;
 globalThis.fetch = async (input, init = {}) => {
@@ -48,6 +49,7 @@ globalThis.fetch = async (input, init = {}) => {
     const body = init.body ? JSON.parse(init.body) : {};
     if (path === '/subscribers' && method === 'POST') {
       const email = body.email_address;
+      if (kit.refuseSub.has(email)) return json({ errors: ['Kit will not take this address'] }, 422);
       const had = kit.subs.get(email);
       if (had) return json({ subscriber: { id: had.id, email_address: email, state: had.state } }, 200);
       const sub = { id: kit.nextId++, state: 'active' };
@@ -383,7 +385,7 @@ test('once staged, Kit sends it even if the site never runs again', async () => 
   assert.equal(held.length, 2);
   assert.ok(held.every(b => b.status === 'scheduled' && Date.parse(b.send_at) === savedAt + w.COUNTDOWN_MS));
   const tagged = (b) => [...kit.subs].filter(([, x]) => kit.tagged.get(x.id)?.has(b.subscriber_filter[0].all[0].ids[0])).map(([e]) => e).sort();
-  assert.deepEqual(held.flatMap(tagged).sort(), ['a@example.com', 'b@example.com', 'c@example.com'], 'every family is in the audience Kit will send to');
+  assert.deepEqual(held.flatMap(tagged).sort(), ['a@example.com', 'b@example.com', 'c@example.com', STAFF_INBOX, STAFF_INBOX], 'every family is in the audience Kit will send to, with the staff copy in each language');
 });
 
 test('a family Kit can\'t reach is scheduled with Resend for the same time, and a cancel takes it back', async () => {
@@ -487,6 +489,69 @@ test('Kit going down part way through tagging keeps who was tagged, and nobody i
   assert.equal(resend.filter(m => /Applications are open|Ya abrimos/.test(m.subject) && !/going out|was sent|isn\'t ready/.test(m.subject)).length, 0);
 });
 
+test('the site takes over at the time the alert gave, not at the next long retry', async () => {
+  await threeFamilies();
+  kit.refuseBroadcast = true;
+  await setOpen(true, 'schedule');
+  await tick();
+  const takeOver = (await opening()).error_since + 120 * M;
+  const told = () => resend.filter(m => /Applications are open|Ya abrimos/.test(m.subject) && !/going out|was sent|isn't ready/.test(m.subject) && /example/.test(m.to[0])).length;
+  while (Date.now() < takeOver - M) { travel(M); await w.maybeRunWaitlist(env); } // the real heartbeat, which keeps to the retry times
+  assert.equal(told(), 0, 'Kit still has its two hours');
+  travel(2 * M);
+  await w.maybeRunWaitlist(env);
+  assert.equal(told(), 3, 'the site emails each family within a heartbeat of the time it gave');
+});
+
+test('Try again does not send staff the same alert again, and a new problem still alerts', async () => {
+  await threeFamilies();
+  kit.refuseBroadcast = true;
+  await setOpen(true, 'schedule');
+  for (let i = 0; i < 3; i++) { await tick(); travel(11 * M); }
+  const alerts = () => subjects().filter(s => /isn't ready yet/.test(s)).length;
+  const first = alerts();
+  assert.ok(first > 0, 'staff heard once');
+  for (let i = 0; i < 2; i++) {
+    assert.equal((await w.waitlistAction(env, 'retry', {}, { user: 'linzi@test' })).ok, true);
+    // enough failed tries after each press to reach the alert again
+    for (let j = 0; j < 3; j++) { travel(M); await tick(); }
+  }
+  assert.equal(alerts(), first, 'the same problem, the same alert: not again');
+  kit.refuseBroadcast = false;
+  kit.down = true;
+  for (let i = 0; i < 3; i++) { await tick(); travel(11 * M); }
+  assert.ok(alerts() > first, 'a different problem is news');
+});
+
+test('one staff inbox goes out with the families, and stays out of the list and the counts', async () => {
+  await threeFamilies();
+  await setOpen(true, 'schedule');
+  await tick();
+  const op = await opening();
+  assert.equal(op.state, 'sending');
+  assert.equal(tagsOf(STAFF_INBOX).filter(t => /^Applications open email/.test(t)).length, 2, 'both languages, so staff see each version');
+  assert.ok(tagsOf(STAFF_INBOX).includes('Application Waitlist only (no newsletter)'), "the site's list mail leaves it out");
+  assert.ok(!(await row(STAFF_INBOX)), 'not on the waitlist');
+  assert.equal(op.total, 3);
+  await tick();
+  const done = await opening();
+  assert.equal(done.state, 'sent');
+  assert.equal(done.broadcasts.en.stats.recipients, 2, "Kit's count less the staff copy");
+  assert.equal(done.broadcasts.es.stats.recipients, 1);
+  assert.ok(subjects().some(s => /was sent to 3 families/.test(s)), 'staff hear the number of families');
+});
+
+test("a staff copy Kit can't set up never holds up the families' email", async () => {
+  await threeFamilies();
+  kit.refuseSub.add(STAFF_INBOX);
+  await setOpen(true, 'schedule');
+  await tick();
+  assert.equal((await opening()).state, 'sending');
+  assert.equal(live().length, 2, 'both emails went to Kit');
+  await tick();
+  assert.ok(subjects().some(s => /was sent to 3 families/.test(s)));
+});
+
 test('if Kit keeps refusing, staff are told, and after two hours the site emails the families itself', async () => {
   await threeFamilies();
   kit.refuseBroadcast = true;
@@ -498,7 +563,7 @@ test('if Kit keeps refusing, staff are told, and after two hours the site emails
   const op = await opening();
   assert.equal(op.state === 'sending' || op.state === 'sent', true);
   const opens = resend.filter(m => /Applications are open|Ya abrimos/.test(m.subject) && !/going out|was sent|isn't ready/.test(m.subject));
-  assert.deepEqual(opens.map(m => m.to[0]).sort(), ['a@example.com', 'b@example.com', 'c@example.com']);
+  assert.deepEqual(opens.map(m => m.to[0]).sort(), ['a@example.com', 'b@example.com', 'c@example.com', STAFF_INBOX, STAFF_INBOX], 'each family, and staff see both languages');
   for (let i = 0; i < 5; i++) { travel(11 * M); await tick(); }
   assert.equal(resend.filter(m => /Applications are open: apply/.test(m.subject) && m.to[0] === 'a@example.com').length, 1, 'still once');
 });
@@ -510,7 +575,7 @@ test('Kit not connected at all: the families are still emailed after two hours',
     await setOpen(true, 'schedule');
     for (let i = 0; i < 14; i++) { await tick(); travel(11 * M); }
     const sent = resend.filter(m => /Applications are open: apply|Ya abrimos/.test(m.subject)).map(m => m.to[0]).sort();
-    assert.deepEqual(sent, ['a@example.com', 'b@example.com', 'c@example.com']);
+    assert.deepEqual(sent, ['a@example.com', 'b@example.com', 'c@example.com', STAFF_INBOX, STAFF_INBOX]);
   } finally {
     env.KIT_API_KEY = 'kit_test';
   }
@@ -549,7 +614,7 @@ test('the next season: families told last time are not emailed again; new ones a
   const last = kit.broadcasts.at(-1);
   const tag = last.subscriber_filter[0].all[0].ids[0];
   const inTag = [...kit.subs].filter(([, s]) => kit.tagged.get(s.id)?.has(tag)).map(([e]) => e).sort();
-  assert.deepEqual(inTag, ['a@example.com', 'next@example.com']);
+  assert.deepEqual(inTag, ['a@example.com', 'next@example.com', STAFF_INBOX]);
 });
 
 test('staff can add a family by hand and take one off', async () => {

@@ -36,6 +36,10 @@
  * at once, and after KIT_GIVE_UP_MS the site emails each family itself
  * rather than let the opening pass them by.
  *
+ * One staff inbox (STAFF_COPY_TO) gets the same email, so someone here sees it
+ * land. It sits in Kit's audience beside the families, not on the waitlist, so
+ * the list, the CSV and every family count stay families only.
+ *
  * Tables: waitlist_signups, waitlist_openings, waitlist_runtime.
  * Env: KIT_API_KEY (the list), RESEND_API_KEY (one-off emails),
  * SLACK_BOT_TOKEN / SLACK_WEBHOOK_URL (staff posts, optional), DB.
@@ -50,6 +54,7 @@ import { sendEmails, escapeHtml, isEmail, SITE_ORIGIN, slackPost, emailConfigure
 import { slackCard } from './_slack-cards.js';
 import * as applications from './_applications.js';
 import { formFor } from './_application-forms.js';
+import { DEFAULT_STAFF_EMAILS } from './_application-form.js';
 import { logAudit } from './_audit.js';
 import { limit } from './_rate-limit.js';
 import { logSent, markCanceled } from './_email-log.js';
@@ -60,6 +65,7 @@ export const COUNTDOWN_MS = 10 * 60 * 1000;
 const KIT_SEND_DELAY_MS = 60 * 1000;              // Kit wants a send time a moment ahead
 const RESEND_API = 'https://api.resend.com';
 const KIT_GIVE_UP_MS = 2 * 3600 * 1000;           // then the site emails the families itself
+const STAFF_COPY_TO = DEFAULT_STAFF_EMAILS[0];    // sees what the families see, at every opening
 const TICK_EVERY_MS = 50 * 1000;                  // the hub beats about once a minute
 const LOCK_MS = 45 * 1000;
 const IMPORT_EVERY_MS = 6 * 3600 * 1000;          // Kit's waitlist tag → here, while closed
@@ -791,7 +797,10 @@ async function openingProblem(env, op, error, now) {
   op.tries = (op.tries || 0) + 1;
   op.error = String(error).slice(0, 400);
   op.error_since ||= now;
-  op.next_try_at = now + OPENING_RETRY_MS[Math.min(op.tries - 1, OPENING_RETRY_MS.length - 1)];
+  // The alert names the time the site takes over, so a long wait stops there
+  const takeOver = op.error_since + KIT_GIVE_UP_MS;
+  const retryAt = now + OPENING_RETRY_MS[Math.min(op.tries - 1, OPENING_RETRY_MS.length - 1)];
+  op.next_try_at = now < takeOver ? Math.min(retryAt, takeOver) : retryAt;
   const key = op.error.slice(0, 120);
   if (op.tries >= OPENING_ALERT_AFTER && op.alerted !== key) {
     op.alerted = key;
@@ -814,6 +823,45 @@ async function formSaysOpen(env, fetchImpl) {
     return parse(m[1].replace(/\\u003c/g, '<'), {})?.open === true;
   } catch {
     return null;
+  }
+}
+
+// ─── The staff copy ────────────────────────────────────────────────
+
+/**
+ * Put the staff inbox in Kit's audience for this email. It gets the waitlist-
+ * only tag like any family new to Kit, so the site's list mail leaves it out.
+ * Whatever goes wrong here, the families' email carries on without it.
+ * → how many staff copies that adds to Kit's count (0 or 1)
+ */
+async function addStaffCopy(env, tagId) {
+  try {
+    const sub = await kitUpsertSubscriber(env, STAFF_COPY_TO);
+    if (!sub.ok || sub.state !== 'active') { console.error(`No staff copy of the applications-open email: ${sub.error || sub.state}`); return 0; }
+    if (sub.created) {
+      const onlyId = await kitTagId(env, WAITLIST_ONLY_TAG);
+      if (onlyId) await kitTagSubscriberId(env, onlyId, sub.id);
+    }
+    return (await kitTagSubscriberId(env, tagId, sub.id)) ? 1 : 0;
+  } catch (err) {
+    console.error('No staff copy of the applications-open email:', err);
+    return 0;
+  }
+}
+
+/** The staff copy when the site is the one sending, once per language. Never throws. */
+async function emailStaffCopy(env, op, settings) {
+  if (op.broadcasts?.staffCopy) return;
+  op.broadcasts = { ...(op.broadcasts || {}), staffCopy: true };
+  try {
+    const wording = await readWording(env.DB);
+    for (const lang of Object.keys(LANGS)) {
+      if (!(op.counts?.[lang] > 0)) continue;
+      const msg = openingEmail({ lang, settings, wording, list: false });
+      await sendEmails(env, { to: [STAFF_COPY_TO], subject: msg.subject, html: msg.html, text: msg.text, tags: [{ name: 'type', value: 'application-waitlist-staff' }] });
+    }
+  } catch (err) {
+    console.error('No staff copy of the applications-open email:', err);
   }
 }
 
@@ -956,6 +1004,7 @@ async function stage(env, op, { now, fetchImpl }) {
     if (r.failed && !r.sent) { await openingProblem(env, op, `The site couldn't email the families either: ${op.direct?.error || 'unknown error'}`, now); return false; }
     if ((await pendingRows(DB, op)).length) { await saveOpening(DB, op, now); return false; }
     op.note = 'Kit could not take it, so the site emails each family itself.';
+    await emailStaffCopy(env, op, settings);
     return markStaged(env, op, now);
   }
 
@@ -1020,25 +1069,26 @@ async function stage(env, op, { now, fetchImpl }) {
       const list = await kitListBroadcasts(env).catch(() => null);
       const hit = list?.ok ? list.broadcasts.find(x => x.name === description && x.status !== 'cancelled') : null;
       if (hit) {
-        op.broadcasts = { ...op.broadcasts, [lang]: { id: hit.id, sendAt: b.sendAt || iso(sendAtMs), recipients: tagged } };
+        op.broadcasts = { ...op.broadcasts, [lang]: { id: hit.id, sendAt: b.sendAt || iso(sendAtMs), recipients: tagged, staffCopy: b.staffCopy || 0 } };
         await markNotified(DB, op, lang, op.broadcasts[lang].sendAt);
         continue;
       }
     }
     const msg = openingEmail({ lang, settings, wording, list: true });
     const sendAt = iso(sendAtMs);
-    op.broadcasts = { ...op.broadcasts, [lang]: { pendingAt: now, sendAt } };
+    const staffCopy = b.staffCopy ?? await addStaffCopy(env, op.tags[lang]);
+    op.broadcasts = { ...op.broadcasts, [lang]: { pendingAt: now, sendAt, staffCopy } };
     await saveOpening(DB, op, now);
     const r = await kitCreateBroadcast(env, {
       subject: msg.subject, previewText: fill(WORDS[lang].openPreheader, { year: op.year }), description,
       html: msg.html, sendAt, audience: { type: 'tag', id: op.tags[lang], name: description },
     });
     if (!r.ok) {
-      op.broadcasts = { ...op.broadcasts, [lang]: { pendingAt: r.status ? null : now, sendAt: null } };
+      op.broadcasts = { ...op.broadcasts, [lang]: { pendingAt: r.status ? null : now, sendAt: null, staffCopy } };
       await openingProblem(env, op, `Kit didn't take the ${LANGS[lang]} email: ${r.error}`, now);
       return false;
     }
-    op.broadcasts = { ...op.broadcasts, [lang]: { id: r.broadcast?.id || null, sendAt, recipients: tagged } };
+    op.broadcasts = { ...op.broadcasts, [lang]: { id: r.broadcast?.id || null, sendAt, recipients: tagged, staffCopy } };
     await markNotified(DB, op, lang, sendAt);
     await saveOpening(DB, op, now);
   }
@@ -1118,7 +1168,12 @@ async function followSending(env, op, now, { force = false } = {}) {
     const b = op.broadcasts[l];
     if (!force && b.statsAt && now - b.statsAt < STATS_EVERY_MS) { done &&= b.stats?.status === 'completed'; continue; }
     const s = await kitBroadcastStats(env, b.id);
-    if (s.ok) { op.broadcasts[l] = { ...b, stats: s, statsAt: now }; changed = true; }
+    if (s.ok) {
+      // Kit's count includes the staff copy; everything that reads this counts families
+      const recipients = s.recipients == null ? null : Math.max(0, s.recipients - (b.staffCopy || 0));
+      op.broadcasts[l] = { ...b, stats: { ...s, recipients }, statsAt: now };
+      changed = true;
+    }
     done &&= (s.ok ? s.status : b.stats?.status) === 'completed';
   }
   // Kit has had it an hour and still won't say: it's sent as far as anyone here can tell
@@ -1370,7 +1425,6 @@ export async function waitlistAction(env, action, body = {}, { user = 'admin', n
     if (!active) return { ok: false, error: 'Nothing to retry.' };
     active.next_try_at = null;
     active.tries = 0;
-    active.alerted = null;
     await saveOpening(DB, active, now);
     await DB.prepare('UPDATE waitlist_signups SET next_try_at = ? WHERE kit_error IS NOT NULL AND opening_id IS NULL AND removed_at IS NULL').bind(now).run();
     await advanceOpening(env, { now, fetchImpl, force: true });

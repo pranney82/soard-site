@@ -32,7 +32,7 @@ import { reviewOf } from './process-shared.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'November 5, 2026';
+const WRITTEN_ON = 'November 6, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -417,7 +417,7 @@ const MAP = { t: 'SOARD', children: [
           live: (f) => (!env(f) ? null : !f.env.kit ? ATTN('KIT_API_KEY is missing. Signups are still saved on the site, and the site emails each family itself when applications open.') : f.waitlist?.kitProblems ? ATTN(`${plural(f.waitlist.kitProblems, 'signup isn’t', 'signups aren’t')} in Kit yet. The site keeps retrying.`) : ON(f.waitlist ? `${plural(f.waitlist.waiting, 'family is', 'families are')} waiting.` : null, f.waitlist?.lastSignupAt)) },
         { t: 'Applications-open email', s: 'live', k: 'event',
           when: 'Applications are opened (by hand, or by the schedule).',
-          does: 'The moment applications open, checks the form is really open, puts every family waiting into a Kit tag made for this opening and language, and hands Kit one email per language scheduled for 10 minutes later (right away for a scheduled opening). From then Kit sends it on its own, even if the site’s clock stops. Families Kit can’t reach are scheduled with Resend for the same minute; if Kit can’t take it at all for two hours, the site emails everyone itself. Anyone who signs up while open is emailed the link right away. Staff get an email and a Slack post when it’s counting down, going out and done.',
+          does: 'The moment applications open, checks the form is really open, puts every family waiting into a Kit tag made for this opening and language, and hands Kit one email per language scheduled for 10 minutes later (right away for a scheduled opening). From then Kit sends it on its own, even if the site’s clock stops. Families Kit can’t reach are scheduled with Resend for the same minute; if Kit can’t take it at all for two hours, the site emails everyone itself. Anyone who signs up while open is emailed the link right away. selection@soardcharity.com gets a copy of the same email, without joining the list or any count. Staff get an email and a Slack post when it’s counting down, going out and done.',
           touches: ['Kit', 'Resend', 'D1', 'Slack'], where: 'functions/api/_application-waitlist.js (the save that opens applications, then the heartbeat) · Admin → Applications → Settings → Waitlist',
           info: 'To stop it, close applications again within the 10 minutes, or press “Don’t send this time”: the site deletes it from Kit (and cancels Resend’s). Kit is checked every 6 hours while families wait, so a broken key is caught early; “Rehearse through Kit” sends the real email to you. Each opening has its own tags, so nobody is emailed twice and next season starts fresh.',
           live: (f) => {

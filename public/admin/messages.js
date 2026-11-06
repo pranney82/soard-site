@@ -35,7 +35,7 @@ import { SentView } from './messages-sent.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'November 4, 2026';
+const WRITTEN_ON = 'November 6, 2026';
 const API = '/api/messages-admin';
 
 // ─── Live check helpers ───────────────────
@@ -253,7 +253,7 @@ const MAP = { t: 'Everything we send', children: [
           touches: ['Resend', 'Kit', 'D1'], where: 'functions/api/_application-waitlist.js (recordSignup, confirmationEmail)',
           live: first(needs('resend', NO_RESEND), (f) => (!f.waitlist?.confirmations ? null : ON(sentLine(f.waitlist.confirmations), f.waitlist.confirmations.last))) },
         { t: 'Applications are open', s: 'live', k: 'kit', also: ['email'], by: 'auto', spanish: true, preview: 'waitlist-open', change: CHANGE.appSettings,
-          who: 'Every family on the waitlist, in their language.',
+          who: 'Every family on the waitlist, in their language, and one copy to selection@soardcharity.com so staff see it land.',
           when: 'Applications are switched open: 10 minutes later (time to take it back), or at once when the open time was scheduled. A family who signs up while applications are already open gets it from the site right away.',
           subject: ['Applications are open: apply for a {year} room makeover', 'Ya abrimos las solicitudes para las remodelaciones de {year}'],
           does: 'Applications are open, with a button to the form. Kit sends it; families Kit can’t reach get it from the site at the same time.',
