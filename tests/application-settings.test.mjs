@@ -150,4 +150,5 @@ test('the admin routes: GET settings, POST save, 409 conflict, 422 errors', asyn
 
 test('Publish to site never waits on these (the pages read them live)', () => {
   assert.ok(RUNTIME_TYPES.includes('application-settings'));
+  assert.ok(RUNTIME_TYPES.includes('applicant') && RUNTIME_TYPES.includes('application'), 'an applicant’s details and an application change nothing the build reads');
 });

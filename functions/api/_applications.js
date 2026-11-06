@@ -53,7 +53,7 @@ import { runJotformBackfill, jotformSecondLook } from './_jotform-backfill.js';
 import { runNotifications } from './_applicant-notify.js';
 import { runApprovals } from './_applicant-approved.js';
 import { logAudit } from './_audit.js';
-import { capOf, capFacts, countReceived, claimWarning, tellCap, fullMessageOf, wholeNumber, CAP_USER, MAX_LIMIT } from './_application-cap.js';
+import { capOf, capFacts, countReceived, countCommunity, claimWarning, tellCap, fullMessageOf, wholeNumber, CAP_USER, MAX_LIMIT } from './_application-cap.js';
 
 // ─── JobTread fields (SOARD org) ────────────────────────────────────
 export const JT_FIELDS = {
@@ -1936,9 +1936,12 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
   const k = kindOf(kind);
   const form = await formFor(DB, { year, kind: k });
   const drafts = ((await DB.prepare("SELECT id, created_at, updated_at, submitted_id, max_page, max_page_id, stop_key, lang, reminders_sent, cleared_at, area FROM application_drafts WHERE year = ? AND COALESCE(ip_hash, '') != 'admin' AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results) || [];
-  const apps = ((await DB.prepare("SELECT id, draft_id, submitted_at, answers, lang, is_test, jt_state FROM applications WHERE year = ? AND deleted_at IS NULL AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results || []).map(applicationRow);
-  const tests = new Set(apps.filter(a => a.is_test).map(a => a.draft_id));
-  const real = drafts.filter(d => !tests.has(d.id));
+  const apps = ((await DB.prepare("SELECT id, draft_id, submitted_at, answers, lang, is_test, jt_state, jt_account_id FROM applications WHERE year = ? AND deleted_at IS NULL AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results || []).map(applicationRow);
+  // Left out: tests, deleted applications (their drafts stay behind, emptied), and from the makeovers' funnel any marked Community Project
+  const deleted = ((await DB.prepare('SELECT draft_id FROM applications WHERE year = ? AND deleted_at IS NOT NULL').bind(String(year)).all()).results || []).map(r => r.draft_id);
+  const community = k === 'family' ? await communityAccounts(DB) : new Set();
+  const leftOut = new Set([...deleted, ...apps.filter(a => a.is_test || community.has(a.jt_account_id)).map(a => a.draft_id)]);
+  const real = drafts.filter(d => !leftOut.has(d.id));
   const submitted = real.filter(d => d.submitted_id);
   const stopped = real.filter(d => !d.submitted_id && d.stop_key);
   const quietDays = (d) => (now - Date.parse(d.updated_at)) / DAY_MS;
@@ -1956,7 +1959,7 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
     return app ? (Date.parse(app.submitted_at) - Date.parse(d.created_at)) / 60000 : null;
   }).filter(x => x != null && x >= 0).sort((x, y) => x - y);
   const median = minutes.length ? Math.round(minutes[Math.floor(minutes.length / 2)]) : null;
-  const realApps = apps.filter(a => !a.is_test);
+  const realApps = apps.filter(a => !leftOut.has(a.draft_id));
   const referral = {};
   for (const a of realApps) {
     const k = String(a.answers?.referredBy || '').trim() || 'Not given';
@@ -1973,6 +1976,7 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
     year: String(year),
     started: real.length,
     submitted: submitted.length,
+    counts: { makeovers: await countReceived(DB, year), ...(await countCommunity(DB, year)) },
     inProgress: inProgress.length,
     leftUnfinished: gone.length,
     stopped: { outside: stopped.filter(d => d.stop_key === 'outside').length, rental: stopped.filter(d => d.stop_key === 'rental').length, other: stopped.filter(d => !['outside', 'rental'].includes(d.stop_key)).length },

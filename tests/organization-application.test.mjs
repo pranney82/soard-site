@@ -18,7 +18,7 @@ import {
   getLiveForm, getDraftForm, saveDraftForm, putDraftLive, listFormVersions, restoreFormVersion, saveFormRules, getFormRules, formFor, clearFormCache,
 } from '../functions/api/_application-forms.js';
 import {
-  createDraft, getDraft, saveDraft, setDraftFile, submitDraft, processApplication, getApplication, listApplications, insights,
+  createDraft, getDraft, saveDraft, setDraftFile, submitDraft, processApplication, getApplication, listApplications, insights, deleteApplicationData,
   accountFields, contactInputs, JT_FIELDS, photoKey, TEST_JPEG, testOrgAnswers, applicantNameOf, isTestAnswers, pickApplication,
 } from '../functions/api/_applications.js';
 import { countReceived } from '../functions/api/_application-cap.js';
@@ -296,6 +296,42 @@ test('a family-form application marked Community Project moves to community proj
   assert.equal((await getApplication(env.DB, 'app-fam')).kind, 'family', 'its answers are still the family form’s');
   // Nor is it one of the season's families to score
   assert.deepEqual((await seasonFamilies(env.DB, YEAR)).map((f) => f.name), ['Max Sample']);
+});
+
+test('Insights says how many are makeovers and how many community projects, and a deleted application leaves the funnel', async () => {
+  const sub = await submitDraft(env, await readyOrgDraft());
+  await processApplication(env, sub.id, { fetchImpl: w.fetchImpl });
+  await ensureApplicantSchema(env.DB);
+  const add = (id, year, types, archived = null) => env.DB.prepare('INSERT INTO applicants (account_id, name, year, types, fields, archived_at, synced_at) VALUES (?, ?, ?, ?, \'{}\', ?, \'2026-11-01\')').bind(id, id, year, JSON.stringify(types), archived).run();
+  const form = (id, kind, account, deletedAt = null) => env.DB.prepare(`INSERT INTO applications (id, draft_id, year, kind, child_name, status, is_test, submitted_at, updated_at, jt_account_id, deleted_at) VALUES (?, ?, ?, ?, 'x', 'done', 0, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z', ?, ?)`).bind(id, `draft-${id}`, YEAR, kind, account, deletedAt).run();
+  const started = (id) => env.DB.prepare(`INSERT INTO application_drafts (id, year, kind, answers, files, submitted_id, created_at, updated_at) VALUES (?, ?, 'family', '{}', '{}', ?, '2026-11-01T00:00:00.000Z', '2026-11-01T00:00:00.000Z')`).bind(`draft-${id}`, YEAR, id).run();
+  // Two families through the form, one of them marked Community Project
+  for (const id of ['app-a', 'app-b']) await started(id);
+  await form('app-a', 'family', 'acct-a');
+  await form('app-b', 'family', 'acct-b');
+  await add('acct-a', YEAR, ['Bedroom']);
+  await add('acct-b', YEAR, ['Community Project']);
+  // Added by hand: one marked this season, one marked another season, one archived, one a family
+  await add('acct-hand', YEAR, ['Community Project']);
+  await add('acct-old', '2026', ['Community Project']);
+  await add('acct-gone', YEAR, ['Community Project'], '2026-11-02');
+  await add('acct-fam', YEAR, ['Bathroom']);
+  const makeovers = await insights(env.DB, { year: YEAR });
+  assert.deepEqual(makeovers.counts, { makeovers: 1, community: 3, addedInJobTread: 1 }, 'the form’s, the marked one, the hand-added one');
+  assert.equal(makeovers.submitted, 1, 'the marked one left the makeovers’ funnel');
+  assert.equal(makeovers.started, 1);
+  assert.deepEqual((await insights(env.DB, { year: YEAR, kind: 'organization' })).counts, makeovers.counts, 'the same either way the switch is set');
+  // Deleted: gone from the numbers, though its emptied draft stays behind
+  await deleteApplicationData(env, 'app-a', { user: 'peter@soardcharity.com', fetchImpl: w.fetchImpl });
+  const after = await insights(env.DB, { year: YEAR });
+  assert.equal(after.submitted, 0);
+  assert.equal(after.started, 0);
+  assert.equal(after.counts.makeovers, 0);
+  await deleteApplicationData(env, sub.id, { user: 'peter@soardcharity.com', fetchImpl: w.fetchImpl });
+  const org = await insights(env.DB, { year: YEAR, kind: 'organization' });
+  assert.equal(org.submitted, 0);
+  assert.equal(org.started, 0);
+  assert.equal(org.counts.community, 2, 'the marked one and the hand-added one');
 });
 
 test('the built-in organization form: a complete set of answers has no errors', () => {

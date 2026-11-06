@@ -1066,9 +1066,10 @@ try {
     await clickText(page, '.hub-tab', /^Insights$/);
     await page.waitForSelector('.afe-tile', { timeout: 8000 });
     const tiles = await page.$$eval('.afe-tile', (els) => els.map(e => e.innerText.replace(/\s+/g, ' ')));
-    ok(/Started 35/.test(tiles[0]) && /Submitted 20/.test(tiles[1]) && /Finish rate 57%/.test(tiles[2]) && /min/.test(tiles[3]), `tiles: ${tiles.join(' | ')}`);
+    ok(/Started 34/.test(tiles[0]) && /Submitted 19/.test(tiles[1]) && /Finish rate 56%/.test(tiles[2]) && /min/.test(tiles[3]), `tiles, with the application deleted above left out: ${tiles.join(' | ')}`);
+    ok(/Submitted 19 19 makeovers · 0 community projects$/.test(tiles[1]), `the Submitted tile says how many of each (${tiles[1]})`);
     const legend = await text(page, '.afe-legend');
-    ok(/Submitted\s*20/.test(legend) && /Still working on it\s*4/.test(legend) && /Ended by an answer\s*3/.test(legend) && /Left without finishing\s*8/.test(legend), 'what happened to everyone, in numbers');
+    ok(/Submitted\s*19/.test(legend) && /Still working on it\s*4/.test(legend) && /Ended by an answer\s*3/.test(legend) && /Left without finishing\s*8/.test(legend), 'what happened to everyone, in numbers');
     ok(/Home and Space\s*Most stop here/.test(await text(page, '.afe-hbar.is-top')), 'the page most people stop on is called out');
     ok(await count(page, '.afe-chart svg .afe-colbar') >= 6, `a column per week, empty weeks included (${await count(page, '.afe-chart svg .afe-colbar')})`);
     ok(/Spanish\s*\d/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Language/.test(v.querySelector('h4')?.textContent))?.innerText || '')), 'languages');

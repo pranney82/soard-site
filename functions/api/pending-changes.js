@@ -37,6 +37,8 @@ export const RUNTIME_TYPES = ['live-status', 'email-broadcast', 'newsletter', 'i
   'partner-logo-dismissed',
   // Admin → Applications → Settings: the form and the Apply page read open/closed live
   'application-settings',
+  // Admin → Applications: applicants and their applications live in JobTread and D1, nothing the build reads
+  'applicant', 'application',
   // Admin → People → Applications: Advisory Board applications and who hears about them (D1 only)
   'advisory-settings', 'advisory-application',
   // Admin → Partners → Waiting for a logo: "No logo needed" and who's emailed (D1 only)

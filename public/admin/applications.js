@@ -1607,6 +1607,7 @@ function InsightsTab({ seasonYear, go }) {
   }, [year]);
   const ins = data;
   const stoppedTotal = ins ? (ins.stopped?.outside || 0) + (ins.stopped?.rental || 0) + (ins.stopped?.other || 0) : 0;
+  const who = isOrgForm() ? 'organizations' : 'families';
   return html`
     <div class="afe-ins" aria-busy=${loading}>
       <${Head} title="Insights" sub=${`How ${isOrgForm() ? 'organizations' : 'families'} move through the application: who finishes, where people stop, and how they heard about us. Tests are left out.`}>
@@ -1622,19 +1623,20 @@ function InsightsTab({ seasonYear, go }) {
         <div class="card" style="text-align: center; padding: 2.5rem 1.5rem;">
           <h4 style="margin: 0 0 .35rem;">No one has started a ${ins.year} application yet</h4>
           <p class="afe-lede" style="margin: 0 auto;">This fills in as ${isOrgForm() ? 'organizations' : 'families'} open the application: who finishes, where people stop, and how they heard about us.</p>
+          ${isOrgForm() && ins.counts?.addedInJobTread > 0 && html`<p class="afe-hint" style="margin: .6rem 0 0;">${plural(ins.counts.addedInJobTread, 'community project')} added in JobTread for ${ins.year}, with no application to show here.</p>`}
         </div>`}
       ${ins && ins.started > 0 && html`
         <div class="afe-ins" style="opacity: ${loading ? 0.6 : 1}; transition: opacity .15s;">
           <div class="afe-tiles">
             <div class="afe-tile"><span>Started</span><strong>${num(ins.started)}</strong><small>opened the application</small></div>
-            <div class="afe-tile"><span>Submitted</span><strong>${num(ins.submitted)}</strong><small>finished and sent it</small></div>
+            <div class="afe-tile"><span>Submitted</span><strong>${num(ins.submitted)}</strong><small>${plural(ins.counts?.makeovers, 'makeover')} · ${plural(ins.counts?.community, 'community project')}</small></div>
             <div class="afe-tile"><span>Finish rate</span><strong>${ins.finishRate == null ? '–' : `${ins.finishRate}%`}</strong><small>of those who started</small></div>
             <div class="afe-tile"><span>Typical time to finish</span><strong>${minutesText(ins.medianMinutes)}</strong><small>median, first page to submit</small></div>
           </div>
 
           <div class="afe-viz">
             <h4>What happened to everyone who started</h4>
-            <span class="afe-hint">${num(ins.started)} ${ins.started === 1 ? 'family' : 'families'} started a ${ins.year} application.</span>
+            <span class="afe-hint">${num(ins.started)} ${ins.started === 1 ? (isOrgForm() ? 'organization' : 'family') : who} started a ${ins.year} application.</span>
             <${StackBar} parts=${[
               { label: 'Submitted', n: ins.submitted, color: 'var(--afe-data)' },
               { label: 'Still working on it', n: ins.inProgress, color: 'var(--afe-data-2)', note: 'changed something in the last 14 days' },
@@ -1647,12 +1649,12 @@ function InsightsTab({ seasonYear, go }) {
             <div class="afe-ins-col">
             <div class="afe-viz">
               <h4>Where people stop</h4>
-              <span class="afe-hint">The last page each family reached before leaving without finishing.</span>
+              <span class="afe-hint">The last page each ${isOrgForm() ? 'organization' : 'family'} reached before leaving without finishing.</span>
               <${StopBars} byPage=${ins.byPage || []} started=${ins.started} />
             </div>
             ${ins.area?.checked > 0 && html`<${AreaInsight} a=${ins.area} go=${go} />`}
             <div class="afe-viz">
-              <h4>How families heard about us</h4>
+              <h4>How ${who} heard about us</h4>
               <span class="afe-hint">From "Who referred you", on submitted applications.</span>
               <${RankBars} rows=${ins.referral || []} />
             </div>
@@ -1665,7 +1667,7 @@ function InsightsTab({ seasonYear, go }) {
             </div>
             <div class="afe-viz">
               <h4>Language</h4>
-              <span class="afe-hint">The language families chose when they started.</span>
+              <span class="afe-hint">The language ${who} chose when they started.</span>
               <${StackBar} parts=${[
                 { label: 'English', n: ins.languages?.en || 0, color: 'var(--afe-data)' },
                 { label: 'Spanish', n: ins.languages?.es || 0, color: 'var(--afe-data-2)' },
@@ -1673,7 +1675,7 @@ function InsightsTab({ seasonYear, go }) {
             </div>
             <div class="afe-viz">
               <h4>Reminder emails</h4>
-              <span class="afe-hint">Sent to families who started and went quiet. The wording is in <a href="#applications/emails">Emails</a>.</span>
+              <span class="afe-hint">Sent to ${who} who started and went quiet. The wording is in <a href="#applications/emails">Emails</a>.</span>
               <div class="afe-stat-pair">
                 <div><b>${num(ins.reminders?.sent)}</b><span>${ins.reminders?.sent === 1 ? 'reminder sent' : 'reminders sent'}</span></div>
                 <div><b>${num(ins.reminders?.finishedAfter)}</b><span>finished after a reminder</span></div>
@@ -1705,8 +1707,8 @@ function AreaInsight({ a, go }) {
   const span = (st) => (st.to == null ? `Over ${st.from} mi` : st.from ? `${st.from} to ${st.to} mi` : `Up to ${st.to} mi`);
   return html`
     <div class="afe-viz">
-      <h4>Where families live</h4>
-      <span class="afe-hint">From the address check as families type their home address. Close means within ${plural(a.nearMiles, 'mile')} of the area (<a href="#applications/settings" onClick=${(e) => { e.preventDefault(); go('settings'); }}>Settings</a>).</span>
+      <h4>${isOrgForm() ? 'Where organizations are' : 'Where families live'}</h4>
+      <span class="afe-hint">From the address check as ${isOrgForm() ? 'organizations type their address' : 'families type their home address'}. Close means within ${plural(a.nearMiles, 'mile')} of the area (<a href="#applications/settings" onClick=${(e) => { e.preventDefault(); go('settings'); }}>Settings</a>).</span>
       <${StackBar} parts=${[
         { label: 'Inside', n: a.inside, color: 'var(--afe-data)' },
         { label: 'Close', n: a.near, color: 'var(--afe-data-2)' },
