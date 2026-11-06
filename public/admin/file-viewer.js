@@ -959,7 +959,7 @@ function VideoView({ f, player, fail }) {
 // `compact` is the small dark one, for a list.
 const lengths = new Map(); // what's been read from each video so far: { w, h, d }
 const lengthWords = (sec) => {
-  const s = Math.round(sec || 0);
+  const s = Math.floor(sec || 0); // the same count the button shows
   const m = Math.floor(s / 60);
   const word = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
   return [m && word(m, 'minute'), s % 60 && word(s % 60, 'second')].filter(Boolean).join(' ');
