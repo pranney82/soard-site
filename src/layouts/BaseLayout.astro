@@ -201,23 +201,103 @@ const structuredData = buildSchemaGraph(...graphSchemas);
 
   <!-- Self-hosted fonts for Lighthouse performance -->
   <style is:inline>
-    /* Metric-matched fallback faces — Georgia/Arial resized to the webfonts'
-       exact advance widths and vertical metrics (measured from the woff2s),
-       so the swap when the real fonts arrive causes zero layout shift. */
+    /* Metric-matched fallback faces: Georgia and Arial resized to the webfonts'
+       advance widths and vertical metrics, one face per style and weight the
+       site uses (bold and italic too: a browser faking bold from the regular
+       face comes out wider, which wrapped the home headline onto an extra
+       line until the real font arrived). Widths measured in Chrome against
+       the loaded woff2s on a long English sample, all within 0.01%;
+       overrides = the webfont's ascent 0.97 / descent 0.27 (Libre
+       Baskerville) or 1.00 / 0.26 (Outfit), divided by the size-adjust.
+       So the swap when the real fonts arrive moves nothing. */
     @font-face {
       font-family: 'Libre Baskerville Fallback';
+      font-style: normal;
+      font-weight: 400;
       src: local('Georgia');
-      size-adjust: 116.09%;
-      ascent-override: 83.56%;
+      size-adjust: 116.10%;
+      ascent-override: 83.55%;
       descent-override: 23.26%;
       line-gap-override: 0%;
     }
     @font-face {
+      font-family: 'Libre Baskerville Fallback';
+      font-style: normal;
+      font-weight: 700;
+      src: local('Georgia Bold'), local('Georgia-Bold');
+      size-adjust: 102.97%;
+      ascent-override: 94.20%;
+      descent-override: 26.22%;
+      line-gap-override: 0%;
+    }
+    @font-face {
+      font-family: 'Libre Baskerville Fallback';
+      font-style: italic;
+      font-weight: 400;
+      src: local('Georgia Italic'), local('Georgia-Italic');
+      size-adjust: 102.77%;
+      ascent-override: 94.39%;
+      descent-override: 26.27%;
+      line-gap-override: 0%;
+    }
+    @font-face {
+      font-family: 'Libre Baskerville Fallback';
+      font-style: italic;
+      font-weight: 700;
+      src: local('Georgia Bold Italic'), local('Georgia-BoldItalic');
+      size-adjust: 88.76%;
+      ascent-override: 109.28%;
+      descent-override: 30.42%;
+      line-gap-override: 0%;
+    }
+    @font-face {
       font-family: 'Outfit Fallback';
-      src: local('Arial');
-      size-adjust: 96.89%;
-      ascent-override: 103.21%;
-      descent-override: 26.83%;
+      font-style: normal;
+      font-weight: 100 449;
+      src: local('Arial'), local('ArialMT');
+      size-adjust: 97.98%;
+      ascent-override: 102.06%;
+      descent-override: 26.54%;
+      line-gap-override: 0%;
+    }
+    @font-face {
+      font-family: 'Outfit Fallback';
+      font-style: normal;
+      font-weight: 450 549;
+      src: local('Arial'), local('ArialMT');
+      size-adjust: 98.19%;
+      ascent-override: 101.84%;
+      descent-override: 26.48%;
+      line-gap-override: 0%;
+    }
+    @font-face {
+      font-family: 'Outfit Fallback';
+      font-style: normal;
+      font-weight: 550 649;
+      src: local('Arial Bold'), local('Arial-BoldMT');
+      size-adjust: 93.55%;
+      ascent-override: 106.89%;
+      descent-override: 27.79%;
+      line-gap-override: 0%;
+    }
+    @font-face {
+      font-family: 'Outfit Fallback';
+      font-style: normal;
+      font-weight: 650 749;
+      src: local('Arial Bold'), local('Arial-BoldMT');
+      size-adjust: 94.98%;
+      ascent-override: 105.29%;
+      descent-override: 27.37%;
+      line-gap-override: 0%;
+    }
+    @font-face {
+      font-family: 'Outfit Fallback';
+      font-style: normal;
+      font-weight: 750 900;
+      src: local('Arial Bold'), local('Arial-BoldMT');
+      size-adjust: 96.41%;
+      ascent-override: 103.72%;
+      descent-override: 26.97%;
       line-gap-override: 0%;
     }
     @font-face {

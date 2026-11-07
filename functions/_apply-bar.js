@@ -24,7 +24,7 @@
  * streaming, so nothing can fail halfway through it.
  */
 
-import { applicationSettings, cleanYear } from './api/_applications.js';
+import { cleanYear } from './api/_applications.js';
 
 export const BAR_COOKIE = 'soard_apply_bar';
 export const BAR_STORAGE_KEY = 'soard-application-dismissed';
@@ -68,6 +68,8 @@ export function barDismissed(request, year) {
 /**
  * Open or closed, the season, and the close time, read about twice a minute
  * however busy the site is. /api/application-open answers from this too.
+ * A database that can't be read throws (and nothing is kept): not knowing
+ * isn't "closed", so open pages keep their bar and new ones go without it.
  */
 export async function applicationState(context) {
   const { env, request } = context;
@@ -77,7 +79,11 @@ export async function applicationState(context) {
     const hit = await cache.match(key).catch(() => null);
     if (hit) { try { return await hit.json(); } catch { /* read it fresh */ } }
   }
-  const app = env.DB ? await applicationSettings(env.DB) : {};
+  let app = {};
+  if (env.DB) {
+    const row = await env.DB.prepare("SELECT data FROM site_config WHERE key = 'settings'").first();
+    try { app = JSON.parse(row?.data || '{}')?.application || {}; } catch { app = {}; }
+  }
   const state = { open: app.open === true, year: cleanYear(app.year), closesAt: app.closesAt ? String(app.closesAt) : '' };
   if (cache) {
     const res = Response.json(state, { headers: { 'Cache-Control': `public, max-age=${STATE_TTL}, s-maxage=${STATE_TTL}` } });
@@ -117,7 +123,8 @@ export function addBar(res, w) {
     .transform(res);
   const headers = new Headers(out.headers);
   // This copy is this visitor's: never stored for others, never answered with a 304
-  headers.set('Cache-Control', 'private, no-cache');
+  // (a page that already says never store it, like /live/ for a reveal, keeps saying so)
+  if (!/no-store/i.test(headers.get('Cache-Control') || '')) headers.set('Cache-Control', 'private, no-cache');
   headers.delete('ETag');
   headers.delete('Last-Modified');
   headers.delete('Content-Length');

@@ -525,11 +525,14 @@ document.addEventListener('astro:page-load', function () {
 
   /* ═══════ SCROLL ═══════ */
   var ticking = false, mobileOpen = false;
+  /* The application bar's height above the header (ApplicationBar.astro sets it; 0 when it isn't showing) */
+  function topBarHeight() {
+    return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--apply-bar-h')) || 0;
+  }
   function onScroll() {
     ticking = false;
     // Once the header is actually pinned: the application bar above it scrolls away first
-    var bar = document.getElementById('apply-bar');
-    header.classList.toggle('header--scrolled', window.scrollY > (bar ? bar.offsetHeight : 0) + 20);
+    header.classList.toggle('header--scrolled', window.scrollY > topBarHeight() + 20);
   }
   window.addEventListener('scroll', function () {
     if (!ticking) { requestAnimationFrame(onScroll); ticking = true; }
@@ -550,9 +553,7 @@ document.addEventListener('astro:page-load', function () {
     mobileOpen = true; savedY = window.scrollY;
     mPanel.style.transition = '';            /* restore in case mHideInstant killed it */
     /* The header stays where it is when it pins: below whatever of the application bar is on screen */
-    var bar = document.getElementById('apply-bar');
-    var barBottom = bar && bar.offsetHeight ? Math.max(0, Math.round(bar.getBoundingClientRect().bottom)) : 0;
-    document.documentElement.style.setProperty('--menu-top', barBottom + 'px');
+    document.documentElement.style.setProperty('--menu-top', Math.max(0, topBarHeight() - savedY) + 'px');
     document.documentElement.classList.add('menu-open');
     document.body.style.top = '-' + savedY + 'px';
     mBtn.setAttribute('aria-expanded', 'true');
@@ -672,14 +673,19 @@ document.addEventListener('astro:before-swap', function () {
     position: relative; z-index: 1001;
   }
   .logo:hover { opacity: 0.88; }
+  /* Its size is set before the picture arrives (the logo is square), so the menu
+     centered beside it never moves when it loads. "auto" on both sides (global
+     img rule) left it 0 wide until then. */
   .logo-img {
     width: auto;
+    height: 96px;
+    aspect-ratio: 1 / 1;
     max-height: 96px;
     object-fit: contain;
     transform: translateY(calc((96px - var(--header-height)) / 6));
   }
   @media (min-width: 481px) { .logo-img { max-height: 96px; transform: translateY(calc((96px - var(--header-height)) / 6)); } }
-  @media (min-width: 1024px) { .logo-img { max-height: 115px; transform: translateY(calc((115px - var(--header-height)) / 6)); } }
+  @media (min-width: 1024px) { .logo-img { height: 115px; max-height: 115px; transform: translateY(calc((115px - var(--header-height)) / 6)); } }
 
   .desktop-nav { display: none; position: relative; }
   @media (min-width: 1024px) { .desktop-nav { display: flex; align-items: center; } }

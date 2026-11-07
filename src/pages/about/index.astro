@@ -90,7 +90,8 @@ const jsonLd = getFAQSchema(aboutFaqs);
   <section class="founders" id="our-story" aria-labelledby="founders-heading">
     <div class="founders-inner">
       <div class="founders-photo">
-        <img src={`${CF}/${founderPhotoId}/w=600,q=80`} srcset={`${CF}/${founderPhotoId}/w=400,q=80 400w, ${CF}/${founderPhotoId}/w=600,q=80 600w, ${CF}/${founderPhotoId}/w=800,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="600" height="450" loading="eager" decoding="async" fetchpriority="high" />
+        {/* Always 5:4, cropped around faces: its space is right before it loads, whatever photo is set */}
+        <img src={`${CF}/${founderPhotoId}/w=600,h=480,fit=cover,gravity=face,q=80`} srcset={`${CF}/${founderPhotoId}/w=400,h=320,fit=cover,gravity=face,q=80 400w, ${CF}/${founderPhotoId}/w=600,h=480,fit=cover,gravity=face,q=80 600w, ${CF}/${founderPhotoId}/w=800,h=640,fit=cover,gravity=face,q=80 800w`} sizes="(max-width:768px) calc(100vw - 48px), 460px" alt="Peter and Holly Ranney, founders of Sunshine on a Ranney Day" width="600" height="480" loading="eager" decoding="async" fetchpriority="high" />
       </div>
       <div class="founders-text" data-reveal>
         <div class="section-label">{page.founders.label}</div>
@@ -381,6 +382,8 @@ const jsonLd = getFAQSchema(aboutFaqs);
   .founders-photo img {
     width: 100%;
     height: auto;
+    aspect-ratio: 5 / 4;
+    object-fit: cover;
     display: block;
   }
 

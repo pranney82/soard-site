@@ -151,7 +151,8 @@ export async function onRequest(context) {
     const party = broadcast ? watchParty(broadcast.pub, { pageKid, kidPublished: pageKid ? true : !!kid?.published }) : null;
     if (party) party.generic = !broadcast.pub.kidSlug;
     let bar = null;
-    if (isIndex && !(party && (party.mode === 'starting' || party.mode === 'live'))) {
+    const liveNow = !!broadcast?.pub?.live || party?.mode === 'starting' || party?.mode === 'live';
+    if (isIndex && !liveNow) {
       try { bar = await barFor(context, url.pathname); } catch { bar = null; }
     }
     const res = await next(kid || party || bar ? fresh(request) : request);

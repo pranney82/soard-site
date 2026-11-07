@@ -15,6 +15,10 @@
 import { applicationState } from '../_apply-bar.js';
 
 export async function onRequestGet(context) {
-  const { open, year } = await applicationState(context);
-  return Response.json({ open, year }, { headers: { 'Cache-Control': 'public, max-age=30, s-maxage=30' } });
+  let state;
+  try { state = await applicationState(context); } catch {
+    // Not knowing isn't "closed": the page keeps its bar and asks again
+    return Response.json({ error: 'unavailable' }, { status: 503, headers: { 'Cache-Control': 'no-store' } });
+  }
+  return Response.json({ open: state.open, year: state.year }, { headers: { 'Cache-Control': 'public, max-age=30, s-maxage=30' } });
 }

@@ -491,6 +491,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       hero.dataset.phase = display;
       setAttr(hero, 'data-party', party);
       if (page) page.dataset.view = display;
+      // Starting or live, the video is the only thing: the application bar is asked to step aside
+      if (display === 'starting' || display === 'live') document.dispatchEvent(new CustomEvent('apply-bar:step-aside'));
       follow(s, view);
       // "Coming up" leaves out the reveal this page is showing
       const upNext = upNextBand();

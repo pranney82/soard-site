@@ -80,6 +80,8 @@ test('the server shows it only while open, not to someone who closed it, never o
   assert.equal(await barFor(ctx({ open: true, year }, `${BAR_COOKIE}=${year}`), '/kids/'), null, 'closed by this visitor');
   assert.ok(await barFor(ctx({ open: true, year }, `${BAR_COOKIE}=2020`), '/kids/'), "an old season's close does not count");
   assert.equal(await barFor(ctx({ open: true, year }), '/donate/'), null, 'a task page');
+  const broken = { env: { DB: { prepare: () => ({ first: async () => { throw new Error('down'); } }) } }, request: new Request('https://example.org/kids/'), waitUntil() {} };
+  await assert.rejects(barFor(broken, '/kids/'), 'a failed read is an error, so the page is served as built, without a bar, and nothing is kept');
 });
 
 // Every page section has a decision, and the ones that show it run the bar
@@ -94,7 +96,11 @@ test('every page section is decided: the bar runs where it shows and nowhere els
   for (const s of SHOW) assert.ok(usesBar(`functions/${s}/_middleware.js`), `functions/${s}/_middleware.js runs the bar`);
   for (const s of SKIP) assert.ok(!usesBar(`functions/${s}/_middleware.js`) && !usesBar(`functions/${s}/index.js`), `${s} has no bar`);
   assert.ok(usesBar('functions/index.js'), 'the home page runs the bar');
-  assert.match(readFileSync('functions/live/[[path]].js', 'utf8'), /party\.mode === 'starting' \|\| party\.mode === 'live'/, 'live: never while a reveal is starting or live');
+  assert.match(readFileSync('functions/live/[[path]].js', 'utf8'), /const liveNow = !!broadcast\?\.pub\?\.live \|\| party\?\.mode === 'starting' \|\| party\?\.mode === 'live';/, 'live: never while a reveal is starting or live, Facebook-only lives too');
+  assert.match(readFileSync('src/components/live/LivePage.astro', 'utf8'), /display === 'starting' \|\| display === 'live'\) document\.dispatchEvent\(new CustomEvent\('apply-bar:step-aside'\)\)/, 'a /live/ page left open asks it to go when the reveal starts');
+  assert.match(readFileSync('src/components/global/ApplicationBar.astro', 'utf8'), /addEventListener\('apply-bar:step-aside'[\s\S]{0,120}leave\(bar\)/, 'and it leaves its own way (reading place, focus)');
+  // Only the bar touches the bar: everyone else uses its height and its two events
+  for (const f of ['src/components/global/Header.astro', 'src/components/live/LivePage.astro']) assert.doesNotMatch(readFileSync(f, 'utf8'), /getElementById\('apply-bar'\)/, f);
 });
 
 test('the built page carries an empty, hidden bar: nothing says open until the server does', () => {

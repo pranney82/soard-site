@@ -12,6 +12,11 @@
  * read. The reveal card (LiveIndicator.astro) waits while it's in view, so only
  * one banner is on screen at a time.
  *
+ * Other parts of the page talk to it in two ways only: its height, as
+ * --apply-bar-h (0 when it isn't showing), and two events: it says
+ * "apply-bar:hidden" when it goes, and leaves when asked with
+ * "apply-bar:step-aside".
+ *
  * The X closes it for the season: remembered in the browser, checked by the
  * inline script below before the bar paints, and in a cookie the server reads
  * (/api/application-bar-closed), which outlasts Safari's one-week limit on
@@ -61,7 +66,6 @@
   const STORAGE_KEY = 'soard-application-dismissed';
   const COOKIE = 'soard_apply_bar';
   const CHECK_MS = 30_000; // a page left open hears about a close this soon
-  const LEAVE_MS = 260;
 
   let checkedAt = 0;
   let lastClosedAt = 0; // when a check last said the season is closed
@@ -80,28 +84,24 @@
     return stored === year || cookieSays(year);
   }
 
-  /** Gone, with the reading place kept: animated when it's on screen, at once when it's scrolled away */
+  /**
+   * Gone in one step, with the reading place kept: whatever is in the middle of the
+   * screen stays exactly where it was, however much the page above it changed (the
+   * bar itself, and kid heroes that grow back by its height). The browser's own
+   * "keep my place" is off for that step: it misfires on pages whose sections
+   * animate in, and Safari has none.
+   */
   function leave(bar: HTMLElement) {
-    const height = bar.offsetHeight;
-    const scrolledPast = bar.getBoundingClientRect().bottom <= 0;
-    const done = () => {
-      bar.hidden = true;
-      bar.classList.remove('is-leaving');
-      bar.style.height = '';
-      document.dispatchEvent(new CustomEvent('apply-bar:hidden'));
-    };
-    if (scrolledPast) {
-      done();
-      // Chrome and Firefox keep the reading place themselves; Safari needs the help
-      if (!CSS.supports('overflow-anchor', 'auto')) window.scrollBy(0, -height);
-      return;
-    }
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; }
-    bar.style.height = `${height}px`;
-    void bar.offsetHeight;
-    bar.classList.add('is-leaving');
-    bar.style.height = '0px';
-    setTimeout(done, LEAVE_MS);
+    // Focus on the bar would fall to the page's start: it goes to the logo instead
+    if (bar.contains(document.activeElement)) (document.querySelector('.site-header .logo') as HTMLElement | null)?.focus({ preventScroll: true });
+    const reading = window.scrollY > 0 ? document.elementFromPoint(innerWidth / 2, innerHeight / 2) : null;
+    const held = reading && !reading.closest('#apply-bar, .site-header, #live-indicator') ? reading : null;
+    const before = held ? held.getBoundingClientRect().top : 0;
+    root.style.overflowAnchor = 'none';
+    bar.hidden = true;
+    if (held) window.scrollBy(0, held.getBoundingClientRect().top - before);
+    requestAnimationFrame(() => { root.style.overflowAnchor = ''; });
+    document.dispatchEvent(new CustomEvent('apply-bar:hidden'));
   }
 
   // The X: closed for the season, here and on every page after
@@ -112,14 +112,22 @@
     if (!isShowing(bar)) return;
     const year = bar.dataset.year || '';
     try { localStorage.setItem(STORAGE_KEY, year); } catch { /* the cookie still keeps it */ }
-    fetch(`/api/application-bar-closed?year=${encodeURIComponent(year)}`, { cache: 'no-store', credentials: 'same-origin' }).catch(() => {});
-    (document.querySelector('.site-header a, .site-header button') as HTMLElement | null)?.focus({ preventScroll: true });
+    // keepalive: it still lands if they leave the page straight away
+    fetch(`/api/application-bar-closed?year=${encodeURIComponent(year)}`, { cache: 'no-store', credentials: 'same-origin', keepalive: true }).catch(() => {});
     leave(bar);
+  });
+
+  // A page that needs the screen to itself (/live/ once a reveal is starting) asks it to go
+  document.addEventListener('apply-bar:step-aside', () => {
+    const bar = theBar();
+    if (isShowing(bar)) leave(bar);
   });
 
   // A page left open: the bar leaves when the season closes
   function check() {
     const bar = theBar();
+    // Not while the phone menu is open: the header is pinned under the bar then
+    if (root.classList.contains('menu-open')) return;
     if (!isShowing(bar) || Date.now() - checkedAt < CHECK_MS / 2) return;
     checkedAt = Date.now();
     fetch('/api/application-open', { cache: 'no-cache', headers: { Accept: 'application/json' } })
@@ -156,6 +164,7 @@
 <style>
   .apply-bar {
     position: relative;
+    flex-shrink: 0; /* the open phone menu makes the page a fixed-height column: never squeezed */
     z-index: 999; /* under the sticky header (1000) so it tucks away cleanly */
     display: flex;
     align-items: stretch;
@@ -171,7 +180,8 @@
   /* Hidden means hidden, whatever else styles it */
   .apply-bar[hidden],
   :global(html.apply-bar-off) .apply-bar { display: none !important; }
-  .apply-bar.is-leaving { transition: height 240ms cubic-bezier(0.4, 0, 0.2, 1); }
+  /* Under the open phone menu it's only the edge above the header: nothing to press there */
+  :global(html.menu-open) .apply-bar { pointer-events: none; }
 
   .apply-bar__link {
     display: flex;
@@ -277,7 +287,6 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .apply-bar.is-leaving { transition: none; }
     .apply-bar__link:hover .apply-bar__cta { transform: none; }
   }
   @media print { .apply-bar { display: none !important; } }

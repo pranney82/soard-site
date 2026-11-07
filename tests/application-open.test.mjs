@@ -36,12 +36,14 @@ test('nothing else in the settings leaves', async () => {
   assert.deepEqual(Object.keys(body).sort(), ['open', 'year']);
 });
 
-test('no database, or a broken one, reads as closed rather than failing a page', async () => {
+test('no settings saved reads as closed; a database that cannot be read is "not known", never "closed"', async () => {
   assert.equal((await ask({})).body.open, false);
+  const none = { prepare: () => ({ first: async () => null }) };
+  assert.equal((await ask({ DB: none })).body.open, false);
   const broken = { prepare: () => ({ first: async () => { throw new Error('down'); } }) };
-  const { res, body } = await ask({ DB: broken });
-  assert.equal(res.status, 200);
-  assert.equal(body.open, false);
+  const { res } = await ask({ DB: broken });
+  assert.equal(res.status, 503, 'open pages keep their bar and ask again');
+  assert.equal(res.headers.get('Cache-Control'), 'no-store');
 });
 
 test('it can be cached: every page asks', async () => {

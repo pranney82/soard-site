@@ -296,7 +296,8 @@
     return box.height > 0 && box.bottom > 0;
   }
   // Told when the bar comes into view or leaves it (scrolling), and when it's closed
-  const barWatch = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver(() => render()) : null;
+  // The 1px keeps the edge honest: a bar scrolled exactly out of view counts as out
+  const barWatch = typeof IntersectionObserver !== 'undefined' ? new IntersectionObserver(() => render(), { rootMargin: '-1px 0px 0px 0px' }) : null;
   function watchApplicationBar() {
     if (!barWatch) return;
     barWatch.disconnect();
@@ -321,9 +322,10 @@
     // One banner on screen at a time: the application bar has the top of the page, so the card
     // waits for it to scroll away or be closed. "Live now" can't wait.
     if (stage !== 'live' && applicationBarInView()) {
+      // Gone at once, not faded: the two are never on screen together
       moveFocusOut(el);
       el.classList.remove('is-visible');
-      if (!el.hidden) hideTimer = setTimeout(() => { if (!el.classList.contains('is-visible')) el.hidden = true; }, 400);
+      el.hidden = true;
       return;
     }
     // The first showing waits for the schedule, so the banner doesn't grow a line after it appears
@@ -396,6 +398,8 @@
     keepClearSoon();
   });
   document.addEventListener('apply-bar:hidden', () => render());
+  // The new page's bar is there from the swap: the card steps aside then, not a moment later
+  document.addEventListener('astro:after-swap', () => { watchApplicationBar(); render(); });
   watchApplicationBar();
   addEventListener('scroll', keepClearSoon, { passive: true });
   addEventListener('resize', keepClearSoon, { passive: true });
