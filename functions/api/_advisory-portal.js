@@ -8,18 +8,40 @@
  */
 
 import {
-  getSettings, advisorCards, leadCard, currentAsk, answersTo, listWishes, introsBy, listHosted, termOf, canRenew, listDocs, signatures,
-  INTRO_STATUSES, INTRO_HELP, GROUP_ADDRESS, ensureAdvisory,
-} from './_advisory.js';
-import { advisoryBits } from './_board.js';
+  getSettings, saveSettings, advisorCards, leadCard, currentAsk, answersTo, listWishes, introsBy, listHosted, termOf, canRenew, listDocs, signatures,
+  INTRO_STATUSES, INTRO_HELP, GROUP_ADDRESS, ensureAdvisory, SHELVES } from './_advisory.js';
+import { advisoryBits, sharableBoardDocs } from './_board.js';
+import { LOGOS, KIT, pngHref } from '../../src/data/brand.js';
 import { todayEastern } from './_reveals.js';
 import { orgFacts } from './_org-facts.js';
 import { goalNow } from './_advisory-money.js';
-import { kidCard } from './_advisory-sponsor.js';
+import { kidCard, ADVISORY_PARTNER } from './_advisory-sponsor.js';
 import { meetingsFor } from './_advisory-meetings.js';
 import { seedOnce } from './_advisory-seed.js';
 
 const FUNDRAISE_KINDS = ['pitch', 'post', 'sponsor', 'matching', 'hosting'];
+const CF = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ';
+
+/** The board's papers staff turned on for advisors, and only those: the only way a board file reaches this page */
+export async function boardPapers(DB, settings) {
+  const ids = settings.boardDocs || [];
+  if (!ids.length) return [];
+  const can = await sharableBoardDocs(DB);
+  const still = ids.filter((id) => can.some((d) => d.id === id));
+  // Turned on once isn't turned on forever: one that was signed or hidden since needs someone to turn it on again
+  if (still.length !== ids.length) await saveSettings(DB, { boardDocs: still });
+  return can.filter((d) => still.includes(d.id));
+}
+/** SOARD's official logos, as /branding/ offers them, and the Advisory Board's own seal from Partners */
+async function brandKit(DB) {
+  const row = await DB.prepare('SELECT data FROM partners WHERE slug = ?').bind(ADVISORY_PARTNER).first().catch(() => null);
+  let seal = '';
+  try { seal = String(JSON.parse(row?.data || '{}').logo || ''); } catch { /* no seal yet */ }
+  return {
+    logos: LOGOS.filter((l) => l.group === 'primary').map((l) => ({ key: l.key, name: l.name, sub: l.sub, bg: l.bg, src: `${CF}/${l.id}/w=560`, png: pngHref(l) })),
+    kit: KIT.href, kitSize: KIT.size, seal,
+  };
+}
 const docView = (d, sig, mine) => ({
   id: d.id, kind: d.kind, title: d.title, body: d.body, url: d.url || '', version: d.version || 1, files: d.files || [],
   ...(d.kind === 'agreement' ? { signedByMe: mine ? sig?.[d.id]?.[mine] || null : null } : {}),
@@ -28,13 +50,14 @@ const docView = (d, sig, mine) => ({
 export async function advisoryPortalData(env, who, { now = Date.now() } = {}) {
   const { DB } = env;
   await ensureAdvisory(DB);
-  await seedOnce(DB);
+  await seedOnce(DB, () => sharableBoardDocs(DB));
   const today = todayEastern(now);
   const settings = await getSettings(DB);
   const mine = who.answers ? who.slug : null;
-  const [people, lead, ask, wishes, intros, hosted, docs, sigs, bits, org, meetings] = await Promise.all([
+  const [people, lead, ask, wishes, intros, hosted, docs, sigs, bits, org, meetings, fromBoard, brand] = await Promise.all([
     advisorCards(DB), leadCard(DB, settings), currentAsk(DB), listWishes(DB), mine ? introsBy(DB, mine) : [], listHosted(DB),
     listDocs(DB), signatures(DB), advisoryBits(env, { now }), orgFacts(env).catch(() => null), meetingsFor(env, who, { now }),
+    boardPapers(DB, settings).catch(() => []), brandKit(DB),
   ]);
   const myAnswer = ask && mine ? (await answersTo(DB, ask.id)).find((a) => a.slug === mine) || null : null;
   const term = mine ? await termOf(DB, mine, settings) : null;
@@ -68,8 +91,16 @@ export async function advisoryPortalData(env, who, { now = Date.now() } = {}) {
     fundraise: await goalNow(env, settings, { slug: mine }),
     share: shared.filter((d) => FUNDRAISE_KINDS.includes(d.kind)).map((d) => docView(d)),
     people,
-    papers: shared.filter((d) => !FUNDRAISE_KINDS.includes(d.kind)).map((d) => docView(d, sigs, mine)),
+    papers: shared.filter((d) => !FUNDRAISE_KINDS.includes(d.kind) && d.kind !== 'library').map((d) => docView(d, sigs, mine)),
     filings: bits.filings,
     org,
+    // Documents: the shelves, what's on them, and the words and pictures to share
+    shelves: SHELVES,
+    library: shared.filter((d) => d.kind === 'library' && (d.url || d.files?.length)).map((d) => ({ id: d.id, title: d.title, note: d.note || '', shelf: d.shelf, url: d.url || '', files: d.files || [] })),
+    fromBoard,
+    brand,
+    photos: bits.photos,
+    impact: bits.impact,
+    contact: { name: 'SOARD', email: 'info@soardcharity.com' },
   };
 }

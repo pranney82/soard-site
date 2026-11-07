@@ -22,6 +22,7 @@ import { shortDate, isDate, todayEastern } from './board-shared.js';
 import { ReportEditor } from './board-report.js';
 import { AdvisoryMeetings } from './advisory-meeting.js';
 import { api } from './advisory/api.js';
+import { Thermometer } from './advisory/thermometer.js';
 
 const html = htm.bind(h);
 const API = '/api/advisory-admin';
@@ -160,9 +161,9 @@ function Sure({ label, yes, note = '', onYes, cls = '', disabled = false }) {
     <button type="button" class="ar-btn ar-btn--quiet" disabled=${busy} onClick=${() => setAsking(false)}>Keep it as it is</button>
   </span>`;
 }
-function Toggle({ checked, onChange, label, sub = '' }) {
+function Toggle({ checked, onChange, label, sub = '', disabled = false }) {
   return html`<label class="ar-toggle">
-    <input type="checkbox" role="switch" checked=${checked} onChange=${(e) => onChange(e.currentTarget.checked)} />
+    <input type="checkbox" role="switch" checked=${checked} disabled=${disabled} onChange=${(e) => onChange(e.currentTarget.checked)} />
     <span class="ar-toggle__t" aria-hidden="true"></span>
     <span class="ar-toggle__w"><strong>${label}</strong>${sub ? html`<span class="ar-muted">${sub}</span>` : null}</span>
   </label>`;
@@ -458,18 +459,21 @@ function Goal({ ctx }) {
     const patch = Object.fromEntries(moved.map((k) => [k, k === 'goal' ? Number(edits.goal) : edits[k]]));
     if (await act({ action: 'save-settings', settings: patch }, 'Saved')) setEdits({});
   };
-  const pct = m.goal > 0 ? Math.min(100, Math.round((m.raised / m.goal) * 100)) : 0;
   const people = data.board.filter((p) => (p.committees || []).includes('Advisory Board') || p.slug === s.lead);
   const [email, setEmail] = useState('');
   const [found, setFound] = useState(null);
   const look = async () => { const j = await ctx.act({ action: 'find-gifts', email }); if (j) setFound(j.gifts || []); };
   return html`<${Card} title="The goal" sub=${`${dayOf(`${s.termStart}T17:00:00Z`)} to ${dayOf(`${s.termEnd}T17:00:00Z`)}`}>
-    <p class="ar-big">${dollars(m.raised)}<span class="ar-muted"> of ${dollars(m.goal)}</span></p>
-    <div class="ar-bar" role="img" aria-label=${`${pct}% of the goal`}><i style=${`width:${pct}%`}></i></div>
-    ${m.ready && m.noPage?.length ? html`<p class="ar-muted ar-small">No Zeffy page yet: ${m.noPage.join(', ')}. Until they have one, they share the group’s page.</p>` : null}
-    ${!m.ready ? html`<p class="ar-muted ar-small">Add the group’s Zeffy campaign below and gifts count by themselves.</p>`
-      : m.error ? html`<p class="ar-note">Zeffy didn’t answer at the last look, so this may be behind. ${m.error}</p>`
-        : m.at ? html`<p class="ar-muted ar-small">Read from Zeffy ${dayOf(m.at)}.</p>` : null}
+    <div class="ar-goal">
+      <${Thermometer} raised=${m.raised} goal=${m.goal} cls="ar-thermo" />
+      <div class="ar-goal__w">
+        <p class="ar-big">${dollars(m.raised)}<span class="ar-muted"> of ${dollars(m.goal)}</span></p>
+        ${m.ready && m.noPage?.length ? html`<p class="ar-muted ar-small">No Zeffy page yet: ${m.noPage.join(', ')}. Until they have one, they share the group’s page.</p>` : null}
+        ${!m.ready ? html`<p class="ar-muted ar-small">Add the group’s Zeffy campaign below and gifts count by themselves.</p>`
+          : m.error ? html`<p class="ar-note">Zeffy didn’t answer at the last look, so this may be behind. ${m.error}</p>`
+            : m.at ? html`<p class="ar-muted ar-small">Read from Zeffy ${dayOf(m.at)}.</p>` : null}
+      </div>
+    </div>
     <${Fold} summary="Goal, term, and Zeffy">
       <div class="ar-grid2">
         <${Field} label="The goal, in dollars"><input class="ar-input" type="number" min="0" step="500" value=${f.goal} onInput=${up('goal')} /><//>
@@ -605,22 +609,63 @@ function PersonRow({ a, agreement, ctx }) {
 // ═══════════════════════════════════════════════════════════════════
 function DocsTab({ ctx }) {
   const { data } = ctx;
-  const [open, setOpen] = useState(null); // a doc's id, or 'new:<kind>'
+  const [open, setOpenNow] = useState(null); // a doc's id, or 'new:<kind>'
+  // What's typed and not saved in the paper that's open: moving to another asks first, as Close does
+  const editing = useRef('');
+  const setOpen = async (next) => { if (next !== null && editing.current && !(await askToLeave(editing.current))) return; setOpenNow(next); };
   const group = (kinds) => kinds.map((k) => {
     const kind = data.docKinds.find((x) => x.id === k);
     const docs = data.docs.filter((d) => d.kind === k);
     return html`<li key=${k}>
-      ${docs.map((d) => (open === d.id ? html`<${DocEditor} doc=${d} kind=${kind} ctx=${ctx} onDone=${() => setOpen(null)} key=${d.id} />` : html`<${DocRow} d=${d} kind=${kind} ctx=${ctx} onOpen=${() => setOpen(d.id)} key=${d.id} />`))}
-      ${open === `new:${k}` ? html`<${DocEditor} doc=${{ kind: k, ...STARTERS[k], shared: true, files: [] }} kind=${kind} ctx=${ctx} onDone=${() => setOpen(null)} key=${`new-${k}`} />`
+      ${docs.map((d) => (open === d.id ? html`<${DocEditor} doc=${d} kind=${kind} ctx=${ctx} track=${editing} onDone=${() => setOpen(null)} key=${d.id} />` : html`<${DocRow} d=${d} kind=${kind} ctx=${ctx} onOpen=${() => setOpen(d.id)} key=${d.id} />`))}
+      ${open === `new:${k}` ? html`<${DocEditor} doc=${{ kind: k, ...STARTERS[k], shared: true, files: [] }} kind=${kind} ctx=${ctx} track=${editing} onDone=${() => setOpen(null)} key=${`new-${k}`} />`
         : !docs.length ? html`<div class="ar-row ar-row--tight"><span><strong>${kind?.label}</strong><span class="ar-muted"> · Not written yet</span></span><button type="button" class="ar-btn ar-btn--small" onClick=${() => setOpen(`new:${k}`)}>Start from a draft</button></div>`
           : k === 'post' ? html`<div class="ar-row ar-row--tight"><span></span><button type="button" class="ar-btn ar-btn--small" onClick=${() => setOpen('new:post')}>Add another post</button></div>` : null}
     </li>`;
   });
   return html`<div class="ar-stack">
-    <${Card} title="Papers" sub="On the People page. The agreement is signed by each advisor once a term."><ul class="ar-list">${group(PAPERS)}</ul><//>
+    <${Card} title="Papers" sub="On their Documents page. The agreement is signed by each advisor once a term."><ul class="ar-list">${group(PAPERS)}</ul><//>
+    <${LibraryCard} ctx=${ctx} open=${open} setOpen=${setOpen} editing=${editing} />
+    <${BoardPapersCard} ctx=${ctx} />
     <${PublicOverview} ctx=${ctx} />
     <${Card} title="Words for the Fundraise page" sub="What advisors copy and share. Nobody sees a draft until it’s saved."><ul class="ar-list">${group(WORDS)}</ul><//>
   </div>`;
+}
+
+/** The shelves on their Documents page: a link, a file, or both, on any shelf */
+function LibraryCard({ ctx, open, setOpen, editing }) {
+  const { data } = ctx;
+  const kind = data.docKinds.find((k) => k.id === 'library');
+  return html`<${Card} title="On their Documents page" sub="Links and files, shelf by shelf. Advisors also see SOARD’s facts, logos, photos, filings, and the words below.">
+    ${data.shelves.map((sh) => {
+    const docs = data.docs.filter((d) => d.kind === 'library' && d.shelf === sh.id);
+    return html`<div class="ar-shelf" key=${sh.id}>
+      <h4>${sh.label}</h4>
+      <ul class="ar-list">
+        ${docs.map((d) => html`<li key=${d.id}>${open === d.id ? html`<${DocEditor} doc=${d} kind=${kind} ctx=${ctx} track=${editing} onDone=${() => setOpen(null)} key=${d.id} />` : html`<${DocRow} d=${d} kind=${kind} ctx=${ctx} onOpen=${() => setOpen(d.id)} />`}</li>`)}
+        <li>${open === `new:${sh.id}` ? html`<${DocEditor} doc=${{ kind: 'library', shelf: sh.id, shared: true, files: [] }} kind=${kind} ctx=${ctx} track=${editing} onDone=${() => setOpen(null)} key=${`new-${sh.id}`} />`
+      : html`<div class="ar-row ar-row--tight"><span></span><button type="button" class="ar-btn ar-btn--small" aria-label=${`Add a link or file to ${sh.label}`} onClick=${() => setOpen(`new:${sh.id}`)}>Add a link or file</button></div>`}</li>
+      </ul>
+    </div>`;
+  })}
+  <//>`;
+}
+
+/** Which of the board's papers advisors can open. Nothing else of the board's reaches them */
+function BoardPapersCard({ ctx }) {
+  const { data, act } = ctx;
+  const on = new Set(data.settings.boardDocs || []);
+  const [want, setWant] = useState({});
+  const queue = useRef(Promise.resolve());
+  const flip = (id, v) => {
+    setWant((w) => ({ ...w, [id]: v }));
+    queue.current = queue.current.then(() => act({ action: 'board-doc', id, on: v }, v ? 'It’s on their Documents page' : 'It’s off their Documents page'))
+      .finally(() => setWant(({ [id]: gone, ...rest }) => rest));
+  };
+  if (!data.boardDocs.length) return null;
+  return html`<${Card} title="From the board’s documents" sub="Advisors can open only the ones turned on here. Papers the board signs stay with the board.">
+    <div class="ar-stack ar-stack--tight">${data.boardDocs.map((d) => html`<${Toggle} checked=${d.id in want ? want[d.id] : on.has(d.id)} disabled=${d.id in want} onChange=${(v) => flip(d.id, v)} label=${d.title} key=${d.id} />`)}</div>
+  <//>`;
 }
 
 /** The PDF the public Advisory Board page links to, replaced at the address it already has */
@@ -654,18 +699,21 @@ function DocRow({ d, kind, ctx, onOpen }) {
   const { data } = ctx;
   const signed = kind?.sign ? data.advisors.filter((a) => signedNow(a.signed[d.id], d, a.term)).length : null;
   return html`<div class="ar-row ar-row--tight">
-    <span><strong>${d.title}</strong><span class="ar-muted"> · ${d.shared === false ? 'Not on the page' : signed !== null ? `${signed} of ${data.advisors.length} signed` : `Saved ${dayOf(d.updatedAt)}`}${d.files?.length ? ` · ${d.files.length} ${d.files.length === 1 ? 'file' : 'files'}` : ''}</span></span>
+    <span><strong>${d.title}</strong><span class="ar-muted"> · ${d.shared === false ? 'Not on the page' : signed !== null ? `${signed} of ${data.advisors.length} signed` : d.kind === 'library' ? (!d.url && !d.files?.length ? 'Not on the page: add a link or a file' : d.note || (d.url ? 'A link' : 'A file')) : `Saved ${dayOf(d.updatedAt)}`}${d.files?.length ? ` · ${d.files.length} ${d.files.length === 1 ? 'file' : 'files'}` : ''}</span></span>
     <button type="button" class="ar-btn ar-btn--small" onClick=${onOpen}>Edit</button>
   </div>`;
 }
 
-function DocEditor({ doc, kind, ctx, onDone }) {
+function DocEditor({ doc, kind, ctx, onDone, track }) {
   const { act, load, tell, data } = ctx;
-  const [title, setTitle] = useState(doc.title || kind?.label || '');
+  const library = doc.kind === 'library';
+  const [title, setTitle] = useState(doc.title || (library ? '' : kind?.label) || '');
   const [body, setBody] = useState(doc.body || '');
   const [shared, setShared] = useState(doc.shared !== false);
   const [url, setUrl] = useState(doc.url || '');
-  const [saved, setSaved] = useState(doc.id ? { title: doc.title, body: doc.body || '', shared: doc.shared !== false, url: doc.url || '' } : null);
+  const [note, setNote] = useState(doc.note || '');
+  const [shelf, setShelf] = useState(doc.shelf || '');
+  const [saved, setSaved] = useState(doc.id ? { title: doc.title, body: doc.body || '', shared: doc.shared !== false, url: doc.url || '', note: doc.note || '', shelf: doc.shelf || '' } : null);
   const [saving, setSaving] = useState(false);
   const [id, setId] = useState(doc.id || '');
   // Which saved copy these words started from: the server refuses if someone has saved since (conflict: theirs)
@@ -673,8 +721,10 @@ function DocEditor({ doc, kind, ctx, onDone }) {
   const [conflict, setConflict] = useState(null);
   const [fresh, setFresh] = useState(0);
   const fileRef = useRef(null);
-  const changed = !saved || title !== saved.title || body !== saved.body || shared !== saved.shared || url !== saved.url;
+  const changed = saved ? title !== saved.title || body !== saved.body || shared !== saved.shared || url !== saved.url || note !== saved.note || shelf !== saved.shelf
+    : !library || !!(title.trim() || url.trim() || note.trim());
   useDirty(ctx, `doc-${doc.id || doc.kind}`, changed ? `“${title || 'this paper'}”` : '');
+  useEffect(() => { if (track) track.current = changed ? `“${title || 'this paper'}”` : ''; return () => { if (track) track.current = ''; }; }, [changed, title]);
   const current = data.docs.find((d) => d.id === id) || doc;
   // hide: a paper with no saved copy yet, saved so a file has somewhere to go. It stays off the page until someone
   // saves it there on purpose, so advisors never get a draft, or a signature to-do for one. The switch stays as they
@@ -687,7 +737,7 @@ function DocEditor({ doc, kind, ctx, onDone }) {
     }
     setSaving(true);
     const onPage = shared && !hide;
-    const j = await act({ action: 'save-doc', ...(base ? { base } : {}), doc: { id: id || undefined, kind: doc.kind, title, body, shared: onPage, ...(base ? { base } : {}), ...(doc.kind === 'overview' ? { url } : {}) } }, hide ? '' : 'Saved', { raw: true });
+    const j = await act({ action: 'save-doc', ...(base ? { base } : {}), doc: { id: id || undefined, kind: doc.kind, title, body, shared: onPage, ...(base ? { base } : {}), ...(doc.kind === 'overview' || library ? { url } : {}), ...(library ? { note, shelf } : {}) } }, hide ? '' : 'Saved', { raw: true });
     setSaving(false);
     if (!j) return null;
     if (!j.ok) {
@@ -698,13 +748,14 @@ function DocEditor({ doc, kind, ctx, onDone }) {
     setConflict(null);
     // (compared with what the server kept: it finishes a web address typed without https://)
     setId(j.doc.id); setUrl(j.doc.url || ''); setBase(j.doc.updatedAt || '');
-    setSaved({ title, body, shared: onPage, url: j.doc.url || '' });
+    setSaved({ title, body, shared: onPage, url: j.doc.url || '', note: j.doc.note || '', shelf: j.doc.shelf || '' });
+    setNote(j.doc.note || '');
     return j.doc;
   };
   const takeTheirs = () => {
     const c = conflict;
-    setTitle(c.title || title); setBody(c.body || ''); setShared(c.shared !== false); setUrl(c.url || '');
-    setSaved({ title: c.title || title, body: c.body || '', shared: c.shared !== false, url: c.url || '' });
+    setTitle(c.title || title); setBody(c.body || ''); setShared(c.shared !== false); setUrl(c.url || ''); setNote(c.note || ''); setShelf(c.shelf || '');
+    setSaved({ title: c.title || title, body: c.body || '', shared: c.shared !== false, url: c.url || '', note: c.note || '', shelf: c.shelf || '' });
     setBase(c.updatedAt || ''); setConflict(null); setFresh((n) => n + 1);
   };
   const keepMine = () => { setBase(conflict.updatedAt || ''); setConflict(null); tell('Press Save to put yours in its place'); };
@@ -733,7 +784,11 @@ function DocEditor({ doc, kind, ctx, onDone }) {
       <div class="ar-btns"><button type="button" class="ar-btn ar-btn--small" onClick=${takeTheirs}>Load their version</button><button type="button" class="ar-btn ar-btn--small" onClick=${keepMine}>Keep mine</button></div>
     </div>` : null}
     <${Field} label="Title"><input class="ar-input" maxlength="160" value=${title} onInput=${(e) => setTitle(e.currentTarget.value)} /><//>
-    <${ReportEditor} value=${body} onChange=${setBody} resetKey=${fresh} label="The words" placeholder="The words advisors read" timed="read" fields=${false} minHeight=${200} />
+    ${library ? html`
+      <${Field} label="A few words about it" hint="Optional"><input class="ar-input" maxlength="200" value=${note} onInput=${(e) => setNote(e.currentTarget.value)} /><//>
+      <${Field} label="Its web address" hint="Or add a file below"><input class="ar-input" type="url" inputmode="url" placeholder="https://" value=${url} onInput=${(e) => setUrl(e.currentTarget.value)} /><//>
+      <${Field} label="Shelf"><select class="ar-input" value=${shelf} onChange=${(e) => setShelf(e.currentTarget.value)}>${data.shelves.map((sh) => html`<option value=${sh.id} key=${sh.id}>${sh.label}</option>`)}</select><//>
+    ` : html`<${ReportEditor} value=${body} onChange=${setBody} resetKey=${fresh} label="The words" placeholder="The words advisors read" timed="read" fields=${false} minHeight=${200} />`}
     ${doc.kind === 'overview' ? html`<${Field} label="The PDF’s web address" hint="Advisors get an Open button for it"><input class="ar-input" type="url" inputmode="url" placeholder="https://" value=${url} onInput=${(e) => setUrl(e.currentTarget.value)} /><//>` : null}
     <div class="ar-files">
       ${files.length ? html`<ul class="ar-list">${files.map((f, i) => html`<li key=${f.id}><div class="ar-row ar-row--tight">
@@ -744,8 +799,9 @@ function DocEditor({ doc, kind, ctx, onDone }) {
     </div>
     <${Toggle} checked=${shared} onChange=${setShared} label="On the advisors’ page" />
     ${saved && !saved.shared && shared ? html`<p class="ar-note">It’s saved as a draft. Press Save to put it on the page.</p>` : null}
+    ${library && !url.trim() && !files.length ? html`<p class="ar-muted ar-small">Add a web address or a file so advisors have something to open.</p>` : null}
     <div class="ar-btns">
-      <button type="button" class="ar-btn ar-btn--go" disabled=${saving || ctx.busy || !title.trim()} onClick=${async () => { if (await save()) onDone(); }}>Save</button>
+      <button type="button" class="ar-btn ar-btn--go" disabled=${saving || ctx.busy || !title.trim() || (library && !url.trim() && !files.length)} onClick=${async () => { if (await save()) onDone(); }}>Save</button>
       <button type="button" class="ar-btn ar-btn--quiet" onClick=${close}>Close</button>
       ${id ? html`<${Sure} label="Delete" yes="Yes, delete it" note=${kind?.sign ? 'Its signatures go with it.' : ''} onYes=${async () => { if (await act({ action: 'delete-doc', id }, 'Deleted')) onDone(); }} />` : null}
     </div>
@@ -822,6 +878,11 @@ textarea.ar-input { resize: vertical; }
 .ar-btn--go:hover:not(:disabled) { background: var(--ar-yellow-2); border-color: var(--ar-yellow-2); }
 .ar-btn--quiet { background: none; border-color: transparent; }
 .ar-btn--small { min-height: 36px; padding: 3px 12px; font-size: 0.93em; }
+@media (max-width: 640px) {
+  .ar .ar-btn, .ar .ar-btn--small, .ar .ar-tabs button, .ar .ar-seg button, .ar .ar-input, .ar .ar-fold > summary, .ar .ar-toggle { min-height: 44px; }
+  .ar-toggle { align-items: center; }
+  .ar-row a:not(.ar-btn), .ar-files a:not(.ar-btn) { display: inline-block; padding: 0.7em 0; margin: -0.7em 0; }
+}
 .ar-sure { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
 .ar-sure__n { flex-basis: 100%; color: var(--ar-ink-2); font-size: 0.9em; }
 .ar-seg { display: inline-flex; flex-wrap: wrap; gap: 2px; width: max-content; max-width: 100%; padding: 3px; border-radius: 11px; background: var(--ar-warm); }
@@ -839,8 +900,12 @@ textarea.ar-input { resize: vertical; }
 .ar-fold__b { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding-bottom: 6px; }
 .ar-big { font-size: 1.55em; font-weight: 700; line-height: 1.25; }
 .ar-big .ar-muted { font-size: 0.62em; font-weight: 500; }
-.ar-bar { height: 10px; margin: 7px 0 6px; border-radius: 999px; background: var(--ar-warm); overflow: hidden; }
-.ar-bar i { display: block; height: 100%; background: var(--ar-yellow-2); border-radius: 999px; }
+.ar-shelf + .ar-shelf { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--ar-line); }
+.ar-shelf h4 { margin: 0 0 4px; font-size: 1em; }
+.ar-stack--tight { gap: 8px; }
+.ar-goal { display: flex; align-items: center; flex-wrap: wrap; gap: 12px 24px; margin: 4px 0 8px; }
+.ar-thermo { display: block; flex: none; width: 114px; height: 220px; }
+.ar-goal__w { flex: 1 1 200px; min-width: 0; }
 .ar-plain { margin: 3px 0 0; padding-left: 18px; }
 .ar-note { padding: 7px 11px; border-radius: 9px; background: var(--ar-warn-bg); color: var(--ar-warn); font-size: 0.93em; }
 .ar-money { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }

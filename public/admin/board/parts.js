@@ -35,6 +35,7 @@ export const ICONS = {
   plus: html`<path d="M12 5v14M5 12h14" />`,
   logout: html`<path d="M14 4.5h4A1.5 1.5 0 0 1 19.5 6v12a1.5 1.5 0 0 1-1.5 1.5h-4M10 16l-4-4 4-4M6 12h9" />`,
   external: html`<path d="M14 4.5h5.5V10M19.5 4.5 11 13M17 14v4.5a1 1 0 0 1-1 1H5.5a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1H10" />`,
+  download: html`<path d="M12 4v11M7 11l5 5 5-5M5 20h14" />`,
   gavel: html`<path d="m13.5 4.5 6 6M11 7l6 6M12.25 5.75l-4.5 4.5M17.75 11.25l-4.5 4.5M10 12l-6.5 6.5M3.5 20.5h9" />`,
   present: html`<rect x="3" y="4.5" width="18" height="12" rx="1.5" /><path d="M12 16.5v3.5M8 20.5h8M10 8.5v4.5l4-2.25z" />`,
   list: html`<path d="M9 6.5h11M9 12h11M9 17.5h11" /><circle cx="4.75" cy="6.5" r="1" /><circle cx="4.75" cy="12" r="1" /><circle cx="4.75" cy="17.5" r="1" />`,
@@ -49,6 +50,19 @@ export const ICONS = {
 export const Icon = ({ name, size = 20, cls = '' }) => html`<svg class=${`bp-icon ${cls}`} width=${size} height=${size} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${ICONS[name]}</svg>`;
 
 // ─── Words and dates ────────────────────────────────────────────────
+/** A count that stays with its word, and a year with the word before it, on a narrow phone ("1 awaiting", "in 2026") */
+export const nbw = (s) => String(s ?? '').replace(/(\d[KMB%]?) (?=\p{L})/gu, '$1\u00a0').replace(/(\p{L}) (?=\d{4}\b)/gu, '$1\u00a0');
+export const mapsHref = (s) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s)}`;
+/** A Cloudflare photo at the size it's shown, through the site so it's same-origin */
+export function sized(url, transform) {
+  const s = String(url || '');
+  const m = s.match(/^(?:https:\/\/imagedelivery\.net|(?:https?:\/\/[^/]+)?\/cdn-cgi\/imagedelivery)\/([^/]+)\/(.+)$/);
+  if (!m) return s;
+  let id = m[2];
+  const cut = id.lastIndexOf('/');
+  if (cut > 0 && /=|^(public|thumbnail|avatar|hero|card)$/.test(id.slice(cut + 1))) id = id.slice(0, cut);
+  return `/cdn-cgi/imagedelivery/${m[1]}/${id}/${transform}`;
+}
 export const hueOf = (s) => [42, 28, 96, 152, 200, 18][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
 
 export const noon = (d) => Date.parse(`${d}T12:00:00Z`);

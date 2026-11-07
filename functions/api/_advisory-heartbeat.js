@@ -28,5 +28,7 @@ export async function maybeRunAdvisory(env, { fetchImpl = fetch, now = Date.now(
     }
   }
   await step('meetings', () => maybeSyncAdvisoryMeetings(env, { fetchImpl, now }));
+  // A paper the board took back in a way its save doesn't catch (a new staff-only file, a deleted paper)
+  await step('papers', async () => { const { boardPapers } = await import('./_advisory-portal.js'); return boardPapers(env.DB, await getSettings(env.DB)); });
   await step('nudge', () => maybeNudgeLead(env, { now }));
 }

@@ -14,6 +14,8 @@ import {
   saveDoc, signDoc, termOf, renew, canRenew, moveSlug,
 } from '../functions/api/_advisory.js';
 import { advisoryPortalData } from '../functions/api/_advisory-portal.js';
+import { seedOnce } from '../functions/api/_advisory-seed.js';
+import { sharableBoardDocs } from '../functions/api/_board.js';
 import { routesFor, advisorFor, boardMemberFor, BOARD_ROUTES, ADVISORY_ROUTES, isGroupInbox, writeState } from '../functions/api/_board-roles.js';
 import { everyoneSignIns, boardSignIns } from '../functions/api/_board-access.js';
 import { staffStanding } from '../functions/api/_staff-access.js';
@@ -130,6 +132,164 @@ test('dollars are only under fundraise, and an advisor sees only their own', asy
   assert.ok(!JSON.stringify(fundraise).includes('10000'), 'another advisor’s number');
 });
 
+// ─── Documents ──────────────────────────────────────────────────────
+
+const boardPaper = async (id, title, { sign = false, shared = true, body = '', staff = 0, file = `f_${id.slice(2)}` } = {}) => {
+  await sharableBoardDocs(env.DB);
+  await env.DB.prepare('INSERT INTO board_docs (id, data) VALUES (?, ?)').bind(id, JSON.stringify({ id, title, kind: 'governance', sign, shared, body })).run();
+  await env.DB.prepare('INSERT INTO board_files (id, owner_type, owner_id, r2_key, name, type, size, staff_only, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(file, 'doc', id, `board/${file}`, `${title}.pdf`, 'application/pdf', 1000, staff, new Date(NOW).toISOString()).run();
+};
+
+test('a board paper reaches advisors only when it’s turned on, and only its current file', async () => {
+  await boardPaper('d_wnine', 'W-9');
+  await boardPaper('d_bylaw', 'Bylaws');
+  const ada = await advisor();
+  assert.deepEqual((await advisoryPortalData(env, ada, { now: NOW })).fromBoard.filter((d) => d.id === 'd_bylaw'), [], 'off until someone turns it on');
+  assert.equal(await advisoryFileFor(env.DB, 'f_bylaw', ada), null);
+  await saveSettings(env.DB, { boardDocs: ['d_wnine'] });
+  const page = await advisoryPortalData(env, ada, { now: NOW });
+  assert.deepEqual(page.fromBoard, [{ id: 'd_wnine', title: 'W-9', file: { id: 'f_wnine', name: 'W-9.pdf', type: 'application/pdf', size: 1000 } }]);
+  assert.ok(await advisoryFileFor(env.DB, 'f_wnine', ada));
+  assert.equal(await advisoryFileFor(env.DB, 'f_bylaw', ada), null, 'its neighbor stays closed');
+  // A new copy replaces it: the old one closes
+  await env.DB.prepare('INSERT INTO board_files (id, owner_type, owner_id, r2_key, name, type, size, staff_only, at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').bind('f_wnine2', 'doc', 'd_wnine', 'board/f_wnine2', 'W-9.pdf', 'application/pdf', 1000, 0, new Date(NOW + 1000).toISOString()).run();
+  assert.ok(await advisoryFileFor(env.DB, 'f_wnine2', ada));
+  assert.equal(await advisoryFileFor(env.DB, 'f_wnine', ada), null);
+  // Turned off: gone the same moment
+  await saveSettings(env.DB, { boardDocs: [] });
+  assert.equal(await advisoryFileFor(env.DB, 'f_wnine2', ada), null);
+  assert.deepEqual((await advisoryPortalData(env, ada, { now: NOW })).fromBoard, []);
+});
+
+test('a paper the board signs, a written paper, a staff-only file or a hidden one can’t be turned on', async () => {
+  await boardPaper('d_oktoo', 'Charity permit');
+  await boardPaper('d_signs', 'Conflict of interest', { sign: true });
+  await boardPaper('d_words', 'Written here', { body: 'Words' });
+  await boardPaper('d_staff', 'Staff copy', { staff: 1 });
+  await boardPaper('d_hides', 'Hidden', { shared: false });
+  assert.deepEqual((await sharableBoardDocs(env.DB)).map((d) => d.id), ['d_oktoo']);
+  await saveSettings(env.DB, { boardDocs: [] });
+  for (const id of ['d_signs', 'd_words', 'd_staff', 'd_hides', 'd_nope1']) assert.equal((await runIt({ action: 'board-doc', id, on: true })).status, 400, id);
+  assert.equal((await runIt({ action: 'board-doc', id: 'd_oktoo', on: true })).status, 200);
+  assert.deepEqual((await getSettings(env.DB)).boardDocs, ['d_oktoo']);
+  await runIt({ action: 'save-settings', settings: { boardDocs: ['d_signs'] } });
+  assert.deepEqual((await getSettings(env.DB)).boardDocs, ['d_oktoo'], 'only its own switch changes this');
+  // Even written straight in, the page and the file route still refuse
+  await saveSettings(env.DB, { boardDocs: ['d_signs', 'd_staff'] });
+  assert.deepEqual((await advisoryPortalData(env, await advisor(), { now: NOW })).fromBoard, []);
+  for (const f of ['f_signs', 'f_staff']) assert.equal(await advisoryFileFor(env.DB, f, await advisor()), null, f);
+});
+
+test('Documents start with SOARD’s own pages and the four papers any donor gets, once', async () => {
+  await boardPaper('d_wnine', 'W-9'); await boardPaper('d_einlt', 'EIN letter'); await boardPaper('d_irsdl', 'IRS 501(c)(3) determination letter');
+  await boardPaper('d_permi', 'Charitable Organization Permit'); await boardPaper('d_bylaw', 'Signed Amended Bylaws'); await boardPaper('d_dando', 'D&O insurance');
+  // Close to those titles, and none of them
+  await boardPaper('d_nearx', 'Determination of Executive Compensation 2025'); await boardPaper('d_neary', 'Building permit, a family’s home'); await boardPaper('d_nearz', 'Invoice 15012 reconciliation'); await boardPaper('d_nearw', 'W-9 for a person');
+  await seedOnce(env.DB, () => sharableBoardDocs(env.DB));
+  assert.deepEqual([...(await getSettings(env.DB)).boardDocs].sort(), ['d_einlt', 'd_irsdl', 'd_permi', 'd_wnine']);
+  const page = await advisoryPortalData(env, await advisor(), { now: NOW });
+  assert.ok(page.library.length === 7 && page.library.every((d) => page.shelves.some((s) => s.id === d.shelf) && /^https:\/\/sunshineonaranneyday\.com\//.test(d.url)));
+  assert.ok(!JSON.stringify(page.library).includes('—'), 'no em dashes');
+  // Someone turns one off and deletes a link: neither comes back
+  await saveSettings(env.DB, { boardDocs: ['d_wnine'] });
+  const { deleteDoc, listDocs } = await import('../functions/api/_advisory.js');
+  const gone = page.library[0].id;
+  await deleteDoc(env.DB, gone);
+  await seedOnce(env.DB, () => sharableBoardDocs(env.DB));
+  assert.deepEqual((await getSettings(env.DB)).boardDocs, ['d_wnine']);
+  assert.ok(!(await listDocs(env.DB)).some((d) => d.id === gone));
+});
+
+test('a shelf holds a link or a file: a draft or an empty one stays off, and no staff fields come through', async () => {
+  await assert.rejects(saveDoc(env.DB, { kind: 'library', title: 'Nowhere' }), /shelf/);
+  await assert.rejects(saveDoc(env.DB, { kind: 'library', title: 'Bad', shelf: 'secret' }), /shelf/);
+  await assert.rejects(saveDoc(env.DB, { kind: 'library', title: 'Bad link', shelf: 'about', url: 'javascript:alert(1)' }), /web address/);
+  const link = await saveDoc(env.DB, { kind: 'library', title: 'A link', note: 'Why', shelf: 'marketing', url: 'example.com/x' });
+  assert.equal(link.url, 'https://example.com/x');
+  await saveDoc(env.DB, { kind: 'library', title: 'Empty', shelf: 'about' });
+  await saveDoc(env.DB, { kind: 'library', title: 'Draft', shelf: 'about', url: 'https://example.com/d', shared: false });
+  const titles = (await advisoryPortalData(env, await advisor(), { now: NOW })).library.map((d) => d.title);
+  assert.ok(titles.includes('A link'));
+  assert.ok(!titles.includes('Empty') && !titles.includes('Draft'));
+  const row = (await advisoryPortalData(env, await advisor(), { now: NOW })).library.find((d) => d.title === 'A link');
+  assert.deepEqual(Object.keys(row).sort(), ['files', 'id', 'note', 'shelf', 'title', 'url']);
+  assert.ok(!(await advisoryPortalData(env, await advisor(), { now: NOW })).papers.some((d) => d.kind === 'library'));
+});
+
+test('photos come only from a child whose page is public, and keep their place in SOARD’s list', async () => {
+  await env.DB.prepare('INSERT INTO site_config (key, data) VALUES (?, ?)').bind('media', JSON.stringify({ brandingPhotos: [
+    { kidSlug: 'hidden-kid', cfId: 'kids/zelda/1', caption: 'Zelda Secretname' }, { kidSlug: 'pat-2026', cfId: 'kids/pat/2', caption: 'Pat — Spina Bifida & Hydrocephalus' }, { kidSlug: 'pat-2026', cfId: '', caption: 'No picture' },
+  ] })).run();
+  const { photos } = await advisoryPortalData(env, await advisor(), { now: NOW });
+  assert.equal(photos.length, 1);
+  assert.equal(photos[0].download, '/api/download-branding-photos?photo=1');
+  assert.ok(photos[0].photo.includes('kids/pat/2'));
+  assert.ok(!JSON.stringify(photos).includes('Zelda'));
+  assert.equal(photos[0].caption, 'Pat Sample', 'their name from their page, never the caption');
+  assert.ok(!JSON.stringify(photos).includes('Spina'));
+});
+
+test('official logos only, and the group’s seal once it’s a Partner', async () => {
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS partners (slug TEXT PRIMARY KEY, data TEXT NOT NULL)');
+  let { brand } = await advisoryPortalData(env, await advisor(), { now: NOW });
+  assert.ok(brand.logos.length >= 3 && brand.logos.every((l) => l.png.startsWith('/api/download-logo?id=')));
+  assert.equal(brand.seal, '');
+  await env.DB.prepare('INSERT OR REPLACE INTO partners (slug, data) VALUES (?, ?)').bind('soard-advisory-board', JSON.stringify({ logo: 'https://imagedelivery.net/x/partners/seal/public' })).run();
+  ({ brand } = await advisoryPortalData(env, await advisor(), { now: NOW }));
+  assert.ok(brand.seal.includes('partners/seal'));
+});
+
+test('a board paper that stops being sharable needs someone to turn it on again', async () => {
+  await boardPaper('d_wnine', 'W-9');
+  await saveSettings(env.DB, { boardDocs: ['d_wnine'], library: true });
+  const ada = await advisor();
+  assert.equal((await advisoryPortalData(env, ada, { now: NOW })).fromBoard.length, 1);
+  await env.DB.prepare('UPDATE board_docs SET data = ? WHERE id = ?').bind(JSON.stringify({ id: 'd_wnine', title: 'W-9', kind: 'governance', shared: false }), 'd_wnine').run();
+  assert.equal((await advisoryPortalData(env, ada, { now: NOW })).fromBoard.length, 0);
+  await env.DB.prepare('UPDATE board_docs SET data = ? WHERE id = ?').bind(JSON.stringify({ id: 'd_wnine', title: 'W-9', kind: 'governance', shared: true }), 'd_wnine').run();
+  assert.equal((await advisoryPortalData(env, ada, { now: NOW })).fromBoard.length, 0);
+  assert.deepEqual((await getSettings(env.DB)).boardDocs, []);
+});
+
+test('a paper the board takes back is off at once, whoever visits next, and doesn’t come back when it changes back', async () => {
+  const { saveDoc: saveBoardDoc, updateFile } = await import('../functions/api/_board.js');
+  await boardPaper('d_wnine', 'W-9');
+  await boardPaper('d_einlt', 'EIN letter');
+  await saveSettings(env.DB, { boardDocs: ['d_wnine', 'd_einlt'], library: true });
+  // No advisor loads the page anywhere in here
+  await saveBoardDoc(env.DB, { id: 'd_wnine', title: 'W-9', kind: 'governance', sign: true, shared: true }, { by: 'x' });
+  assert.deepEqual((await getSettings(env.DB)).boardDocs, ['d_einlt']);
+  await saveBoardDoc(env.DB, { id: 'd_wnine', title: 'W-9', kind: 'governance', sign: false, shared: true }, { by: 'x' });
+  assert.deepEqual((await getSettings(env.DB)).boardDocs, ['d_einlt'], 'changing it back doesn’t turn it back on');
+  await updateFile(env.DB, 'f_einlt', { staffOnly: true });
+  assert.deepEqual((await getSettings(env.DB)).boardDocs, []);
+  await updateFile(env.DB, 'f_einlt', { staffOnly: false });
+  assert.deepEqual((await advisoryPortalData(env, await advisor(), { now: NOW })).fromBoard, []);
+});
+
+test('deleting a paper takes its file, and a tab left open can’t bring either back', async () => {
+  await seedOnce(env.DB);
+  const doc = await saveDoc(env.DB, { kind: 'library', title: 'Wrong upload', shelf: 'marketing' });
+  await sharableBoardDocs(env.DB);
+  await env.DB.prepare('INSERT INTO board_files (id, owner_type, owner_id, r2_key) VALUES (?, ?, ?, ?)').bind('f_wrongone', 'advisory-doc', doc.id, 'board/f_wrongone').run();
+  env.BOARD_FILES = { delete: async () => {}, get: async () => null };
+  env.FILES = env.BOARD_FILES;
+  const del = await runIt({ action: 'delete-doc', id: doc.id });
+  assert.equal(del.status, 200);
+  assert.equal(await env.DB.prepare('SELECT id FROM board_files WHERE id = ?').bind('f_wrongone').first(), null);
+  const stale = await runIt({ action: 'save-doc', base: doc.updatedAt, doc: { id: doc.id, kind: 'library', title: 'Wrong upload', shelf: 'marketing' } });
+  assert.equal(stale.status, 410);
+  const { listDocs } = await import('../functions/api/_advisory.js');
+  assert.ok(!(await listDocs(env.DB)).some((d) => d.id === doc.id));
+});
+
+test('first-day papers never write over one that’s already there', async () => {
+  await saveDoc(env.DB, { id: 'ad_seedliba', kind: 'library', shelf: 'marketing', title: 'Mine now', url: 'https://example.com/mine' });
+  await seedOnce(env.DB);
+  const { listDocs } = await import('../functions/api/_advisory.js');
+  assert.equal((await listDocs(env.DB)).find((d) => d.id === 'ad_seedliba').title, 'Mine now');
+});
+
 test('a group inbox can never open the staff admin, even with Google unreadable or a +tag', async () => {
   for (const e of ['advisory@soardcharity.com', 'board@soardcharity.com', 'Advisory+x@soardcharity.com', 'advisory+anything@soardcharity.com']) {
     assert.ok(isGroupInbox(e), e);
@@ -198,13 +358,13 @@ test('the first words are written once, no em dashes, and a deleted one stays go
   assert.equal(await seedOnce(env.DB), true);
   assert.equal(await seedOnce(env.DB), false);
   const { listDocs, listWishes, listAsks, deleteDoc } = await import('../functions/api/_advisory.js');
-  const docs = await listDocs(env.DB);
+  const docs = (await listDocs(env.DB)).filter((d) => d.kind !== 'library');
   assert.equal(docs.length, 7);
   assert.ok(!JSON.stringify([docs, await listWishes(env.DB), await listAsks(env.DB)]).includes('—'), 'no em dashes');
   assert.equal((await currentAsk(env.DB)), null, 'the first ask waits for a person');
   await deleteDoc(env.DB, docs[0].id);
   await seedOnce(env.DB);
-  assert.equal((await listDocs(env.DB)).length, 6);
+  assert.equal((await listDocs(env.DB)).filter((d) => d.kind !== 'library').length, 6);
 });
 
 test('signing takes their own name, and the to-do clears', async () => {
@@ -216,7 +376,7 @@ test('signing takes their own name, and the to-do clears', async () => {
   await assert.rejects(signDoc(env.DB, d.id, ada, 'Someone Else', { now: NOW, version: d.version }), /Type your name/);
   await assert.rejects(signDoc(env.DB, d.id, ada, 'Ada Advisor', { now: NOW, version: 99 }), /changed/);
   await signDoc(env.DB, d.id, ada, 'ada advisor', { now: NOW, version: d.version });
-  assert.equal((await advisoryPortalData(env, ada, { now: NOW })).todos.length, 0);
+  assert.ok(!(await advisoryPortalData(env, ada, { now: NOW })).todos.some((t) => t.kind === 'sign'));
   // New words: sign again
   await saveDoc(env.DB, { id: d.id, kind: 'agreement', title: d.title, body: 'New words' });
   assert.equal((await advisoryPortalData(env, ada, { now: NOW })).todos[0].kind, 'sign');
@@ -228,7 +388,7 @@ test('the agreement lasts the term: no second signature in January, one after re
   const d = (await listDocs(env.DB)).find((x) => x.kind === 'agreement');
   const ada = await advisor();
   await signDoc(env.DB, d.id, ada, 'Ada Advisor', { now: NOW, version: d.version });
-  assert.equal((await advisoryPortalData(env, ada, { now: Date.parse('2027-01-02T16:00:00Z') })).todos.length, 0);
+  assert.ok(!(await advisoryPortalData(env, ada, { now: Date.parse('2027-01-02T16:00:00Z') })).todos.some((t) => t.kind === 'sign'));
   const s = await getSettings(env.DB);
   await renew(env.DB, 'ada-advisor', s, { now: Date.parse('2027-09-15T16:00:00Z') });
   assert.equal((await advisoryPortalData(env, ada, { now: Date.parse('2027-09-16T16:00:00Z') })).todos[0].kind, 'sign');

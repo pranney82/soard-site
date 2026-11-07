@@ -6,7 +6,7 @@
  * Documents and Members afterwards; deleting one doesn't bring it back.
  */
 
-import { getSettings, saveSettings, saveDoc, saveWish, saveAsk } from './_advisory.js';
+import { getSettings, saveSettings, saveDoc, addDocOnce, saveWish, saveAsk } from './_advisory.js';
 
 const OVERVIEW_URL = 'https://files.sunshineonaranneyday.com/advisory/SOARD_Advisory%20Board%20Overview.docx.pdf';
 
@@ -47,8 +47,36 @@ const WISHES = [
 ];
 const FIRST_ASK = { title: 'Who’s one person we should meet?', body: 'Think of one person who would love what SOARD does: a business owner, a builder, a neighbor. An introduction is all it takes. Add them under Introductions, and we’ll do the rest.' };
 
+const SITE = 'https://sunshineonaranneyday.com';
+/** Their Documents page on day one: SOARD's own public pages, each edited or deleted like anything else there */
+const LIBRARY = [
+  ['about', 'Our story', 'How SOARD began and who it serves', '/about/'],
+  ['about', 'How a makeover works', 'From an application to the reveal', '/how-it-works/'],
+  ['about', 'The kids', 'Every child and every room', '/kids/'],
+  ['about', 'Who leads SOARD', 'The team and the board', '/about/leadership/'],
+  ['about', 'In the news', 'Stories about SOARD', '/publicity/'],
+  ['about', 'Questions people ask', 'Answers to pass along', '/faq/'],
+  ['donors', 'Ways to give', 'Every way someone can help', '/ways-to-give/'],
+];
+/** The four papers SOARD hands any donor, by their exact titles. Anything else of the board's stays off until someone turns it on */
+const FOR_DONORS = ['w-9', 'ein letter', 'irs 501(c)(3) determination letter', 'charitable organization permit'];
+
+async function seedLibrary(DB, boardDocs) {
+  if ((await getSettings(DB)).library) return false;
+  for (const [i, [shelf, title, note, path]] of LIBRARY.entries()) await addDocOnce(DB, `ad_seedlib${'abcdefghijklmnop'[i]}`, { kind: 'library', shelf, title, note, url: `${SITE}${path}`, sort: 100 + i }, { by: 'SOARD' });
+  const papers = boardDocs ? await boardDocs() : [];
+  // (read last, so a choice someone made while this ran stays as they made it)
+  const chosen = !!(await getSettings(DB)).boardDocs;
+  await saveSettings(DB, { ...(chosen ? {} : { boardDocs: papers.filter((d) => FOR_DONORS.includes(String(d.title).trim().toLowerCase())).map((d) => d.id) }), library: true });
+  return true;
+}
+
 /** Fixed ids, and the flag written last: a first load that fails partway finishes on the next, with nothing doubled */
-export async function seedOnce(DB) {
+export async function seedOnce(DB, boardDocs = null) {
+  await seedFirst(DB);
+  return seedLibrary(DB, boardDocs);
+}
+async function seedFirst(DB) {
   if ((await getSettings(DB)).seeded) return false;
   const docId = { agreement: 'ad_seedagreement', overview: 'ad_seedoverview', pitch: 'ad_seedpitch', post: 'ad_seedpost', sponsor: 'ad_seedsponsor', matching: 'ad_seedmatching', hosting: 'ad_seedhosting' };
   for (const [i, d] of DOCS.entries()) await saveDoc(DB, { ...d, id: docId[d.kind], sort: i }, { by: 'SOARD' });

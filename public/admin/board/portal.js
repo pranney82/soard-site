@@ -27,7 +27,9 @@
  */
 
 import { h, htm, render, useState, useEffect, useRef, useMemo } from '../vendor.js';
-import { Icon, PageNav, Avatar, Faces, DateTile, WindowTile, windowStart, SecHead, More, kept, keep, useKept, hueOf, noon, partsOf, together } from './parts.js';
+import { Icon, PageNav, Avatar, Faces, DateTile, WindowTile, windowStart, SecHead, More, kept, keep, useKept, hueOf, noon, partsOf, together, nbw, mapsHref } from './parts.js';
+import { pageKept, useFirstPage, FileBadge, Cover, coverWord } from './covers.js';
+import { OrgFacts, factsOf, factHay, FORM_PAPERS } from './facts.js';
 import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
@@ -106,7 +108,6 @@ const monthOf = (ym) => new Date(`${ym}-15T12:00:00Z`).toLocaleDateString('en-US
 const firstName = (n) => String(n || '').split(/\s+/)[0];
 const greeting = () => { const hr = Number(new Intl.DateTimeFormat('en-US', { hour: 'numeric', hourCycle: 'h23', timeZone: 'America/New_York' }).format(new Date())); return hr < 12 ? 'Good morning' : hr < 17 ? 'Good afternoon' : 'Good evening'; };
 const kindLabel = (k) => FILE_KINDS.find((x) => x.id === k)?.label || 'Other';
-const mapsHref = (s) => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(s)}`;
 const joinLabel = (url) => (/meet\.google\.com/.test(url) ? 'Join with Google Meet' : /teams\.(microsoft|live)/.test(url) ? 'Join with Microsoft Teams' : /zoom\.us/.test(url) ? 'Join with Zoom' : 'Join by video');
 /** Who the board's answers go to: "Holly and Peter" */
 const theTeam = (data) => together((data.admins || []).map(firstName)) || 'SOARD';
@@ -136,8 +137,6 @@ const norm = (s) => String(s || '').toLowerCase().normalize('NFKD').replace(/[̀
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** A time, a size or a length that never breaks before its unit on a narrow phone ("10:00 AM", "51 KB", "130 min") */
 const nb = (s) => String(s ?? '').replace(/(\d) (AM|PM|KB|MB|min|h)\b/g, '$1\u00a0$2');
-/** A count that stays with its word, and a year with the word before it, on a narrow phone ("1 awaiting", "in 2026") */
-const nbw = (s) => String(s ?? '').replace(/(\d[KMB%]?) (?=\p{L})/gu, '$1\u00a0').replace(/(\p{L}) (?=\d{4}\b)/gu, '$1\u00a0');
 
 // ─── Files ──────────────────────────────────────────────────────────
 const fileUrl = (f) => `/api/board-file?id=${encodeURIComponent(f.id)}`;
@@ -191,99 +190,6 @@ function fileRows(files, order = PAST_ORDER, lead = null) {
     }
   }
   return groups.sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
-}
-// ─── First pages ────────────────────────────────────────────────────
-// A PDF's first page, drawn in the browser by pdf.js (the file viewer's own, ../vendor-pdf.js) when its cover or
-// icon scrolls into view, two at a time, and kept on this device so it's there at once next time. No pictures are
-// stored anywhere else; Word and Excel files keep their drawn covers.
-let pdfLib = null;
-let pdfWorker = null;
-const loadPdfLib = () => (pdfLib ||= import('../vendor-pdf.js').catch((e) => { pdfLib = null; throw e; }));
-const pageKey = (f, w) => `bp-page:${f.id}:${f.size || 0}:${w}`;
-const pageKept = (f, w) => { try { return localStorage.getItem(pageKey(f, w)) || ''; } catch { return ''; } };
-const drawing = { now: 0, queue: [] };
-function drawSoon(job) {
-  return new Promise((resolve, reject) => {
-    drawing.queue.push({ job, resolve, reject });
-    const pump = () => {
-      while (drawing.now < 2 && drawing.queue.length) {
-        const next = drawing.queue.shift();
-        drawing.now += 1;
-        next.job().then(next.resolve, next.reject).finally(() => { drawing.now -= 1; pump(); });
-      }
-    };
-    pump();
-  });
-}
-async function firstPage(f, width) {
-  const { pdfjsLib } = await loadPdfLib();
-  pdfWorker ||= new pdfjsLib.PDFWorker();
-  const base = new URL('../pdf/', import.meta.url).href;
-  const task = pdfjsLib.getDocument({ url: fileUrl(f), worker: pdfWorker, disableAutoFetch: true, standardFontDataUrl: `${base}standard_fonts/`, wasmUrl: `${base}wasm/`, useWasm: false, enableXfa: false, isEvalSupported: false });
-  try {
-    const doc = await task.promise;
-    const page = await doc.getPage(1);
-    const one = page.getViewport({ scale: 1 });
-    const v = page.getViewport({ scale: (width * Math.min(2, window.devicePixelRatio || 1)) / one.width });
-    const canvas = document.createElement('canvas');
-    canvas.width = Math.round(v.width);
-    canvas.height = Math.round(v.height);
-    const g = canvas.getContext('2d');
-    g.fillStyle = '#fff';
-    g.fillRect(0, 0, canvas.width, canvas.height);
-    await page.render({ canvasContext: g, viewport: v }).promise;
-    return canvas.toDataURL('image/jpeg', 0.8);
-  } finally {
-    task.destroy();
-  }
-}
-/** A photo's first page is the photo itself, drawn small (a screenshot, a picture of a page); one the browser can't
- * read (HEIC in Chrome) throws, so it keeps its badge */
-async function firstPhoto(f, width) {
-  const res = await fetch(fileUrl(f), { credentials: 'same-origin' });
-  if (!res.ok) throw new Error(`photo ${res.status}`);
-  const bmp = await createImageBitmap(await res.blob());
-  try {
-    const w = Math.min(bmp.width, Math.round(width * Math.min(2, window.devicePixelRatio || 1)));
-    const canvas = document.createElement('canvas');
-    canvas.width = w;
-    canvas.height = Math.max(1, Math.round((bmp.height * w) / bmp.width));
-    const g = canvas.getContext('2d');
-    g.fillStyle = '#fff';
-    g.fillRect(0, 0, canvas.width, canvas.height);
-    g.drawImage(bmp, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.82);
-  } finally {
-    bmp.close?.();
-  }
-}
-/** [ref, src]: the first page of a PDF, or a photo, (up to 8 MB) once its element has been on screen */
-function useFirstPage(f, width) {
-  const ref = useRef(null);
-  const fmt = formatOf(f);
-  const can = !!f?.id && (fmt === 'PDF' || fmt === 'Photo') && (f.size || 0) <= 8 * 1048576;
-  const [src, setSrc] = useState(() => (can ? pageKept(f, width) : ''));
-  useEffect(() => {
-    if (!can || src || !ref.current || !('IntersectionObserver' in window)) return undefined;
-    let live = true;
-    const io = new IntersectionObserver((seen) => {
-      if (!seen.some((e) => e.isIntersecting)) return;
-      io.disconnect();
-      drawSoon(() => (fmt === 'Photo' ? firstPhoto : firstPage)(f, width)).then((data) => {
-        if (!live) return;
-        try { localStorage.setItem(pageKey(f, width), data); } catch { /* full: drawn again next time */ }
-        setSrc(data);
-      }).catch(() => {});
-    }, { rootMargin: '240px' });
-    io.observe(ref.current);
-    return () => { live = false; io.disconnect(); };
-  }, [f?.id]);
-  return [ref, src];
-}
-function FileBadge({ f }) {
-  const [ref, src] = useFirstPage(f, 48);
-  const fmt = formatOf(f);
-  return html`<span class=${`bp-badge ${src ? 'has-page' : ''}`} data-format=${fmt} ref=${ref} aria-hidden="true">${src ? html`<img src=${src} alt="" />` : ({ PDF: 'PDF', Excel: 'XLS', Word: 'DOC', Slides: 'PPT', Photo: 'IMG' }[fmt] || 'FILE')}</span>`;
 }
 
 /** A set of files, by kind, each opening in the viewer (the PDFs step through with ← →) */
@@ -4121,145 +4027,12 @@ const SHELVES = [
 ];
 const shelfOf = (x) => SHELVES.find((sh) => sh.test.test(x.title))?.id || (x.kind === 'plan' ? 'plan' : x.kind === 'financial' ? 'money' : x.kind === 'policy' ? 'governing' : 'other');
 const MORE_SHELVES = [{ id: 'plan', label: 'Plans and reports', sub: '' }, { id: 'money', label: 'Budgets and audits', sub: '' }, { id: 'other', label: 'More', sub: '' }];
-/** What a cover says it is, in a word or two */
-function coverWord(title) {
-  const t = String(title);
-  for (const [re, w] of [[/bylaw/i, 'Bylaws'], [/articles of incorporation|certificate of incorporation/i, 'Articles of Incorporation'], [/amend/i, 'Amendment'], [/manual/i, 'Board Manual'], [/conflict/i, 'Conflict of Interest'], [/whistle/i, 'Whistleblower'], [/501|determination/i, 'IRS Letter'], [/\bein\b/i, 'EIN'], [/w-?9/i, 'W-9'], [/permit/i, 'Charitable Permit'], [/d&o|directors.*officers/i, 'D&O Insurance'], [/insurance/i, 'Insurance'], [/strateg/i, 'Strategic Plan'], [/budget/i, 'Budget'], [/audit/i, 'Audit']]) if (re.test(t)) return w;
-  return t.length > 28 ? `${t.slice(0, 26).trim()}…` : t;
-}
-const yearOf = (x) => x.year || (String(x.title).match(/\b(19|20)\d{2}\b/) || [])[0] || '';
-/** A cover's longest word fits across it: past nine letters, set smaller ("Expectations", "Whistleblower") */
-const coverFit = (w) => { const n = Math.max(...String(w).split(/\s+/).map((x) => x.length)); return n > 9 ? `font-size:${Math.max(0.62, 9 / n).toFixed(3)}em` : null; };
-function Cover({ x, shelf }) {
-  // A paper written in Board is read as its words: its cover is its own, not its PDF's
-  const [ref, page] = useFirstPage(x.body ? null : x.file, 200);
-  const src = x.body ? '' : page;
-  return html`<span class=${`bp-cover bp-cover--${shelf} ${src ? 'has-page' : ''}`} ref=${ref} aria-hidden="true">
-    ${src ? html`<img class="bp-cover__page" src=${src} alt="" />` : null}
-    <span class="bp-cover__org">Sunshine on a Ranney Day</span>
-    <span class="bp-cover__word" style=${coverFit(coverWord(x.title))}>${coverWord(x.title)}</span>
-    <span class="bp-cover__rule"></span>
-    ${yearOf(x) ? html`<span class="bp-cover__year">${yearOf(x)}</span>` : null}
-    ${x.file && !x.body ? html`<span class="bp-cover__fmt">${{ PDF: 'PDF', Excel: 'XLS', Word: 'DOC' }[formatOf(x.file)] || ''}</span>` : null}
-  </span>`;
-}
-
-// ─── SOARD's facts ──────────────────────────────────────────────────
-// What a donation form, a grant, a matching gift or an introduction asks for, as the site has it saved (/api/board-portal's
-// `org`, ../../functions/api/_org-facts.js): edited in Site Config → Organization & contact, never here
-const lineOf = (a) => (a?.street ? [a.street, a.city, [a.state, a.zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '');
-/** Two names that are the same letters and digits ("SOARD" isn't "Sunshine on a Ranney Day") */
-const sameNameish = (a, b) => String(a || '').toLowerCase().replace(/[^a-z0-9]+/g, '') === String(b || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
-/** The facts in the order a form asks for them: { id, label, value, copy, href, ext, note, wide, list } */
-function factsOf(org, numbers) {
-  if (!org) return [];
-  const irs = org.irs?.exempt ? org.irs : null;
-  const imp = numbers?.impact?.kids ? numbers.impact : null;
-  const since = imp?.byYear?.[0]?.year;
-  const phone = String(org.phone || '').replace(/\D/g, '');
-  return [
-    { id: 'name', label: 'Name', value: org.name, note: org.shortName && !sameNameish(org.shortName, org.name) ? `Also ${org.shortName}` : '' },
-    org.legalName && !sameNameish(org.legalName, org.name) ? { id: 'legal', label: 'Legal name', value: org.legalName, note: 'As the IRS has it' } : null,
-    { id: 'ein', label: 'EIN', value: org.ein, note: 'Federal tax ID' },
-    irs ? { id: 'status', label: 'Tax status', value: '501(c)(3) public charity', copy: `501(c)(3) public charity${irs.publicCharity ? `, ${irs.publicCharity}` : ''}${irs.since ? `, since ${irs.since}` : ''}. Gifts are tax-deductible.`,
-      // (each part whole on its line: never "509(a)" here and "(1)" on the next)
-      note: [irs.since && `Since ${irs.since}`, 'Gifts are tax-deductible', irs.publicCharity].filter(Boolean) } : null,
-    { id: 'office', label: org.mailing ? 'Office' : 'Address', value: lineOf(org.address), href: org.address ? mapsHref(lineOf(org.address)) : null, ext: true },
-    org.mailing ? { id: 'mailing', label: 'Mailing address', value: lineOf(org.mailing), note: 'For mail, checks and tax forms' } : null,
-    { id: 'phone', label: 'Phone', value: org.phone, href: phone ? `tel:+1${phone.slice(-10)}` : null },
-    { id: 'email', label: 'Email', value: org.email, href: org.email ? `mailto:${org.email}` : null },
-    { id: 'website', label: 'Website', value: org.website, href: org.website ? `https://${org.website.replace(/^https?:\/\//, '')}` : null, ext: true },
-    org.founded ? { id: 'founded', label: 'Founded', value: [org.founded, org.founders && `by ${org.founders}`].filter(Boolean).join(', ') } : null,
-    imp ? { id: 'impact', label: 'Impact', value: nbw(`${imp.kids.toLocaleString()} kids served · ${imp.rooms.toLocaleString()} rooms built`), copy: `${imp.kids.toLocaleString()} kids served and ${imp.rooms.toLocaleString()} rooms built${since ? ` since ${since}` : ''}`, note: 'Counted the way the website counts' } : null,
-    org.tagline ? { id: 'tagline', label: 'Tagline', value: org.tagline } : null,
-    org.mission ? { id: 'mission', label: 'Mission', value: org.mission, wide: true } : null,
-    org.vision ? { id: 'vision', label: 'Vision', value: org.vision, wide: true } : null,
-    org.values?.length ? { id: 'values', label: 'Values', value: org.values.map((v) => (v.text ? `${v.name}: ${v.text}` : v.name)).join('\n'), list: org.values, wide: true } : null,
-    org.bio ? { id: 'bio', label: 'SOARD in a few lines', value: org.bio, note: 'For an introduction or an email', wide: true } : null,
-  ].filter((x) => x && String(x.value || '').trim()).map((x) => ({ copy: x.value, ...x }));
-}
-/** A fact's small print as words (the tax status's parts, joined) */
-const factNote = (x) => (Array.isArray(x.note) ? x.note.join(' · ') : x.note || '');
-/** Every fact as one block of text, the way a form asks: "EIN: 45-…" */
-const factsText = (facts) => facts.filter((x) => x.id !== 'bio').map((x) => (x.id === 'name' ? `${x.value}${x.note ? ` (${factNote(x).replace(/^Also /, '')})` : ''}` : `${x.label}: ${x.list ? `\n${x.copy}` : x.copy}`)).join('\n');
-const factHay = (x) => `${x.label} ${x.value} ${factNote(x)} ${{ ein: 'tax id taxpayer federal employer identification number', status: '501c3 501(c)(3) tax exempt deductible irs', office: 'address street location map', mailing: 'address mail po box', phone: 'telephone call number', email: 'contact', website: 'url web site', mission: 'mission statement', bio: 'boilerplate about elevator pitch', name: 'organization', legal: 'organization' }[x.id] || ''}`;
-/** The papers forms ask for next, by their titles on Documents */
-const FORM_PAPERS = [[/w-?9/i, 'W-9'], [/501|determination|irs letter/i, 'IRS letter'], [/\bein\b/i, 'EIN letter'], [/permit|registration/i, 'Charity permit']];
-
-async function copyText(ctx, text, said) {
-  try { await navigator.clipboard.writeText(text); ctx.say(said); return true; } catch { ctx.say('Couldn’t copy. Press and hold the words instead.', 'warn'); return false; }
-}
-/** The copy button: a tick for a moment once it's copied */
-function CopyBtn({ text, label, ctx, said, cls = '' }) {
-  const [done, setDone] = useState(false);
-  const t = useRef(0);
-  useEffect(() => () => clearTimeout(t.current), []);
-  const go = async () => { if (await copyText(ctx, text, said || `${label} copied`)) { setDone(true); clearTimeout(t.current); t.current = setTimeout(() => setDone(false), 1600); } };
-  return html`<button type="button" class=${`bp-iconbtn bp-org__copy ${done ? 'is-done' : ''} ${cls}`} onClick=${go} aria-label=${`Copy ${label}`} title="Copy" data-autofocus><${Icon} name=${done ? 'check' : 'copy'} size=${16} /></button>`;
-}
-
-/** A fact's words: a link when it's a place, a call or an address to write to; values as a list */
-const FactValue = ({ x }) => (x.list ? html`<ul class="bp-org__values">${x.list.map((v) => html`<li key=${v.name}><strong>${v.name}</strong>${v.text ? html`<span>${v.text}</span>` : null}</li>`)}</ul>`
-  : x.href ? html`<a class="bp-org__link" href=${x.href} target=${x.ext ? '_blank' : null} rel=${x.ext ? 'noopener' : null}>${x.value}</a>` : x.value);
-/** One fact: its label, its words, its copy button (its own component, so the tick outlives the page's next render) */
-const FactRow = ({ x, ctx }) => html`<div class=${`bp-org__fact ${x.wide ? 'is-wide' : ''}`} id=${`fact-${x.id}`}>
-  <dt>${x.label}</dt>
-  <dd><span class="bp-org__v"><${FactValue} x=${x} />${Array.isArray(x.note) ? html`<span class="bp-org__note">${x.note.map((n, i) => html`${i ? ' · ' : ''}<span class="bp-nowrap" key=${n}>${n}</span>`)}</span>` : x.note ? html`<span class="bp-org__note">${x.note}</span>` : null}</span><${CopyBtn} text=${x.copy} label=${x.label} ctx=${ctx} /></dd>
-</div>`;
-
-/** The six a form asks for first, in that order; the rest are a click away */
-function keyFacts(all) {
-  const has = (id) => all.some((x) => x.id === id);
-  return [has('legal') ? 'legal' : 'name', 'ein', 'status', has('mailing') ? 'mailing' : 'office', 'phone', 'email'].map((id) => all.find((x) => x.id === id)).filter(Boolean);
-}
-
-/**
- * SOARD's facts, small: the six a form asks for first, the rest (the mission, the website, the founding, the impact…)
- * folded under them, as each member left it last (a search landing on one opens them). Copy all and Print take every
- * fact; the brand is the website's own page, /branding/
- */
-function OrgFacts({ ctx, terms }) {
-  const { data } = ctx;
-  const all = factsOf(data.org, data.numbers);
-  const key = keyFacts(all);
-  const rest = all.filter((x) => !key.includes(x));
-  const [open, setOpen] = useKept('org-all', false);
-  const [landed] = useState(() => typeof focusNext === 'string' && rest.some((x) => focusNext === `fact-${x.id}`));
-  if (!all.length) return null;
-  const found = terms.length ? all.filter((x) => hits(factHay(x), terms)) : null;
-  if (found && !found.length) return null;
-  const shown = open || landed;
+/** The papers a form asks for next, found on Documents by their titles */
+function formPapers(data) {
   const withFile = data.docs.filter((x) => x.file && !x.body && !x.hidden);
   const vf = asViewer(withFile.map((x) => ({ ...x.file, name: x.title })));
-  const papers = found ? [] : FORM_PAPERS.map(([re, word]) => { const x = withFile.find((d) => re.test(d.title)); return x ? { word, x, link: viewerLink(vf, withFile.indexOf(x)) } : null; }).filter(Boolean)
+  return FORM_PAPERS.map(([re, word]) => { const x = withFile.find((d) => re.test(d.title)); return x ? { word, x, link: viewerLink(vf, withFile.indexOf(x)) } : null; }).filter(Boolean)
     .filter((p, i, list) => list.findIndex((q) => q.x.id === p.x.id) === i);
-  // A one-page fact sheet: the page prints this card alone, every fact in it
-  const print = () => {
-    const root = document.documentElement;
-    root.classList.add('bp-printing-org');
-    const done = () => { root.classList.remove('bp-printing-org'); window.removeEventListener('afterprint', done); };
-    window.addEventListener('afterprint', done);
-    requestAnimationFrame(() => window.print());
-  };
-  const who = data.contact;
-  const rows = (list) => html`${list.some((x) => !x.wide) ? html`<dl class="bp-org__grid">${list.filter((x) => !x.wide).map((x) => html`<${FactRow} x=${x} ctx=${ctx} key=${x.id} />`)}</dl>` : null}
-    ${list.some((x) => x.wide) ? html`<dl class="bp-org__wide">${list.filter((x) => x.wide).map((x) => html`<${FactRow} x=${x} ctx=${ctx} key=${x.id} />`)}</dl>` : null}`;
-  return html`<section class=${`bp-card bp-gap bp-org bp-rise ${shown || found ? 'is-open' : ''}`} style=${rise(1)} aria-labelledby="org-h" id="org">
-    <div class="bp-org__head">
-      <h2 class="bp-h2" id="org-h">SOARD’s facts</h2>
-      ${found ? null : html`<p class="bp-org__acts bp-noprint">
-        <button type="button" class="bp-btn bp-btn--sm bp-btn--quiet" onClick=${() => copyText(ctx, factsText(all), 'Copied all of SOARD’s facts')}><${Icon} name="copy" size=${16} />Copy all</button>
-        <button type="button" class="bp-btn bp-btn--sm bp-btn--quiet" onClick=${print}><${Icon} name="print" size=${16} />Print</button>
-      </p>`}
-    </div>
-    <p class="bp-printonly bp-org__printhead" aria-hidden="true">${data.org.name}</p>
-    ${found ? rows(found) : html`${rows(key)}<div class=${`bp-org__rest ${shown ? '' : 'is-folded'}`} id="org-rest">${rows(rest)}</div>`}
-    ${found ? null : html`<div class="bp-org__foot bp-noprint">
-      ${rest.length ? html`<button type="button" class="bp-org__toggle" aria-expanded=${shown} aria-controls="org-rest" onClick=${() => setOpen(!shown)}>${shown ? 'Fewer facts' : 'All of SOARD’s facts'}<${Icon} name="chevron" size=${16} cls=${shown ? 'is-up' : ''} /></button>` : null}
-      ${papers.length ? html`<p class="bp-org__papers">${papers.map((p) => html`<a class="bp-chip bp-chip--link" ...${p.link} key=${p.x.id}><${Icon} name="documents" size=${14} />${p.word}</a>`)}</p>` : null}
-      <p class="bp-org__more"><a class="bp-link" href="/branding/" target="_blank" rel="noopener">Logos, colors and fonts<${Icon} name="external" size=${13} /></a>${who?.email ? html`<span aria-hidden="true">·</span><span>Something out of date? <a class="bp-link" href=${`mailto:${who.email}?subject=${encodeURIComponent('SOARD’s facts on the board page')}`}>Tell ${firstName(who.name)}</a></span>` : null}</p>
-    </div>`}
-  </section>`;
 }
 
 function DocumentsPage({ ctx }) {
@@ -4310,6 +4083,7 @@ function DocumentsPage({ ctx }) {
     data.meetings.some((m) => m.files.length) ? 'every file from every meeting' : '',
   ].filter(Boolean);
   const lede = said.length ? `${said.length > 2 ? `${said.slice(0, -1).join(', ')}, and ${said.at(-1)}` : said.join(' and ')}.`.replace(/^\w/, (c) => c.toUpperCase()) : 'SOARD’s papers, and every file from every meeting.';
+  const orgCard = html`<${OrgFacts} ctx=${ctx} terms=${terms} match=${hits} focus=${focusNext} papers=${formPapers(data)} />`;
   // A signature that didn't go through on a paper no longer here (taken off, deleted)
   const lost = [...signTrouble.entries()].filter(([id, t]) => t.kind === 'gone' && !docs.some((x) => x.id === id && x.sign)).map(([id, t]) => ({ id, ...t, still: docs.some((x) => x.id === id) }));
   return html`
@@ -4321,7 +4095,7 @@ function DocumentsPage({ ctx }) {
         <input type="search" placeholder="Find a document or a file" value=${q} onInput=${(e) => setQ(e.target.value)} />
       </label>
     </header>
-    ${signFirst ? null : html`<${OrgFacts} ctx=${ctx} terms=${terms} />`}
+    ${signFirst ? null : orgCard}
     ${!terms.length && qs.trim() ? html`<p class="bp-found" role="status">Type a word, a name or a number to find.</p>` : null}
     ${terms.length && onShelves.length + toSign.filter(found).length ? html`<p class="sr-only" role="status">${plural(onShelves.length + toSign.filter(found).length, 'paper')} match “${qs.trim()}”</p>` : null}
     ${terms.length && data.filings.some((f) => hits(`${f.title} ${f.year} tax return form 990 audit`, terms)) ? html`<p class="bp-found">${(() => { const n = data.filings.filter((f) => hits(`${f.title} ${f.year} tax return form 990 audit`, terms)).length; return html`${plural(n, 'tax return or audit', 'tax returns and audits')} ${n === 1 ? 'matches' : 'match'} too, on <a href="#/financials">Financials</a>.`; })()}</p>` : null}
@@ -4347,7 +4121,7 @@ function DocumentsPage({ ctx }) {
         </div>
       </li>`)}</ul>
     </section>` : null}
-    ${signFirst ? html`<${OrgFacts} ctx=${ctx} terms=${terms} />` : null}
+    ${signFirst ? orgCard : null}
     ${shelves.length ? html`<section class="bp-card bp-gap bp-papers bp-rise" style=${rise(2)} aria-labelledby="papers-h">
       <${SecHead} id="papers-h" title="SOARD’s papers" />
       <div class="bp-papers__cols">${shelves.map((sh) => html`<div class="bp-papers__col" key=${sh.id}>

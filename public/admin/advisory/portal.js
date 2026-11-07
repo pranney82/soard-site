@@ -8,7 +8,8 @@
  *   #/introductions    Who we're looking for, "I know someone", and what became of each of theirs
  *   #/fundraise        The goal and their part (the only page with dollars on it), their page, what to share, hosting
  *   #/meetings[/<id>]  ./meetings.js
- *   #/people           The advisors, and the papers
+ *   #/people           The advisors
+ *   #/documents        SOARD's facts, logos and photos, papers and filings (./documents.js)
  *   #/papers/<id>      One paper, read and signed
  *   #/run[/<tab>]      Running the group, for whoever does (../advisory-admin.js, the same module as the staff admin's)
  *
@@ -25,14 +26,16 @@ import { Report } from '../board-report.js';
 import { mdPlain } from '../board-md.js';
 import { askToLeave } from '../ask.js';
 import { api } from './api.js';
-import { Icon, PageNav, Avatar, DateTile, WindowTile, windowStart, SecHead, noon } from '../board/parts.js';
+import { Icon, PageNav, Avatar, DateTile, WindowTile, windowStart, SecHead, noon, sized } from '../board/parts.js';
 import { MeetingsPage, NextMeeting } from './meetings.js';
+import { Thermometer } from './thermometer.js';
+import { DocumentsPage } from './documents.js';
 
 const html = htm.bind(h);
 const API = '/api/advisory-portal';
 const LOGO = '/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/brand-logo-admin/w=128';
 const QUESTIONS = 'info@soardcharity.com';
-const NAV = [['', 'Home', 'home'], ['introductions', 'Introductions', 'hello', 'Intros'], ['fundraise', 'Fundraise', 'heart'], ['meetings', 'Meetings', 'meetings'], ['people', 'People', 'people']];
+const NAV = [['', 'Home', 'home'], ['introductions', 'Introductions', 'hello', 'Intros'], ['fundraise', 'Fundraise', 'heart'], ['meetings', 'Meetings', 'meetings'], ['people', 'People', 'people'], ['documents', 'Documents', 'documents', 'Docs']];
 const RUN = ['run', 'Run it', 'sliders'];
 const PAGES = [...NAV.map(([p]) => p), 'run', 'papers'];
 
@@ -118,7 +121,7 @@ function App() {
     return () => clearTimeout(t);
   }, [!!data]);
   useEffect(() => {
-    const label = [...NAV, RUN].find(([p]) => p === route.page)?.[1];
+    const label = route.page === 'papers' ? 'Documents' : [...NAV, RUN].find(([p]) => p === route.page)?.[1];
     document.title = `${route.page && label ? label : 'Home'} · SOARD Advisory Board`;
   }, [route]);
 
@@ -162,15 +165,16 @@ function App() {
     : route.page === 'fundraise' ? html`<${FundraisePage} ctx=${ctx} />`
       : route.page === 'meetings' ? html`<${MeetingsPage} ctx=${ctx} key=${route.id || 'all'} />`
         : route.page === 'people' ? html`<${PeoplePage} ctx=${ctx} />`
+          : route.page === 'documents' ? html`<${DocumentsPage} ctx=${ctx} />`
           : route.page === 'papers' ? html`<${PaperPage} id=${route.id} ctx=${ctx} key=${route.id} />`
             : route.page === 'run' && data.me.runs ? html`<${RunPage} ctx=${ctx} />`
               : html`<${HomePage} ctx=${ctx} />`;
   return html`
     <a class="bp-skip" href="#main" onClick=${(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to the page</a>
-    <header class="bp-top">
+    <header class=${`bp-top ${data.me.runs ? 'ad-seven' : ''}`}>
       <div class="bp-bar">
         <a class="bp-brand" href="#/"><img src=${LOGO} alt="SOARD Advisory Board home" width="44" height="44" /><span class="bp-brand__words"><strong>Sunshine on a Ranney Day</strong> <small>Advisory Board</small></span></a>
-        <${PageNav} items=${items} page=${route.page === 'papers' ? 'people' : route.page} label="Advisory Board" due=${{ people: data.todos.filter((t) => t.kind === 'sign').length }} />
+        <${PageNav} items=${items} page=${route.page === 'papers' ? 'documents' : route.page} label="Advisory Board" due=${{ documents: data.todos.filter((t) => t.kind === 'sign').length }} />
         <div class="bp-tools"><${Account} data=${data} /></div>
       </div>
     </header>
@@ -215,27 +219,45 @@ function HomePage({ ctx }) {
   const { me, ask, todos } = data;
   const name = firstName(me.name);
   const today = new Date(noon(data.today)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
+  const rooms = data.rooms.filter((r) => r.photo);
+  // SOARD's chosen photos lead, then this year's rooms
+  const shots = [...data.photos, ...rooms];
   return html`<div class="ad-home">
-    <header class="bp-brief bp-rise" style=${rise(0)}>
-      <h1 class="bp-brief__h">${name ? `${greeting()}, ${name}.` : 'The Advisory Board'}</h1>
-      <p class="bp-brief__date">${today}</p>
-    </header>
+    <${HomeHero} title=${name ? `${greeting()}, ${name}.` : 'The Advisory Board'} today=${today} shots=${shots} impact=${data.impact} />
     ${me.answers ? null : html`<p class="ad-seeing bp-rise" style=${rise(0)}>This is the page as advisors see it. Only an advisor can answer or sign here.${me.runs ? html` <a href="#/run">Go to Run it</a>` : null}</p>`}
-    <div class="bp-meets">
+    <div class=${`bp-meets ad-meets ${ask ? '' : 'ad-meets--one'}`}>
       <div class="bp-meets__col bp-rise" style=${rise(1)}>
         <${NextMeeting} ctx=${ctx} />
-        ${ask ? html`<${AskCard} ctx=${ctx} key=${ask.id} />` : null}
-      </div>
-      <div class="bp-meets__col bp-rise" style=${rise(2)}>
         ${todos.length ? html`<${ForYou} ctx=${ctx} />` : null}
-        <${MakeoverCard} m=${data.makeover} />
       </div>
+      ${ask ? html`<div class="bp-meets__col bp-rise" style=${rise(2)}><${AskCard} ctx=${ctx} key=${ask.id} /></div>` : null}
     </div>
-    <div class="bp-rise" style=${rise(3)}><${Doors} ctx=${ctx} /></div>
-    <div class="bp-rise" style=${rise(4)}><${ComingUp} data=${data} /></div>
-    ${data.rooms.length ? html`<div class="bp-rise" style=${rise(5)}><${Rooms} rooms=${data.rooms} /></div>` : null}
-    ${me.answers ? html`<div class="bp-rise" style=${rise(6)}><${YourYear} ctx=${ctx} /></div>` : null}
+    <div class="bp-rise" style=${rise(3)}><${RevealsAhead} reveals=${data.coming.reveals} /></div>
+    <div class="bp-rise" style=${rise(3)}><${MakeoverCard} m=${data.makeover} photo=${shots[2]?.photo || ''} pictured=${shots[2]?.caption || shots[2]?.name || ''} /></div>
+    <div class="bp-rise" style=${rise(4)}><${Doors} ctx=${ctx} /></div>
+    <div class="bp-rise" style=${rise(5)}><${ComingUp} data=${data} /></div>
+    ${data.rooms.length ? html`<div class="bp-rise" style=${rise(6)}><${Rooms} rooms=${data.rooms} /></div>` : null}
+    ${me.answers ? html`<div class="bp-rise" style=${rise(7)}><${YourYear} ctx=${ctx} /></div>` : null}
   </div>`;
+}
+
+/** Home opens the way the website's pages do: the words beside a real room, a smaller photo over it, and a number */
+function HomeHero({ title, today, shots, impact }) {
+  const [big, small] = shots;
+  return html`<header class=${`ad-hero bp-rise ${big ? '' : 'ad-hero--plain'}`} style=${rise(0)}>
+    <div class="ad-hero__words">
+      <p class="ad-kicker">SOARD Advisory Board</p>
+      <h1 class="ad-hero__h">${title}</h1>
+      <p class="ad-hero__lede">What’s coming up, and how you can help.</p>
+      <p class="bp-brief__date">${today}</p>
+    </div>
+    ${big ? html`<div class="ad-hero__art">
+      <span class="ad-hero__sun" aria-hidden="true"></span>
+      <img class="ad-hero__big" src=${sized(big.photo, 'w=820,h=620,fit=cover,gravity=face')} alt="" width="410" height="310" />
+      ${small ? html`<img class="ad-hero__small" src=${sized(small.photo, 'w=320,h=320,fit=cover,gravity=face')} alt="" width="160" height="160" />` : null}
+      ${impact?.kids ? html`<p class="ad-hero__stat"><strong>${impact.kids.toLocaleString('en-US')}</strong> kids served</p>` : null}
+    </div>` : null}
+  </header>`;
 }
 
 /** This month's one ask. An answer is a tap; a line of text is a second, optional step */
@@ -278,7 +300,7 @@ function ForYou({ ctx }) {
     <ul class="bp-todos">${data.todos.map((t) => (t.kind === 'sign'
     ? html`<li class="bp-todo-card" key="sign"><a class="bp-todo bp-todo--link" href=${`#/papers/${t.id}`}>
         <span class="bp-todo__icon"><${Icon} name="documents" size=${20} /></span>
-        <span class="bp-todo__text"><span class="bp-todo__title">${t.title}</span><span class="bp-todo__meta">Once a year, with your name typed</span></span>
+        <span class="bp-todo__text"><span class="bp-todo__title">${t.title}</span><span class="bp-todo__meta">Once a term, with your name typed</span></span>
         <${Icon} name="arrow" size=${18} cls="bp-go" />
       </a></li>`
     : html`<li class="bp-todo-card" key="renew"><div class="bp-todo">
@@ -290,11 +312,11 @@ function ForYou({ ctx }) {
 }
 
 /** The group's makeover: never a dollar here */
-function MakeoverCard({ m }) {
+function MakeoverCard({ m, photo = '', pictured = '' }) {
   if (m?.state === 'kid') {
     const r = m.reveal;
-    return html`<section class="bp-card ad-kid" aria-labelledby="kid-h">
-      ${m.photo ? html`<img class="ad-kid__photo" src=${m.photo} alt="" loading="lazy" />` : null}
+    return html`<section class=${`bp-card ad-kid ${m.photo ? 'ad-kid--wide' : ''}`} aria-labelledby="kid-h">
+      ${m.photo ? html`<img class="ad-kid__photo" src=${sized(m.photo, 'w=960,h=640,fit=cover,gravity=face')} alt="" loading="lazy" />` : null}
       <div class="ad-kid__b">
         <p class="ad-kicker">Your makeover</p>
         <h2 class="bp-h2" id="kid-h">${m.name}</h2>
@@ -307,10 +329,14 @@ function MakeoverCard({ m }) {
       </div>
     </section>`;
   }
-  return html`<section class="bp-card ad-kid ad-kid--open" aria-labelledby="kid-h">
-    <p class="ad-kicker">Your makeover</p>
-    <h2 class="bp-h2" id="kid-h">A real room for a real child</h2>
-    <p class="bp-muted">When the group reaches its goal, you’ll sponsor one child’s makeover. Their story, their build, and their reveal will show here.</p>
+  return html`<section class=${`bp-card ad-kid ${photo ? 'ad-kid--wide' : 'ad-kid--open'}`} aria-labelledby="kid-h">
+    ${photo ? html`<img class="ad-kid__photo" src=${sized(photo, 'w=960,h=640,fit=cover,gravity=face')} alt="" loading="lazy" />` : null}
+    <div class=${photo ? 'ad-kid__b' : ''}>
+      <p class="ad-kicker">What the group is working toward</p>
+      <h2 class="bp-h2" id="kid-h">A real room for a real child</h2>
+      <p class="bp-muted">When the group reaches its goal, you’ll sponsor one child’s makeover. Their story, their build, and their reveal will show here.</p>
+      ${photo && pictured ? html`<p class="bp-muted ad-kid__who">Pictured: ${pictured}, in a room SOARD built.</p>` : null}
+    </div>
   </section>`;
 }
 
@@ -318,6 +344,7 @@ const DOORS = [
   ['#/introductions', 'hello', 'Open a door', 'Tell us who to meet. We’ll let you know how it goes.'],
   ['#/fundraise', 'share', 'Share SOARD', 'Words to post, your page to send, and how to host a fundraiser.'],
   ['#/people', 'people', 'Meet the group', 'See who’s serving with you.'],
+  ['#/documents', 'documents', 'Find a document', 'SOARD’s facts, logos, photos, and papers.'],
 ];
 function Doors() {
   return html`<nav class="ad-doors" aria-label="Ways to help">${DOORS.map(([href, icon, t, sub]) => html`<a class="bp-card bp-card--link ad-door" href=${href} key=${href}>
@@ -325,17 +352,50 @@ function Doors() {
   </a>`)}</nav>`;
 }
 
+/** Every reveal ahead, each child's photo first. Only a child whose page is public has a name or a photo here */
+function RevealsAhead({ reveals }) {
+  const list = reveals.map((r) => ({ ...r, on: r.date || windowStart(r.window) })).filter((r) => r.on).sort((a, b) => a.on.localeCompare(b.on));
+  if (!list.length) return null;
+  const n = list.length;
+  const { cols, wide } = aheadGrid(n);
+  return html`<section class="bp-card ad-ahead" aria-labelledby="ahead-h">
+    <${SecHead} title="Reveals ahead" count=${n} id="ahead-h" />
+    <ul class=${`ad-ahead__grid ${n === 1 ? 'ad-ahead__grid--one' : ''} ${n % 2 === 0 ? 'ad-ahead__grid--even' : ''} ad-ahead__grid--t${n % 3}`} style=${`--cols:${cols}`}>${list.map((r, i) => html`<li key=${`${r.slug || ''}-${r.on}-${i}`} class=${wide && i === 0 ? 'is-next' : ''}><${RevealCard} r=${r} next=${i === 0} wide=${n === 1 || (wide && i === 0)} /></li>`)}</ul>
+  </section>`;
+}
+/** Columns that fill every row: the next reveal goes wider when that's what makes the numbers work */
+function aheadGrid(n) {
+  if (n <= 1) return { cols: 1, wide: false };
+  if (n <= 5) return { cols: n + 1, wide: true };
+  for (const cols of [6, 5, 4]) {
+    if (n % cols === 0) return { cols, wide: false };
+    if ((n + 1) % cols === 0) return { cols, wide: true };
+  }
+  return { cols: 5, wide: false };
+}
+function RevealCard({ r, next, wide }) {
+  const when = r.date ? new Date(noon(r.date)).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' }) : windowWords(r.window);
+  const sub = r.date ? (r.confirmed === false ? 'Date to be confirmed' : 'Your invite comes by calendar') : 'Date to be set';
+  const inner = html`<span class="ad-reveal__pic">
+      ${r.photo ? html`<img src=${sized(r.photo, wide ? 'w=820,h=620,fit=cover,gravity=face' : 'w=440,h=560,fit=cover,gravity=face')} alt="" loading="lazy" />` : html`<img class="ad-reveal__logo" src=${LOGO} alt="" width="64" height="64" />`}
+      <span class="ad-reveal__when">${next ? `Next · ${when}` : when}</span>
+    </span>
+    <strong class="ad-reveal__name">${r.name || 'A makeover reveal'}</strong>
+    <span class="bp-muted ad-reveal__sub">${sub}</span>`;
+  return r.url ? html`<a class="ad-reveal" href=${r.url} target="_blank" rel="noopener">${inner}</a>` : html`<div class="ad-reveal">${inner}</div>`;
+}
+
 function ComingUp({ data }) {
   const { reveals, events, hosted } = data.coming;
   const rows = [
-    ...reveals.map((r) => ({ key: `r-${r.date}-${r.slug || ''}-${windowStart(r.window)}`, date: r.date || windowStart(r.window), w: r.date ? null : r.window, title: r.name ? `${r.name}’s reveal` : 'A makeover reveal', sub: r.date ? (r.confirmed === false ? 'Date to be confirmed' : 'Your invite comes by calendar') : 'Date to be set', href: r.url || '', photo: r.photo })),
     ...events.map((e) => ({ key: `e-${e.slug}`, date: e.date, title: e.title, sub: [e.time, e.location].filter(Boolean).join(' · '), href: e.url })),
     ...hosted.map((x) => ({ key: `h-${x.id}`, date: x.date, title: x.title, sub: x.where || 'Hosted by an advisor', href: x.giveUrl })),
   ].filter((x) => x.date).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 6);
+  if (!rows.length && reveals.length) return null;
   return html`<section class="bp-card" aria-labelledby="up-h">
     <${SecHead} title="Coming up" id="up-h" />
     ${rows.length ? html`<ul class="ad-rows">${rows.map((x) => {
-    const row = html`${x.w ? html`<${WindowTile} w=${x.w} />` : html`<${DateTile} d=${x.date} />`}<span class="ad-rows__t"><strong>${x.title}</strong>${x.sub ? html`<span class="bp-muted">${x.sub}</span>` : null}</span>${x.href ? html`<${Icon} name="arrow" size=${18} cls="bp-go" />` : null}`;
+    const row = html`<${DateTile} d=${x.date} /><span class="ad-rows__t"><strong>${x.title}</strong>${x.sub ? html`<span class="bp-muted">${x.sub}</span>` : null}</span>${x.href ? html`<${Icon} name="arrow" size=${18} cls="bp-go" />` : null}`;
     return html`<li key=${x.key}>${x.href ? html`<a class="ad-rows__row" href=${x.href} target=${/^https?:/.test(x.href) ? '_blank' : null} rel="noopener">${row}</a>` : html`<div class="ad-rows__row">${row}</div>`}</li>`;
   })}</ul>` : html`<p class="bp-muted">Reveals and events will show here as they’re set.</p>`}
   </section>`;
@@ -343,9 +403,9 @@ function ComingUp({ data }) {
 
 function Rooms({ rooms }) {
   return html`<section class="bp-card" aria-labelledby="rooms-h">
-    <${SecHead} title="Rooms finished this year" count=${rooms.length} id="rooms-h" />
-    <ul class="ad-rooms">${rooms.map((r) => html`<li key=${r.slug}><a href=${r.url} target="_blank" rel="noopener">
-      ${r.photo ? html`<img src=${r.photo} alt="" loading="lazy" width="200" height="150" />` : html`<span class="ad-rooms__none" aria-hidden="true"></span>`}
+    <div class="ad-rooms__head"><${SecHead} title="Rooms finished this year" count=${rooms.length} id="rooms-h" /><a class="bp-link" href="/kids/" target="_blank" rel="noopener">Every child</a></div>
+    <ul class="ad-rooms">${rooms.slice(0, 8).map((r) => html`<li key=${r.slug}><a href=${r.url} target="_blank" rel="noopener">
+      ${r.photo ? html`<img src=${sized(r.photo, 'w=560,h=420,fit=cover,gravity=face')} alt="" loading="lazy" width="280" height="210" />` : html`<span class="ad-rooms__none" aria-hidden="true"></span>`}
       <strong>${r.name}</strong>
     </a></li>`)}</ul>
   </section>`;
@@ -463,20 +523,21 @@ function FundraisePage({ ctx }) {
 }
 
 function GoalCard({ f, me }) {
-  if (!f.ready) {
-    return html`<section class="bp-card ad-goal ad-goal--soon bp-rise" style=${rise(1)} aria-labelledby="goal-h">
-      <p class="ad-kicker">This year’s goal</p>
-      <h2 class="ad-goal__n" id="goal-h">${dollars(f.goal)}</h2>
-      <p class="bp-muted">The group’s fundraising page is coming soon. Gifts will count here by themselves once it’s ready.</p>
-    </section>`;
-  }
-  const pct = f.goal > 0 ? Math.min(100, Math.round((f.raised / f.goal) * 100)) : 0;
-  return html`<section class="bp-card ad-goal bp-rise" style=${rise(1)} aria-labelledby="goal-h">
-    <div class="ad-goal__top">
-      <div><p class="ad-kicker">Raised together</p><h2 class="ad-goal__n" id="goal-h">${dollars(f.raised)} <span>of ${dollars(f.goal)}</span></h2></div>
-      ${me.answers ? html`<div class="ad-goal__mine"><p class="ad-kicker">Through your page</p><p class="ad-goal__me">${dollars(f.mine)}</p><p class="bp-muted">${f.gifts === 1 ? '1 gift' : `${f.gifts || 0} gifts`}</p></div>` : null}
+  const met = f.goal > 0 && f.raised >= f.goal;
+  return html`<section class=${`bp-card ad-goal bp-rise${f.ready ? '' : ' ad-goal--soon'}`} style=${rise(1)} aria-labelledby="goal-h">
+    <div class="ad-goal__wrap">
+      <${Thermometer} raised=${f.ready ? f.raised : 0} goal=${f.goal} cls="ad-thermo" />
+      ${f.ready ? html`<div class="ad-goal__words">
+        <p class="ad-kicker">Raised together</p>
+        <h2 class="ad-goal__n" id="goal-h">${dollars(f.raised)} <span>of ${dollars(f.goal)}</span></h2>
+        <p class="ad-goal__left">${met ? 'Goal reached' : `${dollars(f.goal - f.raised)} to go`}</p>
+        ${me.answers ? html`<div class="ad-goal__mine"><p class="ad-kicker">Through your page</p><p class="ad-goal__me">${dollars(f.mine)}</p><p class="bp-muted">${f.gifts === 1 ? '1 gift' : `${f.gifts || 0} gifts`}</p></div>` : null}
+      </div>` : html`<div class="ad-goal__words">
+        <p class="ad-kicker">This year’s goal</p>
+        <h2 class="ad-goal__n" id="goal-h">${dollars(f.goal)}</h2>
+        <p class="bp-muted">The group’s fundraising page is coming soon. Gifts will count here by themselves once it’s ready.</p>
+      </div>`}
     </div>
-    <div class="ad-bar" role="img" aria-label=${`${pct}% of the goal`}><i style=${`width:${pct}%`}></i></div>
   </section>`;
 }
 
@@ -562,15 +623,14 @@ function BrandCard({ org }) {
       ${org?.ein ? html`<dt>EIN</dt><dd>${org.ein}</dd>` : null}
       ${org?.website ? html`<dt>Website</dt><dd>${org.website}</dd>` : null}
     </dl>
-    <div class="bp-btns"><a class="bp-btn bp-btn--sm" href="/branding/" target="_blank" rel="noopener">Official logos and photos</a></div>
+    <div class="bp-btns"><a class="bp-btn bp-btn--sm" href="#/documents">All of SOARD’s facts and logos</a></div>
   </section>`;
 }
 
 // ─── People ─────────────────────────────────────────────────────────
 function PeoplePage({ ctx }) {
   const { data } = ctx;
-  const { people, lead, papers, filings, groupEmail, todos } = data;
-  const toSign = new Set(todos.filter((t) => t.kind === 'sign').map((t) => t.id));
+  const { people, lead, groupEmail } = data;
   return html`<div>
     <header class="bp-pagehead bp-rise" style=${rise(0)}>
       <div><h1 class="bp-h1">People</h1><p class="bp-lede">${people.length === 1 ? '1 advisor' : `${people.length} advisors`}${lead ? `, led by ${lead.name}` : ''}.</p></div>
@@ -586,32 +646,16 @@ function PeoplePage({ ctx }) {
       </div>
     </li>`)}</ul>
     ${!people.length ? html`<p class="bp-muted">The advisors will show here.</p>` : null}
-    <div class="bp-split bp-split--even">
-      <section class="bp-card bp-rise" style=${rise(2)} aria-labelledby="papers-h">
-        <${SecHead} title="Papers" id="papers-h" />
-        ${papers.length ? html`<ul class="ad-rows">${papers.map((d) => html`<li key=${d.id}><a class="ad-rows__row" href=${`#/papers/${d.id}`}>
-          <${Icon} name="documents" size=${22} />
-          <span class="ad-rows__t"><strong>${d.title}</strong>${d.kind === 'agreement' && data.me.answers ? html`<span class="bp-muted">${toSign.has(d.id) ? 'To sign' : d.signedByMe ? `Signed ${dateOfIso(d.signedByMe.at)}` : ''}</span>` : null}</span>
-          <${Icon} name="arrow" size=${18} cls="bp-go" />
-        </a></li>`)}</ul>` : html`<p class="bp-muted">The agreement and the overview will be here.</p>`}
-      </section>
-      <section class="bp-card bp-rise" style=${rise(3)} aria-labelledby="filings-h">
-        <${SecHead} title="Public filings" id="filings-h" />
-        ${filings.length ? html`<ul class="ad-rows">${filings.slice(0, 6).map((d, i) => { const v = filings.slice(0, 6).map((x) => ({ name: x.title, type: 'application/pdf', url: x.url })); return html`<li key=${d.url}><a class="ad-rows__row" ...${viewerLink(v, i)}>
-          <${Icon} name="documents" size=${22} /><span class="ad-rows__t"><strong>${d.title}</strong>${d.year ? html`<span class="bp-muted">${d.year}</span>` : null}</span>
-        </a></li>`; })}</ul>` : html`<p class="bp-muted">SOARD’s public filings are on the <a class="bp-link" href="/about/financials/" target="_blank" rel="noopener">financials page</a>.</p>`}
-      </section>
-    </div>
   </div>`;
 }
 
 function PaperPage({ id, ctx }) {
   const { data, post, setData } = ctx;
-  const d = data.papers.find((x) => x.id === id);
+  const d = data.papers.find((x) => x.id === id) || data.share.find((x) => x.id === id);
   const [name, setName] = useState('');
   const [busy, setBusy] = useState(false);
   const [changed, setChanged] = useState(false);
-  if (!d) return html`<div><a class="bp-back" href="#/people"><${Icon} name="back" size=${18} />People</a><div class="bp-card bp-empty"><h1 class="bp-h2">That paper isn’t here</h1><p class="bp-muted">It may have been taken down.</p></div></div>`;
+  if (!d) return html`<div><a class="bp-back" href="#/documents"><${Icon} name="back" size=${18} />Documents</a><div class="bp-card bp-empty"><h1 class="bp-h2">That paper isn’t here</h1><p class="bp-muted">It may have been taken down.</p></div></div>`;
   const signed = d.signedByMe;
   const due = data.todos.some((t) => t.kind === 'sign' && t.id === d.id);
   const sign = async (e) => {
@@ -624,15 +668,16 @@ function PaperPage({ id, ctx }) {
     if (j) setData((x) => ({ ...x, papers: x.papers.map((p) => (p.id === d.id ? { ...p, signedByMe: j.signed } : p)) }));
   };
   return html`<div class="ad-paper">
-    <a class="bp-back" href="#/people"><${Icon} name="back" size=${18} />People</a>
+    <a class="bp-back" href="#/documents"><${Icon} name="back" size=${18} />Documents</a>
     ${changed ? html`<p class="ad-changed" role="alert">These words changed while you had them open. Read them again, then sign.</p>` : null}
     <article class="bp-card">
       <h1 class="bp-h1">${d.title}</h1>
       ${d.body ? html`<${Report} text=${d.body} level=${2} />` : null}
+      ${d.body && ['pitch', 'post'].includes(d.kind) ? html`<div class="bp-btns"><${CopyBtn} text=${mdPlain(d.body)} label="Copy the words" ctx=${ctx} /></div>` : null}
       ${d.url ? html`<div class="bp-btns"><a class="bp-btn bp-btn--primary" href=${d.url} target="_blank" rel="noopener"><${Icon} name="external" size=${18} />Open the ${/\.pdf(\?|$)/i.test(d.url) ? 'PDF' : 'paper'}</a></div>` : null}
       <${Files} files=${d.files} />
     </article>
-    ${d.kind !== 'agreement' ? null : !data.me.answers ? html`<p class="bp-muted ad-under">Each advisor signs this once a year.</p>`
+    ${d.kind !== 'agreement' ? null : !data.me.answers ? html`<p class="bp-muted ad-under">Each advisor signs this once a term.</p>`
     : signed && !due ? html`<p class="bp-chips ad-under"><span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />Signed ${dateOfIso(signed.at)}</span></p>`
       : html`<form class="bp-card ad-sign" onSubmit=${sign}>
         <h2 class="bp-h2">Sign with your name</h2>

@@ -52,6 +52,13 @@ export const HOSTED_STATUSES = [
   { id: 'done', label: 'Held' },
 ];
 /** The papers and the words the Fundraise page shows, each edited in the admin */
+/** The shelves on their Documents page. Staff add to any of them */
+export const SHELVES = [
+  { id: 'about', label: 'About SOARD', sub: 'Who we are and what we do' },
+  { id: 'marketing', label: 'Marketing', sub: 'What to share, and how' },
+  { id: 'donors', label: 'For donors and sponsors', sub: 'What a company or a matching program asks for' },
+  { id: 'group', label: 'For the group', sub: 'How the Advisory Board works' },
+];
 export const DOC_KINDS = [
   { id: 'agreement', label: 'Advisor agreement', sign: true },
   { id: 'overview', label: 'Overview' },
@@ -60,6 +67,7 @@ export const DOC_KINDS = [
   { id: 'sponsor', label: 'Sponsor one-pager' },
   { id: 'matching', label: 'Employer matching steps' },
   { id: 'hosting', label: 'How to host a fundraiser' },
+  { id: 'library', label: 'Document' },
 ];
 
 const SCHEMA = [
@@ -148,6 +156,9 @@ export async function saveSettings(DB, patch) {
   if ('kid' in patch) next.kid = clean(patch.kid, 120);
   if ('carried' in patch && Array.isArray(patch.carried)) next.carried = patch.carried;
   if ('seeded' in patch) next.seeded = patch.seeded === true;
+  if ('library' in patch) next.library = patch.library === true;
+  // Which of the board's papers advisors can open, chosen one by one: nothing here means none
+  if ('boardDocs' in patch) next.boardDocs = Array.isArray(patch.boardDocs) ? [...new Set(patch.boardDocs.map(String).filter((x) => /^d_[a-z0-9]{4,24}$/.test(x)))] : [];
   await writeState(DB, STATE, next);
   return next;
 }
@@ -414,6 +425,8 @@ export async function saveDoc(DB, raw, { by = '', now = Date.now(), base = null 
   const id = isId(raw.id) ? raw.id : newId('ad');
   const row = await DB.prepare('SELECT * FROM advisory_docs WHERE id = ?').bind(id).first();
   const cur = row ? parse(row.data) : {};
+  // Someone deleted it while this was open: saving doesn't bring it back, or the file that went with it
+  if (!row && base) throw err('Someone deleted this paper since you opened it', 410);
   // Two people on one paper: the second is told, and their words stay on their screen
   if (row && base && row.updated_at !== base) throw Object.assign(err(`${row.updated_by || 'Someone'} saved this paper since you opened it`, 409), { current: docOf(row) });
   const body = cleanText(raw.body, 20000);
@@ -421,9 +434,19 @@ export async function saveDoc(DB, raw, { by = '', now = Date.now(), base = null 
   // (an editor that doesn't send these keeps them)
   const url = 'url' in raw ? webLink(raw.url) : cur.url || '';
   const sort = 'sort' in raw ? Number(raw.sort) || 0 : cur.sort || 0;
-  const data = { kind: raw.kind, title, body, url, shared: raw.shared !== false, version, sort };
+  const library = raw.kind === 'library';
+  const shelf = !library ? '' : SHELVES.some((s) => s.id === raw.shelf) ? raw.shelf : cur.shelf || '';
+  if (library && !shelf) throw err('Which shelf does it go on?');
+  const note = !library ? '' : 'note' in raw ? clean(raw.note, 200) : cur.note || '';
+  const data = { kind: raw.kind, title, body, url, shared: raw.shared !== false, version, sort, ...(library ? { shelf, note } : {}) };
   await DB.prepare('INSERT OR REPLACE INTO advisory_docs (id, data, updated_at, updated_by) VALUES (?, ?, ?, ?)').bind(id, JSON.stringify(data), nowIso(now), by).run();
   return (await listDocs(DB)).find((d) => d.id === id);
+}
+/** A first-day paper. Only into an empty place: never over one someone has since edited */
+export async function addDocOnce(DB, id, raw, { by = '', now = Date.now() } = {}) {
+  await ensureAdvisory(DB);
+  const data = { kind: raw.kind, title: raw.title, body: raw.body || '', url: raw.url || '', shared: true, version: 1, sort: raw.sort || 0, shelf: raw.shelf, note: raw.note || '' };
+  await DB.prepare('INSERT OR IGNORE INTO advisory_docs (id, data, updated_at, updated_by) VALUES (?, ?, ?, ?)').bind(id, JSON.stringify(data), nowIso(now), by).run();
 }
 export async function deleteDoc(DB, id) {
   await ensureAdvisory(DB);

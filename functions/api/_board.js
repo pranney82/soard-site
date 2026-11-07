@@ -34,6 +34,7 @@
  * whether they'll come, and signs documents.
  */
 
+import { getSettings as getAdvisorySettings, saveSettings as saveAdvisorySettings } from './_advisory.js';
 import {
   cleanMeeting, forBoard, meetingName, openActions, nextMeeting, todayEastern, isDate, uid, parseAgendaText, fileTitle, plural, minutesFileOf, minutesToRead,
   longDate, timeRange, shortDate, DOC_KINDS, FILE_KINDS, RSVP, DEFAULT_TEMPLATE, newMeeting, LIMITS, repliesOf, inviteOut,
@@ -787,7 +788,19 @@ export async function saveDoc(DB, raw, { by = '', askAgain = null, base = null, 
     if (askAgain !== false || fieldsMoved(was?.body, body)) next.readFrom = next.version;
   }
   await DB.prepare('INSERT OR REPLACE INTO board_docs (id, data, updated_at) VALUES (?, ?, ?)').bind(d.id, JSON.stringify(next), next.updatedAt).run();
+  if (next.sign || next.shared === false || body) await closeToAdvisors(DB, d.id);
   return (await listDocs(DB)).find((x) => x.id === d.id);
+}
+
+/**
+ * A paper advisors could open that the board now signs, hides, writes here or marks staff-only is off for them from that
+ * moment, not just until it changes back: someone turns it on again in Advisory if it should be. Never holds up a board save
+ */
+async function closeToAdvisors(DB, id) {
+  try {
+    const s = await getAdvisorySettings(DB);
+    if ((s.boardDocs || []).includes(id)) await saveAdvisorySettings(DB, { boardDocs: s.boardDocs.filter((x) => x !== id) });
+  } catch (e) { console.error('[board] advisors’ papers', e?.message || e); }
 }
 
 /** Board files not read yet, a few at a time: their words kept for finding them (./_board-file-words.js) */
@@ -1156,6 +1169,7 @@ export async function updateFile(DB, id, { kind, staffOnly, name } = {}) {
     name: name !== undefined && String(name).trim() ? String(name).replace(/[\u0000-\u001F]/g, '').trim().slice(0, 200) : row.name,
   };
   await DB.prepare('UPDATE board_files SET kind = ?, staff_only = ?, name = ? WHERE id = ?').bind(next.kind, next.staff, next.name, id).run();
+  if (next.staff && row.owner_type === 'doc') await closeToAdvisors(DB, row.owner_id);
   return { id, kind: next.kind, staffOnly: !!next.staff, name: next.name };
 }
 
@@ -2223,14 +2237,30 @@ export async function askToSign(env, { slugs = null, by = '', replyTo = [], to =
  * Public things only, for ./_advisory-portal.js: reveals (a kid's name and photo only with a published page; the rest
  * are a date), events, this year's finished rooms, and the public filings. Nothing here reads the board's tables.
  */
+/**
+ * The board's papers that can be offered to advisors: each one's own file, shared on the board page, never a paper the
+ * board signs or a staff-only file. Which of these advisors see is chosen one by one (settings.boardDocs).
+ */
+export async function sharableBoardDocs(DB) {
+  await ensureSchema(DB);
+  const [rows, files] = await Promise.all([DB.prepare('SELECT data FROM board_docs').all().then((r) => r.results || []), filesOf(DB, 'doc')]);
+  return rows.map((r) => cleanDoc(parse(r.data))).filter((d) => !d.sign && d.shared && !d.body)
+    .map((d) => ({ id: d.id, title: d.title, file: (files[d.id] || []).at(-1) || null }))
+    .filter((d) => d.file && !d.file.staffOnly)
+    .map(({ id, title, file: { id: fileId, name, type, size } }) => ({ id, title, file: { id: fileId, name, type, size } }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
 export async function advisoryBits(env, { now = Date.now() } = {}) {
   const today = todayEastern(now);
   const year = today.slice(0, 4);
-  const [reveals, events, pages, filings] = await Promise.all([
+  const [reveals, events, pages, filings, media, counts] = await Promise.all([
     cachedReveals(env, now).catch(() => ({ upcoming: [], past: [] })),
     eventsList(env.DB, today),
     loadKids(env.DB).catch(() => []),
     siteDoc(env.DB, 'financials').catch(() => null),
+    siteDoc(env.DB, 'media').catch(() => null),
+    impact(env.DB).catch(() => null),
   ]);
   const published = new Map(pages.map((k) => [k.slug, k]));
   // This year's finished rooms, from their public pages: the reveal list only reaches back so far
@@ -2246,6 +2276,12 @@ export async function advisoryBits(env, { now = Date.now() } = {}) {
     published,
     reveals: (reveals.upcoming || []).map(row),
     rooms,
+    // SOARD's kids and rooms, as the website counts them
+    impact: counts?.kids ? { kids: counts.kids, rooms: counts.rooms, byYear: counts.byYear?.length ? [{ year: counts.byYear[0].year }] : [] } : null,
+    // The photos SOARD offers on /branding/, by their place in that list: only a child whose page is public
+    photos: (media?.brandingPhotos || []).map((p, i) => ({ ...p, i })).filter((p) => p.cfId && published.has(p.kidSlug))
+      // (their name from their own page: these captions go on to name a diagnosis, and this page is for sharing)
+      .map((p) => ({ photo: `/cdn-cgi/imagedelivery/ROYFuPmfN2vPS6mt5sCkZQ/${p.cfId}/public`, caption: String(published.get(p.kidSlug).name || ''), download: `/api/download-branding-photos?photo=${p.i}` })),
     events: events.upcoming,
     filings: (filings?.documents || []).map((d) => ({ title: d.title, year: d.year, type: d.type, url: String(d.url || '').replace(/^https:\/\/files\.sunshineonaranneyday\.com\/financials\//, '/files/financials/') }))
       .filter((d) => /^(https:\/\/|\/files\/financials\/)/.test(d.url)),

@@ -11,9 +11,11 @@
  */
 
 import { h, htm } from '../vendor.js';
+import { sized } from './parts.js';
 import { shortDate, clock, plural, initialsOf } from '../board-shared.js';
 
 const html = htm.bind(h);
+export { sized };
 // "+2 more families", "10 AM": the number kept with its word
 const kept = (s) => s.replace(/(\d) (\S+)/, '$1 $2');
 
@@ -26,16 +28,6 @@ const windowStartOf = (w) => (/^\d{4}-\d{2}$/.test(String(w?.month || '')) ? `${
 const hueOf = (s) => [42, 28, 96, 152, 200, 18][[...String(s)].reduce((a, c) => a + c.charCodeAt(0), 0) % 6];
 const CAL = html`<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3.5" y="5" width="17" height="15.5" rx="2" /><path d="M3.5 10h17M8 3v4M16 3v4" /></svg>`;
 
-/** A Cloudflare photo at the size it's shown, through the site so it's same-origin */
-export function sized(url, transform) {
-  const s = String(url || '');
-  const m = s.match(/^(?:https:\/\/imagedelivery\.net|(?:https?:\/\/[^/]+)?\/cdn-cgi\/imagedelivery)\/([^/]+)\/(.+)$/);
-  if (!m) return s;
-  let id = m[2];
-  const cut = id.lastIndexOf('/');
-  if (cut > 0 && /=|^(public|thumbnail|avatar|hero|card)$/.test(id.slice(cut + 1))) id = id.slice(0, cut);
-  return `/cdn-cgi/imagedelivery/${m[1]}/${id}/${transform}`;
-}
 /** Where a makeover's link goes: a kid's page, or a community project's page once it's public */
 /** A makeover's card on Home, for a search to land on */
 /**

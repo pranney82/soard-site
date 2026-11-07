@@ -12,8 +12,7 @@
 
 import {
   whoIs, getSettings, saveSettings, listAsks, saveAsk, putAskOut, closeAsk, deleteAsk, answersTo, listWishes, saveWish, deleteWish, listIntros, setIntroStatus,
-  listHosted, setHosted, allTerms, setTerm, listDocs, saveDoc, deleteDoc, signatures, missingEmails, isId, webLink, DOC_KINDS, INTRO_STATUSES, INTRO_HELP, HOSTED_STATUSES, GROUP_ADDRESS,
-} from './_advisory.js';
+  listHosted, setHosted, allTerms, setTerm, listDocs, saveDoc, deleteDoc, signatures, missingEmails, isId, webLink, DOC_KINDS, INTRO_STATUSES, INTRO_HELP, HOSTED_STATUSES, GROUP_ADDRESS, SHELVES } from './_advisory.js';
 import { activeAdvisors, peopleRows, readState } from './_board-roles.js';
 import { putFile, deleteFile, boardFileProblem } from './_board.js';
 import { logAudit } from './_audit.js';
@@ -21,7 +20,8 @@ import { moneyView, goalNow, creditGift, uncreditGift, matchPage, findGifts, cam
 import { pickableKids, pickKid, clearKid, kidCard } from './_advisory-sponsor.js';
 import { sendAsk, sendIntroUpdate, sendHostUpdate, sendWelcome, mailLog, welcomedSlugs } from './_advisory-mail.js';
 import { adminMeetings, meetingAction } from './_advisory-meetings.js';
-import { advisoryBits } from './_board.js';
+import { advisoryBits, sharableBoardDocs } from './_board.js';
+import { boardPapers } from './_advisory-portal.js';
 import { seedOnce } from './_advisory-seed.js';
 import { advisoryGroupStatus, syncAdvisoryGroup } from './_board-group.js';
 
@@ -57,7 +57,8 @@ export async function onRequestGet(context) {
   try {
     const { w, refused } = await gate(context);
     if (refused) return refused;
-    await seedOnce(env.DB);
+    await seedOnce(env.DB, () => sharableBoardDocs(env.DB));
+    await boardPapers(env.DB, await getSettings(env.DB));
     const settings = await getSettings(env.DB);
     const [advisors, people, term, seen, sigs, missing, docs, asks, wishes, intros, hosted, money, bits, group, meetings, kids, log] = await Promise.all([
       activeAdvisors(env.DB), peopleRows(env.DB), allTerms(env.DB, settings), lastSeen(env.DB), signatures(env.DB), missingEmails(env.DB), listDocs(env.DB), listAsks(env.DB),
@@ -76,7 +77,7 @@ export async function onRequestGet(context) {
       advisors: advisors.map((a) => ({ slug: a.slug, name: a.name, email: a.email, photo: a.photo || '', organization: a.organization || '', term: term(a.slug), lastSeen: seen[a.slug] || '', signed: Object.fromEntries(Object.entries(sigs).map(([id, by]) => [id, by[a.slug] || null])) })),
       missing,
       board: people.filter((p) => p.group === 'board' && p.status === 'active').map((p) => ({ slug: p.slug, name: p.name, committees: p.committees || [] })),
-      docs, docKinds: DOC_KINDS,
+      docs, docKinds: DOC_KINDS, shelves: SHELVES, boardDocs: await sharableBoardDocs(env.DB),
       asks: withAnswers,
       wishes,
       intros: intros.map((i) => ({ ...i, by: nameOf(i.slug) })), introStatuses: INTRO_STATUSES, introHelp: INTRO_HELP,
@@ -180,7 +181,25 @@ export async function onRequestPost(context) {
         await audit(context, by, 'updated', `Advisory paper saved: ${doc.title}`);
         return Response.json({ ok: true, doc });
       }
-      case 'delete-doc': await deleteDoc(env.DB, id); await audit(context, by, 'deleted', 'Advisory paper'); return Response.json({ ok: true });
+      case 'delete-doc': {
+        // Its files go with it: nothing of a deleted paper stays where someone could open it
+        const files = (await env.DB.prepare("SELECT id FROM board_files WHERE owner_type = 'advisory-doc' AND owner_id = ?").bind(id).all()).results || [];
+        for (const f of files) await deleteFile(env, f.id);
+        await deleteDoc(env.DB, id);
+        await audit(context, by, 'deleted', 'Advisory paper');
+        return Response.json({ ok: true });
+      }
+      case 'board-doc': {
+        // One paper at a time, so a stale tab can't undo someone else's switch. Only a paper that can be shared: never one
+        // the board signs, a written one, or a staff-only file
+        const on = body.on === true;
+        if (on && !(await sharableBoardDocs(env.DB)).some((d) => d.id === id)) return fail('That paper can’t be shared with advisors');
+        const ids = new Set(settings.boardDocs || []);
+        if (on) ids.add(id); else ids.delete(id);
+        const next = await saveSettings(env.DB, { boardDocs: [...ids] });
+        await audit(context, by, 'updated', `Advisors ${on ? 'can open' : 'can no longer open'} a board paper`);
+        return Response.json({ ok: true, boardDocs: next.boardDocs });
+      }
       case 'delete-file': {
         // Only a paper of the advisors': this route must never reach a board file
         const row = await env.DB.prepare("SELECT id FROM board_files WHERE id = ? AND owner_type = 'advisory-doc'").bind(id).first();

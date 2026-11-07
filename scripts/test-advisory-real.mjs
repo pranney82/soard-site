@@ -146,7 +146,7 @@ if (!process.env.KEEP) {
 
   // The whole loop, by the API, through the real handlers
   const a0 = (await api(LEAD, '/api/advisory-admin')).body;
-  ok(a0.docs.length === 7 && a0.wishes.length === 3 && a0.asks.length === 1, 'the first words are there');
+  ok(a0.docs.filter((d) => d.kind !== 'library').length === 7 && a0.docs.filter((d) => d.kind === 'library').length === 7 && a0.wishes.length === 3 && a0.asks.length === 1, 'the first words are there');
   const ask = a0.asks[0];
   ok((await api(LEAD, '/api/advisory-admin', { action: 'send-ask', id: ask.id })).status === 200, 'the ask goes out');
   ok(mail.length === 0, 'and no email, with the switch off');

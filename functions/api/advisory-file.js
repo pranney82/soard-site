@@ -3,10 +3,12 @@
  *
  * Only files that are the advisors' own (board_files owner_type 'advisory-doc' or 'advisory-meeting', under the private
  * board/ prefix) on a shared paper or a shared meeting, and never a staff-only one. Anyone who runs the group opens any
- * of theirs. A board file gets the same 404 as a file that doesn't exist. Never cached anywhere.
+ * of theirs. A board file gets the same 404 as a file that doesn't exist, unless it's the current file of a paper staff
+ * turned on for advisors (settings.boardDocs). Never cached anywhere.
  */
 
-import { whoIs, isSharedDoc, isId } from './_advisory.js';
+import { whoIs, isSharedDoc, getSettings } from './_advisory.js';
+import { boardPapers } from './_advisory-portal.js';
 import { boardFiles, ID } from './_board.js';
 import { isSharedAdvisoryMeeting } from './_advisory-meetings.js';
 import { fileHeaders } from '../files/[[path]].js';
@@ -17,7 +19,10 @@ const notFound = () => new Response('Not found', { status: 404, headers: { 'Cont
 export async function advisoryFileFor(DB, id, w) {
   if (!ID.test(String(id || ''))) return null;
   const row = await DB.prepare("SELECT * FROM board_files WHERE id = ? AND owner_type IN ('advisory-doc', 'advisory-meeting')").bind(id).first();
-  if (!row) return null;
+  if (!row) {
+    const paper = (await boardPapers(DB, await getSettings(DB))).find((p) => p.file.id === id);
+    return paper ? DB.prepare("SELECT * FROM board_files WHERE id = ? AND owner_type = 'doc'").bind(id).first() : null;
+  }
   if (w.runs) return row;
   if (row.staff_only) return null;
   const open = row.owner_type === 'advisory-doc' ? await isSharedDoc(DB, row.owner_id) : await isSharedAdvisoryMeeting(DB, row.owner_id);

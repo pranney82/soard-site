@@ -41,7 +41,7 @@ const PEOPLE = [
   { slug: 'dana-bright', name: 'Dana Bright', photo: '/cdn-cgi/imagedelivery/x/dana/w=240', organization: 'Bright Events', bio: '', linkedin: '' },
   { slug: 'lee-a-very-long-name-hyphenated-person', name: 'Lee Alexandria Montgomery-Featherstonehaugh', photo: '', organization: 'A Company With A Really Rather Long Name And Partners LLC', bio: 'Word '.repeat(90), linkedin: '' },
 ];
-const KINDS = [{ id: 'agreement', label: 'Advisor agreement', sign: true }, { id: 'overview', label: 'Overview' }, { id: 'pitch', label: '30-second pitch' }, { id: 'post', label: 'Post to share' }, { id: 'sponsor', label: 'Sponsor one-pager' }, { id: 'matching', label: 'Employer matching steps' }, { id: 'hosting', label: 'How to host a fundraiser' }];
+const KINDS = [{ id: 'library', label: 'Document' }, { id: 'agreement', label: 'Advisor agreement', sign: true }, { id: 'overview', label: 'Overview' }, { id: 'pitch', label: '30-second pitch' }, { id: 'post', label: 'Post to share' }, { id: 'sponsor', label: 'Sponsor one-pager' }, { id: 'matching', label: 'Employer matching steps' }, { id: 'hosting', label: 'How to host a fundraiser' }];
 const STATUSES = [{ id: 'thanks', label: 'Thanks', sub: 'We have it and we’ll take a look' }, { id: 'talking', label: 'Talking', sub: 'We’re in touch with them' }, { id: 'yes', label: 'Said yes', sub: 'They’re helping SOARD' }, { id: 'not-now', label: 'Not now', sub: 'Not the right time' }];
 const HELP = [{ id: 'donor', label: 'Could give' }, { id: 'sponsor', label: 'Could sponsor' }, { id: 'vendor', label: 'Trade or vendor' }, { id: 'volunteer', label: 'Could volunteer' }];
 const ME = {
@@ -51,12 +51,15 @@ const ME = {
   admin: { kind: 'admin', name: '', slug: '', runs: true, answers: false },
 };
 const org = { name: 'Sunshine on a Ranney Day', legalName: 'Sunshine on a Ranney Day Incorporated', ein: '00-0000000', website: 'sunshineonaranneyday.com', mission: 'Every child deserves a space that makes them feel safe, seen, and loved.' };
+const SHELVES = [{ id: 'about', label: 'About SOARD', sub: 'Who we are' }, { id: 'marketing', label: 'Marketing', sub: 'What to share' }, { id: 'donors', label: 'For donors and sponsors', sub: 'What they ask for' }, { id: 'group', label: 'For the group', sub: '' }];
+const BRAND = { logos: [{ key: 'lightTagline', name: 'White background', sub: '', bg: 'light', src: '/cdn-cgi/imagedelivery/x/brand-a/w=560', png: '/api/download-logo?id=a' }, { key: 'darkTagline', name: 'Dark background', sub: '', bg: 'dark', src: '/cdn-cgi/imagedelivery/x/brand-b/w=560', png: '/api/download-logo?id=b' }], kit: '/SOARD-Logo-Kit.zip', kitSize: '2.6 MB', seal: 'https://imagedelivery.net/x/partners/seal/public' };
 const emptyPortal = (who) => ({
   ok: true, me: ME[who], today: TODAY, term: who === 'advisor' ? { started: later(-14), ends: later(351), renewedOn: '', left: '', canRenew: false } : null,
   lead: { slug: 'morgan-lead', name: 'Morgan Lead', photo: '' }, groupEmail: 'advisory@soardcharity.com', meetings: [], ask: null, todos: [], makeover: { state: 'open' },
   coming: { reveals: [], events: [], hosted: [] }, rooms: [], wishes: [], intros: [], introStatuses: STATUSES, introHelp: HELP, hosted: [],
   fundraise: { goal: 25000, raised: 0, mine: who === 'advisor' ? 0 : null, gifts: who === 'advisor' ? 0 : null, pageUrl: '', groupUrl: '', ready: false, at: null },
   share: [], people: PEOPLE.slice(0, 2), papers: [], filings: [], org,
+  shelves: SHELVES, library: [], fromBoard: [], brand: BRAND, photos: [], impact: null, contact: { name: 'SOARD', email: 'info@soardcharity.com' },
 });
 const AGREE = { id: 'ad_agreement2', kind: 'agreement', title: 'Advisor Agreement', body: 'As a member of the Advisory Board, I agree to:\n\n- Serve a one-year term\n- Attend four meetings a year', version: 1, files: [], signedByMe: null };
 const filledPortal = (who) => ({
@@ -85,14 +88,24 @@ const filledPortal = (who) => ({
   ],
   people: PEOPLE,
   papers: [AGREE, { id: 'ad_overv1234', kind: 'overview', title: 'Advisory Board Overview', body: 'What the Advisory Board is.', url: 'https://files.example.com/advisory/overview.docx.pdf', version: 1, files: [{ id: 'f_bcdefghi', name: 'Advisory Board Overview.pdf', type: 'application/pdf', size: 247000, at: `${later(-1)}T12:00:00Z` }] }],
-  filings: [{ title: 'Form 990, 2024', year: 2024, type: '990', url: '/files/financials/990-2024.pdf' }, { title: 'Annual report, 2024', year: 2024, type: 'report', url: '/files/financials/ar-2024.pdf' }],
+  filings: [...Array(9)].map((_, i) => ({ title: `Form 990, ${2024 - i}`, year: 2024 - i, type: '990', url: `/files/financials/990-${2024 - i}.pdf` })),
+  impact: { kids: 208, rooms: 295, byYear: [{ year: 2011 }] },
+  library: [
+    { id: 'ad_about1234', title: 'Our story', note: 'How SOARD began', shelf: 'about', url: 'https://example.com/about/', files: [] },
+    { id: 'ad_brand1234', title: 'Brand and media kit', note: 'Logos and colors', shelf: 'marketing', url: 'https://example.com/branding/', files: [] },
+    { id: 'ad_flyer1234', title: 'Event flyer', note: 'For a table at an event', shelf: 'marketing', url: '', files: [{ id: 'f_flyerabc', name: 'Flyer.pdf', type: 'application/pdf', size: 90000, at: `${later(-3)}T12:00:00Z` }] },
+  ],
+  fromBoard: [{ id: 'd_wninexx', title: 'W-9', file: { id: 'f_wninexx', name: 'W-9.pdf', type: 'application/pdf', size: 120000 } }, { id: 'd_irsletr', title: 'IRS 501(c)(3) determination letter', file: { id: 'f_irsletr', name: 'IRS.pdf', type: 'application/pdf', size: 120000 } }],
+  photos: [1, 2, 3, 4].map((n) => ({ photo: `/cdn-cgi/imagedelivery/x/p${n}/public`, caption: `A room ${n}`, download: `/api/download-branding-photos?photo=${n}` })),
+  org: { ...org, phone: '770-555-0100', email: 'info@soardcharity.com', irs: { exempt: true, since: '2011' }, address: { street: '1 Main St', city: 'Roswell', state: 'GA', zip: '30075' }, tagline: 'Dreams Built Here', bio: 'SOARD builds rooms.', founded: '2011', founders: 'Two people' },
 });
+const LIB_ADMIN = [{ id: 'ad_about1234', kind: 'library', title: 'Our story', note: 'How SOARD began', shelf: 'about', url: 'https://example.com/about/', shared: true, files: [], updatedAt: `${later(-1)}T12:00:00Z` }];
 const emptyAdmin = (who) => ({
-  ok: true, me: { kind: who, name: ME[who].name }, settings: { lead: 'morgan-lead', goal: 25000, termStart: later(-14), termEnd: later(351), emails: false, campaignId: '', campaignUrl: '', pages: {}, kid: '', carried: [] },
+  ok: true, me: { kind: who, name: ME[who].name }, settings: { lead: 'morgan-lead', goal: 25000, termStart: later(-14), termEnd: later(351), emails: false, campaignId: '', campaignUrl: '', pages: {}, kid: '', carried: [], boardDocs: ['d_wninexx'] },
   leadName: 'Morgan Lead', groupEmail: 'advisory@soardcharity.com', group: null,
   advisors: PEOPLE.slice(0, 2).map((p) => ({ slug: p.slug, name: p.name, email: `${p.slug}@example.com`, photo: p.photo, organization: p.organization, term: { started: later(-14), ends: later(351), renewedOn: '', left: '' }, lastSeen: '', signed: {} })),
   missing: [], board: [{ slug: 'morgan-lead', name: 'Morgan Lead', committees: ['Advisory Board'] }, { slug: 'casey-board', name: 'Casey Board', committees: ['Advisory Board'] }],
-  docs: [], docKinds: KINDS, asks: [], wishes: [], intros: [], introStatuses: STATUSES, introHelp: HELP, hosted: [], hostedStatuses: [{ id: 'new', label: 'New' }, { id: 'approved', label: 'Approved' }, { id: 'not-now', label: 'Not now' }, { id: 'done', label: 'Held' }],
+  docs: [], docKinds: KINDS, shelves: SHELVES, boardDocs: [{ id: 'd_wninexx', title: 'W-9', file: { id: 'f_wninexx' } }, { id: 'd_bylawsx', title: 'Bylaws', file: { id: 'f_bylawsx' } }], asks: [], wishes: [], intros: [], introStatuses: STATUSES, introHelp: HELP, hosted: [], hostedStatuses: [{ id: 'new', label: 'New' }, { id: 'approved', label: 'Approved' }, { id: 'not-now', label: 'Not now' }, { id: 'done', label: 'Held' }],
   money: { goal: 25000, raised: 0, carried: [], ready: false, configured: true, at: null, error: null, byAdvisor: [], pages: [], unmatched: [], credits: [] },
   kids: [], makeover: { state: 'open' }, meetings: [], mail: [],
 });
@@ -102,7 +115,7 @@ const filledAdmin = (who) => ({
   group: { group: 'advisory@soardcharity.com', configured: true, ok: true, syncedAt: new Date().toISOString(), current: true, members: 7, missing: [] },
   advisors: PEOPLE.map((p, i) => ({ slug: p.slug, name: p.name, email: `${p.slug.slice(0, 12)}@example.com`, photo: p.photo, organization: p.organization, term: { started: later(-320), ends: i === 2 ? later(-3) : later(40), renewedOn: i ? '' : later(-1), left: '' }, lastSeen: i === 2 ? '' : `${later(-i - 1)}T15:00:00Z`, signed: { [AGREE.id]: i === 1 ? { year: Number(TODAY.slice(0, 4)), name: p.name, at: `${later(-400)}T15:00:00Z`, version: 0 } : i ? null : { year: Number(TODAY.slice(0, 4)), name: p.name, at: `${later(-4)}T15:00:00Z`, version: 1 } } })),
   missing: [{ slug: 'alex-rivera', name: 'Alex Rivera' }],
-  docs: [{ ...AGREE, shared: true, updatedAt: `${later(-4)}T15:00:00Z`, updatedBy: 'x' }, { id: 'ad_overv1234', kind: 'overview', title: 'Advisory Board Overview', body: '', shared: true, version: 1, files: [{ id: 'f_bcdefghi', name: 'Advisory Board Overview.pdf', type: 'application/pdf', size: 247000, at: `${later(-1)}T12:00:00Z` }], updatedAt: `${later(-1)}T15:00:00Z` }, { id: 'ad_post12345', kind: 'post', title: 'A post to share', body: 'I’m proud to serve.', shared: false, version: 1, files: [], updatedAt: `${later(-2)}T15:00:00Z` }],
+  docs: [...LIB_ADMIN, { ...AGREE, shared: true, updatedAt: `${later(-4)}T15:00:00Z`, updatedBy: 'x' }, { id: 'ad_overv1234', kind: 'overview', title: 'Advisory Board Overview', body: '', shared: true, version: 1, files: [{ id: 'f_bcdefghi', name: 'Advisory Board Overview.pdf', type: 'application/pdf', size: 247000, at: `${later(-1)}T12:00:00Z` }], updatedAt: `${later(-1)}T15:00:00Z` }, { id: 'ad_post12345', kind: 'post', title: 'A post to share', body: 'I’m proud to serve.', shared: false, version: 1, files: [], updatedAt: `${later(-2)}T15:00:00Z` }],
   asks: [
     { id: 'ask_abcdefgh', title: 'Do you know a licensed plumber?', body: 'A week in March.', link: '', sentAt: `${later(-6)}T15:00:00Z`, closedAt: '', at: `${later(-7)}T15:00:00Z`, by: 'x', answers: [{ slug: 'sam-ortiz', name: 'Sam Ortiz', answer: 'yes', note: 'My cousin does this.', at: `${later(-5)}T15:00:00Z`, via: 'page' }, { slug: 'dana-bright', name: 'Dana Bright', answer: 'no', note: 'Out of town that week.', at: `${later(-5)}T15:00:00Z`, via: 'email' }] },
     { id: 'ask_bcdefghi', title: 'Saved idea for April', body: '', link: '', sentAt: '', closedAt: '', at: `${later(-2)}T15:00:00Z`, by: 'x', answers: [] },
@@ -204,6 +217,23 @@ const server = http.createServer(async (req, res) => {
 await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const ORIGIN = `http://127.0.0.1:${server.address().port}`;
 
+// The top bar holds six tabs, seven for whoever runs the group, at every width between a phone and a wide screen
+async function barFits() {
+  for (const who of ['advisor', 'admin']) {
+    for (const width of [641, 700, 768, 820, 900, 1024, 1100, 1200, 1280, 1366, 1440, 1600]) {
+      const page = await tab(`${who}/filled`, width);
+      await page.goto(`${ORIGIN}/admin/advisory/`, { waitUntil: 'networkidle0' });
+      const r = await page.evaluate(() => {
+        const bar = document.querySelector('.bp-bar');
+        const links = [...document.querySelectorAll('.bp-nav a')];
+        return { over: bar.scrollWidth > bar.clientWidth + 1, page: document.documentElement.scrollWidth > innerWidth, rows: new Set(links.map((a) => Math.round(a.getBoundingClientRect().top))).size };
+      });
+      check(!r.over && !r.page && r.rows === 1, `the top bar fits: ${who} at ${width} (${JSON.stringify(r)})`);
+      await page.close();
+    }
+  }
+}
+
 // ─── The browser ────────────────────────────────────────────────────
 const browser = await puppeteer.launch({ headless: 'shell', args: ['--no-sandbox', '--disable-gpu', '--disable-gpu-vsync', '--disable-renderer-backgrounding', '--disable-backgrounding-occluded-windows', '--disable-background-timer-throttling'] });
 let passed = 0; const failures = []; const noise = [];
@@ -232,7 +262,7 @@ const button = async (page, words) => {
 };
 const press = async (page, words) => { const b = await button(page, words); check(!!b, `there's a button: ${words}`); if (b) { await b.evaluate((x) => x.scrollIntoView({ block: 'center' })); await b.click(); await settle(220); } return !!b; };
 const allowedEmail = (e) => ['advisory@soardcharity.com', 'info@soardcharity.com'].includes(e);
-const PAGES = { home: '#/', intros: '#/introductions', fundraise: '#/fundraise', meetings: '#/meetings', people: '#/people', paper: `#/papers/${AGREE.id}`, meeting: '#/meetings/m_abcdefgh' };
+const PAGES = { home: '#/', intros: '#/introductions', fundraise: '#/fundraise', meetings: '#/meetings', people: '#/people', documents: '#/documents', paper: `#/papers/${AGREE.id}`, meeting: '#/meetings/m_abcdefgh' };
 
 for (const width of WIDTHS) {
   for (const who of ['advisor', 'lead', 'committee', 'admin']) {
@@ -309,9 +339,56 @@ for (const width of [390, 1280]) {
   const intro = w.posts.find((x) => x.action === 'intro');
   check(intro?.name === 'Morgan Example' && intro.wish === 'w_abcdefgh' && intro.help.includes('vendor'), 'an introduction: all of it went');
   check((await textOf(page)).includes('Morgan Example'), 'an introduction: it shows in their list');
+  // Photos first on Home, and Documents like the board's
+  await open(page, PAGES.home);
+  check(await has(page, '.ad-hero__big'), 'Home: opens with a real room, beside the words');
+  check((await page.$eval('.ad-hero__stat', (x) => x.textContent)).includes('208'), 'Home: how many kids');
+  const cards = await page.$$eval('.ad-reveal', (x) => x.map((a) => ({ img: !!a.querySelector('.ad-reveal__pic img'), text: a.textContent, wide: a.closest('li').classList.contains('is-next') })));
+  check(cards.length >= 2 && cards.every((c) => c.img), `Home: every reveal ahead has a picture (${cards.length})`);
+  check(cards[0].wide && cards[0].text.includes('Next'), 'Home: the next reveal is first, and wider');
+  check(!(await textOf(page)).includes('$'), 'Home: no dollars');
+  check((await page.$$('.ad-rooms img')).length === 5, 'Home: the finished rooms, photo first');
+  check(await page.$eval('#kid-h', (x) => x.textContent.length > 0), 'Home: the group’s makeover');
+  await open(page, PAGES.documents);
+  await page.waitForSelector('.bp-org');
+  check((await textOf(page)).includes('SOARD’s facts'), 'Documents: SOARD’s facts, the board’s card');
+  check(await page.$eval('.bp-org', (x) => x.textContent.includes('00-0000000')), 'Documents: the EIN is one copy away');
+  check((await page.$$('.ad-logo')).length === 3, 'Documents: logos to download, and the group’s seal');
+  check((await page.$$('.ad-shot')).length === 4, 'Documents: photos to save');
+  const shelves = await page.$$eval('.bp-papers__h', (x) => x.map((h) => h.textContent));
+  check(['About SOARD', 'Marketing', 'For donors and sponsors'].every((t) => shelves.some((h) => h.startsWith(t))), `Documents: the shelves (${shelves.join(', ')})`);
+  check((await textOf(page)).includes('W-9'), 'Documents: the papers a donor asks for');
+  check(await page.$$eval('.bp-papers a[href*="example.com"]', (x) => x.every((a) => a.target === '_blank')), 'Documents: a link opens in a new tab');
+  // Print on the facts: that card alone, as on the board's page
+  await page.emulateMediaType('print');
+  await page.evaluate(() => document.documentElement.classList.add('bp-printing-org'));
+  const printed = await page.evaluate(() => ({ org: getComputedStyle(document.querySelector('.bp-org')).display, brand: getComputedStyle(document.querySelector('.ad-brand')).display, w: document.querySelector('.bp-org').offsetWidth }));
+  check(printed.org !== 'none' && printed.brand === 'none' && printed.w > 0, `Documents: Print takes SOARD’s facts alone (${JSON.stringify(printed)})`);
+  await page.evaluate(() => document.documentElement.classList.remove('bp-printing-org'));
+  await page.emulateMediaType('screen');
+  // What's on the page can be found on the page
+  for (const [word, sel, what] of [['agreement', '.bp-tosign', 'the paper to sign'], ['seal', '.ad-brand', 'the group’s seal'], ['photo', '.ad-brand', 'the photos'], ['w9', '.bp-papers', 'the W-9'], ['facts', '.bp-org', 'SOARD’s facts']]) {
+    await page.$eval('.bp-filter input', (x) => { x.value = ''; x.dispatchEvent(new Event('input', { bubbles: true })); });
+    await page.type('.bp-filter input', word);
+    await settle(120);
+    check(await has(page, sel), `Documents: “${word}” finds ${what}`);
+  }
+  await page.$eval('.bp-filter input', (x) => { x.value = ''; x.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.type('.bp-filter input', 'w-9');
+  check(await page.waitForFunction(() => !document.body.innerText.includes('Our story'), { timeout: 3000 }).then(() => true, () => false), 'Documents: finding narrows the shelves');
+  check((await textOf(page)).includes('W-9'), 'Documents: finding keeps what matches');
+  await page.$eval('.bp-filter input', (x) => { x.value = ''; x.dispatchEvent(new Event('input', { bubbles: true })); });
+  await page.type('.bp-filter input', 'zzzz');
+  check(await page.waitForFunction(() => document.body.innerText.includes('Nothing here matches'), { timeout: 3000 }).then(() => true, () => false), 'Documents: nothing found says so');
+  await page.$eval('.bp-filter input', (x) => { x.value = ''; x.dispatchEvent(new Event('input', { bubbles: true })); });
   await open(page, PAGES.fundraise);
   await page.waitForSelector('.ad-qr__c svg');
-  check(await has(page, '.ad-bar'), 'Fundraise: the goal bar');
+  check(await has(page, '.ad-thermo'), 'Fundraise: the goal thermometer');
+  const level = await page.$eval('.ad-thermo .thermo__level', (x) => Number(x.getAttribute('y')));
+  check(Math.abs(level - (226 - (9150 / 25000) * 196)) < 0.01, `Fundraise: the thermometer stands at what's raised (${level})`);
+  check((await page.$eval('.ad-thermo', (x) => x.getAttribute('aria-label'))) === '36% of the $25,000 goal', 'Fundraise: a screen reader hears the same level');
+  check((await page.$$eval('.ad-thermo text', (x) => x.map((t) => t.textContent))).join() === '$0,$5,000,$10,000,$15,000,$20,000,$25,000', 'Fundraise: the thermometer counts up to the goal');
+  check((await textOf(page)).includes('$15,850 to go'), 'Fundraise: what is left to raise');
   await press(page, 'Send an idea');
   await page.type('#h-title', 'A dinner');
   await press(page, 'Send my idea');
@@ -327,6 +404,15 @@ for (const width of [390, 1280]) {
   await press(page, 'Sign');
   check((await textOf(page)).includes('Signed'), 'signing: it says signed');
   // What they read and copy
+  // A paper's tab says what it is, and back goes where they came from
+  await open(page, PAGES.documents);
+  await page.waitForSelector('.bp-papers');
+  await page.evaluate(() => { document.querySelector('.bp-papers a[href="#/papers/ad_pitch1234"]').click(); });
+  await settle(200);
+  check(!!(await button(page, 'Copy the words')), 'a paper: the pitch copies from here too');
+  await page.evaluate(() => { document.querySelector('.bp-back').click(); });
+  await settle(200);
+  check(page.url().endsWith('#/documents'), 'a paper: back returns to Documents');
   await open(page, `#/papers/ad_overv1234`);
   const openBtn = await button(page, 'Open the PDF');
   check(!!openBtn && (await openBtn.evaluate((a) => a.href)).endsWith('overview.docx.pdf'), 'a paper with a link has an Open button');
@@ -766,6 +852,35 @@ for (const width of [390, 1280]) {
   await settle(100);
   const past = await page.evaluate(() => { const r = [...document.querySelectorAll('.ar-row')].filter((x) => x.textContent.includes('An older ask') || x.textContent.includes('Do you know a licensed plumber')); return r.flatMap((x) => [...x.querySelectorAll('button')].map((b) => b.textContent)); });
   check(!past.includes('Delete'), 'round three: an ask that went out offers no Delete');
+  // What's on their Documents page: a shelf, and which of the board's papers
+  await open(page, '#/run/documents');
+  await settle(240);
+  await page.evaluate(() => { [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Add a link or file to Marketing').click(); });
+  await page.waitForSelector('.ar-editor');
+  const lib = await page.$$('.ar-editor .ar-input');
+  await lib[0].type('Event flyer'); await lib[1].type('For a table'); await lib[2].type('example.com/flyer');
+  await press(page, 'Save');
+  await settle(200);
+  const shelved = w.posts.filter((x) => x.action === 'save-doc').at(-1)?.doc;
+  check(shelved?.kind === 'library' && shelved.shelf === 'marketing' && shelved.url === 'example.com/flyer' && shelved.note === 'For a table', `Documents in Run it: a link goes on its shelf (${JSON.stringify(shelved)})`);
+  check(await page.evaluate(() => [...document.querySelectorAll('.ar-toggle')].some((x) => x.textContent.includes('W-9') && x.querySelector('input').checked)), 'Documents in Run it: the board’s W-9 is on');
+  await page.evaluate(() => { [...document.querySelectorAll('.ar-toggle')].find((x) => x.textContent.includes('Bylaws')).querySelector('input').click(); });
+  await settle(200);
+  check(w.posts.some((x) => x.action === 'board-doc' && x.id === 'd_bylawsx' && x.on === true), 'Documents in Run it: turning a board paper on changes that one paper');
+  // An entry with nothing to open can't be saved as if it had
+  await page.evaluate(() => { [...document.querySelectorAll('button')].find((b) => b.getAttribute('aria-label') === 'Add a link or file to For the group').click(); });
+  await page.waitForSelector('.ar-editor');
+  await (await page.$('.ar-editor .ar-input')).type('Just a title');
+  await settle(100);
+  check(await page.evaluate(() => [...document.querySelectorAll('.ar-editor button')].find((b) => b.textContent === 'Save').disabled), 'Documents in Run it: a title alone can’t be saved');
+  // Moving to another paper asks before it drops what's typed
+  await press(page, 'Edit');
+  await settle(200);
+  check(await has(page, '.ask'), 'Documents in Run it: moving to another paper asks first');
+  await page.evaluate(() => { document.querySelector('.ask [data-ask="yes"]').click(); });
+  await settle(200);
+  await press(page, 'Close');
+  await settle(120);
   // Two people on one paper
   await open(page, '#/run/documents');
   await settle(240);
@@ -861,6 +976,7 @@ for (const width of [390, 1280]) {
   await page.close();
 }
 
+await barFits();
 for (const n of [...new Set(noise)]) check(false, `console: ${n}`);
 await browser.close();
 server.close();
