@@ -20,8 +20,9 @@
  *   n:<item or part id>   the notes under it
  *   r:<person's key>      present | remote | excused | absent
  *   m:<item id or v_…>    a vote: { text, by, second, for, against, abstain, result }
- *   a:<a_…>               an action item: { text, owner, due }
+ *   a:<a_…>               an action item: { text, owner, due, from: the item or part it was caught under }
  *   guests, adjourned
+ *   skipped               the lines someone said aren't to-dos, so they aren't offered again
  *
  * "Send the minutes" (sendNotes) puts it on the meeting by exact id, with no
  * reading or guessing, and keeps a filled-in Word file as the minutes as
@@ -78,8 +79,10 @@ const checkinsOf = async (DB, id) => Object.fromEntries(((await DB.prepare('SELE
 /** One box as it's kept: a key nobody's box has is refused, and an empty box is taken off (null). A vote or an action item is the fields that changed */
 export function cleanChange(key, v) {
   const refused = () => { throw no('That didn’t look like the minutes', 400); };
-  if (key !== 'guests' && key !== 'adjourned' && !/^(?:[nma]:[a-z0-9_]{3,40}|r:[^\u0000-\u001F]{1,210})$/i.test(key)) refused();
+  if (key !== 'guests' && key !== 'adjourned' && key !== 'skipped' && !/^(?:[nma]:[a-z0-9_]{3,40}|r:[^\u0000-\u001F]{1,210})$/i.test(key)) refused();
   if (v === null || v === undefined || v === '') return null;
+  // The lines someone said aren't to-dos (../../public/admin/board-todos.js)
+  if (key === 'skipped') return [...new Set(String(v).split('\n').map((x) => one(x, 120)).filter(Boolean))].slice(-200).join('\n') || null;
   if (key === 'guests') { const t = words(v, MAX_LINE); return t.trim() ? t : null; }
   if (key === 'adjourned') return one(v, 20) || null;
   if (key[0] === 'n') { const t = words(v, MAX_NOTE); return t.trim() ? t : null; }
@@ -98,6 +101,7 @@ export function cleanChange(key, v) {
     put('owner', /^[a-z0-9-]{1,80}$/.test(String(v.owner || '')) ? v.owner : '');
     put('ownerName', one(v.ownerName, MAX_NAME));
     put('due', isDate(v.due) ? v.due : '');
+    put('from', /^[a-z0-9_]{3,40}$/i.test(String(v.from || '')) ? v.from : '');
   }
   return out;
 }
@@ -129,6 +133,8 @@ export async function notesFor(env, id, w, { quick = false } = {}) {
     out.approving = approveWords(target);
     // Its own notes typed and never sent: a passed vote on it closes them, so the send says so first
     out.approvingWaiting = !!target && (await notesWaiting(env.DB)).includes(target.id);
+    // …and corrections nobody has decided: the vote closes those too
+    out.approvingCorrections = target && target.minutes !== 'approved' ? await (await import('./_board-corrections.js')).waitingOn(env.DB, target.id) : 0;
   }
   return out;
 }
@@ -174,10 +180,12 @@ export async function saveNotes(env, id, { changes, was = null, wasText = null }
   const by = w.member?.email || w.adminEmail || '';
   // The secretary's name, the first time they type: it's who took these minutes, whoever saved last, or sits in that seat later
   const took = w.member?.seat === 'secretary' ? w.member.name || '' : '';
+  // Saying a line isn't a to-do changes nothing the minutes say: sent minutes stay sent
+  const quiet = entries.every(([k]) => k === 'skipped') ? 1 : 0;
   const r = await env.DB.prepare(`INSERT INTO board_minutes_notes (meeting_id, data, updated_at, updated_by, took) VALUES (?1, json_patch('{}', ?2), ?3, ?4, NULLIF(?6, ''))
-    ON CONFLICT(meeting_id) DO UPDATE SET data = json_patch(data, ?2), updated_at = ?3, updated_by = ?4, took = CASE WHEN json_patch(data, ?2) = '{}' THEN NULL ELSE COALESCE(took, NULLIF(?6, '')) END WHERE length(data) + length(?2) < ?5`).bind(id, json, at, by, MAX_ROW, took).run();
+    ON CONFLICT(meeting_id) DO UPDATE SET data = json_patch(data, ?2), updated_at = CASE WHEN ?7 = 1 THEN updated_at ELSE ?3 END, updated_by = ?4, took = CASE WHEN json_patch(data, ?2) = '{}' THEN NULL ELSE COALESCE(took, NULLIF(?6, '')) END WHERE length(data) + length(?2) < ?5`).bind(id, json, at, by, MAX_ROW, took, quiet).run();
   if (!((r?.meta?.changes ?? r?.changes ?? 0) > 0)) throw no('These notes have grown too long to keep here. Send what you have, then keep going in a Word file.', 413);
-  return { at, clashes };
+  return { at: quiet ? '' : at, clashes };
 }
 
 const said = (v) => (typeof v === 'string' ? words(v, MAX_NOTE).trim() : '');
@@ -207,7 +215,8 @@ export function applyNotes(cur, notes, { sent = null, people = [], target = null
   const anything = anythingIn(notes);
   // The notes, and the words each item had before notes went on it (an item's notes taken out give them back). What's
   // noted about a part itself is the part's own
-  const had = { ...(was.items || {}) };
+  // (taken back altogether: words a correction took out come back with the rest)
+  const had = { ...(was.items || {}), ...(anything ? {} : was.cleared || {}) };
   const lastPut = was.put || {};
   const put = {};
   const shown = {};
@@ -364,7 +373,7 @@ export function applyNotes(cur, notes, { sent = null, people = [], target = null
   const sentActions = [];
   const actionPrints = {};
   for (const [id, v] of wroteActions) {
-    const x = { id, text: one(v.text, MAX_LINE), ...ownerOf(v), due: isDate(v.due) ? v.due : '', done: false, doneOn: '' };
+    const x = { id, text: one(v.text, MAX_LINE), ...ownerOf(v), due: isDate(v.due) ? v.due : '', done: false, doneOn: '', ...(v.from ? { from: v.from } : {}) };
     if (oursA.has(id) && (!onMeetingA.has(id) || actions.some((y) => y.id === id))) {
       const row = actions.find((y) => y.id === id);
       sentActions.push(id);
@@ -382,9 +391,10 @@ export function applyNotes(cur, notes, { sent = null, people = [], target = null
   const fromBefore = 'fromBefore' in was ? was.fromBefore : cur.minutesFrom || null;
   return {
     // (`ai`: nothing to read again: the heartbeat goes back only to minutes the model hasn't read, and these were never read)
-    next: { ...cur, sections, attendance, motions, actions, minutesFrom: anything ? { name: one(fileName, 200), at, ai: true, tries: 0, typed: true } : fromBefore },
+    // (`first`: when they first went in; a correction later is its own date, and never takes that one's place)
+    next: { ...cur, sections, attendance, motions, actions, minutesFrom: anything ? { name: one(fileName, 200), at, ai: true, tries: 0, typed: true, first: was.at ? cur.minutesFrom?.first || was.at : at } : fromBefore },
     sent: {
-      at, items: had, put, left, parts, rollWas, rollPut, fromBefore, keeper: keeperKey,
+      at, items: had, put, left, parts, rollWas, rollPut, fromBefore, keeper: keeperKey, ...(was.cleared ? { cleared: was.cleared } : {}),
       // Everyone this draft added to the meeting's list, guests or not
       extra: attendance.filter((x) => !list.some((p) => p.key === x.key)).map((x) => x.key),
       motions: sentVotes, votePrints, actions: sentActions, actionPrints,
@@ -410,8 +420,23 @@ export const anythingIn = (notes) => Object.entries(notes).some(([k, v]) => {
   return k[0] === 'r' ? v !== 'absent' : true;
 });
 
+/** The notes with one box changed (nothing in it: the box is gone) */
+export function withBox(notes, key, value) {
+  const out = { ...(notes || {}) };
+  if (value === '' || value === null || value === undefined) delete out[key]; else out[key] = value;
+  return out;
+}
+/** The JSON path to a box of the notes, whatever a person's key holds */
+export const boxPath = (key) => `$."${String(key).replace(/(["\\])/g, '\\$1')}"`;
+/** One thing at a time writes a meeting's kept notes: a send, or a correction. → whether this one holds it */
+export async function claimSending(DB, id, now = Date.now()) {
+  const claim = await DB.prepare('UPDATE board_minutes_notes SET sending = ?1 WHERE meeting_id = ?2 AND (sending IS NULL OR sending < ?3)').bind(iso(now), id, iso(now - 60000)).run();
+  return (claim?.meta?.changes ?? claim?.changes ?? 0) > 0;
+}
+export const releaseSending = (DB, id) => DB.prepare('UPDATE board_minutes_notes SET sending = NULL WHERE meeting_id = ?').bind(id).run();
+
 /** Anything at all typed in a box, whether or not it can go in yet */
-const typedIn = (notes) => Object.values(notes).some((v) => (v && typeof v === 'object' ? Object.values(v).some((x) => x !== null && x !== '') : !!v && v !== 'absent'));
+const typedIn = (notes) => Object.entries(notes).some(([k, v]) => k !== 'skipped' && (v && typeof v === 'object' ? Object.values(v).some((x) => x !== null && x !== '') : !!v && v !== 'absent'));
 
 /**
  * What the pages say about typed notes: `waiting`, the meetings with notes typed that never went on them (for the
@@ -434,19 +459,24 @@ export const notesWaiting = async (DB) => (await notesState(DB)).waiting;
  * → { read: { attendance, notes, motions, actions, ai }, approvedPrev, sent, kept, cleared }
  */
 export async function sendNotes(env, id, w, { now = Date.now() } = {}) {
-  const m = await meetingFor(env, id, w);
+  const held = await meetingFor(env, id, w);
   // (a meeting the chair ended ahead of its date has been held)
-  if (!isDate(m.date) || (m.date > todayEastern(now) && !m.live?.endedAt)) throw no('The minutes come in on the day of the meeting or after', 400);
-  if (m.minutes === 'approved') throw no('These minutes are approved, so they can’t change here', 409);
-  const row = await rowOf(env.DB, id);
-  const notes = parse(row?.data);
-  const lastSent = parse(row?.sent);
-  const anything = anythingIn(notes);
-  if (!anything && !lastSent.at) throw no('Nothing is typed yet', 400);
-  const claim = await env.DB.prepare('UPDATE board_minutes_notes SET sending = ?1 WHERE meeting_id = ?2 AND (sending IS NULL OR sending < ?3)').bind(iso(now), id, iso(now - 60000)).run();
-  if (!((claim?.meta?.changes ?? claim?.changes ?? 0) > 0)) throw no('These are being sent right now. Give it a moment.', 409);
+  if (!isDate(held.date) || (held.date > todayEastern(now) && !held.live?.endedAt)) throw no('The minutes come in on the day of the meeting or after', 400);
+  if (held.minutes === 'approved') throw no('These minutes are approved, so they can’t change here', 409);
+  const nothing = (x) => !anythingIn(parse(x?.data)) && !parse(x?.sent).at;
+  if (nothing(await rowOf(env.DB, id))) throw no('Nothing is typed yet', 400);
+  if (!await claimSending(env.DB, id, now)) throw no('These are being sent right now. Give it a moment.', 409);
   let fileId = '';
   try {
+    // (read with the claim held: a send or a correction that finished a moment ago is what this goes from)
+    const m = await getMeeting(env.DB, id);
+    const row = await rowOf(env.DB, id);
+    if (!m) throw no('That meeting is gone', 404);
+    if (m.minutes === 'approved') throw no('These minutes are approved, so they can’t change here', 409);
+    if (nothing(row)) throw no('Nothing is typed yet', 400);
+    const notes = parse(row?.data);
+    const lastSent = parse(row?.sent);
+    const anything = anythingIn(notes);
     const [people, meetings, settings, seats, checkins] = await Promise.all([minutesPeople(env.DB), listMeetings(env.DB), getSettings(env.DB), roster(env.DB, { withEmails: true }), checkinsOf(env.DB, id)]);
     const target = minutesTarget(m, meetings.filter((x) => !x.practice));
     const by = w.member?.email || w.adminEmail || '';
@@ -507,7 +537,7 @@ export async function sendNotes(env, id, w, { now = Date.now() } = {}) {
     if (fileId) await deleteFile(env, fileId).catch(() => {});
     throw err;
   } finally {
-    await env.DB.prepare('UPDATE board_minutes_notes SET sending = NULL WHERE meeting_id = ?').bind(id).run();
+    await releaseSending(env.DB, id);
   }
 }
 
@@ -522,5 +552,10 @@ export async function refreshMinutesFile(env, id, { now = Date.now() } = {}) {
   if (!m?.minutesFrom?.typed || !m.files.some((f) => f.id === last.fileId)) return false;
   const [people, meetings, settings, checkins] = await Promise.all([minutesPeople(env.DB), listMeetings(env.DB), getSettings(env.DB), checkinsOf(env.DB, id)]);
   const seen = applyNotes(m, last.notes, { sent: last, people, target: minutesTarget(m, meetings.filter((x) => !x.practice)), checkins, taker: last.taker || '', fileName: m.minutesFrom.name, now });
-  return rewriteFile(env, last.fileId, minutesDocx(seen.next, { meetings, quorum: settings.quorum, people, filled: { ...seen.record, by: last.by || '' } }));
+  // Who was there and the words under each item as the meeting has them, whatever going over the notes again would make of them:
+  // the notes only say which items carry words. It never writes anything but this file
+  const onMeeting = new Map((m.sections || []).flatMap((s) => [[s.id, s.notes || ''], ...s.items.map((it) => [it.id, it.notes || ''])]));
+  const words = Object.fromEntries(Object.keys(seen.record.words).map((k) => [k, onMeeting.get(k) ?? '']));
+  const guests = m.attendance.filter((p) => p.kind === 'guest' && (p.status === 'present' || p.status === 'remote')).map((p) => p.name);
+  return rewriteFile(env, last.fileId, minutesDocx(m, { meetings, quorum: settings.quorum, people, filled: { ...seen.record, words, guests, by: last.by || '' } }));
 }

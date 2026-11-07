@@ -870,3 +870,13 @@ test('a file the secretary sends that isn’t minutes doesn’t stay on the meet
   await assert.rejects(secretarySends(env, 'm_notes0001', new File(['nothing like minutes'], 'lunch order.pdf', { type: 'application/pdf' }), SECRETARY), (err) => !!err.status);
   assert.equal((await getMeeting(env.DB, 'm_notes0001')).files.length, 0);
 });
+
+test('saying a line isn’t a to-do changes nothing the minutes say: sent minutes stay sent, and a key that can’t be kept isn’t', async () => {
+  await saveNotes(env, 'm_notes0001', { changes: { 'n:i_budget': 'Words', 'r:alex-rivera': 'present' } }, SECRETARY);
+  await sendNotes(env, 'm_notes0001', SECRETARY);
+  const j = await saveNotes(env, 'm_notes0001', { changes: { skipped: 'i_budget:sam to call\ni_budget:sam to call\n  \n' } }, SECRETARY);
+  assert.equal(j.at, '');
+  assert.equal((await notesState(env.DB)).waiting.includes('m_notes0001'), false);
+  assert.equal((await notesFor(env, 'm_notes0001', SECRETARY, { quick: true })).notes.skipped, 'i_budget:sam to call');
+  assert.equal(cleanChange('skipped', ''), null);
+});

@@ -29,7 +29,7 @@ import { pdfLines, docxLines, wordsFromLines } from './board-words.js';
 import { BoardActivity } from './board-activity.js';
 import {
   isHeic, asJpeg, DOC_KINDS, meetingName, quarterOf, longDate, shortDate, timeRange, plural, todayEastern,
-  attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority, agendaItems, isLive, heldEarly,
+  attendanceCounts, openActions, nextMeeting, parseAgendaText, isDate, docxText, fileTitle, answerOf, repliesOf, agendaIsDraft, majority, agendaItems, isLive, heldEarly, minutesIn,
 } from './board-shared.js';
 import { welcomeHad, usableEmail, PROCESS_TEXT, dueOn, dueWords } from './board-shared.js';
 
@@ -339,7 +339,7 @@ function NextCard({ m, ctx }) {
       </div>
       <button class="btn btn-primary" onClick=${() => go({ meetingId: m.id })}>${today && !held ? 'Open for the meeting' : 'Open the meeting'}</button>
     </div>
-    ${held ? html`<p class="bh-nextline">${m.minutes === 'approved' ? html`<strong>The minutes are approved.</strong>` : m.minutesFrom ? html`<strong>The minutes are in.</strong> The board votes on them at the next meeting.` : html`<strong>Next:</strong> its minutes.`}</p>` : today ? html`<p class="bh-nextline">${now ? null : html`<strong>Today.</strong> `}Open it to present the agenda and its documents on the screen.</p>` : html`
+    ${held ? html`<p class="bh-nextline">${m.minutes === 'approved' ? html`<strong>The minutes are approved.</strong>` : minutesIn(m) ? html`<strong>The minutes are in.</strong> The board votes on them at the next meeting.` : html`<strong>Next:</strong> its minutes.`}</p>` : today ? html`<p class="bh-nextline">${now ? null : html`<strong>Today.</strong> `}Open it to present the agenda and its documents on the screen.</p>` : html`
       <ol class="bh-prep" aria-label="Getting ready">${prep.map((x) => html`<li class=${x.done ? 'is-done' : x === up ? 'is-next' : ''}><span class="bh-prep__mark" aria-hidden="true">${x.done ? CHECK : null}</span>${x.label}</li>`)}</ol>
       <p class="bh-nextline">${up ? html`<strong>Next:</strong> ${up.next}.` : html`<strong>Ready.</strong> The board was emailed the link ${ago(m.packetSentAt)}.`}</p>`}
     ${held ? (here.boardHere ? html`<p class="bh-rsvp"><strong>Who was there:</strong> ${here.boardHere} of ${plural(here.board, 'board member')}</p>` : null)
@@ -350,10 +350,12 @@ function NextCard({ m, ctx }) {
 /** The next meeting's agenda, as it reads, with where it came from */
 function AgendaPreview({ m, ctx }) {
   const src = agendaSource(m);
+  // Held today: it's what the meeting followed, not something ahead to change
+  const held = !isLive(m) && (!!m.live?.endedAt || (daysFrom(m.date) === 0 && meetingOver(m)));
   return html`<div class="card">
     <div class="bd-card-head--row">
-      <div class="bd-card-head" style="margin:0"><h3>Agenda for ${shortDate(m.date)} <span class=${`tag ${src.empty ? '' : src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span></h3>${src.text ? html`<p>${src.text}</p>` : null}</div>
-      <button class="btn btn-ghost btn-sm" onClick=${() => ctx.go({ meetingId: m.id })}>Change the agenda</button>
+      <div class="bd-card-head" style="margin:0"><h3>${held ? 'The agenda it followed' : `Agenda for ${shortDate(m.date)}`} ${held ? null : html`<span class=${`tag ${src.empty ? '' : src.label === 'From email' ? 'tag--info' : 'tag--success'}`}>${src.label}</span>`}</h3>${src.text && !held ? html`<p>${src.text}</p>` : null}</div>
+      ${held ? null : html`<button class="btn btn-ghost btn-sm" onClick=${() => ctx.go({ meetingId: m.id })}>Change the agenda</button>`}
     </div>
     <ol class="bh-agenda">${m.sections.map((s, si) => {
       // The items as the board reads them: an empty row left out, a live list called what it shows
@@ -412,6 +414,30 @@ function MeetingsTab({ ctx }) {
     ctx.load();
     addToast(`Done: ${a.text.slice(0, 60)}`, 'info', { label: 'Undo', fn: async () => { await call({ action: 'action-done', actionId: a.id, done: false }); ctx.load(); } });
   };
+  // Action item reminders: off until someone here turns them on (functions/api/_board-actions.js)
+  const [reminding, setReminding] = useState('');
+  const actionRemind = async (value, el) => {
+    const was = data.settings?.actionRemind || 'off';
+    if (reminding || value === was) { if (el) el.value = was; return; }
+    if (value === 'on') {
+      const people = [...new Set(actions.filter((a) => a.owner).map((a) => a.ownerName))];
+      const yes = await ask({ title: 'Turn reminders on?', text: `${people.length ? `${people.join(', ')} ${people.length === 1 ? 'gets' : 'get'} an email` : 'Each person with an action item gets an email'} a week before it’s due, the day before, then weekly for three weeks if it’s late, in business hours. Ticking it done stops them.`, yes: 'Turn reminders on', no: 'Cancel', careful: true });
+      if (!yes) { if (el) el.value = was; return; }
+    }
+    setReminding('switch');
+    const j = await call({ action: 'save-settings', settings: { actionRemind: value } });
+    setReminding('');
+    if (!j.ok) { addToast(j.error, 'error'); if (el) el.value = was; return; }
+    ctx.setData((x) => ({ ...x, settings: { ...x.settings, actionRemind: j.settings?.actionRemind ?? value } }));
+    addToast(value === 'on' ? 'Reminders are on' : 'Reminders are off', 'info');
+  };
+  const actionPreview = async () => {
+    setReminding('preview');
+    const j = await call({ action: 'action-remind-preview' });
+    setReminding('');
+    if (!j.ok || !j.sent) { addToast(j.error || j.errors?.[0] || 'That didn’t send', 'error'); return; }
+    addToast(`Sent to ${j.to?.[0] || 'you'}`, 'info');
+  };
   // New meeting turns into its date, ready to type; Cancel (or Esc) goes back to the button
   const stopAdding = () => { setAdding(false); setDate(''); requestAnimationFrame(() => document.querySelector('.bh-new')?.focus()); };
   const adder = adding ? html`<span class="bd-inline">
@@ -450,6 +476,10 @@ function MeetingsTab({ ctx }) {
         </div>
         <button class="btn btn-ghost btn-sm" onClick=${() => done(a)}>Mark done</button>
       </li>`)}</ul>
+      <div class="bd-inline bh-remind">
+        <label class="bh-remind__l"><span>Remind by email</span><select class="form-select" value=${data.settings?.actionRemind || 'off'} aria-busy=${reminding === 'switch' ? 'true' : null} onChange=${(e) => actionRemind(e.target.value, e.target)}><option value="off">Off</option><option value="on">On</option></select></label>
+        <button class="btn btn-ghost btn-sm" disabled=${!!reminding} onClick=${actionPreview}>${reminding === 'preview' ? 'Sending…' : 'Send me the email'}</button>
+      </div>
     </div>` : null}
     <${MailCard} data=${data} />
     <${SourcesLine} data=${data} />`;

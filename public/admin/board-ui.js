@@ -1405,6 +1405,9 @@ export const STYLES = `
   .bm-minutes-drop:focus-within { outline: 2px solid var(--color-text); outline-offset: 2px; }
   .bm-minutes-drop.is-done { border-style: solid; border-color: var(--tone-success-line, var(--color-border)); background: var(--tone-success-surface, var(--color-bg-card)); }
   .bm-minutes-drop.is-busy { cursor: progress; }
+  .bh-remind { padding: 0.6rem 1rem 0.75rem; border-top: 1px solid var(--color-border, #E7E5DE); }
+  .bh-remind__l { display: inline-flex; align-items: center; gap: 0.5rem; font-size: var(--fs-sm); color: var(--color-text-secondary); white-space: nowrap; }
+  .bh-remind__l .form-select { width: auto; min-height: 36px; padding-block: 0.3rem; }
   .bm-minutes-drop--typed, .bm-minutes-drop--typed:hover { cursor: default; border-color: var(--tone-success-line, var(--color-border)); background: var(--tone-success-surface, var(--color-bg-card)); }
   .bm-minutes-drop__icon { flex: none; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: var(--color-primary); color: #1F201C; }
   .bm-minutes-drop.is-done .bm-minutes-drop__icon { background: var(--tone-success-bg); color: var(--tone-success-fg); }

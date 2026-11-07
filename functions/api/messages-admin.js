@@ -53,6 +53,8 @@ import { medicalNote, fallbackMedicalNote } from './_applicant-comms.js';
 import { activity, comingUp, deliverability, deliveryFacts, emailDetail, invitesOut } from './_messages-activity.js';
 import { applicantEmail as advisoryThanks, staffEmail as advisoryStaff } from './_advisory-applications.js';
 import { packetEmail, welcomeEmail, reminderEmail, minutesEmail, inviteNotes } from './_board.js';
+import { correctionEmail, correctionDecidedEmail } from './_board-corrections.js';
+import { actionReminderEmail } from './_board-actions.js';
 import * as asks from './_board-asks.js';
 import { organizerFor } from './_board-invite.js';
 import { newMeeting, meetingName } from '../../public/admin/board-shared.js';
@@ -620,6 +622,21 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       return email(minutesEmail({ ...sampleBoardMeeting(), minutes: 'draft' }, { next: { date: '2026-12-03', start: '08:00', end: '10:00' } }), {
         from: BOARD_FROM, to: 'Each active board member with an email on People → Board',
         note: 'Peter or Holly sends it from a meeting’s After step once the minutes are shared. Once the board approves them, it says “Minutes” and when they were approved.',
+      });
+    case 'board-correction':
+      return email(correctionEmail(sampleBoardMeeting(), { by: 'Alex Rivera', where: 'Events Committee' }), {
+        from: BOARD_FROM, to: 'The Board Secretary and Board’s admins, each on their own',
+        note: 'It goes when a board member suggests a correction to draft minutes on the board page. It says who and where, never the words. One press on the page makes it, or keeps the minutes as they are.',
+      });
+    case 'board-correction-decided':
+      return email(correctionDecidedEmail(sampleBoardMeeting(), { made: true, by: 'Jordan Ellis' }), {
+        from: BOARD_FROM, to: 'The board member who suggested the correction',
+        note: 'It goes when the secretary or a founder decides. Kept as it is, it says “The minutes stay as they are”, and any reason stays on the page.',
+      });
+    case 'board-action-reminder':
+      return email(actionReminderEmail({ name: 'Alex Rivera', today: '2026-12-01', rows: [{ text: 'Golf tournament: Alex to confirm the date', date: '2026-12-08' }, { text: 'Send the sponsor list to the board', date: '2027-01-14', soft: true }, { secret: true, text: '', date: '2026-12-02' }] }), {
+        from: BOARD_FROM, to: 'Each person with an open action item on the board page, one email with all of theirs',
+        note: 'Off until an admin turns it on, under Open action items in Board. A week before it’s due, the day before, then weekly for three weeks if it’s late, in business hours. An item with no date is due by the next meeting. Ticking it done on the board page stops it. A to-do from a board-only item is never quoted.',
       });
     case 'board-meeting-invite': {
       const m = sampleBoardMeeting();

@@ -2414,12 +2414,12 @@ test('the agenda email sends the board to the last minutes before the vote, and 
   for (const body of [mail.html, mail.text]) {
     assert.match(body, /Read before the vote/);
     assert.match(body, /The minutes of the Q1 2027 Board Meeting/);
-    assert.match(body, /Reply if anything needs correcting/);
+    assert.match(body, /Suggest a correction on the page/);
     assert.match(body, /\/board\/m_prev00001/);
     assert.doesNotMatch(body, /#\/meetings/);
   }
   const none = packetEmail(m, {});
-  for (const body of [none.html, none.text]) assert.doesNotMatch(body, /Read before the vote|Reply if anything/);
+  for (const body of [none.html, none.text]) assert.doesNotMatch(body, /Read before the vote|Suggest a correction/);
 });
 
 test('from one quarter to the next: typed minutes draft onto the next agenda, reach its email, and leave it once approved', async () => {

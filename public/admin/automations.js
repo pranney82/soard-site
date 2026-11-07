@@ -856,6 +856,17 @@ const MAP = { t: 'SOARD', children: [
           } },
       ]},
       { t: 'Meetings', children: [
+        { t: 'Action item reminders', s: 'off', k: 'schedule',
+          when: 'Hourly on the live hub’s heartbeat, weekdays 8 AM to 7 PM Eastern that aren’t holidays, once an admin turns it on under Open action items in Board.',
+          does: 'Emails each person with an open action item, one email with all of theirs: a week before it’s due, the day before, then weekly for three weeks if it’s late. One with no date is due by the next meeting. Ticking it done on the board page stops it. A to-do from a board-only item is never quoted.',
+          touches: ['Resend', 'D1'], where: 'functions/api/_board-actions.js maybeRemindActions (via _board.js maybeRunBoard)',
+          info: 'Off until an admin turns it on. Send me the email, beside the switch, shows what one looks like.',
+          live: (f) => {
+            const g = f.boardSigning;
+            if (!g) return null;
+            if (g.actionRemind !== 'on') return OFF('Off. Open action items in Board turns it on.');
+            return ON(`${plural(g.actionReminders || 0, 'reminder')} sent.`, g.actionRemindersLast);
+          } },
         { t: 'Answers to the board meeting invites', s: 'live', k: 'schedule',
           when: 'Every hour on the live hub’s heartbeat, and whenever Peter or Holly opens Board (if the last look is over 10 minutes old).',
           does: 'Reads each invite Board sent for a meeting ahead, from the organizer’s Google calendar: who is on it and how each board member answered (yes, no or maybe), the only answer SOARD goes by. A day, time or place changed on the invite in Google Calendar goes back to Board’s (Google emails the guests the correction, once for each change). An invite deleted there is marked on its meeting, which stays, and Board offers to send it again. It also looks on Peter’s and Holly’s calendars for board meeting invites Board didn’t send: another one on a meeting’s day shows on that meeting, to be cancelled, and one on a day without a meeting shows on Meetings, with a button to add it.',

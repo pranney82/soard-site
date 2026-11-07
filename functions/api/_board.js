@@ -98,6 +98,15 @@ const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS board_votes (meeting_id TEXT NOT NULL, motion_id TEXT NOT NULL, slug TEXT NOT NULL, name TEXT, vote TEXT NOT NULL, at TEXT, PRIMARY KEY (meeting_id, motion_id, slug))",
   // The secretary's notes typed beside the agenda, not on the meeting until they're sent (./_board-notes.js)
   'CREATE TABLE IF NOT EXISTS board_minutes_notes (meeting_id TEXT PRIMARY KEY, data TEXT NOT NULL, sent TEXT, updated_at TEXT, updated_by TEXT, sending TEXT, took TEXT)',
+  // Corrections the board suggests to minutes it hasn't approved (./_board-corrections.js)
+  `CREATE TABLE IF NOT EXISTS board_minutes_corrections (id TEXT PRIMARY KEY, meeting_id TEXT NOT NULL, target TEXT NOT NULL, kind TEXT NOT NULL, was TEXT, words TEXT,
+    by_slug TEXT, by_name TEXT, by_email TEXT, at TEXT, state TEXT NOT NULL, decided_by TEXT, decided_at TEXT, reason TEXT)`,
+  'CREATE INDEX IF NOT EXISTS board_minutes_corrections_meeting ON board_minutes_corrections (meeting_id, state)',
+  // The secretary's signature on approved minutes, and the signed copy made from it (./_board-minutes-sign.js)
+  `CREATE TABLE IF NOT EXISTS board_minutes_signed (meeting_id TEXT PRIMARY KEY, slug TEXT, name TEXT, title TEXT, at TEXT, how TEXT, mark TEXT, hash TEXT, signer_email TEXT, ip TEXT,
+    device TEXT, signin_at TEXT, consent_hash TEXT, event_hash TEXT, file_id TEXT, record_tries INTEGER, record_claim_at TEXT)`,
+  // Which reminders each action item has had (./_board-actions.js)
+  'CREATE TABLE IF NOT EXISTS board_action_reminders (action_id TEXT NOT NULL, stage TEXT NOT NULL, at TEXT, PRIMARY KEY (action_id, stage))',
 ];
 const _ready = new WeakSet();
 export async function ensureSchema(DB) {
@@ -144,6 +153,8 @@ export async function getSettings(DB) {
     // Remind by email (Board → Members): those who haven't signed this year's papers asked again by themselves, every
     // 3 days or weekly; off until an admin turns it on (./_board-sign.js maybeRemindSigners)
     remind: ['3', '7'].includes(String(s.remind)) ? String(s.remind) : 'off',
+    // Action item reminders by email: off until an admin turns it on (./_board-actions.js)
+    actionRemind: s.actionRemind === 'on' ? 'on' : 'off',
     // What SOARD keeps for running itself; what's over it can go to makeovers (Peter, Nov 4 2026: $500K, "its arbitrary")
     operatingBalance: Number(s.operatingBalance) > 0 ? Math.round(Number(s.operatingBalance)) : OPERATING_BALANCE,
   };
@@ -161,6 +172,7 @@ export async function saveSettings(DB, patch, by) {
   if (patch.invitesFrom !== undefined) next.invitesFrom = normEmail(patch.invitesFrom);
   if (patch.asks !== undefined) next.asks = ['on', 'off', 'test'].includes(patch.asks) ? patch.asks : 'test';
   if (patch.remind !== undefined) next.remind = ['3', '7'].includes(String(patch.remind)) ? String(patch.remind) : 'off';
+  if (patch.actionRemind !== undefined) next.actionRemind = patch.actionRemind === 'on' ? 'on' : 'off';
   if (patch.quorum !== undefined) next.quorum = Math.max(0, Math.min(50, Math.round(Number(patch.quorum) || 0)));
   if (patch.operatingBalance !== undefined) {
     const v = Math.round(Number(String(patch.operatingBalance).replace(/[$,\s]/g, '')));
@@ -421,6 +433,8 @@ export async function deleteMeeting(env, id) {
   for (const f of files) await deleteFile(env, f.id);
   await env.DB.prepare('DELETE FROM board_rsvps WHERE meeting_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM board_minutes_notes WHERE meeting_id = ?').bind(id).run();
+  await env.DB.prepare('DELETE FROM board_minutes_corrections WHERE meeting_id = ?').bind(id).run();
+  await env.DB.prepare('DELETE FROM board_minutes_signed WHERE meeting_id = ?').bind(id).run();
   await env.DB.prepare('DELETE FROM board_meetings WHERE id = ?').bind(id).run();
 }
 
@@ -797,7 +811,7 @@ export async function fileLocked(DB, id) {
   await ensureSchema(DB);
   const row = await DB.prepare('SELECT owner_type, owner_id FROM board_files WHERE id = ?').bind(id).first();
   if (!row) return '';
-  if (row.owner_type === 'signed' || row.owner_type === 'record') return 'A signed copy is SOARD’s record of a signature, so it’s kept';
+  if (row.owner_type === 'signed' || row.owner_type === 'record' || await DB.prepare('SELECT 1 AS y FROM board_minutes_signed WHERE file_id = ?').bind(id).first()) return 'A signed copy is SOARD’s record of a signature, so it’s kept';
   if (row.owner_type === 'doc' && (await everSigned(DB, row.owner_id))) return 'The board signed this paper, so its file is kept with their signatures. Add a new file instead; this one stays on record.';
   return '';
 }
@@ -972,14 +986,18 @@ export async function signDoc(DB, docId, member, name, { version = null, evidenc
   }, { same: (was) => (onPage(was.how) && (Number(was.version) || 0) === on ? was : null) });
   // (Sign pressed twice, or from two devices: the first one is the signature)
   if (r?.same) return { docId, year, name: r.same.name, at: r.same.at, how: r.same.how, version: on, copy: null, drive: null };
-  if (mark) {
-    // Their adopted signature and initials, for next time; agreeing to sign electronically, the first time
-    const first = !marks?.consent_at;
-    await DB.prepare('INSERT INTO board_member_marks (slug, mark, initials, consent_at, consent_ip, consent_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(slug) DO UPDATE SET mark = excluded.mark, initials = excluded.initials, consent_at = COALESCE(board_member_marks.consent_at, excluded.consent_at), consent_ip = COALESCE(board_member_marks.consent_ip, excluded.consent_ip), consent_hash = COALESCE(board_member_marks.consent_hash, excluded.consent_hash), updated_at = excluded.updated_at')
-      .bind(member.slug, JSON.stringify({ type: mark.type, style: mark.style, text: typed, ...(mark.path ? { path: mark.path } : {}) }), mark.initials, first ? at : null, first ? evidence.ip || '' : null, first ? consentHash : null, at).run();
-    if (first) await appendEvents(DB, async () => ({ events: [{ kind: 'consented', docId, slug: member.slug, year, version: on, at, by: member.email || '', ip: evidence.ip, device: evidence.device, detail: { consentHash, text: CONSENT_TEXT } }] }));
-  }
+  if (mark) await keepMark(DB, member, { mark, typed, at, first: !marks?.consent_at, evidence, consentHash, docId, year, version: on });
   return { docId, year, name: typed, at, how, version: on, mark: markKept, fields, copy: null, drive: null };
+}
+
+/**
+ * Their adopted signature and initials, for next time, and agreeing to sign electronically the first time (`first`).
+ * Shared by papers and the minutes (./_board-minutes-sign.js).
+ */
+export async function keepMark(DB, member, { mark, typed, at, first, evidence = {}, consentHash, docId, year, version }) {
+  await DB.prepare('INSERT INTO board_member_marks (slug, mark, initials, consent_at, consent_ip, consent_hash, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?) ON CONFLICT(slug) DO UPDATE SET mark = excluded.mark, initials = excluded.initials, consent_at = COALESCE(board_member_marks.consent_at, excluded.consent_at), consent_ip = COALESCE(board_member_marks.consent_ip, excluded.consent_ip), consent_hash = COALESCE(board_member_marks.consent_hash, excluded.consent_hash), updated_at = excluded.updated_at')
+    .bind(member.slug, JSON.stringify({ type: mark.type, style: mark.style, text: typed, ...(mark.path ? { path: mark.path } : {}) }), mark.initials, first ? at : null, first ? evidence.ip || '' : null, first ? consentHash : null, at).run();
+  if (first) await appendEvents(DB, async () => ({ events: [{ kind: 'consented', docId, slug: member.slug, year, version, at, by: member.email || '', ip: evidence.ip, device: evidence.device, detail: { consentHash, text: CONSENT_TEXT } }] }));
 }
 
 /**
@@ -1579,7 +1597,7 @@ export function packetEmail(m, { test = false, files = [], private: hidden = 0, 
   const signText = !toSign.length ? '' : `Still to sign for ${year}: ${papers.map((t) => `${t.title}${dueNote(t.due)}`).join(', ')}. ${signHow}\n${documentsUrl}`;
   // The last meeting's minutes, up for a vote at this one: read first, on the board page. Replies go to Board's admins
   const minutesName = minutes ? `The minutes of the ${meetingName(minutes).replace(/^the\s+/i, '')}` : '';
-  const minutesHow = 'The board votes on them at this meeting. Reply if anything needs correcting.';
+  const minutesHow = 'The board votes on them at this meeting. Anything wrong? Suggest a correction on the page.';
   const minutesHtml = !minutes ? '' : rowTitle('Read before the vote')
     + `<p class="ink" style="margin:0;">${esc(minutesName)}</p>` + small(esc(minutesHow))
     + `<p style="margin:8px 0 0;">${link('Read the minutes', meetingUrl(minutes))}</p>`;
@@ -1816,7 +1834,7 @@ export function minutesEmail(m, { test = false, next = null } = {}) {
   const approved = m.minutes === 'approved';
   const intro = approved
     ? `The board approved them${m.approvedOn ? ` on ${longDate(m.approvedOn)}` : ''}.`
-    : 'The board votes on them at the next meeting. Reply if anything needs correcting.';
+    : 'The board votes on them at the next meeting. Anything wrong? Suggest a correction on the page.';
   return {
     subject: `${test ? '[Preview] ' : ''}${approved ? 'Minutes' : 'Draft minutes'}: ${name}, ${shortDate(m.date)}`,
     html: emailShell({
@@ -2308,6 +2326,7 @@ export async function portalData(env, { member = null, admin = false, adminEmail
   const pendingInvite = pending && mine ? repliesOf(pending)[mine] || '' : '';
   // An admin looking at the board page: today's practice meeting, if they've started one (members never see it)
   const practice = admin && !member ? await todayPractice(env.DB, now) : null;
+  const staffSlug = admin && !member ? people.staff.find((p) => String(adminEmail).toLowerCase().startsWith(`${String(p.name).split(/\s+/)[0].toLowerCase()}@`))?.slug || null : null;
   return {
     ...(admin && !member ? {
       practice: practice ? { id: practice.id, title: meetingName(practice), date: practice.date, live: practice.live } : null,
@@ -2336,7 +2355,8 @@ export async function portalData(env, { member = null, admin = false, adminEmail
     }),
     next: nextMeeting(shared, today)?.id || null,
     quorum: settings.quorum,
-    actions: openActions(shared).map((a) => ({ ...a, mine: !!mine && a.owner === mine })),
+    // (a founder has no member sign-in: their own come by who they are on People, the same as a report they present)
+    actions: openActions(shared).map((a) => ({ ...a, mine: !!(mine || staffSlug) && a.owner === (mine || staffSlug) })),
     // Who has signed is Board's to see: a member sees how many of the board have, and their own (its copy, if one's in)
     // (and whether they signed an earlier wording, before the board was asked to sign again)
     docs: docs.filter((d) => d.shared || !member).map(({ signed, earlier, before, prior, kept, declined, wordsBy, ...d }) => ({
@@ -2762,6 +2782,8 @@ export async function maybeRereadEmailAgendas(env, { now = Date.now() } = {}) {
  *   - every ten minutes, agendas nobody wrote kept on the template (maybeTemplateAgendas), a meeting's
  *     numbers locked on its day (maybeLockNumbers), and
  *     who joined a Google Meet that ended (./_board-attendance.js)
+ *   - hourly in business hours when it's on, action item reminders (./_board-actions.js); a signed copy of the minutes
+ *     that didn't get made as it was signed (./_board-minutes-sign.js)
  *   - last, board mail (./_board-mail.js): every minute while there's a backlog, hourly after; then minutes read without
  *     Workers AI read again for their motions and action items (./_board-minutes.js maybeFinishMinutes)
  *   - hourly, QuickBooks' revenue and expenses for the year so far (./_quickbooks.js)
@@ -2794,6 +2816,9 @@ export async function maybeRunBoard(env, { fetchImpl = fetch, now = Date.now() }
     await (await import('./_board-attendance.js')).maybeFillAttendance(env, { fetchImpl, now });
     // Remind by email, when it's on: its own try, so a failure there never holds up mail or the banks
     try { await (await import('./_board-sign.js')).maybeRemindSigners(env, { now }); } catch (err) { console.error('[board] reminders', err?.message || err); }
+    try { await (await import('./_board-actions.js')).maybeRemindActions(env, { now }); } catch (err) { console.error('[board] action reminders', err?.message || err); }
+    // A signed copy of the minutes that didn't get made as it was signed
+    try { await (await import('./_board-minutes-sign.js')).maybeFinishSignedMinutes(env, { now }); } catch (err) { console.error('[board] signed minutes', err?.message || err); }
     // Last: board mail (it reads for seconds while it has a backlog), then minutes read without Workers AI (it ran out
     // of time): their motions and action items, one meeting at a time
     await maybeReadBoardMail(env, { fetchImpl, now });

@@ -21,6 +21,7 @@
 import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
 import { uid, clock, endedClock } from '../board-shared.js';
 import { minutesOutline, approveWords, noteLines } from '../board-minutes-template.js';
+import { findToDos } from '../board-todos.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -37,6 +38,7 @@ const RESULTS = [['passed', 'Passed'], ['failed', 'Failed'], ['tabled', 'Tabled'
 const RESULT_WORDS = { passed: 'Passed', failed: 'Failed', tabled: 'Tabled' };
 const reduceMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 const blank = (s) => !String(s ?? '').trim();
+const shortDay = (d) => new Date(`${d}T12:00:00Z`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' });
 const number = (n) => typeof n === 'number';
 const sameWords = (a, b) => String(a || '').replace(/\s+/g, ' ').trim().toLowerCase() === String(b || '').replace(/\s+/g, ' ').trim().toLowerCase();
 const isWords = (k) => k === 'guests' || k.startsWith('n:');
@@ -229,7 +231,7 @@ function useDraft(id, onMeeting) {
       known.current = { ...j.notes };
       setVals((was) => laid(j.notes, was, dirty.current));
       setTimes((t) => ({ at: dirty.current && pending() ? t.at : j.at, sent: j.sent }));
-      setBase((b) => ({ roll: j.roll || b.roll, approving: j.approving ?? b.approving, approvingWaiting: j.approvingWaiting ?? b.approvingWaiting, on: j.on || b.on, fixed: j.fixed || b.fixed }));
+      setBase((b) => ({ roll: j.roll || b.roll, approving: j.approving ?? b.approving, approvingWaiting: j.approvingWaiting ?? b.approvingWaiting, approvingCorrections: j.approvingCorrections ?? b.approvingCorrections, on: j.on || b.on, fixed: j.fixed || b.fixed }));
       setLoaded(true);
       lastSeen.current = { roll: j.roll, approving: j.approving ?? lastSeen.current.approving, at: j.at, sent: j.sent };
       remember();
@@ -278,8 +280,8 @@ function useDraft(id, onMeeting) {
     };
   }, [id]);
 
-  const changed = () => {
-    setTimes((t) => ({ ...t, at: new Date().toISOString() }));
+  const changed = (quiet = false) => {
+    if (!quiet) setTimes((t) => ({ ...t, at: new Date().toISOString() }));
     setState('saving');
     const now = Date.now();
     if (!first.current) first.current = now;
@@ -293,7 +295,8 @@ function useDraft(id, onMeeting) {
     dirty.current = { ...dirty.current, [key]: e };
     localPut(id, key, e);
     setVals((was) => { const n = { ...was }; if (v === null) delete n[key]; else n[key] = v; return n; });
-    changed();
+    // (a line that isn't a to-do changes nothing the minutes say: nothing new to send)
+    changed(key === 'skipped');
   };
   /** One field of a vote or an action item: only it is sent, so a field set elsewhere stays */
   const setField = (key, patch) => {
@@ -488,6 +491,8 @@ export function NotesPanel({ m, ctx, Icon, onClose, thanks, mine }) {
   const ro = m.minutes === 'approved';
   const [sending, setSending] = useState(false);
   const [needs, setNeeds] = useState(false);
+  // Send pressed with to-dos found in the notes: what it was going to send with, until they're added or set aside
+  const [askingToDos, setAskingToDos] = useState(null);
   const [phone, setPhone] = useState(() => matchMedia('(max-width: 900px)').matches);
   const root = useRef(null);
   // Closed and opened again, it's where it was (on a phone the sheet has to close to read the agenda)
@@ -544,6 +549,18 @@ export function NotesPanel({ m, ctx, Icon, onClose, thanks, mine }) {
   // Notes typed under an item that's since come off the agenda: never dropped without a word
   const left = Object.keys(vals).filter((k) => k.startsWith('n:') && !itemIds.has(k.slice(2)) && !partIds.has(k.slice(2)) && !blank(vals[k]));
 
+  // Lines in the notes that read as to-dos and aren't action items yet (../board-todos.js): offered, never added by themselves
+  const nextDate = useMemo(() => data.meetings.filter((x) => x.date > m.date).map((x) => x.date).sort()[0] || '', [data.meetings, m.date]);
+  const found = useMemo(() => (ro || !loaded ? [] : findToDos(m, vals, { people: everyone, next: nextDate })), [ro, loaded, m, vals, everyone, nextDate]);
+  const addFound = (f) => set(`a:${uid('a_')}`, { text: f.text, owner: f.owner, ownerName: f.ownerName, due: f.due, from: f.from });
+  const skipFound = (list) => set('skipped', [...String(vals.skipped || '').split('\n').filter(Boolean), ...list.map((f) => f.key)].join('\n'));
+  useEffect(() => { if (askingToDos && !found.length) setAskingToDos(null); }, [askingToDos, found.length]);
+  // Send gives way to the question: the focus goes to it, so it's read out and the keyboard is on the answer
+  const asking = !!askingToDos;
+  useEffect(() => { if (asking) document.querySelector('.bn-ask__do button')?.focus({ preventScroll: true }); }, [asking]);
+  // A line dealt with leaves the list: the focus stays on what's next
+  const onFound = () => requestAnimationFrame(() => (document.querySelector('.bn-found button') || document.querySelector('[data-add="a"]'))?.focus({ preventScroll: true }));
+
   // What a send needs first: a vote written on but not how it went, a row with no words
   const issues = {};
   for (const it of items) {
@@ -572,7 +589,7 @@ export function NotesPanel({ m, ctx, Icon, onClose, thanks, mine }) {
     if (k[0] === 'a') return !blank(v?.text);
     return k[0] === 'r' ? v !== 'absent' : !!v;
   });
-  const anyWords = Object.values(vals).some((v) => (v && typeof v === 'object' ? rowFilled(v) : !blank(v)));
+  const anyWords = Object.entries(vals).some(([k, v]) => k !== 'skipped' && (v && typeof v === 'object' ? rowFilled(v) : !blank(v)));
   // (a meeting the chair ended ahead of its date has been held)
   const canSend = m.date <= data.today || !!m.live?.endedAt;
   const sent = times.sent;
@@ -678,11 +695,21 @@ export function NotesPanel({ m, ctx, Icon, onClose, thanks, mine }) {
       say('The meeting this approves has typed notes that were never sent. Approving it closes them.', 'warn', { stay: true, label: 'Send anyway', run: () => sendNow.current({ ...fine, closes: true }) });
       return;
     }
+    if (base.approvingCorrections && minutesItem && vals[`m:${minutesItem.id}`]?.result === 'passed' && !fine.corrections) {
+      say(`${base.approvingCorrections === 1 ? 'A correction' : `${base.approvingCorrections} corrections`} to the minutes this approves ${base.approvingCorrections === 1 ? 'is' : 'are'} still waiting. Approving them leaves ${base.approvingCorrections === 1 ? 'it' : 'those'} out.`, 'warn', { stay: true, label: 'Send anyway', run: () => sendNow.current({ ...fine, corrections: true }) });
+      return;
+    }
     if (left.length && !fine.left) {
       jump('bn-left');
       say('Notes under an item that’s off the agenda won’t go in.', 'warn', { stay: true, label: 'Send anyway', run: () => sendNow.current({ ...fine, left: true }) });
       return;
     }
+    if (found.length && !fine.todos) {
+      jump('bn-found');
+      setAskingToDos(fine);
+      return;
+    }
+    setAskingToDos(null);
     setSending(true);
     let j = null;
     try {
@@ -703,7 +730,7 @@ export function NotesPanel({ m, ctx, Icon, onClose, thanks, mine }) {
     if (j.cleared) { say('Done. Everything you sent is back off the meeting.'); return; }
     const got = thanks(j.read);
     const approved = j.approvedPrev ? ' The minutes that vote approved now show as approved.' : j.withdrawn ? ' That vote no longer approves the last meeting’s minutes, so they’re back to draft.' : '';
-    const stayed = j.kept ? ` A founder changed ${j.kept === 1 ? 'one thing' : `${j.kept} things`} since, so ${j.kept === 1 ? 'it stays' : 'they stay'} as they left ${j.kept === 1 ? 'it' : 'them'}.` : '';
+    const stayed = j.kept ? ` ${j.kept === 1 ? 'One thing' : `${j.kept} things`} changed on the meeting since, so ${j.kept === 1 ? 'it stays as it is' : 'they stay as they are'}.` : '';
     say(`Thank you. Board has the minutes${got ? `: ${got}` : ''}.${approved}${stayed}`);
   };
 
@@ -741,7 +768,7 @@ export function NotesPanel({ m, ctx, Icon, onClose, thanks, mine }) {
           const motion = motionOf(it);
           return html`<div class="bn-item" key=${it.id}>
             <p class="bn-item__t"><span class="bn-item__n">${it.label}</span><span>${it.title}${it.presenter ? html`<small>${it.presenter}</small>` : null}</span></p>
-            ${(base.fixed || []).includes(it.id) ? html`<p class="bn-had"><strong>A founder changed this since you sent it:</strong> ${it.notes || 'Nothing under it now.'}<span>That’s what the meeting keeps.</span></p>`
+            ${(base.fixed || []).includes(it.id) ? html`<p class="bn-had"><strong>This changed on the meeting since you sent it:</strong> ${it.notes || 'Nothing under it now.'}<span>That’s what the meeting keeps.</span></p>`
               : it.notes && !(base.on || []).includes(it.id) && !blank(vals[`n:${it.id}`]) && !sameNote(it.notes, vals[`n:${it.id}`]) ? html`<p class="bn-had"><strong>On the agenda now:</strong> ${it.notes}${ro ? null : html`<span>Your notes take its place when you send them.</span>`}</p>` : null}
             ${motion ? html`<p class="bn-motion">${motion}</p><${Vote} id=${it.id} v=${vals[key]} draft=${draft} k=${key} ro=${ro} counts=${!it.minutes} taken=${takenOn(motion)} need=${needs ? issues[it.id] : ''} put=${(patch) => setField(key, { text: motion, ...patch })} />` : null}
             <${Words} draft=${draft} k=${`n:${it.id}`} label=${`Notes on ${it.title}`} ro=${ro} onFocus=${() => show(`i-${it.id}`)} />
@@ -772,6 +799,15 @@ export function NotesPanel({ m, ctx, Icon, onClose, thanks, mine }) {
 
       <section class="bn-sec">
         <div class="bn-sec__h"><h3>Action items</h3></div>
+        ${found.length ? html`<div class="bn-found" id="bn-found" role="group" aria-labelledby="bn-found-t" tabindex="-1">
+          <p class="bn-found__t" id="bn-found-t">${found.length === 1 ? 'This line in your notes reads like a to-do' : `These ${found.length} lines in your notes read like to-dos`}</p>
+          <ul>${found.map((f) => html`<li key=${f.key}>
+            <p>${f.text}</p>
+            ${f.ownerName || f.due ? html`<small>${[f.ownerName, f.due ? `by ${shortDay(f.due)}` : ''].filter(Boolean).join(' · ')}</small>` : null}
+            <div class="bn-found__do"><button type="button" class="bp-mini" aria-label=${`Add it: ${f.text.slice(0, 80)}`} onClick=${() => { addFound(f); onFound(); }}><${Icon} name="plus" size=${16} />Add it</button><button type="button" class="bp-mini" aria-label=${`Not a to-do: ${f.text.slice(0, 80)}`} onClick=${() => { skipFound([f]); onFound(); }}>Not a to-do</button></div>
+          </li>`)}</ul>
+          ${found.length > 1 ? html`<button type="button" class="bp-mini bn-found__all" onClick=${() => { found.forEach(addFound); onFound(); }}>Add all ${found.length}</button>` : null}
+        </div>` : null}
         ${actionsOn.length ? html`<ul class="bn-on" aria-label="Already on the meeting">${actionsOn.map((x) => html`<li key=${x.id}>${x.text}${x.ownerName ? ` (${x.ownerName})` : ''}</li>`)}</ul>` : null}
         ${todo.map((k) => { const id = k.slice(2); return html`<div class="bn-row" key=${k} data-row=${k} id=${`bn-a-${id}`}>
           <${Grow} label="What needs doing" placeholder="What needs doing" rows=${1} max=${MAX_LINE} ro=${ro} value=${vals[k]?.text || ''} onInput=${(text) => setField(k, { text })} />
@@ -796,6 +832,13 @@ export function NotesPanel({ m, ctx, Icon, onClose, thanks, mine }) {
 
     <footer class="bn-foot">
       ${ro ? html`<p class="bn-muted">Copy anything that’s needed from here.</p>`
+        : canSend && askingToDos && found.length ? html`<div role="group" aria-labelledby="bn-ask-t">
+          <p class="bn-ask" id="bn-ask-t">${found.length === 1 ? 'One line reads like a to-do and isn’t an action item yet.' : `${found.length} lines read like to-dos and aren’t action items yet.`}</p>
+          <div class="bn-ask__do">
+            <button type="button" class="bp-btn bp-btn--primary bn-send" onClick=${() => { const fine = askingToDos; found.forEach(addFound); requestAnimationFrame(() => sendNow.current({ ...fine, todos: true })); }}>${found.length === 1 ? 'Add it and send' : 'Add them and send'}</button>
+            <button type="button" class="bp-btn" onClick=${() => { const fine = askingToDos; skipFound(found); requestAnimationFrame(() => sendNow.current({ ...fine, todos: true })); }}>Send without</button>
+          </div>
+        </div>`
         : canSend ? html`<button type="button" class="bp-btn bp-btn--primary bn-send" disabled=${sending || !loaded || (!anyWords && !sent) || (sent && !unsent)} onClick=${() => send()}>${sending ? 'Sending…' : sent ? (unsent ? 'Send the changes' : 'Sent') : 'Send the minutes'}</button>`
         : html`<p class="bn-muted">You can send these on the day of the meeting.</p>`}
     </footer>

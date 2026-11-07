@@ -33,7 +33,7 @@ import {
   PersonPicker, ItemChooser, DocChip, pickable, Face, ShowsPicker,
 } from './board-ui.js';
 import {
-  RESULTS, FILE_KINDS, LIVE, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
+  RESULTS, FILE_KINDS, LIVE, minutesIn, cleanMeeting, meetingName, longDate, shortDate, timeRange, plural, uid, clock,
   todayEastern, attendanceCounts, quorumFor, majority, answerOf, repliesOf, fileTitle, mergeMeeting, nextMeeting, agendaIsDraft,
   isLive, agendaItems, isFilled, hasSince, reportsOn, showsOf, slidesOf, booksDraw, isStatement, LIVE_TITLES, SHOW_KINDS, tallyText, cleanLive, presentersOf, namesText, itemFiles, guessItem, deckOf, stopIndex, liveOfStop, pagesText, MORE,
   sectionPlan, sectionOf, sectionClock, clockText, facesOf, itemDocs, docTitle, formatOf, docsOf, looseFiles, NOTHING_NEW, isNothingNew, copyOfItem, minutesToRead, packetDocs, minutesFileOf, ownMinutesFile,
@@ -361,7 +361,7 @@ export function MeetingEditor({ meeting, ctx, step: asked }) {
 /** The time in Atlanta now, "HH:MM" */
 const nowEastern = () => new Intl.DateTimeFormat('en-GB', { timeZone: 'America/New_York', hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date());
 /** On its day, a meeting is over once its minutes are in or its end time has passed: Board's home and this page say the same */
-export const meetingOver = (m) => !!m.minutesFrom || (/^\d{2}:\d{2}$/.test(m.end || '') && nowEastern() >= m.end);
+export const meetingOver = (m) => minutesIn(m) || (/^\d{2}:\d{2}$/.test(m.end || '') && nowEastern() >= m.end);
 
 /**
  * Where a meeting stands, step by step, for the line under its name: the agenda, the invite, the approval, the board page, the
@@ -1480,12 +1480,17 @@ function stopWords(stop, m, items, pages, files, shows = {}, words = {}) {
 // ─── After ──────────────────────────────────────────────────────────
 
 /** There's something to read once the minutes are in: read in, or their file here (an approval is not minutes, nor an item's notes before the meeting) */
-const minutesIn = (m) => !!m.minutesFrom || !!ownMinutesFile(m);
 
 /** Who typed minutes sent from the notes on the board page, as the send kept it, in words: never a guess at whoever holds the seat now */
 const typedWords = (m, data) => (data.minutesTypedBy?.[m.id] ? `Typed by ${data.minutesTypedBy[m.id]}` : 'Typed on the board page');
 /** The day they were sent, as Atlanta says it: "Nov 5" */
-const sentDay = (m) => { const at = Date.parse(m.minutesFrom?.at || ''); return Number.isNaN(at) ? '' : shortDate(todayEastern(at)).replace(/, \d{4}$/, ''); };
+// When they first went in, and when they last changed if that was another day (a correction never takes the first date's place)
+const sentDay = (m) => {
+  const dayOf = (iso) => { const at = Date.parse(iso || ''); return Number.isNaN(at) ? '' : shortDate(todayEastern(at)).replace(/, \d{4}$/, ''); };
+  const first = dayOf(m.minutesFrom?.first || m.minutesFrom?.at);
+  const last = dayOf(m.minutesFrom?.at);
+  return first && last && first !== last ? `${first}, corrected ${last}` : first;
+};
 
 /** The minutes, as the board will read them on their page */
 function MinutesDoc({ m, ctx }) {
@@ -1667,6 +1672,11 @@ function WrapUp({ m, set, ctx, act, save, keepSaved }) {
   const approved = m.minutes === 'approved';
   const next = nextMeeting(data.meetings.filter((x) => x.date > m.date));
   const signed = m.files.filter((f) => f.kind === 'signed').at(-1);
+  const signature = data.minutesSigned?.[m.id] || null;
+  // What the board suggested on the board page, where the secretary or a founder decides it
+  const fixes = data.corrections?.[m.id] || [];
+  const fixing = fixes.filter((c) => c.state === 'waiting').length;
+  const fixed = fixes.filter((c) => c.state === 'made').length;
   const send = async (test) => {
     const to = data.members.filter((x) => x.email).map((x) => x.name);
     const none = data.members.filter((x) => !x.email).map((x) => x.name);
@@ -1684,7 +1694,7 @@ function WrapUp({ m, set, ctx, act, save, keepSaved }) {
   // Approved on the day the next meeting approved them, once it's been held; else today
   const approvedDay = next && next.date <= today ? next.date : today;
   const approve = async (v) => {
-    if (v && !(await ask({ title: 'Mark the minutes approved?', text: `As approved on ${shortDate(approvedDay)}${next && next.date <= today ? `, at the ${meetingName(next)}` : ''}. The board page shows them approved.${data.notesWaiting?.includes(m.id) ? ' The secretary has typed notes on this meeting that were never sent: approved, they can’t be sent any more.' : ''}`, yes: 'Mark them approved' }))) return;
+    if (v && !(await ask({ title: 'Mark the minutes approved?', text: `As approved on ${shortDate(approvedDay)}${next && next.date <= today ? `, at the ${meetingName(next)}` : ''}. The board page shows them approved.${fixes.some((c) => c.state === 'waiting') ? ' A correction to them is still waiting on the board page, and approving them leaves it out.' : ''}${data.notesWaiting?.includes(m.id) ? ' The secretary has typed notes on this meeting that were never sent: approved, they can’t be sent any more.' : ''}`, yes: 'Mark them approved' }))) return;
     set(v ? { minutes: 'approved', approvedOn: approvedDay } : { minutes: 'draft', approvedOn: '' });
     // The board was told about draft minutes: offer to tell them they're approved
     addToast(v ? `Marked approved, ${shortDate(approvedDay)}` : 'Back to draft minutes', 'info', v && m.shared && m.minutesSentAt ? { label: 'Tell the board', fn: () => send(false) } : undefined);
@@ -1717,7 +1727,10 @@ function WrapUp({ m, set, ctx, act, save, keepSaved }) {
         ${approved ? html`<button class="btn btn-ghost btn-sm" onClick=${() => approve(false)}>Mark as draft</button>` : html`<button class="btn btn-ghost btn-sm" disabled=${ahead || !hasMinutes} onClick=${() => approve(true)}>Mark them approved</button>`}
         ${!approved && ahead ? html`<span class="bd-muted">The meeting hasn’t happened yet.</span>` : !approved && !hasMinutes ? html`<span class="bd-muted">Once the minutes are in.</span>` : null}
       </${Task}>
-      <${Task} state=${signed ? 'done' : 'todo'} title=${signed ? 'Signed copy kept' : 'The signed copy (optional)'} sub=${signed ? html`<a class="link" ...${viewerLink(vf, 0)}>${fileTitle(signed.name)}</a>` : 'The secretary’s signed minutes, as a PDF or a photo.'}>
+      ${fixing || fixed ? html`<${Task} state=${fixing ? 'todo' : 'done'} title=${fixing ? `${plural(fixing, 'correction')} waiting` : `${plural(fixed, 'correction')} made`} sub=${fixing ? `${fixing === 1 ? 'A board member suggested it' : 'Board members suggested them'} on the board page. Decide ${fixing === 1 ? 'it' : 'them'} there.` : 'Suggested on the board page, and on the minutes now.'}>
+        ${fixing ? html`<a class="btn btn-ghost btn-sm" href=${`/admin/board/#/meetings/${m.id}`}>Open the board page</a>` : null}
+      </${Task}>` : null}
+      <${Task} state=${signed ? 'done' : 'todo'} title=${signature && !signature.changed ? `Signed by ${signature.name}` : signed ? 'Signed copy kept' : 'The signed copy (optional)'} sub=${signature?.changed ? 'The minutes changed after they were signed. The secretary is asked to sign them again.' : signed ? html`<a class="link" ...${viewerLink(vf, 0)}>${fileTitle(signed.name)}</a>` : signature ? 'The signed copy is being made.' : data.members.some((p) => p.seat === 'secretary') ? 'The secretary signs them on the board page once they’re approved, or a PDF or a photo can go here.' : 'The secretary’s signed minutes, as a PDF or a photo.'}>
         ${ahead ? html`<span class="bd-muted">After the meeting.</span>` : html`<label class="btn btn-ghost btn-sm bd-pick">${working === 'signed' ? 'Uploading…' : signed ? 'Replace it' : 'Upload it'}<input type="file" class="sr-only" accept=".pdf,.jpg,.jpeg,.png,.heic,.docx" onChange=${(e) => { takeSigned(e.target.files[0]); e.target.value = ''; }} /></label>`}
       </${Task}>
     </ol>

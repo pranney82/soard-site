@@ -482,6 +482,8 @@ export function cleanMeeting(raw = {}) {
       id: idOr(x?.id, 'a_'), text: str(x?.text, 1000),
       owner: /^[a-z0-9-]{1,80}$/.test(String(x?.owner || '')) ? x.owner : '', ownerName: one(x?.ownerName, 120),
       due: date(x?.due), done: bool(x?.done), doneOn: bool(x?.done) ? date(x?.doneOn) : '',
+      // The agenda item or part it was caught under (./board-todos.js): a reminder never quotes a board-only item's
+      ...(/^[a-z0-9_]{3,40}$/i.test(String(x?.from || '')) ? { from: String(x.from) } : {}),
     })).filter((x) => x.text),
     files: (Array.isArray(raw.files) ? raw.files : []).slice(0, LIMITS.rows).map((f) => ({
       id: ID.test(String(f?.id || '')) ? f.id : '', name: one(f?.name, 200), type: one(f?.type, 100), size: Number(f?.size) > 0 ? Math.round(f.size) : 0,
@@ -517,7 +519,7 @@ export function cleanMeeting(raw = {}) {
     agendaFrom: raw.agendaFrom && typeof raw.agendaFrom === 'object' && AGENDA_FROM.includes(raw.agendaFrom.kind)
       ? { kind: raw.agendaFrom.kind, name: one(raw.agendaFrom.name, 200), at: one(raw.agendaFrom.at, 40), ...(Number(raw.agendaFrom.v) > 0 ? { v: Math.round(Number(raw.agendaFrom.v)) } : {}) } : null,
     // The minutes file that filled in who was there, the notes, the motions and the action items (functions/api/_board-minutes.js)
-    minutesFrom: raw.minutesFrom && typeof raw.minutesFrom === 'object' && one(raw.minutesFrom.name, 200) ? { name: one(raw.minutesFrom.name, 200), at: one(raw.minutesFrom.at, 40), ai: bool(raw.minutesFrom.ai), tries: Math.min(9, Math.max(0, Math.round(Number(raw.minutesFrom.tries) || 0))), typed: bool(raw.minutesFrom.typed) } : null,
+    minutesFrom: raw.minutesFrom && typeof raw.minutesFrom === 'object' && one(raw.minutesFrom.name, 200) ? { name: one(raw.minutesFrom.name, 200), at: one(raw.minutesFrom.at, 40), ai: bool(raw.minutesFrom.ai), tries: Math.min(9, Math.max(0, Math.round(Number(raw.minutesFrom.tries) || 0))), typed: bool(raw.minutesFrom.typed), ...(one(raw.minutesFrom.first, 40) ? { first: one(raw.minutesFrom.first, 40) } : {}) } : null,
     // Who Google Meet saw join (functions/api/_board-attendance.js): server-set
     fromMeet: raw.fromMeet && typeof raw.fromMeet === 'object' && one(raw.fromMeet.at, 40) ? {
       at: one(raw.fromMeet.at, 40), status: ['ok', 'none', 'needs-setup', 'error'].includes(raw.fromMeet.status) ? raw.fromMeet.status : 'error', error: one(raw.fromMeet.error, 300),
@@ -822,6 +824,13 @@ export function copyOfItem(it, id) {
 /** This meeting's own minutes file, if any: a minutes file on an agenda item is the last meeting's, up for approval */
 export const ownMinutesFile = (m) => { const onItem = new Set((m.sections || []).flatMap((x) => x.items.flatMap((it) => it.docs || []))); return (m.files || []).filter((f) => f.kind === 'minutes' && !onItem.has(f.id)).at(-1) || null; };
 /** The meeting an agenda's "approve the minutes" item is about: the one it names, else the last one the board had */
+/** Whether a meeting has its minutes: typed or read from a file, or a file of them kept with it */
+export const minutesIn = (m) => !!m?.minutesFrom || !!ownMinutesFile(m);
+/** Signing on the board page starts with the minutes approved from here on: the secretary is never asked for years gone by */
+export const MINUTES_SIGN_FROM = '2026-11-01';
+/** Approved minutes still to be signed: nothing signed is kept with them */
+export const minutesToSign = (m) => m?.minutes === 'approved' && String(m.approvedOn || '') >= MINUTES_SIGN_FROM && !(m.files || []).some((f) => f.kind === 'signed');
+
 export function minutesTarget(m, meetings) {
   const it = (m.sections || []).flatMap((s) => s.items).find((x) => x.live === 'minutes');
   const named = it?.about ? meetings.find((x) => x.id === it.about) : null;

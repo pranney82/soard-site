@@ -18,6 +18,9 @@
  *                                         a few files not read yet are read after it (_board-file-words.js)
  * POST { action: 'rsvp' }                           → 410: the calendar invite is the only answer (Peter, Nov 2 2026)
  * POST { action: 'action-done', actionId, done }    one of their own action items
+ * POST { action: 'correction', meetingId, target, words, was }  a correction to minutes not approved yet (_board-corrections.js);
+ *      'correction-withdraw' { id }, 'correction-decide' { id, make, reason }: the secretary or a founder
+ * POST { action: 'sign-minutes', meetingId, mark, consent }      the secretary signs minutes the board approved (_board-minutes-sign.js)
  * POST { action: 'sign', docId, name, version }      "I've read it", this year, with their own name typed (409 { changed }: the words changed since)
  * POST { action: 'opened', docId }                a paper they sign, opened (once a year, for its record)
  * POST { action: 'decline', docId, reason, year }  can't sign it as written: why, kept, the admins emailed
@@ -58,6 +61,8 @@ import { readBoardWords } from './_board-file-words.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { secretarySends } from './_board-minutes.js';
 import { notesFor, saveNotes, sendNotes, notesState } from './_board-notes.js';
+import { correctionsForPage, suggestCorrection, withdrawCorrection, decideCorrection } from './_board-corrections.js';
+import { signMinutes, buildMinutesRecord, signedMinutes } from './_board-minutes-sign.js';
 import { noteGet, noteLook, noteAnswer, noteEvents, answerOf, deviceOf, accessIat } from './_board-activity.js';
 import { evidenceOf, afterSigning, buildRecord, declineDoc, tellDeclined } from './_board-sign.js';
 // Where a signing request came from (its IP, device, this sign-in's start, the address Access checked): its evidence
@@ -129,7 +134,9 @@ export async function onRequestGet(context) {
     // People's Email all: the same people Board → Members writes to, each by their own address, less whoever's looking
     const viewer = normEmail(context.data?.userEmail);
     const emailAll = { to: group.members.map((p) => p.email).filter((e) => e !== viewer), missing: group.missing.map((p) => p.name) };
-    return Response.json({ ok: true, ...data, ...extras, org, notesWaiting: typed.waiting, minutesTypedBy: typed.typedBy, emailAll }, { headers: { 'Cache-Control': 'private, no-store' } });
+    // Corrections suggested to minutes not approved yet, and who signed the ones that were
+    const [corrections, minutesSigned] = await Promise.all([correctionsForPage(context.env.DB, w), signedMinutes(context.env.DB)]);
+    return Response.json({ ok: true, ...data, ...extras, org, notesWaiting: typed.waiting, minutesTypedBy: typed.typedBy, emailAll, corrections, minutesSigned }, { headers: { 'Cache-Control': 'private, no-store' } });
   } catch (err) {
     return fromError(err);
   }
@@ -268,6 +275,12 @@ async function post(context) {
       const ask = { id: String(body.meetingId || body.id || ''), itemId: String(body.itemId || ''), text: body.text, title: String(body.title || '') };
       return Response.json(await shorterFor(env, ask, w));
     }
+    // A correction to the minutes: anyone on the page suggests one; the secretary or a founder decides (_board-corrections.js)
+    if (body.action === 'correction') return Response.json({ ok: true, ...(await suggestCorrection(env, { meetingId: body.meetingId, target: body.target, words: body.words, was: typeof body.was === 'string' ? body.was : null }, w, { waitUntil: (p) => context.waitUntil?.(p) })) });
+    if (body.action === 'correction-withdraw') return Response.json({ ok: true, ...(await withdrawCorrection(env, body.id, w)) });
+    if (body.action === 'correction-decide') return Response.json({ ok: true, ...(await decideCorrection(env, { id: body.id, make: body.make === true, reason: body.reason, saw: typeof body.saw === 'string' ? body.saw : null }, w, { waitUntil: (p) => context.waitUntil?.(p) })) });
+    // A founder's own to-do on the board page, with no member's sign-in behind it
+    if (body.action === 'action-done' && w.admin && !w.member) return Response.json({ ok: true, ...(await setActionDone(env.DB, String(body.actionId || ''), !!body.done, { by: w.adminEmail })) });
     if (!w.member) return fail('Only a board member can answer that for themselves', 403);
     const { member } = w;
     switch (body.action) {
@@ -276,6 +289,13 @@ async function post(context) {
         return fail('Answer the calendar invite: that’s where SOARD sees who’s coming.', 410);
       case 'action-done':
         return Response.json({ ok: true, ...(await setActionDone(env.DB, String(body.actionId || ''), !!body.done, { by: member.email, slug: member.slug })) });
+      // The secretary's signature on minutes the board approved; their signed copy is made after the answer (the heartbeat finishes one that stops)
+      case 'sign-minutes': {
+        if (body.as && body.as !== member.slug) return fail(`This browser is signed in as ${member.name} now. Reload the page to sign as yourself.`, 409, { who: true });
+        const signed = await signMinutes(env, String(body.meetingId || ''), member, { mark: body.mark && typeof body.mark === 'object' ? body.mark : null, consent: body.consent === true, evidence: evidence(context) });
+        context.waitUntil?.(buildMinutesRecord(env, String(body.meetingId || '')).catch(() => {}));
+        return Response.json({ ok: true, ...signed });
+      }
       case 'sign':
         if (!ID.test(String(body.docId || ''))) return fail('Which document?');
         // (the page was opened by someone else: another sign-in in this browser since)

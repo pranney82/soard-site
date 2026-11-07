@@ -32,7 +32,7 @@ import { viewerLink, openViewer, sizeText } from '../file-viewer.js';
 import {
   RSVP, DOC_KINDS, FILE_KINDS, meetingName, longDate, shortDate, timeRange, clock, money, plural, noteBlocks, liveLines, attendanceCounts, isDate, todayEastern, monthName, answerOf, fileTitle,
   videoOf, isHeic, asJpeg, isLive, agendaItems, tallyText, unzip, quorumFor, itemFiles, minutesFileOf, presentersOf, sectionPlan, sectionClock, clockText, formatOf, docTitle, itemDocs, signsAs, initialsOf, CONSENT_TEXT, SIGN_STYLES, styleFont, MEMBER_HOW, dueOn, dueWords,
-  reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly,
+  reportsOn, namesText, showsOf, booksDraw, isStatement, mainLines, forBoard, cleanMeeting, heldEarly, minutesToSign, MINUTES_SIGN_FROM,
   NOTHING_NEW, isNothingNew, LIMITS, slidesOfItem, reportAlone, decidesAlone, facesOf, hasReport, LIVE_TITLES, orderUnits,
 } from '../board-shared.js';
 import { YearCompare, booksTitle } from './books.js';
@@ -45,6 +45,7 @@ import { prep, termsOf, termIn as wordIn, stemIn, ENDINGS, planOf, matches, howI
 import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
 import { CostsCard } from './costs.js';
+import { Correct, ReadFirst, Counts, Waiting, correctable, correctionsOf, runsOf, wordDiff } from './minutes.js';
 import { FamiliesPage, FamilyPage } from './families.js';
 import { ApplicationsCard } from './family-map.js';
 import { useCashNow, useBudget, liveCash, Both, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsPhrase, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue, budgetMonthsText as budgetMonths, stepText, useChangeAs, changeIn, overIn } from './money.js';
@@ -1116,15 +1117,29 @@ function HomePage({ ctx }) {
   const toWrite = reportsToWrite(ctx);
   // The secretary's typed notes that never went out: the panel says Saved, so this is what says they're not done
   const toSend = d.me?.seat === 'secretary' ? data.meetings.filter((x) => data.notesWaiting?.includes(x.id) && x.minutes !== 'approved') : [];
+  // Corrections waiting on the secretary or a founder, a meeting at a time, and approved minutes for the secretary to sign
+  const canFix = d.me?.seat === 'secretary' || adminHere(ctx);
+  const toFix = canFix ? data.meetings.map((x) => ({ m: x, list: correctionsOf(data, x.id).filter((c) => c.state === 'waiting' && !c.mine) })).filter((x) => x.list.length && correctable(x.m)) : [];
+  const toSignMinutes = d.me?.seat === 'secretary' ? data.meetings.filter((x) => !mayntSign(x, ctx)) : [];
   // The chair's agenda to review (./chair.js), until it's approved
   const toReview = reviewTodo(data, d);
   const today = new Date(noon(data.today)).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' });
   const who = useAdminWho(data);
   const name = data.me.name || who?.name || '';
   const m = d.featured;
-  const todos = mine.length || toSign.length || toWrite.length || toSend.length || toReview ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
-      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h" tabindex="-1">For you<span class="bp-count">${mine.length + toSign.length + toWrite.length + toSend.length + (toReview ? 1 : 0)}</span></h2></div>
+  const todos = mine.length || toSign.length || toWrite.length || toSend.length || toReview || toFix.length || toSignMinutes.length ? html`<section class="bp-card bp-forme" aria-labelledby="todo-h">
+      <div class="bp-cardhead"><h2 class="bp-h2" id="todo-h" tabindex="-1">For you<span class="bp-count">${mine.length + toSign.length + toWrite.length + toSend.length + (toReview ? 1 : 0) + toFix.length + toSignMinutes.length}</span></h2></div>
       <ul class="bp-todos">
+        ${toFix.map(({ m: x, list }) => html`<li class="bp-todo-card" key=${`f-${x.id}`}><a class="bp-todo bp-todo--link" href=${`#/meetings/${x.id}`} onClick=${() => { focusNext = `c-${list[0].id}`; }}>
+          <span class="bp-todo__icon"><${Icon} name="edit" size=${20} /></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">${list.length === 1 ? 'A correction' : `${list.length} corrections`} to the minutes of the ${meetingName(x)}</span><span class="bp-todo__meta">${[...new Set(list.map((c) => c.by))].join(', ')} suggested ${list.length === 1 ? 'it' : 'them'}. Make ${list.length === 1 ? 'it' : 'them'}, or keep the minutes as they are.</span></span>
+          <${Icon} name="arrow" size=${18} cls="bp-go" />
+        </a></li>`)}
+        ${toSignMinutes.map((x) => html`<li class="bp-todo-card" key=${`sm-${x.id}`}><a class="bp-todo bp-todo--link" href=${`#/meetings/${x.id}`} onClick=${() => { focusNext = `sign-minutes-${x.id}`; }}>
+          <span class="bp-todo__icon"><${Icon} name="edit" size=${20} /></span>
+          <span class="bp-todo__text"><span class="bp-todo__title">Sign the minutes of the ${meetingName(x)}</span><span class="bp-todo__meta">${data.minutesSigned?.[x.id]?.changed ? 'They changed after you signed them.' : `The board approved them${x.approvedOn ? ` ${shortDate(x.approvedOn).replace(/, \d{4}$/, '')}` : ''}.`}</span></span>
+          <${Icon} name="arrow" size=${18} cls="bp-go" />
+        </a></li>`)}
         ${toSend.map((x) => html`<li class="bp-todo-card" key=${`n-${x.id}`}><a class="bp-todo bp-todo--link" href=${`#/meetings/${x.id}`}>
           <span class="bp-todo__icon"><${Icon} name="edit" size=${20} /></span>
           <span class="bp-todo__text"><span class="bp-todo__title">Send the minutes of the ${x.title}</span><span class="bp-todo__meta">Your notes are saved but not sent yet.</span></span>
@@ -1301,7 +1316,7 @@ function MyAction({ a, ctx }) {
   };
   return html`<li class=${`bp-todo-card ${leaving ? 'is-leaving' : ''}`}><div class=${`bp-todo ${done ? 'is-done' : ''}`}>
     <label class="bp-todo__tick"><input type="checkbox" class="bp-check" id=${box} checked=${done} aria-labelledby=${id} onChange=${(e) => tickIt(e.target.checked)} /></label>
-    <span class="bp-todo__text"><span class="bp-todo__title" id=${id}>${a.text}</span>${a.due ? html`<span class="bp-todo__meta">Due ${shortDate(a.due).replace(/, \d{4}$/, '')}</span>` : null}</span>
+    <span class="bp-todo__text"><span class="bp-todo__title" id=${id}>${a.text}</span>${a.due ? html`<span class="bp-todo__meta">${a.due < data.today ? 'Was due' : 'Due'} ${shortDate(a.due).replace(/, \d{4}$/, '')}</span>` : null}</span>
   </div></li>`;
 }
 
@@ -2496,6 +2511,8 @@ function AgendaItem({ m, s, it, ctx, label, numbers, upcoming, moneyFirst = '', 
       </div>
       ${aboutPrev ? html`<p class="bp-agitem__about"><a class="bp-link" href=${`#/meetings/${aboutPrev.id}`}>The ${meetingName(aboutPrev)}, ${shortDate(aboutPrev.date)}</a></p>` : null}
       <div class="bp-agitem__notes"><${Notes} text=${it.notes} /></div>
+      ${aboutPrev ? html`<${Counts} m=${aboutPrev} data=${data} />` : null}
+      ${preview ? null : html`<${Correct} m=${m} ctx=${ctx} Icon=${Icon} target=${`n:${it.id}`} was=${it.notes || ''} about=${it.title || s.title} offer=${!!it.notes} readOnly=${!adminHere(ctx) && !data.me.slug} />`}
       <${ItemReport} m=${m} it=${it} ctx=${ctx} upcoming=${upcoming} preview=${preview} />
       ${preview ? null : html`<${ChairNoteLine} data=${data} d=${d} m=${m} it=${it} />`}
       ${showsOf(it).map((k) => html`<${LiveBlock} key=${k} kind=${k} n=${numbers} m=${m} data=${data} asFiles=${k === 'cash' ? asFiles : []} notes=${k === 'cash' ? data.lineNotes?.[m.id]?.[it.id] : null} again=${k === 'cash' && it.id !== moneyFirst} />`)}
@@ -2865,6 +2882,7 @@ function TakeMinutes({ m, ctx, noting, setNoting }) {
     <p class="bp-minutes__said">${notesOnDevice(m.id) && !shut && !noting ? 'Some of your notes haven’t saved yet. Open them to finish. ' : unsent ? (sent ? 'Changes are saved in the notes but not sent yet. ' : 'The notes are saved but not sent yet. ') : ''}${shut ? 'These were approved, and some of the notes never went in. They’re still here to read.' : sent?.typed ? `${typedWho ? `${typedWho} typed these. ` : ''}${m.shared ? 'The board can read them now and votes on them at the next meeting.' : 'The board sees them once this meeting is shared.'} To fix anything, open the notes and send the changes.` : sent ? `Board has them${sent.at ? ` as of ${shortDate(new Date(sent.at).toLocaleDateString('en-CA', { timeZone: 'America/New_York' })).replace(/, \d{4}$/, '')}` : ''}. A newer copy replaces what they say.`
       : !mine ? `${secretary ? `${secretary.name} takes them as Board Secretary, with this same card.` : 'The board’s secretary takes them, with this same card.'} They can be typed right here, or on the form or Word file.`
       : unsent ? '' : 'Type them right here beside the agenda, or use the form or Word file.'}</p>
+    <${Waiting} m=${m} ctx=${ctx} />
     <div class="bp-minutes__do">
       <button type="button" class="bp-btn bp-btn--primary bp-minutes__open" aria-expanded=${noting} onClick=${() => setNoting(!noting)}><${Icon} name="edit" size=${18} />${notesButton(m, data, noting)}</button>
     </div>
@@ -3116,7 +3134,9 @@ function MeetingDetail({ m, ctx, notes = null }) {
   const placed = new Set(m.sections.flatMap((s) => s.items.flatMap((it) => it.docs || [])));
   const docsOf = (it) => itemFiles(m, it, data.meetings);
   const loose = m.files.filter((f) => f.kind !== 'signed' && !placed.has(f.id) && !(upcoming && f.kind === 'minutes'));
-  const signed = m.files.find((f) => f.kind === 'signed');
+  const signed = m.files.filter((f) => f.kind === 'signed').at(-1);
+  const signature = data.minutesSigned?.[m.id] || null;
+  const looking = !adminHere(ctx) && !data.me.slug;
   const printable = m.files.some((f) => f.kind !== 'signed') || m.sections.some((s) => s.items.length);
   const minutesFile = minutesFileOf(m);
   const video = upcoming ? videoOf(m) : '';
@@ -3176,14 +3196,18 @@ function MeetingDetail({ m, ctx, notes = null }) {
       <aside class="bp-aghero__side">
         ${upcoming && (data.me.slug || AS_BOARD || PREVIEW) ? html`<div class="bp-aghero__card"><${Rsvp} m=${m} ctx=${ctx} /></div>` : null}
         ${notes?.can ? html`<div class="bp-aghero__card bp-aghero__card--minutes bp-noprint"><${TakeMinutes} m=${m} ctx=${ctx} noting=${notes.noting} setNoting=${notes.setNoting} /></div>` : null}
+        ${!notes?.can && !upcoming && correctable(m) ? html`<div class="bp-aghero__card bp-noprint"><${ReadFirst} m=${m} ctx=${ctx} readOnly=${looking} /></div>` : null}
+        ${mayntSign(m, ctx) ? null : html`<div class="bp-aghero__card bp-noprint"><${SignMinutes} m=${m} ctx=${ctx} /></div>`}
         ${!upcoming && c.boardHere ? html`<div class="bp-aghero__card bp-who" id="who">
           <p class="bp-aghero__big"><strong>${c.boardHere}</strong> of ${c.board} board members</p>
           <p class="bp-who__q">${quorum === true ? html`<span class="bp-chip bp-chip--ok"><${Icon} name="check" size=${14} />A quorum</span>` : quorum === false ? html`<span class="bp-chip bp-chip--warn">Short of a quorum (${need})</span>` : null}${c.remote ? html`<span class="bp-muted">${c.remote} by video</span>` : null}</p>
           <${Faces} people=${here.map(person)} max=${9} size=${34} />
           ${away.length ? html`<p class="bp-muted bp-who__away">Not there: ${away.map((p) => `${p.name}${p.status === 'excused' ? ' (excused)' : ''}`).join(', ')}</p>` : null}
           ${recordLinks}
+          ${signature ? html`<${SignedLine} s=${signature} />` : null}
+          <${Correct} m=${m} ctx=${ctx} Icon=${Icon} target="r" readOnly=${looking} cue="Correct who was there" />
         </div>` : null}
-        ${!upcoming && !c.boardHere && recordLinks ? html`<div class="bp-aghero__card">${recordLinks}</div>` : null}
+        ${!upcoming && !c.boardHere && recordLinks ? html`<div class="bp-aghero__card">${recordLinks}${signature ? html`<${SignedLine} s=${signature} />` : null}</div>` : null}
       </aside>
     </header>
     ${hasAgenda && presenting.length ? html`<p class="bp-glance"><${Faces} people=${presenting} max=${7} size=${28} /><span>${presenting.length} presenting</span></p>` : null}
@@ -3200,6 +3224,7 @@ function MeetingDetail({ m, ctx, notes = null }) {
           </header>
           ${s.items.length ? html`<ol class="bp-agitems">${s.items.map((it) => html`<${AgendaItem} key=${it.id} m=${m} s=${s} it=${it} ctx=${ctx} label=${labels.get(it.id)} numbers=${numbers} upcoming=${upcoming} moneyFirst=${moneyFirst} named=${!!oneWho(s)} />`)}</ol>` : null}
           ${s.notes ? html`<div class="bp-agsec__notes"><${Notes} text=${s.notes} /></div>` : null}
+          <${Correct} m=${m} ctx=${ctx} Icon=${Icon} target=${`n:${s.id}`} was=${s.notes || ''} about=${s.title} offer=${!!s.notes} readOnly=${looking} />
         </section>`) : html`<div class="bp-card bp-empty">
           <span class="bp-empty__icon"><${Icon} name="list" size=${26} /></span>
           <h2 class="bp-h2">${upcoming ? 'The agenda isn’t posted yet' : minutesFile ? 'The minutes are in the file' : 'No agenda was kept here'}</h2>
@@ -3220,6 +3245,11 @@ function MeetingDetail({ m, ctx, notes = null }) {
             <div><p class="bp-actions__what">${a.text}</p><p class="bp-muted">${[a.ownerName, a.due ? `due ${shortDate(a.due)}` : '', a.done ? 'done' : ''].filter(Boolean).join(' · ')}</p></div>
             ${a.owner && d.bySlug.get(a.owner) ? html`<${Avatar} p=${d.bySlug.get(a.owner)} size=${30} />` : null}
           </li>`)}</ul>
+        </section>` : null}
+        ${correctable(m) && !looking || correctionsOf(data, m.id).some((x) => x.target === 'general' && !(looking && x.state === 'declined')) ? html`<section class="bp-agsec bp-agsec--after bp-noprint" id="corrections" aria-labelledby="fix-h">
+          <header class="bp-agsec__head"><span class="bp-agsec__n bp-agsec__n--icon" aria-hidden="true"><${Icon} name="edit" size=${26} /></span><h2 class="bp-agsec__title" id="fix-h">${correctable(m) && !looking ? 'Anything else?' : 'Other corrections'}</h2></header>
+          ${correctable(m) && !looking ? html`<p class="bp-muted mfix-else">A decision, an action item, or something that’s missing from the minutes.</p>` : null}
+          <${Correct} m=${m} ctx=${ctx} Icon=${Icon} target="general" readOnly=${looking} label="What should change?" />
         </section>` : null}
         ${loose.length ? html`<section class="bp-agsec bp-agsec--after" id="more-files" aria-labelledby="files-h">
           <header class="bp-agsec__head"><span class="bp-agsec__n bp-agsec__n--icon" aria-hidden="true"><${Icon} name="documents" size=${26} /></span><h2 class="bp-agsec__title" id="files-h">${placed.size ? 'Also for this meeting' : upcoming ? 'The documents' : 'Files'}</h2></header>
@@ -3669,22 +3699,6 @@ const signTrouble = new Map(); // id → { msg, kind: 'changed' | 'gone', title 
 // The papers this page has said were opened (once each, a year)
 const openedSaid = new Set();
 /** The reason a signature didn't go through, while it's still the case: the paper changed (until they sign), or it went (until it's back) */
-/** A word diff as runs: the words next to each other that changed the same way, one mark */
-const runsOf = (diff) => diff.reduce((out, p) => { const last = out.at(-1); if (last && last.op === p.op) last.w += ` ${p.w}`; else out.push({ ...p }); return out; }, []);
-/** Two lines' words, the old against the new: [{ w, op: '' (both), '+' (new), '-' (gone) }] (the longest run they share kept) */
-function wordDiff(a, b) {
-  const x = a.split(/\s+/); const y = b.split(/\s+/);
-  const L = Array.from({ length: x.length + 1 }, () => new Array(y.length + 1).fill(0));
-  for (let i = x.length - 1; i >= 0; i--) for (let j = y.length - 1; j >= 0; j--) L[i][j] = x[i] === y[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
-  const out = [];
-  let i = 0; let j = 0;
-  while (i < x.length && j < y.length) {
-    if (x[i] === y[j]) { out.push({ w: y[j], op: '' }); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) out.push({ w: x[i++], op: '-' }); else out.push({ w: y[j++], op: '+' });
-  }
-  while (i < x.length) out.push({ w: x[i++], op: '-' });
-  while (j < y.length) out.push({ w: y[j++], op: '+' });
-  return out;
-}
 /** The focus (and the eyes) to where a signature's trouble is said, once the page has the paper as it is now */
 const focusTrouble = (id) => requestAnimationFrame(() => { const t = signTrouble.get(id); if (t) t.loaded = true; const el = document.getElementById(`trouble-${id}`) || document.getElementById(`sign-${id}-p`); if (el) { el.scrollIntoView({ block: 'center', behavior: reduceMotion() ? 'auto' : 'smooth' }); el.focus({ preventScroll: true }); } });
 const troubleFor = (id, doc) => {
@@ -3894,6 +3908,47 @@ function SignBar({ fields, vals, next }) {
   return html`<div class="bp-signbar bp-noprint" role="region" aria-label="Signing">
     <p class="bp-signbar__count" aria-live="polite">${all ? 'Everything’s filled in' : `${done} of ${fields.length} done`}</p>
     <button type="button" class="bp-btn bp-btn--sm bp-btn--primary" onClick=${next}>${all ? 'Go to signing' : done ? 'Next' : 'Start'}</button>
+  </div>`;
+}
+
+/** Whether this person isn't being asked to sign these minutes: only the secretary is, and only minutes approved and not yet signed (or changed since) */
+const mayntSign = (m, ctx) => !(ctx.d.me?.seat === 'secretary' && m.shared && m.minutes === 'approved' && (minutesToSign(m) || (ctx.data.minutesSigned?.[m.id]?.changed && String(m.approvedOn || '') >= MINUTES_SIGN_FROM)));
+const SignedLine = ({ s }) => html`<p class="mfix-signed bp-noprint">Signed by ${s.name}, ${shortDate(s.at.slice(0, 10)).replace(/, \d{4}$/, '')}${s.changed ? '. The minutes changed after that.' : s.made ? '' : '. The signed copy is being made.'}</p>`;
+
+/** The secretary's signature on minutes the board approved: the one they adopted for the board's papers, or a first one */
+function SignMinutes({ m, ctx }) {
+  const { data, setData, say, load } = ctx;
+  const [mark, setMark] = useState(() => (data.me.mark?.type ? data.me.mark : null));
+  const [adopting, setAdopting] = useState(false);
+  const [agree, setAgree] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [problem, setProblem] = useState('');
+  const again = data.minutesSigned?.[m.id]?.changed;
+  const consented = !!data.me.mark?.consented;
+  const id = `sign-minutes-${m.id}`;
+  const sign = async (chosen = null) => {
+    const use = chosen || mark;
+    if (!use) { setAdopting(true); return; }
+    if (!consented && !agree) { setProblem('Tick that you agree to sign electronically, then sign.'); return; }
+    setProblem('');
+    setBusy(true);
+    const j = await call({ action: 'sign-minutes', meetingId: m.id, as: data.me.slug, mark: use, consent: !consented && agree });
+    setBusy(false);
+    if (!j.ok) { setProblem(j.error); if (j.who || j.reload) load({ keep: true }); return; }
+    setData((x) => ({ ...x, me: j.mark ? { ...x.me, mark: { ...j.mark, consented: true } } : x.me }));
+    await load({ keep: true });
+    // (the copy is made after the answer)
+    for (const ms of [6000, 16000]) setTimeout(() => load({ keep: true }), ms);
+    say('Signed. Thank you. The signed copy stays with the meeting.');
+  };
+  return html`<div class="bp-minutes" role="group" aria-labelledby=${`${id}-t`} id=${id} tabindex="-1">
+    <p class="bp-minutes__q" id=${`${id}-t`}>Sign the minutes</p>
+    <p class="bp-minutes__said">${again ? 'They changed after you signed them, so the signature is on the old words.' : `The board approved these${m.approvedOn ? ` on ${shortDate(m.approvedOn).replace(/, \d{4}$/, '')}` : ''}.`} Your signature makes the signed copy SOARD keeps.</p>
+    ${mark ? html`<div class="bp-sign__adopted"><${Mark} mark=${mark} /><p class="bp-muted bp-sign__who">${mark.text} · <button type="button" class="bp-linkbtn" onClick=${() => setAdopting(true)}>Change</button></p></div>` : null}
+    ${!consented ? html`<label class="bp-sign__agree"><input type="checkbox" class="bp-check" checked=${agree} onChange=${(e) => setAgree(e.target.checked)} /><span>${CONSENT_TEXT}</span></label>` : null}
+    ${problem ? html`<p class="bp-sign__problem" role="alert">${problem}</p>` : null}
+    <div class="bp-minutes__do"><button type="button" class="bp-btn bp-btn--primary bp-minutes__open" disabled=${busy} onClick=${() => sign()}>${busy ? 'Signing…' : mark ? 'Sign the minutes' : 'Choose how you sign'}</button></div>
+    ${adopting ? html`<${AdoptDialog} own=${data.me.name || ''} start=${mark} onClose=${() => setAdopting(false)} onAdopt=${(x) => { setMark(x); setAdopting(false); }} />` : null}
   </div>`;
 }
 

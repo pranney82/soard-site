@@ -47,6 +47,9 @@
  */
 
 import { notesState, refreshMinutesFile } from './_board-notes.js';
+import { correctionsForPage } from './_board-corrections.js';
+import { signedMinutes } from './_board-minutes-sign.js';
+import { sendActionPreview } from './_board-actions.js';
 import {
   ensureSchema, getSettings, saveSettings, listMeetings, getMeeting, saveMeeting, createMeeting, importMeeting, deleteMeeting,
   setActionDone, listDocs, saveDoc, deleteDoc, boardFileProblem, fillDocWords, docVersions, signWithCopy, unsignDoc, putFile, updateFile, deleteFile, fileLocked, liveNumbers, takeSnapshot, sendPacket,
@@ -157,6 +160,9 @@ export async function onRequestGet(context) {
       ok: true, me, settings, meetings, docs, members, access, numbers, calendar, mail, mailRecent, welcome, ...(await notesState(env.DB).then((n) => ({ notesWaiting: n.waiting, minutesTypedBy: n.typedBy }))),
       // Whose approval each agenda has: nothing reaches the board before it (_board.js holdUntilApproved)
       approvals: await agendaApprovals(env.DB),
+      // Corrections suggested to minutes not approved yet, and who signed the ones that were
+      corrections: await correctionsForPage(env.DB, { admin: true, adminEmail: me }, meetings),
+      minutesSigned: await signedMinutes(env.DB, meetings),
       // board@soardcharity.com following the board (_board-group.js)
       group,
       // Who has had the sign-in email and whether one is going out right now (its claim, _board.js sendWelcome), from one
@@ -300,6 +306,9 @@ export async function onRequestPost(context) {
       }
       case 'action-done':
         return Response.json({ ok: true, ...(await setActionDone(env.DB, String(body.actionId || ''), !!body.done, { by: me })) });
+      // "Send me the email": what a reminder looks like (_board-actions.js)
+      case 'action-remind-preview':
+        return Response.json({ ok: true, ...(await sendActionPreview(env, me)) });
       case 'save-doc': {
         const d = await saveDoc(env.DB, body.doc || {}, docOptions(body, me));
         await audit(env, me, 'updated', `Board document saved: ${d.title}`);

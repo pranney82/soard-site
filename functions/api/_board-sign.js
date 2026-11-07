@@ -274,8 +274,10 @@ export async function fontFaces(env) {
  * `copied`: a signature that's a copy signed on paper (theirs, one SOARD added, one in Drive): { name, sha256, pages:
  * true when its pages come before this one } | { drive: its name } | {} (not kept). Its record is that copy as it came
  * in, then this page; never the words with their name under them as though signed here.
+ * `page`: a record that isn't a paper signed for a year (a meeting's minutes): { html, sub, agree, seat } take their place.
+ * The whole board can open one, so where it was signed from stays out of it (the signature's row and the chain keep that).
  */
-export function recordHtml({ doc, body, sig, member, events = [], fonts = '', fileOnly = false, noWords = false, signedHash = '', consent = null, copied = null }) {
+export function recordHtml({ doc, body, sig, member, events = [], fonts = '', fileOnly = false, noWords = false, signedHash = '', consent = null, copied = null, page = null }) {
   const fields = (() => { try { return sig.fields ? JSON.parse(sig.fields) : []; } catch { return []; } })();
   const mark = (() => { try { return sig.mark ? JSON.parse(sig.mark) : null; } catch { return null; } })();
   const year = sig.year;
@@ -292,13 +294,13 @@ export function recordHtml({ doc, body, sig, member, events = [], fonts = '', fi
     ['Paper', `${escHtml(doc.title)}${copied ? (wording ? `, filed against ${wording} on the board page` : '') : noWords ? ' (the wording signed wasn’t kept)' : fileOnly ? ' (its file)' : wording ? `, ${wording}` : ''}`],
     ...((noWords && !sig.hash) || copied ? [] : [['Its SHA-256', `<code>${escHtml(sig.hash || 'not recorded')}</code>`]]),
     ['Signed by', escHtml(sig.name || member?.name || sig.slug)],
-    ...(sig.signer_email || !copied ? [[copied ? 'Added by them, signed in as' : 'Signed in as', escHtml(sig.signer_email || member?.email || '')]] : []),
+    ...(page ? [] : sig.signer_email || !copied ? [[copied ? 'Added by them, signed in as' : 'Signed in as', escHtml(sig.signer_email || member?.email || '')]] : []),
     ['How', escHtml(HOWS[sig.how] || HOWS.typed)],
     ...(copied ? [['Their signed copy', copied.drive ? escHtml(`In SOARD’s Google Drive: ${copied.drive}`) : copied.name ? `${escHtml(copied.name)}${copied.pages ? ' (the pages before this one, as it came in)' : ' (attached inside this PDF, as it came in)'}${copied.sha256 ? `<br><span class="m">Its SHA-256: <code>${escHtml(copied.sha256)}</code></span>` : ''}` : 'Not kept']] : []),
     // (a copy signed on paper: when it was added here, and by whom; when they signed it is on the copy)
     [copied ? 'Added' : 'Signed', `${escHtml(whenEt(sig.at))}${copied && sig.added_by ? ` by ${escHtml(sig.added_by)}` : ''}<br><span class="m">${escHtml(sig.at || '')} UTC</span>`],
-    ...(!copied || sig.ip ? [['From', escHtml([sig.ip, sig.device].filter(Boolean).join(' · ') || 'not recorded')]] : []),
-    ...(!copied || sig.signin_at ? [['This sign-in began', escHtml(sig.signin_at ? whenEt(sig.signin_at) : 'not recorded')]] : []),
+    ...(!page && (!copied || sig.ip) ? [['From', escHtml([sig.ip, sig.device].filter(Boolean).join(' · ') || 'not recorded')]] : []),
+    ...(!page && (!copied || sig.signin_at) ? [['This sign-in began', escHtml(sig.signin_at ? whenEt(sig.signin_at) : 'not recorded')]] : []),
     ...(agreedAt && sig.consent_hash ? [['Agreed to sign electronically', `${escHtml(whenEt(agreedAt))}<br><span class="m">“${escHtml(consent?.text || ofKind('consented')[0]?.detail?.text || CONSENT_TEXT)}”</span><br><span class="m">Those words’ SHA-256: <code>${escHtml(sig.consent_hash)}</code></span>`]] : []),
     ...(ofKind('asked').length ? [['Asked by email', escHtml(ofKind('asked').map((e) => whenEt(e.at)).join('; '))]] : []),
     ...(ofKind('opened').length ? [['First opened', escHtml(whenEt(ofKind('opened')[0].at))]] : []),
@@ -320,6 +322,7 @@ blockquote{margin:6pt 0;padding:4pt 10pt;border-left:3pt solid #FFDA24;backgroun
 .fld{display:flex;align-items:center;gap:8pt;margin:2pt 0 8pt}
 .ini{display:inline-block;min-width:34pt;padding:2pt 6pt;border:0.75pt solid #D3D0C7;border-radius:5pt;font-size:16pt;line-height:1.2;text-align:center}
 .ans{font-weight:600}.lbl{color:#5F615A;font-size:9.5pt}
+.rule{margin:12pt 0 3pt;font-family:'Libre Baskerville',Georgia,serif;font-size:10.5pt;font-weight:700;break-after:avoid}
 .sign{margin:18pt 0 0;padding:12pt 0 0;border-top:0.75pt solid #D3D0C7;break-inside:avoid}
 .end{break-inside:avoid}
 .sign .agree{margin:0 0 8pt;font-weight:600}
@@ -338,11 +341,11 @@ code{font-family:ui-monospace,Menlo,monospace;font-size:8pt;word-break:break-all
 </style></head><body>
 ${copied ? '' : `<p class="org">Sunshine on a Ranney Day · Board of Directors</p>
 <h1>${escHtml(doc.title)}</h1>
-<p class="sub">Signed for ${escHtml(year)}${wording ? ` · ${wording}` : ''}</p>
-${noWords ? `<p>The words ${escHtml(sig.name)} signed weren’t kept with this signature: it was given before Board kept each wording of a paper.</p>` : fileOnly ? `<p>${escHtml(doc.title)} is its file: its pages come before this one in this PDF.</p>` : blocksHtml(head, fields, mark?.style)}
-<div class="end">${last.length ? blocksHtml(last, fields, mark?.style) : ''}<div class="sign"><p class="agree">Signed for ${escHtml(year)}</p>
-${markHtml(mark, sig.name)}<div class="line"></div><p>${escHtml(sig.name)} · ${escHtml(dayEt(sig.at))}</p></div></div>`}
-<section class="${copied ? 'rec rec--alone' : 'rec'}"><p class="org">Signing record</p><h1>${escHtml(doc.title)}</h1><p class="sub">Signed by ${escHtml(sig.name)} for ${escHtml(year)}</p>
+<p class="sub">${page ? escHtml(page.sub) : `Signed for ${escHtml(year)}${wording ? ` · ${wording}` : ''}`}</p>
+${page ? page.html : noWords ? `<p>The words ${escHtml(sig.name)} signed weren’t kept with this signature: it was given before Board kept each wording of a paper.</p>` : fileOnly ? `<p>${escHtml(doc.title)} is its file: its pages come before this one in this PDF.</p>` : blocksHtml(head, fields, mark?.style)}
+<div class="end">${last.length ? blocksHtml(last, fields, mark?.style) : ''}<div class="sign"><p class="agree">${page ? escHtml(page.agree) : `Signed for ${escHtml(year)}`}</p>
+${markHtml(mark, sig.name)}<div class="line"></div><p>${escHtml(sig.name)}${page?.seat ? `, ${escHtml(page.seat)}` : ''} · ${escHtml(dayEt(sig.at))}</p></div></div>`}
+<section class="${copied ? 'rec rec--alone' : 'rec'}"><p class="org">Signing record</p><h1>${escHtml(doc.title)}</h1><p class="sub">Signed by ${escHtml(sig.name)}${page ? '' : ` for ${escHtml(year)}`}</p>
 <table>${rows.map(([k, v]) => `<tr><th>${escHtml(k)}</th><td>${v}</td></tr>`).join('')}</table>
 <p class="how">${escHtml(PROCESS_TEXT)} (How signing works, version ${PROCESS_V}.)</p></section>
 </body></html>`;
@@ -1087,7 +1090,7 @@ export async function signingFacts(env) {
   await board.ensureSchema(DB);
   const year = Number(todayEastern().slice(0, 4));
   const one = async (sql, ...args) => (await DB.prepare(sql).bind(...args).first()) || {};
-  const [copies, waiting, failed, receipts, reminders, declines, settings] = await Promise.all([
+  const [copies, waiting, failed, receipts, reminders, declines, settings, actions] = await Promise.all([
     one('SELECT COUNT(*) AS n, MAX(at) AS last FROM board_signatures WHERE record_id IS NOT NULL'),
     one(`SELECT COUNT(*) AS n FROM board_signatures WHERE record_id IS NULL AND COALESCE(record_tries, 0) < ${TRIES}`),
     one(`SELECT COUNT(*) AS n FROM board_signatures WHERE record_id IS NULL AND COALESCE(record_tries, 0) >= ${TRIES}`),
@@ -1095,9 +1098,10 @@ export async function signingFacts(env) {
     one("SELECT COUNT(*) AS n, MAX(at) AS last FROM board_sign_events WHERE kind = 'reminded' AND year = ?", year),
     one("SELECT COUNT(*) AS n FROM board_sign_events WHERE kind = 'declined' AND year = ?", year),
     board.getSettings(DB),
+    one('SELECT COUNT(*) AS n, MAX(at) AS last FROM board_action_reminders'),
   ]);
   return {
-    browser: !!env.BROWSER, remind: settings.remind,
+    browser: !!env.BROWSER, remind: settings.remind, actionRemind: settings.actionRemind, actionReminders: Number(actions.n) || 0, actionRemindersLast: actions.last || null,
     copies: Number(copies.n) || 0, copiesLast: copies.last || null, waiting: Number(waiting.n) || 0, failed: Number(failed.n) || 0,
     receipts: Number(receipts.n) || 0, receiptsLast: receipts.last || null, reminders: Number(reminders.n) || 0, remindersLast: reminders.last || null, declines: Number(declines.n) || 0,
   };
