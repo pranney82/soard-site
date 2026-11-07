@@ -21,7 +21,7 @@ import { everyoneSignIns, boardSignIns } from '../functions/api/_board-access.js
 import { staffStanding } from '../functions/api/_staff-access.js';
 import { centsOf, tally, readMoney, goalNow, moneyView, advisorIn, maybeReadMoney } from '../functions/api/_advisory-money.js';
 import { kidCard, pickableKids, keepPledge, ADVISORY_PARTNER } from '../functions/api/_advisory-sponsor.js';
-import { linkFrom, answerFromLink, askEmail, sendAsk, mailLog } from '../functions/api/_advisory-mail.js';
+import { linkFrom, answerFromLink, askEmail, sendAsk, sendWelcome, mailLog } from '../functions/api/_advisory-mail.js';
 import { advisoryFileFor } from '../functions/api/advisory-file.js';
 import { onRequestGet as actionGet, onRequestPost as actionPost } from '../functions/api/advisory-action.js';
 import { onRequestPost as pledgePost } from '../functions/api/sponsors-admin.js';
@@ -708,6 +708,25 @@ test('sendAsk does nothing with the switch off, and goes once with it on', async
     assert.equal((await mailLog(env.DB))[0].kind, 'ask');
     const body = JSON.stringify(sent);
     assert.ok(!body.includes('ben.secret') || !JSON.stringify(sent[0]).match(/"to":\s*\[[^\]]*,/), 'no shared To line');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('replies go to whoever runs the group, and to info@ while nobody does', async () => {
+  await saveSettings(env.DB, { emails: true, lead: '' });
+  env.RESEND_API_KEY = 're_x';
+  const realFetch = globalThis.fetch; let sent = [];
+  globalThis.fetch = async (u, o) => { sent.push(...[JSON.parse(o.body)].flat()); return new Response(JSON.stringify({ data: [{ id: 'x' }] }), { status: 200 }); };
+  const replies = () => [...new Set(sent.map((m) => [m.reply_to].flat().join()))];
+  try {
+    await sendAsk(env, await putAskOut(env.DB, (await saveAsk(env.DB, { title: 'Know a plumber?' })).id, { now: NOW }), { now: NOW });
+    assert.ok(sent.length > 0, 'it sent');
+    assert.deepEqual(replies(), ['info@soardcharity.com'], 'nobody runs it: info@');
+    await saveSettings(env.DB, { lead: 'mary-atchley' });
+    sent = [];
+    await sendAsk(env, await putAskOut(env.DB, (await saveAsk(env.DB, { title: 'Know a painter?' })).id, { now: NOW + 1 }), { now: NOW + 1 });
+    await sendWelcome(env, { now: NOW });
+    assert.ok(sent.length > 2, 'the ask and the welcome both sent');
+    assert.deepEqual(replies(), ['mary@private.example'], 'every reply goes to Mary');
   } finally { globalThis.fetch = realFetch; }
 });
 

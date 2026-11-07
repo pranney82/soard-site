@@ -10,7 +10,8 @@
  * sees is worse than none. A notice names what came in and links to Run it, never a
  * contact's email or phone, which stay on the page.
  *
- * Replies go to info@, never to someone's private address. No email ever names a kid
+ * Replies go to whoever runs the group (Peter's call, Nov 7 2026), or to info@ while
+ * nobody does or they have no address on file. No email ever names a kid
  * or a gift amount beside a reveal; the kid is theirs to hear about at the meeting.
  * The ask's buttons carry a token for one ask and one advisor (D1 keeps only its hash), and GET only shows
  * the question, because mail scanners open links: a person's press is a POST.
@@ -39,7 +40,7 @@ async function leadOf(env, settings) {
   const email = p ? emails[p.slug] : '';
   return { name: p?.name || '', email: isEmail(email) ? email : FALLBACK };
 }
-const REPLY_TO = FALLBACK;
+const replyTo = async (env, settings) => (await leadOf(env, settings)).email;
 
 async function remember(DB, entry, now = Date.now()) {
   const log = await readState(DB, LOG);
@@ -165,7 +166,7 @@ export async function sendAsk(env, ask, { now = Date.now() } = {}) {
     const at = (d) => `${SITE_ORIGIN}/api/advisory-action?t=${encodeURIComponent(t)}&do=${d}`;
     items.push({ to: a.email, ...askEmail(ask, firstOf(a.name), { yes: at('yes'), no: at('no') }) });
   }
-  const r = await sendEmailItems(env, items, { from: FROM, replyTo: REPLY_TO, tags: tag('advisory-ask') });
+  const r = await sendEmailItems(env, items, { from: FROM, replyTo: await replyTo(env, settings), tags: tag('advisory-ask') });
   await remember(env.DB, { kind: r.sent ? 'ask' : 'ask-failed', id: ask.id, title: ask.title, sent: r.sent, failed: r.failed, ...(r.sent ? {} : { what: `This month’s ask didn’t send: ${ask.title}` }) }, now);
   return { sent: r.sent, failed: r.failed };
 }
@@ -176,7 +177,7 @@ async function toOne(env, slug, { subject, heading, line, kind }) {
   const a = (await activeAdvisors(env.DB)).find((x) => x.slug === slug);
   if (!a || !isEmail(a.email)) return { sent: 0 };
   const html = shell.emailShell({ preheader: line, eyebrow: 'Advisory Board', heading, bodyHtml: para(line) + shell.button('Open your page', PAGE, 'primary', { big: true }) });
-  const r = await sendEmails(env, { to: [a.email], from: FROM, subject, html, text: `${line}\n\n${PAGE}`, replyTo: REPLY_TO, tags: tag(kind) });
+  const r = await sendEmails(env, { to: [a.email], from: FROM, subject, html, text: `${line}\n\n${PAGE}`, replyTo: await replyTo(env, settings), tags: tag(kind) });
   await remember(env.DB, { kind, sent: r.sent });
   return { sent: r.sent };
 }
@@ -196,7 +197,7 @@ export async function sendGoalNote(env, settings) {
   const advisors = (await activeAdvisors(env.DB)).filter((a) => isEmail(a.email));
   const line = 'You did it. Together you have raised enough to fund a makeover. There’s more to come at the next meeting.';
   const html = shell.emailShell({ preheader: line, eyebrow: 'Advisory Board', heading: 'You reached the goal', bodyHtml: para(line) + shell.button('Open your page', PAGE, 'primary', { big: true }) });
-  const r = await sendEmails(env, { to: advisors.map((a) => a.email), from: FROM, subject: 'You reached the goal', html, text: `${line}\n\n${PAGE}`, replyTo: REPLY_TO, tags: tag('advisory-update') });
+  const r = await sendEmails(env, { to: advisors.map((a) => a.email), from: FROM, subject: 'You reached the goal', html, text: `${line}\n\n${PAGE}`, replyTo: await replyTo(env, settings), tags: tag('advisory-update') });
   await remember(env.DB, { kind: 'goal-note', sent: r.sent });
   return r;
 }
@@ -217,7 +218,7 @@ export async function sendWelcome(env, { by = '', slugs = null, now = Date.now()
   const advisors = (await activeAdvisors(env.DB)).filter((a) => isEmail(a.email) && !had[a.slug] && (!slugs || slugs.includes(a.slug)));
   const lead = await leadOf(env, settings);
   const items = advisors.map((a) => ({ to: a.email, ...welcomeMessage(firstOf(a.name), lead.name) }));
-  const r = await sendEmailItems(env, items, { from: FROM, replyTo: REPLY_TO, tags: tag('advisory-welcome') });
+  const r = await sendEmailItems(env, items, { from: FROM, replyTo: lead.email, tags: tag('advisory-welcome') });
   const at = new Date(now).toISOString();
   // (a send that failed whole stays unmarked, so pressing it again works)
   if (r.sent) await writeState(env.DB, LOG, { ...(await readState(env.DB, LOG)), welcomed: { ...had, ...Object.fromEntries(advisors.map((a) => [a.slug, at])) } });

@@ -188,7 +188,7 @@ if (!process.env.KEEP) {
   ok((await api(LEAD, '/api/advisory-admin', { action: 'send-ask', id: fresh.body.ask.id, emailsOk: true })).status === 200 && mail.length === noEmail + 2, 'said so, it goes to both advisors');
   const again = await api(LEAD, '/api/advisory-admin', { action: 'email-ask', id: fresh.body.ask.id });
   ok(again.body.sent?.already === true && mail.length === noEmail + 2, 'and never twice');
-  ok(mail.slice(-2).every((m) => !/private\.example/.test(`${m.reply_to || ''}`)), 'replies never go to a private address');
+  ok(mail.slice(-2).every((m) => [m.reply_to].flat().join() === 'morgan@private.example'), 'replies go to whoever runs the group');
   ok((await api(LEAD, '/api/advisory-admin', { action: 'delete-ask', id: fresh.body.ask.id })).status === 409, 'an ask that went out can’t be deleted');
   await api(LEAD, '/api/advisory-admin', { action: 'save-settings', settings: { emails: false } });
 
