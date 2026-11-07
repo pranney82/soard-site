@@ -29,7 +29,7 @@ import { nbw } from './costs.js';
 import { useKept } from './parts.js';
 import { Face, Score, asked, place, areaWords, byScore, day, read, cache, seasonsOf, Media } from './family-parts.js';
 import { FamilyMap } from './family-map.js';
-import { STAGES, stageLabel, byStage } from './stages.js';
+import { STAGES, stageLabel, byStage, isFamily } from './stages.js';
 import { itemsOf, inSeason, sumLine, Track, LifeBoard, SeasonSwitch, StageChip, STAGE_SCHEME, Journey, toStep } from './lifecycle.js';
 
 const html = htm.bind(h);
@@ -53,7 +53,7 @@ export function FamiliesPage({ view = 'board', open = '', projects = null, revea
   const shownSeason = season || opening;
   const [stage, setStage] = useState(null);
   const list = useMemo(() => inSeason(all, shownSeason, app), [all, shownSeason, app]);
-  const families = list.filter((x) => !String(x.id).startsWith('job-'));
+  const families = list.filter(isFamily);
   const aside = list.filter((x) => x.stage === 'denied' || x.stage === 'none').length;
   const windowed = shownSeason === 'now' || shownSeason === app?.year ? app : null;
   const chips = [...STAGES.map((s) => s.key), 'denied', 'none'].filter((k) => list.some((x) => x.stage === k));
@@ -90,10 +90,10 @@ export function FamiliesPage({ view = 'board', open = '', projects = null, revea
         </div>
         ${rankLine ? html`<p class="bf-sum bf-rank">${nbw(rankLine)}</p>` : null}
         ${rows.length ? html`<ul class="bf-list">${rows.map((f) => {
-          const job = String(f.id).startsWith('job-');
+          const job = !isFamily(f);
           const href = job ? f.page || '' : `#/families/${encodeURIComponent(f.id)}`;
           const inner = html`<${Face} f=${{ ...f, photo: f.card?.photo || f.photo }} size=${44} />
-            <span class="bf-row__who"><strong>${(job ? f.card?.name : f.name) || 'A family'}</strong><span>${[asked(f), place(f)].filter(Boolean).join(' · ') || (job ? 'From before the applications' : '')}</span></span>
+            <span class="bf-row__who"><strong>${(job ? f.card?.name : f.name) || 'A family'}</strong><span>${[asked(f), place(f)].filter(Boolean).join(' · ') || (job ? (f.revealYear ? `Revealed in ${f.revealYear}, from before the applications` : 'From before the applications') : '')}</span></span>
             <span class="bf-row__status"><${StageChip} f=${f} /><small>${nbw([f.season, f.applied ? `applied ${day(f.applied)}` : ''].filter(Boolean).join(' · '))}</small></span>
             <span class="bf-row__score">${job ? null : html`<${Score} s=${f.score} />`}</span>`;
           return html`<li key=${f.id}>${href ? html`<a class="bf-row" href=${href} ...${external(href) ? { target: '_blank', rel: 'noopener' } : {}}>${inner}</a>` : html`<div class="bf-row">${inner}</div>`}</li>`;

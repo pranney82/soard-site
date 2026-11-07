@@ -70,20 +70,37 @@ const scoreOf = (s) => (s && (s.count || s.started?.length) ? {
  */
 const STAGE_OF_STATUS = { Applied: 'applied', 'In Review': 'review', Approved: 'approved', Denied: 'denied' };
 export function stageOf(a, open) {
+  // Their kid page says JobTread's last word (./_kid-status.js: the Reveal task done, or Closed Done or Warranty):
+  // a reveal can come before anyone changes the job's status
+  if (a?.kid?.status === 'completed' && a.kid.kind !== 'community') return 'revealed';
   const job = a?.jobId && open ? open[a.jobId] : undefined;
   if (job !== undefined && STAGE_OF_JOB[job]) return STAGE_OF_JOB[job];
   if (job === undefined && a?.jobId && open && a.status === 'Approved') return 'revealed';
   return STAGE_OF_STATUS[a?.status] || 'none';
 }
 
-/** One family as the board's list has it (`open`: as stageOf takes it) */
-function row(a, s, open = null) {
+/** Published kid pages: their year, JobTread's word on them (completed: revealed), their job and photo */
+async function kidPages(DB) {
+  try {
+    return ((await DB.prepare('SELECT slug, name, year, data FROM kids').all()).results || []).map((r) => {
+      const d = parsed(r.data);
+      return d.publishStatus === 'draft' ? null : { slug: r.slug, name: d.name || r.name, year: Number(r.year ?? d.year) || null, status: d.status || '', jobId: d.jobtreadJobId || null, photo: photoOf(d.heroImage || d.photos?.[0]?.url) };
+    }).filter(Boolean);
+  } catch { return []; }
+}
+
+/**
+ * One family as the board's list has it (`open`: as stageOf takes it; `pages`: kid pages by slug, for the year a
+ * revealed family's reveal was, their page's year: a family applies for one season and is often revealed in the next)
+ */
+function row(a, s, open = null, pages = null) {
   // Its page once it's public
   const kid = a.kid && a.kid.slug && !a.kid.draft ? a.kid : null;
   return {
     // (no status is no status: 17 older families have a season and none, and "Applied" would say something untrue)
     id: a.id, name: String(a.name || '').trim(), kind: a.kind === 'organization' ? 'organization' : 'family',
     status: a.status || '', stage: stageOf(a, open), jobId: a.jobId || null, season: a.year || '', types: Array.isArray(a.types) ? a.types : [],
+    ...(stageOf(a, open) === 'revealed' && a.kid?.slug && pages?.get(a.kid.slug)?.year ? { revealYear: String(pages.get(a.kid.slug).year) } : {}),
     county: a.county || '', city: a.city || '', area: a.area || 'unknown', areaMiles: a.areaMiles ?? null,
     ...(a.lat != null && a.lng != null ? { lat: a.lat, lng: a.lng } : {}),
     applied: a.submittedAt || a.createdAt || null, stageAt: a.stageAt || null,
@@ -114,19 +131,29 @@ async function applicationWindow(DB) {
  * be read, so the stages are the applications' alone
  */
 export async function familiesList(env, { fetchImpl = fetch } = {}) {
-  const [list, scores, boundary, projects, application] = await Promise.all([
+  const [list, scores, boundary, projects, application, kids] = await Promise.all([
     listApplicants(env.DB), scoreSummaries(env.DB).catch(() => new Map()), serviceArea(env.DB),
-    projectsNow(env, { fetchImpl }).catch(() => null), applicationWindow(env.DB),
+    projectsNow(env, { fetchImpl }).catch(() => null), applicationWindow(env.DB), kidPages(env.DB),
   ]);
+  const pages = new Map(kids.map((k) => [k.slug, k]));
   const tests = await testAccounts(env.DB);
   const open = projects?.open || null;
   // (a test run's job is its own: the whole list is checked, tests too, before a makeover counts as nobody's)
   const theirs = new Set(list.map((a) => a.jobId).filter(Boolean));
   const makeovers = [...(projects?.waiting || []), ...(projects?.building || [])].filter((p) => p.jobId && !theirs.has(p.jobId)).map((p) => ({
-    id: `job-${p.jobId}`, jobId: p.jobId, name: p.name || '', kind: p.kind === 'community' ? 'organization' : 'family', stage: STAGE_OF_JOB[p.status] || 'approved',
+    id: `job-${p.jobId}`, jobId: p.jobId, name: p.name || '', kind: p.kind === 'community' ? 'organization' : 'family',
+    stage: p.slug && pages.get(p.slug)?.status === 'completed' ? 'revealed' : STAGE_OF_JOB[p.status] || 'approved',
+    ...((p.slug && pages.get(p.slug)?.status === 'completed') || STAGE_OF_JOB[p.status] === 'revealed' ? (p.slug && pages.get(p.slug)?.year ? { revealYear: String(pages.get(p.slug).year) } : {}) : {}),
     ...(p.url || p.slug ? { page: p.url || `/kids/${p.slug}/` } : {}), ...(p.photo ? { photo: p.photo } : {}),
   }));
-  return { families: list.filter((a) => !isTest(a) && !tests.has(a.id)).map((a) => row(a, scores.get(a.id), open)), makeovers, boundary, application, jobs: !!open, at: new Date().toISOString() };
+  // This year's and last year's reveals whose family isn't an applicant (an older family), by their page
+  const since = Number(new Date().toISOString().slice(0, 4)) - 1;
+  const known = new Set(list.map((a) => a.kid?.slug).filter(Boolean));
+  for (const k of kids) {
+    if (k.status !== 'completed' || !(k.year >= since) || known.has(k.slug) || (k.jobId && (theirs.has(k.jobId) || makeovers.some((m) => m.jobId === k.jobId)))) continue;
+    makeovers.push({ id: `kid-${k.slug}`, jobId: k.jobId, name: k.name || '', kind: 'family', stage: 'revealed', revealYear: String(k.year), page: `/kids/${k.slug}/`, ...(k.photo ? { photo: k.photo } : {}) });
+  }
+  return { families: list.filter((a) => !isTest(a) && !tests.has(a.id)).map((a) => row(a, scores.get(a.id), open, pages)), makeovers, boundary, application, jobs: !!open, at: new Date().toISOString() };
 }
 
 // A database with no applications table has no website tests. Any other failure stops here: unsure means not shown

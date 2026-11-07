@@ -30,7 +30,7 @@ import { sized, revealTag, cardId } from './kanban.js';
 import { Face, asked, read, cache, seasonsOf, day, byScore } from './family-parts.js';
 import { FamilyMap } from './family-map.js';
 import { nbw } from './costs.js';
-import { STAGES, PHASES, STAGE_KEYS, STAGE_OF_JOB, stageInfo, stageLabel, phaseOf, keyOf, colorOf, inMotion, countsOf, shownStages, trackStages, windowWords, byStage } from './stages.js';
+import { STAGES, PHASES, STAGE_KEYS, STAGE_OF_JOB, stageInfo, stageLabel, phaseOf, keyOf, colorOf, inMotion, countsOf, shownStages, trackStages, windowWords, byStage, isFamily } from './stages.js';
 
 const html = htm.bind(h);
 const ARROW = html`<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 12h14M13 6l6 6-6 6"/></svg>`;
@@ -73,7 +73,8 @@ export function itemsOf(fam, projects) {
   const theirs = new Set(families.map((f) => f.jobId).filter(Boolean));
   const others = (fam.makeovers || []).filter((m) => !theirs.has(m.jobId)).map((m) => {
     const p = jobs.get(m.jobId);
-    return p ? fromProject(p) : { ...m, card: { name: m.name, photo: m.photo || null, slug: slugOf(m.page), kind: m.kind === 'organization' ? 'community' : undefined } };
+    // (its photo and name from JobTread's list; its step and its reveal's year as the server read them)
+    return p ? { ...fromProject(p), stage: m.stage || fromProject(p).stage, ...(m.revealYear ? { revealYear: m.revealYear } : {}) } : { ...m, card: { name: m.name, photo: m.photo || null, slug: slugOf(m.page), kind: m.kind === 'organization' ? 'community' : undefined } };
   });
   return [...families, ...others];
 }
@@ -85,7 +86,7 @@ export function inSeason(all, season, application) {
   return all.filter((x) => String(x.season || '') === season);
 }
 
-const hrefOf = (x) => (String(x.id).startsWith('job-') ? x.page || '' : `#/families/${encodeURIComponent(x.id)}`);
+const hrefOf = (x) => (isFamily(x) ? `#/families/${encodeURIComponent(x.id)}` : x.page || '');
 const nameOf = (x) => x.card?.name || x.name || (x.kind === 'organization' ? 'A community project' : 'A family');
 const external = (href) => /^\//.test(href) && !href.startsWith('#');
 
@@ -144,7 +145,7 @@ function PhotoCard({ x, reveals }) {
 /** Someone applying, or revealed: their face, their name, a line under it */
 function Row({ x, step = false }) {
   const href = hrefOf(x);
-  const sub = x.stage === 'revealed' ? [x.season ? `${x.season} season` : '', asked(x)] : [asked(x), x.city];
+  const sub = x.stage === 'revealed' ? [x.revealYear ? `Revealed in ${x.revealYear}` : x.season ? `${x.season} season` : '', asked(x)] : [asked(x), x.city];
   const inner = html`<${Face} f=${{ ...x, photo: x.card?.photo || x.photo }} size=${34} />
     <span class="lc-row__who"><strong>${nameOf(x)}</strong><span>${step ? html`<i class="lc-row__step" style=${`--c:${colorOf(x)}`}></i>${stageLabel(x.stage)}${sub.some(Boolean) ? ' · ' : ''}` : null}${sub.filter(Boolean).join(' · ')}</span></span>
     ${x.stage === 'revealed' ? html`<span class="lc-row__done" aria-hidden="true">${CHECK}</span>` : null}`;
@@ -157,7 +158,7 @@ const revealAt = (x, reveals) => { const r = x.card?.slug ? reveals.find((y) => 
 function ordered(list, phase, reveals) {
   if (phase === 'applying') return [...list].sort(byScore);
   if (phase === 'building') return [...list].sort((a, b) => revealAt(a, reveals).localeCompare(revealAt(b, reveals)) || nameOf(a).localeCompare(nameOf(b)));
-  return [...list].sort((a, b) => String(b.season || '').localeCompare(String(a.season || '')) || nameOf(a).localeCompare(nameOf(b)));
+  return [...list].sort((a, b) => String(b.revealYear || b.season || '').localeCompare(String(a.revealYear || a.season || '')) || nameOf(a).localeCompare(nameOf(b)));
 }
 
 /**
@@ -231,7 +232,7 @@ export function MakeoversCard({ n }) {
   const seasons = useMemo(() => seasonsOf(fam?.families), [fam]);
   const app = fam?.application || null;
   const list = useMemo(() => inSeason(all, season, app), [all, season, app]);
-  const families = useMemo(() => list.filter((x) => !String(x.id).startsWith('job-')), [list]);
+  const families = useMemo(() => list.filter(isFamily), [list]);
   const away = list.length - families.length;
   return html`<section class="bp-card lc" id="makeovers" aria-labelledby="lc-h">
     <div class="bp-cardhead">

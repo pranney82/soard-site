@@ -63,12 +63,14 @@ export function inMotion(list, application = null) {
   const building = all.filter((f) => phaseOf(f.stage) === 'building' && f.stage !== 'approved');
   const buildSeasons = new Set(building.map((f) => String(f.season || '')).filter(Boolean));
   if (!buildSeasons.size) buildSeasons.add(before(current));
+  // (a family applies for one season and is often revealed in the next: their reveal's year says when)
+  const thisYear = String(new Date().getFullYear());
   return all.filter((f) => {
     const y = String(f.season || '');
     if (f.stage === 'applied' || f.stage === 'review') return !y || y >= current;
     if (f.stage === 'approved') return !y || y >= before(current);
     if (phaseOf(f.stage) === 'building') return true;
-    if (f.stage === 'revealed') return buildSeasons.has(y) || y >= current;
+    if (f.stage === 'revealed') return f.revealYear ? String(f.revealYear) >= thisYear : buildSeasons.has(y) || y >= current;
     return false;
   });
 }
@@ -96,6 +98,9 @@ export function windowWords(app, today = new Date().toISOString().slice(0, 10)) 
   if (app.opensAt && String(app.opensAt).slice(0, 10) >= today) return `Opens ${DAY(app.opensAt)}`;
   return 'Closed';
 }
+
+/** One of the families who applied (not a makeover the board knows by its page alone) */
+export const isFamily = (x) => !/^(job|kid)-/.test(String(x?.id || ''));
 
 /** Stage order for a list, as the way goes: applying first, revealed last, then not chosen and no status */
 export const byStage = (a, b) => (stageInfo(a.stage)?.i ?? (a.stage === 'denied' ? 98 : 99)) - (stageInfo(b.stage)?.i ?? (b.stage === 'denied' ? 98 : 99));

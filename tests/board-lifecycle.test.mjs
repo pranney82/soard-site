@@ -31,6 +31,11 @@ describe('where a family is', () => {
     [{ status: 'Denied' }, 'denied', 'not chosen'],
     [{ status: '' }, 'none', 'no status is no status'],
   ]) test(`${why} → ${want}`, () => assert.equal(stageOf(a, open), want));
+  test('their kid page says completed (the Reveal task done): revealed, whatever the job’s status still says', () => {
+    assert.equal(stageOf({ jobId: 'jBuild', status: 'Approved', kid: { slug: 'max', status: 'completed' } }, open), 'revealed');
+    assert.equal(stageOf({ jobId: 'jBuild', status: 'Approved', kid: { slug: 'max', status: 'in-progress' } }, open), 'build');
+    assert.equal(stageOf({ jobId: 'jBuild', status: 'Approved', kid: { slug: 'oak', kind: 'community', status: 'completed' } }, open), 'build', 'a community project goes by its job');
+  });
   test('JobTread can’t be read: the application’s status, never a guess that a makeover is done', () => {
     assert.equal(stageOf({ jobId: 'jBuild', status: 'Approved' }, null), 'approved');
     assert.equal(stageOf({ jobId: 'jClosed', status: 'Approved' }, null), 'approved');
@@ -63,6 +68,12 @@ describe('the families list, each where they are', () => {
     await applicant('acctMia001', 'Mia Example', 'Applied', '2027');
     await applicant('acctTest01', 'TEST Applicant', 'Approved', '2026', 'jTest');
     await DB.prepare('INSERT INTO kids (slug, name, year, data) VALUES (?, ?, ?, ?)').bind('ruby', 'Ruby', 2025, JSON.stringify({ name: 'Ruby', jobtreadJobId: 'jRuby', heroImage: 'https://imagedelivery.net/abc123/kids/ruby/photo-1/public' })).run();
+    // Sam's page: built this year for last season's application; Ada's: revealed this year, her family not an applicant;
+    // Old's: revealed years ago
+    const thisYear = new Date().getFullYear();
+    for (const [slug, name, year, job] of [['sam', 'Sam', thisYear, 'jSamOld'], ['ada', 'Ada', thisYear, 'jAdaOld'], ['old', 'Old', thisYear - 4, 'jOldOld']]) {
+      await DB.prepare('INSERT INTO kids (slug, name, year, data) VALUES (?, ?, ?, ?)').bind(slug, name, year, JSON.stringify({ name, jobtreadJobId: job, status: 'completed', heroImage: `https://imagedelivery.net/abc123/kids/${slug}/photo-1/public` })).run();
+    }
     await DB.prepare('INSERT INTO site_config (key, data) VALUES (?, ?)').bind('settings', JSON.stringify({ application: { open: true, year: '2027', closesAt: '2027-01-31T23:59:00-05:00', closedMessage: 'Staff words', maxApplications: 40, formUrl: 'https://example.com/form' } })).run();
     jobs = [JOB('jMax', 'Build'), JOB('jRuby', 'Design'), JOB('jTest', 'Build')];
     down = false;
@@ -82,7 +93,17 @@ describe('the families list, each where they are', () => {
   });
   test('a makeover whose family isn’t an applicant is still on the way, by its page; a test run’s never is', async () => {
     const { makeovers } = await familiesList(env);
-    assert.deepEqual(makeovers.map((m) => [m.id, m.name, m.stage, m.page]), [['job-jRuby', 'Ruby', 'design', '/kids/ruby/']]);
+    assert.deepEqual(makeovers.filter((m) => m.stage !== 'revealed').map((m) => [m.id, m.name, m.stage, m.page]), [['job-jRuby', 'Ruby', 'design', '/kids/ruby/']]);
+  });
+  test('a revealed family carries the year of their reveal, their page’s: often the season after the one they applied for', async () => {
+    const { families } = await familiesList(env);
+    assert.equal(families.find((f) => f.name === 'Sam Example').revealYear, String(new Date().getFullYear()));
+    assert.equal(families.find((f) => f.name === 'Max Example').revealYear, undefined, 'not one still being built');
+  });
+  test('this year’s and last year’s reveals whose family isn’t an applicant, by their page; never an old one, never twice', async () => {
+    const { makeovers } = await familiesList(env);
+    const shown = makeovers.filter((m) => m.stage === 'revealed').map((m) => [m.id, m.name, m.revealYear, m.page]);
+    assert.deepEqual(shown, [['kid-ada', 'Ada', String(new Date().getFullYear()), '/kids/ada/']]);
   });
   test('the application’s window, and nothing else of its settings', async () => {
     const { application } = await familiesList(env);
@@ -93,7 +114,7 @@ describe('the families list, each where they are', () => {
     const r = await familiesList(env);
     assert.equal(r.jobs, false);
     assert.equal(r.families.find((f) => f.name === 'Max Example').stage, 'approved');
-    assert.deepEqual(r.makeovers, []);
+    assert.deepEqual(r.makeovers.filter((m) => m.id.startsWith('job-')), [], 'no makeover from JobTread (a reveal on a page still shows)');
   });
   test('JobTread’s answer is kept a few minutes: the list asks it once, not once a family', async () => {
     let asked = 0;
@@ -115,6 +136,11 @@ describe('who is “now”', () => {
   ];
   test('this season’s applications, every makeover being built, the new approvals, the reveals of the seasons still being built', () => {
     assert.deepEqual(inMotion(all, { year: '2027' }).map((f) => f.name), ['Mia', 'Jay', 'Iris', 'Ana', 'Max', 'Ava', 'Sam', 'Ben']);
+  });
+  test('a reveal is “now” by its year: this year’s, whatever season they applied for', () => {
+    const y = String(new Date().getFullYear());
+    const list = [{ id: 'a', stage: 'revealed', season: '2019', revealYear: y }, { id: 'b', stage: 'revealed', season: '2019', revealYear: String(Number(y) - 1) }, { id: 'c', stage: 'build', season: '2019' }];
+    assert.deepEqual(inMotion(list, { year: String(Number(y) + 1) }).map((f) => f.id), ['a', 'c']);
   });
   test('never an old application nobody decided, an old approval with no job, or anyone not chosen', () => {
     const now = inMotion(all, { year: '2027' }).map((f) => f.name);
