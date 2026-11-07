@@ -327,8 +327,8 @@ test('Insights: each kind’s season beside last season, Community Project decid
   assert.equal(family.total, 1, 'the marked one isn’t a makeover');
   assert.equal(organization.total, 3, 'the form’s, the marked one, the one added by hand');
   assert.deepEqual(organization.added.map((a) => a.name), ['acct-hand']);
-  assert.deepEqual([family.last.total, family.last.byNow], [2, 1], 'last season, and how many by this date');
-  assert.deepEqual([organization.last.total, organization.last.byNow], [1, 1]);
+  assert.equal(family.last.total, 2, 'last season, whole: the two seasons opened on different days, so a same-date count would mislead');
+  assert.equal(organization.last.total, 1);
   assert.equal(makeovers.submitted, 1, 'the marked one left the makeovers’ funnel');
   assert.equal(makeovers.started, 1);
   assert.deepEqual((await insights(env.DB, { year: YEAR, kind: 'organization', now })).season, makeovers.season, 'the same either way the page is set');
@@ -357,7 +357,10 @@ test('Insights: everyone who started is in one standing, on the page they reache
   await draft('stopped', { page: second, stop: 'outside' });
   await draft('gone', { page: second, at: old, name: 'Lena' });
   await draft('sent', { page: third, submitted: 'app-sent', name: 'Ava' });
-  await env.DB.prepare(`INSERT INTO applications (id, draft_id, year, kind, child_name, status, is_test, submitted_at, updated_at, answers) VALUES ('app-sent', 'sent', ?, 'family', 'Ava Sample', 'done', 0, ?, ?, ?)`).bind(YEAR, recent, recent, JSON.stringify({ referredBy: 'A neighbor' })).run();
+  await draft('sent-old', { page: third, submitted: 'app-old', at: old });
+  const sent = env.DB.prepare(`INSERT INTO applications (id, draft_id, year, kind, child_name, status, is_test, submitted_at, updated_at, answers) VALUES (?, ?, ?, 'family', 'Ava Sample', 'done', 0, ?, ?, ?)`);
+  await sent.bind('app-sent', 'sent', YEAR, recent, recent, JSON.stringify({ referredBy: 'A neighbor' })).run();
+  await sent.bind('app-old', 'sent-old', YEAR, '2026-10-01T13:00:00.000Z', recent, '{}').run(); // an hour after starting; Ava took none
   const ins = await insights(env.DB, { year: YEAR, now });
   const of = (id) => ins.people.find((p) => p.id === id);
   assert.deepEqual(['still', 'looked', 'stopped', 'gone', 'sent'].map((id) => of(id).state), ['working', 'working', 'stopped', 'left', 'submitted']);
@@ -366,14 +369,19 @@ test('Insights: everyone who started is in one standing, on the page they reache
   assert.equal(of('stopped').stop, 'outside');
   assert.equal(of('sent').referral, 'A neighbor');
   assert.equal(of('sent').name, 'Ava Sample', 'an application’s stored name, whatever its answers hold');
-  assert.equal(ins.finishRate, 50, 'one sent of the two who are done: still working and stopped by the form aren’t counted');
+  assert.equal(ins.finishRate, 50, 'one sent of the two who started 14 days ago: Ava is too new, and still working or stopped by the form aren’t counted');
+  assert.deepEqual(ins.finishOf, { finished: 1, of: 2 });
+  assert.deepEqual([ins.medianMinutes, ins.medianOf], [30, 2], 'between the middle two, not the slower one');
+  const opening = await insights(env.DB, { year: YEAR, now: Date.parse('2026-10-05T12:00:00Z') });
+  assert.equal(opening.finishRate, null, 'nobody has had 14 days yet, so a rate would only count the quick finishers');
+  assert.equal(opening.submitted, 2, 'they still show as submitted');
   assert.deepEqual(ins.byPage[0].id, first);
   assert.equal(ins.byPage[1].stoppedHere, 1);
   assert.equal(ins.byPage[1].leftHere, 1);
   assert.equal(ins.byPage[2].hereNow, 1);
   assert.equal(ins.byPage[1].hereNow, 1, 'whoever looked ahead and came back is where they are now');
   assert.equal(of('looked').page, 1);
-  assert.equal(ins.byPage[2].reached, 3, 'and still counts as having reached the page they looked at');
+  assert.equal(ins.byPage[2].reached, 4, 'and still counts as having reached the page they looked at');
   assert.equal(ins.season.family.partway, 3, 'Max, the one who came back, and the draft on the first page');
 });
 

@@ -1076,7 +1076,25 @@ try {
     const stands = (await text(page, '.afi-stands')).replace(/\s+/g, ' ');
     ok(/Submitted 19/.test(stands) && /Still working on it 4/.test(stands) && /Stopped by the form 3/.test(stands) && /Left without finishing 8/.test(stands), `where everyone stands (${stands})`);
     const facts = (await text(page, '.afi-facts')).replace(/\s+/g, ' ');
-    ok(/Finish rate 70%/.test(facts) && /19 of 27, leaving out the 4 still working and 3 the form stopped/.test(facts) && /min/.test(facts), `the finish rate counts only who's done (${facts})`);
+    ok(/Finish rate 65%/.test(facts) && /15 of 23 who started 14 or more days ago/.test(facts), `the finish rate counts only who's had the 14 days that decide it (${facts})`);
+    ok(/min/.test(facts) && /across 19 applications/.test(facts), `the typical time says how many it's from (${facts})`);
+    ok(!kinds.some(k => /by this date/.test(k)), 'seasons open on different days, so the cards never set a same-date count beside this one');
+    ok(await page.$eval('.afi-step:disabled', (b) => getComputedStyle(b).cursor).catch(() => 'none') === 'default', 'a row with no one to show is no hand pointer');
+    // Opening day: no one has had the 14 days yet, so a rate would count only the quick finishers
+    const dates = (await DB.prepare('SELECT id, created_at FROM application_drafts').all()).results;
+    await DB.prepare('UPDATE application_drafts SET created_at = ?').bind(iso(NOW)).run();
+    await page.click('.afi-kind[data-kind="organization"]');
+    await page.waitForFunction(() => document.querySelector('.afi-kind[data-kind="organization"]')?.getAttribute('aria-pressed') === 'true', { timeout: 8000 });
+    await page.click('.afi-kind[data-kind="family"]');
+    await page.waitForFunction(() => /Too early/.test(document.querySelector('.afi-facts')?.innerText || ''), { timeout: 8000 }).catch(() => {});
+    const opening = (await text(page, '.afi-facts')).replace(/\s+/g, ' ');
+    ok(/Finish rate Too early/.test(opening) && /Everyone gets 14 days before counting as left/.test(opening), `opening day has no finish rate yet (${opening})`);
+    ok(/Submitted 19/.test((await text(page, '.afi-stands')).replace(/\s+/g, ' ')), 'and everyone who sent theirs still shows as submitted');
+    for (const d of dates) await DB.prepare('UPDATE application_drafts SET created_at = ? WHERE id = ?').bind(d.created_at, d.id).run();
+    await page.click('.afi-kind[data-kind="organization"]');
+    await page.waitForFunction(() => document.querySelector('.afi-kind[data-kind="organization"]')?.getAttribute('aria-pressed') === 'true', { timeout: 8000 });
+    await page.click('.afi-kind[data-kind="family"]');
+    await page.waitForFunction(() => /Finish rate\s*65%/.test(document.querySelector('.afi-facts')?.innerText || ''), { timeout: 8000 }).catch(() => {});
     ok(/Home and Space\s*Most stop here/.test(await text(page, '.afi-step.is-top')), 'the page most people stop on is called out');
     ok(await count(page, '.afi-step') >= 6, 'every page of the application, in order');
     ok(await count(page, '.afi-chart svg .afi-line') === 1, 'the season so far, one line with no last season to compare');

@@ -1964,7 +1964,11 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
     const app = apps.find(a => a.draft_id === d.id);
     return app ? (Date.parse(app.submitted_at) - Date.parse(d.created_at)) / 60000 : null;
   }).filter(x => x != null && x >= 0).sort((x, y) => x - y);
-  const median = minutes.length ? Math.round(minutes[Math.floor(minutes.length / 2)]) : null;
+  const mid = minutes.length >> 1;
+  const median = minutes.length ? Math.round(minutes.length % 2 ? minutes[mid] : (minutes[mid - 1] + minutes[mid]) / 2) : null;
+  // Only who's had the 14 days that decide it: a quick finisher counts at once and a leaver only after 14 quiet days, so anyone newer flatters the rate
+  const decided = (list) => list.filter(d => now - Date.parse(d.created_at) >= 14 * DAY_MS).length;
+  const finishOf = { finished: decided(submitted), of: decided(submitted) + decided(gone) };
   const realApps = apps.filter(a => !leftOut.has(a.draft_id));
   const referral = {};
   for (const a of realApps) {
@@ -1998,9 +2002,11 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
     inProgress: inProgress.length,
     leftUnfinished: gone.length,
     stopped: { outside: stopped.filter(d => d.stop_key === 'outside').length, rental: stopped.filter(d => d.stop_key === 'rental').length, other: stopped.filter(d => !['outside', 'rental'].includes(d.stop_key)).length },
-    // Of those the form could finish for, now that they're done with it: still working isn't an answer yet, and stopped by the form isn't a failure to finish
-    finishRate: submitted.length + gone.length ? Math.round((submitted.length / (submitted.length + gone.length)) * 100) : null,
+    // Of those the form could finish for: still working isn't an answer yet, and stopped by the form isn't a failure to finish
+    finishRate: finishOf.of ? Math.round((finishOf.finished / finishOf.of) * 100) : null,
+    finishOf,
     medianMinutes: median,
+    medianOf: minutes.length,
     byPage,
     languages: { en: real.filter(d => (d.lang || 'en') === 'en').length, es: real.filter(d => d.lang === 'es').length },
     reminders: { sent: real.reduce((n, d) => n + (Number(d.reminders_sent) || 0), 0), finishedAfter: submitted.filter(d => Number(d.reminders_sent) > 0).length },

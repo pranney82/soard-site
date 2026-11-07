@@ -46,7 +46,7 @@ async function markedAccounts(DB) {
 
 const sorted = (list) => list.filter(Boolean).sort();
 
-/** → { lastYear, family: Side, organization: Side }, Side = { total, partway, recent, points, last: { total, byNow, points }, added } */
+/** → { lastYear, family: Side, organization: Side }, Side = { total, partway, recent, points, last: { total, points }, added } */
 export async function seasonSummary(DB, year, now = Date.now()) {
   const y = String(year);
   const lastYear = String(Number(y) - 1);
@@ -73,16 +73,13 @@ export async function seasonSummary(DB, year, now = Date.now()) {
     WHERE year = ? AND submitted_id IS NULL AND cleared_at IS NULL AND stop_key IS NULL AND updated_at >= ? AND COALESCE(ip_hash, '') != 'admin'
     GROUP BY COALESCE(kind, 'family')`).bind(y, quiet).all();
   for (const r of going || []) partway[kindOf(r.kind)] += Number(r.n) || 0;
-  const lastYearNow = new Date(now);
-  lastYearNow.setUTCFullYear(lastYearNow.getUTCFullYear() - 1);
-  const cut = lastYearNow.toISOString();
   const recent = new Date(now - 7 * DAY_MS).toISOString();
   const build = (points, past, going) => ({
     total: points.length,
     partway: going,
     recent: points.filter((t) => t >= recent).length,
     points: sorted(points),
-    last: { total: past.length, byNow: past.filter((t) => t <= cut).length, points: sorted(past) },
+    last: { total: past.length, points: sorted(past) },
   });
   return {
     lastYear: before.family.length || before.organization.length ? lastYear : null,

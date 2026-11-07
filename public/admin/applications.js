@@ -606,10 +606,8 @@ const CSS = `
 .afi-line { fill: none; stroke: var(--afe-data); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .afi-line.is-past { stroke: var(--afi-past); }
 .afi-dot { fill: var(--afe-data); stroke: var(--color-bg-card); stroke-width: 2; }
-.afi-dot.is-past { fill: var(--afi-past); }
 .afi-end { font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
 .afe-chart .afi-end.is-now { fill: var(--color-text); font-size: var(--fs-xs); font-weight: 700; }
-.afe-chart .afi-end.is-past { fill: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; }
 .afi-cross { stroke: var(--color-border-strong); stroke-width: 1; shape-rendering: crispEdges; }
 .afi-tip span { display: block; font-variant-numeric: tabular-nums; }
 .afi-table { margin-top: .5rem; }
@@ -1762,7 +1760,7 @@ function KindCard({ k, side, lastYear, on, onKind }) {
       <span class="afi-kind-name">${INSIGHT_WORDS[k].label}</span>
       <strong>${num(side.total)}</strong>
       <small>${now}</small>
-      ${lastYear && html`<small class="afi-kind-last">${side.last.total ? `${lastYear} season: ${num(side.last.byNow)} by this date, ${num(side.last.total)} in all` : `None in the ${lastYear} season`}</small>`}
+      ${lastYear && html`<small class="afi-kind-last">${side.last.total ? `${lastYear} season: ${num(side.last.total)} in all` : `None in the ${lastYear} season`}</small>`}
     </button>`;
 }
 
@@ -1772,7 +1770,6 @@ function InsightsBody({ ins, k, go, open }) {
   const people = ins.people || [];
   const counts = { submitted: ins.submitted, working: ins.inProgress, stopped: (ins.stopped?.outside || 0) + (ins.stopped?.rental || 0) + (ins.stopped?.other || 0), left: ins.leftUnfinished };
   const forWhom = (key) => people.filter(p => p.state === key);
-  const finishable = counts.submitted + counts.left;
   const showChart = side.total > 0 || side.last.total > 0;
   const es = ins.languages?.es || 0;
   const checks = [
@@ -1841,12 +1838,12 @@ function InsightsBody({ ins, k, go, open }) {
         <div>
           <span>Finish rate</span>
           <b>${ins.finishRate == null ? 'Too early' : `${ins.finishRate}%`}</b>
-          <small>${finishable ? `${num(counts.submitted)} of ${num(finishable)}, leaving out the ${listWords([counts.working && `${num(counts.working)} still working`, counts.stopped && `${num(counts.stopped)} the form stopped`].filter(Boolean)) || 'none still working'}` : `No one has finished or left yet`}</small>
+          <small>${ins.finishRate == null ? 'Everyone gets 14 days before counting as left' : `${num(ins.finishOf.finished)} of ${num(ins.finishOf.of)} who started 14 or more days ago`}</small>
         </div>
         <div>
           <span>Typical time to finish</span>
           <b>${minutesText(ins.medianMinutes)}</b>
-          <small>From the first page to sending it</small>
+          <small>From the first page to sending it${ins.medianOf ? `, across ${plural(ins.medianOf, 'application')}` : ''}</small>
         </div>
       </div>
     </div>
@@ -2075,11 +2072,7 @@ function SeasonChart({ side, year, lastYear }) {
   let lastLabel = -99;
   const labels = months.filter((t) => { const at = x(t); if (at - lastLabel < 36 || at > pad.l + plotW - 8) return false; lastLabel = at; return true; });
   const mineNow = m.countAt(m.mine, m.today);
-  const pastNow = m.countAt(m.past, m.today);
   const pastEnd = m.past.length;
-  // The comparison that matters: both seasons on this date
-  const sameSpot = pastNow === mineNow;
-  const pastNowShown = !!lastYear && pastNow > 0 && !sameSpot && pastNow !== pastEnd;
   const endClash = Math.abs(y(mineNow) - y(pastEnd)) < 14 && Math.abs(x(m.today) - x(m.to)) < 30;
   const move = (e) => {
     const r = box.current?.getBoundingClientRect();
@@ -2097,13 +2090,12 @@ function SeasonChart({ side, year, lastYear }) {
           <span><i class="is-past"></i>${lastYear} season</span>
         </div>`}
       <div class="afe-chart afi-plot" ref=${box} onPointerMove=${move} onPointerLeave=${() => setHi(null)}>
-      <svg width=${width} height=${H} role="img" aria-label=${`${year} season: ${mineNow} so far.${lastYear ? ` ${lastYear} season: ${pastNow} by this date, ${pastEnd} in all.` : ''}`}>
+      <svg width=${width} height=${H} role="img" aria-label=${`${year} season: ${mineNow} so far.${lastYear ? ` ${lastYear} season: ${pastEnd} in all.` : ''}`}>
         ${ticks.map(t => html`<line class="afe-grid" x1=${pad.l} x2=${pad.l + plotW} y1=${Math.round(y(t)) + 0.5} y2=${Math.round(y(t)) + 0.5} /><text class="afe-axis" x=${pad.l - 7} y=${y(t) + 4} text-anchor="end">${t}</text>`)}
         ${labels.map(t => html`<text class="afe-axis" x=${x(t)} y=${H - 5} text-anchor="middle">${monthName(t)}</text>`)}
         ${lastYear && html`<path class="afi-line is-past" d=${steps(m.past, m.to)} />`}
         <path class="afi-line" d=${steps(m.mine, m.today)} />
         ${lastYear && !endClash && html`<text class="afe-axis afi-end" x=${x(m.to) + 6} y=${y(pastEnd) + 4}>${pastEnd}</text>`}
-        ${pastNowShown && html`<circle class="afi-dot is-past" cx=${x(m.today)} cy=${y(pastNow)} r="4" /><text class="afi-end is-past" x=${x(m.today) - 8} y=${y(pastNow) - 6} text-anchor="end">${pastNow}</text>`}
         <circle class="afi-dot" cx=${x(m.today)} cy=${y(mineNow)} r="4" />
         <text class="afi-end is-now" x=${x(m.today) + 8} y=${y(mineNow) + 4}>${mineNow}</text>
         ${hi != null && html`<line class="afi-cross" x1=${x(hi)} x2=${x(hi)} y1=${pad.t} y2=${pad.t + plotH} />`}
