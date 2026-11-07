@@ -127,6 +127,7 @@ const CSS = `
 .ck-cands { display: grid; gap: .4rem; margin: 0; padding: 0; list-style: none; }
 .ck-cands li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .75rem; padding: .5rem .7rem; border: 1px solid var(--color-border); border-radius: 8px; }
 .ck-entry { grid-column: 2 / -1; display: grid; gap: .6rem; }
+.ck-form { display: grid; gap: .6rem; min-width: 0; }
 .ck-actions { margin-top: .1rem; }
 .ck-need > *, .ck-entry > *, .ck-cands li > span, .ck .jc-charge__what { min-width: 0; }
 .ck-need strong, .ck-need__why, .ck .jc-charge__meta > span, .ck-cands li > span { overflow-wrap: anywhere; }
@@ -175,11 +176,14 @@ export function JobCosts({ addToast = () => {} }) {
   const tabs = useRef(null);
   useEffect(() => { tabs.current?.querySelector('[aria-selected="true"]')?.scrollIntoView({ block: 'nearest', inline: 'nearest' }); }, [place.tab, !!data]);
 
+  // The Checks tab sets its own count as it acts: a load that began before that keeps the newer count
+  const checksAt = useRef(0);
   const load = async (opts) => {
+    const began = Date.now();
     const j = await call(null, opts);
     if (!j.success) { setErr(j.error || 'Could not load job costs'); return; }
     setErr(null);
-    setData((d) => ({ ...(d || {}), ...j }));
+    setData((d) => ({ ...(d || {}), ...j, ...(d && checksAt.current > began ? { checksWaiting: d.checksWaiting } : {}) }));
   };
   useEffect(() => { load({ setup: place.tab === 'setup' || place.tab === 'bills' }); }, [place.tab]);
   // Live: charges arrive by the second, so look again every 15 seconds while the tab is open
@@ -227,7 +231,7 @@ export function JobCosts({ addToast = () => {} }) {
       </div>
       <${Health} h=${data.health} />
       <div class="seg" role="tablist" aria-label="Job costs" ref=${tabs}>
-        ${TABS.map(([k, label]) => html`<button role="tab" aria-selected=${place.tab === k && !(k === 'jobs' && job)} onClick=${() => open(k)}>${label}${counts[k] ? html` <span class="count ${k === 'charges' || k === 'bills' ? 'is-warn' : ''}">${counts[k]}</span>` : ''}</button>`)}
+        ${TABS.map(([k, label]) => html`<button role="tab" aria-selected=${place.tab === k && !(k === 'jobs' && job)} onClick=${() => open(k)}>${label}${counts[k] ? html` <span class="count ${['charges', 'bills', 'checks'].includes(k) ? 'is-warn' : ''}">${counts[k]}</span>` : ''}</button>`)}
       </div>
       ${job ? html`<${JobDetail} l=${job} data=${data} act=${act} busy=${busy} onBack=${() => open('jobs')} />`
         : place.tab === 'jobs' && place.job ? html`<div class="notice"><div class="notice__body">That job isn’t open any more, or hasn’t been read from JobTread yet. Closed jobs are under Close-outs.</div><div class="notice__actions"><button class="btn btn-ghost" onClick=${() => open('jobs')}>All jobs</button><button class="btn btn-ghost" onClick=${() => open('closeouts', place.job)}>Its close-out</button></div></div>`
@@ -238,7 +242,7 @@ export function JobCosts({ addToast = () => {} }) {
         : place.tab === 'rules' ? html`<${Rules} data=${data} act=${act} busy=${busy} />`
         : place.tab === 'setup' ? html`<${Setup} data=${data} act=${act} busy=${busy} />`
         : place.tab === 'insurance' ? html`<${InsuranceAudit} addToast=${addToast} />`
-        : place.tab === 'checks' ? html`<${Checks} addToast=${addToast} />`
+        : place.tab === 'checks' ? html`<${Checks} addToast=${addToast} onCount=${(n) => { checksAt.current = Date.now(); setData((d) => (d && d.checksWaiting !== n ? { ...d, checksWaiting: n } : d)); }} />`
         : place.tab === 'papers' ? html`<${VendorPapers} id=${place.job} onOpen=${(id) => open('papers', id)} addToast=${addToast} />`
         : html`<${Ramp} data=${data} act=${act} busy=${busy} />`}
     </div>`;

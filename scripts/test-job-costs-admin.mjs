@@ -267,7 +267,9 @@ try {
   await clickText(page, '.jc button', 'Settings');
   await page.waitForFunction(() => document.body.textContent.includes('When a bill is approved'));
   ok(await page.evaluate(() => [...document.querySelectorAll('input[name="pay-mode"]')].filter((r) => r.disabled).length === 2), 'paying from Mercury waits for a pay-from account');
-  ok(await page.evaluate(() => document.querySelector('.jc a[href="#trade-partners/settings"]')?.textContent.includes('Trade Partners')), 'the W-9 and insurance minimums are a link away, in Trade Partners → Settings');
+  // Trade Partners has no admin page since 12141790: the papers live in Job Costs → W-9s & insurance, and the site asks vendors itself
+  ok(await page.evaluate(() => [...document.querySelectorAll('.jc .sec-head__desc')].some((p) => p.textContent.includes('A bill is paid only when') && p.textContent.includes('W-9s & insurance') && !p.querySelector('a[href^="#trade-partners"]'))),
+    'Bill settings say a bill waits for a current W-9 and insurance, kept under W-9s & insurance, with no link to the old Trade Partners page');
   await page.screenshot({ path: `${OUT}bill-settings.png`, fullPage: false });
   await axe(page, 'Bill settings');
 

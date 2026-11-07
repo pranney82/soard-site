@@ -1319,13 +1319,15 @@ const MAP = { t: 'SOARD', children: [
           } },
         { t: 'Checks into Zeffy', s: 'live', k: 'schedule',
           when: 'Every 5 minutes on the live hub’s heartbeat, one check a run, once Mercury says a deposited check posted (up to about 6 business days after it’s deposited).',
-          does: 'Reads the picture of each check deposited in Mercury with two AI readers, finds its entry in Zeffy, or makes the record itself on the right form with the receipt and email off, so nothing reaches a donor. Slack’s gift alert shows it like any other gift. It starts by watching: staff keep entering checks, and each hand entry is scored against what the site would have done. Job Costs → Checks turns it on.',
+          does: 'Reads the picture of each check deposited in Mercury with two AI readers, finds its entry in Zeffy, or makes the record itself on the right form with the receipt and email off, so nothing reaches a donor. A repeat giver Zeffy has no email for stays on their one contact: for the moment the record takes, the contact holds an address that reaches no one, and it comes off again. Slack’s gift alert shows it like any other gift. It starts by watching: staff keep entering checks, and each hand entry is scored against what the site would have done. Job Costs → Checks turns it on.',
           touches: ['Mercury', 'Zeffy', 'Workers AI', 'Slack', 'D1'], where: 'functions/api/_check-gifts.js (broadcast-hooks.js, checks-admin.js), public/admin/checks.js',
           info: 'A person is asked only when the site can’t act: it can’t read who wrote the check, Zeffy may already have it under another name, it’s for an event (Zeffy takes tickets and auctions only by hand), SOARD pays that company and nothing says refund or gift, or Zeffy didn’t answer. The picture is never kept, and no account or routing number is stored or shown.',
           live: (f) => {
             const c = f.checks;
             if (!c || !env(f)) return null;
             if (!f.env.zeffyApi) return OFF('Add ZEFFY_API_KEY in Cloudflare.');
+            if (c.paused) return ATTN('Turned on, but stopped: Zeffy wouldn’t take its new $1 test record, so staff enter checks by hand until it works.', c.lastRunAt);
+            if (c.matchFailing) return ATTN(`The hourly look at Zeffy has failed since ${stamp(c.matchFailing.since)}: ${c.matchFailing.error}. Hand entries don’t link until it works.`, c.lastRunAt);
             if (c.error) return ATTN(`The last run didn’t finish: ${c.error}.`, c.lastRunAt);
             if (c.writeOk === false) return ATTN('The site couldn’t save a test record in Zeffy, so it can’t be turned on. Job Costs → Checks says why.', c.lastRunAt);
             if (!c.lastRunAt) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');

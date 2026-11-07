@@ -291,7 +291,7 @@ function freshWorld() {
       { id: 'form_grant', type: 'donation_form', status: 'active', title: 'Grant Funding 2026' },
       { id: 'form_golf', type: 'ticketing', status: 'active', title: 'Fairway 2026' },
     ],
-    posts: [], deletes: [], slack: [], contacts: {}, postFails: null, deleteFails: false, picture: JPEG, aiCalls: 0, aiThrow: null, reading: read(), nextId: 1,
+    posts: [], deletes: [], slack: [], contacts: {}, patches: [], patchFails: null, postFails: null, deleteFails: false, picture: JPEG, aiCalls: 0, aiThrow: null, reading: read(), nextId: 1,
   };
 }
 const json = (b, status = 200) => new Response(JSON.stringify(b), { status, headers: { 'content-type': 'application/json' } });
@@ -317,7 +317,9 @@ const fakeFetch = async (input, init = {}) => {
       }
       if (world.postFails === 422) return json({ error: { code: 'amount_out_of_range', message: 'Amount is too high' } }, 422);
       if (world.postFails === 429) return json({ error: { code: 'rate_limit_exceeded', message: 'Slow down' } }, 429);
-      const p = hand({ id: `zeffy_pay_${world.nextId++}`, amount: body.amount, campaign_id: body.campaign_id, contact: `contact_${world.nextId}`, description: world.forms.find((f) => f.id === body.campaign_id)?.title, buyer: { first_name: body.first_name, last_name: body.last_name, email: body.email || null }, created: dayS(body.payment_date?.slice(0, 10) || '2026-11-10') });
+      // Zeffy files a record under the contact holding its email, or makes a new one
+      const owner = body.email ? Object.values(world.contacts).find((c) => c.email && c.email.toLowerCase() === body.email.toLowerCase()) : null;
+      const p = hand({ id: `zeffy_pay_${world.nextId++}`, amount: body.amount, campaign_id: body.campaign_id, contact: owner ? owner.id : `contact_${world.nextId}`, description: world.forms.find((f) => f.id === body.campaign_id)?.title, buyer: { first_name: body.first_name, last_name: body.last_name, email: body.email || null }, created: dayS(body.payment_date?.slice(0, 10) || '2026-11-10') });
       world.payments.push(p);
       return json(p, 201);
     }
@@ -329,9 +331,25 @@ const fakeFetch = async (input, init = {}) => {
       world.payments = world.payments.filter((x) => x.id !== one[1]);
       return json({});
     }
+    if (path === '/contacts' && method === 'POST') {
+      const b = JSON.parse(init.body);
+      const id = `ct_${world.nextId++}`;
+      world.contacts[id] = { id, email: b.email || null, first_name: b.first_name, last_name: b.last_name, donation_count: 0 };
+      return json(world.contacts[id], 201);
+    }
     const contact = path.match(/^\/contacts\/(.+)$/);
     if (contact && method === 'GET') return json(world.contacts[contact[1]] || {}, world.contacts[contact[1]] ? 200 : 404);
-    if (contact && method === 'DELETE') return json({});
+    if (contact && method === 'PATCH') {
+      const b = JSON.parse(init.body);
+      world.patches.push({ id: contact[1], email: b.email });
+      const f = world.patchFails;
+      if (f === 'timeout-after-set' && b.email) { if (world.contacts[contact[1]]) world.contacts[contact[1]].email = b.email; throw new DOMException('timed out', 'TimeoutError'); }
+      if (f === 'all' || (f === 'clear' && b.email === null) || (f === 'set' && b.email)) return json({ error: { code: 'invalid_email', message: 'Email is not valid' } }, 422);
+      if (!world.contacts[contact[1]]) return json({ error: { message: 'no' } }, 404);
+      Object.assign(world.contacts[contact[1]], b);
+      return json(world.contacts[contact[1]]);
+    }
+    if (contact && method === 'DELETE') { delete world.contacts[contact[1]]; return json({}); }
   }
   if (url.hostname === 'slack.com') { world.slack.push(String(init.body || '')); return json({ ok: true, ts: '1.1', channel: 'C1' }); }
   throw new Error(`Unexpected fetch ${url}`);
@@ -469,23 +487,25 @@ test('On: a run cut off mid-POST is treated the same as no answer', async () => 
   assert.equal((await theRow()).state, 'person');
   assert.equal(world.posts.length, 0);
 });
-test('On: Zeffy refusing is a person, with Zeffy\'s words', async () => {
+test('On: Zeffy refusing is a person, told why in plain words', async () => {
   await setMode(env, 'on');
   world.postFails = 422;
   await posted();
   const r = await theRow();
   assert.equal(r.state, 'person');
   assert.equal(r.reason, 'zeffy-refused');
-  assert.match(r.note, /too high/);
+  assert.equal(r.note, 'Zeffy wouldn’t take this amount.');
   assert.equal(r.payload, null);
 });
-test('On: Zeffy saying "slow down" waits for the next run', async () => {
+test('On: Zeffy saying "slow down" waits a quarter hour at the back of the line', async () => {
   await setMode(env, 'on');
   world.postFails = 429;
   await posted();
   assert.equal((await theRow()).state, 'read');
   world.postFails = null;
   await run(NOW + 20 * MIN);
+  assert.equal((await theRow()).state, 'read', 'not yet: other checks go first');
+  await run(NOW + 30 * MIN);
   assert.equal((await theRow()).state, 'created');
   assert.equal(world.payments.length, 1);
 });
@@ -520,9 +540,11 @@ test('a blocked check is told, makes no record, and goes on if Mercury releases 
   world.slack = [];
   await run(NOW + 10 * MIN);
   const r = await theRow();
-  assert.equal(r.state, 'came-back');
+  assert.equal(r.state, 'read', 'a hold, not a check that came back: nobody is told to cancel anything');
   assert.equal(r.final, 0);
   assert.equal(world.slack.length, 1);
+  assert.match(world.slack[0], /holding a check/);
+  assert.doesNotMatch(world.slack[0], /cancel/i);
   assert.equal(world.posts.length, 0);
   post();
   await setMode(env, 'on');
@@ -795,26 +817,58 @@ test('the heartbeat runs every 5 minutes, and only with Mercury and Zeffy connec
 });
 test('a run that fails says so, and the next good one clears it', async () => {
   await maybeRunChecks(env, { now: NOW, fetchImpl: async () => { throw new Error('no line'); } });
-  assert.match((await checksView(env)).lastError?.error || '', /no line/);
+  assert.match((await checksView(env)).lastError?.error || '', /didn’t answer|unexpected/);
   await maybeRunChecks(env, { now: NOW + 6 * MIN, fetchImpl: fakeFetch });
   assert.equal((await checksView(env)).lastError, null);
 });
 
 // ── The one-time write test ──────────────────────────────────────────────
 
-test('the write test makes three $1 records, removes them and leaves the switch able to turn on', async () => {
+test('the write test makes $1 records, removes them and leaves the switch able to turn on', async () => {
   await writeState(env.DB, 'check-gifts', { writeTest: null });
   const r = await run();
   assert.equal(r.writeTest.ok, true);
   assert.equal(r.writeTest.removed, true);
-  assert.equal(world.posts.length, 3);
-  assert.equal(world.deletes.length, 3);
+  assert.equal(world.posts.length, 5, 'three plain ones, one filed under a contact, one with an email');
+  assert.equal(world.deletes.length, 5);
   assert.equal(world.payments.length, 0);
-  for (const p of world.posts) { assert.equal(p.generate_tax_receipt, false); assert.equal(p.send_confirmation_email, false); assert.equal('email' in p, false); }
+  for (const p of world.posts) { assert.equal(p.generate_tax_receipt, false); assert.equal(p.send_confirmation_email, false); }
+  for (const p of world.posts.slice(0, 3)) assert.equal('email' in p, false);
+  assert.match(world.posts[3].email, /@nomail\.soardcharity\.com$/);
+  assert.equal(world.posts[4].email, 'peter+zeffy-write-test@soardcharity.com', 'a SOARD inbox, to see Zeffy sends nothing');
+  assert.equal(r.writeTest.join.ok, true);
+  assert.equal(r.writeTest.email.saved, true);
+  assert.deepEqual(world.contacts, {}, 'the test contact is gone too');
+  assert.equal((await env.DB.prepare('SELECT COUNT(*) AS n FROM check_tags').first()).n, 0);
   await setMode(env, 'on');
   assert.equal((await checksView(env)).mode, 'on');
   await run(NOW + 10 * MIN);
-  assert.equal(world.posts.length, 3, 'once');
+  assert.equal(world.posts.length, 5, 'once');
+});
+test('a new test after one that passed tries only what\'s new: one record filed under a contact, one with an email', async () => {
+  await writeState(env.DB, 'check-gifts', { writeTest: { id: '2026-11-06', ok: true, at: '2026-11-07T14:20:00Z', steps: [{ what: 'two names' }], sameContact: false } });
+  const r = await run();
+  assert.equal(world.posts.length, 2);
+  assert.equal(r.writeTest.ok, true);
+  assert.equal(r.writeTest.join.ok, true);
+  assert.equal(r.writeTest.provenAt, '2026-11-07T14:20:00Z');
+  assert.equal(world.deletes.length, 2);
+});
+test('if Zeffy won\'t take the no-mail address, the test still passes and gifts simply get their own contact', async () => {
+  await writeState(env.DB, 'check-gifts', { writeTest: null });
+  world.patchFails = 'set';
+  const r = await run();
+  assert.equal(r.writeTest.ok, true);
+  assert.equal(r.writeTest.join.ok, false);
+  assert.equal('email' in world.posts[3], false, 'it went in plainly');
+  await env.DB.prepare('INSERT INTO check_payers (key, name, contact_id, campaign_id, updated_at) VALUES (?, ?, ?, ?, ?)').bind('pine foundation', 'Pine Foundation', 'c_pine', 'form_home', 'x').run();
+  world.contacts.c_pine = { id: 'c_pine', email: null, first_name: 'Pine', last_name: 'Foundation' };
+  world.posts = []; world.patches = [];
+  await setMode(env, 'on');
+  await posted(NOW + 10 * MIN);
+  assert.equal(world.posts.length, 1);
+  assert.equal('email' in world.posts[0], false);
+  assert.equal(world.patches.length, 0, 'never touches a donor contact unless the test proved it');
 });
 test('a write test that fails keeps the switch off and says why', async () => {
   await writeState(env.DB, 'check-gifts', { writeTest: null });
@@ -829,7 +883,7 @@ test('a test record Zeffy won\'t remove asks a person, and stops asking once it\
   const r = await run();
   assert.equal(r.writeTest.ok, true);
   assert.equal(r.writeTest.removed, false);
-  assert.equal(r.writeTest.leftBehind.length, 3);
+  assert.equal(r.writeTest.leftBehind.length, 5);
   await setMode(env, 'on');
   world.payments = [];
   await run(NOW + 2 * 60 * MIN);
@@ -845,6 +899,138 @@ test('records Zeffy calls imported would skip Slack and the board, so the test f
   assert.equal(r.ok, false);
   assert.match(r.error, /imported/);
   assert.equal(world.deletes.length, 3, 'still cleaned up');
+});
+
+// ── A giver Zeffy has no email for keeps one contact ──────────────────────
+
+const joinProven = () => writeState(env.DB, 'check-gifts', { writeTest: { id: WRITE_TEST, ok: true, join: { ok: true } } });
+async function noEmailGiver() {
+  await env.DB.prepare('INSERT INTO check_payers (key, name, contact_id, campaign_id, updated_at) VALUES (?, ?, ?, ?, ?)').bind('pine foundation', 'Pine Foundation', 'c_pine', 'form_home', 'x').run();
+  world.contacts.c_pine = { id: 'c_pine', email: null, first_name: 'Pine', last_name: 'Foundation', donation_count: 3 };
+  await joinProven();
+  await setMode(env, 'on');
+}
+const tags = async () => (await env.DB.prepare('SELECT * FROM check_tags').all()).results;
+
+test('a repeat giver with no email: the gift lands on their contact, and the contact is left with no email again', async () => {
+  await noEmailGiver();
+  await posted();
+  const r = await theRow();
+  assert.equal(r.state, 'created');
+  assert.equal(world.posts.length, 1);
+  assert.match(world.posts[0].email, /^check-[a-z0-9]+-[a-z0-9]+@nomail\.soardcharity\.com$/);
+  assert.equal(world.posts[0].generate_tax_receipt, false);
+  assert.equal(world.posts[0].send_confirmation_email, false);
+  assert.equal(world.payments.at(-1).contact, 'c_pine', 'on their own contact');
+  assert.equal(world.contacts.c_pine.email, null, 'the address came off');
+  assert.deepEqual(world.patches.map((p) => p.email === null ? 'off' : 'on'), ['on', 'off']);
+  assert.deepEqual(await tags(), []);
+  assert.equal(JSON.parse(r.payload || 'null'), null, 'nothing waiting');
+});
+test('filed under a contact, the record carries the names staff gave it, not how the check was read', async () => {
+  await noEmailGiver();
+  world.contacts.c_pine = { ...world.contacts.c_pine, first_name: 'Pine Family', last_name: 'Foundation Inc' };
+  await posted();
+  assert.equal(world.posts[0].first_name, 'Pine Family');
+  assert.equal(world.posts[0].last_name, 'Foundation Inc');
+});
+test('a giver with an email is filed by it, and their contact is never touched', async () => {
+  await noEmailGiver();
+  world.contacts.c_pine.email = 'pine@example.com';
+  await posted();
+  assert.equal(world.posts[0].email, 'pine@example.com');
+  assert.equal(world.patches.length, 0);
+});
+test('a contact deleted in Zeffy since gets nothing done to it: the gift makes a new one', async () => {
+  await noEmailGiver();
+  delete world.contacts.c_pine;
+  await posted();
+  assert.equal(world.posts.length, 1);
+  assert.equal('email' in world.posts[0], false);
+  assert.equal(world.patches.length, 0);
+});
+test('an address the site couldn\'t take off comes off on a later run, and a day stuck tells a person once', async () => {
+  await noEmailGiver();
+  world.patchFails = 'clear';
+  await posted();
+  assert.equal(world.payments.at(-1).contact, 'c_pine', 'the gift itself is right');
+  assert.match(world.contacts.c_pine.email, /@nomail\./);
+  assert.equal((await tags()).length, 1, 'kept to take off');
+  const slackBefore = world.slack.length;
+  await run(NOW + 20 * MIN);
+  assert.equal((await tags()).length, 1);
+  assert.equal(world.slack.length, slackBefore, 'not yet a day');
+  await run(NOW + DAY + 20 * MIN);
+  await run(NOW + DAY + 30 * MIN);
+  const cards = world.slack.slice(slackBefore).filter((b) => /no-mail address/.test(b));
+  assert.equal(cards.length, 1, 'said once');
+  world.patchFails = null;
+  await run(NOW + DAY + 40 * MIN);
+  assert.equal(world.contacts.c_pine.email, null);
+  assert.deepEqual(await tags(), []);
+});
+test('an email someone typed on the contact meanwhile stays: only the site\'s own address is ever taken off', async () => {
+  await noEmailGiver();
+  world.patchFails = 'clear';
+  await posted();
+  world.contacts.c_pine.email = 'pine@example.com';
+  world.patchFails = null;
+  const before = world.patches.length;
+  await run(NOW + 20 * MIN);
+  assert.equal(world.contacts.c_pine.email, 'pine@example.com');
+  assert.equal(world.patches.length, before, 'no change sent');
+  assert.deepEqual(await tags(), []);
+});
+test('a record that times out after the address went on: the address stays until it\'s settled, it\'s never sent again, and the record is found by its contact', async () => {
+  await noEmailGiver();
+  world.postFails = 'saved-then-lost';
+  await posted();
+  assert.equal((await theRow()).state, 'unsure');
+  // Zeffy may still be saving it by that address: taking it off now would file the record on a new contact
+  assert.match(world.contacts.c_pine.email, /nomail/);
+  // Zeffy kept the names it had for the contact, not the ones read off the check
+  world.payments.at(-1).contact = 'c_pine';
+  world.payments.at(-1).buyer = { first_name: 'P.', last_name: 'F. Trust' };
+  world.postFails = null;
+  await run(NOW + 20 * MIN);
+  const r = await theRow();
+  assert.equal(r.state, 'created');
+  assert.equal(world.posts.length, 1, 'never sent again');
+  await run(NOW + 30 * MIN);
+  assert.equal(world.contacts.c_pine.email, null, 'off once it settled');
+  assert.deepEqual(await tags(), []);
+});
+test('a run cut off with the address on: the next run takes it off', async () => {
+  await noEmailGiver();
+  world.contacts.c_pine.email = 'check-cut-x@nomail.soardcharity.com';
+  await env.DB.prepare('INSERT INTO check_tags (email, contact, at) VALUES (?, ?, ?)').bind('check-cut-x@nomail.soardcharity.com', 'c_pine', new Date(NOW).toISOString()).run();
+  // A save may still be using it for a minute or two: it's left to that save
+  await run();
+  assert.match(world.contacts.c_pine.email, /nomail/);
+  await run(NOW + 10 * MIN);
+  assert.equal(world.contacts.c_pine.email, null);
+  assert.deepEqual(await tags(), []);
+});
+test('Watch never touches a donor contact', async () => {
+  await noEmailGiver();
+  await setMode(env, 'watch');
+  await posted();
+  assert.equal((await theRow()).state, 'would');
+  assert.equal(world.patches.length, 0);
+  assert.equal(world.posts.length, 0);
+});
+test('a person entering a no-email giver\'s check files it under their contact too', async () => {
+  await noEmailGiver();
+  world.reading = read({ payer: '', remitter: '' });
+  await posted();
+  await run(NOW + 20 * MIN);
+  await run(NOW + 30 * MIN);
+  await run(NOW + 40 * MIN);
+  const r0 = await theRow();
+  assert.equal(r0.state, 'person');
+  await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', by: 'holly@soardcharity.com', now: NOW + 50 * MIN, fetchImpl: fakeFetch });
+  assert.equal(world.payments.at(-1).contact, 'c_pine');
+  assert.equal(world.contacts.c_pine.email, null);
 });
 
 // ── A person ─────────────────────────────────────────────────────────────
@@ -878,7 +1064,7 @@ test('a possible double stops a person too, until they look at it and say it is 
   assert.equal(world.posts.length, 0);
   const view = (await checksView(env)).list[0];
   assert.equal(view.candidates[0].id, 'zp_oak');
-  const r = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', notThose: true, now: NOW, fetchImpl: fakeFetch });
+  const r = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', notThose: true, shown: ['zp_oak'], now: NOW, fetchImpl: fakeFetch });
   assert.equal(r.result, 'created');
 });
 test('a person can\'t create while the site is watching: staff are entering by hand', async () => {
@@ -890,7 +1076,7 @@ test('a person\'s entry needs a name, an open form and a real date', async () =>
   await withPerson();
   const go = (o) => personCreate(env, TX, { name: 'Pine', formId: 'form_home', now: NOW, fetchImpl: fakeFetch, ...o });
   await assert.rejects(go({ name: '' }), /Who wrote/);
-  await assert.rejects(go({ name: ACCOUNT }), /Who wrote/);
+  await assert.rejects(go({ name: ACCOUNT }), /long number/);
   await assert.rejects(go({ formId: 'form_golf' }), /open donation form/);
   await assert.rejects(go({ day: 'tomorrow' }), /date/);
 });
@@ -939,7 +1125,7 @@ test('a hand entry under another name on a check with a person is put in front o
 test('Mercury not answering at all is said, not swallowed', async () => {
   await run();
   await maybeRunChecks(env, { now: NOW + 10 * MIN, fetchImpl: async (u, i) => { if (String(u).includes('mercury-relay')) throw new Error('relay down'); return fakeFetch(u, i); } });
-  assert.match((await checksView(env)).lastError?.error || '', /relay down/);
+  assert.equal((await checksView(env)).lastError?.error, 'Mercury didn’t answer');
 });
 test('turned on, what it was watching goes on too, one a run, each read against Zeffy again', async () => {
   await posted();
@@ -1046,6 +1232,8 @@ test('the tab count shows a real question while watching, and everything once on
   assert.equal((await checksFacts(env.DB)).waiting, 1);
   await setMode(env, 'on');
   await env.DB.prepare(`UPDATE check_gifts SET reason = 'event', note = NULL WHERE id = ?`).bind(TX).run();
+  assert.equal((await checksFacts(env.DB)).waiting, 0, 'Mercury hasn’t posted it: nothing to do yet');
+  await env.DB.prepare(`UPDATE check_gifts SET status = 'sent' WHERE id = ?`).bind(TX).run();
   assert.equal((await checksFacts(env.DB)).waiting, 1);
 });
 test('runs cut short still send a check to a person', async () => {
@@ -1201,4 +1389,167 @@ test('a name typed in both boxes reads once in Slack and on the board', async ()
   assert.match(giftMessage(p).text, /from Brightwell(\n|$| )/);
   assert.doesNotMatch(giftMessage(p).text, /Brightwell Brightwell/);
   assert.equal(giftOf(p).name, 'Brightwell');
+});
+
+// ── What the page sends and shows (Nov 7 break-it round) ─────────────────────
+
+test('an answer from an older screen never overrules a newer one: a colleague\'s "not a gift" stands', async () => {
+  await withPerson();
+  await personNotGift(env, TX, { saw: 'person', by: 'b@example.com', now: NOW });
+  await assert.rejects(personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', saw: 'person', now: NOW, fetchImpl: fakeFetch }), /just changed/);
+  assert.equal(world.posts.length, 0);
+  assert.equal((await theRow()).state, 'left-out');
+});
+test('"Not this entry" hands the check to the person, and the site never makes its own record after it', async () => {
+  // A hand entry got there first, and the site matched it
+  world.payments.push(hand({ campaign_id: 'form_grant', description: 'Grant Funding 2026' }));
+  await setMode(env, 'on');
+  await posted();
+  assert.equal((await theRow()).state, 'linked');
+  assert.equal(world.posts.length, 0);
+  await personUnlink(env, TX, { saw: 'linked', now: NOW + 25 * MIN });
+  const r = await theRow();
+  assert.equal(r.state, 'person');
+  assert.equal(r.reason, 'unlinked');
+  for (let i = 1; i <= 4; i++) await run(NOW + 25 * MIN + i * 61 * MIN);
+  assert.equal(world.posts.length, 0, 'no record made by itself');
+  assert.equal((await theRow()).state, 'person');
+  const v = (await checksView(env)).list.find((c) => c.id === TX);
+  assert.equal(v.needsYou, true);
+});
+test('Save names the entry it found, and "a different gift" covers exactly the entries shown', async () => {
+  await withPerson();
+  world.payments.push(hand({ id: 'zp_rp', buyer: { first_name: 'Rosalind', last_name: 'Park' }, created: dayS('2026-11-04') }));
+  const e = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', saw: 'person', now: NOW, fetchImpl: fakeFetch }).catch((x) => x);
+  assert.equal(e.status, 409);
+  assert.deepEqual(e.entries.map((x) => [x.id, x.name]), [['zp_rp', 'Rosalind Park']]);
+  // Another entry turns up before the person answers: it's shown first, not saved past
+  world.payments.push(hand({ id: 'zp_new', type: 'online', status: 'pending', created: dayS('2026-11-06'), buyer: { first_name: 'Ruth', last_name: 'Ace' } }));
+  const again = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', notThose: true, shown: ['zp_rp'], saw: 'person', now: NOW, fetchImpl: fakeFetch }).catch((x) => x);
+  assert.equal(again.status, 409);
+  assert.equal(world.posts.length, 0);
+  const r = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', notThose: true, shown: ['zp_rp', 'zp_new'], saw: 'person', now: NOW, fetchImpl: fakeFetch });
+  assert.equal(r.result, 'created');
+});
+test('a check Mercury hasn\'t posted can\'t be saved yet', async () => {
+  await withPerson();
+  await env.DB.prepare(`UPDATE check_gifts SET status = 'pending' WHERE id = ?`).bind(TX).run();
+  await assert.rejects(personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /hasn’t posted/);
+  assert.equal(world.posts.length, 0);
+});
+test('nothing can be answered while Zeffy hasn\'t answered the site\'s save', async () => {
+  await withPerson();
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'unsure' WHERE id = ?`).bind(TX).run();
+  for (const go of [() => personNotGift(env, TX, { now: NOW }), () => personLink(env, TX, 'zp_hand', { now: NOW, fetchImpl: fakeFetch }), () => personCreate(env, TX, { name: 'Pine', formId: 'form_home', now: NOW, fetchImpl: fakeFetch })]) {
+    await assert.rejects(go(), /hasn’t answered/);
+  }
+});
+test('an entry deleted in Zeffy since is said plainly and no longer offered', async () => {
+  await withPerson('maybe-double');
+  await env.DB.prepare(`UPDATE check_gifts SET note = ? WHERE id = ?`).bind(JSON.stringify([{ id: 'zp_gone', name: 'Oak Trust', cents: 1000000, at: dayS('2026-11-04') }, { id: 'zp_hand', name: 'Pine Foundation', cents: 1000000, at: dayS('2026-11-04') }]), TX).run();
+  await assert.rejects(personLink(env, TX, 'zp_gone', { now: NOW, fetchImpl: fakeFetch }), /was deleted/);
+  assert.deepEqual(JSON.parse((await theRow()).note).map((x) => x.id), ['zp_hand']);
+});
+test('to-dos in Zeffy wait on a person and are counted; the tab\'s count is always the list\'s', async () => {
+  await setMode(env, 'on');
+  await posted();
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'linked', zeffy_id = 'zp_x', reason = 'amount-off' WHERE id = ?`).bind(TX).run();
+  for (const mode of ['on', 'watch']) {
+    await setMode(env, mode);
+    const v = await checksView(env);
+    assert.equal(v.list[0].needsYou, true, mode);
+    assert.equal(v.waiting, 1);
+    assert.equal((await checksFacts(env.DB)).waiting, v.waiting, mode);
+  }
+});
+test('while watching, a question whose entry went to another check waits for the hand entry and isn\'t counted', async () => {
+  await posted();
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'maybe-double', note = ? WHERE id = ?`).bind(JSON.stringify([{ id: 'zp_taken', name: 'Oak Trust', cents: 1000000, at: dayS('2026-11-04') }]), TX).run();
+  await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, zeffy_id, deposited_at) VALUES ('other', 1000000, 'linked', 'zp_taken', '2026-11-04T15:00:00Z')`).run();
+  const v = await checksView(env);
+  const c = v.list.find((x) => x.id === TX);
+  assert.equal(c.needsYou, false);
+  assert.match(c.why, /now another check’s/);
+  assert.equal(v.waiting, 0);
+  assert.equal((await checksFacts(env.DB)).waiting, 0);
+});
+test('while on, "It isn\'t a gift" works on a check the site was about to enter', async () => {
+  await setMode(env, 'on');
+  await throughRead();
+  post();
+  await personNotGift(env, TX, { saw: 'read', now: NOW });
+  await run(NOW + 10 * MIN);
+  assert.equal((await theRow()).state, 'left-out');
+  assert.equal(world.posts.length, 0);
+});
+test('the admin route never shows a database\'s own message', async () => {
+  const { onRequestGet, onRequestPost } = await import('../functions/api/checks-admin.js');
+  const broken = { DB: { prepare: () => { throw new Error('D1_ERROR: database is locked'); } } };
+  const g = await (await onRequestGet({ env: broken, request: new Request('https://x.test/api/checks-admin') })).json();
+  assert.doesNotMatch(g.error, /D1_ERROR/);
+  assert.match(g.error, /Try again in a minute/);
+  const p = await (await onRequestPost({ env: broken, request: new Request('https://x.test/api/checks-admin', { method: 'POST', body: JSON.stringify({ action: 'not-gift', id: 'x' }) }), data: {} })).json();
+  assert.doesNotMatch(p.error, /D1_ERROR/);
+});
+
+test('a refusal is said in plain words, never Zeffy\'s field names', async () => {
+  const { refusalWords } = await import('../functions/api/_check-gifts.js');
+  assert.equal(refusalWords({ code: 'invalid_request', message: 'campaign_id must be an active campaign' }), 'The Zeffy form isn’t open any more. Pick another form.');
+  assert.equal(refusalWords({ message: 'Zeffy answered 422' }), 'Zeffy wouldn’t take this record.');
+});
+test('a check that goes to a person keeps the form the site would have used', async () => {
+  world.reading = read({ payer: 'Elm Street Fund', memo: 'golf' });
+  await setMode(env, 'on');
+  await posted();
+  const r = await theRow();
+  assert.equal(r.reason, 'event');
+  assert.equal(r.form_id, 'form_grant');
+});
+test('Save after a deleted entry, with nothing left to ask about, decides the check again', async () => {
+  await withPerson('maybe-double');
+  await env.DB.prepare(`UPDATE check_gifts SET payer = 'Pine Foundation', note = ? WHERE id = ?`).bind(JSON.stringify([{ id: 'zp_gone', name: 'Oak Trust', cents: 1000000, at: dayS('2026-11-04') }]), TX).run();
+  await assert.rejects(personLink(env, TX, 'zp_gone', { now: NOW, fetchImpl: fakeFetch }), /nothing to match. The site decides this check again/);
+  assert.equal((await theRow()).state, 'read');
+});
+test('On, stopped by a new write test that failed: the page says so and Slack hears it once', async () => {
+  await setMode(env, 'on');
+  await writeState(env.DB, 'check-gifts', { writeTest: { id: 'older', ok: true } });
+  world.postFails = 422;
+  await run();
+  const v = await checksView(env);
+  assert.equal(v.mode, 'watch');
+  assert.equal(v.paused, true);
+  assert.equal(world.slack.filter((b) => /stopped entering checks/.test(b)).length, 1);
+});
+
+// ── Round four on the page's side ────────────────────────────────────────
+
+test('an older screen is refused even when the check came back round to the same state', async () => {
+  await withPerson('maybe-double');
+  await env.DB.prepare(`UPDATE check_gifts SET note = ? WHERE id = ?`).bind(JSON.stringify([{ id: 'zp_hand', name: 'Pine Foundation', cents: 1000000, at: dayS('2026-11-04') }]), TX).run();
+  const before = (await checksView(env)).list[0].ver;
+  world.payments.push(hand());
+  await personLink(env, TX, 'zp_hand', { saw: before, now: NOW, fetchImpl: fakeFetch });
+  const linked = (await checksView(env)).list[0].ver;
+  await personUnlink(env, TX, { saw: linked, now: NOW });
+  // Back to "person", but not the check the old screen showed: that entry was ruled out since
+  await assert.rejects(personLink(env, TX, 'zp_hand', { saw: before, now: NOW, fetchImpl: fakeFetch }), /just changed/);
+  const now = (await checksView(env)).list[0].ver;
+  await assert.rejects(personLink(env, TX, 'zp_hand', { saw: now, now: NOW, fetchImpl: fakeFetch }), /isn’t this check/);
+});
+test('an amounts-differ to-do names the entry and both amounts', async () => {
+  await posted();
+  world.payments.push(hand({ amount: 900000, campaign_id: 'form_grant' }));
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'amount-differs' WHERE id = ?`).bind(TX).run();
+  await personLink(env, TX, 'zp_hand', { now: NOW, fetchImpl: fakeFetch });
+  const c = (await checksView(env)).list[0];
+  assert.equal(c.toDo, true);
+  assert.match(c.why, /Pine Foundation, \$9,000\.00/);
+  assert.match(c.why, /\$10,000\.00/);
+});
+test('the switch counts every check it was watching, not only the ones listed', async () => {
+  for (let i = 0; i < 4; i++) await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, status, deposited_at, posted_at) VALUES (?, 100, 'would', 'sent', '2026-08-01T15:00:00Z', '2026-08-03T15:00:00Z')`).bind(`old${i}`).run();
+  await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, status, deposited_at, posted_at) VALUES ('fresh', 100, 'would', 'sent', ?, ?)`).bind(new Date().toISOString(), new Date().toISOString()).run();
+  const v = await checksView(env);
+  assert.deepEqual(v.watching, { fresh: 1, old: 4 });
 });

@@ -51,7 +51,7 @@ export function ask({ title, text = '', yes = 'OK', no = 'Cancel', danger = fals
     const openedAt = Date.now();
     render(html`<div class="modal-overlay kd-overlay ask-overlay" onClick=${(e) => { if (e.target === e.currentTarget && Date.now() - openedAt > 400) finish(dismiss); }}>
       <div class="modal kd-dialog kd-dialog--sm ask" role=${danger ? 'alertdialog' : 'dialog'} aria-modal="true" aria-labelledby=${id} aria-describedby=${text ? `${id}-text` : null}>
-        <header class="kd-dialog__head"><div class="kd-dialog__titles"><h2 id=${id}>${title}</h2></div></header>
+        <div class="kd-dialog__head"><div class="kd-dialog__titles"><h2 id=${id}>${title}</h2></div></div>
         ${text ? html`<div class="kd-dialog__body"><p class="ask__text" id=${`${id}-text`}>${text}</p></div>` : null}
         <footer class="kd-dialog__foot">
           <button type="button" class="btn btn-ghost" data-ask="no" onClick=${() => finish(false)}>${no}</button>
