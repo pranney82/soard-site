@@ -1,10 +1,15 @@
 ---
 /**
  * LiveIndicator.astro
- * Floating bottom-right card for live room reveals. Driven by the shared
- * live client (src/utils/live-client.ts): WebSocket push from the real-time
- * hub, polling fallback. No admin action is needed to show it; the state
- * machine flips it when the phone starts streaming.
+ * Floating bottom-right card for live room reveals and the open application.
+ * The reveal row is driven by the shared live client (src/utils/live-client.ts):
+ * WebSocket push from the real-time hub, polling fallback. No admin action is
+ * needed to show it; the state machine flips it when the phone starts streaming.
+ *
+ * The application row follows the switch in Admin → Applications → Settings
+ * (/api/application-open), on every page but the Apply pages themselves, which
+ * already are the application. With both showing, they're two rows of one card,
+ * so everything below applies to the pair; each row closes on its own.
  *
  * What it says and when: src/utils/live-banner.ts
  *   data-state=upcoming  steady yellow dot, "Coming up", from 7 days out; "Reveal day" on the
@@ -18,30 +23,49 @@
  *     aside until that's gone, and it stays above a bar fixed to the bottom.
  *     "Live now" moves up under the header instead, if that's clear. Stepped
  *     aside it stays in the tab order, and coming into focus brings it back.
- *   - Closing it is remembered per reveal and per stage, so "Live now" still shows
- *   - Hidden on /live/ and on the reveal's own live page, which already show it;
- *     another kid's live page gets it, so a reveal can't go unmentioned there
+ *   - Closing a reveal is remembered per reveal and per stage, so "Live now" still
+ *     shows; closing the application is remembered for that season
+ *   - The reveal row is hidden on /live/ and on the reveal's own live page, which
+ *     already show it; another kid's live page gets it, so a reveal can't go
+ *     unmentioned there
  *   - transition:persist keeps it mounted across view transitions
  *   - Respects prefers-reduced-motion
  */
 ---
 
 <div id="live-indicator" class="live-pill" hidden transition:persist="live-indicator" role="status">
-  <a class="live-pill__link" href="/live/">
-    <img class="live-pill__photo" alt="" width="40" height="40" loading="lazy" hidden />
-    <span class="live-pill__text">
-      <span class="live-pill__top">
-        <span class="live-pill__dot" aria-hidden="true"></span>
-        <strong class="live-pill__label">Live now</strong>
-        <span class="live-pill__cta" aria-hidden="true">Watch&nbsp;→</span>
+  <div class="live-pill__row live-pill__row--reveal" data-row="reveal">
+    <a class="live-pill__link" href="/live/">
+      <img class="live-pill__photo" alt="" width="40" height="40" loading="lazy" hidden />
+      <span class="live-pill__text">
+        <span class="live-pill__top">
+          <span class="live-pill__dot" aria-hidden="true"></span>
+          <strong class="live-pill__label">Live now</strong>
+          <span class="live-pill__cta" aria-hidden="true">Watch&nbsp;→</span>
+        </span>
+        <span class="live-pill__msg"></span>
+        <span class="live-pill__next" hidden></span>
       </span>
-      <span class="live-pill__msg"></span>
-      <span class="live-pill__next" hidden></span>
-    </span>
-  </a>
-  <button class="live-pill__dismiss" type="button" aria-label="Dismiss live notification">
-    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
-  </button>
+    </a>
+    <button class="live-pill__dismiss" type="button" aria-label="Dismiss live notification">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
+  <div class="live-pill__row live-pill__row--application" data-row="application" hidden>
+    <a class="live-pill__link" href="/apply/">
+      <span class="live-pill__text">
+        <span class="live-pill__top">
+          <span class="live-pill__dot" aria-hidden="true"></span>
+          <strong class="live-pill__label"></strong>
+          <span class="live-pill__cta" aria-hidden="true"></span>
+        </span>
+        <span class="live-pill__msg"></span>
+      </span>
+    </a>
+    <button class="live-pill__dismiss" type="button" aria-label="Dismiss application notification">
+      <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+    </button>
+  </div>
 </div>
 
 <style>
@@ -51,7 +75,8 @@
     bottom: calc(1rem + var(--live-pill-lift, 0px) + env(safe-area-inset-bottom, 0px));
     z-index: 900; /* under the sticky header (1000) and its mobile menu */
     display: flex;
-    align-items: stretch;
+    flex-direction: column;
+    overflow: hidden;
     width: min(23.5rem, calc(100vw - 2rem));
     background: var(--c-dark-deep);
     color: var(--c-cream);
@@ -67,6 +92,10 @@
   .live-pill.is-visible.is-aside { opacity: 0; transform: translateY(calc(100% + 1.25rem)); pointer-events: none; }
   .live-pill[hidden] { display: none; }
 
+  .live-pill__row { display: flex; align-items: stretch; min-width: 0; }
+  .live-pill__row[hidden] { display: none; }
+  .live-pill__row:not([hidden]) + .live-pill__row:not([hidden]) { border-top: 1px solid rgba(255, 255, 255, 0.1); }
+
   .live-pill__link {
     flex: 1;
     display: flex;
@@ -76,10 +105,9 @@
     color: inherit;
     text-decoration: none;
     font-family: var(--font-body);
-    border-radius: var(--border-radius-lg) 0 0 var(--border-radius-lg);
     min-width: 0;
   }
-  .live-pill__link:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: -2px; }
+  .live-pill__link:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: -2px; border-radius: var(--border-radius-lg); }
 
   .live-pill__photo {
     flex-shrink: 0; width: 40px; height: 40px; border-radius: 50%; object-fit: cover;
@@ -102,9 +130,10 @@
     100% { transform: scale(1.5); opacity: 0; }
   }
   .live-pill[data-state='upcoming'] .live-pill__dot::after,
-  .live-pill[data-state='replay'] .live-pill__dot::after { animation: none; opacity: 0; }
-  /* Replay: the dot becomes a tiny play glyph */
-  .live-pill[data-state='replay'] .live-pill__dot {
+  .live-pill[data-state='replay'] .live-pill__dot::after,
+  .live-pill__row--application .live-pill__dot::after { animation: none; opacity: 0; }
+  /* Replay: the reveal's dot becomes a tiny play glyph */
+  .live-pill[data-state='replay'] .live-pill__row--reveal .live-pill__dot {
     width: 0; height: 0; border-radius: 0; background: none;
     border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 8px solid var(--c-yellow);
   }
@@ -127,12 +156,11 @@
     flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 2.25rem;
     margin: 0; padding: 0; background: none; border: none;
     border-left: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 0 var(--border-radius-lg) var(--border-radius-lg) 0;
     color: rgba(254, 252, 245, 0.5); cursor: pointer;
     transition: color var(--transition-fast), background var(--transition-fast);
   }
   .live-pill__dismiss:hover { color: var(--c-cream); background: rgba(255, 255, 255, 0.06); }
-  .live-pill__dismiss:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: -2px; }
+  .live-pill__dismiss:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: -2px; border-radius: var(--border-radius-lg); }
 
   @media (prefers-reduced-motion: reduce) {
     .live-pill { transition: opacity 350ms ease; transform: translateY(calc(-1 * var(--live-pill-rise, 0px))); }
@@ -146,9 +174,11 @@
   import { cfRaw } from '../../utils/cf-image';
   import { getLiveClient, type LiveState } from '../../utils/live-client';
   import { readReveals } from '../../utils/reveals-client';
-  import { bannerStage, bannerWords, revealsAfter, dismissValue, sitsOn, pageShowsIt, remindersUsable, browserCanPush, MAIN_CONTROLS, PICTURES, type Box, type NextReveal } from '../../utils/live-banner';
+  import { bannerStage, bannerWords, revealsAfter, dismissValue, sitsOn, pageShowsIt, pageIsApplication, applicationWords, remindersUsable, browserCanPush, MAIN_CONTROLS, PICTURES, type BannerStage, type Box, type NextReveal } from '../../utils/live-banner';
 
   const DISMISS_KEY = 'soard-live-dismissed';
+  const APPLICATION_DISMISS_KEY = 'soard-application-dismissed';
+  const APPLICATION_CHECK_MS = 30_000; // a page left open hears about an opening or a close this soon
   const REVEALS_WAIT_MS = 2500; // a slow schedule holds the banner back this long at most
   const BOTTOM_BARS = '.auction-bar, .sticky-cta, .ev-sticky-cta';
   const TOP_BARS = '.site-header, .chapter-nav';
@@ -159,18 +189,20 @@
   let remindersOn = false;
   let reveals: NextReveal[] | null = null; // null until the schedule has been read
   let readingSchedule = false;
-  let closed: string | null = null;        // stands in when the browser won't keep it
+  let application: { open: boolean; year: string } | null = null; // null until it's been read
+  let applicationReadAt = 0;
+  const closed = new Map<string, string>(); // stands in when the browser won't keep it
   let pressing = false;                    // a finger or mouse is down on the banner
   let clearTimer: ReturnType<typeof setTimeout> | undefined;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
-  function readClosed() {
-    if (closed !== null) return closed; // what was just closed beats an older stored value
-    try { return localStorage.getItem(DISMISS_KEY); } catch { return null; }
+  function readClosed(key: string) {
+    if (closed.has(key)) return closed.get(key); // what was just closed beats an older stored value
+    try { return localStorage.getItem(key); } catch { return null; }
   }
-  function writeClosed(value: string) {
-    closed = value;
-    try { localStorage.setItem(DISMISS_KEY, value); } catch { /* remembered for this page only */ }
+  function writeClosed(key: string, value: string) {
+    closed.set(key, value);
+    try { localStorage.setItem(key, value); } catch { /* remembered for this page only */ }
   }
 
   const currentStage = () => (pageShowsIt(location.pathname, status?.kidSlug, reveals || []) ? null : bannerStage(status));
@@ -187,6 +219,26 @@
     });
     setTimeout(() => { if (reveals === null) { reveals = []; render(); } }, REVEALS_WAIT_MS);
   }
+
+  function readApplication() {
+    // Moving between pages asks again too, just not twice in a few seconds
+    if (Date.now() - applicationReadAt < APPLICATION_CHECK_MS / 2) return;
+    applicationReadAt = Date.now();
+    // Straight past the browser's copy: the edge already keeps this cheap, and a close shouldn't wait twice
+    fetch('/api/application-open', { headers: { Accept: 'application/json' }, cache: 'no-cache' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((body: { open?: boolean; year?: string }) => {
+        const now = { open: body.open === true, year: String(body.year) };
+        const changed = now.open !== application?.open || now.year !== application?.year;
+        application = now;
+        if (changed) render();
+      })
+      // A read that failed keeps what it has, and the next page or minute tries again
+      .catch(() => { applicationReadAt = 0; });
+  }
+
+  const applicationShows = () => !!application?.open && !pageIsApplication(location.pathname)
+    && readClosed(APPLICATION_DISMISS_KEY) !== application.year;
 
   /** Where the banner rests, whether or not it's stepped aside right now */
   function restingBox(el: HTMLElement) {
@@ -285,40 +337,42 @@
     if (node.textContent !== text) node.textContent = text;
   }
 
-  function render() {
-    const el = document.getElementById('live-indicator');
-    if (!el || pressing) return; // what's under the press stays what was pressed
-    clearTimeout(hideTimer);
-    // A stream with no kid named, on a kid's own live page: the schedule says whether it's theirs
-    if (status?.live && !status.kidSlug && reveals === null && /^\/live\/[^/]+/.test(location.pathname)) { readSchedule(); return; }
-    const stage = currentStage();
-    const show = stage && status && readClosed() !== dismissValue(status, stage);
-    if (!show || !stage || !status) {
-      moveFocusOut(el);
-      el.classList.remove('is-visible');
-      el.hidden = true;
+  /** One row closes and the other stays; the last one takes the card with it */
+  function closeRow(el: HTMLElement, row: HTMLElement) {
+    moveFocusOut(el);
+    if (el.querySelector(`.live-pill__row:not([hidden]):not([data-row="${row.dataset.row}"])`)) {
+      row.hidden = true;
+      keepClearSoon();
       return;
     }
-    // The first showing waits for the schedule, so the banner doesn't grow a line after it appears
-    if (stage !== 'live' && reveals === null) { readSchedule(); return; }
-    const link = el.querySelector('.live-pill__link') as HTMLAnchorElement;
-    const label = el.querySelector('.live-pill__label') as HTMLElement;
-    const msg = el.querySelector('.live-pill__msg') as HTMLElement;
-    const nextEl = el.querySelector('.live-pill__next') as HTMLElement;
-    const cta = el.querySelector('.live-pill__cta') as HTMLElement;
-    const dismiss = el.querySelector('.live-pill__dismiss') as HTMLButtonElement;
-    const photo = el.querySelector('.live-pill__photo') as HTMLImageElement;
+    el.classList.remove('is-visible');
+    hideTimer = setTimeout(() => { if (!el.classList.contains('is-visible')) el.hidden = true; }, 400);
+  }
+
+  function showRow(row: HTMLElement, yes: boolean) {
+    if (!yes) moveFocusOut(row);
+    row.hidden = !yes;
+  }
+
+  function fillReveal(el: HTMLElement, row: HTMLElement, s: LiveState, stage: BannerStage) {
+    const link = row.querySelector('.live-pill__link') as HTMLAnchorElement;
+    const label = row.querySelector('.live-pill__label') as HTMLElement;
+    const msg = row.querySelector('.live-pill__msg') as HTMLElement;
+    const nextEl = row.querySelector('.live-pill__next') as HTMLElement;
+    const cta = row.querySelector('.live-pill__cta') as HTMLElement;
+    const dismiss = row.querySelector('.live-pill__dismiss') as HTMLButtonElement;
+    const photo = row.querySelector('.live-pill__photo') as HTMLImageElement;
 
     el.dataset.state = stage === 'live' || stage === 'replay' ? stage : 'upcoming';
-    if (status.image) {
-      const src = cfRaw(status.image, 'w=96,h=96,fit=cover,q=85');
+    if (s.image) {
+      const src = cfRaw(s.image, 'w=96,h=96,fit=cover,q=85');
       if (photo.getAttribute('src') !== src) photo.src = src;
       photo.hidden = false;
     } else photo.hidden = true;
 
-    const next = stage === 'live' ? [] : revealsAfter(status, reveals || []);
-    const words = bannerWords(status, stage, next, { remindersOn });
-    const href = `${status.url || status.liveUrl || '/live/'}${words.anchor}`;
+    const next = stage === 'live' ? [] : revealsAfter(s, reveals || []);
+    const words = bannerWords(s, stage, next, { remindersOn });
+    const href = `${s.url || s.liveUrl || '/live/'}${words.anchor}`;
     if (link.getAttribute('href') !== href) link.href = href;
     put(label, words.label);
     put(msg, words.msg);
@@ -329,12 +383,47 @@
 
     link.onclick = () => client.beacon('banner_click', { state: stage });
     dismiss.onclick = () => {
-      if (status) writeClosed(dismissValue(status, stage));
-      moveFocusOut(el);
-      el.classList.remove('is-visible');
-      hideTimer = setTimeout(() => { if (!el.classList.contains('is-visible')) el.hidden = true; }, 400);
+      writeClosed(DISMISS_KEY, dismissValue(s, stage));
+      closeRow(el, row);
     };
+  }
 
+  function fillApplication(el: HTMLElement, row: HTMLElement, year: string) {
+    const words = applicationWords(year);
+    const link = row.querySelector('.live-pill__link') as HTMLAnchorElement;
+    put(row.querySelector('.live-pill__label') as HTMLElement, words.label);
+    put(row.querySelector('.live-pill__msg') as HTMLElement, words.msg);
+    put(row.querySelector('.live-pill__cta') as HTMLElement, words.cta);
+    if (link.getAttribute('aria-label') !== words.aria) link.setAttribute('aria-label', words.aria);
+    (row.querySelector('.live-pill__dismiss') as HTMLButtonElement).onclick = () => {
+      writeClosed(APPLICATION_DISMISS_KEY, year);
+      closeRow(el, row);
+    };
+  }
+
+  function render() {
+    const el = document.getElementById('live-indicator');
+    if (!el || pressing) return; // what's under the press stays what was pressed
+    clearTimeout(hideTimer);
+    // A stream with no kid named, on a kid's own live page: the schedule says whether it's theirs
+    if (status?.live && !status.kidSlug && reveals === null && /^\/live\/[^/]+/.test(location.pathname)) { readSchedule(); return; }
+    const stage = currentStage();
+    const reveal = stage && status && readClosed(DISMISS_KEY) !== dismissValue(status, stage) ? status : null;
+    // The first showing waits for the schedule, so the banner doesn't grow a line after it appears
+    if (reveal && stage !== 'live' && reveals === null) { readSchedule(); return; }
+    const revealRow = el.querySelector('[data-row="reveal"]') as HTMLElement;
+    const applicationRow = el.querySelector('[data-row="application"]') as HTMLElement;
+    if (reveal && stage) fillReveal(el, revealRow, reveal, stage);
+    const applying = applicationShows();
+    if (applying && application) fillApplication(el, applicationRow, application.year);
+    showRow(revealRow, !!reveal);
+    showRow(applicationRow, applying);
+
+    if (!reveal && !applying) {
+      el.classList.remove('is-visible');
+      el.hidden = true;
+      return;
+    }
     if (el.hidden) {
       el.hidden = false;
       keepClear(); // before it fades in, so it never flashes over a button
@@ -352,6 +441,10 @@
     if (now !== seen) { seen = now; if (reveals !== null && currentStage()) readSchedule(); }
     render();
   });
+  // Open or closed: an open page follows the switch, a close date and the application limit on its own
+  setInterval(() => { if (!document.hidden) readApplication(); }, APPLICATION_CHECK_MS);
+  // A tab someone comes back to asks at once, so a close that happened while they were away doesn't linger
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) readApplication(); });
   // Keeps the words and the schedule fresh; this is also what brings a countdown up a week out
   setInterval(() => {
     if (!status?.upcoming && !status?.replay) return;
@@ -363,10 +456,12 @@
     const active = document.activeElement as HTMLElement | null;
     if (active?.closest('#live-indicator')) active.blur();
     pressing = false;
+    readApplication();
     if (reveals !== null && currentStage()) readSchedule();
     render();
     keepClearSoon();
   });
+  readApplication();
   addEventListener('scroll', keepClearSoon, { passive: true });
   addEventListener('resize', keepClearSoon, { passive: true });
   addEventListener('load', keepClearSoon);

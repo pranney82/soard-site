@@ -1,11 +1,14 @@
 /**
- * What the floating reveal banner shows and says (LiveIndicator.astro). No page
- * code in here, so tests/live-banner.test.mjs can run it.
+ * What the floating banner shows and says (LiveIndicator.astro). No page code
+ * in here, so tests/live-banner.test.mjs can run it.
  *
- * One banner at a time, for the broadcast the site is following. A planned
+ * One reveal at a time, for the broadcast the site is following. A planned
  * reveal shows from a week out; live and replay always show. Other confirmed
  * reveals coming up inside that week get named on the banner's second line, so
  * a reveal two days after another still gets its week.
+ *
+ * While the family application is open it has its own row on the same banner,
+ * under the reveal when there is one, so neither pushes the other off the screen.
  */
 import type { LiveState, ReminderOptions } from './live-client';
 
@@ -119,6 +122,13 @@ export function bannerWords(s: Status, stage: BannerStage, next: NextReveal[], {
   const cta = starting ? 'Watch →' : remindersOn ? 'Remind me →' : 'Add to calendar →';
   return words(stage === 'today' ? 'Reveal day' : 'Coming up', msg, thenLine(s, next, now), cta, starting ? '' : '#remind');
 }
+
+/** The application's row, for as long as the season is open */
+export const applicationWords = (year: string): BannerWords =>
+  words(`${year} application`, 'Now open for room makeovers in the greater Atlanta area.', '', 'Apply →');
+
+/** The Apply page and the application forms are already the application */
+export const pageIsApplication = (path: string) => path.split('/').filter(Boolean)[0] === 'apply';
 
 /** Reminders only count as on when there's a way to sign up for them */
 export const remindersUsable = (r: ReminderOptions | null | undefined, canPush = true) => !!r?.enabled && !!(r.email || (r.push && r.pushKey && canPush));
