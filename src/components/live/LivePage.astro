@@ -237,7 +237,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   .hero-frame {
     position: relative; animation: heroPhotoIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) backwards; scroll-margin-top: 100px;
     /* The height the stage (video + bar) may take */
-    --fh: clamp(420px, calc(100svh - var(--header-height) - 44px), 900px);
+    --fh: clamp(420px, calc(100svh - var(--header-height) - var(--apply-bar-h, 0px) - 44px), 900px);
   }
 
   /* ── Watch party: video beside the messages ── */

@@ -2735,8 +2735,8 @@ const planOrientation = (() => {
 
   .hero {
     position: relative;
-    min-height: calc(100vh - var(--header-height, 84px));
-    min-height: calc(100dvh - var(--header-height, 84px));
+    min-height: calc(100vh - var(--header-height, 84px) - var(--apply-bar-h, 0px));
+    min-height: calc(100dvh - var(--header-height, 84px) - var(--apply-bar-h, 0px));
     display: flex;
     flex-direction: column;
     background: var(--c-cream);

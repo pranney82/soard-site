@@ -1,0 +1,284 @@
+---
+/**
+ * ApplicationBar.astro
+ * The strip above the menu that says the family application is open.
+ *
+ * Every page is built with it empty and hidden. On the pages about SOARD the
+ * server fills it in on the way out while the switch in Admin → Applications →
+ * Settings is on (functions/_apply-bar.js), so it is there from the first paint
+ * and nothing below it moves. Nothing here says "open" until the server says so.
+ *
+ * It sits in the page, above the sticky header, and scrolls away as people
+ * read. The reveal card (LiveIndicator.astro) waits while it's in view, so only
+ * one banner is on screen at a time.
+ *
+ * The X closes it for the season: remembered in the browser, checked by the
+ * inline script below before the bar paints, and in a cookie the server reads
+ * (/api/application-bar-closed), which outlasts Safari's one-week limit on
+ * what page scripts store.
+ *
+ * A page left open asks /api/application-open every 30 seconds (and when its
+ * tab comes back), and the bar leaves when the season closes. It never appears
+ * on a page that's already open: that would push the page down under someone
+ * reading it. A newly opened season shows from the next page.
+ */
+---
+
+{/* Before the bar is parsed, so a bar this visitor closed never paints. The server
+    puts the season on data-year; the script body never changes (the CSP allows
+    inline scripts only by hash). */}
+<script is:inline data-apply-bar>
+  (function () {
+    try {
+      var y = document.currentScript.getAttribute('data-year');
+      if (!y) return;
+      var closed = null;
+      try { closed = localStorage.getItem('soard-application-dismissed'); } catch (e) {}
+      if (closed === y || (';' + document.cookie.replace(/\s/g, '') + ';').indexOf(';soard_apply_bar=' + y + ';') > -1) {
+        document.documentElement.classList.add('apply-bar-off');
+      }
+    } catch (e) {}
+  })();
+</script>
+
+<aside id="apply-bar" class="apply-bar" aria-label="Family application" hidden data-nosnippet>
+  <a class="apply-bar__link" href="/apply/">
+    <span class="apply-bar__label"></span>
+    <span class="apply-bar__msg"></span>
+    <span class="apply-bar__short"></span>
+    <span class="apply-bar__cta" aria-hidden="true">
+      Apply
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+    </span>
+  </a>
+  <button class="apply-bar__close" type="button" aria-label="Close for this season">
+    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>
+  </button>
+</aside>
+
+<script>
+  // Kept in step with functions/_apply-bar.js (tests/apply-bar.test.mjs checks)
+  const STORAGE_KEY = 'soard-application-dismissed';
+  const COOKIE = 'soard_apply_bar';
+  const CHECK_MS = 30_000; // a page left open hears about a close this soon
+  const LEAVE_MS = 260;
+
+  let checkedAt = 0;
+  let lastClosedAt = 0; // when a check last said the season is closed
+
+  const root = document.documentElement;
+  const theBar = () => document.getElementById('apply-bar');
+  const isShowing = (bar: HTMLElement | null): bar is HTMLElement => !!bar && !bar.hidden && !root.classList.contains('apply-bar-off');
+
+  function cookieSays(year: string) {
+    return document.cookie.split(';').some((c) => c.trim() === `${COOKIE}=${year}`);
+  }
+  function closedFor(year: string | undefined) {
+    if (!year) return false;
+    let stored: string | null = null;
+    try { stored = localStorage.getItem(STORAGE_KEY); } catch { /* private mode */ }
+    return stored === year || cookieSays(year);
+  }
+
+  /** Gone, with the reading place kept: animated when it's on screen, at once when it's scrolled away */
+  function leave(bar: HTMLElement) {
+    const height = bar.offsetHeight;
+    const scrolledPast = bar.getBoundingClientRect().bottom <= 0;
+    const done = () => {
+      bar.hidden = true;
+      bar.classList.remove('is-leaving');
+      bar.style.height = '';
+      document.dispatchEvent(new CustomEvent('apply-bar:hidden'));
+    };
+    if (scrolledPast) {
+      done();
+      // Chrome and Firefox keep the reading place themselves; Safari needs the help
+      if (!CSS.supports('overflow-anchor', 'auto')) window.scrollBy(0, -height);
+      return;
+    }
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { done(); return; }
+    bar.style.height = `${height}px`;
+    void bar.offsetHeight;
+    bar.classList.add('is-leaving');
+    bar.style.height = '0px';
+    setTimeout(done, LEAVE_MS);
+  }
+
+  // The X: closed for the season, here and on every page after
+  document.addEventListener('click', (e) => {
+    const x = (e.target as Element | null)?.closest?.('#apply-bar .apply-bar__close');
+    if (!x) return;
+    const bar = theBar();
+    if (!isShowing(bar)) return;
+    const year = bar.dataset.year || '';
+    try { localStorage.setItem(STORAGE_KEY, year); } catch { /* the cookie still keeps it */ }
+    fetch(`/api/application-bar-closed?year=${encodeURIComponent(year)}`, { cache: 'no-store', credentials: 'same-origin' }).catch(() => {});
+    (document.querySelector('.site-header a, .site-header button') as HTMLElement | null)?.focus({ preventScroll: true });
+    leave(bar);
+  });
+
+  // A page left open: the bar leaves when the season closes
+  function check() {
+    const bar = theBar();
+    if (!isShowing(bar) || Date.now() - checkedAt < CHECK_MS / 2) return;
+    checkedAt = Date.now();
+    fetch('/api/application-open', { cache: 'no-cache', headers: { Accept: 'application/json' } })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then((s: { open?: boolean; year?: string }) => {
+        const still = theBar();
+        if (s.open === true && String(s.year) === bar.dataset.year) return;
+        lastClosedAt = Date.now();
+        if (still === bar && isShowing(bar)) leave(bar);
+      })
+      .catch(() => { checkedAt = 0; });
+  }
+  setInterval(() => { if (!document.hidden) check(); }, CHECK_MS);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) check(); });
+  document.addEventListener('astro:page-load', check);
+
+  // The next page, before it's shown: a page fetched ahead of time can't bring back a bar
+  // this visitor closed, or one for a season that closed since
+  document.addEventListener('astro:before-swap', (e) => {
+    const next = (e as Event & { newDocument?: Document }).newDocument;
+    const bar = next?.getElementById('apply-bar');
+    if (!bar || bar.hidden) return;
+    if (closedFor(bar.dataset.year) || Date.now() - lastClosedAt < 60_000) bar.hidden = true;
+  });
+</script>
+
+<style is:global>
+  /* The bar's height, for the pages that fill the first screen (kid heroes, the live frame) */
+  :root { --apply-bar-size: 44px; --apply-bar-h: 0px; }
+  @media (min-width: 768px) { :root { --apply-bar-size: 40px; } }
+  :root:has(#apply-bar:not([hidden])):not(.apply-bar-off) { --apply-bar-h: var(--apply-bar-size); }
+</style>
+
+<style>
+  .apply-bar {
+    position: relative;
+    z-index: 999; /* under the sticky header (1000) so it tucks away cleanly */
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    height: var(--apply-bar-size);
+    overflow: hidden;
+    background: var(--c-dark-deep);
+    color: var(--c-cream);
+    font-family: var(--font-body);
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+  }
+  /* Hidden means hidden, whatever else styles it */
+  .apply-bar[hidden],
+  :global(html.apply-bar-off) .apply-bar { display: none !important; }
+  .apply-bar.is-leaving { transition: height 240ms cubic-bezier(0.4, 0, 0.2, 1); }
+
+  .apply-bar__link {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 0.25rem 0 1rem;
+    color: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .apply-bar__link:focus-visible {
+    outline: 2px solid var(--c-yellow);
+    outline-offset: -3px;
+    border-radius: 4px;
+  }
+
+  .apply-bar__label {
+    flex-shrink: 0;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--c-yellow);
+  }
+  .apply-bar__msg { display: none; }
+  .apply-bar__short {
+    min-width: 0;
+    font-size: 0.8125rem;
+    color: rgba(254, 252, 245, 0.78);
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .apply-bar__cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    flex-shrink: 0;
+    margin-left: auto;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--c-yellow);
+    transition: transform var(--transition-fast);
+  }
+
+  .apply-bar__close {
+    flex-shrink: 0;
+    display: grid;
+    place-items: center;
+    width: 2.75rem; /* 44px to tap, though the glyph stays small */
+    background: none;
+    border: none;
+    color: rgba(254, 252, 245, 0.55);
+    cursor: pointer;
+    transition: color var(--transition-fast);
+  }
+  .apply-bar__close:hover { color: var(--c-cream); }
+  .apply-bar__close:focus-visible {
+    outline: 2px solid var(--c-yellow);
+    outline-offset: -3px;
+    border-radius: 4px;
+  }
+
+  /* Small phones: the close day steps aside before anything gets cut */
+  @media (max-width: 359px) {
+    .apply-bar__short { display: none; }
+  }
+
+  /* Tablet and up: centered, the season in capitals, and the Apply pill */
+  @media (min-width: 768px) {
+    .apply-bar__link {
+      flex: 0 1 auto;
+      gap: 0.75rem;
+      padding: 0 0.5rem 0 1rem;
+    }
+    .apply-bar__label {
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .apply-bar__short { font-size: 0.875rem; }
+    .apply-bar__cta {
+      margin-left: 0.25rem;
+      background: var(--c-yellow);
+      color: var(--c-dark);
+      padding: 0.3rem 0.75rem;
+      border-radius: 999px;
+    }
+    .apply-bar__link:hover .apply-bar__cta { background: var(--c-yellow-hover); transform: translateX(2px); }
+    .apply-bar__close { width: 2.25rem; }
+  }
+
+  /* Laptop and up: the whole sentence fits */
+  @media (min-width: 1024px) {
+    .apply-bar__short { display: none; }
+    .apply-bar__msg {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      font-size: 0.875rem;
+      color: rgba(254, 252, 245, 0.78);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .apply-bar.is-leaving { transition: none; }
+    .apply-bar__link:hover .apply-bar__cta { transform: none; }
+  }
+  @media print { .apply-bar { display: none !important; } }
+</style>

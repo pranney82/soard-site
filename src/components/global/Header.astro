@@ -527,7 +527,9 @@ document.addEventListener('astro:page-load', function () {
   var ticking = false, mobileOpen = false;
   function onScroll() {
     ticking = false;
-    header.classList.toggle('header--scrolled', window.scrollY > 20);
+    // Once the header is actually pinned: the application bar above it scrolls away first
+    var bar = document.getElementById('apply-bar');
+    header.classList.toggle('header--scrolled', window.scrollY > (bar ? bar.offsetHeight : 0) + 20);
   }
   window.addEventListener('scroll', function () {
     if (!ticking) { requestAnimationFrame(onScroll); ticking = true; }
@@ -547,6 +549,10 @@ document.addEventListener('astro:page-load', function () {
   function mOpen() {
     mobileOpen = true; savedY = window.scrollY;
     mPanel.style.transition = '';            /* restore in case mHideInstant killed it */
+    /* The header stays where it is when it pins: below whatever of the application bar is on screen */
+    var bar = document.getElementById('apply-bar');
+    var barBottom = bar && bar.offsetHeight ? Math.max(0, Math.round(bar.getBoundingClientRect().bottom)) : 0;
+    document.documentElement.style.setProperty('--menu-top', barBottom + 'px');
     document.documentElement.classList.add('menu-open');
     document.body.style.top = '-' + savedY + 'px';
     mBtn.setAttribute('aria-expanded', 'true');
@@ -898,13 +904,13 @@ document.addEventListener('astro:before-swap', function () {
     overscroll-behavior: none;
   }
   :global(html.menu-open) .site-header {
-    position: fixed; top: 0; left: 0; right: 0;
+    position: fixed; top: var(--menu-top, 0px); left: 0; right: 0;
     box-shadow: 0 1px 0 var(--c-border);
   }
 
   /* ═══════ MOBILE NAV ═══════ */
   .mobile-nav {
-    position: fixed; top: var(--header-height); left: 0; right: 0; bottom: 0;
+    position: fixed; top: calc(var(--header-height) + var(--menu-top, 0px)); left: 0; right: 0; bottom: 0;
     z-index: 1100;
     background: var(--c-cream, #FEFCF5);
     display: flex; flex-direction: column;

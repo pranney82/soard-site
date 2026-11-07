@@ -16,6 +16,10 @@
  *   - A kid link that doesn't exist (kid not published yet, a typo, an old
  *     slug) redirects to /live/, which shows whatever reveal is current
  *     instead of a "page not found".
+ *   - While the family application is open, /live/ carries the application
+ *     bar (../_apply-bar.js), except while a reveal is starting or live, when
+ *     the video is the only thing. Someone arriving from the Instagram bio is
+ *     exactly who should hear the application is open.
  *
  * Everything else under /live/ passes straight through. Any error serves the
  * static page untouched.
@@ -24,6 +28,7 @@
 import { readState, readConfig, publicState, visibleState } from '../api/_broadcast.js';
 import { watchParty } from './_watch-party.js';
 import { cfRaw, cfSrcset, cfLqip } from '../../src/utils/cf-image.ts';
+import { barFor, addBar } from '../_apply-bar.js';
 
 const ACTIVE = new Set(['scheduled', 'armed', 'live', 'ending', 'replay']);
 const SITE = 'https://sunshineonaranneyday.com';
@@ -145,10 +150,15 @@ export async function onRequest(context) {
     const kid = isIndex && broadcast ? await currentKid(env, broadcast.state) : null;
     const party = broadcast ? watchParty(broadcast.pub, { pageKid, kidPublished: pageKid ? true : !!kid?.published }) : null;
     if (party) party.generic = !broadcast.pub.kidSlug;
-    const res = await next(kid || party ? fresh(request) : request);
+    let bar = null;
+    if (isIndex && !(party && (party.mode === 'starting' || party.mode === 'live'))) {
+      try { bar = await barFor(context, url.pathname); } catch { bar = null; }
+    }
+    const res = await next(kid || party || bar ? fresh(request) : request);
     if (res.status === 404 && pageKid) return Response.redirect(`${url.origin}/live/${url.search}`, 302);
-    if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html') || !(kid || party)) return res;
-    return rewrite(res, { kid, party, messages: broadcast.config?.messages?.enabled !== false });
+    if (res.status !== 200 || !(res.headers.get('content-type') || '').includes('text/html') || !(kid || party || bar)) return res;
+    const page = kid || party ? rewrite(res, { kid, party, messages: broadcast.config?.messages?.enabled !== false }) : res;
+    return addBar(page, bar);
   } catch {
     return next();
   }

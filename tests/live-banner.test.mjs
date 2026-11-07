@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 
 const code = transformSync(readFileSync('src/utils/live-banner.ts', 'utf8'), { loader: 'ts', format: 'esm' }).code;
-const { bannerStage, bannerWords, revealsAfter, dismissValue, sitsOn, pageShowsIt, pageIsApplication, applicationWords, revealIsToday, replayOverdue, easternDay, remindersUsable, remindLead, runningLate, MAIN_CONTROLS, PICTURES, BANNER_LEAD_DAYS } = await import(`data:text/javascript,${encodeURIComponent(code)}`);
+const { bannerStage, bannerWords, revealsAfter, dismissValue, sitsOn, pageShowsIt, revealIsToday, replayOverdue, easternDay, remindersUsable, remindLead, runningLate, MAIN_CONTROLS, PICTURES, BANNER_LEAD_DAYS } = await import(`data:text/javascript,${encodeURIComponent(code)}`);
 
 const H = 3600e3, D = 24 * H, M = 60e3;
 // Wednesday, November 4, 2026, 3:00 PM on the viewer's own clock
@@ -285,17 +285,4 @@ test('late is one rule: 30 minutes past the start, the words stop saying any mom
   assert.equal(runningLate(dylan.scheduledAt, start + 29 * 60e3), false);
   assert.equal(runningLate(dylan.scheduledAt, start + 31 * 60e3), true);
   assert.equal(runningLate(null, start), false);
-});
-
-test('the application row names the season and says where it goes', () => {
-  const w = applicationWords('2027');
-  assert.equal(w.label, '2027 application');
-  assert.equal(w.msg, 'Now open for room makeovers in the greater Atlanta area.');
-  assert.equal(w.cta, 'Apply →');
-  assert.equal(w.aria, '2027 application. Now open for room makeovers in the greater Atlanta area. Apply.');
-});
-
-test('the application row stays off the application itself, and only there', () => {
-  for (const path of ['/apply', '/apply/', '/apply/form/', '/apply/community-project/']) assert.equal(pageIsApplication(path), true, path);
-  for (const path of ['/', '/reveals/', '/live/', '/live/dylan-2026/', '/kids/max/', '/donate/', '/application-tips/']) assert.equal(pageIsApplication(path), false, path);
 });

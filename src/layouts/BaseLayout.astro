@@ -16,6 +16,8 @@
  */
 import { ClientRouter } from 'astro:transitions';
 import Header from '../components/global/Header.astro';
+import ApplicationBar from '../components/global/ApplicationBar.astro';
+import { auctionIsOpen } from '../utils/auction';
 import Footer from '../components/global/Footer.astro';
 import LiveIndicator from '../components/global/LiveIndicator.astro';
 import AuctionBar from '../components/global/AuctionBar.astro';
@@ -275,6 +277,8 @@ const structuredData = buildSchemaGraph(...graphSchemas);
 <body class={bodyClass}>
   <a href="#main-content" class="skip-link">Skip to main content</a>
   <AuctionBar />
+  {/* The top spot is the auction's on its day, the application's the rest of the season */}
+  {!auctionIsOpen() && <ApplicationBar />}
   <Header />
   <main id="main-content">
     <slot />
