@@ -1,87 +1,109 @@
 /**
- * The families who applied, on the board page, to read (#/families, and
- * #/families/<account> for one): what Applicants has, never changed here.
- * Peter, Nov 4 2026: "names and scores are in the applications admin, board
- * can have access to it ... read only". Reached from Home's Applications tile,
- * "What makeovers cost" and search; Home stays lit in the menu (no new menu item).
+ * Makeovers on the board page, from application to reveal, to read (#/families,
+ * #/families/list, #/families/map, and #/families/<account> for one family):
+ * what Applicants and JobTread have, never changed here. Peter, Nov 4 2026:
+ * "names and scores are in the applications admin, board can have access to
+ * it ... read only"; Nov 7: "combining in some way the applications and
+ * makeover kanban since that is the life span of a project for us from
+ * application to completion". Reached from Home's Makeovers card, "What
+ * makeovers cost" and search; Home stays lit in the menu (no new menu item).
  *
- *   the list   each season's families: their status, what they asked for,
- *              their county and their score, ranked once everyone scoring
- *              the season has finished their card
- *   the map    the same families on Applicants' map (#/families/map, and
- *              #/families/map/<account> with one open; ./family-map.js)
- *   a family   their video, photos and application, the facts their score
- *              rests on, and each scorer's card, criterion by criterion (the
- *              differences worth talking about marked). Never their messages,
- *              staff's notes or a scorer's notes
- *              (../../../functions/api/_board-families.js)
+ *   the board  a column for each step someone is at, from Applied to Revealed
+ *              (./lifecycle.js), now or a season at a time
+ *   the list   the same families in rows: their step, what they asked for,
+ *              their county and their score, ranked once everyone scoring the
+ *              season has finished their card
+ *   the map    the same families on Applicants' map, a pin in its step's color
+ *              (#/families/map/<account> with one open; ./family-map.js)
+ *   a family   where they are on the way, their video, photos and application,
+ *              the facts their score rests on, and each scorer's card,
+ *              criterion by criterion (the differences worth talking about
+ *              marked). Never their messages, staff's notes or a scorer's
+ *              notes (../../../functions/api/_board-families.js)
  */
 
 import { h, htm, useState, useEffect, useMemo } from '../vendor.js';
 import { plural } from '../board-shared.js';
 import { criteriaOf, rubricOfSeason, fmtScore, TOTAL_MAX, TIERS } from '../scoring-shared.js';
 import { nbw } from './costs.js';
-import { STATUSES, Face, Status, Score, asked, place, areaWords, byScore, day, read, cache, seasonsOf, openingSeason, Media } from './family-parts.js';
-import { FamilyMap, seasonLine } from './family-map.js';
+import { useKept } from './parts.js';
+import { Face, Score, asked, place, areaWords, byScore, day, read, cache, seasonsOf, Media } from './family-parts.js';
+import { FamilyMap } from './family-map.js';
+import { STAGES, stageLabel, byStage } from './stages.js';
+import { itemsOf, inSeason, sumLine, Track, LifeBoard, SeasonSwitch, StageChip, STAGE_SCHEME, Journey, toStep } from './lifecycle.js';
 
 const html = htm.bind(h);
+const external = (href) => /^\//.test(href);
 
-/** Every family who applied: by season and status, the ranked ones first, best score first */
-export function FamiliesPage({ view = 'list', open = '' }) {
+/** Every family from application to reveal: a board, a list or the map, now or a season at a time */
+export function FamiliesPage({ view = 'board', open = '', projects = null, reveals = [] }) {
   const [data, setData] = useState(cache.list);
   const [err, setErr] = useState('');
-  const seasons = useMemo(() => seasonsOf(data?.families), [data]);
-  // It opens on the newest season with a family in it, or the season of the family it opens on
-  const opening = useMemo(() => {
-    const family = open && data?.families.find((f) => f.id === open);
-    return family ? family.season || 'all' : openingSeason(data?.families || []);
-  }, [data, open]);
-  const [season, setSeason] = useState('');
-  const [status, setStatus] = useState(null);
   useEffect(() => {
     let live = true;
     read('families').then((j) => { if (!live) return; if (!j.ok) { setErr(j.error); return; } cache.list = j; setData(j); });
     return () => { live = false; };
   }, []);
-  useEffect(() => { if (!season && opening) setSeason(opening); }, [opening]);
-  const inSeason = (data?.families || []).filter((f) => !season || season === 'all' || f.season === season);
-  const shown = inSeason.filter((f) => status === null || f.status === status).sort(byScore);
-  const count = (s) => inSeason.filter((f) => f.status === s).length;
-  const ranked = inSeason.filter((f) => f.score?.ranked);
+  const all = useMemo(() => itemsOf(data, projects), [data, projects]);
+  const seasons = useMemo(() => seasonsOf(data?.families), [data]);
+  const app = data?.application || null;
+  // It opens on now, or on the season of the family it opens on (the map, with them open)
+  const [season, setSeason] = useKept('lc-page-season', '');
+  const opening = open ? all.find((x) => x.id === open)?.season || 'all' : 'now';
+  const shownSeason = season || opening;
+  const [stage, setStage] = useState(null);
+  const list = useMemo(() => inSeason(all, shownSeason, app), [all, shownSeason, app]);
+  const families = list.filter((x) => !String(x.id).startsWith('job-'));
+  const aside = list.filter((x) => x.stage === 'denied' || x.stage === 'none').length;
+  const windowed = shownSeason === 'now' || shownSeason === app?.year ? app : null;
+  const chips = [...STAGES.map((s) => s.key), 'denied', 'none'].filter((k) => list.some((x) => x.stage === k));
+  // Now, as the way goes; a season, as it's decided: ranked best first, then partway, then the rest
+  const rows = list.filter((x) => stage === null || x.stage === stage).sort(shownSeason === 'now' ? (a, b) => byStage(a, b) || byScore(a, b) : byScore);
+  // Who they are and how they're scored: families as families, community projects apart, how many ranked and in which tier
+  const ranked = list.filter((f) => f.score?.ranked);
+  const orgs = list.filter((f) => f.kind === 'organization').length;
+  const rankLine = [list.length - orgs ? plural(list.length - orgs, 'family', 'families') : '', orgs ? plural(orgs, 'community project') : '', ranked.length ? `${ranked.length} ranked` : '', ...TIERS.map((t) => { const k = ranked.filter((f) => f.score.tier === t.id).length; return k ? `${k} ${t.label}` : ''; })].filter(Boolean).join(' · ');
   return html`<div class="bf">
     <a class="bp-back" href="#/">← Home</a>
     <header class="bp-pagehead">
-      <div><h1 class="bp-h1">Families</h1><p class="bp-lede">Everyone who applied for a makeover: their video, photos, application and score. Read-only here: SOARD’s staff decide in Applicants.</p></div>
-      <div class="bc-seg bf-view" role="group" aria-label="Show the families as">
-        <a href="#/families" aria-current=${view === 'list' ? 'true' : null}>List</a>
+      <div><h1 class="bp-h1">Makeovers</h1><p class="bp-lede">Every family from application to reveal: where they are, their video, photos, application and score. Read-only here: staff decide in Applicants, and the builds run in JobTread.</p></div>
+      <div class="bc-seg bf-view" role="group" aria-label="Show them as">
+        <a href="#/families" aria-current=${view === 'board' ? 'true' : null}>Board</a>
+        <a href="#/families/list" aria-current=${view === 'list' ? 'true' : null}>List</a>
         <a href="#/families/map" aria-current=${view === 'map' ? 'true' : null}>Map</a>
       </div>
     </header>
     ${err ? html`<p class="bf-err" role="alert">${err}</p>` : !data ? html`<p class="bp-muted">Opening the families…</p>` : html`
       <div class="bf-filters">
-        ${seasons.length > 1 ? html`<div class="bc-seg" role="group" aria-label="Season">
-          ${seasons.map((y) => html`<button type="button" key=${y} aria-pressed=${season === y} onClick=${() => setSeason(y)}>${y}</button>`)}
-          <button type="button" aria-pressed=${season === 'all'} onClick=${() => setSeason('all')}>Every season</button>
-        </div>` : null}
-        ${view === 'list' ? html`<div class="bf-chips" role="group" aria-label="Status">
-          <button type="button" aria-pressed=${status === null} onClick=${() => setStatus(null)}>All <span>${inSeason.length}</span></button>
-          ${[...STATUSES, ''].filter(count).map((s) => html`<button type="button" key=${s} aria-pressed=${status === s} onClick=${() => setStatus(status === s ? null : s)}>${s || 'No status'} <span>${count(s)}</span></button>`)}
-        </div>` : null}
+        <${SeasonSwitch} seasons=${seasons} season=${shownSeason} setSeason=${(y) => { setSeason(y); setStage(null); }} />
       </div>
-      ${view === 'map' ? html`<p class="bf-sum">${seasonLine(inSeason)}</p><${FamilyMap} key="map" families=${inSeason} boundary=${data.boundary} open=${open} tall=${true} />` : html`
-      <p class="bf-sum">${nbw([...(() => { const orgs = inSeason.filter((f) => f.kind === 'organization').length; const fams = inSeason.length - orgs; return [fams ? plural(fams, 'family', 'families') : '', orgs ? plural(orgs, 'community project') : '']; })(), ranked.length ? `${ranked.length} ranked` : '', ...TIERS.map((t) => { const k = ranked.filter((f) => f.score.tier === t.id).length; return k ? `${k} ${t.label}` : ''; })].filter(Boolean).join(' · '))}</p>
-      ${shown.length ? html`<ul class="bf-list">${shown.map((f) => html`<li key=${f.id}><a class="bf-row" href=${`#/families/${encodeURIComponent(f.id)}`}>
-        <${Face} f=${f} size=${44} />
-        <span class="bf-row__who"><strong>${f.name}</strong><span>${[asked(f), place(f)].filter(Boolean).join(' · ')}</span></span>
-        <span class="bf-row__status"><${Status} s=${f.status} /><small>${nbw(`${f.season}${f.applied ? ` · applied ${day(f.applied)}` : ''}`)}</small></span>
-        <span class="bf-row__score"><${Score} s=${f.score} /></span>
-      </a></li>`)}</ul>` : html`<p class="bp-muted">No family here.</p>`}`}
+      <p class="bf-sum">${nbw(sumLine(list, shownSeason, app)) || 'Nobody here.'}</p>
+      <${Track} list=${list} application=${windowed} onStep=${view === 'board' ? toStep : view === 'list' ? (k) => setStage(k) : null} />
+      ${!data.jobs ? html`<p class="lc-note">JobTread can’t be reached right now, so each family’s step is their application’s.</p>` : null}
+      ${view === 'map' ? html`<${FamilyMap} key="map" families=${families} boundary=${data.boundary} open=${open} tall=${true} scheme=${STAGE_SCHEME} />`
+      : view === 'board' ? html`<${LifeBoard} key=${shownSeason} list=${list} application=${windowed} reveals=${reveals} />
+        ${aside ? html`<p class="lc-note">${nbw(`${plural(aside, 'family', 'families')} not chosen or with no status ${aside === 1 ? 'isn’t' : 'aren’t'} on the board.`)} <a class="bp-link" href="#/families/list">See them in the list</a></p>` : null}`
+      : html`
+        <div class="bf-chips" role="group" aria-label="Step">
+          <button type="button" aria-pressed=${stage === null} onClick=${() => setStage(null)}>All <span>${list.length}</span></button>
+          ${chips.map((k) => html`<button type="button" key=${k} aria-pressed=${stage === k} onClick=${() => setStage(stage === k ? null : k)}>${stageLabel(k)} <span>${list.filter((x) => x.stage === k).length}</span></button>`)}
+        </div>
+        ${rankLine ? html`<p class="bf-sum bf-rank">${nbw(rankLine)}</p>` : null}
+        ${rows.length ? html`<ul class="bf-list">${rows.map((f) => {
+          const job = String(f.id).startsWith('job-');
+          const href = job ? f.page || '' : `#/families/${encodeURIComponent(f.id)}`;
+          const inner = html`<${Face} f=${{ ...f, photo: f.card?.photo || f.photo }} size=${44} />
+            <span class="bf-row__who"><strong>${(job ? f.card?.name : f.name) || 'A family'}</strong><span>${[asked(f), place(f)].filter(Boolean).join(' · ') || (job ? 'From before the applications' : '')}</span></span>
+            <span class="bf-row__status"><${StageChip} f=${f} /><small>${nbw([f.season, f.applied ? `applied ${day(f.applied)}` : ''].filter(Boolean).join(' · '))}</small></span>
+            <span class="bf-row__score">${job ? null : html`<${Score} s=${f.score} />`}</span>`;
+          return html`<li key=${f.id}>${href ? html`<a class="bf-row" href=${href} ...${external(href) ? { target: '_blank', rel: 'noopener' } : {}}>${inner}</a>` : html`<div class="bf-row">${inner}</div>`}</li>`;
+        })}</ul>` : html`<p class="bp-muted">Nobody here.</p>`}`}
     `}
   </div>`;
 }
 
 /** One family: what they asked for, the facts their score rests on, and each scorer's card */
-export function FamilyPage({ id }) {
+export function FamilyPage({ id, reveals = [] }) {
   const [f, setF] = useState(cache.one.get(id) || null);
   const [err, setErr] = useState('');
   useEffect(() => {
@@ -90,7 +112,7 @@ export function FamilyPage({ id }) {
     return () => { live = false; };
   }, [id]);
   useEffect(() => { if (f) document.title = `${f.name} · SOARD Board`; }, [f]);
-  const back = html`<a class="bp-back" href="#/families">← All families</a>`;
+  const back = html`<a class="bp-back" href="#/families">← Makeovers</a>`;
   if (err) return html`<div class="bf">${back}<p class="bf-err" role="alert">${err}</p></div>`;
   if (!f) return html`<div class="bf">${back}<p class="bp-muted">Opening…</p></div>`;
   const x = f.facts || {};
@@ -117,9 +139,10 @@ export function FamilyPage({ id }) {
     ${back}
     <header class="bf-head">
       <${Face} f=${f} size=${72} />
-      <div><h1 class="bp-h1">${f.name}</h1><p class="bf-head__meta"><${Status} s=${f.status} /> <span>${nbw([f.season ? `${f.season} season` : '', f.kind === 'organization' ? 'Community project' : ''].filter(Boolean).join(' · '))}</span>${f.page ? html` <a class="bp-link" href=${f.page} target="_blank" rel="noopener">Their page</a>` : null}</p></div>
+      <div><h1 class="bp-h1">${f.name}</h1><p class="bf-head__meta"><${StageChip} f=${f} /> <span>${nbw([f.season ? `${f.season} season` : '', f.kind === 'organization' ? 'Community project' : ''].filter(Boolean).join(' · '))}</span>${f.page ? html` <a class="bp-link" href=${f.page} target="_blank" rel="noopener">Their page</a>` : null}</p></div>
       <div class="bf-head__score"><${Score} s=${f.score} big=${true} /></div>
     </header>
+    <${Journey} f=${f} reveals=${reveals} />
     <${Media} f=${f} />
     <div class="bf-split">
       <section class="bp-card" aria-labelledby="bf-facts-h">

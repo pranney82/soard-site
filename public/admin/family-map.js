@@ -85,12 +85,14 @@ export const pinIcon = (L, color, cls = '') => L.divIcon({ className: '', html: 
 
 /**
  * The key: a switch for each status with how many are on the map, the area and its ring, and who has no point.
- * `counts`: { [status]: n } with '' for a family with no status; `hidden`: a Set of statuses switched off
+ * `counts`: { [key]: n } with '' for a family with no status; `hidden`: a Set of keys switched off; `rows`: the keys
+ * as [{ key, label, color }] when they aren't Applicants' statuses (the board's stages, ./board/lifecycle.js)
  */
-export function MapLegend({ counts, hidden, onToggle, outside = 0, nearMiles = 0, noPoint = 0 }) {
+export function MapLegend({ counts, hidden, onToggle, outside = 0, nearMiles = 0, noPoint = 0, rows = null }) {
+  const keys = rows || ['Applied', 'In Review', 'Approved', 'Denied', ...(counts[''] ? [''] : [])].map((s) => ({ key: s, label: s || 'No status', color: STATUS_COLOR[s] }));
   return html`<div class="apl-legend">
-    ${['Applied', 'In Review', 'Approved', 'Denied', ...(counts[''] ? [''] : [])].map((s) => html`<button key=${s} aria-pressed=${!hidden.has(s)} onClick=${() => onToggle(s)}>
-      <span class="apl-dot" style=${`background:${STATUS_COLOR[s]}`}></span>${s || 'No status'}<b>${counts[s] || 0}</b></button>`)}
+    ${keys.map((k) => html`<button key=${k.key} aria-pressed=${!hidden.has(k.key)} onClick=${() => onToggle(k.key)}>
+      <span class="apl-dot" style=${`background:${k.color}`}></span>${k.label}<b>${counts[k.key] || 0}</b></button>`)}
     <div class="apl-legend-line"><i></i> Service area${outside ? ` · ${outside} outside` : ''}</div>
     ${nearMiles > 0 ? html`<div class="apl-legend-line is-plain"><i class="is-ring"></i> Close: within ${plural(nearMiles, 'mile')}</div>` : null}
     ${noPoint > 0 ? html`<div class="apl-legend-note">${plural(noPoint, 'family has', 'families have')} no home in JobTread yet</div>` : null}

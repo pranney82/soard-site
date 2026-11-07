@@ -1204,10 +1204,12 @@ try {
     ok(Object.keys(figs).length === 3 && figs['Makeovers under way'] === String(cards) && cards > 0 && figs['Cash in the bank'] === '$375K' && 'Reveals ahead' in figs && !/Recently|The money|Children served/.test(home), `Home: three figures without a budget (Mercury's cash, the reveals, the makeovers as many as the board's ${cards} cards), nothing repeated below (${JSON.stringify(figs)})`);
     ok(await alex.evaluate(() => !!document.querySelector('.bp-sum .bp-figs') && !!document.querySelector('.bp-sum #impact')), 'Home: the figures and Impact are one panel, SOARD at a glance');
     ok(await alex.$$eval('.bp-next .bp-agpeek li', (l) => l.length) > 0, 'Home: the next meeting’s agenda headings, right there');
-    const cols = await alex.$$eval('#makeovers .bk-col', (c) => c.map((e) => e.textContent));
+    // (Home's Makeovers card: the applications and the builds on one board, ./lifecycle.js; here, the builds alone)
+    await alex.waitForSelector('#makeovers .lc-track', { timeout: 8000 });
+    const cols = await alex.$$eval('#makeovers .bk-col', (c) => c.map((e) => e.textContent).filter((t) => !/^(Applying|Applied)/.test(t)));
     ok(/^Awaiting funding1[\s\S]*1\sfamily/.test(cols[0]) && /^Design2[\s\S]*Leo[\s\S]*\+1\smore family/.test(cols[1]) && /^Build1[\s\S]*Maya/.test(cols.at(-1)) && !/Not Published Yet|Someone Else|Coming up/.test(home), `Home: the makeovers as a kanban, Awaiting funding first, then Design to Build; published kids by name only (${JSON.stringify(cols)})`);
     const kids = await alex.$$eval('#makeovers .bk-card:not(.is-quiet)', (c) => c.map((e) => ({ text: e.querySelector('.bk-card__body').textContent, img: !!e.querySelector('.bk-card__photo img, .bk-card__initials') })));
-    ok(kids.length === 2 && kids.every((k) => k.img) && kids.some((k) => /^Maya\s*Reveal \w{3} \d+ · 10\sAM$/.test(k.text)) && kids.some((k) => /^Leo\s*Reveal mid December$/.test(k.text)), `Home: each kid’s card leads with their photo and carries their reveal, a set day or the part of the month (${JSON.stringify(kids)})`);
+    ok(kids.length === 2 && kids.every((k) => k.img) && kids.some((k) => /^Maya\s*Reveal \w{3}\s\d+\s·\s10\sAM$/.test(k.text)) && kids.some((k) => /^Leo\s*Reveal mid December$/.test(k.text)), `Home: each kid’s card leads with their photo and carries their reveal, a set day or the part of the month (${JSON.stringify(kids)})`);
     ok(await alex.evaluate(() => /kids served/.test(document.querySelector('#impact')?.textContent || '') && document.querySelector('#impact').getBoundingClientRect().top < document.querySelector('.bp-next').getBoundingClientRect().top), 'Home: Impact near the top, under the figures');
     ok(await alex.evaluate(() => { const so = [...document.querySelectorAll('#impact .bp-impact__stats > div')].find((d) => /so far$/.test(d.querySelector('dt')?.textContent || '')); return !so || /^\d+\skids? · \d+\srooms?/.test(so.querySelector('dd').textContent); }), 'Home: this year so far gives its kids and its rooms');
     const gifts = await alex.evaluate(() => { const c = document.querySelector('.bp-gifts'); return c && { sum: c.querySelector('.bp-gifts__sum')?.textContent, rows: [...c.querySelectorAll('.bp-gift')].map((r) => r.textContent), fresh: c.querySelectorAll('.bp-gift.is-new').length, all: c.querySelector('a[href="#/financials/gifts"]')?.textContent, beforeMakeovers: c.getBoundingClientRect().top < document.querySelector('#makeovers').getBoundingClientRect().top, inside: c.scrollWidth <= c.clientWidth }; });
@@ -1383,8 +1385,8 @@ try {
     await alex.goto(`${SITE}/admin/board/#/financials/gifts`, { waitUntil: 'networkidle0' });
     ok(await alex.waitForFunction(() => { const g = document.getElementById('gifts'); if (!g) return false; const r = g.getBoundingClientRect(); return g.querySelectorAll('.bp-gift').length === 8 && /^\$43,500 from 8\sgifts in\s\d{4}$/.test(g.querySelector('.bp-gifts__total')?.textContent || '') && r.top >= 0 && r.top < innerHeight / 2; }, { timeout: 12000 }).then(() => true, () => false), 'Financials: #/financials/gifts opens at the major gifts, all 8 under the year’s total');
     for (const [p, re] of [
-      // The cash, then the year beside the cash over time, then the statements, then the tax returns and audits
-      ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Tax returns and audits[\s\S]*2025/],
+      // The figures, then the cash beside the cash over time, then the year, then the statements, then the tax returns and audits
+      ['financials', /Cash in the bank[\s\S]*\$375,000[\s\S]*Straight from Mercury, read today at[\s\S]*Cash over time[\s\S]*The lowest point: \$210,000[\s\S]*The least we keep in the bank: \$150,000[\s\S]*Money in and out[\s\S]*Money in\s+\$900,000\s+\$800,000[\s\S]*Money out\s+\$850,000[\s\S]*Makeovers[\s\S]*Net\s+\$50,000\s+−\$20,000[\s\S]*Live from Mercury’s record\. The official books are in Mercury Books\.[\s\S]*The latest statements[\s\S]*Balance sheet financials[\s\S]*Tax returns and audits[\s\S]*2025/],
       ['people', /Board of Directors[\s\S]*Alex Rivera[\s\S]*The team[\s\S]*Jane Doe/],
       // (one way to sign: every paper's on its own page, a PDF too)
       ['documents', width === 1440 ? /Board Member Expectations[\s\S]*Read and sign[\s\S]*Conflict of interest policy[\s\S]*Read and sign[\s\S]*Every meeting’s files[\s\S]*Balance sheet financials/ : /Board Member Expectations[\s\S]*You added your signed copy[\s\S]*Conflict of interest policy[\s\S]*Signed\s*by Alex Rivera/],
@@ -1755,7 +1757,7 @@ try {
   jane.off('request', servePhoto);
   await jane.setRequestInterception(false);
   await jane.setBypassCSP(false);
-  ok(await jane.waitForSelector('#makeovers .bk-col', { timeout: 8000 }).then(() => true, () => false) && /From JobTread/.test(await text(jane)) && !/the way board members do/.test(await text(jane)), 'the founder sees the board page as the board does, with no banner saying so');
+  ok(await jane.waitForSelector('#makeovers .bk-col', { timeout: 8000 }).then(() => true, () => false) && /From the applications and JobTread/.test(await text(jane)) && !/the way board members do/.test(await text(jane)), 'the founder sees the board page as the board does, with no banner saying so');
   ok(await jane.evaluate(() => !document.querySelector('.bp-choice') && !document.querySelector('.bp-sign')) && !/Read and sign/.test(await text(jane)), 'with nothing to answer or sign for anyone (no “Read and sign” on Home)');
   await jane.goto(`${SITE}/admin/board/#/documents`, { waitUntil: 'networkidle0' });
   ok(await waitText(jane, /What the board signs\s*Each board member signs these once a year\.[\s\S]*Board Member Expectations[\s\S]*board members ha(?:s|ve) signed/) && !/You’ve signed/.test(await text(jane)), 'the founders see the papers the board signs, with how many have, and no “you’ve signed”');
@@ -2137,13 +2139,14 @@ try {
       ok(await money.waitForFunction(() => { const t = document.querySelector('.bp-latest .bp-stmt__title')?.textContent || ''; const st = document.querySelector('.bp-latest .bp-stmt'); return /^Budget against actual, January 1 to /.test(t) && /ActualBudgetOver \(under\)/.test(st?.querySelector('thead')?.textContent || '') && /Total Income\$1,884,217\$1,666,667\+13%/.test(st?.textContent || '') && /Budget_FY26_P&L, through .*: 10 of its 12 months/.test(document.querySelector('.bp-latest .bp-stmts__when')?.textContent || ''); }, { timeout: 2000 }).then(() => true, () => false), 'Financials: QuickBooks’ budget against the actuals, a tap from the statements, saying which budget and through when');
       ok(/The budget: QuickBooks’ Budget_FY26_P&L\./.test(await money.$eval('#budget', (x) => x.textContent).catch(() => '')), 'Financials: the year against its budget names QuickBooks’ budget');
       await shot(money, '27b-budget-financials');
-      const year = await money.evaluate(() => [...document.getElementById('by-h').closest('.bp-card').querySelectorAll('tbody tr')].map((r) => r.textContent));
+      // (the year's lines, under its chart: not the chart's month by month)
+      const year = await money.evaluate(() => [...document.getElementById('by-h').closest('.bp-card').querySelectorAll('.bp-cmp tbody tr')].map((r) => r.textContent));
       // Read down it adds up: revenue less the cash spent and the in kind used is the net
       ok(year[0] === 'Revenue$1,876,045$1,500,000▲ 25%' && year[1] === 'Cash expenses$980,000$1,030,000▼ 5%' && year[2] === 'In kind expenses (not cash)$220,000$70,000▲ 214%' && year[3] === 'Net$676,045$400,000▲ $276,045' && 1876045 - 980000 - 220000 === 676045, `Financials: the year so far splits the in kind from the cash expenses, and adds up to QuickBooks’ net (${JSON.stringify(year)})`);
       // % | $: the changes as percentages (the first time) or in dollars, one pick for the statements and the year so far
       await money.evaluate(() => [...document.querySelectorAll('.bp-chgas button')].find((x) => x.textContent.includes('$'))?.click());
       const inDollars = await money.waitForFunction(() => {
-        const rows = [...document.getElementById('by-h').closest('.bp-card').querySelectorAll('tbody tr')].map((r) => r.textContent);
+        const rows = [...document.getElementById('by-h').closest('.bp-card').querySelectorAll('.bp-cmp tbody tr')].map((r) => r.textContent);
         return rows[0] === 'Revenue$1,876,045$1,500,000▲ $376,045' && rows[1] === 'Cash expenses$980,000$1,030,000▼ $50,000' && /Total Income\$1,884,217\$1,666,667\+\$217,550/.test(document.querySelector('.bp-latest .bp-stmt')?.textContent || '');
       }, { timeout: 3000 }).then(() => true, () => false);
       ok(inDollars && await money.evaluate(() => [...document.querySelectorAll('.bp-chgas')].every((g) => g.querySelector('[aria-pressed="true"]')?.textContent.includes('$'))), 'Financials: $ says the changes in dollars, in the statements and the year so far at once');

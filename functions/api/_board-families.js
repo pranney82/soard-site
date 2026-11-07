@@ -35,10 +35,12 @@ import { listApplicants, getApplicantRow, familyFiles } from './_applicants.js';
 import { scoreSummaries, familyScores } from './_applicant-scores.js';
 import { getLiveForm } from './_application-forms.js';
 import { DEFAULT_SERVICE_AREA } from './_application-form.js';
-import { applicantFiles } from './_applications.js';
+import { applicantFiles, applicationSettings, cleanYear } from './_applications.js';
+import { projectsNow } from './_board.js';
 import { readState, writeState } from './_board-roles.js';
 import { noteFamilyOpen } from './_board-activity.js';
 import { provenParts, fileKind } from '../../public/admin/application-files.js';
+import { STAGE_OF_JOB } from '../../public/admin/board/stages.js';
 
 const isTest = (a) => !!a.isTest || /^\s*test\b/i.test(String(a.name || ''));
 // Cloudflare Images only: imagedelivery.net, or through the site (the way People's photos are kept: a crop's trim=a;b;c;d)
@@ -59,14 +61,29 @@ const scoreOf = (s) => (s && (s.count || s.started?.length) ? {
   criteria: s.criteria || null, talk: s.talk || [], rubric: s.rubric || null,
 } : null);
 
-/** One family as the board's list has it */
-function row(a, s) {
+/**
+ * Where a family is, from application to reveal (Peter, Nov 7 2026: "the life span of a project for us from
+ * application to completion"): their open job's JobTread status once it says one (STAGE_OF_JOB, shared with the
+ * page: ../../public/admin/board/stages.js), else their application's. An
+ * approved family whose job is closed has had their reveal. `open`: projectsNow's { [jobId]: status }, or null when
+ * JobTread can't be read (then the application's status is all there is)
+ */
+const STAGE_OF_STATUS = { Applied: 'applied', 'In Review': 'review', Approved: 'approved', Denied: 'denied' };
+export function stageOf(a, open) {
+  const job = a?.jobId && open ? open[a.jobId] : undefined;
+  if (job !== undefined && STAGE_OF_JOB[job]) return STAGE_OF_JOB[job];
+  if (job === undefined && a?.jobId && open && a.status === 'Approved') return 'revealed';
+  return STAGE_OF_STATUS[a?.status] || 'none';
+}
+
+/** One family as the board's list has it (`open`: as stageOf takes it) */
+function row(a, s, open = null) {
   // Its page once it's public
   const kid = a.kid && a.kid.slug && !a.kid.draft ? a.kid : null;
   return {
     // (no status is no status: 17 older families have a season and none, and "Applied" would say something untrue)
     id: a.id, name: String(a.name || '').trim(), kind: a.kind === 'organization' ? 'organization' : 'family',
-    status: a.status || '', season: a.year || '', types: Array.isArray(a.types) ? a.types : [],
+    status: a.status || '', stage: stageOf(a, open), jobId: a.jobId || null, season: a.year || '', types: Array.isArray(a.types) ? a.types : [],
     county: a.county || '', city: a.city || '', area: a.area || 'unknown', areaMiles: a.areaMiles ?? null,
     ...(a.lat != null && a.lng != null ? { lat: a.lat, lng: a.lng } : {}),
     applied: a.submittedAt || a.createdAt || null, stageAt: a.stageAt || null,
@@ -84,11 +101,32 @@ async function serviceArea(DB) {
   return { polygon: area?.polygon || DEFAULT_SERVICE_AREA.polygon, nearMiles: area?.nearMiles ?? DEFAULT_SERVICE_AREA.nearMiles };
 }
 
-/** Every family the board can read about, newest first → { families, at } */
-export async function familiesList(env) {
-  const [list, scores, boundary] = await Promise.all([listApplicants(env.DB), scoreSummaries(env.DB).catch(() => new Map()), serviceArea(env.DB)]);
+/** The application's window, as the board may know it: open or not, its season, when it opens and closes */
+async function applicationWindow(DB) {
+  const s = await applicationSettings(DB).catch(() => ({}));
+  return { open: s.open === true, year: cleanYear(s.year) || '', opensAt: s.opensAt ? String(s.opensAt) : '', closesAt: s.closesAt ? String(s.closesAt) : '' };
+}
+
+/**
+ * Every family the board can read about, newest first, each where they are from application to reveal →
+ * { families, makeovers, boundary, application, jobs, at }. `makeovers`: the open makeovers whose family isn't among
+ * them (an older family JobTread doesn't mark as an applicant), by their page; `jobs`: false when JobTread couldn't
+ * be read, so the stages are the applications' alone
+ */
+export async function familiesList(env, { fetchImpl = fetch } = {}) {
+  const [list, scores, boundary, projects, application] = await Promise.all([
+    listApplicants(env.DB), scoreSummaries(env.DB).catch(() => new Map()), serviceArea(env.DB),
+    projectsNow(env, { fetchImpl }).catch(() => null), applicationWindow(env.DB),
+  ]);
   const tests = await testAccounts(env.DB);
-  return { families: list.filter((a) => !isTest(a) && !tests.has(a.id)).map((a) => row(a, scores.get(a.id))), boundary, at: new Date().toISOString() };
+  const open = projects?.open || null;
+  // (a test run's job is its own: the whole list is checked, tests too, before a makeover counts as nobody's)
+  const theirs = new Set(list.map((a) => a.jobId).filter(Boolean));
+  const makeovers = [...(projects?.waiting || []), ...(projects?.building || [])].filter((p) => p.jobId && !theirs.has(p.jobId)).map((p) => ({
+    id: `job-${p.jobId}`, jobId: p.jobId, name: p.name || '', kind: p.kind === 'community' ? 'organization' : 'family', stage: STAGE_OF_JOB[p.status] || 'approved',
+    ...(p.url || p.slug ? { page: p.url || `/kids/${p.slug}/` } : {}), ...(p.photo ? { photo: p.photo } : {}),
+  }));
+  return { families: list.filter((a) => !isTest(a) && !tests.has(a.id)).map((a) => row(a, scores.get(a.id), open)), makeovers, boundary, application, jobs: !!open, at: new Date().toISOString() };
 }
 
 // A database with no applications table has no website tests. Any other failure stops here: unsure means not shown
@@ -211,11 +249,11 @@ export async function familyOne(env, id, { now = Date.now(), fetchImpl = fetch }
   const found = await readable(env, id);
   if (!found) throw Object.assign(new Error('That family isn’t on the board page'), { status: 404 });
   const { a, app } = found;
-  const [sc, files] = await Promise.all([familyScores(env.DB, id).catch(() => null), readFiles(env, a, { now, fresh: true, fetchImpl })]);
+  const [sc, files, projects] = await Promise.all([familyScores(env.DB, id).catch(() => null), readFiles(env, a, { now, fresh: true, fetchImpl }), projectsNow(env, { fetchImpl }).catch(() => null)]);
   const f = a.fields || {};
   return {
     family: {
-      ...row(a, sc?.summary ? { ...sc.summary, rubric: sc.rubric } : null),
+      ...row(a, sc?.summary ? { ...sc.summary, rubric: sc.rubric } : null, projects?.open || null),
       facts: {
         diagnosis: String(f.diagnosis || '').slice(0, 2000), age: ageFrom(f.birthday, now), gender: f.gender || '', language: f.language || '',
         verbal: f.verbal || '', mobile: f.mobile || '', qualified: f.qualified || '', referredBy: String(f.referredBy || '').slice(0, 200),

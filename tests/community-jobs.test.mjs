@@ -101,12 +101,12 @@ test('the board’s makeovers in progress: an organization by its name on Commun
   const v = await projectsNow({ DB, JOBTREAD_GRANT_KEY: 'k' }, { fetchImpl, fresh: true });
   assert.deepEqual(v.byStatus, { Build: 4, Design: 1, 'Awaiting Funding': 1 });
   assert.deepEqual(v.building, [
-    { name: 'Max', slug: 'max', status: 'Build' },
-    { name: 'Perfect Harmony Health', slug: 'perfect-harmony-health', status: 'Design', kind: 'community', url: '/community/perfect-harmony-health/' },
-    { name: 'The Lionheart School', slug: null, status: 'Build', kind: 'community', url: null },
-    { name: 'Grace Academy', slug: null, status: 'Build', kind: 'community', url: null },
-    { name: null, slug: null, status: 'Build' },
+    { jobId: 'jMax', name: 'Max', slug: 'max', status: 'Build' },
+    { jobId: 'jPHH', name: 'Perfect Harmony Health', slug: 'perfect-harmony-health', status: 'Design', kind: 'community', url: '/community/perfect-harmony-health/' },
+    { jobId: 'jLion', name: 'The Lionheart School', slug: null, status: 'Build', kind: 'community', url: null },
+    { jobId: 'jGA', name: 'Grace Academy', slug: null, status: 'Build', kind: 'community', url: null },
+    { jobId: 'jX', name: null, slug: null, status: 'Build' },
   ], 'the Lionheart draft goes by its name, with no link; Grace Academy is public with no page yet, so no link either');
-  assert.deepEqual(v.waiting, [{ name: null, slug: null, status: 'Awaiting Funding' }], 'a family awaiting funding: in its own list, by name only once their page is up');
+  assert.deepEqual(v.waiting, [{ jobId: 'jW', name: null, slug: null, status: 'Awaiting Funding' }], 'a family awaiting funding: in its own list, by name only once their page is up');
   assert.ok(!JSON.stringify(v).includes('Not Published Yet') && !JSON.stringify(v).includes('Somebody Waiting'), 'a job’s own name never reaches the board');
 });

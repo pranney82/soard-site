@@ -3,7 +3,8 @@
  * with who's on it beside it, to read, never to change.
  * Peter, Nov 6 2026: "show the application map to the board in one of the
  * tiles ... the ability for the board to see the video, photos and
- * application". Home's tile (ApplicationsCard) and Families → Map (FamilyMap).
+ * application". The map in Home's Makeovers card and on the Makeovers page
+ * (./lifecycle.js, ./families.js), pins by step there (`scheme`).
  *
  *   the map   every family with a home in JobTread against the service area,
  *             pins in their status's color; the key switches a status off
@@ -36,6 +37,15 @@ const FAR_MILES = 30;
 // Where pins pile up, the ones still being decided stay on top: a gray pin never hides a family waiting
 const PIN_RANK = { Applied: 500, 'In Review': 400, Approved: 300 };
 const rankOf = (f) => PIN_RANK[f.status] || 0;
+/**
+ * How the map colors and keys its families: by Applicants' status unless told otherwise (Home's Makeovers card keys
+ * them by their stage, ./lifecycle.js). keyOf → the key's id; colorOf → a pin's color; word → said aloud; rank → on
+ * top where pins pile up; rows → the key's rows (null: Applicants' statuses); chip → the family's chip on their card
+ */
+export const STATUS_SCHEME = {
+  keyOf: (f) => f.status || '', colorOf: (f) => STATUS_COLOR[f.status || ''], word: (f) => f.status || 'No status', rank: rankOf, rows: null, sort: null,
+  chip: (f) => html`<${Status} s=${f.status} />`,
+};
 // This many on the map and each pin is drawn smaller
 const CROWDED = 30;
 const isFar = (f) => f.area === 'outside' && f.areaMiles > FAR_MILES;
@@ -51,7 +61,7 @@ export function seasonLine(list) {
 }
 
 /** A family in the list's place: what they sent, first */
-function FamilyCard({ f, onBack, back }) {
+function FamilyCard({ f, onBack, back, scheme = STATUS_SCHEME }) {
   const [d, setD] = useState(cache.one.get(f.id) || null);
   const [err, setErr] = useState('');
   const head = useRef(null);
@@ -75,7 +85,7 @@ function FamilyCard({ f, onBack, back }) {
     <button type="button" class="fm-back" onClick=${onBack}>${BACK}${back}</button>
     <div class="fm-card__head">
       <${Face} f=${f} size=${48} />
-      <div><h3 class="fm-card__name" ref=${head} tabindex="-1">${f.name}</h3><p class="fm-card__meta"><${Status} s=${f.status} /><span>${nbw([f.season, f.kind === 'organization' ? 'Community project' : ''].filter(Boolean).join(' · '))}</span></p></div>
+      <div><h3 class="fm-card__name" ref=${head} tabindex="-1">${f.name}</h3><p class="fm-card__meta">${scheme.chip(f)}<span>${nbw([f.season, f.kind === 'organization' ? 'Community project' : ''].filter(Boolean).join(' · '))}</span></p></div>
     </div>
     ${!d && !err ? html`<div class="fm-card__wait" role="status">Opening what they sent…</div>` : null}
     ${m?.video ? html`<${Video} m=${m} set=${set} who=${who} />` : null}
@@ -95,7 +105,7 @@ function FamilyCard({ f, onBack, back }) {
  * The map and who's on it. `families`: the season's, each as the list has them; `boundary`: the service area;
  * `open`: a family to open with; `tall`: Families → Map's height, and the wheel zooms there
  */
-export function FamilyMap({ families, boundary, open = '', tall = false }) {
+export function FamilyMap({ families, boundary, open = '', tall = false, scheme = STATUS_SCHEME }) {
   const box = useRef(null);
   const st = useRef({});
   const listEl = useRef(null);
@@ -111,11 +121,11 @@ export function FamilyMap({ families, boundary, open = '', tall = false }) {
   const poly = boundary?.polygon || [];
   const nearMiles = boundary?.nearMiles ?? 0;
 
-  const rows = useMemo(() => [...families].sort(byScore), [families]);
+  const rows = useMemo(() => [...families].sort(scheme.sort || byScore), [families]);
   const onMap = useMemo(() => rows.filter((f) => f.lat != null && f.lng != null), [rows]);
-  const showing = useMemo(() => onMap.filter((f) => !hidden.has(f.status || '')), [onMap, hidden]);
-  const counts = useMemo(() => onMap.reduce((c, f) => ({ ...c, [f.status || '']: (c[f.status || ''] || 0) + 1 }), {}), [onMap]);
-  const listed = rows.filter((f) => !hidden.has(f.status || ''));
+  const showing = useMemo(() => onMap.filter((f) => !hidden.has(scheme.keyOf(f))), [onMap, hidden]);
+  const counts = useMemo(() => onMap.reduce((c, f) => ({ ...c, [scheme.keyOf(f)]: (c[scheme.keyOf(f)] || 0) + 1 }), {}), [onMap]);
+  const listed = rows.filter((f) => !hidden.has(scheme.keyOf(f)));
   const picked = openId ? rows.find((f) => f.id === openId) : null;
 
   useEffect(() => { let live = true; loadLeaflet().then((l) => { if (live) setL(l); }).catch((e) => { if (live) setErr(e.message); }); return () => { live = false; }; }, []);
@@ -206,7 +216,7 @@ export function FamilyMap({ families, boundary, open = '', tall = false }) {
   useEffect(() => {
     const s = st.current;
     if (!L || !s.map) return;
-    const drawing = JSON.stringify(showing.map((f) => [f.id, f.lat, f.lng, f.status]));
+    const drawing = JSON.stringify(showing.map((f) => [f.id, f.lat, f.lng, scheme.keyOf(f)]));
     if (drawing === s.drawn) return;
     s.drawn = drawing;
     s.pins.clearLayers();
@@ -214,9 +224,9 @@ export function FamilyMap({ families, boundary, open = '', tall = false }) {
     s.map.getContainer().classList.toggle('is-crowded', showing.length > CROWDED);
     for (const f of showing) {
       const on = f.id === openRef.current;
-      const m = L.marker([f.lat, f.lng], { icon: pinIcon(L, STATUS_COLOR[f.status || ''], on ? 'is-focus' : ''), riseOnHover: true, riseOffset: 2500, keyboard: true, zIndexOffset: on ? 2000 : rankOf(f), rank: rankOf(f) });
+      const m = L.marker([f.lat, f.lng], { icon: pinIcon(L, scheme.colorOf(f), on ? 'is-focus' : ''), riseOnHover: true, riseOffset: 2500, keyboard: true, zIndexOffset: on ? 2000 : scheme.rank(f), rank: scheme.rank(f) });
       // (a pin's element comes once the map has its view, which may be after this)
-      m.on('add', () => m.getElement()?.setAttribute('aria-label', `${f.name}, ${f.status || 'no status'}`));
+      m.on('add', () => m.getElement()?.setAttribute('aria-label', `${f.name}, ${scheme.word(f).toLowerCase()}`));
       m.addTo(s.pins);
       if (!L.Browser.mobile) {
         const tip = document.createElement('span');
@@ -253,21 +263,21 @@ export function FamilyMap({ families, boundary, open = '', tall = false }) {
     <div class="fm-stage">
       ${err ? html`<p class="fm-opening">The map couldn’t load. Reload the page to try again.</p>` : html`<div class="fm-map" ref=${box} role="region" aria-label="Map of the families who applied and the service area"></div>`}
       ${!L && !err ? html`<p class="fm-opening">Opening the map…</p>` : null}
-      <${MapLegend} counts=${counts} hidden=${hidden} onToggle=${toggle} outside=${outside} nearMiles=${nearMiles} noPoint=${noPoint} />
+      <${MapLegend} counts=${counts} hidden=${hidden} onToggle=${toggle} outside=${outside} nearMiles=${nearMiles} noPoint=${noPoint} rows=${scheme.rows ? scheme.rows.filter((r) => counts[r.key]) : null} />
       ${L && (far || L.Browser.mobile) ? html`<div class="fm-under">
         ${far ? html`<button type="button" class="fm-far" onClick=${widen}>${wide ? 'Back to the service area' : `Show ${far} farther out`}</button>` : null}
         ${L.Browser.mobile ? html`<p class="fm-hint">Two fingers move the map</p>` : null}
       </div>` : null}
     </div>
     <aside class="fm-side" aria-label=${picked ? picked.name : 'Who’s on the map'}>
-      ${picked ? html`<${FamilyCard} key=${picked.id} f=${picked} onBack=${close} back=${plural(rows.length, 'family', 'families').replace(/^(\d+) /, 'All $1 ')} />` : html`
+      ${picked ? html`<${FamilyCard} key=${picked.id} f=${picked} onBack=${close} back=${plural(rows.length, 'family', 'families').replace(/^(\d+) /, 'All $1 ')} scheme=${scheme} />` : html`
         ${listed.length ? html`<ul class=${`fm-list ${all ? 'is-all' : ''}`} ref=${listEl}>${listed.map((f) => html`<li key=${f.id}>
           <button type="button" class="fm-row" data-id=${f.id} onClick=${() => pick(f.id, true)} onMouseEnter=${() => lightPin(f.id, true)} onMouseLeave=${() => lightPin(f.id, false)} onFocus=${() => lightPin(f.id, true)} onBlur=${() => lightPin(f.id, false)}>
             <${Face} f=${f} size=${38} />
-            <span class="fm-row__who"><strong>${f.name}</strong><span>${[asked(f), f.city].filter(Boolean).join(' · ') || (f.status ? '' : 'No status')}</span></span>
+            <span class="fm-row__who"><strong>${f.name}</strong><span>${[asked(f), f.city].filter(Boolean).join(' · ') || scheme.word(f)}</span></span>
             <span class="fm-row__end">
               ${f.score?.ranked ? html`<b class="fm-row__score">${fmtScore(f.score.total)}</b>` : null}
-              <span class="apl-pin fm-row__pin" style=${`--c:${STATUS_COLOR[f.status || '']}`} title=${f.status || 'No status'}></span><span class="sr-only">${f.status || 'No status'}</span>
+              <span class="apl-pin fm-row__pin" style=${`--c:${scheme.colorOf(f)}`} title=${scheme.word(f)}></span><span class="sr-only">${scheme.word(f)}</span>
             </span>
           </button>
         </li>`)}</ul>` : html`<p class="bp-muted fm-none">No family here.</p>`}
@@ -275,46 +285,4 @@ export function FamilyMap({ families, boundary, open = '', tall = false }) {
       `}
     </aside>
   </div>`;
-}
-
-/** Home's tile: the newest season's families on the map, opened as it comes into view */
-export function ApplicationsCard() {
-  const el = useRef(null);
-  const [data, setData] = useState(cache.list);
-  const [err, setErr] = useState('');
-  const [near, setNear] = useState(!!cache.list);
-  const [season, setSeason] = useKept('fm-season', '');
-  useEffect(() => {
-    if (near) return undefined;
-    const io = new IntersectionObserver((seen) => { if (seen.some((s) => s.isIntersecting)) setNear(true); }, { rootMargin: '700px 0px' });
-    io.observe(el.current);
-    return () => io.disconnect();
-  }, [near]);
-  useEffect(() => {
-    if (!near) return undefined;
-    let live = true;
-    read('families').then((j) => { if (!live) return; if (!j.ok) { setErr(j.error); return; } cache.list = j; setData(j); });
-    return () => { live = false; };
-  }, [near]);
-  const families = data?.families || [];
-  const seasons = useMemo(() => seasonsOf(families), [families]);
-  const opening = useMemo(() => openingSeason(families), [families]);
-  const shownSeason = season || opening;
-  const list = useMemo(() => families.filter((f) => shownSeason === 'all' || f.season === shownSeason), [families, shownSeason]);
-  return html`<section class="bp-card fm-tile" id="applications" aria-labelledby="apps-h" ref=${el}>
-    <div class="bp-cardhead">
-      <h2 class="bp-h2" id="apps-h">Applications</h2>
-      <a class="bp-cardhead__go" href="#/families">Every family${ARROW}</a>
-    </div>
-    ${err ? html`<p class="bf-err" role="alert">${err}</p>` : html`
-      <div class="fm-filters">
-        ${seasons.length > 1 ? html`<div class="bc-seg" role="group" aria-label="Season">
-          ${seasons.map((y) => html`<button type="button" key=${y} aria-pressed=${shownSeason === y} onClick=${() => setSeason(y)}>${y}</button>`)}
-          <button type="button" aria-pressed=${shownSeason === 'all'} onClick=${() => setSeason('all')}>Every season</button>
-        </div>` : null}
-        ${data ? html`<p class="bf-sum">${seasonLine(list)}</p>` : null}
-      </div>
-      ${near && data ? html`<${FamilyMap} families=${list} boundary=${data.boundary} />` : html`<div class="fm"><div class="fm-stage"><p class="fm-opening">Opening the map…</p></div><div class="fm-side"></div></div>`}
-    `}
-  </section>`;
 }

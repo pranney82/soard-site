@@ -1262,13 +1262,15 @@ export const AWAITING_FUNDING = 'Awaiting Funding';
 
 /**
  * Open makeovers by JobTread status, the building ones with their kid or
- * community project → { byStatus, building: [{ name, slug, status, url?, kind? }], waiting: [same, Awaiting Funding] }
- * (15-minute copy). A project carries kind 'community', and its url only
- * once its page is public.
+ * community project → { byStatus, building: [{ jobId, name, slug, status, url?, kind? }], waiting: [same, Awaiting
+ * Funding], open: { [jobId]: status } } (15-minute copy). A project carries kind 'community', and its url only
+ * once its page is public. `open` is every open job's status ('' for none): the board's families find where their
+ * makeover is by it (./_board-families.js stageOf).
  */
 export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fresh = false } = {}) {
   const cached = await readState(env.DB, 'projects');
-  if (!fresh && cached.at && now - Date.parse(cached.at) < 15 * 60 * 1000) return cached.value;
+  // (a copy from before `open` was kept is read again)
+  if (!fresh && cached.at && now - Date.parse(cached.at) < 15 * 60 * 1000 && cached.value?.open) return cached.value;
   if (!env.JOBTREAD_GRANT_KEY) return cached.value || null;
   try {
     const [jobs, kids, projects] = await Promise.all([fetchJobs(env.JOBTREAD_GRANT_KEY, fetchImpl), loadKids(env.DB).catch(() => []), loadProjects(env.DB, { drafts: true }).catch(() => [])]);
@@ -1276,9 +1278,11 @@ export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fr
     const building = [];
     // Families approved and waiting on the money to start: the board's first column
     const waiting = [];
+    const open = {};
     for (const job of jobs) {
       if (isRehearsalJob(job)) continue;
       const status = String((job.customFieldValues?.nodes || []).find((v) => v.customField?.id === FIELD_JOB_STATUS)?.value || '').trim();
+      if (job.id) open[job.id] = status;
       if (!status) continue;
       byStatus[status] = (byStatus[status] || 0) + 1;
       const list = BUILDING_STATUSES.has(status) ? building : status === AWAITING_FUNDING ? waiting : null;
@@ -1287,14 +1291,14 @@ export async function projectsNow(env, { fetchImpl = fetch, now = Date.now(), fr
       if (isProject(hit)) {
         // An organization, by its name and photo on Community even before it's published (the board is SOARD's
         // own; a child's name and photo wait for their page). Linked once its page is public
-        list.push({ name: hit.name || null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null, ...photoField(hit.heroImage) });
+        list.push({ jobId: job.id || null, name: hit.name || null, slug: hit.page ? hit.slug : null, status, kind: 'community', url: hit.page || null, ...photoField(hit.heroImage) });
         continue;
       }
       const kid = hit;
       // By name only with a published kid page: a job's own name in JobTread is internal ("Not Published Yet"). Its photo likewise
-      list.push({ name: kid?.name || null, slug: kid?.slug || null, status, ...photoField(kid?.name && kid.heroImage) });
+      list.push({ jobId: job.id || null, name: kid?.name || null, slug: kid?.slug || null, status, ...photoField(kid?.name && kid.heroImage) });
     }
-    const value = { byStatus, building, waiting };
+    const value = { byStatus, building, waiting, open };
     await writeState(env.DB, 'projects', { at: new Date(now).toISOString(), value });
     return value;
   } catch (err) {

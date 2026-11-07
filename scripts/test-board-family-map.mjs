@@ -5,7 +5,10 @@
  * CDN faked with made-up families (the repo is public). Map tiles are a plain gray square unless
  * REAL_TILES=1, so nothing here needs the internet. PHOTOS=<folder of .jpg> puts real-looking pictures
  * in the fake CDN, for looking at the screenshots. Checks, at laptop and phone sizes:
- *   - Home's Applications tile: the map, the key, who's on it, the season switch; a row lights its pin
+ *   - Home's Makeovers card, from application to reveal: every step and how many are at it, the application's
+ *     window over its two, a column for each step someone's at (the families applying and revealed in rows, those
+ *     being built on their page's photo with their reveal), a closed application, and the same families on the
+ *     map: the key, who's on it, the season switch; a row lights its pin
  *   - a pin or a row opens the family in the list's place; video, photos and the application open in the
  *     viewer; Back and Esc come back to the row
  *   - the wheel goes on down the page; ⌘ or Ctrl and the wheel zooms
@@ -30,6 +33,7 @@ import { ensureApplicantSchema } from '../functions/api/_applicants.js';
 import { saveScorecard } from '../functions/api/_applicant-scores.js';
 import { DEFAULT_SERVICE_AREA } from '../functions/api/_application-form.js';
 import { criteriaOf, rubricOfSeason } from '../public/admin/scoring-shared.js';
+import { FIELD_JOB_STATUS } from '../functions/api/_reveals.js';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const OUT = process.env.OUT_DIR || join(ROOT, 'test-results/board-family-map/');
@@ -75,6 +79,13 @@ const FAMILIES = {
   acctTest01: F('TEST Applicant', 'Applied', YEAR, 34, -84.3),
   acctRun001: F('Sample Child', 'Applied', YEAR, 34.01, -84.31),
   acctNoPt01: F('Pat Example', 'Applied', YEAR, null, null, { city: '', county: '' }),
+  // Last season's, being built and revealed: each family's job in JobTread (JOBS below), their kid page (KIDS)
+  acctMax001: F('Max Example', 'Approved', YEAR - 1, 34.05, -84.3, { jobId: 'jMax', city: 'Alpharetta', types: ['Bedroom', 'Bathroom'] }),
+  acctLeo001: F('Leo Example', 'Approved', YEAR - 1, 33.95, -84.55, { jobId: 'jLeo', city: 'Marietta', county: 'Cobb', types: ['Bathroom'] }),
+  acctAva001: F('Ava Example', 'Approved', YEAR - 1, 34.11, -84.0, { jobId: 'jAva', city: 'Suwanee', county: 'Gwinnett', types: ['Bedroom'], photo: 'https://cdn.jobtread.com/fAvaKid?size=256' }),
+  acctZoe001: F('Zoe Example', 'Approved', YEAR - 1, 33.88, -84.47, { jobId: 'jZoe', city: 'Smyrna', county: 'Cobb', types: ['Therapy Room'] }),
+  acctSam001: F('Sam Example', 'Approved', YEAR - 1, 34.0, -84.15, { jobId: 'jSamOld', city: 'Duluth', county: 'Gwinnett', types: ['Bedroom'] }),
+  acctTia001: F('Tia Example', 'Approved', YEAR - 1, 33.9, -84.25, { jobId: 'jTia', city: 'Dunwoody', county: 'DeKalb', types: ['Bathroom'] }),
   ...Object.fromEntries(['Ana', 'Ben', 'Cal', 'Dee', 'Eli', 'Fay', 'Gus', 'Hope', 'Ivy', 'Jude', 'Kit', 'Lou'].map((n, i) => [`acctOld${String(i).padStart(2, '0')}`, F(`${n} Example`, ['Approved', 'Denied', 'Denied'][i % 3], YEAR - 1 - (i % 2), 33.75 + (i % 5) * 0.09, -84.55 + (i % 7) * 0.08, { city: 'Atlanta', types: ['Bedroom', 'Bathroom'] })])),
 };
 
@@ -105,9 +116,25 @@ await DB.prepare('INSERT INTO reveal_board_emails (slug, email) VALUES (?, ?)').
 await ensureSchema(DB);
 await ensureApplicantSchema(DB);
 for (const [id, f] of Object.entries(FAMILIES)) {
-  await DB.prepare(`INSERT INTO applicants (account_id, name, status, year, types, fields, address, city, county, lat, lng, area, area_miles, contact_name, contact_email, contact_phone, contacts, photo_url, created_at, synced_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, f.name, f.status, String(f.season), JSON.stringify(f.types), JSON.stringify(f.fields), '12 Elm St, Roswell, GA 30075', f.city, f.county, f.lat, f.lng, f.lat == null ? 'unknown' : f.area, f.miles, 'Parent Example', 'parent@example.com', '4045550100', '[]', f.photo || null, `${day(-9)}T14:00:00Z`, new Date().toISOString()).run();
+  await DB.prepare(`INSERT INTO applicants (account_id, name, status, year, types, fields, address, city, county, lat, lng, area, area_miles, contact_name, contact_email, contact_phone, contacts, photo_url, created_at, synced_at, job_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).bind(id, f.name, f.status, String(f.season), JSON.stringify(f.types), JSON.stringify(f.fields), '12 Elm St, Roswell, GA 30075', f.city, f.county, f.lat, f.lng, f.lat == null ? 'unknown' : f.area, f.miles, 'Parent Example', 'parent@example.com', '4045550100', '[]', f.photo || null, `${day(-9)}T14:00:00Z`, new Date().toISOString(), f.jobId || null).run();
 }
+// Their kid pages (a published page names them and gives their card its photo), and Ruby's, from before the
+// applications: her family isn't an applicant, so her makeover is on the board by her page alone
+const KIDS = { max: ['Max', 'jMax'], leo: ['Leo', 'jLeo'], zoe: ['Zoe', 'jZoe'], sam: ['Sam', 'jSamOld'], tia: ['Tia', 'jTia'], ruby: ['Ruby', 'jRuby'] };
+for (const [slug, [name, job]] of Object.entries(KIDS)) {
+  await DB.prepare('INSERT INTO kids (slug, name, year, data) VALUES (?, ?, ?, ?)').bind(slug, name, YEAR - 1, JSON.stringify({ name, year: YEAR - 1, jobtreadJobId: job, heroImage: `https://imagedelivery.net/abc123/kids/${slug}/photo-1/public` })).run();
+}
+const JOB = (id, name, status) => ({ id, name, customFieldValues: { nodes: [{ value: status, customField: { id: FIELD_JOB_STATUS } }] } });
+// Open jobs only (Sam's is closed: his makeover is done)
+const JOBS = [JOB('jMax', `Max Example (${YEAR - 1})`, 'Build'), JOB('jLeo', `Leo Example (${YEAR - 1})`, 'Design'), JOB('jAva', `Ava Example (${YEAR - 1})`, 'Awaiting Funding'),
+  JOB('jZoe', `Zoe Example (${YEAR - 1})`, 'Mobilization'), JOB('jTia', `Tia Example (${YEAR - 1})`, 'Closed Done'), JOB('jRuby', `Ruby Example (${YEAR - 1})`, 'Build')];
+// The application, open until a day ahead; Max's reveal set, Zoe's in a part of a month
+await DB.prepare('INSERT INTO site_config (key, data) VALUES (?, ?)').bind('settings', JSON.stringify({ application: { open: true, year: String(YEAR), closesAt: `${day(60)}T23:59:00-05:00` } })).run();
+await DB.prepare('INSERT INTO site_config (key, data) VALUES (?, ?)').bind('reveals', JSON.stringify({ reveals: [], upcoming: [
+  { slug: 'max', name: 'Max', confirmed: true, date: day(12), time: '16:00' },
+  { slug: 'zoe', name: 'Zoe', confirmed: false, window: { part: 'mid', month: day(40).slice(0, 7), label: `mid ${new Date(`${day(40)}T12:00:00Z`).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' })}` } },
+] })).run();
 await DB.prepare('INSERT INTO applications (id, jt_account_id, lang, jt_state, files, is_test, submitted_at, kind) VALUES (?, ?, ?, ?, ?, 0, ?, ?)').bind('app-form-1', 'acctForm01', 'en', JSON.stringify({ pdf: { key: 'r2/rosa.pdf' } }), JSON.stringify({ photoChild: { key: 'r2/rosa.jpg', thumbKey: 'r2/rosa-t.jpg', type: 'image/jpeg', size: 90000 }, video: { uploaded: true } }), `${day(0)}T13:00:00Z`, 'family').run();
 await DB.prepare('INSERT INTO applications (id, jt_account_id, lang, jt_state, files, is_test, submitted_at, kind) VALUES (?, ?, ?, ?, ?, 1, ?, ?)').bind('app-test-1', 'acctRun001', 'en', '{}', '{}', `${day(0)}T13:00:00Z`, 'family').run();
 const card = (n) => Object.fromEntries(criteriaOf(rubricOfSeason(String(YEAR))).filter((c) => !c.after).map((c) => [c.key, n]));
@@ -133,7 +160,7 @@ globalThis.fetch = async (input, init = {}) => {
     if (jobtreadDown) return new Response('down', { status: 503 });
     const q = JSON.parse(init.body || '{}').query || {};
     if (q.account) return Response.json({ account: { files: { nodes: FILES[q.account.$.id] || [] } } });
-    return Response.json({ organization: { jobs: { nodes: [], nextPage: null } } });
+    return Response.json({ organization: { jobs: { nodes: JOBS, nextPage: null } } });
   }
   if (url.startsWith('https://cdn.jobtread.com/')) {
     const u = new URL(url);
@@ -170,7 +197,7 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url, `http://${req.headers.host}`);
     const who = req.headers['x-test-user'] || '';
     if (url.pathname === '/cdn-cgi/access/get-identity') { res.writeHead(who ? 200 : 401, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(who ? { email: who, name: '' } : {})); return; }
-    if (url.pathname.startsWith('/cdn-cgi/imagedelivery/')) { res.writeHead(200, { 'Content-Type': 'image/png' }); res.end(PNG); return; }
+    if (url.pathname.startsWith('/cdn-cgi/imagedelivery/')) { res.writeHead(200, { 'Content-Type': pics.length ? 'image/jpeg' : 'image/png' }); res.end(pics.length ? picFor(url.pathname.split('/')[4] || url.pathname) : PNG); return; }
     if (url.pathname.startsWith('/api/')) {
       const chunks = [];
       for await (const c of req) chunks.push(c);
@@ -240,10 +267,17 @@ async function axe(page, sel, label) {
 const pinsNow = (page) => page.$$eval('.fm-map .apl-pin', (p) => p.map((e) => getComputedStyle(e).getPropertyValue('--c').trim()));
 const openHome = async (page) => {
   await page.goto(`${SITE}/admin/board/#/`, { waitUntil: 'domcontentloaded' });
-  await page.waitForSelector('#applications', { timeout: 10000 });
-  await page.$eval('#applications', (e) => e.scrollIntoView({ block: 'start' }));
-  await page.waitForSelector('.fm-map .apl-pin', { timeout: 10000 });
+  await page.waitForSelector('#makeovers .lc-track', { timeout: 10000 });
+  await page.$eval('#makeovers', (e) => e.scrollIntoView({ block: 'start' }));
   await sleep(500);
+};
+// Home's card on a season's map (`season`: its button's words)
+const openHomeMap = async (page, season = String(YEAR)) => {
+  await openHome(page);
+  await page.evaluate((y) => [...document.querySelectorAll('#makeovers .lc-seasons button')].find((b) => b.textContent === y).click(), season);
+  await page.evaluate(() => [...document.querySelectorAll('#makeovers .lc-views button')].find((b) => b.textContent === 'Map').click());
+  await page.waitForSelector('.fm-map .apl-pin', { timeout: 10000 });
+  await sleep(600);
 };
 const closeViewer = async (page) => { await page.keyboard.press('Escape'); await page.waitForFunction(() => !document.querySelector('.fv-root, .fv'), { timeout: 3000 }).catch(() => {}); await sleep(150); };
 
@@ -269,22 +303,64 @@ try {
   }
   if (process.env.SERVE) { console.log(`Serving ${SITE}/admin/board/`); await new Promise(() => {}); }
 
-  console.log('Home, a board member, 1440px');
+  console.log('Home, a board member, 1440px: the makeovers from application to reveal');
   const kim = await tab(MEMBER);
   await openHome(kim);
+  await kim.waitForSelector('#makeovers #lc-col-applying .lc-row', { timeout: 8000 });
+  await sleep(400);
   const homeSections = await kim.$$eval('.bp-home > *', (els) => els.map((e) => (e.querySelector('[id]') || e).id || e.className));
   ok((await kim.$('#costs')) === null, 'what makeovers cost has moved off Home');
-  ok(homeSections.join(' ').includes('applications'), `the Applications tile is on Home (${homeSections.join(', ')})`);
-  ok(/Applications/.test(await textOf(kim, '#apps-h')), 'it says what it is');
-  const sum = await textOf(kim, '#applications .bf-sum');
-  ok(/8 families · 1 community project · 2 outside the service area/.test(sum), `the season in a line (${sum})`);
-  ok(!(await textOf(kim, '#applications')).includes('TEST Applicant'), 'a TEST family is never on the map');
-  ok(!(await textOf(kim, '#applications')).includes('Sample Child'), 'nor a website test run with an ordinary name');
+  ok((await kim.$('#applications')) === null && homeSections.filter((x) => x === 'makeovers').length === 1, `one Makeovers card, the applications and the builds together (${homeSections.join(', ')})`);
+  const steps = await kim.$$eval('#makeovers .lc-step', (l) => l.map((e) => `${e.querySelector('b').textContent} ${e.querySelector('span').textContent}`));
+  ok(steps.join(' | ') === '4 Applied | 1 In review | 4 Approved | 1 Awaiting funding | 1 Design | 0 Approval | 1 Mobilization | 2 Build | 2 Revealed', `every step and how many are at it (${steps.join(' | ')})`);
+  ok(/^Open until /.test(await textOf(kim, '#makeovers .lc-phase.is-applying small')), 'the application’s window over its two steps');
+  ok(/5 families applying for \d{4} · 9 makeovers being built · 2 revealed/.test(await textOf(kim, '#makeovers .lc-sum')), `now in a line (${await textOf(kim, '#makeovers .lc-sum')})`);
+  const cols = await kim.$$eval('#makeovers .lc-col .bk-col__head > span:first-child', (l) => l.map((e) => e.textContent));
+  ok(cols.join(',') === 'Applying,Approved,Awaiting funding,Design,Mobilization,Build,Revealed', `a column for each step someone’s at, in the way’s order (${cols.join(', ')})`);
+  ok(await kim.$eval('#makeovers .lc-board', (b) => b.scrollWidth <= b.clientWidth + 1), 'all seven fit a laptop, Revealed in view');
+  ok(/In review/.test(await textOf(kim, '#lc-col-applying')) && /Applied/.test(await textOf(kim, '#lc-col-applying')), 'the application’s two in one column, each row saying which');
+  const build = await textOf(kim, '#lc-col-build');
+  ok(/Max/.test(build) && /Reveal .+ 4 PM/.test(build), `those being built on their page’s photo, with their reveal (${build.replace(/\s+/g, ' ')})`);
+  ok(/Ruby/.test(build) && (await kim.$eval('#lc-col-build a[href="/kids/ruby/"]', (a) => a.target)) === '_blank', 'a makeover from before the applications is there too, opening its kid page');
+  ok(/Sam Example/.test(await textOf(kim, '#lc-col-revealed')) && /Tia Example/.test(await textOf(kim, '#lc-col-revealed')), 'revealed: a closed job, and a job JobTread calls done');
+  ok(/Ava Example/.test(await textOf(kim, '#lc-col-funding')), 'awaiting funding, by the family’s name until their page is up');
+  ok(!(await textOf(kim, '#makeovers')).includes('TEST Applicant') && !(await textOf(kim, '#makeovers')).includes('Sample Child'), 'never a TEST family, nor a website test run with an ordinary name');
+  await shot(kim, 'home-makeovers-1440', '#makeovers');
+  await axe(kim, '#makeovers', 'the Makeovers card');
+  // A step on the track brings its column round
+  await kim.evaluate(() => [...document.querySelectorAll('#makeovers .lc-step__go')].find((b) => /Revealed/.test(b.textContent)).click());
+  await sleep(300);
+  ok(await kim.$eval('#lc-col-revealed', (c) => c.classList.contains('is-picked') && c.contains(document.activeElement)), 'a step on the track takes you to its column');
+  // A card opens the family, on their way
+  await kim.click('#lc-col-build a[href="#/families/acctMax001"]');
+  await kim.waitForSelector('.lc-journey', { timeout: 8000 });
+  await sleep(400);
+  ok(/Build/.test(await textOf(kim, '.lc-journey [aria-current="step"]')), 'a card opens the family, where they are lit on their way');
+  ok(await kim.$$eval('.lc-journey .lc-j.is-done', (l) => l.length) === 7, 'the steps behind them ticked');
+  ok(/Revealed\s*\w{3} \d+, \d{4}/.test(await textOf(kim, '.lc-journey .lc-j:last-child')), 'and the day of their reveal');
+  await shot(kim, 'family-journey-1440', '.lc-journey');
+  // The application closes: its two steps say so, and the families still being decided stay
+  await DB.prepare("UPDATE site_config SET data = ? WHERE key = 'settings'").bind(JSON.stringify({ application: { open: false, year: String(YEAR), opensAt: `${day(120)}T09:00:00-05:00` } })).run();
+  await openHome(kim);
+  await kim.waitForSelector('#makeovers #lc-col-applying .lc-row', { timeout: 8000 });
+  ok(/^Opens /.test(await textOf(kim, '#makeovers .lc-phase.is-applying small')), 'closed, the application says when it opens next');
+  ok(/5 families applying/.test(await textOf(kim, '#makeovers .lc-sum')), 'and those still being decided stay on');
+  await kim.evaluate((y) => [...document.querySelectorAll('#makeovers .lc-seasons button')].find((b) => b.textContent === y).click(), String(YEAR - 1));
+  await sleep(400);
+  ok(!(await kim.$('#lc-col-applying')) && !(await kim.$('#lc-col-applied')) && !(await kim.$('#makeovers .lc-phase.is-applying small')), 'a season with nobody applying has no application column, and no window');
+  await DB.prepare("UPDATE site_config SET data = ? WHERE key = 'settings'").bind(JSON.stringify({ application: { open: true, year: String(YEAR), closesAt: `${day(60)}T23:59:00-05:00` } })).run();
+
+  console.log('Home, the map');
+  await openHomeMap(kim);
+  const sum = await textOf(kim, '#makeovers .lc-sum');
+  ok(/5 families applying · 2 makeovers being built · 1 not chosen/.test(sum), `the season in a line (${sum})`);
+  ok(!(await textOf(kim, '#makeovers')).includes('TEST Applicant'), 'a TEST family is never on the map');
+  ok(!(await textOf(kim, '#makeovers')).includes('Sample Child'), 'nor a website test run with an ordinary name');
   const pins = await pinsNow(kim);
-  await shot(kim, 'home-tile-1440', '#applications');
+  await shot(kim, 'home-map-1440', '#makeovers');
   ok(pins.length > 4, `a pin for each family with a home (${pins.length})`);
-  const legend = await textOf(kim, '#applications .apl-legend');
-  ok(/Approved\s*2/.test(legend) && /Applied/.test(legend) && /Denied\s*1/.test(legend) && /No status\s*1/.test(legend) && /Service area · 2 outside/.test(legend), `the key: statuses, counts, the area (${legend.replace(/\s+/g, ' ')})`);
+  const legend = await textOf(kim, '#makeovers .apl-legend');
+  ok(/Applied\s*3/.test(legend) && /In review\s*1/.test(legend) && /Building\s*2/.test(legend) && /Not chosen\s*1/.test(legend) && /No status\s*1/.test(legend) && !/Revealed/.test(legend) && /Service area · 2 outside/.test(legend), `the key: each step’s color, how many, the area (${legend.replace(/\s+/g, ' ')})`);
   ok(/1 family has no home in JobTread yet/.test(legend), 'and who isn’t on the map');
   // The map opens on the area, with the family 97 miles out a tap away, and the key off the area
   const inFrame = () => kim.evaluate(() => {
@@ -304,7 +380,7 @@ try {
   await kim.click('.fm-far');
   await sleep(700);
   ok(Math.abs((await inFrame()).wide - f1.wide) < 2, 'to the same picture');
-  await shot(kim, 'home-tile-1440', '#applications');
+  await shot(kim, 'home-map-1440', '#makeovers');
 
   // A row lights its pin, a pin its row
   await kim.hover('.fm-row[data-id="acctIris01"]');
@@ -336,8 +412,8 @@ try {
   ok(!(await kim.content()).includes('cdn.jobtread.com'), 'JobTread’s address is nowhere on the page');
   ok((await kim.$$('.fm-card .bm-photo')).length === 4, 'the four photos');
   ok((await kim.$$eval('.fm-card .bm-cap', (c) => c.map((e) => e.textContent))).join() === 'Child,Family,Space 1,Space 2', 'labeled, in the form’s order');
-  await shot(kim, 'home-family-1440', '#applications');
-  await axe(kim, '#applications', 'the tile with a family open');
+  await shot(kim, 'home-family-1440', '#makeovers');
+  await axe(kim, '#makeovers', 'the map with a family open');
 
   // The video, in the viewer
   await kim.click('.fm-card .fv-tile');
@@ -376,18 +452,21 @@ try {
 
   // The key switches a status off, on the map and in the list
   const before = (await pinsNow(kim)).length;
-  await kim.evaluate(() => [...document.querySelectorAll('.apl-legend button')].find((b) => /Denied/.test(b.textContent)).click());
+  await kim.evaluate(() => [...document.querySelectorAll('.apl-legend button')].find((b) => /Not chosen/.test(b.textContent)).click());
   await sleep(200);
-  ok((await pinsNow(kim)).length === before - 1, 'the key takes a status off the map');
+  ok((await pinsNow(kim)).length === before - 1, 'the key takes a step off the map');
   ok(!/Omar Example/.test(await textOf(kim, '.fm-side')), 'and out of the list');
   ok(!(await kim.$('.fm-far')), 'and the button for the far family goes with them');
-  await kim.evaluate(() => [...document.querySelectorAll('.apl-legend button')].find((b) => /Denied/.test(b.textContent)).click());
+  await kim.evaluate(() => [...document.querySelectorAll('.apl-legend button')].find((b) => /Not chosen/.test(b.textContent)).click());
   await sleep(200);
 
   // The wheel goes on down the page; with ⌘/Ctrl it zooms
   const zoomNow = () => kim.$eval('.fm-map .leaflet-tile-container img', (i) => Number(i.src.match(/\/(\d+)\/\d+\/\d+\.png/)?.[1]));
+  // (room below to go down to: Home ends on this card)
+  await kim.evaluate(() => window.scrollBy(0, -300));
+  await sleep(300);
   const box = await (await kim.$('.fm-map')).boundingBox();
-  await kim.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await kim.mouse.move(box.x + box.width / 2, Math.max(box.y + 40, Math.min(box.y + box.height / 2, 860)));
   const y0 = await kim.evaluate(() => scrollY);
   const z0 = await zoomNow();
   await kim.mouse.wheel({ deltaY: 200 });
@@ -403,15 +482,16 @@ try {
   ok((await zoomNow()) === z0 + 1, `Ctrl and the wheel zoom (${z0} → ${await zoomNow()})`);
 
   // Another season
-  await kim.evaluate(() => [...document.querySelectorAll('#applications .bc-seg button')].find((b) => b.textContent === String(new Date().getFullYear())).click());
+  await kim.evaluate((y) => [...document.querySelectorAll('#makeovers .lc-seasons button')].find((b) => b.textContent === y).click(), String(YEAR - 1));
   await sleep(500);
-  ok(/Ana Example|Cal Example|Ben Example/.test(await textOf(kim, '.fm-side')), 'the season switch changes who’s on it');
-  ok((await pinsNow(kim)).length === 6, `and the pins (${(await pinsNow(kim)).length})`);
-  await kim.evaluate(() => [...document.querySelectorAll('#applications .bc-seg button')].find((b) => /Every season/.test(b.textContent)).click());
+  ok(/Ana Example|Cal Example|Max Example/.test(await textOf(kim, '.fm-side')), 'the season switch changes who’s on it');
+  ok((await pinsNow(kim)).length === 12, `and the pins (${(await pinsNow(kim)).length})`);
+  ok(/Revealed\s*2/.test(await textOf(kim, '#makeovers .apl-legend')), 'last season’s reveals in their own color');
+  await kim.evaluate(() => [...document.querySelectorAll('#makeovers .lc-seasons button')].find((b) => /Every season/.test(b.textContent)).click());
   await sleep(400);
-  ok((await pinsNow(kim)).length === 20, `every season (${(await pinsNow(kim)).length})`);
+  ok((await pinsNow(kim)).length === 26, `every season (${(await pinsNow(kim)).length})`);
   ok((await overflow(kim)) <= 0, 'nothing past the screen’s edge');
-  await axe(kim, '#applications', 'the tile');
+  await axe(kim, '#makeovers', 'the map');
   await kim.close();
 
   console.log('Financials and Home');
@@ -420,23 +500,38 @@ try {
   await fin.waitForSelector('.bp-h1', { timeout: 8000 });
   await fin.close();
 
-  console.log('Families');
+  console.log('Makeovers, the page');
   const list = await tab(MEMBER);
   await list.goto(`${SITE}/admin/board/#/families`, { waitUntil: 'domcontentloaded' });
+  await list.waitForSelector('.bf .lc-board .lc-row', { timeout: 8000 });
+  await sleep(400);
+  ok(/^Makeovers$/.test(await textOf(list, '.bp-h1')) && (await list.title()).startsWith('Makeovers'), 'the page is Makeovers');
+  ok((await list.$$eval('.bf .lc-board .bk-card, .bf .lc-board .lc-row', (l) => l.length)) === 16, 'its board holds everyone now, nobody cut short');
+  await shot(list, 'makeovers-board-1440');
+  await axe(list, 'main', 'Makeovers → Board');
+  await list.evaluate(() => [...document.querySelectorAll('.bf .lc-seasons button')].find((b) => /Every season/.test(b.textContent)).click());
+  await sleep(300);
+  ok(/not chosen or with no status aren’t on the board/.test(await textOf(list, '.bf')), 'every season: those not chosen or with no status are in the list, and it says so');
+  await list.evaluate(() => [...document.querySelectorAll('.bf-view a')].find((a) => a.textContent === 'List').click());
   await list.waitForSelector('.bf-row', { timeout: 8000 });
+  await list.evaluate(() => [...document.querySelectorAll('.bf .lc-seasons button')].find((b) => /Every season/.test(b.textContent)).click());
+  await sleep(300);
   ok(/No status/.test(await textOf(list, '.bf-chips')) && /No status/.test(await textOf(list, '.bf-list')), 'a family with no status says so, never “Applied”');
+  ok(/Not chosen/.test(await textOf(list, '.bf-chips')), 'and one not chosen says that');
+  await axe(list, 'main', 'Makeovers → List');
   await list.evaluate(() => [...document.querySelectorAll('.bf-view a')].find((a) => a.textContent === 'Map').click());
   await list.waitForSelector('.fm-map .apl-pin', { timeout: 8000 });
   await sleep(600);
   ok(!!(await list.$('.fm--tall')), 'Map: the same map, taller');
-  await shot(list, 'families-map-1440');
-  await axe(list, 'main', 'Families → Map');
+  await shot(list, 'makeovers-map-1440');
+  await axe(list, 'main', 'Makeovers → Map');
   // One family, with everything
   await list.goto(`${SITE}/admin/board/#/families/acctIris01`, { waitUntil: 'domcontentloaded' });
   await list.waitForSelector('.fv-tile', { timeout: 8000 });
   await sleep(500);
   const fam = await textOf(list, 'main');
   ok(/What they sent/.test(fam) && /The application/.test(fam) && /At a glance/.test(fam) && /The score/.test(fam), 'a family’s page: what they sent, then the facts and the score');
+  ok(/Approved/.test(await textOf(list, '.lc-journey [aria-current="step"]')) && /Applied\s*\w{3} \d+, \d{4}/.test(await textOf(list, '.lc-journey .lc-j:first-child')), 'their way: approved, applied on its day');
   ok(!/Notes|parent@example|4045550100|12 Elm/.test(fam), 'no staff notes, and the page itself shows no contact details');
   ok(/in confidence/.test(fam), 'with a word about keeping it private');
   await shot(list, 'family-full-1440');
@@ -511,7 +606,14 @@ try {
   await openHome(phone);
   await sleep(300);
   ok((await overflow(phone)) <= 0, 'nothing past the phone’s edge');
-  await shot(phone, 'home-tile-390', '#applications');
+  const phases = await phone.$$eval('#makeovers .lc-phase__n', (l) => l.map((e) => e.textContent));
+  ok(phases.join(',') === '5,9,2', `a phone’s track: how many on each stretch of the way (${phases.join(',')})`);
+  ok(await phone.$eval('#makeovers .lc-steps', (e) => getComputedStyle(e).display === 'none'), 'each step counted in its column instead');
+  await shot(phone, 'home-makeovers-390', '#makeovers');
+  await axe(phone, '#makeovers', 'the Makeovers card on a phone');
+  await openHomeMap(phone);
+  ok((await overflow(phone)) <= 0, 'the map, nothing past the edge');
+  await shot(phone, 'home-map-390', '#makeovers');
   const seen = () => phone.$$eval('.fm-list > li', (l) => l.filter((e) => getComputedStyle(e).display !== 'none').length);
   ok((await seen()) === 6, 'the first six, so Home stays short');
   ok(/Show all 9/.test(await textOf(phone, '.fm-all')), 'and the rest a tap away');
@@ -525,7 +627,7 @@ try {
   await sleep(900);
   await shot(phone, 'home-family-390', '.fm-side');
   ok((await overflow(phone)) <= 0, 'a family open, nothing past the edge');
-  await axe(phone, '#applications', 'the tile on a phone');
+  await axe(phone, '#makeovers', 'the map on a phone');
   await phone.goto(`${SITE}/admin/board/#/families/acctIris01`, { waitUntil: 'domcontentloaded' });
   await phone.waitForSelector('.fv-tile', { timeout: 8000 });
   await sleep(500);
@@ -538,9 +640,13 @@ try {
   for (const w of [320, 360, 390, 430, 600, 640, 768, 820, 899, 900, 1024, 1100, 1180, 1280, 1440, 1920]) {
     const p = await tab(MEMBER, w, w < 600 ? 800 : 860);
     await openHome(p);
+    await p.waitForSelector('#makeovers #lc-col-applying .lc-row', { timeout: 8000 });
     const o = await overflow(p);
+    const first = await p.$eval('#makeovers .lc-board', (b) => { const c = b.querySelector('.lc-col').getBoundingClientRect(); const r = b.getBoundingClientRect(); return c.left >= r.left - 1 && c.width > 120; });
+    await openHomeMap(p);
+    const o2 = await overflow(p);
     const m = await p.$eval('.fm-map', (e) => { const r = e.getBoundingClientRect(); return [Math.round(r.width), Math.round(r.height)]; });
-    ok(o <= 0 && m[0] > 240 && m[1] > 240, `${w}px: fits, the map ${m[0]}×${m[1]}`);
+    ok(o <= 0 && o2 <= 0 && first && m[0] > 240 && m[1] > 240, `${w}px: the board fits from its start, the map ${m[0]}×${m[1]}`);
     await p.close();
   }
 } catch (err) {

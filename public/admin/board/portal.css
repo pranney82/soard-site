@@ -469,7 +469,7 @@ a.bk-card:hover .bk-card__photo img { transform: scale(1.04); }
 .bp-fig:active { background: var(--warm); }
 .bp-fig:focus-visible { outline-offset: -3px; border-radius: 0; }
 .bp-fig__label { font-size: 0.72rem; font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase; color: var(--faint); }
-.bp-fig__value { margin: 0.1rem 0 0.15rem; font-family: var(--display); font-size: clamp(1.6rem, 2.6vw, 2.05rem); font-weight: 700; line-height: 1.15; letter-spacing: -0.015em; font-variant-numeric: tabular-nums; color: var(--ink); }
+.bp-fig__value { margin: 0.1rem 0 0.15rem; font-family: var(--display); font-size: clamp(1.6rem, 2.6vw, 2.05rem); font-weight: 700; line-height: 1.15; letter-spacing: 0; font-variant-numeric: tabular-nums; color: var(--ink); }
 .bp-fig__sub { color: var(--ink-2); font-size: 0.86rem; line-height: 1.4; }
 .bp-fig__note { color: var(--muted); font-size: 0.8rem; line-height: 1.4; }
 .bp-fig__note.is-up { color: var(--ok); }
@@ -878,7 +878,7 @@ mark { background: var(--yellow-soft); color: inherit; border-radius: 3px; paddi
 .bp-cash { margin-bottom: 1.25rem; }
 .bp-cash__head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end; gap: 0.75rem 2rem; }
 .bp-cash__head .bp-h2 { margin-bottom: 0.2rem; }
-.bp-cash__total { margin: 0; font-family: var(--display); font-size: clamp(2.1rem, 5vw, 2.9rem); font-weight: 700; line-height: 1.1; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.bp-cash__total { margin: 0; font-family: var(--display); font-size: clamp(2.1rem, 5vw, 2.9rem); font-weight: 700; line-height: 1.1; letter-spacing: 0; font-variant-numeric: tabular-nums; }
 .bp-cash__head .bp-muted { margin: 0.25rem 0 0; }
 .bp-cash__src { margin: 0; max-width: 24rem; color: var(--muted); font-size: 0.88rem; text-align: right; }
 .bp-cash__months { margin: 0.45rem 0 0; max-width: 34rem; color: var(--muted); font-size: 0.92rem; }
@@ -3078,7 +3078,86 @@ select.bn-in:disabled { background-color: var(--warm); opacity: 1; }
 @media print { html.bp-noting body { overflow: visible; } html.bp-noting .bp-main, html.bp-noting .bp-foot__in { margin: 0; } .bn { display: none; } }
 
 /* ─── The families on a map (./family-map.js): Applicants' map (../family-map.js) with who's on it beside it ─── */
-.bp-home #applications { margin-bottom: 1.25rem; scroll-margin-top: calc(var(--head) + 0.75rem); }
+/* ── Makeovers, from application to reveal (./lifecycle.js): Home's card, the page's board, a family's way ── */
+.bp-home #makeovers { scroll-margin-top: calc(var(--head) + 0.75rem); }
+.lc-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem 1rem; margin: 0 0 0.85rem; }
+.lc-bar .lc-seasons, .bf-filters .lc-seasons { flex: 0 1 auto; max-width: 100%; border-radius: 18px; }
+.lc-sum { margin: 0 0 1.1rem; color: var(--muted); font-size: 0.92rem; }
+.lc-note { margin: 0.9rem 0 0; color: var(--muted); font-size: 0.86rem; }
+.lc-none { margin: 0; color: var(--muted); }
+/* The track: a phase to a stretch of the way, its line in its color; each step its count */
+.lc-track { display: grid; gap: 0 1.25rem; margin: 0 0 1.5rem; }
+.lc-phase { min-width: 0; --pc: #2F7D4F; }
+.lc-phase.is-applying { --pc: #2B6CB0; }
+.lc-phase.is-revealed { --pc: #6B4FA3; }
+.lc-phase__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 0.15rem 0.6rem; margin: 0; padding: 0 0 0.55rem; border-bottom: 3px solid var(--pc); font-size: 0.74rem; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-2); }
+.lc-phase__head small { font-size: 0.8rem; font-weight: 600; letter-spacing: 0; text-transform: none; color: var(--muted); white-space: nowrap; }
+.lc-phase__head small.is-open { color: var(--ok); }
+.lc-phase__head small.is-open::before { content: ''; display: inline-block; width: 7px; height: 7px; margin-right: 0.4rem; border-radius: 50%; background: currentColor; vertical-align: 0.1em; }
+.lc-steps { list-style: none; margin: 0; padding: 0.75rem 0 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0.6rem; }
+.lc-step { display: grid; align-content: start; gap: 0.2rem; min-width: 0; }
+.lc-step b { font-family: var(--display); font-size: 1.7rem; line-height: 1.1; font-weight: 700; color: var(--ink); font-variant-numeric: tabular-nums; }
+.lc-step span { font-size: 0.8rem; font-weight: 600; line-height: 1.25; color: var(--muted); overflow-wrap: anywhere; }
+.lc-step.is-zero b { color: var(--quiet); font-weight: 400; }
+.lc-step.is-zero span { color: var(--faint); }
+/* The board: Home's Makeovers board, a step's color under its name; the short rows of those applying and revealed */
+/* (a new board for each season and once the families come, ./lifecycle.js: a snapped column would hold its place) */
+.lc-board { gap: 0.9rem; grid-auto-columns: minmax(8.6rem, 1fr); }
+.lc-row__step { display: inline-block; width: 7px; height: 7px; margin-right: 0.35rem; border-radius: 50%; background: var(--c); vertical-align: 0.08em; }
+.lc-board:focus { outline: none; }
+.lc-board .bk-col__head { border-bottom-color: var(--c); }
+/* (the Makeovers page's board sits on the page, not in a card: no card's padding to scroll under) */
+.bf .lc-board { margin-inline: 0; padding-inline: 0; scroll-padding-inline: 0; }
+.lc-col { border-radius: 10px; transition: background-color 0.6s var(--ease); }
+.lc-col.is-picked { animation: lc-picked 1.6s var(--ease); }
+@keyframes lc-picked { 0%, 35% { background-color: var(--yellow-wash); } 100% { background-color: transparent; } }
+.lc-step__go { all: unset; display: grid; gap: 0.2rem; cursor: pointer; border-radius: 8px; }
+.lc-step__go:hover span { color: var(--ink); text-decoration: underline; text-underline-offset: 3px; }
+.lc-step__go:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+.lc-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.1rem; }
+.lc-row { display: flex; align-items: center; gap: 0.6rem; min-width: 0; margin: 0 -0.45rem; padding: 0.4rem 0.45rem; border-radius: 10px; color: var(--ink); text-decoration: none; transition: background-color 0.2s var(--ease); }
+a.lc-row:hover { background: var(--warm); }
+a.lc-row:focus-visible { outline: 2px solid var(--ink); outline-offset: 0; }
+.lc-row .bf-face { flex: none; }
+.lc-row__who { flex: 1; display: grid; min-width: 0; }
+.lc-row__who strong { font-size: 0.92rem; font-weight: 650; line-height: 1.25; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.lc-row__who span { font-size: 0.8rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lc-row__done { flex: none; display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #EFEAF7; color: #5A3F94; }
+.lc-more { display: inline-block; margin-top: 0.55rem; font-size: 0.86rem; font-weight: 650; color: var(--ink-2); text-decoration: underline; text-underline-offset: 3px; }
+.lc-more:hover { color: var(--ink); }
+/* A family's step as a chip */
+.lc-chip { display: inline-flex; align-items: center; gap: 0.4rem; min-height: 24px; padding: 0 0.6rem 0 0.5rem; border-radius: 999px; border: 1px solid var(--line); background: #fff; font-size: 0.8rem; font-weight: 700; color: var(--ink-2); white-space: nowrap; }
+.lc-chip i { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--c); }
+/* One family's way: each step a dot on a line, theirs lit in its phase's color */
+.lc-journey { list-style: none; margin: 0 0 1.25rem; padding: 1.05rem 1rem 0.95rem; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(5.4rem, 1fr); background: #fff; border: 1px solid var(--line); border-radius: var(--r); overflow-x: auto; scrollbar-width: thin; }
+.lc-journey:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.lc-j { position: relative; display: grid; justify-items: center; align-content: start; gap: 0.3rem; min-width: 0; padding: 0 0.2rem; text-align: center; --c: #2F7D4F; }
+.lc-j.is-applying { --c: #2B6CB0; }
+.lc-j.is-revealed { --c: #6B4FA3; }
+.lc-j.is-denied { --c: #7C7D84; }
+.lc-j::before { content: ''; position: absolute; top: 10px; left: calc(-50% + 13px); right: calc(50% + 13px); height: 2px; border-radius: 2px; background: var(--line-2); }
+.lc-j:first-child::before { display: none; }
+.lc-j.is-done::before, .lc-j.is-now::before { background: var(--ink-2); }
+.lc-j > i { display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--line-2); background: #fff; color: #fff; }
+.lc-j.is-done > i { border-color: var(--ink-2); background: var(--ink-2); }
+.lc-j.is-now > i { border-color: var(--c); background: var(--c); box-shadow: 0 0 0 5px color-mix(in srgb, var(--c) 18%, transparent); }
+.lc-j > span { font-size: 0.8rem; font-weight: 600; line-height: 1.25; color: var(--faint); }
+.lc-j.is-done > span { color: var(--ink-2); }
+.lc-j.is-now > span { color: var(--ink); font-weight: 750; }
+.lc-j small { font-size: 0.76rem; color: var(--muted); }
+.lc-phase__n { display: none; }
+@media (max-width: 640px) {
+  /* A phone's track: each stretch of the way and how many are on it (the board's columns count each step) */
+  .lc-track { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 0.75rem; margin-bottom: 1.1rem; }
+  .lc-steps { display: none; }
+  .lc-phase { display: flex; flex-direction: column; }
+  .lc-phase__head { flex: 1; display: grid; gap: 0.3rem; align-content: start; }
+  .lc-phase__head > span { display: grid; gap: 0.15rem; }
+  .lc-phase__n { display: block; order: -1; font-family: var(--display); font-size: 1.7rem; line-height: 1.1; letter-spacing: 0; text-transform: none; color: var(--ink); font-variant-numeric: tabular-nums; }
+  .lc-phase__head small { white-space: normal; }
+  .lc-board { grid-auto-columns: 76%; }
+  .lc-bar { align-items: flex-start; }
+}
 .fm-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; margin: 0 0 0.8rem; }
 .fm-filters .bc-seg { flex: 0 1 auto; max-width: 100%; border-radius: 18px; }
 .fm { display: grid; grid-template-columns: minmax(0, 1fr) 20.5rem; gap: 1rem; height: clamp(480px, 68vh, 640px); }
@@ -3153,7 +3232,7 @@ select.bn-in:disabled { background-color: var(--warm); opacity: 1; }
   .fm-card { overflow: visible; }
 }
 @media (max-width: 899px) and (min-width: 640px) { .fm-list { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.1rem 0.75rem; } }
-@media (prefers-reduced-motion: reduce) { .fm-card { animation: none; } .fm-row, .fm-back { transition: none; } .bm-tile img { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .lc-col.is-picked { animation: none; } .fm-card { animation: none; } .fm-row, .fm-back { transition: none; } .bm-tile img { transition: none !important; } }
 
 /* What a family sent: the video large, the application beside it, the photos under them */
 /* (the shared video card, ../file-viewer.js, in the board page's own colors) */
@@ -3250,3 +3329,53 @@ select.mfix-in { min-height: 44px; }
 .bn-ask { margin: 0 0 0.55rem; font-size: 0.9rem; line-height: 1.4; color: var(--ink); }
 .bn-ask__do { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .bn-ask__do .bn-send { flex: 1 1 12rem; }
+
+/* ── Financials, a card to a question (Peter, Nov 7 2026: "every card is maximized in size, we should do charts and
+   where its a longer card a show more type thing"): the four figures, then cards in twos and threes, each a chart
+   first and its details behind Show more ── */
+.bp-finsum { margin-bottom: 1.15rem; }
+.bp-fgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1.15rem; align-items: start; margin-bottom: 1.15rem; }
+.bp-fgrid.is-one { grid-template-columns: minmax(0, 1fr); }
+.bp-fgrid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.bp-fgrid--3.is-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.bp-fgrid--3.is-1 { grid-template-columns: minmax(0, 1fr); }
+.bp-fgrid .bp-cash { margin-bottom: 0; }
+.bp-fgrid > .bp-stack { gap: 1.15rem; }
+@media (max-width: 900px) { .bp-fgrid, .bp-fgrid--3 { grid-template-columns: minmax(0, 1fr) !important; } }
+/* The cash's year, small, under its figure */
+.bp-fig__spark { display: flex; align-items: flex-end; gap: 3px; height: 26px; margin: 0.4rem 0 0.25rem; }
+.bp-fig__spark i { flex: 1 1 0; max-width: 11px; height: var(--h); border-radius: 2px; background: var(--line-2); }
+.bp-fig__spark i.is-now { background: var(--gold); }
+/* The year so far: its three figures over the year drawn against last year */
+.bp-yearcard { scroll-margin-top: calc(var(--head) + 0.75rem); }
+.bp-yearcard:focus { outline: none; }
+.bp-yfigs { list-style: none; margin: 0 0 1.15rem; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
+.bp-yfigs li { display: grid; align-content: start; gap: 0.15rem; padding: 0.85rem 1rem 0.9rem; border: 1px solid var(--line); border-radius: var(--r-sm); }
+.bp-yfigs li.is-net { background: var(--yellow-wash); border-color: rgba(118, 92, 0, 0.16); }
+.bp-yfigs__label { font-size: 0.82rem; font-weight: 650; color: var(--muted); }
+.bp-yfigs__value { font-family: var(--display); font-size: 1.55rem; font-weight: 700; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--ink); }
+.bp-yfigs__chg { font-size: 0.84rem; color: var(--ink-2); }
+.bp-storecard, .bp-mixcard, .bp-cash, #cashtime { scroll-margin-top: calc(var(--head) + 0.75rem); }
+.bp-storecard:focus, .bp-cash:focus { outline: none; }
+.bp-meters--went { margin-top: 1.25rem; padding-top: 1.1rem; border-top: 1px solid var(--line); }
+/* Major gifts in two columns, the newest few first */
+@media (min-width: 901px) { .bp-gap > .bp-gifts--year .bp-gifts__list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+/* What makeovers cost on Financials: its three figures in a row, then each completed makeover's face by room */
+.bc-figs3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.85rem; align-items: stretch; margin-bottom: 1.35rem; }
+.bc-figs3.is-two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.bc-figs3 .bc-answer { grid-template-columns: minmax(0, 1fr); align-content: start; gap: 0.55rem; }
+/* (three figures, one size: the figure, then a plain sentence) */
+.bc-figs3 .bc-answer__value, .bc-figs3 .bc-fig__value { font-size: 1.75rem; line-height: 1.15; }
+.bc-figs3 .bc-answer__says { font-family: var(--body); font-size: 0.95rem; line-height: 1.5; color: var(--ink-2); }
+.bc--fin .bp-more { margin-top: 1.25rem; }
+.bc--fin .bp-more > .bc-under, .bc--fin .bp-more > .bc-wait { margin-top: 1rem; }
+@media (max-width: 1000px) { .bc-figs3, .bc-figs3.is-two { grid-template-columns: minmax(0, 1fr); } }
+/* The kids' faces in the dots' places (Peter, Nov 7 2026: "replaceing the gray dot with the kids profile pic") */
+.bc-chart.has-faces { --lane-h: 22px; }
+.bc-dot.has-face i { width: 26px; height: 26px; overflow: hidden; background: var(--warm-2); box-shadow: 0 0 0 2px #fff, 0 1px 4px rgba(45, 47, 44, 0.32); }
+.bc-dot.has-face img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.bc-dot.has-face:hover i, .bc-dot.has-face.is-tip i { background: var(--warm-2); transform: scale(1.35); box-shadow: 0 0 0 2px var(--ink), 0 3px 10px rgba(45, 47, 44, 0.35); }
+.bc-dot:hover, .bc-dot.is-tip, .bc-dot:focus-visible { z-index: 4; }
+.bc-chart--big.has-faces { --lane-h: calc(var(--bs-u) * 2.4); }
+.bc-chart--big .bc-dot.has-face { width: calc(var(--bs-u) * 3.8); height: calc(var(--bs-u) * 3.8); margin: calc(var(--bs-u) * -1.9) 0 0 calc(var(--bs-u) * -1.9); }
+.bc-chart--big .bc-dot.has-face i { width: calc(var(--bs-u) * 3.4); height: calc(var(--bs-u) * 3.4); box-shadow: 0 0 0 2px var(--bs-bg); }

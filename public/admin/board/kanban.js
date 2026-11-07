@@ -62,21 +62,26 @@ export function kanbanLine(projects) {
 }
 
 /**
+ * A makeover's reveal on its card: the day and time once it's set, else the part of the month, else "date to come"
+ * (none while it's awaiting funding: its column says why). `reveals`: numbers.reveals. Also Home's Makeovers card
+ * (./lifecycle.js)
+ */
+export function revealTag(b, reveals = []) {
+  if (b.kind === 'community') return html`<span class="bk-card__reveal is-quiet">Community project</span>`;
+  const r = b.slug ? reveals.find((x) => x.slug === b.slug) : null;
+  if (r?.confirmed && r.date) return html`<span class="bk-card__reveal is-set">${CAL}Reveal ${shortDate(r.date).replace(/, \d{4}$/, '').replace(' ', '\u00a0')}${r.time ? `\u00a0· ${kept(clock(r.time).replace(':00', ''))}` : ''}</span>`;
+  if (r?.window?.label) return html`<span class="bk-card__reveal">${CAL}Reveal ${r.window.label}</span>`;
+  return b.status === AWAITING ? null : html`<span class="bk-card__reveal is-quiet">Reveal date to come</span>`;
+}
+
+/**
  * The board itself. `reveals` are numbers.reveals (a kid's reveal on their card); `variant` is home, agenda or
  * screen; `links` makes each card open its page (never on the screen).
  */
 export function Kanban({ projects, reveals = [], variant = 'home', links = variant !== 'screen' }) {
   if (!projects) return html`<p class="bk-none">The makeovers from JobTread aren’t available right now.</p>`;
   const cols = columnsOf(projects);
-  const revealOf = (b) => (b.slug ? reveals.find((r) => r.slug === b.slug) : null);
-  const reveal = (b) => {
-    if (b.kind === 'community') return html`<span class="bk-card__reveal is-quiet">Community project</span>`;
-    const r = revealOf(b);
-    if (r?.confirmed && r.date) return html`<span class="bk-card__reveal is-set">${CAL}Reveal ${shortDate(r.date).replace(/, \d{4}$/, '')}${r.time ? ` · ${kept(clock(r.time).replace(':00', ''))}` : ''}</span>`;
-    if (r?.window?.label) return html`<span class="bk-card__reveal">${CAL}Reveal ${r.window.label}</span>`;
-    // Awaiting funding: the column says why there's no date yet
-    return b.status === AWAITING ? null : html`<span class="bk-card__reveal is-quiet">Reveal date to come</span>`;
-  };
+  const reveal = (b) => revealTag(b, reveals);
   // The screen's cards are wide and short: the crop is that shape, around the face, so nobody's head is cut off
   const photoSize = variant === 'screen' ? 'w=720,h=300,fit=cover,gravity=face' : 'w=560,h=380,fit=cover,gravity=face';
   const card = (b) => {

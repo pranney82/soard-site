@@ -28,6 +28,7 @@ import { money, plural, initialsOf, todayEastern } from '../board-shared.js';
 import { rowsOf, recentSeasons, typicalLately, planOf, pipelineOf, operatingOf, typeById, statsOf, TYPES } from '../makeover-costs-shared.js';
 import { useCashNow, compact } from './money.js';
 import { sized } from './kanban.js';
+import { More } from './parts.js';
 
 const html = htm.bind(h);
 const API = '/api/board-portal';
@@ -174,7 +175,9 @@ export function CostChart({ makeovers, seasons = null, big = false, label = 'Wha
     ro.observe(track);
     return () => ro.disconnect();
   }, [rows.length]);
-  const touch = big ? 1.9 : 1.15; // a dot and its ring, in rem-ish units of the page
+  // A dot and its ring, in rem-ish units of the page: a kid's face is larger than a dot, so they move off the line sooner
+  const faces = makeovers.some((m) => m.photo);
+  const touch = big ? (faces ? 2.7 : 1.9) : faces ? 1.95 : 1.15;
   const placed = useMemo(() => rows.map((r) => ({ ...r, dots: lanesOf(r.list, top, ((touch * 16) / width) * 100) })), [rows, top, width, touch]);
   const flat = useMemo(() => placed.flatMap((r, ri) => r.dots.map((d, di) => ({ ...d, ri, di }))), [placed]);
   const [tip, setTip] = useState(-1);
@@ -198,7 +201,7 @@ export function CostChart({ makeovers, seasons = null, big = false, label = 'Wha
   };
   const t = tip >= 0 ? flat[tip] : null;
   const says = (d) => `${d.m.name}, ${d.m.season}: ${dollars(d.m.cost)}, ${roomsText(d.m)}${d.m.url ? '. Enter opens their page' : ''}`;
-  return html`<div class=${`bc-chart ${big ? 'bc-chart--big' : ''}`} role="group" aria-label=${`${label}. Arrow keys move between them`} ref=${ref} onKeyDown=${onKey} onMouseLeave=${() => setTip(-1)}>
+  return html`<div class=${`bc-chart ${big ? 'bc-chart--big' : ''} ${faces ? 'has-faces' : ''}`} role="group" aria-label=${`${label}. Arrow keys move between them`} ref=${ref} onKeyDown=${onKey} onMouseLeave=${() => setTip(-1)}>
     ${placed.map((r, ri) => {
       const s = statsOf(r.list);
       return html`<div class="bc-row" key=${r.id}>
@@ -209,10 +212,10 @@ export function CostChart({ makeovers, seasons = null, big = false, label = 'Wha
         ${r.count > 1 ? html`<i class="bc-typical" style=${`left:${(r.typical / top) * 100}%`} aria-hidden="true"></i>` : null}
         ${r.dots.map((d, di) => {
           const i = flat.findIndex((f) => f.ri === ri && f.di === di);
-          return html`<button type="button" class=${`bc-dot ${i === tip ? 'is-tip' : ''}`} key=${d.m.key} style=${`left:${d.x}%;--lane:${d.lane}`}
+          return html`<button type="button" class=${`bc-dot ${d.m.photo ? 'has-face' : ''} ${i === tip ? 'is-tip' : ''}`} key=${d.m.key} style=${`left:${d.x}%;--lane:${d.lane}`}
             tabindex=${i === stop ? 0 : -1} aria-label=${says(d)}
             onMouseEnter=${() => setTip(i)} onFocus=${() => { setTip(i); setStop(i); }} onBlur=${() => setTip(-1)}
-            onClick=${() => setTip(i)} onKeyDown=${(e) => { if (e.key === 'Enter' && d.m.url) { e.preventDefault(); open(d.m.url, '_blank', 'noopener'); } }}><i></i></button>`;
+            onClick=${() => setTip(i)} onKeyDown=${(e) => { if (e.key === 'Enter' && d.m.url) { e.preventDefault(); open(d.m.url, '_blank', 'noopener'); } }}><i>${d.m.photo ? html`<img src=${sized(d.m.photo, `w=${big ? 120 : 72},h=${big ? 120 : 72},fit=cover,gravity=face`)} alt="" loading=${big ? 'eager' : 'lazy'} decoding="async" />` : null}</i></button>`;
         })}
         ${t && t.ri === ri ? html`<div class="bc-tip" style=${`--x:${t.x / 100};--lane:${t.lane}`} aria-hidden="true"><strong>${dollars(t.m.cost)}</strong><span>${t.m.name} · ${t.m.season}</span><span>${roomsText(t.m)}</span></div>` : null}
       </div>
@@ -406,6 +409,36 @@ export function CostsCard({ data, n, m = null, variant = 'home', admin = false, 
   const shown = seasons ? makeovers.filter((x) => seasons.includes(Number(x.season))) : makeovers;
   const noBills = (c.noBills || []).filter((x) => !seasons || seasons.includes(Number(x.season)));
   const shownStats = statsOf(shown);
+  const chart = (table) => html`<div class="bc-what">
+      <div class="bc-what__head">
+        <h3 class="bc-h3">Each completed makeover, by room</h3>
+        <div class="bc-seg" role="group" aria-label="Which seasons">
+          <button type="button" aria-pressed=${range === 'recent'} onClick=${() => setRange('recent')}>${nbw(seasonsText(recent))}</button>
+          <button type="button" aria-pressed=${range === 'all'} onClick=${() => setRange('all')}>${nbw(`Every year${Number.isFinite(first) && first < 9999 ? ` since ${first}` : ''}`)}</button>
+        </div>
+      </div>
+      ${shownStats ? html`<p class="bc-stats">${nbw(`${plural(shownStats.count, 'completed makeover')}: median ${dollars(shownStats.median)}, average ${dollars(shownStats.average)}, low ${dollars(shownStats.low)} (${shownStats.lowOf.name}, ${shownStats.lowOf.season}), high ${dollars(shownStats.high)} (${shownStats.highOf.name}, ${shownStats.highOf.season})`)}</p>` : null}
+      <${CostChart} makeovers=${makeovers} seasons=${seasons} />
+      <p class="bc-note">${nbw(`Each face or dot is one makeover, at what SOARD paid: its bills in JobTread, without donated work. The line marks each room’s median; the shading, its middle half.${noBills.length ? ` Not counted: ${and(noBills.map((x) => x.name))} (${seasonsText([...new Set(noBills.map((x) => x.season))])}), with no bills in JobTread.` : ''}`)}</p>
+      ${table ? html`<${Table} makeovers=${shown} />` : null}
+    </div>`;
+  if (variant === 'home') {
+    return html`<section class="bp-card bc bc--fin" aria-labelledby="costs-h" id="costs">
+      <div class="bp-cardhead"><h2 class="bp-h2" id="costs-h">What makeovers cost</h2><span class="bp-muted">From JobTread and the bank</span></div>
+      <div class=${`bc-figs3 ${pipe ? '' : 'is-two'}`}>
+        <${Pipeline} pipe=${pipe} plan=${plan} />
+        <${Answer} cash=${cash} operating=${operating} plan=${plan} typical=${typical} admin=${admin} onBalance=${onBalance} />
+        <${Median} typical=${typical} stats=${stats} />
+      </div>
+      ${chart(false)}
+      <${More} k="costs-more" summary=${nbw([plan?.jobs?.length ? `Underway: ${plural(plan.jobs.length, 'makeover')}` : '', plan ? 'who’s waiting on the money' : '', `every completed makeover (${shown.length})`].filter(Boolean).join(', ').replace(/^./, (c) => c.toUpperCase()))}>
+        <${Underway} plan=${plan} />
+        <${Waiting} plan=${plan} />
+        <${Table} makeovers=${shown} />
+      </${More}>
+      <p class="bc-families"><a class="bp-cardhead__go" href="#/families/list">Every family’s application and score <span aria-hidden="true">→</span></a></p>
+    </section>`;
+  }
   const body = html`
     <${Pipeline} pipe=${pipe} plan=${plan} />
     <${Answer} cash=${cash} operating=${operating} plan=${plan} typical=${typical} admin=${admin} onBalance=${onBalance} />
@@ -424,7 +457,7 @@ export function CostsCard({ data, n, m = null, variant = 'home', admin = false, 
       </div>
       ${shownStats ? html`<p class="bc-stats">${nbw(`${plural(shownStats.count, 'completed makeover')}: median ${dollars(shownStats.median)}, average ${dollars(shownStats.average)}, low ${dollars(shownStats.low)} (${shownStats.lowOf.name}, ${shownStats.lowOf.season}), high ${dollars(shownStats.high)} (${shownStats.highOf.name}, ${shownStats.highOf.season})`)}</p>` : null}
       <${CostChart} makeovers=${makeovers} seasons=${seasons} />
-      <p class="bc-note">${nbw(`Each dot is one makeover, at what SOARD paid: its bills in JobTread, without donated work. The line marks each room’s median; the shading, its middle half.${noBills.length ? ` Not counted: ${and(noBills.map((x) => x.name))} (${seasonsText([...new Set(noBills.map((x) => x.season))])}), with no bills in JobTread.` : ''}`)}</p>
+      <p class="bc-note">${nbw(`Each face or dot is one makeover, at what SOARD paid: its bills in JobTread, without donated work. The line marks each room’s median; the shading, its middle half.${noBills.length ? ` Not counted: ${and(noBills.map((x) => x.name))} (${seasonsText([...new Set(noBills.map((x) => x.season))])}), with no bills in JobTread.` : ''}`)}</p>
       <${Table} makeovers=${shown} />
     </div>
     ${variant === 'home' ? html`<p class="bc-families"><a class="bp-cardhead__go" href="#/families">Every family’s application and score <span aria-hidden="true">→</span></a></p>` : null}`;

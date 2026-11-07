@@ -49,7 +49,7 @@ import { Kanban, sized, hrefOf, cardId } from './kanban.js';
 import { CostsCard } from './costs.js';
 import { Correct, ReadFirst, Counts, Waiting, correctable, correctionsOf, runsOf, wordDiff } from './minutes.js';
 import { FamiliesPage, FamilyPage } from './families.js';
-import { ApplicationsCard } from './family-map.js';
+import { MakeoversCard } from './lifecycle.js';
 import { useCashNow, useBudget, liveCash, Both, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsPhrase, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue, budgetMonthsText as budgetMonths, stepText, useChangeAs, changeIn, overIn } from './money.js';
 
 const html = htm.bind(h);
@@ -95,9 +95,11 @@ const readRoute = () => {
   // A meeting's screen (#/meetings/<id>/screen), or the page to write an item's report on (#/meetings/<id>/report/<item>)
   // …or the chair's review of the agenda ahead (#/meetings/<id>/review, ./chair.js)
   const deeper = page === 'meetings' && id ? (sub === 'screen' ? 'screen' : sub === 'report' && item ? 'report' : sub === 'review' ? 'review' : '') : '';
-  // The families who applied (#/families, #/families/<account>, ./families.js), and on the map (#/families/map,
-  // #/families/map/<account> with one open): reached from Home, Home lit in the menu
+  // Makeovers from application to reveal (#/families as a board, #/families/list, #/families/<account> for one,
+  // ./families.js), and on the map (#/families/map, #/families/map/<account> with one open): reached from Home, Home
+  // lit in the menu
   if (page === 'families' && id === 'map') return { page, id: null, sub: 'map', item: sub };
+  if (page === 'families' && id === 'list') return { page, id: null, sub: 'list', item: '' };
   return { page: PAGES.includes(page) || page === 'families' ? page : '', id: id || null, sub: deeper, item: deeper === 'report' ? item : '' };
 };
 
@@ -587,7 +589,7 @@ function App() {
     const m = route.page === 'meetings' && route.id && data && [...data.meetings, data.nextPending, ...(data.previews || [])].find((x) => x?.id === route.id);
     const paper = route.page === 'documents' && route.id ? data?.docs.find((x) => x.id === route.id) : null;
     if (route.page === 'families' && route.id) return; // (the family's page names it once it's read)
-    document.title = m ? `${meetingName(m)} · SOARD Board` : paper ? `${paper.title} · SOARD Board` : route.page === 'families' ? 'Families · SOARD Board' : `${NAV.find(([p]) => p === route.page)?.[1] || 'Home'} · SOARD Board`;
+    document.title = m ? `${meetingName(m)} · SOARD Board` : paper ? `${paper.title} · SOARD Board` : route.page === 'families' ? 'Makeovers · SOARD Board' : `${NAV.find(([p]) => p === route.page)?.[1] || 'Home'} · SOARD Board`;
   }, [route, data]);
   // The first visit rises in; later pages arrive by transition
   useEffect(() => {
@@ -625,8 +627,8 @@ function App() {
     : route.page === 'people' ? html`<${PeoplePage} ctx=${ctx} />`
     : route.page === 'documents' && route.id ? html`<${DocPage} id=${route.id} ctx=${ctx} key=${route.id} />`
     : route.page === 'documents' ? html`<${DocumentsPage} ctx=${ctx} />`
-    : route.page === 'families' && route.id ? html`<${FamilyPage} id=${route.id} key=${route.id} />`
-    : route.page === 'families' ? html`<${FamiliesPage} view=${route.sub === 'map' ? 'map' : 'list'} open=${route.item} key=${`${route.sub}/${route.item}`} />`
+    : route.page === 'families' && route.id ? html`<${FamilyPage} id=${route.id} reveals=${ctx.data?.numbers?.reveals || []} key=${route.id} />`
+    : route.page === 'families' ? html`<${FamiliesPage} view=${route.sub || 'board'} open=${route.item} projects=${ctx.data?.numbers?.projects || null} reveals=${ctx.data?.numbers?.reveals || []} key=${`${route.sub}/${route.item}`} />`
     : html`<${HomePage} ctx=${ctx} />`;
   return html`
     <a class="bp-skip" href="#main" onClick=${(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to the page</a>
@@ -727,8 +729,19 @@ function Meter({ x }) {
   return html`<span class=${`bp-fig__meter ${p > 100 ? 'is-over' : ''}`} style=${`--p:${Math.min(100, p)}%${pace != null ? `;--pace:${Math.min(100, pace)}%` : ''}`} aria-hidden="true"><i></i>${pace != null ? html`<b></b>` : null}</span>`;
 }
 
-/** Four numbers a board member wants first: the money against its budget, and the makeovers */
-function Figures({ data }) {
+/** A year of month-end cash, small: a bar a month, this month in gold (Financials' first figure) */
+function Spark({ rows }) {
+  const list = [...(rows || [])].sort((a, b) => a.month.localeCompare(b.month)).slice(-13);
+  if (list.length < 3) return null;
+  const top = Math.max(...list.map((r) => r.total), 1);
+  return html`<span class="bp-fig__spark" aria-hidden="true">${list.map((r, i) => html`<i key=${r.month} class=${i === list.length - 1 ? 'is-now' : ''} style=${`--h:${Math.max(6, (r.total / top) * 100)}%`}></i>`)}</span>`;
+}
+
+/**
+ * Four numbers a board member wants first: the money against its budget, and the makeovers. `variant` 'fin':
+ * Financials' own, the year's net in the makeovers' place, the cash's year drawn under it, each to its card below
+ */
+function Figures({ data, variant = 'home' }) {
   const cash = useCashNow(data);
   const budget = useBudget(data);
   const n = data.numbers;
@@ -765,6 +778,19 @@ function Figures({ data }) {
     exp ? { key: 'exp', label: `${yr} expenses`.trim(), value: exp.actual == null ? '…' : compact(exp.actual), meter: exp, sub: against(exp), note: pace(exp), aside: exp.inKind ? `Not counting ${compact(exp.inKind)} in\u00a0kind` : '', href: '#/financials', focus: exp.budget ? 'budget' : '' } : null,
     { key: 'build', label: 'Makeovers under way', value: String(onBoard), sub: onBoard ? [`${inBuild} in build`, waitingFunds.length ? `${waitingFunds.length} awaiting funding` : ''].filter(Boolean).join(' · ') : 'None right now', note: rev && nextWhen ? `Next reveal ${nextWhen}` : '', href: '#makeovers' },
   ].filter(Boolean);
+  // Financials: the net so far beside last year's same days in the makeovers' place, each figure to its card
+  const fin = variant === 'fin';
+  const b = n.books;
+  const lyb = b?.lastYear;
+  const lyNet = typeof lyb?.net === 'number' ? lyb.net : typeof lyb?.revenue === 'number' && typeof lyb?.expenses === 'number' ? lyb.revenue - lyb.expenses : null;
+  const net = fin && typeof b?.net === 'number' ? {
+    key: 'net', label: `${b.year} net so far`, value: `${b.net < 0 ? '−' : '+'}${compact(Math.abs(b.net))}`, href: '#year',
+    sub: b.through ? `January 1 to ${shortDate(b.through).replace(/, \d{4}$/, '')}` : 'The year so far',
+    note: lyNet != null ? `${b.net >= lyNet ? '▲' : '▼'} ${compact(Math.abs(b.net - lyNet))} on ${lyb.year}’s same days` : '', tone: lyNet != null ? (b.net >= lyNet ? 'up' : 'down') : '',
+  } : null;
+  const shown = fin
+    ? [...tiles.filter((t) => t.key === 'cash' || t.key === 'rev' || t.key === 'exp').map((t) => ({ ...t, href: { cash: '#cash', rev: '#year', exp: '#budget' }[t.key], focus: '', ...(t.key === 'cash' ? { spark: data.cashHistory } : {}) })), ...(net ? [net] : [])]
+    : tiles;
   const go = (e, t) => {
     // Against the budget, a figure opens Financials at the budget
     if (t.focus) focusNext = t.focus;
@@ -772,10 +798,11 @@ function Figures({ data }) {
     e.preventDefault();
     document.getElementById(t.href.slice(1))?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
   };
-  return html`<ul class=${`bp-figs ${tiles.length % 2 ? 'is-odd' : ''}`} style=${`--n:${tiles.length}`}>${tiles.map((t) => html`<li key=${t.key}>
+  return html`<ul class=${`bp-figs ${shown.length % 2 ? 'is-odd' : ''}`} style=${`--n:${shown.length}`}>${shown.map((t) => html`<li key=${t.key}>
     <a class="bp-fig" href=${t.href} onClick=${(e) => go(e, t)}>
       <span class="bp-fig__label">${t.label}</span>
       <span class="bp-fig__value">${t.value}</span>
+      ${t.spark ? html`<${Spark} rows=${t.spark} />` : null}
       ${t.meter ? html`<${Meter} x=${t.meter} />` : null}
       <span class="bp-fig__sub">${nbw(t.sub)}</span>
       ${t.note ? html`<span class=${`bp-fig__note ${t.tone ? `is-${t.tone}` : ''}`}>${nbw(t.note)}</span>` : null}
@@ -993,25 +1020,20 @@ function Gifts({ g, since }) {
 }
 
 /** Financials: every major gift this year, newest first, under the year's total */
+const GIFTS_SHOWN = 6;
 function GiftsYear({ g, since }) {
-  // A gift found by search past the newest 12 opens them all, so it's there to land on
-  const [all, setAll] = useKept('gifts-all', !!focusNext?.startsWith('gift-') && g.list.findIndex((x) => `gift-${x.id}` === focusNext) >= 12);
-  // Home's "All 14 this year" opens Financials here (a gift found by search lands on that gift instead)
+  // Home's "All 14 this year" opens Financials here with every one; a gift found by search past the newest few opens
+  // them all too, so it's there to land on
+  const [all, setAll] = useKept('gifts-all', /^#\/financials\/gifts\b/.test(location.hash) || (!!focusNext?.startsWith('gift-') && g.list.findIndex((x) => `gift-${x.id}` === focusNext) >= GIFTS_SHOWN));
+  // (a gift found by search lands on that gift instead)
   useLandAt(/^#\/financials\/gifts\b/, 'gifts', !!focusNext);
-  const shown = all ? g.list : g.list.slice(0, 12);
+  const shown = all ? g.list : g.list.slice(0, GIFTS_SHOWN);
   return html`<section class="bp-card bp-gifts bp-gifts--year" aria-labelledby="gifts-y-h" id="gifts">
     <${SecHead} id="gifts-y-h" title="Major gifts" sub=${nbw(`From Zeffy, every gift of $1,000 or more${g.stale ? `, as of ${giftDay(Date.parse(g.at) / 1000)}` : ''}`)} />
     ${g.count ? html`<p class="bp-gifts__total"><strong>${money(g.total / 100)}</strong> ${nbw(`from ${plural(g.count, 'gift')} in ${g.year}`)}</p>
       <ul class="bp-gifts__list">${shown.map((x) => html`<${GiftRow} g=${x} since=${since} key=${x.id} />`)}</ul>
-      ${g.count > 12 ? html`<button type="button" class="bp-more-btn" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? 'Show the newest 12' : `Show all ${g.count}`}</button>` : null}`
+      ${g.count > GIFTS_SHOWN ? html`<button type="button" class="bp-more-btn" aria-expanded=${all} onClick=${() => setAll(!all)}>${all ? `Show the newest ${GIFTS_SHOWN}` : `Show all ${g.count}`}</button>` : null}`
     : html`<p class="bp-muted">No gifts of $1,000 or more yet in ${g.year}.</p>`}
-  </section>`;
-}
-
-function Builds({ n }) {
-  return html`<section class="bp-card bp-kanban" aria-labelledby="builds-h" id="makeovers">
-    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers</h2><span class="bp-cardhead__end"><span class="bp-muted">From JobTread</span>${n.costs ? html`<a class="bp-cardhead__go" href="#/financials/costs">What they cost<${Icon} name="arrow" size=${16} cls="bp-go" /></a>` : null}</span></div>
-    <${Kanban} projects=${n.projects} reveals=${n.reveals} variant="home" />
   </section>`;
 }
 
@@ -1084,8 +1106,7 @@ function HomePage({ ctx }) {
       <div class="bp-meets__col bp-rise" style=${rise(3)}>${todos}<${SinceLast} ctx=${ctx} /></div>
     </div>
     ${data.gifts ? html`<div class="bp-rise" style=${rise(4)}><${Gifts} g=${data.gifts} since=${data.me.lastSeen} /></div>` : null}
-    <div class="bp-rise" style=${rise(5)}><${ApplicationsCard} /></div>
-    <div class="bp-rise" style=${rise(6)}><${Builds} n=${data.numbers} /></div>
+    <div class="bp-rise" style=${rise(5)}><${MakeoversCard} n=${data.numbers} /></div>
   </div>`;
 }
 
@@ -3307,18 +3328,44 @@ function BooksYear({ b }) {
     ['Net', b.net, lyNet, 'net'],
   ];
   const lySpent = nc ? (lyNc && typeof ly?.full?.nonCash === 'number' ? [ly.expenses - ly.nonCash, ly.full.expenses - ly.full.nonCash] : null) : ly ? [ly.expenses, ly.full?.expenses] : null;
-  return html`<section class="bp-card" aria-labelledby="by-h">
+  // The three figures the year comes down to, each against last year's same days
+  const figs = rows.filter(([label]) => !/^In kind/.test(label));
+  return html`<section class="bp-card bp-yearcard" aria-labelledby="by-h" id="year" tabindex="-1">
     <${SecHead} id="by-h" title="The year so far" sub=${`From QuickBooks, January 1 to ${dayMonth(b.through)}`}>${ly ? html`<${ChangeAs} as=${as} setAs=${setAs} />` : null}</${SecHead}>
+    <ul class="bp-yfigs">${figs.map(([label, a, p, kind]) => html`<li key=${label} class=${kind === 'net' ? 'is-net' : ''}>
+      <span class="bp-yfigs__label">${label}</span>
+      <strong class="bp-yfigs__value">${signedMoney(a)}</strong>
+      ${ly && typeof p === 'number' ? html`<span class="bp-yfigs__chg"><${Both} as=${as} pct=${`${changeIn(a, p, 'pct')} on ${ly.year}’s same days`} usd=${`${changeIn(a, p, 'usd', { short: true })} on ${ly.year}’s same days`} /></span>` : null}
+    </li>`)}</ul>
+    <${YearCompare} books=${b} idp="fy" as=${as} />
+    <${More} k="year-lines" summary=${ly ? `Line by line, beside ${ly.year}’s same days` : 'Line by line'}>
     <table class="bp-table bp-cmp">
       <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${b.year} so far</th>${ly ? html`<th scope="col" class="num">${ly.year}, same days</th><th scope="col" class="num">Change</th>` : null}</tr></thead>
       <tbody>${rows.map(([label, a, p, kind]) => html`<tr class=${`bp-row--${kind}`} key=${label}><th scope="row">${label}</th><td class="num">${signedMoney(a)}</td>${ly ? html`<td class="num bp-cmp__ly" data-label=${`${ly.year}, same days`}>${signedMoney(p)}</td><td class="num bp-cmp__chg"><${Both} as=${as} pct=${changeIn(a, p, kind === 'net' ? 'usd' : 'pct') || '–'} usd=${changeIn(a, p, 'usd') || '–'} /></td>` : null}</tr>`)}</tbody>
     </table>
     ${ly?.full?.revenue > 0 ? html`<p class="bp-note">${nbw(`By this day last year, ${Math.round((ly.revenue / ly.full.revenue) * 100)}% of ${ly.year}’s revenue (${compact(ly.full.revenue)}) had come in${lySpent?.[1] > 0 ? `, and ${Math.round((lySpent[0] / lySpent[1]) * 100)}% of its spending had gone out` : ''}.`)}</p>` : null}
-    <div class="bp-meters">
-      ${mixOf(b) ? html`<div class="bp-meter"><div class="bp-meter__head"><span>Where the money came from</span></div><${RevenueMix} books=${b} table=${true} /></div>` : null}
-      ${storeOf(b) ? html`<div class="bp-meter" id="store" tabindex="-1"><div class="bp-meter__head"><span>The store</span></div><${StoreTable} books=${b} /><p class="bp-note">${nbw('The store’s staff, rent and utilities are in SOARD’s shared costs in QuickBooks, so its profit is before them.')}</p></div>` : null}
-      ${b.functions ? html`<${PartsBar} label="Where it went, by purpose" parts=${b.functions.list} total=${b.functions.total} />` : null}
-    </div>
+    </${More}>
+  </section>`;
+}
+
+/** Where the year's money came from, by category, and where it went, by purpose (QuickBooks) */
+function MoneyMix({ b }) {
+  return html`<section class="bp-card bp-mixcard" aria-labelledby="mix-h2">
+    <${SecHead} id="mix-h2" title="Where the money came from" sub=${`${b.year} so far, by category`} />
+    ${mixOf(b) ? html`<${RevenueMix} books=${b} table=${true} />` : null}
+    ${b.functions ? html`<div class="bp-meters bp-meters--went"><${PartsBar} label="Where it went, by purpose" parts=${b.functions.list} total=${b.functions.total} /></div>` : null}
+  </section>`;
+}
+
+/** The store: sales, cost and profit against last year's same days; its lines a tap away */
+function StoreCard({ b }) {
+  return html`<section class="bp-card bp-storecard" aria-labelledby="store-h2" id="store" tabindex="-1">
+    <${SecHead} id="store-h2" title="The store" sub=${`${b.year} so far, beside last year’s same days`} />
+    <${StoreFigures} books=${b} />
+    <${More} k="store-lines" summary="Line by line">
+      <${StoreTable} books=${b} />
+      <p class="bp-note">${nbw('The store’s staff, rent and utilities are in SOARD’s shared costs in QuickBooks, so its profit is before them.')}</p>
+    </${More}>
   </section>`;
 }
 
@@ -3392,7 +3439,7 @@ function CashCard({ data }) {
   const small = held.length > 4 ? held.filter((a) => a.balance < cash.total * 0.01) : [];
   const shown = held.filter((a) => !small.includes(a));
   const vf = cash.live ? null : asViewer([cash.file]);
-  return html`<section class="bp-card bp-cash bp-rise" style=${rise(1)} aria-labelledby="cash-h">
+  return html`<section class="bp-card bp-cash" aria-labelledby="cash-h" id="cash" tabindex="-1">
     <div class="bp-cash__head">
       <div>
         <h2 class="bp-h2" id="cash-h">Cash in the bank</h2>
@@ -3466,81 +3513,95 @@ function FinancialsPage({ ctx }) {
     books?.statements || latest ? 'the statements from each meeting' : '',
     years.length ? 'every tax return and audit' : '',
   ].filter(Boolean))}.`;
-  // The year first (QuickBooks' year so far, or Mercury's), beside the cash over time and the year's major gifts; then
-  // the statements; then the tax returns, audits, budgets and every meeting's statements. A side with nothing in it
-  // gives the other the page's width
-  const pair = (left, right, i) => {
-    const l = left.filter(Boolean);
-    const r = right.filter(Boolean);
-    if (!l.length && !r.length) return null;
-    if (!l.length || !r.length) return html`<div class="bp-stack bp-gap bp-rise" style=${rise(i)}>${[...l, ...r]}</div>`;
-    return html`<div class="bp-split bp-split--even bp-gap"><div class="bp-stack bp-rise" style=${rise(i)}>${l}</div><div class="bp-stack bp-rise" style=${rise(i + 1)}>${r}</div></div>`;
-  };
-  return html`
-    <header class="bp-pagehead bp-rise" style=${rise(0)}>
-      <div><h1 class="bp-h1">Financials</h1><p class="bp-lede">${lede}</p></div>
-    </header>
-    <${CashCard} data=${data} />
-    ${pair([books ? html`<${BooksYear} b=${books} />` : null, budgetRows(budget).length || (budget === undefined && budgetDue(data)) ? html`<${BudgetCard} b=${budget} key="budget" />` : null, f?.ytd ? html`<section class="bp-card" aria-labelledby="io-h">
-          <${SecHead} id="io-h" title="Money in and out" sub=${`Through ${monthName(f.ytd.through)} ${Number(String(f.ytd.through).slice(8, 10)) || ''}`} />
-          <table class="bp-table">
-            <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${f.ytd.year} so far</th>${f.lastYtd ? html`<th scope="col" class="num">${f.lastYtd.year}, same days</th>` : null}</tr></thead>
-            <tbody>${ytdRows.map(([label, val, kind]) => html`<tr class=${`bp-row--${kind}`} key=${label}><th scope="row">${label}</th><td class="num">${val(f.ytd)}</td>${f.lastYtd ? html`<td class="num">${val(f.lastYtd)}</td>` : null}</tr>`)}</tbody>
-          </table>
-          <p class="bp-note">Live from Mercury’s record. The official books are in Mercury Books.${f.perMakeover ? ` ${plural(f.perMakeover.count, 'makeover')} finished this year, ${money(f.perMakeover.average)} each on average.` : ''}</p>
-          ${f.months?.length ? html`<${More} k="months" summary="Month by month">
-            <table class="bp-table">
-              <thead><tr><th scope="col">Month</th><th scope="col" class="num">In</th><th scope="col" class="num">Out</th><th scope="col" class="num">Net</th></tr></thead>
-              <tbody>${[...f.months].reverse().map((r) => html`<tr key=${r.month}><th scope="row">${monthShort(r.month)}</th><td class="num">${money(r.income)}</td><td class="num">${money(spent(r))}</td><td class="num">${signed(r.net)}</td></tr>`)}</tbody>
-            </table>
-          <//>` : null}
-        </section>` : null], [f?.cash || history.length > 1 ? html`<section class="bp-card" aria-labelledby="cashtime-h">
-          <h2 class="bp-h2" id="cashtime-h">Cash over time</h2>
-          ${history.length > 1 ? html`<${CashChart} rows=${history} />` : null}
-          ${f?.cash ? html`<div class="bp-live">
-            <div class="bp-live__label">The next 13 weeks</div>
-            <ul>
-              <li>The lowest point: ${money(f.cash.lowest.dollars)}${f.cash.lowest.week ? `, the week of ${shortDate(f.cash.lowest.week)}` : ''}${f.cash.cautiousLowest && f.cash.cautiousLowest.dollars !== f.cash.lowest.dollars ? ` (a cautious guess: ${money(f.cash.cautiousLowest.dollars)})` : ''}</li>
-              <li>In 13 weeks: ${money(f.cash.in13Weeks)}</li>
-              ${f.cash.floor ? html`<li>The least we keep in the bank: ${money(f.cash.floor)}${f.cash.belowFloor ? html` <span class="bp-chip bp-chip--warn">The forecast dips under it</span>` : null}</li>` : null}
-            </ul>
-          </div>` : null}
-          ${history.length > 1 ? html`<${More} k="cash-months" summary="Month-end balances"><table class="bp-table"><thead><tr><th scope="col">Month</th><th scope="col" class="num">Balance</th><th scope="col" class="num">Change</th></tr></thead><tbody>
-            ${history.map((r, k) => { const prev = history[k + 1]; const dd = prev ? r.total - prev.total : null; return html`<tr key=${r.month}><th scope="row">${monthOf(r.month)}</th><td class="num">${money(r.total)}</td><td class="num">${dd == null ? '' : `${dd >= 0 ? '+' : '−'}${money(Math.abs(dd))}`}</td></tr>`; })}
-          </tbody></table><//>` : null}
-        </section>` : null, data.gifts ? html`<${GiftsYear} g=${data.gifts} since=${data.me.lastSeen} />` : null], 1)}
-    ${data.numbers.costs ? html`<div class="bp-gap bp-rise" style=${rise(3)}><${CostsCard} data=${data} n=${data.numbers} admin=${!!data.me.admin && !AS_BOARD && !PREVIEW}
-      onBalance=${(balance) => ctx.setData((x) => ({ ...x, numbers: { ...x.numbers, operating: { balance } } }))} /></div>` : null}
-    ${books?.statements ? html`<section class="bp-card bp-latest bp-rise" style=${rise(4)} aria-labelledby="st-h">
+  // Peter, Nov 7 2026: "every card is maximized in size, we should do charts and where its a longer card a show more
+  // type thing". The four figures first, each to its card; then a card to a question, a chart first and its details a
+  // tap away: the cash and the cash over time, the year, the budget and the store beside where the money came from,
+  // the major gifts, what makeovers cost, the statements, and the year's papers
+  const cashTime = f?.cash || history.length > 1 ? html`<section class="bp-card" aria-labelledby="cashtime-h" id="cashtime">
+      <h2 class="bp-h2" id="cashtime-h">Cash over time</h2>
+      ${history.length > 1 ? html`<${CashChart} rows=${history} />` : null}
+      ${f?.cash ? html`<div class="bp-live">
+        <div class="bp-live__label">The next 13 weeks</div>
+        <ul>
+          <li>The lowest point: ${money(f.cash.lowest.dollars)}${f.cash.lowest.week ? `, the week of ${shortDate(f.cash.lowest.week)}` : ''}${f.cash.cautiousLowest && f.cash.cautiousLowest.dollars !== f.cash.lowest.dollars ? ` (a cautious guess: ${money(f.cash.cautiousLowest.dollars)})` : ''}</li>
+          <li>In 13 weeks: ${money(f.cash.in13Weeks)}</li>
+          ${f.cash.floor ? html`<li>The least we keep in the bank: ${money(f.cash.floor)}${f.cash.belowFloor ? html` <span class="bp-chip bp-chip--warn">The forecast dips under it</span>` : null}</li>` : null}
+        </ul>
+      </div>` : null}
+      ${history.length > 1 ? html`<${More} k="cash-months" summary="Month-end balances"><table class="bp-table"><thead><tr><th scope="col">Month</th><th scope="col" class="num">Balance</th><th scope="col" class="num">Change</th></tr></thead><tbody>
+        ${history.map((r, k) => { const prev = history[k + 1]; const dd = prev ? r.total - prev.total : null; return html`<tr key=${r.month}><th scope="row">${monthOf(r.month)}</th><td class="num">${money(r.total)}</td><td class="num">${dd == null ? '' : `${dd >= 0 ? '+' : '−'}${money(Math.abs(dd))}`}</td></tr>`; })}
+      </tbody></table><//>` : null}
+    </section>` : null;
+  // Without QuickBooks, Mercury's own record of the year
+  const io = !books && f?.ytd ? html`<section class="bp-card" aria-labelledby="io-h" id="year" tabindex="-1">
+      <${SecHead} id="io-h" title="Money in and out" sub=${`Through ${monthName(f.ytd.through)} ${Number(String(f.ytd.through).slice(8, 10)) || ''}`} />
+      <table class="bp-table">
+        <thead><tr><th scope="col"><span class="sr-only">What</span></th><th scope="col" class="num">${f.ytd.year} so far</th>${f.lastYtd ? html`<th scope="col" class="num">${f.lastYtd.year}, same days</th>` : null}</tr></thead>
+        <tbody>${ytdRows.map(([label, val, kind]) => html`<tr class=${`bp-row--${kind}`} key=${label}><th scope="row">${label}</th><td class="num">${val(f.ytd)}</td>${f.lastYtd ? html`<td class="num">${val(f.lastYtd)}</td>` : null}</tr>`)}</tbody>
+      </table>
+      <p class="bp-note">Live from Mercury’s record. The official books are in Mercury Books.${f.perMakeover ? ` ${plural(f.perMakeover.count, 'makeover')} finished this year, ${money(f.perMakeover.average)} each on average.` : ''}</p>
+      ${f.months?.length ? html`<${More} k="months" summary="Month by month">
+        <table class="bp-table">
+          <thead><tr><th scope="col">Month</th><th scope="col" class="num">In</th><th scope="col" class="num">Out</th><th scope="col" class="num">Net</th></tr></thead>
+          <tbody>${[...f.months].reverse().map((r) => html`<tr key=${r.month}><th scope="row">${monthShort(r.month)}</th><td class="num">${money(r.income)}</td><td class="num">${money(spent(r))}</td><td class="num">${signed(r.net)}</td></tr>`)}</tbody>
+        </table>
+      <//>` : null}
+    </section>` : null;
+  const year = books ? html`<${BooksYear} b=${books} />` : io;
+  const budgetCard = budgetRows(budget).length || (budget === undefined && budgetDue(data)) ? html`<${BudgetCard} b=${budget} key="budget" />` : null;
+  const storeCard = books && storeOf(books) ? html`<${StoreCard} b=${books} />` : null;
+  const mixCard = books && (mixOf(books) || books.functions) ? html`<${MoneyMix} b=${books} />` : null;
+  const side = [budgetCard, storeCard].filter(Boolean);
+  const statements = books?.statements ? html`<section class="bp-card bp-latest" aria-labelledby="st-h">
       <${SecHead} id="st-h" title="The statements" sub="The ones each meeting’s packet holds, locked on its day" />
       <${Statements} s=${books.statements} books=${books} />
       ${latest ? html`<${More} k="packet" summary=${`From the ${meetingName(latest)} packet, ${longDate(latest.date)}`}><${FileList} files=${latest.files.filter((x) => x.kind === 'financials')} labels=${false} /><//>` : null}
     </section>`
-    : latest ? html`<section class="bp-card bp-latest bp-rise" style=${rise(4)} aria-labelledby="st-h">
+    : latest ? html`<section class="bp-card bp-latest" aria-labelledby="st-h">
       <${SecHead} id="st-h" title="The latest statements" sub=${html`From the <a class="bp-link" href=${`#/meetings/${latest.id}`} onClick=${claimMorph}>${meetingName(latest)}</a>, ${longDate(latest.date)}`} />
       <${FileList} files=${latest.files.filter((x) => x.kind === 'financials')} labels=${false} />
-    </section>` : html`<section class="bp-card bp-rise" style=${rise(4)}><h2 class="bp-h2">Financial statements</h2><p class="bp-muted">The income statement and balance sheet from each meeting show here.</p></section>`}
-    ${pair([s ? html`<section class="bp-card" aria-labelledby="yr-h">
-          <${SecHead} id="yr-h" title=${`${s.year} at a glance`} sub=${`From the ${s.year} tax return`} />
-          <${Bars} s=${s} />
-        </section>` : null, budgets.length ? html`<section class="bp-card" aria-labelledby="bu-h"><h2 class="bp-h2" id="bu-h">Budgets and audits</h2>
-          <${FileList} files=${budgets.map((x) => ({ ...x.file, name: x.title }))} labels=${false} /></section>` : null], [years.length ? html`<section class="bp-card" aria-labelledby="tx-h">
-          <${SecHead} id="tx-h" title="Tax returns and audits" sub="The public copies, as on the website’s Financials page" />
-          <table class="bp-table bp-ftable">
-            <thead><tr><th scope="col">Year</th><th scope="col">Form 990</th><th scope="col">Audit</th></tr></thead>
-            <tbody>${shownYears.map((y) => html`<tr key=${y}><th scope="row">${y}</th><td>${cell(y, '990')}</td><td>${cell(y, 'audit')}</td></tr>`)}</tbody>
-          </table>
-          ${years.length > 6 ? html`<button type="button" class="bp-more-btn" aria-expanded=${allYears} onClick=${() => setAllYears(!allYears)}>${allYears ? 'Show fewer years' : nbw(`Show all ${years.length} years`)}</button>` : null}
-          ${others.length ? html`<p class="bp-note">Also: ${others.map((x, k) => html`${k ? ', ' : ''}<a class="bp-link" ...${viewerLink(fv, data.filings.indexOf(x))}>${x.title}</a>`)}</p>` : null}
-        </section>` : null, earlier.length ? html`<section class="bp-card" aria-labelledby="ea-h">
+    </section>` : html`<section class="bp-card"><h2 class="bp-h2">Financial statements</h2><p class="bp-muted">The income statement and balance sheet from each meeting show here.</p></section>`;
+  const papers = [
+    s ? html`<section class="bp-card" aria-labelledby="yr-h" key="yr">
+        <${SecHead} id="yr-h" title=${`${s.year} at a glance`} sub=${`From the ${s.year} tax return`} />
+        <${Bars} s=${s} />
+      </section>` : null,
+    years.length ? html`<section class="bp-card" aria-labelledby="tx-h" key="tx">
+        <${SecHead} id="tx-h" title="Tax returns and audits" sub="The public copies, as on the website’s Financials page" />
+        <table class="bp-table bp-ftable">
+          <thead><tr><th scope="col">Year</th><th scope="col">Form 990</th><th scope="col">Audit</th></tr></thead>
+          <tbody>${shownYears.map((y) => html`<tr key=${y}><th scope="row">${y}</th><td>${cell(y, '990')}</td><td>${cell(y, 'audit')}</td></tr>`)}</tbody>
+        </table>
+        ${years.length > 6 ? html`<button type="button" class="bp-more-btn" aria-expanded=${allYears} onClick=${() => setAllYears(!allYears)}>${allYears ? 'Show fewer years' : nbw(`Show all ${years.length} years`)}</button>` : null}
+        ${others.length ? html`<p class="bp-note">Also: ${others.map((x, k) => html`${k ? ', ' : ''}<a class="bp-link" ...${viewerLink(fv, data.filings.indexOf(x))}>${x.title}</a>`)}</p>` : null}
+      </section>` : null,
+    earlier.length || budgets.length ? html`<div class="bp-stack" key="ea">
+        ${earlier.length ? html`<section class="bp-card" aria-labelledby="ea-h">
           <${SecHead} id="ea-h" title="Earlier statements" sub="From each meeting’s packet" />
-          <ul class="bp-rows">${(allEarlier ? earlier : earlier.slice(0, 6)).map((m) => html`<li key=${m.id}><a class="bp-row" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>
+          <ul class="bp-rows">${(allEarlier ? earlier : earlier.slice(0, 4)).map((m) => html`<li key=${m.id}><a class="bp-row" href=${`#/meetings/${m.id}`} onClick=${claimMorph}>
             <${DateTile} d=${m.date} mid=${m.id} />
             <span class="bp-row__main"><span class="bp-row__title">${meetingName(m)}</span><span class="bp-row__meta">${fileRows(m.files.filter((x) => x.kind === 'financials')).flatMap((g) => g.rows.map((r) => r.title)).join(' · ')}</span></span>
             <${Icon} name="arrow" size=${18} cls="bp-go" />
           </a></li>`)}</ul>
-          ${earlier.length > 6 ? html`<button type="button" class="bp-more-btn" aria-expanded=${allEarlier} onClick=${() => setAllEarlier(!allEarlier)}>${allEarlier ? 'Show the newest 6' : `Show all ${earlier.length}`}</button>` : null}
-        </section>` : null], 5)}`;
+          ${earlier.length > 4 ? html`<button type="button" class="bp-more-btn" aria-expanded=${allEarlier} onClick=${() => setAllEarlier(!allEarlier)}>${allEarlier ? 'Show the newest 4' : `Show all ${earlier.length}`}</button>` : null}
+        </section>` : null}
+        ${budgets.length ? html`<section class="bp-card" aria-labelledby="bu-h"><h2 class="bp-h2" id="bu-h">Budgets and audits</h2>
+          <${FileList} files=${budgets.map((x) => ({ ...x.file, name: x.title }))} labels=${false} /></section>` : null}
+      </div>` : null,
+  ].filter(Boolean);
+  return html`
+    <header class="bp-pagehead bp-rise" style=${rise(0)}>
+      <div><h1 class="bp-h1">Financials</h1><p class="bp-lede">${lede}</p></div>
+    </header>
+    <section class="bp-sum bp-finsum bp-rise" style=${rise(1)} aria-label="The money at a glance"><${Figures} data=${data} variant="fin" /></section>
+    <div class=${`bp-fgrid bp-rise ${cashTime ? '' : 'is-one'}`} style=${rise(2)}><${CashCard} data=${data} />${cashTime}</div>
+    ${year ? html`<div class="bp-gap bp-rise" style=${rise(3)}>${year}</div>` : null}
+    ${side.length || mixCard ? html`<div class=${`bp-fgrid bp-rise ${side.length && mixCard ? '' : 'is-one'}`} style=${rise(4)}>${side.length ? html`<div class="bp-stack">${side}</div>` : null}${mixCard}</div>` : null}
+    ${data.gifts ? html`<div class="bp-gap bp-rise" style=${rise(5)}><${GiftsYear} g=${data.gifts} since=${data.me.lastSeen} /></div>` : null}
+    ${data.numbers.costs ? html`<div class="bp-gap bp-rise" style=${rise(6)}><${CostsCard} data=${data} n=${data.numbers} admin=${!!data.me.admin && !AS_BOARD && !PREVIEW}
+      onBalance=${(balance) => ctx.setData((x) => ({ ...x, numbers: { ...x.numbers, operating: { balance } } }))} /></div>` : null}
+    <div class="bp-gap bp-rise" style=${rise(7)}>${statements}</div>
+    ${papers.length ? html`<div class=${`bp-fgrid bp-fgrid--3 bp-rise is-${papers.length}`} style=${rise(8)}>${papers}</div>` : null}`;
 }
 
 // ─── People ─────────────────────────────────────────────────────────
@@ -4457,8 +4518,8 @@ function searchIndex(data, d, words = null) {
     out.push({ group: 'Makeovers', key: `b:${b.kind || ''}:${b.name}`, title: b.name, sub: b.kind === 'community' ? `Community project · ${b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status}` : b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status, hay: norm([b.name, b.status, b.kind === 'community' ? 'community project' : 'makeover kid'].join(' ')), ...(href ? { href, ext: true } : { href: '#/', focus: cardId(b) }), icon: 'home' });
   }
   if (data.numbers.costs) out.push({ group: 'Makeovers', key: 'costs', title: 'What makeovers cost', sub: 'Each finished makeover, the money over the operating balance, and who it starts', hay: norm('what makeovers cost price paid budget money waiting funding pipeline qualification committee operating balance typical'), href: '#/financials', focus: 'costs', icon: 'financials' });
-  out.push({ group: 'Makeovers', key: 'families', title: 'Families', sub: 'Every family’s video, photos, application and score, to read', hay: norm('families applications applicants scores scoring ranked qualification committee approved denied in review video videos photos pictures'), href: '#/families', icon: 'people' });
-  out.push({ group: 'Makeovers', key: 'families-map', title: 'Applications map', sub: 'Where every family who applied lives, against the service area', hay: norm('map where applications applicants families homes service area boundary location'), href: '#/families/map', icon: 'people' });
+  out.push({ group: 'Makeovers', key: 'families', title: 'Makeovers', sub: 'Every family from application to reveal: their video, photos, application and score', hay: norm('makeovers families applications applicants scores scoring ranked qualification committee approved denied in review applied building design build revealed reveal pipeline board kanban video videos photos pictures'), href: '#/families', icon: 'people' });
+  out.push({ group: 'Makeovers', key: 'families-map', title: 'Makeovers map', sub: 'Where every family lives, from application to reveal, against the service area', hay: norm('map where applications applicants families homes service area boundary location makeovers'), href: '#/families/map', icon: 'people' });
   for (const r of data.numbers.reveals) out.push({ group: 'Coming up', key: `r:${r.name}`, title: `${r.name}’s reveal`, sub: r.confirmed && r.date ? dayOf(r.date) : r.window?.label || 'Day not set yet', hay: norm(`${r.name} reveal`), href: r.kidUrl, ext: true, icon: 'home' });
   for (const e of data.numbers.events) out.push({ group: 'Coming up', key: `e:${e.title}:${e.date}`, title: e.title, sub: dayOf(e.date), hay: norm(`${e.title} event ${e.location}`), date: e.date, href: e.url, ext: true, icon: 'meetings' });
   out.push(...orgEntries(data));
