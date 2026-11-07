@@ -508,13 +508,6 @@ const CSS = `
 .afe-legend div { display: grid; grid-template-columns: 10px 1fr; gap: .1rem .5rem; align-items: start; align-content: start; font-size: var(--fs-xs); }
 .afe-legend i { width: 10px; height: 10px; margin-top: .3rem; border-radius: 3px; }
 .afe-legend b { grid-column: 2; font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
-.afe-hbars { display: grid; gap: .3rem; }
-.afe-hbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .2rem .75rem; align-items: baseline; }
-.afe-hbar-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); }
-.afe-hbar-val { font-size: var(--fs-xs); font-variant-numeric: tabular-nums; color: var(--color-text-secondary); text-align: right; }
-.afe-hbar-val b { color: var(--color-text); }
-.afe-hbar-track { grid-column: 1 / -1; height: 8px; border-radius: 4px; background: var(--afe-track); overflow: hidden; }
-.afe-hbar-track > span { display: block; height: 100%; border-radius: 0 4px 4px 0; background: var(--afe-data); transition: width .25s ease; }
 .afe-chart { position: relative; }
 .afe-chart svg { display: block; overflow: visible; touch-action: pan-y; }
 .afi-chartcard { display: flex; flex-direction: column; }
@@ -533,106 +526,207 @@ const CSS = `
 .afe-checklist div { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 44px; padding: .25rem 0; border-bottom: 1px solid var(--color-border); font-size: var(--fs-sm); }
 .afe-checklist div:last-child { border-bottom: 0; }
 
-/* Insights: the sentence, the two kinds, then everything for the kind picked */
-.afi { gap: 1.1rem; --afi-past: color-mix(in srgb, var(--color-text-muted) 72%, var(--color-bg-card)); }
-.afi > .afe-head { margin-bottom: -.35rem; align-items: center; }
-.afi-lede { margin: 0; max-width: 58ch; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.35; color: var(--color-text); text-wrap: pretty; }
-.afi-lede-sub { margin: .3rem 0 0; color: var(--color-text-muted); font-size: var(--fs-xs); }
-.afi-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 .75rem; }
-.afi-kind { position: relative; display: grid; grid-row: span 4; grid-template-rows: subgrid; gap: 0; width: 100%; padding: 1rem 1.2rem 1.05rem; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color .15s ease, background-color .15s ease; }
-.afi-kind:hover { border-color: var(--color-border-strong); }
+/* Insights: the answer, the two applications as the switch, then the season for the one picked.
+   Motion: sections rise in, marks grow from their base, the season line draws, one after another.
+   It replays when the body remounts for the other application, and none of it runs for reduced motion. */
+@keyframes afiRise { from { opacity: 0; transform: translateY(12px); } }
+@keyframes afiGrowY { from { transform: scaleY(0); } }
+@keyframes afiGrowX { from { transform: scaleX(0); } }
+@keyframes afiDraw { from { stroke-dashoffset: 1; } }
+@keyframes afiFade { from { opacity: 0; } }
+@keyframes afiPop { from { opacity: 0; transform: scale(.3); } }
+@keyframes afiDrop { from { opacity: 0; transform: translateY(-10px); } }
+@keyframes afiWipe { from { clip-path: inset(0 100% 0 0); } }
+.afi { gap: 1.25rem; --afi-past: color-mix(in srgb, var(--color-text-muted) 72%, var(--color-bg-card));
+  --afi-fill: color-mix(in srgb, var(--afe-data) 12%, transparent); --afi-hover: color-mix(in srgb, var(--afe-data) 22%, transparent); }
+.afi > .afe-head { margin-bottom: -.6rem; align-items: center; }
+.afi-in { animation: afiRise .6s var(--ease-out) backwards; animation-delay: calc(var(--i, 0) * 70ms); }
+.afi-body > .afi-in { animation-delay: calc(120ms + var(--i, 0) * 80ms); }
+/* The answer */
+.afi-lead { display: grid; gap: .45rem; }
+.afi-lede { margin: 0; max-width: 44ch; color: var(--color-text-secondary); font-size: var(--fs-2xl); font-weight: 600; letter-spacing: -.025em; line-height: 1.28; text-wrap: balance; }
+.afi-lede b { color: var(--color-text); font-weight: 750; font-variant-numeric: tabular-nums; }
+.afi-lede-sub { margin: 0; color: var(--color-text-muted); font-size: var(--fs-sm); }
+/* The two applications: big numbers, each with its season so far; the one on show is the dark one */
+.afi-kinds { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 1rem; container: afikinds / inline-size; }
+.afi-kind { position: relative; display: grid; grid-row: span 4; grid-template-rows: subgrid; gap: 0; width: 100%; padding: 1.15rem 1.3rem 1.2rem; overflow: hidden; color: inherit; font: inherit; text-align: left; cursor: pointer;
+  transition: border-color .2s var(--ease-out), box-shadow .25s var(--ease-out), transform .25s var(--ease-out); }
+.afi-kind:hover { border-color: var(--color-border-strong); box-shadow: var(--shadow-md); transform: translateY(-2px); }
+.afi-kind:active { transform: translateY(0); transition-duration: .08s; }
 .afi-kind:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
 .afi-kind[aria-pressed="true"] { border-color: var(--color-text); box-shadow: inset 0 -3px 0 var(--color-primary); }
-.afi-kind .afi-kind-name { color: var(--color-text); font-size: var(--fs-sm); font-weight: 600; }
-.afi-kind strong { margin: .3rem 0 .35rem; font-size: 3.4rem; line-height: 1; letter-spacing: -.035em; }
-.afi-kind small { display: block; line-height: 1.45; color: var(--color-text-secondary); font-size: var(--fs-xs); }
+.afi-kind[aria-pressed="true"]:hover { box-shadow: inset 0 -3px 0 var(--color-primary), var(--shadow-md); }
+.afi-kind .afi-kind-name { position: relative; color: var(--color-text); font-size: var(--fs-sm); font-weight: 600; }
+.afi-kind strong { position: relative; margin: .3rem 0 .4rem; font-size: 3.4rem; font-weight: 750; line-height: 1; letter-spacing: -.04em; font-variant-numeric: tabular-nums; }
+.afi-kind small { position: relative; display: block; line-height: 1.45; color: var(--color-text-secondary); font-size: var(--fs-xs); }
 .afi-kind small.afi-kind-last { color: var(--color-text-muted); }
-.afi-body { display: grid; gap: 1rem; transition: opacity .15s ease; }
-.afi-body.is-loading { opacity: .6; }
-.afi-pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr)); gap: 1rem; }
-.afi-pair.is-one { grid-template-columns: minmax(0, 1fr); }
-.afi-pair.is-top { align-items: start; }
-.afi-col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
-.afi-cards { columns: 2 400px; column-gap: 1rem; margin-bottom: -1rem; }
-.afi-cards.is-one { columns: 1; }
-.afi-cards > * { break-inside: avoid; margin: 0 0 1rem; }
-.afi-bar { display: flex; gap: 2px; height: 8px; margin: 0 0 .75rem; }
-.afi-bar > span { min-width: 8px; height: 100%; border-radius: 99px; transition: flex-grow .25s ease; }
-.afi-stands { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 .25rem; margin: 0 -.55rem; }
-@media (max-width: 640px) { .afi-stands { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.afi-stand { display: grid; grid-row: span 3; grid-template-rows: subgrid; grid-template-columns: 10px minmax(0, 1fr); gap: .1rem .5rem; align-content: start; padding: .5rem .55rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; }
+/* Drawn left to right by a wipe: a stretched drawing keeps its stroke even, which a dash can't */
+.afi-spark { position: absolute; top: 1.15rem; right: 1.3rem; width: 44%; height: 64px; overflow: visible; pointer-events: none; animation: afiWipe 1.1s var(--ease-out) .2s backwards; }
+.afi-spark-fill { fill: color-mix(in srgb, var(--color-text) 5%, transparent); transition: fill .25s var(--ease-out); }
+.afi-spark-line { fill: none; stroke: var(--afi-past); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; transition: stroke .25s var(--ease-out); }
+.afi-kind[aria-pressed="true"] .afi-spark-fill { fill: var(--afi-fill); }
+.afi-kind[aria-pressed="true"] .afi-spark-line { stroke: var(--afe-data); }
+@container afikinds (max-width: 620px) { .afi-spark { display: none; } .afi-kind strong { font-size: var(--fs-3xl); } }
+/* The body: cards, each a title with its key to the right */
+.afi-body { display: grid; gap: 1.25rem; container: afibody / inline-size; transition: opacity .2s var(--ease-out); }
+.afi-body.is-loading { opacity: .5; }
+.afi-card { display: grid; align-content: start; padding: 1.25rem 1.4rem 1.35rem; container-type: inline-size; }
+.afi-card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .35rem 1rem; }
+.afe-viz .afi-card-head h4 { font-size: var(--fs-lg); letter-spacing: -.02em; }
+.afi-meta { color: var(--color-text-muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
+.afi-card > .afe-hint { margin: .2rem 0 1rem; }
+.afi-row { display: grid; gap: 1.25rem; grid-template-columns: minmax(0, 1fr); align-items: start; }
+@container afibody (min-width: 940px) { .afi-row { grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr); } .afi-row.is-one { grid-template-columns: minmax(0, 1fr); } }
+.afi-stack { display: grid; gap: 1.25rem; align-content: start; }
+.afi-grid { display: grid; gap: 1.25rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); align-items: start; }
+.afi-keys { display: flex; flex-wrap: wrap; gap: .3rem 1rem; color: var(--color-text-secondary); font-size: var(--fs-xs); }
+.afi-keys span { display: inline-flex; align-items: center; gap: .4rem; }
+.afi-keys i, .afi-tip-row i { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+.afi-keys i.is-line, .afi-tip-row i.is-line { width: 14px; height: 2px; border-radius: 2px; background: var(--afe-data); }
+.afi-keys i.is-dash, .afi-tip-row i.is-dash { width: 14px; height: 0; border-top: 2px dashed var(--afi-past); border-radius: 0; }
+/* Where everyone stands: one bar, four big numbers, and the two rates beside them */
+.afi-standing { display: grid; gap: 1.1rem; }
+@container (min-width: 880px) { .afi-standing { grid-template-columns: minmax(0, 1fr) minmax(220px, 280px); gap: 2.25rem; } }
+.afi-meter { display: flex; gap: 3px; height: 18px; margin: 0 0 1.1rem; transform-origin: left; animation: afiGrowX .9s var(--ease-out) .25s backwards; }
+.afi-meter > span { min-width: 6px; border-radius: 5px; }
+.afi-stands { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 .25rem; margin: 0 -.6rem; }
+@container (max-width: 560px) { .afi-stands { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.afi-stand { display: grid; grid-row: span 3; grid-template-rows: subgrid; grid-template-columns: 10px minmax(0, 1fr); gap: .15rem .55rem; align-content: start; padding: .55rem .6rem .6rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; transition: background-color .15s var(--ease-out); }
 .afi-stand:not(:disabled) { cursor: pointer; }
 .afi-stand:not(:disabled):hover { background: var(--color-bg-hover); }
 .afi-stand:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
 .afi-stand i { width: 10px; height: 10px; margin-top: .22rem; border-radius: 3px; }
 .afi-stand span { min-width: 0; color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; }
-.afi-stand b { grid-column: 2; font-size: var(--fs-2xl); font-weight: 700; letter-spacing: -.02em; line-height: 1.2; }
+.afi-stand b { grid-column: 2; font-size: var(--fs-3xl); font-weight: 750; letter-spacing: -.035em; line-height: 1.1; font-variant-numeric: tabular-nums; }
 .afi-stand small { grid-column: 2; color: var(--color-text-muted); font-size: var(--fs-2xs); line-height: 1.35; }
 .afi-stand:disabled b { color: var(--color-text-muted); font-weight: 600; }
-.afi-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem 1.5rem; margin-top: .8rem; padding-top: .8rem; border-top: 1px solid var(--color-border); }
-@media (max-width: 640px) { .afi-facts { grid-template-columns: minmax(0, 1fr); } }
-.afi-facts div { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 0 .6rem; align-items: baseline; }
-.afi-facts span { color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; }
-.afi-facts b { font-size: var(--fs-md); font-variant-numeric: tabular-nums; }
-.afi-facts small { grid-column: 1 / -1; color: var(--color-text-muted); font-size: var(--fs-2xs); line-height: 1.4; }
-.afi-funnel { display: grid; gap: .15rem; margin: 0 -.45rem; }
-.afi-step { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: .25rem .75rem; align-items: baseline; width: 100%; padding: .32rem .45rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; }
+.afi-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem 1.5rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }
+@container (min-width: 880px) { .afi-facts { grid-template-columns: minmax(0, 1fr); align-content: center; gap: 1.4rem; padding: 0 0 0 2.25rem; border-top: 0; border-left: 1px solid var(--color-border); } }
+@container (max-width: 480px) { .afi-facts { grid-template-columns: minmax(0, 1fr); } }
+.afi-kpi { display: grid; gap: .15rem; }
+.afi-kpi span { color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; }
+.afi-kpi b { font-size: var(--fs-3xl); font-weight: 750; letter-spacing: -.035em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.afi-kpi b.is-wait { color: var(--color-text-muted); font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.01em; line-height: 1.6; }
+.afi-kpi small { color: var(--color-text-muted); font-size: var(--fs-xs); line-height: 1.4; }
+/* How far people get. Narrow: a row a page, its bar across. Wide: the pages side by side, each a column. */
+.afi-flow { position: relative; container: afiflow / inline-size; }
+.afi-funnel { display: grid; gap: .2rem; margin: 0 -.45rem; }
+.afi-step { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name n" "plot plot" "tag tag"; gap: .35rem .75rem; align-items: baseline; width: 100%; padding: .45rem .45rem .5rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; transition: opacity .2s var(--ease-out), background-color .2s var(--ease-out); }
 .afi-step:not(:disabled) { cursor: pointer; }
-.afi-step:not(:disabled):hover { background: var(--color-bg-hover); }
+.afi-step:not(:disabled):hover, .afi-step:focus-visible { background: var(--color-bg-hover); }
 .afi-step:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
-.afi-step-name { display: flex; align-items: baseline; min-width: 0; font-size: var(--fs-xs); font-weight: 500; }
+@media (hover: hover) { .afi-funnel:hover .afi-step:not(:hover) { opacity: .45; } }
+.afi-step-name { grid-area: name; display: flex; align-items: baseline; min-width: 0; font-size: var(--fs-sm); font-weight: 500; }
+.afi-step-name em { flex: none; width: 1.5em; color: var(--color-text-muted); font-style: normal; font-variant-numeric: tabular-nums; }
 .afi-step-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.afi-step-name .afe-tag { flex: none; margin-left: .4rem; }
-.afi-step-name em { flex: none; display: inline-block; width: 1.2em; color: var(--color-text-muted); font-style: normal; font-variant-numeric: tabular-nums; }
-.afi-step-n { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
-.afi-step-track { display: block; grid-column: 1 / -1; height: 10px; border-radius: 0 4px 4px 0; background: var(--afe-track); overflow: hidden; }
-.afi-step-track > span { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--afe-data); transition: width .25s ease; }
-.afi-step-note { color: var(--color-text-muted); font-size: var(--fs-2xs); white-space: nowrap; }
-/* A phone: what's going on at a page gets its own line, so the page's name and its tag keep theirs */
-@media (max-width: 520px) {
-  .afi-step { grid-template-columns: minmax(0, 1fr) auto; }
-  .afi-step-name { grid-area: 1 / 1; }
-  .afi-step-n { grid-area: 1 / 2; }
-  .afi-step-note { grid-area: 2 / 1 / 3 / -1; white-space: normal; }
-  .afi-step-track { grid-row: 3; }
+.afi-step-n { grid-area: n; display: flex; align-items: baseline; gap: .45rem; font-variant-numeric: tabular-nums; }
+.afi-step-n b { font-size: var(--fs-md); font-weight: 700; }
+.afi-step-n small { color: var(--color-text-muted); font-size: var(--fs-2xs); }
+.afi-step-plot { grid-area: plot; display: flex; height: 14px; border-radius: 0 5px 5px 0; background: var(--afe-track); }
+.afi-step-bar { display: flex; gap: 2px; width: var(--h); min-width: 3px; border-radius: 0 5px 5px 0; overflow: hidden; transform-origin: left; animation: afiGrowX .75s var(--ease-out) backwards; animation-delay: calc(.25s + var(--i, 0) * 50ms); }
+.afi-step-bar > i { min-width: 3px; }
+.afi-step > .afe-tag { grid-area: tag; justify-self: start; }
+@container afiflow (min-width: 640px) {
+  .afi-funnel { grid-template-rows: auto 220px auto auto; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 0 .6rem; margin: 0 -.35rem; }
+  .afi-step { grid-row: 1 / span 4; grid-template-rows: subgrid; grid-template-columns: minmax(0, 1fr); grid-template-areas: none; align-items: stretch; gap: 0; padding: .55rem .35rem .5rem; text-align: center; }
+  .afi-step-n { grid-area: auto; flex-direction: column; justify-content: flex-start; align-items: center; gap: 0; margin-bottom: .45rem; }
+  .afi-step-n b { font-size: var(--fs-xl); letter-spacing: -.02em; }
+  .afi-step-plot { grid-area: auto; height: auto; align-items: flex-end; border-radius: 7px 7px 0 0; }
+  .afi-step-bar { flex-direction: column-reverse; width: 100%; height: var(--h); min-height: 3px; border-radius: 7px 7px 0 0; transform-origin: bottom; animation-name: afiGrowY; }
+  .afi-step-bar > i { min-width: 0; min-height: 3px; }
+  .afi-step-name { grid-area: auto; flex-direction: column; align-items: center; gap: .1rem; margin-top: .55rem; font-size: var(--fs-xs); }
+  .afi-step-name em { width: auto; font-weight: 600; }
+  .afi-step-title { display: -webkit-box; min-height: 2.6em; line-height: 1.3; white-space: normal; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .afi-step > .afe-tag { grid-area: auto; justify-self: center; margin-top: .35rem; }
 }
-.afi-hbar { width: 100%; padding: .3rem .45rem; margin: 0 -.45rem; box-sizing: content-box; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; }
-.afi-hbar:not(:disabled) { cursor: pointer; }
-.afi-hbar:not(:disabled):hover { background: var(--color-bg-hover); }
-.afi-hbar:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
-.afi-hbar.is-rest .afe-hbar-track > span { background: var(--color-border-strong); }
-.afi-note { margin: .75rem 0 0; color: var(--color-text-secondary); font-size: var(--fs-xs); line-height: 1.45; }
+.afi-flow-tip { width: 224px; transform: translate(-50%, -100%); white-space: normal; animation: afiFade .14s var(--ease-out); }
+@media (hover: none) { .afi-flow-tip { display: none; } }
+.afi-tip-row { display: flex; align-items: center; gap: .45rem; }
+.afi-tip-row em { margin-left: auto; padding-left: .75rem; color: var(--color-text); font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+.afi-tip { animation: afiFade .12s var(--ease-out); }
+.afi-tip span { display: block; font-variant-numeric: tabular-nums; }
+.afi-tip span.afi-tip-row { display: flex; }
+/* The season so far */
+.afi-chartcard { grid-template-rows: auto auto minmax(0, 1fr); }
+.afi-chart { display: flex; flex: 1; flex-direction: column; min-height: 0; }
+.afi-plot { flex: 1 1 280px; min-height: 260px; overflow: hidden; }
+.afi-plot svg { position: absolute; top: 0; left: 0; }
+.afi-area { fill: var(--afi-fill); animation: afiFade .9s var(--ease-out) .55s backwards; }
+.afi-line { fill: none; stroke: var(--afe-data); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
+.afi-line.is-now { stroke-dasharray: 1; animation: afiDraw 1.2s var(--ease-out) .3s backwards; }
+.afi-line.is-past { stroke: var(--afi-past); stroke-width: 2; stroke-dasharray: 5 4; }
+.afi-dot { fill: var(--afe-data); stroke: var(--color-bg-card); stroke-width: 2.5; transform-box: fill-box; transform-origin: center; animation: afiPop .45s var(--ease-out) 1.25s backwards; }
+.afi-end { font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+.afe-chart .afi-end.is-now { fill: var(--color-text); font-size: var(--fs-sm); font-weight: 750; animation: afiFade .4s var(--ease-out) 1.3s backwards; }
+.afi-open-mark line { stroke: var(--color-text-muted); stroke-dasharray: 2 3; shape-rendering: crispEdges; }
+.afi-open-mark text { fill: var(--color-text-secondary); font-size: var(--fs-2xs); font-weight: 600; }
+.afi-cross { stroke: var(--color-border-strong); stroke-width: 1; shape-rendering: crispEdges; }
+.afi-table { margin-top: .6rem; }
+.afi-table summary { display: inline-block; padding: .35rem 0; cursor: pointer; }
+/* Where they live: the distance line, then the steps as chips */
+.afi-dist { margin: .1rem 0 .9rem; }
+.afi-dist svg { display: block; overflow: visible; }
+.afi-bay { fill: var(--color-bg-secondary); stroke: var(--color-border); }
+.afi-close-zone { fill: color-mix(in srgb, var(--afe-data) 7%, transparent); }
+.afe-chart .afi-zone-label { fill: var(--color-text-secondary); font-weight: 600; }
+.afi-axis-line { stroke: var(--color-border-strong); shape-rendering: crispEdges; }
+.afi-tick { stroke: var(--color-border-strong); shape-rendering: crispEdges; }
+.afi-pt { stroke: var(--color-bg-card); stroke-width: 2; cursor: pointer; transform-box: fill-box; transform-origin: center; transition: transform .15s var(--ease-out); animation: afiDrop .5s var(--ease-out) backwards; animation-delay: calc(.35s + var(--i, 0) * 22ms); }
+.afi-pt:hover { transform: scale(1.4); }
+.afi-bands { display: flex; flex-wrap: wrap; gap: .45rem; }
+.afi-band { display: inline-flex; align-items: center; gap: .45rem; min-height: 36px; padding: .25rem .75rem; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-card); color: var(--color-text-secondary); font: inherit; font-size: var(--fs-xs); font-weight: 600; transition: border-color .15s var(--ease-out), background-color .15s var(--ease-out); }
+.afi-band b { color: var(--color-text); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.afi-band:not(:disabled) { cursor: pointer; }
+.afi-band:not(:disabled):hover { border-color: var(--color-border-strong); background: var(--color-bg-hover); }
+.afi-band:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+.afi-band.is-rest { border-style: dashed; }
+@media (pointer: coarse) { .afi-band { min-height: 44px; } }
+/* Ranked lists: each row's bar sits behind its words */
+.afi-srcs { display: grid; gap: .3rem; }
+.afi-src { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 40px; padding: .4rem .75rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
+.afi-src::before { content: ''; position: absolute; inset: 0 auto 0 0; z-index: -1; width: var(--w); min-width: 6px; border-radius: inherit; background: var(--afi-fill); transform-origin: left; animation: afiGrowX .75s var(--ease-out) backwards; animation-delay: calc(.3s + var(--i, 0) * 60ms); transition: background-color .15s var(--ease-out); }
+.afi-src:hover::before { background: var(--afi-hover); }
+.afi-src.is-rest::before { background: var(--afe-track); }
+.afi-src:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+.afi-src span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.afi-src b { font-variant-numeric: tabular-nums; }
+.afi-flag { display: inline-block; width: 8px; height: 8px; margin-right: .55rem; border-radius: 50%; background: var(--tone-warn-dot); vertical-align: .05em; }
+.afi-note { margin: .85rem 0 0; color: var(--color-text-secondary); font-size: var(--fs-xs); line-height: 1.45; }
 .afi-quiet { margin: 0; color: var(--color-text-muted); font-size: var(--fs-xs); text-align: center; }
-.afi-none { padding: 1.6rem 1.5rem; text-align: center; }
-.afi-none p { margin: .35rem auto 0; }
+.afi-none { display: grid; justify-items: center; gap: .4rem; padding: 2.25rem 1.5rem; border-style: dashed; text-align: center; }
+.afe-viz.afi-none h4 { font-size: var(--fs-lg); letter-spacing: -.02em; }
+.afi-none p { margin: 0; max-width: 54ch; }
 .afi-added { display: grid; }
 .afi-added a { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 44px; border-bottom: 1px solid var(--color-border); color: inherit; font-size: var(--fs-sm); font-weight: 600; text-decoration: none; }
 .afi-added a:last-child { border-bottom: 0; }
 .afi-added a:hover span { text-decoration: underline; }
 .afi-added small { flex: none; display: inline-flex; align-items: center; gap: .35rem; color: var(--color-text-muted); font-size: var(--fs-xs); font-weight: 500; }
-.afi-added small svg { transform: rotate(-90deg); }
-.afi-added a:hover small svg { color: var(--color-text); }
-.afi-keys { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin-bottom: .35rem; color: var(--color-text-secondary); font-size: var(--fs-xs); }
-.afi-keys span { display: inline-flex; align-items: center; gap: .4rem; }
-.afi-keys i { width: 14px; height: 2px; border-radius: 2px; background: var(--afe-data); }
-.afi-keys i.is-past { background: var(--afi-past); }
-.afi-line { fill: none; stroke: var(--afe-data); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
-.afi-line.is-past { stroke: var(--afi-past); }
-.afi-dot { fill: var(--afe-data); stroke: var(--color-bg-card); stroke-width: 2; }
-.afi-end { font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
-.afe-chart .afi-end.is-now { fill: var(--color-text); font-size: var(--fs-xs); font-weight: 700; }
-.afi-cross { stroke: var(--color-border-strong); stroke-width: 1; shape-rendering: crispEdges; }
-.afi-tip span { display: block; font-variant-numeric: tabular-nums; }
-.afi-table { margin-top: .5rem; }
-.afi-table summary { display: inline-block; padding: .35rem 0; cursor: pointer; }
+.afi-added small svg { transform: rotate(-90deg); transition: transform .15s var(--ease-out); }
+.afi-added a:hover small svg { color: var(--color-text); transform: rotate(-90deg) translateY(2px); }
+/* Part to whole (Language, and Settings' area split) */
+.afi-bar { display: flex; gap: 2px; height: 8px; margin: 0 0 .75rem; }
+.afi-bar > span { min-width: 8px; height: 100%; border-radius: 99px; transition: flex-grow .25s ease; }
+/* The people behind a number */
 .afi-people { display: grid; }
-.afi-person { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 52px; padding: .45rem 0; border-bottom: 1px solid var(--color-border); }
+.afi-person { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; align-items: center; gap: .75rem; min-height: 52px; padding: .45rem 0; border-bottom: 1px solid var(--color-border); }
 .afi-person:last-child { border-bottom: 0; }
 .afi-person > div { min-width: 0; }
+.afi-person-dot { width: 10px; height: 10px; border-radius: 50%; }
 .afi-person b { display: block; font-size: var(--fs-sm); }
 .afi-person b.is-none { color: var(--color-text-muted); font-weight: 500; }
 .afi-person span { display: block; color: var(--color-text-muted); font-size: var(--fs-xs); line-height: 1.4; }
-@media (prefers-reduced-motion: reduce) { .afi-body, .afi-bar > span, .afi-step-track > span, .afe-hbar-track > span, .afi-kind { transition: none; } }
+/* Until the first answer: the page's shape, still */
+.afi-skel { display: grid; gap: .9rem; }
+.afi-skel-lede { --w: 58%; height: 30px; }
+.afi-skel-sub { --w: 32%; height: 12px; margin-bottom: .4rem; }
+.afi-skel-card { height: 150px; border-radius: var(--radius-md); }
+.afi-skel-block { height: 200px; border-radius: var(--radius-md); }
+.afi-skel-block.is-tall { height: 340px; }
+@media (prefers-reduced-motion: reduce) {
+  .afi-in, .afi-meter, .afi-step-bar, .afi-spark, .afi-line.is-now, .afi-area, .afi-dot, .afe-chart .afi-end.is-now, .afi-pt, .afi-src::before, .afi-flow-tip, .afi-tip { animation: none; }
+  .afi-body, .afi-bar > span, .afi-kind, .afi-stand, .afi-step, .afi-band, .afi-src::before, .afi-pt, .afi-added small svg, .afi-spark-line, .afi-spark-fill { transition: none; }
+  .afi-kind:hover { transform: none; }
+}
 .afe-table { width: 100%; border-collapse: collapse; margin-top: .5rem; font-size: var(--fs-xs); }
 .afe-table th, .afe-table td { padding: .3rem .4rem; border-bottom: 1px solid var(--color-border); text-align: left; }
 .afe-table td:last-child, .afe-table th:last-child { text-align: right; }
@@ -1669,6 +1763,14 @@ function DeleteDialog({ app, onClose, onDone }) {
 }
 
 // ─── Insights ──────────────────────────────────────────────────────
+// The season at a glance, laid out the way the best analytics pages read. The answer comes first, in one
+// sentence. The two applications are the switch, each card with its own season line (Stripe's metric
+// cards). Then where everyone stands; the application page by page, each page's column split by what
+// happened to the people who got that far (PostHog's funnels); when they came in, beside last season;
+// where they live, a dot each on one line out from the service area; and ranked lists whose bars sit
+// behind the rows (Vercel's). Every mark opens the people behind it.
+// Motion is CSS only: sections rise in, bars grow from their base, the season line draws. It replays when
+// the other application is picked and stops for reduced motion. Numbers never count up.
 const minutesText = (m) => {
   if (m == null) return '–';
   if (m < 90) return `${Math.max(1, Math.round(m))} min`;
@@ -1688,6 +1790,15 @@ const STANDINGS = [
   { key: 'stopped', label: 'Stopped by the form', color: 'var(--afe-data-3)' },
   { key: 'left', label: 'Left without finishing', color: 'var(--afe-rest)' },
 ];
+const STATE_COLOR = Object.fromEntries(STANDINGS.map(s => [s.key, s.color]));
+const STATE_LABEL = Object.fromEntries(STANDINGS.map(s => [s.key, s.label]));
+// What became of everyone whose furthest page a page was, in the same colors: going on is the blue of sending it
+const FLOW = [
+  { key: 'on', label: 'Went on', color: 'var(--afe-data)' },
+  { key: 'working', label: 'Still working on it', color: 'var(--afe-data-2)' },
+  { key: 'stopped', label: 'Stopped by the form', color: 'var(--afe-data-3)' },
+  { key: 'left', label: 'Left', color: 'var(--afe-rest)' },
+];
 const STOP_WHY = { outside: 'outside the area', rental: 'renting' };
 
 const agoText = (iso) => {
@@ -1706,12 +1817,13 @@ function partwayLine({ family = 0, organization = 0 }) {
   return parts.length ? ` ${listWords(parts)} ${family + organization === 1 ? 'is' : 'are'} partway through.` : '';
 }
 
-/** The page's one sentence: what's in, and who's on the way */
+/** The page's one sentence: what's in, and who's on the way, its numbers in bold */
 function seasonSentence({ family: f, organization: o }) {
-  const inNow = f.total || o.total ? `${plural(f.total, 'makeover')} and ${plural(o.total, 'community project')} so far` : 'No applications in yet';
-  const partway = [f.partway && plural(f.partway, 'family', 'families'), o.partway && plural(o.partway, 'organization')].filter(Boolean);
-  if (!partway.length) return `${inNow}.`;
-  return `${inNow}, and ${listWords(partway)} ${f.partway + o.partway === 1 ? 'is' : 'are'} partway through.`;
+  const n = (x, one, many) => html`<b>${num(x)}</b> ${x === 1 ? one : many}`;
+  const inNow = f.total || o.total ? html`${n(f.total, 'makeover', 'makeovers')} and ${n(o.total, 'community project', 'community projects')} so far` : 'No applications in yet';
+  const parts = [f.partway && n(f.partway, 'family', 'families'), o.partway && n(o.partway, 'organization', 'organizations')].filter(Boolean);
+  if (!parts.length) return html`${inNow}.`;
+  return html`${inNow}, and ${parts.length === 2 ? html`${parts[0]} and ${parts[1]}` : parts[0]} ${f.partway + o.partway === 1 ? 'is' : 'are'} partway through.`;
 }
 
 function openingLine(opening) {
@@ -1727,6 +1839,17 @@ function openingLine(opening) {
   if (!when) return `Applications are open. ${tail}`;
   return `${when === 'today' ? 'Applications opened today.' : `Open since ${when}.`} ${tail}`;
 }
+
+/** Until the first answer: the page's shape, still (never a shimmer) */
+const InsightsSkeleton = () => html`
+  <div class="afi-skel">
+    <span class="sr-only" role="status">Loading insights…</span>
+    <span class="skel afi-skel-lede"></span>
+    <span class="skel afi-skel-sub"></span>
+    <div class="afi-kinds"><span class="skel afi-skel-card"></span><span class="skel afi-skel-card"></span></div>
+    <span class="skel afi-skel-block"></span>
+    <span class="skel afi-skel-block is-tall"></span>
+  </div>`;
 
 function InsightsTab({ seasonYear, go, kind, onKind }) {
   const [years, setYears] = useState([]);
@@ -1753,7 +1876,7 @@ function InsightsTab({ seasonYear, go, kind, onKind }) {
     return () => { live = false; };
   }, [year, kind]);
   const ins = data;
-  // What's on the page until the other kind's numbers arrive: nothing jumps while they load
+  // What's on the page until the other kind's numbers arrive: nothing jumps while they load, then it all comes in fresh
   const shown = ins?.kind || kind;
   const open = (title, list) => setSheet({ title, list });
   return html`
@@ -1766,24 +1889,24 @@ function InsightsTab({ seasonYear, go, kind, onKind }) {
         </label>`}
       <//>
       ${error && html`<div class="afe-note is-warn"><${Icon} name="warn" /><span>Couldn't load insights: ${error}</span></div>`}
-      ${!ins && !error && html`<${Spinner} />`}
+      ${!ins && !error && html`<${InsightsSkeleton} />`}
       ${ins && html`
-        <div class="afi-lead">
+        <div class="afi-lead afi-in">
           <p class="afi-lede">${seasonSentence(ins.season)}</p>
           <p class="afi-lede-sub">${openingLine(ins.opening)}</p>
         </div>
-        <div class="afi-kinds" role="group" aria-label="Which applications to show">
-          ${['family', 'organization'].map(k => html`<${KindCard} key=${k} k=${k} side=${ins.season[k]} lastYear=${ins.season.lastYear} on=${kind === k} onKind=${onKind} />`)}
+        <div class="afi-kinds afi-in" style="--i: 1" role="group" aria-label="Which applications to show">
+          ${['family', 'organization'].map(k => html`<${KindCard} key=${k} k=${k} side=${ins.season[k]} year=${ins.year} lastYear=${ins.season.lastYear} on=${kind === k} onKind=${onKind} />`)}
         </div>
-        <div class=${`afi-body ${loading ? 'is-loading' : ''}`}>
+        <div class=${`afi-body ${loading ? 'is-loading' : ''}`} key=${`${shown}-${ins.year}`}>
           ${ins.started > 0 ? html`<${InsightsBody} ins=${ins} k=${shown} go=${go} open=${open} />` : html`<${InsightsEmpty} ins=${ins} k=${shown} />`}
         </div>
         ${sheet && html`<${PeopleSheet} sheet=${sheet} pages=${ins.byPage || []} near=${ins.area?.nearMiles || 0} onClose=${() => setSheet(null)} />`}`}
     </div>`;
 }
 
-/** The two kinds, big: the numbers people came for, and the way to pick which one the page shows */
-function KindCard({ k, side, lastYear, on, onKind }) {
+/** The two kinds, big: the numbers people came for, the season's line so far, and the way to pick which one the page shows */
+function KindCard({ k, side, year, lastYear, on, onKind }) {
   const added = side.added?.length || 0;
   const moved = side.moved?.length || 0;
   const now = [side.recent ? `${num(side.recent)} in the last 7 days` : 'None in the last 7 days', added && `${num(added)} added in JobTread`, moved && `${num(moved)} from the makeover form`].filter(Boolean).join(' · ');
@@ -1792,9 +1915,43 @@ function KindCard({ k, side, lastYear, on, onKind }) {
       <span class="afi-kind-name">${INSIGHT_WORDS[k].label}</span>
       <strong>${num(side.total)}</strong>
       <small>${now}</small>
-      ${lastYear && html`<small class="afi-kind-last">${side.last.total ? `${lastYear} season: ${num(side.last.total)} in all` : `None in the ${lastYear} season`}</small>`}
+      <small class="afi-kind-last">${lastYear ? (side.last.total ? `${lastYear} season: ${num(side.last.total)} in all` : `None in the ${lastYear} season`) : ''}</small>
+      <${Spark} points=${side.points} year=${year} />
     </button>`;
 }
+
+/** A card's season so far: applications in by date, one small filled line */
+function Spark({ points, year }) {
+  const m = useMemo(() => seasonModel({ points, lastPoints: [], year, now: Date.now() }), [points, year]);
+  const W = 160;
+  const H = 56;
+  const span = Math.max(1, m.today - m.from);
+  const most = Math.max(1, m.mine.length);
+  const x = (t) => ((t - m.from) / span) * W;
+  const y = (v) => H - 2 - (v / most) * (H - 6);
+  let n = m.countAt(m.mine, m.from);
+  let d = `M0,${y(n).toFixed(1)}`;
+  for (const t of m.mine) {
+    if (t <= m.from || t > m.today) continue;
+    n += 1;
+    d += `H${x(t).toFixed(1)}V${y(n).toFixed(1)}`;
+  }
+  d += `H${W}`;
+  return html`
+    <svg class="afi-spark" viewBox=${`0 0 ${W} ${H}`} preserveAspectRatio="none" aria-hidden="true">
+      <path class="afi-spark-fill" d=${`${d}V${H}H0Z`} />
+      <path class="afi-spark-line" d=${d} />
+    </svg>`;
+}
+
+/** A card's title, and what sits to its right (a count, a key) */
+const CardHead = ({ title, children = null }) => html`<header class="afi-card-head"><h4>${title}</h4>${children}</header>`;
+
+/** Swatches that say what a color means (lines for a chart's seasons) */
+const Keys = ({ items }) => html`
+  <div class="afi-keys" aria-hidden="true">
+    ${items.map(k => html`<span><i class=${k.line || ''} style=${k.color ? `background: ${k.color};` : ''}></i>${k.label}</span>`)}
+  </div>`;
 
 function InsightsBody({ ins, k, go, open }) {
   const w = INSIGHT_WORDS[k];
@@ -1810,90 +1967,74 @@ function InsightsBody({ ins, k, go, open }) {
     { label: 'Address the Census couldn’t find', n: ins.checks?.unchecked, show: 'unchecked' },
   ].filter(c => c.n > 0);
   const given = (ins.referral || []).filter(r => r.source !== 'Not given').length;
-  const cards = [
-    ins.area?.checked > 0 && html`<${AreaCard} a=${ins.area} k=${k} started=${ins.started} go=${go} people=${people} open=${open} />`,
-    given > 0 && html`
-      <div class="afe-viz">
-        <h4>How ${w.whoMany} heard about us</h4>
-        <span class="afe-hint">From “Who referred you”, on submitted applications.</span>
-        <${RankBars} rows=${ins.referral} people=${people} open=${open} />
-      </div>`,
-    checks.length > 0 && html`
-      <div class="afe-viz">
-        <h4>Worth a look</h4>
-        <span class="afe-hint">Run on each submitted application, before anyone reviews it.</span>
-        <div class="afe-checklist">
-          ${checks.map(c => html`<div><span>${c.label} <b>${num(c.n)}</b></span>${c.show && html`<button class="btn btn-ghost btn-sm" onClick=${() => go('applicants', { view: 'submissions', show: c.show, year: ins.year })}>See ${c.n === 1 ? 'it' : 'them'}</button>`}</div>`)}
-        </div>
-      </div>`,
+  const fo = ins.finishOf || {};
+  const notCounted = [fo.working > 0 && `${num(fo.working)} still working`, fo.stopped > 0 && `${num(fo.stopped)} stopped by the form`].filter(Boolean);
+  const opened = ins.opening?.open && ins.opening.kind === k ? ins.opening.since : null;
+  // Beside the season chart: who referred them, then what's worth a look; the rest below in a row of their own
+  const beside = [
+    given > 0 && html`<${SourcesCard} rows=${ins.referral} people=${people} open=${open} w=${w} />`,
+    checks.length > 0 && html`<${ChecksCard} checks=${checks} go=${go} year=${ins.year} />`,
+  ].filter(Boolean);
+  const small = [
     side.added?.length > 0 && html`<${AddedCard} added=${side.added} />`,
     side.moved?.length > 0 && html`<${MovedCard} moved=${side.moved} />`,
-    es > 0 && html`
-      <div class="afe-viz">
-        <h4>Language</h4>
-        <span class="afe-hint">The language ${w.whoMany} chose when they started.</span>
-        <${StackBar} parts=${[
-          { label: 'English', n: ins.languages?.en || 0, color: 'var(--afe-data)' },
-          { label: 'Spanish', n: es, color: 'var(--afe-data-2)' },
-        ]} total=${(ins.languages?.en || 0) + es} />
-      </div>`,
-    ins.reminders?.sent > 0 && html`
-      <div class="afe-viz">
-        <h4>Reminder emails</h4>
-        <span class="afe-hint">Sent to ${w.whoMany} who started and went quiet. The wording is in <a href="#applications/emails">Emails</a>.</span>
-        <div class="afe-stat-pair">
-          <div><b>${num(ins.reminders.sent)}</b><span>${ins.reminders.sent === 1 ? 'reminder sent' : 'reminders sent'}</span></div>
-          <div><b>${num(ins.reminders.finishedAfter)}</b><span>finished after a reminder</span></div>
-        </div>
-      </div>`,
+    es > 0 && html`<${LanguageCard} languages=${ins.languages} w=${w} />`,
+    ins.reminders?.sent > 0 && html`<${RemindersCard} reminders=${ins.reminders} w=${w} />`,
   ].filter(Boolean);
   // The community project application is English only, so Spanish is never news there
   const quiet = [k !== 'organization' && es === 0 && 'Spanish applications', !(ins.reminders?.sent > 0) && 'reminder emails', !checks.length && 'application checks'].filter(Boolean);
-  const fo = ins.finishOf || {};
-  const notCounted = [fo.working > 0 && `${num(fo.working)} still working`, fo.stopped > 0 && `${num(fo.stopped)} stopped by the form`].filter(Boolean);
+  let order = 0;
+  const rise = () => `--i: ${order++}`;
   return html`
-    <div class="afe-viz afi-standing">
-      <h4>Where everyone stands</h4>
-      <span class="afe-hint">${plural(ins.started, 'application was', 'applications were')} started for ${ins.year}. Pick a number to see who.</span>
-      <div class="afi-bar" role="img" aria-label=${STANDINGS.map(s => `${s.label}: ${counts[s.key]}`).join(', ')}>
-        ${STANDINGS.filter(s => counts[s.key] > 0).map(s => html`<span style=${`flex: ${counts[s.key]} 1 0; background: ${s.color};`} title=${`${s.label}: ${num(counts[s.key])}`}></span>`)}
-      </div>
-      <div class="afi-stands">
-        ${STANDINGS.map(s => {
-          const n = counts[s.key];
-          const why = s.key === 'stopped' && n ? stoppedWhy(ins.stopped) : `${pct(n, ins.started)}%`;
-          return html`
-            <button type="button" class="afi-stand" data-stand=${s.key} disabled=${!n} onClick=${() => open(s.label, forWhom(s.key))} aria-label=${`${s.label}: ${num(n)}, ${why}${n ? '. See who.' : ''}`}>
-              <i style=${`background: ${s.color};`}></i>
-              <span>${s.label}</span>
-              <b>${num(n)}</b>
-              <small>${why}</small>
-            </button>`;
-        })}
-      </div>
-      <div class="afi-facts">
+    <section class="afe-viz afi-card afi-in" style=${rise()}>
+      <${CardHead} title="Where everyone stands"><span class="afi-meta">${plural(ins.started, 'application')} started for ${ins.year}</span><//>
+      <span class="afe-hint">Pick a number to see who.</span>
+      <div class="afi-standing">
         <div>
-          <span>Finish rate</span>
-          <b>${ins.finishRate == null ? 'Too early' : `${ins.finishRate}%`}</b>
-          <small>${ins.finishRate == null ? 'Everyone gets 14 days before counting as left' : `${num(fo.finished)} of ${num(fo.of)} who started 14 or more days ago${notCounted.length ? `, not counting ${listWords(notCounted)}` : ''}`}</small>
+          <div class="afi-meter" role="img" aria-label=${STANDINGS.map(s => `${s.label}: ${counts[s.key]}`).join(', ')}>
+            ${STANDINGS.filter(s => counts[s.key] > 0).map(s => html`<span style=${`flex: ${counts[s.key]} 1 0; background: ${s.color};`} title=${`${s.label}: ${num(counts[s.key])}`}></span>`)}
+          </div>
+          <div class="afi-stands">
+            ${STANDINGS.map(s => {
+              const n = counts[s.key];
+              const why = s.key === 'stopped' && n ? stoppedWhy(ins.stopped) : `${pct(n, ins.started)}%`;
+              return html`
+                <button type="button" class="afi-stand" data-stand=${s.key} disabled=${!n} onClick=${() => open(s.label, forWhom(s.key))} aria-label=${`${s.label}: ${num(n)}, ${why}${n ? '. See who.' : ''}`}>
+                  <i style=${`background: ${s.color};`}></i>
+                  <span>${s.label}</span>
+                  <b>${num(n)}</b>
+                  <small>${why}</small>
+                </button>`;
+            })}
+          </div>
         </div>
-        <div>
-          <span>Typical time to finish</span>
-          <b>${minutesText(ins.medianMinutes)}</b>
-          <small>From the first page to sending it${ins.medianOf ? `, across ${plural(ins.medianOf, 'application')}` : ''}</small>
+        <div class="afi-facts">
+          <div class="afi-kpi">
+            <span>Finish rate</span>
+            <b class=${ins.finishRate == null ? 'is-wait' : ''}>${ins.finishRate == null ? 'Too early' : `${ins.finishRate}%`}</b>
+            <small>${ins.finishRate == null ? 'Everyone gets 14 days before counting as left' : `${num(fo.finished)} of ${num(fo.of)} who started 14 or more days ago${notCounted.length ? `, not counting ${listWords(notCounted)}` : ''}`}</small>
+          </div>
+          <div class="afi-kpi">
+            <span>Typical time to finish</span>
+            <b class=${ins.medianMinutes == null ? 'is-wait' : ''}>${minutesText(ins.medianMinutes)}</b>
+            <small>From the first page to sending it${ins.medianOf ? `, across ${plural(ins.medianOf, 'application')}` : ''}</small>
+          </div>
         </div>
       </div>
-    </div>
-    <div class=${`afi-pair ${showChart ? '' : 'is-one'}`}>
-      <div class="afe-viz">
-        <h4>How far people get</h4>
-        <span class="afe-hint">Each page of the application, and how many reached it. Pick a page to see who.</span>
-        <${PageFunnel} ins=${ins} open=${open} />
-      </div>
-      ${showChart && html`<${SeasonCard} side=${side} year=${ins.year} lastYear=${ins.season.lastYear} w=${w} />`}
-    </div>
-    ${cards.length > 0 && html`<div class=${`afi-cards ${cards.length === 1 ? 'is-one' : ''}`}>${cards}</div>`}
-    ${quiet.length > 0 && html`<p class="afi-quiet">Nothing to report yet on ${listWords(quiet)}.</p>`}`;
+    </section>
+    <section class="afe-viz afi-card afi-in" style=${rise()}>
+      <${CardHead} title="How far people get"><${Keys} items=${FLOW} /><//>
+      <span class="afe-hint">Each page, and what became of everyone who got that far. Pick a page to see who reached it.</span>
+      <${PageFlow} ins=${ins} open=${open} />
+    </section>
+    ${(showChart || beside.length > 0) && html`
+      <div class=${`afi-row afi-in ${showChart && beside.length ? '' : 'is-one'}`} style=${rise()}>
+        ${showChart && html`<${SeasonCard} side=${side} year=${ins.year} lastYear=${ins.season.lastYear} w=${w} opened=${opened} />`}
+        ${beside.length > 0 && html`<div class="afi-stack">${beside}</div>`}
+      </div>`}
+    ${ins.area?.checked > 0 && html`<${AreaCard} a=${ins.area} k=${k} w=${w} started=${ins.started} go=${go} people=${people} open=${open} style=${rise()} />`}
+    ${small.length > 0 && html`<div class="afi-grid afi-in" style=${rise()}>${small}</div>`}
+    ${quiet.length > 0 && html`<p class="afi-quiet afi-in" style=${rise()}>Nothing to report yet on ${listWords(quiet)}.</p>`}`;
 }
 
 function stoppedWhy(stopped) {
@@ -1907,31 +2048,32 @@ function InsightsEmpty({ ins, k }) {
   const side = ins.season[k];
   const showChart = side.total > 0 || side.last.total > 0;
   const named = side.added?.length > 0 || side.moved?.length > 0;
+  const opened = ins.opening?.open && ins.opening.kind === k ? ins.opening.since : null;
   return html`
-    <div class="afe-viz afi-none">
+    <section class="afe-viz afi-none afi-in">
       <h4>No ${w.who} has started a ${ins.year} application yet</h4>
-      <p class="afe-lede">This fills in as ${w.whoMany} open the application: who finishes, where people stop, and how they heard about us.</p>
-    </div>
+      <p class="afe-hint">This fills in as ${w.whoMany} open the application: who finishes, where people stop, and how they heard about us.</p>
+    </section>
     ${(named || showChart) && html`
-      <div class=${`afi-pair is-top ${named && showChart ? '' : 'is-one'}`}>
-        ${named && html`<div class="afi-col">
+      <div class=${`afi-row afi-in ${named && showChart ? '' : 'is-one'}`} style="--i: 1">
+        ${showChart && html`<${SeasonCard} side=${side} year=${ins.year} lastYear=${ins.season.lastYear} w=${w} opened=${opened} />`}
+        ${named && html`<div class="afi-stack">
           ${side.added?.length > 0 && html`<${AddedCard} added=${side.added} />`}
           ${side.moved?.length > 0 && html`<${MovedCard} moved=${side.moved} />`}
         </div>`}
-        ${showChart && html`<${SeasonCard} side=${side} year=${ins.year} lastYear=${ins.season.lastYear} w=${w} />`}
       </div>`}`;
 }
 
 /** Accounts counted as community projects that this form's numbers can't show, named instead */
 function NamedAccounts({ title, hint, rows }) {
   return html`
-    <div class="afe-viz">
-      <h4>${title}</h4>
+    <section class="afe-viz afi-card">
+      <${CardHead} title=${title}><span class="afi-meta">${num(rows.length)}</span><//>
       <span class="afe-hint">${hint}</span>
       <div class="afi-added">
         ${rows.map(a => html`<a href=${`#applications/applicants/${a.id}`}><span>${a.name}</span><small>${a.status}<${Icon} name="chevron" size=${14} /></small></a>`)}
       </div>
-    </div>`;
+    </section>`;
 }
 
 /** Community projects staff added in JobTread: no application to measure */
@@ -1942,32 +2084,110 @@ const AddedCard = ({ added }) => html`<${NamedAccounts} title="Added in JobTread
 const MovedCard = ({ moved }) => html`<${NamedAccounts} title="From the makeover form" rows=${moved}
   hint=${`Sent on the makeover form, then marked Community Project in JobTread, so ${moved.length === 1 ? 'it counts' : 'they count'} here but ${moved.length === 1 ? 'isn’t' : 'aren’t'} in either form’s page-by-page numbers.`} />`;
 
-/** The application page by page: how many reached it, and what's going on there now */
-function PageFunnel({ ins, open }) {
+/** Checks run on each submitted application, each opening Submissions on that filter for this season */
+function ChecksCard({ checks, go, year }) {
+  return html`
+    <section class="afe-viz afi-card">
+      <${CardHead} title="Worth a look" />
+      <span class="afe-hint">Run on each submitted application, before anyone reviews it.</span>
+      <div class="afe-checklist">
+        ${checks.map(c => html`<div><span><i class="afi-flag" aria-hidden="true"></i>${c.label} <b>${num(c.n)}</b></span>${c.show && html`<button class="btn btn-ghost btn-sm" onClick=${() => go('applicants', { view: 'submissions', show: c.show, year })}>See ${c.n === 1 ? 'it' : 'them'}</button>`}</div>`)}
+      </div>
+    </section>`;
+}
+
+function LanguageCard({ languages, w }) {
+  const en = languages?.en || 0;
+  const es = languages?.es || 0;
+  return html`
+    <section class="afe-viz afi-card">
+      <${CardHead} title="Language" />
+      <span class="afe-hint">The language ${w.whoMany} chose when they started.</span>
+      <${StackBar} parts=${[{ label: 'English', n: en, color: 'var(--afe-data)' }, { label: 'Spanish', n: es, color: 'var(--afe-data-2)' }]} total=${en + es} />
+    </section>`;
+}
+
+function RemindersCard({ reminders, w }) {
+  return html`
+    <section class="afe-viz afi-card">
+      <${CardHead} title="Reminder emails" />
+      <span class="afe-hint">Sent to ${w.whoMany} who started and went quiet. The wording is in <a href="#applications/emails">Emails</a>.</span>
+      <div class="afe-stat-pair">
+        <div><b>${num(reminders.sent)}</b><span>${reminders.sent === 1 ? 'reminder sent' : 'reminders sent'}</span></div>
+        <div><b>${num(reminders.finishedAfter)}</b><span>finished after a reminder</span></div>
+      </div>
+    </section>`;
+}
+
+/**
+ * The application page by page. A page's column is everyone who got that far, split by what became of them:
+ * went on (the next page, or sent it from the last), still working on it, stopped by the form, left. So each
+ * column's blue is the next one's height, and the light track behind it is everyone who started. Wide, the
+ * pages stand side by side; narrow, each is a row.
+ */
+function PageFlow({ ins, open }) {
   const { byPage = [], started, people = [] } = ins;
+  const [hi, setHi] = useState(null);
   if (!byPage.length) return html`<p class="afe-empty">No pages.</p>`;
+  const last = byPage.length - 1;
+  const steps = byPage.map((p, i) => {
+    const ended = people.filter(x => x.state !== 'submitted' && x.reached === i);
+    return {
+      ...p, i,
+      parts: {
+        on: i < last ? byPage[i + 1].reached : people.filter(x => x.state === 'submitted').length,
+        working: ended.filter(x => x.state === 'working').length,
+        stopped: ended.filter(x => x.state === 'stopped').length,
+        left: ended.filter(x => x.state === 'left').length,
+      },
+      kept: i ? pct(p.reached, byPage[i - 1].reached) : null,
+      list: people.filter(x => x.reached >= i),
+    };
+  });
   const mostLeft = Math.max(0, ...byPage.map(p => p.leftHere || 0));
   // One person leaving isn't a pattern
-  const isTop = (p) => mostLeft >= 2 && p.leftHere === mostLeft;
+  const isTop = (s) => mostLeft >= 2 && s.leftHere === mostLeft;
+  const partWords = (s) => FLOW.filter(f => s.parts[f.key] > 0).map(f => `${f.key === 'on' && s.i === last ? 'Sent it' : f.label} ${num(s.parts[f.key])}`);
+  const point = (s, e) => {
+    const b = e.currentTarget;
+    const wrap = b.closest('.afi-flow')?.getBoundingClientRect();
+    const r = b.getBoundingClientRect();
+    if (wrap) setHi({ i: s.i, x: r.left - wrap.left + r.width / 2, y: r.top - wrap.top, w: wrap.width });
+  };
+  const tip = hi && steps[hi.i];
   return html`
-    <div class="afi-funnel">
-      ${byPage.map((p, i) => {
-        const reached = people.filter(x => (x.reached ?? x.page) >= i);
-        const notes = [p.hereNow > 0 && `${num(p.hereNow)} here now`, p.stoppedHere > 0 && `${num(p.stoppedHere)} stopped`, p.leftHere > 0 && `${num(p.leftHere)} left`].filter(Boolean);
-        const label = `Page ${i + 1}, ${p.title}: ${num(p.reached)} reached${notes.length ? `, ${notes.join(', ')}` : ''}${isTop(p) ? '. The page most people leave on' : ''}${reached.length ? '. See who.' : ''}`;
-        return html`
-          <button type="button" class=${`afi-step ${isTop(p) ? 'is-top' : ''}`} disabled=${!reached.length} aria-label=${label} onClick=${() => open(`Reached ${p.title}`, reached)}>
-            <span class="afi-step-name"><em>${i + 1}</em><span class="afi-step-title">${p.title}</span>${isTop(p) ? html`<span class="tag afe-tag">Most leave here</span>` : ''}</span>
-            <span class="afi-step-note">${notes.join(' · ')}</span>
-            <span class="afi-step-n"><b>${num(p.reached)}</b></span>
-            <span class="afi-step-track"><span style=${`width: ${pct(p.reached, started)}%;`}></span></span>
-          </button>`;
-      })}
+    <div class="afi-flow">
+      <div class="afi-funnel" onPointerLeave=${() => setHi(null)}>
+        ${steps.map(s => html`
+          <button type="button" class=${`afi-step ${isTop(s) ? 'is-top' : ''}`} style=${`--i: ${s.i}; --h: ${started ? (s.reached / started) * 100 : 0}%;`}
+            disabled=${!s.list.length} onClick=${() => open(`Reached ${s.title}`, s.list)}
+            onPointerEnter=${(e) => point(s, e)} onFocus=${(e) => point(s, e)} onBlur=${() => setHi(null)}
+            aria-label=${`Page ${s.i + 1}, ${s.title}: ${num(s.reached)} reached${s.kept != null ? `, ${s.kept}% of the page before` : ''}. ${partWords(s).join(', ')}${isTop(s) ? '. The page most people leave on' : ''}${s.list.length ? '. See who.' : ''}`}>
+            <span class="afi-step-n"><b>${num(s.reached)}</b>${s.kept != null && html`<small>${s.kept}%</small>`}</span>
+            <span class="afi-step-plot"><span class="afi-step-bar">${FLOW.filter(f => s.parts[f.key] > 0).map(f => html`<i style=${`flex: ${s.parts[f.key]} 1 0; background: ${f.color};`}></i>`)}</span></span>
+            <span class="afi-step-name"><em>${s.i + 1}</em><span class="afi-step-title">${s.title}</span></span>
+            ${isTop(s) && html`<span class="tag afe-tag">Most leave here</span>`}
+          </button>`)}
+      </div>
+      ${tip && html`
+        <div class="afe-tip afi-tip afi-flow-tip" style=${`left: ${Math.min(hi.w - 112, Math.max(112, hi.x))}px; top: ${hi.y - 8}px;`}>
+          <b>${tip.i + 1}. ${tip.title}</b>
+          <span>${num(tip.reached)} reached${tip.kept != null ? `, ${tip.kept}% of the page before` : ''}</span>
+          ${FLOW.filter(f => tip.parts[f.key] > 0).map(f => html`<span class="afi-tip-row"><i style=${`background: ${f.color};`}></i>${f.key === 'on' && tip.i === last ? 'Sent it' : f.label}<em>${num(tip.parts[f.key])}</em></span>`)}
+          ${tip.hereNow > 0 && html`<span>${num(tip.hereNow)} on this page right now</span>`}
+        </div>`}
+      <details class="afi-table">
+        <summary class="afe-hint">Show as a table</summary>
+        <table class="afe-table">
+          <thead><tr><th>Page</th><th>Reached</th><th>Went on</th><th>Still working</th><th>Stopped</th><th>Left</th></tr></thead>
+          <tbody>${steps.map(s => html`<tr><td>${s.i + 1}. ${s.title}</td><td>${num(s.reached)}</td><td>${num(s.parts.on)}</td><td>${num(s.parts.working)}</td><td>${num(s.parts.stopped)}</td><td>${num(s.parts.left)}</td></tr>`)}</tbody>
+        </table>
+      </details>
     </div>`;
 }
 
-/** Where they are, as one list from the area outward */
-function AreaCard({ a, k, started, go, people, open }) {
+/** Where they are: a dot each on one line out from the area, then the same counts as steps */
+function AreaCard({ a, k, w, started, go, people, open, style = '' }) {
   const span = (st) => (st.to == null ? `Over ${st.from} mi` : st.from ? `${st.from} to ${st.to} mi` : `Up to ${st.to} mi`);
   const outside = (x) => x.band === 'near' || x.band === 'far';
   const rows = [
@@ -1979,25 +2199,102 @@ function AreaCard({ a, k, started, go, people, open }) {
     a.notFound > 0 && { label: 'Address not found', n: a.notFound, list: people.filter(x => x.band === 'unknown' && x.reason === 'no-match'), rest: true },
     a.notChecked > 0 && { label: 'Couldn’t be checked', n: a.notChecked, list: people.filter(x => x.band === 'unknown' && x.reason !== 'no-match'), rest: true },
   ].filter(Boolean);
-  const max = Math.max(1, ...rows.map(r => r.n));
-  // In a sentence of its own: a stop stands by the limit at the time, and the rows above use today's
+  // In a sentence of its own: a stop stands by the limit at the time, and the rows use today's
   const st = a.farDid?.stopped || 0;
   const early = a.farDid?.earlier || 0;
   const earlyText = !early ? '' : early === st ? `, ${st === 1 ? '' : 'all '}when the close distance was shorter` : `, ${num(early)} of them when the close distance was shorter`;
   const did = [st > 0 && `${num(st)} ${st === 1 ? 'was' : 'were'} stopped by the form as too far out${earlyText}`, a.farDid?.applied > 0 && `${num(a.farDid.applied)} applied from farther out`].filter(Boolean);
+  const states = STANDINGS.filter(s => people.some(p => p.band && p.state === s.key));
   return html`
-    <div class="afe-viz">
-      <h4>${k === 'organization' ? 'Where organizations are' : 'Where families live'}</h4>
-      <span class="afe-hint">${num(a.checked)} of ${num(started)} have reached the address check. Close means within ${plural(a.nearMiles, 'mile')} of the area (<a href="#applications/settings" onClick=${(e) => { e.preventDefault(); go('settings'); }}>Settings</a>).</span>
-      <div class="afe-hbars">
+    <section class="afe-viz afi-card afi-in" style=${style}>
+      <${CardHead} title=${k === 'organization' ? 'Where organizations are' : 'Where families live'}><${Keys} items=${states} /><//>
+      <span class="afe-hint">${num(a.checked)} of ${num(started)} have reached the address check, a dot each. Close means within ${plural(a.nearMiles, 'mile')} of the area (<a href="#applications/settings" onClick=${(e) => { e.preventDefault(); go('settings'); }}>Settings</a>).</span>
+      <${DistanceLine} near=${a.nearMiles} people=${people} open=${open} who=${w.who} />
+      <div class="afi-bands">
         ${rows.map(r => html`
-          <button type="button" class=${`afe-hbar afi-hbar ${r.rest ? 'is-rest' : ''}`} disabled=${!r.list.length} onClick=${() => open(r.label, r.list)}>
-            <span class="afe-hbar-label">${r.label}${r.close ? html` <span class="tag afe-tag">close</span>` : ''}</span>
-            <span class="afe-hbar-val"><b>${num(r.n)}</b></span>
-            <span class="afe-hbar-track"><span style=${`width: ${(r.n / max) * 100}%;`}></span></span>
+          <button type="button" class=${`afi-band ${r.rest ? 'is-rest' : ''}`} disabled=${!r.list.length} onClick=${() => open(r.label, r.list)}>
+            <span>${r.label}</span>${r.close ? html`<span class="tag afe-tag">close</span>` : ''}<b>${num(r.n)}</b>
           </button>`)}
       </div>
       ${did.length > 0 && html`<p class="afi-note">${listWords(did)}.</p>`}
+    </section>`;
+}
+
+/**
+ * Distance out from the service area on a log scale (a mile matters near it, not at 90), with the close
+ * distance shaded. Inside the area and addresses the Census couldn't place sit in their own bays at
+ * each end. Dots that would touch stack upward. Hover names one; a click opens them.
+ */
+function DistanceLine({ near = 0, people, open, who }) {
+  const box = useRef(null);
+  const [width, setWidth] = useState(720);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    const read = () => setWidth(el.clientWidth || 720);
+    read();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  const [tip, setTip] = useState(null);
+  const inside = people.filter(p => p.band === 'inside');
+  const out = people.filter(p => (p.band === 'near' || p.band === 'far') && p.miles != null).sort((x, y) => x.miles - y.miles);
+  const lost = people.filter(p => p.band === 'unknown');
+  const top = [10, 25, 50, 100, 250, 500, 1000].find(t => t >= Math.max(near, 1, ...out.map(p => p.miles))) || 1000;
+  const R = 6;
+  const STEP = 14;
+  const BAY = 78;
+  const GAP = 24;
+  const lostX = lost.length ? width - BAY : width;
+  const x0 = BAY + GAP;
+  const x1 = Math.max(x0 + 120, lostX - (lost.length ? GAP : 14));
+  const x = (m) => x0 + (Math.log1p(m) / Math.log1p(top)) * (x1 - x0);
+  // A bay fills row by row; on the line, a dot that would touch the one before moves up a row
+  const bay = (list, left) => {
+    const cols = Math.max(1, Math.floor((BAY - 8) / STEP));
+    return list.map((p, n) => ({ p, cx: left + 4 + R + (n % cols) * STEP, row: Math.floor(n / cols) }));
+  };
+  const ends = [];
+  const line = out.map((p) => {
+    const cx = x(p.miles);
+    let row = 0;
+    while (ends[row] != null && cx - ends[row] < STEP) row += 1;
+    ends[row] = cx;
+    return { p, cx, row };
+  });
+  const dots = [...bay(inside, 0), ...line, ...bay(lost, lostX)];
+  const rows = Math.max(1, ...dots.map(d => d.row + 1));
+  const base = 30 + rows * STEP;
+  const H = base + 26;
+  const cy = (d) => base - R - 3 - d.row * STEP;
+  let edge = -99;
+  const ticks = [1, 5, 10, 25, 50, 100, 250, 500, 1000].filter(t => t <= top).filter((t) => { const at = x(t); if (at - edge < 36) return false; edge = at; return true; });
+  const nearX = near > 0 ? x(Math.min(near, top)) : x0;
+  const where = (p) => (p.band === 'inside' ? 'Inside the area' : p.band === 'unknown' ? 'Address not found' : `${p.miles} mi outside the area`);
+  return html`
+    <div class="afe-chart afi-dist" ref=${box} onPointerLeave=${() => setTip(null)}>
+      <svg width=${width} height=${H} role="img" aria-label=${`${num(inside.length)} inside the area, ${num(out.length)} outside it${out.length ? `, from ${out[0].miles} to ${out[out.length - 1].miles} miles` : ''}${lost.length ? `, ${num(lost.length)} not found` : ''}.`}>
+        <rect class="afi-bay" x="0" y="4" width=${BAY} height=${base - 4} rx="8" />
+        ${lost.length > 0 && html`<rect class="afi-bay" x=${lostX} y="4" width=${BAY} height=${base - 4} rx="8" />`}
+        ${near > 0 && html`<rect class="afi-close-zone" x=${x0} y="4" width=${Math.max(0, nearX - x0)} height=${base - 4} rx="6" />`}
+        ${near > 0 && nearX - x0 > 44 && html`<text class="afe-axis afi-zone-label" x=${x0 + 8} y="19">Close</text>`}
+        <line class="afi-axis-line" x1=${x0} x2=${x1} y1=${base + 0.5} y2=${base + 0.5} />
+        <text class="afe-axis" x=${x0} y=${base + 17} text-anchor="middle">0</text>
+        ${ticks.map(t => html`<line class="afi-tick" x1=${x(t)} x2=${x(t)} y1=${base} y2=${base + 5} /><text class="afe-axis" x=${x(t)} y=${base + 17} text-anchor="middle">${t} mi</text>`)}
+        <text class="afe-axis afi-zone-label" x=${BAY / 2} y=${base + 17} text-anchor="middle">Inside</text>
+        ${lost.length > 0 && html`<text class="afe-axis afi-zone-label" x=${lostX + BAY / 2} y=${base + 17} text-anchor="middle">Not found</text>`}
+        ${dots.map((d, n) => html`
+          <circle class="afi-pt" cx=${d.cx} cy=${cy(d)} r=${R} fill=${STATE_COLOR[d.p.state]} style=${`--i: ${n}`}
+            onPointerEnter=${() => setTip(d)} onClick=${() => open(d.p.name || `No name given yet (${who})`, [d.p])} />`)}
+      </svg>
+      ${tip && html`
+        <div class="afe-tip afi-tip" style=${`left: ${Math.min(width - 96, Math.max(96, tip.cx))}px; top: ${cy(tip) - 10}px;`}>
+          <b>${tip.p.name || 'No name given yet'}</b>
+          <span>${where(tip.p)}</span>
+          <span class="afi-tip-row"><i style=${`background: ${STATE_COLOR[tip.p.state]};`}></i>${STATE_LABEL[tip.p.state]}</span>
+        </div>`}
     </div>`;
 }
 
@@ -2015,7 +2312,8 @@ function StackBar({ parts, total }) {
     </div>`;
 }
 
-function RankBars({ rows, people, open }) {
+/** Where they heard about us: ranked, each row's bar behind its words; "Not given" last, the rest one click */
+function SourcesCard({ rows, people, open, w }) {
   const sources = rows.filter(r => r.source !== 'Not given').sort((x, y) => y.count - x.count);
   const none = rows.find(r => r.source === 'Not given');
   const more = sources.slice(6);
@@ -2024,15 +2322,17 @@ function RankBars({ rows, people, open }) {
   const named = (r) => people.filter(p => p.referral === r.source);
   const rest = new Set(more.map(r => r.source));
   return html`
-    <div class="afe-hbars">
-      ${shown.map(r => html`
-        <button type="button" class=${`afe-hbar afi-hbar ${r.source === 'Not given' ? 'is-rest' : ''}`} onClick=${() => open(r.source, named(r))}>
-          <span class="afe-hbar-label" title=${r.source}>${r.source}</span>
-          <span class="afe-hbar-val"><b>${num(r.count)}</b></span>
-          <span class="afe-hbar-track"><span style=${`width: ${(r.count / max) * 100}%;`}></span></span>
-        </button>`)}
+    <section class="afe-viz afi-card">
+      <${CardHead} title=${`How ${w.whoMany} heard about us`} />
+      <span class="afe-hint">From “Who referred you”, on submitted applications.</span>
+      <div class="afi-srcs">
+        ${shown.map((r, n) => html`
+          <button type="button" class=${`afi-src ${r.source === 'Not given' ? 'is-rest' : ''}`} style=${`--w: ${(r.count / max) * 100}%; --i: ${n};`} onClick=${() => open(r.source, named(r))}>
+            <span title=${r.source}>${r.source}</span><b>${num(r.count)}</b>
+          </button>`)}
+      </div>
       ${more.length > 0 && html`<p class="afi-note"><button type="button" class="afe-link" onClick=${() => open(plural(more.length, 'more source'), people.filter(p => rest.has(p.referral)))}>And ${plural(more.length, 'more source')} with ${plural(more.reduce((n, r) => n + r.count, 0), 'application')}</button></p>`}
-    </div>`;
+    </section>`;
 }
 
 /** The people behind a number */
@@ -2056,6 +2356,7 @@ function PeopleSheet({ sheet, pages, near = 0, onClose }) {
       <div class="afi-people">
         ${sheet.list.map(p => html`
           <div class="afi-person">
+            <i class="afi-person-dot" style=${`background: ${STATE_COLOR[p.state]};`} title=${STATE_LABEL[p.state]}></i>
             <div><b class=${p.name ? '' : 'is-none'}>${p.name || 'No name given yet'}</b><span>${line(p)}</span></div>
             ${p.accountId && html`<a class="btn btn-ghost btn-sm" href=${`#applications/applicants/${p.accountId}`}>Open</a>`}
           </div>`)}
@@ -2082,17 +2383,17 @@ function seasonModel({ points, lastPoints, year, now }) {
   return { mine, past, today, from, to, countAt };
 }
 
-function SeasonCard({ side, year, lastYear, w }) {
+function SeasonCard({ side, year, lastYear, w, opened = null }) {
   const hasLast = !!lastYear && side.last.total > 0;
   return html`
-    <div class="afe-viz afi-chartcard">
-      <h4>The season so far</h4>
+    <section class="afe-viz afi-card afi-chartcard">
+      <${CardHead} title="The season so far">${hasLast && html`<${Keys} items=${[{ label: `${year} season`, line: 'is-line' }, { label: `${lastYear} season`, line: 'is-dash' }]} />`}<//>
       <span class="afe-hint">${w.many[0].toUpperCase()}${w.many.slice(1)} in by date${hasLast ? `, beside the ${lastYear} season from JobTread` : ''}.</span>
-      <${SeasonChart} side=${side} year=${year} lastYear=${hasLast ? lastYear : null} />
-    </div>`;
+      <${SeasonChart} side=${side} year=${year} lastYear=${hasLast ? lastYear : null} opened=${opened} />
+    </section>`;
 }
 
-function SeasonChart({ side, year, lastYear }) {
+function SeasonChart({ side, year, lastYear, opened = null }) {
   const box = useRef(null);
   const [{ width, H }, setSize] = useState({ width: 520, H: 262 });
   useEffect(() => {
@@ -2107,7 +2408,7 @@ function SeasonChart({ side, year, lastYear }) {
   }, []);
   const [hi, setHi] = useState(null);
   const m = useMemo(() => seasonModel({ points: side.points, lastPoints: lastYear ? side.last.points : [], year, now: Date.now() }), [side, year, lastYear]);
-  const pad = { l: 26, r: 30, t: 12, b: 22 };
+  const pad = { l: 26, r: 34, t: 16, b: 22 };
   const plotW = Math.max(120, width - pad.l - pad.r);
   const plotH = H - pad.t - pad.b;
   const span = Math.max(1, m.to - m.from);
@@ -2141,29 +2442,30 @@ function SeasonChart({ side, year, lastYear }) {
   };
   const day = (t) => new Date(t).toLocaleDateString([], { month: 'short', day: 'numeric', timeZone: 'UTC' });
   const tipLeft = hi == null ? 0 : Math.min(width - 78, Math.max(78, x(hi)));
+  // The day this application opened, when it's on the chart: the line starts there
+  const openAt = opened ? Date.parse(opened) : NaN;
+  const openShown = Number.isFinite(openAt) && openAt > m.from && openAt < m.to;
+  const mine = steps(m.mine, m.today);
   return html`
     <div class="afi-chart">
-      ${lastYear && html`
-        <div class="afi-keys" aria-hidden="true">
-          <span><i class="is-now"></i>${year} season</span>
-          <span><i class="is-past"></i>${lastYear} season</span>
-        </div>`}
       <div class="afe-chart afi-plot" ref=${box} onPointerMove=${move} onPointerLeave=${() => setHi(null)}>
       <svg width=${width} height=${H} role="img" aria-label=${`${year} season: ${mineNow} so far.${lastYear ? ` ${lastYear} season: ${pastEnd} in all.` : ''}`}>
         ${ticks.map(t => html`<line class="afe-grid" x1=${pad.l} x2=${pad.l + plotW} y1=${Math.round(y(t)) + 0.5} y2=${Math.round(y(t)) + 0.5} /><text class="afe-axis" x=${pad.l - 7} y=${y(t) + 4} text-anchor="end">${t}</text>`)}
         ${labels.map(t => html`<text class="afe-axis" x=${x(t)} y=${H - 5} text-anchor="middle">${monthName(t)}</text>`)}
+        ${openShown && html`<g class="afi-open-mark"><line x1=${Math.round(x(openAt)) + 0.5} x2=${Math.round(x(openAt)) + 0.5} y1=${pad.t} y2=${pad.t + plotH} /><text x=${x(openAt) + 6} y=${pad.t + 10}>Opened ${day(openAt)}</text></g>`}
         ${lastYear && html`<path class="afi-line is-past" d=${steps(m.past, m.to)} />`}
-        <path class="afi-line" d=${steps(m.mine, m.today)} />
+        <path class="afi-area" d=${`${mine}V${y(0).toFixed(1)}H${x(m.from).toFixed(1)}Z`} />
+        <path class="afi-line is-now" d=${mine} pathLength="1" />
         ${lastYear && !endClash && html`<text class="afe-axis afi-end" x=${x(m.to) + 6} y=${y(pastEnd) + 4}>${pastEnd}</text>`}
-        <circle class="afi-dot" cx=${x(m.today)} cy=${y(mineNow)} r="4" />
-        <text class="afi-end is-now" x=${x(m.today) + 8} y=${y(mineNow) + 4}>${mineNow}</text>
+        <circle class="afi-dot" cx=${x(m.today)} cy=${y(mineNow)} r="5" />
+        <text class="afi-end is-now" x=${x(m.today) + 9} y=${y(mineNow) + 4}>${mineNow}</text>
         ${hi != null && html`<line class="afi-cross" x1=${x(hi)} x2=${x(hi)} y1=${pad.t} y2=${pad.t + plotH} />`}
       </svg>
       ${hi != null && html`
         <div class="afe-tip afi-tip" style=${`left: ${tipLeft}px; top: ${pad.t + 6}px; transform: translateX(-50%);`}>
           <b>${day(hi)}</b>
-          ${hi <= m.today && html`<span>${year}: ${m.countAt(m.mine, hi)}</span>`}
-          ${lastYear && html`<span>${lastYear}: ${m.countAt(m.past, hi)}</span>`}
+          ${hi <= m.today && html`<span class="afi-tip-row"><i class="is-line"></i>${year}<em>${m.countAt(m.mine, hi)}</em></span>`}
+          ${lastYear && html`<span class="afi-tip-row"><i class="is-dash"></i>${lastYear}<em>${m.countAt(m.past, hi)}</em></span>`}
         </div>`}
       </div>
       <details class="afi-table">

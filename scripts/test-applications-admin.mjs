@@ -1098,7 +1098,17 @@ try {
     await page.waitForFunction(() => /Finish rate\s*65%/.test(document.querySelector('.afi-facts')?.innerText || ''), { timeout: 8000 }).catch(() => {});
     ok(/Home and Space\s*Most leave here/.test(await text(page, '.afi-step.is-top')), 'the page most people leave on is called out');
     // A page's number is the list it opens: everyone who reached it, not only who's there now
-    const steps = await page.$$eval('.afi-step', (els) => els.map(e => ({ n: Number(e.querySelector('.afi-step-n').textContent.replace(/,/g, '')), off: e.disabled, label: e.getAttribute('aria-label') })));
+    const steps = await page.$$eval('.afi-step', (els) => els.map(e => ({ n: Number(e.querySelector('.afi-step-n b').textContent.replace(/,/g, '')), off: e.disabled, label: e.getAttribute('aria-label') })));
+    // Each page's column is everyone who got that far, split by what became of them: the parts add up, and its blue is the next page
+    const table = await page.$$eval('.afi-flow .afe-table tbody tr', (trs) => trs.map(tr => [...tr.cells].slice(1).map(c => Number(c.textContent.replace(/,/g, '')))));
+    ok(table.length === steps.length && table.every(([reached, on, working, stopped, left]) => on + working + stopped + left === reached), `every page's parts add up to who reached it (${JSON.stringify(table.slice(0, 3))}…)`);
+    const sent = Number(await text(page, '.afi-stand[data-stand="submitted"] b'));
+    ok(table.every((r, i) => i === table.length - 1 || r[1] === table[i + 1][0]) && table[table.length - 1][1] === sent, `who went on from a page is who reached the next, and from the last, the ${sent} who sent it`);
+    ok(await page.$eval('.afi-step-bar', (b) => getComputedStyle(b).flexDirection) === 'column-reverse', 'on a wide screen the pages stand side by side as columns');
+    await page.hover('.afi-step:nth-child(3)');
+    await page.waitForSelector('.afi-flow-tip', { timeout: 3000 }).catch(() => {});
+    ok(/Went on\s*\d+/.test(await text(page, '.afi-flow-tip')), `pointing at a page shows what became of everyone who got there (${(await text(page, '.afi-flow-tip')).replace(/\s+/g, ' ')})`);
+    await page.mouse.move(2, 2);
     ok(/^Page 1, .+: \d+ reached/.test(steps[0].label), `each page reads as one sentence to a screen reader (${steps[0].label})`);
     for (const i of [0, 2]) {
       await page.evaluate((k) => document.querySelectorAll('.afi-step')[k].click(), i);
@@ -1113,8 +1123,8 @@ try {
     const wide = page.viewport();
     await page.setViewport({ width: 390, height: 844, deviceScaleFactor: 1 });
     await sleep(300);
-    const tag = await page.$eval('.afi-step.is-top', (b) => { const t = b.querySelector('.afe-tag').getBoundingClientRect(); const name = b.querySelector('.afi-step-name').getBoundingClientRect(); return { inside: t.right <= name.right + 1 && t.width > 40, row: b.getBoundingClientRect().right <= document.documentElement.clientWidth }; });
-    ok(tag.inside && tag.row, `at 390px "Most leave here" shows whole (${JSON.stringify(tag)})`);
+    const tag = await page.$eval('.afi-step.is-top', (b) => { const t = b.querySelector('.afe-tag').getBoundingClientRect(); const r = b.getBoundingClientRect(); return { inside: t.right <= r.right + 1 && t.left >= r.left - 1 && t.width > 40, row: r.right <= document.documentElement.clientWidth, across: getComputedStyle(b.querySelector('.afi-step-bar')).flexDirection === 'row' }; });
+    ok(tag.inside && tag.row && tag.across, `at 390px each page is a row and "Most leave here" shows whole (${JSON.stringify(tag)})`);
     await page.$eval('.afi-funnel', (e) => e.scrollIntoView({ block: 'start', behavior: 'instant' }));
     await page.screenshot({ path: join(OUT, '13b-insights-phone.png') });
     await page.setViewport(wide);
@@ -1165,8 +1175,27 @@ try {
     ok(!(await page.evaluate(() => [...document.querySelectorAll('.afe-viz h4')].some(h => /Reminder emails/.test(h.textContent)))) === (await page.evaluate(() => /reminder emails/.test(document.querySelector('.afi-quiet')?.textContent || ''))) , 'a card with nothing to say folds into one quiet line');
     await shot(page, '13-insights.png');
     // The cards share the space by height: none stretched to fill a column
-    const cardGaps = await page.evaluate(() => [...document.querySelectorAll('.afi-cards > .afe-viz')].map((c) => { const last = [...c.children].pop(); return Math.round(c.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom); }));
-    ok(cardGaps.length >= 2 && cardGaps.every((g) => g < 60), `no card holds a block of empty space (${cardGaps.join(', ')}px under the last line)`);
+    const cardGaps = await page.evaluate(() => [...document.querySelectorAll('.afi-body .afe-viz')].map((c) => { const last = [...c.children].pop(); return Math.round(c.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom); }));
+    ok(cardGaps.length >= 5 && cardGaps.every((g) => g < 60), `no card holds a block of empty space (${cardGaps.join(', ')}px under the last line)`);
+    // Where they live: a dot for everyone who reached the address check, the same count the card gives
+    const checked = Number(await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Where families live/.test(v.querySelector('h4')?.textContent))?.querySelector('.afe-hint')?.textContent.match(/^(\d+)/)?.[1]));
+    ok(checked > 0 && await count(page, '.afi-dist .afi-pt') === checked, `a dot for each of the ${checked} who reached the address check (${await count(page, '.afi-dist .afi-pt')})`);
+    await page.$eval('.afi-dist .afi-pt', (c) => c.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    const pt = await (await page.$('.afi-dist .afi-pt')).boundingBox();
+    await page.mouse.move(pt.x + pt.width / 2, pt.y + pt.height / 2);
+    await page.waitForSelector('.afi-dist .afi-tip', { timeout: 3000 }).catch(() => {});
+    ok(/Inside the area|mi outside|Address not found/.test(await text(page, '.afi-dist .afi-tip')), `pointing at a dot names who and how far (${(await text(page, '.afi-dist .afi-tip')).replace(/\s+/g, ' ')})`);
+    await page.mouse.move(2, 2);
+    // Motion: the page comes in, and it doesn't for someone who asked for less
+    // (This browser runs with reduced motion so screenshots hold still: each side is asked for, then it goes back)
+    const moving = async () => page.evaluate(() => ['.afi-body .afi-in', '.afi-step-bar', '.afi-meter', '.afi-pt', '.afi-line.is-now', '.afi-spark'].map(q => document.querySelector(q) && getComputedStyle(document.querySelector(q)).animationName));
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+    const moves = await moving();
+    ok(JSON.stringify(moves) === JSON.stringify(['afiRise', 'afiGrowY', 'afiGrowX', 'afiDrop', 'afiDraw', 'afiWipe']), `sections rise in, bars grow from their base, dots drop in, lines draw (${moves.join(', ')})`);
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+    const still = await moving();
+    ok(still.every(a => a === 'none'), `reduced motion: nothing moves (${still.join(', ')})`);
+    await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
     // The organizations' view: their own switch, and no word on Spanish (their application is English only)
     await page.click('.afi-kind[data-kind="organization"]');
     await page.waitForFunction(() => /community project application/.test(document.querySelector('.afi-lede-sub')?.textContent || ''), { timeout: 8000 }).catch(() => {});
