@@ -273,7 +273,7 @@ try {
       ok(await page.$eval('#fact-status .bp-org__note', (n) => getComputedStyle(n).display === 'none'), 'its small print waits for the rest to open');
       ok(by['fact-office']?.v.startsWith(ST.address.street) && !by['fact-mailing'], 'the address; no mailing address until Site Config has one');
       ok(by['fact-mission']?.v.trim().startsWith(String(seed.media.mission).trim().slice(0, 40)) && by['fact-website'] && by['fact-founded'] && by['fact-impact'], 'the mission, website, founding and impact folded under them');
-      ok(!by['fact-legal'] && !by['fact-vision'], 'no legal name, vision or values shown while there are none');
+      ok(!by['fact-legal'] && !by['fact-vision'] && !by['fact-duns'], 'no legal name, vision, values or DUNS number shown while there are none');
       ok(await page.$eval('#fact-phone a', (a) => a.getAttribute('href')) === `tel:+1${String(ST.phone).replace(/\D/g, '').slice(-10)}`, 'the phone a tap to call');
       // Copy one
       await page.click('#fact-ein .bp-org__copy');
@@ -438,11 +438,18 @@ try {
     await sleep(200);
     ok(await page.$eval('#sc-mission textarea', (t) => t.value.startsWith('Creating spaces')), 'the mission is the Board Manual’s');
     ok(await waitText(page, /Matches the IRS’s list of October 13, 2026, SOARD’s W-9 and the Board Manual/), 'everything matches, said in a line');
+    // The DUNS number: one digit short is said, and blocks saving with the value below
+    const duns = await page.evaluateHandle(() => [...document.querySelectorAll('.sc-field')].find((f) => /^DUNS number/.test(f.querySelector('.sc-label')?.textContent || ''))?.querySelector('input'));
+    ok(!!(await duns.evaluate((i) => i && i.value === '')), 'a DUNS number box, empty');
+    await duns.type('04931028');
+    ok(await waitText(page, /Nine digits, like 12-345-6789/), 'a DUNS number a digit short is said');
     // A value with no name can't be saved
     await clickText(page, '#sc-mission button', /Add a value/);
     await sleep(200);
     await clickText(page, '.sc-bar-actions button', /^Save$/);
-    ok(await waitText(page, /a value without its name/), 'a value with no name blocks saving');
+    ok(await waitText(page, /a value without its name/) && await waitText(page, /the DUNS number/), 'a value with no name, or a DUNS number a digit short, blocks saving');
+    await duns.type('9');
+    ok(!(await text(page)).includes('Nine digits, like'), 'nine digits: nothing said');
     const valueInput = await page.$('#sc-mission .sc-value input');
     await valueInput.type('Joy');
     await page.type('#sc-mission .sc-value input:nth-of-type(1)', '');
@@ -453,7 +460,7 @@ try {
     await sleep(600);
     const st = await stored('settings');
     const md = await stored('media');
-    ok(st.legalName === 'Sunshine on a Ranney Day Incorporated' && st.mailingAddress?.street === '10800 Alpharetta Hwy Suite 208 625' && st.vision === 'Every child home, in a space made for them.' && st.values?.[0]?.name === 'Joy', 'saved: legal name, mailing address, vision, values', JSON.stringify({ l: st.legalName, m: st.mailingAddress, v: st.vision, vals: st.values }));
+    ok(st.legalName === 'Sunshine on a Ranney Day Incorporated' && st.mailingAddress?.street === '10800 Alpharetta Hwy Suite 208 625' && st.vision === 'Every child home, in a space made for them.' && st.values?.[0]?.name === 'Joy' && st.duns === '049310289', 'saved: legal name, mailing address, vision, values, DUNS number', JSON.stringify({ l: st.legalName, m: st.mailingAddress, v: st.vision, vals: st.values }));
     ok(md.mission.startsWith('Creating spaces') && md.founderStory === seed.media.founderStory && JSON.stringify(md.brandingPhotos) === JSON.stringify(seed.media.brandingPhotos), 'saved: the mission, the rest of the Media Kit as it was');
     ok(st.application?.openChangedBy === 'peter@soardcharity.com' && st.ein === ST.ein && JSON.stringify(st.homeHero) === JSON.stringify(ST.homeHero), 'nothing else in the settings touched');
     // The board page has it at once
@@ -463,6 +470,7 @@ try {
     const after = await member.$$eval('.bp-org__fact', (els) => Object.fromEntries(els.map((e) => [e.id, e.querySelector('.bp-org__v').innerText])));
     ok(after['fact-legal']?.startsWith('Sunshine on a Ranney Day Incorporated') && after['fact-mailing']?.startsWith('10800 Alpharetta Hwy Suite 208 625, Roswell, GA 30076-1417') && /Office/.test(await member.$eval('#fact-office dt', (d) => d.textContent)), 'the board page: the legal name, the mailing address, the office as the office');
     ok(after['fact-vision']?.startsWith('Every child home') && /Joy/.test(after['fact-values'] || '') && after['fact-mission']?.startsWith('Creating spaces'), 'the board page: the vision, values and mission as saved');
+    ok(after['fact-duns']?.startsWith('049310289') && /^DUNS$/.test(await member.$eval('#fact-duns dt', (d) => d.textContent)), 'the board page: the DUNS number as saved', after['fact-duns']);
     await member.close();
     // Saved: compared again at once (so Slack's post turns ✅), and Check again still there to read it all again
     ok(refreshes.length === 1, `the save sent the light refresh (${refreshes.join(', ')})`);

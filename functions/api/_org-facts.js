@@ -78,6 +78,7 @@ export async function orgFacts(env) {
     shortName: str(st.shortName, 40),
     legalName: str(st.legalName, 160),
     ein: str(st.ein, 20),
+    duns: str(st.duns, 20),
     tagline: str(st.tagline, 120),
     address: addr(st.address),
     // (a mailing address that's the office's is one address, said once)

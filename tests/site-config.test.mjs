@@ -64,6 +64,10 @@ test('checks', () => {
   assert.ok(S.phoneProblem('990-2434'));
   assert.equal(S.einProblem('45-4773997'), null);
   assert.ok(S.einProblem('454773997'));
+  assert.equal(S.dunsProblem(''), null);
+  assert.equal(S.dunsProblem('049310289'), null);
+  assert.equal(S.dunsProblem('04-931-0289'), null);
+  assert.ok(S.dunsProblem('04931028'));
   assert.equal(S.zipProblem('30076'), null);
   assert.ok(S.emailProblem('info@'));
   assert.ok(S.endsWithArrow('See Our Work ↓'));

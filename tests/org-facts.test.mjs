@@ -381,6 +381,10 @@ test('the board page’s facts: the site’s, as saved, and the IRS’s words on
   f = await orgFacts(env);
   assert.equal(f.vision, 'Every child home.');
   assert.deepEqual(f.values, [{ name: 'Joy', text: 'We build it in.' }]);
+  // The DUNS number, once it's saved; none until then
+  assert.equal(f.duns, '');
+  await env.DB.prepare("UPDATE site_config SET data = ? WHERE key = 'settings'").bind(JSON.stringify({ ...SETTINGS, duns: '049310289' })).run();
+  assert.equal((await orgFacts(env)).duns, '049310289');
 });
 
 test('a paper called W-9 keeps its dash on the board page and in the viewer (public/admin/board-shared.js fileTitle)', async () => {

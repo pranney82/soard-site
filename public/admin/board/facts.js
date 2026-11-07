@@ -26,6 +26,7 @@ export function factsOf(org, numbers) {
     { id: 'name', label: 'Name', value: org.name, note: org.shortName && !sameNameish(org.shortName, org.name) ? `Also ${org.shortName}` : '' },
     org.legalName && !sameNameish(org.legalName, org.name) ? { id: 'legal', label: 'Legal name', value: org.legalName, note: 'As the IRS has it' } : null,
     { id: 'ein', label: 'EIN', value: org.ein, note: 'Federal tax ID' },
+    org.duns ? { id: 'duns', label: 'DUNS', value: org.duns, note: 'Dun & Bradstreet number' } : null,
     irs ? { id: 'status', label: 'Tax status', value: '501(c)(3) public charity', copy: `501(c)(3) public charity${irs.publicCharity ? `, ${irs.publicCharity}` : ''}${irs.since ? `, since ${irs.since}` : ''}. Gifts are tax-deductible.`,
       // (each part whole on its line: never "509(a)" here and "(1)" on the next)
       note: [irs.since && `Since ${irs.since}`, 'Gifts are tax-deductible', irs.publicCharity].filter(Boolean) } : null,
@@ -47,7 +48,7 @@ export function factsOf(org, numbers) {
 const factNote = (x) => (Array.isArray(x.note) ? x.note.join(' · ') : x.note || '');
 /** Every fact as one block of text, the way a form asks: "EIN: 45-…" */
 export const factsText = (facts) => facts.filter((x) => x.id !== 'bio').map((x) => (x.id === 'name' ? `${x.value}${x.note ? ` (${factNote(x).replace(/^Also /, '')})` : ''}` : `${x.label}: ${x.list ? `\n${x.copy}` : x.copy}`)).join('\n');
-export const factHay = (x) => `${x.label} ${x.value} ${factNote(x)} ${{ ein: 'tax id taxpayer federal employer identification number', status: '501c3 501(c)(3) tax exempt deductible irs', office: 'address street location map', mailing: 'address mail po box', phone: 'telephone call number', email: 'contact', website: 'url web site', mission: 'mission statement', bio: 'boilerplate about elevator pitch', name: 'organization', legal: 'organization' }[x.id] || ''}`;
+export const factHay = (x) => `${x.label} ${x.value} ${factNote(x)} ${{ ein: 'tax id taxpayer federal employer identification number', duns: 'd-u-n-s dun bradstreet d&b number', status: '501c3 501(c)(3) tax exempt deductible irs', office: 'address street location map', mailing: 'address mail po box', phone: 'telephone call number', email: 'contact', website: 'url web site', mission: 'mission statement', bio: 'boilerplate about elevator pitch', name: 'organization', legal: 'organization' }[x.id] || ''}`;
 /** The papers forms ask for next, by their titles on Documents */
 export const FORM_PAPERS = [[/w-?9/i, 'W-9'], [/501|determination|irs letter/i, 'IRS letter'], [/\bein\b/i, 'EIN letter'], [/permit|registration/i, 'Charity permit']];
 

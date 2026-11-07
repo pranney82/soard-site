@@ -136,6 +136,8 @@ export const urlProblem = (v) => (!String(v || '').trim() || /^https:\/\/[^\s/]+
 export const emailProblem = (v) => (!String(v || '').trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(v).trim()) ? null : 'That doesn’t look like an email address');
 export const phoneProblem = (v) => { const d = String(v || '').replace(/\D/g, '').replace(/^1(?=\d{10}$)/, ''); return !String(v || '').trim() || d.length === 10 ? null : 'Use a 10-digit phone number'; };
 export const einProblem = (v) => (!String(v || '').trim() || /^\d{2}-\d{7}$/.test(String(v).trim()) ? null : 'Use the form 12-3456789');
+/** Dun & Bradstreet's D-U-N-S: nine digits, typed with or without its dashes (04-931-0289) */
+export const dunsProblem = (v) => (!String(v || '').trim() || /^\d{9}$/.test(String(v).replace(/[\s-]/g, '')) ? null : 'Nine digits, like 12-345-6789');
 export const zipProblem = (v) => (!String(v || '').trim() || /^\d{5}(-\d{4})?$/.test(String(v).trim()) ? null : 'Use a 5-digit ZIP code');
 /** The homepage's second button draws its own arrow */
 export const endsWithArrow = (s) => /\s*[↓⬇→︎️]+\s*$/.test(String(s || ''));
@@ -245,7 +247,7 @@ export const PAGES = [
   { key: 'store', title: 'Sunny & Ranney', url: '/sunny-and-ranney/', group: 'pages', docs: ['settings'], blurb: 'Room cards', fields: { settings: ['sunnyAndRanneyRooms'] } },
   // The mission is on Organization & contact, with the vision and values (the homepage, /branding/ and the board page show it)
   { key: 'media', title: 'Media Kit', url: '/branding/', group: 'pages', docs: ['media'], blurb: 'Press bio, founders’ story, photos', fields: { media: ['bio', 'who', 'founderStory', 'brandingPhotos', 'contactEmail', 'socialLinks', 'metaDescription', 'pressLogos'] } },
-  { key: 'org', title: 'Organization & contact', url: '/', group: 'site', docs: ['settings', 'media'], blurb: 'Name, EIN, addresses, mission, vision, values', fields: { settings: ['name', 'shortName', 'legalName', 'tagline', 'ein', 'phone', 'email', 'address', 'mailingAddress', 'vision', 'values'], media: ['mission'] } },
+  { key: 'org', title: 'Organization & contact', url: '/', group: 'site', docs: ['settings', 'media'], blurb: 'Name, EIN, addresses, mission, vision, values', fields: { settings: ['name', 'shortName', 'legalName', 'tagline', 'ein', 'duns', 'phone', 'email', 'address', 'mailingAddress', 'vision', 'values'], media: ['mission'] } },
   { key: 'social', title: 'Social links', url: '/', group: 'site', docs: ['settings'], blurb: 'Footer icons', fields: { settings: ['social'] } },
   { key: 'badges', title: 'Trust badges', url: '/about/financials/', group: 'site', docs: ['settings'], blurb: 'Rating seals in the footer', fields: { settings: ['trustBadges'] } },
   { key: 'newsletter', title: 'Newsletter', url: '/', group: 'site', docs: [], blurb: 'Where signups go', fields: {} },

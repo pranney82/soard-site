@@ -220,7 +220,7 @@ const LABELS = {
   featuredStoryHeadline: 'Featured Story headline', featuredStoryDescription: 'Featured Story paragraph', kidShowcase: 'Kid strip',
   kidsPageSummary: 'Line under the title', howItWorks: 'Featured project', applyTestimonial: 'Family quote', applyFaqs: 'Questions',
   partnerPhoto: 'Hero photo', partnerQuote: 'Partner quote', partnerQuoteName: 'Quote: name', partnerQuoteOrg: 'Quote: company',
-  name: 'Organization name', shortName: 'Short name', tagline: 'Tagline', ein: 'EIN', phone: 'Phone', email: 'Email', address: 'Address', social: 'Social links', trustBadges: 'Trust badges',
+  name: 'Organization name', shortName: 'Short name', tagline: 'Tagline', ein: 'EIN', duns: 'DUNS number', phone: 'Phone', email: 'Email', address: 'Address', social: 'Social links', trustBadges: 'Trust badges',
   sunnyAndRanneyRooms: 'Room cards', milestones: 'Timeline', founders: 'How it began', turningPoint: 'The turning point', mascot: 'Gracie', store: 'The store', today: 'Where we are today', finale: 'Closing',
   documents: 'Tax returns, audits and other files', annualReports: 'Annual reports', categories: 'FAQ categories', items: 'Questions',
   show: 'On the site', slug: 'Address', eyebrow: 'Small line above the title', insetPage: 'Page beside the cover', chapters: 'Chapters',
@@ -1664,6 +1664,7 @@ function OrgPage({ c }) {
         <${TextField} label="Name" value=${st.name} onChange=${set('name')} max=${80} problem=${!String(st.name || '').trim() ? 'The name is required' : null} hint="Donate, Ways to Give, Advisory Board, legal pages, the board page." />
         <${TextField} label="Legal name" value=${st.legalName} onChange=${set('legalName')} max=${160} optional hint="Exactly as the IRS has it, for forms and grants. The board page." />
         <${TextField} label="EIN" value=${st.ein} onChange=${set('ein')} problem=${!String(st.ein || '').trim() ? 'The EIN is required' : S.einProblem(st.ein)} hint="Donate (with a copy button), Ways to Give, /branding/, legal pages, the board page." />
+        <${TextField} label="DUNS number" value=${st.duns} onChange=${set('duns')} optional inputmode="numeric" max=${12} problem=${S.dunsProblem(st.duns)} hint="Dun & Bradstreet’s number, for grants and vendor forms. The board page." />
         <${TextField} label="Short name" value=${st.shortName} onChange=${set('shortName')} max=${20} hint="The Terms page, the board page." />
         <${TextField} label="Tagline" value=${st.tagline} onChange=${set('tagline')} max=${80} hint="The Terms page, the board page." />
       </div>
@@ -1833,7 +1834,7 @@ const PROBLEMS = {
   store: (d) => ((d.settings?.sunnyAndRanneyRooms || []).some(r => r && (!r.cfId || !String(r.label || '').trim())) ? ['a room card without its photo or name'] : []),
   org: (d) => {
     const st = d.settings || {}; const ma = st.mailingAddress || {};
-    return [!String(st.name || '').trim() && 'the organization name', (!String(st.ein || '').trim() || S.einProblem(st.ein)) && 'the EIN',
+    return [!String(st.name || '').trim() && 'the organization name', (!String(st.ein || '').trim() || S.einProblem(st.ein)) && 'the EIN', S.dunsProblem(st.duns) && 'the DUNS number',
       ['city', 'state', 'zip'].some((k) => String(ma[k] || '').trim()) && !OF.isAddress(ma) && 'the mailing address’s street', S.phoneProblem(st.phone) && 'the phone number', S.emailProblem(st.email) && 'the email', S.zipProblem(st.address?.zip) && 'the ZIP code',
       OF.isAddress(ma) && (!String(ma.city || '').trim() || !String(ma.state || '').trim()) && 'the mailing address’s city and state', S.zipProblem(ma.zip) && 'the mailing address’s ZIP code',
       !String(d.media?.mission || '').trim() && 'the mission statement', (Array.isArray(st.values) ? st.values : []).some((v) => v && !String(v.name || '').trim()) && 'a value without its name'].filter(Boolean);
@@ -1856,7 +1857,7 @@ const KEYWORDS = {
   about: 'our story founders tripp turning point gracie mascot store timeline milestones today closing', financials: '990 tax return audit annual report numbers revenue expenses programs net assets volunteers employees',
   faq: 'questions answers categories donate star', advisory: 'hero', store: 'sunny ranney rooms cards', media: 'press branding bio boilerplate founders story photos download',
   book: 'anniversary 15 fifteen years flip flipbook pdf pages chapters bookmarks download',
-  org: 'name legal ein irs w-9 w9 tax phone email address mailing street city zip contact mission vision values board facts', social: 'facebook instagram youtube tiktok', badges: 'charity navigator candid guidestar rating seal footer', newsletter: 'kit signups subscribers',
+  org: 'name legal ein duns dun bradstreet irs w-9 w9 tax phone email address mailing street city zip contact mission vision values board facts', social: 'facebook instagram youtube tiktok', badges: 'charity navigator candid guidestar rating seal footer', newsletter: 'kit signups subscribers',
 };
 
 const readHash = () => { const m = String(location.hash).match(/^#site(?:\/([\w-]+))?/); return m ? (S.pageByKey(m[1]) ? m[1] : null) : undefined; };
