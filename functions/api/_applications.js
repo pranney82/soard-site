@@ -385,6 +385,17 @@ export async function applicationSettingsHistory(DB, limit = 12) {
   }
 }
 
+/** When the community project application was last switched on or off (the audit log; null if never) */
+export async function orgOpenChangedAt(DB) {
+  try {
+    const r = await DB.prepare(`SELECT created_at FROM audit_log WHERE entity_type IN ('application-settings', 'settings') AND changes LIKE '%"application.orgOpen"%' ORDER BY id DESC LIMIT 1`).first();
+    if (!r?.created_at) return null;
+    return /Z$|[+-]\d\d:?\d\d$/.test(r.created_at) ? r.created_at : `${String(r.created_at).replace(' ', 'T')}Z`;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Open or close at the times set in Settings. Runs on every heartbeat sweep;
  * the change is logged as made by "schedule" and staff hear about it in Slack.
@@ -1689,10 +1700,13 @@ export async function expireDrafts(env, { now = Date.now(), fetchImpl = fetch, l
       if (k === 'video') { for (const uid of [f?.uid, f?.next?.uid].filter(Boolean)) await deleteVideo(env, uid, fetchImpl); continue; } // (and a replacement left half-sent)
       if (applicantFiles(env)) for (const key of [f?.key, f?.thumbKey].filter(Boolean)) await applicantFiles(env).delete(key).catch(() => {});
     }
-    // The area check's band stays for the funnel (inside / close / far); the address, point and county go
-    const band = parse(r.area, null)?.band;
-    await DB.prepare("UPDATE application_drafts SET answers = '{}', files = '{}', email = NULL, ip_hash = NULL, area = ?, cleared_at = ? WHERE id = ? AND submitted_id IS NULL")
-      .bind(band ? JSON.stringify({ band }) : null, iso(now), r.id).run();
+    // What the funnel reads stays: the area check's band, miles outside and why it couldn't place an
+    // address; the address, point and county go. So does 'admin', the mark that keeps staff's tries out
+    // of the counts (any other connection hash goes)
+    const was = parse(r.area, null);
+    const kept = was?.band ? { band: was.band, ...(Number.isFinite(Number(was.miles)) ? { miles: Number(was.miles) } : {}), ...(was.reason ? { reason: was.reason } : {}) } : null;
+    await DB.prepare("UPDATE application_drafts SET answers = '{}', files = '{}', email = NULL, ip_hash = CASE WHEN ip_hash = 'admin' THEN 'admin' ELSE NULL END, area = ?, cleared_at = ? WHERE id = ? AND submitted_id IS NULL")
+      .bind(kept ? JSON.stringify(kept) : null, iso(now), r.id).run();
   }
   return (results || []).length;
 }
@@ -1819,10 +1833,10 @@ export async function listApplications(DB, { limit = 50, offset = 0, q = '', sho
   const community = await communityAccounts(DB);
   if (kind) rows = rows.filter(a => countsAs(a, community) === kindOf(kind));
   if (show === 'outside') rows = rows.filter(a => a.jt_state?.area?.status === 'outside');
+  if (show === 'unchecked') rows = rows.filter(a => a.jt_state?.area?.status === 'unknown');
   if (show === 'repeat') rows = rows.filter(a => a.jt_state?.repeat?.matches?.length);
   const total = rows.length;
   const page = rows.slice(offset, offset + limit);
-  const drafts = await DB.prepare('SELECT COUNT(*) AS n FROM application_drafts WHERE submitted_id IS NULL AND cleared_at IS NULL').first();
   const years = (await DB.prepare('SELECT DISTINCT year FROM applications ORDER BY year DESC').all()).results?.map(r => r.year).filter(Boolean) || [];
   return {
     applications: page.map(a => ({
@@ -1835,7 +1849,6 @@ export async function listApplications(DB, { limit = 50, offset = 0, q = '', sho
     })),
     total,
     years,
-    draftsInProgress: Number(drafts?.n || 0),
   };
 }
 
@@ -1932,14 +1945,16 @@ export async function deleteApplicationData(env, id, { user = 'admin', now = Dat
 /**
  * The funnel for a season: who started, how far they got, who finished, and
  * what helped. Counts drafts (including expired ones, whose personal data is
- * gone) and submitted applications; tests left out.
+ * gone) and submitted applications. Left out: staff's tries that never went in
+ * (a test run, or the form opened while closed: ip_hash 'admin', test_by), and
+ * sent applications marked test. A sent one counts by its application alone.
  */
 export async function insights(DB, { year, now = Date.now(), kind = 'family' } = {}) {
   await ensureSchema(DB);
   // Each form's own funnel: its pages, its drafts and applications
   const k = kindOf(kind);
   const form = await formFor(DB, { year, kind: k });
-  const drafts = ((await DB.prepare("SELECT id, created_at, updated_at, submitted_id, page, max_page, max_page_id, stop_key, lang, reminders_sent, cleared_at, area, answers FROM application_drafts WHERE year = ? AND COALESCE(ip_hash, '') != 'admin' AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results) || [];
+  const drafts = ((await DB.prepare("SELECT id, created_at, updated_at, submitted_id, page, max_page, max_page_id, stop_key, lang, reminders_sent, cleared_at, area, answers FROM application_drafts WHERE year = ? AND COALESCE(kind, 'family') = ? AND (submitted_id IS NOT NULL OR (COALESCE(ip_hash, '') != 'admin' AND test_by IS NULL))").bind(String(year), k).all()).results) || [];
   const apps = ((await DB.prepare("SELECT id, draft_id, submitted_at, answers, lang, is_test, jt_state, jt_account_id, child_name FROM applications WHERE year = ? AND deleted_at IS NULL AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results || []).map(applicationRow);
   // Left out: tests, deleted applications (their drafts stay behind, emptied), and from the makeovers' funnel any marked Community Project
   const deleted = ((await DB.prepare('SELECT draft_id FROM applications WHERE year = ? AND deleted_at IS NOT NULL').bind(String(year)).all()).results || []).map(r => r.draft_id);
@@ -1952,7 +1967,9 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
   const inProgress = real.filter(d => !d.submitted_id && !d.stop_key && !d.cleared_at && quietDays(d) < 14);
   const gone = real.filter(d => !d.submitted_id && !d.stop_key && (d.cleared_at || quietDays(d) >= 14));
   const pageIds = form.pages.map(p => p.id);
-  const reachedIndex = (d) => (d.submitted_id ? pageIds.length : Math.max(0, d.max_page_id ? pageIds.indexOf(d.max_page_id) : Number(d.max_page) || 0));
+  // The furthest page by its id; a page since taken out of the form falls back to its place then
+  const furthest = (d) => { const i = d.max_page_id ? pageIds.indexOf(d.max_page_id) : -1; return i >= 0 ? i : Math.min(pageIds.length - 1, Number(d.max_page) || 0); };
+  const reachedIndex = (d) => (d.submitted_id ? pageIds.length : Math.max(0, furthest(d)));
   const at = (list, i) => list.filter(d => reachedIndex(d) === i).length;
   // Still working: the page they're on now, which isn't always the furthest they've looked
   const onNow = (d) => (pageIds.includes(d.page) ? pageIds.indexOf(d.page) : reachedIndex(d));
@@ -1971,13 +1988,25 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
   const median = minutes.length ? Math.round(minutes.length % 2 ? minutes[mid] : (minutes[mid - 1] + minutes[mid]) / 2) : null;
   // Only who's had the 14 days that decide it: a quick finisher counts at once and a leaver only after 14 quiet days, so anyone newer flatters the rate
   const decided = (list) => list.filter(d => now - Date.parse(d.created_at) >= 14 * DAY_MS).length;
-  const finishOf = { finished: decided(submitted), of: decided(submitted) + decided(gone) };
+  // Who's had that long but isn't counted, so the line under the rate can say so
+  const finishOf = { finished: decided(submitted), of: decided(submitted) + decided(gone), working: decided(inProgress), stopped: decided(stopped) };
   const realApps = apps.filter(a => !leftOut.has(a.draft_id));
-  const referral = {};
+  // "Who referred you" is typed: Facebook and facebook are one source, shown as most of them wrote it
+  const refKey = (a) => String(a?.answers?.referredBy || '').trim().replace(/\s+/g, ' ');
+  const spellings = {};
   for (const a of realApps) {
-    const k = String(a.answers?.referredBy || '').trim() || 'Not given';
-    referral[k] = (referral[k] || 0) + 1;
+    const said = refKey(a);
+    const key = said.toLowerCase();
+    if (!key) continue;
+    (spellings[key] ||= {})[said] = (spellings[key][said] || 0) + 1;
   }
+  const sourceOf = (a) => {
+    const key = refKey(a).toLowerCase();
+    if (!key) return 'Not given';
+    return Object.entries(spellings[key]).sort((x, y) => y[1] - x[1])[0][0];
+  };
+  const referral = {};
+  for (const a of realApps) referral[sourceOf(a)] = (referral[sourceOf(a)] || 0) + 1;
   const working = new Set(inProgress.map(d => d.id));
   const people = real.map(d => {
     const app = apps.find(a => a.draft_id === d.id);
@@ -1988,13 +2017,15 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
       state: d.submitted_id ? 'submitted' : d.stop_key ? 'stopped' : working.has(d.id) ? 'working' : 'left',
       stop: d.stop_key || null,
       page: working.has(d.id) ? onNow(d) : reachedIndex(d),
+      reached: reachedIndex(d),
       at: d.updated_at,
       band: area?.band || null,
       miles: Number.isFinite(Number(area?.miles)) ? Number(area.miles) : null,
-      referral: app ? String(app.answers?.referredBy || '').trim() || 'Not given' : null,
+      reason: area?.reason || null,
+      referral: app ? sourceOf(app) : null,
       accountId: app?.jt_account_id || null,
     };
-  });
+  }).sort((x, y) => String(y.at || '').localeCompare(String(x.at || '')));
   return {
     year: String(year),
     kind: k,
@@ -2048,8 +2079,16 @@ function areaInsights(form, real, gone) {
     near: count('near'),
     far: count('far'),
     notFound: checks.filter(x => x.a.band === 'unknown' && x.a.reason === 'no-match').length,
+    // Not placed for another reason: the address wasn't finished, the Census didn't answer, too many tries
+    notChecked: checks.filter(x => x.a.band === 'unknown' && x.a.reason !== 'no-match').length,
     steps,
-    farDid: { applied: far.filter(d => d.submitted_id).length, stopped: far.filter(d => d.stop_key === 'outside').length, left: far.filter(d => goneIds.has(d.id)).length },
+    farDid: {
+      applied: far.filter(d => d.submitted_id).length,
+      stopped: far.filter(d => d.stop_key === 'outside').length,
+      // Stopped as too far out, though today's close distance takes them in: the limit was shorter then
+      earlier: checks.filter(x => x.a.band === 'far' && x.d.stop_key === 'outside' && near && Number(x.a.miles) <= near).length,
+      left: far.filter(d => goneIds.has(d.id)).length,
+    },
   };
 }
 

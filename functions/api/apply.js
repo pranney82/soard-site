@@ -302,7 +302,8 @@ async function handleStart(context, body) {
     return json({ ok: true, token, ttlDays: DRAFT_TTL_DAYS, test: { by } });
   }
   const admin = await isAuthenticated(request, env);
-  if (!formOpen(settings, kind) && !admin) return fail(es ? 'Las solicitudes están cerradas en este momento.' : 'Applications are closed right now.', 403, { code: 'closed' });
+  const closed = !formOpen(settings, kind);
+  if (closed && !admin) return fail(es ? 'Las solicitudes están cerradas en este momento.' : 'Applications are closed right now.', 403, { code: 'closed' });
   const ip = request.headers.get('CF-Connecting-IP') || '';
   const ipHash = await hashIp(ip, env.APPLY_IP_PEPPER || env.LIVE_IP_PEPPER);
   if (!admin && await draftsToday(env.DB, ipHash) >= MAX_DRAFTS_PER_IP_DAY) return fail(es ? 'Hoy se comenzaron demasiadas solicitudes desde esta conexión. Intente de nuevo mañana.' : 'Too many new applications from this connection today. Please try again tomorrow.', 429, { code: 'limit' });
@@ -312,7 +313,9 @@ async function handleStart(context, body) {
     verified = admin || (!!body.renew && await renewExpired(env.DB, body.renew)) || await verifyTurnstile(env, body.turnstileToken, ip);
     if (!verified) return fail(es ? 'Complete la verificación rápida arriba del botón Siguiente.' : 'Please complete the quick check above the Next button.', 403, { code: 'turnstile' });
   }
-  const token = await createDraft(env.DB, { year: cleanYear(body.year || settings.year), ipHash, verified, lang: es ? 'es' : 'en', kind });
+  // Signed in while it's closed: staff or the board looking at the form, never a family (families can't
+  // start then), so it's marked like a test run and stays out of the counts unless it's sent
+  const token = await createDraft(env.DB, { year: cleanYear(body.year || settings.year), ipHash: closed ? 'admin' : ipHash, verified, lang: es ? 'es' : 'en', kind });
   return json({ ok: true, token, ttlDays: DRAFT_TTL_DAYS });
 }
 

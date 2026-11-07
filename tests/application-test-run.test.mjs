@@ -11,7 +11,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { fakeApplicantWorld } from './lib/fake-applicant-world.mjs';
-import { testAnswers, photoKey, TEST_JPEG, setDraftFile, getDraft, getApplication, processApplication, sendReminders, JT_FIELDS } from '../functions/api/_applications.js';
+import { testAnswers, photoKey, TEST_JPEG, setDraftFile, getDraft, getApplication, processApplication, sendReminders, JT_FIELDS, insights, expireDrafts, DRAFT_TTL_DAYS } from '../functions/api/_applications.js';
 import { _resetKeyCacheForTests } from '../functions/api/_middleware.js';
 import * as applyApi from '../functions/api/apply.js';
 
@@ -94,6 +94,28 @@ test('a test run starts while applications are closed, kept out of the funnel an
   assert.equal(draft.email, STAFF);
   // The address check works on it like any draft
   assert.equal((await call({ action: 'resume', token: r.body.token })).body.test.by, STAFF, 'a resumed test run knows it is one');
+});
+
+test('staff trying the closed form, and test runs, stay out of Insights, even once the drafts expire; a family’s counts', async () => {
+  const cookie = await signIn();
+  const look = await call({ action: 'start', year: YEAR }, { cookie });
+  assert.equal(look.status, 200, 'signed in, the closed form still opens');
+  assert.equal((await getDraft(env.DB, look.body.token)).ip_hash, 'admin', 'families can’t start while it’s closed, so this is staff’s');
+  const run = await call({ action: 'start', year: YEAR, test: true }, { cookie });
+  await setOpen(true);
+  const family = await call({ action: 'start', year: YEAR });
+  const helped = await call({ action: 'start', year: YEAR }, { cookie });
+  assert.notEqual((await getDraft(env.DB, helped.body.token)).ip_hash, 'admin', 'while it’s open, one staff start for a family counts');
+  const counted = async (now) => (await insights(env.DB, { year: YEAR, now })).people.map((p) => p.id).sort();
+  const families = [family.body.token, helped.body.token].sort();
+  assert.deepEqual(await counted(), families);
+  const later = Date.now() + (DRAFT_TTL_DAYS + 1) * 864e5;
+  assert.equal(await expireDrafts(env, { now: later, fetchImpl: w.fetchImpl }), 4);
+  assert.equal((await getDraft(env.DB, look.body.token)), null, 'emptied like any draft');
+  assert.deepEqual(await counted(later), families, 'expiry keeps the mark that leaves staff out');
+  // A test run emptied before the mark was kept still has who ran it
+  await env.DB.prepare('UPDATE application_drafts SET ip_hash = NULL WHERE id = ?').bind(run.body.token).run();
+  assert.deepEqual(await counted(later), families);
 });
 
 test('every email goes to the staff member: the "finish later" link, the family welcome, the staff heads-up', async () => {

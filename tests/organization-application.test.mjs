@@ -327,6 +327,7 @@ test('Insights: each kind’s season beside last season, Community Project decid
   assert.equal(family.total, 1, 'the marked one isn’t a makeover');
   assert.equal(organization.total, 3, 'the form’s, the marked one, the one added by hand');
   assert.deepEqual(organization.added.map((a) => a.name), ['acct-hand']);
+  assert.deepEqual(organization.moved.map((a) => a.id), ['acct-b'], 'sent on the makeover form, marked Community Project: named on the community side, the only place it counts');
   assert.equal(family.last.total, 2, 'last season, whole: the two seasons opened on different days, so a same-date count would mislead');
   assert.equal(organization.last.total, 1);
   assert.equal(makeovers.submitted, 1, 'the marked one left the makeovers’ funnel');
@@ -370,7 +371,7 @@ test('Insights: everyone who started is in one standing, on the page they reache
   assert.equal(of('sent').referral, 'A neighbor');
   assert.equal(of('sent').name, 'Ava Sample', 'an application’s stored name, whatever its answers hold');
   assert.equal(ins.finishRate, 50, 'one sent of the two who started 14 days ago: Ava is too new, and still working or stopped by the form aren’t counted');
-  assert.deepEqual(ins.finishOf, { finished: 1, of: 2 });
+  assert.deepEqual(ins.finishOf, { finished: 1, of: 2, working: 0, stopped: 0 });
   assert.deepEqual([ins.medianMinutes, ins.medianOf], [30, 2], 'between the middle two, not the slower one');
   const opening = await insights(env.DB, { year: YEAR, now: Date.parse('2026-10-05T12:00:00Z') });
   assert.equal(opening.finishRate, null, 'nobody has had 14 days yet, so a rate would only count the quick finishers');
@@ -383,6 +384,35 @@ test('Insights: everyone who started is in one standing, on the page they reache
   assert.equal(of('looked').page, 1);
   assert.equal(ins.byPage[2].reached, 4, 'and still counts as having reached the page they looked at');
   assert.equal(ins.season.family.partway, 3, 'Max, the one who came back, and the draft on the first page');
+});
+
+test('Insights: a page’s number is the list it opens, the finish rate says who it leaves out, and a typed source is one source', async () => {
+  const now = Date.parse('2026-11-06T16:00:00Z');
+  const recent = '2026-11-06T12:00:00.000Z';
+  const old = '2026-10-01T12:00:00.000Z';
+  const ids = (await formFor(env.DB, { year: YEAR })).pages.map((p) => p.id);
+  await createDraft(env.DB, { year: YEAR, ipHash: 'ip', verified: true }); // makes the tables
+  await env.DB.prepare('DELETE FROM application_drafts').run();
+  const draft = (id, { page, created = recent, updated = created, stop = null, submitted = null, maxPage = null }) => env.DB.prepare(`INSERT INTO application_drafts (id, year, kind, answers, files, submitted_id, page, max_page, max_page_id, stop_key, created_at, updated_at) VALUES (?, ?, 'family', '{}', '{}', ?, ?, ?, ?, ?, ?, ?)`)
+    .bind(id, YEAR, submitted, page, maxPage, page, stop, created, updated).run();
+  await draft('still-old', { page: ids[2], created: old, updated: recent }); // started weeks ago, still going
+  await draft('stopped-old', { page: ids[1], created: old, stop: 'outside' });
+  await draft('gone', { page: ids[1], created: old });
+  await draft('removed', { page: 'a-page-since-taken-out', maxPage: 2 }); // its furthest page left the form
+  for (const [id, said] of [['s1', 'Facebook'], ['s2', 'facebook '], ['s3', 'FaceBook'], ['s4', '']]) {
+    await draft(id, { page: ids[2], created: old, submitted: `app-${id}` });
+    await env.DB.prepare(`INSERT INTO applications (id, draft_id, year, kind, child_name, status, is_test, submitted_at, updated_at, answers) VALUES (?, ?, ?, 'family', 'x', 'done', 0, ?, ?, ?)`)
+      .bind(`app-${id}`, id, YEAR, old, old, JSON.stringify({ referredBy: said })).run();
+  }
+  const ins = await insights(env.DB, { year: YEAR, now });
+  assert.deepEqual(ins.finishOf, { finished: 4, of: 5, working: 1, stopped: 1 }, 'started 14+ days ago: 4 sent, 1 left; still working and stopped by the form are named, not counted');
+  assert.equal(ins.finishRate, 80);
+  assert.deepEqual(ins.referral, [{ source: 'Facebook', count: 3 }, { source: 'Not given', count: 1 }]);
+  assert.deepEqual(ins.people.filter((p) => p.state === 'submitted').map((p) => p.referral).sort(), ['Facebook', 'Facebook', 'Facebook', 'Not given'], 'so each source’s list opens its people');
+  for (const [i, p] of ins.byPage.entries()) assert.equal(ins.people.filter((x) => x.reached >= i).length, p.reached, `page ${i + 1}: its number is the list it opens`);
+  assert.equal(ins.people.find((p) => p.id === 'removed').reached, 2, 'a page taken out of the form: counted where it was');
+  const at = ins.people.map((p) => p.at);
+  assert.deepEqual(at, [...at].sort().reverse(), 'newest first');
 });
 
 test('the built-in organization form: a complete set of answers has no errors', () => {

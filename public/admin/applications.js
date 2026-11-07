@@ -534,7 +534,7 @@ const CSS = `
 .afe-checklist div:last-child { border-bottom: 0; }
 
 /* Insights: the sentence, the two kinds, then everything for the kind picked */
-.afi { gap: 1.1rem; --afi-past: color-mix(in srgb, var(--color-text-muted) 55%, var(--color-bg-card)); }
+.afi { gap: 1.1rem; --afi-past: color-mix(in srgb, var(--color-text-muted) 72%, var(--color-bg-card)); }
 .afi > .afe-head { margin-bottom: -.35rem; align-items: center; }
 .afi-lede { margin: 0; max-width: 58ch; font-size: var(--fs-xl); font-weight: 600; letter-spacing: -.015em; line-height: 1.35; color: var(--color-text); text-wrap: pretty; }
 .afi-lede-sub { margin: .3rem 0 0; color: var(--color-text-muted); font-size: var(--fs-xs); }
@@ -553,12 +553,14 @@ const CSS = `
 .afi-pair.is-one { grid-template-columns: minmax(0, 1fr); }
 .afi-pair.is-top { align-items: start; }
 .afi-col { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
-.afi-col > :last-child { flex: 1; }
+.afi-cards { columns: 2 400px; column-gap: 1rem; margin-bottom: -1rem; }
+.afi-cards.is-one { columns: 1; }
+.afi-cards > * { break-inside: avoid; margin: 0 0 1rem; }
 .afi-bar { display: flex; gap: 2px; height: 8px; margin: 0 0 .75rem; }
 .afi-bar > span { min-width: 8px; height: 100%; border-radius: 99px; transition: flex-grow .25s ease; }
-.afi-stands { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .25rem; margin: 0 -.55rem; }
+.afi-stands { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0 .25rem; margin: 0 -.55rem; }
 @media (max-width: 640px) { .afi-stands { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-.afi-stand { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: .1rem .5rem; align-content: start; padding: .5rem .55rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; }
+.afi-stand { display: grid; grid-row: span 3; grid-template-rows: subgrid; grid-template-columns: 10px minmax(0, 1fr); gap: .1rem .5rem; align-content: start; padding: .5rem .55rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; }
 .afi-stand:not(:disabled) { cursor: pointer; }
 .afi-stand:not(:disabled):hover { background: var(--color-bg-hover); }
 .afi-stand:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
@@ -578,13 +580,22 @@ const CSS = `
 .afi-step:not(:disabled) { cursor: pointer; }
 .afi-step:not(:disabled):hover { background: var(--color-bg-hover); }
 .afi-step:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
-.afi-step-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-xs); font-weight: 500; }
-.afi-step-name .afe-tag { margin-left: .4rem; }
-.afi-step-name em { display: inline-block; width: 1.2em; color: var(--color-text-muted); font-style: normal; font-variant-numeric: tabular-nums; }
+.afi-step-name { display: flex; align-items: baseline; min-width: 0; font-size: var(--fs-xs); font-weight: 500; }
+.afi-step-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.afi-step-name .afe-tag { flex: none; margin-left: .4rem; }
+.afi-step-name em { flex: none; display: inline-block; width: 1.2em; color: var(--color-text-muted); font-style: normal; font-variant-numeric: tabular-nums; }
 .afi-step-n { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
 .afi-step-track { display: block; grid-column: 1 / -1; height: 10px; border-radius: 0 4px 4px 0; background: var(--afe-track); overflow: hidden; }
 .afi-step-track > span { display: block; height: 100%; min-width: 2px; border-radius: 0 4px 4px 0; background: var(--afe-data); transition: width .25s ease; }
 .afi-step-note { color: var(--color-text-muted); font-size: var(--fs-2xs); white-space: nowrap; }
+/* A phone: what's going on at a page gets its own line, so the page's name and its tag keep theirs */
+@media (max-width: 520px) {
+  .afi-step { grid-template-columns: minmax(0, 1fr) auto; }
+  .afi-step-name { grid-area: 1 / 1; }
+  .afi-step-n { grid-area: 1 / 2; }
+  .afi-step-note { grid-area: 2 / 1 / 3 / -1; white-space: normal; }
+  .afi-step-track { grid-row: 3; }
+}
 .afi-hbar { width: 100%; padding: .3rem .45rem; margin: 0 -.45rem; box-sizing: content-box; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; }
 .afi-hbar:not(:disabled) { cursor: pointer; }
 .afi-hbar:not(:disabled):hover { background: var(--color-bg-hover); }
@@ -598,7 +609,9 @@ const CSS = `
 .afi-added a { display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 44px; border-bottom: 1px solid var(--color-border); color: inherit; font-size: var(--fs-sm); font-weight: 600; text-decoration: none; }
 .afi-added a:last-child { border-bottom: 0; }
 .afi-added a:hover span { text-decoration: underline; }
-.afi-added small { flex: none; color: var(--color-text-muted); font-size: var(--fs-xs); font-weight: 500; }
+.afi-added small { flex: none; display: inline-flex; align-items: center; gap: .35rem; color: var(--color-text-muted); font-size: var(--fs-xs); font-weight: 500; }
+.afi-added small svg { transform: rotate(-90deg); }
+.afi-added a:hover small svg { color: var(--color-text); }
 .afi-keys { display: flex; flex-wrap: wrap; gap: .25rem 1rem; margin-bottom: .35rem; color: var(--color-text-secondary); font-size: var(--fs-xs); }
 .afi-keys span { display: inline-flex; align-items: center; gap: .4rem; }
 .afi-keys i { width: 14px; height: 2px; border-radius: 2px; background: var(--afe-data); }
@@ -1093,10 +1106,11 @@ const APP_ID = /^app-[0-9a-z]+-[0-9a-f]+$/i;
  * Application URL) opens that family, or its row in Submissions.
  */
 function readHash(hash = location.hash) {
-  const m = String(hash).match(/^#applications(?:\/([\w-]+))?(?:\/([\w-]+))?/);
+  const m = String(hash).match(/^#applications(?:\/([\w-]+))?(?:\/([\w-]+))?(?:\/([\w-]+))?/);
   if (!m) return null;
   const a = m[1] || '';
   const b = m[2] || '';
+  const c = m[3] || '';
   if (!a) return { tab: 'applicants' };
   if (a === 'applicants') return { tab: 'applicants', account: b || null };
   if (a === 'submissions' || a === 'list') return { tab: 'applicants', view: 'submissions', open: APP_ID.test(b) ? b : null };
@@ -1104,14 +1118,14 @@ function readHash(hash = location.hash) {
   const kindOf = (x) => (x === 'organization' ? { formKind: 'organization' } : {});
   if (a === 'insights') return { tab: a, ...kindOf(b) };
   if (a === 'settings') return { tab: a };
-  if (a === 'form') return { tab: 'form', formView: FORM_VIEW_KEYS.has(b) ? b : 'questions', ...kindOf(b) };
+  if (a === 'form') return { tab: 'form', formView: FORM_VIEW_KEYS.has(b) ? b : 'questions', ...kindOf(b === 'organization' ? b : c) };
   if (a === 'spanish') return { tab: 'form', formView: 'spanish' };
   if (a === 'history' || a === 'versions') return { tab: 'form', formView: 'versions' };
   if (a === 'emails' || a === 'messages') return { tab: 'emails', ...kindOf(b) };
   return { tab: 'applicants', application: a };
 }
 const hashFor = (t, o = {}) => (t === 'applicants' ? (o.view === 'submissions' ? '#applications/submissions' : '#applications/applicants')
-  : t === 'form' ? `#applications/form${o.formView && o.formView !== 'questions' ? `/${o.formView}` : o.formKind === 'organization' ? '/organization' : ''}`
+  : t === 'form' ? `#applications/form${o.formView && o.formView !== 'questions' ? `/${o.formView}` : ''}${o.formKind === 'organization' ? '/organization' : ''}`
   : KIND_TABS.has(t) && o.formKind === 'organization' ? `#applications/${t}/organization` : `#applications/${t}`);
 
 /** Makeovers | Community projects: which application the Form, Emails and Insights tabs show */
@@ -1180,7 +1194,8 @@ export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, i
   const [tab, setTab] = useState(initialTab && TAB_KEYS.has(initialTab) ? initialTab : start.tab);
   const [route, setRoute] = useState(() => ({ ...start, n: 1 })); // what the address asked the Applicants tab for
   const [formView, setFormView] = useState(start.formView || 'questions');
-  const [formKind, setFormKindState] = useState(() => start.formKind || storedKind());
+  // A Form, Emails or Insights address names its application (none is Makeovers); elsewhere, the last one picked
+  const [formKind, setFormKindState] = useState(() => start.formKind || (KIND_TABS.has(start.tab) ? 'family' : storedKind()));
   formKindNow.v = formKind;
   const d = useFormDraft(addToast, DRAFT_TABS.has(tab), formKind);
   const settings = useAppSettings(addToast, tab === 'settings');
@@ -1194,7 +1209,7 @@ export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, i
     if (DRAFT_TABS.has(tab) && !DRAFT_TABS.has(t)) d.flush();
     setTab(t);
     if (t === 'form') setFormView(opts.formView || 'questions');
-    if (t === 'applicants') setRoute(r => ({ tab: t, view: opts.view || null, show: opts.show || null, editBoundary: !!opts.editBoundary, n: r.n + 1 }));
+    if (t === 'applicants') setRoute(r => ({ tab: t, view: opts.view || null, show: opts.show || null, year: opts.year || null, editBoundary: !!opts.editBoundary, n: r.n + 1 }));
     setFormSel(opts.formSel || null);
     history.replaceState(null, '', hashFor(t, { ...opts, formKind, formView: t === 'form' ? opts.formView || 'questions' : null }));
   };
@@ -1216,7 +1231,12 @@ export function ApplicationsArea({ addToast = () => {}, RichTextEditor = null, i
       if (!r) return;
       setTab(r.tab);
       if (r.tab === 'form') setFormView(r.formView || 'questions');
-      if (r.formKind) { formKindNow.v = r.formKind; setFormKindState(r.formKind); }
+      if (KIND_TABS.has(r.tab)) {
+        const k = r.formKind || 'family';
+        formKindNow.v = k;
+        setFormKindState(k);
+        try { localStorage.setItem(KIND_STORE, k); } catch { /* private mode */ }
+      }
       if (r.tab === 'applicants') setRoute(x => ({ ...r, n: x.n + 1 }));
     };
     window.addEventListener('hashchange', onHash);
@@ -1307,18 +1327,19 @@ function ApplicantsTab({ addToast, route, go, whoOf = null }) {
     route=${route}
     whoOf=${whoOf}
     notice=${notice}
-    extraViews=${[{ key: 'submissions', label: 'Submissions', count: n, render: () => html`<${SubmissionsView} key=${`s${route.n}`} addToast=${addToast} openFirst=${route.view === 'submissions' ? route.open : route.application} initialShow=${route.show} attention=${n} onChanged=${loadIntake} />` }]} />`;
+    extraViews=${[{ key: 'submissions', label: 'Submissions', count: n, render: () => html`<${SubmissionsView} key=${`s${route.n}`} addToast=${addToast} openFirst=${route.view === 'submissions' ? route.open : route.application} initialShow=${route.show} initialYear=${route.year} attention=${n} onChanged=${loadIntake} />` }]} />`;
 }
 
 // ─── Submissions (a view of Applicants) ────────────────────────────
 // The website form's intake log: each application, whether every step of
 // loading it into JobTread worked, the address and repeat checks, the
 // answers, CSV, and deleting a family's data from the site.
-const SHOWS = [['all', 'All'], ['attention', 'Needs attention'], ['outside', 'Outside area'], ['repeat', 'Possible repeat'], ['test', 'Tests'], ['deleted', 'Deleted']];
+const SHOWS = [['all', 'All'], ['attention', 'Needs attention'], ['outside', 'Outside area'], ['unchecked', 'Address not found'], ['repeat', 'Possible repeat'], ['test', 'Tests'], ['deleted', 'Deleted']];
 const EMPTY_FOR = {
   all: 'No applications yet.',
   attention: 'Nothing needs attention. Every application reached JobTread.',
   outside: 'No applications from outside the service area.',
+  unchecked: 'The Census found every address.',
   repeat: 'No possible repeats.',
   test: 'No test applications.',
   deleted: 'No deleted applications.',
@@ -1368,11 +1389,11 @@ function Delivery({ a }) {
   return html`<span class="afe-steps">${left.map(([k, l]) => stepChip(l, a.checklist?.[k]))}</span>`;
 }
 
-function SubmissionsView({ addToast, openFirst, initialShow, attention = 0, onChanged = () => {} }) {
+function SubmissionsView({ addToast, openFirst, initialShow, initialYear = null, attention = 0, onChanged = () => {} }) {
   const [q, setQ] = useState('');
   const qd = useDebounced(q.trim(), 300);
   const [show, setShow] = useState(initialShow || 'all');
-  const [year, setYear] = useState('');
+  const [year, setYear] = useState(initialYear || '');
   const [offset, setOffset] = useState(0);
   const [tests, setTests] = useState(false);
   const [data, setData] = useState(null);
@@ -1490,7 +1511,7 @@ function SubmissionsView({ addToast, openFirst, initialShow, attention = 0, onCh
       <p class="afe-lede">
         Every application sent through the <a href="/apply/form/" target="_blank" rel="noopener">website form</a>, and whether each step of loading it into JobTread worked.
         ${data && html` Applications are <strong>${data.open ? 'open' : 'closed'}</strong> for the ${data.year} season (<a href="#applications/settings">Settings</a>).`}
-        ${data?.draftsInProgress > 0 && html` ${plural(data.draftsInProgress, 'family has', 'families have')} started one and not sent it yet.`}
+        ${data?.partway && partwayLine(data.partway)}
       </p>
       ${setup.length > 0 && html`<details class="afe-setup">
         <summary><${Icon} name="warn" size=${15} /><span>${setup.map(x => x.text).join(' ')}</span><span class="afe-link">How to fix</span></summary>
@@ -1679,6 +1700,12 @@ const agoText = (iso) => {
 };
 const listWords = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
 
+/** Submissions' line: who's partway this season, by the rule Insights and the limit use */
+function partwayLine({ family = 0, organization = 0 }) {
+  const parts = [family && plural(family, 'family', 'families'), organization && plural(organization, 'organization')].filter(Boolean);
+  return parts.length ? ` ${listWords(parts)} ${family + organization === 1 ? 'is' : 'are'} partway through.` : '';
+}
+
 /** The page's one sentence: what's in, and who's on the way */
 function seasonSentence({ family: f, organization: o }) {
   const inNow = f.total || o.total ? `${plural(f.total, 'makeover')} and ${plural(o.total, 'community project')} so far` : 'No applications in yet';
@@ -1690,14 +1717,20 @@ function seasonSentence({ family: f, organization: o }) {
 function openingLine(opening) {
   const tail = 'Tests and deleted applications are left out.';
   if (!opening) return tail;
-  if (!opening.open) return `Applications are closed. ${tail}`;
   const d = opening.since ? new Date(opening.since) : null;
-  if (!d || Number.isNaN(d.getTime())) return `Applications are open. ${tail}`;
-  return `${d.toDateString() === new Date().toDateString() ? 'Applications opened today.' : `Open since ${d.toLocaleDateString([], { month: 'long', day: 'numeric' })}.`} ${tail}`;
+  const when = !d || Number.isNaN(d.getTime()) ? null : d.toDateString() === new Date().toDateString() ? 'today' : d.toLocaleDateString([], { month: 'long', day: 'numeric' });
+  if (opening.kind === 'organization') {
+    const state = opening.open ? 'open' : 'closed';
+    return `${when === 'today' ? `The community project application ${opening.open ? 'opened' : 'closed'} today.` : `The community project application ${when ? `has been ${state} since ${when}` : `is ${state}`}.`} ${tail}`;
+  }
+  if (!opening.open) return `Applications are closed. ${tail}`;
+  if (!when) return `Applications are open. ${tail}`;
+  return `${when === 'today' ? 'Applications opened today.' : `Open since ${when}.`} ${tail}`;
 }
 
 function InsightsTab({ seasonYear, go, kind, onKind }) {
   const [years, setYears] = useState([]);
+  // null: the season Settings is on, which the first answer names
   const [year, setYear] = useState(null);
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -1707,14 +1740,12 @@ function InsightsTab({ seasonYear, go, kind, onKind }) {
     call(`${API}?limit=1`).then(j => {
       const season = j.year || seasonYear || String(new Date().getFullYear() + 1);
       setYears([...new Set([season, ...(j.years || [])].filter(Boolean))].sort().reverse());
-      setYear(y => y || season);
     });
   }, []);
   useEffect(() => {
-    if (!year) return undefined;
     let live = true;
     setLoading(true);
-    call(`${API}?insights=1&year=${encodeURIComponent(year)}${kq()}`).then(j => {
+    call(`${API}?insights=1${year ? `&year=${encodeURIComponent(year)}` : ''}${kq()}`).then(j => {
       if (!live) return;
       setLoading(false);
       if (j.success) { setData({ ...j.insights, opening: j.opening || null }); setError(null); } else setError(j.error || 'Could not load');
@@ -1728,11 +1759,11 @@ function InsightsTab({ seasonYear, go, kind, onKind }) {
   return html`
     <div class="afe-ins afi" aria-busy=${loading}>
       <${Head} title="Insights">
-        <label class="afe-row-actions text-sm" style="font-weight: 600;">Season
-          <select class="form-input" style="width: auto;" value=${year || ''} onChange=${(e) => setYear(e.target.value)} aria-label="Season">
+        ${years.length > 1 && html`<label class="afe-row-actions text-sm" style="font-weight: 600;">Season
+          <select class="form-input" style="width: auto;" value=${year || ins?.year || years[0]} onChange=${(e) => setYear(e.target.value)} aria-label="Season">
             ${years.map(y => html`<option value=${y}>${y}</option>`)}
           </select>
-        </label>
+        </label>`}
       <//>
       ${error && html`<div class="afe-note is-warn"><${Icon} name="warn" /><span>Couldn't load insights: ${error}</span></div>`}
       ${!ins && !error && html`<${Spinner} />`}
@@ -1747,14 +1778,15 @@ function InsightsTab({ seasonYear, go, kind, onKind }) {
         <div class=${`afi-body ${loading ? 'is-loading' : ''}`}>
           ${ins.started > 0 ? html`<${InsightsBody} ins=${ins} k=${shown} go=${go} open=${open} />` : html`<${InsightsEmpty} ins=${ins} k=${shown} />`}
         </div>
-        ${sheet && html`<${PeopleSheet} sheet=${sheet} pages=${ins.byPage || []} onClose=${() => setSheet(null)} />`}`}
+        ${sheet && html`<${PeopleSheet} sheet=${sheet} pages=${ins.byPage || []} near=${ins.area?.nearMiles || 0} onClose=${() => setSheet(null)} />`}`}
     </div>`;
 }
 
 /** The two kinds, big: the numbers people came for, and the way to pick which one the page shows */
 function KindCard({ k, side, lastYear, on, onKind }) {
   const added = side.added?.length || 0;
-  const now = added ? `${num(added)} added in JobTread` : side.recent ? `${num(side.recent)} in the last 7 days` : 'None in the last 7 days';
+  const moved = side.moved?.length || 0;
+  const now = [side.recent ? `${num(side.recent)} in the last 7 days` : 'None in the last 7 days', added && `${num(added)} added in JobTread`, moved && `${num(moved)} from the makeover form`].filter(Boolean).join(' · ');
   return html`
     <button type="button" class="afe-tile afi-kind" data-kind=${k} aria-pressed=${on ? 'true' : 'false'} onClick=${() => onKind(k)}>
       <span class="afi-kind-name">${INSIGHT_WORDS[k].label}</span>
@@ -1775,7 +1807,7 @@ function InsightsBody({ ins, k, go, open }) {
   const checks = [
     { label: 'Outside the service area', n: ins.checks?.outside, show: 'outside' },
     { label: 'Possible repeat applicants', n: ins.checks?.repeat, show: 'repeat' },
-    { label: 'Address the Census couldn’t find', n: ins.checks?.unchecked },
+    { label: 'Address the Census couldn’t find', n: ins.checks?.unchecked, show: 'unchecked' },
   ].filter(c => c.n > 0);
   const given = (ins.referral || []).filter(r => r.source !== 'Not given').length;
   const cards = [
@@ -1791,10 +1823,11 @@ function InsightsBody({ ins, k, go, open }) {
         <h4>Worth a look</h4>
         <span class="afe-hint">Run on each submitted application, before anyone reviews it.</span>
         <div class="afe-checklist">
-          ${checks.map(c => html`<div><span>${c.label} <b>${num(c.n)}</b></span>${c.show && html`<button class="btn btn-ghost btn-sm" onClick=${() => go('applicants', { view: 'submissions', show: c.show })}>See ${c.n === 1 ? 'it' : 'them'}</button>`}</div>`)}
+          ${checks.map(c => html`<div><span>${c.label} <b>${num(c.n)}</b></span>${c.show && html`<button class="btn btn-ghost btn-sm" onClick=${() => go('applicants', { view: 'submissions', show: c.show, year: ins.year })}>See ${c.n === 1 ? 'it' : 'them'}</button>`}</div>`)}
         </div>
       </div>`,
     side.added?.length > 0 && html`<${AddedCard} added=${side.added} />`,
+    side.moved?.length > 0 && html`<${MovedCard} moved=${side.moved} />`,
     es > 0 && html`
       <div class="afe-viz">
         <h4>Language</h4>
@@ -1814,23 +1847,27 @@ function InsightsBody({ ins, k, go, open }) {
         </div>
       </div>`,
   ].filter(Boolean);
-  const quiet = [es === 0 && 'Spanish applications', !(ins.reminders?.sent > 0) && 'reminder emails', !checks.length && 'application checks'].filter(Boolean);
+  // The community project application is English only, so Spanish is never news there
+  const quiet = [k !== 'organization' && es === 0 && 'Spanish applications', !(ins.reminders?.sent > 0) && 'reminder emails', !checks.length && 'application checks'].filter(Boolean);
+  const fo = ins.finishOf || {};
+  const notCounted = [fo.working > 0 && `${num(fo.working)} still working`, fo.stopped > 0 && `${num(fo.stopped)} stopped by the form`].filter(Boolean);
   return html`
     <div class="afe-viz afi-standing">
       <h4>Where everyone stands</h4>
-      <span class="afe-hint">${num(ins.started)} ${ins.started === 1 ? w.who : w.whoMany} started a ${ins.year} application. Pick a number to see who.</span>
+      <span class="afe-hint">${plural(ins.started, 'application was', 'applications were')} started for ${ins.year}. Pick a number to see who.</span>
       <div class="afi-bar" role="img" aria-label=${STANDINGS.map(s => `${s.label}: ${counts[s.key]}`).join(', ')}>
         ${STANDINGS.filter(s => counts[s.key] > 0).map(s => html`<span style=${`flex: ${counts[s.key]} 1 0; background: ${s.color};`} title=${`${s.label}: ${num(counts[s.key])}`}></span>`)}
       </div>
       <div class="afi-stands">
         ${STANDINGS.map(s => {
           const n = counts[s.key];
+          const why = s.key === 'stopped' && n ? stoppedWhy(ins.stopped) : `${pct(n, ins.started)}%`;
           return html`
-            <button type="button" class="afi-stand" data-stand=${s.key} disabled=${!n} onClick=${() => open(s.label, forWhom(s.key))} aria-label=${`${s.label}: ${num(n)}${n ? '. See who.' : ''}`}>
+            <button type="button" class="afi-stand" data-stand=${s.key} disabled=${!n} onClick=${() => open(s.label, forWhom(s.key))} aria-label=${`${s.label}: ${num(n)}, ${why}${n ? '. See who.' : ''}`}>
               <i style=${`background: ${s.color};`}></i>
               <span>${s.label}</span>
               <b>${num(n)}</b>
-              <small>${s.key === 'stopped' && n ? stoppedWhy(ins.stopped) : `${pct(n, ins.started)}%`}</small>
+              <small>${why}</small>
             </button>`;
         })}
       </div>
@@ -1838,7 +1875,7 @@ function InsightsBody({ ins, k, go, open }) {
         <div>
           <span>Finish rate</span>
           <b>${ins.finishRate == null ? 'Too early' : `${ins.finishRate}%`}</b>
-          <small>${ins.finishRate == null ? 'Everyone gets 14 days before counting as left' : `${num(ins.finishOf.finished)} of ${num(ins.finishOf.of)} who started 14 or more days ago`}</small>
+          <small>${ins.finishRate == null ? 'Everyone gets 14 days before counting as left' : `${num(fo.finished)} of ${num(fo.of)} who started 14 or more days ago${notCounted.length ? `, not counting ${listWords(notCounted)}` : ''}`}</small>
         </div>
         <div>
           <span>Typical time to finish</span>
@@ -1850,16 +1887,12 @@ function InsightsBody({ ins, k, go, open }) {
     <div class=${`afi-pair ${showChart ? '' : 'is-one'}`}>
       <div class="afe-viz">
         <h4>How far people get</h4>
-        <span class="afe-hint">Each page of the application, and how many reached it.</span>
+        <span class="afe-hint">Each page of the application, and how many reached it. Pick a page to see who.</span>
         <${PageFunnel} ins=${ins} open=${open} />
       </div>
       ${showChart && html`<${SeasonCard} side=${side} year=${ins.year} lastYear=${ins.season.lastYear} w=${w} />`}
     </div>
-    ${cards.length > 0 && html`
-      <div class=${`afi-pair ${cards.length === 1 ? 'is-one' : ''}`}>
-        <div class="afi-col">${cards[0]}</div>
-        ${cards.length > 1 && html`<div class="afi-col">${cards.slice(1)}</div>`}
-      </div>`}
+    ${cards.length > 0 && html`<div class=${`afi-cards ${cards.length === 1 ? 'is-one' : ''}`}>${cards}</div>`}
     ${quiet.length > 0 && html`<p class="afi-quiet">Nothing to report yet on ${listWords(quiet)}.</p>`}`;
 }
 
@@ -1873,43 +1906,58 @@ function InsightsEmpty({ ins, k }) {
   const w = INSIGHT_WORDS[k];
   const side = ins.season[k];
   const showChart = side.total > 0 || side.last.total > 0;
+  const named = side.added?.length > 0 || side.moved?.length > 0;
   return html`
     <div class="afe-viz afi-none">
       <h4>No ${w.who} has started a ${ins.year} application yet</h4>
       <p class="afe-lede">This fills in as ${w.whoMany} open the application: who finishes, where people stop, and how they heard about us.</p>
     </div>
-    ${(side.added?.length > 0 || showChart) && html`
-      <div class=${`afi-pair is-top ${side.added?.length > 0 && showChart ? '' : 'is-one'}`}>
-        ${side.added?.length > 0 && html`<${AddedCard} added=${side.added} />`}
+    ${(named || showChart) && html`
+      <div class=${`afi-pair is-top ${named && showChart ? '' : 'is-one'}`}>
+        ${named && html`<div class="afi-col">
+          ${side.added?.length > 0 && html`<${AddedCard} added=${side.added} />`}
+          ${side.moved?.length > 0 && html`<${MovedCard} moved=${side.moved} />`}
+        </div>`}
         ${showChart && html`<${SeasonCard} side=${side} year=${ins.year} lastYear=${ins.season.lastYear} w=${w} />`}
       </div>`}`;
 }
 
-/** Community projects staff added in JobTread: no application to measure, so they're named */
-function AddedCard({ added }) {
+/** Accounts counted as community projects that this form's numbers can't show, named instead */
+function NamedAccounts({ title, hint, rows }) {
   return html`
     <div class="afe-viz">
-      <h4>Added in JobTread</h4>
-      <span class="afe-hint">No application behind ${added.length === 1 ? 'this one' : 'these'}, so ${added.length === 1 ? 'it isn’t' : 'they aren’t'} in the numbers on how people move through the form.</span>
+      <h4>${title}</h4>
+      <span class="afe-hint">${hint}</span>
       <div class="afi-added">
-        ${added.map(a => html`<a href=${`#applications/applicants/${a.id}`}><span>${a.name}</span><small>${a.status}</small></a>`)}
+        ${rows.map(a => html`<a href=${`#applications/applicants/${a.id}`}><span>${a.name}</span><small>${a.status}<${Icon} name="chevron" size=${14} /></small></a>`)}
       </div>
     </div>`;
 }
+
+/** Community projects staff added in JobTread: no application to measure */
+const AddedCard = ({ added }) => html`<${NamedAccounts} title="Added in JobTread" rows=${added}
+  hint=${`No application behind ${added.length === 1 ? 'this one' : 'these'}, so ${added.length === 1 ? 'it isn’t' : 'they aren’t'} in the numbers on how people move through the form.`} />`;
+
+/** Sent on the makeover form, then marked Community Project in JobTread */
+const MovedCard = ({ moved }) => html`<${NamedAccounts} title="From the makeover form" rows=${moved}
+  hint=${`Sent on the makeover form, then marked Community Project in JobTread, so ${moved.length === 1 ? 'it counts' : 'they count'} here but ${moved.length === 1 ? 'isn’t' : 'aren’t'} in either form’s page-by-page numbers.`} />`;
 
 /** The application page by page: how many reached it, and what's going on there now */
 function PageFunnel({ ins, open }) {
   const { byPage = [], started, people = [] } = ins;
   if (!byPage.length) return html`<p class="afe-empty">No pages.</p>`;
   const mostLeft = Math.max(0, ...byPage.map(p => p.leftHere || 0));
+  // One person leaving isn't a pattern
+  const isTop = (p) => mostLeft >= 2 && p.leftHere === mostLeft;
   return html`
     <div class="afi-funnel">
       ${byPage.map((p, i) => {
-        const here = people.filter(x => x.state !== 'submitted' && x.page === i);
+        const reached = people.filter(x => (x.reached ?? x.page) >= i);
         const notes = [p.hereNow > 0 && `${num(p.hereNow)} here now`, p.stoppedHere > 0 && `${num(p.stoppedHere)} stopped`, p.leftHere > 0 && `${num(p.leftHere)} left`].filter(Boolean);
+        const label = `Page ${i + 1}, ${p.title}: ${num(p.reached)} reached${notes.length ? `, ${notes.join(', ')}` : ''}${isTop(p) ? '. The page most people leave on' : ''}${reached.length ? '. See who.' : ''}`;
         return html`
-          <button type="button" class=${`afi-step ${mostLeft && p.leftHere === mostLeft ? 'is-top' : ''}`} disabled=${!here.length} onClick=${() => open(p.title, here)}>
-            <span class="afi-step-name"><em>${i + 1}</em>${p.title}${mostLeft && p.leftHere === mostLeft ? html`<span class="tag afe-tag">Most stop here</span>` : ''}</span>
+          <button type="button" class=${`afi-step ${isTop(p) ? 'is-top' : ''}`} disabled=${!reached.length} aria-label=${label} onClick=${() => open(`Reached ${p.title}`, reached)}>
+            <span class="afi-step-name"><em>${i + 1}</em><span class="afi-step-title">${p.title}</span>${isTop(p) ? html`<span class="tag afe-tag">Most leave here</span>` : ''}</span>
             <span class="afi-step-note">${notes.join(' · ')}</span>
             <span class="afi-step-n"><b>${num(p.reached)}</b></span>
             <span class="afi-step-track"><span style=${`width: ${pct(p.reached, started)}%;`}></span></span>
@@ -1928,11 +1976,15 @@ function AreaCard({ a, k, started, go, people, open }) {
       label: span(st), close: st.close, n: st.count,
       list: people.filter(x => outside(x) && x.miles > st.from && (st.to == null || x.miles <= st.to)),
     })),
-    a.notFound > 0 && { label: 'Address not found', n: a.notFound, list: people.filter(x => x.band === 'unknown'), rest: true },
+    a.notFound > 0 && { label: 'Address not found', n: a.notFound, list: people.filter(x => x.band === 'unknown' && x.reason === 'no-match'), rest: true },
+    a.notChecked > 0 && { label: 'Couldn’t be checked', n: a.notChecked, list: people.filter(x => x.band === 'unknown' && x.reason !== 'no-match'), rest: true },
   ].filter(Boolean);
   const max = Math.max(1, ...rows.map(r => r.n));
   // In a sentence of its own: a stop stands by the limit at the time, and the rows above use today's
-  const did = [a.farDid?.stopped > 0 && `${num(a.farDid.stopped)} ${a.farDid.stopped === 1 ? 'was' : 'were'} stopped by the form as too far out`, a.farDid?.applied > 0 && `${num(a.farDid.applied)} applied from farther out`].filter(Boolean);
+  const st = a.farDid?.stopped || 0;
+  const early = a.farDid?.earlier || 0;
+  const earlyText = !early ? '' : early === st ? `, ${st === 1 ? '' : 'all '}when the close distance was shorter` : `, ${num(early)} of them when the close distance was shorter`;
+  const did = [st > 0 && `${num(st)} ${st === 1 ? 'was' : 'were'} stopped by the form as too far out${earlyText}`, a.farDid?.applied > 0 && `${num(a.farDid.applied)} applied from farther out`].filter(Boolean);
   return html`
     <div class="afe-viz">
       <h4>${k === 'organization' ? 'Where organizations are' : 'Where families live'}</h4>
@@ -1964,28 +2016,35 @@ function StackBar({ parts, total }) {
 }
 
 function RankBars({ rows, people, open }) {
-  const ranked = [...rows].sort((x, y) => (x.source === 'Not given') - (y.source === 'Not given') || y.count - x.count);
-  const top = ranked.slice(0, 6);
-  const more = ranked.slice(6);
-  const max = Math.max(1, ...ranked.map(r => r.count));
+  const sources = rows.filter(r => r.source !== 'Not given').sort((x, y) => y.count - x.count);
+  const none = rows.find(r => r.source === 'Not given');
+  const more = sources.slice(6);
+  const shown = [...sources.slice(0, 6), ...(none ? [none] : [])];
+  const max = Math.max(1, ...shown.map(r => r.count));
   const named = (r) => people.filter(p => p.referral === r.source);
+  const rest = new Set(more.map(r => r.source));
   return html`
     <div class="afe-hbars">
-      ${top.map(r => html`
+      ${shown.map(r => html`
         <button type="button" class=${`afe-hbar afi-hbar ${r.source === 'Not given' ? 'is-rest' : ''}`} onClick=${() => open(r.source, named(r))}>
           <span class="afe-hbar-label" title=${r.source}>${r.source}</span>
           <span class="afe-hbar-val"><b>${num(r.count)}</b></span>
           <span class="afe-hbar-track"><span style=${`width: ${(r.count / max) * 100}%;`}></span></span>
         </button>`)}
-      ${more.length > 0 && html`<p class="afi-note">And ${plural(more.length, 'more source')} with ${plural(more.reduce((n, r) => n + r.count, 0), 'application')}.</p>`}
+      ${more.length > 0 && html`<p class="afi-note"><button type="button" class="afe-link" onClick=${() => open(plural(more.length, 'more source'), people.filter(p => rest.has(p.referral)))}>And ${plural(more.length, 'more source')} with ${plural(more.reduce((n, r) => n + r.count, 0), 'application')}</button></p>`}
     </div>`;
 }
 
 /** The people behind a number */
-function PeopleSheet({ sheet, pages, onClose }) {
+function PeopleSheet({ sheet, pages, near = 0, onClose }) {
   const line = (p) => {
     const page = pages[p.page]?.title;
-    const where = p.band === 'near' || p.band === 'far' ? (p.miles != null ? `${p.miles} mi outside` : 'Outside the area') : null;
+    const out = p.band === 'near' || p.band === 'far';
+    // Stopped as too far out: how far, and whether today's close distance would take them in
+    if (p.state === 'stopped' && p.stop === 'outside' && out && p.miles != null) {
+      return `Stopped on ${page || 'a page'}, ${p.miles} mi outside the area${near && p.miles <= near ? ', when the close distance was shorter' : ''}`;
+    }
+    const where = out ? (p.miles != null ? `${p.miles} mi outside` : 'Outside the area') : null;
     const what = p.state === 'submitted' ? `Submitted ${agoText(p.at)}`
       : p.state === 'stopped' ? `Stopped on ${page || 'a page'}${STOP_WHY[p.stop] ? `, ${STOP_WHY[p.stop]}` : ''}`
       : p.state === 'working' ? `On ${page || 'a page'}, active ${agoText(p.at)}`
@@ -2113,7 +2172,7 @@ function SeasonChart({ side, year, lastYear }) {
           <thead><tr><th>By the end of</th><th>${year}</th>${lastYear && html`<th>${lastYear}</th>`}</tr></thead>
           <tbody>${months.map((t) => {
             const close = Date.UTC(new Date(t).getUTCFullYear(), new Date(t).getUTCMonth() + 1, 1) - 1;
-            return html`<tr><td>${monthName(t)}</td><td>${t <= m.today ? m.countAt(m.mine, Math.min(close, m.today)) : ''}</td>${lastYear && html`<td>${m.countAt(m.past, close)}</td>`}</tr>`;
+            return html`<tr><td>${monthName(t)}</td><td>${t <= m.today ? `${m.countAt(m.mine, Math.min(close, m.today))}${close > m.today ? ' so far' : ''}` : ''}</td>${lastYear && html`<td>${m.countAt(m.past, close)}</td>`}</tr>`;
           })}</tbody>
         </table>
       </details>

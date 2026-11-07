@@ -46,14 +46,33 @@ async function markedAccounts(DB) {
 
 const sorted = (list) => list.filter(Boolean).sort();
 
-/** → { lastYear, family: Side, organization: Side }, Side = { total, partway, recent, points, last: { total, points }, added } */
+/**
+ * Partway through right now, each kind's: not sent, not stopped by the form, touched in the last
+ * 14 days, not staff's (the limit's own idea of it: ./_application-cap.js countFilling). Insights'
+ * "Working on it" and Submissions' line read it too.
+ */
+export async function partwayNow(DB, year, now = Date.now()) {
+  const partway = { family: 0, organization: 0 };
+  const quiet = new Date(now - 14 * DAY_MS).toISOString();
+  const { results } = await DB.prepare(`SELECT COALESCE(kind, 'family') AS kind, COUNT(*) AS n FROM application_drafts
+    WHERE year = ? AND submitted_id IS NULL AND cleared_at IS NULL AND stop_key IS NULL AND updated_at >= ? AND COALESCE(ip_hash, '') != 'admin'
+    GROUP BY COALESCE(kind, 'family')`).bind(String(year), quiet).all();
+  for (const r of results || []) partway[kindOf(r.kind)] += Number(r.n) || 0;
+  return partway;
+}
+
+/** → { lastYear, family: Side, organization: Side }, Side = { total, partway, recent, points, last: { total, points } }, plus the organization's added and moved */
 export async function seasonSummary(DB, year, now = Date.now()) {
   const y = String(year);
   const lastYear = String(Number(y) - 1);
   const [accounts, marked] = await Promise.all([accountsOf(DB, [y, lastYear]), markedAccounts(DB)]);
-  const { results: rows } = await DB.prepare('SELECT jt_account_id, kind, submitted_at FROM applications WHERE year = ? AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL').bind(y).all();
+  const { results: rows } = await DB.prepare('SELECT jt_account_id, kind, submitted_at, child_name FROM applications WHERE year = ? AND COALESCE(is_test, 0) = 0 AND deleted_at IS NULL').bind(y).all();
   const side = { family: [], organization: [] };
   for (const r of rows || []) side[marked.has(r.jt_account_id) ? 'organization' : kindOf(r.kind)].push(r.submitted_at);
+  // Sent on the makeover form, then marked Community Project: counted as one, and in neither form's page-by-page numbers
+  const statusOf = new Map(accounts.map((a) => [a.account_id, a.status || '']));
+  const moved = (rows || []).filter((r) => marked.has(r.jt_account_id) && kindOf(r.kind) === 'family')
+    .map((r) => ({ id: r.jt_account_id, name: r.child_name || 'Applicant', status: statusOf.get(r.jt_account_id) || '', at: r.submitted_at }));
   // Added by hand: marked Community Project, no application behind it, still on the board
   const added = accounts
     .filter((a) => a.year === y && !a.app_id && !a.archived_at && marked.has(a.account_id) && !isTestName(a.name))
@@ -66,13 +85,7 @@ export async function seasonSummary(DB, year, now = Date.now()) {
     const f = parseJson(a.fields, {});
     before[accountKindFor({ types: parseJson(a.types, []), formKind: a.form_kind, birthday: f.birthday, diagnosis: f.diagnosis, name: a.name })].push(a.created_at);
   }
-  // Partway through right now, each kind's (the limit's own idea of it: ./_application-cap.js countFilling)
-  const partway = { family: 0, organization: 0 };
-  const quiet = new Date(now - 14 * DAY_MS).toISOString();
-  const { results: going } = await DB.prepare(`SELECT COALESCE(kind, 'family') AS kind, COUNT(*) AS n FROM application_drafts
-    WHERE year = ? AND submitted_id IS NULL AND cleared_at IS NULL AND stop_key IS NULL AND updated_at >= ? AND COALESCE(ip_hash, '') != 'admin'
-    GROUP BY COALESCE(kind, 'family')`).bind(y, quiet).all();
-  for (const r of going || []) partway[kindOf(r.kind)] += Number(r.n) || 0;
+  const partway = await partwayNow(DB, y, now);
   const recent = new Date(now - 7 * DAY_MS).toISOString();
   const build = (points, past, going) => ({
     total: points.length,
@@ -84,6 +97,6 @@ export async function seasonSummary(DB, year, now = Date.now()) {
   return {
     lastYear: before.family.length || before.organization.length ? lastYear : null,
     family: build(side.family, before.family, partway.family),
-    organization: { ...build(side.organization, before.organization, partway.organization), added },
+    organization: { ...build(side.organization, before.organization, partway.organization), added, moved },
   };
 }

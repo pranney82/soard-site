@@ -3,7 +3,7 @@
  * =====================================================================
  * Behind Cloudflare Access (not in the middleware's public list).
  *
- * GET                      → { applications: [...checklist], draftsInProgress, events, qcGrant }
+ * GET                      → { applications: [...checklist], partway: { family, organization }, events, qcGrant }
  * GET ?id=<app>            → one application: answers (by section), files, JobTread state
  * GET ?file=<app>&field=<f> → a stored photo or the PDF (field=pdf), streamed from R2
  * POST { retry: <app> }    → run the JobTread load again now
@@ -52,9 +52,10 @@ import {
   ensureSchema, listApplications, getApplication, processApplication, createTestApplication,
   maybeSweepApplications, checklist, flags, jobtreadAccountUrl, isApplicationId, cleanYear, applicationSettings,
   exportCsv, deleteApplicationData, insights, pickApplication, saveApplicationSettings, applicationSettingsHistory, applicantFiles,
-  enforceApplicationCap,
+  enforceApplicationCap, orgOpenChangedAt,
 } from './_applications.js';
 import { capFacts } from './_application-cap.js';
+import { partwayNow } from './_application-season.js';
 import {
   answerSections, FIELD_TYPES, DEFAULT_SERVICE_AREA, validateDefinition, normalizeDefinition,
   translationStatus, englishStrings, kindOf, lockedFieldsFor, defaultDefinitionFor,
@@ -158,11 +159,13 @@ export async function onRequestGet(context) {
     const settings = await applicationSettings(env.DB);
     const year = url.searchParams.get('year') || cleanYear(settings.year);
     const application = pickApplication(settings);
-    return Response.json({
-      success: true,
-      insights: await insights(env.DB, { year, kind: kindOf(url.searchParams.get('formKind')) }),
-      opening: String(year) === String(application.year) ? { open: !!application.open, since: settings.openChangedAt || null } : null,
-    });
+    const kind = kindOf(url.searchParams.get('formKind'));
+    // Each application's own switch: the family form follows the season, the organization one its own
+    const thisSeason = String(year) === String(application.year);
+    const opening = !thisSeason ? null
+      : kind === 'organization' ? { kind, open: application.orgOpen, since: await orgOpenChangedAt(env.DB) }
+      : { kind, open: !!application.open, since: settings.openChangedAt || null };
+    return Response.json({ success: true, insights: await insights(env.DB, { year, kind }), opening });
   }
   if (url.searchParams.has('form-diff')) {
     return Response.json({ success: true, changes: await diffForm(env.DB, url.searchParams.get('form-diff'), { kind: kindOf(url.searchParams.get('formKind')) }) });
@@ -238,6 +241,8 @@ export async function onRequestGet(context) {
   return Response.json({
     success: true,
     ...list,
+    // Partway this season, by the rule Insights and the limit use
+    partway: await partwayNow(env.DB, cleanYear(settings.year)),
     open: settings.open === true,
     orgOpen: pickApplication(settings).orgOpen,
     year: cleanYear(settings.year),

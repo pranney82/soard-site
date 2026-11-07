@@ -148,6 +148,29 @@ test('the admin routes: GET settings, POST save, 409 conflict, 422 errors', asyn
   assert.equal(bad.json.errors[0].field, 'formUrl');
 });
 
+test('Insights says when the application it shows opened or closed: each has its own switch', async () => {
+  const call = async (query, method = 'GET', body) => {
+    const request = new Request(`https://admin.test/api/applications-admin${query}`, { method, body: body ? JSON.stringify(body) : undefined, headers: { 'content-type': 'application/json' } });
+    const ctx = { env, request, data: { userEmail: 'peter@soardcharity.com' } };
+    return (await (method === 'POST' ? adminApi.onRequestPost(ctx) : adminApi.onRequestGet(ctx))).json();
+  };
+  const opening = async (kind = '') => (await call(`?insights=1&year=2027${kind ? `&formKind=${kind}` : ''}`)).opening;
+  assert.deepEqual(await opening(), { kind: 'family', open: false, since: null });
+  assert.deepEqual(await opening('organization'), { kind: 'organization', open: true, since: null }, 'never switched: open, with no date to give');
+  const base = (await call('?settings=1')).settings;
+  await call('', 'POST', { settings: { open: true }, base });
+  const fam = await opening();
+  assert.equal(fam.open, true);
+  assert.ok(fam.since);
+  assert.deepEqual(await opening('organization'), { kind: 'organization', open: true, since: null }, 'opening the families’ form is no change to the organizations’');
+  await call('', 'POST', { settings: { orgOpen: false }, base: (await call('?settings=1')).settings });
+  const org = await opening('organization');
+  assert.deepEqual([org.open, !!org.since], [false, true]);
+  assert.equal((await opening()).open, true);
+  assert.equal(await call('?insights=1&year=2026').then((j) => j.opening), null, 'another season: no switch to speak of');
+  assert.deepEqual((await call('?limit=1')).partway, { family: 0, organization: 0 }, 'Submissions’ line counts by Insights’ rule');
+});
+
 test('Publish to site never waits on these (the pages read them live)', () => {
   assert.ok(RUNTIME_TYPES.includes('application-settings'));
   assert.ok(RUNTIME_TYPES.includes('applicant') && RUNTIME_TYPES.includes('application'), 'an applicant’s details and an application change nothing the build reads');
