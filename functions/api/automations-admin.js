@@ -19,6 +19,7 @@
  *               and the roles that follow Partners levels: changed, waiting, people the site can't place; counts only)
  *  - zeffy:     gift alerts in Slack (last webhook, post and catch-up check; posts still failing)
  *  - boardGifts: major gifts on the board page (when Zeffy was last read, any trouble; never a gift)
+ *  - checks:    checks deposited in Mercury becoming Zeffy records (counts and times only; never a name or amount)
  *  - boardWords: board files' words for the board page's search (how many read, found by their words, failed; counts only)
  *  - mercury:   Mercury through SOARD's relay (both keys present, and the accounts it answers with: names and kinds only)
  *  - board:     Access's board sign-in list (synced, the policy on the app, members without an email), bank history months, the last packet
@@ -71,6 +72,7 @@ import { signingFacts } from './_board-sign.js';
 import { backfillStatus } from './_coi-backfill.js';
 import { processFacts } from './_process-docs.js';
 import { giftsStatus } from './_board-gifts.js';
+import { checksFacts } from './_check-gifts.js';
 import { wordsStatus } from './_board-file-words.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
@@ -473,6 +475,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     coiBackfill: await settle(() => backfillStatus(env)),
     // The process Docs Process follows: their names, last read and any problem (_process-docs.js)
     processDocs: await settle(() => processFacts(DB)),
+    // Checks deposited in Mercury becoming Zeffy records: counts and times only (_check-gifts.js)
+    checks: await settle(() => checksFacts(DB)),
     // The board page's major gifts: when Zeffy was last read, any trouble (_board-gifts.js)
     boardGifts: await settle(() => giftsStatus(DB)),
     // Board files read for the board page's search: counts only (_board-file-words.js)

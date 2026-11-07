@@ -35,6 +35,7 @@ import { maybeCheckJobs } from './_companycam-jobs.js';
 import { maybeCapSelfTest } from './_application-cap.js';
 import { maybeTrackEmails } from './_email-log.js';
 import { maybeRunSpend } from './_spend.js';
+import { maybeRunChecks } from './_check-gifts.js';
 import { maybeRunFinance } from './_finance.js';
 import { maybeRunVendors } from './_vendors.js';
 import { maybeRunInsuranceAudit } from './_insurance-audit.js';
@@ -115,6 +116,8 @@ export async function onRequestPost(context) {
     // Job costs every 2 minutes: Mercury charges the webhook missed, new JobTread bills paired with their charges,
     // notes back to Mercury; every job's ledger every 15 minutes; the weekday morning receipts card (see _spend.js)
     context.waitUntil(maybeRunSpend(env));
+    // A check deposited in Mercury becomes its Zeffy record (one check a run)
+    context.waitUntil(maybeRunChecks(env));
     context.waitUntil(maybeRunFinance(env));
     // Vendors' W-9s and insurance, kept on the site (JobTread's fields show them): asked for, checked, and held bills let go (see _vendors.js)
     context.waitUntil(maybeRunVendors(env));

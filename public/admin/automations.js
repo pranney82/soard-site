@@ -1306,6 +1306,23 @@ const MAP = { t: 'SOARD', children: [
             const note = caught ? ` The catch-up check caught ${plural(z.missed, 'gift')} the webhook missed on ${stamp(z.missedAt)}; the webhook has delivered since.` : '';
             return ON(z.lastPostAt ? `Connected. Last gift posted ${stamp(z.lastPostAt)}.${note}` : `Connected. Waiting for the first gift.${note}`, z.lastPostAt);
           } },
+        { t: 'Checks into Zeffy', s: 'live', k: 'schedule',
+          when: 'Every 5 minutes on the live hub’s heartbeat, one check a run, once Mercury says a deposited check posted (up to about 6 business days after it’s deposited).',
+          does: 'Reads the picture of each check deposited in Mercury with two AI readers, finds its entry in Zeffy, or makes the record itself on the right form with the receipt and email off, so nothing reaches a donor. Slack’s gift alert shows it like any other gift. It starts by watching: staff keep entering checks, and each hand entry is scored against what the site would have done. Job Costs → Checks turns it on.',
+          touches: ['Mercury', 'Zeffy', 'Workers AI', 'Slack', 'D1'], where: 'functions/api/_check-gifts.js (broadcast-hooks.js, checks-admin.js), public/admin/checks.js',
+          info: 'A person is asked only when the site can’t act: it can’t read who wrote the check, Zeffy may already have it under another name, it’s for an event (Zeffy takes tickets and auctions only by hand), SOARD pays that company and nothing says refund or gift, or Zeffy didn’t answer. The picture is never kept, and no account or routing number is stored or shown.',
+          live: (f) => {
+            const c = f.checks;
+            if (!c || !env(f)) return null;
+            if (!f.env.zeffyApi) return OFF('Add ZEFFY_API_KEY in Cloudflare.');
+            if (c.error) return ATTN(`The last run didn’t finish: ${c.error}.`, c.lastRunAt);
+            if (c.writeOk === false) return ATTN('The site couldn’t save a test record in Zeffy, so it can’t be turned on. Job Costs → Checks says why.', c.lastRunAt);
+            if (!c.lastRunAt) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(c.lastRunAt, HOUR)) return ATTN(`Hasn’t run since ${stamp(c.lastRunAt)}. Check the Heartbeat entry.`, c.lastRunAt);
+            if (c.waiting) return ATTN(`${plural(c.waiting, 'check')} waiting on a person in Job Costs → Checks.`, c.last);
+            if (c.mode !== 'on') return ON(c.total ? `Watching. ${plural(c.total, 'check')} read so far, and staff are still entering them.` : 'Watching, and waiting for the first check deposited in Mercury.', c.last);
+            return ON(`On. ${plural(c.total, 'check')} so far.`, c.last);
+          } },
         { t: 'Major gifts on the board page', s: 'live', k: 'schedule',
           when: 'Every 15 minutes on the board’s heartbeat, while ZEFFY_API_KEY is set.',
           does: 'Reads the year’s payments from Zeffy and shows each gift of $1,000 or more on the board page, newest first: Home has the latest six, Financials the whole year with its total. The amount after any refund, who gave (a company and the person who gave for it), the campaign, the day, and whether it’s monthly or in kind. Never an email, address or phone.',

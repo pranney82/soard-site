@@ -145,8 +145,16 @@ function money(cents, currency) {
   }
 }
 
+/** The first and last name as one, once: staff type a company's name in both boxes, and the site does for a one-word company */
+export function givenName(buyer) {
+  const first = clean(buyer?.first_name);
+  const last = clean(buyer?.last_name);
+  if (first && last && first.toLowerCase() === last.toLowerCase()) return first;
+  return clean(`${first} ${last}`);
+}
+
 function donor(buyer) {
-  const name = clean(`${clean(buyer?.first_name)} ${clean(buyer?.last_name)}`);
+  const name = givenName(buyer);
   const company = buyer?.is_corporate ? clean(buyer?.company_name) : '';
   // A foundation that typed its own name as the giver's is the company once
   if (company && name && name.toLowerCase() !== company.toLowerCase()) return `${company} (${name})`;
@@ -199,11 +207,20 @@ export function giftMessage(p) {
   });
 }
 
+/** The name on the site's one-time test of writing to Zeffy (./_check-gifts.js): never a gift, in Slack or on the board */
+export const WRITE_TEST_NAME = { first_name: 'SOARD', last_name: 'WebsiteTest' };
+export const WRITE_TEST_ONE_WORD = 'SOARDWebsiteTest';
+const isWriteTest = (p) => {
+  const last = clean(p?.buyer?.last_name);
+  return last === WRITE_TEST_NAME.last_name || last === WRITE_TEST_ONE_WORD;
+};
+
 /** Why a payment isn't posted, or null when it should be */
 export function screenPayment(p) {
   if (!p || typeof p !== 'object' || !PAYMENT_ID.test(String(p.id || ''))) return 'not a payment';
   if (p.status && String(p.status).toLowerCase() !== 'succeeded') return `status ${p.status}`;
   if (p.type === 'imported') return 'imported';
+  if (isWriteTest(p)) return 'website test';
   if (p.amount != null && !(Number(p.amount) > 0)) return 'no amount';
   if (p.refund_status === 'full') return 'refunded';
   return null;
@@ -329,6 +346,24 @@ export async function zeffyGet(env, path, params = {}, fetchImpl = fetch) {
     throw err;
   }
   return body;
+}
+
+/** A write to Zeffy (POST, or DELETE with no body). Throws an Error with .status and .code on a refusal; a timeout or a dropped line throws with no .status, so the caller knows Zeffy may have acted */
+export async function zeffySend(env, method, path, body = null, fetchImpl = fetch) {
+  const res = await fetchImpl(`${ZEFFY_API}${path}`, {
+    method,
+    headers: { Authorization: `Bearer ${String(env.ZEFFY_API_KEY).trim()}`, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(15000),
+  });
+  const answer = await res.json().catch(() => null);
+  if (!res.ok) {
+    const err = new Error(answer?.error?.message || `Zeffy answered ${res.status}`);
+    err.status = res.status;
+    err.code = answer?.error?.code || null;
+    throw err;
+  }
+  return answer;
 }
 
 /** Zeffy's successful payments made between two Unix times, oldest pages first (the board's year reads more pages) */

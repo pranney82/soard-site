@@ -40,6 +40,7 @@ import { readDocSettings } from './_vendors.js';
 import { confirmBank } from './_trade-partners.js';
 import { rampView } from './_ramp.js';
 import { DEFAULT_RECEIPT_INBOX } from './_spend-receipts.js';
+import { checksFacts } from './_check-gifts.js';
 
 const ok = (body = {}) => Response.json({ success: true, ...body });
 const fail = (error, status = 400) => Response.json({ success: false, error }, { status });
@@ -89,8 +90,10 @@ async function everything(env, { setup = false } = {}) {
     readConfig(env.DB),
     health(env),
   ]);
+  // How many checks wait on a person, for the tab's count (the Checks tab reads the rest itself)
+  const checksWaiting = (await checksFacts(env.DB).catch(() => null))?.waiting || 0;
   const out = {
-    ledgers, charges, rules, codes,
+    checksWaiting, ledgers, charges, rules, codes,
     jobs: jobs.map((j) => ({ id: j.id, name: j.name, status: j.status, staff: j.staff })),
     recode,
     config: { accountBuckets: cfg.accountBuckets || {}, cardBuckets: cfg.cardBuckets || {}, categories: cfg.categories || {}, caps: cfg.caps === 'on', receiptInbox: cfg.receiptInbox || DEFAULT_RECEIPT_INBOX },

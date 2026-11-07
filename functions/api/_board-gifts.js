@@ -17,7 +17,7 @@
  * kid (the reveal belongs to the family).
  */
 
-import { listPayments, screenPayment, recurringLabel, MAJOR_GIFT_CENTS } from './_zeffy.js';
+import { listPayments, screenPayment, recurringLabel, givenName, MAJOR_GIFT_CENTS } from './_zeffy.js';
 import { readState, writeState } from './_board-roles.js';
 import { todayEastern } from './_reveals.js';
 
@@ -74,7 +74,7 @@ function rowOf(p, kids = []) {
   const hidden = anonymous(p);
   const b = p.buyer || {};
   const company = hidden || !b.is_corporate ? '' : clean(b.company_name);
-  const person = hidden ? '' : clean(`${clean(b.first_name)} ${clean(b.last_name)}`);
+  const person = hidden ? '' : givenName(b);
   return {
     id: String(p.id),
     at: Number(p.created) || 0,

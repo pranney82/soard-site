@@ -15,6 +15,8 @@
  *              each sort and read by the DataX Receipt Processor
  *   Bills      subs' bills waiting for approval (the DataX Bill Approver
  *              emails Holly; staff can decide here too), being paid, paid
+ *   Checks     every check deposited in Mercury and its Zeffy record, and the few the
+ *              site can't finish itself (./checks.js)
  *   W-9s & insurance  every company SOARD pays, on jobs or not, and the W-9
  *              and certificates kept on the site for each (./vendor-papers.js)
  *   Close-outs every finished makeover's final numbers, and what each cost
@@ -33,10 +35,11 @@ import { h, htm, useState, useEffect, useRef } from './vendor.js';
 import { ask } from './ask.js';
 import { InsuranceAudit } from './insurance-audit.js';
 import { VendorPapers } from './vendor-papers.js';
+import { Checks } from './checks.js';
 
 const html = htm.bind(h);
 const API = '/api/job-costs-admin';
-const TABS = [['jobs', 'Jobs'], ['charges', 'Charges'], ['bills', 'Bills'], ['papers', 'W-9s & insurance'], ['closeouts', 'Close-outs'], ['rules', 'Rules'], ['setup', 'Setup'], ['ramp', 'Ramp bills'], ['insurance', 'Insurance audit']];
+const TABS = [['jobs', 'Jobs'], ['charges', 'Charges'], ['bills', 'Bills'], ['checks', 'Checks'], ['papers', 'W-9s & insurance'], ['closeouts', 'Close-outs'], ['rules', 'Rules'], ['setup', 'Setup'], ['ramp', 'Ramp bills'], ['insurance', 'Insurance audit']];
 const BUCKET_NAMES = { job: 'Makeover', store: 'Sunny & Ranney store', operating: 'Operating' };
 const HOW = { person: 'the cardholder’s job', build: 'the job in Build', staff: 'picked by staff', bill: 'from its JobTread bill', rule: 'vendor rule', card: 'the store’s card', account: 'the account', refund: 'the charge it refunds' };
 
@@ -115,12 +118,28 @@ const CSS = `
 .jc-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
 .jc-split { display: grid; gap: .25rem; margin: .35rem 0 0; padding: 0; list-style: none; font-size: var(--fs-xs); }
 .jc-mono { font-variant-numeric: tabular-nums; }
+.ck { display: grid; gap: 1rem; min-width: 0; }
+.ck-card { padding: 0; }
+.ck-need { display: grid; gap: .6rem; padding: 1rem 1.25rem; border-bottom: 1px solid var(--color-border); }
+.ck-need:last-child { border-bottom: none; }
+.ck-need__why { margin: 0; color: var(--color-text-secondary); }
+.ck-note { margin: 0; }
+.ck-cands { display: grid; gap: .4rem; margin: 0; padding: 0; list-style: none; }
+.ck-cands li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .4rem .75rem; padding: .5rem .7rem; border: 1px solid var(--color-border); border-radius: 8px; }
+.ck-entry { grid-column: 2 / -1; display: grid; gap: .6rem; }
+.ck-actions { margin-top: .1rem; }
+.ck-need > *, .ck-entry > *, .ck-cands li > span, .ck .jc-charge__what { min-width: 0; }
+.ck-need strong, .ck-need__why, .ck .jc-charge__meta > span, .ck-cands li > span { overflow-wrap: anywhere; }
+.ck .jc-charge__what strong { white-space: normal; overflow: visible; overflow-wrap: anywhere; }
 @media (max-width: 640px) {
   .jc-charge { grid-template-columns: minmax(0, 1fr) auto; padding: .75rem .85rem; }
   .jc-charge__date { grid-column: 1 / -1; }
   .jc-sort { grid-column: 1 / -1; }
   .jc-sort .form-input, .jc-sort .btn { flex: 1 1 100%; min-height: 44px; }
   .jc-body { padding: .85rem; }
+  .ck-need { padding: .85rem; }
+  .ck-entry { grid-column: 1 / -1; }
+  .ck-actions .btn, .ck-cands .btn { flex: 1 1 100%; min-height: 44px; }
   .jc-table .jc-hide-sm { display: none; }
 }
 `;
@@ -195,7 +214,7 @@ export function JobCosts({ addToast = () => {} }) {
   const unsorted = data.charges.filter((c) => !c.bucket && !c.billId && c.cents > 0 && c.status !== 'cancelled' && c.status !== 'failed').length;
   const proposed = data.recode.filter((r) => r.state === 'proposed').length;
   const waiting = (data.bills || []).filter((b) => ['waiting', 'second'].includes(b.approval?.state) || b.approval?.payState === 'failed').length;
-  const counts = { charges: unsorted + (data.odd || []).length, ramp: proposed, bills: waiting };
+  const counts = { charges: unsorted + (data.odd || []).length, ramp: proposed, bills: waiting, checks: data.checksWaiting || 0 };
   const job = place.tab === 'jobs' && place.job ? data.ledgers.find((l) => l.jobId === place.job) : null;
 
   return html`
@@ -219,6 +238,7 @@ export function JobCosts({ addToast = () => {} }) {
         : place.tab === 'rules' ? html`<${Rules} data=${data} act=${act} busy=${busy} />`
         : place.tab === 'setup' ? html`<${Setup} data=${data} act=${act} busy=${busy} />`
         : place.tab === 'insurance' ? html`<${InsuranceAudit} addToast=${addToast} />`
+        : place.tab === 'checks' ? html`<${Checks} addToast=${addToast} />`
         : place.tab === 'papers' ? html`<${VendorPapers} id=${place.job} onOpen=${(id) => open('papers', id)} addToast=${addToast} />`
         : html`<${Ramp} data=${data} act=${act} busy=${busy} />`}
     </div>`;

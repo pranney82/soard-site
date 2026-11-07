@@ -164,7 +164,7 @@ function withTimeout(p, ms) {
 }
 
 /** The model's answer as an object, whichever shape it came back in */
-function answerOf(out) {
+export function answerOf(out) {
   const r = out?.response ?? out?.choices?.[0]?.message?.content ?? out;
   if (r && typeof r === 'object' && !Array.isArray(r)) return r;
   const m = String(r || '').match(/\{[\s\S]*\}/);
