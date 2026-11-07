@@ -1934,7 +1934,8 @@ function AreaCard({ a, k, started, go, people, open }) {
     a.notFound > 0 && { label: 'Address not found', n: a.notFound, list: people.filter(x => x.band === 'unknown'), rest: true },
   ].filter(Boolean);
   const max = Math.max(1, ...rows.map(r => r.n));
-  const did = [a.farDid?.stopped > 0 && `${num(a.farDid.stopped)} stopped by the form`, a.farDid?.applied > 0 && `${num(a.farDid.applied)} applied`].filter(Boolean);
+  // In a sentence of its own: a stop stands by the limit at the time, and the rows above use today's
+  const did = [a.farDid?.stopped > 0 && `${num(a.farDid.stopped)} ${a.farDid.stopped === 1 ? 'was' : 'were'} stopped by the form as too far out`, a.farDid?.applied > 0 && `${num(a.farDid.applied)} applied from farther out`].filter(Boolean);
   return html`
     <div class="afe-viz">
       <h4>${k === 'organization' ? 'Where organizations are' : 'Where families live'}</h4>
@@ -1947,7 +1948,7 @@ function AreaCard({ a, k, started, go, people, open }) {
             <span class="afe-hbar-track"><span style=${`width: ${(r.n / max) * 100}%;`}></span></span>
           </button>`)}
       </div>
-      ${a.far > 0 && did.length > 0 && html`<p class="afi-note">Of the ${num(a.far)} farther out, ${listWords(did)}.</p>`}
+      ${did.length > 0 && html`<p class="afi-note">${listWords(did)}.</p>`}
     </div>`;
 }
 

@@ -346,20 +346,21 @@ test('Insights: everyone who started is in one standing, on the page they reache
   const now = Date.parse('2026-11-06T16:00:00Z');
   const recent = '2026-11-06T12:00:00.000Z';
   const old = '2026-10-01T12:00:00.000Z';
-  const draft = (id, { page = null, stop = null, at = recent, submitted = null, name = null } = {}) => env.DB.prepare(`INSERT INTO application_drafts (id, year, kind, answers, files, submitted_id, max_page_id, stop_key, created_at, updated_at) VALUES (?, ?, 'family', ?, '{}', ?, ?, ?, ?, ?)`)
-    .bind(id, YEAR, JSON.stringify(name ? { childName: { first: name, last: 'Sample' } } : {}), submitted, page, stop, at, at).run();
+  const draft = (id, { page = null, on = null, stop = null, at = recent, submitted = null, name = null } = {}) => env.DB.prepare(`INSERT INTO application_drafts (id, year, kind, answers, files, submitted_id, page, max_page_id, stop_key, created_at, updated_at) VALUES (?, ?, 'family', ?, '{}', ?, ?, ?, ?, ?, ?)`)
+    .bind(id, YEAR, JSON.stringify(name ? { childName: { first: name, last: 'Sample' } } : {}), submitted, on, page, stop, at, at).run();
   await formFor(env.DB, { year: YEAR });
   const form = await formFor(env.DB, { year: YEAR });
   const [first, second, third] = form.pages.map((p) => p.id);
   await createDraft(env.DB, { year: YEAR, ipHash: 'ip', verified: true }); // makes the tables; it sits on the first page
   await draft('still', { page: third, name: 'Max' });
+  await draft('looked', { page: third, on: second }); // looked ahead, then came back
   await draft('stopped', { page: second, stop: 'outside' });
   await draft('gone', { page: second, at: old, name: 'Lena' });
   await draft('sent', { page: third, submitted: 'app-sent', name: 'Ava' });
   await env.DB.prepare(`INSERT INTO applications (id, draft_id, year, kind, child_name, status, is_test, submitted_at, updated_at, answers) VALUES ('app-sent', 'sent', ?, 'family', 'Ava Sample', 'done', 0, ?, ?, ?)`).bind(YEAR, recent, recent, JSON.stringify({ referredBy: 'A neighbor' })).run();
   const ins = await insights(env.DB, { year: YEAR, now });
   const of = (id) => ins.people.find((p) => p.id === id);
-  assert.deepEqual(['still', 'stopped', 'gone', 'sent'].map((id) => of(id).state), ['working', 'stopped', 'left', 'submitted']);
+  assert.deepEqual(['still', 'looked', 'stopped', 'gone', 'sent'].map((id) => of(id).state), ['working', 'working', 'stopped', 'left', 'submitted']);
   assert.equal(of('still').name, 'Max Sample');
   assert.equal(of('stopped').name, null, 'no name given yet');
   assert.equal(of('stopped').stop, 'outside');
@@ -370,7 +371,10 @@ test('Insights: everyone who started is in one standing, on the page they reache
   assert.equal(ins.byPage[1].stoppedHere, 1);
   assert.equal(ins.byPage[1].leftHere, 1);
   assert.equal(ins.byPage[2].hereNow, 1);
-  assert.equal(ins.season.family.partway, 2, 'Max, and the draft on the first page');
+  assert.equal(ins.byPage[1].hereNow, 1, 'whoever looked ahead and came back is where they are now');
+  assert.equal(of('looked').page, 1);
+  assert.equal(ins.byPage[2].reached, 3, 'and still counts as having reached the page they looked at');
+  assert.equal(ins.season.family.partway, 3, 'Max, the one who came back, and the draft on the first page');
 });
 
 test('the built-in organization form: a complete set of answers has no errors', () => {

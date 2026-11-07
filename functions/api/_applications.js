@@ -1936,7 +1936,7 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
   // Each form's own funnel: its pages, its drafts and applications
   const k = kindOf(kind);
   const form = await formFor(DB, { year, kind: k });
-  const drafts = ((await DB.prepare("SELECT id, created_at, updated_at, submitted_id, max_page, max_page_id, stop_key, lang, reminders_sent, cleared_at, area, answers FROM application_drafts WHERE year = ? AND COALESCE(ip_hash, '') != 'admin' AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results) || [];
+  const drafts = ((await DB.prepare("SELECT id, created_at, updated_at, submitted_id, page, max_page, max_page_id, stop_key, lang, reminders_sent, cleared_at, area, answers FROM application_drafts WHERE year = ? AND COALESCE(ip_hash, '') != 'admin' AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results) || [];
   const apps = ((await DB.prepare("SELECT id, draft_id, submitted_at, answers, lang, is_test, jt_state, jt_account_id, child_name FROM applications WHERE year = ? AND deleted_at IS NULL AND COALESCE(kind, 'family') = ?").bind(String(year), k).all()).results || []).map(applicationRow);
   // Left out: tests, deleted applications (their drafts stay behind, emptied), and from the makeovers' funnel any marked Community Project
   const deleted = ((await DB.prepare('SELECT draft_id FROM applications WHERE year = ? AND deleted_at IS NOT NULL').bind(String(year)).all()).results || []).map(r => r.draft_id);
@@ -1951,11 +1951,13 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
   const pageIds = form.pages.map(p => p.id);
   const reachedIndex = (d) => (d.submitted_id ? pageIds.length : Math.max(0, d.max_page_id ? pageIds.indexOf(d.max_page_id) : Number(d.max_page) || 0));
   const at = (list, i) => list.filter(d => reachedIndex(d) === i).length;
+  // Still working: the page they're on now, which isn't always the furthest they've looked
+  const onNow = (d) => (pageIds.includes(d.page) ? pageIds.indexOf(d.page) : reachedIndex(d));
   const byPage = form.pages.map((p, i) => ({
     id: p.id, title: p.title,
     reached: real.filter(d => reachedIndex(d) >= i).length,
     leftHere: at(gone, i),
-    hereNow: at(inProgress, i),
+    hereNow: inProgress.filter(d => onNow(d) === i).length,
     stoppedHere: at(stopped, i),
   }));
   const minutes = submitted.map(d => {
@@ -1978,7 +1980,7 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
       name: app?.child_name || applicantNameOf(parse(d.answers, {}), k) || null,
       state: d.submitted_id ? 'submitted' : d.stop_key ? 'stopped' : working.has(d.id) ? 'working' : 'left',
       stop: d.stop_key || null,
-      page: reachedIndex(d),
+      page: working.has(d.id) ? onNow(d) : reachedIndex(d),
       at: d.updated_at,
       band: area?.band || null,
       miles: Number.isFinite(Number(area?.miles)) ? Number(area.miles) : null,

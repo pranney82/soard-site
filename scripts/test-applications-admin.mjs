@@ -1117,7 +1117,7 @@ try {
     const where = await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Where families live/.test(v.querySelector('h4')?.textContent))?.innerText || '');
     ok(/Inside the area\s*1[12]\b/.test(where) && /Address not found\s*1/.test(where), `where families live, from the address check (${where.replace(/\s+/g, ' ').slice(0, 160)})`);
     ok(/within 15 miles/.test(where) && /Up to 5 mi\s*close\s*1/.test(where) && /10 to 15 mi\s*close\s*1/.test(where) && /Over 50 mi\s*1/.test(where), 'how far out, with the close steps marked');
-    ok(/Of the 2 farther out, 1 stopped by the form and 1 applied/.test(where), 'and what the families farther out did');
+    ok(/1 was stopped by the form as too far out and 1 applied from farther out/.test(where), 'and what the families farther out did');
     // Nothing to say: no card
     ok(!(await page.evaluate(() => [...document.querySelectorAll('.afe-viz h4')].some(h => /Reminder emails/.test(h.textContent)))) === (await page.evaluate(() => /reminder emails/.test(document.querySelector('.afi-quiet')?.textContent || ''))) , 'a card with nothing to say folds into one quiet line');
     await shot(page, '13-insights.png');
