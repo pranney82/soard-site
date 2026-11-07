@@ -965,7 +965,7 @@ ok(await page.$$eval('.apl-pin', els => els.length) >= 9, 'every family with a h
 const paths = await page.$$eval('.leaflet-overlay-pane path', els => els.map(e => ({ stroke: (e.getAttribute('stroke') || '').toLowerCase(), fill: (e.getAttribute('fill') || '').toLowerCase(), dash: e.getAttribute('stroke-dasharray') || '' })));
 ok(paths.some(p => p.stroke === '#373a36' && p.fill === '#ffda24' && !p.dash), 'the service area is drawn as families see it: yellow, a charcoal line');
 ok(paths.some(p => p.stroke === '#373a36' && p.dash === '5 6' && p.fill !== '#ffda24'), 'with the close ring dashed around it');
-ok(/Close: within 15 miles/.test(await text(page, '.apl-legend')), 'the legend says what the ring is');
+ok(/Close: within 15\smiles/.test(await text(page, '.apl-legend')), 'the legend says what the ring is');
 await page.click('.apl-legend button:nth-child(4)'); // hide Denied
 await sleep(200);
 ok(await page.$$eval('.apl-legend button[aria-pressed="false"]', els => els.length) === 1, 'legend toggles a status off');

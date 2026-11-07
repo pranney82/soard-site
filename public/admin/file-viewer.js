@@ -40,21 +40,13 @@
  */
 
 import { h, htm, render, useState, useEffect, useRef, useCallback } from './vendor.js';
+import { fileKind } from './application-files.js';
 
 const html = htm.bind(h);
 
 // ─── What a file is ─────────────────────────────────────────────────
 
-export function kindOf(f) {
-  if (typeof f?.pages === 'function') return 'pages';
-  const t = String(f?.type || '').toLowerCase();
-  const n = String(f?.name || '').toLowerCase();
-  if (t === 'application/pdf' || n.endsWith('.pdf')) return 'pdf';
-  if (t.startsWith('image/') || /\.(jpe?g|png|gif|webp|avif|heic|heif)$/.test(n)) return 'image';
-  if (t.startsWith('video/') || /\.(mp4|mov|m4v|webm)$/.test(n)) return 'video';
-  if (t.startsWith('audio/') || /\.(mp3|m4a|wav|aac|ogg)$/.test(n)) return 'audio';
-  return 'other';
-}
+export const kindOf = (f) => (typeof f?.pages === 'function' ? 'pages' : fileKind(f));
 const KIND = { image: 'Photo', pdf: 'PDF', video: 'Video', audio: 'Audio', pages: 'Document', other: 'File' };
 const EMOJI = { image: '🖼', pdf: '📄', video: '🎬', audio: '🎧', pages: '📄', other: '📎' };
 // An Office file by its own name, the way its tile says it ("Excel", not "File")
@@ -984,7 +976,7 @@ function useVideoFacts(f) {
       stop();
     };
     v.onerror = stop;
-    v.src = f.url;
+    v.src = f.probe || f.url; // (`probe`: where to read it when opening the file itself is noted)
     return stop;
   }, [id]);
   return facts;

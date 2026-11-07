@@ -231,6 +231,22 @@ export async function noteFileOpen(env, member, request, fileId, { now = Date.no
   }
 }
 
+/**
+ * A member opened a family's video, application or photos: one row a thing every ten minutes (a video asks for itself
+ * piece by piece), with the family's name, so Board → Members can say whose it was even after they've left Applicants
+ */
+export async function noteFamilyOpen(env, member, request, account, what, name, { now = Date.now() } = {}) {
+  if (!member?.slug || !env.DB) return;
+  try {
+    await ensureActivitySchema(env.DB);
+    const was = await env.DB.prepare("SELECT until FROM board_activity WHERE slug = ? AND kind = 'family' AND ref = ? AND sub LIKE ? ORDER BY id DESC LIMIT 1").bind(member.slug, account, `${what}|%`).first();
+    if (was && now - Date.parse(was.until) < 10 * 60_000) return;
+    await add(env.DB, member.slug, [{ kind: 'family', ref: account, sub: `${what}|${String(name || '').slice(0, 80)}`, secs: 0, at: now, end: now, look: `fa${what[0]}${now.toString(36)}` }], await deviceFor(env.DB, member, request), now);
+  } catch (err) {
+    console.error('[board-activity] family', err.message);
+  }
+}
+
 /** The board page's own answers, as an activity row, once one worked: the request's body (JSON) or query */
 const ANSWERS = {
   'action-done': (b) => idOk(b.actionId) && { kind: 'action', ref: b.actionId, sub: b.done ? 'done' : 'open' },

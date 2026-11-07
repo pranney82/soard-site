@@ -42,7 +42,9 @@
  */
 
 import { h, htm, useState, useEffect, useRef, useMemo, useCallback, Sortable } from './vendor.js';
-import { nearRing, bandChanges } from './area-shared.js';
+import { bandChanges, nearRing } from './area-shared.js';
+import { STATUS_COLOR, AREA_INK, loadLeaflet, takeDown, dressMap, areaShape, closeRing, pinIcon, MapLegend } from './family-map.js';
+import { applicationParts, photoLabel } from './application-files.js';
 import { openViewer, viewerLink, warmFiles, kindOf, kindIcon, sizeText, extOf, VideoTile } from './file-viewer.js';
 import { ask } from './ask.js';
 import { useDialog, holdTab } from './dialog.js';
@@ -52,16 +54,12 @@ import { ScanBar, ScanFamilyButton, scanLink } from './score-scans.js';
 const html = htm.bind(h);
 const API = '/api/applicants-admin';
 const STATUS_ORDER = ['Applied', 'In Review', 'Approved', 'Denied'];
-const STATUS_COLOR = { Applied: '#2B6CB0', 'In Review': '#B7791F', Approved: '#2F7D4F', Denied: '#7C7D84', '': '#A3A4AA' };
 const STATUS_HINT = {
   Applied: 'New applications waiting for a first look',
   'In Review': 'Interview and home visit stage',
   Approved: 'On the makeover waitlist',
   Denied: 'Not moving forward',
 };
-// The area as families see it on the application: brand yellow, a charcoal line; "close" is a dashed ring
-const AREA_INK = '#373A36';
-const AREA_FILL = '#FFDA24';
 const SOURCE_LABEL = { website: 'on the website', jobtread: 'in JobTread', datax: 'by DataX', zapier: 'by Zapier', family: 'by the family', workflow: 'by a JobTread workflow', claude: 'by Claude' };
 const COMMENT_KINDS = new Set(['comment', 'reply', 'textIn', 'textOut', 'call', 'sent', 'note']);
 const DEFAULT_SUBJECT = 'A message from Sunshine on a Ranney Day';
@@ -323,30 +321,15 @@ const CSS = `
 
 .apl-map-wrap { position: relative; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; background: #EEF0EC; }
 .apl-map { height: min(72vh, 760px); min-height: min(420px, 72vh); }
-.apl-legend { position: absolute; z-index: 500; top: .75rem; left: .75rem; background: rgba(255,255,255,.96); border: 1px solid var(--color-border); border-radius: 10px; box-shadow: var(--shadow-md); padding: .55rem .6rem; display: grid; gap: .2rem; min-width: 190px; }
-.apl-legend button { all: unset; display: flex; align-items: center; gap: .5rem; font-size: var(--fs-xs); padding: .25rem .35rem; border-radius: 6px; cursor: pointer; }
-.apl-legend button:hover { background: var(--color-bg-hover); }
-.apl-legend button:focus-visible { outline: 2px solid var(--color-text); }
-.apl-legend button[aria-pressed="false"] { opacity: .45; }
-.apl-legend b { margin-left: auto; font-variant-numeric: tabular-nums; }
-.apl-legend-line { display: flex; align-items: center; gap: .5rem; font-size: var(--fs-xs); color: var(--color-text-secondary); padding: .3rem .35rem 0; border-top: 1px solid var(--color-border); margin-top: .2rem; }
-.apl-legend-line i { width: 18px; height: 11px; border: 2px solid ${AREA_INK}; background: color-mix(in srgb, ${AREA_FILL} 45%, transparent); border-radius: 3px; display: inline-block; }
-.apl-legend-line i.is-ring { background: none; border: 1.5px dashed ${AREA_INK}; opacity: .7; }
 .apl-map-tools { position: absolute; z-index: 500; top: .75rem; right: .75rem; display: grid; gap: .4rem; justify-items: end; }
 .apl-map-tools .btn { box-shadow: var(--shadow-md); }
 .apl-map-note { position: absolute; z-index: 500; left: 50%; bottom: .9rem; transform: translateX(-50%); background: #1A1B1F; color: #fff; border-radius: 10px; padding: .6rem .9rem; font-size: var(--fs-xs); box-shadow: var(--shadow-lg); display: flex; gap: .75rem; align-items: center; max-width: calc(100% - 2rem); flex-wrap: wrap; justify-content: center; }
 .apl-map-note .btn { min-height: 34px; }
-.apl-pin { width: 18px; height: 18px; border-radius: 50%; background: var(--c); border: 2.5px solid #fff; box-shadow: 0 1px 4px rgba(0,0,0,.35); transition: transform .15s; }
-.apl-pin.is-moving { box-shadow: 0 0 0 3px #fff, 0 0 0 5.5px ${AREA_INK}, 0 1px 4px rgba(0,0,0,.35); }
-.apl-pin.is-focus { transform: scale(1.5); box-shadow: 0 0 0 6px color-mix(in srgb, var(--c) 30%, transparent), 0 1px 4px rgba(0,0,0,.35); }
 .apl-handle { width: 14px; height: 14px; border-radius: 50%; background: #fff; border: 3px solid ${AREA_INK}; box-shadow: 0 1px 3px rgba(0,0,0,.3); cursor: grab; }
 .apl-handle.is-mid { width: 10px; height: 10px; border-width: 2px; opacity: .8; }
 .apl-pop { font: 14px/1.4 Inter, system-ui, sans-serif; display: grid; gap: .35rem; min-width: 190px; }
 .apl-pop strong { font-size: var(--fs-sm); }
 .apl-pop button { justify-self: start; }
-.leaflet-container { font: inherit; }
-.apl-tiles { filter: grayscale(1) contrast(.8) brightness(1.13); }
-.apl-map img, .apl-homemap img { max-width: none !important; max-height: none !important; border-radius: 0 !important; box-shadow: none !important; }
 /* isolation keeps Leaflet's own z-indexes (400+) under the drawer's menus */
 /* width: 100% keeps the 280px height cap from narrowing it (aspect-ratio would trade width for height) */
 .apl-homemap { width: 100%; height: auto; aspect-ratio: 21 / 10; min-height: 180px; max-height: 280px; border: 1px solid var(--color-border); border-radius: 10px; overflow: hidden; background: #EEF0EC; isolation: isolate; }
@@ -355,7 +338,6 @@ const CSS = `
 .apl-home-links { display: flex; gap: .9rem; text-transform: none; letter-spacing: 0; }
 /* Leaflet's own CSS lands after this, so these need the extra class to win */
 @media (pointer: coarse) { .apl-homemap.leaflet-container .leaflet-control-zoom a { width: 40px; height: 40px; line-height: 40px; } .apl-home-links .apl-more { min-height: 44px; display: inline-flex; align-items: center; } }
-.leaflet-popup-content-wrapper { border-radius: 12px; box-shadow: var(--shadow-lg); }
 
 .apl-feed { border: 1px solid var(--color-border); border-radius: var(--radius-md); background: var(--color-bg-card); }
 .apl-feed-row { display: grid; grid-template-columns: 34px 1fr auto; gap: .7rem; padding: .7rem .9rem; border-bottom: 1px solid var(--color-border); align-items: start; cursor: pointer; }
@@ -870,8 +852,6 @@ function Avatar({ a, size = null }) {
 const Pill = ({ status }) => html`<span class="apl-pill" style=${`--c:${STATUS_COLOR[status || '']}`}>${status || 'No status'}</span>`;
 
 /** A JobTread account made for trying things out (the sample application, staff tests) */
-// A map goes once any zoom has finished: Leaflet throws if it's taken down partway through one
-const takeDown = (map) => setTimeout(() => map.remove(), 300);
 // A family a tier or a search would keep on screen
 const inTier = (a, tier) => (tier === 'none' ? !a.score?.ranked && a.kind !== 'organization' : !!a.score?.ranked && a.score.tier === tier);
 function inSearch(a, q) {
@@ -1581,17 +1561,6 @@ function ListView({ list, order, onOpen }) {
 
 // ─── Map ────────────────────────────────────────────────────────────
 
-let _leaflet = null;
-function loadLeaflet() {
-  _leaflet ||= import('./vendor-map.js').then((m) => {
-    const el = document.createElement('style');
-    el.textContent = m.leafletCss;
-    document.head.appendChild(el);
-    return m.L;
-  }).catch((e) => { _leaflet = null; throw e; });
-  return _leaflet;
-}
-
 // The nearest point on the area's edge, so a home outside it is framed with the gap to the area
 function nearestEdgePoint([lat, lng], polygon) {
   const k = Math.cos((lat * Math.PI) / 180);
@@ -1622,12 +1591,7 @@ function HomeMap({ a, boundary }) {
   useEffect(() => {
     if (!L || !box.current || st.current.map) return;
     const map = L.map(box.current, { zoomControl: false, scrollWheelZoom: false, dragging: !L.Browser.mobile }); // phones: one finger scrolls the drawer, two move the map. Whole zoom levels only: in-between ones leave seams between tiles
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
-    map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, className: 'apl-tiles',
-      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>',
-    }).addTo(map);
+    dressMap(L, map);
     const layers = L.layerGroup().addTo(map);
     let width = 0;
     const ro = new ResizeObserver(() => {
@@ -1652,9 +1616,8 @@ function HomeMap({ a, boundary }) {
     const outside = a.area === 'outside' && poly.length >= 3;
     if (poly.length >= 3) {
       // Up close on a home inside, the yellow would wash over every street: just the line there
-      const ring = outside && nearMiles > 0 ? nearRing(poly, nearMiles) : [];
-      if (ring.length) L.polygon(ring, { color: AREA_INK, weight: 1.5, opacity: 0.6, dashArray: '5 6', fill: false, interactive: false }).addTo(s.layers);
-      L.polygon(poly, { color: AREA_INK, weight: 2.5, opacity: 0.95, fill: outside, fillColor: AREA_FILL, fillOpacity: 0.16, interactive: false }).addTo(s.layers);
+      if (outside) closeRing(L, poly, nearMiles)?.addTo(s.layers);
+      areaShape(L, poly, { fill: outside }).addTo(s.layers);
     }
     const edge = outside ? nearestEdgePoint(home, poly) : null;
     if (edge) {
@@ -1662,8 +1625,7 @@ function HomeMap({ a, boundary }) {
       const label = L.divIcon({ className: '', html: `<span class="apl-gap">${esc(String(a.areaMiles))} mi</span>`, iconSize: [0, 0] });
       L.marker([(home[0] + edge[0]) / 2, (home[1] + edge[1]) / 2], { icon: label, interactive: false, keyboard: false }).addTo(s.layers);
     }
-    const icon = L.divIcon({ className: '', html: `<div class="apl-pin is-focus" style="--c:${STATUS_COLOR[a.status || '']}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
-    L.marker(home, { icon, title: a.address || a.name, keyboard: false }).addTo(s.layers);
+    L.marker(home, { icon: pinIcon(L, STATUS_COLOR[a.status || ''], 'is-focus'), title: a.address || a.name, keyboard: false }).addTo(s.layers);
     s.frame = () => {
       // The home, the gap, and a little of the area past its edge, so the shape reads
       if (edge) s.map.fitBounds(L.latLngBounds([home, [edge[0] + (edge[0] - home[0]) * 0.35, edge[1] + (edge[1] - home[1]) * 0.35]]), { padding: [30, 30], maxZoom: 13 });
@@ -1698,13 +1660,7 @@ function MapView({ list, boundary, focus, ask: asked = null, startEditing = fals
   useEffect(() => {
     if (!L || !box.current || st.current.map) return;
     const map = L.map(box.current, { zoomControl: false, scrollWheelZoom: true, attributionControl: true, zoomSnap: 0.25 });
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
-    map.attributionControl.setPrefix('<a href="https://leafletjs.com" target="_blank" rel="noopener">Leaflet</a>');
-    // OpenStreetMap's own tiles (no key; fine for a few staff), quieted to gray so the pins carry the color
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19, className: 'apl-tiles',
-      attribution: '© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors',
-    }).addTo(map);
+    dressMap(L, map, { credit: ' contributors' });
     st.current = { map, pins: L.layerGroup().addTo(map), area: null, ring: null, handles: L.layerGroup().addTo(map), markers: new Map() };
     // The area and its "close" ring in view: the families near the edge are the ones to look at
     const poly = boundary?.live || [];
@@ -1724,9 +1680,8 @@ function MapView({ list, boundary, focus, ask: asked = null, startEditing = fals
     if (s.ring) s.ring.remove();
     s.ring = null;
     if (poly.length >= 3) {
-      const ring = nearMiles > 0 ? nearRing(poly, nearMiles) : [];
-      if (ring.length) s.ring = L.polygon(ring, { color: AREA_INK, weight: 1.5, opacity: 0.6, dashArray: '5 6', fill: false, interactive: false }).addTo(s.map);
-      s.area = L.polygon(poly, { color: AREA_INK, weight: editing ? 3 : 2.5, opacity: 0.95, fillColor: AREA_FILL, fillOpacity: editing ? 0.2 : 0.16, dashArray: editing ? '6 6' : null, interactive: false }).addTo(s.map);
+      s.ring = closeRing(L, poly, nearMiles)?.addTo(s.map) || null;
+      s.area = areaShape(L, poly, editing ? { weight: 3, fillOpacity: 0.2, dashArray: '6 6' } : {}).addTo(s.map);
     }
     s.handles.clearLayers();
     if (!editing) return;
@@ -1771,7 +1726,7 @@ function MapView({ list, boundary, focus, ask: asked = null, startEditing = fals
     for (const a of list) {
       if (a.lat == null || a.lng == null || hidden.has(a.status || '')) continue;
       const c = STATUS_COLOR[a.status || ''];
-      const icon = L.divIcon({ className: '', html: `<div class="apl-pin${focus === a.id ? ' is-focus' : ''}${moving.has(a.id) ? ' is-moving' : ''}" style="--c:${c}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
+      const icon = pinIcon(L, c, [focus === a.id ? 'is-focus' : '', moving.has(a.id) ? 'is-moving' : ''].filter(Boolean).join(' '));
       const m = L.marker([a.lat, a.lng], { icon, title: a.name, riseOnHover: true, keyboard: true }).addTo(s.pins);
       const div = document.createElement('div');
       div.className = 'apl-pop';
@@ -1821,13 +1776,7 @@ function MapView({ list, boundary, focus, ask: asked = null, startEditing = fals
   return html`<div class="apl-map-wrap">
     <div class="apl-map" ref=${box} role="region" aria-label="Map of applicants and the service-area boundary"></div>
     ${!L && html`<div class="apl-skel" style="position:absolute;inset:0;display:grid;place-items:center">Loading the map…</div>`}
-    <div class="apl-legend">
-      ${['Applied', 'In Review', 'Approved', 'Denied'].map(s => html`<button aria-pressed=${!hidden.has(s)} onClick=${() => setHidden(h => { const n = new Set(h); n.has(s) ? n.delete(s) : n.add(s); return n; })}>
-        <span class="apl-dot" style=${`background:${STATUS_COLOR[s]};width:10px;height:10px`}></span>${s}<b>${counts[s]}</b></button>`)}
-      <div class="apl-legend-line"><i></i> Service area${outside ? ` · ${outside} outside` : ''}</div>
-      ${nearMiles > 0 && html`<div class="apl-legend-line" style="border-top: 0; margin-top: 0; padding-top: 0;"><i class="is-ring"></i> Close: within ${plural(nearMiles, 'mile')}</div>`}
-      ${noPoint > 0 && html`<div class="apl-card-sub" style="padding:.2rem .35rem 0">${plural(noPoint, 'family has', 'families have')} no home in JobTread yet</div>`}
-    </div>
+    <${MapLegend} counts=${counts} hidden=${hidden} onToggle=${s => setHidden(h => { const n = new Set(h); n.has(s) ? n.delete(s) : n.add(s); return n; })} outside=${outside} nearMiles=${nearMiles} noPoint=${noPoint} />
     <div class="apl-map-tools">
       ${!editing && html`<button class="btn btn-ghost btn-sm" onClick=${startEdit}>Edit boundary</button>`}
     </div>
@@ -2349,18 +2298,6 @@ function NotifyBanner({ d, onChanged, onCorrection, sending = false, addToast })
 // ─── Details, contacts, home, files ─────────────────────────────────
 
 const shortDate = (iso) => new Date(iso).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' });
-/** What a family photo is, from the name JobTread has (the form names them "<Child> Family.jpg", "<Child> Space 1.jpg"…) */
-function photoLabel(f, child) {
-  const n = String(f.name || '').replace(/\.[a-z0-9]{2,5}$/i, '');
-  if (/famil/i.test(n)) return 'Family';
-  const sp = n.match(/space ?(\d)/i);
-  if (sp) return `Space ${sp[1]}`;
-  if (/space/i.test(n)) return 'Space';
-  const first = String(child || '').trim().split(/\s+/)[0]?.toLowerCase();
-  if (n.toLowerCase() === String(child || '').trim().toLowerCase() || (first && n.toLowerCase() === first)) return 'Child';
-  return n;
-}
-
 /** A photo's tile; one that won't load shows a quiet placeholder, not the browser's broken image */
 function PhotoTile({ f }) {
   const [broken, setBroken] = useState(false);
@@ -2579,13 +2516,10 @@ function SidePanel({ d, fields, boundary, onSaved, onShowOnMap, addToast }) {
   const files = (d.files || []).map(f => (kindOf(f) === 'image' && f.thumb ? { ...f, preview: f.thumb.replace(/([?&]size=)\d+/, '$12048') } : f));
   // The application leads: its PDF (JobTread's copy; for a website-form family without one, the site's). Then
   // the video and the photos together, labeled, then the documents (onsite and Zoom notes, letters).
-  let appPdf = files.find(f => kindOf(f) === 'pdf' && /application/i.test(f.name || ''));
+  const parts = applicationParts(files, a.name);
+  let appPdf = parts.pdf;
   if (!appPdf && a.applicationId) appPdf = { name: `${a.name}_Application.pdf`, type: 'application/pdf', url: `/api/applications-admin?file=${encodeURIComponent(a.applicationId)}&field=pdf` };
-  const appVideo = files.find(f => kindOf(f) === 'video' && /application/i.test(f.name || ''));
-  // The way the form asks for them: the child, the family, the spaces; anything else after, oldest first
-  const rank = (f) => { const l = photoLabel(f, a.name); return l === 'Child' ? 0 : l === 'Family' ? 1 : /^Space/.test(l) ? 2 + (Number(l.split(' ')[1]) || 0) : 20; };
-  const photos = files.filter(f => kindOf(f) === 'image').sort((x, y) => rank(x) - rank(y) || String(x.at || '').localeCompare(String(y.at || '')));
-  const docs = files.filter(f => kindOf(f) !== 'image' && f !== appPdf && f !== appVideo);
+  const { video: appVideo, photos, docs } = parts;
   const shown = [appPdf, appVideo, ...photos, ...docs].filter(Boolean); // one set in the viewer, in the order it's shown here
   const firstName = String(a.name || '').trim().split(/\s+/)[0];
   const photoTile = (f) => html`<a ...${viewerLink(shown, shown.indexOf(f))} title=${f.name}>

@@ -1918,6 +1918,9 @@ export async function deleteApplicationData(env, id, { user = 'admin', now = Dat
   if (accountId) {
     stmts.push(DB.prepare('DELETE FROM applicant_activity WHERE account_id = ?').bind(accountId));
     stmts.push(DB.prepare("UPDATE audit_log SET changes = ?, entity_name = 'Deleted family' WHERE entity_slug = ?").bind(REMOVED, accountId));
+    // What the board page kept: its list of their files (with JobTread's links), and their name on who opened them
+    stmts.push(DB.prepare('DELETE FROM board_state WHERE key = ?').bind(`family-files:${accountId}`));
+    stmts.push(DB.prepare("UPDATE board_activity SET sub = substr(sub, 1, instr(sub, '|')) WHERE kind = 'family' AND ref = ?").bind(accountId));
   }
   stmts.push(DB.prepare("UPDATE audit_log SET changes = ?, entity_name = 'Deleted application' WHERE entity_slug = ?").bind(REMOVED, id));
   // Either table may not exist on a fresh database; the application's own rows are what matter

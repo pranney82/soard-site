@@ -1,12 +1,13 @@
 /**
- * What makeovers cost, on the board page: Home (`home`), the Qualification
+ * What makeovers cost, on the board page: Financials (`home`, moved from Home
+ * Nov 6 2026 to make room for the applications), the Qualification
  * Committee's agenda item (`agenda`, live: 'costs') and the meeting on the
  * screen (CostsSlide). Travis Couick asked for it (Nov 4 2026): what
  * completed makeovers cost, the cash to fund more, the families waiting and
  * what each will likely cost, and who the money in hand starts.
  *
  * The answer first, then what it rests on:
- *   - For makeovers now: the cash in the bank (the same figure as Home's)
+ *   - For makeovers now: the cash in the bank (the same figure as Home's and Financials')
  *     less the operating balance SOARD keeps (Board settings, $500,000 to
  *     begin; a Board admin changes it here), and in one sentence who and
  *     how many makeovers it starts (../makeover-costs-shared.js planOf)

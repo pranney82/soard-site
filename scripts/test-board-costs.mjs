@@ -3,7 +3,7 @@
  * ==================================================================================================
  * The real handlers behind the real sign-in middleware on an in-memory D1, JobTread faked with finished
  * makeovers (made-up families and costs; the repo is public). Checks, at 1440px and 390px:
- *   - Home's "What makeovers cost": the money over the $500,000 operating balance (the same cash as Home's
+ *   - Financials' "What makeovers cost": the money over the $500,000 operating balance (the same cash as Home's
  *     figure), a makeover lately, the families waiting best score first, each netted by its sponsor's pledge
  *   - the dots: a row a type, the hover and keyboard readout, the season switch, the table
  *   - a Board admin changes the operating balance where it shows; a member can't
@@ -151,7 +151,12 @@ globalThis.fetch = async (input, init = {}) => {
   const url = String(input);
   if (url === 'https://soard.cloudflareaccess.com/cdn-cgi/access/certs') return Response.json({ keys: [jwk] });
   if (url.startsWith('https://api.resend.com/')) return Response.json({ id: 'em_1' });
-  if (url === 'https://api.jobtread.com/pave') { jtCalls += 1; return Response.json({ organization: { jobs: { nodes: JOBS, nextPage: null } } }); }
+  if (url === 'https://api.jobtread.com/pave') {
+    // (a family's files are asked for as they're opened, and JobTread is asked for them on purpose)
+    if (JSON.parse(init.body || '{}').query?.account) return Response.json({ account: { files: { nodes: [] } } });
+    jtCalls += 1;
+    return Response.json({ organization: { jobs: { nodes: JOBS, nextPage: null } } });
+  }
   if (/googleapis\.com/.test(url)) return Response.json({ items: [], messages: [], members: [], files: [] });
   if (!/^https?:\/\/(localhost|127\.0\.0\.1)/.test(url)) throw new Error(`test-board-costs: unexpected outside call ${url}`);
   return realFetch(input, init);
@@ -241,17 +246,20 @@ async function axe(page, sel, label) {
 }
 
 try {
-  console.log('Home, a board member, 1440px');
+  console.log('Financials, a board member, 1440px');
   const kim = await tab(MEMBER);
   await kim.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
+  await kim.waitForSelector('#makeovers', { timeout: 10000 });
+  ok(!(await kim.$('#costs')), 'what makeovers cost is off Home (Peter, Nov 6: to shorten it and make room for the applications)');
+  const homeCash = await kim.$eval('.bp-fig .bp-fig__value', (e) => e.textContent).catch(() => '');
+  ok(/\$670K/.test(homeCash), `Home’s cash figure is the same money (${homeCash})`);
+  await kim.click('#makeovers .bp-cardhead__go');
   await kim.waitForSelector('#costs', { timeout: 10000 });
-  // The space over this card, against the space over the makeovers board (Home's own rhythm)
-  const gaps = await kim.evaluate(() => {
-    const top = (id) => document.getElementById(id).getBoundingClientRect().top;
-    const above = (el) => { const prev = el.closest('.bp-rise').previousElementSibling; return el.getBoundingClientRect().top - prev.getBoundingClientRect().bottom; };
-    return { costs: Math.round(top('costs') - document.getElementById('makeovers').getBoundingClientRect().bottom), makeovers: Math.round(above(document.getElementById('makeovers'))) };
-  });
-  ok(gaps.costs > 0 && Math.abs(gaps.costs - gaps.makeovers) <= 1, `the same space over this card as over the makeovers board (${gaps.costs}px and ${gaps.makeovers}px)`);
+  // (the page holds at the card a moment, until they move: a test's clicks don't count as moving)
+  await sleep(2700);
+  ok(/#\/financials\/costs$/.test(kim.url()), 'Home’s “What they cost” opens Financials');
+  const landed = await kim.$eval('#costs', (e) => Math.round(e.getBoundingClientRect().top));
+  ok(landed > 0 && landed < 200, `at the card (${landed}px down the screen)`);
   const card = await textOf(kim, '#costs');
   ok(/For makeovers now\s*\$152,102/.test(card), 'For makeovers now: $669,602 in the bank, less the $500,000 operating balance and the $17,500 still to come underway');
   ok(/\$669,602 in the bank, less \$500,000 kept to run SOARD and \$17,500 still to come on the 1 makeover underway/.test(card), 'the math, in words');
@@ -263,8 +271,6 @@ try {
   ok(new RegExp(`Recommended pipeline, ${YEAR + 1}\\s*About 8 new families`).test(pipeline) && new RegExp(`Applicants plans 8 makeovers for ${YEAR + 1}\\. The 3 makeovers underway or waiting are ${YEAR}’s, so there’s room for about 8 new families\\. Funding follows as the reserve builds\\.`).test(pipeline), `the pipeline first: what SOARD can build next season; this season’s families waiting aren’t next season’s (${pipeline.replace(/\s+/g, ' ')})`);
   const parts = await kim.$$eval('#costs > *', (els) => els.map((e) => e.className.split(' ').slice(0, 2).join(' ')));
   ok(parts[1] === 'bc-answer bc-answer--pipe' && parts[2] === 'bc-answer bc-answer--money' && parts[3].startsWith('bc-under') && parts[4].startsWith('bc-split'), `the answer first, then who’s waiting beside the median (${parts.join(', ')})`);
-  const homeCash = await kim.$eval('.bp-fig .bp-fig__value', (e) => e.textContent).catch(() => '');
-  ok(/\$670K/.test(homeCash), `Home’s cash figure is the same money (${homeCash})`);
   ok(/Median makeover, 2025 and 2026\s*\$22,500/.test(card), 'the median makeover of the last two seasons');
   ok(/Average\s*\$24,143\s*Low\s*\$3,000\s*High\s*\$51,000\s*Of 7 completed makeovers/.test(await textOf(kim, '#costs .bc-median')), 'with the average, the low and the high, of the 7 (Kai, with no bills, left out)');
   ok(/7 completed makeovers: median \$22,500, average \$24,143, low \$3,000 \(Eve, 2025\), high \$51,000 \(Gia & Rosa, 2026\)/.test(card), 'the four numbers over the chart, with who each end is');
@@ -367,7 +373,7 @@ try {
 
   console.log('A Board admin changes the operating balance where it shows');
   const jane = await tab(FOUNDER);
-  await jane.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
+  await jane.goto(`${SITE}/admin/board/#/financials`, { waitUntil: 'networkidle0' });
   await jane.waitForSelector('#costs .bc-link', { timeout: 10000 });
   await jane.click('#costs .bc-link');
   await jane.click('.bc-balance__input', { clickCount: 3 });
@@ -400,9 +406,9 @@ try {
 
   console.log('A phone, 390px');
   const phone = await tab(MEMBER, 390, 844);
-  await phone.goto(`${SITE}/admin/board/#/`, { waitUntil: 'networkidle0' });
+  await phone.goto(`${SITE}/admin/board/#/financials`, { waitUntil: 'networkidle0' });
   await phone.waitForSelector('#costs', { timeout: 10000 });
-  ok((await overflow(phone)) <= 0, 'Home: nothing past the right edge');
+  ok((await overflow(phone)) <= 0, 'Financials: nothing past the right edge');
   const loose = await phone.$$eval('#costs .bc-fig__sub, #costs .bc-fig__value, #costs .bc-fam span, #costs .bc-lead, #costs .bc-answer__says, #costs .bc-row__nums dd, #costs .bc-mini dd, #costs .bc-stats', (els) => els.filter((e) => /\d[KMB%]? \p{L}/u.test(e.textContent)).map((e) => e.textContent.slice(0, 40)));
   ok(!loose.length, `every count and amount kept with its word (${loose.join(' | ')})`);
   await shotOf(phone, '#costs', 'home-costs-390');

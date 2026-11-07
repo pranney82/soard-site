@@ -465,8 +465,9 @@ export async function withSecurityHeaders(response) {
         hashes = await inlineScriptHashes(body);
       }
       headers.set('Content-Security-Policy', pageCsp(hashes));
-    } else if (!/^\s*application\/pdf\b/i.test(headers.get('Content-Type') || '')) {
-      // (a PDF is left without one: it opens in the browser's own viewer, and Safari and Firefox won't render it sandboxed)
+    } else if (!/^\s*(?:application\/pdf\b|video\/)/i.test(headers.get('Content-Type') || '')) {
+      // (a PDF is left without one: it opens in the browser's own viewer, and Safari and Firefox won't render it sandboxed;
+      // nor a video: a browser's own player, opened in a tab of its own, can't load it under this)
       headers.set('Content-Security-Policy', DATA_CSP);
     }
   }

@@ -29,6 +29,7 @@
  */
 
 import { pave, SOARD_ORG_ID, matchProject, isProject, loadProjects, normalizeName } from './_reveals.js';
+import { NOT_A_NAME } from '../../public/admin/application-files.js';
 import { bestPhotoOf, photoUrl } from './_job-covers.js';
 import {
   readApplicant, statusMessagePreview, postAccountComment, isSiteEvent, STATUS_RANK,
@@ -184,11 +185,6 @@ export function placeOnArea(lat, lng, polygon) {
 // family's). Camera names (IMG_0978) could be the child or a room, so they're
 // never guessed at; those families keep their initials.
 
-// Words that mean the photo is of someone or something else
-const NOT_CHILD = new Set(['family', 'families', 'parents', 'siblings', 'space', 'room', 'rooms', 'bedroom', 'bathroom', 'bath', 'bed', 'kitchen',
-  'house', 'home', 'ramp', 'therapy', 'mood', 'board', 'plan', 'plans', 'floor', 'before', 'after', 'site', 'onsite', 'note', 'notes',
-  'render', 'rendr', 'design', 'layout', 'logo', 'screenshot', 'scan', 'door', 'doorway', 'hall', 'hallway', 'stair', 'stairs', 'yard',
-  'porch', 'closet', 'tub', 'shower', 'toilet', 'sink', 'garage', 'exterior', 'interior', 'existing', 'proposed', 'resume', 'letter', 'map']);
 const CAMERA = /^(?:img|dsc|dscn|dcim|pxl|photo|image|screenshot|scan|untitled|companycam|whatsapp|mvimg|pic)[\s_-]*\d/i;
 const fileBase = (name) => String(name || '').replace(/\.[a-z0-9]{2,5}$/i, '').trim();
 // Words in a file name, with Jotform's glued ones split ("7d4faceBen_5e81d0" → face, ben)
@@ -209,7 +205,7 @@ export function childPhotoFile(files, names = []) {
   for (const f of files || []) {
     if (!f?.id || (f.type && !/^image\//.test(f.type)) || CAMERA.test(fileBase(f.name))) continue;
     const words = fileWords(f.name);
-    if (!words.length || words.some(w => NOT_CHILD.has(w))) continue;
+    if (!words.length || words.some(w => NOT_A_NAME.has(w))) continue;
     const score = (besideFamily.has(words.join(' ')) ? 4 : 0) + (words.some(w => child.has(w)) ? 3 : 0) + (words.includes('face') ? 3 : 0);
     if (score >= 3 && (!best || score > best.score)) best = { score, file: f };
   }
@@ -764,6 +760,23 @@ const fileOut = (f) => ({
   thumb: /^(image|video)\/|^application\/pdf$/.test(f.type || '') ? f.thumb || null : null,
 });
 
+// The family's own files only. Asking for the newest of everything and dropping the job's afterwards
+// lost a makeover family's application to the job's hundreds of newer photos, receipts and plans.
+const OWN_FILES = {
+  $: { size: 60, where: [['job', 'id'], '=', null], sortBy: [{ field: 'createdAt', order: 'desc' }] },
+  nodes: { id: {}, name: {}, type: {}, size: {}, createdAt: {}, url: {}, thumb: { _: 'url', $: { size: 600 } }, job: { id: {} } },
+};
+const ownFiles = (account) => (account?.files?.nodes || []).filter(f => !f.job?.id).map(fileOut);
+
+/**
+ * One family's own files, live from JobTread, oldest first: what they sent came first, so however many staff add after,
+ * their application is in the page (throws when JobTread can't answer)
+ */
+export async function familyFiles(env, id, { fetchImpl = fetch } = {}) {
+  const files = { ...OWN_FILES, $: { ...OWN_FILES.$, size: 100, sortBy: [{ field: 'createdAt', order: 'asc' }] } };
+  return ownFiles((await pave(env.JOBTREAD_GRANT_KEY, { account: { $: { id }, files } }, fetchImpl))?.account);
+}
+
 /**
  * One applicant, live from JobTread: the comments thread (family messages,
  * replies, texts, notes) and files, plus the mirror's fields and the
@@ -788,12 +801,7 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
           files: { $: { size: 10 }, nodes: { id: {}, name: {}, type: {}, size: {}, url: {}, thumb: { _: 'url', $: { size: 600 } } } },
         },
       },
-      // The family's own files only. Asking for the newest of everything and dropping the job's afterwards
-      // lost a makeover family's application to the job's hundreds of newer photos, receipts and plans.
-      files: {
-        $: { size: 60, where: [['job', 'id'], '=', null], sortBy: [{ field: 'createdAt', order: 'desc' }] },
-        nodes: { id: {}, name: {}, type: {}, size: {}, createdAt: {}, url: {}, thumb: { _: 'url', $: { size: 600 } }, job: { id: {} } },
-      },
+      files: OWN_FILES,
     },
   }, fetchImpl).catch(() => null);
   const comments = (data?.account?.comments?.nodes || []).map(c => ({
@@ -807,7 +815,7 @@ export async function applicantDetail(env, id, { fetchImpl = fetch, now = Date.n
     c.to = recipients.get(c.id) || [];
     delete c.shared;
   }
-  const files = (data?.account?.files?.nodes || []).filter(f => !f.job?.id).map(fileOut);
+  const files = ownFiles(data?.account);
   // Waiting on us: always set (null when answered), so the family's page never shows a stale banner
   row.waiting = (await waitingReplies(DB).catch(() => [])).find(w => w.id === id) || null;
   return { applicant: row, comments, files, activity: await activityFor(DB, id), notify: await notifyFor(DB, id).catch(() => null), live: !!data };

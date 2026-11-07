@@ -7,20 +7,28 @@
  * paper; the Board area's admins open any. Anyone else, or a file they can't see, gets the same 404. PDFs open in
  * the browser's viewer (or the board page's), everything else downloads,
  * never cached anywhere (files/[[path]].js fileHeaders + private, no-store).
+ *
+ * GET ?family=<account>&file=<id>[&size=256|600|2048] → one of that family's files, passed through from JobTread (a
+ * video's Range too); &site=pdf|<photo>[&thumb=1] the site's own copy until JobTread has it; &face=1 the child's photo
+ * for the list. Only the application, the video and the photos: never staff's notes (./_board-families.js familyFile).
  */
 
 import { fileFor, boardFiles } from './_board.js';
 import { isBoardAdmin } from './_board-roles.js';
 import { fileHeaders } from '../files/[[path]].js';
 import { noteFileOpen } from './_board-activity.js';
+import { familyFile } from './_board-families.js';
 
 const notFound = () => new Response('Not found', { status: 404, headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'private, no-store' } });
 
 export async function onRequestGet(context) {
   const { env, request } = context;
-  const id = new URL(request.url).searchParams.get('id') || '';
+  const q = new URL(request.url).searchParams;
+  const id = q.get('id') || '';
   const admin = !context.data?.boardMember && await isBoardAdmin(env.DB, context.data?.userEmail);
   if (!admin && !context.data?.boardMember) return notFound();
+  // A family's application, video or a photo (./_board-families.js): only those, whoever asks
+  if (q.has('family')) return familyFile(context, q);
   const row = await fileFor(env.DB, id, { admin, member: context.data?.boardMember || null });
   if (!row) return notFound();
   const obj = await boardFiles(env)?.get(row.r2_key);

@@ -92,6 +92,11 @@ export function said(e, L) {
       return { icon: 'page', text: `Looked at ${PAGE_NAMES[page] || 'the board page'}`, secs: e.secs };
     }
     case 'file': return { icon: 'file', text: `${(e.secs || 0) >= READ_SECS ? 'Read' : 'Opened'} ${file(e.ref)}`, secs: e.secs };
+    case 'family': {
+      const [what, who] = String(e.sub || '').split('|');
+      const whose = who ? `${who}’s` : 'a family’s';
+      return what === 'video' ? { icon: 'video', text: `Watched ${whose} video` } : what === 'photos' ? { icon: 'file', text: `Looked at ${whose} photos` } : { icon: 'file', text: `Read ${whose} application` };
+    }
     case 'video': return { icon: 'video', text: m ? `Opened the video call for ${mtg}` : 'Opened a meeting’s video call' };
     case 'print': return { icon: 'print', text: L.files.has(e.ref) ? `Printed ${file(e.ref)}` : e.sub === 'paper' ? `Printed ${L.docs.has(e.ref) ? `“${L.docs.get(e.ref).title}”` : 'a paper since removed'}` : !m ? 'Printed from the board page' : e.sub === 'all' ? `Printed ${mtg}, all of it` : e.sub === 'form' ? `Printed the minutes form for ${mtg}` : `Printed the page for ${mtg}` };
     case 'calendar': return { icon: 'calendar', text: `Downloaded the calendar file for ${mtg}` };

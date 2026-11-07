@@ -9,9 +9,11 @@
  *                                         facts for Documents (_org-facts.js orgFacts)
  * GET ?live=<id>                        → the meeting as it's held (_board.js liveView): every few seconds while it runs
  * GET ?families                         → every family who applied, read-only: name, season, status, what they asked for,
- *                                         county, score (_board-families.js familiesList)
- * GET ?family=<account>                  → one of them, with the facts their score rests on and each scorer's card
- *                                         (never contact details, messages, files or a scorer's notes)
+ *                                         county, score, where they are on the map, and the service area
+ *                                         (_board-families.js familiesList)
+ * GET ?family=<account>                  → one of them, with the facts their score rests on, each scorer's card, and their
+ *                                         video, photos and application (/api/board-file; never their messages, staff's
+ *                                         notes or a scorer's notes)
  * GET ?words                            → the words inside every file the page has, for its search (_board.js portalWords);
  *                                         a few files not read yet are read after it (_board-file-words.js)
  * POST { action: 'rsvp' }                           → 410: the calendar invite is the only answer (Peter, Nov 2 2026)

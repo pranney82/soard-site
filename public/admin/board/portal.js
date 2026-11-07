@@ -11,10 +11,10 @@
  * board members (People → Board, by their private email) and the Board
  * area's admins (who read it all and have nothing to answer or sign).
  *
- *   #/             Home: the next meeting, your to-dos, the major gifts, the makeovers
+ *   #/             Home: the next meeting, your to-dos, the major gifts, the applications on a map, the makeovers
  *   #/meetings     Meetings          #/meetings/<id>   one meeting (each item with its documents)
  *   #/meetings/<id>/screen   the meeting on the room's TV or shared on Google Meet (./screen.js)
- *   #/financials   Financials (#/financials/gifts opens at the major gifts)   #/people   People
+ *   #/financials   Financials (#/financials/gifts opens at the major gifts, /costs at what makeovers cost)   #/people   People
  *   #/documents    Documents, and every meeting's files
  *   (#/reveals, the old reveals page, is Home now)
  * On a phone the five pages are a bar along the bottom, in thumb's reach.
@@ -46,6 +46,7 @@ import { Screen, ScreenPeek } from './screen.js';
 import { Kanban, sized, hrefOf, cardId } from './kanban.js';
 import { CostsCard } from './costs.js';
 import { FamiliesPage, FamilyPage } from './families.js';
+import { ApplicationsCard } from './family-map.js';
 import { useCashNow, useBudget, liveCash, Both, compact, shortAsOf, pctOf, andText, moneyTiles, fromBooks, monthsPhrase, paceText, growthText, mixOf, RevenueMix, storeOf, StoreFigures, StoreTable, spentOf, budgetDue, budgetMonthsText as budgetMonths, stepText, useChangeAs, changeIn, overIn } from './money.js';
 
 const html = htm.bind(h);
@@ -91,7 +92,9 @@ const readRoute = () => {
   // A meeting's screen (#/meetings/<id>/screen), or the page to write an item's report on (#/meetings/<id>/report/<item>)
   // …or the chair's review of the agenda ahead (#/meetings/<id>/review, ./chair.js)
   const deeper = page === 'meetings' && id ? (sub === 'screen' ? 'screen' : sub === 'report' && item ? 'report' : sub === 'review' ? 'review' : '') : '';
-  // The families who applied (#/families, #/families/<account>, ./families.js): reached from Home, Home lit in the menu
+  // The families who applied (#/families, #/families/<account>, ./families.js), and on the map (#/families/map,
+  // #/families/map/<account> with one open): reached from Home, Home lit in the menu
+  if (page === 'families' && id === 'map') return { page, id: null, sub: 'map', item: sub };
   return { page: PAGES.includes(page) || page === 'families' ? page : '', id: id || null, sub: deeper, item: deeper === 'report' ? item : '' };
 };
 
@@ -716,7 +719,7 @@ function App() {
     : route.page === 'documents' && route.id ? html`<${DocPage} id=${route.id} ctx=${ctx} key=${route.id} />`
     : route.page === 'documents' ? html`<${DocumentsPage} ctx=${ctx} />`
     : route.page === 'families' && route.id ? html`<${FamilyPage} id=${route.id} key=${route.id} />`
-    : route.page === 'families' ? html`<${FamiliesPage} />`
+    : route.page === 'families' ? html`<${FamiliesPage} view=${route.sub === 'map' ? 'map' : 'list'} open=${route.item} key=${`${route.sub}/${route.item}`} />`
     : html`<${HomePage} ctx=${ctx} />`;
   return html`
     <a class="bp-skip" href="#main" onClick=${(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to the page</a>
@@ -1046,6 +1049,26 @@ function GiftRow({ g, since }) {
 }
 
 /**
+ * A page opened at one of its cards, and held there until they scroll, tap or type: the page change's own scroll to
+ * the top, and what's drawn above it later (the budget, the charts), never move it off. Once: Back to this step comes
+ * back to wherever they'd got to
+ */
+function useLandAt(address, id, skip = false) {
+  useEffect(() => {
+    if (!address.test(location.hash) || skip || kept().landed) return;
+    keep({ landed: true });
+    untilTheyMove(2500, () => {
+      const el = document.getElementById(id);
+      if (!el) return true;
+      const pad = (parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0) + (parseFloat(getComputedStyle(el).scrollMarginTop) || 0);
+      const to = Math.min(Math.round(scrollY + el.getBoundingClientRect().top - pad), document.documentElement.scrollHeight - innerHeight);
+      if (Math.abs(scrollY - to) > 2) scrollTo(0, to);
+      return true;
+    });
+  }, []);
+}
+
+/**
  * Home's major gifts: the year's newest six of $1,000 or more, newest first (down the first column, then the second),
  * those since your last visit marked new. Financials has every one
  */
@@ -1066,21 +1089,8 @@ function Gifts({ g, since }) {
 function GiftsYear({ g, since }) {
   // A gift found by search past the newest 12 opens them all, so it's there to land on
   const [all, setAll] = useKept('gifts-all', !!focusNext?.startsWith('gift-') && g.list.findIndex((x) => `gift-${x.id}` === focusNext) >= 12);
-  // Home's "All 14 this year" opens Financials here (a gift found by search lands on that gift instead), and stays here
-  // until they scroll, tap or type: the page change's own scroll to the top, and what's drawn above it later (the
-  // budget, the charts), never move it off. Once: Back to this step comes back to wherever they'd got to
-  useEffect(() => {
-    if (!/^#\/financials\/gifts\b/.test(location.hash) || focusNext || kept().landed) return;
-    keep({ landed: true });
-    untilTheyMove(2500, () => {
-      const el = document.getElementById('gifts');
-      if (!el) return true;
-      const pad = (parseFloat(getComputedStyle(document.documentElement).scrollPaddingTop) || 0) + (parseFloat(getComputedStyle(el).scrollMarginTop) || 0);
-      const to = Math.min(Math.round(scrollY + el.getBoundingClientRect().top - pad), document.documentElement.scrollHeight - innerHeight);
-      if (Math.abs(scrollY - to) > 2) scrollTo(0, to);
-      return true;
-    });
-  }, []);
+  // Home's "All 14 this year" opens Financials here (a gift found by search lands on that gift instead)
+  useLandAt(/^#\/financials\/gifts\b/, 'gifts', !!focusNext);
   const shown = all ? g.list : g.list.slice(0, 12);
   return html`<section class="bp-card bp-gifts bp-gifts--year" aria-labelledby="gifts-y-h" id="gifts">
     <${SecHead} id="gifts-y-h" title="Major gifts" sub=${nbw(`From Zeffy, every gift of $1,000 or more${g.stale ? `, as of ${giftDay(Date.parse(g.at) / 1000)}` : ''}`)} />
@@ -1093,7 +1103,7 @@ function GiftsYear({ g, since }) {
 
 function Builds({ n }) {
   return html`<section class="bp-card bp-kanban" aria-labelledby="builds-h" id="makeovers">
-    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers</h2><span class="bp-muted">From JobTread</span></div>
+    <div class="bp-cardhead"><h2 class="bp-h2" id="builds-h">Makeovers</h2><span class="bp-cardhead__end"><span class="bp-muted">From JobTread</span>${n.costs ? html`<a class="bp-cardhead__go" href="#/financials/costs">What they cost<${Icon} name="arrow" size=${16} cls="bp-go" /></a>` : null}</span></div>
     <${Kanban} projects=${n.projects} reveals=${n.reveals} variant="home" />
   </section>`;
 }
@@ -1153,9 +1163,8 @@ function HomePage({ ctx }) {
       <div class="bp-meets__col bp-rise" style=${rise(3)}>${todos}<${SinceLast} ctx=${ctx} /></div>
     </div>
     ${data.gifts ? html`<div class="bp-rise" style=${rise(4)}><${Gifts} g=${data.gifts} since=${data.me.lastSeen} /></div>` : null}
-    <div class="bp-rise" style=${rise(5)}><${Builds} n=${data.numbers} /></div>
-    <div class="bp-rise" style=${rise(6)}><${CostsCard} data=${data} n=${data.numbers} admin=${!!data.me.admin && !AS_BOARD && !PREVIEW}
-      onBalance=${(balance) => ctx.setData((x) => ({ ...x, numbers: { ...x.numbers, operating: { balance } } }))} /></div>
+    <div class="bp-rise" style=${rise(5)}><${ApplicationsCard} /></div>
+    <div class="bp-rise" style=${rise(6)}><${Builds} n=${data.numbers} /></div>
   </div>`;
 }
 
@@ -3478,6 +3487,8 @@ function CashCard({ data }) {
 function FinancialsPage({ ctx }) {
   const { data } = ctx;
   useFocusTarget();
+  // Home's "What they cost" opens the page here
+  useLandAt(/^#\/financials\/costs\b/, 'costs');
   const budget = useBudget(data);
   const [allYears, setAllYears] = useKept('tax-all', false);
   const [allEarlier, setAllEarlier] = useKept('earlier-all', false);
@@ -3515,6 +3526,7 @@ function FinancialsPage({ ctx }) {
     'The cash',
     books || f?.ytd || budgetRows(budget).length || (budget === undefined && budgetDue(data)) ? 'the year in numbers' : '',
     data.gifts ? 'its major gifts' : '',
+    data.numbers.costs ? 'what makeovers cost' : '',
     books?.statements || latest ? 'the statements from each meeting' : '',
     years.length ? 'every tax return and audit' : '',
   ].filter(Boolean))}.`;
@@ -3561,15 +3573,17 @@ function FinancialsPage({ ctx }) {
             ${history.map((r, k) => { const prev = history[k + 1]; const dd = prev ? r.total - prev.total : null; return html`<tr key=${r.month}><th scope="row">${monthOf(r.month)}</th><td class="num">${money(r.total)}</td><td class="num">${dd == null ? '' : `${dd >= 0 ? '+' : '−'}${money(Math.abs(dd))}`}</td></tr>`; })}
           </tbody></table><//>` : null}
         </section>` : null, data.gifts ? html`<${GiftsYear} g=${data.gifts} since=${data.me.lastSeen} />` : null], 1)}
-    ${books?.statements ? html`<section class="bp-card bp-latest bp-rise" style=${rise(3)} aria-labelledby="st-h">
+    ${data.numbers.costs ? html`<div class="bp-gap bp-rise" style=${rise(3)}><${CostsCard} data=${data} n=${data.numbers} admin=${!!data.me.admin && !AS_BOARD && !PREVIEW}
+      onBalance=${(balance) => ctx.setData((x) => ({ ...x, numbers: { ...x.numbers, operating: { balance } } }))} /></div>` : null}
+    ${books?.statements ? html`<section class="bp-card bp-latest bp-rise" style=${rise(4)} aria-labelledby="st-h">
       <${SecHead} id="st-h" title="The statements" sub="The ones each meeting’s packet holds, locked on its day" />
       <${Statements} s=${books.statements} books=${books} />
       ${latest ? html`<${More} k="packet" summary=${`From the ${meetingName(latest)} packet, ${longDate(latest.date)}`}><${FileList} files=${latest.files.filter((x) => x.kind === 'financials')} labels=${false} /><//>` : null}
     </section>`
-    : latest ? html`<section class="bp-card bp-latest bp-rise" style=${rise(3)} aria-labelledby="st-h">
+    : latest ? html`<section class="bp-card bp-latest bp-rise" style=${rise(4)} aria-labelledby="st-h">
       <${SecHead} id="st-h" title="The latest statements" sub=${html`From the <a class="bp-link" href=${`#/meetings/${latest.id}`} onClick=${claimMorph}>${meetingName(latest)}</a>, ${longDate(latest.date)}`} />
       <${FileList} files=${latest.files.filter((x) => x.kind === 'financials')} labels=${false} />
-    </section>` : html`<section class="bp-card bp-rise" style=${rise(3)}><h2 class="bp-h2">Financial statements</h2><p class="bp-muted">The income statement and balance sheet from each meeting show here.</p></section>`}
+    </section>` : html`<section class="bp-card bp-rise" style=${rise(4)}><h2 class="bp-h2">Financial statements</h2><p class="bp-muted">The income statement and balance sheet from each meeting show here.</p></section>`}
     ${pair([s ? html`<section class="bp-card" aria-labelledby="yr-h">
           <${SecHead} id="yr-h" title=${`${s.year} at a glance`} sub=${`From the ${s.year} tax return`} />
           <${Bars} s=${s} />
@@ -3590,7 +3604,7 @@ function FinancialsPage({ ctx }) {
             <${Icon} name="arrow" size=${18} cls="bp-go" />
           </a></li>`)}</ul>
           ${earlier.length > 6 ? html`<button type="button" class="bp-more-btn" aria-expanded=${allEarlier} onClick=${() => setAllEarlier(!allEarlier)}>${allEarlier ? 'Show the newest 6' : `Show all ${earlier.length}`}</button>` : null}
-        </section>` : null], 4)}`;
+        </section>` : null], 5)}`;
 }
 
 // ─── People ─────────────────────────────────────────────────────────
@@ -4613,8 +4627,9 @@ function searchIndex(data, d, words = null) {
     // A makeover without a page of its own lands on its card on Home's board
     out.push({ group: 'Makeovers', key: `b:${b.kind || ''}:${b.name}`, title: b.name, sub: b.kind === 'community' ? `Community project · ${b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status}` : b.status === 'Awaiting Funding' ? 'Awaiting funding' : b.status, hay: norm([b.name, b.status, b.kind === 'community' ? 'community project' : 'makeover kid'].join(' ')), ...(href ? { href, ext: true } : { href: '#/', focus: cardId(b) }), icon: 'home' });
   }
-  if (data.numbers.costs) out.push({ group: 'Makeovers', key: 'costs', title: 'What makeovers cost', sub: 'Each finished makeover, the money over the operating balance, and who it starts', hay: norm('what makeovers cost price paid budget money waiting funding pipeline qualification committee operating balance typical'), href: '#/', focus: 'costs', icon: 'financials' });
-  out.push({ group: 'Makeovers', key: 'families', title: 'Families', sub: 'Every family’s application and score, to read', hay: norm('families applications applicants scores scoring ranked qualification committee approved denied in review'), href: '#/families', icon: 'people' });
+  if (data.numbers.costs) out.push({ group: 'Makeovers', key: 'costs', title: 'What makeovers cost', sub: 'Each finished makeover, the money over the operating balance, and who it starts', hay: norm('what makeovers cost price paid budget money waiting funding pipeline qualification committee operating balance typical'), href: '#/financials', focus: 'costs', icon: 'financials' });
+  out.push({ group: 'Makeovers', key: 'families', title: 'Families', sub: 'Every family’s video, photos, application and score, to read', hay: norm('families applications applicants scores scoring ranked qualification committee approved denied in review video videos photos pictures'), href: '#/families', icon: 'people' });
+  out.push({ group: 'Makeovers', key: 'families-map', title: 'Applications map', sub: 'Where every family who applied lives, against the service area', hay: norm('map where applications applicants families homes service area boundary location'), href: '#/families/map', icon: 'people' });
   for (const r of data.numbers.reveals) out.push({ group: 'Coming up', key: `r:${r.name}`, title: `${r.name}’s reveal`, sub: r.confirmed && r.date ? dayOf(r.date) : r.window?.label || 'Day not set yet', hay: norm(`${r.name} reveal`), href: r.kidUrl, ext: true, icon: 'home' });
   for (const e of data.numbers.events) out.push({ group: 'Coming up', key: `e:${e.title}:${e.date}`, title: e.title, sub: dayOf(e.date), hay: norm(`${e.title} event ${e.location}`), date: e.date, href: e.url, ext: true, icon: 'meetings' });
   out.push(...orgEntries(data));
