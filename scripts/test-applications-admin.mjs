@@ -157,12 +157,16 @@ async function seed() {
   for (let i = 0; i < 37; i++) await app({ id: appId(), year: '2026', child: `Past${i} Family`, at: NOW - (400 + i) * DAY, jt: done });
   // The form's address check on some drafts (Insights → Where families live)
   const placed = (id, a) => DB.prepare('UPDATE application_drafts SET area = ? WHERE id = ?').bind(JSON.stringify(a), id).run();
-  for (let i = 0; i < 12; i++) await placed(`d-sub-${i}`, { band: 'inside', miles: 0 });
-  await placed('d-sub-12', { band: 'near', miles: 4 });
-  await placed('d-sub-13', { band: 'near', miles: 11 });
-  await placed('d-sub-14', { band: 'far', miles: 28 });
-  await placed('d-stop-0', { band: 'far', miles: 82 });
+  // (homes in real towns, so the map reads true: twelve inside, Buford, Cartersville, Ellijay, Macon)
+  const insideHomes = [[33.953, -84.547], [34.071, -84.273], [34.039, -84.351], [33.924, -84.378], [33.946, -84.334], [34.023, -84.615], [34.029, -84.198], [34.132, -84.300], [34.101, -84.519], [34.003, -84.145], [34.207, -84.140], [34.2368, -84.4908]];
+  for (const [i, [lat, lng]] of insideHomes.entries()) await placed(`d-sub-${i}`, { band: 'inside', miles: 0, lat, lng });
+  await placed('d-sub-12', { band: 'near', miles: 4, lat: 34.121, lng: -83.990 });
+  await placed('d-sub-13', { band: 'near', miles: 11, lat: 34.164, lng: -84.799 });
+  await placed('d-sub-14', { band: 'far', miles: 28, lat: 34.6948, lng: -84.4822 });
+  await placed('d-stop-0', { band: 'far', miles: 82, lat: 32.836, lng: -83.632 });
   await placed('d-wip-0', { band: 'unknown', reason: 'no-match' });
+  // Left long enough to be emptied: the check's band and miles stay, the address and its point don't
+  await placed('d-gone-1', { band: 'far', miles: 40 });
   // Homes on the Applicants map: three inside, Buford (4 mi out), Cartersville (10 mi), Macon (82 mi)
   await ensureApplicantSchema(DB);
   const home = (id, lat, lng) => DB.prepare("INSERT INTO applicants (account_id, name, status, year, lat, lng, synced_at) VALUES (?, ?, 'Applied', '2027', ?, ?, ?)").bind(id, `Family ${id}`, lat, lng, iso(NOW)).run();
@@ -1127,6 +1131,12 @@ try {
     ok(tag.inside && tag.row && tag.across, `at 390px each page is a row and "Most leave here" shows whole (${JSON.stringify(tag)})`);
     await page.$eval('.afi-funnel', (e) => e.scrollIntoView({ block: 'start', behavior: 'instant' }));
     await page.screenshot({ path: join(OUT, '13b-insights-phone.png') });
+    // The map on a phone: the full width, the distances under it
+    await page.waitForSelector('.afi-map .leaflet-marker-icon', { timeout: 10000 }).catch(() => {});
+    await page.$eval('.afi-where', (e) => e.scrollIntoView({ block: 'start', behavior: 'instant' }));
+    const phoneMap = await page.evaluate(() => { const m = document.querySelector('.afi-map-box').getBoundingClientRect(); const s = document.querySelector('.afi-where-side').getBoundingClientRect(); return { under: s.top >= m.bottom, h: Math.round(m.height), fits: m.right <= document.documentElement.clientWidth && m.left >= 0 }; });
+    ok(phoneMap.under && phoneMap.fits && phoneMap.h === 340, `at 390px the map takes the width and the distances go under it (${JSON.stringify(phoneMap)})`);
+    await page.screenshot({ path: join(OUT, '13d-insights-map-phone.png') });
     await page.setViewport(wide);
     await sleep(300);
     const stand = await page.$eval('.afi-stand[data-stand="left"]', (b) => b.getAttribute('aria-label'));
@@ -1177,21 +1187,52 @@ try {
     // The cards share the space by height: none stretched to fill a column
     const cardGaps = await page.evaluate(() => [...document.querySelectorAll('.afi-body .afe-viz')].map((c) => { const last = [...c.children].pop(); return Math.round(c.getBoundingClientRect().bottom - last.getBoundingClientRect().bottom); }));
     ok(cardGaps.length >= 5 && cardGaps.every((g) => g < 60), `no card holds a block of empty space (${cardGaps.join(', ')}px under the last line)`);
-    // Where they live: a dot for everyone who reached the address check, the same count the card gives
-    const checked = Number(await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Where families live/.test(v.querySelector('h4')?.textContent))?.querySelector('.afe-hint')?.textContent.match(/^(\d+)/)?.[1]));
-    ok(checked > 0 && await count(page, '.afi-dist .afi-pt') === checked, `a dot for each of the ${checked} who reached the address check (${await count(page, '.afi-dist .afi-pt')})`);
-    await page.$eval('.afi-dist .afi-pt', (c) => c.scrollIntoView({ block: 'center', behavior: 'instant' }));
-    const pt = await (await page.$('.afi-dist .afi-pt')).boundingBox();
-    await page.mouse.move(pt.x + pt.width / 2, pt.y + pt.height / 2);
-    await page.waitForSelector('.afi-dist .afi-tip', { timeout: 3000 }).catch(() => {});
-    ok(/Inside the area|mi outside|Address not found/.test(await text(page, '.afi-dist .afi-tip')), `pointing at a dot names who and how far (${(await text(page, '.afi-dist .afi-tip')).replace(/\s+/g, ' ')})`);
+    // Where they live, on the map: a pin for each home the check found (every placed row but the emptied ones), the area and its ring
+    await page.waitForSelector('.afi-map .leaflet-marker-icon', { timeout: 10000 }).catch(() => {});
+    const onMap = await page.evaluate(() => {
+      const card = [...document.querySelectorAll('.afe-viz')].find(v => /Where families live/.test(v.querySelector('h4')?.textContent));
+      const box = card.querySelector('.afi-map-box').getBoundingClientRect();
+      const pins = [...card.querySelectorAll('.leaflet-marker-icon')];
+      const inView = pins.filter((p) => { const r = p.getBoundingClientRect(); return r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom; });
+      return {
+        placed: [...card.querySelectorAll('.afi-where-side .afi-src:not(.is-rest) b')].reduce((n, b) => n + Number(b.textContent), 0),
+        cleared: Number(card.querySelector('.afi-note')?.textContent.match(/(\d+) (?:isn’t|aren’t) on the map/)?.[1] || 0),
+        pins: pins.length, inView: inView.length, shapes: card.querySelectorAll('.leaflet-overlay-pane path').length,
+        far: card.querySelector('.afi-map-far')?.textContent || '', labels: pins.map((p) => p.getAttribute('aria-label')).filter(Boolean).length,
+      };
+    });
+    ok(onMap.pins > 0 && onMap.pins === onMap.placed - onMap.cleared && onMap.labels === onMap.pins, `a pin for each home the check found, each named for a screen reader (${onMap.pins} pins = ${onMap.placed} placed − ${onMap.cleared} emptied)`);
+    ok(onMap.cleared === 1, 'the one whose unfinished application was emptied is named under the map, not drawn');
+    ok(onMap.shapes === 2, `the service area and its dashed close ring (${onMap.shapes} shapes)`);
+    ok(onMap.far === 'Show 1 farther out' && onMap.inView === onMap.pins - 1, `it opens on the area and the homes near it, Macon a click away (${onMap.inView} of ${onMap.pins} in view, "${onMap.far}")`);
+    await page.$eval('.afi-map', (m) => m.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    const pinBox = await page.evaluate(() => { const box = document.querySelector('.afi-map-box').getBoundingClientRect(); const p = [...document.querySelectorAll('.afi-map .leaflet-marker-icon')].find((e) => { const r = e.getBoundingClientRect(); return r.left > box.left + 40 && r.right < box.right - 60 && r.top > box.top + 60 && r.bottom < box.bottom - 40; }); const r = p.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+    const hoverAt = Date.now();
+    await page.mouse.move(pinBox.x, pinBox.y);
+    await page.waitForFunction(() => document.querySelector('.leaflet-tooltip.afi-map-tip')?.innerText.trim(), { timeout: 3000, polling: 'raf' }).catch(() => {});
+    ok(/Inside the area|mi outside/.test(await text(page, '.leaflet-tooltip.afi-map-tip')) && /Submitted|Still working|Stopped|Left/.test(await text(page, '.leaflet-tooltip.afi-map-tip')), `pointing at a pin names who, how far and where they stand (${(await text(page, '.leaflet-tooltip.afi-map-tip')).replace(/\s+/g, ' ')})`);
+    await page.mouse.click(pinBox.x, pinBox.y);
+    await page.waitForSelector('.afi-people', { timeout: 4000 }).catch(() => {});
+    ok(await count(page, '.afi-people .afi-person') === 1, 'a click on a pin opens that person');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 4000 }).catch(() => {});
     await page.mouse.move(2, 2);
+    await page.$eval('.afi-map .leaflet-marker-icon', (p) => p.focus());
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.afi-people', { timeout: 4000 }).catch(() => {});
+    ok(await count(page, '.afi-people .afi-person') === 1, 'and so does Enter on one, from the keyboard');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 4000 }).catch(() => {});
+    await page.click('.afi-map-far');
+    await page.waitForFunction(() => { const box = document.querySelector('.afi-map-box').getBoundingClientRect(); return [...document.querySelectorAll('.afi-map .leaflet-marker-icon')].every((p) => { const r = p.getBoundingClientRect(); return r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom; }); }, { timeout: 4000 }).catch(() => {});
+    ok(await page.evaluate(() => { const box = document.querySelector('.afi-map-box').getBoundingClientRect(); return [...document.querySelectorAll('.afi-map .leaflet-marker-icon')].every((p) => { const r = p.getBoundingClientRect(); return r.left >= box.left && r.right <= box.right && r.top >= box.top && r.bottom <= box.bottom; }); }) && await text(page, '.afi-map-far') === 'Back to the service area', 'Show 1 farther out brings in every home, and offers the way back');
+    await page.click('.afi-map-far');
     // Motion: the page comes in, and it doesn't for someone who asked for less
     // (This browser runs with reduced motion so screenshots hold still: each side is asked for, then it goes back)
-    const moving = async () => page.evaluate(() => ['.afi-body .afi-in', '.afi-step-bar', '.afi-meter', '.afi-pt', '.afi-line.is-now', '.afi-spark'].map(q => document.querySelector(q) && getComputedStyle(document.querySelector(q)).animationName));
+    const moving = async () => page.evaluate(() => ['.afi-body .afi-in', '.afi-step-bar', '.afi-meter', '.afi-pin', '.afi-line.is-now', '.afi-spark'].map(q => document.querySelector(q) && getComputedStyle(document.querySelector(q)).animationName));
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
     const moves = await moving();
-    ok(JSON.stringify(moves) === JSON.stringify(['afiRise', 'afiGrowY', 'afiGrowX', 'afiDrop', 'afiDraw', 'afiWipe']), `sections rise in, bars grow from their base, dots drop in, lines draw (${moves.join(', ')})`);
+    ok(JSON.stringify(moves) === JSON.stringify(['afiRise', 'afiGrowY', 'afiGrowX', 'afiDrop', 'afiDraw', 'afiWipe']), `sections rise in, bars grow from their base, pins drop in, lines draw (${moves.join(', ')})`);
     await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
     const still = await moving();
     ok(still.every(a => a === 'none'), `reduced motion: nothing moves (${still.join(', ')})`);

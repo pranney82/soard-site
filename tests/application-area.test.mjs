@@ -370,8 +370,16 @@ test('Insights counts where families live and what the ones far out did', async 
   await mk(HOME_FAR, { stop: true });
   await mk(addr('9 Nowhere Ln', 'Faketown', '30999'));
   await submitDraft(env, await getDraft(env.DB, far.id));
-  const a = (await insights(env.DB, { year: YEAR })).area;
+  const ins = await insights(env.DB, { year: YEAR });
+  const a = ins.area;
   assert.deepEqual([a.checked, a.inside, a.near, a.far, a.notFound], [5, 1, 1, 2, 1]);
+  // The map: the outline in use, and a point for each home the check placed (about 10 meters, no finer)
+  assert.deepEqual(a.polygon, POLY);
+  assert.equal(a.clearedAfterDays, DRAFT_TTL_DAYS);
+  const pinned = ins.people.filter((p) => p.lat != null);
+  assert.equal(pinned.length, 4, 'inside, close and both far, not the address it couldn’t find');
+  assert.ok(pinned.every((p) => ['inside', 'near', 'far'].includes(p.band) && p.lng != null && Math.round(p.lat * 1e4) / 1e4 === p.lat && Math.round(p.lng * 1e4) / 1e4 === p.lng));
+  assert.deepEqual(ins.people.filter((p) => p.band === 'unknown').map((p) => [p.lat, p.lng]), [[null, null]]);
   assert.deepEqual(a.farDid, { applied: 1, stopped: 1, earlier: 0, left: 0 });
   assert.equal(a.notChecked, 0);
   assert.equal(a.nearMiles, 15);
@@ -407,6 +415,9 @@ test('an expired draft keeps its band, miles out and why it couldn’t be placed
   const kept = JSON.parse((await env.DB.prepare('SELECT area FROM application_drafts WHERE id = ?').bind(lost.id).first()).area);
   assert.deepEqual([kept.band, kept.reason], ['unknown', 'no-match']);
   assert.deepEqual(Object.keys(kept).filter((k) => !['band', 'miles', 'reason'].includes(k)), [], 'no address, point, county or key');
-  const after = (await insights(env.DB, { year: YEAR, now: later })).area;
+  const afterAll = await insights(env.DB, { year: YEAR, now: later });
+  const after = afterAll.area;
   assert.deepEqual([after.steps, after.notFound], [before.steps, before.notFound], 'the card reads the same after expiry');
+  const gone = afterAll.people.find((p) => p.id === d.id);
+  assert.deepEqual([gone.band, gone.miles, gone.lat, gone.lng], ['near', 10.2, null, null], 'and its pin goes with the address');
 });

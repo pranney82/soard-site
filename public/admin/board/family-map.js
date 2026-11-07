@@ -23,17 +23,12 @@ import { h, htm, useState, useEffect, useRef, useMemo } from '../vendor.js';
 import { useKept } from './parts.js';
 import { plural } from '../board-shared.js';
 import { fmtScore } from '../scoring-shared.js';
-import { nearRing } from '../area-shared.js';
 import { viewerLink } from '../file-viewer.js';
-import { STATUS_COLOR, loadLeaflet, takeDown, dressMap, areaShape, closeRing, pinIcon, MapLegend } from '../family-map.js';
+import { STATUS_COLOR, FAR_MILES, loadLeaflet, takeDown, dressMap, areaShape, closeRing, pinIcon, onPress, frameArea, wheelZoom, MapLegend } from '../family-map.js';
 import { Face, Status, Score, asked, place, areaWords, byScore, seasonsOf, openingSeason, read, cache, setOf, Video, Photos, mediaNote } from './family-parts.js';
 import { nbw } from './costs.js';
 
 const html = htm.bind(h);
-// Past this many miles outside the area a family isn't what the map opens on: one home 97 miles out would shrink the
-// area to a thumbnail, and nine in ten families are closer than this. They're a tap away ("Show 1 farther out"), and
-// always in the list
-const FAR_MILES = 30;
 // Where pins pile up, the ones still being decided stay on top: a gray pin never hides a family waiting
 const PIN_RANK = { Applied: 500, 'In Review': 400, Approved: 300 };
 const rankOf = (f) => PIN_RANK[f.status] || 0;
@@ -134,12 +129,9 @@ export function FamilyMap({ families, boundary, open = '', tall = false, scheme 
   const frame = (animate, everyone = wide) => {
     const s = st.current;
     if (!s.map) return;
-    const ring = poly.length >= 3 && nearMiles > 0 ? nearRing(poly, nearMiles, 48) : poly;
-    const points = [...ring, ...showing.filter((f) => everyone || !isFar(f)).map((f) => [f.lat, f.lng])];
     const key = box.current?.parentElement?.querySelector('.apl-legend');
-    const beside = key && getComputedStyle(key).position === 'absolute' ? key.offsetWidth + 22 : 22;
-    if (points.length) s.map.fitBounds(L.latLngBounds(points), { paddingTopLeft: [beside, 22], paddingBottomRight: [22, 22], animate: animate && !s.still });
-    else s.map.setView([33.95, -84.35], 9, { animate: false });
+    const left = key && getComputedStyle(key).position === 'absolute' ? key.offsetWidth + 22 : 22;
+    frameArea(L, s.map, { polygon: poly, nearMiles, points: showing.filter((f) => everyone || !isFar(f)).map((f) => [f.lat, f.lng]), left, animate: animate && !s.still });
   };
   const frameRef = useRef(frame);
   frameRef.current = frame;
@@ -153,21 +145,13 @@ export function FamilyMap({ families, boundary, open = '', tall = false, scheme 
     closeRing(L, poly, nearMiles)?.addTo(map);
     if (poly.length >= 3) areaShape(L, poly).addTo(map);
     st.current = { map, still, pins: L.layerGroup().addTo(map), markers: new Map() };
-    // ⌘/Ctrl and the wheel, or a laptop's pinch, zoom where the pointer is; the wheel alone goes on down the page
-    let last = 0;
-    const wheel = (e) => {
-      if (tall || !(e.ctrlKey || e.metaKey)) return;
-      e.preventDefault();
-      if (e.timeStamp - last < 220) return;
-      last = e.timeStamp;
-      map.setZoomAround(map.mouseEventToLatLng(e), map.getZoom() + (e.deltaY < 0 ? 1 : -1));
-    };
-    box.current.addEventListener('wheel', wheel, { passive: false });
+    // (Families → Map is tall enough that the wheel zooms it)
+    const unwheel = tall ? () => {} : wheelZoom(map, box.current);
     const here = box.current;
     let width = here.offsetWidth;
     const ro = new ResizeObserver(() => { map.invalidateSize({ pan: false }); if (here.offsetWidth !== width) { width = here.offsetWidth; if (!openRef.current) frameRef.current(false); } });
     ro.observe(here);
-    return () => { ro.disconnect(); here.removeEventListener('wheel', wheel); takeDown(map); st.current = {}; };
+    return () => { ro.disconnect(); unwheel(); takeDown(map); st.current = {}; };
   }, [L]);
 
   // A pin and its row light together
@@ -233,7 +217,7 @@ export function FamilyMap({ families, boundary, open = '', tall = false, scheme 
         tip.textContent = f.name;
         m.bindTooltip(tip, { direction: 'top', offset: [0, -10], className: 'fm-tip' });
       }
-      m.on('click', () => pick(f.id));
+      onPress(m, () => pick(f.id));
       m.on('mouseover', () => lightRow(f.id, true));
       m.on('mouseout', () => lightRow(f.id, false));
       s.markers.set(f.id, m);

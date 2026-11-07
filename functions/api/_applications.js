@@ -2008,9 +2008,12 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
   const referral = {};
   for (const a of realApps) referral[sourceOf(a)] = (referral[sourceOf(a)] || 0) + 1;
   const working = new Set(inProgress.map(d => d.id));
+  // Where the address check put a home, for the map: about 10 meters is plenty (an emptied draft has none)
+  const spot = (n) => (n != null && Number.isFinite(Number(n)) ? Math.round(Number(n) * 1e4) / 1e4 : null);
   const people = real.map(d => {
     const app = apps.find(a => a.draft_id === d.id);
     const area = parse(d.area, null);
+    const placed = area && ['inside', 'near', 'far'].includes(area.band) && spot(area.lat) != null && spot(area.lng) != null;
     return {
       id: d.id,
       name: app?.child_name || applicantNameOf(parse(d.answers, {}), k) || null,
@@ -2021,6 +2024,8 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
       at: d.updated_at,
       band: area?.band || null,
       miles: Number.isFinite(Number(area?.miles)) ? Number(area.miles) : null,
+      lat: placed ? spot(area.lat) : null,
+      lng: placed ? spot(area.lng) : null,
       reason: area?.reason || null,
       referral: app ? sourceOf(app) : null,
       accountId: app?.jt_account_id || null,
@@ -2074,6 +2079,9 @@ function areaInsights(form, real, gone) {
   return {
     nearMiles: near,
     beyond: sa.beyond === 'stop' ? 'stop' : 'warn',
+    // The outline in use, for the map, and how long an unfinished application keeps its address
+    polygon: Array.isArray(sa.polygon) ? sa.polygon : [],
+    clearedAfterDays: DRAFT_TTL_DAYS,
     checked: checks.length,
     inside: count('inside'),
     near: count('near'),

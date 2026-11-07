@@ -83,6 +83,43 @@ export function closeRing(L, polygon, nearMiles) {
 /** A family's pin, in its status's color (`cls`: is-focus, is-moving) */
 export const pinIcon = (L, color, cls = '') => L.divIcon({ className: '', html: `<div class="apl-pin${cls ? ` ${cls}` : ''}" style="--c:${color}"></div>`, iconSize: [18, 18], iconAnchor: [9, 9] });
 
+/** A pin that does something: on a click, and on Enter or Space once it has the keyboard (Leaflet only does that for popups) */
+export function onPress(marker, fn) {
+  marker.on('click', fn);
+  marker.on('keydown', (e) => {
+    const key = e.originalEvent?.key;
+    if (key !== 'Enter' && key !== ' ') return;
+    e.originalEvent.preventDefault();
+    fn(e);
+  });
+}
+
+// Past this many miles outside the area a home isn't what a map opens on: one home 97 miles out would shrink the
+// area to a thumbnail, and nine in ten families are closer than this. They're a tap away ("Show 1 farther out")
+export const FAR_MILES = 30;
+
+/** The whole picture: the area, its close ring and these homes ([lat, lng] each), clear of a key `left` px wide */
+export function frameArea(L, map, { polygon = [], nearMiles = 0, points = [], left = 22, animate = false } = {}) {
+  const ring = polygon.length >= 3 && nearMiles > 0 ? nearRing(polygon, nearMiles, 48) : polygon;
+  const all = [...ring, ...points];
+  if (all.length) map.fitBounds(L.latLngBounds(all), { paddingTopLeft: [left, 22], paddingBottomRight: [22, 22], animate });
+  else map.setView([33.95, -84.35], 9, { animate: false });
+}
+
+/** ⌘/Ctrl and the wheel, or a laptop's pinch, zoom where the pointer is; the wheel alone goes on down the page. → its undo */
+export function wheelZoom(map, el) {
+  let last = 0;
+  const wheel = (e) => {
+    if (!(e.ctrlKey || e.metaKey)) return;
+    e.preventDefault();
+    if (e.timeStamp - last < 220) return;
+    last = e.timeStamp;
+    map.setZoomAround(map.mouseEventToLatLng(e), map.getZoom() + (e.deltaY < 0 ? 1 : -1));
+  };
+  el.addEventListener('wheel', wheel, { passive: false });
+  return () => el.removeEventListener('wheel', wheel);
+}
+
 /**
  * The key: a switch for each status with how many are on the map, the area and its ring, and who has no point.
  * `counts`: { [key]: n } with '' for a family with no status; `hidden`: a Set of keys switched off; `rows`: the keys

@@ -43,6 +43,7 @@ import { h, htm, render, Component, useState, useEffect, useRef, useMemo, Sortab
 import { WaitlistPanel, WaitlistOpenNote } from './waitlist.js';
 import { nearRing, bandCounts, bandChanges, placeHome, NEAR_MAX } from './area-shared.js';
 import { viewerLink, extOf } from './file-viewer.js';
+import { FAR_MILES, AREA_INK, AREA_FILL, loadLeaflet, takeDown, dressMap, areaShape, closeRing, pinIcon, onPress, frameArea, wheelZoom } from './family-map.js';
 import { ask } from './ask.js';
 
 const html = htm.bind(h);
@@ -663,24 +664,43 @@ const CSS = `
 .afi-cross { stroke: var(--color-border-strong); stroke-width: 1; shape-rendering: crispEdges; }
 .afi-table { margin-top: .6rem; }
 .afi-table summary { display: inline-block; padding: .35rem 0; cursor: pointer; }
-/* Where they live: the distance line, then the steps as chips */
-.afi-dist { margin: .1rem 0 .9rem; }
-.afi-dist svg { display: block; overflow: visible; }
-.afi-bay { fill: var(--color-bg-secondary); stroke: var(--color-border); }
-.afi-close-zone { fill: color-mix(in srgb, var(--afe-data) 7%, transparent); }
-.afe-chart .afi-zone-label { fill: var(--color-text-secondary); font-weight: 600; }
-.afi-axis-line { stroke: var(--color-border-strong); shape-rendering: crispEdges; }
-.afi-tick { stroke: var(--color-border-strong); shape-rendering: crispEdges; }
-.afi-pt { stroke: var(--color-bg-card); stroke-width: 2; cursor: pointer; transform-box: fill-box; transform-origin: center; transition: transform .15s var(--ease-out); animation: afiDrop .5s var(--ease-out) backwards; animation-delay: calc(.35s + var(--i, 0) * 22ms); }
-.afi-pt:hover { transform: scale(1.4); }
-.afi-bands { display: flex; flex-wrap: wrap; gap: .45rem; }
-.afi-band { display: inline-flex; align-items: center; gap: .45rem; min-height: 36px; padding: .25rem .75rem; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-card); color: var(--color-text-secondary); font: inherit; font-size: var(--fs-xs); font-weight: 600; transition: border-color .15s var(--ease-out), background-color .15s var(--ease-out); }
-.afi-band b { color: var(--color-text); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
-.afi-band:not(:disabled) { cursor: pointer; }
-.afi-band:not(:disabled):hover { border-color: var(--color-border-strong); background: var(--color-bg-hover); }
-.afi-band:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
-.afi-band.is-rest { border-style: dashed; }
-@media (pointer: coarse) { .afi-band { min-height: 44px; } }
+/* Where they live: the map, and beside it the people by distance */
+.afi-map { position: relative; }
+.afi-map-box { height: 440px; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; background: #EEF0EC; isolation: isolate; }
+@container (max-width: 639px) { .afi-map-box { height: 340px; } }
+.afi-map-note { position: absolute; inset: 0; z-index: 400; display: grid; place-items: center; margin: 0; color: var(--color-text-muted); font-size: var(--fs-sm); pointer-events: none; }
+.afi-map-note:only-child { position: static; min-height: 200px; border: 1px dashed var(--color-border); border-radius: var(--radius-md); }
+.afi-map-under { position: absolute; z-index: 500; left: .75rem; bottom: .75rem; display: flex; flex-wrap: wrap; align-items: center; gap: .3rem .75rem; pointer-events: none; }
+.afi-map-under > * { pointer-events: auto; }
+.afi-map-far { min-height: 36px; padding: 0 .85rem; border: 1px solid var(--color-border); border-radius: 999px; background: var(--color-bg-card); color: var(--color-text); font: inherit; font-size: var(--fs-xs); font-weight: 650; box-shadow: var(--shadow-md); cursor: pointer; transition: transform .2s var(--ease-out); }
+.afi-map-far:hover { transform: translateY(-1px); }
+.afi-map-far:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
+.afi-map-hint { margin: 0; padding: .2rem .55rem; border-radius: 999px; background: var(--color-bg-card); color: var(--color-text-secondary); font-size: var(--fs-2xs); }
+.afi-map-box.leaflet-container { background: #EEF0EC; font-family: inherit; }
+.afi-map-box .leaflet-bar { overflow: hidden; border: 1px solid var(--color-border); border-radius: var(--radius-sm); box-shadow: var(--shadow-md); }
+.afi-map-box.leaflet-container .leaflet-bar a { width: 36px; height: 36px; border-color: var(--color-border); color: var(--color-text); font-size: 1.2rem; line-height: 36px; }
+.afi-map-box.leaflet-container .leaflet-bar a:hover { background: var(--color-bg-hover); }
+.afi-map-box .leaflet-control-attribution { font-size: .68rem; }
+@media (pointer: coarse) { .afi-map-box.leaflet-container .leaflet-bar a { width: 44px; height: 44px; line-height: 44px; } .afi-map-far { min-height: 44px; } }
+.afi-map-box.is-crowded .apl-pin:not(.is-focus) { width: 12px; height: 12px; margin: 3px; border-width: 2px; }
+.afi-map-box .leaflet-marker-icon { cursor: pointer; }
+.afi-map-box .leaflet-marker-icon:focus-visible { outline: none; }
+.afi-map-box .leaflet-marker-icon:hover .afi-pin, .afi-map-box .leaflet-marker-icon:focus-visible .afi-pin { transform: scale(1.35); }
+.afi-map-box .leaflet-marker-icon:focus-visible .afi-pin { box-shadow: 0 0 0 2px #fff, 0 0 0 4.5px var(--color-text); }
+.afi-pin.is-new { animation: afiDrop .5s var(--ease-out) backwards; animation-delay: calc(.2s + min(var(--i, 0) * 28ms, .9s)); }
+.leaflet-tooltip.afi-map-tip { padding: .35rem .55rem; border: 1px solid var(--color-border); border-radius: 8px; background: var(--color-bg-card); box-shadow: var(--shadow-md); color: var(--color-text-secondary); font: inherit; font-size: var(--fs-2xs); white-space: nowrap; }
+.leaflet-tooltip.afi-map-tip b { display: block; font-size: var(--fs-sm); color: var(--color-text); }
+.leaflet-tooltip.afi-map-tip span { display: block; font-variant-numeric: tabular-nums; }
+.leaflet-tooltip.afi-map-tip span.afi-tip-row { display: flex; }
+.leaflet-tooltip-top.afi-map-tip::before { border-top-color: var(--color-bg-card); }
+.afi-keys i.is-area { width: 14px; height: 10px; border: 2px solid ${AREA_INK}; background: color-mix(in srgb, ${AREA_FILL} 45%, transparent); }
+.afi-keys i.is-ring { width: 14px; height: 10px; border: 1.5px dashed ${AREA_INK}; background: none; opacity: .7; }
+.afi-where { display: grid; gap: .9rem 1.25rem; }
+@container (min-width: 760px) { .afi-where { grid-template-columns: minmax(0, 1fr) minmax(220px, 280px); align-items: start; } }
+.afi-where .afi-map { margin: 0; }
+.afi-where .afi-note { margin-top: .7rem; }
+.afi-src-label { display: inline-flex; align-items: center; gap: .45rem; }
+.afi-src .afe-tag { flex: none; overflow: visible; }
 /* Ranked lists: each row's bar sits behind its words */
 .afi-srcs { display: grid; gap: .3rem; }
 .afi-src { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 40px; padding: .4rem .75rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
@@ -723,8 +743,8 @@ const CSS = `
 .afi-skel-block { height: 200px; border-radius: var(--radius-md); }
 .afi-skel-block.is-tall { height: 340px; }
 @media (prefers-reduced-motion: reduce) {
-  .afi-in, .afi-meter, .afi-step-bar, .afi-spark, .afi-line.is-now, .afi-area, .afi-dot, .afe-chart .afi-end.is-now, .afi-pt, .afi-src::before, .afi-flow-tip, .afi-tip { animation: none; }
-  .afi-body, .afi-bar > span, .afi-kind, .afi-stand, .afi-step, .afi-band, .afi-src::before, .afi-pt, .afi-added small svg, .afi-spark-line, .afi-spark-fill { transition: none; }
+  .afi-in, .afi-meter, .afi-step-bar, .afi-spark, .afi-line.is-now, .afi-area, .afi-dot, .afe-chart .afi-end.is-now, .afi-pin.is-new, .afi-src::before, .afi-flow-tip, .afi-tip { animation: none; }
+  .afi-body, .afi-bar > span, .afi-kind, .afi-stand, .afi-step, .afi-src::before, .afi-map .apl-pin, .afi-map-far, .afi-added small svg, .afi-spark-line, .afi-spark-fill { transition: none; }
   .afi-kind:hover { transform: none; }
 }
 .afe-table { width: 100%; border-collapse: collapse; margin-top: .5rem; font-size: var(--fs-xs); }
@@ -2186,7 +2206,7 @@ function PageFlow({ ins, open }) {
     </div>`;
 }
 
-/** Where they are: a dot each on one line out from the area, then the same counts as steps */
+/** Where they are: a pin each on the map with the service area, and beside it the same people by distance */
 function AreaCard({ a, k, w, started, go, people, open, style = '' }) {
   const span = (st) => (st.to == null ? `Over ${st.from} mi` : st.from ? `${st.from} to ${st.to} mi` : `Up to ${st.to} mi`);
   const outside = (x) => x.band === 'near' || x.band === 'far';
@@ -2204,96 +2224,136 @@ function AreaCard({ a, k, w, started, go, people, open, style = '' }) {
   const early = a.farDid?.earlier || 0;
   const earlyText = !early ? '' : early === st ? `, ${st === 1 ? '' : 'all '}when the close distance was shorter` : `, ${num(early)} of them when the close distance was shorter`;
   const did = [st > 0 && `${num(st)} ${st === 1 ? 'was' : 'were'} stopped by the form as too far out${earlyText}`, a.farDid?.applied > 0 && `${num(a.farDid.applied)} applied from farther out`].filter(Boolean);
-  const states = STANDINGS.filter(s => people.some(p => p.band && p.state === s.key));
+  const onMap = people.filter(p => p.lat != null && p.lng != null);
+  const states = STANDINGS.filter(s => onMap.some(p => p.state === s.key));
+  // Placed by the check, but their unfinished application has since been emptied, address and all
+  const cleared = people.filter(p => ['inside', 'near', 'far'].includes(p.band) && p.lat == null).length;
+  const title = k === 'organization' ? 'Where organizations are' : 'Where families live';
+  const most = Math.max(1, ...rows.map(r => r.n));
   return html`
     <section class="afe-viz afi-card afi-in" style=${style}>
-      <${CardHead} title=${k === 'organization' ? 'Where organizations are' : 'Where families live'}><${Keys} items=${states} /><//>
-      <span class="afe-hint">${num(a.checked)} of ${num(started)} have reached the address check, a dot each. Close means within ${plural(a.nearMiles, 'mile')} of the area (<a href="#applications/settings" onClick=${(e) => { e.preventDefault(); go('settings'); }}>Settings</a>).</span>
-      <${DistanceLine} near=${a.nearMiles} people=${people} open=${open} who=${w.who} />
-      <div class="afi-bands">
-        ${rows.map(r => html`
-          <button type="button" class=${`afi-band ${r.rest ? 'is-rest' : ''}`} disabled=${!r.list.length} onClick=${() => open(r.label, r.list)}>
-            <span>${r.label}</span>${r.close ? html`<span class="tag afe-tag">close</span>` : ''}<b>${num(r.n)}</b>
-          </button>`)}
+      <${CardHead} title=${title}><${Keys} items=${[...states, { label: 'Service area', line: 'is-area' }, ...(a.nearMiles > 0 ? [{ label: 'Close', line: 'is-ring' }] : [])]} /><//>
+      <span class="afe-hint">${num(a.checked)} of ${num(started)} have reached the address check, a pin for each home it found. Close means within ${plural(a.nearMiles, 'mile')} of the area (<a href="#applications/settings" onClick=${(e) => { e.preventDefault(); go('settings'); }}>Settings</a>).</span>
+      <div class="afi-where">
+        <${AreaMap} a=${a} people=${people} open=${open} who=${w.who} label=${`${title}: a map of the homes the address check found, with the service area`} />
+        <div class="afi-where-side">
+          <div class="afi-srcs">
+            ${rows.map((r, n) => html`
+              <button type="button" class=${`afi-src ${r.rest ? 'is-rest' : ''}`} style=${`--w: ${(r.n / most) * 100}%; --i: ${n};`} disabled=${!r.list.length} onClick=${() => open(r.label, r.list)}>
+                <span class="afi-src-label">${r.label}${r.close ? html`<span class="tag afe-tag">close</span>` : ''}</span><b>${num(r.n)}</b>
+              </button>`)}
+          </div>
+          ${(did.length > 0 || cleared > 0) && html`<p class="afi-note">${[
+            did.length > 0 && `${listWords(did)}.`,
+            cleared > 0 && `${num(cleared)} ${cleared === 1 ? 'isn’t' : 'aren’t'} on the map: an application left unfinished for ${plural(a.clearedAfterDays || 60, 'day')} has its address cleared.`,
+          ].filter(Boolean).join(' ')}</p>`}
+        </div>
       </div>
-      ${did.length > 0 && html`<p class="afi-note">${listWords(did)}.</p>`}
     </section>`;
 }
 
+// Where pins pile up, the one furthest along stays on top
+const PIN_RANK = { submitted: 400, working: 300, stopped: 200, left: 100 };
+// This many on the map and each pin is drawn smaller (the board's map does the same)
+const CROWDED = 30;
+const whereText = (p) => (p.band === 'inside' ? 'Inside the area' : p.band === 'unknown' ? 'Address not found' : `${p.miles} mi outside the area`);
+
+/** A pin's label on hover, built from text (names are what families typed) */
+function pinTip(p) {
+  const el = document.createElement('div');
+  const name = document.createElement('b');
+  name.textContent = p.name || 'No name given yet';
+  const where = document.createElement('span');
+  where.textContent = whereText(p);
+  const row = document.createElement('span');
+  row.className = 'afi-tip-row';
+  const sw = document.createElement('i');
+  sw.style.background = STATE_COLOR[p.state];
+  row.append(sw, STATE_LABEL[p.state]);
+  el.append(name, where, row);
+  return el;
+}
+
 /**
- * Distance out from the service area on a log scale (a mile matters near it, not at 90), with the close
- * distance shaded. Inside the area and addresses the Census couldn't place sit in their own bays at
- * each end. Dots that would touch stack upward. Hover names one; a click opens them.
+ * Where they live, on the map: the service area the way families see it on the form, its close ring dashed,
+ * a pin for each home the address check placed, in the color of where that person stands. It opens on the
+ * area and the homes within FAR_MILES of it, the rest a click away. Pointing at a pin names them; a click
+ * (or Enter) opens them.
  */
-function DistanceLine({ near = 0, people, open, who }) {
+function AreaMap({ a, people, open, who, label }) {
   const box = useRef(null);
-  const [width, setWidth] = useState(720);
-  useEffect(() => {
-    const el = box.current;
-    if (!el) return undefined;
-    const read = () => setWidth(el.clientWidth || 720);
-    read();
-    if (typeof ResizeObserver === 'undefined') return undefined;
-    const ro = new ResizeObserver(read);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-  const [tip, setTip] = useState(null);
-  const inside = people.filter(p => p.band === 'inside');
-  const out = people.filter(p => (p.band === 'near' || p.band === 'far') && p.miles != null).sort((x, y) => x.miles - y.miles);
-  const lost = people.filter(p => p.band === 'unknown');
-  const top = [10, 25, 50, 100, 250, 500, 1000].find(t => t >= Math.max(near, 1, ...out.map(p => p.miles))) || 1000;
-  const R = 6;
-  const STEP = 14;
-  const BAY = 78;
-  const GAP = 24;
-  const lostX = lost.length ? width - BAY : width;
-  const x0 = BAY + GAP;
-  const x1 = Math.max(x0 + 120, lostX - (lost.length ? GAP : 14));
-  const x = (m) => x0 + (Math.log1p(m) / Math.log1p(top)) * (x1 - x0);
-  // A bay fills row by row; on the line, a dot that would touch the one before moves up a row
-  const bay = (list, left) => {
-    const cols = Math.max(1, Math.floor((BAY - 8) / STEP));
-    return list.map((p, n) => ({ p, cx: left + 4 + R + (n % cols) * STEP, row: Math.floor(n / cols) }));
+  const st = useRef({});
+  const [L, setL] = useState(null);
+  const [err, setErr] = useState('');
+  const [wide, setWide] = useState(false);
+  const wideRef = useRef(false);
+  const poly = a.polygon || [];
+  const near = a.nearMiles || 0;
+  const pins = useMemo(() => people.filter(p => p.lat != null && p.lng != null).sort((x, y) => (PIN_RANK[x.state] || 0) - (PIN_RANK[y.state] || 0)), [people]);
+  const isFar = (p) => (p.band === 'near' || p.band === 'far') && p.miles > FAR_MILES;
+  const far = pins.filter(isFar).length;
+  const frame = (animate, everyone = wideRef.current) => {
+    const s = st.current;
+    if (s.map) frameArea(L, s.map, { polygon: poly, nearMiles: near, points: pins.filter(p => everyone || !isFar(p)).map(p => [p.lat, p.lng]), animate: animate && !s.still });
   };
-  const ends = [];
-  const line = out.map((p) => {
-    const cx = x(p.miles);
-    let row = 0;
-    while (ends[row] != null && cx - ends[row] < STEP) row += 1;
-    ends[row] = cx;
-    return { p, cx, row };
-  });
-  const dots = [...bay(inside, 0), ...line, ...bay(lost, lostX)];
-  const rows = Math.max(1, ...dots.map(d => d.row + 1));
-  const base = 30 + rows * STEP;
-  const H = base + 26;
-  const cy = (d) => base - R - 3 - d.row * STEP;
-  let edge = -99;
-  const ticks = [1, 5, 10, 25, 50, 100, 250, 500, 1000].filter(t => t <= top).filter((t) => { const at = x(t); if (at - edge < 36) return false; edge = at; return true; });
-  const nearX = near > 0 ? x(Math.min(near, top)) : x0;
-  const where = (p) => (p.band === 'inside' ? 'Inside the area' : p.band === 'unknown' ? 'Address not found' : `${p.miles} mi outside the area`);
+  const frameRef = useRef(frame);
+  frameRef.current = frame;
+
+  useEffect(() => { let live = true; loadLeaflet().then((l) => { if (live) setL(l); }).catch((e) => { if (live) setErr(e.message || 'no map'); }); return () => { live = false; }; }, []);
+
+  // The map itself, once
+  useEffect(() => {
+    if (!L || !box.current || st.current.map) return undefined;
+    const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    // (phones: one finger goes on down the page, two move the map)
+    const map = L.map(box.current, { zoomControl: false, scrollWheelZoom: false, dragging: !L.Browser.mobile, zoomAnimation: !still, fadeAnimation: !still, markerZoomAnimation: !still });
+    dressMap(L, map);
+    closeRing(L, poly, near)?.addTo(map);
+    if (poly.length >= 3) areaShape(L, poly).addTo(map);
+    st.current = { map, still, pins: L.layerGroup().addTo(map) };
+    frameRef.current(false);
+    const unwheel = wheelZoom(map, box.current);
+    const here = box.current;
+    let width = here.offsetWidth;
+    const ro = new ResizeObserver(() => { map.invalidateSize({ pan: false }); if (here.offsetWidth !== width) { width = here.offsetWidth; frameRef.current(false); } });
+    ro.observe(here);
+    return () => { ro.disconnect(); unwheel(); takeDown(map); st.current = {}; };
+  }, [L]);
+
+  // The pins: they drop in the first time; a refresh that changed nothing leaves the map alone
+  useEffect(() => {
+    const s = st.current;
+    if (!L || !s.map) return;
+    const drawing = JSON.stringify(pins.map(p => [p.id, p.lat, p.lng, p.state, p.name]));
+    if (drawing === s.drawn) return;
+    const first = s.drawn == null;
+    s.drawn = drawing;
+    s.pins.clearLayers();
+    s.map.getContainer().classList.toggle('is-crowded', pins.length > CROWDED);
+    pins.forEach((p, n) => {
+      const m = L.marker([p.lat, p.lng], { icon: pinIcon(L, STATE_COLOR[p.state], first ? 'afi-pin is-new' : 'afi-pin'), keyboard: true, riseOnHover: true, riseOffset: 2500, zIndexOffset: PIN_RANK[p.state] || 0 });
+      // (a pin's element comes once it's on the map)
+      m.on('add', () => {
+        const el = m.getElement();
+        el?.setAttribute('aria-label', `${p.name || 'No name given yet'}, ${whereText(p)}, ${STATE_LABEL[p.state]}`);
+        el?.firstElementChild?.style.setProperty('--i', n);
+      });
+      if (!L.Browser.mobile) m.bindTooltip(pinTip(p), { direction: 'top', offset: [0, -11], opacity: 1, className: 'afi-map-tip' });
+      onPress(m, () => open(p.name || `No name given yet (${who})`, [p]));
+      m.addTo(s.pins);
+    });
+    if (!first) frame(false);
+  }, [L, pins]);
+
+  const widen = () => { const next = !wide; wideRef.current = next; setWide(next); frame(true, next); };
   return html`
-    <div class="afe-chart afi-dist" ref=${box} onPointerLeave=${() => setTip(null)}>
-      <svg width=${width} height=${H} role="img" aria-label=${`${num(inside.length)} inside the area, ${num(out.length)} outside it${out.length ? `, from ${out[0].miles} to ${out[out.length - 1].miles} miles` : ''}${lost.length ? `, ${num(lost.length)} not found` : ''}.`}>
-        <rect class="afi-bay" x="0" y="4" width=${BAY} height=${base - 4} rx="8" />
-        ${lost.length > 0 && html`<rect class="afi-bay" x=${lostX} y="4" width=${BAY} height=${base - 4} rx="8" />`}
-        ${near > 0 && html`<rect class="afi-close-zone" x=${x0} y="4" width=${Math.max(0, nearX - x0)} height=${base - 4} rx="6" />`}
-        ${near > 0 && nearX - x0 > 44 && html`<text class="afe-axis afi-zone-label" x=${x0 + 8} y="19">Close</text>`}
-        <line class="afi-axis-line" x1=${x0} x2=${x1} y1=${base + 0.5} y2=${base + 0.5} />
-        <text class="afe-axis" x=${x0} y=${base + 17} text-anchor="middle">0</text>
-        ${ticks.map(t => html`<line class="afi-tick" x1=${x(t)} x2=${x(t)} y1=${base} y2=${base + 5} /><text class="afe-axis" x=${x(t)} y=${base + 17} text-anchor="middle">${t} mi</text>`)}
-        <text class="afe-axis afi-zone-label" x=${BAY / 2} y=${base + 17} text-anchor="middle">Inside</text>
-        ${lost.length > 0 && html`<text class="afe-axis afi-zone-label" x=${lostX + BAY / 2} y=${base + 17} text-anchor="middle">Not found</text>`}
-        ${dots.map((d, n) => html`
-          <circle class="afi-pt" cx=${d.cx} cy=${cy(d)} r=${R} fill=${STATE_COLOR[d.p.state]} style=${`--i: ${n}`}
-            onPointerEnter=${() => setTip(d)} onClick=${() => open(d.p.name || `No name given yet (${who})`, [d.p])} />`)}
-      </svg>
-      ${tip && html`
-        <div class="afe-tip afi-tip" style=${`left: ${Math.min(width - 96, Math.max(96, tip.cx))}px; top: ${cy(tip) - 10}px;`}>
-          <b>${tip.p.name || 'No name given yet'}</b>
-          <span>${where(tip.p)}</span>
-          <span class="afi-tip-row"><i style=${`background: ${STATE_COLOR[tip.p.state]};`}></i>${STATE_LABEL[tip.p.state]}</span>
+    <div class="afi-map">
+      ${err ? html`<p class="afi-map-note">The map couldn’t load. Reload the page to try again.</p>` : html`<div class="afi-map-box" ref=${box} role="region" aria-label=${label}></div>`}
+      ${!L && !err && html`<p class="afi-map-note" role="status">Opening the map…</p>`}
+      ${L && (far > 0 || L.Browser.mobile) && html`
+        <div class="afi-map-under">
+          ${far > 0 && html`<button type="button" class="afi-map-far" onClick=${widen}>${wide ? 'Back to the service area' : `Show ${num(far)} farther out`}</button>`}
+          ${L.Browser.mobile && html`<p class="afi-map-hint">Two fingers move the map</p>`}
         </div>`}
     </div>`;
 }
