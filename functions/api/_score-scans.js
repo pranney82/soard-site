@@ -387,19 +387,23 @@ export function matchFamily({ family, code }, families, year) {
 export function matchScorer(written, people) {
   const w = words(written);
   if (!w.length) return null;
-  const fits = people.filter((p) => {
-    const n = words(p.name); const local = String(p.email || '').split('@')[0].toLowerCase();
-    if (!n.length) return w.length === 1 && w[0] === local;
+  const local = (p) => String(p.email || '').split('@')[0].toLowerCase();
+  const fitsName = (name, p) => {
+    const n = words(name);
+    if (!n.length) return w.length === 1 && w[0] === local(p);
     const [first] = n; const last = n.length > 1 ? n.at(-1) : '';
-    if (w.length === 1) return w[0] === first || w[0] === local;
+    if (w.length === 1) return w[0] === first || w[0] === local(p);
     const [a] = w; const z = w.at(-1);
     if (a === first && (z === last || (last && last.startsWith(z)))) return true;
     if (a.length === 1 && a === first[0] && z === last) return true;
     return false;
-  });
+  };
+  // A person's Google name, and any other name their cards were signed with
+  const namesOf = (p) => [p.name, ...(p.names || [])].filter(Boolean);
+  const fits = people.filter((p) => (namesOf(p).length ? namesOf(p) : ['']).some((n) => fitsName(n, p)));
   if (fits.length !== 1) return null;
   // One name that starts someone else's too ("Chris" and Christian): a person's call
-  if (w.length === 1 && people.some((p) => p !== fits[0] && (words(p.name)[0] || '').startsWith(w[0]))) return null;
+  if (w.length === 1 && people.some((p) => p !== fits[0] && namesOf(p).some((n) => (words(n)[0] || '').startsWith(w[0])))) return null;
   return fits[0];
 }
 
@@ -418,9 +422,11 @@ export async function scorers(DB) {
   const dir = await staffDirectory(DB);
   for (const a of dir) {
     if (!a.email) continue;
-    const aliases = (a.aliases || []).map((x) => String(x).toLowerCase());
-    for (const x of [a.email, ...aliases]) alias.set(x, a.email);
-    if (a.active) out.set(a.email, { email: a.email, name: a.name || '', aliases, scored: false });
+    const all = [a.email, ...(a.aliases || [])].map((x) => String(x).toLowerCase());
+    // Keyed by the SOARD address they sign in with here (a main account on the store's domain has a soardcharity.com alias)
+    const staff = all.find((x) => x.endsWith('@soardcharity.com')) || all[0];
+    for (const x of all) alias.set(x, staff);
+    if (a.active) out.set(staff, { email: staff, name: a.name || '', names: [], aliases: all.filter((x) => x !== staff), scored: false });
   }
   await ensureScoreSchema(DB);
   let rows = [];
@@ -440,6 +446,8 @@ export async function scorers(DB) {
     const p = out.get(main);
     if (real) p.scored = true;
     if (!p.name && r.evaluator_name) p.name = r.evaluator_name;
+    // The names their cards were signed with too (a married name on People, say, and another on Google)
+    if (r.evaluator_name && r.evaluator_name !== p.name && !(p.names || []).includes(r.evaluator_name)) (p.names ||= []).push(r.evaluator_name);
   }
   return { people: [...out.values()], main: (email) => alias.get(String(email || '').toLowerCase()) || cleanEvaluator(email) };
 }

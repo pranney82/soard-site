@@ -807,3 +807,25 @@ test('a failed read of the staff list fails the step, never lets a suspended acc
   undo();
   assert.equal((await scorecardsFor(DB, 'acct0001')).length, 0);
 });
+
+test('someone whose Google account is on another of the organization’s domains, with a soardcharity.com alias, is a scorer by that alias and by every name their cards carry', async () => {
+  await DB.prepare('UPDATE staff_state SET data = ? WHERE key = ?').bind(JSON.stringify({ accounts: [
+    { email: 'pjones@example-store.com', aliases: ['pat@soardcharity.com'], name: 'Pat Jones', active: true },
+    { email: 'linzi@soardcharity.com', name: 'Linzi Lawsky', active: true },
+  ] }), 'directory').run();
+  await importScores(DB, { year: '2026', evaluator: 'pat@soardcharity.com', name: 'Pat Smith', rows: [{ child: 'Mateo Lin', scores: scores(Array(10).fill(3)) }] });
+  const { scorers: people } = await seasonScans(DB, '2026');
+  const pat = people.find((p) => p.email === 'pat@soardcharity.com');
+  assert.ok(pat, 'listed by the address they sign in with here');
+  assert.equal(pat.scored, true);
+  const scan = await start({ hash: 'b1'.padEnd(64, '0') });
+  const v = [5, 4, 4, 5, 5, 4, 3, 4, 5, 4];
+  for (const [n, who] of [[1, 'Pat Smith'], [2, 'Pat Jones']]) {
+    const s = [sheet(n === 1 ? 'Avery Thompson' : 'Teo Ruiz', v, { scorer: who })];
+    const it = (await readPage(env, { scan: scan.id, page: n, image: IMAGE }, { user: 'x', readers: readers(s, s) })).items[0];
+    assert.equal(it.status, 'saved', who);
+    assert.equal(it.evaluator, 'pat@soardcharity.com', `${who}: one card key, the SOARD address`);
+  }
+  const { staffDirectory } = await import('../functions/api/_staff-access.js');
+  assert.ok((await staffDirectory(DB)).some((a) => a.email === 'pjones@example-store.com'), 'the shared staff list includes them');
+});

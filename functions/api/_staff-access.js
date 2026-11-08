@@ -227,16 +227,23 @@ export function refusedText(standing) {
   return `This sign-in’s SOARD account ${what}, so it can’t open the admin. If that’s a mistake, a Google Workspace admin can put the account back, and the admin opens again within 5 minutes.`;
 }
 
+/**
+ * An account is SOARD staff when any of its addresses is: someone whose Google
+ * account is on another of the organization's domains (the store's, say) and
+ * has a soardcharity.com alias signs in, and scores, with that alias
+ */
+export const isStaffAccount = (a) => [a?.email, ...(a?.aliases || [])].some((x) => isStaffEmail(x));
+
 /** SOARD's Google accounts as last read: [{ email, aliases, name, active }] (who a scanned scoresheet's "Scored by" is) */
 export async function staffDirectory(DB) {
   const dir = await readState(DB, 'directory');
-  return (dir.accounts || []).filter((a) => isStaffEmail(a.email));
+  return (dir.accounts || []).filter(isStaffAccount);
 }
 
 /** For Site → Automations: counts, times and on/off; names only of who was signed out */
 export async function staffStatus(env) {
   const dir = await readState(env.DB, 'directory');
-  const accounts = (dir.accounts || []).filter((a) => isStaffEmail(a.email));
+  const accounts = (dir.accounts || []).filter(isStaffAccount);
   let clientId = '', project = '';
   try { const k = parseServiceAccount(env.GOOGLE_CALENDAR_KEY); clientId = String(k.client_id || ''); project = String(k.project_id || ''); } catch { /* no key yet */ }
   return {

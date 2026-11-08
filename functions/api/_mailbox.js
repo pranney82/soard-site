@@ -50,7 +50,8 @@ async function directory(DB) {
 /** The active accounts a founder can open: [{ email, name, aliases }] */
 export async function mailboxes(env) {
   return ((await directory(env.DB)) || [])
-    .filter((a) => a.active && isStaffEmail(a.email))
+    // A main address on another of the organization's domains, with a soardcharity.com alias, is staff too
+    .filter((a) => a.active && [a.email, ...(a.aliases || [])].some((x) => isStaffEmail(x)))
     .map((a) => ({ email: a.email, name: a.name || '', aliases: (a.aliases || []).filter(isStaffEmail) }))
     .sort((a, b) => a.email.localeCompare(b.email));
 }
