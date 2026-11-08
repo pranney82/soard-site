@@ -575,6 +575,21 @@ test('the board page’s cash: QuickBooks’ bank accounts beat the balance shee
   // Chase read live through Plaid: the banks' own balances win
   const chase = { total: 662345.67, at, accounts: [{ bank: 'Chase', name: 'Chase Total Checking', balance: 412345.67 }, { bank: 'Chase', name: 'Chase Business CD', balance: 250000 }] };
   assert.deepEqual((await moneyFor(data({ cash: chase, books }))).cash.banks, ['Chase']);
+  // Chase and Mercury together, as SOARD names them: SR numbering dropped, each account with its bank, the months
+  // of spending from QuickBooks' 12 months out
+  const both = { total: 689341, at, accounts: [
+    { bank: 'Chase', name: 'Chase SR2_Makeover', balance: 39180 }, { bank: 'Chase', name: 'Chase SR4_Long Reserve', balance: 300991 }, { bank: 'Chase', name: 'Chase CD 4 MONTHS', balance: 100000 },
+    { bank: 'Chase', name: 'Chase SR1_Opex', balance: 246170 }, { bank: 'Mercury', name: 'Opex', balance: 2500 }, { bank: 'Mercury', name: 'Income', balance: 500 },
+  ], owed: [{ bank: 'Chase', name: 'Chase Ink Business Cash', balance: 4210.5, limit: 50000 }] };
+  const shown = (await moneyFor(data({ cash: both, books: { ...books, perMonth: 30000 } }))).cash;
+  assert.deepEqual(shown.accounts.map((a) => a.name), ['Chase Makeover', 'Chase Long Reserve', 'Chase CD 4 MONTHS', 'Chase Opex', 'Mercury Opex', 'Mercury Income']);
+  assert.deepEqual(shown.owed.map((o) => o.name), ['Chase Ink Business Cash']);
+  assert.deepEqual([shown.banks, shown.months, shown.perMonth], [['Chase', 'Mercury'], 23, 30000]);
+  assert.equal(moneyTiles({ cash: shown, budget: null, n: {} })[1].value, '23', 'the Months of cash tile');
+  // Chase alone: no bank said twice; two that would read the same keep Chase's own names
+  const twins = { total: 2, at, accounts: [{ bank: 'Chase', name: 'Chase SR1_Opex', balance: 1 }, { bank: 'Chase', name: 'Chase SR6_Opex', balance: 1 }] };
+  assert.deepEqual((await moneyFor(data({ cash: twins, books: null }))).cash.accounts.map((a) => a.name), ['Chase SR1_Opex', 'Chase SR6_Opex']);
+  assert.equal((await moneyFor(data({ cash: chase, books: null }))).cash.months, undefined, 'no books, no months');
   // A past meeting keeps to its own packet (none here), never today's books
   assert.equal((await moneyFor(data({ books }), '2026-01-15')).cash, null);
   assert.equal(booksCash(data({}), { ...books, cash: null }), null);

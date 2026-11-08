@@ -80,6 +80,19 @@ function useCash(data, upTo = '') {
   return cash;
 }
 export const andText = (l) => (l.length > 1 ? `${l.slice(0, -1).join(', ')} and ${l.at(-1)}` : l[0] || '');
+/**
+ * A bank's account as the board reads it: "Chase SR2_Makeover" → "Chase Makeover" (SOARD's SR1–SR5 numbering, as the
+ * balance sheet drops it), and with two banks each says its own ("Mercury Opex" beside "Chase Opex"). Two that would
+ * read the same keep the bank's own names
+ */
+function bankNames(list, banks) {
+  const named = list.map((a) => {
+    const bank = a.bank || 'Mercury';
+    const n = String(a.name || '').replace(/\bSR\d+_/gi, '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim() || String(a.name || '');
+    return { ...a, name: banks.length > 1 && !n.toLowerCase().startsWith(bank.toLowerCase()) ? `${bank} ${n}` : n };
+  });
+  return named.map((a, i) => (named.filter((b) => b.name === a.name).length > 1 ? { ...a, name: list[i].name } : a));
+}
 /** The banks' own numbers (numbers.cash) in the balance sheet's shape, with the month a year back from the history */
 export function liveCash(data) {
   const c = data.numbers.cash;
@@ -89,9 +102,10 @@ export function liveCash(data) {
   const day = at ? todayEastern(Date.parse(at)) : '';
   const ym = day.slice(0, 7);
   const then = ym ? (data.cashHistory || []).find((r) => r.month === `${Number(ym.slice(0, 4)) - 1}${ym.slice(4)}`) : null;
+  const banks = [...new Set((c.accounts || []).map((a) => a.bank || 'Mercury'))];
   return {
     live: true, total: c.total, asOf: day ? shortDate(day) : '', today: day === todayEastern(), at, prior: then ? then.total : null, priorAsOf: then ? monthOf(then.month) : '',
-    accounts: c.accounts || [], owed: (c.owed || []).filter((o) => o.balance > 0), banks: [...new Set((c.accounts || []).map((a) => a.bank || 'Mercury'))], stale: c.stale || [],
+    accounts: bankNames(c.accounts || [], banks), owed: bankNames((c.owed || []).filter((o) => o.balance > 0), banks), banks, stale: c.stale || [],
   };
 }
 /**
@@ -134,7 +148,8 @@ export function useCashNow(data, upTo = '', n = null) {
  * transfer). Else the balance sheet's figure stands. `sheet` is undefined while it's read
  */
 function cashToShow(live, sheet, books = null) {
-  if (live && live.banks.some((b) => b !== 'Mercury')) return live;
+  // The banks' cash, and how many months of QuickBooks' spending it holds (the books' 12 months out, whichever bank)
+  if (live && live.banks.some((b) => b !== 'Mercury')) return books?.perMonth > 0 ? { ...live, months: Math.round((live.total / books.perMonth) * 10) / 10, perMonth: books.perMonth } : live;
   if (books) return books;
   if (sheet === undefined) return undefined;
   if (!live) return sheet;
