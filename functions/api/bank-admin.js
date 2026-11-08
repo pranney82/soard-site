@@ -13,7 +13,7 @@
  * Never a balance, an account number or a token in an answer: amounts are the board page's.
  */
 
-import { ensureSchema } from './_board.js';
+import { ensureSchema, saveCashNow } from './_board.js';
 import { isBoardAdmin, isStaffEmail, readState } from './_board-roles.js';
 import { plaidConfigured, linkToken, connectBank, readBanks, disconnectBank, bankStatus } from './_plaid.js';
 import { logAudit } from './_audit.js';
@@ -37,6 +37,8 @@ async function mercuryNow(env) {
 }
 
 const answer = async (env) => Response.json({ ok: true, status: await bankStatus(env), mercury: await mercuryNow(env) }, { headers: { 'Cache-Control': 'no-store' } });
+// A bank connected, read or disconnected counts on the board page now, not when its hour-old copy of the cash runs out
+const recount = (env) => saveCashNow(env).catch((err) => console.error('[bank-admin] cash', err.message));
 
 export async function onRequestGet(context) {
   const { refused } = await gate(context);
@@ -64,17 +66,20 @@ export async function onRequestPost(context) {
       case 'connect': {
         await connectBank(env, { publicToken: body.publicToken, institution: body.institution || {}, by: me });
         await audit('created', `Bank connected for the board page: ${String(body.institution?.name || 'a bank').slice(0, 60)}`);
+        await recount(env);
         return answer(env);
       }
       case 'refresh':
         if (!itemId) return fail('Which bank?');
         await readBanks(env, { only: itemId });
+        await recount(env);
         return answer(env);
       case 'disconnect': {
         if (!itemId) return fail('Which bank?');
         const bank = (await bankStatus(env)).banks.find((b) => b.itemId === itemId)?.bank || 'A bank';
         await disconnectBank(env, itemId);
         await audit('deleted', `Bank disconnected from the board page: ${bank}`);
+        await recount(env);
         return answer(env);
       }
       default:

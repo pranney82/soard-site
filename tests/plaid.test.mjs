@@ -181,6 +181,28 @@ const req = (email, body = null) => {
   return (body ? bankAdmin.onRequestPost(ctx) : bankAdmin.onRequestGet(ctx)).then(async (r) => ({ status: r.status, body: await r.json() }));
 };
 
+test('/api/bank-admin: connecting or disconnecting counts on the board page at once, not when its hour-old cash runs out', async () => {
+  env.MERCURY_API_TOKEN = 'mercury-token';
+  env.MERCURY_RELAY_KEY = 'relay-key';
+  world.mercury = [{ name: 'Opex', kind: 'checking', type: 'mercury', status: 'active', currentBalance: 2500 }];
+  const now = () => Date.now();
+  // The board page read the cash a minute ago, before Chase: Mercury alone
+  assert.equal((await liveNumbers(env, { now: now() })).cash.total, 2500);
+  await req(FOUNDER, { action: 'connect', publicToken: 'public-production-11111111-2222-3333-4444-555555555555', institution: { id: 'ins_56', name: 'Chase' } });
+  const after = (await liveNumbers(env, { now: now() })).cash;
+  assert.equal(after.total, 664845.67, 'Chase’s checking and CD with Mercury, right away');
+  assert.equal(after.owed[0].name, 'Chase Ink Business Cash');
+  await req(FOUNDER, { action: 'disconnect', itemId: 'item-1' });
+  assert.equal((await liveNumbers(env, { now: now() })).cash.total, 2500, 'and gone again once disconnected');
+  // Mercury down while connecting: the bank still connects, and the old copy waits for its hour
+  world.mercury = null;
+  const realMercury = globalThis.fetch;
+  globalThis.fetch = async (input, init) => (new URL(String(input)).host === 'mercury-relay.sunshineonaranneyday.com' ? new Response('down', { status: 502 }) : realMercury(input, init));
+  const c = await req(FOUNDER, { action: 'connect', publicToken: 'public-production-11111111-2222-3333-4444-555555555555', institution: { id: 'ins_56', name: 'Chase' } });
+  assert.equal(c.status, 200);
+  assert.equal(c.body.status.banks[0].bank, 'Chase');
+});
+
 test('/api/bank-admin: the Board area’s admins only; connect, then the status, never a token or a balance', async () => {
   assert.equal((await req(STAFF)).status, 403, 'other staff');
   assert.equal((await req('alex.board@example.com')).status, 403, 'a board member');

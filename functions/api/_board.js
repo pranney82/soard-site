@@ -1431,13 +1431,18 @@ export async function liveNumbers(env, { fetchImpl = fetch, now = Date.now() } =
   };
 }
 
+/** Read the cash now and keep it as the board page's copy (System → Settings calls this when a bank is connected, read or disconnected) */
+export async function saveCashNow(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  const value = await cashNow(env, { fetchImpl });
+  await writeState(env.DB, 'cash', { at: new Date(now).toISOString(), value });
+  return value;
+}
+
 async function cachedCash(env, { fetchImpl, now }) {
   const c = await readState(env.DB, 'cash');
   if (c.at && now - Date.parse(c.at) < 60 * 60 * 1000) return c.value || null;
   try {
-    const value = await cashNow(env, { fetchImpl });
-    await writeState(env.DB, 'cash', { at: new Date(now).toISOString(), value });
-    return value;
+    return await saveCashNow(env, { fetchImpl, now });
   } catch (err) {
     console.error('[board] cash', err.message);
     return c.value || null;
