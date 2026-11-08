@@ -268,7 +268,7 @@ Given one email from a staff member's inbox, reply with JSON only:
 
 - receipt: proof a purchase was made: a receipt, an order confirmation (even when the email doesn't show the amount; many stores leave it out), a paid invoice, a payment confirmation.
 - bill: an invoice from a vendor or contractor asking SOARD to pay for goods or work.
-- not_receipt: shipping, delivery or tracking notices; ads, sales, carts, wish lists; surveys and requests for a review or feedback, even when they thank you for a purchase; free samples; quotes and estimates; refunds and returns; account statements, "your bill is ready" notices and anything paid automatically (utilities, phone, internet, insurance, loans, credit cards); donation receipts or gift notices for money given TO SOARD; newsletters; anything else.`;
+- not_receipt: shipping, delivery or tracking notices; ads, sales, carts, wish lists; surveys and requests for a review or feedback, even when they thank you for a purchase; free samples; quotes and estimates; refunds and returns; account statements, "your bill is ready" notices and anything paid automatically (insurance, loans, credit cards); anything from a utility (electric, gas, water, phone, internet), whether a bill, a balance, low-balance or disconnect notice, or a payment confirmation; donation receipts or gift notices for money given TO SOARD; newsletters; anything else.`;
 const RECEIPT_SCHEMA = {
   type: 'object',
   properties: {
