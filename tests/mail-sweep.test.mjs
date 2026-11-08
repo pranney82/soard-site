@@ -14,7 +14,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { maybeSweepMail, mailSweepStatus, triage, withoutQuoted, familyAddresses, receiptText, judgeReceipt, WATCH_MS } from '../functions/api/_mail-sweep.js';
+import { maybeSweepMail, mailSweepStatus, triage, withoutQuoted, familyAddresses, receiptText, judgeReceipt, amountsIn, WATCH_MS } from '../functions/api/_mail-sweep.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 
 const { privateKey: SA_PEM } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
@@ -51,7 +51,7 @@ function mail({ box, at, from, to, cc = '', subject, text = '', html = null, msg
   return m;
 }
 
-let env, store, calls, resendOk, aiVerdicts, aboutVerdicts;
+let env, store, calls, resendOk, aiVerdicts, aboutVerdicts, refuseScopes;
 const realFetch = globalThis.fetch;
 
 beforeEach(async () => {
@@ -60,6 +60,7 @@ beforeEach(async () => {
   calls = [];
   resendOk = true;
   aiVerdicts = {};
+  refuseScopes = new Set();
   aboutVerdicts = {};
   env = {
     DB: await createD1(), GOOGLE_CALENDAR_KEY: SERVICE_ACCOUNT, RESEND_API_KEY: 're_test', JOBTREAD_GRANT_KEY: 'grant-main',
@@ -71,7 +72,7 @@ beforeEach(async () => {
         return { response: aboutVerdicts[subject] || { about: true, reason: 'about the room' } };
       }
       calls.push({ kind: 'ai', subject });
-      return { response: aiVerdicts[subject] || { type: 'not_receipt', personal: false, reason: 'an ad' } };
+      return { response: aiVerdicts[subject] || { type: 'not_receipt', reason: 'an ad' } };
     } },
   };
   await env.DB.exec('CREATE TABLE staff_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)');
@@ -87,6 +88,7 @@ beforeEach(async () => {
     const url = String(input);
     if (url === 'https://oauth2.googleapis.com/token') {
       const claims = JSON.parse(Buffer.from(new URLSearchParams(init.body).get('assertion').split('.')[1], 'base64url').toString());
+      if (refuseScopes.has(claims.scope)) return Response.json({ error: 'unauthorized_client', error_description: 'Client is unauthorized to retrieve access tokens using this method' }, { status: 401 });
       return Response.json({ access_token: `tok:${claims.sub}`, expires_in: 3600 });
     }
     if (url.startsWith('https://gmail.googleapis.com/gmail/v1/users/me/')) {
@@ -117,7 +119,13 @@ beforeEach(async () => {
         const { box: _b, _files, ...clean } = msg;
         return Response.json(u.searchParams.get('format') === 'metadata' ? { ...clean, payload: { headers: clean.payload.headers } } : clean);
       }
+      if ((m = /^\/messages\/(\w+)\/modify$/.exec(path))) return Response.json({ id: m[1], ...JSON.parse(init.body) });
       if ((m = /^\/threads\/(\w+)$/.exec(path))) return Response.json({ id: m[1], messages: mine.filter((x) => x.threadId === m[1]).map((x) => ({ id: x.id, payload: { headers: x.payload.headers } })) });
+    }
+    if (url.startsWith('https://mercury-relay.sunshineonaranneyday.com/api/v1/')) {
+      const file = init.body instanceof FormData ? init.body.get('file') : null;
+      calls.push({ kind: 'mercury', path: new URL(url).pathname.replace('/api/v1', ''), method: init.method || 'GET', file: file?.name, type: file?.type, attachmentType: init.body instanceof FormData ? init.body.get('attachmentType') : null });
+      return Response.json({});
     }
     if (url === 'https://api.resend.com/emails') {
       const body = JSON.parse(init.body);
@@ -341,7 +349,7 @@ function seed() {
   const r5a = mail({ box: SAM, at: T0 - 20 * MIN, from: `Sam Fox <${SAM}>`, to: 'ap@soardcharity.com', subject: 'Fwd: Paint receipt', text: 'fwd', thread: 'thPaint', labels: ['SENT'] });
   const r5 = mail({ box: SAM, at: T0 - MIN, from: 'Paint Co <orders@paint.example>', to: SAM, subject: 'Re: Paint receipt', text: '$66.00 paid', thread: 'thPaint' });
   aiVerdicts['Thanks for your order #123'] = { type: 'receipt', vendor: 'Wayfair', total: '$899.00', date: '2026-11-02', personal: false, reason: 'an order confirmation' };
-  aiVerdicts['Your order confirmation'] = { type: 'receipt', vendor: 'Shop', total: '$54.00', date: '', personal: true, reason: 'groceries shipped home' };
+  aiVerdicts['Your order confirmation'] = { type: 'not_receipt', vendor: 'Shop', total: '$54.00', date: '', reason: 'a quote' };
   aiVerdicts['Re: Paint receipt'] = { type: 'receipt', vendor: 'Paint Co', total: '$66.00', personal: false, reason: 'paid' };
   return { r1, r3, r4, old, f1, f2, f1copy, r5, r5a };
 }
@@ -359,7 +367,7 @@ test('the first day only watches: what it would do is listed, nothing is sent or
   assert.equal((await byId(m.r1.id))[0].state, 'would');
   assert.match((await byId(m.r1.id))[0].detail, /would send Wayfair \$899\.00 to ap@soardcharity\.com/);
   assert.equal((await byId(m.r3.id))[0].detail, 'already at the receipt inbox');
-  assert.match((await byId(m.r4.id))[0].detail, /^personal: groceries/);
+  assert.match((await byId(m.r4.id))[0].detail, /^not a receipt: a quote/);
   assert.equal((await byId(m.r5.id))[0].detail, 'its conversation already went to the receipt inbox');
   assert.equal((await byId(m.old.id)).length, 0, 'receipts only from the start: older ones were forwarded by hand');
   assert.equal((await byId(m.f1.id))[0].source, 'backfill');
@@ -517,6 +525,86 @@ test('Workers AI not answering about a receipt: tried again, and only its last t
   assert.deepEqual((({ state, tries }) => [state, tries])(await row(m.id)), ['failed', 2]);
   await maybeSweepMail(env, { now: at + 27 * MIN, force: true });
   assert.equal((await byId(m.id))[0].state, 'skipped');
+});
+
+test('a SOARD card charge’s receipt goes once, and every receipt in a SOARD inbox is SOARD’s', async () => {
+  assert.deepEqual(amountsIn('Payment received: USD $10.00', 'Sofa $1,299.00, plan 29.00 USD'), [1000, 129900, 2900]);
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS spend_charges (id TEXT PRIMARY KEY, kind TEXT, status TEXT, cents INTEGER NOT NULL, vendor TEXT, card_id TEXT, email TEXT, created_at TEXT, link TEXT)');
+  await env.DB.prepare('INSERT INTO spend_charges (id, kind, status, cents, vendor, email, created_at, link) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind('ch1', 'creditCardTransaction', 'pending', 1000, 'Texting.app', PAT, new Date(at - 2 * MIN).toISOString(), 'https://bank.example/transactions/ch1').run();
+  const paid = mail({ box: PAT, at, from: 'Texting <billing@texting.example>', to: PAT, subject: 'Payment received: USD $10.00', text: 'We received your payment of USD $10.00.' });
+  const receipt = mail({ box: PAT, at: at + MIN, from: 'Texting <billing@texting.example>', to: PAT, subject: 'Your Texting receipt [#1277]', text: 'Receipt #1277. Amount paid $10.00' });
+  const other = mail({ box: PAT, at: at + 2 * MIN, from: 'Stream <billing@stream.example>', to: PAT, subject: 'Your receipt from Stream', text: 'Premium plan $15.49' });
+  for (const s of ['Payment received: USD $10.00', 'Your Texting receipt [#1277]']) aiVerdicts[s] = { type: 'receipt', vendor: 'Texting', total: 'USD $10.00', reason: 'top up account' };
+  aiVerdicts['Your receipt from Stream'] = { type: 'receipt', vendor: 'Stream', total: '$15.49', reason: 'a plan' };
+  calls.length = 0;
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
+
+  const sent = of('resend');
+  assert.deepEqual(sent.map((x) => x.body.subject.split(' on ')[0]), ['Receipt: Texting USD $10.00', 'Receipt: Stream $15.49'], 'the charge’s receipt goes once; the other receipt goes too');
+  assert.match(sent[0].body.text, /Card charge: Texting\.app \$10\.00 on Pat’s SOARD card \(https:\/\/bank\.example\/transactions\/ch1\)/);
+  assert.equal((await byId(paid.id))[0].state, 'sent');
+  assert.deepEqual(await env.DB.prepare('SELECT state, charge_id FROM mail_sweep WHERE id = ?').bind(receipt.id).first(), { state: 'duplicate', charge_id: 'ch1' });
+  assert.equal((await byId(other.id))[0].state, 'sent');
+});
+
+test('bought on a Mercury card: the receipt goes on the charge in Mercury, printed when it’s only an email, and the email is archived', async () => {
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec('CREATE TABLE IF NOT EXISTS spend_charges (id TEXT PRIMARY KEY, kind TEXT, status TEXT, cents INTEGER NOT NULL, vendor TEXT, card_id TEXT, email TEXT, created_at TEXT, link TEXT)');
+  await env.DB.prepare('INSERT INTO spend_charges (id, kind, status, cents, vendor, email, created_at, link) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+    .bind('ch1', 'creditCardTransaction', 'pending', 1000, 'Texting.app', PAT, new Date(at - 2 * MIN).toISOString(), 'https://bank.example/transactions/ch1').run();
+  const paid = mail({ box: PAT, at, from: 'Texting <billing@texting.example>', to: PAT, subject: 'Payment received: USD $10.00', html: '<p>We received your payment of <b>USD $10.00</b>.</p>' });
+  const pdf = { name: 'Receipt-1277.pdf', type: 'application/pdf', data: '%PDF receipt 1277' };
+  const receipt = mail({ box: PAT, at: at + MIN, from: 'Stripe <receipts@stripe.example>', to: PAT, subject: 'Your Texting receipt [#1277]', text: 'Amount paid $10.00', files: [pdf] });
+  for (const s of ['Payment received: USD $10.00', 'Your Texting receipt [#1277]']) aiVerdicts[s] = { type: 'receipt', vendor: 'Texting', total: '$10.00', reason: 'top up account' };
+  const printed = [];
+  const print = async (_env, html) => { printed.push(html); return new Uint8Array([37, 80, 68, 70]); };
+  refuseScopes.add('https://www.googleapis.com/auth/gmail.modify');
+  calls.length = 0;
+  const st = await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print });
+
+  assert.equal(of('resend').length, 0, 'not emailed: Mercury sends a makeover’s receipt on itself');
+  const up = of('mercury');
+  assert.deepEqual(up.map((c) => [c.method, c.path, c.attachmentType]), [['POST', '/transaction/ch1/attachments', 'receipt'], ['POST', '/transaction/ch1/attachments', 'receipt']]);
+  assert.deepEqual(up.map((c) => c.file), ['Texting receipt 2026-11-03.pdf', 'Receipt-1277.pdf'], 'the email printed; the store’s own PDF as it is');
+  assert.equal(printed.length, 1);
+  assert.match(printed[0], /From: Texting &lt;billing@texting\.example&gt;[\s\S]*Subject: Payment received: USD \$10\.00[\s\S]*<b>USD \$10\.00<\/b>/);
+  for (const m of [paid, receipt]) assert.match((await byId(m.id))[0].detail, /^put Texting \$10\.00 on the Mercury card charge \(Texting\.app \$10\.00\)$/);
+  assert.equal(await env.DB.prepare("SELECT state FROM spend_receipts WHERE charge_id = 'ch1' AND way = 'to-mercury'").first('state'), 'sent', 'a bill’s file won’t follow it');
+
+  // Google hasn't allowed archiving yet: the emails wait, and Automations says what to add
+  const archived = () => env.DB.prepare('SELECT archived FROM mail_sweep WHERE id IN (?, ?) ORDER BY at').bind(paid.id, receipt.id).all().then((r) => r.results.map((x) => x.archived));
+  assert.deepEqual(await archived(), ['no', 'no']);
+  assert.match(st.error, /Domain-wide delegation, add https:\/\/www\.googleapis\.com\/auth\/gmail\.modify/);
+  assert.equal(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST').length, 0);
+
+  // Allowed: the next sweep archives both (the Inbox label off), and nothing is put on the charge twice
+  refuseScopes.clear();
+  calls.length = 0;
+  const st2 = await maybeSweepMail(env, { now: at + 10 * MIN, force: true, print });
+  assert.deepEqual(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST').map((c) => [c.box, c.path]), [[PAT, `/messages/${paid.id}/modify`], [PAT, `/messages/${receipt.id}/modify`]]);
+  assert.deepEqual(await archived(), ['yes', 'yes']);
+  assert.equal(st2.error, null);
+  assert.equal(of('mercury').length, 0);
+});
+
+test('an account whose main address is the store’s: only its soardcharity.com mail is read', async () => {
+  const LEE = 'lee@store.example';
+  await env.DB.prepare("UPDATE staff_state SET data = ? WHERE key = 'directory'").bind(JSON.stringify({ ok: true, accounts: [...ACCOUNTS, { email: LEE, aliases: ['lee@soardcharity.com'], name: 'Lee Park', active: true, why: null }] })).run();
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  const store = mail({ box: LEE, at, from: 'Perigold <orders@perigold.example>', to: LEE, subject: 'Order received. Thanks for your order #88', text: 'Mirror $480.00' });
+  const soard = mail({ box: LEE, at: at + MIN, from: 'Walmart <help@walmart.example>', to: 'lee@soardcharity.com', subject: 'Lee, thanks for your order', text: 'Bins $83.76' });
+  aiVerdicts['Lee, thanks for your order'] = { type: 'receipt', vendor: 'Walmart', total: '$83.76', personal: false, reason: 'an order' };
+  calls.length = 0;
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
+  assert.equal((await byId(store.id)).length, 0, 'the store’s order is never sorted');
+  assert.equal((await byId(soard.id))[0].state, 'sent');
+  assert.deepEqual(of('resend').map((c) => c.body.subject), ['Receipt: Walmart $83.76 on 2026-11-03 (from Lee’s email)']);
 });
 
 test('a family email on two accounts: when the second fails, the try after it doesn’t post on the first again', async () => {

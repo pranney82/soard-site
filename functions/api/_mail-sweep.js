@@ -9,8 +9,9 @@
  *     receipt inbox (Job Costs settings, ap@ by default, which forwards to the
  *     DataX Receipt Processor) with its files, the way Mercury's receipt photos
  *     go (_spend-receipts.js). Workers AI reads it first, so shipping and
- *     delivery notices, ads, carts, refunds, statements, gifts to SOARD and
- *     personal purchases stay out. So do emails the receipt inbox already has
+ *     delivery notices, ads, carts, refunds, statements and gifts to SOARD
+ *     stay out (a receipt in a SOARD inbox is SOARD's: Peter, Nov 8 2026, "there
+ *     are no personal expenses in the business domains"). So do emails the receipt inbox already has
  *     (on the email, or anywhere in its conversation), mail between staff and
  *     the money tools' own notices.
  *   - An email to or from a family (an address on an applicant's JobTread
@@ -43,7 +44,7 @@
  */
 
 import { isStaffEmail, normEmail } from './_board-roles.js';
-import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
+import { accessToken, GMAIL_READ_SCOPE, GMAIL_MODIFY_SCOPE } from './_google-calendar.js';
 import { mailboxes, gmail, header, textOf, htmlText, filesOf, partsOf, bytesOf } from './_mailbox.js';
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { postAccountComment } from './_applicant-comms.js';
@@ -51,7 +52,8 @@ import { EMAIL_FROM, emailConfigured, slackIssue, SITE_ORIGIN } from './_broadca
 import { slackCard } from './_slack-cards.js';
 import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
-import { DEFAULT_RECEIPT_INBOX } from './_spend-receipts.js';
+import { DEFAULT_RECEIPT_INBOX, attachToCharge } from './_spend-receipts.js';
+import { mercuryConfigured } from './_mercury.js';
 import { FREE_MAIL } from './_kid-partners.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
 
@@ -73,7 +75,7 @@ const Q_MAX = 1200;
 const AT_ONCE = 6;
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const AI_TIMEOUT_MS = 8000;
-const LIST_HEADERS = ['From', 'To', 'Cc', 'Reply-To', 'Subject', 'Message-ID', 'References', 'In-Reply-To', 'Auto-Submitted', 'List-Id', 'List-Unsubscribe', 'Precedence'];
+const LIST_HEADERS = ['From', 'To', 'Cc', 'Delivered-To', 'Reply-To', 'Subject', 'Message-ID', 'References', 'In-Reply-To', 'Auto-Submitted', 'List-Id', 'List-Unsubscribe', 'Precedence'];
 const SENT_TAG = 'receipt-from-inbox';
 
 // The money tools' and JobTread's own mail: already where it belongs
@@ -105,7 +107,9 @@ const SCHEMA = [
 const _ready = new WeakSet();
 // Added after the first deploy: the files a family email brought (name:size), so a reply carrying them again doesn't add them twice
 // and every comment it made, root or reply, by account (Nov 4 2026), so a mistake can be found and removed
-const COLUMNS = ['file_keys TEXT', 'posted_ids TEXT'];
+// charge_id: the SOARD card charge a receipt was matched to, so one charge sends one receipt
+// archived: 'no' while a receipt put on its card charge waits to leave the inbox, 'yes' once it has
+const COLUMNS = ['file_keys TEXT', 'posted_ids TEXT', 'charge_id TEXT', 'archived TEXT'];
 async function ensure(DB) {
   if (_ready.has(DB)) return;
   for (const s of SCHEMA) await DB.prepare(s).run();
@@ -260,19 +264,18 @@ export function withoutQuoted(text) {
 const RECEIPT_PROMPT = `You sort email for Sunshine on a Ranney Day (SOARD), a children's charity that makes over bedrooms, bathrooms and therapy spaces for children with special needs. Staff buy furniture, decor, bedding, paint, building supplies, services and office things for the makeovers and the office.
 
 Given one email from a staff member's inbox, reply with JSON only:
-{"type": "receipt" | "bill" | "not_receipt", "vendor": "<the seller>", "total": "<the amount charged or owed, as written, or empty>", "date": "<YYYY-MM-DD or empty>", "personal": true | false, "reason": "<under 15 words>"}
+{"type": "receipt" | "bill" | "not_receipt", "vendor": "<the seller>", "total": "<the amount charged or owed, as written, or empty>", "date": "<YYYY-MM-DD or empty>", "reason": "<under 15 words>"}
 
 - receipt: proof a purchase was made: a receipt, an order confirmation (even when the email doesn't show the amount; many stores leave it out), a paid invoice, a payment confirmation.
 - bill: an invoice from a vendor or contractor asking SOARD to pay for goods or work.
-- not_receipt: shipping, delivery or tracking notices; ads, sales, carts, wish lists; surveys and requests for a review or feedback, even when they thank you for a purchase; free samples; quotes and estimates; refunds and returns; account statements, "your bill is ready" notices and anything paid automatically (utilities, phone, internet, insurance, loans, credit cards); donation receipts or gift notices for money given TO SOARD; newsletters; anything else.
-- personal: true only when the email shows it's the staff member's own purchase, not SOARD's: a personal subscription, or groceries or clothes for themselves shipped to their home. SOARD also buys toys, games, books, photo prints, cakes, food and gifts for the children, families, reveals, volunteers and events, so those are SOARD's. A store membership or rewards program (Wayfair Rewards, Amazon Prime, Costco), and anything ordered with one, is SOARD's too. When unsure, false.`;
+- not_receipt: shipping, delivery or tracking notices; ads, sales, carts, wish lists; surveys and requests for a review or feedback, even when they thank you for a purchase; free samples; quotes and estimates; refunds and returns; account statements, "your bill is ready" notices and anything paid automatically (utilities, phone, internet, insurance, loans, credit cards); donation receipts or gift notices for money given TO SOARD; newsletters; anything else.`;
 const RECEIPT_SCHEMA = {
   type: 'object',
   properties: {
     type: { type: 'string', enum: ['receipt', 'bill', 'not_receipt'] }, vendor: { type: 'string' }, total: { type: 'string' },
-    date: { type: 'string' }, personal: { type: 'boolean' }, reason: { type: 'string' },
+    date: { type: 'string' }, reason: { type: 'string' },
   },
-  required: ['type', 'personal'],
+  required: ['type'],
 };
 
 function readVerdict(out) {
@@ -281,7 +284,7 @@ function readVerdict(out) {
   if (!j || !['receipt', 'bill', 'not_receipt'].includes(j.type)) return null;
   return {
     type: j.type, vendor: String(j.vendor || '').slice(0, 80), total: String(j.total || '').slice(0, 30),
-    date: /^\d{4}-\d{2}-\d{2}$/.test(String(j.date || '')) ? j.date : '', personal: j.personal === true, reason: String(j.reason || '').slice(0, 120),
+    date: /^\d{4}-\d{2}-\d{2}$/.test(String(j.date || '')) ? j.date : '', reason: String(j.reason || '').slice(0, 120),
   };
 }
 
@@ -299,7 +302,7 @@ export function receiptText(payload) {
 }
 
 /**
- * Workers AI's verdict on one email → { type, vendor, total, date, personal, reason, by }. It throws when the model
+ * Workers AI's verdict on one email → { type, vendor, total, date, reason, by }. It throws when the model
  * didn't answer, so the email is tried again, and goes by the rules only on its last try: they pass over any receipt
  * that doesn't say so in its subject, and that's for good. A cap reached always throws (the sweep waits, no try spent).
  */
@@ -330,7 +333,7 @@ export async function judgeReceipt(env, { subject, from, owner, text, files, las
   // No model: only a plain receipt or invoice with an amount in it
   const amount = String(text).match(/\$\s?\d[\d,]*(\.\d{2})?/)?.[0] || '';
   const sure = /\b(receipt|order confirmation|payment (received|confirmation)|invoice)\b/i.test(subject) && amount;
-  return { type: sure ? (/invoice/i.test(subject) ? 'bill' : 'receipt') : 'not_receipt', vendor: from.replace(/<.*>/, '').replace(/"/g, '').trim().slice(0, 80), total: amount, date: '', personal: false, reason: sure ? 'a receipt by its subject' : 'not clearly a receipt', by: 'rules' };
+  return { type: sure ? (/invoice/i.test(subject) ? 'bill' : 'receipt') : 'not_receipt', vendor: from.replace(/<.*>/, '').replace(/"/g, '').trim().slice(0, 80), total: amount, date: '', reason: sure ? 'a receipt by its subject' : 'not clearly a receipt', by: 'rules' };
 }
 
 // ─── Is it about the kid or the project? ────────────────────────────
@@ -413,6 +416,55 @@ async function uploadToJobTread(env, { bytes, type }, fetchImpl) {
 
 // ─── Handling one email ─────────────────────────────────────────────
 
+const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
+const RECEIPT_FILE = /^(application\/pdf|image\/(png|jpe?g|gif|webp|heic|heif))$/i;
+
+/** Not SOARD's mail: in an account whose main address is on the store's domain, nothing to or from its soardcharity.com address */
+function notSoards(ctx, mailbox, msg) {
+  const own = ctx.soardOnly.get(mailbox);
+  if (!own) return false;
+  const h = msg.payload?.headers;
+  return ![...addresses(header(h, 'From')), ...addresses(header(h, 'To')), ...addresses(header(h, 'Cc')), ...addresses(header(h, 'Delivered-To'))].some((e) => own.has(e));
+}
+
+/** An email as a page to print: who sent it and when, then the email as the store wrote it */
+function emailPage({ from, subject, sentAt, owner, mailbox, payload, text }) {
+  const esc = (x) => String(x || '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+  const html = partsOf(payload).find((p) => p.mimeType === 'text/html' && !p.filename && p.body?.data);
+  const body = html ? new TextDecoder().decode(bytesOf(html.body.data)) : `<pre style="white-space:pre-wrap;font:13px/1.5 sans-serif">${esc(text)}</pre>`;
+  return `<!doctype html><html><head><meta charset="utf-8"></head><body><div style="font:12px/1.5 sans-serif;color:#333;border-bottom:1px solid #ccc;padding-bottom:8px;margin-bottom:16px">From: ${esc(from)}<br>Date: ${esc(when(sentAt))}<br>Subject: ${esc(subject)}<br>From ${esc(owner)}’s email (${esc(mailbox)})</div>${body}</body></html>`;
+}
+
+const CARD_DAYS = 4; // a card charge is dated when it's made; the store's email can come days later (a preorder, a slow invoice)
+
+/** The dollar amounts an email names, in cents: "$1,299.00", "USD 10.00", "29.00 USD" */
+export function amountsIn(...texts) {
+  const out = new Set();
+  for (const t of texts) {
+    for (const m of String(t || '').matchAll(/(?:\$|\bUSD)\s?(\d[\d,]*(?:\.\d{2})?)|\b(\d[\d,]*\.\d{2})\s?USD\b/gi)) {
+      const cents = Math.round(Number((m[1] || m[2]).replace(/,/g, '')) * 100);
+      if (cents > 0) out.add(cents);
+    }
+  }
+  return [...out].slice(0, 40);
+}
+
+/**
+ * The SOARD card charge a receipt is for (Job Costs' copy of Mercury's card
+ * charges): the inbox owner's own card, one of the email's amounts, within a
+ * few days → { id, cents, vendor, link } | null. Bought on SOARD's card means
+ * SOARD's, whatever the email looks like.
+ */
+async function cardCharge(DB, { mailbox, at, amounts }) {
+  if (!amounts.length) return null;
+  const iso = (ms) => new Date(ms).toISOString();
+  try {
+    return await DB.prepare(`SELECT id, cents, vendor, link FROM spend_charges WHERE lower(email) = ? AND cents IN (${amounts.map(() => '?').join(', ')})
+        AND created_at BETWEEN ? AND ? ORDER BY abs(julianday(created_at) - julianday(?)) LIMIT 1`)
+      .bind(normEmail(mailbox), ...amounts, iso(at - CARD_DAYS * 86400e3), iso(at + CARD_DAYS * 86400e3), iso(at)).first();
+  } catch { return null; } // Job Costs hasn't seen a card charge yet
+}
+
 async function handleReceipt(env, ctx, row, msg) {
   const h = msg.payload?.headers;
   const inbox = ctx.receiptInbox;
@@ -428,9 +480,30 @@ async function handleReceipt(env, ctx, row, msg) {
   const files = filesWorth(msg.payload);
   const v = await judgeReceipt(env, { subject, from, owner: ctx.ownerName, text, files, lastTry: (row.tries || 0) + 1 >= MAX_TRIES });
   if (v.type === 'not_receipt') return { state: 'skipped', detail: `not a receipt: ${v.reason || 'the model said so'}` };
-  if (v.personal) return { state: 'skipped', detail: `personal: ${v.reason || 'the model said so'}` };
+  const sentAt = Number(msg.internalDate) || ctx.now;
+  const charge = await cardCharge(env.DB, { mailbox: row.mailbox, at: sentAt, amounts: amountsIn(v.total, text) });
+  const chargeId = charge?.id || null;
   const what = `${v.vendor || 'a vendor'}${v.total ? ` ${v.total}` : ''}`;
-  if (ctx.watching) return { state: 'would', detail: `would send ${what} to ${inbox}` };
+  // Bought on a SOARD card: the receipt goes on the charge in Mercury, which sends a makeover's on to the receipt inbox itself
+  if (charge && mercuryConfigured(env)) {
+    const on = `the Mercury card charge (${charge.vendor || 'a vendor'} $${(charge.cents / 100).toFixed(2)})`;
+    if (ctx.watching) return { state: 'would', detail: `would put ${what} on ${on}`, chargeId };
+    const day = new Date(sentAt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const uploads = [];
+    for (const f of files.filter((x) => RECEIPT_FILE.test(x.type)).slice(0, 3)) uploads.push({ bytes: await fileBytes(ctx.token, msg, f, ctx.fetchImpl), type: f.type, name: f.name });
+    // A receipt that's only the email itself: the email, printed
+    if (!uploads.length) {
+      const page = emailPage({ from, subject, sentAt, owner: ctx.ownerName, mailbox: row.mailbox, payload: msg.payload, text });
+      uploads.push({ bytes: await ctx.print(env, page), type: 'application/pdf', name: `${String(v.vendor || 'Store').replace(/[^\w .,&'-]+/g, ' ').trim().slice(0, 60)} receipt ${day}.pdf` });
+    }
+    for (const u of uploads) await attachToCharge(env, charge.id, u, ctx.fetchImpl);
+    return { state: 'sent', detail: `put ${what} on ${on}`, chargeId, onCard: true };
+  }
+  // One charge, one receipt: a store's "payment received" and its receipt for the same charge go once
+
+  const first = chargeId ? await env.DB.prepare("SELECT subject FROM mail_sweep WHERE charge_id = ? AND state IN ('sent', 'would', 'working') AND NOT (mailbox = ? AND id = ?) LIMIT 1").bind(chargeId, row.mailbox, row.id).first() : null;
+  if (first) return { state: 'duplicate', detail: `the same card charge as “${first.subject}”, already sent`, chargeId };
+  if (ctx.watching) return { state: 'would', detail: `would send ${what} to ${inbox}`, chargeId };
   if (!emailConfigured(env)) throw new Error('RESEND_API_KEY isn’t set, so receipts can’t be sent on');
 
   const attachments = [];
@@ -442,12 +515,12 @@ async function handleReceipt(env, ctx, row, msg) {
   // A receipt that's only the email itself: the email goes along as a file too
   const html = partsOf(msg.payload).find((p) => p.mimeType === 'text/html' && !p.filename && p.body?.data);
   if (!attachments.length && html) attachments.push({ filename: 'receipt.html', content: toBase64(bytesOf(html.body.data)) });
-  const sentAt = Number(msg.internalDate) || ctx.now;
   const day = v.date || new Date(sentAt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
   const body = [
     `A ${v.type === 'bill' ? 'bill' : 'receipt'} found in ${ctx.ownerName}’s email (${row.mailbox}).`,
     `Vendor: ${v.vendor || 'not named'}`, `Amount: ${v.total || 'not found'}`, `Date: ${day}`,
     `Original email from ${from}, ${when(sentAt)}: “${subject}”`,
+    ...(charge ? [`Card charge: ${charge.vendor || 'a vendor'} $${(charge.cents / 100).toFixed(2)} on ${firstName(ctx.ownerName, row.mailbox)}’s SOARD card${charge.link ? ` (${charge.link})` : ''}`] : []),
     '', text.slice(0, 8000),
   ].join('\n');
   const sendSubject = `${v.type === 'bill' ? 'Bill' : 'Receipt'}: ${what} on ${day} (from ${firstName(ctx.ownerName, row.mailbox)}’s email)`.slice(0, 200);
@@ -462,7 +535,7 @@ async function handleReceipt(env, ctx, row, msg) {
   // Resend's reports on it (delivered, or turned away and why) land in the email log, which Automations reads
   const sentId = (await res.json().catch(() => null))?.id;
   if (sentId) await logSent(env, [{ id: sentId, to: inbox, subject: sendSubject }], { tags, now: ctx.now });
-  return { state: 'sent', detail: `sent ${what} to ${inbox}${attachments.length ? ` with ${attachments.length === 1 ? 'its file' : `${attachments.length} files`}` : ''}` };
+  return { state: 'sent', detail: `sent ${what} to ${inbox}${attachments.length ? ` with ${attachments.length === 1 ? 'its file' : `${attachments.length} files`}` : ''}${charge ? ', matched to the card charge' : ''}`, chargeId };
 }
 
 async function handleFamily(env, ctx, row, msg) {
@@ -548,8 +621,8 @@ async function tellHeld(env, ctx, accountId, n, born) {
   }), { title: `${name}’s emails waiting`, kind: 'attention', area: 'applications' }).catch((err) => console.error('[mail-sweep] held alert', err.message));
 }
 
-const finish = (DB, row, { state, detail = null, commentIds = null, postedIds = null, fileKeys = null }, now) => DB.prepare('UPDATE mail_sweep SET state = ?, detail = ?, comment_ids = COALESCE(?, comment_ids), posted_ids = COALESCE(?, posted_ids), file_keys = ?, updated_at = ? WHERE mailbox = ? AND id = ?')
-  .bind(state, detail ? String(detail).slice(0, 300) : null, commentIds ? JSON.stringify(commentIds) : null, postedIds ? JSON.stringify(postedIds) : null, fileKeys ? JSON.stringify(fileKeys) : null, new Date(now).toISOString(), row.mailbox, row.id).run();
+const finish = (DB, row, { state, detail = null, commentIds = null, postedIds = null, fileKeys = null, chargeId = null }, now) => DB.prepare('UPDATE mail_sweep SET state = ?, detail = ?, comment_ids = COALESCE(?, comment_ids), posted_ids = COALESCE(?, posted_ids), file_keys = ?, charge_id = COALESCE(?, charge_id), updated_at = ? WHERE mailbox = ? AND id = ?')
+  .bind(state, detail ? String(detail).slice(0, 300) : null, commentIds ? JSON.stringify(commentIds) : null, postedIds ? JSON.stringify(postedIds) : null, fileKeys ? JSON.stringify(fileKeys) : null, chargeId, new Date(now).toISOString(), row.mailbox, row.id).run();
 
 async function handle(env, ctx, row) {
   // Claimed first, so two heartbeats can't both send it
@@ -561,12 +634,15 @@ async function handle(env, ctx, row) {
     if (twin) return await finish(env.DB, row, { state: 'duplicate', detail: `the same email as in ${twin.mailbox.split('@')[0]}’s inbox` }, ctx.now);
     const box = await ctx.open(row.mailbox);
     const msg = await gmail(box.token, `/messages/${row.id}?format=full`, ctx.fetchImpl);
+    if (notSoards(ctx, row.mailbox, msg)) return await finish(env.DB, row, { state: 'skipped', detail: 'to or from the store’s address, not SOARD’s' }, ctx.now);
     // Sorted again with today's rules and families, so a rule made better reaches what was already waiting
     const t = triage(msg, ctx.families);
     if (t?.kind !== row.kind) return await finish(env.DB, row, { state: 'skipped', detail: `not a ${row.kind === 'family' ? 'family email' : 'receipt'} after all` }, ctx.now);
     const c = { ...ctx, ...box };
     const out = row.kind === 'receipt' ? await handleReceipt(env, c, row, msg) : await handleFamily(env, c, { ...row, accounts: JSON.stringify(t.accounts) }, msg);
     await finish(env.DB, row, out, ctx.now);
+    // Its receipt is on the card charge: the email's job is done, so it leaves the inbox (archiveDue)
+    if (out.onCard) await env.DB.prepare("UPDATE mail_sweep SET archived = 'no' WHERE mailbox = ? AND id = ?").bind(row.mailbox, row.id).run();
   } catch (err) {
     // A cap reached: nothing's wrong with this email, so it goes back as it was with no try spent, and the sweep rests
     if (aiCapped(err)) {
@@ -578,6 +654,32 @@ async function handle(env, ctx, row) {
     await env.DB.prepare("UPDATE mail_sweep SET state = 'failed', tries = COALESCE(tries, 0) + 1, detail = ?, updated_at = ? WHERE mailbox = ? AND id = ?")
       .bind(String(err.message).slice(0, 300), iso, row.mailbox, row.id).run();
   }
+}
+
+/**
+ * Out of the inbox (Gmail's archive: the Inbox label comes off; nothing is deleted) for each email whose receipt is
+ * on its card charge. Archiving needs gmail.modify on the site's Google client; until Google allows it the emails
+ * wait and the reason shows in Automations → the error, then they go on the first sweep after. → that reason | null
+ */
+async function archiveDue(env, ctx) {
+  const rows = (await env.DB.prepare("SELECT mailbox, id FROM mail_sweep WHERE archived = 'no' ORDER BY at LIMIT 20").all()).results || [];
+  for (const r of rows) {
+    try {
+      const token = await accessToken(env, r.mailbox, { fetchImpl: ctx.fetchImpl, now: ctx.now, scope: GMAIL_MODIFY_SCOPE });
+      const res = await ctx.fetchImpl(`${GMAIL_API}/messages/${encodeURIComponent(r.id)}/modify`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ removeLabelIds: ['INBOX'] }), signal: AbortSignal.timeout(15000),
+      });
+      // Gone from the mailbox (deleted by hand): nothing left to archive
+      if (!res.ok && res.status !== 404) throw new Error(`Gmail answered ${res.status}`);
+      await env.DB.prepare("UPDATE mail_sweep SET archived = 'yes' WHERE mailbox = ? AND id = ?").bind(r.mailbox, r.id).run();
+    } catch (err) {
+      return /unauthorized_client|access_denied|not authorized|Gmail answered 403/i.test(err.message)
+        ? 'Google hasn’t let the site archive a handled receipt’s email yet: Google Admin → Security → API controls → Domain-wide delegation, add https://www.googleapis.com/auth/gmail.modify to the site’s client'
+        : `archiving a handled receipt’s email: ${err.message}`;
+    }
+  }
+  return null;
 }
 
 // ─── Reading the inboxes ────────────────────────────────────────────
@@ -615,7 +717,7 @@ async function scanBox(env, ctx, mailbox, bs) {
   let newest = bs.pageMax || bs.cursor;
   for (const msg of await metadata(token, ids.filter((id) => !known.has(id)), ctx.fetchImpl)) {
     newest = Math.max(newest, Number(msg.internalDate) || 0);
-    const t = triage(msg, ctx.families);
+    const t = notSoards(ctx, mailbox, msg) ? null : triage(msg, ctx.families);
     if (t) { await queue(env.DB, mailbox, msg, t, 'new', ctx.now); queued++; }
   }
   bs.recent = [...ids, ...(bs.recent || [])].slice(0, 300);
@@ -654,7 +756,7 @@ async function backfillStep(env, ctx, st, boxes) {
     const q = `(${bf.chunk.map((e) => `from:${e} OR to:${e} OR cc:${e}`).join(' OR ')}) after:${Math.floor((bf.until - BACKFILL_DAYS * 86400e3) / 1000)} before:${Math.floor(bf.until / 1000)}`;
     const list = await gmail(token, `/messages?maxResults=${PER_LIST}&q=${encodeURIComponent(q)}${bf.page ? `&pageToken=${bf.page}` : ''}`, ctx.fetchImpl);
     for (const msg of await metadata(token, (list.messages || []).map((m) => m.id), ctx.fetchImpl)) {
-      const t = triage(msg, ctx.families);
+      const t = notSoards(ctx, mailbox, msg) ? null : triage(msg, ctx.families);
       if (t?.kind === 'family') await queue(env.DB, mailbox, msg, t, 'backfill', ctx.now);
     }
     if (list.nextPageToken) { bf.page = list.nextPageToken; return true; }
@@ -669,7 +771,7 @@ async function backfillStep(env, ctx, st, boxes) {
 
 const noMailbox = (err) => /Mail service not enabled|failedPrecondition/i.test(err.message);
 
-async function sweep(env, st, { fetchImpl, now }) {
+async function sweep(env, st, { fetchImpl, now, print }) {
   const started = Date.now();
   const left = () => Date.now() - started < READ_MS;
   st.startedAt ||= now;
@@ -680,7 +782,10 @@ async function sweep(env, st, { fetchImpl, now }) {
     await env.DB.prepare("UPDATE mail_sweep SET state = 'queued', detail = NULL WHERE state = 'would'").run();
     st.released = now;
   }
-  const people = new Map((await mailboxes(env)).map((b) => [b.email, b.name]));
+  const accounts = await mailboxes(env);
+  const people = new Map(accounts.map((b) => [b.email, b.name]));
+  // An account whose main address is on another of SOARD's domains (the store's) is read only for its soardcharity.com mail
+  const soardOnly = new Map(accounts.filter((b) => !isStaffEmail(b.email)).map((b) => [b.email, new Set(b.aliases.map(normEmail))]));
   const boxes = [...people.keys()];
   if (!boxes.length) throw new Error('Google’s staff accounts haven’t been read yet (Staff sign-in follows Google)');
   const families = await familyAddresses(env.DB, { staff: [...people.values()] });
@@ -690,6 +795,8 @@ async function sweep(env, st, { fetchImpl, now }) {
     // Called as ctx.fetchImpl(…): Cloudflare's fetch refuses to be some object's method ("Illegal invocation")
     now, fetchImpl: (url, init) => fetchImpl(url, init), watching, families, names: families.names, startedAt: st.startedAt,
     receiptInbox: normEmail(cfg.receiptInbox || DEFAULT_RECEIPT_INBOX),
+    soardOnly,
+    print: print || (async (e, html) => (await import('./_board-sign.js')).printPdf(e, html)),
     open: async (mailbox) => {
       if (!tokens.has(mailbox)) tokens.set(mailbox, await accessToken(env, mailbox, { fetchImpl, now, scope: GMAIL_READ_SCOPE }));
       return { token: tokens.get(mailbox), ownerName: people.get(mailbox) || mailbox.split('@')[0] };
@@ -736,6 +843,8 @@ async function sweep(env, st, { fetchImpl, now }) {
     if (!row) break;
     await handle(env, ctx, row);
   }
+  const archiving = await archiveDue(env, ctx);
+  if (archiving) errors.push(archiving);
   const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
   if (ctx.capped) { st.aiRestUntil = now + AI_REST_MS; errors.push(AI_WAIT_NOTE); }
   Object.assign(st, { busy: Boolean(waiting?.n) || !backfillDone, backfillDone, lastSweptAt: now, error: errors.length ? errors.join(' · ').slice(0, 500) : null, runningUntil: 0 });
@@ -743,7 +852,7 @@ async function sweep(env, st, { fetchImpl, now }) {
 }
 
 /** On the live hub's heartbeat: every 3 minutes, every minute while there's a backlog. Never throws */
-export async function maybeSweepMail(env, { fetchImpl = fetch, now = Date.now(), force = false } = {}) {
+export async function maybeSweepMail(env, { fetchImpl = fetch, now = Date.now(), force = false, print = null } = {}) {
   if (!env?.DB || !env.GOOGLE_CALENDAR_KEY) return null;
   let st = {};
   try {
@@ -753,7 +862,7 @@ export async function maybeSweepMail(env, { fetchImpl = fetch, now = Date.now(),
     if (!force && (st.runningUntil || 0) > now) return null;
     Object.assign(st, { lastRunAt: now, runningUntil: now + 45000 });
     await writeState(env.DB, st);
-    st = await sweep(env, st, { fetchImpl, now });
+    st = await sweep(env, st, { fetchImpl, now, print });
     await writeState(env.DB, st);
     return st;
   } catch (err) {

@@ -14,6 +14,8 @@ const CAL_API = 'https://www.googleapis.com/calendar/v3';
 export const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events';
 // Board reads board mail (agendas, minutes, financials) with this one, added next to the calendar scope (_board-mail.js)
 export const GMAIL_READ_SCOPE = 'https://www.googleapis.com/auth/gmail.readonly';
+// The inbox sweep archives a handled receipt with this one (_mail-sweep.js); without it, receipts are still handled and the email stays
+export const GMAIL_MODIFY_SCOPE = 'https://www.googleapis.com/auth/gmail.modify';
 
 const _tokens = new Map(); // subject → { token, expiresAt }
 

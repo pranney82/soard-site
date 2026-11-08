@@ -116,6 +116,16 @@ async function billFile(env, billId, fetchImpl) {
   return files.find((f) => /pdf|image/i.test(f.type || '') || /\.(pdf|png|jpe?g|gif|heic)$/i.test(f.name || '')) || null;
 }
 
+/** A receipt file onto a Mercury card charge, remembered so a bill's file doesn't follow it (the inbox sweep uses it too) */
+export async function attachToCharge(env, chargeId, { bytes, type, name }, fetchImpl = fetch) {
+  await ensure(env.DB);
+  const form = new FormData();
+  form.append('file', new Blob([bytes], { type: type || 'application/pdf' }), String(name || 'receipt.pdf').slice(0, 200));
+  form.append('attachmentType', 'receipt');
+  await mercury(env, `/transaction/${encodeURIComponent(chargeId)}/attachments`, { method: 'POST', body: form, fetchImpl });
+  await keep(env.DB, chargeId, 'to-mercury', 'sent', name);
+}
+
 /** Bills' files → the card charges they paid, in Mercury. → { uploaded, failed } */
 export async function uploadBillReceipts(env, { now = Date.now(), fetchImpl = fetch } = {}) {
   await ensure(env.DB);
@@ -131,11 +141,7 @@ export async function uploadBillReceipts(env, { now = Date.now(), fetchImpl = fe
       const f = await billFile(env, r.bill_id, fetchImpl);
       if (!f?.url) { await keep(env.DB, r.id, 'to-mercury', 'none'); continue; }
       const { buf, type } = await download(f.url, fetchImpl);
-      const form = new FormData();
-      form.append('file', new Blob([buf], { type }), String(f.name || 'receipt.pdf').slice(0, 200));
-      form.append('attachmentType', 'receipt');
-      await mercury(env, `/transaction/${encodeURIComponent(r.id)}/attachments`, { method: 'POST', body: form, fetchImpl });
-      await keep(env.DB, r.id, 'to-mercury', 'sent', f.name);
+      await attachToCharge(env, r.id, { bytes: buf, type, name: f.name }, fetchImpl);
       out.uploaded++;
     } catch (e) {
       await keep(env.DB, r.id, 'to-mercury', 'failed', e.message);
