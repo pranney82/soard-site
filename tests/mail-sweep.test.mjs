@@ -16,6 +16,7 @@ import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
 import { maybeSweepMail, mailSweepStatus, triage, withoutQuoted, familyAddresses, receiptText, judgeReceipt, amountsIn, WATCH_MS } from '../functions/api/_mail-sweep.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
+import { forgetRampToken } from '../functions/api/_ramp.js';
 
 const { privateKey: SA_PEM } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
 const SERVICE_ACCOUNT = JSON.stringify({ type: 'service_account', client_email: 'site@example.iam.gserviceaccount.com', client_id: '1234567890', private_key: SA_PEM });
@@ -51,7 +52,7 @@ function mail({ box, at, from, to, cc = '', subject, text = '', html = null, msg
   return m;
 }
 
-let env, store, calls, resendOk, aiVerdicts, aboutVerdicts, refuseScopes;
+let env, store, calls, resendOk, aiVerdicts, aboutVerdicts, refuseScopes, rampTxns;
 const realFetch = globalThis.fetch;
 
 beforeEach(async () => {
@@ -61,6 +62,8 @@ beforeEach(async () => {
   resendOk = true;
   aiVerdicts = {};
   refuseScopes = new Set();
+  rampTxns = [];
+  forgetRampToken();
   aboutVerdicts = {};
   env = {
     DB: await createD1(), GOOGLE_CALENDAR_KEY: SERVICE_ACCOUNT, RESEND_API_KEY: 're_test', JOBTREAD_GRANT_KEY: 'grant-main',
@@ -122,6 +125,26 @@ beforeEach(async () => {
       if ((m = /^\/messages\/(\w+)\/modify$/.exec(path))) return Response.json({ id: m[1], ...JSON.parse(init.body) });
       if ((m = /^\/threads\/(\w+)$/.exec(path))) return Response.json({ id: m[1], messages: mine.filter((x) => x.threadId === m[1]).map((x) => ({ id: x.id, payload: { headers: x.payload.headers } })) });
     }
+    if (url.startsWith('https://api.ramp.com/developer/v1/')) {
+      const u = new URL(url);
+      const path = u.pathname.replace('/developer/v1', '');
+      if (path === '/token') {
+        const scope = new URLSearchParams(init.body).get('scope');
+        calls.push({ kind: 'ramp-token', scope });
+        if (refuseScopes.has(scope)) return new Response('{"error":"invalid_scope"}', { status: 400 });
+        return Response.json({ access_token: `ramp:${scope}`, expires_in: 3600 });
+      }
+      if (path === '/users') return Response.json({ data: [{ id: 'u-pat', email: u.searchParams.get('email') }] });
+      if (path === '/transactions') {
+        const from = Date.parse(u.searchParams.get('from_date')), to = Date.parse(u.searchParams.get('to_date'));
+        return Response.json({ data: rampTxns.filter((t) => Date.parse(t.user_transaction_time) >= from && Date.parse(t.user_transaction_time) <= to) });
+      }
+      if (path === '/receipts' && init.method === 'POST') {
+        const f = init.body;
+        calls.push({ kind: 'ramp-receipt', transaction: f.get('transaction_id'), user: f.get('user_id'), key: f.get('idempotency_key'), file: f.get('receipt')?.name });
+        return Response.json({ id: 'rcpt1' }, { status: 201 });
+      }
+    }
     if (url.startsWith('https://mercury-relay.sunshineonaranneyday.com/api/v1/')) {
       const file = init.body instanceof FormData ? init.body.get('file') : null;
       calls.push({ kind: 'mercury', path: new URL(url).pathname.replace('/api/v1', ''), method: init.method || 'GET', file: file?.name, type: file?.type, attachmentType: init.body instanceof FormData ? init.body.get('attachmentType') : null });
@@ -160,6 +183,8 @@ test('triage: receipts, shipping, ads, staff mail, money tools, calendar replies
   assert.deepEqual(t({ from: 'Wayfair <orders@wayfair.example>', subject: 'Thanks for your order! #123' }), { kind: 'receipt' });
   assert.deepEqual(t({ from: 'Studio <billing@studio.example>', subject: 'Invoice 4410 from Studio' }), { kind: 'receipt' });
   assert.deepEqual(t({ from: 'Walmart <help@walmart.example>', subject: 'Thanks for your delivery order, Pat' }), { kind: 'receipt' });
+  assert.deepEqual(t({ from: 'Etsy <transaction@etsy.example>', subject: 'Your Etsy Purchase from PrintShop (4223036227)' }), { kind: 'receipt' });
+  assert.equal(t({ from: 'Etsy <deals@etsy.example>', subject: '15% off your next purchase' }), null);
   assert.equal(t({ from: 'Wayfair <orders@wayfair.example>', subject: 'Your order has shipped' }), null);
   assert.equal(t({ from: 'CB2 <hi@cb2.example>', subject: 'DELIVERED: Your order 147790499' }), null);
   assert.equal(t({ from: 'Pottery Barn <hi@pb.example>', subject: 'Your cart misses you (+ 20% off)' }), null);
@@ -544,7 +569,7 @@ test('a SOARD card charge’s receipt goes once, and every receipt in a SOARD in
 
   const sent = of('resend');
   assert.deepEqual(sent.map((x) => x.body.subject.split(' on ')[0]), ['Receipt: Texting USD $10.00', 'Receipt: Stream $15.49'], 'the charge’s receipt goes once; the other receipt goes too');
-  assert.match(sent[0].body.text, /Card charge: Texting\.app \$10\.00 on Pat’s SOARD card \(https:\/\/bank\.example\/transactions\/ch1\)/);
+  assert.match(sent[0].body.text, /Card charge: Texting\.app \$10\.00 on Pat’s Mercury card \(https:\/\/bank\.example\/transactions\/ch1\)/);
   assert.equal((await byId(paid.id))[0].state, 'sent');
   assert.deepEqual(await env.DB.prepare('SELECT state, charge_id FROM mail_sweep WHERE id = ?').bind(receipt.id).first(), { state: 'duplicate', charge_id: 'ch1' });
   assert.equal((await byId(other.id))[0].state, 'sent');
@@ -590,6 +615,50 @@ test('bought on a Mercury card: the receipt goes on the charge in Mercury, print
   assert.deepEqual(await archived(), ['yes', 'yes']);
   assert.equal(st2.error, null);
   assert.equal(of('mercury').length, 0);
+});
+
+test('bought on a Ramp card: the receipt goes on the Ramp charge and to the receipt inbox, once a charge, and the email is archived', async () => {
+  Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  rampTxns.push(
+    { id: 'tx1', state: 'CLEARED', entity_amount: { value: 4836, currency: 'USD' }, user_transaction_time: new Date(at - 3 * MIN).toISOString(), merchant_name: 'Etsy', receipts: [] },
+    { id: 'tx2', state: 'CLEARED', entity_amount: { value: 2299, currency: 'USD' }, user_transaction_time: new Date(at - DAY).toISOString(), merchant_name: 'Lumber Co', receipts: ['r-by-hand'] },
+  );
+  const order = mail({ box: PAT, at, from: 'Etsy <transaction@etsy.example>', to: PAT, subject: 'Your Etsy Purchase from PrintShop', text: 'Nursery print set. Order total $48.36' });
+  const again = mail({ box: PAT, at: at + MIN, from: 'Etsy <transaction@etsy.example>', to: PAT, subject: 'Thanks for your order, Pat', text: 'You paid $48.36' });
+  const lumber = mail({ box: PAT, at: at + 2 * MIN, from: 'Lumber Co <sales@lumber.example>', to: PAT, subject: 'Your receipt from Lumber Co', text: 'Paid $22.99' });
+  aiVerdicts['Your Etsy Purchase from PrintShop'] = { type: 'receipt', vendor: 'PrintShop', total: '$48.36', reason: 'an order' };
+  aiVerdicts['Thanks for your order, Pat'] = { type: 'receipt', vendor: 'Etsy', total: '$48.36', reason: 'an order' };
+  aiVerdicts['Your receipt from Lumber Co'] = { type: 'receipt', vendor: 'Lumber Co', total: '$22.99', reason: 'paid' };
+  const print = async () => new Uint8Array([37, 80, 68, 70]);
+  calls.length = 0;
+  const st = await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print });
+
+  assert.equal(st.error, null);
+  assert.ok(of('ramp-token').every((c) => c.scope === 'transactions:read receipts:write users:read'));
+  assert.deepEqual(of('ramp-receipt').map((c) => [c.transaction, c.user, c.key, c.file]), [['tx1', 'u-pat', `${PAT}:${order.id}:0`, 'PrintShop receipt 2026-11-03.pdf']], 'once, and never on a charge that has a receipt');
+  const sent = of('resend');
+  assert.deepEqual(sent.map((x) => x.body.subject.split(' on ')[0]), ['Receipt: PrintShop $48.36', 'Receipt: Lumber Co $22.99']);
+  assert.match(sent[0].body.text, /Card charge: Etsy \$48\.36 on Pat’s Ramp card/);
+  assert.match((await byId(order.id))[0].detail, /; put on the Ramp card charge$/);
+  assert.equal((await byId(again.id))[0].state, 'duplicate');
+  assert.match((await byId(lumber.id))[0].detail, /; the Ramp card charge already had a receipt$/);
+  assert.deepEqual(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST').map((c) => c.path), [order, again, lumber].map((m) => `/messages/${m.id}/modify`), 'each one’s receipt is on its charge: out of the inbox');
+});
+
+test('Ramp refusing the card scopes: the receipt still goes to the receipt inbox, and Automations says why', async () => {
+  Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
+  refuseScopes.add('transactions:read receipts:write users:read');
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  const m = mail({ box: PAT, at, from: 'Etsy <transaction@etsy.example>', to: PAT, subject: 'Your Etsy Purchase from PrintShop', text: 'Order total $48.36' });
+  aiVerdicts['Your Etsy Purchase from PrintShop'] = { type: 'receipt', vendor: 'PrintShop', total: '$48.36', reason: 'an order' };
+  calls.length = 0;
+  const st = await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
+  assert.equal(of('resend').length, 1);
+  assert.equal((await byId(m.id))[0].state, 'sent');
+  assert.match(st.error, /Ramp card receipts went to the receipt inbox only: Ramp refused the keys \(400\)\. .*transactions:read, receipts:write, users:read/);
 });
 
 test('an account whose main address is the store’s: only its soardcharity.com mail is read', async () => {

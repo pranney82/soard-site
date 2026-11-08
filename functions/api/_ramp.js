@@ -26,6 +26,8 @@
  *
  * Keys: an API app made in Ramp (client credentials) with bills:read and
  * bills:write, kept in Cloudflare as RAMP_CLIENT_ID and RAMP_CLIENT_SECRET.
+ * The inbox sweep (./_mail-sweep.js) uses the same app for card receipts, with
+ * transactions:read, receipts:write and users:read (rampCardCharge, rampAttach).
  * Ramp marks bill hold and release as beta. Ramp has no API to schedule a
  * payment, so a released bill Ramp leaves unscheduled is said so in Slack.
  */
@@ -81,40 +83,88 @@ async function putRow(DB, rampId, patch, now = Date.now()) {
 
 export const rampConfigured = (env) => !!(String(env.RAMP_CLIENT_ID || '').trim() && String(env.RAMP_CLIENT_SECRET || '').trim());
 
-let _token = null;   // { id, value, until }: one isolate's token, until shortly before it ends
-export const forgetRampToken = () => { _token = null; };
+const BILLS_SCOPE = 'bills:read bills:write';
+export const CARD_SCOPE = 'transactions:read receipts:write users:read';
+const _tokens = new Map();   // scope → { id, value, until }: one isolate's tokens, until shortly before each ends
+export const forgetRampToken = () => { _tokens.clear(); };
 
-const refused = (status, text) => Object.assign(new Error(status === 401 || status === 403
-  ? `Ramp refused the keys (${status}). Check RAMP_CLIENT_ID and RAMP_CLIENT_SECRET in Cloudflare, and that the Ramp app has bills:read and bills:write.`
+const refused = (status, text, scope = BILLS_SCOPE) => Object.assign(new Error(status === 401 || status === 403 || /invalid_scope/.test(String(text))
+  ? `Ramp refused the keys (${status}). Check RAMP_CLIENT_ID and RAMP_CLIENT_SECRET in Cloudflare, and that the Ramp app has ${scope.split(' ').join(', ')}.`
   : `Ramp said ${status}: ${String(text || '').slice(0, 200)}`), { status });
 
-async function accessToken(env, fetchImpl) {
+async function accessToken(env, fetchImpl, scope = BILLS_SCOPE) {
   const id = String(env.RAMP_CLIENT_ID).trim();
-  if (_token && _token.id === id && Date.now() < _token.until) return _token.value;
+  const held = _tokens.get(scope);
+  if (held && held.id === id && Date.now() < held.until) return held.value;
   const res = await fetchImpl(`${RAMP_BASE}/token`, {
     method: 'POST',
     headers: { Authorization: `Basic ${btoa(`${id}:${String(env.RAMP_CLIENT_SECRET).trim()}`)}`, 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'client_credentials', scope: 'bills:read bills:write' }).toString(),
+    body: new URLSearchParams({ grant_type: 'client_credentials', scope }).toString(),
   });
-  if (!res.ok) throw refused(res.status, await res.text().catch(() => ''));
+  if (!res.ok) throw refused(res.status, await res.text().catch(() => ''), scope);
   const d = await res.json();
-  _token = { id, value: d.access_token, until: Date.now() + Math.max(60, (Number(d.expires_in) || 3600) - 300) * 1000 };
-  return _token.value;
+  _tokens.set(scope, { id, value: d.access_token, until: Date.now() + Math.max(60, (Number(d.expires_in) || 3600) - 300) * 1000 });
+  return d.access_token;
 }
 
-/** One call to Ramp's developer API (path under /developer/v1, or a full `page.next` URL) */
-export async function ramp(env, path, { method = 'GET', query = null, body = null, fetchImpl = fetch } = {}) {
+/** One call to Ramp's developer API (path under /developer/v1, or a full `page.next` URL). A FormData body goes as multipart */
+export async function ramp(env, path, { method = 'GET', query = null, body = null, scope = BILLS_SCOPE, fetchImpl = fetch } = {}) {
   const url = new URL(path.startsWith('https://') ? path : `${RAMP_BASE}${path}`);
   for (const [k, v] of Object.entries(query || {})) if (v != null) url.searchParams.set(k, String(v));
+  const form = typeof FormData !== 'undefined' && body instanceof FormData;
   const call = async () => fetchImpl(url.href, {
     method,
-    headers: { Authorization: `Bearer ${await accessToken(env, fetchImpl)}`, Accept: 'application/json', ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
+    headers: { Authorization: `Bearer ${await accessToken(env, fetchImpl, scope)}`, Accept: 'application/json', ...(body && !form ? { 'Content-Type': 'application/json' } : {}) },
+    ...(body ? { body: form ? body : JSON.stringify(body) } : {}),
   });
   let res = await call();
-  if (res.status === 401) { _token = null; res = await call(); }   // the token ended early: once more with a new one
-  if (!res.ok) throw refused(res.status, await res.text().catch(() => ''));
+  if (res.status === 401) { _tokens.delete(scope); res = await call(); }   // the token ended early: once more with a new one
+  if (!res.ok) throw refused(res.status, await res.text().catch(() => ''), scope);
   return res.status === 204 ? null : res.json();
+}
+
+// ─── Card receipts (the inbox sweep) ────────────────────────────────
+
+const _users = new Map(); // email → Ramp user id (or '' when Ramp has no such user), for one isolate
+
+/**
+ * A Ramp card charge a receipt is for: the cardholder with this email, one of
+ * the receipt's amounts (in cents), within `days` of when it came →
+ * { id, cents, vendor, userId, hasReceipt } | null
+ */
+export async function rampCardCharge(env, { email, at, amounts, days = 4, fetchImpl = fetch }) {
+  if (!amounts.length || !rampConfigured(env)) return null;
+  const key = String(email || '').toLowerCase();
+  if (!_users.has(key)) {
+    const u = await ramp(env, '/users', { query: { email: key, page_size: 2 }, scope: CARD_SCOPE, fetchImpl });
+    _users.set(key, (u?.data || []).find((x) => String(x.email || '').toLowerCase() === key)?.id || '');
+  }
+  const userId = _users.get(key);
+  if (!userId) return null;
+  const want = new Set(amounts);
+  const t = await ramp(env, '/transactions', {
+    query: {
+      user_id: userId, state: 'ALL', page_size: 100,
+      from_date: new Date(at - days * DAY).toISOString(), to_date: new Date(at + days * DAY).toISOString(),
+      min_amount: (Math.min(...amounts) / 100 - 0.01).toFixed(2), max_amount: (Math.max(...amounts) / 100 + 0.01).toFixed(2),
+    },
+    scope: CARD_SCOPE, fetchImpl,
+  });
+  const cents = (x) => (Number.isFinite(x.entity_amount?.value) ? x.entity_amount.value : centsOf(x.original_transaction_amount));
+  const hits = (t?.data || []).filter((x) => x.state !== 'DECLINED' && want.has(cents(x)))
+    .sort((a, b) => Math.abs(Date.parse(a.user_transaction_time) - at) - Math.abs(Date.parse(b.user_transaction_time) - at));
+  const x = hits[0];
+  return x ? { id: x.id, cents: cents(x), vendor: x.merchant_name || '', userId, hasReceipt: (x.receipts || []).length > 0 } : null;
+}
+
+/** A receipt file onto a Ramp card charge. The key makes a retry upload it once */
+export async function rampAttach(env, { transactionId, userId, bytes, type, name, key }, fetchImpl = fetch) {
+  const form = new FormData();
+  form.append('idempotency_key', String(key).slice(0, 200));
+  form.append('user_id', userId);
+  form.append('transaction_id', transactionId);
+  form.append('receipt', new Blob([bytes], { type: type || 'application/pdf' }), String(name || 'receipt.pdf').slice(0, 200));
+  return ramp(env, '/receipts', { method: 'POST', body: form, scope: CARD_SCOPE, fetchImpl });
 }
 
 const centsOf = (amount) => {

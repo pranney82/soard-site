@@ -54,6 +54,7 @@ import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
 import { DEFAULT_RECEIPT_INBOX, attachToCharge } from './_spend-receipts.js';
 import { mercuryConfigured } from './_mercury.js';
+import { rampCardCharge, rampAttach } from './_ramp.js';
 import { FREE_MAIL } from './_kid-partners.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
 
@@ -80,7 +81,7 @@ const SENT_TAG = 'receipt-from-inbox';
 
 // The money tools' and JobTread's own mail: already where it belongs
 const OWN_TOOLS = /@([\w-]+\.)*(ramp\.com|mercury\.com|jobtread\.com|zeffy\.com|intuit\.com|quickbooks\.com|plaid\.com|companycam\.com)$/i;
-const RECEIPTISH = /\b(receipts?|invoices?|bills?|order (confirmation|confirmed|received|placed|summary|details|#|no\.?|number)|your (order|purchase|payment)|payment (received|confirmation|confirmed|successful|processed)|purchase (confirmation|confirmed)|thanks? (you )?for (your )?([\w-]+ )?(order|purchase|payment|shopping)|(we('ve| have)|has been) received|charged|paid)\b/i;
+const RECEIPTISH = /\b(receipts?|invoices?|bills?|order (confirmation|confirmed|received|placed|summary|details|#|no\.?|number)|your ([\w.-]+ )?(order|purchase|payment)|payment (received|confirmation|confirmed|successful|processed)|purchase (confirmation|confirmed)|thanks? (you )?for (your )?([\w-]+ )?(order|purchase|payment|shopping)|(we('ve| have)|has been) received|charged|paid)\b/i;
 const NOT_RECEIPT = /\b(shipped|ships|on (its|the) way|out for delivery|delivered|arriving|arrives|has arrived|track(ing)?\b|in your (cart|bag)|cart misses|left (something|in)|wish ?list|\d+% off|sale\b|deals?\b|coupons?|price drop|back in stock|review (your|us)|rate (your|us)|survey|refund(ed)?|returns?\b|statement)\b/i;
 const CALENDAR = /^(accepted|declined|tentatively accepted|tentative|invitation|updated invitation|cancell?ed (event|invitation)|new event|proposed new time)\b/i;
 // A reply on an invite's thread (a reveal's): every guest is on it, so only the family's and staff's own count
@@ -435,6 +436,18 @@ function emailPage({ from, subject, sentAt, owner, mailbox, payload, text }) {
   return `<!doctype html><html><head><meta charset="utf-8"></head><body><div style="font:12px/1.5 sans-serif;color:#333;border-bottom:1px solid #ccc;padding-bottom:8px;margin-bottom:16px">From: ${esc(from)}<br>Date: ${esc(when(sentAt))}<br>Subject: ${esc(subject)}<br>From ${esc(owner)}’s email (${esc(mailbox)})</div>${body}</body></html>`;
 }
 
+/** The receipt's files for a card charge: the email's own PDFs and pictures, else the email itself, printed → [{ bytes, type, name }] */
+async function receiptUploads(env, ctx, row, msg, { v, files, from, subject, sentAt, text }) {
+  const uploads = [];
+  for (const f of files.filter((x) => RECEIPT_FILE.test(x.type)).slice(0, 3)) uploads.push({ bytes: await fileBytes(ctx.token, msg, f, ctx.fetchImpl), type: f.type, name: f.name });
+  if (!uploads.length) {
+    const day = new Date(sentAt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+    const page = emailPage({ from, subject, sentAt, owner: ctx.ownerName, mailbox: row.mailbox, payload: msg.payload, text });
+    uploads.push({ bytes: await ctx.print(env, page), type: 'application/pdf', name: `${String(v.vendor || 'Store').replace(/[^\w .,&'-]+/g, ' ').trim().slice(0, 60)} receipt ${day}.pdf` });
+  }
+  return uploads;
+}
+
 const CARD_DAYS = 4; // a card charge is dated when it's made; the store's email can come days later (a preorder, a slow invoice)
 
 /** The dollar amounts an email names, in cents: "$1,299.00", "USD 10.00", "29.00 USD" */
@@ -481,30 +494,35 @@ async function handleReceipt(env, ctx, row, msg) {
   const v = await judgeReceipt(env, { subject, from, owner: ctx.ownerName, text, files, lastTry: (row.tries || 0) + 1 >= MAX_TRIES });
   if (v.type === 'not_receipt') return { state: 'skipped', detail: `not a receipt: ${v.reason || 'the model said so'}` };
   const sentAt = Number(msg.internalDate) || ctx.now;
-  const charge = await cardCharge(env.DB, { mailbox: row.mailbox, at: sentAt, amounts: amountsIn(v.total, text) });
+  const amounts = amountsIn(v.total, text);
+  const charge = await cardCharge(env.DB, { mailbox: row.mailbox, at: sentAt, amounts });
   const chargeId = charge?.id || null;
   const what = `${v.vendor || 'a vendor'}${v.total ? ` ${v.total}` : ''}`;
   // Bought on a SOARD card: the receipt goes on the charge in Mercury, which sends a makeover's on to the receipt inbox itself
   if (charge && mercuryConfigured(env)) {
     const on = `the Mercury card charge (${charge.vendor || 'a vendor'} $${(charge.cents / 100).toFixed(2)})`;
     if (ctx.watching) return { state: 'would', detail: `would put ${what} on ${on}`, chargeId };
-    const day = new Date(sentAt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
-    const uploads = [];
-    for (const f of files.filter((x) => RECEIPT_FILE.test(x.type)).slice(0, 3)) uploads.push({ bytes: await fileBytes(ctx.token, msg, f, ctx.fetchImpl), type: f.type, name: f.name });
-    // A receipt that's only the email itself: the email, printed
-    if (!uploads.length) {
-      const page = emailPage({ from, subject, sentAt, owner: ctx.ownerName, mailbox: row.mailbox, payload: msg.payload, text });
-      uploads.push({ bytes: await ctx.print(env, page), type: 'application/pdf', name: `${String(v.vendor || 'Store').replace(/[^\w .,&'-]+/g, ' ').trim().slice(0, 60)} receipt ${day}.pdf` });
-    }
-    for (const u of uploads) await attachToCharge(env, charge.id, u, ctx.fetchImpl);
+    for (const u of await receiptUploads(env, ctx, row, msg, { v, files, from, subject, sentAt, text })) await attachToCharge(env, charge.id, u, ctx.fetchImpl);
     return { state: 'sent', detail: `put ${what} on ${on}`, chargeId, onCard: true };
   }
+  // Bought on a Ramp card (while SOARD moves off Ramp): the receipt goes on the Ramp charge too, and to the receipt inbox as before
+  let rampCharge = null;
+  if (!charge) {
+    try { rampCharge = await rampCardCharge(env, { email: row.mailbox, at: sentAt, amounts, fetchImpl: ctx.fetchImpl }); } catch (err) { ctx.notes.ramp = err.message; }
+  }
+  const card = charge ? { ...charge, on: 'Mercury card' } : rampCharge ? { vendor: rampCharge.vendor, cents: rampCharge.cents, link: null, on: 'Ramp card' } : null;
+  const chargeKey = chargeId || (rampCharge ? `ramp:${rampCharge.id}` : null);
   // One charge, one receipt: a store's "payment received" and its receipt for the same charge go once
 
-  const first = chargeId ? await env.DB.prepare("SELECT subject FROM mail_sweep WHERE charge_id = ? AND state IN ('sent', 'would', 'working') AND NOT (mailbox = ? AND id = ?) LIMIT 1").bind(chargeId, row.mailbox, row.id).first() : null;
-  if (first) return { state: 'duplicate', detail: `the same card charge as “${first.subject}”, already sent`, chargeId };
-  if (ctx.watching) return { state: 'would', detail: `would send ${what} to ${inbox}`, chargeId };
+  const first = chargeKey ? await env.DB.prepare("SELECT subject FROM mail_sweep WHERE charge_id = ? AND state IN ('sent', 'would', 'working') AND NOT (mailbox = ? AND id = ?) LIMIT 1").bind(chargeKey, row.mailbox, row.id).first() : null;
+  if (first) return { state: 'duplicate', detail: `the same card charge as “${first.subject}”, already sent`, chargeId: chargeKey, onCard: Boolean(rampCharge) };
+  if (ctx.watching) return { state: 'would', detail: `would send ${what} to ${inbox}${rampCharge ? ' and put it on the Ramp card charge' : ''}`, chargeId: chargeKey };
   if (!emailConfigured(env)) throw new Error('RESEND_API_KEY isn’t set, so receipts can’t be sent on');
+  // A charge with a receipt already (forwarded to Ramp by hand) keeps it; the key makes a retry upload once
+  if (rampCharge && !rampCharge.hasReceipt) {
+    const uploads = await receiptUploads(env, ctx, row, msg, { v, files, from, subject, sentAt, text });
+    for (const [i, u] of uploads.entries()) await rampAttach(env, { transactionId: rampCharge.id, userId: rampCharge.userId, ...u, key: `${row.mailbox}:${row.id}:${i}` }, ctx.fetchImpl);
+  }
 
   const attachments = [];
   let total = 0;
@@ -520,7 +538,7 @@ async function handleReceipt(env, ctx, row, msg) {
     `A ${v.type === 'bill' ? 'bill' : 'receipt'} found in ${ctx.ownerName}’s email (${row.mailbox}).`,
     `Vendor: ${v.vendor || 'not named'}`, `Amount: ${v.total || 'not found'}`, `Date: ${day}`,
     `Original email from ${from}, ${when(sentAt)}: “${subject}”`,
-    ...(charge ? [`Card charge: ${charge.vendor || 'a vendor'} $${(charge.cents / 100).toFixed(2)} on ${firstName(ctx.ownerName, row.mailbox)}’s SOARD card${charge.link ? ` (${charge.link})` : ''}`] : []),
+    ...(card ? [`Card charge: ${card.vendor || 'a vendor'} $${(card.cents / 100).toFixed(2)} on ${firstName(ctx.ownerName, row.mailbox)}’s ${card.on}${card.link ? ` (${card.link})` : ''}`] : []),
     '', text.slice(0, 8000),
   ].join('\n');
   const sendSubject = `${v.type === 'bill' ? 'Bill' : 'Receipt'}: ${what} on ${day} (from ${firstName(ctx.ownerName, row.mailbox)}’s email)`.slice(0, 200);
@@ -535,7 +553,8 @@ async function handleReceipt(env, ctx, row, msg) {
   // Resend's reports on it (delivered, or turned away and why) land in the email log, which Automations reads
   const sentId = (await res.json().catch(() => null))?.id;
   if (sentId) await logSent(env, [{ id: sentId, to: inbox, subject: sendSubject }], { tags, now: ctx.now });
-  return { state: 'sent', detail: `sent ${what} to ${inbox}${attachments.length ? ` with ${attachments.length === 1 ? 'its file' : `${attachments.length} files`}` : ''}${charge ? ', matched to the card charge' : ''}`, chargeId };
+  const onRamp = rampCharge ? (rampCharge.hasReceipt ? '; the Ramp card charge already had a receipt' : '; put on the Ramp card charge') : '';
+  return { state: 'sent', detail: `sent ${what} to ${inbox}${attachments.length ? ` with ${attachments.length === 1 ? 'its file' : `${attachments.length} files`}` : ''}${charge ? ', matched to the card charge' : ''}${onRamp}`, chargeId: chargeKey, onCard: Boolean(rampCharge) };
 }
 
 async function handleFamily(env, ctx, row, msg) {
@@ -795,6 +814,8 @@ async function sweep(env, st, { fetchImpl, now, print }) {
     // Called as ctx.fetchImpl(…): Cloudflare's fetch refuses to be some object's method ("Illegal invocation")
     now, fetchImpl: (url, init) => fetchImpl(url, init), watching, families, names: families.names, startedAt: st.startedAt,
     receiptInbox: normEmail(cfg.receiptInbox || DEFAULT_RECEIPT_INBOX),
+    // Shared by every copy of ctx a handler gets ({ ...ctx, ...box }), so what one notes reaches Automations
+    notes: {},
     soardOnly,
     print: print || (async (e, html) => (await import('./_board-sign.js')).printPdf(e, html)),
     open: async (mailbox) => {
@@ -845,6 +866,7 @@ async function sweep(env, st, { fetchImpl, now, print }) {
   }
   const archiving = await archiveDue(env, ctx);
   if (archiving) errors.push(archiving);
+  if (ctx.notes.ramp) errors.push(`Ramp card receipts went to the receipt inbox only: ${ctx.notes.ramp}`);
   const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
   if (ctx.capped) { st.aiRestUntil = now + AI_REST_MS; errors.push(AI_WAIT_NOTE); }
   Object.assign(st, { busy: Boolean(waiting?.n) || !backfillDone, backfillDone, lastSweptAt: now, error: errors.length ? errors.join(' · ').slice(0, 500) : null, runningUntil: 0 });
