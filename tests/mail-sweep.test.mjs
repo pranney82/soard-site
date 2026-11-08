@@ -615,6 +615,28 @@ test('a charge finds a receipt the email side didn’t take, and one with none s
   assert.equal((await mailSweepStatus(env)).cards.none, 1);
 });
 
+test('a receipt in a coworker’s inbox: found after the charge’s first hour when the store matches, and a cardholder known by an alias', async () => {
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
+  const LEE = 'lee@store.example';
+  await env.DB.prepare("UPDATE staff_state SET data = ? WHERE key = 'directory'").bind(JSON.stringify({ ok: true, accounts: [...ACCOUNTS, { email: LEE, aliases: ['lee@soardcharity.com'], name: 'Lee Park', active: true, why: null }] })).run();
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec(MERCURY_CHARGES);
+  await mercuryCharge('ch4', 4200, 'Etsy', at - 2 * 60 * MIN, SAM);
+  await mercuryCharge('ch5', 1999, 'Home Depot', at - 2 * 60 * MIN, SAM);
+  await mercuryCharge('ch6', 8376, 'Walmart', at - 2 * 60 * MIN, 'lee@soardcharity.com');
+  const etsy = mail({ box: PAT, at: at - 2 * 60 * MIN, from: 'Etsy <transaction@etsy.example>', to: PAT, subject: 'Your Etsy Purchase from PrintShop', text: 'Order total $42.00' });
+  const bakery = mail({ box: PAT, at: at - 2 * 60 * MIN, from: 'Corner Bakery <hi@bakery.example>', to: PAT, subject: 'Your receipt from Corner Bakery', text: 'Total $19.99' });
+  const walmart = mail({ box: LEE, at: at - 2 * 60 * MIN, from: 'Walmart <help@walmart.example>', to: 'lee@soardcharity.com', subject: 'Lee, thanks for your order', text: 'Bins $83.76' });
+  calls.length = 0;
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
+  assert.deepEqual(await cardRow('mercury:ch4'), { state: 'attached', msg_id: `${PAT}:${etsy.id}`, detail: 'put “Your Etsy Purchase from PrintShop” on the Mercury card charge (Etsy $42.00)' }, 'the order went to a coworker');
+  assert.equal((await cardRow('mercury:ch5')).state, 'looking', 'another store’s receipt for the same amount isn’t taken from a coworker');
+  assert.equal(await env.DB.prepare('SELECT charge_id FROM mail_sweep WHERE id = ?').bind(bakery.id).first('charge_id'), null, 'and isn’t put on any charge');
+  assert.deepEqual(await cardRow('mercury:ch6'), { state: 'attached', msg_id: `${LEE}:${walmart.id}`, detail: 'put “Lee, thanks for your order” on the Mercury card charge (Walmart $83.76)' }, 'the card’s email is an alias on the account');
+  assert.equal(await env.DB.prepare('SELECT archived FROM mail_sweep WHERE mailbox = ? AND id = ?').bind(PAT, etsy.id).first('archived'), 'yes', 'archived where it was found');
+});
+
 test('a Ramp card charge gets its receipt in Ramp, its receipt still goes to the receipt inbox once, and every receipt is SOARD’s', async () => {
   Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
   await maybeSweepMail(env, { now: T0, force: true });

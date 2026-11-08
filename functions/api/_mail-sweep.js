@@ -707,16 +707,22 @@ async function syncCardCharges(env, ctx, st) {
   for (const c of charges) {
     const at = Date.parse(c.at);
     if (!Number.isFinite(at) || !(c.cents > 0)) continue;
-    const mailbox = normEmail(c.email);
+    const mailbox = ctx.mailboxOf(normEmail(c.email));
     const state = c.had ? 'had' : ctx.inboxes.has(mailbox) ? 'looking' : 'no_inbox';
+    // (each SET reads the row as it was)
     await env.DB.prepare(`INSERT INTO card_receipts (charge, card, mailbox, user_id, cents, vendor, charged_at, state, next_look, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(charge) DO UPDATE SET state = CASE WHEN excluded.state = 'had' AND card_receipts.state IN ('looking', 'none', 'no_inbox') THEN 'had' ELSE card_receipts.state END, updated_at = excluded.updated_at`)
+        ON CONFLICT(charge) DO UPDATE SET
+          state = CASE WHEN excluded.state = 'had' AND card_receipts.state IN ('looking', 'none', 'no_inbox') THEN 'had'
+            WHEN excluded.state = 'looking' AND card_receipts.state = 'no_inbox' THEN 'looking' ELSE card_receipts.state END,
+          mailbox = CASE WHEN card_receipts.state = 'no_inbox' THEN excluded.mailbox ELSE card_receipts.mailbox END,
+          next_look = CASE WHEN excluded.state = 'looking' AND card_receipts.state = 'no_inbox' THEN excluded.next_look ELSE card_receipts.next_look END,
+          updated_at = excluded.updated_at`)
       .bind(c.charge, c.card, mailbox, c.userId || null, c.cents, c.vendor || '', new Date(at).toISOString(), state, new Date(at + CARD_FIRST_LOOK_MS).toISOString(), iso).run();
   }
 }
 
 /** How much an email reads like this charge's receipt → a score, or null when it can't be one: not the charge's exact amount, staff's own mail, a money tool's notice, a refund */
-function receiptScore(msg, c, hinted) {
+function receiptScore(msg, c, hinted, strict = false) {
   const h = msg.payload?.headers;
   const from = addresses(header(h, 'From'));
   const subject = header(h, 'Subject');
@@ -729,7 +735,9 @@ function receiptScore(msg, c, hinted) {
   if (RECEIPTISH.test(`${subject} ${msg.snippet || ''}`)) score += 2;
   if (NOT_RECEIPT.test(subject)) score -= 2;
   if (filesWorth(msg.payload).some((f) => RECEIPT_FILE.test(f.type))) score += 2; // the store's own PDF beats a "payment received"
-  score += 2 * Math.max(vendorLikeness(c.vendor, store), vendorLikeness(c.vendor, subject));
+  const like = Math.max(vendorLikeness(c.vendor, store), vendorLikeness(c.vendor, subject));
+  if (strict && like < 0.5) return null;
+  score += 2 * like;
   return score >= 2 ? score : null;
 }
 
@@ -741,32 +749,49 @@ async function nextLook(DB, c, now) {
     .bind(done ? null : new Date(now + nextGap(age)).toISOString(), done ? 'none' : 'looking', done ? 'no receipt in their email after a week' : null, new Date(now).toISOString(), c.charge, 'looking').run();
 }
 
-/** One charge's look in its cardholder's email; the best email found goes on the charge */
-async function lookOnce(env, ctx, c) {
-  const box = await ctx.open(c.mailbox);
+/** The best email for a charge in one inbox → { msg, score, mailbox, box } | null */
+async function bestIn(env, ctx, c, mailbox, { q, hinted = [], taken, strict = false }) {
+  const box = await ctx.open(mailbox);
+  const list = await gmail(box.token, `/messages?maxResults=15&q=${encodeURIComponent(q)}`, ctx.fetchImpl);
+  let best = null;
+  for (const id of [...new Set([...hinted, ...(list.messages || []).map((m) => m.id)])].slice(0, 12)) {
+    if (taken.has(`${mailbox}:${id}`)) continue;
+    const msg = await gmail(box.token, `/messages/${id}?format=full`, ctx.fetchImpl);
+    const score = receiptScore(msg, c, hinted.includes(id), strict);
+    if (score != null && (!best || score > best.score)) best = { msg, score, mailbox, box };
+  }
+  return best;
+}
+
+/**
+ * One charge's look: its cardholder's email first. After the charge's first hour, the other SOARD inboxes too (the
+ * store's email often goes to whoever's address is on the store account), where the store's name has to match.
+ * The best email found goes on the charge.
+ */
+async function lookOnce(env, ctx, c, until) {
   const at = Date.parse(c.charged_at);
   let hints = [];
   try { hints = JSON.parse(c.hints || '[]'); } catch { /* none */ }
   const hinted = [...new Set(hints.filter((x) => String(x).startsWith(`${c.mailbox}:`)).map((x) => String(x).slice(c.mailbox.length + 1)))];
   const q = `after:${secs(at - 2 * DAY_MS)} before:${secs(at + 8 * DAY_MS)} ${amountWords(c.cents)}`;
-  const list = await gmail(box.token, `/messages?maxResults=15&q=${encodeURIComponent(q)}`, ctx.fetchImpl);
   // An email already on another charge isn't this one's (two $10 charges, two receipts)
   const taken = new Set(((await env.DB.prepare('SELECT msg_id FROM card_receipts WHERE msg_id IS NOT NULL AND charge != ?').bind(c.charge).all()).results || []).map((r) => r.msg_id));
-  let best = null;
-  for (const id of [...new Set([...hinted, ...(list.messages || []).map((m) => m.id)])].slice(0, 12)) {
-    if (taken.has(`${c.mailbox}:${id}`)) continue;
-    const msg = await gmail(box.token, `/messages/${id}?format=full`, ctx.fetchImpl);
-    const score = receiptScore(msg, c, hinted.includes(id));
-    if (score != null && (!best || score > best.score)) best = { msg, score };
+  let best = await bestIn(env, ctx, c, c.mailbox, { q, hinted, taken });
+  if (!best && ctx.now - at >= HOUR_MS) {
+    for (const mailbox of ctx.inboxes) {
+      if (mailbox === c.mailbox || Date.now() > until) continue;
+      const b = await bestIn(env, ctx, c, mailbox, { q, taken, strict: true });
+      if (b && (!best || b.score > best.score)) best = b;
+    }
   }
   if (!best) return nextLook(env.DB, c, ctx.now);
-  const msg = best.msg;
+  const { msg, mailbox, box } = best;
   const h = msg.payload?.headers;
   const from = header(h, 'From');
   const subject = header(h, 'Subject');
   const sentAt = Number(msg.internalDate) || ctx.now;
   const store = from.replace(/<.*>/, '').replace(/"/g, '').trim() || c.vendor;
-  const uploads = await receiptUploads(env, { ...ctx, ...box }, { mailbox: c.mailbox }, msg, { v: { vendor: store }, files: filesWorth(msg.payload), from, subject, sentAt, text: receiptText(msg.payload) });
+  const uploads = await receiptUploads(env, { ...ctx, ...box }, { mailbox }, msg, { v: { vendor: store }, files: filesWorth(msg.payload), from, subject, sentAt, text: receiptText(msg.payload) });
   const id = c.charge.slice(c.card.length + 1);
   if (c.card === 'ramp') {
     for (const [i, u] of uploads.entries()) await rampAttach(env, { transactionId: id, userId: c.user_id, ...u, key: `${c.charge}:${msg.id}:${i}` }, ctx.fetchImpl);
@@ -775,17 +800,17 @@ async function lookOnce(env, ctx, c) {
   }
   const now = new Date(ctx.now).toISOString();
   const detail = `put “${subject}” on ${chargeWords(c)}`.slice(0, 300);
-  await env.DB.prepare("UPDATE card_receipts SET state = 'attached', msg_id = ?, detail = ?, looks = COALESCE(looks, 0) + 1, next_look = NULL, updated_at = ? WHERE charge = ?").bind(`${c.mailbox}:${msg.id}`, detail, now, c.charge).run();
+  await env.DB.prepare("UPDATE card_receipts SET state = 'attached', msg_id = ?, detail = ?, looks = COALESCE(looks, 0) + 1, next_look = NULL, updated_at = ? WHERE charge = ?").bind(`${mailbox}:${msg.id}`, detail, now, c.charge).run();
   // Its email, and any other that pointed to this charge (a "payment received" before the receipt), leave the inbox (archiveDue)
-  for (const mid of new Set([msg.id, ...hinted])) {
-    const mine = mid === msg.id;
+  for (const [inbox, mid] of [[mailbox, msg.id], ...hinted.filter((x) => mailbox !== c.mailbox || x !== msg.id).map((x) => [c.mailbox, x])]) {
+    const mine = mid === msg.id && inbox === mailbox;
     // The one put on the charge says so, whatever the email side thought of it; one already sent to the receipt inbox keeps saying that
     await env.DB.prepare(`INSERT INTO mail_sweep (mailbox, id, at, kind, state, msgid, subject, detail, charge_id, archived, source, updated_at)
         VALUES (?1, ?2, ?3, 'receipt', 'card', ?4, ?5, ?6, ?7, 'no', 'card', ?8)
         ON CONFLICT(mailbox, id) DO UPDATE SET archived = CASE WHEN mail_sweep.archived = 'yes' THEN 'yes' ELSE 'no' END, charge_id = ?7,
           state = CASE WHEN ?9 = 1 AND mail_sweep.state <> 'sent' THEN 'card' ELSE mail_sweep.state END,
           detail = CASE WHEN mail_sweep.state = 'sent' THEN mail_sweep.detail WHEN ?9 = 1 OR mail_sweep.state = 'card' THEN ?6 ELSE mail_sweep.detail END, updated_at = ?8`)
-      .bind(c.mailbox, mid, new Date(mine ? sentAt : ctx.now).toISOString(), mine ? header(h, 'Message-ID') || null : null, mine ? subject.slice(0, 200) : '',
+      .bind(inbox, mid, new Date(mine ? sentAt : ctx.now).toISOString(), mine ? header(h, 'Message-ID') || null : null, mine ? subject.slice(0, 200) : '',
         mine ? detail : `another email for ${chargeWords(c)}`, c.charge, now, mine ? 1 : 0).run();
   }
 }
@@ -795,7 +820,7 @@ async function lookForCardReceipts(env, ctx, until) {
   const due = (await env.DB.prepare("SELECT * FROM card_receipts WHERE state = 'looking' AND next_look <= ? ORDER BY next_look LIMIT 5").bind(new Date(ctx.now).toISOString()).all()).results || [];
   for (const c of due) {
     if (Date.now() > until) break;
-    try { await lookOnce(env, ctx, c); } catch (err) {
+    try { await lookOnce(env, ctx, c, until); } catch (err) {
       // Looked at again on its next look
       ctx.notes.cards = `looking for ${chargeWords(c)}’s receipt: ${err.message}`;
       await nextLook(env.DB, c, ctx.now);
@@ -932,6 +957,7 @@ async function sweep(env, st, { fetchImpl, now, print }) {
   const accounts = await mailboxes(env);
   const people = new Map(accounts.map((b) => [b.email, b.name]));
   // An account whose main address is on another of SOARD's domains (the store's) is read only for its soardcharity.com mail
+  const mailboxOf = new Map(accounts.flatMap((b) => [[b.email, b.email], ...b.aliases.map((a) => [normEmail(a), b.email])]));
   const soardOnly = new Map(accounts.filter((b) => !isStaffEmail(b.email)).map((b) => [b.email, new Set(b.aliases.map(normEmail))]));
   const boxes = [...people.keys()];
   if (!boxes.length) throw new Error('Google’s staff accounts haven’t been read yet (Staff sign-in follows Google)');
@@ -943,6 +969,7 @@ async function sweep(env, st, { fetchImpl, now, print }) {
     now, fetchImpl: (url, init) => fetchImpl(url, init), watching, families, names: families.names, startedAt: st.startedAt,
     receiptInbox: normEmail(cfg.receiptInbox || DEFAULT_RECEIPT_INBOX),
     inboxes: new Set(boxes),
+    mailboxOf: (e) => mailboxOf.get(e) || e,
     // Shared by every copy of ctx a handler gets ({ ...ctx, ...box }), so what one notes reaches Automations
     notes: {},
     soardOnly,
