@@ -53,8 +53,8 @@ import { slackCard } from './_slack-cards.js';
 import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
 import { DEFAULT_RECEIPT_INBOX, attachToCharge } from './_spend-receipts.js';
-import { mercuryConfigured } from './_mercury.js';
-import { rampCardCharge, rampAttach } from './_ramp.js';
+import { rampCardCharges, rampAttach, rampConfigured } from './_ramp.js';
+import { vendorLikeness } from './_spend-match.js';
 import { FREE_MAIL } from './_kid-partners.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
 
@@ -104,6 +104,13 @@ const SCHEMA = [
   'CREATE INDEX IF NOT EXISTS idx_mail_sweep_msgid ON mail_sweep(msgid)',
   'CREATE INDEX IF NOT EXISTS idx_mail_sweep_conv ON mail_sweep(conv)',
   'CREATE TABLE IF NOT EXISTS mail_sweep_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
+  // Each SOARD card charge of the last week and its receipt: 'looking' in the cardholder's email, 'attached' by the
+  // sweep, 'had' one already (put on by hand), 'none' found in a week, 'no_inbox' (a cardholder with no SOARD inbox)
+  `CREATE TABLE IF NOT EXISTS card_receipts (
+    charge TEXT PRIMARY KEY, card TEXT NOT NULL, mailbox TEXT, user_id TEXT, cents INTEGER NOT NULL, vendor TEXT, charged_at TEXT NOT NULL,
+    state TEXT NOT NULL, looks INTEGER DEFAULT 0, next_look TEXT, hints TEXT, msg_id TEXT, detail TEXT, updated_at TEXT)`,
+  'CREATE INDEX IF NOT EXISTS idx_card_receipts_look ON card_receipts(state, next_look)',
+  'CREATE INDEX IF NOT EXISTS idx_card_receipts_box ON card_receipts(mailbox, charged_at)',
 ];
 const _ready = new WeakSet();
 // Added after the first deploy: the files a family email brought (name:size), so a reply carrying them again doesn't add them twice
@@ -448,6 +455,9 @@ async function receiptUploads(env, ctx, row, msg, { v, files, from, subject, sen
   return uploads;
 }
 
+const MIN_MS = 60e3;
+const HOUR_MS = 60 * MIN_MS;
+const DAY_MS = 24 * HOUR_MS;
 const CARD_DAYS = 4; // a card charge is dated when it's made; the store's email can come days later (a preorder, a slow invoice)
 
 /** The dollar amounts an email names, in cents: "$1,299.00", "USD 10.00", "29.00 USD" */
@@ -463,19 +473,16 @@ export function amountsIn(...texts) {
 }
 
 /**
- * The SOARD card charge a receipt is for (Job Costs' copy of Mercury's card
- * charges): the inbox owner's own card, one of the email's amounts, within a
- * few days → { id, cents, vendor, link } | null. Bought on SOARD's card means
- * SOARD's, whatever the email looks like.
+ * The SOARD card charge a receipt is for, among the card charges the sweep follows (card_receipts: Mercury's and
+ * Ramp's of the last week): the inbox owner's own card, one of the email's amounts, within a few days →
+ * { charge, card, cents, vendor, state } | null
  */
 async function cardCharge(DB, { mailbox, at, amounts }) {
   if (!amounts.length) return null;
   const iso = (ms) => new Date(ms).toISOString();
-  try {
-    return await DB.prepare(`SELECT id, cents, vendor, link FROM spend_charges WHERE lower(email) = ? AND cents IN (${amounts.map(() => '?').join(', ')})
-        AND created_at BETWEEN ? AND ? ORDER BY abs(julianday(created_at) - julianday(?)) LIMIT 1`)
-      .bind(normEmail(mailbox), ...amounts, iso(at - CARD_DAYS * 86400e3), iso(at + CARD_DAYS * 86400e3), iso(at)).first();
-  } catch { return null; } // Job Costs hasn't seen a card charge yet
+  return DB.prepare(`SELECT charge, card, cents, vendor, state FROM card_receipts WHERE mailbox = ? AND cents IN (${amounts.map(() => '?').join(', ')})
+      AND charged_at BETWEEN ? AND ? ORDER BY abs(julianday(charged_at) - julianday(?)) LIMIT 1`)
+    .bind(normEmail(mailbox), ...amounts, iso(at - CARD_DAYS * DAY_MS), iso(at + CARD_DAYS * DAY_MS), iso(at)).first();
 }
 
 async function handleReceipt(env, ctx, row, msg) {
@@ -494,35 +501,19 @@ async function handleReceipt(env, ctx, row, msg) {
   const v = await judgeReceipt(env, { subject, from, owner: ctx.ownerName, text, files, lastTry: (row.tries || 0) + 1 >= MAX_TRIES });
   if (v.type === 'not_receipt') return { state: 'skipped', detail: `not a receipt: ${v.reason || 'the model said so'}` };
   const sentAt = Number(msg.internalDate) || ctx.now;
-  const amounts = amountsIn(v.total, text);
-  const charge = await cardCharge(env.DB, { mailbox: row.mailbox, at: sentAt, amounts });
-  const chargeId = charge?.id || null;
+  const charge = await cardCharge(env.DB, { mailbox: row.mailbox, at: sentAt, amounts: amountsIn(v.total, text) });
+  const chargeKey = charge?.charge || null;
+  const looking = charge?.state === 'looking';
   const what = `${v.vendor || 'a vendor'}${v.total ? ` ${v.total}` : ''}`;
-  // Bought on a SOARD card: the receipt goes on the charge in Mercury, which sends a makeover's on to the receipt inbox itself
-  if (charge && mercuryConfigured(env)) {
-    const on = `the Mercury card charge (${charge.vendor || 'a vendor'} $${(charge.cents / 100).toFixed(2)})`;
-    if (ctx.watching) return { state: 'would', detail: `would put ${what} on ${on}`, chargeId };
-    for (const u of await receiptUploads(env, ctx, row, msg, { v, files, from, subject, sentAt, text })) await attachToCharge(env, charge.id, u, ctx.fetchImpl);
-    return { state: 'sent', detail: `put ${what} on ${on}`, chargeId, onCard: true };
-  }
-  // Bought on a Ramp card (while SOARD moves off Ramp): the receipt goes on the Ramp charge too, and to the receipt inbox as before
-  let rampCharge = null;
-  if (!charge) {
-    try { rampCharge = await rampCardCharge(env, { email: row.mailbox, at: sentAt, amounts, fetchImpl: ctx.fetchImpl }); } catch (err) { ctx.notes.ramp = err.message; }
-  }
-  const card = charge ? { ...charge, on: 'Mercury card' } : rampCharge ? { vendor: rampCharge.vendor, cents: rampCharge.cents, link: null, on: 'Ramp card' } : null;
-  const chargeKey = chargeId || (rampCharge ? `ramp:${rampCharge.id}` : null);
-  // One charge, one receipt: a store's "payment received" and its receipt for the same charge go once
-
+  // A SOARD card charge's receipt: the charge puts it on itself (lookForCardReceipts), looking at this email first, now
+  if (looking) await env.DB.prepare("UPDATE card_receipts SET hints = json_insert(COALESCE(hints, '[]'), '$[#]', ?), next_look = ? WHERE charge = ?").bind(`${row.mailbox}:${row.id}`, new Date(ctx.now).toISOString(), chargeKey).run();
+  // Mercury sends a makeover's receipt on to the receipt inbox itself
+  if (charge?.card === 'mercury') return { state: 'card', detail: `${what}: ${looking ? 'for' : 'already on'} ${chargeWords(charge)}`, chargeId: chargeKey, onCard: !looking };
+  // Ramp sends nothing on, so a Ramp charge's receipt still goes to the receipt inbox: once a charge
   const first = chargeKey ? await env.DB.prepare("SELECT subject FROM mail_sweep WHERE charge_id = ? AND state IN ('sent', 'would', 'working') AND NOT (mailbox = ? AND id = ?) LIMIT 1").bind(chargeKey, row.mailbox, row.id).first() : null;
-  if (first) return { state: 'duplicate', detail: `the same card charge as “${first.subject}”, already sent`, chargeId: chargeKey, onCard: Boolean(rampCharge) };
-  if (ctx.watching) return { state: 'would', detail: `would send ${what} to ${inbox}${rampCharge ? ' and put it on the Ramp card charge' : ''}`, chargeId: chargeKey };
+  if (first) return { state: 'duplicate', detail: `the same card charge as “${first.subject}”, already sent`, chargeId: chargeKey, onCard: Boolean(charge) && !looking };
+  if (ctx.watching) return { state: 'would', detail: `would send ${what} to ${inbox}`, chargeId: chargeKey };
   if (!emailConfigured(env)) throw new Error('RESEND_API_KEY isn’t set, so receipts can’t be sent on');
-  // A charge with a receipt already (forwarded to Ramp by hand) keeps it; the key makes a retry upload once
-  if (rampCharge && !rampCharge.hasReceipt) {
-    const uploads = await receiptUploads(env, ctx, row, msg, { v, files, from, subject, sentAt, text });
-    for (const [i, u] of uploads.entries()) await rampAttach(env, { transactionId: rampCharge.id, userId: rampCharge.userId, ...u, key: `${row.mailbox}:${row.id}:${i}` }, ctx.fetchImpl);
-  }
 
   const attachments = [];
   let total = 0;
@@ -538,7 +529,7 @@ async function handleReceipt(env, ctx, row, msg) {
     `A ${v.type === 'bill' ? 'bill' : 'receipt'} found in ${ctx.ownerName}’s email (${row.mailbox}).`,
     `Vendor: ${v.vendor || 'not named'}`, `Amount: ${v.total || 'not found'}`, `Date: ${day}`,
     `Original email from ${from}, ${when(sentAt)}: “${subject}”`,
-    ...(card ? [`Card charge: ${card.vendor || 'a vendor'} $${(card.cents / 100).toFixed(2)} on ${firstName(ctx.ownerName, row.mailbox)}’s ${card.on}${card.link ? ` (${card.link})` : ''}`] : []),
+    ...(charge ? [`Card charge: ${charge.vendor || 'a vendor'} $${(charge.cents / 100).toFixed(2)} on ${firstName(ctx.ownerName, row.mailbox)}’s ${charge.card === 'ramp' ? 'Ramp' : 'Mercury'} card`] : []),
     '', text.slice(0, 8000),
   ].join('\n');
   const sendSubject = `${v.type === 'bill' ? 'Bill' : 'Receipt'}: ${what} on ${day} (from ${firstName(ctx.ownerName, row.mailbox)}’s email)`.slice(0, 200);
@@ -553,8 +544,7 @@ async function handleReceipt(env, ctx, row, msg) {
   // Resend's reports on it (delivered, or turned away and why) land in the email log, which Automations reads
   const sentId = (await res.json().catch(() => null))?.id;
   if (sentId) await logSent(env, [{ id: sentId, to: inbox, subject: sendSubject }], { tags, now: ctx.now });
-  const onRamp = rampCharge ? (rampCharge.hasReceipt ? '; the Ramp card charge already had a receipt' : '; put on the Ramp card charge') : '';
-  return { state: 'sent', detail: `sent ${what} to ${inbox}${attachments.length ? ` with ${attachments.length === 1 ? 'its file' : `${attachments.length} files`}` : ''}${charge ? ', matched to the card charge' : ''}${onRamp}`, chargeId: chargeKey, onCard: Boolean(rampCharge) };
+  return { state: 'sent', detail: `sent ${what} to ${inbox}${attachments.length ? ` with ${attachments.length === 1 ? 'its file' : `${attachments.length} files`}` : ''}${charge ? `, for ${chargeWords(charge)}` : ''}`, chargeId: chargeKey, onCard: Boolean(charge) && !looking };
 }
 
 async function handleFamily(env, ctx, row, msg) {
@@ -672,6 +662,144 @@ async function handle(env, ctx, row) {
     console.error('[mail-sweep]', row.kind, err.message);
     await env.DB.prepare("UPDATE mail_sweep SET state = 'failed', tries = COALESCE(tries, 0) + 1, detail = ?, updated_at = ? WHERE mailbox = ? AND id = ?")
       .bind(String(err.message).slice(0, 300), iso, row.mailbox, row.id).run();
+  }
+}
+
+// ─── Card charges first ─────────────────────────────────────────────
+//
+// Every SOARD card charge (Mercury's, and Ramp's while SOARD moves off it) needs its receipt. A charge with none
+// looks in its cardholder's own email: the charge's exact amount, near its date, from the store or reading like a
+// receipt. The best one goes on the charge, in Mercury or in Ramp, and its email is archived. The first look is 5
+// minutes after the charge, then every 10 minutes for its first hour, hourly for its first day and every 6 hours
+// after; a charge with none after a week says so in Automations.
+
+const CARD_LOOK_BACK_MS = 8 * DAY_MS;
+const CARD_GIVE_UP_MS = 7 * DAY_MS;
+const CARD_FIRST_LOOK_MS = 5 * MIN_MS;
+const RAMP_EVERY_MS = 15 * MIN_MS;
+const CARD_MS = 22 * 1000; // the heartbeat's share for looking, from the sweep's start
+const nextGap = (age) => (age < HOUR_MS ? 10 * MIN_MS : age < DAY_MS ? HOUR_MS : 6 * HOUR_MS);
+const chargeWords = (c) => `the ${c.card === 'ramp' ? 'Ramp' : 'Mercury'} card charge (${c.vendor || 'a vendor'} $${(c.cents / 100).toFixed(2)})`;
+const secs = (ms) => Math.floor(ms / 1000);
+/** Gmail's search words for an amount: "1299.00" or "1,299.00" */
+function amountWords(cents) {
+  const plain = (cents / 100).toFixed(2);
+  const commas = (cents / 100).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return commas === plain ? `"${plain}"` : `("${plain}" OR "${commas}")`;
+}
+
+/** Mercury's card charges (Job Costs' copy) and Ramp's (every 15 minutes) → card_receipts: a new one starts looking; one given a receipt elsewhere stops */
+async function syncCardCharges(env, ctx, st) {
+  const since = ctx.now - CARD_LOOK_BACK_MS;
+  const charges = [];
+  try {
+    const rows = (await env.DB.prepare(`SELECT id, cents, vendor, email, created_at, has_receipt FROM spend_charges
+        WHERE kind LIKE '%Card%' AND cents > 0 AND created_at >= ? AND COALESCE(status, '') NOT IN ('failed', 'cancelled', 'reversed', 'blocked')`).bind(new Date(since).toISOString()).all()).results || [];
+    for (const r of rows) charges.push({ charge: `mercury:${r.id}`, card: 'mercury', email: r.email, cents: r.cents, vendor: r.vendor, at: r.created_at, had: Boolean(r.has_receipt) });
+  } catch { /* Job Costs hasn't seen a card charge yet */ }
+  if (rampConfigured(env) && ctx.now - (st.rampCardsAt || 0) >= RAMP_EVERY_MS) {
+    try {
+      for (const t of await rampCardCharges(env, { since, fetchImpl: ctx.fetchImpl })) charges.push({ charge: `ramp:${t.id}`, card: 'ramp', email: t.email, userId: t.userId, cents: t.cents, vendor: t.vendor, at: t.at, had: t.hasReceipt });
+      st.rampCardsAt = ctx.now;
+    } catch (err) { ctx.notes.ramp = err.message; }
+  }
+  const iso = new Date(ctx.now).toISOString();
+  for (const c of charges) {
+    const at = Date.parse(c.at);
+    if (!Number.isFinite(at) || !(c.cents > 0)) continue;
+    const mailbox = normEmail(c.email);
+    const state = c.had ? 'had' : ctx.inboxes.has(mailbox) ? 'looking' : 'no_inbox';
+    await env.DB.prepare(`INSERT INTO card_receipts (charge, card, mailbox, user_id, cents, vendor, charged_at, state, next_look, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(charge) DO UPDATE SET state = CASE WHEN excluded.state = 'had' AND card_receipts.state IN ('looking', 'none', 'no_inbox') THEN 'had' ELSE card_receipts.state END, updated_at = excluded.updated_at`)
+      .bind(c.charge, c.card, mailbox, c.userId || null, c.cents, c.vendor || '', new Date(at).toISOString(), state, new Date(at + CARD_FIRST_LOOK_MS).toISOString(), iso).run();
+  }
+}
+
+/** How much an email reads like this charge's receipt → a score, or null when it can't be one: not the charge's exact amount, staff's own mail, a money tool's notice, a refund */
+function receiptScore(msg, c, hinted) {
+  const h = msg.payload?.headers;
+  const from = addresses(header(h, 'From'));
+  const subject = header(h, 'Subject');
+  if (!from.length || from.every(isStaffEmail) || from.some((e) => OWN_TOOLS.test(e))) return null;
+  if ((msg.labelIds || []).includes('SENT') || CALENDAR.test(subject.trim()) || AUTO_REPLY.test(subject) || /\b(refund|return|cancel)/i.test(subject)) return null;
+  if (!amountsIn(subject, msg.snippet, receiptText(msg.payload)).includes(c.cents)) return null;
+  const store = `${header(h, 'From').replace(/<.*>/, '')} ${from[0].split('@')[1].replace(/\.[a-z]+$/i, '')}`;
+  let score = 1 - Math.abs((Number(msg.internalDate) || 0) - Date.parse(c.charged_at)) / (4 * DAY_MS);
+  if (hinted) score += 3;
+  if (RECEIPTISH.test(`${subject} ${msg.snippet || ''}`)) score += 2;
+  if (NOT_RECEIPT.test(subject)) score -= 2;
+  if (filesWorth(msg.payload).some((f) => RECEIPT_FILE.test(f.type))) score += 2; // the store's own PDF beats a "payment received"
+  score += 2 * Math.max(vendorLikeness(c.vendor, store), vendorLikeness(c.vendor, subject));
+  return score >= 2 ? score : null;
+}
+
+/** Nothing yet: the next look, sooner while the charge is new; after a week it stops ('none') */
+async function nextLook(DB, c, now) {
+  const age = now - Date.parse(c.charged_at);
+  const done = age >= CARD_GIVE_UP_MS;
+  await DB.prepare('UPDATE card_receipts SET looks = COALESCE(looks, 0) + 1, next_look = ?, state = ?, detail = ?, updated_at = ? WHERE charge = ? AND state = ?')
+    .bind(done ? null : new Date(now + nextGap(age)).toISOString(), done ? 'none' : 'looking', done ? 'no receipt in their email after a week' : null, new Date(now).toISOString(), c.charge, 'looking').run();
+}
+
+/** One charge's look in its cardholder's email; the best email found goes on the charge */
+async function lookOnce(env, ctx, c) {
+  const box = await ctx.open(c.mailbox);
+  const at = Date.parse(c.charged_at);
+  let hints = [];
+  try { hints = JSON.parse(c.hints || '[]'); } catch { /* none */ }
+  const hinted = [...new Set(hints.filter((x) => String(x).startsWith(`${c.mailbox}:`)).map((x) => String(x).slice(c.mailbox.length + 1)))];
+  const q = `after:${secs(at - 2 * DAY_MS)} before:${secs(at + 8 * DAY_MS)} ${amountWords(c.cents)}`;
+  const list = await gmail(box.token, `/messages?maxResults=15&q=${encodeURIComponent(q)}`, ctx.fetchImpl);
+  // An email already on another charge isn't this one's (two $10 charges, two receipts)
+  const taken = new Set(((await env.DB.prepare('SELECT msg_id FROM card_receipts WHERE msg_id IS NOT NULL AND charge != ?').bind(c.charge).all()).results || []).map((r) => r.msg_id));
+  let best = null;
+  for (const id of [...new Set([...hinted, ...(list.messages || []).map((m) => m.id)])].slice(0, 12)) {
+    if (taken.has(`${c.mailbox}:${id}`)) continue;
+    const msg = await gmail(box.token, `/messages/${id}?format=full`, ctx.fetchImpl);
+    const score = receiptScore(msg, c, hinted.includes(id));
+    if (score != null && (!best || score > best.score)) best = { msg, score };
+  }
+  if (!best) return nextLook(env.DB, c, ctx.now);
+  const msg = best.msg;
+  const h = msg.payload?.headers;
+  const from = header(h, 'From');
+  const subject = header(h, 'Subject');
+  const sentAt = Number(msg.internalDate) || ctx.now;
+  const store = from.replace(/<.*>/, '').replace(/"/g, '').trim() || c.vendor;
+  const uploads = await receiptUploads(env, { ...ctx, ...box }, { mailbox: c.mailbox }, msg, { v: { vendor: store }, files: filesWorth(msg.payload), from, subject, sentAt, text: receiptText(msg.payload) });
+  const id = c.charge.slice(c.card.length + 1);
+  if (c.card === 'ramp') {
+    for (const [i, u] of uploads.entries()) await rampAttach(env, { transactionId: id, userId: c.user_id, ...u, key: `${c.charge}:${msg.id}:${i}` }, ctx.fetchImpl);
+  } else {
+    for (const u of uploads) await attachToCharge(env, id, u, ctx.fetchImpl);
+  }
+  const now = new Date(ctx.now).toISOString();
+  const detail = `put “${subject}” on ${chargeWords(c)}`.slice(0, 300);
+  await env.DB.prepare("UPDATE card_receipts SET state = 'attached', msg_id = ?, detail = ?, looks = COALESCE(looks, 0) + 1, next_look = NULL, updated_at = ? WHERE charge = ?").bind(`${c.mailbox}:${msg.id}`, detail, now, c.charge).run();
+  // Its email, and any other that pointed to this charge (a "payment received" before the receipt), leave the inbox (archiveDue)
+  for (const mid of new Set([msg.id, ...hinted])) {
+    const mine = mid === msg.id;
+    // The one put on the charge says so, whatever the email side thought of it; one already sent to the receipt inbox keeps saying that
+    await env.DB.prepare(`INSERT INTO mail_sweep (mailbox, id, at, kind, state, msgid, subject, detail, charge_id, archived, source, updated_at)
+        VALUES (?1, ?2, ?3, 'receipt', 'card', ?4, ?5, ?6, ?7, 'no', 'card', ?8)
+        ON CONFLICT(mailbox, id) DO UPDATE SET archived = CASE WHEN mail_sweep.archived = 'yes' THEN 'yes' ELSE 'no' END, charge_id = ?7,
+          state = CASE WHEN ?9 = 1 AND mail_sweep.state <> 'sent' THEN 'card' ELSE mail_sweep.state END,
+          detail = CASE WHEN mail_sweep.state = 'sent' THEN mail_sweep.detail WHEN ?9 = 1 OR mail_sweep.state = 'card' THEN ?6 ELSE mail_sweep.detail END, updated_at = ?8`)
+      .bind(c.mailbox, mid, new Date(mine ? sentAt : ctx.now).toISOString(), mine ? header(h, 'Message-ID') || null : null, mine ? subject.slice(0, 200) : '',
+        mine ? detail : `another email for ${chargeWords(c)}`, c.charge, now, mine ? 1 : 0).run();
+  }
+}
+
+/** The charges due a look, until the sweep's share of the heartbeat is used */
+async function lookForCardReceipts(env, ctx, until) {
+  const due = (await env.DB.prepare("SELECT * FROM card_receipts WHERE state = 'looking' AND next_look <= ? ORDER BY next_look LIMIT 5").bind(new Date(ctx.now).toISOString()).all()).results || [];
+  for (const c of due) {
+    if (Date.now() > until) break;
+    try { await lookOnce(env, ctx, c); } catch (err) {
+      // Looked at again on its next look
+      ctx.notes.cards = `looking for ${chargeWords(c)}’s receipt: ${err.message}`;
+      await nextLook(env.DB, c, ctx.now);
+    }
   }
 }
 
@@ -814,6 +942,7 @@ async function sweep(env, st, { fetchImpl, now, print }) {
     // Called as ctx.fetchImpl(…): Cloudflare's fetch refuses to be some object's method ("Illegal invocation")
     now, fetchImpl: (url, init) => fetchImpl(url, init), watching, families, names: families.names, startedAt: st.startedAt,
     receiptInbox: normEmail(cfg.receiptInbox || DEFAULT_RECEIPT_INBOX),
+    inboxes: new Set(boxes),
     // Shared by every copy of ctx a handler gets ({ ...ctx, ...box }), so what one notes reaches Automations
     notes: {},
     soardOnly,
@@ -845,6 +974,8 @@ async function sweep(env, st, { fetchImpl, now, print }) {
   }
   const backfillDone = !st.backfill?.chunk && [...families.backfill].every((e) => (st.backfill?.done || []).includes(e));
 
+  // The card charges first, so the email side knows a card charge's receipt when it sees one
+  await syncCardCharges(env, ctx, st);
   // Oldest first; family emails wait until the last year's are all in, so each family's reads in order
   const retryBefore = new Date(now - RETRY_MS).toISOString();
   // Held for a new account: back in line once the account is old enough (or gone), and sorted again then
@@ -864,9 +995,11 @@ async function sweep(env, st, { fetchImpl, now, print }) {
     if (!row) break;
     await handle(env, ctx, row);
   }
+  await lookForCardReceipts(env, ctx, started + CARD_MS);
   const archiving = await archiveDue(env, ctx);
   if (archiving) errors.push(archiving);
-  if (ctx.notes.ramp) errors.push(`Ramp card receipts went to the receipt inbox only: ${ctx.notes.ramp}`);
+  if (ctx.notes.ramp) errors.push(`Ramp’s card charges can’t be read, so Ramp receipts go to the receipt inbox only: ${ctx.notes.ramp}`);
+  if (ctx.notes.cards) errors.push(ctx.notes.cards);
   const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
   if (ctx.capped) { st.aiRestUntil = now + AI_REST_MS; errors.push(AI_WAIT_NOTE); }
   Object.assign(st, { busy: Boolean(waiting?.n) || !backfillDone, backfillDone, lastSweptAt: now, error: errors.length ? errors.join(' · ').slice(0, 500) : null, runningUntil: 0 });
@@ -906,6 +1039,8 @@ export async function mailSweepStatus(env) {
   const recent = ((await env.DB.prepare("SELECT kind, state, detail, mailbox, updated_at FROM mail_sweep WHERE state IN ('sent', 'posted', 'would', 'failed', 'held') ORDER BY updated_at DESC LIMIT 12").all()).results || [])
     .map((r) => ({ kind: r.kind, state: r.state, detail: r.detail, inbox: String(r.mailbox).split('@')[0], at: r.updated_at }));
   const queued = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
+  // The card charges: receipts put on this week, still looking, none found in a week
+  const cards = Object.fromEntries(((await env.DB.prepare('SELECT state, COUNT(*) AS n FROM card_receipts WHERE updated_at >= ? GROUP BY state').bind(since).all()).results || []).map((r) => [r.state, r.n]));
   // Did the receipt inbox take the last one? (Resend's report, through the email log)
   let lastSent = null;
   try {
@@ -916,6 +1051,6 @@ export async function mailSweepStatus(env) {
     lastSent,
     key: Boolean(env.GOOGLE_CALENDAR_KEY), ai: Boolean(env.AI?.run), email: emailConfigured(env), jobtread: Boolean(env.JOBTREAD_GRANT_KEY),
     ...Object.fromEntries(['startedAt', 'watchUntil', 'lastSweptAt'].map((k) => [k, st[k] ? new Date(st[k]).toISOString() : null])), error: st.error || null,
-    inboxes: Object.values(st.boxes || {}).filter((b) => !b.noMail).length, backfillDone: Boolean(st.backfillDone), queued: queued?.n || 0, counts, recent,
+    inboxes: Object.values(st.boxes || {}).filter((b) => !b.noMail).length, backfillDone: Boolean(st.backfillDone), queued: queued?.n || 0, counts, recent, cards,
   };
 }

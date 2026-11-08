@@ -47,7 +47,7 @@ function mail({ box, at, from, to, cc = '', subject, text = '', html = null, msg
     html ? { partId: '0', mimeType: 'text/html', headers: [], body: { data: b64u(html), size: html.length } } : { partId: '0', mimeType: 'text/plain', headers: [], body: { data: b64u(text), size: text.length } },
     ...files.map((f, i) => ({ partId: String(i + 1), mimeType: f.type, filename: f.name, headers: [{ name: 'Content-Disposition', value: f.inline ? 'inline' : 'attachment' }], body: { attachmentId: `att-${n}-${i}`, size: f.size || f.data.length } })),
   ];
-  const m = { box, id: id || `msg${String(n).padStart(4, '0')}`, threadId: thread || `th${n}`, internalDate: String(at), labelIds: labels, snippet: (text || html || '').replace(/<[^>]+>/g, '').slice(0, 80), payload: { partId: '', mimeType: 'multipart/mixed', headers, parts }, _files: files };
+  const m = { box, id: id || `msg${String(n).padStart(4, '0')}`, threadId: thread || `th${n}`, internalDate: String(at), labelIds: labels, snippet: (text || html || '').replace(/<[^>]+>/g, '').slice(0, 80), payload: { partId: '', mimeType: 'multipart/mixed', headers, parts }, _files: files, _words: `${subject} ${text || ''} ${html || ''}` };
   store.push(m);
   return m;
 }
@@ -105,8 +105,10 @@ beforeEach(async () => {
         const after = Number(/after:(\d+)/.exec(q)?.[1] || 0) * 1000;
         const before = Number(/before:(\d+)/.exec(q)?.[1] || Infinity) * 1000;
         const who = [...q.matchAll(/(?:from|to|cc):(\S+?)(?=\)|\s|$)/g)].map((x) => x[1]);
+        const said = [...q.matchAll(/"([^"]+)"/g)].map((x) => x[1]);
         const hits = mine.filter((m) => Number(m.internalDate) > after && Number(m.internalDate) < before)
           .filter((m) => !who.length || who.some((e) => m.payload.headers.some((h) => ['From', 'To', 'Cc'].includes(h.name) && h.value.toLowerCase().includes(e))))
+          .filter((m) => !said.length || said.some((w) => m._words.includes(w)))
           .sort((a, b) => b.internalDate - a.internalDate);
         return Response.json({ messages: hits.map((m) => ({ id: m.id })), resultSizeEstimate: hits.length });
       }
@@ -119,7 +121,7 @@ beforeEach(async () => {
       if ((m = /^\/messages\/(\w+)$/.exec(path))) {
         const msg = mine.find((x) => x.id === m[1]);
         if (!msg) return Response.json({ error: { message: 'not found' } }, { status: 404 });
-        const { box: _b, _files, ...clean } = msg;
+        const { box: _b, _files, _words, ...clean } = msg;
         return Response.json(u.searchParams.get('format') === 'metadata' ? { ...clean, payload: { headers: clean.payload.headers } } : clean);
       }
       if ((m = /^\/messages\/(\w+)\/modify$/.exec(path))) return Response.json({ id: m[1], ...JSON.parse(init.body) });
@@ -134,9 +136,9 @@ beforeEach(async () => {
         if (refuseScopes.has(scope)) return new Response('{"error":"invalid_scope"}', { status: 400 });
         return Response.json({ access_token: `ramp:${scope}`, expires_in: 3600 });
       }
-      if (path === '/users') return Response.json({ data: [{ id: 'u-pat', email: u.searchParams.get('email') }] });
+      if (path === '/users') return Response.json({ data: [{ id: 'u-pat', email: PAT }, { id: 'u-sam', email: SAM }] });
       if (path === '/transactions') {
-        const from = Date.parse(u.searchParams.get('from_date')), to = Date.parse(u.searchParams.get('to_date'));
+        const from = Date.parse(u.searchParams.get('from_date')), to = u.searchParams.get('to_date') ? Date.parse(u.searchParams.get('to_date')) : Infinity;
         return Response.json({ data: rampTxns.filter((t) => Date.parse(t.user_transaction_time) >= from && Date.parse(t.user_transaction_time) <= to) });
       }
       if (path === '/receipts' && init.method === 'POST') {
@@ -552,102 +554,100 @@ test('Workers AI not answering about a receipt: tried again, and only its last t
   assert.equal((await byId(m.id))[0].state, 'skipped');
 });
 
-test('a SOARD card charge’s receipt goes once, and every receipt in a SOARD inbox is SOARD’s', async () => {
-  assert.deepEqual(amountsIn('Payment received: USD $10.00', 'Sofa $1,299.00, plan 29.00 USD'), [1000, 129900, 2900]);
-  await maybeSweepMail(env, { now: T0, force: true });
-  const at = T0 + WATCH_MS + MIN;
-  await env.DB.exec('CREATE TABLE IF NOT EXISTS spend_charges (id TEXT PRIMARY KEY, kind TEXT, status TEXT, cents INTEGER NOT NULL, vendor TEXT, card_id TEXT, email TEXT, created_at TEXT, link TEXT)');
-  await env.DB.prepare('INSERT INTO spend_charges (id, kind, status, cents, vendor, email, created_at, link) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind('ch1', 'creditCardTransaction', 'pending', 1000, 'Texting.app', PAT, new Date(at - 2 * MIN).toISOString(), 'https://bank.example/transactions/ch1').run();
-  const paid = mail({ box: PAT, at, from: 'Texting <billing@texting.example>', to: PAT, subject: 'Payment received: USD $10.00', text: 'We received your payment of USD $10.00.' });
-  const receipt = mail({ box: PAT, at: at + MIN, from: 'Texting <billing@texting.example>', to: PAT, subject: 'Your Texting receipt [#1277]', text: 'Receipt #1277. Amount paid $10.00' });
-  const other = mail({ box: PAT, at: at + 2 * MIN, from: 'Stream <billing@stream.example>', to: PAT, subject: 'Your receipt from Stream', text: 'Premium plan $15.49' });
-  for (const s of ['Payment received: USD $10.00', 'Your Texting receipt [#1277]']) aiVerdicts[s] = { type: 'receipt', vendor: 'Texting', total: 'USD $10.00', reason: 'top up account' };
-  aiVerdicts['Your receipt from Stream'] = { type: 'receipt', vendor: 'Stream', total: '$15.49', reason: 'a plan' };
-  calls.length = 0;
-  await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
+const MERCURY_CHARGES = 'CREATE TABLE IF NOT EXISTS spend_charges (id TEXT PRIMARY KEY, kind TEXT, status TEXT, cents INTEGER NOT NULL, vendor TEXT, card_id TEXT, email TEXT, created_at TEXT, has_receipt INTEGER, link TEXT)';
+const mercuryCharge = (id, cents, vendor, at, email = PAT) => env.DB.prepare('INSERT INTO spend_charges (id, kind, status, cents, vendor, email, created_at, has_receipt) VALUES (?, ?, ?, ?, ?, ?, ?, 0)')
+  .bind(id, 'creditCardTransaction', 'pending', cents, vendor, email, new Date(at).toISOString()).run();
+const cardRow = (charge) => env.DB.prepare('SELECT state, msg_id, detail FROM card_receipts WHERE charge = ?').bind(charge).first();
+const archivedOf = (...ms) => Promise.all(ms.map((m) => env.DB.prepare('SELECT archived FROM mail_sweep WHERE id = ?').bind(m.id).first('archived')));
 
-  const sent = of('resend');
-  assert.deepEqual(sent.map((x) => x.body.subject.split(' on ')[0]), ['Receipt: Texting USD $10.00', 'Receipt: Stream $15.49'], 'the charge’s receipt goes once; the other receipt goes too');
-  assert.match(sent[0].body.text, /Card charge: Texting\.app \$10\.00 on Pat’s Mercury card \(https:\/\/bank\.example\/transactions\/ch1\)/);
-  assert.equal((await byId(paid.id))[0].state, 'sent');
-  assert.deepEqual(await env.DB.prepare('SELECT state, charge_id FROM mail_sweep WHERE id = ?').bind(receipt.id).first(), { state: 'duplicate', charge_id: 'ch1' });
-  assert.equal((await byId(other.id))[0].state, 'sent');
-});
-
-test('bought on a Mercury card: the receipt goes on the charge in Mercury, printed when it’s only an email, and the email is archived', async () => {
+test('a Mercury card charge finds its receipt in the cardholder’s email, puts the best one on the charge, and the emails are archived', async () => {
   Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
   await maybeSweepMail(env, { now: T0, force: true });
   const at = T0 + WATCH_MS + MIN;
-  await env.DB.exec('CREATE TABLE IF NOT EXISTS spend_charges (id TEXT PRIMARY KEY, kind TEXT, status TEXT, cents INTEGER NOT NULL, vendor TEXT, card_id TEXT, email TEXT, created_at TEXT, link TEXT)');
-  await env.DB.prepare('INSERT INTO spend_charges (id, kind, status, cents, vendor, email, created_at, link) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-    .bind('ch1', 'creditCardTransaction', 'pending', 1000, 'Texting.app', PAT, new Date(at - 2 * MIN).toISOString(), 'https://bank.example/transactions/ch1').run();
+  await env.DB.exec(MERCURY_CHARGES);
+  await mercuryCharge('ch1', 1000, 'Texting.app', at - 2 * MIN);
   const paid = mail({ box: PAT, at, from: 'Texting <billing@texting.example>', to: PAT, subject: 'Payment received: USD $10.00', html: '<p>We received your payment of <b>USD $10.00</b>.</p>' });
-  const pdf = { name: 'Receipt-1277.pdf', type: 'application/pdf', data: '%PDF receipt 1277' };
-  const receipt = mail({ box: PAT, at: at + MIN, from: 'Stripe <receipts@stripe.example>', to: PAT, subject: 'Your Texting receipt [#1277]', text: 'Amount paid $10.00', files: [pdf] });
-  for (const s of ['Payment received: USD $10.00', 'Your Texting receipt [#1277]']) aiVerdicts[s] = { type: 'receipt', vendor: 'Texting', total: '$10.00', reason: 'top up account' };
-  const printed = [];
-  const print = async (_env, html) => { printed.push(html); return new Uint8Array([37, 80, 68, 70]); };
+  const receipt = mail({ box: PAT, at: at + MIN, from: 'Stripe <receipts@stripe.example>', to: PAT, subject: 'Your Texting receipt [#1277]', text: 'Amount paid $10.00', files: [{ name: 'Receipt-1277.pdf', type: 'application/pdf', data: '%PDF receipt 1277' }] });
+  const digest = mail({ box: PAT, at: at + 2 * MIN, from: 'The Paper <news@paper.example>', to: PAT, subject: 'This week in the city', text: 'Subscribe for $10.00 a month' });
+  for (const x of ['Payment received: USD $10.00', 'Your Texting receipt [#1277]']) aiVerdicts[x] = { type: 'receipt', vendor: 'Texting', total: '$10.00', reason: 'top up' };
   refuseScopes.add('https://www.googleapis.com/auth/gmail.modify');
   calls.length = 0;
-  const st = await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print });
+  const st = await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
 
   assert.equal(of('resend').length, 0, 'not emailed: Mercury sends a makeover’s receipt on itself');
-  const up = of('mercury');
-  assert.deepEqual(up.map((c) => [c.method, c.path, c.attachmentType]), [['POST', '/transaction/ch1/attachments', 'receipt'], ['POST', '/transaction/ch1/attachments', 'receipt']]);
-  assert.deepEqual(up.map((c) => c.file), ['Texting receipt 2026-11-03.pdf', 'Receipt-1277.pdf'], 'the email printed; the store’s own PDF as it is');
-  assert.equal(printed.length, 1);
-  assert.match(printed[0], /From: Texting &lt;billing@texting\.example&gt;[\s\S]*Subject: Payment received: USD \$10\.00[\s\S]*<b>USD \$10\.00<\/b>/);
-  for (const m of [paid, receipt]) assert.match((await byId(m.id))[0].detail, /^put Texting \$10\.00 on the Mercury card charge \(Texting\.app \$10\.00\)$/);
+  assert.deepEqual(of('mercury').map((c) => [c.method, c.path, c.attachmentType, c.file]), [['POST', '/transaction/ch1/attachments', 'receipt', 'Receipt-1277.pdf']], 'one receipt, the store’s own PDF');
+  assert.deepEqual(await cardRow('mercury:ch1'), { state: 'attached', msg_id: `${PAT}:${receipt.id}`, detail: 'put “Your Texting receipt [#1277]” on the Mercury card charge (Texting.app $10.00)' });
+  assert.equal((await byId(paid.id))[0].detail, 'another email for the Mercury card charge (Texting.app $10.00)');
+  assert.equal((await byId(digest.id)).length, 0, 'the same amount in a newsletter isn’t a receipt');
   assert.equal(await env.DB.prepare("SELECT state FROM spend_receipts WHERE charge_id = 'ch1' AND way = 'to-mercury'").first('state'), 'sent', 'a bill’s file won’t follow it');
 
   // Google hasn't allowed archiving yet: the emails wait, and Automations says what to add
-  const archived = () => env.DB.prepare('SELECT archived FROM mail_sweep WHERE id IN (?, ?) ORDER BY at').bind(paid.id, receipt.id).all().then((r) => r.results.map((x) => x.archived));
-  assert.deepEqual(await archived(), ['no', 'no']);
+  assert.deepEqual(await archivedOf(paid, receipt), ['no', 'no']);
   assert.match(st.error, /Domain-wide delegation, add https:\/\/www\.googleapis\.com\/auth\/gmail\.modify/);
-  assert.equal(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST').length, 0);
-
-  // Allowed: the next sweep archives both (the Inbox label off), and nothing is put on the charge twice
   refuseScopes.clear();
   calls.length = 0;
-  const st2 = await maybeSweepMail(env, { now: at + 10 * MIN, force: true, print });
-  assert.deepEqual(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST').map((c) => [c.box, c.path]), [[PAT, `/messages/${paid.id}/modify`], [PAT, `/messages/${receipt.id}/modify`]]);
-  assert.deepEqual(await archived(), ['yes', 'yes']);
+  const st2 = await maybeSweepMail(env, { now: at + 10 * MIN, force: true });
+  assert.deepEqual(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST').map((c) => c.path), [paid, receipt].map((m) => `/messages/${m.id}/modify`));
+  assert.deepEqual(await archivedOf(paid, receipt), ['yes', 'yes']);
   assert.equal(st2.error, null);
-  assert.equal(of('mercury').length, 0);
+  assert.equal(of('mercury').length, 0, 'nothing on the charge twice');
+  assert.equal((await mailSweepStatus(env)).cards.attached, 1);
 });
 
-test('bought on a Ramp card: the receipt goes on the Ramp charge and to the receipt inbox, once a charge, and the email is archived', async () => {
+test('a charge finds a receipt the email side didn’t take, and one with none says so after a week', async () => {
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec(MERCURY_CHARGES);
+  await mercuryCharge('ch2', 6461, 'LEGO', at - 30 * MIN);
+  await mercuryCharge('ch3', 1234, 'Hardware Hut', at - 20 * MIN);
+  const lego = mail({ box: PAT, at, from: 'LEGO Shop <shop@lego.example>', to: PAT, subject: 'We’ve got it! Your LEGO order is confirmed', text: 'Order total $64.61' });
+  mail({ box: PAT, at: at + MIN, from: 'Bank <alerts@bank.example>', to: PAT, subject: 'Your balance', text: 'A charge of $64.61 posted' });
+  calls.length = 0;
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
+  assert.equal((await byId(lego.id))[0].state, 'card', 'the model called it no receipt; the charge found it anyway');
+  assert.deepEqual(of('mercury').map((c) => [c.path, c.file]), [['/transaction/ch2/attachments', 'LEGO Shop receipt 2026-11-03.pdf']]);
+  assert.equal((await cardRow('mercury:ch2')).state, 'attached');
+  assert.equal((await cardRow('mercury:ch3')).state, 'looking');
+
+  await maybeSweepMail(env, { now: at + 7 * DAY + 60 * MIN, force: true });
+  assert.deepEqual(await cardRow('mercury:ch3'), { state: 'none', msg_id: null, detail: 'no receipt in their email after a week' });
+  assert.equal((await mailSweepStatus(env)).cards.none, 1);
+});
+
+test('a Ramp card charge gets its receipt in Ramp, its receipt still goes to the receipt inbox once, and every receipt is SOARD’s', async () => {
   Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
   await maybeSweepMail(env, { now: T0, force: true });
   const at = T0 + WATCH_MS + MIN;
   rampTxns.push(
-    { id: 'tx1', state: 'CLEARED', entity_amount: { value: 4836, currency: 'USD' }, user_transaction_time: new Date(at - 3 * MIN).toISOString(), merchant_name: 'Etsy', receipts: [] },
-    { id: 'tx2', state: 'CLEARED', entity_amount: { value: 2299, currency: 'USD' }, user_transaction_time: new Date(at - DAY).toISOString(), merchant_name: 'Lumber Co', receipts: ['r-by-hand'] },
+    { id: 'tx1', state: 'CLEARED', entity_amount: { value: 4836, currency: 'USD' }, user_transaction_time: new Date(at - 3 * MIN).toISOString(), merchant_name: 'Etsy', card_holder: { user_id: 'u-pat' }, receipts: [] },
+    { id: 'tx2', state: 'CLEARED', entity_amount: { value: 2299, currency: 'USD' }, user_transaction_time: new Date(at - DAY).toISOString(), merchant_name: 'Lumber Co', card_holder: { user_id: 'u-pat' }, receipts: ['r-by-hand'] },
   );
   const order = mail({ box: PAT, at, from: 'Etsy <transaction@etsy.example>', to: PAT, subject: 'Your Etsy Purchase from PrintShop', text: 'Nursery print set. Order total $48.36' });
   const again = mail({ box: PAT, at: at + MIN, from: 'Etsy <transaction@etsy.example>', to: PAT, subject: 'Thanks for your order, Pat', text: 'You paid $48.36' });
   const lumber = mail({ box: PAT, at: at + 2 * MIN, from: 'Lumber Co <sales@lumber.example>', to: PAT, subject: 'Your receipt from Lumber Co', text: 'Paid $22.99' });
+  const plan = mail({ box: PAT, at: at + 3 * MIN, from: 'Stream <billing@stream.example>', to: PAT, subject: 'Your receipt from Stream', text: 'Premium plan $15.49' });
   aiVerdicts['Your Etsy Purchase from PrintShop'] = { type: 'receipt', vendor: 'PrintShop', total: '$48.36', reason: 'an order' };
   aiVerdicts['Thanks for your order, Pat'] = { type: 'receipt', vendor: 'Etsy', total: '$48.36', reason: 'an order' };
   aiVerdicts['Your receipt from Lumber Co'] = { type: 'receipt', vendor: 'Lumber Co', total: '$22.99', reason: 'paid' };
-  const print = async () => new Uint8Array([37, 80, 68, 70]);
+  aiVerdicts['Your receipt from Stream'] = { type: 'receipt', vendor: 'Stream', total: '$15.49', reason: 'a plan' };
   calls.length = 0;
-  const st = await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print });
+  const st = await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
 
   assert.equal(st.error, null);
   assert.ok(of('ramp-token').every((c) => c.scope === 'transactions:read receipts:write users:read'));
-  assert.deepEqual(of('ramp-receipt').map((c) => [c.transaction, c.user, c.key, c.file]), [['tx1', 'u-pat', `${PAT}:${order.id}:0`, 'PrintShop receipt 2026-11-03.pdf']], 'once, and never on a charge that has a receipt');
+  assert.deepEqual(of('ramp-receipt').map((c) => [c.transaction, c.user, c.key, c.file]), [['tx1', 'u-pat', `ramp:tx1:${order.id}:0`, 'Etsy receipt 2026-11-03.pdf']], 'once, and never on a charge that has a receipt');
   const sent = of('resend');
-  assert.deepEqual(sent.map((x) => x.body.subject.split(' on ')[0]), ['Receipt: PrintShop $48.36', 'Receipt: Lumber Co $22.99']);
+  assert.deepEqual(sent.map((x) => x.body.subject.split(' on ')[0]), ['Receipt: PrintShop $48.36', 'Receipt: Lumber Co $22.99', 'Receipt: Stream $15.49'], 'a Ramp charge’s receipt once; one on no card as before');
   assert.match(sent[0].body.text, /Card charge: Etsy \$48\.36 on Pat’s Ramp card/);
-  assert.match((await byId(order.id))[0].detail, /; put on the Ramp card charge$/);
   assert.equal((await byId(again.id))[0].state, 'duplicate');
-  assert.match((await byId(lumber.id))[0].detail, /; the Ramp card charge already had a receipt$/);
-  assert.deepEqual(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST').map((c) => c.path), [order, again, lumber].map((m) => `/messages/${m.id}/modify`), 'each one’s receipt is on its charge: out of the inbox');
+  assert.equal((await cardRow('ramp:tx1')).state, 'attached');
+  assert.equal((await cardRow('ramp:tx2')).state, 'had');
+  assert.deepEqual(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST').map((c) => c.path), [order, again, lumber].map((m) => `/messages/${m.id}/modify`), 'the card charges’ emails leave the inbox; the plan on no card stays');
+  assert.equal((await byId(plan.id))[0].state, 'sent');
 });
 
-test('Ramp refusing the card scopes: the receipt still goes to the receipt inbox, and Automations says why', async () => {
+test('Ramp refusing the card scopes: its receipts go to the receipt inbox as before, and Automations says why', async () => {
   Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
   refuseScopes.add('transactions:read receipts:write users:read');
   await maybeSweepMail(env, { now: T0, force: true });
@@ -658,7 +658,7 @@ test('Ramp refusing the card scopes: the receipt still goes to the receipt inbox
   const st = await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
   assert.equal(of('resend').length, 1);
   assert.equal((await byId(m.id))[0].state, 'sent');
-  assert.match(st.error, /Ramp card receipts went to the receipt inbox only: Ramp refused the keys \(400\)\. .*transactions:read, receipts:write, users:read/);
+  assert.match(st.error, /Ramp’s card charges can’t be read, so Ramp receipts go to the receipt inbox only: Ramp refused the keys \(400\)\. .*transactions:read, receipts:write, users:read/);
 });
 
 test('an account whose main address is the store’s: only its soardcharity.com mail is read', async () => {

@@ -75,11 +75,14 @@ const sweepLive = (kind) => (f) => {
   if (failed) return ATTN(`Couldn’t ${kind === 'receipt' ? 'send a receipt on' : 'add a family email'}: ${failed.detail}. It tries again.`, m.lastSweptAt);
   const ls = kind === 'receipt' ? m.lastSent : null;
   if (ls && ['bounced', 'failed', 'complained'].includes(ls.status)) return ATTN(`${ls.to} turned the last receipt away (${stamp(ls.at)})${ls.detail ? `: ${ls.detail}` : ''}. In Google Admin, the group needs to accept email from outside SOARD.`, m.lastSweptAt);
+  const k = m.cards || {};
+  if (kind === 'receipt' && k.none) return ATTN(`${plural(k.none, 'card charge')} with no receipt found after a week of looking in the cardholder’s email. Add ${k.none === 1 ? 'that receipt' : 'those receipts'} by hand in Mercury or Ramp.`, m.lastSweptAt);
   if (m.watchUntil && Date.parse(m.watchUntil) > Date.now()) return ON(`Only watching until ${stamp(m.watchUntil)}, then it does what it found: ${plural(c.would || 0, noun)} so far.`, m.lastSweptAt);
   if (kind === 'family' && c.held) return ATTN(`${plural(c.held, 'email')} waiting: a new JobTread account got a lot of email at once, so they wait until it’s 3 days old. If it’s a test, delete it in JobTread. Slack has the link.`, m.lastSweptAt);
   if (kind === 'family' && !m.backfillDone) return ON('Bringing in the last year’s family emails, oldest first.', m.lastSweptAt);
   const done = (kind === 'receipt' ? c.sent : c.posted) || 0;
-  return ON(`Reading ${plural(m.inboxes, 'inbox', 'inboxes')}. ${plural(done, noun)} ${kind === 'receipt' ? 'sent to the receipt inbox' : 'added in JobTread'} this week.`, m.lastSweptAt);
+  if (kind === 'receipt') return ON(`Reading ${plural(m.inboxes, 'inbox', 'inboxes')}. This week ${plural(k.attached || 0, 'receipt')} put on card charges and ${plural(done, noun)} sent to the receipt inbox.${k.looking ? ` Still looking for the receipts of ${plural(k.looking, 'card charge')}.` : ''}`, m.lastSweptAt);
+  return ON(`Reading ${plural(m.inboxes, 'inbox', 'inboxes')}. ${plural(done, noun)} added in JobTread this week.`, m.lastSweptAt);
 };
 // A JobTread workflow, by id
 const wf = (id) => (f) => {
@@ -1420,10 +1423,10 @@ const MAP = { t: 'SOARD', children: [
             return ON(`Last run: ${plural(r.toAp?.sent || 0, 'photo')} sent to ap@, ${plural(r.toMercury?.uploaded || 0, 'receipt')} added in Mercury.`);
           } },
         { t: 'Receipts from inboxes', s: 'live', k: 'schedule',
-          when: 'Every 3 minutes on the heartbeat (every minute while there’s a backlog), for every active SOARD Google account. An account whose main address is on the store’s domain is read only for mail to or from its soardcharity.com address.',
-          does: 'Reads each staff inbox’s new mail, so nobody forwards receipts by hand. A receipt that matches the inbox owner’s Mercury card charge (the same amount, within four days) goes onto that charge in Mercury as its receipt, printed to PDF when it’s only an email, and the email is archived; Mercury sends a makeover’s on to ap@. While SOARD moves off Ramp, one that matches their Ramp card charge goes onto that charge in Ramp (unless it already has a receipt) and to ap@, and the email is archived. Any other receipt, paid order or bill is emailed to the receipt inbox (ap@) with its files, for the Receipt Processor. Workers AI reads each one first: shipping and delivery notices, ads, carts, refunds, statements, utility mail and gifts to SOARD stay out, and so does anything the receipt inbox already has (on the email or in its conversation) or that came from Ramp, Mercury or JobTread. A receipt in a SOARD inbox is SOARD’s.',
-          touches: ['Gmail', 'Workers AI', 'Mercury', 'Ramp', 'Resend', 'D1'], where: 'functions/api/_mail-sweep.js (broadcast-hooks.js; reads with _mailbox.js)',
-          info: 'In Gmail it only reads, except that an email whose receipt is on its card charge is archived (the Inbox label comes off; nothing is deleted or marked read). Receipts from before it was turned on are left alone, since staff forwarded those by hand. The same email in two inboxes is sent once. Its first day only watches, listing here what it would send, then sends it.',
+          when: 'Every 3 minutes on the heartbeat (every minute while there’s a backlog), for every active SOARD Google account; Ramp’s card charges are read every 15 minutes. An account whose main address is on the store’s domain is read only for mail to or from its soardcharity.com address.',
+          does: 'Every SOARD card charge, Mercury’s and (while SOARD moves off Ramp) Ramp’s, looks for its own receipt in the cardholder’s email: the charge’s exact amount, near its date, from the store or reading like a receipt. The best one goes onto the charge in Mercury or Ramp, printed to PDF when it’s only an email, and the email is archived. Mercury sends a makeover’s receipt on to ap@ itself; a Ramp charge’s receipt is also emailed to ap@, once a charge. A charge looks 5 minutes after it’s made, then less and less often for a week, and is listed here if it finds none. Receipts and bills on no SOARD card (a vendor’s invoice, something paid another way) are found by reading each inbox’s new mail with Workers AI and go to the receipt inbox (ap@) with their files. Shipping notices, ads, carts, refunds, statements, utility mail and gifts to SOARD stay out, and so does anything ap@ already has or that came from Ramp, Mercury or JobTread.',
+          touches: ['Gmail', 'Workers AI', 'Mercury', 'Ramp', 'Resend', 'D1'], where: 'functions/api/_mail-sweep.js (broadcast-hooks.js; reads with _mailbox.js; Ramp with _ramp.js)',
+          info: 'In Gmail it only reads, except that an email whose receipt is on its card charge is archived (the Inbox label comes off; nothing is deleted or marked read). A card charge looks back a week; receipts from before the sweep began were forwarded by hand. The same email in two inboxes is sent once.',
           live: sweepLive('receipt') },
         { t: 'Odd charges', s: 'live', k: 'schedule',
           when: 'Every 15 minutes, before the job costs rebuild.',

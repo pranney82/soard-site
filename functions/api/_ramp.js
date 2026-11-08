@@ -27,7 +27,7 @@
  * Keys: an API app made in Ramp (client credentials) with bills:read and
  * bills:write, kept in Cloudflare as RAMP_CLIENT_ID and RAMP_CLIENT_SECRET.
  * The inbox sweep (./_mail-sweep.js) uses the same app for card receipts, with
- * transactions:read, receipts:write and users:read (rampCardCharge, rampAttach).
+ * transactions:read, receipts:write and users:read (rampCardCharges, rampAttach).
  * Ramp marks bill hold and release as beta. Ramp has no API to schedule a
  * payment, so a released bill Ramp leaves unscheduled is said so in Slack.
  */
@@ -125,36 +125,32 @@ export async function ramp(env, path, { method = 'GET', query = null, body = nul
 
 // ─── Card receipts (the inbox sweep) ────────────────────────────────
 
-const _users = new Map(); // email → Ramp user id (or '' when Ramp has no such user), for one isolate
+/** Every page of a Ramp list → its rows (a list's `page.next` is the next page's whole URL) */
+async function allPages(env, path, query, fetchImpl, maxPages = 10) {
+  const out = [];
+  let next = path;
+  for (let i = 0; next && i < maxPages; i++) {
+    const page = await ramp(env, next, { query: i ? null : query, scope: CARD_SCOPE, fetchImpl });
+    out.push(...(page?.data || []));
+    next = page?.page?.next || null;
+  }
+  return out;
+}
 
 /**
- * A Ramp card charge a receipt is for: the cardholder with this email, one of
- * the receipt's amounts (in cents), within `days` of when it came →
- * { id, cents, vendor, userId, hasReceipt } | null
+ * Ramp's card charges since a time, with each cardholder's email (the inbox
+ * the sweep looks in) → [{ id, cents, vendor, userId, email, at, hasReceipt }].
+ * Declined charges and refunds are left out.
  */
-export async function rampCardCharge(env, { email, at, amounts, days = 4, fetchImpl = fetch }) {
-  if (!amounts.length || !rampConfigured(env)) return null;
-  const key = String(email || '').toLowerCase();
-  if (!_users.has(key)) {
-    const u = await ramp(env, '/users', { query: { email: key, page_size: 2 }, scope: CARD_SCOPE, fetchImpl });
-    _users.set(key, (u?.data || []).find((x) => String(x.email || '').toLowerCase() === key)?.id || '');
-  }
-  const userId = _users.get(key);
-  if (!userId) return null;
-  const want = new Set(amounts);
-  const t = await ramp(env, '/transactions', {
-    query: {
-      user_id: userId, state: 'ALL', page_size: 100,
-      from_date: new Date(at - days * DAY).toISOString(), to_date: new Date(at + days * DAY).toISOString(),
-      min_amount: (Math.min(...amounts) / 100 - 0.01).toFixed(2), max_amount: (Math.max(...amounts) / 100 + 0.01).toFixed(2),
-    },
-    scope: CARD_SCOPE, fetchImpl,
-  });
+export async function rampCardCharges(env, { since, fetchImpl = fetch } = {}) {
+  const emails = new Map((await allPages(env, '/users', { page_size: 100 }, fetchImpl)).map((u) => [u.id, String(u.email || '').toLowerCase()]));
   const cents = (x) => (Number.isFinite(x.entity_amount?.value) ? x.entity_amount.value : centsOf(x.original_transaction_amount));
-  const hits = (t?.data || []).filter((x) => x.state !== 'DECLINED' && want.has(cents(x)))
-    .sort((a, b) => Math.abs(Date.parse(a.user_transaction_time) - at) - Math.abs(Date.parse(b.user_transaction_time) - at));
-  const x = hits[0];
-  return x ? { id: x.id, cents: cents(x), vendor: x.merchant_name || '', userId, hasReceipt: (x.receipts || []).length > 0 } : null;
+  return (await allPages(env, '/transactions', { from_date: new Date(since).toISOString(), state: 'ALL', page_size: 100 }, fetchImpl))
+    .filter((x) => x.state !== 'DECLINED' && cents(x) > 0)
+    .map((x) => ({
+      id: x.id, cents: cents(x), vendor: x.merchant_name || '', userId: x.card_holder?.user_id || null,
+      email: emails.get(x.card_holder?.user_id) || '', at: x.user_transaction_time, hasReceipt: (x.receipts || []).length > 0,
+    }));
 }
 
 /** A receipt file onto a Ramp card charge. The key makes a retry upload it once */
