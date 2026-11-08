@@ -436,6 +436,24 @@ export async function scorers(DB) {
   } catch {
     rows = (await DB.prepare('SELECT evaluator, evaluator_name, completed_at FROM applicant_scores').all().catch(() => ({ results: [] }))).results || [];
   }
+  // Someone with more than one soardcharity.com address is keyed by the one their cards are under (the one they
+  // sign in and score with), so a scanned card joins theirs rather than starting a second person on the panel
+  const used = new Map();
+  for (const r of rows) {
+    const k = alias.get(r.evaluator) || r.evaluator;
+    if (!out.has(k) || !r.evaluator.endsWith('@soardcharity.com')) continue;
+    const m = used.get(k) || new Map();
+    m.set(r.evaluator, (m.get(r.evaluator) || 0) + 1);
+    used.set(k, m);
+  }
+  for (const [k, m] of used) {
+    const best = [...m].sort((x, y) => y[1] - x[1])[0][0];
+    if (best === k) continue;
+    const p = out.get(k);
+    out.delete(k);
+    out.set(best, { ...p, email: best, aliases: [k, ...p.aliases.filter((x) => x !== best)] });
+    for (const [x, v] of alias) if (v === k) alias.set(x, best);
+  }
   for (const r of rows) {
     const main = alias.get(r.evaluator) || r.evaluator;
     const real = !!r.completed_at && !r.a_archived && !isTestFamily(r.a_name);

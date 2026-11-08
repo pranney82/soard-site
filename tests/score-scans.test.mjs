@@ -810,13 +810,13 @@ test('a failed read of the staff list fails the step, never lets a suspended acc
 
 test('someone whose Google account is on another of the organization’s domains, with a soardcharity.com alias, is a scorer by that alias and by every name their cards carry', async () => {
   await DB.prepare('UPDATE staff_state SET data = ? WHERE key = ?').bind(JSON.stringify({ accounts: [
-    { email: 'pjones@example-store.com', aliases: ['pat@soardcharity.com'], name: 'Pat Jones', active: true },
+    { email: 'pjones@example-store.com', aliases: ['pjones@soardcharity.com', 'pat@soardcharity.com'], name: 'Pat Jones', active: true },
     { email: 'linzi@soardcharity.com', name: 'Linzi Lawsky', active: true },
   ] }), 'directory').run();
   await importScores(DB, { year: '2026', evaluator: 'pat@soardcharity.com', name: 'Pat Smith', rows: [{ child: 'Mateo Lin', scores: scores(Array(10).fill(3)) }] });
   const { scorers: people } = await seasonScans(DB, '2026');
   const pat = people.find((p) => p.email === 'pat@soardcharity.com');
-  assert.ok(pat, 'listed by the address they sign in with here');
+  assert.ok(pat, 'listed by the soardcharity.com address their cards are under, not the other one first in the list');
   assert.equal(pat.scored, true);
   const scan = await start({ hash: 'b1'.padEnd(64, '0') });
   const v = [5, 4, 4, 5, 5, 4, 3, 4, 5, 4];
