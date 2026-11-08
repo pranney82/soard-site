@@ -148,8 +148,13 @@ export function useCashNow(data, upTo = '', n = null) {
  * transfer). Else the balance sheet's figure stands. `sheet` is undefined while it's read
  */
 function cashToShow(live, sheet, books = null) {
-  // The banks' cash, and how many months of QuickBooks' spending it holds (the books' 12 months out, whichever bank)
-  if (live && live.banks.some((b) => b !== 'Mercury')) return books?.perMonth > 0 ? { ...live, months: Math.round((live.total / books.perMonth) * 10) / 10, perMonth: books.perMonth } : live;
+  if (live && live.banks.some((b) => b !== 'Mercury')) {
+    // The cards: each bank's own, and QuickBooks' for a card no connected bank reads (Ramp; Chase's until it's shared)
+    const read = [...new Set(live.owed.map((o) => String(o.bank || '').toLowerCase()).filter(Boolean))];
+    const owed = [...live.owed, ...(books?.owed || []).filter((o) => !read.some((b) => String(o.name).toLowerCase().includes(b)))];
+    // The banks' cash, and how many months of QuickBooks' spending it holds (the books' 12 months out, whichever bank)
+    return { ...live, owed, ...(books?.perMonth > 0 ? { months: Math.round((live.total / books.perMonth) * 10) / 10, perMonth: books.perMonth } : {}) };
+  }
   if (books) return books;
   if (sheet === undefined) return undefined;
   if (!live) return sheet;

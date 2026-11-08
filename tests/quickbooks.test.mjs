@@ -581,9 +581,14 @@ test('the board page’s cash: QuickBooks’ bank accounts beat the balance shee
     { bank: 'Chase', name: 'Chase SR2_Makeover', balance: 39180 }, { bank: 'Chase', name: 'Chase SR4_Long Reserve', balance: 300991 }, { bank: 'Chase', name: 'Chase CD 4 MONTHS', balance: 100000 },
     { bank: 'Chase', name: 'Chase SR1_Opex', balance: 246170 }, { bank: 'Mercury', name: 'Opex', balance: 2500 }, { bank: 'Mercury', name: 'Income', balance: 500 },
   ], owed: [{ bank: 'Chase', name: 'Chase Ink Business Cash', balance: 4210.5, limit: 50000 }] };
-  const shown = (await moneyFor(data({ cash: both, books: { ...books, perMonth: 30000 } }))).cash;
+  const booksCards = { ...books, perMonth: 30000, cash: { ...books.cash, owed: [{ name: 'Chase C/C 3512', balance: 4917 }, ...books.cash.owed] } };
+  const shown = (await moneyFor(data({ cash: both, books: booksCards }))).cash;
   assert.deepEqual(shown.accounts.map((a) => a.name), ['Chase Makeover', 'Chase Long Reserve', 'Chase CD 4 MONTHS', 'Chase Opex', 'Mercury Opex', 'Mercury Income']);
-  assert.deepEqual(shown.owed.map((o) => o.name), ['Chase Ink Business Cash']);
+  assert.deepEqual(shown.owed.map((o) => o.name), ['Chase Ink Business Cash', 'Ramp CC'], 'Chase’s card from Chase, Ramp’s from QuickBooks, never one card twice');
+  // Chase connected without its card: QuickBooks still says what's owed on both cards
+  const noCard = (await moneyFor(data({ cash: { ...both, owed: [] }, books: booksCards }))).cash;
+  assert.deepEqual(noCard.owed.map((o) => [o.name, o.balance]), [['Chase C/C 3512', 4917], ['Ramp CC', 2196.28]]);
+  assert.equal(noCard.total, 689341, 'the cards are never taken off the cash');
   assert.deepEqual([shown.banks, shown.months, shown.perMonth], [['Chase', 'Mercury'], 23, 30000]);
   assert.equal(moneyTiles({ cash: shown, budget: null, n: {} })[1].value, '23', 'the Months of cash tile');
   // Chase alone: no bank said twice; two that would read the same keep Chase's own names
