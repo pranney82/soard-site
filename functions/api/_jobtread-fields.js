@@ -13,6 +13,8 @@ const RESERVED = new Set([
   '22P46wDp3NLd', '22P46st8HNPY', '22P46syd4j6E', '22P46u8a49hk', '22P4VnkCXPSY', '22P4VnmXcjjy', '22P4v2gNtdFR',
   '22PJxPDbM5Rr', '22PJxPF6vCpk', '22P52xmCz3cx', '22P5KVgrLeXK', '22PK2MzzJD93',
   '22P3cqMfrQEp', '22P3cqVyzwhr', '22P3cqW68zuR', '22P3cqWFSzge',
+  // DataX Zillow, added Nov 9 2026: Zestimate, Latest Sale Price, Latest Sale Date, Year Built (text)
+  '22PhnCAVDZDJ', '22PhnCCJ3hPN', '22PhnCDvtqpD', '22PhnDnwH3zD',
 ]);
 
 let _cache = null; // { at, fields }
