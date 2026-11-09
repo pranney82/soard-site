@@ -17,7 +17,7 @@ import {
 import { activeAdvisors, peopleRows, readState } from './_board-roles.js';
 import { putFile, deleteFile, boardFileProblem } from './_board.js';
 import { logAudit } from './_audit.js';
-import { moneyView, goalNow, creditGift, uncreditGift, matchPage, findGifts, campaignFromUrl } from './_advisory-money.js';
+import { moneyView, goalNow, creditGift, uncreditGift, matchPage, findGifts, campaignFromUrl, campaignExists, sameLink } from './_advisory-money.js';
 import { pickableKids, pickKid, clearKid, kidCard } from './_advisory-sponsor.js';
 import { sendAsk, sendIntroUpdate, sendHostUpdate, sendWelcome, mailLog, welcomedSlugs } from './_advisory-mail.js';
 import { adminMeetings, meetingAction } from './_advisory-meetings.js';
@@ -63,7 +63,12 @@ export async function onRequestGet(context) {
     if (new URL(context.request.url).searchParams.get('zeffyForms')) return Response.json({ ok: true, forms: await zeffyForms(env) });
     await seedOnce(env.DB, () => sharableBoardDocs(env.DB));
     await boardPapers(env.DB, await getSettings(env.DB));
-    const settings = await getSettings(env.DB);
+    let settings = await getSettings(env.DB);
+    // An address saved before Zeffy was connected gets its ID as soon as someone opens this, not only on the heartbeat
+    if (settings.campaignUrl && !settings.campaignId && env.ZEFFY_API_KEY) {
+      const id = await campaignFromUrl(env, settings.campaignUrl);
+      if (id) settings = await saveSettings(env.DB, { campaignId: id });
+    }
     const [advisors, people, term, seen, sigs, missing, docs, asks, wishes, intros, hosted, money, bits, group, meetings, kids, log] = await Promise.all([
       activeAdvisors(env.DB), peopleRows(env.DB), allTerms(env.DB, settings), lastSeen(env.DB), signatures(env.DB), missingEmails(env.DB), listDocs(env.DB), listAsks(env.DB),
       listWishes(env.DB), listIntros(env.DB), listHosted(env.DB), moneyView(env, settings), advisoryBits(env), advisoryGroupStatus(env).catch(() => null),
@@ -139,17 +144,35 @@ export async function onRequestPost(context) {
           if (!person) return fail('Pick an active board member');
           patch.lead = person.slug;
         }
-        // The address is enough: its id comes from Zeffy. An address is never kept without its ID unless Zeffy says it has
-        // none, and a new address never keeps the old campaign's ID (a page that sends only the address gets it looked up)
+        // The group's campaign, as Zeffy has it. An address Zeffy lists decides the ID, so a new address never keeps an old
+        // campaign's ID; an ID typed for an address Zeffy doesn't list is checked with Zeffy; a cleared address unlinks.
+        // With Zeffy not answering nothing changes; with Zeffy not connected the address waits for its ID, which the
+        // money's heartbeat fills in once it is (maybeReadMoney). A page that sends only the address gets it looked up
         const urlMoved = 'campaignUrl' in patch && patch.campaignUrl !== settings.campaignUrl;
-        const nextUrl = 'campaignUrl' in patch ? patch.campaignUrl : settings.campaignUrl;
-        const nextId = 'campaignId' in patch ? patch.campaignId : urlMoved ? '' : settings.campaignId;
-        if (nextUrl && !nextId && (urlMoved || 'campaignId' in patch)) {
-          const found = await campaignFromUrl(env, webLink(nextUrl));
-          if (found === '') return fail('That address isn’t a campaign in SOARD’s Zeffy. Check the link and try again.');
-          // With Zeffy not answering, nothing changes: it waits for the next Save
-          if (found === null && env.ZEFFY_API_KEY) return fail('Zeffy didn’t answer, so the site couldn’t check that address. Try Save again in a minute.', 503);
-          patch.campaignId = found || '';
+        const idMoved = 'campaignId' in patch && String(patch.campaignId || '') !== String(settings.campaignId || '');
+        // The same campaign's link written another way (its language, tracking, an embed) keeps its ID without asking Zeffy
+        const sameCampaign = urlMoved && !idMoved && !!settings.campaignId && !!patch.campaignUrl && sameLink(webLink(patch.campaignUrl), settings.campaignUrl);
+        if (sameCampaign) patch.campaignId = settings.campaignId;
+        else if (urlMoved || idMoved) {
+          const nextUrl = 'campaignUrl' in patch ? patch.campaignUrl : settings.campaignUrl;
+          const nextId = idMoved ? String(patch.campaignId || '').trim() : '';
+          const DOWN = 'Zeffy didn’t answer, so the site couldn’t check the campaign. Try Save again in a minute.';
+          if (urlMoved && !nextUrl) patch.campaignId = '';
+          else {
+            const byUrl = nextUrl ? await campaignFromUrl(env, webLink(nextUrl)) : '';
+            if (byUrl === null && env.ZEFFY_API_KEY) return fail(DOWN, 503);
+            if (byUrl) {
+              if (nextId && nextId !== byUrl) return fail('That ID and that address are two different campaigns in Zeffy. Pick the campaign from the list, or empty the ID box.');
+              patch.campaignId = byUrl;
+            } else if (byUrl === null) patch.campaignId = nextId;
+            else if (nextId) {
+              const there = await campaignExists(env, nextId);
+              if (there === null && env.ZEFFY_API_KEY) return fail(DOWN, 503);
+              if (there === false) return fail('That ID isn’t a campaign in SOARD’s Zeffy. Check it and try again.');
+              patch.campaignId = nextId;
+            } else if (nextUrl) return fail('That address isn’t a campaign in SOARD’s Zeffy. Check the link and try again.');
+            else patch.campaignId = '';
+          }
         }
         const next = await saveSettings(env.DB, patch);
         await audit(context, by, 'updated', 'Advisory settings');

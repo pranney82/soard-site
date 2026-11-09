@@ -69,14 +69,23 @@ export function formGroups(forms, { value = '', prefer = [], id } = {}) {
 
 // ─── The list, read once for every dropdown on the page ──────────────
 
-/** The staff admin's own route; the advisors' page passes its own (see ./advisory-admin.js) */
+const SIGNED_OUT = { success: false, error: 'Your sign-in ended. Reload the page to sign in again.' };
+
+/**
+ * The staff admin's own route; the advisors' page passes its own (see ./advisory-admin.js). A sign-in that has run out
+ * comes back as Cloudflare Access's redirect, its sign-in page, or the site's "missing access token": that says so,
+ * and isn't tried again until the tab comes back
+ */
 async function staffLoad() {
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 20000);
   try {
-    const r = await fetch('/api/zeffy-forms', { cache: 'no-store', signal: ctl.signal });
-    const j = await r.json().catch(() => null);
-    return j && typeof j === 'object' ? j : { success: false };
+    const r = await fetch('/api/zeffy-forms', { cache: 'no-store', redirect: 'manual', signal: ctl.signal });
+    if (r.type === 'opaqueredirect' || (r.status >= 300 && r.status < 400)) return { ...SIGNED_OUT };
+    const j = /json/i.test(r.headers.get('content-type') || '') ? await r.json().catch(() => null) : null;
+    if (!j || typeof j !== 'object') return r.ok || r.status === 401 || r.status === 403 ? { ...SIGNED_OUT } : { success: false };
+    if (r.status === 403 && /sign-in|access token/i.test(j.error || '')) return { ...SIGNED_OUT };
+    return j;
   } catch {
     return { success: false };
   } finally {

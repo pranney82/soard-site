@@ -863,3 +863,54 @@ test('Save never leaves the group’s campaign address without its ID unless Zef
     delete env.ZEFFY_API_KEY;
   }
 });
+
+test('Zeffy has the last word on the group’s campaign: a listed address decides the ID, a typed ID is checked, and an address saved before Zeffy was connected gets its ID on the heartbeat', async () => {
+  const { maybeReadMoney } = await import('../functions/api/_advisory-money.js');
+  const CAMPS = [
+    { id: 'p2p-2026', url: 'https://www.zeffy.com/peer-to-peer/advisory-board-2026', title: 'AB', type: 'donation_form', category: 'peer_to_peer', status: 'active', created: 1 },
+    { id: 'home', url: 'https://www.zeffy.com/donation-form/help-build-a-brighter-home', title: 'Home', type: 'donation_form', category: 'donation', status: 'active', created: 2 },
+    { id: 'uuid-1', url: 'https://www.zeffy.com/peer-to-peer/2cf6689b-931d-41b2-a12c-4193dfdf2322', title: 'By UUID', type: 'donation_form', category: 'peer_to_peer', status: 'active', created: 3 },
+  ];
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    const u = new URL(String(url));
+    const one = u.pathname.match(/\/campaigns\/([^/]+)$/);
+    if (one) { const c = CAMPS.find((x) => x.id === decodeURIComponent(one[1])); return c ? Response.json(c) : Response.json({ error: { message: 'not found' } }, { status: 404 }); }
+    if (u.pathname.endsWith('/campaigns')) return Response.json({ object: 'list', has_more: false, next_cursor: null, data: CAMPS });
+    return Response.json({ object: 'list', has_more: false, next_cursor: null, data: [] });
+  };
+  const ids = async () => { const s = await getSettings(env.DB); return [s.campaignUrl, s.campaignId]; };
+  try {
+    env.ZEFFY_API_KEY = 'k';
+    await saveSettings(env.DB, { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2026', campaignId: 'p2p-2026' });
+    // The old ID typed again beside a new address Zeffy lists: the address decides
+    assert.equal((await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home', campaignId: 'p2p-2026' } })).status, 200);
+    assert.deepEqual(await ids(), ['https://www.zeffy.com/en-US/donation-form/help-build-a-brighter-home', 'home']);
+    // A different ID typed beside an address Zeffy lists: two campaigns, refused
+    const two = await runIt({ action: 'save-settings', settings: { campaignId: 'hand-123' } });
+    assert.equal(two.status, 400);
+    assert.match((await two.json()).error, /two different campaigns/);
+    assert.deepEqual((await ids())[1], 'home');
+    // An address Zeffy lists another way (by UUID), with its ID typed: checked with Zeffy and kept; a made-up ID is refused
+    assert.equal((await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/our-group', campaignId: 'uuid-1' } })).status, 200);
+    assert.deepEqual(await ids(), ['https://www.zeffy.com/en-US/peer-to-peer/our-group', 'uuid-1']);
+    assert.equal((await runIt({ action: 'save-settings', settings: { campaignId: 'made-up' } })).status, 400);
+    assert.equal((await ids())[1], 'uuid-1');
+    // Saved before Zeffy was connected: the address waits, then the heartbeat finds its ID
+    delete env.ZEFFY_API_KEY;
+    assert.equal((await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2026', campaignId: '' } })).status, 200);
+    assert.deepEqual(await ids(), ['https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2026', '']);
+    env.ZEFFY_API_KEY = 'k';
+    await maybeReadMoney(env, { now: Date.now() });
+    assert.deepEqual(await ids(), ['https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2026', 'p2p-2026']);
+    // …or as soon as Run it is opened
+    await saveSettings(env.DB, { campaignId: '' });
+    const { onRequestGet } = await import('../functions/api/advisory-admin.js');
+    const page = await onRequestGet({ env, data: { boardMember: { slug: 'mary-atchley', name: 'Mary Atchley', email: EMAILS['mary-atchley'], committees: ['Advisory Board'] } }, request: new Request('https://x/api/advisory-admin') });
+    assert.equal(page.status, 200);
+    assert.equal((await page.json()).settings.campaignId, 'p2p-2026');
+  } finally {
+    globalThis.fetch = real;
+    delete env.ZEFFY_API_KEY;
+  }
+});

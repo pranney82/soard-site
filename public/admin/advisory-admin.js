@@ -452,16 +452,23 @@ function Goal({ ctx }) {
   const up = (k) => (e) => setEdits({ ...edits, [k]: e.currentTarget.value });
   // The campaign's ID follows its address: picked from Zeffy's list, or typed and Zeffy lists it, the ID fills in; typed
   // and not listed, the ID empties and Save asks Zeffy for it; cleared, the campaign is unlinked. An ID typed by hand
-  // stays put whatever the address does (clearing the box to retype an address mustn't lose it), until a campaign is
-  // picked; the ID box always shows what Save keeps. Never the old campaign's ID beside a new address
+  // stays while an address is typed, until a campaign is picked. The server has the last word (functions/api/
+  // advisory-admin.js save-settings): an address Zeffy lists decides the ID, and a typed ID is checked with Zeffy
   const zeffyList = useZeffyFormList(ZEFFY_FROM);
   const autoId = useRef(null);
   const pickCampaign = (c) => { autoId.current = c.id; setEdits({ ...edits, campaignUrl: c.url, campaignId: c.id }); };
+  // Zeffy's list came (or was read again) while an address was being typed: the ID catches up with it
+  useEffect(() => {
+    if (!zeffyList || !('campaignUrl' in edits) || !String(edits.campaignUrl || '').trim()) return;
+    const byHand = 'campaignId' in edits && edits.campaignId !== '' && edits.campaignId !== autoId.current && edits.campaignId !== (s.campaignId || '');
+    const listed = zeffyList.find((c) => sameForm(c.url, edits.campaignUrl));
+    if (!byHand && listed && edits.campaignId !== listed.id) { autoId.current = listed.id; setEdits({ ...edits, campaignId: listed.id }); }
+  }, [zeffyList]);
   const typeCampaignUrl = (e) => {
     const url = e.currentTarget.value;
     const next = { ...edits, campaignUrl: url };
-    const byHand = 'campaignId' in edits && edits.campaignId !== '' && edits.campaignId !== autoId.current;
-    if (!byHand) {
+    const byHand = 'campaignId' in edits && edits.campaignId !== '' && edits.campaignId !== autoId.current && edits.campaignId !== (s.campaignId || '');
+    if (!url.trim()) { next.campaignId = ''; autoId.current = ''; } else if (!byHand) {
       const listed = url.trim() ? (zeffyList || []).find((c) => sameForm(c.url, url)) : null;
       // The saved address, typed back (or with Zeffy's list not in yet), keeps the saved ID
       const saved = !!url.trim() && (url.trim() === String(s.campaignUrl || '').trim() || sameForm(url, s.campaignUrl));

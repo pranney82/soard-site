@@ -171,6 +171,17 @@ export async function campaignFromUrl(env, url, { fetchImpl = fetch } = {}) {
   } catch { return null; }
 }
 
+/** Whether an ID is a campaign in SOARD's Zeffy: true, false (not there, or deleted), null when Zeffy can't be asked */
+export async function campaignExists(env, id, { fetchImpl = fetch } = {}) {
+  if (!env.ZEFFY_API_KEY || !id) return null;
+  try {
+    const c = await zeffyGet(env, `/campaigns/${encodeURIComponent(id)}`, {}, fetchImpl);
+    return !!c?.id && !c.deleted_at;
+  } catch (e) {
+    return e.status === 404 ? false : null;
+  }
+}
+
 /** Everything whoever runs the group sees of the money */
 export async function moneyView(env, settings) {
   await ensureAdvisory(env.DB);
@@ -244,7 +255,12 @@ export async function maybeReadMoney(env, { fetchImpl = fetch, now = Date.now() 
   try {
     if (!env.DB || !env.ZEFFY_API_KEY) return null;
     await ensureAdvisory(env.DB);
-    const settings = await getSettings(env.DB);
+    let settings = await getSettings(env.DB);
+    // An address saved before Zeffy was connected gets its ID here, once Zeffy can say which campaign it is
+    if (!settings.campaignId && settings.campaignUrl) {
+      const id = await campaignFromUrl(env, settings.campaignUrl, { fetchImpl });
+      if (id) settings = await saveSettings(env.DB, { campaignId: id });
+    }
     if (!settings.campaignId) return null;
     const m = await readState(env.DB, KEY);
     // (a failed read waits its turn too: Zeffy down mustn't be asked every heartbeat)
