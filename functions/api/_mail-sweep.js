@@ -53,10 +53,11 @@ import { slackCard } from './_slack-cards.js';
 import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
 import { DEFAULT_RECEIPT_INBOX, attachToCharge } from './_spend-receipts.js';
-import { rampCardCharges, rampUserEmails, rampAttach, rampConfigured } from './_ramp.js';
+import { rampCardCharges, rampUserEmails, rampTransaction, rampAttach, rampConfigured } from './_ramp.js';
 import { vendorLikeness } from './_spend-match.js';
 import { FREE_MAIL } from './_kid-partners.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
+import { emailShell, esc as escHtml } from './_email-shell.js';
 
 const EVERY_MS = 3 * 60 * 1000;
 const BUSY_MS = 60 * 1000;          // while there's a backlog
@@ -111,6 +112,8 @@ const SCHEMA = [
     state TEXT NOT NULL, looks INTEGER DEFAULT 0, next_look TEXT, hints TEXT, msg_id TEXT, detail TEXT, updated_at TEXT)`,
   'CREATE INDEX IF NOT EXISTS idx_card_receipts_look ON card_receipts(state, next_look)',
   'CREATE INDEX IF NOT EXISTS idx_card_receipts_box ON card_receipts(mailbox, charged_at)',
+  // The Monday list of charges with no receipt, one a cardholder a week
+  'CREATE TABLE IF NOT EXISTS receipt_lists (week TEXT NOT NULL, mailbox TEXT NOT NULL, charges INTEGER, sent_at TEXT, PRIMARY KEY (week, mailbox))',
 ];
 const _ready = new WeakSet();
 // Added after the first deploy: the files a family email brought (name:size), so a reply carrying them again doesn't add them twice
@@ -237,6 +240,9 @@ export function senderOf(h) {
 export function triage(msg, { byEmail, staffNames = new Set() }) {
   const h = msg.payload?.headers;
   const subject = header(h, 'Subject');
+  // A receipt staff emailed for a card charge from their weekly list ("Email the receipt" puts the charge's code in the subject)
+  const code = /\[receipt (\d+)\]/i.exec(subject);
+  if (code && addresses(header(h, 'From')).every(isOurs)) return { kind: 'tagged', card: Number(code[1]) };
   // A staff member's own address by the name on it ("Peter Ranney <…@gmail.com>"): never a family's, on any account
   const theirOwn = new Set(['From', 'To', 'Cc', 'Reply-To'].flatMap((k) => named(header(h, k)))
     .filter((p) => !isOurs(p.email) && staffNames.has(nameKey(p.name))).map((p) => p.email));
@@ -655,7 +661,8 @@ async function handle(env, ctx, row) {
     const t = triage(msg, ctx.families);
     if (t?.kind !== row.kind) return await finish(env.DB, row, { state: 'skipped', detail: `not a ${row.kind === 'family' ? 'family email' : 'receipt'} after all` }, ctx.now);
     const c = { ...ctx, ...box };
-    const out = row.kind === 'receipt' ? await handleReceipt(env, c, row, msg) : await handleFamily(env, c, { ...row, accounts: JSON.stringify(t.accounts) }, msg);
+    const out = row.kind === 'receipt' ? await handleReceipt(env, c, row, msg) : row.kind === 'tagged' ? await handleTagged(env, c, row, msg, t)
+      : await handleFamily(env, c, { ...row, accounts: JSON.stringify(t.accounts) }, msg);
     await finish(env.DB, row, out, ctx.now);
     // Its receipt is on the card charge: the email's job is done, so it leaves the inbox (archiveDue)
     if (out.onCard) await env.DB.prepare("UPDATE mail_sweep SET archived = 'no' WHERE mailbox = ? AND id = ?").bind(row.mailbox, row.id).run();
@@ -861,6 +868,118 @@ async function lookForCardReceipts(env, ctx, until) {
   }
 }
 
+/** A receipt staff emailed for a card charge from their weekly list (its code in the subject): onto that charge */
+async function handleTagged(env, ctx, row, msg, t) {
+  const c = await env.DB.prepare('SELECT * FROM card_receipts WHERE rowid = ?').bind(t.card).first();
+  if (!c) return { state: 'skipped', detail: 'no card charge has that code' };
+  if (['attached', 'had'].includes(c.state)) return { state: 'skipped', detail: `${chargeWords(c)} has its receipt already`, onCard: true };
+  const h = msg.payload?.headers;
+  const text = receiptText(msg.payload);
+  const files = filesWorth(msg.payload).filter((f) => RECEIPT_FILE.test(f.type));
+  // Sent before the photo was attached: nothing to put on (a forwarded receipt with its amount is printed instead)
+  if (!files.length && !AMOUNT.test(text)) return { state: 'skipped', detail: 'no receipt attached' };
+  const uploads = await receiptUploads(env, ctx, row, msg, { v: { vendor: c.vendor }, files, from: senderOf(h), subject: header(h, 'Subject'), sentAt: Number(msg.internalDate) || ctx.now, text });
+  const id = c.charge.slice(c.card.length + 1);
+  if (c.card === 'ramp') {
+    for (const [i, u] of uploads.entries()) await rampAttach(env, { transactionId: id, userId: c.user_id, ...u, key: `${c.charge}:${msg.id}:${i}` }, ctx.fetchImpl);
+  } else {
+    for (const u of uploads) await attachToCharge(env, id, u, ctx.fetchImpl);
+  }
+  const detail = `put the receipt ${firstName(ctx.ownerName, row.mailbox)} sent on ${chargeWords(c)}`.slice(0, 300);
+  await env.DB.prepare("UPDATE card_receipts SET state = 'attached', msg_id = ?, detail = ?, next_look = NULL, updated_at = ? WHERE charge = ?").bind(`${row.mailbox}:${msg.id}`, detail, new Date(ctx.now).toISOString(), c.charge).run();
+  return { state: 'card', detail, chargeId: c.charge, onCard: true };
+}
+
+// ─── The Monday list ────────────────────────────────────────────────
+//
+// A card charge with no receipt anywhere in SOARD's email goes to its cardholder: one email each Monday morning
+// (Eastern) listing theirs, each with a link to add the receipt in Ramp or Mercury and an "Email the receipt"
+// button. That opens an email to themselves with the charge's code in its subject; sent with the photo or PDF,
+// the sweep puts it on that charge. A receipt added by hand comes off the list (recheckNone). Nothing to list: no email.
+
+const LIST_HOUR = 8;
+const RECHECK_MS = 6 * HOUR_MS;
+const SENT_LIST_TAG = 'receipt-list';
+const isoOf = (ms) => new Date(ms).toISOString();
+const eastern = (ms) => Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit' })
+  .formatToParts(new Date(ms)).map((p) => [p.type, p.value]));
+
+/** A charge with none found may have had its receipt added by hand in Ramp or Mercury since: then it's off the list */
+async function recheckNone(env, ctx, until) {
+  const due = (await env.DB.prepare("SELECT * FROM card_receipts WHERE state = 'none' AND (next_look IS NULL OR next_look <= ?) ORDER BY next_look LIMIT 10").bind(isoOf(ctx.now)).all()).results || [];
+  for (const c of due) {
+    if (Date.now() > until) break;
+    const id = c.charge.slice(c.card.length + 1);
+    let had = false;
+    try {
+      if (c.card === 'mercury') had = Boolean((await env.DB.prepare('SELECT has_receipt FROM spend_charges WHERE id = ?').bind(id).first())?.has_receipt);
+      else if (rampConfigured(env)) had = ((await rampTransaction(env, id, { fetchImpl: ctx.fetchImpl }))?.receipts || []).length > 0;
+    } catch (err) { ctx.notes.ramp = err.message; break; }
+    await env.DB.prepare('UPDATE card_receipts SET state = ?, next_look = ?, updated_at = ? WHERE charge = ?')
+      .bind(had ? 'had' : 'none', had ? null : isoOf(ctx.now + RECHECK_MS), isoOf(ctx.now), c.charge).run();
+  }
+}
+
+/** Monday from 8 AM Eastern: each cardholder with charges still needing a receipt gets their list, once that week */
+async function sendReceiptLists(env, ctx) {
+  const e = eastern(ctx.now);
+  if (ctx.watching || e.weekday !== 'Mon' || Number(e.hour) < LIST_HOUR || !emailConfigured(env)) return;
+  const week = `${e.year}-${e.month}-${e.day}`;
+  const rows = (await env.DB.prepare("SELECT rowid AS code, * FROM card_receipts WHERE state = 'none' ORDER BY mailbox, charged_at DESC").all()).results || [];
+  const byBox = new Map();
+  for (const r of rows) if (ctx.inboxes.has(r.mailbox)) byBox.set(r.mailbox, [...(byBox.get(r.mailbox) || []), r]);
+  for (const [mailbox, charges] of byBox) {
+    // Claimed first: once a person a week, even when a heartbeat drops halfway
+    const claim = await env.DB.prepare('INSERT OR IGNORE INTO receipt_lists (week, mailbox, charges, sent_at) VALUES (?, ?, ?, ?)').bind(week, mailbox, charges.length, isoOf(ctx.now)).run();
+    if (!claim.meta?.changes) continue;
+    try { await sendList(env, ctx, mailbox, charges); } catch (err) {
+      await env.DB.prepare('DELETE FROM receipt_lists WHERE week = ? AND mailbox = ?').bind(week, mailbox).run();
+      ctx.notes.lists = `the Monday receipt list to ${mailbox.split('@')[0]}: ${err.message}`;
+    }
+  }
+}
+
+/** One cardholder's list → Resend */
+async function sendList(env, ctx, mailbox, charges) {
+  const mercury = charges.filter((c) => c.card === 'mercury').map((c) => c.charge.slice(c.card.length + 1));
+  const links = new Map();
+  for (const id of mercury) {
+    const r = await env.DB.prepare('SELECT link FROM spend_charges WHERE id = ?').bind(id).first().catch(() => null);
+    if (r?.link) links.set(id, r.link);
+  }
+  const lines = charges.map((c) => {
+    const id = c.charge.slice(c.card.length + 1);
+    const day = new Date(c.charged_at).toLocaleDateString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric' });
+    const amount = `$${(c.cents / 100).toFixed(2)}`;
+    const vendor = c.vendor || 'A charge';
+    const card = c.card === 'ramp' ? 'Ramp' : 'Mercury';
+    const add = c.card === 'ramp' ? `https://app.ramp.com/details/transactions/${id}` : links.get(id) || `https://app.mercury.com/transactions/${id}`;
+    const mail = `mailto:${mailbox}?subject=${encodeURIComponent(`Receipt for ${vendor} ${amount} (${day}) [receipt ${c.code}]`)}&body=${encodeURIComponent('Attach the receipt (a photo or a PDF) and send this to yourself. It goes on the charge by itself.')}`;
+    return { day, vendor, amount, card, add, mail };
+  });
+  const n = lines.length;
+  const first = firstName(ctx.people.get(mailbox), mailbox);
+  // One charge: its code is in the subject too, so a reply with the receipt attached goes on it
+  const subject = n === 1 ? `${lines[0].vendor} ${lines[0].amount} needs a receipt [receipt ${charges[0].code}]` : `${n} card charges need a receipt`;
+  const where = [...new Set(lines.map((l) => l.card))].join(' or ');
+  const intro = `${n === 1 ? 'This charge' : 'These charges'} on your SOARD card ${n === 1 ? 'has' : 'have'} no receipt anywhere in SOARD email. ${n === 1 ? 'Add it' : 'For each one, add it'} in ${where}, or tap Email the receipt, attach a photo or PDF and send. Either way it goes on the charge.`;
+  const text = [`Hi ${first},`, '', intro, '', ...lines.map((l) => `${l.day}  ${l.vendor}  ${l.amount}  (${l.card} card)\n  Add it in ${l.card}: ${l.add}\n  Email the receipt: ${l.mail}`)].join('\n');
+  const a = (href, label) => `<a class="lnk" href="${escHtml(href)}" style="color:#1F5FA8">${escHtml(label)}</a>`;
+  const bodyHtml = `<table role="presentation" width="100%" style="font:15px/1.45 Outfit,Arial,sans-serif">${lines.map((l) => `<tr><td class="ink" style="padding:10px 0;border-top:1px solid #E4E4E0"><strong>${escHtml(l.vendor)}</strong> ${escHtml(l.amount)}<br><span class="muted" style="color:#6B6D72">${escHtml(l.day)} · ${escHtml(l.card)} card</span><br>${a(l.add, `Add it in ${l.card}`)} · ${a(l.mail, 'Email the receipt')}</td></tr>`).join('')}</table>`;
+  const html = emailShell({ heading: subject.replace(/ \[receipt \d+\]$/, ''), preheader: intro, intro: `Hi ${escHtml(first)}, ${escHtml(intro)}`, bodyHtml });
+  const tags = [{ name: 'kind', value: SENT_LIST_TAG }];
+  const res = await ctx.fetchImpl('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+    // A reply goes to their own inbox, where the sweep reads it
+    body: JSON.stringify({ from: EMAIL_FROM, to: [mailbox], reply_to: mailbox, subject, text, html, tags }),
+    signal: AbortSignal.timeout(30000),
+  });
+  if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 120)}`);
+  const sentId = (await res.json().catch(() => null))?.id;
+  if (sentId) await logSent(env, [{ id: sentId, to: mailbox, subject }], { tags, now: ctx.now });
+}
+
 /**
  * Out of the inbox (Gmail's archive: the Inbox label comes off; nothing is deleted) for each email whose receipt is
  * on its card charge. Archiving needs gmail.modify on the site's Google client; until Google allows it the emails
@@ -1004,6 +1123,7 @@ async function sweep(env, st, { fetchImpl, now, print }) {
     now, fetchImpl: (url, init) => fetchImpl(url, init), watching, families, names: families.names, startedAt: st.startedAt,
     receiptInbox: normEmail(cfg.receiptInbox || DEFAULT_RECEIPT_INBOX),
     inboxes: new Set(boxes),
+    people,
     mailboxOf: (e) => mailboxOf.get(e) || e,
     // Shared by every copy of ctx a handler gets ({ ...ctx, ...box }), so what one notes reaches Automations
     notes: {},
@@ -1052,15 +1172,18 @@ async function sweep(env, st, { fetchImpl, now, print }) {
   // (the mail is still read and queued while the AI rests; only the judging waits)
   while (Date.now() - started < HANDLE_MS && (st.aiRestUntil || 0) <= now && !ctx.capped) {
     const row = await env.DB.prepare(`SELECT * FROM mail_sweep WHERE (state = 'queued' OR (state = 'failed' AND tries < ? AND updated_at < ?))
-        ${backfillDone ? '' : "AND kind = 'receipt'"} ORDER BY at LIMIT 1`).bind(MAX_TRIES, retryBefore).first();
+        ${backfillDone ? '' : "AND kind != 'family'"} ORDER BY at LIMIT 1`).bind(MAX_TRIES, retryBefore).first();
     if (!row) break;
     await handle(env, ctx, row);
   }
   await lookForCardReceipts(env, ctx, started + CARD_MS);
+  await recheckNone(env, ctx, started + CARD_MS);
+  await sendReceiptLists(env, ctx);
   const archiving = await archiveDue(env, ctx);
   if (archiving) errors.push(archiving);
   if (ctx.notes.ramp) errors.push(`Ramp’s card charges can’t be read, so Ramp receipts go to the receipt inbox only: ${ctx.notes.ramp}`);
   if (ctx.notes.cards) errors.push(ctx.notes.cards);
+  if (ctx.notes.lists) errors.push(ctx.notes.lists);
   const waiting = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
   if (ctx.capped) { st.aiRestUntil = now + AI_REST_MS; errors.push(AI_WAIT_NOTE); }
   Object.assign(st, { busy: Boolean(waiting?.n) || !backfillDone, backfillDone, lastSweptAt: now, error: errors.length ? errors.join(' · ').slice(0, 500) : null, runningUntil: 0 });
@@ -1089,11 +1212,11 @@ export async function maybeSweepMail(env, { fetchImpl = fetch, now = Date.now(),
 }
 
 /** For Site → Automations: on/off, the watch, the backlog and the last week's counts; family and vendor names only */
-export async function mailSweepStatus(env) {
+export async function mailSweepStatus(env, { now = Date.now() } = {}) {
   if (!env.DB) return null;
   await ensure(env.DB);
   const st = await readState(env.DB);
-  const since = new Date(Date.now() - 7 * 86400e3).toISOString();
+  const since = new Date(now - 7 * 86400e3).toISOString();
   const rows = (await env.DB.prepare('SELECT kind, state, COUNT(*) AS n FROM mail_sweep WHERE updated_at >= ? GROUP BY kind, state').bind(since).all()).results || [];
   const counts = { receipt: {}, family: {} };
   for (const r of rows) counts[r.kind] = { ...counts[r.kind], [r.state]: r.n };
@@ -1102,6 +1225,8 @@ export async function mailSweepStatus(env) {
   const queued = await env.DB.prepare("SELECT COUNT(*) AS n FROM mail_sweep WHERE state = 'queued'").first();
   // The card charges: receipts put on this week, still looking, none found in a week
   const cards = Object.fromEntries(((await env.DB.prepare('SELECT state, COUNT(*) AS n FROM card_receipts WHERE updated_at >= ? GROUP BY state').bind(since).all()).results || []).map((r) => [r.state, r.n]));
+  // The last Monday's lists: which week, to how many people
+  const lists = await env.DB.prepare('SELECT week, COUNT(*) AS people, MAX(sent_at) AS at FROM receipt_lists GROUP BY week ORDER BY week DESC LIMIT 1').first();
   // Did the receipt inbox take the last one? (Resend's report, through the email log)
   let lastSent = null;
   try {
@@ -1112,6 +1237,6 @@ export async function mailSweepStatus(env) {
     lastSent,
     key: Boolean(env.GOOGLE_CALENDAR_KEY), ai: Boolean(env.AI?.run), email: emailConfigured(env), jobtread: Boolean(env.JOBTREAD_GRANT_KEY),
     ...Object.fromEntries(['startedAt', 'watchUntil', 'lastSweptAt'].map((k) => [k, st[k] ? new Date(st[k]).toISOString() : null])), error: st.error || null,
-    inboxes: Object.values(st.boxes || {}).filter((b) => !b.noMail).length, backfillDone: Boolean(st.backfillDone), queued: queued?.n || 0, counts, recent, cards,
+    inboxes: Object.values(st.boxes || {}).filter((b) => !b.noMail).length, backfillDone: Boolean(st.backfillDone), queued: queued?.n || 0, counts, recent, cards, lists: lists || null,
   };
 }

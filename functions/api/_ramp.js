@@ -158,6 +158,9 @@ export async function rampCardCharges(env, { since, fetchImpl = fetch } = {}) {
     }));
 }
 
+/** One Ramp card charge as Ramp has it now (its receipts, say) */
+export const rampTransaction = (env, id, { fetchImpl = fetch } = {}) => ramp(env, `/transactions/${encodeURIComponent(id)}`, { scope: CARD_SCOPE, fetchImpl });
+
 /** A receipt file onto a Ramp card charge. The key makes a retry upload it once */
 export async function rampAttach(env, { transactionId, userId, bytes, type, name, key }, fetchImpl = fetch) {
   const form = new FormData();

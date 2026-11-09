@@ -138,6 +138,7 @@ beforeEach(async () => {
         return Response.json({ access_token: `ramp:${scope}`, expires_in: 3600 });
       }
       if (path === '/users') return Response.json({ data: rampUsers });
+      if (path.startsWith('/transactions/')) return Response.json(rampTxns.find((t) => t.id === path.split('/').pop()) || {});
       if (path === '/transactions') {
         const from = Date.parse(u.searchParams.get('from_date')), to = u.searchParams.get('to_date') ? Date.parse(u.searchParams.get('to_date')) : Infinity;
         return Response.json({ data: rampTxns.filter((t) => Date.parse(t.user_transaction_time) >= from && Date.parse(t.user_transaction_time) <= to) });
@@ -404,7 +405,7 @@ test('the first day only watches: what it would do is listed, nothing is sent or
   assert.equal((await byId(m.f1copy.id))[0].state, 'duplicate');
   assert.equal((await rows()).filter((r) => /Accepted/.test(r.detail || '')).length, 0);
 
-  const s = await mailSweepStatus(env);
+  const s = await mailSweepStatus(env, { now: T0 + WATCH_MS });
   assert.equal(s.backfillDone, true);
   assert.equal(s.inboxes, 2);
   assert.ok(s.counts.receipt.would >= 1 && s.counts.family.would >= 2);
@@ -445,7 +446,7 @@ test('after the watch: receipts go to the receipt inbox, family emails become hi
   const logged = await env.DB.prepare('SELECT type, to_addr, status FROM email_log').all();
   assert.deepEqual(logged.results, [{ type: 'receipt-from-inbox', to_addr: 'ap@soardcharity.com', status: 'sent' }], 'Resend’s reports on it can land');
   await env.DB.prepare("UPDATE email_log SET status = 'bounced', detail = 'The group only takes mail from members', status_at = ?").bind(new Date(T0 + WATCH_MS + 2 * MIN).toISOString()).run();
-  assert.deepEqual((await mailSweepStatus(env)).lastSent, { to: 'ap@soardcharity.com', status: 'bounced', at: new Date(T0 + WATCH_MS + 2 * MIN).toISOString(), detail: 'The group only takes mail from members' });
+  assert.deepEqual((await mailSweepStatus(env, { now: T0 + WATCH_MS })).lastSent, { to: 'ap@soardcharity.com', status: 'bounced', at: new Date(T0 + WATCH_MS + 2 * MIN).toISOString(), detail: 'The group only takes mail from members' });
   assert.equal((await byId(m.f1.id))[0].state, 'posted');
   assert.equal((await byId(m.f2.id))[0].state, 'posted');
 
@@ -520,7 +521,7 @@ test('a cap reached: a receipt and a family email wait with no try spent, the ju
   assert.deepEqual([r.state, r.tries], ['queued', 0], 'no try spent, nothing recorded about the email');
   assert.match(r.detail, /^Waiting: Workers AI reached its spending cap/);
   assert.equal((await byId(family.id))[0].state, 'queued');
-  assert.match((await mailSweepStatus(env)).error || '', /spending cap/);
+  assert.match((await mailSweepStatus(env, { now: T0 + WATCH_MS })).error || '', /spending cap/);
   await maybeSweepMail(env, { now: at + 6 * MIN, force: true });
   assert.equal(refused, 1, 'it rests: the AI isn’t asked again every minute');
 
@@ -592,7 +593,7 @@ test('a Mercury card charge finds its receipt in the cardholder’s email, puts 
   assert.deepEqual(await archivedOf(paid, receipt), ['yes', 'yes']);
   assert.equal(st2.error, null);
   assert.equal(of('mercury').length, 0, 'nothing on the charge twice');
-  assert.equal((await mailSweepStatus(env)).cards.attached, 1);
+  assert.equal((await mailSweepStatus(env, { now: T0 + WATCH_MS })).cards.attached, 1);
 });
 
 test('a charge finds a receipt the email side didn’t take, and one with none says so after a week', async () => {
@@ -613,7 +614,7 @@ test('a charge finds a receipt the email side didn’t take, and one with none s
 
   await maybeSweepMail(env, { now: at + 7 * DAY + 60 * MIN, force: true });
   assert.deepEqual(await cardRow('mercury:ch3'), { state: 'none', msg_id: null, detail: 'no receipt found in SOARD’s email' });
-  assert.equal((await mailSweepStatus(env)).cards.none, 1);
+  assert.equal((await mailSweepStatus(env, { now: T0 + WATCH_MS })).cards.none, 1);
 });
 
 test('a receipt in a coworker’s inbox: found after the charge’s first hour when the store matches, and a cardholder known by an alias', async () => {
@@ -711,7 +712,7 @@ test('the first run catches up on the last 90 days of card charges once; after t
   assert.equal(await env.DB.prepare('SELECT archived FROM mail_sweep WHERE id = ?').bind(paint.id).first('archived'), 'yes');
   assert.deepEqual(await cardRow('ramp:tx-none'), { state: 'none', msg_id: null, detail: 'no receipt found in SOARD’s email' }, 'an old charge with none is listed now, after one full look');
   assert.equal(await cardRow('ramp:tx-older'), null, 'past 90 days is left alone');
-  assert.equal((await mailSweepStatus(env)).cards.none, 1);
+  assert.equal((await mailSweepStatus(env, { now: T0 + WATCH_MS })).cards.none, 1);
 
   // Caught up: from now on Ramp is read a week back
   rampTxns.push({ id: 'tx-late', state: 'CLEARED', entity_amount: { value: 777, currency: 'USD' }, user_transaction_time: new Date(T0 - 30 * DAY).toISOString(), merchant_name: 'Late Co', card_holder: { user_id: 'u-pat' }, receipts: [] });
@@ -746,6 +747,76 @@ test('a Ramp cardholder whose Ramp email moves to SOARD’s: their old charges w
   await maybeSweepMail(env, { now: T0 + 16 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
   assert.equal((await cardRow('ramp:tx-moved')).state, 'attached');
   assert.deepEqual(of('ramp-receipt').map((c) => c.transaction), ['tx-moved']);
+});
+
+const noneCharge = (charge, card, mailbox, cents, vendor, at) => env.DB.prepare("INSERT INTO card_receipts (charge, card, mailbox, user_id, cents, vendor, charged_at, state, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'none', ?)")
+  .bind(charge, card, mailbox, card === 'ramp' ? 'u-pat' : null, cents, vendor, new Date(at).toISOString(), new Date(at).toISOString()).run();
+const codeOf = (charge) => env.DB.prepare('SELECT rowid FROM card_receipts WHERE charge = ?').bind(charge).first('rowid');
+
+test('Monday morning: each cardholder gets one email listing their charges still needing a receipt, with links and an Email the receipt button', async () => {
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test', RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
+  await maybeSweepMail(env, { now: T0, force: true });
+  await env.DB.exec(MERCURY_CHARGES);
+  await mercuryCharge('m1', 12900, 'Paint Depot', T0 - 20 * DAY);
+  await env.DB.prepare("UPDATE spend_charges SET link = 'https://bank.example/transactions/m1' WHERE id = 'm1'").run();
+  rampTxns.push(
+    { id: 'tx-a', state: 'CLEARED', entity_amount: { value: 2386, currency: 'USD' }, user_transaction_time: new Date(T0 - 30 * DAY).toISOString(), merchant_name: 'FaxOnline', card_holder: { user_id: 'u-pat' }, receipts: [] },
+    { id: 'tx-b', state: 'CLEARED', entity_amount: { value: 500, currency: 'USD' }, user_transaction_time: new Date(T0 - 25 * DAY).toISOString(), merchant_name: 'Coffee', card_holder: { user_id: 'u-sam' }, receipts: [] },
+    { id: 'tx-c', state: 'CLEARED', entity_amount: { value: 900, currency: 'USD' }, user_transaction_time: new Date(T0 - 21 * DAY).toISOString(), merchant_name: 'Added By Hand', card_holder: { user_id: 'u-pat' }, receipts: ['r1'] },
+  );
+  await noneCharge('mercury:m1', 'mercury', PAT, 12900, 'Paint Depot', T0 - 20 * DAY);
+  await noneCharge('ramp:tx-a', 'ramp', PAT, 2386, 'FaxOnline', T0 - 30 * DAY);
+  await noneCharge('ramp:tx-b', 'ramp', SAM, 500, 'Coffee', T0 - 25 * DAY);
+  await noneCharge('ramp:tx-c', 'ramp', PAT, 900, 'Added By Hand', T0 - 21 * DAY);
+  await noneCharge('ramp:tx-x', 'ramp', 'someone@outside.example', 700, 'Elsewhere', T0 - 22 * DAY);
+  const monday = T0 + 7 * DAY; // Monday Nov 9, 10 AM Eastern
+  calls.length = 0;
+  const st = await maybeSweepMail(env, { now: monday, force: true });
+  assert.equal(st.error, null);
+
+  assert.equal((await cardRow('ramp:tx-c')).state, 'had', 'a receipt added by hand in Ramp takes it off the list');
+  const sent = of('resend');
+  assert.deepEqual(sent.map((x) => [x.body.to[0], x.body.subject]), [
+    [PAT, '2 card charges need a receipt'],
+    [SAM, `Coffee $5.00 needs a receipt [receipt ${await codeOf('ramp:tx-b')}]`],
+  ], 'one email a cardholder, only for SOARD inboxes; a single charge’s code rides in its subject, so a reply works');
+  const pat = sent[0].body;
+  assert.equal(pat.reply_to, PAT);
+  assert.match(pat.text, /^Hi Pat,\n\nThese charges on your SOARD card have no receipt anywhere in SOARD email\./);
+  assert.match(pat.text, /Oct 13  Paint Depot  \$129\.00  \(Mercury card\)\n  Add it in Mercury: https:\/\/bank\.example\/transactions\/m1/);
+  assert.match(pat.text, /Oct 3  FaxOnline  \$23\.86  \(Ramp card\)\n  Add it in Ramp: https:\/\/app\.ramp\.com\/details\/transactions\/tx-a/);
+  const code = await codeOf('ramp:tx-a');
+  assert.ok(pat.text.includes(`mailto:${PAT}?subject=${encodeURIComponent(`Receipt for FaxOnline $23.86 (Oct 3) [receipt ${code}]`)}`));
+  assert.match(pat.html, /Email the receipt/);
+  assert.doesNotMatch(pat.text + pat.html, /\u2014/, 'no em dashes');
+
+  calls.length = 0;
+  await maybeSweepMail(env, { now: monday + 30 * MIN, force: true });
+  assert.equal(of('resend').length, 0, 'once a week');
+  assert.deepEqual((await mailSweepStatus(env, { now: monday })).lists, { week: '2026-11-09', people: 2, at: new Date(monday).toISOString() });
+  await maybeSweepMail(env, { now: monday + 6 * DAY, force: true });
+  assert.equal(of('resend').length, 0, 'not on other days');
+});
+
+test('Email the receipt: sent to themselves with the photo, it goes on that charge and the email is archived', async () => {
+  Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
+  await maybeSweepMail(env, { now: T0, force: true });
+  rampTxns.push({ id: 'tx-a', state: 'CLEARED', entity_amount: { value: 2386, currency: 'USD' }, user_transaction_time: new Date(T0 - 30 * DAY).toISOString(), merchant_name: 'FaxOnline', card_holder: { user_id: 'u-pat' }, receipts: [] });
+  await noneCharge('ramp:tx-a', 'ramp', PAT, 2386, 'FaxOnline', T0 - 30 * DAY);
+  const code = await codeOf('ramp:tx-a');
+  const at = T0 + WATCH_MS + MIN;
+  const early = mail({ box: PAT, at, from: `Pat Lee <${PAT}>`, to: PAT, subject: `Receipt for FaxOnline $23.86 (Oct 3) [receipt ${code}]`, text: 'Attach the receipt (a photo or a PDF) and send this to yourself.', labels: ['SENT', 'INBOX'] });
+  const photo = mail({ box: PAT, at: at + MIN, from: `Pat Lee <${PAT}>`, to: PAT, subject: `Receipt for FaxOnline $23.86 (Oct 3) [receipt ${code}]`, text: 'Attach the receipt (a photo or a PDF) and send this to yourself.', labels: ['SENT', 'INBOX'],
+    files: [{ name: 'IMG_2041.jpg', type: 'image/jpeg', data: 'jpegbytes', size: 900000 }] });
+  const spoof = mail({ box: PAT, at: at + 2 * MIN, from: 'Someone <x@outside.example>', to: PAT, subject: `Hello [receipt ${code}]`, text: 'hi', files: [{ name: 'a.jpg', type: 'image/jpeg', data: 'j', size: 900000 }] });
+  calls.length = 0;
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
+  assert.equal((await byId(early.id))[0].detail, 'no receipt attached');
+  assert.deepEqual(of('ramp-receipt').map((c) => [c.transaction, c.file]), [['tx-a', 'IMG_2041.jpg']]);
+  assert.equal((await cardRow('ramp:tx-a')).state, 'attached');
+  assert.equal((await byId(photo.id))[0].state, 'card');
+  assert.equal(await env.DB.prepare('SELECT archived FROM mail_sweep WHERE id = ?').bind(photo.id).first('archived'), 'yes');
+  assert.notEqual((await byId(spoof.id))[0]?.kind, 'tagged', 'only SOARD’s own people can send a charge its receipt');
 });
 
 test('Ramp refusing the card scopes: its receipts go to the receipt inbox as before, and Automations says why', async () => {
