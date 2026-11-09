@@ -82,6 +82,24 @@ const addresses = (s) => (String(s || '').match(/[^\s<>,;"'()]+@[^\s<>,;"'()]+\.
 /** Who really sent it: a SOARD Google group passes a store's email on as "'Amazon.com' via orders" */
 export const senderOf = (h) => header(h, 'X-Original-From') || header(h, 'X-Original-Sender') || header(h, 'From');
 
+// Not a store: SOARD's money and staff tools (Ramp's replies to forwarded orders, Mercury's card news, Gusto, payouts),
+// Google's own notices, and mail systems' bounces (seen in the first live run, Nov 9 2026)
+const NOT_STORES = /(^|\.)(ramp\.com|mercury\.com|gusto\.com|stripe\.com|zeffy\.com|jobtread\.com|intuit\.com|quickbooks\.com|plaid\.com|companycam\.com|google\.com|googlemail\.com|slack\.com|kit\.com|convertkit\.com|resend\.com|zoom\.us|facebookmail\.com|linkedin\.com|docusign\.net|dropbox\.com)$/i;
+const SYSTEM_SENDER = /^(mailer-daemon|postmaster)@/i;
+// A conversation, not a store's notice: a reply, a forward, a calendar answer or cancellation
+const CONVERSATION = /^\s*((re|fwd?|fw|aw)\s*:|(accepted|declined|tentative(ly accepted)?|invitation|updated invitation|cancell?ed( event| invitation)?)\s*:)/i;
+
+/** A sender and subject that can't be a store's order notice, whatever its words say → why | null */
+export function notStoreMail(from, subject) {
+  const e = addresses(from)[0] || '';
+  if (SYSTEM_SENDER.test(e)) return 'a mail system’s notice';
+  if (NOT_STORES.test(e.split('@')[1] || '')) return 'from a money or staff tool, not a store';
+  if (CONVERSATION.test(String(subject || ''))) return 'a reply, forward or calendar notice';
+  // Money moving, not goods: "A payout is on its way to …", "Bill payment delivered"
+  if (/\b(payout|bill payment|payment (sent|delivered|received|is on its way)|transfer (sent|is on its way))\b/i.test(String(subject || ''))) return 'about money, not goods';
+  return null;
+}
+
 /**
  * Is this a store's order email for SOARD → { kind, store } | null. `domains` are SOARD's Google domains;
  * `storeDomains` the store's (Sunny & Ranney) among them
@@ -97,6 +115,7 @@ export function orderTriage(msg, { domains, storeDomains }) {
   const to = addresses(`${header(h, 'To')} ${header(h, 'Cc')} ${header(h, 'Delivered-To')}`).filter((e) => domains.has(e.split('@')[1]));
   if (to.length && to.every((e) => storeDomains.has(e.split('@')[1]))) return null;
   const subject = header(h, 'Subject');
+  if (notStoreMail(sender, subject)) return null;
   const r = readOrderEmail({ subject, from: sender, snippet: msg.snippet || '' });
   if (!r.kind) return null;
   return { kind: r.kind, store: r.store || r.carrier || null };
@@ -211,6 +230,9 @@ async function readOne(env, ctx, row) {
     const sentAt = Number(msg.internalDate) || ctx.now;
     const subject = header(h, 'Subject');
     const from = senderOf(h);
+    // Queued before a rule was added: the same rules again now
+    const not = notStoreMail(from, subject);
+    if (not) return settle(env, ctx, row, 'skipped', null, not);
     let read = readOrderEmail({ subject, from, snippet: msg.snippet || '', text, html, sentAt });
     if (read.needsAi) {
       const words = text && text.length > 400 && !/view (this|our|the) email in (a|your) (web )?browser/i.test(text) ? text : htmlText(html) || text;

@@ -11,7 +11,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { maybeSweepOrders, orderSweepStatus, orderTriage, bodiesOf, BACKFILL_DAYS } from '../functions/api/_order-sweep.js';
+import { maybeSweepOrders, orderSweepStatus, orderTriage, bodiesOf, notStoreMail, BACKFILL_DAYS } from '../functions/api/_order-sweep.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 
 const { privateKey: SA_PEM } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
@@ -235,4 +235,25 @@ test('Automations: per store, shipped orders that never had a delivered email (d
   await run(T0 + 2 * MIN);
   const a = (await orderSweepStatus(env, { now: T0 })).stores.find((x) => x.store === 'Amazon');
   assert.deepEqual([a.shippedWeekAgo, a.noDeliveredEmail, a.deliveredEmailPct], [2, 1, 50], 'the one shipped two days ago doesn’t count yet');
+});
+
+test('first live run: money tools, bounces, calendar notices and replies aren’t store order mail', async () => {
+  assert.equal(notStoreMail('Ramp <receipts@ramp.com>', 'Bill payment delivered: A Contractor #12'), 'from a money or staff tool, not a store');
+  assert.equal(notStoreMail('Ramp <sunshine@ap.ramp.com>', 'Re: Fwd: Invoice & Shipment Confirmation'), 'from a money or staff tool, not a store');
+  assert.equal(notStoreMail('Mercury <hello@mercury.com>', 'Your IO credit card has shipped'), 'from a money or staff tool, not a store');
+  assert.equal(notStoreMail('Gusto <no-reply@gusto.com>', 'Someone canceled a time off request'), 'from a money or staff tool, not a store');
+  assert.equal(notStoreMail('Mail Delivery Subsystem <mailer-daemon@googlemail.com>', 'Delivery Status Notification (Delay)'), 'a mail system’s notice');
+  assert.equal(notStoreMail('Pat Friend <pat@friend.example>', 'Canceled: Team Tailgate'), 'a reply, forward or calendar notice');
+  assert.equal(notStoreMail('Store Rep <rep@decor.example>', 'Re: Order Summary #ACD-222'), 'a reply, forward or calendar notice');
+  assert.equal(notStoreMail('Vendor <v@tile.example>', 'FW: For Rowan: shipment update'), 'a reply, forward or calendar notice');
+  assert.equal(notStoreMail('The Charity <payouts@pay.example>', 'A payout is on its way to The Charity'), 'about money, not goods');
+  assert.equal(notStoreMail('Wayfair <hi@wayfair.com>', 'Your order has shipped'), null);
+  // An email queued before the rule: passed over when it's read, without the AI
+  mail({ box: PAT, at: T0 - DAY, from: 'Mercury <hello@mercury.com>', subject: 'Your IO credit card has shipped', text: 'On its way' });
+  await env.DB.exec("CREATE TABLE IF NOT EXISTS order_mail (mailbox TEXT NOT NULL, id TEXT NOT NULL, at TEXT NOT NULL, msgid TEXT, store TEXT, kind TEXT, subject TEXT, state TEXT NOT NULL, read TEXT, detail TEXT, tries INTEGER DEFAULT 0, source TEXT, updated_at TEXT, PRIMARY KEY (mailbox, id))");
+  await env.DB.prepare("INSERT INTO order_mail (mailbox, id, at, store, kind, subject, state, source, updated_at) VALUES (?, 'm0001', ?, 'Mercury', 'shipped', 'Your IO credit card has shipped', 'queued', 'backfill', ?)").bind(PAT, new Date(T0 - DAY).toISOString(), new Date(T0).toISOString()).run();
+  await run(T0);
+  const r = (await rows()).find((x) => x.id === 'm0001');
+  assert.deepEqual([r.state, r.detail], ['skipped', 'from a money or staff tool, not a store']);
+  assert.equal(calls.filter((c) => c.kind === 'ai').length, 0);
 });
