@@ -50,7 +50,7 @@ export async function onRequestPost({ env, request, data }) {
     switch (body?.action) {
       case 'mode':
         if (!['watch', 'on'].includes(body.mode)) return fail('Bad mode');
-        result = await setMode(env, body.mode, { by });
+        result = await setMode(env, body.mode, { by, saw: ['on', 'watch'].includes(body.saw) ? body.saw : null });
         break;
       case 'create':
         result = await personCreate(env, id, { name: body.name, formId: body.formId, day: body.day || null, notThose: !!body.notThose, shown: Array.isArray(body.shown) ? body.shown.slice(0, 20) : [], saw, by });

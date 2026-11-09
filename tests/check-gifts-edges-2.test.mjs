@@ -503,8 +503,9 @@ test('the admin API: a stale screen, a replayed save and a database fault each a
   const call = (body, e = env()) => admin.onRequestPost({ env: e, request: new Request('https://x/api/checks-admin', { method: 'POST', body: JSON.stringify(body) }), data: { userEmail: 'holly@soardcharity.com' } }).then((r) => r.json().then((j) => ({ status: r.status, ...j })));
   const first = await call({ action: 'create', id: TX, name: 'Pine Foundation', formId: 'form_home', saw: 'person' });
   assert.equal(first.success, true);
+  // The same person's save sent again (a browser resends a lost answer): it already went through, and nothing more is written
   const again = await call({ action: 'create', id: TX, name: 'Pine Foundation', formId: 'form_home', saw: 'person' });
-  assert.deepEqual({ status: again.status, posts: world().posts.length }, { status: 409, posts: 1 });
+  assert.deepEqual({ ok: again.success, again: again.result?.again, posts: world().posts.length }, { ok: true, again: true, posts: 1 });
   const stale = await call({ action: 'not-gift', id: TX, saw: 'person' });
   assert.equal(stale.status, 409);
   const broken = { ...env(), DB: { prepare: () => { throw new Error('D1_ERROR: no such table: check_gifts: SQLITE_ERROR'); } } };

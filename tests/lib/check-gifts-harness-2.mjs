@@ -48,7 +48,8 @@ async function zeffy(url, method, body, world) {
     if (path === '/campaigns') return json({ data: world.forms, has_more: false });
     if (path === '/payments' && method === 'GET') {
       const from = Number(url.searchParams.get('created[gte]') || 0);
-      const all = world.payments.filter((p) => p.created >= from);
+      const status = url.searchParams.get('status');
+      const all = world.payments.filter((p) => p.created >= from && (!status || String(p.status) === status));
       const start = Number(url.searchParams.get('starting_after') || 0);
       const page = all.slice(start, start + 100);
       return json({ object: 'list', data: page, has_more: start + 100 < all.length, next_cursor: start + 100 < all.length ? String(start + 100) : null });

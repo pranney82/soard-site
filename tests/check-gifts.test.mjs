@@ -396,6 +396,8 @@ test('Watch never writes to Zeffy: it says what it would do', async () => {
   assert.equal(world.posts.length, 0);
 });
 test('a hand entry links itself in Watch, is scored, and teaches who that payer is', async () => {
+  // Zeffy's contact for the entry carries the payer's own name, so it's theirs to learn
+  world.contacts.contact_1 = { id: 'contact_1', email: null, first_name: 'Pine', last_name: 'Foundation' };
   await posted();
   world.payments.push(hand({ campaign_id: 'form_grant', description: 'Grant Funding 2026' }));
   await run(NOW + 90 * MIN);
@@ -1552,4 +1554,86 @@ test('the switch counts every check it was watching, not only the ones listed', 
   await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, status, deposited_at, posted_at) VALUES ('fresh', 100, 'would', 'sent', ?, ?)`).bind(new Date().toISOString(), new Date().toISOString()).run();
   const v = await checksView(env);
   assert.deepEqual(v.watching, { fresh: 1, old: 4 });
+});
+// ── Round six ────────────────────────────────────────────────────────────
+
+test('a switch pressed on an older screen never undoes a colleague\'s switch', async () => {
+  await setMode(env, 'on', { by: 'a@example.com' });
+  await setMode(env, 'watch', { by: 'a@example.com', saw: 'on' });
+  await assert.rejects(setMode(env, 'on', { by: 'b@example.com', saw: 'on' }), /Someone just turned it back to watching/);
+  assert.equal((await checksView(env)).mode, 'watch');
+  await setMode(env, 'on', { by: 'b@example.com', saw: 'watch' });
+  assert.equal((await checksView(env)).mode, 'on');
+});
+test('a save Zeffy says to wait on leaves the check\'s name and form as they were', async () => {
+  await withPerson();
+  await env.DB.prepare(`UPDATE check_gifts SET state = 'left-out', reason = 'refund', payer = 'Ace Supply' WHERE id = ?`).bind(TX).run();
+  world.postFails = 429;
+  await assert.rejects(personCreate(env, TX, { name: 'Rosa Whitfield', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /busy/);
+  assert.equal((await theRow()).payer, 'Ace Supply');
+  assert.equal((await theRow()).state, 'left-out');
+});
+test('the Watch score counts every scored check, not only the ones listed', async () => {
+  for (let i = 0; i < 305; i++) await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, deposited_at, score) VALUES (?, 100, 'linked', ?, ?)`).bind(`s${i}`, new Date(Date.parse('2026-01-01T15:00:00Z') + i * 3600e3).toISOString(), JSON.stringify({ payer: i >= 5, gift: true, form: true })).run();
+  assert.deepEqual((await checksView(env)).scored, { total: 305, right: 300 });
+});
+// ── The wide look before any record is made ──────────────────────────────
+
+test('the wide look: anything since the check was written, any name; the giver\'s own open pledge or one just marked paid, any age', async () => {
+  const { netOf } = await import('../functions/api/_check-gifts.js');
+  const r = row({ check_date: '2026-11-03' });
+  const other = hand({ id: 'zp_other', created: dayS('2026-11-20'), buyer: { first_name: 'Dana', last_name: 'Whitfield' } });
+  const before = hand({ id: 'zp_before', created: dayS('2026-09-01'), buyer: { first_name: 'Dana', last_name: 'Whitfield' } });
+  const pledge = hand({ id: 'zp_pledge', type: 'online', status: 'pending', created: dayS('2026-05-01') });
+  const paidLongAgo = hand({ id: 'zp_paid', type: 'online', created: dayS('2026-05-01') });
+  const card = hand({ id: 'zp_card', type: 'online', payment_method: { type: 'card' }, created: dayS('2026-11-04') });
+  const ids = (o) => netOf(r, [other, before, pledge, paidLongAgo, card], new Set(), o).map((p) => p.id).sort();
+  assert.deepEqual(ids(), ['zp_other', 'zp_pledge']);
+  assert.deepEqual(ids({ turnedPaid: new Set(['zp_paid']) }), ['zp_other', 'zp_paid', 'zp_pledge'], 'a pledge marked paid since the check was written');
+  assert.deepEqual(netOf(r, [other], new Set(['zp_other'])), [], 'claimed by another check');
+});
+test('On never makes a record past an entry under another name the windows miss: a person looks', async () => {
+  await setMode(env, 'on');
+  await throughRead();
+  // Typed late, not backdated, under a fund advisor's name
+  world.payments.push(hand({ id: 'zp_late', created: dayS('2026-11-09'), buyer: { first_name: 'Dana', last_name: 'Whitfield' } }));
+  post();
+  await run(NOW + 10 * MIN);
+  const r = await theRow();
+  assert.equal(r.state, 'person');
+  assert.match(r.note, /zp_late/);
+  assert.equal(world.posts.length, 0);
+});
+
+// ── The weekly money check ───────────────────────────────────────────────
+
+test('the money check names a check gift in Zeffy with no check in Mercury, and leaves out what it should', async () => {
+  const { moneyCheck } = await import('../functions/api/_check-gifts.js');
+  await setMode(env, 'on');
+  await posted();
+  const r = await theRow();
+  assert.equal(r.state, 'created');
+  const at = dayS('2026-11-07'); // after checks went through Mercury (Nov 6)
+  world.payments.push(
+    hand({ id: 'zp_twice', created: at, buyer: { first_name: 'Dana', last_name: 'Whitfield' } }),          // a second record for a check: named
+    hand({ id: 'zp_old', created: dayS('2026-10-20') }),                                                   // before checks went through Mercury: left out
+    hand({ id: 'zp_test', created: at, amount: 100, buyer: { first_name: 'SOARD', last_name: 'WebsiteTest' } }), // the site's own test: left out
+    hand({ id: 'zp_card', created: at, type: 'online', payment_method: { type: 'card' } }),                // not a check: left out
+    hand({ id: 'zp_asked', created: at, amount: 5000 }),                                                   // already asked about: left out
+  );
+  await env.DB.prepare(`INSERT INTO check_gifts (id, cents, state, reason, status, deposited_at, note) VALUES ('q', 5000, 'person', 'maybe-double', 'sent', '2026-11-05T15:00:00Z', ?)`).bind(JSON.stringify([{ id: 'zp_asked' }])).run();
+  world.slack = [];
+  const m = await moneyCheck(env, { now: NOW + DAY, fetchImpl: fakeFetch });
+  assert.deepEqual(m.loose.map((x) => x.id), ['zp_twice']);
+  assert.equal(world.slack.filter((b) => /no check in Mercury/.test(b)).length, 1);
+  assert.equal((await checksView(env)).money.loose.length, 1);
+  assert.equal((await checksFacts(env.DB)).moneyLoose, 1);
+});
+test('the money check runs Monday morning, once', async () => {
+  const mon = Date.parse('2026-11-16T15:00:00Z'); // 10 AM Eastern, a Monday
+  await run(mon);
+  const first = (await readState(env.DB, 'check-gifts')).money?.at;
+  assert.ok(first);
+  await run(mon + 10 * MIN);
+  assert.equal((await readState(env.DB, 'check-gifts')).money.at, first, 'once that day');
 });

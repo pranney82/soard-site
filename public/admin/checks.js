@@ -95,15 +95,16 @@ function howItWent(c, mode) {
 }
 
 function CheckRow({ c, mode, act, busy, forms, formsGone, formsFailed }) {
+  const same = (d) => !!d && d.ver === c.ver && d.mode === mode;
   const [tag, tone] = standing(c, mode);
   // An entry left open stays open across tabs, with what was typed in it
   const kept = drafts.get(c.id);
-  const [open, setOpenState] = useState(!!kept?.open && kept.ver === c.ver);
+  const [open, setOpenState] = useState(!!kept?.open && same(kept));
   // Someone (or the site) answered this check since the entry was opened: it never reopens with Save ready
-  useEffect(() => { if (open && drafts.get(c.id)?.ver !== c.ver) { setOpenState(false); drafts.delete(c.id); } }, [c.ver]);
+  useEffect(() => { if (open && !same(drafts.get(c.id))) { setOpenState(false); drafts.delete(c.id); } }, [c.ver, mode]);
   const setOpen = (yes) => {
     setOpenState(yes);
-    if (yes) drafts.set(c.id, { ...(drafts.get(c.id) || {}), open: true, ver: c.ver });
+    if (yes) drafts.set(c.id, { ...(drafts.get(c.id) || {}), open: true, ver: c.ver, mode });
     else {
       drafts.delete(c.id);
       requestAnimationFrame(() => document.querySelector(`.ck [data-check="${CSS.escape(c.id)}"] .ck-gift`)?.focus());
@@ -186,9 +187,13 @@ function Entry({ c, act, busy, forms, formsGone = () => {}, onCancel = null, mor
   // Until someone picks one, the form follows the site's rule; a form that closed since is never left picked
   useEffect(() => { if (forms && (!picked || !isOpen(formId))) setFormId(guessForm); }, [forms, guessForm]);
   useEffect(() => { drafts.set(c.id, { ...(drafts.get(c.id) || {}), name, formId, day, picked }); }, [name, formId, day, picked]);
+  const here = useRef(true);
+  useEffect(() => () => { here.current = false; }, []);
   const save = async (notThose = false, shown = [], saw = c.ver || c.state) => {
     const j = await act({ action: 'create', id: c.id, saw, name: name.trim(), formId, day, notThose, shown }, 'Saved in Zeffy');
     if (j?.formGone) { setPicked(false); formsGone(); return; }
+    // Moved to another tab meanwhile: the check waits in Needs you with the entry beside it, and nothing is asked off the page
+    if (j?.double && (!here.current || !document.querySelector(`.ck [data-check="${CSS.escape(c.id)}"]`))) return;
     if (j?.double) {
       // The entry it asks about is named right here, so nobody answers about something they can't see
       const list = j.double.map((x) => `${x.name || 'No name'}, ${usd(x.cents)}, ${fromUnix(x.at)}${x.form ? `, ${x.form}` : ''}`).join('; ');
@@ -293,19 +298,21 @@ function Status({ v, act, busy }) {
     const old = v.watching?.old || 0;
     const past = `${fresh ? ` ${fresh === 1 ? 'The 1 check the site was watching that isn’t in Zeffy yet goes in too.' : `The ${fresh} checks the site was watching that aren’t in Zeffy yet go in too.`}` : ''}${old ? ` ${old === 1 ? 'The 1 that posted more than 30 days ago comes to you here first instead.' : `The ${old} that posted more than 30 days ago come to you here first instead.`}` : ''}`;
     const yes = await ask({ title: 'Let the site enter checks?', text: `Staff stop entering checks deposited in Mercury from now on. Anything deposited anywhere else, and anything for an event, is still entered by hand. Nothing goes to donors.${past}`, yes: 'Let the site enter checks' });
-    if (yes) act({ action: 'mode', mode: 'on' }, 'The site enters checks now');
+    if (yes) act({ action: 'mode', mode: 'on', saw: v.mode }, 'The site enters checks now');
   };
   const turnOff = async () => {
     const yes = await ask({ title: 'Go back to watching?', text: 'The site stops making records, and staff need to enter checks in Zeffy again.', yes: 'Go back to watching', careful: true });
-    if (yes) act({ action: 'mode', mode: 'watch' }, 'The site is watching');
+    if (yes) act({ action: 'mode', mode: 'watch', saw: v.mode }, 'The site is watching');
   };
   const stopped = (Number(test?.tries) || 1) >= 3;
   return html`
     ${v.lastError ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The last run didn’t finish.</strong> It tries again on its own in a few minutes.</div></div>` : ''}
     ${test && !test.ok && !test.leftBehind?.length && !v.paused ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The site couldn’t save a test record in Zeffy.</strong> ${stopped ? 'It tried on 3 days and has stopped, so something in Zeffy needs a look. Tell Peter.' : 'It tries again tomorrow.'} Until a test works, the site can’t be turned on.</div></div>` : ''}
     ${v.paused ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The site stopped entering checks.</strong> It was turned on, but Zeffy wouldn’t take its new $1 test record, so it’s only watching. ${stopped ? 'It tried on 3 days and has stopped, so something in Zeffy needs a look. Tell Peter. Until then, enter' : 'Enter'} checks deposited in Mercury in Zeffy by hand${stopped ? '' : ' until this goes away'}.</div></div>` : ''}
+    ${v.money?.loose?.length ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The weekly money check found ${(v.money.count ?? v.money.loose.length) === 1 ? 'a check gift' : `${v.money.count ?? v.money.loose.length} check gifts`} in Zeffy with no check in Mercury.</strong> ${v.money.loose.slice(0, 10).map((x) => `${x.name || 'No name'}, ${usd(x.cents)}, ${fromUnix(x.at)}`).join('; ')}${(v.money.count ?? v.money.loose.length) > 10 ? `; and ${(v.money.count ?? v.money.loose.length) - 10} more` : ''}. One may be a check entered twice: if it’s a second record for a check already in Zeffy, delete that extra record. If it’s one of several gifts a single check paid, or a check deposited at another bank, nothing to do. This updates each Monday.</div>
+      <div class="notice__actions"><a class="btn btn-ghost" href=${ZEFFY_URL} target="_blank" rel="noopener">Open Zeffy</a></div></div>` : ''}
     ${v.matchFailing ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The hourly look at Zeffy isn’t working.</strong> Since ${fmtDay(v.matchFailing.since)}, ${v.matchFailing.error}. Hand entries don’t link to their checks until it works, and it keeps trying.</div></div>` : ''}
-    ${test?.leftBehind?.length ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>Zeffy wouldn’t let the site remove its test ${test.leftBehind.length === 1 ? 'record' : 'records'}.</strong> ${test.leftBehind.length === 1 ? 'Delete the $1 SOARD WebsiteTest entry in Zeffy. It isn’t a gift, and this goes away on its own once it’s gone.' : 'Delete the $1 SOARD WebsiteTest entries in Zeffy. They aren’t gifts, and this goes away on its own once they’re gone.'}</div>
+    ${test?.leftBehind?.length ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>Zeffy wouldn’t let the site remove its test ${test.leftBehind.length === 1 ? 'record' : 'records'}.</strong> ${test.leftBehind.length === 1 ? 'Delete the $1 SOARD WebsiteTest entry in Zeffy. It isn’t a gift, and this goes away on its own once it’s gone.' : 'Delete the $1 SOARD WebsiteTest entries in Zeffy. They aren’t gifts, and this goes away on its own once they’re gone.'}${!test.ok ? ' Until a test works, the site can’t be turned on.' : ''}</div>
       <div class="notice__actions"><a class="btn btn-ghost" href=${ZEFFY_URL} target="_blank" rel="noopener">Open Zeffy</a></div></div>` : ''}
     <div class="notice ${on ? 'notice--success' : ''}">
       <div class="notice__body">
@@ -313,8 +320,8 @@ function Status({ v, act, busy }) {
         : html`<strong>The site is watching.</strong> Staff keep entering checks in Zeffy, and the site compares each one with what it would have done. ${score}${!test ? ' It still has to prove it can save to Zeffy, which it does by itself.' : ''}`}
       </div>
       <div class="notice__actions">
-        ${on ? html`<button class="btn btn-ghost" disabled=${!!busy} onClick=${turnOff}>${busy === 'mode:' ? 'Working…' : 'Go back to watching'}</button>`
-        : canTurnOn ? html`<button class="btn btn-primary" disabled=${!!busy} onClick=${turnOn}>${busy === 'mode:' ? 'Working…' : 'Let the site enter checks'}</button>` : ''}
+        ${on ? html`<button class="btn btn-ghost ck-mode" disabled=${!!busy} onClick=${turnOff}>${busy === 'mode:' ? 'Working…' : 'Go back to watching'}</button>`
+        : canTurnOn ? html`<button class="btn btn-primary ck-mode" disabled=${!!busy} onClick=${turnOn}>${busy === 'mode:' ? 'Working…' : 'Let the site enter checks'}</button>` : ''}
       </div>
     </div>`;
 }
@@ -355,7 +362,10 @@ export function Checks({ addToast = () => {}, onCount = () => {} }) {
   // A form opened or closed in Zeffy shows here within a minute while an entry is open
   const formsGone = () => loadForms(true);
   useEffect(() => { load(); }, []);
-  // Looks again when the tab comes back and every 30 seconds while it's open; an entry being typed keeps its own words (drafts)
+  // A save still being answered (maybe from before this tab was opened) is looked at again in five seconds
+  const answering = (v?.list || []).some((c) => ['creating', 'unsure'].includes(c.state));
+  useEffect(() => { if (!answering) return undefined; const t = setTimeout(() => { if (!document.hidden) load(); }, 5000); return () => clearTimeout(t); }, [answering, v]);
+  // Looks again when the tab comes back and every 15 seconds while it's open (the tab's count keeps the same pace); an entry being typed keeps its own words (drafts)
   useEffect(() => {
     const look = () => {
       if (document.hidden) return;
@@ -363,7 +373,7 @@ export function Checks({ addToast = () => {}, onCount = () => {} }) {
       // The form list stays wanted until it comes, so one failed read doesn't leave every entry waiting; once here, it's read again each minute
       if (needed.current || (formsWanted.current && Date.now() - formsAt.current > 55000)) loadForms(true);
     };
-    const t = setInterval(look, 30000);
+    const t = setInterval(look, 15000);
     document.addEventListener('visibilitychange', look);
     return () => { clearInterval(t); document.removeEventListener('visibilitychange', look); };
   }, []);
@@ -376,10 +386,12 @@ export function Checks({ addToast = () => {}, onCount = () => {} }) {
 
   // The focus stays by what was done: the check if it's still here, else the top of its list
   const keepFocus = (id, mode = false) => requestAnimationFrame(() => {
-    if (mode) { document.querySelector('.ck .notice__actions .btn')?.focus?.({ preventScroll: true }); return; }
+    if (mode) { (document.querySelector('.ck .ck-mode') || document.querySelector('.ck h3'))?.focus?.({ preventScroll: true }); return; }
     const here = id && document.querySelector(`.ck [data-check="${CSS.escape(id)}"]`);
     // A check that moved out of Needs you is somewhere far down the list: the focus stays at the top of Needs you
-    const moved = here && !here.closest('.ck-card')?.querySelector('h3')?.textContent.startsWith('Needs you') && wasNeed.current;
+    const inNeed = !!here?.classList.contains('ck-need');
+    const moved = here && !inNeed && wasNeed.current;
+    if (here && inNeed && !wasNeed.current) { here.focus(); here.scrollIntoView({ block: 'center' }); return; }
     ((moved ? null : here) || document.querySelector('.ck h3'))?.focus?.({ preventScroll: true });
   });
   const wasNeed = useRef(false);
