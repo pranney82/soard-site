@@ -687,6 +687,8 @@ async function handle(env, ctx, row) {
 // after; a charge with none after a week says so in Automations.
 
 const CARD_LOOK_BACK_MS = 8 * DAY_MS;
+// Once, the first time: the charges of the last 90 days, so the ones from before this began get their look too (Peter, Nov 8 2026)
+const CATCH_UP_MS = 90 * DAY_MS;
 const CARD_GIVE_UP_MS = 7 * DAY_MS;
 const CARD_FIRST_LOOK_MS = 5 * MIN_MS;
 const RAMP_EVERY_MS = 15 * MIN_MS;
@@ -703,19 +705,24 @@ function amountWords(cents) {
 
 /** Mercury's card charges (Job Costs' copy) and Ramp's (every 15 minutes) → card_receipts: a new one starts looking; one given a receipt elsewhere stops */
 async function syncCardCharges(env, ctx, st) {
-  const since = ctx.now - CARD_LOOK_BACK_MS;
+  const catchUp = !st.cardsCaughtUp;
+  const since = ctx.now - (catchUp ? CATCH_UP_MS : CARD_LOOK_BACK_MS);
   const charges = [];
   try {
     const rows = (await env.DB.prepare(`SELECT id, cents, vendor, email, created_at, has_receipt FROM spend_charges
         WHERE kind LIKE '%Card%' AND cents > 0 AND created_at >= ? AND COALESCE(status, '') NOT IN ('failed', 'cancelled', 'reversed', 'blocked')`).bind(new Date(since).toISOString()).all()).results || [];
     for (const r of rows) charges.push({ charge: `mercury:${r.id}`, card: 'mercury', email: r.email, cents: r.cents, vendor: r.vendor, at: r.created_at, had: Boolean(r.has_receipt) });
   } catch { /* Job Costs hasn't seen a card charge yet */ }
-  if (rampConfigured(env) && ctx.now - (st.rampCardsAt || 0) >= RAMP_EVERY_MS) {
+  let rampRead = !rampConfigured(env);
+  if (rampConfigured(env) && (catchUp || ctx.now - (st.rampCardsAt || 0) >= RAMP_EVERY_MS)) {
     try {
       for (const t of await rampCardCharges(env, { since, fetchImpl: ctx.fetchImpl })) charges.push({ charge: `ramp:${t.id}`, card: 'ramp', email: t.email, userId: t.userId, cents: t.cents, vendor: t.vendor, at: t.at, had: t.hasReceipt });
       st.rampCardsAt = ctx.now;
+      rampRead = true;
     } catch (err) { ctx.notes.ramp = err.message; }
   }
+  // Caught up once Ramp has been read that far back (tried again each sweep until it has)
+  if (catchUp && rampRead) st.cardsCaughtUp = ctx.now;
   const iso = new Date(ctx.now).toISOString();
   for (const c of charges) {
     const at = Date.parse(c.at);
@@ -761,7 +768,7 @@ async function nextLook(DB, c, now) {
   const age = now - Date.parse(c.charged_at);
   const done = age >= CARD_GIVE_UP_MS;
   await DB.prepare('UPDATE card_receipts SET looks = COALESCE(looks, 0) + 1, next_look = ?, state = ?, detail = ?, updated_at = ? WHERE charge = ? AND state = ?')
-    .bind(done ? null : new Date(now + nextGap(age)).toISOString(), done ? 'none' : 'looking', done ? 'no receipt in their email after a week' : null, new Date(now).toISOString(), c.charge, 'looking').run();
+    .bind(done ? null : new Date(now + nextGap(age)).toISOString(), done ? 'none' : 'looking', done ? 'no receipt found in SOARD’s email' : null, new Date(now).toISOString(), c.charge, 'looking').run();
 }
 
 /** The best email for a charge in one inbox → { msg, score, mailbox, box } | null */
@@ -769,7 +776,8 @@ async function bestIn(env, ctx, c, mailbox, { q, hinted = [], taken, strict = fa
   const box = await ctx.open(mailbox);
   const list = await gmail(box.token, `/messages?maxResults=15&q=${encodeURIComponent(q)}`, ctx.fetchImpl);
   let best = null;
-  for (const id of [...new Set([...hinted, ...(list.messages || []).map((m) => m.id)])].slice(0, 12)) {
+  // (a coworker's inbox gets fewer: the heartbeat run has a limit on calls out)
+  for (const id of [...new Set([...hinted, ...(list.messages || []).map((m) => m.id)])].slice(0, strict ? 6 : 12)) {
     if (taken.has(`${mailbox}:${id}`)) continue;
     const msg = await gmail(box.token, `/messages/${id}?format=full`, ctx.fetchImpl);
     const score = receiptScore(msg, c, hinted.includes(id), strict);
@@ -794,7 +802,9 @@ async function lookOnce(env, ctx, c, until) {
   let best = await bestIn(env, ctx, c, c.mailbox, { q, hinted, taken });
   if (!best && ctx.now - at >= HOUR_MS) {
     for (const mailbox of ctx.inboxes) {
-      if (mailbox === c.mailbox || Date.now() > until) continue;
+      if (mailbox === c.mailbox) continue;
+      // Out of time partway: this look doesn't count, so an old charge isn't called receiptless on half a search
+      if (Date.now() > until) return 'unfinished';
       const b = await bestIn(env, ctx, c, mailbox, { q, taken, strict: true });
       if (b && (!best || b.score > best.score)) best = b;
     }
@@ -832,10 +842,13 @@ async function lookOnce(env, ctx, c, until) {
 
 /** The charges due a look, until the sweep's share of the heartbeat is used */
 async function lookForCardReceipts(env, ctx, until) {
-  const due = (await env.DB.prepare("SELECT * FROM card_receipts WHERE state = 'looking' AND next_look <= ? ORDER BY next_look LIMIT 5").bind(new Date(ctx.now).toISOString()).all()).results || [];
+  // The newest first: a charge made today never waits behind the catch-up's old ones
+  const due = (await env.DB.prepare("SELECT * FROM card_receipts WHERE state = 'looking' AND next_look <= ? ORDER BY charged_at DESC LIMIT 5").bind(new Date(ctx.now).toISOString()).all()).results || [];
   for (const c of due) {
     if (Date.now() > until) break;
-    try { await lookOnce(env, ctx, c, until); } catch (err) {
+    try {
+      if (await lookOnce(env, ctx, c, until) === 'unfinished') break;
+    } catch (err) {
       // Looked at again on its next look
       ctx.notes.cards = `looking for ${chargeWords(c)}’s receipt: ${err.message}`;
       await nextLook(env.DB, c, ctx.now);

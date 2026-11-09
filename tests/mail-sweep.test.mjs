@@ -611,7 +611,7 @@ test('a charge finds a receipt the email side didn’t take, and one with none s
   assert.equal((await cardRow('mercury:ch3')).state, 'looking');
 
   await maybeSweepMail(env, { now: at + 7 * DAY + 60 * MIN, force: true });
-  assert.deepEqual(await cardRow('mercury:ch3'), { state: 'none', msg_id: null, detail: 'no receipt in their email after a week' });
+  assert.deepEqual(await cardRow('mercury:ch3'), { state: 'none', msg_id: null, detail: 'no receipt found in SOARD’s email' });
   assert.equal((await mailSweepStatus(env)).cards.none, 1);
 });
 
@@ -691,6 +691,30 @@ test('a Ramp card charge gets its receipt in Ramp, its receipt still goes to the
   assert.equal((await cardRow('ramp:tx2')).state, 'had');
   assert.deepEqual(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST').map((c) => c.path), [order, again, lumber].map((m) => `/messages/${m.id}/modify`), 'the card charges’ emails leave the inbox; the plan on no card stays');
   assert.equal((await byId(plan.id))[0].state, 'sent');
+});
+
+test('the first run catches up on the last 90 days of card charges once; after that it reads a week', async () => {
+  Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
+  const old = T0 - 40 * DAY;
+  rampTxns.push(
+    { id: 'tx-old', state: 'CLEARED', entity_amount: { value: 12900, currency: 'USD' }, user_transaction_time: new Date(old).toISOString(), merchant_name: 'Paint Depot', card_holder: { user_id: 'u-pat' }, receipts: [] },
+    { id: 'tx-none', state: 'CLEARED', entity_amount: { value: 5500, currency: 'USD' }, user_transaction_time: new Date(old).toISOString(), merchant_name: 'Fabric Barn', card_holder: { user_id: 'u-pat' }, receipts: [] },
+    { id: 'tx-older', state: 'CLEARED', entity_amount: { value: 999, currency: 'USD' }, user_transaction_time: new Date(T0 - 100 * DAY).toISOString(), merchant_name: 'Too Old Co', card_holder: { user_id: 'u-pat' }, receipts: [] },
+  );
+  const paint = mail({ box: PAT, at: old + 20 * MIN, from: 'Paint Depot <orders@paint.example>', to: PAT, subject: 'Your Paint Depot receipt', text: 'Total $129.00' });
+  calls.length = 0;
+  const st = await maybeSweepMail(env, { now: T0, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
+  assert.ok(st.cardsCaughtUp);
+  assert.deepEqual(of('ramp-receipt').map((c) => c.transaction), ['tx-old'], 'a receipt from before this began goes on its charge');
+  assert.equal(await env.DB.prepare('SELECT archived FROM mail_sweep WHERE id = ?').bind(paint.id).first('archived'), 'yes');
+  assert.deepEqual(await cardRow('ramp:tx-none'), { state: 'none', msg_id: null, detail: 'no receipt found in SOARD’s email' }, 'an old charge with none is listed now, after one full look');
+  assert.equal(await cardRow('ramp:tx-older'), null, 'past 90 days is left alone');
+  assert.equal((await mailSweepStatus(env)).cards.none, 1);
+
+  // Caught up: from now on Ramp is read a week back
+  rampTxns.push({ id: 'tx-late', state: 'CLEARED', entity_amount: { value: 777, currency: 'USD' }, user_transaction_time: new Date(T0 - 30 * DAY).toISOString(), merchant_name: 'Late Co', card_holder: { user_id: 'u-pat' }, receipts: [] });
+  await maybeSweepMail(env, { now: T0 + 20 * MIN, force: true });
+  assert.equal(await cardRow('ramp:tx-late'), null);
 });
 
 test('Ramp refusing the card scopes: its receipts go to the receipt inbox as before, and Automations says why', async () => {
