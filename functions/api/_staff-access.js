@@ -49,14 +49,15 @@ async function writeState(DB, key, value) {
 const _seen = new Map(); // email → { at, standing }
 export function clearStaffCache() { _seen.clear(); }
 
-/** A Google user as the site keeps it: { email, aliases, name, active, why: null | 'suspended' | 'archived' | 'gone', lastLogin } */
+/** A Google user as the site keeps it: { id, email, aliases, name, active, why: null | 'suspended' | 'archived' | 'gone', lastLogin } */
 function accountOf(u) {
   const email = normEmail(u.primaryEmail);
   const aliases = [...(u.aliases || []), ...(u.nonEditableAliases || [])].map(normEmail).filter((a) => a && a !== email);
   const why = u.suspended ? 'suspended' : u.archived ? 'archived' : null;
   // Google says 1970 for an account that has never signed in
   const lastLogin = u.lastLoginTime && Date.parse(u.lastLoginTime) > 0 ? u.lastLoginTime : null;
-  return { email, aliases, name: u.name?.fullName || '', active: !why, why, lastLogin };
+  // Google's id stays the same when an account's main address is changed
+  return { id: u.id ? String(u.id) : null, email, aliases, name: u.name?.fullName || '', active: !why, why, lastLogin };
 }
 
 /** The account an address belongs to: an active one first (an old address can live on as someone's alias) */
@@ -143,11 +144,15 @@ export async function syncStaffDirectory(env, { fetchImpl = fetch, now = Date.no
   if (!read) return fail(lastErr);
   if (!read.some((a) => a.active)) return fail(new Error('Google listed no active accounts, so nothing changed'));
 
-  // An address that was here and isn't any more was deleted in Google: kept as gone, so it's refused without asking
+  // An address that was here and isn't any more was deleted in Google: kept as gone, so it's refused without asking.
+  // A renamed account (a new main address, same Google id) is the same account: not gone, and nobody is signed out
   const listed = new Set(read.map((a) => a.email));
-  const accounts = [...read, ...(prev.accounts || []).filter((a) => !listed.has(a.email)).map((a) => ({ ...a, active: false, why: 'gone', goneAt: a.goneAt || at }))];
+  const ids = new Set(read.map((a) => a.id).filter(Boolean));
+  const renamed = (a) => a.id && ids.has(a.id);
+  const accounts = [...read, ...(prev.accounts || []).filter((a) => !listed.has(a.email) && !renamed(a)).map((a) => ({ ...a, active: false, why: 'gone', goneAt: a.goneAt || at }))];
   const before = new Map((prev.accounts || []).map((a) => [a.email, a]));
-  const stopped = accounts.filter((a) => !a.active && before.get(a.email)?.active);
+  const beforeById = new Map((prev.accounts || []).filter((a) => a.id).map((a) => [a.id, a]));
+  const stopped = accounts.filter((a) => !a.active && (before.get(a.email) || (a.id && beforeById.get(a.id)))?.active);
   const wasActive = (prev.accounts || []).filter((a) => a.active).length;
   if (stopped.length > 2 && stopped.length * 3 > wasActive) {
     return fail(new Error(`Google’s list suddenly left out ${stopped.length} of ${wasActive} active accounts, so nobody was signed out. It tries again in 5 minutes`));

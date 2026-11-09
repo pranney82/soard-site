@@ -141,6 +141,33 @@ test('suspended or deleted in Google: refused within the next read and signed ou
   assert.equal(revoked().length, 3);
 });
 
+test('a renamed account (new main address, same Google id) is the same account: nobody is signed out or listed as deleted', async () => {
+  // Main address on the store's domain, the soardcharity.com address an alias on it
+  google.push(user('lee@store.example', { id: '901', aliases: ['lee@soardcharity.com'] }));
+  await syncStaffDirectory(env);
+  // Google Admin → Rename user: the soardcharity.com address becomes the main one, and Google keeps the old one as an alias
+  google = google.map((u) => (u.id === '901' ? { ...u, primaryEmail: 'lee@soardcharity.com', aliases: ['lee@store.example'] } : u));
+  const s = await syncStaffDirectory(env, { now: later(5) });
+  assert.equal(revoked().length, 0, 'her open sign-in stays open');
+  assert.deepEqual(s.out, [], 'and the Automations page doesn’t list her as deleted');
+  assert.deepEqual(s.accounts.filter((a) => a.id === '901').map((a) => [a.email, a.active]), [['lee@soardcharity.com', true]], 'one account, under its new address');
+  clearStaffCache();
+  assert.equal((await call('lee@soardcharity.com')).status, 200);
+
+  // Renamed and suspended between two reads: still signed out, under every soardcharity.com address it had
+  google = google.map((u) => (u.id === '901' ? { ...u, primaryEmail: 'lee.b@soardcharity.com', aliases: ['lee@soardcharity.com'], suspended: true } : u));
+  const t = await syncStaffDirectory(env, { now: later(10) });
+  assert.deepEqual(revoked(), ['lee.b@soardcharity.com', 'lee@soardcharity.com']);
+  assert.deepEqual(t.out.map((o) => [o.email, o.why]), [['lee.b@soardcharity.com', 'suspended']]);
+
+  // A deleted account whose address was handed to someone else as an alias is still deleted, and still signed out
+  google = google.filter((u) => u.primaryEmail !== 'pat@soardcharity.com').map((u) => (u.primaryEmail === 'jane@soardcharity.com' ? { ...u, aliases: ['pat@soardcharity.com'] } : u));
+  const g = await syncStaffDirectory(env, { now: later(15) });
+  assert.ok(revoked().includes('pat@soardcharity.com'));
+  assert.equal(g.out[0].email, 'pat@soardcharity.com');
+  assert.equal(g.out[0].why, 'gone');
+});
+
 test('a new hire Google has but the last read didn’t is asked about then and there; a group’s address isn’t an account', async () => {
   await syncStaffDirectory(env);
   google.push(user('newbie@soardcharity.com'));
