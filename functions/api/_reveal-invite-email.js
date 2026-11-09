@@ -71,7 +71,7 @@ export function roomCounts(kid = {}, fallback = '') {
   if (!types.length) return [String(fallback || '').trim()].filter(Boolean).map((name) => ({ name, count: 1 }));
   const total = Number(kid.roomCount) || 0;
   return types.map((t) => {
-    const own = /bath/i.test(t) ? Number(kid.bathroomCount) : /bed/i.test(t) ? Number(kid.bedroomCount) : 0;
+    const own = /bath/i.test(t) ? Number(kid.bathroomCount) : /bed/i.test(t) ? Number(kid.bedroomCount) : /therapy/i.test(t) ? Number(kid.therapyRoomCount) : 0;
     const count = own > 1 ? own : types.length === 1 && total > 1 ? total : 1;
     return { name: count > 1 ? pluralRoom(t) : t, count };
   });
@@ -100,8 +100,8 @@ export function headlineFit(runs, max, { phones = [[40, 'dm'], [30, 'dms']] } = 
   return { size, phone: (phones.find(([px]) => size > px) || [0, ''])[1] };
 }
 
-/** Escaped text whose last two words stay together, so a paragraph never ends on one word alone ("…platform / fees.") */
-export const noWidow = (escaped) => String(escaped).replace(/\s+$/, '').replace(/ ([^\s<>]{1,14})$/, '&nbsp;$1');
+/** Escaped text whose last two words stay together, so a paragraph never ends on one word alone ("…platform / fees."), and "&" stays with the name after it */
+export const noWidow = (escaped) => String(escaped).replace(/\s+$/, '').replace(/ &amp; /g, ' &amp;&nbsp;').replace(/ ([^\s<>]{1,14})$/, '&nbsp;$1');
 
 /** A name for a headline: a hyphenated name ("Anastasia-Rose") never splits at its hyphen */
 export const nameHtml = (name) => escapeHtml(name).replace(/(\S*-\S*)/g, '<span style="white-space:nowrap;">$1</span>');
@@ -169,7 +169,10 @@ export function shortStory(kid = {}, max = 320) {
   if (kid.heroSummary) return tidy(kid.heroSummary).trim();
   const first = tidy(stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '').replace(/\s+([.,!?])/g, '$1').trim();
   if (first.length <= max) return first;
-  const sentences = first.match(/[^.!?]+[.!?]+(\s|$)/g) || [first];
+  // "Jr.", "Dr.", "St." and the like don't end a sentence; a closing quote or bracket goes with the one it ends
+  const ABBR = /\b(Jr|Sr|Dr|Mr|Mrs|Ms|Mt|St|Ave|Rd|vs|etc|e\.g|i\.e)\./g;
+  const held = first.replace(ABBR, '$1\u0000');
+  const sentences = (held.match(/[^.!?]+[.!?]+["”’)\]]*(\s+|$)/g) || [held]).map((x) => x.replace(/\u0000/g, '.'));
   let out = '';
   for (const sentence of sentences) {
     if (out && out.length + sentence.length > max) break;
@@ -295,7 +298,7 @@ export function label(text, bar = Y, color = D) {
   // The bar is its own small block at the first line's height, so a label that wraps ("TYRECE & MADDIE’S / STORY") keeps a bar, not a slab
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
     <td valign="top" width="28" style="width:28px;padding-top:4px;"><div style="width:28px;height:10px;background:${bar};border-radius:2px;font-size:0;line-height:0;">&nbsp;</div></td>
-    <td valign="top" style="padding-left:12px;font-family:${SANS};font-size:12px;font-weight:700;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${color};">${(String(text).trim().split(/\s+/).length > 2 ? noWidow(escapeHtml(text)) : escapeHtml(text)).replace(/ &amp; /g, ' &amp;&nbsp;')}</td>
+    <td valign="top" style="padding-left:12px;font-family:${SANS};font-size:12px;font-weight:700;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${color};">${(String(text).trim().split(/\s+/).length > 2 || String(text).length > 20 ? noWidow(escapeHtml(text)) : escapeHtml(text)).replace(/ &amp; /g, ' &amp;&nbsp;')}</td>
   </tr></table>`;
 }
 
@@ -395,7 +398,7 @@ export function button(text, url, { fill = Y, ink = D, center = false, small = f
 
 /** A plain link with its arrow, for the second thing a reader might do */
 export function textLink(text, url, color = D) {
-  return `<a href="${href(url)}" target="_blank" style="font-family:${SANS};font-size:15px;font-weight:700;color:${color};text-decoration:underline;text-underline-offset:4px;">${escapeHtml(text).replace(/ (\S+ →)$/, '&nbsp;$1').replace(/ →$/, '&nbsp;→')}</a>`;
+  return `<a href="${href(url)}" target="_blank" style="font-family:${SANS};font-size:15px;font-weight:700;color:${color};text-decoration:underline;text-underline-offset:4px;">${escapeHtml(text).replace(/ &amp; /g, ' &amp;&nbsp;').replace(/ (\S+ →)$/, '&nbsp;$1').replace(/ →$/, '&nbsp;→')}</a>`;
 }
 
 /** The dark cover all three emails open with: the kicker, the name large, the lead photo, then whatever comes first */
@@ -480,7 +483,7 @@ function ticket(rows, notes) {
         ${inner}
       </td></tr>`;
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="text-align:left;table-layout:fixed;">
-      ${rows.map((r) => block(r.label, `${r.lines.map((l) => `<div style="${main}">${escapeHtml(l)}</div>`).join('')}
+      ${rows.map((r) => block(r.label, `${r.lines.map((l) => `<div style="${main}">${r.keep ? listJoin(r.keep.map((k) => escapeHtml(k).replace(/ /g, '&nbsp;'))) : escapeHtml(l)}</div>`).join('')}
         ${r.sub ? `<div style="margin-top:2px;${quiet}">${escapeHtml(r.sub)}</div>` : ''}`)).join('')}
       ${notes.length ? block('Before you come', notes.map((n, i) => `<div style="margin-top:${i ? 6 : 0}px;${i ? quiet : `font-family:${SANS};font-size:15px;font-weight:600;line-height:1.5;color:#FFFFFF;${wrap}`}">${noteHtml(n)}</div>`).join('')) : ''}
     </table>`;
@@ -603,7 +606,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     // No address from JobTread yet: say so, rather than leave guests with only "Josué’s Home"
     { label: 'Where', lines: [`${name}’s Home`], sub: tidy(cleanAddress(address)).replace(/\b([A-Z]{2}) (\d{5})/, '$1\u00A0$2') || 'Address to be confirmed' },
     // One line ("Wheelchair-Accessible Bathroom and Dream Bedroom"), so a long name that wraps never reads as another room
-    roomLines.length && { label: makeoverWord(roomLines) ? 'Project' : several ? 'Rooms' : 'Room', lines: [roomText] },
+    roomLines.length && { label: makeoverWord(roomLines) ? 'Project' : several ? 'Rooms' : 'Room', lines: [roomText], keep: roomLines },
   ].filter(Boolean);
   const noteLines = String(notes || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
   // The team's own arrival note stands in for ours, so it isn't said twice

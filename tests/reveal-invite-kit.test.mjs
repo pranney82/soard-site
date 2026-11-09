@@ -489,7 +489,7 @@ test('a group with no usable id isn’t an audience: no draft to everyone', asyn
 
 test('two kids read right, and one does too', () => {
   const two = revealInviteEmail({ kid: { ...KID, name: 'Remi & Nico' }, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
-  assert.match(two.html, /before Remi &amp; Nico(?: |&nbsp;)arrive\./);
+  assert.match(two.html, /before Remi &amp;(?: |&nbsp;)Nico(?: |&nbsp;)arrive\./);
   const one = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
   assert.match(one.html, /before Rowan(?: |&nbsp;)arrives\./);
 });

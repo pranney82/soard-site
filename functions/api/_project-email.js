@@ -46,6 +46,9 @@ const PAGE_PHOTOS = 30;
 /** The give button names the kid when that fits one line on the smallest phone ("Give to Max’s Room →"), else it's "Give Now →": the headline above it already names them */
 const GIVE_MAX = 20;
 
+/** A name at the end of a sentence: "Marcus Jr." already has its period */
+const ending = (name) => (/\.$/.test(name) ? name : `${name}.`);
+
 const WIDE_TRANSFORM = 'w=1200,h=720,fit=cover,gravity=auto,q=82';
 const PAIR_TRANSFORM = 'w=600,h=640,fit=cover,gravity=auto,q=80';
 
@@ -55,13 +58,25 @@ const storyOf = (kid) => shortStory(kid, STORY_MAX);
 /** A quote as the page has it, without the quote marks it was typed with */
 const bareQuote = (q) => tidy(String(q || '').trim().replace(/^["“”'‘’]+|["“”'‘’]+$/g, ''));
 /**
- * A quote as HTML. Typed with who said it, in either kind of marks ('We love it,' said Mom.), it reads
- * “We love it,” said Mom. Otherwise it gets the outer marks, and a quote inside it takes single ones.
+ * A quote as HTML, curly and matched whatever shape it was typed in:
+ *   "It’s perfect." — Mom        → “It’s perfect.” – Mom
+ *   "…door," Vicki said.         → “…door,” Vicki said.
+ *   She said, "This is home now." → She said, “This is home now.”
+ *   'We love it,' said Mom.      → “We love it,” said Mom.
+ *   We cried happy tears.        → “We cried happy tears.”
+ * A quote inside a whole quote takes single marks.
  */
 function quoteHtml(q) {
   const raw = String(q || '').trim();
-  const m = raw.match(/^["“'‘](.+?)([,.!?]?)["”'’]\s*,?\s+((?:said|says|shared|shares|added|adds|wrote|writes)\b.*)$/i);
-  if (m) return `“${escapeHtml(tidy(m[1] + m[2]))}” ${noWidow(escapeHtml(tidy(m[3])))}`;
+  const part = (t) => escapeHtml(tidy(t));
+  // Who said it sits before the quote ("She said, ") or after it ("— Mom", "Vicki said."), and is short;
+  // marks in the middle of longer words are a quote inside the quote
+  const dbl = raw.match(/^([\s\S]*?)["“]([^"“”]+)["”]([\s\S]*)$/);
+  const lead = dbl ? dbl[1].trim() : '', tail = dbl ? dbl[3].trim() : '';
+  const said = dbl && ((!lead && tail && tail.length <= 40) || (!tail.replace(/[.!?]/g, '') && lead && lead.length <= 40 && /[,:]$/.test(lead)));
+  if (said) return `${part(dbl[1])}“${part(dbl[2])}”${noWidow(part(dbl[3]))}`;
+  const sgl = raw.match(/^['‘](.+?)([,.!?])['’]\s+([\s\S]+)$/);
+  if (sgl) return `“${part(sgl[1] + sgl[2])}” ${noWidow(part(sgl[3]))}`;
   const inner = bareQuote(raw).replace(/“/g, '‘').replace(/”/g, '’');
   return `“${noWidow(escapeHtml(inner))}”`;
 }
@@ -220,7 +235,7 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
     kicker: 'How you can help',
     headline: askHeadline,
     fit: askFit,
-    words: own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space. Zero platform fees.` : `Every dollar goes directly to materials, labor, and design for kids like ${name}. Zero platform fees.`,
+    words: own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space. Zero platform fees.` : `Every dollar goes directly to materials, labor, and design for kids like ${ending(name)} Zero platform fees.`,
     action,
     url: giveUrl,
   })}
@@ -234,7 +249,7 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
     '',
     rooms.length ? `What we’re building: ${listJoin(rooms)}` : null,
     '',
-    `${askWords} ${own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space.` : `Every dollar goes directly to materials, labor, and design for kids like ${name}.`} Zero platform fees.`,
+    `${askWords} ${own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space.` : `Every dollar goes directly to materials, labor, and design for kids like ${ending(name)}`} Zero platform fees.`,
     `Give: ${giveUrl}`,
     `${name}’s story: ${kidUrl}`,
     '',
@@ -260,6 +275,8 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const space = makeoverWord(rooms);
   const mixed = !!space?.mixed;
   const what = space ? space.title : `Dream ${several ? 'Rooms' : 'Room'}`;
+  // In the headline a ramp or lift goes by its last word ("Ava’s Ramp", "Ramp and Lift"), so it stays one phrase on a phone
+  const shortWhat = space && !mixed ? listJoin(rooms.map((r) => r.split(/\s+/).pop())) : what;
   const are = several && !mixed;
   const finished = `${name}’s ${what} ${are ? 'Are' : 'Is'} Complete`;
   // The page's summary was often written while the room was still to come
@@ -289,12 +306,11 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const photos = bodyPhotos(kid, lead, brokenLogos, 3, true).slice(0, pair ? 1 : 3);
   // The kid page shows its first 30 photos (src/pages/kids/[slug].astro), so the email never promises more
   const allPhotos = Math.min(kidPhotos(kid).length, PAGE_PHOTOS);
-  const whatWords = what.split(' ');
   const isComplete = `${are ? 'Are' : 'Is'} Complete.`;
-  const gluedWhat = fitName({ name, after: '’s', runs: [...whatWords.slice(0, -2), whatWords.slice(-2).join(' '), isComplete], max: 40, min: 28 });
-  // "Wheelchair Ramp" may part rather than set the headline under 28px
-  const fit = gluedWhat.size >= 28 ? gluedWhat : fitName({ name, after: '’s', runs: [...whatWords, isComplete], max: 40, min: 28 });
-  const whatHtml = fit === gluedWhat ? noWidow(escapeHtml(what)) : escapeHtml(what);
+  // Each piece stays together ("Ramp and Lift" breaks only at "and")
+  const whatPieces = shortWhat.split(/ and /);
+  const fit = fitName({ name, after: '’s', runs: [...whatPieces, isComplete], max: 40, min: 28 });
+  const whatHtml = whatPieces.map((w) => escapeHtml(w).replace(/ /g, '&nbsp;')).join(' and ');
   // The page has a Gallery section once it has two photos
   const coverUrl = video ? `${kidUrl}#chapter-reveal` : allPhotos > 1 ? `${kidUrl}#chapter-gallery` : kidUrl;
   const watch = video ? null : allPhotos > 1 ? 'See the Photos' : 'Read the Story';
