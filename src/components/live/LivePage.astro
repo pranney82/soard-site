@@ -746,12 +746,18 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     // The live state can't be read (its request failed, or hangs): rather than a page with no sign-up at all, show it as
     // between reveals, with the every-reveal sign-up when Reveals → Settings has it open. The real state takes over the
     // moment it arrives.
-    const fallback = window.setTimeout(async () => {
-      if (rendered || !alive) return;
+    // At once when the read is known to have failed; after 5s when it just hasn't answered
+    let fellBack = false;
+    const fallBack = async () => {
+      if (rendered || !alive || fellBack) return;
+      fellBack = true;
       const open = await loadSignup();
       if (rendered || !alive) return;
       render(null, { reminders: open ? { enabled: open.email, email: open.email, hours: open.hours, sms: false, push: false, pushKey: null } : null });
-    }, 5000);
+    };
+    const fallback = window.setTimeout(fallBack, 5000);
+    if (client.unreachable) void fallBack();
+    const offUnreachable = client.on('unreachable', () => { void fallBack(); });
     // A reveal cancelled or moved shows up here without a reload
     const upcomingTimer = setInterval(refreshUpcoming, 60_000);
 
@@ -795,6 +801,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       kid: () => remindKid,
       source: () => (pageKid ? 'live-kid' : 'live'),
     }) : null;
+    // A sign-up elsewhere on the page that covers this form shows here at once, heading and all (not on the next redraw)
+    emailForm?.addEventListener('remind-done', () => { if (rendered && alive) render(last, lastMeta); });
 
     // Browser push
     const pushBtn = bq<HTMLButtonElement>('push-btn');
@@ -844,6 +852,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       unsubscribe();
       remindForm?.destroy();
       clearTimeout(fallback);
+      offUnreachable();
       removeEventListener('pagehide', saveSpot);
       for (const type of ['wheel', 'touchstart', 'keydown']) removeEventListener(type, gaveUp);
       bandSeen?.disconnect();

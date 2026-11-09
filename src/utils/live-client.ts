@@ -40,6 +40,8 @@ export interface LiveEvents {
   msg: { message: LiveMessage };
   'msg-hide': { id: string };
   connection: { connected: boolean };
+  /** The live state couldn't be read (an error, or no connection) and nothing is known yet */
+  unreachable: Record<string, never>;
 }
 type EventListener<K extends keyof LiveEvents> = (data: LiveEvents[K]) => void;
 
@@ -65,16 +67,18 @@ function createClient() {
 
   const emit = () => { for (const l of listeners) { try { l(state, { reminders, timezone }); } catch { /* listener bug */ } } };
 
+  let unreachable = false;
+  const failed = () => { if (state) return; unreachable = true; fire('unreachable', {}); };
   async function fetchState() {
     try {
       const res = await fetch('/api/broadcast', { cache: 'no-store' });
-      if (!res.ok) return;
+      if (!res.ok) { failed(); return; }
       const data = await res.json();
       if (data?.state) {
         state = data.state; reminders = data.reminders || null; timezone = data.timezone || null;
         emit();
       }
-    } catch { /* offline */ }
+    } catch { failed(); }
   }
 
   function pollDelay() {
@@ -156,6 +160,8 @@ function createClient() {
       return () => (eventListeners[type] as Set<EventListener<K>>).delete(l);
     },
     get connected() { return wsOk; },
+    /** Its first read failed and nothing is known yet: a page can show what it can without waiting */
+    get unreachable() { return unreachable && !state; },
     get state() { return state; },
     get reminders() { return reminders; },
     get timezone() { return timezone; },

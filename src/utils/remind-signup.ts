@@ -233,8 +233,10 @@ export function wireRemindForm(form: HTMLFormElement, { checkBox, kid, source, t
     note.append(use, '?');
   }
   let doneFor = ''; // the reveal the finished sign-up was for ('' = every reveal, which covers any)
-  function markDone(email: string, forKid: string) {
+  let doneHere = false; // made in this form (not shown here because another form's covered it)
+  function markDone(email: string, forKid: string, here: boolean) {
     doneFor = forKid;
+    doneHere = here;
     retryWhenChecked = '';
     typed = false;
     form.classList.add('is-done');
@@ -242,6 +244,7 @@ export function wireRemindForm(form: HTMLFormElement, { checkBox, kid, source, t
     // The check has nothing more to ask of this sign-up
     showCheck(false);
     say(`Check your email to confirm. We sent a link to ${email}. Nothing comes until you tap it.`);
+    form.dispatchEvent(new Event('remind-done'));
   }
   // A sign-up in another form here: one for every reveal covers this form's too, and one for this form's reveal is
   // this form's; either way it says so, not "Email me" again (unless someone is busy with it)
@@ -250,7 +253,7 @@ export function wireRemindForm(form: HTMLFormElement, { checkBox, kid, source, t
     if (!d || d.from === form || done() || busy || form.contains(document.activeElement)) return;
     if (d.kid && d.kid !== kid()) return;
     input.value = d.email;
-    markDone(d.email, d.kid);
+    markDone(d.email, d.kid, false);
   }
   document.addEventListener('remind-signed', onSigned);
   function reset() {
@@ -299,7 +302,7 @@ export function wireRemindForm(form: HTMLFormElement, { checkBox, kid, source, t
       return;
     }
     if (ok) {
-      markDone(email, kid());
+      markDone(email, kid(), true);
       showAnswer();
       // Any other reminder form on the page this covers shows it too, rather than asking again
       document.dispatchEvent(new CustomEvent('remind-signed', { detail: { kid: kid(), email, from: form } }));
@@ -318,6 +321,8 @@ export function wireRemindForm(form: HTMLFormElement, { checkBox, kid, source, t
     reset,
     /** Signed up for every reveal (here or in another form on the page): it covers whoever is next */
     coversAll: () => done() && doneFor === '',
+    /** Signed up in this very form (not only shown here because another form's sign-up covered it) */
+    signedHere: () => done() && doneHere,
     /** Someone is filling it in: focus is in it, or they've typed an address and not sent it yet */
     inUse: () => form.contains(document.activeElement) || (typed && !!input.value.trim() && !done()),
     destroy() { clearTimeout(quiet); clearTimeout(waitTimer); window.removeEventListener('message', onCheckMessage); document.removeEventListener('remind-signed', onSigned); },

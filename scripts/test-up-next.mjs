@@ -688,7 +688,10 @@ for (const width of [1440, 820, 390]) {
       ok(mid.here && mid.shown && mid.focus === 'up-next-email' && mid.value === 'fan@exa', '/live/: the band card someone is typing in stays put when the broadcast moves on', JSON.stringify(mid));
       await page.$eval('#up-next-email', (i) => { i.value = ''; i.dispatchEvent(new Event('input', { bubbles: true })); i.blur(); });
       await wait(200);
-      ok(await page.$eval('#up-next [data-upn-mail]', (m) => getComputedStyle(m).display === 'none'), '/live/: left empty, it steps aside for the page’s own every-reveal form');
+      ok(await page.$eval('#up-next [data-upn-mail]', (m) => getComputedStyle(m).display !== 'none'), '/live/: left empty, it stays while it’s on screen');
+      await page.evaluate(() => scrollTo(0, 0));
+      await wait(600);
+      ok(await page.$eval('#up-next [data-upn-mail]', (m) => getComputedStyle(m).display === 'none'), '/live/: once off screen, it steps aside for the page’s own every-reveal form');
       await page.close();
     }
     // (b) Typing in the page's every-reveal form while replay → scheduled for Colin
@@ -1325,6 +1328,62 @@ for (const width of [1440, 820, 390]) {
     const after = await page.evaluate(() => ({ band: getComputedStyle(document.querySelector('.live-next')).display, y: Math.round(document.querySelector('#past-reveals').getBoundingClientRect().top) }));
     ok(after.band === 'none' && Math.abs(after.y - y0) <= 2, '/live/: once out of view the band goes (one list, the hero’s), and the screen holds still', JSON.stringify({ y0, ...after }));
     await page.close();
+  }
+
+  // ── Round seven (Nov 9): the four in the sign-up ──
+  {
+    const scheduled = { ...IDLE, phase: 'scheduled', upcoming: true, id: 'live-1', kidSlug: 'colin', kidName: 'Colin', title: "Colin's room reveal", scheduledAt: confirmedAt.toISOString(), url: `${SITE}/live/colin/`, liveUrl: `${SITE}/live/colin/` };
+    const nowLive = { ...scheduled, phase: 'live', live: true, upcoming: false, liveAt: new Date().toISOString() };
+    const replay = { ...IDLE, phase: 'replay', replay: true, id: 'live-0', kidSlug: 'abby', kidName: 'Abby', title: "Abby's room reveal", endedAt: day(-1).toISOString(), replayUntil: day(2).toISOString(), player: { kind: 'replay', uid: 'vid0', customerCode: 'x' } };
+    const refresh = (page) => page.evaluate(() => window.__soardLiveClient.refresh()).then(() => wait(600));
+    // (1) On screen, the band's card doesn't vanish when the broadcast changes: nothing jumps under a finger
+    for (const [width, height] of [[390, 844], [1366, 657]]) {
+      const live = { state: scheduled };
+      const { page } = await open('/live/', { live, width, height });
+      await page.evaluate(() => document.querySelector('#up-next [data-upn-mail]').scrollIntoView({ block: 'center' }));
+      await wait(400);
+      const y0 = await page.$eval('#up-next [data-upn-cal] .upn-cal__btn', (b) => Math.round(b.getBoundingClientRect().top));
+      live.state = nowLive;
+      await refresh(page);
+      const r = await page.evaluate(() => ({ card: getComputedStyle(document.querySelector('#up-next [data-upn-mail]')).display, cal: Math.round(document.querySelector('#up-next [data-upn-cal] .upn-cal__btn').getBoundingClientRect().top) }));
+      ok(r.card !== 'none' && Math.abs(r.cal - y0) <= 1, `/live/ ${width}px: the broadcast going live doesn't pull the card from under someone looking at it`, JSON.stringify({ y0, ...r }));
+      await page.close();
+    }
+    // (2) Signing up in the page's own every-reveal form doesn't bring back the band's card as a second "Sent"
+    {
+      const live = { state: replay };
+      const { page } = await open('/live/', { live });
+      await page.type('#remind-email', 'fan@example.com');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('[data-live="form-email"].is-done', { timeout: 5000 }).catch(() => {});
+      await wait(400);
+      const card = await page.$eval('#up-next [data-upn-mail]', (m) => getComputedStyle(m).display);
+      ok(card === 'none', '/live/ replay: a sign-up in the page form doesn’t bring the band’s card back with a second "Sent"', card);
+      await page.close();
+    }
+    // (3) A sign-up in the band shows in the page form at once, heading and all (not on the next redraw)
+    {
+      const live = { state: scheduled };
+      const { page } = await open('/live/', { live });
+      await page.type('#up-next-email', 'fan@example.com');
+      await page.click('#up-next [data-upn-mail] button[type="submit"]');
+      await page.waitForSelector('#up-next [data-upn-mail-form].is-done', { timeout: 5000 }).catch(() => {});
+      await wait(300);
+      const at = await page.evaluate(() => ({ heading: document.querySelector('[data-live="remind-heading"]').textContent, done: document.querySelector('[data-live="form-email"]').classList.contains('is-done') }));
+      await wait(16000); // past the 15s countdown redraw
+      const later = await page.$eval('[data-live="remind-heading"]', (h) => h.textContent);
+      ok(at.done && at.heading === later, '/live/: a band sign-up shows in the page form at once, and its heading doesn’t change on its own later', JSON.stringify({ at, later }));
+      await page.close();
+    }
+    // (4) The live state failing fast: the every-reveal form at once, not after 5 seconds
+    {
+      const { page } = await open('/live/', { broadcast: 'fail' });
+      const t0 = Date.now();
+      await page.waitForFunction(() => { const f = document.querySelector('[data-live="form-email"]'); return f && !f.closest('[hidden]') && f.getBoundingClientRect().height > 0; }, { timeout: 8000 }).catch(() => {});
+      const took = Date.now() - t0;
+      ok(took < 2500, `/live/ with the live state failing at once: the sign-up shows in ${(took / 1000).toFixed(1)}s, not 5`);
+      await page.close();
+    }
   }
 
   // /live/: while the page's own form names a reveal, the band offers every reveal; when the page's form is already every reveal, the band leaves its card out

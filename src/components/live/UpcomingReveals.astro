@@ -190,7 +190,7 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
   /* On /live/ the page's own form may already be the every-reveal one (data-remind-here): the card steps out,
      except while someone is using it (data-mail-busy), so it never vanishes mid-word, or once they've signed up in it
      (data-mail-done), so their confirmation stays */
-  .upn-mail[hidden], .upn[data-remind-here]:not([data-mail-busy]):not([data-mail-done]) .upn-mail { display: none; }
+  .upn-mail[hidden], .upn[data-remind-here]:not([data-mail-busy]):not([data-mail-done]):not([data-mail-seen]) .upn-mail { display: none; }
   /* The address and its button share a line; with no room, the button takes its own, full width */
   .upn-mail__row { display: flex; flex-wrap: wrap; gap: 10px; }
   .upn-mail__input {
@@ -447,7 +447,8 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
       const was = section.hasAttribute('data-mail-busy');
       const now = signup.inUse();
       section.toggleAttribute('data-mail-busy', now);
-      section.toggleAttribute('data-mail-done', form.classList.contains('is-done'));
+      // Its own "Sent" keeps it; one only shown here because the page form's sign-up covered it doesn't bring it back
+      section.toggleAttribute('data-mail-done', signup.signedHere());
       // Done with it: the band catches up with whatever it held back meanwhile
       if (was && !now) {
         if (held !== undefined) { apply(held); held = undefined; }
@@ -455,6 +456,13 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
       }
     };
     for (const type of ['focusin', 'input', 'remind-state']) form.addEventListener(type, mark);
+    // On screen, the card never vanishes from under someone (a tap meant for it would land on what moved up): it goes
+    // once it's off screen, with what they're looking at held in place
+    if ('IntersectionObserver' in window) {
+      const seen = new IntersectionObserver(([e]) => { holdPlace(() => section.toggleAttribute('data-mail-seen', e.isIntersecting)); });
+      seen.observe(box);
+      document.addEventListener('astro:before-swap', () => seen.disconnect(), { once: true });
+    }
     form.addEventListener('focusout', () => setTimeout(mark));
     // undefined: the settings couldn't be read, so the card stays as it is
     return (s: Signup | null | undefined) => {
