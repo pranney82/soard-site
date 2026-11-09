@@ -32,7 +32,7 @@ import { reviewOf } from './process-shared.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'November 8, 2026';
+const WRITTEN_ON = 'November 9, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
@@ -1335,6 +1335,24 @@ const MAP = { t: 'SOARD', children: [
             if (caught && !(ms(z.lastWebhookAt) > ms(z.missedAt))) return ATTN(`Zeffy’s webhook missed ${plural(z.missed, 'gift')} on ${stamp(z.missedAt)}, and the catch-up check posted ${z.missed === 1 ? 'it' : 'them'}. Check the webhook in Zeffy → Settings → Integrations.`, z.lastPostAt);
             const note = caught ? ` The catch-up check caught ${plural(z.missed, 'gift')} the webhook missed on ${stamp(z.missedAt)}; the webhook has delivered since.` : '';
             return ON(z.lastPostAt ? `Connected. Last gift posted ${stamp(z.lastPostAt)}.${note}` : `Connected. Waiting for the first gift.${note}`, z.lastPostAt);
+          } },
+        { t: 'Donors join the newsletter', s: 'live', k: 'schedule',
+          when: 'Every 15 minutes on the live hub’s heartbeat: the gifts Zeffy has from the last 60 days, each one once.',
+          does: 'Adds each giver to SOARD’s newsletter list in Kit, tagged “Donors”, so they get the newsletter and staff can write to donors on their own. Someone Kit has as unsubscribed, bounced or marked as spam is left exactly as they are. Someone already on the list just gets the tag. Adding a donor sends nothing by itself.',
+          touches: ['Zeffy', 'Kit', 'D1', 'Slack', 'Resend'], where: 'functions/api/_kit-donors.js (broadcast-hooks.js)',
+          info: 'Started November 9, 2026, catching up on gifts from September 1 (the week before Zeffy’s contacts were uploaded to Kit on September 8). Left out: the gifts Slack leaves out (imported, refunded, $0, website tests), gifts with no email, and SOARD’s own addresses. The site keeps each payment’s outcome, never an email or a name. If Kit or Zeffy refuses for an hour, staff hear in Slack and by email.',
+          live: (f) => {
+            const d = f.kitDonors;
+            if (!d || !env(f)) return null;
+            const e = f.env;
+            if (!e.kit) return ATTN('KIT_API_KEY is missing in Cloudflare, so donors wait until it’s set.');
+            if (!e.zeffyApi) return ATTN('ZEFFY_API_KEY is missing in Cloudflare, so the site can’t read gifts from Zeffy.');
+            if (!d.lastRunAt) return ATTN('Hasn’t run yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+            if (stale(d.lastRunAt, HOUR)) return ATTN(`Hasn’t run since ${stamp(d.lastRunAt)}. It rides on the live hub’s heartbeat, so check the Heartbeat entry.`, d.lastAddedAt);
+            if (d.error) return ATTN(`The last run stopped: ${d.error}. Each gift is picked up once it works again.`, d.lastAddedAt);
+            if (d.gaveUp) return ATTN(`Kit kept refusing the giver${d.gaveUp === 1 ? '' : 's'} of ${plural(d.gaveUp, 'gift')}, so the site stopped trying. Look ${d.gaveUp === 1 ? 'it' : 'them'} up in Zeffy and add ${d.gaveUp === 1 ? 'the giver' : 'them'} in Kit by hand.`, d.lastAddedAt);
+            const so = `So far ${plural(d.added, 'new donor')} added, and ${plural(d.tagged, 'donor')} already on the list tagged${d.leftOut ? `. ${plural(d.leftOut, 'donor')} who unsubscribed ${d.leftOut === 1 ? 'was' : 'were'} left alone` : ''}.`;
+            return ON(d.caughtUp ? `Up to date. ${so}` : `Catching up on gifts since September 1. ${so}`, d.lastAddedAt);
           } },
         { t: 'Checks into Zeffy', s: 'live', k: 'schedule',
           when: 'Every 5 minutes on the live hub’s heartbeat, one check a run, once Mercury says a deposited check posted (up to about 6 business days after it’s deposited).',

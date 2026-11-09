@@ -26,6 +26,7 @@ import { maybeSyncKidPartners } from './_kid-partners.js';
 import { maybeSyncVendorAccess } from './_vendor-access.js';
 import { maybeSyncSponsors } from './_sponsors.js';
 import { maybeSweepZeffy } from './_zeffy.js';
+import { maybeSyncDonors } from './_kit-donors.js';
 import { maybeRunWaitlist } from './_application-waitlist.js';
 import { maybeRunPress } from './_press.js';
 import { maybeSlackPreview } from './_slack-preview.js';
@@ -99,6 +100,8 @@ export async function onRequestPost(context) {
     // and vendor contacts kept in step both ways (see _vendor-access.js)
     context.waitUntil(maybeSyncVendorAccess(env));
     context.waitUntil(maybeSweepZeffy(env));
+    // Every 15 minutes: Zeffy's donors onto the newsletter in Kit, tagged Donors; anyone who unsubscribed is left alone (see _kit-donors.js)
+    context.waitUntil(maybeSyncDonors(env, { alert: async (e, card) => alertAdmins(e, await readConfig(e.DB), card) }));
     context.waitUntil(maybeRunWaitlist(env));
     context.waitUntil(maybeRunPress(env));
     // Event pages turn into their recap (photos, then sponsors) the morning after (see _event-recap.js)

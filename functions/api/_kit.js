@@ -283,6 +283,34 @@ export async function kitUpsertSubscriber(env, email, { firstName = null } = {})
   }
 }
 
+/**
+ * Look addresses up in Kit, every state, so someone who unsubscribed shows as
+ * "cancelled" (Kit's default answers only active people). One call per 50
+ * addresses. An address Kit doesn't have isn't in byEmail. Never throws.
+ * @returns {Promise<{ok: boolean, byEmail: Map<string, {id: number, state: string}>, error?: string}>}
+ */
+export async function kitFindSubscribers(env, emails) {
+  const list = [...new Set((emails || []).map((e) => String(e || '').trim().toLowerCase()).filter(Boolean))];
+  const byEmail = new Map();
+  if (!list.length) return { ok: true, byEmail };
+  if (!kitConfigured(env)) return { ok: false, byEmail, error: 'KIT_API_KEY is not set' };
+  try {
+    for (let i = 0; i < list.length; i += 50) {
+      const q = new URLSearchParams({ email_address: list.slice(i, i + 50).join(','), status: 'all', per_page: '100', slim: 'true' });
+      const res = await kitFetch(env, `/subscribers?${q}`);
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const error = Array.isArray(body.errors) ? body.errors.join('; ') : (body.error || `HTTP ${res.status}`);
+        return { ok: false, byEmail, error: `Kit: ${error}` };
+      }
+      for (const s of body.subscribers || []) byEmail.set(String(s.email_address || '').toLowerCase(), { id: s.id, state: s.state || 'active' });
+    }
+    return { ok: true, byEmail };
+  } catch (err) {
+    return { ok: false, byEmail, error: `Kit: ${err.message}` };
+  }
+}
+
 /** Tag a subscriber by Kit id (the subscriber must exist). Never throws. */
 export async function kitTagSubscriberId(env, tagId, subscriberId) {
   if (!kitConfigured(env) || !tagId || !subscriberId) return false;

@@ -44,6 +44,7 @@ const FACTS = {
   kidStatus: { lastSweepAt: iso(20 * 60e3), lastRunAt: iso(5 * 60e3), changed: 1, lastErrorAt: iso(60 * 60e3), deployPending: false, lastAutoDeployAt: iso(5 * 60e3), hidden: 1 },
   zeffy: { since: iso(3 * 86400e3), lastWebhookAt: iso(2 * 3600e3), lastPostAt: iso(2 * 3600e3), lastSweepAt: iso(10 * 60e3), sweepError: null, missed: 0, missedAt: null, rejectedAt: null, failing: 0, failingWhy: null },
   boardGifts: { at: iso(12 * 60e3), triedAt: iso(12 * 60e3), error: null },
+  kitDonors: { lastRunAt: iso(5 * 60e3), error: null, failingSince: null, caughtUp: true, caughtUpAt: iso(86400e3), waiting: 0, added: 41, tagged: 27, leftOut: 3, gaveUp: 0, lastAddedAt: iso(3 * 3600e3) },
   reveals: { cachedAt: iso(5 * 60e3) },
   approvals: { lastRunAt: iso(60e3), lastErrorAt: null, last: { name: 'Ava Stone', at: iso(3 * 3600e3), slug: 'ava' }, waiting: [] },
   covers: { covers: 23, last: { slug: 'max', at: iso(2 * 3600e3) }, failing: 0 },
@@ -183,7 +184,7 @@ try {
   // the insurance audits' asks, the board's next four meetings when an invite breaks, and the minutes' action item reminders
   const RESEND = ['Invite problem alerts', 'Save and finish later', 'Tell me when applications open', 'Applications-open email', 'Staff heads-up', 'Application sweep',
     'Invite email drafted in Kit', 'Project emails drafted in Kit', 'Signed copies and receipts', 'Remind by email', 'AI spending watch',
-    'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Resend', 'Gift alerts in Slack', 'Kid and project status follow JobTread', 'Text delivery reports',
+    'Status change summary', 'Go / no-go', 'Alert emails', 'Reminder emails', 'Resend', 'Gift alerts in Slack', 'Donors join the newsletter', 'Kid and project status follow JobTread', 'Text delivery reports',
     'Application limit', 'Email delivery reports', 'Advisory Board application', 'A family replied → staff alert', 'The packet email',
     'Receipts both ways', 'Receipts from inboxes', 'Trade partners', 'Vendor and sponsor logos on kid pages', 'Insurance audits', 'The next four meetings', 'Action item reminders'];
   ok(await panelTitle(page) === 'If Resend stops working' && sameSet(resendTitles, RESEND), `"Depends on" lists everything that uses Resend (${resendTitles.length})${setDiff(resendTitles, RESEND)}`);
@@ -317,6 +318,26 @@ try {
     const g = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, env, boardGifts } });
     ok(await statusOf(g.page, 'Major gifts on the board page') === want, `Major gifts on the board page: ${want} with ${says}`);
     await g.page.close();
+  }
+
+  // Donors join the newsletter: Live with its counts, Needs attention when Kit refuses, catching up, a giver Kit kept refusing
+  for (const [kitDonors, env, want, says, words] of [
+    [FACTS.kitDonors, FACTS.env, 'Live', 'a clean run', 'So far 41 new donors added, and 27 donors already on the list tagged. 3 donors who unsubscribed were left alone.'],
+    [{ ...FACTS.kitDonors, caughtUp: false }, FACTS.env, 'Live', 'the first runs', 'Catching up on gifts since September 1.'],
+    [{ ...FACTS.kitDonors, error: 'Kit: The API key is invalid' }, FACTS.env, 'Needs attention', 'Kit refusing', 'The last run stopped: Kit: The API key is invalid.'],
+    [{ ...FACTS.kitDonors, gaveUp: 1 }, FACTS.env, 'Needs attention', 'a giver Kit kept refusing', 'Kit kept refusing the giver of 1 gift'],
+    [{ ...FACTS.kitDonors, lastRunAt: iso(3 * 3600e3) }, FACTS.env, 'Needs attention', 'no run for hours', 'It rides on the live hub’s heartbeat'],
+    [FACTS.kitDonors, { ...FACTS.env, kit: false }, 'Needs attention', 'no KIT_API_KEY', 'KIT_API_KEY is missing'],
+  ]) {
+    const d = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, env, kitDonors } });
+    ok(await statusOf(d.page, 'Donors join the newsletter') === want, `Donors join the newsletter: ${want} with ${says}`);
+    await d.page.type('#am-search', 'donors join');
+    await pause(500);
+    await clickNode(d.page, 'Donors join the newsletter');
+    await pause(300);
+    ok((await d.page.$eval('.am-panel', (e) => e.textContent)).includes(words), `and says “${words}”`);
+    ok(d.errors.length === 0, `no console errors${d.errors.length ? ': ' + d.errors.slice(0, 3).join(' | ') : ''}`);
+    await d.page.close();
   }
 
   console.log('Desktop, money before the move to Mercury');
