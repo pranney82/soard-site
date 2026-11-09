@@ -142,8 +142,13 @@ async function allPages(env, path, query, fetchImpl, maxPages = 10) {
  * the sweep looks in) → [{ id, cents, vendor, userId, email, at, hasReceipt }].
  * Declined charges and refunds are left out.
  */
+/** Ramp's users → Map(user id → their email now) */
+export async function rampUserEmails(env, { fetchImpl = fetch } = {}) {
+  return new Map((await allPages(env, '/users', { page_size: 100 }, fetchImpl)).map((u) => [u.id, String(u.email || '').toLowerCase()]));
+}
+
 export async function rampCardCharges(env, { since, fetchImpl = fetch } = {}) {
-  const emails = new Map((await allPages(env, '/users', { page_size: 100 }, fetchImpl)).map((u) => [u.id, String(u.email || '').toLowerCase()]));
+  const emails = await rampUserEmails(env, { fetchImpl });
   const cents = (x) => (Number.isFinite(x.entity_amount?.value) ? x.entity_amount.value : centsOf(x.original_transaction_amount));
   return (await allPages(env, '/transactions', { from_date: new Date(since).toISOString(), state: 'ALL', page_size: 100 }, fetchImpl))
     .filter((x) => x.state !== 'DECLINED' && cents(x) > 0)

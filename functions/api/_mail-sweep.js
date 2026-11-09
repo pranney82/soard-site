@@ -53,7 +53,7 @@ import { slackCard } from './_slack-cards.js';
 import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
 import { DEFAULT_RECEIPT_INBOX, attachToCharge } from './_spend-receipts.js';
-import { rampCardCharges, rampAttach, rampConfigured } from './_ramp.js';
+import { rampCardCharges, rampUserEmails, rampAttach, rampConfigured } from './_ramp.js';
 import { vendorLikeness } from './_spend-match.js';
 import { FREE_MAIL } from './_kid-partners.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
@@ -718,9 +718,15 @@ async function syncCardCharges(env, ctx, st) {
   // Caught up once Ramp has been read that far back (tried again each sweep until it has)
   if (catchUp && rampRead) st.cardsCaughtUp = ctx.now;
   const iso = new Date(ctx.now).toISOString();
-  // A charge that had no inbox looks once its cardholder has one (an account added to the sweep), however old the charge
-  for (const r of (await env.DB.prepare("SELECT charge, mailbox FROM card_receipts WHERE state = 'no_inbox'").all()).results || []) {
-    const mailbox = ctx.mailboxOf(r.mailbox);
+  // A charge that had no inbox looks once its cardholder has one, however old the charge: an account added to the sweep,
+  // or a Ramp cardholder whose Ramp email is now a SOARD one (asked of Ramp when it's read, every 15 minutes)
+  const stuck = (await env.DB.prepare("SELECT charge, card, user_id, mailbox FROM card_receipts WHERE state = 'no_inbox'").all()).results || [];
+  let rampEmails = null;
+  if (rampRead && rampConfigured(env) && stuck.some((r) => r.card === 'ramp' && r.user_id)) {
+    try { rampEmails = await rampUserEmails(env, { fetchImpl: ctx.fetchImpl }); } catch (err) { ctx.notes.ramp = err.message; }
+  }
+  for (const r of stuck) {
+    const mailbox = ctx.mailboxOf(normEmail((r.card === 'ramp' && rampEmails?.get(r.user_id)) || r.mailbox));
     if (ctx.inboxes.has(mailbox)) await env.DB.prepare("UPDATE card_receipts SET state = 'looking', mailbox = ?, next_look = ?, updated_at = ? WHERE charge = ? AND state = 'no_inbox'").bind(mailbox, iso, iso, r.charge).run();
   }
   for (const c of charges) {

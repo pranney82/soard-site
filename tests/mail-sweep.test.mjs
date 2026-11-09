@@ -52,7 +52,7 @@ function mail({ box, at, from, to, cc = '', subject, text = '', html = null, msg
   return m;
 }
 
-let env, store, calls, resendOk, aiVerdicts, aboutVerdicts, refuseScopes, rampTxns;
+let env, store, calls, resendOk, aiVerdicts, aboutVerdicts, refuseScopes, rampTxns, rampUsers;
 const realFetch = globalThis.fetch;
 
 beforeEach(async () => {
@@ -63,6 +63,7 @@ beforeEach(async () => {
   aiVerdicts = {};
   refuseScopes = new Set();
   rampTxns = [];
+  rampUsers = [{ id: 'u-pat', email: PAT }, { id: 'u-sam', email: SAM }, { id: 'u-samstore', email: 'sam@store.example' }];
   forgetRampToken();
   aboutVerdicts = {};
   env = {
@@ -136,7 +137,7 @@ beforeEach(async () => {
         if (refuseScopes.has(scope)) return new Response('{"error":"invalid_scope"}', { status: 400 });
         return Response.json({ access_token: `ramp:${scope}`, expires_in: 3600 });
       }
-      if (path === '/users') return Response.json({ data: [{ id: 'u-pat', email: PAT }, { id: 'u-sam', email: SAM }, { id: 'u-samstore', email: 'sam@store.example' }] });
+      if (path === '/users') return Response.json({ data: rampUsers });
       if (path === '/transactions') {
         const from = Date.parse(u.searchParams.get('from_date')), to = u.searchParams.get('to_date') ? Date.parse(u.searchParams.get('to_date')) : Infinity;
         return Response.json({ data: rampTxns.filter((t) => Date.parse(t.user_transaction_time) >= from && Date.parse(t.user_transaction_time) <= to) });
@@ -726,6 +727,25 @@ test('the first run catches up on the last 90 days of card charges once; after t
   await maybeSweepMail(env, { now: T0 + 40 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
   assert.equal((await cardRow('ramp:tx-sam')).state, 'attached');
   assert.equal((await byId(before.id)).length, 0, 'mail from before the inbox joined isn’t swept as new');
+});
+
+test('a Ramp cardholder whose Ramp email moves to SOARD’s: their old charges with no inbox look in it', async () => {
+  Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
+  rampUsers.push({ id: 'u-moved', email: 'pat@other-business.example' });
+  const old = T0 - 30 * DAY;
+  rampTxns.push({ id: 'tx-moved', state: 'CLEARED', entity_amount: { value: 2386, currency: 'USD' }, user_transaction_time: new Date(old).toISOString(), merchant_name: 'FaxOnline', card_holder: { user_id: 'u-moved' }, receipts: [] });
+  mail({ box: PAT, at: old + 10 * MIN, from: 'FaxOnline <billing@fax.example>', to: PAT, subject: 'Your FaxOnline receipt', text: 'Amount paid $23.86' });
+  await maybeSweepMail(env, { now: T0, force: true });
+  assert.equal((await cardRow('ramp:tx-moved')).state, 'no_inbox', 'another business’s email isn’t read');
+
+  // Changed in Ramp to their SOARD address: the next time Ramp is read (15 minutes), the charge looks there
+  rampUsers.find((u) => u.id === 'u-moved').email = PAT;
+  await maybeSweepMail(env, { now: T0 + 5 * MIN, force: true });
+  assert.equal((await cardRow('ramp:tx-moved')).state, 'no_inbox', 'not before Ramp is read again');
+  calls.length = 0;
+  await maybeSweepMail(env, { now: T0 + 16 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
+  assert.equal((await cardRow('ramp:tx-moved')).state, 'attached');
+  assert.deepEqual(of('ramp-receipt').map((c) => c.transaction), ['tx-moved']);
 });
 
 test('Ramp refusing the card scopes: its receipts go to the receipt inbox as before, and Automations says why', async () => {
