@@ -63,7 +63,7 @@ import { askEmail as advisoryAsk, welcomeMessage as advisoryWelcome } from './_a
 import { planDemo, demoAlert, sendTestDemo, readConfig as readDemoConfig, listPeople as demoPeople } from './_demo-invites.js';
 import { revealInviteEmail, TEAM_PICTURE } from './_reveal-invite-email.js';
 import { reviewNote, brokenLogos, KIT_INVITE_DEFAULTS } from './_reveal-invite-kit.js';
-import { projectKickoffEmail, projectRevealEmail, beforeAfterUrls } from './_project-email.js';
+import { projectKickoffEmail, projectRevealEmail, revealChecks } from './_project-email.js';
 import { projectNote } from './_project-emails.js';
 
 const { SITE_ORIGIN, EMAIL_FROM } = notify;
@@ -729,7 +729,7 @@ export async function buildPreview(env, id, { lang = 'en', me = '', now = Date.n
       try { kid = row ? { ...JSON.parse(row.data), slug: row.slug } : null; } catch { /* sample below */ }
       kid = kid || { name: SAMPLE.childFirst, slug: '', roomTypes: ['Accessible Bathroom'], heroSummary: 'A sample story for the preview.' };
       // The same image check a real draft gets, so the preview never shows what Kit wouldn't
-      const broken = await brokenLogos(kid, { extra: beforeAfterUrls(kid) });
+      const broken = await brokenLogos(kid, { extra: revealChecks(kid) });
       const m = (done ? projectRevealEmail : projectKickoffEmail)({ kid, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) });
       return { channel: 'kit', from: KIT_FROM, to: 'The newsletter list, once staff send the draft', subject: m.subject, html: m.html, text: m.text, note: `${kid.name}’s page as it reads now. Kit adds its own unsubscribe link and mailing address under it.`, send: 'email' };
     }

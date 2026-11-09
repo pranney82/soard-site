@@ -102,7 +102,9 @@ export async function brokenLogos(kid, { fetchImpl = fetch, timeoutMs = 5000, ex
     try {
       const res = await fetchImpl(url, { method: 'GET', signal: AbortSignal.timeout(timeoutMs) });
       const type = res.headers.get('content-type') || '';
-      if (!res.ok || !/^image\//i.test(type)) broken.add(url);
+      // A picture must come back as one; a Stream video's playlist (…/manifest/video.m3u8) as a playlist
+      const fits = /\.m3u8$/.test(url) ? /mpegurl/i.test(type) : /^image\//i.test(type);
+      if (!res.ok || !fits) broken.add(url);
       res.body?.cancel?.();
     } catch (err) {
       if (err?.name !== 'TimeoutError') broken.add(url);

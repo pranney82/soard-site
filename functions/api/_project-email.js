@@ -14,7 +14,7 @@
 import {
   SITE_URL, HERO_TRANSFORM, PHOTO_TRANSFORM, SIDE, BRAND, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
   emailFrame, emailHeader, emailFooter, signOff, partnerCards, button, textLink, cover, lede, bodyPhotos, photoImg, photoPair, photoNotes,
-  listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, notARoom, tidy,
+  listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, makeoverWord, shortStory, tidy,
 } from './_reveal-invite-email.js';
 
 const { Y, D, DD, CR, BD, TM, SANS, SERIF } = BRAND;
@@ -28,8 +28,17 @@ const agesOf = (age) => (Array.isArray(age) ? age : String(age).split(/\s*(?:,|&
 
 /** The kid page's YouTube test (youTubeId in src/utils/reveals.ts): a link that isn't YouTube gets no Reveal section */
 const YOUTUBE = /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/))([a-zA-Z0-9_-]{11})/;
-/** A video the page will play: a Stream upload, or a link that parses as YouTube */
-const hasVideo = (kid) => /^[a-f0-9]{32}$/i.test(String(kid.streamVideoId || '').trim()) || YOUTUBE.test(String(kid.videoUrl || ''));
+/** Where the kid page checks a Stream upload plays (runStreamCheck in src/utils/reveals.ts): a 4xx means it won't */
+const STREAM_HOST = 'customer-cuav5h47lgfe96ql.cloudflarestream.com';
+export const streamCheckUrl = (kid) => {
+  const id = String(kid?.streamVideoId || '').trim().toLowerCase();
+  return /^[a-f0-9]{32}$/.test(id) ? `https://${STREAM_HOST}/${id}/manifest/video.m3u8` : null;
+};
+/** A video the page will play: a Stream upload the drafter's check didn't find gone, or a link that parses as YouTube */
+const hasVideo = (kid, broken = new Set()) => {
+  const stream = streamCheckUrl(kid);
+  return (!!stream && !broken.has(stream)) || YOUTUBE.test(String(kid.videoUrl || ''));
+};
 
 /** How many photos a kid's page shows in its gallery */
 const PAGE_PHOTOS = 30;
@@ -40,24 +49,22 @@ const GIVE_MAX = 20;
 const WIDE_TRANSFORM = 'w=1200,h=720,fit=cover,gravity=auto,q=82';
 const PAIR_TRANSFORM = 'w=600,h=640,fit=cover,gravity=auto,q=80';
 
-/** The short version of the story: the page's own summary, else the story's opening sentences */
-function storyOf(kid) {
-  if (kid.heroSummary) return tidy(kid.heroSummary).trim();
-  const first = tidy(stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '').replace(/\s+([.,!?])/g, '$1');
-  if (first.length <= STORY_MAX) return first;
-  const sentences = first.match(/[^.!?]+[.!?]+(\s|$)/g) || [first];
-  let out = '';
-  for (const s of sentences) {
-    if (out && out.length + s.length > STORY_MAX) break;
-    out += s;
-  }
-  return out.trim();
-}
+/** The short version of the story, the same as the invite's */
+const storyOf = (kid) => shortStory(kid, STORY_MAX);
 
 /** A quote as the page has it, without the quote marks it was typed with */
-const bareQuote = (q) => tidy(String(q || '').trim().replace(/^["“”']+|["“”']+$/g, ''));
-/** A quote typed with who said it ("…for," said Elvia.) already has its marks: it's shown as typed */
-const saidQuote = (q) => /["“”]/.test(String(q || '').trim().replace(/^["“”']+|["“”']+$/g, ''));
+const bareQuote = (q) => tidy(String(q || '').trim().replace(/^["“”'‘’]+|["“”'‘’]+$/g, ''));
+/**
+ * A quote as HTML. Typed with who said it, in either kind of marks ('We love it,' said Mom.), it reads
+ * “We love it,” said Mom. Otherwise it gets the outer marks, and a quote inside it takes single ones.
+ */
+function quoteHtml(q) {
+  const raw = String(q || '').trim();
+  const m = raw.match(/^["“'‘](.+?)([,.!?]?)["”'’]\s*,?\s+((?:said|says|shared|shares|added|adds|wrote|writes)\b.*)$/i);
+  if (m) return `“${escapeHtml(tidy(m[1] + m[2]))}” ${noWidow(escapeHtml(tidy(m[3])))}`;
+  const inner = bareQuote(raw).replace(/“/g, '‘').replace(/”/g, '’');
+  return `“${noWidow(escapeHtml(inner))}”`;
+}
 
 /** The first photo that will load, for the top of the email */
 function leadOf(kid, broken) {
@@ -71,6 +78,9 @@ function pairOf(kid, broken) {
 }
 
 /** The before and after pictures the Project Reveal could load, for the image check */
+/** Everything beyond the usual images a Project Reveal draft checks first: its before and after, and its Stream video */
+export const revealChecks = (kid) => [...beforeAfterUrls(kid), streamCheckUrl(kid)].filter(Boolean);
+
 export const beforeAfterUrls = (kid) => (kid?.beforeAfterPhotos || []).filter((p) => p?.before && p?.after)
   .flatMap((p) => [cfImg(p.before, PAIR_TRANSFORM), cfImg(p.after, PAIR_TRANSFORM)]);
 
@@ -157,7 +167,7 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   const story = storyOf(kid);
   const lead = leadOf(kid, brokenLogos);
 
-  const space = notARoom(rooms);
+  const space = makeoverWord(rooms);
   const subject = `Meet ${name}, Our Next ${space ? 'Project' : 'Dream Room Project'}`;
   // Its own line in the inbox, not the subject again
   const preview = rooms.length ? `${name}’s story, what we’re building, and how you can help.` : `${name}’s story and how you can help.`;
@@ -177,16 +187,17 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   const planWhat = space ? space.lower : several ? 'dream rooms' : 'dream room';
   const planWords = planWhat.split(' ');
   const planRuns = planWords.length > 1 ? [...planWords.slice(0, -2), planWords.slice(-2).join(' ')] : planWords;
-  // One line when "Dylan’s dream room" fits at 22px or more, so the name never sits alone above it
-  const planWhole = fitName({ name, after: `’s ${planWhat}`, afterHtml: `’s ${escapeHtml(planWhat).replace(/ /g, '&nbsp;')}`, max: 26, min: 22, phones: [[26, 'h2b']] });
-  const planFit = planWhole.whole && planWhole.size >= 22 ? planWhole : fitName({ name, after: '’s', runs: planRuns, max: 26, min: 22, phones: [[26, 'h2b']] });
+  // One line when "Dylan’s dream room" fits at 21px or more, so the name never sits alone above it
+  const planWhole = fitName({ name, after: `’s ${planWhat}`, afterHtml: `’s ${escapeHtml(planWhat).replace(/ /g, '&nbsp;')}`, max: 26, min: 21, phones: [[26, 'h2b']] });
+  const planFit = planWhole.whole && planWhole.size >= 21 ? planWhole : fitName({ name, after: '’s', runs: planRuns, max: 26, min: 22, phones: [[26, 'h2b']] });
   const planHtml = planFit === planWhole ? planWhole.html : `${planFit.html} ${noWidow(escapeHtml(planWhat))}`;
   // The ask names the kid while it can at 26px or larger ("Help us build Remi / & Nico’s dream."); a long single name can't, so it's "this dream"
   const askPhones = [[26, 'h2b']];
   // Without the kid's own fundraiser the gift goes to the next family too: "Help us build more dreams."
   // ("dreams like Josué’s." can't stay one phrase on a phone, and the name would sit alone)
   const askName = fitName({ name, after: '’s dream.', afterHtml: '’s&nbsp;<em style="font-style:italic;">dream</em>.', runs: ['Help', 'us', 'build'], max: 30, min: 26, phones: askPhones });
-  const named = own && askName.size >= 26;
+  // Only a name that stays whole: "Help us build / Remi / & Nico’s dream." leaves "Remi" alone
+  const named = own && askName.whole && askName.size >= 26;
   const askHeadline = own
     ? (named ? `Help us build ${askName.html}` : 'Help us build this&nbsp;<em style="font-style:italic;">dream</em>.')
     : (named ? `Help us build <em style="font-style:italic;">dreams</em> like ${askName.html}` : 'Help us build more&nbsp;<em style="font-style:italic;">dreams</em>.');
@@ -245,10 +256,10 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const rooms = roomsOf(kid);
   const several = (Number(kid.roomCount) || rooms.length || 1) > 1;
   // A ramp or a lift is named as itself, never a "Dream Room"
-  const space = notARoom(rooms);
-  // Rooms and a ramp together are neither "Dream Rooms" nor a ramp: the kid's makeover
-  const mixed = !space && rooms.some((r) => notARoom([r]));
-  const what = space ? space.title : mixed ? 'Makeover' : `Dream ${several ? 'Rooms' : 'Room'}`;
+  // A ramp or a lift by name; rooms and a ramp together are the kid's "Makeover"
+  const space = makeoverWord(rooms);
+  const mixed = !!space?.mixed;
+  const what = space ? space.title : `Dream ${several ? 'Rooms' : 'Room'}`;
   const are = several && !mixed;
   const finished = `${name}’s ${what} ${are ? 'Are' : 'Is'} Complete`;
   // The page's summary was often written while the room was still to come
@@ -257,7 +268,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const built = rooms.length ? listJoin(rooms).toLowerCase() : several ? 'dream rooms' : 'dream room';
   const story = `The wait is over. ${name}’s new ${built} ${several ? 'are' : 'is'} finished, and the family has seen ${several ? 'them' : 'it'} for the first time.`;
   // No video on the page: no button promising one (the page only has a Reveal section when there is)
-  const video = hasVideo(kid);
+  const video = hasVideo(kid, brokenLogos);
   const lead = leadOf(kid, brokenLogos);
   const said = bareQuote(kid.quote);
   const onPage = curly(`${stripHtml(kid.bio)} ${kid.heroSummary || ''}`);
@@ -266,8 +277,12 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const subject = finished;
   // The preview names only what the email shows
   const partners = partnerCards(kid, brokenLogos);
-  const shown = [(lead || galleryPicks(kid).some((ph) => !brokenLogos.has(cfImg(ph.url, PHOTO_TRANSFORM)))) && 'the photos', video && 'the video', partners && 'the partners who made it possible'].filter(Boolean);
-  const preview = shown.length ? `See ${name}’s transformation: ${listJoin(shown)}.` : `See ${name}’s transformation.`;
+  const loads = [lead, ...galleryPicks(kid).filter((ph) => !brokenLogos.has(cfImg(ph.url, PHOTO_TRANSFORM))).map((ph) => ph.url)].filter(Boolean);
+  const pictures = new Set(loads).size;
+  const shown = [pictures && (pictures > 1 ? 'the photos' : 'the photo'), video && 'the video'].filter(Boolean);
+  const preview = shown.length
+    ? `See ${name}’s transformation: ${listJoin([...shown, partners && 'the partners who made it possible'].filter(Boolean))}.`
+    : `See ${name}’s transformation${partners ? ' and the partners who made it possible' : ''}.`;
 
   const pair = pairOf(kid, brokenLogos);
   // With a before and after, one wide photo says enough; galleries also hold close-ups of floors and tile
@@ -275,7 +290,11 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   // The kid page shows its first 30 photos (src/pages/kids/[slug].astro), so the email never promises more
   const allPhotos = Math.min(kidPhotos(kid).length, PAGE_PHOTOS);
   const whatWords = what.split(' ');
-  const fit = fitName({ name, after: '’s', runs: [...whatWords.slice(0, -2), whatWords.slice(-2).join(' '), `${are ? 'Are' : 'Is'} Complete.`], max: 40, min: 28 });
+  const isComplete = `${are ? 'Are' : 'Is'} Complete.`;
+  const gluedWhat = fitName({ name, after: '’s', runs: [...whatWords.slice(0, -2), whatWords.slice(-2).join(' '), isComplete], max: 40, min: 28 });
+  // "Wheelchair Ramp" may part rather than set the headline under 28px
+  const fit = gluedWhat.size >= 28 ? gluedWhat : fitName({ name, after: '’s', runs: [...whatWords, isComplete], max: 40, min: 28 });
+  const whatHtml = fit === gluedWhat ? noWidow(escapeHtml(what)) : escapeHtml(what);
   // The page has a Gallery section once it has two photos
   const coverUrl = video ? `${kidUrl}#chapter-reveal` : allPhotos > 1 ? `${kidUrl}#chapter-gallery` : kidUrl;
   const watch = video ? null : allPhotos > 1 ? 'See the Photos' : 'Read the Story';
@@ -284,7 +303,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   ${emailHeader(site)}
   ${cover({
     kicker: `Project complete · ${yearOf(kid)}`,
-    headline: `${fit.html} ${noWidow(escapeHtml(what))}<br>${are ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
+    headline: `${fit.html} ${whatHtml}<br>${are ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
     size: fit.size,
     phone: fit.phone,
     lead,
@@ -301,7 +320,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   ${quote ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:40px 0 0;${SIDE}" class="pd">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
       <td width="4" bgcolor="${Y}" style="width:4px;background:${Y};border-radius:2px;font-size:0;">&nbsp;</td>
-      <td style="padding:4px 0 4px 22px;font-family:${SERIF};font-size:20px;font-style:italic;line-height:1.55;color:${D};">${saidQuote(kid.quote) ? noWidow(escapeHtml(tidy(String(kid.quote).trim()))) : `“${noWidow(escapeHtml(quote))}”`}</td>
+      <td style="padding:4px 0 4px 22px;font-family:${SERIF};font-size:20px;font-style:italic;line-height:1.55;color:${D};">${quoteHtml(kid.quote)}</td>
     </tr></table>
   </td></tr>` : ''}
   ${partners || gap(40)}

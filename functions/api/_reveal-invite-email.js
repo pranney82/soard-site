@@ -136,10 +136,10 @@ export function fitName({ name, after = '', afterHtml, runs = [], max, min = max
   }
   if (whole.size >= min || pieces.length < 2 && !/-/.test(name)) return { ...whole, whole: true, html: nowrap(`${wrap(escapeHtml(name))}${tail}`) };
   // A hyphenated name only breaks after its hyphen ("Christopher- / Alexander’s") when keeping it whole
-  // would set the headline smaller than 24px, the size of the lines around it
+  // would set the headline under 28px, close to the 24px lines around it
   const sizeOf = (ps) => headlineFit([...runs, ...ps.map((p, i) => (i === ps.length - 1 ? `${p.text}${afterText}` : p.text))], max, opts);
   let parts = pieces.map((text) => ({ text, join: ' ' }));
-  if (sizeOf(parts).size < Math.min(min, 24)) {
+  if (sizeOf(parts).size < Math.min(min, 28)) {
     parts = pieces.flatMap((text) => text.split(/(?<=-)/).map((t, i, a) => ({ text: t, join: i ? '&#8203;' : ' ' })));
   }
   const fit = sizeOf(parts);
@@ -150,6 +150,34 @@ export function fitName({ name, after = '', afterHtml, runs = [], max, min = max
  * When the makeover isn't a room (a wheelchair ramp, a chair lift), what to call it: the thing itself.
  * null for rooms, which keep "room" and "rooms".
  */
+/**
+ * The word for a makeover that isn't simply rooms: a ramp or a lift by name, a mix of rooms and a ramp
+ * as the kid's "makeover". null for rooms. label: the ticket's heading over it.
+ */
+export function makeoverWord(names) {
+  const list = (names || []).filter(Boolean);
+  const all = notARoom(list);
+  if (all) return { ...all, label: 'Project' };
+  return list.some((n) => notARoom([n])) ? { title: 'Makeover', lower: 'makeover', label: 'Project', mixed: true } : null;
+}
+
+/**
+ * The short version of a kid's story: the page's own summary, else the bio's first paragraph cut at a
+ * sentence by 320 characters, tidied.
+ */
+export function shortStory(kid = {}, max = 320) {
+  if (kid.heroSummary) return tidy(kid.heroSummary).trim();
+  const first = tidy(stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '').replace(/\s+([.,!?])/g, '$1').trim();
+  if (first.length <= max) return first;
+  const sentences = first.match(/[^.!?]+[.!?]+(\s|$)/g) || [first];
+  let out = '';
+  for (const sentence of sentences) {
+    if (out && out.length + sentence.length > max) break;
+    out += sentence;
+  }
+  return out.trim();
+}
+
 export function notARoom(names) {
   const list = (names || []).filter(Boolean);
   return list.length && list.every((n) => /\b(ramp|lift|elevator|porch|deck|walkway|driveway|entrance|entry)\b/i.test(n) && !/\broom\b/i.test(n))
@@ -267,7 +295,7 @@ export function label(text, bar = Y, color = D) {
   // The bar is its own small block at the first line's height, so a label that wraps ("TYRECE & MADDIE’S / STORY") keeps a bar, not a slab
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
     <td valign="top" width="28" style="width:28px;padding-top:4px;"><div style="width:28px;height:10px;background:${bar};border-radius:2px;font-size:0;line-height:0;">&nbsp;</div></td>
-    <td valign="top" style="padding-left:12px;font-family:${SANS};font-size:12px;font-weight:700;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${color};">${escapeHtml(text)}</td>
+    <td valign="top" style="padding-left:12px;font-family:${SANS};font-size:12px;font-weight:700;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${color};">${(String(text).trim().split(/\s+/).length > 2 ? noWidow(escapeHtml(text)) : escapeHtml(text)).replace(/ &amp; /g, ' &amp;&nbsp;')}</td>
   </tr></table>`;
 }
 
@@ -367,7 +395,7 @@ export function button(text, url, { fill = Y, ink = D, center = false, small = f
 
 /** A plain link with its arrow, for the second thing a reader might do */
 export function textLink(text, url, color = D) {
-  return `<a href="${href(url)}" target="_blank" style="font-family:${SANS};font-size:15px;font-weight:700;color:${color};text-decoration:underline;text-underline-offset:4px;">${escapeHtml(text)}</a>`;
+  return `<a href="${href(url)}" target="_blank" style="font-family:${SANS};font-size:15px;font-weight:700;color:${color};text-decoration:underline;text-underline-offset:4px;">${escapeHtml(text).replace(/ (\S+ →)$/, '&nbsp;$1').replace(/ →$/, '&nbsp;→')}</a>`;
 }
 
 /** The dark cover all three emails open with: the kicker, the name large, the lead photo, then whatever comes first */
@@ -512,7 +540,7 @@ export function partnerCards(kid, brokenLogos = new Set()) {
     const row = logos.slice(i, i + 2);
     // The gap is only between the cards, so the grid's edges line up with the text above it.
     // No phone class on the logo: .fl's max-width:100% would lift its 116px cap and push it out of its card.
-    const pad = (k) => (row.length === 1 ? '4px 0' : k === 0 ? '4px 4px 4px 0' : '4px 0 4px 4px');
+    const pad = (k) => (row.length === 1 ? '4px 2px' : k === 0 ? '4px 4px 4px 0' : '4px 0 4px 4px');
     const cells = row.map((l, k) => `<td width="${(100 / row.length).toFixed(2)}%" valign="middle" class="lc" style="padding:${pad(k)};">${l.text
       // A logo that doesn't load reads as the partner's name instead of a broken picture, at a size its longest
       // word fits on a phone's card (about 92px of text, bold capitals running wide): 13px for most names, smaller for "Interdenominational"
@@ -560,7 +588,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
 
   const subject = `${subjectPrefix}You’re Invited to ${name}’s Reveal Day!`;
   const preview = roomText
-    ? `Come celebrate ${name} as we reveal their brand-new ${roomText.toLowerCase()}!`
+    ? `Come celebrate ${name} as we reveal the brand-new ${roomText.toLowerCase()}!`
     : `Come celebrate ${name} on reveal day!`;
 
   // A picture that won't load is passed over, never shown broken
@@ -574,7 +602,8 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
       : { label: 'When', lines: [longDay(date)], sub: TIME_LATER }),
     // No address from JobTread yet: say so, rather than leave guests with only "Josué’s Home"
     { label: 'Where', lines: [`${name}’s Home`], sub: tidy(cleanAddress(address)).replace(/\b([A-Z]{2}) (\d{5})/, '$1\u00A0$2') || 'Address to be confirmed' },
-    roomLines.length && { label: notARoom(roomLines) ? 'Project' : several ? 'Rooms' : 'Room', lines: roomLines },
+    // One line ("Wheelchair-Accessible Bathroom and Dream Bedroom"), so a long name that wraps never reads as another room
+    roomLines.length && { label: makeoverWord(roomLines) ? 'Project' : several ? 'Rooms' : 'Room', lines: [roomText] },
   ].filter(Boolean);
   const noteLines = String(notes || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
   // The team's own arrival note stands in for ours, so it isn't said twice
@@ -591,11 +620,13 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     </tr></table>
     <p style="margin:18px 0 0;font-family:${SANS};font-size:14px;color:#C9CACC;line-height:1.6;">Can’t be there in person? <a href="${href(liveUrl)}" target="_blank" style="color:#FFFFFF;font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;">Watch it live</a> from&nbsp;anywhere.</p>` : '';
 
-  const summary = tidy(kid.heroSummary || stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '').trim();
+  const summary = shortStory(kid);
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
   const fit = fitName({ name, after: '’s', runs: ['Reveal Day.'], max: 42, min: 30 });
-  const space = notARoom(roomLines);
-  const opening = `After months of planning and building, the day is almost here. ${name} and the family haven’t seen the finished ${space ? space.lower : several ? 'rooms' : 'room'} yet. Come be there for that first reaction.`;
+  const space = makeoverWord(roomLines);
+  // "Tyrece, Maddie, and the family", never "Tyrece & Maddie and the family"
+  const who = /\s&\s/.test(name) ? `${name.replace(/\s&\s/, ', ')}, and the family` : `${name} and the family`;
+  const opening = `After months of planning and building, the day is almost here. ${who} haven’t seen the finished ${space ? space.lower : several ? 'rooms' : 'room'} yet. Come be there for that first reaction.`;
 
   const html = emailFrame(preview, `
   ${emailHeader(site)}
@@ -629,7 +660,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     '',
     when && `When: ${when}`,
     `Where: ${name}’s Home${address ? `, ${tidy(cleanAddress(address))}` : ' (address to be confirmed)'}`,
-    roomText && `${notARoom(roomLines) ? 'Project' : several ? 'Rooms' : 'Room'}: ${roomText}`,
+    roomText && `${makeoverWord(roomLines) ? 'Project' : several ? 'Rooms' : 'Room'}: ${roomText}`,
     '',
     arrive,
     ...noteLines.map(tidy),

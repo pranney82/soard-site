@@ -127,7 +127,7 @@ test('Project Reveal: the finished room, the video, the photos, the partners and
   assert.match(e.html, /Dream&nbsp;Room<br>Is&nbsp;<em[^>]*>Complete<\/em>\./);
   assert.match(e.html, /Watch the Reveal/);
   assert.match(e.html, /kids\/rowan-test\/#chapter-reveal/);
-  assert.match(e.html, /See all 12 photos/);
+  assert.match(e.html, /See all 12(?: |&nbsp;)photos/);
   assert.match(e.html, /kids\/rowan-test\/#chapter-gallery/);
   assert.match(e.html, /partners\/msi\/trim=border/);
   assert.match(e.html, /Another family is/);
@@ -373,13 +373,13 @@ test('the words follow the kids and rooms: ages, plurals, lists, and who the gif
   assert.match(inv.preview, /brand-new accessible bathroom and dream bedroom!/);
   assert.match(inv.html, /finished rooms yet/);
   assert.match(inv.html, />Rooms<\/div>/);
-  assert.match(inv.html, />Accessible Bathroom<\/div>\s*<div[^>]*>Dream Bedroom<\/div>/);
+  assert.match(inv.html, />Accessible Bathroom and Dream Bedroom<\/div>/, 'the rooms on one line');
   assert.match(revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00' }).html, /finished room yet/);
   const noFund = projectKickoffEmail({ kid: { ...KID, fundraisingUrl: '' } });
   assert.ok(!/kids like these/.test(noFund.html + noFund.text));
   assert.match(noFund.html, /kids like Rowan\./);
-  assert.match(inv.html, /Read Rowan’s story →/);
-  assert.match(projectKickoffEmail({ kid: KID }).html, /Read Rowan’s story →/);
+  assert.match(inv.html, /Read Rowan’s&nbsp;story&nbsp;→/);
+  assert.match(projectKickoffEmail({ kid: KID }).html, /Read Rowan’s&nbsp;story&nbsp;→/);
 });
 
 test('Gmail drops the style block, so nothing that has to fit a phone leans on it', () => {
@@ -717,7 +717,7 @@ test('each room is plural when the page counts more than one of it', () => {
   assert.match(projectRevealEmail({ kid: tm }).html, /new accessible bathroom and dream bedrooms are finished/);
   assert.match(projectKickoffEmail({ kid: tm }).html, />Dream Bedrooms<\/td>/);
   const inv = revealInviteEmail({ kid: tm, date: '2027-03-12', time: '16:00' });
-  assert.match(inv.html, />Accessible Bathroom<\/div>\s*<div[^>]*>Dream Bedrooms<\/div>/);
+  assert.match(inv.html, />Accessible Bathroom and Dream Bedrooms<\/div>/);
   assert.match(inv.preview, /accessible bathroom and dream bedrooms!/);
   assert.match(projectRevealEmail({ kid: { ...DONE, roomTypes: ['Therapy Room'], roomCount: 1 } }).html, /new therapy room is finished/);
 });
@@ -733,7 +733,7 @@ test('the ticket puts each label over its value; an unconfirmed time is a quiete
 });
 
 test('names and closing lines break only where a person would', () => {
-  assert.match(projectKickoffEmail({ kid: { ...KID, name: 'Anastasia-Rose' } }).html, /white-space:nowrap;"><em[^>]*>Anastasia-Rose<\/em>\.<\/span>/);
+  assert.match(projectKickoffEmail({ kid: { ...KID, name: 'Anastasia-Rose' } }).html, /nowrap;"><em[^>]*>Anastasia-<\/em><\/span>&#8203;<span style="white-space:nowrap;"><em[^>]*>Rose<\/em>\.<\/span>/, 'breaks after its hyphen, never mid-name');
   assert.match(projectRevealEmail({ kid: DONE }).html, /Thank you for making this&nbsp;possible\./);
   assert.match(projectKickoffEmail({ kid: KID }).html, /Zero platform&nbsp;fees\.<\/p>/);
   assert.match(revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00' }).html, /white-space:nowrap;">Watch it live</);
@@ -762,7 +762,7 @@ test('typed notes get the same curly apostrophes as the rest of the email', () =
 
 test('Project Reveal never promises more photos than the page shows (30)', () => {
   const many = projectRevealEmail({ kid: { ...DONE, photos: Array.from({ length: 44 }, (_, i) => ({ url: `${IMG}/kids/rowan-test/p${i}.jpg/public` })) } });
-  assert.match(many.html, /See all 30 photos/);
+  assert.match(many.html, /See all 30(?: |&nbsp;)photos/);
   assert.ok(!/See all 44/.test(many.html));
 });
 
@@ -794,7 +794,8 @@ test('a two- or three-kid name breaks between names, never after "&", and keeps 
   assert.match(long, /<span style="white-space:nowrap;"><em[^>]*>&amp;&nbsp;Isaac<\/em>\.<\/span>/);
   const remi = projectKickoffEmail({ kid: { ...KID, name: 'Remi & Nico' } }).html;
   assert.match(remi, /<span style="white-space:nowrap;"><em[^>]*>&amp;&nbsp;Nico<\/em>\.<\/span>/, '"&" stays with the name after it');
-  assert.match(remi, /Help us build <span style="white-space:nowrap;">Remi<\/span> <span style="white-space:nowrap;">&amp;&nbsp;Nico’s&nbsp;<em/);
+  // "Remi & Nico’s dream." can't stay whole on a phone line, and "Remi" alone would be stranded
+  assert.match(remi, /Help us build this&nbsp;<em[^>]*>dream<\/em>\./);
   // A long name can't stay on one line with "dream", so the ask says "this dream"
   assert.match(projectKickoffEmail({ kid: { ...KID, name: 'Christopher' } }).html, /Help us build this&nbsp;<em[^>]*>dream<\/em>\./);
   const rev = projectRevealEmail({ kid: { ...DONE, name: 'Maximilian-Alexander' } }).html;
@@ -846,9 +847,10 @@ test('"Jr." stays with its name, with one period', () => {
   assert.match(projectKickoffEmail({ kid: { ...KID, name: 'Anthony Jr. & Lyric' } }).html, /<em[^>]*>Anthony&nbsp;Jr\.<\/em>/);
 });
 
-test('a hyphenated name stays whole unless that would set the headline under 24px', async () => {
+test('a hyphenated name stays whole unless that would set the headline under 28px', async () => {
   const { fitName } = await import('../functions/api/_reveal-invite-email.js');
-  assert.equal(fitName({ name: 'Jean-Baptiste', after: '.', runs: ['Meet'], max: 54, min: 36 }).whole, true);
+  assert.equal(fitName({ name: 'Mary-Lou', after: '.', runs: ['Meet'], max: 54, min: 36 }).whole, true);
+  assert.equal(fitName({ name: 'Jean-Baptiste', after: '.', runs: ['Meet'], max: 54, min: 36 }).whole, false);
   const long = fitName({ name: 'Christopher-Alexander', after: '’s', runs: ['Reveal Day.'], max: 42, min: 30 });
   assert.ok(long.size >= 24, `headline ${long.size}px`);
   assert.match(long.html, /Christopher-<\/span>&#8203;<span/);
@@ -925,4 +927,49 @@ test('the Reveal preview promises photos only when one loads; the invite’s pla
   const noDate = revealInviteEmail({ kid: KID, date: '', time: '' }).text;
   assert.ok(!/Add to your calendar/.test(noDate));
   assert.match(noDate, /Where: Rowan’s Home \(address to be confirmed\)/);
+});
+
+// ─── Found by the sixth independent review (Nov 9 2026) ───
+
+test('Project Reveal shows "Watch the Reveal" only for a Stream video the drafter found playing', async () => {
+  const { streamCheckUrl } = await import('../functions/api/_project-email.js');
+  const kid = { ...DONE, videoUrl: '', streamVideoId: 'ca28d84a781fd71ec692d45009f47936' };
+  assert.match(projectRevealEmail({ kid }).html, /Watch the Reveal/);
+  const gone = new Set([streamCheckUrl(kid)]);
+  const e = projectRevealEmail({ kid, brokenLogos: gone });
+  assert.ok(!/Watch the Reveal|chapter-reveal|the video/.test(e.html + e.preview));
+  assert.equal(streamCheckUrl(kid), 'https://customer-cuav5h47lgfe96ql.cloudflarestream.com/ca28d84a781fd71ec692d45009f47936/manifest/video.m3u8');
+});
+
+test('quotes: who said it keeps the marks right, and a quote inside a quote takes single marks', () => {
+  assert.match(projectRevealEmail({ kid: { ...DONE, quote: "'We love it,' said Mom." } }).html, /“We love it,” said&nbsp;Mom\./);
+  assert.match(projectRevealEmail({ kid: { ...DONE, quote: 'When he saw it he said "wow" and cried.' } }).html, /“When he saw it he said ‘wow’ and&nbsp;cried\.”/);
+});
+
+test('labels and links never leave a word alone; a lone last logo card matches the others', () => {
+  const inv = revealInviteEmail({ kid: { ...KID, name: 'Tyrece & Maddie' }, date: '2027-03-12', time: '16:00' }).html;
+  assert.match(inv, />Tyrece &amp;&nbsp;Maddie’s&nbsp;story<\/td>/);
+  assert.match(projectKickoffEmail({ kid: { ...KID, name: 'Christopher-Alexander' } }).html, /Read Christopher-Alexander’s&nbsp;story&nbsp;→/);
+  const odd = projectRevealEmail({ kid: { ...DONE, partnerLogos: ['a', 'b', 'c'].map((n) => ({ url: `${IMG}/partners/${n}/public`, name: n })) } }).html;
+  assert.match(odd, /width="50%" align="center"[^>]*><tr><td width="100\.00%" valign="middle" class="lc" style="vertical-align:middle;padding:4px 2px;"/);
+});
+
+test('a bedroom plus a ramp is the kid’s makeover in all three emails', () => {
+  const kid = { ...KID, roomTypes: ['Dream Bedroom', 'Wheelchair Ramp'], roomCount: 2 };
+  assert.match(projectKickoffEmail({ kid }).html, /nowrap;">Rowan’s makeover<\/span><\/h2>/);
+  const inv = revealInviteEmail({ kid, date: '2027-03-12', time: '16:00' }).html;
+  assert.match(inv, />Project<\/div>/);
+  assert.match(inv, /finished makeover yet/);
+});
+
+test('copy: no guessed pronoun, "Tyrece, Maddie, and the family", the invite story capped like the Kickoff’s, and the photo count in the preview', () => {
+  const inv = revealInviteEmail({ kid: { ...KID, name: 'Tyrece & Maddie', heroSummary: '', bio: `<p>${'A long sentence about the family and their home. '.repeat(20)}</p>` }, date: '2027-03-12', time: '16:00' });
+  assert.ok(!/\btheir brand-new/.test(inv.preview));
+  assert.match(inv.html, /Tyrece, Maddie, and the family haven’t seen/);
+  const story = inv.html.match(/<p style="margin:14px 0 0;[^"]*">([^<]*)<\/p>/)[1];
+  assert.ok(story.length <= 360, `story ${story.length} characters`);
+  const one = projectRevealEmail({ kid: { ...DONE, heroImage: '', photos: [DONE.photos[0]] } });
+  assert.match(one.preview, /: the photo, /);
+  const none = projectRevealEmail({ kid: { ...DONE, heroImage: '', photos: [], videoUrl: '' } });
+  assert.equal(none.preview, 'See Rowan’s transformation and the partners who made it possible.');
 });

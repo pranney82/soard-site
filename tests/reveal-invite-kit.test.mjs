@@ -97,7 +97,7 @@ const sync = (p = plan(), extra = {}) => syncKitInvite(env, { jobId: '22PTestJob
 test('the email: filled in from the kid page and JobTread, the Remi & Nico design, nothing Kit adds itself', () => {
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way, Atlanta, GA 30301', notes: 'Park on the street.\nBring a smile.' });
   assert.equal(e.subject, 'You’re Invited to Rowan’s Reveal Day!');
-  assert.equal(e.preview, 'Come celebrate Rowan as we reveal their brand-new accessible bathroom!');
+  assert.equal(e.preview, 'Come celebrate Rowan as we reveal the brand-new accessible bathroom!');
   assert.match(e.html, />Friday, March 12<\/div>\s*<div[^>]*>4:00 PM</, 'the day and the time each keep a line, so a phone never breaks a date');
   assert.match(e.text, /Friday, March 12, 2027 · 4:00 PM/);
   assert.match(e.html, /100 Example Way, Atlanta, GA\u00A030301/, 'the family’s address, like the invite sent for Remi & Nico');
@@ -1159,7 +1159,7 @@ test('the label over the headline gives the day, not the headline’s own words'
 test('Save it to your calendar is the main action, and See the story sits with the story', () => {
   const { html } = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
   assert.match(html, /<td align="center" bgcolor="#FFDA24"[^>]*><a [^>]*calendar\.ics/);
-  assert.ok(html.indexOf('Read Rowan’s story') > 0 && html.indexOf('Read Rowan’s story') < html.indexOf('Our partner'));
+  assert.ok(html.indexOf('Read Rowan’s&nbsp;story&nbsp;→') > 0 && html.indexOf('Read Rowan’s&nbsp;story&nbsp;→') < html.indexOf('Our partner'));
   assert.ok(html.indexOf('Our partners') > 0, 'the label doesn’t repeat the headline under it');
   assert.ok(!/<a [^>]*kids\/rowan-test\/"[^>]*background:#FFDA24/.test(html), 'one main action');
 });

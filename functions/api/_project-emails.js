@@ -24,7 +24,7 @@ import { kitConfigured, kitCreateBroadcast, kitFindDraft } from './_kit.js';
 import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
 import { SITE_URL, TEAM_PICTURE } from './_reveal-invite-email.js';
-import { projectKickoffEmail, projectRevealEmail, beforeAfterUrls } from './_project-email.js';
+import { projectKickoffEmail, projectRevealEmail, revealChecks } from './_project-email.js';
 import { brokenLogos, kidPageReady, kitInviteSettings, kitDraftUrl } from './_reveal-invite-kit.js';
 import { readConfig, alertList } from './_reveal-invites.js';
 
@@ -221,7 +221,8 @@ export async function syncProjectEmail(env, row, { config = {}, alertTo = [], no
     const mark = `· ${slug} · ${kind}`;
     const lost = await kitFindDraft(env, mark);
     if (!lost.ok) return await trouble(`Kit couldn’t be reached, so ${name}’s ${what} wasn’t drafted.`);
-    const broken = await brokenLogos(kid, { fetchImpl, extra: beforeAfterUrls(kid) });
+    // Its before and after, and whether its Stream video still plays (the page shows no video when it won't)
+    const broken = await brokenLogos(kid, { fetchImpl, extra: revealChecks(kid) });
     const email = render({ kid, brokenLogos: broken, teamPicture: !broken.has(TEAM_PICTURE) });
     let id = String(lost.broadcast?.id || '');
     if (!id) {
