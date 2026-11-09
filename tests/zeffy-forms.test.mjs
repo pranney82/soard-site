@@ -45,7 +45,14 @@ test('a deleted form, or one with no page, isn’t offered; a closed, archived o
   assert.equal(formOf(camp({ url: 'javascript:alert(1)' })), null);
   assert.equal(formOf(camp({ id: '' })), null);
   assert.equal(formOf(camp({ is_archived: true })).open, false);
-  for (const status of ['closed', 'draft', 'inactive', 'ended']) assert.equal(formOf(camp({ status })).open, false, status);
+  for (const status of ['closed', 'draft', 'inactive', 'ended', 'unpublished', 'paused', 'completed', 'finished', 'past', 'Closed']) assert.equal(formOf(camp({ status })).open, false, status);
+  for (const status of ['active', 'published', 'ACTIVE', '']) assert.equal(formOf(camp({ status })).open, true, status);
+  // A past event Zeffy still calls active: its end date closes it, and the dropdown can say it ended
+  const now = Date.parse('2026-11-09T12:00:00Z');
+  assert.deepEqual([formOf(camp({ end_date: now / 1000 - 86400 }), now).open, formOf(camp({ end_date: now / 1000 - 86400 }), now).ended], [false, true]);
+  assert.equal(formOf(camp({ end_date: now / 1000 + 86400 }), now).open, true);
+  assert.equal(formOf(camp({ end_date: null }), now).open, true);
+  assert.equal(formOf(camp({ status: 'closed', end_date: now / 1000 - 86400 }), now).ended, undefined);
   assert.equal(formOf(camp({ title: '' })).title, 'Untitled form');
 });
 
@@ -97,6 +104,11 @@ test('a link finds its form whatever its language, www, tracking, embed or trail
     'https://www.zeffy.com/en-US/donation-form/Help-Build-Axels-Accessible-Bathroom?utm_source=fb#top',
     'https://www.zeffy.com/embed/donation-form/help-build-axels-accessible-bathroom',
     '  HTTPS://www.zeffy.com/en/donation-form/help-build-axels-accessible-bathroom ',
+    // as Zeffy's API gives it (no language), Latin American Spanish, and an embed before or after the language
+    'https://www.zeffy.com/donation-form/help-build-axels-accessible-bathroom',
+    'https://www.zeffy.com/es-419/donation-form/help-build-axels-accessible-bathroom',
+    'https://www.zeffy.com/embed/en-US/donation-form/help-build-axels-accessible-bathroom',
+    'https://www.zeffy.com/en-US/embed/donation-form/help-build-axels-accessible-bathroom',
   ]) assert.ok(sameForm(same, url), same);
   // Typed without https:// it would open a page of our own site: no form's link, so the dropdown asks and a pick fixes it
   for (const broken of ['zeffy.com/en-US/donation-form/help-build-axels-accessible-bathroom', 'www.zeffy.com/en-US/donation-form/help-build-axels-accessible-bathroom']) {
@@ -137,7 +149,13 @@ test('twins made the same day get the time, then a number; every label differs',
   assert.equal(new Set(labels).size, 5, labels.join(' | '));
   assert.ok(labels.includes('Gala · Jan 7, 2026'), labels.join(' | '));
   assert.ok(labels.includes('Gala · Nov 8, 2025, 11:00 AM'), labels.join(' | '));
-  assert.ok(labels.filter((l) => l.startsWith('Gala · Nov 8, 2025, 12:00 PM (')).length === 2, labels.join(' | '));
+  assert.deepEqual(labels.filter((l) => l.startsWith('Gala · Nov 8, 2025, 12:00 PM (')).sort(), ['Gala · Nov 8, 2025, 12:00 PM (1)', 'Gala · Nov 8, 2025, 12:00 PM (2)'], labels.join(' | '));
+  // Numbered among the ones still alike, not among every form with the title
+  const three = formGroups([f('p', at), f('q', at), f('r', at), f('s', at + 86400 * 3)]).groups[0].forms.map((x) => x.label);
+  assert.deepEqual(three.filter((l) => /\(\d\)$/.test(l)).map((l) => l.slice(-3)).sort(), ['(1)', '(2)', '(3)'], three.join(' | '));
+  // A form its end date closed says so when it's the one already chosen
+  const ended = formGroups([{ ...f('old', at), open: false, ended: true }], { value: 'https://www.zeffy.com/en-US/ticketing/old' }).groups[0].forms[0].label;
+  assert.equal(ended, 'Gala (ended)');
 });
 
 test('a field that keeps the form’s ID shows nothing chosen until the ID matches, so a pick can fill it in', () => {

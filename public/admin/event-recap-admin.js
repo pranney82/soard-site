@@ -329,9 +329,9 @@ export function EventBasics({ event, onEvent }) {
       ${field('location', 'Course', { placeholder: 'Indian Hills Country Club' })}
       ${field('address', 'Address', { placeholder: '4001 Clubland Dr. Marietta, GA 30068' })}
       <div class="form-group er-wide">
-        <span class="form-label">Registration link</span>
+        <label class="form-label" for="er-ticket-url">Registration link</label>
         <${ZeffyFormSelect} value=${ev.ticketUrl || ''} prefer=${['tickets']} label="Registration link" onPick=${(f) => onEvent('ticketUrl', f.url)} />
-        <input class="form-input" type="url" placeholder="https://www.zeffy.com/…" aria-label="Registration link" value=${ev.ticketUrl || ''} onInput=${(e) => onEvent('ticketUrl', e.target.value)} />
+        <input id="er-ticket-url" class="form-input" type="url" placeholder="https://www.zeffy.com/…" aria-label="Registration link" value=${ev.ticketUrl || ''} onInput=${(e) => onEvent('ticketUrl', e.target.value)} />
       </div>
     </div>
     <label class="checkbox-label u-mt-1" style="display: inline-flex; align-items: center; gap: 0.5rem;">

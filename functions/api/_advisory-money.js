@@ -23,6 +23,7 @@ import { zeffyGet } from './_zeffy.js';
 import { readState, writeState, activeAdvisors, normEmail } from './_board-roles.js';
 import { ensureAdvisory, saveSettings, listHosted, getSettings } from './_advisory.js';
 import { nameKey } from '../../public/admin/partners-shared.js';
+import { sameForm } from '../../public/admin/zeffy-links.js';
 
 const KEY = 'advisory-money';
 const EVERY_MS = 15 * 60 * 1000;
@@ -30,7 +31,9 @@ const MAX_PAGES = 80;
 const unix = (date) => Math.floor(Date.parse(`${date}T05:00:00Z`) / 1000);
 const DAY_S = 86400;
 const linkKey = (u) => String(u || '').trim().toLowerCase().replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/[?#].*$/, '').replace(/\/+$/, '');
-export const sameLink = (a, b) => !!linkKey(a) && linkKey(a) === linkKey(b);
+// A Zeffy link matches its campaign whatever its language, embed or tracking (the admin's dropdowns use the same rule):
+// Zeffy's API gives campaign links with no language, while a link copied from Zeffy has one
+export const sameLink = (a, b) => sameForm(a, b) || (!!linkKey(a) && linkKey(a) === linkKey(b));
 const err = (message, status = 400) => Object.assign(new Error(message), { status });
 
 /** What a payment counts for, in cents, once refunds and disputes are taken off */

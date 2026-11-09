@@ -14,6 +14,7 @@
  */
 
 import { h, htm, useState, useEffect } from './vendor.js';
+import { zeffyKey, sameForm } from './zeffy-links.js';
 
 const html = htm.bind(h);
 const STALE_MS = 60 * 1000;
@@ -30,20 +31,8 @@ export const KINDS = {
   shop: 'Shops',
 };
 
-/**
- * Which form a Zeffy link opens, whatever its language, tracking or embed: '' for a link that isn't a Zeffy form.
- * A link typed without https:// is no form's: on the public page it would point at a page of our own site, so the
- * dropdown asks again and picking the form puts the whole link in
- */
-export function zeffyKey(url) {
-  const m = String(url || '').trim().toLowerCase().match(/^https?:\/\/(?:www\.)?zeffy\.com\/([^?#\s]*)/);
-  if (!m) return '';
-  let parts = m[1].split('/').filter(Boolean);
-  if (/^[a-z]{2}(-[a-z]{2})?$/.test(parts[0] || '')) parts = parts.slice(1);
-  if (parts[0] === 'embed') parts = parts.slice(1);
-  return parts.join('/');
-}
-export const sameForm = (a, b) => { const k = zeffyKey(a); return !!k && k === zeffyKey(b); };
+// Which form a link opens: the one rule the server uses too
+export { zeffyKey, sameForm };
 
 const madeOn = (unix, time = false) => (unix ? new Date(unix * 1000).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', ...(time ? { hour: 'numeric', minute: '2-digit' } : {}), timeZone: 'America/New_York' }) : '');
 const countOf = (keys) => keys.reduce((m, k) => m.set(k, (m.get(k) || 0) + 1), new Map());
@@ -59,19 +48,14 @@ export function formGroups(forms, { value = '', prefer = [], id } = {}) {
   const list = Array.isArray(forms) ? forms : [];
   const chosen = list.find((f) => sameForm(f.url, value) && (id === undefined || f.id === id)) || null;
   const shown = list.filter((f) => KINDS[f.kind] && (f.open || f === chosen)).sort((a, b) => (b.created || 0) - (a.created || 0));
-  const nth = (f) => shown.filter((x) => x.title.toLowerCase() === f.title.toLowerCase()).reverse().indexOf(f) + 1;
-  const named = (f, step) => {
-    if (step === 0) return f.title;
-    if (!f.created) return `${f.title} · ${nth(f)}`;
-    if (step === 3) return `${f.title} · ${madeOn(f.created, true)} (${nth(f)})`;
-    return `${f.title} · ${madeOn(f.created, step === 2)}`;
-  };
-  const labels = new Map(shown.map((f) => [f, named(f, 0)]));
-  for (let step = 1; step <= 3; step++) {
-    const n = countOf([...labels.values()].map((l) => l.toLowerCase()));
-    for (const f of shown) if (n.get(labels.get(f).toLowerCase()) > 1) labels.set(f, named(f, step));
-  }
-  const labelOf = (f) => `${labels.get(f)}${f.open ? '' : ' (closed)'}`;
+  const labels = new Map(shown.map((f) => [f, f.title]));
+  const clashing = () => { const n = countOf([...labels.values()].map((l) => l.toLowerCase())); return shown.filter((f) => n.get(labels.get(f).toLowerCase()) > 1); };
+  for (const time of [false, true]) for (const f of clashing()) if (f.created) labels.set(f, `${f.title} · ${madeOn(f.created, time)}`);
+  // Still alike: numbered among themselves, oldest first
+  const alike = new Map();
+  for (const f of clashing()) { const k = labels.get(f).toLowerCase(); alike.set(k, [...(alike.get(k) || []), f]); }
+  for (const same of alike.values()) [...same].reverse().forEach((f, i) => labels.set(f, `${labels.get(f)} (${i + 1})`));
+  const labelOf = (f) => `${labels.get(f)}${f.open ? '' : f.ended ? ' (ended)' : ' (closed)'}`;
   const order = [...prefer, ...Object.keys(KINDS)].filter((k, i, a) => KINDS[k] && a.indexOf(k) === i);
   const groups = order
     .map((kind) => ({ kind, label: KINDS[kind], forms: shown.filter((f) => f.kind === kind).map((f) => ({ ...f, label: labelOf(f) })) }))
@@ -118,6 +102,11 @@ async function refresh(s, { force = false } = {}) {
   // A failed look again keeps the list it had; with no list yet, the dropdown says so and tries again
   else if (!s.forms) s.failed = j?.error || 'Zeffy’s forms didn’t load.';
   s.subs.forEach((fn) => fn());
+}
+
+/** The list itself, for a field that needs it beyond the dropdown (the Advisory Board's campaign ID); null until it comes */
+export function useZeffyFormList(from = STAFF) {
+  return useZeffyForms(from).forms;
 }
 
 function useZeffyForms(from) {

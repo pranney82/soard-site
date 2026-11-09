@@ -10,14 +10,17 @@
  *
  * Each form: { id, title, url, kind, open, created }
  *   kind   donation | tickets | peer | auction | raffle | membership | shop  (the dropdown groups by it)
- *   open   false for an archived, closed or draft form: the dropdown shows one only when it's the link already chosen
+ *   open   false for an archived, closed or draft form, or one whose end date has passed (a past event Zeffy still calls
+ *          active): the dropdown shows one only when it's the link already chosen
+ *   ended  true when it's the end date that closed it, so the dropdown can say "ended"
  * A deleted form, or one with no public page, isn't listed.
  */
 
 import { zeffyGet } from './_zeffy.js';
 
 const MAX_PAGES = 20; // 2,000 forms: far past what SOARD has
-const STOPPED = /draft|closed|archiv|delet|inactive|ended|expired|cancel/i;
+// Any status but an open one: Zeffy's docs don't list them, so every word for not taking gifts is here
+const STOPPED = /draft|closed|archiv|delet|inactive|ended|expired|cancel|unpublish|pause|complet|finish|past|disabled|suspend/i;
 const clean = (s) => String(s ?? '').replace(/\s+/g, ' ').trim();
 
 /** What a Zeffy campaign is, in the groups the dropdown shows */
@@ -31,21 +34,24 @@ export function kindOf(c) {
 }
 
 /** One Zeffy campaign as the dropdown needs it, or null when it can't be linked to */
-export function formOf(c) {
+export function formOf(c, now = Date.now()) {
   const url = clean(c?.url);
   if (!c?.id || c.deleted_at || !/^https:\/\/[^/\s]+\/\S*$/i.test(url)) return null;
+  const stopped = !!c.is_archived || STOPPED.test(String(c.status || ''));
+  const ended = !stopped && Number(c.end_date) > 0 && Number(c.end_date) * 1000 < now;
   return {
     id: String(c.id),
     title: clean(c.title) || 'Untitled form',
     url,
     kind: kindOf(c),
-    open: !c.is_archived && !STOPPED.test(String(c.status || '')),
+    open: !stopped && !ended,
+    ...(ended ? { ended: true } : {}),
     created: Number(c.created) || 0,
   };
 }
 
 /** Every form in SOARD's Zeffy, newest first. Throws { status: 503 } with plain words when Zeffy can't be read */
-export async function zeffyForms(env, fetchImpl = fetch) {
+export async function zeffyForms(env, fetchImpl = fetch, now = Date.now()) {
   if (!env.ZEFFY_API_KEY) throw Object.assign(new Error('Zeffy isn’t connected: ZEFFY_API_KEY is missing in Cloudflare.'), { status: 503 });
   const out = [];
   let after = null;
@@ -53,7 +59,7 @@ export async function zeffyForms(env, fetchImpl = fetch) {
     for (let page = 0; page < MAX_PAGES; page++) {
       const r = await zeffyGet(env, '/campaigns', { limit: 100, starting_after: after }, fetchImpl);
       for (const c of r?.data || []) {
-        const f = formOf(c);
+        const f = formOf(c, now);
         if (f) out.push(f);
       }
       if (!r?.has_more || !r.next_cursor) return out.sort((a, b) => b.created - a.created);

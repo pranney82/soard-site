@@ -143,7 +143,9 @@ export async function onRequestPost(context) {
         if (patch.campaignUrl && patch.campaignUrl !== settings.campaignUrl && !patch.campaignId) {
           const found = await campaignFromUrl(env, webLink(patch.campaignUrl));
           if (found === '') return fail('That address isn’t a campaign in SOARD’s Zeffy. Check the link and try again.');
-          if (found) patch.campaignId = found;
+          // Never the old campaign's ID beside a new address: with Zeffy not answering it waits for the next Save
+          if (found === null && env.ZEFFY_API_KEY) return fail('Zeffy didn’t answer, so the site couldn’t check that address. Try Save again in a minute.', 503);
+          patch.campaignId = found || '';
         }
         const next = await saveSettings(env.DB, patch);
         await audit(context, by, 'updated', 'Advisory settings');

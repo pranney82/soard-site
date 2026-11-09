@@ -18733,9 +18733,9 @@ ${sections || '<p>No one yet.</p>'}
             </div>
           </div>
           <div class="form-group u-mb-field">
-            <span class="form-label">Tickets or sign-up link</span>
+            <label class="form-label" for="ev-ticket-url">Tickets or sign-up link</label>
             <${ZeffyFormSelect} value=${data.ticketUrl || ''} prefer=${['tickets']} label="Tickets or sign-up link" onPick=${(f) => update('ticketUrl', f.url)} />
-            <input class="form-input" type="url" value=${data.ticketUrl || ''} aria-label="Tickets or sign-up link"
+            <input id="ev-ticket-url" class="form-input" type="url" value=${data.ticketUrl || ''} aria-label="Tickets or sign-up link"
               onInput=${e => update('ticketUrl', e.target.value)} placeholder="https://" />
           </div>
           <div class="form-group u-mb-field">
@@ -21551,9 +21551,9 @@ ${sections || '<p>No one yet.</p>'}
                     onInput=${e => updateEvent('address', e.target.value)} />
                 </div>
                 <div class="form-group u-span-all">
-                  <label>Ticket URL</label>
+                  <label for="gala-ticket-url">Ticket URL</label>
                   <${ZeffyFormSelect} value=${eventData.ticketUrl || ''} prefer=${['tickets', 'auction']} label="Ticket URL" onPick=${(f) => updateEvent('ticketUrl', f.url)} />
-                  <input class="form-input" placeholder="https://www.zeffy.com/..." value=${eventData.ticketUrl || ''} aria-label="Ticket URL"
+                  <input id="gala-ticket-url" class="form-input" placeholder="https://www.zeffy.com/..." value=${eventData.ticketUrl || ''} aria-label="Ticket URL"
                     onInput=${e => updateEvent('ticketUrl', e.target.value)} />
                 </div>
                 <div class="form-group u-span-all ev-center-y">

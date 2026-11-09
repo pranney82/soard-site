@@ -23,7 +23,7 @@ import { ReportEditor } from './board-report.js';
 import { AdvisoryMeetings } from './advisory-meeting.js';
 import { api } from './advisory/api.js';
 import { Thermometer } from './advisory/thermometer.js';
-import { ZeffyFormSelect } from './zeffy-forms.js';
+import { ZeffyFormSelect, useZeffyFormList, sameForm } from './zeffy-forms.js';
 
 const html = htm.bind(h);
 const API = '/api/advisory-admin';
@@ -450,14 +450,21 @@ function Goal({ ctx }) {
   const [edits, setEdits] = useState({});
   const f = Object.fromEntries(GOAL_FIELDS.map((k) => [k, k in edits ? edits[k] : s[k]]));
   const up = (k) => (e) => setEdits({ ...edits, [k]: e.currentTarget.value });
-  // A campaign picked from Zeffy fills in its ID too. That ID belongs to the pick: an address typed after it gets its own
-  // from Zeffy when it's saved, never the picked campaign's
-  const pickedId = useRef('');
-  const pickCampaign = (c) => { pickedId.current = c.id; setEdits({ ...edits, campaignUrl: c.url, campaignId: c.id }); };
+  // The campaign's ID follows its address: picked from Zeffy's list, or typed and Zeffy lists it, the ID fills in; typed
+  // and not listed, the ID empties and Save asks Zeffy for it; cleared, the campaign is unlinked. Only an ID typed by hand
+  // stays put. Never the old campaign's ID beside a new address
+  const zeffyList = useZeffyFormList(ZEFFY_FROM);
+  const autoId = useRef(null);
+  const pickCampaign = (c) => { autoId.current = c.id; setEdits({ ...edits, campaignUrl: c.url, campaignId: c.id }); };
   const typeCampaignUrl = (e) => {
-    const next = { ...edits, campaignUrl: e.currentTarget.value };
-    if (pickedId.current && next.campaignId === pickedId.current) delete next.campaignId;
-    pickedId.current = '';
+    const url = e.currentTarget.value;
+    const next = { ...edits, campaignUrl: url };
+    const byHand = 'campaignId' in edits && edits.campaignId !== autoId.current;
+    const listed = url.trim() ? (zeffyList || []).find((c) => sameForm(c.url, url)) : null;
+    if (!url.trim()) next.campaignId = '';
+    else if (listed) next.campaignId = listed.id;
+    else if (!byHand) next.campaignId = '';
+    if (!byHand || !url.trim() || listed) autoId.current = next.campaignId;
     setEdits(next);
   };
   const moved = GOAL_FIELDS.filter((k) => k in edits && String(edits[k] ?? '') !== String(s[k] ?? ''));
@@ -873,7 +880,7 @@ const STYLES = `
 .ar-facts { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 1px 12px; margin: 0; }
 .ar-facts dt { color: var(--ar-muted); }
 .ar-facts dd { margin: 0; overflow-wrap: anywhere; }
-.ar-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; min-width: 0; }
+.ar-field { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; gap: 3px; min-width: 0; }
 .ar-field__l { font-size: 0.9em; font-weight: 600; color: var(--ar-ink-2); }
 .ar-field__h { font-size: 0.85em; color: var(--ar-muted); }
 .ar .ar-input { width: 100%; max-width: 100%; min-width: 0; min-height: 42px; margin: 0; padding: 8px 11px; border: 1px solid var(--ar-line-2); border-radius: 9px; background: #fff; color: var(--ar-ink); font: inherit; }

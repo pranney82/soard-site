@@ -449,6 +449,10 @@ test('with no campaign set nothing counts but a credited gift, and a pasted link
   assert.equal(r.cents, 0);
   assert.ok(sameLink('https://www.zeffy.com/en-US/page/', 'http://zeffy.com/en-us/page?x=1'));
   assert.ok(!sameLink('', ''));
+  // Zeffy's API gives a campaign's link with no language; a link copied from Zeffy has one, or is its embed
+  const api = 'https://www.zeffy.com/peer-to-peer/advisory-board-2026';
+  for (const pasted of ['https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2026', 'https://zeffy.com/fr-CA/peer-to-peer/advisory-board-2026/', 'https://www.zeffy.com/embed/peer-to-peer/advisory-board-2026']) assert.ok(sameLink(api, pasted), pasted);
+  assert.ok(!sameLink(api, 'https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2025'));
 });
 
 test('a page’s title names its advisor only when it names exactly one', () => {
@@ -772,5 +776,39 @@ test('the Zeffy form dropdowns: whoever runs the group gets SOARD’s forms thro
     assert.equal((await get({ advisor: { slug: 'ada-advisor', name: 'Ada Advisor', email: EMAILS['ada-advisor'] } })).status, 403);
   } finally {
     globalThis.fetch = real;
+  }
+});
+
+test('a new campaign address never keeps the old campaign’s ID: found in Zeffy, it takes its own; Zeffy not answering, Save waits', async () => {
+  await saveSettings(env.DB, { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/old', campaignId: 'old-id' });
+  const real = globalThis.fetch;
+  let zeffy = 'up';
+  globalThis.fetch = async () => (zeffy === 'up'
+    ? Response.json({ object: 'list', has_more: false, next_cursor: null, data: [{ id: 'new-id', url: 'https://www.zeffy.com/peer-to-peer/new-2027', title: 'New', type: 'donation_form', category: 'peer_to_peer', status: 'active', created: 1 }] })
+    : Response.json({ error: { message: 'down' } }, { status: 500 }));
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    env.ZEFFY_API_KEY = 'k';
+    // Copied from Zeffy (with its language), while Zeffy's API gives the link without one
+    let res = await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/new-2027', campaignId: '' } });
+    assert.equal(res.status, 200);
+    let s = await getSettings(env.DB);
+    assert.equal(s.campaignId, 'new-id');
+    zeffy = 'down';
+    res = await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/other', campaignId: '' } });
+    assert.equal(res.status, 503);
+    assert.match((await res.json()).error, /Zeffy didn’t answer/);
+    s = await getSettings(env.DB);
+    assert.deepEqual([s.campaignUrl, s.campaignId], ['https://www.zeffy.com/en-US/peer-to-peer/new-2027', 'new-id'], 'nothing half saved');
+    // With no Zeffy key at all the address saves, and no old ID stays beside it
+    delete env.ZEFFY_API_KEY;
+    res = await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/other' } });
+    assert.equal(res.status, 200);
+    s = await getSettings(env.DB);
+    assert.deepEqual([s.campaignUrl, s.campaignId], ['https://www.zeffy.com/en-US/peer-to-peer/other', '']);
+  } finally {
+    globalThis.fetch = real;
+    console.error = quiet;
   }
 });
