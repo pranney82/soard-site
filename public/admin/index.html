@@ -4453,6 +4453,8 @@
     // Event pages before and after the event: series, recap photos and sponsors, year pages
     import * as ES from './events-shared.js';
     import { AfterEventPanel, SponsorsList, EventBasics } from './event-recap-admin.js';
+    // Above every Zeffy link box: SOARD's Zeffy forms, and picking one fills in its link
+    import { ZeffyFormSelect } from './zeffy-forms.js';
     // Every "are you sure?" in the admin: an in-app dialog, never the browser's confirm()
     import { ask, askToLeave } from './ask.js';
     import { useDialog as usePplDialog } from './dialog.js';
@@ -12188,6 +12190,7 @@
         ${sec('giving', 'Giving', null, null, html`
           <div class="form-group u-m-0">
             <label class="form-label" for="kd-fund">Fundraising link <span class="form-optional">Zeffy</span></label>
+            <${ZeffyFormSelect} value=${data.fundraisingUrl || ''} prefer=${['donation', 'peer']} label="Fundraising link" onPick=${(f) => set({ fundraisingUrl: f.url })} />
             <div class="ppl-inline">
               <input id="kd-fund" class=${`form-input${data.fundraisingUrl && !fundOk ? ' is-invalid' : ''}`} type="url" inputmode="url" value=${data.fundraisingUrl || ''}
                 placeholder="https://www.zeffy.com/…" onInput=${(e) => set({ fundraisingUrl: e.target.value })} />
@@ -18731,7 +18734,8 @@ ${sections || '<p>No one yet.</p>'}
           </div>
           <div class="form-group u-mb-field">
             <span class="form-label">Tickets or sign-up link</span>
-            <input class="form-input" type="url" value=${data.ticketUrl || ''}
+            <${ZeffyFormSelect} value=${data.ticketUrl || ''} prefer=${['tickets']} label="Tickets or sign-up link" onPick=${(f) => update('ticketUrl', f.url)} />
+            <input class="form-input" type="url" value=${data.ticketUrl || ''} aria-label="Tickets or sign-up link"
               onInput=${e => update('ticketUrl', e.target.value)} placeholder="https://" />
           </div>
           <div class="form-group u-mb-field">
@@ -21548,7 +21552,8 @@ ${sections || '<p>No one yet.</p>'}
                 </div>
                 <div class="form-group u-span-all">
                   <label>Ticket URL</label>
-                  <input class="form-input" placeholder="https://www.zeffy.com/..." value=${eventData.ticketUrl || ''}
+                  <${ZeffyFormSelect} value=${eventData.ticketUrl || ''} prefer=${['tickets', 'auction']} label="Ticket URL" onPick=${(f) => updateEvent('ticketUrl', f.url)} />
+                  <input class="form-input" placeholder="https://www.zeffy.com/..." value=${eventData.ticketUrl || ''} aria-label="Ticket URL"
                     onInput=${e => updateEvent('ticketUrl', e.target.value)} />
                 </div>
                 <div class="form-group u-span-all ev-center-y">

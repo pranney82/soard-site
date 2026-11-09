@@ -23,12 +23,15 @@ import { ReportEditor } from './board-report.js';
 import { AdvisoryMeetings } from './advisory-meeting.js';
 import { api } from './advisory/api.js';
 import { Thermometer } from './advisory/thermometer.js';
+import { ZeffyFormSelect } from './zeffy-forms.js';
 
 const html = htm.bind(h);
 const API = '/api/advisory-admin';
 
 /** One call: { ok, status, ... } (never throws) */
 export const call = (body, { form = null, query = '' } = {}) => api(`${API}${query}`, body, { form });
+/** The Zeffy form dropdowns read SOARD's forms through this page's own route: Mary can't reach the staff one */
+const ZEFFY_FROM = { key: 'advisory', load: () => call(null, { query: '?zeffyForms=1' }) };
 
 const TABS = [['meetings', 'Meetings'], ['documents', 'Documents'], ['members', 'Members']];
 const dollars = (n) => `$${Math.round(Number(n) || 0).toLocaleString('en-US')}`;
@@ -138,8 +141,9 @@ function useDirty(ctx, key, where) {
 }
 
 // ─── Small pieces ───────────────────────────────────────────────────
-function Field({ label, hint = '', children }) {
-  return html`<label class="ar-field"><span class="ar-field__l">${label}</span>${children}${hint ? html`<span class="ar-field__h">${hint}</span>` : null}</label>`;
+/** for: the id of the control the name belongs to, when the field holds more than one (a Zeffy link: the dropdown, then the box) */
+function Field({ label, hint = '', for: control, children }) {
+  return html`<label class="ar-field" for=${control}><span class="ar-field__l">${label}</span>${children}${hint ? html`<span class="ar-field__h">${hint}</span>` : null}</label>`;
 }
 function Card({ title, sub = '', count = null, children, cls = '' }) {
   return html`<section class=${`ar-card ${cls}`}>
@@ -270,7 +274,7 @@ function HostedRow({ x, ctx }) {
     ${held ? (x.note ? html`<p class="ar-quote">${x.note}</p>` : null) : html`
       <div class="ar-grid2">
         <${Field} label="The date" hint=${x.status === 'approved' && !date ? 'It won’t show under Coming up until it has one.' : ''}><input class="ar-input" type="date" value=${date} onInput=${(e) => setDate(e.currentTarget.value)} /><//>
-        <${Field} label="Its Zeffy page" hint="So what it raises counts toward the goal"><input class="ar-input" type="url" inputmode="url" placeholder="https://www.zeffy.com/" value=${giveUrl} onInput=${(e) => setGiveUrl(e.currentTarget.value)} /><//>
+        <${Field} label="Its Zeffy page" hint="So what it raises counts toward the goal" for=${`ar-give-${x.id}`}><${ZeffyFormSelect} cls="ar-input" from=${ZEFFY_FROM} value=${giveUrl} prefer=${['peer', 'tickets', 'donation']} label="Its Zeffy page" onPick=${(f) => setGiveUrl(f.url)} /><input id=${`ar-give-${x.id}`} class="ar-input" type="url" inputmode="url" placeholder="https://www.zeffy.com/" aria-label="Its Zeffy page" value=${giveUrl} onInput=${(e) => setGiveUrl(e.currentTarget.value)} /><//>
       </div>
       <${Field} label="A note for the advisor"><input class="ar-input" value=${note} maxlength="800" onInput=${(e) => setNote(e.currentTarget.value)} /><//>
       <div class="ar-btns">
@@ -446,6 +450,16 @@ function Goal({ ctx }) {
   const [edits, setEdits] = useState({});
   const f = Object.fromEntries(GOAL_FIELDS.map((k) => [k, k in edits ? edits[k] : s[k]]));
   const up = (k) => (e) => setEdits({ ...edits, [k]: e.currentTarget.value });
+  // A campaign picked from Zeffy fills in its ID too. That ID belongs to the pick: an address typed after it gets its own
+  // from Zeffy when it's saved, never the picked campaign's
+  const pickedId = useRef('');
+  const pickCampaign = (c) => { pickedId.current = c.id; setEdits({ ...edits, campaignUrl: c.url, campaignId: c.id }); };
+  const typeCampaignUrl = (e) => {
+    const next = { ...edits, campaignUrl: e.currentTarget.value };
+    if (pickedId.current && next.campaignId === pickedId.current) delete next.campaignId;
+    pickedId.current = '';
+    setEdits(next);
+  };
   const moved = GOAL_FIELDS.filter((k) => k in edits && String(edits[k] ?? '') !== String(s[k] ?? ''));
   const changed = moved.length > 0;
   useDirty(ctx, 'goal', changed ? 'the goal and term' : '');
@@ -481,7 +495,7 @@ function Goal({ ctx }) {
         <${Field} label="The term starts"><input class="ar-input" type="date" value=${f.termStart} onInput=${up('termStart')} /><//>
         <${Field} label="The term ends"><input class="ar-input" type="date" value=${f.termEnd} onInput=${up('termEnd')} /><//>
       </div>
-      <${Field} label="The Zeffy campaign’s web address"><input class="ar-input" type="url" inputmode="url" placeholder="https://www.zeffy.com/" value=${f.campaignUrl} onInput=${up('campaignUrl')} /><//>
+      <${Field} label="The Zeffy campaign’s web address" for="ar-campaign-url"><${ZeffyFormSelect} cls="ar-input" from=${ZEFFY_FROM} value=${f.campaignUrl} id=${f.campaignId || ''} prefer=${['peer']} label="The Zeffy campaign’s web address" onPick=${pickCampaign} /><input id="ar-campaign-url" class="ar-input" type="url" inputmode="url" placeholder="https://www.zeffy.com/" aria-label="The Zeffy campaign’s web address" value=${f.campaignUrl} onInput=${typeCampaignUrl} /><//>
       <${Field} label="The campaign’s ID in Zeffy, if you have it" hint="The site finds it from the address when it can, and says so if it can’t"><input class="ar-input" value=${f.campaignId} onInput=${up('campaignId')} /><//>
       <div class="ar-btns"><button type="button" class="ar-btn ar-btn--go" disabled=${!changed || ctx.busy} onClick=${saveIt}>Save</button></div>
     <//>

@@ -754,3 +754,23 @@ test('the ask’s email has the two buttons', () => {
   const m = askEmail({ title: 'T', body: 'B' }, 'Ada', { yes: 'https://y', no: 'https://n' });
   assert.ok(m.html.includes('https://y') && m.html.includes('https://n') && m.text.includes('Hi Ada'));
 });
+
+test('the Zeffy form dropdowns: whoever runs the group gets SOARD’s forms through Run it’s own route; committee members and advisors don’t', async () => {
+  const { onRequestGet } = await import('../functions/api/advisory-admin.js');
+  env.ZEFFY_API_KEY = 'k';
+  const real = globalThis.fetch;
+  globalThis.fetch = async () => Response.json({ object: 'list', has_more: false, next_cursor: null, data: [
+    { id: 'p2p', created: 2, deleted_at: null, type: 'donation_form', category: 'peer_to_peer', status: 'active', title: 'Advisory Board 2026', url: 'https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2026', is_archived: false },
+  ] });
+  try {
+    const get = (data) => onRequestGet({ env, data, request: new Request('https://x/api/advisory-admin?zeffyForms=1') });
+    const mary = await get({ boardMember: { slug: 'mary-atchley', name: 'Mary Atchley', email: EMAILS['mary-atchley'], committees: ['Advisory Board'] } });
+    assert.equal(mary.status, 200);
+    const j = await mary.json();
+    assert.deepEqual(j.forms.map((f) => [f.id, f.kind, f.url]), [['p2p', 'peer', 'https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2026']]);
+    assert.equal((await get({ boardMember: { slug: 'travis-couick', name: 'Travis Couick', committees: ['Advisory Board'] } })).status, 403);
+    assert.equal((await get({ advisor: { slug: 'ada-advisor', name: 'Ada Advisor', email: EMAILS['ada-advisor'] } })).status, 403);
+  } finally {
+    globalThis.fetch = real;
+  }
+});

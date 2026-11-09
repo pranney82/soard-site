@@ -6,6 +6,7 @@
  * public/admin/advisory-admin.js. Everyone else gets 403, committee members and advisors included.
  *
  * GET                                  → everything it shows
+ * GET ?zeffyForms=1                    → { ok, forms }  the forms in SOARD's Zeffy, for its Zeffy link dropdowns (./_zeffy-forms.js)
  * POST { action, ... }                 see the cases below
  * POST multipart (file + docId)        a paper's file (advisory_docs); (file + meetingId) a meeting's (./_advisory-meetings.js)
  */
@@ -24,6 +25,7 @@ import { advisoryBits, sharableBoardDocs } from './_board.js';
 import { boardPapers } from './_advisory-portal.js';
 import { seedOnce } from './_advisory-seed.js';
 import { advisoryGroupStatus, syncAdvisoryGroup } from './_board-group.js';
+import { zeffyForms } from './_zeffy-forms.js';
 
 const fail = (error, status = 400) => Response.json({ ok: false, error }, { status });
 const fromError = (e) => {
@@ -57,6 +59,8 @@ export async function onRequestGet(context) {
   try {
     const { w, refused } = await gate(context);
     if (refused) return refused;
+    // The Zeffy form dropdowns (public/admin/zeffy-forms.js): the staff route is out of reach from the advisors' page
+    if (new URL(context.request.url).searchParams.get('zeffyForms')) return Response.json({ ok: true, forms: await zeffyForms(env) });
     await seedOnce(env.DB, () => sharableBoardDocs(env.DB));
     await boardPapers(env.DB, await getSettings(env.DB));
     const settings = await getSettings(env.DB);

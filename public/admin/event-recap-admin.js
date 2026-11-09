@@ -17,6 +17,7 @@
  *   SponsorsList      an event's own sponsor list (kept once next year's is added)
  */
 import { h, htm, useState, useRef } from './vendor.js';
+import { ZeffyFormSelect } from './zeffy-forms.js';
 import {
   seriesOf, isOver, isLatest, eventPath, yearPath, yearOf, fmtDay, recapPhotos, recapSponsors,
   sponsorCount, recapLead, cleanHighlights, HIGHLIGHTS_MAX, displayName, cleanSponsors,
@@ -55,6 +56,8 @@ const CSS = `
 .er-fail { padding: 0.8rem 1rem; border-radius: 10px; border: 1px solid rgba(180, 83, 9, 0.35); background: rgba(245, 158, 11, 0.08); font-size: var(--fs-xs); }
 .er-fail ul { margin: 0.4rem 0; padding-left: 1.1rem; }
 .er-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0.75rem; }
+/* A whole row: a form's name and its link read in full */
+.er-row > .er-wide { grid-column: 1 / -1; }
 .er-hl { display: grid; grid-template-columns: 7rem 1fr auto; gap: 0.5rem; margin-bottom: 0.45rem; }
 .er-add { justify-self: start; }
 .er-sp { display: grid; gap: 0.9rem; }
@@ -325,7 +328,11 @@ export function EventBasics({ event, onEvent }) {
       ${field('time', 'Time', { placeholder: '7:00 AM' })}
       ${field('location', 'Course', { placeholder: 'Indian Hills Country Club' })}
       ${field('address', 'Address', { placeholder: '4001 Clubland Dr. Marietta, GA 30068' })}
-      ${field('ticketUrl', 'Registration link', { type: 'url', placeholder: 'https://www.zeffy.com/…' })}
+      <div class="form-group er-wide">
+        <span class="form-label">Registration link</span>
+        <${ZeffyFormSelect} value=${ev.ticketUrl || ''} prefer=${['tickets']} label="Registration link" onPick=${(f) => onEvent('ticketUrl', f.url)} />
+        <input class="form-input" type="url" placeholder="https://www.zeffy.com/…" aria-label="Registration link" value=${ev.ticketUrl || ''} onInput=${(e) => onEvent('ticketUrl', e.target.value)} />
+      </div>
     </div>
     <label class="checkbox-label u-mt-1" style="display: inline-flex; align-items: center; gap: 0.5rem;">
       <input type="checkbox" checked=${!!ev.featured} onChange=${(e) => onEvent('featured', e.target.checked)} />
