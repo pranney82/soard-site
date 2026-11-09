@@ -131,7 +131,8 @@ export async function onRequestGet(context) {
     if (q.has('sync')) {
       const jobId = q.get('sync');
       if (!ID.test(jobId)) return fail('A JobTread job id is required');
-      const result = await reconcileJob(env, jobId);
+      // Retry looks at Google too, so an invite that's already out clears its old error
+      const result = await reconcileJob(env, jobId, { verify: true });
       return Response.json({ ok: result.action !== 'error', ...result, ...(result.event ? { event: undefined } : {}) });
     }
 

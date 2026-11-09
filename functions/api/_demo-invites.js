@@ -510,6 +510,13 @@ async function reconcileLocked(env, jobId, { fetchImpl = fetch, now = Date.now()
   if (out && oldFacts === factsHash && (!rewrite || oldEvent === eventHash)) {
     // Held, and JobTread is back to normal (reopened, status back): clear the note
     if (!dryRun && /^kept: /.test(out.last_action || '')) await DB.prepare('UPDATE demo_invites SET last_action = ? WHERE job_id = ?').bind('back on in JobTread', jobId).run();
+    // An earlier try's error (Google busy for a moment) is over once Google has
+    // just shown the invite is out as it should be: the admin and Slack say so
+    if (out.error && verify && live && !force) {
+      await DB.prepare('UPDATE demo_invites SET error = NULL WHERE job_id = ?').bind(jobId).run();
+      const summary = `${name ? `${name}'s demo day invite` : 'The demo day invite'} is out as it should be. Google answered on the next check.`;
+      await slackResolved(env, `demo-invite:${jobId}`, slackCard({ icon: '✅', title: `Demo day invite fixed${name ? `: ${name}` : ''}`, lead: summary }), { summary }).catch(() => null);
+    }
     return { jobId, action: 'unchanged', eventId: plan.event.id };
   }
   if (!live) return { jobId, action: out ? 'would-update' : 'would-create', event: plan.event, guests: plan.guests };

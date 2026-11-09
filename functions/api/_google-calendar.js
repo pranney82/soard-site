@@ -111,14 +111,23 @@ export function eventIdFor(prefix, id) {
   return prefix + [...new TextEncoder().encode(String(id))].map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
+// Google's "Backend Error" (500, 503) and rate limits pass in a moment; its
+// advice is to ask again. Only reads are asked again: a write Google answered
+// badly may still have gone through and emailed every guest.
+const PASSING = new Set([429, 500, 502, 503, 504]);
+export const READ_RETRY_DELAYS = [300, 1200];
+
 async function call(token, method, path, body, fetchImpl) {
-  const res = await fetchImpl(`${CAL_API}${path}`, {
-    method,
-    headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
-    ...(body ? { body: JSON.stringify(body) } : {}),
-  });
-  const data = res.status === 204 ? null : await res.json().catch(() => null);
-  return { status: res.status, ok: res.ok, data };
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetchImpl(`${CAL_API}${path}`, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    const data = res.status === 204 ? null : await res.json().catch(() => null);
+    if (method !== 'GET' || !PASSING.has(res.status) || attempt >= READ_RETRY_DELAYS.length) return { status: res.status, ok: res.ok, data };
+    await new Promise((resolve) => setTimeout(resolve, READ_RETRY_DELAYS[attempt]));
+  }
 }
 
 /**

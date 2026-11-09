@@ -13,7 +13,7 @@ import {
 import { FIELD_STATUS, FIELD_MAKEOVER_TYPE, FIELD_CONTACT_EMAIL, BY_HAND, writeConfig as writeInviteConfig } from '../functions/api/_reveal-invites.js';
 import * as wakeRoute from '../functions/api/reveal-invites.js';
 import * as admin from '../functions/api/demo-invites-admin.js';
-import { eventIdFor, clearTokenCache } from '../functions/api/_google-calendar.js';
+import { eventIdFor, clearTokenCache, READ_RETRY_DELAYS } from '../functions/api/_google-calendar.js';
 import { ensureProjectSchema, readProjectRow } from '../functions/api/_project-emails.js';
 
 // Thursday Oct 22 2026, 10:00 AM Eastern
@@ -353,6 +353,42 @@ test('Google errors are recorded and reported once, not thrown', async () => {
   assert.match(r.error, /insert failed \(500\): Backend Error/);
   assert.equal((await run()).action, 'created', 'the next look sends it');
   assert.equal((await env.DB.prepare('SELECT error FROM demo_invites WHERE job_id = ?').bind(jt.id).first()).error, null);
+});
+
+test('Google busy for a moment while checking an invite that is out: asked again, and an error left over clears on the next check and on Retry', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  assert.equal((await run()).action, 'created');
+  const delays = READ_RETRY_DELAYS.splice(0, READ_RETRY_DELAYS.length, 0, 0);
+  try {
+    // The 5-minute check reads the invite back from Google; a 503 once is asked again and never reaches anyone
+    let busy = 1;
+    const flaky = async (url, init) => (String(url).includes(`/events/${id()}`) && (init?.method || 'GET') === 'GET' && busy-- > 0
+      ? Response.json({ error: { message: 'Backend Error' } }, { status: 503 }) : fakeFetch(url, init));
+    assert.equal((await run({ fetchImpl: flaky, verify: true })).action, 'unchanged');
+    assert.equal((await env.DB.prepare('SELECT error FROM demo_invites WHERE job_id = ?').bind(jt.id).first()).error, null);
+
+    // Busy every time it asks: recorded, while the invite stays out
+    busy = 3;
+    const r = await run({ fetchImpl: flaky, verify: true });
+    assert.equal(r.action, 'error');
+    assert.match(r.error, /read failed \(503\): Backend Error/);
+    assert.equal((await env.DB.prepare('SELECT state FROM demo_invites WHERE job_id = ?').bind(jt.id).first()).state, 'sent');
+    // A wake-up that doesn't look at Google leaves the error for a check that does
+    assert.equal((await run()).action, 'unchanged');
+    assert.match((await env.DB.prepare('SELECT error FROM demo_invites WHERE job_id = ?').bind(jt.id).first()).error, /503/);
+    // The next check reaches Google: nothing to send, and the error is gone
+    assert.equal((await run({ verify: true })).action, 'unchanged');
+    assert.equal((await env.DB.prepare('SELECT error FROM demo_invites WHERE job_id = ?').bind(jt.id).first()).error, null);
+    assert.deepEqual(writesToGoogle().slice(1), [], 'guests are never emailed again');
+
+    // Retry in the admin clears it the same way
+    busy = 3;
+    assert.equal((await run({ fetchImpl: flaky, verify: true })).action, 'error');
+    assert.equal((await adminGet(`?sync=${jt.id}`)).action, 'unchanged');
+    assert.equal((await env.DB.prepare('SELECT error FROM demo_invites WHERE job_id = ?').bind(jt.id).first()).error, null);
+  } finally {
+    READ_RETRY_DELAYS.splice(0, READ_RETRY_DELAYS.length, ...delays);
+  }
 });
 
 test('a TEST job sends even while off, only to the test guests, marked TEST', async () => {

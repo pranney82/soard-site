@@ -45,7 +45,8 @@ export async function onRequestGet(context) {
       const jobId = q.get('sync');
       if (!ID.test(jobId)) return fail('A JobTread job id is required');
       const force = q.get('force') === '1';
-      const result = await reconcileDemo(env, jobId, { force });
+      // Retry looks at Google too, so an invite that's already out clears its old error
+      const result = await reconcileDemo(env, jobId, { force, verify: true });
       if (force) {
         await logAudit(env.DB, {
           userEmail: me || 'unknown', action: 'updated', entityType: 'site-config', entitySlug: 'demo-invites',
