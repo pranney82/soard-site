@@ -108,6 +108,7 @@ beforeEach(async () => {
         const who = [...q.matchAll(/(?:from|to|cc):(\S+?)(?=\)|\s|$)/g)].map((x) => x[1]);
         const said = [...q.matchAll(/"([^"]+)"/g)].map((x) => x[1]);
         const hits = mine.filter((m) => Number(m.internalDate) > after && Number(m.internalDate) < before)
+          .filter((m) => !/(^|\s)-in:drafts\b/.test(q) || !m.labelIds.includes('DRAFT'))
           .filter((m) => !who.length || who.some((e) => m.payload.headers.some((h) => ['From', 'To', 'Cc'].includes(h.name) && h.value.toLowerCase().includes(e))))
           .filter((m) => !said.length || said.some((w) => m._words.includes(w)))
           .sort((a, b) => b.internalDate - a.internalDate);
@@ -198,6 +199,8 @@ test('triage: receipts, shipping, ads, staff mail, money tools, calendar replies
   assert.equal(t({ from: 'Dan <dad@example.com>', subject: "Accepted: Max's Reveal Day (tentative) @ Mon Nov 2" }), null, 'calendar replies');
   assert.deepEqual(t({ from: 'Dan <dad@example.com>', subject: 'Question about the room' }), { kind: 'family', accounts: ['acctRivera1'] });
   assert.deepEqual(t({ from: `Pat <${PAT}>`, to: 'kim@example.com', subject: 'Paint colors', labels: ['SENT'] }), { kind: 'family', accounts: ['acctKim0002'] });
+  assert.equal(t({ from: `Pat <${PAT}>`, to: 'kim@example.com', subject: 'Paint colors', labels: ['DRAFT'] }), null, 'a draft to a family');
+  assert.equal(t({ from: `Pat <${PAT}>`, to: PAT, subject: 'Receipt [receipt 12]', labels: ['DRAFT'] }), null, 'a draft of a tagged receipt');
   assert.equal(t({ from: 'Case Worker <cw@example.org>', subject: 'Checking in' }), null, 'an address on two families points at neither');
   const listed = (extra) => { const m = mail({ box: PAT, at: T0, from: 'Ana <parent@example.com>', to: PAT, subject: 'Black Friday Presale', text: '' }); m.payload.headers.push(...extra); return triage(m, fam); };
   assert.equal(listed([{ name: 'List-Unsubscribe', value: '<https://shop.example/unsub>' }]), null, 'a family’s business newsletter');
@@ -495,6 +498,28 @@ test('new mail after the start is picked up; a failed send is tried again later'
   await maybeSweepMail(env, { now: later + 15 * MIN, force: true });
   assert.equal((await byId(r.id))[0].state, 'sent');
   assert.equal(of('resend').filter((c) => /Fabric/.test(c.body.subject)).length, 2);
+});
+
+test('a draft isn’t an email yet: one being written isn’t picked up, one already waiting is passed over, and the sent copy goes on', async () => {
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  const draft = mail({ box: PAT, at, from: `Pat <${PAT}>`, to: 'parent@example.com', subject: 'Paint colors', text: 'Hi Ana, the blue we', labels: ['DRAFT'] });
+  // Queued before drafts were left out (Clareece's, Nov 5 2026): still a draft when its turn comes
+  const waiting = mail({ box: PAT, at: at + 1000, from: `Pat <${PAT}>`, to: 'parent@example.com', subject: 'Re: Room ideas', text: 'Sounds go', labels: ['DRAFT'] });
+  await env.DB.prepare("INSERT INTO mail_sweep (mailbox, id, at, kind, state, accounts, subject, source, updated_at) VALUES (?, ?, ?, 'family', 'queued', ?, ?, 'new', ?)")
+    .bind(PAT, waiting.id, new Date(at + 1000).toISOString(), JSON.stringify(['acctRivera1']), 'Re: Room ideas', new Date(at).toISOString()).run();
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
+  assert.deepEqual(await byId(draft.id), [], 'never queued');
+  assert.equal((await byId(waiting.id))[0].state, 'skipped');
+  const searches = of('gmail').filter((c) => c.path === '/messages' && !/"/.test(c.q));
+  assert.ok(searches.length && searches.every((c) => /-in:drafts/.test(c.q)), 'the new-mail and last-year searches leave drafts out');
+  assert.equal(of('comment').length, 0);
+
+  const sent = mail({ box: PAT, at: at + 6 * MIN, from: `Pat <${PAT}>`, to: 'parent@example.com', subject: 'Paint colors', text: 'Hi Ana, the blue we picked is in.', labels: ['SENT'] });
+  await maybeSweepMail(env, { now: at + 10 * MIN, force: true });
+  assert.equal((await byId(sent.id))[0].state, 'posted');
+  assert.equal(of('comment').length, 1);
+  assert.match(of('comment')[0].input.message, /the blue we picked is in/);
 });
 
 test('the heartbeat: every 3 minutes when there’s nothing waiting, never without the Google key', async () => {

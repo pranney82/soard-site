@@ -238,6 +238,8 @@ export function senderOf(h) {
 }
 
 export function triage(msg, { byEmail, staffNames = new Set() }) {
+  // A draft isn't an email yet: what's in it may change, and its sent copy comes in on its own (Peter, Nov 9 2026)
+  if ((msg.labelIds || []).includes('DRAFT')) return null;
   const h = msg.payload?.headers;
   const subject = header(h, 'Subject');
   // A receipt staff emailed for a card charge from their weekly list ("Email the receipt" puts the charge's code in the subject)
@@ -1028,7 +1030,7 @@ async function scanBox(env, ctx, mailbox, bs) {
   const { token } = await ctx.open(mailbox);
   // An inbox added later (a store account) starts from when it's added, as every inbox did: its card charges search its older mail anyway
   bs.cursor ||= ctx.now;
-  const q = bs.pageQ || `after:${Math.floor((bs.cursor - OVERLAP_MS) / 1000)}`;
+  const q = bs.pageQ || `after:${Math.floor((bs.cursor - OVERLAP_MS) / 1000)} -in:drafts`;
   const list = await gmail(token, `/messages?maxResults=${PER_LIST}&q=${encodeURIComponent(q)}${bs.page ? `&pageToken=${bs.page}` : ''}`, ctx.fetchImpl);
   const seen = new Set(bs.recent || []);
   const ids = (list.messages || []).map((m) => m.id).filter((id) => !seen.has(id));
@@ -1078,7 +1080,7 @@ async function backfillStep(env, ctx, st, boxes) {
   const mailbox = boxes[bf.box];
   if (mailbox && !st.boxes?.[mailbox]?.noMail) {
     const { token } = await ctx.open(mailbox);
-    const q = `(${bf.chunk.map((e) => `from:${e} OR to:${e} OR cc:${e}`).join(' OR ')}) after:${Math.floor((bf.until - BACKFILL_DAYS * 86400e3) / 1000)} before:${Math.floor(bf.until / 1000)}`;
+    const q = `(${bf.chunk.map((e) => `from:${e} OR to:${e} OR cc:${e}`).join(' OR ')}) after:${Math.floor((bf.until - BACKFILL_DAYS * 86400e3) / 1000)} before:${Math.floor(bf.until / 1000)} -in:drafts`;
     const list = await gmail(token, `/messages?maxResults=${PER_LIST}&q=${encodeURIComponent(q)}${bf.page ? `&pageToken=${bf.page}` : ''}`, ctx.fetchImpl);
     for (const msg of await metadata(token, (list.messages || []).map((m) => m.id), ctx.fetchImpl)) {
       const t = triage(msg, ctx.families);
