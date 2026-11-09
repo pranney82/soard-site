@@ -14,7 +14,7 @@ import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync } from 'node:crypto';
 import { createD1 } from './lib/d1-shim.mjs';
-import { maybeSweepMail, mailSweepStatus, triage, withoutQuoted, familyAddresses, receiptText, judgeReceipt, amountsIn, WATCH_MS } from '../functions/api/_mail-sweep.js';
+import { maybeSweepMail, mailSweepStatus, triage, senderOf, withoutQuoted, familyAddresses, receiptText, judgeReceipt, amountsIn, WATCH_MS } from '../functions/api/_mail-sweep.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 import { forgetRampToken } from '../functions/api/_ramp.js';
 
@@ -635,6 +635,30 @@ test('a receipt in a coworker’s inbox: found after the charge’s first hour w
   assert.equal(await env.DB.prepare('SELECT charge_id FROM mail_sweep WHERE id = ?').bind(bakery.id).first('charge_id'), null, 'and isn’t put on any charge');
   assert.deepEqual(await cardRow('mercury:ch6'), { state: 'attached', msg_id: `${LEE}:${walmart.id}`, detail: 'put “Lee, thanks for your order” on the Mercury card charge (Walmart $83.76)' }, 'the card’s email is an alias on the account');
   assert.equal(await env.DB.prepare('SELECT archived FROM mail_sweep WHERE mailbox = ? AND id = ?').bind(PAT, etsy.id).first('archived'), 'yes', 'archived where it was found');
+});
+
+test('a store’s email through a SOARD group (orders@) is the store’s: a receipt, and found by its card charge', async () => {
+  const fam = await familyAddresses(env.DB);
+  const relayed = (o, extra) => { const m = mail({ box: PAT, at: T0, to: 'orders@soardcharity.com', text: '', ...o }); m.payload.headers.push(...extra); return m; };
+  const amazon = relayed({ from: "'Amazon.com' via orders <orders@soardcharity.com>", subject: 'Your Amazon.com order of 3 Ring Binders' }, [{ name: 'X-Original-From', value: 'Amazon.com <auto-confirm@amazon.example>' }]);
+  assert.equal(senderOf(amazon.payload.headers), 'Amazon.com <auto-confirm@amazon.example>');
+  assert.deepEqual(triage(amazon, fam), { kind: 'receipt' });
+  const viaReply = relayed({ from: "'Lumber Co' via orders <orders@soardcharity.com>", subject: 'Your receipt from Lumber Co' }, [{ name: 'Reply-To', value: 'sales@lumber.example' }]);
+  assert.deepEqual(triage(viaReply, fam), { kind: 'receipt' }, 'Reply-To when the group keeps no X-Original-From');
+  const staff = relayed({ from: "'Holly' via info <info@soardcharity.com>", subject: 'Receipt for the paint' }, [{ name: 'X-Original-From', value: 'Holly <holly@soardcharity.com>' }]);
+  assert.equal(triage(staff, fam), null, 'staff through a group is still staff');
+
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec(MERCURY_CHARGES);
+  await mercuryCharge('ch7', 3447, 'Amazon', at - 10 * MIN);
+  const shipped = mail({ box: PAT, at, from: "'Amazon.com' via orders <orders@soardcharity.com>", to: 'orders@soardcharity.com', subject: 'Shipped: 3 Ring Yellow Binder', text: 'Your package is on its way. Shipment total $34.47' });
+  shipped.payload.headers.push({ name: 'X-Original-From', value: 'Amazon.com <shipment-tracking@amazon.example>' });
+  calls.length = 0;
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
+  assert.deepEqual(await cardRow('mercury:ch7'), { state: 'attached', msg_id: `${PAT}:${shipped.id}`, detail: 'put “Shipped: 3 Ring Yellow Binder” on the Mercury card charge (Amazon $34.47)' });
+  assert.deepEqual(of('mercury').map((c) => c.file), ['Amazon.com receipt 2026-11-03.pdf'], 'named for the store, not the group');
 });
 
 test('a Ramp card charge gets its receipt in Ramp, its receipt still goes to the receipt inbox once, and every receipt is SOARD’s', async () => {

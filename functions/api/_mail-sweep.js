@@ -76,7 +76,7 @@ const Q_MAX = 1200;
 const AT_ONCE = 6;
 const AI_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const AI_TIMEOUT_MS = 8000;
-const LIST_HEADERS = ['From', 'To', 'Cc', 'Delivered-To', 'Reply-To', 'Subject', 'Message-ID', 'References', 'In-Reply-To', 'Auto-Submitted', 'List-Id', 'List-Unsubscribe', 'Precedence'];
+const LIST_HEADERS = ['From', 'To', 'Cc', 'Delivered-To', 'Reply-To', 'X-Original-From', 'X-Original-Sender', 'Subject', 'Message-ID', 'References', 'In-Reply-To', 'Auto-Submitted', 'List-Id', 'List-Unsubscribe', 'Precedence'];
 const SENT_TAG = 'receipt-from-inbox';
 
 // The money tools' and JobTread's own mail: already where it belongs
@@ -219,6 +219,18 @@ function accountsOf(people, byEmail) {
  * | { kind: 'receipt' } | null. Family wins; a mailing to more than three
  * families is a newsletter, not a conversation.
  */
+/**
+ * Who really sent an email. A SOARD Google group (orders@, info@) passes a store's email on as
+ * "'Amazon.com' via orders" <orders@soardcharity.com>, with the store in X-Original-From (or X-Original-Sender,
+ * or Reply-To) → that From line ('Amazon.com <shipment-tracking@amazon.com>'), else the email's own
+ */
+export function senderOf(h) {
+  const from = header(h, 'From');
+  if (!/\bvia\b/i.test(from.replace(/<.*>/, '')) || !addresses(from).every(isStaffEmail)) return from;
+  const original = header(h, 'X-Original-From') || header(h, 'X-Original-Sender') || header(h, 'Reply-To');
+  return addresses(original).length ? original : from;
+}
+
 export function triage(msg, { byEmail, staffNames = new Set() }) {
   const h = msg.payload?.headers;
   const subject = header(h, 'Subject');
@@ -238,8 +250,9 @@ export function triage(msg, { byEmail, staffNames = new Set() }) {
   const crowd = people.length > CROWD && !from.some(isStaffEmail) && !accountsOf(from, byEmail).length;
   const accounts = tools || guestChatter || mailing || crowd ? [] : accountsOf(people, byEmail);
   if (accounts.length && accounts.length <= 3) return { kind: 'family', accounts };
-  // Receipts go by who really sent it: one forwarded from a staff member's own Gmail is still a receipt
-  if (!fromAll.length || fromAll.every(isStaffEmail) || fromAll.some((e) => OWN_TOOLS.test(e))) return null;
+  // Receipts go by who really sent it: one forwarded from a staff member's own Gmail is still a receipt, and so is a store's through a SOARD group
+  const sender = addresses(senderOf(h));
+  if (!sender.length || sender.every(isStaffEmail) || sender.some((e) => OWN_TOOLS.test(e))) return null;
   if ((msg.labelIds || []).includes('SENT') || NOT_RECEIPT.test(subject)) return null;
   return RECEIPTISH.test(`${subject} ${msg.snippet || ''}`) ? { kind: 'receipt' } : null;
 }
@@ -489,7 +502,7 @@ async function handleReceipt(env, ctx, row, msg) {
   const h = msg.payload?.headers;
   const inbox = ctx.receiptInbox;
   const subject = header(h, 'Subject');
-  const from = header(h, 'From');
+  const from = senderOf(h);
   if ([...addresses(from), ...addresses(header(h, 'To')), ...addresses(header(h, 'Cc'))].includes(inbox)) return { state: 'skipped', detail: 'already at the receipt inbox' };
   const meta = ['From', 'To', 'Cc'].map((x) => `&metadataHeaders=${x}`).join('');
   const thread = await gmail(ctx.token, `/threads/${msg.threadId}?format=metadata${meta}`, ctx.fetchImpl);
@@ -724,21 +737,23 @@ async function syncCardCharges(env, ctx, st) {
 /** How much an email reads like this charge's receipt → a score, or null when it can't be one: not the charge's exact amount, staff's own mail, a money tool's notice, a refund */
 function receiptScore(msg, c, hinted, strict = false) {
   const h = msg.payload?.headers;
-  const from = addresses(header(h, 'From'));
+  const sender = senderOf(h);
+  const from = addresses(sender);
   const subject = header(h, 'Subject');
   if (!from.length || from.every(isStaffEmail) || from.some((e) => OWN_TOOLS.test(e))) return null;
   if ((msg.labelIds || []).includes('SENT') || CALENDAR.test(subject.trim()) || AUTO_REPLY.test(subject) || /\b(refund|return|cancel)/i.test(subject)) return null;
   if (!amountsIn(subject, msg.snippet, receiptText(msg.payload)).includes(c.cents)) return null;
-  const store = `${header(h, 'From').replace(/<.*>/, '')} ${from[0].split('@')[1].replace(/\.[a-z]+$/i, '')}`;
+  const store = `${sender.replace(/<.*>/, '')} ${from[0].split('@')[1].replace(/\.[a-z]+$/i, '')}`;
   let score = 1 - Math.abs((Number(msg.internalDate) || 0) - Date.parse(c.charged_at)) / (4 * DAY_MS);
   if (hinted) score += 3;
   if (RECEIPTISH.test(`${subject} ${msg.snippet || ''}`)) score += 2;
-  if (NOT_RECEIPT.test(subject)) score -= 2;
+  if (NOT_RECEIPT.test(subject)) score -= 1; // a shipping notice loses to a receipt, but the store's with the exact amount will do (Amazon charges as it ships)
   if (filesWorth(msg.payload).some((f) => RECEIPT_FILE.test(f.type))) score += 2; // the store's own PDF beats a "payment received"
   const like = Math.max(vendorLikeness(c.vendor, store), vendorLikeness(c.vendor, subject));
   if (strict && like < 0.5) return null;
   score += 2 * like;
-  return score >= 2 ? score : null;
+  // The exact amount and one thing more: hinted, receipt words, the store's PDF or the store's name
+  return score >= 1.5 ? score : null;
 }
 
 /** Nothing yet: the next look, sooner while the charge is new; after a week it stops ('none') */
@@ -787,7 +802,7 @@ async function lookOnce(env, ctx, c, until) {
   if (!best) return nextLook(env.DB, c, ctx.now);
   const { msg, mailbox, box } = best;
   const h = msg.payload?.headers;
-  const from = header(h, 'From');
+  const from = senderOf(h);
   const subject = header(h, 'Subject');
   const sentAt = Number(msg.internalDate) || ctx.now;
   const store = from.replace(/<.*>/, '').replace(/"/g, '').trim() || c.vendor;
