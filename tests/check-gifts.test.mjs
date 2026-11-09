@@ -1234,9 +1234,9 @@ test('the tab count shows a real question while watching, and everything once on
   assert.equal((await checksFacts(env.DB)).waiting, 1);
   await setMode(env, 'on');
   await env.DB.prepare(`UPDATE check_gifts SET reason = 'event', note = NULL WHERE id = ?`).bind(TX).run();
-  assert.equal((await checksFacts(env.DB)).waiting, 0, 'Mercury hasn’t posted it: nothing to do yet');
-  await env.DB.prepare(`UPDATE check_gifts SET status = 'sent' WHERE id = ?`).bind(TX).run();
-  assert.equal((await checksFacts(env.DB)).waiting, 1);
+  assert.equal((await checksFacts(env.DB)).waiting, 1, 'still in Mercury’s review, it can be answered now');
+  await env.DB.prepare(`UPDATE check_gifts SET status = 'failed' WHERE id = ?`).bind(TX).run();
+  assert.equal((await checksFacts(env.DB)).waiting, 0, 'one Mercury turned down waits on nobody');
 });
 test('runs cut short still send a check to a person', async () => {
   await run();
@@ -1433,11 +1433,15 @@ test('Save names the entry it found, and "a different gift" covers exactly the e
   const r = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', notThose: true, shown: ['zp_rp', 'zp_new'], saw: 'person', now: NOW, fetchImpl: fakeFetch });
   assert.equal(r.result, 'created');
 });
-test('a check Mercury hasn\'t posted can\'t be saved yet', async () => {
+// Since Nov 9 a check is saved as soon as it's read, while Mercury reviews it; one Mercury didn't take can't be
+test('a check still in Mercury\'s review can be saved; one Mercury turned down can\'t', async () => {
   await withPerson();
   await env.DB.prepare(`UPDATE check_gifts SET status = 'pending' WHERE id = ?`).bind(TX).run();
-  await assert.rejects(personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /hasn’t posted/);
-  assert.equal(world.posts.length, 0);
+  const r = await personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch });
+  assert.equal(r.result, 'created');
+  await withPerson();
+  await env.DB.prepare(`UPDATE check_gifts SET status = 'failed', zeffy_id = NULL WHERE id = ?`).bind(TX).run();
+  await assert.rejects(personCreate(env, TX, { name: 'Pine Foundation', formId: 'form_home', now: NOW, fetchImpl: fakeFetch }), /didn’t take this check/);
 });
 test('nothing can be answered while Zeffy hasn\'t answered the site\'s save', async () => {
   await withPerson();
@@ -1636,4 +1640,38 @@ test('the money check runs Monday morning, once', async () => {
   assert.ok(first);
   await run(mon + 10 * MIN);
   assert.equal((await readState(env.DB, 'check-gifts')).money.at, first, 'once that day');
+});
+
+// ── Saved at deposit (Nov 9): a record goes in once the check is read, while Mercury still reviews it ─────
+
+test('On: a check is saved while Mercury reviews it, and one Mercury then turns down is flagged to cancel', async () => {
+  await setMode(env, 'on');
+  await throughRead();
+  await run(NOW + 10 * MIN);
+  const r = await theRow();
+  assert.equal(r.status, 'pending');
+  assert.equal(r.state, 'created', 'saved without waiting for posting');
+  assert.equal(world.posts.length, 1);
+  world.slack = [];
+  world.txns[TX] = { ...world.txns[TX], status: 'failed' };
+  await run(NOW + 20 * MIN);
+  const after = await theRow();
+  assert.equal(after.state, 'came-back');
+  assert.ok(after.zeffy_id, 'the record stays named, to cancel');
+  assert.ok(world.slack.some((b) => /Mercury turned down a check/.test(b) && /Cancel the record in Zeffy/.test(b)));
+  const v = (await checksView(env)).list.find((c) => c.id === TX);
+  assert.equal(v.needsYou, true, 'a to-do on Checks until it’s cancelled');
+});
+test('On: Mercury correcting the amount of a check already saved flags the record to fix', async () => {
+  await setMode(env, 'on');
+  await throughRead();
+  await run(NOW + 10 * MIN);
+  assert.equal((await theRow()).state, 'created');
+  world.slack = [];
+  world.txns[TX] = { ...world.txns[TX], amount: 9500, status: 'sent', postedAt: '2026-11-07T15:00:00Z' };
+  await run(NOW + 20 * MIN);
+  const r = await theRow();
+  assert.equal(r.cents, 950000);
+  assert.equal(r.reason, 'amount-off');
+  assert.ok(world.slack.some((b) => /Mercury changed a check’s amount/.test(b)));
 });

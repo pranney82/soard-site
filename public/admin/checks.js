@@ -110,7 +110,7 @@ function CheckRow({ c, mode, act, busy, forms, formsGone, formsFailed }) {
       requestAnimationFrame(() => document.querySelector(`.ck [data-check="${CSS.escape(c.id)}"] .ck-gift`)?.focus());
     }
   };
-  const posted = c.status === 'sent';
+  const posted = ['pending', 'sent'].includes(c.status);
   const how = howItWent(c, mode);
   const on = mode === 'on';
   const leftAlone = ['left-out', 'store'].includes(c.state) && c.reason !== 'back';
@@ -133,7 +133,7 @@ function CheckRow({ c, mode, act, busy, forms, formsGone, formsFailed }) {
     </div>
     <span class="jc-charge__amt">${usd(c.cents)}</span>
     ${leftAlone && !(open && on && posted) ? html`<div class="jc-sort"><button type="button" class="btn btn-ghost btn-sm ck-gift" disabled=${!!busy} aria-label=${`It’s a gift: ${whoFor(c)}`}
-      onClick=${() => (on && posted ? setOpen(true) : act({ action: 'is-gift', id: c.id, saw: c.ver || c.state }, (j) => (j.mode !== 'on' ? 'It’ll wait for the hand entry' : posted ? 'It’s in Needs you to save' : 'It comes to you to save once Mercury posts it')))}>${busy === `is-gift:${c.id}` ? 'Working…' : 'It’s a gift'}</button></div>` : ''}
+      onClick=${() => (on && posted ? setOpen(true) : act({ action: 'is-gift', id: c.id, saw: c.ver || c.state }, (j) => (j.mode !== 'on' ? 'It’ll wait for the hand entry' : posted ? 'It’s in Needs you to save' : 'It comes to you to save once Mercury takes the check')))}>${busy === `is-gift:${c.id}` ? 'Working…' : 'It’s a gift'}</button></div>` : ''}
     ${leftAlone && open && on && posted ? html`<div class="ck-entry"><${Entry} c=${c} act=${act} busy=${busy} forms=${forms} formsGone=${formsGone} formsFailed=${formsFailed} focusFirst=${true} onCancel=${() => setOpen(false)} /></div>` : ''}
     ${notGift ? html`<div class="jc-sort"><${NotGift} c=${c} act=${act} busy=${busy} /></div>` : ''}
     ${c.state === 'linked' ? html`<div class="jc-sort"><${Unlink} c=${c} mode=${mode} act=${act} busy=${busy} /></div>` : ''}
@@ -238,7 +238,7 @@ function Entry({ c, act, busy, forms, formsGone = () => {}, onCancel = null, mor
 function NeedsYou({ c, mode, act, busy, forms, formsGone, formsFailed }) {
   const on = mode === 'on';
   const event = c.reason === 'event';
-  const posted = c.status === 'sent';
+  const posted = ['pending', 'sent'].includes(c.status);
   const entries = c.candidates || [];
   const openZeffy = html`<a class="btn btn-ghost btn-sm" href=${ZEFFY_URL} target="_blank" rel="noopener" aria-label=${`Open Zeffy: ${whoFor(c)}`}>Open Zeffy</a>`;
   const showZeffy = ['unsure', 'zeffy-refused', 'no-form'].includes(c.reason);
@@ -278,7 +278,7 @@ function NeedsYou({ c, mode, act, busy, forms, formsGone, formsFailed }) {
       </li>`)}
     </ul>` : ''}
     ${on && !event && !byHand && posted ? html`<${Entry} c=${c} act=${act} busy=${busy} forms=${forms} formsGone=${formsGone} formsFailed=${formsFailed} more=${html`${showZeffy ? openZeffy : ''}${notGift}`} />`
-    : html`<p class="sec-head__hint ck-note">${on && !posted ? 'Mercury is still reviewing this check. It can be saved once it posts.'
+    : html`<p class="sec-head__hint ck-note">${on && !posted ? 'Mercury hasn’t taken this check, so it can’t be saved in Zeffy.'
         : on ? 'Enter it in Zeffy by hand, and it links itself within the hour.'
         : entries.length ? 'If this isn’t it, enter it in Zeffy as usual.' : 'Enter it in Zeffy as usual.'}</p>
       <div class="jc-row ck-actions">

@@ -140,7 +140,8 @@ test('B5 Mercury down for three runs doesn\'t make a check "unreadable"', async 
   world().mercuryDown = false;
   for (let i = 3; i < 6; i++) await run(NOW + i * 6 * MIN).catch(() => null);
   const r = await rowOf();
-  assert.deepEqual({ state: r.state, reason: r.reason, readers: world().aiCalls }, { state: 'read', reason: null, readers: 2 },
+  // (read, and now decided while Mercury reviews it: 'would' in Watch)
+  assert.deepEqual({ state: r.state === 'would' ? 'read' : r.state, reason: r.reason, readers: world().aiCalls }, { state: 'read', reason: null, readers: 2 },
     'the picture was never looked at, and a person is asked who wrote it');
 });
 
@@ -347,7 +348,7 @@ test('B5b fifteen minutes of Workers AI errors don\'t make a check "unreadable"'
   env().AI.run = ok;
   for (let i = 3; i < 6; i++) await run(NOW + i * 6 * MIN).catch(() => null);
   const r = await rowOf();
-  assert.deepEqual({ state: r.state, reason: r.reason }, { state: 'read', reason: null }, 'both readers errored three runs running, and a person is asked who wrote it');
+  assert.deepEqual({ state: r.state === 'would' ? 'read' : r.state, reason: r.reason }, { state: 'read', reason: null }, 'both readers errored three runs running, and a person is asked who wrote it');
 });
 
 // ── 18. Suspected: the write test never sends a payment_date, so On is the first time backdating is tried ─────────

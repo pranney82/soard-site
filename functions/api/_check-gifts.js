@@ -1087,8 +1087,13 @@ async function lookAgain(env, seen, txn, { now }) {
   const row = (await getRow(env.DB, seen.id)) || seen;
   const status = String(txn?.status || row.status || '');
   const patch = { status, posted_at: txn?.postedAt || row.posted_at, looked_at: iso };
-  // Mercury can correct an amount, and the record has to say what really came in
-  if (!row.zeffy_id && Number(txn?.amount) > 0) patch.cents = toCents(txn.amount);
+  // Mercury can correct an amount when it reviews a check, and the record has to say what really came in
+  const corrected = Number(txn?.amount) > 0 && toCents(txn.amount) !== Number(row.cents) ? toCents(txn.amount) : null;
+  if (corrected) patch.cents = corrected;
+  if (corrected && row.zeffy_id && ['created', 'linked'].includes(row.state)) {
+    patch.reason = 'amount-off';
+    await tell(env, { ...row, cents: corrected }, 'amount-corrected', { title: `Mercury changed a check’s amount: ${money(corrected)}`, lead: `The check was saved in Zeffy as ${money(row.cents)}, and Mercury says ${money(corrected)} came in.`, fix: 'Fix the amount in Zeffy. Checks shows it until it matches.' });
+  }
   const back = DEAD.has(status) || camePayBack(txn);
   const known = status === 'pending' || status === 'sent';
   // Mercury holding a check may still release it: nobody touches Zeffy for it, and it goes on as it was once released
@@ -1102,8 +1107,11 @@ async function lookAgain(env, seen, txn, { now }) {
     // A check a person left out, or the store's, stays what it was: a block lifted later doesn't make it a gift
     const stays = !back || (['left-out', 'store'].includes(row.state) && !row.zeffy_id);
     if (!(await setRow(env.DB, row.id, { ...patch, final: back && status !== 'blocked' ? 1 : 0, state: stays ? row.state : 'came-back', reason: stays ? row.reason : 'back' }, now, row.state))) return;
+    const turnedDown = back && !row.posted_at && !txn?.postedAt;
     await tell(env, row, back ? 'back' : `status-${status}`, back
-      ? { title: `A check came back: ${money(row.cents)}`, lead: row.zeffy_id ? 'Mercury says this check didn’t go through, and Zeffy has a record for it.' : 'Mercury says this check didn’t go through.', fix: 'If it’s in Zeffy, cancel it there. Zeffy tells the donor when you do.' }
+      ? { title: turnedDown ? `Mercury turned down a check: ${money(row.cents)}` : `A check came back: ${money(row.cents)}`,
+        lead: `${turnedDown ? 'Mercury didn’t accept this check when it reviewed it' : 'Mercury says this check didn’t go through'}${row.zeffy_id ? ', and the site had already saved it in Zeffy.' : '.'}`,
+        fix: row.zeffy_id ? 'Cancel the record in Zeffy: no money came in for it.' : 'Nothing to do in Zeffy.' }
       : { title: `A check needs a look: ${money(row.cents)}`, lead: `Mercury shows this check as “${status}”.`, fix: 'Check it in Mercury.' });
     return;
   }
@@ -1390,7 +1398,7 @@ async function matchOpen(env, { mode, now, fetchImpl }) {
       if (typed.length) await tell(env, row, 'double', { title: `This check may be in Zeffy twice: ${money(row.cents)}`, lead: m.same.length ? 'The site made a record for this check, and someone entered it by hand too.' : `The site made a record for this check, and Zeffy has a hand entry for the same amount${namesOn(typed[0])[0] ? ` under ${namesOn(typed[0])[0]}` : ''}. It may be the same check.`, fix: 'If it is, delete the extra one in Zeffy. If that record has an email on it, Zeffy may tell the donor, so keep the one with the email.' });
       continue;
     }
-    if (row.status === 'sent' && m.same.length && await linkTo(env, row, m.same[0], { now, fetchImpl })) { claimed.add(String(m.same[0].id)); continue; }
+    if (['pending', 'sent'].includes(row.status) && m.same.length && await linkTo(env, row, m.same[0], { now, fetchImpl })) { claimed.add(String(m.same[0].id)); continue; }
     if (row.state === 'store') continue;
     // A hand entry under another name: one press from being matched
     const likely = [...m.promised, ...m.maybe, ...m.other];
@@ -1678,7 +1686,8 @@ export async function runChecks(env, { now = Date.now(), fetchImpl = fetch, cfg 
   if (moneyDue(cfg, now)) await moneyCheck(env, ctx).catch((e) => { ctx.failed ||= e; });
   // One big job a run: a check waiting to be decided, else one to read
   // Turned on: what it was only watching goes on too, the same way, one a run, each read against Zeffy again
-  const readyWhere = `(state = 'read' OR (state = 'would' AND ? = 'on')) AND status = 'sent'`;
+  // Decided as soon as it's read, while Mercury is still reviewing it (Peter, Nov 9): a check Mercury turns down later is flagged
+  const readyWhere = `(state = 'read' OR (state = 'would' AND ? = 'on')) AND status IN ('pending', 'sent')`;
   const fresh = await env.DB.prepare(`SELECT * FROM check_gifts WHERE ${readyWhere} AND try_at IS NULL ORDER BY deposited_at LIMIT 1`).bind(mode).first();
   // A check Zeffy told to wait gets its turn only when nothing new needs reading, so one giver never holds up the rest
   const unread = fresh ? null : await env.DB.prepare(`SELECT 1 AS y FROM check_gifts WHERE state = 'new' AND status NOT IN ('cancelled', 'failed', 'reversed', 'blocked') AND (try_at IS NULL OR try_at < ?) LIMIT 1`).bind(new Date(now - CLAIM_MS).toISOString()).first();
@@ -1814,7 +1823,7 @@ function viewOf(r, claimed, mode = 'watch', now = Date.now()) {
     : askedGone ? `The Zeffy entry that might have been this check is now another check’s. ${on ? 'Save this one in Zeffy.' : BY_HAND}`
     : r.state === 'person' && !on && ON_ONLY.includes(r.reason) ? BY_HAND
     : REASONS[r.reason] || null;
-  const needsYou = toDo || (r.state === 'person' && (!!candidates?.length || (on && r.status === 'sent')));
+  const needsYou = toDo || (r.state === 'person' && (!!candidates?.length || (on && ['pending', 'sent'].includes(r.status))));
   return {
     needsYou, toDo, old: r.state === 'would' && now - Date.parse(r.posted_at || r.deposited_at) > OLD_CHECK_MS,
     id: r.id, cents: r.cents, status: r.status, state: r.state, depositedAt: r.deposited_at, depositDay: dayOf(r.deposited_at), postedAt: r.posted_at,
@@ -1842,7 +1851,7 @@ export async function checksView(env) {
   const cfg = await readState(env.DB, KEY);
   // What waits on someone comes first, so the limit can never push it off the page
   const mode = cfg.mode === 'on' && cfg.writeTest?.ok ? 'on' : 'watch';
-  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts ORDER BY CASE WHEN (state = 'person' AND ((? = 'on' AND status = 'sent') OR note LIKE '[%')) OR (state IN ('linked', 'created') AND reason IN ('amount-off', 'still-unpaid')) OR (state = 'came-back' AND zeffy_id IS NOT NULL) THEN 1 ELSE 0 END DESC, deposited_at DESC LIMIT ?`).bind(mode, LIST_LIMIT).all()).results || [];
+  const rows = (await env.DB.prepare(`SELECT * FROM check_gifts ORDER BY CASE WHEN (state = 'person' AND ((? = 'on' AND status IN ('pending', 'sent')) OR note LIKE '[%')) OR (state IN ('linked', 'created') AND reason IN ('amount-off', 'still-unpaid')) OR (state = 'came-back' AND zeffy_id IS NOT NULL) THEN 1 ELSE 0 END DESC, deposited_at DESC LIMIT ?`).bind(mode, LIST_LIMIT).all()).results || [];
   const all = (await env.DB.prepare('SELECT COUNT(*) AS n FROM check_gifts').first())?.n || 0;
   // What turning it on would do, counted over every check, not only the ones listed
   const w = await env.DB.prepare(`SELECT SUM(CASE WHEN COALESCE(posted_at, deposited_at) >= ? THEN 1 ELSE 0 END) AS fresh, SUM(CASE WHEN COALESCE(posted_at, deposited_at) < ? THEN 1 ELSE 0 END) AS old FROM check_gifts WHERE state = 'would'`)
@@ -1923,7 +1932,7 @@ export async function personCreate(env, id, { name, formId, day = null, notThose
   if (cfg.mode !== 'on' || !cfg.writeTest?.ok) throw err('The site is watching, so enter this one in Zeffy by hand.', 409);
   if (!['person', 'left-out', 'store', 'would'].includes(row.state)) throw err('This check has moved on. Look again.', 409);
   // The record lands when the money does
-  if (row.status !== 'sent') throw err('Mercury hasn’t posted this check yet. It can be saved once it posts.', 409);
+  if (!['pending', 'sent'].includes(row.status)) throw err('Mercury didn’t take this check, so it isn’t saved in Zeffy.', 409);
   if (hasAccountDigits(clean(name), row.check_number)) throw err('Leave the long number out of the name. Six or more digits in a row look like a bank account number, so the site never saves them.');
   const payer = safeText(name, 120, row.check_number);
   if (!payer) throw err('Who wrote this check?');

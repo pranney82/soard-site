@@ -280,7 +280,7 @@ test('R2 once a redeposit takes over the bounced check\'s record, the "cancel it
   world().txns[TX] = { ...world().txns[TX], status: 'reversed' };
   await run(Date.parse('2026-11-12T16:00:00Z'));
   assert.equal((await rowOf()).state, 'came-back');
-  assert.match(slackSaid(), /cancel it there/);
+  assert.match(slackSaid(), /Cancel the record in Zeffy/);
   await addCheck('tx_2', { createdAt: '2026-11-20T15:00:00Z', status: 'pending' });
   let t = Date.parse('2026-11-20T16:00:00Z');
   for (let i = 0; i < 3; i++, t += 6 * MIN) await run(t);

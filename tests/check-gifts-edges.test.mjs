@@ -220,13 +220,17 @@ test('F13 a failed re-run of the write test stops On', async () => {
 });
 
 // ── 14. A person can save a check Mercury hasn't posted yet ─────────────────────────────────────────────────
-test('F14 a person\'s save waits for the check to post', async () => {
+// Since Nov 9 a check is saved while Mercury reviews it (Peter): a person's save no longer waits for posting
+test('F14 a person\'s save goes in while Mercury reviews the check, and one Mercury turned down never does', async () => {
   await CG.setMode(env(), 'on');
   await run();
   await env().DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'unreadable', payer = NULL WHERE id = ?`).bind(TX).run();
   assert.equal((await rowOf()).status, 'pending');
+  await CG.personCreate(env(), TX, { name: 'Pine Foundation', formId: 'form_grant', now: NOW, fetchImpl: fakeFetch });
+  assert.equal(world().posts.length, 1);
+  await env().DB.prepare(`UPDATE check_gifts SET state = 'person', reason = 'unreadable', status = 'cancelled', zeffy_id = NULL WHERE id = ?`).bind(TX).run();
   await CG.personCreate(env(), TX, { name: 'Pine Foundation', formId: 'form_grant', now: NOW, fetchImpl: fakeFetch }).catch(() => null);
-  assert.equal(world().posts.length, 0);
+  assert.equal(world().posts.length, 1);
 });
 
 // ── 15. Zeffy's answer without an id at the top is stored as zeffy_id "undefined", and the write test passes ─
