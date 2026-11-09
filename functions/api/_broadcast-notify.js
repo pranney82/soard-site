@@ -26,6 +26,8 @@ import { calendarLinks, curly, emailHeader, twoKids } from './_reveal-invite-ema
 
 const RESEND_API = 'https://api.resend.com';
 export const EMAIL_FROM = 'Sunshine on a Ranney Day <sunshine@comms.sunshineonaranneyday.com>';
+/** Where a reply goes when an email names no one: the sending address has no inbox, so a reply to it would bounce */
+export const REPLY_TO = 'info@soardcharity.com';
 export const SITE_ORIGIN = 'https://sunshineonaranneyday.com';
 
 // ─── Small utils ────────────────────────────────────────────────────
@@ -163,16 +165,16 @@ export function emailConfigured(env) {
   return !!env.RESEND_API_KEY;
 }
 
-/** replyTo (one address or a list) → Resend's reply_to, valid addresses only; null when there's none */
+/** replyTo (one address or a list) → Resend's reply_to, valid addresses only; REPLY_TO when there's none */
 const replyToOf = (r) => {
   const list = (Array.isArray(r) ? r : r ? [r] : []).map((x) => String(x).trim()).filter(isEmail);
-  return list.length ? (list.length === 1 ? list[0] : list) : null;
+  return list.length ? (list.length === 1 ? list[0] : list) : REPLY_TO;
 };
 
 /**
  * Send one message to many recipients, each as its own email (no one sees
  * anyone else's address). Batches of 100 per Resend call. replyTo: where a
- * reply goes, since the sending address is no one's inbox.
+ * reply goes (info@ when not given, since the sending address is no one's inbox).
  * @returns {{sent:number, failed:number, errors:string[]}}
  */
 /** Resend's reason in its own words (its JSON's message), not the JSON itself */
@@ -193,7 +195,7 @@ export async function sendEmails(env, { to, subject, html, text, from = EMAIL_FR
       const res = await fetch(`${RESEND_API}/emails/batch`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk.map(addr => ({ from, to: [addr], subject, html, text, tags, ...(reply ? { reply_to: reply } : {}) }))),
+        body: JSON.stringify(chunk.map(addr => ({ from, to: [addr], subject, html, text, tags, reply_to: reply }))),
         signal: AbortSignal.timeout(20000),
       });
       if (res.ok) {
@@ -223,7 +225,7 @@ export async function sendEmailOne(env, { to, subject, html, text, from = EMAIL_
     const res = await fetch(`${RESEND_API}/emails`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json', ...(idempotencyKey ? { 'Idempotency-Key': String(idempotencyKey).slice(0, 256) } : {}) },
-      body: JSON.stringify({ from, to: [to], subject, html, text, tags, ...(reply ? { reply_to: reply } : {}), ...(attachments.length ? { attachments } : {}) }),
+      body: JSON.stringify({ from, to: [to], subject, html, text, tags, reply_to: reply, ...(attachments.length ? { attachments } : {}) }),
       signal: AbortSignal.timeout(30000),
     });
     // (the same key again: Resend already has this email)
@@ -255,7 +257,7 @@ export async function sendEmailItems(env, items, { from = EMAIL_FROM, tags = [],
       const res = await fetch(`${RESEND_API}/emails/batch`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify(chunk.map(m => ({ from, to: [m.to], subject: m.subject, html: m.html, text: m.text, tags, ...(reply ? { reply_to: reply } : {}), ...(m.headers ? { headers: m.headers } : {}) }))),
+        body: JSON.stringify(chunk.map(m => ({ from, to: [m.to], subject: m.subject, html: m.html, text: m.text, tags, reply_to: reply, ...(m.headers ? { headers: m.headers } : {}) }))),
         signal: AbortSignal.timeout(20000),
       });
       if (res.ok) {
@@ -457,7 +459,7 @@ export function buildIcs({ uid, title, description, start, durationMin = 60, url
 // Each email has one job, so the closer the reveal, the shorter it gets.
 
 /** Where a reply to a reveal email goes: the sending address is no one's inbox */
-export const REVEAL_REPLY_TO = 'info@soardcharity.com';
+export const REVEAL_REPLY_TO = REPLY_TO;
 
 const HOUR = 3600e3;
 

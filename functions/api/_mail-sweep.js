@@ -48,7 +48,7 @@ import { accessToken, GMAIL_READ_SCOPE, GMAIL_MODIFY_SCOPE } from './_google-cal
 import { mailboxes, orgDomains, gmail, header, textOf, htmlText, filesOf, partsOf, bytesOf } from './_mailbox.js';
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { postAccountComment } from './_applicant-comms.js';
-import { EMAIL_FROM, emailConfigured, slackIssue, SITE_ORIGIN } from './_broadcast-notify.js';
+import { EMAIL_FROM, REPLY_TO, emailConfigured, slackIssue, SITE_ORIGIN } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import { logSent } from './_email-log.js';
 import { readConfig } from './_spend.js';
@@ -551,7 +551,7 @@ async function handleReceipt(env, ctx, row, msg) {
   const res = await ctx.fetchImpl('https://api.resend.com/emails', {
     method: 'POST',
     headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ from: EMAIL_FROM, to: [inbox], subject: sendSubject, text: body, attachments, tags }),
+    body: JSON.stringify({ from: EMAIL_FROM, to: [inbox], reply_to: REPLY_TO, subject: sendSubject, text: body, attachments, tags }),
     signal: AbortSignal.timeout(30000),
   });
   if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 120)}`);

@@ -50,7 +50,7 @@ import {
   kitTagSubscribersPage, kitCreateBroadcast, kitBroadcastStats, kitListBroadcasts, kitDeleteBroadcast, kitAccount, kitListAudiences,
   WAITLIST_ONLY_TAG,
 } from './_kit.js';
-import { sendEmails, escapeHtml, isEmail, SITE_ORIGIN, slackPost, emailConfigured, EMAIL_FROM } from './_broadcast-notify.js';
+import { sendEmails, escapeHtml, isEmail, SITE_ORIGIN, slackPost, emailConfigured, EMAIL_FROM, REPLY_TO } from './_broadcast-notify.js';
 import { slackCard } from './_slack-cards.js';
 import * as applications from './_applications.js';
 import { formFor } from './_application-forms.js';
@@ -873,7 +873,7 @@ async function scheduleEmail(env, { to, subject, html, text, at }) {
     const res = await fetch(`${RESEND_API}/emails`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ from: EMAIL_FROM, to: [to], subject, html, text, scheduled_at: at, tags: [{ name: 'type', value: 'application-open' }] }),
+      body: JSON.stringify({ from: EMAIL_FROM, to: [to], reply_to: REPLY_TO, subject, html, text, scheduled_at: at, tags: [{ name: 'type', value: 'application-open' }] }),
       signal: AbortSignal.timeout(15000),
     });
     const body = await res.json().catch(() => ({}));

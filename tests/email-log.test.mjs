@@ -92,14 +92,14 @@ test('every email the site sends is logged with Resend’s id, its message and t
   assert.deepEqual(items, { sent: 1, failed: 0, errors: [] });
   assert.equal((await rowOf(DB, 'em_3')).type, 'reveal-day', 'a category tag counts as the type too');
 
-  // A reply goes somewhere real when the sender asks (the sending address is no one's inbox)
+  // A reply always goes somewhere real: the sender's choice, else info@ (the sending address is no one's inbox)
   const bodies = [];
   globalThis.fetch = async (url, init) => { const items = JSON.parse(init.body); bodies.push(items); return Response.json({ data: items.map(() => ({ id: `em_${++n}` })) }); };
   await sendEmails(env, { to: ['a@example.com'], subject: 's', html: 'h', replyTo: 'info@example.org' });
   await sendEmails(env, { to: ['a@example.com'], subject: 's', html: 'h', replyTo: ['one@example.org', 'not an address', 'two@example.org'] });
   await sendEmails(env, { to: ['a@example.com'], subject: 's', html: 'h' });
   await sendEmailItems(env, [{ to: 'b@example.com', subject: 's', html: 'h' }], { replyTo: 'info@example.org' });
-  assert.deepEqual(bodies.map((b) => b[0].reply_to), ['info@example.org', ['one@example.org', 'two@example.org'], undefined, 'info@example.org'], 'replyTo becomes reply_to, valid addresses only, and nothing when it isn’t given');
+  assert.deepEqual(bodies.map((b) => b[0].reply_to), ['info@example.org', ['one@example.org', 'two@example.org'], 'info@soardcharity.com', 'info@example.org'], 'replyTo becomes reply_to, valid addresses only, and info@ when it isn’t given (the sending address has no inbox)');
 
   // A broken log never costs a send
   const out2 = await sendEmails({ RESEND_API_KEY: 're_x', DB: { prepare() { throw new Error('D1 down'); }, batch() { throw new Error('D1 down'); } } }, { to: ['a@example.com'], subject: 's', html: 'h' });

@@ -17,7 +17,7 @@
  */
 
 import { pave } from './_reveals.js';
-import { EMAIL_FROM, emailConfigured } from './_broadcast-notify.js';
+import { EMAIL_FROM, REPLY_TO, emailConfigured } from './_broadcast-notify.js';
 import { getTransaction, mercury, mercuryConfigured } from './_mercury.js';
 import { readConfig } from './_spend.js';
 import { dollars } from './_spend-match.js';
@@ -95,7 +95,7 @@ export async function forwardMercuryReceipts(env, { jobs = [], now = Date.now(),
       const res = await fetchImpl('https://api.resend.com/emails', {
         method: 'POST',
         headers: { Authorization: `Bearer ${env.RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ from: EMAIL_FROM, to: [inbox], subject: receiptSubject(c, jobName), text, attachments, tags: [{ name: 'kind', value: 'receipt-forward' }] }),
+        body: JSON.stringify({ from: EMAIL_FROM, to: [inbox], reply_to: REPLY_TO, subject: receiptSubject(c, jobName), text, attachments, tags: [{ name: 'kind', value: 'receipt-forward' }] }),
         signal: AbortSignal.timeout(30000),
       });
       if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 120)}`);
