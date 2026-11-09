@@ -32,7 +32,7 @@ import { reviewOf } from './process-shared.js';
 
 const html = htm.bind(h);
 
-const WRITTEN_ON = 'November 6, 2026';
+const WRITTEN_ON = 'November 8, 2026';
 const FACTS_URL = '/api/automations-admin';
 
 // ─── Live check helpers ───────────────────
