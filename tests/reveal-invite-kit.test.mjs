@@ -1153,7 +1153,7 @@ test('the label over the headline gives the day, not the headline’s own words'
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
   assert.match(e.html, /Reveal Day · Fri, Mar 12/);
   assert.ok(!/>You’re invited</i.test(e.html));
-  assert.match(e.html, />You’re Invited to<\/span>Rowan’s <em[^>]*>Reveal&nbsp;Day<\/em>\./);
+  assert.match(e.html, />You’re Invited to<\/span><span style="white-space:nowrap;">Rowan’s<\/span> <em[^>]*>Reveal&nbsp;Day<\/em>\./);
 });
 
 test('Save it to your calendar is the main action, and See the story sits with the story', () => {

@@ -14,7 +14,7 @@
 import {
   SITE_URL, HERO_TRANSFORM, SIDE, BRAND, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
   emailFrame, emailHeader, emailFooter, signOff, partnerCards, button, textLink, cover, lede, bodyPhotos, photoImg, photoPair, photoNotes,
-  listJoin, headlineFit, nameRuns, nameHtml, roomNames, noWidow,
+  listJoin, headlineFit, nameRuns, nameHtml, roomNames, noWidow, fitName, notARoom,
 } from './_reveal-invite-email.js';
 
 const { Y, D, DD, CR, BD, TM, SANS, SERIF } = BRAND;
@@ -28,6 +28,9 @@ const agesOf = (age) => (Array.isArray(age) ? age : String(age).split(/\s*(?:,|&
 
 /** A finished-video signal the kid page also uses: a Stream video or a YouTube link */
 const hasVideo = (kid) => !!(kid.streamVideoId || kid.videoUrl);
+
+/** How many photos a kid's page shows in its gallery */
+const PAGE_PHOTOS = 30;
 
 /** The give button names the kid when that fits one line on the smallest phone ("Give to Max’s Room →"), else it's "Give Now →": the headline above it already names them */
 const GIVE_MAX = 20;
@@ -144,47 +147,53 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   const lead = leadOf(kid, brokenLogos);
 
   const subject = `Meet ${name}, Our Next Dream Room Project`;
-  const preview = `Meet ${name}, our next dream room project. Here’s the story, and how you can help.`;
+  // Its own line in the inbox, not the subject again
+  const preview = rooms.length ? `${name}’s story, what we’re building, and how you can help.` : `${name}’s story and how you can help.`;
   const ages = kid.age ? agesOf(kid.age) : [];
+  const agesText = ages.length > 2 ? `${ages.slice(0, -1).join(', ')} & ${ages[ages.length - 1]}` : ages.join(' & ');
   const facts = [
-    ages.length && { label: ages.length > 1 ? 'Ages' : 'Age', main: ages.join(' & ') },
+    ages.length && { label: ages.length > 1 ? 'Ages' : 'Age', main: agesText },
     kid.diagnosis && { label: 'Diagnosis', main: curly(kid.diagnosis) },
   ].filter(Boolean);
 
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
-  const fit = headlineFit(['Meet', ...nameRuns(name, '.')], 54);
+  const fit = fitName({ name, after: '.', runs: ['Meet'], max: 54, min: 36, wrap: (h) => `<em style="font-style:italic;color:${Y};">${h}</em>` });
   const giveLabel = `Give to ${name}’s Room →`;
   const action = own && giveLabel.length <= GIVE_MAX ? giveLabel : 'Give Now →';
-  // "building for Max" stays one phrase, a little smaller if need be; with a long name that would
-  // shrink it too far, so "for" and the name are left free to wrap ("building for / Christopher")
-  const [firstWord, ...restWords] = nameRuns(name);
-  const planPhones = { phones: [[26, 'h2b']] };
-  const gluedPlan = headlineFit(['What', 'we’re', `building for ${firstWord || ''}`, ...restWords], 26, planPhones);
-  const planGlue = gluedPlan.size >= 24;
-  const planFit = planGlue ? gluedPlan : headlineFit(['What', 'we’re', 'building', 'for', ...nameRuns(name)], 26, planPhones);
-  // "Christopher’s dream." can't break, so the name and "dream" stay together only while the pair still fits a phone
-  const askPhones = { phones: [[26, 'h2b']] };
-  const glued = headlineFit(['Help', 'us', 'build', ...nameRuns(name, '’s dream.')], 30, askPhones);
-  const glue = glued.size >= 26;
-  const askFit = own
-    ? (glue ? glued : headlineFit(['Help', 'us', 'build', ...nameRuns(name, '’s'), 'dream.'], 30, askPhones))
-    : headlineFit(['Help', 'us', 'build', 'dreams', 'like', ...nameRuns(name, '’s.')], 30, askPhones);
+  // The plan's heading is the kid's room: "Dylan’s dream room", "Tyrece & Maddie’s dream rooms", "Ava’s wheelchair ramp"
+  const space = notARoom(rooms);
+  const several = rooms.length > 1 || Number(kid.roomCount) > 1;
+  const planWhat = space ? space.lower : several ? 'dream rooms' : 'dream room';
+  const planWords = planWhat.split(' ');
+  const planRuns = planWords.length > 1 ? [...planWords.slice(0, -2), planWords.slice(-2).join(' ')] : planWords;
+  const planFit = fitName({ name, after: '’s', runs: planRuns, max: 26, min: 22, phones: [[26, 'h2b']] });
+  // The ask names the kid while it can at 26px or larger ("Help us build Remi / & Nico’s dream."); a long single name can't, so it's "this dream"
+  const askPhones = [[26, 'h2b']];
+  const askName = own
+    ? fitName({ name, after: '’s dream.', afterHtml: '’s&nbsp;<em style="font-style:italic;">dream</em>.', runs: ['Help', 'us', 'build'], max: 30, min: 26, phones: askPhones })
+    : fitName({ name, after: '’s.', runs: ['Help', 'us', 'build', 'dreams', 'like'], max: 30, min: 26, phones: askPhones });
+  const named = askName.size >= 26;
+  const askHeadline = own
+    ? (named ? `Help us build ${askName.html}` : 'Help us build this&nbsp;<em style="font-style:italic;">dream</em>.')
+    : (named ? `Help us build <em style="font-style:italic;">dreams</em> like ${askName.html}` : 'Help us build more&nbsp;<em style="font-style:italic;">dreams</em>.');
+  const askFit = named ? askName : headlineFit(['Help', 'us', 'build', own ? 'this dream.' : 'more dreams.'], 30, { phones: askPhones });
+  const askWords = own ? (named ? `Help us build ${name}’s dream.` : 'Help us build this dream.') : (named ? `Help us build dreams like ${name}’s.` : 'Help us build more dreams.');
 
   const html = emailFrame(preview, `
   ${emailHeader(site)}
-  ${cover({ kicker: `Our next project · ${yearOf(kid)}`, headline: `Meet <em style="font-style:italic;color:${Y};">${nameHtml(name)}</em>.`, size: fit.size, phone: fit.phone, lead, alt: name, url: kidUrl })}
+  ${cover({ kicker: `Our next project · ${yearOf(kid)}`, headline: `Meet ${fit.html}`, size: fit.size, phone: fit.phone, lead, alt: name, url: kidUrl })}
   ${story ? lede(story, `<p style="margin:16px 0 0;">${textLink(`Read ${name}’s story →`, kidUrl)}</p>`) : ''}
   ${facts.length ? factsRow(facts) : ''}
   ${photos.length >= 2 ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:32px 0 0;${SIDE}" class="pd">${photoPair(photos, name, 0)}${photoNotes(kid)}</td></tr>` : ''}
   ${rooms.length ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:44px 0 0;${SIDE}" class="pd">
     ${label('The plan')}
-    <h2 class="${planFit.phone}" style="margin:16px 0 10px;font-family:${SERIF};font-size:${planFit.size}px;font-weight:700;line-height:1.25;color:${D};">What we’re building${planGlue ? '&nbsp;for&nbsp;' : ' for '}${nameHtml(name)}</h2>
+    <h2 class="${planFit.phone}" style="margin:16px 0 10px;font-family:${SERIF};font-size:${planFit.size}px;font-weight:700;line-height:1.25;color:${D};">${planFit.html} ${noWidow(escapeHtml(planWhat))}</h2>
     ${roomList(rooms)}
   </td></tr>` : ''}
   ${gap(40)}
   ${askBand({
     kicker: 'How you can help',
-    headline: own ? `Help us build ${nameHtml(name)}’s${glue ? '&nbsp;' : ' '}<em style="font-style:italic;">dream</em>.` : `Help us build <em style="font-style:italic;">dreams</em> like ${nameHtml(name)}’s.`,
+    headline: askHeadline,
     fit: askFit,
     words: own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space. Zero platform fees.` : `Every dollar goes directly to materials, labor, and design for kids like ${name}. Zero platform fees.`,
     action,
@@ -200,14 +209,13 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
     '',
     rooms.length ? `What we’re building: ${listJoin(rooms)}` : null,
     '',
-    own ? `Help us build ${name}’s dream. Every dollar goes directly to materials, labor, and design for ${name}’s new space. Zero platform fees.`
-      : `Help us build dreams like ${name}’s. Every dollar goes directly to materials, labor, and design for kids like ${name}. Zero platform fees.`,
+    `${askWords} ${own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space.` : `Every dollar goes directly to materials, labor, and design for kids like ${name}.`} Zero platform fees.`,
     `Give: ${giveUrl}`,
     `${name}’s story: ${kidUrl}`,
     '',
     'Thank you for being part of this.',
     'The SOARD Team, Sunshine on a Ranney Day',
-  ].filter((l) => l !== false && l !== null && l !== undefined).join('\n');
+  ].filter((l) => l !== false && l !== null && l !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
   return { subject, preview, html, text };
 }
@@ -222,7 +230,10 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const kidUrl = slug ? `${site}/kids/${slug}/` : `${site}/kids/`;
   const rooms = roomsOf(kid);
   const several = (Number(kid.roomCount) || rooms.length || 1) > 1;
-  const finished = `${name}’s Dream ${several ? 'Rooms Are' : 'Room Is'} Complete`;
+  // A ramp or a lift is named as itself, never a "Dream Room"
+  const space = notARoom(rooms);
+  const what = space ? space.title : `Dream ${several ? 'Rooms' : 'Room'}`;
+  const finished = `${name}’s ${what} ${several ? 'Are' : 'Is'} Complete`;
   // The page's summary was often written while the room was still to come
   // ("SOARD is building..."), so this opening is one that's always true.
   // Two rooms of one kind (a bedroom each) read as "bedrooms".
@@ -236,16 +247,18 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const quote = said && !onPage.includes(said.slice(0, 40)) ? said : '';
 
   const subject = finished;
-  const shown = [kidPhotos(kid).length && 'the photos', video && 'the video'].filter(Boolean);
-  const preview = shown.length === 2 ? `See ${name}’s transformation: the photos, the video, and the partners who made it possible.`
-    : shown.length ? `See ${name}’s transformation: ${shown[0]} and the partners who made it possible.`
-      : `See ${name}’s transformation and the partners who made it possible.`;
+  // The preview names only what the email shows
+  const partners = partnerCards(kid, brokenLogos);
+  const shown = [kidPhotos(kid).length && 'the photos', video && 'the video', partners && 'the partners who made it possible'].filter(Boolean);
+  const preview = shown.length ? `See ${name}’s transformation: ${listJoin(shown)}.` : `See ${name}’s transformation.`;
 
   const pair = pairOf(kid, brokenLogos);
   // With a before and after, one wide photo says enough; galleries also hold close-ups of floors and tile
   const photos = bodyPhotos(kid, lead, brokenLogos, 3, true).slice(0, pair ? 1 : 3);
-  const allPhotos = kidPhotos(kid).length;
-  const fit = headlineFit([...nameRuns(name, '’s'), `Dream ${several ? 'Rooms' : 'Room'}`, `${several ? 'Are' : 'Is'} Complete.`], 40);
+  // The kid page shows its first 30 photos (src/pages/kids/[slug].astro), so the email never promises more
+  const allPhotos = Math.min(kidPhotos(kid).length, PAGE_PHOTOS);
+  const whatWords = what.split(' ');
+  const fit = fitName({ name, after: '’s', runs: [...whatWords.slice(0, -2), whatWords.slice(-2).join(' '), `${several ? 'Are' : 'Is'} Complete.`], max: 40, min: 28 });
   // The page has a Gallery section once it has two photos
   const coverUrl = video ? `${kidUrl}#chapter-reveal` : allPhotos > 1 ? `${kidUrl}#chapter-gallery` : kidUrl;
   const watch = video ? null : allPhotos > 1 ? 'See the Photos' : 'Read the Story';
@@ -254,11 +267,11 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   ${emailHeader(site)}
   ${cover({
     kicker: `Project complete · ${yearOf(kid)}`,
-    headline: `${nameHtml(name)}’s Dream&nbsp;${several ? 'Rooms' : 'Room'}<br>${several ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
+    headline: `${fit.html} ${noWidow(escapeHtml(what))}<br>${several ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
     size: fit.size,
     phone: fit.phone,
     lead,
-    alt: `${name} in the finished ${several ? 'rooms' : 'room'}`,
+    alt: `${name} in the finished ${space ? space.lower : several ? 'rooms' : 'room'}`,
     url: coverUrl,
     action: watch ? button(watch, coverUrl, { center: true }) : button('▶\uFE0E  Watch the Reveal', `${kidUrl}#chapter-reveal`, { center: true }),
   })}
@@ -274,7 +287,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
       <td style="padding:4px 0 4px 22px;font-family:${SERIF};font-size:20px;font-style:italic;line-height:1.55;color:${D};">“${escapeHtml(quote)}”</td>
     </tr></table>
   </td></tr>` : ''}
-  ${partnerCards(kid, brokenLogos) || gap(40)}
+  ${partners || gap(40)}
   ${askBand({
     kicker: 'What’s next',
     headline: 'Another family is&nbsp;<em style="font-style:italic;">waiting</em>.',
@@ -300,7 +313,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
     '',
     'Thank you for making this possible.',
     'The SOARD Team, Sunshine on a Ranney Day',
-  ].filter((l) => l !== false && l !== null && l !== undefined).join('\n');
+  ].filter((l) => l !== false && l !== null && l !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
   return { subject, preview, html, text };
 }

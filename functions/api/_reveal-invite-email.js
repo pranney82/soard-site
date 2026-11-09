@@ -82,22 +82,59 @@ const serifEm = (s) => [...String(s)].reduce((w, c) => w + (/[MW]/.test(c) ? 1 :
 /**
  * A cover headline can't break inside a word, and Gmail drops the phone rules, so the one inline
  * size has to fit a small phone: the longest run that can't break (a name, or words joined by
- * &nbsp;) fits in 230px, about what Gmail leaves inside Kit's margins on a 320 screen. The phone
- * rule may only shrink it.
+ * &nbsp;) fits in 225px: Gmail's phone app leaves about 236px inside the cover on a 360 screen, and the
+ * estimate runs a little light on capitals and m's. The phone rule may only shrink it.
  * @param {string[]} runs  the headline's unbreakable pieces, as they read ("Christopher’s", "Reveal Day.")
  * @returns {{ size: number, phone: string }}
  */
 export function headlineFit(runs, max, { phones = [[40, 'dm'], [30, 'dms']] } = {}) {
   const widest = Math.max(1, ...runs.map(serifEm));
-  const size = Math.max(22, Math.min(max, Math.floor(230 / widest)));
+  const size = Math.max(16, Math.min(max, Math.floor(225 / widest)));
   return { size, phone: (phones.find(([px]) => size > px) || [0, ''])[1] };
 }
 
 /** Escaped text whose last two words stay together, so a paragraph never ends on one word alone ("…platform / fees.") */
-export const noWidow = (escaped) => String(escaped).replace(/ ([^\s<>]{1,14})$/, '&nbsp;$1');
+export const noWidow = (escaped) => String(escaped).replace(/\s+$/, '').replace(/ ([^\s<>]{1,14})$/, '&nbsp;$1');
 
 /** A name for a headline: a hyphenated name ("Anastasia-Rose") never splits at its hyphen */
 export const nameHtml = (name) => escapeHtml(name).replace(/(\S*-\S*)/g, '<span style="white-space:nowrap;">$1</span>');
+
+/**
+ * A kid's name in a headline, sized with the rest of it. The name stays whole ("Remi & Nico’s") while
+ * that still fits a phone line at `min` or larger; a longer one ("Amanda, Caleb & Isaac") may break
+ * between names, but never right after "&" or inside a hyphenated name, and what follows it ("’s", ".")
+ * always stays on its last word.
+ * @param {object} p
+ * @param {string} p.after      plain text after the name, for sizing ("’s", ".")
+ * @param {string} [p.afterHtml] the same as HTML, when it differs
+ * @param {string[]} [p.runs]   the headline's other unbreakable runs
+ * @param {(h: string) => string} [p.wrap]  styles each piece of the name (an <em>)
+ * @returns {{ size: number, phone: string, html: string, whole: boolean }}
+ */
+export function fitName({ name, after = '', afterHtml, runs = [], max, min = max, phones, wrap = (h) => h }) {
+  const tail = afterHtml === undefined ? escapeHtml(after) : afterHtml;
+  const opts = phones ? { phones } : undefined;
+  const nowrap = (h) => `<span style="white-space:nowrap;">${h}</span>`;
+  const whole = headlineFit([...runs, `${name}${after}`], max, opts);
+  if (whole.size >= min || !/\s/.test(String(name).trim())) return { ...whole, whole: true, html: nowrap(`${wrap(escapeHtml(name))}${tail}`) };
+  const pieces = [];
+  for (const w of String(name).trim().split(/\s+/)) {
+    if (pieces.length && /^(&|and)$/i.test(pieces[pieces.length - 1])) pieces[pieces.length - 1] += ` ${w}`;
+    else pieces.push(w);
+  }
+  const fit = headlineFit([...runs, ...pieces.map((p, i) => (i === pieces.length - 1 ? `${p}${after}` : p))], max, opts);
+  return { ...fit, whole: false, html: pieces.map((p, i) => nowrap(`${wrap(escapeHtml(p).replace(/ /g, '&nbsp;'))}${i === pieces.length - 1 ? tail : ''}`)).join(' ') };
+}
+
+/**
+ * When the makeover isn't a room (a wheelchair ramp, a chair lift), what to call it: the thing itself.
+ * null for rooms, which keep "room" and "rooms".
+ */
+export function notARoom(names) {
+  const list = (names || []).filter(Boolean);
+  return list.length && list.every((n) => /\b(ramp|lift|elevator|porch|deck|walkway|driveway|entrance|entry)\b/i.test(n) && !/\broom\b/i.test(n))
+    ? { title: listJoin(list), lower: listJoin(list).toLowerCase() } : null;
+}
 
 /** A name's words, the last with what follows it: ("Remi & Nico", "’s") → ["Remi", "&", "Nico’s"] */
 export const nameRuns = (name, after = '') => {
@@ -168,7 +205,10 @@ export function stripHtml(html) {
 export const twoKids = (name) => /\s(&|and)\s/.test(String(name || ''));
 
 /** Typographic apostrophes, so names and copy read like the rest of the email */
-export const curly = (s) => String(s || '').replace(/(\w)'(\w)/g, '$1’$2').replace(/(\w)'(?=[\s.,;:!?)]|$)/g, '$1’');
+export const curly = (s) => String(s || '')
+  .replace(/(^|[\s(\[{“‘])"/g, '$1“').replace(/"/g, '”')
+  .replace(/(\w)'(\w)/g, '$1’$2')
+  .replace(/(^|[\s(\[{“])'/g, '$1‘').replace(/'/g, '’');
 
 /** "2026-11-17" + "16:00" → "Tuesday, November 17, 2026 · 4:00 PM" */
 /** JobTread's address, as a person would write it: no ", USA" */
@@ -201,9 +241,10 @@ function shortDay(date) {
 
 /** A small caps label with the brand's bar in front of it */
 export function label(text, bar = Y, color = D) {
+  // The bar is its own small block at the first line's height, so a label that wraps ("TYRECE & MADDIE’S / STORY") keeps a bar, not a slab
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr>
-    <td style="width:28px;height:10px;background:${bar};border-radius:2px;font-size:0;line-height:0;">&nbsp;</td>
-    <td style="padding-left:12px;font-family:${SANS};font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${color};">${escapeHtml(text)}</td>
+    <td valign="top" width="28" style="width:28px;padding-top:4px;"><div style="width:28px;height:10px;background:${bar};border-radius:2px;font-size:0;line-height:0;">&nbsp;</div></td>
+    <td valign="top" style="padding-left:12px;font-family:${SANS};font-size:12px;font-weight:700;line-height:18px;letter-spacing:0.14em;text-transform:uppercase;color:${color};">${escapeHtml(text)}</td>
   </tr></table>`;
 }
 
@@ -243,8 +284,6 @@ export function emailFrame(preview, rows) {
     .pd{padding-left:24px!important;padding-right:24px!important}
     .h1m{font-size:26px!important}
     .h2m{font-size:20px!important}
-    .lt{height:50px!important;padding:0 8px!important}
-    .lc{padding:3px!important}
     .dm{font-size:40px!important}
     .dms{font-size:30px!important}
     .h2b{font-size:26px!important}
@@ -433,7 +472,7 @@ export function partnerCards(kid, brokenLogos = new Set(), lead = 'Made possible
     const cells = row.map((l) => `<td width="${(100 / row.length).toFixed(2)}%" valign="middle" class="lc" style="padding:4px;">${l.text
       // A logo that doesn't load reads as the partner's name instead of a broken picture, small enough to fit its card
       ? tile(`<span style="display:block;font-family:${SANS};font-size:13px;font-weight:700;line-height:1.25;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(l.label)}</span>`)
-      : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="140" alt="${escapeHtml(l.label || 'Partner logo')}" class="fl" style="display:block;width:100%;max-width:150px;height:auto;margin:0 auto;" />`)}</td>`);
+      : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="140" alt="${escapeHtml(l.label || 'Partner logo')}" class="fl" style="display:block;width:100%;max-width:130px;height:auto;margin:0 auto;" />`)}</td>`);
     // Fixed layout keeps the columns equal, whatever is in them
     logoRows.push(`<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${row.length === 1 ? '50%' : '100%'}" align="center" style="margin:0 auto;table-layout:fixed;"><tr>${cells.join('')}</tr></table>`);
   }
@@ -490,7 +529,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
       ? { label: 'When', lines: [longDay(date), when.split(' · ')[1]] }
       : { label: 'When', lines: [longDay(date)], sub: TIME_LATER }),
     { label: 'Where', lines: [`${name}’s Home`], sub: cleanAddress(address).replace(/\b([A-Z]{2}) (\d{5})/, '$1\u00A0$2') },
-    roomLines.length && { label: roomLines.length > 1 ? 'Rooms' : 'Room', lines: roomLines },
+    roomLines.length && { label: notARoom(roomLines) ? 'Project' : several ? 'Rooms' : 'Room', lines: roomLines },
   ].filter(Boolean);
   const noteLines = String(notes || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
   // The team's own arrival note stands in for ours, so it isn't said twice
@@ -507,16 +546,17 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     </tr></table>
     <p style="margin:18px 0 0;font-family:${SANS};font-size:14px;color:#C9CACC;line-height:1.6;">Can’t be there in person? <a href="${href(liveUrl)}" target="_blank" style="color:#FFFFFF;font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;">Watch it live</a> from&nbsp;anywhere.</p>` : '';
 
-  const summary = kid.heroSummary ? curly(kid.heroSummary) : stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '';
+  const summary = curly(kid.heroSummary || stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '').trim();
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
-  const fit = headlineFit([...nameRuns(name, '’s'), 'Reveal Day.'], 42);
-  const opening = `After months of planning and building, the day is almost here. ${name} and the family haven’t seen the finished ${several ? 'rooms' : 'room'} yet. Come be there for that first reaction.`;
+  const fit = fitName({ name, after: '’s', runs: ['Reveal Day.'], max: 42, min: 30 });
+  const space = notARoom(roomLines);
+  const opening = `After months of planning and building, the day is almost here. ${name} and the family haven’t seen the finished ${space ? space.lower : several ? 'rooms' : 'room'} yet. Come be there for that first reaction.`;
 
   const html = emailFrame(preview, `
   ${emailHeader(site)}
   ${cover({
     kicker: ['Reveal Day', shortDay(date)].filter(Boolean).join(' · '),
-    headline: `<span style="display:block;margin-bottom:8px;font-size:24px;font-weight:400;font-style:italic;line-height:1.3;color:#E4E4E5;">You’re Invited to</span>${nameHtml(name)}’s <em style="font-style:italic;color:${Y};">Reveal&nbsp;Day</em>.`,
+    headline: `<span style="display:block;margin-bottom:8px;font-size:24px;font-weight:400;font-style:italic;line-height:1.3;color:#E4E4E5;">You’re Invited to</span>${fit.html} <em style="font-style:italic;color:${Y};">Reveal&nbsp;Day</em>.`,
     size: fit.size,
     phone: fit.phone,
     lead,
@@ -544,7 +584,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     '',
     when && `When: ${when}`,
     `Where: ${name}’s Home${address ? `, ${cleanAddress(address)}` : ''}`,
-    roomText && `${roomLines.length > 1 ? 'Rooms' : 'Room'}: ${roomText}`,
+    roomText && `${notARoom(roomLines) ? 'Project' : several ? 'Rooms' : 'Room'}: ${roomText}`,
     '',
     arrive,
     ...noteLines.map(curly),
@@ -555,7 +595,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     '',
     'Hope to see you there.',
     'The SOARD Team, Sunshine on a Ranney Day',
-  ].filter((l) => l !== false && l !== null && l !== undefined).join('\n');
+  ].filter((l) => l !== false && l !== null && l !== undefined).join('\n').replace(/\n{3,}/g, '\n\n').trim();
 
   return { subject, preview, html, text };
 }
