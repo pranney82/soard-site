@@ -664,6 +664,13 @@ const CSS = `
 .afi-cross { stroke: var(--color-border-strong); stroke-width: 1; shape-rendering: crispEdges; }
 .afi-table { margin-top: .6rem; }
 .afi-table summary { display: inline-block; padding: .35rem 0; cursor: pointer; }
+/* Wider than a phone: the table scrolls inside its card, the first column staying put */
+.afi-table-scroll { margin-top: .5rem; overflow-x: auto; overscroll-behavior-x: contain; }
+.afi-table-scroll:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
+.afi-table-scroll .afe-table { margin-top: 0; }
+.afi-table-scroll th { white-space: nowrap; }
+.afi-table-scroll td:not(:first-child) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.afi-table-scroll th:first-child, .afi-table-scroll td:first-child { position: sticky; left: 0; z-index: 1; min-width: 8.5rem; background: var(--color-bg-card); }
 /* Where they live: the map, and beside it the people by distance */
 .afi-map { position: relative; }
 .afi-map-box { height: 440px; border: 1px solid var(--color-border); border-radius: var(--radius-md); overflow: hidden; background: #EEF0EC; isolation: isolate; }
@@ -737,6 +744,9 @@ const CSS = `
 .afi-person b { display: block; font-size: var(--fs-sm); }
 .afi-person b.is-none { color: var(--color-text-muted); font-weight: 500; }
 .afi-person span { display: block; color: var(--color-text-muted); font-size: var(--fs-xs); line-height: 1.4; }
+/* What a family typed, in their words: under the title for one answer, under each name for several */
+.afi-quote { margin: .1rem 0 .6rem; padding: .15rem 0 .15rem .85rem; border-left: 3px solid var(--color-border-strong); color: var(--color-text); font-size: var(--fs-sm); line-height: 1.5; overflow-wrap: anywhere; }
+.afi-said { display: block; margin: .1rem 0 .15rem; color: var(--color-text-secondary); font-size: var(--fs-sm); line-height: 1.45; overflow-wrap: anywhere; }
 /* Until the first answer: the page's shape, still */
 .afi-skel { display: grid; gap: .9rem; }
 .afi-skel-lede { --w: 58%; height: 30px; }
@@ -1900,7 +1910,7 @@ function InsightsTab({ seasonYear, go, kind, onKind }) {
   const ins = data;
   // What's on the page until the other kind's numbers arrive: nothing jumps while they load, then it all comes in fresh
   const shown = ins?.kind || kind;
-  const open = (title, list) => setSheet({ title, list });
+  const open = (title, list, more = {}) => setSheet({ title, list, ...more });
   return html`
     <div class="afe-ins afi" aria-busy=${loading}>
       <${Head} title="Insights">
@@ -2200,10 +2210,10 @@ function PageFlow({ ins, open }) {
         </div>`}
       <details class="afi-table">
         <summary class="afe-hint">Show as a table</summary>
-        <table class="afe-table">
+        <div class="afi-table-scroll" tabindex="0" role="region" aria-label="How far people get, as a table"><table class="afe-table">
           <thead><tr><th>Page</th><th>Reached</th><th>Went on</th><th>Still working</th><th>Stopped</th><th>Left</th></tr></thead>
           <tbody>${steps.map(s => html`<tr><td>${s.i + 1}. ${s.title}</td><td>${num(s.reached)}</td><td>${num(s.parts.on)}</td><td>${num(s.parts.working)}</td><td>${num(s.parts.stopped)}</td><td>${num(s.parts.left)}</td></tr>`)}</tbody>
-        </table>
+        </table></div>
       </details>
     </div>`;
 }
@@ -2389,11 +2399,11 @@ function SourcesCard({ rows, people, open, w }) {
       <span class="afe-hint">From “Who referred you”, on submitted applications.</span>
       <div class="afi-srcs">
         ${shown.map((r, n) => html`
-          <button type="button" class=${`afi-src ${r.source === 'Not given' ? 'is-rest' : ''}`} style=${`--w: ${(r.count / max) * 100}%; --i: ${n};`} onClick=${() => open(r.source, named(r))}>
+          <button type="button" class=${`afi-src ${r.source === 'Not given' ? 'is-rest' : ''}`} style=${`--w: ${(r.count / max) * 100}%; --i: ${n};`} onClick=${() => (r.source === 'Not given' ? open('Didn’t say who referred them', named(r)) : open('Who referred them', named(r), { quote: r.source }))}>
             <span class="afi-src-text" title=${r.source}>${r.source}</span><b>${num(r.count)}</b>
           </button>`)}
       </div>
-      ${more.length > 0 && html`<p class="afi-note"><button type="button" class="afe-link" onClick=${() => open(plural(more.length, 'more source'), people.filter(p => rest.has(p.referral)))}>And ${plural(more.length, 'more source')} with ${plural(more.reduce((n, r) => n + r.count, 0), 'application')}</button></p>`}
+      ${more.length > 0 && html`<p class="afi-note"><button type="button" class="afe-link" onClick=${() => open('Who referred them', people.filter(p => rest.has(p.referral)), { said: true })}>And ${plural(more.length, 'more source')} with ${plural(more.reduce((n, r) => n + r.count, 0), 'application')}</button></p>`}
     </section>`;
 }
 
@@ -2415,11 +2425,12 @@ function PeopleSheet({ sheet, pages, near = 0, onClose }) {
   };
   return html`
     <${Dialog} title=${`${sheet.title} (${num(sheet.list.length)})`} wide onClose=${onClose}>
+      ${sheet.quote && html`<blockquote class="afi-quote">${sheet.quote}</blockquote>`}
       <div class="afi-people">
         ${sheet.list.map(p => html`
           <div class="afi-person">
             <i class="afi-person-dot" style=${`background: ${STATE_COLOR[p.state]};`} title=${STATE_LABEL[p.state]}></i>
-            <div><b class=${p.name ? '' : 'is-none'}>${p.name || 'No name given yet'}</b><span>${line(p)}</span></div>
+            <div><b class=${p.name ? '' : 'is-none'}>${p.name || 'No name given yet'}</b>${sheet.said && p.referral && html`<q class="afi-said">${p.referral}</q>`}<span>${line(p)}</span></div>
             ${p.accountId && html`<a class="btn btn-ghost btn-sm" href=${`#applications/applicants/${p.accountId}`}>Open</a>`}
           </div>`)}
       </div>
@@ -2532,13 +2543,13 @@ function SeasonChart({ side, year, lastYear, opened = null }) {
       </div>
       <details class="afi-table">
         <summary class="afe-hint">Show as a table</summary>
-        <table class="afe-table">
+        <div class="afi-table-scroll" tabindex="0" role="region" aria-label="The season so far, as a table"><table class="afe-table">
           <thead><tr><th>By the end of</th><th>${year}</th>${lastYear && html`<th>${lastYear}</th>`}</tr></thead>
           <tbody>${months.map((t) => {
             const close = Date.UTC(new Date(t).getUTCFullYear(), new Date(t).getUTCMonth() + 1, 1) - 1;
             return html`<tr><td>${monthName(t)}</td><td>${t <= m.today ? `${m.countAt(m.mine, Math.min(close, m.today))}${close > m.today ? ' so far' : ''}` : ''}</td>${lastYear && html`<td>${m.countAt(m.past, close)}</td>`}</tr>`;
           })}</tbody>
-        </table>
+        </table></div>
       </details>
     </div>`;
 }

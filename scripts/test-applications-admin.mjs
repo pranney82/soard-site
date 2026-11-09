@@ -124,7 +124,7 @@ let seq = 0;
 const appId = () => { seq++; return `app-${(NOW + seq).toString(36)}-${seq.toString(16).padStart(6, '0')}`; };
 // Typed by families, so some run long: a name with whose parent they are, and a whole sentence
 const LONG_REF = 'A volunteer from your crew stopped by our street on a makeover day and told us all about the charity and how to apply';
-const REFS = ['Children’s Healthcare of Atlanta', 'Facebook', 'Jordan Lee (Sam Lee’s mom, from our running group)', LONG_REF, 'Facebook', 'Children’s Healthcare of Atlanta', ''];
+const REFS = ['Children’s Healthcare of Atlanta', 'Facebook', 'Jordan Lee (Sam Lee’s mom, from our running group)', LONG_REF, 'Facebook', 'Children’s Healthcare of Atlanta', '', 'Our church', 'Instagram', 'Our school nurse'];
 const fixtures = {};
 async function seed() {
   await ensureSchema(DB);
@@ -1199,12 +1199,52 @@ try {
         await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /heard about us/.test(v.querySelector('h4')?.textContent))?.scrollIntoView({ block: 'center', behavior: 'instant' }));
         await page.screenshot({ path: join(OUT, '13f-insights-referrals-phone.png') });
       }
+      // And nothing anywhere on the page past its card, tables opened (a wide one scrolls inside, its last column reachable)
+      const sweep = await page.evaluate(() => {
+        document.querySelectorAll('details.afi-table').forEach((d) => { d.open = true; });
+        const past = [];
+        for (const card of document.querySelectorAll('.afe-ins .afe-viz')) {
+          const box = card.getBoundingClientRect();
+          for (const el of card.querySelectorAll('*')) {
+            const r = el.getBoundingClientRect();
+            if (!r.width || !r.height || el.closest('.leaflet-container')) continue;
+            // Inside a box that clips or scrolls, it's that box that has to fit (and it's checked in its turn)
+            let inBox = false;
+            for (let a = el.parentElement; a && a !== card; a = a.parentElement) if (/hidden|clip|auto|scroll/.test(getComputedStyle(a).overflowX)) { inBox = true; break; }
+            if (!inBox && (r.right > box.right + 1 || r.left < box.left - 1)) past.push(`${card.querySelector('h4')?.textContent}: ${el.tagName.toLowerCase()}.${[...el.classList].join('.')}`);
+          }
+        }
+        const tables = [...document.querySelectorAll('.afi-table-scroll')].map((w) => { w.scrollLeft = w.scrollWidth; const last = w.querySelector('th:last-child').getBoundingClientRect(); const box = w.getBoundingClientRect(); const ok = last.right <= box.right + 1 && last.left >= box.left - 1; w.scrollLeft = 0; return ok; });
+        document.querySelectorAll('details.afi-table').forEach((d) => { d.open = false; });
+        return { past: [...new Set(past)].slice(0, 5), tables };
+      });
+      ok(sweep.past.length === 0 && sweep.tables.length === 2 && sweep.tables.every(Boolean), `at ${width}px nothing on Insights runs past its card, and each table's last column can be reached (${JSON.stringify(sweep)})`);
       ok(fit.all >= 4 && fit.out === 0 && fit.noCount === 0 && fit.most <= 2 && fit.long?.lines >= 1 && fit.long?.full && fit.page, `at ${width}px every referral row stays in its card, its count in view, two lines at most (${JSON.stringify(fit)})`);
     }
     await page.setViewport(fitWide);
     await sleep(250);
     await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /heard about us/.test(v.querySelector('h4')?.textContent))?.scrollIntoView({ block: 'center', behavior: 'instant' }));
     await page.screenshot({ path: join(OUT, '13e-insights-referrals.png') });
+    // What a row opens: a short title, and the answer in the family's words under it, never a paragraph as the heading
+    const refSheet = async (pick) => {
+      await page.evaluate((src) => { const card = [...document.querySelectorAll('.afe-viz')].find(v => /heard about us/.test(v.querySelector('h4')?.textContent)); const el = [...card.querySelectorAll('.afi-src, .afi-note button')].find(b => new RegExp(src).test(b.textContent)); el.click(); }, pick.source);
+      await page.waitForSelector('.afi-people', { timeout: 5000 });
+      await sleep(200);
+      const got = await page.evaluate(() => { const h = document.querySelector('.afe-dialog h3'); return { title: h.textContent, titleLines: Math.round(h.getBoundingClientRect().height / parseFloat(getComputedStyle(h).lineHeight)), quote: document.querySelector('.afe-dialog .afi-quote')?.textContent || null, people: document.querySelectorAll('.afi-person').length, said: [...document.querySelectorAll('.afi-person .afi-said')].map(q => q.textContent) }; });
+      if (pick.shot) await page.screenshot({ path: join(OUT, pick.shot) });
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+      await sleep(300);
+      return got;
+    };
+    const longSheet = await refSheet({ source: '^A volunteer from your crew', shot: '13g-insights-referral-sheet.png' });
+    ok(/^Who referred them \(\d+\)$/.test(longSheet.title) && longSheet.titleLines === 1 && longSheet.quote === LONG_REF && longSheet.people >= 1, `a long answer opens under a one-line title, quoted whole (${JSON.stringify({ ...longSheet, quote: longSheet.quote?.slice(0, 30) })})`);
+    const fbSheet = await refSheet({ source: '^Facebook' });
+    ok(fbSheet.title === `Who referred them (${fbSheet.people})` && fbSheet.quote === 'Facebook' && fbSheet.said.length === 0, `a short one reads the same way (${JSON.stringify(fbSheet)})`);
+    const noneSheet = await refSheet({ source: '^Not given' });
+    ok(/^Didn’t say who referred them \(\d+\)$/.test(noneSheet.title) && noneSheet.quote === null && noneSheet.people >= 1, `"Not given" says so, with nothing to quote (${JSON.stringify(noneSheet)})`);
+    const moreSheet = await refSheet({ source: '^And 1 more source' });
+    ok(/^Who referred them \(\d+\)$/.test(moreSheet.title) && moreSheet.quote === null && moreSheet.people >= 1 && moreSheet.said.length === moreSheet.people, `"And 1 more source" shows each family's own answer (${JSON.stringify(moreSheet)})`);
     const where = await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Where families live/.test(v.querySelector('h4')?.textContent))?.innerText || '');
     ok(/Inside the area\s*1[12]\b/.test(where) && /Address not found\s*1/.test(where), `where families live, from the address check (${where.replace(/\s+/g, ' ').slice(0, 160)})`);
     ok(/within 15 miles/.test(where) && /Up to 5 mi\s*close\s*1/.test(where) && /10 to 15 mi\s*close\s*1/.test(where) && /Over 50 mi\s*1/.test(where), 'how far out, with the close steps marked');
