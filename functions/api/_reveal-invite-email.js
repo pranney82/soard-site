@@ -151,9 +151,25 @@ export function calendarLinks(slug, site = SITE_URL, { watch = false } = {}) {
   return { google: `${base}&app=google`, apple: base, outlook: `${base}&app=outlook` };
 }
 
+/**
+ * Kit sends every email inside its own template, whose style block says `table td { vertical-align:top }`.
+ * A style rule beats a valign attribute and the browser's own middle, so in Kit's preview, Apple Mail and
+ * any client that keeps that block, partner logos sat at the top of their cards and the room numbers at
+ * the top of their circles. Each cell says where it sits inline, where no stylesheet can move it.
+ */
+export function pinCells(html) {
+  return String(html).replace(/<td\b([^>]*)>/gi, (tag, attrs) => {
+    if (/vertical-align\s*:/i.test(attrs)) return tag;
+    const align = ((attrs.match(/\svalign\s*=\s*"?(top|middle|bottom|baseline)/i) || [])[1] || 'middle').toLowerCase();
+    return /\sstyle\s*=\s*"/i.test(attrs)
+      ? `<td${attrs.replace(/\sstyle\s*=\s*"/i, (s) => `${s}vertical-align:${align};`)}>`
+      : `<td${attrs} style="vertical-align:${align};">`;
+  });
+}
+
 /** The email around its rows: the width, the phone rules and the hidden preview line. Fluid, so a phone that drops the style block still fits it; Outlook's ghost table holds the width there. */
 export function emailFrame(preview, rows) {
-  return `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(preview)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+  return pinCells(`<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(preview)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
 <style>
   @media screen and (max-width:600px){
     .ec{width:100%!important}
@@ -175,7 +191,7 @@ export function emailFrame(preview, rows) {
 ${rows}
 </table>
 <!--[if mso]></td></tr></table><![endif]-->
-</center>`;
+</center>`);
 }
 
 export function emailHeader(site = SITE_URL, { rounded = false, logoWidth = 124, pad = 20 } = {}) {
@@ -186,7 +202,7 @@ export function emailHeader(site = SITE_URL, { rounded = false, logoWidth = 124,
 
 export function emailFooter(site = SITE_URL) {
   return `<tr><td bgcolor="${DD}" style="background:${DD};padding:36px 0;${SIDE}text-align:center;" class="pd">
-    <a href="${href(site)}" target="_blank" style="display:inline-block;margin-bottom:16px;"><img src="${escapeHtml(LOGO)}" width="120" alt="Sunshine on a Ranney Day" style="width:120px;height:auto;" /></a>
+    <a href="${href(site)}" target="_blank" style="display:inline-block;margin-bottom:16px;"><img src="${escapeHtml(LOGO)}" width="120" alt="Sunshine on a Ranney Day" style="display:block;width:120px;height:auto;" /></a>
     <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;color:#8E8F93;">501(c)(3) Nonprofit &middot; EIN 45-4773997</p>
     <p style="margin:0 0 14px;font-family:${SANS};font-size:13px;">
       <a href="https://www.facebook.com/sunshineonaranneyday" target="_blank" style="color:#C9CACC;text-decoration:underline;text-underline-offset:3px;">Facebook</a><span style="color:#5A5B61;padding:0 8px;">&middot;</span><a href="https://www.instagram.com/sunshineonaranneyday" target="_blank" style="color:#C9CACC;text-decoration:underline;text-underline-offset:3px;">Instagram</a><span style="color:#5A5B61;padding:0 8px;">&middot;</span><a href="https://www.youtube.com/@sunshineonaranneyday" target="_blank" style="color:#C9CACC;text-decoration:underline;text-underline-offset:3px;">YouTube</a><span style="color:#5A5B61;padding:0 8px;">&middot;</span><a href="https://www.tiktok.com/@sunshineonaranneyday" target="_blank" style="color:#C9CACC;text-decoration:underline;text-underline-offset:3px;">TikTok</a>
@@ -340,7 +356,7 @@ export function partnerCards(kid, brokenLogos = new Set(), lead = 'Made possible
     const cells = row.map((l) => `<td width="${(100 / row.length).toFixed(2)}%" valign="middle" class="lc" style="padding:5px;">${l.text
       // A logo that doesn't load reads as the partner's name instead of a broken picture
       ? tile(`<span style="font-family:${SANS};font-size:13px;font-weight:700;line-height:1.25;color:${D};">${escapeHtml(l.name)}</span>`)
-      : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="132" alt="${escapeHtml(l.name || '')}" class="fl" style="width:100%;max-width:150px;height:auto;display:inline-block;vertical-align:middle;" />`)}</td>`);
+      : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="132" alt="${escapeHtml(l.name || '')}" class="fl" style="display:block;width:100%;max-width:150px;height:auto;margin:0 auto;" />`)}</td>`);
     logoRows.push(`<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${['33.33%', '66.66%', '100%'][row.length - 1]}" align="center" style="margin:0 auto;"><tr>${cells.join('')}</tr></table>`);
   }
   return logoRows.length ? `

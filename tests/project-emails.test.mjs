@@ -217,8 +217,42 @@ test('buttons keep their shape in Outlook, and numbers stay out of the serif’s
 test('partner tiles are all one height, and a short last row sits centered', () => {
   const partnerLogos = ['a', 'b', 'c', 'd'].map((n) => ({ url: `${IMG}/partners/${n}/public`, name: n }));
   const e = projectRevealEmail({ kid: { ...DONE, partnerLogos } });
-  assert.equal((e.html.match(/class="lt" style="height:66px/g) || []).length, 4);
+  assert.equal((e.html.match(/class="lt" style="vertical-align:middle;height:66px/g) || []).length, 4);
   assert.match(e.html, /width="33\.33%" align="center"[^>]*><tr><td width="100\.00%"/);
+});
+
+test('Kit’s template puts every cell at the top, so each cell says inline where it sits: logos stay centered in their cards', () => {
+  // Kit wraps every email in a style block with `table td { vertical-align:top }`, which beats valign="middle"
+  const partnerLogos = ['a', 'b', 'c', 'd'].map((n) => ({ url: `${IMG}/partners/${n}/public`, name: n }));
+  const invite = revealInviteEmail({ kid: { ...KID, partnerLogos }, date: '2027-03-12', time: '16:00', address: '100 Example Way, Atlanta, GA 30301', notes: 'Park on the street.' });
+  const kickoff = projectKickoffEmail({ kid: { ...KID, partnerLogos, roomTypes: ['Bedroom', 'Accessible Bathroom'] } });
+  const reveal = projectRevealEmail({ kid: { ...DONE, partnerLogos } });
+  for (const e of [invite, kickoff, reveal]) {
+    const cells = e.html.match(/<td\b[^>]*>/g);
+    assert.ok(cells.length > 20);
+    for (const td of cells) {
+      const valign = (td.match(/\svalign="(\w+)"/) || [])[1] || 'middle';
+      assert.match(td, new RegExp(`style="[^"]*vertical-align:${valign};`), td);
+      assert.equal((td.match(/vertical-align:/g) || []).length, 1, td);
+    }
+  }
+  // The invite and Project Reveal carry the partner band (Kickoff has none)
+  for (const e of [invite, reveal]) {
+    assert.equal((e.html.match(/class="lt" style="vertical-align:middle;height:66px/g) || []).length, 4);
+    // The logo is a centered block, so a thin one isn't nudged by the line it would sit on
+    assert.equal((e.html.match(/<img [^>]*partners\/[a-d]\/[^>]*style="display:block;[^"]*margin:0 auto;/g) || []).length, 4);
+  }
+  // The room numbers sit in the middle of their circles
+  assert.match(kickoff.html, /<td align="center" valign="middle" width="30" height="30" bgcolor="#FFDA24" style="vertical-align:middle;/);
+});
+
+test('pinCells keeps a cell’s own alignment and adds a style only where there is none', async () => {
+  const { pinCells } = await import('../functions/api/_reveal-invite-email.js');
+  assert.equal(pinCells('<td valign="top" style="padding:0;">x</td>'), '<td valign="top" style="vertical-align:top;padding:0;">x</td>');
+  assert.equal(pinCells('<td width="46">x</td>'), '<td width="46" style="vertical-align:middle;">x</td>');
+  assert.equal(pinCells('<td VALIGN="Bottom">x</td>'), '<td VALIGN="Bottom" style="vertical-align:bottom;">x</td>');
+  assert.equal(pinCells('<td style="vertical-align:top;">x</td>'), '<td style="vertical-align:top;">x</td>');
+  assert.equal(pinCells('<table><tr><th>t</th><td>y</td></tr></table>'), '<table><tr><th>t</th><td style="vertical-align:middle;">y</td></tr></table>');
 });
 
 test('a name wraps as a phrase on a phone, and a long one gets a smaller headline', () => {
