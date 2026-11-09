@@ -166,7 +166,8 @@ export async function goalNow(env, settings, { slug = null } = {}) {
 export async function campaignFromUrl(env, url, { fetchImpl = fetch } = {}) {
   if (!env.ZEFFY_API_KEY || !url) return null;
   try {
-    return (await every(env, '/campaigns', {}, fetchImpl)).find((c) => sameLink(c.url, url))?.id || '';
+    // A deleted campaign takes no gifts, so it's nobody's to link (a hosted page's past gifts still count: readMoney)
+    return (await every(env, '/campaigns', {}, fetchImpl)).find((c) => !c.deleted_at && sameLink(c.url, url))?.id || '';
   } catch { return null; }
 }
 

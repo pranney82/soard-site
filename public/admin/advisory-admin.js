@@ -143,7 +143,7 @@ function useDirty(ctx, key, where) {
 // ─── Small pieces ───────────────────────────────────────────────────
 /** for: the id of the control the name belongs to, when the field holds more than one (a Zeffy link: the dropdown, then the box) */
 function Field({ label, hint = '', for: control, children }) {
-  return html`<label class="ar-field" for=${control}><span class="ar-field__l">${label}</span>${children}${hint ? html`<span class="ar-field__h">${hint}</span>` : null}</label>`;
+  return html`<label class="ar-field" for=${control}><span class="ar-field__l">${label}</span>${children}${hint ? html`<span class="ar-field__h" id=${control ? `${control}-hint` : undefined}>${hint}</span>` : null}</label>`;
 }
 function Card({ title, sub = '', count = null, children, cls = '' }) {
   return html`<section class=${`ar-card ${cls}`}>
@@ -274,7 +274,7 @@ function HostedRow({ x, ctx }) {
     ${held ? (x.note ? html`<p class="ar-quote">${x.note}</p>` : null) : html`
       <div class="ar-grid2">
         <${Field} label="The date" hint=${x.status === 'approved' && !date ? 'It won’t show under Coming up until it has one.' : ''}><input class="ar-input" type="date" value=${date} onInput=${(e) => setDate(e.currentTarget.value)} /><//>
-        <${Field} label="Its Zeffy page" hint="So what it raises counts toward the goal" for=${`ar-give-${x.id}`}><${ZeffyFormSelect} cls="ar-input" from=${ZEFFY_FROM} value=${giveUrl} prefer=${['peer', 'tickets', 'donation']} label="Its Zeffy page" onPick=${(f) => setGiveUrl(f.url)} /><input id=${`ar-give-${x.id}`} class="ar-input" type="url" inputmode="url" placeholder="https://www.zeffy.com/" aria-label="Its Zeffy page" value=${giveUrl} onInput=${(e) => setGiveUrl(e.currentTarget.value)} /><//>
+        <${Field} label="Its Zeffy page" hint="So what it raises counts toward the goal" for=${`ar-give-${x.id}`}><${ZeffyFormSelect} cls="ar-input" from=${ZEFFY_FROM} value=${giveUrl} prefer=${['peer', 'tickets', 'donation']} label="Its Zeffy page" onPick=${(f) => setGiveUrl(f.url)} /><input id=${`ar-give-${x.id}`} class="ar-input" type="url" inputmode="url" placeholder="https://www.zeffy.com/" aria-label="Its Zeffy page" aria-describedby=${`ar-give-${x.id}-hint`} value=${giveUrl} onInput=${(e) => setGiveUrl(e.currentTarget.value)} /><//>
       </div>
       <${Field} label="A note for the advisor"><input class="ar-input" value=${note} maxlength="800" onInput=${(e) => setNote(e.currentTarget.value)} /><//>
       <div class="ar-btns">
@@ -451,20 +451,21 @@ function Goal({ ctx }) {
   const f = Object.fromEntries(GOAL_FIELDS.map((k) => [k, k in edits ? edits[k] : s[k]]));
   const up = (k) => (e) => setEdits({ ...edits, [k]: e.currentTarget.value });
   // The campaign's ID follows its address: picked from Zeffy's list, or typed and Zeffy lists it, the ID fills in; typed
-  // and not listed, the ID empties and Save asks Zeffy for it; cleared, the campaign is unlinked. Only an ID typed by hand
-  // stays put. Never the old campaign's ID beside a new address
+  // and not listed, the ID empties and Save asks Zeffy for it; cleared, the campaign is unlinked. An ID typed by hand
+  // stays put whatever the address does (clearing the box to retype an address mustn't lose it), until a campaign is
+  // picked; the ID box always shows what Save keeps. Never the old campaign's ID beside a new address
   const zeffyList = useZeffyFormList(ZEFFY_FROM);
   const autoId = useRef(null);
   const pickCampaign = (c) => { autoId.current = c.id; setEdits({ ...edits, campaignUrl: c.url, campaignId: c.id }); };
   const typeCampaignUrl = (e) => {
     const url = e.currentTarget.value;
     const next = { ...edits, campaignUrl: url };
-    const byHand = 'campaignId' in edits && edits.campaignId !== autoId.current;
-    const listed = url.trim() ? (zeffyList || []).find((c) => sameForm(c.url, url)) : null;
-    if (!url.trim()) next.campaignId = '';
-    else if (listed) next.campaignId = listed.id;
-    else if (!byHand) next.campaignId = '';
-    if (!byHand || !url.trim() || listed) autoId.current = next.campaignId;
+    const byHand = 'campaignId' in edits && edits.campaignId !== '' && edits.campaignId !== autoId.current;
+    if (!byHand) {
+      const listed = url.trim() ? (zeffyList || []).find((c) => sameForm(c.url, url)) : null;
+      next.campaignId = listed ? listed.id : '';
+      autoId.current = next.campaignId;
+    }
     setEdits(next);
   };
   const moved = GOAL_FIELDS.filter((k) => k in edits && String(edits[k] ?? '') !== String(s[k] ?? ''));
@@ -478,6 +479,8 @@ function Goal({ ctx }) {
       if (!(await ask({ title: `Hand the group to ${next}?`, text: `${next} gets Run it on the advisors’ page${yours ? ', and you lose it the next time this page opens.' : `, and ${data.leadName || 'the person running it now'} loses it.`}`, yes: `Yes, hand it to ${first(next)}`, no: 'Keep it as it is', careful: true }))) return;
     }
     const patch = Object.fromEntries(moved.map((k) => [k, k === 'goal' ? Number(edits.goal) : edits[k]]));
+    // A new address goes with the ID shown beside it, even when that ID hasn't changed: Zeffy is asked only when there's none
+    if ('campaignUrl' in patch && !('campaignId' in patch)) patch.campaignId = f.campaignId || '';
     if (await act({ action: 'save-settings', settings: patch }, 'Saved')) setEdits({});
   };
   const people = data.board.filter((p) => (p.committees || []).includes('Advisory Board') || p.slug === s.lead);

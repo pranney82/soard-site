@@ -784,7 +784,7 @@ test('a new campaign address never keeps the old campaign’s ID: found in Zeffy
   const real = globalThis.fetch;
   let zeffy = 'up';
   globalThis.fetch = async () => (zeffy === 'up'
-    ? Response.json({ object: 'list', has_more: false, next_cursor: null, data: [{ id: 'new-id', url: 'https://www.zeffy.com/peer-to-peer/new-2027', title: 'New', type: 'donation_form', category: 'peer_to_peer', status: 'active', created: 1 }] })
+    ? Response.json({ object: 'list', has_more: false, next_cursor: null, data: [{ id: 'new-id', url: 'https://www.zeffy.com/peer-to-peer/new-2027', title: 'New', type: 'donation_form', category: 'peer_to_peer', status: 'active', created: 1 }, { id: 'gone', url: 'https://www.zeffy.com/peer-to-peer/gone-2025', title: 'Gone', type: 'donation_form', category: 'peer_to_peer', status: 'active', created: 1, deleted_at: 5 }] })
     : Response.json({ error: { message: 'down' } }, { status: 500 }));
   const quiet = console.error;
   console.error = () => {};
@@ -795,12 +795,20 @@ test('a new campaign address never keeps the old campaign’s ID: found in Zeffy
     assert.equal(res.status, 200);
     let s = await getSettings(env.DB);
     assert.equal(s.campaignId, 'new-id');
+    // A campaign deleted in Zeffy takes no gifts: its address is refused like any other Zeffy doesn't list
+    res = await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/gone-2025', campaignId: '' } });
+    assert.equal(res.status, 400);
+    assert.equal((await getSettings(env.DB)).campaignId, 'new-id');
     zeffy = 'down';
+    // The same campaign in another language, sent with the ID the page shows: saved without asking Zeffy
+    res = await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://zeffy.com/fr-CA/peer-to-peer/new-2027', campaignId: 'new-id' } });
+    assert.equal(res.status, 200);
+    assert.equal((await getSettings(env.DB)).campaignUrl, 'https://zeffy.com/fr-CA/peer-to-peer/new-2027');
     res = await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/other', campaignId: '' } });
     assert.equal(res.status, 503);
     assert.match((await res.json()).error, /Zeffy didn’t answer/);
     s = await getSettings(env.DB);
-    assert.deepEqual([s.campaignUrl, s.campaignId], ['https://www.zeffy.com/en-US/peer-to-peer/new-2027', 'new-id'], 'nothing half saved');
+    assert.deepEqual([s.campaignUrl, s.campaignId], ['https://zeffy.com/fr-CA/peer-to-peer/new-2027', 'new-id'], 'nothing half saved');
     // With no Zeffy key at all the address saves, and no old ID stays beside it
     delete env.ZEFFY_API_KEY;
     res = await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/other' } });
