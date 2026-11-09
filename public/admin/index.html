@@ -3218,13 +3218,42 @@
     .kd-checks__go { margin-left: auto; color: var(--color-text-muted); }
     .kd-facts { display: grid; gap: 0.55rem; margin: 0 0 0.9rem; }
     .kd-facts div { display: grid; grid-template-columns: 78px minmax(0, 1fr); gap: 0.5rem; font-size: var(--fs-xs); }
-    .kd-facts dt { color: var(--color-text-muted); }
+    .kd-facts dt { min-width: 0; color: var(--color-text-muted); overflow-wrap: anywhere; }
     .kd-facts dd { margin: 0; min-width: 0; overflow-wrap: anywhere; }
     .kd-facts a { display: inline-flex; align-items: center; gap: 0.25rem; color: var(--color-text); text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; }
     .kd-card__actions { display: flex; flex-wrap: wrap; gap: 0.4rem; }
     .kd-card__actions .btn { display: inline-flex; align-items: center; gap: 0.3rem; }
     .kd-card__delete { display: block; margin-top: 0.9rem; padding: 0.35rem 0; border: none; background: none; font-size: var(--fs-xs); font-weight: 600; color: var(--color-danger); }
     .kd-card__delete:hover { text-decoration: underline; text-underline-offset: 3px; }
+    /* Home: the family's house as JobTread has it (read only). After Profile health in the panel; after the editor on narrow screens */
+    .kd-card--home { order: 3; }
+    .kd-home__addr { margin: 0 0 0.85rem; font-size: var(--fs-sm); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
+    .kd-home__addr span { display: block; font-size: var(--fs-xs); font-weight: 400; color: var(--color-text-secondary); }
+    .kd-home__lead { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 0.35rem 0.75rem; margin: 0 0 0.9rem; padding: 0.75rem 0.85rem; border-radius: 12px; background: var(--color-bg-secondary); }
+    .kd-home__lead > div { display: grid; gap: 0.1rem; min-width: 0; }
+    .kd-home__lead span { font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); overflow-wrap: anywhere; }
+    .kd-home__lead strong { font-size: var(--fs-2xl); font-weight: 750; letter-spacing: -0.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+    .kd-home__links { display: flex; flex-wrap: wrap; gap: 0.35rem 0.75rem; }
+    .kd-home__links a { display: inline-flex; align-items: center; gap: 0.25rem; min-height: 28px; font-size: var(--fs-xs); font-weight: 600; color: var(--color-text); text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; }
+    .kd-home__links a:hover { text-decoration-color: currentColor; }
+    .kd-home__lead + .kd-home__links { margin: -0.4rem 0 0.9rem; }
+    .kd-facts.kd-home__facts div { grid-template-columns: minmax(92px, min(44%, 200px)) minmax(0, 1fr); }
+    .kd-home__facts dd { font-variant-numeric: tabular-nums; }
+    .kd-home__blank { margin-top: 0; }
+    .kd-home__more { margin: 0 0 0.75rem; font-size: var(--fs-xs); line-height: 1.5; color: var(--color-text-secondary); }
+    .kd-home__more summary { display: inline-flex; align-items: center; gap: 0.3rem; min-height: 28px; cursor: pointer; text-decoration: underline; text-decoration-color: var(--color-border-strong); text-underline-offset: 3px; }
+    .kd-home__more summary:hover { color: var(--color-text); }
+    .kd-home__more p { margin: 0.25rem 0 0; overflow-wrap: anywhere; }
+    .kd-card--home h3:focus { outline: none; }
+    .kd-card--home h3:focus-visible { outline: 2px solid var(--color-text); outline-offset: 2px; }
+    .kd-home__skel { display: grid; gap: 0.55rem; margin-bottom: 0.9rem; }
+    .kd-home__skel .skel { height: 12px; }
+    .kd-home__skel .skel:nth-child(1) { --w: 72%; }
+    .kd-home__skel .skel:nth-child(2) { --w: 48%; }
+    .kd-home__skel .skel:nth-child(4) { --w: 86%; }
+    .kd-home__skel .skel:nth-child(5) { --w: 64%; }
+    .kd-home__skel .skel.is-big { height: 58px; border-radius: 12px; }
+    @media (pointer: coarse) { .kd-home__links a, .kd-home__more summary { min-height: 44px; } }
     @container kdshell (min-width: 1000px) {
       .kd-layout { grid-template-columns: minmax(0, 1fr) 300px; gap: 1.25rem; align-items: start; }
       .kd-main { grid-column: 1; grid-row: 1; }
@@ -3316,7 +3345,8 @@
       .kd-deleted-link { margin-left: 0; }
       .kd-card__delete { display: flex; align-items: center; }
       .kd-facts a { min-height: 44px; }
-      .kd-facts div { align-items: center; }
+      /* A label sits on its value's first line: level with a 44px link, and at the top of a value that wraps */
+      .kd-facts div { align-items: baseline; }
       .kd-search { flex: none; max-width: none; }
       .kd-filters { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 -1rem; padding: 0 1rem; }
       .kd-filters > .pill { flex-shrink: 0; }
@@ -4445,6 +4475,8 @@
     } from './team-shared.js';
     // Kid profile rules (gallery split, hero intro, plan crop, what's missing), shared with the kid page Preview
     import * as KS from './kids-shared.js';
+    // A home's details in JobTread (Zestimate, Year Built…): the Home card beside a kid, shared with Insights
+    import * as HS from './home-shared.js';
     import { float, floatRef, hiddenAnchor } from './float.js';
     // Partner rules (levels, categories, what Save writes, which kid pages show a logo), shared with the unit tests
     import * as PS from './partners-shared.js';
@@ -11050,6 +11082,90 @@
       </section>`;
     }
 
+    // ═══════════════════════════════════════════
+    // KID EDITOR: THE HOME, FROM JOBTREAD
+    // The family's house as JobTread has it: the job's location and its fields
+    // (Zestimate, Living Area, Bed Bath, Year Built… in JobTread's order and
+    // names, whatever staff add). Read live each time the editor opens; never
+    // edited here: DataX's Zillow lookup and staff fill it in JobTread. How each
+    // field reads is in ./home-shared.js, shared with Applications → Insights.
+    // ═══════════════════════════════════════════
+    const KD_HOME_API = '/api/job-home';
+    // JobTread gets this long to answer before the card says so and offers Try again
+    const KD_HOME_WAIT = 20000;
+    /** Why the home couldn't be read, in words, and whether trying again could help */
+    function kdHomeProblem(r) {
+      if (r.timedOut) return { text: 'JobTread is taking too long to answer.', retry: true };
+      if (r.status === 404) return { text: 'This kid’s job isn’t in JobTread anymore, so there’s no home to show.', retry: false };
+      if (r.status === 400) return { text: 'The JobTread job linked to this kid doesn’t look right, so its home can’t be read.', retry: false };
+      if (r.status === 503) return { text: 'The website isn’t connected to JobTread right now, so the home can’t be read.', retry: false };
+      if (/session expired/i.test(r.error || '')) return { text: 'Your admin session ended. Reload the page to sign in again.', retry: false };
+      // No answer at all: the connection dropped, or a sign-in that ran out sent the request elsewhere
+      if (r.offline) return { text: 'The website couldn’t be reached. Check the connection, or reload the page if it’s been open a while.', retry: true };
+      return { text: 'JobTread didn’t answer just now.', retry: true };
+    }
+    function useJobHome(jobId) {
+      const [st, setSt] = useState({ data: null, problem: null, loading: false });
+      const seq = useRef(0);
+      const load = useCallback(async () => {
+        const mine = ++seq.current;
+        if (!jobId) { setSt({ data: null, problem: null, loading: false }); return; }
+        setSt((x) => ({ data: x.data?.job?.id === jobId ? x.data : null, problem: x.problem, loading: true }));
+        const ctl = new AbortController();
+        const timer = setTimeout(() => ctl.abort(), KD_HOME_WAIT);
+        const r = await fetch(`${KD_HOME_API}?job=${encodeURIComponent(jobId)}`, { cache: 'no-store', signal: ctl.signal })
+          .then(async (res) => ({ ...(await apiJson(res, KD_HOME_API)), status: res.status }))
+          .catch((e) => ({ success: false, timedOut: e.name === 'AbortError', offline: e.name !== 'AbortError', error: e.message }));
+        clearTimeout(timer);
+        if (mine !== seq.current) return; // a newer read is on its way
+        setSt(r.success ? { data: r, problem: null, loading: false } : { data: null, problem: kdHomeProblem(r), loading: false });
+      }, [jobId]);
+      useEffect(() => { load(); return () => { seq.current++; }; }, [load]);
+      return { ...st, reload: load };
+    }
+
+    function KdHomeCard({ jobId, home }) {
+      const head = useRef(null);
+      const { data, problem, loading, reload } = home;
+      if (!jobId) return null;
+      const place = data?.home || null;
+      const facts = place ? HS.homeFacts(data.fields, place.values) : null;
+      const town = place ? [place.city, [place.state, place.postalCode].filter(Boolean).join(' ')].filter(Boolean).join(', ') : '';
+      const street = place ? place.street || place.address : '';
+      // Try again goes away while it reads, so focus moves to the card's title instead of falling to the page
+      const again = () => { head.current?.focus(); reload(); };
+      const linkRow = (links) => html`<div class="kd-home__links">${links.map((l) => html`<a key=${l.id} href=${l.href} target="_blank" rel="noopener noreferrer">${l.text} ${kdIcon.external}</a>`)}</div>`;
+      return html`<section class="kd-card kd-card--home" aria-labelledby="kd-home-h" aria-busy=${loading ? 'true' : 'false'}>
+        <h3 id="kd-home-h" tabindex="-1" ref=${head}>Home</h3>
+        ${problem && !loading ? html`
+            <p class="kd-card__note kd-bad" role="alert">${problem.text}</p>
+            ${problem.retry ? html`<div class="kd-card__actions"><button type="button" class="btn btn-ghost btn-sm" onClick=${again}>Try again</button></div>` : null}`
+          : !data ? html`
+            <div class="kd-home__skel" aria-hidden="true"><span class="skel"></span><span class="skel"></span><span class="skel is-big"></span><span class="skel"></span><span class="skel"></span></div>
+            <span class="sr-only" role="status">Reading the home from JobTread…</span>`
+          : !place ? html`
+            <p class="kd-card__note">The job has no home in JobTread yet. Once it does, its Zillow details show here.</p>
+            <div class="kd-card__actions"><a class="btn btn-ghost btn-sm" href=${JT_JOB_URL(jobId)} target="_blank" rel="noopener">Open the job in JobTread ${kdIcon.external}</a></div>`
+          : html`
+            ${street || town ? html`<p class="kd-home__addr">${street || town}${street && town && street !== place.address ? html`<span>${town}</span>` : null}</p>` : null}
+            ${facts.lead ? html`<div class="kd-home__lead">
+                <div><span>${facts.lead.name}</span><strong>${facts.lead.text}</strong></div>
+                ${facts.links.length ? linkRow(facts.links) : null}
+              </div>`
+              : facts.links.length ? linkRow(facts.links) : null}
+            ${facts.rest.length ? html`<dl class="kd-facts kd-home__facts">
+                ${facts.rest.map((f) => html`<div key=${f.id}><dt>${f.name}</dt><dd>${f.text}</dd></div>`)}
+              </dl>` : null}
+            ${!facts.filled ? html`<p class="kd-card__note kd-home__blank">JobTread has no details on this home yet.</p>`
+              : facts.blank.length > 4 ? html`<details class="kd-home__more">
+                  <summary>${facts.blank.length} fields not filled in yet</summary>
+                  <p>${facts.blank.join(', ')}</p>
+                </details>`
+              : facts.blank.length ? html`<p class="kd-card__note kd-home__blank">Not filled in yet: ${facts.blank.join(', ')}.</p>` : null}
+            <div class="kd-card__actions"><a class="btn btn-ghost btn-sm" href=${place.url} target="_blank" rel="noopener">${facts.filled ? 'Change it in JobTread' : 'Add details in JobTread'} ${kdIcon.external}</a></div>`}
+      </section>`;
+    }
+
     function KidEditor({ slug, kids = [], partners = [], press = [], onBack, onSaved, addToast }) {
       const existingSlugs = useMemo(() => kids.filter((k) => k.slug !== slug).map((k) => k.slug), [kids, slug]);
       const ix = useMemo(() => kdPartnerIndex(partners), [partners]);
@@ -11220,6 +11336,7 @@
         return m;
       }, [kids, slug]);
       const sponsor = useKidSponsor(slug, jobId, record.sponsors);
+      const home = useJobHome(jobId);
       const pickSponsor = (p) => {
         set((d) => {
           const sponsors = [...new Set([...(d.sponsors || []), p.slug])];
@@ -11856,6 +11973,7 @@
               </li>`)}
             </ul>
           </section>
+          <${KdHomeCard} jobId=${jobId} home=${home} />
           ${slug ? html`<section class="kd-card kd-card--history" aria-labelledby="kd-history-h">
             <h3 id="kd-history-h">History ${history.versions?.length ? html`<span class="kd-card__count">${kdPlural(history.versions.length, 'version')}</span>` : null}</h3>
             ${history.error ? html`<p class="kd-card__note kd-bad">${history.error}</p>`

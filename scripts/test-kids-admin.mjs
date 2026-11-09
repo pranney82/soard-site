@@ -149,6 +149,12 @@ function makeApi() {
       return json({ success: false, error: 'type' }, 400);
     }
     if (p === '/api/stream-check') return json({ success: true, state: url.searchParams.get('uid')?.startsWith('6f3b') ? 'playable' : 'gone' });
+    // The Home card (/api/job-home): Colin's job has a home in JobTread; Amari's has none yet (scripts/test-kid-home.mjs covers the card)
+    if (p === '/api/job-home') {
+      const job = url.searchParams.get('job');
+      const fields = [{ id: 'z', name: 'Zestimate', type: 'number', position: 'a0' }, { id: 'y', name: 'Year Built', type: 'text', position: 'a1' }];
+      return json({ success: true, job: { id: job, name: '' }, fields, home: job === '22PCOLIN' ? { id: 'loc1', street: '1 Main St', address: '1 Main St, Marietta, GA 30060, USA', city: 'Marietta', state: 'GA', postalCode: '30060', url: 'https://app.jobtread.com/locations/loc1', values: { z: 336500, y: '2000' } } : null });
+    }
     if (p === '/api/reveals-admin') return json({ success: true, reveals: [{ slug: 'colin', name: 'Colin', date: '2026-10-25', confirmed: true }, { slug: 'axel', name: 'Axel', date: '2026-11-08', confirmed: false }], jobs: { amari: '22PAMARI', colin: '22PCOLIN' }, statuses: { amari: 'Closed Done', colin: 'Build' } });
     if (p.startsWith('/api/pending-changes')) {
       return json({ success: true, changes: [...st.waiting].map((slug) => ({ type: 'kids', slug, name: st.kids[slug]?.name, state: 'waiting', action: 'updated', at: new Date().toISOString() })), publish: { live: null, active: null, failed: null, typicalSeconds: 480 } });

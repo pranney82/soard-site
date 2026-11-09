@@ -30,7 +30,8 @@
  *   - Applicants → Submissions: search, filters, seasons, paging, badges,
  *     a single check per delivered application, export link, deleting a
  *     family's data, the notice on the other views
- *   - Insights: tiles, funnel, where people stop, per week, links back
+ *   - Insights: tiles, funnel, where people stop, per week, links back; Their homes
+ *     (a strip a number with every dot and the keyboard, a group a choice, every width)
  *   - Applicants: ./applicants.js loads (or a friendly card)
  *   - Settings: one "open and closed" card (where things stand and what
  *     happens next, the season, each way it opens and closes by itself behind
@@ -1338,6 +1339,281 @@ try {
     ok(/Possible repeat|Outside area|Address not found/.test(await text(page, '.afe-chip[aria-pressed="true"]')) && await page.$eval('.afe-tabs .active', (e) => e.dataset.tab) === 'applicants', 'opens Applicants → Submissions with that filter');
     ok(await page.$eval('.afe-toolbar select[aria-label="Season"]', (s) => s.value) === '2027', 'and the season Insights was showing, not all seasons');
     ok(/families? (is|are) partway through\./.test(await text(page, '.afe-subs .afe-lede')), `Submissions counts who's partway the way Insights does (${(await text(page, '.afe-subs .afe-lede')).replace(/\s+/g, ' ').slice(-90)})`);
+  });
+
+  await section('Insights: their homes', async () => {
+    // Twelve sent applications with a home in JobTread, filled the way DataX and staff fill them: ties, gaps,
+    // a long typed answer and an unbroken one. The fields in JobTread's order, with a retired one and bookkeeping.
+    const DEFS = [
+      { id: 'hZillow', name: 'Zillow URL', type: 'url', position: 'a0' }, { id: 'hArea', name: 'Living Area', type: 'number', position: 'a1' },
+      { id: 'hBedBath', name: 'Bed Bath', type: 'text', position: 'a2' }, { id: 'hYearOld', name: 'Year Built (old)', type: 'number', position: 'a3' },
+      { id: 'hCounty', name: 'County', type: 'text', position: 'a4' }, { id: 'hSewer', name: 'Sewer/Septic', type: 'option', position: 'a5', options: ['Sewer', 'Septic'] },
+      { id: 'hPower', name: 'Power Company', type: 'text', position: 'a6' }, { id: 'hWater', name: 'Water Source', type: 'text', position: 'a7' },
+      { id: 'hParcel', name: 'Parcel Number', type: 'text', position: 'a8' }, { id: 'hZest', name: 'Zestimate', type: 'number', position: 'aA' },
+      { id: 'hSale', name: 'Latest Sale Price', type: 'number', position: 'aB' }, { id: 'hSaleDate', name: 'Latest Sale Date', type: 'date', position: 'aC' },
+      { id: 'hYear', name: 'Year Built', type: 'text', position: 'aD' }, { id: 'hBook', name: '**REQUIRED FIELDS**', type: 'text', position: 'aE' },
+    ];
+    const LONG_POWER = 'Sawnee Electric Membership Corporation, though the bill comes from a cooperative office in Cumming';
+    const LONG_WORD = 'Municipalwatersupplyfromthecountyauthoritybyway';
+    const H = [
+      { hZest: 336500, hArea: 1435, hBedBath: '3 bed, 2.5 bath', hYear: '2000', hSale: 128700, hSaleDate: '2001-01-23', hCounty: 'Cherokee', hSewer: 'Septic', hPower: 'Cobb EMC', hWater: 'Public', hParcel: '15N23D178', hYearOld: 2000, hZillow: 'https://www.zillow.com/homedetails/x/1_zpid/' },
+      { hZest: 285000, hArea: 1820, hBedBath: '4 bed, 2 bath', hYear: '1987', hCounty: 'Cobb', hSewer: 'Sewer', hPower: 'Georgia Power', hWater: 'Public', hParcel: 'A-1' },
+      { hZest: 285000, hArea: 1790, hBedBath: '4 bed, 2 bath', hYear: '1991', hCounty: 'Cobb', hSewer: 'Sewer', hPower: 'Georgia Power', hWater: 'public', hParcel: 'A-2', hSale: 199000, hSaleDate: '2016-04-02' },
+      { hZest: 291000, hArea: 1650, hBedBath: '3 bed, 2 bath', hYear: '1984', hCounty: 'Cobb', hSewer: 'Sewer', hPower: 'Georgia Power', hWater: 'Public', hParcel: 'A-3' },
+      { hZest: 540000, hArea: 2950, hBedBath: '5 bed, 3 bath', hYear: '2004', hCounty: 'Cherokee', hSewer: 'Sewer', hPower: LONG_POWER, hWater: 'Well', hParcel: 'B-1', hSale: 455000, hSaleDate: '2019-08-15' },
+      { hZest: 160000, hArea: 980, hBedBath: '2 bed, 1 bath', hYear: '1962', hCounty: 'Fulton', hSewer: 'Septic', hPower: 'Georgia Power', hWater: LONG_WORD, hParcel: 'C-1', hSale: 41000, hSaleDate: '1994-03-11' },
+      { hZest: 412000, hArea: 2210, hBedBath: '4 bed, 3 bath', hYear: '2011', hCounty: 'Forsyth', hSewer: 'Sewer', hPower: 'Sawnee EMC', hWater: 'Public', hParcel: 'D-1' },
+      { hZest: 233000, hArea: 1340, hBedBath: '3 bed, 2 bath', hYear: '1978', hCounty: 'Cobb', hSewer: 'Septic', hPower: 'Cobb EMC', hWater: 'Well', hParcel: 'A-4', hSale: 87000, hSaleDate: '2003-10-01' },
+      { hZest: 305000, hArea: 1600, hBedBath: '3 bed, 2 bath', hYear: '1999', hCounty: 'Gwinnett', hSewer: 'Sewer', hPower: 'Jackson EMC', hParcel: 'E-1' },
+      { hCounty: 'Cobb' },                                     // the form's County only: nothing from Zillow yet
+      {},                                                       // in JobTread, nothing filled in
+      { hZest: 1250000, hArea: 4100, hBedBath: '6 bed, 4.5 bath', hYear: '2018', hCounty: 'Fulton', hSewer: 'Sewer', hPower: 'Georgia Power', hWater: 'Public', hParcel: 'F-1' },
+    ];
+    const drafts = H.map((_, i) => `d-sub-${i + 2}`);
+    // What JobTread says about each family, across three seasons
+    const STATUS = ['Approved', 'Denied', 'Approved', 'In Review', 'Denied', 'Approved', 'Denied', 'Applied', 'Denied', 'Applied', null, 'Approved'];
+    const YEAR = ['2026', '2025', '2026', '2027', '2026', '2025', '2027', '2027', '2026', '2027', '2027', '2026'];
+    const before = (await DB.prepare(`SELECT draft_id, jt_account_id FROM applications WHERE draft_id IN (${drafts.map(() => '?').join(', ')})`).bind(...drafts).all()).results;
+    const names = {};
+    const LONG_NAME = 'Maria Guadalupe Hernandez-Rodriguez de la Cruz y Montenegro';
+    const oldNames = (await DB.prepare(`SELECT draft_id, child_name FROM applications WHERE draft_id IN (${drafts.map(() => '?').join(', ')})`).bind(...drafts).all()).results;
+    await DB.prepare('UPDATE applications SET child_name = ? WHERE draft_id = ?').bind(LONG_NAME, drafts[11]).run();
+    for (const [i, home] of H.entries()) {
+      const acct = `acct-home-${i}`;
+      await DB.prepare('UPDATE applications SET jt_account_id = ? WHERE draft_id = ?').bind(acct, drafts[i]).run();
+      names[acct] = (await DB.prepare('SELECT child_name FROM applications WHERE draft_id = ?').bind(drafts[i]).first()).child_name;
+      await DB.prepare("INSERT INTO applicants (account_id, name, status, year, types, location_id, home, synced_at) VALUES (?, ?, ?, ?, '[]', ?, ?, ?)").bind(acct, names[acct], STATUS[i], YEAR[i], `loc-${i}`, JSON.stringify(home), iso(NOW)).run();
+    }
+    await DB.prepare("INSERT INTO applicant_sync (key, value, updated_at) VALUES ('home_fields', ?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(JSON.stringify(DEFS), iso(NOW)).run();
+    const zests = H.map(h => h.hZest).filter(Boolean).sort((a, b) => a - b);
+    const zMedian = (zests[(zests.length >> 1) - 1] + zests[zests.length >> 1]) / 2;
+    try {
+      await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
+      await page.evaluate(() => { location.hash = '#applications/applicants'; });
+      await sleep(200);
+      await page.evaluate(() => { location.hash = '#applications/insights'; });
+      await page.waitForSelector('.afi-homes', { timeout: 10000 });
+      const card = () => page.$eval('.afi-homes', (e) => e.innerText.replace(/\s+/g, ' '));
+      ok(/^Their homes Approved Denied Still deciding No status Season Every season/.test(await card()), `the card: Their homes, its key and its season (${(await card()).slice(0, 90)})`);
+      const hint = await text(page, '.afi-homes > .afe-hint');
+      ok(/^From JobTread: the homes of the 18 families on the Applicants board, every season \(4 approved, 4 denied, 9 still deciding and 1 with no status\)\. 6 have no home in JobTread yet\. Pick a number, a dot or a row to see who\.$/.test(hint), `it says whose homes: every family in JobTread, by decision (${hint})`);
+      // A strip each for the numbers, in JobTread's order; the retired field and bookkeeping never show
+      const strips = await page.$$eval('.afi-strip', (els) => els.map((e) => ({ name: e.querySelector('.afi-strip-name').textContent, median: e.querySelector('.afi-strip-head b').textContent, dots: e.querySelectorAll('.afi-strip-dot').length, sub: e.querySelector('small').textContent, tabbable: e.querySelectorAll('.afi-strip-dot[tabindex="0"]').length })));
+      ok(JSON.stringify(strips.map(x => x.name)) === JSON.stringify(['Zestimate', 'Living Area', 'Latest Sale Price', 'Latest Sale Date', 'Year Built']), `a strip a number: the Zestimate first, then JobTread's order (${strips.map(x => x.name).join(', ')})`);
+      ok(!/old\)|REQUIRED|Parcel|15N23D178/.test(await card()), 'no retired field, no bookkeeping, nothing that names one home');
+      const zest = strips.find(x => x.name === 'Zestimate');
+      ok(zest.median === `$${Math.round(zMedian).toLocaleString('en-US')}` && zest.dots === zests.length && /^Median of 10 homes, 2 not filled in$/.test(zest.sub), `Zestimate: the median, a dot a home, who's missing (${JSON.stringify(zest)})`);
+      ok(strips.find(x => x.name === 'Year Built').median === '1995' && strips.find(x => x.name === 'Latest Sale Date').median === '2003', `a year's median reads as a year, a date's as its year (${strips.map(x => x.median).join(' · ')})`);
+      ok(strips.every(x => x.tabbable === 1), 'each strip is one stop for the keyboard');
+      // The medians by decision, side by side
+      const table = await page.$$eval('.afi-decide-table tbody tr', (trs) => trs.map((tr) => [tr.querySelector('th').textContent, ...[...tr.querySelectorAll('td')].map((td) => td.innerText.replace(/\s+/g, ' ').trim())]));
+      const heads = await page.$$eval('.afi-decide-table thead th', (ths) => ths.map((th) => th.textContent.trim()));
+      ok(JSON.stringify(heads) === JSON.stringify(['Field', 'Approved', 'Denied', 'Still deciding', 'No status', 'Everyone']), `a column a decision, then everyone (${heads.join(' | ')})`);
+      const zRow = table.find((r) => r[0] === 'Zestimate');
+      ok(table[0][0] === 'Zestimate' && JSON.stringify(zRow) === JSON.stringify(['Zestimate', '$310,750 avg $507,875 4 homes', '$358,500 avg $385,500 4 homes', '$262,000 avg $262,000 2 homes', 'No homes', '$298,000 avg $409,750 10 homes']), `Zestimate: the median, average and count for approved, denied and still deciding (${JSON.stringify(zRow)})`);
+      await page.evaluate(() => document.querySelector('.afi-decide-table tbody tr[data-field="hZest"] td:nth-of-type(2) button').click());
+      await page.waitForSelector('.afi-people', { timeout: 4000 });
+      await sleep(150);
+      const denied = await page.$$eval('.afi-person span', (els) => els.map((e) => e.textContent));
+      ok(await text(page, '.afe-dialog h3') === 'Zestimate, denied (4)' && denied[0] === '$540,000 · Denied · 2026 season' && denied.every((t) => /· Denied ·/.test(t)), `a cell opens its families, highest first, each with its decision and season (${denied.join(' / ')})`);
+      ok(await page.$eval('.afi-person-dot', (d) => getComputedStyle(d).backgroundColor) === await page.$eval('.afi-decide-table thead th:nth-of-type(3) i', (i) => getComputedStyle(i).backgroundColor), 'in the decision’s own color');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+      await sleep(300);
+      // Each dot in its family's decision color
+      const dotColors = await page.$$eval('.afi-strip[data-field="hZest"] .afi-strip-dot', (ds) => [...new Set(ds.map((d) => getComputedStyle(d).backgroundColor))].length);
+      ok(dotColors === 3, `the Zestimate dots come in their three decisions' colors (${dotColors})`);
+      // No two dots touch, each sits inside its strip, and the median line sits where the median is
+      const geo = await page.$$eval('.afi-strip', (els) => els.map((e) => {
+        const plot = e.querySelector('.afi-strip-plot').getBoundingClientRect();
+        const dots = [...e.querySelectorAll('.afi-strip-dot')].map((d) => d.getBoundingClientRect());
+        let touch = 0;
+        for (const a of dots) for (const b of dots) if (a !== b && Math.hypot(a.x - b.x, a.y - b.y) < 12.5) touch++;
+        return { touch, out: dots.filter((d) => d.left < plot.left - 1 || d.right > plot.right + 1).length, lanes: new Set(dots.map((d) => Math.round(d.y))).size };
+      }));
+      ok(geo.every(g => g.touch === 0 && g.out === 0), `no dot covers another, none past its strip (${JSON.stringify(geo)})`);
+      ok(geo[0].lanes >= 2, 'the two homes at the same Zestimate stack instead of hiding each other');
+      const brk = await page.$eval('.afi-strip[data-field="hZest"]', (e) => {
+        const b = e.querySelector('.afi-strip-break')?.getBoundingClientRect();
+        const dots = [...e.querySelectorAll('.afi-strip-dot')].map((d) => d.getBoundingClientRect());
+        const far = dots.at(-1);
+        const rest = dots.slice(0, -1);
+        return { break: !!b, past: b && far.left > b.right, spread: Math.round(Math.max(...rest.map((d) => d.right)) - Math.min(...rest.map((d) => d.left))), plot: Math.round(e.querySelector('.afi-strip-plot').getBoundingClientRect().width) };
+      });
+      ok(brk.break && brk.past && brk.spread > brk.plot * 0.6, `the $1.25M home sits past a break in the scale, so the rest keep the width (${JSON.stringify(brk)})`);
+      // Pointing names the home; a click opens that family with its value
+      const zStrip = '.afi-strip[data-field="hZest"]';
+      await page.$eval(zStrip, (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      const top = await page.$eval(`${zStrip} .afi-strip-dot:last-of-type`, (d) => { const r = d.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2 }; });
+      await page.mouse.move(top.x, top.y);
+      await page.waitForSelector(`${zStrip} .afi-tip`, { timeout: 3000 }).catch(() => {});
+      const tip = (await text(page, `${zStrip} .afi-tip`)).replace(/\s+/g, ' ');
+      ok(tip === `$1,250,000 ${LONG_NAME} Approved · 2026 season`, `pointing at the top dot: its value, who, and what JobTread decided (${tip})`);
+      const tipBox = await page.evaluate((sel) => { const t = document.querySelector(`${sel} .afi-tip`).getBoundingClientRect(); const c = document.querySelector('.afi-homes').getBoundingClientRect(); return { inside: t.left >= c.left && t.right <= c.right, onScreen: t.right <= document.documentElement.clientWidth, w: Math.round(t.width) }; }, zStrip);
+      ok(tipBox.inside && tipBox.onScreen && tipBox.w <= 200, `a long name's label wraps and stays inside the card at the end of the scale (${JSON.stringify(tipBox)})`);
+      await page.mouse.click(top.x, top.y);
+      await page.waitForSelector('.afi-people', { timeout: 4000 }).catch(() => {});
+      ok(await count(page, '.afi-person') === 1 && await text(page, '.afe-dialog h3') === `${LONG_NAME} (1)` && await text(page, '.afi-person span') === '$1,250,000 · Approved · 2026 season', `a click opens them, the value first (${(await text(page, '.afi-person span'))})`);
+      await sleep(150);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+      await page.mouse.move(2, 2);
+      await sleep(300);
+      // See all: highest first, each with its value; Not filled in: who's missing
+      await page.$eval(`${zStrip} .afi-strip-all`, (b) => b.click());
+      await page.waitForSelector('.afi-people', { timeout: 4000 });
+      await sleep(150);
+      const all = await page.$$eval('.afi-person span', (els) => els.map((e) => e.textContent.split(' · ')[0]));
+      ok(/^Zestimate, highest first \(10\)$/.test(await text(page, '.afe-dialog h3')) && all[0] === '$1,250,000' && all.at(-1) === '$160,000' && all.length === 10, `See all lists them highest first (${all.join(', ')})`);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+      await sleep(300);
+      await page.$eval(`${zStrip} small .afe-link`, (b) => b.click());
+      await page.waitForSelector('.afi-people', { timeout: 4000 });
+      await sleep(150);
+      ok(/^Zestimate: not filled in \(2\)$/.test(await text(page, '.afe-dialog h3')), `"2 not filled in" opens those two (${await text(page, '.afe-dialog h3')})`);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+      await sleep(300);
+      // The keyboard: one stop, the arrows walk lowest to highest, End jumps, Enter opens
+      await page.$eval(`${zStrip} .afi-strip-dot[tabindex="0"]`, (d) => d.focus());
+      const lab = () => page.evaluate(() => document.activeElement?.getAttribute('aria-label') || '');
+      ok(/\$1,250,000, Approved/.test(await lab()), 'the strip remembers the dot last picked');
+      await page.keyboard.press('Home');
+      const first = await lab();
+      await page.keyboard.press('ArrowRight');
+      const second = await lab();
+      await page.keyboard.press('End');
+      const last = await lab();
+      ok(/\$160,000, Approved · 2025 season$/.test(first) && /\$233,000, Applied · 2027 season$/.test(second) && /\$1,250,000, Approved · 2026 season$/.test(last), `Home, the arrows and End walk the homes in order (${first} → ${second} → ${last})`);
+      ok(/\$1,250,000/.test(await text(page, `${zStrip} .afi-tip`)), 'and the focused one is named on screen too');
+      await page.keyboard.press('Escape');
+      ok(!(await page.$(`${zStrip} .afi-tip`)) && /\$1,250,000, Approved/.test(await lab()), 'Escape hides the label and leaves focus where it was');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('.afi-people', { timeout: 4000 }).catch(() => {});
+      ok(await count(page, '.afi-person') === 1, 'Enter opens the focused home');
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+      await sleep(300);
+      ok(await page.evaluate(() => document.activeElement?.classList.contains('afi-strip-dot')), 'closing the list puts focus back on the dot');
+      for (const width of [1440, 390]) {
+        await page.setViewport({ width, height: 1000, deviceScaleFactor: 1 });
+        await sleep(300);
+        await page.$eval(zStrip, (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+        const centers = await page.$$eval(`${zStrip} .afi-strip-dot`, (ds) => ds.map((d) => { const r = d.getBoundingClientRect(); return { x: r.x + r.width / 2, y: r.y + r.height / 2, who: d.getAttribute('aria-label') }; }));
+        const wrong = [];
+        for (const c of centers) {
+          await page.mouse.click(c.x, c.y);
+          await page.waitForSelector('.afi-people', { timeout: 3000 }).catch(() => {});
+          const norm = (t) => t.replace(/ · /g, ', ');
+          const got = `${(await text(page, '.afe-dialog h3')).replace(/ \(1\)$/, '')}, ${await text(page, '.afi-person span')}`;
+          if (norm(got) !== norm(c.who)) wrong.push(`${c.who} → ${got}`);
+          await sleep(120);
+          await page.keyboard.press('Escape');
+          await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+          await sleep(250);
+        }
+        ok(wrong.length === 0 && centers.length === 10, `at ${width}px each of the ${centers.length} dots, clicked at its center, opens its own family (${wrong.join('; ')})`);
+      }
+      await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
+      await sleep(300);
+      // The choices: counted most first, rooms in number order, spellings joined; every row opens its people
+      const groups = await page.$$eval('.afi-home-group', (els) => els.map((g) => ({ name: g.querySelector('h5').textContent, rows: [...g.querySelectorAll('.afi-src')].map((r) => [r.querySelector('span').textContent, Number(r.querySelector('b').textContent)]) })));
+      ok(JSON.stringify(groups.map(g => g.name)) === JSON.stringify(['Bedrooms', 'Bathrooms', 'County', 'Sewer/Septic', 'Power Company', 'Water Source']), `a group a choice (${groups.map(g => g.name).join(', ')})`);
+      ok(groups.every(g => g.rows.reduce((n, r) => n + r[1], 0) === 12), `every group's rows, Not filled in among them, add up to the 12 homes (${groups.map(g => `${g.name} ${g.rows.reduce((n, r) => n + r[1], 0)}`).join(', ')})`);
+      ok(JSON.stringify(groups[0].rows.map(r => r[0])) === JSON.stringify(['2 bedrooms', '3 bedrooms', '4 bedrooms', '5 bedrooms', '6 bedrooms', 'Not filled in']), `bedrooms in number order (${groups[0].rows.map(r => r[0]).join(', ')})`);
+      ok(JSON.stringify(groups.find(g => g.name === 'Water Source').rows[0]) === '["Public",6]', `"public" and "Public" are one answer (${JSON.stringify(groups.find(g => g.name === 'Water Source').rows)})`);
+      await page.evaluate(() => [...document.querySelectorAll('.afi-home-group')].find(g => g.querySelector('h5').textContent === 'Sewer/Septic').querySelector('.afi-src').click());
+      await page.waitForSelector('.afi-people', { timeout: 4000 });
+      await sleep(150);
+      const sewer = groups.find(g => g.name === 'Sewer/Septic').rows[0];
+      ok(await count(page, '.afi-person') === sewer[1] && await text(page, '.afe-dialog h3') === `Sewer/Septic: ${sewer[0]} (${sewer[1]})`, `a row opens its homes (${await text(page, '.afe-dialog h3')})`);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+      await sleep(300);
+      await shot(page, '13h-insights-homes.png');
+      // One season: the families with that Makeover Year
+      await page.select('.afi-homes-season select', '2026');
+      await page.waitForFunction(() => /for 2026/.test(document.querySelector('.afi-homes > .afe-hint')?.textContent || ''), { timeout: 4000 }).catch(() => {});
+      const y26 = await text(page, '.afi-homes > .afe-hint');
+      ok(/^From JobTread: the homes of the 5 families on the Applicants board for 2026 \(3 approved and 2 denied\)\. Pick a number, a dot or a row to see who\.$/.test(y26), `a season picks that year's families (${y26})`);
+      ok(JSON.stringify(await page.$$eval('.afi-decide-table thead th', (ths) => ths.map((th) => th.textContent.trim()))) === JSON.stringify(['Field', 'Approved', 'Denied', 'Everyone']), 'and only the decisions it has');
+      await page.select('.afi-homes-season select', 'all');
+      await page.waitForFunction(() => /every season/.test(document.querySelector('.afi-homes > .afe-hint')?.textContent || ''), { timeout: 4000 }).catch(() => {});
+      // A row's families by decision, on hover and to a screen reader
+      const sewerRow = await page.$eval('.afi-home-group[data-field="hSewer"] .afi-src', (b) => ({ label: b.getAttribute('aria-label'), parts: b.querySelectorAll('.afi-decide-mini i').length }));
+      ok(/^Sewer: 7 homes, \d+ approved/.test(sewerRow.label) && sewerRow.parts >= 2, `each row says how its families were decided (${JSON.stringify(sewerRow)})`);
+      // Every width: nothing past the card, every row's count in view, the long answers kept to two lines
+      for (const width of [1440, 1280, 1180, 1100, 1025, 820, 768, 390]) {
+        await page.setViewport({ width, height: 1000, deviceScaleFactor: 1 });
+        await sleep(300);
+        const fit = await page.evaluate(() => {
+          const c = document.querySelector('.afi-homes');
+          const box = c.getBoundingClientRect();
+          const past = [...c.querySelectorAll('*')].filter((el) => { const r = el.getBoundingClientRect(); return r.width && r.height && !el.closest('.afe-tip') && (r.right > box.right + 1 || r.left < box.left - 1); }).map((el) => el.className).slice(0, 4);
+          const rows = [...c.querySelectorAll('.afi-src')].map((r) => { const b = r.querySelector('b').getBoundingClientRect(); const rr = r.getBoundingClientRect(); const t = r.querySelector('span'); return { count: b.width > 0 && b.right <= rr.right + 0.5, lines: Math.round(t.getBoundingClientRect().height / parseFloat(getComputedStyle(t).lineHeight)) }; });
+          const dots = [...c.querySelectorAll('.afi-strip')].every((s) => { const p = s.querySelector('.afi-strip-plot').getBoundingClientRect(); return [...s.querySelectorAll('.afi-strip-dot')].every((d) => { const r = d.getBoundingClientRect(); return r.left >= p.left - 1 && r.right <= p.right + 1; }); });
+          return { past, counts: rows.every((r) => r.count), most: Math.max(...rows.map((r) => r.lines)), dots, page: document.documentElement.scrollWidth <= document.documentElement.clientWidth };
+        });
+        ok(fit.past.length === 0 && fit.counts && fit.most <= 2 && fit.dots && fit.page, `at ${width}px the homes card fits: nothing past it, counts in view, 2 lines at most, dots inside (${JSON.stringify(fit)})`);
+        if (width === 390) {
+          const narrow = await page.$eval('.afi-decide-table tbody tr[data-field="hZest"]', (tr) => tr.innerText.replace(/\s+/g, ' ').trim());
+          ok(narrow === 'Zestimate Approved $310,750 avg $507,875 4 homes Denied $358,500 avg $385,500 4 homes Still deciding $262,000 avg $262,000 2 homes No status No homes Everyone $298,000 avg $409,750 10 homes', `at 390px each field is a block, a line a decision, its name on the line (${narrow})`);
+          await page.$eval('.afi-homes', (e) => e.scrollIntoView({ block: 'start', behavior: 'instant' }));
+          await page.screenshot({ path: join(OUT, '13i-insights-homes-phone.png') });
+          await page.$eval('.afi-home-groups', (e) => e.scrollIntoView({ block: 'start', behavior: 'instant' }));
+          await page.screenshot({ path: join(OUT, '13j-insights-homes-phone-groups.png') });
+        }
+      }
+      await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
+      await sleep(300);
+      // Motion: the dots pop in one after another, and hold still for reduced motion
+      await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'no-preference' }]);
+      const moves = await page.$eval('.afi-strip-dot', (d) => getComputedStyle(d).animationName);
+      await page.emulateMediaFeatures([{ name: 'prefers-reduced-motion', value: 'reduce' }]);
+      const still = await page.$eval('.afi-strip-dot', (d) => getComputedStyle(d).animationName);
+      ok(moves === 'afiPop' && still === 'none', `dots pop in, and don't for reduced motion (${moves}, ${still})`);
+      const axe = await axeScan(page, '.afi-homes');
+      ok(axe.length === 0, `axe finds nothing on the homes card (${axeText(axe)})`);
+      // Ten homes built the same year: seven show, the rest pile behind them and a count says so
+      for (const [i, h] of H.entries()) if (h.hYear) await DB.prepare('UPDATE applicants SET home = ? WHERE account_id = ?').bind(JSON.stringify({ ...h, hYear: '2000' }), `acct-home-${i}`).run();
+      await page.click('.afi-kind[data-kind="organization"]');
+      await page.waitForFunction(() => document.querySelector('.afi-kind[data-kind="organization"]')?.getAttribute('aria-pressed') === 'true', { timeout: 8000 });
+      await page.click('.afi-kind[data-kind="family"]');
+      await page.waitForFunction(() => document.querySelector('.afi-strip[data-field="hYear"] .afi-strip-pile'), { timeout: 8000 }).catch(() => {});
+      const pile = await page.$eval('.afi-strip[data-field="hYear"]', (e) => {
+        const c = e.querySelector('.afi-strip-pile');
+        const box = c?.getBoundingClientRect();
+        const dots = [...e.querySelectorAll('.afi-strip-dot')].map((d) => d.getBoundingClientRect());
+        return { text: c?.textContent, label: c?.getAttribute('aria-label'), lanes: new Set(dots.map((d) => Math.round(d.y))).size, height: Math.round(e.querySelector('.afi-strip-track').getBoundingClientRect().height),
+          clear: dots.every((d) => !box || d.bottom <= box.top + 0.5 || d.top >= box.bottom - 0.5 || d.right <= box.left || d.left >= box.right),
+          ends: [...e.querySelectorAll('.afi-strip-ends span')].map((x) => x.textContent), median: !!e.querySelector('.afi-strip-median') };
+      });
+      ok(pile.text === '+3' && pile.lanes === 7 && pile.height < 160 && pile.clear, `seven lanes at most, and "+3" for the homes behind them, clear of the dots (${JSON.stringify(pile)})`);
+      ok(JSON.stringify(pile.ends) === '["2000"]' && !pile.median, 'every home the same year: one label under them, no median line');
+      await page.$eval('.afi-strip[data-field="hYear"]', (e) => e.scrollIntoView({ block: 'center', behavior: 'instant' }));
+      await page.screenshot({ path: join(OUT, '13k-insights-pile.png') });
+      await page.$eval('.afi-strip[data-field="hYear"] .afi-strip-pile', (b) => b.click());
+      await page.waitForSelector('.afi-people', { timeout: 4000 }).catch(() => {});
+      ok(await count(page, '.afi-person') === 3 && /^Year Built: 3 more here \(3\)$/.test(await text(page, '.afe-dialog h3')), `the count opens those homes (${await text(page, '.afe-dialog h3')})`);
+      await sleep(150);
+      await page.keyboard.press('Escape');
+      await page.waitForFunction(() => !document.querySelector('.afi-people'), { timeout: 3000 }).catch(() => {});
+      await sleep(250);
+      // Nothing filled in anywhere: no card, one quiet line instead
+      await DB.prepare("UPDATE applicants SET home = '{}' WHERE account_id LIKE 'acct-home-%'").run();
+      await page.click('.afi-kind[data-kind="organization"]');
+      await page.waitForFunction(() => document.querySelector('.afi-kind[data-kind="organization"]')?.getAttribute('aria-pressed') === 'true', { timeout: 8000 });
+      await page.click('.afi-kind[data-kind="family"]');
+      await page.waitForFunction(() => /homes from JobTread/.test(document.querySelector('.afi-quiet')?.textContent || ''), { timeout: 8000 }).catch(() => {});
+      ok(!(await page.$('.afi-homes')) && /homes from JobTread/.test(await text(page, '.afi-quiet')), `with nothing filled in, no card, and the quiet line says so (${await text(page, '.afi-quiet')})`);
+    } finally {
+      for (const r of before) await DB.prepare('UPDATE applications SET jt_account_id = ? WHERE draft_id = ?').bind(r.jt_account_id, r.draft_id).run();
+      for (const r of oldNames) await DB.prepare('UPDATE applications SET child_name = ? WHERE draft_id = ?').bind(r.child_name, r.draft_id).run();
+      await DB.prepare("DELETE FROM applicants WHERE account_id LIKE 'acct-home-%'").run();
+      await DB.prepare("DELETE FROM applicant_sync WHERE key = 'home_fields'").run();
+      await page.setViewport({ width: 1440, height: 1000, deviceScaleFactor: 1 });
+    }
   });
 
   await section('Applicants', async () => {

@@ -10,7 +10,9 @@
  *    the site. Applications that haven't fully arrived show as a notice above
  *    every view. #applications/<app id> (JobTread's Application URL) opens
  *    that family's page, or its row in Submissions.
- *  - Insights: the season's funnel: who started, who finished, where people stop.
+ *  - Insights: the season's funnel: who started, who finished, where people stop,
+ *    and (Their homes) what JobTread has on every family's home, every season,
+ *    compared by decision (Approved, Denied, still deciding).
  *  - Form: the application itself, with Questions, Spanish and Versions. Pages
  *    and questions on the left (drag the handle, or Alt+↑/↓), the selected
  *    one on the right, a live phone preview. Every change saves to a draft;
@@ -45,6 +47,7 @@ import { nearRing, bandCounts, bandChanges, placeHome, NEAR_MAX } from './area-s
 import { viewerLink, extOf } from './file-viewer.js';
 import { FAR_MILES, AREA_INK, AREA_FILL, loadLeaflet, takeDown, dressMap, areaShape, closeRing, pinIcon, onPress, frameArea, wheelZoom } from './family-map.js';
 import { ask } from './ask.js';
+import { homeInsights, stripText, endText, placeDots, oddWords, DECISIONS, decisionOf, byDecision, decisionCounts } from './home-shared.js';
 
 const html = htm.bind(h);
 const API = '/api/applications-admin';
@@ -708,6 +711,91 @@ const CSS = `
 .afi-where .afi-note { margin-top: .7rem; }
 .afi-src-label { display: inline-flex; align-items: center; gap: .45rem; }
 .afi-src .afe-tag { flex: none; overflow: visible; }
+/* Their homes: the medians by decision, a strip per number (a dot a home, the median marked), then the choices as ranked rows */
+.afi-homes-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: .4rem 1rem; }
+.afi-homes-season { display: inline-flex; align-items: center; gap: .45rem; color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; }
+.afi-homes-season select { width: auto; min-height: 32px; padding-block: .2rem; font-size: var(--fs-xs); }
+.afi-decide { margin: 0 0 1.1rem; }
+.afi-decide-table { width: 100%; border-collapse: separate; border-spacing: 0; }
+.afi-decide-table caption { caption-side: top; padding: 0 0 .5rem; text-align: left; }
+.afi-decide-table th, .afi-decide-table td, .afi-decide-table th:last-child, .afi-decide-table td:last-child { padding: .2rem .35rem; border-bottom: 1px solid var(--color-border); vertical-align: middle; text-align: left; text-transform: none; letter-spacing: 0; }
+.afi-decide-table tbody tr:last-child th, .afi-decide-table tbody tr:last-child td { border-bottom: 0; }
+.afi-decide-table thead th { color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; white-space: nowrap; }
+.afi-decide-table tbody th { color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; min-width: 7.5rem; }
+.afi-decide-key { display: inline-flex; align-items: center; gap: .4rem; }
+.afi-decide-key i { width: 10px; height: 10px; border-radius: 3px; }
+.afi-decide-cell { display: grid; gap: .05rem; width: 100%; min-width: 6.5rem; padding: .4rem .45rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background-color .15s var(--ease-out); }
+.afi-decide-who { display: none; }
+.afi-decide-cell:hover { background: var(--color-bg-hover); }
+.afi-decide-cell:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+.afi-decide-cell b { font-size: var(--fs-lg); font-weight: 750; letter-spacing: -.02em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.afi-decide-cell small { color: var(--color-text-muted); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.afi-decide-none { display: block; padding: .4rem .45rem; color: var(--color-text-muted); font-size: var(--fs-2xs); }
+.afi-decide-table td.is-all .afi-decide-cell b { color: var(--color-text-secondary); }
+/* Narrow: a field a block, a line a decision (its color, the median, then the average and the count) */
+@container (max-width: 720px) {
+  .afi-decide.afi-table-scroll { overflow: visible; }
+  .afi-decide-table, .afi-decide-table tbody, .afi-decide-table tr, .afi-decide-table td { display: block; width: auto; }
+  .afi-decide-table thead { display: none; }
+  .afi-decide-table tr { padding: .55rem 0 .45rem; border-bottom: 1px solid var(--color-border); }
+  .afi-decide-table tbody tr:last-child { border-bottom: 0; }
+  .afi-decide-table tbody th { display: block; position: static; min-width: 0; padding: 0 .45rem .25rem; border: 0; background: none; color: var(--color-text); font-size: var(--fs-sm); font-weight: 650; }
+  .afi-decide-table caption { display: block; width: auto; }
+  .afi-decide-table td { padding: 0; border: 0; background: none; }
+  .afi-table-scroll .afi-decide-table td:first-child { position: static; }
+  /* A line a decision: its name and the median, then the average and the count under the name */
+  .afi-decide-cell, .afi-decide-none { display: flex; flex-wrap: wrap; align-items: baseline; gap: .05rem .6rem; min-width: 0; min-height: 40px; padding: .35rem .45rem; background: none; }
+  .afi-decide-cell::after { content: ''; order: 2; flex-basis: 100%; height: 0; }
+  .afi-decide-who { display: inline-flex; flex: 1 1 auto; align-items: center; gap: .4rem; min-width: 0; color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; }
+  .afi-decide-who i { flex: none; width: 10px; height: 10px; border-radius: 3px; }
+  .afi-decide-cell b { order: 1; font-size: var(--fs-md); }
+  .afi-decide-cell small { order: 3; padding-left: calc(10px + .4rem); }
+  .afi-decide-cell small + small { padding-left: 0; }
+  .afi-decide-cell small + small::before { content: '· '; }
+  .afi-decide-none { color: var(--color-text-muted); font-size: var(--fs-xs); }
+}
+.afi-decide-mini { display: flex; flex: none; gap: 1px; width: 44px; height: 6px; margin-left: auto; border-radius: 3px; overflow: hidden; }
+.afi-decide-mini i { min-width: 3px; }
+.afi-src .afi-decide-mini { overflow: hidden; }
+.afi-strips { display: grid; grid-template-columns: minmax(0, 1fr); }
+.afi-strip { display: grid; grid-template-columns: minmax(0, 1fr); gap: .55rem 1.5rem; padding: .95rem 0 1rem; border-top: 1px solid var(--color-border); }
+.afi-strip:first-child { padding-top: .2rem; border-top: 0; }
+@container (min-width: 700px) { .afi-strip { grid-template-columns: minmax(170px, 230px) minmax(0, 1fr); align-items: center; } }
+.afi-strip-head { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: .1rem .75rem; min-width: 0; }
+.afi-strip-name { grid-column: 1 / -1; min-width: 0; color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; overflow-wrap: anywhere; }
+.afi-strip-head b { font-size: var(--fs-2xl); font-weight: 750; letter-spacing: -.03em; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.afi-strip-head small { grid-column: 1 / -1; color: var(--color-text-muted); font-size: var(--fs-2xs); line-height: 1.45; }
+.afi-strip-head .afe-link { font-size: var(--fs-2xs); }
+.afi-strip-all { justify-self: end; white-space: nowrap; }
+.afi-strip-plot { position: relative; min-width: 0; }
+.afi-strip-track { position: relative; min-height: 30px; }
+.afi-strip-axis { position: absolute; left: 0; right: 0; height: 2px; margin-top: -1px; border-radius: 2px; background: var(--afe-track); }
+.afi-strip-median { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; border-radius: 2px; background: color-mix(in srgb, var(--color-text) 55%, transparent); }
+/* Where homes pile up past what the strip shows, a small count says how many more, and opens them */
+.afi-strip-pile { position: absolute; z-index: 3; min-width: 24px; height: 16px; padding: 0 .3rem; border: 1px solid var(--color-border-strong); border-radius: 99px; background: var(--color-bg-card); color: var(--color-text); font: inherit; font-size: var(--fs-2xs); font-weight: 700; line-height: 14px; font-variant-numeric: tabular-nums; transform: translateX(-50%); cursor: pointer; }
+.afi-strip-pile:hover { border-color: var(--color-text); }
+.afi-strip-pile:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+.afi-strip-dot { position: absolute; width: 13px; height: 13px; padding: 0; border: 2px solid var(--color-bg-card); border-radius: 50%; background: var(--afe-data); transform: translate(-50%, -50%); cursor: pointer;
+  transition: transform .15s var(--ease-out); animation: afiPop .45s var(--ease-out) backwards; animation-delay: calc(.35s + min(var(--i, 0) * 22ms, .7s)); }
+.afi-strip-dot:hover, .afi-strip-dot:focus-visible { z-index: 2; transform: translate(-50%, -50%) scale(1.35); }
+.afi-strip-dot:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
+.afi-strip-ends { position: relative; height: 1.4em; margin-top: .3rem; color: var(--color-text-muted); font-size: var(--fs-2xs); font-variant-numeric: tabular-nums; }
+.afi-strip-ends span { position: absolute; top: 0; white-space: nowrap; }
+.afi-strip .afe-tip { z-index: 6; }
+/* A label never wider than 200px, so kept 100px from each end it always stays in the card */
+.afi-strip-tip { width: max-content; max-width: 200px; white-space: normal; overflow-wrap: anywhere; }
+/* The break before a home far past the rest: the line stops, two short strokes, then carries on */
+.afi-strip-break { position: absolute; width: 8px; height: 14px; margin: -7px 0 0 -4px; background: var(--color-bg-card); }
+.afi-strip-break::before, .afi-strip-break::after { content: ''; position: absolute; top: 1px; bottom: 1px; width: 1.5px; border-radius: 1px; background: var(--color-text-muted); transform: rotate(20deg); }
+.afi-strip-break::before { left: 1px; }
+.afi-strip-break::after { right: 1px; }
+.afi-home-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 1.25rem 1.75rem; align-items: start; }
+.afi-strips + .afi-home-groups { margin-top: .4rem; padding-top: 1.1rem; border-top: 1px solid var(--color-border); }
+.afi-home-group { display: grid; gap: .35rem; min-width: 0; }
+.afe-viz .afi-home-group h5 { margin: 0 0 .1rem; color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; overflow-wrap: anywhere; }
+.afi-home-group .afi-note { margin-top: .3rem; }
+/* A tap anywhere near a dot opens the nearest one (the strip works it out), so no dot's reach covers another's */
+.afi-strip-track { touch-action: manipulation; }
 /* Ranked lists: each row's bar sits behind its words */
 .afi-srcs { display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; }
 .afi-src { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 40px; padding: .4rem .75rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
@@ -755,8 +843,8 @@ const CSS = `
 .afi-skel-block { height: 200px; border-radius: var(--radius-md); }
 .afi-skel-block.is-tall { height: 340px; }
 @media (prefers-reduced-motion: reduce) {
-  .afi-in, .afi-meter, .afi-step-bar, .afi-spark, .afi-line.is-now, .afi-area, .afi-dot, .afe-chart .afi-end.is-now, .afi-pin.is-new, .afi-src::before, .afi-flow-tip, .afi-tip { animation: none; }
-  .afi-body, .afi-bar > span, .afi-kind, .afi-stand, .afi-step, .afi-src::before, .afi-map .apl-pin, .afi-map-far, .afi-added small svg, .afi-spark-line, .afi-spark-fill { transition: none; }
+  .afi-in, .afi-meter, .afi-step-bar, .afi-spark, .afi-line.is-now, .afi-area, .afi-dot, .afe-chart .afi-end.is-now, .afi-pin.is-new, .afi-src::before, .afi-flow-tip, .afi-tip, .afi-strip-dot { animation: none; }
+  .afi-body, .afi-bar > span, .afi-kind, .afi-stand, .afi-step, .afi-src::before, .afi-map .apl-pin, .afi-map-far, .afi-added small svg, .afi-spark-line, .afi-spark-fill, .afi-strip-dot { transition: none; }
   .afi-kind:hover { transform: none; }
 }
 .afe-table { width: 100%; border-collapse: collapse; margin-top: .5rem; font-size: var(--fs-xs); }
@@ -1931,7 +2019,7 @@ function InsightsTab({ seasonYear, go, kind, onKind }) {
           ${['family', 'organization'].map(k => html`<${KindCard} key=${k} k=${k} side=${ins.season[k]} year=${ins.year} lastYear=${ins.season.lastYear} on=${kind === k} onKind=${onKind} />`)}
         </div>
         <div class=${`afi-body ${loading ? 'is-loading' : ''}`} key=${`${shown}-${ins.year}`}>
-          ${ins.started > 0 ? html`<${InsightsBody} ins=${ins} k=${shown} go=${go} open=${open} />` : html`<${InsightsEmpty} ins=${ins} k=${shown} />`}
+          ${ins.started > 0 ? html`<${InsightsBody} ins=${ins} k=${shown} go=${go} open=${open} />` : html`<${InsightsEmpty} ins=${ins} k=${shown} open=${open} />`}
         </div>
         ${sheet && html`<${PeopleSheet} sheet=${sheet} pages=${ins.byPage || []} near=${ins.area?.nearMiles || 0} onClose=${() => setSheet(null)} />`}`}
     </div>`;
@@ -2002,6 +2090,8 @@ function InsightsBody({ ins, k, go, open }) {
   const fo = ins.finishOf || {};
   const notCounted = [fo.working > 0 && `${num(fo.working)} still working`, fo.stopped > 0 && `${num(fo.stopped)} stopped by the form`].filter(Boolean);
   const opened = ins.opening?.open && ins.opening.kind === k ? ins.opening.since : null;
+  // What JobTread has on every family's home, every season (public/admin/home-shared.js)
+  const hasHomes = hasHomeData(ins.homes);
   // Beside the season chart: who referred them, then what's worth a look; the rest below in a row of their own
   const beside = [
     given > 0 && html`<${SourcesCard} rows=${ins.referral} people=${people} open=${open} w=${w} />`,
@@ -2014,7 +2104,7 @@ function InsightsBody({ ins, k, go, open }) {
     ins.reminders?.sent > 0 && html`<${RemindersCard} reminders=${ins.reminders} w=${w} />`,
   ].filter(Boolean);
   // The community project application is English only, so Spanish is never news there
-  const quiet = [k !== 'organization' && es === 0 && 'Spanish applications', !(ins.reminders?.sent > 0) && 'reminder emails', !checks.length && 'application checks'].filter(Boolean);
+  const quiet = [k !== 'organization' && es === 0 && 'Spanish applications', !(ins.reminders?.sent > 0) && 'reminder emails', !checks.length && 'application checks', !hasHomes && `${w.who === 'family' ? 'homes' : 'buildings'} from JobTread`].filter(Boolean);
   let order = 0;
   const rise = () => `--i: ${order++}`;
   return html`
@@ -2065,6 +2155,7 @@ function InsightsBody({ ins, k, go, open }) {
         ${beside.length > 0 && html`<div class="afi-stack">${beside}</div>`}
       </div>`}
     ${ins.area?.checked > 0 && html`<${AreaCard} a=${ins.area} k=${k} w=${w} started=${ins.started} go=${go} people=${people} open=${open} style=${rise()} />`}
+    ${hasHomes && html`<${HomesCard} homes=${ins.homes} k=${k} open=${open} style=${rise()} />`}
     ${small.length > 0 && html`<div class="afi-grid afi-in" style=${rise()}>${small}</div>`}
     ${quiet.length > 0 && html`<p class="afi-quiet afi-in" style=${rise()}>Nothing to report yet on ${listWords(quiet)}.</p>`}`;
 }
@@ -2075,7 +2166,7 @@ function stoppedWhy(stopped) {
 }
 
 /** No one has started this kind's application: what there is instead */
-function InsightsEmpty({ ins, k }) {
+function InsightsEmpty({ ins, k, open }) {
   const w = INSIGHT_WORDS[k];
   const side = ins.season[k];
   const showChart = side.total > 0 || side.last.total > 0;
@@ -2093,7 +2184,8 @@ function InsightsEmpty({ ins, k }) {
           ${side.added?.length > 0 && html`<${AddedCard} added=${side.added} />`}
           ${side.moved?.length > 0 && html`<${MovedCard} moved=${side.moved} />`}
         </div>`}
-      </div>`}`;
+      </div>`}
+    ${hasHomeData(ins.homes) && html`<${HomesCard} homes=${ins.homes} k=${k} open=${open} style="--i: 2" />`}`;
 }
 
 /** Accounts counted as community projects that this form's numbers can't show, named instead */
@@ -2370,6 +2462,245 @@ function AreaMap({ a, people, open, who, label }) {
     </div>`;
 }
 
+// Each decision's color, from the page's checked palette: approved green, denied orange, still deciding blue, no status gray
+const DECISION_COLOR = { approved: 'var(--afe-data-2)', denied: 'var(--afe-data-3)', deciding: 'var(--afe-data)', none: 'var(--afe-rest)' };
+const DECISION_LABEL = Object.fromEntries(DECISIONS.map(d => [d.key, d.label]));
+/** Anything on a home in JobTread worth a card */
+function hasHomeData(homes) {
+  if (!(homes?.families || []).some(f => Object.keys(f.home || {}).length)) return false;
+  const sum = homeInsights(homes.fields || [], homes.families);
+  return sum.strips.length + sum.groups.length > 0;
+}
+
+/**
+ * Their homes (or buildings): what JobTread has on the home of every family on the Applicants board, every
+ * season or one, compared by decision. First the medians side by side (Approved, Denied, still deciding),
+ * each with its average and how many homes; then each number as a strip, a dot a home in its decision's
+ * color; then each choice as ranked rows, each with its split by decision. Everything opens the families
+ * behind it. Fields come in JobTread's order (public/admin/home-shared.js), the Zestimate first.
+ */
+function HomesCard({ homes, k, open, style = '' }) {
+  const [season, setSeason] = useState('all');
+  const org = k === 'organization';
+  const title = org ? 'Their buildings' : 'Their homes';
+  const noun = org ? 'building' : 'home';
+  const who = org ? ['organization', 'organizations'] : ['family', 'families'];
+  const seasons = useMemo(() => [...new Set([...homes.families, ...homes.noHome].map(f => f.year).filter(Boolean))].sort().reverse(), [homes]);
+  const families = useMemo(() => homes.families.filter(f => season === 'all' || f.year === season), [homes, season]);
+  const noHome = useMemo(() => homes.noHome.filter(f => season === 'all' || f.year === season), [homes, season]);
+  const sum = useMemo(() => homeInsights(homes.fields, families), [homes, families]);
+  const present = DECISIONS.filter(d => families.some(f => decisionOf(f.status) === d.key));
+  const famLine = (p) => [p.status || 'No status in JobTread', p.year ? `${p.year} season` : 'No season'].join(' · ');
+  const colorOf = (p) => DECISION_COLOR[decisionOf(p.status)];
+  const openFam = (t, list, more = {}) => open(t, list, { line: famLine, color: colorOf, ...more });
+  // Everyone the card speaks of, those with no home in JobTread too
+  const counts = decisionCounts([...families, ...noHome]);
+  const total = families.length + noHome.length;
+  const split = DECISIONS.filter(d => counts[d.key]).map(d => `${num(counts[d.key])} ${d.key === 'none' ? 'with no status' : d.label.toLowerCase()}`);
+  const pick = sum.strips.length && sum.groups.length ? 'a number, a dot or a row' : sum.strips.length ? 'a number or a dot' : 'a row';
+  return html`
+    <section class="afe-viz afi-card afi-in afi-homes" style=${style}>
+      <${CardHead} title=${title}>
+        <div class="afi-homes-tools">
+          <${Keys} items=${present.map(d => ({ label: d.label, color: DECISION_COLOR[d.key] }))} />
+          ${seasons.length > 1 && html`<label class="afi-homes-season">Season
+            <select class="form-input" value=${season} onChange=${(e) => setSeason(e.target.value)} aria-label=${`Season for ${title}`}>
+              <option value="all">Every season</option>
+              ${seasons.map(y => html`<option value=${y}>${y}</option>`)}
+            </select></label>`}
+        </div>
+      <//>
+      <span class="afe-hint">From JobTread: the ${org ? 'buildings' : 'homes'} of ${total === 1 ? `the one ${who[0]}` : `the ${num(total)} ${who[1]}`} on the Applicants board${season === 'all' ? ', every season' : ` for ${season}`}${split.length ? ` (${listWords(split)})` : ''}.${noHome.length ? html` <button type="button" class="afe-link" onClick=${() => openFam(`No ${noun} in JobTread`, noHome)}>${num(noHome.length)} ${noHome.length === 1 ? `has no ${noun}` : `have no ${noun}`} in JobTread yet</button>.` : ''} Pick ${pick} to see who.</span>
+      ${sum.strips.length + sum.groups.length === 0 ? html`<p class="afi-note">Nothing is filled in on these ${org ? 'buildings' : 'homes'} in JobTread yet.</p>` : html`
+        ${sum.strips.length > 0 && html`<${DecisionTable} sum=${sum} present=${present} open=${openFam} noun=${noun} />`}
+        ${sum.strips.length > 0 && html`<div class="afi-strips">${sum.strips.map((st, n) => html`<${HomeStrip} key=${`${season}-${st.id}`} s=${st} n=${n} open=${openFam} noun=${noun} colorOf=${colorOf} lineOf=${famLine} />`)}</div>`}
+        ${sum.groups.length > 0 && html`<div class="afi-home-groups">${sum.groups.map((g) => html`<${HomeGroup} key=${`${season}-${g.id}`} g=${g} open=${openFam} noun=${noun} present=${present} />`)}</div>`}`}
+    </section>`;
+}
+
+/**
+ * The medians side by side: a row a number (Zestimate first), a column a decision, then everyone. Each cell is
+ * the median, with the average and how many homes under it, and opens those families, highest first.
+ */
+function DecisionTable({ sum, present, open, noun }) {
+  const cols = [...present.map(d => d.key), 'all'];
+  return html`
+    <div class="afi-table-scroll afi-decide" tabindex="0" role="region" aria-label="Medians by decision">
+      <table class="afe-table afi-decide-table">
+        <caption class="afe-hint">The median of each, with the average and how many ${noun}s under it.</caption>
+        <thead><tr>
+          <th scope="col"><span class="sr-only">Field</span></th>
+          ${present.map(d => html`<th scope="col"><span class="afi-decide-key"><i style=${`background: ${DECISION_COLOR[d.key]};`}></i>${d.label}</span></th>`)}
+          <th scope="col">Everyone</th>
+        </tr></thead>
+        <tbody>${sum.strips.map(st => {
+          const by = Object.fromEntries(byDecision(st).map(x => [x.key, x]));
+          const valueOf = (p) => st.points.find(x => x.p === p)?.text || '';
+          return html`<tr data-field=${st.id}>
+            <th scope="row">${st.name}</th>
+            ${cols.map(c => {
+              const x = by[c];
+              const label = c === 'all' ? 'everyone' : DECISION_LABEL[c].toLowerCase();
+              // Named again inside each cell for the narrow layout, where there's no header row above it
+              const whoCell = html`<span class="afi-decide-who" aria-hidden="true">${c !== 'all' && html`<i style=${`background: ${DECISION_COLOR[c]};`}></i>`}${c === 'all' ? 'Everyone' : DECISION_LABEL[c]}</span>`;
+              return html`<td class=${c === 'all' ? 'is-all' : ''}>${x ? html`
+                <button type="button" class="afi-decide-cell" onClick=${() => open(`${st.name}, ${label}`, [...x.points].reverse().map(pt => pt.p), { value: valueOf })}
+                  aria-label=${`${st.name}, ${label}: median ${stripText(st.kind, x.median, st.timed)}, average ${stripText(st.kind, x.mean, st.timed)}, ${plural(x.points.length, noun)}. See them.`}>
+                  ${whoCell}
+                  <b>${stripText(st.kind, x.median, st.timed)}</b>
+                  <small>avg ${stripText(st.kind, x.mean, st.timed)}</small>
+                  <small>${plural(x.points.length, noun)}</small>
+                </button>` : html`<span class="afi-decide-none">${whoCell}No ${noun}s</span>`}</td>`;
+            })}
+          </tr>`;
+        })}</tbody>
+      </table>
+    </div>`;
+}
+
+// A strip's dots: the space a lane takes, the room at each end so a dot is never cut in half,
+// the room for a home far past the rest (beyond a break in the scale), and how near a point counts as on a dot
+const STRIP_LANE = 15;
+const STRIP_PAD = 10;
+const STRIP_ZONE = 46;
+const STRIP_REACH = 18;
+
+/**
+ * One number across the homes: its median big, then a dot a home along the range, stacked where they'd touch.
+ * A home far past the rest sits beyond a break in the scale. Pointing near a dot names the family and the value;
+ * a click or tap opens the nearest one. From the keyboard the strip is one stop: the arrow keys walk the dots
+ * from lowest to highest, Home and End jump to the ends, Enter opens, Escape hides the label.
+ */
+function HomeStrip({ s, n, open, noun = 'home', colorOf = null, lineOf = null }) {
+  const box = useRef(null);
+  const track = useRef(null);
+  const [width, setWidth] = useState(0);
+  const [hi, setHi] = useState(null);
+  const [picked, setCur] = useState(0);
+  useEffect(() => {
+    const el = box.current;
+    if (!el) return undefined;
+    const ro = new ResizeObserver(() => setWidth(el.clientWidth));
+    ro.observe(el);
+    setWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
+  const place = useMemo(() => (width ? placeDots(s.points, { width, pad: STRIP_PAD, zone: STRIP_ZONE, low: s.low, high: s.high, min: s.min, max: s.max }) : null), [width, s]);
+  const lanes = place ? place.hi - place.lo + 1 : 1;
+  // A pile's count sits above it, so a strip with piles keeps a row of room on top
+  const top = place?.piles.length ? 18 : 0;
+  const height = Math.max(30, lanes * STRIP_LANE + 14 + top);
+  const middle = place ? top + 7 + (place.hi + 0.5) * STRIP_LANE : height / 2;
+  const yOf = (lane) => middle - lane * STRIP_LANE;
+  const count = s.points.length;
+  // Two homes have no middle worth naming: their range instead
+  const median = count === 2 ? `${endText(s.kind, s.min, s.timed)} to ${endText(s.kind, s.max, s.timed)}` : stripText(s.kind, s.median, s.timed);
+  // The keyboard's stop, kept on a dot when a refresh leaves fewer homes
+  const cur = Math.min(picked, count - 1);
+  const same = endText(s.kind, s.min, s.timed) === endText(s.kind, s.max, s.timed);
+  // A scale end's label sits under the home at that end (the scale can be wider than the homes on it)
+  const endAt = (x) => (x < 44 ? 'left: 0;' : x > width - 44 ? 'right: 0;' : `left: ${x}px; transform: translateX(-50%);`);
+  const many = (k) => `${k === 1 ? noun : `${noun}s`}`;
+  const valueOf = (p) => s.points.find(x => x.p === p)?.text || '';
+  const openOne = (d) => open(d.p.name || 'No name given yet', [d.p], { value: () => d.text });
+  const openAll = () => open(`${s.name}, highest first`, [...s.points].reverse().map(x => x.p), { value: valueOf });
+  const oddText = new Map(s.odd.map(x => [x.p, x.text]));
+  // The dot nearest a point on the strip, if one is near enough to mean it (dots can sit closer than a fingertip)
+  const nearest = (e, reach = STRIP_REACH) => {
+    const r = track.current?.getBoundingClientRect();
+    if (!r || !place) return null;
+    let best = null;
+    let far = reach;
+    place.dots.forEach((d, i) => { const dist = Math.hypot(d.x - (e.clientX - r.left), yOf(d.lane) - (e.clientY - r.top)); if (dist <= far) { far = dist; best = i; } });
+    return best;
+  };
+  const go = (i) => {
+    const next = Math.max(0, Math.min(count - 1, i));
+    setCur(next);
+    track.current?.querySelectorAll('.afi-strip-dot')[next]?.focus();
+  };
+  const keys = (e) => {
+    if (e.key === 'Escape' && hi != null) { e.preventDefault(); e.stopPropagation(); setHi(null); return; }
+    const moves = { ArrowRight: cur + 1, ArrowUp: cur + 1, ArrowLeft: cur - 1, ArrowDown: cur - 1, Home: 0, End: count - 1 };
+    if (e.key in moves) { e.preventDefault(); go(moves[e.key]); }
+  };
+  // A pointer's click or tap opens the nearest dot; Enter or Space on a focused dot opens that one
+  const press = (e) => {
+    if (e.detail === 0) return;
+    const i = nearest(e);
+    if (i != null) openOne(place.dots[i]);
+  };
+  const tip = place && hi != null && place.dots[hi];
+  const brk = place?.breaks;
+  return html`
+    <div class="afi-strip" data-field=${s.id}>
+      <div class="afi-strip-head">
+        <span class="afi-strip-name">${s.name}</span>
+        <b>${median}</b>
+        ${count > 1 && html`<button type="button" class="afe-link afi-strip-all" onClick=${openAll}>See all ${num(count)}</button>`}
+        <small>${count === 1 ? `From 1 ${noun}` : count === 2 ? `Range of 2 ${noun}s` : `Median of ${plural(count, noun)}`}${s.zero?.length > 0 && html`, <button type="button" class="afe-link" onClick=${() => open(`${s.name}: listed as $0`, s.zero)}>${num(s.zero.length)} listed as $0</button>`}${s.odd.length > 0 && html`, <button type="button" class="afe-link" onClick=${() => open(`${s.name}: ${oddWords(s.kind)}`, s.odd.map(x => x.p), { value: (p) => `“${oddText.get(p)}”` })}>${num(s.odd.length)} ${oddWords(s.kind)}</button>`}${s.missing.length > 0 && html`, <button type="button" class="afe-link" onClick=${() => open(`${s.name}: not filled in`, s.missing)}>${num(s.missing.length)} not filled in</button>`}</small>
+      </div>
+      <div class="afi-strip-plot" ref=${box}>
+        <div class="afi-strip-track" ref=${track} style=${`height: ${height}px;`} role="group" onKeyDown=${keys} onClick=${press}
+          onPointerMove=${(e) => { if (e.pointerType === 'mouse') setHi(nearest(e, 12)); }} onPointerLeave=${() => setHi(null)}
+          aria-label=${`${s.name}: ${count === 1 ? `one ${noun}, ${median}` : count === 2 ? `two ${noun}s, ${median}` : `median ${median} across ${plural(count, noun)}, from ${stripText(s.kind, s.min, s.timed)} to ${stripText(s.kind, s.max, s.timed)}`}. Arrow keys move between ${many(2)}, Enter opens one.`}>
+          <i class="afi-strip-axis" style=${`top: ${middle}px;`}></i>
+          ${brk?.before && html`<i class="afi-strip-break" style=${`left: ${brk.left - 11}px; top: ${middle}px;`}></i>`}
+          ${brk?.after && html`<i class="afi-strip-break" style=${`left: ${brk.right + 11}px; top: ${middle}px;`}></i>`}
+          ${place && count > 2 && s.min !== s.max && html`<i class="afi-strip-median" style=${`left: ${place.xOf(s.median)}px; top: ${top}px;`}></i>`}
+          ${place && place.piles.map((pile) => html`
+            <button type="button" class="afi-strip-pile" style=${`left: ${Math.min(width - 16, Math.max(16, pile.x))}px; top: ${Math.max(0, yOf(place.hi) - 25)}px;`}
+              aria-label=${`${num(pile.list.length)} more ${many(pile.list.length)} here, behind the others. See them.`}
+              onClick=${(e) => { e.stopPropagation(); open(`${s.name}: ${pile.list.length === 1 ? 'one more' : `${num(pile.list.length)} more`} here`, pile.list.map(d => d.p), { value: valueOf }); }}>+${num(pile.list.length)}</button>`)}
+          ${place && place.dots.map((d, i) => html`
+            <button type="button" class="afi-strip-dot" key=${d.p.id} tabindex=${i === cur ? 0 : -1} style=${`left: ${d.x}px; top: ${yOf(d.lane)}px; --i: ${i};${colorOf ? ` background: ${colorOf(d.p)};` : ''}`}
+              aria-label=${`${d.p.name || 'No name given yet'}, ${d.text}${lineOf ? `, ${lineOf(d.p)}` : ''}`}
+              onFocus=${() => { setHi(i); setCur(i); }} onBlur=${() => setHi(null)} onClick=${(e) => { if (e.detail === 0) openOne(d); }}></button>`)}
+          ${tip && html`
+            <div class="afe-tip afi-tip afi-strip-tip" style=${`left: ${Math.min(width - 100, Math.max(100, tip.x))}px; top: ${yOf(tip.lane) - 12}px;`}>
+              <b>${tip.text}</b><span>${tip.p.name || 'No name given yet'}</span>${lineOf && html`<span class="afi-tip-row"><i style=${`background: ${colorOf(tip.p)};`}></i>${lineOf(tip.p)}</span>`}
+            </div>`}
+        </div>
+        <div class="afi-strip-ends" aria-hidden="true">
+          ${place && (same
+            ? html`<span style=${endAt(place.xOf(s.min))}>${endText(s.kind, s.min, s.timed)}</span>`
+            : html`<span style=${endAt(place.xOf(s.min))}>${endText(s.kind, s.min, s.timed)}</span><span style=${endAt(place.xOf(s.max))}>${endText(s.kind, s.max, s.timed)}</span>`)}
+        </div>
+      </div>
+    </div>`;
+}
+
+/** One choice across the homes: its answers most first (rooms and small counts in number order), each row's bar behind its words */
+function HomeGroup({ g, open, noun = 'home', present = [] }) {
+  const shown = g.rows.slice(0, 6);
+  const more = g.rows.slice(6);
+  const max = Math.max(1, ...shown.map(r => r.n), g.missing.length);
+  const answerOf = (p) => g.rows.filter(r => r.list.includes(p)).map(r => (r.odd ? `“${g.said?.[p.id] || ''}”` : r.label)).join(', ');
+  // Written another way: each home's own words, so nothing typed is hidden
+  const saidOf = (p) => `“${g.said?.[p.id] || ''}”`;
+  // A row's families by decision: a small bar of their colors, and the same in words for screen readers and on hover
+  const split = (list) => { const c = decisionCounts(list); return present.filter(d => c[d.key]).map(d => ({ ...d, n: c[d.key] })); };
+  const splitWords = (list) => split(list).map(d => `${num(d.n)} ${d.key === 'none' ? 'with no status' : d.label.toLowerCase()}`).join(', ');
+  const mini = (list) => (present.length > 1 ? html`<span class="afi-decide-mini" aria-hidden="true">${split(list).map(d => html`<i style=${`flex: ${d.n} 1 0; background: ${DECISION_COLOR[d.key]};`}></i>`)}</span>` : null);
+  return html`
+    <div class="afi-home-group" data-field=${g.id}>
+      <h5>${g.name}</h5>
+      <div class="afi-srcs">
+        ${shown.map((r, n) => html`
+          <button type="button" class=${`afi-src ${r.odd ? 'is-rest' : ''}`} style=${`--w: ${(r.n / max) * 100}%; --i: ${n};`} onClick=${() => open(`${g.name}: ${r.odd ? r.label.toLowerCase() : r.label}`, r.list, r.odd ? { value: saidOf } : {})}
+            title=${present.length > 1 ? `${r.label}: ${splitWords(r.list)}` : r.label} aria-label=${`${r.label}: ${plural(r.n, noun)}${present.length > 1 ? `, ${splitWords(r.list)}` : ''}. See them.`}>
+            <span class="afi-src-text">${r.label}</span>${mini(r.list)}<b>${num(r.n)}</b>
+          </button>`)}
+        ${g.missing.length > 0 && html`
+          <button type="button" class="afi-src is-rest" style=${`--w: ${(g.missing.length / max) * 100}%; --i: ${shown.length};`} onClick=${() => open(`${g.name}: not filled in`, g.missing)}
+            aria-label=${`Not filled in: ${plural(g.missing.length, noun)}${present.length > 1 ? `, ${splitWords(g.missing)}` : ''}. See them.`}>
+            <span>Not filled in</span>${mini(g.missing)}<b>${num(g.missing.length)}</b>
+          </button>`}
+      </div>
+      ${more.length > 0 && html`<p class="afi-note"><button type="button" class="afe-link" onClick=${() => open(g.name, [...new Set(more.flatMap(r => r.list))], { value: answerOf })}>And ${plural(more.length, 'more answer')} from ${plural(new Set(more.flatMap(r => r.list)).size, noun)}</button></p>`}
+    </div>`;
+}
+
 /** Part to whole: one bar, a 2px gap between parts, a legend with the numbers */
 function StackBar({ parts, total }) {
   const shown = parts.filter(p => p.n > 0);
@@ -2429,8 +2760,8 @@ function PeopleSheet({ sheet, pages, near = 0, onClose }) {
       <div class="afi-people">
         ${sheet.list.map(p => html`
           <div class="afi-person">
-            <i class="afi-person-dot" style=${`background: ${STATE_COLOR[p.state]};`} title=${STATE_LABEL[p.state]}></i>
-            <div><b class=${p.name ? '' : 'is-none'}>${p.name || 'No name given yet'}</b>${sheet.said && p.referral && html`<q class="afi-said">${p.referral}</q>`}<span>${line(p)}</span></div>
+            <i class="afi-person-dot" style=${`background: ${sheet.color ? sheet.color(p) : STATE_COLOR[p.state]};`} title=${sheet.color ? '' : STATE_LABEL[p.state]}></i>
+            <div><b class=${p.name ? '' : 'is-none'}>${p.name || 'No name given yet'}</b>${sheet.said && p.referral && html`<q class="afi-said">${p.referral}</q>`}<span>${[sheet.value?.(p), sheet.line ? sheet.line(p) : line(p)].filter(Boolean).join(' · ')}</span></div>
             ${p.accountId && html`<a class="btn btn-ghost btn-sm" href=${`#applications/applicants/${p.accountId}`}>Open</a>`}
           </div>`)}
       </div>

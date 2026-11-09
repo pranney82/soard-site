@@ -48,7 +48,7 @@ import { spanishToDo, catchUpSpanish } from './_translate.js';
 import { isUpload, isInput, answerText, progressPercent, renderMessage, choice, AREA_VALUES, kindOf, isOrganizationKind, rolesFor } from './_application-form.js';
 import { checkServiceArea, areaText, addressKey, checkableAddress, bandOf } from './_geo.js';
 import { placeHome } from '../../public/admin/area-shared.js';
-import { maybeSyncApplicants } from './_applicants.js';
+import { maybeSyncApplicants, familiesWithHomes } from './_applicants.js';
 import { runJotformBackfill, jotformSecondLook } from './_jotform-backfill.js';
 import { runNotifications } from './_applicant-notify.js';
 import { runApprovals } from './_applicant-approved.js';
@@ -2051,6 +2051,8 @@ export async function insights(DB, { year, now = Date.now(), kind = 'family' } =
     reminders: { sent: real.reduce((n, d) => n + (Number(d.reminders_sent) || 0), 0), finishedAfter: submitted.filter(d => Number(d.reminders_sent) > 0).length },
     referral: Object.entries(referral).map(([source, count]) => ({ source, count })).sort((x, y) => y.count - x.count),
     area: areaInsights(form, real, gone),
+    // Their homes: every family of this kind in JobTread, every season, with its Status and home (public/admin/home-shared.js reads them)
+    homes: await familiesWithHomes(DB, { kind: k }).catch(() => ({ fields: [], families: [], noHome: [] })),
     checks: {
       outside: realApps.filter(a => a.jt_state?.area?.status === 'outside').length,
       unchecked: realApps.filter(a => a.jt_state?.area?.status === 'unknown').length,

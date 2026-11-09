@@ -9,7 +9,9 @@
  *    Status or Makeover Year, or one the site's form made). Its fields, the
  *    contacts, the home and its map point (JobTread geocodes locations) and
  *    where that point sits against the service-area boundary. The board,
- *    list and map read this, not JobTread.
+ *    list and map read this, not JobTread. `home` keeps the home's own
+ *    fields (Zestimate, Year Built…) by field id, and applicant_sync
+ *    'home_fields' the list of those fields, for Insights (./_home.js).
  *  - applicant_activity (D1): what happened to each family, from JobTread's
  *    own event log. Status and field changes, comments (family messages,
  *    email replies, the texts and calls DataX logs), files, contacts, the
@@ -41,6 +43,7 @@ import { alertFamilyReplies, waitingReplies } from './_applicant-replies.js';
 import { getLiveForm } from './_application-forms.js';
 import { DEFAULT_SERVICE_AREA, toE164, kindOf } from './_application-form.js';
 import { COMMUNITY_PROJECT_TYPE, isCommunityProject } from './_application-constants.js';
+import { HOME_VALUES, locationFields } from './_home.js';
 
 export const STATUSES = ['Applied', 'In Review', 'Approved', 'Denied'];
 
@@ -84,7 +87,7 @@ const SCHEMA = [
     location_id TEXT, address TEXT, city TEXT, county TEXT, lat REAL, lng REAL, area TEXT, area_miles REAL,
     contact_name TEXT, contact_email TEXT, contact_phone TEXT, contacts TEXT,
     job_id TEXT, job_name TEXT, comms_thread_id TEXT, application_url TEXT,
-    created_at TEXT, archived_at TEXT, synced_at TEXT NOT NULL, photo_file_id TEXT, photo_url TEXT)`,
+    created_at TEXT, archived_at TEXT, synced_at TEXT NOT NULL, photo_file_id TEXT, photo_url TEXT, home TEXT)`,
   'CREATE INDEX IF NOT EXISTS idx_applicants_status ON applicants(status, year)',
   `CREATE TABLE IF NOT EXISTS applicant_activity (
     id TEXT PRIMARY KEY, account_id TEXT NOT NULL, at TEXT NOT NULL, kind TEXT NOT NULL,
@@ -97,8 +100,8 @@ const _ready = new WeakSet();
 export async function ensureApplicantSchema(DB) {
   if (_ready.has(DB)) return;
   await DB.batch(SCHEMA.map(sql => DB.prepare(sql)));
-  // The child's photo (added Oct 2026) on mirrors made before it
-  for (const col of ['photo_file_id', 'photo_url']) {
+  // The child's photo (added Oct 2026) and the home's fields (Nov 2026) on mirrors made before them
+  for (const col of ['photo_file_id', 'photo_url', 'home']) {
     try { await DB.prepare(`ALTER TABLE applicants ADD COLUMN ${col} TEXT`).run(); } catch { /* already there */ }
   }
   _ready.add(DB);
@@ -139,9 +142,10 @@ const ACCOUNT = {
   customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { id: {} } } },
   primaryContact: { id: {} },
   contacts: { $: { size: 5 }, nodes: CONTACT },
+  // Every field on the home: County, and DataX's Zillow details (Zestimate, Year Built…) for Insights
   primaryLocation: {
     id: {}, address: {}, city: {}, county: {}, latitude: {}, longitude: {},
-    customFieldValues: { $: { size: 1, where: [['customField', 'id'], '=', FIELD_LOCATION_COUNTY] }, nodes: { value: {} } },
+    customFieldValues: { $: { size: HOME_VALUES }, nodes: { value: {}, customField: { id: {} } } },
   },
   jobs: { $: { size: 2, sortBy: [{ field: 'createdAt', order: 'desc' }] }, nodes: { id: {}, name: {} } },
   comms: { _: 'comments', $: { size: 1, where: ['name', '=', 'Comms Thread'] }, nodes: { id: {} } },
@@ -242,12 +246,20 @@ export function rowFromAccount(a, polygon, now = Date.now()) {
     comms_thread_id: a.comms?.nodes?.[0]?.id || null, application_url: cut(v[FIELD_APPLICATION_URL], 300),
     created_at: a.createdAt || null, archived_at: a.archivedAt || null, synced_at: iso(now),
     photo_file_id: photo?.id || null, photo_url: cut(photo?.thumb, 1000),
+    home: loc ? JSON.stringify(homeValues(loc)) : null,
   };
+}
+
+/** The home's field values by field id, each cut to a sensible length (a mirror, not a store for essays) */
+function homeValues(loc) {
+  const out = {};
+  for (const [id, v] of Object.entries(values(loc))) out[id] = Array.isArray(v) ? v.slice(0, 20).map(x => (typeof x === 'string' ? x.slice(0, 500) : x)) : typeof v === 'string' ? v.slice(0, 500) : v;
+  return out;
 }
 
 const COLUMNS = ['account_id', 'name', 'status', 'year', 'types', 'fields', 'location_id', 'address', 'city', 'county', 'lat', 'lng', 'area', 'area_miles',
   'contact_name', 'contact_email', 'contact_phone', 'contacts', 'job_id', 'job_name', 'comms_thread_id', 'application_url', 'created_at', 'archived_at', 'synced_at',
-  'photo_file_id', 'photo_url'];
+  'photo_file_id', 'photo_url', 'home'];
 const UPSERT = `INSERT INTO applicants (${COLUMNS.join(', ')}) VALUES (${COLUMNS.map(() => '?').join(', ')})
   ON CONFLICT(account_id) DO UPDATE SET ${COLUMNS.slice(1).map(c => `${c} = excluded.${c}`).join(', ')}`;
 const upsert = (DB, row) => DB.prepare(UPSERT).bind(...COLUMNS.map(c => row[c] ?? null));
@@ -271,6 +283,7 @@ export async function syncAllApplicants(env, { fetchImpl = fetch, now = Date.now
   const { DB } = env;
   await ensureApplicantSchema(DB);
   const polygon = await boundary(DB);
+  await syncHomeFields(env, { fetchImpl, now });
   // Only rows that changed are written (D1 writes are the cost here)
   const { results: current } = await DB.prepare('SELECT * FROM applicants').all();
   const sig = (r) => COLUMNS.filter(c => c !== 'synced_at').map(c => (r[c] ?? null)).join('\u0001');
@@ -299,6 +312,51 @@ export async function syncAllApplicants(env, { fetchImpl = fetch, now = Date.now
   }
   await setSync(DB, 'full_at', iso(now), now);
   return { applicants: seen.length };
+}
+
+/**
+ * JobTread's location fields (name, type, order), kept for Insights so it
+ * never waits on JobTread. Written only when they changed. A failed read keeps
+ * the last good list and never stops the accounts' own sync.
+ */
+export async function syncHomeFields(env, { fetchImpl = fetch, now = Date.now() } = {}) {
+  try {
+    const fields = await locationFields(env, { fetchImpl, now, fresh: true });
+    if (!fields.length) return null;
+    const next = JSON.stringify(fields);
+    if (next !== await getSync(env.DB, 'home_fields')) await setSync(env.DB, 'home_fields', next, now);
+    return fields.length;
+  } catch {
+    return null;
+  }
+}
+
+/** The location fields Insights shows, as last read from JobTread ([] before the first read) */
+export async function homeFieldList(DB) {
+  try { return parse(await getSync(DB, 'home_fields'), []) || []; } catch { return []; }
+}
+
+/**
+ * Insights' Their homes: every family (or, for kind 'organization', every community project) on the
+ * Applicants board, every season, with its JobTread Status, Makeover Year and home. As on the board,
+ * archived accounts and tests (a TEST name, or a test application from the form) are left out.
+ * { fields, families: [{ id, accountId, name, status, year, home }], noHome: [same, without a home] }
+ */
+export async function familiesWithHomes(DB, { kind = 'family' } = {}) {
+  await ensureApplicantSchema(DB);
+  const { results } = await DB.prepare('SELECT account_id, name, status, year, types, location_id, home FROM applicants WHERE archived_at IS NULL').all();
+  let tests = new Set();
+  try {
+    tests = new Set(((await DB.prepare('SELECT jt_account_id FROM applications WHERE is_test = 1 AND jt_account_id IS NOT NULL').all()).results || []).map(r => r.jt_account_id));
+  } catch { /* no applications table yet */ }
+  const org = kind === 'organization';
+  const rows = (results || []).filter(r => !/^\s*test\b/i.test(r.name || '') && !tests.has(r.account_id) && isCommunityProject(parse(r.types, [])) === org);
+  const who = (r) => ({ id: r.account_id, accountId: r.account_id, name: r.name, status: r.status || '', year: r.year || '' });
+  return {
+    fields: await homeFieldList(DB),
+    families: rows.filter(r => r.location_id).map(r => ({ ...who(r), home: parse(r.home, {}) || {} })),
+    noHome: rows.filter(r => !r.location_id).map(who),
+  };
 }
 
 /** Re-read some accounts into the mirror (after an event or a site action) */
