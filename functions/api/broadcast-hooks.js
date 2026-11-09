@@ -47,6 +47,8 @@ import { maybeRunSigning } from './_board-sign.js';
 import { maybeRunAsks } from './_board-asks.js';
 import { maybeSyncStaff } from './_staff-access.js';
 import { maybeSweepMail } from './_mail-sweep.js';
+import { maybeSweepOrders } from './_order-sweep.js';
+import { maybeReadSelections } from './_selection-parts.js';
 import { maybeRunQuiet } from './_kit-quiet.js';
 import { maybeRunBackfill } from './_coi-backfill.js';
 import { maybeCheckOrgFacts } from './_org-facts.js';
@@ -138,6 +140,10 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeSyncStaff(env));
     // Every staff inbox: receipts to the receipt inbox, family emails onto their JobTread account (see _mail-sweep.js)
     context.waitUntil(maybeSweepMail(env));
+    // Kid items, read only for now: store order emails in every SOARD inbox (every 3 minutes), then each open makeover's
+    // chosen selections as parts (every 30 minutes); nothing goes to JobTread yet (see _order-sweep.js, _selection-parts.js)
+    // Side by side, so neither waits on the other's time
+    context.waitUntil(Promise.all([maybeSweepOrders(env), maybeReadSelections(env)]));
     // The certificates and W-9s SOARD already had (staff email, JobTread, Ramp): found, read and filed on their JobTread vendor (see _coi-backfill.js)
     context.waitUntil(maybeRunBackfill(env));
     // Hourly: SOARD's process Docs in Drive, so Site → Automations knows if Drive stops answering (see _process-docs.js)

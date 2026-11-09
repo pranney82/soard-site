@@ -46,6 +46,7 @@ const FEATURES = {
   'broadcast-reel': 'reveal reels', 'live-messages': 'live reveal messages', 'mail-sweep': 'the inbox sweep',
   'press-monitor': 'the press monitor', 'score-scans': 'scanned scoresheets', translate: 'Spanish translation',
   'vendor-papers': 'W-9s and insurance', 'content-helper': 'admin writing help', 'people-bios': 'People bios',
+  orders: 'store order emails (kid items)', 'kid-parts': 'selections as parts (kid items)',
   chat: 'store chat', 'chat-search': 'store chat search', 'chat-summary': 'store chat summaries', 'product-sync': 'the store’s product sync',
 };
 export const featureName = (f) => FEATURES[f] || f;

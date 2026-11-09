@@ -59,6 +59,28 @@ const slackLive = (f) => {
   if (f.env.slack) return ON('Through the old incoming webhook, which can’t say which channel it posts to. Add the Slack app to name and check the channel.');
   return OFF(SLACK_OFF);
 };
+// Kid items (_order-sweep.js, _selection-parts.js): read only while the build is checked
+const kidOrdersLive = (f) => {
+  const o = f.kidItems?.orders;
+  if (!o || !('key' in o)) return null;
+  if (!o.key) return OFF('Needs GOOGLE_CALENDAR_KEY in Cloudflare.');
+  if (!o.lastSweptAt) return ATTN('Hasn’t looked yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+  if (stale(o.lastSweptAt, HOUR)) return ATTN(`Hasn’t looked since ${stamp(o.lastSweptAt)}. Check the Heartbeat entry.`, o.lastSweptAt);
+  if (o.error) return ATTN(o.error, o.lastSweptAt);
+  const read = o.states?.read || 0;
+  const top = (o.stores || []).slice(0, 4).map((x) => `${x.store} ${x.emails}${x.itemsPct === null ? '' : ` (items on ${x.itemsPct}%${x.deliveredEmailPct === null ? '' : `, a delivered email for ${x.deliveredEmailPct}% of what shipped`})`}`).join(', ');
+  return ON(`Reading only: ${plural(read, 'order email')} read${o.backfilling ? ', still bringing in the last 60 days' : ''}${top ? `. ${top}` : ''}. Nothing goes to JobTread yet.`, o.lastSweptAt);
+};
+const kidPartsLive = (f) => {
+  const p = f.kidItems?.parts;
+  if (!p || !('jobtread' in p)) return null;
+  if (!p.jobtread) return ATTN('JOBTREAD_GRANT_KEY is missing, so the selections can’t be read.');
+  if (!p.lastRunAt) return ATTN('Hasn’t read the selections yet. It rides on the live hub’s heartbeat, so check the Heartbeat entry.');
+  if (stale(p.lastRunAt, 2 * HOUR)) return ATTN(`Hasn’t read the selections since ${stamp(p.lastRunAt)}. Check the Heartbeat entry.`, p.lastRunAt);
+  if (p.error) return ATTN(p.error, p.lastRunAt);
+  const parts = (p.jobs || []).reduce((n, j) => n + j.parts, 0);
+  return ON(`Reading only: ${plural(parts, 'part')} on ${plural((p.jobs || []).length, 'makeover')}${p.firstPassDone ? '' : ', still on its first pass'}. Nothing goes to JobTread yet.`, p.lastRunAt);
+};
 // Staff inboxes swept (_mail-sweep.js): one look at every inbox serves both of its entries
 const sweepLive = (kind) => (f) => {
   const m = f.mailSweep;
@@ -1261,6 +1283,19 @@ const MAP = { t: 'SOARD', children: [
   { t: 'JobTread', sub: 'SOARD workflows, and DataX', color: 'jt', side: 'l',
     about: 'Automations inside SOARD’s JobTread account, outside the website, and DataX, which connects JobTread to SOARD’s Quo phone line and to Zillow.',
     children: [
+      { t: 'Kid items', children: [
+        { t: 'Order emails read', s: 'live', k: 'schedule',
+          when: 'Every 3 minutes on the heartbeat (every minute while there’s a backlog), a few SOARD inboxes a run in turn. When it began it read each inbox’s last 60 days once.',
+          does: 'Finds the stores’ own emails about what SOARD ordered (order confirmations, shipped, out for delivery, delivered, ready for pickup, delays, cancellations, refunds and returns) in every SOARD inbox and the orders@ group’s copies, and reads each one for its store, order number, items, tracking numbers, expected day, whether it’s going to the Office, and what was typed in a Job or PO box. The store’s own order markup and Amazon’s plain words are read first; Workers AI reads the items only when they don’t give them. For now it only reads, so the matching to each kid’s selections can be checked first: nothing goes to JobTread and nobody is emailed.',
+          touches: ['Gmail', 'Workers AI', 'D1'], where: 'functions/api/_order-sweep.js (reads with _order-read.js, broadcast-hooks.js)',
+          info: 'Gmail is only read. Staff’s own mail and forwards, sent mail, spam and the store’s (Sunny & Ranney) buying are left out. The same email in two inboxes is read once. Its AI has its own spending cap, apart from the receipt sweep’s.',
+          live: kidOrdersLive },
+        { t: 'Selections as parts', s: 'live', k: 'schedule',
+          when: 'Every 30 minutes on the heartbeat (every minute until every open makeover has been read once). A line is read again only when its words, cost or quantity change; one the AI couldn’t split is tried again three times, six hours apart.',
+          does: 'Reads each open makeover’s chosen selection lines in JobTread and splits each one into the parts to buy or receive (a Shower System line with seven Delta parts becomes seven parts), each with its model number, link, quantity, price and where it comes from: bought by SOARD, donated, the family’s, or someone else’s (a $0 line is someone else’s unless it says donated). For now it only reads.',
+          touches: ['JobTread', 'Workers AI', 'D1'], where: 'functions/api/_selection-parts.js (broadcast-hooks.js)',
+          live: kidPartsLive },
+      ] },
       { t: 'Workflows', children: [
         { t: 'Scope approved → Mobilization', s: 'live', k: 'event',
           when: 'A customer order with “scope” in its name is approved.',
