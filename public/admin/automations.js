@@ -97,6 +97,14 @@ const hook = (id) => (f) => {
   if (!jt || jt.error || !jt.webhooks) return null;
   return jt.webhooks[id] ? { why: 'Registered in JobTread.' } : OFF('No longer in JobTread.');
 };
+// DataX's webhook for a JobTread event, by what it listens for: DataX re-registers its webhooks under new ids
+// (Nov 9 2026 the Zillow one, 22PJxV5yimrd, became datax.to/api/webhooks), so an id would read Off for nothing
+const dataxHook = (event, missing) => (f) => {
+  const jt = f.jobtread;
+  if (!jt || jt.error || !jt.webhooks) return null;
+  const found = Object.values(jt.webhooks).some((h) => /^(datax\.to|winyourdata\.com)\//.test(h.where || '') && (h.events || []).includes(event));
+  return found ? { why: 'Registered in JobTread.' } : OFF(missing);
+};
 const reminderBlock = (f, channel) => {
   const b = f.broadcast;
   if (!b) return null;
@@ -440,6 +448,12 @@ const MAP = { t: 'SOARD', children: [
           touches: ['JobTread', 'R2', 'Cloudflare Stream'], where: 'functions/api/_applications.js',
           info: 'Each step is done once and remembered, so a retry never makes a second account. DataX fills the Zillow data when the location appears.',
           live: needsKey('jobtread', 'JOBTREAD_GRANT_KEY is missing.') },
+        { t: 'Kid’s Drive folder', s: 'live', k: 'event',
+          when: 'A family submits, once their JobTread account, email and staff heads-up are done.',
+          does: 'Makes the kid’s folder in Google Drive: Sunshine - Family Records → Applications → “2027 Applications” → “2027 Avery Stone”. The season folder is made the first time it’s needed. Admin → Applications → Submissions links to it.',
+          touches: ['Google Drive'], where: 'functions/api/_kid-drive-folder.js · _applications.js (the “drive folder” intake step)',
+          info: 'Made once, by the site’s Google key acting as Peter: a retry finds the folder it made and never makes a second. Moving or renaming the season folder is fine, and the site keeps using it; one put in the trash is made again. A staff test’s folder goes to the trash when the test is done. Community projects get no folder. A Google problem never holds up the rest of the intake; the step retries, and a stuck one alerts like any other.',
+          live: needsKey('calendar', 'GOOGLE_CALENDAR_KEY is missing, so the site can’t reach Google Drive.') },
         { t: 'Family confirmation', s: 'live', k: 'event',
           when: 'Right after the account is made.',
           does: 'Posts the “Application Status” message from the Qualification Committee to the main parent with the PDF attached. JobTread emails it, and replies land on the account.',
@@ -1287,10 +1301,10 @@ const MAP = { t: 'SOARD', children: [
         { t: 'Zillow lookup', s: 'live', k: 'event',
           when: 'A new location is added.',
           does: 'Looks up the home on Zillow and fills the location’s Zillow fields: the Zillow link, Zestimate, latest sale price and date, year built, beds and baths, living area, parcel number and water source.',
-          touches: ['JobTread', 'DataX', 'Zillow'], where: 'JobTread webhook → DataX (winyourdata.com/api/zillow)',
+          touches: ['JobTread', 'DataX', 'Zillow'], where: 'JobTread webhook (new locations) → DataX (datax.to/api/webhooks)',
           info: 'Checked from the newest family homes in JobTread, each at least 30 minutes old (TEST accounts left out): three in a row without a Zillow link asks for a look. Zillow has nothing on some addresses, like schools and offices. DataX’s Toolbox → Zillow Integration → Run History says why a lookup failed.',
           live: (f) => {
-            const h = hook('22PJxV5yimrd')(f);
+            const h = dataxHook('locationCreated', 'JobTread has no DataX webhook for new locations. In DataX: Toolbox → Zillow Integration → Enable Webhook.')(f);
             if (h?.s === 'off') return h;
             const z = f.zillow;
             if (!z || z.error || !z.checked) return h;
