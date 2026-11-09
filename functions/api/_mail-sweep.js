@@ -21,6 +21,10 @@
  *     PDF, else the email itself, is read for its store, total and date and
  *     goes on the SOARD card charge, Mercury's or Ramp's, with that exact
  *     amount near that date, whoever's card it was (handleAp).
+ *   - Mercury's own "needs a receipt" email, sent the second a card is used:
+ *     a Gmail filter in every inbox keeps it out of the inbox, and it goes
+ *     back in only if no receipt is on the charge a day later
+ *     (_mercury-reminders.js).
  *   - An email to or from a family (an address on an applicant's JobTread
  *     account) → a comment on that account that the family can't see and
  *     nobody is assigned to, so JobTread emails no one: who wrote to whom and
@@ -68,6 +72,7 @@ import { imageKind } from './_image-types.js';
 import { FREE_MAIL } from './_kid-partners.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
 import { emailShell, esc as escHtml } from './_email-shell.js';
+import { REMINDER_SCHEMA, noteReminder, settleReminders, reminderStatus } from './_mercury-reminders.js';
 
 const EVERY_MS = 3 * 60 * 1000;
 const BUSY_MS = 60 * 1000;          // while there's a backlog
@@ -134,7 +139,7 @@ const _ready = new WeakSet();
 const COLUMNS = ['file_keys TEXT', 'posted_ids TEXT', 'charge_id TEXT', 'archived TEXT', 'receipt_read TEXT'];
 async function ensure(DB) {
   if (_ready.has(DB)) return;
-  for (const s of SCHEMA) await DB.prepare(s).run();
+  for (const s of [...SCHEMA, ...REMINDER_SCHEMA]) await DB.prepare(s).run();
   const have = new Set(((await DB.prepare('PRAGMA table_info(mail_sweep)').all()).results || []).map((c) => c.name));
   for (const c of COLUMNS) if (!have.has(c.split(' ')[0])) await DB.prepare(`ALTER TABLE mail_sweep ADD COLUMN ${c}`).run();
   _ready.add(DB);
@@ -1317,6 +1322,8 @@ async function scanBox(env, ctx, mailbox, bs) {
   let newest = bs.pageMax || bs.cursor;
   for (const msg of await metadata(token, ids.filter((id) => !known.has(id)), ctx.fetchImpl)) {
     newest = Math.max(newest, Number(msg.internalDate) || 0);
+    // Mercury's "needs a receipt" email: kept out of the inbox while its charge's receipt is found (_mercury-reminders.js)
+    if (await noteReminder(env.DB, mailbox, msg, ctx.now)) continue;
     const t = triage(msg, ctx.families, { receiptInbox: ctx.receiptInbox });
     if (t) { await queue(env.DB, mailbox, msg, t, 'new', ctx.now); queued++; }
   }
@@ -1468,6 +1475,10 @@ async function sweep(env, st, { fetchImpl, now, print }) {
   await sendReceiptLists(env, ctx);
   const archiving = await archiveDue(env, ctx);
   if (archiving) errors.push(archiving);
+  if (!watching) {
+    const reminders = await settleReminders(env, ctx, st, { skip: (m) => Boolean(st.boxes[m]?.noMail), until: started + CARD_MS + 5000 });
+    if (reminders) errors.push(reminders);
+  }
   if (ctx.notes.ramp) errors.push(`Ramp’s card charges can’t be read, so Ramp receipts go to the receipt inbox only: ${ctx.notes.ramp}`);
   if (ctx.notes.cards) errors.push(ctx.notes.cards);
   if (ctx.notes.lists) errors.push(ctx.notes.lists);
@@ -1514,6 +1525,8 @@ export async function mailSweepStatus(env, { now = Date.now() } = {}) {
   const cards = Object.fromEntries(((await env.DB.prepare('SELECT state, COUNT(*) AS n FROM card_receipts WHERE updated_at >= ? GROUP BY state').bind(since).all()).results || []).map((r) => [r.state, r.n]));
   // The last Monday's lists: which week, to how many people
   const lists = await env.DB.prepare('SELECT week, COUNT(*) AS people, MAX(sent_at) AS at FROM receipt_lists GROUP BY week ORDER BY week DESC LIMIT 1').first();
+  // Mercury's "needs a receipt" emails: the inboxes with the filter, and the week's by where they ended up
+  const reminders = await reminderStatus(env.DB, st, since);
   // Did the receipt inbox take the last one? (Resend's report, through the email log)
   let lastSent = null;
   try {
@@ -1524,6 +1537,6 @@ export async function mailSweepStatus(env, { now = Date.now() } = {}) {
     lastSent,
     key: Boolean(env.GOOGLE_CALENDAR_KEY), ai: Boolean(env.AI?.run), email: emailConfigured(env), jobtread: Boolean(env.JOBTREAD_GRANT_KEY),
     ...Object.fromEntries(['startedAt', 'watchUntil', 'lastSweptAt'].map((k) => [k, st[k] ? new Date(st[k]).toISOString() : null])), error: st.error || null,
-    inboxes: Object.values(st.boxes || {}).filter((b) => !b.noMail).length, backfillDone: Boolean(st.backfillDone), queued: queued?.n || 0, counts, recent, cards, lists: lists || null,
+    inboxes: Object.values(st.boxes || {}).filter((b) => !b.noMail).length, backfillDone: Boolean(st.backfillDone), queued: queued?.n || 0, counts, recent, cards, lists: lists || null, reminders,
   };
 }

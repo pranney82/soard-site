@@ -17,6 +17,7 @@ import { createD1 } from './lib/d1-shim.mjs';
 import { maybeSweepMail, mailSweepStatus, triage, senderOf, withoutQuoted, familyAddresses, receiptText, judgeReceipt, amountsIn, WATCH_MS } from '../functions/api/_mail-sweep.js';
 import { clearTokenCache } from '../functions/api/_google-calendar.js';
 import { forgetRampToken } from '../functions/api/_ramp.js';
+import { reminderCharge, isReminder } from '../functions/api/_mercury-reminders.js';
 
 const { privateKey: SA_PEM } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
 const SERVICE_ACCOUNT = JSON.stringify({ type: 'service_account', client_email: 'site@example.iam.gserviceaccount.com', client_id: '1234567890', private_key: SA_PEM });
@@ -52,7 +53,7 @@ function mail({ box, at, from, to, cc = '', subject, text = '', html = null, msg
   return m;
 }
 
-let env, store, calls, resendOk, aiVerdicts, aboutVerdicts, refuseScopes, rampTxns, rampUsers, photoReads;
+let env, store, calls, resendOk, aiVerdicts, aboutVerdicts, refuseScopes, rampTxns, rampUsers, photoReads, gmailFilters;
 const realFetch = globalThis.fetch;
 
 beforeEach(async () => {
@@ -63,6 +64,7 @@ beforeEach(async () => {
   aiVerdicts = {};
   photoReads = {};
   refuseScopes = new Set();
+  gmailFilters = new Map();
   rampTxns = [];
   rampUsers = [{ id: 'u-pat', email: PAT }, { id: 'u-sam', email: SAM }, { id: 'u-samstore', email: 'sam@store.example' }];
   forgetRampToken();
@@ -138,7 +140,23 @@ beforeEach(async () => {
         const { box: _b, _files, _words, ...clean } = msg;
         return Response.json(u.searchParams.get('format') === 'metadata' ? { ...clean, payload: { headers: clean.payload.headers } } : clean);
       }
-      if ((m = /^\/messages\/(\w+)\/modify$/.exec(path))) return Response.json({ id: m[1], ...JSON.parse(init.body) });
+      if ((m = /^\/messages\/(\w+)\/modify$/.exec(path))) {
+        // Labels move as Gmail moves them (an email deleted by hand is gone)
+        const msg = mine.find((x) => x.id === m[1]);
+        if (!msg) return Response.json({ error: { message: 'Requested entity was not found.' } }, { status: 404 });
+        const { addLabelIds = [], removeLabelIds = [] } = JSON.parse(init.body);
+        msg.labelIds = [...new Set([...msg.labelIds.filter((l) => !removeLabelIds.includes(l)), ...addLabelIds])];
+        return Response.json({ id: m[1], labelIds: msg.labelIds });
+      }
+      // Each inbox's own Gmail filters
+      if (path === '/settings/filters') {
+        const have = gmailFilters.get(box) || [];
+        if ((init.method || 'GET') === 'GET') return Response.json(have.length ? { filter: have } : {});
+        const f = { id: `flt-${box.split('@')[0]}-${have.length + 1}`, ...JSON.parse(init.body) };
+        calls.push({ kind: 'filter', box, filter: f });
+        gmailFilters.set(box, [...have, f]);
+        return Response.json(f);
+      }
       if ((m = /^\/threads\/(\w+)$/.exec(path))) return Response.json({ id: m[1], messages: mine.filter((x) => x.threadId === m[1]).map((x) => ({ id: x.id, payload: { headers: x.payload.headers } })) });
     }
     if (url.startsWith('https://api.ramp.com/developer/v1/')) {
@@ -728,7 +746,7 @@ test('a Ramp card charge gets its receipt in Ramp, its receipt still goes to the
   assert.equal((await byId(again.id))[0].state, 'duplicate');
   assert.equal((await cardRow('ramp:tx1')).state, 'attached');
   assert.equal((await cardRow('ramp:tx2')).state, 'had');
-  assert.deepEqual(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST').map((c) => c.path), [order, again, lumber].map((m) => `/messages/${m.id}/modify`), 'the card charges’ emails leave the inbox; the plan on no card stays');
+  assert.deepEqual(calls.filter((c) => c.kind === 'gmail' && c.method === 'POST' && c.path.endsWith('/modify')).map((c) => c.path), [order, again, lumber].map((m) => `/messages/${m.id}/modify`), 'the card charges’ emails leave the inbox; the plan on no card stays');
   assert.equal((await byId(plan.id))[0].state, 'sent');
 });
 
@@ -1057,4 +1075,100 @@ test('a card charge’s own look never takes the site’s own forward to ap@ for
   await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
   assert.equal((await cardRow('mercury:s1')).state, 'looking');
   assert.equal(of('mercury').length, 0);
+});
+
+// ─── Mercury's "needs a receipt" emails (_mercury-reminders.js) ─────
+
+const SETTINGS_SCOPE = 'https://www.googleapis.com/auth/gmail.settings.basic';
+const MERCURY_FROM = 'Mercury <hello@mercury.com>';
+const reminderRow = (m) => env.DB.prepare('SELECT state, charge, in_inbox, ours FROM receipt_reminders WHERE mailbox = ? AND id = ?').bind(m.box, m.id).first();
+const inInbox = (m) => m.labelIds.includes('INBOX');
+
+test('Mercury’s reminder: the amount and store from its subject, and only Mercury’s with those words count', () => {
+  assert.deepEqual(reminderCharge('$567.73 at SDZ Supply needs a receipt'), { cents: 56773, vendor: 'SDZ Supply' });
+  assert.deepEqual(reminderCharge('$1,204.10 at The Home Depot #0121 needs a receipt'), { cents: 120410, vendor: 'The Home Depot #0121' });
+  assert.deepEqual(reminderCharge('Your card needs a receipt'), { cents: null, vendor: null });
+  assert.equal(isReminder(MERCURY_FROM, '$567.73 at SDZ Supply needs a receipt'), true);
+  assert.equal(isReminder('Mercury <hello@mercury.com>', 'Your statement is ready'), false);
+  assert.equal(isReminder('Store <hi@store.example>', 'Your order needs a receipt'), false);
+});
+
+test('Mercury’s “needs a receipt” email: every inbox gets the filter; it stays out of the inbox once the receipt is on, goes back in after a day with none, and comes out when one is added by hand', async () => {
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
+  await maybeSweepMail(env, { now: T0, force: true });
+  assert.equal(of('filter').length, 0, 'nothing while it only watches');
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec(MERCURY_CHARGES);
+  await mercuryCharge('sdz', 56773, 'SDZ Supply', at);
+  await mercuryCharge('hh', 12000, 'Hardware Hut', at + 2 * MIN);
+  // Mercury sends it the second the card is used; the filter keeps it out of the inbox
+  const sdzAsk = mail({ box: PAT, at, from: MERCURY_FROM, to: PAT, subject: '$567.73 at SDZ Supply needs a receipt', text: 'Card transactions of $75 or more require a receipt. $567.73', labels: ['UNREAD', 'CATEGORY_UPDATES'] });
+  const order = mail({ box: PAT, at: at + MIN, from: 'SDZ Supply Co <orders@sdz.example>', to: PAT, subject: 'Your SDZ Supply Co Order Confirmation (#178559)', text: 'Order total $567.73' });
+  const hhAsk = mail({ box: PAT, at: at + 2 * MIN, from: MERCURY_FROM, to: PAT, subject: '$120.00 at Hardware Hut needs a receipt', text: 'Card transactions of $75 or more require a receipt. $120.00', labels: ['UNREAD', 'CATEGORY_UPDATES'] });
+  calls.length = 0;
+  const st = await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
+
+  assert.deepEqual(of('filter').map((c) => [c.box, c.filter.criteria, c.filter.action]), [PAT, SAM].map((b) => [b, { from: 'mercury.com', subject: 'needs a receipt' }, { removeLabelIds: ['INBOX'] }]), 'every inbox, once');
+  assert.equal(st.error, null);
+  assert.equal((await cardRow('mercury:sdz')).msg_id, `${PAT}:${order.id}`, 'Mercury’s own email is never the receipt');
+  assert.deepEqual(await reminderRow(sdzAsk), { state: 'cleared', charge: 'mercury:sdz', in_inbox: 0, ours: 1 });
+  assert.deepEqual(await reminderRow(hhAsk), { state: 'waiting', charge: null, in_inbox: 0, ours: 1 });
+  assert.equal((await byId(sdzAsk.id)).length, 0, 'not sorted as a receipt or a family email');
+  assert.ok(!inInbox(sdzAsk) && !inInbox(hhAsk));
+
+  // A day and no receipt for Hardware Hut: back in the inbox
+  calls.length = 0;
+  await maybeSweepMail(env, { now: at + 2 * MIN + DAY + MIN, force: true });
+  assert.deepEqual(await reminderRow(hhAsk), { state: 'shown', charge: 'mercury:hh', in_inbox: 1, ours: 1 });
+  assert.ok(inInbox(hhAsk));
+  assert.ok(!inInbox(sdzAsk), 'the one with its receipt stays out');
+  assert.equal(of('filter').length, 0, 'each inbox’s filter is made once');
+
+  // Its receipt added by hand in Mercury: out again
+  await env.DB.prepare("UPDATE spend_charges SET has_receipt = 1 WHERE id = 'hh'").run();
+  await maybeSweepMail(env, { now: at + 2 * DAY, force: true });
+  assert.equal((await cardRow('mercury:hh')).state, 'had');
+  assert.deepEqual(await reminderRow(hhAsk), { state: 'cleared', charge: 'mercury:hh', in_inbox: 0, ours: 1 });
+  assert.ok(!inInbox(hhAsk));
+  assert.deepEqual((await mailSweepStatus(env, { now: at + 2 * DAY })).reminders, { filters: 2, cleared: 2 });
+});
+
+test('Google not letting the site make filters yet: Automations says what to add and the site moves the email out itself; one a person archived stays archived; filters once Google allows, never twice', async () => {
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec(MERCURY_CHARGES);
+  // From before: Pat archived it, and its charge never got a receipt (found by the inbox's first look)
+  await mercuryCharge('old', 9900, 'Paint Place', at - 5 * DAY);
+  const oldAsk = mail({ box: PAT, at: at - 5 * DAY, from: MERCURY_FROM, to: PAT, subject: '$99.00 at Paint Place needs a receipt', labels: [] });
+  // No filter in Pat's Gmail yet: this one lands in the inbox
+  await mercuryCharge('lumber', 25000, 'Lumber Yard', at);
+  const newAsk = mail({ box: PAT, at, from: MERCURY_FROM, to: PAT, subject: '$250.00 at Lumber Yard needs a receipt', labels: ['UNREAD', 'INBOX'] });
+  // Sam made one like it by hand
+  gmailFilters.set(SAM, [{ id: 'sams', criteria: { from: 'hello@mercury.com', subject: 'Needs a receipt' }, action: { removeLabelIds: ['INBOX'], addLabelIds: ['Label_9'] } }]);
+  refuseScopes.add(SETTINGS_SCOPE);
+  calls.length = 0;
+  const st = await maybeSweepMail(env, { now: at + 3 * MIN, force: true });
+
+  assert.match(st.error, /Domain-wide delegation, add https:\/\/www\.googleapis\.com\/auth\/gmail\.settings\.basic/);
+  assert.equal(of('filter').length, 0);
+  assert.ok(!inInbox(newAsk), 'the site took it out of the inbox itself');
+  assert.deepEqual(await reminderRow(newAsk), { state: 'waiting', charge: 'mercury:lumber', in_inbox: 0, ours: 1 });
+  assert.deepEqual(await reminderRow(oldAsk), { state: 'shown', charge: 'mercury:old', in_inbox: 0, ours: 0 });
+  assert.deepEqual(oldAsk.labelIds, [], 'archived by Pat: left where Pat put it');
+
+  // Google allows it: asked again within the hour, not every sweep
+  refuseScopes.clear();
+  calls.length = 0;
+  assert.match((await maybeSweepMail(env, { now: at + 30 * MIN, force: true })).error, /gmail\.settings\.basic/);
+  assert.equal(of('filter').length, 0);
+  const st3 = await maybeSweepMail(env, { now: at + 65 * MIN, force: true });
+  assert.deepEqual(of('filter').map((c) => c.box), [PAT], 'Sam’s own filter already does it');
+  assert.equal(st3.error, null);
+  assert.equal((await mailSweepStatus(env, { now: at + 65 * MIN })).reminders.filters, 2);
+
+  // Deleted by hand before its day was up: nothing to put back
+  store.splice(store.indexOf(newAsk), 1);
+  await maybeSweepMail(env, { now: at + DAY + 5 * MIN, force: true });
+  assert.equal((await reminderRow(newAsk)).state, 'gone');
 });
