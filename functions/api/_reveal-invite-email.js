@@ -32,7 +32,8 @@ export const SIDE = 'padding-left:8%;padding-right:8%;mso-padding-left-alt:48px;
 export const TEAM_PICTURE = `${CF}/emails/soard-team-plushie/w=1008,q=85`;
 
 // trim: many logo files are mostly white space, and would sit tiny in their cards
-export const LOGO_TRANSFORM = 'trim=border,w=400,h=160,fit=pad,background=white,q=88';
+// 2:1, not wider: a square logo (Real Floors, Sherwin-Williams) fills more of its card, and a wide one is no smaller
+export const LOGO_TRANSFORM = 'trim=border,w=360,h=180,fit=pad,background=white,q=88';
 export const HERO_TRANSFORM = 'w=1200,h=760,fit=cover,gravity=face,q=85';
 // A picture that won't load fails at every size, so the checks at HERO_TRANSFORM answer for this crop too
 export const COVER_TRANSFORM = 'w=1200,h=880,fit=cover,gravity=face,q=85';
@@ -224,8 +225,8 @@ export function stripHtml(html) {
 export const twoKids = (name) => /\s(&|and)\s/.test(String(name || ''));
 
 /** Typographic apostrophes, so names and copy read like the rest of the email */
-/** Text a family or staff typed, made to read like the rest of the email: curly quotes, and a comma where they typed an em dash */
-export const tidy = (s) => curly(s).replace(/\s*\u2014\s*/g, ', ').replace(/,\s*,/g, ',');
+/** Text a family or staff typed, made to read like the rest of the email: curly quotes, and a spaced en dash where they typed an em dash (a comma there would make two sentences one) */
+export const tidy = (s) => curly(s).replace(/\s*\u2014\s*/g, ' \u2013 ');
 
 export const curly = (s) => String(s || '')
   .replace(/(^|[\s(\[{“‘])"/g, '$1“').replace(/"/g, '”')
@@ -298,7 +299,7 @@ export function pinCells(html) {
 
 /** The email around its rows: the width, the phone rules and the hidden preview line. Fluid, so a phone that drops the style block still fits it; Outlook's ghost table holds the width there. */
 export function emailFrame(preview, rows) {
-  return pinCells(`<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(preview)}&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;&nbsp;&zwnj;</div>
+  return pinCells(`<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(preview)}${'&#847;&zwnj;&nbsp;'.repeat(90)}</div>
 <style>
   @media screen and (max-width:600px){
     .ec{width:100%!important}
@@ -489,7 +490,7 @@ export function photoStrip(kid, leadSrc, brokenLogos = new Set()) {
 }
 
 /** The partner logos on their dark band. '' with none to show. */
-export function partnerCards(kid, brokenLogos = new Set(), lead = 'Made possible by') {
+export function partnerCards(kid, brokenLogos = new Set()) {
   // One card per partner, even when a kid page lists a logo twice
   const seenLogo = new Set();
   const logos = (kid.partnerLogos || []).filter((l) => {
@@ -504,28 +505,31 @@ export function partnerCards(kid, brokenLogos = new Set(), lead = 'Made possible
     return l.label ? [{ ...l, text: true }] : [];
   });
   // Every tile the same height, whatever the logo's shape; a short last row sits centered
-  const tile = (inner) => `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr><td align="center" valign="middle" height="66" bgcolor="#FFFFFF" class="lt" style="height:66px;background:#FFFFFF;border-radius:10px;padding:0 8px;text-align:center;">${inner}</td></tr></table>`;
+  const tile = (inner) => `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="table-layout:fixed;"><tr><td align="center" valign="middle" height="66" bgcolor="#FFFFFF" class="lt" style="height:66px;background:#FFFFFF;border-radius:10px;padding:0 8px;text-align:center;">${inner}</td></tr></table>`;
   const logoRows = [];
   // Two to a row: three left each logo about 65px wide on a phone, too small to read a wordmark
   for (let i = 0; i < logos.length; i += 2) {
     const row = logos.slice(i, i + 2);
-    const cells = row.map((l) => `<td width="${(100 / row.length).toFixed(2)}%" valign="middle" class="lc" style="padding:4px;">${l.text
-      // A logo that doesn't load reads as the partner's name instead of a broken picture, small enough to fit its card
-      ? tile(`<span style="display:block;font-family:${SANS};font-size:13px;font-weight:700;line-height:1.25;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(l.label)}</span>`)
-      : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="140" alt="${escapeHtml(l.label || 'Partner logo')}" class="fl" style="display:block;width:100%;max-width:130px;height:auto;margin:0 auto;" />`)}</td>`);
+    // The gap is only between the cards, so the grid's edges line up with the text above it.
+    // No phone class on the logo: .fl's max-width:100% would lift its 116px cap and push it out of its card.
+    const pad = (k) => (row.length === 1 ? '4px 0' : k === 0 ? '4px 4px 4px 0' : '4px 0 4px 4px');
+    const cells = row.map((l, k) => `<td width="${(100 / row.length).toFixed(2)}%" valign="middle" class="lc" style="padding:${pad(k)};">${l.text
+      // A logo that doesn't load reads as the partner's name instead of a broken picture, at a size its longest
+      // word fits on a phone's card (about 92px of text, bold capitals running wide): 13px for most names, smaller for "Interdenominational"
+      ? tile(`<span style="display:block;font-family:${SANS};font-size:${Math.max(9, Math.min(13, Math.floor(92 / (0.62 * Math.max(...l.label.split(/\s+/).map((w) => w.length))))))}px;font-weight:700;line-height:1.25;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(l.label)}</span>`)
+      : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="116" alt="${escapeHtml(l.label || 'Partner logo')}" style="display:block;width:100%;max-width:116px;height:auto;margin:0 auto;" />`)}</td>`);
     // Fixed layout keeps the columns equal, whatever is in them
     logoRows.push(`<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${row.length === 1 ? '50%' : '100%'}" align="center" style="margin:0 auto;table-layout:fixed;"><tr>${cells.join('')}</tr></table>`);
   }
   const one = logos.length === 1;
-  // "by these" and "incredible partners." each stay together, so no line holds one word alone:
-  // a phone reads "Made possible / by these / incredible partners."
-  const heading = headlineFit([`by ${one ? 'this' : 'these'}`, `incredible ${one ? 'partner.' : 'partners.'}`], 22, { phones: [[20, 'h2m']] });
+  // Two even lines on any phone ("Thank you to our / incredible partners."), one on a desktop
+  const heading = headlineFit(['Thank', 'you', 'to', 'our', `incredible ${one ? 'partner.' : 'partners.'}`], 22, { phones: [[20, 'h2m']] });
   return logoRows.length ? `
   <tr><td style="background:${CR};padding:36px 0 0;">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
       <td style="padding:40px 0 34px;${SIDE}" class="pd">
         ${label(one ? 'Our partner' : 'Our partners', Y, '#C9CACC')}
-        <h2 class="${heading.phone}" style="margin:18px 0 20px;font-family:${SERIF};font-size:${heading.size}px;font-weight:700;line-height:1.3;color:#FFFFFF;">${escapeHtml(lead)}&nbsp;${one ? 'this' : 'these'} <em style="font-style:italic;color:${Y};">incredible</em>&nbsp;${one ? 'partner' : 'partners'}.</h2>
+        <h2 class="${heading.phone}" style="margin:18px 0 20px;font-family:${SERIF};font-size:${heading.size}px;font-weight:700;line-height:1.3;color:#FFFFFF;">Thank you to our <em style="font-style:italic;color:${Y};">incredible</em>&nbsp;${one ? 'partner' : 'partners'}.</h2>
         ${logoRows.join('\n        ')}
       </td>
     </tr></table>
@@ -614,7 +618,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     ${photos.length >= 2 ? photoPair(photos, name, 0) : ''}
     ${photoNotes(kid, textLink(`Read ${name}’s story →`, kidUrl))}
   </td></tr>
-  ${partnerCards(kid, brokenLogos, 'A reveal day made possible by') || `<tr><td bgcolor="${CR}" style="background:${CR};height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>`}
+  ${partnerCards(kid, brokenLogos) || `<tr><td bgcolor="${CR}" style="background:${CR};height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>`}
   ${signOff('Hope to see you there.', teamPicture)}
   ${emailFooter(site)}`);
 
@@ -624,13 +628,13 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     opening,
     '',
     when && `When: ${when}`,
-    `Where: ${name}’s Home${address ? `, ${tidy(cleanAddress(address))}` : ''}`,
+    `Where: ${name}’s Home${address ? `, ${tidy(cleanAddress(address))}` : ' (address to be confirmed)'}`,
     roomText && `${notARoom(roomLines) ? 'Project' : several ? 'Rooms' : 'Room'}: ${roomText}`,
     '',
     arrive,
     ...noteLines.map(tidy),
     '',
-    slug && `Add to your calendar: ${cal.apple}`,
+    slug && when && `Add to your calendar: ${cal.apple}`,
     `Watch it live: ${liveUrl}`,
     `${name}’s story: ${kidUrl}`,
     '',

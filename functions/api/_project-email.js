@@ -12,7 +12,7 @@
  */
 
 import {
-  SITE_URL, HERO_TRANSFORM, SIDE, BRAND, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
+  SITE_URL, HERO_TRANSFORM, PHOTO_TRANSFORM, SIDE, BRAND, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
   emailFrame, emailHeader, emailFooter, signOff, partnerCards, button, textLink, cover, lede, bodyPhotos, photoImg, photoPair, photoNotes,
   listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, notARoom, tidy,
 } from './_reveal-invite-email.js';
@@ -56,6 +56,8 @@ function storyOf(kid) {
 
 /** A quote as the page has it, without the quote marks it was typed with */
 const bareQuote = (q) => tidy(String(q || '').trim().replace(/^["“”']+|["“”']+$/g, ''));
+/** A quote typed with who said it ("…for," said Elvia.) already has its marks: it's shown as typed */
+const saidQuote = (q) => /["“”]/.test(String(q || '').trim().replace(/^["“”']+|["“”']+$/g, ''));
 
 /** The first photo that will load, for the top of the email */
 function leadOf(kid, broken) {
@@ -74,15 +76,22 @@ export const beforeAfterUrls = (kid) => (kid?.beforeAfterPhotos || []).filter((p
 
 const gap = (px) => `<tr><td bgcolor="${CR}" style="background:${CR};height:${px}px;line-height:${px}px;font-size:0;">&nbsp;</td></tr>`;
 
-/** Facts in a ruled row, in the sans font: Georgia's old-style numerals turn "11" into two small strokes */
+/**
+ * Facts in a ruled row, in the sans font: Georgia's old-style numerals turn "11" into two small strokes.
+ * Side by side while they'd fit a phone; a long diagnosis beside several ages goes on a row of its own,
+ * so no word is ever squeezed in two.
+ */
 function factsRow(facts) {
-  return `<tr><td bgcolor="${CR}" style="background:${CR};padding:32px 0 0;${SIDE}" class="pd">
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
-      ${facts.map((f, i) => `<td valign="top" style="padding:16px ${i === facts.length - 1 ? 0 : 28}px 16px 0;border-top:1px solid ${BD};border-bottom:1px solid ${BD};${i === facts.length - 1 ? '' : 'width:1%;white-space:nowrap;'}">
+  const longest = (t) => Math.max(...String(t).split(/\s+/).map((w) => w.length));
+  const stack = facts.length > 1 && facts[0].main.length + longest(facts[facts.length - 1].main) > 22;
+  const cell = (f, i, last) => `<td valign="top" style="padding:16px ${last || stack ? 0 : 28}px 16px 0;border-top:1px solid ${BD};${stack && !last ? '' : `border-bottom:1px solid ${BD};`}${last || stack ? '' : 'width:1%;white-space:nowrap;'}">
         <div style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TM};">${escapeHtml(f.label)}</div>
-        <div style="margin-top:6px;font-family:${SANS};font-size:16px;font-weight:600;line-height:1.35;color:${D};">${escapeHtml(f.main)}</div>
-      </td>`).join('')}
-    </tr></table>
+        <div style="margin-top:6px;font-family:${SANS};font-size:16px;font-weight:600;line-height:1.35;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(f.main)}</div>
+      </td>`;
+  const rows = stack ? facts.map((f, i) => `<tr>${cell(f, i, i === facts.length - 1)}</tr>`).join('')
+    : `<tr>${facts.map((f, i) => cell(f, i, i === facts.length - 1)).join('')}</tr>`;
+  return `<tr><td bgcolor="${CR}" style="background:${CR};padding:32px 0 0;${SIDE}" class="pd">
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">${rows}</table>
   </td></tr>`;
 }
 
@@ -168,13 +177,16 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   const planWhat = space ? space.lower : several ? 'dream rooms' : 'dream room';
   const planWords = planWhat.split(' ');
   const planRuns = planWords.length > 1 ? [...planWords.slice(0, -2), planWords.slice(-2).join(' ')] : planWords;
-  const planFit = fitName({ name, after: '’s', runs: planRuns, max: 26, min: 22, phones: [[26, 'h2b']] });
+  // One line when "Dylan’s dream room" fits at 22px or more, so the name never sits alone above it
+  const planWhole = fitName({ name, after: `’s ${planWhat}`, afterHtml: `’s ${escapeHtml(planWhat).replace(/ /g, '&nbsp;')}`, max: 26, min: 22, phones: [[26, 'h2b']] });
+  const planFit = planWhole.whole && planWhole.size >= 22 ? planWhole : fitName({ name, after: '’s', runs: planRuns, max: 26, min: 22, phones: [[26, 'h2b']] });
+  const planHtml = planFit === planWhole ? planWhole.html : `${planFit.html} ${noWidow(escapeHtml(planWhat))}`;
   // The ask names the kid while it can at 26px or larger ("Help us build Remi / & Nico’s dream."); a long single name can't, so it's "this dream"
   const askPhones = [[26, 'h2b']];
-  const askName = own
-    ? fitName({ name, after: '’s dream.', afterHtml: '’s&nbsp;<em style="font-style:italic;">dream</em>.', runs: ['Help', 'us', 'build'], max: 30, min: 26, phones: askPhones })
-    : fitName({ name, after: '’s.', runs: ['Help', 'us', 'build', 'dreams', 'like'], max: 30, min: 26, phones: askPhones });
-  const named = askName.size >= 26;
+  // Without the kid's own fundraiser the gift goes to the next family too: "Help us build more dreams."
+  // ("dreams like Josué’s." can't stay one phrase on a phone, and the name would sit alone)
+  const askName = fitName({ name, after: '’s dream.', afterHtml: '’s&nbsp;<em style="font-style:italic;">dream</em>.', runs: ['Help', 'us', 'build'], max: 30, min: 26, phones: askPhones });
+  const named = own && askName.size >= 26;
   const askHeadline = own
     ? (named ? `Help us build ${askName.html}` : 'Help us build this&nbsp;<em style="font-style:italic;">dream</em>.')
     : (named ? `Help us build <em style="font-style:italic;">dreams</em> like ${askName.html}` : 'Help us build more&nbsp;<em style="font-style:italic;">dreams</em>.');
@@ -189,7 +201,7 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   ${photos.length >= 2 ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:32px 0 0;${SIDE}" class="pd">${photoPair(photos, name, 0)}${photoNotes(kid)}</td></tr>` : ''}
   ${rooms.length ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:44px 0 0;${SIDE}" class="pd">
     ${label('The plan')}
-    <h2 class="${planFit.phone}" style="margin:16px 0 10px;font-family:${SERIF};font-size:${planFit.size}px;font-weight:700;line-height:1.25;color:${D};">${planFit.html} ${noWidow(escapeHtml(planWhat))}</h2>
+    <h2 class="${planFit.phone}" style="margin:16px 0 10px;font-family:${SERIF};font-size:${planFit.size}px;font-weight:700;line-height:1.25;color:${D};">${planHtml}</h2>
     ${roomList(roomCounts(kid))}
   </td></tr>` : ''}
   ${gap(40)}
@@ -254,7 +266,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const subject = finished;
   // The preview names only what the email shows
   const partners = partnerCards(kid, brokenLogos);
-  const shown = [kidPhotos(kid).length && 'the photos', video && 'the video', partners && 'the partners who made it possible'].filter(Boolean);
+  const shown = [(lead || galleryPicks(kid).some((ph) => !brokenLogos.has(cfImg(ph.url, PHOTO_TRANSFORM)))) && 'the photos', video && 'the video', partners && 'the partners who made it possible'].filter(Boolean);
   const preview = shown.length ? `See ${name}’s transformation: ${listJoin(shown)}.` : `See ${name}’s transformation.`;
 
   const pair = pairOf(kid, brokenLogos);
@@ -289,7 +301,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   ${quote ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:40px 0 0;${SIDE}" class="pd">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr>
       <td width="4" bgcolor="${Y}" style="width:4px;background:${Y};border-radius:2px;font-size:0;">&nbsp;</td>
-      <td style="padding:4px 0 4px 22px;font-family:${SERIF};font-size:20px;font-style:italic;line-height:1.55;color:${D};">“${escapeHtml(quote)}”</td>
+      <td style="padding:4px 0 4px 22px;font-family:${SERIF};font-size:20px;font-style:italic;line-height:1.55;color:${D};">${saidQuote(kid.quote) ? noWidow(escapeHtml(tidy(String(kid.quote).trim()))) : `“${noWidow(escapeHtml(quote))}”`}</td>
     </tr></table>
   </td></tr>` : ''}
   ${partners || gap(40)}

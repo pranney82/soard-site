@@ -1166,7 +1166,7 @@ test('Save it to your calendar is the main action, and See the story sits with t
 
 test('logos are trimmed of their blank margins, so they fill their cards', () => {
   const { html } = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
-  assert.match(html, /partners\/msi\/trim=border,w=400/);
+  assert.match(html, /partners\/msi\/trim=border,w=360/);
 });
 
 test('a kid’s photo that won’t load gives way to the next, the hero too', async () => {
