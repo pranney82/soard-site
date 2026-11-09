@@ -52,7 +52,7 @@ function mail({ box, at, from, to, cc = '', subject, text = '', html = null, msg
   return m;
 }
 
-let env, store, calls, resendOk, aiVerdicts, aboutVerdicts, refuseScopes, rampTxns, rampUsers;
+let env, store, calls, resendOk, aiVerdicts, aboutVerdicts, refuseScopes, rampTxns, rampUsers, photoReads;
 const realFetch = globalThis.fetch;
 
 beforeEach(async () => {
@@ -61,6 +61,7 @@ beforeEach(async () => {
   calls = [];
   resendOk = true;
   aiVerdicts = {};
+  photoReads = {};
   refuseScopes = new Set();
   rampTxns = [];
   rampUsers = [{ id: 'u-pat', email: PAT }, { id: 'u-sam', email: SAM }, { id: 'u-samstore', email: 'sam@store.example' }];
@@ -68,7 +69,16 @@ beforeEach(async () => {
   aboutVerdicts = {};
   env = {
     DB: await createD1(), GOOGLE_CALENDAR_KEY: SERVICE_ACCOUNT, RESEND_API_KEY: 're_test', JOBTREAD_GRANT_KEY: 'grant-main',
-    AI: { run: async (_model, { messages }) => {
+    AI: { run: async (model, { messages }) => {
+      // A photo read (an email to ap@): photoReads by words in the picture, per reader when it's a function
+      if (Array.isArray(messages[1].content)) {
+        const url = messages[1].content.find((x) => x.type === 'image_url').image_url.url;
+        const said = Buffer.from(url.split(',')[1], 'base64').toString('latin1');
+        const key = Object.keys(photoReads).find((k) => said.includes(k));
+        calls.push({ kind: 'photo', model, key });
+        const r = typeof photoReads[key] === 'function' ? photoReads[key](model) : photoReads[key];
+        return { response: r || { type: 'not_receipt', vendor: '', total: '', date: '', reason: 'a room' } };
+      }
       const subject = /Subject: (.*)/.exec(messages[1].content)?.[1] || '';
       // Is it about the kid or the project? Yes unless the test says otherwise
       if (/belongs on that record/.test(messages[0].content)) {
@@ -109,6 +119,8 @@ beforeEach(async () => {
         const said = [...q.matchAll(/"([^"]+)"/g)].map((x) => x[1]);
         const hits = mine.filter((m) => Number(m.internalDate) > after && Number(m.internalDate) < before)
           .filter((m) => !/(^|\s)-in:drafts\b/.test(q) || !m.labelIds.includes('DRAFT'))
+          // Spam only when the search names its group (list:) and the email is that group's copy
+          .filter((m) => !m.labelIds.includes('SPAM') || [...q.matchAll(/list:(\S+?)(?=\)|\s|$)/g)].some((x) => m.payload.headers.some((h) => h.name === 'List-Id' && h.value.includes(`<${x[1].replace('@', '.')}>`))))
           .filter((m) => !who.length || who.some((e) => m.payload.headers.some((h) => ['From', 'To', 'Cc'].includes(h.name) && h.value.toLowerCase().includes(e))))
           .filter((m) => !said.length || said.some((w) => m._words.includes(w)))
           .sort((a, b) => b.internalDate - a.internalDate);
@@ -896,4 +908,153 @@ test('a family email on two accounts: when the second fails, the try after it do
   await maybeSweepMail(env, { now: at + 16 * MIN, force: true });
   assert.equal((await row(m.id)).state, 'posted');
   assert.deepEqual(of('comment').map((c) => c.input.targetId).sort(), ['acctKim0002', 'acctRivera1'], 'one comment on each');
+});
+
+// ─── Sent to the receipt inbox (ap@) ────────────────────────────────
+
+const AP = 'ap@soardcharity.com', GRACIE = 'automation@soardcharity.com';
+const JPEG = (words) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 16, 74, 70, 73, 70, 0, 1]), Buffer.from(` ${words} `)]);
+const dayOf = (ms) => new Date(ms).toISOString().slice(0, 10);
+/** The inbox the ap@ group delivers to: an account of its own */
+const withGracie = () => env.DB.prepare("UPDATE staff_state SET data = ? WHERE key = 'directory'")
+  .bind(JSON.stringify({ ok: true, accounts: [...ACCOUNTS, { email: GRACIE, aliases: [], name: 'Agent Gracie', active: true, why: null }] })).run();
+/** The ap@ group's copy of an email, in Gracie's inbox */
+function toAp(o) {
+  const m = mail({ box: GRACIE, to: AP, text: '', subject: '', ...o });
+  m.payload.headers.push({ name: 'List-Id', value: '"Accounts Payable" <ap.soardcharity.com>' }, { name: 'Delivered-To', value: GRACIE });
+  return m;
+}
+const readRow = async (m) => env.DB.prepare('SELECT state, detail, charge_id, archived FROM mail_sweep WHERE mailbox = ? AND id = ?').bind(GRACIE, m.id).first();
+/** Two sweeps: the first reads Gracie's new mail, the next one reads the photos first thing */
+const twice = async (at) => { await maybeSweepMail(env, { now: at, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) }); return maybeSweepMail(env, { now: at + MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) }); };
+
+test('ap@: what the group passes on is read for its card charge, but never the site’s own forwards or Ramp’s replies', async () => {
+  const fam = await familyAddresses(env.DB);
+  const t = (o, extra = []) => { const m = toAp({ box: GRACIE, at: T0, ...o }); m.payload.headers.push(...extra); return triage(m, fam, { receiptInbox: AP }); };
+  assert.deepEqual(t({ from: '+14045550123@tmomail.net' }), { kind: 'ap' }, 'a photo texted from a phone');
+  assert.deepEqual(t({ from: `Sam Fox <${SAM}>`, subject: 'Fwd: Elements Invoice 2265598' }), { kind: 'ap' }, 'staff passing one on');
+  assert.deepEqual(t({ from: 'TKO Plumbing <billing@tko.example>', subject: 'Receipt from TKO PLUMBING SERVICES' }), { kind: 'ap' }, 'a store’s own');
+  assert.deepEqual(t({ from: 'Dan <dad@example.com>', subject: 'Paint receipt' }), { kind: 'ap' }, 'anyone’s, a family’s address too: ap@ is for money');
+  assert.equal(t({ from: 'Sunshine on a Ranney Day <sunshine@comms.sunshineonaranneyday.com>', subject: 'Receipt: Etsy $2.16 on 2026-11-06 (from Pat’s email)' }), null, 'the site’s own forward');
+  assert.equal(t({ from: "'Sunshine on a Ranney Day' via Accounts Payable <ap@soardcharity.com>", subject: 'Re: Receipt: All City Decor $215.00' }, [{ name: 'X-Original-From', value: 'Sunshine on a Ranney Day <sunshineonaranneyday@ap.ramp.com>' }]), null, 'Ramp’s bill inbox answering');
+  assert.equal(t({ from: 'Mercury <hello@mercury.com>', subject: 'Your receipt' }), null, 'a money tool');
+  assert.deepEqual(triage(mail({ box: GRACIE, at: T0, from: 'Shop <hi@shop.example>', to: AP, subject: 'Your receipt' }), fam, { receiptInbox: AP }), { kind: 'receipt' }, 'not the group’s copy: an inbox’s own mail, as before');
+  const own = mail({ box: AP, at: T0, from: 'Shop <hi@shop.example>', to: AP, subject: 'hello' });
+  own.payload.headers.push({ name: 'Delivered-To', value: AP });
+  assert.deepEqual(triage(own, fam, { receiptInbox: AP }), { kind: 'ap' }, 'a receipt inbox that is a mailbox of its own');
+});
+
+test('ap@: a receipt photo texted in, filed as spam, goes on the card charge it’s for, whoever’s card, and other spam stays unread', async () => {
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
+  await withGracie();
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec(MERCURY_CHARGES);
+  await mercuryCharge('ch10', 5877, 'The Home Depot', at - 2 * DAY, SAM);
+  await mercuryCharge('ch11', 5877, 'Ace Hardware', at - 6 * DAY, PAT);
+  const photo = toAp({ at, from: '+14045550123@tmomail.net', labels: ['SPAM', 'UNREAD'], files: [{ name: '815939890.jpg', type: 'image/jpeg', data: JPEG('home depot receipt'), size: 310000 }] });
+  const junk = mail({ box: GRACIE, at, from: 'Prize Desk <win@prize.example>', to: GRACIE, subject: 'Your receipt for $58.77 is waiting', labels: ['SPAM'] });
+  photoReads['home depot receipt'] = { type: 'receipt', vendor: 'THE HOME DEPOT #0123', total: '$58.77', date: dayOf(at - 2 * DAY), reason: 'a store receipt' };
+  calls.length = 0;
+  await twice(at + 5 * MIN);
+
+  assert.deepEqual(of('photo').map((c) => c.model).sort(), ['@cf/moonshotai/kimi-k2.6', '@cf/qwen/qwen3.8-27b'], 'both readers read it');
+  assert.deepEqual(of('mercury').map((c) => [c.method, c.path, c.attachmentType, c.file, c.type]), [['POST', '/transaction/ch10/attachments', 'receipt', '815939890.jpg', 'image/jpeg']], 'the photo itself, on Sam’s charge');
+  assert.deepEqual(await cardRow('mercury:ch10'), { state: 'attached', msg_id: `${GRACIE}:${photo.id}`, detail: 'put “815939890.jpg” (THE HOME DEPOT #0123 $58.77), texted to ap@, on the Mercury card charge (The Home Depot $58.77)' });
+  assert.equal((await cardRow('mercury:ch11')).state, 'looking', 'the same amount at another store the week before isn’t it');
+  assert.deepEqual(await readRow(photo), { state: 'card', detail: 'put “815939890.jpg” (THE HOME DEPOT #0123 $58.77), texted to ap@, on the Mercury card charge (The Home Depot $58.77)', charge_id: 'mercury:ch10', archived: 'yes' });
+  assert.equal(await readRow(junk), null, 'other spam is never read');
+  assert.ok(!calls.some((c) => c.kind === 'gmail' && c.path === `/messages/${junk.id}`), 'not even opened');
+  assert.equal(of('resend').length, 0, 'nothing is sent anywhere');
+});
+
+test('ap@: a receipt whose card charge comes in later waits for it, then goes on; one with none after 8 days says so', async () => {
+  Object.assign(env, { RAMP_CLIENT_ID: 'ramp-id', RAMP_CLIENT_SECRET: 'ramp-secret' });
+  await withGracie();
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  const lumber = toAp({ at, from: `Sam Fox <${SAM}>`, subject: 'receipt', files: [{ name: 'IMG_2041.jpg', type: 'image/jpeg', data: JPEG('lumber receipt'), size: 900000 }] });
+  const other = toAp({ at: at + MIN, from: `Sam Fox <${SAM}>`, subject: 'another', files: [{ name: 'IMG_2042.jpg', type: 'image/jpeg', data: JPEG('cafe receipt'), size: 900000 }] });
+  photoReads['lumber receipt'] = { type: 'receipt', vendor: 'Lumber Co', total: '22.99', date: dayOf(at), reason: 'a receipt' };
+  photoReads['cafe receipt'] = { type: 'receipt', vendor: 'Corner Cafe', total: '$14.10', date: dayOf(at), reason: 'a receipt' };
+  await twice(at + 5 * MIN);
+  await maybeSweepMail(env, { now: at + 7 * MIN, force: true });
+  assert.deepEqual(await readRow(lumber), { state: 'waiting', detail: '“IMG_2041.jpg” (Lumber Co $22.99): waiting for its card charge', charge_id: null, archived: null });
+
+  rampTxns.push({ id: 'tx9', state: 'CLEARED', entity_amount: { value: 2299, currency: 'USD' }, user_transaction_time: new Date(at - 60 * MIN).toISOString(), merchant_name: 'LUMBER CO', card_holder: { user_id: 'u-sam' }, receipts: [] });
+  calls.length = 0;
+  await maybeSweepMail(env, { now: at + 30 * MIN, force: true });
+  assert.deepEqual(of('ramp-receipt').map((c) => [c.transaction, c.user, c.file, c.key]), [['tx9', 'u-sam', 'IMG_2041.jpg', `ramp:tx9:${lumber.id}:0:0`]]);
+  assert.equal(of('photo').length, 0, 'read once, not again');
+  assert.equal((await cardRow('ramp:tx9')).state, 'attached');
+  assert.equal((await readRow(lumber)).state, 'card');
+
+  await maybeSweepMail(env, { now: at + 8 * DAY + 2 * MIN, force: true });
+  await maybeSweepMail(env, { now: at + 8 * DAY + 3 * MIN, force: true });
+  assert.deepEqual(await readRow(other), { state: 'skipped', detail: '“IMG_2042.jpg” (Corner Cafe $14.10): no card charge for it came in within 8 days', charge_id: null, archived: null });
+});
+
+test('ap@: only a sure match goes on: readers who disagree need the store’s name, two charges it fits as well wait, and a picture that isn’t a receipt is let go', async () => {
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
+  await withGracie();
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec(MERCURY_CHARGES);
+  await mercuryCharge('p1', 5877, 'Paint Depot', at - DAY, PAT);
+  await mercuryCharge('p2', 4410, 'Studio Supply', at - DAY, PAT);
+  await mercuryCharge('p3', 2500, 'Gas Station', at - DAY, PAT);
+  await mercuryCharge('p4', 2500, 'Bakery', at - DAY, SAM);
+  const split = (a, b) => (model) => ({ ...a, ...(model.includes('qwen') ? b : {}) });
+  photoReads.paint = split({ type: 'receipt', vendor: 'PAINT DEPOT', total: '$58.77', date: '', reason: 'a receipt' }, { total: '$58.11' });
+  photoReads.smudged = split({ type: 'receipt', vendor: '', total: '$44.10', date: '', reason: 'a receipt' }, { total: '$44.70' });
+  photoReads.twenty = { type: 'receipt', vendor: '', total: '$25.00', date: dayOf(at - DAY), reason: 'a receipt' };
+  photoReads.room = { type: 'not_receipt', vendor: '', total: '', date: '', reason: 'a photo of a bedroom' };
+  const m = (name, words) => toAp({ at, from: '+14045550123@tmomail.net', files: [{ name, type: 'image/jpeg', data: JPEG(words), size: 200000 }] });
+  const paint = m('a.jpg', 'paint'), smudged = m('b.jpg', 'smudged'), twenty = m('c.jpg', 'twenty'), room = m('d.jpg', 'room');
+  const gif = toAp({ at, from: '+14045550123@tmomail.net', files: [{ name: 'e.gif', type: 'image/gif', data: Buffer.from('GIF89a receipt'), size: 2000 }] });
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
+  for (let i = 1; i <= 5; i++) await maybeSweepMail(env, { now: at + (5 + i) * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
+
+  assert.equal((await cardRow('mercury:p1')).state, 'attached', 'the readers differ, but the store and one reading match');
+  assert.equal((await readRow(paint)).state, 'card');
+  assert.equal((await cardRow('mercury:p2')).state, 'looking', 'readers differing with no store to go by: nothing goes on');
+  assert.equal((await readRow(smudged)).state, 'waiting');
+  assert.deepEqual([(await cardRow('mercury:p3')).state, (await cardRow('mercury:p4')).state], ['looking', 'looking'], 'two charges it fits as well');
+  assert.match((await readRow(twenty)).detail, /^“c\.jpg” \(\$25\.00\): waiting for its card charge \(2 card charges could be it: the Mercury card charge \((Gas Station|Bakery) \$25\.00\), the Mercury card charge \((Gas Station|Bakery) \$25\.00\)\)$/);
+  assert.deepEqual(await readRow(room), { state: 'skipped', detail: '“d.jpg”: not a receipt (a photo of a bedroom)', charge_id: null, archived: null });
+  assert.deepEqual(await readRow(gif), { state: 'skipped', detail: '“e.gif”: a GIF picture the readers can’t open', charge_id: null, archived: null });
+  assert.equal(of('mercury').length, 1);
+});
+
+test('ap@: an email passed on with no photo is read from its words and printed onto its charge; a PDF invoice is read from its text', async () => {
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
+  env.AI.toMarkdown = async ({ blob }) => ({ format: 'text', data: await blob.text() });
+  await withGracie();
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec(MERCURY_CHARGES);
+  await mercuryCharge('f1', 32325, 'Pottery Barn Teen', at - 3 * DAY, PAT);
+  const fwd = toAp({ at, from: `Pat Lee <${PAT}>`, subject: 'Fwd: Your Pottery Barn Teen order', text: '---------- Forwarded message ---------\nOrder total: $323.25\nThanks for shopping' });
+  aiVerdicts['Fwd: Your Pottery Barn Teen order'] = { type: 'receipt', vendor: 'Pottery Barn Teen', total: '$323.25', date: dayOf(at - 3 * DAY), reason: 'an order' };
+  const invoice = toAp({ at, from: 'Copan Imports <billing@copan.example>', subject: 'Invoices # 0436', text: 'Attached is the invoice.', files: [{ name: 'INV-0436.pdf', type: 'application/pdf', data: 'Copan Imports invoice 0436. Amount due $1,950.00. Due Dec 1.', size: 52000 }] });
+  aiVerdicts['Invoices # 0436 (INV-0436.pdf)'] = { type: 'bill', vendor: 'Copan Imports', total: '$1,950.00', date: '', reason: 'an invoice' };
+  calls.length = 0;
+  for (let i = 0; i < 4; i++) await maybeSweepMail(env, { now: at + (5 + i) * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
+  assert.deepEqual(of('mercury').map((c) => [c.path, c.file]), [['/transaction/f1/attachments', `Pottery Barn Teen receipt ${dayOf(at)}.pdf`]], 'the email printed, as a card charge’s look does');
+  assert.equal((await readRow(fwd)).detail, 'put the email (Pottery Barn Teen $323.25), sent to ap@ by Pat, on the Mercury card charge (Pottery Barn Teen $323.25)');
+  assert.deepEqual(await readRow(invoice), { state: 'waiting', detail: '“INV-0436.pdf” (Copan Imports $1950.00): waiting for its card charge', charge_id: null, archived: null }, 'a bill on no card waits, then is let go');
+});
+
+test('a card charge’s own look never takes the site’s own forward to ap@ for its receipt', async () => {
+  Object.assign(env, { MERCURY_API_TOKEN: 'mercury-test', MERCURY_RELAY_KEY: 'relay-test' });
+  await withGracie();
+  await maybeSweepMail(env, { now: T0, force: true });
+  const at = T0 + WATCH_MS + MIN;
+  await env.DB.exec(MERCURY_CHARGES);
+  await mercuryCharge('s1', 216, 'MagicPixiePalette', at - 3 * 60 * MIN, PAT);
+  toAp({ at: at - 2 * 60 * MIN, from: 'Sunshine on a Ranney Day <sunshine@comms.sunshineonaranneyday.com>', subject: 'Receipt: MagicPixiePalette $2.16 on 2026-11-06 (from Pat’s email)', text: 'A receipt found in Pat Lee’s email. Amount: $2.16', files: [{ name: 'receipt.pdf', type: 'application/pdf', data: '%PDF magic', size: 30000 }] });
+  calls.length = 0;
+  await maybeSweepMail(env, { now: at + 5 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
+  assert.equal((await cardRow('mercury:s1')).state, 'looking');
+  assert.equal(of('mercury').length, 0);
 });

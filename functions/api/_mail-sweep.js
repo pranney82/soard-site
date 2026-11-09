@@ -14,6 +14,13 @@
  *     are no personal expenses in the business domains"). So do emails the receipt inbox already has
  *     (on the email, or anywhere in its conversation), mail between staff and
  *     the money tools' own notices.
+ *   - Anything sent to the receipt inbox (ap@): a photo texted from a phone,
+ *     a receipt passed on, a store's or a vendor's own email. The ap@ group
+ *     copies it to whichever SOARD inbox it delivers to, which the sweep reads
+ *     like any other (spam folder included, for this mail only). Each photo or
+ *     PDF, else the email itself, is read for its store, total and date and
+ *     goes on the SOARD card charge, Mercury's or Ramp's, with that exact
+ *     amount near that date, whoever's card it was (handleAp).
  *   - An email to or from a family (an address on an applicant's JobTread
  *     account) → a comment on that account that the family can't see and
  *     nobody is assigned to, so JobTread emails no one: who wrote to whom and
@@ -55,6 +62,9 @@ import { readConfig } from './_spend.js';
 import { DEFAULT_RECEIPT_INBOX, attachToCharge } from './_spend-receipts.js';
 import { rampCardCharges, rampUserEmails, rampTransaction, rampAttach, rampConfigured } from './_ramp.js';
 import { vendorLikeness } from './_spend-match.js';
+import { pdfText, scannedPages, answerOf } from './_vendor-read.js';
+import { READERS } from './_score-scans.js';
+import { imageKind } from './_image-types.js';
 import { FREE_MAIL } from './_kid-partners.js';
 import { viaGateway, aiCapped, AI_REST_MS, AI_WAIT_NOTE } from './_ai.js';
 import { emailShell, esc as escHtml } from './_email-shell.js';
@@ -120,7 +130,8 @@ const _ready = new WeakSet();
 // and every comment it made, root or reply, by account (Nov 4 2026), so a mistake can be found and removed
 // charge_id: the SOARD card charge a receipt was matched to, so one charge sends one receipt
 // archived: 'no' while a receipt put on its card charge waits to leave the inbox, 'yes' once it has
-const COLUMNS = ['file_keys TEXT', 'posted_ids TEXT', 'charge_id TEXT', 'archived TEXT'];
+// receipt_read: what an email to ap@ was read as, each photo or PDF on its own, so a later look for its card charge needn't read it again
+const COLUMNS = ['file_keys TEXT', 'posted_ids TEXT', 'charge_id TEXT', 'archived TEXT', 'receipt_read TEXT'];
 async function ensure(DB) {
   if (_ready.has(DB)) return;
   for (const s of SCHEMA) await DB.prepare(s).run();
@@ -144,6 +155,18 @@ const named = (s) => [...String(s || '').matchAll(/(?:"([^"]*)"|([^,<>"]*?))\s*<
 // A person's name to compare by: first and last word ("Holly K. Ranney" → "holly ranney")
 const nameKey = (name) => { const w = String(name || '').toLowerCase().replace(/[^a-z\s]/g, ' ').split(/\s+/).filter(Boolean); return w.length > 1 ? `${w[0]} ${w[w.length - 1]}` : ''; };
 const firstName = (name, email) => String(name || '').trim().split(/\s+/)[0] || String(email).split('@')[0];
+// The site's own email (its forwards to the receipt inbox come back through the ap@ group)
+const SITE_DOMAIN = addresses(EMAIL_FROM)[0]?.split('@')[1] || '';
+const isSiteMail = (e) => Boolean(SITE_DOMAIN) && normEmail(e).split('@')[1] === SITE_DOMAIN;
+
+/**
+ * Sent to the receipt inbox: a copy its Google group passed on (the group's List-Id, "<ap.soardcharity.com>"), or, were
+ * the receipt inbox a mailbox of its own, delivered to it. Whichever SOARD inbox it's in
+ */
+export function viaReceiptInbox(h, inbox) {
+  if (!inbox) return false;
+  return header(h, 'List-Id').toLowerCase().includes(`<${inbox.replace('@', '.')}>`) || addresses(header(h, 'Delivered-To')).includes(inbox);
+}
 const when = (ms) => new Date(ms).toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 
 // ─── Who's a family ─────────────────────────────────────────────────
@@ -237,7 +260,7 @@ export function senderOf(h) {
   return addresses(original).length ? original : from;
 }
 
-export function triage(msg, { byEmail, staffNames = new Set() }) {
+export function triage(msg, { byEmail, staffNames = new Set() }, { receiptInbox = null } = {}) {
   // A draft isn't an email yet: what's in it may change, and its sent copy comes in on its own (Peter, Nov 9 2026)
   if ((msg.labelIds || []).includes('DRAFT')) return null;
   const h = msg.payload?.headers;
@@ -252,6 +275,14 @@ export function triage(msg, { byEmail, staffNames = new Set() }) {
   const from = fromAll.filter((e) => !theirOwn.has(e));
   const people = [...new Set([...fromAll, ...addresses(header(h, 'To')), ...addresses(header(h, 'Cc')), ...addresses(header(h, 'Reply-To'))])].filter((e) => !theirOwn.has(e));
   if (CALENDAR.test(subject.trim()) || AUTO_REPLY.test(subject) || /auto-replied/i.test(header(h, 'Auto-Submitted'))) return null;
+  // Sent to the receipt inbox (ap@), by anyone: a photo texted from a phone, a receipt passed on, a store's or a vendor's
+  // own email. Read for the card charge it's for (handleAp). The site's own forwards there, and the money tools' replies
+  // (Ramp's bill inbox is on the ap@ group), aren't
+  if (viaReceiptInbox(h, receiptInbox)) {
+    const sender = addresses(senderOf(h));
+    if ((msg.labelIds || []).includes('SENT') || !sender.length || sender.some((e) => OWN_TOOLS.test(e) || isSiteMail(e))) return null;
+    return { kind: 'ap' };
+  }
   const tools = people.some((e) => OWN_TOOLS.test(e));
   const guestChatter = INVITE_REPLY.test(subject.trim()) && !from.every(isOurs) && !accountsOf(from, byEmail).length;
   // A mailing list's email (a family's business newsletter); SOARD's own groups (info@) mark theirs too, and those count
@@ -307,7 +338,8 @@ const RECEIPT_SCHEMA = {
     type: { type: 'string', enum: ['receipt', 'bill', 'not_receipt'] }, vendor: { type: 'string' }, total: { type: 'string' },
     date: { type: 'string' }, reason: { type: 'string' },
   },
-  required: ['type'],
+  // All of them: Workers AI's JSON mode leaves out whatever isn't required, and the store, total and date are read
+  required: ['type', 'vendor', 'total', 'date', 'reason'],
 };
 
 function readVerdict(out) {
@@ -655,15 +687,18 @@ async function handle(env, ctx, row) {
   const claim = await env.DB.prepare("UPDATE mail_sweep SET state = 'working', updated_at = ? WHERE mailbox = ? AND id = ? AND state = ?").bind(iso, row.mailbox, row.id, row.state).run();
   if (!claim.meta?.changes) return;
   try {
-    const twin = row.msgid ? await env.DB.prepare("SELECT mailbox FROM mail_sweep WHERE msgid = ? AND kind = ? AND state IN ('sent', 'posted', 'would', 'working') AND NOT (mailbox = ? AND id = ?) LIMIT 1").bind(row.msgid, row.kind, row.mailbox, row.id).first() : null;
+    // (an email to ap@ in two inboxes that get the group: the other copy settled it, or is waiting for its charge)
+    const handled = row.kind === 'ap' ? "('card', 'waiting', 'working')" : "('sent', 'posted', 'would', 'working')";
+    const twin = row.msgid ? await env.DB.prepare(`SELECT mailbox FROM mail_sweep WHERE msgid = ? AND kind = ? AND state IN ${handled} AND NOT (mailbox = ? AND id = ?) LIMIT 1`).bind(row.msgid, row.kind, row.mailbox, row.id).first() : null;
     if (twin) return await finish(env.DB, row, { state: 'duplicate', detail: `the same email as in ${twin.mailbox.split('@')[0]}’s inbox` }, ctx.now);
     const box = await ctx.open(row.mailbox);
     const msg = await gmail(box.token, `/messages/${row.id}?format=full`, ctx.fetchImpl);
     // Sorted again with today's rules and families, so a rule made better reaches what was already waiting
-    const t = triage(msg, ctx.families);
-    if (t?.kind !== row.kind) return await finish(env.DB, row, { state: 'skipped', detail: `not a ${row.kind === 'family' ? 'family email' : 'receipt'} after all` }, ctx.now);
+    const t = triage(msg, ctx.families, { receiptInbox: ctx.receiptInbox });
+    if (t?.kind !== row.kind) return await finish(env.DB, row, { state: 'skipped', detail: `not ${{ family: 'a family email', ap: `sent to ${ctx.receiptInbox}` }[row.kind] || 'a receipt'} after all` }, ctx.now);
     const c = { ...ctx, ...box };
     const out = row.kind === 'receipt' ? await handleReceipt(env, c, row, msg) : row.kind === 'tagged' ? await handleTagged(env, c, row, msg, t)
+      : row.kind === 'ap' ? await handleAp(env, c, row, msg)
       : await handleFamily(env, c, { ...row, accounts: JSON.stringify(t.accounts) }, msg);
     await finish(env.DB, row, out, ctx.now);
     // Its receipt is on the card charge: the email's job is done, so it leaves the inbox (archiveDue)
@@ -761,7 +796,8 @@ function receiptScore(msg, c, hinted, strict = false) {
   const sender = senderOf(h);
   const from = addresses(sender);
   const subject = header(h, 'Subject');
-  if (!from.length || from.every(isOurs) || from.some((e) => OWN_TOOLS.test(e))) return null;
+  // (nor the site's own forward of a receipt to ap@, which the inbox ap@ goes to holds a copy of)
+  if (!from.length || from.every(isOurs) || from.some((e) => OWN_TOOLS.test(e) || isSiteMail(e))) return null;
   if ((msg.labelIds || []).includes('SENT') || CALENDAR.test(subject.trim()) || AUTO_REPLY.test(subject) || /\b(refund|return|cancel)/i.test(subject)) return null;
   if (!amountsIn(subject, msg.snippet, receiptText(msg.payload)).includes(c.cents)) return null;
   const store = `${sender.replace(/<.*>/, '')} ${from[0].split('@')[1].replace(/\.[a-z]+$/i, '')}`;
@@ -890,6 +926,240 @@ async function handleTagged(env, ctx, row, msg, t) {
   const detail = `put the receipt ${firstName(ctx.ownerName, row.mailbox)} sent on ${chargeWords(c)}`.slice(0, 300);
   await env.DB.prepare("UPDATE card_receipts SET state = 'attached', msg_id = ?, detail = ?, next_look = NULL, updated_at = ? WHERE charge = ?").bind(`${row.mailbox}:${msg.id}`, detail, new Date(ctx.now).toISOString(), c.charge).run();
   return { state: 'card', detail, chargeId: c.charge, onCard: true };
+}
+
+// ─── Sent to the receipt inbox (ap@) ────────────────────────────────
+//
+// Anyone can send a receipt to ap@: a photo texted from a phone, a store's email passed on, a vendor's own. The ap@
+// group copies it to a SOARD inbox the sweep reads (whichever that is: nothing here names it), spam folder included
+// (scanBox). Each photo or PDF on it, else the email itself, is read for its store, total and date, and goes on the
+// SOARD card charge, Mercury's or Ramp's, with that exact amount near that date, whoever's card it was. A charge can
+// come in after its receipt (Ramp is read every 15 minutes), so a receipt with none yet waits for it, up to 8 days.
+
+const AP_WAIT_MS = 8 * DAY_MS;
+const AP_PIECES = 4;
+const PHOTO_TIMEOUT_MS = 20 * 1000; // each answers in 1 to 3 seconds warm (Nov 9 2026); the first call of a while took 15
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+const DATED_BEFORE_MS = 3 * DAY_MS; // a card charge this long before the receipt's own date
+const DATED_AFTER_MS = 5 * DAY_MS;  // or this long after it (a charge can post days later)
+const UNDATED_MS = 45 * DAY_MS;     // no date matching: a charge this far back from the email, its store's name matching
+const RECENT_MS = 7 * DAY_MS;       // or in the week before the email
+const OPEN = ['looking', 'none', 'no_inbox'];
+// Phone carriers' text-to-email addresses: a photo texted to ap@
+const TEXTED = /@(tmomail\.net|vzwpix\.com|vtext\.com|mms\.att\.net|txt\.att\.net|mms\.cricketwireless\.net|mms\.uscc\.net|pm\.sprint\.com|messaging\.sprintpcs\.com|mypixmessages\.com|msg\.fi\.google\.com|mmst5\.tracfone\.com|vmpix\.com)$/i;
+const PHOTO_PROMPT = `You read receipts for Sunshine on a Ranney Day (SOARD), a children's charity. Someone sent this picture to SOARD's receipt inbox. Reply with JSON only:
+{"type": "receipt" | "bill" | "not_receipt", "vendor": "<the store or seller, as printed>", "total": "<the total paid, as printed, or empty>", "date": "<the purchase date as YYYY-MM-DD, or empty>", "reason": "<under 15 words>"}
+
+- receipt: a store receipt, a card slip, a paid invoice, an order confirmation.
+- bill: an invoice asking to be paid.
+- not_receipt: anything else (a room, a product, a form, a check, a W-9).
+- total: the final amount paid, after tax and tip; never a subtotal or one line. Empty when it can't be read.
+- date: empty when it can't be read. Never guess a total or a date.`;
+
+/** A total as a reader wrote it ("$1,299.00", "58.77", "USD 10") → cents, or null */
+export function centsOfTotal(s) {
+  const n = Number(/\d+(?:\.\d{1,2})?/.exec(String(s || '').replace(/(\d),(?=\d{3}\b)/g, '$1'))?.[0]);
+  return n > 0 ? Math.round(n * 100) : null;
+}
+
+/** A receipt photo (or a scanned page) read by both readers at once → { reads } (each one that answered) | { why } */
+export async function readPhoto(env, bytes) {
+  const kind = imageKind(bytes);
+  if (!['jpeg', 'png', 'webp'].includes(kind)) return { why: kind ? `a ${kind.toUpperCase()} picture the readers can’t open` : 'not a picture the readers can open' };
+  if (bytes.length > MAX_PHOTO_BYTES) return { why: 'a picture over 5 MB, too big to read' };
+  const url = `data:image/${kind};base64,${toBase64(bytes)}`;
+  const reads = await Promise.all(Object.entries(READERS).map(async ([model, extra]) => {
+    let timer;
+    try {
+      const out = await Promise.race([
+        env.AI.run(model, {
+          messages: [{ role: 'system', content: PHOTO_PROMPT }, { role: 'user', content: [{ type: 'text', text: 'Read this receipt.' }, { type: 'image_url', image_url: { url } }] }],
+          max_tokens: 400, temperature: 0, ...extra, response_format: { type: 'json_schema', json_schema: RECEIPT_SCHEMA },
+        }, viaGateway('mail-sweep')),
+        new Promise((_, no) => { timer = setTimeout(() => no(new Error('timeout')), PHOTO_TIMEOUT_MS); }),
+      ]);
+      return readVerdict(answerOf(out));
+    } catch (err) {
+      // A cap reached: the email waits with no try spent (handle)
+      if (aiCapped(err)) throw err;
+      console.error('[mail-sweep] reading a photo', model, err.message);
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }));
+  if (!reads.some(Boolean)) throw new Error('the receipt readers didn’t answer');
+  return { reads: reads.filter(Boolean) };
+}
+
+/** One photo or PDF on an email to ap@ (part), or the email itself (no part), read → { reads, agreed? } | { why } */
+async function readPiece(env, ctx, msg, part, { subject, from, text, lastTry }) {
+  const judge = async (words, about) => ({ reads: [await judgeReceipt(env, { subject: about, from, owner: ctx.ownerName, text: words, files: [], lastTry })], agreed: true });
+  if (!part) return judge(text, subject);
+  const f = filesOf(msg.payload).find((x) => x.part === part.part);
+  const bytes = await fileBytes(ctx.token, msg, f, ctx.fetchImpl);
+  if (!/pdf/i.test(part.type)) return readPhoto(env, bytes);
+  const words = await pdfText(env, { bytes, name: part.name });
+  if (words.length >= 20) return judge(words, `${subject} (${part.name})`.trim());
+  const [page] = scannedPages(bytes, { max: 1 });
+  return page ? readPhoto(env, page.bytes) : { why: 'a PDF with no words or page pictures to read' };
+}
+
+/**
+ * What a piece was read as → { cents, vendors, dates, agreed, done? }. agreed: its total is sure (the email's or the PDF's
+ * own words, or both photo readers reading the same); otherwise the store's name has to match the card charge's
+ */
+function readOf(r, text = '') {
+  const none = { cents: [], vendors: [], dates: [], agreed: false };
+  if (r.why) return { ...none, done: r.why };
+  const real = r.reads.filter((v) => v.type !== 'not_receipt');
+  if (!real.length) return { ...none, done: `not a receipt (${r.reads[0]?.reason || 'the readers said so'})` };
+  let cents = [...new Set(real.map((v) => centsOfTotal(v.total)).filter(Boolean))];
+  let agreed = Boolean(r.agreed) || (real.length >= 2 && real.length === r.reads.length && cents.length === 1 && real.every((v) => centsOfTotal(v.total)));
+  // The email's words with no total read: any amount they name, and then the store has to match
+  if (!cents.length && text) { cents = amountsIn(text).slice(0, 10); agreed = false; }
+  return {
+    cents, vendors: [...new Set(real.map((v) => v.vendor).filter(Boolean))], dates: [...new Set(real.map((v) => v.date).filter(Boolean))], agreed,
+    ...(cents.length ? {} : { done: 'no total could be read' }),
+  };
+}
+
+/**
+ * The card charge a receipt sent to ap@ is for, among every cardholder's charges still needing one → { charge } |
+ * { ambiguous: [charges] } | { had: [charges] } (its charge has a receipt already) | {}. The exact amount always; then
+ * both the total being sure or the store's name matching, and the receipt's own date or the store's name or the week
+ * before it was sent. The cardholder who sent it, their own charge first
+ */
+async function apCharge(DB, p, { at, own, taken }) {
+  if (!p.cents?.length) return {};
+  const dates = (p.dates || []).map((d) => Date.parse(`${d}T12:00:00Z`)).filter(Number.isFinite);
+  const lo = Math.min(at - UNDATED_MS, ...dates.map((d) => d - DATED_BEFORE_MS));
+  const hi = Math.max(at + DAY_MS, ...dates.map((d) => d + DATED_AFTER_MS));
+  const rows = (await DB.prepare(`SELECT * FROM card_receipts WHERE cents IN (${p.cents.map(() => '?').join(', ')}) AND charged_at BETWEEN ? AND ?`)
+    .bind(...p.cents, isoOf(lo), isoOf(hi)).all()).results || [];
+  const fits = [];
+  for (const c of rows) {
+    if (taken.has(c.charge)) continue;
+    const t = Date.parse(c.charged_at);
+    const like = Math.max(0, ...(p.vendors || []).map((v) => vendorLikeness(c.vendor, v)));
+    const dated = dates.some((d) => t >= d - DATED_BEFORE_MS && t <= d + DATED_AFTER_MS);
+    const recent = t >= at - RECENT_MS && t <= at + DAY_MS;
+    if (!(p.agreed || like >= 0.5) || !(dated || like >= 0.5 || recent)) continue;
+    const near = dated ? 1 - Math.min(...dates.map((d) => Math.abs(t - d))) / DATED_AFTER_MS : 1 - Math.abs(at - t) / UNDATED_MS;
+    fits.push({ c, score: 2 * like + near + (own && c.mailbox === own ? 1 : 0) });
+  }
+  const open = fits.filter((f) => OPEN.includes(f.c.state)).sort((a, b) => b.score - a.score);
+  if (!open.length) {
+    const had = fits.filter((f) => ['attached', 'had'].includes(f.c.state)).map((f) => f.c);
+    return had.length ? { had } : {};
+  }
+  const [best, next] = open;
+  // Another fits as well: the same store and amount on the same day are as good as each other; otherwise nobody can tell which
+  const twins = next && vendorLikeness(best.c.vendor, next.c.vendor) >= 0.8 && Math.abs(Date.parse(best.c.charged_at) - Date.parse(next.c.charged_at)) <= DAY_MS;
+  if (next && best.score - next.score < 0.5 && !twins) return { ambiguous: open.slice(0, 3).map((f) => f.c) };
+  return { charge: best.c };
+}
+
+const money = (cents) => `$${(cents / 100).toFixed(2)}`;
+/** A piece in words: “IMG_2041.jpg” (Home Depot $58.77), or the email (…) */
+const pieceWords = (p) => {
+  const what = [p.vendors?.[0], p.cents?.length === 1 ? money(p.cents[0]) : null].filter(Boolean).join(' ');
+  return `${p.name ? `“${p.name}”` : 'the email'}${what ? ` (${what})` : ''}`;
+};
+
+/** Who sent an email to ap@, in words: "texted to ap@", "sent to ap@ by Holly", "sent to ap@ by TKO Plumbing" */
+function sentWords(ctx, from) {
+  const sender = addresses(from)[0] || '';
+  const box = `${ctx.receiptInbox.split('@')[0]}@`;
+  if (TEXTED.test(sender)) return `texted to ${box}`;
+  if (isOurs(sender)) return `sent to ${box} by ${firstName(ctx.people.get(ctx.mailboxOf(sender)), sender)}`;
+  return `sent to ${box} by ${from.replace(/<.*>/, '').replace(/"/g, '').trim() || sender}`;
+}
+
+const saveRead = (DB, row, read) => DB.prepare('UPDATE mail_sweep SET receipt_read = ? WHERE mailbox = ? AND id = ?').bind(JSON.stringify(read), row.mailbox, row.id).run();
+const readSaved = (row) => { try { return JSON.parse(row.receipt_read || 'null'); } catch { return null; } };
+
+/** An email sent to ap@: read once (each photo or PDF, else the email), then each piece onto its card charge, or waiting for it */
+async function handleAp(env, ctx, row, msg) {
+  if (ctx.watching) return { state: 'would', detail: 'would read it for its card charge' };
+  let read = readSaved(row);
+  if (!read) {
+    // Already on a card charge: that charge's own look found this email first, or another copy of it (Message-ID)
+    const twin = row.msgid ? await env.DB.prepare('SELECT charge_id FROM mail_sweep WHERE msgid = ? AND charge_id IS NOT NULL AND NOT (mailbox = ? AND id = ?) LIMIT 1').bind(row.msgid, row.mailbox, row.id).first() : null;
+    const on = await env.DB.prepare('SELECT * FROM card_receipts WHERE msg_id = ? OR charge = ? LIMIT 1').bind(`${row.mailbox}:${row.id}`, twin?.charge_id || '').first();
+    if (on && ['attached', 'had'].includes(on.state)) return { state: 'card', detail: `already on ${chargeWords(on)}`, chargeId: on.charge, onCard: true };
+    const h = msg.payload?.headers;
+    const subject = header(h, 'Subject');
+    const from = senderOf(h);
+    const text = receiptText(msg.payload);
+    const how = { subject, from, text, lastTry: (row.tries || 0) + 1 >= MAX_TRIES };
+    const pieces = [];
+    for (const f of filesWorth(msg.payload).filter((x) => RECEIPT_FILE.test(x.type)).slice(0, AP_PIECES)) {
+      const part = { part: f.part, name: f.name, type: f.type };
+      pieces.push({ ...part, ...readOf(await readPiece(env, ctx, msg, part, how)) });
+    }
+    // No photo or PDF, or none a receipt with a total: the email itself, when it names an amount
+    if (!pieces.length || (AMOUNT.test(text) && !pieces.some((p) => p.cents.length))) pieces.push({ part: null, name: null, type: 'email', ...readOf(await readPiece(env, ctx, msg, null, how), text) });
+    const sender = addresses(from)[0] || '';
+    read = { at: Number(msg.internalDate) || ctx.now, subject, from, who: sentWords(ctx, from), own: isOurs(sender) ? ctx.mailboxOf(sender) : null, pieces };
+    // Kept before anything is put on a charge: a try after a failure doesn't read it again
+    await saveRead(env.DB, row, read);
+  }
+  return settleAp(env, ctx, row, msg, read);
+}
+
+/** Each piece not settled yet: onto its card charge, or still waiting for one, or done with after 8 days → finish()'s fields */
+async function settleAp(env, ctx, row, msg, read) {
+  const taken = new Set(read.pieces.map((p) => p.charge).filter(Boolean));
+  for (const [i, p] of read.pieces.entries()) {
+    if (p.done) continue;
+    const m = await apCharge(env.DB, p, { at: read.at, own: read.own, taken });
+    p.note = m.ambiguous ? `${m.ambiguous.length} card charges could be it: ${m.ambiguous.map(chargeWords).join(', ')}` : null;
+    if (m.had) p.done = `${chargeWords(m.had[0])} already has its receipt`;
+    if (!m.charge) continue;
+    const c = m.charge;
+    const uploads = p.part
+      ? [{ bytes: await fileBytes(ctx.token, msg, { part: p.part }, ctx.fetchImpl), type: p.type, name: p.name }]
+      : await receiptUploads(env, ctx, row, msg, { v: { vendor: p.vendors[0] || c.vendor }, files: [], from: read.from, subject: read.subject, sentAt: read.at, text: receiptText(msg.payload) });
+    const id = c.charge.slice(c.card.length + 1);
+    if (c.card === 'ramp') {
+      for (const [j, u] of uploads.entries()) await rampAttach(env, { transactionId: id, userId: c.user_id, ...u, key: `${c.charge}:${row.id}:${i}:${j}` }, ctx.fetchImpl);
+    } else {
+      for (const u of uploads) await attachToCharge(env, id, u, ctx.fetchImpl);
+    }
+    const detail = `put ${pieceWords(p)}, ${read.who}, on ${chargeWords(c)}`.slice(0, 300);
+    await env.DB.prepare("UPDATE card_receipts SET state = 'attached', msg_id = ?, detail = ?, next_look = NULL, updated_at = ? WHERE charge = ?")
+      .bind(`${row.mailbox}:${row.id}`, detail, isoOf(ctx.now), c.charge).run();
+    Object.assign(p, { charge: c.charge, done: detail, note: null });
+    taken.add(c.charge);
+    // Kept as each goes on, so a failure on the next piece doesn't put this one on twice
+    await saveRead(env.DB, row, read);
+  }
+  const over = ctx.now - read.at >= AP_WAIT_MS;
+  for (const p of read.pieces) if (!p.done && over) p.done = p.note || `no card charge for it came in within ${AP_WAIT_MS / DAY_MS} days`;
+  await saveRead(env.DB, row, read);
+  const on = read.pieces.filter((p) => p.charge);
+  const detail = read.pieces.map((p) => (p.charge ? p.done : `${pieceWords(p)}: ${p.done || `waiting for its card charge${p.note ? ` (${p.note})` : ''}`}`)).join(' · ');
+  if (read.pieces.some((p) => !p.done)) return { state: 'waiting', detail, chargeId: on[0]?.charge || null };
+  return { state: on.length ? 'card' : 'skipped', detail, chargeId: on[0]?.charge || null, onCard: on.length > 0 };
+}
+
+/** Emails to ap@ waiting for their card charge: back in line once a charge has come in for one of them, or their wait is over */
+async function wakeWaitingAp(env, ctx) {
+  const rows = (await env.DB.prepare("SELECT mailbox, id, receipt_read FROM mail_sweep WHERE kind = 'ap' AND state = 'waiting' ORDER BY at LIMIT 50").all()).results || [];
+  for (const r of rows) {
+    const read = readSaved(r);
+    if (!read) continue;
+    let due = ctx.now - read.at >= AP_WAIT_MS;
+    const taken = new Set(read.pieces.map((p) => p.charge).filter(Boolean));
+    for (const p of read.pieces) {
+      if (due) break;
+      if (p.done) continue;
+      const m = await apCharge(env.DB, p, { at: read.at, own: read.own, taken });
+      due = Boolean(m.charge || m.had);
+    }
+    if (due) await env.DB.prepare("UPDATE mail_sweep SET state = 'queued', updated_at = ? WHERE mailbox = ? AND id = ? AND state = 'waiting'").bind(isoOf(ctx.now), r.mailbox, r.id).run();
+  }
 }
 
 // ─── The Monday list ────────────────────────────────────────────────
@@ -1030,7 +1300,10 @@ async function scanBox(env, ctx, mailbox, bs) {
   const { token } = await ctx.open(mailbox);
   // An inbox added later (a store account) starts from when it's added, as every inbox did: its card charges search its older mail anyway
   bs.cursor ||= ctx.now;
-  const q = bs.pageQ || `after:${Math.floor((bs.cursor - OVERLAP_MS) / 1000)} -in:drafts`;
+  // Spam stays out, except what was sent to the receipt inbox: Gmail took a receipt photo texted to ap@ for spam
+  // (Nov 9 2026), and a spam folder nobody opens would lose it. "list:" is the group's List-Id; other spam stays out
+  // (checked on Peter's inbox: 31 spam emails that week, none of them listed)
+  const q = bs.pageQ || `after:${Math.floor((bs.cursor - OVERLAP_MS) / 1000)} -in:drafts (-in:spam OR list:${ctx.receiptInbox})`;
   const list = await gmail(token, `/messages?maxResults=${PER_LIST}&q=${encodeURIComponent(q)}${bs.page ? `&pageToken=${bs.page}` : ''}`, ctx.fetchImpl);
   const seen = new Set(bs.recent || []);
   const ids = (list.messages || []).map((m) => m.id).filter((id) => !seen.has(id));
@@ -1044,7 +1317,7 @@ async function scanBox(env, ctx, mailbox, bs) {
   let newest = bs.pageMax || bs.cursor;
   for (const msg of await metadata(token, ids.filter((id) => !known.has(id)), ctx.fetchImpl)) {
     newest = Math.max(newest, Number(msg.internalDate) || 0);
-    const t = triage(msg, ctx.families);
+    const t = triage(msg, ctx.families, { receiptInbox: ctx.receiptInbox });
     if (t) { await queue(env.DB, mailbox, msg, t, 'new', ctx.now); queued++; }
   }
   bs.recent = [...ids, ...(bs.recent || [])].slice(0, 300);
@@ -1100,7 +1373,9 @@ const noMailbox = (err) => /Mail service not enabled|failedPrecondition/i.test(e
 
 async function sweep(env, st, { fetchImpl, now, print }) {
   const started = Date.now();
-  const left = () => Date.now() - started < READ_MS;
+  // The inboxes' reading has its own clock: it starts after an email to ap@ is read (below)
+  let readFrom = started;
+  const left = () => Date.now() - readFrom < READ_MS;
   st.startedAt ||= now;
   st.watchUntil ||= now + WATCH_MS;
   const watching = now < st.watchUntil;
@@ -1137,6 +1412,15 @@ async function sweep(env, st, { fetchImpl, now, print }) {
   };
 
   const errors = [];
+  const retryBefore = new Date(now - RETRY_MS).toISOString();
+  const next = (which) => env.DB.prepare(`SELECT * FROM mail_sweep WHERE (state = 'queued' OR (state = 'failed' AND tries < ? AND updated_at < ?)) AND ${which} ORDER BY at LIMIT 1`).bind(MAX_TRIES, retryBefore).first();
+  // An email to ap@ not read yet goes first, one a sweep: its photos take two readers several seconds each, and the
+  // start of the run leaves the most of it for them
+  const unread = "kind = 'ap' AND receipt_read IS NULL";
+  if ((st.aiRestUntil || 0) <= now) {
+    const row = await next(unread);
+    if (row) { await handle(env, ctx, row); readFrom = Date.now(); }
+  }
   st.boxes ||= {};
   for (const mailbox of boxes) {
     const bs = st.boxes[mailbox] ||= {};
@@ -1159,8 +1443,9 @@ async function sweep(env, st, { fetchImpl, now, print }) {
 
   // The card charges first, so the email side knows a card charge's receipt when it sees one
   await syncCardCharges(env, ctx, st);
+  // An email to ap@ whose card charge has now come in (or whose wait is over) goes back in line
+  await wakeWaitingAp(env, ctx);
   // Oldest first; family emails wait until the last year's are all in, so each family's reads in order
-  const retryBefore = new Date(now - RETRY_MS).toISOString();
   // Held for a new account: back in line once the account is old enough (or gone), and sorted again then
   for (const r of (await env.DB.prepare("SELECT mailbox, id, accounts FROM mail_sweep WHERE state = 'held' LIMIT 500").all()).results || []) {
     let ids = [];
@@ -1173,8 +1458,8 @@ async function sweep(env, st, { fetchImpl, now, print }) {
   await env.DB.prepare("UPDATE mail_sweep SET state = 'failed', tries = COALESCE(tries, 0) + 1 WHERE state = 'working' AND updated_at < ?").bind(retryBefore).run();
   // (the mail is still read and queued while the AI rests; only the judging waits)
   while (Date.now() - started < HANDLE_MS && (st.aiRestUntil || 0) <= now && !ctx.capped) {
-    const row = await env.DB.prepare(`SELECT * FROM mail_sweep WHERE (state = 'queued' OR (state = 'failed' AND tries < ? AND updated_at < ?))
-        ${backfillDone ? '' : "AND kind != 'family'"} ORDER BY at LIMIT 1`).bind(MAX_TRIES, retryBefore).first();
+    // (an email to ap@ still to be read waits for the start of a sweep)
+    const row = await next(`NOT (${unread})${backfillDone ? '' : " AND kind != 'family'"}`);
     if (!row) break;
     await handle(env, ctx, row);
   }
