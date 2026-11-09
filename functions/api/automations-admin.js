@@ -33,6 +33,7 @@
  *  - jobtread:  SOARD workflows (on/off) and webhooks (host and events only)
  *  - quo:       Quo texts and calls DataX logged with applicant families (last one, count in 30 days; never content)
  *  - zillow:    whether DataX's Zillow lookup reached the newest family homes in JobTread (counts and times; never an address)
+ *  - permits:   the permit office lookup (its last turn's counts, when a home was last filled, any failure; never an address)
  *  - waitlist:  families waiting for the applications-open email, signups not in Kit yet, the last opening
  *  - kitQuiet:  the quiet Kit subscribers check-in (the switch, last day, in the three weeks / stayed / unsubscribed; counts only)
  *  - applicationLimit: the season's limit, how many are in, the last heads-up or close (counts only)
@@ -77,6 +78,7 @@ import { giftsStatus } from './_board-gifts.js';
 import { donorsStatus } from './_kit-donors.js';
 import { checksFacts } from './_check-gifts.js';
 import { wordsStatus } from './_board-file-words.js';
+import { permitFacts } from './_permit-office.js';
 
 const has = (v) => typeof v === 'string' ? v.trim().length > 0 : !!v;
 
@@ -486,6 +488,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     press: await settle(() => pressFacts(DB)),
     quo: await settle(() => quoFacts(DB, now)),
     zillow: await settle(() => zillowFacts(env.JOBTREAD_GRANT_KEY, fetchImpl, now)),
+    permits: await settle(() => permitFacts(DB)),
     eventRecap: await settle(() => eventRecapFacts(DB)),
     // SOARD's facts checked against the IRS's list, its W-9 and its Board Manual: times and what doesn't match (_org-facts.js)
     orgFacts: await settle(() => orgCheckFacts(DB)),

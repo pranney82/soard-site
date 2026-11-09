@@ -44,6 +44,7 @@ import { getLiveForm } from './_application-forms.js';
 import { DEFAULT_SERVICE_AREA, toE164, kindOf } from './_application-form.js';
 import { COMMUNITY_PROJECT_TYPE, isCommunityProject } from './_application-constants.js';
 import { HOME_VALUES, locationFields } from './_home.js';
+import { fillPermitOffices } from './_permit-office.js';
 
 export const STATUSES = ['Applied', 'In Review', 'Approved', 'Denied'];
 
@@ -639,6 +640,13 @@ export async function maybeSyncApplicants(env, { fetchImpl = fetch, now = Date.n
   } catch (e) {
     out.error = e.message;
     try { await setSync(DB, 'last_error', `${iso(now)} ${e.message}`.slice(0, 500), now); } catch { /* best effort */ }
+  }
+  // Who issues each home's building permits, written to JobTread (./_permit-office.js): its own turn every
+  // 10 minutes, a few homes a turn; it keeps its own failures, so it never stops the applicants' sync
+  try {
+    if (!catchUp && (force || await takeTurn(DB, 'permit_turn', 10 * 60 * 1000, now))) out.permits = await fillPermitOffices(env, { fetchImpl, now });
+  } catch (e) {
+    out.permits = { error: e.message };
   }
   return out;
 }

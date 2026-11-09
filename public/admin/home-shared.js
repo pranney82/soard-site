@@ -18,13 +18,16 @@
  *    Water Source) is counted like a choice; text that names one home (Parcel
  *    Number, Permit Number) stays on that home's card.
  *
- * Bookkeeping fields ("**…**") and retired ones ("Year Built (old)") stay out.
+ * Bookkeeping fields ("**…**"), retired ones ("Year Built (old)") and ones SOARD doesn't use (Water Source)
+ * stay out.
  * Typed values are messy, so a field reads as numbers when most of its values
  * are numbers; the few that aren't ("Unknown", "1950s") are counted apart and
  * shown as typed, never dropped.
  */
 
 const RETIRED = /\((?:old|retired|unused)\)\s*$/i;
+// Fields SOARD doesn't use, left off both screens though JobTread still has them (Peter, Nov 9 2026: "we dont need water source")
+const NOT_USED = new Set(['water source']);
 const MONEY = /zestimate|price|\bvalues?\b|valuation|\bcosts?\b|amount|apprais|\bassess(?:ed|ment)?\b|\btax(?:es)?\b|\brent\b|\bequity\b|\bmortgage\b|\bloan\b|\bbalance\b|\bdebt\b|\bowed\b|\bhoa\b|\bfees?\b|\bdues\b|payment|premium|income|\bbills?\b|estimate\b|budget|\bsold\b|insurance|\$/i;
 // Words that make a number a label, a count or a rate, not dollars: "Tax ID", "Tax District", "Tax Rate"
 const NOT_MONEY = /\b(?:id|number|no|#|district|code|zone|rate|percent|year|count|occupants|people)\b|%/i;
@@ -32,7 +35,7 @@ const AREA = /\barea\b|sq\.?\s*f(?:ee)?t|square\s*f(?:ee|oo)t/i;
 const NOT_AREA = /\blot\b|acre/i;
 // Names of things that belong to one home ("Parcel Number", "Tax ID", "Lot #"): never counted across homes,
 // never read as an amount. "Number of Stories" is a count, not one of these.
-const ONE_HOME = /(?:\bnumber|\bno\.?|#|\bid)\s*$|\bcode\b|parcel|permit|url|link|notes?\b|comments?\b|address|\bzip\b|postal|phone|e-?mail|\bname\b|instructions?|directions?|\bgate\b|lockbox|description|details?\b/i;
+const ONE_HOME = /(?:\bnumber|\bno\.?|#|\bid)\s*$|\bcode\b|parcel|url|link|notes?\b|comments?\b|address|\bzip\b|postal|phone|e-?mail|\bname\b|instructions?|directions?|\bgate\b|lockbox|description|details?\b/i;
 const BEDS = /(\d+(?:\.\d+)?)\s*(?:bed|bd|br)/i;
 const BATHS = /(\d+(?:\.\d+)?)\s*(?:bath|ba\b)/i;
 const STUDIO = /\bstudio\b/i;
@@ -53,7 +56,7 @@ const words = (v) => (v && typeof v === 'object'
 export const filled = (v) => (Array.isArray(v) ? v.some(filled) : v != null && words(v) !== '');
 
 /** A field staff should see: not JobTread bookkeeping, not retired */
-export const isShown = (f) => !!String(f?.name || '').trim() && !/^\*\*/.test(f.name) && !RETIRED.test(f.name);
+export const isShown = (f) => !!String(f?.name || '').trim() && !/^\*\*/.test(f.name) && !RETIRED.test(f.name) && !NOT_USED.has(String(f.name).trim().toLowerCase());
 
 /** JobTread's order: positions as numbers when they are, else as plain text (character by character, never by locale) */
 function byPosition(a, b) {

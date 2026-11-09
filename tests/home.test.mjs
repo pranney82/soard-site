@@ -51,7 +51,9 @@ const LIZZIE = {
 
 test('fields come in JobTread’s order, without bookkeeping or retired ones', () => {
   const names = homeFields([...DEFS].reverse()).map(f => f.name);
-  assert.deepEqual(names, ['Zillow URL', 'Living Area', 'Bed Bath', 'County', 'Sewer/Septic', 'Power Company', 'Water Source', 'Parcel Number', 'Permit Number', 'Zestimate', 'Latest Sale Price', 'Latest Sale Date', 'Year Built']);
+  assert.deepEqual(names, ['Zillow URL', 'Living Area', 'Bed Bath', 'County', 'Sewer/Septic', 'Power Company', 'Parcel Number', 'Permit Number', 'Zestimate', 'Latest Sale Price', 'Latest Sale Date', 'Year Built'], 'Water Source isn’t used, so it never shows');
+  assert.equal(isShown({ name: 'Water Source' }), false);
+  assert.equal(isShown({ name: 'Permitting Municipality' }), true);
   assert.equal(isShown({ name: 'Year Built (old)' }), false);
   assert.equal(isShown({ name: 'Notes (retired)' }), false);
   assert.equal(isShown({ name: '**Reveal Date**' }), false);
@@ -136,7 +138,7 @@ test('a kid’s Home card: the Zestimate leads, Zillow is a link, the rest in Jo
     ['Living Area', '1,435 sq ft'], ['Bed Bath', '3 bed, 2.5 bath'], ['Parcel Number', '15N23D178'],
     ['Latest Sale Price', '$128,700'], ['Latest Sale Date', 'Jan 23, 2001'], ['Year Built', '2000'],
   ]);
-  assert.deepEqual(card.blank, ['County', 'Sewer/Septic', 'Power Company', 'Water Source', 'Permit Number']);
+  assert.deepEqual(card.blank, ['County', 'Sewer/Septic', 'Power Company', 'Permit Number']);
   assert.ok(!JSON.stringify(card).includes('REQUIRED'), 'bookkeeping never shows');
   assert.ok(!card.rest.some(x => /old/.test(x.name)), 'the retired field never shows');
   // Nothing filled in, a link that isn't a web link, and a home with no Zestimate but a sale price
@@ -189,15 +191,15 @@ test('Insights: a strip for each number, its homes in order, with the median, th
 
 test('Insights: choices count most first (spellings joined), rooms in number order, and text that names one home stays out', () => {
   const sum = homeInsights(DEFS, PEOPLE);
-  assert.deepEqual(sum.groups.map(g => g.name), ['Bedrooms', 'Bathrooms', 'County', 'Sewer/Septic', 'Power Company', 'Water Source']);
+  assert.deepEqual(sum.groups.map(g => g.name), ['Bedrooms', 'Bathrooms', 'County', 'Sewer/Septic', 'Power Company']);
   const beds = sum.groups.find(g => g.name === 'Bedrooms');
   assert.deepEqual(beds.rows.map(r => [r.label, r.n]), [['2 bedrooms', 1], ['3 bedrooms', 1], ['4 bedrooms', 1], ['5 bedrooms', 1]]);
   assert.equal(beds.from, 'Bed Bath');
   const baths = sum.groups.find(g => g.name === 'Bathrooms');
   assert.deepEqual(baths.rows.map(r => r.label), ['1 bath', '2 baths', '2.5 baths', '3 baths']);
   assert.deepEqual(baths.missing.map(p => p.name), ['Jordan Ray', 'Sam Ray']);
-  const water = sum.groups.find(g => g.name === 'Water Source');
-  assert.deepEqual(water.rows.map(r => [r.label, r.n]), [['Public', 2], ['Well', 1]], '“public” and “Public” are one answer, written the way most wrote it, a capital first on a tie');
+  const heat = homeInsights([{ id: 'h', name: 'Heating', type: 'text' }], ['Gas', 'gas', 'Electric'].map((h, i) => person(`h${i}`, `H${i}`, { h })));
+  assert.deepEqual(heat.groups[0].rows.map(r => [r.label, r.n]), [['Gas', 2], ['Electric', 1]], '“gas” and “Gas” are one answer, written the way most wrote it, a capital first on a tie');
   const county = sum.groups.find(g => g.name === 'County');
   assert.deepEqual(county.rows.map(r => [r.label, r.n]), [['Cobb', 2], ['Cherokee', 1], ['Fulton', 1]]);
   const power = sum.groups.find(g => g.name === 'Power Company');
@@ -364,7 +366,7 @@ test('Round 2: a tiny spread keeps a sensible scale; piles say how many', () => 
   assert.equal(piled.piles[0].list.length, 23, '7 lanes show, 23 more are in the pile');
 });
 
-test('Real data: Zillow’s unknowns in Bed Bath are not given; Water Source spellings join', () => {
+test('Real data: Zillow’s unknowns in Bed Bath are not given; answers that differ by the field’s own words join', () => {
   // As DataX wrote them on SOARD's homes (Nov 9 2026)
   const bb = ['undefined bed, 0 bath', 'undefined bed, 0 bath', '0 bed, 2.5 bath', '4 bed, 0 bath', '3 bed, 2 bath'].map((b, i) => person(`p${i}`, `P${i}`, { b }));
   const sum = homeInsights([{ id: 'b', name: 'Bed Bath', type: 'text' }], bb);
@@ -372,8 +374,12 @@ test('Real data: Zillow’s unknowns in Bed Bath are not given; Water Source spe
   const baths = sum.groups.find(g => g.name === 'Bathrooms');
   assert.deepEqual(beds.rows.map(r => [r.label, r.n]), [['3 bedrooms', 1], ['4 bedrooms', 1], ['No bedrooms given', 3]], 'no studio and no “0 baths” from a zero');
   assert.deepEqual(baths.rows.map(r => [r.label, r.n]), [['2 baths', 1], ['2.5 baths', 1], ['No baths given', 3]]);
-  const water = homeInsights([{ id: 'w', name: 'Water Source', type: 'text' }], ['Public', 'Public', 'Public Water', 'City', 'city', 'Private Water', 'Well'].map((w, i) => person(`p${i}`, `P${i}`, { w })));
-  assert.deepEqual(water.groups[0].rows.map(r => [r.label, r.n]), [['Public', 3], ['City', 2], ['Private Water', 1], ['Well', 1]], '“Public Water” is “Public”: the field’s own words don’t make another answer');
+  const heat = homeInsights([{ id: 'w', name: 'Heat Source', type: 'text' }], ['Gas', 'Gas', 'Gas Heat', 'Electric', 'electric', 'Heat Pump', 'Oil'].map((w, i) => person(`p${i}`, `P${i}`, { w })));
+  assert.deepEqual(heat.groups[0].rows.map(r => [r.label, r.n]), [['Gas', 3], ['Electric', 2], ['Heat Pump', 1], ['Oil', 1]], '“Gas Heat” is “Gas”: the field’s own words don’t make another answer');
+  // The permit office is counted across homes ("Permit Number" still names one home)
+  const offices = homeInsights([{ id: 'pm', name: 'Permitting Municipality', type: 'text' }, { id: 'pn', name: 'Permit Number', type: 'text' }],
+    [['City of Woodstock', 'B-1'], ['Cobb County', 'B-2'], ['Cobb County', 'B-3'], ['City of Marietta', 'B-4']].map(([pm, pn], i) => person(`o${i}`, `O${i}`, { pm, pn })));
+  assert.deepEqual(offices.groups.map(g => [g.name, g.rows.map(r => `${r.label} ${r.n}`).join(', ')]), [['Permitting Municipality', 'Cobb County 2, City of Marietta 1, City of Woodstock 1']]);
   const power = homeInsights([{ id: 'c', name: 'Power Company', type: 'text' }], ['Georgia Power', 'Georgia Power Company', 'Cobb EMC'].map((c, i) => person(`p${i}`, `P${i}`, { c })));
   assert.deepEqual(power.groups[0].rows.map(r => [r.label, r.n]), [['Georgia Power', 2], ['Cobb EMC', 1]]);
 });

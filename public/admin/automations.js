@@ -1297,7 +1297,7 @@ const MAP = { t: 'SOARD', children: [
           touches: ['JobTread', 'DataX', 'Quo'], where: 'JobTread webhook → DataX (winyourdata.com/api/phone/texting)', live: hook('22PDDmxBcvpA') },
         { t: 'Zillow lookup', s: 'live', k: 'event',
           when: 'A new location is added.',
-          does: 'Looks up the home on Zillow and fills the location’s Zillow fields: the Zillow link, Zestimate, latest sale price and date, year built, beds and baths, living area, parcel number and water source.',
+          does: 'Looks up the home on Zillow and fills the location’s Zillow fields: the Zillow link, Zestimate, latest sale price and date, year built, beds and baths, living area and parcel number.',
           touches: ['JobTread', 'DataX', 'Zillow'], where: 'JobTread webhook (new locations) → DataX (datax.to/api/webhooks)',
           info: 'Checked from the newest family homes in JobTread, each at least 30 minutes old (TEST accounts left out): three in a row without a Zillow link asks for a look. Zillow has nothing on some addresses, like schools and offices. DataX’s Toolbox → Zillow Integration → Run History says why a lookup failed.',
           live: (f) => {
@@ -1307,6 +1307,20 @@ const MAP = { t: 'SOARD', children: [
             if (!z || z.error || !z.checked) return h;
             if (z.streak >= 3) return ATTN(`The last ${z.streak} new homes got no Zillow data (the newest was added ${stamp(z.newestAt)}). DataX’s Toolbox → Zillow Integration → Run History says why.`, z.lastFilledAt);
             return ON(`${z.filled} of the last ${plural(z.checked, 'new home')} ${z.filled === 1 ? 'has its' : 'have their'} Zillow data. The newest was added ${stamp(z.newestAt)}.`, z.lastFilledAt);
+          } },
+        { t: 'Permit office lookup', s: 'live', k: 'schedule',
+          when: 'Every 10 minutes, on the applicant sync (the live hub’s heartbeat).',
+          does: 'Finds who issues each home’s building permits: the city when the home is inside its city limits, else the county (“City of Woodstock”, “Cobb County”). It asks the U.S. Census Bureau’s map by the home’s map point (never the address) and writes the answer to the location’s Permitting Municipality field in JobTread, which it made the first time, after County. Only blanks are filled: what staff type is never changed. What the site wrote is looked up again when the home’s map point moves, and every 90 days, since cities annex land and the Census redraws city limits once a year. The kid’s Home card and Insights show it.',
+          touches: ['JobTread', 'U.S. Census', 'D1'], where: 'functions/api/_permit-office.js (from _applicants.js maybeSyncApplicants)',
+          info: 'A few homes a turn, so the Census is asked gently: about 20 every 10 minutes until every home has one. A home JobTread hasn’t put on the map gets nothing until it has a point.',
+          live: (f) => {
+            const p = f.permits;
+            if (!p || typeof p.error === 'string') return null; // the facts themselves couldn’t be read
+            if (p.error) return ATTN(`The last turn stopped (${stamp(p.error.at)}): ${p.error.message}. It tries again every 10 minutes.`, p.lastFilledAt);
+            if (!p.run) return OFF('Hasn’t run yet. It starts with the next applicant sync.');
+            if (stale(p.run.at, HOUR)) return ATTN(`Hasn’t run since ${stamp(p.run.at)}. It rides on the applicant sync, so check the Heartbeat entry.`, p.run.at);
+            const left = p.run.waiting ? ` ${plural(p.run.waiting, 'more home')} next turn.` : '';
+            return ON(`${p.run.withOffice} of ${plural(p.run.homes, 'home')} in JobTread have their permit office.${left}${p.run.unplaced ? ` ${plural(p.run.unplaced, 'home')} with no map point yet.` : ''}`, p.lastFilledAt || p.run.at);
           } },
       ]},
     ]},

@@ -272,7 +272,7 @@ export const APPLYING = [
   ]},
   { t: 'Application submitted', items: [
     { t: 'The family applies on the website, in English or Spanish, with photos and a video', lane: 'family', autos: ['Makeover application', 'Service-area check', 'Save and finish later', 'Bot check'] },
-    { t: 'It becomes a JobTread account at Applied, with the application PDF, photos and video', lane: 'auto', autos: ['Application → JobTread', 'Application sweep', 'Admin → Applications', 'Comms Thread on new families', 'Clean up new addresses', 'Zillow lookup'] },
+    { t: 'It becomes a JobTread account at Applied, with the application PDF, photos and video', lane: 'auto', autos: ['Application → JobTread', 'Application sweep', 'Admin → Applications', 'Comms Thread on new families', 'Clean up new addresses', 'Zillow lookup', 'Permit office lookup'] },
     { t: 'The family gets the Application Status message with their copy', lane: 'auto', autos: ['Family confirmation'] },
     { t: 'Selection hears about it, with a note on the child’s condition', lane: 'auto', autos: ['Staff heads-up', 'Medical condition note'] },
   ]},
