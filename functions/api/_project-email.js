@@ -14,7 +14,7 @@
 import {
   SITE_URL, HERO_TRANSFORM, SIDE, BRAND, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
   emailFrame, emailHeader, emailFooter, signOff, partnerCards, button, textLink, cover, lede, bodyPhotos, photoImg, photoPair, photoNotes,
-  listJoin, headlineFit, nameRuns, nameHtml, roomNames, noWidow, fitName, notARoom,
+  listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, notARoom, tidy,
 } from './_reveal-invite-email.js';
 
 const { Y, D, DD, CR, BD, TM, SANS, SERIF } = BRAND;
@@ -26,8 +26,10 @@ const yearOf = (kid) => kid.year || new Date().getFullYear();
 /** Two kids' ages as a person writes them: [10, 11] or "10,11" → "10 & 11" */
 const agesOf = (age) => (Array.isArray(age) ? age : String(age).split(/\s*(?:,|&|\band\b)\s*/)).map((a) => String(a).trim()).filter(Boolean);
 
-/** A finished-video signal the kid page also uses: a Stream video or a YouTube link */
-const hasVideo = (kid) => !!(kid.streamVideoId || kid.videoUrl);
+/** The kid page's YouTube test (youTubeId in src/utils/reveals.ts): a link that isn't YouTube gets no Reveal section */
+const YOUTUBE = /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:.*&)?v=|embed\/|shorts\/|live\/))([a-zA-Z0-9_-]{11})/;
+/** A video the page will play: a Stream upload, or a link that parses as YouTube */
+const hasVideo = (kid) => /^[a-f0-9]{32}$/i.test(String(kid.streamVideoId || '').trim()) || YOUTUBE.test(String(kid.videoUrl || ''));
 
 /** How many photos a kid's page shows in its gallery */
 const PAGE_PHOTOS = 30;
@@ -40,8 +42,8 @@ const PAIR_TRANSFORM = 'w=600,h=640,fit=cover,gravity=auto,q=80';
 
 /** The short version of the story: the page's own summary, else the story's opening sentences */
 function storyOf(kid) {
-  if (kid.heroSummary) return curly(kid.heroSummary);
-  const first = curly(stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '').replace(/\s+([.,!?])/g, '$1');
+  if (kid.heroSummary) return tidy(kid.heroSummary).trim();
+  const first = tidy(stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '').replace(/\s+([.,!?])/g, '$1');
   if (first.length <= STORY_MAX) return first;
   const sentences = first.match(/[^.!?]+[.!?]+(\s|$)/g) || [first];
   let out = '';
@@ -53,7 +55,7 @@ function storyOf(kid) {
 }
 
 /** A quote as the page has it, without the quote marks it was typed with */
-const bareQuote = (q) => curly(String(q || '').trim().replace(/^["“”']+|["“”']+$/g, ''));
+const bareQuote = (q) => tidy(String(q || '').trim().replace(/^["“”']+|["“”']+$/g, ''));
 
 /** The first photo that will load, for the top of the email */
 function leadOf(kid, broken) {
@@ -106,14 +108,14 @@ function transformation(pair, name) {
   </td></tr>`;
 }
 
-/** The rooms, each with its number in a yellow circle */
-function roomList(rooms) {
+/** The rooms, each with how many of it in a yellow circle ("2 Dream Bedrooms"), so the number reads as a count */
+function roomList(counts) {
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-      ${rooms.map((room, i) => {
+      ${counts.map(({ name: room, count }, i) => {
     const rule = i ? `border-top:1px solid ${BD};` : '';
     return `<tr>
         <td width="46" valign="middle" style="width:46px;padding:14px 0;${rule}">
-          <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td align="center" valign="middle" width="30" height="30" bgcolor="${Y}" style="width:30px;height:30px;background:${Y};border-radius:50%;font-family:${SANS};font-size:14px;font-weight:700;line-height:30px;color:${D};text-align:center;">${i + 1}</td></tr></table>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td align="center" valign="middle" width="30" height="30" bgcolor="${Y}" style="width:30px;height:30px;background:${Y};border-radius:50%;font-family:${SANS};font-size:14px;font-weight:700;line-height:30px;color:${D};text-align:center;">${count}</td></tr></table>
         </td>
         <td valign="middle" style="padding:14px 0;${rule}font-family:${SERIF};font-size:18px;font-weight:700;line-height:1.3;color:${D};">${escapeHtml(room)}</td>
       </tr>`;
@@ -146,22 +148,22 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   const story = storyOf(kid);
   const lead = leadOf(kid, brokenLogos);
 
-  const subject = `Meet ${name}, Our Next Dream Room Project`;
+  const space = notARoom(rooms);
+  const subject = `Meet ${name}, Our Next ${space ? 'Project' : 'Dream Room Project'}`;
   // Its own line in the inbox, not the subject again
   const preview = rooms.length ? `${name}’s story, what we’re building, and how you can help.` : `${name}’s story and how you can help.`;
   const ages = kid.age ? agesOf(kid.age) : [];
   const agesText = ages.length > 2 ? `${ages.slice(0, -1).join(', ')} & ${ages[ages.length - 1]}` : ages.join(' & ');
   const facts = [
     ages.length && { label: ages.length > 1 ? 'Ages' : 'Age', main: agesText },
-    kid.diagnosis && { label: 'Diagnosis', main: curly(kid.diagnosis) },
+    kid.diagnosis && { label: 'Diagnosis', main: tidy(kid.diagnosis) },
   ].filter(Boolean);
 
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
   const fit = fitName({ name, after: '.', runs: ['Meet'], max: 54, min: 36, wrap: (h) => `<em style="font-style:italic;color:${Y};">${h}</em>` });
   const giveLabel = `Give to ${name}’s Room →`;
-  const action = own && giveLabel.length <= GIVE_MAX ? giveLabel : 'Give Now →';
+  const action = own && !space && giveLabel.length <= GIVE_MAX ? giveLabel : 'Give Now →';
   // The plan's heading is the kid's room: "Dylan’s dream room", "Tyrece & Maddie’s dream rooms", "Ava’s wheelchair ramp"
-  const space = notARoom(rooms);
   const several = rooms.length > 1 || Number(kid.roomCount) > 1;
   const planWhat = space ? space.lower : several ? 'dream rooms' : 'dream room';
   const planWords = planWhat.split(' ');
@@ -188,7 +190,7 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
   ${rooms.length ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:44px 0 0;${SIDE}" class="pd">
     ${label('The plan')}
     <h2 class="${planFit.phone}" style="margin:16px 0 10px;font-family:${SERIF};font-size:${planFit.size}px;font-weight:700;line-height:1.25;color:${D};">${planFit.html} ${noWidow(escapeHtml(planWhat))}</h2>
-    ${roomList(rooms)}
+    ${roomList(roomCounts(kid))}
   </td></tr>` : ''}
   ${gap(40)}
   ${askBand({
@@ -232,8 +234,11 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const several = (Number(kid.roomCount) || rooms.length || 1) > 1;
   // A ramp or a lift is named as itself, never a "Dream Room"
   const space = notARoom(rooms);
-  const what = space ? space.title : `Dream ${several ? 'Rooms' : 'Room'}`;
-  const finished = `${name}’s ${what} ${several ? 'Are' : 'Is'} Complete`;
+  // Rooms and a ramp together are neither "Dream Rooms" nor a ramp: the kid's makeover
+  const mixed = !space && rooms.some((r) => notARoom([r]));
+  const what = space ? space.title : mixed ? 'Makeover' : `Dream ${several ? 'Rooms' : 'Room'}`;
+  const are = several && !mixed;
+  const finished = `${name}’s ${what} ${are ? 'Are' : 'Is'} Complete`;
   // The page's summary was often written while the room was still to come
   // ("SOARD is building..."), so this opening is one that's always true.
   // Two rooms of one kind (a bedroom each) read as "bedrooms".
@@ -258,7 +263,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   // The kid page shows its first 30 photos (src/pages/kids/[slug].astro), so the email never promises more
   const allPhotos = Math.min(kidPhotos(kid).length, PAGE_PHOTOS);
   const whatWords = what.split(' ');
-  const fit = fitName({ name, after: '’s', runs: [...whatWords.slice(0, -2), whatWords.slice(-2).join(' '), `${several ? 'Are' : 'Is'} Complete.`], max: 40, min: 28 });
+  const fit = fitName({ name, after: '’s', runs: [...whatWords.slice(0, -2), whatWords.slice(-2).join(' '), `${are ? 'Are' : 'Is'} Complete.`], max: 40, min: 28 });
   // The page has a Gallery section once it has two photos
   const coverUrl = video ? `${kidUrl}#chapter-reveal` : allPhotos > 1 ? `${kidUrl}#chapter-gallery` : kidUrl;
   const watch = video ? null : allPhotos > 1 ? 'See the Photos' : 'Read the Story';
@@ -267,7 +272,7 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   ${emailHeader(site)}
   ${cover({
     kicker: `Project complete · ${yearOf(kid)}`,
-    headline: `${fit.html} ${noWidow(escapeHtml(what))}<br>${several ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
+    headline: `${fit.html} ${noWidow(escapeHtml(what))}<br>${are ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
     size: fit.size,
     phone: fit.phone,
     lead,

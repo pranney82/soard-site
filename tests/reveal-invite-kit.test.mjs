@@ -101,7 +101,7 @@ test('the email: filled in from the kid page and JobTread, the Remi & Nico desig
   assert.match(e.html, />Friday, March 12<\/div>\s*<div[^>]*>4:00 PM</, 'the day and the time each keep a line, so a phone never breaks a date');
   assert.match(e.text, /Friday, March 12, 2027 · 4:00 PM/);
   assert.match(e.html, /100 Example Way, Atlanta, GA\u00A030301/, 'the family’s address, like the invite sent for Remi & Nico');
-  assert.match(e.html, /Park on the street\.[\s\S]*Bring a smile\./, 'JobTread’s notes, one line each');
+  assert.match(e.html, /Park on the(?: |&nbsp;)street\.[\s\S]*Bring a(?: |&nbsp;)smile\./, 'JobTread’s notes, one line each');
   const cal = calendarLinks('rowan-test');
   for (const link of [cal.google, cal.apple, cal.outlook]) assert.ok(e.html.includes(link.replace(/&/g, '&amp;')), link);
   assert.match(e.html, /\/live\/rowan-test\//, 'the live link');
@@ -489,9 +489,9 @@ test('a group with no usable id isn’t an audience: no draft to everyone', asyn
 
 test('two kids read right, and one does too', () => {
   const two = revealInviteEmail({ kid: { ...KID, name: 'Remi & Nico' }, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
-  assert.match(two.html, /before Remi &amp; Nico arrive\./);
+  assert.match(two.html, /before Remi &amp; Nico(?: |&nbsp;)arrive\./);
   const one = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
-  assert.match(one.html, /before Rowan arrives\./);
+  assert.match(one.html, /before Rowan(?: |&nbsp;)arrives\./);
 });
 
 test('the signature has the team, and a picture that won’t load is left out, never shown broken', async () => {

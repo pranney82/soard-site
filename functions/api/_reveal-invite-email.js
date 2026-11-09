@@ -61,12 +61,18 @@ export const pluralRoom = (room) => (/s$/i.test(room) ? room : `${room}s`);
  * room count over one is plural too (Remi & Nico: two dream bedrooms). No types: the fallback.
  */
 export function roomNames(kid = {}, fallback = '') {
+  return roomCounts(kid, fallback).map((r) => r.name);
+}
+
+/** Each room with how many of it the page counts: [{ name: "Dream Bedrooms", count: 2 }, { name: "Accessible Bathroom", count: 1 }] */
+export function roomCounts(kid = {}, fallback = '') {
   const types = Array.isArray(kid.roomTypes) ? kid.roomTypes.filter(Boolean) : [];
-  if (!types.length) return [String(fallback || '').trim()].filter(Boolean);
+  if (!types.length) return [String(fallback || '').trim()].filter(Boolean).map((name) => ({ name, count: 1 }));
   const total = Number(kid.roomCount) || 0;
   return types.map((t) => {
-    const n = /bath/i.test(t) ? Number(kid.bathroomCount) : /bed/i.test(t) ? Number(kid.bedroomCount) : 0;
-    return n > 1 || (types.length === 1 && total > 1) ? pluralRoom(t) : t;
+    const own = /bath/i.test(t) ? Number(kid.bathroomCount) : /bed/i.test(t) ? Number(kid.bedroomCount) : 0;
+    const count = own > 1 ? own : types.length === 1 && total > 1 ? total : 1;
+    return { name: count > 1 ? pluralRoom(t) : t, count };
   });
 }
 
@@ -112,18 +118,31 @@ export const nameHtml = (name) => escapeHtml(name).replace(/(\S*-\S*)/g, '<span 
  * @returns {{ size: number, phone: string, html: string, whole: boolean }}
  */
 export function fitName({ name, after = '', afterHtml, runs = [], max, min = max, phones, wrap = (h) => h }) {
-  const tail = afterHtml === undefined ? escapeHtml(after) : afterHtml;
+  // "Marcus Jr." + "." reads "Marcus Jr.", never "Jr.."
+  const dot = /\.$/.test(String(name).trim()) && /^\./.test(after);
+  const afterText = dot ? after.slice(1) : after;
+  let tail = afterHtml === undefined ? escapeHtml(afterText) : afterHtml;
+  if (dot && afterHtml !== undefined) tail = tail.replace(/^\./, '');
   const opts = phones ? { phones } : undefined;
   const nowrap = (h) => `<span style="white-space:nowrap;">${h}</span>`;
-  const whole = headlineFit([...runs, `${name}${after}`], max, opts);
-  if (whole.size >= min || !/\s/.test(String(name).trim())) return { ...whole, whole: true, html: nowrap(`${wrap(escapeHtml(name))}${tail}`) };
+  const whole = headlineFit([...runs, `${name}${afterText}`], max, opts);
+  // Pieces that may sit on their own line: "&" goes with the name after it, "Jr." with the one before
   const pieces = [];
   for (const w of String(name).trim().split(/\s+/)) {
-    if (pieces.length && /^(&|and)$/i.test(pieces[pieces.length - 1])) pieces[pieces.length - 1] += ` ${w}`;
+    const last = pieces[pieces.length - 1];
+    if (last !== undefined && (/^(&|and)$/i.test(last) || /^(jr|sr)\.?$|^(ii|iii|iv)$/i.test(w))) pieces[pieces.length - 1] += ` ${w}`;
     else pieces.push(w);
   }
-  const fit = headlineFit([...runs, ...pieces.map((p, i) => (i === pieces.length - 1 ? `${p}${after}` : p))], max, opts);
-  return { ...fit, whole: false, html: pieces.map((p, i) => nowrap(`${wrap(escapeHtml(p).replace(/ /g, '&nbsp;'))}${i === pieces.length - 1 ? tail : ''}`)).join(' ') };
+  if (whole.size >= min || pieces.length < 2 && !/-/.test(name)) return { ...whole, whole: true, html: nowrap(`${wrap(escapeHtml(name))}${tail}`) };
+  // A hyphenated name only breaks after its hyphen ("Christopher- / Alexander’s") when keeping it whole
+  // would set the headline smaller than 24px, the size of the lines around it
+  const sizeOf = (ps) => headlineFit([...runs, ...ps.map((p, i) => (i === ps.length - 1 ? `${p.text}${afterText}` : p.text))], max, opts);
+  let parts = pieces.map((text) => ({ text, join: ' ' }));
+  if (sizeOf(parts).size < Math.min(min, 24)) {
+    parts = pieces.flatMap((text) => text.split(/(?<=-)/).map((t, i, a) => ({ text: t, join: i ? '&#8203;' : ' ' })));
+  }
+  const fit = sizeOf(parts);
+  return { ...fit, whole: parts.length === 1, html: parts.map((p, i) => `${i ? p.join : ''}${nowrap(`${wrap(escapeHtml(p.text).replace(/ /g, '&nbsp;'))}${i === parts.length - 1 ? tail : ''}`)}`).join('') };
 }
 
 /**
@@ -205,6 +224,9 @@ export function stripHtml(html) {
 export const twoKids = (name) => /\s(&|and)\s/.test(String(name || ''));
 
 /** Typographic apostrophes, so names and copy read like the rest of the email */
+/** Text a family or staff typed, made to read like the rest of the email: curly quotes, and a comma where they typed an em dash */
+export const tidy = (s) => curly(s).replace(/\s*\u2014\s*/g, ', ').replace(/,\s*,/g, ',');
+
 export const curly = (s) => String(s || '')
   .replace(/(^|[\s(\[{“‘])"/g, '$1“').replace(/"/g, '”')
   .replace(/(\w)'(\w)/g, '$1’$2')
@@ -390,8 +412,26 @@ export function photoPair(photos, name, top = 8) {
 
 /** The small line that thanks whoever took the pictures, and the way to the rest of them */
 export function photoNotes(kid, link = '') {
-  const credit = kid.photographer ? `<p style="margin:${link ? 10 : 0}px 0 0;font-family:${SANS};font-size:13px;color:${TM};">Photos by ${escapeHtml(curly(kid.photographer))}</p>` : '';
+  const credit = kid.photographer ? `<p style="margin:${link ? 10 : 0}px 0 0;font-family:${SANS};font-size:13px;color:${TM};">Photos by ${escapeHtml(tidy(kid.photographer))}</p>` : '';
   return link || credit ? `<div style="padding-top:16px;">${link}${credit}</div>` : '';
+}
+
+/**
+ * A typed note as HTML: a pasted link becomes a short name to tap ("Google Maps", "zeffy.com") rather
+ * than a run of characters across five lines, and the note never ends on one word alone.
+ */
+export function noteHtml(text, color = '#FFFFFF') {
+  const parts = String(text || '').split(/(https?:\/\/[^\s<>"]+)/g);
+  return noWidow(parts.map((part, i) => {
+    if (i % 2 === 0) return escapeHtml(tidy(part));
+    const url = part.replace(/[.,;:!?)\]]+$/, '');
+    const trail = part.slice(url.length);
+    let host;
+    try { host = new URL(url).hostname.toLowerCase().replace(/^www\./, ''); } catch { return escapeHtml(part); }
+    const name = (/^google\.[a-z.]+$/.test(host) && /\/maps\b/.test(url)) || /^maps\.google\.|^maps\.app\.goo\.gl$|^goo\.gl$/.test(host) ? 'Google Maps'
+      : /(^|\.)maps\.apple\.com$/.test(host) ? 'Apple Maps' : host;
+    return `<a href="${href(url)}" target="_blank" style="color:${color};font-weight:600;text-decoration:underline;text-underline-offset:2px;">${escapeHtml(name)}</a>${escapeHtml(trail)}`;
+  }).join(''));
 }
 
 /** The invite's details on the dark cover, ruled like a ticket: rows of { label, lines, sub }, then what to know before coming */
@@ -413,7 +453,7 @@ function ticket(rows, notes) {
   return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="text-align:left;table-layout:fixed;">
       ${rows.map((r) => block(r.label, `${r.lines.map((l) => `<div style="${main}">${escapeHtml(l)}</div>`).join('')}
         ${r.sub ? `<div style="margin-top:2px;${quiet}">${escapeHtml(r.sub)}</div>` : ''}`)).join('')}
-      ${notes.length ? block('Before you come', notes.map((n, i) => `<div style="margin-top:${i ? 6 : 0}px;${i ? quiet : `font-family:${SANS};font-size:15px;font-weight:600;line-height:1.5;color:#FFFFFF;${wrap}`}">${escapeHtml(n)}</div>`).join('')) : ''}
+      ${notes.length ? block('Before you come', notes.map((n, i) => `<div style="margin-top:${i ? 6 : 0}px;${i ? quiet : `font-family:${SANS};font-size:15px;font-weight:600;line-height:1.5;color:#FFFFFF;${wrap}`}">${noteHtml(n)}</div>`).join('')) : ''}
     </table>`;
 }
 
@@ -458,7 +498,7 @@ export function partnerCards(kid, brokenLogos = new Set(), lead = 'Made possible
     if (seenLogo.has(key)) return false;
     seenLogo.add(key);
     return true;
-  }).map((l) => ({ ...l, label: partnerLabel(l.name) })).flatMap((l) => {
+  }).map((l) => ({ ...l, label: tidy(partnerLabel(l.name)) })).flatMap((l) => {
     if (!brokenLogos.has(cfImg(l.url, LOGO_TRANSFORM))) return [l];
     // Broken: the name in text, unless the "name" is only a file's (a screenshot upload)
     return l.label ? [{ ...l, text: true }] : [];
@@ -528,7 +568,8 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     when && (/^\d{1,2}:\d{2}/.test(String(time || ''))
       ? { label: 'When', lines: [longDay(date), when.split(' · ')[1]] }
       : { label: 'When', lines: [longDay(date)], sub: TIME_LATER }),
-    { label: 'Where', lines: [`${name}’s Home`], sub: cleanAddress(address).replace(/\b([A-Z]{2}) (\d{5})/, '$1\u00A0$2') },
+    // No address from JobTread yet: say so, rather than leave guests with only "Josué’s Home"
+    { label: 'Where', lines: [`${name}’s Home`], sub: tidy(cleanAddress(address)).replace(/\b([A-Z]{2}) (\d{5})/, '$1\u00A0$2') || 'Address to be confirmed' },
     roomLines.length && { label: notARoom(roomLines) ? 'Project' : several ? 'Rooms' : 'Room', lines: roomLines },
   ].filter(Boolean);
   const noteLines = String(notes || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
@@ -546,7 +587,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     </tr></table>
     <p style="margin:18px 0 0;font-family:${SANS};font-size:14px;color:#C9CACC;line-height:1.6;">Can’t be there in person? <a href="${href(liveUrl)}" target="_blank" style="color:#FFFFFF;font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;">Watch it live</a> from&nbsp;anywhere.</p>` : '';
 
-  const summary = curly(kid.heroSummary || stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '').trim();
+  const summary = tidy(kid.heroSummary || stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '').trim();
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
   const fit = fitName({ name, after: '’s', runs: ['Reveal Day.'], max: 42, min: 30 });
   const space = notARoom(roomLines);
@@ -562,7 +603,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     lead,
     alt: `${name}’s reveal day`,
     url: kidUrl,
-    action: `${ticket(rows, [arrive, ...noteLines.map(curly)].filter(Boolean))}${calendar}`,
+    action: `${ticket(rows, [arrive, ...noteLines].filter(Boolean))}${calendar}`,
   })}
   ${lede(opening)}
   ${summary ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:36px 0 0;${SIDE}" class="pd">
@@ -583,11 +624,11 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     opening,
     '',
     when && `When: ${when}`,
-    `Where: ${name}’s Home${address ? `, ${cleanAddress(address)}` : ''}`,
+    `Where: ${name}’s Home${address ? `, ${tidy(cleanAddress(address))}` : ''}`,
     roomText && `${notARoom(roomLines) ? 'Project' : several ? 'Rooms' : 'Room'}: ${roomText}`,
     '',
     arrive,
-    ...noteLines.map(curly),
+    ...noteLines.map(tidy),
     '',
     slug && `Add to your calendar: ${cal.apple}`,
     `Watch it live: ${liveUrl}`,

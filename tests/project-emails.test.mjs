@@ -21,7 +21,7 @@ const KID = {
   photos: ['hero', 'a', 'b', 'c'].map((n) => ({ url: `${IMG}/kids/rowan-test/${n}.jpg/public` })),
   partnerLogos: [{ url: `${IMG}/partners/msi/public`, name: 'MSI' }],
 };
-const DONE = { ...KID, status: 'completed', videoUrl: 'https://youtu.be/abc123' };
+const DONE = { ...KID, status: 'completed', videoUrl: 'https://youtu.be/abc123def45' };
 const SLUG = KID.slug;
 const NOW = Date.parse('2027-02-01T15:00:00Z');
 const DAY = 24 * 60 * 60 * 1000;
@@ -294,8 +294,11 @@ test('Project Reveal promises the video only when the page has one', () => {
   const withVideo = projectRevealEmail({ kid: DONE });
   assert.match(withVideo.html, /Watch the Reveal/);
   assert.match(withVideo.preview, /the video/);
-  const stream = projectRevealEmail({ kid: { ...DONE, videoUrl: '', streamVideoId: 'abc' } });
+  const stream = projectRevealEmail({ kid: { ...DONE, videoUrl: '', streamVideoId: 'ca28d84a781fd71ec692d45009f47936' } });
   assert.match(stream.html, /Watch the Reveal/);
+  // The kid page only has a Reveal section for a Stream upload or a link that really is YouTube
+  const vimeo = projectRevealEmail({ kid: { ...DONE, videoUrl: 'https://vimeo.com/12345', streamVideoId: '' } });
+  assert.ok(!/Watch the Reveal|chapter-reveal/.test(vimeo.html));
 });
 
 test('a partner logo that won’t load shows a tidy name that fits its card; a generated file name shows nothing', () => {
@@ -335,7 +338,7 @@ test('the invite’s calendar buttons share the width, and typed notes and addre
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way, Atlanta, GA 30301', notes: 'Parking: https://www.google.com/maps/place/100+Example+Way,+Atlanta,+GA+30301/@33.7,-84.4,17z' });
   assert.match(e.html, /max-width:330px;table-layout:fixed;"><tr>\s*<td width="33\.33%"/);
   assert.equal((e.html.match(/<a href="[^"]*calendar\.ics[^"]*" target="_blank" style="display:block;/g) || []).length, 3);
-  assert.match(e.html, /word-break:normal;overflow-wrap:break-word;">Parking: https/);
+  assert.match(e.html, /word-break:normal;overflow-wrap:break-word;">Parking: <a href="https:\/\/www\.google\.com\/maps\/place\/[^"]+"[^>]*>Google Maps<\/a>/, 'a pasted link reads as a short name to tap');
   assert.match(e.html, /word-break:normal;overflow-wrap:break-word;">100 Example Way/);
   assert.match(e.html, /width="100%" style="text-align:left;table-layout:fixed;"/, 'a pasted link can’t widen the ticket');
 });
@@ -519,7 +522,7 @@ test('a reopened job: not "complete" until it says so again', async () => {
   await hourly();
   await putKid({ ...DONE, videoUrl: null });
   await hourly(NOW + DAY);
-  await putKid({ ...KID, status: 'in-progress', videoUrl: 'https://youtu.be/abc123' });
+  await putKid({ ...KID, status: 'in-progress', videoUrl: 'https://youtu.be/abc123def45' });
   await hourly(NOW + 2 * DAY);
   assert.equal(kit.broadcasts.size, 0);
   await putKid(DONE);
@@ -751,7 +754,7 @@ test('the footer’s links fit one line on a phone', () => {
 
 test('typed notes get the same curly apostrophes as the rest of the email', () => {
   const html = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', notes: "Be respectful of neighbors' driveways. Can't wait!" }).html;
-  assert.match(html, /neighbors’ driveways\. Can’t wait!/);
+  assert.match(html, /neighbors’ driveways\. Can’t(?: |&nbsp;)wait!/);
 });
 
 // ─── Found by the third independent review (Nov 9 2026) ───
@@ -794,7 +797,7 @@ test('a two- or three-kid name breaks between names, never after "&", and keeps 
   // A long name can't stay on one line with "dream", so the ask says "this dream"
   assert.match(projectKickoffEmail({ kid: { ...KID, name: 'Christopher' } }).html, /Help us build this&nbsp;<em[^>]*>dream<\/em>\./);
   const rev = projectRevealEmail({ kid: { ...DONE, name: 'Maximilian-Alexander' } }).html;
-  assert.match(rev, /<span style="white-space:nowrap;">Maximilian-Alexander’s<\/span>/);
+  assert.match(rev, /<span style="white-space:nowrap;">Maximilian-<\/span>&#8203;<span style="white-space:nowrap;">Alexander’s<\/span>/, 'too long to keep whole: it breaks after its hyphen');
 });
 
 test('a story ending in a newline still keeps its last two words together', () => {
@@ -824,4 +827,52 @@ test('small copy: three ages, a ramp is named as itself, partners only when show
   for (const e of [projectRevealEmail({ kid: { ...DONE, photos: [], heroSummary: '' } }), projectKickoffEmail({ kid: { ...KID, heroSummary: '', bio: '', roomTypes: [] } }), revealInviteEmail({ kid: KID, date: '', time: '' })]) {
     assert.ok(!/\n\s*\n\s*\n/.test(e.text), 'no runs of blank lines');
   }
+});
+
+// ─── Found by the fourth independent review (Nov 9 2026) ───
+
+test('the plan’s circles count the rooms: "2 Dream Bedrooms", "1 Accessible Bathroom"', () => {
+  const html = projectKickoffEmail({ kid: { ...KID, roomTypes: ['Accessible Bathroom', 'Dream Bedroom'], bedroomCount: 2, bathroomCount: 1, roomCount: 3 } }).html;
+  assert.match(html, />1<\/td><\/tr><\/table>\s*<\/td>\s*<td[^>]*>Accessible Bathroom<\/td>/);
+  assert.match(html, />2<\/td><\/tr><\/table>\s*<\/td>\s*<td[^>]*>Dream Bedrooms<\/td>/);
+  assert.match(projectKickoffEmail({ kid: { ...KID, name: 'Remi & Nico', roomTypes: ['Dream Bedroom'], roomCount: 2 } }).html, />2<\/td><\/tr><\/table>\s*<\/td>\s*<td[^>]*>Dream Bedrooms<\/td>/);
+});
+
+test('"Jr." stays with its name, with one period', () => {
+  const html = projectKickoffEmail({ kid: { ...KID, name: 'Marcus Jr.' } }).html;
+  assert.ok(!/Jr\.\./.test(html));
+  assert.match(html, /Meet <span style="white-space:nowrap;"><em[^>]*>Marcus Jr\.<\/em><\/span>/);
+  assert.match(projectKickoffEmail({ kid: { ...KID, name: 'Anthony Jr. & Lyric' } }).html, /<em[^>]*>Anthony&nbsp;Jr\.<\/em>/);
+});
+
+test('a hyphenated name stays whole unless that would set the headline under 24px', async () => {
+  const { fitName } = await import('../functions/api/_reveal-invite-email.js');
+  assert.equal(fitName({ name: 'Jean-Baptiste', after: '.', runs: ['Meet'], max: 54, min: 36 }).whole, true);
+  const long = fitName({ name: 'Christopher-Alexander', after: '’s', runs: ['Reveal Day.'], max: 42, min: 30 });
+  assert.ok(long.size >= 24, `headline ${long.size}px`);
+  assert.match(long.html, /Christopher-<\/span>&#8203;<span/);
+});
+
+test('ramps and lifts are never called rooms', () => {
+  const ramp = { ...KID, roomTypes: ['Wheelchair Ramp', 'Chair Lift'], roomCount: 2 };
+  const kick = projectKickoffEmail({ kid: ramp });
+  assert.equal(kick.subject, 'Meet Rowan, Our Next Project');
+  assert.ok(!/Give to Rowan’s Room/.test(kick.html));
+  const mixed = projectRevealEmail({ kid: { ...DONE, roomTypes: ['Dream Bedroom', 'Wheelchair Ramp'], roomCount: 2 } });
+  assert.equal(mixed.subject, 'Rowan’s Makeover Is Complete');
+});
+
+test('typed notes: a pasted link is a short name to tap, no em dash, curly quotes, and no word alone', () => {
+  const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: "1234 O'Malley's Crossing, Roswell, GA 30076",
+    notes: "Park on Holcomb Bridge Rd — it's tight. Map: https://maps.app.goo.gl/AbC123" });
+  assert.match(e.html, /Park on Holcomb Bridge Rd, it’s tight\. Map: <a href="https:\/\/maps\.app\.goo\.gl\/AbC123"[^>]*>Google Maps<\/a>/);
+  assert.match(e.html, /1234 O’Malley’s Crossing/);
+  assert.ok(!/—/.test(e.html + e.text));
+  const noAddress = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00' }).html;
+  assert.match(noAddress, />Rowan’s Home<\/div>\s*<div style="margin-top:2px;[^"]*">Address to be confirmed<\/div>/);
+});
+
+test('a bio with an em dash reads with a comma', () => {
+  const inv = revealInviteEmail({ kid: { ...KID, heroSummary: '', bio: '<p>Tyrece loves music and plays—especially the drums—every day after school.</p>' }, date: '2027-03-12', time: '16:00' });
+  assert.match(inv.html, /plays, especially the drums, every day/);
 });
