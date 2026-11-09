@@ -466,7 +466,31 @@ h4, .h4 {
 }
 .btn:hover { transform: translateY(-1px); }
 .btn:active { transform: translateY(0) scale(0.98); transition-duration: 80ms; }
-.btn:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
+/* The site's two-tone ring (see :focus-visible): a yellow outline alone vanished on cream and white sections. The dark ring
+   also stands clear of a yellow button, and the yellow glow reads on dark sections. */
+.btn:focus-visible { outline: 2px solid var(--c-dark); outline-offset: 2px; box-shadow: 0 0 0 5px var(--c-yellow); }
+/* A button that can't be pressed right now (sending, or done) stops acting pressable. aria-disabled keeps it
+   focusable, so a keyboard user's place isn't lost while it waits. */
+.btn:disabled, .btn[aria-disabled='true'] { cursor: default; }
+.btn:disabled:hover, .btn:disabled:active, .btn[aria-disabled='true']:hover, .btn[aria-disabled='true']:active { transform: none; }
+.btn-primary:disabled:hover, .btn-primary[aria-disabled='true']:hover, .btn-yellow:disabled:hover, .btn-yellow[aria-disabled='true']:hover {
+  background: var(--c-yellow);
+  box-shadow: 0 1px 2px rgba(255, 218, 36, 0.3), 0 4px 12px rgba(255, 218, 36, 0.15);
+}
+/* Windows high contrast drops the fills: every button keeps an edge of its own */
+@media (forced-colors: active) { .btn { border: 2px solid ButtonText; } }
+/* "Working on it", inside a button in place of its label (currentColor, so it suits any button) */
+.btn-spinner {
+  display: inline-block; width: 18px; height: 18px; border-radius: 50%;
+  border: 2.5px solid currentColor; border-right-color: transparent; opacity: 0.85;
+  animation: btn-spin 0.75s linear infinite;
+}
+@keyframes btn-spin { to { transform: rotate(360deg); } }
+/* Reduced motion stops every animation (the rule below): three still dots say "working" where a frozen ring wouldn't */
+@media (prefers-reduced-motion: reduce) {
+  .btn-spinner { width: auto; height: auto; border: 0; border-radius: 0; opacity: 1; animation: none; }
+  .btn-spinner::before { content: '•••'; letter-spacing: 3px; font-size: 14px; line-height: 1; }
+}
 
 /* ── Yellow primary ── */
 .btn-yellow,

@@ -127,12 +127,16 @@ export const remindersUsable = (r: ReminderOptions | null | undefined, canPush =
 export const browserCanPush = () => typeof window !== 'undefined' && 'PushManager' in window && 'serviceWorker' in navigator
   && typeof Notification !== 'undefined' && Notification.permission !== 'denied';
 
-/** The reminder block's promise, as Settings has the notes */
-export function remindLead(hours: number[] = [24, 1], { dated = false, left = Infinity } = {}): string {
-  const notes = [left > 24 * 3600_000 && hours.includes(24) && 'the day before', left > 3600_000 && hours.includes(1) && 'an hour before', 'when we go live'].filter(Boolean) as string[];
-  const [first, ...rest] = notes;
-  const open = dated ? "Tell us how to reach you and we'll send" : "Tell us how to reach you and we'll let you know when a reveal gets its date, then send";
-  return `${open} one note ${first}, ${rest.map((n) => `one ${n}, `).join('')}and one when the replay is up. Nothing else, ever.`;
+/**
+ * What a reminder sign-up will hear, worded as the confirm email words it (reminderPlan in _broadcast-notify.js),
+ * from the hours Reveals → Settings has. about: "every reveal" (the band's card and the /live/ form), or
+ * "Colin’s reveal". Only what can still be sent: a reveal with its day doesn't "get a date", and ten minutes
+ * out there's no "day before".
+ */
+export function remindPromise(hours: number[] = [24, 1], { about = 'every reveal', dated = false, left = Infinity } = {}): string {
+  const notes = [!dated && 'when it gets a date', left > 24 * 3600_000 && hours.includes(24) && 'the day before', left > 3600_000 && hours.includes(1) && 'an hour before', 'when we go live'].filter(Boolean);
+  // A comma before "and" only in a list of three or more
+  return `We'll email you about ${about}: ${notes.join(', ')}${notes.length > 1 ? ',' : ''} and when the replay is up. Nothing else, ever.`;
 }
 
 /** Today in Eastern, as the schedule's dates are written */
@@ -155,10 +159,11 @@ export function pageShowsIt(path: string, kidSlug: string | null | undefined, re
  */
 export const dismissValue = (s: Pick<Status, 'id'>, stage: BannerStage) => `${s.id}:${stage}`;
 
-/** What a banner must never sit on: anything you can press or type in, and any video */
+/** What a banner must never sit on: anything you can press or type in, any video, and the answer a form just gave */
 export const MAIN_CONTROLS = [
-  'button', 'summary', '[role="button"]', '.btn', 'a[class*="btn"]', 'a[class*="cta"]', '.pstrip__link', '.ps__link', '.upn-act',
+  'button', 'summary', '[role="button"]', '.btn', 'a[class*="btn"]', 'a[class*="cta"]', '.pstrip__link', '.ps__link', '.upn-act', '.upn-card',
   'input:not([type="hidden"]):not([type="checkbox"]):not([type="radio"])', 'select', 'textarea', 'footer a', 'video', 'iframe',
+  '[role="status"]:not(:empty)',
 ].join(',');
 export const PICTURES = 'video,iframe'; // not even a sliver of these
 

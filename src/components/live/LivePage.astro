@@ -98,17 +98,18 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       <div class="live-block" id="remind" data-live="remind-block" hidden>
         <p class="section-label" data-live="remind-label">Reminders</p>
         <h2 data-live="remind-heading">Never miss a reveal</h2>
-        <p class="live-block__lead" data-live="remind-lead" hidden>Tell us how to reach you and we'll let you know when a reveal gets its date, then send one note the day before, one an hour before, one when we go live, and one when the replay is up. Nothing else, ever.</p>
-        <form class="remind-form" data-live="form-email" novalidate hidden>
+        <p class="live-block__lead" data-live="remind-lead" hidden>We'll email you about every reveal: when it gets a date, the day before, an hour before, when we go live, and when the replay is up. Nothing else, ever.</p>
+        <!-- method="post" and a button that's off until the script wires it: nothing ever sends the address in a link -->
+        <form class="remind-form" data-live="form-email" method="post" novalidate hidden>
           <div class="remind-row">
-            <label class="sr-only" for="remind-email">Email address</label>
-            <input class="remind-input" id="remind-email" type="email" name="email" placeholder="you@example.com" autocomplete="email" required />
-            <button class="btn btn-primary remind-btn" type="submit">
-              <span class="btn-text">Email me</span><span class="btn-done">Check your email</span>
+            <label class="sr-only" for="remind-email" data-live="remind-email-label">Email address for every reveal</label>
+            <input class="remind-input" id="remind-email" type="email" name="email" placeholder="you@example.com" autocomplete="email" enterkeyhint="send" required />
+            <button class="btn btn-primary remind-btn" type="submit" disabled>
+              <span class="btn-text">Email me</span><span class="btn-busy"><span class="btn-spinner" aria-hidden="true"></span><span class="sr-only">Sending</span></span><span class="btn-done">Sent</span>
             </button>
           </div>
           <div class="remind-hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off" /></label></div>
-          <p class="remind-note" role="status" aria-live="polite" tabindex="-1"></p>
+          <p class="remind-note" role="status" aria-live="polite"></p>
         </form>
         <!-- The quick check (Turnstile) runs in a small frame here, out of sight unless it needs a click -->
         <div class="remind-check" data-live="remind-check"></div>
@@ -167,7 +168,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   .live-page > :global(.live-next) { order: 5; }
   .live-page > :global(.live-past) { order: 6; }
   .live-page[data-view='idle'] > :global(.live-past) { order: 2; }
-  .live-page[data-next] > :global(.live-next) { display: none; }
+  /* ...except while someone is mid-sign-up in its email card, or it's on screen (data-in-view): it never vanishes
+     from under someone; it goes once they've moved on, with what they're looking at held in place (holdPlace) */
+  .live-page[data-next] > :global(.live-next):not(:has([data-mail-busy])):not([data-in-view]) { display: none; }
 
   /* ── The frame: the stage, or what's coming up ── */
   .live-page[data-next] .hero-frame > :global([data-stage]) { display: none; }
@@ -268,23 +271,31 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
   .remind-form { margin-bottom: 12px; }
   .remind-form[hidden] { display: none; }
-  .remind-row { display: flex; gap: 10px; max-width: 520px; }
+  /* The address and its button share a line; with no room, the button takes its own, full width */
+  .remind-row { display: flex; flex-wrap: wrap; gap: 10px; max-width: 520px; }
   .remind-input {
-    flex: 1; min-width: 0; padding: 14px 18px; border-radius: 100px; border: 1.5px solid var(--c-border);
-    background: #fff; font: inherit; font-size: 15px; color: var(--c-text); transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+    flex: 999 1 240px; min-width: 0; padding: 14px 18px; border-radius: 100px; border: 1.5px solid rgba(45, 46, 51, 0.6);
+    background: #fff; font: inherit; font-size: 16px; color: var(--c-text); transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
   }
-  .remind-input:focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 3px var(--c-yellow-soft); }
-  .remind-btn { flex-shrink: 0; }
-  .remind-btn .btn-done { display: none; }
-  .remind-form.is-done .btn-text { display: none; }
-  .remind-form.is-done .btn-done { display: inline; }
-  .remind-form.is-done .remind-input { opacity: 0.6; }
+  .remind-input:focus { outline: none; border-color: var(--c-dark); box-shadow: 0 0 0 3px rgba(255, 218, 36, 0.6); }
+  /* Not a usable address: the box says so too, not only the words under it */
+  .remind-input[aria-invalid='true'] { border-color: var(--c-dark); border-width: 2px; }
+  /* "Email me", the spinner and "Sent" share one cell, so the button never changes size: nothing moves.
+     (Sending or sent, it's aria-disabled: global.css stops it acting pressable, and focus stays on it.) */
+  .remind-btn { flex: 1 0 auto; display: inline-grid; place-items: center; }
+  .remind-btn > span { grid-area: 1 / 1; display: inline-flex; align-items: center; }
+  .remind-btn .btn-busy, .remind-btn .btn-done { visibility: hidden; }
+  .remind-form.is-busy .btn-text, .remind-form.is-done .btn-text { visibility: hidden; }
+  .remind-form.is-busy .btn-busy, .remind-form.is-done .btn-done { visibility: visible; }
+  /* Sent: the address quietens, still readable (it can be edited to send again) */
+  .remind-form.is-done .remind-input { color: var(--c-text-muted); }
   .remind-hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
-  .remind-note { font-size: 14px; color: var(--c-text-muted); min-height: 1.4em; margin: 8px 0 0; outline: none; overflow-wrap: anywhere; }
+  .remind-note { font-size: 14px; color: var(--c-text-muted); min-height: 1.4em; margin: 8px 0 0; overflow-wrap: anywhere; }
   .remind-note--error { color: var(--c-text); font-weight: 600; }
   .remind-note :global(.remind-fix) { padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--c-text); text-decoration: underline; text-underline-offset: 3px; cursor: pointer; overflow-wrap: anywhere; }
+  .remind-note :global(.remind-fix:focus-visible) { outline: 2px solid var(--c-dark); outline-offset: 0; border-radius: 2px; box-shadow: none; }
   /* The text form shows one step at a time */
-  .remind-check { max-width: 400px; }
+  .remind-check { max-width: 520px; }
   .remind-check :global(iframe) { display: block; width: 100%; height: 0; border: 0; overflow: hidden; transition: height var(--transition-fast); }
   .remind-check.is-shown :global(iframe) { height: 72px; margin: 4px 0 12px; }
   .remind-extras { display: flex; gap: 20px; flex-wrap: wrap; margin-top: 16px; }
@@ -339,7 +350,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     .hero[data-party] { padding-top: 12px; padding-bottom: 32px; }
     .hero[data-party] .hero-inner { padding: 0 var(--space-md); }
     .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
-    .remind-row { flex-direction: column; }
   }
   @media (prefers-reduced-motion: reduce) {
     .hero-text h1, .hero-lead, .hero-status, .hero-ctas, .hero-frame { animation: none; opacity: 1; }
@@ -349,13 +359,15 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
 <script>
   import { getLiveClient, formatWhen, relativeUntil, revealLabel, type LiveState, type ReminderOptions } from '../../utils/live-client';
-  import { remindersUsable, browserCanPush, remindLead, revealIsToday, replayOverdue, runningLate } from '../../utils/live-banner';
-  import { mailFix } from '../apply/mail-fix.js';
+  import { remindersUsable, browserCanPush, remindPromise, revealIsToday, replayOverdue, runningLate } from '../../utils/live-banner';
+  import { holdPlace, keepFocus } from '../../utils/hold-place';
+  import { upcomingAtBuild } from '../../utils/reveals-copy';
+  import { wireRemindForm } from '../../utils/remind-signup';
   import { createStage } from '../../utils/live-stage';
   import { createMessages } from '../../utils/live-messages';
   import { createGive } from '../../utils/live-give';
   import { cfRaw } from '../../utils/cf-image';
-  import { readUpcoming, revealWhen, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
+  import { readUpcoming, loadSignup, revealWhen, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
   import { heroRowsHtml, rowsSignature } from '../../utils/upcoming-rows';
 
   /** The crew may start streaming up to 30 minutes early (runbook), so the starting-soon screen fills that window here too. */
@@ -371,6 +383,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
    * coming back to it (the Back button) would show a dead page.
    */
   let teardown: (() => void) | null = null;
+  let firstPage = true; // the page the document loaded with (a reload or Back to it) rather than one the router swapped in
   document.addEventListener('astro:before-swap', () => { teardown?.(); teardown = null; });
   document.addEventListener('astro:page-load', () => {
     teardown?.();
@@ -393,15 +406,24 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     let last: LiveState | null = null;
     let lastMeta: { reminders: ReminderOptions | null } = { reminders: null };
     let remindKid = ''; // who a sign-up here is for; empty means every reveal
+    let remindShown = ''; // the name the form says it's for (empty: every reveal)
     const upNextBand = () => document.getElementById('up-next');
+    // Whether the Coming up band is on screen (see the .live-next rule): the page going idle doesn't pull it from under someone
+    const nextWrap = document.querySelector<HTMLElement>('.live-next');
+    const bandSeen = nextWrap && 'IntersectionObserver' in window
+      ? new IntersectionObserver(([e]) => { holdPlace(() => nextWrap.toggleAttribute('data-in-view', e.isIntersecting)); })
+      : null;
+    if (nextWrap) bandSeen?.observe(nextWrap);
     let display = 'loading';
     let shownKid = pageKid || followKid;
     let viewed = false;
     let rendered = false;
     let alive = true;
     const slateFailed = new Set<string>();
-    // What's coming up (JobTread via /api/reveals): the idle hero names the next reveal and lists them
-    let upcoming: UpcomingReveal[] = [];
+    // What's coming up (JobTread via /api/reveals): the idle hero names the next reveal and lists them. It starts as the
+    // build had it (the hero's rows were drawn from the same), so a child's page opens with that child's form, not
+    // every reveal's until the schedule comes
+    let upcoming: UpcomingReveal[] = upcomingAtBuild();
     let upcomingLoaded = false;
 
     const stage = createStage(stageEl, {
@@ -476,7 +498,65 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       return slateFailed.has(src) ? '' : src;
     }
 
+    // Whatever a redraw moves, the field someone is typing in stays where it is on screen; and coming back to the page,
+    // its first real drawing puts back what the visitor was looking at
     function render(state: LiveState | null, meta: { reminders: ReminderOptions | null }) {
+      holdPlace(() => drawPage(state, meta));
+      restoreSpot();
+    }
+
+    // ── Coming back (reload, Back, Forward) ──
+    // The page is drawn "loading" and takes its real order only once it knows the broadcast (between reveals, past
+    // reveals lead), after the scroll has been put back by number. So it notes what was on screen as it's left, and
+    // puts that back in the same place once it has drawn.
+    const spotKey = `live-spot:${location.pathname}`;
+    const headerLine = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 84) + 1;
+    // A part of the page, named so it's found again: its id, else its place among the page's parts (that order never
+    // changes; only how they're shown does)
+    const nameOf = (el: HTMLElement) => (el.id ? `#${CSS.escape(el.id)}` : el.parentElement === page ? `:scope > :nth-child(${[...page!.children].indexOf(el) + 1})` : '');
+    function spotNow() {
+      if (!page) return null;
+      const line = headerLine();
+      const marks = [...page.querySelectorAll<HTMLElement>(':scope > *, #remind, #up-next, #past-reveals, #messages')].filter((el) => el.getBoundingClientRect().height > 0 && nameOf(el));
+      // The part whose top is on screen nearest the header (what they were looking at); else the innermost one
+      // spanning the line under the header
+      const onScreen = marks.filter((el) => { const t = el.getBoundingClientRect().top; return t >= line && t < innerHeight * 0.8; })
+        .sort((x, y) => x.getBoundingClientRect().top - y.getBoundingClientRect().top);
+      let at: HTMLElement | null = onScreen[0] || null;
+      if (!at) for (const el of marks) { const r = el.getBoundingClientRect(); if (r.top <= line && r.bottom > line && (!at || at.contains(el))) at = el; }
+      if (!at) return null;
+      return { key: nameOf(at), offset: Math.round(at.getBoundingClientRect().top) };
+    }
+    const saveSpot = () => {
+      try { const spot = scrollY > 0 ? spotNow() : null; if (spot) sessionStorage.setItem(spotKey, JSON.stringify(spot)); else sessionStorage.removeItem(spotKey); } catch { /* storage off */ }
+    };
+    addEventListener('pagehide', saveSpot);
+    document.addEventListener('astro:before-preparation', saveSpot, { once: true });
+    const navType = (performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined)?.type;
+    const returning = firstPage ? navType === 'reload' || navType === 'back_forward' : (history.state?.scrollY || 0) > 0;
+    firstPage = false;
+    let spotPending = returning;
+    // The part they were on may only appear once its own data comes (the Coming up band): it's tried again for a
+    // few seconds, unless the visitor scrolls first, in which case they've moved on and are left where they are
+    const gaveUp = () => { spotPending = false; };
+    for (const type of ['wheel', 'touchstart', 'keydown']) addEventListener(type, gaveUp, { once: true, passive: true });
+    let spotUntil = 0;
+    function restoreSpot() {
+      if (!spotPending || !rendered || !page) return;
+      let saved: { key: string; offset: number } | null = null;
+      try { saved = JSON.parse(sessionStorage.getItem(spotKey) || 'null'); } catch { /* storage off */ }
+      if (!saved) { spotPending = false; return; }
+      const el = page.querySelector<HTMLElement>(saved.key);
+      if (!el || !el.getBoundingClientRect().height) {
+        spotUntil ||= Date.now() + 5000;
+        if (Date.now() < spotUntil) setTimeout(restoreSpot, 150); else spotPending = false;
+        return;
+      }
+      spotPending = false;
+      const moved = el.getBoundingClientRect().top - saved.offset;
+      if (Math.abs(moved) >= 1) scrollBy({ top: moved, behavior: 'instant' as ScrollBehavior });
+    }
+    function drawPage(state: LiveState | null, meta: { reminders: ReminderOptions | null }) {
       last = state; lastMeta = meta;
       const s = state || ({ phase: 'idle' } as LiveState);
       // A stream with no kid known yet only counts as this kid's on the day of this kid's reveal
@@ -577,9 +657,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       const emailForm = bq<HTMLFormElement>('form-email');
       if (emailForm) emailForm.hidden = !(remindersOn && meta.reminders?.email);
       const lead = bq<HTMLElement>('remind-lead');
-      // Only what can still be sent: ten minutes out there's no "day before", and a reveal with its day doesn't "get a date"
+      // When the named reveal is: only what can still be sent is promised (ten minutes out there's no "day before")
       const planned = (view === 'upcoming' ? s.scheduledAt : view === 'idle' && pageKid ? inviteFor?.startsAt : null) || null;
-      if (lead) { lead.hidden = !remindersOn; lead.textContent = remindLead(meta.reminders?.hours, { dated: !!planned, left: planned ? Date.parse(planned) - Date.now() : Infinity }); }
       const pushBtn = bq<HTMLButtonElement>('push-btn');
       if (pushBtn) pushBtn.hidden = !(remindersOn && meta.reminders?.push && meta.reminders.pushKey && browserCanPush());
       const cal = bq<HTMLElement>('calendar-link');
@@ -591,18 +670,38 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       if (rl) rl.textContent = remindersOn ? 'Reminders' : 'Calendar';
       const rh = bq<HTMLElement>('remind-heading');
       // A sign-up is for the reveal the heading names, and otherwise for every reveal
-      const remindName = view === 'upcoming' ? s.kidName : view === 'idle' && pageKid ? inviteFor?.name : '';
+      const remindName = (view === 'upcoming' ? s.kidName : view === 'idle' && pageKid ? inviteFor?.name : '') || '';
       const nextKid = !remindName ? '' : view === 'upcoming' ? s.kidSlug || '' : pageKid;
-      // A finished sign-up was for the reveal it named: a new one opens the form again
-      if (nextKid !== remindKid && emailForm?.classList.contains('is-done')) {
-        emailForm.classList.remove('is-done');
-        (emailForm.querySelector('button[type="submit"]') as HTMLButtonElement).disabled = false;
-        (emailForm.querySelector('.remind-note') as HTMLElement).textContent = '';
+      // Someone filling the form in keeps the reveal it said it was for until they're done with it:
+      // the broadcast moving on mid-word never quietly re-aims their sign-up
+      // A finished every-reveal sign-up keeps saying so: it already covers whoever is next.
+      // (Read once: the heading, label, promise and who it signs up for all hold, or all move, together)
+      const typing = !!remindForm?.inUse();
+      if (remindForm?.coversAll()) {
+        // Signed up for every reveal (here, or in the band's card): it says so, whoever is next
+        remindKid = '';
+        remindShown = '';
+      } else if (nextKid === remindKid || !typing) {
+        // A finished sign-up for one child opens again for the next
+        if (nextKid !== remindKid && emailForm?.classList.contains('is-done')) remindForm?.reset();
+        remindKid = nextKid;
+        remindShown = remindName;
       }
-      remindKid = nextKid;
-      if (rh) rh.textContent = remindName
-        ? (remindersOn ? `Don't miss ${remindName}'s reveal` : `Save the date for ${remindName}'s reveal`)
+      const emailLabel = bq<HTMLElement>('remind-email-label');
+      if (emailLabel) emailLabel.textContent = remindShown ? `Email address for ${remindShown}'s reveal` : 'Email address for every reveal';
+      // This form already signs up for every reveal: the Coming up band leaves its email card out
+      upNextBand()?.toggleAttribute('data-remind-here', !!emailForm && !emailForm.hidden && !remindKid);
+      const heading = remindShown
+        ? (remindersOn ? `Don't miss ${remindShown}'s reveal` : `Save the date for ${remindShown}'s reveal`)
         : !remindersOn ? 'Save the date' : view === 'replay' ? 'Hear about the next reveal' : 'Never miss a reveal';
+      // Its heading and promise don't change under someone typing either; the promise is about whom the form is for
+      if (rh && (!rh.textContent || !typing)) rh.textContent = heading;
+      if (lead) {
+        lead.hidden = !remindersOn;
+        if (!typing) lead.textContent = remindPromise(meta.reminders?.hours, remindShown
+          ? { about: `${remindShown}'s reveal`, dated: !!planned, left: planned ? Date.parse(planned) - Date.now() : Infinity }
+          : { about: 'every reveal' });
+      }
 
       rendered = true;
       if (!viewed) {
@@ -639,11 +738,20 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       const box = hero.querySelector<HTMLElement>('[data-hero-next]');
       const rows = box?.querySelector<HTMLElement>('[data-hnx-list]');
       const sig = rowsSignature(list);
-      if (box && rows && box.dataset.sig !== sig) { rows.innerHTML = heroRowsHtml(list); box.dataset.sig = sig; }
+      if (box && rows && box.dataset.sig !== sig) { keepFocus(rows, () => { rows.innerHTML = heroRowsHtml(list); }); box.dataset.sig = sig; }
       if (rendered && last) render(last, lastMeta);
-      else if (page && !pageKid) setAttr(page, 'data-next', list.length > 0);
+      else if (page && !pageKid) holdPlace(() => setAttr(page, 'data-next', list.length > 0));
     });
     refreshUpcoming();
+    // The live state can't be read (its request failed, or hangs): rather than a page with no sign-up at all, show it as
+    // between reveals, with the every-reveal sign-up when Reveals → Settings has it open. The real state takes over the
+    // moment it arrives.
+    const fallback = window.setTimeout(async () => {
+      if (rendered || !alive) return;
+      const open = await loadSignup();
+      if (rendered || !alive) return;
+      render(null, { reminders: open ? { enabled: open.email, email: open.email, hours: open.hours, sms: false, push: false, pushKey: null } : null });
+    }, 5000);
     // A reveal cancelled or moved shows up here without a reload
     const upcomingTimer = setInterval(refreshUpcoming, 60_000);
 
@@ -656,13 +764,6 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     // Nobody is on the list until the address proves it's theirs: email
     // gets a link to confirm.
 
-    // The quick check (Turnstile) while the server asks for one. The page's
-    // CSP doesn't load Turnstile, so it runs in a frame /api/reminders serves
-    // with its own policy, and posts its token up to this page.
-    const checkBox = bq<HTMLElement>('remind-check');
-    let checkOn: Promise<boolean> | null = null;
-    let checkFrame: HTMLIFrameElement | null = null;
-    let checkToken = '';
     // Someone who tapped "Remind me" came for the form. It was still hidden when the browser looked for #remind, so go there now it's showing.
     // Decided once, on arrival: the hero's own "Remind me" sets this hash too, and the page redraws every few seconds.
     // Coming Back to a page keeps its scroll (the router notes it in history.state), so that isn't an arrival either.
@@ -687,139 +788,13 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       });
     }
 
-    let checkBlocked = false; // the check itself couldn't load: a blocker, or the network
-    const checkWaiters: ((token: string) => void)[] = [];
-    // Out of sight is out of the tab order and the screen reader too, until Cloudflare wants a click
-    const showCheck = (on: boolean) => {
-      checkBox?.classList.toggle('is-shown', on);
-      checkBox?.setAttribute('aria-hidden', String(!on));
-      if (checkFrame) checkFrame.tabIndex = on ? 0 : -1;
-    };
-    const checkNeeded = () => (checkOn ||= fetch('/api/reminders?config=1', { cache: 'no-store' }).then((r) => r.json()).then((d) => !!d.turnstile).catch(() => { checkOn = null; return false; }));
-    async function warmCheck() {
-      if (checkFrame || !checkBox || !(await checkNeeded()) || checkFrame) return;
-      checkFrame = document.createElement('iframe');
-      checkFrame.src = '/api/reminders?check=1';
-      checkFrame.title = 'Quick check that you are a person';
-      checkBox.append(checkFrame);
-      showCheck(false);
-    }
-    function onCheckMessage(e: MessageEvent) {
-      if (!checkFrame || e.source !== checkFrame.contentWindow || e.origin !== location.origin) return;
-      const d = e.data || {};
-      if (d.type !== 'soard-check') return;
-      if (d.show) showCheck(true);
-      if (d.expired) checkToken = '';
-      if (d.token) { checkToken = String(d.token); showCheck(false); for (const w of checkWaiters.splice(0)) w(checkToken); }
-      if (d.error) { showCheck(true); for (const w of checkWaiters.splice(0)) w(''); }
-      if (d.blocked) { checkBlocked = true; showCheck(false); for (const w of checkWaiters.splice(0)) w(''); }
-    }
-    window.addEventListener('message', onCheckMessage);
-    /** A fresh token, '' when none came (the person sees the check), or null when no check is on */
-    async function checkTokenFor(note: HTMLElement): Promise<string | null> {
-      if (!(await checkNeeded())) return null;
-      // Trying again after it couldn't load starts it fresh
-      if (checkBlocked) { checkBlocked = false; checkFrame?.remove(); checkFrame = null; }
-      await warmCheck();
-      let token = checkToken;
-      if (!token) {
-        token = await new Promise<string>((resolve) => {
-          const slow = setTimeout(() => { showCheck(true); note.textContent = 'Almost there. Finish the quick check below.'; }, 6000);
-          const give = setTimeout(() => resolve(''), 90_000);
-          checkWaiters.push((t) => { clearTimeout(slow); clearTimeout(give); resolve(t); });
-        });
-      }
-      // Each token works once: start the next one now
-      checkToken = '';
-      checkFrame?.contentWindow?.postMessage({ type: 'soard-check-reset' }, location.origin);
-      return token;
-    }
-    {
-      const f = bq<HTMLFormElement>('form-email');
-      f?.addEventListener('focusin', () => { void warmCheck(); }, { once: true });
-      f?.addEventListener('pointerenter', () => { void warmCheck(); }, { once: true });
-    }
-
-    const say = (form: HTMLFormElement, text: string, error = false) => {
-      const note = form.querySelector('.remind-note') as HTMLElement;
-      note.className = error ? 'remind-note remind-note--error' : 'remind-note';
-      note.textContent = text;
-    };
-    let askedAbout = '';
-    /** "Did you mean ana@gmail.com?", a tap to use it */
-    function offerFix(form: HTMLFormElement, fix: string) {
-      say(form, 'Did you mean ');
-      const note = form.querySelector('.remind-note') as HTMLElement;
-      const use = document.createElement('button');
-      use.type = 'button';
-      use.className = 'remind-fix';
-      use.textContent = fix;
-      use.addEventListener('click', () => {
-        const input = form.querySelector('input[name="email"]') as HTMLInputElement;
-        input.value = fix;
-        input.focus();
-        say(form, '');
-      });
-      note.append(use, '?');
-    }
-    /** POST to /api/reminders → [ok, data, status]; adds the kid, the source and (when needed) the check's token */
-    async function sendReminder(form: HTMLFormElement, payload: Record<string, string>, { check = true, again = false } = {}): Promise<[boolean, Record<string, any>, number]> {
-      const body: Record<string, unknown> = { ...payload, kidSlug: remindKid || undefined, source: pageKid ? 'live-kid' : 'live' };
-      if (check) {
-        const token = await checkTokenFor(form.querySelector('.remind-note') as HTMLElement);
-        if (token === '') return [false, { error: checkBlocked ? "The quick check couldn't load here. Turn off any blocker or try another browser, then try again." : 'Please finish the quick check below, then try again.' }, 403];
-        if (token) body.turnstileToken = token;
-      }
-      try {
-        const res = await fetch('/api/reminders', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const data = await res.json().catch(() => ({}));
-        // The check was switched on since this page asked: ask again and send once more, with a token
-        if (data.code === 'turnstile' && check && !body.turnstileToken && !again) { checkOn = null; return sendReminder(form, payload, { check, again: true }); }
-        return [res.ok && !!data.ok, data, res.status];
-      } catch {
-        return [false, { error: 'No connection. Please try again.' }, 0];
-      }
-    }
-    const errorText = (data: Record<string, any>, status: number) => data.error || (status === 429 ? 'Too many tries. Give it a minute.' : 'Something went wrong. Please try again.');
-
-    // "Did you mean" belongs to the address it was asked about
-    bq<HTMLFormElement>('form-email')?.querySelector('input[name="email"]')?.addEventListener('input', (e) => {
-      const form = (e.currentTarget as HTMLElement).closest('form') as HTMLFormElement;
-      if (form.querySelector('.remind-fix')) say(form, '');
-    });
-    bq<HTMLFormElement>('form-email')?.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const form = e.currentTarget as HTMLFormElement;
-      const btn = form.querySelector('button[type="submit"]') as HTMLButtonElement;
-      const email = (form.querySelector('input[name="email"]') as HTMLInputElement).value.trim();
-      const hp = (form.querySelector('input[name="website"]') as HTMLInputElement)?.value || '';
-      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) { say(form, 'Enter a valid email address.', true); return; }
-      // A likely typo is asked about once. Sending it anyway is fine: it may be right.
-      const fix = mailFix(email);
-      if (fix && askedAbout !== email) { askedAbout = email; offerFix(form, fix); return; }
-      // Disabling the button drops keyboard focus to the page: put it back where the news is
-      const typing = document.activeElement === btn;
-      btn.disabled = true; say(form, 'One moment…');
-      const [ok, data, status] = await sendReminder(form, { channel: 'email', email, hp });
-      const note = form.querySelector('.remind-note') as HTMLElement;
-      if (ok) {
-        form.classList.add('is-done');
-        say(form, `Check your email to confirm. We sent a link to ${email}. Nothing comes until you tap it.`);
-        if (typing) note.focus({ preventScroll: true });
-      } else {
-        say(form, errorText(data, status), true);
-        btn.disabled = false;
-        if (typing) btn.focus({ preventScroll: true });
-      }
-    });
-    // A typo in the address? Editing it opens the form again
-    bq<HTMLFormElement>('form-email')?.querySelector('input[name="email"]')?.addEventListener('input', (e) => {
-      const form = (e.currentTarget as HTMLInputElement).form;
-      if (!form?.classList.contains('is-done')) return;
-      form.classList.remove('is-done');
-      (form.querySelector('button[type="submit"]') as HTMLButtonElement).disabled = false;
-      say(form, '');
-    });
+    // One sign-up, shared with the Coming up band's every-reveal card (remind-signup.ts)
+    const emailForm = bq<HTMLFormElement>('form-email');
+    const remindForm = emailForm ? wireRemindForm(emailForm, {
+      checkBox: bq<HTMLElement>('remind-check'),
+      kid: () => remindKid,
+      source: () => (pageKid ? 'live-kid' : 'live'),
+    }) : null;
 
     // Browser push
     const pushBtn = bq<HTMLButtonElement>('push-btn');
@@ -867,7 +842,11 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       alive = false;
       clearInterval(upcomingTimer);
       unsubscribe();
-      window.removeEventListener('message', onCheckMessage);
+      remindForm?.destroy();
+      clearTimeout(fallback);
+      removeEventListener('pagehide', saveSpot);
+      for (const type of ['wheel', 'touchstart', 'keydown']) removeEventListener(type, gaveUp);
+      bandSeen?.disconnect();
       clearInterval(countdown);
       give?.destroy();
       stage.destroy();

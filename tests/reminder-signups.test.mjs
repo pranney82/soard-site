@@ -330,6 +330,14 @@ test('Turnstile: required whenever its keys are set', async () => {
     assert.equal((html.match(/<script/g) || []).length, (html.match(new RegExp(`<script nonce="${nonce}"`, 'g')) || []).length, 'every script carries the nonce');
     assert.match(html, /blocked: true/, 'a check that can\'t load says so');
     assert.match(html, /postMessage\(.*location\.origin\)/);
+    // A light widget unless the form sits on a dark band; compact when the frame is narrower than the flexible one's 300px;
+    // and the frame is told the widget's height, so neither size is cut off
+    assert.match(html, /theme: 'light'/);
+    assert.match(await (await get('/api/reminders?check=1&theme=dark')).text(), /theme: 'dark'/);
+    assert.match(await (await get('/api/reminders?check=1&theme=%3Cscript%3E')).text(), /theme: 'light'/, 'anything else is light, never echoed');
+    assert.match(html, /size: innerWidth < 300 \? 'compact' : 'flexible'/);
+    assert.match(html, /up\(\{ h: box\.offsetHeight \}\)/);
+    assert.ok(html.indexOf('up({ ready: true })') > -1 && html.indexOf('up({ ready: true })') < html.indexOf('challenges.cloudflare.com/turnstile'), 'the frame says it loaded before Cloudflare\'s script can fail');
 
     const missing = await post({ channel: 'email', email: 'robot@example.com' });
     assert.equal(missing.status, 403);

@@ -124,7 +124,7 @@ export async function onRequestGet(context) {
   const { env } = context;
   const url = new URL(context.request.url);
   try {
-    if (url.searchParams.has('check')) return checkPage(env);
+    if (url.searchParams.has('check')) return checkPage(env, url);
     if (url.searchParams.get('config') === '1') {
       return Response.json({ ok: true, turnstile: turnstileOn(env) ? turnstileSiteKey(env) : null }, { headers: NO_STORE });
     }
@@ -212,18 +212,28 @@ function expiredPage() {
  * live page's CSP doesn't load challenges.cloudflare.com, so the widget runs
  * here under a policy of its own and hands its token to the page with
  * postMessage, to this origin only.
+ *
+ * ?theme=dark matches a form on a dark band. The widget needs 300px across at
+ * its flexible size, so a narrower frame (a small phone, inside a card) gets
+ * the compact one; either way the frame is told the widget's height.
  */
-function checkPage(env) {
+function checkPage(env, url) {
   if (!turnstileOn(env)) return new Response(null, { status: 204, headers: NO_STORE });
   const nonce = token(16);
+  const theme = url?.searchParams.get('theme') === 'dark' ? 'dark' : 'light';
   const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Quick check</title>
 <style>html,body{margin:0;padding:0;background:transparent;overflow:hidden}</style>
 <script nonce="${nonce}">
 const up = (m) => parent.postMessage(Object.assign({ type: 'soard-check' }, m), location.origin);
+// First word, before Cloudflare's script: the form knows this page loaded (a frame that never says it, didn't)
+up({ ready: true });
 let id = null;
 window.onSoardCheck = () => {
+  const box = document.getElementById('check');
+  // The frame sizes itself to whatever Cloudflare draws
+  if ('ResizeObserver' in window) new ResizeObserver(() => { if (box.offsetHeight) up({ h: box.offsetHeight }); }).observe(box);
   id = turnstile.render('#check', {
-    sitekey: ${JSON.stringify(turnstileSiteKey(env))}, action: 'reminders', theme: 'light', size: 'flexible', appearance: 'interaction-only',
+    sitekey: ${JSON.stringify(turnstileSiteKey(env))}, action: 'reminders', theme: '${theme}', size: innerWidth < 300 ? 'compact' : 'flexible', appearance: 'interaction-only',
     callback: (t) => up({ token: t }),
     'expired-callback': () => up({ expired: true }),
     'error-callback': () => { up({ error: true }); },
@@ -289,11 +299,11 @@ export async function onRequestPost(context) {
 
     let address, subscription = null;
     // Reminders off: nothing would ever be sent, so nobody gets signed up for it
-    if (!config.reminders?.enabled) return json({ ok: false, error: 'Reveal reminders are not available right now' }, 503);
+    if (!config.reminders?.enabled) return json({ ok: false, error: 'Reveal reminders are not available right now.' }, 503);
     if (channel === 'email') {
       address = String(body.email || '').trim().toLowerCase();
-      if (!notify.isEmail(address) || address.length > 254) return json({ ok: false, error: 'Enter a valid email address' }, 400);
-      if (!notify.emailConfigured(env)) return json({ ok: false, error: 'Email reminders are not available right now' }, 503);
+      if (!notify.isEmail(address) || address.length > 254) return json({ ok: false, error: 'Enter a valid email address.' }, 400);
+      if (!notify.emailConfigured(env)) return json({ ok: false, error: 'Email reminders are not available right now.' }, 503);
     } else if (channel === 'push') {
       let sub = body.subscription;
       if (typeof sub === 'string') { try { sub = JSON.parse(sub); } catch { sub = null; } }
@@ -301,13 +311,13 @@ export async function onRequestPost(context) {
       const p256dh = String(sub?.keys?.p256dh || '');
       const auth = String(sub?.keys?.auth || '');
       if (endpoint.length > 1000 || !notify.pushEndpointOk(endpoint) || !/^[A-Za-z0-9_-]{80,100}={0,2}$/.test(p256dh) || !/^[A-Za-z0-9_-]{16,32}={0,2}$/.test(auth)) {
-        return json({ ok: false, error: 'Invalid push subscription' }, 400);
+        return json({ ok: false, error: 'That browser’s alerts couldn’t be saved. Please try again.' }, 400);
       }
-      if (!(config.reminders?.push && config.vapid?.publicKey)) return json({ ok: false, error: 'Push reminders are not available right now' }, 503);
+      if (!(config.reminders?.push && config.vapid?.publicKey)) return json({ ok: false, error: 'Browser alerts are not available right now.' }, 503);
       address = endpoint;
       subscription = JSON.stringify({ endpoint, keys: { p256dh, auth } });
     } else {
-      return json({ ok: false, error: 'Unknown channel' }, 400);
+      return json({ ok: false, error: 'Unknown channel.' }, 400);
     }
 
     const byIp = await limitAll(env.DB, [[`reminders:ip:${ip}`, LIMITS.ipPerHour, 3600], [`reminders:ip-day:${ip}`, LIMITS.ipPerDay, 86400]]);

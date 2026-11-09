@@ -70,7 +70,7 @@ test('the day and time are words, near the top, and the hour email leads with th
   const top = (m) => m.html.slice(0, m.html.indexOf('</h1>'));
   assert.match(top(mail('scheduled')), /Wed, Nov 18/);
   assert.match(top(mail('day')), /Tomorrow · Wed, Nov 18/);
-  assert.match(top(mail('hour')), /We go live at 4:00 PM EST/);
+  assert.match(top(mail('hour')), /We go live at 4:00\u00a0PM\u00a0EST/);
   assert.match(mail('day').html, /Wednesday, November 18<\/p>/);
   assert.match(mail('day', { now: Date.parse('2026-11-18T14:00:00Z') }).html, /Today is Dylan’s reveal day/);
 });
@@ -200,11 +200,26 @@ test('the confirmation is one job: one button, what they\'ll hear, and how to ig
 test('a late signup and a same-day email promise only what can still arrive', () => {
   const at = Date.parse(state.scheduledAt);
   const H = 3600e3;
-  assert.equal(reminderPlan([24, 1], { dated: true, left: 45 * 60e3 }), 'when we go live, and when the replay is up');
+  // Two notes: no comma before "and"
+  assert.equal(reminderPlan([24, 1], { dated: true, left: 45 * 60e3 }), 'when we go live and when the replay is up');
   assert.equal(reminderPlan([24, 1], { dated: true, left: 7 * H }), 'an hour before, when we go live, and when the replay is up');
   const sameDay = mail('scheduled', { now: at - 7 * H }).text;
   assert.match(sameDay, /We’ll email you again an hour before we go live\./);
   assert.doesNotMatch(sameDay, /the day before/);
   assert.doesNotMatch(mail('scheduled', { now: at - 30 * 60e3 }).text, /email you again/);
   assert.doesNotMatch(confirmEmail({ confirmUrl: 'u', kidName: 'Dylan', dated: true, left: 45 * 60e3 }).text, /day before|hour before/);
+});
+
+test('signed like the Kit emails: the team as plushies, then The SOARD Team and Sunshine on a Ranney Day', async () => {
+  const { TEAM_PICTURE } = await import('../functions/api/_reveal-invite-email.js');
+  for (const kind of ['scheduled', 'moved', 'day', 'replay']) {
+    const { html, text } = mail(kind);
+    const pic = html.indexOf(TEAM_PICTURE);
+    assert.ok(pic > -1, `${kind}: the team picture`);
+    assert.match(html, /alt="The SOARD team"/);
+    assert.ok(html.indexOf('The SOARD Team</p>') > pic && html.indexOf('Sunshine on a Ranney Day</p>') > pic, `${kind}: the names under the picture`);
+    assert.match(text, /The SOARD Team\nSunshine on a Ranney Day/);
+  }
+  // The short ones (an hour to go, we're live) have one job and no sign-off
+  for (const kind of ['hour', 'live']) assert.equal(mail(kind).html.indexOf(TEAM_PICTURE), -1, kind);
 });

@@ -22,7 +22,7 @@
 import { slackCard } from './_slack-cards.js';
 import { logSent, batchIds } from './_email-log.js';
 import { button, buttonRow, emailShell, esc, heroImage, INK, MUTED, panel, SANS, SERIF } from './_email-shell.js';
-import { calendarLinks, curly, emailHeader, twoKids } from './_reveal-invite-email.js';
+import { calendarLinks, curly, emailHeader, TEAM_PICTURE, twoKids } from './_reveal-invite-email.js';
 
 const RESEND_API = 'https://api.resend.com';
 export const EMAIL_FROM = 'Sunshine on a Ranney Day <sunshine@comms.sunshineonaranneyday.com>';
@@ -466,7 +466,8 @@ const HOUR = 3600e3;
 /** What someone who signed up hears, in order. dated: their reveal has a day, so it can't "get a date". left: ms until it, so a note already past isn't promised. */
 export function reminderPlan(hours = [24, 1], { dated = false, left = Infinity } = {}) {
   const notes = [!dated && 'when it gets a date', left > 24 * HOUR && hours.includes(24) && 'the day before', left > HOUR && hours.includes(1) && 'an hour before', 'when we go live'].filter(Boolean);
-  return `${notes.join(', ')}, and when the replay is up`;
+  // A comma before "and" only in a list of three or more
+  return `${notes.join(', ')}${notes.length > 1 ? ',' : ''} and when the replay is up`;
 }
 
 const nextNote = (hours, left) => {
@@ -486,7 +487,10 @@ const logoBand = (site) => emailHeader(site, { rounded: true, logoWidth: 84, pad
 
 const quiet = (text) => `<p class="muted" style="margin:8px 0 0;font-family:${SANS};font-size:14px;line-height:1.55;color:${MUTED};">${text}</p>`;
 
-const SIGNATURE = `<p class="ink" style="margin:22px 0 0;font-family:${SERIF};font-size:15px;font-style:italic;line-height:1.5;color:${INK};">The SOARD Team</p>`;
+/** Signed as the Kit emails sign off (signOff in _reveal-invite-email.js): the team as plushies, then who it's from */
+const SIGNATURE = `<img src="${esc(TEAM_PICTURE)}" width="536" alt="The SOARD team" style="display:block;width:100%;max-width:536px;height:auto;border:0;border-radius:14px;margin:24px 0 14px;font-family:${SANS};font-size:14px;line-height:20px;color:${MUTED};" />`
+  + `<p class="ink" style="margin:0;font-family:${SANS};font-size:14px;font-weight:700;line-height:1.4;color:${INK};">The SOARD Team</p>`
+  + `<p class="muted" style="margin:3px 0 0;font-family:${SANS};font-size:13px;line-height:1.4;color:${MUTED};">Sunshine on a Ranney Day</p>`;
 
 /** The day and time, the one thing a reader has to be able to find */
 function whenPanel(day, time) {
@@ -550,7 +554,8 @@ export function reminderEmail({ kind, kidName, kidSlug = null, scheduledAt, live
       subject: `One hour to go: ${who} reveal`,
       preheader: `We go live at ${time}.`,
       eyebrow: 'One hour to go',
-      heading: `We go live at ${time}`,
+      // The time stays on one line: "EST" alone under the headline reads like a mistake on a phone
+      heading: `We go live at ${time.replace(/ /g, '\u00A0')}`,
       intro: `${Who} reveal starts in about an hour. Tap below when it’s time.`,
       cta: 'Watch the reveal', ctaUrl: liveUrl,
     },

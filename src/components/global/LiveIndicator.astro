@@ -165,6 +165,9 @@
   let closed: string | null = null;        // stands in when the browser won't keep it
   let pressing = false;                    // a finger or mouse is down on the banner
   let clearTimer: ReturnType<typeof setTimeout> | undefined;
+  // Coming back from stepping aside waits until scrolling has been still this long
+  const SETTLE_MS = 700;
+  let lastScroll = 0;
   let hideTimer: ReturnType<typeof setTimeout> | undefined;
 
   function readClosed() {
@@ -265,11 +268,16 @@
         if (!somethingUnder(el, { ...box, top: box.top - up, bottom: box.bottom - up })) { aside = false; rise = up; }
       }
     }
+    // Stepping aside is at once; coming back waits until scrolling has stopped, so passing a run of cards doesn't
+    // send it in and out over and over
+    const still = Date.now() - lastScroll;
+    if (!aside && el.classList.contains('is-aside') && still < SETTLE_MS) { clearTimeout(clearTimer); clearTimer = setTimeout(keepClear, SETTLE_MS - still + 20); return; }
     el.classList.toggle('is-aside', aside);
     const value = `${Math.round(rise)}px`;
     if (el.style.getPropertyValue('--live-pill-rise') !== value) el.style.setProperty('--live-pill-rise', value);
   }
   const keepClearSoon = () => { clearTimeout(clearTimer); clearTimer = setTimeout(keepClear, 120); };
+  addEventListener('scroll', () => { lastScroll = Date.now(); }, { passive: true });
 
   /** Focus leaving with the banner lands somewhere that makes sense, not at the top of nothing */
   function moveFocusOut(el: HTMLElement) {
@@ -415,6 +423,8 @@
   addEventListener('blur', pressEnded); // the window only: an element's blur doesn't reach here
   document.addEventListener('focusin', keepClear);
   document.addEventListener('focusout', keepClearSoon);
+  // A form's answer just appeared under the card (remind-signup.ts says so): step aside from it now, not on the next scroll
+  document.addEventListener('status-news', keepClearSoon);
   document.fonts?.ready.then(keepClearSoon);
   // Buttons fade in, panels open and layouts settle late, with no event to say so
   setInterval(() => { if (!document.hidden) keepClear(); }, 500);

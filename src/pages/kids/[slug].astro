@@ -2325,17 +2325,33 @@ const planOrientation = (() => {
      The server usually puts all of this in before the page arrives
      (functions/_kid-reveal.js, data-reveal-shown on the hero), so nothing
      moves; this fills it in only when it couldn't. */
-  import { loadUpcoming, revealShortDate, revealWhen, windowShort, inviteData, possessive } from '../../utils/reveals-client';
+  import { loadUpcoming, revealShortDate, revealWhen, windowShort, inviteData, possessive, shownZone } from '../../utils/reveals-client';
 
   const CALENDAR_ICON = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>';
 
   async function showRevealDay() {
     const hero = document.querySelector<HTMLElement>('[data-kid-slug]');
-    if (!hero || hero.dataset.kidStatus === 'completed' || hero.hasAttribute('data-reveal-shown')) return;
+    if (!hero || hero.dataset.kidStatus === 'completed') return;
+    // The edge drew the line already (in Eastern, since it can't know the visitor): right as it is for anyone there
+    const drawn = hero.hasAttribute('data-reveal-shown');
+    if (drawn && shownZone() === 'America/New_York') return;
     const slug = hero.dataset.kidSlug;
     const reveal = (await loadUpcoming()).find(r => r.slug === slug);
     // The visitor may have navigated away while the request was in flight
     if (!reveal || !hero.isConnected) return;
+    if (drawn) {
+      // Elsewhere: the day and time where the visitor is, as the live page and the banner say them, in place
+      if (!reveal.confirmed || !reveal.time) return;
+      const link = hero.querySelector('.hero__reveal-day');
+      if (link) {
+        link.textContent = `Reveal day: ${revealWhen(reveal, 'short')}`;
+        link.setAttribute('aria-label', `${reveal.name}'s reveal day is ${revealWhen(reveal)}. Watch it live.`);
+      }
+      hero.querySelector('.hero__reveal-add')?.setAttribute('data-invite-when', revealWhen(reveal));
+      const badge = hero.querySelector('[data-kid-reveal-badge]');
+      if (badge) badge.textContent = `Reveal ${revealShortDate(reveal)}`;
+      return;
+    }
 
     const badge = hero.querySelector('[data-kid-reveal-badge]');
     if (badge) {
@@ -2363,7 +2379,7 @@ const planOrientation = (() => {
       add.type = 'button';
       add.className = 'hero__reveal-add';
       for (const [k, v] of Object.entries(inviteData(reveal))) add.setAttribute(k, v);
-      add.setAttribute('aria-label', `Add ${possessive(reveal.name)} reveal to your calendar`);
+      add.setAttribute('aria-label', `Add to calendar: ${possessive(reveal.name)} reveal`); // begins with the words on the button
       add.innerHTML = `${CALENDAR_ICON}<span>Add to calendar</span>`;
       row.append(link, add);
       meta.after(row);

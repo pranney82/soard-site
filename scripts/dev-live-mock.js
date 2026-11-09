@@ -112,7 +112,9 @@ function buildState(origin) {
 
 /** Sample /api/reveals: in-progress kids, spread over the coming weeks */
 function buildReveals() {
-  if (revealsMode === 'none') return { reveals: [], upcoming: [], updatedAt: new Date().toISOString(), source: 'dev-mock' };
+  // The every-reveal email card's settings, as functions/api/reveals.js answers them
+  const signup = { email: true, hours: [24, 1] };
+  if (revealsMode === 'none') return { reveals: [], upcoming: [], signup, updatedAt: new Date().toISOString(), source: 'dev-mock' };
   const kids = readdirSync(KIDS_DIR)
     .filter((f) => f.endsWith('.json'))
     .map((f) => readKid(f.replace(/\.json$/, '')))
@@ -137,7 +139,7 @@ function buildReveals() {
     return { slug: k.slug, name: k.name, confirmed: false, window: { part, month: date.slice(0, 7), through, label: `${part} ${month}` }, ...links };
   });
   const reveals = upcoming.filter((r) => r.confirmed).map(({ confirmed, rooms, ...r }) => r);
-  return { reveals, upcoming, updatedAt: new Date().toISOString(), source: 'dev-mock' };
+  return { reveals, upcoming, signup, updatedAt: new Date().toISOString(), source: 'dev-mock' };
 }
 
 function handler(logger) {

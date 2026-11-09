@@ -8,7 +8,7 @@ import { readFileSync } from 'node:fs';
 import { transformSync } from 'esbuild';
 
 const code = transformSync(readFileSync('src/utils/live-banner.ts', 'utf8'), { loader: 'ts', format: 'esm' }).code;
-const { bannerStage, bannerWords, revealsAfter, dismissValue, sitsOn, pageShowsIt, revealIsToday, replayOverdue, easternDay, remindersUsable, remindLead, runningLate, MAIN_CONTROLS, PICTURES, BANNER_LEAD_DAYS } = await import(`data:text/javascript,${encodeURIComponent(code)}`);
+const { bannerStage, bannerWords, revealsAfter, dismissValue, sitsOn, pageShowsIt, revealIsToday, replayOverdue, easternDay, remindersUsable, remindPromise, runningLate, MAIN_CONTROLS, PICTURES, BANNER_LEAD_DAYS } = await import(`data:text/javascript,${encodeURIComponent(code)}`);
 
 const H = 3600e3, D = 24 * H, M = 60e3;
 // Wednesday, November 4, 2026, 3:00 PM on the viewer's own clock
@@ -159,10 +159,11 @@ test('"Just ended" stops saying so once a recording clearly isn\'t coming', () =
 });
 
 test('the promise follows the notes Settings has on', () => {
-  assert.equal(remindLead(), "Tell us how to reach you and we'll let you know when a reveal gets its date, then send one note the day before, one an hour before, one when we go live, and one when the replay is up. Nothing else, ever.");
-  assert.doesNotMatch(remindLead([24]), /hour before/);
-  assert.doesNotMatch(remindLead([1]), /day before/);
-  assert.match(remindLead([]), /then send one note when we go live, and one when the replay is up\./);
+  assert.equal(remindPromise(), "We'll email you about every reveal: when it gets a date, the day before, an hour before, when we go live, and when the replay is up. Nothing else, ever.");
+  assert.equal(remindPromise([24, 1], { about: 'every reveal' }), "We'll email you about every reveal: when it gets a date, the day before, an hour before, when we go live, and when the replay is up. Nothing else, ever.");
+  assert.doesNotMatch(remindPromise([24]), /hour before/);
+  assert.doesNotMatch(remindPromise([1]), /day before/);
+  assert.match(remindPromise([]), /when it gets a date, when we go live, and when the replay is up\./);
 });
 
 test('reminders only count as on when there is a way to sign up', () => {
@@ -250,12 +251,13 @@ test('a button that promises reminders or a calendar lands on them, not the top 
 
 test('the form only promises what can still be sent', () => {
   const H = 3600e3;
-  assert.match(remindLead([24, 1], { dated: true, left: 5 * 24 * H }), /^Tell us how to reach you and we'll send one note the day before, one an hour before, one when we go live, and one when the replay is up\./);
-  assert.match(remindLead([24, 1], { dated: true, left: 5 * H }), /send one note an hour before, one when we go live, and/);
-  assert.doesNotMatch(remindLead([24, 1], { dated: true, left: 5 * H }), /day before/);
-  assert.match(remindLead([24, 1], { dated: true, left: 10 * 60e3 }), /send one note when we go live, and one when the replay is up\./);
-  assert.match(remindLead([24, 1], { dated: true, left: -60e3 }), /send one note when we go live/);
-  assert.match(remindLead(), /when a reveal gets its date/);
+  assert.equal(remindPromise([24, 1], { about: 'Colin’s reveal', dated: true, left: 5 * 24 * H }), "We'll email you about Colin’s reveal: the day before, an hour before, when we go live, and when the replay is up. Nothing else, ever.");
+  assert.match(remindPromise([24, 1], { dated: true, left: 5 * H }), /: an hour before, when we go live, and/);
+  assert.doesNotMatch(remindPromise([24, 1], { dated: true, left: 5 * H }), /day before/);
+  // Two notes: no comma before "and"
+  assert.match(remindPromise([24, 1], { dated: true, left: 10 * 60e3 }), /: when we go live and when the replay is up\./);
+  assert.match(remindPromise([24, 1], { dated: true, left: -60e3 }), /: when we go live/);
+  assert.match(remindPromise(), /when it gets a date/);
 });
 
 test('a kid\'s story reads as words: no markup, no cut-off sentence', async () => {
@@ -285,4 +287,12 @@ test('late is one rule: 30 minutes past the start, the words stop saying any mom
   assert.equal(runningLate(dylan.scheduledAt, start + 29 * 60e3), false);
   assert.equal(runningLate(dylan.scheduledAt, start + 31 * 60e3), true);
   assert.equal(runningLate(null, start), false);
+});
+
+test('the banner keeps clear of a form’s fresh answer, as of anything you can press', () => {
+  assert.ok(MAIN_CONTROLS.split(',').includes('[role="status"]:not(:empty)'));
+});
+
+test('the banner keeps clear of a reveal card (the whole card opens the story)', () => {
+  assert.ok(MAIN_CONTROLS.split(',').includes('.upn-card'));
 });

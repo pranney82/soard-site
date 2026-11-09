@@ -7,7 +7,7 @@
  * (src/components/live/RevealInvite.astro).
  */
 import { cfRaw } from './cf-image';
-import { windowTitle, windowShort, revealDay, revealTime, inviteData, possessive, type UpcomingReveal } from './reveals-client';
+import { windowTitle, windowShort, revealDateText, revealTime, inviteData, possessive, shownZone, otherYear, type UpcomingReveal } from './reveals-client';
 
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c] as string);
 const attrs = (o: Record<string, string>) => Object.entries(o).map(([k, v]) => `${k}="${esc(v)}"`).join(' ');
@@ -22,14 +22,14 @@ function photo(src: string | null, px: number): string | null {
 
 const ADD_ICON = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M12 14v4"/><path d="M10 16h4"/></svg>';
 
-/** Changes whenever what the rows say would change */
-export const rowsSignature = (list: UpcomingReveal[]) =>
-  list.map((r) => `${r.slug}:${r.confirmed ? `${r.date} ${r.time || ''}` : r.window.label}`).join('|');
+/** Changes whenever what the rows say would change: who, their photo and rooms, when, and the zone times are shown in */
+export const rowsSignature = (list: UpcomingReveal[]) => `${shownZone()}|${new Date().getFullYear()}|${list.map((r) => [r.slug, r.name, r.image || '', (r.rooms || []).join('+'),
+  r.confirmed ? `${r.date} ${r.time || ''}` : r.window.label].join(':')).join('|')}`;
 
 function whenHtml(r: UpcomingReveal): string {
   if (r.confirmed) {
     const time = revealTime(r);
-    return `<p class="hnx-when hnx-when--set"><span class="hnx-when__dot" aria-hidden="true"></span><span>${esc(revealDay(r, 'short'))}</span>${time ? `<span class="hnx-when__time">${esc(time)}</span>` : ''}</p>`;
+    return `<p class="hnx-when hnx-when--set"><span class="hnx-when__dot" aria-hidden="true"></span><span>${esc(revealDateText(r, { weekday: 'short', month: 'short', day: 'numeric', ...(otherYear(r) ? { year: 'numeric' } : {}) }))}</span>${time ? `<span class="hnx-when__time">${esc(time)}</span>` : ''}</p>`;
   }
   const bar = ['early', 'mid', 'late'].map((p) => `<i${p === r.window.part ? ' class="is-on"' : ''}></i>`).join('');
   // "Early November", or "Early Nov" where the row is narrow

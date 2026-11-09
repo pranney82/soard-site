@@ -61,9 +61,11 @@ const externalAttrs = external ? { target: '_blank', rel: 'noopener noreferrer' 
   .btn:hover { transform: translateY(-2px); }
   .btn:active { transform: translateY(0) scale(0.98); transition-duration: 80ms; }
 
+  /* The site's two-tone ring (global.css): yellow alone vanished on cream and white sections */
   .btn:focus-visible {
-    outline: 2px solid var(--c-yellow);
-    outline-offset: 3px;
+    outline: 2px solid var(--c-dark);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 5px var(--c-yellow);
   }
 
   /* Sizes */

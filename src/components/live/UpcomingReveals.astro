@@ -16,10 +16,15 @@
  * hero shows these instead (HeroUpcoming), so this band closes the page.
  *
  * A timeline: the "when" in a column, a dot on a line, the kid beside it.
- * On a phone the when sits above each card and the calendar panel follows
- * the list. Motion: the line draws, rows rise in turn, the month bar fills;
+ * Beside it, "Get every reveal by email" and "in your calendar". On a phone
+ * the when sits above each card and the two cards follow the list. Motion: the line draws, rows rise in turn, the month bar fills;
  * all of it off with reduced motion.
  */
+
+import { remindPromise } from '../../utils/live-banner';
+import { upcomingAtBuild } from '../../utils/reveals-copy';
+import { bandRowsHtml } from '../../utils/band-rows';
+import { rowsSignature } from '../../utils/upcoming-rows';
 
 interface Props {
   /** Heading HTML (fixed strings from the page; <em> gets the marker) */
@@ -31,6 +36,8 @@ interface Props {
   /** Where clicks are counted from (broadcast History) */
   where?: string;
   id?: string;
+  /** Given (the events page): with nothing scheduled the band stays, with this lead and the two ways to hear about the next one */
+  emptyLead?: string;
 }
 
 const {
@@ -40,17 +47,54 @@ const {
   exclude = null,
   where = 'up-next',
   id = 'up-next',
+  emptyLead = '',
 } = Astro.props;
 
+// Drawn at build from the reveals copy, so the band has its height from the first paint (the browser redraws only
+// when /api/reveals says something different): nothing jumps when it arrives, and Back or a reload lands in place
+const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
 ---
 
-<section class="upn" id={id} data-invite-where={where} data-upnext data-exclude={exclude || ''} hidden aria-labelledby={`${id}-title`}>
+<section class="upn" id={id} data-invite-where={where} data-upnext data-exclude={exclude || ''} data-keep-empty={emptyLead ? '' : undefined} data-empty={atBuild.length ? undefined : ''} hidden={!atBuild.length && !emptyLead} aria-labelledby={`${id}-title`}>
+  <!-- Reading order is the order on screen at every width: the intro, the reveals, then the ways to follow them all.
+       On a wide screen the cards sit in the left column under the intro (grid areas) -->
   <div class="container upn__grid">
-    <div class="upn__side">
-      <div class="upn__intro">
-        <p class="section-label section-label--yellow upn__label">{label}</p>
-        <h2 id={`${id}-title`} class="upn__title" set:html={heading} />
-        <p class="upn__lead">{lead}</p>
+    <div class="upn__intro">
+      <p class="section-label section-label--yellow upn__label">{label}</p>
+      <h2 id={`${id}-title`} class="upn__title" set:html={heading} />
+      <p class="upn__lead upn__lead--full">{lead}</p>
+      {emptyLead && <p class="upn__lead upn__lead--empty">{emptyLead}</p>}
+    </div>
+
+    <ol class="upn__list" data-upn-list data-sig={rowsSignature(atBuild)} aria-label="Upcoming reveals" set:html={bandRowsHtml(atBuild)}></ol>
+
+    <div class="upn-ways">
+      <!-- Email for every reveal: there from the first paint, taken out if Reveals → Settings has reminders off, and left
+           out on /live/ while that page's own reminder form is already the every-reveal one (data-remind-here) -->
+      <div class="upn-cal upn-mail" data-upn-mail>
+        <div class="upn-cal__head">
+          <span class="upn-cal__icon" aria-hidden="true">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+          </span>
+          <div>
+            <h3 class="upn-cal__title" id={`${id}-mail-title`}>Get every reveal by email</h3>
+            <p class="upn-cal__text" data-upn-mail-lead>{remindPromise()}</p>
+          </div>
+        </div>
+        <!-- method="post" and a button that's off until the script wires it: nothing ever sends the address in a link -->
+        <form class="upn-mail__form" data-upn-mail-form method="post" novalidate aria-labelledby={`${id}-mail-title`}>
+          <div class="upn-mail__row">
+            <label class="sr-only" for={`${id}-email`}>Email address for every reveal</label>
+            <input class="upn-mail__input" id={`${id}-email`} type="email" name="email" placeholder="you@example.com" autocomplete="email" enterkeyhint="send" required />
+            <button class="upn-cal__btn upn-mail__btn" type="submit" disabled>
+              <span class="btn-text">Email me</span><span class="btn-busy"><span class="btn-spinner" aria-hidden="true"></span><span class="sr-only">Sending</span></span><span class="btn-done">Sent</span>
+            </button>
+          </div>
+          <div class="upn-mail__hp" aria-hidden="true"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off" /></label></div>
+          <p class="remind-note" role="status" aria-live="polite"></p>
+        </form>
+        <!-- The quick check (Turnstile) runs in a small frame here, out of sight unless it needs a click -->
+        <div class="upn-mail__check" data-upn-mail-check></div>
       </div>
 
       <div class="upn-cal" data-upn-cal>
@@ -60,14 +104,14 @@ const {
           </span>
           <div>
             <h3 class="upn-cal__title">Get every reveal in your calendar</h3>
-            <p class="upn-cal__text">Or add one child at a time with their own invite. Each shows up with its day, time and live link as soon as it's set, and moves on its own if plans change.</p>
+            <p class="upn-cal__text"><span data-cal-one>Or add one child at a time with their own invite. </span>Every reveal shows up with its day, time and live link as soon as it's set, and moves on its own if plans change.</p>
           </div>
         </div>
         <button class="upn-cal__btn" type="button" data-invite="all">Add every reveal</button>
+        <!-- With no script the sheet can't open: the calendar feed itself, which any calendar app can subscribe to -->
+        <a class="upn-cal__btn upn-cal__nojs" href="webcal://sunshineonaranneyday.com/api/reveals.ics">Add every reveal</a>
       </div>
     </div>
-
-    <ol class="upn__list" data-upn-list aria-label="Upcoming reveals"></ol>
   </div>
 </section>
 
@@ -93,9 +137,16 @@ const {
   .upn[hidden] { display: none; }
   .upn__grid {
     display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
-    gap: clamp(40px, 6vw, 96px); align-items: start;
+    grid-template-areas: 'intro list' 'ways list'; grid-template-rows: auto 1fr;
+    column-gap: clamp(40px, 6vw, 96px); row-gap: 32px; align-items: start;
   }
-  .upn__side { position: sticky; top: calc(var(--header-height) + 32px); display: grid; gap: 32px; }
+  .upn__intro { grid-area: intro; }
+  .upn__list { grid-area: list; }
+  /* The cards stay in view while a long list scrolls by, but only when they fit with room for a note and the
+     quick check to open under them (data-ways="stick", decided by placeWays() below); otherwise they scroll with
+     the page. Never pinned by their foot: growing would then push the button up under the pointer. */
+  .upn-ways { grid-area: ways; align-self: start; }
+  .upn[data-ways='stick'] .upn-ways { position: sticky; top: calc(var(--header-height) + 32px); }
 
   /* ── Intro ── */
   .upn__label { color: var(--c-yellow); }
@@ -131,7 +182,56 @@ const {
   }
   .upn-cal__btn:hover { background: var(--c-yellow-hover); transform: translateY(-1px); box-shadow: 0 10px 26px rgba(255, 218, 36, 0.18); }
   .upn-cal__btn:active { transform: scale(0.98); transition-duration: 80ms; }
-  .upn-cal__btn:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
+  /* A yellow ring a dark gap away (the site's ring adds a yellow glow that melts into a yellow button) */
+  .upn-cal__btn:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 3px; box-shadow: none; }
+
+  /* ── The two ways to follow every reveal: email, then the calendar ── */
+  .upn-ways { display: grid; gap: 14px; }
+  /* On /live/ the page's own form may already be the every-reveal one (data-remind-here): the card steps out,
+     except while someone is using it (data-mail-busy), so it never vanishes mid-word, or once they've signed up in it
+     (data-mail-done), so their confirmation stays */
+  .upn-mail[hidden], .upn[data-remind-here]:not([data-mail-busy]):not([data-mail-done]) .upn-mail { display: none; }
+  /* The address and its button share a line; with no room, the button takes its own, full width */
+  .upn-mail__row { display: flex; flex-wrap: wrap; gap: 10px; }
+  .upn-mail__input {
+    flex: 999 1 240px; min-width: 0; min-height: 50px; padding: 0 20px; border-radius: 100px;
+    border: 1.5px solid rgba(254, 252, 245, 0.34); background: rgba(255, 255, 255, 0.06); color: var(--upn-ink);
+    font: inherit; font-size: 16px;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.2s ease;
+  }
+  .upn-mail__input::placeholder { color: rgba(254, 252, 245, 0.62); }
+  .upn-mail__input:hover { border-color: rgba(254, 252, 245, 0.5); }
+  .upn-mail__input:focus { outline: none; border-color: var(--c-yellow); box-shadow: 0 0 0 3px rgba(255, 218, 36, 0.22); }
+  /* "Email me", the spinner and "Sent" share one cell, so the button never changes size: nothing moves */
+  .upn-mail__btn { flex: 1 0 auto; width: auto; padding: 0 26px; display: inline-grid; place-items: center; }
+  .upn-mail__btn > span { grid-area: 1 / 1; display: inline-flex; align-items: center; }
+  .upn-mail__btn .btn-busy, .upn-mail__btn .btn-done { visibility: hidden; }
+  .upn-mail__form:global(.is-busy) .btn-text, .upn-mail__form:global(.is-done) .btn-text { visibility: hidden; }
+  .upn-mail__form:global(.is-busy) .btn-busy, .upn-mail__form:global(.is-done) .btn-done { visibility: visible; }
+  .upn-mail__btn[aria-disabled='true'], .upn-mail__btn[aria-disabled='true']:hover, .upn-mail__btn[aria-disabled='true']:active {
+    cursor: default; transform: none; box-shadow: none; background: var(--c-yellow);
+  }
+  /* Sent: the address quietens, still readable (as on the /live/ form) */
+  .upn-mail__form:global(.is-done) .upn-mail__input { color: var(--upn-muted); }
+  /* Not a usable address: the box says so too, not only the words under it */
+  .upn-mail__input[aria-invalid='true'] { border-color: var(--upn-ink); border-width: 2px; }
+  /* The browser's saved address keeps the band's colours (Chrome paints autofill pale blue otherwise) */
+  .upn-mail__input:-webkit-autofill, .upn-mail__input:-webkit-autofill:hover {
+    -webkit-text-fill-color: var(--upn-ink); caret-color: var(--upn-ink);
+    -webkit-box-shadow: 0 0 0 100px #36373C inset; transition: background-color 600000s 0s;
+  }
+  .upn-mail__input:-webkit-autofill:focus { -webkit-box-shadow: 0 0 0 100px #36373C inset, 0 0 0 3px rgba(255, 218, 36, 0.22); }
+  .upn-mail__hp { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+  .upn-mail .remind-note { margin: 12px 0 0; font-size: 14px; line-height: 1.55; color: var(--upn-muted); overflow-wrap: anywhere; }
+  .upn-mail .remind-note:empty { margin: 0; }
+  .upn-mail .remind-note.remind-note--error { color: var(--upn-ink); font-weight: 600; }
+  .upn-mail :global(.remind-fix) {
+    padding: 0; border: 0; background: none; font: inherit; font-weight: 600; color: var(--upn-ink); cursor: pointer;
+    text-decoration: underline; text-decoration-color: var(--c-yellow); text-underline-offset: 3px; overflow-wrap: anywhere;
+  }
+  .upn-mail :global(.remind-fix:focus-visible) { outline: 2px solid var(--c-yellow); outline-offset: 0; border-radius: 2px; box-shadow: none; }
+  .upn-mail__check :global(iframe) { display: block; width: 100%; height: 0; border: 0; overflow: hidden; transition: height 0.2s ease; }
+  .upn-mail__check:global(.is-shown) :global(iframe) { height: 72px; margin-top: 12px; }
 
   /* ── Timeline ── */
   .upn__list { position: relative; list-style: none; margin: 0; padding: 0; display: grid; gap: 18px; }
@@ -143,6 +243,16 @@ const {
     transform-origin: top; transform: scaleY(0); transition: transform 1.2s var(--ease) 0.15s;
   }
   .upn.is-in .upn__list::before { transform: scaleY(1); }
+  /* One reveal: a dot, no line */
+  .upn__list:has(> :only-child)::before { display: none; }
+
+  /* ── Nothing scheduled (the events page keeps the band): the intro, then the two ways to hear about the next one ── */
+  .upn__lead--empty { display: none; }
+  .upn[data-empty] .upn__lead--full, .upn[data-empty] .upn__list, .upn[data-empty] [data-cal-one] { display: none; }
+  .upn[data-empty] .upn__lead--empty { display: block; }
+  @media (min-width: 961px) {
+    .upn[data-empty] .upn__grid { grid-template-areas: 'intro ways'; grid-template-rows: none; }
+  }
 
   :global(.upn-row) {
     display: grid; grid-template-columns: var(--upn-when) var(--upn-node) minmax(0, 1fr); align-items: center;
@@ -151,6 +261,16 @@ const {
     transition-delay: calc(0.25s + var(--i, 0) * 0.09s);
   }
   .upn.is-in :global(.upn-row) { opacity: 1; transform: none; }
+  /* No script: the rows the build drew are simply there; the email card (it needs the script) and the child's own
+     invite buttons (they open a sheet) step out; "Add every reveal" is the calendar feed itself */
+  .upn-cal__nojs { display: none; }
+  @media (scripting: none) {
+    :global(.upn-row) { opacity: 1; transform: none; }
+    .upn-mail, .upn :global(.upn-add), .upn-cal__btn[data-invite] { display: none; }
+    .upn-cal__nojs { display: inline-flex; text-decoration: none; }
+  }
+  /* Before the script has wired it (a slow phone), "Email me" looks as off as it is */
+  .upn-mail__btn:disabled { opacity: 0.55; cursor: default; transform: none; box-shadow: none; }
 
   /* When */
   :global(.upn-when) { padding-right: 18px; text-align: right; }
@@ -201,7 +321,8 @@ const {
   /* The whole card opens the story; the actions sit above that link */
   :global(.upn-card__name a) { color: inherit; text-decoration: none; }
   :global(.upn-card__name a)::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
-  :global(.upn-card__name a:focus-visible) { outline: none; }
+  /* The ring goes round the whole card (below), not a second one round the name */
+  :global(.upn-card__name a:focus-visible) { outline: none; box-shadow: none; }
   :global(.upn-card:has(.upn-card__name a:focus-visible)) { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
   :global(.upn-card__rooms) {
     margin: 4px 0 0; font-size: 14px; line-height: 1.45; color: var(--upn-muted);
@@ -220,32 +341,39 @@ const {
   :global(.upn-act svg) { transition: transform 0.25s ease; }
   :global(.upn-act:hover svg) { transform: translateX(3px); }
   :global(.upn-act:hover) { color: var(--c-yellow); }
-  :global(.upn-act:focus-visible) { outline: 2px solid var(--c-yellow); outline-offset: 3px; border-radius: 2px; }
+  :global(.upn-act:focus-visible) { outline: 2px solid var(--c-yellow); outline-offset: 3px; border-radius: 2px; box-shadow: none; }
   /* The child's own invite */
   :global(.upn-add) {
-    position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px;
+    position: relative; z-index: 1; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 0 14px; white-space: nowrap;
     border-radius: 100px; border: 1.5px solid rgba(254, 252, 245, 0.35); background: transparent; color: var(--upn-ink);
     font: inherit; font-size: 13.5px; font-weight: 700; cursor: pointer;
     transition: background 0.2s ease, border-color 0.2s ease, color 0.2s ease, transform 0.3s var(--ease);
   }
+  :global(.upn-add svg) { flex-shrink: 0; }
   :global(.upn-add:hover) { background: var(--c-yellow); border-color: var(--c-yellow); color: var(--c-dark-deep); transform: translateY(-1px); }
-  :global(.upn-add:focus-visible) { outline: 2px solid var(--c-yellow); outline-offset: 3px; }
+  :global(.upn-add:focus-visible) { outline: 2px solid var(--c-yellow); outline-offset: 3px; box-shadow: none; }
   :global(.upn-row[data-state='confirmed'] .upn-add) { background: var(--c-yellow); border-color: var(--c-yellow); color: var(--c-dark-deep); }
 
-  /* ── Tablet and phone: one column, the calendar panel after the list ── */
+  /* ── Tablet and phone: one column, in reading order: intro, the list, the two cards ── */
   @media (max-width: 960px) {
-    .upn__grid { grid-template-columns: minmax(0, 1fr); gap: 36px; }
-    .upn__side { display: contents; }
-    .upn__intro { order: 1; }
-    .upn__list { order: 2; }
-    .upn-cal { order: 3; }
+    .upn__grid { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'intro' 'list' 'ways'; grid-template-rows: none; row-gap: 36px; }
+    .upn[data-ways='stick'] .upn-ways { position: static; }
+    .upn[data-empty] .upn__grid { grid-template-areas: 'intro' 'ways'; }
     .upn__lead { max-width: 560px; }
+  }
+  /* Touch: a tap leaves no hover look behind */
+  @media (hover: none) {
+    .upn-cal__btn:hover { background: var(--c-yellow); transform: none; box-shadow: none; }
+  }
+  /* Windows high contrast: the yellow fill is dropped, so the buttons need an edge of their own */
+  @media (forced-colors: active) {
+    .upn-cal__btn { border: 2px solid ButtonText; }
   }
   /* Phone: the when moves above each card, the line runs down the left edge */
   @media (max-width: 640px) {
     .upn { --upn-node: 22px; }
     .upn__list { gap: 22px; }
-    .upn__list::before { left: calc(var(--upn-node) / 2 - 1px); top: 10px; bottom: 30px; }
+    .upn__list::before { left: calc(var(--upn-node) / 2 - 1px); }
     :global(.upn-row) { grid-template-columns: var(--upn-node) minmax(0, 1fr); grid-template-areas: 'node when' '. card'; align-items: start; row-gap: 10px; }
     :global(.upn-node) { grid-area: node; margin-top: 3px; width: 12px; height: 12px; }
     :global(.upn-when) { grid-area: when; text-align: left; padding: 0 0 0 10px; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 10px; }
@@ -256,6 +384,14 @@ const {
     :global(.upn-card__photo) { width: 76px; height: 76px; border-radius: 12px; }
     :global(.upn-card__foot) { margin-top: 10px; }
     .upn-cal { padding: 20px; }
+  }
+  /* The narrowest phones (after the phone rules above, so it wins): a smaller photo, so the card's words and buttons keep inside it */
+  @media (max-width: 360px) {
+    :global(.upn-card) { gap: 12px; }
+    :global(.upn-card__photo) { width: 56px; height: 56px; border-radius: 10px; }
+    :global(.upn-card__photo--blank) { font-size: 26px; }
+    :global(.upn-pill) { white-space: nowrap; }
+    :global(.upn-add) { padding: 0 11px; gap: 6px; font-size: 13px; }
   }
   @media (hover: none) {
     :global(.upn-card:hover) { transform: none; box-shadow: none; }
@@ -268,138 +404,98 @@ const {
     :global(.upn-month span.is-on)::after { transform: none; }
     .upn__title :global(em) { background-size: 100% 100%; }
     :global(.upn-row.is-next .upn-node)::after { animation: none; }
-    :global(.upn-card), :global(.upn-card__photo img), .upn-cal__btn, :global(.upn-add) { transition: none; }
+    :global(.upn-card), :global(.upn-card__photo img), .upn-cal__btn, :global(.upn-add), .upn-mail__input, .upn-mail__check :global(iframe) { transition: none; }
   }
 </style>
 
 <script>
-  import { loadUpcoming, windowTitle, revealTime, inviteData, possessive, type UpcomingReveal } from '../../utils/reveals-client';
-  import { cfRaw } from '../../utils/cf-image';
+  import { readUpcoming, readSignup, type Signup } from '../../utils/reveals-client';
+  import { upcomingAtBuild } from '../../utils/reveals-copy';
+  import { bandRowsHtml } from '../../utils/band-rows';
+  import { rowsSignature } from '../../utils/upcoming-rows';
+  import { remindPromise } from '../../utils/live-banner';
+  import { wireRemindForm } from '../../utils/remind-signup';
+  import { holdPlace, keepFocus } from '../../utils/hold-place';
 
-  const CAL_ADD = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M12 14v4"/><path d="M10 16h4"/></svg>';
-  const ARROW = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
-  const CF_PATH = /\/cdn-cgi\/imagedelivery\/[^/]+\/(.+)\/[^/]+$|imagedelivery\.net\/[^/]+\/(.+)\/[^/]+$/;
-  /** A square crop of the kid's photo at the size it's shown */
-  function photo(src: string | null, px: number) {
-    const m = src ? CF_PATH.exec(src) : null;
-    const id = m?.[1] || m?.[2];
-    return id ? cfRaw(id, `w=${px},h=${px},fit=cover,gravity=face,q=80`) : null;
-  }
-  const roomsText = (rooms: string[]) => {
-    const r = rooms.map((x) => x.toLowerCase());
-    const list = r.length > 1 ? `${r.slice(0, -1).join(', ')} and ${r.at(-1)}` : r[0] || '';
-    return list ? list.charAt(0).toUpperCase() + list.slice(1) : '';
-  };
-
-  function el<K extends keyof HTMLElementTagNameMap>(tag: K, className = '', text?: string) {
-    const node = document.createElement(tag);
-    if (className) node.className = className;
-    if (text) node.textContent = text;
-    return node;
-  }
-
-  /** No photo (or it failed): the kid's initial in its place */
-  function blank(media: HTMLElement, name: string) {
-    media.classList.add('upn-card__photo--blank');
-    media.textContent = name.trim().charAt(0).toUpperCase();
-    media.setAttribute('aria-hidden', 'true');
-  }
-
-  function whenBlock(r: UpcomingReveal) {
-    const when = el('div', 'upn-when');
-    if (r.confirmed) {
-      const day = new Date(`${r.date}T12:00:00Z`);
-      when.append(
-        el('p', 'upn-when__top', day.toLocaleDateString('en-US', { weekday: 'long', timeZone: 'UTC' })),
-        el('p', 'upn-when__main', day.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'UTC' })),
-        el('p', 'upn-when__sub', revealTime(r) || 'Time to come'),
-      );
-    } else {
-      const [part, ...month] = windowTitle(r.window).split(' ');
-      when.append(el('p', 'upn-when__top', part), el('p', 'upn-when__main', month.join(' ')));
-      const bar = el('span', 'upn-month');
-      bar.setAttribute('aria-hidden', 'true');
-      for (const p of ['early', 'mid', 'late']) bar.append(el('span', p === r.window.part ? 'is-on' : ''));
-      when.append(bar);
-    }
-    return when;
-  }
-
-  function row(r: UpcomingReveal, i: number) {
-    const li = el('li', 'upn-row');
-    li.dataset.slug = r.slug;
-    li.dataset.state = r.confirmed ? 'confirmed' : 'tentative';
-    li.style.setProperty('--i', String(i));
-    if (i === 0) li.classList.add('is-next');
-
-    const node = el('span', 'upn-node');
-    node.setAttribute('aria-hidden', 'true');
-
-    const card = el('article', 'upn-card');
-    const media = el('div', 'upn-card__photo');
-    const src = photo(r.image, 192);
-    if (src) {
-      const img = el('img');
-      img.src = src;
-      img.srcset = `${photo(r.image, 192)} 1x, ${photo(r.image, 288)} 1.5x, ${photo(r.image, 384)} 2x`;
-      img.alt = '';
-      img.width = 96;
-      img.height = 96;
-      img.loading = 'lazy';
-      img.decoding = 'async';
-      img.addEventListener('error', () => blank(media, r.name), { once: true });
-      media.append(img);
-    } else {
-      blank(media, r.name);
-    }
-
-    const body = el('div', 'upn-card__body');
-    const name = el('h3', 'upn-card__name');
-    const link = el('a', '', r.name);
-    link.href = r.kidUrl;
-    link.setAttribute('aria-label', r.confirmed
-      ? `${r.name}: reveal ${new Date(`${r.date}T12:00:00Z`).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'UTC' })}${revealTime(r) ? ` at ${revealTime(r)}` : ''}. Read the story.`
-      : `${r.name}: reveal planned for ${r.window.label}. Read the story.`);
-    name.append(link);
-    body.append(name);
-    const rooms = roomsText(r.rooms || []);
-    if (rooms) body.append(el('p', 'upn-card__rooms', rooms));
-
-    const foot = el('div', 'upn-card__foot');
-    if (r.confirmed) {
-      const watch = el('a', 'upn-act');
-      watch.href = r.liveUrl;
-      watch.innerHTML = `Watch live ${ARROW}`;
-      watch.setAttribute('aria-label', `Watch ${possessive(r.name)} reveal live`);
-      foot.append(watch, inviteButton(r));
-    } else {
-      foot.append(el('span', 'upn-pill', 'Exact day to come'), inviteButton(r));
-    }
-    body.append(foot);
-    card.append(media, body);
-    li.append(whenBlock(r), node, card);
-    return li;
+  /**
+   * "Get every reveal by email": a sign-up with no kid, so it's for every reveal. Whether it's
+   * open, and the notes it promises, come in the same /api/reveals answer as the list (Reveals →
+   * Settings), so the band opens with the card already in place or already left out.
+   */
+  function setUpMail(section: HTMLElement) {
+    const box = section.querySelector<HTMLElement>('[data-upn-mail]');
+    const form = box?.querySelector<HTMLFormElement>('[data-upn-mail-form]');
+    if (!box || !form) return () => {};
+    const signup = wireRemindForm(form, {
+      checkBox: box.querySelector<HTMLElement>('[data-upn-mail-check]'),
+      kid: () => '',
+      // Apart from the /live/ page's own form: "live-all", "events-all"
+      source: () => `${section.dataset.inviteWhere || 'up-next'}-all`,
+      theme: 'dark',
+    });
+    document.addEventListener('astro:before-swap', () => signup.destroy(), { once: true });
+    // In use (focus in it, an address typed, or signed up): /live/ never takes it away (data-mail-busy)
+    const lead = box.querySelector<HTMLElement>('[data-upn-mail-lead]');
+    let held: Signup | null | undefined; // settings that came in while someone was using the card
+    const apply = (s: Signup | null) => {
+      box.hidden = !s?.email;
+      if (lead && s) lead.textContent = remindPromise(s.hours);
+    };
+    // In use (focus in it, or an address typed and not sent): nothing takes it away until they're done with it.
+    // Signed up in it: it stays to show so (but doesn't hold the whole band on screen, data-mail-done)
+    const mark = () => {
+      const was = section.hasAttribute('data-mail-busy');
+      const now = signup.inUse();
+      section.toggleAttribute('data-mail-busy', now);
+      section.toggleAttribute('data-mail-done', form.classList.contains('is-done'));
+      // Done with it: the band catches up with whatever it held back meanwhile
+      if (was && !now) {
+        if (held !== undefined) { apply(held); held = undefined; }
+        section.dispatchEvent(new Event('upnext:current'));
+      }
+    };
+    for (const type of ['focusin', 'input', 'remind-state']) form.addEventListener(type, mark);
+    form.addEventListener('focusout', () => setTimeout(mark));
+    // undefined: the settings couldn't be read, so the card stays as it is
+    return (s: Signup | null | undefined) => {
+      if (s === undefined) return;
+      if (section.hasAttribute('data-mail-busy')) { held = s; return; }
+      apply(s);
+    };
   }
 
-  /** The child's own calendar invite (opens RevealInvite) */
-  function inviteButton(r: UpcomingReveal) {
-    const b = el('button', 'upn-add');
-    b.type = 'button';
-    for (const [k, v] of Object.entries(inviteData(r))) b.setAttribute(k, v);
-    b.setAttribute('aria-label', `Add ${possessive(r.name)} reveal to your calendar`);
-    b.innerHTML = `${CAL_ADD}<span>Add to calendar</span>`;
-    return b;
+  // Room the cards keep below them while they stick: a few lines of news and the quick check
+  const GROW_ROOM = 170;
+  /** Decides stick or scroll from the cards' height with nothing open under the form, so news or the check never flips it mid-sign-up */
+  function waysPlacer(section: HTMLElement, ways: HTMLElement) {
+    let closedHeight = 0;
+    return () => {
+      const opened = !!ways.querySelector('.remind-note:not(:empty), [data-upn-mail-check].is-shown');
+      if (!opened || !closedHeight) closedHeight = ways.offsetHeight;
+      const header = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--header-height')) || 84;
+      section.dataset.ways = closedHeight + GROW_ROOM <= innerHeight - header - 32 - 24 ? 'stick' : 'flow';
+    };
   }
 
-  /** Line ends at the first and last dots, wherever the rows wrap */
+  /** A photo that won't load: the kid's initial in its place */
+  function blank(img: HTMLImageElement) {
+    const box = img.parentElement;
+    if (!box) return;
+    box.classList.add('upn-card__photo--blank');
+    box.setAttribute('aria-hidden', 'true');
+    box.textContent = box.dataset.initial || '';
+  }
+
+  /** Line ends at the first and last dots, wherever the rows wrap. Layout positions (offsetTop), not on-screen
+   *  ones: rows still rising into place would otherwise put the line 18px off its dots. */
   function placeLine(list: HTMLElement) {
     const nodes = list.querySelectorAll<HTMLElement>('.upn-node');
     if (!nodes.length) return;
-    const box = list.getBoundingClientRect();
-    const first = nodes[0].getBoundingClientRect();
-    const last = nodes[nodes.length - 1].getBoundingClientRect();
-    list.style.setProperty('--upn-line-top', `${first.top - box.top + first.height / 2}px`);
-    list.style.setProperty('--upn-line-bottom', `${box.bottom - last.bottom + last.height / 2}px`);
+    // offsetTop counts from the nearest positioned or transformed box (a rising row, in Chrome): add up to the list
+    const topIn = (n: HTMLElement) => { let y = 0; let at: HTMLElement | null = n; while (at && at !== list) { y += at.offsetTop; at = at.offsetParent as HTMLElement | null; } return y; };
+    const mid = (n: HTMLElement) => topIn(n) + n.offsetHeight / 2;
+    list.style.setProperty('--upn-line-top', `${mid(nodes[0])}px`);
+    list.style.setProperty('--upn-line-bottom', `${list.offsetHeight - mid(nodes[nodes.length - 1])}px`);
   }
 
   async function setUp(section: HTMLElement) {
@@ -408,36 +504,75 @@ const {
     const list = section.querySelector<HTMLElement>('[data-upn-list]');
     if (!list) return;
 
-    let all = await loadUpcoming();
-    if (!section.isConnected) return;
-    // Left out: the page's own kid (data-exclude) and, on /live/, the reveal the page is
-    // showing right now (data-current, set by LivePage, which fires upnext:current)
-    let drawn: string | null = '';
-    const draw = () => {
+    // The build's rows are on screen already: their line goes through their dots from the start
+    placeLine(list);
+    const ways = section.querySelector<HTMLElement>('.upn-ways');
+    const place = ways ? waysPlacer(section, ways) : () => {};
+    const show = setUpMail(section);
+    const showMail = (s: Signup | null | undefined) => { show(s); place(); };
+    // Everything is set up from what the build drew, before the schedule is asked for: the list rises in, the
+    // live page's current reveal is left out, and nothing waits on an answer that may be slow or never come.
+    // A schedule that can't be read changes nothing; settings that can't be read (undefined) leave the card as it is.
+    let all = upcomingAtBuild();
+    let signup: Signup | null | undefined;
+    // What the build drew (its signature), so the same list isn't drawn twice
+    let drawn: string | null = list.dataset.sig ?? null;
+    const keepEmpty = section.hasAttribute('data-keep-empty');
+    // A photo that fails to load, now or later (error doesn't bubble: caught on the way down)
+    list.addEventListener('error', (e) => { if (e.target instanceof HTMLImageElement) blank(e.target); }, true);
+    list.querySelectorAll('img').forEach((img) => { if (img.complete && !img.naturalWidth) blank(img); });
+    // Left out: the page's own kid (data-exclude) and, on /live/, the reveal the page is showing right now
+    // (data-current, set by LivePage, which fires upnext:current). Whatever changes, the field someone is typing in
+    // stays where it is on screen (holdPlace), and keyboard focus stays on its control (keepFocus)
+    const draw = () => holdPlace(() => {
       const skip = new Set([section.dataset.exclude, section.dataset.current].filter(Boolean));
       const shown = all.filter((r) => !skip.has(r.slug));
-      const key = shown.map((r) => r.slug).join(' ');
-      if (key === drawn) return;
-      drawn = key;
-      list.replaceChildren(...shown.map((r, i) => row(r, i)));
-      section.hidden = !shown.length;
+      // Someone mid-sign-up keeps the band as it is until they're done (mark() redraws then)
+      if (!shown.length && section.hasAttribute('data-mail-busy')) return;
+      const key = rowsSignature(shown);
+      if (key !== drawn) {
+        drawn = key;
+        keepFocus(list, () => { list.innerHTML = bandRowsHtml(shown); });
+      }
       if (shown.length) placeLine(list);
-    };
+      section.toggleAttribute('data-empty', !shown.length);
+      // Nothing scheduled: the band goes, or (the events page) stays as the way to hear about the next one, while
+      // email sign-up is open, or not yet known not to be (its card says what the band offers)
+      section.hidden = !shown.length && !(keepEmpty && signup !== null && signup?.email !== false);
+    });
     draw();
     section.addEventListener('upnext:current', draw);
     // LivePage read a changed schedule: a reveal cancelled or moved
-    section.addEventListener('upnext:refresh', async () => { all = await loadUpcoming(); drawn = null; draw(); });
-    const ro = new ResizeObserver(() => placeLine(list));
+    section.addEventListener('upnext:refresh', async () => {
+      const [list, s] = await Promise.all([readUpcoming(), readSignup()]);
+      if (list) all = list;
+      if (s !== undefined) signup = s;
+      showMail(s);
+      draw();
+    });
+    const ro = new ResizeObserver(() => { placeLine(list); place(); });
     ro.observe(list);
-    document.addEventListener('astro:before-swap', () => ro.disconnect(), { once: true });
+    if (ways) ro.observe(ways);
+    addEventListener('resize', place);
+    document.addEventListener('astro:before-swap', () => { ro.disconnect(); removeEventListener('resize', place); }, { once: true });
 
     // Motion starts when the section comes into view
-    if (!('IntersectionObserver' in window)) { section.classList.add('is-in'); return; }
-    const io = new IntersectionObserver((entries) => {
-      if (entries.some((e) => e.isIntersecting)) { section.classList.add('is-in'); io.disconnect(); }
-    }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
-    io.observe(section);
-    document.addEventListener('astro:before-swap', () => io.disconnect(), { once: true });
+    if (!('IntersectionObserver' in window)) section.classList.add('is-in');
+    else {
+      const io = new IntersectionObserver((entries) => {
+        if (entries.some((e) => e.isIntersecting)) { section.classList.add('is-in'); io.disconnect(); }
+      }, { threshold: 0, rootMargin: '0px 0px -10% 0px' });
+      io.observe(section);
+      document.addEventListener('astro:before-swap', () => io.disconnect(), { once: true });
+    }
+
+    // Now the schedule, as JobTread has it
+    const [fresh, s] = await Promise.all([readUpcoming(), readSignup()]);
+    if (!section.isConnected) return;
+    if (fresh) all = fresh;
+    if (s !== undefined) signup = s;
+    showMail(s);
+    draw();
   }
 
   document.addEventListener('astro:page-load', () => {

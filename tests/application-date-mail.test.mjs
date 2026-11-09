@@ -29,6 +29,18 @@ test('a likely typo in an email provider is offered its fix; a real address neve
   assert.equal(mailFix('not an email'), null);
 });
 
+test('a big provider’s own country domain is a real address, never "fixed" to another country’s', () => {
+  for (const real of ['yahoo.ca', 'hotmail.ca', 'live.ca', 'hotmail.fr', 'hotmail.de', 'hotmail.it', 'hotmail.nl', 'yahoo.fr', 'yahoo.de', 'yahoo.it',
+    'outlook.fr', 'outlook.de', 'yahoo.co.jp', 'yahoo.co.in', 'yahoo.com.ar', 'proton.ch', 'email.cz', 'gmx.de', 'aol.co.uk']) {
+    assert.equal(mailFix(`kim@${real}`), null, real);
+  }
+  // The classic slips for .com after a big name are still offered the fix
+  assert.equal(mailFix('kim@yahoo.co'), 'kim@yahoo.com');
+  assert.equal(mailFix('kim@hotmail.cm'), 'kim@hotmail.com');
+  assert.equal(mailFix('kim@outlook.om'), 'kim@outlook.com');
+  assert.equal(mailFix('kim@gmail.co'), 'kim@gmail.com');
+});
+
 test('an accent before the @ is offered without it (providers take plain letters); one in a provider is the provider, as Chrome keeps it too', () => {
   assert.equal(mailFix('maría@gmail.com'), 'maria@gmail.com');
   assert.equal(mailFix('josé.pérez@hotmail.com'), 'jose.perez@hotmail.com');
@@ -111,4 +123,10 @@ test('a work phone\'s extension stays with it on the review and the copy ("(404)
   assert.equal(answerText(f, '+1 (404) 555-0123 extension 7'), '(404) 555-0123 ext. 7');
   assert.equal(answerText(f, '404.555.0123'), '(404) 555-0123');
   assert.equal(fieldError(f, '404-555-0123 x12'), null);
+});
+
+test('a two-letter company name is never "corrected" to a provider (ge.com is GE, not me.com)', () => {
+  assert.equal(mailFix('x@ge.com'), null);
+  assert.equal(mailFix('x@gm.com'), null);
+  assert.equal(mailFix('x@gmial.com'), 'x@gmail.com');
 });

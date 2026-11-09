@@ -6,7 +6,13 @@
  * → { reveals: [{ slug, name, startsAt, date, time, image, kidUrl, liveUrl }],   confirmed only
  *     upcoming: [{ slug, name, confirmed, image, rooms, kidUrl, liveUrl,
  *                  startsAt, date, time  (confirmed) | window (tentative) }],
+ *     signup: { email, hours } | null,
  *     updatedAt, source: 'jobtread' | 'cache' | 'none', error? }
+ *
+ * signup: whether a visitor can sign up for every reveal by email right now
+ * (Reveals → Settings has reminders on and email can go out), and the notes
+ * they'd get. The Coming up band's email card reads it from this same answer,
+ * so it opens complete, with no second request to wait on.
  *
  * Cached at the edge for EDGE_TTL seconds so visitors never wait on JobTread;
  * a reveal confirmed in JobTread shows up within a few minutes, no deploy.
@@ -18,9 +24,22 @@ import { maybeNudge } from './_reveal-nudges.js';
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 import { maybeSyncKidStatuses } from './_kid-status.js';
 import { maybeSyncKidPartners } from './_kid-partners.js';
+import { readConfig } from './_broadcast.js';
+import { emailConfigured } from './_broadcast-notify.js';
 
 const EDGE_TTL = 180;
 const BROWSER_TTL = 60;
+
+/** The every-reveal email sign-up: open or not, and its notes (the hours before). null when the settings can't be read. */
+export async function signupFacts(env) {
+  try {
+    const config = await readConfig(env.DB);
+    const hours = Array.isArray(config.reminders?.hoursBefore) ? config.reminders.hoursBefore.filter((h) => h === 24 || h === 1) : [24, 1];
+    return { email: !!config.reminders?.enabled && emailConfigured(env), hours };
+  } catch {
+    return null;
+  }
+}
 
 export async function onRequestGet(context) {
   const { env, request } = context;
@@ -33,7 +52,8 @@ export async function onRequestGet(context) {
   }
 
   // The past reveals kept for the calendar feed aren't for pages
-  const { past: _past, ...body } = await getReveals(env);
+  const [{ past: _past, ...schedule }, signup] = await Promise.all([getReveals(env), signupFacts(env)]);
+  const body = { ...schedule, signup };
   // Reveal invites safety net: re-check every open job every few hours, after
   // the response, so a missed JobTread webhook can't leave an invite stale
   context.waitUntil(maybeSweep(env));

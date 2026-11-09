@@ -7,6 +7,17 @@ const MAIL_HOSTS = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'icl
   'mail.com', 'email.com', 'gmx.com', 'gmx.net', 'zoho.com', 'aim.com', 'proton.me', 'pm.me', 'protonmail.ch', 'fastmail.com', 'hey.com',
   'earthlink.net', 'cox.net', 'frontier.com', 'windstream.net', 'juno.com', 'netzero.net', 'optonline.net', 'rocketmail.com',
   'googlemail.com', 'hotmail.co.uk', 'yahoo.co.uk', 'live.co.uk'];
+// Big providers that also run country domains (yahoo.ca, hotmail.fr, outlook.de, yahoo.co.jp, yahoo.com.ar, proton.ch,
+// email.cz): an address at one of those is real, not a typo of another country's, so it's left alone.
+// (.co, .cm and .om after a big name are the classic slips for .com, so those are still offered the fix.)
+const REGIONAL = new Set(['yahoo', 'ymail', 'hotmail', 'outlook', 'live', 'msn', 'aol', 'gmx', 'proton', 'protonmail', 'email', 'mail', 'web', 'yandex']);
+const COUNTRY_TLD = /^(?:(?:co|com|net|org)\.)?[a-z]{2}$/;
+const SLIP_TLD = new Set(['co', 'cm', 'om']);
+function regional(host) {
+  const [brand, ...rest] = host.split('.');
+  const tld = rest.join('.');
+  return REGIONAL.has(brand) && COUNTRY_TLD.test(tld) && !SLIP_TLD.has(tld);
+}
 function editDistance(a, b) { // with a swap of two letters counting as one
   const d = Array.from({ length: a.length + 1 }, (_, i) => [i, ...Array(b.length).fill(0)]);
   for (let j = 1; j <= b.length; j++) d[0][j] = j;
@@ -62,7 +73,8 @@ export function mailFix(v) {
   // An accent before the @ ("maría@gmail.com"): mail providers take plain letters only, so mail to it never arrives
   const plain = m[1].normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   if (plain !== m[1] && /^[\x21-\x7e]+$/.test(plain)) return mailFix(`${plain}@${host}`) || `${plain}@${host}`;
-  if (MAIL_HOSTS.includes(host)) return null;
+  // A two-letter name (ge.com, gm.com) is as likely a real company as a slip: too close to call, so no guess
+  if (MAIL_HOSTS.includes(host) || regional(host) || host.split('.')[0].length <= 2) return null;
   let best = null;
   let bestD = Infinity;
   for (const h of MAIL_HOSTS) {

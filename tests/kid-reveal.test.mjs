@@ -23,9 +23,11 @@ test('the badge says what the page script says', () => {
 test('the reveal line: the day to the live page, and Add to calendar with the invite details', () => {
   const html = revealLine(max);
   assert.match(html, /^<div class="hero__reveal"><a class="hero__reveal-day" href="\/live\/max\/"/);
-  assert.match(html, />Reveal day: Fri, Nov 20 at 4:00 PM ET<\/a>/);
-  assert.match(html, /aria-label="Max&#39;s reveal day is Friday, November 20 at 4:00 PM ET\. Watch it live\."/);
-  assert.match(html, /<button type="button" class="hero__reveal-add" data-invite="max" data-invite-name="Max" data-invite-when="Friday, November 20 at 4:00 PM ET" data-invite-set="1" aria-label="Add Max’s reveal to your calendar">/);
+  // Drawn at the edge, which can't know the visitor: Eastern, with its label (the browser shows the visitor's own)
+  assert.match(html, />Reveal day: Fri, Nov 20 at 4:00 PM EST<\/a>/);
+  assert.match(html, /aria-label="Max&#39;s reveal day is Friday, November 20 at 4:00 PM EST\. Watch it live\."/);
+  // Its spoken name begins with the words on the button (WCAG 2.5.3)
+  assert.match(html, /<button type="button" class="hero__reveal-add" data-invite="max" data-invite-name="Max" data-invite-when="Friday, November 20 at 4:00 PM EST" data-invite-set="1" aria-label="Add to calendar: Max’s reveal">/);
   assert.match(html, /<span>Add to calendar<\/span><\/button><\/div>$/);
   const planned = revealLine(colin);
   assert.match(planned, />Reveal planned for early December<\/a>/);
@@ -51,9 +53,10 @@ test('the schedule comes from the cached answer, and a slow one never holds the 
   }
 });
 
-test('the page script leaves what the server put in, and the kids folder runs both', () => {
+test('the page script leaves what the server put in (only its time, for a visitor outside Eastern), and the kids folder runs both', () => {
   const page = readFileSync('src/pages/kids/[slug].astro', 'utf8');
-  assert.match(page, /hero\.hasAttribute\('data-reveal-shown'\)\) return;/);
+  assert.match(page, /const drawn = hero\.hasAttribute\('data-reveal-shown'\);\n\s*if \(drawn && shownZone\(\) === 'America\/New_York'\) return;/);
+  assert.match(page, /if \(drawn\) \{[\s\S]*?if \(!reveal\.confirmed \|\| !reveal\.time\) return;/, 'elsewhere, it rewrites only a set day and time');
   const list = readFileSync('src/pages/kids/index.astro', 'utf8');
   assert.match(list, /badge\.dataset\.reveal\) continue;/, 'cards the server filled are marked data-reveal');
   const mw = readFileSync('functions/kids/_middleware.js', 'utf8');
