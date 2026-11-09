@@ -18,7 +18,11 @@ import { zeffyKey, sameForm } from './zeffy-links.js';
 
 const html = htm.bind(h);
 const STALE_MS = 60 * 1000;
-const RETRY_MS = 15 * 1000;
+const RETRY_MS = 15 * 1000; // then 30 s, 1 min… up to 5 min while Zeffy keeps failing
+const RETRY_MAX_MS = 5 * 60 * 1000;
+const UNKNOWN_LINK_MS = 10 * 1000; // a Zeffy link the list doesn't have: look again, at most this often
+// Failures that waiting won't fix: no automatic retries, only when the tab or window comes back
+const LASTING = /ZEFFY_API_KEY|isn.t connected|sign-in/i;
 
 /** The dropdown's groups, in this order unless a field prefers others first */
 export const KINDS = {
@@ -85,10 +89,11 @@ const stores = {};
 function storeFor(from) {
   let s = stores[from.key];
   if (s) return s;
-  s = stores[from.key] = { at: 0, busy: false, forms: null, failed: '', subs: new Set(), load: from.load };
-  if (typeof document !== 'undefined') {
-    document.addEventListener('visibilitychange', () => { if (!document.hidden && s.subs.size) refresh(s); });
-  }
+  s = stores[from.key] = { at: 0, busy: false, forms: null, failed: '', tries: 0, subs: new Set(), load: from.load };
+  // Back to the tab, or to the window beside another one: a form made in Zeffy meanwhile shows up
+  const back = () => { if (!document.hidden && s.subs.size) refresh(s); };
+  if (typeof document !== 'undefined') document.addEventListener('visibilitychange', back);
+  if (typeof window !== 'undefined') window.addEventListener('focus', back);
   return s;
 }
 
@@ -98,9 +103,9 @@ async function refresh(s, { force = false } = {}) {
   const j = await s.load().catch(() => null);
   s.busy = false;
   s.at = Date.now();
-  if (j && (j.success || j.ok) && Array.isArray(j.forms)) { s.forms = j.forms; s.failed = ''; }
+  if (j && (j.success || j.ok) && Array.isArray(j.forms)) { s.forms = j.forms; s.failed = ''; s.tries = 0; }
   // A failed look again keeps the list it had; with no list yet, the dropdown says so and tries again
-  else if (!s.forms) s.failed = j?.error || 'Zeffy’s forms didn’t load.';
+  else if (!s.forms) { s.failed = j?.error || 'Zeffy’s forms didn’t load.'; s.tries += 1; }
   s.subs.forEach((fn) => fn());
 }
 
@@ -119,8 +124,8 @@ function useZeffyForms(from) {
     return () => { s.subs.delete(fn); };
   }, [s]);
   useEffect(() => {
-    if (!s.failed) return undefined;
-    const t = setTimeout(() => refresh(s, { force: true }), RETRY_MS);
+    if (!s.failed || LASTING.test(s.failed)) return undefined;
+    const t = setTimeout(() => refresh(s, { force: true }), Math.min(RETRY_MS * 2 ** Math.max(0, s.tries - 1), RETRY_MAX_MS));
     return () => clearTimeout(t);
   }, [s, s.failed, s.at]);
   return s;
@@ -151,8 +156,14 @@ export function ZeffyFormSelect({ value = '', id, onPick, prefer = [], label = '
   const s = useZeffyForms(from);
   const { chosen, groups } = formGroups(s.forms, { value, prefer, id });
   const none = !!s.forms && !groups.length;
-  const lead = !s.forms ? (s.failed ? 'Couldn’t read Zeffy’s forms. Trying again…' : 'Loading Zeffy forms…')
-    : none ? 'Zeffy has no open forms' : 'Choose a Zeffy form';
+  // Short enough for a phone's dropdown; the whole reason is in its tooltip
+  const failedAs = /sign-in/i.test(s.failed) ? 'Sign-in ended: reload the page' : LASTING.test(s.failed) ? 'Zeffy isn’t connected yet' : 'Zeffy isn’t answering. Retrying…';
+  const lead = !s.forms ? (s.failed ? failedAs : 'Loading Zeffy forms…') : none ? 'Zeffy has no open forms' : 'Choose a Zeffy form';
+  // A Zeffy link the list doesn't have may be a form made since the list was read: look again
+  const unknown = !!s.forms && !!zeffyKey(value) && !s.forms.some((f) => sameForm(f.url, value));
+  useEffect(() => {
+    if (unknown && Date.now() - s.at > UNKNOWN_LINK_MS) refresh(s, { force: true });
+  }, [s, unknown, value]);
   const pick = (e) => {
     const f = (s.forms || []).find((x) => x.id === e.currentTarget.value);
     if (f) onPick(f);

@@ -463,7 +463,9 @@ function Goal({ ctx }) {
     const byHand = 'campaignId' in edits && edits.campaignId !== '' && edits.campaignId !== autoId.current;
     if (!byHand) {
       const listed = url.trim() ? (zeffyList || []).find((c) => sameForm(c.url, url)) : null;
-      next.campaignId = listed ? listed.id : '';
+      // The saved address, typed back (or with Zeffy's list not in yet), keeps the saved ID
+      const saved = !!url.trim() && (url.trim() === String(s.campaignUrl || '').trim() || sameForm(url, s.campaignUrl));
+      next.campaignId = listed ? listed.id : saved ? s.campaignId || '' : '';
       autoId.current = next.campaignId;
     }
     setEdits(next);

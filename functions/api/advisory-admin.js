@@ -139,11 +139,15 @@ export async function onRequestPost(context) {
           if (!person) return fail('Pick an active board member');
           patch.lead = person.slug;
         }
-        // The address is enough: its id comes from Zeffy
-        if (patch.campaignUrl && patch.campaignUrl !== settings.campaignUrl && !patch.campaignId) {
-          const found = await campaignFromUrl(env, webLink(patch.campaignUrl));
+        // The address is enough: its id comes from Zeffy. An address is never kept without its ID unless Zeffy says it has
+        // none, and a new address never keeps the old campaign's ID (a page that sends only the address gets it looked up)
+        const urlMoved = 'campaignUrl' in patch && patch.campaignUrl !== settings.campaignUrl;
+        const nextUrl = 'campaignUrl' in patch ? patch.campaignUrl : settings.campaignUrl;
+        const nextId = 'campaignId' in patch ? patch.campaignId : urlMoved ? '' : settings.campaignId;
+        if (nextUrl && !nextId && (urlMoved || 'campaignId' in patch)) {
+          const found = await campaignFromUrl(env, webLink(nextUrl));
           if (found === '') return fail('That address isn’t a campaign in SOARD’s Zeffy. Check the link and try again.');
-          // Never the old campaign's ID beside a new address: with Zeffy not answering it waits for the next Save
+          // With Zeffy not answering, nothing changes: it waits for the next Save
           if (found === null && env.ZEFFY_API_KEY) return fail('Zeffy didn’t answer, so the site couldn’t check that address. Try Save again in a minute.', 503);
           patch.campaignId = found || '';
         }

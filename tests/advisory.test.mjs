@@ -820,3 +820,46 @@ test('a new campaign address never keeps the old campaign’s ID: found in Zeffy
     console.error = quiet;
   }
 });
+
+test('Save never leaves the group’s campaign address without its ID unless Zeffy says it has none', async () => {
+  const URL0 = 'https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2026';
+  await saveSettings(env.DB, { campaignUrl: URL0, campaignId: 'p2p-2026' });
+  const real = globalThis.fetch;
+  let zeffy = 'up';
+  let asked = 0;
+  globalThis.fetch = async () => { asked++; return zeffy === 'up'
+    ? Response.json({ object: 'list', has_more: false, next_cursor: null, data: [{ id: 'p2p-2026', url: 'https://www.zeffy.com/peer-to-peer/advisory-board-2026', title: 'AB', type: 'donation_form', category: 'peer_to_peer', status: 'active', created: 1 }, { id: 'p2p-2027', url: 'https://www.zeffy.com/peer-to-peer/advisory-board-2027', title: 'AB 27', type: 'donation_form', category: 'peer_to_peer', status: 'active', created: 2 }] })
+    : Response.json({ error: { message: 'down' } }, { status: 500 }); };
+  const quiet = console.error;
+  console.error = () => {};
+  env.ZEFFY_API_KEY = 'k';
+  try {
+    const ids = async () => { const s = await getSettings(env.DB); return [s.campaignUrl, s.campaignId]; };
+    // Only the goal: Zeffy isn't asked, the campaign stays
+    assert.equal((await runIt({ action: 'save-settings', settings: { goal: 31000 } })).status, 200);
+    assert.equal(asked, 0);
+    assert.deepEqual(await ids(), [URL0, 'p2p-2026']);
+    // The ID emptied beside the same address, with Zeffy down: refused, nothing changes
+    zeffy = 'down';
+    const down = await runIt({ action: 'save-settings', settings: { campaignId: '', goal: 32000 } });
+    assert.equal(down.status, 503);
+    assert.deepEqual(await ids(), [URL0, 'p2p-2026']);
+    assert.equal((await getSettings(env.DB)).goal, 31000);
+    // …with Zeffy up: the address's own ID comes back
+    zeffy = 'up';
+    assert.equal((await runIt({ action: 'save-settings', settings: { campaignId: '' } })).status, 200);
+    assert.deepEqual(await ids(), [URL0, 'p2p-2026']);
+    // An older page that sends only a new address: it's looked up, never paired with the old ID
+    assert.equal((await runIt({ action: 'save-settings', settings: { campaignUrl: 'https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2027' } })).status, 200);
+    assert.deepEqual(await ids(), ['https://www.zeffy.com/en-US/peer-to-peer/advisory-board-2027', 'p2p-2027']);
+    // Clearing both unlinks without asking Zeffy
+    asked = 0;
+    assert.equal((await runIt({ action: 'save-settings', settings: { campaignUrl: '', campaignId: '' } })).status, 200);
+    assert.equal(asked, 0);
+    assert.deepEqual(await ids(), ['', '']);
+  } finally {
+    globalThis.fetch = real;
+    console.error = quiet;
+    delete env.ZEFFY_API_KEY;
+  }
+});
