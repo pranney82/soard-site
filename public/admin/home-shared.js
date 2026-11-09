@@ -268,7 +268,7 @@ function countBy(homes, keyOf, labelOf, order = null) {
   const byKey = new Map();
   for (const p of homes) {
     for (const raw of [].concat(keyOf(p)).filter((x) => x != null && x !== '')) {
-      const key = typeof raw === 'number' ? raw : words(raw).replace(/\s+/g, ' ').toLowerCase();
+      const key = typeof raw === 'number' ? raw : raw && typeof raw === 'object' && 'key' in raw ? raw.key : words(raw).replace(/\s+/g, ' ').toLowerCase();
       if (key === '') continue;
       const row = byKey.get(key) || { key, said: {}, list: [] };
       const said = labelOf(raw);
@@ -297,8 +297,16 @@ function leastSpan(kind, median) {
   if (kind === 'date') return 365 * 864e5;
   return Math.max(1, Math.abs(median || 0) * 0.1);
 }
-// "Cobb County" and "Cobb" are one county
-const countyless = (t) => words(t).replace(/\s+county$/i, '');
+/**
+ * An answer's key for counting: without the field's own words, so answers that differ only by them are one
+ * ("Public Water" and "Public" under Water Source, "Cobb County" and "Cobb" under County). Never empty.
+ */
+function answerKey(fieldName, v) {
+  const own = new Set(String(fieldName || '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean));
+  const all = words(v).toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+  const kept = all.filter((w) => !own.has(w));
+  return (kept.length ? kept : all).join(' ');
+}
 
 /**
  * Their homes, across the people shown. people: [{ id, name, home: { [fieldId]: value }, ... }],
@@ -371,11 +379,13 @@ export function homeInsights(defs, people) {
         median, min: vs[0], max: vs[vs.length - 1], low, high, missing,
       });
     } else if (kind === 'bedbath') {
+      // A 0 is how DataX writes "Zillow doesn't know" ("undefined bed, 0 bath"), so it counts as not given;
+      // a studio is only a studio when it says so
       const part = (re, studio) => (p) => [].concat(p.home[f.id]).map((x) => {
         const t = words(x);
+        if (studio && STUDIO.test(t)) return 0;
         const m = t.match(re);
-        if (m) return Number(m[1]);
-        return studio && STUDIO.test(t) ? 0 : null;
+        return m && Number(m[1]) > 0 ? Number(m[1]) : null;
       }).filter((x) => x != null);
       const beds = countBy(have, part(BEDS, true), (n) => (n === 0 ? 'Studio' : halfWords(n, 'bedroom', 'bedrooms')), byNumber);
       const baths = countBy(have, part(BATHS, false), (n) => halfWords(n, 'bath', 'baths'), byNumber);
@@ -385,7 +395,7 @@ export function homeInsights(defs, people) {
         // Filled in, but not with a number of these: the other half only ("3 bed") says none was given;
         // anything else ("Mobile home") is shown as typed. Never "not filled in": something is there.
         const other = have.filter((p) => !counted.has(p));
-        const gaveOther = other.filter((p) => [].concat(p.home[f.id]).some((x) => otherPart.test(words(x))));
+        const gaveOther = other.filter((p) => [].concat(p.home[f.id]).some((x) => otherPart.test(words(x)) || /\b(?:bed|bath)/i.test(words(x))));
         const rest = other.filter((p) => !gaveOther.includes(p));
         if (gaveOther.length) rows.push({ key: 'none', label: none, n: gaveOther.length, list: gaveOther, odd: true });
         if (rest.length) rows.push({ key: 'odd', label: 'Written another way', n: rest.length, list: rest, odd: true });
@@ -394,8 +404,7 @@ export function homeInsights(defs, people) {
       split(beds, 'Bedrooms', 'beds', 'No bedrooms given', BATHS);
       split(baths, 'Bathrooms', 'baths', 'No baths given', new RegExp(`${BEDS.source}|${STUDIO.source}`, 'i'));
     } else if (kind === 'choice' || kind === 'yesno' || (kind === 'text' && !ONE_HOME.test(f.name))) {
-      const county = /\bcounty\b/i.test(f.name);
-      const rows = countBy(have, (p) => (county ? [].concat(p.home[f.id]).map(countyless) : p.home[f.id]), (x) => (county ? countyless(x) : show(kind, x)));
+      const rows = countBy(have, (p) => [].concat(p.home[f.id]).filter(filled).map((x) => ({ key: answerKey(f.name, x), said: show(kind, x) })), (x) => x.said);
       // Typed text counts only when homes share answers: most answers alike (Water Source: Public, Well), not
       // each home's own words, which belong on that home's card
       if (kind === 'text' && rows.filter((r) => r.n >= 2).reduce((n, r) => n + r.n, 0) < have.length / 2) continue;

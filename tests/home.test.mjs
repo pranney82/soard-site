@@ -364,6 +364,20 @@ test('Round 2: a tiny spread keeps a sensible scale; piles say how many', () => 
   assert.equal(piled.piles[0].list.length, 23, '7 lanes show, 23 more are in the pile');
 });
 
+test('Real data: Zillow’s unknowns in Bed Bath are not given; Water Source spellings join', () => {
+  // As DataX wrote them on SOARD's homes (Nov 9 2026)
+  const bb = ['undefined bed, 0 bath', 'undefined bed, 0 bath', '0 bed, 2.5 bath', '4 bed, 0 bath', '3 bed, 2 bath'].map((b, i) => person(`p${i}`, `P${i}`, { b }));
+  const sum = homeInsights([{ id: 'b', name: 'Bed Bath', type: 'text' }], bb);
+  const beds = sum.groups.find(g => g.name === 'Bedrooms');
+  const baths = sum.groups.find(g => g.name === 'Bathrooms');
+  assert.deepEqual(beds.rows.map(r => [r.label, r.n]), [['3 bedrooms', 1], ['4 bedrooms', 1], ['No bedrooms given', 3]], 'no studio and no “0 baths” from a zero');
+  assert.deepEqual(baths.rows.map(r => [r.label, r.n]), [['2 baths', 1], ['2.5 baths', 1], ['No baths given', 3]]);
+  const water = homeInsights([{ id: 'w', name: 'Water Source', type: 'text' }], ['Public', 'Public', 'Public Water', 'City', 'city', 'Private Water', 'Well'].map((w, i) => person(`p${i}`, `P${i}`, { w })));
+  assert.deepEqual(water.groups[0].rows.map(r => [r.label, r.n]), [['Public', 3], ['City', 2], ['Private Water', 1], ['Well', 1]], '“Public Water” is “Public”: the field’s own words don’t make another answer');
+  const power = homeInsights([{ id: 'c', name: 'Power Company', type: 'text' }], ['Georgia Power', 'Georgia Power Company', 'Cobb EMC'].map((c, i) => person(`p${i}`, `P${i}`, { c })));
+  assert.deepEqual(power.groups[0].rows.map(r => [r.label, r.n]), [['Georgia Power', 2], ['Cobb EMC', 1]]);
+});
+
 test('Round 2: “3 bed” has no baths given; typed words in Bed Bath stay as written', () => {
   const sum = homeInsights([{ id: 'b', name: 'Bed Bath', type: 'text' }], [person('a', 'A', { b: '3 beds' }), person('b', 'B', { b: '3 bed, 2 bath' }), person('c', 'C', { b: '2 bed, 1 bath' }), person('d', 'D', { b: 'Mobile home' })]);
   const baths = sum.groups.find(g => g.name === 'Bathrooms');
