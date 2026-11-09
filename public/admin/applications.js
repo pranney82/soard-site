@@ -718,7 +718,7 @@ const CSS = `
 .afi-decide { margin: 0 0 1.1rem; }
 .afi-decide-table { width: 100%; border-collapse: separate; border-spacing: 0; }
 .afi-decide-table caption { caption-side: top; padding: 0 0 .5rem; text-align: left; }
-.afe-table.afi-decide-table th, .afe-table.afi-decide-table td { padding: .2rem .35rem; border-bottom: 1px solid var(--color-border); vertical-align: middle; text-align: left; text-transform: none; letter-spacing: 0; }
+.afe-table.afi-decide-table th, .afe-table.afi-decide-table td, .afe-table.afi-decide-table th:last-child, .afe-table.afi-decide-table td:last-child { padding: .2rem .35rem; border-bottom: 1px solid var(--color-border); vertical-align: middle; text-align: left; text-transform: none; letter-spacing: 0; }
 .afi-decide-table tbody tr:last-child th, .afi-decide-table tbody tr:last-child td { border-bottom: 0; }
 .afi-decide-table thead th { color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; white-space: nowrap; }
 .afi-decide-table tbody th { color: var(--color-text-secondary); font-size: var(--fs-xs); font-weight: 600; min-width: 7.5rem; }
