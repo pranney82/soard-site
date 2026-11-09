@@ -122,7 +122,9 @@ const NOW = Date.now();
 const iso = (t) => new Date(t).toISOString();
 let seq = 0;
 const appId = () => { seq++; return `app-${(NOW + seq).toString(36)}-${seq.toString(16).padStart(6, '0')}`; };
-const REFS = ['Children’s Healthcare of Atlanta', 'Facebook', 'A friend', 'Our therapist', 'Facebook', 'Children’s Healthcare of Atlanta', ''];
+// Typed by families, so some run long: a name with whose parent they are, and a whole sentence
+const LONG_REF = 'A volunteer from your crew stopped by our street on a makeover day and told us all about the charity and how to apply';
+const REFS = ['Children’s Healthcare of Atlanta', 'Facebook', 'Jordan Lee (Sam Lee’s mom, from our running group)', LONG_REF, 'Facebook', 'Children’s Healthcare of Atlanta', ''];
 const fixtures = {};
 async function seed() {
   await ensureSchema(DB);
@@ -1177,6 +1179,32 @@ try {
     await page.waitForSelector('.afi-stands', { timeout: 8000 });
     ok(/Spanish\s*\d/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Language/.test(v.querySelector('h4')?.textContent))?.innerText || '')), 'languages');
     ok(/Children’s Healthcare of Atlanta/.test(await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /heard about us/.test(v.querySelector('h4')?.textContent))?.innerText || '')), 'referral sources');
+    // A long answer stays inside its card at every width: two lines at most, then "…", the count always in view, the whole answer on hover
+    const fitWide = page.viewport();
+    for (const width of [1440, 1280, 1100, 1025, 820, 390]) {
+      await page.setViewport({ width, height: 1000, deviceScaleFactor: 1 });
+      await sleep(250);
+      const fit = await page.evaluate((long) => {
+        const card = [...document.querySelectorAll('.afe-viz')].find(v => /heard about us/.test(v.querySelector('h4')?.textContent));
+        const box = card.getBoundingClientRect();
+        const rows = [...card.querySelectorAll('.afi-src')].map((b) => {
+          const r = b.getBoundingClientRect(); const n = b.querySelector('b').getBoundingClientRect(); const t = b.querySelector('.afi-src-text') || b.querySelector('span');
+          const lh = parseFloat(getComputedStyle(t).lineHeight);
+          return { inside: r.left >= box.left && r.right <= box.right - 1, count: n.width > 0 && n.right <= r.right, lines: Math.round(t.getBoundingClientRect().height / lh), cut: t.scrollHeight > t.clientHeight + 1, full: t.title, label: t.textContent };
+        });
+        const longRow = rows.find(r => r.label === long);
+        return { all: rows.length, out: rows.filter(r => !r.inside).length, noCount: rows.filter(r => !r.count).length, most: Math.max(...rows.map(r => r.lines)), long: longRow && { lines: longRow.lines, full: longRow.full === long }, page: document.documentElement.scrollWidth <= document.documentElement.clientWidth };
+      }, LONG_REF);
+      if (width === 390) {
+        await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /heard about us/.test(v.querySelector('h4')?.textContent))?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+        await page.screenshot({ path: join(OUT, '13f-insights-referrals-phone.png') });
+      }
+      ok(fit.all >= 4 && fit.out === 0 && fit.noCount === 0 && fit.most <= 2 && fit.long?.lines >= 1 && fit.long?.full && fit.page, `at ${width}px every referral row stays in its card, its count in view, two lines at most (${JSON.stringify(fit)})`);
+    }
+    await page.setViewport(fitWide);
+    await sleep(250);
+    await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /heard about us/.test(v.querySelector('h4')?.textContent))?.scrollIntoView({ block: 'center', behavior: 'instant' }));
+    await page.screenshot({ path: join(OUT, '13e-insights-referrals.png') });
     const where = await page.evaluate(() => [...document.querySelectorAll('.afe-viz')].find(v => /Where families live/.test(v.querySelector('h4')?.textContent))?.innerText || '');
     ok(/Inside the area\s*1[12]\b/.test(where) && /Address not found\s*1/.test(where), `where families live, from the address check (${where.replace(/\s+/g, ' ').slice(0, 160)})`);
     ok(/within 15 miles/.test(where) && /Up to 5 mi\s*close\s*1/.test(where) && /10 to 15 mi\s*close\s*1/.test(where) && /Over 50 mi\s*1/.test(where), 'how far out, with the close steps marked');

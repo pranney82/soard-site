@@ -571,7 +571,7 @@ const CSS = `
 /* The body: cards, each a title with its key to the right */
 .afi-body { display: grid; gap: 1.25rem; container: afibody / inline-size; transition: opacity .2s var(--ease-out); }
 .afi-body.is-loading { opacity: .5; }
-.afi-card { display: grid; align-content: start; padding: 1.25rem 1.4rem 1.35rem; container-type: inline-size; }
+.afi-card { display: grid; grid-template-columns: minmax(0, 1fr); align-content: start; padding: 1.25rem 1.4rem 1.35rem; container-type: inline-size; }
 .afi-card-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .35rem 1rem; }
 .afe-viz .afi-card-head h4 { font-size: var(--fs-lg); letter-spacing: -.02em; }
 .afi-meta { color: var(--color-text-muted); font-size: var(--fs-xs); font-variant-numeric: tabular-nums; }
@@ -702,14 +702,16 @@ const CSS = `
 .afi-src-label { display: inline-flex; align-items: center; gap: .45rem; }
 .afi-src .afe-tag { flex: none; overflow: visible; }
 /* Ranked lists: each row's bar sits behind its words */
-.afi-srcs { display: grid; gap: .3rem; }
+.afi-srcs { display: grid; grid-template-columns: minmax(0, 1fr); gap: .3rem; }
 .afi-src { position: relative; isolation: isolate; display: flex; align-items: center; justify-content: space-between; gap: .75rem; min-height: 40px; padding: .4rem .75rem; border: 0; border-radius: var(--radius-sm); background: none; color: inherit; font: inherit; font-size: var(--fs-sm); text-align: left; cursor: pointer; }
 .afi-src::before { content: ''; position: absolute; inset: 0 auto 0 0; z-index: -1; width: var(--w); min-width: 6px; border-radius: inherit; background: var(--afi-fill); transform-origin: left; animation: afiGrowX .75s var(--ease-out) backwards; animation-delay: calc(.3s + var(--i, 0) * 60ms); transition: background-color .15s var(--ease-out); }
 .afi-src:hover::before { background: var(--afi-hover); }
 .afi-src.is-rest::before { background: var(--afe-track); }
 .afi-src:focus-visible { outline: 2px solid var(--color-text); outline-offset: 1px; }
 .afi-src span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.afi-src b { font-variant-numeric: tabular-nums; }
+.afi-src b { flex: none; font-variant-numeric: tabular-nums; }
+/* An answer typed by a family can run to a sentence: it wraps to two lines, then ends in "…" (the whole of it on hover and in the list it opens) */
+.afi-src .afi-src-text { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; }
 .afi-flag { display: inline-block; width: 8px; height: 8px; margin-right: .55rem; border-radius: 50%; background: var(--tone-warn-dot); vertical-align: .05em; }
 .afi-note { margin: .85rem 0 0; color: var(--color-text-secondary); font-size: var(--fs-xs); line-height: 1.45; }
 .afi-quiet { margin: 0; color: var(--color-text-muted); font-size: var(--fs-xs); text-align: center; }
@@ -2388,7 +2390,7 @@ function SourcesCard({ rows, people, open, w }) {
       <div class="afi-srcs">
         ${shown.map((r, n) => html`
           <button type="button" class=${`afi-src ${r.source === 'Not given' ? 'is-rest' : ''}`} style=${`--w: ${(r.count / max) * 100}%; --i: ${n};`} onClick=${() => open(r.source, named(r))}>
-            <span title=${r.source}>${r.source}</span><b>${num(r.count)}</b>
+            <span class="afi-src-text" title=${r.source}>${r.source}</span><b>${num(r.count)}</b>
           </button>`)}
       </div>
       ${more.length > 0 && html`<p class="afi-note"><button type="button" class="afe-link" onClick=${() => open(plural(more.length, 'more source'), people.filter(p => rest.has(p.referral)))}>And ${plural(more.length, 'more source')} with ${plural(more.reduce((n, r) => n + r.count, 0), 'application')}</button></p>`}
