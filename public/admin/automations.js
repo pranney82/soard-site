@@ -1286,8 +1286,17 @@ const MAP = { t: 'SOARD', children: [
           touches: ['JobTread', 'DataX', 'Quo'], where: 'JobTread webhook → DataX (winyourdata.com/api/phone/texting)', live: hook('22PDDmxBcvpA') },
         { t: 'Zillow lookup', s: 'live', k: 'event',
           when: 'A new location is added.',
-          does: 'Looks up the property on Zillow and saves the Zillow link on the account.',
-          touches: ['JobTread', 'DataX', 'Zillow'], where: 'JobTread webhook → DataX (winyourdata.com/api/zillow)', live: hook('22PJxV5yimrd') },
+          does: 'Looks up the home on Zillow and fills the location’s Zillow fields: the Zillow link, Zestimate, latest sale price and date, year built, beds and baths, living area, parcel number and water source.',
+          touches: ['JobTread', 'DataX', 'Zillow'], where: 'JobTread webhook → DataX (winyourdata.com/api/zillow)',
+          info: 'Checked from the newest family homes in JobTread, each at least 30 minutes old (TEST accounts left out): three in a row without a Zillow link asks for a look. Zillow has nothing on some addresses, like schools and offices. DataX’s Toolbox → Zillow Integration → Run History says why a lookup failed.',
+          live: (f) => {
+            const h = hook('22PJxV5yimrd')(f);
+            if (h?.s === 'off') return h;
+            const z = f.zillow;
+            if (!z || z.error || !z.checked) return h;
+            if (z.streak >= 3) return ATTN(`The last ${z.streak} new homes got no Zillow data (the newest was added ${stamp(z.newestAt)}). DataX’s Toolbox → Zillow Integration → Run History says why.`, z.lastFilledAt);
+            return ON(`${z.filled} of the last ${plural(z.checked, 'new home')} ${z.filled === 1 ? 'has its' : 'have their'} Zillow data. The newest was added ${stamp(z.newestAt)}.`, z.lastFilledAt);
+          } },
       ]},
     ]},
 

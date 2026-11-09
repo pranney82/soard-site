@@ -50,6 +50,7 @@ const FACTS = {
   jotform: { total: 60, copied: 31, left: 29, gaveUp: 0, families: 14, files: 52, listedAt: iso(3600e3), doneAt: null, blockedAt: null },
   advisory: { total: 8, new: 1, fromJotform: 7, lastAt: iso(5 * 3600e3), lastNotified: { applicant: true, staff: 1, slack: true } },
   quo: { lastAt: iso(2 * 3600e3), last30: 77 },
+  zillow: { checked: 10, filled: 8, streak: 0, newestAt: iso(5 * 3600e3), lastFilledAt: iso(5 * 3600e3) },
   sends: { live: { kit: { last: iso(2 * 86400e3), sent: 1, failed: 0 } } },
   reminders: { subscribers: 4 },
   jobtread: {
@@ -373,6 +374,23 @@ try {
   ok(await statusOf(quiet.page, 'Quo texts and calls → JobTread') === 'Needs attention', '31 days with no Quo text or call logged needs attention');
   ok(quiet.errors.length === 0, `no console errors${quiet.errors.length ? ': ' + quiet.errors.slice(0, 3).join(' | ') : ''}`);
   await quiet.page.close();
+
+  console.log('Desktop, Zillow lookup');
+  const zOk = await open(browser, base, { width: 1440, height: 1000 });
+  await zOk.page.type('#am-search', 'zillow');
+  await pause(500);
+  await clickNode(zOk.page, 'Zillow lookup');
+  await pause(300);
+  const zPanel = await zOk.page.$eval('.am-panel', (e) => e.textContent);
+  ok(await statusOf(zOk.page, 'Zillow lookup') === 'Live' && zPanel.includes('8 of the last 10 new homes have their Zillow data'), 'homes getting Zillow data: live, with the count');
+  await zOk.page.close();
+  const zBad = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, zillow: { checked: 10, filled: 6, streak: 3, newestAt: iso(2 * 3600e3), lastFilledAt: iso(4 * 86400e3) } } });
+  ok(await statusOf(zBad.page, 'Zillow lookup') === 'Needs attention', 'three new homes in a row with no Zillow data needs attention, though the webhook is there');
+  ok(zBad.errors.length === 0, `no console errors${zBad.errors.length ? ': ' + zBad.errors.slice(0, 3).join(' | ') : ''}`);
+  await zBad.page.close();
+  const zGone = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...FACTS, jobtread: { ...FACTS.jobtread, webhooks: {} } } });
+  ok(await statusOf(zGone.page, 'Zillow lookup') === 'Off', 'the webhook gone from JobTread is off');
+  await zGone.page.close();
 
   console.log('Desktop, approved families');
   const ap = await open(browser, base, { width: 1440, height: 1000 });

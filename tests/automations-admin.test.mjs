@@ -237,6 +237,42 @@ test('Quo texts and calls DataX logs report the last one and a 30-day count, nev
   assert.ok(!text.includes('secret-ish') && !text.includes('Staff Person'), 'no message text or names');
 });
 
+test('Zillow lookup: the newest family homes at least 30 minutes old and whether each got its Zillow link, never an address or a name', async () => {
+  const now = Date.parse('2026-11-09T20:00:00Z');
+  const at = (mins) => new Date(now - mins * 60e3).toISOString();
+  const link = { value: 'https://www.zillow.com/homedetails/x', customField: { id: '22P3cqMfrQEp' } };
+  const other = { value: 'City', customField: { id: '22PRvEHbzhZK' } };
+  const loc = (mins, name, type, values) => ({ createdAt: at(mins), account: { name, type }, customFieldValues: { nodes: values } });
+  const nodes = [
+    loc(5, 'Brand New Family', 'customer', []), // too new to judge
+    loc(60, 'Home Depot', 'vendor', []), // not a home
+    loc(90, 'TEST CompanyCam Family', 'customer', []), // a test
+    loc(120, 'Family One', 'customer', [other]), // a hand-typed field isn't Zillow data
+    loc(180, 'Family Two', 'customer', []),
+    loc(240, 'Family Three', 'customer', [link]),
+    loc(300, 'Family Four', 'customer', [link, other]),
+  ];
+  let asked = null;
+  const fetchImpl = async (url, init) => {
+    const q = JSON.parse(init.body).query.organization;
+    if (!q.locations) return jtFetch()(url, init);
+    asked = q.locations;
+    return Response.json({ organization: { locations: { nodes } } });
+  };
+  const f = await gatherFacts(ENV(await makeDb()), { fetchImpl, now });
+  assert.deepEqual(f.zillow, { checked: 4, filled: 2, streak: 2, newestAt: at(120), lastFilledAt: at(240) });
+  assert.deepEqual(asked.$.sortBy, [{ field: 'createdAt', order: 'desc' }], 'newest first');
+  const text = JSON.stringify(f.zillow);
+  for (const s of ['Family', 'zillow.com', 'City']) assert.ok(!text.includes(s), `${s} stays out`);
+
+  // Every home without its link: the streak is all of them, and none was ever filled
+  nodes.splice(5, 2);
+  assert.deepEqual((await gatherFacts(ENV(await makeDb()), { fetchImpl, now })).zillow, { checked: 2, filled: 0, streak: 2, newestAt: at(120), lastFilledAt: null });
+
+  // JobTread unreachable: settles to an error, which the map reads as "can't check"
+  assert.ok((await gatherFacts(ENV(await makeDb()), { fetchImpl: jtFetch({ errors: ['nope'] }, 500), now })).zillow.error);
+});
+
 test('Mercury through the relay: both keys, then the account names it answers with, never a balance, a number or a key', async () => {
   assert.deepEqual(await mercuryFacts({ MERCURY_API_TOKEN: 'secret-token:mercury-1' }), { token: true, relayKey: false, accounts: null, error: null });
   const calls = [];

@@ -31,6 +31,7 @@
  *  - sends:     last reminder send per kind and channel (counts only)
  *  - jobtread:  SOARD workflows (on/off) and webhooks (host and events only)
  *  - quo:       Quo texts and calls DataX logged with applicant families (last one, count in 30 days; never content)
+ *  - zillow:    whether DataX's Zillow lookup reached the newest family homes in JobTread (counts and times; never an address)
  *  - waitlist:  families waiting for the applications-open email, signups not in Kit yet, the last opening
  *  - kitQuiet:  the quiet Kit subscribers check-in (the switch, last day, in the three weeks / stayed / unsubscribed; counts only)
  *  - applicationLimit: the season's limit, how many are in, the last heads-up or close (counts only)
@@ -370,6 +371,41 @@ export async function jobtreadFacts(grantKey, fetchImpl = fetch) {
   return out;
 }
 
+// DataX's Zillow lookup fills a new location's Zillow fields. The Zillow link comes with every home Zillow knows,
+// so a home without one never got the lookup's data (Nov 4–9 2026 every save failed and only the webhook was checked)
+const ZILLOW_URL_FIELD = '22P3cqMfrQEp';
+const ZILLOW_WAIT_MS = 30 * 60 * 1000; // DataX answers in seconds; a fresh home isn't judged yet
+
+/** Whether DataX's Zillow lookup is reaching new homes: the newest customer locations at least 30 minutes old
+ *  (TEST accounts left out), whether each has its Zillow link, and how many of the newest in a row have none.
+ *  Counts and times only, never an address or a name */
+export async function zillowFacts(grantKey, fetchImpl = fetch, now = Date.now()) {
+  if (!grantKey) return { error: 'JOBTREAD_GRANT_KEY is not set' };
+  const res = await fetchImpl(JT_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: { $: { grantKey }, organization: { $: { id: SOARD_ORG_ID }, locations: {
+      $: { size: 25, sortBy: [{ field: 'createdAt', order: 'desc' }] },
+      nodes: { createdAt: {}, account: { name: {}, type: {} }, customFieldValues: { $: { size: 25 }, nodes: { value: {}, customField: { id: {} } } } },
+    } } } }),
+  });
+  if (!res.ok) throw new Error(`JobTread returned ${res.status}`);
+  const nodes = (await res.json().catch(() => null))?.organization?.locations?.nodes;
+  if (!Array.isArray(nodes)) throw new Error('JobTread did not answer');
+  const homes = nodes
+    .filter((l) => l.account?.type === 'customer' && !/^TEST\b/.test(l.account?.name || '') && Date.parse(l.createdAt) <= now - ZILLOW_WAIT_MS)
+    .slice(0, 10)
+    .map((l) => ({ at: l.createdAt, filled: (l.customFieldValues?.nodes || []).some((v) => v.customField?.id === ZILLOW_URL_FIELD && v.value) }));
+  const streak = homes.findIndex((h) => h.filled);
+  return {
+    checked: homes.length,
+    filled: homes.filter((h) => h.filled).length,
+    streak: streak === -1 ? homes.length : streak,
+    newestAt: homes[0]?.at || null,
+    lastFilledAt: homes.find((h) => h.filled)?.at || null,
+  };
+}
+
 const settle = async (fn) => { try { return await fn(); } catch (e) { return { error: e.message }; } };
 
 export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } = {}) {
@@ -447,6 +483,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     covers: await settle(() => coverFacts(DB)).then((c) => (c && !c.error ? c : null)),
     press: await settle(() => pressFacts(DB)),
     quo: await settle(() => quoFacts(DB, now)),
+    zillow: await settle(() => zillowFacts(env.JOBTREAD_GRANT_KEY, fetchImpl, now)),
     eventRecap: await settle(() => eventRecapFacts(DB)),
     // SOARD's facts checked against the IRS's list, its W-9 and its Board Manual: times and what doesn't match (_org-facts.js)
     orgFacts: await settle(() => orgCheckFacts(DB)),
