@@ -14,13 +14,23 @@
 import {
   SITE_URL, HERO_TRANSFORM, SIDE, BRAND, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
   emailFrame, emailHeader, emailFooter, signOff, partnerCards, button, textLink, cover, lede, bodyPhotos, photoImg, photoPair, photoNotes,
+  listJoin, headlineFit, nameRuns, nameHtml, roomNames, noWidow,
 } from './_reveal-invite-email.js';
 
 const { Y, D, DD, CR, BD, TM, SANS, SERIF } = BRAND;
 
 const STORY_MAX = 320;
-const roomsOf = (kid) => (Array.isArray(kid.roomTypes) ? kid.roomTypes.filter(Boolean) : []);
+const roomsOf = (kid) => roomNames(kid);
 const yearOf = (kid) => kid.year || new Date().getFullYear();
+
+/** Two kids' ages as a person writes them: [10, 11] or "10,11" → "10 & 11" */
+const agesOf = (age) => (Array.isArray(age) ? age : String(age).split(/\s*(?:,|&|\band\b)\s*/)).map((a) => String(a).trim()).filter(Boolean);
+
+/** A finished-video signal the kid page also uses: a Stream video or a YouTube link */
+const hasVideo = (kid) => !!(kid.streamVideoId || kid.videoUrl);
+
+/** The give button names the kid when that fits one line on the smallest phone ("Give to Max’s Room →"), else it's "Give Now →": the headline above it already names them */
+const GIVE_MAX = 20;
 
 const WIDE_TRANSFORM = 'w=1200,h=720,fit=cover,gravity=auto,q=82';
 const PAIR_TRANSFORM = 'w=600,h=640,fit=cover,gravity=auto,q=80';
@@ -108,12 +118,12 @@ function roomList(rooms) {
     </table>`;
 }
 
-/** The one yellow band: what we're asking, and the button */
-function askBand({ kicker, headline, words, action, url }) {
+/** The one yellow band: what we're asking, and the button. fit: the headline's size, from headlineFit. */
+function askBand({ kicker, headline, words, action, url, fit = { size: 30, phone: 'h2b' } }) {
   return `<tr><td bgcolor="${Y}" style="background:${Y};padding:44px 0 48px;${SIDE}" class="pd">
     ${label(kicker, D)}
-    <h2 class="h2b" style="margin:18px 0 12px;font-family:${SERIF};font-size:30px;font-weight:700;line-height:1.22;color:${D};">${headline}</h2>
-    <p style="margin:0 0 26px;font-family:${SANS};font-size:16px;line-height:1.6;color:${D};">${escapeHtml(words)}</p>
+    <h2 class="${fit.phone}" style="margin:18px 0 12px;font-family:${SERIF};font-size:${fit.size}px;font-weight:700;line-height:1.22;color:${D};">${headline}</h2>
+    <p style="margin:0 0 26px;font-family:${SANS};font-size:16px;line-height:1.6;color:${D};">${noWidow(escapeHtml(words))}</p>
     ${button(action, url, { fill: DD, ink: '#FFFFFF' })}
   </td></tr>`;
 }
@@ -135,30 +145,49 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
 
   const subject = `Meet ${name}, Our Next Dream Room Project`;
   const preview = `Meet ${name}, our next dream room project. Here’s the story, and how you can help.`;
+  const ages = kid.age ? agesOf(kid.age) : [];
   const facts = [
-    kid.age && { label: 'Age', main: String(kid.age) },
+    ages.length && { label: ages.length > 1 ? 'Ages' : 'Age', main: ages.join(' & ') },
     kid.diagnosis && { label: 'Diagnosis', main: curly(kid.diagnosis) },
   ].filter(Boolean);
 
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
+  const fit = headlineFit(['Meet', ...nameRuns(name, '.')], 54);
+  const giveLabel = `Give to ${name}’s Room →`;
+  const action = own && giveLabel.length <= GIVE_MAX ? giveLabel : 'Give Now →';
+  // "building for Max" stays one phrase, a little smaller if need be; with a long name that would
+  // shrink it too far, so "for" and the name are left free to wrap ("building for / Christopher")
+  const [firstWord, ...restWords] = nameRuns(name);
+  const planPhones = { phones: [[26, 'h2b']] };
+  const gluedPlan = headlineFit(['What', 'we’re', `building for ${firstWord || ''}`, ...restWords], 26, planPhones);
+  const planGlue = gluedPlan.size >= 24;
+  const planFit = planGlue ? gluedPlan : headlineFit(['What', 'we’re', 'building', 'for', ...nameRuns(name)], 26, planPhones);
+  // "Christopher’s dream." can't break, so the name and "dream" stay together only while the pair still fits a phone
+  const askPhones = { phones: [[26, 'h2b']] };
+  const glued = headlineFit(['Help', 'us', 'build', ...nameRuns(name, '’s dream.')], 30, askPhones);
+  const glue = glued.size >= 26;
+  const askFit = own
+    ? (glue ? glued : headlineFit(['Help', 'us', 'build', ...nameRuns(name, '’s'), 'dream.'], 30, askPhones))
+    : headlineFit(['Help', 'us', 'build', 'dreams', 'like', ...nameRuns(name, '’s.')], 30, askPhones);
 
   const html = emailFrame(preview, `
   ${emailHeader(site)}
-  ${cover({ kicker: `Our next project · ${yearOf(kid)}`, headline: `Meet <em style="font-style:italic;color:${Y};">${escapeHtml(name)}</em>.`, size: name.length > 14 ? 42 : 54, phone: name.length > 14 ? 'dms' : 'dm', lead, alt: name, url: kidUrl })}
+  ${cover({ kicker: `Our next project · ${yearOf(kid)}`, headline: `Meet <em style="font-style:italic;color:${Y};">${nameHtml(name)}</em>.`, size: fit.size, phone: fit.phone, lead, alt: name, url: kidUrl })}
   ${story ? lede(story, `<p style="margin:16px 0 0;">${textLink(`Read ${name}’s story →`, kidUrl)}</p>`) : ''}
   ${facts.length ? factsRow(facts) : ''}
   ${photos.length >= 2 ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:32px 0 0;${SIDE}" class="pd">${photoPair(photos, name, 0)}${photoNotes(kid)}</td></tr>` : ''}
   ${rooms.length ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:44px 0 0;${SIDE}" class="pd">
     ${label('The plan')}
-    <h2 class="h2b" style="margin:16px 0 10px;font-family:${SERIF};font-size:26px;font-weight:700;line-height:1.25;color:${D};">What we’re building for&nbsp;${escapeHtml(name)}</h2>
+    <h2 class="${planFit.phone}" style="margin:16px 0 10px;font-family:${SERIF};font-size:${planFit.size}px;font-weight:700;line-height:1.25;color:${D};">What we’re building${planGlue ? '&nbsp;for&nbsp;' : ' for '}${nameHtml(name)}</h2>
     ${roomList(rooms)}
   </td></tr>` : ''}
   ${gap(40)}
   ${askBand({
     kicker: 'How you can help',
-    headline: own ? `Help us build ${escapeHtml(name)}’s&nbsp;<em style="font-style:italic;">dream</em>.` : `Help us build <em style="font-style:italic;">dreams</em> like ${escapeHtml(name)}’s.`,
-    words: own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space. Zero platform fees.` : 'Every dollar goes directly to materials, labor, and design for kids like these. Zero platform fees.',
-    action: own ? `Give to ${name}’s Room →` : 'Give Now →',
+    headline: own ? `Help us build ${nameHtml(name)}’s${glue ? '&nbsp;' : ' '}<em style="font-style:italic;">dream</em>.` : `Help us build <em style="font-style:italic;">dreams</em> like ${nameHtml(name)}’s.`,
+    fit: askFit,
+    words: own ? `Every dollar goes directly to materials, labor, and design for ${name}’s new space. Zero platform fees.` : `Every dollar goes directly to materials, labor, and design for kids like ${name}. Zero platform fees.`,
+    action,
     url: giveUrl,
   })}
   ${signOff('Thank you for being part of this.', teamPicture)}
@@ -169,10 +198,10 @@ export function projectKickoffEmail({ kid = {}, site = SITE_URL, brokenLogos = n
     '',
     story,
     '',
-    rooms.length ? `What we’re building: ${rooms.join(' + ')}` : null,
+    rooms.length ? `What we’re building: ${listJoin(rooms)}` : null,
     '',
     own ? `Help us build ${name}’s dream. Every dollar goes directly to materials, labor, and design for ${name}’s new space. Zero platform fees.`
-      : `Help us build dreams like ${name}’s. Every dollar goes directly to materials, labor, and design for kids like these. Zero platform fees.`,
+      : `Help us build dreams like ${name}’s. Every dollar goes directly to materials, labor, and design for kids like ${name}. Zero platform fees.`,
     `Give: ${giveUrl}`,
     `${name}’s story: ${kidUrl}`,
     '',
@@ -195,35 +224,43 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
   const several = (Number(kid.roomCount) || rooms.length || 1) > 1;
   const finished = `${name}’s Dream ${several ? 'Rooms Are' : 'Room Is'} Complete`;
   // The page's summary was often written while the room was still to come
-  // ("SOARD is building..."), so this opening is one that's always true
-  const built = rooms.length ? rooms.join(' and ').toLowerCase() : 'dream room';
+  // ("SOARD is building..."), so this opening is one that's always true.
+  // Two rooms of one kind (a bedroom each) read as "bedrooms".
+  const built = rooms.length ? listJoin(rooms).toLowerCase() : several ? 'dream rooms' : 'dream room';
   const story = `The wait is over. ${name}’s new ${built} ${several ? 'are' : 'is'} finished, and the family has seen ${several ? 'them' : 'it'} for the first time.`;
+  // No video on the page: no button promising one (the page only has a Reveal section when there is)
+  const video = hasVideo(kid);
   const lead = leadOf(kid, brokenLogos);
   const said = bareQuote(kid.quote);
   const onPage = curly(`${stripHtml(kid.bio)} ${kid.heroSummary || ''}`);
   const quote = said && !onPage.includes(said.slice(0, 40)) ? said : '';
 
   const subject = finished;
-  const preview = `See ${name}’s transformation: the photos, the video, and the partners who made it possible.`;
+  const shown = [kidPhotos(kid).length && 'the photos', video && 'the video'].filter(Boolean);
+  const preview = shown.length === 2 ? `See ${name}’s transformation: the photos, the video, and the partners who made it possible.`
+    : shown.length ? `See ${name}’s transformation: ${shown[0]} and the partners who made it possible.`
+      : `See ${name}’s transformation and the partners who made it possible.`;
 
   const pair = pairOf(kid, brokenLogos);
   // With a before and after, one wide photo says enough; galleries also hold close-ups of floors and tile
   const photos = bodyPhotos(kid, lead, brokenLogos, 3, true).slice(0, pair ? 1 : 3);
   const allPhotos = kidPhotos(kid).length;
-  const firstLine = `${name}’s Dream ${several ? 'Rooms' : 'Room'}`;
-  const size = firstLine.length <= 20 ? 40 : firstLine.length <= 25 ? 36 : 30;
+  const fit = headlineFit([...nameRuns(name, '’s'), `Dream ${several ? 'Rooms' : 'Room'}`, `${several ? 'Are' : 'Is'} Complete.`], 40);
+  // The page has a Gallery section once it has two photos
+  const coverUrl = video ? `${kidUrl}#chapter-reveal` : allPhotos > 1 ? `${kidUrl}#chapter-gallery` : kidUrl;
+  const watch = video ? null : allPhotos > 1 ? 'See the Photos' : 'Read the Story';
 
   const html = emailFrame(preview, `
   ${emailHeader(site)}
   ${cover({
     kicker: `Project complete · ${yearOf(kid)}`,
-    headline: `${escapeHtml(name)}’s Dream&nbsp;${several ? 'Rooms' : 'Room'}<br>${several ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
-    size,
-    phone: 'dms',
+    headline: `${nameHtml(name)}’s Dream&nbsp;${several ? 'Rooms' : 'Room'}<br>${several ? 'Are' : 'Is'}&nbsp;<em style="font-style:italic;color:${Y};">Complete</em>.`,
+    size: fit.size,
+    phone: fit.phone,
     lead,
     alt: `${name} in the finished ${several ? 'rooms' : 'room'}`,
-    url: `${kidUrl}#chapter-reveal`,
-    action: button('▶\uFE0E  Watch the Reveal', `${kidUrl}#chapter-reveal`, { center: true }),
+    url: coverUrl,
+    action: watch ? button(watch, coverUrl, { center: true }) : button('▶\uFE0E  Watch the Reveal', `${kidUrl}#chapter-reveal`, { center: true }),
   })}
   ${lede(story)}
   ${pair ? transformation(pair, name) : ''}
@@ -253,10 +290,10 @@ export function projectRevealEmail({ kid = {}, site = SITE_URL, brokenLogos = ne
     '',
     story,
     '',
-    `Watch the reveal: ${kidUrl}#chapter-reveal`,
-    `See the photos: ${kidUrl}#chapter-gallery`,
+    video ? `Watch the reveal: ${kidUrl}#chapter-reveal` : null,
+    allPhotos > 1 ? `See the photos: ${kidUrl}#chapter-gallery` : `${name}’s story: ${kidUrl}`,
     '',
-    rooms.length ? `What we built: ${rooms.join(' + ')}` : null,
+    rooms.length ? `What we built: ${listJoin(rooms)}` : null,
     '',
     'Another family is waiting. Families are on our waitlist right now. Your gift brings us closer to saying yes to the next child.',
     `Give: ${site}/donate/`,

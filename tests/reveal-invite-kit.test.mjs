@@ -1159,7 +1159,7 @@ test('the label over the headline gives the day, not the headline’s own words'
 test('Save it to your calendar is the main action, and See the story sits with the story', () => {
   const { html } = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '100 Example Way' });
   assert.match(html, /<td align="center" bgcolor="#FFDA24"[^>]*><a [^>]*calendar\.ics/);
-  assert.ok(html.indexOf('See Rowan’s Story') < html.indexOf('Our partners'));
+  assert.ok(html.indexOf('Read Rowan’s story') > 0 && html.indexOf('Read Rowan’s story') < html.indexOf('Our partner'));
   assert.ok(html.indexOf('Our partners') > 0, 'the label doesn’t repeat the headline under it');
   assert.ok(!/<a [^>]*kids\/rowan-test\/"[^>]*background:#FFDA24/.test(html), 'one main action');
 });

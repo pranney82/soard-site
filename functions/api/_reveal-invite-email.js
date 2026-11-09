@@ -37,8 +37,74 @@ export const HERO_TRANSFORM = 'w=1200,h=760,fit=cover,gravity=face,q=85';
 // A picture that won't load fails at every size, so the checks at HERO_TRANSFORM answer for this crop too
 export const COVER_TRANSFORM = 'w=1200,h=880,fit=cover,gravity=face,q=85';
 export const PHOTO_TRANSFORM = 'w=500,h=500,fit=cover,gravity=face,q=75';
-/** A partner name a person would write, not an uploaded file's ("Screenshot 2026-08-31 at 15.46.42", "IMG_123.png") */
-export const realPartnerName = (name) => !!String(name || '').trim() && !/^(screenshot|screen shot|img[_ -]?\d|image\s*\d|dsc|photo)\b|\.(png|jpe?g|gif|webp|svg)$/i.test(String(name).trim());
+/**
+ * A partner's name as a reader should see it. A logo's "name" is often the uploaded file's:
+ * "OkelleysLOGO" reads as "Okelleys", and a generated one ("ChatGPT Image May 5, 2026, 04_42_19 PM",
+ * "Screenshot 2026-08-31 at 15.46.42", "IMG_123.png") is no name at all, so ''.
+ */
+export function partnerLabel(name) {
+  const s = String(name || '').trim().replace(/\.(png|jpe?g|gif|webp|svg|pdf)$/i, '').replace(/_+/g, ' ').trim();
+  if (!s) return '';
+  if (/^(screen ?shot|chatgpt image|dall.?e)\b|^(image|img|dsc|pxl|photo|untitled)[\s-]*[\d(]|^(untitled|logo|file|download|image)$/i.test(s)) return '';
+  if (/\b\d{1,2}[ .:]\d{2}[ .:]\d{2}\b|\b\d{4}-\d{2}-\d{2}\b|^\d+$/.test(s)) return '';
+  return s.replace(/[\s-]*logo$/i, '').trim();
+}
+/** A partner name a person would write, not an uploaded file's */
+export const realPartnerName = (name) => !!partnerLabel(name);
+
+/** "Dream Bedroom" → "Dream Bedrooms" */
+export const pluralRoom = (room) => (/s$/i.test(room) ? room : `${room}s`);
+
+/**
+ * The kid's rooms as a reader should see them, each in the plural when the page counts more than
+ * one of it (Tyrece & Maddie: "Accessible Bathroom", "Dream Bedrooms"). A single type with a
+ * room count over one is plural too (Remi & Nico: two dream bedrooms). No types: the fallback.
+ */
+export function roomNames(kid = {}, fallback = '') {
+  const types = Array.isArray(kid.roomTypes) ? kid.roomTypes.filter(Boolean) : [];
+  if (!types.length) return [String(fallback || '').trim()].filter(Boolean);
+  const total = Number(kid.roomCount) || 0;
+  return types.map((t) => {
+    const n = /bath/i.test(t) ? Number(kid.bathroomCount) : /bed/i.test(t) ? Number(kid.bedroomCount) : 0;
+    return n > 1 || (types.length === 1 && total > 1) ? pluralRoom(t) : t;
+  });
+}
+
+/** "a", "a and b", "a, b, and c" */
+export const listJoin = (items) => {
+  const a = (items || []).filter(Boolean);
+  return a.length <= 2 ? a.join(' and ') : `${a.slice(0, -1).join(', ')}, and ${a[a.length - 1]}`;
+};
+
+/** How wide a run of the bold serif is, in ems (measured on Georgia Bold, rounded up) */
+const serifEm = (s) => [...String(s)].reduce((w, c) => w + (/[MW]/.test(c) ? 1 : /[mw]/.test(c) ? 0.9 : /[A-Z&]/.test(c) ? 0.75 : /[a-z0-9]/.test(c) ? 0.6 : /\s/.test(c) ? 0.27 : 0.3), 0);
+
+/**
+ * A cover headline can't break inside a word, and Gmail drops the phone rules, so the one inline
+ * size has to fit a small phone: the longest run that can't break (a name, or words joined by
+ * &nbsp;) fits in 230px, about what Gmail leaves inside Kit's margins on a 320 screen. The phone
+ * rule may only shrink it.
+ * @param {string[]} runs  the headline's unbreakable pieces, as they read ("Christopher’s", "Reveal Day.")
+ * @returns {{ size: number, phone: string }}
+ */
+export function headlineFit(runs, max, { phones = [[40, 'dm'], [30, 'dms']] } = {}) {
+  const widest = Math.max(1, ...runs.map(serifEm));
+  const size = Math.max(22, Math.min(max, Math.floor(230 / widest)));
+  return { size, phone: (phones.find(([px]) => size > px) || [0, ''])[1] };
+}
+
+/** Escaped text whose last two words stay together, so a paragraph never ends on one word alone ("…platform / fees.") */
+export const noWidow = (escaped) => String(escaped).replace(/ ([^\s<>]{1,14})$/, '&nbsp;$1');
+
+/** A name for a headline: a hyphenated name ("Anastasia-Rose") never splits at its hyphen */
+export const nameHtml = (name) => escapeHtml(name).replace(/(\S*-\S*)/g, '<span style="white-space:nowrap;">$1</span>');
+
+/** A name's words, the last with what follows it: ("Remi & Nico", "’s") → ["Remi", "&", "Nico’s"] */
+export const nameRuns = (name, after = '') => {
+  const w = String(name || '').split(/\s+/).filter(Boolean);
+  if (w.length) w[w.length - 1] += after;
+  return w;
+};
 
 /** The photos the email could use, in the order it would try them */
 export const kidPhotos = (kid) => (kid?.photos || []).filter((ph) => ph && ph.url);
@@ -102,7 +168,7 @@ export function stripHtml(html) {
 export const twoKids = (name) => /\s(&|and)\s/.test(String(name || ''));
 
 /** Typographic apostrophes, so names and copy read like the rest of the email */
-export const curly = (s) => String(s || '').replace(/(\w)'(\w)/g, '$1’$2');
+export const curly = (s) => String(s || '').replace(/(\w)'(\w)/g, '$1’$2').replace(/(\w)'(?=[\s.,;:!?)]|$)/g, '$1’');
 
 /** "2026-11-17" + "16:00" → "Tuesday, November 17, 2026 · 4:00 PM" */
 /** JobTread's address, as a person would write it: no ", USA" */
@@ -204,8 +270,11 @@ export function emailFooter(site = SITE_URL) {
   return `<tr><td bgcolor="${DD}" style="background:${DD};padding:36px 0;${SIDE}text-align:center;" class="pd">
     <a href="${href(site)}" target="_blank" style="display:inline-block;margin-bottom:16px;"><img src="${escapeHtml(LOGO)}" width="120" alt="Sunshine on a Ranney Day" style="display:block;width:120px;height:auto;" /></a>
     <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;color:#8E8F93;">501(c)(3) Nonprofit &middot; EIN 45-4773997</p>
-    <p style="margin:0 0 14px;font-family:${SANS};font-size:13px;">
-      <a href="https://www.facebook.com/sunshineonaranneyday" target="_blank" style="color:#C9CACC;text-decoration:underline;text-underline-offset:3px;">Facebook</a><span style="color:#5A5B61;padding:0 8px;">&middot;</span><a href="https://www.instagram.com/sunshineonaranneyday" target="_blank" style="color:#C9CACC;text-decoration:underline;text-underline-offset:3px;">Instagram</a><span style="color:#5A5B61;padding:0 8px;">&middot;</span><a href="https://www.youtube.com/@sunshineonaranneyday" target="_blank" style="color:#C9CACC;text-decoration:underline;text-underline-offset:3px;">YouTube</a><span style="color:#5A5B61;padding:0 8px;">&middot;</span><a href="https://www.tiktok.com/@sunshineonaranneyday" target="_blank" style="color:#C9CACC;text-decoration:underline;text-underline-offset:3px;">TikTok</a>
+    <p style="margin:0 0 14px;font-family:${SANS};font-size:12px;">
+      ${[['Facebook', 'https://www.facebook.com/sunshineonaranneyday'], ['Instagram', 'https://www.instagram.com/sunshineonaranneyday'], ['YouTube', 'https://www.youtube.com/@sunshineonaranneyday'], ['TikTok', 'https://www.tiktok.com/@sunshineonaranneyday']]
+    // A plain space on each side of a dot, so a narrow phone can wrap the row between links
+    .map(([name, url]) => `<a href="${url}" target="_blank" style="color:#C9CACC;text-decoration:underline;text-underline-offset:3px;white-space:nowrap;">${name}</a>`)
+    .join(' <span style="color:#5A5B61;">&middot;</span> ')}
     </p>
     <p style="margin:0;font-family:${SANS};font-size:11px;color:#8E8F93;">You’re receiving this because you’re a valued partner or supporter of SOARD.</p>
   </td></tr>`;
@@ -214,18 +283,23 @@ export function emailFooter(site = SITE_URL) {
 /** The closing line, the team picture and who it's from */
 export function signOff(line, teamPicture = true) {
   return `<tr><td bgcolor="${CR}" style="background:${CR};padding:36px 0 40px;${SIDE}" class="pd">
-    <p style="margin:0 0 18px;font-family:${SERIF};font-size:17px;font-style:italic;line-height:1.7;color:${D};">${escapeHtml(line)}</p>
+    <p style="margin:0 0 18px;font-family:${SERIF};font-size:17px;font-style:italic;line-height:1.7;color:${D};">${noWidow(escapeHtml(line))}</p>
     ${teamPicture ? `<img src="${escapeHtml(TEAM_PICTURE)}" width="504" alt="The SOARD team" class="fl" style="width:100%;height:auto;display:block;border-radius:16px;margin:0 0 18px;" />` : ''}
     <p style="margin:0;font-family:${SANS};font-size:14px;font-weight:700;color:${D};">The SOARD Team</p>
     <p style="margin:4px 0 0;font-family:${SANS};font-size:13px;color:${TM};">Sunshine on a Ranney Day</p>
   </td></tr>`;
 }
 
-/** A button that keeps its shape in Outlook, which ignores padding on links */
-export function button(text, url, { fill = Y, ink = D, center = false, small = false } = {}) {
-  const pad = small ? '13px 24px' : '17px 38px';
-  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"${center ? ' align="center" style="margin:0 auto;"' : ''}><tr>
-      <td align="center" bgcolor="${fill}" style="background:${fill};border-radius:100px;mso-padding-alt:${pad};"><a href="${href(url)}" target="_blank" style="display:inline-block;padding:${pad};font-family:${SANS};font-size:${small ? 14 : 16}px;font-weight:700;line-height:1.2;color:${ink};text-decoration:none;border-radius:100px;">${escapeHtml(text)}</a></td>
+/**
+ * A button that keeps its shape in Outlook, which ignores padding on links. An arrow at the end
+ * stays on its last word's line. block: it fills its cell, for a row of equal buttons that
+ * shrinks with the phone.
+ */
+export function button(text, url, { fill = Y, ink = D, center = false, small = false, block = false } = {}) {
+  const pad = block ? '13px 4px' : small ? '13px 24px' : '17px 30px';
+  const words = escapeHtml(String(text)).replace(/ (→|&rarr;)$/, '&nbsp;$1');
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0"${block ? ' width="100%"' : ''}${center ? ' align="center" style="margin:0 auto;"' : ''}><tr>
+      <td align="center" bgcolor="${fill}" style="background:${fill};border-radius:100px;mso-padding-alt:${pad};"><a href="${href(url)}" target="_blank" style="display:${block ? 'block' : 'inline-block'};padding:${pad};font-family:${SANS};font-size:${small || block ? 14 : 16}px;font-weight:700;line-height:1.2;color:${ink};text-decoration:none;border-radius:100px;${block ? 'white-space:nowrap;word-break:keep-all;overflow-wrap:normal;' : 'word-break:keep-all;overflow-wrap:normal;'}">${words}</a></td>
     </tr></table>`;
 }
 
@@ -247,7 +321,7 @@ export function cover({ kicker, headline, size, phone, lead, alt, url, action = 
 /** The first words after the cover, a size up from the rest */
 export function lede(text, after = '') {
   return `<tr><td bgcolor="${CR}" style="background:${CR};padding:40px 0 0;${SIDE}" class="pd">
-    <p class="ld" style="margin:0;font-family:${SERIF};font-size:19px;line-height:1.65;color:${D};">${escapeHtml(text)}</p>
+    <p class="ld" style="margin:0;font-family:${SERIF};font-size:19px;line-height:1.65;color:${D};">${noWidow(escapeHtml(text))}</p>
     ${after}
   </td></tr>`;
 }
@@ -285,20 +359,22 @@ export function photoNotes(kid, link = '') {
 function ticket(rows, notes) {
   const line = 'border-top:1px solid #3A3B42;';
   const word = `font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#A5A6A9;`;
-  const main = `font-family:${SANS};font-size:17px;font-weight:600;line-height:1.4;color:#FFFFFF;`;
-  const quiet = `font-family:${SANS};font-size:15px;line-height:1.5;color:#C9CACC;`;
-  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="text-align:left;">
-      ${rows.map((r) => `<tr>
-        <td valign="top" width="72" style="width:72px;padding:17px 12px 15px 0;${line}${word}">${escapeHtml(r.label)}</td>
-        <td valign="top" style="padding:14px 0;${line}">
-          ${r.lines.map((l) => `<div style="${main}">${escapeHtml(l)}</div>`).join('')}
-          ${r.sub ? `<div style="margin-top:2px;${quiet}">${escapeHtml(r.sub)}</div>` : ''}
-        </td>
-      </tr>`).join('')}
-      ${notes.length ? `<tr><td colspan="2" style="padding:16px 0;${line}">
-        <div style="${word}">Before you come</div>
-        ${notes.map((n, i) => `<div style="margin-top:${i ? 6 : 8}px;${i ? quiet : `font-family:${SANS};font-size:15px;font-weight:600;line-height:1.5;color:#FFFFFF;`}">${escapeHtml(n)}</div>`).join('')}
-      </td></tr>` : ''}
+  // Words break only where a person would. A word too long for a whole line (a pasted link) may
+  // break; the fixed layout keeps it from widening the email. Gmail's phone app breaks any squeezed
+  // word, so this is said on each line, not left to inherit.
+  const wrap = 'word-break:normal;overflow-wrap:break-word;';
+  const main = `font-family:${SANS};font-size:17px;font-weight:600;line-height:1.4;color:#FFFFFF;${wrap}`;
+  const quiet = `font-family:${SANS};font-size:15px;line-height:1.5;color:#C9CACC;${wrap}`;
+  // Each label sits over its value, so a date or an address has the full width of a phone
+  const block = (labelText, inner) => `<tr><td style="padding:14px 0 15px;${line}">
+        <div style="${word}">${escapeHtml(labelText)}</div>
+        <div style="height:6px;line-height:6px;font-size:0;">&nbsp;</div>
+        ${inner}
+      </td></tr>`;
+  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="text-align:left;table-layout:fixed;">
+      ${rows.map((r) => block(r.label, `${r.lines.map((l) => `<div style="${main}">${escapeHtml(l)}</div>`).join('')}
+        ${r.sub ? `<div style="margin-top:2px;${quiet}">${escapeHtml(r.sub)}</div>` : ''}`)).join('')}
+      ${notes.length ? block('Before you come', notes.map((n, i) => `<div style="margin-top:${i ? 6 : 0}px;${i ? quiet : `font-family:${SANS};font-size:15px;font-weight:600;line-height:1.5;color:#FFFFFF;${wrap}`}">${escapeHtml(n)}</div>`).join('')) : ''}
     </table>`;
 }
 
@@ -334,7 +410,7 @@ export function photoStrip(kid, leadSrc, brokenLogos = new Set()) {
 }
 
 /** The partner logos on their dark band. '' with none to show. */
-export function partnerCards(kid, brokenLogos = new Set(), lead = 'Made possible by these') {
+export function partnerCards(kid, brokenLogos = new Set(), lead = 'Made possible by') {
   // One card per partner, even when a kid page lists a logo twice
   const seenLogo = new Set();
   const logos = (kid.partnerLogos || []).filter((l) => {
@@ -343,28 +419,34 @@ export function partnerCards(kid, brokenLogos = new Set(), lead = 'Made possible
     if (seenLogo.has(key)) return false;
     seenLogo.add(key);
     return true;
-  }).flatMap((l) => {
+  }).map((l) => ({ ...l, label: partnerLabel(l.name) })).flatMap((l) => {
     if (!brokenLogos.has(cfImg(l.url, LOGO_TRANSFORM))) return [l];
     // Broken: the name in text, unless the "name" is only a file's (a screenshot upload)
-    return realPartnerName(l.name) ? [{ ...l, text: true }] : [];
+    return l.label ? [{ ...l, text: true }] : [];
   });
   // Every tile the same height, whatever the logo's shape; a short last row sits centered
-  const tile = (inner) => `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr><td align="center" valign="middle" height="66" bgcolor="#FFFFFF" class="lt" style="height:66px;background:#FFFFFF;border-radius:10px;padding:0 12px;text-align:center;">${inner}</td></tr></table>`;
+  const tile = (inner) => `<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"><tr><td align="center" valign="middle" height="66" bgcolor="#FFFFFF" class="lt" style="height:66px;background:#FFFFFF;border-radius:10px;padding:0 8px;text-align:center;">${inner}</td></tr></table>`;
   const logoRows = [];
-  for (let i = 0; i < logos.length; i += 3) {
-    const row = logos.slice(i, i + 3);
-    const cells = row.map((l) => `<td width="${(100 / row.length).toFixed(2)}%" valign="middle" class="lc" style="padding:5px;">${l.text
-      // A logo that doesn't load reads as the partner's name instead of a broken picture
-      ? tile(`<span style="font-family:${SANS};font-size:13px;font-weight:700;line-height:1.25;color:${D};">${escapeHtml(l.name)}</span>`)
-      : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="132" alt="${escapeHtml(l.name || '')}" class="fl" style="display:block;width:100%;max-width:150px;height:auto;margin:0 auto;" />`)}</td>`);
-    logoRows.push(`<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${['33.33%', '66.66%', '100%'][row.length - 1]}" align="center" style="margin:0 auto;"><tr>${cells.join('')}</tr></table>`);
+  // Two to a row: three left each logo about 65px wide on a phone, too small to read a wordmark
+  for (let i = 0; i < logos.length; i += 2) {
+    const row = logos.slice(i, i + 2);
+    const cells = row.map((l) => `<td width="${(100 / row.length).toFixed(2)}%" valign="middle" class="lc" style="padding:4px;">${l.text
+      // A logo that doesn't load reads as the partner's name instead of a broken picture, small enough to fit its card
+      ? tile(`<span style="display:block;font-family:${SANS};font-size:13px;font-weight:700;line-height:1.25;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(l.label)}</span>`)
+      : tile(`<img src="${escapeHtml(cfImg(l.url, LOGO_TRANSFORM))}" width="140" alt="${escapeHtml(l.label || 'Partner logo')}" class="fl" style="display:block;width:100%;max-width:150px;height:auto;margin:0 auto;" />`)}</td>`);
+    // Fixed layout keeps the columns equal, whatever is in them
+    logoRows.push(`<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="${row.length === 1 ? '50%' : '100%'}" align="center" style="margin:0 auto;table-layout:fixed;"><tr>${cells.join('')}</tr></table>`);
   }
+  const one = logos.length === 1;
+  // "by these" and "incredible partners." each stay together, so no line holds one word alone:
+  // a phone reads "Made possible / by these / incredible partners."
+  const heading = headlineFit([`by ${one ? 'this' : 'these'}`, `incredible ${one ? 'partner.' : 'partners.'}`], 22, { phones: [[20, 'h2m']] });
   return logoRows.length ? `
   <tr><td style="background:${CR};padding:36px 0 0;">
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background:${DD};"><tr>
       <td style="padding:40px 0 34px;${SIDE}" class="pd">
-        ${label('Our partners', Y, '#C9CACC')}
-        <h2 class="h2m" style="margin:18px 0 20px;font-family:${SERIF};font-size:22px;font-weight:700;line-height:1.3;color:#FFFFFF;">${escapeHtml(lead)} <em style="font-style:italic;color:${Y};">incredible</em> partners.</h2>
+        ${label(one ? 'Our partner' : 'Our partners', Y, '#C9CACC')}
+        <h2 class="${heading.phone}" style="margin:18px 0 20px;font-family:${SERIF};font-size:${heading.size}px;font-weight:700;line-height:1.3;color:#FFFFFF;">${escapeHtml(lead)}&nbsp;${one ? 'this' : 'these'} <em style="font-style:italic;color:${Y};">incredible</em>&nbsp;${one ? 'partner' : 'partners'}.</h2>
         ${logoRows.join('\n        ')}
       </td>
     </tr></table>
@@ -387,8 +469,9 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   const slug = kid.slug || '';
   const kidUrl = slug ? `${site}/kids/${slug}/` : `${site}/kids/`;
   const liveUrl = slug ? `${site}/live/${slug}/` : `${site}/live/`;
-  const rooms = (Array.isArray(kid.roomTypes) ? kid.roomTypes.filter(Boolean) : []);
-  const roomText = rooms.length ? rooms.join(' + ') : String(room || '').trim();
+  const roomLines = roomNames(kid, room);
+  const roomText = listJoin(roomLines);
+  const several = roomLines.length > 1 || Number(kid.roomCount) > 1;
   const when = revealWhen(date, time);
   const cal = calendarLinks(slug, site);
 
@@ -402,62 +485,66 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
 
   // The day and the time each keep their own line, so a phone never breaks a date in two
   const rows = [
-    when && { label: 'When', lines: [longDay(date), when.split(' · ')[1]].filter(Boolean) },
+    // A time not yet confirmed reads as a quieter line, not as a time
+    when && (/^\d{1,2}:\d{2}/.test(String(time || ''))
+      ? { label: 'When', lines: [longDay(date), when.split(' · ')[1]] }
+      : { label: 'When', lines: [longDay(date)], sub: TIME_LATER }),
     { label: 'Where', lines: [`${name}’s Home`], sub: cleanAddress(address).replace(/\b([A-Z]{2}) (\d{5})/, '$1\u00A0$2') },
-    roomText && { label: 'Room', lines: [roomText] },
+    roomLines.length && { label: roomLines.length > 1 ? 'Rooms' : 'Room', lines: roomLines },
   ].filter(Boolean);
   const noteLines = String(notes || '').split(/\n+/).map((s) => s.trim()).filter(Boolean);
   // The team's own arrival note stands in for ours, so it isn't said twice
   const arrive = /\barriv|\bearly\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${twoKids(name) ? 'arrive' : 'arrives'}.`;
 
-  const calendar = slug ? `<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>
+  // No date yet (an early draft): no calendar buttons, since there's nothing to save
+  const calendar = slug && when ? `<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>
     <p style="margin:0 0 14px;font-family:${SANS};font-size:15px;font-weight:700;color:#FFFFFF;">Save it to your calendar</p>
-    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;"><tr>
-      <td>${button('Google', cal.google, { small: true })}</td>
-      <td width="8" style="width:8px;font-size:0;">&nbsp;</td>
-      <td>${button('Apple', cal.apple, { small: true })}</td>
-      <td width="8" style="width:8px;font-size:0;">&nbsp;</td>
-      <td>${button('Outlook', cal.outlook, { small: true })}</td>
+    <!-- Three equal buttons that share the width, so the row shrinks with a small phone instead of spilling off it -->
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" align="center" style="margin:0 auto;max-width:330px;table-layout:fixed;"><tr>
+      <td width="33.33%" style="padding:0 4px 0 0;">${button('Google', cal.google, { block: true })}</td>
+      <td width="33.33%" style="padding:0 2px;">${button('Apple', cal.apple, { block: true })}</td>
+      <td width="33.33%" style="padding:0 0 0 4px;">${button('Outlook', cal.outlook, { block: true })}</td>
     </tr></table>
-    <p style="margin:18px 0 0;font-family:${SANS};font-size:14px;color:#C9CACC;line-height:1.6;">Can’t be there in person? <a href="${href(liveUrl)}" target="_blank" style="color:#FFFFFF;font-weight:600;text-decoration:underline;text-underline-offset:2px;">Watch it live</a> from&nbsp;anywhere.</p>` : '';
+    <p style="margin:18px 0 0;font-family:${SANS};font-size:14px;color:#C9CACC;line-height:1.6;">Can’t be there in person? <a href="${href(liveUrl)}" target="_blank" style="color:#FFFFFF;font-weight:600;text-decoration:underline;text-underline-offset:2px;white-space:nowrap;">Watch it live</a> from&nbsp;anywhere.</p>` : '';
 
   const summary = kid.heroSummary ? curly(kid.heroSummary) : stripHtml(kid.bio).split(/\n\n+/).find((s) => s.trim().length > 20) || '';
   const photos = bodyPhotos(kid, lead, brokenLogos, 2);
-  const secondLine = `${name}’s Reveal Day`;
+  const fit = headlineFit([...nameRuns(name, '’s'), 'Reveal Day.'], 42);
+  const opening = `After months of planning and building, the day is almost here. ${name} and the family haven’t seen the finished ${several ? 'rooms' : 'room'} yet. Come be there for that first reaction.`;
 
   const html = emailFrame(preview, `
   ${emailHeader(site)}
   ${cover({
     kicker: ['Reveal Day', shortDay(date)].filter(Boolean).join(' · '),
-    headline: `<span style="display:block;margin-bottom:8px;font-size:24px;font-weight:400;font-style:italic;line-height:1.3;color:#E4E4E5;">You’re Invited to</span>${escapeHtml(name)}’s <em style="font-style:italic;color:${Y};">Reveal&nbsp;Day</em>.`,
-    size: secondLine.length <= 20 ? 42 : secondLine.length <= 25 ? 36 : 30,
-    phone: 'dms',
+    headline: `<span style="display:block;margin-bottom:8px;font-size:24px;font-weight:400;font-style:italic;line-height:1.3;color:#E4E4E5;">You’re Invited to</span>${nameHtml(name)}’s <em style="font-style:italic;color:${Y};">Reveal&nbsp;Day</em>.`,
+    size: fit.size,
+    phone: fit.phone,
     lead,
     alt: `${name}’s reveal day`,
     url: kidUrl,
     action: `${ticket(rows, [arrive, ...noteLines.map(curly)].filter(Boolean))}${calendar}`,
   })}
-  ${lede(`After months of planning and building, the day is almost here. ${name} and the family haven’t seen the finished room yet. Come be there for that first reaction.`)}
+  ${lede(opening)}
   ${summary ? `<tr><td bgcolor="${CR}" style="background:${CR};padding:36px 0 0;${SIDE}" class="pd">
     ${label(`${name}’s story`)}
-    <p style="margin:14px 0 0;font-family:${SERIF};font-size:17px;line-height:1.7;color:${D};">${escapeHtml(summary)}</p>
+    <p style="margin:14px 0 0;font-family:${SERIF};font-size:17px;line-height:1.7;color:${D};">${noWidow(escapeHtml(summary))}</p>
   </td></tr>` : ''}
   <tr><td bgcolor="${CR}" style="background:${CR};padding:28px 0 0;${SIDE}" class="pd">
     ${photos.length >= 2 ? photoPair(photos, name, 0) : ''}
-    ${photoNotes(kid, textLink(`See ${name}’s Story →`, kidUrl))}
+    ${photoNotes(kid, textLink(`Read ${name}’s story →`, kidUrl))}
   </td></tr>
-  ${partnerCards(kid, brokenLogos, 'A reveal day made possible by these') || `<tr><td bgcolor="${CR}" style="background:${CR};height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>`}
+  ${partnerCards(kid, brokenLogos, 'A reveal day made possible by') || `<tr><td bgcolor="${CR}" style="background:${CR};height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>`}
   ${signOff('Hope to see you there.', teamPicture)}
   ${emailFooter(site)}`);
 
   const text = [
     `You’re Invited to ${name}’s Reveal Day`,
     '',
-    `After months of planning and building, the day is almost here. ${name} and the family haven’t seen the finished room yet. Come be there for that first reaction.`,
+    opening,
     '',
     when && `When: ${when}`,
     `Where: ${name}’s Home${address ? `, ${cleanAddress(address)}` : ''}`,
-    roomText && `Room: ${roomText}`,
+    roomText && `${roomLines.length > 1 ? 'Rooms' : 'Room'}: ${roomText}`,
     '',
     arrive,
     ...noteLines.map(curly),
