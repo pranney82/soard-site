@@ -45,7 +45,7 @@
 
 import { isStaffEmail, normEmail } from './_board-roles.js';
 import { accessToken, GMAIL_READ_SCOPE, GMAIL_MODIFY_SCOPE } from './_google-calendar.js';
-import { mailboxes, gmail, header, textOf, htmlText, filesOf, partsOf, bytesOf } from './_mailbox.js';
+import { mailboxes, orgDomains, gmail, header, textOf, htmlText, filesOf, partsOf, bytesOf } from './_mailbox.js';
 import { pave, SOARD_ORG_ID } from './_reveals.js';
 import { postAccountComment } from './_applicant-comms.js';
 import { EMAIL_FROM, emailConfigured, slackIssue, SITE_ORIGIN } from './_broadcast-notify.js';
@@ -132,6 +132,9 @@ async function readState(DB) {
 const writeState = (DB, st) => DB.prepare("INSERT OR REPLACE INTO mail_sweep_state (key, data, updated_at) VALUES ('sweep', ?, ?)")
   .bind(JSON.stringify(st), new Date().toISOString()).run();
 
+// SOARD's own people and groups: an address on any of SOARD's Google domains (set from Google's accounts each sweep)
+let ORG_DOMAINS = new Set(['soardcharity.com']);
+const isOurs = (e) => isStaffEmail(e) || ORG_DOMAINS.has(normEmail(e).split('@')[1]);
 const addresses = (s) => (String(s || '').match(/[^\s<>,;"'()]+@[^\s<>,;"'()]+\.[a-z]{2,}/gi) || []).map(normEmail);
 // The people on a header with the names they go by: "Peter Ranney" <x@gmail.com> → [{ name, email }]
 const named = (s) => [...String(s || '').matchAll(/(?:"([^"]*)"|([^,<>"]*?))\s*<([^<>\s]+@[^<>\s]+)>/g)].map((m) => ({ name: (m[1] ?? m[2] ?? '').trim(), email: normEmail(m[3]) }));
@@ -168,7 +171,7 @@ export async function familyAddresses(DB, { staff = [] } = {}) {
   const names = new Map();
   const staffNames = new Set(staff.map(nameKey).filter(Boolean));
   const out = { byEmail, names, staffNames, approved: new Set(), backfill: new Set(), created: new Map(), kinds: new Map() };
-  const isStaff = (c) => staffNames.has(nameKey(c.name)) || addresses(c.email).some(isStaffEmail);
+  const isStaff = (c) => staffNames.has(nameKey(c.name)) || addresses(c.email).some(isOurs);
   const staffOwn = new Set();
   let rows = [];
   try { rows = (await DB.prepare('SELECT account_id, name, status, fields, created_at, contact_name, contact_email, contacts FROM applicants').all()).results || []; } catch { return out; }
@@ -195,7 +198,7 @@ export async function familyAddresses(DB, { staff = [] } = {}) {
     const left = new Set(theirs.filter(([, ok]) => !ok).map(([e]) => e));
     const kept = [...theirs.filter(([, ok]) => ok).map(([e]) => e), ...addresses(r.contact_email).filter((e) => !left.has(e))];
     for (const e of new Set(kept)) {
-      if (isStaffEmail(e) || OWN_TOOLS.test(e)) continue;
+      if (isOurs(e) || OWN_TOOLS.test(e)) continue;
       byEmail.set(e, [...new Set([...(byEmail.get(e) || []), r.account_id])]);
     }
   }
@@ -226,7 +229,7 @@ function accountsOf(people, byEmail) {
  */
 export function senderOf(h) {
   const from = header(h, 'From');
-  if (!/\bvia\b/i.test(from.replace(/<.*>/, '')) || !addresses(from).every(isStaffEmail)) return from;
+  if (!/\bvia\b/i.test(from.replace(/<.*>/, '')) || !addresses(from).every(isOurs)) return from;
   const original = header(h, 'X-Original-From') || header(h, 'X-Original-Sender') || header(h, 'Reply-To');
   return addresses(original).length ? original : from;
 }
@@ -236,23 +239,23 @@ export function triage(msg, { byEmail, staffNames = new Set() }) {
   const subject = header(h, 'Subject');
   // A staff member's own address by the name on it ("Peter Ranney <…@gmail.com>"): never a family's, on any account
   const theirOwn = new Set(['From', 'To', 'Cc', 'Reply-To'].flatMap((k) => named(header(h, k)))
-    .filter((p) => !isStaffEmail(p.email) && staffNames.has(nameKey(p.name))).map((p) => p.email));
+    .filter((p) => !isOurs(p.email) && staffNames.has(nameKey(p.name))).map((p) => p.email));
   const fromAll = addresses(header(h, 'From'));
   const from = fromAll.filter((e) => !theirOwn.has(e));
   const people = [...new Set([...fromAll, ...addresses(header(h, 'To')), ...addresses(header(h, 'Cc')), ...addresses(header(h, 'Reply-To'))])].filter((e) => !theirOwn.has(e));
   if (CALENDAR.test(subject.trim()) || AUTO_REPLY.test(subject) || /auto-replied/i.test(header(h, 'Auto-Submitted'))) return null;
   const tools = people.some((e) => OWN_TOOLS.test(e));
-  const guestChatter = INVITE_REPLY.test(subject.trim()) && !from.every(isStaffEmail) && !accountsOf(from, byEmail).length;
+  const guestChatter = INVITE_REPLY.test(subject.trim()) && !from.every(isOurs) && !accountsOf(from, byEmail).length;
   // A mailing list's email (a family's business newsletter); SOARD's own groups (info@) mark theirs too, and those count
   const list = `${header(h, 'List-Id')} ${header(h, 'List-Unsubscribe')}`;
   const mailing = (list.trim() || /bulk|list|junk/i.test(header(h, 'Precedence'))) && !/soardcharity\.com/i.test(list);
   // A mass email from outside (a photographer's promo to 80 people, a family among them) isn't about the family's kid or project
-  const crowd = people.length > CROWD && !from.some(isStaffEmail) && !accountsOf(from, byEmail).length;
+  const crowd = people.length > CROWD && !from.some(isOurs) && !accountsOf(from, byEmail).length;
   const accounts = tools || guestChatter || mailing || crowd ? [] : accountsOf(people, byEmail);
   if (accounts.length && accounts.length <= 3) return { kind: 'family', accounts };
   // Receipts go by who really sent it: one forwarded from a staff member's own Gmail is still a receipt, and so is a store's through a SOARD group
   const sender = addresses(senderOf(h));
-  if (!sender.length || sender.every(isStaffEmail) || sender.some((e) => OWN_TOOLS.test(e))) return null;
+  if (!sender.length || sender.every(isOurs) || sender.some((e) => OWN_TOOLS.test(e))) return null;
   if ((msg.labelIds || []).includes('SENT') || NOT_RECEIPT.test(subject)) return null;
   return RECEIPTISH.test(`${subject} ${msg.snippet || ''}`) ? { kind: 'receipt' } : null;
 }
@@ -439,14 +442,6 @@ async function uploadToJobTread(env, { bytes, type }, fetchImpl) {
 
 const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me';
 const RECEIPT_FILE = /^(application\/pdf|image\/(png|jpe?g|gif|webp|heic|heif))$/i;
-
-/** Not SOARD's mail: in an account whose main address is on the store's domain, nothing to or from its soardcharity.com address */
-function notSoards(ctx, mailbox, msg) {
-  const own = ctx.soardOnly.get(mailbox);
-  if (!own) return false;
-  const h = msg.payload?.headers;
-  return ![...addresses(header(h, 'From')), ...addresses(header(h, 'To')), ...addresses(header(h, 'Cc')), ...addresses(header(h, 'Delivered-To'))].some((e) => own.has(e));
-}
 
 /** An email as a page to print: who sent it and when, then the email as the store wrote it */
 function emailPage({ from, subject, sentAt, owner, mailbox, payload, text }) {
@@ -656,7 +651,6 @@ async function handle(env, ctx, row) {
     if (twin) return await finish(env.DB, row, { state: 'duplicate', detail: `the same email as in ${twin.mailbox.split('@')[0]}’s inbox` }, ctx.now);
     const box = await ctx.open(row.mailbox);
     const msg = await gmail(box.token, `/messages/${row.id}?format=full`, ctx.fetchImpl);
-    if (notSoards(ctx, row.mailbox, msg)) return await finish(env.DB, row, { state: 'skipped', detail: 'to or from the store’s address, not SOARD’s' }, ctx.now);
     // Sorted again with today's rules and families, so a rule made better reaches what was already waiting
     const t = triage(msg, ctx.families);
     if (t?.kind !== row.kind) return await finish(env.DB, row, { state: 'skipped', detail: `not a ${row.kind === 'family' ? 'family email' : 'receipt'} after all` }, ctx.now);
@@ -724,6 +718,11 @@ async function syncCardCharges(env, ctx, st) {
   // Caught up once Ramp has been read that far back (tried again each sweep until it has)
   if (catchUp && rampRead) st.cardsCaughtUp = ctx.now;
   const iso = new Date(ctx.now).toISOString();
+  // A charge that had no inbox looks once its cardholder has one (an account added to the sweep), however old the charge
+  for (const r of (await env.DB.prepare("SELECT charge, mailbox FROM card_receipts WHERE state = 'no_inbox'").all()).results || []) {
+    const mailbox = ctx.mailboxOf(r.mailbox);
+    if (ctx.inboxes.has(mailbox)) await env.DB.prepare("UPDATE card_receipts SET state = 'looking', mailbox = ?, next_look = ?, updated_at = ? WHERE charge = ? AND state = 'no_inbox'").bind(mailbox, iso, iso, r.charge).run();
+  }
   for (const c of charges) {
     const at = Date.parse(c.at);
     if (!Number.isFinite(at) || !(c.cents > 0)) continue;
@@ -747,7 +746,7 @@ function receiptScore(msg, c, hinted, strict = false) {
   const sender = senderOf(h);
   const from = addresses(sender);
   const subject = header(h, 'Subject');
-  if (!from.length || from.every(isStaffEmail) || from.some((e) => OWN_TOOLS.test(e))) return null;
+  if (!from.length || from.every(isOurs) || from.some((e) => OWN_TOOLS.test(e))) return null;
   if ((msg.labelIds || []).includes('SENT') || CALENDAR.test(subject.trim()) || AUTO_REPLY.test(subject) || /\b(refund|return|cancel)/i.test(subject)) return null;
   if (!amountsIn(subject, msg.snippet, receiptText(msg.payload)).includes(c.cents)) return null;
   const store = `${sender.replace(/<.*>/, '')} ${from[0].split('@')[1].replace(/\.[a-z]+$/i, '')}`;
@@ -902,7 +901,8 @@ async function queue(DB, mailbox, msg, t, source, now) {
 /** New mail in one inbox since the last look → how many were queued */
 async function scanBox(env, ctx, mailbox, bs) {
   const { token } = await ctx.open(mailbox);
-  bs.cursor ||= ctx.startedAt;
+  // An inbox added later (a store account) starts from when it's added, as every inbox did: its card charges search its older mail anyway
+  bs.cursor ||= ctx.now;
   const q = bs.pageQ || `after:${Math.floor((bs.cursor - OVERLAP_MS) / 1000)}`;
   const list = await gmail(token, `/messages?maxResults=${PER_LIST}&q=${encodeURIComponent(q)}${bs.page ? `&pageToken=${bs.page}` : ''}`, ctx.fetchImpl);
   const seen = new Set(bs.recent || []);
@@ -917,7 +917,7 @@ async function scanBox(env, ctx, mailbox, bs) {
   let newest = bs.pageMax || bs.cursor;
   for (const msg of await metadata(token, ids.filter((id) => !known.has(id)), ctx.fetchImpl)) {
     newest = Math.max(newest, Number(msg.internalDate) || 0);
-    const t = notSoards(ctx, mailbox, msg) ? null : triage(msg, ctx.families);
+    const t = triage(msg, ctx.families);
     if (t) { await queue(env.DB, mailbox, msg, t, 'new', ctx.now); queued++; }
   }
   bs.recent = [...ids, ...(bs.recent || [])].slice(0, 300);
@@ -956,7 +956,7 @@ async function backfillStep(env, ctx, st, boxes) {
     const q = `(${bf.chunk.map((e) => `from:${e} OR to:${e} OR cc:${e}`).join(' OR ')}) after:${Math.floor((bf.until - BACKFILL_DAYS * 86400e3) / 1000)} before:${Math.floor(bf.until / 1000)}`;
     const list = await gmail(token, `/messages?maxResults=${PER_LIST}&q=${encodeURIComponent(q)}${bf.page ? `&pageToken=${bf.page}` : ''}`, ctx.fetchImpl);
     for (const msg of await metadata(token, (list.messages || []).map((m) => m.id), ctx.fetchImpl)) {
-      const t = notSoards(ctx, mailbox, msg) ? null : triage(msg, ctx.families);
+      const t = triage(msg, ctx.families);
       if (t?.kind === 'family') await queue(env.DB, mailbox, msg, t, 'backfill', ctx.now);
     }
     if (list.nextPageToken) { bf.page = list.nextPageToken; return true; }
@@ -984,9 +984,10 @@ async function sweep(env, st, { fetchImpl, now, print }) {
   }
   const accounts = await mailboxes(env);
   const people = new Map(accounts.map((b) => [b.email, b.name]));
-  // An account whose main address is on another of SOARD's domains (the store's) is read only for its soardcharity.com mail
+  // Any of an account's addresses leads to its mailbox (Ramp knows Linzi as linzi@, an alias on her account)
   const mailboxOf = new Map(accounts.flatMap((b) => [[b.email, b.email], ...b.aliases.map((a) => [normEmail(a), b.email])]));
-  const soardOnly = new Map(accounts.filter((b) => !isStaffEmail(b.email)).map((b) => [b.email, new Set(b.aliases.map(normEmail))]));
+  // Every account in SOARD's Google is SOARD's, the store's sunnyandranney.com ones too, and so are its people
+  ORG_DOMAINS = orgDomains(accounts);
   const boxes = [...people.keys()];
   if (!boxes.length) throw new Error('Google’s staff accounts haven’t been read yet (Staff sign-in follows Google)');
   const families = await familyAddresses(env.DB, { staff: [...people.values()] });
@@ -1000,7 +1001,6 @@ async function sweep(env, st, { fetchImpl, now, print }) {
     mailboxOf: (e) => mailboxOf.get(e) || e,
     // Shared by every copy of ctx a handler gets ({ ...ctx, ...box }), so what one notes reaches Automations
     notes: {},
-    soardOnly,
     print: print || (async (e, html) => (await import('./_board-sign.js')).printPdf(e, html)),
     open: async (mailbox) => {
       if (!tokens.has(mailbox)) tokens.set(mailbox, await accessToken(env, mailbox, { fetchImpl, now, scope: GMAIL_READ_SCOPE }));

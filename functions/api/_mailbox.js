@@ -18,7 +18,7 @@
  */
 
 import { accessToken, GMAIL_READ_SCOPE } from './_google-calendar.js';
-import { isStaffEmail, normEmail, peopleRows, founderEmails } from './_board-roles.js';
+import { isStaffEmail, normEmail, peopleRows, founderEmails, STAFF_DOMAIN } from './_board-roles.js';
 import { logAudit } from './_audit.js';
 
 const GMAIL = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -47,20 +47,28 @@ async function directory(DB) {
   } catch { return null; }
 }
 
-/** The active accounts a founder can open: [{ email, name, aliases }] */
+/**
+ * SOARD's Google domains: soardcharity.com and every other its accounts are on (the store's sunnyandranney.com is
+ * the charity's too: Peter, Nov 8 2026) → Set of domains
+ */
+export const orgDomains = (accounts) => new Set([STAFF_DOMAIN, ...(accounts || []).map((a) => normEmail(a.email).split('@')[1]).filter(Boolean)]);
+
+/** The active accounts a founder can open, on any of SOARD's Google domains: [{ email, name, aliases }] */
 export async function mailboxes(env) {
-  return ((await directory(env.DB)) || [])
-    // A main address on another of the organization's domains, with a soardcharity.com alias, is staff too
-    .filter((a) => a.active && [a.email, ...(a.aliases || [])].some((x) => isStaffEmail(x)))
-    .map((a) => ({ email: a.email, name: a.name || '', aliases: (a.aliases || []).filter(isStaffEmail) }))
+  const accounts = (await directory(env.DB)) || [];
+  const domains = orgDomains(accounts);
+  const ours = (x) => domains.has(normEmail(x).split('@')[1]);
+  return accounts
+    .filter((a) => a.active && ours(a.email))
+    .map((a) => ({ email: a.email, name: a.name || '', aliases: (a.aliases || []).filter(ours) }))
     .sort((a, b) => a.email.localeCompare(b.email));
 }
 
 /** The account an address opens → { email, name, alias? }: its own, or the one it's an alias of */
 export async function resolveMailbox(env, address) {
   const e = normEmail(address);
-  if (!isStaffEmail(e)) throw fail(400, 'Only a soardcharity.com mailbox can be opened');
   const accounts = await directory(env.DB);
+  if (!orgDomains(accounts).has(e.split('@')[1])) throw fail(400, 'Only a mailbox in SOARD’s Google can be opened');
   if (!accounts) return { email: e, name: '' }; // not read yet: Google answers for itself
   const all = accounts.filter((a) => a.email === e || (a.aliases || []).includes(e));
   const a = all.find((x) => x.active) || all[0];

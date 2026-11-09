@@ -135,6 +135,16 @@ test('an alias opens the account it belongs to; groups, outsiders and suspended 
   assert.match(old.body.error, /suspended/);
 });
 
+test('an account on another of SOARD’s Google domains (the store’s) is a mailbox too; an outsider still isn’t', async () => {
+  await env.DB.prepare("UPDATE staff_state SET data = ? WHERE key = 'directory'").bind(JSON.stringify({ ok: true, accounts: [...ACCOUNTS,
+    { email: 'nikki@store.example', aliases: ['nikki@store.example.test-google-a.com'], name: 'Nikki Fox', active: true, why: null }] })).run();
+  const list = await get('jane@soardcharity.com');
+  assert.deepEqual(list.body.mailboxes.map((m) => m.email), ['jane@soardcharity.com', 'nikki@store.example', 'pat@soardcharity.com']);
+  assert.deepEqual(list.body.mailboxes[1].aliases, [], 'Google’s test alias isn’t an address of SOARD’s');
+  assert.equal((await get('jane@soardcharity.com', '?mailbox=nikki@store.example&q=receipt')).status, 200);
+  assert.equal((await get('jane@soardcharity.com', '?mailbox=someone@example.com')).status, 400);
+});
+
 test('search: Gmail read-only, the search words passed on, newest summaries, logged', async () => {
   const r = await get('jane@soardcharity.com', '?mailbox=pat@soardcharity.com&q=' + encodeURIComponent('has:attachment receipt') + '&max=500');
   assert.equal(r.status, 200);

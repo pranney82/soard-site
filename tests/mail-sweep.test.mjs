@@ -136,7 +136,7 @@ beforeEach(async () => {
         if (refuseScopes.has(scope)) return new Response('{"error":"invalid_scope"}', { status: 400 });
         return Response.json({ access_token: `ramp:${scope}`, expires_in: 3600 });
       }
-      if (path === '/users') return Response.json({ data: [{ id: 'u-pat', email: PAT }, { id: 'u-sam', email: SAM }] });
+      if (path === '/users') return Response.json({ data: [{ id: 'u-pat', email: PAT }, { id: 'u-sam', email: SAM }, { id: 'u-samstore', email: 'sam@store.example' }] });
       if (path === '/transactions') {
         const from = Date.parse(u.searchParams.get('from_date')), to = u.searchParams.get('to_date') ? Date.parse(u.searchParams.get('to_date')) : Infinity;
         return Response.json({ data: rampTxns.filter((t) => Date.parse(t.user_transaction_time) >= from && Date.parse(t.user_transaction_time) <= to) });
@@ -700,6 +700,7 @@ test('the first run catches up on the last 90 days of card charges once; after t
     { id: 'tx-old', state: 'CLEARED', entity_amount: { value: 12900, currency: 'USD' }, user_transaction_time: new Date(old).toISOString(), merchant_name: 'Paint Depot', card_holder: { user_id: 'u-pat' }, receipts: [] },
     { id: 'tx-none', state: 'CLEARED', entity_amount: { value: 5500, currency: 'USD' }, user_transaction_time: new Date(old).toISOString(), merchant_name: 'Fabric Barn', card_holder: { user_id: 'u-pat' }, receipts: [] },
     { id: 'tx-older', state: 'CLEARED', entity_amount: { value: 999, currency: 'USD' }, user_transaction_time: new Date(T0 - 100 * DAY).toISOString(), merchant_name: 'Too Old Co', card_holder: { user_id: 'u-pat' }, receipts: [] },
+    { id: 'tx-sam', state: 'CLEARED', entity_amount: { value: 3100, currency: 'USD' }, user_transaction_time: new Date(old).toISOString(), merchant_name: 'Glue Co', card_holder: { user_id: 'u-samstore' }, receipts: [] },
   );
   const paint = mail({ box: PAT, at: old + 20 * MIN, from: 'Paint Depot <orders@paint.example>', to: PAT, subject: 'Your Paint Depot receipt', text: 'Total $129.00' });
   calls.length = 0;
@@ -715,6 +716,16 @@ test('the first run catches up on the last 90 days of card charges once; after t
   rampTxns.push({ id: 'tx-late', state: 'CLEARED', entity_amount: { value: 777, currency: 'USD' }, user_transaction_time: new Date(T0 - 30 * DAY).toISOString(), merchant_name: 'Late Co', card_holder: { user_id: 'u-pat' }, receipts: [] });
   await maybeSweepMail(env, { now: T0 + 20 * MIN, force: true });
   assert.equal(await cardRow('ramp:tx-late'), null);
+  assert.equal((await cardRow('ramp:tx-sam')).state, 'no_inbox', 'Sam’s account isn’t in Google yet');
+
+  // Sam's account joins: his old charge looks now, however old, and his inbox starts from today
+  await env.DB.prepare("UPDATE staff_state SET data = ? WHERE key = 'directory'").bind(JSON.stringify({ ok: true, accounts: [...ACCOUNTS, { email: 'sam@store.example', aliases: [], name: 'Sam Ray', active: true, why: null }] })).run();
+  mail({ box: 'sam@store.example', at: old + 30 * MIN, from: 'Glue Co <orders@glue.example>', to: 'sam@store.example', subject: 'Your Glue Co receipt', text: 'Total $31.00' });
+  const before = mail({ box: 'sam@store.example', at: T0 - 2 * DAY, from: 'Tape Co <orders@tape.example>', to: 'sam@store.example', subject: 'Your Tape Co receipt', text: 'Total $9.00' });
+  calls.length = 0;
+  await maybeSweepMail(env, { now: T0 + 40 * MIN, force: true, print: async () => new Uint8Array([37, 80, 68, 70]) });
+  assert.equal((await cardRow('ramp:tx-sam')).state, 'attached');
+  assert.equal((await byId(before.id)).length, 0, 'mail from before the inbox joined isn’t swept as new');
 });
 
 test('Ramp refusing the card scopes: its receipts go to the receipt inbox as before, and Automations says why', async () => {
@@ -731,19 +742,25 @@ test('Ramp refusing the card scopes: its receipts go to the receipt inbox as bef
   assert.match(st.error, /Ramp’s card charges can’t be read, so Ramp receipts go to the receipt inbox only: Ramp refused the keys \(400\)\. .*transactions:read, receipts:write, users:read/);
 });
 
-test('an account whose main address is the store’s: only its soardcharity.com mail is read', async () => {
-  const LEE = 'lee@store.example';
-  await env.DB.prepare("UPDATE staff_state SET data = ? WHERE key = 'directory'").bind(JSON.stringify({ ok: true, accounts: [...ACCOUNTS, { email: LEE, aliases: ['lee@soardcharity.com'], name: 'Lee Park', active: true, why: null }] })).run();
+test('every account in SOARD’s Google is SOARD’s, on any of its domains: all its mail is read, and its people are staff', async () => {
+  const LEE = 'lee@store.example', NIKKI = 'nikki@store.example';
+  await env.DB.prepare("UPDATE staff_state SET data = ? WHERE key = 'directory'").bind(JSON.stringify({ ok: true, accounts: [...ACCOUNTS,
+    { email: LEE, aliases: ['lee@soardcharity.com'], name: 'Lee Park', active: true, why: null },
+    { email: NIKKI, aliases: [], name: 'Nikki Fox', active: true, why: null }] })).run();
   await maybeSweepMail(env, { now: T0, force: true });
   const at = T0 + WATCH_MS + MIN;
   const store = mail({ box: LEE, at, from: 'Perigold <orders@perigold.example>', to: LEE, subject: 'Order received. Thanks for your order #88', text: 'Mirror $480.00' });
   const soard = mail({ box: LEE, at: at + MIN, from: 'Walmart <help@walmart.example>', to: 'lee@soardcharity.com', subject: 'Lee, thanks for your order', text: 'Bins $83.76' });
-  aiVerdicts['Lee, thanks for your order'] = { type: 'receipt', vendor: 'Walmart', total: '$83.76', personal: false, reason: 'an order' };
+  const nikki = mail({ box: NIKKI, at: at + 2 * MIN, from: 'Lumber Co <sales@lumber.example>', to: NIKKI, subject: 'Your receipt from Lumber Co', text: 'Paid $22.99' });
+  const coworker = mail({ box: PAT, at: at + 3 * MIN, from: `Nikki Fox <${NIKKI}>`, to: PAT, subject: 'Receipt for the paint', text: 'Paid $40.00' });
+  aiVerdicts['Order received. Thanks for your order #88'] = { type: 'receipt', vendor: 'Perigold', total: '$480.00', reason: 'an order' };
+  aiVerdicts['Lee, thanks for your order'] = { type: 'receipt', vendor: 'Walmart', total: '$83.76', reason: 'an order' };
+  aiVerdicts['Your receipt from Lumber Co'] = { type: 'receipt', vendor: 'Lumber Co', total: '$22.99', reason: 'paid' };
   calls.length = 0;
   await maybeSweepMail(env, { now: at + 5 * MIN, force: true });
-  assert.equal((await byId(store.id)).length, 0, 'the store’s order is never sorted');
-  assert.equal((await byId(soard.id))[0].state, 'sent');
-  assert.deepEqual(of('resend').map((c) => c.body.subject), ['Receipt: Walmart $83.76 on 2026-11-03 (from Lee’s email)']);
+  for (const m of [store, soard, nikki]) assert.equal((await byId(m.id))[0].state, 'sent');
+  assert.deepEqual(of('resend').map((c) => c.body.subject.split(' on ')[0]), ['Receipt: Perigold $480.00', 'Receipt: Walmart $83.76', 'Receipt: Lumber Co $22.99'], 'the store account’s own mail too, and a store-only account’s');
+  assert.equal((await byId(coworker.id)).length, 0, 'a store coworker writing to staff is staff mail');
 });
 
 test('a family email on two accounts: when the second fails, the try after it doesn’t post on the first again', async () => {
