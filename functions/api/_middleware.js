@@ -112,6 +112,10 @@ const PUBLIC_ROUTES = ['/api/newsletter', '/api/kids.json', '/api/download-logo'
 // application-bar-closed only sets the cookie that remembers the bar's X for the season.
 const PUBLIC_GET_ROUTES = ['/api/live-status', '/api/fb-live-videos', '/api/broadcast', '/api/reveals', '/api/reveals.ics', '/api/application-open', '/api/application-bar-closed'];
 
+// reveal-design is a kid's before photos, drawings and design boards for the starting-soon screen: nothing at all
+// until an hour before their reveal (it checks), and drawings only without the family's address
+PUBLIC_GET_ROUTES.push('/api/reveal-design');
+
 // A board or team member sending their own bio (/profile-update/): keyed by an
 // unguessable link token checked inside the handler, rate limited below, and
 // nothing goes live until someone in the admin uses it

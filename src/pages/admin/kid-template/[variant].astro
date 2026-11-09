@@ -17,4 +17,4 @@ export function getStaticPaths() {
 
 const { item, video } = FIXTURES.kid[Astro.params.variant as keyof typeof FIXTURES.kid];
 ---
-<KidPage kid={item} prevKid={null} nextKid={null} relatedKids={[]} forceVideo={video} />
+<KidPage kid={item} prevKid={null} nextKid={null} relatedKids={[]} forceVideo={video} showDesign={true} />

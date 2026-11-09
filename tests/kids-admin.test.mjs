@@ -132,12 +132,12 @@ test('issues: what changes what visitors see is a warning; the rest is quiet', (
 });
 
 // ── Saving ──
-test('the saved record: editor fields and the dead schedule dropped, uploads in flight and half pairs left out', () => {
+test('the saved record: editor fields and the dead schedule dropped, uploads in flight and after-only pairs left out', () => {
   const rec = KS.kidRecord({
     ...kid(), _ages: '7, 9', scheduledPublish: '2026-01-01', heroSummary: '  ', childCount: '2',
     photos: [{ url: img('a'), alt: 'A', _key: 'a' }, { url: 'blob:x', alt: '', _tempId: 't', _key: 't' }],
     plans: [{ url: img('p'), label: 'Floor plan', _key: 'p' }, { url: img('q'), label: 'Board', type: 'proposed', _key: 'q' }],
-    beforeAfterPhotos: [{ before: img('b'), after: img('c'), _key: 'x' }, { before: img('d'), after: '', _key: 'y' }],
+    beforeAfterPhotos: [{ before: img('b'), after: img('c'), _key: 'x' }, { before: img('d'), after: '', _key: 'y' }, { before: '', after: img('e'), _key: 'z' }],
     partnerLogos: [{ url: img('l'), name: 'Co', _key: 'l' }],
     publishStatus: 'draft', streamVideoId: '', fundraisingUrl: ' https://zeffy.com/x ',
   });
@@ -149,7 +149,8 @@ test('the saved record: editor fields and the dead schedule dropped, uploads in 
   assert.deepEqual(rec.photos, [{ url: img('a'), alt: 'A' }]);
   assert.equal(rec.photoCount, 1);
   assert.deepEqual(rec.plans.map((p) => p.type), ['as-built', 'proposed']);
-  assert.equal(rec.beforeAfterPhotos.length, 1);
+  // A before photo waits for its after (it shows on the reveal screen); an after with no before is dropped
+  assert.deepEqual(rec.beforeAfterPhotos.map((p) => [p.before, p.after]), [[img('b'), img('c')], [img('d'), '']]);
   assert.equal(rec.publishStatus, 'draft');
   assert.equal(rec.streamVideoId, null);
   assert.equal(rec.fundraisingUrl, 'https://zeffy.com/x');

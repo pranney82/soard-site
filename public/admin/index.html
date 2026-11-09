@@ -3079,6 +3079,21 @@
     .kd-pair__img img { width: 100%; height: 100%; object-fit: cover; }
     .kd-pair__empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem; aspect-ratio: 4 / 3; border: 2px dashed var(--color-border-strong); border-radius: 10px; background: var(--color-bg-secondary); font-size: var(--fs-xs); font-weight: 600; color: var(--color-text-secondary); cursor: pointer; }
     .kd-pair__empty:hover, .kd-pair__empty:focus-within { border-color: var(--color-text); color: var(--color-text); }
+    /* A before photo's after, waiting for the room to be done: quieter than a missing photo */
+    .kd-pair__empty--waits { aspect-ratio: auto; min-height: 5.5rem; border-style: dotted; border-color: var(--color-border); background: transparent; color: var(--color-text-muted); text-align: center; padding: 0.75rem; }
+    /* What a plan is (as-built, proposed, board): the reveal screen plays them in that order */
+    .kd-plan__kind { align-self: stretch; }
+    .kd-plan__kind > [role="radio"] { flex: 1 1 0; justify-content: center; padding-inline: 0.35rem; font-size: var(--fs-xs); }
+    .kd-design-when { margin-bottom: 0.9rem; }
+    .kd-design-short { margin: 0 0 0.9rem; }
+    /* A drawing's title sits at its top left: the number and the grip go along the bottom */
+    .kd-plan .kd-plan__n { top: auto; bottom: 6px; }
+    .kd-plan .kd-grip--tile { top: auto; bottom: 4px; }
+    .kd-plan.is-needs { border-color: var(--tone-warn-line-strong); }
+    .kd-plan__check { display: flex; flex-direction: column; gap: 0.45rem; padding: 0.55rem 0.6rem; border: 1px solid var(--tone-warn-line); border-radius: 10px; background: var(--tone-warn-surface); }
+    .kd-plan__check p { margin: 0; font-size: var(--fs-xs); line-height: 1.45; color: var(--color-text-secondary); }
+    .kd-plan__check .kd-btnrow { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .kd-design-when > svg { color: var(--tone-info-fg); }
     .kd-pair__preview { display: flex; flex-direction: column; gap: 0.45rem; }
     .kd-small-input { min-height: 36px; padding: 0.4rem 0.6rem !important; font-size: var(--fs-xs) !important; }
     .kd-compare { position: relative; aspect-ratio: 4 / 3; overflow: hidden; border-radius: 10px; background: var(--seg-bg); }
@@ -3418,6 +3433,7 @@
     }
     @media (pointer: coarse) {
       .kd-grip--tile { opacity: 1; width: 44px; height: 44px; top: 0; right: 0; border-radius: 0 12px 0 12px; background: rgba(255,255,255,0.88); }
+      .kd-plan .kd-grip--tile { top: auto; bottom: 0; border-radius: 12px 0 12px 0; }
       .kd-logo .kd-x--on-img { opacity: 1; }
       .kd-tile__open:hover img { transform: none; }
     }
@@ -4475,6 +4491,8 @@
     } from './team-shared.js';
     // Kid profile rules (gallery split, hero intro, plan crop, what's missing), shared with the kid page Preview
     import * as KS from './kids-shared.js';
+    // A kid's design on their reveal screen (what shows, in what order, from when), shared with /api/reveal-design
+    import * as RD from './reveal-design.js';
     // A home's details in JobTread (Zestimate, Year Built…): the Home card beside a kid, shared with Insights
     import * as HS from './home-shared.js';
     import { float, floatRef, hiddenAnchor } from './float.js';
@@ -8924,6 +8942,10 @@
     // would still have it, so a sheet goes up without it: its top rule is a
     // dark line across nine tenths of the width in the bottom fifth. The new
     // name ends in -notitle, so the page knows there's nothing left to crop.
+    /** A picture's size in pixels ({} when it can't be read) */
+    async function kdImageSize(file) {
+      try { const b = await createImageBitmap(file); const out = { w: b.width, h: b.height }; b.close?.(); return out; } catch { return {}; }
+    }
     async function kdTrimTitleBlock(file) {
       if (!/^image\/(jpeg|png|webp)$/.test(file.type) || typeof createImageBitmap !== 'function') return { file, trimmed: false };
       try {
@@ -10729,13 +10751,70 @@
       </div>`;
     }
 
-    /** One plan: the page's crop (floor plans lose the address block), caption, place */
+    // ═══ A kid's design for their reveal (Peter, Nov 9 2026) ═══
+    // Bring in from JobTread and Preview the reveal screen live in ./reveal-design-import.js, loaded the first time
+    // either opens. part: 'import' | 'preview'
+    let kdRevealModule = null;
+    function KdRevealLazy({ part, ...props }) {
+      const [mod, setMod] = useState(() => lazyNow(kdRevealModule));
+      const [err, setErr] = useState(null);
+      const load = () => {
+        kdRevealModule ||= lazyKeep(import('./reveal-design-import.js'));
+        kdRevealModule.then((m) => setMod(m)).catch((e) => { kdRevealModule = null; setErr(e.message); });
+      };
+      useEffect(load, []);
+      if (err) return html`<${KdDialogBox} title="Couldn’t open this" onClose=${props.onClose} size="sm"><${LoadErrorCard} error=${err} onRetry=${() => { setErr(null); load(); }} /><//>`;
+      const Comp = mod && { import: mod.RevealImport, preview: mod.RevealPreview, cover: mod.CoverDialog }[part];
+      return Comp ? html`<${Comp} ...${props} Dialog=${KdDialogBox} />` : null;
+    }
+    const kdPoss = (name) => (/s$/i.test(name || '') ? `${name}’` : `${name}’s`);
+    /** When an unrevealed kid's design first shows: an hour before a confirmed reveal, on their live page and stream */
+    function kdDesignWhen(name, reveal, hidden = false) {
+      const who = name || 'this kid';
+      // A hidden profile has no live page or reveal screen of its own (/api/reveal-design answers nothing for it)
+      if (hidden) return html`${kdPoss(who)} profile is hidden, so the design doesn’t show anywhere: not on the live page or the stream. Show the profile on the site and it plays from an hour before the reveal.`;
+      if (reveal?.confirmed && reveal.startsAt) {
+        const at = new Date(Date.parse(reveal.startsAt) - RD.DESIGN_LEAD_MS);
+        const time = at.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/New_York' });
+        const day = at.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', timeZone: 'America/New_York' });
+        return html`They stay off ${kdPoss(who)} page until the reveal. They show on ${kdPoss(who)} live page and stream from <strong>${time}, ${day}</strong>, an hour before.`;
+      }
+      return html`They stay off ${kdPoss(who)} page until the reveal. They show on ${kdPoss(who)} live page and stream an hour before the reveal, once it has a confirmed time.`;
+    }
+
+    /** One plan: what it is (as-built, proposed, board), the page's crop (floor plans lose the address block), caption, place */
     const KD_PLANS_FIRST = 8;
-    function KdPlanTile({ plan, index, drag, onLabel, onRemove, busy, broken, onBroken }) {
+    const KD_KIND_SHORT = { 'as-built': 'As-built', proposed: 'Proposed', board: 'Board' };
+    /** Arrow keys move the choice in a group of role="radio" buttons (one tab stop for the group) */
+    function kdRadioKeys(e, ids, current, pick) {
+      if (!['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End'].includes(e.key)) return;
+      e.preventDefault();
+      const i = Math.max(0, ids.indexOf(current));
+      const next = e.key === 'Home' ? 0 : e.key === 'End' ? ids.length - 1 : (i + (e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 1) + ids.length) % ids.length;
+      pick(ids[next]);
+      const group = e.currentTarget.closest('[role="radiogroup"]');
+      requestAnimationFrame(() => group?.querySelectorAll('[role="radio"]')[next]?.focus());
+    }
+    function KdPlanTile({ plan, index, drag, onLabel, onKind, onRemove, onCover, onNoAddress, busy, broken, onBroken, revealed = true }) {
       const [ratio, setRatio] = useState(null);
-      const floor = KS.isFloorPlan(plan);
+      const trimmed = RD.isTrimmed(plan.url);
+      const floor = KS.isFloorPlan(plan) && !trimmed;
       const fileName = KS.looksLikeFileName(plan.label);
-      return html`<li class=${`kd-plan${drag.lifted?.key === plan._key ? ' is-lifted' : ''}`} ref=${drag.itemRef(plan._key)} onPointerDown=${(e) => { if (!e.target.closest('input, button')) drag.tileDown(e, plan._key); }}>
+      const kind = RD.planKind(plan);
+      const check = plan.addressCheck;
+      // Before the reveal, an as-built or proposed drawing plays on the reveal screen only once someone has seen to the address on it
+      const needsCheck = !revealed && kind !== 'board' && !RD.addressChecked(plan) && !kdLocal(plan.url);
+      const kindIds = RD.PLAN_KINDS.map((k) => k.id);
+      // What's true about the family's address on it (a board is shown whole, unless its caption makes it a floor plan)
+      const chip = kind === 'board' && !floor ? null
+        : check === 'wiped' || check === 'covered'
+        ? html`<span class="kd-chip kd-chip--ok" title=${check === 'wiped' ? 'The address’s words were found on it and painted out before it went up' : 'The address was covered by hand before it went up'}>${kdIcon.check} Address taken off</span>`
+        : check === 'checked' ? html`<span class="kd-chip kd-chip--quiet" title="Someone looked it over and ticked that there’s no address on it">Checked: no address</span>`
+        : needsCheck ? html`<span class="kd-chip kd-chip--warn">${kdIcon.alert} Check for the address</span>`
+        : floor ? html`<span class="kd-chip kd-chip--ok" title="The bottom of the drawing, with the family’s street address, is cropped off on the site">${kdIcon.check} Address block hidden</span>`
+        : trimmed ? html`<span class="kd-chip kd-chip--quiet" title="Its title block was taken off when it went up">Title block taken off</span>`
+        : html`<span class="kd-chip kd-chip--quiet" title="Shown whole. Name it as a floor plan to crop the address block">Shown whole</span>`;
+      return html`<li class=${`kd-plan${drag.lifted?.key === plan._key ? ' is-lifted' : ''}${needsCheck ? ' is-needs' : ''}`} ref=${drag.itemRef(plan._key)} onPointerDown=${(e) => { if (!e.target.closest('input, button')) drag.tileDown(e, plan._key); }}>
         <div class="kd-plan__img" style=${ratio ? `aspect-ratio:${ratio}` : ''}>
           <img src=${kdImg(plan.url, 'w=640,q=80')} alt=${plan.label || ''} loading="lazy" draggable=${false}
             onLoad=${(e) => { const { naturalWidth: w, naturalHeight: h } = e.currentTarget; if (w && h) setRatio(`${w} / ${Math.round(h * (floor ? 1 - KS.TITLE_BLOCK : 1))}`); }} onError=${onBroken} />
@@ -10745,13 +10824,23 @@
           <span class="kd-plan__n">${index + 1}</span>
         </div>
         <div class="kd-plan__body">
+          <div class="seg kd-plan__kind" role="radiogroup" aria-label=${`What plan ${index + 1} is`}>
+            ${RD.PLAN_KINDS.map((k) => html`<button type="button" role="radio" aria-checked=${kind === k.id} tabindex=${kind === k.id ? 0 : -1} title=${k.long}
+              onKeyDown=${(e) => kdRadioKeys(e, kindIds, kind, (id) => onKind(plan._key, id))} onClick=${() => onKind(plan._key, k.id)}>${KD_KIND_SHORT[k.id]}</button>`)}
+          </div>
           <input class="form-input" value=${plan.label || ''} list="kd-plan-captions" placeholder="Caption, e.g. Floor plan, after" aria-label=${`Caption for plan ${index + 1}`}
             onInput=${(e) => onLabel(plan._key, e.target.value)} />
+          ${needsCheck ? html`<div class="kd-plan__check">
+            <p>It plays on the reveal screen once the family’s address on it is covered, or someone has checked there’s none.</p>
+            <span class="kd-btnrow">
+              <button type="button" class="btn btn-secondary btn-sm" onClick=${() => onCover(plan._key)}>Cover the address</button>
+              <button type="button" class="btn btn-ghost btn-sm" onClick=${() => onNoAddress(plan._key)}>No address on it</button>
+            </span>
+          </div>` : null}
           <div class="kd-plan__meta">
-            <span class=${`kd-chip ${floor ? 'kd-chip--ok' : 'kd-chip--quiet'}`} title=${floor ? 'The bottom of the drawing, with the family’s street address, is cropped off on the site' : 'Shown whole. Name it as a floor plan to crop the address block'}>
-              ${floor ? html`${kdIcon.check} Address block hidden` : 'Shown whole'}</span>
+            ${chip}
             ${fileName ? html`<span class="kd-chip kd-chip--warn" title="Captions show when someone opens a plan">${kdIcon.alert} Needs a real caption</span>` : null}
-            <span class="kd-plan__where">${index < KS.PLANS_SHOWN ? 'On the page' : 'Under “View all designs”'}</span>
+            ${revealed ? html`<span class="kd-plan__where">${index < KS.PLANS_SHOWN ? 'On the page' : 'Under “View all designs”'}</span>` : null}
             <button type="button" class="btn btn-ghost btn-sm kd-danger-quiet" onClick=${() => onRemove(plan._key)}>Remove</button>
           </div>
         </div>
@@ -11204,6 +11293,8 @@
       const coarse = useMatchMedia('(pointer: coarse)');
       const [arranging, setArranging] = useState(false);
       const [showAllPlans, setShowAllPlans] = useState(false);
+      const [design, setDesign] = useState(null); // the reveal design dialogs: 'import' | 'preview'
+      const [coverKey, setCoverKey] = useState(null); // a plan whose address is being covered
       // On a phone a long story is several screens: it shows as a preview until you edit it
       const narrow = useMatchMedia('(max-width: 768px)');
       const [storyOpen, setStoryOpen] = useState(false);
@@ -11223,13 +11314,20 @@
       const barRef = useRef(null);
       const photoInput = useRef(null);
       const planInput = useRef(null);
+      const beforeInput = useRef(null);
       const logoInput = useRef(null);
       const logoFor = useRef(null); // the JobTread company an upload is for (named after them, so the site knows it's theirs)
       const videoInput = useRef(null);
 
       const record = useMemo(() => kdSaveRecord(data), [data]);
-      const dirty = JSON.stringify(record) !== base;
       const uploading = Object.keys(uploads).length > 0;
+      // Preview the reveal screen shows the design as it is here, saved or not: the screen asks for it every second
+      useEffect(() => {
+        window.__soardRevealDesign = () => { const d = dataRef.current; return { name: d.name || '', slides: RD.revealSlides(kdSaveRecord(d)) }; };
+        return () => { delete window.__soardRevealDesign; };
+      }, []);
+      // Pictures still going up are unsaved work too: leaving now would lose them
+      const dirty = JSON.stringify(record) !== base || uploading;
       const set = (patch) => setData((d) => ({ ...d, ...(typeof patch === 'function' ? patch(d) : patch) }));
 
       // ── Load ──
@@ -11317,6 +11415,8 @@
       const plays = streamUid && (streamState === 'playable' || (streamState === 'unknown' && !ytId)) ? 'stream' : ytId ? 'youtube' : null;
       const reveal = slug ? kdRevealOf(reveals, slug) : null;
       const jobId = slug ? jobs[slug] : null;
+      // A room that's been revealed has its design on the kid page; before that, only on the reveal screen (./reveal-design.js)
+      const revealed = RD.isRevealed(data);
       // A kid with a JobTread job takes its status from there (functions/api/_kid-status.js)
       const jtStatus = jobId ? statuses[slug] || null : null;
       // JobTread keeps it off the site (On Site, Denied): the switch is JobTread's until the job moves on
@@ -11454,7 +11554,9 @@
         if (!imgs.length) return;
         // Drawing sheets lose their title block (the family's address) before they leave this computer
         const prepared = whole === true ? imgs.map((file) => ({ file, trimmed: false })) : await Promise.all(imgs.map(kdTrimTitleBlock));
-        const items = prepared.map(({ file, trimmed, original }) => ({ file, trimmed, original, key: kdNewKey(), local: URL.createObjectURL(file) }));
+        // Each drawing's size goes with it: the reveal screen frames a drawing by it (./reveal-design.js)
+        const sizes = await Promise.all(prepared.map(({ file }) => kdImageSize(file)));
+        const items = prepared.map(({ file, trimmed, original }, i) => ({ file, trimmed, original, ...sizes[i], key: kdNewKey(), local: URL.createObjectURL(file) }));
         const trimmedItems = items.filter((it) => it.trimmed);
         if (trimmedItems.length) {
           addToast(`${trimmedItems.length === 1 ? 'Took the title block, with the family’s address, off that drawing' : `Took the title block, with the family’s address, off ${trimmedItems.length} drawings`}.`, 'info', {
@@ -11462,15 +11564,49 @@
             fn: () => addPlans(trimmedItems.map((it) => it.original), true).then(() => set((d) => ({ plans: d.plans.filter((p) => !trimmedItems.some((it) => it.key === p._key)) }))),
           });
         }
-        set((d) => ({ plans: [...d.plans, ...items.map((it) => ({ url: it.local, label: '', type: 'as-built', _key: it.key, _tempId: it.key }))] }));
+        await uploadPlans(items.map((it) => ({ ...it, plan: { label: '', type: 'as-built', ...(it.w ? { w: it.w, h: it.h } : {}) } })));
+      };
+      // Drawings ready to go up (items: { file, key, local, plan: the plan's other fields }), each a tile with a spinner until it lands
+      const uploadPlans = async (items) => {
+        set((d) => ({ plans: [...d.plans, ...items.map((it) => ({ ...it.plan, url: it.local, _key: it.key, _tempId: it.key }))] }));
         setUploads((u) => ({ ...u, ...Object.fromEntries(items.map((it) => [it.key, true])) }));
         const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
+        // A caption or kind changed while it uploaded stays: only the address of the picture changes when it lands
         await kdUploadAll(items, {
           idFor: (file) => `kids/${folder}/plan-${Date.now()}-${file.name.replace(/[^a-z0-9.]/gi, '-')}`,
-          onDone: (it, url) => { set((d) => ({ plans: d.plans.map((p) => (p._key === it.key ? { url, label: '', type: 'as-built', _key: it.key } : p)) })); setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; }); },
-          onFail: (it, err) => { addToast(`${it.file.name} didn’t upload: ${err}`, 'error'); set((d) => ({ plans: d.plans.filter((p) => p._key !== it.key) })); setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; }); },
+          onDone: (it, url) => { set((d) => ({ plans: d.plans.map((p) => { if (p._key !== it.key) return p; const { _tempId, ...rest } = p; return { ...rest, url }; }) })); setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; }); },
+          onFail: (it, err) => { addToast(`${it.plan?.label ? `“${it.plan.label}”` : 'A drawing'} didn’t upload. ${err}`, 'error'); set((d) => ({ plans: d.plans.filter((p) => p._key !== it.key) })); setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; }); },
         });
         items.forEach((it) => URL.revokeObjectURL(it.local));
+      };
+      const setPlanKind = (key, type) => set((d) => ({ plans: d.plans.map((x) => (x._key === key ? { ...x, type } : x)) }));
+      // From "Bring in from JobTread": drawings already seen to (wiped, covered or checked) and trimmed, and before photos,
+      // each going up into its section; the bar says Unsaved changes while they do
+      const addFromJobTread = ({ drawings = [], befores = [] }) => {
+        if (drawings.length) uploadPlans(drawings.map((dr) => ({ file: dr.file, key: kdNewKey(), local: URL.createObjectURL(dr.file), plan: { label: dr.label, type: dr.type, source: dr.source, w: dr.w, h: dr.h, ...(dr.addressCheck ? { addressCheck: dr.addressCheck } : {}) } })));
+        if (befores.length) addBefores(befores);
+      };
+      // The family's address on a drawing already here: someone looked and there's none, or a covered copy goes up in its place
+      const noAddress = (key) => set((d) => ({ plans: d.plans.map((x) => (x._key === key ? { ...x, addressCheck: 'checked' } : x)) }));
+      const coverPlan = async (key, { blob, w, h }) => {
+        const plan = dataRef.current.plans.find((x) => x._key === key);
+        if (!plan) return;
+        const was = { url: plan.url, w: plan.w, h: plan.h, addressCheck: plan.addressCheck };
+        const file = new File([blob], `${slugify(plan.label || '') || 'drawing'}-notitle.png`, { type: 'image/png' });
+        const local = URL.createObjectURL(file);
+        set((d) => ({ plans: d.plans.map((x) => (x._key === key ? { ...x, url: local, w, h, addressCheck: 'covered' } : x)) }));
+        setUploads((u) => ({ ...u, [key]: true }));
+        const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
+        await kdUploadAll([{ file, key }], {
+          idFor: (f) => `kids/${folder}/plan-${Date.now()}-${f.name.replace(/[^a-z0-9.]/gi, '-')}`,
+          onDone: (_, url) => set((d) => ({ plans: d.plans.map((x) => (x._key === key ? { ...x, url } : x)) })),
+          onFail: (_, err) => {
+            addToast(`The covered copy of ${plan.label ? `“${plan.label}”` : 'the drawing'} didn’t upload. ${err}`, 'error');
+            set((d) => ({ plans: d.plans.map((x) => (x._key === key ? { ...x, ...was } : x)) }));
+          },
+        });
+        setUploads((u) => { const n = { ...u }; delete n[key]; return n; });
+        URL.revokeObjectURL(local);
       };
       const removePlan = (key) => {
         const prev = dataRef.current.plans;
@@ -11481,6 +11617,29 @@
       // ── Before & after ──
       const setPair = (key, patch) => set((d) => ({ beforeAfterPhotos: d.beforeAfterPhotos.map((p) => (p._key === key ? { ...p, ...patch } : p)) }));
       const addPair = () => set((d) => ({ beforeAfterPhotos: [...d.beforeAfterPhotos, { before: '', after: '', room: '', beforeAlt: '', afterAlt: '', _key: kdNewKey() }] }));
+      // Before photos on their own (picked here, or from JobTread): each is a pair waiting for its after.
+      // list: Files, or { file, alt, source }
+      const addBefores = async (list) => {
+        const all = [...list].map((x) => (x instanceof File ? { file: x } : x)).filter((x) => x?.file);
+        const isPic = (f) => /^image\//.test(f.type || '') || /\.(jpe?g|png|webp|gif|hei[cf])$/i.test(f.name || '');
+        const left = all.filter((x) => !isPic(x.file));
+        if (left.length) addToast(`Left out ${left.length === 1 ? `“${left[0].file.name}”: it isn’t a picture` : `${left.length} files that aren’t pictures`}.`, 'info');
+        const items = all.filter((x) => isPic(x.file)).map((x) => ({ ...x, key: kdNewKey(), local: URL.createObjectURL(x.file) }));
+        if (!items.length) return;
+        set((d) => ({ beforeAfterPhotos: [...d.beforeAfterPhotos, ...items.map((it) => ({ before: it.local, after: '', room: '', beforeAlt: it.alt || '', afterAlt: '', ...(it.source ? { source: it.source } : {}), _key: it.key }))] }));
+        setUploads((u) => ({ ...u, ...Object.fromEntries(items.map((it) => [`${it.key}:before`, true])) }));
+        const folder = dataRef.current.slug || slugify(dataRef.current.name) || 'new';
+        await kdUploadAll(items.map((it) => ({ ...it, key: `${it.key}:before` })), {
+          idFor: (f) => `kids/${folder}/ba-before-${Date.now()}-${f.name.replace(/[^a-z0-9.]/gi, '-')}`,
+          onDone: (it, url) => { setPair(it.key.slice(0, -7), { before: url }); setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; }); },
+          onFail: (it, err) => {
+            addToast(`A before photo didn’t upload. ${err}`, 'error');
+            set((d) => ({ beforeAfterPhotos: d.beforeAfterPhotos.filter((p) => p._key !== it.key.slice(0, -7)) }));
+            setUploads((u) => { const n = { ...u }; delete n[it.key]; return n; });
+          },
+        });
+        items.forEach((it) => URL.revokeObjectURL(it.local));
+      };
       const movePair = (key, by) => set((d) => {
         const list = [...d.beforeAfterPhotos];
         const i = list.findIndex((p) => p._key === key);
@@ -11869,6 +12028,15 @@
           onSaved=${(people) => { sponsor.setContacts((c) => ({ ...c, [sponsorDialog.contacts.slug]: people })); setSponsorDialog(null); sponsor.reload(); }} />` : null}
         ${historyOpen !== undefined ? html`<${KdHistoryDialog} name=${data.name} history=${history} current=${record} dirty=${dirty}
           startId=${historyOpen} onRestore=${restoreVersion} onClose=${() => setHistoryOpen(undefined)} />` : null}
+        ${design ? html`<${KdRevealLazy} part=${design} kid=${{ slug: data.slug || slug, name: data.name, year: data.year }} jobId=${jobId || ''} revealed=${revealed}
+          plans=${data.plans} pairs=${data.beforeAfterPhotos} slug=${data.slug || slug} name=${data.name} published=${!!slug && data.publishStatus !== 'draft'}
+          kinds=${RD.revealSlides(record).map((x) => x.kind)}
+          waiting=${revealed ? 0 : data.plans.filter((x) => !kdLocal(x.url) && !RD.addressChecked(x)).length}
+          uploading=${Object.keys(uploads).length}
+          onAdd=${addFromJobTread} onClose=${() => setDesign(null)} />` : null}
+        ${coverKey && data.plans.find((x) => x._key === coverKey) ? (() => { const cp = data.plans.find((x) => x._key === coverKey); return html`<${KdRevealLazy} part="cover"
+          src=${kdImg(cp.url, 'w=2400,q=95')} label=${cp.label || RD.PLAN_KINDS.find((k) => k.id === RD.planKind(cp))?.long || 'Drawing'}
+          onDone=${(out) => coverPlan(coverKey, out)} onClose=${() => setCoverKey(null)} />`; })() : null}
         ${picker ? html`<${KidPhotoPicker} title=${picker.title} photos=${photos} current=${picker.current}
           onClose=${() => setPicker(null)} onPick=${(url) => { picker.onPick(url); setPicker(null); }} />` : null}
         ${streamPick ? html`<${StreamPicker}
@@ -12152,41 +12320,52 @@
           </div>
         `)}
 
-        ${sec('plans', 'Design plans', data.plans.length ? `The first ${KS.PLANS_SHOWN} show on the page; the rest open from “View all designs”.` : 'Floor plans and renderings for the Design chapter.',
-          html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => planInput.current?.click()}>${kdIcon.upload} Add plans</button>
+        ${sec('plans', 'Design plans', data.plans.length ? `The first ${KS.PLANS_SHOWN} show on the page; the rest open from “View all designs”. The reveal screen plays the as-built plan, the proposed plan, then the boards.` : 'Floor plans and design boards, for the Design chapter and the reveal screen.',
+          html`${slug ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('import')}>Bring in from JobTread</button>` : null}
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('preview')}>${kdIcon.play} Preview the reveal screen</button>
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => planInput.current?.click()}>${kdIcon.upload} Add plans</button>
             <input type="file" accept="image/*" multiple hidden ref=${planInput} onChange=${(e) => { addPlans([...e.target.files]); e.target.value = ''; }} />`,
           html`
+          ${!revealed ? html`<div class=${`notice ${data.publishStatus === 'draft' ? 'notice--warn' : 'notice--info'} kd-design-when`}>${kdIcon.calendar}<div class="notice__body">${kdDesignWhen(data.name, reveal, data.publishStatus === 'draft')}</div></div>` : null}
           ${data.plans.length ? html`<ul class="kd-plans">
-            ${(showAllPlans ? planDrag.order : planDrag.order.slice(0, KD_PLANS_FIRST)).map((k, i) => { const p = data.plans.find((x) => x._key === k); return p ? html`<${KdPlanTile} key=${k} plan=${p} index=${i} drag=${planDrag} busy=${!!uploads[k]}
-              broken=${broken.has(p.url)} onBroken=${() => markBroken(p.url)}
+            ${(showAllPlans ? planDrag.order : planDrag.order.slice(0, KD_PLANS_FIRST)).map((k, i) => { const p = data.plans.find((x) => x._key === k); return p ? html`<${KdPlanTile} key=${k} revealed=${data.status === 'completed'} plan=${p} index=${i} drag=${planDrag} busy=${!!uploads[k]}
+              broken=${broken.has(p.url)} onBroken=${() => markBroken(p.url)} onKind=${setPlanKind} revealed=${revealed}
+              onCover=${setCoverKey} onNoAddress=${noAddress}
               onLabel=${(key, label) => set((d) => ({ plans: d.plans.map((x) => (x._key === key ? { ...x, label } : x)) }))} onRemove=${removePlan} />` : null; })}
           </ul>
           ${data.plans.length > KD_PLANS_FIRST ? html`<button type="button" class="btn btn-ghost btn-sm kd-more" aria-expanded=${showAllPlans} onClick=${() => setShowAllPlans((v) => !v)}>
             ${showAllPlans ? 'Show fewer' : `Show all ${data.plans.length} plans`}</button>` : null}
-          <div class="sr-only" aria-live="assertive">${planDrag.announce}</div>` : html`<button type="button" class="kd-dropzone" onClick=${() => planInput.current?.click()}>${kdIcon.upload}<span>Add floor plans or renderings</span><small>Images (JPG, PNG). Or drop them here.</small></button>`}
-          <p class="form-hint">A caption with Before, After, Existing, Proposed, Layout or Floor plan crops the bottom ${Math.round(KS.TITLE_BLOCK * 100)}% of the drawing on the site, so the family’s address in the title block never shows. Captions appear when someone opens a plan.</p>
+          <div class="sr-only" aria-live="assertive">${planDrag.announce}</div>` : html`<button type="button" class="kd-dropzone" onClick=${() => planInput.current?.click()}>${kdIcon.upload}<span>Add floor plans or design boards</span><small>Images (JPG, PNG). Or drop them here, or bring them in from JobTread.</small></button>`}
+          <p class="form-hint">A caption with Before, After, Existing, Proposed, Layout or Floor plan crops the bottom ${Math.round(KS.TITLE_BLOCK * 100)}% of the drawing on the site, so the family’s address in the title block never shows there. Each drawing says what was done about the address on it. Captions appear when someone opens a plan.</p>
         `)}
 
-        ${sec('transform', 'Before & after', 'Pairs for the comparison slider in the Transform chapter.',
-          html`<button type="button" class="btn btn-ghost btn-sm" onClick=${addPair}>${kdIcon.plus} Add a pair</button>`,
+        ${sec('transform', 'Before & after', revealed ? 'Pairs for the comparison slider in the Transform chapter.' : `Before photos for the reveal screen now (the first ${RD.BEFORE_SHOWN} play there); each gets its after once the room is done, for the Transform chapter.`,
+          html`${slug ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setDesign('import')}>Bring in from JobTread</button>` : null}
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${() => beforeInput.current?.click()}>${kdIcon.upload} Add before photos</button>
+            <input type="file" accept="image/*" multiple hidden ref=${beforeInput} onChange=${(e) => { addBefores([...e.target.files]); e.target.value = ''; }} />
+            <button type="button" class="btn btn-ghost btn-sm" onClick=${addPair}>${kdIcon.plus} Add a pair</button>`,
           html`
+          ${!revealed ? html`<p class="form-hint kd-design-short">${data.publishStatus === 'draft' ? `Like the drawings, they show nowhere while ${kdPoss(data.name || 'this kid')} profile is hidden.` : `They stay off ${kdPoss(data.name || 'this kid')} page until the reveal, and play on the reveal screen with the drawings (see Design plans).`}</p>` : null}
           ${data.beforeAfterPhotos.length ? html`<ol class="kd-pairs">
             ${data.beforeAfterPhotos.map((pair, i) => {
               const done = pair.before && pair.after && !kdLocal(pair.before) && !kdLocal(pair.after);
+              const onScreen = !!pair.before && data.beforeAfterPhotos.filter((x) => x.before).indexOf(pair) < RD.BEFORE_SHOWN;
               const side = (which) => {
                 const url = pair[which];
                 const busy = uploads[`${pair._key}:${which}`];
+                // A before photo waits for its after until the room is done
+                const waits = which === 'after' && !url && !!pair.before && !revealed;
                 return html`<div class="kd-pair__side">
                   <span class="kd-pair__label">${which === 'before' ? 'Before' : 'After'}</span>
                   ${url ? html`<div class="kd-pair__img"><img src=${kdImg(url, 'w=600,q=80')} alt="" onError=${() => markBroken(url)} />${broken.has(url) ? html`<span class="kd-tile__broken">${kdIcon.alert} Missing</span>` : null}${busy ? html`<span class="kd-tile__busy"><span class="spinner" /></span>` : null}
                       <button type="button" class="kd-x kd-x--on-img" aria-label=${`Remove the ${which} photo`} onClick=${() => setPair(pair._key, { [which]: '' })}>${kdIcon.x}</button></div>`
-                    : html`<label class="kd-pair__empty">
-                        ${kdIcon.upload}<span>Upload</span>
-                        <input type="file" accept="image/*" class="sr-only" onChange=${(e) => { uploadPairSide(pair._key, which, e.target.files[0]); e.target.value = ''; }} />
+                    : html`<label class=${`kd-pair__empty${waits ? ' kd-pair__empty--waits' : ''}`}>
+                        ${kdIcon.upload}<span>${waits ? 'Add the after once the room is done' : 'Upload'}</span>
+                        <input type="file" accept="image/*" class="sr-only" aria-label=${`Upload the ${which} photo${pair.room ? ` for ${pair.room}` : ` for pair ${i + 1}`}`} onChange=${(e) => { uploadPairSide(pair._key, which, e.target.files[0]); e.target.value = ''; }} />
                       </label>`}
-                  ${!url && photos.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPicker({ title: `Choose the ${which} photo`, current: '', onPick: (u) => setPair(pair._key, { [which]: u }) })}>From the gallery</button>` : null}
-                  <input class="form-input kd-small-input" value=${pair[`${which}Alt`] || ''} placeholder=${`${which === 'before' ? 'Before' : 'After'}: what it shows`} aria-label=${`Alt text, ${which} photo`}
-                    onInput=${(e) => setPair(pair._key, { [`${which}Alt`]: e.target.value })} />
+                  ${!url && !waits && photos.length ? html`<button type="button" class="btn btn-ghost btn-sm" onClick=${() => setPicker({ title: `Choose the ${which} photo`, current: '', onPick: (u) => setPair(pair._key, { [which]: u }) })}>From the gallery</button>` : null}
+                  ${waits ? null : html`<input class="form-input kd-small-input" value=${pair[`${which}Alt`] || ''} placeholder=${`${which === 'before' ? 'Before' : 'After'}: what it shows`} aria-label=${`Alt text, ${which} photo`}
+                    onInput=${(e) => setPair(pair._key, { [`${which}Alt`]: e.target.value })} />`}
                 </div>`;
               };
               return html`<li key=${pair._key} class="kd-pair">
@@ -12202,7 +12381,9 @@
                   ${side('before')}${side('after')}
                   ${done ? html`<div class="kd-pair__preview"><span class="kd-pair__label">On the page</span><${KdCompare} before=${pair.before} after=${pair.after} label=${pair.room} /></div>` : null}
                 </div>
-                ${!done ? html`<p class="form-hint kd-warn-text">Add both photos; a pair with one photo isn’t saved.</p>` : null}
+                ${!pair.before ? html`<p class="form-hint kd-warn-text">Add the before photo; a pair without one isn’t saved.</p>`
+                  : !revealed && !onScreen ? html`<p class="form-hint">Not on the reveal screen: the first ${RD.BEFORE_SHOWN} before photos play there. Move it up to show it.</p>`
+                  : revealed && !pair.after ? html`<p class="form-hint">The Transform chapter shows it once it has its after photo.</p>` : null}
               </li>`;
             })}
           </ol>` : html`<p class="kd-empty-line">No pairs yet. A before and an after of the same view makes the strongest slider.</p>`}

@@ -1,0 +1,130 @@
+---
+/**
+ * LiveDesign.astro — "The design" on a reveal's live page
+ * =======================================================
+ * The room as it was, the plan the designers drew and the look they chose,
+ * on the live page from an hour before the reveal, through it and after
+ * (Peter, Nov 9 2026: "it should remain on the page during the reveal too").
+ * It sits under the hero, never on the video. Empty and hidden in the built
+ * page: src/utils/live-design.ts fills it once /api/reveal-design says it's
+ * open, so nothing of the design is in the page before then.
+ *
+ * Any picture opens large in the viewer (a native <dialog>): drawings need
+ * room to be read. Arrows, swipe and Escape work there.
+ */
+---
+
+<section class="live-design" data-live-design aria-labelledby="ldz-title" hidden>
+  <div class="container">
+    <div class="ldz-head">
+      <p class="section-label section-label--yellow">The design</p>
+      <h2 id="ldz-title" class="ldz-title"><span data-ldz="name">The</span> room, <em>from plan to reveal</em></h2>
+      <p class="ldz-lead" data-ldz="lead">How the room looked, the plan the designers drew, and the look they chose. Watch the reveal to see it finished.</p>
+    </div>
+    <div class="ldz-parts" data-ldz="parts"></div>
+  </div>
+</section>
+
+<dialog class="ldv" data-ldz-viewer aria-labelledby="ldv-caption">
+  <div class="ldv__bar">
+    <p class="ldv__caption" id="ldv-caption"><span class="ldv__kicker" data-ldv="kicker"></span><span data-ldv="caption"></span></p>
+    <span class="ldv__count" data-ldv="count" aria-live="polite"></span>
+    <form method="dialog"><button class="ldv__btn" type="submit" aria-label="Close" data-ldv="close">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+    </button></form>
+  </div>
+  <div class="ldv__stage" data-ldv="stage">
+    <img class="ldv__img" data-ldv="img" alt="" />
+  </div>
+  <div class="ldv__nav">
+    <button class="ldv__btn" type="button" data-ldv="prev" aria-label="Previous picture">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+    </button>
+    <button class="ldv__btn" type="button" data-ldv="next" aria-label="Next picture">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+    </button>
+  </div>
+</dialog>
+
+<!-- Global: the cards are drawn by live-design.ts, so they never carry this component's scope. Every class is ldz-/ldv- -->
+<style is:global>
+  .live-design { background: #fff; border-top: 1px solid var(--c-border); padding: clamp(56px, 7vw, 96px) 0; scroll-margin-top: 80px; }
+  .live-design[hidden] { display: none; }
+  .ldz-head { max-width: 720px; margin-bottom: clamp(32px, 4vw, 48px); }
+  .ldz-title { font-size: clamp(1.9rem, 3.4vw, 2.75rem); letter-spacing: -0.02em; line-height: 1.15; margin: 0 0 14px; }
+  /* The site's yellow marker, as a flat bar behind the words */
+  .ldz-title em { position: relative; z-index: 0; font-style: italic; font-weight: 400; white-space: nowrap; padding: 0 0.05em; }
+  .ldz-title em::after { content: ''; position: absolute; z-index: -1; left: 0; right: 0; bottom: 0.06em; height: 0.42em; background: rgba(255, 218, 36, 0.42); }
+  .ldz-lead { color: var(--c-text-muted); line-height: 1.7; margin: 0; }
+
+  .ldz-parts { display: grid; gap: clamp(40px, 5vw, 64px); }
+  .ldz-part__head { display: flex; align-items: baseline; gap: 14px; margin: 0 0 18px; }
+  .ldz-part__title { font-family: var(--font-display); font-size: clamp(1.25rem, 2vw, 1.5rem); font-weight: 700; letter-spacing: -0.015em; margin: 0; }
+  .ldz-part__note { color: var(--c-text-muted); font-size: 15px; margin: 0; }
+
+  .ldz-grid { display: grid; gap: 16px; list-style: none; margin: 0; padding: 0; }
+  .ldz-grid--photos { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ldz-grid--photos[data-n='1'] { grid-template-columns: minmax(0, 1fr); max-width: 880px; }
+  .ldz-grid--photos[data-n='2'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ldz-grid--photos[data-n='4'] { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ldz-grid--plans { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .ldz-grid--boards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+  .ldz-grid--one { grid-template-columns: minmax(0, 1fr); max-width: 880px; }
+
+  .ldz-item {
+    position: relative; display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in;
+    border-radius: 18px; overflow: hidden; text-align: left; color: inherit; font: inherit;
+  }
+  .ldz-item:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 3px; box-shadow: 0 0 0 6px var(--c-dark); }
+  /* The picture's own box: it has its shape before the picture arrives (set from a tiny copy), so nothing jumps */
+  .ldz-pic { position: relative; display: block; width: 100%; aspect-ratio: 3 / 2; overflow: hidden; }
+  .ldz-pic img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; transition: transform 0.6s cubic-bezier(0.16, 1, 0.3, 1); }
+  .ldz-pic img:not([src]) { visibility: hidden; }
+  .ldz-item:hover .ldz-pic img { transform: scale(1.025); }
+  .ldz-grid--photos .ldz-item { background: var(--c-cream); }
+  .ldz-grid--photos .ldz-pic { aspect-ratio: 4 / 3; }
+  .ldz-grid--photos .ldz-pic img { object-fit: cover; }
+  /* Drawings and boards on paper: whole, never cropped by the card */
+  .ldz-paper { background: #fff; border: 1px solid var(--c-border); box-shadow: 0 18px 40px rgba(30, 31, 37, 0.07); padding: 60px clamp(14px, 2vw, 24px) clamp(14px, 2vw, 24px); }
+  .ldz-boards .ldz-paper { padding-top: clamp(14px, 2vw, 24px); }
+  .ldz-tag {
+    position: absolute; top: 14px; left: 14px; z-index: 1; display: inline-flex; align-items: center; gap: 8px;
+    background: var(--c-dark); color: #fff; border-radius: 999px; padding: 7px 14px; font-size: 13px; font-weight: 600; line-height: 1.2;
+  }
+  .ldz-boards .ldz-tag { position: static; margin: 12px 0 0; background: none; color: var(--c-text); padding: 0; font-size: 15px; }
+
+  @media (max-width: 768px) {
+    .ldz-grid--photos, .ldz-grid--photos[data-n='4'] { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .ldz-grid--plans, .ldz-grid--boards { grid-template-columns: minmax(0, 1fr); gap: 18px; }
+    .ldz-item { border-radius: 14px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ldz-item img { transition: none; }
+    .ldz-item:hover .ldz-pic img { transform: none; }
+  }
+
+  /* ── Viewer ── */
+  .ldv {
+    width: 100vw; height: 100dvh; max-width: none; max-height: none; margin: 0; padding: 0; border: 0;
+    background: #16171b; color: #fff; overflow: hidden; overscroll-behavior: contain;
+    display: grid; grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+  .ldv:not([open]) { display: none; }
+  .ldv::backdrop { background: rgba(22, 23, 27, 0.6); }
+  .ldv__bar { display: flex; align-items: center; gap: 16px; padding: max(14px, env(safe-area-inset-top)) clamp(14px, 3vw, 28px) 10px; }
+  .ldv__caption { flex: 1; min-width: 0; margin: 0; font-size: 16px; font-weight: 600; line-height: 1.35; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .ldv__kicker { margin-right: 10px; }
+  .ldv__kicker { color: var(--c-yellow); font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; }
+  .ldv__count { color: rgba(255, 255, 255, 0.7); font-size: 14px; font-variant-numeric: tabular-nums; }
+  /* The picture always fits the space between the bar and the arrows, whatever its shape and the screen's */
+  .ldv__stage { position: relative; min-height: 0; margin: 8px clamp(8px, 3vw, 28px); touch-action: pinch-zoom; }
+  .ldv__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+  .ldv__nav { display: flex; justify-content: center; gap: 16px; padding: 10px 0 max(18px, env(safe-area-inset-bottom)); }
+  .ldv__btn {
+    display: inline-grid; place-items: center; width: 48px; height: 48px; border-radius: 50%;
+    border: 1px solid rgba(255, 255, 255, 0.28); background: rgba(255, 255, 255, 0.08); color: #fff; cursor: pointer;
+  }
+  .ldv__btn:hover { background: rgba(255, 255, 255, 0.16); }
+  .ldv__btn:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 2px; }
+  .ldv__btn[hidden] { display: none; }
+</style>

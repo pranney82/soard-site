@@ -39,7 +39,10 @@ const kids = defineCollection({
     plans: z.array(z.object({
       url: link(),
       label: z.string().default(''),
-      type: z.enum(['as-built', 'proposed']),
+      // a design board has its own kind; older boards were stored as proposed
+      type: z.enum(['as-built', 'proposed', 'board']),
+      w: z.number().optional(),
+      h: z.number().optional(),
     })).default([]),
     photoCount: z.number().default(0),
     videoUrl: link().nullable().optional(),
@@ -68,7 +71,8 @@ const kids = defineCollection({
     publishStatus: z.enum(['published', 'draft']).default('published'),
     beforeAfterPhotos: z.array(z.object({
       before: z.string(),
-      after: z.string(),
+      // empty while the before photo waits for the room to be done
+      after: z.string().default(''),
       room: z.string().default(''),
       beforeAlt: z.string().default(''),
       afterAlt: z.string().default(''),

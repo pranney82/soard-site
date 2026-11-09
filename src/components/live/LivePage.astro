@@ -37,6 +37,7 @@ import LiveGive from './LiveGive.astro';
 import UpcomingReveals from './UpcomingReveals.astro';
 import HeroUpcoming from './HeroUpcoming.astro';
 import RevealInvite from './RevealInvite.astro';
+import LiveDesign from './LiveDesign.astro';
 import { upcomingAtBuild } from '../../utils/reveals-copy';
 
 interface KidLite {
@@ -88,6 +89,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   </div>
 </section>
 
+<!-- The room's design, from an hour before the reveal (empty until /api/reveal-design says so) -->
+<LiveDesign />
+
 <section class="live-msgs" id="messages" data-live-msgs hidden>
   <div class="container" data-slot="section"></div>
 </section>
@@ -98,7 +102,14 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       <div class="live-block" id="remind" data-live="remind-block" hidden>
         <p class="section-label" data-live="remind-label">Reminders</p>
         <h2 data-live="remind-heading">Never miss a reveal</h2>
-        <p class="live-block__lead" data-live="remind-lead" hidden>We'll email you about every reveal: when it gets a date, the day before, an hour before, when we go live, and when the replay is up. Nothing else, ever.</p>
+        <!-- Both promises sit in one spot and the longer one sets its height, so picking a choice below never moves the form -->
+        <p class="live-block__lead remind-lead" data-live="remind-lead" data-scope="all" hidden><span data-lead="all">We'll email you about every reveal: when it gets a date, the day before, an hour before, when we go live, and when the replay is up. Nothing else, ever.</span><span data-lead="one" aria-hidden="true"></span></p>
+        <!-- Which reveals: asked only when the block names a child. Every reveal is picked to start (it covers this child's too) -->
+        <fieldset class="remind-scope" data-live="remind-scope" hidden>
+          <legend class="sr-only">Which reveals to hear about</legend>
+          <label class="remind-opt"><input type="radio" name="remind-scope" value="all" checked /><span>Every reveal</span></label>
+          <label class="remind-opt"><input type="radio" name="remind-scope" value="one" /><span data-live="scope-one">Just this one</span></label>
+        </fieldset>
         <!-- method="post" and a button that's off until the script wires it: nothing ever sends the address in a link -->
         <form class="remind-form" data-live="form-email" method="post" novalidate hidden>
           <div class="remind-row">
@@ -163,6 +174,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
      What's coming up is in the hero on /live/ between reveals; otherwise it closes the page too. ── */
   .live-page { display: flex; flex-direction: column; }
   .live-page > .hero { order: 0; }
+  .live-page > :global(.live-design) { order: 1; }
   .live-page > .live-msgs { order: 1; }
   .live-page > .live-body { order: 4; }
   .live-page > :global(.live-next) { order: 5; }
@@ -230,7 +242,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     display: flex; gap: 14px; flex-wrap: wrap;
     opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
   }
-  .hero-ctas [hidden] { display: none !important; }
+  .hero-ctas [hidden], .hero-ctas [data-capped] { display: none !important; }
   .hero-share { display: inline-flex; align-items: center; gap: 8px; }
   .hero-share :global(svg) { width: 17px; height: 17px; }
   .hero-party { margin-bottom: 20px; }
@@ -269,6 +281,25 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   .live-more:hover svg { transform: translateX(3px); }
   .live-more svg { transition: transform var(--transition-fast); }
 
+  .remind-lead { display: grid; }
+  .remind-lead[hidden] { display: none; }
+  .remind-lead > span { grid-area: 1 / 1; }
+  .remind-lead[data-scope='all'] > [data-lead='one'], .remind-lead[data-scope='one'] > [data-lead='all'] { visibility: hidden; }
+  /* Every reveal | Just Dylan's: two pills on one line, the picked one filled */
+  .remind-scope { display: flex; flex-wrap: wrap; gap: 8px; border: 0; padding: 0; margin: -8px 0 16px; min-width: 0; }
+  .remind-scope[hidden] { display: none; }
+  .remind-opt { position: relative; display: inline-flex; }
+  .remind-opt input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+  .remind-opt span {
+    display: inline-flex; align-items: center; min-height: 40px; padding: 0 18px; border-radius: 999px;
+    border: 1.5px solid rgba(55, 58, 54, 0.38); background: #fff; color: var(--c-text);
+    font-weight: 600; font-size: 15px; white-space: nowrap; transition: background-color var(--transition-fast), border-color var(--transition-fast);
+  }
+  .remind-opt:hover span { border-color: var(--c-dark); }
+  .remind-opt input:checked + span { background: var(--c-dark); border-color: var(--c-dark); color: #fff; }
+  .remind-opt input:focus-visible + span { outline: 3px solid var(--c-yellow); outline-offset: 2px; box-shadow: 0 0 0 5px var(--c-dark); }
+  .remind-scope[aria-disabled='true'] .remind-opt input { cursor: default; }
+  .remind-scope[aria-disabled='true'] .remind-opt:not(:has(input:checked)) span { opacity: 0.45; }
   .remind-form { margin-bottom: 12px; }
   .remind-form[hidden] { display: none; }
   /* The address and its button share a line; with no room, the button takes its own, full width */
@@ -366,12 +397,27 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   import { createStage } from '../../utils/live-stage';
   import { createMessages } from '../../utils/live-messages';
   import { createGive } from '../../utils/live-give';
+  import { createLiveDesign } from '../../utils/live-design';
   import { cfRaw } from '../../utils/cf-image';
   import { readUpcoming, loadSignup, revealWhen, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
   import { heroRowsHtml, rowsSignature } from '../../utils/upcoming-rows';
 
-  /** The crew may start streaming up to 30 minutes early (runbook), so the starting-soon screen fills that window here too. */
-  const SLATE_LEAD_MS = 30 * 60 * 1000;
+  /** The starting-soon screen fills the frame for the last hour: it carries the room's design for people waiting (the crew may start streaming up to 30 minutes early, per the runbook) */
+  const SLATE_LEAD_MS = 60 * 60 * 1000;
+
+  /**
+   * The hero offers two things at most (Peter, Nov 9 2026: five was too many). Each moment lists its buttons in order of
+   * what matters most then; the first two that apply show, in that order, and the rest wait. During the watch party the
+   * message box is already in the hero, so "Leave a message" only applies around it.
+   */
+  const HERO_CTAS: Record<string, string[]> = {
+    idle: ['cta-remind', 'cta-calendar', 'cta-past', 'cta-share', 'cta-donate'],
+    upcoming: ['cta-remind', 'cta-calendar', 'cta-share', 'cta-donate'],
+    starting: ['cta-facebook', 'cta-messages', 'cta-donate', 'cta-share'],
+    live: ['cta-facebook', 'cta-messages', 'cta-donate', 'cta-share'],
+    replay: ['cta-facebook', 'cta-share', 'cta-donate', 'cta-messages'],
+  };
+  const HERO_CTA_MAX = 2;
 
   const client = getLiveClient();
 
@@ -406,7 +452,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     let last: LiveState | null = null;
     let lastMeta: { reminders: ReminderOptions | null } = { reminders: null };
     let remindKid = ''; // who a sign-up here is for; empty means every reveal
-    let remindShown = ''; // the name the form says it's for (empty: every reveal)
+    let remindNamed = ''; // the child the block names (its slug), whichever reveals they pick
+    let remindShown = ''; // that child's name (empty: the block names nobody, and signs up for every reveal)
     const upNextBand = () => document.getElementById('up-next');
     // Whether the Coming up band is on screen (see the .live-next rule): the page going idle doesn't pull it from under someone
     const nextWrap = document.querySelector<HTMLElement>('.live-next');
@@ -441,6 +488,10 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       ? createMessages({ client, panel, heroSlot, section, sectionSlot, cta: q('cta-messages') })
       : null;
 
+    // ── The room's design, from an hour before the reveal (it asks for whichever kid render() is showing) ──
+    const designEl = document.querySelector<HTMLElement>('[data-live-design]');
+    const design = designEl ? createLiveDesign(designEl) : null;
+
     // ── Giving without leaving the reveal ───────────────────────────
     const giveEl = document.querySelector<HTMLElement>('[data-give]');
     const give = giveEl ? createGive(giveEl, { client, stage }) : null;
@@ -452,6 +503,25 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     };
     q('cta-donate')?.addEventListener('click', giveFrom('hero'));
     bq('cta-donate-side')?.addEventListener('click', giveFrom('side'));
+
+    // ── Two hero buttons at most (HERO_CTAS) ────────────────────────
+    // Each button still says on its own whether it applies (hidden); this picks the first two that do for the moment
+    // and holds the rest back with data-capped. The message box shows or hides its button on its own schedule, so a
+    // change to any button's hidden re-picks.
+    const ctaBox = hero.querySelector<HTMLElement>('.hero-ctas');
+    function capCtas() {
+      if (!ctaBox) return;
+      const order = HERO_CTAS[display] || HERO_CTAS.idle;
+      const all = [...ctaBox.querySelectorAll<HTMLElement>('[data-live^="cta-"]')];
+      const picked = order.map((k) => all.find((el) => el.dataset.live === k)).filter((el): el is HTMLElement => !!el && !el.hidden).slice(0, HERO_CTA_MAX);
+      for (const el of all) {
+        const at = picked.indexOf(el);
+        el.toggleAttribute('data-capped', at < 0);
+        el.style.order = at < 0 ? '' : String(at);
+      }
+    }
+    const ctaWatch = ctaBox ? new MutationObserver(capCtas) : null;
+    ctaWatch?.observe(ctaBox!, { subtree: true, attributes: true, attributeFilter: ['hidden'] });
 
     // ── /live/ follows the current kid ──────────────────────────────
     function setTitle(kidName: string | null, view: string) {
@@ -574,6 +644,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       // Starting or live, the video is the only thing: the application bar is asked to step aside
       if (display === 'starting' || display === 'live') document.dispatchEvent(new CustomEvent('apply-bar:step-aside'));
       follow(s, view);
+      design?.setKid(kidSlug, display);
       // "Coming up" leaves out the reveal this page is showing
       const upNext = upNextBand();
       const showing = view !== 'idle' ? kidSlug : '';
@@ -640,6 +711,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       setHidden(q('cta-share'), view === 'idle');
       const fbCta = q<HTMLAnchorElement>('cta-facebook');
       if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !((view === 'live' || view === 'replay') && !hasPlayer)); }
+      capCtas();
 
       stage.update({
         mode: display as 'idle' | 'upcoming' | 'starting' | 'live' | 'replay',
@@ -677,18 +749,34 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       // A finished every-reveal sign-up keeps saying so: it already covers whoever is next.
       // (Read once: the heading, label, promise and who it signs up for all hold, or all move, together)
       const typing = !!remindForm?.inUse();
-      if (remindForm?.coversAll()) {
+      if (remindForm?.coversAll() && remindForm.signedHere() && nextKid === remindNamed) {
+        // Sent from here with "Every reveal" picked: it stays just as it was sent, heading and choice and all (nothing
+        // jumps); it covers whoever comes next, and says so once the page moves on to another reveal
+      } else if (remindForm?.coversAll()) {
         // Signed up for every reveal (here, or in the band's card): it says so, whoever is next
-        remindKid = '';
+        remindNamed = '';
         remindShown = '';
-      } else if (nextKid === remindKid || !typing) {
-        // A finished sign-up for one child opens again for the next
-        if (nextKid !== remindKid && emailForm?.classList.contains('is-done')) remindForm?.reset();
-        remindKid = nextKid;
+      } else if (nextKid === remindNamed || !typing) {
+        if (nextKid !== remindNamed) {
+          // A finished sign-up for one child opens again for the next, and every reveal is picked again
+          if (emailForm?.classList.contains('is-done')) remindForm?.reset();
+          if (remindNamed) setScope('all');
+        }
+        remindNamed = nextKid;
         remindShown = remindName;
       }
+      // Every reveal unless they pick just this child's (Peter, Nov 9 2026); a block that names nobody is every reveal's
+      const scopeBox = bq<HTMLElement>('remind-scope');
+      if (scopeBox) {
+        scopeBox.hidden = !remindShown || !emailForm || emailForm.hidden;
+        // Sent, or sending: the choice it was sent with stays, and can't be changed under it
+        scopeBox.setAttribute('aria-disabled', String(!!emailForm && (emailForm.classList.contains('is-busy') || emailForm.classList.contains('is-done'))));
+      }
+      const scopeOne = bq<HTMLElement>('scope-one');
+      if (scopeOne && remindShown) scopeOne.textContent = `Just ${remindShown}'s`;
+      remindKid = remindShown && scopeNow() === 'one' ? remindNamed : '';
       const emailLabel = bq<HTMLElement>('remind-email-label');
-      if (emailLabel) emailLabel.textContent = remindShown ? `Email address for ${remindShown}'s reveal` : 'Email address for every reveal';
+      if (emailLabel) emailLabel.textContent = remindKid ? `Email address for ${remindShown}'s reveal` : 'Email address for every reveal';
       // This form already signs up for every reveal: the Coming up band leaves its email card out
       upNextBand()?.toggleAttribute('data-remind-here', !!emailForm && !emailForm.hidden && !remindKid);
       const heading = remindShown
@@ -698,9 +786,18 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       if (rh && (!rh.textContent || !typing)) rh.textContent = heading;
       if (lead) {
         lead.hidden = !remindersOn;
-        if (!typing) lead.textContent = remindPromise(meta.reminders?.hours, remindShown
-          ? { about: `${remindShown}'s reveal`, dated: !!planned, left: planned ? Date.parse(planned) - Date.now() : Infinity }
-          : { about: 'every reveal' });
+        // Both promises are written, and the one for the choice shows: the block keeps the taller one's height
+        const scope = remindKid ? 'one' : 'all';
+        lead.dataset.scope = scope;
+        const [forAll, forOne] = [lead.querySelector<HTMLElement>('[data-lead="all"]'), lead.querySelector<HTMLElement>('[data-lead="one"]')];
+        forAll?.setAttribute('aria-hidden', String(scope !== 'all'));
+        forOne?.setAttribute('aria-hidden', String(scope !== 'one'));
+        if (!typing) {
+          if (forAll) forAll.textContent = remindPromise(meta.reminders?.hours, { about: remindShown ? `every reveal, ${remindShown}'s included` : 'every reveal' });
+          if (forOne) forOne.textContent = remindShown
+            ? remindPromise(meta.reminders?.hours, { about: `${remindShown}'s reveal`, dated: !!planned, left: planned ? Date.parse(planned) - Date.now() : Infinity })
+            : '';
+        }
       }
 
       rendered = true;
@@ -804,6 +901,26 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     // A sign-up elsewhere on the page that covers this form shows here at once, heading and all (not on the next redraw)
     emailForm?.addEventListener('remind-done', () => { if (rendered && alive) render(last, lastMeta); });
 
+    // Every reveal or just this child's: read at the moment of sending (remind-signup asks kid() then)
+    const scopeInputs = [...(body?.querySelectorAll<HTMLInputElement>('input[name="remind-scope"]') || [])];
+    function scopeNow(): 'all' | 'one' { return scopeInputs.find((i) => i.checked)?.value === 'one' ? 'one' : 'all'; }
+    let scopeWas: 'all' | 'one' = 'all';
+    function setScope(v: 'all' | 'one') { for (const i of scopeInputs) i.checked = i.value === v; scopeWas = v; }
+    setScope(scopeNow());
+    const onScope = () => {
+      // While it sends, or once it's sent, the choice it went with stands
+      if (emailForm && (emailForm.classList.contains('is-busy') || emailForm.classList.contains('is-done'))) { setScope(scopeWas); return; }
+      scopeWas = scopeNow();
+      if (rendered && alive) render(last, lastMeta);
+    };
+    for (const i of scopeInputs) i.addEventListener('change', onScope);
+    // Editing the address after "Sent" opens the form again: the choice opens with it at once
+    const onTyped = () => {
+      const box = bq<HTMLElement>('remind-scope');
+      if (box && emailForm && !emailForm.classList.contains('is-busy') && !emailForm.classList.contains('is-done')) box.setAttribute('aria-disabled', 'false');
+    };
+    emailForm?.addEventListener('input', onTyped);
+
     // Browser push
     const pushBtn = bq<HTMLButtonElement>('push-btn');
     pushBtn?.addEventListener('click', async () => {
@@ -853,6 +970,10 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       remindForm?.destroy();
       clearTimeout(fallback);
       offUnreachable();
+      ctaWatch?.disconnect();
+      design?.destroy();
+      for (const i of scopeInputs) i.removeEventListener('change', onScope);
+      emailForm?.removeEventListener('input', onTyped);
       removeEventListener('pagehide', saveSpot);
       for (const type of ['wheel', 'touchstart', 'keydown']) removeEventListener(type, gaveUp);
       bandSeen?.disconnect();

@@ -198,7 +198,11 @@ const hasRichContent = kid.bio || galleryPhotos.length > 1 || hasVideo;
 const isThinPage = !kid.bio && galleryPhotos.length <= 1 && !hasVideo;
 
 // ── Plans ─────────────────────────────────
-const plans = kid.plans || [];
+// The design stays off the page until the room is revealed: it first shows on the reveal's own page and
+// starting-soon screen, an hour before (public/admin/reveal-design.js). kid-preview.js keeps the same rule.
+// The admin Preview's template pages (src/pages/admin/kid-template/) pass showDesign: they carry every section to copy.
+const revealed = Astro.props.showDesign === true || kid.status === 'completed';
+const plans = revealed ? kid.plans || [] : [];
 const hasPlans = plans.length > 0;
 
 /* ── Floor plans: crop the designer's title block ──
@@ -230,7 +234,8 @@ function planDims(p: any): [number, number] {
 }
 
 // ── Before/After photos ───────────────────
-const beforeAfterPhotos = kid.beforeAfterPhotos || [];
+// Whole pairs only: a before photo can wait on the profile for its after
+const beforeAfterPhotos = revealed ? (kid.beforeAfterPhotos || []).filter((p: any) => p?.before && p?.after) : [];
 const hasBeforeAfter = beforeAfterPhotos.length > 0;
 
 // ── Gallery — masonry with hero treatment ──

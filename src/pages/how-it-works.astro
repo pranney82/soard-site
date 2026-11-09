@@ -41,7 +41,8 @@ const pageUrl = `${SITE}/how-it-works/`;
 
 /* ── Featured project ── */
 const allKids = await getPublishedKids();
-const hasCaseFile = (k: any) => (k.data.plans?.length || 0) > 0 && (k.data.streamVideoId || k.data.videoUrl);
+// A revealed room only: a design waits for its reveal (public/admin/reveal-design.js)
+const hasCaseFile = (k: any) => k.data.status === 'completed' && (k.data.plans?.length || 0) > 0 && (k.data.streamVideoId || k.data.videoUrl);
 const pinnedSlug = (siteSettings as any).howItWorks?.kidSlug || 'amari';
 const kid =
   allKids.find(k => k.data.slug === pinnedSlug && hasCaseFile(k)) ||
@@ -114,7 +115,8 @@ const streamId = k.streamVideoId || null;
 const ytMatch = (k.videoUrl || '').match(/(?:youtu\.be\/|youtube\.com\/(?:watch\?v=|embed\/|shorts\/))([a-zA-Z0-9_-]{11})/);
 const ytId = !streamId && ytMatch ? ytMatch[1] : null;
 const hasVideo = !!(streamId || ytId);
-const pair = (k.beforeAfterPhotos || [])[0] || null;
+// Whole pairs only (a before photo can wait on the profile for its after)
+const pair = (k.beforeAfterPhotos || []).find((p: any) => p?.before && p?.after) || null;
 
 /* ── The application photo ──
    The application chapter shows the space as the family lived in it: a survey

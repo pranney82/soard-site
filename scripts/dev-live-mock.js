@@ -22,6 +22,13 @@
  * kids: &reveals=demo (one confirmed, the rest tentative; the default),
  * &reveals=tentative (none confirmed) or &reveals=none (nothing coming up).
  *
+ * Also answers /api/reveal-design (the kid's design for the starting-soon
+ * screen and the live page) by the real rules against the fake broadcast:
+ * &design=auto (the default: open from an hour before the fake reveal, so
+ * state=starting opens it and state=upcoming doesn't), &design=open or
+ * &design=closed to force it, or &design=sample to open it with a sample
+ * design (Adrian's 2025 plans, boards and site photos) for a kid with none yet.
+ *
  * Also answers /api/live-messages from memory (a few sample notes, and
  * anything you post that has no link in it), so the messages wall works in
  * dev, and /api/live-replay with the &reveal moment. Reactions animate locally only: there is no
@@ -32,6 +39,7 @@
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
+import { revealSlides, designWindow } from '../public/admin/reveal-design.js';
 
 const KIDS_DIR = new URL('../src/content/kids/', import.meta.url);
 const STATES = ['live', 'upcoming', 'starting', 'replay', 'off'];
@@ -60,6 +68,25 @@ let videoSrc = null;
 let orientation = 'portrait';
 let revealAt = null;
 let revealsMode = 'demo';
+let designMode = 'auto';
+
+/** A kid's profile with a sample design: Adrian's 2025 drawings and boards, his site photos as the before photos */
+function withSampleDesign(kid) {
+  const adrian = readKid('adrian-2025');
+  if (!adrian) return kid;
+  const plans = adrian.plans || [];
+  const photos = plans.filter((p) => /companycam/i.test(p.label || '')).slice(0, 5);
+  const pick = (re) => plans.find((p) => re.test(p.label || ''));
+  return {
+    ...kid,
+    beforeAfterPhotos: photos.map((p) => ({ before: p.url, after: '', room: '', beforeAlt: '', afterAlt: '' })),
+    plans: [
+      { ...pick(/^before$/i), type: 'as-built', label: 'Existing floor plan', addressCheck: 'checked' },
+      { ...pick(/^after$/i), type: 'proposed', label: 'Proposed floor plan', addressCheck: 'checked' },
+      ...plans.filter((p) => /design board/i.test(p.label || '')).map((p) => ({ ...p, type: 'board', label: p.label.replace(/^Adrian 2025_/, '') })),
+    ].filter((p) => p.url),
+  };
+}
 
 function readKid(slug) {
   try { return JSON.parse(readFileSync(new URL(`${slug}.json`, KIDS_DIR), 'utf8')); } catch { return null; }
@@ -154,6 +181,7 @@ function handler(logger) {
       if (['portrait', 'landscape'].includes(url.searchParams.get('o'))) orientation = url.searchParams.get('o');
       if (url.searchParams.has('reveal')) revealAt = Number(url.searchParams.get('reveal')) || null;
       if (['demo', 'tentative', 'none'].includes(url.searchParams.get('reveals'))) revealsMode = url.searchParams.get('reveals');
+      if (['auto', 'open', 'closed', 'sample'].includes(url.searchParams.get('design'))) designMode = url.searchParams.get('design');
       logger.info(`live banner mock: ${mode}${mode !== 'off' ? ` (${(kidSlug && readKid(kidSlug)?.name) || defaultKid()?.name})` : ''}`);
       res.writeHead(302, { Location: '/' });
       return res.end();
@@ -173,6 +201,19 @@ function handler(logger) {
     if (url.pathname === '/api/reveals' && req.method === 'GET') {
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       return res.end(JSON.stringify(buildReveals()));
+    }
+
+    if (url.pathname === '/api/reveal-design' && req.method === 'GET') {
+      const json = (status, obj) => { res.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
+      const kid = readKid(String(url.searchParams.get('kid') || '').replace(/[^a-z0-9-]/gi, ''));
+      if (!kid || kid.publishStatus === 'draft') return json(404, { error: 'No such reveal' });
+      const shown = designMode === 'sample' ? withSampleDesign(kid) : kid;
+      const state = buildState(url.origin);
+      const win = designMode === 'open' || designMode === 'sample' ? { open: true, opensAt: null }
+        : designMode === 'closed' ? { open: false, opensAt: null }
+        : designWindow({ kid: shown, broadcast: { kidSlug: state.kidSlug, phase: state.phase, scheduledAt: state.scheduledAt } });
+      const after = win.after ?? (state.kidSlug === kid.slug && ['live', 'ending', 'replay'].includes(state.phase));
+      return json(200, win.open ? { open: true, after, name: kid.name, slides: revealSlides(shown, { after }) } : { open: false, opensAt: win.opensAt });
     }
 
     if (url.pathname === '/api/live-replay') {

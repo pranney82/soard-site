@@ -87,6 +87,11 @@ const SIGNUP_ON = { email: true, hours: [24, 1] };
  * signup: the every-reveal card's settings, as /api/reveals answers them. broadcast: 'fail' answers /api/broadcast
  * with a 500. turnstile: a site key turns the quick check on; checkSays: what the stand-in check frame posts up.
  */
+// The page's own form starts on every reveal (Peter, Nov 9 2026: "why not default to them all"); picking "Just <name>'s"
+// makes it that child's, and brings the band's every-reveal card back
+const pickJust = (page) => page.evaluate(() => { const i = document.querySelector('input[name="remind-scope"][value="one"]'); if (i && !i.checked) i.click(); return !!i?.checked; }).then((on) => wait(300).then(() => on));
+const visibleLead = (page) => page.$eval('[data-live="remind-lead"]', (l) => (l.querySelector('[data-lead]:not([aria-hidden="true"])') || l).textContent);
+
 async function open(path, { width = 1440, height = 900, upcoming = UPCOMING, ua = null, reduced = false, state = IDLE, live = null, reminders = REMINDERS_ON, signup = SIGNUP_ON, broadcast = 'ok', turnstile = null, config = 'ok', checkSays = [], checkPages = null, posts = [], answer = null, tz = 'America/New_York', reveals = 'ok', revealsDelay = 0 } = {}) {
   const page = await browser.newPage();
   // Times show in the visitor's own zone: pinned, so the checks don't depend on this machine's
@@ -679,6 +684,7 @@ for (const width of [1440, 820, 390]) {
     {
       const live = { state: scheduled };
       const { page } = await open('/live/', { live });
+      await pickJust(page);
       await page.evaluate(() => document.querySelector('#up-next [data-upn-mail]').scrollIntoView({ block: 'center' }));
       await page.focus('#up-next-email');
       await page.keyboard.type('fan@exa');
@@ -826,6 +832,7 @@ for (const width of [1440, 820, 390]) {
       {
         const live = { state: scheduled };
         const { page } = await open('/live/', { width, height, live });
+        await pickJust(page);
         await page.evaluate(() => document.querySelector('#up-next [data-upn-mail]').scrollIntoView({ block: 'center' }));
         await page.focus('#up-next-email');
         await page.keyboard.type('fan@exa');
@@ -858,7 +865,7 @@ for (const width of [1440, 820, 390]) {
       const soon = { ...scheduled, scheduledAt: new Date(Date.now() + 40 * 60e3).toISOString() };
       const live = { state: IDLE };
       const { page } = await open('/live/', { live });
-      const leadNow = () => page.$eval('[data-live="remind-lead"]', (l) => l.textContent);
+      const leadNow = () => visibleLead(page);
       const every = await leadNow();
       await page.focus('#remind-email');
       await page.keyboard.type('fan@');
@@ -869,8 +876,11 @@ for (const width of [1440, 820, 390]) {
       await page.$eval('#remind-email', (i) => { i.value = ''; i.blur(); });
       await page.evaluate(() => document.body.focus());
       await refresh(page);
+      const colinAll = await leadNow();
+      ok(colinAll.startsWith("We'll email you about every reveal, Colin's included: when it gets a date"), '/live/: then the form names Colin and starts on every reveal, Colin\'s included', colinAll);
+      await pickJust(page);
       const colin = await leadNow();
-      ok(colin === "We'll email you about Colin's reveal: when we go live and when the replay is up. Nothing else, ever.", '/live/: then the promise names Colin, with only what can still be sent', colin);
+      ok(colin === "We'll email you about Colin's reveal: when we go live and when the replay is up. Nothing else, ever.", '/live/: "Just Colin\'s" names Colin in the promise, with only what can still be sent', colin);
       // Its button's keyboard ring shows on the cream page
       await page.focus('#remind-email');
       await page.keyboard.press('Tab');
@@ -1052,6 +1062,7 @@ for (const width of [1440, 820, 390]) {
     const scheduled = { ...IDLE, phase: 'scheduled', upcoming: true, id: 'live-1', kidSlug: 'colin', kidName: 'Colin', title: "Colin's room reveal", scheduledAt: confirmedAt.toISOString(), url: `${SITE}/live/colin/`, liveUrl: `${SITE}/live/colin/` };
     const live = { state: scheduled };
     const { page } = await open('/live/', { live });
+    await pickJust(page);
     await page.type('#up-next-email', 'fan@example.com');
     await page.click('#up-next [data-upn-mail] button[type="submit"]');
     await page.waitForSelector('#up-next [data-upn-mail-form].is-done', { timeout: 5000 }).catch(() => {});
@@ -1072,6 +1083,7 @@ for (const width of [1440, 820, 390]) {
     const scheduled = { ...IDLE, phase: 'scheduled', upcoming: true, id: 'live-1', kidSlug: 'colin', kidName: 'Colin', title: "Colin's room reveal", scheduledAt: confirmedAt.toISOString(), url: `${SITE}/live/colin/`, liveUrl: `${SITE}/live/colin/` };
     const signup = { ...SIGNUP_ON };
     const { page } = await open('/live/', { state: scheduled, signup });
+    await pickJust(page);
     await page.focus('#up-next-email');
     await page.keyboard.type('fan@exa');
     signup.email = false;
@@ -1175,6 +1187,46 @@ for (const width of [1440, 820, 390]) {
     await page.close();
   }
 
+  // /live/: the page form signs up for every reveal unless "Just Colin's" is picked, and the choice holds once sent
+  {
+    const scheduled = { ...IDLE, phase: 'scheduled', upcoming: true, id: 'live-1', kidSlug: 'colin', kidName: 'Colin', title: "Colin's room reveal", scheduledAt: confirmedAt.toISOString(), url: `${SITE}/live/colin/`, liveUrl: `${SITE}/live/colin/` };
+    for (const just of [false, true]) {
+      const posts = [];
+      const { page } = await open('/live/', { state: scheduled, posts });
+      if (just) await pickJust(page);
+      const y0 = await page.$eval('#remind-email', (i) => Math.round(i.getBoundingClientRect().top));
+      await page.type('#remind-email', 'fan@example.com');
+      await page.keyboard.press('Enter');
+      await page.waitForSelector('[data-live="form-email"].is-done', { timeout: 5000 }).catch(() => {});
+      ok(posts.length === 1 && (just ? posts[0].kidSlug === 'colin' : !posts[0].kidSlug), just ? '/live/: "Just Colin\'s" signs up for Colin\'s reveal' : '/live/: left as it is, the page form signs up for every reveal', JSON.stringify(posts));
+      // Sent: the other choice can't change what was sent
+      await page.evaluate((j) => document.querySelector(`input[name="remind-scope"][value="${j ? 'all' : 'one'}"]`).click(), just);
+      await wait(300);
+      const held = await page.evaluate(() => ({ picked: document.querySelector('input[name="remind-scope"]:checked')?.value, label: document.querySelector('[data-live="remind-email-label"]').textContent, off: document.querySelector('[data-live="remind-scope"]').getAttribute('aria-disabled') }));
+      ok(held.off === 'true' && (just ? held.picked === 'one' && /Colin/.test(held.label) : held.picked === 'all' && /every reveal/.test(held.label)), '/live/: once sent, the choice it went with stays', JSON.stringify(held));
+      await page.close();
+    }
+    // Switching the choice moves nothing on the page (both promises keep one height)
+    for (const [width, height] of [[1440, 900], [390, 844]]) {
+      const { page } = await open('/live/', { state: scheduled, width, height });
+      const at = () => page.$eval('#remind-email', (i) => Math.round(i.getBoundingClientRect().top + scrollY));
+      const y0 = await at();
+      await pickJust(page);
+      const y1 = await at();
+      await page.evaluate(() => document.querySelector('input[name="remind-scope"][value="all"]').click());
+      await wait(300);
+      const y2 = await at();
+      ok(y0 === y1 && y1 === y2, `/live/ ${width}px: picking every reveal or just Colin's never moves the form`, JSON.stringify({ y0, y1, y2 }));
+      // Keyboard: the choice is two radios in one group, arrow keys move between them
+      await page.focus('input[name="remind-scope"][value="all"]');
+      await page.keyboard.press('ArrowRight');
+      await wait(300);
+      const k = await page.evaluate(() => ({ picked: document.querySelector('input[name="remind-scope"]:checked')?.value, label: document.querySelector('[data-live="remind-email-label"]').textContent }));
+      ok(k.picked === 'one' && k.label === "Email address for Colin's reveal", `/live/ ${width}px: arrow keys pick between the two, and the form follows`, JSON.stringify(k));
+      await page.close();
+    }
+  }
+
   // /live/: a one-child "Sent", then that child goes live: heading, label and who it signs up for move together
   {
     const scheduled = { ...IDLE, phase: 'scheduled', upcoming: true, id: 'live-1', kidSlug: 'colin', kidName: 'Colin', title: "Colin's room reveal", scheduledAt: confirmedAt.toISOString(), url: `${SITE}/live/colin/`, liveUrl: `${SITE}/live/colin/` };
@@ -1182,6 +1234,8 @@ for (const width of [1440, 820, 390]) {
     const posts = [];
     const live = { state: scheduled };
     const { page } = await open('/live/', { live, posts });
+    // (A one-child sign-up: "Just Colin's")
+    await pickJust(page);
     await page.type('#remind-email', 'fan@example.com');
     await page.keyboard.press('Enter');
     await page.waitForSelector('[data-live="form-email"].is-done', { timeout: 5000 }).catch(() => {});
@@ -1204,6 +1258,7 @@ for (const width of [1440, 820, 390]) {
     const replay = { ...IDLE, phase: 'replay', replay: true, id: 'live-0', kidSlug: 'abby', kidName: 'Abby', title: "Abby's room reveal", endedAt: day(-1).toISOString(), replayUntil: day(2).toISOString(), player: { kind: 'replay', uid: 'vid0', customerCode: 'x' } };
     const live = { state: scheduled };
     const { page } = await open('/live/', { live });
+    await pickJust(page);
     await page.type('#up-next-email', 'fan@example.com');
     await page.click('#up-next [data-upn-mail] button[type="submit"]');
     await page.waitForSelector('#up-next [data-upn-mail-form].is-done', { timeout: 5000 }).catch(() => {});
@@ -1309,6 +1364,7 @@ for (const width of [1440, 820, 390]) {
     const scheduled = { ...IDLE, phase: 'scheduled', upcoming: true, id: 'live-1', kidSlug: 'colin', kidName: 'Colin', title: "Colin's room reveal", scheduledAt: confirmedAt.toISOString(), url: `${SITE}/live/colin/`, liveUrl: `${SITE}/live/colin/` };
     const live = { state: scheduled };
     const { page } = await open('/live/', { live, width: 1366, height: 657 });
+    await pickJust(page);
     await page.evaluate(() => document.querySelector('#up-next [data-upn-mail]').scrollIntoView({ block: 'center' }));
     await page.type('#up-next-email', 'fan@example.com');
     await page.click('#up-next [data-upn-mail] button[type="submit"]');
@@ -1340,6 +1396,7 @@ for (const width of [1440, 820, 390]) {
     for (const [width, height] of [[390, 844], [1366, 657]]) {
       const live = { state: scheduled };
       const { page } = await open('/live/', { live, width, height });
+      await pickJust(page);
       await page.evaluate(() => document.querySelector('#up-next [data-upn-mail]').scrollIntoView({ block: 'center' }));
       await wait(400);
       const y0 = await page.$eval('#up-next [data-upn-cal] .upn-cal__btn', (b) => Math.round(b.getBoundingClientRect().top));
@@ -1365,6 +1422,7 @@ for (const width of [1440, 820, 390]) {
     {
       const live = { state: scheduled };
       const { page } = await open('/live/', { live });
+      await pickJust(page);
       await page.type('#up-next-email', 'fan@example.com');
       await page.click('#up-next [data-upn-mail] button[type="submit"]');
       await page.waitForSelector('#up-next [data-upn-mail-form].is-done', { timeout: 5000 }).catch(() => {});
@@ -1391,9 +1449,18 @@ for (const width of [1440, 820, 390]) {
     const scheduled = { ...IDLE, phase: 'scheduled', upcoming: true, id: 'live-1', kidSlug: 'colin', kidName: 'Colin', title: "Colin's room reveal", scheduledAt: confirmedAt.toISOString(), url: `${SITE}/live/colin/`, liveUrl: `${SITE}/live/colin/` };
     const { page, errors } = await open('/live/', { state: scheduled });
     await wait(400);
-    const c = await card(page, '#up-next');
+    const c0 = await card(page, '#up-next');
     const heading = await page.$eval('[data-live="remind-heading"]', (h) => h.textContent);
-    ok(heading === "Don't miss Colin's reveal" && c.shown, '/live/ scheduled: the page form is Colin\'s, the band offers every reveal', JSON.stringify({ heading, c }));
+    const label0 = await page.$eval('[data-live="remind-email-label"]', (l) => l.textContent);
+    const scope0 = await page.evaluate(() => [...document.querySelectorAll('[data-live="remind-scope"] label')].map((l) => l.textContent.trim() + (l.querySelector('input').checked ? '*' : '')));
+    ok(heading === "Don't miss Colin's reveal" && label0 === 'Email address for every reveal' && !c0.shown && scope0.join('|') === "Every reveal*|Just Colin's",
+      '/live/ scheduled: the page form names Colin and starts on every reveal, so the band leaves its card out', JSON.stringify({ heading, label0, scope0, c0 }));
+    const ctas = await page.evaluate(() => [...document.querySelectorAll('.hero-ctas [data-live^="cta-"]')].filter((e) => getComputedStyle(e).display !== 'none').map((e) => e.textContent.trim()));
+    ok(ctas.join('|') === 'Remind me|Add to calendar', '/live/ scheduled: two buttons in the hero, Remind me first', ctas.join(' | '));
+    await pickJust(page);
+    const c = await card(page, '#up-next');
+    const label = await page.$eval('[data-live="remind-email-label"]', (l) => l.textContent);
+    ok(label === "Email address for Colin's reveal" && c.shown, '/live/ scheduled: "Just Colin\'s" makes the page form Colin\'s, and the band offers every reveal', JSON.stringify({ label, c }));
     ok(await page.evaluate(() => new Set([...document.querySelectorAll('input[id]')].map((i) => i.id)).size === document.querySelectorAll('input[id]').length), '/live/: no repeated ids');
     ok(errors.length === 0, '/live/ scheduled: no console errors', errors.join(' | '));
     await page.close();

@@ -243,7 +243,8 @@ try {
       // templateDonors: rebuild each variant inside the next variant's template page
       const basePath = cfg.templateDonors ? `/admin/${type}-template/${variants[(i + 1) % variants.length][0]}/` : undefined;
       const r = await compare({ type, item: f.item, realPath: `/admin/${type}-template/${v}/`, basePath, donors: donors.map((x) => x.slug),
-        hasOwnPage: true, region: cfg.region, skip: cfg.skip, opts: { measure: false, video: f.video, collection: flat(f.collection), partners: flat(f.partners) } });
+        // (showDesign: the kid template pages carry the design whatever the made-up kid's status, as they pass it to the page)
+        hasOwnPage: true, region: cfg.region, skip: cfg.skip, opts: { measure: false, video: f.video, showDesign: true, collection: flat(f.collection), partners: flat(f.partners) } });
       if (r.ok) fx++;
       else { failed++; report(`${type} template ${v}`, r); }
     }

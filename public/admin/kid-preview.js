@@ -97,7 +97,7 @@ function sizedImages(kid) {
  * Everything the page shows, worked out from the draft. Async because new
  * photos are measured and a Stream video is checked, like the build does.
  */
-export async function buildModel(kid, kit, { measure: measureNew = true, video: forcedVideo } = {}) {
+export async function buildModel(kid, kit, { measure: measureNew = true, video: forcedVideo, showDesign = false } = {}) {
   const dims = { ...kit.dims };
   // (measureNew: false matches a dev server, whose pages use [4, 3] for photos the manifest lacks)
   await Promise.all(sizedImages(kid).filter((id) => measureNew && !dims[id]).map(async (id) => {
@@ -110,7 +110,7 @@ export async function buildModel(kid, kit, { measure: measureNew = true, video: 
     ...(kid.beforeAfterPhotos || []).flatMap((p) => [p.before, p.after]), ...(kid.partnerLogos || []).map((p) => p.url)]);
   const notes = [video?.note, ...blobs.notes].filter(Boolean);
   const alive = blobs.alive;
-  return { kid, dims, lqip: kit.lqip, video, notes, liveBlobs: alive, templates: kit.templates };
+  return { kid, dims, lqip: kit.lqip, video, notes, liveBlobs: alive, templates: kit.templates, showDesign };
 }
 
 // ── Patch ─────────────────────────────────────────────────────────────
@@ -135,8 +135,11 @@ export function patchKidPage(doc, win, model) {
   const introPara = bioParas[0] || '';
   const pullQuote = kid.quote && kid.quote !== kid.bio && kid.quote !== introPara ? kid.quote : null;
   const galleryPhotos = photos.slice(0, 30);
-  const plans = kid.plans || [];
-  const pairs = kid.beforeAfterPhotos || [];
+  // As the page has it: the design waits for the reveal, and only whole before & after pairs show
+  // (showDesign: a template page, which carries every section, as src/pages/admin/kid-template/ renders it)
+  const revealed = model.showDesign === true || kid.status === 'completed';
+  const plans = revealed ? kid.plans || [] : [];
+  const pairs = revealed ? (kid.beforeAfterPhotos || []).filter((p) => p?.before && p?.after) : [];
   const partnerLogos = kid.partnerLogos || [];
   const accentPhoto = kid.accentImage || null;
   const heroDims = kid.heroImage ? dimsOf(kid.heroImage) : [3, 4];

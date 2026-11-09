@@ -26,7 +26,15 @@
  * ?photo=<CF image id>, ?still=1 (no motion), ?tv=1 (screen in the room:
  * first card hands the stream to phones, no music), ?music=0 (silent) or
  * ?music=<url> (a different track), ?follow=1 (set by /live/slate/),
- * ?embed=1 (inside the live page's video frame: always silent).
+ * ?embed=1 (inside the live page's video frame: always silent),
+ * ?design=preview (the kid editor's unsaved design, from the parent window;
+ * silent), ?slide=N (hold one slide of the design) and ?pace=0.2 (play it
+ * faster, for checking).
+ *
+ * The design: from an hour before the reveal the frame plays the room's
+ * story, the kid, the room today, the floor plan today, the new plan and the
+ * design boards (src/utils/slate-design.ts; /api/reveal-design says when).
+ * In landscape the frame widens for it, once, when it opens.
  */
 import qrcode from 'qrcode-generator';
 import { cfRaw, cfLqip } from '../../utils/cf-image';
@@ -114,7 +122,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
       </div>
     </div>
 
-    <div class="frame">
+    <div class="frame" data-kid-kicker="Today" data-kid-text={rooms.join(' · ')}>
       <div class="accent" aria-hidden="true"></div>
       <div class="photo" style={`background-image:url(${cfLqip(photo)})`}>
         <img id="photo" src={photoSrc.landscape} data-landscape={photoSrc.landscape} data-portrait={photoSrc.portrait} alt={kid?.name || 'A child in a newly built room'} />
@@ -122,6 +130,9 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
       {rooms.length > 0 && (
         <div class="rooms"><span class="rooms-label">Today</span>{rooms.join(' · ')}</div>
       )}
+      <!-- The design's own chip and steps (slate-design.ts); the rooms chip above steps aside for them -->
+      <div class="design-steps" data-design-steps hidden></div>
+      <div class="design-chip" data-design-chip><span class="design-chip__kicker" data-chip="kicker"></span><span class="design-chip__text" data-chip="text"></span></div>
     </div>
 
     <div class="cards">
@@ -171,6 +182,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     import { getLiveClient, type LiveState } from '../../utils/live-client';
     import { cfRaw } from '../../utils/cf-image';
     import { loadUpcoming, windowTitle, revealDay } from '../../utils/reveals-client';
+    import { startSlateDesign } from '../../utils/slate-design';
 
     const body = document.body;
     const canvas = document.getElementById('canvas')!;
@@ -198,10 +210,15 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
       if (body.dataset.o !== o) {
         body.dataset.o = o;
         if (!photoOverride) photo.src = (o === 'portrait' ? photo.dataset.portrait : photo.dataset.landscape) || photo.src;
+        design?.refit();
       }
       const [w, h] = o === 'portrait' ? [1080, 1920] : [1920, 1080];
       canvas.style.transform = `translate(-50%, -50%) scale(${Math.min(innerWidth / w, innerHeight / h)})`;
     }
+
+    // ── The design, from an hour before the reveal (set up below, once the frame is sized) ──
+    const designPreview = params.get('design') === 'preview';
+    let design: ReturnType<typeof startSlateDesign> | null = null;
 
     // ── Photo: ?photo= wins, then the photo picked when the reveal was scheduled ──
     let photoOverride = params.get('photo');
@@ -215,6 +232,23 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     addEventListener('resize', () => { fit(); if (photoOverride) setPhoto(photoOverride); });
     fit();
     if (photoOverride) setPhoto(photoOverride);
+
+    {
+      const frameEl = document.querySelector<HTMLElement>('.frame')!;
+      const slideParam = params.get('slide');
+      design = startSlateDesign({
+        body,
+        photoBox: document.querySelector<HTMLElement>('.photo')!,
+        chip: document.querySelector<HTMLElement>('[data-design-chip]')!,
+        steps: document.querySelector<HTMLElement>('[data-design-steps]')!,
+        kidChip: frameEl.dataset.kidText ? { kicker: frameEl.dataset.kidKicker || 'Today', caption: frameEl.dataset.kidText } : null,
+        kidSlug,
+        preview: designPreview,
+        pinned: slideParam && /^\d{1,2}$/.test(slideParam) ? Number(slideParam) : null,
+        still: body.classList.contains('still'),
+        pace: Number(params.get('pace')) || 1,
+      });
+    }
 
     // ── Start time ──
     let startAt: number | null = null;
@@ -267,7 +301,7 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     // Desktop browsers block sound without a click, which is fine: a TV at the house stays quiet.
     const musicParam = params.get('music');
     const embed = params.get('embed') === '1'; // inside the site's video frame: never makes sound
-    const musicSrc = tv || embed || musicParam === '0' ? null : (musicParam && /^https:\/\//.test(musicParam) ? musicParam : body.dataset.music || null);
+    const musicSrc = tv || embed || designPreview || musicParam === '0' ? null : (musicParam && /^https:\/\//.test(musicParam) ? musicParam : body.dataset.music || null);
     let audio: HTMLAudioElement | null = null; // created on first play, so a page about to jump never fetches the track
     let fadeTimer: ReturnType<typeof setInterval> | undefined;
     const TARGET = 0.8;
@@ -310,7 +344,8 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
 
     // ── Live state: start time, picked photo, and (in follow mode) which kid ──
     // /live/slate/ and ?follow=1 pages jump to whichever kid is scheduled, so Larix is set up once
-    const follow = !kidSlug || params.get('follow') === '1';
+    // (Never while the kid editor previews a design in it)
+    const follow = !designPreview && (!kidSlug || params.get('follow') === '1');
     const ACTIVE = new Set(['scheduled', 'armed', 'live', 'ending']);
     let jumping = false;
     async function jumpTo(slug: string) {
@@ -497,6 +532,56 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     }
     .rooms-label { color: var(--c-yellow); font-size: 16px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
 
+    /* ── The design: the room's story in the frame (slate-design.ts) ── */
+    /* In landscape the frame widens for it and the copy gives a little room; a one-time move when it opens */
+    .frame, .cards { transition: left 1.2s var(--ease), top 1.2s var(--ease), width 1.2s var(--ease), height 1.2s var(--ease); }
+    body[data-o='landscape'][data-design] .frame { left: 1012px; top: 72px; width: 796px; height: 812px; }
+    body[data-o='landscape'][data-design][data-partners='no'] .frame { top: 110px; height: 860px; }
+    body[data-o='landscape'][data-design] .copy { width: 860px; }
+    body[data-o='landscape'][data-design] .sub { max-width: 800px; }
+    body[data-o='landscape'][data-design] .cards { left: 952px; top: 700px; }
+    body[data-o='landscape'][data-design][data-partners='no'] .cards { top: 760px; }
+    body[data-design] .rooms { display: none; }
+    .show { position: absolute; inset: 0; }
+    .slide { position: absolute; inset: 0; opacity: 0; transition: opacity 1.1s var(--ease); }
+    .slide.is-on, .slide.is-under { opacity: 1; }
+    .slide.is-under { transition: none; z-index: 0; }
+    .slide.is-on { z-index: 1; }
+    .photo .slide img { display: block; width: 100%; height: 100%; animation: none; transform: none; }
+    .photo .slide--before img { object-fit: cover; transform: scale(1.04); }
+    .photo .slide--before img.drift { animation: drift 9s ease-out both; }
+    @keyframes drift { from { transform: scale(1.04); } to { transform: scale(1.13) translate(-1.4%, -0.8%); } }
+    /* Drawings and boards on white paper, clear of the chip at the top (and, in landscape, the card over the lower left) */
+    .paper { background: #fff; }
+    .photo .paper img { object-fit: contain; object-position: center top; padding: 116px 40px 44px; }
+    body[data-o='landscape'] .photo .paper img { padding: 116px 36px 204px; }
+    body[data-o='portrait'] .photo .paper img { padding: 104px 36px 32px; }
+    /* The new plan wipes in over the old one, a yellow line leading it */
+    .slide.is-wiping { opacity: 1; transition: none; animation: wipe 2.6s cubic-bezier(0.65, 0, 0.35, 1) both; }
+    @keyframes wipe { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+    .wipe-line { position: absolute; top: 0; bottom: 0; left: 0; width: 6px; margin-left: -3px; z-index: 2; opacity: 0; pointer-events: none; background: var(--c-yellow); box-shadow: 0 0 0 1px rgba(55, 58, 54, 0.18), 0 0 28px rgba(255, 218, 36, 0.7); }
+    .wipe-line.is-wiping { animation: wipeLine 2.6s cubic-bezier(0.65, 0, 0.35, 1) both; }
+    @keyframes wipeLine { 0% { left: 0; opacity: 1; } 94% { opacity: 1; } 100% { left: 100%; opacity: 0; } }
+    /* Where it is in the story: steps across the top, the one showing filling as it plays */
+    .design-steps { position: absolute; top: 18px; left: 22px; right: 22px; z-index: 3; display: flex; gap: 6px; }
+    .design-steps[hidden] { display: none; }
+    .step { flex: 1; height: 5px; border-radius: 3px; overflow: hidden; background: rgba(30, 31, 37, 0.28); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.35); }
+    .step i { display: block; width: 0; height: 100%; background: var(--c-yellow); }
+    .step.is-done i { width: 100%; }
+    .step.is-on i { animation: stepFill var(--hold, 0ms) linear both; }
+    @keyframes stepFill { from { width: 0; } to { width: 100%; } }
+    /* What each one is: the rooms chip's look, swapping its words only while faded */
+    .design-chip {
+      position: absolute; top: 40px; right: 28px; z-index: 3; max-width: calc(100% - 56px);
+      display: flex; align-items: center; gap: 12px; white-space: nowrap;
+      background: var(--c-dark-deep); color: var(--c-cream); border-radius: 100px; padding: 14px 24px;
+      font-size: 22px; font-weight: 600; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+      opacity: 0; transform: translateY(-6px); transition: opacity 0.26s ease, transform 0.26s ease;
+    }
+    .design-chip.is-on { opacity: 1; transform: none; }
+    .design-chip__kicker { flex-shrink: 0; color: var(--c-yellow); font-size: 16px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; }
+    .design-chip__text { overflow: hidden; text-overflow: ellipsis; }
+
     /* Rotating info card, overlapping the photo's lower-left corner */
     .cards { position: absolute; left: 980px; top: 630px; width: 620px; height: 212px; animation: up 1s var(--ease) 1.1s both; }
     body[data-partners='no'] .cards { top: 679px; }
@@ -554,9 +639,12 @@ const LOGO = cfRaw('brand-logo-light-bg-tagline-display', 'w=900,q=90');
     @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
     body.still *, body.still *::before, body.still *::after { animation-duration: 0s !important; animation-delay: 0s !important; transition: none !important; }
     body.still .photo img { animation: none; transform: scale(1.02); }
+    body.still .photo .slide img { animation: none; transform: none; }
+    body.still .photo .slide--before img { transform: scale(1.04); }
     body.still .marquee-track { animation: none; }
     @media (prefers-reduced-motion: reduce) {
-      .photo img, .marquee-track { animation: none; }
+      .photo img, .marquee-track, .photo .slide--before img.drift { animation: none; }
+      .frame, .cards { transition: none; }
     }
   </style>
 </body>
