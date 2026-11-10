@@ -10,6 +10,8 @@
  */
 
 import { matchOrder, orderGroups, templateLines, namesOf } from './_kid-match.js';
+import { loadCostRecords } from './_makeover-costs.js';
+import { matchProject } from './_reveals.js';
 
 const ORDER_KINDS = new Set(['order', 'shipped', 'out', 'delivered', 'pickup']);
 // Practice shelves until the real ones are set up: one a kid, in the order the kids are listed
@@ -25,6 +27,15 @@ export function shortName(jobName) {
   const n = namesOf(jobName);
   const words = String(jobName || '').replace(/\s*\(\d{4}\)\s*$/, '').split(/\s+/);
   return n ? `${words[0]} ${words[words.length - 1][0]}.` : words.join(' ');
+}
+
+/**
+ * A kid page's photo, small and square for the page (Cloudflare Images resizes it; the face-heavy middle is kept):
+ * "https://imagedelivery.net/<account>/<id>/public" → "/cdn-cgi/imagedelivery/<account>/<id>/w=160,h=160,fit=cover,gravity=auto"
+ */
+export function avatarOf(url) {
+  const m = /^(?:https:\/\/imagedelivery\.net|\/cdn-cgi\/imagedelivery)\/([\w-]+)\/(.+)\/[^/]+$/.exec(String(url || ''));
+  return m ? `/cdn-cgi/imagedelivery/${m[1]}/${m[2]}/w=160,h=160,fit=cover,gravity=auto` : null;
 }
 
 /** The store order emails read so far, for matching: [{ mailbox, id, store, at, read }] */
@@ -45,7 +56,12 @@ export async function checkinView(env) {
   const firstOf = new Map((dir.accounts || []).map((a) => [String(a.email || '').toLowerCase(), String(a.name || '').split(/\s+/)[0]]));
   const templates = templateLines(lines);
 
-  const kids = jobs.map((j, i) => ({ jobId: j.id, name: j.name, short: shortName(j.name), shelf: shelfOf(i), others: 0, items: [] }));
+  // Each kid's own page, for their photo (the same match the board's costs use: pinned job, else name and year)
+  const pages = await loadCostRecords(DB).catch(() => []);
+  const kids = jobs.map((j, i) => {
+    const page = matchProject(j.name, pages, j.id);
+    return { jobId: j.id, name: j.name, short: shortName(j.name), shelf: shelfOf(i), photo: avatarOf(page?.photo), others: 0, items: [] };
+  });
   const kidOf = new Map(kids.map((k) => [k.jobId, k]));
   for (const l of lines) {
     const kid = kidOf.get(l.jobId);

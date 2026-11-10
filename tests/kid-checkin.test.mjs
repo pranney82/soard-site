@@ -7,7 +7,7 @@
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
-import { checkinView, shortName } from '../functions/api/_kid-checkin.js';
+import { checkinView, shortName, avatarOf } from '../functions/api/_kid-checkin.js';
 
 let env;
 const part = (name, source = 'buy', extra = {}) => ({ name, brand: '', model: '', link: '', quantity: 1, cents: null, source, key: `name:${name}`, ...extra });
@@ -70,4 +70,14 @@ test('no data yet: an empty page, not an error', async () => {
 test('short names', () => {
   assert.equal(shortName('Lizzie Sample (2026)'), 'Lizzie S.');
   assert.equal(shortName('The Sample School (2026)'), 'The Sample School');
+});
+
+test('each kid’s photo from their kid page, small and square; none, no photo', async () => {
+  assert.equal(avatarOf('https://imagedelivery.net/acct123/kids/rowan/photo-1.jpg/public'), '/cdn-cgi/imagedelivery/acct123/kids/rowan/photo-1.jpg/w=160,h=160,fit=cover,gravity=auto');
+  assert.equal(avatarOf('https://elsewhere.example/x.jpg'), null);
+  await env.DB.exec('CREATE TABLE kids (slug TEXT PRIMARY KEY, name TEXT, year INTEGER, data TEXT)');
+  await env.DB.prepare('INSERT INTO kids (slug, name, year, data) VALUES (?, ?, ?, ?)').bind('rowan', 'Rowan', 2026, JSON.stringify({ name: 'Rowan', year: 2026, heroImage: 'https://imagedelivery.net/acct123/kids/rowan/photo-1.jpg/public' })).run();
+  const v = await checkinView(env);
+  assert.equal(v.kids.find((k) => k.short === 'Rowan S.').photo, '/cdn-cgi/imagedelivery/acct123/kids/rowan/photo-1.jpg/w=160,h=160,fit=cover,gravity=auto');
+  assert.equal(v.kids.find((k) => k.short === 'Ava E.').photo, null);
 });

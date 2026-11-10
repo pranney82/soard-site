@@ -25,6 +25,12 @@ const wait = (ms) => new Promise((r) => setTimeout(r, reduced() ? 0 : ms));
 // iOS Safari shows :active only once the page listens for touches
 document.addEventListener('touchstart', () => {}, { passive: true });
 
+/** A kid's face from their kid page, round; their first letter when there's no photo yet */
+const face = (kid, size) => (kid?.photo
+  ? `<img class="face" src="${esc(kid.photo)}" alt="" width="${size}" height="${size}" decoding="async" />`
+  : `<span class="face ini" style="width:${size}px;height:${size}px;font-size:${Math.round(size * 0.42)}px" aria-hidden="true">${esc(String(kid?.short || '?')[0])}</span>`);
+const faceOf = (short, size) => face(state.kids.find((k) => k.short === short), size);
+
 const ICON = {
   chev: '<svg class="chev" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>',
   x: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>',
@@ -52,7 +58,7 @@ function rowHtml(kid, it) {
 
 function render() {
   $('chips').innerHTML = ['All', ...state.kids.map((k) => k.short)]
-    .map((n) => `<button class="chip" type="button" aria-pressed="${n === state.filter}" data-chip="${esc(n)}">${esc(n)}</button>`).join('');
+    .map((n) => `<button class="chip${n === 'All' ? '' : ' has-face'}" type="button" aria-pressed="${n === state.filter}" data-chip="${esc(n)}">${n === 'All' ? '' : faceOf(n, 26)}${esc(n)}</button>`).join('');
   let html = state.needsLook.length && !state.query && state.filter === 'All'
     ? `<button class="strip" type="button" id="looks"><b>Needs a look</b><span class="count-warn">${state.needsLook.length}</span>${ICON.chev}</button>` : '';
   for (const kid of state.kids.filter((k) => state.filter === 'All' || k.short === state.filter)) {
@@ -65,7 +71,7 @@ function render() {
     const hereItems = items.filter((i) => i.status === 'here');
     html += `<section class="card" aria-label="${esc(kid.short)}">
       <div class="card-head">
-        <div class="card-title"><h2>${esc(kid.short)}</h2><span class="count"><b>${here}</b> of ${total} here</span></div>
+        <div class="card-title"><div class="who">${face(kid, 44)}<h2>${esc(kid.short)}</h2></div><span class="count"><b>${here}</b> of ${total} here</span></div>
         <div class="bar" aria-hidden="true"><i data-bar="${esc(kid.jobId)}" style="transform:scaleX(${total ? here / total : 0})"></i></div>
       </div>`;
     if (waiting.length) html += `<div class="group-h"><span>Hasn’t come yet</span><span>${waiting.length}</span></div>${waiting.map((i) => rowHtml(kid, i)).join('')}`;
@@ -149,7 +155,7 @@ function dragToClose(sheet) {
 const head = (title, { sub = '', one = false, kid = false } = {}) => `<div class="sheet-head"><div><h3${kid ? ' class="kid"' : ''}>${title}</h3>${sub ? `<div class="sheet-sub${one ? ' one' : ''}">${sub}</div>` : ''}</div>
   <button class="x" type="button" data-close="1" aria-label="Close">${ICON.x}</button></div>`;
 const stepper = (boxes) => `<div class="stepper"><span>Boxes</span><div><button type="button" data-step="-1" aria-label="One box fewer">−</button><output aria-live="polite">${boxes}</output><button type="button" data-step="1" aria-label="One box more">+</button></div></div>`;
-const kidTitle = (kid) => `${esc(kid.short)}<span class="tag-here">${esc(kid.shelf)}</span>`;
+const kidTitle = (kid) => `${face(kid, 44)}${esc(kid.short)}<span class="tag-here">${esc(kid.shelf)}</span>`;
 
 function itemSheet(kid, it, { found = '', keep = false, boxes: preset = 1 } = {}) {
   let boxes = Math.max(1, Math.min(9, preset));
@@ -192,7 +198,7 @@ function printed(kid, it, boxes) {
   openSheet(`${head(boxes === 1 ? 'Label' : `${boxes} labels`, { sub: esc(it.name), one: true })}
     <div class="printer" aria-hidden="true"><div class="slot"></div><div class="stack" style="--peek:${(shown - 1) * 8}px">${labels}</div></div>
     <div class="done-line" style="--after:${after}ms">${ICON.tick}<span>${state.practice ? 'Marked here' : `Received in JobTread, ${esc(today())}`}</span>${state.practice ? '<span class="chip-mode">Practice</span>' : ''}</div>
-    <div class="shelf-callout"><span>${esc(kid.short)}’s shelf</span><b>${esc(kid.shelf)}</b></div>
+    <div class="shelf-callout"><span class="who">${face(kid, 36)}${esc(kid.short)}’s shelf</span><b>${esc(kid.shelf)}</b></div>
     <div class="after"><button class="btn btn-primary btn-big" type="button" id="next" data-focus>Scan the next box</button><button class="btn btn-text" type="button" id="done">Done</button></div>`, { keep: true });
   document.querySelectorAll('canvas[data-qr]').forEach((c) => drawQr(c, c.dataset.qr));
   document.querySelectorAll('.done-line .tick path').forEach((p) => p.style.setProperty('--after', `${after}ms`));
@@ -246,7 +252,7 @@ function otherSheet() {
   let kidId = state.filter !== 'All' ? state.kids.find((k) => k.short === state.filter)?.jobId || state.kids[0].jobId : state.kids[0].jobId;
   let boxes = 1;
   openSheet(`${head('Something else')}
-    <div class="field"><span class="label-above">For</span><div class="kidpick">${state.kids.map((k) => `<button class="chip" type="button" data-pick="${esc(k.jobId)}" aria-pressed="${k.jobId === kidId}">${esc(k.short)}</button>`).join('')}</div></div>
+    <div class="field"><span class="label-above">For</span><div class="kidpick">${state.kids.map((k) => `<button class="chip has-face" type="button" data-pick="${esc(k.jobId)}" aria-pressed="${k.jobId === kidId}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div></div>
     <div class="field"><label for="what">What is it?</label><input id="what" type="text" placeholder="Bean bag chair" autocomplete="off" /></div>
     ${stepper(boxes)}
     <button class="btn btn-primary btn-big" type="button" id="print">Print label</button>`, { keep: Boolean(sheetEl()) });
@@ -281,7 +287,7 @@ function lookSheet(n) {
   if (!o) return;
   openSheet(`${head(esc(o.store), { sub: esc([o.po ? `PO “${o.po}”` : null, `ordered ${ago(o.at)}`, o.buyer ? `by ${o.buyer}` : null].filter(Boolean).join(' · ')) })}
     <div class="pick">${o.items.map((i) => `<div class="look"><b>${esc(i.name)}</b></div>`).join('')}</div>
-    <div class="field"><span class="label-above">Whose is it?</span><div class="kidpick">${state.kids.map((k) => `<button class="chip${k.short === o.kid ? ' hint' : ''}" type="button" data-assign="${esc(k.jobId)}">${esc(k.short)}</button>`).join('')}</div></div>
+    <div class="field"><span class="label-above">Whose is it?</span><div class="kidpick">${state.kids.map((k) => `<button class="chip has-face${k.short === o.kid ? ' hint' : ''}" type="button" data-assign="${esc(k.jobId)}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div></div>
     <button class="btn btn-text" type="button" data-notkid="1">Not a kid’s</button>`, { keep: true });
   const settle = async () => {
     state.needsLook.splice(n, 1);
