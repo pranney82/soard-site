@@ -395,6 +395,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
 
 <script>
   import { getLiveClient, formatWhen, relativeUntil, revealLabel, type LiveState, type ReminderOptions } from '../../utils/live-client';
+  import { shareable } from '../../utils/live-stats';
   import { remindersUsable, browserCanPush, remindPromise, revealIsToday, replayOverdue, runningLate } from '../../utils/live-banner';
   import { holdPlace, keepFocus } from '../../utils/hold-place';
   import { upcomingAtBuild } from '../../utils/reveals-copy';
@@ -964,7 +965,8 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     });
 
     // Share
-    const pageUrl = () => location.href.split('#')[0];
+    // Shared without ?src= (a friend's visit isn't the sharer's email or QR scan)
+    const pageUrl = () => shareable(location.href.split('#')[0]);
     // Hero share: the phone's share sheet where there is one, otherwise copy the link
     q<HTMLButtonElement>('cta-share')?.addEventListener('click', async () => {
       const label = q<HTMLElement>('share-label');

@@ -118,8 +118,9 @@ test('&watch=1: someone watching from home gets the live page and the feed’s o
   const { field, text } = await ics(`reveal=${REVEAL.slug}&watch=1`);
   assert.equal(field('SUMMARY'), `${REVEAL.name}'s Room Reveal (watch live)`);
   assert.equal(field('LOCATION'), `${SITE}/live/${REVEAL.slug}/`);
-  assert.equal(field('URL'), `${SITE}/live/${REVEAL.slug}/`);
+  assert.equal(field('URL'), `${SITE}/live/${REVEAL.slug}/?src=calendar`, 'the link field says it came from a calendar (reveal stats)');
   assert.match(field('DESCRIPTION'), /^Watch it live: https:/);
+  assert.doesNotMatch(field('DESCRIPTION'), /src=/, 'the words people read stay plain');
   assert.match(text, /BEGIN:VALARM\r?\nACTION:DISPLAY\r?\nTRIGGER:-PT15M/);
   assert.equal(field('UID'), `live-reveal-${REVEAL.slug}@sunshineonaranneyday.com`, 'the page’s calendar feed uses this entry too');
   const guest = await ics(`reveal=${REVEAL.slug}`);

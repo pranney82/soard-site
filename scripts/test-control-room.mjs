@@ -261,7 +261,7 @@ try {
 
   console.log('\n▶ History: health report inside the reveal\'s row');
   await clickText(page, '.hub-tab', /^History/);
-  ok(await clickText(page, '.bc-hist-row td', /Earlier Kid/), 'open a past reveal');
+  ok(await clickText(page, '.rs-row td', /Earlier Kid/), 'open a past reveal');
   await page.waitForFunction(() => /Sound good 96%/.test(document.body.innerText), { timeout: 8000 }).catch(() => {});
   const histText = await page.evaluate(() => document.body.innerText);
   ok(/Sound good 96%/.test(histText) && /Facebook \+2:40/.test(histText) && /peak 41 watching/.test(histText), 'the row has the health report summary');

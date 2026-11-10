@@ -12,6 +12,8 @@
  * then gets 'viewers', 'react' and 'msg' / 'msg-hide' events through on().
  */
 
+import { noteArrival, sender } from './live-stats';
+
 export interface LivePlayer {
   kind: 'live' | 'replay'; uid: string; customerCode: string;
   /** HLS address override; only the dev mock (scripts/dev-live-mock.js) sets it */
@@ -137,6 +139,8 @@ function createClient() {
     ws.onerror = () => { try { ws?.close(); } catch { /* already closed */ } };
   }
 
+  // How this tab arrived, for Reveal stats' "where viewers came from" (once per session)
+  noteArrival();
   fetchState();
   connect();
   document.addEventListener('visibilitychange', () => {
@@ -168,12 +172,22 @@ function createClient() {
     refresh: fetchState,
     beacon(type: string, meta?: Record<string, string>) {
       try {
-        const body = JSON.stringify({ type, broadcastId: state?.id || undefined, meta });
+        const body = JSON.stringify({ type, broadcastId: state?.id || undefined, meta, ...sender() });
         const blob = new Blob([body], { type: 'application/json' });
         if (!(navigator.sendBeacon && navigator.sendBeacon('/api/broadcast-event', blob))) {
           fetch('/api/broadcast-event', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
         }
       } catch { /* analytics only */ }
+    },
+    /** Reveal stats: this browser watched `sec` more seconds of the reveal (live) or its replay */
+    watched(kind: 'live' | 'replay', sec: number, broadcastId: string | null) {
+      if (!broadcastId || !(sec > 0)) return;
+      try {
+        const body = JSON.stringify({ broadcastId, kind, sec, ...sender() });
+        if (!(navigator.sendBeacon && navigator.sendBeacon('/api/live-watch', new Blob([body], { type: 'application/json' })))) {
+          fetch('/api/live-watch', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+        }
+      } catch { /* counting only */ }
     },
   };
 }

@@ -201,7 +201,7 @@ function revealEvent(r, { watch = false } = {}) {
       start, end, allDay,
       location: liveUrl,
       details: `Watch it live: ${liveUrl}\n\nThe page turns into the live video the moment we start.`,
-      url: liveUrl,
+      url: `${liveUrl}?src=calendar`,
       alertMinutes: ALERT_MINUTES,
     };
   }

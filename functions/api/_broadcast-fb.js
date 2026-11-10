@@ -221,6 +221,75 @@ export async function fbLiveVideoHealth(env, liveVideoId) {
 }
 
 /**
+ * How many are watching on Facebook right now (Reveal stats' "watching at
+ * once"), from the live video (API mode) or the Page's live video. Its own
+ * request, so a refused field can never make the feed monitor think the Page
+ * isn't live. → a number, or null when Facebook won't say.
+ */
+export async function fbLiveViewers(env, liveVideoId = null) {
+  if (!fbConfigured(env)) return null;
+  try {
+    let v = null;
+    if (liveVideoId) {
+      const r = await graph(env, 'GET', liveVideoId, { fields: 'live_views' });
+      v = r.ok ? r.data.live_views : null;
+    } else {
+      const r = await graph(env, 'GET', `${env.FB_PAGE_ID}/live_videos`, { broadcast_status: '["LIVE"]', fields: 'live_views,status', limit: '1' });
+      v = r.ok ? r.data.data?.[0]?.live_views : null;
+    }
+    return Number.isFinite(Number(v)) && v !== null ? Number(v) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Facebook's numbers for a finished live video (video_insights; read_insights + pages_manage_engagement)
+const INSIGHT_METRICS = ['total_video_views', 'total_video_views_unique', 'total_video_avg_time_watched', 'total_video_views_live'];
+
+/**
+ * A finished live video's totals, for Reveal stats → { ok, totals, partial, missing, error }
+ *   totals: { videoId, views, unique, avgSec, liveUnique, reactions, comments }
+ *   missing: the permission Facebook said it needs for the view totals (the
+ *   reactions and comments still come back without it)
+ * Finds the video from the live video (API mode) or the post's permalink.
+ */
+export async function fbVideoTotals(env, { liveVideoId = null, permalink = null, videoId = null } = {}) {
+  if (!fbConfigured(env)) return { ok: false, error: 'FB_PAGE_ID / FB_PAGE_TOKEN not set' };
+  // Its video: known already, or from the post's link (/videos/123, /videos/name/123, ?v=123), or the live video's
+  const link = String(permalink || '');
+  let id = videoId || (link.match(/\/videos\/(?:[^/?#]+\/)?(\d{6,})/) || link.match(/[?&]v=(\d{6,})/) || [])[1] || null;
+  if (!id && liveVideoId) {
+    const lv = await graph(env, 'GET', liveVideoId, { fields: 'video{id}' });
+    if (!lv.ok) return { ok: false, error: lv.error };
+    id = lv.data.video?.id || null;
+  }
+  if (!id) return { ok: false, error: 'Facebook has no video for this reveal' };
+  const [ins, eng] = await Promise.all([
+    graph(env, 'GET', `${id}/video_insights`, { metric: INSIGHT_METRICS.join(','), period: 'lifetime' }),
+    graph(env, 'GET', id, { fields: 'reactions.summary(total_count).limit(0),comments.summary(total_count).limit(0)' }),
+  ]);
+  const totals = { videoId: id };
+  if (ins.ok) {
+    const val = (name) => { const m = (ins.data.data || []).find((x) => x.name === name); const v = m?.values?.[0]?.value; return v != null && Number.isFinite(Number(v)) ? Number(v) : null; };
+    totals.views = val('total_video_views');
+    totals.unique = val('total_video_views_unique');
+    const avg = val('total_video_avg_time_watched');
+    totals.avgSec = avg != null ? Math.round(avg / 1000) : null;
+    totals.liveUnique = val('total_video_views_live');
+  }
+  if (eng.ok) {
+    // Only counts Facebook actually gave (a missing summary isn't a zero)
+    const n = (v) => (v != null && Number.isFinite(Number(v)) ? Number(v) : null);
+    totals.reactions = n(eng.data.reactions?.summary?.total_count);
+    totals.comments = n(eng.data.comments?.summary?.total_count);
+  }
+  if (!ins.ok && !eng.ok) return { ok: false, error: ins.error };
+  // (#10)/(#200)/(#283) or a message naming a permission: the token can't read insights
+  const blocked = !ins.ok && (/permission|read_insights|pages_manage_engagement|\(#(10|200|283)\)/i.test(ins.error || '') || [10, 200, 283].includes(ins.code));
+  return { ok: true, totals, partial: ins.ok ? null : ins.error, missing: blocked ? 'read_insights' : null };
+}
+
+/**
  * A scheduled (not yet live) live post on the Page, if Facebook lists one on
  * the /videos edge. Best effort for the go/no-go: not finding one doesn't
  * prove there isn't one. → { ok, found, title, error }

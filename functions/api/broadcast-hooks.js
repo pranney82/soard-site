@@ -15,7 +15,8 @@
  * (see below).
  */
 
-import { runTick, verifyHubNonce, publishToHub, publicPayload, readState, readConfig } from './_broadcast.js';
+import { runTick, verifyHubNonce, publishToHub, publicPayload, readState, readConfig, hubStatus } from './_broadcast.js';
+import { maybeRefreshRevealStats } from './_reveal-stats.js';
 import { maybeNudge } from './_reveal-nudges.js';
 import { maybeSweep, maybeCheckGuests } from './_reveal-invites.js';
 import { maybeCheckDemos } from './_demo-invites.js';
@@ -87,6 +88,9 @@ export async function onRequestPost(context) {
     // hours, files coverage, the weekly link check).
     // Each decides for itself whether it's due; none ever throws.
     context.waitUntil(maybeNudge(env));
+    // Reveal stats: the hearts while a reveal is live or on replay, and Facebook's and YouTube's own totals
+    // for the last 30 days' reveals, every 15 minutes at first, then less often (see _reveal-stats.js)
+    context.waitUntil(maybeRefreshRevealStats(env, { readState, hubStatus: () => hubStatus(env) }));
     context.waitUntil(maybeSweep(env));
     context.waitUntil(maybeCheckGuests(env));
     // Demo day invites: a Demo task that moved, a sponsor set, a wake-up JobTread missed (every 5 minutes; see _demo-invites.js)

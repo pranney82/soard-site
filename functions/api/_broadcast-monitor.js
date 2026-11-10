@@ -100,12 +100,16 @@ async function facebookLive(env, config, state) {
   if (fbCache.key === key && Date.now() - fbCache.at < FB_CACHE_MS) return fbCache.value;
   let value;
   try {
+    // How many watch there right now, for the reveal stats: its own request, alongside, given 5 s, never deciding "live"
+    const counting = Promise.race([fb.fbLiveViewers(env, apiId).catch(() => null), new Promise((r) => setTimeout(() => r(null), 5000))]);
     if (apiId) {
-      const h = await fb.fbLiveVideoHealth(env, apiId);
+      const [h, n] = await Promise.all([fb.fbLiveVideoHealth(env, apiId), counting]);
       value = { configured: true, ok: h.ok, live: h.status === 'LIVE', status: h.status, health: h.health, permalink: state.fb?.permalink || null, error: h.error || null };
+      if (value.live) value.viewers = n;
     } else {
-      const cur = await fb.fbCurrentLive(env);
+      const [cur, n] = await Promise.all([fb.fbCurrentLive(env), counting]);
       value = { configured: true, ok: true, live: !!cur, permalink: cur?.permalink || state.fb?.permalink || null, videoId: cur?.id || null, error: null };
+      if (value.live) value.viewers = n;
     }
   } catch (e) {
     value = { configured: true, ok: false, live: false, error: e.message };
@@ -384,10 +388,14 @@ export async function watch(env, config, state, health, work, record = async () 
   }
 
   if (state.phase === 'ending') {
+    // Facebook and YouTube aren't read while the phone is away: not known (a short gap carries the last reading)
+    m.fbViewers = null; m.ytViewers = null;
     await c.raise('disconnected', { level: 'error', after: RULES.disconnectedAfter, title: 'The phone lost its connection', detail: 'The site shows "reconnecting" and waits up to 45 seconds before ending the reveal.', fix: 'Check that Larix is still streaming. If it stopped, tap Start: the reveal picks up where it left off.' });
     return;
   }
   await c.clear('disconnected');
+  // Not known until this pass reads them (a pass that fails part way leaves them unknown, not stale)
+  m.fbViewers = null; m.ytViewers = null;
 
   const code = config.customerCode;
   const [probe, viewers, connection, outputsRes, facebook, youtube] = await Promise.all([
@@ -400,6 +408,7 @@ export async function watch(env, config, state, health, work, record = async () 
   ]);
   if (viewers != null) m.peakViewers = Math.max(m.peakViewers ?? 0, viewers);
   m.probeError = probe.error || null;
+  if (youtube?.live?.videoId) m.ytVideoId = youtube.live.videoId;
 
   // The feed itself
   if (!probe.ok) {
@@ -462,6 +471,11 @@ export async function watch(env, config, state, health, work, record = async () 
   // Destinations: confirmed live times go in the report; problems after their grace go to Slack
   const d = destinations({ config, state, phoneLive: true, liveForMs: c.liveForMs, probe, viewers, outputs: outputsRes?.ok ? outputsRes.result || [] : null, facebook, youtube });
   m.destinations = Object.fromEntries(Object.entries(d).map(([k, v]) => [k, v.status]));
+  // How many watch on Facebook and YouTube right now, sampled every 30 s for the reveal stats (_reveal-stats.js
+  // sampleLive): a number when it's known, 0 when the place is set up and not live yet, null when nobody knows
+  const watching = (dest, src, n) => (dest?.status === 'off' || !src?.configured || src.ok === false ? null : src.live ? (Number.isFinite(n) ? n : null) : 0);
+  m.fbViewers = watching(d.facebook, facebook, facebook?.viewers);
+  m.ytViewers = watching(d.youtube, youtube, youtube?.live?.viewers);
   for (const [key, label] of [['facebook', 'Facebook'], ['youtube', 'YouTube']]) {
     const v = d[key];
     if (v.status === 'ok' && m.firsts[key] == null) m.firsts[key] = Math.round(c.liveForMs / 1000);

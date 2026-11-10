@@ -37,8 +37,11 @@ import * as preflight from './_broadcast-preflight.js';
 import { youtubeConfigured } from './_youtube.js';
 import { syncBroadcastSchedule, readScheduleRecord } from './_broadcast-schedule.js';
 import { emailShell, paragraphs, link as mailLink } from './_email-shell.js';
+import { historyStats } from './_reveal-stats.js';
 
 const TARGETS = new Set(['facebook', 'youtube', 'instagram', 'custom']);
+// History compares every reveal: about two years of them
+const HISTORY_LIMIT = 60;
 
 function redactConfig(config, reveal) {
   const c = JSON.parse(JSON.stringify(config));
@@ -90,8 +93,8 @@ export async function onRequestGet(context) {
       reminderCounts: DB.prepare(`SELECT channel, COUNT(*) AS n FROM broadcast_reminders WHERE unsubscribed_at IS NULL GROUP BY channel`).all(),
       recentReminders: DB.prepare(`SELECT channel, address, kid_slug, created_at, source FROM broadcast_reminders WHERE unsubscribed_at IS NULL ORDER BY created_at DESC LIMIT 10`).all(),
       sends: state.broadcastId ? DB.prepare(`SELECT kind, channel, recipients, sent, failed, error, created_at FROM broadcast_sends WHERE broadcast_id = ? ORDER BY created_at`).bind(state.broadcastId).all() : Promise.resolve(null),
-      history: DB.prepare(`SELECT id, kid_slug, kid_name, title, scheduled_at, live_at, ended_at, phase, replay_uid, fb_permalink, source, data, created_at FROM broadcasts ORDER BY created_at DESC LIMIT 12`).all(),
-      events: DB.prepare(`SELECT broadcast_id, type, COUNT(*) AS n FROM broadcast_events WHERE broadcast_id IN (SELECT id FROM broadcasts ORDER BY created_at DESC LIMIT 12) GROUP BY broadcast_id, type`).all(),
+      history: DB.prepare(`SELECT id, kid_slug, kid_name, title, scheduled_at, live_at, ended_at, phase, replay_uid, fb_permalink, source, data, created_at, updated_at FROM broadcasts ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}`).all(),
+      events: DB.prepare(`SELECT broadcast_id, type, COUNT(*) AS n FROM broadcast_events WHERE broadcast_id IN (SELECT id FROM broadcasts ORDER BY created_at DESC LIMIT ${HISTORY_LIMIT}) GROUP BY broadcast_id, type`).all(),
       fbRecent: withFb ? fb.fbRecentBroadcasts(env, 5) : Promise.resolve(null),
       healthReports: DB.prepare(`SELECT broadcast_id, meta FROM broadcast_events WHERE type = 'health_report' ORDER BY id DESC LIMIT 12`).all(),
     };
@@ -133,7 +136,19 @@ export async function onRequestGet(context) {
     if (stale.length) {
       await DB.batch(stale.map(h => DB.prepare('UPDATE broadcasts SET phase = ?, updated_at = ? WHERE id = ?').bind(h.phase, new Date().toISOString(), h.id))).catch(() => {});
     }
-    const history = historyRows.map(h => { let d = {}; try { d = JSON.parse(h.data || '{}'); } catch {} return { ...h, data: d, events: eventsByBroadcast[h.id] || {}, messageCount: messageCounts[h.id] || 0 }; });
+    // Likewise a row left at live (an emergency banner that expired, a reset before rows were closed), if untouched for
+    // 10 minutes (one that went live as this page loaded isn't left behind): a stream ended when last touched; a
+    // banner's end isn't known
+    const leftLive = historyRows.filter(h => ['live', 'ending'].includes(h.phase) && h.id !== state.broadcastId
+      && Date.parse(h.updated_at || h.live_at || '') < nowMs - 10 * 60e3);
+    for (const h of leftLive) { h.phase = 'ended'; if (h.source !== 'manual') h.ended_at = h.ended_at || h.updated_at || h.live_at; }
+    if (leftLive.length) {
+      await DB.batch(leftLive.map(h => DB.prepare('UPDATE broadcasts SET phase = ?, ended_at = COALESCE(ended_at, ?), updated_at = ? WHERE id = ?').bind('ended', h.ended_at || null, new Date().toISOString(), h.id))).catch(() => {});
+    }
+    let history = historyRows.map(h => { let d = {}; try { d = JSON.parse(h.data || '{}'); } catch {} return { ...h, data: d, events: eventsByBroadcast[h.id] || {}, messageCount: messageCounts[h.id] || 0 }; });
+    // Reveal stats: people, watching, where they came from, at once, hearts, Facebook and YouTube (_reveal-stats.js)
+    const revealStats = await historyStats(DB, history).catch((e) => ({ since: null, byId: {}, error: e.message }));
+    history = history.map((h) => ({ ...h, stats: revealStats.byId[h.id] || null }));
 
     return Response.json({
       success: true,
@@ -173,6 +188,9 @@ export async function onRequestGet(context) {
       },
       sends: r.sends?.results || [],
       history,
+      // When counting people on the live page began (reveals before it only have page loads)
+      statsSince: revealStats.since || null,
+      statsError: revealStats.error || null,
       // Feed monitor report per finished reveal (sound, issues, Facebook/YouTube timing): broadcastId → report
       healthReports: Object.fromEntries((r.healthReports?.results || []).map((x) => { try { return [x.broadcast_id, JSON.parse(x.meta)]; } catch { return [x.broadcast_id, null]; } })),
       fbRecent: r.fbRecent,

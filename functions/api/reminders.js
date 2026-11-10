@@ -169,7 +169,7 @@ export async function onRequestGet(context) {
         description: `${state.message || 'Watch the reveal live.'}\nWatch: ${liveUrlFor(state)}`,
         start: state.scheduledAt,
         durationMin: 60,
-        url: liveUrlFor(state),
+        url: `${liveUrlFor(state)}?src=calendar`,
       });
       return new Response(ics, { headers: { 'Content-Type': 'text/calendar; charset=utf-8', 'Content-Disposition': `attachment; filename="soard-reveal.ics"`, 'Cache-Control': 'no-store' } });
     }

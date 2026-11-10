@@ -44,7 +44,7 @@ test('a timed reveal links the live page and reminds 15 minutes ahead', () => {
   assert.ok(lines.includes('DTEND:20261117T220000Z'));
   assert.ok(lines.includes('SUMMARY:Max’s Room Reveal (watch live)'));
   assert.ok(lines.includes('LOCATION:https://sunshineonaranneyday.com/live/max/'));
-  assert.ok(lines.includes('URL:https://sunshineonaranneyday.com/live/max/'));
+  assert.ok(lines.includes('URL:https://sunshineonaranneyday.com/live/max/?src=calendar'), 'the link field says it came from a calendar (reveal stats)');
   assert.ok(lines.includes('TRIGGER:-PT15M'));
   assert.ok(lines.includes('TRANSP:TRANSPARENT'), "watching doesn't mark anyone busy");
   const desc = lines.find((l) => l.startsWith('DESCRIPTION:Watch live'));

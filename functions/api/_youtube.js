@@ -110,3 +110,22 @@ export async function liveNow(env, channelId, { fresh = false } = {}) {
   cache.set(channelId, { at: Date.now(), value });
   return value;
 }
+
+/**
+ * A video's public counts, for Reveal stats → { ok, views, likes, comments, error }
+ * (1 quota unit; likes and comments are null when the channel hides them).
+ */
+export async function videoStats(env, videoId) {
+  if (!youtubeConfigured(env)) return { ok: false, error: 'YOUTUBE_API_KEY is not set' };
+  if (!/^[\w-]{6,20}$/.test(String(videoId || ''))) return { ok: false, error: 'No YouTube video for this reveal' };
+  try {
+    const r = await yt(env, 'videos', { part: 'statistics', id: videoId });
+    if (!r.ok) return { ok: false, error: r.error };
+    const st = r.data.items?.[0]?.statistics;
+    if (!st) return { ok: false, error: 'YouTube has no video with that id (deleted or private)' };
+    const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+    return { ok: true, views: num(st.viewCount), likes: num(st.likeCount), comments: num(st.commentCount) };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}

@@ -1425,15 +1425,6 @@
     .bc-rec-card img, .bc-rec-card .bc-rec-ph { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #1A1B1F; }
     .bc-rec-meta { padding: 8px 10px; font-size: var(--fs-xs); }
     .bc-table { overflow-x: auto; }
-    .bc-hist { padding: 0; }
-    .bc-hist .bc-card-head { margin: 0; padding: 1.5rem 1.5rem .5rem; }
-    .bc-hist th:first-child, .bc-hist td:first-child { padding-left: 1.5rem; }
-    .bc-hist th:last-child, .bc-hist td:last-child { padding-right: 1.5rem; }
-    .bc-hist .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .bc-hist-row { cursor: pointer; }
-    .bc-hist-row:hover td, .bc-hist-row.is-open td { background: var(--color-bg-secondary); }
-    .bc-hist-toggle { text-align: right; width: 1%; }
-    .bc-hist-detail > td { background: var(--color-bg-secondary); padding: .25rem 1rem 1.1rem; }
     .bc-fbrow { display: flex; justify-content: space-between; gap: 1rem; align-items: center; flex-wrap: wrap; padding: .6rem 0; border-top: 1px solid var(--color-border); }
     .bc-snav { display: flex; gap: .4rem; flex-wrap: wrap; margin: -.25rem 0 1rem; }
     .bc-snav button.is-flag::after { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--tone-warn-dot); }
@@ -1480,17 +1471,6 @@
       .page-header.bc-header { flex-direction: row; align-items: flex-start; }
       .page-header.bc-header .btn { flex: none; }
       .bc-family { flex-direction: column; align-items: flex-start; }
-      .bc-hist .bc-card-head { padding: 1rem 1rem .25rem; }
-      .bc-hist table, .bc-hist tbody { display: block; }
-      .bc-hist thead { display: none; }
-      .bc-hist tr.bc-hist-row { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .5rem .75rem; padding: .85rem 1rem; border-top: 1px solid var(--color-border); }
-      .bc-hist tr.bc-hist-row td { padding: 0; border: 0; background: none; }
-      .bc-hist tr.bc-hist-row td:first-child { grid-column: 1 / -1; padding: 0; }
-      .bc-hist td.num { text-align: left; }
-      .bc-hist td.num::before { content: attr(data-label); display: block; font-size: var(--fs-2xs); font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--color-text-muted); }
-      .bc-hist .bc-hist-toggle { grid-column: 1 / -1; width: auto; text-align: left; padding: 0 !important; }
-      .bc-hist tr.bc-hist-detail, .bc-hist tr.bc-hist-detail > td { display: block; }
-      .bc-hist tr.bc-hist-detail > td { padding: .25rem 1rem 1rem; }
       .bc-rows .bc-row { grid-template-columns: 1fr; }
       .bc-savebar { left: .75rem; right: .75rem; bottom: calc(.5rem + env(safe-area-inset-bottom, 0px)); }
     }
@@ -2496,7 +2476,6 @@
       .table-wrap th, .table-wrap td { padding-left: 0.45rem; padding-right: 0.45rem; }
       .table-wrap th:first-child, .table-wrap td:first-child { padding-left: 1rem; }
       .table-wrap th:last-child, .table-wrap td:last-child { padding-right: 1rem; }
-      .bc-hist th, .bc-hist td { padding-left: 0.5rem; padding-right: 0.5rem; }
       /* Photo count stays in the editor; the list keeps name, year and status */
       .community-table th:nth-last-child(2), .community-table td:nth-last-child(2) { display: none; }
     }
@@ -4986,7 +4965,7 @@
     const BC_HEADS = {
       now: ['Reveals', 'Reveals are scheduled in JobTread. Track every invite and reminder, watch reveals live, and fix anything that goes wrong.'],
       invites: ['Reveal invites', 'Calendar invites for staff and the family. Dates, times and notes come from JobTread, and each invite follows when they change.'],
-      history: ['Past reveals', 'The last 12 reveals. Open one for its feed health, viewer messages and links.'],
+      history: ['Reveals side by side', 'Which did best, with the next one and any live now. Open one for its numbers, viewer messages and links.'],
       settings: ['Reveal settings', 'The phone, Facebook and YouTube, reminders, alerts and the site. Its checks run each time this tab opens.'],
     };
     // #broadcast/control-room (every Slack post links there) opens Now, where the control room lives
@@ -5188,6 +5167,21 @@
       // Chosen on every render: Preact can hand this instance a different part when tabs switch
       const Comp = mod && { room: mod.ControlRoom, preflight: mod.Preflight, report: mod.HealthReport }[part];
       return Comp ? html`<${Comp} key=${part} ...${props} />` : (part === 'room' && !mod ? html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>` : null);
+    }
+
+    // Broadcast → History: every reveal side by side (people, watching, at once, hearts, Facebook and
+    // YouTube), sortable with the average reveal, in ./reveal-stats.js, loaded on first visit.
+    let revealStatsModule = null;
+    function RevealStatsLazy(props) {
+      const [mod, setMod] = useState(() => lazyNow(revealStatsModule));
+      const [err, setErr] = useState(null);
+      const load = () => {
+        revealStatsModule ||= lazyKeep(import('./reveal-stats.js'));
+        revealStatsModule.then((m) => setMod(m)).catch((e) => { revealStatsModule = null; setErr(e.message); });
+      };
+      useEffect(load, []);
+      if (err) return html`<${LoadErrorCard} error=${`Could not load the reveal stats: ${err}`} onRetry=${() => { setErr(null); load(); }} />`;
+      return mod ? html`<${mod.RevealStats} ...${props} />` : html`<div style="text-align:center;padding:2rem"><span class="spinner" /></div>`;
     }
 
     // Site → Automations: a mindmap of every automation and outside service,
@@ -5907,7 +5901,6 @@
 
     // ─── Broadcast → History ─────────────────────────────────
     function BcHistory({ data, kids, load, addToast }) {
-      const [open, setOpen] = useState(null);
       const [msgsFor, setMsgsFor] = useState(null);
       const [rowBusy, setRowBusy] = useState('');
       const [fbPick, setFbPick] = useState({}); // Facebook video id → kid slug chosen in the picker
@@ -5916,7 +5909,6 @@
       const rows = data.history || [];
       const reports = data.healthReports || {};
       const kidsSorted = useMemo(() => bcSortKids(kids), [kids]);
-      const toggle = (id) => { setOpen((o) => (o === id ? null : id)); setMsgsFor(null); };
       const loadFb = async () => { setFbLoading(true); await load({ fb: true }); setFbLoading(false); };
 
       const handleArchiveFb = async (v) => {
@@ -5967,18 +5959,18 @@
         </div>`;
       };
 
-      const watchClicks = (e) => (e.click_watch || 0) + (e.click_replay || 0) + (e.banner_click || 0);
       const when = (r) => {
         const mins = r.live_at && r.ended_at ? Math.round((Date.parse(r.ended_at) - Date.parse(r.live_at)) / 60000) : null;
         return [
-          r.live_at ? bcFmt(r.live_at) : ['scheduled', 'armed'].includes(r.phase) ? `Coming up ${bcFmt(r.scheduled_at)}` : `Didn't go live${r.scheduled_at ? ` (planned ${bcFmt(r.scheduled_at)})` : ''}`,
+          r.live_at ? bcFmt(r.live_at) : ['scheduled', 'armed'].includes(r.phase) ? bcFmt(r.scheduled_at) : `Didn't go live${r.scheduled_at ? ` (planned ${bcFmt(r.scheduled_at)})` : ''}`,
           mins != null ? `${mins} min` : null,
           r.source === 'manual' ? 'emergency banner' : null,
         ].filter(Boolean).join(' · ');
       };
-      const detail = (r) => {
+      // Under each reveal's numbers (./reveal-stats.js): its links, the messages and keepsake, and the feed health report
+      const extras = (r) => {
         const meta = { broadcastId: r.id, kidName: r.kid_name, title: r.title, date: r.live_at || r.scheduled_at };
-        return html`<tr class="bc-hist-detail"><td colspan="8">
+        return html`<div>
           <div class="bc-btns">
             ${r.replay_uid ? html`<a class="btn btn-ghost btn-sm" href=${`https://watch.cloudflarestream.com/${r.replay_uid}`} target="_blank" rel="noopener">Replay ↗</a>` : null}
             ${r.fb_permalink ? html`<a class="btn btn-ghost btn-sm" href=${r.fb_permalink} target="_blank" rel="noopener">Facebook ↗</a>` : null}
@@ -5990,23 +5982,11 @@
           </div>
           ${reports[r.id] ? html`<div style="margin-top:.75rem"><${ControlRoomLazy} key=${`report-${r.id}`} part="report" report=${reports[r.id]} /></div>` : r.live_at ? html`<p class="text-sm text-muted" style="margin:.75rem 0 0">No feed health report for this one.</p>` : null}
           ${msgsFor === r.id ? html`<div style="margin-top:1rem"><${BcMessages} key=${r.id} broadcastId=${r.id} addToast=${addToast} kidName=${r.kid_name} title=${r.title} date=${meta.date} onClose=${() => setMsgsFor(null)} /></div>` : null}
-        </td></tr>`;
+        </div>`;
       };
 
       return html`
-        <div class="card bc-hist">
-          <div class="bc-card-head"><h3>Past reveals</h3><span class="text-sm text-muted">The last 12. Open one for its feed health, messages and links.</span></div>
-          ${rows.length ? html`<div class="bc-table"><table>
-            <thead><tr><th>Reveal</th><th class="num">Page views</th><th class="num" title="Scans of the family invite QR code">QR scans</th><th class="num" title="Clicks on Watch, the replay and the site banner">Watch clicks</th><th class="num">Donate clicks</th><th class="num" title="Reminder signups">Signups</th><th class="num" title="Messages shown on the live page">Messages</th><th><span class="bc-sr">Details</span></th></tr></thead>
-            <tbody>${rows.map((r) => { const e = r.events || {}; const isOpen = open === r.id; return html`
-              <tr class=${`bc-hist-row${isOpen ? ' is-open' : ''}`} onClick=${() => toggle(r.id)}>
-                <td><strong>${r.title || r.kid_name || r.id}</strong><div class="text-sm text-muted">${when(r)}</div></td>
-                <td class="num" data-label="Views">${e.view_live_page || 0}</td><td class="num" data-label="QR scans">${e.qr_scan || 0}</td><td class="num" data-label="Watch clicks">${watchClicks(e)}</td><td class="num" data-label="Donate clicks">${e.click_donate || 0}</td><td class="num" data-label="Signups">${e.reminder_signup || 0}</td><td class="num" data-label="Messages">${r.messageCount || 0}</td>
-                <td class="bc-hist-toggle"><button class="btn btn-ghost btn-sm" type="button" aria-expanded=${isOpen} onClick=${(ev) => { ev.stopPropagation(); toggle(r.id); }}>${isOpen ? 'Close' : 'Open'}</button></td>
-              </tr>
-              ${isOpen ? detail(r) : null}`; })}</tbody>
-          </table></div>` : html`<p class="text-sm text-muted" style="padding:0 1.5rem 1.5rem;margin:0">No reveals yet.</p>`}
-        </div>
+        <${RevealStatsLazy} rows=${rows} since=${data.statsSince} error=${data.statsError} currentId=${data.state?.broadcastId || null} youtubeKey=${!!s?.youtubeConfigured} youtubeOn=${(data.outputs || []).some((o) => o.target === 'youtube' && o.enabled !== false)} replayHours=${Number(data.config?.replayHours) || 72} when=${when} fmtDate=${bcFmt} renderExtra=${extras} />
         ${data.recordings?.length ? html`<details class="card bc-fold">
           <summary>Recordings on the live input <span class="bc-fold-note">${data.recordings.length}</span></summary>
           <div class="bc-fold-body bc-recs">${data.recordings.map((v) => html`<a class="bc-rec-card" href=${v.watch} target="_blank" rel="noopener">${v.thumbnail ? html`<img src=${v.thumbnail} alt="" />` : html`<div class="bc-rec-ph"></div>`}<div class="bc-rec-meta"><strong>${v.name || v.uid.slice(0, 8)}</strong><div class="text-muted">${bcFmt(v.created)} · ${v.isLiveNow ? 'live now' : v.duration ? `${Math.round(v.duration / 60)} min` : v.state}</div></div></a>`)}</div>
@@ -25761,6 +25741,8 @@ ${sections || '<p>No one yet.</p>'}
     }
 
     // ─── Mount ──────────────────────────────
+    // This browser is staff's: the live page's visits from it stay out of the reveal stats (src/utils/live-stats.ts)
+    try { localStorage.setItem('soard-staff', '1'); } catch { /* storage off */ }
     render(html`<${ErrorBoundary}><${App} /></${ErrorBoundary}>`, document.getElementById('app'));
 
     // Tab strips (.hub-tabs, in every area and module) scroll sideways on a

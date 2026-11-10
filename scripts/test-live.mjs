@@ -282,16 +282,16 @@ try {
 
       ok(await clickText('.hub-tab', /^History/), 'History tab');
       await settle(250);
-      ok(await clickText('.bc-hist-row td', /Earlier reveal/), 'History row opens');
+      ok(await clickText('.rs-row td', /Sample Kid/), 'History row opens');
       await settle(150);
       posted.length = 0;
-      ok(await clickText('.bc-hist-detail button', /^Messages \(14\)$/), 'History row shows "Messages (14)"');
+      ok(await clickText('.rs-open button', /^Messages \(14\)$/), 'History row shows "Messages (14)"');
       await page.waitForSelector('.bc-msgs .bc-msg', { timeout: 4000 }).catch(() => {});
       ok(posted.some((b) => b.action === 'messages' && b.broadcastId === 'live-0'), 'History opens the messages for that broadcastId');
       ok(!/Let viewers post/.test(await page.$eval('.bc-msgs', (el) => el.innerText).catch(() => '')), 'past reveal: no on/off switch');
       await settle(500);
       await page.screenshot({ path: `${OUT}admin-history-messages.png`, fullPage: true });
-      await clickText('.bc-hist-detail .bc-btns button', /^Keepsake$/);
+      await clickText('.rs-open .bc-btns button', /^Keepsake$/);
       await page.waitForSelector('#bc-keepsake-root .bc-keepsake', { timeout: 3000 }).catch(() => {});
       ok(/Sample Kid's room reveal/.test(await page.$eval('#bc-keepsake-root', (el) => el.innerText).catch(() => '')), 'History row opens the keepsake');
       await clickText('#bc-keepsake-root button', /^Close$/);

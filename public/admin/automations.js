@@ -699,6 +699,11 @@ const MAP = { t: 'SOARD', children: [
           when: 'A viewer taps Give.',
           does: 'Opens the Zeffy donation form inside the live page so nobody leaves the reveal. No per-reveal totals are tracked anywhere.',
           touches: ['Zeffy'], where: 'src/components/live/LiveGive.astro' },
+        { t: 'Counting viewers', s: 'live', k: 'visitor',
+          when: 'Someone opens the live page, or watches the reveal or its replay.',
+          does: 'Counts each browser once per reveal (a random id, nothing personal), where it came from, and the seconds it really watched. Staff and tests are kept apart. The numbers are in Broadcast → History.',
+          touches: ['D1'], where: 'src/utils/live-stats.ts · functions/api/live-watch.js · _reveal-stats.js',
+          live: (f) => (!f.revealStats || f.revealStats.error ? null : f.revealStats.lastSeenAt ? ON('Last counted someone on the live page:', f.revealStats.lastSeenAt) : { why: 'Starts with the next visit to the live page.' }) },
       ]},
       { t: 'Alerts & checks', children: [
         { t: 'Feed monitor', s: 'live', k: 'schedule',
@@ -706,6 +711,11 @@ const MAP = { t: 'SOARD', children: [
           does: 'Listens for silence, one-sided or distorted sound, and a frozen picture, and checks Facebook and YouTube are really live. Opens an issue, reminds while it lasts, and clears it when fixed.',
           touches: ['Cloudflare Stream', 'Facebook', 'YouTube'], where: 'functions/api/_broadcast-monitor.js · _stream-probe.js',
           live: (f) => (!f.health ? null : { why: f.health.monitorAt ? 'Last watched a feed:' : 'Hasn’t watched a feed yet.', last: f.health.monitorAt }) },
+        { t: 'Watching at once', s: 'live', k: 'schedule',
+          when: 'Every 30 seconds while a reveal is live.',
+          does: 'Notes how many are watching on the site, Facebook and YouTube at that moment, and the hearts so far, for each reveal’s line in Broadcast → History.',
+          touches: ['Facebook', 'YouTube', 'Live hub', 'D1'], where: 'functions/api/_reveal-stats.js (sampleLive, run by the tick)',
+          live: (f) => (!f.revealStats || f.revealStats.error ? null : { why: f.revealStats.lastSampleAt ? 'Last noted during a reveal:' : 'Starts with the next live reveal.', last: f.revealStats.lastSampleAt }) },
         { t: 'Go / no-go', s: 'live', k: 'schedule',
           when: '60 minutes before a scheduled reveal, and again at 10 minutes if anything was still open.',
           does: 'Checks the input, outputs, Facebook post, tokens and hub, and posts the verdict.',
@@ -796,6 +806,18 @@ const MAP = { t: 'SOARD', children: [
           does: 'Finds the reveal moment from captions and Workers AI, cuts a clip under 15 minutes, and publishes it as a Reel. Staff can retry or skip from Reveals.',
           touches: ['Cloudflare Stream', 'Workers AI', 'Instagram'], where: 'functions/api/_broadcast-reel.js',
           live: (f) => (!f.broadcast || !env(f) ? null : !f.broadcast.reels ? OFF(`Switched off in ${SETTINGS}, so replays don’t become Reels.`) : f.env.facebook ? ON(`Switched on in ${SETTINGS}.`) : ATTN('The Facebook page token is missing, so Reels can’t be posted.')) },
+        { t: 'Facebook and YouTube totals', s: 'live', k: 'schedule',
+          when: 'After a reveal ends: every 15 minutes for the first day after it went live, every 2 hours that week, then daily for 30 days.',
+          does: 'Reads Facebook’s views, people who watched, reactions and comments, and YouTube’s views and likes, for each reveal in Broadcast → History.',
+          touches: ['Facebook', 'YouTube', 'D1'], where: 'functions/api/_reveal-stats.js (broadcast-hooks.js) · _broadcast-fb.js · _youtube.js',
+          live: (f) => {
+            const r = f.revealStats;
+            if (!env(f) || !r || r.error) return null;
+            if (!f.env.facebook) return OFF('The Facebook page token is missing, so there’s nothing to read.');
+            if (r.fbMissing) return ATTN('Facebook won’t share its view totals until the page token has the read_insights permission. Reactions and comments still come through.', r.lastTotalsAt);
+            const yt = f.env.youtube ? '' : ' YouTube’s join once YOUTUBE_API_KEY is added.';
+            return r.lastTotalsAt ? ON(`Last read:${yt}`, r.lastTotalsAt) : { why: `Starts after the next reveal.${yt}` };
+          } },
         { t: 'Jump to the reveal', s: 'live', k: 'visitor',
           when: 'Someone watches a replay.',
           does: 'Adds captions and a “jump to the reveal” point, worked out once with Workers AI.',

@@ -12,6 +12,7 @@
  */
 import type { LiveClient, LivePlayer } from './live-client';
 import { mountPlayer, type PlayerHandle, type PlayerStatus } from './live-player';
+import { watchMeter } from './live-stats';
 
 export type StageMode = 'loading' | 'idle' | 'upcoming' | 'starting' | 'live' | 'replay';
 export interface StageView {
@@ -120,6 +121,7 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
   let metaTimer: ReturnType<typeof setTimeout> | undefined;
   let metaSince = 0;
   let detach: (() => void) | null = null;
+  let meter: { stop: () => void } | null = null;
 
   const setHidden = (el: Element | null, hidden: boolean) => { if (el) (el as HTMLElement).hidden = hidden; };
   const flag = (name: string, on: boolean) => { if (on) root.setAttribute(name, ''); else root.removeAttribute(name); };
@@ -135,7 +137,8 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
     flag('data-party', party);
     root.dataset.orientation = shape();
 
-    const key = party && next.player ? `${next.player.kind}:${next.player.uid}` : next.slate ? `slate:${next.slate}` : '';
+    // The broadcast is part of the key: the live input is the same for every reveal, and each reveal's watching is its own
+    const key = party && next.player ? `${next.player.kind}:${next.player.uid}:${client.state?.id || ''}` : next.slate ? `slate:${next.slate}` : '';
     if (key !== mounted && playerEl) {
       mounted = key;
       unmount();
@@ -148,6 +151,16 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
         muted = player.video?.muted ?? true;
         attachMedia();
         if (kind === 'replay') { metaSince = Date.now(); loadReplayMeta(); }
+        // Reveal stats: seconds actually watched, for the broadcast this player belongs to
+        const bid = client.state?.id || null;
+        const watchKind = kind === 'live' ? 'live' : 'replay';
+        meter = watchMeter({
+          kind: watchKind,
+          video: () => video(),
+          // Stream's own iframe (no <video> to look at): showing counts only live, where it plays by itself
+          iframe: () => watchKind === 'live' && pstatus === 'iframe',
+          report: (k, sec) => client.watched(k, sec, bid),
+        });
       } else if (next.slate) {
         const src = next.slate;
         const f = document.createElement('iframe');
@@ -174,6 +187,7 @@ export function createStage(root: HTMLElement, opts: Options): Stage {
   }
 
   function unmount() {
+    meter?.stop(); meter = null;
     detach?.(); detach = null;
     player?.destroy();
     player = null;

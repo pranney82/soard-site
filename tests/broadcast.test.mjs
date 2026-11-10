@@ -275,7 +275,7 @@ test('hub heartbeat: nonce verified over the binding', async () => {
   const waits = ctx.pending.length;
   const ok = await endpoints.hooks.onRequestPost(ctx(post('https://x/api/broadcast-hooks', { type: 'tick', source: 'alarm' }, { 'x-hub-nonce': GOOD_NONCE })));
   assert.equal(ok.status, 200);
-  assert.equal(ctx.pending.length - waits, 36, 'the heartbeat also wakes the checks going into Zeffy, the AI spending watch, the reveal checks, the invite sweep, the invite guest check, the demo day invite check, the JobTread schedule check, the application sweep, the kid status sync, the vendor and sponsor logos (then monetary sponsors), vendors on their JobTread jobs, the Zeffy gift check, Zeffy donors onto the newsletter, the applications waitlist, the press monitor, the event recaps, CompanyCam for families in review, the CompanyCam job check, the one-time Slack preview, the application limit\'s one-time self-test, the email delivery check, job costs, finance, vendors, the quiet Kit subscribers check, the insurance audit, the board, the board’s signed copies and receipts, the board’s report asks, staff sign-in from Google, the staff inboxes sweep, the store order emails and selections as parts (kid items), the old certificates and W-9s, the process Docs’ hourly check, SOARD’s facts against the IRS, and a tick slower than the answer publishes itself');
+  assert.equal(ctx.pending.length - waits, 37, 'the heartbeat also wakes the reveal stats (hearts, Facebook and YouTube totals), the checks going into Zeffy, the AI spending watch, the reveal checks, the invite sweep, the invite guest check, the demo day invite check, the JobTread schedule check, the application sweep, the kid status sync, the vendor and sponsor logos (then monetary sponsors), vendors on their JobTread jobs, the Zeffy gift check, Zeffy donors onto the newsletter, the applications waitlist, the press monitor, the event recaps, CompanyCam for families in review, the CompanyCam job check, the one-time Slack preview, the application limit\'s one-time self-test, the email delivery check, job costs, finance, vendors, the quiet Kit subscribers check, the insurance audit, the board, the board’s signed copies and receipts, the board’s report asks, staff sign-in from Google, the staff inboxes sweep, the store order emails and selections as parts (kid items), the old certificates and W-9s, the process Docs’ hourly check, SOARD’s facts against the IRS, and a tick slower than the answer publishes itself');
   await flush();
   const body = await ok.json();
   assert.equal(body.ok, true);
@@ -318,9 +318,11 @@ test('webhook is only a wake-up call: forged connect with idle stream does nothi
 });
 
 test('analytics beacon records whitelisted types only', async () => {
-  const ok = await endpoints.event.onRequestPost(ctx(post('https://x/api/broadcast-event', { type: 'click_donate', meta: { src: 'live' } })));
+  // From a browser on the real site (a script, or another host, isn't the public: see tests/reveal-stats.test.mjs)
+  const ua = { 'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36' };
+  const ok = await endpoints.event.onRequestPost(ctx(post('https://sunshineonaranneyday.com/api/broadcast-event', { type: 'click_donate', meta: { src: 'live' } }, ua)));
   assert.equal(ok.status, 204);
-  const nope = await endpoints.event.onRequestPost(ctx(post('https://x/api/broadcast-event', { type: 'drop table' })));
+  const nope = await endpoints.event.onRequestPost(ctx(post('https://sunshineonaranneyday.com/api/broadcast-event', { type: 'drop table' }, ua)));
   assert.equal(nope.status, 204);
   const rows = await env.DB.prepare(`SELECT type FROM broadcast_events WHERE type IN ('click_donate','drop table')`).all();
   assert.deepEqual(rows.results.map(r => r.type), ['click_donate']);

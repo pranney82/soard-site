@@ -54,6 +54,8 @@ const nextDay = (date) => {
  */
 export function revealEvent(r, { past = false, stamp = compactUtc(new Date()) } = {}) {
   const live = `${SITE}/live/${r.slug}/`;
+  // The event's link field says it came from a calendar (History's "where people came from"); words people read stay plain
+  const watch = `${live}?src=calendar`;
   const story = `${SITE}/kids/${r.slug}/`;
   const whose = possessive(r.name);
   const lines = ['BEGIN:VEVENT', `UID:live-reveal-${r.slug}@sunshineonaranneyday.com`, `DTSTAMP:${stamp}`];
@@ -70,7 +72,7 @@ export function revealEvent(r, { past = false, stamp = compactUtc(new Date()) } 
         `Read ${whose} story: ${story}`,
       ].join('\n'))}`,
       `LOCATION:${ical(live)}`,
-      `URL:${ical(live)}`,
+      `URL:${ical(watch)}`,
       'STATUS:TENTATIVE',
       'TRANSP:TRANSPARENT',
       'END:VEVENT',
@@ -99,12 +101,12 @@ export function revealEvent(r, { past = false, stamp = compactUtc(new Date()) } 
       '',
       `Read ${whose} story: ${story}`,
     ].filter((l) => l !== null).join('\n');
-    link = live;
+    link = watch;
   }
   lines.push(
     `SUMMARY:${ical(summary)}`,
     `DESCRIPTION:${ical(details)}`,
-    `LOCATION:${ical(link)}`,
+    `LOCATION:${ical(past ? story : live)}`,
     `URL:${ical(link)}`,
     'STATUS:CONFIRMED',
     'TRANSP:TRANSPARENT',

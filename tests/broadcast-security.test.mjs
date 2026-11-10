@@ -270,7 +270,9 @@ test("a tick holding an old copy of health can't wipe the webhook's record", asy
 
 // ─── broadcast-event ────────────────────────────────────────────────
 
-const beacon = (body) => endpoints.event.onRequestPost(ctx(post('https://sunshineonaranneyday.com/api/broadcast-event', body)));
+// A real browser's user agent: a beacon without one is a script and is dropped (Reveal stats)
+const BROWSER = 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1';
+const beacon = (body) => endpoints.event.onRequestPost(ctx(post('https://sunshineonaranneyday.com/api/broadcast-event', body, { 'user-agent': BROWSER })));
 
 test('banner clicks are counted in place; a click never rewrites the state', async () => {
   await freshBroadcast('scheduled');

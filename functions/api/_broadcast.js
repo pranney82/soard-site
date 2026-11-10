@@ -48,6 +48,7 @@ import { kitConfigured, kitCreateBroadcast, kitUpdateDraft } from './_kit.js';
 import * as reels from './_broadcast-reel.js';
 import * as monitor from './_broadcast-monitor.js';
 import * as preflight from './_broadcast-preflight.js';
+import * as revealStats from './_reveal-stats.js';
 import { testGuests } from './_reveal-invites.js';
 import { cfImg, HERO_TRANSFORM } from './_reveal-invite-email.js';
 
@@ -190,6 +191,7 @@ export function defaultState() {
     title: null, message: null, image: null,
     scheduledAt: null, armedAt: null, liveAt: null, endedAt: null, disconnectedAt: null,
     liveVideoUid: null, replayUid: null, replayReadyAt: null, replayUntil: null,
+    replayStartedAt: null, // when the replay's recording began (after a long reconnect, later than liveAt): reveal stats line its moment up with the live minutes
     revealAtSeconds: null, // admin override for where the reveal happens in the recording
     reel: null,            // Instagram Reel pipeline (functions/api/_broadcast-reel.js)
     fb: { liveVideoId: null, permalink: null, outputUid: null, checkedAt: null, needsReview: false },
@@ -354,6 +356,11 @@ export function liveUrlFor(state) {
   return state?.kidSlug ? `${SITE_ORIGIN}/live/${state.kidSlug}/` : `${SITE_ORIGIN}/live/`;
 }
 
+/** The live page with where the link was sent (?src=email, push…), so History can say where viewers came from */
+export function liveLinkFor(state, src) {
+  return src ? `${liveUrlFor(state)}?src=${encodeURIComponent(src)}` : liveUrlFor(state);
+}
+
 /**
  * The broadcast as anyone outside the admin may know it. A rehearsal (a
  * JobTread "TEST …" job, state.test) runs the real pipeline but stays
@@ -485,7 +492,7 @@ async function upsertBroadcastRow(DB, s) {
       fb_permalink=excluded.fb_permalink, source=excluded.source, data=excluded.data, updated_at=excluded.updated_at`)
     .bind(s.broadcastId, s.kidSlug, s.kidName, s.title, s.message, s.image, s.scheduledAt, s.liveAt, s.endedAt, s.phase,
       s.liveVideoUid, s.replayUid, s.fb?.liveVideoId || null, s.fb?.permalink || null, s.source,
-      JSON.stringify({ clicks: s.clicks || 0, note: s.note, kit: s.kit, kitLiveEmail: s.kitLiveEmail ?? null, replayUntil: s.replayUntil, reel: s.reel || null, jobId: s.jobId || null }), s.createdAt || nowIso(), nowIso()).run();
+      JSON.stringify({ clicks: s.clicks || 0, note: s.note, kit: s.kit, kitLiveEmail: s.kitLiveEmail ?? null, replayUntil: s.replayUntil, reel: s.reel || null, jobId: s.jobId || null, test: !!s.test, revealAtSeconds: s.revealAtSeconds ?? null, replayStartedAt: s.replayStartedAt || null }), s.createdAt || nowIso(), nowIso()).run();
 }
 
 /**
@@ -493,9 +500,12 @@ async function upsertBroadcastRow(DB, s) {
  * state is cleared. tClear drops the broadcastId, so the persist step can't
  * update the row afterwards, and History would keep calling it "Coming up".
  */
-async function closeBroadcastRow(DB, s, phase) {
+async function closeBroadcastRow(DB, s, phase, { endedNow = true } = {}) {
   if (!s.broadcastId) return;
-  await DB.prepare('UPDATE broadcasts SET phase = ?, updated_at = ? WHERE id = ?').bind(phase, nowIso(), s.broadcastId).run();
+  // One that had gone live gets its end time too (when it really ended now), so History doesn't call it live and
+  // reveal stats read its totals. An emergency banner that ran out on its timer ended some time before: no end time
+  await DB.prepare(`UPDATE broadcasts SET phase = ?, updated_at = ?, ended_at = CASE WHEN live_at IS NOT NULL AND ? THEN COALESCE(ended_at, ?) ELSE ended_at END WHERE id = ?`)
+    .bind(phase, nowIso(), endedNow ? 1 : 0, nowIso(), s.broadcastId).run();
 }
 
 export async function recordEvent(DB, broadcastId, type, meta) {
@@ -883,7 +893,7 @@ export async function sendReminders(env, config, state, kind, work, { budgetMs =
     // Push: a dead subscription (404/410, or not a browser push service) is dropped
     channel('push', !!(config.reminders?.push && config.vapid?.privateJwk), async (rows) => {
       const subs = rows.map(r => { try { return { id: r.id, subscription: JSON.parse(r.subscription) }; } catch { return null; } }).filter(Boolean);
-      const r = await notify.sendPushBatch(subs, notify.reminderPush(common), config.vapid, { ttl: kind === 'live' ? 2 * 3600 : 24 * 3600, urgency: kind === 'live' ? 'high' : 'normal', topic: `reveal-${kind}` });
+      const r = await notify.sendPushBatch(subs, notify.reminderPush({ ...common, liveUrl: liveLinkFor(state, 'push'), replayUrl: liveLinkFor(state, 'push') }), config.vapid, { ttl: kind === 'live' ? 2 * 3600 : 24 * 3600, urgency: kind === 'live' ? 'high' : 'normal', topic: `reveal-${kind}` });
       for (const id of r.gone) await DB.prepare('UPDATE broadcast_reminders SET unsubscribed_at = ? WHERE id = ?').bind(nowIso(), id).run();
       return { sent: r.sent, failed: r.failed + (rows.length - subs.length), error: null };
     }),
@@ -958,7 +968,8 @@ export function kitLiveWanted(state, config) {
  * address, and comes out cropped to the face either way.
  */
 export function reminderArgs(state, kind, config = {}) {
-  const url = liveUrlFor(state);
+  // Every reveal email (reminders, Kit) links with ?src=email; push swaps in its own
+  const url = liveLinkFor(state, 'email');
   return {
     kind, kidName: state.kidName, kidSlug: state.kidSlug || null, scheduledAt: state.scheduledAt,
     tz: config.timezone || 'America/New_York',
@@ -1030,18 +1041,21 @@ async function checkReplayReady(env, config, state, health, work) {
 
   let uid = state.liveVideoUid;
   let ready = false;
+  let created = null;
   if (uid) {
     const v = await stream.getVideo(env, uid);
     ready = v.ok && v.result?.status?.state === 'ready';
+    created = v.result?.created || null;
   } else if (config.liveInput?.uid) {
     const vids = await stream.listInputVideos(env, config.liveInput.uid);
     const liveAt = state.liveAt ? Date.parse(state.liveAt) - 10 * 60e3 : 0;
     const v = (vids.result || []).find(x => x.status?.state === 'ready' && Date.parse(x.created) >= liveAt);
-    if (v) { uid = v.uid; ready = true; }
+    if (v) { uid = v.uid; ready = true; created = v.created || null; }
   }
   if (!ready) return state;
 
-  const s = { ...state, replayUid: uid, replayReadyAt: nowIso() };
+  // When this recording began: after a long reconnect the replay is the last piece, not the whole reveal
+  const s = { ...state, replayUid: uid, replayReadyAt: nowIso(), replayStartedAt: Number.isFinite(Date.parse(created || '')) ? new Date(Date.parse(created)).toISOString() : null };
   work.push('replay-ready');
   await stream.updateVideo(env, uid, { meta: { name: `${s.kidName ? `${s.kidName}'s` : 'Live'} reveal (${(s.liveAt || nowIso()).slice(0, 10)})` } }).catch(() => {});
   await stream.requestCaptions(env, uid);
@@ -1412,6 +1426,8 @@ async function tick(env, { source, force, by, keepLease = async () => true }) {
     state = tClear(state, 'missed'); work.push('missed');
   }
   if (state.phase === 'live' && state.source === 'manual' && state.manual?.until && now >= Date.parse(state.manual.until)) {
+    // The banner's reveal is over: its row says so (History, and Facebook's totals for it)
+    await closeBroadcastRow(DB, state, 'ended', { endedNow: false });
     state = tClear(state, 'manual-expired'); work.push('manual-expired');
   }
   if (state.phase === 'live' && state.source === 'stream' && state.liveAt && now - Date.parse(state.liveAt) > MAX_LIVE_HOURS * 3600e3) {
@@ -1455,6 +1471,8 @@ async function tick(env, { source, force, by, keepLease = async () => true }) {
     async () => { if (live()) state = await fbRefreshPermalink(env, state, work); },
     // Feed watch, go/no-go and mic checks only report; nothing they do may stop the state machine
     async () => { if (live() && state.source === 'stream') await monitor.watch(env, config, state, health, work, recordEvent).catch((e) => work.push(`monitor-error: ${e.message}`)); },
+    // Every 30 s: how many watch at once on the site, Facebook and YouTube, and the hearts so far (History's reveal stats)
+    async () => { if (live() && state.source === 'stream') await revealStats.sampleLive(env, state, health, { hubStatus: () => hubStatus(env) }).catch((e) => work.push(`stats-error: ${e.message}`)); },
     async () => { if (state.phase === 'scheduled' || state.phase === 'armed') await preflight.auto(env, config, state, health, work, { hubStatus }).catch((e) => work.push(`preflight-error: ${e.message}`)); },
     async () => { if (!live() && await monitor.watchRehearsal(env, config, health).catch(() => false)) work.push('mic-check'); },
     async () => { state = await kitAutoLive(env, config, state, work); },
@@ -1646,7 +1664,7 @@ async function runAdminAction(env, action, body, userEmail) {
     case 'endNow': {
       if (!['live', 'ending'].includes(state.phase)) return fail('Nothing is live');
       const work = [];
-      if (state.source === 'manual') state = tClear(state, 'ended-manually', userEmail);
+      if (state.source === 'manual') { await closeBroadcastRow(DB, state, 'ended'); state = tClear(state, 'ended-manually', userEmail); }
       else {
         // This command ends Facebook's video and records the end itself, so the tick's ended effects skip both
         await claimOnce(DB, state.broadcastId, 'fb-ended');
@@ -1675,7 +1693,10 @@ async function runAdminAction(env, action, body, userEmail) {
       const uid = String(body.uid || '').trim();
       if (!/^[a-f0-9]{32}$/i.test(uid)) return fail('uid must be a Stream video id');
       if (state.phase !== 'replay') return fail('Only while a replay is showing');
-      state = { ...state, replayUid: uid, replayReadyAt: nowIso(), updatedBy: userEmail };
+      // When that recording began, so the reveal stats line its moment up with the live minutes
+      const picked = stream.streamConfigured(env) ? await stream.getVideo(env, uid).catch(() => null) : null;
+      const began = Date.parse(picked?.result?.created || '');
+      state = { ...state, replayUid: uid, replayReadyAt: nowIso(), replayStartedAt: Number.isFinite(began) ? new Date(began).toISOString() : null, updatedBy: userEmail };
       if (reels.reelEnabled(config) && (!state.reel || state.reel.stage !== 'done')) state.reel = reels.startReel(state, uid, state.revealAtSeconds);
       await writeState(DB, state); await upsertBroadcastRow(DB, state);
       break;
@@ -1698,6 +1719,8 @@ async function runAdminAction(env, action, body, userEmail) {
       break;
     }
     case 'reset': {
+      // A reset mid-reveal still ends that reveal's row (cancelled if it never went live)
+      if (state.broadcastId) await closeBroadcastRow(DB, state, state.liveAt ? 'ended' : 'cancelled');
       state = tClear(state, 'reset', userEmail);
       await writeState(DB, state);
       await logAudit(DB, { userEmail, action: 'deleted', entityType: 'live-status', entitySlug: 'broadcast', entityName: 'Broadcast state reset', gitStatus: 'ok' });

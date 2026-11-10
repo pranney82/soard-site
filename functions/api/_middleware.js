@@ -183,6 +183,11 @@ PUBLIC_ROUTES.push('/api/advisory-action');
 // (_board-rsvp.js); it only sends them to the calendar invite, rate limited below
 PUBLIC_ROUTES.push('/api/board-rsvp');
 
+// The live page's "watched N more seconds" reports for Reveal stats: a random
+// browser id, no personal data; the handler caps each report at the time since
+// that browser's last one. Rate limited below with room for a watch party.
+PUBLIC_ROUTES.push('/api/live-watch');
+
 // The anniversary book's reading counts (/<book>/): anonymous daily counters,
 // no cookie, address or id kept (_book-stats.js); always 204; rate limited below
 PUBLIC_ROUTES.push('/api/book-stats');
@@ -200,7 +205,7 @@ PUBLIC_GET_ROUTES.push('/api/books-callback');
 const RATE_LIMIT_WINDOW_MS = 60 * 1000;
 const RATE_LIMIT_MAX = 5;
 // Abuse-prone POST routes (newsletter signup, live-banner click beacon).
-const RATE_LIMITED_POST_ROUTES = new Set(['/api/book-stats', '/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/profile-request', '/api/advisory-apply', '/api/advisory-action', '/api/vendor-docs', '/api/trade-partner', '/api/board-rsvp']);
+const RATE_LIMITED_POST_ROUTES = new Set(['/api/book-stats', '/api/newsletter', '/api/live-click', '/api/reminders', '/api/broadcast-event', '/api/live-watch', '/api/profile-request', '/api/advisory-apply', '/api/advisory-action', '/api/vendor-docs', '/api/trade-partner', '/api/board-rsvp']);
 // Public GET routes that fan out to paid upstreams / build large responses.
 const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos', '/api/books-callback']);
 // The application form autosaves every step and uploads photos one by one, so
@@ -208,7 +213,7 @@ const RATE_LIMITED_GET_ROUTES = new Set(['/api/download-branding-photos', '/api/
 // Per minute per address. A watch party or a gala table shares one Wi-Fi, so the
 // beacons and the signup forms get room for a crowd; the handlers add their own
 // per-person limits behind these.
-const ROUTE_LIMITS = { '/api/book-stats': 300, '/api/broadcast-event': 120, '/api/live-click': 120, '/api/newsletter': 20, '/api/reminders': 20, '/api/profile-request': 10, '/api/vendor-docs': 10, '/api/trade-partner': 20, '/api/board-rsvp': 10 };
+const ROUTE_LIMITS = { '/api/book-stats': 300, '/api/broadcast-event': 120, '/api/live-watch': 600, '/api/live-click': 120, '/api/newsletter': 20, '/api/reminders': 20, '/api/profile-request': 10, '/api/vendor-docs': 10, '/api/trade-partner': 20, '/api/board-rsvp': 10 };
 const APPLY_ROUTE = '/api/apply';
 const APPLY_RATE_LIMIT_MAX = 60;
 const _rateLimitMap = new Map(); // "<route>:<ip>" → { count, resetAt }

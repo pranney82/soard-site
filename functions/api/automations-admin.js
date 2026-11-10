@@ -78,6 +78,7 @@ import { backfillStatus } from './_coi-backfill.js';
 import { processFacts } from './_process-docs.js';
 import { giftsStatus } from './_board-gifts.js';
 import { donorsStatus } from './_kit-donors.js';
+import { revealStatsFacts } from './_reveal-stats.js';
 import { checksFacts } from './_check-gifts.js';
 import { wordsStatus } from './_board-file-words.js';
 import { permitFacts } from './_permit-office.js';
@@ -527,6 +528,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     boardGifts: await settle(() => giftsStatus(DB)),
     // Zeffy donors onto the newsletter in Kit: people counts and times only (_kit-donors.js)
     kitDonors: await settle(() => donorsStatus(DB)),
+    // Reveal stats: when the live page last counted someone, and Facebook and YouTube's last read; times only (_reveal-stats.js)
+    revealStats: await settle(() => revealStatsFacts(DB)),
     // Board files read for the board page's search: counts only (_board-file-words.js)
     boardWords: await settle(() => wordsStatus(DB)),
   };
