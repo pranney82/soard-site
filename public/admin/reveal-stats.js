@@ -107,7 +107,7 @@ const ended = (r) => !!r.live_at && !isLiveNow(r) && !isUpcoming(r);
 const neverLive = (r) => !r.live_at && !isUpcoming(r);
 const real = (r) => !!r.kid_slug && !isTest(r) && r.source !== 'manual';
 /** A real reveal that's over: it's compared and in the averages */
-export const compared = (r) => ended(r) && real(r);
+export const compared = (r) => ended(r) && real(r) && !!r.stats?.counted;
 /** In the table: compared, plus the next reveal and one live now (what they have so far, out of the averages) */
 export const inTable = (r) => compared(r) || ((isUpcoming(r) || (isLiveNow(r) && !!r.live_at)) && real(r));
 
@@ -254,13 +254,20 @@ export function AtOnceChart({ series, revealAt = null }) {
   // The tooltip's real width, so it can be kept inside the chart
   useEffect(() => { const t = tipRef.current; if (t && Math.abs(t.offsetWidth - tipW) > 1) setTipW(t.offsetWidth); });
   const pts = useMemo(() => cleanSeries(series), [series]);
-  const shown = SERIES.filter((s) => pts.some((p) => Number.isFinite(p[s.i])));
+  // The site whenever it was read; Facebook and YouTube once they had someone (only zeros: not live yet, or no count given)
+  const shown = SERIES.filter((s) => pts.some((p) => (s.i === 1 ? Number.isFinite(p[s.i]) : p[s.i] > 0)));
   const total = (p) => shown.reduce((a, s) => a + (Number.isFinite(p[s.i]) ? p[s.i] : 0), 0);
   // Together: a missed reading stands in for up to 2 minutes (as the server's "most at once" does); past that, not known
   const filled = useMemo(() => new Map(fillGaps(pts).map((q) => [q[0], q])), [pts]);
-  const together = (p) => { const q = filled.get(p[0]) || p; return shown.every((s) => Number.isFinite(q[s.i])) ? total(q) : null; };
+  // Together: every place read then (or carried); a place not known makes it "at least" (≥), as the tile says
+  const knownSum = (p) => { const q = filled.get(p[0]) || p; return shown.reduce((a, s) => a + (Number.isFinite(q[s.i]) ? q[s.i] : 0), 0); };
+  const complete = (p) => { const q = filled.get(p[0]) || p; return shown.every((s) => Number.isFinite(q[s.i])); };
+  const together = (p) => knownSum(p);
+  const togetherText = (p) => `${complete(p) ? '' : '≥'}${fmtN(knownSum(p))}`;
   // A place's number at a moment: read then, or its last reading standing in (≈), or not known (—)
   const cellOf = (p, i) => { if (Number.isFinite(p[i])) return fmtN(p[i]); const q = filled.get(p[0]); return q && Number.isFinite(q[i]) ? `≈${fmtN(q[i])}` : DASH; };
+  // Lines run through a reading carried over a missed one (as the numbers do); a longer gap still breaks them
+  const drawn = pts.map((p) => filled.get(p[0]) || p);
   const anyCarried = shown.some((s) => pts.some((p) => !Number.isFinite(p[s.i]) && Number.isFinite(filled.get(p[0])?.[s.i])));
   const top = Math.max(0, ...pts.flatMap((p) => shown.map((s) => (Number.isFinite(p[s.i]) ? p[s.i] : 0))));
   const { max: maxY, ticks: yTicks } = yScale(top);
@@ -315,12 +322,12 @@ export function AtOnceChart({ series, revealAt = null }) {
     const pos = right + tipW <= w ? right : left >= 0 ? left : w - tipW;
     return Math.max(0, Math.min(pos, w - tipW));
   })() : 0;
-  const peak = pts.length ? pts.reduce((a, b) => ((together(b) ?? -1) > (together(a) ?? -1) ? b : a)) : null;
+  const peak = pts.length ? pts.reduce((a, b) => (knownSum(b) > knownSum(a) ? b : a)) : null;
   const label = `Watching at once, by minutes after going live. ${shown.map((s) => `${s.name} peaked at ${fmtN(Math.max(...pts.map((p) => (Number.isFinite(p[s.i]) ? p[s.i] : 0))))}`).join('. ')}.${revealAt != null ? ` The room was revealed ${clockOf(revealAt)} after going live.` : ''} Use the left and right arrow keys to read each moment.`;
 
   return html`<div class="rs-chart">
     ${narrow ? html`<p class="rs-readout" role="status">${hp
-      ? html`<strong>${clockOf(hp[0])}</strong> after going live: ${shown.map((s, k) => html`${k ? ' · ' : ''}${s.name} <strong>${cellOf(hp, s.i)}</strong>`)}${shown.length > 1 ? html` · Together <strong>${fmtN(together(hp))}</strong>` : null}`
+      ? html`<strong>${clockOf(hp[0])}</strong> after going live: ${shown.map((s, k) => html`${k ? ' · ' : ''}${s.name} <strong>${cellOf(hp, s.i)}</strong>`)}${shown.length > 1 ? html` · Together <strong>${togetherText(hp)}</strong>` : null}`
       : 'Tap or drag along the line to read each moment.'}</p>` : null}
     ${shown.length > 1 ? html`<div class="rs-legend" aria-hidden="true">${shown.map((s) => html`<span><svg width="16" height="8"><line x1="0" y1="4" x2="16" y2="4" stroke=${COLORS[s.key]} stroke-width="2" stroke-linecap="round" /></svg>${s.name}</span>`)}</div>` : null}
     <div class="rs-plot" ref=${wrap}
@@ -331,7 +338,7 @@ export function AtOnceChart({ series, revealAt = null }) {
         ${yTicks.map((v) => html`<g><line x1=${padL} x2=${padL + plotW} y1=${y(v)} y2=${y(v)} class="rs-grid" /><text x=${padL - 6} y=${y(v) + 4} text-anchor="end" class="rs-axis">${fmtN(v)}</text></g>`)}
         ${xTicks.map((m) => html`<text x=${x(m * 60)} y=${H - 8} text-anchor=${m === 0 ? 'start' : 'middle'} class="rs-axis">${xLabel(m, step)}</text>`)}
         ${revealAt != null && revealAt <= maxT ? html`<g class="rs-reveal"><line x1=${x(revealAt)} x2=${x(revealAt)} y1=${padT - 6} y2=${H - padB} /><text x=${Math.min(Math.max(x(revealAt), padL + 20), padL + plotW - 20)} y=${padT - 10} text-anchor="middle">Reveal</text></g>` : null}
-        ${shown.map((s) => runs(pts, s.i, x, y).map((r) => r.length === 1
+        ${shown.map((s) => runs(drawn, s.i, x, y).map((r) => r.length === 1
           ? html`<circle cx=${r[0][0]} cy=${r[0][1]} r="2.5" fill=${COLORS[s.key]} />`
           : html`<polyline points=${r.map(([a, b]) => `${a.toFixed(1)},${b.toFixed(1)}`).join(' ')} fill="none" stroke=${COLORS[s.key]} stroke-width="2" stroke-linejoin="round" stroke-linecap="round" />`))}
         ${shown.length > 1 ? ends.map((e) => html`<g class="rs-end">${Math.abs(e.ly - e.y) > 2 ? html`<line x1=${e.x + 3} y1=${e.y} x2=${e.x + 10} y2=${e.ly} />` : null}<text x=${e.x + 12} y=${e.ly + 4}>${e.name}</text></g>`) : null}
@@ -340,28 +347,27 @@ export function AtOnceChart({ series, revealAt = null }) {
       ${hp && !narrow ? html`<div class="rs-tip" ref=${tipRef} style=${`left:${tipLeft}px`} role="status">
         <div class="rs-tip__when">${clockOf(hp[0])} after going live</div>
         ${shown.map((s) => html`<div class="rs-tip__row"><svg width="12" height="6" aria-hidden="true"><line x1="0" y1="3" x2="12" y2="3" stroke=${COLORS[s.key]} stroke-width="2" stroke-linecap="round" /></svg><strong>${cellOf(hp, s.i)}</strong><span>${s.name}</span></div>`)}
-        ${shown.length > 1 ? html`<div class="rs-tip__row rs-tip__total"><strong>${fmtN(together(hp))}</strong><span>Together</span></div>` : null}
+        ${shown.length > 1 ? html`<div class="rs-tip__row rs-tip__total"><strong>${togetherText(hp)}</strong><span>Together</span></div>` : null}
       </div>` : null}
     </div>
     <details class="rs-numbers">
       <summary>See the numbers</summary>
       <div class="rs-numbers__wrap"><table>
         <thead><tr><th>After going live</th>${shown.map((s) => html`<th class="num">${s.name}</th>`)}${shown.length > 1 ? html`<th class="num">Together</th>` : null}</tr></thead>
-        <tbody>${byMinute(pts).map((p) => html`<tr class=${p === peak ? 'is-peak' : ''}><td>${clockOf(p[0])}</td>${shown.map((s) => html`<td class="num">${cellOf(p, s.i)}</td>`)}${shown.length > 1 ? html`<td class="num">${fmtN(together(p))}</td>` : null}</tr>`)}</tbody>
+        <tbody>${byMinute(pts, knownSum, peak).map((p) => html`<tr class=${p === peak ? 'is-peak' : ''}><td>${clockOf(p[0])}</td>${shown.map((s) => html`<td class="num">${cellOf(p, s.i)}</td>`)}${shown.length > 1 ? html`<td class="num">${togetherText(p)}</td>` : null}</tr>`)}</tbody>
       </table></div>
     </details>
     ${anyCarried ? html`<p class="rs-muted">≈ That place wasn't read at that moment; its reading from up to 2 minutes before stands in.</p>` : null}
   </div>`;
 }
 
-/** One row a minute (that minute's busiest moment), for the numbers table */
-function byMinute(pts) {
+/** One row a minute (that minute's busiest moment, by the same count as the tile), the peak's own moment always */
+function byMinute(pts, sum, peak) {
   const out = new Map();
-  const tot = (p) => (p[1] || 0) + (p[2] || 0) + (p[3] || 0);
   for (const p of pts) {
     const m = Math.floor(p[0] / 60);
     const have = out.get(m);
-    if (!have || tot(p) > tot(have)) out.set(m, p);
+    if (!have || sum(p) > sum(have) || p === peak) { if (have !== peak) out.set(m, p); }
   }
   return [...out.values()];
 }
@@ -400,8 +406,8 @@ function Platforms({ r, s, youtubeKey, youtubeOn, facebookOn }) {
   const hasViews = f.unique != null || f.views != null;
   const when = ago(f.checkedAt) ? ` (${ago(f.checkedAt)})` : '';
   const failed = f.error && f.errorKind !== 'partial';
-  const fbNote = !facebookOn && !fbNums.length ? 'Facebook isn\'t connected to the site, so it can\'t read Facebook\'s numbers.'
-    : failed ? `Facebook didn't answer when last asked${when}: ${words(f.error)}${fbNums.length && readAt(f) ? ` The numbers shown are from ${ago(hasViews && viewsAt ? viewsAt : readAt(f))}.` : ''}`
+  const fbNote = !facebookOn ? `Facebook isn't connected to the site, so it can't read Facebook's numbers.${fbNums.length && readAt(f) ? ` The numbers shown are from ${ago(readAt(f))}.` : ''}`
+    : failed && !f.missing ? `Facebook didn't answer when last asked${when}: ${words(f.error)}${fbNums.length && readAt(f) ? ` The numbers shown are from ${ago(hasViews && viewsAt ? viewsAt : readAt(f))}.` : ''}`
     : f.missing
     ? `Facebook only shares its view totals once the site's Facebook connection has the "read insights" permission. Reactions and comments still come through.${hasViews && viewsAt ? ` The views shown are from ${ago(viewsAt)}.` : ''}`
     : f.error ? `Facebook sent reactions and comments${when} but not its view totals: ${words(f.error)}${hasViews && viewsAt ? ` The views shown are from ${ago(viewsAt)}.` : ''}`
@@ -412,9 +418,10 @@ function Platforms({ r, s, youtubeKey, youtubeOn, facebookOn }) {
     : r.fb_permalink || f.videoId || f.liveVideoId ? (old ? 'Facebook didn\'t report numbers for this reveal.' : 'Facebook\'s totals come in after the reveal.')
     : r.source === 'manual' ? 'This reveal was live on Facebook, but the site doesn\'t know which video it was, so it can\'t read Facebook\'s numbers.'
     : 'This reveal wasn\'t on the Facebook Page.';
-  const ytNote = yt.error ? `YouTube didn't answer when last asked${ago(yt.checkedAt) ? ` (${ago(yt.checkedAt)})` : ''}: ${words(yt.error)}`
+  const ytNote = !youtubeKey && (yt.videoId || ytNums.length) ? `YouTube isn't connected for numbers yet: it needs a YouTube API key.${ytNums.length && readAt(yt) ? ` The numbers shown are from ${ago(readAt(yt))}.` : ''}`
+    : yt.error ? `YouTube didn't answer when last asked${ago(yt.checkedAt) ? ` (${ago(yt.checkedAt)})` : ''}: ${words(yt.error)}${ytNums.length && readAt(yt) ? ` The numbers shown are from ${ago(readAt(yt))}.` : ''}`
     : ytNums.length ? null
-    : yt.videoId ? (!youtubeKey ? 'YouTube isn\'t connected for numbers yet: it needs a YouTube API key.' : old ? 'YouTube didn\'t report numbers for this reveal.' : 'YouTube\'s numbers come in after the reveal.')
+    : yt.videoId ? (old ? 'YouTube didn\'t report numbers for this reveal.' : 'YouTube\'s numbers come in after the reveal.')
     : !youtubeOn ? 'Reveals aren\'t sent to YouTube (Settings → YouTube).'
     : !youtubeKey ? 'YouTube isn\'t connected for numbers yet: it needs a YouTube API key.'
     : isUpcoming(r) || isLiveNow(r) ? 'Counted once it\'s live on YouTube.'
@@ -433,9 +440,12 @@ export function peakNote(a) {
   if (!(Number(a.peakAll) > 0)) return 'Nobody was watching at once.';
   const split = a.peakSplit || [a.peakSite, a.peakFb, a.peakYt];
   const places = [['Site', split[0], true], ['Facebook', split[1], a.hasFb], ['YouTube', split[2], a.hasYt]].filter(([, , on]) => on);
-  const read = places.filter(([, v]) => v != null).map(([name, v]) => `${name} ${fmtN(v)}`);
+  const carried = a.peakCarried || [];
+  const read = places.map((p, k) => [...p, carried[[1, 2, 3][['Site', 'Facebook', 'YouTube'].indexOf(p[0])] - 1]]).filter(([, v]) => v != null).map(([name, v, , c]) => `${name} ${c ? '≈' : ''}${fmtN(v)}`);
   const unread = places.filter(([, v]) => v == null).map(([name]) => name);
-  return `${read.join(' · ')}${a.peakAllAt != null ? `, ${clockOf(a.peakAllAt)} after going live` : ''}.${unread.length ? ` ${unread.join(' and ')} wasn't read then, so it may have been more.` : ''}`;
+  const tail = unread.length ? ` ${unread.join(' and ')} ${unread.length > 1 ? 'weren\'t' : 'wasn\'t'} read then, so it may have been more.` : '';
+  const approx = carried.some(Boolean) ? ' (≈ a reading from up to 2 minutes before)' : '';
+  return `${read.join(' · ')}${a.peakAllAt != null ? `, ${clockOf(a.peakAllAt)} after going live` : ''}${approx}.${tail}`;
 }
 
 /** "120 came before, 171 watched live, 64 the replay": the groups overlap, and it says so when they do */
@@ -471,7 +481,7 @@ export function RevealDetail({ r, since, error, currentId, youtubeKey, youtubeOn
     ${s?.counted && !neverLive(r) ? html`
       <div class="stats rs-tiles">
         <${Tile} label="Most at once" value=${fmtN(live ? a?.peakAll : null)} note=${a && live ? peakNote(a) : !live ? 'Counted while it\'s live.' : isLiveNow(r) ? 'Counted every 30 seconds while it\'s live.' : 'Not measured.'} />
-        <${Tile} label="Average at once" value=${fmtN(live && a?.avgAll != null ? Math.round(a.avgAll) : null)} note=${a && live ? (a.avgPartial ? 'Across the whole reveal, every place together. Facebook or YouTube wasn\'t read at some moments, so it may have been more.' : 'Across the whole reveal, every place together.') : null} />
+        <${Tile} label="Average at once" value=${fmtN(live && a?.avgAll != null ? Math.round(a.avgAll) : null)} note=${a && live ? (a.avgPartial ? `Across the whole reveal, every place together. ${[a.hasFb ? 'Facebook' : null, a.hasYt ? 'YouTube' : null].filter(Boolean).join(' or ') || 'A place'} wasn't read at some moments, so it may have been more.` : 'Across the whole reveal, every place together.') : null} />
         <${Tile} label="People" value=${fmtN(s.people)} note=${peopleNote(r, s)} />
         <${Tile} label="Avg. watch, live" value=${fmtDur(live ? s.avgLiveSec : null)} note=${s.avgReplaySec != null ? `Replay ${fmtDur(s.avgReplaySec)}` : null} />
         <${Tile} label="There for the reveal" value=${fmtPct(there)} note=${thereNote} />
@@ -552,14 +562,18 @@ export function RevealStats({ rows: given = [], since = null, error = null, curr
       else if (cards && card.clientWidth >= cards) setCards(0);
     };
     check();
-    // The page's font arriving late changes every width: look again then (from the table)
-    let live = true;
-    document.fonts?.ready?.then(() => { if (live && cards) setCards(0); });
     if (typeof ResizeObserver === 'undefined') return undefined;
     const ro = new ResizeObserver(check);
     ro.observe(card);
-    return () => { live = false; ro.disconnect(); };
+    return () => ro.disconnect();
   }, [cards, cols.length, rows, open]);
+  // The page's font arriving after the first look changes every width: one fresh look then, once (never again,
+  // so cards and table can't keep swapping)
+  useEffect(() => {
+    let on = true;
+    document.fonts?.ready?.then(() => { if (on) setCards((c) => (c ? 0 : c)); });
+    return () => { on = false; };
+  }, []);
 
   const cell = (c, r) => {
     const v = valueOf(c, r);
@@ -619,7 +633,7 @@ export function RevealStats({ rows: given = [], since = null, error = null, curr
       </details>
     </div>
     ${rest.length ? html`<details class="card bc-fold rs-rest">
-      <summary>Not compared: tests, cancelled reveals, Facebook-only lives and streams without a kid <span class="bc-fold-note">${rest.length}</span></summary>
+      <summary>Not compared: from before counting began, tests, cancelled, Facebook-only or without a kid <span class="bc-fold-note">${rest.length}</span></summary>
       <div class="bc-fold-body">
         <p class="text-sm text-muted" style="margin:0 0 .5rem">Kept out of the comparison and the averages.</p>
         ${rest.map((r) => { const isOpen = open === r.id; return html`<div key=${r.id} data-rid=${r.id} class=${`rs-restrow${isOpen ? ' is-open' : ''}`}>
@@ -666,7 +680,7 @@ const CSS = `
 .rs-card { padding: 0; container: rs / inline-size; min-width: 0; overflow: clip; }
 .rs-head { padding: 1.1rem 1.5rem .5rem; }
 .rs-head p { margin: 0; }
-.rs-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.rs-sr { user-select: none; position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .rs-sortpick { display: none; }
 .rs-table { min-width: 0; }
 .rs-table table { width: 100%; border-collapse: collapse; }

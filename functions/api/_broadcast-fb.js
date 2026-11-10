@@ -298,8 +298,10 @@ export async function fbVideoTotals(env, { liveVideoId = null, permalink = null,
     totals.reactions = n(eng.data.reactions?.summary?.total_count);
     totals.comments = n(eng.data.comments?.summary?.total_count);
   }
-  // (#10)/(#200)/(#283) or a message naming a permission: the token can't read insights
-  const blocked = !ins.ok && (/permission|read_insights|pages_manage_engagement|\(#(10|200|283)\)/i.test(ins.error || '') || [10, 200, 283].includes(ins.code));
+  // The token can't read insights: (#10)/(#200)/(#283), or a message naming the permission. Not (#100) "does not exist,
+  // cannot be loaded due to missing permissions": that's a deleted or wrong video, and a new token wouldn't help
+  const blocked = !ins.ok && ins.code !== 100 && !/does not exist/i.test(ins.error || '')
+    && ([10, 200, 283].includes(ins.code) || /read_insights|pages_manage_engagement|pages_read_engagement|\(#(10|200|283)\)/i.test(ins.error || ''));
   if (!ins.ok && !eng.ok) return { ok: false, error: ins.error, missing: blocked ? 'read_insights' : null };
   return { ok: true, totals, partial: ins.ok ? null : ins.error, missing: blocked ? 'read_insights' : null };
 }

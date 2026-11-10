@@ -119,29 +119,29 @@ try {
   ok(await page.$$eval('.rs-row', (rows) => [...rows[0].querySelectorAll('td.num')].map((td) => td.textContent.trim()).filter((t) => t === '0').length === 0), 'a reveal that hasn\'t happened shows dashes, not zeros, for what it can\'t have yet');
   ok(!(await page.$('.rs-card h3')), 'the card doesn\'t repeat the page\'s title');
   ok(!names.some((n) => /Isla|Live room reveal/.test(n)), 'tests and kid-less streams stay out of the table');
-  ok(names.includes('Hudson'), 'a reveal from before counting is listed');
+  ok(!names.includes('Hudson'), 'a reveal from before counting isn\'t in the comparison (it sits in the fold)');
   const heads = await page.$$eval('.rs-table thead th', (els) => els.map((e) => e.textContent.replace(/[↑↓]/g, '').trim()).filter(Boolean));
   ok(heads.includes('Facebook') && heads.includes('YouTube'), `Facebook and YouTube columns when any reveal has them (${heads.join(' | ')})`);
   const avg = await page.$eval('.rs-avg', (el) => el.innerText).catch(() => '');
   ok(/Average reveal/.test(avg) && /4 finished reveals/.test(avg), `the average reveal: most numbers over the 4 counted reveals (${avg.replace(/\s+/g, ' ').slice(0, 80)})`);
-  ok(/16\s*of 5/.test(avg) && /74%\s*of 3/.test(avg), 'a column over a different number of reveals says so (messages: 5; there for the reveal: 3)');
+  ok(/74%\s*of 3/.test(avg), 'a column over a different number of reveals says so (there for the reveal: 3 of 4)');
   const peopleCol = heads.indexOf('People');
   const peopleAvg = await page.$$eval('.rs-avg td', (tds, i) => tds[i - 1]?.firstChild?.textContent.trim(), peopleCol);
   ok(peopleAvg === String(Math.round((286 + 141 + 412 + 58) / 4)), `People average leaves out the uncounted reveal (${peopleAvg})`);
   const bestPeople = await page.$$eval('.rs-row', (rows, i) => rows.map((r) => r.querySelectorAll('td')[i]).filter((td) => td?.classList.contains('is-best')).map((td) => td.textContent), peopleCol);
   ok(bestPeople.length === 1 && /412/.test(bestPeople[0]), `the most people is in bold (${bestPeople.join(',')})`);
-  ok(await page.$$eval('.rs-row', (rows) => rows.find((r) => /Hudson/.test(r.textContent)).querySelectorAll('td.num')[1].textContent.trim() === '—'), 'an uncounted reveal shows a dash, not a zero');
+  ok(await page.$$eval('.rs-row', (rows) => rows.find((r) => /Dylan/.test(r.textContent)).querySelectorAll('td.num')[2].textContent.trim() === '—'), 'what a reveal can\'t have yet shows a dash, not a zero');
 
   // Sorting
   await page.evaluate(() => [...document.querySelectorAll('.rs-sort')].find((b) => /^People/.test(b.textContent.trim())).click());
   await settle(100);
   let order = await page.$$eval('.rs-row .rs-name strong', (els) => els.map((e) => e.textContent.trim()));
-  ok(order.slice(0, 3).join(',') === 'Nicolas and Maddox,Jordan,Avery' && order[order.length - 1] === 'Hudson', `sorted by People, highest first, no count last (${order.join(', ')})`);
+  ok(order.slice(0, 3).join(',') === 'Nicolas and Maddox,Jordan,Avery' && order[order.length - 1] === 'Dylan', `sorted by People, highest first (${order.join(', ')})`);
   ok(await page.$$eval('.rs-table thead th', (ths) => ths.filter((t) => t.getAttribute('aria-sort') === 'descending').length === 1), 'aria-sort says so');
   await page.evaluate(() => [...document.querySelectorAll('.rs-sort')].find((b) => /^People/.test(b.textContent.trim())).click());
   await settle(100);
   order = await page.$$eval('.rs-row .rs-name strong', (els) => els.map((e) => e.textContent.trim()));
-  ok(order[0] === 'Dylan' && order[order.length - 1] === 'Hudson', `click again: lowest first, still no count last (${order.join(', ')})`);
+  ok(order[0] === 'Dylan' && order[order.length - 1] === 'Nicolas and Maddox', `click again: lowest first (${order.join(', ')})`);
   await page.evaluate(() => [...document.querySelectorAll('.rs-sort')].find((b) => /^Reveal/.test(b.textContent.trim())).click());
 
   console.log('\n▶ one reveal');
@@ -191,16 +191,18 @@ try {
   ok(/reveal moment wasn.t found in the recording/.test(nmTiles), 'an old reveal whose moment wasn\'t found says so (only the current replay can be set)');
   ok(await page.$$eval('.rs-open .rs-chart polyline', (els) => els.length >= 1) && !(await page.$('.rs-open .rs-legend')), 'one line, no legend box');
   ok(/Reveals aren.t sent to YouTube/.test(await page.$eval('.rs-open .rs-plats', (el) => el.innerText)), 'no YouTube set up: said plainly, with where to set it');
-  ok(await clickText('.rs-namebtn', /^Hudson/), 'open Hudson (before counting)');
-  await settle(150);
-  ok(/before the site counted people; it only kept page loads \(210\)/.test(await page.$eval('.rs-open', (el) => el.innerText)), 'an uncounted reveal explains itself');
+  await page.click('.rs-rest summary').catch(() => {});
+  ok(await clickText('.rs-restbtn', /Hudson/), 'open Hudson (before counting) in the fold');
+  await settle(300);
+  ok(/before the site counted people; it only kept page loads \(210\)/.test(await page.$eval('.rs-rest', (el) => el.innerText)), 'an uncounted reveal explains itself');
+  await page.click('.rs-rest summary').catch(() => {});
   ok(await clickText('.rs-namebtn', /^Dylan/), 'open Dylan (coming up)');
   await settle(150);
   const dyl = await page.$eval('.rs-open', (el) => el.innerText.replace(/\s+/g, ' '));
   ok(/Counting began/.test(dyl) && /37 came before/.test(dyl), 'the next reveal shows its before numbers and the partial note');
 
   console.log('\n▶ tests and streams without a kid');
-  ok(await page.$eval('.rs-rest summary', (el) => /2$/.test(el.textContent.trim())), 'two kept out');
+  ok(await page.$eval('.rs-rest summary', (el) => /3$/.test(el.textContent.trim())), 'three kept out (a test, a kid-less stream, one from before counting)');
   await page.click('.rs-rest summary');
   ok(await clickText('.rs-restbtn', /TEST · Isla/), 'a test opens');
   await settle(150);

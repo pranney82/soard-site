@@ -315,6 +315,7 @@ test('Site → Automations: times only, and whether Facebook is holding back its
 
 test('admin: sorting puts missing numbers last, the average reveal and the best of each column', () => {
   const row = (id, live_at, stats, extra = {}) => ({ id, kid_slug: id, live_at, phase: 'replay', messageCount: 0, stats: { counted: true, test: false, ...stats }, ...extra });
+  assert.equal(admin.compared(row('old', '2026-10-01T20:00:00Z', {}, { stats: { counted: false } })), false, 'a reveal from before counting isn\'t compared');
   const rows = [
     row('a', '2026-11-01T20:00:00Z', { people: 120, live: 80, avgLiveSec: 400, atReveal: 60, replay: 30, heartsTotal: 50, atOnce: { peakAll: 90 } }),
     row('b', '2026-11-08T20:00:00Z', { people: 200, live: 150, avgLiveSec: 300, atReveal: 140, replay: 10, heartsTotal: 20, atOnce: { peakAll: 160 } }),
@@ -322,11 +323,11 @@ test('admin: sorting puts missing numbers last, the average reveal and the best 
     row('t', '2026-11-05T20:00:00Z', { people: 999, test: true }),
     { id: 'u', kid_slug: 'u', phase: 'scheduled', scheduled_at: '2026-11-18T21:00:00Z', stats: { counted: true, people: 39, before: 39 } },
   ];
-  assert.deepEqual(rows.filter(admin.compared).map((r) => r.id), ['a', 'b', 'c']);
-  assert.deepEqual(rows.filter(admin.inTable).map((r) => r.id), ['a', 'b', 'c', 'u'], 'the rehearsal is kept out; the next reveal is in');
-  assert.deepEqual(admin.sortRows(rows.filter(admin.inTable), 'people', 'desc').map((r) => r.id), ['b', 'a', 'u', 'c'], 'c has no count: last');
-  assert.deepEqual(admin.sortRows(rows.filter(admin.inTable), 'people', 'asc').map((r) => r.id), ['u', 'a', 'b', 'c']);
-  assert.deepEqual(admin.sortRows(rows.filter(admin.inTable), null, 'desc').map((r) => r.id), ['u', 'b', 'a', 'c'], 'newest first');
+  assert.deepEqual(rows.filter(admin.compared).map((r) => r.id), ['a', 'b'], 'c is from before counting began');
+  assert.deepEqual(rows.filter(admin.inTable).map((r) => r.id), ['a', 'b', 'u'], 'the rehearsal and the uncounted reveal sit in the fold; the next reveal is in');
+  assert.deepEqual(admin.sortRows([...rows.filter(admin.inTable), rows[2]], 'people', 'desc').map((r) => r.id), ['b', 'a', 'u', 'c'], 'no count: last');
+  assert.deepEqual(admin.sortRows([...rows.filter(admin.inTable), rows[2]], 'people', 'asc').map((r) => r.id), ['u', 'a', 'b', 'c']);
+  assert.deepEqual(admin.sortRows(rows.filter(admin.inTable), null, 'desc').map((r) => r.id), ['u', 'b', 'a'], 'newest first');
   const sum = admin.columnSummary(rows.filter(admin.inTable));
   assert.equal(sum.people.avg, 160, 'compared reveals with a count: a and b');
   assert.equal(sum.people.best, 200);
@@ -399,6 +400,18 @@ test('admin: rows left behind, bold as the reader sees it, no replay without a r
   assert.deepEqual(drop.peakSplit, [119, 159, null]);
   assert.equal(admin.peakNote(drop), 'Site 119 · Facebook 159, 20:00 after going live. YouTube wasn\'t read then, so it may have been more.');
   assert.equal(admin.peakNote({ peakAll: 0, peakSplit: [0, null, null] }), 'Nobody was watching at once.');
+  // Facebook set up but never counted while live (zeros before, then not known): no "most at once 0" for it
+  const neverRead = [[0, 10, 0, null], [30, 12, 0, null], [60, 30, null, null], [90, 40, null, null]];
+  const nr = rs.summarizeSeries(neverRead);
+  assert.equal(nr.hasFb, false);
+  // A peak whose Facebook number was carried over a missed reading says so (≈)
+  const carried = rs.summarizeSeries([[0, 100, 200, null], [30, 300, null, null], [60, 50, 210, null]]);
+  assert.deepEqual(carried.peakCarried, [false, true, false]);
+  assert.equal(admin.peakNote(carried), 'Site 300 · Facebook ≈200, 0:30 after going live (≈ a reading from up to 2 minutes before).');
+  assert.equal(admin.peakNote({ peakAll: 400, peakAllAt: 1200, peakSplit: [400, null, null], hasFb: true, hasYt: true }), 'Site 400, 20:00 after going live. Facebook and YouTube weren\'t read then, so it may have been more.');
+  assert.equal(nr.peakFb, null);
+  assert.equal(nr.peakPartial, false, 'its gaps don\'t make the site\'s moments partial');
+  assert.deepEqual(neverRead[2], [60, 30, null, null], 'the caller\'s line is left as it was');
 });
 
 // ─── The live page's meter ──────────────────────────────────────────
@@ -432,8 +445,12 @@ test('watch meter: counts only playing, showing time; reports at 10 s, then ever
   assert.equal(reports.length, 1, 'a long gap isn\'t counted');
   video.stalled = true; step(30); video.stalled = false;
   assert.equal(reports.length, 1, 'a stalled picture (buffering, its clock stuck) isn\'t watching');
-  step(20);
-  assert.deepEqual(reports[1], ['live', 20, false]);
+  // A stutter: the clock moves half a second each second, so 20 ticks are 10 s of picture
+  const fullStep = step;
+  for (let i = 0; i < 20; i++) { t += 1000; video.currentTime += 0.5; ticks[0](); }
+  void fullStep;
+  step(10);
+  assert.deepEqual(reports[1], ['live', 20, false], '10 s of stutter (half speed over 20 s) + 10 s of full play');
   step(7);
   meter.stop();
   assert.deepEqual(reports[2], ['live', 7, true], 'what is left goes when it stops');

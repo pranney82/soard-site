@@ -82,7 +82,7 @@ export function resetStatsSchemaFlag() { _ready = false; }
 
 // "bot" as its own word or ending a name before / - ; (Googlebot/2.1, Slackbot-LinkExpanding), never inside a
 // phone's model name (CUBOT X30)
-const BOT_UA = /\bbot\b|[a-z]bot[/;-]|crawl|spider|slurp|facebookexternalhit|facebookcatalog|embedly|preview|headlesschrome|phantomjs|lighthouse|pagespeed|gtmetrix|python-|curl\/|wget|node-fetch|axios|okhttp|go-http|java\//i;
+const BOT_UA = /\bbot\b|[a-z]bot[/;-]|crawl|spider|slurp|inspectiontool|\bptst\b|facebookexternalhit|facebookcatalog|embedly|preview|headlesschrome|phantomjs|lighthouse|pagespeed|gtmetrix|python-|curl\/|wget|node-fetch|axios|okhttp|go-http|java\//i;
 
 export const isBot = (ua) => !ua || BOT_UA.test(String(ua));
 
@@ -101,7 +101,7 @@ const SRC_WORDS = {
   text: 'text', sms: 'text',
   push: 'push',
   calendar: 'calendar', ics: 'calendar', cal: 'calendar',
-  site: 'site', banner: 'site',
+  site: 'site', banner: 'site', live: 'site', 'live-side': 'site',
 };
 
 // Android apps send android-app://<package>/ as the referrer: the page sees the package name as the host
@@ -294,7 +294,6 @@ export async function sampleLive(env, state, health, { hubStatus = null } = {}) 
   if (!state?.broadcastId || !state.liveAt || !m || m.broadcastId !== state.broadcastId) return false;
   const now = Date.now();
   if (m.sampledAt && now - Date.parse(m.sampledAt) < SAMPLE_EVERY_MS - 1000) return false;
-  m.sampledAt = iso(now);
   await ensureStatsSchema(DB);
   const fresh = m.at && now - Date.parse(m.at) < 60 * 1000;
   const site = await watchingNow(DB, state.broadcastId, now);
@@ -312,6 +311,7 @@ export async function sampleLive(env, state, health, { hubStatus = null } = {}) 
         ELSE json_set(broadcast_stats.facebook, '$.liveVideoId', json_extract(?4, '$.liveVideoId'), '$.permalink', json_extract(?4, '$.permalink')) END,
       updated_at = ?5`)
     .bind(state.broadcastId, JSON.stringify(point), yt, fbIds, iso(now)).run();
+  m.sampledAt = iso(now); // only once the point is saved (a failed write tries again next tick)
   if (hubStatus) await copyHearts(DB, state.broadcastId, await Promise.race([hubStatus().catch(() => null), new Promise((r) => setTimeout(() => r(null), 3000))]));
   return true;
 }
@@ -435,13 +435,16 @@ export function summarizeSeries(series) {
     if (!Array.isArray(p) || !Number.isFinite(p[0])) continue;
     const have = bySec.get(p[0]);
     const sum = (q) => (q[1] || 0) + (q[2] || 0) + (q[3] || 0);
-    if (!have || sum(p) > sum(have)) bySec.set(p[0], p);
+    if (!have || sum(p) > sum(have)) bySec.set(p[0], [p[0], p[1], p[2], p[3]]); // a copy: the caller's line is left as it was
   }
   const pts = [...bySec.values()].sort((a, b) => a[0] - b[0]);
   if (!pts.length) return null;
   const n = (v) => (Number.isFinite(v) ? v : 0);
   const peakOf = (i) => { let best = null; for (const p of pts) if (Number.isFinite(p[i]) && (!best || p[i] > best[i])) best = p; return best; };
-  const hasFb = pts.some((p) => Number.isFinite(p[2])), hasYt = pts.some((p) => Number.isFinite(p[3]));
+  // A place counts as measured once it had someone: only zeros (set up, not live yet; or a count it never gave while
+  // live) isn't a "most at once 0", and its gaps don't make other moments partial
+  const hasFb = pts.some((p) => Number(p[2]) > 0), hasYt = pts.some((p) => Number(p[3]) > 0);
+  for (const p of pts) { if (!hasFb) p[2] = null; if (!hasYt) p[3] = null; }
   // A missed reading isn't nobody: a place's last reading stands for up to 2 minutes; past that it isn't known
   const filled = fillGaps(pts);
   const isWhole = (q) => Number.isFinite(q[1]) && (!hasFb || Number.isFinite(q[2])) && (!hasYt || Number.isFinite(q[3]));
@@ -454,6 +457,8 @@ export function summarizeSeries(series) {
     peakAll: tot(top), peakAllAt: top[0],
     // Where those people were at that moment: site, Facebook, YouTube (null where not read)
     peakSplit: [top[1] ?? null, hasFb ? top[2] ?? null : null, hasYt ? top[3] ?? null : null],
+    // Which of those weren't read at that moment but carried from a reading up to 2 minutes before (shown as ≈)
+    peakCarried: [1, 2, 3].map((i) => { const raw = bySec.get(top[0]); return Number.isFinite(top[i]) && !Number.isFinite(raw?.[i]); }),
     peakPartial: !isWhole(top),
     // Every moment, counting the places read then (with the 2-minute carry); avgPartial: some place wasn't, sometimes
     avgAll: Math.round((filled.reduce((a, q) => a + tot(q), 0) / filled.length) * 10) / 10,

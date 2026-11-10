@@ -148,25 +148,25 @@ export function watchMeter(opts: WatchMeterOptions): { stop: () => void; flush: 
   let still = 0; // seconds the picture hasn't moved
   const due = () => (sent ? (opts.kind === 'live' ? LIVE_EVERY_SEC : REPLAY_EVERY_SEC) : FIRST_REPORT_SEC);
   const showing = () => { try { return document.visibilityState === 'visible'; } catch { return true; } };
-  // Watching is the picture moving: playing, not ended, and its clock advanced since the last tick (a stall or
-  // a buffering wait doesn't count, in hls.js and in Safari's own player alike)
+  // Watching is the picture moving: playing, not ended, the tab showing, and how far its clock advanced since the last
+  // tick (a stall or a stutter counts only the picture that played, in hls.js and in Safari's own player alike)
   const playing = () => {
-    if (opts.iframe?.()) return showing();
+    if (opts.iframe?.()) return showing() ? Infinity : 0;
     const v = opts.video();
     if (!v) { lastTime = -1; return false; }
     const t = v.currentTime;
-    const moved = lastTime >= 0 && t !== lastTime;
+    const moved = lastTime >= 0 ? t - lastTime : 0;
     lastTime = t;
-    return !v.paused && !v.ended && moved && showing();
+    return !v.paused && !v.ended && showing() ? Math.max(0, moved) : 0;
   };
   const tick = () => {
     if (stopped) return;
     const t = now();
     const dt = (t - last) / 1000;
     last = t;
-    const moving = playing(); // every tick, so the picture's clock is always tracked (a long gap included)
-    if (dt > 0 && dt <= 5 && moving) acc += dt;
-    still = moving ? 0 : still + Math.max(0, dt);
+    const played = playing(); // every tick, so the picture's clock is always tracked (a long gap included)
+    if (dt > 0 && dt <= 5 && played > 0) acc += Math.min(dt, played); // the picture's own time, never more than passed
+    still = played > 0 ? 0 : still + Math.max(0, dt);
     // A report marks the minutes just before it arrives: when the picture stops (paused, frozen) for 3 s, the
     // seconds watched go now, so "there for the reveal" counts the minutes they were really watched in
     const stalled = still >= 3 && acc >= 1;
