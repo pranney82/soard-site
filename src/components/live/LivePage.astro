@@ -70,10 +70,12 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
         {summary || GENERIC_LEAD}
       </p>
       <p class="hero-status" data-live="status" aria-live="polite"></p>
+      <!-- The reveals after this one, on a child's page or while /live/ follows one: "After Dylan: Max on Friday, November 20 and Colin in early December" -->
+      <p class="hero-next" data-live="next-line" hidden><span data-live="next-text"></span> <a href="#up-next">See every reveal</a></p>
       <div class="hero-party" data-slot="hero" hidden><LiveMessages /></div>
       <div class="hero-ctas">
         <a class="btn btn-primary btn-lg hero-glow" href="https://www.facebook.com/SunshineOnaRanneyDay" target="_blank" rel="noopener" data-live="cta-facebook" hidden>Watch on Facebook</a>
-        <a class="btn btn-primary btn-lg hero-glow" href="#remind" data-live="cta-remind" hidden>Remind me</a>
+        <a class="btn btn-primary btn-lg hero-glow" href="#remind" data-live="cta-remind" hidden>Get every reveal by email</a>
         <a class="btn btn-outline-dark" href="/api/reminders?ics=1" data-live="cta-calendar" hidden>Add to calendar</a>
         <a class="btn btn-outline-dark" href="#messages" data-live="cta-messages" hidden>Leave a message</a>
         <a class="btn btn-outline-dark" href="#past-reveals" data-live="cta-past" hidden>Watch past reveals</a>
@@ -191,7 +193,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   /* ── Editorial split hero (matches apply/donate) ── */
   .hero {
     background: var(--c-cream);
-    padding: clamp(80px, 10vw, 140px) 0 clamp(64px, 8vw, 100px);
+    padding: var(--hero-space-top) 0 clamp(64px, 8vw, 100px);
     position: relative;
     /* No layout containment or transforms on the hero: they would trap the docked mini player */
     min-height: clamp(480px, 70vh, 720px);
@@ -238,6 +240,9 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s both;
   }
   .hero-status:empty { margin-bottom: 20px; }
+  .hero-next { margin: -16px 0 28px; font-size: 15px; line-height: 1.6; color: var(--c-text-muted); max-width: 520px; }
+  .hero-next[hidden] { display: none; }
+  .hero-next a { color: var(--c-dark); font-weight: 600; text-decoration: underline; text-decoration-color: var(--c-yellow); text-decoration-thickness: 2px; text-underline-offset: 3px; white-space: nowrap; }
   .hero-ctas {
     display: flex; gap: 14px; flex-wrap: wrap;
     opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.25s both;
@@ -377,7 +382,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
     .hero[data-party] .hero-ctas { order: 5; margin-top: 24px; }
   }
   @media (max-width: 768px) {
-    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
+    .hero { padding-top: var(--hero-space-top); padding-bottom: var(--space-xl); min-height: auto; }
     .hero[data-party] { padding-top: 12px; padding-bottom: 32px; }
     .hero[data-party] .hero-inner { padding: 0 var(--space-md); }
     .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
@@ -399,7 +404,7 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
   import { createGive } from '../../utils/live-give';
   import { createLiveDesign } from '../../utils/live-design';
   import { cfRaw } from '../../utils/cf-image';
-  import { readUpcoming, loadSignup, revealWhen, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
+  import { readUpcoming, loadSignup, revealWhen, revealDay, inviteData, inviteLinks, type UpcomingReveal } from '../../utils/reveals-client';
   import { heroRowsHtml, rowsSignature } from '../../utils/upcoming-rows';
 
   /** The starting-soon screen fills the frame for the last hour: it carries the room's design for people waiting (the crew may start streaming up to 30 minutes early, per the runbook) */
@@ -712,6 +717,18 @@ const SHARE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
       const fbCta = q<HTMLAnchorElement>('cta-facebook');
       if (fbCta) { fbCta.href = s.facebookUrl || fbCta.href; setHidden(fbCta, !((view === 'live' || view === 'replay') && !hasPlayer)); }
       capCtas();
+
+      // What comes after this reveal, while it's still ahead (on /live/ between reveals the frame lists them all)
+      const nextLine = q<HTMLElement>('next-line');
+      if (nextLine) {
+        const after = kidSlug ? upcoming.filter((r) => r.slug !== kidSlug).slice(0, 2) : [];
+        const shownName = (kidSlug && (upcoming.find((r) => r.slug === kidSlug)?.name || (s.kidSlug === kidSlug ? s.kidName : ''))) || '';
+        const words = after.map((r) => (r.confirmed ? `${r.name} on ${revealDay(r)}` : `${r.name} in ${r.window.label}`)).join(' and ');
+        const text = words ? `${shownName ? `After ${shownName}` : 'Next up'}: ${words}.` : '';
+        const t = q<HTMLElement>('next-text');
+        if (t && t.textContent !== text) t.textContent = text;
+        setHidden(nextLine, !text || !(display === 'upcoming' || display === 'idle'));
+      }
 
       stage.update({
         mode: display as 'idle' | 'upcoming' | 'starting' | 'live' | 'replay',

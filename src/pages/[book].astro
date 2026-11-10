@@ -167,7 +167,7 @@ const bookSchema = {
   /* ══════ HERO (the apply page's editorial split) ══════ */
   .hero {
     background: var(--c-cream);
-    padding: clamp(80px, 10vw, 140px) 0 clamp(64px, 8vw, 100px);
+    padding: var(--hero-space-top) 0 clamp(64px, 8vw, 100px);
     position: relative;
     contain: layout style;
     min-height: clamp(480px, 70vh, 720px);
@@ -390,7 +390,7 @@ const bookSchema = {
     .hero-stat { position: relative; bottom: auto; right: auto; margin: 8px auto 0; width: fit-content; }
   }
   @media (max-width: 768px) {
-    .hero { padding-top: clamp(48px, 8vw, 80px); padding-bottom: var(--space-xl); min-height: auto; }
+    .hero { padding-top: var(--hero-space-top); padding-bottom: var(--space-xl); min-height: auto; }
     .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
     .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
     .bk-inset { display: none; }

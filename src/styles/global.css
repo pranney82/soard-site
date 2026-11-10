@@ -46,6 +46,10 @@
   --max-width-narrow: 800px;
   --max-width-wide: 1400px;
   --header-height: 84px;
+  /* The space between the menu and a page's opening (its hero), one value for every split-hero page: sized to the
+     screen's height, so the headline, the buttons and the picture are on screen when a page opens on a laptop, and
+     smaller by the application bar's height while that bar shows above the menu (--apply-bar-h, ApplicationBar.astro) */
+  --hero-space-top: max(28px, calc(clamp(40px, 8vh, 100px) - var(--apply-bar-h, 0px)));
   --border-radius: 8px;
   --border-radius-lg: 16px;
 
@@ -766,5 +770,6 @@ a:active img {
 
   :root {
     --header-height: 72px;
+    --hero-space-top: max(20px, calc(clamp(24px, 5vh, 48px) - var(--apply-bar-h, 0px)));
   }
 }

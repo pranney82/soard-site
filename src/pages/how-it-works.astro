@@ -620,7 +620,7 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
   /* ══════ HERO (editorial split, same family as apply/community) ══════ */
   .hero {
     background: var(--c-cream);
-    padding: clamp(72px, 9vw, 128px) 0 clamp(64px, 8vw, 100px);
+    padding: var(--hero-space-top) 0 clamp(64px, 8vw, 100px);
     position: relative; contain: layout style; overflow: hidden;
   }
   .hero-inner {
@@ -1057,7 +1057,7 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
     .yrs { grid-column: 1 / -1; grid-row: auto; }
   }
   @media (max-width: 900px) {
-    .hero { padding: 64px 0 56px; }
+    .hero { padding: var(--hero-space-top) 0 56px; }
     .hero-inner { grid-template-columns: 1fr; gap: 40px; }
     .hero-frame { max-width: 420px; margin: 0 auto; width: 100%; }
     .hero-stat { left: 12px; bottom: 16px; padding: 12px 16px; }

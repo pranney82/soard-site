@@ -594,7 +594,7 @@ const jsonLd = {
     position: relative;
     background: var(--c-cream);
     contain: layout style;
-    padding: clamp(40px, 8vh, 100px) 0 40px;
+    padding: var(--hero-space-top) 0 40px;
     overflow: hidden;
   }
 
@@ -1349,7 +1349,7 @@ const jsonLd = {
   }
 
   @media (max-width: 768px) {
-    .hero { padding: clamp(32px, 6vh, 64px) 0 32px; }
+    .hero { padding: var(--hero-space-top) 0 32px; }
     .hero-inner { grid-template-columns: 1fr; gap: var(--space-2xl); min-height: auto; }
     .hero-headline { font-size: clamp(36px, 9vw, 52px); }
     .hero-ctas { flex-direction: column; }

@@ -1456,7 +1456,7 @@ for (const width of [1440, 820, 390]) {
     ok(heading === "Don't miss Colin's reveal" && label0 === 'Email address for every reveal' && !c0.shown && scope0.join('|') === "Every reveal*|Just Colin's",
       '/live/ scheduled: the page form names Colin and starts on every reveal, so the band leaves its card out', JSON.stringify({ heading, label0, scope0, c0 }));
     const ctas = await page.evaluate(() => [...document.querySelectorAll('.hero-ctas [data-live^="cta-"]')].filter((e) => getComputedStyle(e).display !== 'none').map((e) => e.textContent.trim()));
-    ok(ctas.join('|') === 'Remind me|Add to calendar', '/live/ scheduled: two buttons in the hero, Remind me first', ctas.join(' | '));
+    ok(ctas.join('|') === 'Get every reveal by email|Add to calendar', '/live/ scheduled: two buttons in the hero, the every-reveal sign-up first', ctas.join(' | '));
     await pickJust(page);
     const c = await card(page, '#up-next');
     const label = await page.$eval('[data-live="remind-email-label"]', (l) => l.textContent);

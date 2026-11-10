@@ -45,13 +45,14 @@ const filesQuery = (jobId, page) => ({
   job: {
     $: { id: jobId },
     files: {
-      $: { size: 100, ...(page ? { page } : {}) },
+      // (Small pages: JobTread answers 413 when one page of files with their tags and pictures asks too much)
+      $: { size: 20, ...(page ? { page } : {}) },
       nextPage: {},
       nodes: {
         id: {}, name: {}, type: {}, size: {}, createdAt: {}, url: {},
         thumb: { _: 'url', $: { size: 600 } },
         big: { _: 'url', $: { size: 2048 } },
-        fileTags: { $: { size: 20 }, nodes: { name: {} } },
+        fileTags: { $: { size: 8 }, nodes: { name: {} } },
       },
     },
   },
@@ -63,7 +64,7 @@ const jobQuery = (jobId) => ({
     $: { id: jobId },
     id: {}, name: {},
     location: { street: {}, city: {}, postalCode: {}, account: { name: {} } },
-    plans: { $: { size: 100 }, nodes: { name: {}, page: {}, file: { id: {} } } },
+    plans: { $: { size: 50 }, nodes: { name: {}, page: {}, file: { id: {} } } },
   },
 });
 

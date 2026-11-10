@@ -303,7 +303,7 @@ const breadcrumbs = [
   .btn-outline-dark:hover { background: var(--c-dark); color: var(--c-yellow); }
 
   /* ══════ HERO — Editorial Split ══════ */
-  .hero { position: relative; background: var(--c-cream); contain: layout style; padding: clamp(40px, 8vh, 100px) 0 56px; overflow: hidden; }
+  .hero { position: relative; background: var(--c-cream); contain: layout style; padding: var(--hero-space-top) 0 56px; overflow: hidden; }
   .hero-inner { max-width: var(--max-width-wide, 1400px); margin: 0 auto; padding: 0 var(--page-padding); display: grid; grid-template-columns: 1.15fr 0.85fr; gap: clamp(32px, 5vw, 80px); align-items: center; min-height: clamp(440px, 62vh, 640px); }
   .hero-top { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 28px; }
   .hero-eyebrow { font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-text-muted); margin: 0; opacity: 0; animation: heroUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.05s both; }
@@ -372,7 +372,7 @@ const breadcrumbs = [
     .tp-start-inner { grid-template-columns: 1fr; }
   }
   @media (max-width: 768px) {
-    .hero { padding: clamp(24px, 4vh, 48px) 0 40px; }
+    .hero { padding: var(--hero-space-top) 0 40px; }
     .hero-inner { grid-template-columns: 1fr; gap: var(--space-2xl); min-height: auto; }
     .hero-headline { font-size: clamp(36px, 9vw, 52px); margin-bottom: 20px; }
     .hero-lead { margin-bottom: 28px; }

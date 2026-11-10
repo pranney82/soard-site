@@ -487,7 +487,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
     position: relative;
     background: var(--c-cream);
     contain: layout style;
-    padding: clamp(40px, 8vh, 100px) 0 0;
+    padding: var(--hero-space-top) 0 0;
     overflow: hidden;
   }
 
@@ -633,7 +633,7 @@ const jsonLd = [getWebSiteSchema(), ...getSiteNavigationSchema()];
 
   /* ── Responsive ── */
   @media (max-width: 900px) {
-    .hero { padding-top: clamp(24px, 5vh, 48px); }
+    .hero { padding-top: var(--hero-space-top); }
     .hero-inner {
       grid-template-columns: 1fr;
       gap: 40px;

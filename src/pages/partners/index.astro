@@ -631,7 +631,7 @@ const breadcrumbs = [
     position: relative;
     background: var(--c-cream);
     contain: layout style;
-    padding: clamp(40px, 8vh, 100px) 0 40px;
+    padding: var(--hero-space-top) 0 40px;
     overflow: hidden;
   }
 
@@ -782,7 +782,7 @@ const breadcrumbs = [
   }
 
   @media (max-width: 768px) {
-    .hero { padding: clamp(28px, 6vh, 60px) 0 24px; }
+    .hero { padding: var(--hero-space-top) 0 24px; }
     .hero-inner {
       grid-template-columns: 1fr;
       min-height: auto;

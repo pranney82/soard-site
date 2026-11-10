@@ -1103,7 +1103,7 @@ const heroFrameAttrs = heroUrl
      ═══════════════════════════════════════════ */
   .hero {
     background: var(--c-cream);
-    padding: var(--space-3xl) 0 var(--space-4xl);
+    padding: var(--hero-space-top) 0 var(--space-4xl);
     overflow: hidden;
   }
   .hero-inner {
@@ -1388,7 +1388,7 @@ const heroFrameAttrs = heroUrl
   }
 
   @media (max-width: 767px) {
-    .hero { padding: var(--space-xl) 0 var(--space-2xl); }
+    .hero { padding: var(--hero-space-top) 0 var(--space-2xl); }
     .hero-frame { order: -1; }
     .hero-photo { max-width: 280px; aspect-ratio: 3 / 4; }
     .hero-accent { width: 55%; height: 55%; top: -8px; right: -8px; }

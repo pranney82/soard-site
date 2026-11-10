@@ -304,7 +304,7 @@ const tagColors: Record<string, string> = {
 
   /* ── HERO — Editorial Split ── */
   .hero {
-    padding: clamp(32px, 6vh, 64px) 0 clamp(48px, 8vh, 80px);
+    padding: var(--hero-space-top) 0 clamp(48px, 8vh, 80px);
     contain: layout style;
   }
   .hero-inner {
@@ -449,7 +449,7 @@ const tagColors: Record<string, string> = {
   }
 
   @media (max-width: 900px) {
-    .hero { padding-top: clamp(24px, 5vh, 48px); }
+    .hero { padding-top: var(--hero-space-top); }
     .hero-inner {
       grid-template-columns: 1fr;
       gap: 40px;
