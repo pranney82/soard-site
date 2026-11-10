@@ -39,7 +39,7 @@ export const FIELDS = {
   also: { name: 'Also bought', type: 'boolean' },
 };
 export const ALSO_GROUP = 'Also bought';
-export const REHEARSAL_V = 2; // 2: the cost code JobTread requires on a new line (Nov 10 2026)
+export const REHEARSAL_V = 3; // 2: the cost code JobTread requires on a new line; 3: and the cost type (Nov 10 2026)
 const EVERY_MS = 2 * 60 * 1000;
 const WRITES_A_RUN = 24;
 const RUN_MS = 20 * 1000;
@@ -250,20 +250,25 @@ async function alsoCodes(env, jobId, { fetchImpl }) {
     const data = await pave(env.JOBTREAD_GRANT_KEY, { organization: { $: { id: SOARD_ORG_ID }, costTypes: { $: { size: 50 }, nodes: { id: {}, name: {} } } } }, fetchImpl);
     const types = data?.organization?.costTypes?.nodes || [];
     const codes = await costCodes(env, { fetchImpl }).catch(() => []);
-    _types = { env, costTypeId: types.find((t) => /material/i.test(t.name))?.id || null, codes };
+    _types = { env, costTypeId: types.find((t) => /material/i.test(t.name))?.id || null, otherType: types.find((t) => !/labor|subcontract/i.test(t.name))?.id || null, codes };
   }
   const job = await pave(env.JOBTREAD_GRANT_KEY, {
-    job: { $: { id: jobId }, costItems: { $: { size: 50, where: [['document', 'id'], '=', null] }, nodes: { costCode: { id: {} }, costType: { name: {} }, isSelected: {} } } },
+    job: { $: { id: jobId }, costItems: { $: { size: 50, where: [['document', 'id'], '=', null] }, nodes: { costCode: { id: {} }, costType: { id: {}, name: {} }, isSelected: {} } } },
   }, fetchImpl).catch(() => null);
   const count = new Map();
+  const typeCount = new Map();
   for (const c of job?.job?.costItems?.nodes || []) {
-    if (!c.costCode?.id || /labor|subcontract/i.test(c.costType?.name || '')) continue;
-    count.set(c.costCode.id, (count.get(c.costCode.id) || 0) + (c.isSelected ? 2 : 1));
+    if (/labor|subcontract/i.test(c.costType?.name || '')) continue;
+    const w = c.isSelected ? 2 : 1;
+    if (c.costCode?.id) count.set(c.costCode.id, (count.get(c.costCode.id) || 0) + w);
+    if (c.costType?.id) typeCount.set(c.costType.id, (typeCount.get(c.costType.id) || 0) + w);
   }
   const mostUsed = [...count].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const mostType = [...typeCount].sort((a, b) => b[1] - a[1])[0]?.[0];
   const { codes } = _types;
   return {
-    costTypeId: _types.costTypeId,
+    // JobTread requires a type too: Materials, else the type the kid's goods lines use most, else any that isn't labor
+    costTypeId: _types.costTypeId || mostType || _types.otherType || null,
     costCodeId: mostUsed || codes.find((c) => /furnish|furniture|decor|accessor/i.test(c.name))?.id || codes.find((c) => /material|finish|fixture/i.test(c.name))?.id || codes[0]?.id || null,
   };
 }
@@ -295,7 +300,7 @@ async function makeClaimed(env, ids, thing, { fetchImpl, now }) {
   let id = look?.job?.costItems?.nodes?.[0]?.id || null;
   if (!id) {
     const [groupId, codes] = await Promise.all([alsoGroup(env, thing.jobId, { fetchImpl }), alsoCodes(env, thing.jobId, { fetchImpl })]);
-    if (!codes.costCodeId) throw new Error('JobTread has no cost code to put it under');
+    if (!codes.costCodeId || !codes.costTypeId) throw new Error('JobTread has no cost code or type to put it under');
     const qty = Math.max(1, thing.qty || 1);
     const unit = thing.donated || !thing.cents ? 0 : Math.round(thing.cents) / 100;
     const where = [thing.store, thing.orderNumber ? `order ${thing.orderNumber}` : null].filter(Boolean).join(', ');

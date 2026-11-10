@@ -273,3 +273,20 @@ test('Nov 10: a line missed before the AI got enough time is read again at once,
   await maybeReadSelections(env, { now: OLD + 60 * MIN, force: true });
   assert.equal(calls.filter((c) => c.kind === 'ai').length, 1);
 });
+
+test('Nov 10: a link written by its start is the line’s own link; a line missed three times becomes one whole part', async () => {
+  const { linkFrom, wholeLine } = await import('../functions/api/_selection-parts.js');
+  const words = 'VEVOR Bubble Tube https://www.lowes.com/pd/VEVOR-Sensory-Bubble-Tube-Lamp-4-ft/5014 and a Fan https://x.example/fan';
+  assert.equal(linkFrom('https://www.lowes.com/pd/VEVOR-Sensory-Bubb', words), 'https://www.lowes.com/pd/VEVOR-Sensory-Bubble-Tube-Lamp-4-ft/5014');
+  assert.equal(linkFrom('https://made.up/elsewhere-thing', words), '', 'a link the line doesn’t have');
+  assert.equal(linkFrom('https://', words), '', 'too short to say');
+  const [whole] = wholeLine({ name: 'Towel Bars', description: 'Delta: 70% discount Top Knobs: 100% discount Hand towel holder', cost: 120, quantity: 1 });
+  assert.deepEqual([whole.name, whole.source, whole.cents], ['Towel Bars', 'buy', 12000]);
+  jobs = [{ id: 'job-a', name: 'Kid A (2026)', status: 'Build' }];
+  lines = { 'job-a': [SHOWER] };
+  aiParts = {};
+  for (let i = 0; i < 4; i++) await maybeReadSelections(env, { now: T0 + i * 7 * 60 * MIN, force: true });
+  const p = await parts('ci-shower');
+  assert.equal(p.length, 1, 'the whole line, one part');
+  assert.equal(p[0].name, SHOWER.name);
+});

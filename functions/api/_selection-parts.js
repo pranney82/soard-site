@@ -33,7 +33,7 @@ const AI_TIMEOUT_MS = 25 * 1000;
 // One long line at a time: an AI read starts only in a run's first seconds, so it finishes inside the heartbeat
 const AI_START_MS = 3 * 1000;
 // Lines missed before those limits were raised are read again now, not six hours later
-const MISSED_BEFORE = Date.parse('2026-11-10T05:00:00Z');
+const MISSED_BEFORE = Date.parse('2026-11-10T05:40:00Z');
 // Not being worked on: nothing to buy or receive
 export const SKIP_STATUSES = new Set(['Closed Done', 'Denied', 'Warranty', 'Awaiting Funding']);
 export const SOURCES = ['buy', 'donated', 'family', 'others'];
@@ -97,6 +97,21 @@ export function sourceOf(partWords, lineWords, lineCents, said = 'buy') {
   return SOURCES.includes(said) ? said : 'buy';
 }
 
+/** The line's own link that a written start ("https://www.lowes.com/pd/VEVOR-Sen…") belongs to, else "" */
+export function linkFrom(start, words) {
+  const head = String(start || '').trim().replace(/…$|\.\.\.$/, '');
+  if (head.length < 12) return '';
+  return (String(words || '').match(URL_RE) || []).find((u) => u.startsWith(head) || head.startsWith(u)) || '';
+}
+
+/** A line the AI couldn't split after its tries: the whole line as one part, so its orders can still be matched by its words */
+export function wholeLine(line) {
+  const words = tidy(line.description);
+  const lineCents = cents(line.cost);
+  const p = { name: tidy(line.name), brand: '', model: '', link: (words.match(URL_RE) || [])[0] || '', quantity: Math.max(1, Math.round(Number(line.quantity) || 1)), cents: lineCents || null };
+  return [{ ...p, source: sourceOf(words, `${line.name} ${words}`, lineCents), key: partKey(p) }];
+}
+
 /** A part's matching key: its model number, else the store's product id in its link, else its name */
 export function partKey(p) {
   const model = tidy(p.model).toUpperCase().replace(/[^A-Z0-9-]/g, '');
@@ -143,7 +158,7 @@ export const PARTS_SCHEMA = {
 
 export const PARTS_PROMPT = [
   'You split one line of a kid\'s room makeover selections into the separate products someone has to get. Answer in JSON only.',
-  'Each product: its name as written, kept short; brand; model number or SKU if written (else ""); its link if one is given (else ""); quantity (QTY 2 means 2, else 1); its price as written for that product (else ""); and source:',
+  'Each product: its name as written, kept short; brand; model number or SKU if written (else ""); the first 50 characters of its link if one is given, exactly as written (else ""); quantity (QTY 2 means 2, else 1); its price as written for that product (else ""); and source:',
   'donated if it says donated or donor; family if the family supplies it; others if it is labor or the installer or a trade brings it; else buy.',
   'A finish, color or grout note belongs to its product, not a product of its own. Paint colors for different surfaces are separate products.',
   'Never invent a product the words don\'t name.',
@@ -171,9 +186,10 @@ export async function aiParts(env, line) {
     for (const a of j.parts) {
       const name = tidy(a.name);
       if (!name) continue;
-      // A link the line doesn't have is the model's own: dropped
-      const link = String(a.link || '').trim();
-      const p = { name, brand: tidy(a.brand), model: tidy(a.model), link: link && String(line.description || '').includes(link) ? link : '', quantity: Math.max(1, Math.round(Number(a.quantity) || 1)), cents: centsOf(a.price) };
+      // The model writes only a link's start (whole links made long lines too slow to write out): the line's own
+      // link that starts that way is the link; one the line doesn't have is the model's own, and dropped
+      const link = linkFrom(a.link, line.description);
+      const p = { name, brand: tidy(a.brand), model: tidy(a.model), link, quantity: Math.max(1, Math.round(Number(a.quantity) || 1)), cents: centsOf(a.price) };
       out2.push({ ...p, source: sourceOf(`${name} ${a.price || ''}`, lineWords, lineCents, a.source === 'unknown' ? 'buy' : a.source), key: partKey(p) });
     }
     return out2.length ? out2 : null;
@@ -297,7 +313,12 @@ async function run(env, st, { fetchImpl, now }) {
         // Read before the line's words were kept: they're added now, with no new reading
         if (prev?.hash === hash && prev.words_key == null) await env.DB.prepare('UPDATE kid_parts SET words = ?, words_key = ? WHERE job_id = ? AND item_id = ?').bind(String(line.description || '').slice(0, 3000), wordsKey(line.description), job.id, line.id).run();
         const missedAt = Date.parse(prev?.read_at || 0);
-        if (prev?.hash === hash && (!missed || missed >= MISS_TRIES || (now - missedAt < MISS_RETRY_MS && missedAt >= MISSED_BEFORE))) continue;
+        // Tried three times: the whole line becomes one part (read_by 'whole'), never left unread
+        if (prev?.hash === hash && missed >= MISS_TRIES) {
+          await env.DB.prepare("UPDATE kid_parts SET parts = ?, read_by = 'whole', read_at = ? WHERE job_id = ? AND item_id = ?").bind(JSON.stringify(wholeLine(line)), iso(now), job.id, line.id).run();
+          continue;
+        }
+        if (prev?.hash === hash && (!missed || (now - missedAt < MISS_RETRY_MS && missedAt >= MISSED_BEFORE))) continue;
         let parts = simpleParts(line);
         let by = 'rules';
         if (!parts) {
@@ -306,7 +327,9 @@ async function run(env, st, { fetchImpl, now }) {
           ai++;
           parts = await aiParts(env, line);
           by = 'ai';
-          if (!parts) { parts = []; by = `none:${missed + 1}`; }
+          if (!parts) {
+            if (missed + 1 >= MISS_TRIES) { parts = wholeLine(line); by = 'whole'; } else { parts = []; by = `none:${missed + 1}`; }
+          }
         }
         await env.DB.prepare(`INSERT OR REPLACE INTO kid_parts (job_id, item_id, job_name, group_name, line_name, cents, hash, parts, read_by, read_at, words, words_key)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
