@@ -206,11 +206,18 @@ test('B9 suspected: the record is never dated in the future', async () => {
   world().reading = read({ date: '2026-11-05' });
   await run(Date.parse('2026-11-05T11:30:00Z'));
   post(TX, '2026-11-05T14:00:00Z');
-  const at = Date.parse('2026-11-05T14:05:00Z');
+  // Nov 10: the site waits for 7 PM Eastern on the deposit day, so a letter attached that day is read first
+  await run(Date.parse('2026-11-05T14:05:00Z'));
+  assert.equal(world().posts.length, 0, 'nothing is saved the morning it was deposited');
+  const at = Date.parse('2026-11-06T00:05:00Z');                               // 7:05 PM Eastern
   await run(at);
   const sent = world().posts[0];
   assert.ok(sent, 'saved');
   assert.ok(Date.parse(sent.payment_date) <= at, `payment_date ${sent.payment_date} is ${(Date.parse(sent.payment_date) - at) / 60000} minutes after the save`);
+  // A record made in the morning (a person's save) is never dated in the future either
+  const early = Date.parse('2026-11-05T14:05:00Z');
+  const rec = CG.recordFor({ cents: 10000, deposited_at: '2026-11-05T11:00:00Z', check_date: '2026-11-05' }, { name: 'Pine Foundation', form: { id: 'form_home' }, now: early });
+  assert.ok(Date.parse(rec.payment_date) <= early, `payment_date ${rec.payment_date} is after ${new Date(early).toISOString()}`);
 });
 
 // ── 10. On quietly goes back to Watch when a new write test fails, after staff were told to stop entering checks ───

@@ -14,9 +14,10 @@
  * POST { action: 'unlink', id }                                    the matched entry isn't this check
  * POST { action: 'not-gift', id }
  * POST { action: 'is-gift', id }                                   while watching, takes back a "not a gift"
+ * POST { action: 'letter-done', id }                               a letter added after the record, or a refused address, was looked at
  */
 
-import { checksView, openForms, setMode, personCreate, personLink, personNotGift, personIsGift, personUnlink } from './_check-gifts.js';
+import { checksView, openForms, setMode, personCreate, personLink, personNotGift, personIsGift, personUnlink, personLetterDone } from './_check-gifts.js';
 import { logAudit } from './_audit.js';
 
 const ok = (body = {}) => Response.json({ success: true, ...body });
@@ -66,6 +67,9 @@ export async function onRequestPost({ env, request, data }) {
         break;
       case 'is-gift':
         result = await personIsGift(env, id, { saw, by });
+        break;
+      case 'letter-done':
+        result = await personLetterDone(env, id, { saw, by });
         break;
       default:
         return fail('Unknown action');

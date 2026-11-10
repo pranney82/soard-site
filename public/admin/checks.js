@@ -13,6 +13,10 @@
  *
  * Every action says which state the page showed (`saw`), so an answer from an older
  * screen never overrules someone else's newer one.
+ *
+ * Nov 10 2026: a check goes in at 7 PM Eastern on its deposit day, after any letter
+ * attached in Mercury is read. Each row shows what the letter said and the address
+ * that went on the donor in Zeffy.
  */
 
 import { h, htm, useState, useEffect, useRef } from './vendor.js';
@@ -77,15 +81,39 @@ function standing(c, mode) {
   if (c.state === 'store') return ['Store account', ''];
   if (c.state === 'came-back') return ['Came back', 'tag--warn'];
   if (c.state === 'creating' || c.state === 'unsure') return ['Checking Zeffy', 'tag--info'];
+  if (c.letter?.reading && ['read', 'would'].includes(c.state)) return ['Reading the letter', 'tag--info'];
+  if (c.waitsUntil) return [atSeven(c.waitsUntil), 'tag--info'];
   if (c.status === 'pending') return ['Mercury is reviewing it', 'tag--info'];
   if (c.status === 'blocked') return ['Mercury is holding it', 'tag--warn'];
   if (c.state === 'read') return ['Being checked against Zeffy', 'tag--info'];
   return ['Being read', 'tag--info'];
 }
 
+/** "Goes into Zeffy at 7 PM", or tomorrow's */
+function atSeven(iso) {
+  const day = (t) => new Date(t).toLocaleDateString('en-CA', { timeZone: 'America/New_York' });
+  return day(iso) === day(Date.now()) ? 'Goes into Zeffy at 7 PM' : `Goes into Zeffy ${fmtDay(iso)} at 7 PM`;
+}
+
+/** What came with the check and where the donor's mail goes, as short facts beside it */
+function mailFacts(c) {
+  const l = c.letter;
+  return html`
+    ${c.drawer ? html`<span>Check from ${c.drawer}</span>` : ''}
+    ${l?.reading ? html`<span>A letter is being read</span>` : ''}
+    ${l?.unread && !l.reading && !l.todo && !['created', 'linked'].includes(c.state) ? html`<span>${l.unread === 1 ? 'A file is' : `${l.unread} files are`} with it in Mercury</span>` : ''}
+    ${l?.name ? html`<span>Letter: from ${l.name}</span>` : ''}
+    ${l?.email ? html`<span>Receipt to ${l.email}${c.emailTaken ? ' (another donor in Zeffy has this email)' : ''}</span>` : ''}
+    ${l?.address ? html`<span>Mail (from the letter): ${l.address}</span>` : ''}
+    ${c.address?.line ? html`<span>Mail on the check: ${c.address.line}</span>` : ''}
+    ${c.mailInZeffy ? html`<span>Address in Zeffy</span>` : ''}`;
+}
+
 /** How it got there, in a few words */
 function howItWent(c, mode) {
   if (c.reason === 'amount-off' || c.reason === 'still-unpaid') return c.why;
+  if (c.toDo) return c.why;
+  if (c.waitsUntil) return 'A letter attached in Mercury before then is read with it';
   if (c.state === 'created') return c.via === 'person' ? `Saved by ${firstOf(c.by)}` : 'Entered by the site';
   if (c.state === 'linked') return c.via === 'person' ? `Matched by ${firstOf(c.by)}` : 'Found the hand entry';
   if (c.state === 'would' && mode === 'on' && c.old) return 'Posted more than 30 days ago, so a person looks before it goes in';
@@ -127,6 +155,7 @@ function CheckRow({ c, mode, act, busy, forms, formsGone, formsFailed }) {
         ${how ? html`<span>${how}</span>` : ''}
         ${dated ? html`<span>${dated}</span>` : ''}
         ${c.memo ? html`<span>Memo: ${c.memo}</span>` : ''}
+        ${mailFacts(c)}
         ${c.link ? html`<a class="link" href=${c.link} target="_blank" rel="noopener" aria-label=${`Open in Mercury: ${whoFor(c)}`}>Open in Mercury</a>` : ''}
         ${toCancel ? html`<a class="link" href=${ZEFFY_URL} target="_blank" rel="noopener" aria-label=${`Open Zeffy: ${whoFor(c)}`}>Open Zeffy</a>` : ''}
       </div>
@@ -160,6 +189,12 @@ function Unlink({ c, mode, act, busy }) {
     if (yes) act({ action: 'unlink', id: c.id, saw: c.ver || c.state }, 'That entry is off this check');
   };
   return html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} aria-label=${`Not this entry: ${whoFor(c)}`} onClick=${press}>${busy === `unlink:${c.id}` ? 'Working…' : 'Not this entry'}</button>`;
+}
+
+/** A file added after the record went into Zeffy, or an address Zeffy wouldn't take, has been looked at, and Zeffy says what it should */
+function LetterDone({ c, act, busy }) {
+  return html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} aria-label=${`Looked at it: ${whoFor(c)}`}
+    onClick=${() => act({ action: 'letter-done', id: c.id, saw: c.ver || c.state }, 'Done')}>${busy === `letter-done:${c.id}` ? 'Working…' : 'Looked at it'}</button>`;
 }
 
 /** A person's entry: what the site read, filled in, for them to finish */
@@ -216,7 +251,7 @@ function Entry({ c, act, busy, forms, formsGone = () => {}, onCancel = null, mor
   return html`<form class="ck-form" aria-label=${`Entry for ${whoFor(c)}`} onSubmit=${(e) => { e.preventDefault(); if (can) save(); }}
       onKeyDown=${(e) => { if (e.key === 'Escape' && onCancel) { e.preventDefault(); onCancel(); } }}>
     <div class="jc-grid2">
-      <label class="jc-field"><span>Who wrote the check</span><input aria-describedby=${`ck-h-${c.id}`} class="form-input" ref=${first} value=${name} maxlength="120" autocomplete="off"
+      <label class="jc-field"><span>${c.letter?.name && c.payer === c.letter.name ? 'Who it’s from (the letter says)' : 'Who wrote the check'}</span><input aria-describedby=${`ck-h-${c.id}`} class="form-input" ref=${first} value=${name} maxlength="120" autocomplete="off"
         placeholder=${c.reason === 'bank' ? 'The person or company it’s from' : ''} onInput=${(e) => setName(e.target.value)} /></label>
       <label class="jc-field"><span>Zeffy form</span>
         <select aria-describedby=${`ck-h-${c.id}`} class="form-select" value=${formId} disabled=${stillPicking || noForms} onChange=${(e) => { setFormId(e.target.value); setPicked(true); }}>
@@ -258,6 +293,7 @@ function NeedsYou({ c, mode, act, busy, forms, formsGone, formsFailed }) {
         ${c.checkDate && c.checkDate !== c.depositDay ? html`<span>Dated ${fmtDay(c.checkDate)}</span>` : ''}
         ${c.reason === 'bank' && c.payer ? html`<span>Bank on it: ${c.payer}</span>` : ''}
         ${c.memo ? html`<span>Memo: ${c.memo}</span>` : ''}
+        ${mailFacts(c)}
         ${c.link ? html`<a class="link" href=${c.link} target="_blank" rel="noopener" aria-label=${`See the check in Mercury: ${whoFor(c)}`}>See the check in Mercury</a>` : ''}
       </div>
     </div>`;
@@ -265,7 +301,7 @@ function NeedsYou({ c, mode, act, busy, forms, formsGone, formsFailed }) {
     return html`<div class="ck-need" data-check=${c.id} tabindex="-1">
       ${head}
       <p class="ck-need__why">${c.why}</p>
-      <div class="jc-row ck-actions">${openZeffy}${c.state === 'linked' ? html`<${Unlink} c=${c} mode=${mode} act=${act} busy=${busy} />` : ''}</div>
+      <div class="jc-row ck-actions">${openZeffy}${c.looked ? html`<${LetterDone} c=${c} act=${act} busy=${busy} />` : ''}${c.state === 'linked' ? html`<${Unlink} c=${c} mode=${mode} act=${act} busy=${busy} />` : ''}</div>
     </div>`;
   }
   return html`<div class="ck-need" data-check=${c.id} tabindex="-1">
@@ -311,6 +347,7 @@ function Status({ v, act, busy }) {
     ${v.paused ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The site stopped entering checks.</strong> It was turned on, but Zeffy wouldn’t take its new $1 test record, so it’s only watching. ${stopped ? 'It tried on 3 days and has stopped, so something in Zeffy needs a look. Tell Peter. Until then, enter' : 'Enter'} checks deposited in Mercury in Zeffy by hand${stopped ? '' : ' until this goes away'}.</div></div>` : ''}
     ${v.money?.loose?.length ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The weekly money check found ${(v.money.count ?? v.money.loose.length) === 1 ? 'a check gift' : `${v.money.count ?? v.money.loose.length} check gifts`} in Zeffy with no check in Mercury.</strong> ${v.money.loose.slice(0, 10).map((x) => `${x.name || 'No name'}, ${usd(x.cents)}, ${fromUnix(x.at)}`).join('; ')}${(v.money.count ?? v.money.loose.length) > 10 ? `; and ${(v.money.count ?? v.money.loose.length) - 10} more` : ''}. One may be a check entered twice: if it’s a second record for a check already in Zeffy, delete that extra record. If it’s one of several gifts a single check paid, or a check deposited at another bank, nothing to do. This updates each Monday.</div>
       <div class="notice__actions"><a class="btn btn-ghost" href=${ZEFFY_URL} target="_blank" rel="noopener">Open Zeffy</a></div></div>` : ''}
+    ${test?.ok && test.address && !test.address.ok ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The site isn’t adding donors’ addresses in Zeffy.</strong> Zeffy didn’t keep the test address, so addresses from checks and letters show here but aren’t added. Checks still go in. Tell Peter.</div></div>` : ''}
     ${v.matchFailing ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>The hourly look at Zeffy isn’t working.</strong> Since ${fmtDay(v.matchFailing.since)}, ${v.matchFailing.error}. Hand entries don’t link to their checks until it works, and it keeps trying.</div></div>` : ''}
     ${test?.leftBehind?.length ? html`<div class="notice notice--warn" role="status"><div class="notice__body"><strong>Zeffy wouldn’t let the site remove its test ${test.leftBehind.length === 1 ? 'record' : 'records'}.</strong> ${test.leftBehind.length === 1 ? 'Delete the $1 SOARD WebsiteTest entry in Zeffy. It isn’t a gift, and this goes away on its own once it’s gone.' : 'Delete the $1 SOARD WebsiteTest entries in Zeffy. They aren’t gifts, and this goes away on its own once they’re gone.'}${!test.ok ? ' Until a test works, the site can’t be turned on.' : ''}</div>
       <div class="notice__actions"><a class="btn btn-ghost" href=${ZEFFY_URL} target="_blank" rel="noopener">Open Zeffy</a></div></div>` : ''}

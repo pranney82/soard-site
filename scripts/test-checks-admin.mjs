@@ -243,6 +243,31 @@ try {
   ok(zeffy.posts.length === 2, 'a left-out check a person calls a gift goes in');
   await page.screenshot({ path: `${OUT}after.png`, fullPage: true });
 
+  console.log('Letters and addresses');
+  // Real-length words: a fund's long name, a long email and a long street line
+  const LONG = { line1: '12345 Northwest Peachtree Industrial Boulevard Apt 1402', city: 'Peachtree Corners', state: 'GA', postal_code: '30092-1234', country: 'US' };
+  await seed({ ...base, id: 'l1', cents: 2500000, status: 'pending', posted_at: null, deposited_at: new Date().toISOString(), state: 'read', payer: 'Dana Whitfield', drawer: 'Whitfield Family Charitable Fund at Harbor Trust Advisors',
+    letter: JSON.stringify({ about: true, name: 'Dana Whitfield', email: 'dana.whitfield.family.giving@example.com', address: LONG, files: ['receipt:letter.jpg'], pending: [] }), address: JSON.stringify({ line1: '400 Harbor Trust Plaza Suite 1900', city: 'Atlanta', state: 'GA', postal_code: '30303', country: 'US', from: 'check', for: 'Whitfield Family Charitable Fund at Harbor Trust Advisors' }) });
+  await seed({ ...base, id: 'l2', cents: 100000, state: 'created', via: 'site', zeffy_id: 'zl2', payer: 'Oakline Design Build LLC', letter: JSON.stringify({ files: ['receipt:IMG_2231.jpg'], pending: [], late: ['receipt:IMG_2231.jpg'] }) });
+  await seed({ ...base, id: 'l3', cents: 40000, state: 'created', via: 'site', zeffy_id: 'zl3', payer: 'Rosa Ortiz', address: JSON.stringify({ line1: '9 Elm St', city: 'Roswell', state: 'GA', postal_code: '30075', country: 'US', from: 'check', for: 'Rosa Ortiz' }), address_done: 'refused',
+    address_tried: JSON.stringify({ address: { line1: '9 Elm St', city: 'Roswell', state: 'GA', postal_code: '30075', country: 'US' }, email: '', who: 'Rosa Ortiz' }) });
+  await seed({ ...base, id: 'l4', cents: 60000, state: 'created', via: 'site', zeffy_id: 'zl4', payer: 'Ken Bryant', address: JSON.stringify({ line1: '77 Mill St', city: 'Alpharetta', state: 'GA', postal_code: '30009', country: 'US', from: 'check', for: 'Ken Bryant' }), address_done: 'written' });
+  await page.reload({ waitUntil: 'networkidle2' });
+  await page.waitForSelector('.ck');
+  await page.waitForFunction(() => !!document.querySelector('.ck-need[data-check="l2"]'), { timeout: 5000 });
+  ok(/Goes into Zeffy/.test(await row('l1')), 'a check deposited today says when it goes in');
+  ok(/Check from Whitfield Family/.test(await row('l1')) && /Letter: from Dana Whitfield/.test(await row('l1')), 'it shows the name on the check and the letter\'s');
+  ok(/Receipt to dana\.whitfield/.test(await row('l1')) && /Mail \(from the letter\): 12345 Northwest/.test(await row('l1')) && /Mail on the check: 400 Harbor/.test(await row('l1')), 'and where the receipt and the mail go');
+  ok((await needIds(page)).includes('l2') && (await needIds(page)).includes('l3'), 'a letter after the record and a refused address wait on someone');
+  ok(/A file was added in Mercury after this check went into Zeffy/.test(await textOf(page, '.ck-need[data-check="l2"]')), 'a file added after the record says what to do');
+  ok(/Add it to Rosa Ortiz in Zeffy: 9 Elm St, Roswell, GA 30075/.test(await textOf(page, '.ck-need[data-check="l3"]')), 'the address to-do names the address');
+  ok(/Mail on the check: 77 Mill St, Alpharetta, GA 30009/.test(await row('l4')) && /Address in Zeffy/.test(await row('l4')), 'an address in Zeffy says so');
+  await page.screenshot({ path: `${OUT}letters.png`, fullPage: true });
+  await axe(page, 'letters');
+  ok(await clickIn(page, '.ck-need[data-check="l2"]', 'Looked at it'), 'a letter to-do has "Looked at it"');
+  await page.waitForFunction(() => !document.querySelector('.ck-need[data-check="l2"]'), { timeout: 5000 });
+  ok(/In Zeffy/.test(await row('l2')), '"Looked at it" takes the to-do off');
+
   console.log('Back to watching');
   await clickIn(page, '.ck .notice', 'Go back to watching');
   await page.waitForFunction(() => /The site is watching/.test(document.querySelector('.ck')?.textContent || ''), { timeout: 5000 });

@@ -85,7 +85,12 @@ async function zeffy(url, method, body, world) {
       return json(world.contacts[id], 201);
     }
     // The contact list, as the spec has it: newest pages of { data, has_more, next_cursor }
-    if (path === '/contacts' && method === 'GET') return json({ data: Object.values(world.contacts), has_more: false, next_cursor: null });
+    // ?email= is an exact match on the contact's email (Nov 10: the spec's filter)
+    if (path === '/contacts' && method === 'GET') {
+      const email = url.searchParams.get('email');
+      const all = Object.values(world.contacts).filter((c) => !email || String(c.email || '').toLowerCase() === email.toLowerCase());
+      return json({ data: all, has_more: false, next_cursor: null });
+    }
     const contact = path.match(/^\/contacts\/(.+)$/);
     if (contact && method === 'GET') return world.contacts[contact[1]] ? json(world.contacts[contact[1]]) : json({ error: { message: 'no' } }, 404);
     if (contact && method === 'PATCH') {
