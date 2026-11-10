@@ -9,10 +9,11 @@
  *
  * Hero: the same editorial split as apply/donate/home (text left, framed
  * photo right with the yellow accent block). The frame shows what's next:
- * the next live reveal (that kid, the day and time, a link to their live
- * page), with the latest reveal video small beside it; with nothing coming
- * up, the latest reveal video itself, playing in the page's player (Peter,
- * Nov 9 2026: "if we didnt, it should show the last reveal video there").
+ * the next child to be revealed, just their photo (a link to their live
+ * page; the day and time are in "Coming up" right under the hero, never on
+ * the photo: Peter, Nov 9 2026); with nothing coming up, the latest reveal
+ * video, its photo with a play button, playing in the page's player ("if we
+ * didnt, it should show the last reveal video there"). No stat badge.
  * Drawn from the schedule the build had (src/data/upcoming-reveals.json) and
  * brought up to date from /api/reveals when the page opens.
  *
@@ -30,7 +31,6 @@ import { getReveals } from '../utils/reveals';
 import { cfRaw, cfSrcset, cfLqip } from '../utils/cf-image';
 import siteSettings from '../content/site/settings.json';
 import { upcomingAtBuild } from '../utils/reveals-copy';
-import { revealWhen } from '../utils/reveals-client';
 import { getPublishedKids } from '../utils/collections';
 
 const reveals = await getReveals();
@@ -38,11 +38,9 @@ const live = reveals.filter((r) => r.kind === 'live');
 const videos = reveals.filter((r) => r.kind === 'video');
 
 /* ── What's next: the next live reveal if one is planned, else the latest reveal video ── */
-const ET = 'America/New_York';
 const next = upcomingAtBuild()[0] || null;
 const nextKid = next ? (await getPublishedKids()).find((k) => k.data.slug === next.slug)?.data : null;
 const nextPhoto = (nextKid?.heroImage as string | undefined) || next?.image || null;
-const nextWhen = next ? (next.confirmed ? revealWhen(next as any, 'long', ET) : next.window?.label || '') : '';
 // The newest reveal on video: the latest live replay, else the newest recorded reveal
 const latest = live[0] || videos[0] || null;
 const latestMeta = latest ? [latest.yearLabel, latest.rooms.join(', ')].filter(Boolean).join(' · ') : '';
@@ -92,7 +90,7 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
       </div>
       <div class="hero-frame" data-rh data-mode={heroMode}>
         <div class="hero-accent" aria-hidden="true"></div>
-        {/* The next live reveal: that child, when, and a link to their live page */}
+        {/* The next live reveal: that child's photo, nothing on it, linking to their live page */}
         <a class="hero-photo rh-next" href={next?.liveUrl || '/live/'} data-rh-next style={nextPhoto ? `background-image:url('${cfLqip(nextPhoto)}')` : undefined}>
           {nextPhoto && (
             <img
@@ -104,13 +102,8 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
               data-rh-next-img
             />
           )}
-          <span class="rh-chip">
-            <span class="rh-chip__kicker"><span class="rh-dot" aria-hidden="true"></span>Next live reveal</span>
-            <span class="rh-chip__name" data-rh-next-name>{next?.name || ''}</span>
-            <span class="rh-chip__when" data-rh-next-when>{nextWhen}</span>
-          </span>
         </a>
-        {/* The latest reveal video: big when nothing's coming up, small beside the next one otherwise */}
+        {/* The latest reveal video, when nothing's coming up: its photo and a play button */}
         {latest?.image && (
           <a
             class="hero-photo rh-latest"
@@ -135,10 +128,6 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
               width="640" height="800" class="lqip-img" loading={heroMode === 'latest' ? 'eager' : 'lazy'} decoding="async"
             />
             <span class="rh-play" aria-hidden="true"><svg viewBox="0 0 24 28" fill="currentColor"><path d="M2 1.5v25l20-12.5L2 1.5z" /></svg></span>
-            <span class="rh-chip rh-chip--latest">
-              <span class="rh-chip__kicker">Latest reveal</span>
-              <span class="rh-chip__name">{latest.title}</span>
-            </span>
           </a>
         )}
         <div class="hero-photo rh-photo" style={`background-image:url('${cfLqip(heroMainId)}')`}>
@@ -156,10 +145,6 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
           />
         </div>
       </div>
-    </div>
-    <div class="hero-stat">
-      <span class="hero-stat-num">{reveals.length}</span>
-      <span class="hero-stat-label">reveals<br />on video</span>
     </div>
   </section>
 
@@ -331,67 +316,15 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
       0 4px 6px rgba(0, 0, 0, 0.06),
       0 12px 36px rgba(0, 0, 0, 0.12);
   }
-  .hero-stat {
-    position: absolute;
-    bottom: clamp(24px, 4vw, 48px);
-    right: clamp(24px, 6vw, 80px);
-    background: var(--c-dark);
-    color: #fff;
-    padding: 16px 24px;
-    border-radius: var(--border-radius-lg);
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    box-shadow:
-      0 4px 6px rgba(0, 0, 0, 0.08),
-      0 16px 48px rgba(0, 0, 0, 0.15);
-    z-index: 3;
-  }
-  .hero-stat-num {
-    font-family: var(--font-display);
-    font-size: clamp(28px, 3vw, 40px);
-    font-weight: 700;
-    color: var(--c-yellow);
-    line-height: 1;
-  }
-  .hero-stat-label {
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.35;
-    color: rgba(255, 255, 255, 0.6);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-  }
   .lqip-img.lqip-pending { opacity: 0; }
   .lqip-img:not(.lqip-pending) { transition: opacity 0.4s ease; }
 
   /* ── What's next, in the frame: one thing big (the next live reveal, else the latest reveal video, else a photo) ── */
   .hero-frame:not([data-mode='next']) .rh-next,
   .hero-frame:not([data-mode='photo']) .rh-photo,
-  .hero-frame[data-mode='photo'] .rh-latest { display: none; }
+  .hero-frame:not([data-mode='latest']) .rh-latest { display: none; }
   .rh-next, .rh-latest { display: block; color: inherit; text-decoration: none; }
   .rh-next:focus-visible, .rh-latest:focus-visible { outline: 3px solid var(--c-yellow); outline-offset: 4px; }
-  /* Beside the next reveal, the latest one is the small photo over its corner */
-  .hero-frame[data-mode='next'] .rh-latest {
-    position: absolute; bottom: -24px; left: -32px; width: 40%; aspect-ratio: 5 / 6; z-index: 2;
-    border: 4px solid var(--c-cream);
-    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.06), 0 12px 36px rgba(0, 0, 0, 0.12);
-  }
-  .rh-chip {
-    position: absolute; top: 16px; left: 16px; right: 16px; z-index: 1;
-    display: flex; flex-direction: column; gap: 3px; text-align: left;
-    background: var(--c-dark); color: #fff; border-radius: 16px; padding: 12px 16px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.22);
-  }
-  .rh-chip__kicker { display: flex; align-items: center; gap: 8px; font-size: 11px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-yellow); }
-  .rh-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--c-yellow); flex-shrink: 0; }
-  .rh-chip__name { font-family: var(--font-display); font-size: clamp(18px, 1.8vw, 22px); font-weight: 700; line-height: 1.2; }
-  .rh-chip__when { font-size: 14px; line-height: 1.4; color: rgba(255, 255, 255, 0.82); }
-  .rh-chip__when:empty { display: none; }
-  /* The small one says only what it is */
-  .hero-frame[data-mode='next'] .rh-chip--latest { top: 8px; left: 8px; right: 8px; padding: 6px 10px; border-radius: 10px; }
-  .hero-frame[data-mode='next'] .rh-chip--latest .rh-chip__name { display: none; }
-  .hero-frame[data-mode='next'] .rh-chip--latest .rh-chip__kicker { font-size: 10px; letter-spacing: 0.12em; }
   .rh-play {
     position: absolute; inset: 0; margin: auto; z-index: 1; width: 76px; height: 76px; border-radius: 50%;
     display: grid; place-items: center; background: rgba(255, 255, 255, 0.94); color: var(--c-dark);
@@ -399,8 +332,6 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
   }
   .rh-play svg { width: 24px; height: 28px; margin-left: 5px; }
   .rh-latest:hover .rh-play { transform: scale(1.06); }
-  .hero-frame[data-mode='next'] .rh-play { width: 46px; height: 46px; }
-  .hero-frame[data-mode='next'] .rh-play svg { width: 15px; height: 18px; margin-left: 3px; }
 
   /* ══════════════════════════════════════════
      SECTIONS
@@ -489,7 +420,6 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
     .hero-lead { margin-inline: auto; }
     .hero-ctas { justify-content: center; }
     .hero-frame { max-width: 380px; margin: 0 auto; }
-    .hero-stat { position: relative; bottom: auto; right: auto; margin: -20px auto 0; width: fit-content; }
 
     .rv-cta__inner { grid-template-columns: 1fr; }
     .rv-cta__actions { max-width: 460px; }
@@ -499,7 +429,7 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
     .hero { padding-top: var(--hero-space-top); padding-bottom: var(--space-xl); min-height: auto; }
     .hero-inner { padding: 0 var(--space-lg); }
     .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
-    .hero-photo--small, .hero-frame[data-mode='next'] .rh-latest { display: none; }
+    .hero-photo--small { display: none; }
     .hero-photo { border-radius: 18px; }
     .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
     .rv-cta__inner { padding: 0 var(--space-lg); }
@@ -531,7 +461,7 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
    * may since have been set, moved or passed. /api/reveals (JobTread's schedule) decides: the next live reveal if
    * there is one, else the latest reveal video. A read that fails keeps what the build drew.
    */
-  import { readUpcoming, loadSignup, revealWhen } from '../utils/reveals-client';
+  import { readUpcoming, loadSignup } from '../utils/reveals-client';
   import { cfRaw, cfSrcset } from '../utils/cf-image';
 
   function initRevealsHero() {
@@ -553,10 +483,6 @@ const ogImage = cfRaw(heroMainId, 'w=1200,h=630,fit=cover,gravity=face,q=85,meta
       const link = frame.querySelector<HTMLAnchorElement>('[data-rh-next]');
       if (!link) return;
       link.href = n.liveUrl;
-      const name = link.querySelector<HTMLElement>('[data-rh-next-name]');
-      const when = link.querySelector<HTMLElement>('[data-rh-next-when]');
-      if (name) name.textContent = n.name;
-      if (when) when.textContent = n.confirmed ? revealWhen(n) : n.window.label;
       // Another child than the build had: their photo
       let img = link.querySelector<HTMLImageElement>('[data-rh-next-img]');
       if (n.image && img?.dataset.slug !== n.slug && !(img && img.alt.startsWith(`${n.name},`))) {
