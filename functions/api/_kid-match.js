@@ -112,12 +112,14 @@ function candidates(item, lines, templates) {
   return out.sort((a, b) => b.score - a.score);
 }
 
-/** The emails about one order, together: store + order number, else the email alone */
+/** Which order an email belongs to: store + order number; with none, the PO and the first item; else the email alone */
+export const groupKey = (r) => (r.read.orderNumber ? `${r.store}|${r.read.orderNumber}` : r.read.jobPo && r.read.items?.[0] ? `${r.store}|po:${r.read.jobPo}|${r.read.items[0].name}` : `${r.store}|email:${r.id}`);
+
+/** The emails about one order, together */
 export function orderGroups(reads) {
   const groups = new Map();
   for (const r of reads) {
-    // No order number: the PO and the first item keep one order's emails together, else the email alone
-    const key = r.read.orderNumber ? `${r.store}|${r.read.orderNumber}` : r.read.jobPo && r.read.items?.[0] ? `${r.store}|po:${r.read.jobPo}|${r.read.items[0].name}` : `${r.store}|email:${r.id}`;
+    const key = groupKey(r);
     const g = groups.get(key) || { key, store: r.store, orderNumber: r.read.orderNumber || null, po: null, at: r.at, kinds: [], items: [], buyer: r.mailbox };
     g.kinds.push(r.read.kind);
     g.po ||= r.read.jobPo || null;

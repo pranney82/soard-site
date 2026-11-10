@@ -27,6 +27,12 @@ export function shortName(jobName) {
   return n ? `${words[0]} ${words[words.length - 1][0]}.` : words.join(' ');
 }
 
+/** The store order emails read so far, for matching: [{ mailbox, id, store, at, read }] */
+export async function orderReads(DB) {
+  return (await rows(DB, "SELECT mailbox, id, store, at, read FROM order_mail WHERE state = 'read'"))
+    .map((r) => ({ ...r, read: parse(r.read, {}) })).filter((r) => ORDER_KINDS.has(r.read.kind));
+}
+
 /** → { practice, kids: [{ jobId, name, short, shelf, others, items }], needsLook: [...], orders: n } */
 export async function checkinView(env) {
   const DB = env.DB;
@@ -46,20 +52,21 @@ export async function checkinView(env) {
     if (templates.has(`${l.jobId}|${l.itemId}`)) continue;
     l.parts.forEach((p, i) => {
       if (p.source === 'buy' || p.source === 'donated') {
-        kid.items.push({ id: `${l.itemId}:${i}`, itemId: l.itemId, part: p.name, name: p.name, line: l.lineName, qty: p.quantity || 1, source: p.source, status: 'not', order: null });
+        // "Lighting: Wayfair Louis Parisian Globe" on the Lighting line reads as the product alone
+        const name = p.name.toLowerCase().startsWith(`${l.lineName.toLowerCase()}:`) ? p.name.slice(l.lineName.length + 1).trim() || p.name : p.name;
+        kid.items.push({ id: `${l.itemId}:${i}`, itemId: l.itemId, part: p.name, name, line: l.lineName, qty: p.quantity || 1, source: p.source, status: 'not', order: null });
       } else kid.others++;
     });
   }
 
-  const reads = (await rows(DB, "SELECT mailbox, id, store, at, read FROM order_mail WHERE state = 'read'"))
-    .map((r) => ({ ...r, read: parse(r.read, {}) })).filter((r) => ORDER_KINDS.has(r.read.kind));
+  const reads = await orderReads(DB);
   const needsLook = [];
   let orders = 0;
   for (const g of orderGroups(reads)) {
     const m = matchOrder(g, { jobs, lines, staff, templates });
     if (!['placed', 'look'].includes(m.decision)) continue;
     orders++;
-    const order = { store: g.store, orderNumber: g.orderNumber, at: g.at, buyer: firstOf.get(String(g.buyer || '').toLowerCase()) || String(g.buyer || '').split('@')[0] };
+    const order = { key: g.key, store: g.store, orderNumber: g.orderNumber, at: g.at, buyer: firstOf.get(String(g.buyer || '').toLowerCase()) || String(g.buyer || '').split('@')[0] };
     const kid = m.kid ? kidOf.get(m.kid) : null;
     const looks = [];
     for (const it of m.items || []) {
@@ -73,7 +80,9 @@ export async function checkinView(env) {
         || kid.items.find((x) => x.itemId === it.itemId && x.status === 'not');
       if (target) Object.assign(target, { status: 'ordered', order, orderedAs: it.name });
     }
-    if (looks.length || m.decision === 'look') needsLook.push({ key: g.key, ...order, po: g.po, kid: kid?.short || null, why: m.why || null, items: (looks.length ? looks : m.items || []).map((x) => ({ name: x.name, look: x.look || 'which kid?' })) });
+    // Kids by the short names the page uses ("Peter R.")
+    const shortly = (s) => kids.reduce((t, k) => t.split(String(k.name).replace(/\s*\(\d{4}\)\s*$/, '')).join(k.short), String(s || ''));
+    if (looks.length || m.decision === 'look') needsLook.push({ key: g.key, ...order, po: g.po, kid: kid?.short || null, why: m.why ? shortly(m.why) : null, items: (looks.length ? looks : m.items || []).map((x) => ({ name: x.name, look: shortly(x.look || 'which kid?') })) });
   }
   for (const k of kids) k.items.sort((a, b) => (a.status === b.status ? String(a.order?.at || '').localeCompare(String(b.order?.at || '')) : a.status === 'ordered' ? -1 : 1));
   return { practice: true, kids: kids.filter((k) => k.items.length), needsLook, orders };

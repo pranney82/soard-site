@@ -173,7 +173,9 @@ test('the admin read-out: orders and parts together, read-only', async () => {
   assert.equal(body.success, true);
   assert.equal(body.orders.watching, true);
   assert.equal(body.parts.jobs[0].list.length, 4);
-  assert.equal(onRequestPost, undefined, 'nothing to change');
+  // Its one POST reads a box's label at check-in; anything else changes nothing
+  const other = await onRequestPost({ env, request: new Request('https://site.example/api/kid-items-admin', { method: 'POST', body: '{}' }) });
+  assert.equal(other.status, 400);
 });
 
 test('review fix: a line the AI can’t split doesn’t hold up the other makeovers, and is tried again only a few times', async () => {
