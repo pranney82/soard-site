@@ -330,7 +330,7 @@ function itemSheet(kid, it, { found = '', keep = false, boxes: preset = 1 } = {}
     ${left > 1 ? stepper('units', 'How many came', units) : ''}
     ${stepper('boxes', 'Boxes', boxes)}
     <button class="btn btn-primary btn-big" type="button" id="print" data-focus>${printWords(boxes)}</button>
-    <div class="btn-row">${it.order ? '<button class="btn btn-text" type="button" id="wrongkid">Wrong kid</button>' : ''}<button class="btn btn-text" type="button" id="house">Not coming here</button></div>`, { keep });
+    <div class="btn-row">${it.order ? '<button class="btn btn-text" type="button" id="wrongkid">Wrong kid or line</button>' : ''}<button class="btn btn-text" type="button" id="house">Not coming here</button></div>`, { keep });
   const vals = steppers({ units: [1, left], boxes: [1, 20] }, (v) => { units = v.units ?? units; boxes = v.boxes; $('print').textContent = printWords(boxes); });
   units = vals.units ?? units;
   $('print').onclick = () => printed(kid, it, { units, boxes });
@@ -533,25 +533,26 @@ function decisionOf(kid, value) {
   return { type: 'line', kid: kid.jobId, itemId: it.itemId, partKey: it.partKey };
 }
 
-/** Wrong kid: whose it really is, and which of their lines */
+/** Wrong kid or line: whose it really is (this kid to start with) and which of their lines, the allowance or Also bought */
 function wrongKidSheet(fromKid, it) {
-  const others = state.kids.filter((k) => k.jobId !== fromKid.jobId);
-  let kid = others[0];
+  let kid = fromKid;
+  const here = (k) => (k === fromKid ? (it.also ? 'also' : `line:${it.id}`) : '');
   const draw = () => {
-    openSheet(`${head('Whose is it?', { sub: esc(it.name), one: true })}
-      <div class="kidpick">${others.map((k) => `<button class="chip has-face" type="button" data-pick="${esc(k.jobId)}" aria-pressed="${k === kid}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div>
-      <div class="field"><label for="where">Where it goes</label><select id="where">${kid ? optionsFor(kid) : ''}</select></div>
-      <button class="btn btn-primary btn-big" type="button" id="save" data-focus>Move it to ${esc(kid?.short || '')}</button>`, { keep: true });
+    openSheet(`${head('Where does it go?', { sub: esc(it.name), one: true })}
+      <div class="kidpick">${state.kids.map((k) => `<button class="chip has-face" type="button" data-pick="${esc(k.jobId)}" aria-pressed="${k === kid}">${face(k, 32)}${esc(k.short)}</button>`).join('')}</div>
+      <div class="field"><label for="where">${esc(kid.short)}’s</label><select id="where">${optionsFor(kid, { current: here(kid), guess: here(kid) })}</select></div>
+      <button class="btn btn-primary btn-big" type="button" id="save" data-focus>Move it</button>`, { keep: true });
     document.querySelectorAll('#sheet-root [data-pick]').forEach((b) => { b.onclick = () => { kid = kidById(b.dataset.pick); draw(); }; });
     $('save').onclick = async () => {
-      const decision = decisionOf(kid, $('where').value);
-      try { await sendOrKeep('decide', { orderKey: it.order?.key || `typed:${it.itemId}`, from: fromKid.jobId, items: [{ itemName: it.orderedAs || it.name, decision }] }); } catch (err) { toast(err.message); return; }
+      const value = $('where').value;
+      if (kid === fromKid && value === here(kid)) { await close(); return; }
+      const decision = decisionOf(kid, value);
+      try { await sendOrKeep('decide', { orderKey: it.order?.key, from: fromKid.jobId, items: [{ itemName: it.orderedAs || it.name, decision }] }); } catch (err) { toast(err.message); return; }
       await close();
       render();
-      toast(decision.type === 'notKid' ? 'Taken off the list' : `Moved to ${kid.short}`);
+      toast(decision.type === 'notKid' ? 'Taken off the list' : decision.type === 'cancelled' ? 'Marked cancelled' : `Moved${kid === fromKid ? '' : ` to ${kid.short}`}`);
     };
   };
-  if (!kid) { toast('There’s no other kid to move it to.'); return; }
   draw();
 }
 

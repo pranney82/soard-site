@@ -387,7 +387,8 @@ export async function rehearse(env, { fetchImpl = fetch, now = new Date().toISOS
 // ─── The runs ───────────────────────────────────────────────────────
 
 /** Is JobTread being written? 'dry' lists what it would write, 'on' writes; the rehearsal comes first either way */
-export const MODE = 'dry';
+// 'on' since Nov 10 2026: the rehearsal passed every step against JobTread, and each kid's planned lines were checked
+export const MODE = 'on';
 
 /** One pass over the makeovers: Also bought lines made, then each changed line written. → { wrote, made, planned, left, errors } */
 export async function writeKids(env, { fetchImpl = fetch, now = new Date().toISOString(), jobId = null, mode = MODE, budget = WRITES_A_RUN } = {}) {

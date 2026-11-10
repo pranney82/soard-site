@@ -107,3 +107,11 @@ test('a loose likeness to another kid’s line isn’t a reason to stop: it need
   const m = matchOrder(order({ po: 'ROWAN', items: [{ name: 'RGB Neon LED Rope Light 50 ft' }] }), { jobs, lines: near, staff });
   assert.equal(m.items[0].alsoBought, true, 'Rowan’s, also bought, not flagged as Ava’s');
 });
+
+test('Nov 10: when the PO names the kid, a store’s long title finds the line by the words it shares', async () => {
+  const { looseFit } = await import('../functions/api/_kid-match.js');
+  assert.ok(looseFit({ name: 'KINLINK 13x13 Picture Frames 4 Pack White Wood' }, { name: '6 Pack 12x12 Picture Frames, Black' }, '') > 0);
+  assert.equal(looseFit({ name: 'Command X-Large Picture Hanging Strips' }, { name: '6 Pack 12x12 Picture Frames, Black' }, ''), 0, 'one shared word is not enough');
+  const m = matchOrder(order({ po: 'ROWAN', items: [{ name: 'Good Fun Co Perfect Stripe Peel and Stick Wallpaper Roll, Beige, 20.5 in x 18 ft, Removable' }] }), { jobs, lines, staff });
+  assert.equal(m.items[0].itemId, 'r-wall', 'on the wall line, not Also bought');
+});

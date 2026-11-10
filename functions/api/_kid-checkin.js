@@ -198,8 +198,9 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
         : kid.items.find((y) => y.itemId === x.itemId && y.part === x.part && !y.order) || kid.items.find((y) => y.itemId === x.itemId && !y.order);
       if (target) put(kid, target);
       else {
-        const first = kid.items.find((y) => y.itemId === x.itemId && y.order);
-        looks.push({ name: it.name, look: first ? `${first.line} was ordered already (${first.order.store}): another one?` : 'which line?' });
+        // Name the part that was ordered already, not just its line
+        const first = kid.items.find((y) => y.itemId === x.itemId && y.part === x.part && y.order) || kid.items.find((y) => y.itemId === x.itemId && y.order);
+        looks.push({ name: it.name, look: first ? `${first.name} (${first.line}) was ordered already from ${first.order.store}: another one?` : 'which line?' });
       }
     }
     if (placed || looks.length) orders++;

@@ -94,6 +94,18 @@ export function fit(item, part, lineWords) {
   if (shared.length >= 2 && share >= 0.4) return { score: 2, how: `words: ${shared.join(' ')}` };
   return { score: 0, how: null };
 }
+/**
+ * When the PO already says whose it is, only the line is in question, and a store's long title ("Emberela HEXlights
+ * Sensory Lights for Kids Room, Smart Hexagon…") shares too small a part of its words with the designer's to fit
+ * above. Then: two of the part's own significant words, or three of the line's, decide the line
+ */
+export function looseFit(item, part, lineWords) {
+  const it = new Set(tokensOf(item.name));
+  if (!it.size) return 0;
+  const own = tokensOf(`${part.brand || ''} ${part.name}`).filter((w) => it.has(w)).length;
+  const line = tokensOf(lineWords).filter((w) => it.has(w)).length;
+  return own >= 2 ? 1 + own : line >= 3 ? line / 2 : 0;
+}
 const STRONG = 4;
 // Enough to say an item is plainly another kid's: its model number, or five of the designer's words
 const PLAIN = 6;
@@ -147,7 +159,15 @@ export function matchOrder(order, { jobs, lines, staff = new Set(), templates = 
       const other = c.find((x) => x.jobId !== po.kid && x.score >= PLAIN);
       if (mine[0]?.score >= 2 && !(other && other.score > mine[0].score)) return { name: it.name, itemId: mine[0].itemId, line: mine[0].line, part: mine[0].part, score: mine[0].score, how: mine[0].how };
       if (other) return { name: it.name, look: `the PO says ${jobName(po.kid)}, but it looks like ${jobName(other.jobId)}'s ${other.line}` };
-      // The PO says whose it is and nothing on their lines fits: bought for them on top of the selections
+      // Nothing fits closely: the kid's line whose words the title shares most, else bought on top of the selections
+      let loose = null;
+      for (const l of lines.filter((x) => x.jobId === po.kid && !templates.has(`${x.jobId}|${x.itemId}`))) {
+        for (const p of l.parts || []) {
+          const score = looseFit(it, p, l.words);
+          if (score && (!loose || score > loose.score)) loose = { itemId: l.itemId, line: l.lineName, part: p.name, score };
+        }
+      }
+      if (loose) return { name: it.name, itemId: loose.itemId, line: loose.line, part: loose.part, score: 2, how: 'title words' };
       return { name: it.name, alsoBought: true };
     });
     return { decision: items.some((i) => i.look) ? 'look' : 'placed', kid: po.kid, how: `PO "${order.po}"`, items };
