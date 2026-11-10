@@ -35,7 +35,7 @@
  */
 import { h, htm, useState, useEffect, useRef, useMemo, useCallback } from './vendor.js';
 import { PLAN_KINDS, kindFromText, suggestBefores, addressWords, BEFORE_SHOWN } from './reveal-design.js';
-import { findAddress, sheetTitle, kindFromSheet, keepBox, captionOf, coverRects, isDocumentName } from './reveal-design-draw.js';
+import { kindFromSheet, captionOf, coverRects, isDocumentName, drawPdfPage, finishSheet } from './reveal-design-draw.js';
 import { ask } from './ask.js';
 
 const html = htm.bind(h);
@@ -220,43 +220,12 @@ async function openPdf(blob) {
 
 const canvasOf = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
 const toBlob = (c, type = 'image/png', q) => new Promise((done, fail) => c.toBlob((b) => (b ? done(b) : fail(new Error('The drawing couldn’t be made'))), type, q));
-function paintOver(ctx, boxes) {
-  ctx.save();
-  ctx.fillStyle = '#fff';
-  for (const b of boxes) { ctx.beginPath(); ctx.moveTo(b[0][0], b[0][1]); for (let i = 1; i < 4; i++) ctx.lineTo(b[i][0], b[i][1]); ctx.closePath(); ctx.fill(); }
-  ctx.restore();
-}
-
-/**
- * Draws one page at a width (or long edge), with the address painted out wherever its words are.
- * → { canvas, wiped (boxes painted), hits (address words found), textLayer, title, body }
- */
-async function drawPage(page, { width, longEdge, words }) {
-  const base = page.getViewport({ scale: 1 });
-  const scale = longEdge ? longEdge / Math.max(base.width, base.height) : width / base.width;
-  const viewport = page.getViewport({ scale });
-  const canvas = canvasOf(viewport.width, viewport.height);
-  const ctx = canvas.getContext('2d', { willReadFrequently: !!longEdge });
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  await page.render({ canvas, canvasContext: ctx, viewport, background: '#ffffff' }).promise;
-  const content = await page.getTextContent().catch(() => ({ items: [] }));
-  const { boxes, hits } = findAddress(content.items, viewport.transform, scale, words);
-  paintOver(ctx, boxes);
-  const textLayer = content.items.some((i) => String(i.str || '').trim());
-  const title = sheetTitle(content.items, viewport.transform, scale, words);
-  const body = content.items.map((i) => i.str || '').join(' ').replace(/\s+/g, ' ').trim();
-  return { canvas, wiped: boxes.length, hits, textLayer, title, body };
-}
-
+// Drawing a page and finishing a sheet are shared with the automatic import (./reveal-design-draw.js)
+const drawPage = drawPdfPage;
 /** A sheet as it goes up: a real title block cut off and the white margin trimmed. → { blob, w, h, trimmed } */
 async function finish(canvas) {
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
-  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const box = keepBox(data, canvas.width, canvas.height);
-  const out = canvasOf(box.w, box.h);
-  out.getContext('2d').drawImage(canvas, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
-  return { blob: await toBlob(out), w: out.width, h: out.height, trimmed: box.titleBlock };
+  const out = finishSheet(canvas);
+  return { blob: await toBlob(out.canvas), w: out.w, h: out.h, trimmed: out.trimmed };
 }
 
 /** A picture (a board, a rendering or a scanned sheet) on white, no bigger than MAX_EDGE */

@@ -96,6 +96,56 @@ export function sortFiles(files, sheets = []) {
   return { drawings: drawings.map(({ rank, ...d }) => d), befores };
 }
 
+/**
+ * What a kid's JobTread job holds for their design (the editor's Bring in from JobTread, and the automatic import,
+ * ./_reveal-design-auto.js): → { kid, job, address, drawings, befores, sheets }. Throws when JobTread can't be read;
+ * kid null when there's no such profile.
+ */
+export async function designSources(env, slug, { askedJob = '', fetchImpl = fetch } = {}) {
+  const jt = (query) => pave(env.JOBTREAD_GRANT_KEY, query, fetchImpl);
+  const [kids, projects] = await Promise.all([loadAllKids(env.DB), loadAllProjects(env.DB)]);
+  const kid = kids.find((k) => k.slug === slug);
+  if (!kid) return { kid: null };
+  const records = [...kids, ...projects];
+  const belongs = (job) => { const hit = job ? matchProject(job.name, records, job.id) : null; return !!hit && !isProject(hit) && hit.slug === slug; };
+
+  // The job: the one asked for, if it's this kid's; else found among every job
+  let jobId = null;
+  let detail = null;
+  if (askedJob) {
+    detail = (await jt(jobQuery(askedJob)))?.job || null;
+    if (detail && belongs(detail)) jobId = askedJob;
+    else detail = null;
+  }
+  if (!jobId) {
+    const view = buildAdminView(await fetchAllJobs(env.JOBTREAD_GRANT_KEY, fetchImpl), kids, Date.now(), projects);
+    jobId = view.jobs[slug] || null;
+    if (jobId) detail = (await jt(jobQuery(jobId)))?.job || null;
+  }
+  const base = { kid: { slug, name: kid.name || '' }, address: { street: '', city: '', zip: '', family: '' }, drawings: [], befores: [], sheets: [] };
+  if (!jobId || !detail) return { ...base, job: null };
+
+  const sheets = (detail.plans?.nodes || [])
+    .filter((p) => p?.file?.id && Number.isInteger(p.page))
+    .map((p) => ({ fileId: p.file.id, page: p.page, name: String(p.name || '').trim() }));
+  const files = [];
+  let page = null;
+  for (let i = 0; i < MAX_FILE_PAGES; i++) {
+    const conn = (await jt(filesQuery(jobId, page)))?.job?.files;
+    files.push(...(conn?.nodes || []));
+    page = conn?.nextPage || null;
+    if (!page) break;
+  }
+  const loc = detail.location || {};
+  return {
+    ...base,
+    job: { id: jobId, name: detail.name || '' },
+    address: { street: loc.street || '', city: loc.city || '', zip: loc.postalCode || '', family: familyName(loc.account?.name, kid.name) },
+    sheets,
+    ...sortFiles(files, sheets),
+  };
+}
+
 export async function onRequestGet({ env, request }, { fetchImpl = fetch } = {}) {
   if (!env.DB) return fail('DB not bound', 500);
   if (!env.JOBTREAD_GRANT_KEY) return fail('JOBTREAD_GRANT_KEY is not set in Cloudflare', 500);
@@ -104,50 +154,10 @@ export async function onRequestGet({ env, request }, { fetchImpl = fetch } = {})
   const askedJob = String(url.searchParams.get('job') || '').trim();
   if (!SLUG.test(slug)) return fail('Which kid?');
   if (askedJob && !JOB_ID.test(askedJob)) return fail('That isn’t a JobTread job id');
-  const jt = (query) => pave(env.JOBTREAD_GRANT_KEY, query, fetchImpl);
-
   try {
-    const [kids, projects] = await Promise.all([loadAllKids(env.DB), loadAllProjects(env.DB)]);
-    const kid = kids.find((k) => k.slug === slug);
-    if (!kid) return fail('No profile with that name', 404);
-    const records = [...kids, ...projects];
-    const belongs = (job) => { const hit = job ? matchProject(job.name, records, job.id) : null; return !!hit && !isProject(hit) && hit.slug === slug; };
-
-    // The job: the one asked for, if it's this kid's; else found among every job
-    let jobId = null;
-    let detail = null;
-    if (askedJob) {
-      detail = (await jt(jobQuery(askedJob)))?.job || null;
-      if (detail && belongs(detail)) jobId = askedJob;
-      else detail = null;
-    }
-    if (!jobId) {
-      const view = buildAdminView(await fetchAllJobs(env.JOBTREAD_GRANT_KEY, fetchImpl), kids, Date.now(), projects);
-      jobId = view.jobs[slug] || null;
-      if (jobId) detail = (await jt(jobQuery(jobId)))?.job || null;
-    }
-    const base = { kid: { slug, name: kid.name || '' }, address: { street: '', city: '', zip: '', family: '' }, drawings: [], befores: [], sheets: [] };
-    if (!jobId || !detail) return ok({ ...base, job: null });
-
-    const sheets = (detail.plans?.nodes || [])
-      .filter((p) => p?.file?.id && Number.isInteger(p.page))
-      .map((p) => ({ fileId: p.file.id, page: p.page, name: String(p.name || '').trim() }));
-    const files = [];
-    let page = null;
-    for (let i = 0; i < MAX_FILE_PAGES; i++) {
-      const conn = (await jt(filesQuery(jobId, page)))?.job?.files;
-      files.push(...(conn?.nodes || []));
-      page = conn?.nextPage || null;
-      if (!page) break;
-    }
-    const loc = detail.location || {};
-    return ok({
-      ...base,
-      job: { id: jobId, name: detail.name || '' },
-      address: { street: loc.street || '', city: loc.city || '', zip: loc.postalCode || '', family: familyName(loc.account?.name, kid.name) },
-      sheets,
-      ...sortFiles(files, sheets),
-    });
+    const got = await designSources(env, slug, { askedJob, fetchImpl });
+    if (!got.kid) return fail('No profile with that name', 404);
+    return ok(got);
   } catch (e) {
     return fail(e.message || 'JobTread couldn’t be reached', 500);
   }

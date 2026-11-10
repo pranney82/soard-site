@@ -444,6 +444,8 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     settle(() => slackStatus(env)),
   ]);
   const ok = (v) => (v && !v.error ? v : null);
+  // The automatic design import: its claim row says when it last ran (_reveal-design-auto.js)
+  const designRunAt = await DB.prepare("SELECT updated_at FROM site_config WHERE key = 'reveal-design-auto-next'").first('updated_at').catch(() => null);
   // The tables appear with the first partner logo sweep; until then these settle to an error
   const [logoState, logoWaiting, vendorState] = await Promise.all([
     settle(async () => JSON.parse((await DB.prepare("SELECT value FROM kid_partner_state WHERE key = 'state'").first('value')) || '{}')),
@@ -470,6 +472,7 @@ export async function gatherFacts(env, { fetchImpl = fetch, now = Date.now() } =
     invites: inviteFacts(ok(invites), typeof inviteRows === 'number' ? inviteRows : null, ok(guestCheck)),
     revealChecks: revealCheckFacts(ok(checks), ok(synced)),
     liveSchedule: liveScheduleFacts(ok(liveSchedule)),
+    revealDesigns: { lastRunAt: typeof designRunAt === 'string' ? designRunAt : null, browser: !!env.BROWSER, images: !!(env.CF_ACCOUNT_ID && env.CF_IMAGES_TOKEN) },
     kidStatus: kidStatusFacts(ok(kidState), typeof kidsHidden === 'number' ? kidsHidden : null),
     kidLogos: kidLogoFacts(ok(logoState), typeof logoWaiting === 'number' ? logoWaiting : null),
     vendorAccess: vendorAccessFacts(ok(vendorState)),

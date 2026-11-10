@@ -387,7 +387,9 @@ export function keepBox(data, w, h) {
 /** "PROPOSED FLOOR PLAN" → "Proposed floor plan"; "A1.2 - Existing Plan" and "A1.0 EXISTING FLOOR PLAN" lose their sheet numbers */
 export function captionOf(sheet) {
   let s = String(sheet || '').replace(/\.(pdf|png|jpe?g|heic)$/i, '').replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
-  s = s.replace(/^[A-Z]{0,3}\s?-?\d+(\.\d+)*[A-Z]?\s*[-–:]\s*/i, '').replace(/^[A-Z]{1,2}-?\d{1,3}(?:\.\d{1,2})?[A-Z]?\s+(?=[A-Za-z])/, '');
+  s = s.replace(/^[A-Z]{0,3}\s?-?\d+(\.\d+)*[A-Z]?\s*[-–:]\s*/i, '').replace(/^[A-Z]{1,2}-?\d{1,3}(?:\.\d{1,2})?[A-Z]?\s+(?=[A-Za-z])/, '')
+    // A contents-style number ("2 EXISTING LAYOUT", "3. PROPOSED PLAN")
+    .replace(/^\d{1,2}\.?\s+(?=[A-Za-z]{3})/, '');
   if (!s) return '';
   if (s === s.toUpperCase()) s = s.toLowerCase();
   return s.charAt(0).toUpperCase() + s.slice(1);
@@ -406,4 +408,48 @@ export function coverRects(boxes, w, h) {
     const x1 = Math.max(0, Math.min(1, b.x + b.w)), y1 = Math.max(0, Math.min(1, b.y + b.h));
     return { x: Math.floor(Math.min(x0, x1) * w), y: Math.floor(Math.min(y0, y1) * h), w: Math.ceil(Math.abs(x1 - x0) * w), h: Math.ceil(Math.abs(y1 - y0) * h) };
   }).filter((r) => r.w >= 2 && r.h >= 2);
+}
+
+// ── Drawing a PDF page (the import here, and the automatic import in Cloudflare's browser) ─────────
+
+const canvasOf = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w)); c.height = Math.max(1, Math.round(h)); return c; };
+
+/** White over each address box (four corners each), as findAddress gives them */
+export function paintOver(ctx, boxes) {
+  ctx.save();
+  ctx.fillStyle = '#fff';
+  for (const b of boxes) { ctx.beginPath(); ctx.moveTo(b[0][0], b[0][1]); for (let i = 1; i < 4; i++) ctx.lineTo(b[i][0], b[i][1]); ctx.closePath(); ctx.fill(); }
+  ctx.restore();
+}
+
+/**
+ * One pdf.js page drawn at a width (or long edge), with the address painted out wherever its words are.
+ * → { canvas, wiped (boxes painted), hits (address words found), textLayer, title, body }
+ */
+export async function drawPdfPage(page, { width, longEdge, words = [] }) {
+  const base = page.getViewport({ scale: 1 });
+  const scale = longEdge ? longEdge / Math.max(base.width, base.height) : width / base.width;
+  const viewport = page.getViewport({ scale });
+  const canvas = canvasOf(viewport.width, viewport.height);
+  const ctx = canvas.getContext('2d', { willReadFrequently: !!longEdge });
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  await page.render({ canvas, canvasContext: ctx, viewport, background: '#ffffff' }).promise;
+  const content = await page.getTextContent().catch(() => ({ items: [] }));
+  const { boxes, hits } = findAddress(content.items, viewport.transform, scale, words);
+  paintOver(ctx, boxes);
+  const textLayer = content.items.some((i) => String(i.str || '').trim());
+  const title = sheetTitle(content.items, viewport.transform, scale, words);
+  const body = content.items.map((i) => i.str || '').join(' ').replace(/\s+/g, ' ').trim();
+  return { canvas, wiped: boxes.length, hits, textLayer, title, body };
+}
+
+/** A sheet as it goes up: a real title block cut off and the white margin trimmed. → { canvas, w, h, trimmed } */
+export function finishSheet(canvas) {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const box = keepBox(data, canvas.width, canvas.height);
+  const out = canvasOf(box.w, box.h);
+  out.getContext('2d').drawImage(canvas, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+  return { canvas: out, w: out.width, h: out.height, trimmed: box.titleBlock };
 }

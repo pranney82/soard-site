@@ -20,6 +20,7 @@ import { maybeRefreshRevealStats } from './_reveal-stats.js';
 import { maybeNudge } from './_reveal-nudges.js';
 import { maybeSweep, maybeCheckGuests } from './_reveal-invites.js';
 import { maybeCheckDemos } from './_demo-invites.js';
+import { maybeRunRevealDesigns } from './_reveal-design-auto.js';
 import { syncBroadcastSchedule } from './_broadcast-schedule.js';
 import { maybeSweepApplications } from './_applications.js';
 import { maybeSyncKidStatuses } from './_kid-status.js';
@@ -95,6 +96,9 @@ export async function onRequestPost(context) {
     context.waitUntil(maybeRefreshRevealStats(env, { readState, hubStatus: () => hubStatus(env) }));
     context.waitUntil(maybeSweep(env));
     context.waitUntil(maybeCheckGuests(env));
+    // Each confirmed reveal's design (before photos, drawings, board) brought in from JobTread before it, and staff told
+    // 3 days and 1 day out whether it's ready (every 10 minutes; see _reveal-design-auto.js)
+    context.waitUntil(maybeRunRevealDesigns(env));
     // Demo day invites: a Demo task that moved, a sponsor set, a wake-up JobTread missed (every 5 minutes; see _demo-invites.js)
     context.waitUntil(maybeCheckDemos(env));
     context.waitUntil(syncBroadcastSchedule(env));

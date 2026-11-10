@@ -294,6 +294,9 @@ test('captions lose sheet numbers', () => {
   assert.equal(captionOf('A1.0 EXISTING FLOOR PLAN'), 'Existing floor plan');
   assert.equal(captionOf('A2.0 - Proposed Floor Plan'), 'Proposed Floor Plan');
   assert.equal(captionOf('E1.0 ELECTRICAL PLAN'), 'Electrical plan');
+  assert.equal(captionOf('2 EXISTING LAYOUT'), 'Existing layout');
+  assert.equal(captionOf('3. DIMENTIONED PROPOSED LAYOUT'), 'Dimentioned proposed layout');
+  assert.equal(captionOf('2026 Bathroom board'), '2026 Bathroom board', 'a year is not a sheet number');
 });
 
 test('covered areas: kept inside the picture, in pixels; a speck is dropped', () => {

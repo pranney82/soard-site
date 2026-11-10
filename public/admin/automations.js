@@ -275,6 +275,19 @@ const MAP = { t: 'SOARD', children: [
             if (stale(i.lastGuestCheckAt, HOUR)) return ATTN(`Hasn’t run since ${stamp(i.lastGuestCheckAt)}. It rides on the live hub’s heartbeat, so check the Live hub entry.`, i.lastGuestCheckAt);
             return ON('Checking every 5 minutes.', i.lastGuestCheckAt);
           } },
+        { t: 'Reveal design import', s: 'live', k: 'schedule',
+          when: 'Every 10 minutes, on the live hub’s heartbeat, for every reveal JobTread has confirmed in the next 30 days.',
+          does: 'Brings in what a kid’s profile doesn’t have yet from their JobTread job, the way Bring in from JobTread does: six before photos spread across the visit, the existing and proposed drawings (each plan set’s pages sorted by their titles, drawn with the family’s address painted out and the title block cut off) and the design board. It only adds, one part at a time, never brings a part in twice (so what staff take out stays out) and never touches what staff saved. A drawing whose street wasn’t found among its words stays off the reveal screen until staff cover the address or tick that it has none. Slack hears when a design comes in, and 3 days and 1 day before each reveal whether it’s ready or what’s missing (with the alert emails when something is).',
+          touches: ['JobTread', 'Cloudflare Images', 'Browser Rendering', 'D1', 'Slack'], where: 'functions/api/broadcast-hooks.js → _reveal-design-auto.js (maybeRunRevealDesigns)',
+          live: (f) => {
+            const d = f.revealDesigns;
+            if (!d) return null;
+            if (!d.images) return ATTN('Cloudflare Images isn’t set up (CF_ACCOUNT_ID, CF_IMAGES_TOKEN), so nothing can go up.');
+            if (!d.browser) return ATTN('Cloudflare’s browser isn’t bound (BROWSER), so plan sets can’t be drawn. Before photos and boards still come in.');
+            if (!d.lastRunAt) return ATTN('It has never run.');
+            if (stale(d.lastRunAt, HOUR)) return ATTN(`Hasn’t run since ${stamp(d.lastRunAt)}. It rides on the live hub’s heartbeat, so check the Live hub entry.`, d.lastRunAt);
+            return ON('Checking every 10 minutes.', d.lastRunAt);
+          } },
         { t: 'Invite problem alerts', s: 'live', k: 'event',
           when: 'An invite fails to send, update or cancel.',
           does: 'Emails Peter and the organizer, and posts to Slack once Slack is connected.',
