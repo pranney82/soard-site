@@ -14,6 +14,11 @@ const { theme = 'dark', linked = true } = Astro.props;
 import { getCollection } from 'astro:content';
 import { CF_BASE as CF, cfSrcset, cfId } from '../../utils/cf-image';
 import { inStrip } from '../../utils/press';
+// Each logo's real shape (scripts/generate-dimensions.js): its box is the width it will be, so the
+// row wraps the same before and after the logos arrive (a 160x48 guess re-wrapped the row on load)
+import logoDims from '../../data/dimensions-kids.json';
+const LOGO_H = 48;
+const logoWidth = (id: string) => { const d = (logoDims as Record<string, [number, number]>)[id]; return d ? Math.round(LOGO_H * d[0] / d[1]) : 160; };
 const href = linked ? '/publicity/' : undefined;
 
 const allLogos = await getCollection('medialogos');
@@ -34,13 +39,13 @@ const logos = allLogos
         <img
           src={`${CF}/${id}/w=160,q=75`}
           srcset={cfSrcset(id, [120, 160, 240, 320], { quality: 75 })}
-          sizes="160px"
+          sizes={`${Math.min(200, logoWidth(id))}px`}
           alt={logo.name}
           class="ml__logo"
           loading="eager"
           fetchpriority="low"
           decoding="async"
-          width="160" height="48"
+          width={logoWidth(id)} height={LOGO_H}
         />
       </a>
     ) : (
@@ -48,13 +53,13 @@ const logos = allLogos
         <img
           src={`${CF}/${id}/w=160,q=75`}
           srcset={cfSrcset(id, [120, 160, 240, 320], { quality: 75 })}
-          sizes="160px"
+          sizes={`${Math.min(200, logoWidth(id))}px`}
           alt={logo.name}
           class="ml__logo"
           loading="eager"
           fetchpriority="low"
           decoding="async"
-          width="160" height="48"
+          width={logoWidth(id)} height={LOGO_H}
         />
       </div>
     )})}

@@ -7,6 +7,33 @@ const isDev = process.argv.includes('dev');
 // on change, but Node keeps its static imports cached for the whole process
 const devLiveMock = isDev ? (await import(`./scripts/dev-live-mock.js?t=${Date.now()}`)).default : null;
 
+// The browser scripts every public page loads share code: Astro's page router
+// and prefetch (four files, one of them 27 bytes) and the site's live, reveal,
+// sign-up and image helpers (five files). Split by module, a page fetched ~20
+// script files, each found only after the one importing it arrived. Two files
+// instead, with the same code, so no page loads anything it didn't before.
+const SHARED_CHUNKS = [
+  ['astro-client', /[\\/]node_modules[\\/]astro[\\/]dist[\\/]/],
+  ['site-helpers', /[\\/]src[\\/]utils[\\/](cf-image|live-client|live-banner|reveals-client|signup-check)\.ts$/],
+];
+function sharedScriptChunks() {
+  return {
+    name: 'shared-script-chunks',
+    hooks: {
+      'astro:build:setup': ({ target, updateConfig }) => {
+        if (target !== 'client') return;
+        updateConfig({
+          build: {
+            rollupOptions: {
+              output: { manualChunks: (id) => SHARED_CHUNKS.find(([, re]) => re.test(id))?.[0] },
+            },
+          },
+        });
+      },
+    },
+  };
+}
+
 export default defineConfig({
   site: 'https://sunshineonaranneyday.com',
   output: 'static',
@@ -27,6 +54,7 @@ export default defineConfig({
     }),
     // devLiveMock: fake broadcast + messages for the live pages in dev (/__live/?state=live|upcoming|starting|replay|off)
     ...(isDev ? [devSync(), devLiveMock()] : []),
+    sharedScriptChunks(),
   ],
   prefetch: {
     defaultStrategy: 'hover',

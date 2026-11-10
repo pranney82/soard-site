@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Generate image dimension manifest for kid photos, plans, and before/after pairs.
+ * Generate image dimension manifest for kid photos, plans, and before/after pairs,
+ * and the media logos in the "As Featured" strip (MediaLogos.astro reserves each
+ * logo's real width, so the row doesn't re-wrap when the logos arrive).
  *
  * Fetches a tiny (1px wide) version of each unique image from Cloudflare Images
  * and records the original aspect ratio. CF Images preserves the original aspect
@@ -22,6 +24,7 @@ import { cfId, CF_BASE } from './cf-image-shared.js';
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const ROOT = join(__dirname, '..');
 const KIDS_DIR = join(ROOT, 'src', 'content', 'kids');
+const MEDIA_DIR = join(ROOT, 'src', 'content', 'medialogos');
 const OUT_DIR = join(ROOT, 'src', 'data');
 const OUT_FILE = join(OUT_DIR, 'dimensions-kids.json');
 
@@ -59,6 +62,16 @@ async function probe(url) {
           }
         }
       }
+    } else if (ct.includes('svg')) {
+      // SVG (served as is): the viewBox, else width/height, to two decimals
+      const head = buf.toString('utf8', 0, Math.min(buf.length, 4096));
+      const tag = (head.match(/<svg\b[^>]*>/i) || [''])[0];
+      const vb = tag.match(/viewBox=["']\s*[-\d.]+[\s,]+[-\d.]+[\s,]+([\d.]+)[\s,]+([\d.]+)/i);
+      const ww = tag.match(/\swidth=["']([\d.]+)(px)?["']/i);
+      const hh = tag.match(/\sheight=["']([\d.]+)(px)?["']/i);
+      const [sw, sh] = vb ? [+vb[1], +vb[2]] : ww && hh ? [+ww[1], +hh[1]] : [0, 0];
+      w = Math.round(sw * 100);
+      h = Math.round(sh * 100);
     } else if (ct.includes('webp')) {
       // WebP VP8: "RIFF....WEBP" header then VP8 chunk
       if (buf.length >= 30 && buf.toString('ascii', 0, 4) === 'RIFF') {
@@ -148,6 +161,15 @@ async function main() {
     } catch { /* skip malformed */ }
   }
 
+  // Media outlet logos (the "As Featured" strip)
+  if (existsSync(MEDIA_DIR)) {
+    for (const file of readdirSync(MEDIA_DIR).filter(f => f.endsWith('.json'))) {
+      try {
+        const data = JSON.parse(readFileSync(join(MEDIA_DIR, file), 'utf8'));
+        if (data.logo) imageIds.add(cfId(data.logo));
+      } catch { /* skip malformed */ }
+    }
+  }
   const allIds = [...imageIds].filter(Boolean);
   console.log(`Dimensions: ${allIds.length} unique images across ${files.length} kids...\n`);
 

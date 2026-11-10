@@ -1348,6 +1348,13 @@ const jsonLd = {
     .wtg-finale-ctas { flex-direction: column; }
     .wtg-finale-ctas .btn { width: 100%; min-width: 160px; }
   }
+  /* Up to 412 px the three labels take two lines in the real font (380 px in a
+     379 px column), so the third starts its own line from the first paint: in
+     the stand-in font, a few px narrower, they fit on one, and the line dropped
+     when the font arrived and pushed the page down */
+  @media (max-width: 412.98px) {
+    .hero-trust-item:nth-child(3) { flex-basis: 100%; }
+  }
 
   @media (pointer: coarse) {
     .btn:hover { transform: none; }

@@ -122,7 +122,7 @@ function isGroupActive(group: NavGroup) {
 
 <header class="site-header" id="site-header" transition:persist="site-header">
   <div class="header-inner">
-    <!-- Logo — imagedelivery.net auto-negotiates AVIF/WebP via Accept header -->
+    {/* Logo — imagedelivery.net auto-negotiates AVIF/WebP via Accept header */}
     <a href="/" class="logo" aria-label="Sunshine on a Ranney Day, home">
         <img
           src={cfRaw(LOGO_ID, 'w=512,q=85')}
@@ -135,7 +135,7 @@ function isGroupActive(group: NavGroup) {
         />
     </a>
 
-    <!-- Desktop Nav -->
+    {/* Desktop Nav */}
     <nav class="desktop-nav" id="desktop-nav" aria-label="Main navigation">
       <ul class="nav-list" role="menubar">
         {nav.map((item, gi) => (
@@ -204,7 +204,7 @@ function isGroupActive(group: NavGroup) {
       <div class="nav-indicator" id="nav-indicator" aria-hidden="true"></div>
     </nav>
 
-    <!-- Donate CTA -->
+    {/* Donate CTA */}
     <a href="/donate/" class="header-cta">
       <span class="cta-heart" aria-hidden="true">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor">
@@ -214,7 +214,7 @@ function isGroupActive(group: NavGroup) {
       Donate
     </a>
 
-    <!-- Mobile: right-side group (donate + hamburger) -->
+    {/* Mobile: right-side group (donate + hamburger) */}
     <div class="mobile-actions">
       <a href="/donate/" class="mobile-cta">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -233,7 +233,7 @@ function isGroupActive(group: NavGroup) {
   </div>
 </header>
 
-<!-- Mobile drop-down nav (extends from header) -->
+{/* Mobile drop-down nav (extends from header) */}
 <div class="mobile-nav" id="mobile-panel" role="dialog" aria-label="Mobile navigation" aria-modal="true" aria-hidden="true" transition:persist="mobile-panel">
   <div class="mnav-body">
     {nav.map((item, i) => (

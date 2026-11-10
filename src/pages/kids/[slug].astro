@@ -318,15 +318,15 @@ const planOrientation = (() => {
   {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroMobileSrcset} imagesizes={heroMobileSizes} fetchpriority="high" media="(max-width: 768px)" />}
   {kid.heroImage && <link slot="head" rel="preload" as="image" imagesrcset={heroSrcset} imagesizes={heroSizes} fetchpriority="high" media="(min-width: 769px)" />}
 
-  <!-- Scroll progress indicator -->
+  {/* Scroll progress indicator */}
   <div class="scroll-progress" aria-hidden="true"></div>
 
   <article class="kid-profile" itemscope itemtype="https://schema.org/Article">
 
-    <!-- ═══ 1. Meet — Premium Hero ═══ -->
+    {/* ═══ 1. Meet — Premium Hero ═══ */}
     <section class="hero" id="chapter-meet" data-chapter="Meet" data-kid-slug={kid.slug} data-kid-status={kid.status}>
       <div class="hero__container">
-        <!-- Media Column -->
+        {/* Media Column */}
         <div class="hero__media">
           <div class="hero__photo-wrapper">
             {kid.heroImage ? (
@@ -394,7 +394,7 @@ const planOrientation = (() => {
 
         </div>
 
-        <!-- Content Column -->
+        {/* Content Column */}
         <div class="hero__content">
           <h1 class="hero__name" itemprop="headline" transition:name="kid-name">
             {kid.name}
@@ -440,7 +440,7 @@ const planOrientation = (() => {
       </div>
     </section>
 
-    <!-- ═══ Live Reveal Video Modal ═══ -->
+    {/* ═══ Live Reveal Video Modal ═══ */}
     {kid.revealVideoUrl && (
       <div class="reveal-modal" id="reveal-modal" hidden>
         <div class="reveal-modal__backdrop" data-reveal-close></div>
@@ -453,7 +453,7 @@ const planOrientation = (() => {
       </div>
     )}
 
-    <!-- ═══ Sticky Chapter Nav ═══ -->
+    {/* ═══ Sticky Chapter Nav ═══ */}
     {chapters.length > 1 && (
       <nav class="chapter-nav" id="chapter-nav" aria-label="Page sections">
         <div class="chapter-nav__track">
@@ -471,7 +471,7 @@ const planOrientation = (() => {
       </nav>
     )}
 
-    <!-- ═══ 2. The Story — Premium Progressive Disclosure ═══ -->
+    {/* ═══ 2. The Story — Premium Progressive Disclosure ═══ */}
     {bioParas.length > 0 && (
       <section class="story" id="chapter-story" data-chapter="Story" itemprop="articleBody">
         <div class="container">
@@ -509,7 +509,7 @@ const planOrientation = (() => {
       </section>
     )}
 
-    <!-- ═══ 3. The Design ═══ -->
+    {/* ═══ 3. The Design ═══ */}
     {hasPlans && (
       <section class="design" id="chapter-design" data-chapter="Design">
         <div class="container">
@@ -567,7 +567,7 @@ const planOrientation = (() => {
       </section>
     )}
 
-    <!-- ═══ 4. Before & After ═══ -->
+    {/* ═══ 4. Before & After ═══ */}
     {hasBeforeAfter && (
       <section class="ba-section" id="chapter-transform" data-chapter="Transform">
         <div class="container">
@@ -631,7 +631,7 @@ const planOrientation = (() => {
       </section>
     )}
 
-    <!-- ═══ 5. The Reveal — Video ═══ -->
+    {/* ═══ 5. The Reveal — Video ═══ */}
     {hasVideo && (
       <section class="reveal" id="chapter-reveal" data-chapter="Reveal">
         <div class="reveal__inner">
@@ -683,7 +683,7 @@ const planOrientation = (() => {
       </section>
     )}
 
-    <!-- ═══ 6. The Gallery — Photo Showcase ═══ -->
+    {/* ═══ 6. The Gallery — Photo Showcase ═══ */}
     {galleryPhotos.length > 1 && (
       <section class="gallery" id="chapter-gallery" data-chapter="Gallery">
         <div class="container">
@@ -694,7 +694,7 @@ const planOrientation = (() => {
             )}
           </header>
 
-          <!-- Hero photos — first 2 large -->
+          {/* Hero photos — first 2 large */}
           <div class="gallery__grid" id="gallery">
             {heroGalleryPhotos.map((photo, i) => {
               const altText = photo.alt || `${kid.name}'s room transformation photo ${i + 1}`;
@@ -729,7 +729,7 @@ const planOrientation = (() => {
               );
             })}
 
-            <!-- Supporting photos -->
+            {/* Supporting photos */}
             {supportingPhotos.map((photo, i) => {
               const globalIndex = heroGalleryPhotos.length + i;
               const altText = photo.alt || `${kid.name}'s room transformation photo ${globalIndex + 1}`;
@@ -766,7 +766,7 @@ const planOrientation = (() => {
             })}
           </div>
 
-          <!-- Overflow photos (hidden by default) -->
+          {/* Overflow photos (hidden by default) */}
           {overflowGalleryPhotos.length > 0 && (
             <div class="gallery__overflow" id="gallery-overflow" hidden>
               {overflowGalleryPhotos.map((photo, i) => {
@@ -815,7 +815,7 @@ const planOrientation = (() => {
       </section>
     )}
 
-    <!-- ═══ The Village — Partners ═══ -->
+    {/* ═══ The Village — Partners ═══ */}
     {kid.partnerLogos && kid.partnerLogos.length > 0 && (
       <section class="village" id="chapter-partners" data-chapter="Partners">
         <div class="container container--narrow">
@@ -842,7 +842,7 @@ const planOrientation = (() => {
       </section>
     )}
 
-    <!-- ═══ In the News — press stories about this kid (Admin → Press) ═══ -->
+    {/* ═══ In the News — press stories about this kid (Admin → Press) ═══ */}
     {news.length > 0 && (
       <section class="kid-news" aria-labelledby="kid-news-heading">
         <div class="container container--narrow">
@@ -864,7 +864,7 @@ const planOrientation = (() => {
       </section>
     )}
 
-    <!-- ═══ More Stories ═══ -->
+    {/* ═══ More Stories ═══ */}
     <section class="kids-strip" aria-labelledby="more-kids-heading">
       <div class="kids-strip-header" data-reveal>
         <div>
@@ -905,7 +905,7 @@ const planOrientation = (() => {
       </div>
     </section>
 
-    <!-- ═══ Final CTA ═══ -->
+    {/* ═══ Final CTA ═══ */}
     <section class="page-cta">
       <div class="container container--narrow">
         <div class="page-cta__inner">
@@ -934,7 +934,7 @@ const planOrientation = (() => {
 
   </article>
 
-  <!-- ═══ Lightbox ═══ -->
+  {/* ═══ Lightbox ═══ */}
   <div id="lb-meta" data-gallery-count={galleryPhotos.length} data-plan-count={plans.length} hidden></div>
   <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Photo viewer" hidden>
     <div class="lightbox__backdrop" data-close aria-hidden="true"></div>
@@ -960,11 +960,11 @@ const planOrientation = (() => {
     </div>
   </div>
 
-  <!-- The child's own reveal invite (live link only), opened by "Add to calendar" -->
+  {/* The child's own reveal invite (live link only), opened by "Add to calendar" */}
   <RevealInvite />
 </BaseLayout>
 
-<!-- ═══ Client-side JS ═══ -->
+{/* ═══ Client-side JS ═══ */}
 <script>
   let _kidObserver: IntersectionObserver | null = null;
   let _staggerObserver: IntersectionObserver | null = null;
@@ -2396,9 +2396,7 @@ const planOrientation = (() => {
 
   /* ═══ LQIP Blur-Up ══════════════════════ */
   .hero__portrait,
-  .gallery__cell,
-  .design__btn,
-  .related__img-wrap {
+  .gallery__cell {
     background-image: var(--lqip);
     background-size: cover;
     background-position: center;
@@ -2410,73 +2408,6 @@ const planOrientation = (() => {
   }
   .lqip-img:not(.lqip-pending) {
     transition: opacity 0.5s cubic-bezier(0.4, 0, 0.2, 1);
-  }
-
-  /* ═══ Premium Section Header — Unified Pattern ═══════ */
-  .section-header {
-    text-align: center;
-    margin-bottom: clamp(56px, 8vw, 88px);
-  }
-
-  .section-header__rule {
-    display: block;
-    width: 48px;
-    height: 4px;
-    background: var(--c-yellow);
-    border-radius: 2px;
-    margin: 0 auto 24px;
-    box-shadow: 0 2px 12px rgba(255, 218, 36, 0.3);
-  }
-
-  .section-header__chapter {
-    display: block;
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.35em;
-    text-transform: uppercase;
-    color: var(--c-yellow);
-    margin-bottom: 12px;
-  }
-
-  .section-header__title {
-    font-family: var(--font-display);
-    font-size: clamp(2.4rem, 5vw, 3.8rem);
-    color: var(--c-dark);
-    line-height: 0.95;
-    letter-spacing: -0.04em;
-    margin: 0;
-    text-wrap: balance;
-  }
-
-  .section-header__subtitle {
-    font-size: 1rem;
-    color: var(--c-text-muted);
-    max-width: 44ch;
-    margin: 20px auto 0;
-    line-height: 1.6;
-    text-wrap: balance;
-  }
-
-  /* Legacy support for existing section-rule usage */
-  .section-rule {
-    display: block;
-    width: 48px;
-    height: 4px;
-    background: var(--c-yellow);
-    border-radius: 2px;
-    margin: 0 auto 24px;
-    box-shadow: 0 2px 12px rgba(255, 218, 36, 0.3);
-  }
-
-  .section-rule__label {
-    display: block;
-    text-align: center;
-    font-size: 0.62rem;
-    font-weight: 700;
-    letter-spacing: 0.35em;
-    text-transform: uppercase;
-    color: var(--c-yellow);
-    margin-bottom: 12px;
   }
 
   .section-label {
@@ -2904,24 +2835,6 @@ const planOrientation = (() => {
     }
   }
 
-  /* Connector line */
-  .hero__connector {
-    position: absolute;
-    bottom: 50%;
-    right: -44px;
-    width: 88px;
-    height: 4px;
-    background: linear-gradient(90deg, var(--c-yellow) 0%, rgba(255, 218, 36, 0.3) 100%);
-    border-radius: 2px;
-    transform: scaleX(0);
-    transform-origin: left;
-    opacity: 0;
-  }
-
-  .hero__connector.revealed {
-    animation: connector-draw 0.6s cubic-bezier(0.16, 1, 0.3, 1) 0.3s forwards;
-  }
-
   @keyframes connector-draw {
     0% { transform: scaleX(0); opacity: 1; }
     100% { transform: scaleX(1); opacity: 1; }
@@ -2948,22 +2861,6 @@ const planOrientation = (() => {
     max-width: 520px;
   }
 
-  .hero__eyebrow {
-    display: inline-block;
-    font-size: 0.72rem;
-    font-weight: 700;
-    letter-spacing: 0.2em;
-    text-transform: uppercase;
-    color: var(--c-text-muted);
-    margin-bottom: 16px;
-    opacity: 0;
-    transform: translateY(8px);
-  }
-
-  .hero__eyebrow.revealed {
-    animation: fade-up 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
   .hero__name {
     font-family: var(--font-display);
     font-size: clamp(3.2rem, 7vw, 5.5rem);
@@ -2972,41 +2869,6 @@ const planOrientation = (() => {
     letter-spacing: -0.045em;
     margin-bottom: 20px;
     text-wrap: balance;
-  }
-
-  /* Diagnosis — prominent, editorial */
-  .hero__diagnosis {
-    font-family: var(--font-display);
-    font-size: clamp(1.1rem, 1.8vw, 1.35rem);
-    color: var(--c-text);
-    line-height: 1.45;
-    margin-bottom: 20px;
-    max-width: 440px;
-    text-wrap: pretty;
-    opacity: 0;
-    transform: translateY(12px);
-  }
-
-  .hero__diagnosis.revealed {
-    animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
-  /* Rooms transformed — clean inline text */
-  .hero__transform {
-    font-size: clamp(0.95rem, 1.4vw, 1.05rem);
-    color: var(--c-text-muted);
-    margin-bottom: 24px;
-    opacity: 0;
-    transform: translateY(12px);
-  }
-
-  .hero__transform.revealed {
-    animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
-  }
-
-  .hero__transform strong {
-    color: var(--c-dark);
-    font-weight: 700;
   }
 
   /* Hook quote — clean italic, no borders */
@@ -3029,167 +2891,12 @@ const planOrientation = (() => {
     margin-bottom: 32px;
   }
 
-  .hero__cta-primary {
-    display: inline-flex;
-    align-items: center;
-    gap: 10px;
-    padding: 16px 32px;
-    background: var(--c-dark);
-    color: var(--c-white);
-    font-weight: 700;
-    font-size: 0.82rem;
-    letter-spacing: 0.04em;
-    text-decoration: none;
-    border-radius: var(--border-radius, 8px);
-    min-height: 56px;
-    position: relative;
-    overflow: hidden;
-    transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .hero__cta-primary::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: var(--c-yellow);
-    transform: translateX(-101%);
-    transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-    z-index: 0;
-  }
-
-  .hero__cta-primary span,
-  .hero__cta-primary svg {
-    position: relative;
-    z-index: 1;
-    transition: color 0.3s ease;
-  }
-
-  .hero__cta-primary:hover {
-    color: var(--c-dark);
-    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
-    transform: translateY(-2px);
-  }
-
-  .hero__cta-primary:hover::before {
-    transform: translateX(0);
-  }
-
-  .hero__cta-primary:hover span,
-  .hero__cta-primary:hover svg {
-    color: var(--c-dark);
-  }
-
-  .hero__cta-primary svg {
-    transition: transform 0.3s ease;
-  }
-
-  .hero__cta-primary:hover svg {
-    transform: translateX(4px);
-  }
-
-  .hero__cta-primary:active {
-    transform: translateY(0) scale(0.98);
-    transition-duration: 100ms;
-  }
-
-  .hero__actions-secondary {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-  }
-
-  .hero__share {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 12px 20px;
-    background: transparent;
-    border: 1.5px solid var(--c-border);
-    border-radius: var(--border-radius, 8px);
-    color: var(--c-text-muted);
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    cursor: pointer;
-    transition: all 0.3s ease;
-  }
-
-  .hero__share:hover {
-    border-color: var(--c-dark);
-    color: var(--c-dark);
-    background: rgba(0, 0, 0, 0.02);
-  }
-
-  .hero__share:active {
-    transform: scale(0.97);
-  }
-
-  .hero__share.shared {
-    border-color: var(--c-yellow);
-    background: rgba(255, 218, 36, 0.1);
-  }
-
-  .hero__read-time {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--c-text-muted);
-    letter-spacing: 0.02em;
-  }
-
-  .hero__read-time svg {
-    opacity: 0.5;
-  }
-
   /* Meta — Bottom of content */
   .hero__meta {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: 16px;
-  }
-
-  .hero__tags {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-
-  .hero__tag {
-    display: inline-flex;
-    align-items: center;
-    font-size: 0.68rem;
-    font-weight: 700;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--c-dark);
-    background: linear-gradient(135deg, rgba(255, 218, 36, 0.22) 0%, rgba(255, 218, 36, 0.12) 100%);
-    border: 1px solid rgba(255, 218, 36, 0.35);
-    padding: 8px 16px;
-    border-radius: var(--border-radius, 8px);
-  }
-
-  .hero__stats {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  .hero__stat {
-    font-size: 0.7rem;
-    font-weight: 500;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--c-text-light);
-  }
-
-  .hero__stat:not(:last-child)::after {
-    content: '·';
-    margin-left: 6px;
-    opacity: 0.4;
   }
 
   /* Simplified Hero Meta Items */
@@ -3608,50 +3315,11 @@ const planOrientation = (() => {
     letter-spacing: -0.01em;
   }
 
-  /* End mark */
-  .story__end {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 16px;
-    margin-top: clamp(48px, 8vw, 72px);
-  }
-
-  .story__end-line {
-    width: 40px;
-    height: 1px;
-    background: var(--c-border);
-  }
-
-  .story__end-mark {
-    width: 6px;
-    height: 6px;
-    background: var(--c-dark);
-    border-radius: 50%;
-  }
-
   /* ═══ 3. The Design — Premium ═══ */
   .design {
     padding-block: clamp(80px, 12vw, 120px);
     background: #f5f5f4;
     border-top: 1px solid var(--c-border);
-  }
-
-  .design__container {
-    display: grid;
-    grid-template-columns: minmax(280px, 400px) 1fr;
-    gap: clamp(48px, 10vw, 140px);
-    align-items: start;
-  }
-
-  /* ── Header ─────────────────────────────── */
-  .design__header {
-    position: sticky;
-    top: 120px;
-  }
-
-  .design__header .section-header__rule {
-    margin-inline: 0;
   }
 
   .design__title {
@@ -3665,163 +3333,10 @@ const planOrientation = (() => {
     margin: 0 0 clamp(48px, 8vw, 72px);
   }
 
-  /* ── View All Button ────────────────────── */
-  .design__view-all {
-    display: inline-flex;
-    align-items: center;
-    gap: 12px;
-    padding: 0;
-    background: none;
-    border: none;
-    color: var(--c-dark);
-    font-family: var(--font-body);
-    font-size: 0.82rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: color 0.2s ease;
-  }
-
-  .design__view-all:hover {
-    color: var(--c-text-muted);
-  }
-
-  .design__view-all-arrow {
-    transition: transform 0.3s ease;
-  }
-
-  .design__view-all:hover .design__view-all-arrow {
-    transform: translateX(4px);
-  }
-
-  /* ── Stack Layout ───────────────────────── */
-  .design__stack {
-    display: grid;
-    gap: 0;
-  }
-
-  /* ── Cards ──────────────────────────────── */
-  .design__card {
-    position: relative;
-    margin-bottom: 48px;
-  }
-
-  .design__card--hero {
-    justify-self: end;
-    z-index: 2;
-  }
-
-  .design--dual .design__card--secondary {
-    justify-self: start;
-    z-index: 1;
-  }
-
-  /* ── Orientation-specific sizing ────────── */
-  .design--portrait .design__card--hero { max-width: min(480px, 90%); }
-  .design--portrait.design--dual .design__card--secondary { max-width: min(400px, 75%); margin-top: -100px; }
-
-  .design--landscape .design__card--hero { max-width: min(640px, 100%); }
-  .design--landscape.design--dual .design__card--secondary { max-width: min(520px, 85%); margin-top: -60px; }
-
-  .design--square .design__card--hero { max-width: min(520px, 92%); }
-  .design--square.design--dual .design__card--secondary { max-width: min(440px, 80%); margin-top: -80px; }
-
-  /* ── Card Button ────────────────────────── */
-  .design__btn {
-    position: relative;
-    display: block;
-    width: 100%;
-    border: none;
-    padding: 0;
-    background: var(--c-white);
-    cursor: pointer;
-    overflow: hidden;
-    border-radius: 4px;
-    box-shadow:
-      0 1px 2px rgba(0, 0, 0, 0.04),
-      0 4px 12px rgba(0, 0, 0, 0.06),
-      0 16px 40px rgba(0, 0, 0, 0.08);
-    transition: transform 0.5s cubic-bezier(0.16, 1, 0.3, 1),
-                box-shadow 0.5s cubic-bezier(0.16, 1, 0.3, 1);
-  }
-
-  .design__btn:hover {
-    transform: translateY(-4px);
-    box-shadow:
-      0 2px 4px rgba(0, 0, 0, 0.04),
-      0 8px 20px rgba(0, 0, 0, 0.08),
-      0 24px 56px rgba(0, 0, 0, 0.1);
-  }
-
-  .design__btn::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border: 1px solid rgba(55, 58, 54, 0.12);
-    border-radius: inherit;
-    pointer-events: none;
-  }
-
-  .design__btn:focus-visible {
-    outline: 2px solid var(--c-yellow);
-    outline-offset: 4px;
-  }
-
   .design__img {
     width: 100%;
     height: auto;
     display: block;
-  }
-
-  .design__zoom {
-    position: absolute;
-    bottom: 20px;
-    right: 20px;
-    width: 44px;
-    height: 44px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: 50%;
-    background: var(--c-white);
-    color: var(--c-dark);
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-  }
-
-  .design__zoom svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .design__btn:hover .design__zoom {
-    opacity: 1;
-  }
-
-  /* ── Card Meta ──────────────────────────── */
-  .design__card-meta {
-    padding: 16px 0 0;
-  }
-
-  .design__label {
-    display: block;
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: var(--c-text-muted);
-    margin-bottom: 6px;
-  }
-
-  .design__label--accent {
-    color: var(--c-dark);
-  }
-
-  .design__caption {
-    font-size: 0.85rem;
-    color: var(--c-text-muted);
-    margin: 0;
   }
 
   /* ── Simplified Design Grid ────────────────── */
@@ -3923,17 +3438,6 @@ const planOrientation = (() => {
     margin: 0 0 clamp(48px, 8vw, 72px);
   }
 
-  .ba-section__divider { margin-bottom: 0; }
-
-  .ba-section__sub {
-    text-align: center;
-    color: var(--c-text-muted);
-    font-size: 0.95rem;
-    margin-top: -8px;
-    margin-bottom: 56px;
-    line-height: 1.5;
-  }
-
   .ba-section__sliders {
     display: flex;
     flex-direction: column;
@@ -3951,8 +3455,6 @@ const planOrientation = (() => {
     text-align: center;
     margin-bottom: 20px;
   }
-
-  .ba-slider__wrap { position: relative; }
 
   .ba-slider__container {
     position: relative;
@@ -4222,23 +3724,6 @@ const planOrientation = (() => {
     transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), color 0.3s ease;
   }
 
-  /* Keyboard hint */
-  .reveal__play-hint {
-    position: absolute;
-    bottom: -36px;
-    left: 50%;
-    transform: translateX(-50%);
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    color: var(--c-yellow);
-    white-space: nowrap;
-    opacity: 0;
-    transition: opacity 0.25s ease;
-    pointer-events: none;
-  }
-
   .yt-facade:hover .reveal__play-ring,
   .stream-facade:hover .reveal__play-ring {
     animation: none;
@@ -4264,11 +3749,6 @@ const planOrientation = (() => {
     animation: none;
     transform: scale(1.12);
     border-color: var(--c-yellow);
-  }
-
-  .yt-facade:focus-visible .reveal__play-hint,
-  .stream-facade:focus-visible .reveal__play-hint {
-    opacity: 1;
   }
 
   /* Mobile tap states */
@@ -4864,73 +4344,6 @@ const planOrientation = (() => {
   /* ═══ Fundraising CTA (Legacy) ════════════════════ */
   .fundraise { padding-block: 48px; display: none; }
 
-  .fundraise__card {
-    display: flex;
-    align-items: center;
-    gap: var(--space-xl);
-    background: linear-gradient(135deg, rgba(255, 218, 36, 0.08) 0%, rgba(255, 218, 36, 0.02) 100%);
-    border: 1.5px solid rgba(255, 218, 36, 0.25);
-    border-radius: var(--profile-radius);
-    padding: 28px 36px;
-    box-shadow: 0 4px 24px rgba(255, 218, 36, 0.06);
-    transition: box-shadow 0.3s ease, border-color 0.3s ease;
-  }
-
-  .fundraise__card:hover { box-shadow: 0 8px 40px rgba(255, 218, 36, 0.12); border-color: rgba(255, 218, 36, 0.4); }
-
-  .fundraise__icon {
-    flex-shrink: 0;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 56px;
-    height: 56px;
-    border-radius: 16px;
-    background: rgba(255, 218, 36, 0.18);
-    color: var(--c-dark);
-  }
-
-  .fundraise__content { flex: 1; min-width: 0; }
-  .fundraise__title { font-family: var(--font-display); font-size: 1.2rem; color: var(--c-dark); margin-bottom: 6px; }
-  .fundraise__text { font-size: 0.92rem; line-height: 1.55; color: var(--c-text-muted); }
-
-  .fundraise__btn {
-    flex-shrink: 0;
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 14px 30px;
-    background: var(--c-yellow);
-    color: var(--c-dark);
-    font-weight: 700;
-    font-size: 0.88rem;
-    border-radius: 100px;
-    text-decoration: none;
-    white-space: nowrap;
-    min-height: 48px;
-    box-shadow:
-      0 1px 2px rgba(255, 218, 36, 0.3),
-      0 4px 12px rgba(255, 218, 36, 0.15);
-    transition:
-      transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
-      box-shadow 0.3s ease,
-      background 0.2s ease;
-  }
-
-  .fundraise__btn:hover {
-    transform: translateY(-3px);
-    background: var(--c-yellow-hover, #E6C400);
-    box-shadow:
-      0 4px 8px rgba(255, 218, 36, 0.25),
-      0 12px 32px rgba(255, 218, 36, 0.2);
-  }
-
-  .fundraise__btn:active {
-    transform: translateY(0) scale(0.98);
-    box-shadow: 0 1px 4px rgba(255, 218, 36, 0.2);
-    transition-duration: 80ms;
-  }
-
   /* ═══ CTA (Legacy — hidden) ═════════════════ */
   .cta {
     display: none;
@@ -4943,70 +4356,6 @@ const planOrientation = (() => {
     background: radial-gradient(ellipse at 50% 0%, rgba(255, 218, 36, 0.04) 0%, transparent 60%);
     pointer-events: none;
   }
-
-  .cta__watermark {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    font-family: var(--font-display);
-    font-size: clamp(8rem, 20vw, 20rem);
-    font-weight: 700;
-    color: rgba(255, 255, 255, 0.04);
-    white-space: nowrap;
-    pointer-events: none;
-    letter-spacing: -0.05em;
-    line-height: 1;
-    user-select: none;
-  }
-
-  .cta__title {
-    font-family: var(--font-display);
-    font-size: clamp(1.75rem, 3.5vw, 2.75rem);
-    color: var(--c-white);
-    margin-bottom: 16px;
-    letter-spacing: -0.02em;
-    position: relative;
-    text-wrap: balance;
-  }
-
-  .cta__title::after {
-    content: '';
-    display: block;
-    width: 56px;
-    height: 3px;
-    background: var(--c-yellow);
-    margin: 20px auto 0;
-    border-radius: 2px;
-  }
-
-  .cta__text {
-    color: rgba(255, 255, 255, 0.7);
-    font-size: 1.1rem;
-    max-width: 500px;
-    margin-inline: auto;
-    margin-bottom: 40px;
-    line-height: 1.7;
-    position: relative;
-    text-wrap: pretty;
-  }
-
-  .cta__buttons { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; position: relative; }
-  .cta__buttons :global(.btn--primary) {
-    box-shadow:
-      0 1px 2px rgba(255, 218, 36, 0.3),
-      0 4px 12px rgba(255, 218, 36, 0.15),
-      0 8px 24px rgba(255, 218, 36, 0.1);
-  }
-  .cta__buttons :global(.btn--primary:hover) {
-    box-shadow:
-      0 4px 8px rgba(255, 218, 36, 0.25),
-      0 12px 32px rgba(255, 218, 36, 0.2),
-      0 24px 48px rgba(255, 218, 36, 0.1);
-  }
-  .cta__buttons :global(.btn--outline) { color: var(--c-white); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.25); }
-  .cta__buttons :global(.btn--outline:hover) { background: rgba(255, 255, 255, 0.1); box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.5), 0 4px 16px rgba(0, 0, 0, 0.12); color: var(--c-white); }
-  .cta__buttons :global(.btn--outline:active) { box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.3); }
 
   /* ═══ Lightbox ═══════════════════════════ */
   .lightbox[hidden] { display: none; }
@@ -5333,7 +4682,6 @@ const planOrientation = (() => {
     }
   }
 
-
   /* ═══ Responsive: Mobile ═══════════════ */
   @media (max-width: 768px) {
     /* Chapter nav — mobile */
@@ -5402,9 +4750,6 @@ const planOrientation = (() => {
       transform: rotate(3deg);
     }
 
-    .hero__connector { display: none; }
-
-
     .hero__badge {
       top: 12px;
       right: 12px;
@@ -5418,25 +4763,9 @@ const planOrientation = (() => {
       max-width: none;
     }
 
-    .hero__eyebrow {
-      font-size: 0.65rem;
-      margin-bottom: 12px;
-    }
-
     .hero__name {
       font-size: clamp(2.6rem, 11vw, 3.8rem);
       margin-bottom: 14px;
-    }
-
-    .hero__diagnosis {
-      font-size: 1.05rem;
-      margin-bottom: 16px;
-      max-width: none;
-    }
-
-    .hero__transform {
-      font-size: 0.95rem;
-      margin-bottom: 20px;
     }
 
     .hero__hook {
@@ -5451,24 +4780,9 @@ const planOrientation = (() => {
       margin-bottom: 24px;
     }
 
-    .hero__cta-primary {
-      justify-content: center;
-      width: 100%;
-      min-height: 52px;
-    }
-
     .hero__cta {
       margin-top: 24px;
       padding: 16px 28px;
-    }
-
-    .hero__actions-secondary {
-      justify-content: center;
-      gap: 20px;
-    }
-
-    .hero__share {
-      min-height: 44px;
     }
 
     .hero__meta {
@@ -5484,20 +4798,6 @@ const planOrientation = (() => {
 
     .hero__meta-item:not(:last-child)::after {
       margin-left: 12px;
-    }
-
-    .hero__tags {
-      gap: 6px;
-    }
-
-    .hero__tag {
-      font-size: 0.62rem;
-      padding: 6px 12px;
-    }
-
-    .hero__scroll-hint {
-      bottom: 20px;
-      font-size: 0.62rem;
     }
 
     /* Story mobile — clean, no drop cap */
@@ -5523,26 +4823,9 @@ const planOrientation = (() => {
     .story__quote::before,
     .story__quote::after { width: 32px; }
     .story__quote-text { font-size: 1.15rem; }
-    .story__end { margin-top: 40px; gap: 12px; }
-    .story__end-line { width: 28px; }
-
 
     .design { padding-block: 56px; }
-    .design__container { grid-template-columns: 1fr; gap: 40px; }
-    .design__header { position: static; text-align: center; }
-    .design__header { text-align: center; }
-    .design__header .section-header__rule { margin-inline: auto; }
     .design__title { font-size: 1.8rem; text-align: center; margin-bottom: 32px; }
-    .design__view-all { margin-inline: auto; }
-    .design__stack { justify-items: center; }
-    .design__card { margin-bottom: 40px; }
-    .design--portrait .design__card--hero { max-width: 85%; }
-    .design--portrait.design--dual .design__card--secondary { max-width: 75%; margin-top: -60px; }
-    .design--landscape .design__card--hero { max-width: 95%; }
-    .design--landscape.design--dual .design__card--secondary { max-width: 85%; margin-top: -40px; }
-    .design--square .design__card--hero { max-width: 88%; }
-    .design--square.design--dual .design__card--secondary { max-width: 78%; margin-top: -50px; }
-    .design__zoom { width: 40px; height: 40px; bottom: 14px; right: 14px; }
 
     /* Simplified design grid mobile */
     .design__grid {
@@ -5561,7 +4844,6 @@ const planOrientation = (() => {
 
     .ba-section { padding-block: 56px; }
     .ba-section__title { font-size: 1.8rem; margin-bottom: 32px; }
-    .ba-section__sub { font-size: 0.88rem; margin-bottom: 40px; }
     .ba-section__sliders { gap: 48px; }
     .ba-slider__container { aspect-ratio: 3 / 2; border-radius: 16px; }
     .ba-slider__handle-knob { width: 52px; height: 52px; }
@@ -5680,17 +4962,13 @@ const planOrientation = (() => {
       border-radius: 12px;
       border-width: 2.5px;
     }
-    .hero__diagnosis { font-size: 0.95rem; }
-    .hero__transform { font-size: 0.85rem; }
     .hero__hook { font-size: 0.9rem; }
-    .hero__cta-primary { font-size: 0.78rem; min-height: 48px; }
 
     .gallery__cell { min-height: 130px; border-radius: 8px; }
     .gallery__overflow .gallery__cell { border-radius: 8px; }
 
     /* Small screen slider */
     .ba-section { padding-block: 48px; }
-    .ba-section__sub { font-size: 0.82rem; margin-bottom: 32px; }
     .ba-slider__container { border-radius: 12px; }
     .ba-slider__label { top: 10px; font-size: 0.6rem; padding: 4px 8px; }
     .ba-slider__label--before { left: 10px; }
@@ -5731,25 +5009,6 @@ const planOrientation = (() => {
     .hero__img,
     .gallery__img,
     .gallery__cell,
-    .design__card,
-    .design__card--hero,
-    .design__card--secondary,
-    .design__btn,
-    .design__view-all,
-    .design__view-all-icon,
-    .story-card,
-    .story-card__img,
-    .story-card__img-wrap,
-    .story-card__name,
-    .story-nav__link,
-    .story-nav__arrow,
-    .story-nav__avatar,
-    .story-nav__all,
-    .story-nav__all svg,
-    .hero__donate-btn,
-    .hero__share-btn,
-    .fundraise__card,
-    .fundraise__btn,
     .ba-slider__handle,
     .ba-slider__handle-knob,
     .ba-slider__handle-glow,
@@ -5757,9 +5016,7 @@ const planOrientation = (() => {
     .chapter-nav,
     .chapter-nav__pill,
     .chapter-nav__link,
-    .chapter-nav__back,
-    .hero__accent,
-    .hero__connector {
+    .hero__accent {
       transition: none;
       animation: none !important;
     }
@@ -5767,6 +5024,5 @@ const planOrientation = (() => {
     @media (max-width: 768px) {
       .hero__accent { transform: rotate(3deg); }
     }
-    .hero__connector { opacity: 1; transform: scaleX(1); }
   }
 </style>

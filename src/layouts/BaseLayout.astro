@@ -141,7 +141,7 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <meta name="format-detection" content="telephone=no" />
 
-  <!-- SEO -->
+  {/* SEO */}
   <title>{fullTitle}</title>
   <meta name="description" content={description} />
   <link rel="canonical" href={canonicalURL} />
@@ -150,13 +150,13 @@ const structuredData = buildSchemaGraph(...graphSchemas);
     : <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" />
   }
 
-  <!-- Local SEO geo signals -->
+  {/* Local SEO geo signals */}
   <meta name="geo.region" content="US-GA" />
   <meta name="geo.placename" content="Roswell, Georgia" />
   <meta name="geo.position" content="34.0232;-84.3616" />
   <meta name="ICBM" content="34.0232, -84.3616" />
 
-  <!-- Open Graph -->
+  {/* Open Graph */}
   <meta property="og:locale" content="en_US" />
   <meta property="og:type" content={ogType} />
   <meta property="og:url" content={canonicalURL} />
@@ -170,14 +170,14 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   {datePublished && <meta property="article:published_time" content={datePublished} />}
   {dateModified && <meta property="article:modified_time" content={dateModified} />}
 
-  <!-- Twitter -->
+  {/* Twitter */}
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content={fullTitle} />
   <meta name="twitter:description" content={description} />
   <meta name="twitter:image" content={ogImageAbsolute} />
   <meta name="twitter:image:alt" content={`${title} — Sunshine on a Ranney Day`} />
 
-  <!-- Theme color — light/dark support for iOS Safari & Android Chrome -->
+  {/* Theme color — light/dark support for iOS Safari & Android Chrome */}
   <meta name="theme-color" content="#1E1F25" media="(prefers-color-scheme: dark)" />
   <meta name="theme-color" content="#FEFCF5" media="(prefers-color-scheme: light)" />
   <meta name="theme-color" content="#1E1F25" />
@@ -185,39 +185,49 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 
-  <!-- Favicon -->
+  {/* Favicon */}
   <link rel="icon" href="/favicon.ico" sizes="32x32" />
   <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
   <link rel="manifest" href="/site.webmanifest" />
 
-  <!-- Images route through same origin via /cdn-cgi/imagedelivery/ — no preconnect needed -->
-  <!-- videodelivery.net preconnect added per-page where needed via <slot name="head" /> -->
+  {/* Images route through same origin via /cdn-cgi/imagedelivery/ — no preconnect needed */}
+  {/* videodelivery.net preconnect added per-page where needed via <slot name="head" /> */}
   <link rel="dns-prefetch" href="https://static.cloudflareinsights.com" />
+  {/* Cloudflare Web Analytics (real-visitor speed and visits), started once the
+       page has finished loading: the beacon Pages injects is a script on a
+       second connection that loads beside the page's own photo and fonts. Same
+       site token, same data (it reads the page's timings when it starts). Skipped
+       if a beacon is already on the page, so turning off the Pages project's
+       automatic one never counts a visit twice. */}
+  <script is:inline>addEventListener('load',function(){setTimeout(function(){if(window.__cfBeacon||document.querySelector('script[src*="cloudflareinsights.com/beacon"]'))return;window.__cfBeacon=1;var s=document.createElement('script');s.defer=true;s.src='https://static.cloudflareinsights.com/beacon.min.js';s.setAttribute('data-cf-beacon','{"token": "43b83df2d48941e496276682ee4bf0a4"}');document.head.appendChild(s)},0)},{once:true})</script>
 
-  <!-- Preload critical fonts -->
+  {/* Preload critical fonts */}
   <link rel="preload" href="/fonts/outfit-latin-variable.woff2" as="font" type="font/woff2" crossorigin />
   <link rel="preload" href="/fonts/libre-baskerville-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin />
 
-  <!-- Self-hosted fonts for Lighthouse performance -->
-  <style is:inline>
-    /* Metric-matched fallback faces: Georgia and Arial resized to the webfonts'
+  {/* Self-hosted fonts, and their stand-ins until they arrive.
+    Metric-matched fallback faces: Georgia and Arial resized to the webfonts'
        advance widths and vertical metrics, one face per style and weight the
        site uses (bold and italic too: a browser faking bold from the regular
        face comes out wider, which wrapped the home headline onto an extra
-       line until the real font arrived). Widths measured in Chrome against
-       the loaded woff2s on a long English sample, all within 0.01%;
-       overrides = the webfont's ascent 0.97 / descent 0.27 (Libre
-       Baskerville) or 1.00 / 0.26 (Outfit), divided by the size-adjust.
-       So the swap when the real fonts arrive moves nothing. */
+       line until the real font arrived). Each size-adjust is the middle of
+       the range where the fewest blocks of the site's own text change their
+       number of lines when the real font replaces the stand-in (25 pages at
+       12 widths, 360 to 1920 px, Nov 2026). Matching widths on a sample
+       sentence instead left the regular Outfit about 1% narrow on real copy,
+       and twice as many paragraphs re-wrapped. Overrides = the webfont's
+       ascent 0.97 / descent 0.27 (Libre Baskerville) or 1.00 / 0.26
+       (Outfit), divided by the size-adjust, so line heights match exactly. */}
+  <style is:inline>
     @font-face {
       font-family: 'Libre Baskerville Fallback';
       font-style: normal;
       font-weight: 400;
       src: local('Georgia');
-      size-adjust: 116.10%;
-      ascent-override: 83.55%;
-      descent-override: 23.26%;
+      size-adjust: 115.60%;
+      ascent-override: 83.91%;
+      descent-override: 23.36%;
       line-gap-override: 0%;
     }
     @font-face {
@@ -225,9 +235,9 @@ const structuredData = buildSchemaGraph(...graphSchemas);
       font-style: normal;
       font-weight: 700;
       src: local('Georgia Bold'), local('Georgia-Bold');
-      size-adjust: 102.97%;
-      ascent-override: 94.20%;
-      descent-override: 26.22%;
+      size-adjust: 102.00%;
+      ascent-override: 95.10%;
+      descent-override: 26.47%;
       line-gap-override: 0%;
     }
     @font-face {
@@ -235,9 +245,9 @@ const structuredData = buildSchemaGraph(...graphSchemas);
       font-style: italic;
       font-weight: 400;
       src: local('Georgia Italic'), local('Georgia-Italic');
-      size-adjust: 102.77%;
-      ascent-override: 94.39%;
-      descent-override: 26.27%;
+      size-adjust: 101.50%;
+      ascent-override: 95.57%;
+      descent-override: 26.60%;
       line-gap-override: 0%;
     }
     @font-face {
@@ -255,9 +265,9 @@ const structuredData = buildSchemaGraph(...graphSchemas);
       font-style: normal;
       font-weight: 100 449;
       src: local('Arial'), local('ArialMT');
-      size-adjust: 97.98%;
-      ascent-override: 102.06%;
-      descent-override: 26.54%;
+      size-adjust: 98.90%;
+      ascent-override: 101.11%;
+      descent-override: 26.29%;
       line-gap-override: 0%;
     }
     @font-face {
@@ -265,9 +275,9 @@ const structuredData = buildSchemaGraph(...graphSchemas);
       font-style: normal;
       font-weight: 450 549;
       src: local('Arial'), local('ArialMT');
-      size-adjust: 98.19%;
-      ascent-override: 101.84%;
-      descent-override: 26.48%;
+      size-adjust: 99.10%;
+      ascent-override: 100.91%;
+      descent-override: 26.24%;
       line-gap-override: 0%;
     }
     @font-face {
@@ -285,9 +295,9 @@ const structuredData = buildSchemaGraph(...graphSchemas);
       font-style: normal;
       font-weight: 650 749;
       src: local('Arial Bold'), local('Arial-BoldMT');
-      size-adjust: 94.98%;
-      ascent-override: 105.29%;
-      descent-override: 27.37%;
+      size-adjust: 95.45%;
+      ascent-override: 104.77%;
+      descent-override: 27.24%;
       line-gap-override: 0%;
     }
     @font-face {
@@ -330,13 +340,13 @@ const structuredData = buildSchemaGraph(...graphSchemas);
     }
   </style>
 
-  <!-- Client-side router for smooth page navigation -->
+  {/* Client-side router for smooth page navigation */}
   <ClientRouter />
 
-  <!-- JSON-LD: Unified @graph with Organization + WebPage + page-specific schemas -->
+  {/* JSON-LD: Unified @graph with Organization + WebPage + page-specific schemas */}
   <script type="application/ld+json" set:html={JSON.stringify(structuredData).replace(/</g, '\\u003c')} />
 
-  <!-- YouTube posters ask for the HD frame (maxresdefault). Older videos don't
+  {/* YouTube posters ask for the HD frame (maxresdefault). Older videos don't
        have one: YouTube answers with a 120×90 gray placeholder, so swap in the
        standard frame (hqdefault, which every video has). It's 4:3 with black
        bars baked in, so it's shown 16:9 and cropped, which trims the bars.
@@ -346,12 +356,12 @@ const structuredData = buildSchemaGraph(...graphSchemas);
        onerror="" attributes (the CSP blocks inline handlers): "next" hides the
        image and shows the placeholder after it; any other value is a selector
        for the box around it to hide. Once the page is parsed, a sweep catches
-       any that failed before this ran. -->
+       any that failed before this ran. */}
   <script is:inline>
     (function(){var re=/i\.ytimg\.com\/vi(_webp)?\/([^/]+)\/maxresdefault\.(jpg|webp)/;function f(e){var i=e.target,s=i&&i.tagName==='IMG'&&(i.currentSrc||i.src),m=s&&re.exec(s);if(!m||(e.type==='load'&&i.naturalWidth>120))return;var p=i.closest('picture');if(p)p.querySelectorAll('source').forEach(function(x){x.remove()});i.style.aspectRatio='16/9';i.style.objectFit='cover';i.src='https://i.ytimg.com/vi/'+m[2]+'/hqdefault.jpg'}function g(i){var v=i.getAttribute('data-img-fallback'),n;if(v==='next'){i.style.display='none';if(n=i.nextElementSibling)n.style.display=''}else if(v&&(n=i.closest(v)))n.style.display='none'}document.addEventListener('load',f,true);document.addEventListener('error',function(e){f(e);var i=e.target;if(i&&i.tagName==='IMG'&&i.hasAttribute('data-img-fallback'))g(i)},true);document.addEventListener('DOMContentLoaded',function(){document.querySelectorAll('img[data-img-fallback]').forEach(function(i){if(i.complete&&i.decode)i.decode().catch(function(){if(i.complete&&!i.naturalWidth)g(i)})})})})();
   </script>
 
-  <!-- Page-specific head content (preloads, etc.) -->
+  {/* Page-specific head content (preloads, etc.) */}
   <slot name="head" />
 </head>
 <body class={bodyClass}>
@@ -363,14 +373,14 @@ const structuredData = buildSchemaGraph(...graphSchemas);
   <main id="main-content">
     <slot />
   </main>
-  <!-- Admin Preview: the admin frames this page with ?admin-preview and swaps
-       in unsaved edits here, before any page script starts -->
+  {/* Admin Preview: the admin frames this page with ?admin-preview and swaps
+       in unsaved edits here, before any page script starts */}
   <script is:inline>if(/[?&]admin-preview=/.test(location.search)&&window.parent!==window)try{parent.__soardPreview&&parent.__soardPreview(document,window)}catch(e){}</script>
   <Footer />
   <LiveIndicator />
   <ScrollReveal />
   <LqipReveal />
-  <!-- Register service worker for repeat visitor speed -->
+  {/* Register service worker for repeat visitor speed */}
   <script is:inline>
     if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(function(){})}
   </script>

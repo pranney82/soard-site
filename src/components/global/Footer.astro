@@ -29,7 +29,7 @@ const trustBadges = getTrustBadges(site);
 
 <footer class="site-footer">
 
-  <!-- ─── 1. NEWSLETTER BAND ─────────────────── -->
+  {/* ─── 1. NEWSLETTER BAND ─────────────────── */}
   <div class="footer-newsletter">
     <div class="footer-container footer-newsletter-inner">
       <div class="footer-newsletter-text">
@@ -58,21 +58,21 @@ const trustBadges = getTrustBadges(site);
             </span>
           </button>
         </div>
-        <!-- Honeypot — hidden field that bots fill out, humans don't see -->
+        {/* Honeypot — hidden field that bots fill out, humans don't see */}
         <div aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;"><input type="text" name="website" tabindex="-1" autocomplete="off" /></div>
         <input type="hidden" name="source" value="newsletter" />
-        <!-- The quick check (src/utils/signup-check.ts): out of sight unless Cloudflare wants a click -->
+        {/* The quick check (src/utils/signup-check.ts): out of sight unless Cloudflare wants a click */}
         <div class="newsletter-check" data-signup-check></div>
         <p class="newsletter-note" id="newsletter-note" role="status" aria-live="polite">No spam, ever. Unsubscribe anytime.</p>
       </form>
     </div>
   </div>
 
-  <!-- ─── 2. MAIN FOOTER ─────────────────────── -->
+  {/* ─── 2. MAIN FOOTER ─────────────────────── */}
   <div class="footer-main">
     <div class="footer-container footer-main-grid">
 
-      <!-- Brand Block -->
+      {/* Brand Block */}
       <div class="footer-brand">
         <a href="/" class="footer-logo" aria-label="Sunshine on a Ranney Day, home">
           <img
@@ -89,7 +89,7 @@ const trustBadges = getTrustBadges(site);
           A 501(c)(3) nonprofit creating life-changing home makeovers for children with special needs in the greater Atlanta area.
         </p>
 
-        <!-- Social Icons -->
+        {/* Social Icons */}
         <div class="footer-social">
           {social.facebook && <a href={social.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" class="footer-social-link">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
@@ -105,14 +105,14 @@ const trustBadges = getTrustBadges(site);
           </a>}
         </div>
 
-        <!-- Donate CTA -->
+        {/* Donate CTA */}
         <a href="/donate/" class="footer-donate-btn">
           Make a Donation
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2.5C6.5 1 4 1 2.75 2.75S2.5 6.5 8 11.5C13.5 6.5 13.75 4.5 13.25 2.75S9.5 1 8 2.5Z" fill="currentColor"/></svg>
         </a>
       </div>
 
-      <!-- Nav Columns -->
+      {/* Nav Columns */}
       <nav class="footer-nav" aria-label="Footer navigation">
         <div class="footer-col">
           <h3 class="footer-heading">About Us</h3>
@@ -157,7 +157,7 @@ const trustBadges = getTrustBadges(site);
     </div>
   </div>
 
-  <!-- ─── 3. TRUST SIGNALS BAR ────────────────── -->
+  {/* ─── 3. TRUST SIGNALS BAR ────────────────── */}
   <div class="footer-trust">
     <div class="footer-container footer-trust-inner">
       <div class="footer-trust-badges">
@@ -210,7 +210,7 @@ const trustBadges = getTrustBadges(site);
     </div>
   </div>
 
-  <!-- ─── 4. LEGAL BAR ────────────────────────── -->
+  {/* ─── 4. LEGAL BAR ────────────────────────── */}
   <div class="footer-legal">
     <div class="footer-container footer-legal-inner">
       <p class="footer-copyright">
