@@ -86,6 +86,9 @@ function planRatio(url: string): number {
 const planSrc = (url: string, w: number) => cfRaw(url, `w=${w},h=${Math.round(w * planRatio(url))},fit=cover,gravity=top,q=80`);
 const planSet = (url: string, widths = [600, 1000, 1400]) => cfSrcset(url, widths, { fit: 'cover', gravity: 'top', aspectRatio: planRatio(url), quality: 80 });
 const boards = plans.filter(p => isPng(p) && !isFloorPlan(p));
+// A board's box at its real shape before it arrives (a board marked 900x532 that is taller grew
+// 36-64px on arrival and pushed the page down)
+const boardHeight = (url: string) => { const d = dimsMap[cfId(url)]; return Math.round(900 * (d ? d[1] / d[0] : 532 / 900)); };
 const sitePhotos = plans.filter(p => !isPng(p) && !isFloorPlan(p));
 /* A board's name comes from its file label: "Adrian 2025_Dream Bedroom Design
    Board" reads "Dream Bedroom". Bare numbers fall back to "Presentation board 01". */
@@ -383,7 +386,7 @@ const expandIcon = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" 
                 {boards.map((b, i) => (
                   <figure class={`board ${i === 0 ? 'is-current' : ''}`}>
                     <button type="button" class="board__paper" data-lb-open="boards" data-lb-index={i} aria-label={`Enlarge the ${boardTitle(b.label, i)} board`}>
-                      <img src={cfRaw(cfId(b.url), 'w=900,q=80')} srcset={cfSrcset(cfId(b.url), [600, 900, 1300], { quality: 80 })} sizes="(max-width: 700px) 86vw, 620px" alt={`${boardTitle(b.label, i)} design board for ${name}'s room`} width="900" height="532" loading="lazy" decoding="async" />
+                      <img src={cfRaw(cfId(b.url), 'w=900,q=80')} srcset={cfSrcset(cfId(b.url), [600, 900, 1300], { quality: 80 })} sizes="(max-width: 700px) 86vw, 620px" alt={`${boardTitle(b.label, i)} design board for ${name}'s room`} width="900" height={boardHeight(b.url)} loading="lazy" decoding="async" />
                     </button>
                     <figcaption><span class="board__num">{String(i + 1).padStart(2, '0')}</span>{boardTitle(b.label, i)}</figcaption>
                   </figure>

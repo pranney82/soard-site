@@ -1531,7 +1531,11 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     .hero-inner { grid-template-columns: 1fr; gap: 40px; text-align: center; }
     .hero-lead { margin-inline: auto; }
     .hero-ctas { justify-content: center; }
-    .hero-frame { max-width: 380px; margin: 0 auto; }
+    /* Centered by auto margins, the frame sized itself to the photo, so it was
+       0 wide until the photo arrived and then pushed the page down. Its width
+       is now the size it settled at: the photo's own sizes (38vw here, 80vw
+       on phones), at most 380px */
+    .hero-frame { width: min(38vw, 380px); max-width: 380px; margin: 0 auto; }
     .hero-stat { position: relative; bottom: auto; right: auto; margin: -20px auto 0; width: fit-content; }
 
     .story-inner { grid-template-columns: 1fr; gap: 40px; }
@@ -1553,6 +1557,7 @@ const faqJsonLd = faqs.length ? getFAQSchema(faqs) : undefined;
     .hero-text h1 { font-size: clamp(2rem, 9vw, 3rem); }
     .hero-photo--small { display: none; }
     .hero-photo { border-radius: 18px; }
+    .hero-frame { width: min(80vw, 380px); }
     .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }
 
     .status-inner { flex-direction: column; text-align: center; gap: 12px; padding: 20px var(--space-lg); }

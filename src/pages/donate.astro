@@ -25,7 +25,8 @@ import faqData from '../content/site/faq.json';
 import siteSettings from '../content/site/settings.json';
 import { getDonateSchema, getFAQSchema } from '../utils/schema';
 import { getSiteStats } from '../utils/stats';
-import { cfRaw, cfSrcset, CF_BASE, cfLqip } from '../utils/cf-image';
+import { cfRaw, cfSrcset, CF_BASE, cfLqip, cfId } from '../utils/cf-image';
+import dimsManifest from '../data/dimensions-kids.json';
 
 const computed = await getSiteStats();
 
@@ -35,6 +36,9 @@ const donateHeroPhoto = dp.hero || 'kids/oakley/hero';
 const donateHeroKidName = dp.heroKidName || 'Oakley';
 const donateStoryPhoto = dp.story || 'kids/amari/hero';
 const donateStoryKidName = dp.storyKidName || 'Amari';
+// The story photo's real shape (scripts/generate-dimensions.js), so its box is the right height
+// before it arrives: a portrait photo marked 4:3 doubled in height on arrival and pushed the page down
+const [storyW, storyH] = (dimsManifest as Record<string, [number, number]>)[cfId(donateStoryPhoto)] || [4, 3];
 // Admin → Site Config picks the kid (storyKidSlug); older settings only had the name
 const donateStoryKidSlug = dp.storyKidSlug || (dp.storyKidName || 'Amari').toLowerCase().replace(/\s+/g, '-');
 
@@ -136,7 +140,7 @@ const breadcrumbs = [
             sizes="(max-width:768px) 90vw, 40vw"
             alt={`${donateStoryKidName} in their new ${storyRoomTypes[0] || 'dream room'} built by Sunshine on a Ranney Day`}
             width="800"
-            height="600"
+            height={Math.round(800 * storyH / storyW)}
             loading="lazy"
             decoding="async"
             class="lqip-img"

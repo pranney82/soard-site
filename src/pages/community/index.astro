@@ -70,7 +70,7 @@ const heroPhotoId = siteSettings.communityPhotos?.hero || 'kids/camp-twin-lakes/
 const heroAccentPhotoId = siteSettings.communityPhotos?.accent || 'kids/summit-counseling-center/hero';
 
 /* ── Spotlight ── */
-const spotlightPhoto = 'community/the-drake-house/after-01';
+const spotlightPhoto = 'community/the-drake-house/after-01'; // 2560x1707 (3:2): the img below is 800x533 so its box is right before it arrives
 
 /* ── Breadcrumbs (BaseLayout emits WebPage + BreadcrumbList schema) ── */
 const breadcrumbs = [
@@ -238,7 +238,7 @@ const breadcrumbs = [
           <CFImage
             src={spotlightPhoto}
             alt="The Drake House headquarters renovated by SOARD"
-            width={800} height={600}
+            width={800} height={533}
             sizes="(max-width:768px) 90vw, 50vw"
             widths={[400, 600, 800]}
             loading="lazy"
@@ -542,7 +542,11 @@ const breadcrumbs = [
     .hero-inner { grid-template-columns: 1fr; gap: var(--space-xl); text-align: center; padding-inline: var(--space-lg); }
     .hero-lead { margin-inline: auto; margin-bottom: 28px; }
     .hero-ctas { justify-content: center; }
-    .hero-frame { max-width: 340px; margin: 0 auto; }
+    /* Centered by auto margins, the photo's box sized itself to the photo,
+       so it was 0 wide until the photo arrived and then pushed the page down
+       ~400px on a phone. Its width is now the size it settled at (the photo's
+       own sizes, 80vw, at most 340px) */
+    .hero-frame { width: min(80vw, 340px); max-width: 340px; margin: 0 auto; }
     .hero-photo--small { display: none; }
     .hero-photo { border-radius: 18px; }
     .hero-accent { bottom: -12px; right: -12px; border-radius: 18px; }

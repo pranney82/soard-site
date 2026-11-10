@@ -769,7 +769,11 @@ const breadcrumbs = [
     .hero-text { text-align: center; }
     .hero-lead { max-width: 100%; margin-inline: auto; }
     .hero-ctas { justify-content: center; }
-    .hero-photo-wrap { max-width: 360px; margin: 0 auto; }
+    /* Centered by auto margins, the photo's box sized itself to the photo,
+       so it was 0 wide until the photo arrived and then pushed the page down
+       ~400px on a phone. Its width is now the size it settled at (the photo's
+       own sizes, 85vw, at most 360px) */
+    .hero-photo-wrap { width: min(85vw, 360px); max-width: 360px; margin: 0 auto; }
     .hero-stat { left: -12px; bottom: -16px; padding: 14px 20px; }
     .hero-stat-num { font-size: 28px; }
   }
