@@ -1238,11 +1238,15 @@ async function scanLabels(scope) {
     try { jsQR = (await import('./jsqr.js')).default; } catch { toast('The label reader didn’t load. Tick the boxes on the list instead.'); return; }
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    // The middle of the picture (where the frame is) at the camera's own sharpness: a label at arm's length keeps
+    // twice the detail it would if the whole picture were shrunk first
     read = async (video) => {
-      const scale = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
-      canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale);
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      return jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' })?.data || null;
+      const side = Math.round(Math.min(video.videoWidth, video.videoHeight) * 0.9);
+      const sx = Math.round((video.videoWidth - side) / 2), sy = Math.round((video.videoHeight - side) / 2);
+      const out = Math.min(side, 900);
+      canvas.width = out; canvas.height = out;
+      ctx.drawImage(video, sx, sy, side, side, 0, 0, out, out);
+      return jsQR(ctx.getImageData(0, 0, out, out).data, out, out, { inversionAttempts: 'dontInvert' })?.data || null;
     };
   }
   if (!navigator.mediaDevices?.getUserMedia) { toast('This phone’s browser can’t open the camera here. Tick the boxes on the list instead.'); return; }

@@ -260,13 +260,13 @@ test('labels: the kid, the item, box n of N, the shelf, a QR to the check-in; ZP
   assert.match(z, /\^FDRaincan FS Shower Head\^FS/);
   assert.match(z, /\^FDBox 2 of 3\^FS/);
   assert.match(z, /\^FR\^FDSHELF 7\^FS/);
-  assert.match(z, /\^FDQA,https:\/\/sunshineonaranneyday\.com\/admin\/checkin\/\?r=tap-abc12345&b=2\^FS/, 'each box its own code');
+  assert.match(z, /\^FDMA,https:\/\/sunshineonaranneyday\.com\/admin\/checkin\/\?r=tap-abc12345&b=2\^FS/, 'each box its own code');
   assert.ok(z.startsWith('^XA') && z.endsWith('^XZ'));
   assert.match(z, /\^MTD/, 'direct thermal: prints with no ribbon');
   assert.match(shelfLabel({ shelf: '3', name: 'Shelf 3' }), /\^MTD/);
   assert.equal(zplText('a^b~c\nd'), 'a b c d');
   assert.equal(receiptLabels({ kid: 'A', item: 'B', boxes: 3, tap: 't' }).length, 3);
-  assert.match(shelfLabel({ shelf: '12', name: 'Shelf 12' }), /\^FDSHELF 12\^FS[\s\S]*\?shelf=12/);
+  assert.match(shelfLabel({ shelf: '12', name: 'Shelf 12' }), /\^FDSHELF\^FS[\s\S]*\^A0N,420,420[^\n]*\^FD12\^FS[\s\S]*\?shelf=12/, 'SHELF, then the number as big as it goes');
 });
 
 test('the printer: its own sign-in, and the setup file with the root certificates', async () => {
@@ -556,4 +556,17 @@ test('a whole load confirmed in one request: each goes on its own; one that canâ
   assert.equal(body.success, true);
   assert.deepEqual(body.results.map((r) => r.status || 'ok'), [404, 'ok', 'ok']);
   assert.equal(body.view.kids.find((k) => k.short === 'Rowan S.').items.find((i) => i.name === 'Raincan Shower Head').status, 'out');
+});
+
+test('labels as Zebra prints them (checked on Labelaryâ€™s render, Nov 10 2026): nothing wider than the label, the QR inside its edges', async () => {
+  const { wrapText } = await import('../functions/api/_kid-labels.js');
+  assert.deepEqual(wrapText('Wayfair Louis Parisian Globe 3-Light Modern Contemporary LED Vanity Light in Matte Black with Frosted Glass Shades, Dimmable', 54, 3),
+    ['Wayfair Louis Parisian', 'Globe 3-Light Modern', 'Contemporary LED Vanity...']);
+  const z = itemLabel({ kid: 'Christopher-Alexander Montgomery', item: 'x'.repeat(200), line: 'y'.repeat(120), box: 12, boxes: 14, shelf: 'Floor', at: '2026-11-10T15:00:00Z', tap: '3f2b8c1e-9a4d-4e7b-8f21-6c0d5a9e7b13' });
+  for (const m of z.matchAll(/\^A0N,(\d+),\d+\^FD([^^]*)\^FS/g)) {
+    const [, size, text] = m;
+    assert.ok(text.length * Number(size) * 0.5 <= 732 + 1, `"${text}" at ${size} fits 732 dots`);
+  }
+  const qr = /\^FO(\d+),(\d+)\^BQN,2,(\d+)/.exec(z);
+  assert.ok(Number(qr[1]) + 45 * Number(qr[3]) <= 812 && Number(qr[2]) + 45 * Number(qr[3]) <= 1218, 'the QR, even a large one, stays on the label');
 });
