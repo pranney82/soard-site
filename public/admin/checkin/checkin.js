@@ -397,7 +397,7 @@ async function printed(kid, it, { units = 1, boxes = 1, other = null, tap = newT
       <div class="label-item">${esc(it.name)}</div>
       <div class="label-mid"><span class="label-box">Box ${i + 1} of ${boxes}</span></div>
       <div class="label-shelf" data-label-shelf>${esc((shelfNow || 'Shelf').toUpperCase())}</div>
-      <div class="label-foot"><span>In ${esc(dayOf())}<br>SOARD</span><canvas data-qr="${esc(tap)}" aria-label="QR code"></canvas></div>
+      <div class="label-foot"><span>In ${esc(dayOf())}<br>SOARD</span><canvas data-qr="${i + 1}" aria-label="QR code for box ${i + 1}"></canvas></div>
     </div>`;
   }).join('');
   const after = 620 + (boxes - 1) * 160;
@@ -408,7 +408,7 @@ async function printed(kid, it, { units = 1, boxes = 1, other = null, tap = newT
     <button class="shelf-callout" type="button" id="moveit" aria-label="Move it to another shelf"><span class="who">${face(kid, 36)}${esc(kid.short)}’s shelf</span><b id="shelf">${esc(shelfNow || '…')}</b></button>
     <div class="after"><button class="btn btn-primary btn-big" type="button" id="next" data-focus>Scan the next box</button>
       <div class="btn-row"><button class="btn btn-text" type="button" id="done">Done</button><button class="btn btn-text" type="button" id="undo">Undo</button></div></div>`, { keep: true });
-  document.querySelectorAll('canvas[data-qr]').forEach((c) => drawQr(c, `${location.origin}/admin/checkin/?r=${encodeURIComponent(tap)}`));
+  document.querySelectorAll('canvas[data-qr]').forEach((c) => drawQr(c, `${location.origin}/admin/checkin/?r=${encodeURIComponent(tap)}&b=${c.dataset.qr}`));
   const started = Date.now();
   const body = other ? { tap, jobId: kid.jobId, ...other, units, boxes } : { tap, jobId: kid.jobId, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units, boxes };
   let res = null, failed = null;
@@ -816,13 +816,15 @@ $('q').addEventListener('input', (e) => { state.query = e.target.value.trim(); r
 // The dock's second button: Something else when checking in, Load all when loading a kid out
 $('other').addEventListener('click', () => {
   if (state.mode !== 'out') { otherSheet(); return; }
+  tones.wake();
+  if (load.size) { scanLabels(kidById(state.loadKid) || null); return; }
   const k = kidById(state.loadKid);
-  if (k) loadAllSheet(k);
+  if (k) addAll(k);
 });
 $('scan').addEventListener('click', () => {
   if (state.mode !== 'out') { scan(); return; }
   tones.wake();
-  scanLabels(kidById(state.loadKid) || null);
+  if (load.size) confirmLoad(); else scanLabels(kidById(state.loadKid) || null);
 });
 
 document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
@@ -857,7 +859,7 @@ function openFromLink() {
   toast('That label’s item isn’t on the list any more (its makeover may be finished).');
 }
 
-async function load() {
+async function loadPage() {
   try {
     const res = await fetch('/api/kid-items-admin?checkin=1', { headers: { Accept: 'application/json' } });
     const body = await res.json().catch(() => ({}));
@@ -874,10 +876,10 @@ async function load() {
     flush();
   } catch (err) {
     $('list').innerHTML = `<div class="empty"><span>The list didn’t load. ${esc(err.message)}</span><button class="btn" type="button" id="retry">Try again</button></div>`;
-    $('retry').onclick = () => { $('list').innerHTML = '<div class="hold"></div><div class="hold"></div>'; load(); };
+    $('retry').onclick = () => { $('list').innerHTML = '<div class="hold"></div><div class="hold"></div>'; loadPage(); };
   }
 }
-load();
+loadPage();
 
 // ─── Check out: load-out to the house ───────────────────────────────
 // Christian loads one makeover at a time: pick the kid, then their boxes by shelf, ticked off by scanning each label
@@ -885,56 +887,85 @@ load();
 
 const STAGE_RANK = { Build: 0, Mobilization: 1, Design: 2 };
 
-/** Boxes of an item still at the Office: each check-in's boxes, less the ones whose label was scanned out or that went with Load all */
+/**
+ * Boxes of an item still at the Office. Each label is one box: a box scanned out comes off its check-in; an older
+ * label with no box number, Load all and a tick take whole check-ins
+ */
 function boxesLeft(it) {
   const live = (it.receipts || []).filter((r) => !r.undone);
-  const scanned = new Set(live.filter((r) => r.kind === 'out' && r.ref).map((r) => r.ref));
-  let tapped = live.filter((r) => r.kind === 'out' && !r.ref).reduce((t, r) => t + (r.units || 0), 0);
+  const outs = live.filter((r) => r.kind === 'out');
+  let tapped = outs.filter((r) => !r.ref).reduce((t, r) => t + (r.units || 0), 0);
   let boxes = 0;
   for (const r of live.filter((x) => x.kind === 'receive')) {
-    if (scanned.has(r.id)) continue;
-    if (tapped >= r.units) { tapped -= r.units; continue; }
-    boxes += Math.max(1, r.boxes || 1);
+    const mine = outs.filter((o) => o.ref === r.id);
+    const total = Math.max(1, r.boxes || 1);
+    if (mine.some((o) => !o.box)) continue;
+    const left = total - new Set(mine.map((o) => o.box)).size;
+    if (left === total && tapped >= r.units) { tapped -= r.units; continue; }
+    boxes += Math.max(0, left);
   }
   return boxes;
 }
-const boxesOut = (it) => (it.receipts || []).filter((r) => !r.undone && r.kind === 'receive').reduce((t, r) => t + Math.max(1, r.boxes || 1), 0) - boxesLeft(it);
+const boxesIn = (it) => (it.receipts || []).filter((r) => !r.undone && r.kind === 'receive').reduce((t, r) => t + Math.max(1, r.boxes || 1), 0);
 const kidLoad = (kid) => {
-  const load = kid.items.filter(atOffice);
-  const left = load.reduce((t, i) => t + boxesLeft(i), 0);
-  const done = kid.items.reduce((t, i) => t + boxesOut(i), 0);
-  return { load, left, done, total: left + done, missing: kid.items.filter((i) => ['ordered', 'not', 'partly'].includes(i.status)), out: kid.items.filter((i) => i.status === 'out' || i.status === 'house') };
+  const atOff = kid.items.filter(atOffice);
+  const left = atOff.reduce((t, i) => t + boxesLeft(i), 0);
+  const done = kid.items.reduce((t, i) => t + Math.max(0, boxesIn(i) - boxesLeft(i)), 0);
+  return { load: atOff, left, done, total: left + done, missing: kid.items.filter((i) => ['ordered', 'not', 'partly'].includes(i.status)), out: kid.items.filter((i) => i.status === 'out' || i.status === 'house') };
 };
 const boxWord = (n) => plural(n, 'box', 'boxes');
 const notHereYet = (n) => (n === 1 ? '1 thing isn’t here yet' : `${n} things aren’t here yet`);
 
-function renderOut() {
-  const kid = kidById(state.loadKid);
-  if (kid) renderLoad(kid); else renderOutHome();
+// ─── This load: what's scanned or ticked, saved only on Confirm ─────
+// Peter, Nov 10 2026: "then it can be updated in JT after he confirms", "in case they accidently scan something"
+const LOAD_KEY = 'soard-checkout-load';
+const load = new Map((() => { try { return JSON.parse(localStorage.getItem(LOAD_KEY) || '[]'); } catch { return []; } })().map((e) => [e.key, e]));
+const saveLoad = () => { try { localStorage.setItem(LOAD_KEY, JSON.stringify([...load.values()])); } catch { /* private window: kept for this visit */ } };
+const loadBoxes = () => [...load.values()].reduce((t, e) => t + (e.boxes || 1), 0);
+const itemKey = (it) => `item:${it.id}`;
+const inLoad = (it) => load.has(itemKey(it)) || [...load.values()].some((e) => e.kind === 'box' && e.itemId === it.itemId && e.partKey === it.partKey && e.jobId === it.jobId);
+const findByRef = (ref) => state.kids.flatMap((k) => k.items.map((i) => ({ k, i }))).find(({ i }) => (i.receipts || []).some((r) => r.id === ref && r.kind === 'receive'));
+function addItem(kid, it) {
+  for (const [k, e] of load) if (e.kind === 'box' && e.jobId === kid.jobId && e.itemId === it.itemId && e.partKey === it.partKey) load.delete(k);
+  load.set(itemKey(it), { key: itemKey(it), kind: 'item', tap: newTap(), jobId: kid.jobId, kid: kid.short, itemId: it.itemId, partKey: it.partKey, name: it.name, line: it.line, units: toLoad(it), boxes: Math.max(1, boxesLeft(it)) });
+  saveLoad();
+}
+function dropItem(kid, it) {
+  for (const [k, e] of load) if (e.jobId === kid.jobId && e.itemId === it.itemId && e.partKey === it.partKey) load.delete(k);
+  saveLoad();
 }
 
-/** Who's being loaded: each kid with what's at the Office (boxes and shelves) and what isn't here yet; theirs first */
+function renderOut() {
+  // Something in the load: the dock confirms it (and scans more); else it scans
+  const n = loadBoxes();
+  $('scan').classList.toggle('confirming', Boolean(n));
+  const kid = kidById(state.loadKid);
+  if (kid) renderLoad(kid); else renderOutHome();
+  if (n) { $('scan').querySelector('span').textContent = `Confirm ${boxWord(n)}`; $('other').textContent = 'Scan more'; }
+}
+
+/** Check out: scan any box straight away; or pick a kid to see their boxes, what isn't here yet, and tick them off */
 function renderOutHome() {
-  $('scan').querySelector('span').textContent = 'Scan labels';
+  $('scan').querySelector('span').textContent = 'Scan boxes';
   $('other').textContent = '';
   const kids = state.kids.map((k) => ({ k, l: kidLoad(k) }))
-    .filter(({ k, l }) => !state.query || [k.short, ...k.items.map((i) => i.name)].some((x) => String(x).toLowerCase().includes(state.query.toLowerCase())))
+    .filter(({ k }) => !state.query || [k.short, ...k.items.map((i) => i.name)].some((x) => String(x).toLowerCase().includes(state.query.toLowerCase())))
     .sort((a, b) => (b.l.left > 0) - (a.l.left > 0) || (STAGE_RANK[a.k.stage] ?? 9) - (STAGE_RANK[b.k.stage] ?? 9) || b.l.left - a.l.left);
-  $('list').innerHTML = kids.length ? `<div class="label-above out-q">Who are you loading?</div>${kids.map(({ k, l }) => `
+  $('list').innerHTML = kids.length ? kids.map(({ k, l }) => `
     <button class="kid-tile" type="button" data-loadkid="${esc(k.jobId)}">
       ${face(k, 56)}
       <span class="kt-body"><b>${esc(k.short)}</b>
-        <span>${l.left ? `${boxWord(l.left)}${k.shelves.length ? ` · ${esc(k.shelves.map(shelfName).join(', '))}` : ''}` : l.done ? 'All loaded' : 'Nothing at the Office yet'}</span>
-        ${l.missing.length ? `<span class="kt-warn">${plural(l.missing.length, 'thing')} not here yet</span>` : ''}</span>
+        <span>${l.left ? `${boxWord(l.left)} at the Office${k.shelves.length ? ` · ${esc(k.shelves.map(shelfName).join(', '))}` : ''}` : l.done ? 'All loaded' : 'Nothing at the Office yet'}</span>
+        ${l.missing.length ? `<span class="kt-warn">${notHereYet(l.missing.length)}</span>` : ''}</span>
       ${k.stage ? `<span class="kt-stage">${esc(k.stage)}</span>` : ''}${ICON.chev}
-    </button>`).join('')}` : `<div class="empty">${state.query ? 'Nothing matches that.' : 'No makeovers to load.'}</div>`;
+    </button>`).join('') : `<div class="empty">${state.query ? 'Nothing matches that.' : 'No makeovers to load.'}</div>`;
   showPrinter();
 }
 
-/** One kid's load: their boxes by shelf (tick one off, or scan its label), what isn't here yet, what's loaded */
+/** One kid: their boxes by shelf (a tick puts one in the load), what isn't here yet, what's loaded */
 function renderLoad(kid) {
   const l = kidLoad(kid);
-  $('scan').querySelector('span').textContent = `Scan ${kid.short.split(' ')[0]}’s labels`;
+  $('scan').querySelector('span').textContent = 'Scan boxes';
   $('other').textContent = l.left ? `Load all ${boxWord(l.left)}` : '';
   const byShelf = new Map();
   for (const it of l.load) byShelf.set(it.shelf || '', [...(byShelf.get(it.shelf || '') || []), it]);
@@ -961,7 +992,7 @@ function renderLoad(kid) {
   if (l.missing.length) {
     html += `<section class="card">${state.openMissing?.has(kid.jobId)
       ? `<div class="group-h warn"><span>Not here yet</span><span>${l.missing.length}</span></div>${l.missing.map((i) => rowHtml(kid, i)).join('')}`
-      : `<button class="more warn" type="button" data-missing="${esc(kid.jobId)}"><span>${plural(l.missing.length, 'thing')} not here yet</span>${ICON.chev}</button>`}</section>`;
+      : `<button class="more warn" type="button" data-missing="${esc(kid.jobId)}"><span>${notHereYet(l.missing.length)}</span>${ICON.chev}</button>`}</section>`;
   }
   if (l.out.length) {
     html += `<section class="card">${state.openLoaded?.has(kid.jobId)
@@ -972,90 +1003,109 @@ function renderLoad(kid) {
   showPrinter();
 }
 
-/** A row to tick off: the circle loads it (and, filled, takes it back); the rest of the row opens it */
+/** A row: its circle puts it in the load (yellow) or takes it out; loaded (green), it takes it back */
 function loadRow(kid, it) {
   const done = it.status === 'out' || it.status === 'house';
+  const pending = !done && inLoad(it);
   const n = done ? 0 : boxesLeft(it);
-  const sub = [it.line, done ? (it.status === 'house' ? 'Went straight to the house' : 'Loaded') : boxWord(n), it.sent && !done ? `${it.sent} of ${it.got} loaded` : null].filter(Boolean).join(' · ');
-  return `<div class="lrow${done ? ' done' : ''}" data-row="${esc(it.id)}">
-    <button class="tickbtn" type="button" data-kid="${esc(kid.jobId)}" data-tick="${esc(it.id)}" aria-pressed="${done}" aria-label="${done ? `Take back: ${esc(it.name)}` : `Loaded: ${esc(it.name)}`}"${it.status === 'house' ? ' disabled' : ''}>${ICON.tick}</button>
+  const sub = [it.line, done ? (it.status === 'house' ? 'Went straight to the house' : 'Loaded') : pending ? 'In this load' : boxWord(n), it.sent && !done ? `${it.sent} of ${it.got} loaded` : null].filter(Boolean).join(' · ');
+  return `<div class="lrow${done ? ' done' : ''}${pending ? ' pending' : ''}" data-row="${esc(it.id)}">
+    <button class="tickbtn" type="button" data-kid="${esc(kid.jobId)}" data-tick="${esc(it.id)}" aria-pressed="${done ? 'true' : pending ? 'mixed' : 'false'}" aria-label="${done ? `Take back: ${esc(it.name)}` : pending ? `Take out of this load: ${esc(it.name)}` : `Add to this load: ${esc(it.name)}`}"${it.status === 'house' ? ' disabled' : ''}>${ICON.tick}</button>
     <button class="row lrow-main" data-kid="${esc(kid.jobId)}" data-id="${esc(it.id)}" type="button"><span class="row-name">${esc(it.name)}</span><span class="row-sub">${esc(sub)}</span></button>
   </div>`;
 }
 
-/** One tap: all of it that's at the Office goes on the truck; tapped again, the last of it comes back */
+/** The circle: into the load, out of it, or (loaded already) taken back */
 async function tick(jobId, id) {
   const kid = kidById(jobId);
   const it = kid?.items.find((i) => i.id === id);
   if (!it) return;
   tones.wake();
-  const done = it.status === 'out';
-  try {
-    if (done) {
-      const last = [...(it.receipts || [])].reverse().find((r) => r.kind === 'out' && !r.undone);
-      if (!last) return;
+  if (it.status === 'out') {
+    const last = [...(it.receipts || [])].reverse().find((r) => r.kind === 'out' && !r.undone);
+    if (!last) return;
+    try {
       const r = await undoTap(last.id);
       if (r.queued || r.local) { last.undone = true; it.sent = Math.max(0, (it.sent || 0) - (last.units || 0)); it.status = 'here'; }
       tones.undo();
-    } else {
-      const r = await sendOrKeep('out', { tap: newTap(), jobId, itemId: it.itemId, partKey: it.partKey, units: toLoad(it), name: it.name, line: it.line });
-      if (r.queued) { it.sent = it.got; it.status = 'out'; }
-      tones.ok();
-    }
-  } catch (err) { tones.warn(); toast(err.message); return; }
+    } catch (err) { tones.warn(); toast(err.message); return; }
+  } else if (inLoad(it)) { dropItem(kid, it); tones.undo(); } else { addItem(kid, it); tones.ok(); }
   render();
 }
 
-/** One thing at the Office: where it is, who checked it in, how many go, Out to the house */
+/** One thing at the Office: where it is, who checked it in; into this load */
 function outSheet(kid, it, { keep = false } = {}) {
-  const left = toLoad(it);
-  let units = left;
   const came = (it.receipts || []).filter((r) => !r.undone && r.kind === 'receive');
   const last = came[came.length - 1];
   openSheet(`${head(kidTitle(kid), { kid: true })}
     <p class="item-name">${esc(it.name)}</p>
     ${factsHtml([['Where', shelfName(it.shelf) || 'At the Office'], ['Boxes', String(boxesLeft(it))], ['Came in', last ? `${dayOf(last.at)}${byWho(last)}` : ''], ['Line', it.line], it.sent ? ['Loaded already', String(it.sent)] : null].filter((f) => f && f[1]))}
-    ${left > 1 ? stepper('units', 'How many go', units) : ''}
-    <button class="btn btn-primary btn-big" type="button" id="sendout" data-focus>Loaded</button>`, { keep });
-  const vals = steppers({ units: [1, left] }, (v) => { units = v.units; });
-  units = vals.units ?? units;
+    <button class="btn btn-primary btn-big" type="button" id="sendout" data-focus>${inLoad(it) ? 'Take out of this load' : 'Add to this load'}</button>`, { keep });
   $('sendout').onclick = async () => {
-    try {
-      const r = await sendOrKeep('out', { tap: newTap(), jobId: kid.jobId, itemId: it.itemId, partKey: it.partKey, units, name: it.name, line: it.line });
-      if (r.queued) { it.sent = (it.sent || 0) + units; if (it.sent >= it.got) it.status = 'out'; }
-      tones.ok();
-    } catch (err) { toast(err.message); return; }
+    if (inLoad(it)) { dropItem(kid, it); tones.undo(); } else { addItem(kid, it); tones.ok(); }
     await close();
     render();
   };
 }
 
-/** Everything a kid has at the Office, loaded at once (each ticked to start) */
-function loadAllSheet(kid) {
-  const items = kid.items.filter(atOffice);
-  if (!items.length) return;
-  const boxesOf = (list) => list.reduce((t, i) => t + boxesLeft(i), 0);
-  openSheet(`${head(kidTitle(kid), { kid: true, sub: 'Everything at the Office, on the truck' })}
-    <div class="pick">${items.map((i) => `<label class="look check"><input type="checkbox" checked data-all="${esc(i.id)}" /><span><b>${esc(i.name)}</b><span>${esc([shelfName(i.shelf), boxWord(boxesLeft(i)), i.line].filter(Boolean).join(' · '))}</span></span></label>`).join('')}</div>
-    <button class="btn btn-primary btn-big" type="button" id="allgo" data-focus>Loaded: ${boxWord(boxesOf(items))}</button>`);
-  const chosenNow = () => [...document.querySelectorAll('#sheet-root [data-all]:checked')].map((c) => items.find((i) => i.id === c.dataset.all)).filter(Boolean);
-  document.querySelectorAll('#sheet-root [data-all]').forEach((c) => { c.onchange = () => { const n = boxesOf(chosenNow()); $('allgo').textContent = n ? `Loaded: ${boxWord(n)}` : 'Pick what’s going'; $('allgo').disabled = !n; }; });
-  $('allgo').onclick = async () => {
-    const chosen = chosenNow();
-    $('allgo').disabled = true;
-    let done = 0, kept = 0;
-    for (const it of chosen) {
-      $('allgo').innerHTML = `<span class="spin" aria-hidden="true"></span>${done + 1} of ${chosen.length}`;
+/** Load all: everything the kid has at the Office, into the load, then Confirm */
+function addAll(kid) {
+  for (const it of kid.items.filter(atOffice)) if (!inLoad(it)) addItem(kid, it);
+  tones.ok();
+  render();
+  confirmLoad();
+}
+
+/**
+ * Confirm: what's in this load, by kid, each with a way to take it out (a box scanned by accident), what each kid still
+ * has at the Office and isn't here yet, and two kids in one load said plainly. Only Confirm saves, and updates JobTread
+ */
+function confirmLoad() {
+  if (!load.size) { render(); return; }
+  const byKid = new Map();
+  for (const e of load.values()) byKid.set(e.jobId, [...(byKid.get(e.jobId) || []), e]);
+  const n = loadBoxes();
+  const kidsIn = [...byKid.keys()].map(kidById).filter(Boolean);
+  openSheet(`${head(`This load: ${boxWord(n)}`, { sub: kidsIn.length > 1 ? `${kidsIn.length} kids in it: ${kidsIn.map((k) => k.short).join(' and ')}` : kidsIn[0] ? esc(kidsIn[0].short) : '' })}
+    ${kidsIn.length > 1 ? `<p class="why-line">${kidsIn.length} kids’ boxes are in this load. Take out any that aren’t going.</p>` : ''}
+    ${[...byKid].map(([jobId, list]) => {
+      const kid = kidById(jobId);
+      const l = kid ? kidLoad(kid) : null;
+      const stillHere = l ? Math.max(0, l.left - list.reduce((t, e) => t + (e.boxes || 1), 0)) : 0;
+      return `<div class="pick">
+        <div class="look kid-row">${kid ? face(kid, 32) : ''}<b>${esc(kid?.short || list[0].kid)}</b></div>
+        ${list.map((e) => `<div class="look load-line"><span><b>${esc(e.name)}</b><span>${esc(e.kind === 'box' ? (e.of > 1 ? `Box ${e.box} of ${e.of}` : '1 box') : boxWord(e.boxes || 1))}</span></span>
+          <button class="x small" type="button" data-unload="${esc(e.key)}" aria-label="Take ${esc(e.name)} out of this load">${ICON.x}</button></div>`).join('')}
+        ${stillHere || l?.missing.length ? `<div class="look still"><span>${[stillHere ? `${boxWord(stillHere)} still at the Office` : null, l?.missing.length ? notHereYet(l.missing.length) : null].filter(Boolean).join(' · ')}</span></div>` : ''}
+      </div>`;
+    }).join('')}
+    <button class="btn btn-primary btn-big" type="button" id="confirm" data-focus>Confirm: ${boxWord(n)} out</button>
+    <button class="btn btn-text" type="button" id="more">Scan more</button>`, { keep: Boolean(sheetEl()) });
+  document.querySelectorAll('#sheet-root [data-unload]').forEach((b) => {
+    b.onclick = () => { load.delete(b.dataset.unload); saveLoad(); tones.undo(); if (load.size) confirmLoad(); else { close(); render(); } };
+  });
+  $('more').onclick = async () => { await close(); scanLabels(kidById(state.loadKid) || null); };
+  $('confirm').onclick = async () => {
+    const entries = [...load.values()];
+    $('confirm').disabled = true;
+    let done = 0, kept = 0, jt = null;
+    for (const e of entries) {
+      $('confirm').innerHTML = `<span class="spin" aria-hidden="true"></span>${done + 1} of ${entries.length}`;
       try {
-        const r = await sendOrKeep('out', { tap: newTap(), jobId: kid.jobId, itemId: it.itemId, partKey: it.partKey, units: toLoad(it), name: it.name, line: it.line });
-        if (r.queued) { kept++; it.sent = it.got; it.status = 'out'; }
+        // Its id is made when it goes into the load and kept: a Confirm tried again can't count it twice
+        if (!e.tap) { e.tap = newTap(); saveLoad(); }
+        const body = e.kind === 'box' ? { tap: e.tap, ref: e.ref, ...(e.box ? { box: e.box } : {}) } : { tap: e.tap, jobId: e.jobId, itemId: e.itemId, partKey: e.partKey, units: e.units, name: e.name, line: e.line };
+        const r = await sendOrKeep('out', body);
+        if (r.queued) kept++; else jt = r.out?.jt || jt;
+        load.delete(e.key);
+        saveLoad();
         done++;
-      } catch (err) { toast(`${it.name}: ${err.message}`); }
+      } catch (err) { toast(`${e.name}: ${err.message}`); break; }
     }
     tones.ok();
     await close();
     render();
-    if (kept) toast(`${kept} wait for the connection`);
+    toast(kept ? `${boxWord(n)} out. ${kept} wait for the connection, then JobTread.` : `${boxWord(n)} out${jt === 'written' ? ', and in JobTread' : ''}.`);
   };
 }
 
@@ -1120,19 +1170,17 @@ async function scanLabels(scope) {
   cam.innerHTML = `<video autoplay playsinline muted></video><div class="frame square" aria-hidden="true"></div>
     <div class="cam-top">${scope ? `${face(scope, 32)}<span>${esc(scope.short)}</span>` : ''}<b class="cam-count" aria-live="polite"></b></div>
     <div class="cam-said" aria-live="assertive" hidden></div>
-    <button class="cam-close" type="button" aria-label="Done scanning">${ICON.x}</button>
+    <button class="cam-close" type="button" aria-label="Stop scanning">${ICON.x}</button>
     ${canTorch ? '<button class="cam-torch" type="button" aria-pressed="false" aria-label="Flashlight"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 2h10l-2 6v12a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2V8z"/><path d="M12 12v2"/></svg></button>' : ''}
     <button class="btn btn-primary cam-done" type="button">Done</button>`;
   document.body.appendChild(cam);
   const video = cam.querySelector('video');
   video.srcObject = stream;
-  const seen = new Set();
-  let loaded = 0, busy = false, saidTimer;
+  let saidTimer;
   const count = () => {
-    const k = scope && kidById(scope.jobId);
-    const l = k ? kidLoad(k) : null;
-    cam.querySelector('.cam-count').textContent = l ? (l.total ? `${l.done} of ${l.total} boxes` : '') : loaded ? `${loaded} loaded` : '';
-    return l;
+    const n = loadBoxes();
+    cam.querySelector('.cam-count').textContent = n ? `${boxWord(n)} in this load` : '';
+    cam.querySelector('.cam-done').textContent = n ? `Review ${boxWord(n)}` : 'Done';
   };
   count();
   const say = (cls, html, { stay = false } = {}) => {
@@ -1144,47 +1192,27 @@ async function scanLabels(scope) {
     if (!stay) saidTimer = setTimeout(() => { el.hidden = true; }, 3200);
     return el;
   };
-  const finish = () => { cancelAnimationFrame(scanning); scanning = null; stopCamera(); render(); };
-  cam.querySelector('.cam-close').onclick = finish;
-  cam.querySelector('.cam-done').onclick = finish;
+  const stop = () => { cancelAnimationFrame(scanning); scanning = null; stopCamera(); render(); };
+  cam.querySelector('.cam-close').onclick = stop;
+  cam.querySelector('.cam-done').onclick = () => { const n = load.size; stop(); if (n) confirmLoad(); };
   cam.querySelector('.cam-torch')?.addEventListener('click', async (e) => {
     const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
     try { await track.applyConstraints({ advanced: [{ torch: on }] }); e.currentTarget.setAttribute('aria-pressed', String(on)); } catch { /* not this phone */ }
   });
-  const sendOut = async (ref, found) => {
-    busy = true;
-    try {
-      const outTap = newTap();
-      const r = await sendOrKeep('out', { tap: outTap, ref });
-      const repeat = r.out?.repeat;
-      if (!repeat) loaded++;
-      if (r.queued && found) { found.i.sent = found.i.got; found.i.status = 'out'; }
-      const l = count();
-      const k = found ? kidById(found.k.jobId) : null;
-      const boxes = found ? Math.max(1, (found.i.receipts || []).find((x) => x.id === ref)?.boxes || 1) : 1;
-      if (repeat) { tones.undo(); say('info', `<b>Already loaded</b><span>${esc(found ? `${found.k.short}: ${found.i.name}` : '')}</span>`); return; }
-      tones.ok();
-      const end = l && l.left === 0;
-      const el = say(end ? 'ok end' : 'ok', `${k ? face(k, 40) : ICON.tick}<b>${esc(found ? found.i.name : r.out?.item?.name || 'Loaded')}</b>
-        <span>${esc(found ? found.k.short : '')}${boxes > 1 ? ` · ${boxWord(boxes)}: take all ${boxes}` : ''}</span>
-        <span class="dim">${end ? `Everything for ${esc(scope.short)} at the Office is loaded${l.missing.length ? `. ${notHereYet(l.missing.length)}.` : '.'}` : l ? `${boxWord(l.left)} left` : r.queued ? 'Saves when the connection is back' : 'Loaded'}</span>
-        <button class="cam-undo" type="button">Undo</button>`, { stay: end });
-      if (end) cam.querySelector('.cam-done').textContent = 'Finish';
-      el.querySelector('.cam-undo').onclick = async () => {
-        try { await undoTap(outTap); } catch (err) { toast(err.message); return; }
-        seen.delete(ref); loaded = Math.max(0, loaded - 1);
-        tones.undo(); count(); cam.querySelector('.cam-done').textContent = 'Done';
-        say('info', '<b>Taken back</b>');
-      };
-    } catch (err) {
-      seen.delete(ref);
-      tones.warn();
-      say('warn', `<b>${esc(err.message)}</b>`);
-    } finally {
-      busy = false;
-    }
+  // A box into the load: nothing is saved until Confirm
+  const add = (ref, box, found) => {
+    const r = found.i.receipts.find((x) => x.id === ref);
+    const of = Math.max(1, r?.boxes || 1);
+    const key = `box:${ref}#${box || 'all'}`;
+    load.set(key, { key, kind: 'box', tap: newTap(), ref, box, of, jobId: found.k.jobId, kid: found.k.short, itemId: found.i.itemId, partKey: found.i.partKey, name: found.i.name, boxes: box ? 1 : of });
+    saveLoad();
+    tones.ok();
+    count();
+    const el = say('ok', `${face(found.k, 40)}<b>${esc(found.i.name)}</b><span>${esc(found.k.short)}${of > 1 ? ` · ${box ? `box ${box} of ${of}` : `all ${of} boxes`}` : ''}</span><span class="dim">In this load</span><button class="cam-undo" type="button">Take it out</button>`);
+    el.querySelector('.cam-undo').onclick = () => { load.delete(key); saveLoad(); tones.undo(); count(); say('info', '<b>Taken out of this load</b>'); };
   };
-  let lastAt = 0;
+  const seen = new Set();
+  let lastAt = 0, busy = false;
   const frame = async (t) => {
     if (!document.body.contains(cam)) return;
     scanning = requestAnimationFrame(frame);
@@ -1193,31 +1221,32 @@ async function scanLabels(scope) {
     busy = true;
     let data = null;
     try { data = await read(video); } catch { data = null; } finally { busy = false; }
-    if (!data) return;
+    if (!data || seen.has(data)) return;
+    seen.add(data);
+    // Read again after a pause (the box was set down and picked up), it says so once more
+    setTimeout(() => seen.delete(data), 4000);
     let url = null;
     try { url = new URL(data); } catch { /* not a link */ }
     const ours = url?.pathname.startsWith('/admin/checkin');
     const ref = ours ? url.searchParams.get('r') : null;
+    const box = ours ? Number(url.searchParams.get('b')) || null : null;
     const shelf = ours ? url.searchParams.get('shelf') : null;
-    if (shelf) {
-      if (seen.has(`shelf:${shelf}`)) return;
-      seen.add(`shelf:${shelf}`);
-      const s = state.shelves.find((x) => x.shelf === shelf);
-      say('info', `<b>${esc(shelfName(shelf))}</b><span>${esc(kidById(s?.kid)?.short || 'Free')}</span>`);
-      return;
-    }
-    if (!ref) { if (!seen.has(data)) { seen.add(data); tones.warn(); say('warn', '<b>Not a SOARD label</b>'); } return; }
-    if (seen.has(ref)) return;
-    seen.add(ref);
-    const found = state.kids.flatMap((k) => k.items.map((i) => ({ k, i }))).find(({ i }) => (i.receipts || []).some((r) => r.id === ref));
-    if (scope && found && found.k.jobId !== scope.jobId) {
+    if (shelf) { const s = state.shelves.find((x) => x.shelf === shelf); say('info', `<b>${esc(shelfName(shelf))}</b><span>${esc(kidById(s?.kid)?.short || 'Free')}</span>`); return; }
+    if (!ref) { tones.warn(); say('warn', '<b>Not a SOARD label</b>'); return; }
+    const found = findByRef(ref);
+    if (!found) { tones.warn(); say('warn', '<b>That label isn’t on the list</b><span>Its makeover may be finished, or it was taken back.</span>'); return; }
+    const key = `box:${ref}#${box || 'all'}`;
+    const outs = found.i.receipts.filter((x) => x.kind === 'out' && !x.undone && x.ref === ref);
+    if (outs.some((o) => !o.box || o.box === box) || found.i.status === 'out') { tones.undo(); say('info', `<b>Already loaded</b><span>${esc(found.k.short)}: ${esc(found.i.name)}</span>`); return; }
+    if (load.has(key) || load.has(itemKey(found.i))) { say('info', `<b>Already in this load</b><span>${esc(found.k.short)}: ${esc(found.i.name)}</span>`); return; }
+    if (scope && found.k.jobId !== scope.jobId) {
       // Another kid's box, while loading this one: stopped, unless it really is going
       tones.warn();
-      const el = say('warn stop', `${face(found.k, 40)}<b>${esc(found.k.short)}’s box</b><span>${esc(found.i.name)}</span><span>Not ${esc(scope.short)}’s. Leave it here.</span><button class="cam-undo" type="button">Load it anyway</button>`, { stay: true });
-      el.querySelector('.cam-undo').onclick = () => sendOut(ref, found);
+      const el = say('warn stop', `${face(found.k, 40)}<b>${esc(found.k.short)}’s box</b><span>${esc(found.i.name)}</span><span>Not ${esc(scope.short)}’s. Leave it here.</span><button class="cam-undo" type="button">Add it anyway</button>`, { stay: true });
+      el.querySelector('.cam-undo').onclick = () => add(ref, box, found);
       return;
     }
-    sendOut(ref, found);
+    add(ref, box, found);
   };
   scanning = requestAnimationFrame(frame);
 }

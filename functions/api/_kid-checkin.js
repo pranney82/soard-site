@@ -71,7 +71,7 @@ function settle(it, whoOf = () => null) {
   else if (it.got >= it.qty) it.status = 'here';
   else if (it.got > 0) it.status = 'partly';
   else it.status = it.order ? 'ordered' : 'not';
-  it.receipts = it.receipts.map(({ id, kind, units, boxes, shelf, at, undoneAt, by, ref }) => ({ id, kind, units, boxes, shelf, at, who: whoOf(by), ...(ref ? { ref } : {}), undone: Boolean(undoneAt) }));
+  it.receipts = it.receipts.map(({ id, kind, units, boxes, shelf, at, undoneAt, by, ref, box }) => ({ id, kind, units, boxes, shelf, at, who: whoOf(by), ...(ref ? { ref } : {}), ...(box ? { box } : {}), undone: Boolean(undoneAt) }));
   return it;
 }
 const OPEN = new Set(['not', 'ordered']);

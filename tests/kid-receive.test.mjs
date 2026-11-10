@@ -260,7 +260,7 @@ test('labels: the kid, the item, box n of N, the shelf, a QR to the check-in; ZP
   assert.match(z, /\^FDRaincan FS Shower Head\^FS/);
   assert.match(z, /\^FDBox 2 of 3\^FS/);
   assert.match(z, /\^FR\^FDSHELF 7\^FS/);
-  assert.match(z, /\^FDQA,https:\/\/sunshineonaranneyday\.com\/admin\/checkin\/\?r=tap-abc12345\^FS/);
+  assert.match(z, /\^FDQA,https:\/\/sunshineonaranneyday\.com\/admin\/checkin\/\?r=tap-abc12345&b=2\^FS/, 'each box its own code');
   assert.ok(z.startsWith('^XA') && z.endsWith('^XZ'));
   assert.equal(zplText('a^b~c\nd'), 'a b c d');
   assert.equal(receiptLabels({ kid: 'A', item: 'B', boxes: 3, tap: 't' }).length, 3);
@@ -463,4 +463,26 @@ test('check-out: a label scanned after Load all counts once', async () => {
   assert.equal((await checkOut(env.DB, { tap: tap(), ref: a })).repeat, true);
   const it = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
   assert.deepEqual([it.status, it.sent], ['out', 1]);
+});
+
+test('check-out by the box: each label is one box; a sink in three boxes is out when the third is; towels two a box', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  const v0 = await view();
+  const head = itemOf(v0, 'Rowan S.', 'Raincan Shower Head');
+  const valve = itemOf(v0, 'Rowan S.', 'Shower Valve');
+  const a = tap(), b = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 3 });
+  await receive(env.DB, { tap: b, jobId: 'j-rowan', itemId: valve.itemId, partKey: valve.partKey, name: valve.name, units: 2, boxes: 1 });
+  const r1 = await checkOut(env.DB, { tap: tap(), ref: a, box: 1 });
+  assert.deepEqual([r1.repeat, r1.receipt.units, r1.receipt.box], [false, 0, 1], 'box 1 of 3 carries no whole unit yet');
+  assert.equal((await checkOut(env.DB, { tap: tap(), ref: a, box: 1 })).repeat, true, 'the same box again counts once');
+  await checkOut(env.DB, { tap: tap(), ref: a, box: 2 });
+  assert.equal(itemOf(await view(), 'Rowan S.', 'Raincan Shower Head').status, 'here', 'two of its three boxes are out: not all of it yet');
+  const r3 = await checkOut(env.DB, { tap: tap(), ref: a, box: 3 });
+  assert.equal(r3.receipt.units, 1);
+  assert.equal(itemOf(await view(), 'Rowan S.', 'Raincan Shower Head').status, 'out');
+  const rv = await checkOut(env.DB, { tap: tap(), ref: b, box: 1 });
+  assert.equal(rv.receipt.units, 2, 'both valves in the one box');
+  assert.equal(itemOf(await view(), 'Rowan S.', 'Shower Valve').status, 'out');
+  assert.equal((await checkOut(env.DB, { tap: tap(), ref: b, box: 9 })).repeat, true, 'a box number past the last is the whole check-in, already out');
 });

@@ -44,7 +44,7 @@ const SCHEMA = [
   'CREATE TABLE IF NOT EXISTS kid_items_state (key TEXT PRIMARY KEY, data TEXT NOT NULL, updated_at TEXT)',
 ];
 // Added Nov 10 2026 with checking out: an "out" names the check-in whose label was scanned
-const RECEIPT_COLUMNS = ['ref TEXT'];
+const RECEIPT_COLUMNS = ['ref TEXT', 'box INTEGER'];
 const _ready = new WeakSet();
 export async function ensureRecord(DB) {
   if (_ready.has(DB)) return;
@@ -92,7 +92,7 @@ export async function readRecord(DB) {
     all(DB, 'SELECT * FROM kid_shelves'),
   ]);
   return {
-    receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at, ref: r.ref || null })),
+    receipts: receipts.map((r) => ({ id: r.id, kind: r.kind, jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, name: r.name, line: r.line_name, units: r.units, boxes: r.boxes, shelf: r.shelf, by: r.by_email, at: r.at, undoneAt: r.undone_at, ref: r.ref || null, box: r.box || null })),
     decisions: new Map(decisions.map((d) => [d.key, { ...parse(d.decision, {}), by: d.by_email, at: d.at }])),
     also: also.map((a) => ({ key: a.key, jobId: a.job_id, name: a.name, cents: a.cents, donated: Boolean(a.donated), store: a.store, orderNumber: a.order_number, typed: Boolean(a.typed), costItemId: a.cost_item_id, madeAt: a.made_at, retiredAt: a.retired_at, error: a.error, at: a.at })),
     shelves: new Map(shelves.map((s) => [s.shelf, s.job_id])),
@@ -229,9 +229,12 @@ export async function typedIn(DB, input, { by = null, now = new Date().toISOStri
 }
 
 /**
- * Check out (load-out to the house): { tap, ref } for a scanned label (that check-in's units go), or
- * { tap, jobId, itemId, partKey, units, name, line } for an item tapped on the list → { receipt, repeat }
- * A label scanned twice counts once. When everything a kid has at the Office is out, their shelves come free.
+ * Check out (load-out to the house), one box at a time:
+ *   { tap, ref, box }  a scanned label: that one box of that check-in. Its units go as its boxes do: one sink in three
+ *                      boxes is out when the third box is; four towels in two boxes, two a box
+ *   { tap, ref }       an older label with no box number: all of that check-in
+ *   { tap, jobId, itemId, partKey, units, name, line }   an item ticked on the list, or Load all
+ * → { receipt, repeat }. A box scanned twice counts once. When everything a kid has at the Office is out, their shelves come free.
  */
 export async function checkOut(DB, input, { by = null, now = new Date().toISOString() } = {}) {
   await ensureRecord(DB);
@@ -239,23 +242,31 @@ export async function checkOut(DB, input, { by = null, now = new Date().toISOStr
   if (!tapOk(tap)) throw bad('That check-out has no id. Reload the page.');
   const before = await DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(tap).first();
   if (before) return { receipt: before, repeat: true };
-  let row = { jobId: input.jobId, itemId: input.itemId, partKey: input.partKey, units: count(input.units, MAX_UNITS), name: input.name, line: input.line, ref: null };
+  let row = { jobId: input.jobId, itemId: input.itemId, partKey: input.partKey, units: count(input.units, MAX_UNITS), name: input.name, line: input.line, ref: null, box: null };
   if (input.ref) {
     const r = await DB.prepare("SELECT * FROM kid_receipts WHERE id = ? AND kind = 'receive'").bind(String(input.ref)).first();
     if (!r) throw Object.assign(new Error('That label isn’t one of SOARD’s check-ins.'), { status: 404 });
     if (r.undone_at) throw Object.assign(new Error('That check-in was taken back.'), { status: 409 });
-    const out = await DB.prepare("SELECT * FROM kid_receipts WHERE kind = 'out' AND ref = ? AND undone_at IS NULL").bind(r.id).first();
-    if (out) return { receipt: out, repeat: true };
+    const boxes = Math.max(1, r.boxes || 1);
+    const box = Number.isInteger(Number(input.box)) && Number(input.box) >= 1 && Number(input.box) <= boxes ? Number(input.box) : null;
+    const outs = (await DB.prepare("SELECT box FROM kid_receipts WHERE kind = 'out' AND ref = ? AND undone_at IS NULL").bind(r.id).all()).results || [];
+    const whole = outs.some((o) => o.box == null);
+    const done = new Set(outs.map((o) => o.box).filter((b) => b != null));
+    const repeat = async () => ({ receipt: { ...r, kind: 'out' }, repeat: true });
+    if (whole || (box && done.has(box)) || (!box && done.size >= boxes)) return repeat();
     // Already gone with Load all or a tap (no label scanned): all of that item is out, so this label counts once too
     const sums = await DB.prepare("SELECT SUM(CASE WHEN kind = 'receive' THEN units ELSE 0 END) AS came, SUM(CASE WHEN kind = 'out' THEN units ELSE 0 END) AS went FROM kid_receipts WHERE job_id = ? AND item_id = ? AND part_key = ? AND undone_at IS NULL")
       .bind(r.job_id, r.item_id, r.part_key).first();
-    if ((sums?.went || 0) >= (sums?.came || 0)) return { receipt: { ...r, kind: 'out' }, repeat: true };
-    row = { jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, units: r.units, name: r.name, line: r.line_name, ref: r.id };
+    if ((sums?.went || 0) >= (sums?.came || 0)) return repeat();
+    // The units this box takes with it: what all the boxes out so far carry, less what the ones before carried
+    const k = done.size + 1;
+    const units = box ? Math.floor((r.units * k) / boxes) - Math.floor((r.units * (k - 1)) / boxes) : r.units - Math.floor((r.units * done.size) / boxes);
+    row = { jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, units, name: r.name, line: r.line_name, ref: r.id, box };
   }
   if (!row.jobId || !row.itemId || !row.partKey) throw bad('Which item is it? Pick it from the list.');
-  await DB.prepare(`INSERT OR IGNORE INTO kid_receipts (id, kind, job_id, item_id, part_key, name, line_name, units, boxes, shelf, by_email, at, ref)
-      VALUES (?, 'out', ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?)`)
-    .bind(tap, row.jobId, row.itemId, row.partKey, String(row.name || '').slice(0, 250), String(row.line || '').slice(0, 250), row.units, by, now, row.ref).run();
+  await DB.prepare(`INSERT OR IGNORE INTO kid_receipts (id, kind, job_id, item_id, part_key, name, line_name, units, boxes, shelf, by_email, at, ref, box)
+      VALUES (?, 'out', ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?, ?, ?)`)
+    .bind(tap, row.jobId, row.itemId, row.partKey, String(row.name || '').slice(0, 250), String(row.line || '').slice(0, 250), row.units, by, now, row.ref, row.box).run();
   await freeIfAllOut(DB, row.jobId);
   return { receipt: await DB.prepare('SELECT * FROM kid_receipts WHERE id = ?').bind(tap).first(), repeat: false };
 }

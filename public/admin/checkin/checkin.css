@@ -333,3 +333,14 @@ body[data-mode="out"] .chips-bar { display: none; }
 .cam-said.warn.stop { grid-template-columns: auto minmax(0, 1fr); }
 .cam-said.warn.stop > b, .cam-said.warn.stop > span { grid-column: 2; }
 .cam-said.warn .cam-undo { background: rgba(110, 82, 0, 0.12); color: var(--warn-fg); }
+
+/* This load: a yellow circle is in it (not saved yet); green is loaded. The confirm sheet lists it by kid */
+.tickbtn[aria-pressed="mixed"] .tick { background: var(--primary); box-shadow: none; color: var(--ink); }
+.tickbtn[aria-pressed="mixed"] .tick path { stroke-dashoffset: 0; }
+.lrow.pending .row-sub { color: var(--warn-fg); font-weight: 600; }
+.kid-row { display: flex !important; align-items: center; gap: 10px; background: var(--chip); }
+.kid-row .face { width: 32px; height: 32px; }
+.load-line { display: grid !important; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.load-line > span { display: grid; gap: 2px; min-width: 0; }
+.x.small { width: 36px; height: 36px; margin: 0; }
+.look.still span { color: var(--warn-fg); font-weight: 600; }

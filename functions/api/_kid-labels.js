@@ -2,8 +2,9 @@
  * Kid items: the labels, in ZPL for SOARD's Zebra (4 × 6 in, 203 dpi)
  * ===========================================================================
  * One label a box: the kid's name, big; what it is and its line; "Box 2 of 3";
- * the shelf, in a black band; the day it came in; and a QR that opens the item
- * on the check-in page (/admin/checkin/?r=<check-in id>) for the PM at load-out.
+ * the shelf, in a black band; the day it came in; and a QR for that one box
+ * (/admin/checkin/?r=<check-in id>&b=<box>): it opens the item on the check-in page, and at
+ * load-out a scan counts exactly that box.
  * A shelf's own sign: its name, as big as it fits, and a QR to what's on it.
  * The page shows the same layout before it prints (public/admin/checkin/).
  */
@@ -17,7 +18,8 @@ export function zplText(s, max = 200) {
   return String(s ?? '').normalize('NFC').replace(/[\^~\\]/g, ' ').replace(/[\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, max);
 }
 const day = (iso) => new Date(iso || Date.now()).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'America/New_York' });
-export const itemUrl = (tap) => `${SITE}/admin/checkin/?r=${encodeURIComponent(tap)}`;
+// Each box's own code: the check-in and which box it is (Peter, Nov 10 2026: "we will be labeling individual boxes")
+export const itemUrl = (tap, box = null) => `${SITE}/admin/checkin/?r=${encodeURIComponent(tap)}${box ? `&b=${box}` : ''}`;
 export const shelfUrl = (shelf) => `${SITE}/admin/checkin/?shelf=${encodeURIComponent(shelf)}`;
 
 /** The kid's name sized to fit the label's width (a long name gets smaller letters) */
@@ -46,7 +48,7 @@ export function itemLabel({ kid, item, line, box = 1, boxes = 1, shelf, at, tap 
     // The day it came in, SOARD, and the QR for load-out
     `^FO40,${H - 300}^A0N,40,40^FDIn ${day(at)}^FS`,
     `^FO40,${H - 245}^A0N,40,40^FDSOARD^FS`,
-    `^FO${W - 300},${H - 320}^BQN,2,7^FDQA,${itemUrl(tap)}^FS`,
+    `^FO${W - 300},${H - 320}^BQN,2,7^FDQA,${itemUrl(tap, box)}^FS`,
     '^PQ1', '^XZ',
   ].join('\n');
 }
