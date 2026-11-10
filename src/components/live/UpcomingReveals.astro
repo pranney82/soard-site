@@ -16,7 +16,9 @@
  * hero shows these instead (HeroUpcoming), so this band closes the page.
  *
  * A timeline: the "when" in a column, a dot on a line, the kid beside it.
- * Beside it, "Get every reveal by email" and "in your calendar". On a phone
+ * Beside it, "Get every reveal by email" and "in your calendar". With
+ * `limit` (/reveals/, where the videos are the page) it opens on the next few
+ * and "See every reveal coming up" shows the rest in place. On a phone
  * the when sits above each card and the two cards follow the list. Motion: the line draws, rows rise in turn, the month bar fills;
  * all of it off with reduced motion.
  */
@@ -38,6 +40,8 @@ interface Props {
   id?: string;
   /** Given (the events page): with nothing scheduled the band stays, with this lead and the two ways to hear about the next one */
   emptyLead?: string;
+  /** Open on this many reveals, the rest a press away (/reveals/: 3); none: every one */
+  limit?: number;
 }
 
 const {
@@ -48,6 +52,7 @@ const {
   where = 'up-next',
   id = 'up-next',
   emptyLead = '',
+  limit = 0,
 } = Astro.props;
 
 // Drawn at build from the reveals copy, so the band has its height from the first paint (the browser redraws only
@@ -55,7 +60,7 @@ const {
 const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
 ---
 
-<section class="upn" id={id} data-invite-where={where} data-upnext data-exclude={exclude || ''} data-keep-empty={emptyLead ? '' : undefined} data-empty={atBuild.length ? undefined : ''} hidden={!atBuild.length && !emptyLead} aria-labelledby={`${id}-title`}>
+<section class="upn" id={id} data-invite-where={where} data-upnext data-exclude={exclude || ''} data-keep-empty={emptyLead ? '' : undefined} data-empty={atBuild.length ? undefined : ''} data-limit={limit || undefined} hidden={!atBuild.length && !emptyLead} aria-labelledby={`${id}-title`}>
   <!-- Reading order is the order on screen at every width: the intro, the reveals, then the ways to follow them all.
        On a wide screen the cards sit in the left column under the intro (grid areas) -->
   <div class="container upn__grid">
@@ -66,7 +71,16 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
       {emptyLead && <p class="upn__lead upn__lead--empty">{emptyLead}</p>}
     </div>
 
-    <ol class="upn__list" data-upn-list data-sig={rowsSignature(atBuild)} aria-label="Upcoming reveals" set:html={bandRowsHtml(atBuild)}></ol>
+    <div class="upn__col">
+      <ol class="upn__list" id={`${id}-list`} data-upn-list data-sig={rowsSignature(atBuild)} aria-label="Upcoming reveals" set:html={bandRowsHtml(atBuild, { limit })}></ol>
+      <!-- With a limit: the rest of the list, in place (hidden when there's no rest, or once shown) -->
+      {limit > 0 && (
+        <button class="upn__more" type="button" data-upn-more aria-controls={`${id}-list`} hidden={atBuild.length <= limit}>
+          See every reveal coming up
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        </button>
+      )}
+    </div>
 
     <div class="upn-ways">
       <!-- Email for every reveal: there from the first paint, taken out if Reveals → Settings has reminders off, and left
@@ -142,7 +156,7 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
     column-gap: clamp(40px, 6vw, 96px); row-gap: 32px; align-items: start;
   }
   .upn__intro { grid-area: intro; }
-  .upn__list { grid-area: list; }
+  .upn__col { grid-area: list; min-width: 0; }
   /* The cards stay in view while a long list scrolls by, but only when they fit with room for a note and the
      quick check to open under them (data-ways="stick", decided by placeWays() below); otherwise they scroll with
      the page. Never pinned by their foot: growing would then push the button up under the pointer. */
@@ -249,7 +263,7 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
 
   /* ── Nothing scheduled (the events page keeps the band): the intro, then the two ways to hear about the next one ── */
   .upn__lead--empty { display: none; }
-  .upn[data-empty] .upn__lead--full, .upn[data-empty] .upn__list, .upn[data-empty] [data-cal-one] { display: none; }
+  .upn[data-empty] .upn__lead--full, .upn[data-empty] .upn__col, .upn[data-empty] [data-cal-one] { display: none; }
   .upn[data-empty] .upn__lead--empty { display: block; }
   @media (min-width: 961px) {
     .upn[data-empty] .upn__grid { grid-template-areas: 'intro ways'; grid-template-rows: none; }
@@ -352,6 +366,27 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
   }
   :global(.upn-add svg) { flex-shrink: 0; }
   :global(.upn-add:hover) { background: var(--c-yellow); border-color: var(--c-yellow); color: var(--c-dark-deep); transform: translateY(-1px); }
+  /* ── A band that opens on the next few (limit): the rest wait for "See every reveal coming up" ── */
+  .upn:not([data-all]) :global(.upn-row[data-more]) { display: none; }
+  .upn__more {
+    display: flex; align-items: center; justify-content: center; gap: 8px; width: calc(100% - var(--upn-when) - var(--upn-node));
+    min-height: 50px; margin: 18px 0 0 calc(var(--upn-when) + var(--upn-node)); padding: 12px 20px; border-radius: 100px;
+    border: 1.5px solid rgba(254, 252, 245, 0.34); background: transparent; color: var(--upn-ink);
+    font: inherit; font-size: 15px; font-weight: 700; cursor: pointer; transition: border-color 0.2s ease, background-color 0.2s ease;
+  }
+  .upn__more[hidden], .upn[data-all] .upn__more { display: none; }
+  /* It comes in with the rows above it */
+  .upn:not(.is-in) .upn__more { opacity: 0; }
+  @media (prefers-reduced-motion: no-preference) { .upn__more { transition: opacity 0.7s var(--ease) 0.5s, border-color 0.2s ease, background-color 0.2s ease; } }
+  /* No script, no button to press: every reveal is simply there */
+  @media (scripting: none) { .upn .upn__more { display: none; } .upn:not([data-all]) :global(.upn-row[data-more]) { display: grid; } }
+  /* The rest rise in as the first ones did */
+  @media (prefers-reduced-motion: no-preference) {
+    @starting-style { .upn[data-all] :global(.upn-row[data-more]) { opacity: 0; transform: translateY(18px); } }
+  }
+  .upn__more:hover { border-color: var(--upn-ink); background: rgba(255, 255, 255, 0.05); }
+  .upn__more:focus-visible { outline: 2px solid var(--c-yellow); outline-offset: 3px; box-shadow: none; }
+
   :global(.upn-add:focus-visible) { outline: 2px solid var(--c-yellow); outline-offset: 3px; box-shadow: none; }
   :global(.upn-row[data-state='confirmed'] .upn-add) { background: var(--c-yellow); border-color: var(--c-yellow); color: var(--c-dark-deep); }
 
@@ -384,6 +419,7 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
     :global(.upn-card) { grid-area: card; margin-left: 10px; padding: 12px 14px 12px 12px; gap: 14px; border-radius: 16px; }
     :global(.upn-card__photo) { width: 76px; height: 76px; border-radius: 12px; }
     :global(.upn-card__foot) { margin-top: 10px; }
+    .upn__more { width: calc(100% - var(--upn-node) - 10px); margin: 22px 0 0 calc(var(--upn-node) + 10px); }
     .upn-cal { padding: 20px; }
   }
   /* The narrowest phones (after the phone rules above, so it wins): a smaller photo, so the card's words and buttons keep inside it */
@@ -498,7 +534,8 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
   /** Line ends at the first and last dots, wherever the rows wrap. Layout positions (offsetTop), not on-screen
    *  ones: rows still rising into place would otherwise put the line 18px off its dots. */
   function placeLine(list: HTMLElement) {
-    const nodes = list.querySelectorAll<HTMLElement>('.upn-node');
+    // Only the rows on screen (a band that opens on the next few keeps the rest out of the layout)
+    const nodes = [...list.querySelectorAll<HTMLElement>('.upn-node')].filter((n) => n.offsetParent !== null);
     if (!nodes.length) return;
     // offsetTop counts from the nearest positioned or transformed box (a rising row, in Chrome): add up to the list
     const topIn = (n: HTMLElement) => { let y = 0; let at: HTMLElement | null = n; while (at && at !== list) { y += at.offsetTop; at = at.offsetParent as HTMLElement | null; } return y; };
@@ -527,6 +564,15 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
     // What the build drew (its signature), so the same list isn't drawn twice
     let drawn: string | null = list.dataset.sig ?? null;
     const keepEmpty = section.hasAttribute('data-keep-empty');
+    // Opens on the next few (/reveals/): the rest are a press away, and stay open once shown
+    const limit = Number(section.dataset.limit) || 0;
+    const more = section.querySelector<HTMLButtonElement>('[data-upn-more]');
+    more?.addEventListener('click', () => {
+      section.toggleAttribute('data-all', true);
+      placeLine(list);
+      // Keyboard and screen reader: on to the first reveal that just appeared
+      list.querySelector<HTMLElement>('.upn-row[data-more] .upn-card__name a')?.focus({ preventScroll: true });
+    });
     // A photo that fails to load, now or later (error doesn't bubble: caught on the way down)
     list.addEventListener('error', (e) => { if (e.target instanceof HTMLImageElement) blank(e.target); }, true);
     list.querySelectorAll('img').forEach((img) => { if (img.complete && !img.naturalWidth) blank(img); });
@@ -541,8 +587,9 @@ const atBuild = upcomingAtBuild().filter((r) => r.slug !== exclude);
       const key = rowsSignature(shown);
       if (key !== drawn) {
         drawn = key;
-        keepFocus(list, () => { list.innerHTML = bandRowsHtml(shown); });
+        keepFocus(list, () => { list.innerHTML = bandRowsHtml(shown, { limit }); });
       }
+      if (more) more.hidden = shown.length <= limit;
       if (shown.length) placeLine(list);
       section.toggleAttribute('data-empty', !shown.length);
       // Nothing scheduled: the band goes, or (the events page) stays as the way to hear about the next one, while

@@ -348,11 +348,34 @@ async function buildReveals(): Promise<Reveal[]> {
     };
   });
 
-  return reveals.sort((a, b) => {
+  reveals.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === 'live' ? -1 : 1;
     if ((b.year ?? 0) !== (a.year ?? 0)) return (b.year ?? 0) - (a.year ?? 0);
     return a.kids[0].name.localeCompare(b.kids[0].name);
   });
+  distinctPictures(reveals, groups);
+  return reveals;
+}
+
+// A photo with someone in it, by its description ("A young boy … smiling" rather than "A bedroom with a bed")
+const PEOPLE = /\b(boy|girl|child|children|kid|kids|son|daughter|family|parents?|mother|father|mom|dad|brother|sister|smil\w*|laugh\w*|young|teen\w*|woman|man|people)\b/i;
+
+/**
+ * The same picture never shows twice: a kid on two cards (their live replay
+ * and their reveal video, both on /reveals/) gets another of their own photos
+ * on the second, one with people in it where there is one. Cards are taken in
+ * the order they're shown, so the first keeps the kid's main photo.
+ */
+function distinctPictures(reveals: Reveal[], groups: Map<string, Group>) {
+  const used = new Set<string>();
+  for (const r of reveals) {
+    if (r.image && !used.has(r.image)) { used.add(r.image); continue; }
+    const kids = [...(groups.get(r.key)?.kids || [])].sort((a, b) => Number(!a.heroImage) - Number(!b.heroImage));
+    const photos = kids.flatMap((k) => ((k.photos || []) as { url?: string; alt?: string }[]).filter((ph) => ph?.url));
+    const order = [...photos.filter((ph) => PEOPLE.test(ph.alt || '')), ...photos.filter((ph) => !PEOPLE.test(ph.alt || ''))];
+    const next = order.map((ph) => cfId(ph.url as string)).find((id) => id && !used.has(id));
+    if (next) { r.image = next; used.add(next); }
+  }
 }
 
 let gridSeq = 0;

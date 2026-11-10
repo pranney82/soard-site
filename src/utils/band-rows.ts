@@ -71,7 +71,8 @@ function cardHtml(r: UpcomingReveal, i: number): string {
     + `<div class="upn-card__foot">${foot}</div></div></article>`;
 }
 
-export function bandRowsHtml(list: UpcomingReveal[]): string {
-  return list.map((r, i) => `<li class="upn-row${i === 0 ? ' is-next' : ''}" data-slug="${esc(r.slug)}" data-state="${r.confirmed ? 'confirmed' : 'tentative'}" style="--i:${i}">`
+/** limit: rows after the first `limit` are marked data-more, for a band that opens on the next few (/reveals/) */
+export function bandRowsHtml(list: UpcomingReveal[], { limit = 0 }: { limit?: number } = {}): string {
+  return list.map((r, i) => `<li class="upn-row${i === 0 ? ' is-next' : ''}"${limit && i >= limit ? ' data-more' : ''} data-slug="${esc(r.slug)}" data-state="${r.confirmed ? 'confirmed' : 'tentative'}" style="--i:${limit && i >= limit ? i - limit : i}">`
     + `${whenHtml(r)}<span class="upn-node" aria-hidden="true"></span>${cardHtml(r, i)}</li>`).join('');
 }

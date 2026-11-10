@@ -582,15 +582,17 @@ function meta(r: Reveal) {
   }
 
   @media (max-width: 640px) {
+    /* One row that scrolls, out to the screen's edges: the year cut off at the edge says there are more (no fade) */
     .rv-filter {
       flex-wrap: nowrap;
       overflow-x: auto;
       overscroll-behavior-x: contain;
       scrollbar-width: none;
-      padding-bottom: 4px;
-      -webkit-mask-image: linear-gradient(to right, #000 85%, transparent);
-      mask-image: linear-gradient(to right, #000 85%, transparent);
+      margin-inline: calc(-1 * max(var(--space-lg), env(safe-area-inset-left))) calc(-1 * max(var(--space-lg), env(safe-area-inset-right)));
+      padding: 2px max(var(--space-lg), env(safe-area-inset-right)) 4px max(var(--space-lg), env(safe-area-inset-left));
+      scroll-padding-inline: var(--space-lg);
     }
+    .rv-chip { flex-shrink: 0; }
     .rv-filter::-webkit-scrollbar { display: none; }
     .rv-chip { min-height: 38px; padding: 0 14px; }
     .rv-card { gap: 10px; }
