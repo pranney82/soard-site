@@ -453,3 +453,14 @@ test('each makeover’s Project Manager rides along, for who opens on Check out'
   assert.equal(kidOf(v, 'Rowan S.').pm, 'Sam');
   assert.equal(kidOf(v, 'Ava E.').pm, null);
 });
+
+test('check-out: a label scanned after Load all counts once', async () => {
+  const { checkOut } = await import('../functions/api/_kid-record.js');
+  const head = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  const a = tap();
+  await receive(env.DB, { tap: a, jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, name: head.name, units: 1, boxes: 2 });
+  await checkOut(env.DB, { tap: tap(), jobId: 'j-rowan', itemId: head.itemId, partKey: head.partKey, units: 1, name: head.name });
+  assert.equal((await checkOut(env.DB, { tap: tap(), ref: a })).repeat, true);
+  const it = itemOf(await view(), 'Rowan S.', 'Raincan Shower Head');
+  assert.deepEqual([it.status, it.sent], ['out', 1]);
+});

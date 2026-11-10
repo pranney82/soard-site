@@ -246,6 +246,10 @@ export async function checkOut(DB, input, { by = null, now = new Date().toISOStr
     if (r.undone_at) throw Object.assign(new Error('That check-in was taken back.'), { status: 409 });
     const out = await DB.prepare("SELECT * FROM kid_receipts WHERE kind = 'out' AND ref = ? AND undone_at IS NULL").bind(r.id).first();
     if (out) return { receipt: out, repeat: true };
+    // Already gone with Load all or a tap (no label scanned): all of that item is out, so this label counts once too
+    const sums = await DB.prepare("SELECT SUM(CASE WHEN kind = 'receive' THEN units ELSE 0 END) AS came, SUM(CASE WHEN kind = 'out' THEN units ELSE 0 END) AS went FROM kid_receipts WHERE job_id = ? AND item_id = ? AND part_key = ? AND undone_at IS NULL")
+      .bind(r.job_id, r.item_id, r.part_key).first();
+    if ((sums?.went || 0) >= (sums?.came || 0)) return { receipt: { ...r, kind: 'out' }, repeat: true };
     row = { jobId: r.job_id, itemId: r.item_id, partKey: r.part_key, units: r.units, name: r.name, line: r.line_name, ref: r.id };
   }
   if (!row.jobId || !row.itemId || !row.partKey) throw bad('Which item is it? Pick it from the list.');

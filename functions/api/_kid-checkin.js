@@ -98,7 +98,8 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   const templates = templateLines(lines);
   const live = await readState(DB, 'live');
   // Each makeover's Project Manager (the selection reader keeps it): they load out, so the page opens on Check out for them
-  const pmOf = new Map((parse((await rows(DB, "SELECT data FROM kid_parts_state WHERE key = 'state'"))[0]?.data, {}).jobs || []).map((j) => [j.id, j.pm || null]));
+  const jobState = new Map((parse((await rows(DB, "SELECT data FROM kid_parts_state WHERE key = 'state'"))[0]?.data, {}).jobs || []).map((j) => [j.id, j]));
+  const pmOf = new Map([...jobState].map(([id, j]) => [id, j.pm || null]));
   const since = live.since || null;
 
   // Each kid's own page, for their photo (the same match the board's costs use: pinned job, else name and year)
@@ -106,7 +107,7 @@ export async function checkinView(env, { photos = true, strict = false } = {}) {
   const kids = jobs.map((j) => {
     const page = photos ? matchProject(j.name, pages, j.id) : null;
     const shelves = SHELVES.filter((s) => record.shelves.get(s) === j.id);
-    return { jobId: j.id, name: j.name, short: shortName(j.name), pm: pmOf.get(j.id) || null, shelves, shelf: shelves[0] ? shelfName(shelves[0]) : null, photo: avatarOf(page?.photo), others: 0, allowances: [], items: [] };
+    return { jobId: j.id, name: j.name, short: shortName(j.name), pm: pmOf.get(j.id) || null, stage: jobState.get(j.id)?.status || null, shelves, shelf: shelves[0] ? shelfName(shelves[0]) : null, photo: avatarOf(page?.photo), others: 0, allowances: [], items: [] };
   });
   const kidOf = new Map(kids.map((k) => [k.jobId, k]));
   const lineOf = new Map(lines.map((l) => [`${l.jobId}|${l.itemId}`, l]));

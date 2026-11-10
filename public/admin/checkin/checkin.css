@@ -270,7 +270,8 @@ button.look:active { background: var(--press); }
 .seg { display: grid; grid-template-columns: 1fr 1fr; background: var(--chip); border-radius: 12px; padding: 3px; gap: 3px; }
 .seg button { height: 38px; border: 0; border-radius: 9px; background: transparent; font-size: 15px; font-weight: 650; color: var(--muted); transition: background 160ms var(--out), color 160ms var(--out), box-shadow 160ms var(--out); }
 .seg button[aria-pressed="true"] { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(24, 24, 27, 0.12); }
-body[data-mode="out"] #other { visibility: hidden; }
+body[data-mode="out"] #other:empty { visibility: hidden; }
+body[data-mode="out"] .chips-bar { display: none; }
 .group-h.warn { color: var(--warn-fg); }
 /* Scanning labels: a square frame, what was just read, how many are out, Done under the thumb */
 .cam.qr .frame.square { inset: auto; left: 50%; top: 42%; width: min(68vw, 300px); aspect-ratio: 1; transform: translate(-50%, -50%); }
@@ -288,3 +289,47 @@ body[data-mode="out"] #other { visibility: hidden; }
 .cam-said.warn span, .cam-said.info span { grid-column: 1; }
 .cam-said.info { grid-template-columns: minmax(0, 1fr); }
 .cam-done { position: absolute; left: 16px; right: 16px; bottom: calc(24px + env(safe-area-inset-bottom, 0px)); margin: 0 auto; max-width: 420px; width: auto; height: 58px; font-size: 17.5px; }
+
+/* Check out: who's being loaded, then their boxes by shelf */
+.out-q { margin: 18px 2px 2px; }
+.kid-tile { width: 100%; margin-top: 10px; min-height: 84px; display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 14px; padding: 12px 14px 12px 12px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); text-align: left; transition: background 120ms var(--out), transform 120ms var(--out); }
+.kid-tile:active { background: var(--press); transform: scale(0.99); }
+.kid-tile .face { width: 56px; height: 56px; }
+.kt-body { display: grid; gap: 2px; min-width: 0; }
+.kt-body b { font-size: 18px; font-weight: 750; letter-spacing: -0.015em; }
+.kt-body span { font-size: 14px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kt-body .kt-warn { color: var(--warn-fg); font-weight: 600; }
+.kt-stage { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); background: var(--chip); padding: 4px 8px; border-radius: 999px; white-space: nowrap; }
+.back { margin-top: 12px; height: 40px; display: inline-flex; align-items: center; gap: 4px; padding: 0 10px 0 4px; border: 0; background: transparent; color: var(--muted); font-size: 15px; font-weight: 650; }
+.back .chev { transform: rotate(180deg); }
+.load-head { margin-top: 4px; }
+.load-head .who > div { display: grid; gap: 4px; justify-items: start; }
+.load-head .face { width: 56px; height: 56px; }
+.load-head h2 { font-size: 22px; }
+.count.big { text-align: right; font-size: 13px; line-height: 1.25; }
+.count.big b { font-size: 24px; }
+.all-loaded { display: flex; gap: 10px; align-items: center; margin: 0 16px 14px; padding: 12px 14px; border-radius: 14px; background: var(--ok-bg); color: var(--ok-fg); font-weight: 650; }
+.lrow { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; border-top: 1px solid var(--line); }
+.group-h + .lrow { border-top: 0; }
+.lrow .lrow-main { border-top: 0; padding-left: 4px; grid-template-columns: minmax(0, 1fr); }
+.tickbtn { width: 56px; height: 56px; margin-left: 4px; border: 0; background: transparent; display: grid; place-items: center; transition: transform 120ms var(--out); }
+.tickbtn:active { transform: scale(0.9); }
+.tickbtn .tick { width: 30px; height: 30px; background: transparent; box-shadow: inset 0 0 0 2px var(--line-strong); color: transparent; transition: background 160ms var(--out), box-shadow 160ms var(--out), color 160ms var(--out); }
+.tickbtn .tick path { stroke-dashoffset: 22; animation: none; transition: stroke-dashoffset 260ms var(--out); }
+.tickbtn[aria-pressed="true"] .tick { background: var(--ok-dot); box-shadow: none; color: #FFFFFF; }
+.tickbtn[aria-pressed="true"] .tick path { stroke-dashoffset: 0; }
+.tickbtn:disabled { opacity: 0.5; }
+.lrow.done .row-name { color: var(--muted); }
+/* The scanner, loading one kid: whose, how many boxes, a flashlight where the phone has one, Undo on the last */
+.cam-top { position: absolute; top: calc(14px + env(safe-area-inset-top, 0px)); left: max(16px, env(safe-area-inset-left, 0px)); right: 76px; display: flex; align-items: center; gap: 10px; color: #FFFFFF; font-weight: 700; font-size: 16px; }
+.cam-top .face { width: 32px; height: 32px; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.8); }
+.cam-top .cam-count { position: static; margin-left: auto; }
+.cam-top .cam-count:empty { display: none; }
+.cam-torch { position: absolute; right: max(16px, env(safe-area-inset-right, 0px)); top: calc(70px + env(safe-area-inset-top, 0px)); width: 44px; height: 44px; border-radius: 999px; border: 0; background: rgba(0, 0, 0, 0.45); color: #FFFFFF; display: grid; place-items: center; }
+.cam-torch[aria-pressed="true"] { background: var(--primary); color: var(--ink); }
+.cam-said .face { grid-row: 1 / span 3; align-self: start; width: 40px; height: 40px; }
+.cam-said .cam-undo { grid-column: 1 / -1; justify-self: end; margin-top: 4px; height: 36px; padding: 0 12px; border-radius: 10px; border: 0; background: var(--chip); color: var(--ink); font-weight: 650; font-size: 14.5px; }
+.cam-said.end { background: var(--ok-bg); }
+.cam-said.warn.stop { grid-template-columns: auto minmax(0, 1fr); }
+.cam-said.warn.stop > b, .cam-said.warn.stop > span { grid-column: 2; }
+.cam-said.warn .cam-undo { background: rgba(110, 82, 0, 0.12); color: var(--warn-fg); }

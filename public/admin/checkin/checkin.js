@@ -173,8 +173,9 @@ function rowHtml(kid, it) {
 function render() {
   document.body.dataset.mode = state.mode;
   document.querySelectorAll('[data-mode]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode)));
-  $('scan').querySelector('span').textContent = state.mode === 'out' ? 'Scan labels' : 'Scan a box';
   if (state.mode === 'out') { renderOut(); return; }
+  $('scan').querySelector('span').textContent = 'Scan a box';
+  $('other').textContent = 'Something else';
   $('chips').innerHTML = ['All', ...state.kids.map((k) => k.short)]
     .map((n) => `<button class="chip${n === 'All' ? '' : ' has-face'}" type="button" aria-pressed="${n === state.filter}" data-chip="${esc(n)}">${n === 'All' ? '' : faceOf(n, 26)}${esc(n)}</button>`).join('');
   let html = state.needsLook.length && !state.query && state.filter === 'All'
@@ -798,8 +799,11 @@ document.addEventListener('click', async (e) => {
   if (t.dataset.chip) { state.filter = t.dataset.chip; render(); window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' }); return; }
   if (t.dataset.here) { state.openHere.add(t.dataset.here); render(); return; }
   if (t.dataset.allhere) { const k = kidById(t.dataset.allhere); if (k) allHereSheet(k); return; }
-  if (t.dataset.loadall) { const k = kidById(t.dataset.loadall); if (k) loadAllSheet(k); return; }
+  if (t.dataset.loadkid) { state.loadKid = t.dataset.loadkid; render(); window.scrollTo({ top: 0 }); return; }
+  if (t.dataset.back) { state.loadKid = null; render(); window.scrollTo({ top: 0 }); return; }
+  if (t.dataset.tick) { tick(t.dataset.kid, t.dataset.tick); return; }
   if (t.dataset.missing) { (state.openMissing ||= new Set()).add(t.dataset.missing); render(); return; }
+  if (t.dataset.loaded) { (state.openLoaded ||= new Set()).add(t.dataset.loaded); render(); return; }
   if (t.classList.contains('row') && t.dataset.id) {
     const kid = kidById(t.dataset.kid);
     const it = kid?.items.find((i) => i.id === t.dataset.id);
@@ -809,12 +813,23 @@ document.addEventListener('click', async (e) => {
 });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { if (document.querySelector('.cam')) stopCamera(); else close(); } });
 $('q').addEventListener('input', (e) => { state.query = e.target.value.trim(); render(); });
-$('other').addEventListener('click', otherSheet);
-$('scan').addEventListener('click', () => (state.mode === 'out' ? scanLabels() : scan()));
+// The dock's second button: Something else when checking in, Load all when loading a kid out
+$('other').addEventListener('click', () => {
+  if (state.mode !== 'out') { otherSheet(); return; }
+  const k = kidById(state.loadKid);
+  if (k) loadAllSheet(k);
+});
+$('scan').addEventListener('click', () => {
+  if (state.mode !== 'out') { scan(); return; }
+  tones.wake();
+  scanLabels(kidById(state.loadKid) || null);
+});
+
 document.querySelectorAll('[data-mode]').forEach((b) => b.addEventListener('click', () => {
   if (state.mode === b.dataset.mode) return;
   state.mode = b.dataset.mode;
   state.openHere.clear();
+  state.loadKid = null;
   render();
   window.scrollTo({ top: 0 });
 }));
@@ -865,53 +880,130 @@ async function load() {
 load();
 
 // ─── Check out: load-out to the house ───────────────────────────────
+// Christian loads one makeover at a time: pick the kid, then their boxes by shelf, ticked off by scanning each label
+// (or a tap). Another kid's box is stopped, every scan is heard, and the end says what isn't here yet.
 
-/** Check out: each kid's things at the Office by shelf, what isn't here yet (so nothing's forgotten), what's out */
-function renderOut() {
-  $('chips').innerHTML = ['All', ...state.kids.map((k) => k.short)]
-    .map((n) => `<button class="chip${n === 'All' ? '' : ' has-face'}" type="button" aria-pressed="${n === state.filter}" data-chip="${esc(n)}">${n === 'All' ? '' : faceOf(n, 26)}${esc(n)}</button>`).join('');
-  let html = '';
-  for (const kid of state.kids.filter((k) => state.filter === 'All' || k.short === state.filter)) {
-    const items = kid.items.filter((it) => matches(kid, it));
-    if (state.query && !items.length) continue;
-    const load = items.filter(atOffice).sort((a, b) => String(a.shelf || '').localeCompare(String(b.shelf || ''), undefined, { numeric: true }));
-    // Not all here yet (a partly-here item shows in both: some to load, some still coming)
-    const missing = items.filter((i) => ['ordered', 'not', 'partly'].includes(i.status));
-    const out = items.filter((i) => i.status === 'out' || i.status === 'house');
-    const total = load.length + out.length;
-    html += `<section class="card" aria-label="${esc(kid.short)}">
-      <div class="card-head">
-        <div class="card-title"><div class="who">${face(kid, 44)}<h2>${esc(kid.short)}</h2>${kid.shelf ? `<span class="tag-here">${esc(kid.shelves.map(shelfName).join(' · '))}</span>` : ''}</div><span class="count"><b>${out.length}</b> of ${total} out</span></div>
-        <div class="bar" aria-hidden="true"><i data-bar="${esc(kid.jobId)}" style="transform:scaleX(${total ? out.length / total : 0})"></i></div>
-      </div>`;
-    if (load.length) {
-      html += `<div class="group-h"><span>At the Office</span><span>${load.length}</span></div>${load.map((i) => outRow(kid, i)).join('')}
-        <button class="more strong" type="button" data-loadall="${esc(kid.jobId)}"><span>Load all ${load.length}</span>${ICON.chev}</button>`;
-    }
-    // What isn't here yet stays one line until it's opened, so it can't bury what's being loaded, and can't be missed
-    if (missing.length) {
-      html += state.openMissing?.has(kid.jobId) || state.query
-        ? `<div class="group-h warn"><span>Not here yet</span><span>${missing.length}</span></div>${missing.map((i) => rowHtml(kid, i)).join('')}`
-        : `<button class="more warn" type="button" data-missing="${esc(kid.jobId)}"><span>${plural(missing.length, 'thing')} not here yet</span>${ICON.chev}</button>`;
-    }
-    if (out.length) {
-      html += state.openHere.has(kid.jobId) || state.query
-        ? `<div class="group-h"><span>Out</span><span>${out.length}</span></div>${out.map((i) => rowHtml(kid, i)).join('')}`
-        : `<button class="more" type="button" data-here="${esc(kid.jobId)}"><span>${plural(out.length, 'thing')} out</span>${ICON.chev}</button>`;
-    }
-    if (!load.length && !missing.length && !out.length) html += '<div class="group-h"><span>Nothing at the Office yet</span><span></span></div>';
-    html += '</section>';
+const STAGE_RANK = { Build: 0, Mobilization: 1, Design: 2 };
+
+/** Boxes of an item still at the Office: each check-in's boxes, less the ones whose label was scanned out or that went with Load all */
+function boxesLeft(it) {
+  const live = (it.receipts || []).filter((r) => !r.undone);
+  const scanned = new Set(live.filter((r) => r.kind === 'out' && r.ref).map((r) => r.ref));
+  let tapped = live.filter((r) => r.kind === 'out' && !r.ref).reduce((t, r) => t + (r.units || 0), 0);
+  let boxes = 0;
+  for (const r of live.filter((x) => x.kind === 'receive')) {
+    if (scanned.has(r.id)) continue;
+    if (tapped >= r.units) { tapped -= r.units; continue; }
+    boxes += Math.max(1, r.boxes || 1);
   }
-  $('list').innerHTML = html || `<div class="empty">${state.query ? 'Nothing matches that.' : 'Nothing at the Office to load.'}</div>`;
+  return boxes;
+}
+const boxesOut = (it) => (it.receipts || []).filter((r) => !r.undone && r.kind === 'receive').reduce((t, r) => t + Math.max(1, r.boxes || 1), 0) - boxesLeft(it);
+const kidLoad = (kid) => {
+  const load = kid.items.filter(atOffice);
+  const left = load.reduce((t, i) => t + boxesLeft(i), 0);
+  const done = kid.items.reduce((t, i) => t + boxesOut(i), 0);
+  return { load, left, done, total: left + done, missing: kid.items.filter((i) => ['ordered', 'not', 'partly'].includes(i.status)), out: kid.items.filter((i) => i.status === 'out' || i.status === 'house') };
+};
+const boxWord = (n) => plural(n, 'box', 'boxes');
+const notHereYet = (n) => (n === 1 ? '1 thing isn’t here yet' : `${n} things aren’t here yet`);
+
+function renderOut() {
+  const kid = kidById(state.loadKid);
+  if (kid) renderLoad(kid); else renderOutHome();
+}
+
+/** Who's being loaded: each kid with what's at the Office (boxes and shelves) and what isn't here yet; theirs first */
+function renderOutHome() {
+  $('scan').querySelector('span').textContent = 'Scan labels';
+  $('other').textContent = '';
+  const kids = state.kids.map((k) => ({ k, l: kidLoad(k) }))
+    .filter(({ k, l }) => !state.query || [k.short, ...k.items.map((i) => i.name)].some((x) => String(x).toLowerCase().includes(state.query.toLowerCase())))
+    .sort((a, b) => (b.l.left > 0) - (a.l.left > 0) || (STAGE_RANK[a.k.stage] ?? 9) - (STAGE_RANK[b.k.stage] ?? 9) || b.l.left - a.l.left);
+  $('list').innerHTML = kids.length ? `<div class="label-above out-q">Who are you loading?</div>${kids.map(({ k, l }) => `
+    <button class="kid-tile" type="button" data-loadkid="${esc(k.jobId)}">
+      ${face(k, 56)}
+      <span class="kt-body"><b>${esc(k.short)}</b>
+        <span>${l.left ? `${boxWord(l.left)}${k.shelves.length ? ` · ${esc(k.shelves.map(shelfName).join(', '))}` : ''}` : l.done ? 'All loaded' : 'Nothing at the Office yet'}</span>
+        ${l.missing.length ? `<span class="kt-warn">${plural(l.missing.length, 'thing')} not here yet</span>` : ''}</span>
+      ${k.stage ? `<span class="kt-stage">${esc(k.stage)}</span>` : ''}${ICON.chev}
+    </button>`).join('')}` : `<div class="empty">${state.query ? 'Nothing matches that.' : 'No makeovers to load.'}</div>`;
   showPrinter();
 }
 
-function outRow(kid, it) {
-  const left = toLoad(it);
-  const sub = [it.line, left > 1 ? `${left} of them` : null, it.sent ? `${it.sent} out already` : null].filter(Boolean).join(' · ');
-  return `<button class="row" data-kid="${esc(kid.jobId)}" data-id="${esc(it.id)}" type="button">
-    <span class="row-name">${esc(it.name)}</span><span class="row-side"><span class="tag-here">${esc(shelfName(it.shelf) || 'Here')}</span></span>
-    <span class="row-sub">${esc(sub)}</span></button>`;
+/** One kid's load: their boxes by shelf (tick one off, or scan its label), what isn't here yet, what's loaded */
+function renderLoad(kid) {
+  const l = kidLoad(kid);
+  $('scan').querySelector('span').textContent = `Scan ${kid.short.split(' ')[0]}’s labels`;
+  $('other').textContent = l.left ? `Load all ${boxWord(l.left)}` : '';
+  const byShelf = new Map();
+  for (const it of l.load) byShelf.set(it.shelf || '', [...(byShelf.get(it.shelf || '') || []), it]);
+  const shelves = [...byShelf].sort((a, b) => String(a[0]).localeCompare(String(b[0]), undefined, { numeric: true }));
+  let html = `<button class="back" type="button" data-back="1">${ICON.chev}<span>All kids</span></button>
+    <section class="card load-head" aria-label="${esc(kid.short)}">
+      <div class="card-head">
+        <div class="card-title"><div class="who">${face(kid, 56)}<div><h2>${esc(kid.short)}</h2>${kid.stage ? `<span class="kt-stage">${esc(kid.stage)}</span>` : ''}</div></div>
+          <span class="count big"><b>${l.done}</b> of ${l.total} ${l.total === 1 ? 'box' : 'boxes'}<br><span>loaded</span></span></div>
+        <div class="bar" aria-hidden="true"><i data-bar="${esc(kid.jobId)}" style="transform:scaleX(${l.total ? l.done / l.total : 0})"></i></div>
+      </div>
+      ${!l.left && l.done ? `<div class="all-loaded">${ICON.tick}<span>Everything at the Office is loaded${l.missing.length ? `. ${notHereYet(l.missing.length)}.` : '.'}</span></div>` : ''}
+    </section>`;
+  if (shelves.length) {
+    html += '<section class="card">';
+    for (const [shelf, items] of shelves) {
+      const n = items.reduce((t, i) => t + boxesLeft(i), 0);
+      html += `<div class="group-h"><span>${esc(shelfName(shelf) || 'At the Office')}</span><span>${boxWord(n)}</span></div>${items.map((i) => loadRow(kid, i)).join('')}`;
+    }
+    html += '</section>';
+  } else if (!l.done) {
+    html += '<div class="empty">Nothing for them at the Office yet.</div>';
+  }
+  if (l.missing.length) {
+    html += `<section class="card">${state.openMissing?.has(kid.jobId)
+      ? `<div class="group-h warn"><span>Not here yet</span><span>${l.missing.length}</span></div>${l.missing.map((i) => rowHtml(kid, i)).join('')}`
+      : `<button class="more warn" type="button" data-missing="${esc(kid.jobId)}"><span>${plural(l.missing.length, 'thing')} not here yet</span>${ICON.chev}</button>`}</section>`;
+  }
+  if (l.out.length) {
+    html += `<section class="card">${state.openLoaded?.has(kid.jobId)
+      ? `<div class="group-h"><span>Loaded</span><span>${l.out.length}</span></div>${l.out.map((i) => loadRow(kid, i)).join('')}`
+      : `<button class="more" type="button" data-loaded="${esc(kid.jobId)}"><span>${plural(l.out.length, 'thing')} loaded</span>${ICON.chev}</button>`}</section>`;
+  }
+  $('list').innerHTML = html;
+  showPrinter();
+}
+
+/** A row to tick off: the circle loads it (and, filled, takes it back); the rest of the row opens it */
+function loadRow(kid, it) {
+  const done = it.status === 'out' || it.status === 'house';
+  const n = done ? 0 : boxesLeft(it);
+  const sub = [it.line, done ? (it.status === 'house' ? 'Went straight to the house' : 'Loaded') : boxWord(n), it.sent && !done ? `${it.sent} of ${it.got} loaded` : null].filter(Boolean).join(' · ');
+  return `<div class="lrow${done ? ' done' : ''}" data-row="${esc(it.id)}">
+    <button class="tickbtn" type="button" data-kid="${esc(kid.jobId)}" data-tick="${esc(it.id)}" aria-pressed="${done}" aria-label="${done ? `Take back: ${esc(it.name)}` : `Loaded: ${esc(it.name)}`}"${it.status === 'house' ? ' disabled' : ''}>${ICON.tick}</button>
+    <button class="row lrow-main" data-kid="${esc(kid.jobId)}" data-id="${esc(it.id)}" type="button"><span class="row-name">${esc(it.name)}</span><span class="row-sub">${esc(sub)}</span></button>
+  </div>`;
+}
+
+/** One tap: all of it that's at the Office goes on the truck; tapped again, the last of it comes back */
+async function tick(jobId, id) {
+  const kid = kidById(jobId);
+  const it = kid?.items.find((i) => i.id === id);
+  if (!it) return;
+  tones.wake();
+  const done = it.status === 'out';
+  try {
+    if (done) {
+      const last = [...(it.receipts || [])].reverse().find((r) => r.kind === 'out' && !r.undone);
+      if (!last) return;
+      const r = await undoTap(last.id);
+      if (r.queued || r.local) { last.undone = true; it.sent = Math.max(0, (it.sent || 0) - (last.units || 0)); it.status = 'here'; }
+      tones.undo();
+    } else {
+      const r = await sendOrKeep('out', { tap: newTap(), jobId, itemId: it.itemId, partKey: it.partKey, units: toLoad(it), name: it.name, line: it.line });
+      if (r.queued) { it.sent = it.got; it.status = 'out'; }
+      tones.ok();
+    }
+  } catch (err) { tones.warn(); toast(err.message); return; }
+  render();
 }
 
 /** One thing at the Office: where it is, who checked it in, how many go, Out to the house */
@@ -922,32 +1014,34 @@ function outSheet(kid, it, { keep = false } = {}) {
   const last = came[came.length - 1];
   openSheet(`${head(kidTitle(kid), { kid: true })}
     <p class="item-name">${esc(it.name)}</p>
-    ${factsHtml([['Where', shelfName(it.shelf) || 'At the Office'], ['Came in', last ? `${dayOf(last.at)}${byWho(last)}` : ''], ['Line', it.line], it.sent ? ['Out already', String(it.sent)] : null].filter((f) => f && f[1]))}
+    ${factsHtml([['Where', shelfName(it.shelf) || 'At the Office'], ['Boxes', String(boxesLeft(it))], ['Came in', last ? `${dayOf(last.at)}${byWho(last)}` : ''], ['Line', it.line], it.sent ? ['Loaded already', String(it.sent)] : null].filter((f) => f && f[1]))}
     ${left > 1 ? stepper('units', 'How many go', units) : ''}
-    <button class="btn btn-primary btn-big" type="button" id="sendout" data-focus>Out to the house</button>`, { keep });
+    <button class="btn btn-primary btn-big" type="button" id="sendout" data-focus>Loaded</button>`, { keep });
   const vals = steppers({ units: [1, left] }, (v) => { units = v.units; });
   units = vals.units ?? units;
   $('sendout').onclick = async () => {
     try {
       const r = await sendOrKeep('out', { tap: newTap(), jobId: kid.jobId, itemId: it.itemId, partKey: it.partKey, units, name: it.name, line: it.line });
       if (r.queued) { it.sent = (it.sent || 0) + units; if (it.sent >= it.got) it.status = 'out'; }
+      tones.ok();
     } catch (err) { toast(err.message); return; }
     await close();
-    leave(kid, it);
-    toast(`${it.name}: out to the house`);
+    render();
   };
 }
 
-/** Everything a kid has at the Office, out at once (each one ticked to start) */
+/** Everything a kid has at the Office, loaded at once (each ticked to start) */
 function loadAllSheet(kid) {
   const items = kid.items.filter(atOffice);
-  openSheet(`${head(kidTitle(kid), { kid: true, sub: 'Everything at the Office, out to the house' })}
-    <div class="pick">${items.map((i) => `<label class="look check"><input type="checkbox" checked data-all="${esc(i.id)}" /><span><b>${esc(i.name)}</b><span>${esc([shelfName(i.shelf), i.line, toLoad(i) > 1 ? `${toLoad(i)} of them` : null].filter(Boolean).join(' · '))}</span></span></label>`).join('')}</div>
-    <button class="btn btn-primary btn-big" type="button" id="allgo" data-focus>Out to the house: ${plural(items.length, 'thing')}</button>`);
-  const update = () => { const n = document.querySelectorAll('#sheet-root [data-all]:checked').length; $('allgo').textContent = n ? `Out to the house: ${plural(n, 'thing')}` : 'Pick what’s going'; $('allgo').disabled = !n; };
-  document.querySelectorAll('#sheet-root [data-all]').forEach((c) => { c.onchange = update; });
+  if (!items.length) return;
+  const boxesOf = (list) => list.reduce((t, i) => t + boxesLeft(i), 0);
+  openSheet(`${head(kidTitle(kid), { kid: true, sub: 'Everything at the Office, on the truck' })}
+    <div class="pick">${items.map((i) => `<label class="look check"><input type="checkbox" checked data-all="${esc(i.id)}" /><span><b>${esc(i.name)}</b><span>${esc([shelfName(i.shelf), boxWord(boxesLeft(i)), i.line].filter(Boolean).join(' · '))}</span></span></label>`).join('')}</div>
+    <button class="btn btn-primary btn-big" type="button" id="allgo" data-focus>Loaded: ${boxWord(boxesOf(items))}</button>`);
+  const chosenNow = () => [...document.querySelectorAll('#sheet-root [data-all]:checked')].map((c) => items.find((i) => i.id === c.dataset.all)).filter(Boolean);
+  document.querySelectorAll('#sheet-root [data-all]').forEach((c) => { c.onchange = () => { const n = boxesOf(chosenNow()); $('allgo').textContent = n ? `Loaded: ${boxWord(n)}` : 'Pick what’s going'; $('allgo').disabled = !n; }; });
   $('allgo').onclick = async () => {
-    const chosen = [...document.querySelectorAll('#sheet-root [data-all]:checked')].map((c) => items.find((i) => i.id === c.dataset.all)).filter(Boolean);
+    const chosen = chosenNow();
     $('allgo').disabled = true;
     let done = 0, kept = 0;
     for (const it of chosen) {
@@ -958,89 +1052,172 @@ function loadAllSheet(kid) {
         done++;
       } catch (err) { toast(`${it.name}: ${err.message}`); }
     }
+    tones.ok();
     await close();
     render();
-    toast(kept ? `${done} out; ${kept} wait for the connection` : `${plural(done, 'thing')} out to the house`);
+    if (kept) toast(`${kept} wait for the connection`);
   };
 }
 
+/** Short tones for a scan (rising: loaded; low twice: stop; falling: taken back). Quiet, made in the page, no files */
+const tones = (() => {
+  let ac = null;
+  const play = (notes) => {
+    if (!ac) return;
+    let t = ac.currentTime + 0.01;
+    for (const [hz, ms] of notes) {
+      const o = ac.createOscillator(), g = ac.createGain();
+      o.type = 'sine'; o.frequency.value = hz;
+      g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t + ms / 1000);
+      o.connect(g).connect(ac.destination); o.start(t); o.stop(t + ms / 1000 + 0.02);
+      t += ms / 1000 + 0.03;
+    }
+  };
+  return {
+    // Made on a tap: iPhones only let a page make sound after one
+    wake: () => { try { ac ||= new (window.AudioContext || window.webkitAudioContext)(); if (ac.state === 'suspended') ac.resume(); } catch { ac = null; } },
+    ok: () => play([[880, 70], [1320, 110]]),
+    warn: () => play([[330, 140], [330, 140]]),
+    undo: () => play([[990, 70], [660, 110]]),
+  };
+})();
+
 /**
- * Scan labels: the camera stays open and reads each label's QR as it passes; every one goes out to the house, says
- * whose and what, and the next can be scanned at once. A label read twice counts once
+ * Scan labels: the camera stays open and reads each label's QR as it passes. Loading one kid, another kid's box is
+ * stopped ("Colin L.'s box. Leave it here.") unless sent anyway; each box loaded says what's left, and the last one says
+ * everything at the Office is loaded and what isn't here yet. A label read twice counts once
  */
 let scanning = null;
-async function scanLabels() {
-  let jsQR;
-  try { jsQR = (await import('./jsqr.js')).default; } catch { toast('The label reader didn’t load. Tap the items instead.'); return; }
-  if (!navigator.mediaDevices?.getUserMedia) { toast('This phone’s browser can’t open the camera here. Tap the items instead.'); return; }
+async function scanLabels(scope) {
+  let read;
+  if ('BarcodeDetector' in window) {
+    try { const bd = new window.BarcodeDetector({ formats: ['qr_code'] }); read = async (src) => (await bd.detect(src))[0]?.rawValue || null; } catch { read = null; }
+  }
+  if (!read) {
+    let jsQR;
+    try { jsQR = (await import('./jsqr.js')).default; } catch { toast('The label reader didn’t load. Tick the boxes on the list instead.'); return; }
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    read = async (video) => {
+      const scale = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
+      canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      return jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' })?.data || null;
+    };
+  }
+  if (!navigator.mediaDevices?.getUserMedia) { toast('This phone’s browser can’t open the camera here. Tick the boxes on the list instead.'); return; }
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
   } catch {
     stream = null;
-    toast('The camera didn’t open. Allow it for this page, or tap the items instead.');
+    toast('The camera didn’t open. Allow it for this page, or tick the boxes on the list instead.');
     return;
   }
+  const track = stream.getVideoTracks()[0];
+  const canTorch = Boolean(track?.getCapabilities?.().torch);
   const cam = document.createElement('div');
   cam.className = 'cam qr';
   cam.innerHTML = `<video autoplay playsinline muted></video><div class="frame square" aria-hidden="true"></div>
-    <div class="cam-count" aria-live="polite">0 out</div>
+    <div class="cam-top">${scope ? `${face(scope, 32)}<span>${esc(scope.short)}</span>` : ''}<b class="cam-count" aria-live="polite"></b></div>
     <div class="cam-said" aria-live="assertive" hidden></div>
     <button class="cam-close" type="button" aria-label="Done scanning">${ICON.x}</button>
+    ${canTorch ? '<button class="cam-torch" type="button" aria-pressed="false" aria-label="Flashlight"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 2h10l-2 6v12a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2V8z"/><path d="M12 12v2"/></svg></button>' : ''}
     <button class="btn btn-primary cam-done" type="button">Done</button>`;
   document.body.appendChild(cam);
   const video = cam.querySelector('video');
   video.srcObject = stream;
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const seen = new Set();
-  let outCount = 0, busy = false, saidTimer;
-  const say = (cls, html) => {
+  let loaded = 0, busy = false, saidTimer;
+  const count = () => {
+    const k = scope && kidById(scope.jobId);
+    const l = k ? kidLoad(k) : null;
+    cam.querySelector('.cam-count').textContent = l ? (l.total ? `${l.done} of ${l.total} boxes` : '') : loaded ? `${loaded} loaded` : '';
+    return l;
+  };
+  count();
+  const say = (cls, html, { stay = false } = {}) => {
     const el = cam.querySelector('.cam-said');
     el.className = `cam-said ${cls}`;
     el.innerHTML = html;
     el.hidden = false;
     clearTimeout(saidTimer);
-    saidTimer = setTimeout(() => { el.hidden = true; }, 2600);
+    if (!stay) saidTimer = setTimeout(() => { el.hidden = true; }, 3200);
+    return el;
   };
   const finish = () => { cancelAnimationFrame(scanning); scanning = null; stopCamera(); render(); };
   cam.querySelector('.cam-close').onclick = finish;
   cam.querySelector('.cam-done').onclick = finish;
-  let lastAt = 0;
-  const tick = async (t) => {
-    if (!document.body.contains(cam)) return;
-    scanning = requestAnimationFrame(tick);
-    if (busy || t - lastAt < 140 || !video.videoWidth) return;
-    lastAt = t;
-    const scale = Math.min(1, 720 / Math.max(video.videoWidth, video.videoHeight));
-    canvas.width = Math.round(video.videoWidth * scale); canvas.height = Math.round(video.videoHeight * scale);
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    const code = jsQR(ctx.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height, { inversionAttempts: 'dontInvert' });
-    if (!code?.data) return;
-    let url = null;
-    try { url = new URL(code.data); } catch { /* not a link */ }
-    const ref = url?.pathname.startsWith('/admin/checkin') ? url.searchParams.get('r') : null;
-    const shelf = url?.pathname.startsWith('/admin/checkin') ? url.searchParams.get('shelf') : null;
-    if (shelf && !seen.has(`shelf:${shelf}`)) { seen.add(`shelf:${shelf}`); const s = state.shelves.find((x) => x.shelf === shelf); say('info', `<b>${esc(shelfName(shelf))}</b><span>${esc(kidById(s?.kid)?.short || 'Free')}</span>`); return; }
-    if (!ref) { if (!seen.has(code.data)) { seen.add(code.data); say('warn', '<b>Not a SOARD label</b>'); } return; }
-    if (seen.has(ref)) return;
-    seen.add(ref);
+  cam.querySelector('.cam-torch')?.addEventListener('click', async (e) => {
+    const on = e.currentTarget.getAttribute('aria-pressed') !== 'true';
+    try { await track.applyConstraints({ advanced: [{ torch: on }] }); e.currentTarget.setAttribute('aria-pressed', String(on)); } catch { /* not this phone */ }
+  });
+  const sendOut = async (ref, found) => {
     busy = true;
-    const found = state.kids.flatMap((k) => k.items.map((i) => ({ k, i }))).find(({ i }) => (i.receipts || []).some((r) => r.id === ref));
     try {
-      const r = await sendOrKeep('out', { tap: newTap(), ref });
+      const outTap = newTap();
+      const r = await sendOrKeep('out', { tap: outTap, ref });
       const repeat = r.out?.repeat;
-      if (!repeat) outCount++;
-      cam.querySelector('.cam-count').textContent = `${outCount} out`;
-      const kidNow = found ? kidById(found.k.jobId) : null;
-      const left = kidNow ? kidNow.items.filter(atOffice).length : null;
-      say(repeat ? 'info' : 'ok', `${ICON.tick}<b>${esc(found ? found.k.short : r.out?.item?.name || 'Out')}</b><span>${esc(found ? found.i.name : '')}</span><span class="dim">${repeat ? 'Already out' : r.queued ? 'Out (saves when the connection is back)' : left === 0 ? 'Everything for them is out' : left != null ? `${left} more at the Office` : 'Out to the house'}</span>`);
+      if (!repeat) loaded++;
       if (r.queued && found) { found.i.sent = found.i.got; found.i.status = 'out'; }
+      const l = count();
+      const k = found ? kidById(found.k.jobId) : null;
+      const boxes = found ? Math.max(1, (found.i.receipts || []).find((x) => x.id === ref)?.boxes || 1) : 1;
+      if (repeat) { tones.undo(); say('info', `<b>Already loaded</b><span>${esc(found ? `${found.k.short}: ${found.i.name}` : '')}</span>`); return; }
+      tones.ok();
+      const end = l && l.left === 0;
+      const el = say(end ? 'ok end' : 'ok', `${k ? face(k, 40) : ICON.tick}<b>${esc(found ? found.i.name : r.out?.item?.name || 'Loaded')}</b>
+        <span>${esc(found ? found.k.short : '')}${boxes > 1 ? ` · ${boxWord(boxes)}: take all ${boxes}` : ''}</span>
+        <span class="dim">${end ? `Everything for ${esc(scope.short)} at the Office is loaded${l.missing.length ? `. ${notHereYet(l.missing.length)}.` : '.'}` : l ? `${boxWord(l.left)} left` : r.queued ? 'Saves when the connection is back' : 'Loaded'}</span>
+        <button class="cam-undo" type="button">Undo</button>`, { stay: end });
+      if (end) cam.querySelector('.cam-done').textContent = 'Finish';
+      el.querySelector('.cam-undo').onclick = async () => {
+        try { await undoTap(outTap); } catch (err) { toast(err.message); return; }
+        seen.delete(ref); loaded = Math.max(0, loaded - 1);
+        tones.undo(); count(); cam.querySelector('.cam-done').textContent = 'Done';
+        say('info', '<b>Taken back</b>');
+      };
     } catch (err) {
       seen.delete(ref);
+      tones.warn();
       say('warn', `<b>${esc(err.message)}</b>`);
     } finally {
       busy = false;
     }
   };
-  scanning = requestAnimationFrame(tick);
+  let lastAt = 0;
+  const frame = async (t) => {
+    if (!document.body.contains(cam)) return;
+    scanning = requestAnimationFrame(frame);
+    if (busy || t - lastAt < 140 || !video.videoWidth) return;
+    lastAt = t;
+    busy = true;
+    let data = null;
+    try { data = await read(video); } catch { data = null; } finally { busy = false; }
+    if (!data) return;
+    let url = null;
+    try { url = new URL(data); } catch { /* not a link */ }
+    const ours = url?.pathname.startsWith('/admin/checkin');
+    const ref = ours ? url.searchParams.get('r') : null;
+    const shelf = ours ? url.searchParams.get('shelf') : null;
+    if (shelf) {
+      if (seen.has(`shelf:${shelf}`)) return;
+      seen.add(`shelf:${shelf}`);
+      const s = state.shelves.find((x) => x.shelf === shelf);
+      say('info', `<b>${esc(shelfName(shelf))}</b><span>${esc(kidById(s?.kid)?.short || 'Free')}</span>`);
+      return;
+    }
+    if (!ref) { if (!seen.has(data)) { seen.add(data); tones.warn(); say('warn', '<b>Not a SOARD label</b>'); } return; }
+    if (seen.has(ref)) return;
+    seen.add(ref);
+    const found = state.kids.flatMap((k) => k.items.map((i) => ({ k, i }))).find(({ i }) => (i.receipts || []).some((r) => r.id === ref));
+    if (scope && found && found.k.jobId !== scope.jobId) {
+      // Another kid's box, while loading this one: stopped, unless it really is going
+      tones.warn();
+      const el = say('warn stop', `${face(found.k, 40)}<b>${esc(found.k.short)}’s box</b><span>${esc(found.i.name)}</span><span>Not ${esc(scope.short)}’s. Leave it here.</span><button class="cam-undo" type="button">Load it anyway</button>`, { stay: true });
+      el.querySelector('.cam-undo').onclick = () => sendOut(ref, found);
+      return;
+    }
+    sendOut(ref, found);
+  };
+  scanning = requestAnimationFrame(frame);
 }
