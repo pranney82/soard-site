@@ -39,7 +39,7 @@ export const FIELDS = {
   also: { name: 'Also bought', type: 'boolean' },
 };
 export const ALSO_GROUP = 'Also bought';
-export const REHEARSAL_V = 3; // 2: the cost code JobTread requires on a new line; 3: and the cost type (Nov 10 2026)
+export const REHEARSAL_V = 4; // 2: the cost code JobTread requires on a new line; 3: and the cost type; 4: an update asks for nothing back (Nov 10 2026)
 const EVERY_MS = 2 * 60 * 1000;
 const WRITES_A_RUN = 24;
 const RUN_MS = 20 * 1000;
@@ -218,7 +218,7 @@ export async function writeLine(env, ids, line, { fetchImpl = fetch, now = new D
   let wrote = false;
   if (!same(values, current)) {
     await pave(env.JOBTREAD_GRANT_KEY, {
-      updateCostItem: { $: { id: line.itemId, customFieldValues: { [ids.status]: values.status, [ids.details]: values.details || null, [ids.shelf]: values.shelf } }, costItem: { id: {} } },
+      updateCostItem: { $: { id: line.itemId, customFieldValues: { [ids.status]: values.status, [ids.details]: values.details || null, [ids.shelf]: values.shelf } } },
     }, fetchImpl);
     wrote = true;
   }
@@ -331,7 +331,7 @@ export async function retireAlso(env, a, { fetchImpl = fetch, now = new Date().t
     await pave(env.JOBTREAD_GRANT_KEY, { deleteCostItem: { $: { id: a.costItemId } } }, fetchImpl);
   } catch {
     await pave(env.JOBTREAD_GRANT_KEY, {
-      updateCostItem: { $: { id: a.costItemId, unitCost: 0, unitPrice: 0, description: 'Not this kid’s any more (moved, cancelled or not a kid’s at check-in), so it costs nothing here.' }, costItem: { id: {} } },
+      updateCostItem: { $: { id: a.costItemId, unitCost: 0, unitPrice: 0, description: 'Not this kid’s any more (moved, cancelled or not a kid’s at check-in), so it costs nothing here.' } },
     }, fetchImpl);
   }
   await env.DB.prepare('UPDATE kid_also SET retired_at = ? WHERE key = ?').bind(now, a.key).run();
@@ -363,7 +363,7 @@ export async function rehearse(env, { fetchImpl = fetch, now = new Date().toISOS
     const second = await writeLine(env, ids, line([valve, shower(0)]), { fetchImpl, now });
     step('nothing new, nothing written', !second.wrote);
     // A person sets the status by hand in JobTread and types a note
-    await pave(env.JOBTREAD_GRANT_KEY, { updateCostItem: { $: { id: lineId, customFieldValues: { [ids.status]: 'Ordered', [ids.details]: `${read1.details}\nAsked the store to rush it` } }, costItem: { id: {} } } }, fetchImpl);
+    await pave(env.JOBTREAD_GRANT_KEY, { updateCostItem: { $: { id: lineId, customFieldValues: { [ids.status]: 'Ordered', [ids.details]: `${read1.details}\nAsked the store to rush it` } } } }, fetchImpl);
     // One of the two showers comes in: still partly received, so the hand-set status stands, and the note stays
     await writeLine(env, ids, line([valve, shower(1)]), { fetchImpl, now });
     const read3 = await readLine(env, ids, lineId, { fetchImpl });
@@ -373,7 +373,7 @@ export async function rehearse(env, { fetchImpl = fetch, now = new Date().toISOS
     const read4 = await readLine(env, ids, lineId, { fetchImpl });
     step('news after a hand edit', fourth.wrote && read4?.status === 'Received' && /\nNote: Asked the store to rush it$/.test(read4.details || '') && /all 2 here/.test(read4.details || ''), JSON.stringify(read4));
     // Back to the start for the next rehearsal
-    await pave(env.JOBTREAD_GRANT_KEY, { updateCostItem: { $: { id: lineId, customFieldValues: { [ids.status]: null, [ids.details]: null, [ids.shelf]: null } }, costItem: { id: {} } } }, fetchImpl);
+    await pave(env.JOBTREAD_GRANT_KEY, { updateCostItem: { $: { id: lineId, customFieldValues: { [ids.status]: null, [ids.details]: null, [ids.shelf]: null } } } }, fetchImpl);
     await env.DB.prepare("DELETE FROM kid_jt_lines WHERE job_id = ? AND item_id = ?").bind(SANDBOX_JOB_ID, lineId).run();
     step('put back', true);
     return { v: REHEARSAL_V, ok: true, at: now, steps };

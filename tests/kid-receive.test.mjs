@@ -194,6 +194,8 @@ function fakeJobTread() {
       const it = jt.items.get(q.costItem.$.id);
       return ok({ costItem: it ? { id: q.costItem.$.id, customFieldValues: { nodes: Object.entries(it.values).filter(([, v]) => v !== null).map(([fid, value]) => ({ value, customField: { id: fid } })) } } : null });
     }
+    // JobTread refuses a selection on updateCostItem ("A non-null value is required at updateCostItem.costItem.$", Nov 10 2026)
+    if (q.updateCostItem && Object.keys(q.updateCostItem).some((k) => k !== '$')) return new Response('A non-null value is required at "updateCostItem"."costItem"."$"', { status: 400 });
     if (q.updateCostItem) { const it = jt.items.get(q.updateCostItem.$.id); Object.assign(it.values, q.updateCostItem.$.customFieldValues || {}); return ok({ updateCostItem: { costItem: { id: q.updateCostItem.$.id } } }); }
     if (q.deleteCostItem) { jt.items.delete(q.deleteCostItem.$.id); jt.deleted = [...(jt.deleted || []), q.deleteCostItem.$.id]; return ok({ deleteCostItem: {} }); }
     return new Response('not faked', { status: 400 });
