@@ -68,6 +68,7 @@ import { slackCard } from './_slack-cards.js';
 import { readConfig as readSpendConfig } from './_spend.js';
 import { vendorKey } from './_spend-match.js';
 import { nameKeyOf, realDate as isDay } from './_vendor-files.js';
+import { pageText, scannedPages } from './_vendor-read.js';
 import { TZ } from './_reveals.js';
 
 const KEY = 'check-gifts';
@@ -627,26 +628,33 @@ async function readLetterWith(env, model, { image = null, text = '' }) {
   }
 }
 
-/** What the readers can take from a file: a photo as a picture, a PDF as its text, anything else nothing */
+const dataUrl = (bytes, kind) => {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return `data:image/${kind};base64,${btoa(bin)}`;
+};
+
+/**
+ * What the readers can take from a file: a photo as a picture; a PDF as its text, or, when it's a scan (pictures, no text),
+ * its first page's picture; anything else nothing. toMarkdown's framing ("Metadata … Contents") is not text (pageText)
+ */
 async function letterInput(env, bytes) {
   const kind = imageKind(bytes);
-  if (['jpeg', 'png', 'webp'].includes(kind)) {
-    if (bytes.length > MAX_IMAGE_BYTES) return { none: 'size' };
-    let bin = '';
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
-    return { image: `data:image/${kind};base64,${btoa(bin)}` };
-  }
+  if (['jpeg', 'png', 'webp'].includes(kind)) return bytes.length > MAX_IMAGE_BYTES ? { none: 'size' } : { image: dataUrl(bytes, kind) };
   const pdf = bytes.length > 4 && String.fromCharCode(...bytes.subarray(0, 5)) === '%PDF-';
-  if (!pdf || !env.AI?.toMarkdown || bytes.length > 10 * 1024 * 1024) return { none: kind || (pdf ? 'pdf' : 'other') };
-  try {
-    const r = await timed(env.AI.toMarkdown({ name: 'letter.pdf', blob: new Blob([bytes], { type: 'application/pdf' }) }, { conversionOptions: { output: { format: 'text' } } }), READ_TIMEOUT_MS);
-    const text = clean((Array.isArray(r) ? r[0] : r)?.data || '');
-    // A scanned PDF is pictures with no text in it: the readers would have nothing to read
-    return (text.match(/\p{L}/gu) || []).length >= 30 ? { text } : { none: 'pdf' };
-  } catch (e) {
-    if (aiCapped(e)) throw e;
-    return { none: 'pdf' };
+  if (!pdf || bytes.length > 10 * 1024 * 1024) return { none: kind || (pdf ? 'pdf' : 'other') };
+  if (env.AI?.toMarkdown) {
+    try {
+      const r = await timed(env.AI.toMarkdown({ name: 'letter.pdf', blob: new Blob([bytes], { type: 'application/pdf' }) }, { conversionOptions: { output: { format: 'text' } } }), READ_TIMEOUT_MS);
+      const one = Array.isArray(r) ? r[0] : r;
+      const text = one?.format === 'error' ? '' : clean(pageText(one?.data));
+      if ((text.match(/\p{L}/gu) || []).length >= 30) return { text };
+    } catch (e) {
+      if (aiCapped(e)) throw e;
+    }
   }
+  const [page] = scannedPages(bytes, { max: 1, maxBytes: MAX_IMAGE_BYTES });
+  return page ? { image: dataUrl(page.bytes, 'jpeg') } : { none: 'pdf' };
 }
 
 /** The row's letter, swapped only while it's still what was read: a run and a page never write over each other's */

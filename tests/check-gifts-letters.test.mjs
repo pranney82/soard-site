@@ -777,3 +777,14 @@ test('V8 a file that\'s different every time it\'s fetched goes to a person, and
   assert.deepEqual([r.state, r.reason], ['person', 'letter']);
   assert.equal((await rowOf('tx_2')).state, 'created');
 });
+
+test('a scanned PDF\'s framing text ("Metadata … Contents") is never taken for a letter\'s words', async () => {
+  const pdf = 'https://files.mercury.test/scan.pdf';
+  files[pdf] = new TextEncoder().encode('%PDF-1.4 scanned');
+  world().pdfText = 'Metadata\nPDFFormatVersion=1.4\nCreator=HP Scan Software Produced by the scanner\nIsLinearized=false\n\nContents\nPage 1';
+  await runs(T0, T0 + 10 * MIN);
+  attach({ fileName: 'scan.pdf', url: pdf, attachmentType: 'receipt' });
+  await runs(T0 + 20 * MIN, EVENING + 10 * MIN);
+  const r = await rowOf();
+  assert.deepEqual([r.state, r.reason, world().posts.length], ['person', 'letter', 0]);
+});
