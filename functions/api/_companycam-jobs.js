@@ -32,9 +32,18 @@
  * removed (DEDUPE), never a file a person uploaded or one someone commented
  * on, at most MAX_REMOVE_PER_RUN a run.
  *
- * Results in D1 companycam_jobs and companycam_jobs_state "jobs-audit" (Site
- * → Automations). Videos stay in CompanyCam: its API gives a stream, not a
- * file. Env: COMPANYCAM_TOKEN, JOBTREAD_GRANT_KEY.
+ * Before CompanyCam goes (Peter, Nov 9 2026: "i will droping company cam in
+ * december"), every photo has to be in JobTread, not only open jobs'. So
+ * closed jobs are checked the same way, once a week after the open ones
+ * (sooner while one still has photos to copy), and once every job has been
+ * looked at, the projects no job draws from are listed with their photo
+ * counts ("orphans": a family still in review, a staff project, a
+ * community project), for a person to place before the account closes.
+ *
+ * Results in D1 companycam_jobs and companycam_jobs_state "jobs-audit",
+ * "closed-audit" and "orphans" (Site → Automations). Videos stay in
+ * CompanyCam: its API gives a stream, not a file. Env: COMPANYCAM_TOKEN,
+ * JOBTREAD_GRANT_KEY.
  */
 
 import { pave, SOARD_ORG_ID } from './_reveals.js';
@@ -45,10 +54,12 @@ import { uploadToJobTread } from './_companycam-sync.js';
 
 export const COPY = true;    // copy what a job is missing
 export const DEDUPE = true;  // remove JobTread's second copies (Peter, Oct 21 2026: "ok do those")
+export const CLOSED_TOO = true; // closed jobs as well, before CompanyCam closes in December 2026
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
 const CHECK_EVERY_MS = HOUR;
+const CLOSED_EVERY_MS = 7 * DAY;
 const RECHECK_MISSING_MS = 10 * MIN;  // a job with photos still to copy comes round sooner
 const INDEX_EVERY_MS = HOUR;
 const PER_TICK = 2;
@@ -115,22 +126,25 @@ const parse = (s, d) => { try { return s ? JSON.parse(s) : d; } catch { return d
 
 // ─── JobTread ───────────────────────────────────────────────────────
 
-/** Open jobs, not TEST: { id, name, createdAt, companycamId, street, accountName } */
-export async function openJobs(env, fetchImpl = fetch) {
+/** Jobs, not TEST (closed ones too when asked): { id, name, createdAt, closed, companycamId, street, accountName } */
+export async function listJobs(env, fetchImpl = fetch, { closed = false } = {}) {
   const out = [];
   let page = null;
   for (let i = 0; i < 5; i++) {
     const r = await jt(env, { organization: { $: { id: SOARD_ORG_ID }, jobs: { $: { size: 100, ...(page ? { page } : {}) }, nextPage: {}, nodes: { id: {}, name: {}, createdAt: {}, closedOn: {}, companycamId: {}, location: { street: {}, account: { name: {} } } } } } }, fetchImpl);
     const jobs = r?.organization?.jobs;
     for (const j of jobs?.nodes || []) {
-      if (j.closedOn || isTest(j.name) || isTest(j.location?.account?.name)) continue;
-      out.push({ id: j.id, name: j.name || '', createdAt: j.createdAt || null, companycamId: j.companycamId ? String(j.companycamId) : null, street: j.location?.street || '', accountName: j.location?.account?.name || '' });
+      if ((j.closedOn && !closed) || isTest(j.name) || isTest(j.location?.account?.name)) continue;
+      out.push({ id: j.id, name: j.name || '', createdAt: j.createdAt || null, closed: !!j.closedOn, companycamId: j.companycamId ? String(j.companycamId) : null, street: j.location?.street || '', accountName: j.location?.account?.name || '' });
     }
     if (!jobs?.nextPage) break;
     page = jobs.nextPage;
   }
   return out;
 }
+
+/** Open jobs, not TEST */
+export const openJobs = (env, fetchImpl = fetch) => listJobs(env, fetchImpl);
 
 /** The job's copies of CompanyCam photos: [{ id, photoId, createdAt, byCompanyCam, comments }] and its hand uploads */
 async function jobCopies(env, jobId, fetchImpl) {
@@ -304,39 +318,60 @@ export async function nudgeJobsFor(DB, projectId) {
 // ─── The heartbeat ──────────────────────────────────────────────────
 
 /** The heartbeat's call: a couple of jobs a tick, each about hourly; Slack once a pass about what was copied. Never throws. */
-export async function maybeCheckJobs(env, { fetchImpl = fetch, now = Date.now(), force = false, copy = COPY, dedupe = DEDUPE } = {}) {
+export async function maybeCheckJobs(env, { fetchImpl = fetch, now = Date.now(), force = false, copy = COPY, dedupe = DEDUPE, closedToo = CLOSED_TOO } = {}) {
   const { DB } = env;
   try {
     if (!DB || !companycamOn(env) || !env.JOBTREAD_GRANT_KEY) return null;
     await ensureSchema(DB);
     if (!force && !(await takeTurn(DB, 'tick', MIN, now))) return null;
     const deadline = Date.now() + BUDGET_MS;
-    const jobs = await openJobs(env, fetchImpl);
+    const jobs = await listJobs(env, fetchImpl, { closed: closedToo });
+    const open = jobs.filter((j) => !j.closed);
+    const closed = jobs.filter((j) => j.closed);
     const { results } = await DB.prepare('SELECT job_id, checked_at, missing FROM companycam_jobs').all();
     const last = new Map((results || []).map((r) => [r.job_id, r.checked_at || 0]));
     const waiting = new Set((results || []).filter((r) => r.missing > 0).map((r) => r.job_id));
-    const every = (id) => (waiting.has(id) ? RECHECK_MISSING_MS : CHECK_EVERY_MS);
-    const due = jobs.filter((j) => (last.get(j.id) || 0) <= now - every(j.id)).sort((a, b) => (last.get(a.id) || 0) - (last.get(b.id) || 0)).slice(0, PER_TICK);
+    const every = (j) => (waiting.has(j.id) ? RECHECK_MISSING_MS : j.closed ? CLOSED_EVERY_MS : CHECK_EVERY_MS);
+    const oldestFirst = (a, b) => (last.get(a.id) || 0) - (last.get(b.id) || 0);
+    const isDue = (j) => (last.get(j.id) || 0) <= now - every(j);
+    // Open jobs first: a closed job's turn never holds up a family whose makeover is under way
+    const due = [...open.filter(isDue).sort(oldestFirst), ...closed.filter(isDue).sort(oldestFirst)].slice(0, PER_TICK);
     if (!due.length) return { checked: 0 };
     const index = await projectIndex(env, { fetchImpl, now });
     const pass = (await getState(DB, 'pass')) || { copied: [] };
     pass.copied ||= [];
+    const closedPass = (await getState(DB, 'closed-pass')) || { copied: [] };
+    closedPass.copied ||= [];
+    const checked = [];
     for (const job of due) {
       if (Date.now() > deadline) break;
       const r = await checkJob(env, job, index, { fetchImpl, now, copy, dedupe });
-      if (r.copied || r.removed) pass.copied.push({ job: job.name, count: r.copied, removed: r.removed });
+      checked.push(job);
+      if (r.copied || r.removed) (job.closed ? closedPass : pass).copied.push({ job: job.name, count: r.copied, removed: r.removed });
     }
-    const { results: after } = await DB.prepare('SELECT job_id, checked_at FROM companycam_jobs').all();
+    const { results: after } = await DB.prepare('SELECT job_id, checked_at, missing, project_id, sources FROM companycam_jobs').all();
     const fresh = new Map((after || []).map((r) => [r.job_id, r.checked_at || 0]));
-    const complete = jobs.every((j) => (fresh.get(j.id) || 0) > now - CHECK_EVERY_MS);
-    if (complete) {
-      await putState(DB, 'jobs-audit', await auditSummary(DB, jobs, now, { copy, dedupe }), now);
+    const complete = open.every((j) => (fresh.get(j.id) || 0) > now - CHECK_EVERY_MS);
+    if (complete && checked.some((j) => !j.closed)) {
+      await putState(DB, 'jobs-audit', await auditSummary(DB, open, now, { copy, dedupe }), now);
       if (pass.copied.length) await slackPost(env, copiedCard(pass.copied), { kind: 'news' }).catch(() => null);
       await putState(DB, 'pass', { copied: [] }, now);
     } else {
       await putState(DB, 'pass', pass, now);
     }
-    return { checked: due.length, complete };
+    // Closed jobs: written up once every one has been looked at; Slack hears only when none still has photos to copy
+    const closedComplete = closedToo && closed.every((j) => (fresh.get(j.id) || 0) > now - CLOSED_EVERY_MS);
+    if (closedComplete && checked.some((j) => j.closed)) {
+      await putState(DB, 'closed-audit', await auditSummary(DB, closed, now, { copy, dedupe }), now);
+      await putState(DB, 'orphans', orphansOf(index, after, jobs, now), now);
+      const stillCopying = (after || []).some((r) => r.missing > 0 && closed.some((j) => j.id === r.job_id));
+      if (!stillCopying && closedPass.copied.length) {
+        await slackPost(env, copiedCard(closedPass.copied, { closed: true }), { kind: 'news' }).catch(() => null);
+        closedPass.copied = [];
+      }
+    }
+    await putState(DB, 'closed-pass', closedPass, now);
+    return { checked: checked.length, complete, closedComplete };
   } catch (e) {
     if (e instanceof CompanyCamError && e.status === 401) return null; // ./_companycam-sync.js tells Slack about the key
     console.error('[companycam-jobs]', e.message);
@@ -361,14 +396,31 @@ async function auditSummary(DB, jobs, now, { copy, dedupe }) {
   };
 }
 
-function copiedCard(copied) {
+/** CompanyCam projects with photos that no job draws from, biggest first: [{ id, name, street, photos, archived, createdAt }] */
+export function orphansOf(index, rows, jobs, now) {
+  const ids = new Set(jobs.map((j) => j.id));
+  const used = new Set(jobs.map((j) => j.companycamId).filter(Boolean));
+  for (const r of rows || []) {
+    if (!ids.has(r.job_id)) continue;
+    if (r.project_id) used.add(String(r.project_id));
+    for (const s of parse(r.sources, [])) used.add(String(s.id));
+  }
+  const projects = index.filter((p) => p.photos > 0 && !isTest(p.name) && !used.has(p.id))
+    .sort((a, b) => b.photos - a.photos)
+    .map(({ id, name, street, photos, archived, createdAt }) => ({ id, name, street, photos, archived, createdAt }));
+  return { at: iso(now), projects: projects.length, photos: projects.reduce((n, p) => n + p.photos, 0), list: projects };
+}
+
+function copiedCard(copied, { closed = false } = {}) {
   const total = copied.reduce((n, c) => n + (c.count || 0), 0);
   const gone = copied.reduce((n, c) => n + (c.removed || 0), 0);
-  const parts = [total && `${total} CompanyCam photo${total === 1 ? '' : 's'} copied into JobTread`, gone && `${gone} second cop${gone === 1 ? 'y' : 'ies'} removed`].filter(Boolean);
+  const parts = [total && `${total} CompanyCam photo${total === 1 ? '' : 's'} copied into ${closed ? 'closed jobs in ' : ''}JobTread`, gone && `${gone} second cop${gone === 1 ? 'y' : 'ies'} removed`].filter(Boolean);
   return slackCard({
     icon: '📸', title: parts.join(', '),
     lead: copied.slice(0, 20).map((c) => `${c.job}: ${[c.count && `${c.count} copied`, c.removed && `${c.removed} second cop${c.removed === 1 ? 'y' : 'ies'} removed`].filter(Boolean).join(', ')}`).join('\n'),
-    footer: 'Copied: in CompanyCam but not on the job (JobTread’s link had dropped, or the photos were in a second project). Removed: the same photo twice, made by JobTread re-importing; the oldest stays. The site checks every open job hourly.',
+    footer: closed
+      ? 'Before CompanyCam closes in December, closed jobs get every CompanyCam photo too: in CompanyCam but not on the job. Removed: the same photo twice, made by JobTread re-importing; the oldest stays. The site checks closed jobs weekly.'
+      : 'Copied: in CompanyCam but not on the job (JobTread’s link had dropped, or the photos were in a second project). Removed: the same photo twice, made by JobTread re-importing; the oldest stays. The site checks every open job hourly.',
   });
 }
 
@@ -377,6 +429,13 @@ export async function jobsFacts(env) {
   if (!companycamOn(env)) return { on: false };
   await ensureSchema(env.DB);
   const audit = await getState(env.DB, 'jobs-audit');
+  const closedAudit = CLOSED_TOO ? await getState(env.DB, 'closed-audit') : null;
+  const orphans = CLOSED_TOO ? await getState(env.DB, 'orphans') : null;
   const { results } = await env.DB.prepare('SELECT max(checked_at) AS at, count(*) AS n FROM companycam_jobs').all();
-  return { on: true, copy: COPY, dedupe: DEDUPE, audit, lastChecked: results?.[0]?.at ? iso(results[0].at) : null, jobs: results?.[0]?.n || 0 };
+  return {
+    on: true, copy: COPY, dedupe: DEDUPE, closedToo: CLOSED_TOO, audit, closedAudit,
+    // The first 50 by size: enough for Automations to name them, the rest are counted
+    orphans: orphans ? { ...orphans, list: (orphans.list || []).slice(0, 50) } : null,
+    lastChecked: results?.[0]?.at ? iso(results[0].at) : null, jobs: results?.[0]?.n || 0,
+  };
 }

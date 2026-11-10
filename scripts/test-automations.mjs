@@ -445,6 +445,19 @@ try {
   const broken = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...ccFacts, companycamJobs: { ...ccFacts.companycamJobs, audit: { ...audit, errors: [{ job: 'Ava Stone (2026)', detail: 'JobTread returned 500' }] } } } });
   ok(await statusOf(broken.page, 'CompanyCam photos on every job') === 'Needs attention', 'a job it couldn’t check needs attention');
   await broken.page.close();
+  // Before CompanyCam closes in December: closed jobs, and projects on no job need a person
+  const closedAudit = { ...audit, jobs: 40, withPhotos: 31, missing: 12 };
+  const orphans = { at: iso(30 * 60e3), projects: 3, photos: 57, list: [{ id: '900', name: 'Rosa Lane 2026', street: '8 Review Way', photos: 40, archived: false }] };
+  const placed = await open(browser, base, { width: 1440, height: 1000 }, { facts: { ...ccFacts, companycamJobs: { ...ccFacts.companycamJobs, closedToo: true, closedAudit, orphans } } });
+  ok(await statusOf(placed.page, 'CompanyCam photos on every job') === 'Needs attention', 'CompanyCam projects on no job need a person');
+  await placed.page.type('#am-search', 'companycam');
+  await pause(500);
+  await clickNode(placed.page, 'CompanyCam photos on every job');
+  await pause(300);
+  const placedPanel = await placed.page.$eval('.am-panel', (e) => e.textContent);
+  ok(placedPanel.includes('3 CompanyCam projects with 57 photos aren’t on any JobTread job, biggest “Rosa Lane 2026”.'), 'it names the biggest one');
+  ok(placedPanel.includes('Closed jobs: 12 photos still to copy.'), 'and says where the closed jobs are');
+  await placed.page.close();
 
   console.log('Desktop, AI spending watch');
   const entry = 'AI spending watch';

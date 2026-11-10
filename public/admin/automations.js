@@ -564,7 +564,7 @@ const MAP = { t: 'SOARD', children: [
           when: 'Every open job (not TEST) about once an hour, a couple a minute on the heartbeat. A new photo in a job’s project moves that job to the front (CompanyCam’s webhook).',
           does: 'Copies to each job any CompanyCam photo it doesn’t have, under JobTread’s own name (“CompanyCam 123…”). A job’s photos come from the project it’s linked to, the project its own earlier photos came from, and a project at the same address under the family’s name. A photo in the project JobTread is still linked to waits an hour, so JobTread’s own sync goes first. It never relinks a job: relinking makes JobTread copy every photo again. Second copies JobTread makes are removed. Slack hears once a pass what was copied and removed.',
           touches: ['CompanyCam', 'JobTread', 'D1', 'Slack'], where: 'functions/api/_companycam-jobs.js (broadcast-hooks.js) · _companycam.js · companycam-webhook.js',
-          info: 'By Oct 21, 2026 JobTread’s own integration had dropped the link on 16 of 21 open jobs, some families’ photos sat in a second project, and staff were uploading phone photos by hand. A relink tested on Axel’s job brought all 33 photos in a second time, so that’s where duplicates come from. A photo on a job twice keeps its oldest copy; later copies made by JobTread or the site are removed (never a person’s upload, never one with comments, at most 50 a run). Videos stay in CompanyCam: its API gives a stream, not a file.',
+          info: 'Before CompanyCam closes in December 2026, closed jobs are checked too, weekly and after the open ones, and the CompanyCam projects no job draws from (a family in review, a staff or community project) are listed here for a person to place. By Oct 21, 2026 JobTread’s own integration had dropped the link on 16 of 21 open jobs, some families’ photos sat in a second project, and staff were uploading phone photos by hand. A relink tested on Axel’s job brought all 33 photos in a second time, so that’s where duplicates come from. A photo on a job twice keeps its oldest copy; later copies made by JobTread or the site are removed (never a person’s upload, never one with comments, at most 50 a run). Videos stay in CompanyCam: its API gives a stream, not a file.',
           live: (f) => {
             if (!env(f)) return null;
             if (!f.env.companycam) return OFF('Off until COMPANYCAM_TOKEN is in Cloudflare.');
@@ -576,7 +576,12 @@ const MAP = { t: 'SOARD', children: [
             if (!a) return ON('Going through the open jobs for the first time.', c.lastChecked);
             if (a.errors?.length) return ATTN(`${plural(a.errors.length, 'job')} couldn’t be checked: ${a.errors[0].job} (${a.errors[0].detail}).`, c.lastChecked);
             const doubles = a.doubleCopies ? ` ${plural(a.doubleCopies, 'second copy', 'second copies')} counted${c.dedupe ? '' : ', not removed yet'}.` : '';
-            return ON(`${plural(a.withPhotos, 'open job')} with CompanyCam photos${a.missing ? `, ${plural(a.missing, 'photo')} still to copy` : ', every photo in JobTread'}.${doubles}`, c.lastChecked);
+            // Before CompanyCam closes in December 2026: closed jobs too, and the projects no job draws from
+            const ca = c.closedAudit;
+            const closedNote = !c.closedToo ? '' : !ca ? ' Closed jobs: first pass under way.' : ` Closed jobs: ${ca.missing ? `${plural(ca.missing, 'photo')} still to copy` : 'every photo in JobTread'}.`;
+            const o = c.orphans;
+            if (o?.projects) return ATTN(`${plural(o.projects, 'CompanyCam project')} with ${plural(o.photos, 'photo')} ${o.projects === 1 ? 'isn’t' : 'aren’t'} on any JobTread job, biggest “${o.list?.[0]?.name || '?'}”. They need a home before CompanyCam closes in December.${closedNote}`, c.lastChecked);
+            return ON(`${plural(a.withPhotos, 'open job')} with CompanyCam photos${a.missing ? `, ${plural(a.missing, 'photo')} still to copy` : ', every photo in JobTread'}.${doubles}${closedNote}`, c.lastChecked);
           } },
       ]},
       { t: 'The process', children: [

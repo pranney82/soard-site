@@ -106,7 +106,7 @@ test('only looking: each job’s sources found, what’s missing counted, nothin
   const r2 = await row('j2');
   assert.deepEqual([r2.project_id, r2.found_by, r2.linked, r2.missing], ['600', 'its photos', 0, 2], 'its own earlier photo says which project');
   assert.equal(await row('j3'), null, 'TEST jobs aren’t looked at');
-  assert.equal(await row('j4'), null, 'nor closed ones');
+  assert.equal(await row('j4'), null, 'a closed one waits until the open ones have had their turn');
   const facts = await jobsFacts(env);
   assert.deepEqual([facts.audit.jobs, facts.audit.linked, facts.audit.missing], [2, 1, 2]);
   assert.deepEqual(facts.audit.missingBy, [{ job: 'Ben Cole (2026)', missing: 2 }]);
@@ -226,4 +226,68 @@ test('a new photo CompanyCam tells the site about is copied on the very next run
   assert.ok((await row('j1')).checked_at > before, 'back after 10 minutes, not an hour');
   await run(70);
   assert.ok(names('j1').includes('CompanyCam 3009003'), 'the site copies it once JobTread’s hour is up');
+});
+
+// Before CompanyCam closes (Peter, Nov 9 2026: "i will droping company cam in december"), closed jobs too
+const closedJob = () => {
+  project('800', 'Old Family (2024) (007)', { street: '3 Past Ct', created: '2024-02-01T00:00:00Z' });
+  job('j4', 'Old Family (2024)', { street: '3 Past Ct', closedOn: '2024-06-01', createdAt: '2024-02-01T00:00:00Z' });
+  for (const id of ['3009801', '3009802', '3009803']) photo(id, '800');
+  copy('j4', '3009801');
+};
+
+test('a closed job gets its missing CompanyCam photos too, after the open jobs, then weekly', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  closedJob();
+  await run(0);
+  assert.deepEqual(names('j4'), ['CompanyCam 3009801', 'CompanyCam 3009802', 'CompanyCam 3009803']);
+  assert.ok(!w.writes.some((x) => x.op === 'updateJob'), 'never relinked, closed or not');
+  const posts = w.slack.filter((s) => /copied into closed jobs in JobTread/.test(s.text || ''));
+  assert.equal(posts.length, 1, 'one post once the closed jobs are caught up');
+  assert.match(JSON.stringify(posts[0].blocks), /Old Family \(2024\): 2 copied/);
+  const facts = await jobsFacts(env);
+  assert.deepEqual([facts.closedToo, facts.closedAudit.jobs, facts.closedAudit.missing], [true, 1, 0]);
+  assert.equal(facts.audit.jobs, 1, 'the open jobs’ write-up stays the open jobs’');
+  const first = (await row('j4')).checked_at;
+  await run(61);
+  assert.equal((await row('j4')).checked_at, first, 'not hourly');
+  await run(7 * 24 * 60 + 1);
+  assert.ok((await row('j4')).checked_at > first, 'back a week later');
+});
+
+test('open jobs always go first: a closed job never holds up a makeover under way', async () => {
+  for (const [id, n] of [['j1', 'Ava Stone'], ['j2', 'Ben Cole'], ['j5', 'Cal Reed']]) job(id, `${n} (2026)`, { street: `${id} Lane` });
+  closedJob();
+  await run(0);
+  assert.equal(await row('j4'), null);
+  await run(1);
+  await run(2);
+  assert.ok(await row('j4'), 'its turn comes once the open ones are done');
+});
+
+test('CompanyCam projects no job draws from are listed for a person, biggest first; TEST and empty ones aren’t', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  photo('3009001', '500');
+  closedJob();
+  project('900', 'Rosa Lane 2026', { street: '8 Review Way' }); // a family still in review
+  for (const id of ['3009901', '3009902']) photo(id, '900');
+  project('901', 'Office shelving', { street: '1 Office Pkwy' });
+  photo('3009911', '901');
+  project('902', 'TEST CompanyCam check');
+  photo('3009921', '902');
+  project('903', 'Empty one');
+  await run(0);
+  const { orphans } = await jobsFacts(env);
+  assert.deepEqual([orphans.projects, orphans.photos], [2, 3]);
+  assert.deepEqual(orphans.list.map((p) => [p.id, p.photos]), [['900', 2], ['901', 1]]);
+  assert.deepEqual(names('j4').length, 3, 'the closed job’s own project isn’t an orphan');
+});
+
+test('with closed jobs switched off, only open jobs are looked at, as before', async () => {
+  closedJob();
+  await run(0, { closedToo: false });
+  assert.equal(await row('j4'), null);
+  assert.deepEqual(w.writes, []);
 });
