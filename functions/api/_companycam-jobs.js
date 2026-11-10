@@ -55,6 +55,23 @@ import { uploadToJobTread } from './_companycam-sync.js';
 export const COPY = true;    // copy what a job is missing
 export const DEDUPE = true;  // remove JobTread's second copies (Peter, Oct 21 2026: "ok do those")
 export const CLOSED_TOO = true; // closed jobs as well, before CompanyCam closes in December 2026
+/**
+ * CompanyCam projects no job draws from, each given its home in JobTread by
+ * Peter on Nov 9 2026 ("yes"), before CompanyCam closes: two denied 2026
+ * families' home visits go on their accounts, three past makeovers'
+ * warranty visits on their accounts (until their past-makeover jobs exist),
+ * and one repair visit on its closed job. Every photo is copied under
+ * JobTread's own name ("CompanyCam <id>") with no tag, so only staff see it.
+ * Ids only: names stay out of the public repo.
+ */
+export const PLACED = [
+  { project: '97580948', targetType: 'account', targetId: '22PJy2BVt2GX', folder: 'Home visit' },
+  { project: '97440060', targetType: 'account', targetId: '22PM3DchDSVv', folder: 'Home visit' },
+  { project: '78376088', targetType: 'account', targetId: '22P69dX83Dsy', folder: 'Warranty' },
+  { project: '109213462', targetType: 'account', targetId: '22PhpQqN4PVh', folder: 'Warranty' },
+  { project: '78103101', targetType: 'account', targetId: '22P6JrA6rpAs', folder: 'Warranty' },
+  { project: '76845081', targetType: 'job', targetId: '22NxBnwu4Sku', folder: null },
+];
 const MIN = 60 * 1000;
 const HOUR = 60 * MIN;
 const DAY = 24 * HOUR;
@@ -315,16 +332,79 @@ export async function nudgeJobsFor(DB, projectId) {
   }
 }
 
+// ─── Projects given a home (PLACED) ─────────────────────────────────
+
+/** The "CompanyCam <id>" photo ids already on this account or job */
+async function placedHave(env, { targetType, targetId }, fetchImpl) {
+  if (targetType === 'job') return new Set((await jobCopies(env, targetId, fetchImpl)).copies.map((c) => c.photoId));
+  const have = new Set();
+  let page = null;
+  for (let i = 0; i < 25; i++) {
+    const r = await jt(env, { account: { $: { id: targetId }, cc: { _: 'files', $: { size: 100, where: ['name', 'like', 'CompanyCam%'], ...(page ? { page } : {}) }, nextPage: {}, nodes: { id: {}, name: {} } } } }, fetchImpl);
+    const cc = r?.account?.cc;
+    for (const f of cc?.nodes || []) { const id = photoIdOf(f.name); if (id) have.add(id); }
+    if (!cc?.nextPage) break;
+    page = cc.nextPage;
+  }
+  return have;
+}
+
+/**
+ * Copy each placed project's missing photos to its home, COPY_PER_RUN a run
+ * across them all, every 10 minutes until none is missing. Never throws.
+ * State "placed": { [project]: { targetType, targetId, photos, have, missing, copied, at, error } }
+ */
+export async function placeProjects(env, { fetchImpl = fetch, now = Date.now(), copy = COPY, placed = PLACED, deadline = Infinity } = {}) {
+  const { DB } = env;
+  if (!placed.length) return null;
+  const st = (await getState(DB, 'placed')) || {};
+  const done = placed.every((p) => st[p.project] && !st[p.project].missing && !st[p.project].error);
+  // Caught up: looked at again daily, in case CompanyCam gets a late photo before it closes
+  if (!(await takeTurn(DB, 'place', done ? DAY : RECHECK_MISSING_MS, now))) return null;
+  let left = COPY_PER_RUN;
+  for (const p of placed) {
+    if (Date.now() > deadline) break;
+    const row = { ...(st[p.project] || {}), targetType: p.targetType, targetId: p.targetId, at: iso(now), error: null };
+    try {
+      const photos = (await projectPhotos(env, p.project, { max: MAX_PHOTOS, fetchImpl }).catch((e) => { if (e.status === 404) return []; throw e; }))
+        .filter((ph) => ph?.status !== 'deleted' && ph?.processing_status === 'processed');
+      const have = await placedHave(env, p, fetchImpl);
+      let missing = photos.filter((ph) => !have.has(String(ph.id)));
+      let copiedNow = 0;
+      if (copy) {
+        for (const ph of missing.slice(0, Math.max(0, left))) {
+          const url = photoImageUrl(ph);
+          if (!url) continue;
+          const uploadRequestId = await uploadToJobTread(env, url, fetchImpl);
+          await jt(env, { createFile: { $: { name: ccName(ph.id), targetType: p.targetType, targetId: p.targetId, uploadRequestId, ...(p.folder ? { folder: p.folder } : {}) }, createdFile: { id: {} } } }, fetchImpl);
+          copiedNow += 1;
+          left -= 1;
+          have.add(String(ph.id));
+        }
+        missing = missing.filter((ph) => !have.has(String(ph.id)));
+      }
+      Object.assign(row, { photos: photos.length, have: have.size, missing: missing.length, copied: (row.copied || 0) + copiedNow });
+    } catch (e) {
+      row.error = errText(e);
+    }
+    st[p.project] = row;
+  }
+  await putState(DB, 'placed', st, now);
+  return st;
+}
+
 // ─── The heartbeat ──────────────────────────────────────────────────
 
 /** The heartbeat's call: a couple of jobs a tick, each about hourly; Slack once a pass about what was copied. Never throws. */
-export async function maybeCheckJobs(env, { fetchImpl = fetch, now = Date.now(), force = false, copy = COPY, dedupe = DEDUPE, closedToo = CLOSED_TOO } = {}) {
+export async function maybeCheckJobs(env, { fetchImpl = fetch, now = Date.now(), force = false, copy = COPY, dedupe = DEDUPE, closedToo = CLOSED_TOO, placed = PLACED } = {}) {
   const { DB } = env;
   try {
     if (!DB || !companycamOn(env) || !env.JOBTREAD_GRANT_KEY) return null;
     await ensureSchema(DB);
     if (!force && !(await takeTurn(DB, 'tick', MIN, now))) return null;
     const deadline = Date.now() + BUDGET_MS;
+    // The projects no job draws from that Peter gave a home: their photos go there first (every 10 minutes until done)
+    await placeProjects(env, { fetchImpl, now, copy, placed, deadline }).catch((e) => console.error('[companycam-jobs] placed', e.message));
     const jobs = await listJobs(env, fetchImpl, { closed: closedToo });
     const open = jobs.filter((j) => !j.closed);
     const closed = jobs.filter((j) => j.closed);
@@ -363,7 +443,7 @@ export async function maybeCheckJobs(env, { fetchImpl = fetch, now = Date.now(),
     const closedComplete = closedToo && closed.every((j) => (fresh.get(j.id) || 0) > now - CLOSED_EVERY_MS);
     if (closedComplete && checked.some((j) => j.closed)) {
       await putState(DB, 'closed-audit', await auditSummary(DB, closed, now, { copy, dedupe }), now);
-      await putState(DB, 'orphans', orphansOf(index, after, jobs, now), now);
+      await putState(DB, 'orphans', orphansOf(index, after, jobs, now, placed), now);
       const stillCopying = (after || []).some((r) => r.missing > 0 && closed.some((j) => j.id === r.job_id));
       if (!stillCopying && closedPass.copied.length) {
         await slackPost(env, copiedCard(closedPass.copied, { closed: true }), { kind: 'news' }).catch(() => null);
@@ -397,9 +477,9 @@ async function auditSummary(DB, jobs, now, { copy, dedupe }) {
 }
 
 /** CompanyCam projects with photos that no job draws from, biggest first: [{ id, name, street, photos, archived, createdAt }] */
-export function orphansOf(index, rows, jobs, now) {
+export function orphansOf(index, rows, jobs, now, placed = PLACED) {
   const ids = new Set(jobs.map((j) => j.id));
-  const used = new Set(jobs.map((j) => j.companycamId).filter(Boolean));
+  const used = new Set([...jobs.map((j) => j.companycamId).filter(Boolean), ...placed.map((p) => String(p.project))]);
   for (const r of rows || []) {
     if (!ids.has(r.job_id)) continue;
     if (r.project_id) used.add(String(r.project_id));
@@ -430,10 +510,17 @@ export async function jobsFacts(env) {
   await ensureSchema(env.DB);
   const audit = await getState(env.DB, 'jobs-audit');
   const closedAudit = CLOSED_TOO ? await getState(env.DB, 'closed-audit') : null;
-  const orphans = CLOSED_TOO ? await getState(env.DB, 'orphans') : null;
+  const found = CLOSED_TOO ? await getState(env.DB, 'orphans') : null;
+  // A project given a home since the last weekly pass isn't an orphan any more
+  const homed = new Set(PLACED.map((p) => String(p.project)));
+  const still = found ? (found.list || []).filter((p) => !homed.has(String(p.id))) : null;
+  const orphans = found ? { ...found, list: still, projects: still.length, photos: still.reduce((n, p) => n + (p.photos || 0), 0) } : null;
+  const placedState = PLACED.length ? await getState(env.DB, 'placed') : null;
+  const placedRows = Object.values(placedState || {});
+  const placed = placedState ? { projects: placedRows.length, photos: placedRows.reduce((n, r) => n + (r.photos || 0), 0), missing: placedRows.reduce((n, r) => n + (r.missing || 0), 0), errors: placedRows.filter((r) => r.error).length } : null;
   const { results } = await env.DB.prepare('SELECT max(checked_at) AS at, count(*) AS n FROM companycam_jobs').all();
   return {
-    on: true, copy: COPY, dedupe: DEDUPE, closedToo: CLOSED_TOO, audit, closedAudit,
+    on: true, copy: COPY, dedupe: DEDUPE, closedToo: CLOSED_TOO, audit, closedAudit, placed,
     // The first 50 by size: enough for Automations to name them, the rest are counted
     orphans: orphans ? { ...orphans, list: (orphans.list || []).slice(0, 50) } : null,
     lastChecked: results?.[0]?.at ? iso(results[0].at) : null, jobs: results?.[0]?.n || 0,

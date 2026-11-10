@@ -35,6 +35,10 @@ function jobtread(body) {
   if (op === 'organization') {
     return json({ organization: { jobs: { nextPage: null, nodes: [...w.jobs.values()].map((j) => ({ id: j.id, name: j.name, createdAt: j.createdAt, closedOn: j.closedOn || null, companycamId: j.companycamId || null, location: { street: j.street, account: { name: j.account } } })) } } });
   }
+  if (op === 'account') {
+    const files = [...w.files.values()].filter((f) => f.jobId === q.$.id);
+    return json({ account: { cc: { nextPage: null, nodes: files.filter((f) => f.name.startsWith('CompanyCam')).map((f) => ({ id: f.id, name: f.name })) } } });
+  }
   if (op === 'job') {
     const files = [...w.files.values()].filter((f) => f.jobId === q.$.id);
     if (q.cc) return json({ job: { cc: { nextPage: null, nodes: files.filter((f) => f.name.startsWith('CompanyCam')).map((f) => ({ id: f.id, name: f.name, createdAt: f.createdAt, createdByUser: { name: f.by }, comments: { nodes: f.comments ? [{ id: 'c' }] : [] } })) } } });
@@ -43,7 +47,7 @@ function jobtread(body) {
   w.writes.push({ op, args: q.$ });
   if (op === 'deleteFile') { w.files.delete(q.$.id); return json({}); }
   if (op === 'createUploadRequest') return json({ createUploadRequest: { createdUploadRequest: { id: `up${w.writes.length}` } } });
-  if (op === 'createFile') { const id = fid(); w.files.set(id, { id, jobId: q.$.targetId, name: q.$.name, createdAt: new Date(w.now).toISOString(), by: null }); return json({ createFile: { createdFile: { id } } }); }
+  if (op === 'createFile') { const id = fid(); w.files.set(id, { id, jobId: q.$.targetId, targetType: q.$.targetType, folder: q.$.folder || null, tags: q.$.fileTagIds || [], name: q.$.name, createdAt: new Date(w.now).toISOString(), by: null }); return json({ createFile: { createdFile: { id } } }); }
   throw new Error(`unexpected JobTread call ${op}`);
 }
 
@@ -290,4 +294,33 @@ test('with closed jobs switched off, only open jobs are looked at, as before', a
   await run(0, { closedToo: false });
   assert.equal(await row('j4'), null);
   assert.deepEqual(w.writes, []);
+});
+
+// Projects no job draws from that Peter gave a home (Nov 9 2026): copied there, untagged, and no longer orphans
+test('a project given a home has its photos copied there once, untagged, into its folder, and stops being an orphan', async () => {
+  project('500', 'Ava Stone (2026) (019)');
+  job('j1', 'Ava Stone (2026)', { companycamId: '500' });
+  closedJob();
+  project('900', 'Rosa Lane 2026', { street: '8 Review Way' }); // a denied family's home visit
+  for (const id of ['3009901', '3009902']) photo(id, '900');
+  project('910', 'Repair visit', { street: '2 Fix St' }); // a repair on a closed job
+  photo('3009911', '910');
+  job('j9', 'Repair Family (2025)', { street: '2 Fix St', closedOn: '2025-02-01', createdAt: '2024-12-01T00:00:00Z' });
+  project('920', 'Not placed', { street: '7 Other Rd' });
+  photo('3009921', '920');
+  const placed = [
+    { project: '900', targetType: 'account', targetId: 'acct-rosa', folder: 'Home visit' },
+    { project: '910', targetType: 'job', targetId: 'j9', folder: null },
+  ];
+  await run(0, { placed });
+  const onAccount = [...w.files.values()].filter((f) => f.jobId === 'acct-rosa');
+  assert.deepEqual(onAccount.map((f) => [f.name, f.targetType, f.folder, f.tags.length]).sort(), [['CompanyCam 3009901', 'account', 'Home visit', 0], ['CompanyCam 3009902', 'account', 'Home visit', 0]]);
+  assert.deepEqual(names('j9').filter((n) => n === 'CompanyCam 3009911'), ['CompanyCam 3009911'], 'the repair visit on its closed job');
+  const before = w.files.size;
+  await run(11, { placed });
+  assert.equal(w.files.size, before, 'nothing copied twice');
+  const st = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_jobs_state WHERE key = 'placed'").first('value'));
+  assert.deepEqual([st['900'].missing, st['900'].copied, st['910'].missing], [0, 2, 0]);
+  const orph = JSON.parse(await env.DB.prepare("SELECT value FROM companycam_jobs_state WHERE key = 'orphans'").first('value'));
+  assert.deepEqual(orph.list.map((p) => p.id), ['920'], 'only the project with no home is left');
 });

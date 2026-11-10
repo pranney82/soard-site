@@ -596,9 +596,11 @@ const MAP = { t: 'SOARD', children: [
             // Before CompanyCam closes in December 2026: closed jobs too, and the projects no job draws from
             const ca = c.closedAudit;
             const closedNote = !c.closedToo ? '' : !ca ? ' Closed jobs: first pass under way.' : ` Closed jobs: ${ca.missing ? `${plural(ca.missing, 'photo')} still to copy` : 'every photo in JobTread'}.`;
+            const pl = c.placed;
+            const placedNote = !pl ? '' : pl.errors ? ` ${plural(pl.errors, 'project')} given a home couldn’t be copied yet.` : pl.missing ? ` ${plural(pl.missing, 'photo')} still going to the homes Peter gave ${plural(pl.projects, 'project')}.` : '';
             const o = c.orphans;
-            if (o?.projects) return ATTN(`${plural(o.projects, 'CompanyCam project')} with ${plural(o.photos, 'photo')} ${o.projects === 1 ? 'isn’t' : 'aren’t'} on any JobTread job, biggest “${o.list?.[0]?.name || '?'}”. They need a home before CompanyCam closes in December.${closedNote}`, c.lastChecked);
-            return ON(`${plural(a.withPhotos, 'open job')} with CompanyCam photos${a.missing ? `, ${plural(a.missing, 'photo')} still to copy` : ', every photo in JobTread'}.${doubles}${closedNote}`, c.lastChecked);
+            if (o?.projects) return ATTN(`${plural(o.projects, 'CompanyCam project')} with ${plural(o.photos, 'photo')} ${o.projects === 1 ? 'isn’t' : 'aren’t'} on any JobTread job, biggest “${o.list?.[0]?.name || '?'}”. They need a home before CompanyCam closes in December.${closedNote}${placedNote}`, c.lastChecked);
+            return ON(`${plural(a.withPhotos, 'open job')} with CompanyCam photos${a.missing ? `, ${plural(a.missing, 'photo')} still to copy` : ', every photo in JobTread'}.${doubles}${closedNote}${placedNote}`, c.lastChecked);
           } },
       ]},
       { t: 'The process', children: [
