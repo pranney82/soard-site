@@ -100,7 +100,7 @@ test('the email: filled in from the kid page and JobTread, the Remi & Nico desig
   assert.equal(e.preview, 'Come celebrate Rowan as we reveal the brand-new accessible bathroom!');
   assert.match(e.html, />Friday, March 12<\/div>\s*<div[^>]*>4:00 PM</, 'the day and the time each keep a line, so a phone never breaks a date');
   assert.match(e.text, /Friday, March 12, 2027 · 4:00 PM/);
-  assert.match(e.html, /100 Example Way, Atlanta, GA\u00A030301/, 'the family’s address, like the invite sent for Remi & Nico');
+  assert.match(e.html, /100\u00A0Example\u00A0Way, Atlanta,\u00A0GA\u00A030301/, 'the family’s address, breaking only after a comma');
   assert.match(e.html, /Park on the(?: |&nbsp;)street\.[\s\S]*Bring a(?: |&nbsp;)smile\./, 'JobTread’s notes, one line each');
   const cal = calendarLinks('rowan-test');
   for (const link of [cal.google, cal.apple, cal.outlook]) assert.ok(e.html.includes(link.replace(/&/g, '&amp;')), link);
@@ -128,7 +128,7 @@ test('confirmed in JobTread: one draft in Kit, to the Reveal Emails segment, pri
   assert.equal(b.send_at, null, 'a draft: nothing is scheduled');
   assert.equal(b.public, false, 'never on the public newsletter page (it has an address)');
   assert.deepEqual(b.subscriber_filter, [{ all: [{ type: 'segment', ids: [587253] }], any: null, none: null }]);
-  assert.match(b.content, /100 Example Way/);
+  assert.match(b.content, /100[ \u00A0]Example[ \u00A0]Way/);
 
   assert.equal(emails.length, 1);
   assert.deepEqual(emails[0].to, [KIT_INVITE_DEFAULTS.reviewer]);
@@ -343,7 +343,7 @@ test('real JobTread words: the team’s own arrival note isn’t said twice, and
   const e = revealInviteEmail({ kid: KID, date: '2027-03-12', time: '16:00', address: '426 Example Ln, Woodstock, GA 30188, USA', notes: 'Please arrive at least 15 mins early! Parking will be tight.' });
   assert.ok(!e.html.includes('Please arrive 15 minutes early'));
   assert.match(e.html, /Please arrive at least 15 mins early/);
-  assert.match(e.html, /426 Example Ln, Woodstock, GA\u00A030188</);
+  assert.match(e.html, /426\u00A0Example\u00A0Ln, Woodstock,\u00A0GA\u00A030188</);
   assert.ok(!/, USA/.test(e.html + e.text));
 });
 

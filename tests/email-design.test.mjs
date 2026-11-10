@@ -15,7 +15,7 @@ import { createHash } from 'node:crypto';
 import { revealInviteEmail, EMAIL_DESIGN } from '../functions/api/_reveal-invite-email.js';
 import { projectKickoffEmail, projectRevealEmail } from '../functions/api/_project-email.js';
 
-const RECORDED = { design: '2026-11-09c', hash: '7a2280bdafd6e2a4' };
+const RECORDED = { design: '2026-11-09d', hash: '2022efe89aebbf78' };
 
 const CF = 'https://imagedelivery.net/abc123';
 const KID = {

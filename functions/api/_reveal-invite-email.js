@@ -19,7 +19,7 @@ export const SITE_URL = 'https://sunshineonaranneyday.com';
  * every draft still waiting in Kit that nobody has edited is then rebuilt on the next look, by itself.
  * tests/email-design.test.mjs fails if the emails change and this doesn't.
  */
-export const EMAIL_DESIGN = '2026-11-09c';
+export const EMAIL_DESIGN = '2026-11-09d';
 const CF = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
 
 const Y = '#FFDA24';
@@ -216,6 +216,10 @@ export const galleryPicks = (kid) => {
   return all.length <= 9 ? all : Array.from({ length: 9 }, (_, i) => all[Math.floor((i * all.length) / 9)]);
 };
 
+/** The cover picture: the first of the three candidates kidPhotoUrls checks at cover size that loads, never an unchecked one */
+export const leadPhoto = (kid, broken = new Set()) => [kid?.heroImage, ...galleryPicks(kid).map((ph) => ph.url)].filter(Boolean).slice(0, 3)
+  .find((src) => !broken.has(cfImg(src, HERO_TRANSFORM)) && !broken.has(cfImg(src, PHOTO_TRANSFORM))) || '';
+
 /** Every kid photo URL the email could load, in its email sizes */
 export const kidPhotoUrls = (kid) => {
   const picks = galleryPicks(kid).map((ph) => ph.url);
@@ -273,7 +277,7 @@ export const twoKids = (name) => /\s(&|and)\s/.test(String(name || ''));
 
 /** Typographic apostrophes, so names and copy read like the rest of the email */
 /** Text a family or staff typed, made to read like the rest of the email: curly quotes, and a spaced en dash where they typed an em dash (a comma there would make two sentences one) */
-export const tidy = (s) => curly(s).replace(/\s*\u2014\s*/g, ' \u2013 ').replace(/ +- +/g, ' \u2013 ');
+export const tidy = (s) => curly(s).replace(/\s*(\u2014|--+)\s*/g, ' \u2013 ').replace(/ +- +/g, ' \u2013 ');
 
 export const curly = (s) => String(s || '')
   .replace(/(^|[\s(\[{“‘])"/g, '$1“').replace(/"/g, '”')
@@ -282,6 +286,24 @@ export const curly = (s) => String(s || '')
 
 /** "2026-11-17" + "16:00" → "Tuesday, November 17, 2026 · 4:00 PM" */
 /** JobTread's address, as a person would write it: no ", USA" */
+/**
+ * An address that breaks only after its commas: each part keeps together ("Peachtree Corners"), and the
+ * city stays with its state and ZIP while that fits a phone line, so "GA 30092" is never alone.
+ * A part too long for a line (a long street name) keeps its spaces.
+ */
+export function addressLines(address) {
+  const parts = String(address || '').split(/,\s*/).filter(Boolean);
+  const glue = (t, max) => (t.length <= max ? t.replace(/ /g, '\u00A0') : t);
+  const n = parts.length;
+  // "Roswell, GA 30076" as one unit when short, else the city and "GA 30076" each kept whole
+  if (n >= 2 && /^[A-Z]{2}\s+\d{5}(-\d{4})?$/.test(parts[n - 1])) {
+    const cityState = `${parts[n - 2]}, ${parts[n - 1]}`;
+    const tail = cityState.length <= 28 ? glue(cityState, 28) : `${glue(parts[n - 2], 22)}, ${glue(parts[n - 1], 22)}`;
+    return [...parts.slice(0, -2).map((p) => glue(p, 22)), tail].join(', ');
+  }
+  return parts.map((p) => glue(p, 22)).join(', ');
+}
+
 export const cleanAddress = (address) => String(address || '').trim().replace(/,?\s*(USA|United States)\.?$/i, '');
 
 /** What a draft made before JobTread confirms says for the time */
@@ -348,6 +370,7 @@ export function pinCells(html) {
 export function emailFrame(preview, rows) {
   return pinCells(`<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">${escapeHtml(preview)}${'&#847;&zwnj;&nbsp;'.repeat(90)}</div>
 <style>
+  a[x-apple-data-detectors]{color:inherit!important;text-decoration:none!important;font-size:inherit!important;font-family:inherit!important;font-weight:inherit!important;line-height:inherit!important}
   @media screen and (max-width:600px){
     .ec{width:100%!important}
     .fl{max-width:100%!important;height:auto!important}
@@ -462,8 +485,8 @@ export function photoPair(photos, name, top = 8) {
 }
 
 /** The small line that thanks whoever took the pictures, and the way to the rest of them */
-export function photoNotes(kid, link = '') {
-  const credit = kid.photographer ? `<p style="margin:${link ? 10 : 0}px 0 0;font-family:${SANS};font-size:13px;color:${TM};">Photos by ${noWidow(escapeHtml(tidy(kid.photographer)))}</p>` : '';
+export function photoNotes(kid, link = '', { photos = true } = {}) {
+  const credit = photos && kid.photographer ? `<p style="margin:${link ? 10 : 0}px 0 0;font-family:${SANS};font-size:13px;color:${TM};">Photos by ${noWidow(escapeHtml(tidy(kid.photographer)))}</p>` : '';
   return link || credit ? `<div style="padding-top:16px;">${link}${credit}</div>` : '';
 }
 
@@ -473,8 +496,9 @@ export function photoNotes(kid, link = '') {
  */
 export function noteHtml(text, color = '#FFFFFF') {
   const parts = String(text || '').split(/(https?:\/\/[^\s<>"]+)/g);
+  const mail = (t) => escapeHtml(t).replace(/[\w.+-]+@[\w-]+(\.[\w-]+)+/g, (m) => `<a href="mailto:${m}" style="color:${color};font-weight:600;text-decoration:underline;text-underline-offset:2px;">${m}</a>`);
   return noWidow(parts.map((part, i) => {
-    if (i % 2 === 0) return escapeHtml(tidy(part));
+    if (i % 2 === 0) return mail(tidy(part));
     const url = part.replace(/[.,;:!?)\]]+$/, '');
     const trail = part.slice(url.length);
     let host;
@@ -651,7 +675,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     : `Come celebrate ${name} on reveal day!`;
 
   // A picture that won't load is passed over, never shown broken
-  const lead = [kid.heroImage, ...galleryPicks(kid).map((ph) => ph.url)].filter(Boolean).find((src) => !brokenLogos.has(cfImg(src, HERO_TRANSFORM))) || '';
+  const lead = leadPhoto(kid, brokenLogos);
 
   // The day and the time each keep their own line, so a phone never breaks a date in two
   const rows = [
@@ -661,7 +685,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
       : { label: 'When', lines: [longDay(date)], sub: TIME_LATER }),
     // No address from JobTread yet: say so, rather than leave guests with only "Josué’s Home"
     // "Amanda, Caleb & Isaac’s Home" never leaves "Home" alone (even)
-    { label: 'Where', lines: [`${name}’s Home`], even: true, sub: tidy(cleanAddress(address)).replace(/\b([A-Z]{2}) (\d{5})/, '$1\u00A0$2') || 'Address to be confirmed' },
+    { label: 'Where', lines: [`${name}’s Home`], even: true, sub: addressLines(tidy(cleanAddress(address))) || 'Address to be confirmed' },
     // One line ("Wheelchair-Accessible Bathroom and Dream Bedroom"), so a long name that wraps never reads as another room
     roomLines.length && { label: makeoverWord(roomLines) ? 'Project' : several ? 'Rooms' : 'Room', lines: [roomText], keep: roomLines },
   ].filter(Boolean);
@@ -671,8 +695,9 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   // ("Early Intervention" isn't an arrival note; "come 15 minutes early" is)
   const arrive = /\barriv|\b(come|be|get there|get here|show up)\s+(\w+\s+){0,3}early\b|\b\d+\s*(min|mins|minutes)\s+early\b/i.test(notes) ? null : `Please arrive 15 minutes early so everyone’s in place before ${name} ${twoKids(name) ? 'arrive' : 'arrives'}.`;
 
-  // No date yet (an early draft): no calendar buttons, since there's nothing to save
-  const calendar = slug && when ? `<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>
+  // No date or no confirmed time yet (an early draft): no calendar buttons, since there's nothing to save yet
+  const timed = !!when && /^\d{1,2}:\d{2}/.test(String(time || ''));
+  const calendar = slug && timed ? `<div style="height:28px;line-height:28px;font-size:0;">&nbsp;</div>
     <p style="margin:0 0 14px;font-family:${SANS};font-size:15px;font-weight:700;color:#FFFFFF;">Save it to your calendar</p>
     <!-- Three equal buttons that share the width, so the row shrinks with a small phone instead of spilling off it -->
     <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" align="center" style="margin:0 auto;max-width:330px;table-layout:fixed;"><tr>
@@ -709,7 +734,7 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
   </td></tr>` : ''}
   <tr><td bgcolor="${CR}" style="background:${CR};padding:28px 0 0;${SIDE}" class="pd">
     ${photos.length >= 2 ? photoPair(photos, name, 0) : ''}
-    ${photoNotes(kid, textLink(`Read ${name}’s story →`, kidUrl))}
+    ${photoNotes(kid, textLink(`Read ${name}’s story →`, kidUrl), { photos: !!lead || photos.length >= 2 })}
   </td></tr>
   ${partnerCards(kid, brokenLogos) || `<tr><td bgcolor="${CR}" style="background:${CR};height:8px;font-size:0;line-height:0;">&nbsp;</td></tr>`}
   ${signOff('Hope to see you there.', teamPicture)}
@@ -727,8 +752,8 @@ export function revealInviteEmail({ kid = {}, date, time, address = '', notes = 
     arrive,
     ...noteLines.map(tidy),
     '',
-    slug && when && `Add to your calendar: ${cal.apple}`,
-    slug && when && `Watch it live: ${liveUrl}`,
+    slug && timed && `Add to your calendar: ${cal.apple}`,
+    slug && timed && `Watch it live: ${liveUrl}`,
     `${name}’s story: ${kidUrl}`,
     '',
     'Hope to see you there.',

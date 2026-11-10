@@ -14,7 +14,7 @@
 import {
   SITE_URL, HERO_TRANSFORM, PHOTO_TRANSFORM, SIDE, BRAND, escapeHtml, href, curly, cfImg, galleryPicks, kidPhotos, stripHtml, label,
   emailFrame, emailHeader, emailFooter, signOff, partnerCards, button, textLink, cover, lede, bodyPhotos, photoImg, photoPair, photoNotes,
-  listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, makeoverWord, shortStory, tidy, kidName, shownPartners,
+  listJoin, headlineFit, nameRuns, nameHtml, roomNames, roomCounts, noWidow, fitName, makeoverWord, shortStory, tidy, kidName, shownPartners, leadPhoto,
 } from './_reveal-invite-email.js';
 
 const { Y, D, DD, CR, BD, TM, SANS, SERIF } = BRAND;
@@ -98,7 +98,7 @@ function quoteHtml(q) {
 
 /** The first photo that will load, for the top of the email */
 function leadOf(kid, broken) {
-  return [kid.heroImage, ...galleryPicks(kid).map((ph) => ph.url)].filter(Boolean).find((src) => !broken.has(cfImg(src, HERO_TRANSFORM))) || '';
+  return leadPhoto(kid, broken);
 }
 
 /** The first before and after that both load. Half a pair says nothing, so it's both or neither. */
@@ -122,13 +122,18 @@ const gap = (px) => `<tr><td bgcolor="${CR}" style="background:${CR};height:${px
  * so no word is ever squeezed in two.
  */
 function factsRow(facts) {
-  // "Autism &" or "Bowel and" never ends a line: "&" and "and" go with the word after them, and "Non-Verbal" never splits at its hyphen
-  const glue = (t) => String(t).replace(/ (&|and) /g, ' $1\u00A0');
+  // "Autism &" or "Bowel and" never ends a line: "&" and "and" go with the word after them, "Non-Verbal" never
+  // splits at its hyphen, and the last two words stay together ("Multiple / Sulfatase Deficiency", never
+  // "Multiple Sulfatase / Deficiency") while they fit a phone's full width
+  // A hyphen inside a word doesn't break ("Non‑Verbal", "Rubinstein‑Taybi": a no-break hyphen)
+  const glue = (t) => String(t).replace(/(\w)-(?=\w)/g, '$1\u2011').replace(/ (&|and) /g, ' $1\u00A0')
+    .replace(/ ([^ ]+) ([^ ]+)$/, (m, x, y) => (!/\u00A0/.test(x + y) && `${x} ${y}`.length <= 20 ? ` ${x}\u00A0${y}` : m));
   const longest = (t) => Math.max(...glue(t).split(' ').map((w) => w.length));
-  const stack = facts.length > 1 && facts[0].main.length + longest(facts[facts.length - 1].main) > 22;
+  // Side by side only while the value's longest unbreakable run fits beside the first fact on a phone
+  const stack = facts.length > 1 && facts[0].main.length + longest(facts[facts.length - 1].main) > 18;
   const cell = (f, i, last) => `<td valign="top" style="padding:16px ${last || stack ? 0 : 28}px 16px 0;border-top:1px solid ${BD};${stack && !last ? '' : `border-bottom:1px solid ${BD};`}${last || stack ? '' : 'width:1%;white-space:nowrap;'}">
         <div style="font-family:${SANS};font-size:11px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:${TM};">${escapeHtml(f.label)}</div>
-        <div style="margin-top:6px;font-family:${SANS};font-size:16px;font-weight:600;line-height:1.35;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(f.main).replace(/ (&amp;|and) /g, ' $1&nbsp;').replace(/(^|\s)([^\s&;]{1,18}-[^\s&;]{1,18})(?=[\s,]|$)/g, '$1<span style="white-space:nowrap;">$2</span>')}</div>
+        <div style="margin-top:6px;font-family:${SANS};font-size:16px;font-weight:600;line-height:1.35;color:${D};word-break:normal;overflow-wrap:break-word;">${escapeHtml(glue(f.main)).replace(/\u00A0/g, '&nbsp;')}</div>
       </td>`;
   const rows = stack ? facts.map((f, i) => `<tr>${cell(f, i, i === facts.length - 1)}</tr>`).join('')
     : `<tr>${facts.map((f, i) => cell(f, i, i === facts.length - 1)).join('')}</tr>`;
@@ -159,6 +164,16 @@ function transformation(pair, name) {
   </td></tr>`;
 }
 
+/**
+ * A room's words with the last two kept together while they fit a phone line ("Three / Dream Bedrooms"); a pair
+ * too long for that whose first word is hyphenated breaks after the hyphen ("Wheelchair- / Accessible Bathroom")
+ */
+const roomWords = (words) => escapeHtml(words).replace(/ ([^ ]+) ([^ ]+)$/, (m, x, y) => {
+  if (`${x} ${y}`.length <= 20) return ` ${x}&nbsp;${y}`;
+  const after = x.split('-').pop();
+  return x.includes('-') && `${after} ${y}`.length <= 20 ? ` ${x}&nbsp;${y}` : m;
+}).replace(/^([^ ]+-)([^ -]+) ([^ ]+)$/, (m, head, x, y) => (`${x} ${y}`.length <= 20 ? `${head}${x}&nbsp;${y}` : m));
+
 const COUNT_WORDS = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten'];
 
 /**
@@ -172,7 +187,7 @@ function roomList(counts) {
     const words = count > 1 ? `${COUNT_WORDS[count] || count} ${room}` : room;
     return `<tr>
         <td width="24" valign="top" style="width:24px;padding:21px 0 14px;${rule}"><div style="width:10px;height:10px;background:${Y};border-radius:3px;font-size:0;line-height:0;">&nbsp;</div></td>
-        <td valign="top" style="padding:14px 0;${rule}font-family:${SERIF};font-size:18px;font-weight:700;line-height:1.3;color:${D};">${escapeHtml(words)}</td>
+        <td valign="top" style="padding:14px 0;${rule}font-family:${SERIF};font-size:18px;font-weight:700;line-height:1.3;color:${D};">${roomWords(words)}</td>
       </tr>`;
   }).join('')}
     </table>`;
