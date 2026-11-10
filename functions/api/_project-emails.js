@@ -15,6 +15,9 @@
  * a Completed kid with no row counts, so a missed moment is simply found on the
  * next look. A draft deleted in Kit stays deleted.
  *
+ * - By hand: Draft in Kit on the kid's card in Admin → Kids
+ *   (draftProjectEmailNow), whenever what the email says is true.
+ *
  * A draft nobody has touched is rebuilt by itself when the emails' design changes
  * (EMAIL_DESIGN): Kit's copy is read first, and one a person edited, scheduled or
  * sent is left alone. Staff can ask for a rebuild by hand, which also reaches a
@@ -30,7 +33,7 @@ import { sendEmails, emailConfigured } from './_broadcast-notify.js';
 import { emailShell, facts as factRows, button, esc } from './_email-shell.js';
 import { SITE_URL, TEAM_PICTURE, EMAIL_DESIGN } from './_reveal-invite-email.js';
 import { projectKickoffEmail, projectRevealEmail, revealChecks } from './_project-email.js';
-import { brokenLogos, kidPageReady, kitInviteSettings, kitDraftUrl, copyHash } from './_reveal-invite-kit.js';
+import { brokenLogos, kidPageReady, kitInviteSettings, kitDraftUrl, copyHash, wentOut } from './_reveal-invite-kit.js';
 import { readConfig, alertList } from './_reveal-invites.js';
 
 const KINDS = {
@@ -118,8 +121,25 @@ export function revealMissing(kid) {
   return missing;
 }
 
-/** The reviewer's note. An email only. */
-export function projectNote(note, { kind, name, id, subject, missing = [] }) {
+/**
+ * Why a draft made by hand would say something untrue → the reason in words,
+ * or null when it can be drafted. Only these hold a by-hand draft back: the
+ * moment it waits for on its own (JobTread's step, the photos and video) doesn't.
+ */
+export function byHandBlock(kid, kind) {
+  if (!kid) return 'Save the profile first';
+  if (!kidPageReady(kid)) return 'Publish the page first: the email links to it';
+  if (kind === 'kickoff' && kid.status === 'completed') return 'The makeover is finished, and this email says it’s still to come';
+  if (kind === 'reveal' && kid.status !== 'completed') return 'Ready once the kid is Completed: this email says the room is done';
+  return null;
+}
+
+// "Peter Ranney" from peter.ranney@…, for the reviewer's note
+const personOf = (email) => String(email || '').split('@')[0].split(/[._-]+/).filter(Boolean).map((w) => w[0].toUpperCase() + w.slice(1)).join(' ') || 'Someone';
+const samePerson = (a, b) => isEmail(a) && String(a).trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
+/** The reviewer's note. An email only. `by`: who drafted it by hand. */
+export function projectNote(note, { kind, name, id, subject, missing = [], by = null, again = false }) {
   const { what } = KINDS[kind];
   const t = note === 'waiting' ? {
     subject: `${name}’s ${what} is waiting on the page`,
@@ -128,7 +148,11 @@ export function projectNote(note, { kind, name, id, subject, missing = [] }) {
   } : {
     subject: `Review ${name}’s ${what} in Kit`,
     heading: `${name}’s ${what} is ready to review`,
-    intro: `${kind === 'kickoff' ? `JobTread’s Set Start Date is checked off for ${name}` : `${name}’s reveal is complete and the page has its photos and video`}, so the ${what} is drafted in Kit. Look it over, then send it from Kit. Nothing goes out until you do.`,
+    // again: a note owed from an earlier look, which can't say what drafted it
+    intro: `${again ? `${name}’s ${what} is drafted in Kit`
+      : `${by ? `${personOf(by)} drafted it from ${name}’s profile in the admin`
+        : kind === 'kickoff' ? `JobTread’s Set Start Date is checked off for ${name}`
+          : `${name}’s reveal is complete and the page has its photos and video`}, so the ${what} is drafted in Kit`}. Look it over, then send it from Kit. Nothing goes out until you do.`,
   };
   const rows = note === 'waiting' ? [] : [['Subject', esc(subject || '')], ['Goes to', 'The newsletter list in Kit']];
   const reminder = note === 'waiting' ? '' : 'Check the photo, the story and the giving link. Make any changes right in the draft: edits to the kid’s page don’t reach it.';
@@ -169,11 +193,13 @@ async function readKid(DB, slug) {
 
 /**
  * One look at one email: draft it if the kid is ready, and tell the reviewer.
- * Never throws.
+ * `by` (a staff email): drafted by hand, so it doesn't wait for the photos and
+ * video or give up after 90 days, and the reviewer is told who drafted it
+ * (or not told at all, when that was the reviewer). Never throws.
  *
  * @returns {Promise<{project: string, reason?: string, id?: string, error?: string, kit?: string}>}
  */
-export async function syncProjectEmail(env, row, { config = {}, alertTo = [], now = Date.now(), fetchImpl = fetch } = {}) {
+export async function syncProjectEmail(env, row, { config = {}, alertTo = [], now = Date.now(), fetchImpl = fetch, by = null } = {}) {
   const { DB } = env;
   const s = kitInviteSettings(config);
   const { kind, slug } = row;
@@ -196,7 +222,7 @@ export async function syncProjectEmail(env, row, { config = {}, alertTo = [], no
     // Drafted, but the reviewer's email didn't go: only that is owed
     if (row.broadcast_id) {
       if (row.told) return { project: 'unchanged', id: row.broadcast_id };
-      const heard = await tell(env, s, 'ready', { kind, name, id: row.broadcast_id, subject: render({ kid }).subject });
+      const heard = await tell(env, s, 'ready', { kind, name, id: row.broadcast_id, subject: render({ kid }).subject, again: true });
       if (heard) await writeRow(DB, { ...row, told: iso(now) });
       return { project: 'told', id: row.broadcast_id };
     }
@@ -209,13 +235,15 @@ export async function syncProjectEmail(env, row, { config = {}, alertTo = [], no
       }
       if (!kidPageReady(kid)) return { project: 'waiting', reason: 'the kid’s page isn’t published' };
     } else {
-      if (now - Date.parse(row.queued_at) >= GIVE_UP_AFTER_MS) {
+      if (!by && now - Date.parse(row.queued_at) >= GIVE_UP_AFTER_MS) {
         await writeRow(DB, { ...row, state: 'skipped', error: null });
         return { project: 'skip', reason: 'too long after the reveal' };
       }
       // Back in progress (a job reopened): not "complete" until it says so again
       if (kid.status !== 'completed') return { project: 'waiting', reason: 'the kid isn’t Completed' };
-      const missing = revealMissing(kid);
+      // By hand, the page only has to be published: staff saw what's missing before pressing
+      if (by && !kidPageReady(kid)) return { project: 'waiting', reason: 'the kid’s page isn’t published' };
+      const missing = by ? [] : revealMissing(kid);
       if (missing.length) {
         if (!row.reminded && now - Date.parse(row.queued_at) >= REMIND_AFTER_MS) {
           const heard = await tell(env, s, 'waiting', { kind, name, missing });
@@ -244,7 +272,8 @@ export async function syncProjectEmail(env, row, { config = {}, alertTo = [], no
     const seen = await kitReadBroadcast(env, id);
     const drafted = { ...row, broadcast_id: id, state: 'drafted', error: null, alarmed: null, design: EMAIL_DESIGN, content_hash: seen.ok ? await copyHash(seen.broadcast) : null };
     await writeRow(DB, drafted); // kept first: a draft Kit has is never made twice
-    const heard = await tell(env, s, 'ready', { kind, name, id, subject: email.subject });
+    // A reviewer who drafted it by hand needs no email about it
+    const heard = samePerson(by, s.reviewer) || await tell(env, s, 'ready', { kind, name, id, subject: email.subject, by });
     if (heard) await writeRow(DB, { ...drafted, told: iso(now) });
     return { project: 'drafted', id, told: heard };
   } catch (err) {
@@ -362,4 +391,99 @@ export async function kickoffNow(env, { slug, jobId, now = Date.now(), fetchImpl
   } catch (err) {
     return { project: 'error', error: err.message };
   }
+}
+
+const OFF_REASON = 'Kit drafts are off while reveal invites are paused (Reveals → Invites)';
+const goneInKit = (got) => /HTTP 404/.test(got?.error || '') || got?.broadcast?.status === 'aborted';
+
+/**
+ * Draft a kid's Kickoff or Project Reveal in Kit now: Draft in Kit on the kid's
+ * card in Admin → Kids. A draft only, as always: staff send it from Kit.
+ *
+ * It doesn't wait for the email's own moment (JobTread's step, the photos and
+ * video, 90 days, a kid finished before these emails began), only for what
+ * keeps it true (byHandBlock). A draft still in Kit, scheduled or sent is never
+ * made again; one deleted in Kit can be. Never throws.
+ *
+ * @returns {Promise<{project: string, reason?: string, id?: string, error?: string, state?: string, told?: boolean}>}
+ */
+export async function draftProjectEmailNow(env, { slug, kind, by, now = Date.now(), fetchImpl = fetch }) {
+  try {
+    const { DB } = env;
+    if (!KINDS[kind]) return { project: 'error', error: 'Not a project email' };
+    if (!isEmail(by)) return { project: 'error', error: 'Couldn’t tell who asked for it' };
+    await ensureProjectSchema(DB);
+    const config = await readConfig(DB);
+    const s = kitInviteSettings(config);
+    if (!s.enabled || config.enabled === false) return { project: 'off', reason: OFF_REASON };
+    if (!kitConfigured(env)) return { project: 'skip', reason: 'Kit isn’t connected' };
+    const block = byHandBlock(await readKid(DB, slug), kind);
+    if (block) return { project: 'skip', reason: block };
+
+    const have = await readProjectRow(DB, slug, kind);
+    if (have?.broadcast_id) {
+      const got = await kitReadBroadcast(env, have.broadcast_id);
+      if (!goneInKit(got)) {
+        if (!got.ok) return { project: 'error', error: 'Kit couldn’t be reached, so nothing was drafted. Try again in a minute.' };
+        return { project: 'unchanged', id: have.broadcast_id, state: wentOut(got.broadcast, now) || 'draft' };
+      }
+      // Deleted in Kit: start again from nothing
+      await DB.prepare(`UPDATE project_emails SET broadcast_id = NULL, state = 'waiting', told = NULL, reminded = NULL, error = NULL, alarmed = NULL,
+        content_hash = NULL, design = NULL, refresh = NULL, updated_at = ?
+        WHERE slug = ? AND kind = ? AND broadcast_id = ?`).bind(iso(now), slug, kind, have.broadcast_id).run();
+    } else if (have && have.state !== 'waiting' && have.state !== 'claimed') {
+      // Set aside (a past kid, or too long after): asked for now, so it's due
+      await DB.prepare(`UPDATE project_emails SET state = 'waiting', error = NULL, updated_at = ? WHERE slug = ? AND kind = ? AND broadcast_id IS NULL`)
+        .bind(iso(now), slug, kind).run();
+    }
+    const row = have ? await readProjectRow(DB, slug, kind) : await queueProjectEmail(env, { slug, kind, now });
+    const r = await syncProjectEmail(env, row, { config, alertTo: alertList(env, config), now, fetchImpl, by });
+    return r.reason === 'another look has it' ? { ...r, reason: 'It’s being drafted right now. Look again in a minute.' } : r;
+  } catch (err) {
+    console.error('[project-emails]', err.message);
+    return { project: 'error', error: err.message };
+  }
+}
+
+/**
+ * Where a kid's Kickoff and Project Reveal stand, for the kid's card in Admin →
+ * Kids. Read from Kit each time, since the site isn't told when staff send or
+ * delete a draft. Read only. Never throws for one email.
+ *
+ * @returns {Promise<{off: string|null, page: {published: boolean, completed: boolean}, kickoff: object, reveal: object}>} each email:
+ *   state 'none' | 'skipped' | 'drafting' | 'draft' | 'scheduled' | 'sent' | 'deleted',
+ *   with id and at once in Kit, block (why it can't be drafted by hand), missing
+ *   (what the Project Reveal would leave out), error
+ */
+export async function projectEmailStatus(env, slug, { now = Date.now() } = {}) {
+  const { DB } = env;
+  await ensureProjectSchema(DB);
+  const [kid, config, rows] = await Promise.all([
+    readKid(DB, slug),
+    readConfig(DB),
+    DB.prepare('SELECT * FROM project_emails WHERE slug = ?').bind(slug).all().then((r) => r.results || []),
+  ]);
+  const s = kitInviteSettings(config);
+  const off = !s.enabled || config.enabled === false ? OFF_REASON : !kitConfigured(env) ? 'Kit isn’t connected' : null;
+  // For the reveal invite's row beside these
+  const out = { off, page: { published: kidPageReady(kid), completed: kid?.status === 'completed' } };
+  await Promise.all(Object.keys(KINDS).map(async (kind) => {
+    const row = rows.find((x) => x.kind === kind) || null;
+    const base = { block: byHandBlock(kid, kind), missing: kind === 'reveal' && kid ? revealMissing(kid).filter((m) => m !== 'publishing') : [], error: row?.error || null };
+    if (!row?.broadcast_id) {
+      const fresh = row?.state === 'claimed' && Date.parse(row.claimed_at || '') > now - CLAIM_MS;
+      out[kind] = { ...base, state: fresh ? 'drafting' : row?.state === 'skipped' ? 'skipped' : 'none' };
+      return;
+    }
+    const id = row.broadcast_id;
+    const got = kitConfigured(env) ? await kitReadBroadcast(env, id) : { ok: false };
+    if (goneInKit(got)) { out[kind] = { ...base, state: 'deleted', id, error: null }; return; }
+    // Kit not answering: as the site last knew it
+    if (!got.ok) { out[kind] = { ...base, state: 'draft', id, at: row.updated_at || null, unread: true }; return; }
+    const b = got.broadcast;
+    const went = wentOut(b, now);
+    // edited: a person changed it in Kit, so a new design leaves it alone (refreshProjectDraft)
+    out[kind] = { ...base, state: went || 'draft', id, edited: !went && row.state === 'edited', at: went === 'scheduled' ? b.send_at : went === 'sent' ? b.published_at || b.send_at || null : b.created_at || row.updated_at || null };
+  }));
+  return out;
 }

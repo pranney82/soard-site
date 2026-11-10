@@ -155,7 +155,7 @@ function audienceOf(row) {
   return m ? { type: m[1], id: Number(m[2]), name: row.audience } : null;
 }
 /** Has it left the site's hands? → 'scheduled', 'sent' or null (a draft) */
-function wentOut(b, now = Date.now()) {
+export function wentOut(b, now = Date.now()) {
   if (b.status === 'scheduled' || (!b.status && b.send_at && Date.parse(b.send_at) > now)) return 'scheduled';
   return (b.status && b.status !== 'draft') || b.send_at || b.published_at ? 'sent' : null;
 }

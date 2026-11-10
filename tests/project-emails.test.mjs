@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import { createD1 } from './lib/d1-shim.mjs';
 import { revealInviteEmail } from '../functions/api/_reveal-invite-email.js';
 import { projectKickoffEmail, projectRevealEmail } from '../functions/api/_project-email.js';
-import { queueProjectEmail, readProjectRow, syncProjectEmail, runProjectEmails, kickoffNow, revealMissing, projectNote, refreshProjectDraft } from '../functions/api/_project-emails.js';
+import { queueProjectEmail, readProjectRow, syncProjectEmail, runProjectEmails, kickoffNow, revealMissing, projectNote, refreshProjectDraft, draftProjectEmailNow, projectEmailStatus, byHandBlock } from '../functions/api/_project-emails.js';
 import { writeConfig } from '../functions/api/_reveal-invites.js';
 
 const IMG = 'https://imagedelivery.net/ROYFuPmfN2vPS6mt5sCkZQ';
@@ -49,6 +49,7 @@ globalThis.fetch = async (input, init = {}) => {
     }
     const one = path.match(/^\/broadcasts\/(\d+)$/);
     if (one && method === 'GET') {
+      if (kit.readDown) return new Response('down', { status: 503 });
       const b = kit.broadcasts.get(one[1]);
       return b ? Response.json({ broadcast: b }) : Response.json({ errors: ['Not found'] }, { status: 404 });
     }
@@ -1102,4 +1103,123 @@ test('a draft staff scheduled or sent is never rebuilt', async () => {
   assert.equal(r.project, 'skip');
   assert.equal(kit.puts.length, 0);
   assert.equal((await readProjectRow(env.DB, SLUG, 'kickoff')).state, 'scheduled');
+});
+
+// ── By hand: Draft in Kit on the kid's card in Admin → Kids ──
+const STAFF = 'clareece@soardcharity.com';
+const byHand = (kind, extra = {}) => draftProjectEmailNow(env, { slug: SLUG, kind, by: STAFF, now: NOW, ...extra });
+
+test('by hand: a Kickoff drafts now, before JobTread’s step, as a draft only, and Linzi hears who drafted it', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  const r = await byHand('kickoff');
+  assert.equal(r.project, 'drafted');
+  const b = only();
+  assert.equal(b.send_at, null, 'never scheduled');
+  assert.equal(b.public, false);
+  assert.equal(b.subject, 'Meet Rowan, Our Next Dream Room Project');
+  assert.ok(!kit.calls.some((c) => /PUT|DELETE/.test(c)), 'only a new draft');
+  assert.equal(emails.length, 1);
+  assert.deepEqual(emails[0].to, ['linzi@soardcharity.com']);
+  assert.match(emails[0].text, /Clareece drafted it from Rowan’s profile in the admin/);
+  assert.ok(!/Set Start Date/.test(emails[0].text), 'not JobTread’s doing');
+  // A second press, and JobTread's own moment later, make nothing new
+  assert.equal((await byHand('kickoff')).project, 'unchanged');
+  assert.equal((await kickoffNow(env, { slug: SLUG, jobId: 'x', now: NOW + DAY })).project, 'unchanged');
+  assert.equal(kit.broadcasts.size, 1);
+  assert.equal(emails.length, 1);
+});
+
+test('by hand: Linzi drafting it herself gets no email about it', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  assert.equal((await byHand('kickoff', { by: 'Linzi@soardcharity.com' })).project, 'drafted');
+  assert.equal(emails.length, 0);
+  assert.ok((await readProjectRow(env.DB, SLUG, 'kickoff')).told, 'and the hourly look owes her nothing');
+});
+
+test('by hand: only what would make the email untrue holds it back', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  assert.match((await byHand('reveal')).reason, /Ready once the kid is Completed/);
+  await putKid(DONE);
+  assert.match((await byHand('kickoff')).reason, /makeover is finished/);
+  await putKid({ ...DONE, publishStatus: 'draft' });
+  assert.match((await byHand('reveal')).reason, /Publish the page first/);
+  assert.equal(kit.broadcasts.size, 0);
+  assert.equal(byHandBlock(null, 'kickoff'), 'Save the profile first');
+});
+
+test('by hand: a Project Reveal for a kid finished before these emails began, without its video', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  await putKid({ ...DONE, videoUrl: '', photos: DONE.photos.slice(0, 2) });
+  await hourly(NOW); // the first look marks every finished kid as past
+  assert.equal((await readProjectRow(env.DB, SLUG, 'reveal')).state, 'skipped');
+  assert.equal(kit.broadcasts.size, 0);
+  const st = await projectEmailStatus(env, SLUG, { now: NOW });
+  assert.equal(st.reveal.state, 'skipped');
+  assert.deepEqual(st.reveal.missing, ['at least 3 photos', 'the reveal video']);
+  assert.equal(st.reveal.block, null);
+  const r = await byHand('reveal', { now: NOW + 200 * DAY });
+  assert.equal(r.project, 'drafted', 'not held by the 90 days, the photos or the video');
+  assert.equal(only().subject, 'Rowan’s Dream Room Is Complete');
+  assert.ok(!/Watch the Reveal/.test(only().content), 'no video, so no video button');
+  // The hourly look leaves it be
+  await hourly(NOW + 201 * DAY);
+  assert.equal(kit.broadcasts.size, 1);
+});
+
+test('by hand: deleted in Kit, it can be drafted again; scheduled or sent, never', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  await byHand('kickoff');
+  const first = String(only().id);
+  kit.broadcasts.get(first).status = 'scheduled';
+  kit.broadcasts.get(first).send_at = new Date(NOW + DAY).toISOString();
+  const again = await byHand('kickoff');
+  assert.equal(again.project, 'unchanged');
+  assert.equal(again.state, 'scheduled');
+  kit.broadcasts.clear();
+  assert.equal((await projectEmailStatus(env, SLUG, { now: NOW })).kickoff.state, 'deleted');
+  const r = await byHand('kickoff');
+  assert.equal(r.project, 'drafted');
+  assert.equal(kit.calls.filter((c) => c === 'POST /broadcasts').length, 2, 'a new draft (the fake reuses ids once cleared)');
+  assert.equal(kit.broadcasts.size, 1);
+  assert.equal(String((await readProjectRow(env.DB, SLUG, 'kickoff')).broadcast_id), String(r.id));
+});
+
+test('by hand: Kit not answering drafts nothing, and says so', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  await byHand('kickoff');
+  kit.readDown = true;
+  const r = await byHand('kickoff');
+  assert.equal(r.project, 'error');
+  assert.match(r.error, /Kit couldn’t be reached/);
+  assert.equal(kit.broadcasts.size, 1);
+  const st = await projectEmailStatus(env, SLUG, { now: NOW });
+  assert.equal(st.kickoff.state, 'draft', 'as the site last knew it');
+  assert.equal(st.kickoff.unread, true);
+});
+
+test('by hand: off while invites are paused, and with no one to say who asked', async () => {
+  await writeConfig(env.DB, { enabled: false });
+  assert.equal((await byHand('kickoff')).project, 'off');
+  assert.match((await projectEmailStatus(env, SLUG)).off, /paused/);
+  await writeConfig(env.DB, { enabled: true });
+  assert.equal((await byHand('kickoff', { by: 'unknown' })).project, 'error');
+  assert.equal((await byHand('invite')).project, 'error');
+  assert.equal(kit.broadcasts.size, 0);
+});
+
+test('status: each email as Kit has it, and what the page still needs', async () => {
+  await writeConfig(env.DB, { enabled: true });
+  let st = await projectEmailStatus(env, SLUG, { now: NOW });
+  assert.equal(st.off, null);
+  assert.deepEqual(st.page, { published: true, completed: false });
+  assert.equal(st.kickoff.state, 'none');
+  assert.equal(st.kickoff.block, null);
+  assert.match(st.reveal.block, /Completed/);
+  await byHand('kickoff');
+  st = await projectEmailStatus(env, SLUG, { now: NOW });
+  assert.equal(st.kickoff.state, 'draft');
+  assert.equal(String(st.kickoff.id), String(only().id));
+  kit.broadcasts.get(String(only().id)).status = 'completed';
+  kit.broadcasts.get(String(only().id)).published_at = new Date(NOW).toISOString();
+  assert.equal((await projectEmailStatus(env, SLUG, { now: NOW })).kickoff.state, 'sent');
 });

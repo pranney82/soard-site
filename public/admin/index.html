@@ -3320,6 +3320,19 @@
     .kd-card__actions .btn { display: inline-flex; align-items: center; gap: 0.3rem; }
     .kd-card__delete { display: block; margin-top: 0.9rem; padding: 0.35rem 0; border: none; background: none; font-size: var(--fs-xs); font-weight: 600; color: var(--color-danger); }
     .kd-card__delete:hover { text-decoration: underline; text-underline-offset: 3px; }
+    /* Emails in Kit: the kid's three Kit drafts, just above On the site */
+    .kd-card--kit { order: 4; }
+    .kd-kit__lede { margin: -0.35rem 0 0.75rem; font-size: var(--fs-xs); line-height: 1.5; color: var(--color-text-secondary); }
+    .kd-kit__off { margin: 0 0 0.75rem; }
+    .kd-kit { display: grid; gap: 0.5rem; list-style: none; }
+    .kd-kit__row { display: grid; gap: 0.4rem; padding: 0.65rem 0.75rem; border: 1px solid var(--color-border); border-radius: 10px; }
+    .kd-kit__row.is-warn { border-color: var(--tone-warn-line-strong); box-shadow: inset 3px 0 0 var(--tone-warn-dot); }
+    .kd-kit__top { display: flex; align-items: baseline; justify-content: space-between; gap: 0.5rem; font-size: var(--fs-sm); }
+    .kd-kit__word { flex-shrink: 0; font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--color-text-muted); }
+    .kd-kit__row.is-done .kd-kit__word { color: var(--color-success); }
+    .kd-kit__row.is-draft .kd-kit__word { color: var(--color-text); }
+    .kd-kit__row.is-warn .kd-kit__word { color: var(--tone-warn-fg); }
+    .kd-kit__note { margin: 0; font-size: var(--fs-xs); line-height: 1.5; color: var(--color-text-secondary); overflow-wrap: anywhere; }
     /* Home: the family's house as JobTread has it (read only). After Profile health in the panel; after the editor on narrow screens */
     .kd-card--home { order: 3; }
     .kd-home__addr { margin: 0 0 0.85rem; font-size: var(--fs-sm); font-weight: 600; line-height: 1.4; overflow-wrap: anywhere; }
@@ -9200,10 +9213,10 @@
     // Reveal dates and JobTread jobs (staff view, shared with the Dashboard)
     // statuses: each linked kid's JobTread Status; the site's status follows it (functions/api/_kid-status.js)
     function useKidJobs() {
-      const [d, setD] = useState({ reveals: [], jobs: {}, statuses: {} });
+      const [d, setD] = useState({ reveals: [], jobs: {}, statuses: {}, loaded: false });
       useEffect(() => {
         let on = true;
-        loadRevealsAdmin().then((r) => { if (on) setD({ reveals: r?.reveals || [], jobs: r?.jobs || {}, statuses: r?.statuses || {} }); }).catch(() => {});
+        loadRevealsAdmin().then((r) => { if (on) setD({ reveals: r?.reveals || [], jobs: r?.jobs || {}, statuses: r?.statuses || {}, loaded: true }); }).catch(() => { if (on) setD((x) => ({ ...x, loaded: true })); });
         return () => { on = false; };
       }, []);
       return d;
@@ -12341,6 +12354,107 @@
       </section>`;
     }
 
+    /**
+     * Emails in Kit: the kid's reveal invite, Project Kickoff and Project
+     * Reveal, where each stands in Kit and a button to draft it now. Drafts
+     * only: staff send them from Kit. /api/kid-kit-emails
+     */
+    const KD_KIT_ROWS = [
+      { kind: 'invite', label: 'Reveal invite', auto: 'Drafts itself once JobTread confirms the reveal with a time.' },
+      { kind: 'kickoff', label: 'Project Kickoff', auto: 'Drafts itself when Set Start Date is checked off in JobTread.' },
+      { kind: 'reveal', label: 'Project Reveal', auto: 'Drafts itself within the hour.' },
+    ];
+    const kdKitWhen = (iso) => {
+      const t = Date.parse(iso || '');
+      return t ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : '';
+    };
+    const kdList = (xs) => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
+    /** One email's row → { word, tone, note, open?, draft? } */
+    function kdKitRow(row, x) {
+      const open = x.url || null;
+      const when = (prefix, iso) => (kdKitWhen(iso) ? `${prefix} ${kdKitWhen(iso)}` : prefix);
+      if (x.state === 'check') return { word: 'Check it', tone: 'warn', note: 'Check who it goes to before anyone sends it: Reveal Emails only.', open };
+      if (x.state === 'sent') return { word: 'Sent', tone: 'done', note: `${when('Sent from Kit', x.at)}.`, open };
+      if (x.held && ['draft', 'scheduled'].includes(x.state)) return { word: 'Hold it', tone: 'warn', note: `JobTread says ${x.held}.`, open };
+      if (x.state === 'scheduled') return { word: 'Scheduled', tone: 'done', note: `${when('Scheduled in Kit for', x.at)}.`, open };
+      if (x.state === 'draft') {
+        return { word: 'Draft', tone: x.error ? 'warn' : 'draft', open,
+          note: x.error ? x.error
+            : x.edited ? 'Edited in Kit. Waiting for someone to send it from Kit.'
+            : `${x.at && !x.unread ? `Drafted ${kdKitWhen(x.at)}. ` : ''}Waiting for someone to review it and send it from Kit.` };
+      }
+      if (x.state === 'drafting') return { word: 'Drafting', tone: 'draft', note: 'Being drafted right now.' };
+      if (x.state === 'nojob') return { word: 'No job', tone: 'off', note: 'No JobTread job matches this kid, so there’s no reveal to invite to.' };
+      // Nothing in Kit yet (or deleted there)
+      const word = x.state === 'deleted' ? 'Deleted' : 'Not drafted';
+      if (x.block) return { word, tone: 'off', note: x.state === 'deleted' ? `Deleted in Kit. ${x.block}.` : `${x.block}.` };
+      // A Project Reveal waits for these on its own; drafted by hand it goes without
+      const lack = x.missing?.length ? x.missing : null;
+      const note = x.state === 'deleted' ? 'Deleted in Kit. You can draft it again.'
+        : x.error ? x.error
+        : x.state === 'skipped' ? 'Won’t draft itself for this kid.'
+        : lack ? `Drafts itself once ${lack.length > 1 ? 'they’re' : 'it’s'} there.`
+        : row.auto;
+      return { word, tone: x.error ? 'warn' : 'off', note: [lack ? `Missing on the page: ${kdList(lack)}.` : '', note].filter(Boolean).join(' '),
+        draft: x.state === 'deleted' ? 'Draft it again' : x.error ? 'Try again' : 'Draft in Kit' };
+    }
+
+    function KdKitEmails({ slug, jobId, jobsLoaded, name, addToast }) {
+      const [d, setD] = useState(null);
+      const [problem, setProblem] = useState('');
+      const [busy, setBusy] = useState(null);
+      const load = useCallback(async () => {
+        try {
+          const q = new URLSearchParams({ slug, ...(jobId ? { jobId } : {}) });
+          const res = await fetch(`/api/kid-kit-emails?${q}`, { cache: 'no-store' });
+          const got = await res.json().catch(() => ({}));
+          if (!got.ok) throw new Error(got.error || `Couldn’t read Kit (${res.status})`);
+          setD(got); setProblem('');
+        } catch (e) { setProblem(e.message); }
+      }, [slug, jobId]);
+      // Waits for JobTread's answer, so a kid with a job never shows "No job" first
+      useEffect(() => { if (jobsLoaded) load(); }, [load, jobsLoaded]);
+
+      const draft = async (row) => {
+        setBusy(row.kind);
+        try {
+          const res = await fetch('/api/kid-kit-emails', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ slug, kind: row.kind, ...(jobId ? { jobId } : {}) }) });
+          const r = await res.json().catch(() => ({}));
+          const what = `${name || 'The kid'}’s ${row.label.replace(/^Reveal invite$/, 'reveal invite')}`;
+          if (!r.ok) throw new Error(r.error || r.reason || `Couldn’t draft it (${res.status})`);
+          if (r.kit === 'check') addToast(`${what} is in Kit. Check who it goes to before anyone sends it`, 'error');
+          else if (r.made) addToast(`${what} is drafted in Kit. Nothing is sent until someone sends it there`, 'success');
+          else addToast(`${what} is already in Kit`, 'info');
+        } catch (e) { addToast(e.message, 'error'); }
+        setBusy(null);
+        load();
+      };
+
+      return html`<section class="kd-card kd-card--kit" aria-labelledby="kd-kit-h" aria-busy=${d || problem ? 'false' : 'true'}>
+        <h3 id="kd-kit-h">Emails in Kit</h3>
+        ${problem && !d ? html`<p class="kd-card__note kd-bad" role="alert">${problem}</p>
+            <div class="kd-card__actions"><button type="button" class="btn btn-ghost btn-sm" onClick=${load}>Try again</button></div>`
+          : !d ? html`<p class="kd-card__note"><span class="spinner spinner-14" /> Reading Kit…</p>`
+          : html`
+            <p class="kd-kit__lede">Drafts only. Nothing goes out until someone sends it from Kit.</p>
+            ${d.off ? html`<p class="kd-card__note kd-kit__off">${d.off}.</p>` : null}
+            <ul class="kd-kit">
+              ${KD_KIT_ROWS.map((row) => {
+                const x = kdKitRow(row, d[row.kind] || { state: 'none' });
+                return html`<li key=${row.kind} class=${`kd-kit__row is-${x.tone}`}>
+                  <div class="kd-kit__top"><strong>${row.label}</strong><span class="kd-kit__word">${x.word}</span></div>
+                  <p class="kd-kit__note">${x.note}</p>
+                  ${x.open || (x.draft && !d.off) ? html`<div class="kd-card__actions">
+                    ${x.open ? html`<a class="btn btn-ghost btn-sm" href=${x.open} target="_blank" rel="noopener">Open in Kit ${kdIcon.external}</a>` : null}
+                    ${x.draft && !d.off ? html`<button type="button" class="btn btn-ghost btn-sm" disabled=${!!busy} onClick=${() => draft(row)}>
+                        ${busy === row.kind ? html`<span class="spinner spinner-14" /> Drafting…` : x.draft}</button>` : null}
+                  </div>` : null}
+                </li>`;
+              })}
+            </ul>`}
+      </section>`;
+    }
+
     function KidEditor({ slug, kids = [], partners = [], press = [], onBack, onSaved, addToast }) {
       const existingSlugs = useMemo(() => kids.filter((k) => k.slug !== slug).map((k) => k.slug), [kids, slug]);
       const ix = useMemo(() => kdPartnerIndex(partners), [partners]);
@@ -12395,7 +12509,7 @@
       // Images whose file is gone (they fail to load here, and on the page)
       const [broken, setBroken] = useState(() => new Set());
       const markBroken = (url) => { if (url && !kdLocal(url)) setBroken((b) => (b.has(url) ? b : new Set([...b, url]))); };
-      const { reveals, jobs, statuses } = useKidJobs();
+      const { reveals, jobs, statuses, loaded: jobsLoaded } = useKidJobs();
       const headRef = useRef(null);
       const barRef = useRef(null);
       const photoInput = useRef(null);
@@ -13243,6 +13357,7 @@
                 </ol>
                 <button type="button" class="btn btn-ghost btn-sm kd-history__all" onClick=${() => setHistoryOpen(null)}>${history.versions.length > 3 ? `All ${history.versions.length} versions` : 'Compare and restore'}</button>`}
           </section>` : null}
+          ${slug ? html`<${KdKitEmails} slug=${slug} jobId=${jobId} jobsLoaded=${jobsLoaded} name=${data.name} addToast=${addToast} />` : null}
           <section class="kd-card kd-card--site" aria-labelledby="kd-site-h">
             <h3 id="kd-site-h">On the site</h3>
             <dl class="kd-facts">
