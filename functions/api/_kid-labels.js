@@ -10,6 +10,10 @@
  */
 
 export const SITE = 'https://sunshineonaranneyday.com';
+// Direct thermal labels (no ribbon): ^MTD on every label, so the ZD421t prints with no ribbon loaded instead of
+// stopping with "ribbon out" (Peter, Nov 10 2026: 4 x 6 yellow direct thermal labels). Thermal transfer labels with a
+// ribbon would be 'T'
+const MEDIA = 'D';
 const W = 812;   // 4 in at 203 dpi
 const H = 1218;  // 6 in
 
@@ -33,7 +37,7 @@ export function itemLabel({ kid, item, line, box = 1, boxes = 1, shelf, at, tap 
   const name = zplText(kid, 24).toUpperCase();
   const size = nameSize(name);
   return [
-    '^XA', '^CI28', `^PW${W}`, `^LL${H}`, '^LH0,0',
+    '^XA', '^CI28', `^MT${MEDIA}`, `^PW${W}`, `^LL${H}`, '^LH0,0',
     // The kid
     `^FO40,50^A0N,${size},${size}^FB732,1,0,L^FD${name}^FS`,
     `^FO40,${80 + size}^GB732,4,4^FS`,
@@ -57,7 +61,7 @@ export function itemLabel({ kid, item, line, box = 1, boxes = 1, shelf, at, tap 
 export function shelfLabel({ shelf, name }) {
   const big = zplText(name, 12).toUpperCase();
   return [
-    '^XA', '^CI28', `^PW${W}`, `^LL${H}`, '^LH0,0',
+    '^XA', '^CI28', `^MT${MEDIA}`, `^PW${W}`, `^LL${H}`, '^LH0,0',
     `^FO40,80^A0N,90,90^FB732,1,0,C^FDSOARD^FS`,
     `^FO40,230^A0N,${big.length <= 8 ? 220 : 160},${big.length <= 8 ? 200 : 140}^FB732,1,0,C^FD${big}^FS`,
     `^FO256,${H - 470}^BQN,2,10^FDQA,${shelfUrl(shelf)}^FS`,

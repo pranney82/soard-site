@@ -262,6 +262,8 @@ test('labels: the kid, the item, box n of N, the shelf, a QR to the check-in; ZP
   assert.match(z, /\^FR\^FDSHELF 7\^FS/);
   assert.match(z, /\^FDQA,https:\/\/sunshineonaranneyday\.com\/admin\/checkin\/\?r=tap-abc12345&b=2\^FS/, 'each box its own code');
   assert.ok(z.startsWith('^XA') && z.endsWith('^XZ'));
+  assert.match(z, /\^MTD/, 'direct thermal: prints with no ribbon');
+  assert.match(shelfLabel({ shelf: '3', name: 'Shelf 3' }), /\^MTD/);
   assert.equal(zplText('a^b~c\nd'), 'a b c d');
   assert.equal(receiptLabels({ kid: 'A', item: 'B', boxes: 3, tap: 't' }).length, 3);
   assert.match(shelfLabel({ shelf: '12', name: 'Shelf 12' }), /\^FDSHELF 12\^FS[\s\S]*\?shelf=12/);
