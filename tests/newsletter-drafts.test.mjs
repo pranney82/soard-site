@@ -132,7 +132,7 @@ const STAFF = 'clareece@soardcharity.com';
 test('Event Recap: the gala’s photos, numbers and sponsors, linked to its page for good, signed by the team', () => {
   const e = eventRecapEmail({ event: GALA, events: [GALA, GOLF], pageDoc: GALA_DOC });
   assert.equal(e.subject, 'What a Night! See the Photos from our Evening of Sunshine');
-  assert.match(e.html, /Evening of Sunshine · 2027/);
+  assert.match(e.html, /Evening of Sunshine\u00A0·\u00A02027/);
   assert.match(e.html, /What a <em[^>]*>Night<\/em>!/);
   assert.match(e.html, /See All 12 Photos/);
   assert.match(e.html, new RegExp(`href="${SITE}/events/gala/2027/"`), 'the year page, which never turns into next year’s tickets');
@@ -556,4 +556,45 @@ test('the reviewers by default: Linzi and Peter; whoever drafts it by hand isn�
   assert.deepEqual(emails.map((e) => e.to[0]), ['linzi@soardcharity.com']);
   assert.match(emails[0].text, /Peter drafted it from the admin/);
   assert.ok((await readNewsletterRow(env.DB, recapKey(GALA.slug))).told);
+});
+
+
+test('the recap wears its event’s colors, the same as its page: the gala’s, golf’s, else SOARD’s', async () => {
+  const { RECAP_COLORS } = await import('../public/admin/events-shared.js');
+  const { readFileSync } = await import('node:fs');
+  const page = readFileSync(new URL('../src/components/events/EventRecap.astro', import.meta.url), 'utf8');
+  // The page's own colors: if it changes them, this fails until RECAP_COLORS follows
+  for (const [key, c] of Object.entries(RECAP_COLORS)) {
+    const block = page.match(new RegExp(`\\.rc--${key} \\{[\\s\\S]*?\\n  \\}`))?.[0] || '';
+    for (const hex of [c.paper, c.ink, c.muted, c.dark]) assert.ok(block.toLowerCase().includes(hex.toLowerCase()), `${key} ${hex} is the page’s`);
+    if (key === 'gala') assert.ok(block.toLowerCase().includes(c.accent.toLowerCase()));
+  }
+  const gala = eventRecapEmail({ event: { ...GALA, slug: '2026-evening-of-sunshine', date: '2026-08-22' }, events: [], pageDoc: { ...GALA_DOC, galleryPhotos: [{ id: 'gallery/gala/1787400000000-a.jpg' }, { id: 'gallery/gala/1787400000001-b.jpg' }] } });
+  assert.match(gala.html, /#0d2f3f/);
+  assert.match(gala.html, /#f0c35a/);
+  assert.ok(!/#1E1F25|#FFDA24|#FEFCF5/i.test(gala.html), 'no SOARD dark, yellow or cream left in it');
+  assert.match(gala.html, /Havana Nights · Evening of Sunshine/, 'the year’s theme on top');
+  const own = eventRecapEmail({ event: { ...GALA, theme: 'Moulin Rouge' }, events: [GALA], pageDoc: GALA_DOC });
+  assert.match(own.html, /Moulin Rouge · Evening of Sunshine/);
+  const golf = eventRecapEmail({ event: { ...GOLF, photos: [{ id: 'events/golf/a.jpg' }, { id: 'events/golf/b.jpg' }] }, events: [GOLF] });
+  assert.match(golf.html, /#1a472a/);
+  assert.ok(!/#1E1F25/i.test(golf.html));
+  assert.ok(!/Havana/.test(golf.html));
+  const fest = eventRecapEmail({ event: { slug: 'kids-fest-2027', title: 'Kids Fest', date: '2027-04-06', photos: [{ id: 'events/kf/a.jpg' }, { id: 'events/kf/b.jpg' }] }, events: [] });
+  assert.match(fest.html, /#1E1F25/, 'any other event keeps SOARD’s colors');
+  // The monthly is SOARD’s own
+  assert.match(monthlyImpactEmail({ month: '2027-09', today: '2027-10-01', building: [KIDS[2]] }).html, /#1E1F25/);
+});
+
+test('a draft written in an older design is rebuilt on the next hourly look, not hours later', async () => {
+  await look('2027-08-01T14:00:00Z');
+  publish();
+  await look('2027-08-22T15:00:00Z');
+  const id = String(only().id);
+  await env.DB.prepare("UPDATE newsletter_drafts SET design = 'old', facts = 'old' WHERE key = ?").bind(recapKey(GALA.slug)).run();
+  await look('2027-08-22T16:05:00Z'); // an hour on: well before the usual six-hour look
+  assert.equal(kit.puts.length, 1);
+  assert.equal(kit.puts[0].id, id);
+  const { NEWSLETTER_DESIGN } = await import('../functions/api/_newsletter-email.js');
+  assert.equal((await readNewsletterRow(env.DB, recapKey(GALA.slug))).design, NEWSLETTER_DESIGN);
 });

@@ -206,6 +206,26 @@ export function cleanHighlights(list) {
     .slice(0, HIGHLIGHTS_MAX);
 }
 
+// ── Look ─────────────────────────────────────────────────────────────────
+/**
+ * Each series' recap colors, the same as the recap page's (.rc--gala and
+ * .rc--golf in src/components/events/EventRecap.astro), for the recap email:
+ * solid where the page fades, since email clients can't be trusted with a
+ * gradient. dark: the cover, sponsor band and footer; accent: on the dark and
+ * the give band; paper: the page; ink and muted: the words; line: rules;
+ * outside: around the email. Any other event keeps SOARD's own colors.
+ * tests/newsletter-drafts.test.mjs checks these against the page.
+ */
+export const RECAP_COLORS = Object.freeze({
+  gala: Object.freeze({ dark: '#0d2f3f', accent: '#f0c35a', paper: '#faf3e0', ink: '#0d2f3f', muted: '#4b5d63', line: '#e6dcc3', outside: '#efe2c6' }),
+  golf: Object.freeze({ dark: '#1a472a', accent: '#FFDA24', paper: '#f7f8f2', ink: '#12301f', muted: '#4f5b52', line: '#dde3d6', outside: '#e3e8dc' }),
+});
+/** The gala's theme for its year ("Havana Nights"): the event's own, else 2026's, which the page was written for */
+export function recapThemeName(ev) {
+  if (ev?.theme) return String(ev.theme).trim();
+  return seriesOf(ev)?.key === 'gala' && yearOf(ev) === '2026' ? 'Havana Nights' : '';
+}
+
 // ── Words ────────────────────────────────────────────────────────────────
 export function fmtDay(d, opts = { month: 'long', day: 'numeric', year: 'numeric' }) {
   return d ? new Date(`${d}T12:00:00`).toLocaleDateString('en-US', opts) : '';

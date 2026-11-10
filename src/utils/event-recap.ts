@@ -5,15 +5,15 @@
  */
 import { cfRaw } from './cf-image';
 import {
-  seriesOf, yearOf, displayName, recapPhotos, recapSponsors, sponsorCount, eventPath, yearPath,
+  seriesOf, yearOf, displayName, recapPhotos, recapSponsors, sponsorCount, eventPath, yearPath, recapThemeName,
 } from '../../public/admin/events-shared.js';
 
 const SITE = 'https://sunshineonaranneyday.com';
 
 /** The gala's theme for its year: the event's own, else the one this page was written for */
 export function galaThemeName(ev: any): string {
-  if (ev?.theme) return String(ev.theme).trim();
-  return yearOf(ev) === '2026' ? 'Havana Nights' : '';
+  // One rule for the page and the recap email (public/admin/events-shared.js)
+  return recapThemeName(ev);
 }
 
 export function recapMeta(ev: any, events: any[], pageDoc: any, path: string) {

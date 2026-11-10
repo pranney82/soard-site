@@ -26,12 +26,32 @@ import {
 import { askBand, gap, streamCheckUrl } from './_project-email.js';
 import {
   seriesOf, eventPath, yearPath, yearOf, recapPhotos, recapSponsors, splitSponsors, momentName,
-  cleanHighlights, displayName, recapLead, nameKey,
+  cleanHighlights, displayName, recapLead, nameKey, RECAP_COLORS, recapThemeName,
 } from '../../public/admin/events-shared.js';
 
 const { Y, D, DD, CR, BD, TM, SANS, SERIF } = BRAND;
 
 const WIDE_TRANSFORM = 'w=1200,h=720,fit=cover,gravity=auto,q=82';
+
+/**
+ * This file's emails' design. Change it whenever they change how they look or
+ * read: drafts waiting in Kit that nobody has touched are then rebuilt on the
+ * next hourly look (./_newsletter-drafts.js), not hours later.
+ */
+export const NEWSLETTER_DESIGN = '2026-11-09c';
+
+/**
+ * The recap in its event's colors: SOARD's brand colors swapped for the series'
+ * own (RECAP_COLORS, the same as its recap page). The logo has no background, so
+ * it sits on any of them.
+ */
+function inColors(html, c) {
+  const swap = {
+    '#FFDA24': c.accent, '#1E1F25': c.dark, '#FEFCF5': c.paper, '#373A36': c.ink,
+    '#5A5B61': c.muted, '#6D6E74': c.muted, '#E5E4E0': c.line, '#F5F4F0': c.outside,
+  };
+  return html.replace(/#(FFDA24|1E1F25|FEFCF5|373A36|5A5B61|6D6E74|E5E4E0|F5F4F0)\b/gi, (m) => swap[m.toUpperCase()] || m);
+}
 const COUNT_WORDS = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 const countWord = (n) => COUNT_WORDS[n] || String(n);
 const cap = (s) => String(s).charAt(0).toUpperCase() + String(s).slice(1);
@@ -175,10 +195,13 @@ export function eventRecapEmail({ event = {}, events = [], pageDoc = null, site 
   const opening = tidy(recapLead(ev, { photos: photos.length, sponsors: sponsorCount }));
   const fit = headlineFit(['What', 'a', `${when}!`], 54, { phones: [[40, 'dm'], [30, 'dms']] });
 
-  const html = emailFrame(preview, `
+  // The event's colors, as its recap page has them; the gala's theme for the year on top ("Havana Nights")
+  const colors = RECAP_COLORS[series?.key] || null;
+  const theme = series?.key === 'gala' ? tidy(recapThemeName(ev)) : '';
+  const html = (colors ? (h) => inColors(h, colors) : (h) => h)(emailFrame(preview, `
   ${emailHeader(site)}
   ${cover({
-    kicker: [name, year].filter(Boolean).join(' · '),
+    kicker: [theme, [name, year].filter(Boolean).join('\u00A0· ')].filter(Boolean).join(' · ').replace(/ ([^ ]+)$/, '\u00A0$1'),
     headline: `What a <em style="font-style:italic;color:${Y};">${when}</em>!`,
     size: fit.size,
     phone: fit.phone,
@@ -211,7 +234,7 @@ export function eventRecapEmail({ event = {}, events = [], pageDoc = null, site 
     url: `${site}/donate/`,
   })}
   ${signOff(`Thank you for an unforgettable ${when.toLowerCase()}.`, teamPicture)}
-  ${emailFooter(site)}`);
+  ${emailFooter(site)}`));
 
   const text = [
     `What a ${when.toLowerCase()}!`,

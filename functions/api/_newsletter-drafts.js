@@ -36,7 +36,7 @@ import {
   getReveals, fetchJobs, pave, matchKid, loadKids as loadMatchKids, easternParts, isRehearsalJob, SOARD_ORG_ID, FIELD_REVEAL_DATE, FIELD_REVEAL_CONFIRMED,
 } from './_reveals.js';
 import {
-  eventRecapEmail, monthlyImpactEmail, recapParts, recapUrl, recapImageUrls, monthlyImageUrls, monthlyHasNews, monthName, eventName, eventTitle,
+  eventRecapEmail, monthlyImpactEmail, recapParts, recapUrl, recapImageUrls, monthlyImageUrls, monthlyHasNews, monthName, eventName, eventTitle, NEWSLETTER_DESIGN,
 } from './_newsletter-email.js';
 import { SERIES, seriesOf, isOver, dayIn, lastDay, yearOf, eventPath, hasOwnPage } from '../../public/admin/events-shared.js';
 
@@ -75,10 +75,13 @@ const keyOk = (key) => /^recap:[a-z0-9][a-z0-9-]{0,120}$/.test(key) || /^monthly
 const SCHEMA = `CREATE TABLE IF NOT EXISTS newsletter_drafts (
   key TEXT PRIMARY KEY, kind TEXT NOT NULL, broadcast_id TEXT, state TEXT, told TEXT, reminded TEXT,
   error TEXT, alarmed TEXT, facts TEXT, content_hash TEXT, by TEXT, queued_at TEXT, claimed_at TEXT, followed_at TEXT, updated_at TEXT)`;
+// design: the NEWSLETTER_DESIGN a draft was last written in, so a new one reaches it within the hour
+const ADDED = ['design'];
 const _ready = new WeakSet();
 export async function ensureNewsletterSchema(DB) {
   if (_ready.has(DB)) return;
   await DB.prepare(SCHEMA).run();
+  for (const col of ADDED) await DB.prepare(`ALTER TABLE newsletter_drafts ADD COLUMN ${col} TEXT`).run().catch(() => {});
   _ready.add(DB);
 }
 export async function readNewsletterRow(DB, key) {
@@ -87,9 +90,9 @@ export async function readNewsletterRow(DB, key) {
 }
 async function writeRow(DB, row) {
   await DB.prepare(`UPDATE newsletter_drafts SET broadcast_id = ?, state = ?, told = ?, reminded = ?, error = ?, alarmed = ?, facts = ?,
-    content_hash = ?, by = ?, followed_at = ?, updated_at = ? WHERE key = ?`)
+    content_hash = ?, by = ?, followed_at = ?, design = ?, updated_at = ? WHERE key = ?`)
     .bind(row.broadcast_id ?? null, row.state ?? null, row.told ?? null, row.reminded ?? null, row.error ?? null, row.alarmed ?? null,
-      row.facts ?? null, row.content_hash ?? null, row.by ?? null, row.followed_at ?? null, new Date().toISOString(), row.key)
+      row.facts ?? null, row.content_hash ?? null, row.by ?? null, row.followed_at ?? null, row.design ?? null, new Date().toISOString(), row.key)
     .run();
 }
 /** Its moment has come: a row to follow. A second call changes nothing. → the row */
@@ -499,7 +502,7 @@ export async function syncNewsletter(env, row, { config = {}, alertTo = [], now 
     // Kit's copy as the site wrote it, so a later rebuild can tell a person's edit from its own.
     // facts: what the site knows, before the picture check, so a later look can tell nothing changed without asking again
     const seenCopy = await kitReadBroadcast(env, id);
-    current = { ...row, broadcast_id: id, state: 'drafted', error: null, alarmed: null, by: by || null, facts: await factsOf(ctx.render(new Set())), content_hash: seenCopy.ok ? await copyHash(seenCopy.broadcast) : null, followed_at: iso(now) };
+    current = { ...row, broadcast_id: id, state: 'drafted', error: null, alarmed: null, by: by || null, facts: await factsOf(ctx.render(new Set())), content_hash: seenCopy.ok ? await copyHash(seenCopy.broadcast) : null, followed_at: iso(now), design: NEWSLETTER_DESIGN };
     await writeRow(DB, current); // kept first: a draft Kit has is never made twice
     const heard = await tell(env, s, 'ready', { kind: row.kind, title, id, subject: email.subject, by });
     if (heard) { current = { ...current, told: iso(now) }; await writeRow(DB, current); }
@@ -537,7 +540,7 @@ export async function followNewsletter(env, row, { config = {}, now = Date.now()
     if (ctx.block) { await writeRow(DB, { ...row, followed_at: iso(now) }); return { newsletter: 'unchanged', reason: ctx.block }; }
     // Nothing the site knows has changed: no pictures to check, nothing to write
     const facts = await factsOf(ctx.render(new Set()));
-    if (facts === row.facts) { await writeRow(DB, { ...row, followed_at: iso(now) }); return { newsletter: 'unchanged' }; }
+    if (facts === row.facts) { await writeRow(DB, { ...row, followed_at: iso(now), design: NEWSLETTER_DESIGN }); return { newsletter: 'unchanged' }; }
     const broken = await checkImages(ctx, fetchImpl);
     const email = ctx.render(broken);
     const u = await kitUpdateDraft(env, row.broadcast_id, {
@@ -548,7 +551,7 @@ export async function followNewsletter(env, row, { config = {}, now = Date.now()
     if (u.status) { await stop(u.status === 'scheduled' ? 'scheduled' : 'sent'); return { newsletter: 'left' }; }
     if (!u.ok) return { newsletter: 'error', error: `Kit didn’t take the update (${u.error || 'no answer'})` };
     const after = await kitReadBroadcast(env, row.broadcast_id);
-    await writeRow(DB, { ...row, facts, content_hash: after.ok ? await copyHash(after.broadcast) : null, followed_at: iso(now) });
+    await writeRow(DB, { ...row, facts, content_hash: after.ok ? await copyHash(after.broadcast) : null, followed_at: iso(now), design: NEWSLETTER_DESIGN });
     return { newsletter: 'updated', id: row.broadcast_id };
   } catch (err) {
     console.error('[newsletter-drafts] follow', err.message);
@@ -596,9 +599,11 @@ export async function runNewsletterDrafts(env, { now = Date.now(), fetchImpl = f
       if (r.newsletter === 'drafted') drafted += 1;
       out.push({ key: row.key, ...r });
     }
+    // Due a look, or written in an older design (that one straight away, not hours later)
     const { results: waiting = [] } = await DB.prepare(`SELECT * FROM newsletter_drafts
-      WHERE state = 'drafted' AND broadcast_id IS NOT NULL AND (followed_at IS NULL OR followed_at < ?) AND queued_at > ? ORDER BY followed_at LIMIT 5`)
-      .bind(iso(now - FOLLOW_EVERY_MS), iso(now - FOLLOW_FOR_MS)).all();
+      WHERE state = 'drafted' AND broadcast_id IS NOT NULL AND queued_at > ?
+        AND (followed_at IS NULL OR followed_at < ? OR design IS NULL OR design != ?) ORDER BY followed_at LIMIT 5`)
+      .bind(iso(now - FOLLOW_FOR_MS), iso(now - FOLLOW_EVERY_MS), NEWSLETTER_DESIGN).all();
     for (const row of waiting) out.push({ key: row.key, ...(await followNewsletter(env, row, { config, now, fetchImpl })) });
     return out;
   } catch (err) {
