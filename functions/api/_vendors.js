@@ -56,6 +56,7 @@ import { readDocument, judgeCoiReads, settleDisputes, judgeW9, documentType, req
 import { releaseVendorHolds } from './_bill-pay.js';
 import { maybeRunRamp, rampConfigured } from './_ramp.js';
 import { settlePapers, settleMany, savePapers, markSent, keepFile, readPapers, isSiteVendor, importJobTread, findPayees, papersFacts, ensurePapersSchema, FOLDER, otherKindOf } from './_vendor-files.js';
+import { DEFAULTS } from './_vendor-defaults.js';
 
 export { FOLDER, isSiteVendor };
 export const STATE_KEY = 'vendors';
@@ -74,8 +75,8 @@ export const LINK_DAYS = 90;
 export const REMIND_AFTER_DAYS = [3, 7];   // then every 7 days
 export const MAX_ASKS = 5;
 export const LIMITS = { fileBytes: 15 * 1024 * 1024, files: 3, uploads: 30, pages: 3, pageBytes: 4 * 1024 * 1024 };
-// asking: whether vendors and their agents are emailed for a W-9 or certificate at all (off until someone at SOARD turns it on)
-export const DEFAULTS = { glOccurrence: 1000000, glAggregate: 2000000, workersComp: true, elEachAccident: 100000, renewDays: 30, asking: false };
+// The minimums until someone changes them (_vendor-defaults.js, shared with /trade-partners/)
+export { DEFAULTS };
 
 export const FIELDS = {
   w9: { name: 'W-9', type: 'boolean' },
